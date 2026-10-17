@@ -56,7 +56,9 @@ export interface PublicAccessToken {
 }
 
 const publicToken = (record: AccessTokenRecord): PublicAccessToken => ({
-  id: record.id, name: record.name, createdAt: record.createdAt,
+  id: record.id,
+  name: record.name,
+  createdAt: record.createdAt,
   ...(record.lastUsedAt ? { lastUsedAt: record.lastUsedAt } : {}),
   hint: record.id.slice(0, 8),
 });
@@ -107,14 +109,19 @@ async function touchToken(record: AccessTokenRecord): Promise<void> {
 }
 
 /** Mint one, returning the ONLY copy of its secret alongside the record. The caller shows it once. */
-export async function createAccessToken(userId: string, name: string):
-Promise<{ token: string; record: PublicAccessToken }> {
+export async function createAccessToken(
+  userId: string,
+  name: string,
+): Promise<{ token: string; record: PublicAccessToken }> {
   // Named for what it is, not for its first caller: a key is an ordinary bearer credential for the whole
   // API, and anything speaking HTTP can carry one.
   const label = name.trim().slice(0, 64) || 'Access key';
   const token = `${ACCESS_TOKEN_PREFIX}${mintToken()}`;
   const record: AccessTokenRecord = {
-    id: randomUUID(), tokenHash: tokenHash(token), userId, name: label,
+    id: randomUUID(),
+    tokenHash: tokenHash(token),
+    userId,
+    name: label,
     createdAt: new Date().toISOString(),
   };
   await updateAccounts(draft => {

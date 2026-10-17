@@ -2,7 +2,14 @@ import { rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
 import {
-  ensureDir, listDir, listEntries, mapLimit, pathExists, readBytesOrNull, readJsonOr, READ_CONCURRENCY,
+  ensureDir,
+  listDir,
+  listEntries,
+  mapLimit,
+  pathExists,
+  readBytesOrNull,
+  readJsonOr,
+  READ_CONCURRENCY,
 } from '../fs-async';
 import { decodePng, encodePng } from './png';
 import type { Rgba } from '../../core/paint/ground-textures';
@@ -10,7 +17,11 @@ import type { ExportFile } from '../../core/export/files';
 import type { SkyboxDoc } from '../../core/doc/types';
 import type { FalGenerationProvenance } from '../../core/paint/fal-models';
 import {
-  AUTHORING_SKY_GEOMETRY, SKY_TIERS, panoramaSize, skyRingFromDocument, type SkyRing,
+  AUTHORING_SKY_GEOMETRY,
+  SKY_TIERS,
+  panoramaSize,
+  skyRingFromDocument,
+  type SkyRing,
 } from '../../core/sky/ring';
 import { deriveGroundTile, fitToBand, stitchPanorama } from '../../core/sky/slice';
 import { composeSkybox, type SkyboxPageSource } from '../../core/export/skybox';
@@ -37,7 +48,9 @@ export async function levelsWithSkybox(): Promise<string[]> {
   const shipped = await mapLimit(dirs, READ_CONCURRENCY, async name => {
     const sky = join(mapsRoot(), name, 'Skybox');
     const [meshes, textures, ring] = await Promise.all([
-      pathExists(join(sky, 'Meshes')), pathExists(join(sky, 'Textures')), pathExists(join(sky, 'Ring.json')),
+      pathExists(join(sky, 'Meshes')),
+      pathExists(join(sky, 'Textures')),
+      pathExists(join(sky, 'Ring.json')),
     ]);
     return meshes && textures && ring;
   });
@@ -46,7 +59,10 @@ export async function levelsWithSkybox(): Promise<string[]> {
 
 /** The panoramas owned by the open mountain, by bare name. */
 export async function listCustomSkies(): Promise<string[]> {
-  return (await listDir(skiesDir())).filter(f => /\.png$/i.test(f)).map(f => f.replace(/\.png$/i, '')).sort();
+  return (await listDir(skiesDir()))
+    .filter(f => /\.png$/i.test(f))
+    .map(f => f.replace(/\.png$/i, ''))
+    .sort();
 }
 
 /** Read the metadata Snowknife measured from this level's extracted OBJ/PNG files. */
@@ -83,7 +99,9 @@ export function readLevelPanorama(level: string): Promise<Buffer> {
   if (!pending) {
     pending = stitchLevelPanorama(safe);
     panoCache.set(safe, pending);
-    void pending.catch(() => { if (panoCache.get(safe) === pending) panoCache.delete(safe); });
+    void pending.catch(() => {
+      if (panoCache.get(safe) === pending) panoCache.delete(safe);
+    });
   }
   return pending;
 }
@@ -96,8 +114,11 @@ export function readLevelPanoramaRevision(level: string): Promise<string> {
     if (!ringBytes) throw new Error(`no sky ring for ${safe}`);
     const indexes = [...new Set(ring.panels.map(panel => panel.index))];
     const pages = await mapLimit(indexes, READ_CONCURRENCY, async index => {
-      try { return await readSkyPageBytes(safe, index); }
-      catch { return null; /* stitchLevelPanorama renders this same missing page as a gap */ }
+      try {
+        return await readSkyPageBytes(safe, index);
+      } catch {
+        return null; /* stitchLevelPanorama renders this same missing page as a gap */
+      }
     });
     const chunks: Buffer[] = [ringBytes];
     indexes.forEach((index, at) => {
@@ -112,8 +133,11 @@ export function readLevelPanoramaRevision(level: string): Promise<string> {
 async function stitchLevelPanorama(safe: string): Promise<Buffer> {
   const ring = await readSkyRing(safe);
   const loaded = await mapLimit(ring.panels, READ_CONCURRENCY, async p => {
-    try { return [p.index, await readSkyTile(safe, p.index)] as const; }
-    catch { return [p.index, null] as const; /* a missing page draws as a gap */ }
+    try {
+      return [p.index, await readSkyTile(safe, p.index)] as const;
+    } catch {
+      return [p.index, null] as const; /* a missing page draws as a gap */
+    }
   });
   const tiles: (Rgba | null)[] = Array.from({ length: ring.tiles.length }, () => null);
   for (const [index, tile] of loaded) tiles[index] = tile;
@@ -152,15 +176,18 @@ export function readCustomGroundPng(name: string, preferredRing = ''): Promise<B
   if (!pending) {
     pending = deriveCustomGround(safe, preferredRing);
     groundCache.set(key, pending);
-    void pending.catch(() => { if (groundCache.get(key) === pending) groundCache.delete(key); });
+    void pending.catch(() => {
+      if (groundCache.get(key) === pending) groundCache.delete(key);
+    });
   }
   return pending;
 }
 
 async function deriveCustomGround(safe: string, preferredRing: string): Promise<Buffer> {
   const ring = await optionalSkyRing(preferredRing);
-  return encodePng(deriveGroundTile(
-    decodePng(await readCustomSkyPng(safe)), SKY_TIERS.high.ground, ring ?? AUTHORING_SKY_GEOMETRY));
+  return encodePng(
+    deriveGroundTile(decodePng(await readCustomSkyPng(safe)), SKY_TIERS.high.ground, ring ?? AUTHORING_SKY_GEOMETRY),
+  );
 }
 
 const skyFile = (name: string) => join(skiesDir(), safeDataName(name) + '.png');
@@ -172,9 +199,13 @@ const skyFile = (name: string) => join(skiesDir(), safeDataName(name) + '.png');
  * `name_2` rather than over it (docs/038), which is also what keeps the derived-ground cache above honest:
  * a stored panorama's bytes never change under it. Returns the stored name.
  */
-export async function saveCustomSky(name: string, bytes: Buffer,
-  fit: 'auto' | 'band' | 'equirect' = 'auto', preferredRing = '',
-  generation?: FalGenerationProvenance): Promise<string> {
+export async function saveCustomSky(
+  name: string,
+  bytes: Buffer,
+  fit: 'auto' | 'band' | 'equirect' = 'auto',
+  preferredRing = '',
+  generation?: FalGenerationProvenance,
+): Promise<string> {
   const src = decodePng(bytes);
   const ring = await optionalSkyRing(preferredRing);
   // Without any extracted map, use a plainly generic authoring canvas. Export later re-samples it against
@@ -191,8 +222,11 @@ export async function saveCustomSky(name: string, bytes: Buffer,
       await Promise.all([
         writeFile(skyFile(stored), band),
         generation
-          ? writeFile(join(skiesDir(), `${safeDataName(stored)}.generation.json`),
-            JSON.stringify(generation, null, 2) + '\n', 'utf8')
+          ? writeFile(
+              join(skiesDir(), `${safeDataName(stored)}.generation.json`),
+              JSON.stringify(generation, null, 2) + '\n',
+              'utf8',
+            )
           : Promise.resolve(),
       ]);
     },
@@ -216,13 +250,18 @@ export async function resolveSkyRingLevel(preferred: string): Promise<string> {
   const wanted = preferred ? safeDataName(preferred) : '';
   const ringLevel = wanted && shipped.includes(wanted) ? wanted : shipped[0];
   if (!ringLevel || !shipped.includes(ringLevel))
-    throw new Error(`sky "${wanted || '?'}" has no extracted Skybox/ — run \`snowknife import\` on a level that ships one`);
+    throw new Error(
+      `sky "${wanted || '?'}" has no extracted Skybox/ — run \`snowknife import\` on a level that ships one`,
+    );
   return ringLevel;
 }
 
 async function optionalSkyRing(preferred = ''): Promise<SkyRing | null> {
-  try { return await readSkyRing(await resolveSkyRingLevel(preferred)); }
-  catch { return null; }
+  try {
+    return await readSkyRing(await resolveSkyRingLevel(preferred));
+  } catch {
+    return null;
+  }
 }
 
 /** A ring level's `Skybox/` shell — Models.json, Materials.json and every mesh — addressed for an export. */
@@ -246,8 +285,7 @@ export async function readSkyRingFiles(ringLevel: string): Promise<ExportFile[]>
 
 /** One of a level's measured sky pages as it ships, for an export that lifts the bank verbatim. */
 export async function readSkyPageBytes(level: string, index: number): Promise<Buffer> {
-  const file = join(mapsRoot(), safeDataName(level), 'Skybox', 'Textures',
-    String(index).padStart(4, '0') + '.png');
+  const file = join(mapsRoot(), safeDataName(level), 'Skybox', 'Textures', String(index).padStart(4, '0') + '.png');
   const bytes = await readBytesOrNull(file);
   if (!bytes) throw new Error(`skybox source missing: ${file}`);
   return bytes;
@@ -261,13 +299,19 @@ export function readSkyPageRevision(level: string, index: number): Promise<strin
 /** The authored sky as an extracted level's `Skybox/` (docs/025), read off the map library. What the folder
  *  contains is `composeSkybox`; this finds the ring and the bytes it cuts. */
 export async function skyboxFiles(sky: SkyboxDoc): Promise<{ files: ExportFile[]; log: string[] }> {
-  const ringLevel = await resolveSkyRingLevel(sky.source.kind === 'level' ? sky.source.level : sky.ring ?? '');
+  const ringLevel = await resolveSkyRingLevel(sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? ''));
   const [ringFiles, ring] = await Promise.all([readSkyRingFiles(ringLevel), readSkyRing(ringLevel)]);
-  const pages: SkyboxPageSource = sky.source.kind === 'level'
-    ? { kind: 'level', pages: await mapLimit(
-      Array.from({ length: ring.tiles.length }, (_unused, i) => i), READ_CONCURRENCY,
-      i => readSkyPageBytes(ringLevel, i)) }
-    : { kind: 'custom', panorama: decodePng(await readCustomSkyPng(sky.source.name)) };
+  const pages: SkyboxPageSource =
+    sky.source.kind === 'level'
+      ? {
+          kind: 'level',
+          pages: await mapLimit(
+            Array.from({ length: ring.tiles.length }, (_unused, i) => i),
+            READ_CONCURRENCY,
+            i => readSkyPageBytes(ringLevel, i),
+          ),
+        }
+      : { kind: 'custom', panorama: decodePng(await readCustomSkyPng(sky.source.name)) };
   return composeSkybox(sky, { ringLevel, ringFiles, ring, pages }, async image => encodePng(image));
 }
 
@@ -280,7 +324,10 @@ export async function exportSkybox(dir: string, sky: SkyboxDoc): Promise<string[
   for (const file of files) {
     const full = join(dir, ...file.path.split('/'));
     const parent = dirname(full);
-    if (!made.has(parent)) { await ensureDir(parent); made.add(parent); }
+    if (!made.has(parent)) {
+      await ensureDir(parent);
+      made.add(parent);
+    }
     await writeFile(full, file.bytes);
   }
   return log;

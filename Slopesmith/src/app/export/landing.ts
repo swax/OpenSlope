@@ -59,8 +59,12 @@ async function readHandle(): Promise<FileSystemDirectoryHandle | null> {
         request.onsuccess = () => resolve((request.result as FileSystemDirectoryHandle | undefined) ?? null);
         request.onerror = () => reject(request.error);
       });
-    } finally { db.close(); }
-  } catch { return null; /* private browsing, a blocked store: the author picks again */ }
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null; /* private browsing, a blocked store: the author picks again */
+  }
 }
 
 async function writeHandle(handle: FileSystemDirectoryHandle): Promise<void> {
@@ -73,8 +77,12 @@ async function writeHandle(handle: FileSystemDirectoryHandle): Promise<void> {
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       });
-    } finally { db.close(); }
-  } catch { /* not remembering it costs one more pick, never the export */ }
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* not remembering it costs one more pick, never the export */
+  }
 }
 
 /** Permission on a stored handle is not permanent: the browser drops it between sessions, and asking again
@@ -89,7 +97,7 @@ async function writable(handle: FileSystemDirectoryHandle, ask: boolean): Promis
   const state = await permissioned.queryPermission?.({ mode: 'readwrite' });
   if (state === 'granted' || state === undefined) return true;
   if (!ask) return false;
-  return await permissioned.requestPermission?.({ mode: 'readwrite' }) === 'granted';
+  return (await permissioned.requestPermission?.({ mode: 'readwrite' })) === 'granted';
 }
 
 /** The remembered `Maps/` folder, if one was picked and is still writable. Called from the export's own click,
@@ -97,7 +105,7 @@ async function writable(handle: FileSystemDirectoryHandle, ask: boolean): Promis
 export async function rememberedMapsDirectory(): Promise<FileSystemDirectoryHandle | null> {
   const handle = await readHandle();
   if (!handle) return null;
-  return await writable(handle, true) ? handle : null;
+  return (await writable(handle, true)) ? handle : null;
 }
 
 /** Ask for the `Maps/` folder and remember it. Null when the author dismissed the picker. */
@@ -106,8 +114,10 @@ export async function pickMapsDirectory(): Promise<FileSystemDirectoryHandle | n
   let handle: FileSystemDirectoryHandle;
   try {
     handle = await window.showDirectoryPicker({ id: 'slopesmith-maps', mode: 'readwrite' });
-  } catch { return null; /* the picker was dismissed */ }
-  if (!await writable(handle, true)) return null;
+  } catch {
+    return null; /* the picker was dismissed */
+  }
+  if (!(await writable(handle, true))) return null;
   await writeHandle(handle);
   return handle;
 }
@@ -116,9 +126,14 @@ export async function pickMapsDirectory(): Promise<FileSystemDirectoryHandle | n
 export async function forgetMapsDirectory(): Promise<void> {
   try {
     const db = await openHandleStore();
-    try { db.transaction(STORE, 'readwrite').objectStore(STORE).delete(MAPS_KEY); }
-    finally { db.close(); }
-  } catch { /* nothing to forget */ }
+    try {
+      db.transaction(STORE, 'readwrite').objectStore(STORE).delete(MAPS_KEY);
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* nothing to forget */
+  }
 }
 
 export function directoryTarget(root: FileSystemDirectoryHandle, folderName: string): ExportTarget {
@@ -126,10 +141,17 @@ export function directoryTarget(root: FileSystemDirectoryHandle, folderName: str
    *  which holds the whole library. Null as soon as one of them does not exist. */
   const descend = async (parts: string[]): Promise<FileSystemDirectoryHandle | null> => {
     let at: FileSystemDirectoryHandle;
-    try { at = await root.getDirectoryHandle(folderName); } catch { return null; }
+    try {
+      at = await root.getDirectoryHandle(folderName);
+    } catch {
+      return null;
+    }
     for (const part of parts) {
-      try { at = await at.getDirectoryHandle(part); }
-      catch { return null; }
+      try {
+        at = await at.getDirectoryHandle(part);
+      } catch {
+        return null;
+      }
     }
     return at;
   };
@@ -143,8 +165,12 @@ export function directoryTarget(root: FileSystemDirectoryHandle, folderName: str
       const parts = path.split('/');
       const dir = await descend(parts.slice(0, -1));
       if (!dir) return false;
-      try { await dir.getFileHandle(parts[parts.length - 1]); return true; }
-      catch { return false; }
+      try {
+        await dir.getFileHandle(parts[parts.length - 1]);
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     async land(folder) {
@@ -156,11 +182,19 @@ export function directoryTarget(root: FileSystemDirectoryHandle, folderName: str
         let at: FileSystemDirectoryHandle = target;
         let reached = true;
         for (const part of parts.slice(0, -1)) {
-          try { at = await at.getDirectoryHandle(part); } catch { reached = false; break; }
+          try {
+            at = await at.getDirectoryHandle(part);
+          } catch {
+            reached = false;
+            break;
+          }
         }
         if (!reached) continue;
-        try { await at.removeEntry(parts[parts.length - 1], { recursive: true }); }
-        catch { /* nothing there to retire */ }
+        try {
+          await at.removeEntry(parts[parts.length - 1], { recursive: true });
+        } catch {
+          /* nothing there to retire */
+        }
       }
       const made = new Map<string, FileSystemDirectoryHandle>([['', target]]);
       const ensure = async (parts: string[]): Promise<FileSystemDirectoryHandle> => {
@@ -172,7 +206,7 @@ export function directoryTarget(root: FileSystemDirectoryHandle, folderName: str
         made.set(key, dir);
         return dir;
       };
-      await ensure(['Textures']);   // every export carries one, painted or not
+      await ensure(['Textures']); // every export carries one, painted or not
       for (const file of folder.files) {
         const parts = file.path.split('/');
         const dir = await ensure(parts.slice(0, -1));
@@ -208,8 +242,10 @@ export function downloadTarget(folderName: string): ExportTarget {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      return `downloaded ${folderName}.zip — ${folder.files.length} file(s), `
-        + `${(blob.size / 1048576).toFixed(1)} MB — unpack it into your Maps folder`;
+      return (
+        `downloaded ${folderName}.zip — ${folder.files.length} file(s), ` +
+        `${(blob.size / 1048576).toFixed(1)} MB — unpack it into your Maps folder`
+      );
     },
   };
 }

@@ -29,35 +29,53 @@ const level = (name: string, models: object[]) => {
   mkdirSync(join(root, name, 'Meshes'), { recursive: true });
   writeFileSync(join(root, name, 'Instances.json'), '{"Instances":[]}');
   writeFileSync(join(root, name, 'Models.json'), JSON.stringify({ Models: models }));
-  writeFileSync(join(root, name, 'Materials.json'), JSON.stringify({
-    Materials: Array.from({ length: 16 }, (_, i) => ({ TexturePath: `tex${i}.png` })) }));
+  writeFileSync(
+    join(root, name, 'Materials.json'),
+    JSON.stringify({
+      Materials: Array.from({ length: 16 }, (_, i) => ({ TexturePath: `tex${i}.png` })),
+    }),
+  );
 };
 const clearLevels = () => {
-  for (const name of ['AUTOTEST1', 'COURSE', 'FOREST', 'PARTIAL', 'PADS']) rmSync(join(root, name), { recursive: true, force: true });
+  for (const name of ['AUTOTEST1', 'COURSE', 'FOREST', 'PARTIAL', 'PADS'])
+    rmSync(join(root, name), { recursive: true, force: true });
 };
 
 try {
   level('AUTOTEST1', [model('Mdl_Start_Gate', 3), model('Mdl_Fence', 4)]);
   level('COURSE', [
-    model('Mdl_Tree'), model('Mdl_Rail_Metal_01', 7),
-    model('Gem_TrickMultiplier_YellowX2', 11), model('Gem_TrickMultiplier_OrangeX3', 12),
-    model('Gem_TrickMultiplier_RedX5', 13), model('Mdl_Icicle_BigA_Chunk2', 3),
+    model('Mdl_Tree'),
+    model('Mdl_Rail_Metal_01', 7),
+    model('Gem_TrickMultiplier_YellowX2', 11),
+    model('Gem_TrickMultiplier_OrangeX3', 12),
+    model('Gem_TrickMultiplier_RedX5', 13),
+    model('Mdl_Icicle_BigA_Chunk2', 3),
   ]);
   level('FOREST', [model('Mdl_Rail_Metal_01', 1), model('Mdl_Tree_BushyTrunk', 9)]);
   level('PADS', [model('Mdl_SpeedBoost_Gold_2000', 2), model('Mdl_TrickBoost_RedGreen_5000', 3)]);
   let art = await nativeArtSource();
-  check(art.railSkins.metal === 'COURSE/tex7.png',
+  check(
+    art.railSkins.metal === 'COURSE/tex7.png',
     'the metal default is the first SHIPPED rail tube’s own texture, past a level that merely sorts first',
-    String(art.railSkins.metal));
+    String(art.railSkins.metal),
+  );
   check(art.railSkins.ice === 'COURSE/tex3.png', 'ice borrows the shipped icicle', String(art.railSkins.ice));
-  check(art.railSkins.wood === 'FOREST/tex9.png',
+  check(
+    art.railSkins.wood === 'FOREST/tex9.png',
     'wood borrows tree bark from whichever level ships a trunk — each default is searched for on its own',
-    String(art.railSkins.wood));
-  check(art.gemLevel === 'COURSE' && art.gemTiers.map(t => `${t.tier}:${t.model}`).join() === '2:2,3:3,5:4',
-    'the three tier crystals come off the level that ships them, by ModelID');
-  check(art.boostPads?.speed?.level === 'PADS' && art.boostPads.speed.model === 0
-    && art.boostPads.trick?.level === 'PADS' && art.boostPads.trick.model === 1,
-  'boost donors are still searched after all gem and rail art has been found');
+    String(art.railSkins.wood),
+  );
+  check(
+    art.gemLevel === 'COURSE' && art.gemTiers.map(t => `${t.tier}:${t.model}`).join() === '2:2,3:3,5:4',
+    'the three tier crystals come off the level that ships them, by ModelID',
+  );
+  check(
+    art.boostPads?.speed?.level === 'PADS' &&
+      art.boostPads.speed.model === 0 &&
+      art.boostPads.trick?.level === 'PADS' &&
+      art.boostPads.trick.model === 1,
+    'boost donors are still searched after all gem and rail art has been found',
+  );
 
   // No level carries every tier: take whichever carries most, rather than the first by name.
   clearLevels();
@@ -66,19 +84,26 @@ try {
   level('PADS', [model('Mdl_TrickBoost_RedGreen_5000', 3)]);
   art = await nativeArtSource();
   check(art.gemLevel === 'PARTIAL' && art.gemTiers.length === 2, 'with no complete gem set, the fullest one wins');
-  check(!art.boostPads?.speed && art.boostPads?.trick?.model === 0,
-    'each boost kind resolves independently, without guessing a missing model');
+  check(
+    !art.boostPads?.speed && art.boostPads?.trick?.model === 0,
+    'each boost kind resolves independently, without guessing a missing model',
+  );
 
   // Nothing ships the art: no defaults, so tubes bake untextured and gems fall back to their stand-in.
   clearLevels();
   level('AUTOTEST1', [model('Mdl_Start_Gate', 3)]);
   art = await nativeArtSource();
-  check(Object.keys(art.railSkins).length === 0 && art.gemLevel === '' && art.gemTiers.length === 0,
-    'with no art anywhere the answer is empty rather than a guess');
+  check(
+    Object.keys(art.railSkins).length === 0 && art.gemLevel === '' && art.gemTiers.length === 0,
+    'with no art anywhere the answer is empty rather than a guess',
+  );
   check(Object.keys(art.boostPads ?? {}).length === 0, 'without boost art no pad is offered as a donor');
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
 
-if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }
+if (failures) {
+  console.error(`${failures} failure(s)`);
+  process.exit(1);
+}
 console.log('native-art-donor: all checks passed');

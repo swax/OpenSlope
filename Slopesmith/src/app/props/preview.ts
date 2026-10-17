@@ -25,15 +25,26 @@ import { installStyles } from '../ui/components/styles';
 /** One placement an authored group's preview draws: its model, the level payload that model is read from, and
  *  its world pose (editor metres / degrees). */
 export interface AssemblyPreviewMember {
-  level: string; model: number; name: string; props: LevelProps | undefined;
-  pos: V3; yaw: number; pitch?: number; roll?: number; scale: number;
+  level: string;
+  model: number;
+  name: string;
+  props: LevelProps | undefined;
+  pos: V3;
+  yaw: number;
+  pitch?: number;
+  roll?: number;
+  scale: number;
 }
 
 /** A light in a component list: what kind it is, its colour and how bright. */
-export interface PreviewLight { kind: string; color: string; intensity: number }
+export interface PreviewLight {
+  kind: string;
+  color: string;
+  intensity: number;
+}
 
-const ORBIT_SENSITIVITY = 0.01;                 // radians of orbit per pixel dragged
-const MAX_ELEVATION = 1.45;                       // clamp the pitch just shy of straight over / under the model
+const ORBIT_SENSITIVITY = 0.01; // radians of orbit per pixel dragged
+const MAX_ELEVATION = 1.45; // clamp the pitch just shy of straight over / under the model
 
 const css = `
 .pp-card { display: none; flex-direction: column; align-items: center; gap: 6px; margin: 2px 0 10px; padding: 10px;
@@ -77,9 +88,9 @@ export class PropPreview {
   private statsEl = document.createElement('div');
   private membersEl = document.createElement('div');
   private thumb = new ThumbRenderer(148);
-  private token = 0;                          // guards against an out-of-order async prepare clobbering a newer one
-  private hasModel = false;                   // a model is built and can be drawn / orbited
-  private azimuth = THUMB_DEFAULT_AZIMUTH;    // camera orbit, persisted across props (session only)
+  private token = 0; // guards against an out-of-order async prepare clobbering a newer one
+  private hasModel = false; // a model is built and can be drawn / orbited
+  private azimuth = THUMB_DEFAULT_AZIMUTH; // camera orbit, persisted across props (session only)
   private elevation = THUMB_DEFAULT_ELEVATION;
   private dragging = false;
   private lastX = 0;
@@ -93,8 +104,9 @@ export class PropPreview {
     this.nameEl.className = 'pp-name';
     this.modelEl.className = 'pp-model';
     this.instanceEl.className = 'pp-instance';
-    this.instanceEl.title = 'This prop’s number. Effects point at a particular prop by it, and it stays with '
-      + 'the prop — deleting or reordering other props never renumbers it.';
+    this.instanceEl.title =
+      'This prop’s number. Effects point at a particular prop by it, and it stays with ' +
+      'the prop — deleting or reordering other props never renumbers it.';
     this.statsEl.className = 'pp-stats';
     this.membersEl.className = 'pp-members';
     this.thumbEl.append(this.thumb.canvas);
@@ -103,7 +115,9 @@ export class PropPreview {
   }
 
   /** A different mountain may reuse a compact authored texture ref for different local bytes. */
-  invalidateProjectAssets(): void { this.thumb.invalidateProjectAssets(); }
+  invalidateProjectAssets(): void {
+    this.thumb.invalidateProjectAssets();
+  }
 
   /** Pointer drag on the thumbnail orbits the camera (horizontal → azimuth, vertical → elevation). Pointer
    *  capture keeps the drag alive if the cursor leaves the little canvas. */
@@ -111,24 +125,30 @@ export class PropPreview {
     this.thumbEl.addEventListener('pointerdown', e => {
       if (!this.hasModel) return;
       this.dragging = true;
-      this.lastX = e.clientX; this.lastY = e.clientY;
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
       this.el.classList.add('dragging');
       this.thumbEl.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
     this.thumbEl.addEventListener('pointermove', e => {
       if (!this.dragging) return;
-      this.azimuth -= (e.clientX - this.lastX) * ORBIT_SENSITIVITY;   // drag right → the model turns to follow
+      this.azimuth -= (e.clientX - this.lastX) * ORBIT_SENSITIVITY; // drag right → the model turns to follow
       this.elevation += (e.clientY - this.lastY) * ORBIT_SENSITIVITY; // drag down → look from lower
       this.elevation = Math.max(-MAX_ELEVATION, Math.min(MAX_ELEVATION, this.elevation));
-      this.lastX = e.clientX; this.lastY = e.clientY;
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
       this.scheduleDraw();
     });
     const end = (e: PointerEvent) => {
       if (!this.dragging) return;
       this.dragging = false;
       this.el.classList.remove('dragging');
-      try { this.thumbEl.releasePointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+      try {
+        this.thumbEl.releasePointerCapture(e.pointerId);
+      } catch {
+        /* pointer already gone */
+      }
     };
     this.thumbEl.addEventListener('pointerup', end);
     this.thumbEl.addEventListener('pointercancel', end);
@@ -148,13 +168,19 @@ export class PropPreview {
    *  props aren't in yet, shows the name alone. With a group def the view builds the WHOLE assembly and the
    *  component list renders below the name (docs/015). `instance` identifies a PLACED prop — the id an effect
    *  binds to — and is omitted when the card is previewing a model rather than a placement. */
-  show(level: string, model: number, name: string, props: LevelProps | undefined, group?: GroupDef | null,
-    instance?: string | null) {
+  show(
+    level: string,
+    model: number,
+    name: string,
+    props: LevelProps | undefined,
+    group?: GroupDef | null,
+    instance?: string | null,
+  ) {
     this.el.classList.add('on');
     this.nameEl.textContent = name;
     // Only when it says something the label does not: a prop whose full name IS the label gains nothing from
     // a second line of the same text, and a group's members carry their own names in the list below.
-    const full = group ? '' : props?.models.find(x => x.id === model)?.name ?? '';
+    const full = group ? '' : (props?.models.find(x => x.id === model)?.name ?? '');
     this.modelEl.textContent = full && full !== name ? full : '';
     this.instanceEl.textContent = instance ?? '';
     this.setMembers(group ?? null);
@@ -167,13 +193,21 @@ export class PropPreview {
       }
     }
     // geometry stats for what the view shows — a group sums every member model
-    let tris = 0, verts = 0;
-    for (const e of entries) for (const s of e.model.subs) { tris += s.indices.length / 3; verts += s.positions.length / 3; }
+    let tris = 0,
+      verts = 0;
+    for (const e of entries)
+      for (const s of e.model.subs) {
+        tris += s.indices.length / 3;
+        verts += s.positions.length / 3;
+      }
     this.statsEl.textContent = entries.length ? `${tris.toLocaleString()} tris · ${verts.toLocaleString()} verts` : '';
     const mine = ++this.token;
     this.hasModel = false;
     this.el.classList.remove('orbit');
-    if (!entries.length || !props) { this.thumb.canvas.style.visibility = 'hidden'; return; } // props not loaded — name only
+    if (!entries.length || !props) {
+      this.thumb.canvas.style.visibility = 'hidden';
+      return;
+    } // props not loaded — name only
     void this.thumb.prepareSet(entries, level, props.materials).then(() => {
       if (mine !== this.token) return; // a newer show()/empty() superseded this one
       this.hasModel = true;
@@ -188,29 +222,49 @@ export class PropPreview {
    * level, with the member list under the stats as a mined group's component list, its lights included.
    * `members` carry world poses; the view frames whatever they span, so no origin needs choosing.
    */
-  showSet(name: string, members: readonly AssemblyPreviewMember[], lights: readonly PreviewLight[] = [],
-    instance?: string | null) {
+  showSet(
+    name: string,
+    members: readonly AssemblyPreviewMember[],
+    lights: readonly PreviewLight[] = [],
+    instance?: string | null,
+  ) {
     this.el.classList.add('on');
     this.nameEl.textContent = name;
     this.modelEl.textContent = '';
     this.instanceEl.textContent = instance ?? '';
-    this.setMemberNames(members.map(m => m.name), lights);
+    this.setMemberNames(
+      members.map(m => m.name),
+      lights,
+    );
     const entries: ThumbEntry[] = [];
     const origin = members[0]?.pos ?? [0, 0, 0]; // world positions can run to kilometres; the view only needs offsets
     for (const m of members) {
       const model = m.props?.models.find(x => x.id === m.model);
       if (!model || !m.props) continue;
-      entries.push({ model, level: m.level, materials: m.props.materials,
+      entries.push({
+        model,
+        level: m.level,
+        materials: m.props.materials,
         relPos: [m.pos[0] - origin[0], m.pos[1] - origin[1], m.pos[2] - origin[2]],
-        relRot: placementQuat(m), relScale: m.scale });
+        relRot: placementQuat(m),
+        relScale: m.scale,
+      });
     }
-    let tris = 0, verts = 0;
-    for (const e of entries) for (const s of e.model.subs) { tris += s.indices.length / 3; verts += s.positions.length / 3; }
+    let tris = 0,
+      verts = 0;
+    for (const e of entries)
+      for (const s of e.model.subs) {
+        tris += s.indices.length / 3;
+        verts += s.positions.length / 3;
+      }
     this.statsEl.textContent = entries.length ? `${tris.toLocaleString()} tris · ${verts.toLocaleString()} verts` : '';
     const mine = ++this.token;
     this.hasModel = false;
     this.el.classList.remove('orbit');
-    if (!entries.length) { this.thumb.canvas.style.visibility = 'hidden'; return; }
+    if (!entries.length) {
+      this.thumb.canvas.style.visibility = 'hidden';
+      return;
+    }
     void this.thumb.prepareSet(entries, entries[0].level!, entries[0].materials!).then(() => {
       if (mine !== this.token) return;
       this.hasModel = true;
@@ -269,5 +323,8 @@ export class PropPreview {
     for (const L of group.lights) this.lightRow(L);
   }
 
-  hide() { this.el.classList.remove('on', 'orbit'); this.token++; }
+  hide() {
+    this.el.classList.remove('on', 'orbit');
+    this.token++;
+  }
 }

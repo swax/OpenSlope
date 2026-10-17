@@ -401,7 +401,11 @@ navigate('/api', { replace: true });
 
 export const explorerRoutes: Record<string, ApiHandler> = {
   '/api/explorer': (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     res.statusCode = 200;
     res.setHeader('content-type', 'text/html; charset=utf-8');
     res.setHeader('cache-control', 'no-cache');

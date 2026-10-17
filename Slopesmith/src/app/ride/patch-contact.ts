@@ -30,19 +30,31 @@ import type { PatchContact } from './physics';
  * `for iu { for iv }` order, cornered a=(iu,iv) b=(iu,iv+1) c=(iu+1,iv) d=(iu+1,iv+1) and wound (a,d,c) then
  * (a,b,d) — so one decode serves both.
  */
-function patchAt(cp: V3[] | number[][], res: number, face: number,
-  bary: THREE.Vector3, outPoint: THREE.Vector3, outNormal: THREE.Vector3): boolean {
+function patchAt(
+  cp: V3[] | number[][],
+  res: number,
+  face: number,
+  bary: THREE.Vector3,
+  outPoint: THREE.Vector3,
+  outNormal: THREE.Vector3,
+): boolean {
   const sub = face >> 1;
-  const iu = Math.floor(sub / res), iv = sub % res;
-  const u0 = iu / res, v0 = iv / res, u1 = (iu + 1) / res, v1 = (iv + 1) / res;
-  const w0 = bary.x, w1 = bary.y, w2 = bary.z;
-  const u = (face & 1) === 0
-    ? w0 * u0 + w1 * u1 + w2 * u1   // a, d, c
-    : w0 * u0 + w1 * u0 + w2 * u1;  // a, b, d
-  const v = (face & 1) === 0
-    ? w0 * v0 + w1 * v1 + w2 * v0
-    : w0 * v0 + w1 * v1 + w2 * v1;
-  const p = patchPoint(cp as V3[], u, v), n = patchNormal(cp as V3[], u, v);
+  const iu = Math.floor(sub / res),
+    iv = sub % res;
+  const u0 = iu / res,
+    v0 = iv / res,
+    u1 = (iu + 1) / res,
+    v1 = (iv + 1) / res;
+  const w0 = bary.x,
+    w1 = bary.y,
+    w2 = bary.z;
+  const u =
+    (face & 1) === 0
+      ? w0 * u0 + w1 * u1 + w2 * u1 // a, d, c
+      : w0 * u0 + w1 * u0 + w2 * u1; // a, b, d
+  const v = (face & 1) === 0 ? w0 * v0 + w1 * v1 + w2 * v0 : w0 * v0 + w1 * v1 + w2 * v1;
+  const p = patchPoint(cp as V3[], u, v),
+    n = patchNormal(cp as V3[], u, v);
   outPoint.set(p[0], p[1], p[2]);
   outNormal.set(n[0], n[1], n[2]);
   return true;
@@ -52,7 +64,9 @@ function patchAt(cp: V3[] | number[][], res: number, face: number,
  *  crosses a handful of cells a second. Null when the preview quilt has not been built yet. */
 export function authoredPatchContact(pv: PreviewData | null): PatchContact | null {
   if (!pv) return null;
-  const res = PREVIEW_RES, per = pv.facesPerCell, cells = pv.mesh.quadCount;
+  const res = PREVIEW_RES,
+    per = pv.facesPerCell,
+    cells = pv.mesh.quadCount;
   const cpCache: (V3[] | null)[] = new Array(cells).fill(null);
   return (faceIndex, bary, outPoint, outNormal) => {
     const q = Math.floor(faceIndex / per);

@@ -24,7 +24,10 @@ import { glintSizeClass } from './glints';
  */
 
 /** A model's local axis-aligned bounding box, in raw SSX centimetres (Z-up) — the space Meshes/*.obj store. */
-export interface LocalBox { min: V3; max: V3; }
+export interface LocalBox {
+  min: V3;
+  max: V3;
+}
 
 /** One authored sign light, in editor/data space (metres, Y-up) — the frame `corners` + `PlacedProp.pos` use.
  *  Convertible straight to a ref-lights `RigLight` (already editor-space) for the terrain bake / prop tint /
@@ -65,9 +68,9 @@ export function isSignProp(name: string): boolean {
 export const SIGN_TERRAIN_WEIGHT_K = 0.5;
 
 const CONE_COS = Math.cos((30 * Math.PI) / 180); // 30° half-angle: a touch wider than the shipped 22.5° so the down-raked beam catches the snow in front
-const SIGN_COLOR = '#ffffff';                     // the reference SignLights are white
+const SIGN_COLOR = '#ffffff'; // the reference SignLights are white
 const SIGN_INTENSITY = 1;
-const MOUNT_FRAC = 0.5;   // light mounted this fraction of the half-height above the face centre
+const MOUNT_FRAC = 0.5; // light mounted this fraction of the half-height above the face centre
 const MOUNT_CAP_CM = 800; // ...capped at 8 m so a very tall sign's light doesn't fly absurdly high
 const AIM_FOOT_FRAC = 0.75; // aim at a point this fraction of the half-height below centre (the lower face / foot)
 
@@ -76,7 +79,10 @@ const AIM_FOOT_FRAC = 0.75; // aim at a point this fraction of the half-height b
 // placement's uniform scale, rotation, and translation. A direction skips scale/translation.
 
 export const rawLinearToEditor = (v: V3): V3 => [-v[0] / 100, v[2] / 100, -v[1] / 100];
-export const normalize = (v: V3): V3 => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+export const normalize = (v: V3): V3 => {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+};
 
 function mapPoint(pp: PlacedProp, vLocalCm: V3): V3 {
   const e = rawLinearToEditor(vLocalCm);
@@ -96,7 +102,9 @@ function mapDir(pp: PlacedProp, dLocalCm: V3): V3 {
  * into editor metres, so the light rides the billboard's position, yaw and size.
  */
 export function deriveSignLight(pp: PlacedProp, box: LocalBox, index: number): PlacedLight {
-  const ex = box.max[0] - box.min[0], ey = box.max[1] - box.min[1], ez = box.max[2] - box.min[2];
+  const ex = box.max[0] - box.min[0],
+    ey = box.max[1] - box.min[1],
+    ez = box.max[2] - box.min[2];
   const center: V3 = [(box.min[0] + box.max[0]) / 2, (box.min[1] + box.max[1]) / 2, (box.min[2] + box.max[2]) / 2];
 
   // thinner horizontal axis (X or Y) = the board's front-back normal; the other horizontal is its width, Z its height
@@ -116,7 +124,9 @@ export function deriveSignLight(pp: PlacedProp, box: LocalBox, index: number): P
   ];
   const aimTargetLocal: V3 = [center[0], center[1], center[2] - halfH * AIM_FOOT_FRAC]; // lower face / foot
   const aimLocal: V3 = [
-    aimTargetLocal[0] - lightLocal[0], aimTargetLocal[1] - lightLocal[1], aimTargetLocal[2] - lightLocal[2],
+    aimTargetLocal[0] - lightLocal[0],
+    aimTargetLocal[1] - lightLocal[1],
+    aimTargetLocal[2] - lightLocal[2],
   ];
 
   const diagCm = Math.hypot(halfW, halfH, halfThk);
@@ -174,14 +184,28 @@ export function freeLightToPlaced(a: AuthoredLight, index: number): PlacedLight 
 
 /** What the Add light tool drops a new free light as: its kind, colour, brightness, reach, cone and glint. */
 export interface FreeLightPreset {
-  kind: 'point' | 'spot'; color: string; intensity: number; reach: number; cone: number; glint: number;
+  kind: 'point' | 'spot';
+  color: string;
+  intensity: number;
+  reach: number;
+  cone: number;
+  glint: number;
 }
 
 /** A new free light at `pos`, as the Add light tool's `preset` would drop it — a spot aimed straight down. */
 export function newFreeLight(preset: FreeLightPreset, id: string, pos: V3): AuthoredLight {
-  const light: AuthoredLight = { id, kind: preset.kind, pos, color: preset.color, intensity: preset.intensity,
-    reach: preset.reach };
-  if (preset.kind === 'spot') { light.dir = [0, -1, 0]; light.cone = preset.cone; }
+  const light: AuthoredLight = {
+    id,
+    kind: preset.kind,
+    pos,
+    color: preset.color,
+    intensity: preset.intensity,
+    reach: preset.reach,
+  };
+  if (preset.kind === 'spot') {
+    light.dir = [0, -1, 0];
+    light.cone = preset.cone;
+  }
   if (preset.glint) light.glint = preset.glint;
   return light;
 }
@@ -206,7 +230,7 @@ export function authoredRig(lights: PlacedLight[]): LightRig {
     intensity: l.intensity,
     coneCos: l.coneCos,
     reach: l.reach,
-    spriteRes: l.glint ?? 0,   // the engine's glint gate rides through as the rig's own field (docs/047)
+    spriteRes: l.glint ?? 0, // the engine's glint gate rides through as the rig's own field (docs/047)
   }));
   return { level: 'authored', lights: rigLights, counts: { sign: rigLights.length } };
 }

@@ -10,9 +10,14 @@ export interface SquareCrop {
 /** Cover an arbitrary output rectangle. Offsets are normalized to that rectangle's width and height. */
 export function coverCropRect(crop: SquareCrop, outputWidth: number, outputHeight: number) {
   const scale = Math.max(outputWidth / crop.image.width, outputHeight / crop.image.height) * crop.zoom;
-  const width = crop.image.width * scale, height = crop.image.height * scale;
-  return { width, height, x: (outputWidth - width) / 2 + crop.offsetX * outputWidth,
-    y: (outputHeight - height) / 2 + crop.offsetY * outputHeight };
+  const width = crop.image.width * scale,
+    height = crop.image.height * scale;
+  return {
+    width,
+    height,
+    x: (outputWidth - width) / 2 + crop.offsetX * outputWidth,
+    y: (outputHeight - height) / 2 + crop.offsetY * outputHeight,
+  };
 }
 
 export function squareCropRect(crop: SquareCrop, size: number) {
@@ -34,19 +39,22 @@ export function clampSquareCrop(crop: SquareCrop): void {
 
 /** Keep the source point under the focus point stationary while changing scale. */
 export function zoomCoverCrop(
-  crop: SquareCrop, zoom: number, maximumZoom: number, outputWidth: number, outputHeight: number,
-  focusX = 0.5, focusY = 0.5,
+  crop: SquareCrop,
+  zoom: number,
+  maximumZoom: number,
+  outputWidth: number,
+  outputHeight: number,
+  focusX = 0.5,
+  focusY = 0.5,
 ): void {
   const next = Math.max(1, Math.min(maximumZoom, zoom));
   const ratio = next / crop.zoom;
-  crop.offsetX = (focusX - 0.5) - ((focusX - 0.5) - crop.offsetX) * ratio;
-  crop.offsetY = (focusY - 0.5) - ((focusY - 0.5) - crop.offsetY) * ratio;
+  crop.offsetX = focusX - 0.5 - (focusX - 0.5 - crop.offsetX) * ratio;
+  crop.offsetY = focusY - 0.5 - (focusY - 0.5 - crop.offsetY) * ratio;
   crop.zoom = next;
   clampCoverCrop(crop, outputWidth, outputHeight);
 }
 
-export function zoomSquareCrop(
-  crop: SquareCrop, zoom: number, maximumZoom: number, focusX = 0.5, focusY = 0.5,
-): void {
+export function zoomSquareCrop(crop: SquareCrop, zoom: number, maximumZoom: number, focusX = 0.5, focusY = 0.5): void {
   zoomCoverCrop(crop, zoom, maximumZoom, 1, 1, focusX, focusY);
 }

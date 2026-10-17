@@ -13,10 +13,23 @@ export default defineConfig(
   // deploy tree, and the parts of the tree that are not this project's TypeScript: Blender-side Python under
   // blender/, browser fixtures. Declaration files are the compiler's business, not the linter's.
   globalIgnores([
-    'node_modules/**', 'dist/**', 'dist-server/**', 'coverage/**', '.coverage-tmp/**',
-    'workspace/**', '.slopesmith/**', 'Maps/**', 'courses/**', 'demos/**', 'temp/**',
-    'public/**', 'deploy/**', 'blender/**', 'fixtures/**',
-    '**/*.d.ts', '**/*.d.mts',
+    'node_modules/**',
+    'dist/**',
+    'dist-server/**',
+    'coverage/**',
+    '.coverage-tmp/**',
+    'workspace/**',
+    '.slopesmith/**',
+    'Maps/**',
+    'courses/**',
+    'demos/**',
+    'temp/**',
+    'public/**',
+    'deploy/**',
+    'blender/**',
+    'fixtures/**',
+    '**/*.d.ts',
+    '**/*.d.mts',
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,
@@ -31,14 +44,17 @@ export default defineConfig(
       // A binding that has to exist but is never read - a destructuring slot, a callback parameter before one
       // that is used, a catch clause that keeps the error for shape - is spelt with a leading `_`. Anything
       // else unused is dead code and comes out rather than being renamed around the rule.
-      '@typescript-eslint/no-unused-vars': ['error', {
-        args: 'after-used',
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-        caughtErrors: 'all',
-        caughtErrorsIgnorePattern: '^_',
-        ignoreRestSiblings: true,
-      }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
   {

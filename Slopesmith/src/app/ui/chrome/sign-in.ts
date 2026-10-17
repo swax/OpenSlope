@@ -24,7 +24,11 @@ const COOKIE_REFRESH_MS = 6 * 60 * 60_000;
 /** Signing out reloads, which lands on the boot gate — and the gate, finding no session, answers the login
  *  page. The cookie is going either way, so a refused request is not worth blocking on. */
 async function signOut(url: string): Promise<void> {
-  try { await postJson(url); } catch { /* the cookie is going either way; the reload settles it */ }
+  try {
+    await postJson(url);
+  } catch {
+    /* the cookie is going either way; the reload settles it */
+  }
   location.reload();
 }
 
@@ -63,7 +67,10 @@ export function createAccountMenu(user: Member, deps: AccountMenuDeps): HTMLButt
     initial.textContent = [...current.username][0]?.toUpperCase() ?? '?';
   };
   paint();
-  onAccountChanged(changed => { current = changed; paint(); });
+  onAccountChanged(changed => {
+    current = changed;
+    paint();
+  });
   return account.el;
 }
 
@@ -89,9 +96,15 @@ export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
   if (!('user' in account)) {
     const bar = document.getElementById('dock-top');
     // File ▸ Settings… reaches the same dialog, so a narrow bar drops this button (`sp-fit-account`).
-    if (bar) bar.append(group(button('Settings', deps.openSettings, {
-      title: 'Application and server settings.', cls: 'sp-settings-btn',
-    })));
+    if (bar)
+      bar.append(
+        group(
+          button('Settings', deps.openSettings, {
+            title: 'Application and server settings.',
+            cls: 'sp-settings-btn',
+          }),
+        ),
+      );
     return;
   }
   document.getElementById('dock-top')?.append(group(createAccountMenu(account.user, deps)));
@@ -100,8 +113,12 @@ export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
   // session that ended anyway reloads into the login page rather than sitting in an editor being refused.
   const refresh = setInterval(() => {
     void fetch('/api/auth/session', { cache: 'no-store', headers: { accept: 'application/json' } })
-      .then(response => { if (response.status === 401) location.reload(); })
-      .catch(() => { /* a transient outage is the session channel's reconnect problem */ });
+      .then(response => {
+        if (response.status === 401) location.reload();
+      })
+      .catch(() => {
+        /* a transient outage is the session channel's reconnect problem */
+      });
   }, COOKIE_REFRESH_MS);
   (refresh as { unref?: () => void }).unref?.();
 }

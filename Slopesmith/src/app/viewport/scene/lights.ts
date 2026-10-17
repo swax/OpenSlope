@@ -16,24 +16,24 @@ import { disposeSourceMarkerPoints, setSourceMarkerSelected, sourceMarkerPoints 
  * re-folds the terrain glow. Free-light selection follows the same shell-orchestrated pattern as rails / gems.
  */
 export function createLightsLayer(stage: Stage) {
-  const authoredLightsGroup = new THREE.Group();     // derived sign/group source bulbs + one selected rig
+  const authoredLightsGroup = new THREE.Group(); // derived sign/group source bulbs + one selected rig
   const authoredDetailGroup = new THREE.Group();
   let authoredLightMarkers: THREE.Points | null = null;
   let authoredSourceIndices: number[] = [];
   let selectedRigSource: number | null = null;
   let authoredLights: PlacedLight[] = [];
   let authoredRigData: LightRig | null = null;
-  let authoredLightsVisible = false;                 // effective Local lights: terrain glow + billboard tint
-  let authoredRigVisible = false;                    // Sources pill (legacy name): bulbs + selected rig
+  let authoredLightsVisible = false; // effective Local lights: terrain glow + billboard tint
+  let authoredRigVisible = false; // Sources pill (legacy name): bulbs + selected rig
 
   const freeLightGroup = new THREE.Group();
   const freeLightDetailGroup = new THREE.Group();
   let freeLightMarkers: THREE.Points | null = null;
   let freeLights: AuthoredLight[] = [];
-  let selectedLight: string | null = null;           // the selected free light's stable id (docs/039)
-  let lightArmed = false;                            // an Add-light click armed placement (drops on the next ground click)
+  let selectedLight: string | null = null; // the selected free light's stable id (docs/039)
+  let lightArmed = false; // an Add-light click armed placement (drops on the next ground click)
 
-  const lightMoveHandle = new THREE.Object3D();      // scene-root gizmo anchor for the selected free light
+  const lightMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected free light
 
   /** A rig or visibility change: the shell invalidates the cached terrain glow (when `rigChanged`) and re-lights. */
   let relight: (rigChanged: boolean) => void = () => {};
@@ -67,7 +67,9 @@ export function createLightsLayer(stage: Stage) {
     freeLightGroup.visible = on && freeLights.length > 0;
   }
 
-  function hasAuthoredLights(): boolean { return !!authoredRigData; }
+  function hasAuthoredLights(): boolean {
+    return !!authoredRigData;
+  }
 
   function clearDetail(group: THREE.Group) {
     group.traverse(object => {
@@ -82,15 +84,20 @@ export function createLightsLayer(stage: Stage) {
 
   function detailFor(light: PlacedLight, group: THREE.Group) {
     clearDetail(group);
-    const positions: number[] = [], colors: number[] = [];
+    const positions: number[] = [],
+      colors: number[] = [];
     addLightGizmo(positions, colors, authoredRig([light]).lights[0], new THREE.Color());
     if (!positions.length) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    const lines = new THREE.LineSegments(geometry,
-      new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false }));
-    lines.raycast = () => { /* selected rig is display-only; bulbs own the click */ };
+    const lines = new THREE.LineSegments(
+      geometry,
+      new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false }),
+    );
+    lines.raycast = () => {
+      /* selected rig is display-only; bulbs own the click */
+    };
     group.add(lines);
     group.visible = true;
   }
@@ -99,35 +106,53 @@ export function createLightsLayer(stage: Stage) {
   function buildAuthoredGizmos() {
     if (authoredLightMarkers) authoredLightsGroup.remove(authoredLightMarkers);
     disposeSourceMarkerPoints(authoredLightMarkers);
-    authoredSourceIndices = authoredLights.map((light, index) => ({ light, index }))
+    authoredSourceIndices = authoredLights
+      .map((light, index) => ({ light, index }))
       .filter(({ light }) => light.ofProp !== undefined || light.ofGroup !== undefined)
       .map(({ index }) => index);
-    authoredLightMarkers = authoredSourceIndices.length ? sourceMarkerPoints(stage, 'light', 'authored',
-      authoredSourceIndices.map(index => new THREE.Vector3(...authoredLights[index].pos)), {
-        colors: authoredSourceIndices.map(index => authoredLights[index].colorHex),
-        icons: authoredSourceIndices.map(index => authoredLights[index].kind === 'spot' ? 'spotlight' : 'bulb'),
-        aimTargets: authoredSourceIndices.map(index => lightAimTarget(authoredLights[index])),
-        selectedIndex: selectedRigSource,
-      }) : null;
+    authoredLightMarkers = authoredSourceIndices.length
+      ? sourceMarkerPoints(
+          stage,
+          'light',
+          'authored',
+          authoredSourceIndices.map(index => new THREE.Vector3(...authoredLights[index].pos)),
+          {
+            colors: authoredSourceIndices.map(index => authoredLights[index].colorHex),
+            icons: authoredSourceIndices.map(index => (authoredLights[index].kind === 'spot' ? 'spotlight' : 'bulb')),
+            aimTargets: authoredSourceIndices.map(index => lightAimTarget(authoredLights[index])),
+            selectedIndex: selectedRigSource,
+          },
+        )
+      : null;
     if (authoredLightMarkers) authoredLightsGroup.add(authoredLightMarkers);
     if (selectedRigSource !== null && authoredSourceIndices[selectedRigSource] !== undefined)
       detailFor(authoredLights[authoredSourceIndices[selectedRigSource]], authoredDetailGroup);
-    else { selectedRigSource = null; clearDetail(authoredDetailGroup); }
+    else {
+      selectedRigSource = null;
+      clearDetail(authoredDetailGroup);
+    }
     authoredLightsGroup.visible = authoredRigVisible && authoredSourceIndices.length > 0;
   }
 
   /** Tint colour for a billboard from the sign light aimed at it: a saturating multiply
    *  `1 + MAX·(1 − e^(−strength·glow))` per channel, sampled where the light aims. Read by the props layer. */
   function signTint(aimAt: V3): THREE.Color {
-    const M = PROP_RIG_MAX_BOOST, s = SIGN_TINT_STRENGTH;
+    const M = PROP_RIG_MAX_BOOST,
+      s = SIGN_TINT_STRENGTH;
     const [gr, gg, gb] = propRigGlow(aimAt, authoredRigData!);
-    return new THREE.Color(1 + M * (1 - Math.exp(-s * gr)), 1 + M * (1 - Math.exp(-s * gg)), 1 + M * (1 - Math.exp(-s * gb)));
+    return new THREE.Color(
+      1 + M * (1 - Math.exp(-s * gr)),
+      1 + M * (1 - Math.exp(-s * gg)),
+      1 + M * (1 - Math.exp(-s * gb)),
+    );
   }
 
   // ---- free lights (hand-placed, editable) ----
 
   /** Arm / disarm free-light placement: while armed, a props-mode click on empty terrain drops a new light. */
-  function setArmed(on: boolean) { lightArmed = on; }
+  function setArmed(on: boolean) {
+    lightArmed = on;
+  }
 
   /** Where the selected light sits in the list right now, or -1. The selection names a light rather than the
    *  slot it happens to occupy, so it is resolved fresh on every rebuild: deleting a light below it moves its
@@ -162,14 +187,22 @@ export function createLightsLayer(stage: Stage) {
     const selIdx = selectedIndex();
     if (freeLightMarkers) freeLightGroup.remove(freeLightMarkers);
     disposeSourceMarkerPoints(freeLightMarkers);
-    freeLightMarkers = freeLights.length ? sourceMarkerPoints(stage, 'light', 'authored',
-      freeLights.map(light => new THREE.Vector3(...light.pos)), {
-        colors: freeLights.map(light => light.color),
-        icons: freeLights.map(light => light.kind === 'spot' ? 'spotlight' : 'bulb'),
-        aimTargets: freeLights.map((light, index) => lightAimTarget(freeLightToPlaced(light, index))),
-        selectedIndex: freeLights.flatMap((light, index) =>
-          index === selIdx || (light.id !== undefined && setLights.has(light.id)) ? [index] : []),
-      }) : null;
+    freeLightMarkers = freeLights.length
+      ? sourceMarkerPoints(
+          stage,
+          'light',
+          'authored',
+          freeLights.map(light => new THREE.Vector3(...light.pos)),
+          {
+            colors: freeLights.map(light => light.color),
+            icons: freeLights.map(light => (light.kind === 'spot' ? 'spotlight' : 'bulb')),
+            aimTargets: freeLights.map((light, index) => lightAimTarget(freeLightToPlaced(light, index))),
+            selectedIndex: freeLights.flatMap((light, index) =>
+              index === selIdx || (light.id !== undefined && setLights.has(light.id)) ? [index] : [],
+            ),
+          },
+        )
+      : null;
     if (freeLightMarkers) {
       // Free lights remain semantic editable-light picks rather than derived source-only picks.
       freeLightMarkers.userData.lightPoints = true;
@@ -238,26 +271,59 @@ export function createLightsLayer(stage: Stage) {
   freeLightDetailGroup.visible = false;
   freeLightGroup.add(freeLightDetailGroup);
   freeLightGroup.visible = false;
-  stage.worldRoot.add(freeLightGroup);      // hand-placed free lights, same data coords as the props
+  stage.worldRoot.add(freeLightGroup); // hand-placed free lights, same data coords as the props
   lightMoveHandle.visible = false;
   stage.scene.add(lightMoveHandle);
 
   return {
-    get authoredLightsGroup() { return authoredLightsGroup; },
-    get authoredLights() { return authoredLights; },
-    get authoredRigData() { return authoredRigData; },
-    get authoredLightsVisible() { return authoredLightsVisible; },
-    get authoredRigVisible() { return authoredRigVisible; },
-    get freeLightGroup() { return freeLightGroup; },
-    get freeLights() { return freeLights; },
-    get selectedLight() { return selectedLight; },
-    get lightArmed() { return lightArmed; },
+    get authoredLightsGroup() {
+      return authoredLightsGroup;
+    },
+    get authoredLights() {
+      return authoredLights;
+    },
+    get authoredRigData() {
+      return authoredRigData;
+    },
+    get authoredLightsVisible() {
+      return authoredLightsVisible;
+    },
+    get authoredRigVisible() {
+      return authoredRigVisible;
+    },
+    get freeLightGroup() {
+      return freeLightGroup;
+    },
+    get freeLights() {
+      return freeLights;
+    },
+    get selectedLight() {
+      return selectedLight;
+    },
+    get lightArmed() {
+      return lightArmed;
+    },
     /** Whether free-light placement is armed (the Prop Tools' Add light button shows pressed while it is). */
-    get lightPlacing() { return lightArmed; },
-    get relight() { return relight; },
-    set relight(fn: (rigChanged: boolean) => void) { relight = fn; },
-    setAuthoredLights, showAuthoredLights, showAuthoredLightRig, hasAuthoredLights, signTint,
-    setArmed, setFreeLights, seatLight, clearSelection, selectRigSource, clearRigSource,
+    get lightPlacing() {
+      return lightArmed;
+    },
+    get relight() {
+      return relight;
+    },
+    set relight(fn: (rigChanged: boolean) => void) {
+      relight = fn;
+    },
+    setAuthoredLights,
+    showAuthoredLights,
+    showAuthoredLightRig,
+    hasAuthoredLights,
+    signTint,
+    setArmed,
+    setFreeLights,
+    seatLight,
+    clearSelection,
+    selectRigSource,
+    clearRigSource,
   };
 }
 

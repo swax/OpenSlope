@@ -22,10 +22,32 @@ const PER_TICK = AIR_TURN_RATE / 60; // 4.5° of rotation a physics tick
 
 function floorAt(y = 0, extent = 600): THREE.Mesh {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    -extent, y, -extent, -extent, y, extent, extent, y, -extent,
-    extent, y, -extent, -extent, y, extent, extent, y, extent,
-  ], 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        -extent,
+        y,
+        -extent,
+        -extent,
+        y,
+        extent,
+        extent,
+        y,
+        -extent,
+        extent,
+        y,
+        -extent,
+        -extent,
+        y,
+        extent,
+        extent,
+        y,
+        extent,
+      ],
+      3,
+    ),
+  );
   const mesh = new THREE.Mesh(geometry);
   mesh.updateMatrixWorld(true);
   return mesh;
@@ -33,8 +55,15 @@ function floorAt(y = 0, extent = 600): THREE.Mesh {
 
 function ride(drive?: number) {
   const model = createRideModel({
-    spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(0, 0, 1), terrain: floorAt(),
-    surfaceOf: () => 1, oobFloorY: -100, keys, stick, drive, onRespawn: () => {},
+    spawn: new THREE.Vector3(0, 1, 0),
+    heading: new THREE.Vector3(0, 0, 1),
+    terrain: floorAt(),
+    surfaceOf: () => 1,
+    oobFloorY: -100,
+    keys,
+    stick,
+    drive,
+    onRespawn: () => {},
   });
   model.start();
   model.st.pos.set(0, -groundRestDepth(SNOW), 0);
@@ -62,7 +91,9 @@ function landWith(flip: number, height = 3) {
   return { model, kept: Math.hypot(model.st.vel.x, model.st.vel.z) / airborne };
 }
 
-const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys.boost = false; };
+const clearKeys = () => {
+  keys.left = keys.right = keys.tuck = keys.brake = keys.boost = false;
+};
 
 // ---------------------------------------------------------------------------------------------------------
 // The control: held in the air, W turns the deck forward over the nose and S backward over the tail, both at the
@@ -77,8 +108,10 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
   for (let i = 0; i < 40; i++) model.step(1 / 60);
   clearKeys();
   assert.ok(!model.st.grounded, 'the rotation runs entirely in the air');
-  assert.ok(Math.abs(model.st.flip - 40 * PER_TICK) < 1e-6,
-    `holding W turns the deck forward at ${AIR_TURN_RATE}°/s (got ${model.st.flip.toFixed(1)}° in 40 ticks)`);
+  assert.ok(
+    Math.abs(model.st.flip - 40 * PER_TICK) < 1e-6,
+    `holding W turns the deck forward at ${AIR_TURN_RATE}°/s (got ${model.st.flip.toFixed(1)}° in 40 ticks)`,
+  );
   assert.ok(Math.abs(model.st.flip - 180) < 1e-6, 'which is a half rotation in two thirds of a second');
 
   const forward = model.st.flip;
@@ -120,13 +153,19 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
   const three = landWith(-1080);
   const quarter = landWith(90);
 
-  assert.ok(Math.abs(whole.kept - flat.kept) < 1e-9,
-    `a completed flip lands exactly as a straight air does (${whole.kept.toFixed(4)} vs ${flat.kept.toFixed(4)})`);
+  assert.ok(
+    Math.abs(whole.kept - flat.kept) < 1e-9,
+    `a completed flip lands exactly as a straight air does (${whole.kept.toFixed(4)} vs ${flat.kept.toFixed(4)})`,
+  );
   assert.ok(Math.abs(three.kept - flat.kept) < 1e-9, 'and so do three of them the other way');
-  assert.ok(quarter.kept < flat.kept * 0.9,
-    `a quarter short of one pays the tilt band (kept ${quarter.kept.toFixed(3)} of its speed)`);
-  assert.ok(Math.abs(quarter.kept / flat.kept - LAND_TILT_SCALE) < 0.02,
-    'and 90° off the base is past the band\'s 50° clamp, so it pays the whole of it');
+  assert.ok(
+    quarter.kept < flat.kept * 0.9,
+    `a quarter short of one pays the tilt band (kept ${quarter.kept.toFixed(3)} of its speed)`,
+  );
+  assert.ok(
+    Math.abs(quarter.kept / flat.kept - LAND_TILT_SCALE) < 0.02,
+    "and 90° off the base is past the band's 50° clamp, so it pays the whole of it",
+  );
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -165,7 +204,8 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
   st.fwd.set(0, 0, 1);
   st.vel.set(0, 0, 12);
 
-  const deckUp = new THREE.Vector3(), nose = new THREE.Vector3();
+  const deckUp = new THREE.Vector3(),
+    nose = new THREE.Vector3();
   const draw = () => {
     pose.update(st, 0, { tuck: false, brake: false }); // dt 0: nothing eases, so this frame IS the state
     deckUp.set(0, 1, 0).applyQuaternion(pose.board.quaternion);
@@ -181,8 +221,10 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
   pose.setSnowboardStance('standard');
   draw();
   assert.ok(pose.rider.solved.toe.x < -0.99, 'standard mirrors the snowboard body to face right');
-  assert.ok(pose.rider.solved.headForward.z > 0.99,
-    'standard changes the body side without turning the face away from downhill');
+  assert.ok(
+    pose.rider.solved.headForward.z > 0.99,
+    'standard changes the body side without turning the face away from downhill',
+  );
   pose.setSnowboardStance('goofy');
   draw();
 
@@ -215,7 +257,9 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
   // must not move through the rotation — the deck orbits the body's centre, never the other way round — and a
   // whole rotation reseats the deck exactly where the physics put it. Pivoting at the seat instead reads as
   // the rider being thrown in a circle around their own feet.
-  const waist = new THREE.Vector3(), waist0 = new THREE.Vector3(), seat0 = new THREE.Vector3();
+  const waist = new THREE.Vector3(),
+    waist0 = new THREE.Vector3(),
+    seat0 = new THREE.Vector3();
   st.flip = 0;
   draw();
   seat0.copy(pose.board.position);
@@ -224,15 +268,21 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
     st.flip = angle;
     draw();
     waist.copy(pose.board.position).addScaledVector(deckUp, FLIP_PIVOT_RISE);
-    assert.ok(waist.distanceTo(waist0) < 1e-9,
-      `${angle}°: the waist stays the rotation's fixed point (moved ${waist.distanceTo(waist0).toFixed(4)} m)`);
+    assert.ok(
+      waist.distanceTo(waist0) < 1e-9,
+      `${angle}°: the waist stays the rotation's fixed point (moved ${waist.distanceTo(waist0).toFixed(4)} m)`,
+    );
   }
-  assert.ok(pose.board.position.distanceTo(seat0) < 1e-9,
-    'a whole rotation puts the deck back exactly on the physics seat');
+  assert.ok(
+    pose.board.position.distanceTo(seat0) < 1e-9,
+    'a whole rotation puts the deck back exactly on the physics seat',
+  );
   st.flip = 180;
   draw();
-  assert.ok(Math.abs(pose.board.position.y - (seat0.y + 2 * FLIP_PIVOT_RISE)) < 1e-9,
-    'half-way over, the deck hangs a body above the arc the waist is riding');
+  assert.ok(
+    Math.abs(pose.board.position.y - (seat0.y + 2 * FLIP_PIVOT_RISE)) < 1e-9,
+    'half-way over, the deck hangs a body above the arc the waist is riding',
+  );
 
   // Riding switch, the deck points backwards — so the flip is signed in the RIDDEN frame like the bank is, and
   // W throws the rider forward along their travel either way. Without that, a switch rider's W back-flips them.
@@ -247,8 +297,10 @@ const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys
   for (let frame = 0; frame < 60; frame++) {
     pose.update(st, 1 / 60, { tuck: false, brake: false });
   }
-  assert.ok(pose.rider.solved.headForward.z > 0.95,
-    'after a switch landing the shoulders and face settle onto the ridden tail downhill, not the nose uphill');
+  assert.ok(
+    pose.rider.solved.headForward.z > 0.95,
+    'after a switch landing the shoulders and face settle onto the ridden tail downhill, not the nose uphill',
+  );
 
   Math.random = nativeRandom;
   pose.dispose();

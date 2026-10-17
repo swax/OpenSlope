@@ -32,7 +32,11 @@ const withHeader = (png: Buffer, w: number, h: number): Buffer => {
 
 const refuses = (bytes: Buffer, label: string): void => {
   let message = '';
-  try { decodePng(bytes); } catch (error) { message = String(error instanceof Error ? error.message : error); }
+  try {
+    decodePng(bytes);
+  } catch (error) {
+    message = String(error instanceof Error ? error.message : error);
+  }
   check(message !== '', `${label} is refused`, message || 'decoded without complaint');
 };
 
@@ -50,16 +54,31 @@ refuses(withHeader(fixture(4, 4), 2, 2), 'a header claiming fewer rows than the 
 const raw = Buffer.alloc(4 * (1 + 4 * 4) + 1, 0);
 const idat = deflateSync(raw);
 const crc = Buffer.alloc(4);
-const chunk = (type: string, body: Buffer) => Buffer.concat([
-  (() => { const len = Buffer.alloc(4); len.writeUInt32BE(body.length, 0); return len; })(),
-  Buffer.from(type, 'ascii'), body, crc,
-]);
+const chunk = (type: string, body: Buffer) =>
+  Buffer.concat([
+    (() => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(body.length, 0);
+      return len;
+    })(),
+    Buffer.from(type, 'ascii'),
+    body,
+    crc,
+  ]);
 const ihdr = Buffer.alloc(13);
-ihdr.writeUInt32BE(4, 0); ihdr.writeUInt32BE(4, 4); ihdr[8] = 8; ihdr[9] = 6;
-refuses(Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', idat),
-  chunk('IEND', Buffer.alloc(0)),
-]), 'an IDAT one byte longer than the header accounts for');
+ihdr.writeUInt32BE(4, 0);
+ihdr.writeUInt32BE(4, 4);
+ihdr[8] = 8;
+ihdr[9] = 6;
+refuses(
+  Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ]),
+  'an IDAT one byte longer than the header accounts for',
+);
 
 if (failures) process.exitCode = 1;
 else console.log('png-decode: all checks passed');

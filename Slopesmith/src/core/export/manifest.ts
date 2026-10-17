@@ -7,10 +7,7 @@ import { behaviourRecords } from '../props/defaults';
 export const SLOPESMITH_EXPORT_MANIFEST = 'Slopesmith.json';
 export const SLOPESMITH_EXPORT_SCHEMA = 1;
 
-export type PublicDistributionStatus =
-  | 'allowed'
-  | 'rights-review-required'
-  | 'blocked-retail-derived';
+export type PublicDistributionStatus = 'allowed' | 'rights-review-required' | 'blocked-retail-derived';
 
 /**
  * A conservative, machine-readable statement about the bytes an export contains. It is a routing guard,
@@ -137,8 +134,7 @@ export function classifyExportProvenance(
   const userSupplied = supplied.size > 0;
   return {
     source: 'slopesmith-authored',
-    publicDistribution: retailDerived ? 'blocked-retail-derived'
-      : userSupplied ? 'rights-review-required' : 'allowed',
+    publicDistribution: retailDerived ? 'blocked-retail-derived' : userSupplied ? 'rights-review-required' : 'allowed',
     retailDerived,
     userSupplied,
     reasons,
@@ -150,17 +146,30 @@ export function isSlopesmithExportManifest(value: unknown): value is SlopesmithE
   const m = value as Partial<SlopesmithExportManifest> | null;
   const p = m?.provenance;
   const reasons = p?.reasons;
-  const validProvenance = p === undefined || (p.source === 'slopesmith-authored'
-    && typeof p.retailDerived === 'boolean' && typeof p.userSupplied === 'boolean'
-    && Array.isArray(reasons) && reasons.every(reason => typeof reason === 'string' && reason.length > 0)
-    && (p.publicDistribution === 'allowed'
-      ? !p.retailDerived && !p.userSupplied && reasons.length === 0
-      : p.publicDistribution === 'rights-review-required'
-        ? !p.retailDerived && p.userSupplied && reasons.length > 0
-          && reasons.every(reason => reason.startsWith('user-'))
-        : p.publicDistribution === 'blocked-retail-derived'
-          && p.retailDerived && reasons.some(reason => reason.startsWith('retail-'))));
-  return !!m && m.schema === SLOPESMITH_EXPORT_SCHEMA && m.kind === 'slopesmith-export'
-    && typeof m.level === 'string' && !!m.textures && typeof m.textures === 'object'
-    && validProvenance;
+  const validProvenance =
+    p === undefined ||
+    (p.source === 'slopesmith-authored' &&
+      typeof p.retailDerived === 'boolean' &&
+      typeof p.userSupplied === 'boolean' &&
+      Array.isArray(reasons) &&
+      reasons.every(reason => typeof reason === 'string' && reason.length > 0) &&
+      (p.publicDistribution === 'allowed'
+        ? !p.retailDerived && !p.userSupplied && reasons.length === 0
+        : p.publicDistribution === 'rights-review-required'
+          ? !p.retailDerived &&
+            p.userSupplied &&
+            reasons.length > 0 &&
+            reasons.every(reason => reason.startsWith('user-'))
+          : p.publicDistribution === 'blocked-retail-derived' &&
+            p.retailDerived &&
+            reasons.some(reason => reason.startsWith('retail-'))));
+  return (
+    !!m &&
+    m.schema === SLOPESMITH_EXPORT_SCHEMA &&
+    m.kind === 'slopesmith-export' &&
+    typeof m.level === 'string' &&
+    !!m.textures &&
+    typeof m.textures === 'object' &&
+    validProvenance
+  );
 }

@@ -8,5 +8,11 @@ export function hexToRgb(hex: string): [number, number, number] {
 
 /** Encode normalized RGB channels as a six-digit hex colour. */
 export function rgbToHex(rgb: readonly number[]): string {
-  return `#${rgb.map(channel => Math.round(clamp01(channel) * 255).toString(16).padStart(2, '0')).join('')}`;
+  return `#${rgb
+    .map(channel =>
+      Math.round(clamp01(channel) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
 }

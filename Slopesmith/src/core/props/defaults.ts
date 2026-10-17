@@ -1,8 +1,6 @@
 import type { NativeCollisionProfile, PlacedProp, PropBehaviour } from '../doc/types';
 import type { LevelProps, PropInstance } from '../reference/props';
-import {
-  collisionProfileFromSourceInstance, defaultPlacedPropCollision, placedPropCollisionProfile,
-} from './contact';
+import { collisionProfileFromSourceInstance, defaultPlacedPropCollision, placedPropCollisionProfile } from './contact';
 import { ownGeometry } from './kind';
 import { PROP_FULL_BRIGHT_RECORD } from '../lighting/prop-lights';
 
@@ -28,15 +26,27 @@ import { PROP_FULL_BRIGHT_RECORD } from '../lighting/prop-lights';
 
 /** Every placement field a model's defaults carry. Order is the canonical order for comparisons. */
 export const PROP_BEHAVIOUR_FIELDS = [
-  'nativeCollision', 'surface', 'modePresence',
-  'collisionSound', 'collisionSoundFile',
-  'ambientSound', 'ambientSoundFile', 'ambientRadius', 'ambientFalloff', 'ambientHalfExtents',
-  'fullBright', 'memberBehaviour',
+  'nativeCollision',
+  'surface',
+  'modePresence',
+  'collisionSound',
+  'collisionSoundFile',
+  'ambientSound',
+  'ambientSoundFile',
+  'ambientRadius',
+  'ambientFalloff',
+  'ambientHalfExtents',
+  'fullBright',
+  'memberBehaviour',
 ] as const satisfies readonly (keyof PropBehaviour)[];
 
 /** The positional loop and its region — the fields a group member inherits only if it is the leader. */
 const AMBIENT_FIELDS = [
-  'ambientSound', 'ambientSoundFile', 'ambientRadius', 'ambientFalloff', 'ambientHalfExtents',
+  'ambientSound',
+  'ambientSoundFile',
+  'ambientRadius',
+  'ambientFalloff',
+  'ambientHalfExtents',
 ] as const satisfies readonly (keyof PropBehaviour)[];
 
 /** A behaviour with its collision profile always present — what a placement is actually stamped with. */
@@ -63,9 +73,11 @@ export function applyBehaviour<T extends PropBehaviour>(to: T, behaviour: PropBe
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort()
+    return `{${Object.keys(value)
+      .sort()
       .filter(key => (value as Record<string, unknown>)[key] !== undefined)
-      .map(key => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`).join(',')}}`;
+      .map(key => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -102,8 +114,15 @@ export function sanitizePropBehaviour(raw: unknown): PropBehaviour | null {
   const r = raw as Record<string, unknown>;
   const out: PropBehaviour = {};
   const c = r.nativeCollision as Record<string, unknown> | undefined;
-  if (c && typeof c === 'object' && intIn(c.mode, 0, 3) && typeof c.playerCollision === 'boolean'
-    && finiteAtLeast(c.responseMass, 0) && typeof c.playerBounce === 'boolean' && finiteAtLeast(c.bounceAmount, 0)) {
+  if (
+    c &&
+    typeof c === 'object' &&
+    intIn(c.mode, 0, 3) &&
+    typeof c.playerCollision === 'boolean' &&
+    finiteAtLeast(c.responseMass, 0) &&
+    typeof c.playerBounce === 'boolean' &&
+    finiteAtLeast(c.bounceAmount, 0)
+  ) {
     const source = c.physicsSource as Record<string, unknown> | undefined;
     out.nativeCollision = {
       mode: c.mode as 0 | 1 | 2 | 3,
@@ -112,8 +131,13 @@ export function sanitizePropBehaviour(raw: unknown): PropBehaviour | null {
       playerBounce: c.playerBounce,
       bounceAmount: c.bounceAmount,
       ...(source && name(source.level) && intIn(source.body, 0)
-        ? { physicsSource: { level: source.level, body: source.body,
-            ...(intIn(source.instance, 0) ? { instance: source.instance } : {}) } }
+        ? {
+            physicsSource: {
+              level: source.level,
+              body: source.body,
+              ...(intIn(source.instance, 0) ? { instance: source.instance } : {}),
+            },
+          }
         : {}),
     };
   }
@@ -162,7 +186,8 @@ export function memberBehaviour(pp: PlacedProp, model: number): PropBehaviour {
   const out = behaviourOf(own ?? pp);
   delete out.memberBehaviour;
   if (!own && model !== pp.model) for (const field of AMBIENT_FIELDS) delete out[field];
-  if (pp.modePresence === 'showoff') out.modePresence = 'showoff'; else delete out.modePresence;
+  if (pp.modePresence === 'showoff') out.modePresence = 'showoff';
+  else delete out.modePresence;
   return out;
 }
 
@@ -174,7 +199,10 @@ export function behaviourRecords(behaviour: PropBehaviour): PropBehaviour[] {
 /** The legacy pre-profile contact flags a member infers from: its placement's, unless it has an entry of its own. */
 export function memberLegacyContact(pp: PlacedProp, model: number): Pick<PlacedProp, 'solid' | 'bounce'> {
   if (pp.memberBehaviour?.[String(model)]) return {};
-  return { ...(pp.solid !== undefined ? { solid: pp.solid } : {}), ...(pp.bounce !== undefined ? { bounce: pp.bounce } : {}) };
+  return {
+    ...(pp.solid !== undefined ? { solid: pp.solid } : {}),
+    ...(pp.bounce !== undefined ? { bounce: pp.bounce } : {}),
+  };
 }
 
 /** A group placement as one member sees it: the same placement, with that member's behaviour in place of its own. */
@@ -190,8 +218,11 @@ export function groupMemberProp(pp: PlacedProp, model: number): PlacedProp {
  * inferred where the placement never stored one. What the first per-member edit writes, so giving one member
  * settings of its own changes no other member. `collisionEffect`: the placement has a collision effect attached.
  */
-export function materializeMemberBehaviour(pp: PlacedProp, models: readonly number[], collisionEffect = false):
-  Record<string, PropBehaviour> {
+export function materializeMemberBehaviour(
+  pp: PlacedProp,
+  models: readonly number[],
+  collisionEffect = false,
+): Record<string, PropBehaviour> {
   const out: Record<string, PropBehaviour> = {};
   for (const model of models) {
     const member = groupMemberProp(pp, model);
@@ -208,8 +239,11 @@ export function materializeMemberBehaviour(pp: PlacedProp, models: readonly numb
  * Per-member behaviour for a group about to be placed: each member model's OWN defaults — which is what makes a
  * tree group arrive with a solid trunk under ride-through, rustling leaves. Keyed as `PlacedProp.memberBehaviour`.
  */
-export function groupMemberDefaults(level: string, models: readonly number[], props: LevelProps | undefined):
-  Record<string, StampBehaviour> {
+export function groupMemberDefaults(
+  level: string,
+  models: readonly number[],
+  props: LevelProps | undefined,
+): Record<string, StampBehaviour> {
   const out: Record<string, StampBehaviour> = {};
   for (const model of models) {
     const behaviour = resolvePropDefaults(level, model, props).behaviour;
@@ -261,8 +295,10 @@ const UTILITY_MODEL = /junk|_reset/i;
  * A whole-tuple vote rather than a field-by-field one, so the result is always a combination that actually
  * shipped. Ties go to the combination seen first.
  */
-export function referencePropDefaults(level: string, props: Pick<LevelProps, 'models' | 'instances'>):
-  Map<number, DerivedPropDefaults> {
+export function referencePropDefaults(
+  level: string,
+  props: Pick<LevelProps, 'models' | 'instances'>,
+): Map<number, DerivedPropDefaults> {
   const nameOf = new Map(props.models.map(model => [model.id, model.name]));
   const tallies = new Map<number, Map<string, { count: number; first: PropInstance; behaviour: StampBehaviour }>>();
   const totals = new Map<number, number>();
@@ -273,17 +309,21 @@ export function referencePropDefaults(level: string, props: Pick<LevelProps, 'mo
     let byKey = tallies.get(inst.model);
     if (!byKey) tallies.set(inst.model, (byKey = new Map()));
     const tally = byKey.get(key);
-    if (tally) tally.count++; else byKey.set(key, { count: 1, first: inst, behaviour });
+    if (tally) tally.count++;
+    else byKey.set(key, { count: 1, first: inst, behaviour });
     totals.set(inst.model, (totals.get(inst.model) ?? 0) + 1);
   }
   const out = new Map<number, DerivedPropDefaults>();
   for (const [model, byKey] of tallies) {
     let best: { count: number; first: PropInstance; behaviour: StampBehaviour } | null = null;
     for (const tally of byKey.values()) if (!best || tally.count > best.count) best = tally;
-    if (best) out.set(model, {
-      behaviour: best.behaviour, matching: best.count, total: totals.get(model) ?? best.count,
-      sourceIndex: best.first.sourceIndex,
-    });
+    if (best)
+      out.set(model, {
+        behaviour: best.behaviour,
+        matching: best.count,
+        total: totals.get(model) ?? best.count,
+        sourceIndex: best.first.sourceIndex,
+      });
   }
   return out;
 }
@@ -323,7 +363,11 @@ export function resolvePropDefaults(level: string, model: number, props: LevelPr
   const derived = props ? derivedFor(level, props).get(model) : undefined;
   if (!derived) return { behaviour: baselineBehaviour(level), source: 'baseline', savable: false };
   return {
-    behaviour: stampBehaviour(level, derived.behaviour), source: 'reference', savable: false,
-    matching: derived.matching, total: derived.total, sourceIndex: derived.sourceIndex,
+    behaviour: stampBehaviour(level, derived.behaviour),
+    source: 'reference',
+    savable: false,
+    matching: derived.matching,
+    total: derived.total,
+    sourceIndex: derived.sourceIndex,
   };
 }

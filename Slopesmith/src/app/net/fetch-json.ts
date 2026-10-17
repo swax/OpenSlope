@@ -11,7 +11,7 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     const response = await clientFetch(typeof input === 'string' ? resolveAssetUrl(input) : input, init);
     trace.headers(response);
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
-    const body = await response.json() as T;
+    const body = (await response.json()) as T;
     trace.complete();
     finishRenderRequest();
     return body;
@@ -38,7 +38,11 @@ export async function postJson<T>(url: string, body?: BodyInit): Promise<T> {
     trace.headers(response);
     const text = await response.text();
     let body: unknown;
-    try { body = JSON.parse(text); } catch { /* not JSON — fall back to the status line below */ }
+    try {
+      body = JSON.parse(text);
+    } catch {
+      /* not JSON — fall back to the status line below */
+    }
     if (!response.ok) {
       const message = (body as { error?: string } | undefined)?.error;
       throw new Error(message || `${response.status} ${response.statusText}`.trim());

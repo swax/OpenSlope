@@ -33,8 +33,9 @@ const tierFor = (participants: number): number => {
 export function awarenessPolicyFor(participants: number, previous?: AwarenessPolicy): AwarenessPolicy {
   const wanted = tierFor(participants);
   if (!previous) return TIERS[wanted].policy;
-  const held = TIERS.findIndex(tier => tier.policy.publishMs === previous.publishMs
-    && tier.policy.flushMs === previous.flushMs);
+  const held = TIERS.findIndex(
+    tier => tier.policy.publishMs === previous.publishMs && tier.policy.flushMs === previous.flushMs,
+  );
   if (held < 0 || wanted >= held) return TIERS[wanted].policy;
 
   const lowerBoundary = TIERS[held - 1].through;

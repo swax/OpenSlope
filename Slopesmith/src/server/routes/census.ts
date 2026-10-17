@@ -2,13 +2,28 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
 import {
-  isDirectory, listDir, listSubdirectories, mapLimit, pathExists, readJsonOr, readTextOrNull, readBytesOrNull,
+  isDirectory,
+  listDir,
+  listSubdirectories,
+  mapLimit,
+  pathExists,
+  readJsonOr,
+  readTextOrNull,
+  readBytesOrNull,
   READ_CONCURRENCY,
 } from '../fs-async';
 import {
-  censusFromTables, objTriangles, statsFromCensus, EMPTY_SOUND,
-  type CensusInstance, type CensusMaterial, type CensusModel, type LevelCensus, type MountainProvenance,
-  type MountainStats, type SoundCensus,
+  censusFromTables,
+  objTriangles,
+  statsFromCensus,
+  EMPTY_SOUND,
+  type CensusInstance,
+  type CensusMaterial,
+  type CensusModel,
+  type LevelCensus,
+  type MountainProvenance,
+  type MountainStats,
+  type SoundCensus,
 } from '../../core/reference/census';
 import { readPersistentCensus, type CensusRecord } from '../census-cache';
 import { SLOPESMITH_EXPORT_MANIFEST } from '../../core/export/manifest';
@@ -28,9 +43,15 @@ import { safeDataName } from './safe-name';
  * they are a fixed thing to design against.
  */
 
-interface ModelsFile { Models?: CensusModel[] }
-interface InstancesFile { Instances?: CensusInstance[] }
-interface MaterialsFile { Materials?: CensusMaterial[] }
+interface ModelsFile {
+  Models?: CensusModel[];
+}
+interface InstancesFile {
+  Instances?: CensusInstance[];
+}
+interface MaterialsFile {
+  Materials?: CensusMaterial[];
+}
 type PatchRow = { TexturePath?: string };
 
 /** `Patches.json` is `{Patches:[…]}`, but the reference loader also accepts a bare array, so this does too —
@@ -38,7 +59,7 @@ type PatchRow = { TexturePath?: string };
 const patchRows = (json: unknown): PatchRow[] | null => {
   if (Array.isArray(json)) return json as PatchRow[];
   const rows = (json as { Patches?: unknown } | null)?.Patches;
-  return Array.isArray(rows) ? rows as PatchRow[] : null;
+  return Array.isArray(rows) ? (rows as PatchRow[]) : null;
 };
 
 /** Page dimensions straight off the PNG header — IHDR is always the first chunk, so 24 bytes is the whole read. */
@@ -68,14 +89,18 @@ const BOARD_BANKS = new Set(['zboard', 'zbxsfx']);
  */
 async function readSound(dir: string): Promise<SoundCensus> {
   const audio = join(dir, 'Audio');
-  if (!await isDirectory(audio)) return EMPTY_SOUND;
+  if (!(await isDirectory(audio))) return EMPTY_SOUND;
 
   const sfx = join(audio, 'SFX');
   const banks = (await listSubdirectories(sfx)).filter(name => !BOARD_BANKS.has(name.toLowerCase()));
   const measured = await mapLimit(banks, 8, async bank => {
     const slots = (await listDir(join(sfx, bank))).filter(file => SLOT_WAV.test(file));
-    const sizes = await mapLimit(slots, READ_CONCURRENCY,
-      file => stat(join(sfx, bank, file)).then(info => info.size, () => 0));
+    const sizes = await mapLimit(slots, READ_CONCURRENCY, file =>
+      stat(join(sfx, bank, file)).then(
+        info => info.size,
+        () => 0,
+      ),
+    );
     return { slots: slots.length, bytes: sizes.reduce((sum, size) => sum + size, 0) };
   });
 
@@ -83,8 +108,7 @@ async function readSound(dir: string): Promise<SoundCensus> {
   // counts as a song and neither is fooled by a loose WAV sitting beside the song folders.
   const music = join(audio, 'Music');
   const candidates = await listSubdirectories(music);
-  const graphs = await mapLimit(candidates, READ_CONCURRENCY,
-    name => pathExists(join(music, name, 'graph.json')));
+  const graphs = await mapLimit(candidates, READ_CONCURRENCY, name => pathExists(join(music, name, 'graph.json')));
 
   return {
     banks: measured.filter(bank => bank.slots).length,
@@ -97,8 +121,11 @@ async function readSound(dir: string): Promise<SoundCensus> {
 /** When Slopesmith last wrote this folder: the export sidecar's mtime, or null for a retail extraction that
  *  has none. `Slopesmith.json` is written by every export and by nothing else, so its mtime is the date. */
 async function exportedAt(dir: string): Promise<string | null> {
-  try { return (await stat(join(dir, SLOPESMITH_EXPORT_MANIFEST))).mtime.toISOString(); }
-  catch { return null; }
+  try {
+    return (await stat(join(dir, SLOPESMITH_EXPORT_MANIFEST))).mtime.toISOString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -127,12 +154,14 @@ async function measureLevel(level: string): Promise<LevelCensus | null> {
       for (const mesh of object?.MeshData ?? []) if (mesh) meshPaths.add(mesh.MeshPath);
   const meshTris = new Map<string, number>();
   await mapLimit([...meshPaths], READ_CONCURRENCY, async path => {
-    meshTris.set(path, objTriangles(await readTextOrNull(join(dir, 'Meshes', path)) ?? ''));
+    meshTris.set(path, objTriangles((await readTextOrNull(join(dir, 'Meshes', path))) ?? ''));
   });
 
   const files = (await listDir(join(dir, 'Textures'))).filter(file => file.toLowerCase().endsWith('.png'));
-  const texels = (await mapLimit(files, READ_CONCURRENCY, file => pngTexels(join(dir, 'Textures', file))))
-    .reduce((sum, count) => sum + count, 0);
+  const texels = (await mapLimit(files, READ_CONCURRENCY, file => pngTexels(join(dir, 'Textures', file)))).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
 
   const [lights, particles, splines, sound] = await Promise.all([
     countRecords(dir, 'Lights.json', 'Lights'),
@@ -158,7 +187,9 @@ async function measureLevel(level: string): Promise<LevelCensus | null> {
  *  agree. Stored with the census, because it is measured from the same folder at the same moment. */
 async function measureProvenance(level: string): Promise<MountainProvenance> {
   const [course, laps, showoffSeconds, exported] = await Promise.all([
-    readLevelCourse(level), readLevelLaps(level), readLevelShowoffSeconds(level),
+    readLevelCourse(level),
+    readLevelLaps(level),
+    readLevelShowoffSeconds(level),
     exportedAt(join(mapsRoot(), level)),
   ]);
   return {
@@ -178,10 +209,15 @@ async function measureProvenance(level: string): Promise<MountainProvenance> {
  */
 export async function censusRecord(name: string, force = false): Promise<CensusRecord | null> {
   const level = safeDataName(name);
-  return readPersistentCensus(level, join(mapsRoot(), level), async () => {
-    const census = await measureLevel(level);
-    return census && { census, provenance: await measureProvenance(level) };
-  }, { force });
+  return readPersistentCensus(
+    level,
+    join(mapsRoot(), level),
+    async () => {
+      const census = await measureLevel(level);
+      return census && { census, provenance: await measureProvenance(level) };
+    },
+    { force },
+  );
 }
 
 /** One mountain's census, with its per-model breakdown — what `npm run budget` prints and what

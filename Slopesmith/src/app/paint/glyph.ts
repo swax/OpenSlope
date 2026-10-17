@@ -19,13 +19,13 @@ export const F_STROKES: [number, number, number, number][] = [
 /** Inline-SVG data URI of the F for DOM overlays (Library swatches / Palette cells): place it in a centred
  *  1/3-inset box INSIDE the tile's transformed element so it inherits the tile's rotation / mirror. */
 export const F_SVG_URL = `url("data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'><path d='${
-    F_STROKES.map(([x0, y0, x1, y1]) => `M${x0} ${1 - y0}L${x1} ${1 - y1}`).join('')
-  }' stroke='${F_COLOR}' stroke-width='.12' stroke-linecap='round' fill='none'/></svg>`)}")`;
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'><path d='${F_STROKES.map(
+    ([x0, y0, x1, y1]) => `M${x0} ${1 - y0}L${x1} ${1 - y1}`,
+  ).join('')}' stroke='${F_COLOR}' stroke-width='.12' stroke-linecap='round' fill='none'/></svg>`,
+)}")`;
 
 /** CSS for a DOM F overlay child (append inside the tile's oriented element). */
-export const F_OVERLAY_CSS =
-  `position:absolute;inset:33.33%;pointer-events:none;background:${F_SVG_URL} center/contain no-repeat;`;
+export const F_OVERLAY_CSS = `position:absolute;inset:33.33%;pointer-events:none;background:${F_SVG_URL} center/contain no-repeat;`;
 
 /** Draw the F on a canvas at the CURRENT transform's origin (the tile centre), `size` = tile edge in px.
  *  Call inside the tile's rotate/mirror transform so the F rides the art; art y-up flips to canvas y-down. */

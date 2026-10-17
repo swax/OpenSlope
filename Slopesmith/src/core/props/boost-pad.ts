@@ -6,8 +6,12 @@ import type { PropEffectTemplate } from './effect-defaults';
 export type BoostPadKind = 'speed' | 'trick';
 
 /** A visible pad uses ordinary prop placement and ordinary editable effect graphs. */
-export function boostPadPreset(kind: BoostPadKind, defaults: StampBehaviour): {
-  behaviour: StampBehaviour; effect: PropEffectTemplate;
+export function boostPadPreset(
+  kind: BoostPadKind,
+  defaults: StampBehaviour,
+): {
+  behaviour: StampBehaviour;
+  effect: PropEffectTemplate;
 } {
   const boost = EFFECT_TEMPLATES.find(template => template.id === `${kind}-boost`)!;
   const scroll = EFFECT_TEMPLATES.find(template => template.id === 'uv-scroll')!;
@@ -16,8 +20,11 @@ export function boostPadPreset(kind: BoostPadKind, defaults: StampBehaviour): {
       ...structuredClone(defaults),
       modePresence: undefined,
       nativeCollision: {
-        mode: NATIVE_COLLISION_MODE.boundingBox, playerCollision: true,
-        responseMass: 0, playerBounce: false, bounceAmount: 0,
+        mode: NATIVE_COLLISION_MODE.boundingBox,
+        playerCollision: true,
+        responseMass: 0,
+        playerBounce: false,
+        bounceAmount: 0,
       },
     },
     effect: {

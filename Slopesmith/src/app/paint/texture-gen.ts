@@ -1,7 +1,17 @@
 import {
-  FAL_GENERATION_HEADER, FAL_INPAINT_MODELS, FAL_MODELS, GEN_SIZES, STORE_SIZES,
-  createFalGenerationProvenance, estimateInpaintUsd, estimateUsd, falEndpointMayGenerate,
-  falInpaintModel, falModel, usdText, type FalGenerationProvenance,
+  FAL_GENERATION_HEADER,
+  FAL_INPAINT_MODELS,
+  FAL_MODELS,
+  GEN_SIZES,
+  STORE_SIZES,
+  createFalGenerationProvenance,
+  estimateInpaintUsd,
+  estimateUsd,
+  falEndpointMayGenerate,
+  falInpaintModel,
+  falModel,
+  usdText,
+  type FalGenerationProvenance,
 } from '../../core/paint/fal-models';
 import { CUSTOM_TEX_LEVEL, parseTexRef, suggestTextureName, type TexRef } from '../../core/paint/textures';
 import { makeSeamless } from '../../core/paint/seamless';
@@ -58,10 +68,10 @@ import { createFalRightsDisclosure, renderFalRightsDisclosure } from './fal-righ
 
 /** The fixed half of the prompt: everything that makes the model return a MATERIAL rather than a picture. */
 const TILEABLE_GUIDANCE =
-  'Seamless repeating pattern, top-down orthographic flat lay, evenly lit with flat ambient light, '
-  + 'no directional shadows, no cast shadows, no highlights, no vignetting, uniform scale across the whole '
-  + 'frame, fills the frame edge to edge with no border, margin, frame or backdrop. No objects, no text, '
-  + 'no watermark, no people. Photographic material sample for a game terrain tile.';
+  'Seamless repeating pattern, top-down orthographic flat lay, evenly lit with flat ambient light, ' +
+  'no directional shadows, no cast shadows, no highlights, no vignetting, uniform scale across the whole ' +
+  'frame, fills the frame edge to edge with no border, margin, frame or backdrop. No objects, no text, ' +
+  'no watermark, no people. Photographic material sample for a game terrain tile.';
 
 /** Quick subjects — the materials an SSX-shaped mountain actually wants, one click into the description. */
 const PRESETS: ReadonlyArray<{ label: string; subject: string }> = [
@@ -84,41 +94,42 @@ const promptFor = (subject: string) =>
  *  about CONTINUING the two materials it can see either side of the gap. `vert` flips the geometry words
  *  for the stacked A-above-C layout. */
 const transPromptFor = (desc: string, vert: boolean) =>
-  `Seamless gradual transition zone between the ground material at the ${vert ? 'top' : 'left'} edge and `
-  + `the ground material at the ${vert ? 'bottom' : 'right'} edge. `
-  + (desc ? `The blend: ${desc}. ` : '')
-  + 'Continue both materials into the gap and mix them into each other naturally, matching their scale, '
-  + 'grain and colour. Top-down orthographic flat lay, evenly lit with flat ambient light, no directional '
-  + 'shadows, no objects, no text, no border. Photographic ground material for a game terrain tile.';
+  `Seamless gradual transition zone between the ground material at the ${vert ? 'top' : 'left'} edge and ` +
+  `the ground material at the ${vert ? 'bottom' : 'right'} edge. ` +
+  (desc ? `The blend: ${desc}. ` : '') +
+  'Continue both materials into the gap and mix them into each other naturally, matching their scale, ' +
+  'grain and colour. Top-down orthographic flat lay, evenly lit with flat ambient light, no directional ' +
+  'shadows, no objects, no text, no border. Photographic ground material for a game terrain tile.';
 
 /** The Transition tab's SECOND inpaint prompt — the wrap repair pass. By the time this is sent the image
  *  has been rolled half a tile across the blend, so the strip's wrap seam is sitting mid-frame as an
  *  ordinary join for the model to erase (and the join itself has been bridged out of the sent pixels —
  *  a conditioning model must not be shown the seam it is asked to remove). */
 const healPromptFor = (desc: string, vert: boolean) =>
-  `Repair the ${vert ? 'vertical' : 'horizontal'} seam running through the masked band: continue the `
-  + `blended transition material from directly ${vert ? 'left and right' : 'above and below'} so the `
-  + 'texture flows through without a visible join. '
-  + (desc ? `The blend: ${desc}. ` : '')
-  + 'Keep the mix consistent with the surrounding image, matching its scale, grain and colour. Top-down '
-  + 'orthographic flat lay, flat ambient light, no shadows, no objects, no text, no border.';
+  `Repair the ${vert ? 'vertical' : 'horizontal'} seam running through the masked band: continue the ` +
+  `blended transition material from directly ${vert ? 'left and right' : 'above and below'} so the ` +
+  'texture flows through without a visible join. ' +
+  (desc ? `The blend: ${desc}. ` : '') +
+  'Keep the mix consistent with the surrounding image, matching its scale, grain and colour. Top-down ' +
+  'orthographic flat lay, flat ambient light, no shadows, no objects, no text, no border.';
 
 /** The Decal tab's inpaint prompt: the description IS the decal; the wrapper keeps it flat and of a piece
  *  with the material it lands on. */
 const decalPromptFor = (desc: string) =>
-  (desc ? `${desc}, ` : '')
-  + 'applied directly onto the surrounding surface as a flat decal. Keep the surrounding material visible '
-  + 'around it and match its lighting and scale, so the decal reads as printed or painted on the surface. '
-  + 'Top-down orthographic view, flat ambient light, no cast shadows, no border, no watermark.';
+  (desc ? `${desc}, ` : '') +
+  'applied directly onto the surrounding surface as a flat decal. Keep the surrounding material visible ' +
+  'around it and match its lighting and scale, so the decal reads as printed or painted on the surface. ' +
+  'Top-down orthographic view, flat ambient light, no cast shadows, no border, no watermark.';
 
 /** The Transition tab's repaint strip — the middle third, matching the A · B · C metaphor: a third of A for
  *  context, a third to invent, a third of C. Runs down the tile horizontally, across it vertically. */
 const TRANS_BAND = { lo: 1 / 3, hi: 2 / 3 } as const;
 
 /** The strip as a rect, in either orientation. */
-const transBandRect = (size: number, vert: boolean): Rect => vert
-  ? { x: 0, y: size * TRANS_BAND.lo, w: size, h: size * (TRANS_BAND.hi - TRANS_BAND.lo) }
-  : { x: size * TRANS_BAND.lo, y: 0, w: size * (TRANS_BAND.hi - TRANS_BAND.lo), h: size };
+const transBandRect = (size: number, vert: boolean): Rect =>
+  vert
+    ? { x: 0, y: size * TRANS_BAND.lo, w: size, h: size * (TRANS_BAND.hi - TRANS_BAND.lo) }
+    : { x: size * TRANS_BAND.lo, y: 0, w: size * (TRANS_BAND.hi - TRANS_BAND.lo), h: size };
 
 /** The Decal tab's repaint zone — the central half in both axes. The edges are what make a tile tile, so
  *  they are simply never offered to the model. */
@@ -130,7 +141,12 @@ const FEATHER_DIV = 128;
 
 type GenMode = 'new' | 'transition' | 'decal';
 
-interface Rect { x: number; y: number; w: number; h: number }
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 const css = `
 /* overflow-x: hidden is load-bearing — setting only overflow-y promotes overflow-x from visible to auto,
@@ -213,7 +229,9 @@ const css = `
 
 /** Install the dialog stylesheet. Exported for the Generate skybox dialog (sky/sky-gen.ts), which wears
  *  the same chrome — shell, fields, presets, prompt disclosure, preview — under the same class. */
-export function ensureTexGenStyles() { installStyles('texture-gen', css); }
+export function ensureTexGenStyles() {
+  installStyles('texture-gen', css);
+}
 
 /** A composed-prompt disclosure that tracks its composer until hand-edited; ↺ puts it back on the leash.
  *  Hand-edits force the disclosure open so a dialog never quietly sends other than what it shows. Shared by
@@ -241,8 +259,16 @@ export function promptRig(compose: () => string, onEdit: () => void) {
     if (edited) box.open = true;
     rst.style.display = edited ? '' : 'none';
   };
-  ta.oninput = () => { edited = true; sync(); onEdit(); };
-  rst.onclick = () => { edited = false; sync(); onEdit(); };
+  ta.oninput = () => {
+    edited = true;
+    sync();
+    onEdit();
+  };
+  rst.onclick = () => {
+    edited = false;
+    sync();
+    onEdit();
+  };
   sync();
   return { el: box, value: () => ta.value, sync, edited: () => edited };
 }
@@ -296,11 +322,13 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   const tabDefs: ReadonlyArray<{ m: GenMode; label: string; tip: string }> = [
     { m: 'new', label: 'New texture', tip: 'Describe a material and generate a fresh tile from nothing.' },
     {
-      m: 'transition', label: 'Transition',
+      m: 'transition',
+      label: 'Transition',
       tip: 'Pick tiles A and C — fal.ai inpaints a tile B that blends one into the other.',
     },
     {
-      m: 'decal', label: 'Decal',
+      m: 'decal',
+      label: 'Decal',
       tip: 'Describe a decal — fal.ai inpaints it onto a tile’s centre, so the result tiles like its source.',
     },
   ];
@@ -317,13 +345,17 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   // ---- no-key banner: the dialog still opens, so the flow explains itself before it asks for anything ----
   const banner = document.createElement('div');
   banner.className = 'banner';
-  banner.textContent = 'No fal.ai API key yet. Generation calls fal.ai with your own key and bills your '
-    + 'own account — add one to switch this on.';
+  banner.textContent =
+    'No fal.ai API key yet. Generation calls fal.ai with your own key and bills your ' +
+    'own account — add one to switch this on.';
   const bannerBtn = document.createElement('button');
   bannerBtn.type = 'button';
   bannerBtn.className = 'sp-btn';
   bannerBtn.textContent = 'Open Settings…';
-  bannerBtn.onclick = () => { close(); openSettingsDialog(); };
+  bannerBtn.onclick = () => {
+    close();
+    openSettingsDialog();
+  };
   banner.appendChild(bannerBtn);
 
   // ================= NEW TEXTURE tab =================
@@ -343,8 +375,9 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   subject.placeholder = 'ice cream with sprinkles';
   const subjectHint = document.createElement('p');
   subjectHint.className = 'hint';
-  subjectHint.textContent = 'One line is all it needs. The tiling instructions are added for you, and the '
-    + 'tile is named from this too — so “ice cream with sprinkles” stores as ice-cream-with-sprinkles.png.';
+  subjectHint.textContent =
+    'One line is all it needs. The tiling instructions are added for you, and the ' +
+    'tile is named from this too — so “ice cream with sprinkles” stores as ice-cream-with-sprinkles.png.';
 
   const presets = document.createElement('div');
   presets.className = 'presets';
@@ -353,7 +386,10 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
     b.type = 'button';
     b.className = 'sp-btn';
     b.textContent = p.label;
-    b.onclick = () => { subject.value = p.subject; onSubjectChanged(); };
+    b.onclick = () => {
+      subject.value = p.subject;
+      onSubjectChanged();
+    };
     presets.appendChild(b);
   }
 
@@ -366,9 +402,10 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   prompt.rows = 6;
   const promptHint = document.createElement('p');
   promptHint.className = 'hint';
-  promptHint.textContent = 'Composed from your description. The flat-lay, ambient-light and no-border wording '
-    + 'is what makes a model return a material instead of a photograph of one — edit it if you want, and it '
-    + 'will stop tracking the box above until you reset.';
+  promptHint.textContent =
+    'Composed from your description. The flat-lay, ambient-light and no-border wording ' +
+    'is what makes a model return a material instead of a photograph of one — edit it if you want, and it ' +
+    'will stop tracking the box above until you reset.';
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.className = 'sp-btn';
@@ -406,21 +443,34 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   seamWrap.append(seamChk, seamText);
   const seamHint = document.createElement('p');
   seamHint.className = 'hint';
-  seamHint.textContent = 'No text-to-image model tiles on its own — the prompt only asks it to try. This '
-    + 'cross-fades each edge with the opposite half of the image, so the tile genuinely meets itself. It '
-    + 'softens the outer quarter slightly, which organic materials hide and hard geometric patterns don’t.';
+  seamHint.textContent =
+    'No text-to-image model tiles on its own — the prompt only asks it to try. This ' +
+    'cross-fades each edge with the opposite half of the image, so the tile genuinely meets itself. It ' +
+    'softens the outer quarter slightly, which organic materials hide and hard geometric patterns don’t.';
 
-  panelNew.append(subjectLabel, subject, subjectHint, presets, promptBox,
-    modelLabel, modelSel, modelHint, modelRights, seamWrap, seamHint);
+  panelNew.append(
+    subjectLabel,
+    subject,
+    subjectHint,
+    presets,
+    promptBox,
+    modelLabel,
+    modelSel,
+    modelHint,
+    modelRights,
+    seamWrap,
+    seamHint,
+  );
 
   // ================= TRANSITION tab =================
   const panelTrans = document.createElement('div');
   const transIntro = document.createElement('p');
   transIntro.className = 'hint';
-  transIntro.textContent = 'A and C are existing tiles; B is generated between them. B’s edge facing A IS '
-    + 'A’s art and its edge facing C IS C’s art — put back untouched after the repaint — so painting '
-    + 'A · B · C in sequence gives seams exactly as clean as A and C themselves. Only the middle strip is '
-    + 'invented.';
+  transIntro.textContent =
+    'A and C are existing tiles; B is generated between them. B’s edge facing A IS ' +
+    'A’s art and its edge facing C IS C’s art — put back untouched after the repaint — so painting ' +
+    'A · B · C in sequence gives seams exactly as clean as A and C themselves. Only the middle strip is ' +
+    'invented.';
 
   // ---- orientation: a row (blend runs left→right) or a stack (top→bottom) ----
   const vertWrap = document.createElement('label');
@@ -433,8 +483,9 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   vertWrap.append(vertChk, vertText);
   const vertHint = document.createElement('p');
   vertHint.className = 'hint';
-  vertHint.textContent = 'For transitions painted as rows instead of columns: A on top, C below, the '
-    + 'invented strip running horizontally across the middle.';
+  vertHint.textContent =
+    'For transitions painted as rows instead of columns: A on top, C below, the ' +
+    'invented strip running horizontally across the middle.';
 
   const trans = { a: null as TexRef | null, c: null as TexRef | null, rotA: 0, rotC: 0 };
 
@@ -450,7 +501,12 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
       // a filled slot is pure artwork, so its name has to live in the label — an unnamed button is invisible
       // to the accessibility tree (and to the agent layer riding it)
       el.setAttribute('aria-label', ref ? `${label}: ${ref}` : label);
-      if (!ref) { el.classList.add('empty'); art.remove(); el.textContent = label; return; }
+      if (!ref) {
+        el.classList.add('empty');
+        art.remove();
+        el.textContent = label;
+        return;
+      }
       el.classList.remove('empty');
       el.textContent = '';
       el.appendChild(art);
@@ -477,7 +533,8 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
     tooltip(b, `Rotate ${which.toUpperCase()} a quarter turn so directional grain runs into the blend the right way.`);
     return b;
   };
-  const rotA = rotBtn('a'), rotC = rotBtn('c');
+  const rotA = rotBtn('a'),
+    rotC = rotBtn('c');
   const cell = (slotEl: HTMLElement, cap: string, rot?: HTMLButtonElement) => {
     const d = document.createElement('div');
     const c = document.createElement('div');
@@ -498,8 +555,9 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   transDesc.placeholder = 'snow thinning out over wet gravel';
   const transDescHint = document.createElement('p');
   transDescHint.className = 'hint';
-  transDescHint.textContent = 'Left blank, the model is simply asked to mix the two materials; a line here '
-    + 'steers HOW they meet, and names the tile too.';
+  transDescHint.textContent =
+    'Left blank, the model is simply asked to mix the two materials; a line here ' +
+    'steers HOW they meet, and names the tile too.';
 
   // ---- the wrap repair pass ----
   // B's edges facing A and C wrap by construction (they are A's and C's art), but the invented strip's
@@ -517,19 +575,21 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   vwrapWrap.append(vwrapChk, vwrapText);
   const vwrapHint = document.createElement('p');
   vwrapHint.className = 'hint';
-  vwrapHint.textContent = 'B’s edges facing A and C wrap by construction, but the invented strip’s other '
-    + 'two edges only meet if the model happens to make them — Bs repeated along the strip can show a '
-    + 'seam. This rolls the result half a tile, sends ONE more inpaint (a fixed seam-repair prompt over '
-    + 'just the strip’s wrap join — same size, so it doubles the run price) and rolls back. A and C’s art '
-    + 'still comes back untouched.';
+  vwrapHint.textContent =
+    'B’s edges facing A and C wrap by construction, but the invented strip’s other ' +
+    'two edges only meet if the model happens to make them — Bs repeated along the strip can show a ' +
+    'seam. This rolls the result half a tile, sends ONE more inpaint (a fixed seam-repair prompt over ' +
+    'just the strip’s wrap join — same size, so it doubles the run price) and rolls back. A and C’s art ' +
+    'still comes back untouched.';
 
   // ================= DECAL tab =================
   const panelDecal = document.createElement('div');
   const decalIntro = document.createElement('p');
   decalIntro.className = 'hint';
-  decalIntro.textContent = 'Paint a described decal INTO an existing tile. The decal lands in the central '
-    + 'half; the source’s edges are put back untouched after the repaint, so the result tiles exactly like '
-    + 'the tile it came from.';
+  decalIntro.textContent =
+    'Paint a described decal INTO an existing tile. The decal lands in the central ' +
+    'half; the source’s edges are put back untouched after the repaint, so the result tiles exactly like ' +
+    'the tile it came from.';
   const decal = { ref: null as TexRef | null };
   const slotS = slot('Choose source');
   const decalRow = document.createElement('div');
@@ -551,18 +611,39 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   decalDesc.placeholder = 'faded yellow hazard chevrons, stencilled';
   const decalDescHint = document.createElement('p');
   decalDescHint.className = 'hint';
-  decalDescHint.textContent = 'What gets painted onto the material — a logo, a marking, a stain. Names the '
-    + 'tile too.';
+  decalDescHint.textContent =
+    'What gets painted onto the material — a logo, a marking, a stain. Names the ' + 'tile too.';
   decalGrow.append(decalDescLabel, decalDesc, decalDescHint);
   decalRow.append(slotWrap, decalGrow);
 
   // the inpaint tabs' shared prompt disclosure: same leash as the New tab's (promptRig, module scope)
-  const transRig = promptRig(() => transPromptFor(transDesc.value.trim(), vertChk.checked),
-    () => { refreshSuggestion(); refresh(); });
-  const decalRig = promptRig(() => decalPromptFor(decalDesc.value.trim()), () => { refreshSuggestion(); refresh(); });
+  const transRig = promptRig(
+    () => transPromptFor(transDesc.value.trim(), vertChk.checked),
+    () => {
+      refreshSuggestion();
+      refresh();
+    },
+  );
+  const decalRig = promptRig(
+    () => decalPromptFor(decalDesc.value.trim()),
+    () => {
+      refreshSuggestion();
+      refresh();
+    },
+  );
 
-  panelTrans.append(transIntro, vertWrap, vertHint, abc, transDescLabel, transDesc, transDescHint,
-    vwrapWrap, vwrapHint, transRig.el);
+  panelTrans.append(
+    transIntro,
+    vertWrap,
+    vertHint,
+    abc,
+    transDescLabel,
+    transDesc,
+    transDescHint,
+    vwrapWrap,
+    vwrapHint,
+    transRig.el,
+  );
   panelDecal.append(decalIntro, decalRow, decalRig.el);
 
   // ---- inpaint model (shared by Transition and Decal; hidden on New, which has its own text-to-image menu) ----
@@ -629,9 +710,10 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   name.spellcheck = false;
   const nameHint = document.createElement('p');
   nameHint.className = 'hint';
-  nameHint.textContent = `Stored with ${deps.mountainName} as <name>.png. Leave it blank to use the suggestion, which is drawn `
-    + 'from the prompt and numbered so consecutive adds never overwrite each other. Typing a name that '
-    + 'already exists replaces that tile’s art everywhere it is painted.';
+  nameHint.textContent =
+    `Stored with ${deps.mountainName} as <name>.png. Leave it blank to use the suggestion, which is drawn ` +
+    'from the prompt and numbered so consecutive adds never overwrite each other. Typing a name that ' +
+    'already exists replaces that tile’s art everywhere it is painted.';
 
   // ---- preview ----
   const preview = document.createElement('div');
@@ -661,16 +743,30 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   save.disabled = true;
   actions.append(cancel, generate, save);
 
-  host.append(title, tabs, banner, panelNew, panelTrans, panelDecal, inpaintWrap,
-    cols, sizeHint, nameLabel, name, nameHint, preview, previewCap, actions);
+  host.append(
+    title,
+    tabs,
+    banner,
+    panelNew,
+    panelTrans,
+    panelDecal,
+    inpaintWrap,
+    cols,
+    sizeHint,
+    nameLabel,
+    name,
+    nameHint,
+    preview,
+    previewCap,
+    actions,
+  );
 
   // ---- live state ----
   /** Per-tab generation at generation size, before the store-size downscale. Kept per tab so flipping tabs
    *  never throws away a result someone paid for; re-derived (seamless / store size) without paying again. */
   const raws: Record<GenMode, HTMLCanvasElement | null> = { new: null, transition: null, decal: null };
   const seeds: Record<GenMode, number | null> = { new: null, transition: null, decal: null };
-  const generations: Record<GenMode, FalGenerationProvenance | null> =
-    { new: null, transition: null, decal: null };
+  const generations: Record<GenMode, FalGenerationProvenance | null> = { new: null, transition: null, decal: null };
   /** The loaded end tiles behind the last transition result, for the A · B · C preview strip. */
   let transImgs: { a: HTMLImageElement; c: HTMLImageElement; rotA: number; rotC: number; vert: boolean } | null = null;
   /** The loaded source behind the last decal result — the preview surrounds the decal tile with it. */
@@ -705,12 +801,13 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
    *  there is no name to suggest — slugifying the bare boilerplate would offer
    *  "seamless-repeating-pattern-top", which is not a texture name anyone wants. */
   const suggestedName = () => {
-    const stem = (ref: TexRef | null) => ref ? parseTexRef(ref).name.replace(/\.png$/i, '') : '';
-    const from = mode === 'new'
-      ? subject.value.trim() || (promptEdited ? prompt.value : '')
-      : mode === 'transition'
-        ? transDesc.value.trim() || (trans.a && trans.c ? `${stem(trans.a)} to ${stem(trans.c)}` : '')
-        : decalDesc.value.trim();
+    const stem = (ref: TexRef | null) => (ref ? parseTexRef(ref).name.replace(/\.png$/i, '') : '');
+    const from =
+      mode === 'new'
+        ? subject.value.trim() || (promptEdited ? prompt.value : '')
+        : mode === 'transition'
+          ? transDesc.value.trim() || (trans.a && trans.c ? `${stem(trans.a)} to ${stem(trans.c)}` : '')
+          : decalDesc.value.trim();
     return from ? suggestTextureName(from, taken) : '';
   };
   const refreshSuggestion = () => {
@@ -722,7 +819,8 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   function onSubjectChanged() {
     if (!promptEdited) prompt.value = promptFor(subject.value.trim());
     promptSummary.textContent = promptEdited
-      ? 'Full prompt sent to fal.ai — edited by hand' : 'Full prompt sent to fal.ai';
+      ? 'Full prompt sent to fal.ai — edited by hand'
+      : 'Full prompt sent to fal.ai';
     if (promptEdited) promptBox.open = true;
     reset.style.display = promptEdited ? '' : 'none';
     refreshSuggestion();
@@ -732,9 +830,12 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   const reloadTaken = async () => {
     try {
       const { tiles } = await fetchJson<{ tiles: { name: string }[] }>(
-        `/api/textures?level=${encodeURIComponent(CUSTOM_TEX_LEVEL)}`);
+        `/api/textures?level=${encodeURIComponent(CUSTOM_TEX_LEVEL)}`,
+      );
       taken = new Set(tiles.map(t => t.name.replace(/\.png$/i, '').toLowerCase()));
-    } catch { /* offline: the server still refuses a genuinely bad name, this only sharpens the suggestion */ }
+    } catch {
+      /* offline: the server still refuses a genuinely bad name, this only sharpens the suggestion */
+    }
     refreshSuggestion();
   };
 
@@ -753,29 +854,30 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
       const usd = estimateInpaintUsd(inpaintSel.value, genSize);
       // the wrap repair pass is a second same-size call, so the honest per-run number is double
       const calls = mode === 'transition' && vwrapChk.checked ? 2 : 1;
-      inpaintPrice.textContent = usd == null ? ''
-        : `≈ ${usdText(usd * calls)} / run${calls > 1 ? ' (2 calls)' : ''}`;
+      inpaintPrice.textContent = usd == null ? '' : `≈ ${usdText(usd * calls)} / run${calls > 1 ? ' (2 calls)' : ''}`;
       inpaintHint.textContent = model?.note ?? '';
       renderFalRightsDisclosure(inpaintRights, [inpaintSel.value]);
     }
     const storeSize = Number(storeSel.value);
-    sizeHint.innerHTML = `Only <b>Generate at</b> is billed — fal charges by the megapixel, so ${genSize}² costs `
-      + `a quarter of what 1024² does. <b>Store as</b> is free and decides the tile itself: `
-      + (storeSize === 128
-        ? '128² is the dominant native SSX terrain size and the cap an ISO export applies anyway, so it is the '
-          + 'one to pick for anything that ships to PS2.'
+    sizeHint.innerHTML =
+      `Only <b>Generate at</b> is billed — fal charges by the megapixel, so ${genSize}² costs ` +
+      `a quarter of what 1024² does. <b>Store as</b> is free and decides the tile itself: ` +
+      (storeSize === 128
+        ? '128² is the dominant native SSX terrain size and the cap an ISO export applies anyway, so it is the ' +
+          'one to pick for anything that ships to PS2.'
         : storeSize === 256
           ? '256² keeps more detail for Unity exports; an ISO export with “maximum 128²” on will halve it again.'
-          : '512² is the library’s ceiling — good for Unity, well over the PS2 VRAM budget for more than a tile '
-            + 'or two.')
-      + ` Generating at ${genSize}² and storing at ${storeSize}² downscales by `
-      + `${(genSize / storeSize).toFixed(genSize % storeSize ? 1 : 0)}×, which supersamples the tile rather than `
-      + 'blurring it.';
-    const ready = mode === 'new'
-      ? !!subject.value.trim() || promptEdited
-      : mode === 'transition'
-        ? !!trans.a && !!trans.c
-        : !!decal.ref && (!!decalDesc.value.trim() || decalRig.edited());
+          : '512² is the library’s ceiling — good for Unity, well over the PS2 VRAM budget for more than a tile ' +
+            'or two.') +
+      ` Generating at ${genSize}² and storing at ${storeSize}² downscales by ` +
+      `${(genSize / storeSize).toFixed(genSize % storeSize ? 1 : 0)}×, which supersamples the tile rather than ` +
+      'blurring it.';
+    const ready =
+      mode === 'new'
+        ? !!subject.value.trim() || promptEdited
+        : mode === 'transition'
+          ? !!trans.a && !!trans.c
+          : !!decal.ref && (!!decalDesc.value.trim() || decalRig.edited());
     const selectedModel = mode === 'new' ? modelSel.value : inpaintSel.value;
     generate.disabled = busy || !keyed || !ready || !falEndpointMayGenerate(selectedModel);
     generate.textContent = busy ? 'Generating…' : raws[mode] ? 'Regenerate' : 'Generate';
@@ -801,10 +903,11 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
       preview.style.backgroundImage = '';
       preview.style.backgroundSize = '';
       if (!placeholder.isConnected) preview.appendChild(placeholder);
-      placeholder.textContent = mode === 'transition'
-        ? 'The result previews here as an A · B · C strip — B between its neighbours, because those are the '
-          + 'seams you will actually paint.'
-        : 'The result previews here, repeated across the box so you can see whether it tiles.';
+      placeholder.textContent =
+        mode === 'transition'
+          ? 'The result previews here as an A · B · C strip — B between its neighbours, because those are the ' +
+            'seams you will actually paint.'
+          : 'The result previews here, repeated across the box so you can see whether it tiles.';
       previewCap.textContent = '';
       return;
     }
@@ -832,8 +935,9 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
       }
       preview.style.backgroundImage = `url(${strip.toDataURL('image/png')})`;
       preview.style.backgroundSize = vert ? 'auto 100%' : '100% auto';
-      previewCap.textContent = `${s}² tile · shown as A · B · C, the ${vert ? 'rows' : 'columns'} you will paint`
-        + (seed != null ? ` · seed ${seed}` : '');
+      previewCap.textContent =
+        `${s}² tile · shown as A · B · C, the ${vert ? 'rows' : 'columns'} you will paint` +
+        (seed != null ? ` · seed ${seed}` : '');
     } else if (mode === 'decal' && decalImg) {
       // the decal tile the way it is actually used: one marked cell in a field of the plain source, so the
       // joins between decaled and plain cells are the thing on show
@@ -847,15 +951,16 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
       }
       ctx.drawImage(tile, s, s);
       preview.style.backgroundImage = `url(${grid.toDataURL('image/png')})`;
-      preview.style.backgroundSize = '50% auto';   // the 3×3 block fills the height, repeating sideways
-      previewCap.textContent = `${s}² tile · shown set among plain source tiles`
-        + (seed != null ? ` · seed ${seed}` : '');
+      preview.style.backgroundSize = '50% auto'; // the 3×3 block fills the height, repeating sideways
+      previewCap.textContent =
+        `${s}² tile · shown set among plain source tiles` + (seed != null ? ` · seed ${seed}` : '');
     } else {
       preview.style.backgroundImage = `url(${tile.toDataURL('image/png')})`;
-      preview.style.backgroundSize = '';   // back to the stylesheet's 4 × 2 repeat
-      previewCap.textContent = `${tile.width}² tile, shown tiled 4 × 2`
-        + (seed != null ? ` · seed ${seed}` : '')
-        + (mode === 'new' && !seamChk.checked ? ' · wrap blend off, edges will show' : '');
+      preview.style.backgroundSize = ''; // back to the stylesheet's 4 × 2 repeat
+      previewCap.textContent =
+        `${tile.width}² tile, shown tiled 4 × 2` +
+        (seed != null ? ` · seed ${seed}` : '') +
+        (mode === 'new' && !seamChk.checked ? ' · wrap blend off, edges will show' : '');
     }
   };
 
@@ -880,8 +985,13 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
     deps.pickTexture({
       title: pickTitle,
       current,
-      onPick: ref => { back.style.display = ''; if (ref) set(ref); },
-      onCancel: () => { back.style.display = ''; },
+      onPick: ref => {
+        back.style.display = '';
+        if (ref) set(ref);
+      },
+      onCancel: () => {
+        back.style.display = '';
+      },
     });
   };
 
@@ -905,18 +1015,28 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
    *  so a stale result can never sit in B looking like an input. */
   const refreshSlotB = () => {
     const token = ++bPreviewToken;
-    if (raws.transition) { showSlotB(downscale(raws.transition, 256)); return; }
-    if (!trans.a || !trans.c) { showSlotB(null); return; }
-    void Promise.all([loadTex(trans.a), loadTex(trans.c)]).then(([a, c]) => {
-      if (token !== bPreviewToken) return;
-      showSlotB(composeTransition(a, c, trans.rotA, trans.rotC, 256, true, vertChk.checked));
-    }).catch(() => { /* thumbnail only — Generate reports real load failures */ });
+    if (raws.transition) {
+      showSlotB(downscale(raws.transition, 256));
+      return;
+    }
+    if (!trans.a || !trans.c) {
+      showSlotB(null);
+      return;
+    }
+    void Promise.all([loadTex(trans.a), loadTex(trans.c)])
+      .then(([a, c]) => {
+        if (token !== bPreviewToken) return;
+        showSlotB(composeTransition(a, c, trans.rotA, trans.rotC, 256, true, vertChk.checked));
+      })
+      .catch(() => {
+        /* thumbnail only — Generate reports real load failures */
+      });
   };
   const onTransChanged = () => {
     raws.transition = null;
     seeds.transition = null;
     transImgs = null;
-    abc.classList.toggle('vert', vertChk.checked);   // the boxes stack the way the tiles will
+    abc.classList.toggle('vert', vertChk.checked); // the boxes stack the way the tiles will
     slotA.set(trans.a, trans.rotA);
     slotC.set(trans.c, trans.rotC);
     rotA.disabled = !trans.a;
@@ -927,13 +1047,28 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
     renderPreview();
   };
   // orientation changes the compose, the mask and the prompt, so it invalidates like an end swap does
-  vertChk.onchange = () => { transRig.sync(); onTransChanged(); };
-  slotA.el.onclick = () => pickInto('Choose texture A — the left material', trans.a,
-    ref => { trans.a = ref; onTransChanged(); });
-  slotC.el.onclick = () => pickInto('Choose texture C — the right material', trans.c,
-    ref => { trans.c = ref; onTransChanged(); });
-  rotA.onclick = () => { trans.rotA = (trans.rotA + 1) % 4; onTransChanged(); };
-  rotC.onclick = () => { trans.rotC = (trans.rotC + 1) % 4; onTransChanged(); };
+  vertChk.onchange = () => {
+    transRig.sync();
+    onTransChanged();
+  };
+  slotA.el.onclick = () =>
+    pickInto('Choose texture A — the left material', trans.a, ref => {
+      trans.a = ref;
+      onTransChanged();
+    });
+  slotC.el.onclick = () =>
+    pickInto('Choose texture C — the right material', trans.c, ref => {
+      trans.c = ref;
+      onTransChanged();
+    });
+  rotA.onclick = () => {
+    trans.rotA = (trans.rotA + 1) % 4;
+    onTransChanged();
+  };
+  rotC.onclick = () => {
+    trans.rotC = (trans.rotC + 1) % 4;
+    onTransChanged();
+  };
 
   const onDecalChanged = () => {
     raws.decal = null;
@@ -944,15 +1079,24 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
     refresh();
     renderPreview();
   };
-  slotS.el.onclick = () => pickInto('Choose the decal’s source texture', decal.ref,
-    ref => { decal.ref = ref; onDecalChanged(); });
+  slotS.el.onclick = () =>
+    pickInto('Choose the decal’s source texture', decal.ref, ref => {
+      decal.ref = ref;
+      onDecalChanged();
+    });
 
   modelSel.onchange = refresh;
   inpaintSel.onchange = refresh;
-  vwrapChk.onchange = refresh;   // the price doubles and halves with it
+  vwrapChk.onchange = refresh; // the price doubles and halves with it
   genSel.onchange = refresh;
-  storeSel.onchange = () => { refresh(); renderPreview(); };
-  seamChk.onchange = () => { refresh(); renderPreview(); };
+  storeSel.onchange = () => {
+    refresh();
+    renderPreview();
+  };
+  seamChk.onchange = () => {
+    refresh();
+    renderPreview();
+  };
 
   generate.onclick = async () => {
     const key = loadSettings().falKey.trim();
@@ -974,14 +1118,22 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
         // sent: both ends composed, the strip replaced by a neutral bridge — rebuilt from A and C on every
         // run, so nothing of a previous generation can ride along into a regenerate
         const sent = composeTransition(a, c, trans.rotA, trans.rotC, genSize, true, vert);
-        ++bPreviewToken;                  // outrank any in-flight thumbnail
-        showSlotB(downscale(sent, 256));  // B shows exactly what is in flight, not the old answer
-        const { image, seed } = await callFalInpaint(key, inpaintSel.value, transRig.value(),
-          sent, maskCanvas(genSize, band));
+        ++bPreviewToken; // outrank any in-flight thumbnail
+        showSlotB(downscale(sent, 256)); // B shows exactly what is in flight, not the old answer
+        const { image, seed } = await callFalInpaint(
+          key,
+          inpaintSel.value,
+          transRig.value(),
+          sent,
+          maskCanvas(genSize, band),
+        );
         // keep the model's strip, put OUR ends back bit-for-bit — the seam guarantee lives right here
         let result = compositeMasked(
           composeTransition(a, c, trans.rotA, trans.rotC, genSize, false, vert),
-          image, band, genSize / FEATHER_DIV);
+          image,
+          band,
+          genSize / FEATHER_DIV,
+        );
         if (vwrapChk.checked) {
           // Wrap repair: roll half a tile across the blend so the strip's wrap seam sits mid-frame, inpaint
           // just that join (limited to the strip — A and C never enter the mask), roll back. The healed
@@ -989,7 +1141,7 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
           // ends up at the edges was mid-frame continuity in the healed image. Rolling twice by half is the
           // identity, so A and C come back pixel-exact outside the healed patch.
           previewCap.textContent = 'Repairing the wrap seam — second call…';
-          const roll = (cv: HTMLCanvasElement) => vert ? rollX(cv, genSize / 2) : rollY(cv, genSize / 2);
+          const roll = (cv: HTMLCanvasElement) => (vert ? rollX(cv, genSize / 2) : rollY(cv, genSize / 2));
           const heal: Rect = vert
             ? { x: genSize / 3, y: band.y, w: genSize / 3, h: band.h }
             : { x: band.x, y: genSize / 3, w: band.w, h: genSize / 3 };
@@ -998,14 +1150,19 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
           // bridge the join out of the sent pixels — a conditioning model handed the seam it is meant to
           // erase will happily hand it back
           bridgeFill(sentHeal, heal, vert ? 'x' : 'y');
-          const { image: healed } = await callFalInpaint(key, inpaintSel.value,
-            healPromptFor(transDesc.value.trim(), vert), sentHeal, maskCanvas(genSize, heal));
+          const { image: healed } = await callFalInpaint(
+            key,
+            inpaintSel.value,
+            healPromptFor(transDesc.value.trim(), vert),
+            sentHeal,
+            maskCanvas(genSize, heal),
+          );
           result = roll(compositeMasked(rolled, healed, heal, genSize / FEATHER_DIV));
         }
         raws.transition = result;
         seeds.transition = seed;
         transImgs = { a, c, rotA: trans.rotA, rotC: trans.rotC, vert };
-        refreshSlotB();                   // the B box graduates from bridged strip to answer
+        refreshSlotB(); // the B box graduates from bridged strip to answer
       } else {
         const src = await loadTex(decal.ref!);
         const base = squareCanvas(genSize);
@@ -1013,30 +1170,43 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
         bctx.imageSmoothingQuality = 'high';
         bctx.drawImage(src, 0, 0, genSize, genSize);
         const box: Rect = {
-          x: genSize * DECAL_BOX.x0, y: genSize * DECAL_BOX.y0,
-          w: genSize * (DECAL_BOX.x1 - DECAL_BOX.x0), h: genSize * (DECAL_BOX.y1 - DECAL_BOX.y0),
+          x: genSize * DECAL_BOX.x0,
+          y: genSize * DECAL_BOX.y0,
+          w: genSize * (DECAL_BOX.x1 - DECAL_BOX.x0),
+          h: genSize * (DECAL_BOX.y1 - DECAL_BOX.y0),
         };
         // the source is sent UNBLANKED — the decal goes on the material, so the model should see it
-        const { image, seed } = await callFalInpaint(key, inpaintSel.value, decalRig.value(),
-          base, maskCanvas(genSize, box));
+        const { image, seed } = await callFalInpaint(
+          key,
+          inpaintSel.value,
+          decalRig.value(),
+          base,
+          maskCanvas(genSize, box),
+        );
         raws.decal = compositeMasked(base, image, box, genSize / FEATHER_DIV);
         seeds.decal = seed;
         decalImg = src;
       }
       generations[mode] = createFalGenerationProvenance([usedModel]);
       // remember the choices that produced a result, so the dialog reopens where the author left it
-      saveSettings({ texGen: {
-        model: modelSel.value, inpaintModel: inpaintSel.value, genSize,
-        storeSize: Number(storeSel.value), seamless: seamChk.checked, vwrapPass: vwrapChk.checked,
-        transVertical: vertChk.checked,
-      } });
+      saveSettings({
+        texGen: {
+          model: modelSel.value,
+          inpaintModel: inpaintSel.value,
+          genSize,
+          storeSize: Number(storeSel.value),
+          seamless: seamChk.checked,
+          vwrapPass: vwrapChk.checked,
+          transVertical: vertChk.checked,
+        },
+      });
       busy = false;
       refresh();
       renderPreview();
     } catch (e) {
       busy = false;
       refresh();
-      refreshSlotB();   // the failed run's in-flight compose stands down for whatever state still holds
+      refreshSlotB(); // the failed run's in-flight compose stands down for whatever state still holds
       const msg = e instanceof Error ? e.message : String(e);
       previewCap.textContent = '';
       toast(`Generation failed — ${msg}`, 'err', 8000);
@@ -1055,7 +1225,8 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
     refresh();
     try {
       const blob = await new Promise<Blob>((ok, err) =>
-        tile.toBlob(b => (b ? ok(b) : err(new Error('PNG encode failed'))), 'image/png'));
+        tile.toBlob(b => (b ? ok(b) : err(new Error('PNG encode failed'))), 'image/png'),
+      );
       const stem = (name.value.trim() || suggestedName() || 'generated').replace(/\.png$/i, '');
       const res = await clientFetch(`/api/texture-upload?name=${encodeURIComponent(stem)}`, {
         method: 'POST',
@@ -1065,16 +1236,20 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
       // the store answers with the name it used: a name already in the bank lands beside it as <name>_2,
       // so the tile that gets armed below is the one that actually exists (docs/038)
-      const stored = await res.json() as { name: string };
+      const stored = (await res.json()) as { name: string };
       added++;
       taken.add(stored.name.replace(/\.png$/i, '').toLowerCase());
-      name.value = '';                 // back to the suggestion, which now dodges the name just used
+      name.value = ''; // back to the suggestion, which now dodges the name just used
       refreshSuggestion();
       busy = false;
       refresh();
       await deps.onSaved(stored.name); // reloads the Custom grid behind the dialog and arms the new tile
-      toast(`✓ ${stored.name} added at ${tile.width}²${added > 1 ? ` (${added} this session)` : ''}`
-        + ' — generate again for another, or Close when you’re done.', 'ok', 4500);
+      toast(
+        `✓ ${stored.name} added at ${tile.width}²${added > 1 ? ` (${added} this session)` : ''}` +
+          ' — generate again for another, or Close when you’re done.',
+        'ok',
+        4500,
+      );
     } catch (e) {
       busy = false;
       refresh();
@@ -1085,19 +1260,36 @@ export function openTextureGenDialog(deps: TextureGenDeps): void {
   // A hand-edited prompt is the author's now — the subject stops rewriting it, and the disclosure is forced
   // open so it is never edited-but-hidden, which would make the dialog quietly lie about what it will send.
   // route through the same resync as the description, so the summary and Recompose button react too
-  prompt.oninput = () => { promptEdited = true; onSubjectChanged(); };
-  reset.onclick = () => { promptEdited = false; onSubjectChanged(); };
+  prompt.oninput = () => {
+    promptEdited = true;
+    onSubjectChanged();
+  };
+  reset.onclick = () => {
+    promptEdited = false;
+    onSubjectChanged();
+  };
   subject.oninput = onSubjectChanged;
-  transDesc.oninput = () => { transRig.sync(); refreshSuggestion(); refresh(); };
-  decalDesc.oninput = () => { decalRig.sync(); refreshSuggestion(); refresh(); };
+  transDesc.oninput = () => {
+    transRig.sync();
+    refreshSuggestion();
+    refresh();
+  };
+  decalDesc.oninput = () => {
+    decalRig.sync();
+    refreshSuggestion();
+    refresh();
+  };
   const enterGenerates = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && !generate.disabled) { e.preventDefault(); generate.click(); }
+    if (e.key === 'Enter' && !generate.disabled) {
+      e.preventDefault();
+      generate.click();
+    }
   };
   subject.onkeydown = enterGenerates;
   transDesc.onkeydown = enterGenerates;
   decalDesc.onkeydown = enterGenerates;
   onSubjectChanged();
-  onTransChanged();   // applies the remembered orientation to the A · B · C boxes before first show
+  onTransChanged(); // applies the remembered orientation to the A · B · C boxes before first show
   void reloadTaken();
   setTab('new');
 }
@@ -1115,18 +1307,28 @@ export async function falFetch(route: string, key: string, body: Record<string, 
     // the proxy answers JSON on failure and bytes on success; a non-JSON body here means the route is missing
     const text = await res.text().catch(() => '');
     let message = '';
-    try { message = (JSON.parse(text) as { error?: string }).error ?? ''; } catch { /* not JSON */ }
-    throw new Error(message || (res.status === 404
-      ? `the ${route} route is missing — restart the dev server (Ctrl+C, npm run dev) to pick it up`
-      : `${res.status} ${res.statusText}`.trim()));
+    try {
+      message = (JSON.parse(text) as { error?: string }).error ?? '';
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(
+      message ||
+        (res.status === 404
+          ? `the ${route} route is missing — restart the dev server (Ctrl+C, npm run dev) to pick it up`
+          : `${res.status} ${res.statusText}`.trim()),
+    );
   }
   return res;
 }
 
 /** POST to one of the dev-server's fal proxies and decode the PNG it answers into a canvas at its native
  *  size — square for the texture flows, 2:1 for the skybox one. Exported for the Generate skybox dialog. */
-export async function postFal(route: string, key: string, body: Record<string, unknown>):
-Promise<{ image: HTMLCanvasElement; seed: number | null }> {
+export async function postFal(
+  route: string,
+  key: string,
+  body: Record<string, unknown>,
+): Promise<{ image: HTMLCanvasElement; seed: number | null }> {
   const res = await falFetch(route, key, body);
   const seedHeader = res.headers.get('x-fal-seed');
   const bitmap = await createImageBitmap(await res.blob());
@@ -1144,10 +1346,16 @@ const callFal = (key: string, model: string, prompt: string, size: number) =>
 
 /** The image and mask travel as PNG data URIs — fal accepts them wherever it takes an image URL, so nothing
  *  is uploaded anywhere first and the proxy passes them through untouched. */
-const callFalInpaint = (key: string, model: string, prompt: string,
-  image: HTMLCanvasElement, mask: HTMLCanvasElement) =>
+const callFalInpaint = (
+  key: string,
+  model: string,
+  prompt: string,
+  image: HTMLCanvasElement,
+  mask: HTMLCanvasElement,
+) =>
   postFal('/api/fal-inpaint', key, {
-    model, prompt,
+    model,
+    prompt,
     image: image.toDataURL('image/png'),
     mask: mask.toDataURL('image/png'),
   });
@@ -1186,11 +1394,17 @@ function rollX(src: HTMLCanvasElement, dx: number): HTMLCanvasElement {
 
 /** Draw `img` scaled to a size² square whose top-left sits at (x, y), rotated about that square's centre in
  *  quarter turns — how the transition ends carry their rotation into both the compose and the preview strip. */
-function drawRotated(ctx: CanvasRenderingContext2D, img: CanvasImageSource, size: number, quarters: number,
-  x = 0, y = 0) {
+function drawRotated(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  size: number,
+  quarters: number,
+  x = 0,
+  y = 0,
+) {
   ctx.save();
   ctx.translate(x + size / 2, y + size / 2);
-  ctx.rotate(quarters * Math.PI / 2);
+  ctx.rotate((quarters * Math.PI) / 2);
   ctx.drawImage(img, -size / 2, -size / 2, size, size);
   ctx.restore();
 }
@@ -1204,7 +1418,10 @@ function drawRotated(ctx: CanvasRenderingContext2D, img: CanvasImageSource, size
  */
 function bridgeFill(cv: HTMLCanvasElement, r: Rect, axis: 'x' | 'y') {
   const ctx = cv.getContext('2d', { willReadFrequently: true })!;
-  const x = Math.round(r.x), y = Math.round(r.y), w = Math.round(r.w), h = Math.round(r.h);
+  const x = Math.round(r.x),
+    y = Math.round(r.y),
+    w = Math.round(r.w),
+    h = Math.round(r.h);
   const out = ctx.createImageData(w, h);
   if (axis === 'x') {
     const a = ctx.getImageData(x - 1, y, 1, h).data;
@@ -1212,7 +1429,8 @@ function bridgeFill(cv: HTMLCanvasElement, r: Rect, axis: 'x' | 'y') {
     for (let row = 0; row < h; row++) {
       for (let col = 0; col < w; col++) {
         const t = (col + 1) / (w + 1);
-        const o = (row * w + col) * 4, i = row * 4;
+        const o = (row * w + col) * 4,
+          i = row * 4;
         for (let ch = 0; ch < 4; ch++) out.data[o + ch] = a[i + ch] * (1 - t) + b[i + ch] * t;
       }
     }
@@ -1222,7 +1440,8 @@ function bridgeFill(cv: HTMLCanvasElement, r: Rect, axis: 'x' | 'y') {
     for (let row = 0; row < h; row++) {
       const t = (row + 1) / (h + 1);
       for (let col = 0; col < w; col++) {
-        const o = (row * w + col) * 4, i = col * 4;
+        const o = (row * w + col) * 4,
+          i = col * 4;
         for (let ch = 0; ch < 4; ch++) out.data[o + ch] = a[i + ch] * (1 - t) + b[i + ch] * t;
       }
     }
@@ -1238,8 +1457,15 @@ function bridgeFill(cv: HTMLCanvasElement, r: Rect, axis: 'x' | 'y') {
  * at the other, which is what makes a painted A · B · C sequence seam exactly like A and C tiling against
  * themselves.
  */
-function composeTransition(a: CanvasImageSource, c: CanvasImageSource, rotA: number, rotC: number,
-  size: number, bridgeBand: boolean, vert: boolean): HTMLCanvasElement {
+function composeTransition(
+  a: CanvasImageSource,
+  c: CanvasImageSource,
+  rotA: number,
+  rotC: number,
+  size: number,
+  bridgeBand: boolean,
+  vert: boolean,
+): HTMLCanvasElement {
   const cv = squareCanvas(size);
   const ctx = cv.getContext('2d')!;
   ctx.imageSmoothingQuality = 'high';
@@ -1275,11 +1501,16 @@ function maskCanvas(size: number, r: Rect): HTMLCanvasElement {
  * art back bit-for-bit everywhere that wasn't being painted is what turns the Transition tab's seam claim
  * and the Decal tab's still-tiles claim from "the model usually behaves" into construction.
  */
-function compositeMasked(base: HTMLCanvasElement, generated: HTMLCanvasElement, r: Rect, feather: number): HTMLCanvasElement {
+function compositeMasked(
+  base: HTMLCanvasElement,
+  generated: HTMLCanvasElement,
+  r: Rect,
+  feather: number,
+): HTMLCanvasElement {
   const size = base.width;
   const soft = squareCanvas(size);
   const sc = soft.getContext('2d')!;
-  sc.filter = `blur(${feather}px)`;      // the mask's hard step, softened into an alpha ramp
+  sc.filter = `blur(${feather}px)`; // the mask's hard step, softened into an alpha ramp
   sc.fillStyle = '#fff';
   sc.fillRect(r.x, r.y, r.w, r.h);
   const layer = squareCanvas(size);

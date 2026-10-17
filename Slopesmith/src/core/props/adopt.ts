@@ -56,9 +56,7 @@ function pack(view: ArrayBufferView): string {
  * texture rather than being dropped: the renderer falls back to neutral clay for one, and losing the
  * geometry would be worse than losing the paint.
  */
-export function recordFromReferenceProp(
-  props: LevelProps, model: PropModel, name: string,
-): AdoptedProp {
+export function recordFromReferenceProp(props: LevelProps, model: PropModel, name: string): AdoptedProp {
   // Source material id -> local slot, in first-seen order, so the record's own ids run 0…n−1.
   const slotOf = new Map<number, number>();
   const subs: ImportedPropRecord['subs'] = [];
@@ -67,7 +65,7 @@ export function recordFromReferenceProp(
   for (const sub of model.subs) {
     if (!sub.indices.length) continue;
     let slot = slotOf.get(sub.mat);
-    if (slot === undefined) slotOf.set(sub.mat, slot = slotOf.size);
+    if (slot === undefined) slotOf.set(sub.mat, (slot = slotOf.size));
     subs.push({
       mat: slot,
       pos: pack(sub.positions),

@@ -43,8 +43,11 @@ export interface SkyboxSource {
 
 const pageName = (index: number) => String(index).padStart(4, '0') + '.png';
 
-export async function composeSkybox(sky: SkyboxDoc, source: SkyboxSource,
-  encodePng: (image: Rgba) => Promise<Uint8Array>): Promise<{ files: ExportFile[]; log: string[] }> {
+export async function composeSkybox(
+  sky: SkyboxDoc,
+  source: SkyboxSource,
+  encodePng: (image: Rgba) => Promise<Uint8Array>,
+): Promise<{ files: ExportFile[]; log: string[] }> {
   const files: ExportFile[] = [...source.ringFiles];
   const pageCount = source.ring.tiles.length;
   const log = [`skybox: ${source.ringLevel}'s ring (${pageCount} meshes) + materials`];
@@ -58,16 +61,23 @@ export async function composeSkybox(sky: SkyboxDoc, source: SkyboxSource,
     for (const [i, tile] of tiles.entries())
       files.push({ path: `Skybox/Textures/${pageName(i)}`, bytes: await encodePng(tile) });
     const name = sky.source.kind === 'custom' ? sky.source.name : source.ringLevel;
-    log.push(`skybox: "${name}" cut into ${pageCount} pages against ${source.ringLevel}'s ring `
-      + `(${tier.upper}px upper / ${tier.lower}px lower / ${tier.ground}px ground)`);
+    log.push(
+      `skybox: "${name}" cut into ${pageCount} pages against ${source.ringLevel}'s ring ` +
+        `(${tier.upper}px upper / ${tier.lower}px lower / ${tier.ground}px ground)`,
+    );
   }
 
-  files.push(textFile('Skybox/Sky.json', JSON.stringify({
-    Source: sky.source.kind === 'level' ? 'level' : 'custom',
-    Level: sky.source.kind === 'level' ? source.ringLevel : undefined,
-    Ring: source.ringLevel,
-    Tier: sky.source.kind === 'custom' ? (sky.tier ?? 'standard') : undefined,
-    TopColor: sky.topColor,
-  })));
+  files.push(
+    textFile(
+      'Skybox/Sky.json',
+      JSON.stringify({
+        Source: sky.source.kind === 'level' ? 'level' : 'custom',
+        Level: sky.source.kind === 'level' ? source.ringLevel : undefined,
+        Ring: source.ringLevel,
+        Tier: sky.source.kind === 'custom' ? (sky.tier ?? 'standard') : undefined,
+        TopColor: sky.topColor,
+      }),
+    ),
+  );
   return { files, log };
 }

@@ -22,8 +22,11 @@ import { createRetopologyTools } from '../tool-panels/retopology';
 import { createLabelTools } from '../tool-panels/labels';
 import { MODE_ICON } from '../components/icons';
 import {
-  buildBridgeTools, buildEdgeWeldTools, buildExtrudePlacementTools,
-  buildPastePlacementTools, buildPointWeldTools,
+  buildBridgeTools,
+  buildEdgeWeldTools,
+  buildExtrudePlacementTools,
+  buildPastePlacementTools,
+  buildPointWeldTools,
 } from '../tool-panels/staged';
 
 /**
@@ -40,8 +43,13 @@ import {
 /** Panel header per mode, matching the top-bar segment labels. The 'info' mode (shown as Scene) hides this
  *  panel in favour of the Scene block, whose own header carries the same title. */
 const MODE_TITLE: Record<Mode, string> = {
-  info: 'Scene Mode', edit: 'Edit Mode', sculpt: 'Sculpt Mode', paint: 'Paint Mode',
-  props: 'Props Mode', effects: 'Effects Mode', play: 'Test Mode',
+  info: 'Scene Mode',
+  edit: 'Edit Mode',
+  sculpt: 'Sculpt Mode',
+  paint: 'Paint Mode',
+  props: 'Props Mode',
+  effects: 'Effects Mode',
+  play: 'Test Mode',
 };
 
 /** lil-gui owns the collapsible root title, but its text can still carry the same mode glyph as the top bar. */
@@ -60,9 +68,25 @@ function setModeTitle(gui: GUI, mode: Mode, title: string): void {
 export type { ToolsPanelDeps } from '../tool-panels/tools-panel-deps';
 export function createToolsPanel(deps: ToolsPanelDeps) {
   const {
-    store, viewport, edit, palette, propPreview, propLib, library, propLibToggle,
-    showScene, refreshShowFilters, syncAddTrickBtns, persistUi, cageActive,
-    clearPaintSel, syncPropLibBtn, syncDockTabs, propBaseOffset, identifyMultiProp, removeFromMultiSel,
+    store,
+    viewport,
+    edit,
+    palette,
+    propPreview,
+    propLib,
+    library,
+    propLibToggle,
+    showScene,
+    refreshShowFilters,
+    syncAddTrickBtns,
+    persistUi,
+    cageActive,
+    clearPaintSel,
+    syncPropLibBtn,
+    syncDockTabs,
+    propBaseOffset,
+    identifyMultiProp,
+    removeFromMultiSel,
   } = deps;
   const pastePlacing = () => viewport.pastePlacing;
 
@@ -80,12 +104,18 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   // row to identify its prop in 3D, double-click to frame it, ✕ to drop it from the set. Persistent like the card.
   const multiList = new MultiSelectList({
     onIdentify: identifyMultiProp,
-    onFocus: index => { viewport.focusProp(index); },
+    onFocus: index => {
+      viewport.focusProp(index);
+    },
     onRemove: removeFromMultiSel,
     onRemoveLight: deps.removeLightFromMultiSel,
   });
   propPreview.el.after(multiList.el);
-  const bridgeList = new BridgeRailList({ onReverse: edit.reverseBridgeRail, onRemove: edit.removeBridgeRail, onMove: edit.moveBridgeRail });
+  const bridgeList = new BridgeRailList({
+    onReverse: edit.reverseBridgeRail,
+    onRemove: edit.removeBridgeRail,
+    onMove: edit.moveBridgeRail,
+  });
   multiList.el.after(bridgeList.el);
   // The Prop Library show/hide toggle sits above the preview card — the very top of the Prop Tools.
   rightGui.$children.prepend(propLibToggle);
@@ -98,11 +128,23 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const framePill = segmented<GizmoFrame>(
     [
       { value: 'world', label: 'World', title: 'Use world X / Y / Z for the transform.' },
-      { value: 'local', label: 'Local', title: 'Align the axes to the slope, but move freely without sliding along it.' },
-      { value: 'surface', label: 'Surface', title: 'Align the axes to the slope; Move glides along it. Shift-drag for a one-off free move.' },
+      {
+        value: 'local',
+        label: 'Local',
+        title: 'Align the axes to the slope, but move freely without sliding along it.',
+      },
+      {
+        value: 'surface',
+        label: 'Surface',
+        title: 'Align the axes to the slope; Move glides along it. Shift-drag for a one-off free move.',
+      },
     ],
     () => store.gizmoFrame,
-    v => { store.gizmoFrame = v; viewport.setGizmoFrame(v); persistUi(); },
+    v => {
+      store.gizmoFrame = v;
+      viewport.setGizmoFrame(v);
+      persistUi();
+    },
   );
   const framePillRow = document.createElement('div');
   framePillRow.className = 'sp-frame-pill';
@@ -118,17 +160,27 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const propFramePill = segmented<PropGizmoFrame>(
     [
       { value: 'world', label: 'World', title: 'Use world X / Y / Z for the transform.' },
-      { value: 'surface', label: 'Surface', title: 'Move over the terrain, keeping each prop’s height above (or depth in) it; scale about the ground beneath it. Shift-drag for a one-off free move.' },
+      {
+        value: 'surface',
+        label: 'Surface',
+        title:
+          'Move over the terrain, keeping each prop’s height above (or depth in) it; scale about the ground beneath it. Shift-drag for a one-off free move.',
+      },
     ],
     () => store.propGizmoFrame,
-    v => { store.propGizmoFrame = v; viewport.setPropGizmoFrame(v); persistUi(); },
+    v => {
+      store.propGizmoFrame = v;
+      viewport.setPropGizmoFrame(v);
+      persistUi();
+    },
   );
   const propFramePillRow = document.createElement('div');
   propFramePillRow.className = 'sp-frame-pill';
   const propFramePillLabel = label('Move in');
   propFramePillRow.append(propFramePillLabel, propFramePill.el);
   viewport.setPropGizmoFrame(store.propGizmoFrame);
-  const frameLabel = () => store.gizmoMode === 'rotate' ? 'Rotate in' : store.gizmoMode === 'scale' ? 'Scale in' : 'Move in';
+  const frameLabel = () =>
+    store.gizmoMode === 'rotate' ? 'Rotate in' : store.gizmoMode === 'scale' ? 'Scale in' : 'Move in';
 
   // Transform tool for selections with an actual orientation / footprint. Point-only selections deliberately
   // remain Move: rotating or scaling one point around itself has no visible meaning — except a lone point on a
@@ -136,10 +188,14 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const transformPill = segmented<'move' | 'rotate' | 'scale'>(
     [
       { value: 'move', label: 'Move', title: 'Move the selected item or group (W).' },
-      { value: 'rotate', label: 'Rotate', title: 'Rotate around the selected item’s origin or the group centroid (E).' },
+      {
+        value: 'rotate',
+        label: 'Rotate',
+        title: 'Rotate around the selected item’s origin or the group centroid (E).',
+      },
       { value: 'scale', label: 'Scale', title: 'Scale around the selected item’s origin or the group centroid (R).' },
     ],
-    () => viewport.edgeExtrusionFanMode ? null : store.gizmoMode,
+    () => (viewport.edgeExtrusionFanMode ? null : store.gizmoMode),
     v => {
       store.gizmoMode = v;
       viewport.setGizmoMode(v);
@@ -164,34 +220,66 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   rightGui.$children.prepend(transformSection);
   viewport.setGizmoMode(store.gizmoMode);
 
-  const hasMeshTransformSelection = () => store.selectedCorner !== null || store.controlSel.length > 0 || store.regionSel.length > 0
-    || (store.bridgeRails === null && (store.edgeSel.length > 0 || store.cellSel.length > 0));
+  const hasMeshTransformSelection = () =>
+    store.selectedCorner !== null ||
+    store.controlSel.length > 0 ||
+    store.regionSel.length > 0 ||
+    (store.bridgeRails === null && (store.edgeSel.length > 0 || store.cellSel.length > 0));
   const movableControlPointCount = () => {
     return store.controlSel.length;
   };
-  const canRotateSelection = () => store.currentMode === 'edit' && store.surgeryTool === 'grid' ? viewport.createGridWholeSelected
-    : deps.propDeform.active ? deps.propDeform.state?.mode === 'section' && !deps.propDeform.state.busy
-    : viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path' ? false : store.currentMode === 'props'
-    ? store.selectedProp !== null || store.multiSel.length > 0
-    : editPropsSelected() || viewport.edgeExtrusionStaged || store.currentMode === 'edit' && !mixedEditSelection()
-      && store.bridgeRails === null && cageActive() && (store.controlSel.length
-      ? movableControlPointCount() > 1
-      : store.edgeSel.length > 0 || store.cellSel.length > 0 || edit.selectedFreePoint());
+  const canRotateSelection = () =>
+    store.currentMode === 'edit' && store.surgeryTool === 'grid'
+      ? viewport.createGridWholeSelected
+      : deps.propDeform.active
+        ? deps.propDeform.state?.mode === 'section' && !deps.propDeform.state.busy
+        : viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path'
+          ? false
+          : store.currentMode === 'props'
+            ? store.selectedProp !== null || store.multiSel.length > 0
+            : editPropsSelected() ||
+              viewport.edgeExtrusionStaged ||
+              (store.currentMode === 'edit' &&
+                !mixedEditSelection() &&
+                store.bridgeRails === null &&
+                cageActive() &&
+                (store.controlSel.length
+                  ? movableControlPointCount() > 1
+                  : store.edgeSel.length > 0 || store.cellSel.length > 0 || edit.selectedFreePoint()));
   type EditSelectionKind = 'point' | 'edge' | 'patch' | 'prop';
   const editSelectionCounts = (): { kind: EditSelectionKind; count: number; readOnly: boolean }[] => {
     const authoredPoints = store.controlSel.length || store.regionSel.length || (store.selectedCorner !== null ? 1 : 0);
     return [
-      { kind: 'point', count: authoredPoints + store.refControlSel.length, readOnly: !authoredPoints && store.refControlSel.length > 0 },
-      { kind: 'edge', count: store.edgeSel.length + store.refEdgeSel.length, readOnly: !store.edgeSel.length && store.refEdgeSel.length > 0 },
-      { kind: 'patch', count: store.cellSel.length + store.refCellSel.length, readOnly: !store.cellSel.length && store.refCellSel.length > 0 },
+      {
+        kind: 'point',
+        count: authoredPoints + store.refControlSel.length,
+        readOnly: !authoredPoints && store.refControlSel.length > 0,
+      },
+      {
+        kind: 'edge',
+        count: store.edgeSel.length + store.refEdgeSel.length,
+        readOnly: !store.edgeSel.length && store.refEdgeSel.length > 0,
+      },
+      {
+        kind: 'patch',
+        count: store.cellSel.length + store.refCellSel.length,
+        readOnly: !store.cellSel.length && store.refCellSel.length > 0,
+      },
       { kind: 'prop', count: store.multiSel.length || (store.selectedProp !== null ? 1 : 0), readOnly: false },
     ];
   };
   const mixedEditSelection = () => editSelectionCounts().filter(selection => selection.count > 0).length > 1;
-  const editPropsSelected = () => store.currentMode === 'edit' && !store.modelEditId && !mixedEditSelection()
-    && (store.selectedProp !== null || store.multiSel.length > 0);
-  const editLightSelected = () => store.currentMode === 'edit' && !store.modelEditId && !mixedEditSelection()
-    && !editPropsSelected() && store.selectedLight !== null;
+  const editPropsSelected = () =>
+    store.currentMode === 'edit' &&
+    !store.modelEditId &&
+    !mixedEditSelection() &&
+    (store.selectedProp !== null || store.multiSel.length > 0);
+  const editLightSelected = () =>
+    store.currentMode === 'edit' &&
+    !store.modelEditId &&
+    !mixedEditSelection() &&
+    !editPropsSelected() &&
+    store.selectedLight !== null;
   /** The shared gizmo is on something the prop World / Surface pill frames: placed props, or one of the points Props
    *  mode places — a free light, a rail or prop-line point, a gem, a free-standing screen. A Bézier handle has the
    *  gizmo off its point, and a screen fitted to a board moves with the board, so neither takes the pill. */
@@ -199,10 +287,17 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (deps.propDeform.active || store.pathHandle !== null) return false;
     if (editPropsSelected() || editLightSelected()) return true;
     if (store.currentMode !== 'props' && store.currentMode !== 'effects') return false;
-    if (store.selectedProp !== null || store.multiSel.length > 0 || store.selectedLight !== null || store.selectedGem !== null) return true;
+    if (
+      store.selectedProp !== null ||
+      store.multiSel.length > 0 ||
+      store.selectedLight !== null ||
+      store.selectedGem !== null
+    )
+      return true;
     if (store.selectedRail !== null && store.selectedNode !== null && !store.railDrawing) return true;
     if (store.selectedLine !== null && store.selectedLineNode !== null && !store.lineDrawing) return true;
-    const screen = store.selectedScreen === null ? undefined : store.mdoc.screens?.find(entry => entry.id === store.selectedScreen);
+    const screen =
+      store.selectedScreen === null ? undefined : store.mdoc.screens?.find(entry => entry.id === store.selectedScreen);
     return !!screen && !screenProp(screen, store.mdoc.props);
   };
   /** The prop pill shows for the selection's Move and Scale; it has nothing to say about a turn. */
@@ -211,7 +306,10 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     propFramePillRow.style.display = surfaceGizmoSelected() && store.gizmoMode !== 'rotate' ? 'flex' : 'none';
     propFramePill.refresh();
   }
-  const editSelection = (): { kind: 'control points' | 'edges' | 'patches' | 'props' | 'light' | 'mixed selection'; readOnly: boolean } | null => {
+  const editSelection = (): {
+    kind: 'control points' | 'edges' | 'patches' | 'props' | 'light' | 'mixed selection';
+    readOnly: boolean;
+  } | null => {
     const counts = editSelectionCounts().filter(selection => selection.count > 0);
     if (counts.length > 1) return { kind: 'mixed selection', readOnly: counts.every(selection => selection.readOnly) };
     if (editPropsSelected()) return { kind: 'props', readOnly: false };
@@ -251,9 +349,21 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   const editPickBar = toggleBar<'point' | 'edge' | 'patch' | 'prop'>(
     [
       { value: 'point', label: 'Point', title: 'Allow ordinary clicks and box selection to select control points.' },
-      { value: 'edge', label: 'Edge', title: 'Allow clicks, double-clicks, and box selection to select edges and edge loops.' },
-      { value: 'patch', label: 'Patch', title: 'Allow clicks, double-clicks, and box selection to select patches and patch loops.' },
-      { value: 'prop', label: 'Prop', title: 'Allow clicks and box selection to select placed props. Off, clicks pass through to the mesh beneath.' },
+      {
+        value: 'edge',
+        label: 'Edge',
+        title: 'Allow clicks, double-clicks, and box selection to select edges and edge loops.',
+      },
+      {
+        value: 'patch',
+        label: 'Patch',
+        title: 'Allow clicks, double-clicks, and box selection to select patches and patch loops.',
+      },
+      {
+        value: 'prop',
+        label: 'Prop',
+        title: 'Allow clicks and box selection to select placed props. Off, clicks pass through to the mesh beneath.',
+      },
     ],
     kind => store.editPickKinds[kind],
     kind => {
@@ -276,7 +386,15 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
 
   // The shared context every mode builder works in: the panel's deps plus the coordinator-owned host,
   // section factory, rebuild lifecycle, and persistent list widgets (ui/tool-panels/widgets.ts).
-  const ctx: ToolsContext = { ...deps, gui: rightGui, editSection, rebuildTools, updateCmdSheet, multiList, bridgeList };
+  const ctx: ToolsContext = {
+    ...deps,
+    gui: rightGui,
+    editSection,
+    rebuildTools,
+    updateCmdSheet,
+    multiList,
+    bridgeList,
+  };
   const createTools = createCreateTools(ctx);
   const retopologyTools = createRetopologyTools(ctx);
   const labelTools = createLabelTools(ctx);
@@ -285,14 +403,26 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
 
   /** The library/special-add stack is the empty-selection state, not a header over selected-item details. */
   function propLaunchersVisible(): boolean {
-    return store.currentMode === 'props'
-      && store.selectedProp === null && store.selectedRefProp === null && store.multiSel.length === 0
-      && store.selectedLight === null && store.selectedRefLight === null
-      && store.selectedRail === null && store.selectedGem === null && store.selectedLine === null
-      && store.selectedScreen === null && store.selectedRefScreen === null
+    return (
+      store.currentMode === 'props' &&
+      store.selectedProp === null &&
+      store.selectedRefProp === null &&
+      store.multiSel.length === 0 &&
+      store.selectedLight === null &&
+      store.selectedRefLight === null &&
+      store.selectedRail === null &&
+      store.selectedGem === null &&
+      store.selectedLine === null &&
+      store.selectedScreen === null &&
+      store.selectedRefScreen === null &&
       // A HELD tool has replaced the launcher with its own panel, and its cancel is the way back — leaving the
       // Prop Library toggle above it would offer a second exit that puts nothing down.
-      && !store.armedProp && !store.railDrawing && !store.lineDrawing && !store.gemArmed && !viewport.lightPlacing;
+      !store.armedProp &&
+      !store.railDrawing &&
+      !store.lineDrawing &&
+      !store.gemArmed &&
+      !viewport.lightPlacing
+    );
   }
 
   function buildMixedEditSelectionTools() {
@@ -305,10 +435,17 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       const gizmoType = segmented<'move' | 'rotate'>(
         [
           { value: 'move', label: 'Move', title: 'Move every selected type together around the shared centroid (W).' },
-          { value: 'rotate', label: 'Rotate', title: 'Rotate every selected type together around the shared centroid (E).' },
+          {
+            value: 'rotate',
+            label: 'Rotate',
+            title: 'Rotate every selected type together around the shared centroid (E).',
+          },
         ],
-        () => store.gizmoMode === 'rotate' ? 'rotate' : 'move',
-        value => { edit.setGizmoMode(value); updateCmdSheet(); },
+        () => (store.gizmoMode === 'rotate' ? 'rotate' : 'move'),
+        value => {
+          edit.setGizmoMode(value);
+          updateCmdSheet();
+        },
       );
       gizmoType.setEnabled('rotate', edit.rotatableSelection());
       const gizmoTypeRow = document.createElement('div');
@@ -317,34 +454,55 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       section.$children.appendChild(gizmoTypeRow);
     }
     if (edit.canCopyVertices()) {
-      tip(section.add({ copy: edit.copySelectedVertices }, 'copy').name('copy all (Ctrl+C)'),
-        'Copy every selected mesh type and placed prop together. Reference geometry can be copied too.');
-      tip(section.add({ cut: edit.cutSelectedVertices }, 'cut').name('cut all (Ctrl+X)'),
-        'Copy the selection, then remove its authored geometry and placed props. Reference geometry remains read-only.');
+      tip(
+        section.add({ copy: edit.copySelectedVertices }, 'copy').name('copy all (Ctrl+C)'),
+        'Copy every selected mesh type and placed prop together. Reference geometry can be copied too.',
+      );
+      tip(
+        section.add({ cut: edit.cutSelectedVertices }, 'cut').name('cut all (Ctrl+X)'),
+        'Copy the selection, then remove its authored geometry and placed props. Reference geometry remains read-only.',
+      );
     }
     if (edit.canPasteVertices()) {
-      tip(section.add({ paste: edit.pasteSelectedVertices }, 'paste').name('paste (Ctrl+V)'),
-        'Place the copied geometry and props together with one click.');
+      tip(
+        section.add({ paste: edit.pasteSelectedVertices }, 'paste').name('paste (Ctrl+V)'),
+        'Place the copied geometry and props together with one click.',
+      );
     }
-    if (store.selectedCorner !== null || store.regionSel.length || store.edgeSel.length || store.cellSel.length
-      || store.selectedProp !== null || store.multiSel.length) {
+    if (
+      store.selectedCorner !== null ||
+      store.regionSel.length ||
+      store.edgeSel.length ||
+      store.cellSel.length ||
+      store.selectedProp !== null ||
+      store.multiSel.length
+    ) {
       const locked = edit.meshLockReason('delete');
-      const button = tip(section.add({ del: edit.deleteSelectedMesh }, 'del').name('delete all (Del)'),
-        locked ?? 'Delete every selected authored mesh part and placed prop. Reference geometry remains read-only.');
+      const button = tip(
+        section.add({ del: edit.deleteSelectedMesh }, 'del').name('delete all (Del)'),
+        locked ?? 'Delete every selected authored mesh part and placed prop. Reference geometry remains read-only.',
+      );
       if (locked) button.disable();
     }
     meshSelect.addLockControls(section, true);
     detail(section, 'choose a type to narrow the selection and open its tools');
     const noun: Record<EditSelectionKind, [string, string]> = {
-      point: ['point', 'points'], edge: ['edge', 'edges'], patch: ['patch', 'patches'], prop: ['prop', 'props'],
+      point: ['point', 'points'],
+      edge: ['edge', 'edges'],
+      patch: ['patch', 'patches'],
+      prop: ['prop', 'props'],
     };
     for (const item of selected) {
       const label = noun[item.kind][item.count === 1 ? 0 : 1];
-      tip(section.add({ choose: () => edit.narrowEditSelection(item.kind) }, 'choose')
-        .name(`${item.count} ${label}`), `Keep only the selected ${label} and open their type-specific toolbox.`);
+      tip(
+        section.add({ choose: () => edit.narrowEditSelection(item.kind) }, 'choose').name(`${item.count} ${label}`),
+        `Keep only the selected ${label} and open their type-specific toolbox.`,
+      );
     }
-    tip(section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect all (Esc)'),
-      'Clear every selected type and return to the general Edit toolbox.');
+    tip(
+      section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect all (Esc)'),
+      'Clear every selected type and return to the general Edit toolbox.',
+    );
     labelTools.buildAssignment();
   }
 
@@ -354,13 +512,21 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     const props = indices.map(index => store.mdoc.props?.[index]).filter(prop => !!prop);
     const lights = selectedSetLights(store).length;
     const section = editSection('prop-selected', 'Selection');
-    detail(section, props.length === 1 && !lights ? deps.shortPropName(props[0].name)
-      : `${props.length} prop${props.length === 1 ? '' : 's'}${lights ? ` + ${lights} light${lights === 1 ? '' : 's'}` : ''} selected`);
+    detail(
+      section,
+      props.length === 1 && !lights
+        ? deps.shortPropName(props[0].name)
+        : `${props.length} prop${props.length === 1 ? '' : 's'}${lights ? ` + ${lights} light${lights === 1 ? '' : 's'}` : ''} selected`,
+    );
     detail(section, 'Use the gizmo to move, rotate or scale the selection.');
-    tip(section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
-      'Keep this selection and open its full prop or group settings in Props mode.');
-    tip(section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
-      'Clear this selection and return to the general Edit tools.');
+    tip(
+      section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
+      'Keep this selection and open its full prop or group settings in Props mode.',
+    );
+    tip(
+      section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
+      'Clear this selection and return to the general Edit tools.',
+    );
     labelTools.buildAssignment();
   }
 
@@ -372,10 +538,14 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     const section = editSection('light-selected', 'Selection');
     detail(section, light?.name ?? `Light ${index + 1}`);
     detail(section, 'Use the gizmo to move the light.');
-    tip(section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
-      'Keep this light selected and open its full settings in Props mode.');
-    tip(section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
-      'Clear this selection and return to the general Edit tools.');
+    tip(
+      section.add({ open: deps.goToPropToolbox }, 'open').name('open in Props mode'),
+      'Keep this light selected and open its full settings in Props mode.',
+    );
+    tip(
+      section.add({ deselect: edit.deselectEdit }, 'deselect').name('deselect (Esc)'),
+      'Clear this selection and return to the general Edit tools.',
+    );
   }
 
   function rebuildTools() {
@@ -394,20 +564,32 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     // hide the persistent single-family transform bar. Rotation is still a valid mode and must survive this
     // rebuild (notably the rebuild requested by the E shortcut).
     const mixedCanRotate = store.currentMode === 'edit' && mixedEditSelection() && edit.rotatableSelection();
-    if (!canRotate && !mixedCanRotate && store.gizmoMode !== 'move') { store.gizmoMode = 'move'; viewport.setGizmoMode('move'); }
+    if (!canRotate && !mixedCanRotate && store.gizmoMode !== 'move') {
+      store.gizmoMode = 'move';
+      viewport.setGizmoMode('move');
+    }
     transformPillRow.style.display = canRotate ? 'flex' : 'none';
     const freePoint = store.currentMode === 'edit' && edit.selectedFreePoint();
     transformPill.setEnabled('scale', !freePoint);
-    if (freePoint && store.gizmoMode === 'scale') { store.gizmoMode = 'move'; viewport.setGizmoMode('move'); }
+    if (freePoint && store.gizmoMode === 'scale') {
+      store.gizmoMode = 'move';
+      viewport.setGizmoMode('move');
+    }
     transformPill.refresh();
     framePillLabel.textContent = frameLabel();
     // A selected trail transforms in World only: its own gizmo, not the mesh's Surface slide (docs/023).
-    const frameVisible = store.currentMode === 'edit' && cageActive() && hasMeshTransformSelection()
-      && !mixedEditSelection() && !viewport.edgeExtrusionStaged && !edit.selectedTrail();
+    const frameVisible =
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      hasMeshTransformSelection() &&
+      !mixedEditSelection() &&
+      !viewport.edgeExtrusionStaged &&
+      !edit.selectedTrail();
     framePillRow.style.display = frameVisible ? 'flex' : 'none';
     framePill.refresh();
     syncPropFrameRow();
-    transformSection.style.display = canRotate || frameVisible || propFramePillRow.style.display !== 'none' ? '' : 'none';
+    transformSection.style.display =
+      canRotate || frameVisible || propFramePillRow.style.display !== 'none' ? '' : 'none';
     // Users mode owns the whole dock while it is on: it is about the server, so neither the Scene block nor
     // the current mode's toolbox belongs under it (docs/038).
     if (deps.usersActive()) {
@@ -422,50 +604,112 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     showScene(info); // the Scene block (owned by the scene panel) is the Info-mode toolbox
     rightGui.domElement.style.display = info ? 'none' : '';
     if (info) return;
-    setModeTitle(rightGui, store.currentMode, store.currentMode === 'edit' && store.modelEditId
-      ? `Edit Mode · ${deps.modelEdit.activeName() ?? 'model'}`
-      : MODE_TITLE[store.currentMode]);
+    setModeTitle(
+      rightGui,
+      store.currentMode,
+      store.currentMode === 'edit' && store.modelEditId
+        ? `Edit Mode · ${deps.modelEdit.activeName() ?? 'model'}`
+        : MODE_TITLE[store.currentMode],
+    );
     rightGui.domElement.classList.toggle('sp-edit-tools', store.currentMode === 'edit');
     rightGui.domElement.classList.toggle('sp-effects-tools', store.currentMode === 'effects');
     editPickSection.style.display = 'none';
     editPickBar.refresh();
-    if (store.currentMode === 'play') { buildPlayTools(ctx); return; }
-    if (store.currentMode === 'sculpt') { buildSculptTools(ctx); return; }
+    if (store.currentMode === 'play') {
+      buildPlayTools(ctx);
+      return;
+    }
+    if (store.currentMode === 'sculpt') {
+      buildSculptTools(ctx);
+      return;
+    }
     if (store.currentMode === 'paint') return; // the Palette (mounted in $children) is the Tools content while painting
     if (store.currentMode === 'effects') return;
     if (store.currentMode === 'props') {
       // Routed off what is actually in hand rather than off `trickTool`, which outlives the object it named —
       // deleting the last rail used to leave the panel in a Tricks branch with nothing to draw.
-      if (store.lineDrawing || store.selectedLine !== null) propTools.buildLineTools(); // a prop line (docs/070)
-      else if (store.railDrawing || store.selectedRail !== null || store.selectedGem !== null || store.gemArmed) buildTrickTools(ctx);
+      if (store.lineDrawing || store.selectedLine !== null)
+        propTools.buildLineTools(); // a prop line (docs/070)
+      else if (store.railDrawing || store.selectedRail !== null || store.selectedGem !== null || store.gemArmed)
+        buildTrickTools(ctx);
       else if (store.selectedLight !== null || store.selectedRefLight !== null) propTools.buildLightTools();
-      else if (viewport.lightPlacing) propTools.buildLightPlacementTools(); // a held light presets before the click
+      else if (viewport.lightPlacing)
+        propTools.buildLightPlacementTools(); // a held light presets before the click
       else if (!buildSpecialPropTools(ctx)) propTools.buildPropTools();
       return;
     }
-    if (viewport.edgeExtrusionStaged) { buildExtrudePlacementTools(ctx); return; }
+    if (viewport.edgeExtrusionStaged) {
+      buildExtrudePlacementTools(ctx);
+      return;
+    }
     // A live selection OWNS the Edit toolbox: show its details/actions only, ending in Deselect. General creation
     // and surgery buttons appear only in the true empty-selection state below. Create Edge owns the panel while
     // drawing; once finished, its resulting selected edge chain gets the normal mesh-selection state.
-    if (pastePlacing()) { buildPastePlacementTools(ctx); return; }
-    if (store.bridgeRails !== null) { buildBridgeTools(ctx); return; }
-    if (store.createEdgeTool) { createTools.buildCreateEdgeTools(); return; }
-    if (store.surgeryTool === 'tube') { createTools.buildCreateTubeTools(); return; }
-    if (store.surgeryTool === 'grid') { createTools.buildCreateGridTools(); return; }
-    if (store.surgeryTool === 'trail') { createTools.buildTrailTools(); return; }
-    if (store.surgeryTool === 'patch' || store.surgeryTool === 'loopcut') { createTools.buildCreateEdgeTools(); return; }
-    if (store.weldTool === 'weld') { buildPointWeldTools(ctx); return; }
-    if (store.weldTool === 'edge-weld') { buildEdgeWeldTools(ctx); return; }
-    if (retopologyTools.isOpen()) { retopologyTools.build(); return; }
+    if (pastePlacing()) {
+      buildPastePlacementTools(ctx);
+      return;
+    }
+    if (store.bridgeRails !== null) {
+      buildBridgeTools(ctx);
+      return;
+    }
+    if (store.createEdgeTool) {
+      createTools.buildCreateEdgeTools();
+      return;
+    }
+    if (store.surgeryTool === 'tube') {
+      createTools.buildCreateTubeTools();
+      return;
+    }
+    if (store.surgeryTool === 'grid') {
+      createTools.buildCreateGridTools();
+      return;
+    }
+    if (store.surgeryTool === 'trail') {
+      createTools.buildTrailTools();
+      return;
+    }
+    if (store.surgeryTool === 'patch' || store.surgeryTool === 'loopcut') {
+      createTools.buildCreateEdgeTools();
+      return;
+    }
+    if (store.weldTool === 'weld') {
+      buildPointWeldTools(ctx);
+      return;
+    }
+    if (store.weldTool === 'edge-weld') {
+      buildEdgeWeldTools(ctx);
+      return;
+    }
+    if (retopologyTools.isOpen()) {
+      retopologyTools.build();
+      return;
+    }
 
     const mdoc = editMesh(store);
     // A trail's patches select as one, and the trail's own panel replaces the patch tools that would cut it.
-    if (store.currentMode === 'edit' && edit.selectedTrail()) { createTools.buildTrailTools(); return; }
-    if (store.currentMode === 'edit' && mixedEditSelection()) { buildMixedEditSelectionTools(); return; }
-    if ((store.selectedEdgeCrossing || store.selectedCoincidentVertices || cageActive()) && meshSelect.buildMeshSelectionTools(mdoc)) return;
+    if (store.currentMode === 'edit' && edit.selectedTrail()) {
+      createTools.buildTrailTools();
+      return;
+    }
+    if (store.currentMode === 'edit' && mixedEditSelection()) {
+      buildMixedEditSelectionTools();
+      return;
+    }
+    if (
+      (store.selectedEdgeCrossing || store.selectedCoincidentVertices || cageActive()) &&
+      meshSelect.buildMeshSelectionTools(mdoc)
+    )
+      return;
 
-    if (editPropsSelected()) { buildEditPropTools(); return; }
-    if (editLightSelected()) { buildEditLightTools(); return; }
+    if (editPropsSelected()) {
+      buildEditPropTools();
+      return;
+    }
+    if (editLightSelected()) {
+      buildEditLightTools();
+      return;
+    }
 
     // Nothing selected: this is the ONLY state that shows the non-specific Edit tools.
     editPickSection.style.display = '';
@@ -474,42 +718,70 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     labelTools.buildBrowser();
     if (edit.canPasteVertices()) {
       const clipboard = editSection('clipboard', 'Clipboard', false);
-      tip(clipboard.add({ paste: edit.pasteSelectedVertices }, 'paste').name('paste (Ctrl+V)'),
-        'Preview the clipboard over your mountain, then click to place its points, free edges, and surfaces.');
+      tip(
+        clipboard.add({ paste: edit.pasteSelectedVertices }, 'paste').name('paste (Ctrl+V)'),
+        'Preview the clipboard over your mountain, then click to place its points, free edges, and surfaces.',
+      );
     } else if (deps.propClipboard.canPaste()) {
       const clipboard = editSection('clipboard', 'Clipboard', false);
       const count = deps.propClipboard.count();
-      tip(clipboard.add({ paste: () => void deps.propClipboard.paste() }, 'paste')
-        .name(`paste ${count} prop${count === 1 ? '' : 's'} (Ctrl+V)`),
-      'Hold the copied props on the cursor in Props mode, then click to place them.');
+      tip(
+        clipboard
+          .add({ paste: () => void deps.propClipboard.paste() }, 'paste')
+          .name(`paste ${count} prop${count === 1 ? '' : 's'} (Ctrl+V)`),
+        'Hold the copied props on the cursor in Props mode, then click to place them.',
+      );
     }
     if (edit.hiddenMeshCount() || edit.controlCageCount()) {
       const visibility = editSection('visibility', 'Visibility');
       if (edit.hiddenMeshCount()) {
         const parts = [
-          store.hiddenVertices.length ? `${store.hiddenVertices.length} ${store.hiddenVertices.length === 1 ? 'point' : 'points'}` : '',
-          store.hiddenEdges.length ? `${store.hiddenEdges.length} ${store.hiddenEdges.length === 1 ? 'edge' : 'edges'}` : '',
-          store.hiddenQuads.length ? `${store.hiddenQuads.length} ${store.hiddenQuads.length === 1 ? 'patch' : 'patches'}` : '',
-          store.refHiddenQuads.length ? `${store.refHiddenQuads.length} reference ${store.refHiddenQuads.length === 1 ? 'patch' : 'patches'}` : '',
-        ].filter(Boolean).join(' · ');
+          store.hiddenVertices.length
+            ? `${store.hiddenVertices.length} ${store.hiddenVertices.length === 1 ? 'point' : 'points'}`
+            : '',
+          store.hiddenEdges.length
+            ? `${store.hiddenEdges.length} ${store.hiddenEdges.length === 1 ? 'edge' : 'edges'}`
+            : '',
+          store.hiddenQuads.length
+            ? `${store.hiddenQuads.length} ${store.hiddenQuads.length === 1 ? 'patch' : 'patches'}`
+            : '',
+          store.refHiddenQuads.length
+            ? `${store.refHiddenQuads.length} reference ${store.refHiddenQuads.length === 1 ? 'patch' : 'patches'}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         detail(visibility, parts, 'hidden');
-        tip(visibility.add({ show: edit.showAllHidden }, 'show').name('show all hidden (Alt+H)'),
-          'Reveal everything hidden with H. An editor-only filter — the mountain is unchanged.');
+        tip(
+          visibility.add({ show: edit.showAllHidden }, 'show').name('show all hidden (Alt+H)'),
+          'Reveal everything hidden with H. An editor-only filter — the mountain is unchanged.',
+        );
       }
       if (edit.controlCageCount()) {
         const parts = [
-          store.controlCageEdges.length ? `${store.controlCageEdges.length} ${store.controlCageEdges.length === 1 ? 'edge' : 'edges'}` : '',
-          store.controlCageQuads.length ? `${store.controlCageQuads.length} ${store.controlCageQuads.length === 1 ? 'patch' : 'patches'}` : '',
-          store.refControlCageEdges.length ? `${store.refControlCageEdges.length} reference ${store.refControlCageEdges.length === 1 ? 'edge' : 'edges'}` : '',
-          store.refControlCageQuads.length ? `${store.refControlCageQuads.length} reference ${store.refControlCageQuads.length === 1 ? 'patch' : 'patches'}` : '',
-        ].filter(Boolean).join(' · ');
+          store.controlCageEdges.length
+            ? `${store.controlCageEdges.length} ${store.controlCageEdges.length === 1 ? 'edge' : 'edges'}`
+            : '',
+          store.controlCageQuads.length
+            ? `${store.controlCageQuads.length} ${store.controlCageQuads.length === 1 ? 'patch' : 'patches'}`
+            : '',
+          store.refControlCageEdges.length
+            ? `${store.refControlCageEdges.length} reference ${store.refControlCageEdges.length === 1 ? 'edge' : 'edges'}`
+            : '',
+          store.refControlCageQuads.length
+            ? `${store.refControlCageQuads.length} reference ${store.refControlCageQuads.length === 1 ? 'patch' : 'patches'}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         detail(visibility, parts, 'control cages');
-        tip(visibility.add({ hide: edit.hideSubCages }, 'hide').name('hide control cages'),
-          'Hide every pinned edge and patch control cage; the coarse cage stays.');
+        tip(
+          visibility.add({ hide: edit.hideSubCages }, 'hide').name('hide control cages'),
+          'Hide every pinned edge and patch control cage; the coarse cage stays.',
+        );
       }
     }
     if (!cageActive()) return; // mesh surgery needs the control cage; Create Edge turns it on when armed
-
   }
 
   /** Show the bottom dock for the active mode: the Texture Library + Palette while painting, or the Prop
@@ -520,23 +792,33 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     // A library shows only in its own mode, and only if its remembered open intent is set — so returning to Paint
     // / Props reopens the library if it was open before. The tool-box toggle + the panel's ✕ update that intent.
     // A texture pick outranks that rule: it is raised from Edit mode and owns the panel until it resolves.
-    if (library.picking) { /* the pick holds the panel open, whatever mode we are in */ }
-    else if (painting && store.libraryWanted) library.show();
+    if (library.picking) {
+      /* the pick holds the panel open, whatever mode we are in */
+    } else if (painting && store.libraryWanted) library.show();
     else library.hide();
     if (painting) palette.setLibraryOpen(store.libraryWanted);
     else clearPaintSel(); // leaving paint also drops the cell selection
-    if (propping) { if (store.propLibWanted) propLib.show(); else propLib.hide(); } else propLib.hide(); // leaving props hides it
+    if (propping) {
+      if (store.propLibWanted) propLib.show();
+      else propLib.hide();
+    } else propLib.hide(); // leaving props hides it
     syncPropLibBtn();
     syncDockTabs(); // the same rule's other half: a hidden library offers its pull-up tab in its own mode
     propLibToggle.style.display = propLaunchersVisible() ? 'block' : 'none';
     propTools.updatePropPreview(); // show the held/selected prop preview in Props mode, hide it otherwise
     // A held paste stays held while Props stays up; leaving Props puts it down with everything else.
     if (!(propping && deps.propClipboard.placing())) {
-      viewport.setPropArmed(propping && store.armedProp // an armed prop places (and ghosts) only in Props mode
-        ? { level: store.armedProp.level, model: store.armedProp.model, baseOffset: propBaseOffset(store.armedProp.level, store.armedProp.model) }
-        : null);
+      viewport.setPropArmed(
+        propping && store.armedProp // an armed prop places (and ghosts) only in Props mode
+          ? {
+              level: store.armedProp.level,
+              model: store.armedProp.model,
+              baseOffset: propBaseOffset(store.armedProp.level, store.armedProp.model),
+            }
+          : null,
+      );
     }
-    palette.setVisible(painting);   // the Palette shows while painting
+    palette.setVisible(painting); // the Palette shows while painting
     updateCmdSheet();
   }
 

@@ -2,16 +2,24 @@ import { randomUUID } from 'node:crypto';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { canonicalJson } from '../../core/doc/canonical';
 import { documentDiff, revertAssignments, type RevertScope } from '../../core/doc/compare';
+import { digestDocument, textHash, updateDigest, TOPOLOGY_SECTION, type DocumentDigest } from '../../core/doc/digest';
 import {
-  digestDocument, textHash, updateDigest, TOPOLOGY_SECTION, type DocumentDigest,
-} from '../../core/doc/digest';
-import {
-  globalRegister, objectFieldOf, objectFieldRegisters, readRegister, sectionRegisters, writeRegister,
-  type RegisterKey, type RegisterValue,
+  globalRegister,
+  objectFieldOf,
+  objectFieldRegisters,
+  readRegister,
+  sectionRegisters,
+  writeRegister,
+  type RegisterKey,
+  type RegisterValue,
 } from '../../core/doc/registers';
 import { applyTopologyDelta, type TopologyDelta } from '../../core/doc/topology-delta';
 import {
-  ProjectConflictError, onProjectWritten, openProject, saveRoomDocument, type ProjectSnapshot,
+  ProjectConflictError,
+  onProjectWritten,
+  openProject,
+  saveRoomDocument,
+  type ProjectSnapshot,
 } from '../projects';
 import { createLogger } from '../log';
 
@@ -241,18 +249,32 @@ export async function joinRoom(projectId: string): Promise<Room> {
   const already = opening.get(projectId);
   if (already) return already;
   watchExternalWrites();
-  const open = openProject(projectId).then(snapshot => {
-    const base = snapshot.project.revision;
-    const made: Room = {
-      projectId, doc: snapshot.document, digest: null, stale: new Set(),
-      at: 0, id: `${storedRoom(base)}.${randomUUID().slice(0, 8)}`, base,
-      stamps: new Map(), authors: new Map(), topologyAt: 0, replacedAt: 0, log: [], landed: new Map(),
-      since: 0, timer: null,
-      writing: null, wrote: base,
-    };
-    rooms.set(projectId, made);
-    return made;
-  }).finally(() => opening.delete(projectId));
+  const open = openProject(projectId)
+    .then(snapshot => {
+      const base = snapshot.project.revision;
+      const made: Room = {
+        projectId,
+        doc: snapshot.document,
+        digest: null,
+        stale: new Set(),
+        at: 0,
+        id: `${storedRoom(base)}.${randomUUID().slice(0, 8)}`,
+        base,
+        stamps: new Map(),
+        authors: new Map(),
+        topologyAt: 0,
+        replacedAt: 0,
+        log: [],
+        landed: new Map(),
+        since: 0,
+        timer: null,
+        writing: null,
+        wrote: base,
+      };
+      rooms.set(projectId, made);
+      return made;
+    })
+    .finally(() => opening.delete(projectId));
   opening.set(projectId, open);
   return open;
 }
@@ -301,8 +323,14 @@ export function assign(room: Room, changes: readonly RegisterAssignment[], by = 
   for (const [key, value] of changes) {
     const held = readRegister(room.doc, key);
     const outcome = writeRegister(room.doc, key, value);
-    if (outcome === 'retired') { retired.push(key); continue; }
-    if (outcome === 'refused') { refused.push(key); continue; }
+    if (outcome === 'retired') {
+      retired.push(key);
+      continue;
+    }
+    if (outcome === 'refused') {
+      refused.push(key);
+      continue;
+    }
     if (holdsAlready(held, value)) continue;
     landed.push([key, value]);
     if (by) credit(room, key, held, value, by);
@@ -351,7 +379,7 @@ const LANDED_REPLICAS = 1024;
 export function noteLanded(room: Room, replica: string, batch: number): void {
   if (!replica || !(batch > 0)) return;
   const held = room.landed.get(replica) ?? 0;
-  room.landed.delete(replica);                       // re-inserted last, so the oldest replica is pushed out first
+  room.landed.delete(replica); // re-inserted last, so the oldest replica is pushed out first
   room.landed.set(replica, Math.max(held, batch));
   if (room.landed.size > LANDED_REPLICAS) room.landed.delete(room.landed.keys().next().value!);
 }
@@ -360,7 +388,7 @@ export function noteLanded(room: Room, replica: string, batch: number): void {
 export const landedFrom = (room: Room, replica: string): number => room.landed.get(replica) ?? 0;
 
 /** The oldest sequence the retained log can rebuild from. */
-const retainedFrom = (room: Room): number => room.log.length ? room.log[0].at - 1 : room.at;
+const retainedFrom = (room: Room): number => (room.log.length ? room.log[0].at - 1 : room.at);
 
 /** What a map read off the file, with no room open, names as the room its sequence 0 belongs to: the stored
  *  revision, which is where whichever room opens from that file starts. */
@@ -410,7 +438,7 @@ export function stepsSince(room: Room, at: number, named?: string): RoomStep[] |
 export function registersWrittenBy(room: Room, by: string): RegisterKey[] {
   const wanted = by.trim().toLowerCase();
   if (!wanted) return [];
-  return [...room.authors].flatMap(([key, writer]) => writer.toLowerCase() === wanted ? [key] : []);
+  return [...room.authors].flatMap(([key, writer]) => (writer.toLowerCase() === wanted ? [key] : []));
 }
 
 /** Object fields somebody other than this participant last wrote — what a revert scoped to them keeps, even
@@ -418,7 +446,8 @@ export function registersWrittenBy(room: Room, by: string): RegisterKey[] {
 function fieldsWrittenByOthers(room: Room, by: string): RegisterKey[] {
   const wanted = by.trim().toLowerCase();
   return [...room.authors].flatMap(([key, writer]) =>
-    writer.toLowerCase() !== wanted && objectFieldOf(key) ? [key] : []);
+    writer.toLowerCase() !== wanted && objectFieldOf(key) ? [key] : [],
+  );
 }
 
 /** Everybody the room has credited a register to since it opened — who a revert may be scoped to. */
@@ -447,7 +476,8 @@ export interface RevertRequest {
 export function planRevert(room: Room, was: EditDoc, request: RevertRequest = {}): RegisterAssignment[] {
   const scope: RevertScope = {
     ...(request.by
-      ? { keys: registersWrittenBy(room, request.by), kept: fieldsWrittenByOthers(room, request.by) } : {}),
+      ? { keys: registersWrittenBy(room, request.by), kept: fieldsWrittenByOthers(room, request.by) }
+      : {}),
     ...(request.vertices?.length ? { vertices: request.vertices } : {}),
     ...(request.quads?.length ? { quads: request.quads } : {}),
   };
@@ -470,9 +500,11 @@ export function planRevert(room: Room, was: EditDoc, request: RevertRequest = {}
  * somebody wrote under the claim is overwritten by it exactly as a later batch would overwrite it. The claim
  * takes one sequence number and enters the log, so a tab that reconnects across it is handed the delta.
  */
-export function claimTopology(room: Room,
+export function claimTopology(
+  room: Room,
   claim: { ids: readonly string[]; at: number; delta: unknown; changes: readonly RegisterAssignment[] },
-  by = ''): ClaimResult {
+  by = '',
+): ClaimResult {
   // Drift: the claimant's base is not the room's structure, so only the whole document can settle it.
   const drifted = (): ClaimResult => ({ ok: false, at: room.at, document: room.doc });
   const lost = (): ClaimResult => {
@@ -528,8 +560,7 @@ export function roomDigest(room: Room): DocumentDigest {
 
 /** One section's registers, for a replica repairing exactly the chunk that diverged. The topology section is
  *  not register-shaped, so a divergence there is answered with the document instead. */
-export function roomSection(room: Room, section: string):
-  { registers: RegisterAssignment[] } | { document: EditDoc } {
+export function roomSection(room: Room, section: string): { registers: RegisterAssignment[] } | { document: EditDoc } {
   if (section === TOPOLOGY_SECTION) return { document: room.doc };
   return { registers: [...sectionRegisters(room.doc, section)] };
 }
@@ -537,9 +568,14 @@ export function roomSection(room: Room, section: string):
 // ---- durability -------------------------------------------------------------------------------------------
 
 function scheduleSnapshot(room: Room): void {
-  if (room.since >= roomPolicy.snapshotChanges) { void takeSnapshot(room); return; }
+  if (room.since >= roomPolicy.snapshotChanges) {
+    void takeSnapshot(room);
+    return;
+  }
   if (room.timer) clearTimeout(room.timer);
-  room.timer = setTimeout(() => { void takeSnapshot(room); }, roomPolicy.snapshotIdleMs);
+  room.timer = setTimeout(() => {
+    void takeSnapshot(room);
+  }, roomPolicy.snapshotIdleMs);
   room.timer.unref?.();
 }
 
@@ -553,7 +589,10 @@ function scheduleSnapshot(room: Room): void {
  *  newer document instead of writing: the same thing it does when it hears an external write in-process, and
  *  the same reason — that write replaced the mountain rather than assigning to it. */
 export function takeSnapshot(room: Room): Promise<unknown> {
-  if (room.timer) { clearTimeout(room.timer); room.timer = null; }
+  if (room.timer) {
+    clearTimeout(room.timer);
+    room.timer = null;
+  }
   if (!room.since) return room.writing ?? Promise.resolve();
   const taking = (room.writing ?? Promise.resolve())
     .then(async () => {
@@ -564,11 +603,16 @@ export function takeSnapshot(room: Room): Promise<unknown> {
       try {
         snapshot = await saveRoomDocument(room.projectId, room.doc, room.wrote);
       } catch (error) {
-        if (!(error instanceof ProjectConflictError)) { room.since = pending; throw error; }
+        if (!(error instanceof ProjectConflictError)) {
+          room.since = pending;
+          throw error;
+        }
         // Participants resync onto what landed rather than onto what we held.
         adoptOutsideWrite(room, error.snapshot.document, error.snapshot.project.revision);
-        log.warn(`${room.projectId} moved on to revision ${room.wrote} outside this server — `
-          + 'adopted it and dropped this snapshot');
+        log.warn(
+          `${room.projectId} moved on to revision ${room.wrote} outside this server — ` +
+            'adopted it and dropped this snapshot',
+        );
         return;
       }
       room.wrote = snapshot.project.revision;
@@ -581,8 +625,12 @@ export function takeSnapshot(room: Room): Promise<unknown> {
         if (room.digest) room.stale.add(globalRegister('name'));
       }
     })
-    .catch(error => { log.error(`the snapshot for ${room.projectId} failed`, { error }); })
-    .finally(() => { if (room.writing === taking) room.writing = null; });
+    .catch(error => {
+      log.error(`the snapshot for ${room.projectId} failed`, { error });
+    })
+    .finally(() => {
+      if (room.writing === taking) room.writing = null;
+    });
   room.writing = taking;
   return taking;
 }
@@ -597,7 +645,10 @@ export function takeSnapshot(room: Room): Promise<unknown> {
 export function discardRoom(projectId: string): void {
   const room = rooms.get(projectId);
   if (!room) return;
-  if (room.timer) { clearTimeout(room.timer); room.timer = null; }
+  if (room.timer) {
+    clearTimeout(room.timer);
+    room.timer = null;
+  }
   room.since = 0;
   rooms.delete(projectId);
 }

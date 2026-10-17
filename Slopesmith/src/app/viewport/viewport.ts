@@ -2,8 +2,26 @@ import * as THREE from 'three';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { MeshBVH } from 'three-mesh-bvh';
-import { type QuadMeshDoc, type PlacedProp, type AuthoredLight, type Rail, type Gem, type Screen, type PropLine, type V3 } from '../../core/doc/types';
-import { meshAdjacency, meshCageEdges, meshFromDoc, quadControlPoints, docEdgeHandles, INTERIOR_CP, type MeshAdjacency, type EdgeHandle } from '../../core/mesh/topology';
+import {
+  type QuadMeshDoc,
+  type PlacedProp,
+  type AuthoredLight,
+  type Rail,
+  type Gem,
+  type Screen,
+  type PropLine,
+  type V3,
+} from '../../core/doc/types';
+import {
+  meshAdjacency,
+  meshCageEdges,
+  meshFromDoc,
+  quadControlPoints,
+  docEdgeHandles,
+  INTERIOR_CP,
+  type MeshAdjacency,
+  type EdgeHandle,
+} from '../../core/mesh/topology';
 import type { BrushFalloff } from '../../core/doc/mountain';
 import { meshEdgeSegments } from '../../core/mesh/selection';
 import { findTJunctions } from '../../core/mesh/t-junctions';
@@ -19,8 +37,14 @@ import type { EquipmentAppearance, RideGear, SnowboardStance } from '../ride/gea
 import { stepCharacterGlow } from '../ride/character-glow';
 import { edgeIndices, quadIndices, vertexIndex } from '../state/mesh-names';
 import {
-  buildMountainPreview, buildMountainPreviewProgressive, previewMatchesTopology, previewMismatch,
-  refreshPreviewPatches, PATCH_VERTS, PREVIEW_RES, type PreviewData,
+  buildMountainPreview,
+  buildMountainPreviewProgressive,
+  previewMatchesTopology,
+  previewMismatch,
+  refreshPreviewPatches,
+  PATCH_VERTS,
+  PREVIEW_RES,
+  type PreviewData,
 } from '../../core/mesh/tessellation';
 import { patchDependency, patchVertexSpans, type NetChange } from '../../core/mesh/incremental';
 import { aiLineRatings, aiPathLines, courseCenters, DEFAULT_AI_SEED, finishFrame } from '../../core/doc/course';
@@ -29,9 +53,7 @@ import { normalizeBoardSound } from '../../core/audio/board-sound';
 import { normalizeAnnouncer } from '../../core/audio/announcer';
 import { normalizeRaceMusicArrangement } from '../../core/music/arrangement';
 import { preloadBoardAudio } from '../ride/board-audio';
-import {
-  preloadAuthoredRideMusic, preloadReferenceRideMusic, rideMusicPlaybackEnabled,
-} from '../audio/ride-music';
+import { preloadAuthoredRideMusic, preloadReferenceRideMusic, rideMusicPlaybackEnabled } from '../audio/ride-music';
 import { setGameAudioVolume } from '../audio/runtime';
 import { sampleSpine } from '../../core/math/spine';
 import type { TexRef } from '../../core/paint/textures';
@@ -41,7 +63,9 @@ import type { AmbientSoundSource } from './scene/ambient-sound';
 import { normalizeEnvironmentBed } from '../../core/audio/environment';
 import { authoredOwnerKey, referenceOwnerKey } from './scene/prop-sound';
 import {
-  authoredAmbientEvent, authoredAmbientRecord, AUTHORED_AMBIENT_DEFAULT_M,
+  authoredAmbientEvent,
+  authoredAmbientRecord,
+  AUTHORED_AMBIENT_DEFAULT_M,
 } from '../../core/effects/external-sound';
 import type { LightRig } from '../../core/reference/lights';
 import type { PlacedLight } from '../../core/lighting/sign-lights';
@@ -50,7 +74,9 @@ import { lightToWorkingSpace } from '../../core/lighting/color-space';
 import { memberWorldPos, type GroupDef } from '../../core/reference/groups';
 import { groupMemberKey, groupMemberProp } from '../../core/props/defaults';
 import {
-  referenceEffectInstanceIndices, referenceSplineOriginalIndex, type ReferenceEffectsData,
+  referenceEffectInstanceIndices,
+  referenceSplineOriginalIndex,
+  type ReferenceEffectsData,
 } from '../../core/reference/effects';
 import type { EffectNode, EffectsDocument } from '../../core/effects/document';
 import { authoredMotionPathIdFromSpline } from '../../core/effects/authoring';
@@ -60,17 +86,53 @@ import { runDiagnosticPhase, runDiagnosticPhaseAsync } from '../net/diagnostics'
 import type { SharedCameraView } from '../../core/session/screen-share';
 import { nearestSkyWorld, type SkyPreviewTarget } from '../sky/preview';
 
-import { type CellSpeedTint, type GizmoFrame, type GizmoMode, type PropGizmoFrame, type MeshSelectionState, type Mode, type RotationSnapStep, type ShadeMode, type SnapStep, type ViewState, type PickResult, type ViewportCallbacks, type EditTransformTarget } from './types';
-export type { GizmoFrame, GizmoMode, PropGizmoFrame, MeshSelectionState, Mode, RotationSnapStep, ShadeMode, SnapStep, ViewState, PickResult, ViewportCallbacks, MeshControlPointId };
-import { TOUCH_NONE, REF_LOAD_OFFSET_X, CAGE_EDGE_SEG, CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, LOOP_RENDER_ORDER, LIVE_EDIT_FILL_COLOR, LIVE_EDIT_FILL_OPACITY, CTRL_CAGE_COLOR, SURFACE_POLY_OFFSET } from './constants';
+import {
+  type CellSpeedTint,
+  type GizmoFrame,
+  type GizmoMode,
+  type PropGizmoFrame,
+  type MeshSelectionState,
+  type Mode,
+  type RotationSnapStep,
+  type ShadeMode,
+  type SnapStep,
+  type ViewState,
+  type PickResult,
+  type ViewportCallbacks,
+  type EditTransformTarget,
+} from './types';
+export type {
+  GizmoFrame,
+  GizmoMode,
+  PropGizmoFrame,
+  MeshSelectionState,
+  Mode,
+  RotationSnapStep,
+  ShadeMode,
+  SnapStep,
+  ViewState,
+  PickResult,
+  ViewportCallbacks,
+  MeshControlPointId,
+};
+import {
+  TOUCH_NONE,
+  REF_LOAD_OFFSET_X,
+  CAGE_EDGE_SEG,
+  CAGE_INTERIOR_COLOR,
+  CAGE_BOUNDARY_COLOR,
+  LOOP_RENDER_ORDER,
+  LIVE_EDIT_FILL_COLOR,
+  LIVE_EDIT_FILL_OPACITY,
+  CTRL_CAGE_COLOR,
+  SURFACE_POLY_OFFSET,
+} from './constants';
 import { Stage, type GizmoKind } from './stage';
 import { createRailsLayer, type RailsLayer } from './scene/rails';
 import { createPropLinesLayer, type PropLinesLayer } from './scene/prop-lines';
 import { createCourseMarkersLayer, ANCHOR_HANDLE_LIFT, type CourseMarkersLayer } from './scene/course-markers';
 import { createPeersLayer, type PeerMarks, type PeersLayer } from './scene/peers';
-import {
-  createRemotePlayersLayer, type ActiveMapPlayer, type RemotePlayersLayer,
-} from './scene/remote-players';
+import { createRemotePlayersLayer, type ActiveMapPlayer, type RemotePlayersLayer } from './scene/remote-players';
 import { createAiPathsLayer, type AiPathsLayer } from './scene/ai-paths';
 import { createEdgeLayer, type CreateEdgeLayer } from './tools/create-edge';
 import { createGemsLayer, type GemsLayer } from './scene/gems';
@@ -82,7 +144,11 @@ import { sceneDirFromGlareAzEl, type GodRayCourse } from '../../core/lighting/go
 import { createSky, type SkyLayer, type SkyView } from './scene/sky';
 import { createSnowfallLayer, type SnowfallLayer } from './scene/snowfall';
 import {
-  createRangeCull, DEFAULT_DRAW_DISTANCE, drawDistanceMetres, type DrawDistance, type RangeCull,
+  createRangeCull,
+  DEFAULT_DRAW_DISTANCE,
+  drawDistanceMetres,
+  type DrawDistance,
+  type RangeCull,
 } from './scene/range-cull';
 import { createPropAssets } from './scene/prop-assets';
 import { setCutoutAlphaToCoverage } from '../props/texture-alpha';
@@ -100,7 +166,10 @@ import { createCameraController, type CameraController } from './camera/controll
 import { createRideLayer, type RideLayer } from './scene/ride';
 import { createTileMaterials, type TileArrayBank, type TileMaterials } from './mesh/tile-materials';
 import {
-  buildPatchSliceAttribute, buildReferenceBatchLayout, mergeReferenceBatchGroups, type ReferenceBatchChunk,
+  buildPatchSliceAttribute,
+  buildReferenceBatchLayout,
+  mergeReferenceBatchGroups,
+  type ReferenceBatchChunk,
 } from './mesh/reference-batching';
 import { createTerrainLayer, type TerrainLayer, type TerrainLightOptions } from './mesh/terrain';
 import { rideTree, type TreeGeometry } from './mesh/surface-trees';
@@ -110,7 +179,9 @@ import { createSpeedShade, type SpeedShade } from './mesh/speed-shade';
 import { courseSpeedLines, referenceSpeedLines } from '../ride/mountain-speed';
 import { createReferenceDecor, type ReferenceDecor } from './scene/reference-decor';
 import {
-  createReferenceEffectsLayer, type ReferenceEffectsLayer, type ReferenceSplineMotionInfo,
+  createReferenceEffectsLayer,
+  type ReferenceEffectsLayer,
+  type ReferenceSplineMotionInfo,
   type SplineMotionCommand,
 } from './scene/reference-effects';
 import { createParticleVolumesLayer, type ParticleVolumesLayer } from './scene/particle-volumes';
@@ -126,7 +197,12 @@ import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch'
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
 import { createGridToolLayer, type GridToolLayer } from './tools/create-grid';
 import { createTrailToolLayer, type TrailShape, type TrailToolLayer } from './tools/create-trail';
-import { createPathHandlesLayer, type PathHandleSide, type PathHandlesLayer, type ShownPath } from './scene/path-handles';
+import {
+  createPathHandlesLayer,
+  type PathHandleSide,
+  type PathHandlesLayer,
+  type ShownPath,
+} from './scene/path-handles';
 import { createPropDeformLayer, type PropDeformLayer } from './scene/prop-deform';
 import { createCourseDrawLayer, type CourseDrawHandlers, type CourseDrawLayer } from './tools/course-draw';
 import { fadeObject } from './shared/fade';
@@ -137,9 +213,7 @@ import { viewportCursor, type ArmedPlacement } from './cursor';
 import type { LocalPlayerPose, PlayerPose, PlayerTransform, PlayerVec3 } from '../../core/session/player-pose';
 import { createPlayerPosePublisher } from '../net/player-publisher';
 import { createGpuFrameTimer, type GpuFrameTimer } from './gpu-timer';
-import {
-  createVideoBillboard, type VideoBillboard, type VideoPlaybackResult,
-} from './scene/video-billboard';
+import { createVideoBillboard, type VideoBillboard, type VideoPlaybackResult } from './scene/video-billboard';
 import type { RideEvent } from '../../core/session/ride-event';
 import { updateVisibleWorldMatrices } from './scene/visible-matrices';
 
@@ -152,7 +226,14 @@ const STUDIO_TOTAL = 3.7;
 const COURSE_DRAW_FADE = 0.25;
 
 /** The single-anchor gizmos a drop line hangs from (docs/012 · Drop lines); a prop SET draws one per member. */
-const DROP_LINE_KINDS: ReadonlySet<GizmoKind> = new Set<GizmoKind>(['prop', 'light', 'railnode', 'linenode', 'gem', 'screen']);
+const DROP_LINE_KINDS: ReadonlySet<GizmoKind> = new Set<GizmoKind>([
+  'prop',
+  'light',
+  'railnode',
+  'linenode',
+  'gem',
+  'screen',
+]);
 
 /** Stable scene-layer label for the low-frequency transparent census. Prefer semantic ownership over a GLTF
  * child mesh name so a field of riders reads as one cause rather than dozens of one-off primitives. */
@@ -195,11 +276,11 @@ export class Viewport {
   readonly sel: MeshSelectionState;
   /** Layer controllers (each owns its scene objects + data; the shell routes input + selection to them). */
   readonly viewGridLayer: ViewGridLayer; // optional XYZ world-coordinate reference grid (view-only)
-  private viewGridOn = false;            // remembered preference; effectively visible only in orthographic view
+  private viewGridOn = false; // remembered preference; effectively visible only in orthographic view
   private viewGridStepValue: SnapStep = 5;
-  private snapOn = false;                 // global move + placement grid snap
+  private snapOn = false; // global move + placement grid snap
   private snapStepValue: SnapStep = 5;
-  private pointerAlt = false;             // Alt on the latest pointer event (independentDrag)
+  private pointerAlt = false; // Alt on the latest pointer event (independentDrag)
   private rotationSnapStepValue: RotationSnapStep = 15;
   readonly assets = createPropAssets(); // shared prop-model geometry / group-def / outline caches (props + gems + reference)
   readonly rails: RailsLayer;
@@ -207,7 +288,7 @@ export class Viewport {
   readonly createEdge: CreateEdgeLayer;
   private createEdgePreviewListener: (() => void) | null = null;
   readonly gems: GemsLayer;
-  readonly screens: ScreensLayer;   // video screens (docs/051): authored rectangles + the reference's own
+  readonly screens: ScreensLayer; // video screens (docs/051): authored rectangles + the reference's own
   readonly lights: LightsLayer;
   readonly glints: GlintLayer; // the runtime sparkle a glow light draws — authored and reference (docs/047)
   readonly godRays: GodRayLayer; // the sun's celestial glare fan, off unless a course authors one (docs/049)
@@ -244,38 +325,90 @@ export class Viewport {
   readonly remotePlayers: RemotePlayersLayer; // camera/rider avatars for every other session on this mountain
   readonly referenceEffects: ReferenceEffectsLayer; // shared particles + read-only graph preview + Play triggers
   readonly particleVolumes: ParticleVolumesLayer; // standalone PBD fog banks (not SSF emitter graphs)
-  get renderer() { return this.stage.renderer; }
-  get scene() { return this.stage.scene; }
-  get camera() { return this.stage.camera; }
-  set camera(c: THREE.PerspectiveCamera | THREE.OrthographicCamera) { this.stage.camera = c; }
-  get controls() { return this.stage.controls; }
-  private get perspCam() { return this.stage.perspCam; }
-  private get orthoCam() { return this.stage.orthoCam; }
-  private set orthoCam(c: THREE.OrthographicCamera | null) { this.stage.orthoCam = c; }
-  private get isOrtho() { return this.stage.isOrtho; }
-  private set isOrtho(v: boolean) { this.stage.isOrtho = v; }
-  private get orthoHalfH() { return this.stage.orthoHalfH; }
-  private set orthoHalfH(v: number) { this.stage.orthoHalfH = v; }
-  private get authoredFar() { return this.stage.authoredFar; }
-  private set authoredFar(v: number) { this.stage.authoredFar = v; }
-  private get gizmo() { return this.stage.gizmo; }
-  private get gizmoKind() { return this.stage.gizmoKind; }
-  private set gizmoKind(v: GizmoKind | null) { this.stage.gizmoKind = v; }
-  private get gizmoKnot() { return this.stage.gizmoKnot; }
-  private set gizmoKnot(v: number) { this.stage.gizmoKnot = v; }
+  get renderer() {
+    return this.stage.renderer;
+  }
+  get scene() {
+    return this.stage.scene;
+  }
+  get camera() {
+    return this.stage.camera;
+  }
+  set camera(c: THREE.PerspectiveCamera | THREE.OrthographicCamera) {
+    this.stage.camera = c;
+  }
+  get controls() {
+    return this.stage.controls;
+  }
+  private get perspCam() {
+    return this.stage.perspCam;
+  }
+  private get orthoCam() {
+    return this.stage.orthoCam;
+  }
+  private set orthoCam(c: THREE.OrthographicCamera | null) {
+    this.stage.orthoCam = c;
+  }
+  private get isOrtho() {
+    return this.stage.isOrtho;
+  }
+  private set isOrtho(v: boolean) {
+    this.stage.isOrtho = v;
+  }
+  private get orthoHalfH() {
+    return this.stage.orthoHalfH;
+  }
+  private set orthoHalfH(v: number) {
+    this.stage.orthoHalfH = v;
+  }
+  private get authoredFar() {
+    return this.stage.authoredFar;
+  }
+  private set authoredFar(v: number) {
+    this.stage.authoredFar = v;
+  }
+  private get gizmo() {
+    return this.stage.gizmo;
+  }
+  private get gizmoKind() {
+    return this.stage.gizmoKind;
+  }
+  private set gizmoKind(v: GizmoKind | null) {
+    this.stage.gizmoKind = v;
+  }
+  private get gizmoKnot() {
+    return this.stage.gizmoKnot;
+  }
+  private set gizmoKnot(v: number) {
+    this.stage.gizmoKnot = v;
+  }
   /** Which start/finish flag the gizmo currently holds, read off the handle itself rather than tracked
    *  alongside — there are exactly two and they are never ambiguous. */
   private get gizmoAnchor(): 'start' | 'finish' | null {
     const which = this.gizmo.object?.userData.anchor;
     return which === 'start' || which === 'finish' ? which : null;
   }
-  private get gizmoDir() { return this.stage.gizmoDir; }
-  private set gizmoDir(v: string) { this.stage.gizmoDir = v; }
-  private get worldRoot() { return this.stage.worldRoot; }
-  private get refRoot() { return this.stage.refRoot; }
-  private get ray() { return this.stage.ray; }
-  private get container() { return this.stage.container; }
-  private get cb() { return this.stage.cb; }
+  private get gizmoDir() {
+    return this.stage.gizmoDir;
+  }
+  private set gizmoDir(v: string) {
+    this.stage.gizmoDir = v;
+  }
+  private get worldRoot() {
+    return this.stage.worldRoot;
+  }
+  private get refRoot() {
+    return this.stage.refRoot;
+  }
+  private get ray() {
+    return this.stage.ray;
+  }
+  private get container() {
+    return this.stage.container;
+  }
+  private get cb() {
+    return this.stage.cb;
+  }
   // The gizmo's transform gestures — the World / Local / Surface frame pill, the W / E / R mode switch, and the
   // frozen-snapshot rotate / scale / slide drags — live in TransformLayer (this.transforms); the shell keeps
   // selection seating + the onGizmoChange routing.
@@ -308,8 +441,12 @@ export class Viewport {
   // hidden-quad index filter and the reference terrain's own material paths. These accessors let the
   // existing method bodies keep reading `this.terrain` / `this.preview` while the storage lives on the layer.
   readonly terrainLayer: TerrainLayer;
-  private get terrain() { return this.terrainLayer.terrain; }
-  private get preview() { return this.terrainLayer.preview; }
+  private get terrain() {
+    return this.terrainLayer.terrain;
+  }
+  private get preview() {
+    return this.terrainLayer.preview;
+  }
   // Model editing: while a model is the edit substrate, the MOUNTAIN renders through this secondary terrain
   // layer — the same tiles / tint / sun treatment as the primary, so a session changes nothing about how the
   // surrounding world reads (Hide covers decluttering). Placement tools (create patch / tube endpoints)
@@ -320,7 +457,9 @@ export class Viewport {
   private modelContextOn = false;
   private terrainLightOpts: TerrainLightOptions | null = null; // replayed into the context layer on session enter
   private terrainBakedOn = false;
-  private get placementSurface() { return this.modelContextOn && this.contextLayer ? this.contextLayer.terrain : this.terrain; }
+  private get placementSurface() {
+    return this.modelContextOn && this.contextLayer ? this.contextLayer.terrain : this.terrain;
+  }
   /** Loaded real tiles + the lit / unlit materials that wrap them, keyed by texture ref, kept across rebuilds
    *  (TileMaterials, shared by the authored terrain, the reference terrain and the paint ghost). */
   readonly tiles: TileMaterials;
@@ -341,7 +480,7 @@ export class Viewport {
   // the derived AI opponent lines (scene/ai-paths — what AIP.json ships) + the reference's own AIP network,
   // shown together on the "Show AI paths" toggle (its own preference, separate from the course guide)
   private aiPathsLayer: AiPathsLayer;
-  private aiPathsOn = false;     // persisted Info preference; effective visibility is also gated by mode
+  private aiPathsOn = false; // persisted Info preference; effective visibility is also gated by mode
   private playAiPathsOn = false; // ...and Play's own, which is a separate preference (see applyAiPathsVisibility)
   private normalsOn = true; // persisted pink back-face tint that exposes each surface's normal direction
   // the texture-paint viewport visuals — the brush drape ghost, the amber painted-cell / reference-patch
@@ -391,15 +530,23 @@ export class Viewport {
   private propKey!: THREE.DirectionalLight;
   // The reference's flat Surface view must keep the same normal-direction warning as its textured tiles and
   // the authored terrain. This material is also the fallback while reference tile pages are still loading.
-  private referenceMat = tintBackfaces(new THREE.MeshLambertMaterial({
-    vertexColors: true, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET,
-  }));
+  private referenceMat = tintBackfaces(
+    new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      ...SURFACE_POLY_OFFSET,
+    }),
+  );
   private referencePickMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   // Lighting study: an UNLIT material so per-vertex colours (baked lightmap / recovered model / residual)
   // show as-is instead of being re-lit by the scene. While on, it takes over the reference solid.
-  private refLightMat = tintBackfaces(new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET,
-  }));
+  private refLightMat = tintBackfaces(
+    new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      ...SURFACE_POLY_OFFSET,
+    }),
+  );
   private refLightingOn = false;
   private refLightColors: Float32Array | null = null; // last lighting buffer for the reference, already in the working space (pre tint composite)
   // Authored-terrain SSX sun lighting (Stage D) lives in TerrainLayer (this.terrainLayer) with the mesh
@@ -410,12 +557,14 @@ export class Viewport {
   private refEffectsData: ReferenceEffectsData | null = null; // resource ids join authored effect paths to refSplines
   private refCourse: V3[] | null = null; // recovered SOP/AIP racing line (native editor frame), for the guide
   private refAnchors: RefCourseAnchors | null = null; // its own start / finish / podium — where a ride begins
-  private refLaps = DEFAULT_LAPS;        // passes the loaded reference level is raced over (core/doc/race)
+  private refLaps = DEFAULT_LAPS; // passes the loaded reference level is raced over (core/doc/race)
   private refShowoffSeconds = DEFAULT_SHOWOFF_SECONDS; // …and the clock its showoff event starts with
   /** Which event a Play launches (core/doc/race). Owned here rather than on the document because the same
    *  mountain hosts both: it is a setting of the test bench, pushed by the Play panel and persisted with it. */
   private _raceMode: RaceMode = DEFAULT_RACE_MODE;
-  get raceMode(): RaceMode { return this._raceMode; }
+  get raceMode(): RaceMode {
+    return this._raceMode;
+  }
   set raceMode(mode: RaceMode) {
     this._raceMode = mode;
     // Test setup is already a live preview of the selected mountain. Changing the event there must dispatch
@@ -450,11 +599,11 @@ export class Viewport {
   // orchestration + input dispatch.
   // gem pickups (docs/014) live in GemsLayer (this.gems); the router keeps the gem-tool pointer handling.
   private refBox: THREE.Box3Helper | null = null; // wireframe AABB drawn around a loaded reference
-  private refBoxVisible = false;                   // shown only while the Reference item is selected (set by the panel)
+  private refBoxVisible = false; // shown only while the Reference item is selected (set by the panel)
   private ownBox: THREE.Box3Helper | null = null; // wireframe AABB drawn around the authored mountain
-  private ownBoxVisible = true;                    // shown only while the Mountain item is selected (set by the panel)
-  private ownBounds: THREE.Box3 | null = null;     // authored data-space bounds, transformed only for proximity checks
-  private refBounds: THREE.Box3 | null = null;     // reference-native bounds; refRoot supplies its live placement
+  private ownBoxVisible = true; // shown only while the Mountain item is selected (set by the panel)
+  private ownBounds: THREE.Box3 | null = null; // authored data-space bounds, transformed only for proximity checks
+  private refBounds: THREE.Box3 | null = null; // reference-native bounds; refRoot supplies its live placement
   private nearestMountain: SkyPreviewTarget = 'authored';
   private nearestMountainListener: ((world: SkyPreviewTarget) => void) | null = null;
   private readonly nearestOwnWorldBounds = new THREE.Box3();
@@ -462,7 +611,7 @@ export class Viewport {
   private readonly nearestOwnCenter = new THREE.Vector3();
   private readonly nearestRefCenter = new THREE.Vector3();
   private readonly videoBillboard: VideoBillboard; // view-only shared Jukebox decoder and VideoTexture
-  private refCenter: V3 | null = null;            // native editor-space centre of the loaded reference (camera target)
+  private refCenter: V3 | null = null; // native editor-space centre of the loaded reference (camera target)
   // A draggable centre handle (scene-root, Z negated by hand like the knots / corner marker so the gizmo
   // never sees worldRoot's negative-scale Z) that translates the WHOLE reference (mesh + cage + box) by
   // driving refRoot.position. Shown only while the reference is selected.
@@ -480,9 +629,16 @@ export class Viewport {
   // exact current cubic cage edges. The expensive mountain-wide cage wires wait for pointer-up.
   private liveEditPreviewGroup = new THREE.Group();
   private liveEditCageGroup = new THREE.Group();
-  private liveEditFillMat = new THREE.MeshBasicMaterial({ color: LIVE_EDIT_FILL_COLOR, transparent: true,
-    opacity: LIVE_EDIT_FILL_OPACITY, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true,
-    polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
+  private liveEditFillMat = new THREE.MeshBasicMaterial({
+    color: LIVE_EDIT_FILL_COLOR,
+    transparent: true,
+    opacity: LIVE_EDIT_FILL_OPACITY,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -5,
+    polygonOffsetUnits: -5,
+  });
   private liveEditFill = new THREE.Mesh(new THREE.BufferGeometry(), this.liveEditFillMat);
   /**
    * Check every incremental patch write against a full rebuild of the same document, and throw on any
@@ -499,11 +655,19 @@ export class Viewport {
    *  which a standalone headset browser may not run while it is immersive. */
   onXrFrame: (() => void) | null = null;
   /** Sculpt brush footprint radius (world units); the router's ring overlay tracks it live. */
-  get brushRadius() { return this.router.brushRadius; }
-  set brushRadius(v: number) { this.router.brushRadius = v; }
+  get brushRadius() {
+    return this.router.brushRadius;
+  }
+  set brushRadius(v: number) {
+    this.router.brushRadius = v;
+  }
   /** Sculpt brush falloff; the ring overlay draws its shape as an inner half-strength circle. */
-  get brushFalloff() { return this.router.brushFalloff; }
-  set brushFalloff(v: BrushFalloff) { this.router.brushFalloff = v; }
+  get brushFalloff() {
+    return this.router.brushFalloff;
+  }
+  set brushFalloff(v: BrushFalloff) {
+    this.router.brushFalloff = v;
+  }
 
   /**
    * Where this tab's pointer meets the nearest authored or reference mountain — the cursor its active
@@ -520,14 +684,20 @@ export class Viewport {
     // cast is put back exactly as it was found: a placement ghost re-seated by a snap change reads it
     // between pointer moves.
     const { ray, pointer } = this.stage;
-    const origin = ray.ray.origin.clone(), direction = ray.ray.direction.clone();
-    const near = ray.near, far = ray.far, screen = pointer.clone();
+    const origin = ray.ray.origin.clone(),
+      direction = ray.ray.direction.clone();
+    const near = ray.near,
+      far = ray.far,
+      screen = pointer.clone();
     this.stage.castAt(at);
     const authoredHit = this.stage.pickSurface(this.terrain);
     const referenceHit = this.stage.pickSurface(this.reference);
-    const hit = authoredHit && referenceHit
-      ? (authoredHit.distance <= referenceHit.distance ? authoredHit : referenceHit)
-      : authoredHit ?? referenceHit;
+    const hit =
+      authoredHit && referenceHit
+        ? authoredHit.distance <= referenceHit.distance
+          ? authoredHit
+          : referenceHit
+        : (authoredHit ?? referenceHit);
     ray.ray.origin.copy(origin);
     ray.ray.direction.copy(direction);
     ray.near = near;
@@ -555,34 +725,44 @@ export class Viewport {
     this.gizmoReadout = createGizmoReadout(this.stage);
     this.viewGridLayer = createViewGridLayer(this.stage);
     // pickable surfaces for pivot / focus raycasts (terrain always; the reference when one is loaded)
-    this.stage.pickTargets = () => this.reference ? [this.terrain, this.reference] : [this.terrain];
+    this.stage.pickTargets = () => (this.reference ? [this.terrain, this.reference] : [this.terrain]);
     // seating any node re-frames a corner gizmo to the slope and drops the reference selection (any non-ref kind)
     this.stage.afterGizmoAttach = kind => {
-      if (kind !== 'reference') { this.refSelected = false; this.refMoveHandle.visible = false; }
+      if (kind !== 'reference') {
+        this.refSelected = false;
+        this.refMoveHandle.visible = false;
+      }
       this.transforms.applyGizmoFrame(); // corner / corners → the surface frame + restricted handles; every other kind → world
     };
     this.stage.reframeGizmo = () => this.transforms.applyGizmoFrame();
     // A Move drag freezes the slide surface. Rotate / Scale freeze member values around the shared anchor.
     // Release drops that snapshot and re-orients the next gizmo from the resulting geometry.
     this.stage.onGizmoDrag = dragging => {
-      if (this.gizmoKind === 'propdeform') { this.propDeform.dragging(dragging); return; }
+      if (this.gizmoKind === 'propdeform') {
+        this.propDeform.dragging(dragging);
+        return;
+      }
       // A course knot / flag drag starts on the deck the point stands on (see onGizmoChange).
       const courseObj = this.gizmoKind === 'knot' || this.gizmoKind === 'anchor' ? this.gizmo.object : undefined;
-      this.courseDragY = dragging && courseObj
-        ? courseObj.position.y - (this.gizmoKind === 'anchor' ? ANCHOR_HANDLE_LIFT : 0) : null;
+      this.courseDragY =
+        dragging && courseObj ? courseObj.position.y - (this.gizmoKind === 'anchor' ? ANCHOR_HANDLE_LIFT : 0) : null;
       if (this.gizmoKind === 'edgeextrusion') {
         if (dragging) this.gizmoReadout.begin(this.transforms.mode);
         else this.gizmoReadout.end();
         return;
       }
-      if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') { // a Create Grid draft, not the mesh
+      if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') {
+        // a Create Grid draft, not the mesh
         this.gridTool.gizmoDragging(dragging);
-        if (dragging) this.gizmoReadout.begin(this.transforms.mode); else this.gizmoReadout.end();
+        if (dragging) this.gizmoReadout.begin(this.transforms.mode);
+        else this.gizmoReadout.end();
         return;
       }
-      if (this.gizmoKind === 'trail') { // the whole trail: the knot layer transforms it, not the mesh transforms
+      if (this.gizmoKind === 'trail') {
+        // the whole trail: the knot layer transforms it, not the mesh transforms
         this.trailTool.wholeDragging(dragging);
-        if (dragging) this.gizmoReadout.begin(this.transforms.mode); else this.gizmoReadout.end();
+        if (dragging) this.gizmoReadout.begin(this.transforms.mode);
+        else this.gizmoReadout.end();
         this.cb.onTrailKnotDrag?.(dragging);
         return;
       }
@@ -590,16 +770,27 @@ export class Viewport {
         this.trailTool.knotDragging(dragging);
         this.cb.onTrailKnotDrag?.(dragging);
       }
-      if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner) this.cb.onPathHandleDrag?.(this.pathHandles.owner, dragging);
-      const meshTransform = this.gizmoKind === 'corner' || this.gizmoKind === 'corners' || this.gizmoKind === 'editmixed'
-        || this.gizmoKind === 'controlpoints' || this.gizmoKind === 'handle' || this.gizmoKind === 'cagehandle';
+      if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner)
+        this.cb.onPathHandleDrag?.(this.pathHandles.owner, dragging);
+      const meshTransform =
+        this.gizmoKind === 'corner' ||
+        this.gizmoKind === 'corners' ||
+        this.gizmoKind === 'editmixed' ||
+        this.gizmoKind === 'controlpoints' ||
+        this.gizmoKind === 'handle' ||
+        this.gizmoKind === 'cagehandle';
       // A drag on something locked is refused before any transform begins: the gizmo is held where it was for the
       // whole drag (onGizmoChange) and the host says why, so the refusal reads as one, not as a dead handle.
-      if (!dragging && this.heldGizmo) { this.holdGizmo(); this.heldGizmo = null; return; }
+      if (!dragging && this.heldGizmo) {
+        this.holdGizmo();
+        this.heldGizmo = null;
+        return;
+      }
       if (dragging && meshTransform && this.cb.onEditTransformBegin?.(this.editTransformTarget()) === false) {
         const obj = this.gizmo.object;
         this.heldGizmo = obj
-          ? { obj, position: obj.position.clone(), quaternion: obj.quaternion.clone(), scale: obj.scale.clone() } : null;
+          ? { obj, position: obj.position.clone(), quaternion: obj.quaternion.clone(), scale: obj.scale.clone() }
+          : null;
         return;
       }
       if (dragging) {
@@ -629,7 +820,7 @@ export class Viewport {
     this.aiPathsLayer = createAiPathsLayer(this.stage); // the derived AI opponent lines (Info "Show AI paths")
     this.createEdge = createEdgeLayer(this.stage);
     this.gems = createGemsLayer(this.stage, this.assets); // gem pickups (docs/014)
-    this.screens = createScreensLayer(this.stage);        // video screens (docs/051)
+    this.screens = createScreensLayer(this.stage); // video screens (docs/051)
     this.lights = createLightsLayer(this.stage); // authored + free local lights (docs/013)
     this.glints = createGlintLayer(this.stage); // the sparkle those lights (and a reference's) draw (docs/047)
     this.godRays = createGodRayLayer(this.stage); // the sun's beams, rebuilt per frame in screen space (docs/049)
@@ -659,34 +850,51 @@ export class Viewport {
       edgeHandle: () => this.meshHandle(),
     });
     this.loftPreview = createLoftPreviewLayer(this.stage, () => this.preview);
-    this.patchTool = createPatchToolLayer(this.stage, () => this.placementSurface, this.loftPreview, () => {
-      const vertex = this.picking.pickCorner();
-      const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
-      return pos ? { vertex, pos } : null;
-    });
-    this.tubeTool = createTubeToolLayer(this.stage, () => this.placementSurface, () => {
-      const vertex = this.picking.pickCorner();
-      const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
-      return pos ? { vertex, pos } : null;
-    });
+    this.patchTool = createPatchToolLayer(
+      this.stage,
+      () => this.placementSurface,
+      this.loftPreview,
+      () => {
+        const vertex = this.picking.pickCorner();
+        const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+        return pos ? { vertex, pos } : null;
+      },
+    );
+    this.tubeTool = createTubeToolLayer(
+      this.stage,
+      () => this.placementSurface,
+      () => {
+        const vertex = this.picking.pickCorner();
+        const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+        return pos ? { vertex, pos } : null;
+      },
+    );
     this.tubeTool.setListener(() => {
       this.cb.onCreateTubeAxisChange?.();
       this.createTubePreviewListener?.();
     });
-    this.gridTool = createGridToolLayer(this.stage, () => this.placementSurface, () => {
-      const vertex = this.picking.pickCorner();
-      const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
-      return pos ? { vertex, pos } : null;
-    });
+    this.gridTool = createGridToolLayer(
+      this.stage,
+      () => this.placementSurface,
+      () => {
+        const vertex = this.picking.pickCorner();
+        const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+        return pos ? { vertex, pos } : null;
+      },
+    );
     this.gridTool.setListener(() => {
       this.cb.onCreateGridChange?.();
       this.createGridPreviewListener?.();
     });
-    this.trailTool = createTrailToolLayer(this.stage, () => this.placementSurface, () => {
-      const vertex = this.picking.pickCorner();
-      const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
-      return pos ? { vertex, pos } : null;
-    });
+    this.trailTool = createTrailToolLayer(
+      this.stage,
+      () => this.placementSurface,
+      () => {
+        const vertex = this.picking.pickCorner();
+        const pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+        return pos ? { vertex, pos } : null;
+      },
+    );
     this.trailTool.setListener(() => this.createTrailPreviewListener?.());
     this.trailTool.setHost({
       append: pos => this.cb.onAppendTrailKnot?.(pos),
@@ -710,9 +918,23 @@ export class Viewport {
     this.edgeExtrusion = createEdgeExtrusionLayer(this.stage, {
       canBegin: () => {
         const onSelectionGizmo = (this.gizmoKind === 'corners' || this.gizmoKind === 'cagehandle') && !!this.gizmo.axis;
-        return this._mode === 'edit' && this.isMountain && this.cageLayer.cage && !!this.meshDoc && this.sel.edgeSel.length > 0
-          && !this.clipboardPlacement.active && !this.patchTool.active && !this.tubeTool.active && !this.gridTool.active && !this.trailTool.active && !this.surgery.tool && !this.weldTool.active
-          && !this.bridgePreview.active && !this.createEdge.armed && (onSelectionGizmo || this.picking.selectedEdgeAtPointer());
+        return (
+          this._mode === 'edit' &&
+          this.isMountain &&
+          this.cageLayer.cage &&
+          !!this.meshDoc &&
+          this.sel.edgeSel.length > 0 &&
+          !this.clipboardPlacement.active &&
+          !this.patchTool.active &&
+          !this.tubeTool.active &&
+          !this.gridTool.active &&
+          !this.trailTool.active &&
+          !this.surgery.tool &&
+          !this.weldTool.active &&
+          !this.bridgePreview.active &&
+          !this.createEdge.armed &&
+          (onSelectionGizmo || this.picking.selectedEdgeAtPointer())
+        );
       },
       selectedEdges: () => this.sel.edgeSel,
       selectedQuads: () => this.sel.cellSel,
@@ -728,20 +950,24 @@ export class Viewport {
       pickCorner: () => this.picking.pickCorner(),
       cornerPos: vertex => this.picking.cornerPos(vertex),
     });
-    this.cameraCtl = createCameraController(this.stage, {
-      active: () => this.viewGridOn,
-      toggle: () => this.cb.onToggleViewGrid?.(),
-      step: () => this.viewGridStepValue,
-      setStep: step => this.cb.onSetViewGridStep?.(step),
-      projectionChanged: () => this.applyViewGrid(),
-    }, {
-      active: () => this.snapOn,
-      toggle: () => this.cb.onToggleSnap?.(),
-      step: () => this.snapStepValue,
-      setStep: step => this.cb.onSetSnapStep?.(step),
-      rotationStep: () => this.rotationSnapStepValue,
-      setRotationStep: step => this.cb.onSetRotationSnapStep?.(step),
-    }); // navigation + the upper-right nav gizmo / projection + ortho-grid controls
+    this.cameraCtl = createCameraController(
+      this.stage,
+      {
+        active: () => this.viewGridOn,
+        toggle: () => this.cb.onToggleViewGrid?.(),
+        step: () => this.viewGridStepValue,
+        setStep: step => this.cb.onSetViewGridStep?.(step),
+        projectionChanged: () => this.applyViewGrid(),
+      },
+      {
+        active: () => this.snapOn,
+        toggle: () => this.cb.onToggleSnap?.(),
+        step: () => this.snapStepValue,
+        setStep: step => this.cb.onSetSnapStep?.(step),
+        rotationStep: () => this.rotationSnapStepValue,
+        setRotationStep: step => this.cb.onSetRotationSnapStep?.(step),
+      },
+    ); // navigation + the upper-right nav gizmo / projection + ortho-grid controls
     // test ride + Play setup: reads the terrain / reference / preview the shell still holds through getters.
     // RideLayer hides the non-target worldRoot branch only while the board is actually running.
     this.rideCtl = createRideLayer(this.stage, {
@@ -755,16 +981,25 @@ export class Viewport {
       onXrMixedRealityChange: on => this.cb.onXrMixedRealityChange?.(on),
       // The headset's laser stops on the first scene object it meets, as the eye would see it (docs/068). Particle
       // volumes are left out: their bounds enclose the props and ground the laser is usually aimed at.
-      pickSceneObject: () => this.scenePicking.pick({
-        props: 'effects', lights: true, sources: true, rails: true, lines: true, gems: true, screens: true, knots: true,
-      })?.hit ?? null,
+      pickSceneObject: () =>
+        this.scenePicking.pick({
+          props: 'effects',
+          lights: true,
+          sources: true,
+          rails: true,
+          lines: true,
+          gems: true,
+          screens: true,
+          knots: true,
+        })?.hit ?? null,
       getPreview: () => this.preview,
       getRails: () => this.rails.rails,
       getRefSplines: () => this.refSplines,
       getRefCourse: () => this.refCourse,
-      getCourseCheckpoints: () => (this.meshDoc?.course.knots ?? [])
-        .filter(knot => (knot.checkpointBonus ?? 0) > 0)
-        .map(knot => ({ pos: knot.pos, bonusSeconds: knot.checkpointBonus! })),
+      getCourseCheckpoints: () =>
+        (this.meshDoc?.course.knots ?? [])
+          .filter(knot => (knot.checkpointBonus ?? 0) > 0)
+          .map(knot => ({ pos: knot.pos, bonusSeconds: knot.checkpointBonus! })),
       getRefCheckpoints: () => this.refAnchors?.checkpoints ?? [],
       getRefStart: () => this.refAnchors?.start ?? null,
       getAiLines: () => {
@@ -785,15 +1020,20 @@ export class Viewport {
         const frame = finishFrame(d.course);
         return { pos: frame.pos, fwd: frame.fwd };
       },
-      getRefFinish: () => (this.refAnchors?.finish && this.refAnchors.finishFwd
-        ? { pos: this.refAnchors.finish, fwd: this.refAnchors.finishFwd } : null),
+      getRefFinish: () =>
+        this.refAnchors?.finish && this.refAnchors.finishFwd
+          ? { pos: this.refAnchors.finish, fwd: this.refAnchors.finishFwd }
+          : null,
       getRefAiPaths: () => this.refAiPaths,
       getBoardSound: () => normalizeBoardSound(this.meshDoc?.boardSound),
       getAnnouncer: () => normalizeAnnouncer(this.meshDoc?.announcer),
       getRaceMusic: () => this.meshDoc?.raceMusic ?? null,
       getReferenceSong: () => this.rideMusicSongs[this.refLevel] ?? '',
-      getRaceMusicArrangement: () => normalizeRaceMusicArrangement(this.meshDoc?.raceMusicArrangement,
-        this.meshDoc?.raceMusic ? 'linear-loop' : 'retail-graph'),
+      getRaceMusicArrangement: () =>
+        normalizeRaceMusicArrangement(
+          this.meshDoc?.raceMusicArrangement,
+          this.meshDoc?.raceMusic ? 'linear-loop' : 'retail-graph',
+        ),
       getEnvironmentBed: () => normalizeEnvironmentBed(this.meshDoc?.environmentBed),
       getLaps: () => this.meshDoc?.laps ?? DEFAULT_LAPS,
       getRefLaps: () => this.refLaps,
@@ -843,30 +1083,35 @@ export class Viewport {
     // TerrainLayer (this.terrainLayer): it owns the terrain mesh / materials / lighting caches and reads the
     // shade mode + light rig through accessors; on each geometry rebuild the shell re-targets every dependent
     // overlay through the hook below.
-    this.terrainLayer = createTerrainLayer(this.stage, this.tiles, {
-      shading: () => this.shading,
-      rigData: () => this.lights.authoredRigData,
-      rigVisible: () => this.lights.authoredLightsVisible,
-    }, {
-      onGeometryRebuilt: g => {
-        this.cageLayer.setDepthMaskGeometry(g); // share the rebuilt geometry so cage-view occlusion tracks edits
-        this.speedShadeLayer.geometryRebuilt(g); // ...and the speed wash, which re-rides its prediction once it settles
-        this.applyHiddenTerrainIndex();
-        this.paint.rebuildAuthoredF();   // the F overlay tracks paints / sculpting (no-op while toggled off)
-        this.paint.rebuildPaintSel();    // the selected-cell outline hugs the (possibly re-shaped) surface
-        this.selection.rebuildEditCellSel(); // the Edit cell shading follows a group move / slide too
-        this.selection.rebuildEditEdgeSel(); // the selected-edge highlight rides the reshaped surface too
-        this.bridgePreview.rebuild();    // builder rails + direction arrows ride the reshaped surface too
-        this.loftPreview.rebuild();       // the loft ghost tracks the rails' corners as the surface reshapes
-        this.paint.invalidateGhostCell(); // the ghost's cached cell geometry is stale; the next hover rebuilds it
+    this.terrainLayer = createTerrainLayer(
+      this.stage,
+      this.tiles,
+      {
+        shading: () => this.shading,
+        rigData: () => this.lights.authoredRigData,
+        rigVisible: () => this.lights.authoredLightsVisible,
       },
-    });
+      {
+        onGeometryRebuilt: g => {
+          this.cageLayer.setDepthMaskGeometry(g); // share the rebuilt geometry so cage-view occlusion tracks edits
+          this.speedShadeLayer.geometryRebuilt(g); // ...and the speed wash, which re-rides its prediction once it settles
+          this.applyHiddenTerrainIndex();
+          this.paint.rebuildAuthoredF(); // the F overlay tracks paints / sculpting (no-op while toggled off)
+          this.paint.rebuildPaintSel(); // the selected-cell outline hugs the (possibly re-shaped) surface
+          this.selection.rebuildEditCellSel(); // the Edit cell shading follows a group move / slide too
+          this.selection.rebuildEditEdgeSel(); // the selected-edge highlight rides the reshaped surface too
+          this.bridgePreview.rebuild(); // builder rails + direction arrows ride the reshaped surface too
+          this.loftPreview.rebuild(); // the loft ghost tracks the rails' corners as the surface reshapes
+          this.paint.invalidateGhostCell(); // the ghost's cached cell geometry is stale; the next hover rebuilds it
+        },
+      },
+    );
     this.speedShadeLayer = createSpeedShade(this.stage.worldRoot, {
       quilt: () => {
         const pv = this.preview;
         return pv && { positions: pv.positions, normals: pv.normals, cellSurf: pv.cellSurf, side: PREVIEW_RES + 1 };
       },
-      lines: () => this.meshDoc ? courseSpeedLines(this.meshDoc.course, this.meshDoc.aiSeed ?? DEFAULT_AI_SEED) : [],
+      lines: () => (this.meshDoc ? courseSpeedLines(this.meshDoc.course, this.meshDoc.aiSeed ?? DEFAULT_AI_SEED) : []),
       applies: () => !this.modelContextOn,
       shown: on => this.legends.setSpeedKey('mountain', on),
       note: text => this.legends.setSpeedNote(text),
@@ -875,8 +1120,14 @@ export class Viewport {
     this.refSpeedShadeLayer = createSpeedShade(this.refRoot, {
       quilt: () => {
         const data = this.refData;
-        return data && { positions: data.positions, normals: data.normals, cellSurf: data.patchSurf,
-          side: Math.round(Math.sqrt(data.facesPerPatch / 2)) + 1 };
+        return (
+          data && {
+            positions: data.positions,
+            normals: data.normals,
+            cellSurf: data.patchSurf,
+            side: Math.round(Math.sqrt(data.facesPerPatch / 2)) + 1,
+          }
+        );
       },
       lines: () => referenceSpeedLines(this.refCourse, this.refAiPaths),
       applies: () => !!this.refData,
@@ -885,29 +1136,34 @@ export class Viewport {
 
     // the control-net cage (authored curved wires + explicitly pinned sub-cages + the reference cage) lives in
     // CageLayer (this.cageLayer); the shell keeps selection + gizmo orchestration and visibility state.
-    this.cageLayer = createCageLayer(this.stage, {
-      preview: () => this.preview,
-      net: () => this.net,
-      meshDoc: () => this.meshDoc,
-      edgeHandle: () => this.meshHandle(),
-      refData: () => this.refData,
-      referenceControlPoints: () => this.referenceControlPoints,
-      editMode: () => this._mode === 'edit',
-      controlCageEdges: () => this.sel.controlCageEdges,
-      controlCageQuads: () => this.sel.controlCageQuads,
-      refControlCageEdges: () => this.sel.refControlCageEdges,
-      refControlCageQuads: () => this.sel.refControlCageQuads,
-      wiresOnly: () => this.shading === 'none',
-      vertexHidden: vertex => this.selection.vertexHidden(vertex),
-      edgeHidden: (a, b) => this.selection.edgeHidden(a, b),
-      controlPointHidden: id => this.selection.controlPointHidden(id),
-      refVertexHidden: vertex => this.selection.refVertexHidden(vertex),
-      refEdgeHidden: (a, b) => this.selection.refEdgeHidden(a, b),
-      refControlPointHidden: id => this.selection.refControlPointHidden(id),
-      hiddenPolesActive: () => this._mode === 'edit' && (this.selection.hiddenVertices.size > 0 || this.selection.hiddenQuads.size > 0),
-    }, {
-      clearLiveEditPreview: () => this.clearLiveEditPreview(false),
-    });
+    this.cageLayer = createCageLayer(
+      this.stage,
+      {
+        preview: () => this.preview,
+        net: () => this.net,
+        meshDoc: () => this.meshDoc,
+        edgeHandle: () => this.meshHandle(),
+        refData: () => this.refData,
+        referenceControlPoints: () => this.referenceControlPoints,
+        editMode: () => this._mode === 'edit',
+        controlCageEdges: () => this.sel.controlCageEdges,
+        controlCageQuads: () => this.sel.controlCageQuads,
+        refControlCageEdges: () => this.sel.refControlCageEdges,
+        refControlCageQuads: () => this.sel.refControlCageQuads,
+        wiresOnly: () => this.shading === 'none',
+        vertexHidden: vertex => this.selection.vertexHidden(vertex),
+        edgeHidden: (a, b) => this.selection.edgeHidden(a, b),
+        controlPointHidden: id => this.selection.controlPointHidden(id),
+        refVertexHidden: vertex => this.selection.refVertexHidden(vertex),
+        refEdgeHidden: (a, b) => this.selection.refEdgeHidden(a, b),
+        refControlPointHidden: id => this.selection.refControlPointHidden(id),
+        hiddenPolesActive: () =>
+          this._mode === 'edit' && (this.selection.hiddenVertices.size > 0 || this.selection.hiddenQuads.size > 0),
+      },
+      {
+        clearLiveEditPreview: () => this.clearLiveEditPreview(false),
+      },
+    );
     // the screen-space mesh pick helpers (vertex > edge > face, authored + reference alike) read the same live
     // substrate through accessors; the pointer routing that calls them lives in PointerRouter (this.router).
     this.picking = createMeshPicking(this.stage, {
@@ -969,8 +1225,7 @@ export class Viewport {
       setReferenceInstancePieceMotions: (index, motions) =>
         this.refDecor.setRuntimeInstancePieceMotions(index, motions),
       authoredPropPieceIds: id => this.props.runtimePropPieceIds(id),
-      setAuthoredPropPieceMotions: (id, motions) =>
-        this.props.setRuntimePropPieceMotions(id, motions),
+      setAuthoredPropPieceMotions: (id, motions) => this.props.setRuntimePropPieceMotions(id, motions),
       setAuthoredPropVisible: (id, visible) => this.props.setRuntimePropVisible(id, visible),
       setAuthoredPropWorldMatrix: (id, matrix) => this.props.setRuntimePropWorldMatrix(id, matrix),
       retireRideObject: object => this.rideCtl.retireObstacle(object),
@@ -992,40 +1247,48 @@ export class Viewport {
         this.props.clearRuntimeAnimObjects();
         this.assets.propTex.clearMaterialEffectPreviews();
       },
-      controlProperty: (object, command, value) => object.kind === 'reference'
-        ? this.refDecor.controlRuntimeInstanceProperty(object.index, command, value)
-        : this.props.controlRuntimePropProperty(object.id, command, value),
-      hasPulseProperty: object => object.kind === 'reference'
-        ? this.refDecor.instanceHasPulseProperty(object.index)
-        : this.props.propHasPulseProperty(object.id),
-      hasTriggerableCombo: object => object.kind === 'reference'
-        ? this.refDecor.instanceHasTriggerableCombo(object.index)
-        : this.props.propHasTriggerableCombo(object.id),
-      hasBudgetedAnimation: object => object.kind === 'reference'
-        && this.refDecor.instanceHasBudgetedAnimation(object.index),
-      startAnimDelta: (object, effect) => object.kind === 'reference'
-        && this.refDecor.startAnimDelta(object.index, effect),
-      previewAnimObject: (object, effect, autoReturnDelay) => object.kind === 'reference'
-        ? this.refDecor.previewAnimObject(object.index, effect, autoReturnDelay)
-        : this.props.previewAnimObject(object.id, effect, autoReturnDelay),
-      previewMaterialEffect: object => object.kind === 'reference'
-        ? this.refDecor.previewMaterialEffect(object.index)
-        : this.props.previewMaterialEffect(object.id),
+      controlProperty: (object, command, value) =>
+        object.kind === 'reference'
+          ? this.refDecor.controlRuntimeInstanceProperty(object.index, command, value)
+          : this.props.controlRuntimePropProperty(object.id, command, value),
+      hasPulseProperty: object =>
+        object.kind === 'reference'
+          ? this.refDecor.instanceHasPulseProperty(object.index)
+          : this.props.propHasPulseProperty(object.id),
+      hasTriggerableCombo: object =>
+        object.kind === 'reference'
+          ? this.refDecor.instanceHasTriggerableCombo(object.index)
+          : this.props.propHasTriggerableCombo(object.id),
+      hasBudgetedAnimation: object =>
+        object.kind === 'reference' && this.refDecor.instanceHasBudgetedAnimation(object.index),
+      startAnimDelta: (object, effect) =>
+        object.kind === 'reference' && this.refDecor.startAnimDelta(object.index, effect),
+      previewAnimObject: (object, effect, autoReturnDelay) =>
+        object.kind === 'reference'
+          ? this.refDecor.previewAnimObject(object.index, effect, autoReturnDelay)
+          : this.props.previewAnimObject(object.id, effect, autoReturnDelay),
+      previewMaterialEffect: object =>
+        object.kind === 'reference'
+          ? this.refDecor.previewMaterialEffect(object.index)
+          : this.props.previewMaterialEffect(object.id),
       // One shared material cache holds both mountains' animated materials, so a single clear covers them.
       clearMaterialEffectPreviews: () => this.assets.propTex.clearMaterialEffectPreviews(),
-      startAnimObject: (object, effect) => object.kind === 'authored'
-        && this.props.startRuntimeAnimObject(object.id, effect),
+      startAnimObject: (object, effect) =>
+        object.kind === 'authored' && this.props.startRuntimeAnimObject(object.id, effect),
       clearAnimObjectPreviews: () => {
         const reference = this.refDecor.clearAnimObjectPreviews();
         return this.props.clearAnimObjectPreviews() || reference;
       },
       groundAt: (object, position) => this.effectGroundAt(object.kind, position),
-      objectRadius: object => (object.kind === 'reference'
-        ? this.refDecor.propWorldSphere(object.index)
-        : this.props.propWorldSphere(object.id))?.radius ?? null,
-      objectSphere: object => (object.kind === 'reference'
-        ? this.refDecor.propWorldSphere(object.index)
-        : this.props.propWorldSphere(object.id)) ?? null,
+      objectRadius: object =>
+        (object.kind === 'reference'
+          ? this.refDecor.propWorldSphere(object.index)
+          : this.props.propWorldSphere(object.id)
+        )?.radius ?? null,
+      objectSphere: object =>
+        (object.kind === 'reference'
+          ? this.refDecor.propWorldSphere(object.index)
+          : this.props.propWorldSphere(object.id)) ?? null,
       referenceEmitterMuzzle: index => this.refDecor.runtimeEmitterMuzzle(index),
       resolveSpline: (object, stableId) => {
         if (object.kind === 'reference') {
@@ -1037,11 +1300,14 @@ export class Viewport {
         const complete = this.rails.rails.filter(rail => rail.nodes.length >= 2);
         const originalIndex = complete.findIndex(rail => rail.id === pathId);
         const rail = complete[originalIndex];
-        return rail ? {
-          originalIndex, style: nativeSplineFields(rail).style,
-          segments: railBezierSegments(rail.nodes, rail.handles).map(segment => segment.map(point => [...point])),
-          space: 'editor' as const,
-        } : null;
+        return rail
+          ? {
+              originalIndex,
+              style: nativeSplineFields(rail).style,
+              segments: railBezierSegments(rail.nodes, rail.handles).map(segment => segment.map(point => [...point])),
+              space: 'editor' as const,
+            }
+          : null;
       },
     });
     this.particleVolumes = createParticleVolumesLayer(this.stage);
@@ -1049,8 +1315,8 @@ export class Viewport {
     // screen-space topology and placement remain in MeshPicking and the individual tools.
     this.scenePicking = createScenePicking(this.stage, {
       authoredPropRoots: () => [this.props.placedPropGroup],
-      referencePropRoots: scope => scope === 'effects'
-        ? this.refDecor.effectPropGroups : this.refDecor.propPickGroups,
+      referencePropRoots: scope =>
+        scope === 'effects' ? this.refDecor.effectPropGroups : this.refDecor.propPickGroups,
       authoredParticleRoots: () => [this.particleVolumes.authoredBounds],
       referenceParticleRoots: () => [this.particleVolumes.referenceBounds],
       lightRoots: () => [this.lights.freeLightGroup],
@@ -1060,20 +1326,21 @@ export class Viewport {
       referenceRailRoots: () => [this.refDecor.railSplineGroup],
       gemRoots: () => [this.gems.gemGroup],
       screenRoots: () => [this.screens.group, this.screens.referenceGroup],
-      knotTargets: () => this.courseVisible ? this.knotMeshes : [],
-      surfaceTargets: () => this.reference
-        ? [{ source: 'authored' as const, object: this.terrain }, { source: 'reference' as const, object: this.reference }]
-        : [{ source: 'authored' as const, object: this.terrain }],
+      knotTargets: () => (this.courseVisible ? this.knotMeshes : []),
+      surfaceTargets: () =>
+        this.reference
+          ? [
+              { source: 'authored' as const, object: this.terrain },
+              { source: 'reference' as const, object: this.reference },
+            ]
+          : [{ source: 'authored' as const, object: this.terrain }],
     });
 
     // course-guide colors: the run is its own "route" family — GREEN, kin to the start markers it leads
     // from and clear of the warm amber/orange accents (prop outline, rail bulbs, selection orange) —
     // with a value hierarchy: bright knot handles (grabbable) > deeper line > dim beads
     // (scene/course-markers' exported-point beads carry the same hue, dimmed)
-    this.spineLine = new THREE.Line(
-      new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: 0x39b54a }),
-    );
+    this.spineLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x39b54a }));
     // spine + knots live at scene root (Z negated by hand) so the gizmo on a knot has no mirrored parent.
     this.scene.add(this.spineLine, this.knotGroup);
     this.applyCourseGuideVisibility();
@@ -1083,30 +1350,38 @@ export class Viewport {
     // corner marker / region dots / centroid group handles, hidden-set caches, the reference vertex / edge /
     // patch picks and the marquee resolution): reads the live mesh substrate through accessors and owns its
     // scene objects; the router keeps the pointer routing, the shell the gizmo seating that call in.
-    this.selection = createSelectionLayer(this.stage, this.sel, this.cageLayer, {
-      net: () => this.net,
-      meshDoc: () => this.meshDoc,
-      preview: () => this.preview,
-      meshHandle: () => this.meshHandle(),
-      terrain: () => this.terrain,
-      reference: () => this.reference,
-      refData: () => this.refData,
-      refLevel: () => this.refLevel,
-      referenceControlPoints: () => this.referenceControlPoints,
-      editMode: () => this._mode === 'edit',
-      shading: () => this.shading,
-      netSpacing: () => this.netSpacing,
-      bridgeActive: () => this.bridgePreview.active,
-      geometryBVH: geo => this.buildGeometryBVH(geo),
-    }, {
-      clearRefSelection: () => this.clearRefSelection(),
-      applyGizmoFrame: () => this.transforms.applyGizmoFrame(),
-      cellSpeedShown: shown => this.legends.setSpeedKey('trail', shown),
-    });
+    this.selection = createSelectionLayer(
+      this.stage,
+      this.sel,
+      this.cageLayer,
+      {
+        net: () => this.net,
+        meshDoc: () => this.meshDoc,
+        preview: () => this.preview,
+        meshHandle: () => this.meshHandle(),
+        terrain: () => this.terrain,
+        reference: () => this.reference,
+        refData: () => this.refData,
+        refLevel: () => this.refLevel,
+        referenceControlPoints: () => this.referenceControlPoints,
+        editMode: () => this._mode === 'edit',
+        shading: () => this.shading,
+        netSpacing: () => this.netSpacing,
+        bridgeActive: () => this.bridgePreview.active,
+        geometryBVH: geo => this.buildGeometryBVH(geo),
+      },
+      {
+        clearRefSelection: () => this.clearRefSelection(),
+        applyGizmoFrame: () => this.transforms.applyGizmoFrame(),
+        cellSpeedShown: shown => this.legends.setSpeedKey('trail', shown),
+      },
+    );
 
     this.liveEditFill.renderOrder = 9; // like the selection layer's cell fills: above the terrain, below the cage wires
     this.liveEditFill.visible = false;
-    this.liveEditFill.raycast = () => { /* a pure highlight, never a pick target */ };
+    this.liveEditFill.raycast = () => {
+      /* a pure highlight, never a pick target */
+    };
     this.liveEditPreviewGroup.add(this.liveEditFill, this.liveEditCageGroup);
     this.worldRoot.add(this.liveEditPreviewGroup); // drag-local dependency fill + current cage lines
 
@@ -1132,38 +1407,44 @@ export class Viewport {
     // the gizmo's transform gestures (World/Local/Surface frame, W/E/R mode, frozen rotate / scale /
     // slide drags): reads the mesh substrate + the shell's selection families through accessors and drives the
     // shared gizmo on the persistent anchors above; the shell keeps selection seating + onGizmoChange routing.
-    this.transforms = createTransformLayer(this.stage, {
-      net: () => this.net,
-      meshDoc: () => this.meshDoc,
-      preview: () => this.preview,
-      edgeHandle: () => this.meshHandle(),
-      terrainBVH: () => this.buildTerrainBVH(),
-      groundAt: (x, z, nearY) => this.terrainNearest(x, z, nearY),
-    }, {
-      selectedCorner: () => this.selectedCornerIndex(),
-      cornerGroupIdx: () => this.selection.cornerGroupIdx,
-      editEdgeSel: () => this.selectedEdgeIndices(),
-      editCellSel: () => this.selectedCellIndices(),
-      controlPointSel: () => this.selection.controlPointSel,
-      authoredControlPointByKey: () => this.cageLayer.authoredControlPointByKey,
-      selectedCageHandle: () => this.selection.selectedCageHandle,
-      selectedProp: () => this.props.selectedProp,
-      multiSelProps: () => this.props.multiSelProps,
-      selectedScreenAttached: () => this.screens.selectedAttached,
-      placedProp: index => this.props.lastPlacedProps[index],
-      extrusionStaged: () => this.edgeExtrusion.staged,
-      extrusionFanMode: () => this.edgeExtrusion.fanMode,
-    }, {
-      cornerMarker: this.selection.cornerMarker,
-      cornerGroupHandle: this.selection.cornerGroupHandle,
-      cornerGroupHandleLast: this.selection.cornerGroupHandleLast,
-      cageHandleAnchor: this.selection.cageHandleAnchor,
-      propsHandleLast: this.props.multiHandleLast,
-    }, {
-      releaseCageHandle: () => this.selection.releaseCageHandle(),
-      enableExtrusionTransform: () => this.edgeExtrusion.enableTransform(),
-      controlPointsMoved: targets => this.selection.controlPointsMoved(targets),
-    });
+    this.transforms = createTransformLayer(
+      this.stage,
+      {
+        net: () => this.net,
+        meshDoc: () => this.meshDoc,
+        preview: () => this.preview,
+        edgeHandle: () => this.meshHandle(),
+        terrainBVH: () => this.buildTerrainBVH(),
+        groundAt: (x, z, nearY) => this.terrainNearest(x, z, nearY),
+      },
+      {
+        selectedCorner: () => this.selectedCornerIndex(),
+        cornerGroupIdx: () => this.selection.cornerGroupIdx,
+        editEdgeSel: () => this.selectedEdgeIndices(),
+        editCellSel: () => this.selectedCellIndices(),
+        controlPointSel: () => this.selection.controlPointSel,
+        authoredControlPointByKey: () => this.cageLayer.authoredControlPointByKey,
+        selectedCageHandle: () => this.selection.selectedCageHandle,
+        selectedProp: () => this.props.selectedProp,
+        multiSelProps: () => this.props.multiSelProps,
+        selectedScreenAttached: () => this.screens.selectedAttached,
+        placedProp: index => this.props.lastPlacedProps[index],
+        extrusionStaged: () => this.edgeExtrusion.staged,
+        extrusionFanMode: () => this.edgeExtrusion.fanMode,
+      },
+      {
+        cornerMarker: this.selection.cornerMarker,
+        cornerGroupHandle: this.selection.cornerGroupHandle,
+        cornerGroupHandleLast: this.selection.cornerGroupHandleLast,
+        cageHandleAnchor: this.selection.cageHandleAnchor,
+        propsHandleLast: this.props.multiHandleLast,
+      },
+      {
+        releaseCageHandle: () => this.selection.releaseCageHandle(),
+        enableExtrusionTransform: () => this.edgeExtrusion.enableTransform(),
+        controlPointsMoved: targets => this.selection.controlPointsMoved(targets),
+      },
+    );
 
     this.legends = createLegends(this.container); // lower-left colour keys (cage / surface), each shown only in its shade view
 
@@ -1181,37 +1462,62 @@ export class Viewport {
     // the pointer / wheel input dispatch: wires its own DOM listeners on the canvas + container at
     // construction, routes every gesture through the layers above, and reaches back into the host only
     // for the narrow state + whole-reference selection it can't own (RouterAccess / RouterHostHooks).
-    this.router = createPointerRouter(this.stage, this.sel, {
-      selection: this.selection, picking: this.picking, scenePicking: this.scenePicking,
-      cage: this.cageLayer, transforms: this.transforms,
-      cameraCtl: this.cameraCtl, rideCtl: this.rideCtl, surgery: this.surgery, patchTool: this.patchTool,
-      tubeTool: this.tubeTool, gridTool: this.gridTool, trailTool: this.trailTool, pathHandles: this.pathHandles, propDeform: this.propDeform, weldTool: this.weldTool, clipboardPlacement: this.clipboardPlacement,
-      courseDraw: this.courseDraw, edgeExtrusion: this.edgeExtrusion, createEdge: this.createEdge, bridgePreview: this.bridgePreview,
-      gems: this.gems, screens: this.screens, props: this.props, lights: this.lights, rails: this.rails,
-      propLines: this.propLines,
-      refDecor: this.refDecor,
-      paint: this.paint,
-    }, {
-      mode: () => this._mode,
-      isMountain: () => this.isMountain,
-      terrain: () => this.terrain,
-      reference: () => this.reference,
-      refData: () => this.refData,
-      refLevel: () => this.refLevel,
-      preview: () => this.preview,
-      net: () => this.net,
-      meshDoc: () => this.meshDoc,
-      netSpacing: () => this.netSpacing,
-      refSelected: () => this.refSelected,
-      snapPoint: point => this.snapPoint(point),
-      pickKnot: () => this.pickKnot(),
-      pickAnchor: () => this.pickAnchor(),
-      courseKnots: () => this.courseVisible ? this.knotMeshes : [],
-      createEdgePreviewChanged: () => this.createEdgePreviewListener?.(),
-    }, {
-      selectReference: () => this.selectReference(),
-      clearRefSelection: () => this.clearRefSelection(),
-    });
+    this.router = createPointerRouter(
+      this.stage,
+      this.sel,
+      {
+        selection: this.selection,
+        picking: this.picking,
+        scenePicking: this.scenePicking,
+        cage: this.cageLayer,
+        transforms: this.transforms,
+        cameraCtl: this.cameraCtl,
+        rideCtl: this.rideCtl,
+        surgery: this.surgery,
+        patchTool: this.patchTool,
+        tubeTool: this.tubeTool,
+        gridTool: this.gridTool,
+        trailTool: this.trailTool,
+        pathHandles: this.pathHandles,
+        propDeform: this.propDeform,
+        weldTool: this.weldTool,
+        clipboardPlacement: this.clipboardPlacement,
+        courseDraw: this.courseDraw,
+        edgeExtrusion: this.edgeExtrusion,
+        createEdge: this.createEdge,
+        bridgePreview: this.bridgePreview,
+        gems: this.gems,
+        screens: this.screens,
+        props: this.props,
+        lights: this.lights,
+        rails: this.rails,
+        propLines: this.propLines,
+        refDecor: this.refDecor,
+        paint: this.paint,
+      },
+      {
+        mode: () => this._mode,
+        isMountain: () => this.isMountain,
+        terrain: () => this.terrain,
+        reference: () => this.reference,
+        refData: () => this.refData,
+        refLevel: () => this.refLevel,
+        preview: () => this.preview,
+        net: () => this.net,
+        meshDoc: () => this.meshDoc,
+        netSpacing: () => this.netSpacing,
+        refSelected: () => this.refSelected,
+        snapPoint: point => this.snapPoint(point),
+        pickKnot: () => this.pickKnot(),
+        pickAnchor: () => this.pickAnchor(),
+        courseKnots: () => (this.courseVisible ? this.knotMeshes : []),
+        createEdgePreviewChanged: () => this.createEdgePreviewListener?.(),
+      },
+      {
+        selectReference: () => this.selectReference(),
+        clearRefSelection: () => this.clearRefSelection(),
+      },
+    );
 
     window.addEventListener('keydown', e => {
       // A belongs to Add Rail while Bridge Builder is active; don't also begin a camera strafe.
@@ -1225,11 +1531,17 @@ export class Viewport {
     // released outside the window can't stick.
     // Alt read off the pointer itself (capture phase, ahead of the gizmo's own pointermove), so a press or
     // release mid-drag applies from the next frame and a release outside the window can't stick.
-    const trackAlt = (e: PointerEvent) => { this.pointerAlt = e.altKey; };
+    const trackAlt = (e: PointerEvent) => {
+      this.pointerAlt = e.altKey;
+    };
     window.addEventListener('pointerdown', trackAlt, { capture: true });
     window.addEventListener('pointermove', trackAlt, { capture: true });
-    window.addEventListener('keydown', e => { if (e.key === 'Shift') this.transforms.shiftKey(true); });
-    window.addEventListener('keyup', e => { if (e.key === 'Shift') this.transforms.shiftKey(false); });
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Shift') this.transforms.shiftKey(true);
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'Shift') this.transforms.shiftKey(false);
+    });
     // Create Edge sticks to existing geometry only under Ctrl, so the ghost re-seats on the key itself.
     const createEdgeMods = (e: KeyboardEvent) => {
       if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') {
@@ -1247,7 +1559,8 @@ export class Viewport {
     // deselect the edges underneath it. Pointer-cancel and mode changes use the same cleanup path below.
     window.addEventListener('keydown', e => {
       if (e.key !== 'Escape' || !this.edgeExtrusion.active) return;
-      e.preventDefault(); e.stopImmediatePropagation();
+      e.preventDefault();
+      e.stopImmediatePropagation();
       this.edgeExtrusion.cancel();
     });
 
@@ -1293,10 +1606,14 @@ export class Viewport {
       // Pause freezes the Play runtime's clocks and trigger graphs along with rider/AI physics. Editor-world
       // material animation remains live, as does the ride camera, so the held scene is still inspectable.
       phaseStarted = performance.now();
-      this.referenceEffects.step(this.rideCtl.paused ? 0 : dt, eye, this.rideCtl.riderPosition,
+      this.referenceEffects.step(
+        this.rideCtl.paused ? 0 : dt,
+        eye,
+        this.rideCtl.riderPosition,
         this.rideCtl.riding || this.rideCtl.xrPresenting ? this.rideCtl.playTarget : null,
         this.rideCtl.riderVelocity,
-        this.rideCtl.riderCanTrigger);
+        this.rideCtl.riderCanTrigger,
+      );
       const effectsMs = performance.now() - phaseStarted;
       // A ride drives the camera itself, so the editor's stands down. Spectating does not: the whole point of it
       // is that you keep orbiting the mountain while the field races it.
@@ -1304,8 +1621,10 @@ export class Viewport {
       // A ride drives the camera, and so does a headset — while one is presenting the editor's navigation stands
       // down even between rides, because on foot the rig IS the view.
       if (!this.rideCtl.riding && !this.rideCtl.xrPresenting) {
-        if (this.cameraCtl.flying) this.cameraCtl.flyMove(dt); // Alt+RMB fly drives the camera directly; skip OrbitControls
-        else if (!this.cameraCtl.orbiting) { // custom orbit also drives the camera directly
+        if (this.cameraCtl.flying)
+          this.cameraCtl.flyMove(dt); // Alt+RMB fly drives the camera directly; skip OrbitControls
+        else if (!this.cameraCtl.orbiting) {
+          // custom orbit also drives the camera directly
           this.cameraCtl.flyMove(dt); // Alt+WASD without a look-drag: camera and pivot translate together
           this.controls.update();
         }
@@ -1348,9 +1667,7 @@ export class Viewport {
       const profileGpu = this.rideCtl.perfDiagnostics;
       if (!profileGpu && this.profilingGpu) this.gpuTimer.reset();
       this.profilingGpu = profileGpu;
-      const gpuTiming = profileGpu
-        ? this.gpuTimer.beginFrame()
-        : { gpuMs: null, state: 'pending' as const };
+      const gpuTiming = profileGpu ? this.gpuTimer.beginFrame() : { gpuMs: null, state: 'pending' as const };
       const renderPrepMs = performance.now() - phaseStarted;
       phaseStarted = performance.now();
       // Three's stock scene update walks invisible descendants before its render-list traversal gets the chance
@@ -1376,8 +1693,10 @@ export class Viewport {
       // Three builds one logical render list, then submits it once per XR ArrayCamera view. These counts explain
       // scene traversal/sort pressure without the stereo multiplication present in renderer.info.render.calls.
       const renderList = this.renderer.renderLists.get(this.scene, 0);
-      let transparentRefBatches = 0, transparentRefIsolated = 0;
-      let transparentAuthoredProps = 0, transparentOther = 0;
+      let transparentRefBatches = 0,
+        transparentRefIsolated = 0;
+      let transparentAuthoredProps = 0,
+        transparentOther = 0;
       for (const item of renderList.transparent) {
         const object = item.object;
         const refKind = object.userData.propBatchKind;
@@ -1398,17 +1717,29 @@ export class Viewport {
           this.transparentOtherCounts.set(owner, (this.transparentOtherCounts.get(owner) ?? 0) + 1);
         }
         this.transparentOtherSources = [...this.transparentOtherCounts]
-          .sort((a, b) => b[1] - a[1]).slice(0, 3)
-          .map(([owner, count]) => `${owner} ${count}`).join(' · ');
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([owner, count]) => `${owner} ${count}`)
+          .join(' · ');
       }
       const referencePropStats = this.refDecor.renderStats();
       const authoredPropStats = this.props.renderStats();
       // Report after submission. The HUD therefore shows the previous complete frame instead of perturbing the
       // frame it is trying to describe; `renderMs` is CPU traversal/submission, not an asynchronous GPU timer.
       this.rideCtl.recordFramePerf({
-        frameMs: dt * 1000, xrBeginMs, worldMs, rideMs, effectsMs, sceneMs, xrEndMs,
-        renderPrepMs, renderSubmitMs, renderMs, postFrameMs: this.postFrameMs,
-        gpuMs: gpuTiming.gpuMs, gpuTimerState: gpuTiming.state,
+        frameMs: dt * 1000,
+        xrBeginMs,
+        worldMs,
+        rideMs,
+        effectsMs,
+        sceneMs,
+        xrEndMs,
+        renderPrepMs,
+        renderSubmitMs,
+        renderMs,
+        postFrameMs: this.postFrameMs,
+        gpuMs: gpuTiming.gpuMs,
+        gpuTimerState: gpuTiming.state,
         drawCalls: renderInfo.render.calls,
         renderTriangles: renderInfo.render.triangles,
         renderLines: renderInfo.render.lines,
@@ -1443,16 +1774,32 @@ export class Viewport {
 
   // ---- test ride (docs/016) + Play setup: mechanics in RideLayer (this.rideCtl) ----
 
-  get riding() { return this.rideCtl.riding; }
-  get rideWalking() { return this.rideCtl.walking; }
-  get rideFirstPerson() { return this.rideCtl.firstPerson; }
-  get xrPresenting() { return this.rideCtl.xrPresenting; }
-  get ridePaused() { return this.rideCtl.paused; }
+  get riding() {
+    return this.rideCtl.riding;
+  }
+  get rideWalking() {
+    return this.rideCtl.walking;
+  }
+  get rideFirstPerson() {
+    return this.rideCtl.firstPerson;
+  }
+  get xrPresenting() {
+    return this.rideCtl.xrPresenting;
+  }
+  get ridePaused() {
+    return this.rideCtl.paused;
+  }
   /** Spectating: the AI field is racing with no board out there, and the editor still owns the camera + input. */
-  get watching() { return this.rideCtl.watching; }
-  get canRideReference() { return this.rideCtl.canRideReference; }
+  get watching() {
+    return this.rideCtl.watching;
+  }
+  get canRideReference() {
+    return this.rideCtl.canRideReference;
+  }
   /** The reference level's default ride start: a slot on its start row, facing down that slot's own path. */
-  referenceSpawn(): { pos: V3; heading: V3 | null } | null { return this.rideCtl.referenceSpawn(); }
+  referenceSpawn(): { pos: V3; heading: V3 | null } | null {
+    return this.rideCtl.referenceSpawn();
+  }
   setPlayActive(on: boolean, target: 'authored' | 'reference') {
     this.rideCtl.setPlayActive(on, target);
     // Both boundaries put the world back, whoever disturbed it. The effects step loop resets when a player's
@@ -1460,35 +1807,62 @@ export class Viewport {
     // author into Edit as knocked-over props, opened doors, or a button left lit — nor into the next run,
     // which is why entering Test resets as well as leaving it.
     this.gems.setPlayMode(on ? this.raceMode : null);
-    if (on) { preloadBoardAudio(); this.preloadRideMusic(target); this.referenceEffects.beginPlay(target, this.raceMode); }
-    else this.referenceEffects.endPlay();
+    if (on) {
+      preloadBoardAudio();
+      this.preloadRideMusic(target);
+      this.referenceEffects.beginPlay(target, this.raceMode);
+    } else this.referenceEffects.endPlay();
     this.applyAiPathsVisibility(); // Play's overlay follows the ride target, which this may just have changed
   }
-  showRideSpawn(world: V3 | null) { this.rideCtl.showRideSpawn(world); }
-  startRide(target: 'authored' | 'reference', spawn: V3, heading: V3 | null, onExit: () => void,
-    ai = false, countdown = false, telemetry = false, touchControls = true) {
+  showRideSpawn(world: V3 | null) {
+    this.rideCtl.showRideSpawn(world);
+  }
+  startRide(
+    target: 'authored' | 'reference',
+    spawn: V3,
+    heading: V3 | null,
+    onExit: () => void,
+    ai = false,
+    countdown = false,
+    telemetry = false,
+    touchControls = true,
+  ) {
     // A run of its own, and Play setup before it may have dropped a field that already knocked props over and
     // part-marked counters. Start from the authored mountain rather than from wherever setup left it.
     preloadBoardAudio();
     this.preloadRideMusic(target);
     this.referenceEffects.beginPlay(target, this.raceMode);
-    this.rideCtl.startRide(target, spawn, heading, onExit, ai,
-      target === 'reference' && countdown ? this.referenceEffects.raceCountdown() : null, telemetry, touchControls);
+    this.rideCtl.startRide(
+      target,
+      spawn,
+      heading,
+      onExit,
+      ai,
+      target === 'reference' && countdown ? this.referenceEffects.raceCountdown() : null,
+      telemetry,
+      touchControls,
+    );
   }
   stopRide() {
     this.rideCtl.stopRide();
     if (this._mode === 'play') this.referenceEffects.beginPlay(this.rideCtl.playTarget, this.raceMode);
   }
   /** Local player's carved wake + snow-contact particles. AI fields intentionally have no equivalent setter. */
-  setRideBoardFx(on: boolean) { this.rideCtl.setBoardFxEnabled(on); }
+  setRideBoardFx(on: boolean) {
+    this.rideCtl.setBoardFxEnabled(on);
+  }
   /** Public play fills its viewport already, so it has no editor fullscreen toggle. */
-  setRideFullscreenControl(on: boolean) { this.rideCtl.setFullscreenControlEnabled(on); }
+  setRideFullscreenControl(on: boolean) {
+    this.rideCtl.setFullscreenControlEnabled(on);
+  }
   /** Test audio master for the off-board environment bed and on-board race track. */
   setRideMusic(on: boolean) {
     this.rideMusicChecked = on;
     this.applyRideMusicPlayback();
   }
-  setRideAnnouncer(on: boolean) { this.rideCtl.setAnnouncerEnabled(on); }
+  setRideAnnouncer(on: boolean) {
+    this.rideCtl.setAnnouncerEnabled(on);
+  }
   setRideMusicSongs(songs: Readonly<Record<string, string>>) {
     this.rideMusicSongs = songs;
   }
@@ -1496,9 +1870,13 @@ export class Viewport {
     this.rideCtl.setMusicEnabled(rideMusicPlaybackEnabled(this.rideMusicChecked, this.jukeboxPlaying));
   }
   /** Complete gameplay mix; Scene Sound auditions deliberately bypass this master. */
-  setRideGameVolume(volume: number) { setGameAudioVolume(volume); }
+  setRideGameVolume(volume: number) {
+    setGameAudioVolume(volume);
+  }
   /** A headset session is up: the rider is in VR, on foot on the mountain or on the board (docs/048). */
-  get xrPlaying() { return this.rideCtl.xrPresenting; }
+  get xrPlaying() {
+    return this.rideCtl.xrPresenting;
+  }
   /** Current owner-authoritative player sample. Outside Play, the avatar's head is the editor camera and its
    * feet sit a normal eye-height below it; inside Play the walker/board (and WebXR tracking) take over. */
   playerPose(avatar: string, serverNow: number): PlayerPose {
@@ -1509,20 +1887,22 @@ export class Viewport {
   private editorPlayerPose(now: number): LocalPlayerPose {
     const headP = this.camera.getWorldPosition(new THREE.Vector3());
     const headQ = this.camera.getWorldQuaternion(new THREE.Quaternion());
-    const bodyP = headP.clone(); bodyP.y -= 1.65;
+    const bodyP = headP.clone();
+    bodyP.y -= 1.65;
     const dt = (now - this.editorPlayerAt) / 1000;
     const velocity = new THREE.Vector3();
     if (this.editorPlayerAt && dt > 0 && dt < 0.5) velocity.copy(bodyP).sub(this.editorPlayerPosition).divideScalar(dt);
     this.editorPlayerPosition.copy(bodyP);
     this.editorPlayerAt = now;
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(headQ).setY(0);
-    if (forward.lengthSq() < 1e-8) forward.set(0, 0, -1); else forward.normalize();
-    const bodyQ = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0), Math.atan2(forward.x, forward.z),
-    );
+    if (forward.lengthSq() < 1e-8) forward.set(0, 0, -1);
+    else forward.normalize();
+    const bodyQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(forward.x, forward.z));
     return {
-      mode: 'edit', vr: false,
-      body: playerTransform(bodyP, bodyQ), velocity: playerVector(velocity),
+      mode: 'edit',
+      vr: false,
+      body: playerTransform(bodyP, bodyQ),
+      velocity: playerVector(velocity),
       head: playerTransform(headP, headQ),
     };
   }
@@ -1531,15 +1911,37 @@ export class Viewport {
    * out of a click: `requestSession` is gated on user activation, and anything awaited first spends it. False
    * when the headset refuses, which leaves the editor exactly as it was.
    */
-  startXrPlay(target: 'authored' | 'reference', spawn: V3, heading: V3 | null, onExit: () => void,
-    ai = false, telemetry = false, renderScale = DEFAULT_XR_RENDER_SCALE, layerMode: XrLayerMode = 'webgl',
-    antialias = false, showStats = true, onStatsChanged?: (enabled: boolean) => void,
-    onEyeBufferMeasured?: (measurement: XrEyeBufferMeasurement) => XrEyeBufferMeasurement | void): Promise<boolean> {
+  startXrPlay(
+    target: 'authored' | 'reference',
+    spawn: V3,
+    heading: V3 | null,
+    onExit: () => void,
+    ai = false,
+    telemetry = false,
+    renderScale = DEFAULT_XR_RENDER_SCALE,
+    layerMode: XrLayerMode = 'webgl',
+    antialias = false,
+    showStats = true,
+    onStatsChanged?: (enabled: boolean) => void,
+    onEyeBufferMeasured?: (measurement: XrEyeBufferMeasurement) => XrEyeBufferMeasurement | void,
+  ): Promise<boolean> {
     preloadBoardAudio(); // starts work synchronously but awaits nothing, preserving the WebXR user gesture
     this.preloadRideMusic(target);
     this.referenceEffects.beginPlay(target, this.raceMode); // same fresh-world boundary an ordinary run gets
-    return this.rideCtl.startXrPlay(target, spawn, heading, onExit, ai, telemetry, renderScale, layerMode,
-      antialias, showStats, onStatsChanged, onEyeBufferMeasured);
+    return this.rideCtl.startXrPlay(
+      target,
+      spawn,
+      heading,
+      onExit,
+      ai,
+      telemetry,
+      renderScale,
+      layerMode,
+      antialias,
+      showStats,
+      onStatsChanged,
+      onEyeBufferMeasured,
+    );
   }
   stopXrPlay() {
     this.rideCtl.stopXrPlay();
@@ -1550,7 +1952,9 @@ export class Viewport {
     if (target === 'reference') preloadReferenceRideMusic(this.refLevel, this.rideMusicSongs[this.refLevel]);
     else preloadAuthoredRideMusic(this.meshDoc?.raceMusic, normalizeEnvironmentBed(this.meshDoc?.environmentBed));
   }
-  toggleRidePause() { this.rideCtl.togglePause(); }
+  toggleRidePause() {
+    this.rideCtl.togglePause();
+  }
   /** False when the target mountain has no AI network to field ([Trailmap: 395]). */
   startWatch(target: 'authored' | 'reference'): boolean {
     // A spectated field is a run like any other, and the only kind with no rider whose arrival or departure
@@ -1565,7 +1969,9 @@ export class Viewport {
   }
 
   /** Apply one peer's live world interaction to the matching local Play runtime. */
-  applyRideEvent(event: RideEvent): boolean { return this.referenceEffects.applyRideEvent(event); }
+  applyRideEvent(event: RideEvent): boolean {
+    return this.referenceEffects.applyRideEvent(event);
+  }
 
   // ---- read-only reference effects: inspector selection, manual preview, and Play trigger runtime ----
 
@@ -1585,7 +1991,8 @@ export class Viewport {
     if (!bvh) return null;
     mesh.updateWorldMatrix(true, false);
     const ray = this.effectGroundRay;
-    ray.origin.copy(position); ray.origin.y += 80;
+    ray.origin.copy(position);
+    ray.origin.y += 80;
     ray.direction.set(0, -1, 0);
     ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
     const hit = bvh.raycastFirst(ray, THREE.DoubleSide, 0, 240);
@@ -1618,11 +2025,15 @@ export class Viewport {
   /** The selected things a drop line hangs from (docs/012 · Drop lines): a lone placed prop's origin, every member of
    *  a set, and the anchor a gem, rail or prop-line point, light or screen is moved by. None while riding. */
   private dropLinePoints(): V3[] {
-    const obj = this.gizmo.object, kind = this.gizmoKind;
+    const obj = this.gizmo.object,
+      kind = this.gizmoKind;
     if (!obj?.visible || this.rideCtl.riding || kind === null) return [];
     if (kind === 'props') {
-      const placed = this.props.lastPlacedProps, single = this.props.selectedProp;
-      return [...(single === null ? [] : [single]), ...this.props.multiSelProps].flatMap(i => placed[i] ? [placed[i].pos] : []);
+      const placed = this.props.lastPlacedProps,
+        single = this.props.selectedProp;
+      return [...(single === null ? [] : [single]), ...this.props.multiSelProps].flatMap(i =>
+        placed[i] ? [placed[i].pos] : [],
+      );
     }
     return DROP_LINE_KINDS.has(kind) ? [[obj.position.x, obj.position.y, -obj.position.z]] : [];
   }
@@ -1638,10 +2049,14 @@ export class Viewport {
     ray.origin.set(x, 1e5, -z);
     ray.direction.set(0, -1, 0);
     ray.applyMatrix4(this.effectGroundToLocal.copy(mesh.matrixWorld).invert());
-    let best: THREE.Intersection | null = null, bestY = 0;
+    let best: THREE.Intersection | null = null,
+      bestY = 0;
     for (const hit of bvh.raycast(ray, THREE.DoubleSide, 0, 2e5)) {
       const y = hit.point.applyMatrix4(mesh.matrixWorld).y;
-      if (best === null || Math.abs(y - nearY) < Math.abs(bestY - nearY)) { best = hit; bestY = y; }
+      if (best === null || Math.abs(y - nearY) < Math.abs(bestY - nearY)) {
+        best = hit;
+        bestY = y;
+      }
     }
     if (!best) return null;
     // The face normal is geometry-local; carry it into the scene, then off worldRoot's Z mirror back to data, and
@@ -1653,17 +2068,23 @@ export class Viewport {
 
   setReferenceEffects(data: ReferenceEffectsData | null) {
     const level = data?.level ?? 'cleared';
-    runDiagnosticPhase('effects', `${level}:install-data`, () => {
-      this.refEffectsData = data;
-      this.referenceEffects.setData(data);
-      this.particleVolumes.setReference(data?.particleVolumes ?? []);
-      this.refDecor.setEffectsData(data); // material effects share the same native instance -> slot -> graph join
-    }, data ? `${data.instances.length} instances · ${data.document.graphs.length} graphs` : undefined);
+    runDiagnosticPhase(
+      'effects',
+      `${level}:install-data`,
+      () => {
+        this.refEffectsData = data;
+        this.referenceEffects.setData(data);
+        this.particleVolumes.setReference(data?.particleVolumes ?? []);
+        this.refDecor.setEffectsData(data); // material effects share the same native instance -> slot -> graph join
+      },
+      data ? `${data.instances.length} instances · ${data.document.graphs.length} graphs` : undefined,
+    );
     void runDiagnosticPhaseAsync('effects', `${level}:prop-repartition`, () =>
       this.refDecor.setEffectPropIndicesProgressive(
         data ? referenceEffectInstanceIndices(data) : [],
         () => new Promise<void>(resolve => setTimeout(resolve, 0)),
-      ));
+      ),
+    );
   }
   showReferenceEffectInspector(on: boolean) {
     this.referenceEffects.setInspecting(on);
@@ -1677,15 +2098,18 @@ export class Viewport {
    * Multi-selection outlines every contributing source in gold while the marker may remain on their target. */
   selectReferenceEffectInstances(sourceIndices: Iterable<number>, markerIndex?: number | null) {
     const indices = [...sourceIndices];
-    this.referenceEffects.selectInstance(markerIndex === undefined ? indices[0] ?? null : markerIndex);
+    this.referenceEffects.selectInstance(markerIndex === undefined ? (indices[0] ?? null) : markerIndex);
     if (!indices.length) this.refDecor.clearEffectPropHighlight();
     else this.refDecor.highlightEffectPropSourceIndices(indices); // no-op for animated/effect-only hosts without mesh
   }
   previewReferenceEffect(sourceIndex: number, graphId: string, loop = false): boolean {
     return this.referenceEffects.preview(sourceIndex, graphId, loop);
   }
-  previewReferenceEffects(sourceIndex: number, graphIds: readonly string[],
-    loopGraphIds: readonly string[] = []): boolean {
+  previewReferenceEffects(
+    sourceIndex: number,
+    graphIds: readonly string[],
+    loopGraphIds: readonly string[] = [],
+  ): boolean {
     return this.referenceEffects.previewGraphs(sourceIndex, graphIds, loopGraphIds);
   }
   previewAuthoredEffect(propId: string, graphId: string, loop = false): boolean {
@@ -1697,7 +2121,9 @@ export class Viewport {
   previewAuthoredTimerNode(propId: string, node: EffectNode, continuous = false): boolean {
     return this.referenceEffects.previewAuthoredTimerNode(propId, node, continuous);
   }
-  stopReferenceEffectPreview(): boolean { return this.referenceEffects.stopPreview(); }
+  stopReferenceEffectPreview(): boolean {
+    return this.referenceEffects.stopPreview();
+  }
   isReferenceEffectPreviewing(sourceIndex: number, graphId: string): boolean {
     return this.referenceEffects.isPreviewing(sourceIndex, graphId);
   }
@@ -1708,7 +2134,9 @@ export class Viewport {
   authoredPlayCounter(propId: string): { remaining: number; marked: number[] } | null {
     return this.referenceEffects.authoredPlayCounter(propId);
   }
-  isEffectPlayRunning(): boolean { return this.referenceEffects.isPlaying(); }
+  isEffectPlayRunning(): boolean {
+    return this.referenceEffects.isPlaying();
+  }
   /** Recovered model-clip data and read-only timeline controls for the Reference effects inspector. */
   referenceAnimObjectClip(sourceIndex: number): PropModelClip | null {
     return this.refDecor.referenceAnimObjectClip(sourceIndex);
@@ -1730,11 +2158,16 @@ export class Viewport {
   referenceSplineMotionInfo(sourceIndex: number, command: SplineMotionCommand): ReferenceSplineMotionInfo | null {
     return this.referenceEffects.showSplineInspector(sourceIndex, command);
   }
-  setReferenceSplineMotionDistance(sourceIndex: number, command: SplineMotionCommand,
-    distance: number | null): boolean {
+  setReferenceSplineMotionDistance(
+    sourceIndex: number,
+    command: SplineMotionCommand,
+    distance: number | null,
+  ): boolean {
     return this.referenceEffects.setSplineInspectorDistance(sourceIndex, command, distance);
   }
-  hideReferenceSplineMotion(): boolean { return this.referenceEffects.hideSplineInspector(); }
+  hideReferenceSplineMotion(): boolean {
+    return this.referenceEffects.hideSplineInspector();
+  }
   /** Select a native reference instance as the Props-mode read-only pick (Effects mode's "Go to prop"). */
   selectReferencePropBySource(sourceIndex: number): boolean {
     return this.refDecor.selectInstanceBySource(sourceIndex);
@@ -1750,8 +2183,12 @@ export class Viewport {
     this.cameraCtl.frameSphere(world, 12);
     return true;
   }
-  selectAuthoredParticleVolume(id: string | null) { this.particleVolumes.selectAuthored(id); }
-  selectReferenceParticleVolume(index: number | null) { this.particleVolumes.selectReference(index); }
+  selectAuthoredParticleVolume(id: string | null) {
+    this.particleVolumes.selectAuthored(id);
+  }
+  selectReferenceParticleVolume(index: number | null) {
+    this.particleVolumes.selectReference(index);
+  }
   focusParticleVolume(source: 'authored' | 'reference', key: string | number): boolean {
     const sphere = this.particleVolumes.focus(source, key);
     if (!sphere) return false;
@@ -1760,24 +2197,40 @@ export class Viewport {
   }
   /** Play setup: drop one AI rider on the clicked spot and let it ride. False when the target mountain has no AI
    *  network for it to follow. */
-  dropAiRider(world: V3): boolean { return this.rideCtl.dropAiRider(world); }
+  dropAiRider(world: V3): boolean {
+    return this.rideCtl.dropAiRider(world);
+  }
   /** How many AI riders are out on the mountain right now. */
-  get aiRiderCount() { return this.rideCtl.aiRiderCount; }
+  get aiRiderCount() {
+    return this.rideCtl.aiRiderCount;
+  }
   /** The field's size cap — the next Play fields at most this many, and a live field re-caps at once. */
-  set aiRiderMax(n: number) { this.rideCtl.setAiMax(n); }
+  set aiRiderMax(n: number) {
+    this.rideCtl.setAiMax(n);
+  }
   /** Character-library id used by the next player and AI riders. */
-  set riderModel(id: string) { this.rideCtl.setRiderModel(id); }
-  set riderStyle(id: string) { this.rideCtl.setRiderStyle(id); }
+  set riderModel(id: string) {
+    this.rideCtl.setRiderModel(id);
+  }
+  set riderStyle(id: string) {
+    this.rideCtl.setRiderStyle(id);
+  }
   /** Snowboard or skis, for the player and the whole AI field — applied live to a running ride. */
-  set rideGear(gear: RideGear) { this.rideCtl.setRideGear(gear); }
+  set rideGear(gear: RideGear) {
+    this.rideCtl.setRideGear(gear);
+  }
   /** Standard or goofy snowboard footing, retained while skis are selected and applied live. */
-  set snowboardStance(stance: SnowboardStance) { this.rideCtl.setSnowboardStance(stance); }
+  set snowboardStance(stance: SnowboardStance) {
+    this.rideCtl.setSnowboardStance(stance);
+  }
   /** Account-owned art is local-player-only; AI and course props retain their authored presentation. */
   set equipmentAppearance(appearance: EquipmentAppearance | undefined) {
     this.rideCtl.setEquipmentAppearance(appearance);
   }
 
-  get refLevelName() { return this.refLevel; }
+  get refLevelName() {
+    return this.refLevel;
+  }
 
   /** Convert an editor/data-space point to WORLD space (through the game-chirality flip). */
   dataToWorld(p: V3): V3 {
@@ -1787,17 +2240,25 @@ export class Viewport {
   }
 
   /** Swap the active camera between perspective and orthographic, preserving the framing + target. */
-  setProjection(ortho: boolean) { this.cameraCtl.setProjection(ortho); }
+  setProjection(ortho: boolean) {
+    this.cameraCtl.setProjection(ortho);
+  }
   /** Snapshot the camera framing so a reload can restore the exact current view. */
-  serializeView(): ViewState { return this.cameraCtl.serializeView(); }
+  serializeView(): ViewState {
+    return this.cameraCtl.serializeView();
+  }
   /** Snapshot the rendered view for observers. A running Test owns the camera independently of editor orbit. */
   serializeSharedView(): SharedCameraView {
     return this.cameraCtl.serializeSharedView(this.rideCtl.riding || this.rideCtl.xrPresenting);
   }
   /** Restore a view captured by serializeView. */
-  applyView(v: ViewState) { this.cameraCtl.applyView(v); }
+  applyView(v: ViewState) {
+    this.cameraCtl.applyView(v);
+  }
   /** Follow a live shared view without rebuilding the camera/navigation gizmo on every sample. */
-  followView(v: SharedCameraView) { this.cameraCtl.followView(v); }
+  followView(v: SharedCameraView) {
+    this.cameraCtl.followView(v);
+  }
 
   /** Terrain centre in editor coordinates, including a moved reference's placement offset. */
   cameraMountainCentre(which: 'authored' | 'reference'): V3 | null {
@@ -1809,8 +2270,10 @@ export class Viewport {
   }
 
   frameCamera(doc: EditDoc, label?: string, az = 45, el = 35) {
-    const matched = label === undefined ? [] : (doc.labels ?? []).filter(item => item.id === label || item.name === label);
-    if (label !== undefined && matched.length !== 1) throw new Error(matched.length ? `Label name is ambiguous: ${label}. Use its id.` : `No label named ${label}.`);
+    const matched =
+      label === undefined ? [] : (doc.labels ?? []).filter(item => item.id === label || item.name === label);
+    if (label !== undefined && matched.length !== 1)
+      throw new Error(matched.length ? `Label name is ambiguous: ${label}. Use its id.` : `No label named ${label}.`);
     const labelId = matched[0]?.id;
     const box = new THREE.Box3();
     const { mesh, edgeHandle } = meshFromDoc(doc);
@@ -1822,14 +2285,24 @@ export class Viewport {
     for (const prop of doc.props ?? []) {
       if (labelId && !prop.labels?.includes(labelId)) continue;
       const sphere = prop.id ? this.props.propWorldSphere(prop.id) : null;
-      if (sphere) box.union(new THREE.Box3().setFromCenterAndSize(sphere.center, new THREE.Vector3().setScalar(2 * sphere.radius)));
+      if (sphere)
+        box.union(
+          new THREE.Box3().setFromCenterAndSize(sphere.center, new THREE.Vector3().setScalar(2 * sphere.radius)),
+        );
       else box.expandByPoint(new THREE.Vector3(...this.dataToWorld(prop.pos)));
     }
-    if (box.isEmpty()) throw new Error(label ? `Label ${label} has no terrain or props to frame.` : 'The mountain has no terrain or props to frame.');
+    if (box.isEmpty())
+      throw new Error(
+        label ? `Label ${label} has no terrain or props to frame.` : 'The mountain has no terrain or props to frame.',
+      );
     const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const a = az * Math.PI / 180, e = el * Math.PI / 180;
+    const a = (az * Math.PI) / 180,
+      e = (el * Math.PI) / 180;
     const direction = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
-    this.cameraCtl.lookFrom(sphere.center.clone().addScaledVector(direction, Math.max(10, sphere.radius * 3)), sphere.center);
+    this.cameraCtl.lookFrom(
+      sphere.center.clone().addScaledVector(direction, Math.max(10, sphere.radius * 3)),
+      sphere.center,
+    );
     const aspect = this.container.clientWidth / Math.max(1, this.container.clientHeight);
     this.cameraCtl.frameSphere(sphere.center, sphere.radius * (this.isOrtho ? Math.max(1, 1 / aspect) : 1));
   }
@@ -1856,25 +2329,32 @@ export class Viewport {
       // Encode before WebGL discards the back buffer. Capture dimensions are bounded by setCaptureSize.
       const encoded = this.renderer.domElement.toDataURL('image/png').split(',')[1];
       if (!encoded) throw new Error('The browser could not encode the screenshot.');
-      const binary = atob(encoded), bytes = new Uint8Array(binary.length);
+      const binary = atob(encoded),
+        bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       return Promise.resolve(new Blob([bytes], { type: 'image/png' }));
-    } catch (error) { return Promise.reject(error); }
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 
   /** Terrain solid: 'textured' = real tiles, 'surface' = SurfaceType tint, 'none' = no solid drawn. */
-  get shadeMode(): ShadeMode { return this.shading; }
+  get shadeMode(): ShadeMode {
+    return this.shading;
+  }
   set shadeMode(m: ShadeMode) {
     if (m === this.shading) return;
     this.shading = m;
     this.legends.setShadeMode(m); // each colour key rides its own shade view: cage → Wireframe (none), surface tints → Surface
     // the lit colour buffer differs per mode (surface = tint x light, else pure light), so recompute it
-    if (this.terrainLayer.terrainLit) this.terrainLayer.applyTerrainLight(); else this.terrainLayer.applyMaterials();
+    if (this.terrainLayer.terrainLit) this.terrainLayer.applyTerrainLight();
+    else this.terrainLayer.applyMaterials();
     if (this.modelContextOn && this.contextLayer) {
-      if (this.contextLayer.terrainLit) this.contextLayer.applyTerrainLight(); else this.contextLayer.applyMaterials();
+      if (this.contextLayer.terrainLit) this.contextLayer.applyTerrainLight();
+      else this.contextLayer.applyMaterials();
     }
     if (this.contextWireGroup) this.contextWireGroup.visible = m === 'none'; // the backdrop's wireframe stand-in
-    this.cageLayer.rebuildCage();    // the cage only occludes against a solid surface, so its depth test follows
+    this.cageLayer.rebuildCage(); // the cage only occludes against a solid surface, so its depth test follows
     this.applyReferenceLightColors();
     // props follow the shade view like the two terrains: textured / neutral solid / triangle wires — and so do
     // the authored rail tubes + posts, which are props by the time they bake (docs/014)
@@ -1884,14 +2364,18 @@ export class Viewport {
   }
 
   /** Remember the XYZ-grid toggle; the actual view aid is constrained to orthographic projection. */
-  get viewGrid(): boolean { return this.viewGridOn; }
+  get viewGrid(): boolean {
+    return this.viewGridOn;
+  }
   set viewGrid(on: boolean) {
     this.viewGridOn = on;
     this.applyViewGrid();
     this.cameraCtl.refreshGridBtn();
   }
 
-  get viewGridStep(): SnapStep { return this.viewGridStepValue; }
+  get viewGridStep(): SnapStep {
+    return this.viewGridStepValue;
+  }
   set viewGridStep(step: SnapStep) {
     this.viewGridStepValue = step;
     this.viewGridLayer.setStep(step);
@@ -1901,7 +2385,9 @@ export class Viewport {
 
   /** Global world-grid snapping. TransformControls handles move axes; placement paths use snapPoint below.
    *  Rotate remains governed by its separate angular increment. */
-  get snapEnabled(): boolean { return this.snapOn; }
+  get snapEnabled(): boolean {
+    return this.snapOn;
+  }
   set snapEnabled(on: boolean) {
     this.snapOn = on;
     this.applyTransformSnap();
@@ -1909,7 +2395,9 @@ export class Viewport {
     this.cameraCtl.refreshSnapBtn();
   }
 
-  get snapStep(): SnapStep { return this.snapStepValue; }
+  get snapStep(): SnapStep {
+    return this.snapStepValue;
+  }
   set snapStep(step: SnapStep) {
     this.snapStepValue = step;
     this.applyTransformSnap();
@@ -1917,7 +2405,9 @@ export class Viewport {
     this.cameraCtl.refreshSnapBtn();
   }
 
-  get rotationSnapStep(): RotationSnapStep { return this.rotationSnapStepValue; }
+  get rotationSnapStep(): RotationSnapStep {
+    return this.rotationSnapStepValue;
+  }
   set rotationSnapStep(step: RotationSnapStep) {
     this.rotationSnapStepValue = step;
     this.applyTransformSnap();
@@ -1953,7 +2443,9 @@ export class Viewport {
     if (this.gems?.gemArmed && !this.gems.gemLine) this.gems.updateGemGhost();
   }
 
-  private applyViewGrid() { this.viewGridLayer.update(this.camera, this.controls.target, this.isOrtho, this.viewGridOn); }
+  private applyViewGrid() {
+    this.viewGridLayer.update(this.camera, this.controls.target, this.isOrtho, this.viewGridOn);
+  }
 
   get mode(): Mode {
     return this._mode;
@@ -1977,26 +2469,46 @@ export class Viewport {
     this.paint.rebuildAuthoredF();
     this.updateTouch();
     if (m !== 'props') {
-      this.props.clearSelection(); this.refDecor.clearPropSelection(); this.refDecor.clearSourceSelection();
-      this.lights.clearSelection(); this.lights.clearRigSource(); this.rails.clearSelection(); this.gems.clearSelection();
-      this.screens.clearSelection(); this.propLines.clearSelection();
+      this.props.clearSelection();
+      this.refDecor.clearPropSelection();
+      this.refDecor.clearSourceSelection();
+      this.lights.clearSelection();
+      this.lights.clearRigSource();
+      this.rails.clearSelection();
+      this.gems.clearSelection();
+      this.screens.clearSelection();
+      this.propLines.clearSelection();
     }
     if (m !== 'paint') this.refDecor.clearSurfaceInspection(); // the inspected-submesh marker is Paint's
     // terrain editing (corners / handles / knots / loop trace) is Edit's; keep a reference-move gizmo alive
     // through an edit->info switch, since the whole-reference move lives in Info.
     if (m !== 'edit') {
       if (this.gizmoKind !== 'reference' && !(m === 'effects' && this.gizmoKind === 'effect')) this.detachGizmo();
-      this.selection.placeCornerMarker(null); this.showHandles(null, []); this.selection.clearCageHandle(); this.selection.clearRefLoops();
+      this.selection.placeCornerMarker(null);
+      this.showHandles(null, []);
+      this.selection.clearCageHandle();
+      this.selection.clearRefLoops();
     }
-    if (m !== 'effects') { this.effectHandle.visible = false; if (this.gizmoKind === 'effect') this.detachGizmo(); }
-    if (m !== 'edit' && (this.surgery.tool || this.patchTool.active || this.tubeTool.active || this.gridTool.active || this.trailTool.active)) this.setSurgeryTool(null); // surgery is Edit-only
+    if (m !== 'effects') {
+      this.effectHandle.visible = false;
+      if (this.gizmoKind === 'effect') this.detachGizmo();
+    }
+    if (
+      m !== 'edit' &&
+      (this.surgery.tool ||
+        this.patchTool.active ||
+        this.tubeTool.active ||
+        this.gridTool.active ||
+        this.trailTool.active)
+    )
+      this.setSurgeryTool(null); // surgery is Edit-only
     if (m !== 'edit') this.trailTool.setKnots([], null); // trail knots are Edit's handles
     if (m !== 'edit' && this.clipboardPlacement.active) this.setPasteTool(null); // clipboard placement is Edit-only too
     if (m !== 'edit' && this.weldTool.active) this.setWeldTool(false); // the target-weld gesture is Edit-only too
     if (m !== 'info') this.clearRefSelection(); // the whole-reference move handle is Info's
     if (m !== 'info' && this.courseDraw.active) this.endCourseDraw(); // …and so is redrawing the course
-    this.applyCourseGuideVisibility();          // Info may show both authored + reference course paths
-    this.applyAiPathsVisibility();              // …and the AI-path overlay is mode-gated: Info's toggle, or Play's
+    this.applyCourseGuideVisibility(); // Info may show both authored + reference course paths
+    this.applyAiPathsVisibility(); // …and the AI-path overlay is mode-gated: Info's toggle, or Play's
 
     // ghosts only make sense in their own mode (the host re-arms them on re-entry)
     if (m !== 'props' && this.props.propGhost) this.props.propGhost.visible = false;
@@ -2039,25 +2551,38 @@ export class Viewport {
 
   /** Ask the owning layer whether its tool is still held, so a stale disarm cannot clear a live cursor. */
   private placementStillArmed(kind: Exclude<ArmedPlacement, null>): boolean {
-    return kind === 'prop' ? !!this.props.propArm
-      : kind === 'rail' ? this.rails.railArmed
-      : kind === 'line' ? this.propLines.drawing
-        : kind === 'gem' ? this.gems.gemArmed
-          : kind === 'course' ? this.courseDraw.active
-            : this.lights.lightPlacing;
+    return kind === 'prop'
+      ? !!this.props.propArm
+      : kind === 'rail'
+        ? this.rails.railArmed
+        : kind === 'line'
+          ? this.propLines.drawing
+          : kind === 'gem'
+            ? this.gems.gemArmed
+            : kind === 'course'
+              ? this.courseDraw.active
+              : this.lights.lightPlacing;
   }
 
   /** Host-facing facade; the paint layer owns the amber painted-cell outline. */
-  setSelectedPaintCell(quad: number | null) { this.paint.setSelectedPaintCell(quad); }
+  setSelectedPaintCell(quad: number | null) {
+    this.paint.setSelectedPaintCell(quad);
+  }
 
   /** Host-facing facade; the paint layer owns the painted-cell multi-selection outlines. */
-  setSelectedPaintCells(quads: number[]) { this.paint.setSelectedPaintCells(quads); }
+  setSelectedPaintCells(quads: number[]) {
+    this.paint.setSelectedPaintCells(quads);
+  }
 
   /** Host-facing facade; the paint layer owns the read-only reference-patch outline. */
-  setSelectedRefPatch(index: number | null) { this.paint.setSelectedRefPatch(index); }
+  setSelectedRefPatch(index: number | null) {
+    this.paint.setSelectedRefPatch(index);
+  }
 
   /** Drop the paint-mode inspected-prop-submesh outline (the amber marker a prop texture inspect seats). */
-  clearInspectedPropSurface() { this.refDecor.clearSurfaceInspection(); }
+  clearInspectedPropSurface() {
+    this.refDecor.clearSurfaceInspection();
+  }
 
   /** Re-apply the transient component visibility filter from the substrate (sel.hidden*). Keeping the original
    * index-buffer length means Three's faceIndex still maps to `quad * facesPerCell`; hidden patches become
@@ -2077,8 +2602,13 @@ export class Viewport {
     const pv = this.preview;
     if (!pv || !this.terrain.geometry) return;
     const indices = new Uint32Array(pv.indices);
-    if (this._mode === 'edit' && (this.selection.hiddenQuads.size || this.selection.hiddenVertices.size
-      || this.selection.hiddenEdges.size || this.extrusionPreviewHiddenQuads.size)) {
+    if (
+      this._mode === 'edit' &&
+      (this.selection.hiddenQuads.size ||
+        this.selection.hiddenVertices.size ||
+        this.selection.hiddenEdges.size ||
+        this.extrusionPreviewHiddenQuads.size)
+    ) {
       const stride = pv.facesPerCell * 3;
       for (let quad = 0; quad < pv.mesh.quadCount; quad++) {
         if (!this.selection.quadHidden(quad) && !this.extrusionPreviewHiddenQuads.has(quad)) continue;
@@ -2096,21 +2626,23 @@ export class Viewport {
    *  Collapsing each hidden range to one vertex preserves every buffer/group length and therefore every stable
    *  face/patch and chunk/material mapping. Outside Edit the complete reference is restored. */
   private applyHiddenReferenceIndex() {
-    const data = this.refData, reference = this.reference;
+    const data = this.refData,
+      reference = this.reference;
     if (!data || !reference) return;
     const stride = data.facesPerPatch * 3;
     const picking = new Uint32Array(data.indices);
     const source = this.referenceBatchIndexSource;
     const starts = this.referenceBatchPatchStarts;
     const rendered = source ? new Uint32Array(source) : null;
-    if (this._mode === 'edit') for (const patch of this.sel.refHiddenQuads) {
-      const from = patch * stride;
-      if (from < 0 || from + stride > picking.length) continue;
-      picking.fill(picking[from], from, from + stride);
-      const renderFrom = starts?.[patch];
-      if (rendered && renderFrom !== undefined && renderFrom + stride <= rendered.length)
-        rendered.fill(rendered[renderFrom], renderFrom, renderFrom + stride);
-    }
+    if (this._mode === 'edit')
+      for (const patch of this.sel.refHiddenQuads) {
+        const from = patch * stride;
+        if (from < 0 || from + stride > picking.length) continue;
+        picking.fill(picking[from], from, from + stride);
+        const renderFrom = starts?.[patch];
+        if (rendered && renderFrom !== undefined && renderFrom + stride <= rendered.length)
+          rendered.fill(rendered[renderFrom], renderFrom, renderFrom + stride);
+      }
     reference.geometry.setIndex(new THREE.BufferAttribute(picking, 1));
     if (rendered) {
       const index = new THREE.BufferAttribute(rendered, 1);
@@ -2120,8 +2652,11 @@ export class Viewport {
 
   private setExtrusionPreviewHiddenQuads(quads: readonly number[]) {
     const next = new Set(quads);
-    if (next.size === this.extrusionPreviewHiddenQuads.size
-      && [...next].every(quad => this.extrusionPreviewHiddenQuads.has(quad))) return;
+    if (
+      next.size === this.extrusionPreviewHiddenQuads.size &&
+      [...next].every(quad => this.extrusionPreviewHiddenQuads.has(quad))
+    )
+      return;
     this.extrusionPreviewHiddenQuads = next;
     this.applyHiddenTerrainIndex();
   }
@@ -2130,18 +2665,28 @@ export class Viewport {
    *  the same strength (a plain click shades one, Ctrl / Shift a set, a double-click a whole face-loop strip).
    *  A single selected cell also overlays its 16-point control-net study, like a clicked reference patch.
    *  The host calls this after changing sel.cellSel; an empty set clears the shading. */
-  refreshEditCells() { this.selection.refreshEditCells(); }
+  refreshEditCells() {
+    this.selection.refreshEditCells();
+  }
   /** Shade selected trail patches by the ride predicted over them (docs/023 · Predicted speed); null: plain yellow. */
-  setEditCellSpeedTint(tint: CellSpeedTint | null) { this.selection.setCellSpeedTint(tint); }
+  setEditCellSpeedTint(tint: CellSpeedTint | null) {
+    this.selection.setCellSpeedTint(tint);
+  }
 
   /** Redraw the selected-edge highlight from the substrate (sel.edgeSel, canonical `[lo,hi]` vertex-id pairs).
    *  The edge analogue of refreshEditCells; an empty set clears it. */
-  refreshEditEdges() { this.selection.refreshEditEdges(); this.edgeExtrusion.refreshPath(); }
+  refreshEditEdges() {
+    this.selection.refreshEditEdges();
+    this.edgeExtrusion.refreshPath();
+  }
 
   /** Host-facing facade; the layer owns rail colors, arrows, and overlay geometry. */
   setBridgeRails(rails: readonly (readonly number[])[] | null) {
     this.bridgePreview.setRails(rails);
-    if (this.bridgePreview.active) { this.selection.clearCageHandle(); this.detachGizmo(); }
+    if (this.bridgePreview.active) {
+      this.selection.clearCageHandle();
+      this.detachGizmo();
+    }
     this.selection.rebuildEditEdgeSel();
   }
 
@@ -2151,22 +2696,24 @@ export class Viewport {
   }
 
   /** Highlight a set of box-selected corners (orange), or clear with an empty list. */
-  setRegionMarks(positions: V3[]) { this.selection.setRegionMarks(positions); }
+  setRegionMarks(positions: V3[]) {
+    this.selection.setRegionMarks(positions);
+  }
 
   /** Who else is on this mountain and what they are touching (docs/039). Awareness is what makes free-for-all
    *  editing work in practice, so it is drawn on the terrain rather than listed in a panel. */
   setPeers(peers: readonly PeerMarks[], serverNow = Date.now(), hiddenPlayerSessions?: ReadonlySet<string>) {
     this.peers.setPeers(peers);
     this.remotePlayers.setPeers(
-      hiddenPlayerSessions?.size
-        ? peers.filter(peer => !hiddenPlayerSessions.has(peer.sessionId))
-        : peers,
+      hiddenPlayerSessions?.size ? peers.filter(peer => !hiddenPlayerSessions.has(peer.sessionId)) : peers,
       serverNow,
     );
   }
   /** Active remote avatars on this map. The Test Position section uses session ids so two tabs belonging to
    * the same account remain two distinct players. */
-  activeMapPlayers(): readonly ActiveMapPlayer[] { return this.remotePlayers.players(); }
+  activeMapPlayers(): readonly ActiveMapPlayer[] {
+    return this.remotePlayers.players();
+  }
   /** Test ▸ Position: frame the selected player from a wide downhill vantage while in setup/watch, or join
    * three metres behind them when this browser is already in desktop Play. */
   goToMapPlayer(sessionId: string): boolean {
@@ -2185,8 +2732,12 @@ export class Viewport {
     return true;
   }
   /** Show a short-lived bubble over the live avatar that authored a new chat line. */
-  showPlayerChat(userId: string, text: string): void { this.remotePlayers.showChat(userId, text); }
-  showPeers(on: boolean) { this.peers.setVisible(on); }
+  showPlayerChat(userId: string, text: string): void {
+    this.remotePlayers.showChat(userId, text);
+  }
+  showPeers(on: boolean) {
+    this.peers.setVisible(on);
+  }
 
   /** Stop gestures whose frozen indices belong to the document being replaced. Keep camera and tool modes. */
   cancelDocumentGesture() {
@@ -2272,7 +2823,12 @@ export class Viewport {
    */
   refreshMountainOverlays(doc: EditDoc, selected: number | null, selectedKnots: readonly number[]) {
     // bigger handles: a mountain is viewed from much further away than a course
-    this.syncKnots(doc.course.knots.map(k => k.pos), selected, selectedKnots, 5);
+    this.syncKnots(
+      doc.course.knots.map(k => k.pos),
+      selected,
+      selectedKnots,
+      5,
+    );
     this.courseMarkers.setCourse(doc.course.knots.length >= 2 ? doc.course : null);
     this.speedShadeLayer.linesChanged(JSON.stringify([doc.course, doc.aiSeed ?? DEFAULT_AI_SEED]));
     this.aiPathsLayer.setCourse(doc.course.knots.length >= 2 ? doc.course : null, doc.aiSeed ?? DEFAULT_AI_SEED);
@@ -2292,18 +2848,31 @@ export class Viewport {
   setModelEditContext(on: boolean, mountainDoc?: EditDoc) {
     this.modelContextOn = !!(on && mountainDoc);
     this.speedShadeLayer.refresh(); // the speed wash means nothing on the model's mesh standing in the terrain's place
-    if (this.contextWireGroup) { // rebuilt below when the session is (re-)entered
+    if (this.contextWireGroup) {
+      // rebuilt below when the session is (re-)entered
       this.stage.worldRoot.remove(this.contextWireGroup);
       clearGlyphGroup(this.contextWireGroup);
       this.contextWireGroup = null;
     }
-    if (!this.modelContextOn) { this.contextLayer?.release(); return; }
-    this.contextLayer ??= createTerrainLayer(this.stage, this.tiles, {
-      shading: () => this.shading,
-      rigData: () => this.lights.authoredRigData,
-      rigVisible: () => this.lights.authoredLightsVisible,
-    }, { onGeometryRebuilt: () => { /* no dependent overlays: the cage/selection stack reads the substrate */ } },
-    { pickTarget: false });
+    if (!this.modelContextOn) {
+      this.contextLayer?.release();
+      return;
+    }
+    this.contextLayer ??= createTerrainLayer(
+      this.stage,
+      this.tiles,
+      {
+        shading: () => this.shading,
+        rigData: () => this.lights.authoredRigData,
+        rigVisible: () => this.lights.authoredLightsVisible,
+      },
+      {
+        onGeometryRebuilt: () => {
+          /* no dependent overlays: the cage/selection stack reads the substrate */
+        },
+      },
+      { pickTarget: false },
+    );
     this.contextLayer.applyPreview(buildMountainPreview(mountainDoc!));
     this.contextLayer.setTerrainLight(this.terrainLightOpts); // match the primary layer's sun state
     this.contextLayer.setTerrainBakedView(this.terrainBakedOn);
@@ -2324,7 +2893,10 @@ export class Viewport {
   private refreshTJunctionDiagnostics() {
     const doc = this.meshDoc;
     if (!doc) {
-      this.createEdge.setTJunctions([]); this.createEdge.setEdgeCrossings([]); this.createEdge.setCoincidentVertices([]); return;
+      this.createEdge.setTJunctions([]);
+      this.createEdge.setEdgeCrossings([]);
+      this.createEdge.setCoincidentVertices([]);
+      return;
     }
     const byVertex = new Map<number, V3>();
     for (const junction of findTJunctions(doc)) byVertex.set(junction.vertex, junction.point);
@@ -2337,11 +2909,14 @@ export class Viewport {
    * control cage can depend on the changed vertices/handles/interiors is retessellated. The global cage is not
    * rebuilt: its retained dirty wire ranges plus visible Subcage dots/lattice ranges update in place, without
    * re-enumerating the mountain-wide control-point set; secondary systems wait for pointer-up. */
-  previewMeshEdit(doc: EditDoc, change: {
-    vertices?: readonly number[];
-    edges?: readonly [number, number][];
-    quads?: readonly number[];
-  }): boolean {
+  previewMeshEdit(
+    doc: EditDoc,
+    change: {
+      vertices?: readonly number[];
+      edges?: readonly [number, number][];
+      quads?: readonly number[];
+    },
+  ): boolean {
     const dirty = this.dirtyPatches(doc, change);
     if (!dirty?.size) return false;
     if (!this.writePatches(doc, dirty, change)) return false;
@@ -2376,7 +2951,9 @@ export class Viewport {
 
   /** Whether anything has been left for `settleMountain`: an occlusion bake running behind incremental
    *  updates, or whole-mesh diagnostics that have not seen the corners as they now stand. */
-  get mountainSettlePending() { return this.meshMoved || this.terrainLayer.lightingStale; }
+  get mountainSettlePending() {
+    return this.meshMoved || this.terrainLayer.lightingStale;
+  }
 
   /**
    * Bring the deferred half of a rebuild up to date, once nothing has moved for a while.
@@ -2394,18 +2971,29 @@ export class Viewport {
   }
 
   /** The patches a stable-topology change can move, or null when only a full rebuild is correct. */
-  private dirtyPatches(doc: EditDoc, change: {
-    vertices?: readonly number[]; edges?: readonly [number, number][]; quads?: readonly number[];
-  }): Set<number> | null {
+  private dirtyPatches(
+    doc: EditDoc,
+    change: {
+      vertices?: readonly number[];
+      edges?: readonly [number, number][];
+      quads?: readonly number[];
+    },
+  ): Set<number> | null {
     const pv = this.preview;
     if (!pv || !previewMatchesTopology(doc, pv)) return null;
     return patchDependency(pv.mesh, pv.adjacency).of(change);
   }
 
   /** Re-emit the named patches into the live quilt and tell every layer bound to it. */
-  private writePatches(doc: EditDoc, dirty: ReadonlySet<number>, change: {
-    vertices?: readonly number[]; edges?: readonly [number, number][]; quads?: readonly number[];
-  }): boolean {
+  private writePatches(
+    doc: EditDoc,
+    dirty: ReadonlySet<number>,
+    change: {
+      vertices?: readonly number[];
+      edges?: readonly [number, number][];
+      quads?: readonly number[];
+    },
+  ): boolean {
     const pv = this.preview;
     if (!pv) return false;
     const geometry = !!(change.vertices?.length || change.edges?.length);
@@ -2418,8 +3006,10 @@ export class Viewport {
       if (mismatch) throw new Error(`incremental rebuild disagrees with a full one — ${mismatch}`);
     }
     if (this.cageLayer.subCage) this.cageLayer.updateAuthoredControlPointCache(dirty);
-    this.terrainLayer.updatePatches(dirty, patchVertexSpans(dirty, PATCH_VERTS),
-      { geometry, materials: !!change.quads?.length });
+    this.terrainLayer.updatePatches(dirty, patchVertexSpans(dirty, PATCH_VERTS), {
+      geometry,
+      materials: !!change.quads?.length,
+    });
     this.meshMoved ||= geometry;
     this.cageLayer.streamCornerDots(doc.vertices);
     this.refreshCageEdges(dirty);
@@ -2439,7 +3029,11 @@ export class Viewport {
    * place, leaving every unrelated map edge visible; the cool fill makes the dependency footprint explicit. */
   private rebuildLiveEditPreview(quads: ReadonlySet<number>) {
     const pv = this.preview;
-    if (!pv || !quads.size) { this.liveEditFill.visible = false; clearGlyphGroup(this.liveEditCageGroup); return; }
+    if (!pv || !quads.size) {
+      this.liveEditFill.visible = false;
+      clearGlyphGroup(this.liveEditCageGroup);
+      return;
+    }
     this.selection.setCellFill(this.liveEditFill, pv.positions, pv.facesPerCell, quads);
   }
 
@@ -2455,15 +3049,24 @@ export class Viewport {
       const q = pv.mesh.quads[quad];
       if (!q) continue;
       const [A, B, C, D] = q;
-      for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as [number, number][]) {
         if (a === b) continue;
         edgeMap.set(ekey(a, b), a < b ? [a, b] : [b, a]);
       }
     }
-    const missing: [number, number][] = [], touched = new Set<THREE.BufferAttribute>();
+    const missing: [number, number][] = [],
+      touched = new Set<THREE.BufferAttribute>();
     for (const edge of edgeMap.values()) {
       const range = this.cageLayer.edgeRange(ekey(edge[0], edge[1]));
-      if (!range) { missing.push(edge); continue; }
+      if (!range) {
+        missing.push(edge);
+        continue;
+      }
       const attr = range.geometry.getAttribute('position') as THREE.BufferAttribute;
       const segs = meshEdgeSegments(pv.mesh, pv.edgeHandle, [range.edge], CAGE_EDGE_SEG);
       (attr.array as Float32Array).set(segs, range.floatOffset);
@@ -2492,13 +3095,20 @@ export class Viewport {
       this.ownBox = null;
     }
     const C = docPositions(doc);
-    if (C.length < 3) { this.ownBounds = null; this.videoBillboard.setMountainBounds(null); return; }
+    if (C.length < 3) {
+      this.ownBounds = null;
+      this.videoBillboard.setMountainBounds(null);
+      return;
+    }
     const min = new THREE.Vector3(Infinity, Infinity, Infinity);
     const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
     for (let i = 0; i + 2 < C.length; i += 3) {
-      min.x = Math.min(min.x, C[i]); max.x = Math.max(max.x, C[i]);
-      min.y = Math.min(min.y, C[i + 1]); max.y = Math.max(max.y, C[i + 1]);
-      min.z = Math.min(min.z, C[i + 2]); max.z = Math.max(max.z, C[i + 2]);
+      min.x = Math.min(min.x, C[i]);
+      max.x = Math.max(max.x, C[i]);
+      min.y = Math.min(min.y, C[i + 1]);
+      max.y = Math.max(max.y, C[i + 1]);
+      min.z = Math.min(min.z, C[i + 2]);
+      max.z = Math.max(max.z, C[i + 2]);
     }
     const bounds = new THREE.Box3(min, max);
     this.ownBounds = bounds;
@@ -2572,15 +3182,21 @@ export class Viewport {
 
   /** Show / hide the run's guide line + knot handles (Info mode draws them). Hiding drops the gizmo off a
    *  selected knot — it would otherwise hover over a handle that isn't drawn. */
-  get courseGuide(): boolean { return this.courseGuideOn; }
+  get courseGuide(): boolean {
+    return this.courseGuideOn;
+  }
   set courseGuide(on: boolean) {
     this.courseGuideOn = on;
     this.applyCourseGuideVisibility();
   }
 
-  private applyCourseGuideVisibility() { this.showCourse(this._mode === 'info' && this.courseGuideOn); }
+  private applyCourseGuideVisibility() {
+    this.showCourse(this._mode === 'info' && this.courseGuideOn);
+  }
 
-  get normalsGuide(): boolean { return this.normalsOn; }
+  get normalsGuide(): boolean {
+    return this.normalsOn;
+  }
   set normalsGuide(on: boolean) {
     this.normalsOn = on;
     setBackfaceTintVisible(on);
@@ -2588,7 +3204,9 @@ export class Viewport {
 
   /** Show / hide the AI-path overlay (Info): the authored derived opponent lines AND the loaded reference's
    *  own AIP network — one toggle, like the course guide it sits beside. */
-  get aiPathsGuide(): boolean { return this.aiPathsOn; }
+  get aiPathsGuide(): boolean {
+    return this.aiPathsOn;
+  }
   set aiPathsGuide(on: boolean) {
     this.aiPathsOn = on;
     this.applyAiPathsVisibility();
@@ -2596,7 +3214,9 @@ export class Viewport {
 
   /** The same overlay in Play, on its OWN toggle — you want the lines up while watching riders work them far
    *  more often than while shaping the run, and neither mode should switch the other's clutter on. */
-  get playAiPathsGuide(): boolean { return this.playAiPathsOn; }
+  get playAiPathsGuide(): boolean {
+    return this.playAiPathsOn;
+  }
   set playAiPathsGuide(on: boolean) {
     this.playAiPathsOn = on;
     this.applyAiPathsVisibility();
@@ -2627,24 +3247,34 @@ export class Viewport {
   }
 
   /** Drop any control-net corner selection (Escape, editor switch). */
-  clearCornerSelection() { this.selection.clearCornerSelection(); }
+  clearCornerSelection() {
+    this.selection.clearCornerSelection();
+  }
 
   /** Host-owned selection of arbitrary authored control points. The viewport resolves their exact current
    * positions from the same list that draws the global dots, marks every member, and seats one centroid gizmo
    * on the unlocked subset. World is axis-aligned; Local / Surface align to the points' owner-corner slopes.
    * Point groups still move freely because Surface slide is a corner/topology tool. */
-  setControlPointSelection(ids: readonly MeshControlPointId[]) { this.selection.setControlPointSelection(ids); }
+  setControlPointSelection(ids: readonly MeshControlPointId[]) {
+    this.selection.setControlPointSelection(ids);
+  }
 
   /** Whether a pinned control cage shows this point right now — what a Shift range may take. */
   controlPointVisible(id: MeshControlPointId) {
-    return this.cageLayer.subCage && this.cageLayer.authoredControlPointVisible(id) && !this.selection.controlPointHidden(id);
+    return (
+      this.cageLayer.subCage && this.cageLayer.authoredControlPointVisible(id) && !this.selection.controlPointHidden(id)
+    );
   }
 
   /** Remove the current selection gizmo. */
-  detachSelectionGizmo() { this.stage.detachGizmo(); }
+  detachSelectionGizmo() {
+    this.stage.detachGizmo();
+  }
 
   /** Seat one World-space Move / Rotate gizmo on a mixed Edit marquee's movable mesh/prop union. */
-  setEditMixedGroup(positions: V3[], indices: number[] = []) { this.selection.setEditMixedGroup(positions, indices); }
+  setEditMixedGroup(positions: V3[], indices: number[] = []) {
+    this.selection.setEditMixedGroup(positions, indices);
+  }
 
   /** Retain one family from a mixed read-only reference marquee. */
   narrowReferenceEditSelection(kind: 'point' | 'edge' | 'patch') {
@@ -2662,7 +3292,9 @@ export class Viewport {
    *  region dots; that's the corner family's own marker, so an edge (its yellow highlight) and a cell (its
    *  shading) pass false and seat the gizmo alone — their own family already cleared the dots on the way in.
    *  Empty clears it. Won't yank the handle mid-drag — the gizmo owns its position then. */
-  setCornerGroup(positions: V3[], indices: number[] = [], showMarks = true) { this.selection.setCornerGroup(positions, indices, showMarks); }
+  setCornerGroup(positions: V3[], indices: number[] = [], showMarks = true) {
+    this.selection.setCornerGroup(positions, indices, showMarks);
+  }
 
   /** Point the translate gizmo at a node mesh (corner marker, course knot, or tangent-handle nub).
    *  The mesh is persistent, so the gizmo rides it through rebuilds automatically - only re-seat it
@@ -2672,12 +3304,18 @@ export class Viewport {
   }
 
   /** Hide the translate gizmo (nothing selected, or paint/sculpt mode). */
-  private detachGizmo() { this.stage.detachGizmo(); }
+  private detachGizmo() {
+    this.stage.detachGizmo();
+  }
 
   /** Host-facing facade; the transform layer owns World / Local / Surface framing and Surface's slide. */
-  setGizmoFrame(frame: GizmoFrame) { this.transforms.setGizmoFrame(frame); }
+  setGizmoFrame(frame: GizmoFrame) {
+    this.transforms.setGizmoFrame(frame);
+  }
   /** The placed-prop World / Surface pill (docs/012 · Surface frame). */
-  setPropGizmoFrame(frame: PropGizmoFrame) { this.transforms.setPropGizmoFrame(frame); }
+  setPropGizmoFrame(frame: PropGizmoFrame) {
+    this.transforms.setPropGizmoFrame(frame);
+  }
 
   /** Host-facing facade; the transform layer gates rotate / scale to selections with extent. */
   setGizmoMode(mode: GizmoMode) {
@@ -2716,7 +3354,12 @@ export class Viewport {
   }
 
   /** The pose a refused (locked) gizmo drag is held at, until the drag ends. */
-  private heldGizmo: { obj: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 } | null = null;
+  private heldGizmo: {
+    obj: THREE.Object3D;
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+  } | null = null;
 
   private holdGizmo() {
     const held = this.heldGizmo;
@@ -2731,8 +3374,14 @@ export class Viewport {
     if (this.gizmoKind === 'handle') return { kind: 'handle', dir: this.gizmoDir };
     if (this.gizmoKind === 'cagehandle') {
       const handle = this.selection.selectedCageHandle;
-      return { kind: 'cagehandle', handle: !handle ? null
-        : handle.kind === 'edge' ? { kind: 'edge', from: handle.from, to: handle.to } : { kind: 'twist', quad: handle.quad } };
+      return {
+        kind: 'cagehandle',
+        handle: !handle
+          ? null
+          : handle.kind === 'edge'
+            ? { kind: 'edge', from: handle.from, to: handle.to }
+            : { kind: 'twist', quad: handle.quad },
+      };
     }
     return { kind: this.gizmoKind as 'corner' | 'corners' | 'controlpoints' | 'editmixed' };
   }
@@ -2741,15 +3390,47 @@ export class Viewport {
   private onGizmoChange() {
     const obj = this.gizmo.object;
     if (!obj) return;
-    if (this.gizmoKind === 'propdeform') { this.propDeform.changed(); return; }
-    if (this.heldGizmo) { this.holdGizmo(); return; }
-    if (this.gizmoKind === 'edgeextrusion') { this.edgeExtrusion.onGizmoChange(); this.gizmoReadout.update(); return; }
-    if (this.gizmoKind === 'trail') { this.trailTool.wholeChanged(); this.gizmoReadout.update(); return; }
-    if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') { this.gridTool.gizmoChanged(); this.gizmoReadout.update(); return; }
-    if (this.transforms.rotationActive()) { this.transforms.rotateSelection(); this.gizmoReadout.update(); return; }
-    if (this.transforms.scaleActive()) { this.transforms.scaleSelection(); this.gizmoReadout.update(); return; }
-    if (this.transforms.slideRecut(obj)) { this.gizmoReadout.update(); return; } // Slide, arrow or tangent pad: an exact de Casteljau re-cut owns the frame
-    if (this.transforms.slideProps(obj)) { this.gizmoReadout.update(); return; } // Surface-frame props ride the terrain
+    if (this.gizmoKind === 'propdeform') {
+      this.propDeform.changed();
+      return;
+    }
+    if (this.heldGizmo) {
+      this.holdGizmo();
+      return;
+    }
+    if (this.gizmoKind === 'edgeextrusion') {
+      this.edgeExtrusion.onGizmoChange();
+      this.gizmoReadout.update();
+      return;
+    }
+    if (this.gizmoKind === 'trail') {
+      this.trailTool.wholeChanged();
+      this.gizmoReadout.update();
+      return;
+    }
+    if (this.gizmoKind === 'grid' || this.gizmoKind === 'gridcorner') {
+      this.gridTool.gizmoChanged();
+      this.gizmoReadout.update();
+      return;
+    }
+    if (this.transforms.rotationActive()) {
+      this.transforms.rotateSelection();
+      this.gizmoReadout.update();
+      return;
+    }
+    if (this.transforms.scaleActive()) {
+      this.transforms.scaleSelection();
+      this.gizmoReadout.update();
+      return;
+    }
+    if (this.transforms.slideRecut(obj)) {
+      this.gizmoReadout.update();
+      return;
+    } // Slide, arrow or tangent pad: an exact de Casteljau re-cut owns the frame
+    if (this.transforms.slideProps(obj)) {
+      this.gizmoReadout.update();
+      return;
+    } // Surface-frame props ride the terrain
     this.transforms.slideProject(obj); // Slide: snap a corner with no axes back onto the frozen surface before reporting
     this.transforms.slidePoint(obj); // Surface: a Props-mode point keeps its height over the ground before reporting
     this.gizmoReadout.update();
@@ -2757,24 +3438,35 @@ export class Viewport {
     const corner = this.selectedCornerIndex();
     if (this.gizmoKind === 'corner' && corner !== null) this.cb.onMoveCorner(corner, p);
     else if (this.gizmoKind === 'corners') {
-      if (this.transforms.groupSliding) this.transforms.slideGroupUpdate(p); // Slide: ratio-preserving grid slide on the frozen surface
+      if (this.transforms.groupSliding)
+        this.transforms.slideGroupUpdate(p); // Slide: ratio-preserving grid slide on the frozen surface
       else {
         // Move: the centre handle drives the whole set rigidly — report how far it moved since the last report
-        const d: V3 = [p[0] - this.selection.cornerGroupHandleLast.x, p[1] - this.selection.cornerGroupHandleLast.y, p[2] - this.selection.cornerGroupHandleLast.z];
+        const d: V3 = [
+          p[0] - this.selection.cornerGroupHandleLast.x,
+          p[1] - this.selection.cornerGroupHandleLast.y,
+          p[2] - this.selection.cornerGroupHandleLast.z,
+        ];
         this.selection.cornerGroupHandleLast.set(p[0], p[1], p[2]);
         if (d[0] || d[1] || d[2]) this.cb.onMoveCorners?.(d);
       }
-    }
-    else if (this.gizmoKind === 'controlpoints') {
-      const d: V3 = [p[0] - this.selection.cornerGroupHandleLast.x, p[1] - this.selection.cornerGroupHandleLast.y, p[2] - this.selection.cornerGroupHandleLast.z];
+    } else if (this.gizmoKind === 'controlpoints') {
+      const d: V3 = [
+        p[0] - this.selection.cornerGroupHandleLast.x,
+        p[1] - this.selection.cornerGroupHandleLast.y,
+        p[2] - this.selection.cornerGroupHandleLast.z,
+      ];
       this.selection.cornerGroupHandleLast.set(p[0], p[1], p[2]);
       if (d[0] || d[1] || d[2]) {
         this.cb.onMoveControlPoints?.(d);
         this.selection.shiftControlPointMarks(d);
       }
-    }
-    else if (this.gizmoKind === 'editmixed') {
-      const d: V3 = [p[0] - this.selection.cornerGroupHandleLast.x, p[1] - this.selection.cornerGroupHandleLast.y, p[2] - this.selection.cornerGroupHandleLast.z];
+    } else if (this.gizmoKind === 'editmixed') {
+      const d: V3 = [
+        p[0] - this.selection.cornerGroupHandleLast.x,
+        p[1] - this.selection.cornerGroupHandleLast.y,
+        p[2] - this.selection.cornerGroupHandleLast.z,
+      ];
       this.selection.cornerGroupHandleLast.set(p[0], p[1], p[2]);
       if (d[0] || d[1] || d[2]) this.cb.onMoveMixedEditSelection?.(d);
     }
@@ -2785,45 +3477,65 @@ export class Viewport {
     // the object back to its drag-start height every time).
     else if (this.gizmoKind === 'knot') {
       const ground = this.terrainNearestAt(p[0], p[2], this.courseDragY ?? p[1]);
-      if (ground !== null) { p[1] = ground; obj.position.y = ground; this.courseDragY = ground; }
+      if (ground !== null) {
+        p[1] = ground;
+        obj.position.y = ground;
+        this.courseDragY = ground;
+      }
       this.cb.onMoveKnot(this.gizmoKnot, p);
-    }
-    else if (this.gizmoKind === 'anchor' && this.gizmoAnchor) {
+    } else if (this.gizmoKind === 'anchor' && this.gizmoAnchor) {
       const was = this.courseDragY ?? p[1] - ANCHOR_HANDLE_LIFT; // the flag floats; the anchor is the ground point
       const ground = this.terrainNearestAt(p[0], p[2], was) ?? was;
       this.courseDragY = ground;
       obj.position.y = ground + ANCHOR_HANDLE_LIFT;
       this.cb.onMoveAnchor?.(this.gizmoAnchor, [p[0], ground, p[2]]);
-    }
-    else if (this.gizmoKind === 'prop' && this.props.selectedProp !== null) this.cb.onMoveProp?.(this.props.selectedProp, p);
+    } else if (this.gizmoKind === 'prop' && this.props.selectedProp !== null)
+      this.cb.onMoveProp?.(this.props.selectedProp, p);
     else if (this.gizmoKind === 'props' && this.props.multiSelProps.length) {
       // the centre handle drives the whole set: report how far it moved since the last report (data space)
-      const d: V3 = [p[0] - this.props.multiHandleLast.x, p[1] - this.props.multiHandleLast.y, p[2] - this.props.multiHandleLast.z];
+      const d: V3 = [
+        p[0] - this.props.multiHandleLast.x,
+        p[1] - this.props.multiHandleLast.y,
+        p[2] - this.props.multiHandleLast.z,
+      ];
       this.props.multiHandleLast.set(p[0], p[1], p[2]);
       if (d[0] || d[1] || d[2]) this.cb.onMoveProps?.(d);
-    }
-    else if (this.gizmoKind === 'light' && this.lights.selectedLight !== null) this.cb.onMoveLight?.(this.lights.selectedLight, p);
-    else if (this.gizmoKind === 'railnode' && this.rails.selectedRail !== null && this.rails.selectedNode !== null) this.cb.onMoveRailNode?.(this.rails.selectedRail, this.rails.selectedNode, p);
-    else if (this.gizmoKind === 'linenode' && this.propLines.selectedLine !== null && this.propLines.selectedNode !== null) this.cb.onMoveLineNode?.(this.propLines.selectedLine, this.propLines.selectedNode, p);
+    } else if (this.gizmoKind === 'light' && this.lights.selectedLight !== null)
+      this.cb.onMoveLight?.(this.lights.selectedLight, p);
+    else if (this.gizmoKind === 'railnode' && this.rails.selectedRail !== null && this.rails.selectedNode !== null)
+      this.cb.onMoveRailNode?.(this.rails.selectedRail, this.rails.selectedNode, p);
+    else if (
+      this.gizmoKind === 'linenode' &&
+      this.propLines.selectedLine !== null &&
+      this.propLines.selectedNode !== null
+    )
+      this.cb.onMoveLineNode?.(this.propLines.selectedLine, this.propLines.selectedNode, p);
     else if (this.gizmoKind === 'trailknot' && this.trailTool.selectedKnot !== null)
       this.cb.onMoveTrailKnot?.(this.trailTool.selectedKnot, this.trailTool.snapDrag(p)); // an end can land on another trail's knot
     else if (this.gizmoKind === 'pathhandle' && this.pathHandles.owner && this.pathHandles.selected) {
       const { node, side } = this.pathHandles.selected;
       this.cb.onMovePathHandle?.(this.pathHandles.owner, node, side, p, this.independentDrag);
-    }
-    else if (this.gizmoKind === 'gem' && this.gems.selectedGem !== null) this.cb.onMoveGem?.(this.gems.selectedGem, p);
-    else if (this.gizmoKind === 'screen' && this.screens.selectedScreen !== null) this.cb.onMoveScreen?.(this.screens.selectedScreen, p);
+    } else if (this.gizmoKind === 'gem' && this.gems.selectedGem !== null)
+      this.cb.onMoveGem?.(this.gems.selectedGem, p);
+    else if (this.gizmoKind === 'screen' && this.screens.selectedScreen !== null)
+      this.cb.onMoveScreen?.(this.screens.selectedScreen, p);
     else if (this.gizmoKind === 'effect') this.cb.onMoveEffect?.(p);
-    else if (this.gizmoKind === 'handle') { this.cageLayer.rebuildHandleLines(); this.cb.onMoveHandle(this.gizmoDir, p); }
-    else if (this.gizmoKind === 'cagehandle' && this.selection.selectedCageHandle) {
+    else if (this.gizmoKind === 'handle') {
+      this.cageLayer.rebuildHandleLines();
+      this.cb.onMoveHandle(this.gizmoDir, p);
+    } else if (this.gizmoKind === 'cagehandle' && this.selection.selectedCageHandle) {
       const h = this.selection.selectedCageHandle;
-      if (h.kind === 'edge') this.cb.onMoveCageHandle?.(h.from, h.to, p); // pin the directed-edge tangent (edgeHandles)
-      else this.cb.onMoveTwist?.(h.quad, h.corner, p);                     // pull the interior CP off zero-twist (quadTwist)
-    }
-    else if (this.gizmoKind === 'reference' && this.refCenter) {
+      if (h.kind === 'edge')
+        this.cb.onMoveCageHandle?.(h.from, h.to, p); // pin the directed-edge tangent (edgeHandles)
+      else this.cb.onMoveTwist?.(h.quad, h.corner, p); // pull the interior CP off zero-twist (quadTwist)
+    } else if (this.gizmoKind === 'reference' && this.refCenter) {
       // the handle is dragged in the flipped scene-root frame; back out the native centre to get refRoot's
       // offset. refRoot rides under worldRoot's -Z, so its local Z is the negated world Z (hence -obj.z).
-      this.refRoot.position.set(obj.position.x - this.refCenter[0], obj.position.y - this.refCenter[1], -obj.position.z - this.refCenter[2]);
+      this.refRoot.position.set(
+        obj.position.x - this.refCenter[0],
+        obj.position.y - this.refCenter[1],
+        -obj.position.z - this.refCenter[2],
+      );
     }
   }
 
@@ -2833,7 +3545,9 @@ export class Viewport {
     if (!this.refCenter) return;
     const o = this.refRoot.position;
     this.refMoveHandle.position.set(o.x + this.refCenter[0], o.y + this.refCenter[1], -(o.z + this.refCenter[2]));
-    const span = this.refData ? Math.max(this.refData.max[0] - this.refData.min[0], this.refData.max[2] - this.refData.min[2]) : 400;
+    const span = this.refData
+      ? Math.max(this.refData.max[0] - this.refData.min[0], this.refData.max[2] - this.refData.min[2])
+      : 400;
     this.refMoveHandle.scale.setScalar(Math.max(8, span * 0.02));
   }
 
@@ -2860,19 +3574,29 @@ export class Viewport {
   }
 
   /** Host-facing facade; the cage layer owns the persistent nub pool + connector lines. */
-  showHandles(corner: V3 | null, nubs: { dir: string; pos: V3 }[]) { this.cageLayer.showHandles(corner, nubs); }
+  showHandles(corner: V3 | null, nubs: { dir: string; pos: V3 }[]) {
+    this.cageLayer.showHandles(corner, nubs);
+  }
 
   /** Toggle the pink tile-orientation F overlay on the 3D terrain (authored painted cells + reference
    *  patches). Independent of the cage; the 2D panels (Library / preview / pad) draw their own Fs. */
-  set tileF(on: boolean) { this.paint.setTileF(on); }
+  set tileF(on: boolean) {
+    this.paint.setTileF(on);
+  }
 
   /** Wash the whole mountain by the speed a rider carries over it from the course start (docs/023 · Predicted speed),
    *  in the trail prediction's colours, and a loaded reference level from its own start; its key shows with it. */
-  set speedShade(on: boolean) { this.speedShadeLayer.setOn(on); this.refSpeedShadeLayer.setOn(on); }
+  set speedShade(on: boolean) {
+    this.speedShadeLayer.setOn(on);
+    this.refSpeedShadeLayer.setOn(on);
+  }
 
   /** The F toggle's prop half: green facing arrows on the selected prop — a placed one (authored model or
    *  retail placement) and the reference map's read-only instance selection alike (facing-arrows.ts). */
-  set propFacingArrows(on: boolean) { this.props.setNormalArrows(on); this.refDecor.setNormalArrows(on); }
+  set propFacingArrows(on: boolean) {
+    this.props.setNormalArrows(on);
+    this.refDecor.setNormalArrows(on);
+  }
 
   /** Selection-local collision geometry in Props mode, shared by authored and reference prop inspectors. */
   showSelectedPropCollider(on: boolean) {
@@ -2905,34 +3629,67 @@ export class Viewport {
 
   /** Arm/disarm the mutually-exclusive loop-cut, create-patch, create-tube, create-grid, or create-trail tool. */
   setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null) {
-    const leavingGeneratedPreview = (this.tubeTool.active && tool !== 'tube')
-      || (this.gridTool.active && tool !== 'grid')
-      || (this.trailTool.active && tool !== 'trail');
+    const leavingGeneratedPreview =
+      (this.tubeTool.active && tool !== 'tube') ||
+      (this.gridTool.active && tool !== 'grid') ||
+      (this.trailTool.active && tool !== 'trail');
     this.surgery.setTool(tool === 'loopcut' ? 'loopcut' : null);
     this.patchTool.setActive(tool === 'patch');
     this.tubeTool.setActive(tool === 'tube');
     this.gridTool.setActive(tool === 'grid');
     this.trailTool.setActive(tool === 'trail');
     if (leavingGeneratedPreview) this.setLoftPreview(null);
-    if (tool) { this.detachGizmo(); this.selection.placeCornerMarker(null); this.showHandles(null, []); }
+    if (tool) {
+      this.detachGizmo();
+      this.selection.placeCornerMarker(null);
+      this.showHandles(null, []);
+    }
   }
 
-  setCreatePatchSides(sides: 3 | 4) { this.patchTool.setSides(sides); }
+  setCreatePatchSides(sides: 3 | 4) {
+    this.patchTool.setSides(sides);
+  }
 
-  get createTubePoints(): readonly V3[] { return this.tubeTool.points; }
-  get createTubePreviewPoint(): V3 | null { return this.tubeTool.hover; }
-  setCreateTubePreviewListener(listener: (() => void) | null) { this.createTubePreviewListener = listener; listener?.(); }
+  get createTubePoints(): readonly V3[] {
+    return this.tubeTool.points;
+  }
+  get createTubePreviewPoint(): V3 | null {
+    return this.tubeTool.hover;
+  }
+  setCreateTubePreviewListener(listener: (() => void) | null) {
+    this.createTubePreviewListener = listener;
+    listener?.();
+  }
 
-  get createGridPoints(): readonly PlacementEndpoint[] { return this.gridTool.points; }
-  get createGridCorners(): GridCorners | null { return this.gridTool.corners; }
-  get createGridWholeSelected(): boolean { return this.gridTool.active && this.gridTool.wholeSelected; }
-  setCreateGridCorners(corners: GridCorners) { this.gridTool.setCorners(corners); }
-  get createGridHover(): PlacementEndpoint | null { return this.gridTool.hover; }
-  get createGridEye(): V3 { return this.gridTool.eye; }
-  setCreateGridPreviewListener(listener: (() => void) | null) { this.createGridPreviewListener = listener; listener?.(); }
-  setCreateGridLattice(plan: { points: readonly V3[]; columns: number; rows: number } | null) { this.gridTool.setLattice(plan); }
+  get createGridPoints(): readonly PlacementEndpoint[] {
+    return this.gridTool.points;
+  }
+  get createGridCorners(): GridCorners | null {
+    return this.gridTool.corners;
+  }
+  get createGridWholeSelected(): boolean {
+    return this.gridTool.active && this.gridTool.wholeSelected;
+  }
+  setCreateGridCorners(corners: GridCorners) {
+    this.gridTool.setCorners(corners);
+  }
+  get createGridHover(): PlacementEndpoint | null {
+    return this.gridTool.hover;
+  }
+  get createGridEye(): V3 {
+    return this.gridTool.eye;
+  }
+  setCreateGridPreviewListener(listener: (() => void) | null) {
+    this.createGridPreviewListener = listener;
+    listener?.();
+  }
+  setCreateGridLattice(plan: { points: readonly V3[]; columns: number; rows: number } | null) {
+    this.gridTool.setLattice(plan);
+  }
 
-  get createTrailPreviewPoint(): V3 | null { return this.trailTool.hover; }
+  get createTrailPreviewPoint(): V3 | null {
+    return this.trailTool.hover;
+  }
   /** Show the selected path's Bézier handles (null hides them), `handle` carrying the gizmo (docs/014). */
   setPathHandles(path: ShownPath | null, handle: { node: number; side: PathHandleSide } | null) {
     this.pathHandles.setPath(path, handle);
@@ -2944,8 +3701,13 @@ export class Viewport {
   setTrailKnots(knots: readonly V3[], knot: number | null, pivot: V3 | null = null, shape?: TrailShape) {
     this.trailTool.setKnots(knots, knot, pivot, shape);
   }
-  setCreateTrailSurfaceLift(value: number) { this.trailTool.setSurfaceLift(value); }
-  setCreateTrailPreviewListener(listener: (() => void) | null) { this.createTrailPreviewListener = listener; listener?.(); }
+  setCreateTrailSurfaceLift(value: number) {
+    this.trailTool.setSurfaceLift(value);
+  }
+  setCreateTrailPreviewListener(listener: (() => void) | null) {
+    this.createTrailPreviewListener = listener;
+    listener?.();
+  }
 
   /** Info ▸ Course ▸ reset course: arm clicking a new run onto the terrain. The knot gizmo goes — every click
    *  is a placement now — and the course layer owns the points until the host commits or cancels them. */
@@ -2955,7 +3717,11 @@ export class Viewport {
     this.setArmedPlacement('course');
     this.applyCourseFade();
   }
-  endCourseDraw() { this.courseDraw.end(); this.setArmedPlacement(null); this.applyCourseFade(); }
+  endCourseDraw() {
+    this.courseDraw.end();
+    this.setArmedPlacement(null);
+    this.applyCourseFade();
+  }
 
   /** While a replacement is being drawn the run it replaces stays on screen for reference, faded back so the
    *  new points read as the thing being made: its line, knots, markers and AI lines alike. */
@@ -2966,9 +3732,15 @@ export class Viewport {
     this.courseMarkers.setFade(factor);
     this.aiPathsLayer.setFade(factor);
   }
-  get courseDrawing(): boolean { return this.courseDraw.active; }
-  get courseDrawPoints(): readonly V3[] { return this.courseDraw.points; }
-  removeLastCourseDrawPoint() { this.courseDraw.removeLast(); }
+  get courseDrawing(): boolean {
+    return this.courseDraw.active;
+  }
+  get courseDrawPoints(): readonly V3[] {
+    return this.courseDraw.points;
+  }
+  removeLastCourseDrawPoint() {
+    this.courseDraw.removeLast();
+  }
 
   /** Host-facing facade; the placement layer owns the ghost and hit policy. */
   setPasteTool(clip: MeshVertexClipboard | null, propOrigins?: readonly V3[]) {
@@ -2978,48 +3750,104 @@ export class Viewport {
     this.showHandles(null, []);
   }
 
-  get pastePlacing(): boolean { return this.clipboardPlacement.active; }
+  get pastePlacing(): boolean {
+    return this.clipboardPlacement.active;
+  }
 
   /** Alt on the latest pointer event: an Edit drag moves only what it grabbed, creases allowed. */
-  get independentDrag(): boolean { return this.pointerAlt; }
+  get independentDrag(): boolean {
+    return this.pointerAlt;
+  }
 
   // ---- selected-edge extrusion --------------------------------------------------------------------------
 
-  get edgeExtrusionStaged(): boolean { return this.edgeExtrusion.staged; }
-  get edgeExtrusionFanMode(): boolean { return this.edgeExtrusion.fanMode; }
-  get edgeExtrusionSideFlippable(): boolean { return this.edgeExtrusion.sideFlippable; }
-  get edgeExtrusionSegments(): number { return this.edgeExtrusion.segments; }
-  get edgeExtrusionMode() { return this.edgeExtrusion.mode; }
-  get edgeExtrusionPathAvailable() { return this.edgeExtrusion.pathAvailable; }
-  get edgeExtrusionSegmentLength() { return this.edgeExtrusion.segmentLength; }
-  get edgeExtrusionPath() { return this.edgeExtrusion.path; }
-  get edgeExtrusionReversePath() { return this.edgeExtrusion.reversePath; }
-  get edgeExtrusionTurnWithPath() { return this.edgeExtrusion.turnWithPath; }
-  setEdgeExtrusionTurnWithPath(value: boolean) { this.edgeExtrusion.setTurnWithPath(value); }
-  get edgeExtrusionError() { return this.edgeExtrusion.error; }
-  get edgeExtrusionWarning() { return this.edgeExtrusion.warning; }
-  setEdgeExtrusionMode(value: 'pull' | 'path') { this.edgeExtrusion.setMode(value); }
-  setEdgeExtrusionSegmentLength(value: number) { this.edgeExtrusion.setSegmentLength(value); }
-  setEdgeExtrusionPath(value: string) { this.edgeExtrusion.setPath(value); }
-  setEdgeExtrusionReversePath(value: boolean) { this.edgeExtrusion.setReversePath(value); }
-  refreshEdgeExtrusionPath() { this.edgeExtrusion.refreshPath(); }
-  beginEdgeExtrusionStage(): boolean { return this.edgeExtrusion.beginStage(); }
-  flipEdgeExtrusionSide(): boolean { return this.edgeExtrusion.flipSide(); }
-  commitEdgeExtrusionStage() { this.edgeExtrusion.commitStage(); }
-  cancelEdgeExtrusionStage() { this.edgeExtrusion.cancel(); }
+  get edgeExtrusionStaged(): boolean {
+    return this.edgeExtrusion.staged;
+  }
+  get edgeExtrusionFanMode(): boolean {
+    return this.edgeExtrusion.fanMode;
+  }
+  get edgeExtrusionSideFlippable(): boolean {
+    return this.edgeExtrusion.sideFlippable;
+  }
+  get edgeExtrusionSegments(): number {
+    return this.edgeExtrusion.segments;
+  }
+  get edgeExtrusionMode() {
+    return this.edgeExtrusion.mode;
+  }
+  get edgeExtrusionPathAvailable() {
+    return this.edgeExtrusion.pathAvailable;
+  }
+  get edgeExtrusionSegmentLength() {
+    return this.edgeExtrusion.segmentLength;
+  }
+  get edgeExtrusionPath() {
+    return this.edgeExtrusion.path;
+  }
+  get edgeExtrusionReversePath() {
+    return this.edgeExtrusion.reversePath;
+  }
+  get edgeExtrusionTurnWithPath() {
+    return this.edgeExtrusion.turnWithPath;
+  }
+  setEdgeExtrusionTurnWithPath(value: boolean) {
+    this.edgeExtrusion.setTurnWithPath(value);
+  }
+  get edgeExtrusionError() {
+    return this.edgeExtrusion.error;
+  }
+  get edgeExtrusionWarning() {
+    return this.edgeExtrusion.warning;
+  }
+  setEdgeExtrusionMode(value: 'pull' | 'path') {
+    this.edgeExtrusion.setMode(value);
+  }
+  setEdgeExtrusionSegmentLength(value: number) {
+    this.edgeExtrusion.setSegmentLength(value);
+  }
+  setEdgeExtrusionPath(value: string) {
+    this.edgeExtrusion.setPath(value);
+  }
+  setEdgeExtrusionReversePath(value: boolean) {
+    this.edgeExtrusion.setReversePath(value);
+  }
+  refreshEdgeExtrusionPath() {
+    this.edgeExtrusion.refreshPath();
+  }
+  beginEdgeExtrusionStage(): boolean {
+    return this.edgeExtrusion.beginStage();
+  }
+  flipEdgeExtrusionSide(): boolean {
+    return this.edgeExtrusion.flipSide();
+  }
+  commitEdgeExtrusionStage() {
+    this.edgeExtrusion.commitStage();
+  }
+  cancelEdgeExtrusionStage() {
+    this.edgeExtrusion.cancel();
+  }
 
   // ---- target-weld gesture (docs/023 S4): a two-click modal pick that fuses two control-net corners ----------
 
   /** Host-facing facade; the weld layer owns the two-click gesture and feedback. */
   setWeldTool(source: readonly number[] | false) {
     this.weldTool.setActive(source);
-    if (source !== false) { this.detachGizmo(); this.selection.placeCornerMarker(null); this.showHandles(null, []); }
+    if (source !== false) {
+      this.detachGizmo();
+      this.selection.placeCornerMarker(null);
+      this.showHandles(null, []);
+    }
   }
 
   /** Display captured edge-weld sources while normal edge selection gathers the targets. */
   setEdgeWeldTool(edges: readonly [number, number][] | null) {
     this.weldTool.setEdgeActive(edges);
-    if (edges?.length) { this.detachGizmo(); this.selection.placeCornerMarker(null); this.showHandles(null, []); }
+    if (edges?.length) {
+      this.detachGizmo();
+      this.selection.placeCornerMarker(null);
+      this.showHandles(null, []);
+    }
   }
 
   /** The directed-edge handle for the live mesh doc (overrides + Bessel, or a model's flat linear cage),
@@ -3036,7 +3864,17 @@ export class Viewport {
    * null to restore the normal textured / tint shading. Occlusion bakes are cached (AO by geometry,
    * shadow by geometry + direction) so dragging the strength / colour controls doesn't re-bake.
    */
-  setTerrainLight(opts: { dir: [number, number, number]; ambient: number; sun: number; shadow: number; ao: number; sunTint: [number, number, number]; skyTint: [number, number, number] } | null) {
+  setTerrainLight(
+    opts: {
+      dir: [number, number, number];
+      ambient: number;
+      sun: number;
+      shadow: number;
+      ao: number;
+      sunTint: [number, number, number];
+      skyTint: [number, number, number];
+    } | null,
+  ) {
     this.terrainLightOpts = opts;
     this.terrainLayer.setTerrainLight(opts);
     if (this.modelContextOn) this.contextLayer?.setTerrainLight(opts); // the session backdrop stays in step
@@ -3092,8 +3930,15 @@ export class Viewport {
     this.assets.propTex.invalidateProjectAssets();
   }
 
-  setPropLight(opts: { dir: [number, number, number]; ambient: number; sun: number;
-                       sunTint: [number, number, number]; skyTint: [number, number, number] } | null) {
+  setPropLight(
+    opts: {
+      dir: [number, number, number];
+      ambient: number;
+      sun: number;
+      sunTint: [number, number, number];
+      skyTint: [number, number, number];
+    } | null,
+  ) {
     const on = !!opts && opts.ambient + opts.sun > 1e-4;
     this.studioHemi.visible = this.studioSun.visible = !on;
     this.propFill.visible = this.propKey.visible = on;
@@ -3130,14 +3975,22 @@ export class Viewport {
   /** Hang a sky behind the world: the horizon panorama + its ground disc, drawn on a cylinder centred on the
    *  camera. Pass null to fall back to the flat background colour (docs/025). With no `topColor` the fill over
    *  the ring's open top is derived from the panorama and reported back through `onTopDerived`. */
-  setSky(view: SkyView | null, onTopDerived?: (hex: string) => void) { this.sky.setSky(view, onTopDerived); }
+  setSky(view: SkyView | null, onTopDerived?: (hex: string) => void) {
+    this.sky.setSky(view, onTopDerived);
+  }
   /** Re-colour the fill over the ring's open top without reloading the sky — the colour picker drags through here. */
-  setSkyTopColor(hex: string | null) { this.sky.setTopColor(hex); }
-  showSky(on: boolean) { this.sky.setVisible(on); }
+  setSkyTopColor(hex: string | null) {
+    this.sky.setTopColor(hex);
+  }
+  showSky(on: boolean) {
+    this.sky.setVisible(on);
+  }
 
   /** The mountain whose world-space bounds are nearest the camera. Consumers keep the current answer through
    *  a proportional dead band, so orbiting near the midpoint cannot flicker a full-screen sky backdrop. */
-  get nearestMountainWorld(): SkyPreviewTarget { return this.nearestMountain; }
+  get nearestMountainWorld(): SkyPreviewTarget {
+    return this.nearestMountain;
+  }
 
   onNearestMountainWorldChange(listener: ((world: SkyPreviewTarget) => void) | null) {
     this.nearestMountainListener = listener;
@@ -3212,10 +4065,7 @@ export class Viewport {
       (m.material as THREE.Material).dispose();
     }
     while (this.knotMeshes.length < positions.length) {
-      const m = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 16, 12),
-        new THREE.MeshBasicMaterial({ color: 0x71e858 }),
-      );
+      const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0x71e858 }));
       m.userData.knot = this.knotMeshes.length;
       this.knotMeshes.push(m);
       this.knotGroup.add(m);
@@ -3231,29 +4081,42 @@ export class Viewport {
     if (this.courseDraw.active) fadeObject(this.knotGroup, COURSE_DRAW_FADE); // a knot made since keeps the fade
     // keep the translate gizmo on the selected knot across rebuilds (a removed knot drops it)
     if (this.gizmoKind === 'knot') {
-      if (this.selected !== null && this.knotMeshes[this.selected]) this.attachGizmo(this.knotMeshes[this.selected], 'knot', this.selected);
+      if (this.selected !== null && this.knotMeshes[this.selected])
+        this.attachGizmo(this.knotMeshes[this.selected], 'knot', this.selected);
       else this.detachGizmo();
     }
   }
 
-
   /** Frame the whole mountain isometrically from the retail course-profile side. */
   focusMountain(doc: EditDoc) {
     const C = docPositions(doc);
-    let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      minZ = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity,
+      maxZ = -Infinity;
     for (let i = 0; i + 2 < C.length; i += 3) {
-      minX = Math.min(minX, C[i]); maxX = Math.max(maxX, C[i]);
-      minY = Math.min(minY, C[i + 1]); maxY = Math.max(maxY, C[i + 1]);
-      minZ = Math.min(minZ, C[i + 2]); maxZ = Math.max(maxZ, C[i + 2]);
+      minX = Math.min(minX, C[i]);
+      maxX = Math.max(maxX, C[i]);
+      minY = Math.min(minY, C[i + 1]);
+      maxY = Math.max(maxY, C[i + 1]);
+      minZ = Math.min(minZ, C[i + 2]);
+      maxZ = Math.max(maxZ, C[i + 2]);
     }
-    if (!isFinite(minX)) { minX = 0; minZ = 0; minY = maxY = maxX = maxZ = 0; } // an empty net: frame the origin
+    if (!isFinite(minX)) {
+      minX = 0;
+      minZ = 0;
+      minY = maxY = maxX = maxZ = 0;
+    } // an empty net: frame the origin
     const center = new THREE.Vector3((minX + maxX) / 2, (minY + maxY) / 2, -(minZ + maxZ) / 2); // data bounds -> flipped world target
     const radius = 0.5 * Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) || 100;
     // Widen the far plane to the mountain's span so a kilometre-scale map stays whole when zoomed out
     // (it isn't framed by `radius` alone - the user pulls back further). Matches the reference path.
     const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 200;
     this.authoredFar = Math.max(4000, span * 5);
-    if (!this.reference) { // a loaded reference owns the far plane (its own, larger span); don't shrink it
+    if (!this.reference) {
+      // a loaded reference owns the far plane (its own, larger span); don't shrink it
       this.perspCam.far = this.authoredFar;
       if (this.orthoCam) this.orthoCam.far = this.authoredFar;
       this.camera.updateProjectionMatrix();
@@ -3292,7 +4155,7 @@ export class Viewport {
 
   setReference(data: ReferenceMesh | null, level = '', frame = true) {
     this.clearRefSelection(); // the old reference (if any) is going away; drop its move handle / gizmo
-    this.selection.clearRefLoops();     // …its edge selection + cell shading
+    this.selection.clearRefLoops(); // …its edge selection + cell shading
     this.paint.setSelectedRefPatch(null); // …and any read-only patch selection on it
     if (this.reference) {
       this.refRoot.remove(this.reference);
@@ -3326,7 +4189,7 @@ export class Viewport {
     this.setReferenceGlints(null); // …and the sparkle that rig's lamps / flares were drawing
     this.refDecor.setCourse(null); // …and its recovered course line (the session pushes the new level's)
     this.refCourse = null;
-    this.refLaps = DEFAULT_LAPS;   // …and its lap count, likewise re-pushed by the session
+    this.refLaps = DEFAULT_LAPS; // …and its lap count, likewise re-pushed by the session
     this.refShowoffSeconds = DEFAULT_SHOWOFF_SECONDS; // …and its showoff clock
     this.refDecor.setAiPaths(null); // …and its AI-path network (likewise re-pushed by the session)
     this.refAiPaths = null;
@@ -3341,7 +4204,7 @@ export class Viewport {
     this.sel.refControlSel = [];
     this.refLevel = level;
     this.selection.resetReferenceCache(); // the reference QuadMesh changed — its cached adjacency is stale
-    this.selection.clearRefEdges();       // ...and any edge selection into the old reference
+    this.selection.clearRefEdges(); // ...and any edge selection into the old reference
     this.paint.rebuildRefF(); // the F overlay follows the reference: cleared on unload, rebuilt for the new data
     this.refLightingOn = false; // a freshly loaded reference starts on its normal shading
     this.refLightColors = null;
@@ -3407,11 +4270,11 @@ export class Viewport {
     this.cageLayer.buildRefCage(data);
 
     const refX = data.max[0] - data.min[0];
-    this.refCenter = [cx, cy, cz];                         // native centre (camera target)
+    this.refCenter = [cx, cy, cz]; // native centre (camera target)
     // load the reference a fixed shift up the +X (red) axis, clear of the authored mountain; drag its
     // centre handle (Info mode) to move it anywhere else — including back onto its native coordinates.
     this.refRoot.position.set(REF_LOAD_OFFSET_X, 0, 0);
-    this.placeRefHandle();                                 // ready the (hidden) centre move handle on the new reference
+    this.placeRefHandle(); // ready the (hidden) centre move handle on the new reference
 
     // Box the reference at its native extent so it reads at a glance (shown only while it's the selected item),
     // and retain the same bounds for the camera-nearest Skybox handoff.
@@ -3419,16 +4282,15 @@ export class Viewport {
       new THREE.Vector3(data.min[0], data.min[1], data.min[2]),
       new THREE.Vector3(data.max[0], data.max[1], data.max[2]),
     );
-    this.refBox = new THREE.Box3Helper(
-      this.refBounds,
-      new THREE.Color(0x3a6ea5));
+    this.refBox = new THREE.Box3Helper(this.refBounds, new THREE.Color(0x3a6ea5));
     this.refBox.visible = this.refBoxVisible; // honour the panel's selection state across reloads
     this.refRoot.add(this.refBox);
 
     const span = Math.max(refX, data.max[1] - data.min[1], data.max[2] - data.min[2]) || 200;
     this.camera.far = Math.max(this.authoredFar, span * 5); // widen the clip plane to the reference span either way
     this.camera.updateProjectionMatrix();
-    if (frame) { // frame the reference's box where it loaded (worldRoot flips Z, so the world target is at -cz)
+    if (frame) {
+      // frame the reference's box where it loaded (worldRoot flips Z, so the world target is at -cz)
       const target = new THREE.Vector3(cx + REF_LOAD_OFFSET_X, cy, -cz);
       this.controls.target.copy(target);
       this.camera.position.set(target.x + span * 0.6, target.y + span * 0.55, target.z - span * 0.6);
@@ -3459,22 +4321,45 @@ export class Viewport {
     const out: MeshControlPoint<number>[] = [];
     for (let vertex = 0; vertex < data.cornerPts.length / 3; vertex++) {
       const i = vertex * 3;
-      out.push({ id: { kind: 'vertex', vertex }, pos: [data.cornerPts[i], data.cornerPts[i + 1], data.cornerPts[i + 2]], anchorVertex: vertex });
+      out.push({
+        id: { kind: 'vertex', vertex },
+        pos: [data.cornerPts[i], data.cornerPts[i + 1], data.cornerPts[i + 2]],
+        anchorVertex: vertex,
+      });
     }
     const seen = new Set<string>();
-    for (const [A, B, C, D] of data.mesh.quads) for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
-      if (a === b) continue;
-      for (const [from, to] of [[a, b], [b, a]] as [number, number][]) {
-        const key = `${from}>${to}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const i = from * 3, h = data.edgeHandle(from, to);
-        out.push({ id: { kind: 'edge', from, to }, pos: [data.cornerPts[i] + h[0], data.cornerPts[i + 1] + h[1], data.cornerPts[i + 2] + h[2]], anchorVertex: from });
+    for (const [A, B, C, D] of data.mesh.quads)
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as [number, number][]) {
+        if (a === b) continue;
+        for (const [from, to] of [
+          [a, b],
+          [b, a],
+        ] as [number, number][]) {
+          const key = `${from}>${to}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const i = from * 3,
+            h = data.edgeHandle(from, to);
+          out.push({
+            id: { kind: 'edge', from, to },
+            pos: [data.cornerPts[i] + h[0], data.cornerPts[i + 1] + h[1], data.cornerPts[i + 2] + h[2]],
+            anchorVertex: from,
+          });
+        }
       }
-    }
-    for (let quad = 0; quad < data.mesh.quads.length; quad++) for (let corner = 0 as 0 | 1 | 2 | 3; corner < 4; corner = (corner + 1) as 0 | 1 | 2 | 3) {
-      out.push({ id: { kind: 'twist', quad, corner }, pos: data.patchControls[quad][INTERIOR_CP[corner]] as V3, anchorVertex: data.mesh.quads[quad][corner] });
-    }
+    for (let quad = 0; quad < data.mesh.quads.length; quad++)
+      for (let corner = 0 as 0 | 1 | 2 | 3; corner < 4; corner = (corner + 1) as 0 | 1 | 2 | 3) {
+        out.push({
+          id: { kind: 'twist', quad, corner },
+          pos: data.patchControls[quad][INTERIOR_CP[corner]] as V3,
+          anchorVertex: data.mesh.quads[quad][corner],
+        });
+      }
     return out;
   }
 
@@ -3484,18 +4369,33 @@ export class Viewport {
     this.applyReferencePropAudio(props);
     // Effects and the multi-megabyte prop payload load independently. If Effects won the race, the prop rebuild
     // has just replaced its runtime matrices; reassert the already-selected setup mode on those fresh draws.
-    if (props && this._mode === 'play' && this.rideCtl.playTarget === 'reference'
-      && !this.rideCtl.riding && !this.rideCtl.watching && !this.rideCtl.xrPresenting)
+    if (
+      props &&
+      this._mode === 'play' &&
+      this.rideCtl.playTarget === 'reference' &&
+      !this.rideCtl.riding &&
+      !this.rideCtl.watching &&
+      !this.rideCtl.xrPresenting
+    )
       this.referenceEffects.beginPlay('reference', this.raceMode);
   }
   async setReferencePropsProgressive(props: LevelProps | null, yieldControl: () => Promise<void>) {
     const level = props?.level ?? 'cleared';
     this.applyReferencePropAudio(props);
-    await runDiagnosticPhaseAsync('props', `${level}:scene-build`,
+    await runDiagnosticPhaseAsync(
+      'props',
+      `${level}:scene-build`,
       () => this.refDecor.setPropsProgressive(props, yieldControl),
-      props ? `${props.models.length} models · ${props.instances.length} instances` : undefined);
-    if (props && this._mode === 'play' && this.rideCtl.playTarget === 'reference'
-      && !this.rideCtl.riding && !this.rideCtl.watching && !this.rideCtl.xrPresenting)
+      props ? `${props.models.length} models · ${props.instances.length} instances` : undefined,
+    );
+    if (
+      props &&
+      this._mode === 'play' &&
+      this.rideCtl.playTarget === 'reference' &&
+      !this.rideCtl.riding &&
+      !this.rideCtl.watching &&
+      !this.rideCtl.xrPresenting
+    )
       this.referenceEffects.beginPlay('reference', this.raceMode);
   }
 
@@ -3518,11 +4418,7 @@ export class Viewport {
           key: `${inst.sourceIndex}:${slot}`,
           emitter,
           owner: referenceOwnerKey(inst.sourceIndex),
-          center: [
-            inst.loc[0] + emitter.offset[0],
-            inst.loc[1] + emitter.offset[1],
-            inst.loc[2] + emitter.offset[2],
-          ],
+          center: [inst.loc[0] + emitter.offset[0], inst.loc[1] + emitter.offset[1], inst.loc[2] + emitter.offset[2]],
         });
       });
     this.refAmbience = sources;
@@ -3573,13 +4469,20 @@ export class Viewport {
     };
     for (const prop of props) {
       if (!prop.id) continue;
-      if (!prop.group) { push(prop.id, `authored:${prop.id}`, prop, prop.pos); continue; }
+      if (!prop.group) {
+        push(prop.id, `authored:${prop.id}`, prop, prop.pos);
+        continue;
+      }
       // A group loops per member, at the member, as the export writes it (docs/069): a member with an entry of
       // its own by that entry, under its own key; otherwise only the leader carries the placement's loop.
       for (const m of this.assets.membersOf(prop.level, prop.model, prop.name, prop.group)) {
         const own = !!prop.memberBehaviour?.[String(m.model)];
-        push(prop.id, `authored:${own ? groupMemberKey(prop.id, m.model) : prop.id}`,
-          groupMemberProp(prop, m.model), memberWorldPos(prop, m.relPos));
+        push(
+          prop.id,
+          `authored:${own ? groupMemberKey(prop.id, m.model) : prop.id}`,
+          groupMemberProp(prop, m.model),
+          memberWorldPos(prop, m.relPos),
+        );
       }
     }
     this.authoredAmbience = sources;
@@ -3589,27 +4492,40 @@ export class Viewport {
   /** Reference and authored ambience arrive from different payloads at different times; the bed takes one
    *  list, so both are held and re-pushed together rather than each clobbering the other. */
   private pushPlacedAmbience() {
-    this.referenceEffects.setPlacedAmbience(this.ambienceLevel,
-      [...this.refAmbience, ...this.authoredAmbience]);
+    this.referenceEffects.setPlacedAmbience(this.ambienceLevel, [...this.refAmbience, ...this.authoredAmbience]);
   }
   /** The two halves of the placed-ambience bed, held so either can be replaced without dropping the other. */
   private refAmbience: AmbientSoundSource[] = [];
   private authoredAmbience: AmbientSoundSource[] = [];
   private ambienceLevel = '';
   /** What the placed-ambience bed is sounding right now, loudest first. */
-  placedAmbienceVoices() { return this.referenceEffects.placedAmbienceVoices(); }
-  setPropRigLighting(rig: LightRig | null, strength: number) { this.refDecor.setPropRigLighting(rig, strength); }
-  showReferenceProps(on: boolean) { this.refDecor.showProps(on); }
-  showReferenceTricks(on: boolean) { this.refDecor.showTricks(on); }
-  hasReferenceProps(): boolean { return this.refDecor.hasProps(); }
+  placedAmbienceVoices() {
+    return this.referenceEffects.placedAmbienceVoices();
+  }
+  setPropRigLighting(rig: LightRig | null, strength: number) {
+    this.refDecor.setPropRigLighting(rig, strength);
+  }
+  showReferenceProps(on: boolean) {
+    this.refDecor.showProps(on);
+  }
+  showReferenceTricks(on: boolean) {
+    this.refDecor.showTricks(on);
+  }
+  hasReferenceProps(): boolean {
+    return this.refDecor.hasProps();
+  }
 
   // ---- reference LIGHT + SOUND SOURCES: mechanics in ReferenceDecor (this.refDecor) ----
 
-  setReferenceLights(rig: LightRig | null) { this.refDecor.setLights(rig); }
+  setReferenceLights(rig: LightRig | null) {
+    this.refDecor.setLights(rig);
+  }
   /** The loaded reference's own glints — its lamps and flares, gated by the engine's own `SpriteRes & 0x70`
    *  (docs/047). Separate from `setReferenceLights` because the sparkle is the light's OUTPUT: it shows with
    *  effective Local lights whether or not the Sources bulbs have ever been asked for. */
-  setReferenceGlints(rig: LightRig | null) { this.glints.setReference(rig); }
+  setReferenceGlints(rig: LightRig | null) {
+    this.glints.setReference(rig);
+  }
   /** The loaded reference's recovered main course line (editor-space points), drawn over its terrain in
    *  the authored guide's style (line + path-point beads, no knot handles); shows with the Info-mode
    *  course guide. `anchors` marks where the level's race really starts and ends — neither of which is an
@@ -3628,8 +4544,12 @@ export class Viewport {
   }
   /** How many passes the loaded reference level is raced over — what a reference Play counts down, and what
    *  gates its lap-gated boost volumes (core/doc/race). */
-  setReferenceLaps(laps: number) { this.refLaps = laps; }
-  setReferenceShowoffSeconds(seconds: number) { this.refShowoffSeconds = seconds; }
+  setReferenceLaps(laps: number) {
+    this.refLaps = laps;
+  }
+  setReferenceShowoffSeconds(seconds: number) {
+    this.refShowoffSeconds = seconds;
+  }
   /** The loaded reference's AI-path network (editor-space, off its AIP.json): drawn over its terrain on the
    *  Info "Show AI paths" toggle — gate paths amber, the rest violet — and kept for the test ride's AI field.
    *  `null` clears it. */
@@ -3638,9 +4558,15 @@ export class Viewport {
     this.refDecor.setAiPaths(paths);
     this.refSpeedShadeLayer.linesChanged(this.referenceLinesKey());
   }
-  showReferenceLights(on: boolean) { this.refDecor.showLights(on); }
-  hasReferenceLights(): boolean { return this.refDecor.hasLights(); }
-  clearRefPropSelection() { this.refDecor.clearPropSelection(); }
+  showReferenceLights(on: boolean) {
+    this.refDecor.showLights(on);
+  }
+  hasReferenceLights(): boolean {
+    return this.refDecor.hasLights();
+  }
+  clearRefPropSelection() {
+    this.refDecor.clearPropSelection();
+  }
 
   // ---- authored + free local lights (docs/013): mechanics in LightsLayer (this.lights) ----
 
@@ -3654,14 +4580,20 @@ export class Viewport {
     this.lights.showAuthoredLights(on);
     this.glints.show(on);
   }
-  showAuthoredLightRig(on: boolean) { this.lights.showAuthoredLightRig(on); }
-  hasAuthoredLights(): boolean { return this.lights.hasAuthoredLights(); }
+  showAuthoredLightRig(on: boolean) {
+    this.lights.showAuthoredLightRig(on);
+  }
+  hasAuthoredLights(): boolean {
+    return this.lights.hasAuthoredLights();
+  }
   setLightArmed(on: boolean) {
     if (on) this.refDecor.clearSourceSelection();
     this.lights.setArmed(on);
     this.setArmedPlacement(on ? 'light' : null);
   }
-  get lightPlacing(): boolean { return this.lights.lightPlacing; }
+  get lightPlacing(): boolean {
+    return this.lights.lightPlacing;
+  }
   setFreeLights(lights: AuthoredLight[], selectedId: string | null, setIds: readonly string[] = []) {
     this.lights.setFreeLights(lights, selectedId, setIds);
   }
@@ -3669,8 +4601,13 @@ export class Viewport {
   // ---- prop lines (docs/070): the path + node handles in PropLinesLayer; the members are placed props ----
 
   /** Arm / disarm drawing a prop line: while armed, a Props-mode ground click appends a node (onAppendLineNode). */
-  setLineDrawing(on: boolean) { this.propLines.setDrawing(on); this.setArmedPlacement(on ? 'line' : null); }
-  get lineDrawing(): boolean { return this.propLines.drawing; }
+  setLineDrawing(on: boolean) {
+    this.propLines.setDrawing(on);
+    this.setArmedPlacement(on ? 'line' : null);
+  }
+  get lineDrawing(): boolean {
+    return this.propLines.drawing;
+  }
   /** Show the selected line's path, node bulbs and node gizmo (nothing for an idle mountain's lines). */
   setPropLines(lines: readonly PropLine[], selLine: string | null, selNode: number | null) {
     this.propLines.setLines(lines, selLine, selNode);
@@ -3689,13 +4626,24 @@ export class Viewport {
 
   // ---- authored grind rails (docs/014): mechanics in RailsLayer (this.rails); shell keeps selection ----
 
-  setRailArmed(on: boolean) { this.rails.setArmed(on); this.setArmedPlacement(on ? 'rail' : null); }
-  setRails(rails: Rail[], selRail: number | null, selNode: number | null) { this.rails.setRails(rails, selRail, selNode); }
-  setRailSkins(skins: RailSkins) { this.rails.setSkins(skins); }
+  setRailArmed(on: boolean) {
+    this.rails.setArmed(on);
+    this.setArmedPlacement(on ? 'rail' : null);
+  }
+  setRails(rails: Rail[], selRail: number | null, selNode: number | null) {
+    this.rails.setRails(rails, selRail, selNode);
+  }
+  setRailSkins(skins: RailSkins) {
+    this.rails.setSkins(skins);
+  }
   /** Each rail material's default tube texture — what the Tools swatch shows for a rail without its own. */
-  get railSkins(): RailSkins { return this.rails.getSkins(); }
+  get railSkins(): RailSkins {
+    return this.rails.getSkins();
+  }
   /** Purple, non-grind spline guides belong to Effects mode rather than the Tricks visibility filter. */
-  showEffectMotionPaths(on: boolean) { this.rails.setMotionPathsVisible(on); }
+  showEffectMotionPaths(on: boolean) {
+    this.rails.setMotionPathsVisible(on);
+  }
   /** Draw every grind rail's surface-coloured centreline while Effects mode is up — the curves its nodes bind to. Both
    *  worlds answer: the mountain's own rails, and the loaded reference's shipped `Splines.json` grind rows,
    *  which are the only place that level's rails exist (its tubes are unjoined prop instances, docs/014). */
@@ -3705,7 +4653,9 @@ export class Viewport {
     if (!on) this.refDecor.selectRailSpline(null);
   }
   /** Brighten the shipped grind curve the Effects panel is inspecting; null clears the highlight. */
-  selectReferenceRailSpline(originalIndex: number | null) { this.refDecor.selectRailSpline(originalIndex); }
+  selectReferenceRailSpline(originalIndex: number | null) {
+    this.refDecor.selectRailSpline(originalIndex);
+  }
   /** One reference spline's native row — its style, and its raw controls for measuring what sits along it. */
   referenceSplineRow(originalIndex: number): RefSplineRaw | null {
     return this.refSplines?.find(candidate => candidate.originalIndex === originalIndex) ?? null;
@@ -3713,15 +4663,35 @@ export class Viewport {
 
   // ---- mesh-native Create Edge ------------------------------------------------------------------
 
-  setCreateEdgeTool(on: boolean, start: V3 | null) { this.createEdge.setArmed(on, start); this.createEdgePreviewListener?.(); }
-  setCreateEdgeStart(start: V3 | null) { this.createEdge.setStart(start); this.createEdgePreviewListener?.(); }
-  setCreateEdgePath(points: readonly V3[]) { this.createEdge.setPath(points); this.createEdgePreviewListener?.(); }
+  setCreateEdgeTool(on: boolean, start: V3 | null) {
+    this.createEdge.setArmed(on, start);
+    this.createEdgePreviewListener?.();
+  }
+  setCreateEdgeStart(start: V3 | null) {
+    this.createEdge.setStart(start);
+    this.createEdgePreviewListener?.();
+  }
+  setCreateEdgePath(points: readonly V3[]) {
+    this.createEdge.setPath(points);
+    this.createEdgePreviewListener?.();
+  }
   /** Live free-edge endpoint preview, consumed by the toolbox length summary. */
-  get createEdgePreviewPoint(): V3 | null { return this.createEdge.hover; }
-  setCreateEdgePreviewListener(listener: (() => void) | null) { this.createEdgePreviewListener = listener; listener?.(); }
-  get createPatchPoints(): readonly V3[] { return this.patchTool.points.map(point => point.pos); }
-  get createPatchPreviewPoint(): V3 | null { return this.patchTool.hover?.pos ?? null; }
-  setCreatePatchPreviewListener(listener: (() => void) | null) { this.patchTool.setPreviewListener(listener); }
+  get createEdgePreviewPoint(): V3 | null {
+    return this.createEdge.hover;
+  }
+  setCreateEdgePreviewListener(listener: (() => void) | null) {
+    this.createEdgePreviewListener = listener;
+    listener?.();
+  }
+  get createPatchPoints(): readonly V3[] {
+    return this.patchTool.points.map(point => point.pos);
+  }
+  get createPatchPreviewPoint(): V3 | null {
+    return this.patchTool.hover?.pos ?? null;
+  }
+  setCreatePatchPreviewListener(listener: (() => void) | null) {
+    this.patchTool.setPreviewListener(listener);
+  }
 
   // ---- gem pickups (docs/014) -------------------------------------------------------------------
 
@@ -3729,7 +4699,9 @@ export class Viewport {
     this.gems.setArmed(on, opts);
     this.setArmedPlacement(on ? 'gem' : null);
   }
-  setGemModels(models: Map<number, { level: string; model: number }>) { this.gems.setModels(models); }
+  setGemModels(models: Map<number, { level: string; model: number }>) {
+    this.gems.setModels(models);
+  }
 
   /** Show / hide the whole Tricks layer (rails + gems) as a unit — the top-bar Tricks view filter. */
   showTricks(on: boolean) {
@@ -3737,7 +4709,9 @@ export class Viewport {
     this.gems.setVisible(on);
   }
 
-  setGems(gems: Gem[], selectedId: string | null) { this.gems.setGems(gems, selectedId); }
+  setGems(gems: Gem[], selectedId: string | null) {
+    this.gems.setGems(gems, selectedId);
+  }
 
   // ---- video screens (docs/051) -----------------------------------------------------------------
 
@@ -3748,18 +4722,30 @@ export class Viewport {
   }
 
   /** The loaded reference course's own measured screens (its `Billboards.json`), drawn read-only. */
-  setReferenceScreens(draws: readonly ScreenDraw[]) { this.screens.setReference(draws); }
-  clearScreenSelection() { this.screens.clearSelection(); }
+  setReferenceScreens(draws: readonly ScreenDraw[]) {
+    this.screens.setReference(draws);
+  }
+  clearScreenSelection() {
+    this.screens.clearSelection();
+  }
 
   /** Show / hide screen authoring rigging under Sources. Active Jukebox video remains independently visible. */
-  showScreens(on: boolean) { this.screens.setVisible(on); }
+  showScreens(on: boolean) {
+    this.screens.setVisible(on);
+  }
 
   // ---- authored placed props (Props mode): asset caches in PropAssets (this.assets) --------------------
 
-  registerPropModels(props: LevelProps) { this.assets.registerPropModels(props); }
+  registerPropModels(props: LevelProps) {
+    this.assets.registerPropModels(props);
+  }
   /** Replace-register a live pseudo-level — authored models or imported props (see PropAssets.syncLiveModels). */
-  syncLiveModels(props: LevelProps) { this.assets.syncLiveModels(props); }
-  hasPropGeom(level: string, model: number): boolean { return this.assets.hasPropGeom(level, model); }
+  syncLiveModels(props: LevelProps) {
+    this.assets.syncLiveModels(props);
+  }
+  hasPropGeom(level: string, model: number): boolean {
+    return this.assets.hasPropGeom(level, model);
+  }
 
   /**
    * Arm placement mode with a model (or put it down with null). While armed, a translucent ghost of the
@@ -3774,14 +4760,20 @@ export class Viewport {
   }
 
   /** Whether the held thing is a pasted set (setPropArmed with `paste`) — false once anything else takes over. */
-  get propPastePlacing(): boolean { return !!this.props.propArm?.paste; }
+  get propPastePlacing(): boolean {
+    return !!this.props.propArm?.paste;
+  }
 
   /** ← / → while a prop is held: turn the pending drop by `deg` (+ = clockwise from above). False when
    *  nothing is held, so the key stays the browser's. */
-  turnHeldProp(deg: number): boolean { return this.props.turnPending(deg); }
+  turnHeldProp(deg: number): boolean {
+    return this.props.turnPending(deg);
+  }
 
   /** Show / hide the authored placed props (the global props toggle drives this alongside the reference props). */
-  setPlacedPropsVisible(on: boolean) { this.props.setVisible(on); }
+  setPlacedPropsVisible(on: boolean) {
+    this.props.setVisible(on);
+  }
 
   /** Animate/deanimate always-on material/model effects and nearby persistent emitters. */
   showWorldEffects(on: boolean) {
@@ -3794,10 +4786,17 @@ export class Viewport {
   }
 
   /** Register a level's mined group defs so placements referencing them can resolve their members. */
-  registerGroupDefs(level: string, defs: GroupDef[]) { this.assets.registerGroupDefs(level, defs); }
+  registerGroupDefs(level: string, defs: GroupDef[]) {
+    this.assets.registerGroupDefs(level, defs);
+  }
 
-  setPlacedProps(props: PlacedProp[], selIdx: number | null, multiSel: number[] = [], effects?: EffectsDocument | null,
-    hiddenIndices?: ReadonlySet<number>) {
+  setPlacedProps(
+    props: PlacedProp[],
+    selIdx: number | null,
+    multiSel: number[] = [],
+    effects?: EffectsDocument | null,
+    hiddenIndices?: ReadonlySet<number>,
+  ) {
     this.props.setHitGatedSounds(this.meshDoc?.hitGatedSounds);
     this.props.setPlacedProps(props, selIdx, multiSel, effects, hiddenIndices);
     this.referenceEffects.setAuthoredData(props, effects);
@@ -3808,11 +4807,15 @@ export class Viewport {
   setPlacedPropSelection(selIdx: number | null, multiSel: number[] = []) {
     this.props.setSelection(selIdx, multiSel);
   }
-  setParticleVolumes(volumes: readonly ParticleVolume[]) { this.particleVolumes.setAuthored(volumes); }
+  setParticleVolumes(volumes: readonly ParticleVolume[]) {
+    this.particleVolumes.setAuthored(volumes);
+  }
 
   /** Identify flash: box placed prop `index` in white for a moment, so a click in the multi-selection list
    *  points out which placement in 3D it is. */
-  flashProp(index: number) { this.props.flashProp(index); }
+  flashProp(index: number) {
+    this.props.flashProp(index);
+  }
 
   /** Frame one authored placed prop while keeping the current camera angle. Lists use this for their
    *  double-click shortcut; it does not change the active edit/effect selection. */
@@ -3829,7 +4832,10 @@ export class Viewport {
 
   /** The reference's current offset from its native position (refRoot.position: REF_LOAD_OFFSET_X on load,
    *  or wherever its centre handle was dragged). Persisted so a reload restores the placement. */
-  referenceOffset(): V3 { const p = this.refRoot.position; return [p.x, p.y, p.z]; }
+  referenceOffset(): V3 {
+    const p = this.refRoot.position;
+    return [p.x, p.y, p.z];
+  }
 
   /** Restore a saved reference offset — a plain refRoot translation (overrides the load default). */
   setReferenceOffset(offset: V3) {
@@ -3839,20 +4845,30 @@ export class Viewport {
   }
 
   /** Number of reference corner vertices selected directly through the control-point picker. */
-  referenceVertexSelectionCount(): number { return this.selection.referenceVertexSelectionCount(); }
-  referenceControlPointSelectionCount(): number { return this.selection.referenceControlPointSelectionCount(); }
+  referenceVertexSelectionCount(): number {
+    return this.selection.referenceVertexSelectionCount();
+  }
+  referenceControlPointSelectionCount(): number {
+    return this.selection.referenceControlPointSelectionCount();
+  }
   /** Selected reference vertices and their ordinary topological valence (unique incident control-net edges). */
-  referenceSelectedVertexInfo(): { vertex: number; valence: number }[] { return this.selection.referenceSelectedVertexInfo(); }
+  referenceSelectedVertexInfo(): { vertex: number; valence: number }[] {
+    return this.selection.referenceSelectedVertexInfo();
+  }
 
   /** Number of reference vertices Copy would capture from the active point, edge, or surface selection. */
-  referenceCopyVertexCount(): number { return this.selection.referenceCopyVertexCount(); }
+  referenceCopyVertexCount(): number {
+    return this.selection.referenceCopyVertexCount();
+  }
 
   /**
    * Capture the active reference point, edge, or surface selection through the same topology-neutral clipboard
    * core as authored geometry. The live reference translation is folded into positions; exact stored patch
    * controls recover handles + interior twist, while metadata follows every enclosed patch.
    */
-  copyReferenceMeshSelection(): MeshVertexClipboard | null { return this.selection.copyReferenceMeshSelection(); }
+  copyReferenceMeshSelection(): MeshVertexClipboard | null {
+    return this.selection.copyReferenceMeshSelection();
+  }
 
   /**
    * The metrics of the current read-only REFERENCE control-net selection (an edge's curved length, or a cell's
@@ -3860,8 +4876,12 @@ export class Viewport {
    * authored net (core/mesh/measure.ts) off the reference's own QuadMesh + faithful edge curves + true stored control
    * points, so the tools panel renders the identical read-out — one measurement, both surfaces.
    */
-  refMeasure(): SelectionMeasure | null { return this.selection.refMeasure(); }
-  authoredMeasure(): SelectionMeasure | null { return this.selection.authoredMeasure(); }
+  refMeasure(): SelectionMeasure | null {
+    return this.selection.refMeasure();
+  }
+  authoredMeasure(): SelectionMeasure | null {
+    return this.selection.authoredMeasure();
+  }
 
   /** Choose the reference's solid material for the current shading: textured tile groups, or tint. */
   private applyReferenceMaterial() {
@@ -3921,9 +4941,8 @@ export class Viewport {
     const data = this.refData;
     const slots = this.referenceBatchPatchSlots;
     if (!data || !slots) return;
-    const slices = buildPatchSliceAttribute(
-      data.indices, slots, data.facesPerPatch, data.positions.length / 3,
-      slot => (slot ? bank.slot(this.referenceBatchRefs[slot - 1])?.slice ?? 0 : 0),
+    const slices = buildPatchSliceAttribute(data.indices, slots, data.facesPerPatch, data.positions.length / 3, slot =>
+      slot ? (bank.slot(this.referenceBatchRefs[slot - 1])?.slice ?? 0) : 0,
     );
     const attribute = new THREE.BufferAttribute(slices, 1);
     for (const chunk of this.referenceChunks()) chunk.geometry.setAttribute('texArraySlice', attribute);
@@ -3936,20 +4955,28 @@ export class Viewport {
   }
 
   /** What the ride's range gate is currently dropping, for the Play profiler and the agent layer. */
-  rangeCullStats() { return this.rangeCull.stats(); }
+  rangeCullStats() {
+    return this.rangeCull.stats();
+  }
 
   /** The draw-distance tier a ride is taken at (Test ▸ Draw distance). Applies to the run in progress, so
    *  the tier can be compared by eye mid-ride rather than only between rides. */
-  setRideDrawDistance(tier: DrawDistance) { this.rideDrawDistance = tier; }
+  setRideDrawDistance(tier: DrawDistance) {
+    this.rideDrawDistance = tier;
+  }
 
   /** How much snow a ride is taken through, 0 (clear) to 10 (whiteout) — Test ▸ Snow. Applies live: the field
    *  is stateless, so the dial thickens the weather around the rider without restarting anything. */
-  setRideSnow(amount: number) { this.snowfall.setAmount(amount); }
+  setRideSnow(amount: number) {
+    this.snowfall.setAmount(amount);
+  }
 
   /** Test ▸ Show colliders: the world's native collision shapes near the rider, plus the rider's own probe
    *  volume ([Trailmap: 370-probe-volume]). Applies live, and is the only view of either — a prop's collider is
    *  nothing like its art and the rider's is nothing like the board. */
-  setRideColliders(on: boolean) { this.rideCtl.setCollidersVisible(on); }
+  setRideColliders(on: boolean) {
+    this.rideCtl.setCollidersVisible(on);
+  }
 
   /**
    * Lighting study: drive the reference solid from a per-vertex colour buffer (baked-lightmap intensity,
@@ -3978,7 +5005,8 @@ export class Viewport {
     if (light) {
       this.refLightingOn = true;
       let out = light;
-      if (this.shading === 'surface') { // ride-feel tint x lighting, parallel to the textured tile x lighting
+      if (this.shading === 'surface') {
+        // ride-feel tint x lighting, parallel to the textured tile x lighting
         const tint = this.refData.colors;
         out = new Float32Array(light.length);
         for (let i = 0; i < light.length; i++) out[i] = light[i] * tint[i];
@@ -4000,7 +5028,8 @@ export class Viewport {
 
   /** Apply the current view-mode visibilities to the reference (solid / control points). */
   private applyReferenceView() {
-    const has = !!this.refData, cage = this.cageLayer.cage;
+    const has = !!this.refData,
+      cage = this.cageLayer.cage;
     // cage-only view draws no solid reference either, lit or not (the control points carry the shape there)
     if (this.reference) this.reference.visible = has && this.shading !== 'none';
     if (this.referenceBatch) this.referenceBatch.visible = has && this.shading === 'textured';
@@ -4017,17 +5046,21 @@ export class Viewport {
     if (!this.renderer.xr.isPresenting) {
       if (this.captureSize) {
         this.renderer.setDrawingBufferSize(this.captureSize[0], this.captureSize[1], 1);
-        this.renderer.domElement.style.width = '100%'; this.renderer.domElement.style.height = '100%';
+        this.renderer.domElement.style.width = '100%';
+        this.renderer.domElement.style.height = '100%';
       } else this.renderer.setSize(w, h);
     }
     // fat-line materials (the F overlay + selection outlines) rasterise in pixels, so they need the live
     // canvas resolution
     for (const grp of [...this.paint.fatLineGroups, ...this.selection.fatLineGroups])
-      grp.traverse(o => { const m = (o as LineSegments2).material; if (m instanceof LineMaterial) m.resolution.set(w, h); });
+      grp.traverse(o => {
+        const m = (o as LineSegments2).material;
+        if (m instanceof LineMaterial) m.resolution.set(w, h);
+      });
     this.assets.propOutlineMat.resolution.set(w, h);
     this.assets.effectOutlineMat.resolution.set(w, h);
     this.refDecor.selectionOutlineMat.resolution.set(w, h);
-    for (const mat of this.rails.guideMaterials) mat.resolution.set(w, h);    // the surface-coloured grind curves
+    for (const mat of this.rails.guideMaterials) mat.resolution.set(w, h); // the surface-coloured grind curves
     for (const mat of this.refDecor.railSplineMaterials) mat.resolution.set(w, h); // …and the reference's own
     for (const mat of this.referenceEffects.boostArrowMaterials) mat.resolution.set(w, h);
     const aspect = w / h;
@@ -4042,9 +5075,10 @@ export class Viewport {
       this.orthoCam.updateProjectionMatrix();
     }
   }
-
 }
 
 const playerVector = (v: THREE.Vector3): PlayerVec3 => [v.x, v.y, v.z];
-const playerTransform = (p: THREE.Vector3, q: THREE.Quaternion): PlayerTransform =>
-  ({ p: playerVector(p), q: [q.x, q.y, q.z, q.w] });
+const playerTransform = (p: THREE.Vector3, q: THREE.Quaternion): PlayerTransform => ({
+  p: playerVector(p),
+  q: [q.x, q.y, q.z, q.w],
+});

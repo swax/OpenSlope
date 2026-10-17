@@ -24,12 +24,18 @@ export function randomUnitVector(random: () => number): THREE.Vector3 {
   return new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
 }
 
-export function sampleSplinePath(points: THREE.Vector3[], cumulative: number[], length: number,
-  distance: number, direction: number) {
+export function sampleSplinePath(
+  points: THREE.Vector3[],
+  cumulative: number[],
+  length: number,
+  distance: number,
+  direction: number,
+) {
   const d = THREE.MathUtils.clamp(distance, 0, length);
   let hi = 1;
   while (hi < cumulative.length - 1 && cumulative[hi] < d) hi++;
-  const lo = Math.max(0, hi - 1), span = cumulative[hi] - cumulative[lo];
+  const lo = Math.max(0, hi - 1),
+    span = cumulative[hi] - cumulative[lo];
   const t = span > 1e-8 ? (d - cumulative[lo]) / span : 0;
   const position = points[lo].clone().lerp(points[hi], t);
   const tangent = points[hi].clone().sub(points[lo]).normalize();
@@ -37,8 +43,12 @@ export function sampleSplinePath(points: THREE.Vector3[], cumulative: number[], 
   return { position, tangent, travelTangent };
 }
 
-export function composeMotion(matrix: THREE.Matrix4, basis: THREE.Matrix4, position: THREE.Vector3,
-  rotation: THREE.Quaternion) {
+export function composeMotion(
+  matrix: THREE.Matrix4,
+  basis: THREE.Matrix4,
+  position: THREE.Vector3,
+  rotation: THREE.Quaternion,
+) {
   matrix.compose(position, rotation, new THREE.Vector3(1, 1, 1)).multiply(basis);
   return matrix;
 }
@@ -52,16 +62,30 @@ export function applyInvInertia(inv: Float32Array, v: THREE.Vector3, out: THREE.
   );
 }
 
-export function splinePoseMatrices(points: THREE.Vector3[], cumulative: number[], length: number, distance: number,
-  direction: number, endMode: number, orientationMode: number, yawOffset: number, instanceCount: number,
-  basis: THREE.Matrix4): THREE.Matrix4[] {
+export function splinePoseMatrices(
+  points: THREE.Vector3[],
+  cumulative: number[],
+  length: number,
+  distance: number,
+  direction: number,
+  endMode: number,
+  orientationMode: number,
+  yawOffset: number,
+  instanceCount: number,
+  basis: THREE.Matrix4,
+): THREE.Matrix4[] {
   // Native retail tops out at chairlift-sized counts (15 in Snowdream). Keep malformed documents from asking
   // the editor to allocate an unbounded number of draw poses while retaining ample authoring headroom.
   const count = Math.min(256, Math.max(1, Math.trunc(instanceCount)));
   return splineMotionCopyDistances(distance, length, count).map(sampleDistance => {
     const { position, tangent } = sampleSplinePath(points, cumulative, length, sampleDistance, direction);
     const { yaw, pitch } = splineOrientationAngles(
-      [tangent.x, tangent.y, tangent.z], direction, endMode, orientationMode, yawOffset);
+      [tangent.x, tangent.y, tangent.z],
+      direction,
+      endMode,
+      orientationMode,
+      yawOffset,
+    );
     const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
     return new THREE.Matrix4().compose(position, rotation, new THREE.Vector3(1, 1, 1)).multiply(basis);
   });

@@ -15,25 +15,34 @@ import { check, failures } from './check';
 
 const generatedClipModel = 7321;
 const { doc } = autoTestMountain({
-  name: AUTO_TEST_LAB_NAME, cases: AUTO_TEST_LAB_CASES, mode: 'showoff', clipModel: generatedClipModel,
+  name: AUTO_TEST_LAB_NAME,
+  cases: AUTO_TEST_LAB_CASES,
+  mode: 'showoff',
+  clipModel: generatedClipModel,
 });
 if (!doc) throw new Error('autoTestMountain built no mesh, so there is no terrain to measure the panels against');
 const props: any[] = (doc.props ?? []) as any[];
 const importedProps = props.filter(prop => prop.level === IMPORTED_PROP_LEVEL);
 check(importedProps.length > 0, 'the bench carries imported clip props');
-check(importedProps.every(prop => prop.model === generatedClipModel),
-  'headless generation can bind every clip host and companion to its allocated catalogue model');
+check(
+  importedProps.every(prop => prop.model === generatedClipModel),
+  'headless generation can bind every clip host and companion to its allocated catalogue model',
+);
 
 // The cells themselves, not their hop COMPANIONS: a companion is parked half a corridor off the fall line
 // precisely so the rider never reaches it, so it has no business lying in the surface.
-const rideProps = props.filter(p => typeof p.name === 'string'
-  && p.name.includes('cracked-ride') && !p.name.endsWith('TGT'));
+const rideProps = props.filter(
+  p => typeof p.name === 'string' && p.name.includes('cracked-ride') && !p.name.endsWith('TGT'),
+);
 check(rideProps.length >= 2, `the bench carries the slope-following ride cells (found ${rideProps.length})`);
 
 for (const prop of rideProps) {
   const tilted = Math.abs(prop.pitch ?? 0) > 0.01 || Math.abs(prop.roll ?? 0) > 0.01;
-  check(tilted, `${prop.name} is tilted to the slope (pitch ${(prop.pitch ?? 0).toFixed(2)}, `
-    + `roll ${(prop.roll ?? 0).toFixed(2)})`);
+  check(
+    tilted,
+    `${prop.name} is tilted to the slope (pitch ${(prop.pitch ?? 0).toFixed(2)}, ` +
+      `roll ${(prop.roll ?? 0).toFixed(2)})`,
+  );
 
   // Corners of the panel in its own frame, then posed by Ry(yaw)·Rx(pitch)·Rz(roll) and offset to `pos`.
   const d2r = Math.PI / 180;
@@ -53,7 +62,12 @@ for (const prop of rideProps) {
   const halfW = 60 * (prop.scale ?? 1);
   const halfD = 32 * (prop.scale ?? 1);
   let worst = 0;
-  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+  for (const [sx, sz] of [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ] as const) {
     const local: [number, number, number] = [sx * halfW, 0, sz * halfD];
     const [ox, oy, oz] = pose(local);
     const wx = prop.pos[0] + ox;

@@ -42,7 +42,10 @@ async function boot(): Promise<void> {
     await showPublicHome();
     return;
   }
-  if (gate.show === 'editor') { await enterEditor(); return; }
+  if (gate.show === 'editor') {
+    await enterEditor();
+    return;
+  }
   const { showLoginPage } = await import('./ui/chrome/login-page');
   showLoginPage(gate);
 }

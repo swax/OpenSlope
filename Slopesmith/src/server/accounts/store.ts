@@ -78,7 +78,11 @@ export interface EquipmentRecord {
 }
 
 /** The account created by a single-use invite. */
-export interface InviteRedemption { userId: string; username: string; at: string }
+export interface InviteRedemption {
+  userId: string;
+  username: string;
+  at: string;
+}
 
 export interface InviteRecord {
   id: string;
@@ -161,22 +165,33 @@ function normalizeEquipment(raw: unknown, createdAt: string): EquipmentRecord | 
   const library = (value: unknown): EquipmentLibraryRecord => {
     if (!value || typeof value !== 'object') return { designs: [] };
     const candidate = value as Partial<EquipmentLibraryRecord>;
-    const designs = Array.isArray(candidate.designs) ? candidate.designs.filter(design => design
-      && typeof design.id === 'string' && typeof design.name === 'string' && !!design.texture) : [];
-    const selectedId = typeof candidate.selectedId === 'string'
-      && designs.some(design => design.id === candidate.selectedId) ? candidate.selectedId : designs[0]?.id;
+    const designs = Array.isArray(candidate.designs)
+      ? candidate.designs.filter(
+          design => design && typeof design.id === 'string' && typeof design.name === 'string' && !!design.texture,
+        )
+      : [];
+    const selectedId =
+      typeof candidate.selectedId === 'string' && designs.some(design => design.id === candidate.selectedId)
+        ? candidate.selectedId
+        : designs[0]?.id;
     return { designs, ...(selectedId ? { selectedId } : {}) };
   };
   // Schema 2 already has libraries. A schema-1 account instead has one mutable image per gear; promote each
   // into a deterministic first design so an upgrade never makes a rider's existing artwork disappear.
-  if (source.snowboard || source.skis) return {
-    edgeColor, snowboard: library(source.snowboard), skis: library(source.skis),
-  };
+  if (source.snowboard || source.skis)
+    return {
+      edgeColor,
+      snowboard: library(source.snowboard),
+      skis: library(source.skis),
+    };
   const legacy = (texture: unknown, name: string): EquipmentLibraryRecord => {
     if (!texture || typeof texture !== 'object') return { designs: [] };
     const image = texture as AccountImage;
     const design: EquipmentDesignRecord = {
-      id: `legacy-${image.version || 'artwork'}`, name, createdAt, texture: image,
+      id: `legacy-${image.version || 'artwork'}`,
+      name,
+      createdAt,
+      texture: image,
     };
     return { selectedId: design.id, designs: [design] };
   };
@@ -214,7 +229,9 @@ function normalize(stored: Partial<AccountsFile> | null): AccountsFile {
 let cached: { file: string; stamp: string | null; data: AccountsFile } | null = null;
 
 /** Drop the memo — for a test that has just pointed the workspace somewhere else. */
-export function forgetAccounts(): void { cached = null; }
+export function forgetAccounts(): void {
+  cached = null;
+}
 
 export async function readAccounts(): Promise<AccountsFile> {
   const file = accountsFile();
@@ -251,4 +268,6 @@ export const mintToken = (): string => randomBytes(32).toString('base64url');
 /** Tokens are already 256 bits of randomness, so a plain digest is what the record keeps — the deliberately
  *  slow KDF in passwords.ts exists for secrets a person chose, which are guessable. */
 export const tokenHash = (token: string): string =>
-  createHash('sha256').update(String(token ?? ''), 'utf8').digest('hex');
+  createHash('sha256')
+    .update(String(token ?? ''), 'utf8')
+    .digest('hex');

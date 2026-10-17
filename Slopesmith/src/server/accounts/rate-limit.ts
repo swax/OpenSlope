@@ -29,7 +29,10 @@ export const LOGIN_LIMIT: RateLimit = { max: 8, windowMs: 15 * 60_000 };
  *  spent link rather than a guess — but it creates accounts, so it is counted the same way. */
 export const REDEEM_LIMIT: RateLimit = { max: 8, windowMs: 15 * 60_000 };
 
-interface Bucket { failures: number; resetAt: number }
+interface Bucket {
+  failures: number;
+  resetAt: number;
+}
 
 const buckets = new Map<string, Bucket>();
 
@@ -38,7 +41,10 @@ export function throttledFor(bucket: string, limit: RateLimit): number {
   const held = buckets.get(bucket);
   if (!held) return 0;
   const now = Date.now();
-  if (held.resetAt <= now) { buckets.delete(bucket); return 0; }
+  if (held.resetAt <= now) {
+    buckets.delete(bucket);
+    return 0;
+  }
   return held.failures >= limit.max ? held.resetAt - now : 0;
 }
 
@@ -55,12 +61,18 @@ export function recordFailure(bucket: string, limit: RateLimit, what: string): v
   next.failures++;
   buckets.set(bucket, next);
   const blocked = next.failures >= limit.max;
-  log.warn(`${what} — ${next.failures} failure${next.failures === 1 ? '' : 's'} in this window`
-    + (blocked ? `, refusing further attempts for ${Math.ceil((next.resetAt - now) / 1000)}s` : ''));
+  log.warn(
+    `${what} — ${next.failures} failure${next.failures === 1 ? '' : 's'} in this window` +
+      (blocked ? `, refusing further attempts for ${Math.ceil((next.resetAt - now) / 1000)}s` : ''),
+  );
 }
 
 /** A success clears the count, so an author who mistypes twice and then gets it right starts clean. */
-export function clearFailures(bucket: string): void { buckets.delete(bucket); }
+export function clearFailures(bucket: string): void {
+  buckets.delete(bucket);
+}
 
 /** Drop every count — for a test that has just finished exercising a limit. */
-export function forgetRateLimits(): void { buckets.clear(); }
+export function forgetRateLimits(): void {
+  buckets.clear();
+}

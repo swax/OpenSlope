@@ -16,33 +16,71 @@ import type { AuthoredLight, PlacedProp } from '../src/core/doc/types';
 import { createStore, selectedSetLights, setSelectedSet } from '../src/app/state/store';
 
 Object.defineProperty(globalThis, 'document', {
-  configurable: true, value: { getElementById: () => ({ textContent: '', className: '' }) },
+  configurable: true,
+  value: { getElementById: () => ({ textContent: '', className: '' }) },
 });
-Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout: () => 0, setInterval: () => 0 } });
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: { setTimeout: () => 0, setInterval: () => 0 },
+});
 const { createPropOps } = await import('../src/app/props/operations');
 const store = createStore({ mdoc: migrateMountain(defaultMountain()), currentMode: 'props', storedUi: {} });
 const ops = createPropOps({
-  store, propLevels: new Map(), groupDefIdx: new Map(),
-  viewport: { registerPropModels() {}, registerGroupDefs() {}, setPropArmed() {}, setLineDrawing() {},
-    setLightArmed() {}, setRailArmed() {}, setGemArmed() {}, clearRefPropSelection() {}, clearScreenSelection() {} },
+  store,
+  propLevels: new Map(),
+  groupDefIdx: new Map(),
+  viewport: {
+    registerPropModels() {},
+    registerGroupDefs() {},
+    setPropArmed() {},
+    setLineDrawing() {},
+    setLightArmed() {},
+    setRailArmed() {},
+    setGemArmed() {},
+    clearRefPropSelection() {},
+    clearScreenSelection() {},
+  },
   propLib: { highlight() {} },
-  setMode: (mode: typeof store.currentMode) => { store.currentMode = mode; },
-  scheduleRebuild() {}, rebuildTools() {}, updateCmdSheet() {},
+  setMode: (mode: typeof store.currentMode) => {
+    store.currentMode = mode;
+  },
+  scheduleRebuild() {},
+  rebuildTools() {},
+  updateCmdSheet() {},
 } as unknown as Parameters<typeof createPropOps>[0]);
 
-const prop = (id: string, extra: Partial<PlacedProp> = {}): PlacedProp =>
-  ({ id, level: 'TEST', model: 1, name: 'Lamp', pos: [0, 0, 0], yaw: 0, scale: 1, ...extra });
-const light = (id: string, extra: Partial<AuthoredLight> = {}): AuthoredLight =>
-  ({ id, kind: 'spot', pos: [0, 5, 0], color: '#ffffff', intensity: 1, reach: 10, ...extra });
+const prop = (id: string, extra: Partial<PlacedProp> = {}): PlacedProp => ({
+  id,
+  level: 'TEST',
+  model: 1,
+  name: 'Lamp',
+  pos: [0, 0, 0],
+  yaw: 0,
+  scale: 1,
+  ...extra,
+});
+const light = (id: string, extra: Partial<AuthoredLight> = {}): AuthoredLight => ({
+  id,
+  kind: 'spot',
+  pos: [0, 5, 0],
+  color: '#ffffff',
+  intensity: 1,
+  reach: 10,
+  ...extra,
+});
 function reset() {
   store.mdoc = migrateMountain(defaultMountain());
   store.mdoc.props = [
     prop('prop:0000'),
-    prop('prop:0001', { assembly: 'group:0000' }), prop('prop:0002', { assembly: 'group:0000' }),
+    prop('prop:0001', { assembly: 'group:0000' }),
+    prop('prop:0002', { assembly: 'group:0000' }),
     prop('prop:0003', { line: 'line:0000' }),
   ];
   store.mdoc.lights = [light('light:0000'), light('light:0001', { assembly: 'group:0000' })];
-  store.selectedProp = null; store.multiSel = []; store.selectedLight = null; store.armedProp = null;
+  store.selectedProp = null;
+  store.multiSel = [];
+  store.selectedLight = null;
+  store.armedProp = null;
   store.currentMode = 'props';
 }
 
@@ -81,12 +119,20 @@ function reset() {
   reset();
   store.multiSel = [1, 2];
   ops.deleteMultiSelProps();
-  assert.deepEqual(store.mdoc.lights!.map(l => l.id), ['light:0000'], 'deleting a whole group deletes its lights');
+  assert.deepEqual(
+    store.mdoc.lights!.map(l => l.id),
+    ['light:0000'],
+    'deleting a whole group deletes its lights',
+  );
   reset();
   store.mdoc.props = [prop('prop:0000', { assembly: 'group:0000' })];
   store.selectedProp = 0;
   ops.deleteSelectedProp();
-  assert.deepEqual(store.mdoc.lights!.map(l => l.id), ['light:0000'], 'and so does deleting its last prop');
+  assert.deepEqual(
+    store.mdoc.lights!.map(l => l.id),
+    ['light:0000'],
+    'and so does deleting its last prop',
+  );
 }
 
 // A set's selected free lights go with it, and a ✕ in its list drops one from it.
@@ -98,7 +144,11 @@ function reset() {
   assert.equal(store.mdoc.lights!.length, 2, 'without deleting it');
   setSelectedSet(store, [0], ['light:0000']);
   ops.deleteMultiSelProps();
-  assert.deepEqual(store.mdoc.lights!.map(l => l.id), ['light:0001'], 'deleting the set deletes the light selected in it');
+  assert.deepEqual(
+    store.mdoc.lights!.map(l => l.id),
+    ['light:0001'],
+    'deleting the set deletes the light selected in it',
+  );
 }
 
 console.log('group-light-join: ok');

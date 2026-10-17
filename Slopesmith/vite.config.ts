@@ -21,7 +21,10 @@ function requestLogEndpoint(): Plugin {
       let sequence = 0;
       server.middlewares.use((req, res, next) => {
         const url = req.originalUrl ?? req.url ?? '/';
-        if (!url.startsWith('/api/')) { next(); return; }
+        if (!url.startsWith('/api/')) {
+          next();
+          return;
+        }
         const id = `api-${String(++sequence).padStart(5, '0')}`;
         const started = performance.now();
         let logged = false;
@@ -38,20 +41,32 @@ function requestLogEndpoint(): Plugin {
           clearTimeout(slowTimer);
           const elapsed = performance.now() - started;
           const rawLength = res.getHeader('content-length');
-          const bytes = typeof rawLength === 'number' ? rawLength
-            : typeof rawLength === 'string' && /^\d+$/.test(rawLength) ? Number(rawLength) : null;
-          const size = bytes === null ? '' : bytes >= 1024 * 1024
-            ? ` ${(bytes / 1024 / 1024).toFixed(2)}MiB`
-            : ` ${(bytes / 1024).toFixed(1)}KiB`;
+          const bytes =
+            typeof rawLength === 'number'
+              ? rawLength
+              : typeof rawLength === 'string' && /^\d+$/.test(rawLength)
+                ? Number(rawLength)
+                : null;
+          const size =
+            bytes === null
+              ? ''
+              : bytes >= 1024 * 1024
+                ? ` ${(bytes / 1024 / 1024).toFixed(2)}MiB`
+                : ` ${(bytes / 1024).toFixed(1)}KiB`;
           const cache = res.getHeader('x-slopesmith-cache');
-          const suffix = `${res.statusCode} ${elapsed.toFixed(1)}ms${size}`
-            + (cache ? ` cache=${String(cache)}` : '') + (aborted ? ' aborted' : '');
+          const suffix =
+            `${res.statusCode} ${elapsed.toFixed(1)}ms${size}` +
+            (cache ? ` cache=${String(cache)}` : '') +
+            (aborted ? ' aborted' : '');
           const message = `[api] ${id} ${req.method ?? 'GET'} ${url} -> ${suffix}`;
-          if (elapsed >= 1000 || aborted || res.statusCode >= 500) server.config.logger.warn(message, { timestamp: true });
+          if (elapsed >= 1000 || aborted || res.statusCode >= 500)
+            server.config.logger.warn(message, { timestamp: true });
           else server.config.logger.info(message, { timestamp: true });
         };
         res.once('finish', () => finish());
-        res.once('close', () => { if (!res.writableFinished) finish(true); });
+        res.once('close', () => {
+          if (!res.writableFinished) finish(true);
+        });
         next();
       });
     },
@@ -62,7 +77,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'SLOPESMITH_');
   const allowedHosts = (process.env.SLOPESMITH_ALLOWED_HOSTS ?? env.SLOPESMITH_ALLOWED_HOSTS ?? '')
     .split(',')
-    .map((host) => host.trim())
+    .map(host => host.trim())
     .filter(Boolean);
 
   return {

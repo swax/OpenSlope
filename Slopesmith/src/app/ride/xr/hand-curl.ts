@@ -18,14 +18,34 @@ import type { CharacterHandCurl } from '../character-rig';
 /** WebXR joint names per digit, root to tip. The thumb has no intermediate phalanx. */
 export const DIGIT_JOINTS = {
   thumb: ['thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal', 'thumb-tip'],
-  index: ['index-finger-metacarpal', 'index-finger-phalanx-proximal', 'index-finger-phalanx-intermediate',
-    'index-finger-phalanx-distal', 'index-finger-tip'],
-  middle: ['middle-finger-metacarpal', 'middle-finger-phalanx-proximal', 'middle-finger-phalanx-intermediate',
-    'middle-finger-phalanx-distal', 'middle-finger-tip'],
-  ring: ['ring-finger-metacarpal', 'ring-finger-phalanx-proximal', 'ring-finger-phalanx-intermediate',
-    'ring-finger-phalanx-distal', 'ring-finger-tip'],
-  pinky: ['pinky-finger-metacarpal', 'pinky-finger-phalanx-proximal', 'pinky-finger-phalanx-intermediate',
-    'pinky-finger-phalanx-distal', 'pinky-finger-tip'],
+  index: [
+    'index-finger-metacarpal',
+    'index-finger-phalanx-proximal',
+    'index-finger-phalanx-intermediate',
+    'index-finger-phalanx-distal',
+    'index-finger-tip',
+  ],
+  middle: [
+    'middle-finger-metacarpal',
+    'middle-finger-phalanx-proximal',
+    'middle-finger-phalanx-intermediate',
+    'middle-finger-phalanx-distal',
+    'middle-finger-tip',
+  ],
+  ring: [
+    'ring-finger-metacarpal',
+    'ring-finger-phalanx-proximal',
+    'ring-finger-phalanx-intermediate',
+    'ring-finger-phalanx-distal',
+    'ring-finger-tip',
+  ],
+  pinky: [
+    'pinky-finger-metacarpal',
+    'pinky-finger-phalanx-proximal',
+    'pinky-finger-phalanx-intermediate',
+    'pinky-finger-phalanx-distal',
+    'pinky-finger-tip',
+  ],
 } as const satisfies Record<keyof CharacterHandCurl, readonly string[]>;
 
 /**
@@ -39,8 +59,10 @@ export const DIGIT_JOINTS = {
  * These four numbers are the tuning surface of this file. They are set from anatomy rather than measured off
  * a headset, so they are the first thing to adjust if tracked hands read consistently over- or under-closed.
  */
-export const FINGER_REST = 0.45, FINGER_FULL = 3.8;
-export const THUMB_REST = 0.25, THUMB_FULL = 2.0;
+export const FINGER_REST = 0.45,
+  FINGER_FULL = 3.8;
+export const THUMB_REST = 0.25,
+  THUMB_FULL = 2.0;
 
 /** The minimal shape of a `THREE.XRHandSpace`, so this is testable without a headset or a WebXR polyfill. */
 export interface TrackedJoint {
@@ -69,9 +91,12 @@ export interface TrackedHand {
 export function chainTurn(points: readonly (THREE.Vector3 | null)[]): { total: number; joints: number } | null {
   const segments: { x: number; y: number; z: number }[] = [];
   for (let i = 0; i + 1 < points.length; i++) {
-    const from = points[i], to = points[i + 1];
+    const from = points[i],
+      to = points[i + 1];
     if (!from || !to) continue;
-    const x = to.x - from.x, y = to.y - from.y, z = to.z - from.z;
+    const x = to.x - from.x,
+      y = to.y - from.y,
+      z = to.z - from.z;
     const length = Math.hypot(x, y, z);
     if (length < 1e-3) continue;
     segments.push({ x: x / length, y: y / length, z: z / length });
@@ -79,14 +104,14 @@ export function chainTurn(points: readonly (THREE.Vector3 | null)[]): { total: n
   if (segments.length < 2) return null;
   let total = 0;
   for (let i = 0; i + 1 < segments.length; i++) {
-    const a = segments[i], b = segments[i + 1];
+    const a = segments[i],
+      b = segments[i + 1];
     total += Math.acos(Math.min(1, Math.max(-1, a.x * b.x + a.y * b.y + a.z * b.z)));
   }
   return { total, joints: segments.length - 1 };
 }
 
-const unit = (value: number, rest: number, full: number) =>
-  Math.min(1, Math.max(0, (value - rest) / (full - rest)));
+const unit = (value: number, rest: number, full: number) => Math.min(1, Math.max(0, (value - rest) / (full - rest)));
 
 /**
  * Curls for one optically tracked hand, or null when it is not being tracked — in which case the caller
@@ -109,9 +134,10 @@ export function trackedFingerCurls(hand: TrackedHand | null | undefined): Charac
     // is three for a finger and two for the thumb.
     const perJoint = measured.total / measured.joints;
     const reference = names.length - 2;
-    curls[digit] = digit === 'thumb'
-      ? unit(perJoint, THUMB_REST / reference, THUMB_FULL / reference)
-      : unit(perJoint, FINGER_REST / reference, FINGER_FULL / reference);
+    curls[digit] =
+      digit === 'thumb'
+        ? unit(perJoint, THUMB_REST / reference, THUMB_FULL / reference)
+        : unit(perJoint, FINGER_REST / reference, FINGER_FULL / reference);
   }
   return curls as CharacterHandCurl;
 }

@@ -4,27 +4,54 @@ import { sheetSpan, SHEET_DEFAULT_LIFT } from '../../../core/props/sheet-prop';
 import { MODE_ICON } from '../components/icons';
 import { toast } from '../components/toast';
 import {
-  auditionCollisionSound, auditionCustomSound, auditionCustomSoundLoop, auditionExternalSoundLoop,
-  collisionSoundMeta, externalSoundMeta, loopAuditionKey, onLoopAuditionChange, stopAudition,
+  auditionCollisionSound,
+  auditionCustomSound,
+  auditionCustomSoundLoop,
+  auditionExternalSoundLoop,
+  collisionSoundMeta,
+  externalSoundMeta,
+  loopAuditionKey,
+  onLoopAuditionChange,
+  stopAudition,
 } from '../components/audition';
-import {
-  customSoundFilepath, customSounds, onCustomSoundsChanged, pickCustomSound,
-} from '../components/custom-sounds';
+import { customSoundFilepath, customSounds, onCustomSoundsChanged, pickCustomSound } from '../components/custom-sounds';
 import { openSoundLibrary } from '../../effects/sound-library';
 import { AUTHORED_MODEL_LEVEL, modelIdFromNumber } from '../../../core/doc/models';
 import { SURFACE_AUTHOR_OPTIONS, surfaceTypeLabel } from '../../../core/reference/surface-types';
 import type {
-  AuthoredLight, NativeCollisionProfile, PlacedProp, PropBehaviour, PropLine, PropSheet, Screen, V3,
+  AuthoredLight,
+  NativeCollisionProfile,
+  PlacedProp,
+  PropBehaviour,
+  PropLine,
+  PropSheet,
+  Screen,
+  V3,
 } from '../../../core/doc/types';
 import { selectedSetLights, setSelectedSet, type ArmedProp } from '../../state/store';
 import {
-  applyBehaviour, baselineBehaviour, behaviourOf, groupMemberProp, materializeMemberBehaviour, sameBehaviour,
+  applyBehaviour,
+  baselineBehaviour,
+  behaviourOf,
+  groupMemberProp,
+  materializeMemberBehaviour,
+  sameBehaviour,
   type ResolvedPropDefaults,
 } from '../../../core/props/defaults';
 import { expandGroupProps, type GroupDef, type GroupPropDef } from '../../../core/reference/groups';
 import {
-  assemblyOf, assemblyRefusal, breakAssembly, carryAssemblyLights, createAssembly, lightAssemblyOf, placementPoses,
-  scalePlacements, turnPlacements, unpackGroupPlacement, wholeAssembly, withWholeAssemblies,
+  assemblyOf,
+  assemblyRefusal,
+  breakAssembly,
+  carryAssemblyLights,
+  createAssembly,
+  lightAssemblyOf,
+  placementPoses,
+  scalePlacements,
+  turnPlacements,
+  unpackGroupPlacement,
+  wholeAssembly,
+  withWholeAssemblies,
 } from '../../../core/props/assembly';
 import { newFreeLight } from '../../../core/lighting/sign-lights';
 import { nextLightId } from '../../../core/doc/ids';
@@ -37,25 +64,32 @@ import {
   externalSoundFalloffLabel,
   externalSoundShape,
   externalSoundSource,
-  externalSoundEmitterTypeLabel, isInteractiveAmbientEvent,
-  AUTHORED_AMBIENT_DEFAULT_CURVE, AUTHORED_AMBIENT_DEFAULT_M,
-  AUTHORED_AMBIENT_MAX_M, AUTHORED_AMBIENT_MIN_M,
-  authoredAmbientEvent, HIT_GATED_EVENT_POOL,
+  externalSoundEmitterTypeLabel,
+  isInteractiveAmbientEvent,
+  AUTHORED_AMBIENT_DEFAULT_CURVE,
+  AUTHORED_AMBIENT_DEFAULT_M,
+  AUTHORED_AMBIENT_MAX_M,
+  AUTHORED_AMBIENT_MIN_M,
+  authoredAmbientEvent,
+  HIT_GATED_EVENT_POOL,
 } from '../../../core/effects/external-sound';
 import {
-  authoredEffectBindings, authoredPropHasEffectCircumstance, effectAttachments, rollerNodeMass,
+  authoredEffectBindings,
+  authoredPropHasEffectCircumstance,
+  effectAttachments,
+  rollerNodeMass,
 } from '../../../core/effects/authoring';
 import { collisionSoundSource } from '../../../core/effects/collision-sound';
 import { pathHandleActions, placementCancelButton, type ToolsContext } from './widgets';
 import { addAuthoredLightDetails, addReferenceLightDetails } from '../components/light-details';
 import { addPropMaterials } from '../components/prop-materials';
 import { NATIVE_COLLISION_MODE } from '../../../core/collision/native';
+import { projectedNativeModelObjectCount, SSX_TRICKY_MAX_NATIVE_MODEL_OBJECTS } from '../../../core/reference/props';
 import {
-  projectedNativeModelObjectCount, SSX_TRICKY_MAX_NATIVE_MODEL_OBJECTS,
-} from '../../../core/reference/props';
-import {
-  collisionProfileContactState, collisionProfileFromSourceInstance,
-  placedPropCollisionProfile, placedPropContactLabel,
+  collisionProfileContactState,
+  collisionProfileFromSourceInstance,
+  placedPropCollisionProfile,
+  placedPropContactLabel,
 } from '../../../core/props/contact';
 import { rotateByPlacement, writePropRotation } from '../../../core/props/pose';
 import { describeProp, ownGeometry } from '../../../core/props/kind';
@@ -89,27 +123,33 @@ const CONTACT_HELP = {
   surface: 'What riding ON a response-enabled prop feels and sounds like.',
   physicsBody: 'PhysicsIndex donor: the mode-3 sphere-tree and inertia record, -1 for none.',
   physicsLevel: 'Extracted level that owns the sphere-tree/inertia record.',
-  result: 'The result evaluated from the exact fields above using the shared collision spec. Roller movement is '
-    + 'separate from rider response.',
+  result:
+    'The result evaluated from the exact fields above using the shared collision spec. Roller movement is ' +
+    'separate from rider response.',
   dynamicMass: 'Scalar mass from the property.roller node in this instance’s collision path.',
 } as const;
 
 const CONTACT_MORE = {
-  shape: 'The triangle proxy is exact. The model’s own bounding box turns with the placement — chunky, which '
-    + 'explains hitting a visually empty corner of the model, though never one out in the open beside it. '
-    + 'Physics-body spheres (knockable / animated props) need a body record to have any shape at all.',
+  shape:
+    'The triangle proxy is exact. The model’s own bounding box turns with the placement — chunky, which ' +
+    'explains hitting a visually empty corner of the model, though never one out in the open beside it. ' +
+    'Physics-body spheres (knockable / animated props) need a body record to have any shape at all.',
   contact: 'An independent gate: effects and sounds are not allowed to silently turn it back on.',
-  responseMass: 'The native file calls this ObjectProperties.U0; 1e30 is the conventional effectively-infinite '
-    + 'default.',
-  bounceAmount: 'Retained independently from its gate. Retail ranges from about 0.03 (soft) to 0.6 (springy); '
-    + 'a flagged hit always has at least the specified 2 km/h outward eject.',
-  surface: 'Applies that terrain family’s ride physics and carve/glide board audio instead of obstacle '
-    + 'handling. Most props carry none — Merqury City rooftops and wood bridges are the retail exceptions.',
-  physicsBody: 'Mode 3 needs this body for contact; Roller needs it for native PS2 movement/inertia even with '
-    + 'another contact shape. Its presence supplies shape/inertia but does not by itself activate movement.',
+  responseMass:
+    'The native file calls this ObjectProperties.U0; 1e30 is the conventional effectively-infinite ' + 'default.',
+  bounceAmount:
+    'Retained independently from its gate. Retail ranges from about 0.03 (soft) to 0.6 (springy); ' +
+    'a flagged hit always has at least the specified 2 km/h outward eject.',
+  surface:
+    'Applies that terrain family’s ride physics and carve/glide board audio instead of obstacle ' +
+    'handling. Most props carry none — Merqury City rooftops and wood bridges are the retail exceptions.',
+  physicsBody:
+    'Mode 3 needs this body for contact; Roller needs it for native PS2 movement/inertia even with ' +
+    'another contact shape. Its presence supplies shape/inertia but does not by itself activate movement.',
   physicsLevel: 'PS2 can reuse it only when this is also the ISO replacement target.',
-  dynamicMass: 'A property.roller node activates body movement; the mass is the effect payload’s value, not an '
-    + 'instance field.',
+  dynamicMass:
+    'A property.roller node activates body movement; the mass is the effect payload’s value, not an ' +
+    'instance field.',
 } as const;
 
 /** A screen's own facing before its turn and tilt — the axis "nudge out" pushes along. */
@@ -118,16 +158,19 @@ const SCREEN_FORWARD: V3 = [0, 0, 1];
 /** The authored dropdown's own name for a collision mode, so a retail instance's shape reads as the control
  *  that would author the same thing. */
 function collisionShapeName(mode: number): string {
-  return Object.keys(COLLISION_SHAPE_OPTIONS).find(name => COLLISION_SHAPE_OPTIONS[name] === mode)
-    ?? `mode ${mode}`;
+  return Object.keys(COLLISION_SHAPE_OPTIONS).find(name => COLLISION_SHAPE_OPTIONS[name] === mode) ?? `mode ${mode}`;
 }
 
 /** The shape phrase for the effective-result line: what a contact test would actually run against. */
 function effectiveShapeLabel(profile: NativeCollisionProfile): string {
-  return profile.mode === NATIVE_COLLISION_MODE.none ? 'no shape'
-    : profile.mode === NATIVE_COLLISION_MODE.triangleProxy ? 'mesh proxy'
-      : profile.mode === NATIVE_COLLISION_MODE.boundingBox ? 'model bounds'
-        : profile.physicsSource ? `sphere body ${profile.physicsSource.body} from ${profile.physicsSource.level}`
+  return profile.mode === NATIVE_COLLISION_MODE.none
+    ? 'no shape'
+    : profile.mode === NATIVE_COLLISION_MODE.triangleProxy
+      ? 'mesh proxy'
+      : profile.mode === NATIVE_COLLISION_MODE.boundingBox
+        ? 'model bounds'
+        : profile.physicsSource
+          ? `sphere body ${profile.physicsSource.body} from ${profile.physicsSource.level}`
           : 'sphere body missing';
 }
 
@@ -139,15 +182,20 @@ function surfaceOptionName(surface: number): string {
 
 /** Read-only renderings of the values their editable twins hold. A sentinel keeps a short decoding after the
  *  raw value so the two panels still line up on the number itself. */
-const gateText = (on: boolean) => on ? 'on' : 'off';
-const responseMassText = (mass: number) => mass === 0 ? '0 — pass-through' : String(mass);
-const bounceAmountText = (amount: number) => amount === 0 ? '0 — no kickback' : String(amount);
-const physicsBodyText = (body: number) => body < 0 ? '-1 — none' : String(body);
-const ltgStateText = (state: number) => state === -1 ? '-1 — unlisted'
-  : state === 0 ? '0 — common (InstanceIndex)'
-    : state === 1 ? '1 — race list (RaceInstanceIndex)'
-      : state === 2 ? '2 — Showoff layer (GemIndex)'
-        : `${state} — unknown list`;
+const gateText = (on: boolean) => (on ? 'on' : 'off');
+const responseMassText = (mass: number) => (mass === 0 ? '0 — pass-through' : String(mass));
+const bounceAmountText = (amount: number) => (amount === 0 ? '0 — no kickback' : String(amount));
+const physicsBodyText = (body: number) => (body < 0 ? '-1 — none' : String(body));
+const ltgStateText = (state: number) =>
+  state === -1
+    ? '-1 — unlisted'
+    : state === 0
+      ? '0 — common (InstanceIndex)'
+      : state === 1
+        ? '1 — race list (RaceInstanceIndex)'
+        : state === 2
+          ? '2 — Showoff layer (GemIndex)'
+          : `${state} — unknown list`;
 
 /**
  * The Props-mode toolboxes for prop placements and free lights: the held / selected prop's controls (turn,
@@ -163,13 +211,41 @@ const ltgStateText = (state: number) => state === -1 ? '-1 — unlisted'
  */
 export function createPropTools(ctx: ToolsContext) {
   const {
-    gui, store, viewport, persistUi, multiList, propPreview, scheduleRebuild, rebuildTools,
-    defOfPlaced, placedBaseOffset, shortPropName, propLevels, groupDefIdx,
-    armProp, deselectPropOrLight, lightTool,
-    propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
-    deleteSelectedProp, deleteMultiSelProps, propClipboard, deleteSelectedLight, deleteSelectedScreen, revealScreens,
-    modelEdit, editSection, goToEffects,
-    library, reloadImportedProps, setAuthoredModelTexture, setAuthoredModelFrames,
+    gui,
+    store,
+    viewport,
+    persistUi,
+    multiList,
+    propPreview,
+    scheduleRebuild,
+    rebuildTools,
+    defOfPlaced,
+    placedBaseOffset,
+    shortPropName,
+    propLevels,
+    groupDefIdx,
+    armProp,
+    deselectPropOrLight,
+    lightTool,
+    propDefaults,
+    groupDefaults,
+    modelEffect,
+    placementsOfModel,
+    saveModelDefaults,
+    applyBehaviourToPlaced,
+    deleteSelectedProp,
+    deleteMultiSelProps,
+    propClipboard,
+    deleteSelectedLight,
+    deleteSelectedScreen,
+    revealScreens,
+    modelEdit,
+    editSection,
+    goToEffects,
+    library,
+    reloadImportedProps,
+    setAuthoredModelTexture,
+    setAuthoredModelFrames,
   } = ctx;
   const mountainName = store.mdoc.name.trim() || 'Mountain';
   const plural = (n: number) => `${n} prop${n === 1 ? '' : 's'}`;
@@ -180,13 +256,19 @@ export function createPropTools(ctx: ToolsContext) {
   // Starting or stopping a held loop flips one button between play and stop; the panel is the only thing that
   // renders that state, so it redraws whenever the audition changes — including when some other preview
   // stole the audio and ended the loop from outside this panel.
-  onLoopAuditionChange(() => { if (!stoppingDuringBuild) rebuildTools(); });
+  onLoopAuditionChange(() => {
+    if (!stoppingDuringBuild) rebuildTools();
+  });
 
   /** What the Materials block needs from the editor: the picker to choose tiles with, the catalogue to read
    *  and refetch, and the authored-model fields that are document edits rather than catalogue ones. */
   const materialsHost = {
-    library, propLevels, reloadImportedProps, rebuildTools,
-    setAuthoredModelTexture, setAuthoredModelFrames,
+    library,
+    propLevels,
+    reloadImportedProps,
+    rebuildTools,
+    setAuthoredModelTexture,
+    setAuthoredModelFrames,
   };
 
   /**
@@ -215,20 +297,28 @@ export function createPropTools(ctx: ToolsContext) {
 
   /** Standard last action for a prop/light inspector; routed through the same domain clear as Escape. */
   function addDeselect() {
-    return tip(gui.add({ deselect: deselectPropOrLight }, 'deselect').name('deselect (Esc)'),
-      'Clear the selection and return to the Props launcher — same as Esc.');
+    return tip(
+      gui.add({ deselect: deselectPropOrLight }, 'deselect').name('deselect (Esc)'),
+      'Clear the selection and return to the Props launcher — same as Esc.',
+    );
   }
 
   /** One remembered viewport preference, offered beside both editable and read-only collision facts. */
   function addCollisionOverlayToggle(section: Parameters<typeof detail>[0]) {
     const overlay = { show: store.collisionOverlayOn };
-    tip(section.add(overlay, 'show').name('show collider').onChange((on: boolean) => {
-      store.collisionOverlayOn = on;
-      viewport.showSelectedPropCollider(on);
-      persistUi();
-    }), 'Show the selected prop’s collision shapes in the viewport.',
-    'Cyan is the native proxy/box/sphere tree, slate is configured native geometry with Player contact off, '
-    + 'and orange is the box/capsule proxy exported to Unity.');
+    tip(
+      section
+        .add(overlay, 'show')
+        .name('show collider')
+        .onChange((on: boolean) => {
+          store.collisionOverlayOn = on;
+          viewport.showSelectedPropCollider(on);
+          persistUi();
+        }),
+      'Show the selected prop’s collision shapes in the viewport.',
+      'Cyan is the native proxy/box/sphere tree, slate is configured native geometry with Player contact off, ' +
+        'and orange is the box/capsule proxy exported to Unity.',
+    );
   }
 
   /** Compact source path shown by every prop-audio detail. Authored clips live under the mountain's
@@ -242,18 +332,27 @@ export function createPropTools(ctx: ToolsContext) {
    *  diagnostic fact for assigned-but-unmapped ids rather than disappearing. */
   function addSoundFilepath(target: Parameters<typeof detail>[0], filepath: string | null) {
     if (filepath) {
-      tip(detail(target, filepath, 'filepath'), 'Resolved WAV source.',
-        `Native paths are relative to Maps/<level>/Audio/SFX; ${mountainName} paths belong to this project.`);
+      tip(
+        detail(target, filepath, 'filepath'),
+        'Resolved WAV source.',
+        `Native paths are relative to Maps/<level>/Audio/SFX; ${mountainName} paths belong to this project.`,
+      );
     } else {
-      tip(detail(target, 'unresolved', 'filepath'),
-        'This sound id does not resolve to an extracted WAV path, so it cannot be auditioned.');
+      tip(
+        detail(target, 'unresolved', 'filepath'),
+        'This sound id does not resolve to an extracted WAV path, so it cannot be auditioned.',
+      );
     }
   }
 
   /** A picked reference instance's sound: read-only, so it keeps the plain filepath-then-Play pairing. There
    *  is nothing to browse or load on an extracted level's own record — it is the reference, not the work. */
-  function addSoundPreview(target: Parameters<typeof detail>[0], filepath: string | null,
-    play: (() => void) | null, title: string) {
+  function addSoundPreview(
+    target: Parameters<typeof detail>[0],
+    filepath: string | null,
+    play: (() => void) | null,
+    title: string,
+  ) {
     addSoundFilepath(target, filepath);
     if (filepath && play) tip(target.add({ play }, 'play').name('▶ play sound'), title);
   }
@@ -268,11 +367,15 @@ export function createPropTools(ctx: ToolsContext) {
   let stoppingDuringBuild = false;
 
   function syncLoopOwner(): void {
-    const subject = store.multiSel.length ? null
-      : store.selectedProp !== null ? `prop:${store.selectedProp}`
+    const subject = store.multiSel.length
+      ? null
+      : store.selectedProp !== null
+        ? `prop:${store.selectedProp}`
         : store.selectedRefProp
           ? `ref:${store.selectedRefProp.level}:${store.selectedRefProp.sourceIndex ?? store.selectedRefProp.name}`
-          : store.armedProp ? `held:${store.armedProp.level}:${store.armedProp.model}` : null;
+          : store.armedProp
+            ? `held:${store.armedProp.level}:${store.armedProp.model}`
+            : null;
     // Each group member has an emitter of its own, so opening another member is a change of owner too.
     const next = subject && openMember ? `${subject}#${openMember.model}` : subject;
     if (next === loopOwner) return;
@@ -281,7 +384,11 @@ export function createPropTools(ctx: ToolsContext) {
     // appear and disappear together. This build already renders the result, so it needs no notification.
     if (!loopAuditionKey()) return;
     stoppingDuringBuild = true;
-    try { stopAudition(); } finally { stoppingDuringBuild = false; }
+    try {
+      stopAudition();
+    } finally {
+      stoppingDuringBuild = false;
+    }
   }
 
   /**
@@ -293,20 +400,40 @@ export function createPropTools(ctx: ToolsContext) {
    */
   function addLoopPlay(target: Parameters<typeof detail>[0], key: string, start: () => void, title: string) {
     const playing = loopAuditionKey() === key;
-    tip(target.add({ play: () => { if (playing) stopAudition(); else start(); } }, 'play')
-      .name(playing ? '■ stop loop' : '▶ play loop'), title);
+    tip(
+      target
+        .add(
+          {
+            play: () => {
+              if (playing) stopAudition();
+              else start();
+            },
+          },
+          'play',
+        )
+        .name(playing ? '■ stop loop' : '▶ play loop'),
+      title,
+    );
   }
 
   /** Every authored sound block closes with the same three actions in the same order — browse, load, play —
    *  so the fields above stay a description of the sound and the ways to change or hear it sit together at
    *  the bottom. Play is omitted rather than shown dead when nothing resolves. */
-  function addSoundActions(target: Parameters<typeof detail>[0], actions: {
-    browse: () => void; browseName: string; browseTitle: string;
-    load: () => void; loadName: string; loadTitle: string;
-    play: (() => void) | null; playTitle: string;
-    /** Set for a continuing channel: the play action becomes a stoppable loop under this identity. */
-    loopKey?: string;
-  }) {
+  function addSoundActions(
+    target: Parameters<typeof detail>[0],
+    actions: {
+      browse: () => void;
+      browseName: string;
+      browseTitle: string;
+      load: () => void;
+      loadName: string;
+      loadTitle: string;
+      play: (() => void) | null;
+      playTitle: string;
+      /** Set for a continuing channel: the play action becomes a stoppable loop under this identity. */
+      loopKey?: string;
+    },
+  ) {
     tip(target.add({ browse: actions.browse }, 'browse').name(actions.browseName), actions.browseTitle);
     tip(target.add({ load: actions.load }, 'load').name(actions.loadName), actions.loadTitle);
     if (!actions.play) return;
@@ -371,13 +498,22 @@ export function createPropTools(ctx: ToolsContext) {
   /** Materialize an older map's inferred settings only when the user edits them. Explicit profiles are never
    *  rewritten by effect/sound attachments; those combinations are diagnosed below instead. A held prop always
    *  carries a complete profile, so only a legacy placement ever takes the inference branch. */
-  function editableCollisionProfile(host: BehaviourHost, collisionEffect: boolean, hitSound: boolean): NativeCollisionProfile {
+  function editableCollisionProfile(
+    host: BehaviourHost,
+    collisionEffect: boolean,
+    hitSound: boolean,
+  ): NativeCollisionProfile {
     const target = host.target;
     if (!target.nativeCollision) {
-      target.nativeCollision = structuredClone(host.placement
-        ? placedPropCollisionProfile(host.placement, collisionEffect, hitSound)
-        : baselineBehaviour(host.level).nativeCollision);
-      if (host.placement) { delete host.placement.solid; delete host.placement.bounce; }
+      target.nativeCollision = structuredClone(
+        host.placement
+          ? placedPropCollisionProfile(host.placement, collisionEffect, hitSound)
+          : baselineBehaviour(host.level).nativeCollision,
+      );
+      if (host.placement) {
+        delete host.placement.solid;
+        delete host.placement.bounce;
+      }
     }
     return target.nativeCollision;
   }
@@ -398,16 +534,21 @@ export function createPropTools(ctx: ToolsContext) {
       const section = editSection('props-reference-screen', `${reference.level} screen`);
       detail(section, screen.name, 'screen name');
       if (screen.family) {
-        const nativeFamily = screen.family.startsWith('Mdl_') ? screen.family
-          : screen.family.startsWith('Jumbotron_') ? `Mdl_${screen.family}`
+        const nativeFamily = screen.family.startsWith('Mdl_')
+          ? screen.family
+          : screen.family.startsWith('Jumbotron_')
+            ? `Mdl_${screen.family}`
             : `Mdl_Billboard_${screen.family}`;
         detail(section, nativeFamily, 'billboard family');
       }
       if (screen.instance !== undefined) detail(section, `#${screen.instance}`, 'native prop instance');
       if (screen.page) detail(section, screen.page, 'texture page');
       detail(section, `${screen.width.toFixed(2)} × ${screen.height.toFixed(2)} m`, 'measured size');
-      note(section, 'Detected reference overlay — read-only. Sources gives every screen a solid colour-bar '
-        + 'coverage card so any uncovered billboard edge remains visible around it.');
+      note(
+        section,
+        'Detected reference overlay — read-only. Sources gives every screen a solid colour-bar ' +
+          'coverage card so any uncovered billboard edge remains visible around it.',
+      );
       addDeselect();
       return;
     }
@@ -416,36 +557,58 @@ export function createPropTools(ctx: ToolsContext) {
     if (!screen) return;
     const host = screenProp(screen, store.mdoc.props);
     const section = editSection('props-screen', host ? 'Screen on a board' : 'Free screen', false);
-    detail(section, host ? shortPropName(host.name) : 'free-standing',
-      host ? 'attached to' : 'placement');
+    detail(section, host ? shortPropName(host.name) : 'free-standing', host ? 'attached to' : 'placement');
     if (host) {
-      note(section, 'Stored in the board’s own frame — it rides the prop when you move, turn or resize it.',
-        'Its size is in the board’s units; the prop’s size multiplier applies on top, exactly as it does to '
-        + 'the geometry.');
+      note(
+        section,
+        'Stored in the board’s own frame — it rides the prop when you move, turn or resize it.',
+        'Its size is in the board’s units; the prop’s size multiplier applies on top, exactly as it does to ' +
+          'the geometry.',
+      );
     } else {
-      note(section, 'Stored in world space — drag it with the gizmo.',
-        'A screen belongs on something, so most screens are better added with a board selected, which fits '
-        + 'one to its face.');
+      note(
+        section,
+        'Stored in world space — drag it with the gizmo.',
+        'A screen belongs on something, so most screens are better added with a board selected, which fits ' +
+          'one to its face.',
+      );
     }
 
     const named = { name: screen.name ?? '' };
-    tip(section.add(named, 'name').name('name').onChange((value: string) => {
-      const trimmed = value.trim();
-      if (trimmed) screen.name = trimmed; else delete screen.name;
-      scheduleRebuild();
-    }), 'What this screen is called in the exported Billboards.json — a runtime names its object after it.');
-    tip(section.add(screen, 'width', 0.5, 60, 0.1).name('width (m)').onChange(scheduleRebuild),
-      'Screen width. A fitted screen already matches its board’s face; widen it only to cover a bezel.');
-    tip(section.add(screen, 'height', 0.5, 60, 0.1).name('height (m)').onChange(scheduleRebuild),
-      'Screen height.');
-    tip(section.add(screen, 'yaw', 0, 360, 1).name('turn (°)').onChange(scheduleRebuild),
-      'Turn the screen about vertical. On an attached screen this is relative to the board’s own turn.');
+    tip(
+      section
+        .add(named, 'name')
+        .name('name')
+        .onChange((value: string) => {
+          const trimmed = value.trim();
+          if (trimmed) screen.name = trimmed;
+          else delete screen.name;
+          scheduleRebuild();
+        }),
+      'What this screen is called in the exported Billboards.json — a runtime names its object after it.',
+    );
+    tip(
+      section.add(screen, 'width', 0.5, 60, 0.1).name('width (m)').onChange(scheduleRebuild),
+      'Screen width. A fitted screen already matches its board’s face; widen it only to cover a bezel.',
+    );
+    tip(section.add(screen, 'height', 0.5, 60, 0.1).name('height (m)').onChange(scheduleRebuild), 'Screen height.');
+    tip(
+      section.add(screen, 'yaw', 0, 360, 1).name('turn (°)').onChange(scheduleRebuild),
+      'Turn the screen about vertical. On an attached screen this is relative to the board’s own turn.',
+    );
     const tilt = {
-      get pitch() { return screen.pitch ?? 0; },
-      set pitch(value: number) { if (value) screen.pitch = value; else delete screen.pitch; },
+      get pitch() {
+        return screen.pitch ?? 0;
+      },
+      set pitch(value: number) {
+        if (value) screen.pitch = value;
+        else delete screen.pitch;
+      },
     };
-    tip(section.add(tilt, 'pitch', -90, 90, 1).name('tilt (°)').onChange(scheduleRebuild),
-      'Tip the screen forward or back — for a board that leans over the course.');
+    tip(
+      section.add(tilt, 'pitch', -90, 90, 1).name('tilt (°)').onChange(scheduleRebuild),
+      'Tip the screen forward or back — for a board that leans over the course.',
+    );
     // Standing the panel off its board is the one adjustment a fitted screen actually needs: too little and
     // it fights the ad face it covers, too much and it floats.
     const nudge = (metres: number) => {
@@ -455,12 +618,19 @@ export function createPropTools(ctx: ToolsContext) {
       screen.pos = [screen.pos[0] + local[0] * step, screen.pos[1] + local[1] * step, screen.pos[2] + local[2] * step];
       scheduleRebuild();
     };
-    tip(section.add({ out: () => nudge(0.1) }, 'out').name('nudge out 10 cm'),
-      'Push the screen further off the face it covers, along its own normal.');
-    tip(section.add({ in: () => nudge(-0.1) }, 'in').name('nudge in 10 cm'),
-      'Pull the screen back toward the face it covers.');
-    if (host) tip(section.add({ refit: () => refitScreen(screen.id!) }, 'refit').name('↻ refit to board'),
-      'Measure the board’s face again and reset this screen to it — the same fit the ＋ button makes.');
+    tip(
+      section.add({ out: () => nudge(0.1) }, 'out').name('nudge out 10 cm'),
+      'Push the screen further off the face it covers, along its own normal.',
+    );
+    tip(
+      section.add({ in: () => nudge(-0.1) }, 'in').name('nudge in 10 cm'),
+      'Pull the screen back toward the face it covers.',
+    );
+    if (host)
+      tip(
+        section.add({ refit: () => refitScreen(screen.id!) }, 'refit').name('↻ refit to board'),
+        'Measure the board’s face again and reset this screen to it — the same fit the ＋ button makes.',
+      );
     gui.add({ del: () => deleteSelectedScreen() }, 'del').name('✕ delete screen');
     addDeselect();
   }
@@ -469,12 +639,14 @@ export function createPropTools(ctx: ToolsContext) {
   function addScreen(prop: PlacedProp | undefined) {
     const screens = (store.mdoc.screens ??= []);
     const camera = viewport.camera.position;
-    const viewFrom: V3 = [camera.x, camera.y, -camera.z];   // scene → data space
+    const viewFrom: V3 = [camera.x, camera.y, -camera.z]; // scene → data space
     let made: Screen | null;
     if (prop) {
       made = screenForProp(prop, propLevels, screens, viewFrom);
       if (!made) {
-        toast('No flat face to put a screen on — this model has no near-vertical panel. Add a free screen and place it by hand.');
+        toast(
+          'No flat face to put a screen on — this model has no near-vertical panel. Add a free screen and place it by hand.',
+        );
         return;
       }
     } else {
@@ -482,7 +654,7 @@ export function createPropTools(ctx: ToolsContext) {
       made = freeScreen(screens, [target.x, target.y, -target.z], viewFrom);
     }
     screens.push(made);
-    revealScreens();   // screens live in the Sources view; one added into a hidden layer shows nothing
+    revealScreens(); // screens live in the Sources view; one added into a hidden layer shows nothing
     store.selectedScreen = made.id ?? null;
     store.selectedRefScreen = null;
     store.selectedProp = null;
@@ -497,11 +669,19 @@ export function createPropTools(ctx: ToolsContext) {
     const host = screen ? screenProp(screen, store.mdoc.props) : undefined;
     if (!screen || !host) return;
     const camera = viewport.camera.position;
-    const fitted = screenForProp(host, propLevels, screens.filter(entry => entry !== screen),
-      [camera.x, camera.y, -camera.z]);
-    if (!fitted) { toast('Could not measure a face on this board.'); return; }
+    const fitted = screenForProp(
+      host,
+      propLevels,
+      screens.filter(entry => entry !== screen),
+      [camera.x, camera.y, -camera.z],
+    );
+    if (!fitted) {
+      toast('Could not measure a face on this board.');
+      return;
+    }
     Object.assign(screen, { pos: fitted.pos, yaw: fitted.yaw, width: fitted.width, height: fitted.height });
-    if (fitted.pitch) screen.pitch = fitted.pitch; else delete screen.pitch;
+    if (fitted.pitch) screen.pitch = fitted.pitch;
+    else delete screen.pitch;
     scheduleRebuild();
     rebuildTools();
   }
@@ -512,14 +692,29 @@ export function createPropTools(ctx: ToolsContext) {
     const attached = screensOfProp(store.mdoc.screens, prop);
     for (const screen of attached) {
       const label = screen.name || screen.id || 'screen';
-      tip(section.add({ open: () => { store.selectedScreen = screen.id ?? null; store.selectedRefScreen = null;
-        scheduleRebuild(); rebuildTools(); } }, 'open')
-        .name(`▸ ${label}`), 'Select this screen to size, turn or delete it.');
+      tip(
+        section
+          .add(
+            {
+              open: () => {
+                store.selectedScreen = screen.id ?? null;
+                store.selectedRefScreen = null;
+                scheduleRebuild();
+                rebuildTools();
+              },
+            },
+            'open',
+          )
+          .name(`▸ ${label}`),
+        'Select this screen to size, turn or delete it.',
+      );
     }
-    tip(section.add({ add: () => addScreen(prop) }, 'add').name('＋ add screen'),
+    tip(
+      section.add({ add: () => addScreen(prop) }, 'add').name('＋ add screen'),
       'Fit a video screen to this prop’s board.',
-      'The same texture-led measurement snowknife makes over a whole course. The rectangle is exported as '
-      + 'Billboards.json, and a runtime with video (Unity/VRChat) plays over it.');
+      'The same texture-led measurement snowknife makes over a whole course. The rectangle is exported as ' +
+        'Billboards.json, and a runtime with video (Unity/VRChat) plays over it.',
+    );
     return section;
   }
 
@@ -533,51 +728,75 @@ export function createPropTools(ctx: ToolsContext) {
     // remains visible only as reference provenance until its general-purpose runtime contract is proven.
     const modeSection = editSection(`${host.key}-mode-presence`, 'Mode presence', false);
     const presence = { mode: target.modePresence ?? 'all' };
-    tip(modeSection.add(presence, 'mode', {
-      'all modes': 'all',
-      'showoff only': 'showoff',
-    }).name('shown in').onChange((mode: string) => {
-      if (mode === 'showoff') target.modePresence = 'showoff'; else delete target.modePresence;
-      host.changed();
-    }), 'All modes uses the ordinary instance layer; Showoff only uses the GemIndex layer (LTG state 2).',
-    'A Showoff-only prop and its collider are absent in Race and Freeride. Effects can still apply '
-      + 'additional mode-specific hiding.');
+    tip(
+      modeSection
+        .add(presence, 'mode', {
+          'all modes': 'all',
+          'showoff only': 'showoff',
+        })
+        .name('shown in')
+        .onChange((mode: string) => {
+          if (mode === 'showoff') target.modePresence = 'showoff';
+          else delete target.modePresence;
+          host.changed();
+        }),
+      'All modes uses the ordinary instance layer; Showoff only uses the GemIndex layer (LTG state 2).',
+      'A Showoff-only prop and its collider are absent in Race and Freeride. Effects can still apply ' +
+        'additional mode-specific hiding.',
+    );
     return modeSection;
   }
 
   /** The hit sound: an ADL event id or an uploaded WAV. */
   function addImpactSection(host: BehaviourHost) {
-    const target = host.target, level = host.level;
+    const target = host.target,
+      level = host.level;
     // The retail prop-hit one-shot: an ADL EVENT id (not a bank slot) resolved through the global table to
     // the prop's source-level course bank and played positionally on contact, impact-scaled and debounced
     // [Trailmap: 420-audio-runtime]. -1 = no record (silent). Persisted on the placement; test rides play it.
     const impactSection = editSection(`${host.key}-impact`, 'Impact sound', false);
     const sound = { id: target.collisionSound ?? -1 };
-    const soundCtl = tip(impactSection.add(sound, 'id').step(1).name(`hit sound (${collisionSoundMeta(sound.id, level)})`)
-      .onChange((id: number) => {
-        const next = Math.max(-1, Math.trunc(id));
-        if (next < 0) delete target.collisionSound; else target.collisionSound = next;
-        soundCtl.name(`hit sound (${collisionSoundMeta(next, level)})`);
-        host.changed();
-        rebuildTools();
-      }), 'ADL event id played when the rider hits this prop; -1 = silent.',
-      'E.g. 6 rock, 31 metal rail, 72 tree trunk. The readout shows the resolved bank slot; ids the '
-      + 'resolver leaves unmapped stay silent.');
+    const soundCtl = tip(
+      impactSection
+        .add(sound, 'id')
+        .step(1)
+        .name(`hit sound (${collisionSoundMeta(sound.id, level)})`)
+        .onChange((id: number) => {
+          const next = Math.max(-1, Math.trunc(id));
+          if (next < 0) delete target.collisionSound;
+          else target.collisionSound = next;
+          soundCtl.name(`hit sound (${collisionSoundMeta(next, level)})`);
+          host.changed();
+          rebuildTools();
+        }),
+      'ADL event id played when the rider hits this prop; -1 = silent.',
+      'E.g. 6 rock, 31 metal rail, 72 tree trunk. The readout shows the resolved bank slot; ids the ' +
+        'resolver leaves unmapped stay silent.',
+    );
     // Custom hit sound: an uploaded WAV overriding the event id. The export allocates it a reserved event
     // id and the ISO repacker encodes it into the target course bank (collision-sound.ts pool).
     const uploaded = customSounds();
     if (uploaded.length) {
       const currentFile = target.collisionSoundFile ?? '';
-      tip(impactSection.add({ file: currentFile }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
-        .name('custom wav').onChange((file: string) => {
-          if (file) target.collisionSoundFile = file; else delete target.collisionSoundFile;
-          host.changed();
-          rebuildTools();
-        }), 'Use an uploaded WAV as the hit sound; repacked ISOs carry it into the level’s bank.');
+      tip(
+        impactSection
+          .add({ file: currentFile }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
+          .name('custom wav')
+          .onChange((file: string) => {
+            if (file) target.collisionSoundFile = file;
+            else delete target.collisionSoundFile;
+            host.changed();
+            rebuildTools();
+          }),
+        'Use an uploaded WAV as the hit sound; repacked ISOs carry it into the level’s bank.',
+      );
     }
-    const impactPath = target.collisionSoundFile || typeof target.collisionSound === 'number'
-      ? soundFilepath(level, target.collisionSound, target.collisionSoundFile) : null;
-    if (target.collisionSoundFile || typeof target.collisionSound === 'number') addSoundFilepath(impactSection, impactPath);
+    const impactPath =
+      target.collisionSoundFile || typeof target.collisionSound === 'number'
+        ? soundFilepath(level, target.collisionSound, target.collisionSoundFile)
+        : null;
+    if (target.collisionSoundFile || typeof target.collisionSound === 'number')
+      addSoundFilepath(impactSection, impactPath);
     addSoundActions(impactSection, {
       browse: () => browsePropSound(host, 'collisionSound'),
       browseName: '🔊 browse impact events…',
@@ -585,10 +804,12 @@ export function createPropTools(ctx: ToolsContext) {
       load: () => void loadPropSound(host, 'collisionSoundFile', 'hit sound'),
       loadName: '⤒ load custom wav…',
       loadTitle: `Upload a WAV and assign it as the hit sound. Stored with ${mountainName} (PCM16 mono, ≤10 s).`,
-      play: impactPath ? () => {
-        if (target.collisionSoundFile) auditionCustomSound(target.collisionSoundFile);
-        else auditionCollisionSound(level, target.collisionSound ?? -1);
-      } : null,
+      play: impactPath
+        ? () => {
+            if (target.collisionSoundFile) auditionCustomSound(target.collisionSoundFile);
+            else auditionCollisionSound(level, target.collisionSound ?? -1);
+          }
+        : null,
       playTitle: 'Audition the assigned impact sound — the custom WAV if set, else the bank clip.',
     });
     return impactSection;
@@ -596,30 +817,44 @@ export function createPropTools(ctx: ToolsContext) {
 
   /** The positional ambient loop (`ExternalSounds`) and its listener region. */
   function addEmitterSection(host: BehaviourHost) {
-    const target = host.target, level = host.level;
+    const target = host.target,
+      level = host.level;
     const uploaded = customSounds();
     // Per-placement ExternalSounds loop. The same event resolver is used for retail bank sounds; a custom WAV
     // shares the reserved event pool with custom impacts. Radius stays in metres in the document and is converted
     // to SSX centimetres only when stamping the ADL record.
     const emitterSection = editSection(`${host.key}-emitters`, 'Emitters', false);
     const ambient = { id: target.ambientSound ?? -1 };
-    const ambientCtl = tip(emitterSection.add(ambient, 'id').step(1).name(`ambient loop (${externalSoundMeta(ambient.id, level)})`)
-      .onChange((id: number) => {
-        const next = Math.max(-1, Math.trunc(id));
-        if (next < 0) delete target.ambientSound; else target.ambientSound = next;
-        ambientCtl.name(`ambient loop (${externalSoundMeta(next, level)})`);
-        host.changed();
-        rebuildTools();
-      }), 'Looping positional ExternalSounds event carried by this prop; -1 = none.',
-      '97–99 are the shared crowd loops. A custom ambient WAV takes precedence over the event id.');
-    if (uploaded.length) {
-      const currentAmbient = target.ambientSoundFile ?? '';
-      tip(emitterSection.add({ file: currentAmbient }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
-        .name('ambient custom wav').onChange((file: string) => {
-          if (file) target.ambientSoundFile = file; else delete target.ambientSoundFile;
+    const ambientCtl = tip(
+      emitterSection
+        .add(ambient, 'id')
+        .step(1)
+        .name(`ambient loop (${externalSoundMeta(ambient.id, level)})`)
+        .onChange((id: number) => {
+          const next = Math.max(-1, Math.trunc(id));
+          if (next < 0) delete target.ambientSound;
+          else target.ambientSound = next;
+          ambientCtl.name(`ambient loop (${externalSoundMeta(next, level)})`);
           host.changed();
           rebuildTools();
-        }), 'Use an uploaded WAV as this prop’s ambient loop instead of a bank event id.');
+        }),
+      'Looping positional ExternalSounds event carried by this prop; -1 = none.',
+      '97–99 are the shared crowd loops. A custom ambient WAV takes precedence over the event id.',
+    );
+    if (uploaded.length) {
+      const currentAmbient = target.ambientSoundFile ?? '';
+      tip(
+        emitterSection
+          .add({ file: currentAmbient }, 'file', { '(none)': '', ...Object.fromEntries(uploaded.map(s => [s, s])) })
+          .name('ambient custom wav')
+          .onChange((file: string) => {
+            if (file) target.ambientSoundFile = file;
+            else delete target.ambientSoundFile;
+            host.changed();
+            rebuildTools();
+          }),
+        'Use an uploaded WAV as this prop’s ambient loop instead of a bank event id.',
+      );
     }
     // An uploaded WAV can be hit-gated only by CLAIMING one of the engine's three ids, which also takes over
     // that id's course-bank slot for the whole target level. Offered here, beside the file it applies to,
@@ -629,113 +864,161 @@ export function createPropTools(ctx: ToolsContext) {
       const claims = store.mdoc.hitGatedSounds ?? [];
       const held = claims.indexOf(target.ambientSoundFile);
       const gatedState = { gated: held >= 0 };
-      tip(emitterSection.add(gatedState, 'gated')
-        .name(held >= 0 ? `hit-gated (claims event ${HIT_GATED_EVENT_POOL[held]})` : 'hit-gated')
-        .onChange((on: boolean) => {
-          const next = [...claims];
-          if (on) {
-            // Reuse a released slot before growing, so the three stay as compact as they can be without
-            // ever moving a claim that is still held.
-            let at = next.indexOf('');
-            if (at < 0 && next.length < HIT_GATED_EVENT_POOL.length) at = next.push('') - 1;
-            if (at < 0) {
-              toast(`Only ${HIT_GATED_EVENT_POOL.length} hit-gated loops are possible — the engine tests `
-                + 'exactly three event ids. Release one first.', 'warn');
-              rebuildTools();
-              return;
+      tip(
+        emitterSection
+          .add(gatedState, 'gated')
+          .name(held >= 0 ? `hit-gated (claims event ${HIT_GATED_EVENT_POOL[held]})` : 'hit-gated')
+          .onChange((on: boolean) => {
+            const next = [...claims];
+            if (on) {
+              // Reuse a released slot before growing, so the three stay as compact as they can be without
+              // ever moving a claim that is still held.
+              let at = next.indexOf('');
+              if (at < 0 && next.length < HIT_GATED_EVENT_POOL.length) at = next.push('') - 1;
+              if (at < 0) {
+                toast(
+                  `Only ${HIT_GATED_EVENT_POOL.length} hit-gated loops are possible — the engine tests ` +
+                    'exactly three event ids. Release one first.',
+                  'warn',
+                );
+                rebuildTools();
+                return;
+              }
+              next[at] = target.ambientSoundFile!;
+            } else {
+              next[held] = ''; // blank, never splice: positions are the event ids
+              while (next.length && next[next.length - 1] === '') next.pop();
             }
-            next[at] = target.ambientSoundFile!;
-          } else {
-            next[held] = ''; // blank, never splice: positions are the event ids
-            while (next.length && next[next.length - 1] === '') next.pop();
-          }
-          store.mdoc.hitGatedSounds = next.length ? next : undefined;
-          scheduleRebuild();
-          rebuildTools();
-        }),
-      'Make this loop HIT-GATED: silent until the rider hits the prop, then sounding for the rest of the run.',
-      'Only three are possible in the whole game — the engine tests exactly three event ids — so claiming '
-      + 'one takes that id and its course-bank slot over for the entire target level: any retail prop using '
-      + 'that event plays this clip instead. Merqury City is the only shipped course that uses them (cars 16, '
-      + 'hydrants 28, police 57); everywhere else the slots are unclaimed and this costs nothing.');
+            store.mdoc.hitGatedSounds = next.length ? next : undefined;
+            scheduleRebuild();
+            rebuildTools();
+          }),
+        'Make this loop HIT-GATED: silent until the rider hits the prop, then sounding for the rest of the run.',
+        'Only three are possible in the whole game — the engine tests exactly three event ids — so claiming ' +
+          'one takes that id and its course-bank slot over for the entire target level: any retail prop using ' +
+          'that event plays this clip instead. Merqury City is the only shipped course that uses them (cars 16, ' +
+          'hydrants 28, police 57); everywhere else the slots are unclaimed and this costs nothing.',
+      );
     }
     // Assigning 16/28/57 directly does the same thing — engine-fixed on the event id, so it happens whether
     // or not the author meant it. Say so where the id is chosen rather than leaving a prop that ships
     // "silent" and looks broken.
-    if (isInteractiveAmbientEvent(
-      authoredAmbientEvent(target.ambientSound, target.ambientSoundFile, store.mdoc.hitGatedSounds))) {
-      tip(detail(emitterSection, 'point · hit-gated', 'ambient trigger'),
+    if (
+      isInteractiveAmbientEvent(
+        authoredAmbientEvent(target.ambientSound, target.ambientSoundFile, store.mdoc.hitGatedSounds),
+      )
+    ) {
+      tip(
+        detail(emitterSection, 'point · hit-gated', 'ambient trigger'),
         'Interactive ambient class — silent until the rider hits THIS prop, then on for the rest of the run.',
-        'The class is events 16 cars / 28 fire hydrants / 57 police cars. Every other event plays on '
-        + 'listener proximity alone; membership is fixed in the engine, so the id alone decides it.');
+        'The class is events 16 cars / 28 fire hydrants / 57 police cars. Every other event plays on ' +
+          'listener proximity alone; membership is fixed in the engine, so the id alone decides it.',
+      );
       // A prop nothing can hit can never arm, so this combination ships permanently silent.
       const contact = target.nativeCollision;
       if (contact && (contact.playerCollision === false || contact.mode === NATIVE_COLLISION_MODE.none))
-        note(emitterSection, 'No player contact, so this hit-gated loop can never arm and stays silent. '
-          + 'Give the prop a collision shape with Player contact on, or pick a non-gated event.');
+        note(
+          emitterSection,
+          'No player contact, so this hit-gated loop can never arm and stays silent. ' +
+            'Give the prop a collision shape with Player contact on, or pick a non-gated event.',
+        );
     }
     // Shape first: it decides whether the next control is one radius or three half-extents, and an
     // ellipsoid is the reason those two readings can't be collapsed into a single "size" row.
     const ellipsoid = !!target.ambientHalfExtents;
     const shapeState = { kind: ellipsoid ? 'ellipsoid' : 'sphere' };
-    tip(emitterSection.add(shapeState, 'kind', {
-      'point · sphere (type 0)': 'sphere',
-      'axis-aligned ellipsoid (type 1)': 'ellipsoid',
-    }).name('ambient shape').onChange((kind: string) => {
-      // Switching seeds the new form from the old one's size, so the region a prop already had does not
-      // jump when its shape changes — a sphere becomes the ellipsoid that contains it, and back.
-      if (kind === 'ellipsoid') {
-        const r = target.ambientRadius ?? AUTHORED_AMBIENT_DEFAULT_M;
-        target.ambientHalfExtents = [r, r, r];
-      } else {
-        const [x = AUTHORED_AMBIENT_DEFAULT_M, y = x, z = x] = target.ambientHalfExtents ?? [];
-        target.ambientRadius = Math.max(x, y, z);
-        delete target.ambientHalfExtents;
-      }
-      host.changed();
-      rebuildTools();
-    }), 'The listener region this loop is heard inside: one radius, or a half-extent per axis.',
-    'Sphere is native ExternalSound type 0; ellipsoid is type 1 — how retail covers a long highway or a '
-      + 'wide fan of grandstand. Type 2 directional regions stay read-only: their angular gate has no '
-      + 'settled meaning yet, so Slopesmith will not author one it cannot reproduce.');
+    tip(
+      emitterSection
+        .add(shapeState, 'kind', {
+          'point · sphere (type 0)': 'sphere',
+          'axis-aligned ellipsoid (type 1)': 'ellipsoid',
+        })
+        .name('ambient shape')
+        .onChange((kind: string) => {
+          // Switching seeds the new form from the old one's size, so the region a prop already had does not
+          // jump when its shape changes — a sphere becomes the ellipsoid that contains it, and back.
+          if (kind === 'ellipsoid') {
+            const r = target.ambientRadius ?? AUTHORED_AMBIENT_DEFAULT_M;
+            target.ambientHalfExtents = [r, r, r];
+          } else {
+            const [x = AUTHORED_AMBIENT_DEFAULT_M, y = x, z = x] = target.ambientHalfExtents ?? [];
+            target.ambientRadius = Math.max(x, y, z);
+            delete target.ambientHalfExtents;
+          }
+          host.changed();
+          rebuildTools();
+        }),
+      'The listener region this loop is heard inside: one radius, or a half-extent per axis.',
+      'Sphere is native ExternalSound type 0; ellipsoid is type 1 — how retail covers a long highway or a ' +
+        'wide fan of grandstand. Type 2 directional regions stay read-only: their angular gate has no ' +
+        'settled meaning yet, so Slopesmith will not author one it cannot reproduce.',
+    );
     if (ellipsoid) {
       const extents = target.ambientHalfExtents ?? [
-        AUTHORED_AMBIENT_DEFAULT_M, AUTHORED_AMBIENT_DEFAULT_M, AUTHORED_AMBIENT_DEFAULT_M];
+        AUTHORED_AMBIENT_DEFAULT_M,
+        AUTHORED_AMBIENT_DEFAULT_M,
+        AUTHORED_AMBIENT_DEFAULT_M,
+      ];
       (['x', 'y', 'z'] as const).forEach((label, axis) => {
         const state = { m: extents[axis] };
-        tip(emitterSection.add(state, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
-          .name(`half-extent ${label} (m)`).onChange((m: number) => {
-            const next: V3 = [...(target.ambientHalfExtents ?? extents)] as V3;
-            next[axis] = m;
-            target.ambientHalfExtents = next;
-            host.changed();
-          }), `Half-extent along editor ${label.toUpperCase()} — prop to region boundary on that axis.`,
-          'The export reorders these into the native axis order, so what the cyan outline shows is the '
-          + 'volume that ships.');
+        tip(
+          emitterSection
+            .add(state, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
+            .name(`half-extent ${label} (m)`)
+            .onChange((m: number) => {
+              const next: V3 = [...(target.ambientHalfExtents ?? extents)] as V3;
+              next[axis] = m;
+              target.ambientHalfExtents = next;
+              host.changed();
+            }),
+          `Half-extent along editor ${label.toUpperCase()} — prop to region boundary on that axis.`,
+          'The export reorders these into the native axis order, so what the cyan outline shows is the ' +
+            'volume that ships.',
+        );
       });
     } else {
-      const ambientRadius = { m: typeof target.ambientRadius === 'number' ? target.ambientRadius : AUTHORED_AMBIENT_DEFAULT_M };
-      tip(emitterSection.add(ambientRadius, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
-        .name('ambient radius (m)').onChange((m: number) => {
-          if (Math.abs(m - AUTHORED_AMBIENT_DEFAULT_M) < 1e-9) delete target.ambientRadius; else target.ambientRadius = m;
-          host.changed();
-        }), 'Maximum audible distance, previewed as a cyan wire sphere in the viewport.',
-        'Retail stores this radius in centimetres; Unity receives metres.');
+      const ambientRadius = {
+        m: typeof target.ambientRadius === 'number' ? target.ambientRadius : AUTHORED_AMBIENT_DEFAULT_M,
+      };
+      tip(
+        emitterSection
+          .add(ambientRadius, 'm', AUTHORED_AMBIENT_MIN_M, AUTHORED_AMBIENT_MAX_M, 1)
+          .name('ambient radius (m)')
+          .onChange((m: number) => {
+            if (Math.abs(m - AUTHORED_AMBIENT_DEFAULT_M) < 1e-9) delete target.ambientRadius;
+            else target.ambientRadius = m;
+            host.changed();
+          }),
+        'Maximum audible distance, previewed as a cyan wire sphere in the viewport.',
+        'Retail stores this radius in centimetres; Unity receives metres.',
+      );
     }
     const falloffState = { curve: String(target.ambientFalloff ?? AUTHORED_AMBIENT_DEFAULT_CURVE) };
-    tip(emitterSection.add(falloffState, 'curve', Object.fromEntries(
-      [0, 1, 2, 3, 4, 5].map(c => [`curve ${c} · ${externalSoundFalloffLabel(c)}`, String(c)]),
-    )).name('ambient falloff').onChange((value: string) => {
-      const curve = Number(value);
-      if (curve === AUTHORED_AMBIENT_DEFAULT_CURVE) delete target.ambientFalloff; else target.ambientFalloff = curve;
-      host.changed();
-    }), 'How gain falls from full volume at the emitter to silence at the region boundary.',
-    'The six exact curves the retail runtime evaluates. Linear (2) is what the confirmed retail crowd '
-      + 'emitters use and stays the default.');
+    tip(
+      emitterSection
+        .add(
+          falloffState,
+          'curve',
+          Object.fromEntries([0, 1, 2, 3, 4, 5].map(c => [`curve ${c} · ${externalSoundFalloffLabel(c)}`, String(c)])),
+        )
+        .name('ambient falloff')
+        .onChange((value: string) => {
+          const curve = Number(value);
+          if (curve === AUTHORED_AMBIENT_DEFAULT_CURVE) delete target.ambientFalloff;
+          else target.ambientFalloff = curve;
+          host.changed();
+        }),
+      'How gain falls from full volume at the emitter to silence at the region boundary.',
+      'The six exact curves the retail runtime evaluates. Linear (2) is what the confirmed retail crowd ' +
+        'emitters use and stays the default.',
+    );
     const ambientPath = target.ambientSoundFile
       ? soundFilepath(level, undefined, target.ambientSoundFile)
-      : typeof target.ambientSound === 'number' ? externalSoundSource(level, target.ambientSound) : null;
-    if (target.ambientSoundFile || typeof target.ambientSound === 'number') addSoundFilepath(emitterSection, ambientPath);
+      : typeof target.ambientSound === 'number'
+        ? externalSoundSource(level, target.ambientSound)
+        : null;
+    if (target.ambientSoundFile || typeof target.ambientSound === 'number')
+      addSoundFilepath(emitterSection, ambientPath);
     addSoundActions(emitterSection, {
       browse: () => browsePropSound(host, 'ambientSound'),
       browseName: '🔊 browse emitter events…',
@@ -743,14 +1026,17 @@ export function createPropTools(ctx: ToolsContext) {
       load: () => void loadPropSound(host, 'ambientSoundFile', 'ambient loop'),
       loadName: '⤒ load ambient wav…',
       loadTitle: 'Upload and assign a custom positional loop. The current upload cap is 10 seconds.',
-      play: ambientPath ? () => {
-        const key = `${loopOwner ?? ''}:ambient`;
-        if (target.ambientSoundFile) auditionCustomSoundLoop(key, target.ambientSoundFile);
-        else auditionExternalSoundLoop(key, level, target.ambientSound ?? -1);
-      } : null,
+      play: ambientPath
+        ? () => {
+            const key = `${loopOwner ?? ''}:ambient`;
+            if (target.ambientSoundFile) auditionCustomSoundLoop(key, target.ambientSoundFile);
+            else auditionExternalSoundLoop(key, level, target.ambientSound ?? -1);
+          }
+        : null,
       loopKey: `${loopOwner ?? ''}:ambient`,
-      playTitle: 'Hold the loop to hear how it carries — it stops when you stop it or deselect the prop. '
-        + 'Placed ambience is otherwise silent outside Test.',
+      playTitle:
+        'Hold the loop to hear how it carries — it stops when you stop it or deselect the prop. ' +
+        'Placed ambience is otherwise silent outside Test.',
     });
     return emitterSection;
   }
@@ -764,34 +1050,52 @@ export function createPropTools(ctx: ToolsContext) {
     // much as a custom one — retail ships 3–12% of each level's props this way (docs/032 · lighting).
     const lightingSection = editSection(`${host.key}-lighting`, 'Lighting', false);
     const litState = { self: target.fullBright === true };
-    tip(lightingSection.add(litState, 'self').name('self-lit (ignores sun)').onChange((on: boolean) => {
-      if (on) target.fullBright = true; else delete target.fullBright;
-      host.changed();
-    }), 'Ship this placement full-bright — the sun never shades it.',
-    'How retail lights sign faces, LCD screens, jumbotrons and lamp heads. Off = lit by the authored sun '
-      + 'like the snow under it.');
+    tip(
+      lightingSection
+        .add(litState, 'self')
+        .name('self-lit (ignores sun)')
+        .onChange((on: boolean) => {
+          if (on) target.fullBright = true;
+          else delete target.fullBright;
+          host.changed();
+        }),
+      'Ship this placement full-bright — the sun never shades it.',
+      'How retail lights sign faces, LCD screens, jumbotrons and lamp heads. Off = lit by the authored sun ' +
+        'like the snow under it.',
+    );
     return lightingSection;
   }
 
   /** Contact & collision: the exact native profile, its ride surface, and every conflict worth warning about.
    *  Returns the effective profile as well, which the placement's ＋ place copies. */
   function addContactSection(host: BehaviourHost) {
-    const target = host.target, level = host.level, placement = host.placement;
+    const target = host.target,
+      level = host.level,
+      placement = host.placement;
     const contactSection = editSection(`${host.key}-contact`, 'Contact & collision', false);
     if (placement) addCollisionOverlayToggle(contactSection); // the overlay draws the SELECTED placement's collider
     // Effects attach to a placement's id, so only a placement can have a collision effect or a Roller request.
-    const collisionEffect = !!placement && authoredPropHasEffectCircumstance(store.mdoc.effects, placement.id, 'collision');
-    const rollerEffect = !!placement && !!store.mdoc.effects && authoredEffectBindings(store.mdoc.effects, [placement])
-      .some(binding => binding.circumstance === 'collision'
-        && binding.graph.nodes.some(node => node.semanticType === 'property.roller'));
+    const collisionEffect =
+      !!placement && authoredPropHasEffectCircumstance(store.mdoc.effects, placement.id, 'collision');
+    const rollerEffect =
+      !!placement &&
+      !!store.mdoc.effects &&
+      authoredEffectBindings(store.mdoc.effects, [placement]).some(
+        binding =>
+          binding.circumstance === 'collision' &&
+          binding.graph.nodes.some(node => node.semanticType === 'property.roller'),
+      );
     const hitSound = typeof target.collisionSound === 'number' || !!target.collisionSoundFile;
-    const profile = placement ? placedPropCollisionProfile(placement, collisionEffect, hitSound)
-      : target.nativeCollision ?? baselineBehaviour(level).nativeCollision;
+    const profile = placement
+      ? placedPropCollisionProfile(placement, collisionEffect, hitSound)
+      : (target.nativeCollision ?? baselineBehaviour(level).nativeCollision);
     const donorData = profile.physicsSource ? propLevels.get(profile.physicsSource.level) : undefined;
-    const missingLoadedBody = !!profile.physicsSource && !!donorData
-      && !donorData.physicsBodies?.has(profile.physicsSource.body);
-    const effectiveState = profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && missingLoadedBody
-      ? 'none' : collisionProfileContactState(profile);
+    const missingLoadedBody =
+      !!profile.physicsSource && !!donorData && !donorData.physicsBodies?.has(profile.physicsSource.body);
+    const effectiveState =
+      profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && missingLoadedBody
+        ? 'none'
+        : collisionProfileContactState(profile);
     const effectiveSolid = effectiveState === 'solid';
 
     // Defaults are materialized on placement, but these remain the independent spec fields recovered from
@@ -803,75 +1107,174 @@ export function createPropTools(ctx: ToolsContext) {
       rebuildTools();
     };
     const shape = { mode: profile.mode };
-    tip(contactSection.add(shape, 'mode', COLLISION_SHAPE_OPTIONS)
-      .name('collision shape').onChange((mode: number) => editProfile(value => { value.mode = Number(mode) as 0 | 1 | 2 | 3; })),
-    CONTACT_HELP.shape, `${CONTACT_MORE.shape} An authored mesh proxy is generated from this placement.`);
+    tip(
+      contactSection
+        .add(shape, 'mode', COLLISION_SHAPE_OPTIONS)
+        .name('collision shape')
+        .onChange((mode: number) =>
+          editProfile(value => {
+            value.mode = Number(mode) as 0 | 1 | 2 | 3;
+          }),
+        ),
+      CONTACT_HELP.shape,
+      `${CONTACT_MORE.shape} An authored mesh proxy is generated from this placement.`,
+    );
     const gates = { contact: profile.playerCollision, response: profile.playerBounce };
-    tip(contactSection.add(gates, 'contact').name('player contact').onChange((on: boolean) =>
-      editProfile(value => { value.playerCollision = on; })), CONTACT_HELP.contact, CONTACT_MORE.contact);
-    tip(contactSection.add(gates, 'response').name('player bounce').onChange((on: boolean) =>
-      editProfile(value => { value.playerBounce = on; })), CONTACT_HELP.bounceGate);
+    tip(
+      contactSection
+        .add(gates, 'contact')
+        .name('player contact')
+        .onChange((on: boolean) =>
+          editProfile(value => {
+            value.playerCollision = on;
+          }),
+        ),
+      CONTACT_HELP.contact,
+      CONTACT_MORE.contact,
+    );
+    tip(
+      contactSection
+        .add(gates, 'response')
+        .name('player bounce')
+        .onChange((on: boolean) =>
+          editProfile(value => {
+            value.playerBounce = on;
+          }),
+        ),
+      CONTACT_HELP.bounceGate,
+    );
     const mass = { responseMass: profile.responseMass };
-    tip(contactSection.add(mass, 'responseMass').min(0).name('collision response mass').onFinishChange((raw: number) =>
-      editProfile(value => { value.responseMass = Number.isFinite(raw) ? Math.max(0, raw) : 0; })),
-    CONTACT_HELP.responseMass, CONTACT_MORE.responseMass);
+    tip(
+      contactSection
+        .add(mass, 'responseMass')
+        .min(0)
+        .name('collision response mass')
+        .onFinishChange((raw: number) =>
+          editProfile(value => {
+            value.responseMass = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+          }),
+        ),
+      CONTACT_HELP.responseMass,
+      CONTACT_MORE.responseMass,
+    );
     const bounce = { amount: profile.bounceAmount };
-    tip(contactSection.add(bounce, 'amount', 0, 1, 0.01).name('bounce amount').onFinishChange((raw: number) =>
-      editProfile(value => { value.bounceAmount = Number.isFinite(raw) ? Math.max(0, raw) : 0; })),
-    CONTACT_HELP.bounceAmount, CONTACT_MORE.bounceAmount);
+    tip(
+      contactSection
+        .add(bounce, 'amount', 0, 1, 0.01)
+        .name('bounce amount')
+        .onFinishChange((raw: number) =>
+          editProfile(value => {
+            value.bounceAmount = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+          }),
+        ),
+      CONTACT_HELP.bounceAmount,
+      CONTACT_MORE.bounceAmount,
+    );
     const surfaceState = { surface: typeof target.surface === 'number' ? target.surface : -1 };
-    tip(contactSection.add(surfaceState, 'surface', Object.fromEntries(SURFACE_AUTHOR_OPTIONS.map(o => [o.name, o.type])))
-      .name('ride surface').onChange((surface: number) => {
-        if (surface < 0) delete target.surface; else target.surface = Math.trunc(surface);
-        host.changed(); rebuildTools();
-      }), CONTACT_HELP.surface, CONTACT_MORE.surface);
+    tip(
+      contactSection
+        .add(surfaceState, 'surface', Object.fromEntries(SURFACE_AUTHOR_OPTIONS.map(o => [o.name, o.type])))
+        .name('ride surface')
+        .onChange((surface: number) => {
+          if (surface < 0) delete target.surface;
+          else target.surface = Math.trunc(surface);
+          host.changed();
+          rebuildTools();
+        }),
+      CONTACT_HELP.surface,
+      CONTACT_MORE.surface,
+    );
 
     const donor = {
       level: profile.physicsSource?.level ?? level,
       body: profile.physicsSource?.body ?? -1,
     };
-    tip(contactSection.add(donor, 'body').step(1).name('physics body index').onFinishChange((raw: number) => {
-      const body = Number.isFinite(raw) ? Math.trunc(raw) : -1;
-      editProfile(value => {
-        if (body < 0) delete value.physicsSource;
-        else value.physicsSource = { level: String(donor.level).trim() || level, body };
-      });
-    }), CONTACT_HELP.physicsBody, CONTACT_MORE.physicsBody);
-    tip(contactSection.add(donor, 'level').name('physics source level').onFinishChange((raw: string) => {
-      const donorLevel = String(raw).trim() || level;
-      editProfile(value => {
-        if (value.physicsSource) value.physicsSource = { level: donorLevel, body: value.physicsSource.body };
-      });
-    }), `${CONTACT_HELP.physicsLevel} Set a body index first.`, CONTACT_MORE.physicsLevel);
+    tip(
+      contactSection
+        .add(donor, 'body')
+        .step(1)
+        .name('physics body index')
+        .onFinishChange((raw: number) => {
+          const body = Number.isFinite(raw) ? Math.trunc(raw) : -1;
+          editProfile(value => {
+            if (body < 0) delete value.physicsSource;
+            else value.physicsSource = { level: String(donor.level).trim() || level, body };
+          });
+        }),
+      CONTACT_HELP.physicsBody,
+      CONTACT_MORE.physicsBody,
+    );
+    tip(
+      contactSection
+        .add(donor, 'level')
+        .name('physics source level')
+        .onFinishChange((raw: string) => {
+          const donorLevel = String(raw).trim() || level;
+          editProfile(value => {
+            if (value.physicsSource) value.physicsSource = { level: donorLevel, body: value.physicsSource.body };
+          });
+        }),
+      `${CONTACT_HELP.physicsLevel} Set a body index first.`,
+      CONTACT_MORE.physicsLevel,
+    );
 
-    tip(detail(contactSection,
-      `${placedPropContactLabel(effectiveState)} · ${effectiveShapeLabel(profile)}${rollerEffect ? ' · Roller requested' : ''}`,
-      'effective collision result'), CONTACT_HELP.result);
+    tip(
+      detail(
+        contactSection,
+        `${placedPropContactLabel(effectiveState)} · ${effectiveShapeLabel(profile)}${rollerEffect ? ' · Roller requested' : ''}`,
+        'effective collision result',
+      ),
+      CONTACT_HELP.result,
+    );
 
     // Detected conflicts live directly under the effective result so the author never has to infer whether
     // a setting will be ignored. warningBanner is the shared yellow diagnostic presentation.
     if ((collisionEffect || hitSound) && effectiveState === 'none')
-      warningBanner(contactSection, 'Collision warning: the attached effect or hit sound cannot fire because the current shape/contact settings produce no eligible contact.');
+      warningBanner(
+        contactSection,
+        'Collision warning: the attached effect or hit sound cannot fire because the current shape/contact settings produce no eligible contact.',
+      );
     if (profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && !profile.physicsSource)
-      warningBanner(contactSection, 'Collision warning: physics-body spheres are selected without a physics body, so there is no contact shape.');
+      warningBanner(
+        contactSection,
+        'Collision warning: physics-body spheres are selected without a physics body, so there is no contact shape.',
+      );
     if (missingLoadedBody)
-      warningBanner(contactSection, `Collision warning: body ${profile.physicsSource!.body} was not found in the loaded ${profile.physicsSource!.level} physics pool.`);
+      warningBanner(
+        contactSection,
+        `Collision warning: body ${profile.physicsSource!.body} was not found in the loaded ${profile.physicsSource!.level} physics pool.`,
+      );
     if (profile.mode === NATIVE_COLLISION_MODE.none && profile.playerCollision)
       warningBanner(contactSection, 'Collision warning: Player contact is enabled, but “none” supplies no shape.');
     if (profile.mode !== NATIVE_COLLISION_MODE.none && !profile.playerCollision)
       warningBanner(contactSection, 'Collision warning: the selected shape is ignored while Player contact is off.');
     if (profile.playerBounce && profile.responseMass === 0)
-      warningBanner(contactSection, 'Response warning: PlayerBounce is enabled, but response mass is exactly 0, so contact remains ride-through.');
+      warningBanner(
+        contactSection,
+        'Response warning: PlayerBounce is enabled, but response mass is exactly 0, so contact remains ride-through.',
+      );
     if (!profile.playerBounce && profile.responseMass !== 0)
-      warningBanner(contactSection, 'Response warning: response mass is stored, but PlayerBounce-off suppresses physical rider response. Contact effects/sounds remain eligible.');
+      warningBanner(
+        contactSection,
+        'Response warning: response mass is stored, but PlayerBounce-off suppresses physical rider response. Contact effects/sounds remain eligible.',
+      );
     if (!effectiveSolid && typeof target.surface === 'number' && target.surface >= 0)
-      warningBanner(contactSection, 'Contact warning: ride surface is ignored because the current settings do not produce a solid response.');
+      warningBanner(
+        contactSection,
+        'Contact warning: ride surface is ignored because the current settings do not produce a solid response.',
+      );
     if (!profile.playerBounce && profile.bounceAmount !== 0)
       warningBanner(contactSection, 'Response warning: bounce amount is stored but ignored while PlayerBounce is off.');
     if (placement?.effectTrigger && effectiveSolid)
-      warningBanner(contactSection, 'Trigger warning: this effect trigger has a solid response and will physically block or deflect the rider.');
+      warningBanner(
+        contactSection,
+        'Trigger warning: this effect trigger has a solid response and will physically block or deflect the rider.',
+      );
     if (rollerEffect && !profile.physicsSource)
-      warningBanner(contactSection, 'PS2 ISO warning: Roller previews and Unity movement work, but this custom ISO prop has no native sphere-tree body/inertia and will remain static in PCSX2.');
+      warningBanner(
+        contactSection,
+        'PS2 ISO warning: Roller previews and Unity movement work, but this custom ISO prop has no native sphere-tree body/inertia and will remain static in PCSX2.',
+      );
     return { contactSection, profile };
   }
 
@@ -938,8 +1341,8 @@ export function createPropTools(ctx: ToolsContext) {
    * placement, so the first edit to any member — written back as the whole set — changes no other member.
    */
   function memberEntries(group: BehaviourHost, def: GroupDef, owner: PlacedProp): Record<string, PropBehaviour> {
-    const collisionEffect = !!group.placement
-      && authoredPropHasEffectCircumstance(store.mdoc.effects, group.placement.id, 'collision');
+    const collisionEffect =
+      !!group.placement && authoredPropHasEffectCircumstance(store.mdoc.effects, group.placement.id, 'collision');
     const models = groupMembers(def).map(m => m.model);
     return { ...materializeMemberBehaviour(owner, models, collisionEffect), ...group.target.memberBehaviour };
   }
@@ -957,18 +1360,33 @@ export function createPropTools(ctx: ToolsContext) {
   function addMembersSection(group: BehaviourHost, def: GroupDef, owner: PlacedProp, key: string) {
     const members = groupMembers(def);
     const section = editSection(`${group.key}-members`, `Members (${members.length})`, true);
-    note(section, group.target.memberBehaviour
-      ? 'Each member has settings of its own. Open one to see or change them.'
-      : 'Every member behaves alike so far. Open one to see or change its settings.',
-    'Contact, lighting and sounds are per member, so a trunk can stay solid inside ride-through, rustling leaves. '
-      + 'Changing one member never changes another; “copy to other members” on its panel is how to share them.');
+    note(
+      section,
+      group.target.memberBehaviour
+        ? 'Each member has settings of its own. Open one to see or change them.'
+        : 'Every member behaves alike so far. Open one to see or change its settings.',
+      'Contact, lighting and sounds are per member, so a trunk can stay solid inside ride-through, rustling leaves. ' +
+        'Changing one member never changes another; “copy to other members” on its panel is how to share them.',
+    );
     const entries = memberEntries(group, def, owner);
     for (const member of members) {
       const label = memberLabel(def, member.model);
       const profile = entries[String(member.model)]?.nativeCollision;
       const contact = profile ? ` · ${memberContactText[collisionProfileContactState(profile)]}` : '';
-      tip(section.add({ open: () => { openMember = { key, model: member.model }; rebuildTools(); } }, 'open')
-        .name(`▸ ${label}${contact}`), `Open ${label}’s own contact, lighting and sounds.`);
+      tip(
+        section
+          .add(
+            {
+              open: () => {
+                openMember = { key, model: member.model };
+                rebuildTools();
+              },
+            },
+            'open',
+          )
+          .name(`▸ ${label}${contact}`),
+        `Open ${label}’s own contact, lighting and sounds.`,
+      );
     }
     return section;
   }
@@ -985,24 +1403,53 @@ export function createPropTools(ctx: ToolsContext) {
     const name = memberLabel(def, model);
     const others = groupMembers(def).filter(m => m.model !== model);
     const othersText = `${others.length} other member${others.length === 1 ? '' : 's'}`;
-    tip(gui.add({ back: () => { openMember = null; rebuildTools(); } }, 'back').name(`◀ back to ${groupName}`),
-      'Return to the group’s own panel and its other members.');
-    note(gui, `Member of ${groupName}. Its contact, lighting and sounds are its own.`,
-      'The group is still one placement: where it stands, its mode layer and its effect are the whole group’s, '
-        + 'on the group’s panel.');
-    tip(gui.add({ copy: () => {
-      for (const other of others) entries[String(other.model)] = structuredClone(entry);
-      target.memberBehaviour = entries;
-      group.changed();
-      rebuildTools();
-      toast(`${name}’s settings copied to ${othersText} of ${groupName}.`, 'ok');
-    } }, 'copy').name(`⇉ copy to ${othersText}`),
-    `Give every other member of ${groupName} ${name}’s settings.`,
-    'Everything on this panel — contact, ride surface, self-lighting, the hit sound and the ambient emitter.');
+    tip(
+      gui
+        .add(
+          {
+            back: () => {
+              openMember = null;
+              rebuildTools();
+            },
+          },
+          'back',
+        )
+        .name(`◀ back to ${groupName}`),
+      'Return to the group’s own panel and its other members.',
+    );
+    note(
+      gui,
+      `Member of ${groupName}. Its contact, lighting and sounds are its own.`,
+      'The group is still one placement: where it stands, its mode layer and its effect are the whole group’s, ' +
+        'on the group’s panel.',
+    );
+    tip(
+      gui
+        .add(
+          {
+            copy: () => {
+              for (const other of others) entries[String(other.model)] = structuredClone(entry);
+              target.memberBehaviour = entries;
+              group.changed();
+              rebuildTools();
+              toast(`${name}’s settings copied to ${othersText} of ${groupName}.`, 'ok');
+            },
+          },
+          'copy',
+        )
+        .name(`⇉ copy to ${othersText}`),
+      `Give every other member of ${groupName} ${name}’s settings.`,
+      'Everything on this panel — contact, ride surface, self-lighting, the hit sound and the ambient emitter.',
+    );
     const host: BehaviourHost = {
-      target: entry, level: group.level, key: `${group.key}-member`,
+      target: entry,
+      level: group.level,
+      key: `${group.key}-member`,
       placement: group.placement ? groupMemberProp({ ...group.placement, memberBehaviour: entries }, model) : undefined,
-      changed: () => { target.memberBehaviour = entries; group.changed(); },
+      changed: () => {
+        target.memberBehaviour = entries;
+        group.changed();
+      },
     };
     addContactSection(host);
     addLightingSection(host);
@@ -1015,16 +1462,25 @@ export function createPropTools(ctx: ToolsContext) {
   /** A placement's settings as a record another placement can take: a legacy placement's inferred collision
    *  profile materialized, so what it does now is what the copy does. */
   function settingsOf(prop: PlacedProp): PropBehaviour {
-    return { ...behaviourOf(prop), nativeCollision: structuredClone(prop.nativeCollision
-      ?? placedPropCollisionProfile(prop, authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
-        typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile)) };
+    return {
+      ...behaviourOf(prop),
+      nativeCollision: structuredClone(
+        prop.nativeCollision ??
+          placedPropCollisionProfile(
+            prop,
+            authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
+            typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile,
+          ),
+      ),
+    };
   }
 
   /** The selected authored group's props, when the selection is exactly one group — no other prop, and no free
    *  light Ctrl+clicked in beside it. */
   function selectedAssembly(): number[] | null {
     return !selectedSetLights(store).length && wholeAssembly(store.mdoc, store.multiSel)
-      ? [...store.multiSel].sort((a, b) => a - b) : null;
+      ? [...store.multiSel].sort((a, b) => a - b)
+      : null;
   }
 
   /** How a selection reads on its buttons: its props, and its free lights when it has some. */
@@ -1049,28 +1505,44 @@ export function createPropTools(ctx: ToolsContext) {
 
   /** Select a whole group, or one of its members on its own. */
   function selectAssemblyMembers(members: number[]) {
-    store.selectedProp = null; store.selectedLight = null; store.multiSel = members;
-    scheduleRebuild(); rebuildTools();
+    store.selectedProp = null;
+    store.selectedLight = null;
+    store.multiSel = members;
+    scheduleRebuild();
+    rebuildTools();
   }
   function selectAssemblyMember(index: number) {
-    store.multiSel = []; store.selectedLight = null; store.selectedProp = index;
-    scheduleRebuild(); rebuildTools();
+    store.multiSel = [];
+    store.selectedLight = null;
+    store.selectedProp = index;
+    scheduleRebuild();
+    rebuildTools();
   }
   function selectAssemblyLight(id: string) {
-    store.multiSel = []; store.selectedProp = null; store.selectedLight = id;
-    scheduleRebuild(); rebuildTools();
+    store.multiSel = [];
+    store.selectedProp = null;
+    store.selectedLight = id;
+    scheduleRebuild();
+    rebuildTools();
   }
 
   /** ⊞ group: tie the box selection into one new group, which the panel then shows. */
   function groupSelection() {
     const lights = selectedSetLights(store);
     const refusal = assemblyRefusal(store.mdoc.props ?? [], store.multiSel, lights.length);
-    if (refusal) { toast(refusal, 'warn'); return; }
+    if (refusal) {
+      toast(refusal, 'warn');
+      return;
+    }
     createAssembly(store.mdoc, store.multiSel, lights);
     // The lights are the group's now, so the selection is the group itself — selected through its props.
     setSelectedSet(store, [...store.multiSel], []);
-    scheduleRebuild(); rebuildTools();
-    toast(`Grouped ${setText(store.multiSel.length, lights.length)} — clicking any of them now selects the group.`, 'ok');
+    scheduleRebuild();
+    rebuildTools();
+    toast(
+      `Grouped ${setText(store.multiSel.length, lights.length)} — clicking any of them now selects the group.`,
+      'ok',
+    );
   }
 
   /** ⇲ break group on a MINED group placement: its props, each where it stood, and its lights as free lights. */
@@ -1082,8 +1554,12 @@ export function createPropTools(ctx: ToolsContext) {
     const pieces = withWholeAssemblies(store.mdoc, indices);
     store.selectedProp = pieces.length === 1 ? pieces[0] : null;
     store.multiSel = pieces.length > 1 ? pieces : [];
-    scheduleRebuild(); rebuildTools();
-    toast(`Broke ${name} into ${plural(indices.length)}${lights ? ` and ${lights} free light${lights === 1 ? '' : 's'}` : ''}.`, 'ok');
+    scheduleRebuild();
+    rebuildTools();
+    toast(
+      `Broke ${name} into ${plural(indices.length)}${lights ? ` and ${lights} free light${lights === 1 ? '' : 's'}` : ''}.`,
+      'ok',
+    );
   }
 
   /** The rows a group member's own panel opens with: back to its group, what it belongs to, and a way to give
@@ -1093,26 +1569,42 @@ export function createPropTools(ctx: ToolsContext) {
     const label = assemblyLabel(members);
     const others = members.map(i => props[i]).filter(other => other && other !== prop);
     const othersText = `${others.length} other prop${others.length === 1 ? '' : 's'}`;
-    const back = tip(gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
-      `Select the whole group again — ${label}.`);
-    const about = note(gui, `Member of ${label}. Its settings are its own.`,
-      'Moving it here moves it within the group. A click on any member in the world selects the whole group; the '
-        + 'group’s Members list opens one on its own.');
+    const back = tip(
+      gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
+      `Select the whole group again — ${label}.`,
+    );
+    const about = note(
+      gui,
+      `Member of ${label}. Its settings are its own.`,
+      'Moving it here moves it within the group. A click on any member in the world selects the whole group; the ' +
+        'group’s Members list opens one on its own.',
+    );
     const rows = [back.domElement, about];
     if (!others.length) return rows; // its group's other members are lights
-    const copy = tip(gui.add({ copy: () => {
-      const settings = settingsOf(prop);
-      delete settings.memberBehaviour; // a mined group's per-model record means nothing on another placement
-      for (const other of others) {
-        applyBehaviour(other, settings);
-        delete other.solid; delete other.bounce; // the copied profile replaces any legacy contact flags
-      }
-      scheduleRebuild(); rebuildTools();
-      toast(`${shortPropName(prop.name)}’s settings copied to ${othersText} of ${label}.`, 'ok');
-    } }, 'copy').name(`⇉ copy settings to ${othersText}`),
-    'Give every other prop in the group this prop’s settings.',
-    'Contact, ride surface, mode layer, hit sound, ambient emitter and self-lighting. Position, size, effects and '
-      + 'materials stay each member’s own.');
+    const copy = tip(
+      gui
+        .add(
+          {
+            copy: () => {
+              const settings = settingsOf(prop);
+              delete settings.memberBehaviour; // a mined group's per-model record means nothing on another placement
+              for (const other of others) {
+                applyBehaviour(other, settings);
+                delete other.solid;
+                delete other.bounce; // the copied profile replaces any legacy contact flags
+              }
+              scheduleRebuild();
+              rebuildTools();
+              toast(`${shortPropName(prop.name)}’s settings copied to ${othersText} of ${label}.`, 'ok');
+            },
+          },
+          'copy',
+        )
+        .name(`⇉ copy settings to ${othersText}`),
+      'Give every other prop in the group this prop’s settings.',
+      'Contact, ride surface, mode layer, hit sound, ambient emitter and self-lighting. Position, size, effects and ' +
+        'materials stay each member’s own.',
+    );
     return [...rows, copy.domElement];
   }
 
@@ -1128,25 +1620,43 @@ export function createPropTools(ctx: ToolsContext) {
     const members = light.id ? lightAssemblyOf(store.mdoc, light.id) : null;
     if (!members) return;
     const label = assemblyLabel(members);
-    tip(gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
-      `Select the whole group again — ${label}.`);
-    note(gui, `Member of ${label} — it moves, turns and sizes with the group.`,
-      'Moving it here moves it within the group. A click on it in the world selects the whole group; the group’s '
-        + 'Members list opens it on its own.');
-    tip(gui.add({ leave: () => {
-      delete light.assembly;
-      scheduleRebuild(); rebuildTools();
-      toast(`${lightLabel(light)} left ${label}; it stays where it is.`, 'ok');
-    } }, 'leave').name('⇥ leave group'),
-    'Take this light out of the group. It stays where it is, and the group no longer carries it.');
+    tip(
+      gui.add({ back: () => selectAssemblyMembers(members) }, 'back').name('◀ back to group'),
+      `Select the whole group again — ${label}.`,
+    );
+    note(
+      gui,
+      `Member of ${label} — it moves, turns and sizes with the group.`,
+      'Moving it here moves it within the group. A click on it in the world selects the whole group; the group’s ' +
+        'Members list opens it on its own.',
+    );
+    tip(
+      gui
+        .add(
+          {
+            leave: () => {
+              delete light.assembly;
+              scheduleRebuild();
+              rebuildTools();
+              toast(`${lightLabel(light)} left ${label}; it stays where it is.`, 'ok');
+            },
+          },
+          'leave',
+        )
+        .name('⇥ leave group'),
+      'Take this light out of the group. It stays where it is, and the group no longer carries it.',
+    );
   }
 
   /** How a group member collides, in the few words a Members button has room for. */
   function memberSummary(prop: PlacedProp): string {
     if (prop.group) return 'group';
     const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
-    const profile = placedPropCollisionProfile(prop,
-      authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'), hitSound);
+    const profile = placedPropCollisionProfile(
+      prop,
+      authoredPropHasEffectCircumstance(store.mdoc.effects, prop.id, 'collision'),
+      hitSound,
+    );
     return memberContactText[collisionProfileContactState(profile)];
   }
 
@@ -1173,83 +1683,129 @@ export function createPropTools(ctx: ToolsContext) {
     }
     const lights = assemblyLights(members);
     const lightsText = (n: number) => `${n} light${n === 1 ? '' : 's'}`;
-    tip(gui.add({ unpack: () => {
-      breakAssembly(store.mdoc, id);
-      scheduleRebuild(); rebuildTools(); // the props stay selected, now as a plain set
-      toast(`Broke the group into ${plural(members.length)}${lights.length ? ` and ${lightsText(lights.length)}` : ''}.`, 'ok');
-    } }, 'unpack').name('⇲ break group'),
-    'Release the members into props and lights of their own. Nothing moves, and each keeps its settings.');
+    tip(
+      gui
+        .add(
+          {
+            unpack: () => {
+              breakAssembly(store.mdoc, id);
+              scheduleRebuild();
+              rebuildTools(); // the props stay selected, now as a plain set
+              toast(
+                `Broke the group into ${plural(members.length)}${lights.length ? ` and ${lightsText(lights.length)}` : ''}.`,
+                'ok',
+              );
+            },
+          },
+          'unpack',
+        )
+        .name('⇲ break group'),
+      'Release the members into props and lights of their own. Nothing moves, and each keeps its settings.',
+    );
     if (propClipboard.canCopy()) {
-      tip(gui.add({ copy: propClipboard.copy }, 'copy').name('⧉ copy group (Ctrl+C)'),
-        'Copy the group, lights included; Ctrl+V holds it on the cursor and places a new group of its own.');
-      tip(gui.add({ cut: propClipboard.cut }, 'cut').name('cut group (Ctrl+X)'),
-        'Copy the group and remove it.');
+      tip(
+        gui.add({ copy: propClipboard.copy }, 'copy').name('⧉ copy group (Ctrl+C)'),
+        'Copy the group, lights included; Ctrl+V holds it on the cursor and places a new group of its own.',
+      );
+      tip(gui.add({ cut: propClipboard.cut }, 'cut').name('cut group (Ctrl+X)'), 'Copy the group and remove it.');
     }
-    gui.add({ del: () => deleteMultiSelProps() }, 'del')
+    gui
+      .add({ del: () => deleteMultiSelProps() }, 'del')
       .name(`✕ delete group (${plural(members.length)}${lights.length ? ` + ${lightsText(lights.length)}` : ''})`);
     addDeselect();
 
     const levels = new Set(members.map(i => props[i]?.level));
     const memberSection = editSection('props-assembly-members', `Members (${members.length + lights.length})`, true);
-    note(memberSection, 'Each member is a prop or light of its own. Open one to change it.',
-      'Members can come from different levels and keep their own contact, sounds, effects, screens and materials. '
-        + 'The group only holds them together.');
+    note(
+      memberSection,
+      'Each member is a prop or light of its own. Open one to change it.',
+      'Members can come from different levels and keep their own contact, sounds, effects, screens and materials. ' +
+        'The group only holds them together.',
+    );
     for (const index of members) {
       const prop = props[index];
       if (!prop) continue;
       const label = `${shortPropName(prop.name)}${levels.size > 1 ? ` · ${prop.level}` : ''}`;
-      tip(memberSection.add({ open: () => selectAssemblyMember(index) }, 'open')
-        .name(`▸ ${label} · ${memberSummary(prop)}`), `Open ${shortPropName(prop.name)}’s own panel.`);
+      tip(
+        memberSection
+          .add({ open: () => selectAssemblyMember(index) }, 'open')
+          .name(`▸ ${label} · ${memberSummary(prop)}`),
+        `Open ${shortPropName(prop.name)}’s own panel.`,
+      );
     }
     for (const light of lights) {
       const lightId = light.id;
       if (!lightId) continue;
-      tip(memberSection.add({ open: () => selectAssemblyLight(lightId) }, 'open')
-        .name(`▸ ${lightLabel(light)} · ${light.kind} light`), `Open ${lightLabel(light)}’s own panel.`);
+      tip(
+        memberSection
+          .add({ open: () => selectAssemblyLight(lightId) }, 'open')
+          .name(`▸ ${lightLabel(light)} · ${light.kind} light`),
+        `Open ${lightLabel(light)}’s own panel.`,
+      );
     }
-    tip(memberSection.add({ add: () => {
-      const list = (store.mdoc.lights ??= []);
-      const [x, y, z] = assemblyPivot(members);
-      const light = newFreeLight(lightTool, nextLightId(list), [x, y + 4, z]);
-      light.assembly = id;
-      list.push(light);
-      selectAssemblyLight(light.id!);
-      toast(`Added a ${light.kind} light to the group — drag it into place.`, 'ok');
-    } }, 'add').name('＋ add light'),
-    'Add a free light to the group at its centre, set up as the Add light tool would drop one.',
-    'It moves, turns and sizes with the group from then on. Drag it where it belongs on its own panel.');
-    tip(memberSection.add({ join: ctx.startLightJoin }, 'join').name('⊞ add a light…'),
+    tip(
+      memberSection
+        .add(
+          {
+            add: () => {
+              const list = (store.mdoc.lights ??= []);
+              const [x, y, z] = assemblyPivot(members);
+              const light = newFreeLight(lightTool, nextLightId(list), [x, y + 4, z]);
+              light.assembly = id;
+              list.push(light);
+              selectAssemblyLight(light.id!);
+              toast(`Added a ${light.kind} light to the group — drag it into place.`, 'ok');
+            },
+          },
+          'add',
+        )
+        .name('＋ add light'),
+      'Add a free light to the group at its centre, set up as the Add light tool would drop one.',
+      'It moves, turns and sizes with the group from then on. Drag it where it belongs on its own panel.',
+    );
+    tip(
+      memberSection.add({ join: ctx.startLightJoin }, 'join').name('⊞ add a light…'),
       'Then click a light in the world to add it to this group.',
-      'A light already in another group moves to this one. It stays where it is, and goes with this group from then on.');
+      'A light already in another group moves to this one. It stays where it is, and goes with this group from then on.',
+    );
 
     // Turn and size read the first member, and change every member by the same amount about the group's centre
     // on the ground. The lights are carried from the props' poses either side of the change.
     const transformSection = editSection('props-assembly-transform', 'Transform', false);
-    const live = () => (store.mdoc.props ?? []);
+    const live = () => store.mdoc.props ?? [];
     const change = (apply: () => void) => {
       const before = placementPoses(live(), members);
       apply();
       carryAssemblyLights(store.mdoc, before);
     };
     const frame = {
-      get turn() { return live()[members[0]]?.yaw ?? 0; },
+      get turn() {
+        return live()[members[0]]?.yaw ?? 0;
+      },
       set turn(value: number) {
         const first = live()[members[0]];
         if (first && Number.isFinite(value))
           change(() => turnPlacements(live(), members, value - first.yaw, assemblyPivot(members)));
       },
-      get size() { return live()[members[0]]?.scale ?? 1; },
+      get size() {
+        return live()[members[0]]?.scale ?? 1;
+      },
       set size(value: number) {
         const first = live()[members[0]];
         if (first && value > 0 && first.scale > 0)
           change(() => scalePlacements(live(), members, value / first.scale, assemblyPivot(members)));
       },
     };
-    tip(transformSection.add(frame, 'turn', 0, 360, 1).name('turn (°)').listen().onChange(scheduleRebuild),
-      'Spin the whole group about the vertical through its centre.', 'Reads the first member’s turn.');
-    tip(transformSection.add(frame, 'size', 0.1, 5, 0.05).name('size ×').listen().onChange(scheduleRebuild),
+    tip(
+      transformSection.add(frame, 'turn', 0, 360, 1).name('turn (°)').listen().onChange(scheduleRebuild),
+      'Spin the whole group about the vertical through its centre.',
+      'Reads the first member’s turn.',
+    );
+    tip(
+      transformSection.add(frame, 'size', 0.1, 5, 0.05).name('size ×').listen().onChange(scheduleRebuild),
       'Scale the whole group — its spacing and every member’s size together, its lights’ reach too.',
-      'Reads the first member’s size; every member scales by the same factor, about the group’s centre on the ground.');
+      'Reads the first member’s size; every member scales by the same factor, about the group’s centre on the ground.',
+    );
   }
 
   /** What the preview card draws for a group: every member where it stands, a mined group member as its parts. */
@@ -1260,8 +1816,15 @@ export function createPropTools(ctx: ToolsContext) {
       if (!prop || isEffectTriggerProp(prop)) return [];
       const def = defOfPlaced(prop);
       return (def ? expandGroupProps(prop, def) : [prop]).map(part => ({
-        level: part.level, model: part.model, name: part.name, props: propLevels.get(part.level),
-        pos: part.pos, yaw: part.yaw, pitch: part.pitch, roll: part.roll, scale: part.scale,
+        level: part.level,
+        model: part.model,
+        name: part.name,
+        props: propLevels.get(part.level),
+        pos: part.pos,
+        yaw: part.yaw,
+        pitch: part.pitch,
+        roll: part.roll,
+        scale: part.scale,
       }));
     });
   }
@@ -1275,72 +1838,115 @@ export function createPropTools(ctx: ToolsContext) {
     if (!held) return null;
     const section = editSection('props-held-effect', 'Effect', true);
     if (held.kind === 'template') {
-      const mass = Object.values(held.template.circumstances).flat()
-        .map(node => node ? rollerNodeMass(node) : null).find(value => value !== null) ?? null;
+      const mass =
+        Object.values(held.template.circumstances)
+          .flat()
+          .map(node => (node ? rollerNodeMass(node) : null))
+          .find(value => value !== null) ?? null;
       detail(section, `${effectTemplateLabel(held.template)}${mass !== null ? ` · mass ${mass}` : ''}`, 'effect');
       const name = shortPropName(armed.name);
-      const [line, more] = armed.from === 'preset'
-        ? ['Boost effect with scrolling arrows.',
-          'Each placed pad carries this effect. Select a pad and open Effects to change the duration. '
-          + 'Pads of the same kind share an effect, so editing it changes them together.']
-        : armed.from === 'instance'
-        ? [`This ${name}’s own effect.`, 'Middle-clicking a prop in the reference level takes that copy’s effect.']
-        : [`${held.matching === held.total ? `All ${held.total}` : `${held.matching} of ${held.total}`} placed `
-            + `${name} in ${armed.level} carry it.`,
-          'Only effects that act on the prop alone come across; sounds, particles, crowds and gems do not yet. Every '
-            + 'placement of it shares one effect, so retuning it in Effects mode retunes them all.'];
+      const [line, more] =
+        armed.from === 'preset'
+          ? [
+              'Boost effect with scrolling arrows.',
+              'Each placed pad carries this effect. Select a pad and open Effects to change the duration. ' +
+                'Pads of the same kind share an effect, so editing it changes them together.',
+            ]
+          : armed.from === 'instance'
+            ? [`This ${name}’s own effect.`, 'Middle-clicking a prop in the reference level takes that copy’s effect.']
+            : [
+                `${held.matching === held.total ? `All ${held.total}` : `${held.matching} of ${held.total}`} placed ` +
+                  `${name} in ${armed.level} carry it.`,
+                'Only effects that act on the prop alone come across; sounds, particles, crowds and gems do not yet. Every ' +
+                  'placement of it shares one effect, so retuning it in Effects mode retunes them all.',
+              ];
       note(section, line, more);
     } else {
-      note(section, 'Shares the copied prop’s effect.',
-        'Copies run one effect slot between them, as the retail levels do, so retuning it in Effects mode changes '
-          + 'every copy.');
+      note(
+        section,
+        'Shares the copied prop’s effect.',
+        'Copies run one effect slot between them, as the retail levels do, so retuning it in Effects mode changes ' +
+          'every copy.',
+      );
     }
-    tip(section.add({ on: !armed.effectOff }, 'on').name('attach on place').onChange((on: boolean) => {
-      if (on) delete armed.effectOff; else armed.effectOff = true;
-      changed();
-    }), 'Give each placed copy this effect.',
-    'It lands as an ordinary effect attachment, which the Effects editor then owns: retune it, or detach it from '
-      + 'one placement, like any other.');
+    tip(
+      section
+        .add({ on: !armed.effectOff }, 'on')
+        .name('attach on place')
+        .onChange((on: boolean) => {
+          if (on) delete armed.effectOff;
+          else armed.effectOff = true;
+          changed();
+        }),
+      'Give each placed copy this effect.',
+      'It lands as an ordinary effect attachment, which the Effects editor then owns: retune it, or detach it from ' +
+        'one placement, like any other.',
+    );
     return section;
   }
 
   /** One line on where the held prop's settings came from, and a detail for the info badge. */
   function heldProvenance(armed: ArmedProp, resolved: ResolvedPropDefaults): [string, string] {
     const name = shortPropName(armed.name);
-    if (armed.from === 'preset') return ['Boost pad preset: ride-through contact in both race modes.',
-      'The pad carries its boost effect when placed. Turn and size it here; tune its effect after placing.'];
+    if (armed.from === 'preset')
+      return [
+        'Boost pad preset: ride-through contact in both race modes.',
+        'The pad carries its boost effect when placed. Turn and size it here; tune its effect after placing.',
+      ];
     if (armed.group) {
-      if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, member by member.`,
-        '“use model defaults” switches back to what each member’s own model starts with.'];
+      if (armed.from === 'placement')
+        return [
+          `Copying a placed ${name}: its settings, member by member.`,
+          '“use model defaults” switches back to what each member’s own model starts with.',
+        ];
       return armed.behaviour.memberBehaviour
-        ? [`Each member of ${name} starts with its own model’s defaults.`,
-          'A tree’s trunk and leaves are different models, so each brings its own contact and sound. Open a member '
-          + 'below to see or change what it does.']
-        : [`Every member of ${name} starts alike, so the group shares one set of settings.`,
-          'These are the leader’s model defaults, which every member’s match. Open a member below to give it '
-          + 'settings of its own.'];
+        ? [
+            `Each member of ${name} starts with its own model’s defaults.`,
+            'A tree’s trunk and leaves are different models, so each brings its own contact and sound. Open a member ' +
+              'below to see or change what it does.',
+          ]
+        : [
+            `Every member of ${name} starts alike, so the group shares one set of settings.`,
+            'These are the leader’s model defaults, which every member’s match. Open a member below to give it ' +
+              'settings of its own.',
+          ];
     }
-    if (armed.from === 'placement') return [`Copying a placed ${name}: its settings, not the model’s defaults.`,
-      '“use model defaults” switches the held prop back to what a library pick of this model starts with.'];
-    if (armed.from === 'instance') return [`Copying one ${armed.level} ${name}: that copy’s own settings.`,
-      'Middle-clicking a prop in the reference level takes that exact copy’s settings. “use model defaults” '
-      + 'switches to what most of this model’s copies carry.'];
-    if (resolved.source === 'saved') return [`Your saved defaults for ${name}.`,
-      'Every new placement of this model starts with these. Placements already on the mountain keep their own '
-      + 'settings until you apply these to them.'];
+    if (armed.from === 'placement')
+      return [
+        `Copying a placed ${name}: its settings, not the model’s defaults.`,
+        '“use model defaults” switches the held prop back to what a library pick of this model starts with.',
+      ];
+    if (armed.from === 'instance')
+      return [
+        `Copying one ${armed.level} ${name}: that copy’s own settings.`,
+        'Middle-clicking a prop in the reference level takes that exact copy’s settings. “use model defaults” ' +
+          'switches to what most of this model’s copies carry.',
+      ];
+    if (resolved.source === 'saved')
+      return [
+        `Your saved defaults for ${name}.`,
+        'Every new placement of this model starts with these. Placements already on the mountain keep their own ' +
+          'settings until you apply these to them.',
+      ];
     if (resolved.source === 'reference') {
       const all = resolved.matching === resolved.total;
-      return [`Derived from ${armed.level}: ${all ? `all ${resolved.total}` : `${resolved.matching} of ${resolved.total}`} `
-        + `placed ${name} behave like this.`,
-      'A shipped level has no per-model settings — each placed copy carries its own — so these are the settings its '
-        + 'copies most often use. Middle-click a particular copy in the level to take its exact settings instead. '
-        + 'Saving defaults is for your own props: revise this one into your library to keep a set of its own.'];
+      return [
+        `Derived from ${armed.level}: ${all ? `all ${resolved.total}` : `${resolved.matching} of ${resolved.total}`} ` +
+          `placed ${name} behave like this.`,
+        'A shipped level has no per-model settings — each placed copy carries its own — so these are the settings its ' +
+          'copies most often use. Middle-click a particular copy in the level to take its exact settings instead. ' +
+          'Saving defaults is for your own props: revise this one into your library to keep a set of its own.',
+      ];
     }
     return ownGeometry(armed.level)
-      ? [`${name} has no saved defaults — it starts decorative and silent.`,
-        'Set it up below and save, and every new placement of it starts that way.']
-      : [`${name} is never visibly placed in ${armed.level}, so it starts from the standard settings.`,
-        'Borrowed art starts solid. Change anything below before placing.'];
+      ? [
+          `${name} has no saved defaults — it starts decorative and silent.`,
+          'Set it up below and save, and every new placement of it starts that way.',
+        ]
+      : [
+          `${name} is never visibly placed in ${armed.level}, so it starts from the standard settings.`,
+          'Borrowed art starts solid. Change anything below before placing.',
+        ];
   }
 
   /**
@@ -1355,79 +1961,142 @@ export function createPropTools(ctx: ToolsContext) {
     // A held group's members are set up like a placed one's, against a stand-in placement built from the hold;
     // every write still lands on the held behaviour itself.
     const groupKey = heldGroupKey(armed);
-    const owner: PlacedProp = { level: armed.level, model: armed.model, name: armed.name, pos: [0, 0, 0], yaw: 0,
-      scale: 1, ...armed.behaviour };
+    const owner: PlacedProp = {
+      level: armed.level,
+      model: armed.model,
+      name: armed.name,
+      pos: [0, 0, 0],
+      yaw: 0,
+      scale: 1,
+      ...armed.behaviour,
+    };
     const member = openMemberOf(groupKey, def);
     if (def && member) {
       // Nothing is placed yet, so an edit re-renders nothing; the group's status line is on its own panel.
-      buildMemberTools({ target: armed.behaviour, level: armed.level, key: 'props-held', changed: () => {} },
-        def, owner, groupKey, member.model);
+      buildMemberTools(
+        { target: armed.behaviour, level: armed.level, key: 'props-held', changed: () => {} },
+        def,
+        owner,
+        groupKey,
+        member.model,
+      );
       return;
     }
     // What "model defaults" means for what is held: the model's, or for a group each member's own (docs/069).
     const defaults = def ? groupDefaults(armed.level, def) : resolved.behaviour;
     const name = shortPropName(armed.name);
-    const aboutSection = editSection('props-held-defaults', armed.group ? 'Group settings' : 'Placement defaults', true);
+    const aboutSection = editSection(
+      'props-held-defaults',
+      armed.group ? 'Group settings' : 'Placement defaults',
+      true,
+    );
     const [provenance, more] = heldProvenance(armed, resolved);
     note(aboutSection, provenance, more);
     const edited = () => armed.from === 'defaults' && (!sameBehaviour(armed.behaviour, defaults) || !!armed.effectOff);
-    const statusText = () => armed.from === 'preset' ? 'boost pad preset'
-      : armed.from === 'placement' ? 'copy of a placed prop'
-      : armed.from === 'instance' ? 'copy of a reference prop'
-        : edited() ? 'changed — not saved' : 'model defaults';
+    const statusText = () =>
+      armed.from === 'preset'
+        ? 'boost pad preset'
+        : armed.from === 'placement'
+          ? 'copy of a placed prop'
+          : armed.from === 'instance'
+            ? 'copy of a reference prop'
+            : edited()
+              ? 'changed — not saved'
+              : 'model defaults';
     const status = detail(aboutSection, statusText(), 'next placement');
-    tip(status, 'What the next click stamps. Each placement copies these, so later edits here never change '
-      + 'props already placed.');
+    tip(
+      status,
+      'What the next click stamps. Each placement copies these, so later edits here never change ' +
+        'props already placed.',
+    );
     const host: BehaviourHost = {
-      target: armed.behaviour, level: armed.level, key: 'props-held',
+      target: armed.behaviour,
+      level: armed.level,
+      key: 'props-held',
       // Nothing is placed yet, so an edit re-renders nothing; only the status line follows it.
-      changed: () => { (status.object as { x: string }).x = statusText(); status.updateDisplay(); },
+      changed: () => {
+        (status.object as { x: string }).x = statusText();
+        status.updateDisplay();
+      },
     };
 
     const actionRows: HTMLElement[] = [];
     // A fence, a row of lamps: the same prop down a path rather than one click at a time (docs/070).
-    const lay = tip(gui.add({ lay: () => ctx.propLines.startLine() }, 'lay').name('⟿ lay as a line'),
+    const lay = tip(
+      gui.add({ lay: () => ctx.propLines.startLine() }, 'lay').name('⟿ lay as a line'),
       'Lay this prop along a path — a fence, a row of lamps.',
-      'Click points on the mountain the way a rail is drawn. Copies follow the path, turned along it and seated on '
-        + 'the ground, and lay themselves out again whenever the path or a setting changes. The settings below are '
-        + 'what every copy carries.');
+      'Click points on the mountain the way a rail is drawn. Copies follow the path, turned along it and seated on ' +
+        'the ground, and lay themselves out again whenever the path or a setting changes. The settings below are ' +
+        'what every copy carries.',
+    );
     actionRows.push(lay.domElement);
     if (resolved.savable && !armed.group) {
-      const save = tip(gui.add({ save: async () => {
-        try {
-          await saveModelDefaults(armed.level, armed.model, armed.behaviour);
-        } catch (e) { toast(`Saving defaults failed — ${e instanceof Error ? e.message : e}`, 'err'); return; }
-        armed.from = 'defaults';
-        toast(`Saved — every new ${name} starts with these settings.`, 'ok');
-        rebuildTools();
-      } }, 'save').name('⤓ save as model defaults'),
-      'Save these settings as this model’s defaults — every new placement of it starts with them.',
-      'Contact, surface, mode layer, hit and ambient sound, self-lighting. Stored with the model itself, so '
-        + 'they travel with it rather than with this session.');
+      const save = tip(
+        gui
+          .add(
+            {
+              save: async () => {
+                try {
+                  await saveModelDefaults(armed.level, armed.model, armed.behaviour);
+                } catch (e) {
+                  toast(`Saving defaults failed — ${e instanceof Error ? e.message : e}`, 'err');
+                  return;
+                }
+                armed.from = 'defaults';
+                toast(`Saved — every new ${name} starts with these settings.`, 'ok');
+                rebuildTools();
+              },
+            },
+            'save',
+          )
+          .name('⤓ save as model defaults'),
+        'Save these settings as this model’s defaults — every new placement of it starts with them.',
+        'Contact, surface, mode layer, hit and ambient sound, self-lighting. Stored with the model itself, so ' +
+          'they travel with it rather than with this session.',
+      );
       actionRows.push(save.domElement);
     }
     if (armed.from !== 'defaults' || edited()) {
-      const reset = tip(gui.add({ reset: () => {
-        armed.behaviour = structuredClone(defaults);
-        armed.from = 'defaults';
-        // …and the model's effect with it; a group has none by default (docs/069 · Effects).
-        const effect = def ? undefined : modelEffect(armed.level, armed.model);
-        if (effect) armed.effect = effect; else delete armed.effect;
-        delete armed.effectOff;
-        rebuildTools();
-      } }, 'reset').name('↺ use model defaults'),
-      'Drop the changes and hold this model with its defaults again.');
+      const reset = tip(
+        gui
+          .add(
+            {
+              reset: () => {
+                armed.behaviour = structuredClone(defaults);
+                armed.from = 'defaults';
+                // …and the model's effect with it; a group has none by default (docs/069 · Effects).
+                const effect = def ? undefined : modelEffect(armed.level, armed.model);
+                if (effect) armed.effect = effect;
+                else delete armed.effect;
+                delete armed.effectOff;
+                rebuildTools();
+              },
+            },
+            'reset',
+          )
+          .name('↺ use model defaults'),
+        'Drop the changes and hold this model with its defaults again.',
+      );
       actionRows.push(reset.domElement);
     }
     const placedCount = armed.group ? 0 : placementsOfModel(armed.level, armed.model).length;
     if (placedCount) {
-      const apply = tip(gui.add({ apply: () => {
-        const n = applyBehaviourToPlaced(armed.level, armed.model, armed.behaviour);
-        toast(`Applied to ${n} placed ${name}${n === 1 ? '' : 's'} — undo puts theirs back.`, 'ok');
-      } }, 'apply').name(`⇉ apply to ${placedCount} placed`),
-      `Give every ${name} already on the mountain these settings.`,
-      'Placements copy their settings when stamped rather than following the model, so changing defaults never '
-        + 'changes existing props by itself — this is the explicit way. Groups and prop lines keep their own.');
+      const apply = tip(
+        gui
+          .add(
+            {
+              apply: () => {
+                const n = applyBehaviourToPlaced(armed.level, armed.model, armed.behaviour);
+                toast(`Applied to ${n} placed ${name}${n === 1 ? '' : 's'} — undo puts theirs back.`, 'ok');
+              },
+            },
+            'apply',
+          )
+          .name(`⇉ apply to ${placedCount} placed`),
+        `Give every ${name} already on the mountain these settings.`,
+        'Placements copy their settings when stamped rather than following the model, so changing defaults never ' +
+          'changes existing props by itself — this is the explicit way. Groups and prop lines keep their own.',
+      );
       actionRows.push(apply.domElement);
     }
 
@@ -1436,22 +2105,35 @@ export function createPropTools(ctx: ToolsContext) {
     // Switching the effect off is a change to the hold like any other, so the panel redraws to offer ↺ back.
     const effectSection = addHeldEffectSection(armed, rebuildTools);
     const modeSection = addModeSection(host);
-    const behaviourSections = membersSection ? [] : [addContactSection(host).contactSection,
-      addLightingSection(host), addImpactSection(host), addEmitterSection(host)];
+    const behaviourSections = membersSection
+      ? []
+      : [
+          addContactSection(host).contactSection,
+          addLightingSection(host),
+          addImpactSection(host),
+          addEmitterSection(host),
+        ];
     aboutSection.domElement.before(...actionRows);
-    aboutSection.domElement.after(...(membersSection ? [membersSection.domElement] : []),
-      ...(effectSection ? [effectSection.domElement] : []), modeSection.domElement,
-      ...behaviourSections.map(section => section.domElement));
+    aboutSection.domElement.after(
+      ...(membersSection ? [membersSection.domElement] : []),
+      ...(effectSection ? [effectSection.domElement] : []),
+      modeSection.domElement,
+      ...behaviourSections.map(section => section.domElement),
+    );
   }
 
   function buildPropTools() {
     if (ctx.propDeform.active) {
-      ctx.propPreview.hide(); addPropDeformTools(gui, ctx.propDeform); return;
+      ctx.propPreview.hide();
+      addPropDeformTools(gui, ctx.propDeform);
+      return;
     }
     keepOpenMember(propPanelGroupKey()); // before the preview card, which shows an open member alone
     updatePropPreview();
     if (store.selectedScreen !== null || store.selectedRefScreen !== null) {
-      syncLoopOwner(); buildScreenTools(); return;
+      syncLoopOwner();
+      buildScreenTools();
+      return;
     }
     // A held loop belongs to the prop whose panel offers its stop button. Re-derive that owner on every
     // rebuild and stop anything left over, so changing selection or deselecting silences it rather than
@@ -1459,22 +2141,34 @@ export function createPropTools(ctx: ToolsContext) {
     syncLoopOwner();
     if (ctx.isReplacingProp()) {
       const count = store.multiSel.length || 1;
-      note(gui, `Click a prop in the world or the Prop Library to replace ${count === 1 ? 'the selected prop' : `the ${count} selected props`}.`);
+      note(
+        gui,
+        `Click a prop in the world or the Prop Library to replace ${count === 1 ? 'the selected prop' : `the ${count} selected props`}.`,
+      );
       note(gui, 'Each prop keeps its position, rotation and size. The chosen prop supplies its settings and effects.');
       if (store.multiSel.some(i => store.mdoc.props?.[i]?.line || isEffectTriggerProp(store.mdoc.props?.[i])))
         note(gui, 'Trigger volumes and prop-line members stay unchanged.');
-      tip(gui.add({ cancel: ctx.cancelPropReplacement }, 'cancel').name('◀ cancel replacement (Esc)'),
-        'Keep the original props and return to the selection’s properties.');
+      tip(
+        gui.add({ cancel: ctx.cancelPropReplacement }, 'cancel').name('◀ cancel replacement (Esc)'),
+        'Keep the original props and return to the selection’s properties.',
+      );
       return;
     }
-    if (store.multiSel.length) { buildMultiPropTools(); return; }
+    if (store.multiSel.length) {
+      buildMultiPropTools();
+      return;
+    }
     const prop = store.selectedProp !== null ? store.mdoc.props?.[store.selectedProp] : undefined;
     if (prop) {
       const def = defOfPlaced(prop);
       // The behaviour sections are shared with the held prop's panel (docs/069): same controls, bound here to
       // this placement, whose edits re-render the scene.
       const groupHost: BehaviourHost = {
-        target: prop, level: prop.level, key: 'props-authored', changed: scheduleRebuild, placement: prop,
+        target: prop,
+        level: prop.level,
+        key: 'props-authored',
+        changed: scheduleRebuild,
+        placement: prop,
       };
       const groupKey = placedGroupKey(prop, store.selectedProp!);
       const member = openMemberOf(groupKey, def);
@@ -1482,9 +2176,17 @@ export function createPropTools(ctx: ToolsContext) {
         buildMemberTools(groupHost, def, prop, groupKey, member.model);
         // What the member is MADE of: its own model's material table, which the group's panel cannot show.
         const materialSection = editSection('props-authored-materials', 'Materials & textures', false);
-        addPropMaterials(materialSection, materialsHost, prop.level, member.model, (store.mdoc.props ?? [])
-          .filter(p => p.level === prop.level && (p.model === member.model
-            || !!defOfPlaced(p)?.props.some(m => m.model === member.model))).length);
+        addPropMaterials(
+          materialSection,
+          materialsHost,
+          prop.level,
+          member.model,
+          (store.mdoc.props ?? []).filter(
+            p =>
+              p.level === prop.level &&
+              (p.model === member.model || !!defOfPlaced(p)?.props.some(m => m.model === member.model)),
+          ).length,
+        );
         addDeselect();
         return;
       }
@@ -1496,9 +2198,12 @@ export function createPropTools(ctx: ToolsContext) {
       if (animation) {
         const nativeObjects = projectedNativeModelObjectCount(animation);
         if (nativeObjects > SSX_TRICKY_MAX_NATIVE_MODEL_OBJECTS)
-          warningBanner(gui, `PS2 ISO warning: this animated prop packs to ${nativeObjects} native objects; `
-            + `SSX Tricky is safe only through ${SSX_TRICKY_MAX_NATIVE_MODEL_OBJECTS} and will freeze. `
-            + 'Unity export is unaffected, so the prop remains editable and exportable.');
+          warningBanner(
+            gui,
+            `PS2 ISO warning: this animated prop packs to ${nativeObjects} native objects; ` +
+              `SSX Tricky is safe only through ${SSX_TRICKY_MAX_NATIVE_MODEL_OBJECTS} and will freeze. ` +
+              'Unity export is unaffected, so the prop remains editable and exportable.',
+          );
       }
       // What you have clicked, before anything you can do to it. The panel used to open straight into
       // Transform, which answered "where is it" for something you did not yet know the nature of — and the
@@ -1513,126 +2218,202 @@ export function createPropTools(ctx: ToolsContext) {
       const transformSection = editSection('props-authored-transform', 'Transform', false);
       for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
         const position = {
-          get value() { return prop.pos[index]; },
-          set value(v: number) { if (Number.isFinite(v)) prop.pos[index] = v; },
+          get value() {
+            return prop.pos[index];
+          },
+          set value(v: number) {
+            if (Number.isFinite(v)) prop.pos[index] = v;
+          },
         };
         transformSection.add(position, 'value').name(`position ${axis} (m)`).listen().onChange(scheduleRebuild);
       }
-      if (isEffectTriggerProp(prop)) for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
-        const size = { value: prop.effectTrigger.size[index] };
-        transformSection.add(size, 'value', 0.5, 1000, 0.5).name(`box ${axis} (m)`).onChange((value: number) => {
-          prop.effectTrigger!.size[index] = Math.max(0.5, value); scheduleRebuild();
-        });
-      }
-      tip(transformSection.add(prop, 'yaw', 0, 360, 1).name('turn (°)').onChange(scheduleRebuild), 'Spin the prop about vertical.');
+      if (isEffectTriggerProp(prop))
+        for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
+          const size = { value: prop.effectTrigger.size[index] };
+          transformSection
+            .add(size, 'value', 0.5, 1000, 0.5)
+            .name(`box ${axis} (m)`)
+            .onChange((value: number) => {
+              prop.effectTrigger!.size[index] = Math.max(0.5, value);
+              scheduleRebuild();
+            });
+        }
+      tip(
+        transformSection.add(prop, 'yaw', 0, 360, 1).name('turn (°)').onChange(scheduleRebuild),
+        'Spin the prop about vertical.',
+      );
       // Tilt: the same two angles the gizmo's red / blue rings drive, typed. They live in the document as
       // optional fields, so the sliders read through a proxy that writes zero back out as "absent" — an
       // upright prop you merely looked at keeps saving exactly as it did before tilt existed.
       const tilt = {
-        get pitch() { return prop.pitch ?? 0; },
-        set pitch(v: number) { writePropRotation(prop, { yaw: prop.yaw, pitch: v, roll: prop.roll }); },
-        get roll() { return prop.roll ?? 0; },
-        set roll(v: number) { writePropRotation(prop, { yaw: prop.yaw, pitch: prop.pitch, roll: v }); },
+        get pitch() {
+          return prop.pitch ?? 0;
+        },
+        set pitch(v: number) {
+          writePropRotation(prop, { yaw: prop.yaw, pitch: v, roll: prop.roll });
+        },
+        get roll() {
+          return prop.roll ?? 0;
+        },
+        set roll(v: number) {
+          writePropRotation(prop, { yaw: prop.yaw, pitch: prop.pitch, roll: v });
+        },
       };
       // Pitch stops at ±90: that is the band a YXZ rotation decomposes back into, so a gizmo drag can always
       // be shown here, and a typed angle never re-normalizes into a different-looking triple behind you.
-      tip(transformSection.add(tilt, 'pitch', -90, 90, 1).name('tilt (°)').onChange(scheduleRebuild),
-        'Tip the prop forward or back, about its own X axis.');
-      tip(transformSection.add(tilt, 'roll', -180, 180, 1).name('roll (°)').onChange(scheduleRebuild),
-        'Roll the prop onto its side, about its own Z axis.');
+      tip(
+        transformSection.add(tilt, 'pitch', -90, 90, 1).name('tilt (°)').onChange(scheduleRebuild),
+        'Tip the prop forward or back, about its own X axis.',
+      );
+      tip(
+        transformSection.add(tilt, 'roll', -180, 180, 1).name('roll (°)').onChange(scheduleRebuild),
+        'Roll the prop onto its side, about its own Z axis.',
+      );
       // scaling is about the origin, which would sink / lift the base — nudge the height so the bottom stays put
       let lastScale = prop.scale;
-      tip(transformSection.add(prop, 'scale', 0.1, 5, 0.05).name('size ×').onChange((s: number) => {
-        prop.pos[1] += (lastScale - s) * placedBaseOffset(prop);
-        lastScale = s;
-        scheduleRebuild();
-      }), 'Scale the prop up or down — its base stays on the ground.');
+      tip(
+        transformSection
+          .add(prop, 'scale', 0.1, 5, 0.05)
+          .name('size ×')
+          .onChange((s: number) => {
+            prop.pos[1] += (lastScale - s) * placedBaseOffset(prop);
+            lastScale = s;
+            scheduleRebuild();
+          }),
+        'Scale the prop up or down — its base stays on the ground.',
+      );
       // A group with members lists them instead of the behaviour sections; each member's are on its own panel,
       // and what stays here is the whole group's.
       const membersSection = hasMembers(def) ? addMembersSection(groupHost, def, prop, groupKey) : null;
       const modeSection = addModeSection(groupHost);
-      const behaviourSections = membersSection ? [] : [addContactSection(groupHost).contactSection,
-        addLightingSection(groupHost), addImpactSection(groupHost), addEmitterSection(groupHost)];
+      const behaviourSections = membersSection
+        ? []
+        : [
+            addContactSection(groupHost).contactSection,
+            addLightingSection(groupHost),
+            addImpactSection(groupHost),
+            addEmitterSection(groupHost),
+          ];
       // Saved defaults read the live placement; a legacy placement materializes its inferred profile.
       const copied = () => settingsOf(prop);
       // a group's component list rides the preview card above
       if (!isEffectTriggerProp(prop)) {
-        const replaceAction = tip(gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
+        const replaceAction = tip(
+          gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
           'Click a prop in the world or the Prop Library to replace this one, keeping its position, rotation and size.',
-          'The replacement takes the chosen prop’s settings and effects. Esc cancels; undo restores the original.');
+          'The replacement takes the chosen prop’s settings and effects. Esc cancels; undo restores the original.',
+        );
         actionRows.push(replaceAction.domElement);
       }
       // A mined group comes apart into ordinary props, which ⊞ group can tie back together as an authored one.
       if (def && !prop.line) {
-        const breakAction = tip(gui.add({ unpack: () => breakGroupPlacement(store.selectedProp!, def) }, 'unpack')
-          .name('⇲ break group'),
-        'Replace this group with its props, each where it stands with its own settings.',
-        `Its lights become free lights. Effects and screens attached to the group stay on ${shortPropName(def.props[0].name)}, `
-          + 'the member that stands where the group does. Select the pieces and ⊞ group them to move them as one again.');
+        const breakAction = tip(
+          gui.add({ unpack: () => breakGroupPlacement(store.selectedProp!, def) }, 'unpack').name('⇲ break group'),
+          'Replace this group with its props, each where it stands with its own settings.',
+          `Its lights become free lights. Effects and screens attached to the group stay on ${shortPropName(def.props[0].name)}, ` +
+            'the member that stands where the group does. Select the pieces and ⊞ group them to move them as one again.',
+        );
         actionRows.push(breakAction.domElement);
       }
       // The author's own model can take this placement's settings as its defaults (docs/069): tune one on the
       // mountain, then every new one starts that way.
       if (ownGeometry(prop.level) && !prop.group) {
-        const saveDefaults = tip(gui.add({ save: async () => {
-          try {
-            await saveModelDefaults(prop.level, prop.model, copied());
-          } catch (e) { toast(`Saving defaults failed — ${e instanceof Error ? e.message : e}`, 'err'); return; }
-          toast(`Saved — every new ${shortPropName(prop.name)} starts with this one’s settings.`, 'ok');
-        } }, 'save').name('⤓ save as model defaults'),
-        'Make this placement’s settings the model’s defaults — every new placement of it starts with them.',
-        'Contact, surface, mode layer, hit and ambient sound, self-lighting. Other placements keep their own '
-          + 'settings until you apply the defaults to them from the held prop’s panel.');
+        const saveDefaults = tip(
+          gui
+            .add(
+              {
+                save: async () => {
+                  try {
+                    await saveModelDefaults(prop.level, prop.model, copied());
+                  } catch (e) {
+                    toast(`Saving defaults failed — ${e instanceof Error ? e.message : e}`, 'err');
+                    return;
+                  }
+                  toast(`Saved — every new ${shortPropName(prop.name)} starts with this one’s settings.`, 'ok');
+                },
+              },
+              'save',
+            )
+            .name('⤓ save as model defaults'),
+          'Make this placement’s settings the model’s defaults — every new placement of it starts with them.',
+          'Contact, surface, mode layer, hit and ambient sound, self-lighting. Other placements keep their own ' +
+            'settings until you apply the defaults to them from the held prop’s panel.',
+        );
         actionRows.push(saveDefaults.domElement);
       }
       // ⧉ revise prop sits directly under ⇄ replace prop and means ONE thing whatever is selected: put a v2 of
       // this prop in your library and point this placement at it. What differs is only which library it can
       // land in — a tiled prop forks as a tiled prop, everything else lands textured, keeping its UVs.
       if (prop.level === AUTHORED_MODEL_LEVEL) {
-        const editAction = tip(gui.add({ edit: () => modelEdit.enter(modelIdFromNumber(prop.model), store.selectedProp!) }, 'edit').name('✎ edit shape'),
-          'Open this prop in Edit mode, AT this placement. Edits change the DEFINITION, so every placement of it updates together.');
+        const editAction = tip(
+          gui
+            .add({ edit: () => modelEdit.enter(modelIdFromNumber(prop.model), store.selectedProp!) }, 'edit')
+            .name('✎ edit shape'),
+          'Open this prop in Edit mode, AT this placement. Edits change the DEFINITION, so every placement of it updates together.',
+        );
         actionRows.push(editAction.domElement);
       }
       if (prop.level === IMPORTED_PROP_LEVEL && !prop.group && !prop.line) {
         const draft = ctx.propDeform.hasStoredDraft(prop.model);
-        const deform = tip(gui.add({ deform: () => modelEdit.deform(store.selectedProp!) }, 'deform')
-          .name(draft ? 'deform with cage · resume draft' : 'deform with cage'),
-          'Bend, stretch, twist or taper this prop with a Bézier box. Apply saves a new variant for this placement.'
-          + (draft ? ' Opens with the unapplied cage you left; Ctrl+Z there returns to the current shape.' : ''));
+        const deform = tip(
+          gui
+            .add({ deform: () => modelEdit.deform(store.selectedProp!) }, 'deform')
+            .name(draft ? 'deform with cage · resume draft' : 'deform with cage'),
+          'Bend, stretch, twist or taper this prop with a Bézier box. Apply saves a new variant for this placement.' +
+            (draft ? ' Opens with the unapplied cage you left; Ctrl+Z there returns to the current shape.' : ''),
+        );
         actionRows.push(deform.domElement);
       }
       // The escape hatch, on the prop itself rather than only in the library's right-click menu — this is
       // where you are standing when a shape turns out to need more than the mesh tools have (docs/046).
       if (ownGeometry(prop.level) && !prop.group) {
-        const blender = tip(gui.add({ blender: () => openBlenderGuide({
-          kind: prop.level === AUTHORED_MODEL_LEVEL ? 'model' : 'import',
-          id: prop.model,
-          name: prop.name || `#${prop.model}`,
-        }) }, 'blender').name('⬈ edit in Blender…'),
-        'Take this prop out to Blender and push it straight back onto itself.',
-        'Same number, same name — every placement follows. Opens the six-step guide, with a self-contained '
-        + 'GLB as the no-install route.');
+        const blender = tip(
+          gui
+            .add(
+              {
+                blender: () =>
+                  openBlenderGuide({
+                    kind: prop.level === AUTHORED_MODEL_LEVEL ? 'model' : 'import',
+                    id: prop.model,
+                    name: prop.name || `#${prop.model}`,
+                  }),
+              },
+              'blender',
+            )
+            .name('⬈ edit in Blender…'),
+          'Take this prop out to Blender and push it straight back onto itself.',
+          'Same number, same name — every placement follows. Opens the six-step guide, with a self-contained ' +
+            'GLB as the no-install route.',
+        );
         actionRows.push(blender.domElement);
       }
       if (!prop.group && !isEffectTriggerProp(prop)) {
-        const revise = tip(gui.add({ revise: () => modelEdit.createRevision(store.selectedProp!) }, 'revise')
-          .name('⧉ revise prop (v2)'),
-        'Copy this prop to your library as “<name> v2” and point THIS placement at it.',
-        prop.level === AUTHORED_MODEL_LEVEL
-          ? 'Opens its edit session. Other placements keep the original, and effects attached to this '
-            + 'placement come with it.'
-          : 'The copy keeps its UV layout, its materials and its look, so nothing moves and nothing greys '
-            + 'out — effects attached to this placement come with it. Use Deform with cage here, or edit the copy in Blender.');
+        const revise = tip(
+          gui.add({ revise: () => modelEdit.createRevision(store.selectedProp!) }, 'revise').name('⧉ revise prop (v2)'),
+          'Copy this prop to your library as “<name> v2” and point THIS placement at it.',
+          prop.level === AUTHORED_MODEL_LEVEL
+            ? 'Opens its edit session. Other placements keep the original, and effects attached to this ' +
+                'placement come with it.'
+            : 'The copy keeps its UV layout, its materials and its look, so nothing moves and nothing greys ' +
+                'out — effects attached to this placement come with it. Use Deform with cage here, or edit the copy in Blender.',
+        );
         actionRows.push(revise.domElement);
       }
-      const hasEffect = !!(prop.id && store.mdoc.effects
-        && effectAttachments(store.mdoc.effects).some(a => a.enabled && a.target.id === prop.id));
+      const hasEffect = !!(
+        prop.id &&
+        store.mdoc.effects &&
+        effectAttachments(store.mdoc.effects).some(a => a.enabled && a.target.id === prop.id)
+      );
       if (hasEffect) {
-        const effectAction = tip(iconAction(gui.add({ fx: () => goToEffects() }, 'fx').name('go to effect'), MODE_ICON.effects),
-          'Open Effects mode with this placement selected as the effect host — its attached graph opens for editing.');
+        const effectAction = tip(
+          iconAction(gui.add({ fx: () => goToEffects() }, 'fx').name('go to effect'), MODE_ICON.effects),
+          'Open Effects mode with this placement selected as the effect host — its attached graph opens for editing.',
+        );
         actionRows.push(effectAction.domElement, addDeselect().domElement);
       }
-      const deleteAction = gui.add({ del: () => deleteSelectedProp() }, 'del').name(def ? '✕ delete group' : '✕ delete prop');
+      const deleteAction = gui
+        .add({ del: () => deleteSelectedProp() }, 'del')
+        .name(def ? '✕ delete group' : '✕ delete prop');
       actionRows.push(deleteAction.domElement);
       if (!hasEffect) actionRows.push(addDeselect().domElement);
       // The preview is a persistent sibling above these dynamic rows. Move the actions ahead of every folder,
@@ -1640,16 +2421,28 @@ export function createPropTools(ctx: ToolsContext) {
       // What the placement is MADE of, under the controls that place and tune it: the model's own material
       // table, editable where the model is ours. A group's members are several models, so each member's
       // table is on that member's panel instead.
-      const materialSection = membersSection ? null : editSection('props-authored-materials', 'Materials & textures', false);
-      if (materialSection) addPropMaterials(materialSection, materialsHost, prop.level, prop.model,
-        (store.mdoc.props ?? []).filter(p => p.level === prop.level && p.model === prop.model).length);
+      const materialSection = membersSection
+        ? null
+        : editSection('props-authored-materials', 'Materials & textures', false);
+      if (materialSection)
+        addPropMaterials(
+          materialSection,
+          materialsHost,
+          prop.level,
+          prop.model,
+          (store.mdoc.props ?? []).filter(p => p.level === prop.level && p.model === prop.model).length,
+        );
       // A screen is an annotation on this board rather than a thing of its own, so it is offered here, beside
       // the prop it covers (docs/051).
       const screenSection = addScreenSection(prop);
       transformSection.domElement.before(...actionRows);
-      transformSection.domElement.after(...(membersSection ? [membersSection.domElement] : []), modeSection.domElement,
-        ...behaviourSections.map(section => section.domElement), screenSection.domElement,
-        ...(materialSection ? [materialSection.domElement] : []));
+      transformSection.domElement.after(
+        ...(membersSection ? [membersSection.domElement] : []),
+        modeSection.domElement,
+        ...behaviourSections.map(section => section.domElement),
+        screenSection.domElement,
+        ...(materialSection ? [materialSection.domElement] : []),
+      );
       return;
     }
     const ref = store.selectedRefProp;
@@ -1658,44 +2451,83 @@ export function createPropTools(ctx: ToolsContext) {
       const sourceProfile = collisionProfileFromSourceInstance(ref.level, ref);
       // An instance pick copies THAT instance (contact, surface, hit sound, self-lighting, mode layer); a
       // model-only pick has no instance, so it holds the model's defaults (docs/069).
-      const placeAction = tip(gui.add({ place: () => {
-        void armProp(ref.level, ref.model, ref.name, ref.sourceIndex !== undefined ? { sourceIndex: ref.sourceIndex } : {});
-      } }, 'place').name('＋ place prop'),
-        'Put a copy on the cursor with this instance’s exact settings as editable defaults.');
+      const placeAction = tip(
+        gui
+          .add(
+            {
+              place: () => {
+                void armProp(
+                  ref.level,
+                  ref.model,
+                  ref.name,
+                  ref.sourceIndex !== undefined ? { sourceIndex: ref.sourceIndex } : {},
+                );
+              },
+            },
+            'place',
+          )
+          .name('＋ place prop'),
+        'Put a copy on the cursor with this instance’s exact settings as editable defaults.',
+      );
       actionRows.push(placeAction.domElement);
       // Revise reaches a reference prop from HERE as well as from a placement of one. Copying a shipped prop
       // used to mean placing it first, which is backwards: revising IS the copy, so the thing you are looking
       // at is the thing you want a copy of.
-      const reviseAction = tip(gui.add({ revise: () => modelEdit.reviseReference(ref.level, ref.model, ref.name) }, 'revise')
-        .name('⧉ revise prop (v2)'),
-      'Copy this prop to your library as “<name> v2” and arm it.',
-      'The copy keeps its UV layout, its materials and its look — nothing greys out — and unlike this '
-      + 'read-only source it is yours to rename, retexture, edit in Blender (docs/046) or delete.');
+      const reviseAction = tip(
+        gui
+          .add({ revise: () => modelEdit.reviseReference(ref.level, ref.model, ref.name) }, 'revise')
+          .name('⧉ revise prop (v2)'),
+        'Copy this prop to your library as “<name> v2” and arm it.',
+        'The copy keeps its UV layout, its materials and its look — nothing greys out — and unlike this ' +
+          'read-only source it is yours to rename, retexture, edit in Blender (docs/046) or delete.',
+      );
       actionRows.push(reviseAction.domElement);
       const hasEffectNavigation = ref.sourceIndex !== undefined;
       if (hasEffectNavigation) {
-        const effectAction = tip(iconAction(gui.add({ fx: () => goToEffects() }, 'fx').name('go to effects'), MODE_ICON.effects),
-          'Open Effects mode with this instance selected; if it owns an effect slot, its graph opens.');
-        const calledEffectAction = tip(iconAction(gui.add({ calledFx: () => goToEffects({
-          sourceIndex: ref.sourceIndex!, called: true,
-        }) }, 'calledFx').name('go to called effect'), MODE_ICON.effects),
-        'Follow this native prop’s first resolved Run-on-another-prop call and open the effect on the prop that receives it.');
+        const effectAction = tip(
+          iconAction(gui.add({ fx: () => goToEffects() }, 'fx').name('go to effects'), MODE_ICON.effects),
+          'Open Effects mode with this instance selected; if it owns an effect slot, its graph opens.',
+        );
+        const calledEffectAction = tip(
+          iconAction(
+            gui
+              .add(
+                {
+                  calledFx: () =>
+                    goToEffects({
+                      sourceIndex: ref.sourceIndex!,
+                      called: true,
+                    }),
+                },
+                'calledFx',
+              )
+              .name('go to called effect'),
+            MODE_ICON.effects,
+          ),
+          'Follow this native prop’s first resolved Run-on-another-prop call and open the effect on the prop that receives it.',
+        );
         actionRows.push(effectAction.domElement, calledEffectAction.domElement, addDeselect().domElement);
       }
       const modeSection = editSection('props-reference-mode-presence', 'Mode presence', false);
-      tip(detail(modeSection, ref.name, 'instance label'),
+      tip(
+        detail(modeSection, ref.name, 'instance label'),
         'The label attached to this exact Instances.json placement.',
-        'Third-party maps commonly replace the art in an existing numbered model slot. The placement label is '
-          + 'shown as the selected object’s name; the original slot label remains below as provenance.');
-      tip(detail(modeSection, `#${ref.model} · ${ref.modelName ?? ref.name}`, 'model slot'),
+        'Third-party maps commonly replace the art in an existing numbered model slot. The placement label is ' +
+          'shown as the selected object’s name; the original slot label remains below as provenance.',
+      );
+      tip(
+        detail(modeSection, `#${ref.model} · ${ref.modelName ?? ref.name}`, 'model slot'),
         'The numeric Models.json slot and its raw MAP label.',
-        'A custom level can reuse this slot for completely different geometry without changing its old retail '
-          + 'label, so Slopesmith does not present this value as the clicked object’s identity.');
-      tip(detail(modeSection, ltgStateText(ref.ltgState ?? 0), 'LTG state'),
+        'A custom level can reuse this slot for completely different geometry without changing its old retail ' +
+          'label, so Slopesmith does not present this value as the clicked object’s identity.',
+      );
+      tip(
+        detail(modeSection, ltgStateText(ref.ltgState ?? 0), 'LTG state'),
         'The exact native world-grid list this instance belongs to.',
-        'State 2 is the retail Showoff-only object layer: its model and collider are absent in Race and '
-          + 'Freeride. State 0 is the common list, but an Effects mode function can still hide a common-list '
-          + 'prop. State 1 is reported as provenance only until its behavior is validated.');
+        'State 2 is the retail Showoff-only object layer: its model and collider are absent in Race and ' +
+          'Freeride. State 0 is the common list, but an Effects mode function can still hide a common-list ' +
+          'prop. State 1 is reported as provenance only until its behavior is validated.',
+      );
       const contactSection = editSection('props-reference-contact', 'Contact & collision', false);
       addCollisionOverlayToggle(contactSection);
       // The picked INSTANCE's own collision record, mirrored row for row against the authored panel's editable
@@ -1710,38 +2542,70 @@ export function createPropTools(ctx: ToolsContext) {
         // rather than presenting an inference as a stored value.
         const storedMass = typeof ref.responseMass === 'number' && ref.responseMass >= 0;
         const storedBounce = typeof ref.bounce === 'number' && ref.bounce >= 0;
-        const classDefault = ' This instance ships no such record, so the contact class default is shown — and '
-          + 'copied by “place prop”.';
-        refDetail('collision shape', collisionShapeName(sourceProfile.mode), CONTACT_HELP.shape,
-          CONTACT_MORE.shape);
-        refDetail('player contact', gateText(sourceProfile.playerCollision), CONTACT_HELP.contact,
-          CONTACT_MORE.contact);
+        const classDefault =
+          ' This instance ships no such record, so the contact class default is shown — and ' +
+          'copied by “place prop”.';
+        refDetail('collision shape', collisionShapeName(sourceProfile.mode), CONTACT_HELP.shape, CONTACT_MORE.shape);
+        refDetail(
+          'player contact',
+          gateText(sourceProfile.playerCollision),
+          CONTACT_HELP.contact,
+          CONTACT_MORE.contact,
+        );
         refDetail('player bounce', gateText(sourceProfile.playerBounce), CONTACT_HELP.bounceGate);
-        refDetail('collision response mass', responseMassText(sourceProfile.responseMass),
-          CONTACT_HELP.responseMass, CONTACT_MORE.responseMass + (storedMass ? '' : classDefault));
-        refDetail('bounce amount', bounceAmountText(sourceProfile.bounceAmount),
-          CONTACT_HELP.bounceAmount, CONTACT_MORE.bounceAmount + (storedBounce
-            ? ' A retail instance reports its EFFECTIVE kickback, so a PlayerBounce-off or contact-only instance '
-              + 'reads 0 here whatever the file stores.'
-            : classDefault));
-        refDetail('ride surface', surfaceOptionName(typeof ref.surface === 'number' ? ref.surface : -1),
-          CONTACT_HELP.surface, CONTACT_MORE.surface);
-        refDetail('physics body index', physicsBodyText(sourceProfile.physicsSource?.body ?? -1),
-          CONTACT_HELP.physicsBody, CONTACT_MORE.physicsBody);
-        refDetail('physics source level', sourceProfile.physicsSource?.level ?? ref.level,
-          CONTACT_HELP.physicsLevel, CONTACT_MORE.physicsLevel);
+        refDetail(
+          'collision response mass',
+          responseMassText(sourceProfile.responseMass),
+          CONTACT_HELP.responseMass,
+          CONTACT_MORE.responseMass + (storedMass ? '' : classDefault),
+        );
+        refDetail(
+          'bounce amount',
+          bounceAmountText(sourceProfile.bounceAmount),
+          CONTACT_HELP.bounceAmount,
+          CONTACT_MORE.bounceAmount +
+            (storedBounce
+              ? ' A retail instance reports its EFFECTIVE kickback, so a PlayerBounce-off or contact-only instance ' +
+                'reads 0 here whatever the file stores.'
+              : classDefault),
+        );
+        refDetail(
+          'ride surface',
+          surfaceOptionName(typeof ref.surface === 'number' ? ref.surface : -1),
+          CONTACT_HELP.surface,
+          CONTACT_MORE.surface,
+        );
+        refDetail(
+          'physics body index',
+          physicsBodyText(sourceProfile.physicsSource?.body ?? -1),
+          CONTACT_HELP.physicsBody,
+          CONTACT_MORE.physicsBody,
+        );
+        refDetail(
+          'physics source level',
+          sourceProfile.physicsSource?.level ?? ref.level,
+          CONTACT_HELP.physicsLevel,
+          CONTACT_MORE.physicsLevel,
+        );
         // The instance's own class, not a re-derivation: the extractor knew whether a mode-1 instance actually
         // ships a proxy mesh, which is the one input this read-only view cannot recover on its own.
-        const refState = ref.contact === 'ghost' ? 'none' as const
-          : ref.contact === 'through' ? 'through' as const : 'solid' as const;
+        const refState =
+          ref.contact === 'ghost'
+            ? ('none' as const)
+            : ref.contact === 'through'
+              ? ('through' as const)
+              : ('solid' as const);
         const roller = typeof ref.dynamicMass === 'number' && ref.dynamicMass >= 0;
-        refDetail('effective collision result',
-          `${placedPropContactLabel(refState)} · ${effectiveShapeLabel(sourceProfile)}`
-          + `${roller ? ' · Roller requested' : ''}`, CONTACT_HELP.result);
+        refDetail(
+          'effective collision result',
+          `${placedPropContactLabel(refState)} · ${effectiveShapeLabel(sourceProfile)}` +
+            `${roller ? ' · Roller requested' : ''}`,
+          CONTACT_HELP.result,
+        );
         // Dynamic mass has no authored twin: it comes from the level's own Roller effect payload rather than
         // from the instance, so it sits under the result the Roller note appears in.
-        if (roller) refDetail('dynamic mass', String(ref.dynamicMass), CONTACT_HELP.dynamicMass,
-          CONTACT_MORE.dynamicMass);
+        if (roller)
+          refDetail('dynamic mass', String(ref.dynamicMass), CONTACT_HELP.dynamicMass, CONTACT_MORE.dynamicMass);
       }
       // Every variable-sized ADL emitter field that now has a recovered meaning. The payload remains intact
       // behind this semantic view, so rare/future record types can be inspected without being flattened to a
@@ -1756,53 +2620,83 @@ export function createPropTools(ctx: ToolsContext) {
         for (let i = 0; i < Math.min(emitters.length, 3); i++) {
           const emitter = emitters[i];
           if (isInteractiveAmbientEvent(emitter.sound)) {
-            tip(detail(emitterSection, externalSoundEmitterTypeLabel(emitter), 'type'),
+            tip(
+              detail(emitterSection, externalSoundEmitterTypeLabel(emitter), 'type'),
               'Interactive ambient class — silent until the rider first hits THIS instance.',
-              'The class is events 16 cars / 28 fire hydrants / 57 police cars. After the hit it sounds for '
-              + 'the rest of the run; every other emitter plays on proximity alone.');
+              'The class is events 16 cars / 28 fire hydrants / 57 police cars. After the hit it sounds for ' +
+                'the rest of the run; every other emitter plays on proximity alone.',
+            );
           } else {
-            tip(detail(emitterSection, externalSoundEmitterTypeLabel(emitter), 'type'),
+            tip(
+              detail(emitterSection, externalSoundEmitterTypeLabel(emitter), 'type'),
               'The native record type — controls the listener region and voice lifetime.',
-              'Types 0–2 are maintained while the listener remains in range; type 3 uses the alternate '
-              + 'non-maintained mode.');
+              'Types 0–2 are maintained while the listener remains in range; type 3 uses the alternate ' +
+                'non-maintained mode.',
+            );
           }
-          tip(detail(emitterSection, `${emitter.sound} · ${externalSoundMeta(emitter.sound, ref.level)}`, 'event'),
+          tip(
+            detail(emitterSection, `${emitter.sound} · ${externalSoundMeta(emitter.sound, ref.level)}`, 'event'),
             'Global ADL sound event id.',
-            'Events 97–99 use the shared Crowd bank, fixed environmental events a named global bank, and '
-            + 'ordinary events the level’s course bank.');
+            'Events 97–99 use the shared Crowd bank, fixed environmental events a named global bank, and ' +
+              'ordinary events the level’s course bank.',
+          );
           const [ox, oy, oz] = emitter.offset;
-          tip(detail(emitterSection, `${metres(ox)}, ${metres(oy)}, ${metres(oz)}`, 'offset'),
-            'World-axis offset from the instance to the sound centre — the cyan overlay marks it when non-zero.');
+          tip(
+            detail(emitterSection, `${metres(ox)}, ${metres(oy)}, ${metres(oz)}`, 'offset'),
+            'World-axis offset from the instance to the sound centre — the cyan overlay marks it when non-zero.',
+          );
           const shape = externalSoundShape(emitter);
           if (shape?.kind === 'sphere')
-            tip(detail(emitterSection, `${metres(shape.radius)} radius${emitter.type === 2 ? ' + directional gate' : ''}`, 'range'),
+            tip(
+              detail(
+                emitterSection,
+                `${metres(shape.radius)} radius${emitter.type === 2 ? ' + directional gate' : ''}`,
+                'range',
+              ),
               emitter.type === 2
                 ? 'Radial boundary of this directional emitter; its cone gate is kept in the payload but not drawn yet.'
-                : 'Maximum listener distance — shown as cyan great circles in the viewport.');
+                : 'Maximum listener distance — shown as cyan great circles in the viewport.',
+            );
           else if (shape?.kind === 'ellipsoid')
-            tip(detail(emitterSection, shape.halfExtents.map(metres).join(' × '), 'half-extents'),
-              'The oriented listener ellipsoid’s three half-extents, previewed in the viewport.');
+            tip(
+              detail(emitterSection, shape.halfExtents.map(metres).join(' × '), 'half-extents'),
+              'The oriented listener ellipsoid’s three half-extents, previewed in the viewport.',
+            );
           else
-            tip(detail(emitterSection, `incomplete ${emitter.params.length}-value payload`, 'range'),
-              'Extracted before variable-sized records were preserved — re-extract the level to recover these fields.');
+            tip(
+              detail(emitterSection, `incomplete ${emitter.params.length}-value payload`, 'range'),
+              'Extracted before variable-sized records were preserved — re-extract the level to recover these fields.',
+            );
           if (shape?.kind === 'ellipsoid')
-            tip(detail(emitterSection, shape.axis.map(v => Number(v).toFixed(3)).join(', '), 'axis'),
-              'Recovered orientation axis for the ellipsoid listener region.');
+            tip(
+              detail(emitterSection, shape.axis.map(v => Number(v).toFixed(3)).join(', '), 'axis'),
+              'Recovered orientation axis for the ellipsoid listener region.',
+            );
           const curve = externalSoundFalloff(emitter);
           if (curve !== null)
-            tip(detail(emitterSection, `curve ${curve} · ${externalSoundFalloffLabel(curve)}`, 'falloff'),
-              'Exact native gain curve evaluated over normalized listener distance inside the region.');
+            tip(
+              detail(emitterSection, `curve ${curve} · ${externalSoundFalloffLabel(curve)}`, 'falloff'),
+              'Exact native gain curve evaluated over normalized listener distance inside the region.',
+            );
           const filepath = externalSoundSource(ref.level, emitter.sound);
           const loopKey = `${loopOwner ?? ''}:emitter:${i}`;
           addSoundFilepath(emitterSection, filepath);
-          if (filepath) addLoopPlay(emitterSection, loopKey,
-            () => { auditionExternalSoundLoop(loopKey, ref.level, emitter.sound); },
-            'Hold the loop to hear how it carries — it stops when you stop it or deselect the prop. '
-            + 'A hit-gated emitter stays silent even in Test until the rider hits this instance.');
+          if (filepath)
+            addLoopPlay(
+              emitterSection,
+              loopKey,
+              () => {
+                auditionExternalSoundLoop(loopKey, ref.level, emitter.sound);
+              },
+              'Hold the loop to hear how it carries — it stops when you stop it or deselect the prop. ' +
+                'A hit-gated emitter stays silent even in Test until the rider hits this instance.',
+            );
         }
         if (emitters.length > 3)
-          tip(detail(emitterSection, `${emitters.length - 3} more record(s)`, 'emitters'),
-            'Only the first three records are expanded, to keep the inspector readable.');
+          tip(
+            detail(emitterSection, `${emitters.length - 3} more record(s)`, 'emitters'),
+            'Only the first three records are expanded, to keep the inspector readable.',
+          );
       }
       // The picked INSTANCE's hit sound — instance data (its ADL collision-sound record), not part of any
       // effect script. No record or the native 0=silent sentinel means no row; a present event names the
@@ -1811,8 +2705,16 @@ export function createPropTools(ctx: ToolsContext) {
       if (refSound > 0) {
         const impactSection = editSection('props-reference-impact', 'Impact sound', false);
         const source = collisionSoundSource(ref.level, refSound);
-        addSoundPreview(impactSection, source, source ? () => { auditionCollisionSound(ref.level, refSound); } : null,
-          `Audition the sound the retail game plays when the rider hits this prop (ADL event ${refSound}).`);
+        addSoundPreview(
+          impactSection,
+          source,
+          source
+            ? () => {
+                auditionCollisionSound(ref.level, refSound);
+              }
+            : null,
+          `Audition the sound the retail game plays when the rider hits this prop (ADL event ${refSound}).`,
+        );
         contactSection.domElement.after(impactSection.domElement);
       }
       // Read-only here for the reason editing stops at reference models: this table came out of an extracted
@@ -1831,13 +2733,18 @@ export function createPropTools(ctx: ToolsContext) {
       // open: it IS the panel while the paste is held, not a detail of one
       const placement = editSection('props-paste-placement', `Paste · ${plural(propClipboard.count())}`);
       detail(placement, 'move over the terrain · click to place');
-      tip(placement.add({ cancel: propClipboard.cancel }, 'cancel').name('cancel paste (Esc)'),
-        'Put the paste down without placing anything.');
+      tip(
+        placement.add({ cancel: propClipboard.cancel }, 'cancel').name('cancel paste (Esc)'),
+        'Put the paste down without placing anything.',
+      );
     } else if (propClipboard.canPaste()) {
       const clipboard = editSection('props-clipboard', 'Clipboard', false);
-      tip(clipboard.add({ paste: () => void propClipboard.paste() }, 'paste')
-        .name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
-      'Hold the copied props on the cursor, then click to place them.');
+      tip(
+        clipboard
+          .add({ paste: () => void propClipboard.paste() }, 'paste')
+          .name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
+        'Hold the copied props on the cursor, then click to place them.',
+      );
     }
   }
 
@@ -1854,33 +2761,64 @@ export function createPropTools(ctx: ToolsContext) {
    * tile every piece wears. The tile is written through the sheet's id at the moment it is picked: the picker
    * answers later, by which time an undo may have swapped the document out from under this panel.
    */
-  function addSheetControls(section: ReturnType<typeof editSection>, line: PropLine & { id: string }, sheet: PropSheet,
-    pieces: number, changed: () => void, settled: () => void) {
-    tip(detail(section, `${pieces} piece${pieces === 1 ? '' : 's'}`, 'pieces'),
-      'One tiled model per span, each placed once — the way the shipped levels cut their fences and rivers.');
+  function addSheetControls(
+    section: ReturnType<typeof editSection>,
+    line: PropLine & { id: string },
+    sheet: PropSheet,
+    pieces: number,
+    changed: () => void,
+    settled: () => void,
+  ) {
+    tip(
+      detail(section, `${pieces} piece${pieces === 1 ? '' : 's'}`, 'pieces'),
+      'One tiled model per span, each placed once — the way the shipped levels cut their fences and rivers.',
+    );
     const facing = { facing: sheet.lie ? 'lie' : 'stand' };
-    tip(section.add(facing, 'facing', { 'stand up — a fence': 'stand', 'lie flat — a river': 'lie' })
-      .name('orientation').onChange((value: string) => {
-        if (value === 'lie') sheet.lie = true; else delete sheet.lie;
-        settled();
-      }), 'Stand the sheet up along the path, or lay it flat along the ground.');
-    tip(section.add(sheet, 'size', 0.25, sheet.lie ? 80 : 20, 0.05).name(sheet.lie ? 'width (m)' : 'height (m)')
-      .onChange(changed).onFinishChange(settled),
-    sheet.lie ? 'How wide the sheet is across the path.' : 'How high the top edge stands above the ground.');
+    tip(
+      section
+        .add(facing, 'facing', { 'stand up — a fence': 'stand', 'lie flat — a river': 'lie' })
+        .name('orientation')
+        .onChange((value: string) => {
+          if (value === 'lie') sheet.lie = true;
+          else delete sheet.lie;
+          settled();
+        }),
+      'Stand the sheet up along the path, or lay it flat along the ground.',
+    );
+    tip(
+      section
+        .add(sheet, 'size', 0.25, sheet.lie ? 80 : 20, 0.05)
+        .name(sheet.lie ? 'width (m)' : 'height (m)')
+        .onChange(changed)
+        .onFinishChange(settled),
+      sheet.lie ? 'How wide the sheet is across the path.' : 'How high the top edge stands above the ground.',
+    );
     const span = {
-      get span() { return sheetSpan(line); },
-      set span(value: number) { line.spacing = Math.max(0.5, value); },
+      get span() {
+        return sheetSpan(line);
+      },
+      set span(value: number) {
+        line.spacing = Math.max(0.5, value);
+      },
     };
-    tip(section.add(span, 'span', 0.5, 60, 0.05).name('span (m)').onChange(changed).onFinishChange(settled),
+    tip(
+      section.add(span, 'span', 0.5, 60, 0.05).name('span (m)').onChange(changed).onFinishChange(settled),
       'The straight length of each piece. The sheet nudges it so a whole number lands on the last point.',
-      'Each piece wears the tile once, so the span also sets how stretched the texture looks.');
+      'Each piece wears the tile once, so the span also sets how stretched the texture looks.',
+    );
     if (sheet.lie) {
       const lift = {
-        get lift() { return sheet.lift ?? SHEET_DEFAULT_LIFT; },
-        set lift(value: number) { sheet.lift = Math.max(0, value); },
+        get lift() {
+          return sheet.lift ?? SHEET_DEFAULT_LIFT;
+        },
+        set lift(value: number) {
+          sheet.lift = Math.max(0, value);
+        },
       };
-      tip(section.add(lift, 'lift', 0, 3, 0.01).name('lift (m)').onChange(changed).onFinishChange(settled),
-        'How far the surface floats above the ground at each point.');
+      tip(
+        section.add(lift, 'lift', 0, 3, 0.01).name('lift (m)').onChange(changed).onFinishChange(settled),
+        'How far the surface floats above the ground at each point.',
+      );
     }
     const setSheet = (edit: (target: PropSheet) => void) => {
       const target = ctx.propLines.lineById(line.id);
@@ -1894,19 +2832,45 @@ export function createPropTools(ctx: ToolsContext) {
       src: sheet.texture ? textureRefUrl(sheet.texture) : null,
       value: sheet.texture ?? 'No texture — untextured clay',
       hint: 'Click to choose the tile every piece wears from the Texture Library, or clear it back to clay.',
-      onOpen: () => library.openPick({
-        title: `Choose a tile — ${line.template.name}`,
-        current: sheet.texture ?? null,
-        onPick: ref => setSheet(target => { if (ref) target.texture = ref; else delete target.texture; }),
-      }),
+      onOpen: () =>
+        library.openPick({
+          title: `Choose a tile — ${line.template.name}`,
+          current: sheet.texture ?? null,
+          onPick: ref =>
+            setSheet(target => {
+              if (ref) target.texture = ref;
+              else delete target.texture;
+            }),
+        }),
     });
-    tip(section.add({ turn: () => setSheet(target => {
-      const orient = target.orient ?? { rot: 0, mirror: false };
-      target.orient = { rot: (orient.rot + 1) % 4, mirror: orient.mirror };
-    }) }, 'turn').name('↻ turn tile'), 'Turn the tile a quarter on every piece.');
-    const blend = { get blend() { return sheet.blend === true; }, set blend(on: boolean) { if (on) sheet.blend = true; else delete sheet.blend; } };
-    tip(section.add(blend, 'blend').name('see-through').onChange(settled),
-      'Draw the tile through the alpha pass, for glass or water. Holes in a chain-link tile are cut either way.');
+    tip(
+      section
+        .add(
+          {
+            turn: () =>
+              setSheet(target => {
+                const orient = target.orient ?? { rot: 0, mirror: false };
+                target.orient = { rot: (orient.rot + 1) % 4, mirror: orient.mirror };
+              }),
+          },
+          'turn',
+        )
+        .name('↻ turn tile'),
+      'Turn the tile a quarter on every piece.',
+    );
+    const blend = {
+      get blend() {
+        return sheet.blend === true;
+      },
+      set blend(on: boolean) {
+        if (on) sheet.blend = true;
+        else delete sheet.blend;
+      },
+    };
+    tip(
+      section.add(blend, 'blend').name('see-through').onChange(settled),
+      'Draw the tile through the alpha pass, for glass or water. Holes in a chain-link tile are cut either way.',
+    );
   }
 
   function buildLineTools() {
@@ -1921,11 +2885,17 @@ export function createPropTools(ctx: ToolsContext) {
     const members = (store.mdoc.props ?? []).filter(p => p.line === line.id);
     const def = template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : undefined;
     const changed = () => propLines.changed(line);
-    const settled = () => { propLines.changed(line); rebuildTools(); };
+    const settled = () => {
+      propLines.changed(line);
+      rebuildTools();
+    };
     // What every copy carries, bound to the line's template: an edit lays the line out again, so it reaches all
     // of them. The first copy stands in as the placement for the diagnostics that read one (effects, collider).
     const host: BehaviourHost = {
-      target: template, level: template.level, key: 'props-line', changed,
+      target: template,
+      level: template.level,
+      key: 'props-line',
+      changed,
       ...(members[0] ? { placement: members[0] } : {}),
     };
     const owner: PlacedProp = { ...template, pos: [0, 0, 0], yaw: 0, scale: 1 };
@@ -1940,84 +2910,178 @@ export function createPropTools(ctx: ToolsContext) {
     const noun = sheet ? 'sheet' : 'line';
     const lineSection = editSection(sheet ? 'props-sheet' : 'props-line', sheet ? 'Sheet' : 'Line', true);
     if (store.lineDrawing) {
-      note(lineSection, line.nodes.length < 2
-        ? sheet ? 'Click the mountain to lay the sheet\'s path — it fills in from the second point.'
-          : `Click the mountain to lay the path — ${name} follows it from the second point.`
-        : 'Keep clicking to extend the path. Enter or Esc finishes.');
+      note(
+        lineSection,
+        line.nodes.length < 2
+          ? sheet
+            ? "Click the mountain to lay the sheet's path — it fills in from the second point."
+            : `Click the mountain to lay the path — ${name} follows it from the second point.`
+          : 'Keep clicking to extend the path. Enter or Esc finishes.',
+      );
     }
     if (sheet && line.nodes.length >= 2) addSheetControls(lineSection, line, sheet, members.length, changed, settled);
     else if (line.nodes.length >= 2) {
-      tip(detail(lineSection, members.length ? `${members.length} × ${name}` : `${name} — model still loading`, 'members'),
-        'How many copies the line lays out. Change the spacing or the path and it lays them out again.');
+      tip(
+        detail(
+          lineSection,
+          members.length ? `${members.length} × ${name}` : `${name} — model still loading`,
+          'members',
+        ),
+        'How many copies the line lays out. Change the spacing or the path and it lays them out again.',
+      );
       const place = { place: line.place ?? 'span' };
-      tip(lineSection.add(place, 'place', { 'between points — a fence': 'span', 'at every point — posts, lamps': 'joint' })
-        .name('place').onChange((value: string) => {
-          if (value === 'joint') line.place = 'joint'; else delete line.place;
-          settled();
-        }),
-      'Between points: one copy on each step, spanning it. At every point: one standing at each step\'s ends.');
+      tip(
+        lineSection
+          .add(place, 'place', { 'between points — a fence': 'span', 'at every point — posts, lamps': 'joint' })
+          .name('place')
+          .onChange((value: string) => {
+            if (value === 'joint') line.place = 'joint';
+            else delete line.place;
+            settled();
+          }),
+        "Between points: one copy on each step, spanning it. At every point: one standing at each step's ends.",
+      );
       const modelLength = propLines.nominalSpacing({ ...line, spacing: undefined });
       const spacing = {
-        get spacing() { return line.spacing ?? modelLength ?? 2; },
-        set spacing(value: number) { line.spacing = Math.max(0.25, value); },
+        get spacing() {
+          return line.spacing ?? modelLength ?? 2;
+        },
+        set spacing(value: number) {
+          line.spacing = Math.max(0.25, value);
+        },
       };
-      tip(lineSection.add(spacing, 'spacing', 0.25, 50, 0.05).name('spacing (m)').onChange(changed).onFinishChange(settled),
+      tip(
+        lineSection
+          .add(spacing, 'spacing', 0.25, 50, 0.05)
+          .name('spacing (m)')
+          .onChange(changed)
+          .onFinishChange(settled),
         'Metres between copies, measured straight. The line nudges it so a whole number fits.',
         line.spacing === undefined
-          ? 'Following the model\'s own length, so copies meet end to end — and grow or shrink a few percent '
-            + 'together to fit exactly.'
-          : 'Set by hand: copies keep their size and only the gaps change.');
+          ? "Following the model's own length, so copies meet end to end — and grow or shrink a few percent " +
+              'together to fit exactly.'
+          : 'Set by hand: copies keep their size and only the gaps change.',
+      );
       if (line.spacing !== undefined && modelLength !== null) {
-        tip(lineSection.add({ reset: () => { delete line.spacing; settled(); } }, 'reset')
-          .name(`↺ model length (${modelLength.toFixed(2)} m)`),
-        'Space copies by the model\'s own length again, so they meet end to end.');
+        tip(
+          lineSection
+            .add(
+              {
+                reset: () => {
+                  delete line.spacing;
+                  settled();
+                },
+              },
+              'reset',
+            )
+            .name(`↺ model length (${modelLength.toFixed(2)} m)`),
+          "Space copies by the model's own length again, so they meet end to end.",
+        );
       }
       const turn = {
-        get turn() { return line.turn ?? 0; },
-        set turn(v: number) { const t = ((v % 360) + 360) % 360; if (t) line.turn = t; else delete line.turn; },
+        get turn() {
+          return line.turn ?? 0;
+        },
+        set turn(v: number) {
+          const t = ((v % 360) + 360) % 360;
+          if (t) line.turn = t;
+          else delete line.turn;
+        },
       };
-      tip(lineSection.add(turn, 'turn', 0, 360, 1).name('turn (°)').onChange(changed).onFinishChange(settled),
-        'Turn every copy about vertical, on top of lining its long side up with the path.');
-      tip(lineSection.add({ quarter: () => { turn.turn = turn.turn + 90; settled(); } }, 'quarter').name('↻ quarter turn'),
-        'Turn every copy 90° — for a model whose run is along its short side.');
-      tip(lineSection.add({ flip: () => { turn.turn = turn.turn + 180; settled(); } }, 'flip').name('⇄ flip side'),
-        'Turn every copy round to face the other side of the line.');
+      tip(
+        lineSection.add(turn, 'turn', 0, 360, 1).name('turn (°)').onChange(changed).onFinishChange(settled),
+        'Turn every copy about vertical, on top of lining its long side up with the path.',
+      );
+      tip(
+        lineSection
+          .add(
+            {
+              quarter: () => {
+                turn.turn = turn.turn + 90;
+                settled();
+              },
+            },
+            'quarter',
+          )
+          .name('↻ quarter turn'),
+        'Turn every copy 90° — for a model whose run is along its short side.',
+      );
+      tip(
+        lineSection
+          .add(
+            {
+              flip: () => {
+                turn.turn = turn.turn + 180;
+                settled();
+              },
+            },
+            'flip',
+          )
+          .name('⇄ flip side'),
+        'Turn every copy round to face the other side of the line.',
+      );
       if (line.place !== 'joint') {
-        const rake = { get rake() { return line.rake === true; }, set rake(on: boolean) { if (on) line.rake = true; else delete line.rake; } };
-        tip(lineSection.add(rake, 'rake').name('follow slope').onChange(settled),
-          'Tilt each copy along the ground between its ends. Off: copies stand upright, seated so no end floats.');
+        const rake = {
+          get rake() {
+            return line.rake === true;
+          },
+          set rake(on: boolean) {
+            if (on) line.rake = true;
+            else delete line.rake;
+          },
+        };
+        tip(
+          lineSection.add(rake, 'rake').name('follow slope').onChange(settled),
+          'Tilt each copy along the ground between its ends. Off: copies stand upright, seated so no end floats.',
+        );
       }
-      tip(lineSection.add(line, 'scale', 0.1, 5, 0.05).name('size ×').onChange(changed).onFinishChange(settled),
-        'Scale every copy. With the spacing following the model, the copies stay end to end.');
+      tip(
+        lineSection.add(line, 'scale', 0.1, 5, 0.05).name('size ×').onChange(changed).onFinishChange(settled),
+        'Scale every copy. With the spacing following the model, the copies stay end to end.',
+      );
     }
 
     if (store.lineDrawing) {
-      tip(gui.add({ done: () => propLines.finishLine() }, 'done').name(`✔ finish ${noun}`),
-        `Stop adding points. A ${noun} with fewer than two points is discarded.`);
+      tip(
+        gui.add({ done: () => propLines.finishLine() }, 'done').name(`✔ finish ${noun}`),
+        `Stop adding points. A ${noun} with fewer than two points is discarded.`,
+      );
     } else {
-      tip(gui.add({ more: () => propLines.resumeLine() }, 'more').name('✚ add more points'),
-        `Carry on clicking points onto the end of the ${noun}.`);
+      tip(
+        gui.add({ more: () => propLines.resumeLine() }, 'more').name('✚ add more points'),
+        `Carry on clicking points onto the end of the ${noun}.`,
+      );
       if (store.selectedLineNode !== null) {
-        tip(gui.add({ del: () => propLines.deleteSelectedNode() }, 'del').name('✕ delete this point'),
-          `Remove the selected point. A ${noun} left with one point is removed.`);
+        tip(
+          gui.add({ del: () => propLines.deleteSelectedNode() }, 'del').name('✕ delete this point'),
+          `Remove the selected point. A ${noun} left with one point is removed.`,
+        );
       }
       if (line.nodes.length >= 2) pathHandleActions(ctx, gui);
     }
     if (line.nodes.length >= 2) {
       if (!sheet) {
-        tip(gui.add({ swap: () => propLines.swapProp() }, 'swap').name('⇄ swap prop…'),
-          'Pick a prop in the Prop Library — or middle-click one in the world — and the line lays that out instead.');
+        tip(
+          gui.add({ swap: () => propLines.swapProp() }, 'swap').name('⇄ swap prop…'),
+          'Pick a prop in the Prop Library — or middle-click one in the world — and the line lays that out instead.',
+        );
       }
-      tip(gui.add({ free: () => propLines.breakLine() }, 'free').name('⇥ break into props'),
-        sheet ? 'Leave the pieces exactly where they are as your own tiled props, and remove the sheet.'
+      tip(
+        gui.add({ free: () => propLines.breakLine() }, 'free').name('⇥ break into props'),
+        sheet
+          ? 'Leave the pieces exactly where they are as your own tiled props, and remove the sheet.'
           : 'Leave the copies exactly where they are as ordinary props, and remove the line.',
-        sheet ? 'For the one piece that needs a different shape. Each lands in your Prop Library as a tiled prop you '
-            + 'can edit; a sheet rebuilds its pieces whenever it changes, so an edit to one only lasts on its own.'
-          : 'For the one copy that needs to be different. A line lays its copies out again whenever it changes, so '
-            + 'an edit to one copy only lasts while it is on its own.');
+        sheet
+          ? 'For the one piece that needs a different shape. Each lands in your Prop Library as a tiled prop you ' +
+              'can edit; a sheet rebuilds its pieces whenever it changes, so an edit to one only lasts on its own.'
+          : 'For the one copy that needs to be different. A line lays its copies out again whenever it changes, so ' +
+              'an edit to one copy only lasts while it is on its own.',
+      );
     }
-    tip(gui.add({ del: () => propLines.deleteSelectedLine() }, 'del').name(`✕ delete ${noun}`),
-      sheet ? 'Remove the sheet and every piece of it.' : 'Remove the line and every copy it laid out.');
+    tip(
+      gui.add({ del: () => propLines.deleteSelectedLine() }, 'del').name(`✕ delete ${noun}`),
+      sheet ? 'Remove the sheet and every piece of it.' : 'Remove the line and every copy it laid out.',
+    );
     addDeselect();
 
     if (line.nodes.length < 2) return;
@@ -2038,36 +3102,56 @@ export function createPropTools(ctx: ToolsContext) {
    *  A set that is exactly one authored group gets the group's own panel instead. */
   function buildMultiPropTools() {
     const group = selectedAssembly();
-    if (group) { buildAssemblyTools(group); return; }
+    if (group) {
+      buildAssemblyTools(group);
+      return;
+    }
     const lightIds = selectedSetLights(store);
-    const setLights = lightIds.map(id => store.mdoc.lights?.find(light => light.id === id))
+    const setLights = lightIds
+      .map(id => store.mdoc.lights?.find(light => light.id === id))
       .filter((light): light is AuthoredLight => !!light);
     const count = setText(store.multiSel.length, setLights.length);
-    multiList.show(store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })),
-      setLights.map(light => ({ id: light.id!, label: lightLabel(light), color: light.color })));
-    tip(gui.add({ group: groupSelection }, 'group').name(`⊞ group ${count}`),
+    multiList.show(
+      store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })),
+      setLights.map(light => ({ id: light.id!, label: lightLabel(light), color: light.color })),
+    );
+    tip(
+      gui.add({ group: groupSelection }, 'group').name(`⊞ group ${count}`),
       'Tie the selection into a group that selects, moves, turns and sizes as one.',
-      'Each member keeps its own level, settings, effects and screens — the group only holds them together. '
-        + 'Clicking any member selects the whole group; its panel opens each member on its own. Ctrl+click a light '
-        + 'to bring it into the selection first.');
+      'Each member keeps its own level, settings, effects and screens — the group only holds them together. ' +
+        'Clicking any member selects the whole group; its panel opens each member on its own. Ctrl+click a light ' +
+        'to bring it into the selection first.',
+    );
     // Shared by Props mode and an Edit marquee narrowed to props.
-    if (store.multiSel.some(i => {
-      const prop = store.mdoc.props?.[i];
-      return prop && !prop.line && !isEffectTriggerProp(prop);
-    })) {
-      tip(gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
+    if (
+      store.multiSel.some(i => {
+        const prop = store.mdoc.props?.[i];
+        return prop && !prop.line && !isEffectTriggerProp(prop);
+      })
+    ) {
+      tip(
+        gui.add({ replace: ctx.replaceSelectedProp }, 'replace').name('⇄ replace prop'),
         'Choose one prop in the world or the Prop Library to replace the selected props, keeping each position, rotation and size.',
-        'The chosen prop supplies its settings and effects. Trigger volumes and prop-line members stay unchanged. Undo restores the whole set.');
+        'The chosen prop supplies its settings and effects. Trigger volumes and prop-line members stay unchanged. Undo restores the whole set.',
+      );
     }
     if (propClipboard.canCopy()) {
-      tip(gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${count} (Ctrl+C)`),
-        'Copy the set; Ctrl+V holds it on the cursor to place.');
-      tip(gui.add({ cut: propClipboard.cut }, 'cut').name(`cut ${count} (Ctrl+X)`),
-        'Copy the set and remove the originals.');
+      tip(
+        gui.add({ copy: propClipboard.copy }, 'copy').name(`⧉ copy ${count} (Ctrl+C)`),
+        'Copy the set; Ctrl+V holds it on the cursor to place.',
+      );
+      tip(
+        gui.add({ cut: propClipboard.cut }, 'cut').name(`cut ${count} (Ctrl+X)`),
+        'Copy the set and remove the originals.',
+      );
     }
     if (propClipboard.canPaste())
-      tip(gui.add({ paste: () => void propClipboard.paste() }, 'paste').name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
-        'Hold the copied props on the cursor in Props mode, then click to place them.');
+      tip(
+        gui
+          .add({ paste: () => void propClipboard.paste() }, 'paste')
+          .name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
+        'Hold the copied props on the cursor in Props mode, then click to place them.',
+      );
     gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete ${count}`);
     addDeselect();
   }
@@ -2083,21 +3167,30 @@ export function createPropTools(ctx: ToolsContext) {
   function buildLightPlacementTools() {
     propPreview.hide();
     const section = editSection('props-light-placement', 'New light'); // open: it IS the panel, not a detail of one
-    tip(section.add(lightTool, 'kind', { point: 'point', spot: 'spot' }).name('type')
-      .onChange(() => rebuildTools()), // a spot grows the cone row; a point has no cone to show
-      'Point radiates in every direction; spot casts a cone straight down, which you aim after placing.');
+    tip(
+      section
+        .add(lightTool, 'kind', { point: 'point', spot: 'spot' })
+        .name('type')
+        .onChange(() => rebuildTools()), // a spot grows the cone row; a point has no cone to show
+      'Point radiates in every direction; spot casts a cone straight down, which you aim after placing.',
+    );
     tip(section.addColor(lightTool, 'color').name('colour'), 'The hue new lights drop with.');
-    tip(section.add(lightTool, 'intensity', 0, 6, 0.1).name('brightness'),
-      'Peak HDR strength. Values above 1 are intentionally brighter than display white.');
+    tip(
+      section.add(lightTool, 'intensity', 0, 6, 0.1).name('brightness'),
+      'Peak HDR strength. Values above 1 are intentionally brighter than display white.',
+    );
     tip(section.add(lightTool, 'reach', 5, 150, 1).name('reach (m)'), 'How far the light carries before it fades out.');
     if (lightTool.kind === 'spot')
-      tip(section.add(lightTool, 'cone', 5, 80, 1).name('cone half-angle (°)'),
-        'Half-angle of the cone. A new spot points straight down; aim it from its own panel once placed.');
-    tip(section.add(lightTool, 'glint', { off: 0, 'small (16)': 16, 'medium (32)': 32, 'large (64)': 64 })
-      .name('glint'),
+      tip(
+        section.add(lightTool, 'cone', 5, 80, 1).name('cone half-angle (°)'),
+        'Half-angle of the cone. A new spot points straight down; aim it from its own panel once placed.',
+      );
+    tip(
+      section.add(lightTool, 'glint', { off: 0, 'small (16)': 16, 'medium (32)': 32, 'large (64)': 64 }).name('glint'),
       'Draw the game’s runtime sparkle on the lights you place.',
-      'The halo, core and twinkle star a street lamp or course flare carries (docs/047). Exported as the '
-      + 'light record’s SpriteRes, the engine’s own gate.');
+      'The halo, core and twinkle star a street lamp or course flare carries (docs/047). Exported as the ' +
+        'light record’s SpriteRes, the engine’s own gate.',
+    );
     note(gui, 'Click the mountain to drop a light. One per click — these settings stay for the next one.');
     placementCancelButton(ctx);
   }
@@ -2113,8 +3206,7 @@ export function createPropTools(ctx: ToolsContext) {
   function buildLightTools() {
     propPreview.hide(); // the prop thumbnail card doesn't apply to a light
     const lights = store.mdoc.lights ?? [];
-    const lightIndex = store.selectedLight === null ? -1
-      : lights.findIndex(entry => entry.id === store.selectedLight);
+    const lightIndex = store.selectedLight === null ? -1 : lights.findIndex(entry => entry.id === store.selectedLight);
     const light = lightIndex < 0 ? undefined : lights[lightIndex];
     if (!light) {
       const reference = store.selectedRefLight;
@@ -2134,14 +3226,24 @@ export function createPropTools(ctx: ToolsContext) {
   /** Sync the Prop Tools preview card: the selected placed prop, else the held (armed) prop, else hidden.
    *  Called from buildPropTools (props mode) and updatePaintUi (so it clears when you leave props). */
   function updatePropPreview() {
-    if (!inPropSubTool()) { propPreview.hide(); return; } // the card belongs to the prop tools, not light / rail / gem
+    if (!inPropSubTool()) {
+      propPreview.hide();
+      return;
+    } // the card belongs to the prop tools, not light / rail / gem
     const sel = store.selectedProp !== null ? store.mdoc.props?.[store.selectedProp] : undefined;
     // A group previews its whole assembly, with the component list under the name (docs/015) — unless one of its
     // members is open, which previews alone under its own name, because the panel below is that one model's.
-    const show = (level: string, model: number, name: string, def: GroupDef | null | undefined, groupKey: string,
-      instance?: string | null) => {
+    const show = (
+      level: string,
+      model: number,
+      name: string,
+      def: GroupDef | null | undefined,
+      groupKey: string,
+      instance?: string | null,
+    ) => {
       const member = openMemberOf(groupKey, def);
-      if (member) propPreview.show(level, member.model, shortPropName(member.name), propLevels.get(level), null, instance);
+      if (member)
+        propPreview.show(level, member.model, shortPropName(member.name), propLevels.get(level), null, instance);
       else propPreview.show(level, model, name, propLevels.get(level), def ?? null, instance);
     };
     // Every card for a PLACED prop names which placement it is, the same way the box-selection list already
@@ -2149,11 +3251,18 @@ export function createPropTools(ctx: ToolsContext) {
     // rather than making you open its effect to find out which of twenty identical panes you are holding.
     const assembly = sel ? null : selectedAssembly();
     if (isEffectTriggerProp(sel)) propPreview.hide();
-    else if (sel) show(sel.level, sel.model, shortPropName(sel.name), defOfPlaced(sel),
-      placedGroupKey(sel, store.selectedProp!), sel.id ?? `#${store.selectedProp}`);
+    else if (sel)
+      show(
+        sel.level,
+        sel.model,
+        shortPropName(sel.name),
+        defOfPlaced(sel),
+        placedGroupKey(sel, store.selectedProp!),
+        sel.id ?? `#${store.selectedProp}`,
+      );
     // an authored group previews every member where it stands, across levels (docs/015 · Authored groups)
-    else if (assembly) propPreview.showSet(assemblyLabel(assembly), assemblyPreviewMembers(assembly),
-      assemblyLights(assembly));
+    else if (assembly)
+      propPreview.showSet(assemblyLabel(assembly), assemblyPreviewMembers(assembly), assemblyLights(assembly));
     // a prop line shows the model it lays out, named by the line (docs/070)
     else if (store.selectedLine !== null && ctx.propLines.selected()) {
       const line = ctx.propLines.selected()!;
@@ -2161,28 +3270,54 @@ export function createPropTools(ctx: ToolsContext) {
       // a sheet's template names no model of its own: its first piece is what it looks like (docs/071)
       const first = sheet ? (store.mdoc.props ?? []).find(p => p.line === store.selectedLine) : undefined;
       if (sheet && !first) propPreview.hide();
-      else show(template.level, first?.model ?? template.model, shortPropName(template.name),
-        template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : null, lineGroupKey(line),
-        store.selectedLine);
+      else
+        show(
+          template.level,
+          first?.model ?? template.model,
+          shortPropName(template.name),
+          template.group ? groupDefIdx.get(`${template.level}:${template.group}`) : null,
+          lineGroupKey(line),
+          store.selectedLine,
+        );
     }
     // the armed prop is on the cursor, not in the document — it has no placement identity to show yet
-    else if (store.armedProp) show(store.armedProp.level, store.armedProp.model, shortPropName(store.armedProp.name),
-      store.armedProp.group ? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`) : null,
-      heldGroupKey(store.armedProp));
+    else if (store.armedProp)
+      show(
+        store.armedProp.level,
+        store.armedProp.model,
+        shortPropName(store.armedProp.name),
+        store.armedProp.group ? groupDefIdx.get(`${store.armedProp.level}:${store.armedProp.group}`) : null,
+        heldGroupKey(store.armedProp),
+      );
     // A reference pick's number is its native Instances[] row — the exact value Effects mode labels "Prop
     // number". A model-only pick carries no instance, so it stays nameless there.
-    else if (store.selectedRefProp) propPreview.show(store.selectedRefProp.level, store.selectedRefProp.model, shortPropName(store.selectedRefProp.name), propLevels.get(store.selectedRefProp.level), null,
-      store.selectedRefProp.sourceIndex === undefined ? null : `prop #${store.selectedRefProp.sourceIndex}`);
+    else if (store.selectedRefProp)
+      propPreview.show(
+        store.selectedRefProp.level,
+        store.selectedRefProp.model,
+        shortPropName(store.selectedRefProp.name),
+        propLevels.get(store.selectedRefProp.level),
+        null,
+        store.selectedRefProp.sourceIndex === undefined ? null : `prop #${store.selectedRefProp.sourceIndex}`,
+      );
     else propPreview.hide(); // idle Props mode is the launcher only; do not reserve space for an empty preview
   }
 
   /** True when Props mode is showing the PROP tools (buildPropTools) — not the light / rail / gem sub-tools. These
    *  are the states the prop preview card applies to; mirrors the rebuildTools props branch. */
   function inPropSubTool(): boolean {
-    return store.currentMode === 'props' && store.selectedLight === null && store.selectedRefLight === null
-      && !store.railDrawing && store.selectedRail === null && store.selectedGem === null
-      && store.selectedScreen === null && store.selectedRefScreen === null
-      && !store.gemArmed && !viewport.lightPlacing; // mirrors the panel routing: a held tool owns the toolbox
+    return (
+      store.currentMode === 'props' &&
+      store.selectedLight === null &&
+      store.selectedRefLight === null &&
+      !store.railDrawing &&
+      store.selectedRail === null &&
+      store.selectedGem === null &&
+      store.selectedScreen === null &&
+      store.selectedRefScreen === null &&
+      !store.gemArmed &&
+      !viewport.lightPlacing
+    ); // mirrors the panel routing: a held tool owns the toolbox
   }
 
   return { buildPropTools, buildLineTools, buildLightTools, buildLightPlacementTools, updatePropPreview };

@@ -126,7 +126,7 @@ export const MUSIC_EVENT_LABELS = [
   'finish stinger',
 ] as const;
 
-const signedByte = (value: number): number => value >= 0x80 ? value - 0x100 : value;
+const signedByte = (value: number): number => (value >= 0x80 ? value - 0x100 : value);
 
 export function musicNodeKind(node: ReferenceMusicNode): MusicNodeKind {
   return node.Sample < 0 ? 'loop' : node.Sample === 0 ? 'marker' : 'audio';
@@ -174,7 +174,7 @@ export function musicEventRoutes(graph: ReferenceMusicGraph, track = 0): MusicEv
   if (track < 0 || track >= graph.Tracks) return [];
   for (let event = 0; event < graph.Events; event++) {
     for (let section = 0; section < graph.Sections; section++) {
-      const at = ((event * graph.Tracks + track) * graph.Sections) + section;
+      const at = (event * graph.Tracks + track) * graph.Sections + section;
       const routerIndex = table[at];
       if (routerIndex === undefined || routerIndex >= graph.Routers.length) continue;
       const router = decodeMusicRouter(graph.Routers[routerIndex]);
@@ -182,8 +182,14 @@ export function musicEventRoutes(graph: ReferenceMusicGraph, track = 0): MusicEv
       const key = `${event}:${routerIndex}:${router.target}`;
       let route = grouped.get(key);
       if (!route) {
-        route = { event, label: musicEventLabel(event), router: routerIndex,
-          target: router.target, sections: [], flags: router.flags };
+        route = {
+          event,
+          label: musicEventLabel(event),
+          router: routerIndex,
+          target: router.target,
+          sections: [],
+          flags: router.flags,
+        };
         grouped.set(key, route);
       }
       route.sections.push(section);
@@ -196,8 +202,12 @@ export function musicEventRoutes(graph: ReferenceMusicGraph, track = 0): MusicEv
  * the first inclusive range containing the control value. Multi-link loop nodes use a live decrementing loop
  * counter instead, so this study stops at those rather than pretending the path level applies. Gameplay event
  * jumps and variable remaps are likewise outside this static walk. */
-export function musicWalkAtLevel(graph: ReferenceMusicGraph, start: number, pathLevel = 80,
-  maxSamples = 32): MusicWalk {
+export function musicWalkAtLevel(
+  graph: ReferenceMusicGraph,
+  start: number,
+  pathLevel = 80,
+  maxSamples = 32,
+): MusicWalk {
   const nodes: number[] = [];
   const samples: MusicWalkStep[] = [];
   const seen = new Set<number>();
@@ -208,13 +218,15 @@ export function musicWalkAtLevel(graph: ReferenceMusicGraph, start: number, path
     if (seen.has(at)) return { nodes, samples, stop: 'loop', at, branches: [] };
     const node = graph.Nodes[at];
     if (!node) return { nodes, samples, stop: 'terminal', at, branches: [] };
-    seen.add(at); nodes.push(at);
+    seen.add(at);
+    nodes.push(at);
     if (node.Sample > 0 && node.Sample <= graph.Samples.length) {
       samples.push({ node: at, sample: node.Sample });
       if (samples.length >= sampleCap) return { nodes, samples, stop: 'limit', at, branches: [] };
     }
-    const links = node.LinkRaw.map(decodeMusicLink)
-      .filter(link => link.target >= 0 && link.target < graph.Nodes.length);
+    const links = node.LinkRaw.map(decodeMusicLink).filter(
+      link => link.target >= 0 && link.target < graph.Nodes.length,
+    );
     if (!links.length) return { nodes, samples, stop: 'terminal', at, branches: [] };
     // A loop node's branching control is its live counter, not the race path level. One link is unambiguous.
     if (node.Sample < 0 && links.length > 1)

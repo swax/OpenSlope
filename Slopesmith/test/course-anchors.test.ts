@@ -3,11 +3,21 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  courseCenters, startFrame, finishFrame, startGateLines, startStation, finishStation, aiPathLines,
+  courseCenters,
+  startFrame,
+  finishFrame,
+  startGateLines,
+  startStation,
+  finishStation,
+  aiPathLines,
 } from '../src/core/doc/course';
 import { blankMountain, migrateMountain, starterCourse } from '../src/core/doc/mountain';
 import {
-  stageAreaAnchors, dtfZeroPoint, reconstructPathLine, type CoursePathFile, type InstancesFile,
+  stageAreaAnchors,
+  dtfZeroPoint,
+  reconstructPathLine,
+  type CoursePathFile,
+  type InstancesFile,
 } from '../src/core/reference/terrain';
 import type { CoursePath, V3 } from '../src/core/doc/types';
 import { check, failures, near } from './check';
@@ -32,8 +42,10 @@ const MAPS = join(process.cwd(), '..', 'Maps');
   check(startStation(course) === 0, 'no anchor: the run starts at station 0');
   check(near(finishStation(course), finishStation(course)), 'no anchor: the finish station is the run length');
   check(sameV(startFrame(course).pos, knots[0].pos), 'no anchor: startFrame is knot 0');
-  check(sameV(finishFrame(course).pos, courseCenters(course)[courseCenters(course).length - 1], 1e-3),
-    'no anchor: finishFrame is the tail');
+  check(
+    sameV(finishFrame(course).pos, courseCenters(course)[courseCenters(course).length - 1], 1e-3),
+    'no anchor: finishFrame is the tail',
+  );
   check(startFrame(course).width === knots[0].width, 'no anchor: the start frame carries knot 0’s floor width');
 
   // The gate lead-ins and the AI lines must still begin at the head of the line.
@@ -47,8 +59,10 @@ const MAPS = join(process.cwd(), '..', 'Maps');
   const ai = aiPathLines(course, 1, false);
   check(ai.length === 6, 'no anchor: six AI lines');
   check(near(ai[0][0][1], centers[0][1], 0.01), 'no anchor: AI lines start at the head’s station');
-  check(Math.hypot(ai[0][0][0] - centers[0][0], ai[0][0][2] - centers[0][2]) < 4,
-    'no anchor: an AI line starts within the gate row of the centre');
+  check(
+    Math.hypot(ai[0][0][0] - centers[0][0], ai[0][0][2] - centers[0][2]) < 4,
+    'no anchor: an AI line starts within the gate row of the centre',
+  );
   check(ai[0].length === centers.length, 'no anchor: an AI line spans the whole run');
 }
 
@@ -64,7 +78,10 @@ const MAPS = join(process.cwd(), '..', 'Maps');
   check(sameV(startFrame(course).pos, mid), 'placed start: the gate sits where the flag was dropped');
 
   const gates = startGateLines(course);
-  check(gates.every(g => sameV(g[0], g[0])), 'placed start: every gate line still exists');
+  check(
+    gates.every(g => sameV(g[0], g[0])),
+    'placed start: every gate line still exists',
+  );
   check(Math.abs(gates[0][0][1] - mid[1]) < 3, 'placed start: lead-ins begin at the flag, not the run’s head');
 
   const ai = aiPathLines(course, 1, false);
@@ -121,8 +138,9 @@ for (const level of ['MEGAPLE', 'GARI', 'MERQUER', 'MESA', 'ELYSIUM', 'SNOW']) {
 
   // The start is NOT an end of the recovered line - the whole reason it is read rather than derived.
   const lines = (aip.RaceLines ?? []).map(r => r.PathPos!).filter(Boolean);
-  const nearestHead = Math.min(...lines.map(p =>
-    Math.hypot(-p[0] / 100 - start[0], p[2] / 100 - start[1], -p[1] / 100 - start[2])));
+  const nearestHead = Math.min(
+    ...lines.map(p => Math.hypot(-p[0] / 100 - start[0], p[2] / 100 - start[1], -p[1] / 100 - start[2])),
+  );
   console.log(`     ${level}: start is ${nearestHead.toFixed(0)} m from the nearest race-line head`);
 
   // The ride spawns on the START ROW - a StartPosList slot - and faces down that slot's own path. Both halves
@@ -139,12 +157,16 @@ for (const level of ['MEGAPLE', 'GARI', 'MERQUER', 'MESA', 'ELYSIUM', 'SNOW']) {
   }
   // Heading over the same 15 m baseline the ride uses - a start path's FIRST step is a staging jog and
   // Elysium's climbs, so a one-step reading calls it uphill.
-  let far = slot[0], run = 0;
+  let far = slot[0],
+    run = 0;
   for (let i = 1; i < slot.length && run < 15; i++) {
     run += Math.hypot(slot[i][0] - far[0], slot[i][1] - far[1], slot[i][2] - far[2]);
     far = slot[i];
   }
-  check(far[1] < slot[0][1], `${level}: the spawn heading runs downhill (${(far[1] - slot[0][1]).toFixed(1)} m over ${run.toFixed(0)} m)`);
+  check(
+    far[1] < slot[0][1],
+    `${level}: the spawn heading runs downhill (${(far[1] - slot[0][1]).toFixed(1)} m over ${run.toFixed(0)} m)`,
+  );
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll course-anchor checks passed.');

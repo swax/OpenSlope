@@ -23,13 +23,22 @@ export class OnFootFacing {
   private ready = false;
   private turning = false;
 
-  clear(): void { this.ready = false; this.turning = false; this.turnDelta = 0; }
+  clear(): void {
+    this.ready = false;
+    this.turning = false;
+    this.turnDelta = 0;
+  }
 
-  step(dt: number, bodyQuaternion: THREE.Quaternion, headQuaternion: THREE.Quaternion | null,
-       horizontalSpeed: number): THREE.Vector3 {
+  step(
+    dt: number,
+    bodyQuaternion: THREE.Quaternion,
+    headQuaternion: THREE.Quaternion | null,
+    horizontalSpeed: number,
+  ): THREE.Vector3 {
     this.turnDelta = 0;
     this.bodyForward.set(0, 0, 1).applyQuaternion(bodyQuaternion).setY(0);
-    if (this.bodyForward.lengthSq() < 1e-8) this.bodyForward.set(0, 0, 1); else this.bodyForward.normalize();
+    if (this.bodyForward.lengthSq() < 1e-8) this.bodyForward.set(0, 0, 1);
+    else this.bodyForward.normalize();
     const bodyYaw = yawOf(this.bodyForward);
     if (!this.ready || horizontalSpeed > MOVING_SPEED || !headQuaternion) {
       this.yaw = bodyYaw;
@@ -57,5 +66,7 @@ export class OnFootFacing {
     return this.resolve();
   }
 
-  private resolve(): THREE.Vector3 { return this.facing.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
+  private resolve(): THREE.Vector3 {
+    return this.facing.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+  }
 }

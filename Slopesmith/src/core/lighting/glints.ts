@@ -94,7 +94,9 @@ export function glintSizeClass(spriteRes: number | undefined): number {
  * per the law. Our display hues are already peak-normalized, so the peak divides out either way.
  */
 export function glintHue(rgb: readonly number[]): [number, number, number] {
-  const r = rgb[0] ?? 0, g = rgb[1] ?? 0, b = rgb[2] ?? 0;
+  const r = rgb[0] ?? 0,
+    g = rgb[1] ?? 0,
+    b = rgb[2] ?? 0;
   const length = Math.hypot(r, g, b);
   return length > 1e-4 ? [r / length, g / length, b / length] : [0, 0, 0];
 }

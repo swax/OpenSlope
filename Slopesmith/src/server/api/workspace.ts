@@ -8,28 +8,47 @@ import type { LabelDefinition, V3 } from '../../core/doc/types';
 import { changeSummary, describeChanges } from '../../core/doc/compare';
 import { migrateMountain } from '../../core/doc/mountain';
 import {
-  documentRegisters, objectFamilyOf, objectFieldRegister, objectRegister, quadRegister, readRegister,
-  type ObjectFamily, type QuadField, type RegisterKey, type RegisterValue,
+  documentRegisters,
+  objectFamilyOf,
+  objectFieldRegister,
+  objectRegister,
+  quadRegister,
+  readRegister,
+  type ObjectFamily,
+  type QuadField,
+  type RegisterKey,
+  type RegisterValue,
 } from '../../core/doc/registers';
 import { validateEffectsDocument } from '../../core/effects/document';
 import { surfaceHeightSampler } from '../../core/mesh/retopology/integrate-surface-fit';
 import * as projects from '../projects';
 import {
-  asBundle, downloadDocument, downloadProject, duplicateProject, missingAssets, uploadProject, type BundleAsset,
+  asBundle,
+  downloadDocument,
+  downloadProject,
+  duplicateProject,
+  missingAssets,
+  uploadProject,
+  type BundleAsset,
 } from '../project-transfer';
 import { migrateLegacyProjectAssets, withProjectAssets } from '../project-assets';
 import { systemEvent } from '../session/chat';
 import { trimPlayerSeats } from '../session/capacity';
 import { presenceFor } from '../session/presence';
 import {
-  assign, joinRoom, planRevert, roomFor, roomWriters, storedRoom, takeSnapshot, type RevertRequest,
+  assign,
+  joinRoom,
+  planRevert,
+  roomFor,
+  roomWriters,
+  storedRoom,
+  takeSnapshot,
+  type RevertRequest,
 } from '../session/room';
 import { broadcastRegisters } from '../session/register-messages';
 import { saveWorkspaceConfig, workspaceConfig } from '../workspace-config';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
-import {
-  gate, link, type ApiAction, type ApiActionTemplate, type ApiLink, type HateoasEnvelope,
-} from './hateoas';
+import { gate, link, type ApiAction, type ApiActionTemplate, type ApiLink, type HateoasEnvelope } from './hateoas';
 import { courseRuler, expandIntents } from './intents';
 
 /** An uploaded map carries its custom assets inline, base64 by content hash, so the cap is a whole map's
@@ -46,7 +65,9 @@ const TRANSFER_BODY_LIMIT = 256 * 1024 * 1024;
  *  was also the one write that dead-ended the walk. The 409 stays bare: what a loser of that race needs is
  *  the snapshot to rebase onto, and its links would describe a state the caller does not yet hold. */
 async function saveOrConflict(
-  res: ServerResponse, identity: Identity | undefined, write: () => Promise<projects.ProjectSnapshot>,
+  res: ServerResponse,
+  identity: Identity | undefined,
+  write: () => Promise<projects.ProjectSnapshot>,
 ): Promise<void> {
   try {
     const snapshot = await write();
@@ -125,16 +146,16 @@ function revertPhrase(request: RevertRequest): string {
 /** Whether this identity may edit / manage this map, for gating actions the way the write routes will
  *  actually answer. Read-only when the caller has no account at all. */
 function projectGates(project: projects.ProjectManifest, identity: Identity | undefined) {
-  const actor = identity && 'user' in identity
-    ? { id: identity.user.id, role: identity.user.role } : undefined;
+  const actor = identity && 'user' in identity ? { id: identity.user.id, role: identity.user.role } : undefined;
   const edit = gate(identity, 'editor');
-  const restricted = actor && !('disabled' in edit) && !projects.canEditProject(project, actor)
-    ? { disabled: true as const,
-      disabledReason: 'This map is restricted to editors selected by its owner.' }
-    : edit;
-  const manage = actor && projects.canManageProject(project, actor)
-    ? {} : { disabled: true as const,
-      disabledReason: 'Only this map\'s owner or a moderator can do that.' };
+  const restricted =
+    actor && !('disabled' in edit) && !projects.canEditProject(project, actor)
+      ? { disabled: true as const, disabledReason: 'This map is restricted to editors selected by its owner.' }
+      : edit;
+  const manage =
+    actor && projects.canManageProject(project, actor)
+      ? {}
+      : { disabled: true as const, disabledReason: "Only this map's owner or a moderator can do that." };
   return { edit: restricted, manage };
 }
 
@@ -154,82 +175,123 @@ function projectEnvelope(project: projects.ProjectManifest, identity: Identity |
     link('self', base, 'This map: manifest, revision, and its whole document'),
     link('collection', '/api/projects'),
     link('root', '/api'),
-    link('registers', `${base}/registers`, 'The map\'s authoring state as registers; POST edits here'),
-    link('ground', `${base}/ground`, 'POST { points: [[x,z],…] } — the surface height under each; the '
-      + '`seat` action is what moves placements onto it'),
-    link('course', `${base}/course`, 'The run as a ruler: its length, each knot\'s station, and a station table '
-      + '(?every=25, or ?at=120,340) with heading, floor width and ground — the frame pos: {station, lateral} '
-      + 'places in; ?near=x,z;x,z answers where points already on the map stand in it'),
-    link('labels', `${base}/labels`, 'The map\'s semantic edit groups, and which quads and props each holds'),
-    link('checkpoints', `${base}/checkpoints`, 'The map\'s history ring'),
+    link('registers', `${base}/registers`, "The map's authoring state as registers; POST edits here"),
+    link(
+      'ground',
+      `${base}/ground`,
+      'POST { points: [[x,z],…] } — the surface height under each; the ' +
+        '`seat` action is what moves placements onto it',
+    ),
+    link(
+      'course',
+      `${base}/course`,
+      "The run as a ruler: its length, each knot's station, and a station table " +
+        '(?every=25, or ?at=120,340) with heading, floor width and ground — the frame pos: {station, lateral} ' +
+        'places in; ?near=x,z;x,z answers where points already on the map stand in it',
+    ),
+    link('labels', `${base}/labels`, "The map's semantic edit groups, and which quads and props each holds"),
+    link('checkpoints', `${base}/checkpoints`, "The map's history ring"),
     link('download', `${base}/download?assets=bytes`, 'The whole map as one portable bundle'),
-    link('textures', `/api/textures?level=Custom&project=${id}`, 'This map\'s own uploaded tiles'),
-    link('props', `/api/custom-props?project=${id}`, 'This map\'s own imported models'),
-    link('sounds', `/api/custom-sounds?project=${id}`, 'This map\'s own hit/ambient sounds'),
-    link('music', `/api/custom-music?project=${id}`, 'This map\'s own race-music tracks'),
-    link('skies', `/api/skybox?project=${id}`, 'Every sky source: shipped level skies and this map\'s uploads'),
+    link('textures', `/api/textures?level=Custom&project=${id}`, "This map's own uploaded tiles"),
+    link('props', `/api/custom-props?project=${id}`, "This map's own imported models"),
+    link('sounds', `/api/custom-sounds?project=${id}`, "This map's own hit/ambient sounds"),
+    link('music', `/api/custom-music?project=${id}`, "This map's own race-music tracks"),
+    link('skies', `/api/skybox?project=${id}`, "Every sky source: shipped level skies and this map's uploads"),
     link('reference', '/api/reference', 'The extracted levels everything can be borrowed from'),
     link('guide', '/api/guide', 'How to author through this API'),
   ];
   const actions: ApiAction[] = [
     {
-      rel: 'assignRegisters', href: `${base}/registers`, method: 'POST',
-      title: 'Edit the map: absolute last-writer-wins register assignments, plus `rules` that paint, texture '
-        + 'and re-label whole labelled sections in one call, and intents on a change — a position in run terms '
-        + '{station, lateral, above}, `repeat` for a row, `from` for a variant, `shape` for a model',
+      rel: 'assignRegisters',
+      href: `${base}/registers`,
+      method: 'POST',
+      title:
+        'Edit the map: absolute last-writer-wins register assignments, plus `rules` that paint, texture ' +
+        'and re-label whole labelled sections in one call, and intents on a change — a position in run terms ' +
+        '{station, lateral, above}, `repeat` for a row, `from` for a variant, `shape` for a model',
       schema: '/api/schemas/AssignRegisters',
-      body: { changes: [{ key: 'g/name', value: '' }] }, ...edit,
+      body: { changes: [{ key: 'g/name', value: '' }] },
+      ...edit,
     },
     {
-      rel: 'queryGround', href: `${base}/ground`, method: 'POST',
+      rel: 'queryGround',
+      href: `${base}/ground`,
+      method: 'POST',
       title: 'Where the ground is: top-surface heights on the current document under [x, z] points',
-      schema: '/api/schemas/GroundQuery', body: { points: [[0, 0]] },
+      schema: '/api/schemas/GroundQuery',
+      body: { points: [[0, 0]] },
     },
     {
-      rel: 'seat', href: `${base}/seat`, method: 'POST',
-      title: 'Put placements on the ground: props by label, and anything named by id, onto the surface '
-        + 'under them (a rail node by node)',
+      rel: 'seat',
+      href: `${base}/seat`,
+      method: 'POST',
+      title:
+        'Put placements on the ground: props by label, and anything named by id, onto the surface ' +
+        'under them (a rail node by node)',
       schema: '/api/schemas/SeatPlacements',
-      body: { where: { labels: [] }, ids: [], offset: 0 }, ...edit,
+      body: { where: { labels: [] }, ids: [], offset: 0 },
+      ...edit,
     },
     {
-      rel: 'preflight', href: `/api/preflight?project=${id}`, method: 'POST',
+      rel: 'preflight',
+      href: `/api/preflight?project=${id}`,
+      method: 'POST',
       title: 'What an export of a document would ship: its tiles, cells, imported models and sky',
-      schema: '/api/schemas/Preflight', body: { doc: {} },
+      schema: '/api/schemas/Preflight',
+      body: { doc: {} },
     },
     {
-      rel: 'saveDocument', href: `${base}/document`, method: 'PUT',
+      rel: 'saveDocument',
+      href: `${base}/document`,
+      method: 'PUT',
       title: 'Replace the whole document optimistically — the only topology write',
       schema: '/api/schemas/SaveDocument',
-      body: { baseRevision: project.revision, document: {} }, ...edit,
+      body: { baseRevision: project.revision, document: {} },
+      ...edit,
     },
     {
-      rel: 'checkpoint', href: `${base}/checkpoints`, method: 'POST',
-      title: 'Keep this moment in the map\'s history',
-      schema: '/api/schemas/TakeCheckpoint', body: { note: '' }, ...edit,
+      rel: 'checkpoint',
+      href: `${base}/checkpoints`,
+      method: 'POST',
+      title: "Keep this moment in the map's history",
+      schema: '/api/schemas/TakeCheckpoint',
+      body: { note: '' },
+      ...edit,
     },
     {
-      rel: 'setPermissions', href: `${base}/permissions`, method: 'PUT',
+      rel: 'setPermissions',
+      href: `${base}/permissions`,
+      method: 'PUT',
       title: 'Restrict who may edit this map',
-      schema: '/api/schemas/SetMapPermissions', body: { editorIds: null }, ...manage,
+      schema: '/api/schemas/SetMapPermissions',
+      body: { editorIds: null },
+      ...manage,
     },
     {
-      rel: 'delete', href: base, method: 'DELETE',
-      title: 'Delete this map — its name retires for good', ...manage,
+      rel: 'delete',
+      href: base,
+      method: 'DELETE',
+      title: 'Delete this map — its name retires for good',
+      ...manage,
     },
   ];
   const templates: ApiActionTemplate[] = [
     {
-      rel: 'duplicate', hrefTemplate: `${base}/duplicate?name={name}`, method: 'POST',
+      rel: 'duplicate',
+      hrefTemplate: `${base}/duplicate?name={name}`,
+      method: 'POST',
       title: 'Fork this map under a new name',
     },
     {
-      rel: 'uploadTexture', hrefTemplate: `/api/texture-upload?project=${id}&name={stem}`, method: 'POST',
+      rel: 'uploadTexture',
+      hrefTemplate: `/api/texture-upload?project=${id}&name={stem}`,
+      method: 'POST',
       title: 'Add a tile to this map\'s library; paint it as "Custom/<name>.png"',
       alternateEncoding: {
         contentType: 'image/png',
-        description: 'Raw image bytes as the body; re-encoded RGBA and shrunk to a 512 px edge. The '
-          + 'response\'s `name` is the stored stem — a taken name becomes name_2 and up.',
+        description:
+          'Raw image bytes as the body; re-encoded RGBA and shrunk to a 512 px edge. The ' +
+          "response's `name` is the stored stem — a taken name becomes name_2 and up.",
       },
     },
     {
@@ -237,26 +299,35 @@ function projectEnvelope(project: projects.ProjectManifest, identity: Identity |
       // sheet, would otherwise upload beside its own work and paint from `name_2` while the original stayed
       // behind. Replace lands the new art under a free name, repoints the records that referenced the old
       // one, and removes it — so the caller repaints from the answer's `name`, as it does after any upload.
-      rel: 'replaceTexture', hrefTemplate: `/api/texture-replace?project=${id}&name={stem}`, method: 'POST',
-      title: 'Give a tile already in this map\'s library new art; answers {replaced, name}',
+      rel: 'replaceTexture',
+      hrefTemplate: `/api/texture-replace?project=${id}&name={stem}`,
+      method: 'POST',
+      title: "Give a tile already in this map's library new art; answers {replaced, name}",
       alternateEncoding: {
         contentType: 'image/png',
-        description: 'Raw image bytes as the body, as for an upload. The old tile is removed and the '
-          + 'response\'s `name` is the stem to paint from — it is NOT the stem you replaced.',
+        description:
+          'Raw image bytes as the body, as for an upload. The old tile is removed and the ' +
+          "response's `name` is the stem to paint from — it is NOT the stem you replaced.",
       },
     },
     {
-      rel: 'uploadSound', hrefTemplate: `/api/sound-upload?project=${id}&name={stem}`, method: 'POST',
+      rel: 'uploadSound',
+      hrefTemplate: `/api/sound-upload?project=${id}&name={stem}`,
+      method: 'POST',
       title: 'Add a hit/ambient WAV (normalised to PCM16 mono, 10 s cap)',
       alternateEncoding: { contentType: 'audio/wav', description: 'Raw WAV bytes as the body.' },
     },
     {
-      rel: 'uploadMusic', hrefTemplate: `/api/custom-music?project=${id}&name={file}`, method: 'POST',
+      rel: 'uploadMusic',
+      hrefTemplate: `/api/custom-music?project=${id}&name={file}`,
+      method: 'POST',
       title: 'Add a full-length race track (wav/mp3/flac/ogg/m4a/aac); select it with g/raceMusic',
       alternateEncoding: { contentType: 'application/octet-stream', description: 'Raw audio bytes, stored verbatim.' },
     },
     {
-      rel: 'uploadSky', hrefTemplate: `/api/skyupload?project=${id}&name={stem}&fit=auto`, method: 'POST',
+      rel: 'uploadSky',
+      hrefTemplate: `/api/skyupload?project=${id}&name={stem}&fit=auto`,
+      method: 'POST',
       // The stem alone: a sky resolves through the data-name sanitiser, which deletes the dot, so a name
       // carrying its extension addresses a file nobody wrote. A tile is the other way round — hence the
       // contrast being spelled out on both templates rather than left to be discovered.
@@ -264,18 +335,27 @@ function projectEnvelope(project: projects.ProjectManifest, identity: Identity |
       alternateEncoding: { contentType: 'image/png', description: 'Raw panorama PNG bytes as the body.' },
     },
     {
-      rel: 'importProp', hrefTemplate: `/api/custom-prop-import?project=${id}&name={stem}`, method: 'POST',
+      rel: 'importProp',
+      hrefTemplate: `/api/custom-prop-import?project=${id}&name={stem}`,
+      method: 'POST',
       title: 'Import a decoded model into this map\'s prop library; place it at level "@import"',
       schema: '/api/schemas/ImportedPropRecord',
     },
   ];
   const browser = browserProjectLinks(project.id, project.name, project.revision);
-  return { _links: [...links, ...browser._links!], _linkTemplates: browser._linkTemplates,
-    _actions: actions, _actionTemplates: templates };
+  return {
+    _links: [...links, ...browser._links!],
+    _linkTemplates: browser._linkTemplates,
+    _actions: actions,
+    _actionTemplates: templates,
+  };
 }
 
 /** What one label holds, in the ids a register names — the row `GET …/labels/{id}` answers with. */
-interface LabelMembers { quadIds: string[]; propIds: string[] }
+interface LabelMembers {
+  quadIds: string[];
+  propIds: string[];
+}
 
 /**
  * Which quads and props each label holds (docs/052).
@@ -289,7 +369,7 @@ function labelMembership(document: EditDoc): Map<string, LabelMembers> {
   const held = new Map<string, LabelMembers>();
   const members = (label: string): LabelMembers => {
     let found = held.get(label);
-    if (!found) held.set(label, found = { quadIds: [], propIds: [] });
+    if (!found) held.set(label, (found = { quadIds: [], propIds: [] }));
     return found;
   };
   for (const [index, labels] of Object.entries(document.quadLabels ?? {})) {
@@ -344,21 +424,30 @@ function documentReport(value: unknown): Record<string, unknown> {
   }
   if (problems.length) return { ok: false, counts: null, problems };
   let document: EditDoc;
-  try { document = migrateMountain(value); }
-  catch (error) {
-    return { ok: false, counts: null,
-      problems: [{ path: '$', message: String(error instanceof Error ? error.message : error) }] };
+  try {
+    document = migrateMountain(value);
+  } catch (error) {
+    return {
+      ok: false,
+      counts: null,
+      problems: [{ path: '$', message: String(error instanceof Error ? error.message : error) }],
+    };
   }
   return {
     ok: true,
     counts: {
-      vertices: document.vertices.length / 3, quads: document.quads.length,
+      vertices: document.vertices.length / 3,
+      quads: document.quads.length,
       courseKnots: document.course.knots.length,
-      props: document.props?.length ?? 0, lights: document.lights?.length ?? 0,
-      rails: document.rails?.length ?? 0, gems: document.gems?.length ?? 0,
-      models: document.models?.length ?? 0, screens: document.screens?.length ?? 0,
+      props: document.props?.length ?? 0,
+      lights: document.lights?.length ?? 0,
+      rails: document.rails?.length ?? 0,
+      gems: document.gems?.length ?? 0,
+      models: document.models?.length ?? 0,
+      screens: document.screens?.length ?? 0,
       propLines: document.propLines?.length ?? 0,
-      particleVolumes: document.particleVolumes?.length ?? 0, labels: document.labels?.length ?? 0,
+      particleVolumes: document.particleVolumes?.length ?? 0,
+      labels: document.labels?.length ?? 0,
     },
     problems,
   };
@@ -368,11 +457,16 @@ function documentReport(value: unknown): Record<string, unknown> {
  *  when the write is a selector alone (`rules`), but a body carrying neither meant something and sent
  *  nothing, which is worth saying rather than answering as a batch that did nothing. */
 function registerChanges(value: unknown): [RegisterKey, RegisterValue][] {
-  const body = value && typeof value === 'object' ? value as { changes?: unknown; rules?: unknown } : null;
-  if (!body || (body.changes === undefined && body.rules === undefined)
-    || (body.changes !== undefined && !Array.isArray(body.changes))) {
-    throw new Error('Send { changes: [{ key, value }, …] }, { rules: [{ where, set }, …] }, or both — see '
-      + '/api/schemas/AssignRegisters.');
+  const body = value && typeof value === 'object' ? (value as { changes?: unknown; rules?: unknown }) : null;
+  if (
+    !body ||
+    (body.changes === undefined && body.rules === undefined) ||
+    (body.changes !== undefined && !Array.isArray(body.changes))
+  ) {
+    throw new Error(
+      'Send { changes: [{ key, value }, …] }, { rules: [{ where, set }, …] }, or both — see ' +
+        '/api/schemas/AssignRegisters.',
+    );
   }
   const entries = Array.isArray(body.changes) ? body.changes : [];
   if (entries.length > 100_000) throw new Error('That is over 100000 changes in one request.');
@@ -424,8 +518,10 @@ function normalizedObjectValue(key: RegisterKey, value: RegisterValue): Register
   const held = (value as { id?: unknown }).id;
   if (held === undefined) return { ...(value as Record<string, unknown>), id };
   if (held !== id) {
-    throw new Error(`The object assigned to ${key} carries id ${JSON.stringify(held)} — a register holds `
-      + 'the object its key names, so leave `id` out or make them match.');
+    throw new Error(
+      `The object assigned to ${key} carries id ${JSON.stringify(held)} — a register holds ` +
+        'the object its key names, so leave `id` out or make them match.',
+    );
   }
   return value;
 }
@@ -458,7 +554,10 @@ interface SelectorRule {
 
 /** How one rule turned out — how many faces it named and how many keys that came to. Reported per rule, in
  *  request order, because a rule that matched nothing looks exactly like a rule that worked otherwise. */
-interface RuleOutcome { matched: number; keys: number }
+interface RuleOutcome {
+  matched: number;
+  keys: number;
+}
 
 /**
  * The label a name or an id addresses.
@@ -482,8 +581,10 @@ function labelResolver(document: EditDoc): (named: string) => string {
     const found = byName.get(named) ?? [];
     if (found.length === 1) return found[0];
     if (found.length > 1) {
-      throw new Error(`This map has ${found.length} labels named ${JSON.stringify(named)} — name the one you `
-        + `mean by id (${found.join(', ')}).`);
+      throw new Error(
+        `This map has ${found.length} labels named ${JSON.stringify(named)} — name the one you ` +
+          `mean by id (${found.join(', ')}).`,
+      );
     }
     throw new Error(`This map has no label ${JSON.stringify(named)} — GET …/labels lists the ones it has.`);
   };
@@ -497,8 +598,10 @@ function whereLabels(where: unknown, resolve: (named: string) => string): string
   const { label, labels } = where as { label?: unknown; labels?: unknown };
   const named = [...(label === undefined ? [] : [label]), ...(Array.isArray(labels) ? labels : [])];
   if (!named.length || named.some(one => typeof one !== 'string' || !one)) {
-    throw new Error('`where` names at least one label, by name or by id — a selector naming none would reach '
-      + 'the whole mountain.');
+    throw new Error(
+      '`where` names at least one label, by name or by id — a selector naming none would reach ' +
+        'the whole mountain.',
+    );
   }
   return [...new Set(named.map(one => resolve(one as string)))];
 }
@@ -519,22 +622,36 @@ function ruleChannel(field: string, value: unknown): [QuadField, RegisterValue] 
   };
   switch (field) {
     case 'paint':
-      return ['paint', held(Number.isInteger(value),
-        'a SurfaceType integer (1 snow, 3 powder, 5 ice), or null to reset')];
+      return [
+        'paint',
+        held(Number.isInteger(value), 'a SurfaceType integer (1 snow, 3 powder, 5 ice), or null to reset'),
+      ];
     case 'tex':
-      return ['tex', held(typeof value === 'string' && value.length > 0,
-        'a tile ref "<LEVEL>/<file>.png" or "Custom/<file>.png", or null to clear')];
+      return [
+        'tex',
+        held(
+          typeof value === 'string' && value.length > 0,
+          'a tile ref "<LEVEL>/<file>.png" or "Custom/<file>.png", or null to clear',
+        ),
+      ];
     case 'orient':
-      return ['orient', held(!!value && typeof value === 'object' && !Array.isArray(value),
-        '{ rot: 0-3, mirror: boolean }, or null to clear')];
+      return [
+        'orient',
+        held(
+          !!value && typeof value === 'object' && !Array.isArray(value),
+          '{ rot: 0-3, mirror: boolean }, or null to clear',
+        ),
+      ];
     case 'lock':
       return ['lock', clearing ? undefined : held(value === true, 'true, or false/null to unlock')];
     case 'twist':
-      return ['twist', held(Array.isArray(value), 'the face\'s four corner offsets, or null to clear')];
+      return ['twist', held(Array.isArray(value), "the face's four corner offsets, or null to clear")];
     default:
-      throw new Error(`A rule cannot set ${JSON.stringify(field)}. It names quad channels only — paint, tex, `
-        + 'orient, lock, twist, addLabel, removeLabel. A rule reaches faces, not objects: change the fields of '
-        + 'an object with o/<family>.<field>/<id> keys in `changes` (docs/039), or move placements with POST …/seat.');
+      throw new Error(
+        `A rule cannot set ${JSON.stringify(field)}. It names quad channels only — paint, tex, ` +
+          'orient, lock, twist, addLabel, removeLabel. A rule reaches faces, not objects: change the fields of ' +
+          'an object with o/<family>.<field>/<id> keys in `changes` (docs/039), or move placements with POST …/seat.',
+      );
   }
 }
 
@@ -577,8 +694,10 @@ function selectorRules(body: unknown, document: EditDoc): SelectorRule[] {
  * caller's explicit `changes` are appended after all of them, so an explicit key always wins over a rule.
  * Nothing here decides anything — `assign` resolves it exactly as it resolves two people typing.
  */
-function expandRules(document: EditDoc, rules: SelectorRule[]):
-  { changes: [RegisterKey, RegisterValue][]; outcomes: RuleOutcome[] } {
+function expandRules(
+  document: EditDoc,
+  rules: SelectorRule[],
+): { changes: [RegisterKey, RegisterValue][]; outcomes: RuleOutcome[] } {
   const changes: [RegisterKey, RegisterValue][] = [];
   const outcomes: RuleOutcome[] = [];
   // Membership lives on the labelled face (docs/052), keyed by quad INDEX in memory, so the crossing into the
@@ -608,8 +727,10 @@ function expandRules(document: EditDoc, rules: SelectorRule[]):
     outcomes.push({ matched, keys: changes.length - before });
   }
   if (changes.length > 100_000) {
-    throw new Error(`Those rules expand to ${changes.length} register assignments, which is over the 100000 `
-      + 'a single request may carry. Narrow the selection.');
+    throw new Error(
+      `Those rules expand to ${changes.length} register assignments, which is over the 100000 ` +
+        'a single request may carry. Narrow the selection.',
+    );
   }
   return { changes, outcomes };
 }
@@ -642,8 +763,10 @@ function placementRegister(named: string): RegisterKey {
   const cut = named.startsWith('o/') ? named.indexOf('/', 2) : -1;
   const family = cut > 0 ? named.slice(2, cut) : named.slice(0, named.indexOf(':'));
   if (!SEATABLE.has(family) || (cut > 0 && cut === named.length - 1)) {
-    throw new Error(`${JSON.stringify(named)} names nothing that can be seated — send prop:… / light:… / `
-      + 'gem:… / rail:… , or the whole register key o/<family>/<id>.');
+    throw new Error(
+      `${JSON.stringify(named)} names nothing that can be seated — send prop:… / light:… / ` +
+        'gem:… / rail:… , or the whole register key o/<family>/<id>.',
+    );
   }
   return cut > 0 ? named : objectRegister(family as ObjectFamily, named);
 }
@@ -678,7 +801,12 @@ function reseated(key: RegisterKey, value: RegisterValue, points: V3[]): [Regist
 function registerScope(url: URL): (key: RegisterKey) => boolean {
   const keys = url.searchParams.get('keys');
   if (keys) {
-    const wanted = new Set(keys.split(',').map(part => part.trim()).filter(Boolean));
+    const wanted = new Set(
+      keys
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean),
+    );
     return key => wanted.has(key);
   }
   const raw = url.searchParams.get('prefix')?.trim();
@@ -702,7 +830,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         return;
       }
       if (req.method === 'PUT') {
-        const body = await readJsonBody(req) as { workspaceRoot?: string; mapsRoot?: string; maxPlayers?: number };
+        const body = (await readJsonBody(req)) as { workspaceRoot?: string; mapsRoot?: string; maxPlayers?: number };
         const saved = await saveWorkspaceConfig(body);
         // Unlike path changes, capacity is live. Lowering it removes lower-role accounts immediately in the
         // same order as admission (viewer, editor, moderator) while unbounded admins remain connected.
@@ -710,7 +838,8 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 200, saved);
         return;
       }
-      res.statusCode = 405; res.end('GET or PUT only');
+      res.statusCode = 405;
+      res.end('GET or PUT only');
     } catch (error) {
       jsonResponse(res, 400, { error: String(error instanceof Error ? error.message : error) });
     }
@@ -731,40 +860,67 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 200, {
           projects: await projects.listProjects(),
           _links: [link('self', '/api/projects'), link('root', '/api'), link('guide', '/api/guide')],
-          _linkTemplates: [{ rel: 'item', hrefTemplate: '/api/projects/{id}',
-            title: 'One map: manifest, document, and everything that can be done to it' }],
-          _actions: [{
-            rel: 'create', href: '/api/projects', method: 'POST',
-            title: 'Create a map — an empty body starts from the default rideable mountain; `name` names it at birth',
-            schema: '/api/schemas/CreateMap', body: { name: '' }, ...gate(identity, 'editor'),
-          }, {
-            rel: 'validate', href: '/api/projects/validate', method: 'POST',
-            title: 'Read a document the way creating a map would, and say what it is — nothing is written',
-            schema: '/api/schemas/ValidateDocument', body: { document: {} }, ...gate(identity, 'editor'),
-          }] satisfies ApiAction[],
+          _linkTemplates: [
+            {
+              rel: 'item',
+              hrefTemplate: '/api/projects/{id}',
+              title: 'One map: manifest, document, and everything that can be done to it',
+            },
+          ],
+          _actions: [
+            {
+              rel: 'create',
+              href: '/api/projects',
+              method: 'POST',
+              title: 'Create a map — an empty body starts from the default rideable mountain; `name` names it at birth',
+              schema: '/api/schemas/CreateMap',
+              body: { name: '' },
+              ...gate(identity, 'editor'),
+            },
+            {
+              rel: 'validate',
+              href: '/api/projects/validate',
+              method: 'POST',
+              title: 'Read a document the way creating a map would, and say what it is — nothing is written',
+              schema: '/api/schemas/ValidateDocument',
+              body: { document: {} },
+              ...gate(identity, 'editor'),
+            },
+          ] satisfies ApiAction[],
         });
         return;
       }
       if (req.method === 'GET' && parts[0] === 'current') {
         const current = await projects.currentProject(clientId);
-        if (!current) { res.statusCode = 204; res.end(); return; }
-        jsonResponse(res, 200, openedSnapshot(current)); return;
+        if (!current) {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        jsonResponse(res, 200, openedSnapshot(current));
+        return;
       }
       if (req.method === 'POST' && !parts.length) {
-        const body = await readJsonBody(req) as { document?: unknown; name?: unknown };
+        const body = (await readJsonBody(req)) as { document?: unknown; name?: unknown };
         // No document means the default starter mountain. The browser always sends one; an API caller that
         // wants "a mountain to start editing" should not have to compose a whole document to ask for it —
         // nor rename in a second request when it already knows what the map is called.
-        const created = await projects.createProject(body.document ?? {}, clientId, true,
-          projectActor(identity).id, typeof body.name === 'string' ? body.name : undefined);
+        const created = await projects.createProject(
+          body.document ?? {},
+          clientId,
+          true,
+          projectActor(identity).id,
+          typeof body.name === 'string' ? body.name : undefined,
+        );
         systemEvent(`${actor(identity)} created ${created.project.name}`);
-        jsonResponse(res, 201, { ...created, ...projectEnvelope(created.project, identity) }); return;
+        jsonResponse(res, 201, { ...created, ...projectEnvelope(created.project, identity) });
+        return;
       }
       // The same read a create does, without the map (docs/052). A caller composing a document by hand — the
       // one case the register grammar cannot cover, since topology is not addressable — can find out what it
       // has before spending a map name on it.
       if (parts.length === 1 && parts[0] === 'validate' && req.method === 'POST') {
-        const body = await readJsonBody(req) as { document?: unknown };
+        const body = (await readJsonBody(req)) as { document?: unknown };
         jsonResponse(res, 200, {
           ...documentReport(body.document),
           _links: [link('self', '/api/projects/validate'), link('collection', '/api/projects')],
@@ -776,7 +932,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       // The manifest round trip is the whole negotiation: the uploader sends what its mountain wears, this server
       // names the hashes it lacks, and only those bytes are sent with the upload that follows.
       if (parts.length === 2 && parts[0] === 'transfer' && parts[1] === 'manifest' && req.method === 'POST') {
-        const body = await readJsonBody(req) as { assets?: BundleAsset[] };
+        const body = (await readJsonBody(req)) as { assets?: BundleAsset[] };
         jsonResponse(res, 200, await missingAssets(Array.isArray(body.assets) ? body.assets : []));
         return;
       }
@@ -789,14 +945,17 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         const uploaded = await uploadProject(bundle, clientId, name, projectActor(identity).id);
         systemEvent(`${actor(identity)} imported ${uploaded.snapshot.project.name}`);
         jsonResponse(res, 201, {
-          ...uploaded.snapshot, stored: uploaded.stored, absent: uploaded.absent,
+          ...uploaded.snapshot,
+          stored: uploaded.stored,
+          absent: uploaded.absent,
         });
         return;
       }
 
       if (parts.length === 1 && req.method === 'GET') {
         const snapshot = openedSnapshot(await projects.openProject(parts[0]));
-        jsonResponse(res, 200, { ...snapshot, ...projectEnvelope(snapshot.project, identity) }); return;
+        jsonResponse(res, 200, { ...snapshot, ...projectEnvelope(snapshot.project, identity) });
+        return;
       }
 
       // ---- the map as registers (docs/039, docs/052): the agent-facing read and the ordinary write ----
@@ -810,7 +969,9 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           if (wanted(key)) registers.push([key, value]);
         }
         jsonResponse(res, 200, {
-          projectId: parts[0], count: registers.length, registers,
+          projectId: parts[0],
+          count: registers.length,
+          registers,
           _links: [
             link('self', `/api/projects/${encodeURIComponent(parts[0])}/registers`),
             link('project', `/api/projects/${encodeURIComponent(parts[0])}`),
@@ -834,7 +995,7 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         // document save and the checkpoint revert treat it. Rules cannot reach g/name at all — they name
         // quad channels — so the bar is asked of the explicit changes alone.
         if (changes.some(([key]) => key === 'g/name') && !projects.canManageProject(project, principal)) {
-          throw new projects.ProjectPermissionError('Only this map\'s owner or a moderator can rename it.');
+          throw new projects.ProjectPermissionError("Only this map's owner or a moderator can rename it.");
         }
         // Selectors are resolved against the room's own copy — the authoritative document while people are
         // editing — so a rule paints the section as it stands right now, placements and all.
@@ -849,8 +1010,10 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         await takeSnapshot(room);
         const manifest = await projects.projectManifest(parts[0]);
         jsonResponse(res, 200, {
-          projectId: parts[0], revision: manifest.revision,
-          landed: written.landed.length, retired: written.retired.length,
+          projectId: parts[0],
+          revision: manifest.revision,
+          landed: written.landed.length,
+          retired: written.retired.length,
           refused: written.refused.length,
           refusedKeys: written.refused,
           // What each rule reached, in request order. `keys` is what it produced, not what landed: a rule
@@ -880,13 +1043,16 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         // which is how a placement made by hand is checked against a setback rule. Alone, it answers without
         // the station table; with `at`/`every` it answers beside one.
         const nearAsked = url.searchParams.get('near');
-        const nearPoints: [number, number][] = (nearAsked ?? '').split(';').filter(Boolean).map(pair => {
-          const parts = pair.split(',').map(part => Number(part.trim()));
-          if (parts.length !== 2 || parts.some(part => !Number.isFinite(part))) {
-            throw new Error('?near= lists points as x,z pairs separated by semicolons: near=812.5,1240;790,1301');
-          }
-          return [parts[0], parts[1]];
-        });
+        const nearPoints: [number, number][] = (nearAsked ?? '')
+          .split(';')
+          .filter(Boolean)
+          .map(pair => {
+            const parts = pair.split(',').map(part => Number(part.trim()));
+            if (parts.length !== 2 || parts.some(part => !Number.isFinite(part))) {
+              throw new Error('?near= lists points as x,z pairs separated by semicolons: near=812.5,1240;790,1301');
+            }
+            return [parts[0], parts[1]];
+          });
         if (nearPoints.length > 2000) throw new Error('?near= takes at most 2000 points.');
         let stations: number[];
         if (asked) {
@@ -902,7 +1068,9 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           const every = Number(spacing ?? 25);
           if (!Number.isFinite(every) || every < 1) throw new Error('?every= is a spacing in metres, 1 or more.');
           if (ruler.length / every > 2000) {
-            throw new Error(`?every=${every} would list over 2000 stations on a ${mm(ruler.length)} m run — take a coarser step.`);
+            throw new Error(
+              `?every=${every} would list over 2000 stations on a ${mm(ruler.length)} m run — take a coarser step.`,
+            );
           }
           stations = [];
           for (let s = 0; s < ruler.length; s += every) stations.push(s);
@@ -915,32 +1083,48 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           const lateral = (x - frame.pos[0]) * frame.side[0] + (z - frame.pos[2]) * frame.side[2];
           const under = height(x, z);
           return {
-            x, z, station: mm(station), lateral: mm(lateral), heading: mm(frame.heading), width: mm(frame.width),
+            x,
+            z,
+            station: mm(station),
+            lateral: mm(lateral),
+            heading: mm(frame.heading),
+            width: mm(frame.width),
             ground: under === null ? null : mm(under),
           };
         });
         jsonResponse(res, 200, {
-          projectId: parts[0], revision: (await projects.projectManifest(parts[0])).revision,
+          projectId: parts[0],
+          revision: (await projects.projectManifest(parts[0])).revision,
           length: mm(ruler.length),
-          frame: 'station: metres along the line from knot 0. lateral: metres to the rider\'s RIGHT looking '
-            + 'downhill (negative = left). heading: the yaw that faces downhill here; a prop\'s yaw "course+90" '
-            + 'faces the rider\'s left.',
+          frame:
+            "station: metres along the line from knot 0. lateral: metres to the rider's RIGHT looking " +
+            'downhill (negative = left). heading: the yaw that faces downhill here; a prop\'s yaw "course+90" ' +
+            "faces the rider's left.",
           knots: document.course.knots.map((knot, index) => ({
-            index, station: mm(ruler.knotStations[index]), pos: knot.pos, width: knot.width,
+            index,
+            station: mm(ruler.knotStations[index]),
+            pos: knot.pos,
+            width: knot.width,
           })),
           stations: stations.map(station => {
             const frame = ruler.at(station);
             const under = height(frame.pos[0], frame.pos[2]);
             return {
-              station: mm(station), pos: frame.pos.map(mm), heading: mm(frame.heading), width: mm(frame.width),
+              station: mm(station),
+              pos: frame.pos.map(mm),
+              heading: mm(frame.heading),
+              width: mm(frame.width),
               ground: under === null ? null : mm(under),
             };
           }),
           ...(nearAsked === null ? {} : { near }),
           _links: [
             link('self', `/api/projects/${encodeURIComponent(parts[0])}/course`),
-            link('registers', `/api/projects/${encodeURIComponent(parts[0])}/registers?keys=course`,
-              'The course register itself — the knots this ruler is laid along'),
+            link(
+              'registers',
+              `/api/projects/${encodeURIComponent(parts[0])}/registers?keys=course`,
+              'The course register itself — the knots this ruler is laid along',
+            ),
             link('project', `/api/projects/${encodeURIComponent(parts[0])}`),
           ],
         });
@@ -951,20 +1135,20 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       // actual bicubic quilt, so nobody re-derives terrain math client-side against a document that may
       // already be behind the room. A read that arrives as POST only because its input is a batch of points.
       if (parts.length === 2 && parts[1] === 'ground' && req.method === 'POST') {
-        const body = await readJsonBody(req) as { points?: unknown };
+        const body = (await readJsonBody(req)) as { points?: unknown };
         if (!Array.isArray(body.points) || body.points.length > 4096) {
           throw new Error('Send { points: [[x, z], …] } — at most 4096 points per request.');
         }
         const points = body.points.map(entry => {
-          if (!Array.isArray(entry) || entry.length !== 2
-            || !Number.isFinite(entry[0]) || !Number.isFinite(entry[1])) {
+          if (!Array.isArray(entry) || entry.length !== 2 || !Number.isFinite(entry[0]) || !Number.isFinite(entry[1])) {
             throw new Error('Each point is [x, z] in editor metres.');
           }
           return entry as [number, number];
         });
         const sample = topSurface(await liveDocument(parts[0]));
         jsonResponse(res, 200, {
-          projectId: parts[0], revision: (await projects.projectManifest(parts[0])).revision,
+          projectId: parts[0],
+          revision: (await projects.projectManifest(parts[0])).revision,
           heights: points.map(([x, z]) => sample(x, z)),
           _links: [
             link('self', `/api/projects/${encodeURIComponent(parts[0])}/ground`),
@@ -986,10 +1170,12 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       // sampler and changes nothing (`projectAccess` in app.ts names that exception, and only that one).
       if (parts.length === 2 && parts[1] === 'seat' && req.method === 'POST') {
         await projects.requireProjectEdit(parts[0], projectActor(identity));
-        const body = await readJsonBody(req) as { where?: unknown; ids?: unknown; offset?: unknown };
+        const body = (await readJsonBody(req)) as { where?: unknown; ids?: unknown; offset?: unknown };
         if (body.where === undefined && body.ids === undefined) {
-          throw new Error('Send `where` (every placement carrying these labels), `ids` (placements by id), '
-            + 'or both — see /api/schemas/SeatPlacements.');
+          throw new Error(
+            'Send `where` (every placement carrying these labels), `ids` (placements by id), ' +
+              'or both — see /api/schemas/SeatPlacements.',
+          );
         }
         const offset = body.offset ?? 0;
         if (typeof offset !== 'number' || !Number.isFinite(offset)) {
@@ -1022,7 +1208,10 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
             const height = sample(point[0], point[2]);
             // Nothing under it: left exactly where it stands and counted, because dropping a point to zero
             // is the one outcome nobody asked for.
-            if (height === null) { skipped++; return point; }
+            if (height === null) {
+              skipped++;
+              return point;
+            }
             found = true;
             return [point[0], height + offset, point[2]] as V3;
           });
@@ -1033,11 +1222,13 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         await takeSnapshot(room);
         const manifest = await projects.projectManifest(parts[0]);
         jsonResponse(res, 200, {
-          projectId: parts[0], revision: manifest.revision,
+          projectId: parts[0],
+          revision: manifest.revision,
           // Placements that moved, and placements already sitting where the ground put them. These registers
           // came out of the document itself, so none of them can be refused or retired. `skipped` counts
           // POINTS rather than placements: a prop is one, a rail one per node.
-          seated: written.landed.length, skipped,
+          seated: written.landed.length,
+          skipped,
           unchanged: changes.length - written.landed.length,
           _links: [
             link('self', `/api/projects/${encodeURIComponent(parts[0])}/seat`),
@@ -1055,7 +1246,9 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         const document = await liveDocument(parts[0]);
         const membership = labelMembership(document);
         const row = (label: LabelDefinition) => ({
-          id: label.id, name: label.name, ...(label.color ? { color: label.color } : {}),
+          id: label.id,
+          name: label.name,
+          ...(label.color ? { color: label.color } : {}),
           quadCount: membership.get(label.id)?.quadIds.length ?? 0,
           propCount: membership.get(label.id)?.propIds.length ?? 0,
         });
@@ -1063,11 +1256,24 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         const revision = manifest.revision;
         if (parts.length === 2) {
           jsonResponse(res, 200, {
-            projectId: parts[0], revision, labels: (document.labels ?? []).map(row),
-            _links: [link('self', `${base}/labels`), link('project', base), { rel: 'browser-workflows', href: '/api/browser' }],
-            _linkTemplates: [{ rel: 'item', hrefTemplate: `${base}/labels/{labelId}`,
-              title: 'One label with the quad and prop ids it holds, ready to address as registers' },
-              ...browserProjectLinks(parts[0], manifest.name, revision)._linkTemplates!.filter(link => link.rel === 'frame-label')],
+            projectId: parts[0],
+            revision,
+            labels: (document.labels ?? []).map(row),
+            _links: [
+              link('self', `${base}/labels`),
+              link('project', base),
+              { rel: 'browser-workflows', href: '/api/browser' },
+            ],
+            _linkTemplates: [
+              {
+                rel: 'item',
+                hrefTemplate: `${base}/labels/{labelId}`,
+                title: 'One label with the quad and prop ids it holds, ready to address as registers',
+              },
+              ...browserProjectLinks(parts[0], manifest.name, revision)._linkTemplates!.filter(
+                link => link.rel === 'frame-label',
+              ),
+            ],
           });
           return;
         }
@@ -1080,12 +1286,19 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
           return;
         }
         jsonResponse(res, 200, {
-          projectId: parts[0], revision, ...row(label),
-          quadIds: membership.get(label.id)?.quadIds ?? [], propIds: membership.get(label.id)?.propIds ?? [],
+          projectId: parts[0],
+          revision,
+          ...row(label),
+          quadIds: membership.get(label.id)?.quadIds ?? [],
+          propIds: membership.get(label.id)?.propIds ?? [],
           _links: [
             link('self', `${base}/labels/${encodeURIComponent(label.id)}`),
-            { rel: 'browser-view', href: `/editor/${encodeURIComponent(manifest.name)}?project=${encodeURIComponent(parts[0])}#view=1&revision=${revision}&label=${encodeURIComponent(label.id)}&preset=clean`,
-              title: 'Frame this label in the browser', execution: 'browser' },
+            {
+              rel: 'browser-view',
+              href: `/editor/${encodeURIComponent(manifest.name)}?project=${encodeURIComponent(parts[0])}#view=1&revision=${revision}&label=${encodeURIComponent(label.id)}&preset=clean`,
+              title: 'Frame this label in the browser',
+              execution: 'browser',
+            },
             link('collection', `${base}/labels`),
             link('project', base),
           ],
@@ -1096,7 +1309,8 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         await projects.requireProjectManager(parts[0], projectActor(identity));
         const deleted = await projects.deleteProject(parts[0]);
         systemEvent(`${actor(identity)} deleted ${deleted.name}`);
-        jsonResponse(res, 200, { deleted: { id: deleted.id, name: deleted.name } }); return;
+        jsonResponse(res, 200, { deleted: { id: deleted.id, name: deleted.name } });
+        return;
       }
       if (parts.length === 2 && parts[1] === 'download' && req.method === 'GET') {
         // `assets=bytes` is the self-contained form an exported mountain ZIP needs; the default is the
@@ -1105,27 +1319,40 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         return;
       }
       if (parts.length === 2 && parts[1] === 'duplicate' && req.method === 'POST') {
-        const duplicated = await duplicateProject(parts[0], clientId, url.searchParams.get('name') ?? undefined,
-          projectActor(identity).id);
+        const duplicated = await duplicateProject(
+          parts[0],
+          clientId,
+          url.searchParams.get('name') ?? undefined,
+          projectActor(identity).id,
+        );
         systemEvent(`${actor(identity)} duplicated ${duplicated.snapshot.project.name}`);
         jsonResponse(res, 201, {
-          ...duplicated.snapshot, stored: duplicated.stored, absent: duplicated.absent,
+          ...duplicated.snapshot,
+          stored: duplicated.stored,
+          absent: duplicated.absent,
         });
         return;
       }
       if (parts.length === 2 && parts[1] === 'activate' && req.method === 'POST') {
-        jsonResponse(res, 200, openedSnapshot(await projects.activateProject(parts[0], clientId))); return;
+        jsonResponse(res, 200, openedSnapshot(await projects.activateProject(parts[0], clientId)));
+        return;
       }
       if (parts.length === 2 && parts[1] === 'permissions' && req.method === 'PUT') {
         const principal = projectActor(identity);
         await projects.requireProjectManager(parts[0], principal);
-        const body = await readJsonBody(req) as { editorIds?: unknown };
-        if (body.editorIds !== null && (!Array.isArray(body.editorIds)
-          || body.editorIds.length > 1_000 || body.editorIds.some(id => typeof id !== 'string'))) {
+        const body = (await readJsonBody(req)) as { editorIds?: unknown };
+        if (
+          body.editorIds !== null &&
+          (!Array.isArray(body.editorIds) ||
+            body.editorIds.length > 1_000 ||
+            body.editorIds.some(id => typeof id !== 'string'))
+        ) {
           throw new Error('editorIds must be null or an array of at most 1000 user ids');
         }
         const project = await projects.setProjectEditors(parts[0], body.editorIds as string[] | null);
-        systemEvent(`${actor(identity)} ${project.editorIds === undefined ? 'opened' : 'restricted'} editing on ${project.name}`);
+        systemEvent(
+          `${actor(identity)} ${project.editorIds === undefined ? 'opened' : 'restricted'} editing on ${project.name}`,
+        );
         jsonResponse(res, 200, { project });
         return;
       }
@@ -1135,42 +1362,56 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       // channel, which cannot collide (docs/039). A live register room adopts whatever lands here, so the two
       // paths cannot drift apart.
       if (parts.length === 2 && parts[1] === 'document' && req.method === 'PUT') {
-        const body = await readJsonBody(req) as { baseRevision?: number; document?: unknown };
+        const body = (await readJsonBody(req)) as { baseRevision?: number; document?: unknown };
         if (!Number.isInteger(body.baseRevision)) throw new Error('baseRevision must be an integer');
         const principal = projectActor(identity);
         const project = await projects.requireProjectEdit(parts[0], principal);
-        const requestedName = body.document && typeof body.document === 'object'
-          ? (body.document as { name?: unknown }).name : undefined;
-        if (!projects.canManageProject(project, principal)
-          && typeof requestedName === 'string' && requestedName !== project.name) {
-          throw new projects.ProjectPermissionError('Only this map\'s owner or a moderator can rename it.');
+        const requestedName =
+          body.document && typeof body.document === 'object' ? (body.document as { name?: unknown }).name : undefined;
+        if (
+          !projects.canManageProject(project, principal) &&
+          typeof requestedName === 'string' &&
+          requestedName !== project.name
+        ) {
+          throw new projects.ProjectPermissionError("Only this map's owner or a moderator can rename it.");
         }
-        await saveOrConflict(res, identity,
-          () => projects.saveProject(parts[0], body.baseRevision!, body.document, clientId,
-            projects.canManageProject(project, principal)));
+        await saveOrConflict(res, identity, () =>
+          projects.saveProject(
+            parts[0],
+            body.baseRevision!,
+            body.document,
+            clientId,
+            projects.canManageProject(project, principal),
+          ),
+        );
         return;
       }
       // History (docs/040): the checkpoints under the project's autosaves/ ring — list them with what the ring
       // costs, take one of the project as it stands, read one whole document back for a preview or a fork,
       // name one so it is kept, and restore one as the next revision.
       if (parts.length === 2 && parts[1] === 'checkpoints' && req.method === 'GET') {
-        jsonResponse(res, 200, await projects.listCheckpoints(parts[0])); return;
+        jsonResponse(res, 200, await projects.listCheckpoints(parts[0]));
+        return;
       }
       if (parts.length === 2 && parts[1] === 'checkpoints' && req.method === 'POST') {
         await projects.requireProjectEdit(parts[0], projectActor(identity));
-        const body = await readJsonBody(req) as { note?: string; reason?: string };
+        const body = (await readJsonBody(req)) as { note?: string; reason?: string };
         // Only the two an editor asks for: a checkpoint someone named, and the forced one before a bulk
         // destructive edit. The timer's own reason is not a client's to claim.
         const reason = body.reason === 'bulk' ? 'bulk' : 'named';
         if (reason === 'named' && !body.note?.trim()) throw new Error('A named checkpoint needs a note');
         jsonResponse(res, 201, {
-          checkpoint: await projects.checkpointNow(parts[0],
-            { reason, note: body.note?.trim(), ...attribution(identity, parts[0]) }),
+          checkpoint: await projects.checkpointNow(parts[0], {
+            reason,
+            note: body.note?.trim(),
+            ...attribution(identity, parts[0]),
+          }),
         });
         return;
       }
       if (parts.length === 3 && parts[1] === 'checkpoints' && req.method === 'GET') {
-        jsonResponse(res, 200, await projects.readCheckpoint(parts[0], decodeURIComponent(parts[2]))); return;
+        jsonResponse(res, 200, await projects.readCheckpoint(parts[0], decodeURIComponent(parts[2])));
+        return;
       }
       // A checkpoint exported as the same self-contained mountain ZIP source the current revision uses. The
       // checkpoint file itself is only a compressed document; its assets are resolved here from the owning
@@ -1179,9 +1420,21 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         const { checkpoint, document } = await projects.readCheckpoint(parts[0], decodeURIComponent(parts[2]));
         const current = await projects.openProject(parts[0]);
         await migrateLegacyProjectAssets(current);
-        jsonResponse(res, 200, await withProjectAssets(current, () => downloadDocument(document, {
-          name: current.project.name, revision: checkpoint.revision, takenAt: checkpoint.takenAt,
-        }, url.searchParams.get('assets') === 'bytes')));
+        jsonResponse(
+          res,
+          200,
+          await withProjectAssets(current, () =>
+            downloadDocument(
+              document,
+              {
+                name: current.project.name,
+                revision: checkpoint.revision,
+                takenAt: checkpoint.takenAt,
+              },
+              url.searchParams.get('assets') === 'bytes',
+            ),
+          ),
+        );
         return;
       }
       // What changed since a checkpoint, in words rather than as a diff to read (docs/040). The registers a
@@ -1193,7 +1446,10 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         const summary = changeSummary(document, await liveDocument(parts[0]));
         const room = roomFor(parts[0]);
         jsonResponse(res, 200, {
-          checkpoint, summary, described: describeChanges(summary), writers: room ? roomWriters(room) : [],
+          checkpoint,
+          summary,
+          described: describeChanges(summary),
+          writers: room ? roomWriters(room) : [],
         });
         return;
       }
@@ -1205,11 +1461,12 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
       if (parts.length === 4 && parts[1] === 'checkpoints' && parts[3] === 'revert' && req.method === 'POST') {
         const principal = projectActor(identity);
         const project = await projects.requireProjectEdit(parts[0], principal);
-        const body = await readJsonBody(req) as { by?: string; vertices?: unknown; quads?: unknown };
+        const body = (await readJsonBody(req)) as { by?: string; vertices?: unknown; quads?: unknown };
         const file = decodeURIComponent(parts[2]);
         const request: RevertRequest = {
           ...(body.by?.trim() ? { by: body.by.trim() } : {}),
-          vertices: names(body.vertices), quads: names(body.quads),
+          vertices: names(body.vertices),
+          quads: names(body.quads),
         };
         const { checkpoint, document: was } = await projects.readCheckpoint(parts[0], file);
         const room = await joinRoom(parts[0]);
@@ -1219,17 +1476,23 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         const planned = planRevert(room, was, request);
         // Restoring content is an editor action; restoring the old map name is still a rename.
         const changes = projects.canManageProject(project, principal)
-          ? planned : planned.filter(([key]) => key !== 'g/name');
+          ? planned
+          : planned.filter(([key]) => key !== 'g/name');
         if (!changes.length) {
           jsonResponse(res, 200, {
-            ...await projects.openProject(parts[0]), reverted: 0, unchanged: true,
-            checkpoint: null, described: [],
+            ...(await projects.openProject(parts[0])),
+            reverted: 0,
+            unchanged: true,
+            checkpoint: null,
+            described: [],
           });
           return;
         }
-        const held = await projects.checkpointNow(parts[0],
-          { reason: 'revert', note: `replaced by a revert to the checkpoint from ${checkpoint.takenAt}`,
-            ...attribution(identity, parts[0]) });
+        const held = await projects.checkpointNow(parts[0], {
+          reason: 'revert',
+          note: `replaced by a revert to the checkpoint from ${checkpoint.takenAt}`,
+          ...attribution(identity, parts[0]),
+        });
         const by = actor(identity);
         const written = assign(room, changes, by);
         // HTTP edits reach every replica, including the one whose author requested the revert.
@@ -1240,51 +1503,72 @@ export const workspaceRoutes: Record<string, ApiHandler> = {
         // great many of those.
         const applied = written.landed;
         const snapshot = await projects.openProject(parts[0]);
-        systemEvent(`${by} reverted ${revertPhrase(request)} on ${snapshot.project.name} to the checkpoint `
-          + `from ${checkpointClock(file)} — ${applied.length} register${applied.length === 1 ? '' : 's'}`);
+        systemEvent(
+          `${by} reverted ${revertPhrase(request)} on ${snapshot.project.name} to the checkpoint ` +
+            `from ${checkpointClock(file)} — ${applied.length} register${applied.length === 1 ? '' : 's'}`,
+        );
         // The summary is what STILL differs from the checkpoint now the revert has landed, which for a scoped
         // one is everybody else's work — the whole reason it was scoped.
         const summary = changeSummary(was, snapshot.document);
         jsonResponse(res, 200, {
-          ...snapshot, reverted: applied.length, unchanged: applied.length === 0, checkpoint: held,
-          retired: written.retired.length, summary, described: describeChanges(summary),
+          ...snapshot,
+          reverted: applied.length,
+          unchanged: applied.length === 0,
+          checkpoint: held,
+          retired: written.retired.length,
+          summary,
+          described: describeChanges(summary),
         });
         return;
       }
       if (parts.length === 4 && parts[1] === 'checkpoints' && parts[3] === 'name' && req.method === 'POST') {
         await projects.requireProjectEdit(parts[0], projectActor(identity));
-        const body = await readJsonBody(req) as { note?: string };
+        const body = (await readJsonBody(req)) as { note?: string };
         jsonResponse(res, 200, {
-          checkpoint: await projects.nameCheckpoint(parts[0], decodeURIComponent(parts[2]), body.note ?? '',
-            attribution(identity, parts[0]).by),
+          checkpoint: await projects.nameCheckpoint(
+            parts[0],
+            decodeURIComponent(parts[2]),
+            body.note ?? '',
+            attribution(identity, parts[0]).by,
+          ),
         });
         return;
       }
       if (parts.length === 4 && parts[1] === 'checkpoints' && parts[3] === 'restore' && req.method === 'POST') {
         const principal = projectActor(identity);
         const project = await projects.requireProjectEdit(parts[0], principal);
-        const body = await readJsonBody(req) as { baseRevision?: number };
+        const body = (await readJsonBody(req)) as { baseRevision?: number };
         if (!Number.isInteger(body.baseRevision)) throw new Error('baseRevision must be an integer');
         await saveOrConflict(res, identity, async () => {
-          const restored = await projects.restoreCheckpoint(parts[0], body.baseRevision!,
-            decodeURIComponent(parts[2]), clientId, projects.canManageProject(project, principal));
+          const restored = await projects.restoreCheckpoint(
+            parts[0],
+            body.baseRevision!,
+            decodeURIComponent(parts[2]),
+            clientId,
+            projects.canManageProject(project, principal),
+          );
           if (!restored.unchanged) {
-            systemEvent(`${actor(identity)} restored ${restored.project.name} to the checkpoint from `
-              + checkpointClock(parts[2]));
+            systemEvent(
+              `${actor(identity)} restored ${restored.project.name} to the checkpoint from ` +
+                checkpointClock(parts[2]),
+            );
           }
           return restored;
         });
         return;
       }
-      res.statusCode = 404; res.end('Unknown project route');
+      res.statusCode = 404;
+      res.end('Unknown project route');
     } catch (error) {
       // A checkpoint that has been thinned since the listing was taken is gone, not malformed: 410 tells the
       // panel its list is stale, which is a different repair from 400's "that was never a checkpoint".
       if (error instanceof projects.CheckpointGoneError) {
-        jsonResponse(res, 410, { error: error.message }); return;
+        jsonResponse(res, 410, { error: error.message });
+        return;
       }
       if (error instanceof projects.ProjectPermissionError) {
-        jsonResponse(res, error.statusCode, { error: error.message }); return;
+        jsonResponse(res, error.statusCode, { error: error.message });
+        return;
       }
       jsonResponse(res, 400, { error: String(error instanceof Error ? error.message : error) });
     }

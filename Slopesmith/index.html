@@ -2,14 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <!-- iPhone Safari has no element-fullscreen API; Add to Home Screen is how a web game goes full screen
          there. These make the home-screen launch chrome-less, edge to edge (safe areas via viewport-fit). -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Slopesmith</title>
-    <meta name="description" content="Carve the mountain, then carve the mountain — author and test-ride an SSX-style snowboard course in your browser, then take it to Unity or PS2 with OpenSlope." />
+    <meta
+      name="description"
+      content="Carve the mountain, then carve the mountain — author and test-ride an SSX-style snowboard course in your browser, then take it to Unity or PS2 with OpenSlope."
+    />
     <meta name="theme-color" content="#0c141d" />
     <meta name="apple-mobile-web-app-title" content="Slopesmith" />
     <!-- The SVG favicon carries its own prefers-color-scheme rule, so the mark inverts to stay legible on a
@@ -22,7 +28,10 @@
     <link rel="manifest" href="/site.webmanifest" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Slopesmith — OpenSlope" />
-    <meta property="og:description" content="Author and test-ride an SSX-style snowboard course in your browser, then take it to Unity or PS2." />
+    <meta
+      property="og:description"
+      content="Author and test-ride an SSX-style snowboard course in your browser, then take it to Unity or PS2."
+    />
     <meta property="og:image" content="/og-image.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/src/app/styles/base.css" />
@@ -40,7 +49,14 @@
       <div class="sp-load-card">
         <div id="load-title">Loading Slopesmith</div>
         <div id="load-label">Restoring your mountain…</div>
-        <div id="load-progress" role="progressbar" aria-label="Mountain loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div
+          id="load-progress"
+          role="progressbar"
+          aria-label="Mountain loading progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
           <div id="load-progress-fill"></div>
         </div>
         <div id="load-detail">Preparing the editor</div>
@@ -51,7 +67,10 @@
     <!-- Remote voice tracks live outside the rebuilt Users/tool dock. Moving a playing media element out of
          the document can silence it even though LiveKit's room and active-speaker events remain connected. -->
     <div id="voice-audio" aria-hidden="true"></div>
-    <div id="log"><button id="log-close" aria-label="Dismiss" title="Dismiss">×</button><pre id="log-text"></pre></div>
+    <div id="log">
+      <button id="log-close" aria-label="Dismiss" title="Dismiss">×</button>
+      <pre id="log-text"></pre>
+    </div>
     <div id="toast"></div>
     <div id="lowerleft">
       <!-- the viewport prepends its cage / surface colour-key panels here (left of the controls) -->

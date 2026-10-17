@@ -10,7 +10,8 @@ export const quadIsLocked = (doc: QuadMeshDoc, quad: number): boolean => doc.qua
 /** The two ends of one `edgeLocked` key, or null when the key names no edge between two distinct vertices. */
 export function edgeLockEnds(key: string): [number, number] | null {
   const cut = key.indexOf(',');
-  const a = Number(key.slice(0, cut)), b = Number(key.slice(cut + 1));
+  const a = Number(key.slice(0, cut)),
+    b = Number(key.slice(cut + 1));
   return cut > 0 && Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a !== b ? [a, b] : null;
 }
 
@@ -39,7 +40,11 @@ export function lockedVertexSet(doc: QuadMeshDoc): Set<number> {
       for (const vertex of doc.quads[quad] ?? []) out.add(vertex);
     }
   }
-  if (doc.edgeLocked) for (const [a, b] of explicitLockedEdges(doc)) { out.add(a); out.add(b); }
+  if (doc.edgeLocked)
+    for (const [a, b] of explicitLockedEdges(doc)) {
+      out.add(a);
+      out.add(b);
+    }
   return out;
 }
 
@@ -49,7 +54,8 @@ export function lockedEdgeSet(doc: QuadMeshDoc): Set<string> {
   const out = new Set<string>();
   if (doc.quadLocked) {
     for (const key of Object.keys(doc.quadLocked)) {
-      const quad = +key, corners = doc.quads[quad];
+      const quad = +key,
+        corners = doc.quads[quad];
       if (!quadIsLocked(doc, quad) || !corners) continue;
       for (const [a, b] of liveQuadEdges(corners)) out.add(undirectedEdgeKey(a, b));
     }
@@ -109,9 +115,10 @@ export function setQuadsLocked(doc: QuadMeshDoc, quads: readonly number[], locke
 
   if (locked) {
     const edges = new Map<string, [number, number]>();
-    for (const quad of valid) for (const [a, b] of liveQuadEdges(doc.quads[quad])) {
-      if (a !== b) edges.set(undirectedEdgeKey(a, b), a < b ? [a, b] : [b, a]);
-    }
+    for (const quad of valid)
+      for (const [a, b] of liveQuadEdges(doc.quads[quad])) {
+        if (a !== b) edges.set(undirectedEdgeKey(a, b), a < b ? [a, b] : [b, a]);
+      }
     materializeHandles(doc, edges.values());
     const map = { ...(doc.quadLocked ?? {}) };
     for (const quad of valid) map[quad] = true;
@@ -119,7 +126,8 @@ export function setQuadsLocked(doc: QuadMeshDoc, quads: readonly number[], locke
   } else if (doc.quadLocked) {
     const map = { ...doc.quadLocked };
     for (const quad of valid) delete map[quad];
-    if (Object.keys(map).length) doc.quadLocked = map; else delete doc.quadLocked;
+    if (Object.keys(map).length) doc.quadLocked = map;
+    else delete doc.quadLocked;
   }
   return valid.length;
 }
@@ -127,7 +135,8 @@ export function setQuadsLocked(doc: QuadMeshDoc, quads: readonly number[], locke
 /** Every edge the mesh carries — patch sides and free edges — keyed canonically. */
 function liveEdgeKeys(doc: QuadMeshDoc): Set<string> {
   const live = new Set<string>();
-  for (const quad of doc.quads) for (const [a, b] of liveQuadEdges(quad)) if (a !== b) live.add(undirectedEdgeKey(a, b));
+  for (const quad of doc.quads)
+    for (const [a, b] of liveQuadEdges(quad)) if (a !== b) live.add(undirectedEdgeKey(a, b));
   for (const [a, b] of doc.freeEdges ?? []) if (a !== b) live.add(undirectedEdgeKey(a, b));
   return live;
 }
@@ -135,7 +144,11 @@ function liveEdgeKeys(doc: QuadMeshDoc): Set<string> {
 /** Lock or unlock single edges without changing their current curve — the edge twin of `setQuadsLocked`.
  * Only edges the mesh carries can be locked; unlocking only clears a lock the edge holds on its own (an edge of
  * a locked patch stays locked with its patch). Returns how many edges changed state. */
-export function setEdgesLocked(doc: QuadMeshDoc, edges: readonly (readonly [number, number])[], locked: boolean): number {
+export function setEdgesLocked(
+  doc: QuadMeshDoc,
+  edges: readonly (readonly [number, number])[],
+  locked: boolean,
+): number {
   const named = new Map<string, [number, number]>();
   for (const [a, b] of edges) {
     if (Number.isInteger(a) && Number.isInteger(b) && a !== b && a >= 0 && b >= 0) {
@@ -146,7 +159,10 @@ export function setEdgesLocked(doc: QuadMeshDoc, edges: readonly (readonly [numb
     const live = liveEdgeKeys(doc);
     const fresh = [...named].filter(([key]) => live.has(key) && doc.edgeLocked?.[key] !== true);
     if (!fresh.length) return 0;
-    materializeHandles(doc, fresh.map(([, ends]) => ends));
+    materializeHandles(
+      doc,
+      fresh.map(([, ends]) => ends),
+    );
     const map = { ...(doc.edgeLocked ?? {}) };
     for (const [key] of fresh) map[key] = true;
     doc.edgeLocked = map;
@@ -155,8 +171,13 @@ export function setEdgesLocked(doc: QuadMeshDoc, edges: readonly (readonly [numb
   if (!doc.edgeLocked) return 0;
   const map = { ...doc.edgeLocked };
   let changed = 0;
-  for (const key of named.keys()) if (map[key] === true) { delete map[key]; changed++; }
-  if (Object.keys(map).length) doc.edgeLocked = map; else delete doc.edgeLocked;
+  for (const key of named.keys())
+    if (map[key] === true) {
+      delete map[key];
+      changed++;
+    }
+  if (Object.keys(map).length) doc.edgeLocked = map;
+  else delete doc.edgeLocked;
   return changed;
 }
 
@@ -173,17 +194,25 @@ export interface LockSelection {
  * for a selected corner, every locked patch and locked edge meeting there. A patch held only along its border
  * by a neighbour's lock is not itself locked, and that neighbour is left alone.
  */
-export function locksHolding(doc: QuadMeshDoc, selection: LockSelection): { quads: number[]; edges: [number, number][] } {
-  const quads = new Set<number>(), edges = new Map<string, [number, number]>();
+export function locksHolding(
+  doc: QuadMeshDoc,
+  selection: LockSelection,
+): { quads: number[]; edges: [number, number][] } {
+  const quads = new Set<number>(),
+    edges = new Map<string, [number, number]>();
   const vertices = new Set(selection.vertices ?? []);
   const selectedEdges = new Set((selection.edges ?? []).map(([a, b]) => undirectedEdgeKey(a, b)));
   for (const quad of selection.quads ?? []) if (quadIsLocked(doc, quad)) quads.add(quad);
   if (doc.quadLocked && (vertices.size || selectedEdges.size)) {
     for (const key of Object.keys(doc.quadLocked)) {
-      const quad = +key, corners = doc.quads[quad];
+      const quad = +key,
+        corners = doc.quads[quad];
       if (!quadIsLocked(doc, quad) || !corners) continue;
-      if (corners.some(vertex => vertices.has(vertex))
-        || liveQuadEdges(corners).some(([a, b]) => selectedEdges.has(undirectedEdgeKey(a, b)))) quads.add(quad);
+      if (
+        corners.some(vertex => vertices.has(vertex)) ||
+        liveQuadEdges(corners).some(([a, b]) => selectedEdges.has(undirectedEdgeKey(a, b)))
+      )
+        quads.add(quad);
     }
   }
   for (const [a, b] of explicitLockedEdges(doc)) {
@@ -198,8 +227,11 @@ export function locksHolding(doc: QuadMeshDoc, selection: LockSelection): { quad
  * corner, and any edge whose every patch is among `removedQuads`. A lock is a promise the curve stays, so the
  * caller refuses rather than letting the lock vanish with its edge.
  */
-export function edgeLocksTaken(doc: QuadMeshDoc, selection: Pick<LockSelection, 'vertices' | 'edges'>,
-  removedQuads: readonly number[] = []): [number, number][] {
+export function edgeLocksTaken(
+  doc: QuadMeshDoc,
+  selection: Pick<LockSelection, 'vertices' | 'edges'>,
+  removedQuads: readonly number[] = [],
+): [number, number][] {
   const locked = explicitLockedEdges(doc);
   if (!locked.length) return [];
   const vertices = new Set(selection.vertices ?? []);
@@ -209,21 +241,34 @@ export function edgeLocksTaken(doc: QuadMeshDoc, selection: Pick<LockSelection, 
   if (removed.size) {
     doc.quads.forEach((corners, quad) => {
       for (const [a, b] of liveQuadEdges(corners)) {
-        const key = undirectedEdgeKey(a, b), held = bordering.get(key);
-        if (held) held.push(quad); else bordering.set(key, [quad]);
+        const key = undirectedEdgeKey(a, b),
+          held = bordering.get(key);
+        if (held) held.push(quad);
+        else bordering.set(key, [quad]);
       }
     });
   }
   return locked.filter(([a, b]) => {
-    const key = undirectedEdgeKey(a, b), quads = bordering.get(key);
-    return named.has(key) || vertices.has(a) || vertices.has(b) || (!!quads?.length && quads.every(quad => removed.has(quad)));
+    const key = undirectedEdgeKey(a, b),
+      quads = bordering.get(key);
+    return (
+      named.has(key) ||
+      vertices.has(a) ||
+      vertices.has(b) ||
+      (!!quads?.length && quads.every(quad => removed.has(quad)))
+    );
   });
 }
 
 /** Carry an edge lock onto the halves of a split edge. `keepParent` is a T-junction's split, where the unsplit
  * host edge lives on beside its halves and keeps its own lock. A lock the parent did not hold adds nothing. */
-export function splitEdgeLock(edgeLocked: Record<string, true> | undefined, from: number, to: number, vertex: number,
-  keepParent = false): void {
+export function splitEdgeLock(
+  edgeLocked: Record<string, true> | undefined,
+  from: number,
+  to: number,
+  vertex: number,
+  keepParent = false,
+): void {
   const parent = undirectedEdgeKey(from, to);
   if (edgeLocked?.[parent] !== true) return;
   if (!keepParent) delete edgeLocked[parent];

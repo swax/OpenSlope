@@ -4,23 +4,40 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import type { PlacedProp, V3 } from '../../../core/doc/types';
 import type { EffectsDocument } from '../../../core/effects/document';
 import {
-  authoredPropHasEffectCircumstance, authoredRollerMasses,
+  authoredPropHasEffectCircumstance,
+  authoredRollerMasses,
   authoredPropHoldsAtEnd,
   authoredPropMaterialControl,
   authoredPropMaterialEffects,
   effectAttachments,
 } from '../../../core/effects/authoring';
 import {
-  animComboFromNode, animObjectFromNode, createAnimComboPlayback, createAnimObjectPlayback,
-  createTriggeredAnimObjectPlayback, isAnimComboEffect,
-  isTextureFlipPulse, retriggerTriggeredAnimObjectPlayback, stepAnimComboPlayback, stepAnimObjectPlayback,
-  stepTriggeredAnimObjectPlayback, triggerAnimComboPlayback,
-  type AnimComboPlayback, type AnimComboSample,
-  type AnimObjectEffect, type AnimObjectPlayback, type MaterialControl, type TriggeredAnimObjectPlayback,
+  animComboFromNode,
+  animObjectFromNode,
+  createAnimComboPlayback,
+  createAnimObjectPlayback,
+  createTriggeredAnimObjectPlayback,
+  isAnimComboEffect,
+  isTextureFlipPulse,
+  retriggerTriggeredAnimObjectPlayback,
+  stepAnimComboPlayback,
+  stepAnimObjectPlayback,
+  stepTriggeredAnimObjectPlayback,
+  triggerAnimComboPlayback,
+  type AnimComboPlayback,
+  type AnimComboSample,
+  type AnimObjectEffect,
+  type AnimObjectPlayback,
+  type MaterialControl,
+  type TriggeredAnimObjectPlayback,
 } from '../../../core/effects/world-effects';
 import {
-  isPropModelAnimation, samplePropModelCurve, samplePropModelRotation, samplePropModelTranslation,
-  type PropModelAnimation, type PropModelClip,
+  isPropModelAnimation,
+  samplePropModelCurve,
+  samplePropModelRotation,
+  samplePropModelTranslation,
+  type PropModelAnimation,
+  type PropModelClip,
 } from '../../../core/reference/props';
 import { facingArrowMaterial, facingArrowSegments } from './facing-arrows';
 import type { GroupPropDef } from '../../../core/reference/groups';
@@ -35,22 +52,25 @@ import type { ShadeMode } from '../types';
 import { applyPropShade, disposePropShade, propContactTint, PROP_SHADE_TINT } from './prop-shade';
 import type { RideObstacleSource } from '../../ride/physics';
 import {
-  authoredAmbientEmitter, authoredAmbientEvent, AUTHORED_AMBIENT_DEFAULT_M,
+  authoredAmbientEmitter,
+  authoredAmbientEvent,
+  AUTHORED_AMBIENT_DEFAULT_M,
 } from '../../../core/effects/external-sound';
 import { soundRangeMaterial, soundRangeObject } from './sound-ranges';
 import { clampEffectTriggerSize, isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 import { NATIVE_COLLISION_MODE, nativeContactState } from '../../../core/collision/native';
 import { collisionProfileContactState, placedPropCollisionProfile, placedPropSolid } from '../../../core/props/contact';
 import { groupMemberKey, groupMemberProp } from '../../../core/props/defaults';
-import {
-  createCollisionOverlay, UNITY_COLLISION_OVERLAY_COLOR,
-} from './collision-overlay';
+import { createCollisionOverlay, UNITY_COLLISION_OVERLAY_COLOR } from './collision-overlay';
 import type { EffectPieceMotion } from './reference-effects';
 
 /** What placement mode holds: one model (or group), or — with `paste` — a copied SET posed about the anchor
  *  the cursor carries (core/props/clipboard.ts), whose level / model name its first placement. */
 export type PropArm = {
-  level: string; model: number; baseOffset: number; group?: string;
+  level: string;
+  model: number;
+  baseOffset: number;
+  group?: string;
   paste?: readonly PasteGhostPlacement[];
 };
 type AnimatedPropMesh = { mesh: THREE.Mesh; object: number | null };
@@ -81,12 +101,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   const placedPropGroup = new THREE.Group();
   const collisionOverlay = createCollisionOverlay(stage.worldRoot);
   const unityCollisionOverlay = createCollisionOverlay(stage.worldRoot, {
-    name: 'Selected Unity collider', activeColor: UNITY_COLLISION_OVERLAY_COLOR,
-    inactiveColor: UNITY_COLLISION_OVERLAY_COLOR, unity: true,
+    name: 'Selected Unity collider',
+    activeColor: UNITY_COLLISION_OVERLAY_COLOR,
+    inactiveColor: UNITY_COLLISION_OVERLAY_COLOR,
+    unity: true,
   });
   let collisionOverlayWanted = true;
   let propsVisible = true;
-  const soundRangeGroup = new THREE.Group();       // selected type-0 ambient listener radius (display only)
+  const soundRangeGroup = new THREE.Group(); // selected type-0 ambient listener radius (display only)
   const soundRangeMat = soundRangeMaterial();
   // A SURFACELESS model (an authored model with every quad carved away, or a retail model with no renderable
   // submeshes) would place as nothing — invisible and unclickable. Its placements render this stand-in
@@ -95,21 +117,33 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   // only — raycasts still hit the box faces, so the mesh carries userData.propIndex and picking/selection
   // work; it is never a Play collider.
   const placeholderGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-  const placeholderMat = new THREE.MeshBasicMaterial({ color: 0x9fb3c8, wireframe: true, transparent: true,
-    opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+  const placeholderMat = new THREE.MeshBasicMaterial({
+    color: 0x9fb3c8,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   const placeholderEdgeGeo = new LineSegmentsGeometry().fromEdgesGeometry(new THREE.EdgesGeometry(placeholderGeo));
   // Effects-authored trigger volumes are real generated box geometry (unlike the surfaceless-model stand-in):
   // the viewport uses it for selection and Test-mode contact, and export bakes the same centred unit box at
   // the authored size. Purple keeps it in the Effects visual language while the packed instance stays hidden.
   const effectTriggerGeo = new THREE.BoxGeometry(1, 1, 1);
-  const effectTriggerMat = new THREE.MeshBasicMaterial({ color: 0x9b63ff, wireframe: true, transparent: true,
-    opacity: 0.72, depthWrite: false, side: THREE.DoubleSide });
+  const effectTriggerMat = new THREE.MeshBasicMaterial({
+    color: 0x9b63ff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   const effectTriggerEdgeGeo = new LineSegmentsGeometry().fromEdgesGeometry(new THREE.EdgesGeometry(effectTriggerGeo));
   // Effects-mode decoration is deliberately outside placedPropGroup. Props-mode picking raycasts only
   // placedPropGroup, so showing/hiding effect hosts can never replace or intercept the normal prop meshes.
   const effectPropOutlineGroup = new THREE.Group();
   const effectRuntimeOutlines = new Map<string, { group: THREE.Group; base: THREE.Matrix4 }>();
-  let placedPropMeshes: THREE.Object3D[] = [];      // per placement: its Group (sparse until geom loads)
+  let placedPropMeshes: THREE.Object3D[] = []; // per placement: its Group (sparse until geom loads)
   const runtimeProps = new Map<string, RuntimeProp>();
   const runtimePropVisibility = new Map<string, boolean>();
   // Mesh-throw is authored against native model-object ids. Keep its transient offsets outside the document
@@ -128,7 +162,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   let worldEffectsEnabled = false;
   let selectedProp: number | null = null;
   let multiSelProps: number[] = [];
-  let lastPlacedProps: PlacedProp[] = [];           // the doc props last rendered (marquee projection + centroid)
+  let lastPlacedProps: PlacedProp[] = []; // the doc props last rendered (marquee projection + centroid)
   /** The mountain's hit-gated claim order, so an uploaded WAV's region is drawn for the event it took over
    *  rather than for the -1 a file-backed emitter would otherwise read as. */
   let hitGatedClaims: readonly string[] = [];
@@ -136,32 +170,35 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   let triggerPropsVisible = false;
   let effectPropIds = new Set<string>();
   let selectedEffectPropIds = new Set<string>();
-  let effectTriggerMeshes: THREE.Mesh[] = [];        // authored trigger boxes draw only in Effects mode
-  const multiHandleLast = new THREE.Vector3();      // the centre handle's data-space pos at the last gizmo report
+  let effectTriggerMeshes: THREE.Mesh[] = []; // authored trigger boxes draw only in Effects mode
+  const multiHandleLast = new THREE.Vector3(); // the centre handle's data-space pos at the last gizmo report
 
   // Props placement mode: the armed model + a translucent ghost of it under the cursor, seated at the exact
   // pose a click will commit. Alt+wheel or ← / → turns the ghost (Shift+wheel resizes) while the plain wheel
   // keeps zooming; a click places and the tool stays armed (stamp more). Null = select mode.
   let propArm: PropArm | null = null;
-  let propGhost: THREE.Group | null = null;         // the ghost meshes (under worldRoot, data coords)
-  let propGhostHit: THREE.Vector3 | null = null;    // last terrain hit under the ghost (world coords)
-  let highlightedLine: string | null = null;        // the selected prop line, whose members wear the outline
-  let pendingYaw = 0;                               // ghost turn — random per arm / drop, turnPending adjusts
-  let pendingScale = 1;                             // ghost size — Shift+wheel adjusts, kept across drops
-  let yawManual = false;                            // turned by hand: keep the yaw across drops (no re-roll)
+  let propGhost: THREE.Group | null = null; // the ghost meshes (under worldRoot, data coords)
+  let propGhostHit: THREE.Vector3 | null = null; // last terrain hit under the ghost (world coords)
+  let highlightedLine: string | null = null; // the selected prop line, whose members wear the outline
+  let pendingYaw = 0; // ghost turn — random per arm / drop, turnPending adjusts
+  let pendingScale = 1; // ghost size — Shift+wheel adjusts, kept across drops
+  let yawManual = false; // turned by hand: keep the yaw across drops (no re-roll)
 
-  let propGhostMats: THREE.Material[] = [];         // translucent material clones, disposed on rebuild
-  const propMoveHandle = new THREE.Object3D();      // scene-root gizmo anchor for the selected prop
-  let signTintMats: THREE.Material[] = [];          // per-rebuild billboard-tint material clones, disposed on rebuild
+  let propGhostMats: THREE.Material[] = []; // translucent material clones, disposed on rebuild
+  const propMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected prop
+  let signTintMats: THREE.Material[] = []; // per-rebuild billboard-tint material clones, disposed on rebuild
   // Where a prop reads the light on the ground beneath it; null = sun preview off, props on the studio rig.
   let groundLightAt: ((p: V3) => number | null) | null = null;
   // The last full rebuild's arguments, so a re-light can reproduce it without the caller re-supplying
   // selection / effects state it has no reason to still be holding.
   let lastPlacedArgs: {
-    props: PlacedProp[]; selIdx: number | null; multiSel: number[];
-    effects?: EffectsDocument | null; hiddenIndices?: ReadonlySet<number>;
+    props: PlacedProp[];
+    selIdx: number | null;
+    multiSel: number[];
+    effects?: EffectsDocument | null;
+    hiddenIndices?: ReadonlySet<number>;
   } | null = null;
-  let flashBox: THREE.Box3Helper | null = null;     // the identify flash (a white box around one placement)
+  let flashBox: THREE.Box3Helper | null = null; // the identify flash (a white box around one placement)
   let flashTimer = 0;
 
   // Face-normal arrows on the SELECTED placement (facing-arrows.ts) — the orientation instrument for
@@ -169,8 +206,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   // (setNormalArrows): arrows are still built with each selection, only their visibility follows the flag,
   // so toggling F never forces a placement rebuild.
   const normalArrowMat = facingArrowMaterial();
-  let normalArrowGeos: THREE.BufferGeometry[] = [];  // per-rebuild line buffers, disposed on rebuild
-  let normalArrowObjs: THREE.Object3D[] = [];        // the live arrow objects, for the F-toggle flip
+  let normalArrowGeos: THREE.BufferGeometry[] = []; // per-rebuild line buffers, disposed on rebuild
+  let normalArrowObjs: THREE.Object3D[] = []; // the live arrow objects, for the F-toggle flip
   let normalArrowsOn = false;
 
   /** The tile-orientation F toggle's prop half: facing arrows on the selected placement. */
@@ -188,11 +225,23 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
    * (The shell drops the read-only ref selection.)
    */
   function setArmed(arm: PropArm | null) {
-    const rearming = !!arm && (!propArm || propArm.paste !== arm.paste
-      || propArm.level !== arm.level || propArm.model !== arm.model || propArm.group !== arm.group);
+    const rearming =
+      !!arm &&
+      (!propArm ||
+        propArm.paste !== arm.paste ||
+        propArm.level !== arm.level ||
+        propArm.model !== arm.model ||
+        propArm.group !== arm.group);
     propArm = arm;
-    if (rearming && arm.paste) { pendingYaw = 0; yawManual = true; pendingScale = 1; }
-    else if (rearming) { pendingYaw = Math.random() * 360; yawManual = false; pendingScale = 1; }
+    if (rearming && arm.paste) {
+      pendingYaw = 0;
+      yawManual = true;
+      pendingScale = 1;
+    } else if (rearming) {
+      pendingYaw = Math.random() * 360;
+      yawManual = false;
+      pendingScale = 1;
+    }
     disposePropGhost();
     if (arm) buildPropGhost(); // hidden until the cursor hovers the terrain (seatPropGhost)
   }
@@ -234,10 +283,16 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         tris += sub.geometry.index?.count ?? 0;
         // A ghost deliberately owns translucent/no-depth state; do not let a later texture-alpha decode
         // replace that overlay state with the source material's opaque/cutout state.
-        const m = assets.propTex.variant(assets.propTex.material(sub.level, sub.tex,
-          undefined, [], undefined, { blend: sub.blend, priority: sub.prio,
-            pixelAlpha: sub.pixelAlpha, alphaMode: sub.alphaMode,
-            sheet: sub.sheet }), false); // shares the (maybe still loading) map
+        const m = assets.propTex.variant(
+          assets.propTex.material(sub.level, sub.tex, undefined, [], undefined, {
+            blend: sub.blend,
+            priority: sub.prio,
+            pixelAlpha: sub.pixelAlpha,
+            alphaMode: sub.alphaMode,
+            sheet: sub.sheet,
+          }),
+          false,
+        ); // shares the (maybe still loading) map
         m.transparent = true;
         m.opacity = 0.55;
         m.depthWrite = false;
@@ -245,7 +300,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         m.needsUpdate = true;
         propGhostMats.push(m);
         const mesh = new THREE.Mesh(sub.geometry, m);
-        mesh.raycast = () => { /* the ghost is never a pick target */ };
+        mesh.raycast = () => {
+          /* the ghost is never a pick target */
+        };
         child.add(mesh);
       }
       parent.add(child);
@@ -257,14 +314,19 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       m.opacity = 0.3;
       propGhostMats.push(m);
       const mesh = new THREE.Mesh(placeholderGeo, m);
-      mesh.raycast = () => { /* the ghost is never a pick target */ };
+      mesh.raycast = () => {
+        /* the ghost is never a pick target */
+      };
       parent.add(mesh);
     }
     return added;
   }
 
   function disposePropGhost() {
-    if (propGhost) { stage.worldRoot.remove(propGhost); propGhost = null; }
+    if (propGhost) {
+      stage.worldRoot.remove(propGhost);
+      propGhost = null;
+    }
     for (const m of propGhostMats) m.dispose();
     propGhostMats = [];
     propGhostHit = null;
@@ -273,9 +335,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   /** Seat the ghost at the last terrain hit under the cursor with the pending turn / size — the exact
    *  pose the committed placement will render with (its members already carry their local matrices). */
   function seatPropGhost() {
-    const g = propGhost, arm = propArm, hit = propGhostHit;
+    const g = propGhost,
+      arm = propArm,
+      hit = propGhostHit;
     if (!g) return;
-    if (!arm || !hit) { g.visible = false; return; }
+    if (!arm || !hit) {
+      g.visible = false;
+      return;
+    }
     g.matrix.copy(placementPose({ pos: seatedDropPos(hit), yaw: pendingYaw, scale: pendingScale }));
     g.visible = true;
   }
@@ -285,7 +352,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
    *  across drops instead of re-rolling. False when nothing is held. */
   function turnPending(deg: number): boolean {
     if (!propArm) return false;
-    pendingYaw = ((pendingYaw + deg) % 360 + 360) % 360;
+    pendingYaw = (((pendingYaw + deg) % 360) + 360) % 360;
     yawManual = true;
     seatPropGhost();
     return true;
@@ -332,7 +399,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     applyPropShade(placedPropGroup, shade);
     placedPropGroup.traverse(object => {
       const topology = object.userData.propSelectionTopology;
-      if (topology === 'feature' || topology === 'wire') object.visible = topology === (shade === 'none' ? 'wire' : 'feature');
+      if (topology === 'feature' || topology === 'wire')
+        object.visible = topology === (shade === 'none' ? 'wire' : 'feature');
     });
   }
 
@@ -348,8 +416,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     );
   }
 
-  function propAnimObjectEffect(document: EffectsDocument | null | undefined,
-    propId: string | undefined): AnimObjectEffect | null {
+  function propAnimObjectEffect(
+    document: EffectsDocument | null | undefined,
+    propId: string | undefined,
+  ): AnimObjectEffect | null {
     if (!document || !propId) return null;
     const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
     const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : null;
@@ -371,29 +441,48 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   }
   const hierarchyPoseCache = new WeakMap<PropModelAnimation, HierarchyPoseCache>();
 
-  function hierarchyLocalMatrix(animation: PropModelAnimation, objectIndex: number,
-    frame: number | null): THREE.Matrix4 {
+  function hierarchyLocalMatrix(
+    animation: PropModelAnimation,
+    objectIndex: number,
+    frame: number | null,
+  ): THREE.Matrix4 {
     const object = animation.objects[objectIndex];
     if (!object) return new THREE.Matrix4();
     if (frame === null || !object.channels?.some(curve => !!curve?.length))
-      return new THREE.Matrix4().compose(new THREE.Vector3(...object.restPosition),
-        new THREE.Quaternion(...object.restRotation), new THREE.Vector3(...object.restScale));
+      return new THREE.Matrix4().compose(
+        new THREE.Vector3(...object.restPosition),
+        new THREE.Quaternion(...object.restRotation),
+        new THREE.Vector3(...object.restScale),
+      );
     // An animated object's ROTATION comes from its channels alone: a component with no curve is ZERO, not
     // its base value and not its rest value [Trailmap: 120-objects]. Translation still starts from the base.
     const position = new THREE.Vector3(...(object.basePosition ?? object.restPosition));
     const euler = new THREE.Vector3();
     for (let axis = 0; axis < 3; axis++) {
-      const translation = object.channels[axis], rotation = object.channels[axis + 3];
+      const translation = object.channels[axis],
+        rotation = object.channels[axis + 3];
       if (translation?.length) position.setComponent(axis, samplePropModelCurve(translation, frame));
       if (rotation?.length) euler.setComponent(axis, samplePropModelCurve(rotation, frame));
     }
-    return new THREE.Matrix4().compose(position, new THREE.Quaternion().setFromEuler(new THREE.Euler(
-      THREE.MathUtils.degToRad(euler.x), THREE.MathUtils.degToRad(euler.y), THREE.MathUtils.degToRad(euler.z), 'ZYX')),
-    new THREE.Vector3(...object.restScale));
+    return new THREE.Matrix4().compose(
+      position,
+      new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(
+          THREE.MathUtils.degToRad(euler.x),
+          THREE.MathUtils.degToRad(euler.y),
+          THREE.MathUtils.degToRad(euler.z),
+          'ZYX',
+        ),
+      ),
+      new THREE.Vector3(...object.restScale),
+    );
   }
 
-  function hierarchyWorldMatrices(animation: PropModelAnimation, frame: number | null,
-    basis?: readonly THREE.Matrix4[]): THREE.Matrix4[] {
+  function hierarchyWorldMatrices(
+    animation: PropModelAnimation,
+    frame: number | null,
+    basis?: readonly THREE.Matrix4[],
+  ): THREE.Matrix4[] {
     const world: (THREE.Matrix4 | undefined)[] = new Array(animation.objects.length);
     const visiting = new Set<number>();
     const resolve = (index: number): THREE.Matrix4 => {
@@ -406,10 +495,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       if (visiting.has(index)) return local;
       visiting.add(index);
       const parent = animation.objects[index]?.parent ?? -1;
-      const result = parent >= 0 && parent < animation.objects.length && parent !== index
-        ? resolve(parent).clone().multiply(local) : local;
+      const result =
+        parent >= 0 && parent < animation.objects.length && parent !== index
+          ? resolve(parent).clone().multiply(local)
+          : local;
       visiting.delete(index);
-      return world[index] = result;
+      return (world[index] = result);
     };
     return animation.objects.map((_, index) => resolve(index));
   }
@@ -418,14 +509,18 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     let cache = hierarchyPoseCache.get(animation);
     if (!cache) {
       const rest = hierarchyWorldMatrices(animation, null);
-      cache = { restInverse: rest.map(matrix => matrix.clone().invert()), frame: null,
-        deltas: rest.map(() => new THREE.Matrix4()) };
+      cache = {
+        restInverse: rest.map(matrix => matrix.clone().invert()),
+        frame: null,
+        deltas: rest.map(() => new THREE.Matrix4()),
+      };
       hierarchyPoseCache.set(animation, cache);
     }
     if (cache.frame !== frame) {
       cache.frame = frame;
-      cache.deltas = hierarchyWorldMatrices(animation, frame)
-        .map((matrix, index) => matrix.clone().multiply(cache!.restInverse[index]));
+      cache.deltas = hierarchyWorldMatrices(animation, frame).map((matrix, index) =>
+        matrix.clone().multiply(cache!.restInverse[index]),
+      );
     }
     return cache.deltas;
   }
@@ -440,16 +535,20 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     hierarchyDeltas(animation, basis); // seeds restInverse
     const restInverse = hierarchyPoseCache.get(animation)!.restInverse;
     const held = animation.objects.map((_, index) => hierarchyLocalMatrix(animation, index, basis));
-    const deltas = hierarchyWorldMatrices(animation, frame, held)
-      .map((matrix, index) => matrix.clone().multiply(restInverse[index]));
+    const deltas = hierarchyWorldMatrices(animation, frame, held).map((matrix, index) =>
+      matrix.clone().multiply(restInverse[index]),
+    );
     comboDeltaCache.set(animation, { frame, basis, deltas });
     return deltas;
   }
 
-  const animationAxes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0),
-    new THREE.Vector3(0, 0, 1)] as const;
-  function animationDelta(clip: PropModelClip, object: number | null, frame: number,
-    basis: number | null = null): THREE.Matrix4 | null {
+  const animationAxes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)] as const;
+  function animationDelta(
+    clip: PropModelClip,
+    object: number | null,
+    frame: number,
+    basis: number | null = null,
+  ): THREE.Matrix4 | null {
     if (isPropModelAnimation(clip)) {
       if (object === null) return null;
       const deltas = basis === null ? hierarchyDeltas(clip, frame) : hierarchyComboDeltas(clip, frame, basis);
@@ -458,17 +557,24 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const pose = (at: number) => {
       const translation = samplePropModelTranslation(clip, at);
       const move = new THREE.Matrix4().makeTranslation(translation[0], translation[1], translation[2]);
-      return clip.axis === undefined ? move
-        : move.multiply(new THREE.Matrix4().makeRotationAxis(animationAxes[clip.axis],
-          THREE.MathUtils.degToRad(samplePropModelRotation(clip, at))));
+      return clip.axis === undefined
+        ? move
+        : move.multiply(
+            new THREE.Matrix4().makeRotationAxis(
+              animationAxes[clip.axis],
+              THREE.MathUtils.degToRad(samplePropModelRotation(clip, at)),
+            ),
+          );
     };
     return basis === null ? pose(frame) : pose(basis).multiply(pose(frame));
   }
 
   function applyAnimationTrack(track: AnimatedPropTrack, frame: number | null, basis: number | null = null) {
     for (const entry of track.meshes) {
-      const base = frame === null ? new THREE.Matrix4()
-        : animationDelta(track.clip, entry.object, frame, basis) ?? new THREE.Matrix4();
+      const base =
+        frame === null
+          ? new THREE.Matrix4()
+          : (animationDelta(track.clip, entry.object, frame, basis) ?? new THREE.Matrix4());
       const motion = runtimePieceMotions.get(entry.mesh);
       if (motion) {
         runtimePieceBases.set(entry.mesh, base.clone());
@@ -484,7 +590,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
    * placement yaw and scale. */
   function applyRuntimePieceMotion(mesh: THREE.Mesh, base: THREE.Matrix4, motion: EffectPieceMotion) {
     const parent = mesh.parent;
-    if (!parent) { mesh.matrix.copy(base); return; }
+    if (!parent) {
+      mesh.matrix.copy(base);
+      return;
+    }
     const geometry = mesh.geometry as THREE.BufferGeometry;
     if (!geometry.boundingSphere) geometry.computeBoundingSphere();
     const localCentre = geometry.boundingSphere?.center ?? new THREE.Vector3();
@@ -492,7 +601,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const parentWorld = parent.matrixWorld.clone();
     const baseWorld = parentWorld.clone().multiply(base);
     const pivot = localCentre.clone().applyMatrix4(baseWorld);
-    const effect = new THREE.Matrix4().makeTranslation(motion.offset.x, motion.offset.y, motion.offset.z)
+    const effect = new THREE.Matrix4()
+      .makeTranslation(motion.offset.x, motion.offset.y, motion.offset.z)
       .multiply(new THREE.Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z))
       .multiply(new THREE.Matrix4().makeRotationFromQuaternion(motion.rotation))
       .multiply(new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z));
@@ -509,14 +619,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       (box.min[0] + box.max[0]) / 2,
       (box.min[1] + box.max[1]) / 2,
       (box.min[2] + box.max[2]) / 2,
-    ).applyMatrix4(assets.memberLocalMatrix(leader)).applyMatrix4(placementPose(pp));
+    )
+      .applyMatrix4(assets.memberLocalMatrix(leader))
+      .applyMatrix4(placementPose(pp));
     const [gr, gg, gb] = propRigGlow([c.x, c.y, c.z], lights.authoredRigData!);
     const M = PROP_RIG_MAX_BOOST;
-    const t = new THREE.Color(
-      1 + M * (1 - Math.exp(-gr)),
-      1 + M * (1 - Math.exp(-gg)),
-      1 + M * (1 - Math.exp(-gb)),
-    );
+    const t = new THREE.Color(1 + M * (1 - Math.exp(-gr)), 1 + M * (1 - Math.exp(-gg)), 1 + M * (1 - Math.exp(-gb)));
     return t.r > 1.02 || t.g > 1.02 || t.b > 1.02 ? t : undefined;
   }
 
@@ -544,7 +652,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     collisionOverlay.clear();
     unityCollisionOverlay.clear();
     if (selectedProp === null) return;
-    const placed = lastPlacedProps[selectedProp], root = placedPropMeshes[selectedProp];
+    const placed = lastPlacedProps[selectedProp],
+      root = placedPropMeshes[selectedProp];
     if (!placed || !root) return;
     const effects = lastPlacedArgs?.effects;
     stage.worldRoot.updateWorldMatrix(true, false);
@@ -552,9 +661,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const parentInverse = stage.worldRoot.matrixWorld.clone().invert();
     const relativeMatrix = (world: THREE.Matrix4) => parentInverse.clone().multiply(world);
     const members = new Set<number>();
-    if (placed.memberBehaviour) root.traverse(object => {
-      if (typeof object.userData.propMember === 'number') members.add(object.userData.propMember);
-    });
+    if (placed.memberBehaviour)
+      root.traverse(object => {
+        if (typeof object.userData.propMember === 'number') members.add(object.userData.propMember);
+      });
     // Both overlays were cleared above, so every unit adds to them.
     drawUnit(placed, undefined);
     for (const model of members) drawUnit(groupMemberProp(placed, model), model);
@@ -563,9 +673,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     function unitMeshes(member: number | undefined): THREE.Mesh[] {
       const meshes: THREE.Mesh[] = [];
       root!.traverse(object => {
-        if (!(object instanceof THREE.Mesh) || !(object.geometry instanceof THREE.BufferGeometry)
-          || (object as THREE.Mesh & { isLineSegments2?: boolean }).isLineSegments2
-          || object.userData.propPlaceholder || memberOf(object, root!) !== member) return;
+        if (
+          !(object instanceof THREE.Mesh) ||
+          !(object.geometry instanceof THREE.BufferGeometry) ||
+          (object as THREE.Mesh & { isLineSegments2?: boolean }).isLineSegments2 ||
+          object.userData.propPlaceholder ||
+          memberOf(object, root!) !== member
+        )
+          return;
         object.updateWorldMatrix(true, false);
         meshes.push(object);
       });
@@ -583,8 +698,11 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const append = true;
 
       if (profile.mode === NATIVE_COLLISION_MODE.triangleProxy) {
-        collisionOverlay.showMeshes(meshes.map(mesh => ({ geometry: mesh.geometry, matrix: relativeMatrix(mesh.matrixWorld) })),
-          active, append);
+        collisionOverlay.showMeshes(
+          meshes.map(mesh => ({ geometry: mesh.geometry, matrix: relativeMatrix(mesh.matrixWorld) })),
+          active,
+          append,
+        );
         return;
       }
       if (profile.mode === NATIVE_COLLISION_MODE.boundingBox) {
@@ -600,27 +718,39 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           local.union(mesh.geometry.boundingBox);
         }
         if (placement && !local.isEmpty()) {
-          collisionOverlay.showPrimitives({
-            boxes: [{ center: local.getCenter(new THREE.Vector3()).toArray() as V3,
-              size: local.getSize(new THREE.Vector3()).toArray() as V3 }],
-            capsules: [],
-          }, placement, active, append);
+          collisionOverlay.showPrimitives(
+            {
+              boxes: [
+                {
+                  center: local.getCenter(new THREE.Vector3()).toArray() as V3,
+                  size: local.getSize(new THREE.Vector3()).toArray() as V3,
+                },
+              ],
+              capsules: [],
+            },
+            placement,
+            active,
+            append,
+          );
         }
         return;
       }
       if (profile.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && profile.physicsSource) {
         const spheres = assets.physicsBody(profile.physicsSource.level, profile.physicsSource.body);
-        if (spheres?.length) collisionOverlay.showSpheres(spheres, relativeMatrix(meshes[0].matrixWorld), active, append);
+        if (spheres?.length)
+          collisionOverlay.showSpheres(spheres, relativeMatrix(meshes[0].matrixWorld), active, append);
         if (active) {
           // Unity represents this mode-3 placement with the baked visual bounds as an explicit proxy. Match its
           // 20 cm minimum thickness in the editor overlay.
           const box = new THREE.Box3();
           for (const mesh of meshes) {
             if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-            if (mesh.geometry.boundingBox) box.union(mesh.geometry.boundingBox.clone().applyMatrix4(relativeMatrix(mesh.matrixWorld)));
+            if (mesh.geometry.boundingBox)
+              box.union(mesh.geometry.boundingBox.clone().applyMatrix4(relativeMatrix(mesh.matrixWorld)));
           }
           if (!box.isEmpty()) {
-            const center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3()),
+              size = box.getSize(new THREE.Vector3());
             size.set(Math.max(size.x, 0.2), Math.max(size.y, 0.2), Math.max(size.z, 0.2));
             unityCollisionOverlay.showBox(new THREE.Box3().setFromCenterAndSize(center, size), true, append);
           }
@@ -641,7 +771,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
    *  placement. Keeping this as a decoration child means it follows live gizmo movement without forcing the
    *  prop's textured submeshes or the rest of the mountain to be recreated. */
   function decorateSelection(index: number, single: boolean) {
-    const pp = lastPlacedProps[index], root = placedPropMeshes[index];
+    const pp = lastPlacedProps[index],
+      root = placedPropMeshes[index];
     if (!pp || !root) return;
     const decoration = new THREE.Group();
     decoration.userData.propSelectionDecoration = true;
@@ -649,7 +780,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const size = clampEffectTriggerSize(pp.effectTrigger.size);
       const line = new LineSegments2(effectTriggerEdgeGeo, assets.propOutlineMat);
       line.scale.set(size[0], size[1], size[2]);
-      line.raycast = () => { /* clicks resolve on the trigger box, never its outline */ };
+      line.raycast = () => {
+        /* clicks resolve on the trigger box, never its outline */
+      };
       decoration.add(line);
     }
     for (const m of isEffectTriggerProp(pp) ? [] : assets.membersOf(pp.level, pp.model, pp.name, pp.group)) {
@@ -662,24 +795,34 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const featureEdges = assets.propEdges(pp.level, m.model, geoms);
       const triangleWires = assets.propWireEdges(pp.level, m.model, geoms);
       for (let i = 0; i < Math.max(featureEdges.length, triangleWires.length); i++) {
-        for (const [geometry, topology] of [[featureEdges[i], 'feature'], [triangleWires[i], 'wire']] as const) {
+        for (const [geometry, topology] of [
+          [featureEdges[i], 'feature'],
+          [triangleWires[i], 'wire'],
+        ] as const) {
           if (!geometry) continue;
           const line = new LineSegments2(geometry, assets.propOutlineMat);
           line.userData.propSelectionTopology = topology;
           line.visible = topology === (shade === 'none' ? 'wire' : 'feature');
-          line.raycast = () => { /* clicks resolve on the prop meshes, never their outline */ };
+          line.raycast = () => {
+            /* clicks resolve on the prop meshes, never their outline */
+          };
           child.add(line);
         }
       }
       if (single) {
-        const pts = facingArrowSegments(subs.map(s => s.geometry), assets.propLocalBox(pp.level, m.model));
+        const pts = facingArrowSegments(
+          subs.map(s => s.geometry),
+          assets.propLocalBox(pp.level, m.model),
+        );
         if (pts.length) {
           const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
           normalArrowGeos.push(g);
           const arrows = new THREE.LineSegments(g, normalArrowMat);
           arrows.renderOrder = 3;
           arrows.visible = normalArrowsOn;
-          arrows.raycast = () => { /* never a pick target */ };
+          arrows.raycast = () => {
+            /* never a pick target */
+          };
           normalArrowObjs.push(arrows);
           child.add(arrows);
         }
@@ -689,7 +832,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     if (root.userData.propPlaceholder) {
       // a surfaceless model has no mesh edges to outline — the amber selection edge rides its stand-in box
       const line = new LineSegments2(placeholderEdgeGeo, assets.propOutlineMat);
-      line.raycast = () => { /* clicks resolve on the box mesh, never its outline */ };
+      line.raycast = () => {
+        /* clicks resolve on the box mesh, never its outline */
+      };
       decoration.add(line);
     }
     if (decoration.children.length) root.add(decoration);
@@ -706,7 +851,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     // but carry no gizmo of their own: the line moves them by its nodes (docs/070).
     if (highlightedLine !== null) {
       lastPlacedProps.forEach((pp, i) => {
-        if (pp.line === highlightedLine && i !== selectedProp && !multiSelProps.includes(i)) decorateSelection(i, false);
+        if (pp.line === highlightedLine && i !== selectedProp && !multiSelProps.includes(i))
+          decorateSelection(i, false);
       });
     }
     if (selectedProp !== null) {
@@ -754,7 +900,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       g.traverse(o => {
         const mesh = o as THREE.Mesh;
         if (!mesh.isMesh) return;
-        if (mesh.userData.propFullBright) return;   // emits; there is no key on it to re-scale
+        if (mesh.userData.propFullBright) return; // emits; there is no key on it to re-scale
         const base = mesh.userData.propGroundBase as THREE.MeshLambertMaterial | null | undefined;
         if (base) mesh.material = gl !== null ? assets.propTex.groundLit(base, gl) : base;
         // a tinted billboard keeps its private variant either way; 1 is the unlit/no-sun value
@@ -766,8 +912,13 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   /** Rebuild the placed-prop meshes from the doc, and keep the selected prop's gizmo + glow in sync. A prop
    *  whose model geometry isn't cached yet is skipped (the host re-renders once registerPropModels lands).
    *  A GROUP placement builds every member model under the one pose (docs/015). */
-  function setPlacedProps(props: PlacedProp[], selIdx: number | null, multiSel: number[] = [],
-    effects?: EffectsDocument | null, hiddenIndices?: ReadonlySet<number>) {
+  function setPlacedProps(
+    props: PlacedProp[],
+    selIdx: number | null,
+    multiSel: number[] = [],
+    effects?: EffectsDocument | null,
+    hiddenIndices?: ReadonlySet<number>,
+  ) {
     clearSelectionVisuals();
     lastPlacedProps = props;
     lastPlacedArgs = { props, selIdx, multiSel, effects, hiddenIndices };
@@ -778,10 +929,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     effectTriggerMeshes = [];
     runtimeProps.clear();
     runtimePropVisibility.clear();
-    controlledProps = new Map(props.flatMap(pp => {
-      const control = pp.id ? authoredPropMaterialControl(effects, pp.id) : null;
-      return control ? [[pp.id!, control] as const] : [];
-    }));
+    controlledProps = new Map(
+      props.flatMap(pp => {
+        const control = pp.id ? authoredPropMaterialControl(effects, pp.id) : null;
+        return control ? [[pp.id!, control] as const] : [];
+      }),
+    );
     controlledPropMaterials.clear();
     effectPropMaterials.clear();
     for (const m of signTintMats) m.dispose();
@@ -792,7 +945,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const tintOf = new Map<number, THREE.Color>();
     const rigOn = !!lights.authoredRigData && lights.authoredLightsVisible;
     if (rigOn) {
-      for (const L of lights.authoredLights) if (L.ofProp !== undefined && L.aimAt) tintOf.set(L.ofProp, lights.signTint(L.aimAt));
+      for (const L of lights.authoredLights)
+        if (L.ofProp !== undefined && L.aimAt) tintOf.set(L.ofProp, lights.signTint(L.aimAt));
     }
     for (let i = 0; i < props.length; i++) {
       const pp = props[i];
@@ -814,7 +968,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       // the LEGACY inference for documents saved before placements carried one, and re-deriving them per
       // frame here would cost an effects walk per prop to change nothing on a modern map.
       group.userData[PROP_SHADE_TINT] = propContactTint(
-        collisionProfileContactState(placedPropCollisionProfile(pp)), pp.surface);
+        collisionProfileContactState(placedPropCollisionProfile(pp)),
+        pp.surface,
+      );
       const tint = tintOf.get(i) ?? (rigOn ? placementGlowTint(pp, members[0]) : undefined);
       // The light on the ground this prop stands on — the same field the export reads its per-instance key
       // from (docs/032 · lighting), so a prop in a cliff's shade previews as it ships. Null when the sun
@@ -854,33 +1010,48 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         if (own) {
           child.userData.propMember = m.model;
           child.userData[PROP_SHADE_TINT] = propContactTint(
-            collisionProfileContactState(placedPropCollisionProfile({ level: pp.level, ...own })), own.surface);
+            collisionProfileContactState(placedPropCollisionProfile({ level: pp.level, ...own })),
+            own.surface,
+          );
         }
         for (const sub of subs) {
           tris += sub.geometry.index?.count ?? 0;
           const frames = worldEffect?.crowd ? sub.crowdFrames : sub.frames;
           const texture = frames[0] ?? sub.tex;
-          const opts = { blend: sub.blend, priority: sub.prio,
-            pixelAlpha: !!worldEffect?.crowd || sub.pixelAlpha, alphaMode: sub.alphaMode, sheet: sub.sheet };
+          const opts = {
+            blend: sub.blend,
+            priority: sub.prio,
+            pixelAlpha: !!worldEffect?.crowd || sub.pixelAlpha,
+            alphaMode: sub.alphaMode,
+            sheet: sub.sheet,
+          };
           let mat: THREE.Material;
           // Resolved per MATERIAL, not per placement: a graph node may name the material it drives, which
           // is how one submesh of a multi-material prop scrolls while the rest stay still. An unscoped node
           // still covers everything, so every retail graph behaves exactly as before.
           // The ambient law first; failing that, the law of a receiver a graph installs on contact. A
           // ride-over button has only the latter, and it still needs the frames its pulse selects between.
-          const control = pp.id ? controlledProps.get(pp.id) ?? null : null;
+          const control = pp.id ? (controlledProps.get(pp.id) ?? null) : null;
           const subEffect = authoredPropMaterialEffects(effects, pp.id, sub.mat) ?? control?.effect ?? null;
           // A controlled placement takes a material of its own, so a frame select paints the button that was
           // crossed rather than every prop that happens to share its texture — retail's per-node override.
-          const base = assets.propTex.material(sub.level, texture, subEffect, frames,
-            control ? pp.id : undefined, opts);
+          const base = assets.propTex.material(
+            sub.level,
+            texture,
+            subEffect,
+            frames,
+            control ? pp.id : undefined,
+            opts,
+          );
           if (control && pp.id) {
             const owned = controlledPropMaterials.get(pp.id);
-            if (owned) owned.add(base); else controlledPropMaterials.set(pp.id, new Set([base]));
+            if (owned) owned.add(base);
+            else controlledPropMaterials.set(pp.id, new Set([base]));
           }
           if (subEffect && pp.id) {
             const animated = effectPropMaterials.get(pp.id);
-            if (animated) animated.add(base); else effectPropMaterials.set(pp.id, new Set([base]));
+            if (animated) animated.add(base);
+            else effectPropMaterials.set(pp.id, new Set([base]));
           }
           // Self-lit wins over both: the surface emits, so neither the sun's key nor a neighbouring sign
           // light's tint has anything to add to it — which is what the shipped instances say too, since a
@@ -890,7 +1061,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
             const c = assets.propTex.variant(base);
             c.color.copy(tint);
             if (groundLight !== null) assets.propTex.setKeyScale(c, groundLight);
-            signTintMats.push(mat = c);
+            signTintMats.push((mat = c));
           } else mat = groundLight !== null ? assets.propTex.groundLit(base, groundLight) : base;
           const mesh = new THREE.Mesh(sub.geometry, mat);
           if (clip) {
@@ -906,14 +1077,19 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           mesh.userData.propFullBright = fullBright; // a re-light must leave a self-lit surface alone
           mesh.userData.propIndex = i; // a raycast hit resolves the placement straight off the mesh
           mesh.userData.propTex = texture ?? null; // this submesh's frame-zero texture file — the paint
-          mesh.userData.propTexLevel = sub.level;  // the paint sampler reads both straight off a raycast hit
-          mesh.userData.propSurface = { tex: texture ?? null, blend: !!sub.blend,
-            ...(sub.alphaMode ? { alphaMode: sub.alphaMode } : {}), prio: !!sub.prio,
-            frames: frames.length, ...(frames.length ? { frameFiles: [...frames] } : {}),
+          mesh.userData.propTexLevel = sub.level; // the paint sampler reads both straight off a raycast hit
+          mesh.userData.propSurface = {
+            tex: texture ?? null,
+            blend: !!sub.blend,
+            ...(sub.alphaMode ? { alphaMode: sub.alphaMode } : {}),
+            prio: !!sub.prio,
+            frames: frames.length,
+            ...(frames.length ? { frameFiles: [...frames] } : {}),
             ...(subEffect?.textureFlip ? { flipbook: { ...subEffect.textureFlip } } : {}),
             // This describes the SUBMESH under the cursor, so it reports the submesh's own effect: on a
             // multi-material prop the plume scrolls and the bodywork does not, and clicking each should say so.
-            scroll: !!subEffect?.uvScroll }; // appearance identity for inspection
+            scroll: !!subEffect?.uvScroll,
+          }; // appearance identity for inspection
           child.add(mesh);
         }
         group.add(child);
@@ -933,10 +1109,19 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       if (pp.id) {
         const effect = propAnimObjectEffect(effects, pp.id);
         const tracks: AnimatedPropTrack[] = [...tracksByClip].map(([clip, meshes]) => ({
-          clip, meshes, preview: null, runtime: null, scrub: null,
-          ambient: effect ? { effect, playback: isAnimComboEffect(effect)
-            ? createAnimComboPlayback(effect, clip.clipFrames, i + 1)
-            : createAnimObjectPlayback(effect, clip.clipFrames, i + 1) } : null,
+          clip,
+          meshes,
+          preview: null,
+          runtime: null,
+          scrub: null,
+          ambient: effect
+            ? {
+                effect,
+                playback: isAnimComboEffect(effect)
+                  ? createAnimComboPlayback(effect, clip.clipFrames, i + 1)
+                  : createAnimObjectPlayback(effect, clip.clipFrames, i + 1),
+              }
+            : null,
         }));
         runtimeProps.set(pp.id, { group, base: group.matrix.clone(), tracks });
       }
@@ -969,9 +1154,18 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   function placeMultiHandle() {
     const sel = multiSelProps;
     if (!sel.length) return;
-    let x = 0, y = 0, z = 0;
-    for (const i of sel) { const p = lastPlacedProps[i].pos; x += p[0]; y += p[1]; z += p[2]; }
-    x /= sel.length; y /= sel.length; z /= sel.length;
+    let x = 0,
+      y = 0,
+      z = 0;
+    for (const i of sel) {
+      const p = lastPlacedProps[i].pos;
+      x += p[0];
+      y += p[1];
+      z += p[2];
+    }
+    x /= sel.length;
+    y /= sel.length;
+    z /= sel.length;
     propMoveHandle.position.set(x, y, -z);
     multiHandleLast.set(x, y, z);
   }
@@ -1000,7 +1194,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   /** Drop any placed-prop selection (single or multi): hide the handle and release the gizmo if it was on it. */
   function clearSelection() {
-    if (selectedProp === null && !multiSelProps.length && stage.gizmoKind !== 'prop' && stage.gizmoKind !== 'props') return;
+    if (selectedProp === null && !multiSelProps.length && stage.gizmoKind !== 'prop' && stage.gizmoKind !== 'props')
+      return;
     setSelection(null);
   }
 
@@ -1041,10 +1236,15 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       let tris = 0; // renderable triangles across the members — 0 with cached geometry = surfaceless model
       if (isEffectTriggerProp(pp)) {
         const size = clampEffectTriggerSize(pp.effectTrigger.size);
-        const line = new LineSegments2(effectTriggerEdgeGeo, selected ? assets.propOutlineMat : assets.effectOutlineMat);
+        const line = new LineSegments2(
+          effectTriggerEdgeGeo,
+          selected ? assets.propOutlineMat : assets.effectOutlineMat,
+        );
         line.scale.set(size[0], size[1], size[2]);
         line.renderOrder = selected ? 100 : EFFECT_PROP_OVERLAY_RENDER_ORDER;
-        line.raycast = () => { /* display-only sibling; never a prop pick target */ };
+        line.raycast = () => {
+          /* display-only sibling; never a prop pick target */
+        };
         group.add(line);
         tris = 12;
       }
@@ -1055,10 +1255,16 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         child.matrixAutoUpdate = false;
         child.matrix.copy(assets.memberLocalMatrix(m));
         for (const sub of subs) tris += sub.geometry.index?.count ?? 0;
-        for (const eg of assets.propEdges(pp.level, m.model, subs.map(s => s.geometry))) {
+        for (const eg of assets.propEdges(
+          pp.level,
+          m.model,
+          subs.map(s => s.geometry),
+        )) {
           const line = new LineSegments2(eg, selected ? assets.propOutlineMat : assets.effectOutlineMat);
           line.renderOrder = selected ? 100 : EFFECT_PROP_OVERLAY_RENDER_ORDER;
-          line.raycast = () => { /* display-only sibling; never a prop pick target */ };
+          line.raycast = () => {
+            /* display-only sibling; never a prop pick target */
+          };
           child.add(line);
         }
         if (child.children.length) group.add(child);
@@ -1067,7 +1273,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         // a surfaceless placement has no mesh edges — the effect marker rides its stand-in box instead
         const line = new LineSegments2(placeholderEdgeGeo, selected ? assets.propOutlineMat : assets.effectOutlineMat);
         line.renderOrder = selected ? 100 : EFFECT_PROP_OVERLAY_RENDER_ORDER;
-        line.raycast = () => { /* display-only sibling; never a prop pick target */ };
+        line.raycast = () => {
+          /* display-only sibling; never a prop pick target */
+        };
         group.add(line);
       }
       if (group.children.length) {
@@ -1082,10 +1290,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   function showEffectProps(on: boolean, propIds: Iterable<string>, selectedPropIds: Iterable<string> = []) {
     const next = new Set(propIds);
     const selected = new Set(selectedPropIds);
-    if (effectPropsVisible === on && next.size === effectPropIds.size
-      && [...next].every(id => effectPropIds.has(id))
-      && selected.size === selectedEffectPropIds.size
-      && [...selected].every(id => selectedEffectPropIds.has(id))) return;
+    if (
+      effectPropsVisible === on &&
+      next.size === effectPropIds.size &&
+      [...next].every(id => effectPropIds.has(id)) &&
+      selected.size === selectedEffectPropIds.size &&
+      [...selected].every(id => selectedEffectPropIds.has(id))
+    )
+      return;
     effectPropsVisible = on;
     for (const mesh of effectTriggerMeshes) mesh.visible = on || triggerPropsVisible;
     effectPropIds = next;
@@ -1097,7 +1309,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   function setRuntimePropVisible(propId: string, visible: boolean | null) {
     const target = runtimeProps.get(propId);
     if (!target) return;
-    if (visible === null) runtimePropVisibility.delete(propId); else runtimePropVisibility.set(propId, visible);
+    if (visible === null) runtimePropVisibility.delete(propId);
+    else runtimePropVisibility.set(propId, visible);
     target.group.visible = visible ?? true;
   }
 
@@ -1122,8 +1335,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const target = runtimeProps.get(propId);
     if (!target) return [];
     const ids = new Set<number>();
-    for (const track of target.tracks) for (const entry of track.meshes)
-      if (entry.object !== null) ids.add(entry.object);
+    for (const track of target.tracks)
+      for (const entry of track.meshes) if (entry.object !== null) ids.add(entry.object);
     return [...ids].sort((a, b) => a - b);
   }
 
@@ -1133,29 +1346,33 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const target = runtimeProps.get(propId);
     if (!target) return;
     const byPiece = motions ? new Map(motions.map(motion => [motion.piece, motion])) : null;
-    for (const track of target.tracks) for (const entry of track.meshes) {
-      const motion = entry.object === null ? undefined : byPiece?.get(entry.object);
-      if (motion) {
-        if (!runtimePieceMotions.has(entry.mesh)) runtimePieceBases.set(entry.mesh, entry.mesh.matrix.clone());
-        runtimePieceMotions.set(entry.mesh, motion);
-        applyRuntimePieceMotion(entry.mesh, runtimePieceBases.get(entry.mesh) ?? new THREE.Matrix4(), motion);
-      } else if (runtimePieceMotions.has(entry.mesh)) {
-        entry.mesh.matrix.copy(runtimePieceBases.get(entry.mesh) ?? new THREE.Matrix4());
-        runtimePieceMotions.delete(entry.mesh);
-        runtimePieceBases.delete(entry.mesh);
+    for (const track of target.tracks)
+      for (const entry of track.meshes) {
+        const motion = entry.object === null ? undefined : byPiece?.get(entry.object);
+        if (motion) {
+          if (!runtimePieceMotions.has(entry.mesh)) runtimePieceBases.set(entry.mesh, entry.mesh.matrix.clone());
+          runtimePieceMotions.set(entry.mesh, motion);
+          applyRuntimePieceMotion(entry.mesh, runtimePieceBases.get(entry.mesh) ?? new THREE.Matrix4(), motion);
+        } else if (runtimePieceMotions.has(entry.mesh)) {
+          entry.mesh.matrix.copy(runtimePieceBases.get(entry.mesh) ?? new THREE.Matrix4());
+          runtimePieceMotions.delete(entry.mesh);
+          runtimePieceBases.delete(entry.mesh);
+        }
+        entry.mesh.matrixWorldNeedsUpdate = true;
       }
-      entry.mesh.matrixWorldNeedsUpdate = true;
-    }
   }
 
   function resetRuntimeProps() {
     for (const id of stoppedPropEffects) setPropEffectsStopped(id, false);
     for (const [propId, { group, base }] of runtimeProps) {
       setRuntimePropPieceMotions(propId, null);
-      group.visible = true; group.matrix.copy(base); group.matrixWorldNeedsUpdate = true;
+      group.visible = true;
+      group.matrix.copy(base);
+      group.matrixWorldNeedsUpdate = true;
     }
     for (const { group, base } of effectRuntimeOutlines.values()) {
-      group.matrix.copy(base); group.matrixWorldNeedsUpdate = true;
+      group.matrix.copy(base);
+      group.matrixWorldNeedsUpdate = true;
     }
     for (const [propId, materials] of controlledPropMaterials) {
       const receiver = controlledProps.get(propId)?.receiver;
@@ -1171,18 +1388,26 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     if (!target) return false;
     let handled = false;
     const control = controlledProps.get(propId);
-    if (control) for (const material of controlledPropMaterials.get(propId) ?? []) {
-      assets.propTex.resetMaterialControl(material, control.receiver);
-      handled = true;
-    }
+    if (control)
+      for (const material of controlledPropMaterials.get(propId) ?? []) {
+        assets.propTex.resetMaterialControl(material, control.receiver);
+        handled = true;
+      }
     for (const [index, track] of target.tracks.entries()) {
-      if (track.preview) { track.preview = null; handled = true; }
+      if (track.preview) {
+        track.preview = null;
+        handled = true;
+      }
       if (track.ambient && isAnimComboEffect(track.ambient.effect)) {
         track.ambient.playback = createAnimComboPlayback(track.ambient.effect, track.clip.clipFrames, index + 1);
         handled = true;
       }
-      applyAnimationTrack(track, track.scrub ?? track.runtime?.playback.frame
-        ?? (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null));
+      applyAnimationTrack(
+        track,
+        track.scrub ??
+          track.runtime?.playback.frame ??
+          (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null),
+      );
     }
     return handled;
   }
@@ -1233,94 +1458,112 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   }
 
   /** Run one placed prop's embedded model clip independently of the global Effects visibility toggle. */
-  function previewAnimObject(propId: string, effect: AnimObjectEffect,
-    autoReturnDelay: number | null = null): boolean {
+  function previewAnimObject(propId: string, effect: AnimObjectEffect, autoReturnDelay: number | null = null): boolean {
     const target = runtimeProps.get(propId);
     if (!target?.tracks.length) return false;
     // A play-once clip on an Effect-end-latched slot keeps its finished node in the game, so its final frame
     // holds until the player is explicitly cleared [Trailmap: 150-logic §slot-columns].
-    const holdAtEnd = authoredPropHoldsAtEnd(lastPlacedArgs?.effects, propId)
-      && effect.loopMode !== 1 && effect.loopMode !== 2;
+    const holdAtEnd =
+      authoredPropHoldsAtEnd(lastPlacedArgs?.effects, propId) && effect.loopMode !== 1 && effect.loopMode !== 2;
     let seed = 0x811c9dc5;
     for (let i = 0; i < propId.length; i++) seed = Math.imul(seed ^ propId.charCodeAt(i), 0x01000193);
     for (const [index, track] of target.tracks.entries()) {
-      if (autoReturnDelay !== null && track.preview
-        && retriggerTriggeredAnimObjectPlayback(track.preview)) continue;
-      track.preview = createTriggeredAnimObjectPlayback(effect, track.clip.clipFrames,
-        (seed + index) >>> 0, holdAtEnd, autoReturnDelay);
+      if (autoReturnDelay !== null && track.preview && retriggerTriggeredAnimObjectPlayback(track.preview)) continue;
+      track.preview = createTriggeredAnimObjectPlayback(
+        effect,
+        track.clip.clipFrames,
+        (seed + index) >>> 0,
+        holdAtEnd,
+        autoReturnDelay,
+      );
     }
     return true;
   }
 
   function clearAnimObjectPreviews(): boolean {
     let had = false;
-    for (const target of runtimeProps.values()) for (const track of target.tracks) {
-      if (!track.preview) continue;
-      track.preview = null; had = true;
-      applyAnimationTrack(track, track.scrub ?? track.runtime?.playback.frame
-        ?? (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null));
-    }
+    for (const target of runtimeProps.values())
+      for (const track of target.tracks) {
+        if (!track.preview) continue;
+        track.preview = null;
+        had = true;
+        applyAnimationTrack(
+          track,
+          track.scrub ??
+            track.runtime?.playback.frame ??
+            (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null),
+        );
+      }
     return had;
   }
 
   function setWorldEffectsEnabled(on: boolean) {
     if (worldEffectsEnabled === on) return;
     worldEffectsEnabled = on;
-    for (const target of runtimeProps.values()) for (const track of target.tracks) {
-      if (track.preview || track.runtime || track.scrub !== null) continue;
-      applyAnimationTrack(track, on && track.ambient ? track.ambient.playback.frame : null);
-    }
+    for (const target of runtimeProps.values())
+      for (const track of target.tracks) {
+        if (track.preview || track.runtime || track.scrub !== null) continue;
+        applyAnimationTrack(track, on && track.ambient ? track.ambient.playback.frame : null);
+      }
   }
 
   function startRuntimeAnimObject(propId: string, effect: AnimObjectEffect): boolean {
     const target = runtimeProps.get(propId);
     if (!target?.tracks.length) return false;
-    for (const [index, track] of target.tracks.entries()) track.runtime = {
-      effect, playback: createAnimObjectPlayback(effect, track.clip.clipFrames, index + 1),
-    };
+    for (const [index, track] of target.tracks.entries())
+      track.runtime = {
+        effect,
+        playback: createAnimObjectPlayback(effect, track.clip.clipFrames, index + 1),
+      };
     return true;
   }
 
   function clearRuntimeAnimObjects(): boolean {
     let had = false;
-    for (const target of runtimeProps.values()) for (const track of target.tracks) {
-      if (!track.runtime) continue;
-      track.runtime = null; had = true;
-      if (!track.preview) applyAnimationTrack(track, track.scrub
-        ?? (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null));
-    }
+    for (const target of runtimeProps.values())
+      for (const track of target.tracks) {
+        if (!track.runtime) continue;
+        track.runtime = null;
+        had = true;
+        if (!track.preview)
+          applyAnimationTrack(
+            track,
+            track.scrub ?? (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null),
+          );
+      }
     return had;
   }
 
   function stepWorldEffects(dt: number) {
     if (dt <= 0) return;
-    for (const [propId, target] of runtimeProps) for (const track of target.tracks) {
-      if (stoppedPropEffects.has(propId)) continue;
-      let frame: number | null;
-      if (track.scrub !== null) continue;   // a held pose is the author's; no player may advance it
-      if (track.preview) {
-        const sample = stepTriggeredAnimObjectPlayback(track.preview, dt);
-        frame = sample.frame;
-        if (sample.done) {
-          track.preview = null;
-          frame = track.runtime?.playback.frame
-            ?? (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null);
-        }
-      } else if (track.runtime)
-        frame = stepAnimObjectPlayback(track.runtime.playback, track.runtime.effect, dt);
-      else if (track.ambient && isAnimComboEffect(track.ambient.effect)) {
-        // A triggered combo runs whether or not the ambient Effects toggle is on: it is a one-shot the graph
-        // asked for, not free-running motion. Its IDLE half still answers to the toggle.
-        const playback = track.ambient.playback as AnimComboPlayback;
-        if (!worldEffectsEnabled && !playback.active && !playback.latched) continue;
-        const sample: AnimComboSample = stepAnimComboPlayback(playback, track.ambient.effect, dt);
-        applyAnimationTrack(track, sample.frame, sample.basis);
-        continue;
-      } else if (worldEffectsEnabled && track.ambient)
-        frame = stepAnimObjectPlayback(track.ambient.playback, track.ambient.effect, dt);
-      else continue;
-      applyAnimationTrack(track, frame);
-    }
+    for (const [propId, target] of runtimeProps)
+      for (const track of target.tracks) {
+        if (stoppedPropEffects.has(propId)) continue;
+        let frame: number | null;
+        if (track.scrub !== null) continue; // a held pose is the author's; no player may advance it
+        if (track.preview) {
+          const sample = stepTriggeredAnimObjectPlayback(track.preview, dt);
+          frame = sample.frame;
+          if (sample.done) {
+            track.preview = null;
+            frame =
+              track.runtime?.playback.frame ??
+              (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null);
+          }
+        } else if (track.runtime) frame = stepAnimObjectPlayback(track.runtime.playback, track.runtime.effect, dt);
+        else if (track.ambient && isAnimComboEffect(track.ambient.effect)) {
+          // A triggered combo runs whether or not the ambient Effects toggle is on: it is a one-shot the graph
+          // asked for, not free-running motion. Its IDLE half still answers to the toggle.
+          const playback = track.ambient.playback as AnimComboPlayback;
+          if (!worldEffectsEnabled && !playback.active && !playback.latched) continue;
+          const sample: AnimComboSample = stepAnimComboPlayback(playback, track.ambient.effect, dt);
+          applyAnimationTrack(track, sample.frame, sample.basis);
+          continue;
+        } else if (worldEffectsEnabled && track.ambient)
+          frame = stepAnimObjectPlayback(track.ambient.playback, track.ambient.effect, dt);
+        else continue;
+        applyAnimationTrack(track, frame);
+      }
   }
 
   function propAnimObjectClip(propId: string): PropModelClip | null {
@@ -1344,11 +1587,14 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     const target = runtimeProps.get(propId);
     if (!target?.tracks.length) return false;
     for (const track of target.tracks) {
-      track.scrub = frame === null ? null
-        : Math.min(track.clip.clipFrames, Math.max(0, frame));
-      applyAnimationTrack(track, track.scrub ?? track.preview?.playback.frame
-        ?? track.runtime?.playback.frame
-        ?? (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null));
+      track.scrub = frame === null ? null : Math.min(track.clip.clipFrames, Math.max(0, frame));
+      applyAnimationTrack(
+        track,
+        track.scrub ??
+          track.preview?.playback.frame ??
+          track.runtime?.playback.frame ??
+          (worldEffectsEnabled && track.ambient ? track.ambient.playback.frame : null),
+      );
     }
     return true;
   }
@@ -1379,7 +1625,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     // Roller independently activates the body [Trailmap: 130-collision-data, 370-world-interaction].
     const rollers = authoredRollerMasses(effects, lastPlacedProps);
     for (let i = 0; i < lastPlacedProps.length; i++) {
-      const placed = lastPlacedProps[i], root = placedPropMeshes[i];
+      const placed = lastPlacedProps[i],
+        root = placedPropMeshes[i];
       if (!root) continue;
       const id = placed.id ?? `prop:${i}`;
       if (runtimePropVisibility.get(id) === false) continue;
@@ -1387,9 +1634,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       // contact, under its own key so it debounces apart — so a solid trunk stands inside ride-through leaves.
       // Every mesh no such member claims collides as the placement, as it always has.
       const members = new Set<number>();
-      if (placed.memberBehaviour) root.traverse(object => {
-        if (typeof object.userData.propMember === 'number') members.add(object.userData.propMember);
-      });
+      if (placed.memberBehaviour)
+        root.traverse(object => {
+          if (typeof object.userData.propMember === 'number') members.add(object.userData.propMember);
+        });
       pushPlacementColliders(placed, i, root, id, undefined);
       for (const model of members) pushPlacementColliders(groupMemberProp(placed, model), i, root, id, model);
     }
@@ -1410,31 +1658,46 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       return meshes;
     }
 
-    function pushPlacementColliders(prop: PlacedProp, i: number, root: THREE.Object3D, id: string,
-      member: number | undefined) {
+    function pushPlacementColliders(
+      prop: PlacedProp,
+      i: number,
+      root: THREE.Object3D,
+      id: string,
+      member: number | undefined,
+    ) {
       const key = `authored:${member === undefined ? id : groupMemberKey(id, member)}`;
       const object = { kind: 'authored' as const, id, ...(member === undefined ? {} : { member }) };
       const native = prop.nativeCollision;
       // A knockable prop takes the rigid-body shove, with its physics donor's inertia when it has one; without
       // a donor it still leaves, translation-only, as a reference body with no authored tensor does.
       const rollerMass = rollers.get(id) ?? 0;
-      const massProps = rollerMass > 0 && native?.physicsSource
-        ? assets.physicsMass(native.physicsSource.level, native.physicsSource.body) : null;
-      const movable = rollerMass > 0 ? {
-        dynamicMass: rollerMass,
-        ...(massProps ? { body: { com: massProps.com, invInertia: massProps.invInertia } } : {}),
-      } : { dynamicMass: 0 };
+      const massProps =
+        rollerMass > 0 && native?.physicsSource
+          ? assets.physicsMass(native.physicsSource.level, native.physicsSource.body)
+          : null;
+      const movable =
+        rollerMass > 0
+          ? {
+              dynamicMass: rollerMass,
+              ...(massProps ? { body: { com: massProps.com, invInertia: massProps.invInertia } } : {}),
+            }
+          : { dynamicMass: 0 };
       if (native) {
         const donor = native.physicsSource;
         const spheres = donor ? assets.physicsBody(donor.level, donor.body) : null;
         const contact = nativeContactState({
-          visible: true, playerCollision: native.playerCollision, playerBounce: native.playerBounce,
-          mode: native.mode, responseMass: native.responseMass, hasTriangleProxy: native.mode === NATIVE_COLLISION_MODE.triangleProxy,
+          visible: true,
+          playerCollision: native.playerCollision,
+          playerBounce: native.playerBounce,
+          mode: native.mode,
+          responseMass: native.responseMass,
+          hasTriangleProxy: native.mode === NATIVE_COLLISION_MODE.triangleProxy,
           hasPhysicsBody: !!spheres?.length,
         });
         if (contact === 'none') return;
         const common = {
-          key, object,
+          key,
+          object,
           solid: contact === 'solid',
           bounce: native.playerBounce ? native.bounceAmount : 0,
           playerBounce: native.playerBounce,
@@ -1443,7 +1706,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         };
         if (native.mode === NATIVE_COLLISION_MODE.physicsBodySpheres && spheres?.length) {
           const body = unitMeshes(root, i, member)[0];
-          if (body) out.push({ ...common, spheres, matrixWorld: body.matrixWorld.clone(), liveMatrix: objectPose(body) });
+          if (body)
+            out.push({ ...common, spheres, matrixWorld: body.matrixWorld.clone(), liveMatrix: objectPose(body) });
           return;
         }
         if (native.mode === NATIVE_COLLISION_MODE.boundingBox) {
@@ -1452,14 +1716,23 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           // [Trailmap: 130-mode2-oriented]. So this emits one box per mesh with its own geometry and world
           // matrix, exactly as the triangle-proxy branch below does, and the ride derives the local bounds.
           for (const mesh of unitMeshes(root, i, member))
-            out.push({ ...common, geometry: mesh.geometry, nativeBox: true,
-              matrixWorld: mesh.matrixWorld.clone(), liveMatrix: objectPose(mesh) });
+            out.push({
+              ...common,
+              geometry: mesh.geometry,
+              nativeBox: true,
+              matrixWorld: mesh.matrixWorld.clone(),
+              liveMatrix: objectPose(mesh),
+            });
           return;
         }
         if (native.mode === NATIVE_COLLISION_MODE.triangleProxy) {
           for (const mesh of unitMeshes(root, i, member))
-            out.push({ ...common, geometry: mesh.geometry, matrixWorld: mesh.matrixWorld.clone(),
-              liveMatrix: objectPose(mesh) });
+            out.push({
+              ...common,
+              geometry: mesh.geometry,
+              matrixWorld: mesh.matrixWorld.clone(),
+              liveMatrix: objectPose(mesh),
+            });
         }
         return;
       }
@@ -1470,8 +1743,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       if (!solid && !collisionEffect && !hitSound) return;
       for (const mesh of unitMeshes(root, i, member)) {
         out.push({
-          key, object, geometry: mesh.geometry,
-          matrixWorld: mesh.matrixWorld.clone(), solid, liveMatrix: objectPose(mesh),
+          key,
+          object,
+          geometry: mesh.geometry,
+          matrixWorld: mesh.matrixWorld.clone(),
+          solid,
+          liveMatrix: objectPose(mesh),
           bounce: solid ? (typeof prop.bounce === 'number' ? prop.bounce : 0.5) : 0,
           surface: solid && typeof prop.surface === 'number' ? prop.surface : -1,
           ...movable,
@@ -1507,33 +1784,94 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       relightGround();
     },
     relightGround,
-    get placedPropGroup() { return placedPropGroup; },
-    get placedPropMeshes() { return placedPropMeshes; },
-    get selectedProp() { return selectedProp; },
-    get multiSelProps() { return multiSelProps; },
-    get lastPlacedProps() { return lastPlacedProps; },
-    get multiHandleLast() { return multiHandleLast; },
-    get propArm() { return propArm; },
-    get propGhost() { return propGhost; },
-    get propGhostHit() { return propGhostHit; },
-    set propGhostHit(v: THREE.Vector3 | null) { propGhostHit = v; },
-    get pendingYaw() { return pendingYaw; },
-    set pendingYaw(v: number) { pendingYaw = v; },
-    get pendingScale() { return pendingScale; },
-    set pendingScale(v: number) { pendingScale = v; },
-    get yawManual() { return yawManual; },
-    setArmed, seatPropGhost, turnPending, seatedDropPos, updateGhost, setVisible, setShadeMode, placementPose, rideColliders,
+    get placedPropGroup() {
+      return placedPropGroup;
+    },
+    get placedPropMeshes() {
+      return placedPropMeshes;
+    },
+    get selectedProp() {
+      return selectedProp;
+    },
+    get multiSelProps() {
+      return multiSelProps;
+    },
+    get lastPlacedProps() {
+      return lastPlacedProps;
+    },
+    get multiHandleLast() {
+      return multiHandleLast;
+    },
+    get propArm() {
+      return propArm;
+    },
+    get propGhost() {
+      return propGhost;
+    },
+    get propGhostHit() {
+      return propGhostHit;
+    },
+    set propGhostHit(v: THREE.Vector3 | null) {
+      propGhostHit = v;
+    },
+    get pendingYaw() {
+      return pendingYaw;
+    },
+    set pendingYaw(v: number) {
+      pendingYaw = v;
+    },
+    get pendingScale() {
+      return pendingScale;
+    },
+    set pendingScale(v: number) {
+      pendingScale = v;
+    },
+    get yawManual() {
+      return yawManual;
+    },
+    setArmed,
+    seatPropGhost,
+    turnPending,
+    seatedDropPos,
+    updateGhost,
+    setVisible,
+    setShadeMode,
+    placementPose,
+    rideColliders,
     renderStats,
     /** Install the mountain's hit-gated claim order; the selected prop's region redraws against it. */
-    setHitGatedSounds(claims: readonly string[] | undefined) { hitGatedClaims = claims ?? []; },
-    setPlacedProps, setSelection, setLineHighlight, seatProp, clearSelection, flashProp, showEffectProps, setCollisionOverlayVisible,
-    setRuntimePropVisible, setRuntimePropWorldMatrix, runtimePropPieceIds, setRuntimePropPieceMotions,
+    setHitGatedSounds(claims: readonly string[] | undefined) {
+      hitGatedClaims = claims ?? [];
+    },
+    setPlacedProps,
+    setSelection,
+    setLineHighlight,
+    seatProp,
+    clearSelection,
+    flashProp,
+    showEffectProps,
+    setCollisionOverlayVisible,
+    setRuntimePropVisible,
+    setRuntimePropWorldMatrix,
+    runtimePropPieceIds,
+    setRuntimePropPieceMotions,
     resetRuntimeProps,
-    controlRuntimePropProperty, resetRuntimePropEffects, propHasPulseProperty, propHasTriggerableCombo,
+    controlRuntimePropProperty,
+    resetRuntimePropEffects,
+    propHasPulseProperty,
+    propHasTriggerableCombo,
     setPropEffectsStopped,
-    previewAnimObject, previewMaterialEffect, clearAnimObjectPreviews, startRuntimeAnimObject, clearRuntimeAnimObjects,
-    setWorldEffectsEnabled, stepWorldEffects, propAnimObjectClip, setPropAnimObjectScrubFrame,
-    propWorldSphere, setNormalArrows,
+    previewAnimObject,
+    previewMaterialEffect,
+    clearAnimObjectPreviews,
+    startRuntimeAnimObject,
+    clearRuntimeAnimObjects,
+    setWorldEffectsEnabled,
+    stepWorldEffects,
+    propAnimObjectClip,
+    setPropAnimObjectScrubFrame,
+    propWorldSphere,
+    setNormalArrows,
   };
 }
 

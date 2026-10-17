@@ -1,0 +1,15 @@
+{
+  "printWidth": 120,
+  "tabWidth": 2,
+  "singleQuote": true,
+  "arrowParens": "avoid",
+  "quoteProps": "preserve",
+  "embeddedLanguageFormatting": "off",
+  "endOfLine": "lf",
+  "overrides": [
+    {
+      "files": "*.css",
+      "options": { "endOfLine": "crlf" }
+    }
+  ]
+}

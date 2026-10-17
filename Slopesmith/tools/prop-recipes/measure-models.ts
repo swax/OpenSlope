@@ -21,15 +21,22 @@ for (const file of (await readdir(MODEL_ROOT)).filter(f => f.toLowerCase().endsW
   const m = measurePropDraft(draft);
   rows.push({
     name: file.replace(/\.glb$/i, ''),
-    long: Math.max(m.size.x, m.size.z), wide: Math.min(m.size.x, m.size.z), tall: m.size.y, tris: m.tris,
+    long: Math.max(m.size.x, m.size.z),
+    wide: Math.min(m.size.x, m.size.z),
+    tall: m.size.y,
+    tris: m.tris,
   });
 }
 
 rows.sort((a, b) => b.tall - a.tall);
 console.log('  model                    long     wide     tall     tris');
 for (const r of rows) {
-  console.log(`  ${r.name.padEnd(22)} ${r.long.toFixed(1).padStart(6)} ${r.wide.toFixed(1).padStart(6)} `
-    + `${r.tall.toFixed(1).padStart(8)} ${String(r.tris).padStart(8)}`);
+  console.log(
+    `  ${r.name.padEnd(22)} ${r.long.toFixed(1).padStart(6)} ${r.wide.toFixed(1).padStart(6)} ` +
+      `${r.tall.toFixed(1).padStart(8)} ${String(r.tris).padStart(8)}`,
+  );
 }
-console.log(`\n  ${rows.length} models in ${MODEL_ROOT}, `
-  + `${rows.reduce((n, r) => n + r.tris, 0).toLocaleString()} triangles of distinct art`);
+console.log(
+  `\n  ${rows.length} models in ${MODEL_ROOT}, ` +
+    `${rows.reduce((n, r) => n + r.tris, 0).toLocaleString()} triangles of distinct art`,
+);

@@ -57,7 +57,17 @@ export function detail(g: GUI, text: string, name = '') {
 /** A read-only detail whose value follows live scene state without rebuilding the panel (for example, a
  *  selected light's position while its viewport gizmo is being dragged). */
 export function liveDetail(g: GUI, value: () => string, name = '') {
-  const controller = g.add({ get x() { return value(); } }, 'x').name(name).listen();
+  const controller = g
+    .add(
+      {
+        get x() {
+          return value();
+        },
+      },
+      'x',
+    )
+    .name(name)
+    .listen();
   controller.domElement.querySelector('input')!.readOnly = true;
   controller.domElement.classList.add('sp-detail');
   return controller;
@@ -96,10 +106,15 @@ export function skyPreview(g: GUI, src: string, caption: string) {
   const img = document.createElement('img');
   img.src = src;
   img.alt = caption;
-  img.onerror = () => { box.classList.add('sp-sky-preview-empty'); img.remove(); };
+  img.onerror = () => {
+    box.classList.add('sp-sky-preview-empty');
+    img.remove();
+  };
   const cap = document.createElement('span');
   cap.textContent = caption;
-  img.onload = () => { cap.textContent = `${caption} · ${img.naturalWidth}×${img.naturalHeight}`; };
+  img.onload = () => {
+    cap.textContent = `${caption} · ${img.naturalWidth}×${img.naturalHeight}`;
+  };
   box.append(img, cap);
   g.$children.appendChild(box);
   return box;
@@ -115,10 +130,17 @@ export function skyPreview(g: GUI, src: string, caption: string) {
  * so it lines up with the ordinary fields above it. `src` null renders the empty state, which reads as a
  * deliberate "no texture" rather than a broken image.
  */
-export function texturePreview(g: GUI, opts: {
-  label: string; src: string | null; value: string; hint: string; onOpen?: () => void;
-  orient?: { rot: number; mirror: boolean };
-}) {
+export function texturePreview(
+  g: GUI,
+  opts: {
+    label: string;
+    src: string | null;
+    value: string;
+    hint: string;
+    onOpen?: () => void;
+    orient?: { rot: number; mirror: boolean };
+  },
+) {
   const row = document.createElement('div');
   row.className = 'lil-controller sp-gui-custom sp-tex-row';
   const name = document.createElement('div');
@@ -134,12 +156,21 @@ export function texturePreview(g: GUI, opts: {
  *  offering none. Given an `orient` it shows the tile the way up the surface wears it (`orientCss`), which
  *  the square, radius-symmetric box takes without distortion — a swatch that stayed upright while the prop
  *  turned would be a picture of the wrong thing. */
-function texSwatch(opts: { label: string; src: string | null; value: string; hint: string;
-  onOpen?: () => void; orient?: { rot: number; mirror: boolean } }): HTMLElement {
+function texSwatch(opts: {
+  label: string;
+  src: string | null;
+  value: string;
+  hint: string;
+  onOpen?: () => void;
+  orient?: { rot: number; mirror: boolean };
+}): HTMLElement {
   const swatch = document.createElement(opts.onOpen ? 'button' : 'div');
-  if (swatch instanceof HTMLButtonElement) { swatch.type = 'button'; swatch.onclick = opts.onOpen!; }
-  swatch.className = `sp-tex-swatch${opts.src ? '' : ' sp-tex-swatch-empty'}`
-    + (opts.onOpen ? '' : ' sp-tex-swatch-static');
+  if (swatch instanceof HTMLButtonElement) {
+    swatch.type = 'button';
+    swatch.onclick = opts.onOpen!;
+  }
+  swatch.className =
+    `sp-tex-swatch${opts.src ? '' : ' sp-tex-swatch-empty'}` + (opts.onOpen ? '' : ' sp-tex-swatch-static');
   if (opts.src) swatch.style.backgroundImage = `url(${opts.src})`;
   if (opts.src && opts.orient) swatch.style.transform = orientCss(opts.orient.rot, opts.orient.mirror);
   // The control is pure art, so the ref is its only name — as a tooltip for the eye, aria-label for
@@ -158,13 +189,16 @@ function texSwatch(opts: { label: string; src: string | null; value: string; hin
  * Frame 0 is the material's resting tile and is deliberately not clickable here: it is the texture field
  * above, and having two controls write the same value hides that the state list is headed by it.
  */
-export function flipbookPreview(g: GUI, opts: {
-  label: string;
-  frames: readonly { src: string | null; value: string }[];
-  hint: string;
-  /** Replace one state (frame 1 and up). Absent for a material whose table we do not own. */
-  onFrame?: (index: number) => void;
-}) {
+export function flipbookPreview(
+  g: GUI,
+  opts: {
+    label: string;
+    frames: readonly { src: string | null; value: string }[];
+    hint: string;
+    /** Replace one state (frame 1 and up). Absent for a material whose table we do not own. */
+    onFrame?: (index: number) => void;
+  },
+) {
   const row = document.createElement('div');
   row.className = 'lil-controller sp-gui-custom sp-tex-row sp-flip-row';
   const name = document.createElement('div');
@@ -175,16 +209,21 @@ export function flipbookPreview(g: GUI, opts: {
   opts.frames.forEach((frame, index) => {
     const cell = document.createElement('div');
     cell.className = 'sp-flip-cell';
-    cell.append(texSwatch({
-      label: `frame ${index}`,
-      src: frame.src,
-      value: frame.value,
-      hint: index === 0
-        ? 'Frame 0 — what the material rests on. Change it with the texture field above; the state list '
-          + 'follows it.'
-        : opts.onFrame ? 'Click to replace this state with another tile from the Texture Library.' : opts.hint,
-      ...(index > 0 && opts.onFrame ? { onOpen: () => opts.onFrame!(index) } : {}),
-    }));
+    cell.append(
+      texSwatch({
+        label: `frame ${index}`,
+        src: frame.src,
+        value: frame.value,
+        hint:
+          index === 0
+            ? 'Frame 0 — what the material rests on. Change it with the texture field above; the state list ' +
+              'follows it.'
+            : opts.onFrame
+              ? 'Click to replace this state with another tile from the Texture Library.'
+              : opts.hint,
+        ...(index > 0 && opts.onFrame ? { onOpen: () => opts.onFrame!(index) } : {}),
+      }),
+    );
     const badge = document.createElement('span');
     badge.className = 'sp-flip-badge';
     badge.textContent = index === 0 ? 'rest' : String(index);
@@ -198,12 +237,22 @@ export function flipbookPreview(g: GUI, opts: {
 
 /** One tile of a matched set: its art, what hovering it says, and whether it is worn mirrored across the trail — or,
  *  turned of its own, exactly how it shows. */
-export interface SetTile { src: string | null; value: string; mirror?: boolean; orient?: { rot: number; mirror: boolean } }
+export interface SetTile {
+  src: string | null;
+  value: string;
+  mirror?: boolean;
+  orient?: { rot: number; mirror: boolean };
+}
 
 /** How a set's tile shows: its own view where it has one, else the row's turn, mirrored where the tile is — the view
  *  of a tile mirrored across the trail is the same turn, flipped on screen. */
 const tileOrient = (orient: { rot: number; mirror: boolean } | undefined, tile: SetTile) =>
-  tile.orient ?? (orient ? { rot: orient.rot, mirror: orient.mirror !== !!tile.mirror } : tile.mirror ? { rot: 0, mirror: true } : undefined);
+  tile.orient ??
+  (orient
+    ? { rot: orient.rot, mirror: orient.mirror !== !!tile.mirror }
+    : tile.mirror
+      ? { rot: 0, mirror: true }
+      : undefined);
 
 /** One row of a matched set as the art: its tiles across the trail, the left lane's first, and how they are worn. */
 export interface TileSetArt {
@@ -218,7 +267,12 @@ export interface TileSetArt {
 function setThumb(art: TileSetArt | null, size: number): HTMLElement {
   const thumb = document.createElement('span');
   thumb.className = `sp-pair-thumb${art ? '' : ' sp-pair-thumb-none'}`;
-  if (!art) { thumb.textContent = '∅'; thumb.style.width = `${size * 2 + 1}px`; thumb.style.height = `${size}px`; return thumb; }
+  if (!art) {
+    thumb.textContent = '∅';
+    thumb.style.width = `${size * 2 + 1}px`;
+    thumb.style.height = `${size}px`;
+    return thumb;
+  }
   for (const tile of art.tiles) {
     const cell = document.createElement('span');
     cell.className = 'sp-pair-half';
@@ -262,15 +316,18 @@ let closeOpenSetMenu: (() => void) | null = null;
  * and its name, opening a list of every set — each as its art, under its map's name — with "none" first and, given
  * `add`, a way to make a new one last. A set is recognised by its picture, the way a tile is (`texturePreview`).
  */
-export function tileSetDropdown(g: GUI, opts: {
-  label: string;
-  hint: string;
-  value: string | null;
-  options: readonly TileSetOption[];
-  none: { label: string };
-  add?: { label: string; onAdd: () => void };
-  onChange: (id: string | null) => void;
-}) {
+export function tileSetDropdown(
+  g: GUI,
+  opts: {
+    label: string;
+    hint: string;
+    value: string | null;
+    options: readonly TileSetOption[];
+    none: { label: string };
+    add?: { label: string; onAdd: () => void };
+    onChange: (id: string | null) => void;
+  },
+) {
   const row = document.createElement('div');
   row.className = 'lil-controller sp-gui-custom sp-tex-row sp-pair-row';
   const name = document.createElement('div');
@@ -309,9 +366,19 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
   };
   // A scroll elsewhere moves the button out from under the menu, which closes it; the menu's own does not — the list
   // scrolled, or brought round to the chosen set as it opens, a frame after.
-  const scrolled = (e: Event) => { if (!(e.target instanceof Node && menu.contains(e.target))) close(); };
-  const outside = (e: Event) => { if (!menu.contains(e.target as Node) && !anchor.contains(e.target as Node)) close(); };
-  const keys = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  const scrolled = (e: Event) => {
+    if (!(e.target instanceof Node && menu.contains(e.target))) close();
+  };
+  const outside = (e: Event) => {
+    if (!menu.contains(e.target as Node) && !anchor.contains(e.target as Node)) close();
+  };
+  const keys = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    }
+  };
   const item = (art: TileSetOption | null, label: string, selected: boolean, act: () => void) => {
     const entry = document.createElement('button');
     entry.type = 'button';
@@ -321,7 +388,10 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
     const words = document.createElement('span');
     words.textContent = label;
     entry.append(art?.rows ? setGrid(art.rows, 14) : setThumb(art, 30), words);
-    entry.onclick = () => { close(); act(); };
+    entry.onclick = () => {
+      close();
+      act();
+    };
     menu.append(entry);
     return entry;
   };
@@ -348,12 +418,14 @@ function openSetMenu(anchor: HTMLElement, opts: Parameters<typeof tileSetDropdow
   document.body.append(menu);
   // Under the button, or over it where the window ends first; as tall as the room there allows.
   const rect = anchor.getBoundingClientRect();
-  const below = window.innerHeight - rect.bottom - 8, above = rect.top - 8;
+  const below = window.innerHeight - rect.bottom - 8,
+    above = rect.top - 8;
   const down = below >= Math.min(menu.scrollHeight, 240) || below >= above;
   menu.style.maxHeight = `${Math.max(120, down ? below : above)}px`;
   menu.style.minWidth = `${Math.max(rect.width, 180)}px`;
   menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-  if (down) menu.style.top = `${rect.bottom + 2}px`; else menu.style.bottom = `${window.innerHeight - rect.top + 2}px`;
+  if (down) menu.style.top = `${rect.bottom + 2}px`;
+  else menu.style.bottom = `${window.innerHeight - rect.top + 2}px`;
   (chosen as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('keydown', keys, true);
@@ -377,9 +449,8 @@ export function tip<C extends { domElement: HTMLElement }>(c: C, text: string, m
 export function typedRange<C extends { domElement: HTMLElement }>(c: C, typed: { min?: number; max?: number }): C {
   const number = c as unknown as { _clamp(value: number): number; _inputFocused?: boolean };
   const slider = number._clamp.bind(number);
-  number._clamp = value => number._inputFocused
-    ? Math.min(typed.max ?? Infinity, Math.max(typed.min ?? -Infinity, value))
-    : slider(value);
+  number._clamp = value =>
+    number._inputFocused ? Math.min(typed.max ?? Infinity, Math.max(typed.min ?? -Infinity, value)) : slider(value);
   return c;
 }
 

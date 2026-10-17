@@ -74,7 +74,10 @@ export function loadYouTubeIframeApi(): Promise<YouTubeIframeApi> {
     const succeed = () => {
       if (settled) return;
       const api = window.YT;
-      if (!api?.Player) { fail('YouTube loaded without its embedded player API.'); return; }
+      if (!api?.Player) {
+        fail('YouTube loaded without its embedded player API.');
+        return;
+      }
       settled = true;
       restore();
       resolve(api);
@@ -87,7 +90,11 @@ export function loadYouTubeIframeApi(): Promise<YouTubeIframeApi> {
       reject(new Error(message));
     }
     const ready = () => {
-      try { previousReady?.(); } catch { /* another callback must not strand Jukebox startup */ }
+      try {
+        previousReady?.();
+      } catch {
+        /* another callback must not strand Jukebox startup */
+      }
       succeed();
     };
     window.onYouTubeIframeAPIReady = ready;

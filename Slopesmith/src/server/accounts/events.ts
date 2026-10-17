@@ -24,8 +24,11 @@ export function onAccountAccessChanged(listener: (event: AccountAccessEvent) => 
 
 export function announceAccountAccessChanged(event: AccountAccessEvent): void {
   for (const listener of listeners) {
-    try { listener(event); }
-    catch (error) { log.error('an access-change listener failed', { error }); }
+    try {
+      listener(event);
+    } catch (error) {
+      log.error('an access-change listener failed', { error });
+    }
   }
 }
 
@@ -40,7 +43,10 @@ export function onAccountProfileChanged(listener: (user: PublicUser) => void): (
 
 export function announceAccountProfileChanged(user: PublicUser): void {
   for (const listener of profileListeners) {
-    try { listener(user); }
-    catch (error) { log.error('a profile-change listener failed', { error }); }
+    try {
+      listener(user);
+    } catch (error) {
+      log.error('a profile-change listener failed', { error });
+    }
   }
 }

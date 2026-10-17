@@ -28,6 +28,8 @@
     "format:snowknife:check": "node tools/format-snowknife.mjs --check",
     "format:unity": "node tools/format-unity.mjs",
     "format:unity:check": "node tools/format-unity.mjs --check",
+    "format:slopesmith": "npm --prefix Slopesmith run format",
+    "format:slopesmith:check": "npm --prefix Slopesmith run format:check",
     "verify:native": "node tools/native-tests.mjs",
     "verify:slopesmith": "node tools/verify.mjs --slopesmith",
     "hooks:install": "git config core.hooksPath .githooks",

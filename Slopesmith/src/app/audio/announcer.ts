@@ -1,6 +1,11 @@
 import {
-  ANNOUNCER_EVENT_IDS, AnnouncerRideEvents, normalizeAnnouncer,
-  type AnnouncerEvent, type AnnouncerIndex, type AnnouncerRideFrame, type AnnouncerSettings,
+  ANNOUNCER_EVENT_IDS,
+  AnnouncerRideEvents,
+  normalizeAnnouncer,
+  type AnnouncerEvent,
+  type AnnouncerIndex,
+  type AnnouncerRideFrame,
+  type AnnouncerSettings,
 } from '../../core/audio/announcer';
 import { fetchJson } from '../net/fetch-json';
 import { customSoundUrl } from '../net/asset-paths';
@@ -12,10 +17,10 @@ export const announcerSoundUrl = (event: AnnouncerEvent, file: string): string =
 let indexPromise: Promise<AnnouncerIndex> | null = null;
 export function announcerIndex(refresh = false): Promise<AnnouncerIndex> {
   if (refresh) indexPromise = null;
-  return indexPromise ??= fetchJson<AnnouncerIndex>('/api/announcer-audio').catch(() => {
+  return (indexPromise ??= fetchJson<AnnouncerIndex>('/api/announcer-audio').catch(() => {
     indexPromise = null;
     return Object.fromEntries(ANNOUNCER_EVENT_IDS.map(id => [id, [] as string[]])) as AnnouncerIndex;
-  });
+  }));
 }
 
 export function announcerClipUrls(index: AnnouncerIndex, settings: AnnouncerSettings, event: AnnouncerEvent): string[] {
@@ -49,7 +54,10 @@ export class RideAnnouncerRuntime {
     });
   }
 
-  reset(): void { this.stop(); this.coolUntil = 0; }
+  reset(): void {
+    this.stop();
+    this.coolUntil = 0;
+  }
 
   stop(): void {
     ++this.generation;
@@ -78,8 +86,14 @@ export class RideAnnouncerRuntime {
   }
 
   private stopVoice(): void {
-    if (this.source) { this.source.onended = null; this.source.stop(); this.source.disconnect(); this.source = null; }
-    this.gain?.disconnect(); this.gain = null;
+    if (this.source) {
+      this.source.onended = null;
+      this.source.stop();
+      this.source.disconnect();
+      this.source = null;
+    }
+    this.gain?.disconnect();
+    this.gain = null;
   }
 
   private async play(event: AnnouncerEvent, generation: number): Promise<void> {
@@ -96,11 +110,17 @@ export class RideAnnouncerRuntime {
       gain.gain.value = this.settings.volume;
       gain.connect(gameAudioDestination());
       const source = audio.createBufferSource();
-      source.buffer = buffer; source.connect(gain);
-      this.source = source; this.gain = gain;
+      source.buffer = buffer;
+      source.connect(gain);
+      this.source = source;
+      this.gain = gain;
       source.onended = () => {
-        source.disconnect(); gain.disconnect();
-        if (this.source === source) { this.source = null; this.gain = null; }
+        source.disconnect();
+        gain.disconnect();
+        if (this.source === source) {
+          this.source = null;
+          this.gain = null;
+        }
       };
       source.start();
       this.last.set(event, url);

@@ -63,10 +63,32 @@ function slope(pitchDeg: number, extent = 4000): THREE.Mesh {
   const t = Math.tan((pitchDeg * Math.PI) / 180);
   const y = (z: number) => -z * t;
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    -extent, y(-extent), -extent, -extent, y(extent), extent, extent, y(-extent), -extent,
-    extent, y(-extent), -extent, -extent, y(extent), extent, extent, y(extent), extent,
-  ], 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        -extent,
+        y(-extent),
+        -extent,
+        -extent,
+        y(extent),
+        extent,
+        extent,
+        y(-extent),
+        -extent,
+        extent,
+        y(-extent),
+        -extent,
+        -extent,
+        y(extent),
+        extent,
+        extent,
+        y(extent),
+        extent,
+      ],
+      3,
+    ),
+  );
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry);
   mesh.updateMatrixWorld(true);
@@ -112,30 +134,47 @@ function run(opts: { containment: boolean; impulse: boolean; heightM?: number; l
   );
   const spec: BoostVolumeSpec = opts.lift
     ? {
-      kind: 'vertical-lift', dir: VENT.dir.clone(), target: SHAFT.target, rate: SHAFT.rate,
-      targetY: floor + SHAFT.liftM, snapTolerance: SHAFT.snapTolerance,
-    }
+        kind: 'vertical-lift',
+        dir: VENT.dir.clone(),
+        target: SHAFT.target,
+        rate: SHAFT.rate,
+        targetY: floor + SHAFT.liftM,
+        snapTolerance: SHAFT.snapTolerance,
+      }
     : { kind: 'directional', dir: VENT.dir.clone(), target: VENT.target, rate: VENT.rate, mode: 1, seconds: 0 };
   const volume: BoostVolume = { key: 'vent', box, spec };
 
   const model = createRideModel({
-    spawn: new THREE.Vector3(0, surfaceY(0) + 1, 0), heading: new THREE.Vector3(0, 0, 1),
-    terrain, surfaceOf: () => 1, oobFloorY: surfaceY(4000) - 500,
-    keys: KEYS, stick: STICK, onRespawn: () => {},
+    spawn: new THREE.Vector3(0, surfaceY(0) + 1, 0),
+    heading: new THREE.Vector3(0, 0, 1),
+    terrain,
+    surfaceOf: () => 1,
+    oobFloorY: surfaceY(4000) - 500,
+    keys: KEYS,
+    stick: STICK,
+    onRespawn: () => {},
     ...(opts.containment ? { boostVolumes: [volume] } : {}),
   });
   model.start();
 
-  let rise = -Infinity, speed = 0, ticksInside = 0, entrySpeed = 0;
-  let base: number | null = null, climb = 0, nextImpulse = 0, left = false;
+  let rise = -Infinity,
+    speed = 0,
+    ticksInside = 0,
+    entrySpeed = 0;
+  let base: number | null = null,
+    climb = 0,
+    nextImpulse = 0,
+    left = false;
   const previous = new THREE.Vector3().copy(model.st.pos);
   for (let tick = 0; tick < 60 * 40; tick++) {
     model.step(H);
-    const inside = box.containsPoint(model.st.pos)
-      || segmentMeetsBox(box, previous, model.st.pos);
+    const inside = box.containsPoint(model.st.pos) || segmentMeetsBox(box, previous, model.st.pos);
     previous.copy(model.st.pos);
     if (inside) {
-      if (base === null) { base = model.st.pos.y; entrySpeed = model.st.vel.length(); }
+      if (base === null) {
+        base = model.st.pos.y;
+        entrySpeed = model.st.vel.length();
+      }
       ticksInside++;
       // The debounced half, on the editor's own cadence: one closed-form impulse per debounce interval, which
       // is what `reference-effects.ts` dispatches for a `property.boost` node it also builds a volume for.
@@ -156,8 +195,11 @@ function run(opts: { containment: boolean; impulse: boolean; heightM?: number; l
     }
   }
   return {
-    rise: round(rise === -Infinity ? 0 : rise), climb: round(climb), speed: round(speed),
-    ticksInside, entrySpeed: round(entrySpeed),
+    rise: round(rise === -Infinity ? 0 : rise),
+    climb: round(climb),
+    speed: round(speed),
+    ticksInside,
+    entrySpeed: round(entrySpeed),
   };
 }
 
@@ -182,11 +224,17 @@ function applyRemovedImpulse(model: ReturnType<typeof createRideModel>, seconds:
 
 /** The same slab test the ride's containment uses, so "inside" here means what it means there. */
 function segmentMeetsBox(box: THREE.Box3, from: THREE.Vector3, to: THREE.Vector3): boolean {
-  let enter = 0, exit = 1;
+  let enter = 0,
+    exit = 1;
   for (const axis of ['x', 'y', 'z'] as const) {
-    const a = from[axis], delta = to[axis] - a;
-    if (Math.abs(delta) < 1e-9) { if (a < box.min[axis] || a > box.max[axis]) return false; continue; }
-    const t0 = (box.min[axis] - a) / delta, t1 = (box.max[axis] - a) / delta;
+    const a = from[axis],
+      delta = to[axis] - a;
+    if (Math.abs(delta) < 1e-9) {
+      if (a < box.min[axis] || a > box.max[axis]) return false;
+      continue;
+    }
+    const t0 = (box.min[axis] - a) / delta,
+      t1 = (box.max[axis] - a) / delta;
     enter = Math.max(enter, Math.min(t0, t1));
     exit = Math.min(exit, Math.max(t0, t1));
     if (enter > exit) return false;
@@ -214,19 +262,27 @@ const cases: { label: string; opts: Parameters<typeof run>[0] }[] = [
 
 console.log(`Megaplex exhaust vent: rate ${VENT.rate}, target ${VENT.target} m/s, straight up`);
 console.log(`  box ${VENT_DEPTH_M} m deep x ${VENT_HEIGHT_M} m tall — the host model's own extents`);
-console.log(`Megaplex air shaft:    rate ${SHAFT.rate}, target ${SHAFT.target} m/s, `
-  + `lift ${SHAFT.liftM} m, tolerance ${SHAFT.snapTolerance}\n`);
-console.log(`${'path'.padEnd(40)} ${'ticks'.padStart(6)} ${'entry'.padStart(7)} `
-  + `${'rise'.padStart(8)} ${'climb'.padStart(8)} ${'speed'.padStart(8)}`);
+console.log(
+  `Megaplex air shaft:    rate ${SHAFT.rate}, target ${SHAFT.target} m/s, ` +
+    `lift ${SHAFT.liftM} m, tolerance ${SHAFT.snapTolerance}\n`,
+);
+console.log(
+  `${'path'.padEnd(40)} ${'ticks'.padStart(6)} ${'entry'.padStart(7)} ` +
+    `${'rise'.padStart(8)} ${'climb'.padStart(8)} ${'speed'.padStart(8)}`,
+);
 console.log('-'.repeat(82));
 for (const item of cases) {
   const r = run(item.opts);
-  console.log(`${item.label.padEnd(40)} ${String(r.ticksInside).padStart(6)} `
-    + `${r.entrySpeed.toFixed(1).padStart(7)} ${r.rise.toFixed(2).padStart(8)} `
-    + `${r.climb.toFixed(2).padStart(8)} ${r.speed.toFixed(2).padStart(8)}`);
+  console.log(
+    `${item.label.padEnd(40)} ${String(r.ticksInside).padStart(6)} ` +
+      `${r.entrySpeed.toFixed(1).padStart(7)} ${r.rise.toFixed(2).padStart(8)} ` +
+      `${r.climb.toFixed(2).padStart(8)} ${r.speed.toFixed(2).padStart(8)}`,
+  );
 }
-console.log(`${'PS2, retail vent (3 passes)'.padEnd(40)} ${'~6-7'.padStart(6)} ${'~25'.padStart(7)} `
-  + `${RETAIL.rise.padStart(8)} ${RETAIL.climb.padStart(8)} ${RETAIL.speed.padStart(8)}`);
+console.log(
+  `${'PS2, retail vent (3 passes)'.padEnd(40)} ${'~6-7'.padStart(6)} ${'~25'.padStart(7)} ` +
+    `${RETAIL.rise.padStart(8)} ${RETAIL.climb.padStart(8)} ${RETAIL.speed.padStart(8)}`,
+);
 console.log('\nunits: entry/rise/speed m/s, climb m. The PS2 row is autotest cell `vent-throw`.');
 console.log('The residual gap on the top row is DWELL, not the model: this probe crosses a 3.6 m box square');
 console.log('on at the cap for 9 ticks, where the fixture yaws its box across a corridor and the rider takes');

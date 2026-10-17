@@ -56,24 +56,34 @@ export function faceLoop(topo: SurfaceTopology, cell: number, dir?: 0 | 1): numb
     return !!es && !!topo.edgeTouchesPole && es.some(e => topo.edgeTouchesPole![e]);
   };
   const out = new Set<number>();
-  const groups = irregular(cell) ? [[0], [1], [2], [3]]
-    : dir === undefined ? [[0, 2], [1, 3]]
-    : dir === 0 ? [[0, 2]] : [[1, 3]];
+  const groups = irregular(cell)
+    ? [[0], [1], [2], [3]]
+    : dir === undefined
+      ? [
+          [0, 2],
+          [1, 3],
+        ]
+      : dir === 0
+        ? [[0, 2]]
+        : [[1, 3]];
   for (const group of groups) {
     const visited = new Set<number>([cell]); // per group, so a ring closes cleanly; groups stay independent
     for (const side of group) {
-      let cur = cell, e = pe[side], guard = 0;
+      let cur = cell,
+        e = pe[side],
+        guard = 0;
       while (e >= 0 && guard++ <= topo.cellCount) {
         const cells = topo.edgeCells[e];
         const nbs = cells ? cells.filter(c => c !== cur) : [];
-        if (nbs.length !== 1) break;                 // rim (none) or non-manifold (many): the strip ends
+        if (nbs.length !== 1) break; // rim (none) or non-manifold (many): the strip ends
         const nb = nbs[0];
-        if (visited.has(nb)) break;                  // the strip closed into a ring
-        visited.add(nb); out.add(nb);
-        if (irregular(nb)) break;                    // terminate ON the irregular cell (it's included)
+        if (visited.has(nb)) break; // the strip closed into a ring
+        visited.add(nb);
+        out.add(nb);
+        if (irregular(nb)) break; // terminate ON the irregular cell (it's included)
         const local = topo.cellEdges[nb]?.indexOf(e) ?? -1;
         if (local < 0) break;
-        e = topo.cellEdges[nb][(local + 2) % 4];      // cross the neighbour's opposite edge
+        e = topo.cellEdges[nb][(local + 2) % 4]; // cross the neighbour's opposite edge
         cur = nb;
       }
     }
@@ -102,18 +112,21 @@ export function faceBlock(topo: SurfaceTopology, a: number, b: number): number[]
   const strip = (c: number, s: number): number[] => {
     const first = topo.cellEdges[c]?.[s];
     if (first === undefined) return [c];
-    const out = [c], seen = new Set<number>([c]);
-    let cur = c, e = first;
+    const out = [c],
+      seen = new Set<number>([c]);
+    let cur = c,
+      e = first;
     for (let g = 0; g <= topo.cellCount; g++) {
       const nbs = (topo.edgeCells[e] ?? []).filter(x => x !== cur);
-      if (nbs.length !== 1) break;                    // rim (none) or non-manifold (many): the strip ends
+      if (nbs.length !== 1) break; // rim (none) or non-manifold (many): the strip ends
       const nb = nbs[0];
-      if (seen.has(nb)) break;                        // closed into a ring
-      seen.add(nb); out.push(nb);
-      if (irregular(nb)) break;                       // terminate ON the pole-touching cell (it's included)
+      if (seen.has(nb)) break; // closed into a ring
+      seen.add(nb);
+      out.push(nb);
+      if (irregular(nb)) break; // terminate ON the pole-touching cell (it's included)
       const local = topo.cellEdges[nb]?.indexOf(e) ?? -1;
       if (local < 0) break;
-      e = topo.cellEdges[nb][(local + 2) % 4];        // cross the neighbour's opposite edge
+      e = topo.cellEdges[nb][(local + 2) % 4]; // cross the neighbour's opposite edge
       cur = nb;
     }
     return out;
@@ -124,13 +137,17 @@ export function faceBlock(topo: SurfaceTopology, a: number, b: number): number[]
     for (let s = 0; s < 4; s++) {
       const line = strip(start, s);
       for (let i = 1; i < line.length; i++) {
-        if (pred(line[i])) { const run = line.slice(0, i + 1); if (!best || run.length < best.length) best = run; break; }
+        if (pred(line[i])) {
+          const run = line.slice(0, i + 1);
+          if (!best || run.length < best.length) best = run;
+          break;
+        }
       }
     }
     return best;
   };
   const straight = runTo(a, c => c === b);
-  if (straight) return straight;                      // collinear: a single strip of cells
+  if (straight) return straight; // collinear: a single strip of cells
   // b's two crossing strips (its row + its column), as membership sets.
   const bLoop = (d: 0 | 1): Set<number> => {
     const [s0, s1] = d === 0 ? [0, 2] : [1, 3];
@@ -139,17 +156,19 @@ export function faceBlock(topo: SurfaceTopology, a: number, b: number): number[]
     for (const w of strip(b, s1)) set.add(w);
     return set;
   };
-  const bl0 = bLoop(0), bl1 = bLoop(1);
-  if (bl0.size < 2 || bl1.size < 2) return null;      // b isn't a grid-interior cell (a strip dead-ends at once)
+  const bl0 = bLoop(0),
+    bl1 = bLoop(1);
+  if (bl0.size < 2 || bl1.size < 2) return null; // b isn't a grid-interior cell (a strip dead-ends at once)
   // one side of the rectangle: from `a` straight to whichever of b's strips it meets first (the corner `q`).
   const side = runTo(a, c => bl0.has(c) || bl1.has(c));
   if (!side) return null;
   const q = side[side.length - 1];
-  const other = bl0.has(q) ? bl1 : bl0;               // the perpendicular bound to sweep each line onto
+  const other = bl0.has(q) ? bl1 : bl0; // the perpendicular bound to sweep each line onto
   const block = new Set<number>();
-  for (const h of side) {                             // sweep each line perpendicular to `side` onto `other`
+  for (const h of side) {
+    // sweep each line perpendicular to `side` onto `other`
     const run = runTo(h, c => other.has(c));
-    if (!run) return null;                            // ragged: a pole / rim broke the rectangle
+    if (!run) return null; // ragged: a pole / rim broke the rectangle
     for (const c of run) block.add(c);
   }
   return [...block];

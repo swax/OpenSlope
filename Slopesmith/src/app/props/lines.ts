@@ -1,14 +1,28 @@
-import type { AuthoredModel, PathHandles, PlacedProp, PropLine, PropLineTemplate, PropSheet, V3 } from '../../core/doc/types';
+import type {
+  AuthoredModel,
+  PathHandles,
+  PlacedProp,
+  PropLine,
+  PropLineTemplate,
+  PropSheet,
+  V3,
+} from '../../core/doc/types';
 import { withoutPathNode } from '../../core/rails/rails';
 import { assignHandles } from '../paths/handles';
 import { applyBehaviour, baselineBehaviour } from '../../core/props/defaults';
 import {
-  footprintOfRawBox, groupFootprint, layoutPropLine, lineMemberId, lineMembers, lineNominalSpacing, membersOfLine,
-  nextPropLineId, replaceLineMembers, type LineFootprint,
+  footprintOfRawBox,
+  groupFootprint,
+  layoutPropLine,
+  lineMemberId,
+  lineMembers,
+  lineNominalSpacing,
+  membersOfLine,
+  nextPropLineId,
+  replaceLineMembers,
+  type LineFootprint,
 } from '../../core/props/prop-line';
-import {
-  sheetPieces, SHEET_DEFAULT_HEIGHT, SHEET_DEFAULT_SPAN, type SheetFamily,
-} from '../../core/props/sheet-prop';
+import { sheetPieces, SHEET_DEFAULT_HEIGHT, SHEET_DEFAULT_SPAN, type SheetFamily } from '../../core/props/sheet-prop';
 import { AUTHORED_MODEL_LEVEL, modelNumber, nextModelId } from '../../core/doc/models';
 import { attachEffectToProp, detachEffectFromProp, effectAttachments } from '../../core/effects/authoring';
 import type { GroupDef } from '../../core/reference/groups';
@@ -49,7 +63,8 @@ const LIE_SPAN_CAP = 16;
 type Drawing = { line: PropLine & { id: string }; armed: ArmedProp };
 
 export function createPropLineOps(deps: PropLineOpsDeps) {
-  const { store, viewport, propOps, groupDefIdx, setPropLibWanted, scheduleRebuild, rebuildTools, updateCmdSheet } = deps;
+  const { store, viewport, propOps, groupDefIdx, setPropLibWanted, scheduleRebuild, rebuildTools, updateCmdSheet } =
+    deps;
   let drawing: Drawing | null = null;
 
   /** The line with this id — in the document, or the one still being drawn. */
@@ -91,7 +106,7 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
       const box = propOps.authoredBoxOf(template.level, member.model);
       return box ? { footprint: footprintOfRawBox(box), relPos: member.relPos, relYaw: member.relYaw } : null;
     });
-    return members.every(member => member) ? groupFootprint(members as NonNullable<typeof members[number]>[]) : null;
+    return members.every(member => member) ? groupFootprint(members as NonNullable<(typeof members)[number]>[]) : null;
   }
 
   /** The spacing the line asks for before the fit — what the panel shows beside the count. */
@@ -103,7 +118,8 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
   const ground = (x: number, z: number, nearY: number) => viewport.groundHeightAt(x, z, nearY);
 
   /** The pieces a sheet owns (docs/071), in span order. */
-  const piecesOf = (lineId: string): AuthoredModel[] => (store.mdoc.models ?? []).filter(model => model.line === lineId);
+  const piecesOf = (lineId: string): AuthoredModel[] =>
+    (store.mdoc.models ?? []).filter(model => model.line === lineId);
 
   /**
    * A SHEET's members (docs/071): cut the sheet into its pieces and give each span a one-quad tiled model of its
@@ -125,9 +141,12 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
       model.anchor = piece.anchor;
       model.vertices = piece.vertices;
       model.quads = piece.quads;
-      if (sheet.texture) model.texture = sheet.texture; else delete model.texture;
-      if (sheet.blend) model.blend = true; else delete model.blend;
-      if (sheet.orient && (sheet.orient.rot || sheet.orient.mirror)) model.orient = { ...sheet.orient }; else delete model.orient;
+      if (sheet.texture) model.texture = sheet.texture;
+      else delete model.texture;
+      if (sheet.blend) model.blend = true;
+      else delete model.blend;
+      if (sheet.orient && (sheet.orient.rot || sheet.orient.mirror)) model.orient = { ...sheet.orient };
+      else delete model.orient;
       return model.id;
     });
     const surplus = new Set(owned.slice(pieces.length));
@@ -168,10 +187,13 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     if (added.length) {
       const arrived = new Set(added);
       const sibling = membersOfLine(props, line.id).find(member => !arrived.has(member.id!));
-      const shared = sibling && effects
-        ? effectAttachments(effects).filter(item => item.enabled && item.target.id === sibling.id) : [];
+      const shared =
+        sibling && effects
+          ? effectAttachments(effects).filter(item => item.enabled && item.target.id === sibling.id)
+          : [];
       if (shared.length) {
-        for (const id of added) for (const item of shared) attachEffectToProp(effects!, id, item.slot, item.circumstance);
+        for (const id of added)
+          for (const item of shared) attachEffectToProp(effects!, id, item.slot, item.circumstance);
       } else if (drawing?.line === line) {
         for (const id of added) propOps.stampHeldEffects(id, drawing.armed);
       }
@@ -194,11 +216,20 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
   function startLine() {
     const armed = store.armedProp;
     if (!armed) return;
-    const template = applyBehaviour<PropLineTemplate>({
-      level: armed.level, model: armed.model, name: armed.name, ...(armed.group ? { group: armed.group } : {}),
-    }, armed.behaviour);
+    const template = applyBehaviour<PropLineTemplate>(
+      {
+        level: armed.level,
+        model: armed.model,
+        name: armed.name,
+        ...(armed.group ? { group: armed.group } : {}),
+      },
+      armed.behaviour,
+    );
     beginDraw({ template, scale: viewport.props.pendingScale }, armed);
-    toast(`click the mountain to lay the line — ${propOps.shortPropName(armed.name)} follows it · Enter / Esc finishes`, 'info');
+    toast(
+      `click the mountain to lay the line — ${propOps.shortPropName(armed.name)} follows it · Enter / Esc finishes`,
+      'info',
+    );
   }
 
   /**
@@ -220,21 +251,33 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     propOps.interceptNextPick(armed => {
       // A shipped river's pieces run ~45 m; chords that long would cut the corners of a winding new one.
       const span = family.lie ? Math.min(family.span, LIE_SPAN_CAP) : family.span;
-      startSheet(armed, family.key.replace(/^(Mdl|Fnc)_/, ''), {
-        ...(family.lie ? { lie: true } : {}),
-        size: Math.round(family.size * 100) / 100,
-        ...(family.texture ? { texture: family.texture } : {}),
-        ...(family.blend ? { blend: true } : {}),
-      }, Math.round(span * 100) / 100);
+      startSheet(
+        armed,
+        family.key.replace(/^(Mdl|Fnc)_/, ''),
+        {
+          ...(family.lie ? { lie: true } : {}),
+          size: Math.round(family.size * 100) / 100,
+          ...(family.texture ? { texture: family.texture } : {}),
+          ...(family.blend ? { blend: true } : {}),
+        },
+        Math.round(span * 100) / 100,
+      );
       return true;
     });
-    void propOps.armProp(level, family.representative.model, family.key, { sourceIndex: family.representative.sourceIndex });
+    void propOps.armProp(level, family.representative.model, family.key, {
+      sourceIndex: family.representative.sourceIndex,
+    });
   }
 
   /** The launcher's Add sheet: a blank standing sheet, untextured, to be given a tile in its panel. */
   function startBlankSheet() {
-    const armed: ArmedProp = { level: AUTHORED_MODEL_LEVEL, model: 0, name: 'Sheet', from: 'defaults',
-      behaviour: baselineBehaviour(AUTHORED_MODEL_LEVEL) };
+    const armed: ArmedProp = {
+      level: AUTHORED_MODEL_LEVEL,
+      model: 0,
+      name: 'Sheet',
+      from: 'defaults',
+      behaviour: baselineBehaviour(AUTHORED_MODEL_LEVEL),
+    };
     startSheet(armed, 'Sheet', { size: SHEET_DEFAULT_HEIGHT }, SHEET_DEFAULT_SPAN);
   }
 
@@ -244,12 +287,15 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     drawing = { line: { id: nextPropLineId(lines), nodes: [], ...fields }, armed: structuredClone(armed) };
     store.armedProp = null;
     viewport.setPropArmed(null);
-    store.selectedProp = null; store.multiSel = [];
+    store.selectedProp = null;
+    store.multiSel = [];
     store.selectedLine = drawing.line.id;
     store.selectedLineNode = null;
     store.lineDrawing = true;
     viewport.setLineDrawing(true);
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   /** A ground click while drawing: append a node. The second node puts the line in the document. */
@@ -272,7 +318,9 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     viewport.setLineDrawing(false);
     drawing = null;
     if (draft && !(store.mdoc.propLines ?? []).includes(draft.line)) leaveLine();
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   /** Lay more nodes onto the end of the selected line (the panel's "add more points"). The effect new members
@@ -283,7 +331,9 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     store.selectedLineNode = null;
     store.lineDrawing = true;
     viewport.setLineDrawing(true);
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
     toast('click the mountain to add more points — Enter / Esc to finish', 'info');
   }
 
@@ -314,9 +364,12 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     line.nodes.splice(store.selectedLineNode, 1);
     assignHandles(line, withoutPathNode(line.handles, store.selectedLineNode)); // later nodes keep their own
     store.selectedLineNode = null;
-    if (line.nodes.length < 2) { removeLine(line); leaveLine(); }
-    else relayout(line);
-    scheduleRebuild(); rebuildTools();
+    if (line.nodes.length < 2) {
+      removeLine(line);
+      leaveLine();
+    } else relayout(line);
+    scheduleRebuild();
+    rebuildTools();
   }
 
   /** Remove the selected line and every member it laid out. */
@@ -325,7 +378,9 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     if (!line) return;
     removeLine(line);
     leaveLine();
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   /** Take a line out of the document along with its members (and their attachments) — and a sheet's pieces. */
@@ -355,9 +410,14 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
     for (const model of piecesOf(line.id)) delete model.line;
     store.mdoc.propLines = (store.mdoc.propLines ?? []).filter(other => other !== line);
     leaveLine();
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
-    toast(`${members.length} ${line.sheet ? 'piece' : 'prop'}${members.length === 1 ? '' : 's'} on their own now `
-      + `— undo puts the ${line.sheet ? 'sheet' : 'line'} back.`, 'ok');
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
+    toast(
+      `${members.length} ${line.sheet ? 'piece' : 'prop'}${members.length === 1 ? '' : 's'} on their own now ` +
+        `— undo puts the ${line.sheet ? 'sheet' : 'line'} back.`,
+      'ok',
+    );
   }
 
   /**
@@ -373,15 +433,22 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
       // Every member goes and comes back as the new model, so each gets the new pick's effect rather than
       // keeping the old model's under the same id.
       removeMembers(target);
-      target.template = applyBehaviour<PropLineTemplate>({
-        level: armed.level, model: armed.model, name: armed.name, ...(armed.group ? { group: armed.group } : {}),
-      }, armed.behaviour);
+      target.template = applyBehaviour<PropLineTemplate>(
+        {
+          level: armed.level,
+          model: armed.model,
+          name: armed.name,
+          ...(armed.group ? { group: armed.group } : {}),
+        },
+        armed.behaviour,
+      );
       const swapping: Drawing = { line: target, armed };
       const held = drawing;
       drawing = swapping;
       relayout(target);
       drawing = held;
-      scheduleRebuild(); rebuildTools();
+      scheduleRebuild();
+      rebuildTools();
       toast(`The line is ${propOps.shortPropName(armed.name)} now.`, 'ok');
       return true;
     });
@@ -409,9 +476,26 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
   }
 
   return {
-    lineById, selected, displayLines, footprintOf, nominalSpacing, relayout, changed,
-    startLine, pickSheet, startBlankSheet, appendNode, finishLine, resumeLine,
-    moveNode, setHandles, deleteSelectedNode, deleteSelectedLine, breakLine, swapProp, leaveLine,
+    lineById,
+    selected,
+    displayLines,
+    footprintOf,
+    nominalSpacing,
+    relayout,
+    changed,
+    startLine,
+    pickSheet,
+    startBlankSheet,
+    appendNode,
+    finishLine,
+    resumeLine,
+    moveNode,
+    setHandles,
+    deleteSelectedNode,
+    deleteSelectedLine,
+    breakLine,
+    swapProp,
+    leaveLine,
   };
 }
 

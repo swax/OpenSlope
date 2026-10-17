@@ -55,5 +55,7 @@ export class DockTab {
     document.body.appendChild(this.el);
   }
 
-  setVisible(on: boolean) { this.el.classList.toggle('on', on); }
+  setVisible(on: boolean) {
+    this.el.classList.toggle('on', on);
+  }
 }

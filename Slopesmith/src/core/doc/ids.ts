@@ -85,7 +85,8 @@ export function tombstoned(doc: Tombstoned, id: string): boolean {
 export function retireMeshIds(doc: Tombstoned, ids: Iterable<string>): void {
   const retired = new Set(doc.tombstones ?? []);
   for (const id of ids) retired.add(id);
-  if (retired.size) doc.tombstones = [...retired]; else delete doc.tombstones;
+  if (retired.size) doc.tombstones = [...retired];
+  else delete doc.tombstones;
 }
 
 /**
@@ -104,9 +105,10 @@ export function carryIdentity(restored: MeshIds & Tombstoned, current: MeshIds &
   restored.nextId = Math.max(restored.nextId, current.nextId);
   const live = new Set([...restored.vertexIds, ...restored.quadIds]);
   const retired = new Set<string>();
-  for (const id of [...current.tombstones ?? [], ...restored.tombstones ?? []]) if (!live.has(id)) retired.add(id);
+  for (const id of [...(current.tombstones ?? []), ...(restored.tombstones ?? [])]) if (!live.has(id)) retired.add(id);
   for (const id of [...current.vertexIds, ...current.quadIds]) if (!live.has(id)) retired.add(id);
-  if (retired.size) restored.tombstones = [...retired]; else delete restored.tombstones;
+  if (retired.size) restored.tombstones = [...retired];
+  else delete restored.tombstones;
 }
 
 // ---- lights and gems: the object families with no module of their own ---------------------------------------
@@ -143,7 +145,10 @@ function ensureObjectIds(objects: Identified[] | undefined, family: string): voi
   for (const object of objects) {
     if (typeof object.id === 'string' && object.id && !used.has(object.id)) used.add(object.id);
     else {
-      object.id = nextObjectId([...used].map(id => ({ id })), family);
+      object.id = nextObjectId(
+        [...used].map(id => ({ id })),
+        family,
+      );
       used.add(object.id);
     }
   }

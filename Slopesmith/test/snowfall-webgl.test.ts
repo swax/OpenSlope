@@ -71,20 +71,25 @@ try {
   });
   const page = await browser.newPage();
   const consoleErrors: string[] = [];
-  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('console', message => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
   page.on('pageerror', error => consoleErrors.push(error.stack ?? error.message));
   await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!document.documentElement.dataset.snowfall, null, { timeout: 30_000 });
-  const result = await page.evaluate(() =>
-    (globalThis as typeof globalThis & { __snowfall?: SnowfallResult }).__snowfall);
+  const result = await page.evaluate(
+    () => (globalThis as typeof globalThis & { __snowfall?: SnowfallResult }).__snowfall,
+  );
   assert(result, 'Browser fixture did not publish a result');
   assert(result.ok, result.error ?? 'Snowfall fixture failed');
   assert.deepEqual(consoleErrors, [], `Browser emitted shader errors:\n${consoleErrors.join('\n')}`);
-  console.log(`SNOWFALL WEBGL TEST PASSED (${result.renderer}; editor view ${result.idleLight}, `
-    + `riding ${result.ridingLight}, dialled to clear ${result.clearedLight}, `
-    + `far eyes ${result.farLight?.join('/')}, 3 m of parallax moved ${result.parallaxDiff}, `
-    + `a whole box moved ${result.periodDiff};\n  the dial, as mean white out of 255: `
-    + `${result.brightnessByAmount?.map(s => `${s.amount}=${s.mean.toFixed(1)}`).join(' ')})`);
+  console.log(
+    `SNOWFALL WEBGL TEST PASSED (${result.renderer}; editor view ${result.idleLight}, ` +
+      `riding ${result.ridingLight}, dialled to clear ${result.clearedLight}, ` +
+      `far eyes ${result.farLight?.join('/')}, 3 m of parallax moved ${result.parallaxDiff}, ` +
+      `a whole box moved ${result.periodDiff};\n  the dial, as mean white out of 255: ` +
+      `${result.brightnessByAmount?.map(s => `${s.amount}=${s.mean.toFixed(1)}`).join(' ')})`,
+  );
 } finally {
   await browser?.close();
   await new Promise<void>(resolve => server.close(() => resolve()));

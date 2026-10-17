@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { customSoundUrl } from '../../net/asset-paths';
 import {
-  externalSoundField, externalSoundReach, isInteractiveAmbientEvent, resolveExternalSound,
-  type ExternalSoundEmitter, type ExternalSoundPlacement,
+  externalSoundField,
+  externalSoundReach,
+  isInteractiveAmbientEvent,
+  resolveExternalSound,
+  type ExternalSoundEmitter,
+  type ExternalSoundPlacement,
 } from '../../../core/effects/external-sound';
 
 /**
@@ -78,8 +82,11 @@ export function ambientSoundUrl(installedLevel: string, source: AmbientSoundSour
   const resolved = bankLevel ? resolveExternalSound(source.emitter.sound, bankLevel) : null;
   if (!resolved) return null;
   const bank = resolved.kind === 'fixed' ? resolved.bank : resolved.kind;
-  return `/api/effect-sound?level=${encodeURIComponent(bankLevel)}&slot=${resolved.slot}`
-    + (bank === 'course' ? '' : `&bank=${encodeURIComponent(bank)}`) + '&loop=1';
+  return (
+    `/api/effect-sound?level=${encodeURIComponent(bankLevel)}&slot=${resolved.slot}` +
+    (bank === 'course' ? '' : `&bank=${encodeURIComponent(bank)}`) +
+    '&loop=1'
+  );
 }
 
 /**
@@ -176,9 +183,23 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
     gains.delete(key);
     const { sound } = voice;
     sound.onEnded = () => {};
-    if (sound.isPlaying) { try { sound.stop(); } catch { /* the context stopped it already */ } }
-    try { sound.disconnect(); } catch { /* never connected: nothing to undo */ }
-    try { sound.gain.disconnect(); } catch { /* already detached */ }
+    if (sound.isPlaying) {
+      try {
+        sound.stop();
+      } catch {
+        /* the context stopped it already */
+      }
+    }
+    try {
+      sound.disconnect();
+    } catch {
+      /* never connected: nothing to undo */
+    }
+    try {
+      sound.gain.disconnect();
+    } catch {
+      /* already detached */
+    }
     sound.removeFromParent();
   }
 
@@ -208,7 +229,7 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
       sound.setDistanceModel('linear');
       sound.setRefDistance(1);
       sound.setRolloffFactor(0); // direction only; the authored curve already owns distance
-      sound.setVolume(0);        // ramp up from silence so a voice never pops on at range
+      sound.setVolume(0); // ramp up from silence so a voice never pops on at range
       sound.position.copy(position);
       hooks.root.add(sound);
       voices.set(source.key, { sound, url });
@@ -226,10 +247,18 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
    * `localStorage['slopesmith:ambience-debug'] = '1'`.
    */
   function debugScan(listenerRaw: [number, number, number], heard: readonly { key: string }[]): void {
-    try { if (localStorage.getItem('slopesmith:ambience-debug') !== '1') return; } catch { return; }
+    try {
+      if (localStorage.getItem('slopesmith:ambience-debug') !== '1') return;
+    } catch {
+      return;
+    }
     const audible = new Set(heard.map(voice => voice.key));
     console.debug('[Slopesmith ambience]', {
-      enabled, level, listenerRaw, placements: placements.length, voices: voices.size,
+      enabled,
+      level,
+      listenerRaw,
+      placements: placements.length,
+      voices: voices.size,
       sources: placements.map(placement => {
         const source = byKey.get(placement.key);
         return {
@@ -247,7 +276,10 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
   }
 
   function rescan(listenerWorld: THREE.Vector3): void {
-    if (!enabled) { gains.clear(); return; }
+    if (!enabled) {
+      gains.clear();
+      return;
+    }
     const listenerRaw = hooks.worldToRaw(listenerWorld);
     const heard = externalSoundField(placements, listenerRaw, MAX_VOICES);
     debugScan(listenerRaw, heard);
@@ -263,8 +295,10 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
       // a comparison offset is dragged, and a cached centre would leave the pan pointing at where the prop
       // used to be while the gain (measured in raw space through the live matrix) stayed correct.
       const position = hooks.rawToWorld(placement.center);
-      if (voice) { voice.sound.position.copy(position); voice.sound.setVolume(entry.gain * AMBIENT_VOLUME); }
-      else startVoice(source, position, entry.gain);
+      if (voice) {
+        voice.sound.position.copy(position);
+        voice.sound.setVolume(entry.gain * AMBIENT_VOLUME);
+      } else startVoice(source, position, entry.gain);
     }
   }
 
@@ -281,9 +315,10 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
         const gated = isInteractiveAmbientEvent(source.emitter.sound);
         // Converted ONCE, here, rather than per scan: the whole point of measuring the field in raw
         // centimetres is that a scan transforms the listener alone and never the emitters.
-        const center = source.space === 'editor'
-          ? hooks.editorToRaw(source.center)
-          : [source.center[0], source.center[1], source.center[2]] as [number, number, number];
+        const center =
+          source.space === 'editor'
+            ? hooks.editorToRaw(source.center)
+            : ([source.center[0], source.center[1], source.center[2]] as [number, number, number]);
         const placement: ExternalSoundPlacement = {
           key: source.key,
           emitter: source.emitter,
@@ -295,18 +330,20 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
         placementByKey.set(source.key, placement);
         if (gated) {
           const list = gatedByOwner.get(source.owner);
-          if (list) list.push(placement); else gatedByOwner.set(source.owner, [placement]);
+          if (list) list.push(placement);
+          else gatedByOwner.set(source.owner, [placement]);
         }
         return placement;
       });
       if (swapped) stopAll();
-      else for (const [key, voice] of [...voices]) {
-        // A voice survives a same-level rebuild only if it is still the same RECORD playing the same CLIP.
-        // Dropping the second half is what let a retargeted emitter keep sounding its old event: the key
-        // matched, so nothing here stopped it, and `rescan` only ever updates position and gain.
-        const source = byKey.get(key);
-        if (!source || sourceUrl(source) !== voice.url) stopVoice(key);
-      }
+      else
+        for (const [key, voice] of [...voices]) {
+          // A voice survives a same-level rebuild only if it is still the same RECORD playing the same CLIP.
+          // Dropping the second half is what let a retargeted emitter keep sounding its old event: the key
+          // matched, so nothing here stopped it, and `rescan` only ever updates position and gain.
+          const source = byKey.get(key);
+          if (!source || sourceUrl(source) !== voice.url) stopVoice(key);
+        }
       scanElapsed = SCAN_SECONDS;
     },
     arm(owner) {

@@ -68,13 +68,21 @@ tick(30); check(JSON.stringify(poses(1)) !== paused, 'new constructor resumes wi
 endPlay(); check(JSON.stringify(poses(1)) === before, 'Test exit restores replacement receiver');
 window.animationPassed = true;
 `;
-const bundle = await build({ stdin: { contents: source,
-  resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'ts' },
-bundle: true, write: false, format: 'esm', platform: 'browser', logLevel: 'silent' });
+const bundle = await build({
+  stdin: { contents: source, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'ts' },
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'browser',
+  logLevel: 'silent',
+});
 const server = createServer((request, response) => {
   response.setHeader('content-type', request.url === '/fixture.js' ? 'text/javascript' : 'text/html');
-  response.end(request.url === '/fixture.js' ? bundle.outputFiles[0].text
-    : '<!doctype html><script type="module" src="/fixture.js"></script>');
+  response.end(
+    request.url === '/fixture.js'
+      ? bundle.outputFiles[0].text
+      : '<!doctype html><script type="module" src="/fixture.js"></script>',
+  );
 });
 await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
 const browser = await chromium.launch({ executablePath: chromiumExecutable(), headless: true });
@@ -83,8 +91,14 @@ try {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${(server.address() as { port: number }).port}`);
-  await page.waitForFunction(() => (window as Window & { animationPassed?: boolean }).animationPassed,
-    undefined, { timeout: 10_000 }).catch(() => assert.fail(errors.join('\n') || 'Animation fixture did not finish'));
+  await page
+    .waitForFunction(() => (window as Window & { animationPassed?: boolean }).animationPassed, undefined, {
+      timeout: 10_000,
+    })
+    .catch(() => assert.fail(errors.join('\n') || 'Animation fixture did not finish'));
   assert.deepEqual(errors, []);
   console.log('BUDGETED MODEL ANIMATION BROWSER TEST PASSED');
-} finally { await browser.close(); server.close(); }
+} finally {
+  await browser.close();
+  server.close();
+}

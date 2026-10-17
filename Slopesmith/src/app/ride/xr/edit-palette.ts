@@ -1,11 +1,22 @@
 import * as THREE from 'three';
 import {
-  createDomMirror, createDomPointer, partUvRect, type DomMirror, type DomMirrorSpec, type DomPointerTarget, type Rect,
+  createDomMirror,
+  createDomPointer,
+  partUvRect,
+  type DomMirror,
+  type DomMirrorSpec,
+  type DomPointerTarget,
+  type Rect,
 } from './dom-mirror';
 import { normalizeAxis } from './input';
 import { XR_WATCH_HEIGHT, XR_WATCH_POSITION, XR_WATCH_TILT, XR_WATCH_WIDTH } from './hud';
 import {
-  createXrPaletteSeatBar, loadPaletteSeat, samePaletteSeat, savePaletteSeat, stepPaletteSeat, type XrPaletteSeat,
+  createXrPaletteSeatBar,
+  loadPaletteSeat,
+  samePaletteSeat,
+  savePaletteSeat,
+  stepPaletteSeat,
+  type XrPaletteSeat,
 } from './palette-seat';
 
 /**
@@ -64,18 +75,29 @@ const SCROLL_PX_PER_S = 900;
  */
 export const XR_EDIT_PALETTE_SEAT: Readonly<XrPaletteSeat> = {
   x: XR_WATCH_POSITION[0] - XR_WATCH_WIDTH / 2,
-  y: XR_WATCH_POSITION[1] + Math.cos(XR_WATCH_TILT) * XR_WATCH_HEIGHT / 2,
-  z: XR_WATCH_POSITION[2] + Math.sin(XR_WATCH_TILT) * XR_WATCH_HEIGHT / 2,
-  tilt: XR_WATCH_TILT, scale: 1,
+  y: XR_WATCH_POSITION[1] + (Math.cos(XR_WATCH_TILT) * XR_WATCH_HEIGHT) / 2,
+  z: XR_WATCH_POSITION[2] + (Math.sin(XR_WATCH_TILT) * XR_WATCH_HEIGHT) / 2,
+  tilt: XR_WATCH_TILT,
+  scale: 1,
 };
 /** Status strip along the palette's top: two lines of 24 px text. */
-const STATUS_W = 1024, STATUS_H = 72, STATUS_METRES = 0.44;
+const STATUS_W = 1024,
+  STATUS_H = 72,
+  STATUS_METRES = 0.44;
 const STATUS_HZ = 2;
 const LOG_MS = 5000;
 const RENDER_ORDER = 32;
 
-export interface PaletteItem { w: number; h: number }
-export interface PalettePlacement { x: number; y: number; w: number; h: number }
+export interface PaletteItem {
+  w: number;
+  h: number;
+}
+export interface PalettePlacement {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface WatchLayout {
   stack: (PalettePlacement | null)[];
@@ -83,7 +105,10 @@ export interface WatchLayout {
   legend: PalettePlacement | null;
   docked: (PalettePlacement | null)[];
   /** The extent of everything laid out, the watch included. */
-  left: number; right: number; top: number; bottom: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
 }
 
 /**
@@ -100,16 +125,28 @@ export interface WatchLayout {
  * A mode switch changes the toolbox, the keys and the docked items, and each only grows away from the watch.
  * Nothing above the watch or beside it moves. Missing items take no space.
  */
-export function layoutAroundWatch(parts: {
-  stack: ReadonlyArray<PaletteItem | null>; tools: PaletteItem | null; legend: PaletteItem | null;
-  docked: ReadonlyArray<PaletteItem | null>;
-}, watch: PaletteItem, gap: number): WatchLayout {
+export function layoutAroundWatch(
+  parts: {
+    stack: ReadonlyArray<PaletteItem | null>;
+    tools: PaletteItem | null;
+    legend: PaletteItem | null;
+    docked: ReadonlyArray<PaletteItem | null>;
+  },
+  watch: PaletteItem,
+  gap: number,
+): WatchLayout {
   const { tools, legend } = parts;
-  const at = (x: number, top: number, item: PaletteItem): PalettePlacement =>
-    ({ x: x + item.w / 2, y: top - item.h / 2, w: item.w, h: item.h });
+  const at = (x: number, top: number, item: PaletteItem): PalettePlacement => ({
+    x: x + item.w / 2,
+    y: top - item.h / 2,
+    w: item.w,
+    h: item.h,
+  });
   const left = tools ? -gap - tools.w : 0;
-  let right = watch.w, bottom = -watch.h;
-  let rise = gap, top = 0; // the bottom of the next stack row up, and the top of the stack so far
+  let right = watch.w,
+    bottom = -watch.h;
+  let rise = gap,
+    top = 0; // the bottom of the next stack row up, and the top of the stack so far
   const stack: (PalettePlacement | null)[] = parts.stack.map(() => null);
   for (let i = parts.stack.length - 1; i >= 0; i--) {
     const item = parts.stack[i];
@@ -120,7 +157,10 @@ export function layoutAroundWatch(parts: {
     top = rise;
   }
   const legendAt = legend && at(watch.w + gap, 0, legend);
-  if (legend) { right = Math.max(right, watch.w + gap + legend.w); bottom = Math.min(bottom, -legend.h); }
+  if (legend) {
+    right = Math.max(right, watch.w + gap + legend.w);
+    bottom = Math.min(bottom, -legend.h);
+  }
   if (tools) bottom = Math.min(bottom, -tools.h);
   const dockH = parts.docked.reduce((max, item) => Math.max(max, item?.h ?? 0), 0);
   const floor = Math.min(-(tools?.h ?? 0), -Math.max(watch.h, legend?.h ?? 0) - gap - dockH);
@@ -134,8 +174,14 @@ export function layoutAroundWatch(parts: {
     return placement;
   });
   return {
-    stack, tools: tools && at(left, 0, tools), legend: legendAt, docked,
-    left, right, top, bottom,
+    stack,
+    tools: tools && at(left, 0, tools),
+    legend: legendAt,
+    docked,
+    left,
+    right,
+    top,
+    bottom,
   };
 }
 
@@ -171,16 +217,31 @@ export function createXrEditPalette() {
   // Unbounded: the palette rides the rig, which grows with the player (world-grab.ts).
   const raycaster = new THREE.Raycaster();
   const slots: Slot[] = XR_EDIT_MIRRORS.map(spec => ({
-    id: spec.id, mirror: createDomMirror(spec), texture: null, textureSize: [0, 0], version: -1, planes: new Map(),
+    id: spec.id,
+    mirror: createDomMirror(spec),
+    texture: null,
+    textureSize: [0, 0],
+    version: -1,
+    planes: new Map(),
   }));
   const hitTargets: THREE.Object3D[] = [];
-  let open = false, relayout = true, cursor = 0, width = 0, height = 0;
-  let dragPlane: PartPlane | null = null, hoverPlane: PartPlane | null = null;
+  let open = false,
+    relayout = true,
+    cursor = 0,
+    width = 0,
+    height = 0;
+  let dragPlane: PartPlane | null = null,
+    hoverPlane: PartPlane | null = null;
 
   // Hover / press frame over the control a trigger would act on. Parented to whichever part plane it is on, in
   // that plane's unit square, so it needs no metric bookkeeping of its own.
   const highlightMaterial = new THREE.MeshBasicMaterial({
-    color: 0x8fd7ff, transparent: true, opacity: 0.22, depthTest: false, depthWrite: false, toneMapped: false,
+    color: 0x8fd7ff,
+    transparent: true,
+    opacity: 0.22,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
   });
   const highlight = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), highlightMaterial);
   highlight.renderOrder = RENDER_ORDER + 1;
@@ -188,25 +249,44 @@ export function createXrEditPalette() {
   highlight.visible = false;
 
   const statusCanvas = document.createElement('canvas');
-  statusCanvas.width = STATUS_W; statusCanvas.height = STATUS_H;
+  statusCanvas.width = STATUS_W;
+  statusCanvas.height = STATUS_H;
   const statusCtx = statusCanvas.getContext('2d')!;
   const statusTexture = new THREE.CanvasTexture(statusCanvas);
   statusTexture.colorSpace = THREE.SRGBColorSpace;
-  const status = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
-    map: statusTexture, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
-  }));
+  const status = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      map: statusTexture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    }),
+  );
   status.renderOrder = RENDER_ORDER;
   status.raycast = () => {};
   object.add(status);
-  let nextStatus = 0, nextLog = 0;
+  let nextStatus = 0,
+    nextLog = 0;
 
   // Page requestAnimationFrame liveness: counted only while the palette is open.
-  let rafFrames = 0, rafHandle = 0, rafSince = 0, rafRate = -1;
-  const onPageFrame = () => { rafFrames++; if (open) rafHandle = requestAnimationFrame(onPageFrame); };
+  let rafFrames = 0,
+    rafHandle = 0,
+    rafSince = 0,
+    rafRate = -1;
+  const onPageFrame = () => {
+    rafFrames++;
+    if (open) rafHandle = requestAnimationFrame(onPageFrame);
+  };
 
   function createPlane(slot: Slot, key: string | null): PartPlane {
     const material = new THREE.MeshBasicMaterial({
-      map: slot.texture, transparent: true, depthTest: false, depthWrite: false, toneMapped: false,
+      map: slot.texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     mesh.renderOrder = RENDER_ORDER;
@@ -224,7 +304,10 @@ export function createXrEditPalette() {
     const [u0, v0, u1, v1] = uv;
     // PlaneGeometry's vertex order: top-left, top-right, bottom-left, bottom-right.
     const attribute = plane.mesh.geometry.getAttribute('uv') as THREE.BufferAttribute;
-    attribute.setXY(0, u0, v1); attribute.setXY(1, u1, v1); attribute.setXY(2, u0, v0); attribute.setXY(3, u1, v0);
+    attribute.setXY(0, u0, v1);
+    attribute.setXY(1, u1, v1);
+    attribute.setXY(2, u0, v0);
+    attribute.setXY(3, u1, v0);
     attribute.needsUpdate = true;
   }
 
@@ -272,9 +355,11 @@ export function createXrEditPalette() {
   }
 
   /** A panel's size on the palette. The seat's scale sizes the panels; the watch they surround keeps its own. */
-  const size = (plane: PartPlane | null): PaletteItem | null => plane && {
-    w: plane.rect.width * XR_EDIT_METRES_PER_PX * seat.scale, h: plane.rect.height * XR_EDIT_METRES_PER_PX * seat.scale,
-  };
+  const size = (plane: PartPlane | null): PaletteItem | null =>
+    plane && {
+      w: plane.rect.width * XR_EDIT_METRES_PER_PX * seat.scale,
+      h: plane.rect.height * XR_EDIT_METRES_PER_PX * seat.scale,
+    };
 
   /** A tab's footprint once it stands upright: its page width becomes its height. */
   const turned = (plane: PartPlane | null): PaletteItem | null => {
@@ -286,15 +371,24 @@ export function createXrEditPalette() {
    *  above both, the colour keys right of it, and the libraries right of the toolbox below it. */
   function layout() {
     relayout = false;
-    const file = visiblePlane('bar', 'file'), mode = visiblePlane('bar', 'mode'), view = visiblePlane('bar', 'view');
-    const tools = visiblePlane('tools', null), legend = visiblePlane('legend', 'legend');
+    const file = visiblePlane('bar', 'file'),
+      mode = visiblePlane('bar', 'mode'),
+      view = visiblePlane('bar', 'view');
+    const tools = visiblePlane('tools', null),
+      legend = visiblePlane('legend', 'legend');
     const libraries = [visiblePlane('texlib', null), visiblePlane('proplib', null)];
     const tabs = [visiblePlane('texlib-tab', null), visiblePlane('proplib-tab', null)];
     const statusW = STATUS_METRES * seat.scale;
-    const laid = layoutAroundWatch({
-      stack: [{ w: statusW, h: statusW * STATUS_H / STATUS_W }, size(file), size(mode), size(view)],
-      tools: size(tools), legend: size(legend), docked: [...libraries.map(size), ...tabs.map(turned)],
-    }, { w: XR_WATCH_WIDTH, h: XR_WATCH_HEIGHT }, GAP);
+    const laid = layoutAroundWatch(
+      {
+        stack: [{ w: statusW, h: (statusW * STATUS_H) / STATUS_W }, size(file), size(mode), size(view)],
+        tools: size(tools),
+        legend: size(legend),
+        docked: [...libraries.map(size), ...tabs.map(turned)],
+      },
+      { w: XR_WATCH_WIDTH, h: XR_WATCH_HEIGHT },
+      GAP,
+    );
     width = laid.right - laid.left;
     height = laid.top - laid.bottom;
     const place = (mesh: THREE.Object3D | undefined, at: PalettePlacement | null, roll = 0) => {
@@ -302,7 +396,8 @@ export function createXrEditPalette() {
       mesh.position.set(at.x, at.y, 0);
       mesh.rotation.set(0, 0, roll);
       // Scale is the plane's own width and height; a rolled plane's footprint has them swapped.
-      if (roll) mesh.scale.set(at.h, at.w, 1); else mesh.scale.set(at.w, at.h, 1);
+      if (roll) mesh.scale.set(at.h, at.w, 1);
+      else mesh.scale.set(at.w, at.h, 1);
     };
     place(status, laid.stack[0]);
     place(file?.mesh, laid.stack[1]);
@@ -322,11 +417,14 @@ export function createXrEditPalette() {
   }
 
   function targetAt(plane: PartPlane, u: number, v: number): DomPointerTarget | null {
-    const root = plane.slot.mirror.root, at = plane.slot.mirror.toClient(u, v);
+    const root = plane.slot.mirror.root,
+      at = plane.slot.mirror.toClient(u, v);
     return root && at ? { root, x: at.x, y: at.y } : null;
   }
 
-  const local = new THREE.Vector3(), worldPoint = new THREE.Vector3(), dragSurface = new THREE.Plane();
+  const local = new THREE.Vector3(),
+    worldPoint = new THREE.Vector3(),
+    dragSurface = new THREE.Plane();
   const planeNormal = new THREE.Vector3();
 
   function cast(ray: THREE.Ray): { plane: PartPlane; target: DomPointerTarget; point: THREE.Vector3 } | null {
@@ -359,11 +457,20 @@ export function createXrEditPalette() {
   function updateHighlight() {
     const control = pointer.hoveredControl;
     const plane = pointer.dragging ? dragPlane : hoverPlane;
-    if (!control || !plane) { highlight.visible = false; return; }
-    const r = control.getBoundingClientRect(), p = plane.rect;
-    const left = Math.max(r.left, p.x), top = Math.max(r.top, p.y);
-    const right = Math.min(r.right, p.x + p.width), bottom = Math.min(r.bottom, p.y + p.height);
-    if (right - left < 1 || bottom - top < 1) { highlight.visible = false; return; }
+    if (!control || !plane) {
+      highlight.visible = false;
+      return;
+    }
+    const r = control.getBoundingClientRect(),
+      p = plane.rect;
+    const left = Math.max(r.left, p.x),
+      top = Math.max(r.top, p.y);
+    const right = Math.min(r.right, p.x + p.width),
+      bottom = Math.min(r.bottom, p.y + p.height);
+    if (right - left < 1 || bottom - top < 1) {
+      highlight.visible = false;
+      return;
+    }
     if (highlight.parent !== plane.mesh) plane.mesh.add(highlight);
     highlight.position.set(((left + right) / 2 - p.x) / p.width - 0.5, 0.5 - ((top + bottom) / 2 - p.y) / p.height, 0);
     highlight.scale.set((right - left) / p.width, (bottom - top) / p.height, 1);
@@ -377,18 +484,29 @@ export function createXrEditPalette() {
    * A), `stick` the right stick's raw Y. `consumed` is true while the ray is on a panel or a press it started is
    * live: the buttons and the right stick belong to the palette then.
    */
-  function update(ray: THREE.Ray | null, left: boolean, right: boolean, stick: number, dt: number): {
-    point: THREE.Vector3 | null; consumed: boolean;
+  function update(
+    ray: THREE.Ray | null,
+    left: boolean,
+    right: boolean,
+    stick: number,
+    dt: number,
+  ): {
+    point: THREE.Vector3 | null;
+    consumed: boolean;
   } {
     if (!open) return { point: null, consumed: false };
     // The placement bar lies below every panel, so nothing else can be under the laser there. A drag that began
     // on a panel keeps that panel even while the hand strays across the bar.
     const bar = ray && !pointer.dragging ? seatBar.cast(ray) : null;
     const hit = ray && !bar ? cast(ray) : null;
-    let target = hit?.target ?? null, point = hit?.point ?? bar?.point ?? null;
+    let target = hit?.target ?? null,
+      point = hit?.point ?? bar?.point ?? null;
     if (!hit && ray && pointer.dragging && dragPlane) {
       const extended = extend(ray, dragPlane);
-      if (extended) { target = extended.target; point = extended.point; }
+      if (extended) {
+        target = extended.target;
+        point = extended.point;
+      }
     }
     hoverPlane = hit?.plane ?? null;
     const wasDragging = pointer.dragging;
@@ -419,19 +537,32 @@ export function createXrEditPalette() {
     if (!open) return;
     for (let i = 0; i < slots.length; i++) {
       const index = (cursor + i) % slots.length;
-      if (slots[index].mirror.tick(now, true)) { cursor = (index + 1) % slots.length; break; }
+      if (slots[index].mirror.tick(now, true)) {
+        cursor = (index + 1) % slots.length;
+        break;
+      }
     }
     sync();
     if (seatBar.object.visible) seatBar.paint(seat, !samePaletteSeat(seat, XR_EDIT_PALETTE_SEAT), { width, height });
-    if (now >= nextStatus) { nextStatus = now + 1000 / STATUS_HZ; paintStatus(now); }
-    if (now >= nextLog) { nextLog = now + LOG_MS; logStats(); }
+    if (now >= nextStatus) {
+      nextStatus = now + 1000 / STATUS_HZ;
+      paintStatus(now);
+    }
+    if (now >= nextLog) {
+      nextLog = now + LOG_MS;
+      logStats();
+    }
   }
 
-  const ms = (value: number) => value < 10 ? value.toFixed(1) : String(Math.round(value));
+  const ms = (value: number) => (value < 10 ? value.toFixed(1) : String(Math.round(value)));
 
   function paintStatus(now: number) {
     const elapsed = (now - rafSince) / 1000;
-    if (elapsed >= 1) { rafRate = rafFrames / elapsed; rafFrames = 0; rafSince = now; }
+    if (elapsed >= 1) {
+      rafRate = rafFrames / elapsed;
+      rafFrames = 0;
+      rafSince = now;
+    }
     statusCtx.clearRect(0, 0, STATUS_W, STATUS_H);
     statusCtx.fillStyle = 'rgba(10,16,24,0.82)';
     statusCtx.beginPath();
@@ -441,29 +572,43 @@ export function createXrEditPalette() {
     statusCtx.font = '600 24px system-ui, sans-serif';
     const error = slots.map(slot => slot.mirror.stats.error && `${slot.id}: ${slot.mirror.stats.error}`).find(Boolean);
     statusCtx.fillStyle = error ? '#ff8d8d' : pointer.notice ? '#ffd24a' : '#9fb6cc';
-    statusCtx.fillText(error || pointer.notice
-      || 'trigger click · A right-click · stick ↕ scroll · grip = drag map · both grips: pull = zoom in, twist = turn',
-    18, 20, STATUS_W - 36);
+    statusCtx.fillText(
+      error ||
+        pointer.notice ||
+        'trigger click · A right-click · stick ↕ scroll · grip = drag map · both grips: pull = zoom in, twist = turn',
+      18,
+      20,
+      STATUS_W - 36,
+    );
     // Only the panels on show: a library outside its mode, or a tab while its library is open, costs nothing.
     const shown = slots.filter(slot => slot.mirror.region);
     const bytes = shown.reduce((sum, slot) => sum + slot.mirror.stats.bytes, 0);
     const costs = shown.map(slot => `${slot.id} ${ms(slot.mirror.stats.syncMs)}+${ms(slot.mirror.stats.decodeMs)}`);
     const raf = rafRate < 0 ? 'rAF …' : rafRate < 1 ? 'page rAF PAUSED' : `rAF ${Math.round(rafRate)}/s`;
     statusCtx.fillStyle = rafRate >= 0 && rafRate < 1 ? '#ffc14a' : '#eaf4ff';
-    statusCtx.fillText(`${costs.join(' · ')} ms · ${Math.round(bytes / 1024)} KB · ${raf}`
-      + `${document.visibilityState === 'hidden' ? ' · hidden' : ''}`, 18, 52, STATUS_W - 36);
+    statusCtx.fillText(
+      `${costs.join(' · ')} ms · ${Math.round(bytes / 1024)} KB · ${raf}` +
+        `${document.visibilityState === 'hidden' ? ' · hidden' : ''}`,
+      18,
+      52,
+      STATUS_W - 36,
+    );
     statusTexture.needsUpdate = true;
   }
 
   function logStats() {
     const rows = slots.map(slot => {
       const s = slot.mirror.stats;
-      return `${slot.id} sync ${ms(s.syncMs)} decode ${ms(s.decodeMs)} draw ${ms(s.drawMs)} ms`
-        + ` · ${Math.round(s.bytes / 1024)} KB · ${s.nodes} nodes · ${s.cssRules} rules`
-        + ` · ${s.repaints} painted / ${s.unchanged} unchanged${s.error ? ` · ${s.error}` : ''}`;
+      return (
+        `${slot.id} sync ${ms(s.syncMs)} decode ${ms(s.decodeMs)} draw ${ms(s.drawMs)} ms` +
+        ` · ${Math.round(s.bytes / 1024)} KB · ${s.nodes} nodes · ${s.cssRules} rules` +
+        ` · ${s.repaints} painted / ${s.unchanged} unchanged${s.error ? ` · ${s.error}` : ''}`
+      );
     });
-    console.info(`[xr edit] ${rows.join(' | ')} | page rAF ${rafRate < 0 ? '?' : rafRate.toFixed(0)}/s`
-      + ` · ${document.visibilityState}`);
+    console.info(
+      `[xr edit] ${rows.join(' | ')} | page rAF ${rafRate < 0 ? '?' : rafRate.toFixed(0)}/s` +
+        ` · ${document.visibilityState}`,
+    );
   }
 
   function setOpen(on: boolean) {
@@ -476,7 +621,9 @@ export function createXrEditPalette() {
     for (const slot of slots) slot.mirror.setActive(on);
     if (on) {
       relayout = true;
-      rafFrames = 0; rafSince = performance.now(); rafRate = -1;
+      rafFrames = 0;
+      rafSince = performance.now();
+      rafRate = -1;
       rafHandle = requestAnimationFrame(onPageFrame);
       nextStatus = 0;
       nextLog = performance.now() + LOG_MS;
@@ -494,26 +641,42 @@ export function createXrEditPalette() {
     for (const slot of slots) {
       slot.mirror.dispose();
       slot.texture?.dispose();
-      for (const plane of slot.planes.values()) { plane.mesh.geometry.dispose(); plane.mesh.material.dispose(); }
+      for (const plane of slot.planes.values()) {
+        plane.mesh.geometry.dispose();
+        plane.mesh.material.dispose();
+      }
     }
-    highlight.geometry.dispose(); highlightMaterial.dispose();
-    status.geometry.dispose(); status.material.dispose(); statusTexture.dispose();
+    highlight.geometry.dispose();
+    highlightMaterial.dispose();
+    status.geometry.dispose();
+    status.material.dispose();
+    statusTexture.dispose();
     seatBar.dispose();
     object.removeFromParent();
   }
 
   return {
     object,
-    get open() { return open; },
+    get open() {
+      return open;
+    },
     /** The placement bar is showing: the watch's MOVE UI while EDIT is on. */
-    get placing() { return seatBar.object.visible; },
+    get placing() {
+      return seatBar.object.visible;
+    },
     setPlacing(on: boolean) {
       seatBar.object.visible = on;
       if (!on) seatBar.reset();
     },
     /** Where the palette sits on the left controller: the defaults, or wherever the placement bar has moved it. */
-    get seat(): Readonly<XrPaletteSeat> { return seat; },
-    setOpen, update, hits, tick, dispose,
+    get seat(): Readonly<XrPaletteSeat> {
+      return seat;
+    },
+    setOpen,
+    update,
+    hits,
+    tick,
+    dispose,
   };
 }
 

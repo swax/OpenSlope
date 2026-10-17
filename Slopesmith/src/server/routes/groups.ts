@@ -1,7 +1,13 @@
 import { join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
 import { mapLimit, readJsonOr, READ_CONCURRENCY } from '../fs-async';
-import { mineGroups, type GroupDef, type GroupsPayload, type GroupSourceInstance, type GroupSourceModel } from '../../core/reference/groups';
+import {
+  mineGroups,
+  type GroupDef,
+  type GroupsPayload,
+  type GroupSourceInstance,
+  type GroupSourceModel,
+} from '../../core/reference/groups';
 import { readLevelLightRig } from './levels';
 import { modelLocalBox } from './props';
 import { safeDataName } from './safe-name';
@@ -26,7 +32,9 @@ export function readLevelGroups(level: string): Promise<GroupsPayload> {
     pending = mineLevelGroups(lvl);
     cache.set(lvl, pending);
     // A failed read must not be cached as the permanent answer for this level.
-    void pending.catch(() => { if (cache.get(lvl) === pending) cache.delete(lvl); });
+    void pending.catch(() => {
+      if (cache.get(lvl) === pending) cache.delete(lvl);
+    });
   }
   return pending;
 }
@@ -42,9 +50,9 @@ async function mineLevelGroups(lvl: string): Promise<GroupsPayload> {
   if (!modelsJson || !instJson) return { level: lvl, groups: [] };
 
   const models: GroupSourceModel[] = modelsJson.Models.map((m, id) => ({ id, name: m.ModelName }));
-  const instances: GroupSourceInstance[] = instJson.Instances
-    .filter(i => i.ModelID >= 0 && i.Visable !== false)
-    .map(i => ({ model: i.ModelID, loc: i.Location, rot: i.Rotation, scale: i.Scale }));
+  const instances: GroupSourceInstance[] = instJson.Instances.filter(i => i.ModelID >= 0 && i.Visable !== false).map(
+    i => ({ model: i.ModelID, loc: i.Location, rot: i.Rotation, scale: i.Scale }),
+  );
 
   const rig = await readLevelLightRig(lvl);
   const groups = mineGroups(lvl, models, instances, rig?.lights ?? []);
@@ -52,11 +60,13 @@ async function mineLevelGroups(lvl: string): Promise<GroupsPayload> {
   // leader-first: the largest member is the model a placement stores, previews and seats by. Volumes are
   // resolved up front for every model that needs ordering, so the comparator stays a pure synchronous sort.
   const needed = [...new Set(groups.filter(g => g.props.length > 1).flatMap(g => g.props.map(p => p.model)))];
-  const volumes = new Map(await mapLimit(needed, READ_CONCURRENCY, async model => {
-    const b = await modelLocalBox(lvl, model);
-    const volume = b ? (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]) * (b.max[2] - b.min[2]) : 0;
-    return [model, volume] as const;
-  }));
+  const volumes = new Map(
+    await mapLimit(needed, READ_CONCURRENCY, async model => {
+      const b = await modelLocalBox(lvl, model);
+      const volume = b ? (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]) * (b.max[2] - b.min[2]) : 0;
+      return [model, volume] as const;
+    }),
+  );
   for (const g of groups) {
     if (g.props.length > 1) g.props.sort((a, b) => (volumes.get(b.model) ?? 0) - (volumes.get(a.model) ?? 0));
   }

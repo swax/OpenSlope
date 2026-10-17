@@ -35,7 +35,9 @@ export interface ProjectBundle {
  */
 export const MOUNTAIN_ARCHIVE_SCHEMA = 1;
 export const MOUNTAIN_ARCHIVE_MANIFEST = 'manifest.json';
-export interface MountainArchiveAsset extends BundleAsset { file: string }
+export interface MountainArchiveAsset extends BundleAsset {
+  file: string;
+}
 export interface MountainArchiveManifest {
   kind: 'slopesmith-mountain';
   schema: number;

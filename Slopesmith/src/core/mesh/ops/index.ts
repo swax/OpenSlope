@@ -10,24 +10,56 @@
 export { ekey, checkManifold, remapIds, locateVertex, meshContext, type RewriteIdentity } from './contract';
 export { orderEdgeChain } from './edge-chains';
 export {
-  DEFAULT_STANDALONE_PATCH_SIZE_M, standalonePatchCorners, appendStandalonePatch,
-  appendTube, appendPatchFromCorners, appendFreeEdge, type PatchCorners, type FreeEdgeContact,
+  DEFAULT_STANDALONE_PATCH_SIZE_M,
+  standalonePatchCorners,
+  appendStandalonePatch,
+  appendTube,
+  appendPatchFromCorners,
+  appendFreeEdge,
+  type PatchCorners,
+  type FreeEdgeContact,
 } from './append';
 export {
-  DEFAULT_GRID_COLUMNS, DEFAULT_GRID_ROWS, DEFAULT_GRID_PATCH_SIZE_M, MAX_GRID_DIVISIONS, planGrid, appendGrid,
-  gridSideChain, gridCornersFromClicks, gridDivisionsForSize, gridHinge, gridLengthFixed, gridWidthFixed, resizeGridLength,
-  resizeGridWidth, type GridCorner, type GridCorners, type GridOptions, type GridPlan, type GridPlanResult,
+  DEFAULT_GRID_COLUMNS,
+  DEFAULT_GRID_ROWS,
+  DEFAULT_GRID_PATCH_SIZE_M,
+  MAX_GRID_DIVISIONS,
+  planGrid,
+  appendGrid,
+  gridSideChain,
+  gridCornersFromClicks,
+  gridDivisionsForSize,
+  gridHinge,
+  gridLengthFixed,
+  gridWidthFixed,
+  resizeGridLength,
+  resizeGridWidth,
+  type GridCorner,
+  type GridCorners,
+  type GridOptions,
+  type GridPlan,
+  type GridPlanResult,
 } from './grid';
 export { validateSurfaceCutPath, routeSurfaceCutPath, applySurfaceCut, type SurfaceCutPoint } from './surface-cut';
 export {
-  applyEdgeCrossingWeld, autoWeldCreatedEdgeCrossings, AUTO_WELD_CROSSING_TOLERANCE_M,
+  applyEdgeCrossingWeld,
+  autoWeldCreatedEdgeCrossings,
+  AUTO_WELD_CROSSING_TOLERANCE_M,
   type EdgeCrossingWeldResult,
 } from './edge-crossing-weld';
 export {
-  planEdgeExtrusion, planPatchExtrusion, translatedEdgeExtrusionPlacement, tangentEdgeExtrusionPlacement,
-  edgeExtrusionSegmentCount, edgeExtrusionPreviewDoc, edgeExtrusionPlacementPreviewDoc,
-  applyEdgeExtrusion, applyPatchExtrusion, applyPlannedEdgeExtrusion,
-  type EdgeExtrusionPlan, type EdgeExtrusionPlacement,
+  planEdgeExtrusion,
+  planPatchExtrusion,
+  translatedEdgeExtrusionPlacement,
+  tangentEdgeExtrusionPlacement,
+  edgeExtrusionSegmentCount,
+  edgeExtrusionPreviewDoc,
+  edgeExtrusionPlacementPreviewDoc,
+  applyEdgeExtrusion,
+  applyPatchExtrusion,
+  applyPlannedEdgeExtrusion,
+  type EdgeExtrusionPlan,
+  type EdgeExtrusionPlacement,
 } from './edge-extrusion';
 export { pathEdgeExtrusionPlacement, edgeChainExtrusionPlacement } from './edge-extrusion-path';
 export { fillSelectedEdgeHoles, type EdgeHoleFillResult } from './edge-hole-fill';
@@ -39,5 +71,8 @@ export { applyMeshDissolve } from './dissolve';
 export { applyMeshFlip, type MeshFlipResult } from './flip';
 export { applyVertexWeld, applyVertexWeldTogether, applyEdgeWeldSets, applyEdgeWeld } from './weld';
 export {
-  boundaryEdgeLoopVertices, applyEdgeLoopWeld, type BoundaryEdgeLoop, type EdgeLoopWeldResult,
+  boundaryEdgeLoopVertices,
+  applyEdgeLoopWeld,
+  type BoundaryEdgeLoop,
+  type EdgeLoopWeldResult,
 } from './edge-loop-weld';

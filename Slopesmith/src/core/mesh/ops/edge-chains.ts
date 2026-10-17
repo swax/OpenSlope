@@ -11,10 +11,20 @@ export function orderEdgeChain(edges: readonly [number, number][]): number[] | n
   if (edges.length === 1) return [edges[0][0], edges[0][1]];
   if (!edges.length) return null;
   const inc = new Map<number, number[]>();
-  const push = (v: number, i: number) => { const a = inc.get(v); if (a) a.push(i); else inc.set(v, [i]); };
-  edges.forEach(([a, b], i) => { push(a, i); push(b, i); });
+  const push = (v: number, i: number) => {
+    const a = inc.get(v);
+    if (a) a.push(i);
+    else inc.set(v, [i]);
+  };
+  edges.forEach(([a, b], i) => {
+    push(a, i);
+    push(b, i);
+  });
   const ends: number[] = [];
-  for (const [v, es] of inc) { if (es.length === 1) ends.push(v); else if (es.length !== 2) return null; } // 3+ = fork
+  for (const [v, es] of inc) {
+    if (es.length === 1) ends.push(v);
+    else if (es.length !== 2) return null;
+  } // 3+ = fork
   if (ends.length !== 2) return null; // 0 ends = ring; anything else = not a simple path
   const used = new Array(edges.length).fill(false);
   const chain = [Math.min(ends[0], ends[1])];

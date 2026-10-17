@@ -22,7 +22,15 @@ const priorExtent = new Float32Array(6);
 const scratchPoint = new THREE.Vector3();
 
 /** The Stage-D sun's parameters: direction, ambient / sun / shadow / AO strengths, and the sun / sky tints. */
-export type TerrainLightOptions = { dir: [number, number, number]; ambient: number; sun: number; shadow: number; ao: number; sunTint: [number, number, number]; skyTint: [number, number, number] };
+export type TerrainLightOptions = {
+  dir: [number, number, number];
+  ambient: number;
+  sun: number;
+  shadow: number;
+  ao: number;
+  sunTint: [number, number, number];
+  skyTint: [number, number, number];
+};
 
 /** The view state the terrain solid draws with: the active shade mode (real tiles / SurfaceType tint / no
  *  solid) and the authored local-light rig (sign + free) whose glow folds into the lit terrain, gated by the
@@ -50,14 +58,22 @@ export interface TerrainHostHooks {
  * through accessors (`TerrainViewAccess`) and re-targets its dependent overlays on each geometry rebuild
  * (`TerrainHostHooks`).
  */
-export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: TerrainViewAccess, host: TerrainHostHooks,
-  opts: { pickTarget?: boolean } = {}) {
+export function createTerrainLayer(
+  stage: Stage,
+  tiles: TileMaterials,
+  view: TerrainViewAccess,
+  host: TerrainHostHooks,
+  opts: { pickTarget?: boolean } = {},
+) {
   /** Fallback material (material slot 0): SurfaceType tint for cells with no painted tile. Back faces tint
    *  magenta — the non-ridable side of a one-sided patch (backface-tint.ts). */
-  const terrainMat = tintBackfaces(new THREE.MeshLambertMaterial({
-    vertexColors: true, side: THREE.DoubleSide,
-    ...SURFACE_POLY_OFFSET, // sit behind the cage wires (incl. their dips into the surface) so they read on top
-  }));
+  const terrainMat = tintBackfaces(
+    new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      ...SURFACE_POLY_OFFSET, // sit behind the cage wires (incl. their dips into the surface) so they read on top
+    }),
+  );
   const terrain: THREE.Mesh = new THREE.Mesh(new THREE.BufferGeometry(), terrainMat);
   let preview: PreviewData | null = null;
   // Authored-terrain SSX sun lighting (Stage D): an unlit material + cached occlusion bakes for the
@@ -68,11 +84,11 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
   let tlShadow: Float32Array | null = null;
   let tlAO: Float32Array | null = null;
   let tlDirKey = '';
-  let authoredRigGlow: Float32Array | null = null;        // cached per-vertex terrain glow (preview space)
-  let groundLit: Float32Array | null = null;              // per-vertex lit colour = the bake's `colored`
-  let terrainDisplay: Float32Array | null = null;         // what the colour attribute holds (lit, or a display transform of it)
+  let authoredRigGlow: Float32Array | null = null; // cached per-vertex terrain glow (preview space)
+  let groundLit: Float32Array | null = null; // per-vertex lit colour = the bake's `colored`
+  let terrainDisplay: Float32Array | null = null; // what the colour attribute holds (lit, or a display transform of it)
   let sampleGroundLight: ((p: V3) => number) | null = null; // lazy spatial index over it
-  let occlusionStale = false;                             // patches moved under the retained AO / shadow bakes
+  let occlusionStale = false; // patches moved under the retained AO / shadow bakes
   // Where each patch's positions stood when the geometry's ray-acceleration trees last saw them: six floats
   // per patch (min xyz, max xyz). Those trees index the terrain's OWN buffers (mesh/surface-trees.ts), so an
   // incremental re-emit moves the surface out from under their node bounds, and the box a patch is vacating
@@ -95,7 +111,7 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     host.onGeometryRebuilt(g);
     applyMaterials();
     tlShadow = tlAO = null; // geometry changed -> the cached occlusion bakes are stale
-    authoredRigGlow = null;      // ...and the cached authored sign-light glow (bound to the old vertices)
+    authoredRigGlow = null; // ...and the cached authored sign-light glow (bound to the old vertices)
     occlusionStale = false;
     if (terrainLight) applyTerrainLight(); // re-light the rebuilt terrain
   }
@@ -115,8 +131,11 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
    * than deferred: a stale pick tree is a cursor that stops finding the ground it is standing on, which is a
    * broken tool rather than a lagging one.
    */
-  function updatePatches(quads: ReadonlySet<number>, spans: readonly [number, number][],
-    moved: { geometry: boolean; materials: boolean }) {
+  function updatePatches(
+    quads: ReadonlySet<number>,
+    spans: readonly [number, number][],
+    moved: { geometry: boolean; materials: boolean },
+  ) {
     const p = preview;
     if (!p || !quads.size) return;
     const g = terrain.geometry;
@@ -161,17 +180,32 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
   /** Write patch `q`'s current extent into `bounds`, answering the extent it held before (in shared scratch,
    *  so the caller reads it before the next call). */
   function measurePatch(p: PreviewData, bounds: Float32Array, q: number): Float32Array {
-    const at = q * 6, was = priorExtent;
+    const at = q * 6,
+      was = priorExtent;
     for (let i = 0; i < 6; i++) was[i] = bounds[at + i];
-    let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      minZ = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity,
+      maxZ = -Infinity;
     for (let i = q * PATCH_VERTS * 3, end = i + PATCH_VERTS * 3; i < end; i += 3) {
-      const x = p.positions[i], y = p.positions[i + 1], z = p.positions[i + 2];
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
-      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+      const x = p.positions[i],
+        y = p.positions[i + 1],
+        z = p.positions[i + 2];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
     }
-    bounds[at] = minX; bounds[at + 1] = minY; bounds[at + 2] = minZ;
-    bounds[at + 3] = maxX; bounds[at + 4] = maxY; bounds[at + 5] = maxZ;
+    bounds[at] = minX;
+    bounds[at + 1] = minY;
+    bounds[at + 2] = minZ;
+    bounds[at + 3] = maxX;
+    bounds[at + 4] = maxY;
+    bounds[at + 5] = maxZ;
     return was;
   }
 
@@ -183,7 +217,8 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     for (const [from, to] of spans) {
       const box = new THREE.Box3();
       for (let q = from / PATCH_VERTS; q < to / PATCH_VERTS; q++) {
-        const was = measurePatch(p, bounds, q), at = q * 6;
+        const was = measurePatch(p, bounds, q),
+          at = q * 6;
         box.expandByPoint(scratchPoint.set(was[0], was[1], was[2]));
         box.expandByPoint(scratchPoint.set(was[3], was[4], was[5]));
         box.expandByPoint(scratchPoint.set(bounds[at], bounds[at + 1], bounds[at + 2]));
@@ -201,11 +236,22 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     const rig = view.rigData();
     const glow = rig && view.rigVisible() ? authoredRigGlow : null;
     for (const [from, to] of spans) {
-      const f3 = from * 3, t3 = to * 3;
-      const colors = computeModelColored(p.normals.subarray(f3, t3), o.dir, o,
-        tlShadow?.subarray(from, to), tlAO?.subarray(from, to));
+      const f3 = from * 3,
+        t3 = to * 3;
+      const colors = computeModelColored(
+        p.normals.subarray(f3, t3),
+        o.dir,
+        o,
+        tlShadow?.subarray(from, to),
+        tlAO?.subarray(from, to),
+      );
       if (glow) {
-        const span = bakeRigLighting(p.positions.subarray(f3, t3), p.normals.subarray(f3, t3), rig!, SIGN_TERRAIN_WEIGHT_K);
+        const span = bakeRigLighting(
+          p.positions.subarray(f3, t3),
+          p.normals.subarray(f3, t3),
+          rig!,
+          SIGN_TERRAIN_WEIGHT_K,
+        );
         glow.set(span, f3);
         compositeRigGlow(colors, span);
       }
@@ -241,7 +287,9 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
   }
 
   function applyTerrainLight() {
-    const p = preview, o = terrainLight, g = terrain.geometry;
+    const p = preview,
+      o = terrainLight,
+      g = terrain.geometry;
     if (!o || !p) {
       groundLit = terrainDisplay = null;
       occlusionStale = false;
@@ -252,7 +300,10 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     occlusionStale = false;
     if (!tlAO) tlAO = bakeAO(p.positions, p.indices, p.normals);
     const dirKey = o.dir.join(',');
-    if (!tlShadow || dirKey !== tlDirKey) { tlShadow = bakeSunShadow(p.positions, p.indices, o.dir); tlDirKey = dirKey; }
+    if (!tlShadow || dirKey !== tlDirKey) {
+      tlShadow = bakeSunShadow(p.positions, p.indices, o.dir);
+      tlDirKey = dirKey;
+    }
     const colors = computeModelColored(p.normals, o.dir, o, tlShadow, tlAO); // sun + sky tint (= the bake's Lc)
     // fold the authored local lights (sign + free) into the lit terrain, gated by effective Local lights
     // (WYSIWYG with the exported lightmap: the same bakeRigLighting + screen composite). Cached per rig /
@@ -267,7 +318,7 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     // (docs/032 · lighting). Taking it after the baked-view round-trip or the surface-tint multiply would
     // hand props a display artefact instead.
     groundLit = colors;
-    sampleGroundLight = null;      // rebuilt lazily; the grid costs more than most frames need
+    sampleGroundLight = null; // rebuilt lazily; the grid costs more than most frames need
     // baked (in-game) view: run the LIGHT through the lightmap encode + GS decode (the bake's 8-bit
     // quantization + rail clamp), and let the tile ride on top per-pixel (applyMaterials keeps the textured
     // material), so it's texture × baked-light at full texture resolution — the in-game look, with the rock
@@ -318,7 +369,8 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     const lit = terrainLit(); // a lighting view swaps tiles to unlit x lighting
     terrain.visible = view.shading() !== 'none'; // cage-only view draws no solid surface, lit or not
     if (!terrain.visible) return; // no solid surface drawn (wireframe / cage only)
-    if (view.shading() !== 'textured') { // surface = ride-feel tint (x light when lit); none(+lit) = grey light
+    if (view.shading() !== 'textured') {
+      // surface = ride-feel tint (x light when lit); none(+lit) = grey light
       g.clearGroups();
       terrain.material = lit ? terrainLightMat : terrainMat; // unlit vertex-colour buffer
       return;
@@ -329,9 +381,11 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
     const slotOf = new Map<TexRef, number>();
     g.clearGroups();
 
-    let runStart = 0, runSlot = -1;
+    let runStart = 0,
+      runSlot = -1;
     const flush = (end: number) => {
-      if (runSlot >= 0 && end > runStart) g.addGroup(runStart * indicesPerCell, (end - runStart) * indicesPerCell, runSlot);
+      if (runSlot >= 0 && end > runStart)
+        g.addGroup(runStart * indicesPerCell, (end - runStart) * indicesPerCell, runSlot);
     };
     for (let cell = 0; cell < p.cellTex.length; cell++) {
       const ref = p.cellTex[cell];
@@ -340,10 +394,18 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
         const tex = tiles.ensure(ref);
         if (tex) {
           slot = slotOf.get(ref) ?? -1;
-          if (slot < 0) { slot = mats.length; slotOf.set(ref, slot); mats.push(lit ? tiles.materialLit(ref, tex) : tiles.material(ref, tex)); }
+          if (slot < 0) {
+            slot = mats.length;
+            slotOf.set(ref, slot);
+            mats.push(lit ? tiles.materialLit(ref, tex) : tiles.material(ref, tex));
+          }
         }
       }
-      if (slot !== runSlot) { flush(cell); runStart = cell; runSlot = slot; }
+      if (slot !== runSlot) {
+        flush(cell);
+        runStart = cell;
+        runSlot = slot;
+      }
     }
     flush(p.cellTex.length);
 
@@ -351,10 +413,14 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
   }
 
   /** Whether a lighting view currently drives the terrain colour attribute (so tiles draw unlit x it). */
-  function terrainLit() { return !!terrainLight; }
+  function terrainLit() {
+    return !!terrainLight;
+  }
 
   /** Drop the cached rig glow (the rig changed; the next lit pass re-bakes it from the new rig). */
-  function invalidateRigGlow() { authoredRigGlow = null; }
+  function invalidateRigGlow() {
+    authoredRigGlow = null;
+  }
 
   /** Park the layer empty: drop the preview, geometry and lighting caches, and hide the mesh until the
    *  next applyPreview. A secondary layer (the model-session mountain backdrop) rests here between uses. */
@@ -377,10 +443,16 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
 
   return {
     /** The authored terrain solid — the shared ground-pick / ray target every input path reads. */
-    get terrain() { return terrain; },
+    get terrain() {
+      return terrain;
+    },
     /** The live tessellated preview the mesh draws (null until a mountain is applied). */
-    get preview() { return preview; },
-    get terrainLit() { return terrainLit(); },
+    get preview() {
+      return preview;
+    },
+    get terrainLit() {
+      return terrainLit();
+    },
     /**
      * The baked light on the ground at a world point — what a prop standing there reads its key from
      * (docs/032 · lighting). Null when the terrain isn't sun-lit, in which case props have no ground light
@@ -395,9 +467,17 @@ export function createTerrainLayer(stage: Stage, tiles: TileMaterials, view: Ter
       return sampleGroundLight(p);
     },
     /** Whether patches have moved under the retained occlusion bakes — what `settleLighting` will put right. */
-    get lightingStale() { return occlusionStale; },
-    applyPreview, updatePatches, settleLighting,
-    applyMaterials, applyTerrainLight, setTerrainLight, setTerrainBakedView, invalidateRigGlow,
+    get lightingStale() {
+      return occlusionStale;
+    },
+    applyPreview,
+    updatePatches,
+    settleLighting,
+    applyMaterials,
+    applyTerrainLight,
+    setTerrainLight,
+    setTerrainBakedView,
+    invalidateRigGlow,
     release,
   };
 }

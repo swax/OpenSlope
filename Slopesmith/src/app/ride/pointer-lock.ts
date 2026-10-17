@@ -19,8 +19,9 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   let requestPending = false;
   let suppressNextMove = false;
 
-  const supported = typeof o.target.requestPointerLock === 'function'
-    && (doc.defaultView?.matchMedia?.('(pointer: fine)').matches ?? true);
+  const supported =
+    typeof o.target.requestPointerLock === 'function' &&
+    (doc.defaultView?.matchMedia?.('(pointer: fine)').matches ?? true);
   const locked = () => doc.pointerLockElement === o.target;
 
   function release() {
@@ -32,16 +33,19 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   }
 
   function request() {
-    if (!attached || !supported || !wantsLock() || locked() || requestPending || doc.visibilityState === 'hidden') return;
+    if (!attached || !supported || !wantsLock() || locked() || requestPending || doc.visibilityState === 'hidden')
+      return;
     requestPending = true;
     try {
       const result = o.target.requestPointerLock() as void | Promise<void>;
       if (result && typeof result.then === 'function') {
-        void result.catch(() => {}).finally(() => {
-          requestPending = false;
-          // A request can finish after Stop has already torn the ride down.
-          if ((!attached || !wantsLock()) && locked()) release();
-        });
+        void result
+          .catch(() => {})
+          .finally(() => {
+            requestPending = false;
+            // A request can finish after Stop has already torn the ride down.
+            if ((!attached || !wantsLock()) && locked()) release();
+          });
       }
       // The void-returning form reports completion through pointerlockchange / pointerlockerror.
     } catch {
@@ -60,10 +64,19 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
 
   function mouseMove(event: MouseEvent) {
     if (!locked()) return;
-    const deltaX = Number(event.movementX), deltaY = Number(event.movementY);
-    if (suppressNextMove) { suppressNextMove = false; return; }
-    if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)
-      || Math.abs(deltaX) > MAX_TRUSTED_MOVEMENT || Math.abs(deltaY) > MAX_TRUSTED_MOVEMENT) return;
+    const deltaX = Number(event.movementX),
+      deltaY = Number(event.movementY);
+    if (suppressNextMove) {
+      suppressNextMove = false;
+      return;
+    }
+    if (
+      !Number.isFinite(deltaX) ||
+      !Number.isFinite(deltaY) ||
+      Math.abs(deltaX) > MAX_TRUSTED_MOVEMENT ||
+      Math.abs(deltaY) > MAX_TRUSTED_MOVEMENT
+    )
+      return;
     if (deltaX || deltaY) o.onMove(deltaX, deltaY);
   }
 
@@ -132,12 +145,23 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   }
 
   return {
-    attach, detach, request, setFirstPerson,
-    get supported() { return supported; },
-    get locked() { return locked(); },
-    get firstPerson() { return firstPerson; },
+    attach,
+    detach,
+    request,
+    setFirstPerson,
+    get supported() {
+      return supported;
+    },
+    get locked() {
+      return locked();
+    },
+    get firstPerson() {
+      return firstPerson;
+    },
     /** RMB is down for a look — the chase camera holds its aim until it is released. */
-    get looking() { return rightHeld; },
+    get looking() {
+      return rightHeld;
+    },
   };
 }
 

@@ -79,8 +79,10 @@ export interface PlayerPose {
 }
 
 /** A local pose before the publisher adds transport identity and timing. */
-export interface LocalPlayerPose extends Omit<PlayerPose,
-  'version' | 'seq' | 'sampleAt' | 'teleport' | 'avatar' | 'equipment'> {
+export interface LocalPlayerPose extends Omit<
+  PlayerPose,
+  'version' | 'seq' | 'sampleAt' | 'teleport' | 'avatar' | 'equipment'
+> {
   equipment?: LocalPlayerEquipmentPose;
 }
 
@@ -102,22 +104,30 @@ function quat(value: unknown): PlayerQuat | null {
 function transform(value: unknown): PlayerTransform | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as { p?: unknown; q?: unknown };
-  const p = vec3(raw.p, 1_000_000), q = quat(raw.q);
+  const p = vec3(raw.p, 1_000_000),
+    q = quat(raw.q);
   return p && q ? { p, q } : null;
 }
 
 function pointGesture(value: unknown): PlayerPointGesture | null {
   if (!value || typeof value !== 'object') return null;
   const g = value as Partial<PlayerPointGesture>;
-  if (g.kind !== 'point' || (g.hand !== 'left' && g.hand !== 'right')
-    || !Number.isSafeInteger(g.id) || Number(g.id) < 0) return null;
+  if (
+    g.kind !== 'point' ||
+    (g.hand !== 'left' && g.hand !== 'right') ||
+    !Number.isSafeInteger(g.id) ||
+    Number(g.id) < 0
+  )
+    return null;
   const direction = vec3(g.direction, 1);
   const target = g.target === undefined ? undefined : vec3(g.target, 1_000_000);
   if (!direction || (g.target !== undefined && !target)) return null;
   const length = Math.hypot(...direction);
   if (length < 1e-5) return null;
   return {
-    kind: 'point', hand: g.hand, id: Number(g.id),
+    kind: 'point',
+    hand: g.hand,
+    id: Number(g.id),
     direction: direction.map(n => n / length) as PlayerVec3,
     ...(target ? { target } : {}),
   };
@@ -128,12 +138,15 @@ export function sanitizePlayerPose(value: unknown, serverNow = Date.now()): Play
   if (!value || typeof value !== 'object') return null;
   const raw = value as Partial<PlayerPose>;
   if (raw.version !== 2 || (raw.mode !== 'edit' && raw.mode !== 'walk' && raw.mode !== 'ride')) return null;
-  const body = transform(raw.body), velocity = vec3(raw.velocity, 500);
+  const body = transform(raw.body),
+    velocity = vec3(raw.velocity, 500);
   const avatar = typeof raw.avatar === 'string' ? raw.avatar : '';
   const builtIn = builtinCharacter(avatar);
-  if (!body || !velocity || !avatar
-    || (avatar !== 'procedural' && !builtIn && !/^[^/\\]{1,150}\.glb$/i.test(avatar))) return null;
-  const seq = Number(raw.seq), teleport = Number(raw.teleport), saidAt = Number(raw.sampleAt);
+  if (!body || !velocity || !avatar || (avatar !== 'procedural' && !builtIn && !/^[^/\\]{1,150}\.glb$/i.test(avatar)))
+    return null;
+  const seq = Number(raw.seq),
+    teleport = Number(raw.teleport),
+    saidAt = Number(raw.sampleAt);
   if (!Number.isSafeInteger(seq) || seq < 0 || !Number.isSafeInteger(teleport) || teleport < 0) return null;
   // A badly skewed/malicious timestamp must not buy minutes of extrapolation. A real client is clock-synced by
   // the channel; its sample is normally within a few hundred ms of the server.
@@ -146,19 +159,29 @@ export function sanitizePlayerPose(value: unknown, serverNow = Date.now()): Play
     const equipmentTransform = transform(source.transform);
     const equipmentVelocity = vec3(source.velocity, 500);
     const equipmentTeleport = Number(source.teleport);
-    if ((source.state !== 'mounted' && source.state !== 'loose' && source.state !== 'held')
-      || !equipmentTransform || !equipmentVelocity
-      || !Number.isSafeInteger(equipmentTeleport) || equipmentTeleport < 0) return null;
+    if (
+      (source.state !== 'mounted' && source.state !== 'loose' && source.state !== 'held') ||
+      !equipmentTransform ||
+      !equipmentVelocity ||
+      !Number.isSafeInteger(equipmentTeleport) ||
+      equipmentTeleport < 0
+    )
+      return null;
     equipment = {
-      state: source.state, transform: equipmentTransform,
-      velocity: equipmentVelocity, teleport: equipmentTeleport,
+      state: source.state,
+      transform: equipmentTransform,
+      velocity: equipmentVelocity,
+      teleport: equipmentTeleport,
     };
   }
   // In this protocol a ride always owns visible mounted kit, while edit has no Play-world equipment. Walking
   // may briefly omit it only if a future locomotion owner has no board at all.
-  if ((raw.mode === 'ride' && equipment?.state !== 'mounted')
-    || (raw.mode !== 'ride' && equipment?.state === 'mounted')
-    || (raw.mode === 'edit' && equipment)) return null;
+  if (
+    (raw.mode === 'ride' && equipment?.state !== 'mounted') ||
+    (raw.mode !== 'ride' && equipment?.state === 'mounted') ||
+    (raw.mode === 'edit' && equipment)
+  )
+    return null;
   let hands: PlayerPose['hands'];
   if (raw.hands !== undefined) {
     if (!Array.isArray(raw.hands) || raw.hands.length !== 2) return null;
@@ -170,10 +193,17 @@ export function sanitizePlayerPose(value: unknown, serverNow = Date.now()): Play
   let animation: PlayerPose['animation'];
   if (raw.animation !== undefined) {
     const a = raw.animation;
-    if (!a || typeof a !== 'object' || typeof a.grounded !== 'boolean'
-      || !finite(a.crouch, 2) || !finite(a.lean, 2) || !finite(a.bank, 360)
-      || (a.lead !== undefined && a.lead !== 1 && a.lead !== -1)
-      || (a.flying !== undefined && typeof a.flying !== 'boolean')) return null;
+    if (
+      !a ||
+      typeof a !== 'object' ||
+      typeof a.grounded !== 'boolean' ||
+      !finite(a.crouch, 2) ||
+      !finite(a.lean, 2) ||
+      !finite(a.bank, 360) ||
+      (a.lead !== undefined && a.lead !== 1 && a.lead !== -1) ||
+      (a.flying !== undefined && typeof a.flying !== 'boolean')
+    )
+      return null;
     animation = {
       grounded: a.grounded,
       crouch: Math.max(-1, Math.min(1, a.crouch)),
@@ -201,12 +231,22 @@ export function sanitizePlayerPose(value: unknown, serverNow = Date.now()): Play
     }
   }
   return {
-    version: 2, seq, sampleAt, teleport, mode: raw.mode, vr: raw.vr === true,
-    avatar: builtIn?.id ?? avatar, body, velocity,
+    version: 2,
+    seq,
+    sampleAt,
+    teleport,
+    mode: raw.mode,
+    vr: raw.vr === true,
+    avatar: builtIn?.id ?? avatar,
+    body,
+    velocity,
     ...(raw.gear === 'skis' || raw.gear === 'snowboard' ? { gear: raw.gear } : {}),
     ...(raw.stance === 'standard' || raw.stance === 'goofy' ? { stance: raw.stance } : {}),
     ...(animation ? { animation } : {}),
-    ...(gesture ? { gesture } : {}), ...(gestures?.length ? { gestures } : {}),
-    ...(head ? { head } : {}), ...(hands ? { hands } : {}), ...(equipment ? { equipment } : {}),
+    ...(gesture ? { gesture } : {}),
+    ...(gestures?.length ? { gestures } : {}),
+    ...(head ? { head } : {}),
+    ...(hands ? { hands } : {}),
+    ...(equipment ? { equipment } : {}),
   };
 }

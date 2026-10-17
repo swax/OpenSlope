@@ -37,7 +37,9 @@ export async function startSession(userId: string): Promise<string> {
   const token = mintToken();
   const now = Date.now();
   const session: SessionRecord = {
-    id: randomUUID(), tokenHash: tokenHash(token), userId,
+    id: randomUUID(),
+    tokenHash: tokenHash(token),
+    userId,
     createdAt: new Date(now).toISOString(),
     lastSeenAt: new Date(now).toISOString(),
     expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
@@ -123,8 +125,8 @@ export async function revokeUserSessions(userId: string): Promise<number> {
 
 export async function countUserSessions(userId: string): Promise<number> {
   const now = Date.now();
-  return (await readAccounts()).sessions
-    .filter(entry => entry.userId === userId && Date.parse(entry.expiresAt) > now).length;
+  return (await readAccounts()).sessions.filter(entry => entry.userId === userId && Date.parse(entry.expiresAt) > now)
+    .length;
 }
 
 /** Persist the end of live browser activity, including a WebSocket-only editing session. */
@@ -161,8 +163,11 @@ export const sessionToken = (req: IncomingMessage): string | undefined => readCo
  * and the sign-in silently fails.
  */
 export function setSessionCookie(res: ServerResponse, token: string, secure: boolean): void {
-  res.setHeader('set-cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax`
-    + `; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure ? '; Secure' : ''}`);
+  res.setHeader(
+    'set-cookie',
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax` +
+      `; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure ? '; Secure' : ''}`,
+  );
 }
 
 export function clearSessionCookie(res: ServerResponse): void {

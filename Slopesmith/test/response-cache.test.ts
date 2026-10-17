@@ -64,35 +64,42 @@ function get(headers: Record<string, string> = {}, path = '/'): Promise<Reply> {
 }
 
 try {
-  const [first, joined] = await Promise.all([
-    get({ 'accept-encoding': 'gzip' }),
-    get({ 'accept-encoding': 'gzip' }),
-  ]);
+  const [first, joined] = await Promise.all([get({ 'accept-encoding': 'gzip' }), get({ 'accept-encoding': 'gzip' })]);
   assert.equal(builds, 1, 'concurrent cold requests share one generated payload');
   assert.equal(first.headers['x-slopesmith-cache'], 'miss');
   assert.equal(joined.headers['x-slopesmith-cache'], 'hit');
   assert.equal(first.headers['content-encoding'], 'gzip');
   assert.equal(JSON.parse(gunzipSync(first.body).toString()).revision, 1);
-  assert.equal(responseCache.stats().gzipBuilds, 1,
-    'concurrent gzip clients share one requested representation');
-  assert.equal(responseCache.stats().brotliBuilds, 0,
-    'a cold gzip request does not also build an unused Brotli representation');
+  assert.equal(responseCache.stats().gzipBuilds, 1, 'concurrent gzip clients share one requested representation');
+  assert.equal(
+    responseCache.stats().brotliBuilds,
+    0,
+    'a cold gzip request does not also build an unused Brotli representation',
+  );
 
   const refusedBrotli = await get({ 'accept-encoding': 'br;q=0' });
-  assert.equal(refusedBrotli.headers['content-encoding'], undefined,
-    'an explicitly refused encoding is never selected');
+  assert.equal(
+    refusedBrotli.headers['content-encoding'],
+    undefined,
+    'an explicitly refused encoding is never selected',
+  );
   assert.equal(JSON.parse(refusedBrotli.body.toString()).revision, 1);
 
   const spacedBrotli = await get({ 'accept-encoding': 'gzip;q=0.5, br ; q=1' });
-  assert.equal(spacedBrotli.headers['content-encoding'], 'br',
-    'optional whitespace before encoding parameters is accepted');
+  assert.equal(
+    spacedBrotli.headers['content-encoding'],
+    'br',
+    'optional whitespace before encoding parameters is accepted',
+  );
   assert.equal(JSON.parse(brotliDecompressSync(spacedBrotli.body).toString()).revision, 1);
-  assert.equal(responseCache.stats().brotliBuilds, 1,
-    'Brotli is built lazily when a client first prefers it');
+  assert.equal(responseCache.stats().brotliBuilds, 1, 'Brotli is built lazily when a client first prefers it');
 
   const preencoded = await get({}, '/preencoded');
-  assert.equal(preencoded.body.toString(), '{"already":"json"}',
-    'pre-serialized JSON is cached and sent without being stringified as a JSON string');
+  assert.equal(
+    preencoded.body.toString(),
+    '{"already":"json"}',
+    'pre-serialized JSON is cached and sent without being stringified as a JSON string',
+  );
 
   await get({}, '/lru/a');
   await get({}, '/lru/b'); // completing b pushes the raw cache past 1,500 bytes and evicts a
@@ -104,8 +111,11 @@ try {
 
   await get({}, '/select/DONOR');
   await get({}, '/select/DONOR2');
-  assert.equal(responseCache.invalidate(key => key.toLowerCase() === 'json:props:donor'), 1,
-    'selective invalidation reports the removed response');
+  assert.equal(
+    responseCache.invalidate(key => key.toLowerCase() === 'json:props:donor'),
+    1,
+    'selective invalidation reports the removed response',
+  );
   const donorAgain = await get({}, '/select/DONOR');
   const donor2Again = await get({}, '/select/DONOR2');
   assert.equal(donorAgain.headers['x-slopesmith-cache'], 'miss', 'the changed level is rebuilt');
@@ -127,7 +137,7 @@ try {
 
   console.log('RESPONSE CACHE TESTS PASSED');
 } finally {
-  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
   responseCache.clear();
   lruCache.clear();
 }

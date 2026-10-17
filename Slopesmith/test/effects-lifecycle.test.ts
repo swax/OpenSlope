@@ -200,18 +200,31 @@ textures.clearMaterialEffectPreviews();
 window.lifecyclePassed = true;
 `;
 
-const bundle = await build({ stdin: { contents: source,
-  resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'ts' },
-bundle: true, write: false, format: 'esm', platform: 'browser', logLevel: 'silent' });
+const bundle = await build({
+  stdin: { contents: source, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'ts' },
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'browser',
+  logLevel: 'silent',
+});
 const server = createServer((request, response) => {
   if (request.url !== '/' && request.url !== '/fixture.js') {
     response.setHeader('content-type', 'image/png');
-    response.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64'));
+    response.end(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    );
     return;
   }
   response.setHeader('content-type', request.url === '/fixture.js' ? 'text/javascript' : 'text/html');
-  response.end(request.url === '/fixture.js' ? bundle.outputFiles[0].text
-    : '<!doctype html><html><body><script type="module" src="/fixture.js"></script></body></html>');
+  response.end(
+    request.url === '/fixture.js'
+      ? bundle.outputFiles[0].text
+      : '<!doctype html><html><body><script type="module" src="/fixture.js"></script></body></html>',
+  );
 });
 await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
 const address = server.address() as { port: number };
@@ -221,9 +234,15 @@ try {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${address.port}`, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => (window as Window & { lifecyclePassed?: boolean }).lifecyclePassed,
-    undefined, { timeout: 10_000 }).catch(() => assert.fail(errors.join('\n') || 'Lifecycle fixture did not finish'));
+  await page
+    .waitForFunction(() => (window as Window & { lifecyclePassed?: boolean }).lifecyclePassed, undefined, {
+      timeout: 10_000,
+    })
+    .catch(() => assert.fail(errors.join('\n') || 'Lifecycle fixture did not finish'));
   assert.deepEqual(errors, []);
   assert.equal(await page.evaluate(() => (window as Window & { lifecyclePassed?: boolean }).lifecyclePassed), true);
   console.log('EFFECT LIFECYCLE BROWSER TEST PASSED');
-} finally { await browser.close(); server.close(); }
+} finally {
+  await browser.close();
+  server.close();
+}

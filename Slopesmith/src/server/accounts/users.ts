@@ -4,8 +4,15 @@ import { announceAccountAccessChanged, announceAccountProfileChanged } from './e
 import { assertUsablePassword, hashPassword } from './passwords';
 import { holds, isOrdinaryRole, isRole, type Role } from './policy';
 import { isManualAvailability } from '../../core/session/member-status';
-import { readAccounts, updateAccounts, type AccountImage, type AccountsFile, type EquipmentLibraryRecord,
-  type EquipmentRecord, type UserRecord } from './store';
+import {
+  readAccounts,
+  updateAccounts,
+  type AccountImage,
+  type AccountsFile,
+  type EquipmentLibraryRecord,
+  type EquipmentRecord,
+  type UserRecord,
+} from './store';
 import type { PublicUser } from './public-user';
 
 export type { PublicUser } from './public-user';
@@ -22,9 +29,13 @@ export type { PublicUser } from './public-user';
 const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{1,31}$/;
 
 export function normalizeUsername(raw: unknown): string {
-  const username = String(raw ?? '').trim().toLowerCase();
+  const username = String(raw ?? '')
+    .trim()
+    .toLowerCase();
   if (!USERNAME_PATTERN.test(username))
-    throw new Error('A username is 2–32 characters — letters, digits, dot, dash or underscore, starting on a letter or digit');
+    throw new Error(
+      'A username is 2–32 characters — letters, digits, dot, dash or underscore, starting on a letter or digit',
+    );
   return username;
 }
 
@@ -53,35 +64,54 @@ export const publicUser = (user: UserRecord): PublicUser => {
   const snowboard = selectedEquipmentDesign(user, 'snowboard');
   const skis = selectedEquipmentDesign(user, 'skis');
   return {
-    id: user.id, username: user.username, bio: user.bio, role: user.role,
-    createdAt: user.createdAt, lastSeenAt: user.lastSeenAt, availability: user.availability,
+    id: user.id,
+    username: user.username,
+    bio: user.bio,
+    role: user.role,
+    createdAt: user.createdAt,
+    lastSeenAt: user.lastSeenAt,
+    availability: user.availability,
     disabled: !!user.disabledAt,
-    ...(user.profilePicture ? {
-      profilePictureUrl: `/api/members/${encodeURIComponent(user.username)}/profile-picture`
-        + `?v=${encodeURIComponent(user.profilePicture.version)}`,
-    } : {}),
-    ...(snowboard ? {
-      snowboardTextureUrl: `/api/members/${encodeURIComponent(user.username)}/equipment-texture/snowboard`
-        + `/${encodeURIComponent(snowboard.id)}?v=${encodeURIComponent(snowboard.texture.version)}`,
-    } : {}),
-    ...(skis ? {
-      skiTextureUrl: `/api/members/${encodeURIComponent(user.username)}/equipment-texture/skis`
-        + `/${encodeURIComponent(skis.id)}?v=${encodeURIComponent(skis.texture.version)}`,
-    } : {}),
+    ...(user.profilePicture
+      ? {
+          profilePictureUrl:
+            `/api/members/${encodeURIComponent(user.username)}/profile-picture` +
+            `?v=${encodeURIComponent(user.profilePicture.version)}`,
+        }
+      : {}),
+    ...(snowboard
+      ? {
+          snowboardTextureUrl:
+            `/api/members/${encodeURIComponent(user.username)}/equipment-texture/snowboard` +
+            `/${encodeURIComponent(snowboard.id)}?v=${encodeURIComponent(snowboard.texture.version)}`,
+        }
+      : {}),
+    ...(skis
+      ? {
+          skiTextureUrl:
+            `/api/members/${encodeURIComponent(user.username)}/equipment-texture/skis` +
+            `/${encodeURIComponent(skis.id)}?v=${encodeURIComponent(skis.texture.version)}`,
+        }
+      : {}),
     ...(user.equipment?.edgeColor ? { equipmentEdgeColor: user.equipment.edgeColor } : {}),
   };
 };
 
 export const equipmentProfile = (user: UserRecord): EquipmentProfile => {
   const equipment = user.equipment ?? {
-    edgeColor: '#20242c', snowboard: { designs: [] }, skis: { designs: [] },
+    edgeColor: '#20242c',
+    snowboard: { designs: [] },
+    skis: { designs: [] },
   };
   const library = (gear: EquipmentGear) => ({
     ...(equipment[gear].selectedId ? { selectedId: equipment[gear].selectedId } : {}),
     designs: equipment[gear].designs.map(design => ({
-      id: design.id, name: design.name, createdAt: design.createdAt,
-      textureUrl: `/api/members/${encodeURIComponent(user.username)}/equipment-texture/${gear}`
-        + `/${encodeURIComponent(design.id)}?v=${encodeURIComponent(design.texture.version)}`,
+      id: design.id,
+      name: design.name,
+      createdAt: design.createdAt,
+      textureUrl:
+        `/api/members/${encodeURIComponent(user.username)}/equipment-texture/${gear}` +
+        `/${encodeURIComponent(design.id)}?v=${encodeURIComponent(design.texture.version)}`,
     })),
   });
   return { edgeColor: equipment.edgeColor, snowboard: library('snowboard'), skis: library('skis') };
@@ -108,11 +138,12 @@ const INVITE_HANDLE_MAX = 128;
 
 /** A private moderator note, deliberately broader than a username so it can carry a source prefix. */
 export function normalizeInviteHandle(raw: unknown): string {
-  // eslint-disable-next-line no-control-regex -- strips control characters from a moderator-typed handle
-  const handle = String(raw ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+  const handle = String(raw ?? '')
+    // eslint-disable-next-line no-control-regex -- strips control characters from a moderator-typed handle
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim();
   if (!handle) throw new Error('Enter an invite handle, such as discord:joe123 or email:joe@example.com');
-  if (handle.length > INVITE_HANDLE_MAX)
-    throw new Error(`An invite handle is at most ${INVITE_HANDLE_MAX} characters`);
+  if (handle.length > INVITE_HANDLE_MAX) throw new Error(`An invite handle is at most ${INVITE_HANDLE_MAX} characters`);
   return handle;
 }
 
@@ -123,8 +154,7 @@ export type AccountAdministrator = Pick<PublicUser, 'username' | 'role'>;
  *  making a moderator's forbidden action look like a bad request. */
 export class AccountAdministrationError extends Error {}
 
-function assertMayManageOrdinary(actor: AccountAdministrator | undefined, target: UserRecord,
-  nextRole?: Role): void {
+function assertMayManageOrdinary(actor: AccountAdministrator | undefined, target: UserRecord, nextRole?: Role): void {
   if (!actor || actor.role === 'admin') return;
   if (actor.role !== 'moderator')
     throw new AccountAdministrationError('Only a moderator or admin may manage another account.');
@@ -144,8 +174,16 @@ export async function draftUser(input: NewUser): Promise<UserRecord> {
   const inviteHandle = normalizeInviteHandle(input.inviteHandle);
   const now = new Date().toISOString();
   return {
-    id: randomUUID(), username, bio: '', inviteHandle, role: input.role, availability: 'available',
-    password: await hashPassword(input.password), createdAt: now, lastSeenAt: now, passwordChangedAt: now,
+    id: randomUUID(),
+    username,
+    bio: '',
+    inviteHandle,
+    role: input.role,
+    availability: 'available',
+    password: await hashPassword(input.password),
+    createdAt: now,
+    lastSeenAt: now,
+    passwordChangedAt: now,
   };
 }
 
@@ -185,8 +223,11 @@ const BIO_MAX = 500;
 /** Public, member-authored profile text. Preserve intentional line breaks while stripping control bytes. */
 export function normalizeBio(raw: unknown): string {
   if (typeof raw !== 'string') throw new Error('Bio must be text.');
-  // eslint-disable-next-line no-control-regex -- strips control bytes from member-authored text, keeping newlines
-  const bio = raw.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim();
+  const bio = raw
+    .replace(/\r\n?/g, '\n')
+    // eslint-disable-next-line no-control-regex -- strips control bytes from member-authored text, keeping newlines
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .trim();
   if (bio.length > BIO_MAX) throw new Error(`A bio is at most ${BIO_MAX} characters.`);
   return bio;
 }
@@ -218,8 +259,11 @@ export async function setUserAvailability(username: string, value: unknown): Pro
 }
 
 /** Change private invitation provenance. This note is moderator-owned even when the target has a senior role. */
-export async function setUserInviteHandle(username: string, value: unknown,
-  actor?: AccountAdministrator): Promise<PublicUser> {
+export async function setUserInviteHandle(
+  username: string,
+  value: unknown,
+  actor?: AccountAdministrator,
+): Promise<PublicUser> {
   const name = normalizeUsername(username);
   const handle = normalizeInviteHandle(value);
   const changed = await updateAccounts(draft => {
@@ -239,8 +283,7 @@ export async function setUserInviteHandle(username: string, value: unknown,
  * Sessions are server-side and opaque, so this is in force on that member's very next request rather than
  * whenever a token they are already holding happens to expire (docs/038).
  */
-export async function setUserRole(username: string, role: Role,
-  actor?: AccountAdministrator): Promise<PublicUser> {
+export async function setUserRole(username: string, role: Role, actor?: AccountAdministrator): Promise<PublicUser> {
   if (!isRole(role)) throw new Error(`Unknown role: ${String(role)}`);
   const name = normalizeUsername(username);
   const changed = await updateAccounts(draft => {
@@ -259,8 +302,11 @@ export async function setUserRole(username: string, role: Role,
  *  than a note that applies at the next sign-in. `resolveAccessToken` already refuses a disabled user, so the
  *  revocation is belt and braces — but it also means re-enabling somebody does not silently bring a key on a
  *  machine they no longer have back to life, which is the half a liveness check alone would miss. */
-export async function setUserDisabled(username: string, disabled: boolean,
-  actor?: AccountAdministrator): Promise<PublicUser> {
+export async function setUserDisabled(
+  username: string,
+  disabled: boolean,
+  actor?: AccountAdministrator,
+): Promise<PublicUser> {
   const name = normalizeUsername(username);
   const changed = await updateAccounts(draft => {
     const user = mustFind(draft, name);
@@ -308,12 +354,13 @@ const EQUIPMENT_TEXTURE_BYTES = 1024 * 1024;
 const EQUIPMENT_EDGE_COLOR = /^#[0-9a-f]{6}$/i;
 
 function validPictureSignature(mimeType: string, bytes: Buffer): boolean {
-  if (mimeType === 'image/jpeg') return bytes.length >= 3
-    && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  if (mimeType === 'image/png') return bytes.length >= 8
-    && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-  return bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF'
-    && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (mimeType === 'image/jpeg')
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimeType === 'image/png')
+    return (
+      bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    );
+  return bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
 }
 
 /** Set or clear one member's own picture. The browser normally sends a 256px crop; validation here keeps a
@@ -364,8 +411,9 @@ function accountImage(value: unknown, label: string, maxBytes: number): AccountI
 async function equipmentImage(value: unknown, label: string): Promise<AccountImage | null> {
   const picture = accountImage(value, label, EQUIPMENT_TEXTURE_BYTES);
   if (!picture) return null;
-  const image = await loadImage(Buffer.from(picture.data, 'base64'))
-    .catch(() => { throw new Error(`That ${label} file is invalid.`); });
+  const image = await loadImage(Buffer.from(picture.data, 'base64')).catch(() => {
+    throw new Error(`That ${label} file is invalid.`);
+  });
   if (image.width !== image.height)
     throw new Error(`Equipment art must be square; that ${label} is ${image.width}×${image.height}.`);
   if (image.width > 4096) throw new Error(`That ${label} is too large. Use a square image up to 4096×4096.`);
@@ -395,7 +443,10 @@ interface PreparedEquipmentPatch {
 const EQUIPMENT_DESIGN_NAME_MAX = 40;
 const EQUIPMENT_DESIGNS_MAX = 12;
 
-async function prepareEquipmentLibraryPatch(value: unknown, label: string): Promise<PreparedEquipmentPatch | undefined> {
+async function prepareEquipmentLibraryPatch(
+  value: unknown,
+  label: string,
+): Promise<PreparedEquipmentPatch | undefined> {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object') throw new Error(`Choose ${label} artwork settings to save.`);
   const patch = value as EquipmentLibraryPatch;
@@ -419,7 +470,9 @@ async function prepareEquipmentLibraryPatch(value: unknown, label: string): Prom
     const designName = String(raw.name ?? '').trim();
     if (!designName) throw new Error(`Name the new ${label} design.`);
     if (designName.length > EQUIPMENT_DESIGN_NAME_MAX)
-      throw new Error(`${label[0].toUpperCase() + label.slice(1)} design names are at most ${EQUIPMENT_DESIGN_NAME_MAX} characters.`);
+      throw new Error(
+        `${label[0].toUpperCase() + label.slice(1)} design names are at most ${EQUIPMENT_DESIGN_NAME_MAX} characters.`,
+      );
     const texture = await equipmentImage(raw.texture, `${label} texture`);
     if (!texture) throw new Error(`Load every ${label} artwork section before saving.`);
     create = { name: designName, texture };
@@ -433,20 +486,28 @@ async function prepareEquipmentLibraryPatch(value: unknown, label: string): Prom
     const designName = String(raw.name ?? '').trim();
     if (!designName) throw new Error(`Name the edited ${label} design.`);
     if (designName.length > EQUIPMENT_DESIGN_NAME_MAX)
-      throw new Error(`${label[0].toUpperCase() + label.slice(1)} design names are at most ${EQUIPMENT_DESIGN_NAME_MAX} characters.`);
+      throw new Error(
+        `${label[0].toUpperCase() + label.slice(1)} design names are at most ${EQUIPMENT_DESIGN_NAME_MAX} characters.`,
+      );
     const texture = await equipmentImage(raw.texture, `${label} texture`);
     if (!texture) throw new Error(`Load every ${label} artwork section before saving.`);
     update = { id, name: designName, texture };
   }
   return {
-    ...(create ? { create } : {}), ...(update ? { update } : {}),
-    ...(selectedId !== undefined ? { selectedId } : {}), deleteIds,
+    ...(create ? { create } : {}),
+    ...(update ? { update } : {}),
+    ...(selectedId !== undefined ? { selectedId } : {}),
+    deleteIds,
   };
 }
 
 /** Create or edit named designs, select one, and/or delete old designs in one account-file transaction. */
-export async function setUserEquipment(username: string, patch: EquipmentProfilePatch): Promise<{
-  user: PublicUser; equipment: EquipmentProfile;
+export async function setUserEquipment(
+  username: string,
+  patch: EquipmentProfilePatch,
+): Promise<{
+  user: PublicUser;
+  equipment: EquipmentProfile;
 }> {
   const name = normalizeUsername(username);
   if (!patch || typeof patch !== 'object') throw new Error('Choose equipment settings to save.');
@@ -462,10 +523,11 @@ export async function setUserEquipment(username: string, patch: EquipmentProfile
   const changed = await updateAccounts(draft => {
     const user = mustFind(draft, name);
     const equipment: EquipmentRecord = user.equipment ?? {
-      edgeColor: '#20242c', snowboard: { designs: [] }, skis: { designs: [] },
+      edgeColor: '#20242c',
+      snowboard: { designs: [] },
+      skis: { designs: [] },
     };
-    const apply = (library: EquipmentLibraryRecord, prepared: PreparedEquipmentPatch | undefined,
-      label: string) => {
+    const apply = (library: EquipmentLibraryRecord, prepared: PreparedEquipmentPatch | undefined, label: string) => {
       if (!prepared) return;
       for (const id of prepared.deleteIds) {
         if (!library.designs.some(design => design.id === id)) throw new Error(`No such saved ${label} design.`);
@@ -475,27 +537,37 @@ export async function setUserEquipment(username: string, patch: EquipmentProfile
       if (prepared.update) {
         const design = library.designs.find(candidate => candidate.id === prepared.update!.id);
         if (!design) throw new Error(`No such saved ${label} design.`);
-        if (library.designs.some(candidate => candidate.id !== design.id
-          && candidate.name.toLocaleLowerCase() === prepared.update!.name.toLocaleLowerCase()))
+        if (
+          library.designs.some(
+            candidate =>
+              candidate.id !== design.id &&
+              candidate.name.toLocaleLowerCase() === prepared.update!.name.toLocaleLowerCase(),
+          )
+        )
           throw new Error(`A saved ${label} design already has that name.`);
         design.name = prepared.update.name;
         design.texture = prepared.update.texture;
       }
       if (prepared.create) {
         if (library.designs.length >= EQUIPMENT_DESIGNS_MAX)
-          throw new Error(`Keep at most ${EQUIPMENT_DESIGNS_MAX} saved ${label} designs; delete one before adding another.`);
-        if (library.designs.some(design => design.name.toLocaleLowerCase() === prepared.create!.name.toLocaleLowerCase()))
+          throw new Error(
+            `Keep at most ${EQUIPMENT_DESIGNS_MAX} saved ${label} designs; delete one before adding another.`,
+          );
+        if (
+          library.designs.some(design => design.name.toLocaleLowerCase() === prepared.create!.name.toLocaleLowerCase())
+        )
           throw new Error(`A saved ${label} design already has that name.`);
         const design = {
-          id: randomUUID(), name: prepared.create.name, createdAt: new Date().toISOString(),
+          id: randomUUID(),
+          name: prepared.create.name,
+          createdAt: new Date().toISOString(),
           texture: prepared.create.texture,
         };
         library.designs.push(design);
         library.selectedId = design.id;
       }
       if (prepared.selectedId !== undefined) {
-        if (prepared.selectedId !== null
-          && !library.designs.some(design => design.id === prepared.selectedId))
+        if (prepared.selectedId !== null && !library.designs.some(design => design.id === prepared.selectedId))
           throw new Error(`No such saved ${label} design.`);
         if (prepared.selectedId) library.selectedId = prepared.selectedId;
         else delete library.selectedId;

@@ -11,7 +11,9 @@ export type ViewAxis = 'x' | 'y' | 'z';
 /** Return the world axis an exactly snapped camera is looking along, independent of projection mode. */
 export function lockedViewAxis(camera: THREE.Camera): ViewAxis | null {
   const direction = camera.getWorldDirection(VIEW_DIRECTION);
-  const ax = Math.abs(direction.x), ay = Math.abs(direction.y), az = Math.abs(direction.z);
+  const ax = Math.abs(direction.x),
+    ay = Math.abs(direction.y),
+    az = Math.abs(direction.z);
   const best = Math.max(ax, ay, az);
   if (best < AXIS_LOCK) return null;
   return best === ax ? 'x' : best === ay ? 'y' : 'z';
@@ -29,7 +31,9 @@ export function createViewGridLayer(stage: Stage) {
   grid.visible = false;
   grid.renderOrder = 1000;
   grid.frustumCulled = false;
-  grid.raycast = () => { /* screen overlay, never a pick target */ };
+  grid.raycast = () => {
+    /* screen overlay, never a pick target */
+  };
 
   const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
   for (const material of materials) {
@@ -65,18 +69,31 @@ export function createViewGridLayer(stage: Stage) {
     if (axis === null) return;
 
     grid.rotation.set(0, 0, 0);
-    if (axis === 'x') {            // looking down X → YZ grid
+    if (axis === 'x') {
+      // looking down X → YZ grid
       grid.rotation.z = Math.PI / 2;
       grid.position.set(target.x, snap(target.y), snap(target.z));
-    } else if (axis === 'y') {     // looking down Y → XZ grid (GridHelper's native plane)
+    } else if (axis === 'y') {
+      // looking down Y → XZ grid (GridHelper's native plane)
       grid.position.set(snap(target.x), target.y, snap(target.z));
-    } else {                       // looking down Z → XY grid
+    } else {
+      // looking down Z → XY grid
       grid.rotation.x = Math.PI / 2;
       grid.position.set(snap(target.x), snap(target.y), target.z);
     }
   }
 
-  return { grid, update, setStep, get step() { return step; }, get visible() { return grid.visible; } };
+  return {
+    grid,
+    update,
+    setStep,
+    get step() {
+      return step;
+    },
+    get visible() {
+      return grid.visible;
+    },
+  };
 }
 
 export type ViewGridLayer = ReturnType<typeof createViewGridLayer>;

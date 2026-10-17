@@ -69,8 +69,10 @@ export interface ExportProvider {
    *  PCM16, 36 kHz, stereo, beside the arrangement the repacker reads. Undefined is a legacy save, whose
    *  hand-staged track is preserved; null is an explicit "none", which clears it. Staging decides what
    *  `Music/` holds — including what it must lose — because those are answers about what is already there. */
-  stageRaceMusic(selection: string | null | undefined,
-    arrangement: RaceMusicArrangement | undefined): Promise<StagedRaceMusic>;
+  stageRaceMusic(
+    selection: string | null | undefined,
+    arrangement: RaceMusicArrangement | undefined,
+  ): Promise<StagedRaceMusic>;
 
   /** Where the disc recipe's commands point — this folder and the reference library — as the machine that
    *  runs `snowknife` addresses them. */

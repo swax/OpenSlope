@@ -27,9 +27,14 @@ export type PlacementPose = Pick<PlacedProp, 'pos' | 'yaw' | 'pitch' | 'roll' | 
 
 /** The members tagged `id`, by index into the document's props and lights, in document order. */
 export function assemblyMembers(doc: AssemblyDoc, id: string): { props: number[]; lights: number[] } {
-  const props: number[] = [], lights: number[] = [];
-  (doc.props ?? []).forEach((prop, i) => { if (prop.assembly === id) props.push(i); });
-  (doc.lights ?? []).forEach((light, i) => { if (light.assembly === id) lights.push(i); });
+  const props: number[] = [],
+    lights: number[] = [];
+  (doc.props ?? []).forEach((prop, i) => {
+    if (prop.assembly === id) props.push(i);
+  });
+  (doc.lights ?? []).forEach((light, i) => {
+    if (light.assembly === id) lights.push(i);
+  });
   return { props, lights };
 }
 
@@ -78,8 +83,9 @@ export function wholeAssembliesIn(doc: AssemblyDoc, indices: readonly number[]):
 
 /** A group id no placement or light uses yet. */
 export function nextAssemblyId(doc: AssemblyDoc): string {
-  const used = new Set([...doc.props ?? [], ...doc.lights ?? []].map(item => item.assembly)
-    .filter((id): id is string => !!id));
+  const used = new Set(
+    [...(doc.props ?? []), ...(doc.lights ?? [])].map(item => item.assembly).filter((id): id is string => !!id),
+  );
   for (let i = 0; ; i++) {
     const id = `group:${i.toString().padStart(4, '0')}`;
     if (!used.has(id)) return id;
@@ -93,7 +99,8 @@ export function assemblyRefusal(props: readonly PlacedProp[], indices: readonly 
   if (!picked.length) return 'A group needs a prop — select one with the lights.';
   if (picked.length + lights < 2) return 'Select at least two props, or a prop and a light, to make a group.';
   // A line lays its members out again whenever it changes, which would pull them back out of any group's shape.
-  if (picked.some(prop => prop.line)) return 'Props laid out by a line can’t join a group — break the line into props first.';
+  if (picked.some(prop => prop.line))
+    return 'Props laid out by a line can’t join a group — break the line into props first.';
   if (picked.some(isEffectTriggerProp)) return 'Effects trigger volumes can’t join a group.';
   return null;
 }
@@ -105,7 +112,8 @@ export function createAssembly(doc: AssemblyDoc, indices: readonly number[], lig
   const absorbed = new Set(wholeAssembliesIn(doc, indices));
   for (const index of new Set(indices)) if (doc.props?.[index]) doc.props[index].assembly = id;
   for (const light of doc.lights ?? [])
-    if ((light.assembly && absorbed.has(light.assembly)) || (light.id && lightIds.includes(light.id))) light.assembly = id;
+    if ((light.assembly && absorbed.has(light.assembly)) || (light.id && lightIds.includes(light.id)))
+      light.assembly = id;
   return id;
 }
 
@@ -125,7 +133,7 @@ export function turnPlacements(props: PlacedProp[], indices: readonly number[], 
     if (!prop) continue;
     const [x, y, z] = rotateY([prop.pos[0] - pivot[0], prop.pos[1] - pivot[1], prop.pos[2] - pivot[2]], deg);
     prop.pos = [pivot[0] + x, pivot[1] + y, pivot[2] + z];
-    prop.yaw = ((prop.yaw + deg) % 360 + 360) % 360;
+    prop.yaw = (((prop.yaw + deg) % 360) + 360) % 360;
   }
 }
 
@@ -144,8 +152,11 @@ export function placementPoses(props: readonly PlacedProp[], indices: readonly n
   const out = new Map<number, PlacementPose>();
   for (const index of indices) {
     const prop = props[index];
-    if (prop) out.set(index, structuredClone({ pos: prop.pos, yaw: prop.yaw, pitch: prop.pitch, roll: prop.roll,
-      scale: prop.scale }));
+    if (prop)
+      out.set(
+        index,
+        structuredClone({ pos: prop.pos, yaw: prop.yaw, pitch: prop.pitch, roll: prop.roll, scale: prop.scale }),
+      );
   }
   return out;
 }
@@ -161,8 +172,11 @@ export function placementPoses(props: readonly PlacedProp[], indices: readonly n
  * Answers how many lights moved. Lights of a group only partly moved stay put — that is a member being placed
  * within its group, not the group moving.
  */
-export function carryAssemblyLights(doc: AssemblyDoc, before: ReadonlyMap<number, PlacementPose>,
-  alsoLights: readonly string[] = []): number {
+export function carryAssemblyLights(
+  doc: AssemblyDoc,
+  before: ReadonlyMap<number, PlacementPose>,
+  alsoLights: readonly string[] = [],
+): number {
   const lights = doc.lights ?? [];
   const carried = new Set<number>();
   const carry = (reference: number | undefined, indices: Iterable<number>) => {
@@ -174,19 +188,26 @@ export function carryAssemblyLights(doc: AssemblyDoc, before: ReadonlyMap<number
     for (const index of indices) {
       const light = lights[index];
       if (!light || carried.has(index)) continue;
-      const offset = applyQuat([light.pos[0] - from.pos[0], light.pos[1] - from.pos[1], light.pos[2] - from.pos[2]], turn);
+      const offset = applyQuat(
+        [light.pos[0] - from.pos[0], light.pos[1] - from.pos[1], light.pos[2] - from.pos[2]],
+        turn,
+      );
       light.pos = [to.pos[0] + offset[0] * factor, to.pos[1] + offset[1] * factor, to.pos[2] + offset[2] * factor];
       if (light.dir) light.dir = applyQuat(light.dir, turn);
       light.reach *= factor;
       carried.add(index);
     }
   };
-  if (lights.some(light => light.assembly)) for (const id of wholeAssembliesIn(doc, [...before.keys()])) {
-    const members = assemblyMembers(doc, id);
-    carry(members.props[0], members.lights);
-  }
-  if (alsoLights.length) carry(before.keys().next().value,
-    lights.flatMap((light, index) => light.id && alsoLights.includes(light.id) ? [index] : []));
+  if (lights.some(light => light.assembly))
+    for (const id of wholeAssembliesIn(doc, [...before.keys()])) {
+      const members = assemblyMembers(doc, id);
+      carry(members.props[0], members.lights);
+    }
+  if (alsoLights.length)
+    carry(
+      before.keys().next().value,
+      lights.flatMap((light, index) => (light.id && alsoLights.includes(light.id) ? [index] : [])),
+    );
   return carried.size;
 }
 
@@ -214,29 +235,43 @@ export function dropOrphanedAssemblyLights(doc: AssemblyDoc, ids: Iterable<strin
  *
  * Answers the indices of every piece, leader first, how many lights were freed, and the group they are in.
  */
-export function unpackGroupPlacement(doc: AssemblyDoc, index: number, def: GroupDef, opts: { tie?: boolean } = {}):
-  { indices: number[]; lights: number; assembly: string | null } {
+export function unpackGroupPlacement(
+  doc: AssemblyDoc,
+  index: number,
+  def: GroupDef,
+  opts: { tie?: boolean } = {},
+): { indices: number[]; lights: number; assembly: string | null } {
   const props = doc.props ?? [];
   const placement = props[index];
   if (!placement) return { indices: [], lights: 0, assembly: null };
   const freed = groupPlacedLights(placement, def, index);
   const pieces = expandGroupProps(placement, def);
-  const assembly = placement.assembly
-    ?? (opts.tie && pieces.length + freed.length > 1 ? nextAssemblyId(doc) : undefined);
+  const assembly =
+    placement.assembly ?? (opts.tie && pieces.length + freed.length > 1 ? nextAssemblyId(doc) : undefined);
   const tag = assembly ? { assembly } : {};
   const [leader, ...others] = pieces;
-  props[index] = { ...leader, ...(placement.id ? { id: placement.id } : {}),
-    ...(placement.labels ? { labels: placement.labels } : {}), ...tag };
+  props[index] = {
+    ...leader,
+    ...(placement.id ? { id: placement.id } : {}),
+    ...(placement.labels ? { labels: placement.labels } : {}),
+    ...tag,
+  };
   const indices = [index];
   for (const member of others) indices.push(props.push({ ...member, id: nextPlacedPropId(props), ...tag }) - 1);
   if (freed.length) {
     const lights = (doc.lights ??= []);
     for (const light of freed) {
       const authored: AuthoredLight = {
-        id: nextLightId(lights), kind: light.kind, name: light.name, pos: light.pos,
-        color: light.colorHex, intensity: light.intensity, reach: light.reach,
+        id: nextLightId(lights),
+        kind: light.kind,
+        name: light.name,
+        pos: light.pos,
+        color: light.colorHex,
+        intensity: light.intensity,
+        reach: light.reach,
         ...(light.kind === 'spot'
-          ? { dir: light.dir, cone: Math.acos(Math.min(1, Math.max(-1, light.coneCos))) * 180 / Math.PI } : {}),
+          ? { dir: light.dir, cone: (Math.acos(Math.min(1, Math.max(-1, light.coneCos))) * 180) / Math.PI }
+          : {}),
         ...(light.glint ? { glint: light.glint } : {}),
         ...tag,
       };

@@ -33,8 +33,7 @@ export const DEFAULT_SCREEN_HEIGHT = 4.5;
 const FACE: V3 = [0, 0, 1];
 const UP: V3 = [0, 1, 0];
 
-const cross = (a: V3, b: V3): V3 =>
-  [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -43,7 +42,7 @@ const length = (a: V3): number => Math.hypot(a[0], a[1], a[2]);
 
 function normalize(a: V3, fallback: V3): V3 {
   const n = length(a);
-  return n > 1e-9 ? [a[0] / n, a[1] / n, a[2] / n] : [...fallback] as V3;
+  return n > 1e-9 ? [a[0] / n, a[1] / n, a[2] / n] : ([...fallback] as V3);
 }
 
 /** The angles that turn the screen's own +Z onto `normal`. Roll is never authored: a screen's image-up is
@@ -52,7 +51,7 @@ export function screenAnglesFromNormal(normal: V3): { yaw: number; pitch: number
   const n = normalize(normal, FACE);
   const R2D = 180 / Math.PI;
   return {
-    yaw: ((Math.atan2(n[0], n[2]) * R2D) % 360 + 360) % 360,
+    yaw: (((Math.atan2(n[0], n[2]) * R2D) % 360) + 360) % 360,
     pitch: -Math.asin(Math.max(-1, Math.min(1, n[1]))) * R2D,
   };
 }
@@ -141,7 +140,16 @@ export const SCREEN_PROUD = 0.1;
  * the one they mean.
  */
 export function fitScreenToMeshes(meshes: readonly ScreenFitMesh[], viewFrom?: V3): ScreenFit | null {
-  interface Group { area: number; normal: V3; center: V3; tris: number[][]; minU: number; maxU: number; minV: number; maxV: number }
+  interface Group {
+    area: number;
+    normal: V3;
+    center: V3;
+    tris: number[][];
+    minU: number;
+    maxU: number;
+    minV: number;
+    maxV: number;
+  }
   const groups = new Map<string, Group>();
 
   for (let meshIndex = 0; meshIndex < meshes.length; meshIndex++) {
@@ -160,7 +168,7 @@ export function fitScreenToMeshes(meshes: readonly ScreenFitMesh[], viewFrom?: V
       const area = length(n) / 2;
       if (!(area > 0)) continue;
       const unit = scale(n, 1 / (area * 2));
-      if (Math.abs(unit[1]) > MAX_TILT) continue;   // a roof or the ground, not a screen
+      if (Math.abs(unit[1]) > MAX_TILT) continue; // a roof or the ground, not a screen
 
       // Bucket by SUBMESH and quantized facing — the same key the detector uses, and for the same reason.
       // One submesh is one texture page, so the ad image and the structural frame welded right behind it stay
@@ -169,8 +177,16 @@ export function fitScreenToMeshes(meshes: readonly ScreenFitMesh[], viewFrom?: V
       const key = `${meshIndex}|${Math.round(unit[0] * 5)},${Math.round(unit[1] * 5)},${Math.round(unit[2] * 5)}`;
       let group = groups.get(key);
       if (!group) {
-        group = { area: 0, normal: [0, 0, 0], center: [0, 0, 0], tris: [],
-          minU: Infinity, maxU: -Infinity, minV: Infinity, maxV: -Infinity };
+        group = {
+          area: 0,
+          normal: [0, 0, 0],
+          center: [0, 0, 0],
+          tris: [],
+          minU: Infinity,
+          maxU: -Infinity,
+          minV: Infinity,
+          maxV: -Infinity,
+        };
         groups.set(key, group);
       }
       group.area += area;
@@ -179,7 +195,8 @@ export function fitScreenToMeshes(meshes: readonly ScreenFitMesh[], viewFrom?: V
       group.tris.push([...a, ...b, ...c]);
       if (uv) {
         for (const i of [ia, ib, ic]) {
-          const u = uv[i * 2], v = uv[i * 2 + 1];
+          const u = uv[i * 2],
+            v = uv[i * 2 + 1];
           if (u < group.minU) group.minU = u;
           if (u > group.maxU) group.maxU = u;
           if (v < group.minV) group.minV = v;
@@ -190,9 +207,16 @@ export function fitScreenToMeshes(meshes: readonly ScreenFitMesh[], viewFrom?: V
   }
 
   const single = (g: Group): boolean => {
-    const uSpan = g.maxU - g.minU, vSpan = g.maxV - g.minV;
-    return Number.isFinite(uSpan) && Number.isFinite(vSpan)
-      && uSpan >= UV_SPAN_MIN && uSpan <= UV_SPAN_MAX && vSpan >= UV_SPAN_MIN && vSpan <= UV_SPAN_MAX;
+    const uSpan = g.maxU - g.minU,
+      vSpan = g.maxV - g.minV;
+    return (
+      Number.isFinite(uSpan) &&
+      Number.isFinite(vSpan) &&
+      uSpan >= UV_SPAN_MIN &&
+      uSpan <= UV_SPAN_MAX &&
+      vSpan >= UV_SPAN_MIN &&
+      vSpan <= UV_SPAN_MAX
+    );
   };
   const usable = [...groups.values()].filter(g => g.area >= MIN_AREA);
   if (!usable.length) return null;
@@ -207,20 +231,31 @@ export function fitScreenToMeshes(meshes: readonly ScreenFitMesh[], viewFrom?: V
   const { yaw, pitch } = screenAnglesFromNormal(normal);
   const up = normalize(rotateByPlacement(UP, { yaw, pitch }), UP);
   const right = normalize(cross(up, normal), [1, 0, 0]);
-  let minR = Infinity, maxR = -Infinity, minU = Infinity, maxU = -Infinity, maxDepth = -Infinity;
+  let minR = Infinity,
+    maxR = -Infinity,
+    minU = Infinity,
+    maxU = -Infinity,
+    maxDepth = -Infinity;
   for (const tri of best.tris)
     for (let k = 0; k < 3; k++) {
       const v = sub([tri[k * 3], tri[k * 3 + 1], tri[k * 3 + 2]], center);
-      const r = dot(v, right), u = dot(v, up), d = dot(v, normal);
-      if (r < minR) minR = r; if (r > maxR) maxR = r;
-      if (u < minU) minU = u; if (u > maxU) maxU = u;
+      const r = dot(v, right),
+        u = dot(v, up),
+        d = dot(v, normal);
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      if (u < minU) minU = u;
+      if (u > maxU) maxU = u;
       if (d > maxDepth) maxDepth = d;
     }
-  const width = maxR - minR, height = maxU - minU;
+  const width = maxR - minR,
+    height = maxU - minU;
   if (!(width > 0) || !(height > 0)) return null;
 
-  const pos = add(center, add(add(scale(right, (minR + maxR) / 2), scale(up, (minU + maxU) / 2)),
-    scale(normal, maxDepth + SCREEN_PROUD)));
+  const pos = add(
+    center,
+    add(add(scale(right, (minR + maxR) / 2), scale(up, (minU + maxU) / 2)), scale(normal, maxDepth + SCREEN_PROUD)),
+  );
   return { pos, yaw, pitch, width, height };
 }
 

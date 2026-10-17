@@ -50,13 +50,16 @@ function decodeWav(bytes: Buffer): DecodedWav {
     const at = data.offset + frame * frameBytes + channel * (bits / 8);
     if (format === 1 && bits === 16) return bytes.readInt16LE(at);
     if (format === 1 && bits === 8) return (bytes.readUInt8(at) - 128) * 256; // WAV 8-bit is unsigned
-    if (format === 3 && bits === 32) return Math.max(-32768, Math.min(32767, Math.round(bytes.readFloatLE(at) * 32767)));
+    if (format === 3 && bits === 32)
+      return Math.max(-32768, Math.min(32767, Math.round(bytes.readFloatLE(at) * 32767)));
     throw new Error(`unsupported WAV encoding (format ${format}, ${bits}-bit)`);
   };
   const samples = new Int16Array(frames);
   for (let i = 0; i < frames; i++) {
-    samples[i] = channels === 1 ? readSample(i, 0)
-      : Math.max(-32768, Math.min(32767, Math.round((readSample(i, 0) + readSample(i, 1)) / 2)));
+    samples[i] =
+      channels === 1
+        ? readSample(i, 0)
+        : Math.max(-32768, Math.min(32767, Math.round((readSample(i, 0) + readSample(i, 1)) / 2)));
   }
   return { rate, samples };
 }
@@ -64,12 +67,19 @@ function decodeWav(bytes: Buffer): DecodedWav {
 function encodeWavPcm16Mono(wav: DecodedWav): Buffer {
   const dataBytes = wav.samples.length * 2;
   const out = Buffer.alloc(44 + dataBytes);
-  out.write('RIFF', 0, 'ascii'); out.writeUInt32LE(36 + dataBytes, 4); out.write('WAVE', 8, 'ascii');
-  out.write('fmt ', 12, 'ascii'); out.writeUInt32LE(16, 16);
-  out.writeUInt16LE(1, 20); out.writeUInt16LE(1, 22);
-  out.writeUInt32LE(wav.rate, 24); out.writeUInt32LE(wav.rate * 2, 28);
-  out.writeUInt16LE(2, 32); out.writeUInt16LE(16, 34);
-  out.write('data', 36, 'ascii'); out.writeUInt32LE(dataBytes, 40);
+  out.write('RIFF', 0, 'ascii');
+  out.writeUInt32LE(36 + dataBytes, 4);
+  out.write('WAVE', 8, 'ascii');
+  out.write('fmt ', 12, 'ascii');
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20);
+  out.writeUInt16LE(1, 22);
+  out.writeUInt32LE(wav.rate, 24);
+  out.writeUInt32LE(wav.rate * 2, 28);
+  out.writeUInt16LE(2, 32);
+  out.writeUInt16LE(16, 34);
+  out.write('data', 36, 'ascii');
+  out.writeUInt32LE(dataBytes, 40);
   for (let i = 0; i < wav.samples.length; i++) out.writeInt16LE(wav.samples[i], 44 + i * 2);
   return out;
 }

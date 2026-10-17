@@ -48,11 +48,19 @@ export function editorFromRaw(p: number[]): V3 {
  * Existing insets, crops and intentional multi-tile repeats remain byte-for-byte equivalent in the viewport.
  */
 export function insetReferenceUnitTile(
-  corners: readonly [readonly [number, number], readonly [number, number],
-    readonly [number, number], readonly [number, number]],
+  corners: readonly [
+    readonly [number, number],
+    readonly [number, number],
+    readonly [number, number],
+    readonly [number, number],
+  ],
 ): [[number, number], [number, number], [number, number], [number, number]] {
-  const out = corners.map(([u, v]) => [u, v]) as
-    [[number, number], [number, number], [number, number], [number, number]];
+  const out = corners.map(([u, v]) => [u, v]) as [
+    [number, number],
+    [number, number],
+    [number, number],
+    [number, number],
+  ];
   const span = (axis: 0 | 1) => {
     const values = out.map(corner => corner[axis]);
     return Math.max(...values) - Math.min(...values);
@@ -78,18 +86,24 @@ export interface ReferenceLightmapLayoutStats {
 }
 
 export function referenceLightmapLayoutStats(patches: readonly RawPatch[]): ReferenceLightmapLayoutStats {
-  let rendered = 0, assigned = 0;
+  let rendered = 0,
+    assigned = 0;
   const unique = new Set<string>();
   for (const patch of patches) {
     if (!patch.Points || patch.Points.length < 16) continue;
     rendered++;
-    const point = patch.LightMapPoint, id = patch.LightmapID;
+    const point = patch.LightMapPoint,
+      id = patch.LightmapID;
     if (id == null || id < 0 || !point || point.length < 4 || point.some(value => !Number.isFinite(value))) continue;
     assigned++;
-    unique.add(`${id}|${point.slice(0, 4).map(value => value.toFixed(6)).join(',')}`);
+    unique.add(
+      `${id}|${point
+        .slice(0, 4)
+        .map(value => value.toFixed(6))
+        .join(',')}`,
+    );
   }
-  return { patches: rendered, assigned, unique: unique.size,
-    collapsed: assigned > 1 && unique.size * 2 < assigned };
+  return { patches: rendered, assigned, unique: unique.size, collapsed: assigned > 1 && unique.size * 2 < assigned };
 }
 
 /** One native spline as `/api/level` serves it off the level's Splines.json. Grind paths and effect-animation
@@ -214,11 +228,15 @@ export interface RefAiPath {
 export function reconstructPathLine(rec: PathRecord): V3[] {
   const pts = rec.PathPoints;
   if (!pts || pts.length < 2) return [];
-  let ax = rec.PathPos?.[0] ?? 0, ay = rec.PathPos?.[1] ?? 0, az = rec.PathPos?.[2] ?? 0;
+  let ax = rec.PathPos?.[0] ?? 0,
+    ay = rec.PathPos?.[1] ?? 0,
+    az = rec.PathPos?.[2] ?? 0;
   const out: V3[] = [editorFromRaw([ax, ay, az])];
   for (const p of pts) {
     if (!p || p.length < 3) continue;
-    ax += p[0]; ay += p[1]; az += p[2];
+    ax += p[0];
+    ay += p[1];
+    az += p[2];
     out.push(editorFromRaw([ax, ay, az]));
   }
   return out;
@@ -229,7 +247,8 @@ function pointAtHorizontalStation(points: V3[], station: number): V3 | null {
   if (!points.length) return null;
   let arc = 0;
   for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1], b = points[i];
+    const a = points[i - 1],
+      b = points[i];
     const length = Math.hypot(b[0] - a[0], b[2] - a[2]);
     if (station <= arc + length || i === points.length - 1) {
       const t = length > 1e-9 ? Math.max(0, Math.min(1, (station - arc) / length)) : 0;
@@ -256,7 +275,10 @@ export function showoffCheckpoints(file: CoursePathFile): RefShowoffCheckpoint[]
       const pos = pointAtHorizontalStation(points, station);
       if (!pos) continue;
       found.push({
-        line, group: -1, bonusSeconds, station,
+        line,
+        group: -1,
+        bonusSeconds,
+        station,
         dtf: ((rec.DistanceToFinish ?? 0) - (event.EventStart ?? 0)) / 100,
         pos,
       });
@@ -264,8 +286,9 @@ export function showoffCheckpoints(file: CoursePathFile): RefShowoffCheckpoint[]
   }
   let nextGroup = 0;
   for (const checkpoint of found) {
-    const equivalent = found.find(other => other !== checkpoint && other.group >= 0
-      && Math.abs(other.dtf - checkpoint.dtf) <= 2);
+    const equivalent = found.find(
+      other => other !== checkpoint && other.group >= 0 && Math.abs(other.dtf - checkpoint.dtf) <= 2,
+    );
     checkpoint.group = equivalent?.group ?? nextGroup++;
   }
   return found;
@@ -281,15 +304,20 @@ function chainSegments(segs: { pts: V3[]; dtf: number }[], seed: number, gapM: n
   let dtf = segs[seed].dtf;
   for (;;) {
     const tail = chain[chain.length - 1];
-    let best = -1, bd = gapM;
+    let best = -1,
+      bd = gapM;
     for (let i = 0; i < segs.length; i++) {
       if (used.has(i)) continue;
       if (descend && segs[i].dtf > dtf + 1) continue; // never hand off to a segment closer to the start
       const d = dist3(tail, segs[i].pts[0]);
-      if (d < bd) { bd = d; best = i; }
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
     }
     if (best < 0) break;
-    used.add(best); dtf = segs[best].dtf;
+    used.add(best);
+    dtf = segs[best].dtf;
     chain.push(...(bd < 10 ? segs[best].pts.slice(1) : segs[best].pts)); // drop a near-coincident join point
   }
   return chain;
@@ -385,12 +413,14 @@ export function dtfZeroFrame(file: CoursePathFile): { pos: V3; fwd: V3 } | null 
   for (const { pts, dtf } of lines) {
     let acc = 0;
     for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
+      const a = pts[i - 1],
+        b = pts[i];
       const prev = acc;
       acc += Math.hypot(b[0] - a[0], b[2] - a[2]); // horizontal only: Y is up in editor space
-      const lo = dtf - prev, hi = dtf - acc;
-      if (lo <= 0 || hi > 0) continue;             // want lo > 0 >= hi: the straddle
-      const t = lo / (lo - hi);                    // DTF is linear along a straight segment
+      const lo = dtf - prev,
+        hi = dtf - acc;
+      if (lo <= 0 || hi > 0) continue; // want lo > 0 >= hi: the straddle
+      const t = lo / (lo - hi); // DTF is linear along a straight segment
       const run = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
       return {
         pos: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])],
@@ -415,14 +445,20 @@ export interface LightRecord {
 }
 
 /** The subset of an extracted Lights.json the sun seeder reads. */
-export interface LightsFile { Lights?: LightRecord[]; }
+export interface LightsFile {
+  Lights?: LightRecord[];
+}
 
 /** A SunLight seeded from a level's light records: the directional gives the sun's pose/strength/tint,
  *  the (optional) ambient gives the sky fill. shadow/AO aren't carried by the records, so they're left
  *  to the lightmap fit / the authored defaults. */
 export interface RefSunSeed {
-  el: number; az: number; sun: number; sunTint: string;  // from the first Type 0 (directional)
-  ambient?: number; skyTint?: string;                     // from the first Type 3 (ambient), if present
+  el: number;
+  az: number;
+  sun: number;
+  sunTint: string; // from the first Type 0 (directional)
+  ambient?: number;
+  skyTint?: string; // from the first Type 3 (ambient), if present
 }
 
 /**
@@ -437,14 +473,16 @@ export function sunFromLights(file: LightsFile): RefSunSeed | null {
   const lights = file.Lights ?? [];
   const dirRec = lights.find(l => l.Type === 0 && (l.Direction?.length ?? 0) >= 3 && (l.Colour?.length ?? 0) >= 3);
   if (!dirRec) return null;
-  const d = dirRec.Direction, c = dirRec.Colour;
+  const d = dirRec.Direction,
+    c = dirRec.Colour;
   const el = (Math.asin(Math.max(-1, Math.min(1, -d[2]))) * 180) / Math.PI;
   const az = ((((Math.atan2(d[1], d[0]) * 180) / Math.PI) % 360) + 360) % 360;
   const sun = Math.max(c[0], c[1], c[2]) || 1; // peak channel = strength; guard a degenerate all-zero record
   const seed: RefSunSeed = { el, az, sun, sunTint: rgbToHex([c[0] / sun, c[1] / sun, c[2] / sun]) };
   const ambRec = lights.find(l => l.Type === 3 && (l.Colour?.length ?? 0) >= 3);
   if (ambRec) {
-    const a = ambRec.Colour, ambient = Math.max(a[0], a[1], a[2]) || 1;
+    const a = ambRec.Colour,
+      ambient = Math.max(a[0], a[1], a[2]) || 1;
     seed.ambient = ambient;
     seed.skyTint = rgbToHex([a[0] / ambient, a[1] / ambient, a[2] / ambient]);
   }
@@ -529,25 +567,33 @@ export function applyReferenceLightmaps(mesh: ReferenceMesh, patches: RawPatch[]
     return false;
   }
   const res = Math.max(1, Math.round(Math.sqrt(mesh.facesPerPatch / 2)));
-  const side = res + 1, per = side * side;
+  const side = res + 1,
+    per = side * side;
   const vertices = mesh.positions.length / 3;
   const intensity = new Float32Array(vertices);
   const lightColor = new Float32Array(vertices * 3);
-  intensity.fill(1); lightColor.fill(1);
+  intensity.fill(1);
+  lightColor.fill(1);
   let emitted = 0;
   for (const patch of patches) {
     if (patch.Points.length < 16) continue;
-    const lp = patch.LightMapPoint, id = patch.LightmapID;
+    const lp = patch.LightMapPoint,
+      id = patch.LightmapID;
     const map = id != null && lp && lp.length >= 4 ? lightmaps.get(id) : undefined;
-    if (map) for (let iu = 0; iu < side; iu++) for (let iv = 0; iv < side; iv++) {
-      const u = iu / res, v = iv / res;
-      const [ru, rv] = remapLightmapUv(u, v);
-      const vi = emitted * per + iu * side + iv;
-      if (vi >= vertices) continue;
-      intensity[vi] = sampleTile(map.a, lp![0], lp![1], lp![2], lp![3], ru, rv);
-      const [r, g, b] = sampleTileRGB(map.rgb, lp![0], lp![1], lp![2], lp![3], ru, rv);
-      lightColor[vi * 3] = r; lightColor[vi * 3 + 1] = g; lightColor[vi * 3 + 2] = b;
-    }
+    if (map)
+      for (let iu = 0; iu < side; iu++)
+        for (let iv = 0; iv < side; iv++) {
+          const u = iu / res,
+            v = iv / res;
+          const [ru, rv] = remapLightmapUv(u, v);
+          const vi = emitted * per + iu * side + iv;
+          if (vi >= vertices) continue;
+          intensity[vi] = sampleTile(map.a, lp![0], lp![1], lp![2], lp![3], ru, rv);
+          const [r, g, b] = sampleTileRGB(map.rgb, lp![0], lp![1], lp![2], lp![3], ru, rv);
+          lightColor[vi * 3] = r;
+          lightColor[vi * 3 + 1] = g;
+          lightColor[vi * 3 + 2] = b;
+        }
     emitted++;
   }
   mesh.intensity = intensity;
@@ -566,18 +612,18 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
   const n = patches.length;
   const positions = new Float32Array(n * per * 3);
   const normals = new Float32Array(n * per * 3); // analytic per-vertex normals (reconciled with gN below)
-  const gN = new Float32Array(n * per * 3);      // accumulated geometric face normals, for the reconcile
+  const gN = new Float32Array(n * per * 3); // accumulated geometric face normals, for the reconcile
   const colors = new Float32Array(n * per * 3);
   const uvs = new Float32Array(n * per * 2);
   const usableLightmaps = lightmaps && !referenceLightmapLayoutStats(patches).collapsed ? lightmaps : undefined;
-  const intensity = usableLightmaps ? new Float32Array(n * per) : undefined;     // per-vertex baked A_S (1 = neutral)
+  const intensity = usableLightmaps ? new Float32Array(n * per) : undefined; // per-vertex baked A_S (1 = neutral)
   const lightColor = usableLightmaps ? new Float32Array(n * per * 3) : undefined; // per-vertex baked colour (1,1,1 = neutral)
   // Sized by the CALLER's res, not the module default — the lightmap bake tessellates denser than the display,
   // and a buffer sized off the constant silently dropped every index past the display density's worth.
   const indices = new Uint32Array(n * res * res * 6);
   const patchTex: (string | null)[] = [];
   const patchUV: (number[][] | null)[] = [];
-  const patchSurf: number[] = [];        // per emitted patch: SurfaceType (drives the test ride's per-surface feel)
+  const patchSurf: number[] = []; // per emitted patch: SurfaceType (drives the test ride's per-surface feel)
   const patchCorners: number[][][] = []; // per emitted patch: [A,B,C,D] editor-space corners (u,v = 0/1)
   const patchControls: number[][][] = []; // per emitted patch: all 16 bicubic control points (editor space)
   const min: V3 = [Infinity, Infinity, Infinity];
@@ -606,25 +652,51 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
   // the authored net; a faithful EdgeHandle (below) makes their curves match the reference's own cage wires.
   const quads: number[][] = [];
   const ckey = (p: V3) => `${Math.round(p[0] * 4)},${Math.round(p[1] * 4)},${Math.round(p[2] * 4)}`;
-  const addCorner = (p: V3) => { const k = ckey(p); if (!cornerIdx.has(k)) { cornerIdx.set(k, cornerPts.length / 3); cornerPts.push(p[0], p[1], p[2]); } };
+  const addCorner = (p: V3) => {
+    const k = ckey(p);
+    if (!cornerIdx.has(k)) {
+      cornerIdx.set(k, cornerPts.length / 3);
+      cornerPts.push(p[0], p[1], p[2]);
+    }
+  };
   const addEdge = (pi: number, p0: V3, p1: V3, p2: V3, p3: V3) => {
-    const ka = ckey(p0), kb = ckey(p3), k = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    const ka = ckey(p0),
+      kb = ckey(p3),
+      k = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
     (patchEdgeKeys[pi] ??= []).push(k);
     const e = edges.get(k);
-    if (e) { e.count++; e.faces.push(pi); return; }
+    if (e) {
+      e.count++;
+      e.faces.push(pi);
+      return;
+    }
     edges.set(k, { cps: [p0, p1, p2, p3], count: 1, ka, kb, faces: [pi] });
   };
 
   // accumulate a triangle's (area-weighted) face normal into its three vertices' geometric normal
   const accumFace = (i0: number, i1: number, i2: number) => {
-    const ax = positions[i0 * 3], ay = positions[i0 * 3 + 1], az = positions[i0 * 3 + 2];
-    const e1x = positions[i1 * 3] - ax, e1y = positions[i1 * 3 + 1] - ay, e1z = positions[i1 * 3 + 2] - az;
-    const e2x = positions[i2 * 3] - ax, e2y = positions[i2 * 3 + 1] - ay, e2z = positions[i2 * 3 + 2] - az;
-    const fx = e1y * e2z - e1z * e2y, fy = e1z * e2x - e1x * e2z, fz = e1x * e2y - e1y * e2x;
-    for (const j of [i0, i1, i2]) { gN[j * 3] += fx; gN[j * 3 + 1] += fy; gN[j * 3 + 2] += fz; }
+    const ax = positions[i0 * 3],
+      ay = positions[i0 * 3 + 1],
+      az = positions[i0 * 3 + 2];
+    const e1x = positions[i1 * 3] - ax,
+      e1y = positions[i1 * 3 + 1] - ay,
+      e1z = positions[i1 * 3 + 2] - az;
+    const e2x = positions[i2 * 3] - ax,
+      e2y = positions[i2 * 3 + 1] - ay,
+      e2z = positions[i2 * 3 + 2] - az;
+    const fx = e1y * e2z - e1z * e2y,
+      fy = e1z * e2x - e1x * e2z,
+      fz = e1x * e2y - e1y * e2x;
+    for (const j of [i0, i1, i2]) {
+      gN[j * 3] += fx;
+      gN[j * 3 + 1] += fy;
+      gN[j * 3 + 2] += fz;
+    }
   };
 
-  let vp = 0, tp = 0, ip = 0;
+  let vp = 0,
+    tp = 0,
+    ip = 0;
   const emit = (pi: number) => {
     const cp = patches[pi].Points.map(editorFromRaw);
     if (cp.length < 16) return; // skip a malformed record rather than render garbage
@@ -640,8 +712,8 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
     const uc = (i: number): [number, number] => (uvp && uvp[i] ? [uvp[i][0], uvp[i][1]] : [0, 0]);
     const [uvA, uvB, uvC, uvD] = insetReferenceUnitTile([uc(0), uc(2), uc(1), uc(3)]);
     patchUV.push(hasUv ? [uvA, uvB, uvC, uvD] : null); // corners @ (0,0),(0,1),(1,0),(1,1) - stays in step with patchTex
-    patchCorners.push([cp[0], cp[3], cp[12], cp[15]]);  // world corners A@(0,0) B@(0,1) C@(1,0) D@(1,1)
-    patchControls.push(cp);  // the full 16-point control net, same row-major order the loader read it in
+    patchCorners.push([cp[0], cp[3], cp[12], cp[15]]); // world corners A@(0,0) B@(0,1) C@(1,0) D@(1,1)
+    patchControls.push(cp); // the full 16-point control net, same row-major order the loader read it in
     // per-patch lightmap tile: the patch owns sub-rect LightMapPoint of map LightmapID; sample its
     // intensity per vertex exactly like the bake (RemapUv mode 6 -> SampleTile). Falls back to 1 (neutral).
     const lp = patches[pi].LightMapPoint;
@@ -650,33 +722,53 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
     const vBase = vp / 3;
     for (let iu = 0; iu < side; iu++) {
       for (let iv = 0; iv < side; iv++) {
-        const u = iu / res, v = iv / res;
+        const u = iu / res,
+          v = iv / res;
         const p = patchPoint(cp, u, v);
         const nrm = patchNormal(cp, u, v);
-        positions[vp] = p[0]; positions[vp + 1] = p[1]; positions[vp + 2] = p[2];
-        normals[vp] = nrm[0]; normals[vp + 1] = nrm[1]; normals[vp + 2] = nrm[2];
-        colors[vp] = tint[0]; colors[vp + 1] = tint[1]; colors[vp + 2] = tint[2];
-        if (hasUv) { // Bilerp(A,B,C,D,u,v) = lerp(lerp(A,B,v), lerp(C,D,v), u)
-          const a0 = uvA[0] + (uvB[0] - uvA[0]) * v, a1 = uvA[1] + (uvB[1] - uvA[1]) * v;
-          const b0 = uvC[0] + (uvD[0] - uvC[0]) * v, b1 = uvC[1] + (uvD[1] - uvC[1]) * v;
-          uvs[tp] = a0 + (b0 - a0) * u; uvs[tp + 1] = a1 + (b1 - a1) * u;
-        } else { uvs[tp] = u; uvs[tp + 1] = v; }
+        positions[vp] = p[0];
+        positions[vp + 1] = p[1];
+        positions[vp + 2] = p[2];
+        normals[vp] = nrm[0];
+        normals[vp + 1] = nrm[1];
+        normals[vp + 2] = nrm[2];
+        colors[vp] = tint[0];
+        colors[vp + 1] = tint[1];
+        colors[vp + 2] = tint[2];
+        if (hasUv) {
+          // Bilerp(A,B,C,D,u,v) = lerp(lerp(A,B,v), lerp(C,D,v), u)
+          const a0 = uvA[0] + (uvB[0] - uvA[0]) * v,
+            a1 = uvA[1] + (uvB[1] - uvA[1]) * v;
+          const b0 = uvC[0] + (uvD[0] - uvC[0]) * v,
+            b1 = uvC[1] + (uvD[1] - uvC[1]) * v;
+          uvs[tp] = a0 + (b0 - a0) * u;
+          uvs[tp + 1] = a1 + (b1 - a1) * u;
+        } else {
+          uvs[tp] = u;
+          uvs[tp + 1] = v;
+        }
         if (intensity && lightColor) {
           const vi = vBase + iu * side + iv;
           if (lmMap) {
             const [ru, rv] = remapLightmapUv(u, v);
             intensity[vi] = sampleTile(lmMap.a, lp![0], lp![1], lp![2], lp![3], ru, rv);
             const [r, g, b] = sampleTileRGB(lmMap.rgb, lp![0], lp![1], lp![2], lp![3], ru, rv);
-            lightColor[vi * 3] = r; lightColor[vi * 3 + 1] = g; lightColor[vi * 3 + 2] = b;
+            lightColor[vi * 3] = r;
+            lightColor[vi * 3 + 1] = g;
+            lightColor[vi * 3 + 2] = b;
           } else {
-            intensity[vi] = 1; lightColor[vi * 3] = 1; lightColor[vi * 3 + 1] = 1; lightColor[vi * 3 + 2] = 1;
+            intensity[vi] = 1;
+            lightColor[vi * 3] = 1;
+            lightColor[vi * 3 + 1] = 1;
+            lightColor[vi * 3 + 2] = 1;
           }
         }
         for (let a = 0; a < 3; a++) {
           if (p[a] < min[a]) min[a] = p[a];
           if (p[a] > max[a]) max[a] = p[a];
         }
-        vp += 3; tp += 2;
+        vp += 3;
+        tp += 2;
       }
     }
     for (let iu = 0; iu < res; iu++) {
@@ -686,179 +778,304 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
         const c2 = vBase + (iu + 1) * side + iv;
         const d = c2 + 1;
         // wound to match the preview (the material is double-sided, so lighting is correct either way)
-        indices[ip++] = a; indices[ip++] = d; indices[ip++] = c2;
-        indices[ip++] = a; indices[ip++] = b; indices[ip++] = d;
-        accumFace(a, d, c2); accumFace(a, b, d); // feed the geometric-normal reconcile
+        indices[ip++] = a;
+        indices[ip++] = d;
+        indices[ip++] = c2;
+        indices[ip++] = a;
+        indices[ip++] = b;
+        indices[ip++] = d;
+        accumFace(a, d, c2);
+        accumFace(a, b, d); // feed the geometric-normal reconcile
       }
     }
     // patch corners (row-major, rows along u): 0=(0,0) 3=(0,1) 15=(1,1) 12=(1,0); add the four, then
     // each boundary as its cubic edge (the four control points along that side of the 4x4 net).
-    addCorner(cp[0]); addCorner(cp[3]); addCorner(cp[15]); addCorner(cp[12]);
+    addCorner(cp[0]);
+    addCorner(cp[3]);
+    addCorner(cp[15]);
+    addCorner(cp[12]);
     // the QuadMesh quad for this emitted patch: [A@(0,0), B@(0,1), C@(1,0), D@(1,1)] = cp 0/3/12/15 as corner ids
-    quads.push([cornerIdx.get(ckey(cp[0]))!, cornerIdx.get(ckey(cp[3]))!, cornerIdx.get(ckey(cp[12]))!, cornerIdx.get(ckey(cp[15]))!]);
-    addEdge(pi, cp[0], cp[1], cp[2], cp[3]);      // u=0 row  (corner 0 -> 3)
-    addEdge(pi, cp[3], cp[7], cp[11], cp[15]);    // v=1 col  (corner 3 -> 15)
-    addEdge(pi, cp[15], cp[14], cp[13], cp[12]);  // u=1 row  (corner 15 -> 12)
-    addEdge(pi, cp[12], cp[8], cp[4], cp[0]);     // v=0 col  (corner 12 -> 0)
+    quads.push([
+      cornerIdx.get(ckey(cp[0]))!,
+      cornerIdx.get(ckey(cp[3]))!,
+      cornerIdx.get(ckey(cp[12]))!,
+      cornerIdx.get(ckey(cp[15]))!,
+    ]);
+    addEdge(pi, cp[0], cp[1], cp[2], cp[3]); // u=0 row  (corner 0 -> 3)
+    addEdge(pi, cp[3], cp[7], cp[11], cp[15]); // v=1 col  (corner 3 -> 15)
+    addEdge(pi, cp[15], cp[14], cp[13], cp[12]); // u=1 row  (corner 15 -> 12)
+    addEdge(pi, cp[12], cp[8], cp[4], cp[0]); // v=0 col  (corner 12 -> 0)
   };
   function* finishSteps(): Generator<void, ReferenceMesh> {
-  // Reconcile the analytic normals with the accumulated geometric ones: sign each to match, and fall
-  // back to the geometric normal where the analytic one diverges past 30 deg (collapsed / near-degenerate
-  // patch corners, where the bezier tangents are ill-conditioned). Matches the bake (TerrainBundle.cs),
-  // so high-valence stitch points shade smoothly instead of going dark.
-  const DIV_COS = Math.cos((30 * Math.PI) / 180);
-  for (let i = 0; i < normals.length; i += 3) {
-    if (i > 0 && i % (4096 * 3) === 0) yield;
-    const gl = Math.hypot(gN[i], gN[i + 1], gN[i + 2]);
-    if (gl < 1e-9) continue;
-    const gx = gN[i] / gl, gy = gN[i + 1] / gl, gz = gN[i + 2] / gl;
-    let nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
-    let dot = nx * gx + ny * gy + nz * gz;
-    if (dot < 0) { nx = -nx; ny = -ny; nz = -nz; dot = -dot; }
-    if (dot < DIV_COS) { nx = gx; ny = gy; nz = gz; }
-    normals[i] = nx; normals[i + 1] = ny; normals[i + 2] = nz;
-  }
-  // Weld normals across coincident patch-boundary vertices (rounded to ~1cm, the bake's seam-weld
-  // resolution) so real-time lighting is continuous across seams / high-valence stitch points - the
-  // editor lights by these vertex normals, where Unity uses the seam-continuous baked lightmap. Only
-  // genuinely-shared vertices are welded; an interior vertex (unique position) keeps its reconciled
-  // normal so steep / vertical faces (rock walls, overhangs) whose normals are near-horizontal stay
-  // correct. Within a shared group, align each contributor to the group's reference before averaging so
-  // the mixed patch windings (~3.5% are reversed) reinforce instead of cancelling; the double-sided
-  // material flips the result per-face, so only the welded axis matters.
-  const nkey = (i: number) => `${Math.round(positions[i] * 100)},${Math.round(positions[i + 1] * 100)},${Math.round(positions[i + 2] * 100)}`;
-  const nGroups = new Map<string, number[]>();
-  for (let i = 0; i < normals.length; i += 3) {
-    if (i > 0 && i % (4096 * 3) === 0) yield;
-    const k = nkey(i), g = nGroups.get(k);
-    if (g) g.push(i); else nGroups.set(k, [i]);
-  }
-  let weldGroup = 0;
-  for (const g of nGroups.values()) {
-    if (weldGroup++ > 0 && weldGroup % 4096 === 0) yield;
-    if (g.length < 2) continue; // unique interior vertex: leave its reconciled normal untouched
-    const r0 = normals[g[0]], r1 = normals[g[0] + 1], r2 = normals[g[0] + 2]; // group reference
-    let sx = 0, sy = 0, sz = 0;
-    for (const i of g) {
-      const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
-      const s = nx * r0 + ny * r1 + nz * r2 < 0 ? -1 : 1; // align to reference, don't cancel
-      sx += s * nx; sy += s * ny; sz += s * nz;
+    // Reconcile the analytic normals with the accumulated geometric ones: sign each to match, and fall
+    // back to the geometric normal where the analytic one diverges past 30 deg (collapsed / near-degenerate
+    // patch corners, where the bezier tangents are ill-conditioned). Matches the bake (TerrainBundle.cs),
+    // so high-valence stitch points shade smoothly instead of going dark.
+    const DIV_COS = Math.cos((30 * Math.PI) / 180);
+    for (let i = 0; i < normals.length; i += 3) {
+      if (i > 0 && i % (4096 * 3) === 0) yield;
+      const gl = Math.hypot(gN[i], gN[i + 1], gN[i + 2]);
+      if (gl < 1e-9) continue;
+      const gx = gN[i] / gl,
+        gy = gN[i + 1] / gl,
+        gz = gN[i + 2] / gl;
+      let nx = normals[i],
+        ny = normals[i + 1],
+        nz = normals[i + 2];
+      let dot = nx * gx + ny * gy + nz * gz;
+      if (dot < 0) {
+        nx = -nx;
+        ny = -ny;
+        nz = -nz;
+        dot = -dot;
+      }
+      if (dot < DIV_COS) {
+        nx = gx;
+        ny = gy;
+        nz = gz;
+      }
+      normals[i] = nx;
+      normals[i + 1] = ny;
+      normals[i + 2] = nz;
     }
-    const l = Math.hypot(sx, sy, sz);
-    if (l < 1e-9) continue;
-    sx /= l; sy /= l; sz /= l;
-    for (const i of g) { normals[i] = sx; normals[i + 1] = sy; normals[i + 2] = sz; }
-  }
-  // classify edges. count >= 2 = an interior seam (shared by two patches, the blue grid). count == 1 = a BORDER
-  // edge: either a piece's outer RIM (orange) or an interior TEAR (yellow) - a hole or an unstitched slit inside
-  // the surface, treated the same. Border edges chain corner-to-corner into loops; per piece the widest loop is
-  // the rim and every other loop is a tear. Occluded cage lines dither dim, so a WATERTIGHT tear (both lips
-  // tucked into the surface - e.g. a snow drift folded onto a rock face) reads dim, an EXPOSED tear bright.
-  const cornerSeg: number[] = [], cornerSegBoundary: number[] = [], cornerSegTear: number[] = [];
-  const cornerSegCrease: number[] = [];
-  // interior-seam valence per de-duplicated corner: how many "Grid" edges (shared by two patches, not
-  // rim/tear) meet at it. 4 is regular; 3/5 mark the extraordinary poles of the quad net.
-  const valence = new Int32Array(cornerPts.length / 3);
+    // Weld normals across coincident patch-boundary vertices (rounded to ~1cm, the bake's seam-weld
+    // resolution) so real-time lighting is continuous across seams / high-valence stitch points - the
+    // editor lights by these vertex normals, where Unity uses the seam-continuous baked lightmap. Only
+    // genuinely-shared vertices are welded; an interior vertex (unique position) keeps its reconciled
+    // normal so steep / vertical faces (rock walls, overhangs) whose normals are near-horizontal stay
+    // correct. Within a shared group, align each contributor to the group's reference before averaging so
+    // the mixed patch windings (~3.5% are reversed) reinforce instead of cancelling; the double-sided
+    // material flips the result per-face, so only the welded axis matters.
+    const nkey = (i: number) =>
+      `${Math.round(positions[i] * 100)},${Math.round(positions[i + 1] * 100)},${Math.round(positions[i + 2] * 100)}`;
+    const nGroups = new Map<string, number[]>();
+    for (let i = 0; i < normals.length; i += 3) {
+      if (i > 0 && i % (4096 * 3) === 0) yield;
+      const k = nkey(i),
+        g = nGroups.get(k);
+      if (g) g.push(i);
+      else nGroups.set(k, [i]);
+    }
+    let weldGroup = 0;
+    for (const g of nGroups.values()) {
+      if (weldGroup++ > 0 && weldGroup % 4096 === 0) yield;
+      if (g.length < 2) continue; // unique interior vertex: leave its reconciled normal untouched
+      const r0 = normals[g[0]],
+        r1 = normals[g[0] + 1],
+        r2 = normals[g[0] + 2]; // group reference
+      let sx = 0,
+        sy = 0,
+        sz = 0;
+      for (const i of g) {
+        const nx = normals[i],
+          ny = normals[i + 1],
+          nz = normals[i + 2];
+        const s = nx * r0 + ny * r1 + nz * r2 < 0 ? -1 : 1; // align to reference, don't cancel
+        sx += s * nx;
+        sy += s * ny;
+        sz += s * nz;
+      }
+      const l = Math.hypot(sx, sy, sz);
+      if (l < 1e-9) continue;
+      sx /= l;
+      sy /= l;
+      sz /= l;
+      for (const i of g) {
+        normals[i] = sx;
+        normals[i + 1] = sy;
+        normals[i + 2] = sz;
+      }
+    }
+    // classify edges. count >= 2 = an interior seam (shared by two patches, the blue grid). count == 1 = a BORDER
+    // edge: either a piece's outer RIM (orange) or an interior TEAR (yellow) - a hole or an unstitched slit inside
+    // the surface, treated the same. Border edges chain corner-to-corner into loops; per piece the widest loop is
+    // the rim and every other loop is a tear. Occluded cage lines dither dim, so a WATERTIGHT tear (both lips
+    // tucked into the surface - e.g. a snow drift folded onto a rock face) reads dim, an EXPOSED tear bright.
+    const cornerSeg: number[] = [],
+      cornerSegBoundary: number[] = [],
+      cornerSegTear: number[] = [];
+    const cornerSegCrease: number[] = [];
+    // interior-seam valence per de-duplicated corner: how many "Grid" edges (shared by two patches, not
+    // rim/tear) meet at it. 4 is regular; 3/5 mark the extraordinary poles of the quad net.
+    const valence = new Int32Array(cornerPts.length / 3);
 
-  const border: CageEdge[] = [], grid: CageEdge[] = [];
-  let classifiedEdge = 0;
-  for (const e of edges.values()) {
-    if (classifiedEdge++ > 0 && classifiedEdge % 2048 === 0) yield;
-    if (e.count >= 2) { e.cls = 'grid'; grid.push(e); valence[cornerIdx.get(e.ka)!]++; valence[cornerIdx.get(e.kb)!]++; }
-    else border.push(e);
-  }
-  // surface connected components (over EVERY edge, interior seams included): each disconnected surface piece is
-  // its own component. Used only to scope the rim below, so each piece keeps its own orange outer silhouette
-  // rather than one rim being picked for the whole map (the rest would then wrongly read as cyan holes).
-  const sf = new Map<string, string>();
-  const sTouch = (k: string) => { if (!sf.has(k)) sf.set(k, k); };
-  const sFind = (x: string): string => { while (sf.get(x) !== x) { const p = sf.get(x)!; sf.set(x, sf.get(p)!); x = sf.get(x)!; } return x; };
-  for (const e of edges.values()) { sTouch(e.ka); sTouch(e.kb); const ra = sFind(e.ka), rb = sFind(e.kb); if (ra !== rb) sf.set(ra, rb); }
-  // union-find the border edges into loops by shared corner: each surface piece's border falls into its OUTER
-  // silhouette (one big loop) plus a small closed loop around every interior opening / unstitched slit.
-  const parent = new Map<string, string>();
-  const touch = (k: string) => { if (!parent.has(k)) parent.set(k, k); };
-  const find = (x: string): string => { while (parent.get(x) !== x) { const p = parent.get(x)!; parent.set(x, parent.get(p)!); x = parent.get(x)!; } return x; };
-  for (const e of border) { touch(e.ka); touch(e.kb); const ra = find(e.ka), rb = find(e.kb); if (ra !== rb) parent.set(ra, rb); }
-  const loop = new Map<string, { comp: string; min: V3; max: V3 }>();
-  border.forEach((e) => {
-    const r = find(e.ka);
-    let c = loop.get(r);
-    if (!c) { c = { comp: sFind(e.ka), min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }; loop.set(r, c); }
-    for (const p of [e.cps[0], e.cps[3]]) for (let a = 0; a < 3; a++) { if (p[a] < c.min[a]) c.min[a] = p[a]; if (p[a] > c.max[a]) c.max[a] = p[a]; }
-  });
-  // Per piece, the largest-bounding-box loop is that piece's outer RIM (orange); every OTHER border loop is an
-  // interior TEAR (yellow) - a hole or an unstitched slit, treated alike. Scoping the rim per component keeps
-  // each disconnected piece's own orange outer edge instead of all-but-one reading as a tear. Whether a tear is
-  // watertight is left to the depth dither (a tucked, occluded tear draws dim; an exposed one bright).
-  const diag = (c: { min: V3; max: V3 }) => Math.hypot(c.max[0] - c.min[0], c.max[1] - c.min[1], c.max[2] - c.min[2]);
-  const outerOfComp = new Map<string, { root: string; diag: number }>();
-  for (const [r, c] of loop) { const d = diag(c); const cur = outerOfComp.get(c.comp); if (!cur || d > cur.diag) outerOfComp.set(c.comp, { root: r, diag: d }); }
-  border.forEach((e) => {
-    const r = find(e.ka), c = loop.get(r)!;
-    e.cls = outerOfComp.get(c.comp)!.root === r ? 'rim' : 'tear';              // piece outer silhouette, else interior tear
-    pushCubicEdge(e.cls === 'rim' ? cornerSegBoundary : cornerSegTear, e.cps[0], e.cps[1], e.cps[2], e.cps[3], EDGE_SEG);
-  });
-  // split the deduped corners into the two extraordinary classes by their interior-seam valence.
-  const extra3: number[] = [], extra5: number[] = [];
-  for (let i = 0; i < valence.length; i++) {
-    if (valence[i] === 3) extra3.push(cornerPts[i * 3], cornerPts[i * 3 + 1], cornerPts[i * 3 + 2]);
-    else if (valence[i] === 5) extra5.push(cornerPts[i * 3], cornerPts[i * 3 + 1], cornerPts[i * 3 + 2]);
-  }
-  // the deduped edge list + each edge's two corner ids, feeding the quad topology and the faithful edge handle.
-  const edgeArr = [...edges.values()];
-  const edgeEnds = edgeArr.map(e => [cornerIdx.get(e.ka)!, cornerIdx.get(e.kb)!] as [number, number]);
-  // resolve each patch's four recorded edge keys to edge indices, so the quad topology maps patch to patch.
-  const keyToEi = new Map<string, number>();
-  edgeArr.forEach((e, ei) => { keyToEi.set(e.ka < e.kb ? `${e.ka}|${e.kb}` : `${e.kb}|${e.ka}`, ei); });
-  // the quilt as a general quad mesh: each patch's four edges in order, each edge's ≤2 patches (its faces),
-  // and whether an edge touches an extraordinary POLE (interior-seam valence 3 or ≥5, the same classification
-  // as the violet/magenta pole dots) - a face loop stops at poles, where the continuation is ambiguous.
-  const isPole = (ci: number) => valence[ci] === 3 || valence[ci] >= 5;
-  const topology: SurfaceTopology = {
-    cellCount: n,
-    cellEdges: patchEdgeKeys.map(keys => keys.map(k => keyToEi.get(k) ?? -1)),
-    edgeCells: edgeArr.map(e => e.faces),
-    edgeTouchesPole: edgeEnds.map(([a, b]) => isPole(a) || isPole(b)),
-  };
-  // The quilt as a shared QuadMesh + a FAITHFUL directed-edge handle, so the authored net's edge-select
-  // queries (meshEdgeLoop / meshEdgeSegments) run on the reference unchanged. For edge {a,b} with stored
-  // curve cps [p0,p1,p2,p3] where a=id(p0), b=id(p3): from a the handle is p1−p0, from b it's p2−p3 — so
-  // meshEdgeSegments' pushCubicEdge(p0,p1,p2,p3) reproduces the reference's own boundary curve (the same one
-  // cornerSeg draws), not a Bessel re-derive that would drift off the real edge.
-  const mesh = buildQuadMesh(cornerPts, quads);
-  // Interior seams where the two patches meet at an angle draw as creases — the same measure the authored cage
-  // uses (core/mesh/creases.ts), so the retail levels read as a lesson in where creases go. Only a seam of
-  // exactly two patches has two sides to compare.
-  let creaseChecked = 0;
-  for (const e of grid) {
-    if (creaseChecked++ > 0 && creaseChecked % 2048 === 0) yield;
-    const creased = e.faces.length === 2 && seamCreaseDegrees(mesh, quad => patchControls[quad],
-      cornerIdx.get(e.ka)!, cornerIdx.get(e.kb)!, [e.faces[0], e.faces[1]]) > CREASE_DEGREES;
-    pushCubicEdge(creased ? cornerSegCrease : cornerSeg, e.cps[0], e.cps[1], e.cps[2], e.cps[3], EDGE_SEG);
-  }
-  const eidKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
-  const handleByEdge = new Map<string, { a: number; ha: V3; hb: V3 }>();
-  edgeArr.forEach((e, ei) => {
-    const [a, b] = edgeEnds[ei]; // a = id(p0), b = id(p3)
-    handleByEdge.set(eidKey(a, b), { a, ha: sub(e.cps[1], e.cps[0]), hb: sub(e.cps[2], e.cps[3]) });
-  });
-  const edgeHandle: EdgeHandle = (from, to) => {
-    const h = handleByEdge.get(eidKey(from, to));
-    if (!h) return [0, 0, 0];
-    return from === h.a ? h.ha : h.hb;
-  };
-  return {
-    positions, normals, colors, uvs, intensity, lightColor, indices,
-    patchTex, patchUV, patchSurf, patchCorners, patchControls, facesPerPatch: res * res * 2,
-    cornerPts: new Float32Array(cornerPts),
-    cornerSeg: new Float32Array(cornerSeg), cornerSegBoundary: new Float32Array(cornerSegBoundary),
-    cornerSegTear: new Float32Array(cornerSegTear),
-    cornerSegCrease: new Float32Array(cornerSegCrease),
-    cornerPtsExtra3: new Float32Array(extra3), cornerPtsExtra5: new Float32Array(extra5),
-    topology, mesh, edgeHandle,
-    min, max, patchCount: n,
-  };
+    const border: CageEdge[] = [],
+      grid: CageEdge[] = [];
+    let classifiedEdge = 0;
+    for (const e of edges.values()) {
+      if (classifiedEdge++ > 0 && classifiedEdge % 2048 === 0) yield;
+      if (e.count >= 2) {
+        e.cls = 'grid';
+        grid.push(e);
+        valence[cornerIdx.get(e.ka)!]++;
+        valence[cornerIdx.get(e.kb)!]++;
+      } else border.push(e);
+    }
+    // surface connected components (over EVERY edge, interior seams included): each disconnected surface piece is
+    // its own component. Used only to scope the rim below, so each piece keeps its own orange outer silhouette
+    // rather than one rim being picked for the whole map (the rest would then wrongly read as cyan holes).
+    const sf = new Map<string, string>();
+    const sTouch = (k: string) => {
+      if (!sf.has(k)) sf.set(k, k);
+    };
+    const sFind = (x: string): string => {
+      while (sf.get(x) !== x) {
+        const p = sf.get(x)!;
+        sf.set(x, sf.get(p)!);
+        x = sf.get(x)!;
+      }
+      return x;
+    };
+    for (const e of edges.values()) {
+      sTouch(e.ka);
+      sTouch(e.kb);
+      const ra = sFind(e.ka),
+        rb = sFind(e.kb);
+      if (ra !== rb) sf.set(ra, rb);
+    }
+    // union-find the border edges into loops by shared corner: each surface piece's border falls into its OUTER
+    // silhouette (one big loop) plus a small closed loop around every interior opening / unstitched slit.
+    const parent = new Map<string, string>();
+    const touch = (k: string) => {
+      if (!parent.has(k)) parent.set(k, k);
+    };
+    const find = (x: string): string => {
+      while (parent.get(x) !== x) {
+        const p = parent.get(x)!;
+        parent.set(x, parent.get(p)!);
+        x = parent.get(x)!;
+      }
+      return x;
+    };
+    for (const e of border) {
+      touch(e.ka);
+      touch(e.kb);
+      const ra = find(e.ka),
+        rb = find(e.kb);
+      if (ra !== rb) parent.set(ra, rb);
+    }
+    const loop = new Map<string, { comp: string; min: V3; max: V3 }>();
+    border.forEach(e => {
+      const r = find(e.ka);
+      let c = loop.get(r);
+      if (!c) {
+        c = { comp: sFind(e.ka), min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+        loop.set(r, c);
+      }
+      for (const p of [e.cps[0], e.cps[3]])
+        for (let a = 0; a < 3; a++) {
+          if (p[a] < c.min[a]) c.min[a] = p[a];
+          if (p[a] > c.max[a]) c.max[a] = p[a];
+        }
+    });
+    // Per piece, the largest-bounding-box loop is that piece's outer RIM (orange); every OTHER border loop is an
+    // interior TEAR (yellow) - a hole or an unstitched slit, treated alike. Scoping the rim per component keeps
+    // each disconnected piece's own orange outer edge instead of all-but-one reading as a tear. Whether a tear is
+    // watertight is left to the depth dither (a tucked, occluded tear draws dim; an exposed one bright).
+    const diag = (c: { min: V3; max: V3 }) => Math.hypot(c.max[0] - c.min[0], c.max[1] - c.min[1], c.max[2] - c.min[2]);
+    const outerOfComp = new Map<string, { root: string; diag: number }>();
+    for (const [r, c] of loop) {
+      const d = diag(c);
+      const cur = outerOfComp.get(c.comp);
+      if (!cur || d > cur.diag) outerOfComp.set(c.comp, { root: r, diag: d });
+    }
+    border.forEach(e => {
+      const r = find(e.ka),
+        c = loop.get(r)!;
+      e.cls = outerOfComp.get(c.comp)!.root === r ? 'rim' : 'tear'; // piece outer silhouette, else interior tear
+      pushCubicEdge(
+        e.cls === 'rim' ? cornerSegBoundary : cornerSegTear,
+        e.cps[0],
+        e.cps[1],
+        e.cps[2],
+        e.cps[3],
+        EDGE_SEG,
+      );
+    });
+    // split the deduped corners into the two extraordinary classes by their interior-seam valence.
+    const extra3: number[] = [],
+      extra5: number[] = [];
+    for (let i = 0; i < valence.length; i++) {
+      if (valence[i] === 3) extra3.push(cornerPts[i * 3], cornerPts[i * 3 + 1], cornerPts[i * 3 + 2]);
+      else if (valence[i] === 5) extra5.push(cornerPts[i * 3], cornerPts[i * 3 + 1], cornerPts[i * 3 + 2]);
+    }
+    // the deduped edge list + each edge's two corner ids, feeding the quad topology and the faithful edge handle.
+    const edgeArr = [...edges.values()];
+    const edgeEnds = edgeArr.map(e => [cornerIdx.get(e.ka)!, cornerIdx.get(e.kb)!] as [number, number]);
+    // resolve each patch's four recorded edge keys to edge indices, so the quad topology maps patch to patch.
+    const keyToEi = new Map<string, number>();
+    edgeArr.forEach((e, ei) => {
+      keyToEi.set(e.ka < e.kb ? `${e.ka}|${e.kb}` : `${e.kb}|${e.ka}`, ei);
+    });
+    // the quilt as a general quad mesh: each patch's four edges in order, each edge's ≤2 patches (its faces),
+    // and whether an edge touches an extraordinary POLE (interior-seam valence 3 or ≥5, the same classification
+    // as the violet/magenta pole dots) - a face loop stops at poles, where the continuation is ambiguous.
+    const isPole = (ci: number) => valence[ci] === 3 || valence[ci] >= 5;
+    const topology: SurfaceTopology = {
+      cellCount: n,
+      cellEdges: patchEdgeKeys.map(keys => keys.map(k => keyToEi.get(k) ?? -1)),
+      edgeCells: edgeArr.map(e => e.faces),
+      edgeTouchesPole: edgeEnds.map(([a, b]) => isPole(a) || isPole(b)),
+    };
+    // The quilt as a shared QuadMesh + a FAITHFUL directed-edge handle, so the authored net's edge-select
+    // queries (meshEdgeLoop / meshEdgeSegments) run on the reference unchanged. For edge {a,b} with stored
+    // curve cps [p0,p1,p2,p3] where a=id(p0), b=id(p3): from a the handle is p1−p0, from b it's p2−p3 — so
+    // meshEdgeSegments' pushCubicEdge(p0,p1,p2,p3) reproduces the reference's own boundary curve (the same one
+    // cornerSeg draws), not a Bessel re-derive that would drift off the real edge.
+    const mesh = buildQuadMesh(cornerPts, quads);
+    // Interior seams where the two patches meet at an angle draw as creases — the same measure the authored cage
+    // uses (core/mesh/creases.ts), so the retail levels read as a lesson in where creases go. Only a seam of
+    // exactly two patches has two sides to compare.
+    let creaseChecked = 0;
+    for (const e of grid) {
+      if (creaseChecked++ > 0 && creaseChecked % 2048 === 0) yield;
+      const creased =
+        e.faces.length === 2 &&
+        seamCreaseDegrees(mesh, quad => patchControls[quad], cornerIdx.get(e.ka)!, cornerIdx.get(e.kb)!, [
+          e.faces[0],
+          e.faces[1],
+        ]) > CREASE_DEGREES;
+      pushCubicEdge(creased ? cornerSegCrease : cornerSeg, e.cps[0], e.cps[1], e.cps[2], e.cps[3], EDGE_SEG);
+    }
+    const eidKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
+    const handleByEdge = new Map<string, { a: number; ha: V3; hb: V3 }>();
+    edgeArr.forEach((e, ei) => {
+      const [a, b] = edgeEnds[ei]; // a = id(p0), b = id(p3)
+      handleByEdge.set(eidKey(a, b), { a, ha: sub(e.cps[1], e.cps[0]), hb: sub(e.cps[2], e.cps[3]) });
+    });
+    const edgeHandle: EdgeHandle = (from, to) => {
+      const h = handleByEdge.get(eidKey(from, to));
+      if (!h) return [0, 0, 0];
+      return from === h.a ? h.ha : h.hb;
+    };
+    return {
+      positions,
+      normals,
+      colors,
+      uvs,
+      intensity,
+      lightColor,
+      indices,
+      patchTex,
+      patchUV,
+      patchSurf,
+      patchCorners,
+      patchControls,
+      facesPerPatch: res * res * 2,
+      cornerPts: new Float32Array(cornerPts),
+      cornerSeg: new Float32Array(cornerSeg),
+      cornerSegBoundary: new Float32Array(cornerSegBoundary),
+      cornerSegTear: new Float32Array(cornerSegTear),
+      cornerSegCrease: new Float32Array(cornerSegCrease),
+      cornerPtsExtra3: new Float32Array(extra3),
+      cornerPtsExtra5: new Float32Array(extra5),
+      topology,
+      mesh,
+      edgeHandle,
+      min,
+      max,
+      patchCount: n,
+    };
   }
   return { patchCount: n, emit, finishSteps };
 }
@@ -885,7 +1102,9 @@ export interface ProgressiveReferenceMeshOptions {
 /** Tessellate the same mesh as buildReferenceMesh while returning to the browser between bounded patch and
  * normal-weld chunks. Source indices and every output buffer remain byte-for-byte deterministic. */
 export async function buildReferenceMeshProgressive(
-  patches: RawPatch[], options: ProgressiveReferenceMeshOptions = {}, lightmaps?: LightmapSet,
+  patches: RawPatch[],
+  options: ProgressiveReferenceMeshOptions = {},
+  lightmaps?: LightmapSet,
   res: number = RES,
 ): Promise<ReferenceMesh> {
   const builder = createReferenceMeshBuilder(patches, lightmaps, res);
@@ -903,7 +1122,10 @@ export async function buildReferenceMeshProgressive(
     }
   }
   options.onProgress?.(builder.patchCount, builder.patchCount);
-  if (builder.patchCount) { await yieldControl(); chunkStarted = now(); }
+  if (builder.patchCount) {
+    await yieldControl();
+    chunkStarted = now();
+  }
   const finalizer = builder.finishSteps();
   for (;;) {
     const step = finalizer.next();

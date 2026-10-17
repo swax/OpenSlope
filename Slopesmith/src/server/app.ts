@@ -35,9 +35,25 @@ const log = createLogger('api');
 const accountsLog = createLogger('accounts');
 
 const routes: Array<[mount: string, handle: ApiHandler]> = [
-  authRoutes, memberRoutes, publicCourseRoutes, workspaceRoutes, characterRoutes, musicRoutes, exportRoutes, levelRoutes,
-  textureRoutes, propRoutes, skyboxRoutes, retopologyRoutes, blenderRoutes, voiceRoutes, versionRoutes, updateRoutes,
-  restartRoutes, schemaRoutes, explorerRoutes,
+  authRoutes,
+  memberRoutes,
+  publicCourseRoutes,
+  workspaceRoutes,
+  characterRoutes,
+  musicRoutes,
+  exportRoutes,
+  levelRoutes,
+  textureRoutes,
+  propRoutes,
+  skyboxRoutes,
+  retopologyRoutes,
+  blenderRoutes,
+  voiceRoutes,
+  versionRoutes,
+  updateRoutes,
+  restartRoutes,
+  schemaRoutes,
+  explorerRoutes,
   // Deliberately last: its `/api` mount is the discovery root AND the catch-all that answers an unclaimed
   // `/api/*` path with a link back to the root (docs/052). A module added after it would never be reached.
   discoveryRoutes,
@@ -50,14 +66,33 @@ const routes: Array<[mount: string, handle: ApiHandler]> = [
 const PROJECT_ASSET_MOUNTS = new Set([
   '/api/preflight',
   '/api/blender',
-  '/api/textures', '/api/texture', '/api/texture-usage',
-  '/api/custom-props', '/api/custom-prop-import', '/api/custom-prop-rename', '/api/custom-prop-clone',
-  '/api/custom-prop-record', '/api/custom-prop-deform',
-  '/api/custom-prop-replace', '/api/custom-prop-materials', '/api/custom-prop-defaults', '/api/custom-prop-delete',
-  '/api/texture-upload', '/api/texture-rename', '/api/texture-clone', '/api/texture-replace', '/api/texture-delete',
-  '/api/custom-music', '/api/custom-music-file',
-  '/api/custom-sounds', '/api/custom-sound', '/api/sound-upload',
-  '/api/skybox', '/api/skypano', '/api/skyground', '/api/skyupload',
+  '/api/textures',
+  '/api/texture',
+  '/api/texture-usage',
+  '/api/custom-props',
+  '/api/custom-prop-import',
+  '/api/custom-prop-rename',
+  '/api/custom-prop-clone',
+  '/api/custom-prop-record',
+  '/api/custom-prop-deform',
+  '/api/custom-prop-replace',
+  '/api/custom-prop-materials',
+  '/api/custom-prop-defaults',
+  '/api/custom-prop-delete',
+  '/api/texture-upload',
+  '/api/texture-rename',
+  '/api/texture-clone',
+  '/api/texture-replace',
+  '/api/texture-delete',
+  '/api/custom-music',
+  '/api/custom-music-file',
+  '/api/custom-sounds',
+  '/api/custom-sound',
+  '/api/sound-upload',
+  '/api/skybox',
+  '/api/skypano',
+  '/api/skyground',
+  '/api/skyupload',
 ]);
 
 /**
@@ -113,11 +148,17 @@ type Access = (method: string, path: string, query?: URLSearchParams) => Need;
 export const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /** One role, whatever the request is. */
-const at = (role: Role): Access => () => role;
+const at =
+  (role: Role): Access =>
+  () =>
+    role;
 
 /** A role to read and a role to change — the shape almost every route has: everyone with an account sees the
  *  server's maps and libraries, and the editor role is the gate on changing them. */
-const rw = (read: Role, write: Role): Access => method => SAFE_METHODS.has(method) ? read : write;
+const rw =
+  (read: Role, write: Role): Access =>
+  method =>
+    SAFE_METHODS.has(method) ? read : write;
 
 /** A shared library: any member may read it, an editor may add to it. */
 const library = rw('viewer', 'editor');
@@ -183,7 +224,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
   // every other request is refused until the one-time code has been redeemed. The rest of the mount is a
   // member acting on their own account, so it asks for a session like everything else, and a path added
   // under `/api/auth` tomorrow is closed by default rather than open because the mount is.
-  '/api/auth': (_method, path) => SIGN_IN.has(path.replace(/\/+$/, '') || '/') ? 'public' : 'viewer',
+  '/api/auth': (_method, path) => (SIGN_IN.has(path.replace(/\/+$/, '') || '/') ? 'public' : 'viewer'),
 
   // The roster the Users mode lists, and the administration inside it. Every member sees who is on the
   // server, because that is what a room is. Moderators may mint ordinary invites, set viewer/editor roles,
@@ -236,7 +277,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
   '/api/level': at('viewer'),
   // Reading the census is a cache hit; `?refresh=1` throws both caches away and re-reads every map folder in
   // the library, for everybody — a cost that belongs to a moderator, like the fetch behind /api/version.
-  '/api/level-census': (_method, _path, query) => query?.get('refresh') === '1' ? 'moderator' : 'viewer',
+  '/api/level-census': (_method, _path, query) => (query?.get('refresh') === '1' ? 'moderator' : 'viewer'),
   '/api/effects': at('viewer'),
   '/api/groups': at('viewer'),
   '/api/lightrig': at('viewer'),
@@ -244,12 +285,12 @@ const ROUTE_ACCESS: Record<string, Access> = {
   '/api/physics-body': at('viewer'),
   '/api/reference-music': at('viewer'),
   '/api/reference-music-sample': at('viewer'),
-    '/api/reference-intro-music': at('viewer'),
-    '/api/effect-sound': at('viewer'),
-    '/api/environment-sound': at('viewer'),
-    '/api/board-audio': at('viewer'),
-    '/api/announcer-audio': at('viewer'),
-    '/api/announcer-sound': at('viewer'),
+  '/api/reference-intro-music': at('viewer'),
+  '/api/effect-sound': at('viewer'),
+  '/api/environment-sound': at('viewer'),
+  '/api/board-audio': at('viewer'),
+  '/api/announcer-audio': at('viewer'),
+  '/api/announcer-sound': at('viewer'),
   '/api/board-sound': at('viewer'),
   '/api/sound-banks': at('viewer'),
 
@@ -311,8 +352,10 @@ export function accessFor(mount: string): Access {
   if (declared) return declared;
   if (!reportedClosed.has(mount)) {
     reportedClosed.add(mount);
-    accountsLog.warn(`${mount} declares no access in app.ts, so it is admin-only. Give it an entry in`
-      + ' ROUTE_ACCESS to open it to members.');
+    accountsLog.warn(
+      `${mount} declares no access in app.ts, so it is admin-only. Give it an entry in` +
+        ' ROUTE_ACCESS to open it to members.',
+    );
   }
   return at('admin');
 }
@@ -322,7 +365,9 @@ export function accessFor(mount: string): Access {
 /** Every `/api/*` route the editor calls. Answers `true` once it has taken the request, `false` when no route
  * claims it, so the caller decides what an unknown path means. */
 export async function handleApiRequest(
-  req: IncomingMessage, res: ServerResponse, controls: ApiControls = {},
+  req: IncomingMessage,
+  res: ServerResponse,
+  controls: ApiControls = {},
 ): Promise<boolean> {
   const url = req.url ?? '/';
   for (const [mount, handle] of routes) {
@@ -339,7 +384,8 @@ export async function handleApiRequest(
         jsonResponse(res, crossSite.status, crossSite.body);
         return true;
       }
-      const need = await publicAssetRequest(mount, mounted, method) ? 'public'
+      const need = (await publicAssetRequest(mount, mounted, method))
+        ? 'public'
         : accessFor(mount)(method, path, new URL(mounted, 'http://localhost').searchParams);
       const decision = await authorizeRequest(req, need);
       if (!decision.allowed) {
@@ -357,8 +403,7 @@ export async function handleApiRequest(
       }
       if (requestNeedsProjectAssets(mount, mounted)) {
         await withRequestProjectAssets(req, () => handle(req, res, controls), need === 'editor');
-      }
-      else await handle(req, res, controls);
+      } else await handle(req, res, controls);
     } catch (error) {
       // Handlers answer their own failures; this is the net under a handler that threw before it could —
       // which includes the project-asset wrapper above, running OUTSIDE the handler's own try/catch. A

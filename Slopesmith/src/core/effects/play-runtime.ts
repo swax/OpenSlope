@@ -14,8 +14,14 @@ export interface EffectGraphTask<Host, Meta> {
 
 /** Queue a graph exactly as Play does: waits advance the shared thread clock, a failed condition suppresses
  * every later node in that thread, and tasks at the same timestamp retain graph order through stable sorting. */
-export function scheduleEffectGraph<Host, Meta>(queue: EffectGraphTask<Host, Meta>[], host: Host,
-  graph: Pick<EffectGraph, 'nodes'>, startAt: number, depth: number, meta: Meta): void {
+export function scheduleEffectGraph<Host, Meta>(
+  queue: EffectGraphTask<Host, Meta>[],
+  host: Host,
+  graph: Pick<EffectGraph, 'nodes'>,
+  startAt: number,
+  depth: number,
+  meta: Meta,
+): void {
   let at = startAt;
   let added = false;
   const thread = { active: true };
@@ -32,11 +38,14 @@ export function scheduleEffectGraph<Host, Meta>(queue: EffectGraphTask<Host, Met
 }
 
 /** Drain every task due at `now`, including a due function/instance call queued by another due task. */
-export function runScheduledEffectGraphs<Host, Meta>(queue: EffectGraphTask<Host, Meta>[], now: number,
+export function runScheduledEffectGraphs<Host, Meta>(
+  queue: EffectGraphTask<Host, Meta>[],
+  now: number,
   hooks: {
     condition(host: Host, node: EffectNode, meta: Meta): boolean;
     execute(host: Host, node: EffectNode, depth: number, meta: Meta): void;
-  }): void {
+  },
+): void {
   while (queue.length && queue[0].at <= now) {
     const task = queue.shift()!;
     if (!task.thread.active) continue;
@@ -62,12 +71,15 @@ function conditionWord(value: number): number {
 
 /** The condition node shared by interactive Play and the deterministic autotest runner. Host motion is a
  * callback because browser Play owns scene objects while the headless runner owns only their observed state. */
-export function effectConditionPasses(node: EffectNode, state: {
-  riderSpeed: number;
-  random?: () => number;
-  humanRider?: boolean;
-  hostIdle?: boolean;
-}): boolean {
+export function effectConditionPasses(
+  node: EffectNode,
+  state: {
+    riderSpeed: number;
+    random?: () => number;
+    humanRider?: boolean;
+    hostIdle?: boolean;
+  },
+): boolean {
   const raw = object(node.payload.type5);
   if (!raw) return true;
   const mode = Math.trunc(finite(raw.U0, -1));
@@ -106,13 +118,27 @@ export type EffectPlayCommand =
   | { kind: 'instance-hide'; killDetached: boolean }
   | { kind: 'rail-toggle'; spline: string; enabled: boolean }
   | { kind: 'roller'; mass: number; direction: V3 }
-  | { kind: 'mesh-throw'; frameStep: number; duration: number; direction: V3; velocityScale: V3; directionScale: number }
+  | {
+      kind: 'mesh-throw';
+      frameStep: number;
+      duration: number;
+      direction: V3;
+      velocityScale: V3;
+      directionScale: number;
+    }
   | { kind: 'fence-flex'; amount: number }
   | { kind: 'flag-wave'; variant: number; amplitude: number; wavelength: number }
-  | { kind: 'spline-motion'; spline: string | null; endMode: number; orientationMode: number;
-      instanceCount: number; speed: number; yawOffset: number;
+  | {
+      kind: 'spline-motion';
+      spline: string | null;
+      endMode: number;
+      orientationMode: number;
+      instanceCount: number;
+      speed: number;
+      yawOffset: number;
       /** Optional untextured line drawn over the referenced route. A gondola cable is one use, not its identity. */
-      splineLine: { enabled: boolean; color: [number, number, number, number] } };
+      splineLine: { enabled: boolean; color: [number, number, number, number] };
+    };
 
 /**
  * The pickup pop shared with the Unity runtimes: disappear immediately, hold long enough for the rider to
@@ -177,8 +203,13 @@ export function splineOrientationAxes(mode: number): { followYaw: boolean; follo
 
 /** Build the yaw/pitch used by the Three.js preview from a normalized forward path tangent. The native ping-pong
  * return leg adds its direction flip even when tangent yaw is otherwise suppressed. */
-export function splineOrientationAngles(tangent: V3, direction: number, endMode: number,
-  mode: number, yawOffset: number): { yaw: number; pitch: number } {
+export function splineOrientationAngles(
+  tangent: V3,
+  direction: number,
+  endMode: number,
+  mode: number,
+  yawOffset: number,
+): { yaw: number; pitch: number } {
   const axes = splineOrientationAxes(mode);
   const travelSign = direction < 0 ? -1 : 1;
   const reverseYaw = endMode === 2 && travelSign < 0 ? Math.PI : 0;
@@ -198,8 +229,14 @@ export function rollerPreviewImpact(random: () => number = Math.random): V3 {
 
 /** Advance the native spline-animation cursor. At the forward end: 0 finishes, 2 reverses, 3 holds, and every
  * other integer wraps. At the starting end only mode 2 reverses; all other modes clamp there. */
-export function stepSplineMotionDistance(distance: number, direction: number, speed: number,
-  dt: number, length: number, endMode: number): SplineMotionStep {
+export function stepSplineMotionDistance(
+  distance: number,
+  direction: number,
+  speed: number,
+  dt: number,
+  length: number,
+  endMode: number,
+): SplineMotionStep {
   if (!(length > 0)) return { distance: 0, direction, stopped: true, finished: false };
   const travel = Math.abs(speed) * Math.max(0, dt);
   let next = distance + travel * direction;
@@ -243,13 +280,14 @@ export function splineMotionCopyDistances(distance: number, length: number, inst
 }
 
 const object = (value: JsonValue | undefined): JsonObject | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as JsonObject : null;
+  typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as JsonObject) : null;
 const finite = (value: JsonValue | undefined, fallback = 0): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-const unit = (value: JsonValue | undefined, fallback = 1): number =>
-  Math.max(0, Math.min(1, finite(value, fallback)));
+const unit = (value: JsonValue | undefined, fallback = 1): number => Math.max(0, Math.min(1, finite(value, fallback)));
 const vec3 = (value: JsonObject | null, keys: readonly string[]): V3 => [
-  finite(value?.[keys[0]]), finite(value?.[keys[1]]), finite(value?.[keys[2]]),
+  finite(value?.[keys[0]]),
+  finite(value?.[keys[1]]),
+  finite(value?.[keys[2]]),
 ];
 
 /** Decode only semantics established by the RE/spec. Unknown, receiver-dependent, and unauthored operations
@@ -258,47 +296,66 @@ export function effectPlayCommand(node: EffectNode): EffectPlayCommand | null {
   const type0 = object(node.payload.type0);
   if (node.mainType === 3 || node.mainType === 9) {
     const control = object(node.mainType === 3 ? node.payload.type3 : node.payload.type9);
-    if (control) return {
-      kind: 'property-control', command: Math.trunc(finite(control.U0)), value: finite(control.U1),
-    };
+    if (control)
+      return {
+        kind: 'property-control',
+        command: Math.trunc(finite(control.U0)),
+        value: finite(control.U1),
+      };
   }
   switch (node.semanticType) {
-    case 'rider.reset': return { kind: 'rider-reset' };
+    case 'rider.reset':
+      return { kind: 'rider-reset' };
     case 'hud.message': {
       const text = typeof node.payload.HudText === 'string' ? node.payload.HudText.trim() : '';
       if (!text) return null;
       return {
-        kind: 'hud-message', text,
+        kind: 'hud-message',
+        text,
         color: [unit(node.payload.HudRed), unit(node.payload.HudGreen), unit(node.payload.HudBlue)],
         // The patched retail HUD owns this lifetime; keeping the preview identical makes an autotest cell
         // legible without turning the debug message into persistent editor state.
         durationSeconds: 2.5,
       };
     }
-    case 'score.multiplier': return {
-      kind: 'score-multiplier', multiplier: Math.max(1, finite(node.payload.MultiplierScore, 1)),
-    };
-    case 'rider.boost': return { kind: 'speed-boost', amount: Math.max(0, finite(node.payload.type17)) };
+    case 'score.multiplier':
+      return {
+        kind: 'score-multiplier',
+        multiplier: Math.max(1, finite(node.payload.MultiplierScore, 1)),
+      };
+    case 'rider.boost':
+      return { kind: 'speed-boost', amount: Math.max(0, finite(node.payload.type17)) };
     case 'trick.boost':
     case 'rider.trick-window':
       return { kind: 'trick-boost', seconds: Math.max(0, finite(node.payload.type18)) };
-    case 'rider.teleport': return { kind: 'teleport', instance: node.references?.instance ?? null };
+    case 'rider.teleport':
+      return { kind: 'teleport', instance: node.references?.instance ?? null };
     // DeadNode modes 2–4 hide the instance and disarm its collision, including ordinary collision chains
     // such as Elysium's delayed glass break [Trailmap: 230-deadnode-modes]. Modes 0/1 only affect its node.
-    case 'property.node-destroy': return { kind: 'node-stop', destroy: true };
-    case 'property.node-pause': return { kind: 'node-stop', destroy: false };
+    case 'property.node-destroy':
+      return { kind: 'node-stop', destroy: true };
+    case 'property.node-pause':
+      return { kind: 'node-stop', destroy: false };
     case 'property.node-tombstone':
-    case 'property.breakable-kill': return { kind: 'instance-hide', killDetached: false };
-    case 'property.node-tombstone-flagged': return { kind: 'instance-hide', killDetached: true };
-    case 'spline.toggle': return node.references?.spline
-      ? { kind: 'rail-toggle', spline: node.references.spline, enabled: finite(object(node.payload.Spline)?.Effect) !== 0 }
-      : null;
+    case 'property.breakable-kill':
+      return { kind: 'instance-hide', killDetached: false };
+    case 'property.node-tombstone-flagged':
+      return { kind: 'instance-hide', killDetached: true };
+    case 'spline.toggle':
+      return node.references?.spline
+        ? {
+            kind: 'rail-toggle',
+            spline: node.references.spline,
+            enabled: finite(object(node.payload.Spline)?.Effect) !== 0,
+          }
+        : null;
     case 'property.roller': {
       const roller = object(type0?.type0Sub0);
       const mass = finite(roller?.U0);
       if (mass <= 0) return null;
       return {
-        kind: 'roller', mass,
+        kind: 'roller',
+        mass,
         direction: vec3(roller, ['U3', 'U4', 'U5']),
       };
     }
@@ -318,8 +375,10 @@ export function effectPlayCommand(node: EffectNode): EffectPlayCommand | null {
       const mesh = object(type0?.type0Sub20);
       return {
         kind: 'mesh-throw',
-        frameStep: Math.max(0, finite(mesh?.U1)), duration: Math.max(0, finite(mesh?.U2)),
-        direction: vec3(mesh, ['U3', 'U4', 'U5']), velocityScale: vec3(mesh, ['U6', 'U7', 'U8']),
+        frameStep: Math.max(0, finite(mesh?.U1)),
+        duration: Math.max(0, finite(mesh?.U2)),
+        direction: vec3(mesh, ['U3', 'U4', 'U5']),
+        velocityScale: vec3(mesh, ['U6', 'U7', 'U8']),
         directionScale: finite(mesh?.U9, 1),
       };
     }
@@ -330,17 +389,22 @@ export function effectPlayCommand(node: EffectNode): EffectPlayCommand | null {
     case 'property.flag': {
       const flag = object(type0?.type0Sub13);
       return {
-        kind: 'flag-wave', variant: Math.trunc(finite(flag?.U0)),
-        amplitude: finite(flag?.U1), wavelength: finite(flag?.U2),
+        kind: 'flag-wave',
+        variant: Math.trunc(finite(flag?.U0)),
+        amplitude: finite(flag?.U1),
+        wavelength: finite(flag?.U2),
       };
     }
     case 'spline.animation': {
       const spline = object(object(node.payload.type2)?.SplineAnimation);
       return {
-        kind: 'spline-motion', spline: node.references?.spline ?? null,
-        endMode: Math.trunc(finite(spline?.U1)), orientationMode: Math.trunc(finite(spline?.U2)),
+        kind: 'spline-motion',
+        spline: node.references?.spline ?? null,
+        endMode: Math.trunc(finite(spline?.U1)),
+        orientationMode: Math.trunc(finite(spline?.U2)),
         instanceCount: Math.max(1, Math.trunc(finite(spline?.InstanceCount, 1))),
-        speed: finite(spline?.AnimationSpeed), yawOffset: finite(spline?.U5),
+        speed: finite(spline?.AnimationSpeed),
+        yawOffset: finite(spline?.U5),
         splineLine: {
           enabled: finite(spline?.U6) !== 0,
           color: [finite(spline?.R), finite(spline?.G), finite(spline?.B), finite(spline?.U7)],

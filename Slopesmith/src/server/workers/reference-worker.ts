@@ -15,7 +15,8 @@ parentPort?.on('message', async (task: WorkerTask) => {
   try {
     if (task.kind === 'document-read') {
       const [{ canonicalJson }, { migrateMountain }] = await Promise.all([
-        import('../../core/doc/canonical'), import('../../core/doc/mountain'),
+        import('../../core/doc/canonical'),
+        import('../../core/doc/mountain'),
       ]);
       const document = migrateMountain(JSON.parse(await readFile(task.file, 'utf8')));
       parentPort?.postMessage({ ok: true, value: { document, canonical: canonicalJson(document) } });
@@ -24,7 +25,8 @@ parentPort?.on('message', async (task: WorkerTask) => {
 
     if (task.kind === 'document') {
       const [{ canonicalJson }, { serializeMountain }] = await Promise.all([
-        import('../../core/doc/canonical'), import('../../core/doc/serialize'),
+        import('../../core/doc/canonical'),
+        import('../../core/doc/serialize'),
       ]);
       parentPort?.postMessage({
         ok: true,

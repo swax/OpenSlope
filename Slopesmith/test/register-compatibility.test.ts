@@ -21,7 +21,10 @@ interface Message {
   changes: [string, unknown?][];
   steps?: unknown;
 }
-interface Client { socket: WebSocket; messages: Message[] }
+interface Client {
+  socket: WebSocket;
+  messages: Message[];
+}
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-register-compatibility-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = root;
@@ -47,8 +50,9 @@ try {
   const corners = document.quads[0];
   const x = corners.reduce((sum, at) => sum + document.vertices[at * 3], 0) / corners.length;
   const z = corners.reduce((sum, at) => sum + document.vertices[at * 3 + 2], 0) / corners.length;
-  document.props = [{ id: 'prop:compat', level: 'Custom', model: 0, name: 'Compatibility',
-    pos: [x, 1_000_000, z], yaw: 0, scale: 1 }];
+  document.props = [
+    { id: 'prop:compat', level: 'Custom', model: 0, name: 'Compatibility', pos: [x, 1_000_000, z], yaw: 0, scale: 1 },
+  ];
   const created = await createProject(document);
   const projectId = created.project.id;
   const checkpoint = await checkpointNow(projectId, { reason: 'named', note: 'Before editing' });
@@ -69,14 +73,21 @@ try {
   }
   async function post(path: string, body: unknown): Promise<void> {
     const response = await fetch(`${url}/api/projects/${projectId}/${path}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
     });
     assert.equal(response.status, 200, await response.text());
   }
   function followLegacy(update: Message): void {
-    assert(update.changes.every(([key]) => !key.startsWith('o/') || !key.slice(2, key.indexOf('/', 2)).includes('.')),
-      'a legacy client must never receive object-field keys');
-    const applied = applyRegisters(olderReplica, update.changes.map(([key, value]) => [key, value]));
+    assert(
+      update.changes.every(([key]) => !key.startsWith('o/') || !key.slice(2, key.indexOf('/', 2)).includes('.')),
+      'a legacy client must never receive object-field keys',
+    );
+    const applied = applyRegisters(
+      olderReplica,
+      update.changes.map(([key, value]) => [key, value]),
+    );
     assert.equal(applied.refused, 0);
     assert.deepEqual(olderReplica.props, roomFor(projectId)!.doc.props);
   }
@@ -90,15 +101,35 @@ try {
   let oldFrom = older.messages.length;
   const currentFrom = current.messages.length;
   const writerFrom = writer.messages.length;
-  writer.socket.send(JSON.stringify({ t: 'assign', batch: 1, changes: [
-    ['o/prop.yaw/prop:compat', 45], ['o/prop.scale/prop:compat', 2],
-  ] }));
+  writer.socket.send(
+    JSON.stringify({
+      t: 'assign',
+      batch: 1,
+      changes: [
+        ['o/prop.yaw/prop:compat', 45],
+        ['o/prop.scale/prop:compat', 2],
+      ],
+    }),
+  );
   const live = await message(older, 'sync', oldFrom);
-  assert.deepEqual(live.changes.map(([key]) => key), ['o/prop/prop:compat'], 'one whole object covers both fields');
+  assert.deepEqual(
+    live.changes.map(([key]) => key),
+    ['o/prop/prop:compat'],
+    'one whole object covers both fields',
+  );
   followLegacy(live);
-  assert.deepEqual((await message(current, 'sync', currentFrom)).changes,
-    [['o/prop.yaw/prop:compat', 45], ['o/prop.scale/prop:compat', 2]], 'current clients keep field updates');
-  assert(!writer.messages.slice(writerFrom).some(entry => entry.t === 'sync'), 'the sender does not receive its own relay');
+  assert.deepEqual(
+    (await message(current, 'sync', currentFrom)).changes,
+    [
+      ['o/prop.yaw/prop:compat', 45],
+      ['o/prop.scale/prop:compat', 2],
+    ],
+    'current clients keep field updates',
+  );
+  assert(
+    !writer.messages.slice(writerFrom).some(entry => entry.t === 'sync'),
+    'the sender does not receive its own relay',
+  );
 
   oldFrom = older.messages.length;
   await post('registers', { changes: [{ key: 'o/prop.yaw/prop:compat', value: 90 }] });
@@ -115,7 +146,10 @@ try {
   older.socket.send(JSON.stringify({ t: 'watch', projectId, at: joined.at, room: joined.room, doc: 3, core: '2' }));
   const caughtUp = await message(older, 'caught-up', oldFrom);
   assert.equal(caughtUp.steps, undefined, 'older clients receive flat assignments');
-  assert.deepEqual(caughtUp.changes.map(([key]) => key), ['o/prop/prop:compat']);
+  assert.deepEqual(
+    caughtUp.changes.map(([key]) => key),
+    ['o/prop/prop:compat'],
+  );
   followLegacy(caughtUp);
 
   oldFrom = older.messages.length;
@@ -131,7 +165,11 @@ try {
   oldFrom = older.messages.length;
   older.socket.send(JSON.stringify({ t: 'watch', projectId, at: joined.at, room: joined.room, doc: 3, core: '2' }));
   const afterDelete = await message(older, 'caught-up', oldFrom);
-  assert.deepEqual(afterDelete.changes, [['o/prop/prop:compat']], 'catch-up does not recreate an object edited then deleted');
+  assert.deepEqual(
+    afterDelete.changes,
+    [['o/prop/prop:compat']],
+    'catch-up does not recreate an object edited then deleted',
+  );
   followLegacy(afterDelete);
   console.log('Legacy object updates, current field updates, HTTP edits, seating, reverts, and catch-up passed.');
 } finally {

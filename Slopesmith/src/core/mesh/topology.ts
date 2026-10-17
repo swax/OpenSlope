@@ -56,34 +56,43 @@ const ZERO3: V3 = [0, 0, 0];
  */
 export function quadControlPoints(mesh: QuadMesh, eh: EdgeHandle, quad: number, twist?: readonly V3[] | null): V3[] {
   const [ai, bi, ci, di] = mesh.quads[quad];
-  const A = vAt(mesh, ai), B = vAt(mesh, bi), C = vAt(mesh, ci), D = vAt(mesh, di);
+  const A = vAt(mesh, ai),
+    B = vAt(mesh, bi),
+    C = vAt(mesh, ci),
+    D = vAt(mesh, di);
   // one handle per in-quad directed edge (A<->B and C<->D across v; A<->C and B<->D down u)
-  const hAB = eh(ai, bi), hBA = eh(bi, ai), hAC = eh(ai, ci), hCA = eh(ci, ai);
+  const hAB = eh(ai, bi),
+    hBA = eh(bi, ai),
+    hAC = eh(ai, ci),
+    hCA = eh(ci, ai);
   // A WEDGE [A,B,C,C] (di===ci) folds the D–C side to point C (docs/017 S3): its two handles are zero, giving a
   // collapsed-edge bicubic (the u=1 control row folds to C) byte-compatible with the reference wedge encoding.
   // eh must not be asked for that self-edge; B<->D is still the real B–C edge, so it reads normally.
   const collapsed = di === ci;
-  const hBD = eh(bi, di), hDB = eh(di, bi);
-  const hCD = collapsed ? ZERO3 : eh(ci, di), hDC = collapsed ? ZERO3 : eh(di, ci);
+  const hBD = eh(bi, di),
+    hDB = eh(di, bi);
+  const hCD = collapsed ? ZERO3 : eh(ci, di),
+    hDC = collapsed ? ZERO3 : eh(di, ci);
 
   const cp: V3[] = new Array(16);
   cp[0] = A;
-  cp[1] = add(A, hAB);              // A -> +v (toward B)
-  cp[2] = add(B, hBA);              // B -> -v (toward A)
+  cp[1] = add(A, hAB); // A -> +v (toward B)
+  cp[2] = add(B, hBA); // B -> -v (toward A)
   cp[3] = B;
-  cp[4] = add(A, hAC);              // A -> +u (toward C)
-  cp[5] = add(add(A, hAC), hAB);    // interior at A (zero twist)
-  cp[6] = add(add(B, hBA), hBD);    // interior at B
-  cp[7] = add(B, hBD);              // B -> +u (toward D)
-  cp[8] = add(C, hCA);              // C -> -u (toward A)
-  cp[9] = add(add(C, hCA), hCD);    // interior at C
-  cp[10] = add(add(D, hDB), hDC);   // interior at D
-  cp[11] = add(D, hDB);             // D -> -u (toward B)
+  cp[4] = add(A, hAC); // A -> +u (toward C)
+  cp[5] = add(add(A, hAC), hAB); // interior at A (zero twist)
+  cp[6] = add(add(B, hBA), hBD); // interior at B
+  cp[7] = add(B, hBD); // B -> +u (toward D)
+  cp[8] = add(C, hCA); // C -> -u (toward A)
+  cp[9] = add(add(C, hCA), hCD); // interior at C
+  cp[10] = add(add(D, hDB), hDC); // interior at D
+  cp[11] = add(D, hDB); // D -> -u (toward B)
   cp[12] = C;
-  cp[13] = add(C, hCD);             // C -> +v (toward D)
-  cp[14] = add(D, hDC);             // D -> -v (toward C)
+  cp[13] = add(C, hCD); // C -> +v (toward D)
+  cp[14] = add(D, hDC); // D -> -v (toward C)
   cp[15] = D;
-  if (twist) {                       // sculpt the interiors off zero-twist (order A/B/C/D → cp 5/6/9/10)
+  if (twist) {
+    // sculpt the interiors off zero-twist (order A/B/C/D → cp 5/6/9/10)
     if (twist[0]) cp[5] = add(cp[5], twist[0]);
     if (twist[1]) cp[6] = add(cp[6], twist[1]);
     if (twist[2]) cp[9] = add(cp[9], twist[2]);
@@ -112,12 +121,22 @@ export function topologyFromQuads(quads: number[][], vertexCount: number): Surfa
   const getEdge = (a: number, b: number): number => {
     const k = ekey(a, b);
     let id = edgeId.get(k);
-    if (id === undefined) { id = edgeCells.length; edgeId.set(k, id); edgeCells.push([]); edgeEnds.push(a < b ? [a, b] : [b, a]); }
+    if (id === undefined) {
+      id = edgeCells.length;
+      edgeId.set(k, id);
+      edgeCells.push([]);
+      edgeEnds.push(a < b ? [a, b] : [b, a]);
+    }
     return id;
   };
   // A wedge's collapsed side (docs/017 S3) is a PRIVATE single-cell edge — never the shared "C,C" key (which
   // would fuse every same-apex wedge), so face loops treat it as a wall (a strip ends there, like a rim).
-  const wallEdge = (a: number): number => { const id = edgeCells.length; edgeCells.push([]); edgeEnds.push([a, a]); return id; };
+  const wallEdge = (a: number): number => {
+    const id = edgeCells.length;
+    edgeCells.push([]);
+    edgeEnds.push([a, a]);
+    return id;
+  };
   const cellEdges: number[][] = new Array(quads.length);
   const vertQuads: Set<number>[] = Array.from({ length: vertexCount }, () => new Set<number>());
   for (let q = 0; q < quads.length; q++) {
@@ -131,7 +150,11 @@ export function topologyFromQuads(quads: number[][], vertexCount: number): Surfa
   // a vertex is interior iff every incident edge is shared by two quads; a boundary (rim) edge un-flags both ends
   const interior = new Array<boolean>(vertexCount).fill(true);
   for (let id = 0; id < edgeCells.length; id++) {
-    if (edgeCells[id].length < 2) { const [a, b] = edgeEnds[id]; interior[a] = false; interior[b] = false; }
+    if (edgeCells[id].length < 2) {
+      const [a, b] = edgeEnds[id];
+      interior[a] = false;
+      interior[b] = false;
+    }
   }
   const isPole = (v: number) => interior[v] && vertQuads[v].size !== 4;
   const edgeTouchesPole = edgeEnds.map(([a, b]) => isPole(a) || isPole(b));
@@ -140,7 +163,14 @@ export function topologyFromQuads(quads: number[][], vertexCount: number): Surfa
 
 /** Wrap a vertex cloud + quad/free-edge list as a QuadMesh (surface topology still comes from the quads). */
 export function buildQuadMesh(vertices: number[], quads: number[][], freeEdges: [number, number][] = []): QuadMesh {
-  return { vertices, quads, freeEdges, quadCount: quads.length, vertexCount: vertices.length / 3, topology: topologyFromQuads(quads, vertices.length / 3) };
+  return {
+    vertices,
+    quads,
+    freeEdges,
+    quadCount: quads.length,
+    vertexCount: vertices.length / 3,
+    topology: topologyFromQuads(quads, vertices.length / 3),
+  };
 }
 
 /** The neighbour straight across `from` from `to`: the unique incident edge sharing NO quad with from→to (the
@@ -148,11 +178,15 @@ export function buildQuadMesh(vertices: number[], quads: number[][], freeEdges: 
  *  the inward edge at a rim corner. The two tangents on this axis are the pair a smooth corner keeps collinear. */
 export function oppositeNeighbour(adj: MeshAdjacency, from: number, to: number): number | null {
   const qs = adj.edgeQuads.get(ekey(from, to)) ?? [];
-  let opp: number | null = null, count = 0;
+  let opp: number | null = null,
+    count = 0;
   for (const x of adj.neighbors[from] ?? []) {
     if (x === to) continue;
     const qx = adj.edgeQuads.get(ekey(from, x)) ?? [];
-    if (!qx.some(q => qs.includes(q))) { opp = x; count++; }
+    if (!qx.some(q => qs.includes(q))) {
+      opp = x;
+      count++;
+    }
   }
   return count === 1 ? opp : null;
 }
@@ -168,8 +202,11 @@ export function oppositeNeighbour(adj: MeshAdjacency, from: number, to: number):
  * angle-weighted tangent plane fitted to the incident quad fan. That gives the pole a shared smooth frame
  * instead of making its automatic handles indistinguishable from a one-sided crease.
  */
-export function meshEdgeHandles(mesh: QuadMesh, overrides?: Record<string, V3>,
-  adj: MeshAdjacency = meshAdjacency(mesh)): EdgeHandle {
+export function meshEdgeHandles(
+  mesh: QuadMesh,
+  overrides?: Record<string, V3>,
+  adj: MeshAdjacency = meshAdjacency(mesh),
+): EdgeHandle {
   const { neighbors, edgeQuads } = adj;
   const P = (i: number): V3 => readVertex(mesh.vertices, i);
   const poles = extraordinaryPoles(adj);
@@ -181,14 +218,18 @@ export function meshEdgeHandles(mesh: QuadMesh, overrides?: Record<string, V3>,
     if (cached) return cached;
     const incident = new Set<number>();
     for (const nb of neighbors[id]) for (const quad of edgeQuads.get(ekey(id, nb)) ?? []) incident.add(quad);
-    let sum: V3 = [0, 0, 0], areaFallback: V3 = [0, 0, 0];
+    let sum: V3 = [0, 0, 0],
+      areaFallback: V3 = [0, 0, 0];
     for (const quad of incident) {
-      const corners = mesh.quads[quad], slot = corners.indexOf(id);
+      const corners = mesh.quads[quad],
+        slot = corners.indexOf(id);
       if (slot < 0) continue;
       const [A, B, C, D] = corners.map(P);
       const dv = slot < 2 ? sub(B, A) : sub(D, C);
       const du = slot === 0 || slot === 2 ? sub(C, A) : sub(D, B);
-      const face = cross(dv, du), dvLen = len(dv), duLen = len(du);
+      const face = cross(dv, du),
+        dvLen = len(dv),
+        duLen = len(du);
       if (len(face) < 1e-10 || dvLen < 1e-10 || duLen < 1e-10) continue;
       // Winding already establishes the correct side. Do not flip a legitimate concave contribution toward
       // the first face; weight its unit normal by the sector's corner angle so long/skewed quads cannot own
@@ -197,7 +238,7 @@ export function meshEdgeHandles(mesh: QuadMesh, overrides?: Record<string, V3>,
       sum = add(sum, mul(face, Math.acos(cosine) / len(face)));
       areaFallback = add(areaFallback, face);
     }
-    const result = len(sum) > 1e-10 ? norm(sum) : len(areaFallback) > 1e-10 ? norm(areaFallback) : [0, 1, 0] as V3;
+    const result = len(sum) > 1e-10 ? norm(sum) : len(areaFallback) > 1e-10 ? norm(areaFallback) : ([0, 1, 0] as V3);
     poleNormals.set(id, result);
     return result;
   };
@@ -206,9 +247,11 @@ export function meshEdgeHandles(mesh: QuadMesh, overrides?: Record<string, V3>,
     if (ov) return ov;
     const opp = oppositeNeighbour(adj, from, to);
     let t: V3;
-    if (opp !== null) t = besselTangent(P(opp), P(from), P(to)); // two-sided: grid-interior identical
+    if (opp !== null)
+      t = besselTangent(P(opp), P(from), P(to)); // two-sided: grid-interior identical
     else if (poles.has(from)) {
-      const chord = sub(P(to), P(from)), normal = poleNormal(from);
+      const chord = sub(P(to), P(from)),
+        normal = poleNormal(from);
       const projected = sub(chord, mul(normal, dot(chord, normal)));
       t = len(projected) > 1e-10 ? projected : chord;
     } else t = besselTangent(null, P(from), P(to)); // one-sided rim/free edge
@@ -227,15 +270,21 @@ export function meshEdgeHandles(mesh: QuadMesh, overrides?: Record<string, V3>,
  * (an edge on a single quad), so the outline can draw a distinct colour. `adj` defaults to a fresh build but
  * the caller can pass one it already has.
  */
-export function meshCageEdges(mesh: QuadMesh, eh: EdgeHandle, adj: MeshAdjacency = meshAdjacency(mesh), seg = 6):
-  { interior: number[]; boundary: number[] } {
+export function meshCageEdges(
+  mesh: QuadMesh,
+  eh: EdgeHandle,
+  adj: MeshAdjacency = meshAdjacency(mesh),
+  seg = 6,
+): { interior: number[]; boundary: number[] } {
   const P = (id: number): V3 => readVertex(mesh.vertices, id);
-  const interior: number[] = [], boundary: number[] = [];
+  const interior: number[] = [],
+    boundary: number[] = [];
   for (let a = 0; a < adj.neighbors.length; a++) {
     for (const b of adj.neighbors[a]) {
       if (b < a) continue; // each undirected edge once
       const quads = adj.edgeQuads.get(ekey(a, b)) ?? [];
-      const Pa = P(a), Pb = P(b);
+      const Pa = P(a),
+        Pb = P(b);
       pushCubicEdge(quads.length >= 2 ? interior : boundary, Pa, add(Pa, eh(a, b)), add(Pb, eh(b, a)), Pb, seg);
     }
   }
@@ -285,7 +334,10 @@ export function extraordinaryPoles(adj: MeshAdjacency): ReadonlySet<number> {
 export function bilinearTwist(mesh: QuadMesh, quad: number): [V3, V3, V3, V3] {
   const [ai, bi, ci, di] = mesh.quads[quad];
   const P = (i: number): V3 => readVertex(mesh.vertices, i);
-  const A = P(ai), B = P(bi), C = P(ci), D = P(di);
+  const A = P(ai),
+    B = P(bi),
+    C = P(ci),
+    D = P(di);
   const T: V3 = [(A[0] - B[0] - C[0] + D[0]) / 9, (A[1] - B[1] - C[1] + D[1]) / 9, (A[2] - B[2] - C[2] + D[2]) / 9];
   const N: V3 = [-T[0], -T[1], -T[2]];
   return [T, N, N, T];
@@ -316,17 +368,28 @@ export function meshAdjacency(mesh: QuadMesh): MeshAdjacency {
   const edgeQuads = new Map<string, number[]>();
   for (let q = 0; q < mesh.quads.length; q++) {
     const [A, B, C, D] = mesh.quads[q];
-    for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
+    for (const [a, b] of [
+      [A, B],
+      [B, D],
+      [D, C],
+      [C, A],
+    ] as [number, number][]) {
       if (a === b) continue; // a wedge's collapsed D–C side (docs/017): no self-edge, no self-neighbour
-      nbr[a].add(b); nbr[b].add(a);
+      nbr[a].add(b);
+      nbr[b].add(a);
       const k = ekey(a, b);
-      let arr = edgeQuads.get(k); if (!arr) { arr = []; edgeQuads.set(k, arr); }
+      let arr = edgeQuads.get(k);
+      if (!arr) {
+        arr = [];
+        edgeQuads.set(k, arr);
+      }
       arr.push(q);
     }
   }
   for (const [a, b] of mesh.freeEdges) {
     if (a === b || a < 0 || b < 0 || a >= mesh.vertexCount || b >= mesh.vertexCount) continue;
-    nbr[a].add(b); nbr[b].add(a);
+    nbr[a].add(b);
+    nbr[b].add(a);
     if (!edgeQuads.has(ekey(a, b))) edgeQuads.set(ekey(a, b), []);
   }
   return { neighbors: nbr.map(s => [...s]), edgeQuads };
@@ -362,7 +425,10 @@ export function vertexAxes(adj: MeshAdjacency, id: number): { u: [number, number
     let opp = -1;
     for (const y of nbrs) {
       if (y === x || used.has(y)) continue;
-      if (!qsOf(x).some(q => qsOf(y).includes(q))) { opp = y; break; } // shares no quad with x → its opposite
+      if (!qsOf(x).some(q => qsOf(y).includes(q))) {
+        opp = y;
+        break;
+      } // shares no quad with x → its opposite
     }
     if (opp >= 0) used.add(opp);
     axes.push([x, opp]);
@@ -382,7 +448,8 @@ export function vertexFrame(pos: number[], adj: MeshAdjacency, id: number): { tu
   const axisVec = ([a, b]: [number, number]): V3 =>
     a >= 0 && b >= 0 ? sub(P(b), P(a)) : b >= 0 ? sub(P(b), P(id)) : a >= 0 ? sub(P(id), P(a)) : [0, 0, 0];
   const { u, v } = vertexAxes(adj, id);
-  const tu = axisVec(u), tv = axisVec(v);
+  const tu = axisVec(u),
+    tv = axisVec(v);
   let n = cross(tv, tu);
   if (n[1] < 0) n = [-n[0], -n[1], -n[2]]; // skyward (heightfield convention)
   return { tu, tv, n: norm(n) };
@@ -405,7 +472,10 @@ export function quadParity(mesh: QuadMesh): number[] {
       const q = stack.pop()!;
       for (const e of topo.cellEdges[q]) {
         for (const nb of topo.edgeCells[e] ?? []) {
-          if (nb !== q && color[nb] < 0) { color[nb] = color[q] ^ 1; stack.push(nb); }
+          if (nb !== q && color[nb] < 0) {
+            color[nb] = color[q] ^ 1;
+            stack.push(nb);
+          }
         }
       }
     }

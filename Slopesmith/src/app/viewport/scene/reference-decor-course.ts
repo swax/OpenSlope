@@ -4,7 +4,11 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type { V3 } from '../../../core/doc/types';
 import {
-  editorFromRaw, referenceSplineIsGrindRail, type RefAiPath, type RefCourseAnchors, type RefSplineRaw,
+  editorFromRaw,
+  referenceSplineIsGrindRail,
+  type RefAiPath,
+  type RefCourseAnchors,
+  type RefSplineRaw,
 } from '../../../core/reference/terrain';
 import { RAIL_STYLE_ICE, RAIL_STYLE_METAL, RAIL_STYLE_WOOD } from '../../../core/rails/rails';
 import { textSprite } from '../shared/overlays';
@@ -23,7 +27,7 @@ const REF_RAIL_DEPTH_BIAS = { polygonOffset: true, polygonOffsetFactor: -2, poly
  * like the rest of the reference decoration.
  */
 export function createReferenceCourseDecor(stage: Stage) {
-  const refCourseGroup = new THREE.Group();      // the level's recovered main course line
+  const refCourseGroup = new THREE.Group(); // the level's recovered main course line
   // the SAME course-guide style the authored run draws (green line + dim green path-point beads,
   // viewport.ts / scene/course-markers); what marks this one as the reference's is the missing knot
   // handles — it isn't editable
@@ -31,26 +35,40 @@ export function createReferenceCourseDecor(stage: Stage) {
   const refCourseBeadGeo = new THREE.SphereGeometry(1.6, 8, 6);
   const refCourseBeadMat = new THREE.MeshBasicMaterial({ color: 0x36a746 });
   let refCourseVisible = false;
-  const refAiGroup = new THREE.Group();          // the level's AI-path network (AIP.json AIPaths)
+  const refAiGroup = new THREE.Group(); // the level's AI-path network (AIP.json AIPaths)
   // start paths (StartPosList — one route per race-grid slot) in amber, the same colour the authored AI lines
   // draw in; the rest of the network a violet clearly apart from the course guide's green
   const refAiStartMat = new THREE.LineBasicMaterial({ color: 0xffc24a });
   const refAiMat = new THREE.LineBasicMaterial({ color: 0x9a6bff });
   let refAiVisible = false;
-  const refRailGroup = new THREE.Group();        // the level's grind splines (Splines.json)
+  const refRailGroup = new THREE.Group(); // the level's grind splines (Splines.json)
   // The SAME surface palette an authored grind rail wears, at the same fat-line width (scene/rails.ts), because
   // it is the same thing: a curve the rail query can catch. Metal is red, wood yellow, and ice blue.
   // Depth-TESTED at the spline's TRUE authored coordinates. Retail curves already include their rider clearance
   // above the paired art, so adding the generated pipe radius here made the guide lie about the extracted data.
   // A level's whole rail network showing through the mountain is clutter, hence the retained depth test/bias.
-  const makeRefRailMaterial = (style: number, selected: boolean) => new LineMaterial({
-    color: railGuidePalette(style)[selected ? 'selected' : 'normal'],
-    linewidth: selected ? 3.5 : 2, transparent: true, opacity: selected ? 1 : 0.95,
-    depthWrite: false, side: THREE.DoubleSide, ...REF_RAIL_DEPTH_BIAS,
-  });
-  const refRailMaterials = new Map([RAIL_STYLE_METAL, RAIL_STYLE_WOOD, RAIL_STYLE_ICE].map(style => [style, {
-    normal: makeRefRailMaterial(style, false), selected: makeRefRailMaterial(style, true),
-  }] as const));
+  const makeRefRailMaterial = (style: number, selected: boolean) =>
+    new LineMaterial({
+      color: railGuidePalette(style)[selected ? 'selected' : 'normal'],
+      linewidth: selected ? 3.5 : 2,
+      transparent: true,
+      opacity: selected ? 1 : 0.95,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      ...REF_RAIL_DEPTH_BIAS,
+    });
+  const refRailMaterials = new Map(
+    [RAIL_STYLE_METAL, RAIL_STYLE_WOOD, RAIL_STYLE_ICE].map(
+      style =>
+        [
+          style,
+          {
+            normal: makeRefRailMaterial(style, false),
+            selected: makeRefRailMaterial(style, true),
+          },
+        ] as const,
+    ),
+  );
   const refRailMaterial = (style: number, selected: boolean) => {
     const pair = refRailMaterials.get(style) ?? refRailMaterials.get(RAIL_STYLE_METAL)!;
     return selected ? pair.selected : pair.normal;
@@ -67,17 +85,20 @@ export function createReferenceCourseDecor(stage: Stage) {
    *  dropped reference). */
   function setCourse(points: V3[] | null, anchors?: RefCourseAnchors | null) {
     for (const c of refCourseGroup.children) {
-      if (c instanceof THREE.InstancedMesh) c.dispose(); // the instance-matrix buffer is the mesh's own
+      if (c instanceof THREE.InstancedMesh)
+        c.dispose(); // the instance-matrix buffer is the mesh's own
       else if (c instanceof THREE.Line) c.geometry.dispose();
       else if (c instanceof THREE.Sprite) c.material.map?.dispose();
       else if (c instanceof THREE.Mesh) c.geometry.dispose();
     }
     refCourseGroup.clear();
     if (points && points.length >= 2) {
-      refCourseGroup.add(new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p[0], p[1], p[2]))),
-        refCourseMat,
-      ));
+      refCourseGroup.add(
+        new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p[0], p[1], p[2]))),
+          refCourseMat,
+        ),
+      );
       const beads = new THREE.InstancedMesh(refCourseBeadGeo, refCourseBeadMat, points.length);
       const m4 = new THREE.Matrix4();
       points.forEach((p, i) => beads.setMatrixAt(i, m4.makeTranslation(p[0], p[1], p[2])));
@@ -114,10 +135,12 @@ export function createReferenceCourseDecor(stage: Stage) {
         );
         pillar.position.set(pos[0], pos[1] + 3.5, pos[2]);
         refCourseGroup.add(pillar);
-        const minutes = Math.floor(checkpoint.bonusSeconds / 60), seconds = checkpoint.bonusSeconds % 60;
+        const minutes = Math.floor(checkpoint.bonusSeconds / 60),
+          seconds = checkpoint.bonusSeconds % 60;
         const tag = textSprite(
           `CP +${minutes}:${String(seconds).padStart(2, '0')} · line ${checkpoint.line + 1}`,
-          '#ffbd66', 18,
+          '#ffbd66',
+          18,
         );
         tag.position.set(pos[0], pos[1] + 9, pos[2]);
         refCourseGroup.add(tag);
@@ -141,10 +164,12 @@ export function createReferenceCourseDecor(stage: Stage) {
     refAiGroup.clear();
     if (paths) {
       for (const p of paths) {
-        refAiGroup.add(new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(p.points.map(q => new THREE.Vector3(q[0], q[1], q[2]))),
-          p.start ? refAiStartMat : refAiMat,
-        ));
+        refAiGroup.add(
+          new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(p.points.map(q => new THREE.Vector3(q[0], q[1], q[2]))),
+            p.start ? refAiStartMat : refAiMat,
+          ),
+        );
       }
     }
     refAiGroup.visible = refAiVisible && refAiGroup.children.length > 0;
@@ -182,11 +207,17 @@ export function createReferenceCourseDecor(stage: Stage) {
         // Ten samples a segment, matching the mover's own route line — enough that a shipped rail's bends
         // read as curves rather than chords, and the last point is left to the next segment's first.
         for (let k = 0; k < 10; k++) {
-          const t = k / 10, u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+          const t = k / 10,
+            u = 1 - t,
+            a = u * u * u,
+            b = 3 * u * u * t,
+            c = 3 * u * t * t,
+            d = t * t * t;
           points.push(
             a * b0[0] + b * b1[0] + c * b2[0] + d * b3[0],
             a * b0[1] + b * b1[1] + c * b2[1] + d * b3[1],
-            a * b0[2] + b * b1[2] + c * b2[2] + d * b3[2]);
+            a * b0[2] + b * b1[2] + c * b2[2] + d * b3[2],
+          );
         }
       }
       const last = spline.segments[spline.segments.length - 1];
@@ -218,22 +249,30 @@ export function createReferenceCourseDecor(stage: Stage) {
     selectedRailSpline = originalIndex;
     for (const child of refRailGroup.children) {
       const line = child as Line2;
-      line.material = refRailMaterial(line.userData.refSplineStyle,
-        line.userData.refSplineIndex === originalIndex);
+      line.material = refRailMaterial(line.userData.refSplineStyle, line.userData.refSplineIndex === originalIndex);
     }
   }
 
-  refCourseGroup.visible = false;        // shown with the Info-mode course guide (showCourse)
-  stage.refRoot.add(refCourseGroup);     // the recovered course line rides the reference frame too
-  refAiGroup.visible = false;            // shown on the Info "Show AI paths" toggle (showAiPaths)
-  stage.refRoot.add(refAiGroup);         // the AI network rides the reference frame too
-  refRailGroup.visible = false;          // shown throughout Effects mode (showRailSplines)
-  stage.refRoot.add(refRailGroup);       // the grind network rides the reference frame too
+  refCourseGroup.visible = false; // shown with the Info-mode course guide (showCourse)
+  stage.refRoot.add(refCourseGroup); // the recovered course line rides the reference frame too
+  refAiGroup.visible = false; // shown on the Info "Show AI paths" toggle (showAiPaths)
+  stage.refRoot.add(refAiGroup); // the AI network rides the reference frame too
+  refRailGroup.visible = false; // shown throughout Effects mode (showRailSplines)
+  stage.refRoot.add(refRailGroup); // the grind network rides the reference frame too
 
-  return { setCourse, showCourse, setAiPaths, showAiPaths, setRailSplines, showRailSplines, selectRailSpline,
+  return {
+    setCourse,
+    showCourse,
+    setAiPaths,
+    showAiPaths,
+    setRailSplines,
+    showRailSplines,
+    selectRailSpline,
     /** Fat lines rasterise in pixels; the shell's resize() feeds these the live canvas resolution. */
-    railSplineMaterials: [...refRailMaterials.values()].flatMap(materials =>
-      [materials.normal, materials.selected]),
+    railSplineMaterials: [...refRailMaterials.values()].flatMap(materials => [materials.normal, materials.selected]),
     /** Pickable in Effects mode: clicking a shipped grind curve inspects the rail it is. */
-    get railSplineGroup() { return refRailGroup; } };
+    get railSplineGroup() {
+      return refRailGroup;
+    },
+  };
 }

@@ -75,7 +75,11 @@ export interface GroupDef {
 }
 
 /** The JSON `/api/groups?level=` sends. */
-export interface GroupsPayload { level: string; groups: GroupDef[]; error?: string }
+export interface GroupsPayload {
+  level: string;
+  groups: GroupDef[];
+  error?: string;
+}
 
 // ---- mining inputs (trimmed off Instances.json / Models.json by the server) --------------------------
 
@@ -87,30 +91,32 @@ export interface GroupSourceInstance {
   rot: number[];
   scale: number[];
 }
-export interface GroupSourceModel { id: number; name: string }
+export interface GroupSourceModel {
+  id: number;
+  name: string;
+}
 
 // ---- mining tunables ---------------------------------------------------------------------------------
 
-const MIN_COMBO_OCC = 3;     // a model set must co-place at least this often to be an assembly
-const MAX_COMBO_MODELS = 6;  // larger identical-origin stacks are modular architecture, not a prop assembly
-const MIN_FIXTURE_OCC = 8;   // a single model needs this many placements before light-mining it
-const LIGHT_NEAR_CM = 3500;  // only lights within 35 m of an instance can be attached to it (past the
-                             // tallest fixture head, short of the NEXT lamp in a regularly spaced row —
-                             // whose halo would otherwise sit at a "consistent" local offset too)
+const MIN_COMBO_OCC = 3; // a model set must co-place at least this often to be an assembly
+const MAX_COMBO_MODELS = 6; // larger identical-origin stacks are modular architecture, not a prop assembly
+const MIN_FIXTURE_OCC = 8; // a single model needs this many placements before light-mining it
+const LIGHT_NEAR_CM = 3500; // only lights within 35 m of an instance can be attached to it (past the
+// tallest fixture head, short of the NEXT lamp in a regularly spaced row —
+// whose halo would otherwise sit at a "consistent" local offset too)
 const LIGHT_CLUSTER_CM = 100; // local offsets within this bucket are "the same" attachment point
-const MAX_GROUP_LIGHTS = 4;  // cap the light members per group (a lamp has one head, maybe two)
+const MAX_GROUP_LIGHTS = 4; // cap the light members per group (a lamp has one head, maybe two)
 
 /** Rotate `v` by the CONJUGATE of unit quaternion `q` [x,y,z,w] — world → the instance's local frame. */
 function qRotInv(q: number[], v: V3): V3 {
-  const x = -q[0], y = -q[1], z = -q[2], w = q[3];
+  const x = -q[0],
+    y = -q[1],
+    z = -q[2],
+    w = q[3];
   const tx = 2 * (y * v[2] - z * v[1]);
   const ty = 2 * (z * v[0] - x * v[2]);
   const tz = 2 * (x * v[1] - y * v[0]);
-  return [
-    v[0] + w * tx + (y * tz - z * ty),
-    v[1] + w * ty + (z * tx - x * tz),
-    v[2] + w * tz + (x * ty - y * tx),
-  ];
+  return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
 }
 
 /** Same rotation? |q1·q2| ≈ 1 (q and −q encode the same rotation). */
@@ -133,10 +139,18 @@ function comboName(names: string[]): string {
   return p.length >= 3 ? p : clean(names[0]);
 }
 
-const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'group';
+const slugOf = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'group';
 
 /** One placement of an assembly (raw space) — the frame nearby lights are expressed in. */
-interface Occurrence { loc: number[]; rot: number[]; scale: number }
+interface Occurrence {
+  loc: number[];
+  rot: number[];
+  scale: number;
+}
 
 /**
  * Attach lights to an assembly: express every nearby positive local light (spot / point; sun-named fills and
@@ -147,13 +161,20 @@ interface Occurrence { loc: number[]; rot: number[]; scale: number }
 function attachLights(occs: Occurrence[], lights: RawRigLight[]): GroupLightDef[] {
   const minCover = Math.max(4, Math.ceil(occs.length * 0.3));
   if (occs.length < minCover) return [];
-  interface Cluster { occ: Set<number>; local: V3[]; dir: V3[]; recs: RawRigLight[] }
+  interface Cluster {
+    occ: Set<number>;
+    local: V3[];
+    dir: V3[];
+    recs: RawRigLight[];
+  }
   const clusters = new Map<string, Cluster>();
   for (let oi = 0; oi < occs.length; oi++) {
     const o = occs[oi];
     const s = o.scale || 1;
     for (const L of lights) {
-      const dx = L.pos[0] - o.loc[0], dy = L.pos[1] - o.loc[1], dz = L.pos[2] - o.loc[2];
+      const dx = L.pos[0] - o.loc[0],
+        dy = L.pos[1] - o.loc[1],
+        dz = L.pos[2] - o.loc[2];
       if (dx * dx + dy * dy + dz * dz > LIGHT_NEAR_CM * LIGHT_NEAR_CM) continue;
       const lp = qRotInv(o.rot, [dx, dy, dz]);
       const local: V3 = [lp[0] / s, lp[1] / s, lp[2] / s];
@@ -169,22 +190,32 @@ function attachLights(occs: Occurrence[], lights: RawRigLight[]): GroupLightDef[
   }
   const mean = (vs: V3[]): V3 => {
     const m: V3 = [0, 0, 0];
-    for (const v of vs) { m[0] += v[0]; m[1] += v[1]; m[2] += v[2]; }
+    for (const v of vs) {
+      m[0] += v[0];
+      m[1] += v[1];
+      m[2] += v[2];
+    }
     return [m[0] / vs.length, m[1] / vs.length, m[2] / vs.length];
   };
   const out: GroupLightDef[] = [];
   const kept = [...clusters.values()].filter(c => c.occ.size >= minCover).sort((a, b) => b.occ.size - a.occ.size);
   for (const c of kept.slice(0, MAX_GROUP_LIGHTS)) {
     const col: number[] = [0, 0, 0];
-    let cone = 0, reach = 0, spots = 0;
+    let cone = 0,
+      reach = 0,
+      spots = 0;
     for (const r of c.recs) {
-      col[0] += r.colour[0] || 0; col[1] += r.colour[1] || 0; col[2] += r.colour[2] || 0;
+      col[0] += r.colour[0] || 0;
+      col[1] += r.colour[1] || 0;
+      col[2] += r.colour[2] || 0;
       cone += r.cone ?? 1;
       reach += reachM(r.pos, r.lo ?? r.pos, r.hi ?? r.pos);
       if (r.type === 1) spots++;
     }
     const n = c.recs.length;
-    col[0] /= n; col[1] /= n; col[2] /= n;
+    col[0] /= n;
+    col[1] /= n;
+    col[2] /= n;
     const kind = spots * 2 >= n ? 'spot' : 'point';
     // the cluster's dominant name family (a fixture's records share one; a stray co-located record doesn't)
     const nameCounts = new Map<string, number>();
@@ -226,10 +257,12 @@ export function mineGroups(
   });
   // positive local lights only: spots / points that aren't subtractive and aren't the sun-fill family
   // (bakeRigLighting skips those too — they're global light, not a fixture's own)
-  const lights = rigLights.filter(L =>
-    (L.type === 1 || L.type === 2) &&
-    Math.max(L.colour[0] || 0, L.colour[1] || 0, L.colour[2] || 0) > 0 &&
-    !L.name.toLowerCase().includes('sun'));
+  const lights = rigLights.filter(
+    L =>
+      (L.type === 1 || L.type === 2) &&
+      Math.max(L.colour[0] || 0, L.colour[1] || 0, L.colour[2] || 0) > 0 &&
+      !L.name.toLowerCase().includes('sun'),
+  );
 
   // ---- co-placed model sets: bucket by exact location, signature = the distinct models sharing it ----
   const buckets = new Map<string, GroupSourceInstance[]>();
@@ -254,7 +287,8 @@ export function mineGroups(
   const defs: GroupDef[] = [];
   const usedIds = new Set<string>();
   const freshId = (base: string) => {
-    let id = base, k = 2;
+    let id = base,
+      k = 2;
     while (usedIds.has(id)) id = `${base}-${k++}`;
     usedIds.add(id);
     return id;

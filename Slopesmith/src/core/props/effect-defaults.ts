@@ -19,8 +19,12 @@ import type { EffectNode, EffectsDocument } from '../effects/document';
 export type PropEffectNode = Omit<EffectNode, 'id' | 'originalIndex'>;
 
 /** The slot columns an effect default may populate — the three authoring exposes. */
-export const DEFAULT_EFFECT_CIRCUMSTANCES = ['persistent', 'collision', 'trigger'] as const satisfies readonly EffectCircumstance[];
-export type DefaultEffectCircumstance = typeof DEFAULT_EFFECT_CIRCUMSTANCES[number];
+export const DEFAULT_EFFECT_CIRCUMSTANCES = [
+  'persistent',
+  'collision',
+  'trigger',
+] as const satisfies readonly EffectCircumstance[];
+export type DefaultEffectCircumstance = (typeof DEFAULT_EFFECT_CIRCUMSTANCES)[number];
 
 /** One effect a placement can be given when it is stamped: its slot's node chains, per column. */
 export interface PropEffectTemplate {
@@ -49,7 +53,9 @@ const EFFECT_KIND_LABELS: ReadonlyMap<string, string> = new Map([
   ['property.mesh-animation', 'breaks into pieces'],
   ['rider.reset', 'resets the rider'],
   // Structural: they order and gate the nodes above rather than doing anything visible.
-  ['property.debounce', ''], ['wait', ''], ['property.node-tombstone', ''],
+  ['property.debounce', ''],
+  ['wait', ''],
+  ['property.node-tombstone', ''],
 ]);
 export const DEFAULT_EFFECT_KINDS: ReadonlySet<string> = new Set(EFFECT_KIND_LABELS.keys());
 
@@ -58,9 +64,12 @@ export function effectTemplateLabel(template: PropEffectTemplate): string {
   const words = new Set<string>();
   for (const nodes of Object.values(template.circumstances))
     for (const node of nodes ?? []) {
-      const word = node.semanticType === 'rider.boost' ? 'speed boost'
-        : node.semanticType === 'trick.boost' ? 'trick boost'
-          : EFFECT_KIND_LABELS.get(node.semanticType ?? '');
+      const word =
+        node.semanticType === 'rider.boost'
+          ? 'speed boost'
+          : node.semanticType === 'trick.boost'
+            ? 'trick boost'
+            : EFFECT_KIND_LABELS.get(node.semanticType ?? '');
       if (word) words.add(word);
     }
   return [...words].join(' · ') || 'effect';
@@ -70,9 +79,11 @@ export function effectTemplateLabel(template: PropEffectTemplate): string {
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort()
+    return `{${Object.keys(value)
+      .sort()
       .filter(key => (value as Record<string, unknown>)[key] !== undefined)
-      .map(key => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`).join(',')}}`;
+      .map(key => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -92,8 +103,11 @@ const hasReference = (node: EffectNode): boolean =>
  * of a kind that is not a default kind, or a node that names anything outside the prop. `level` scopes the key —
  * the same bytes mean a different texture flip on another level's model.
  */
-export function slotEffectTemplate(level: string, document: EffectsDocument,
-  slot: EffectsDocument['slots'][number]): PropEffectTemplate | null {
+export function slotEffectTemplate(
+  level: string,
+  document: EffectsDocument,
+  slot: EffectsDocument['slots'][number],
+): PropEffectTemplate | null {
   const graphs = new Map(document.graphs.map(graph => [graph.id, graph]));
   const circumstances: PropEffectTemplate['circumstances'] = {};
   for (const [circumstance, graphId] of Object.entries(slot.circumstances) as [EffectCircumstance, string | null][]) {
@@ -129,12 +143,15 @@ export interface EffectVoteInstance {
  * qualifies. Invisible copies and junk/reset twins do not vote, exactly as for the behaviour defaults; a copy with
  * no effect, or one that does not qualify, still votes, so a billboard of which 7 of 43 play a movie defaults to none.
  */
-export function referenceEffectDefaults(level: string, document: EffectsDocument | null,
-  instances: readonly EffectVoteInstance[]): {
-    templates: PropEffectTemplate[];
-    byInstance: Map<number, number>;
-    byModel: Map<number, PropEffectDefault>;
-  } {
+export function referenceEffectDefaults(
+  level: string,
+  document: EffectsDocument | null,
+  instances: readonly EffectVoteInstance[],
+): {
+  templates: PropEffectTemplate[];
+  byInstance: Map<number, number>;
+  byModel: Map<number, PropEffectDefault>;
+} {
   const templates: PropEffectTemplate[] = [];
   const byInstance = new Map<number, number>();
   const byModel = new Map<number, PropEffectDefault>();
@@ -159,8 +176,8 @@ export function referenceEffectDefaults(level: string, document: EffectsDocument
 
   const votes = new Map<number, Map<string, number>>();
   instances.forEach((instance, sourceIndex) => {
-    const slotIndex = Number.isInteger(instance.slot) && instance.slot! >= 0 && slots.has(instance.slot!)
-      ? instance.slot! : -1;
+    const slotIndex =
+      Number.isInteger(instance.slot) && instance.slot! >= 0 && slots.has(instance.slot!) ? instance.slot! : -1;
     const template = slotIndex >= 0 ? resolve(slotIndex) : -1;
     if (template >= 0) byInstance.set(sourceIndex, template);
     if (!instance.visible || /junk|_reset/i.test(instance.name)) return;
@@ -171,10 +188,17 @@ export function referenceEffectDefaults(level: string, document: EffectsDocument
     votes.set(instance.model, tally);
   });
   for (const [model, tally] of votes) {
-    let best = '', count = 0, runnerUp = 0, total = 0;
+    let best = '',
+      count = 0,
+      runnerUp = 0,
+      total = 0;
     for (const [ballot, n] of tally) {
       total += n;
-      if (n > count) { runnerUp = count; best = ballot; count = n; } else if (n > runnerUp) runnerUp = n;
+      if (n > count) {
+        runnerUp = count;
+        best = ballot;
+        count = n;
+      } else if (n > runnerUp) runnerUp = n;
     }
     // A tie is no mandate: a model whose copies split evenly over an effect gets none rather than a coin toss.
     if (best.startsWith('t') && count > runnerUp)

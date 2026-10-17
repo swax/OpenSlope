@@ -7,12 +7,24 @@ import { boostPadPreset, type BoostPadKind } from '../../core/props/boost-pad';
 import { promoteGem } from '../../core/props/gem';
 import { dropOrphanedAssemblyLights, wholeAssembly } from '../../core/props/assembly';
 import {
-  applyBehaviour, groupMemberDefaults, instanceBehaviour, resolvePropDefaults, sameBehaviour, sanitizePropBehaviour,
-  stampBehaviour, type ResolvedPropDefaults, type StampBehaviour,
+  applyBehaviour,
+  groupMemberDefaults,
+  instanceBehaviour,
+  resolvePropDefaults,
+  sameBehaviour,
+  sanitizePropBehaviour,
+  stampBehaviour,
+  type ResolvedPropDefaults,
+  type StampBehaviour,
 } from '../../core/props/defaults';
 import {
-  attachEffectTemplateToProp, attachEffectToProp, attachModelEffectsToProp, createEmptyEffectsDocument,
-  detachEffectFromProp, effectAttachments, nextPlacedPropId,
+  attachEffectTemplateToProp,
+  attachEffectToProp,
+  attachModelEffectsToProp,
+  createEmptyEffectsDocument,
+  detachEffectFromProp,
+  effectAttachments,
+  nextPlacedPropId,
 } from '../../core/effects/authoring';
 import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
@@ -38,7 +50,7 @@ export type PropOpsDeps = {
   store: Store;
   viewport: Viewport;
   propLevels: Map<string, LevelProps>; // fetched prop payloads, shared by the library + placement geometry
-  groupDefIdx: Map<string, GroupDef>;  // "<level>:<id>" -> mined group def, for placements to resolve
+  groupDefIdx: Map<string, GroupDef>; // "<level>:<id>" -> mined group def, for placements to resolve
   propLib: PropLibrary;
   propPreview: PropPreview;
   setMode: (m: Mode) => void;
@@ -48,7 +60,18 @@ export type PropOpsDeps = {
 };
 
 export function createPropOps(deps: PropOpsDeps) {
-  const { store, viewport, propLevels, groupDefIdx, propLib, propPreview, setMode, scheduleRebuild, rebuildTools, updateCmdSheet } = deps;
+  const {
+    store,
+    viewport,
+    propLevels,
+    groupDefIdx,
+    propLib,
+    propPreview,
+    setMode,
+    scheduleRebuild,
+    rebuildTools,
+    updateCmdSheet,
+  } = deps;
 
   const groupDefsByLevel = new Map<string, Promise<GroupDef[]>>(); // /api/groups fetches, one per level (docs/015)
   const loadedGroupLevels = new Set<string>(); // includes successfully loaded empty group catalogues
@@ -66,29 +89,53 @@ export function createPropOps(deps: PropOpsDeps) {
    * The effect follows the same source (docs/069 · Effects): the model's portable effect, the instance's own, or
    * — with `placementId` — the copied placement's effect slot, which the copies then share.
    */
-  type ArmFrom = { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string;
-    preset?: ReturnType<typeof boostPadPreset> };
+  type ArmFrom = {
+    behaviour?: PropBehaviour;
+    sourceIndex?: number;
+    placementId?: string;
+    preset?: ReturnType<typeof boostPadPreset>;
+  };
 
-  function armBehaviour(level: string, model: number, from: ArmFrom):
-    Pick<ArmedProp, 'behaviour' | 'from' | 'effect' | 'specialKind'> {
-    if (from.preset) return { behaviour: structuredClone(from.preset.behaviour), from: 'preset',
-      specialKind: from.preset.effect.key.startsWith('boost-pad:speed') ? 'speed-boost' : 'trick-boost',
-      effect: { kind: 'template', template: structuredClone(from.preset.effect) } };
-    if (from.behaviour) return { behaviour: stampBehaviour(level, from.behaviour), from: 'placement',
-      specialKind: store.mdoc.props?.find(prop => prop.id === from.placementId)?.specialKind,
-      ...withEffect(placementEffect(from.placementId)) };
+  function armBehaviour(
+    level: string,
+    model: number,
+    from: ArmFrom,
+  ): Pick<ArmedProp, 'behaviour' | 'from' | 'effect' | 'specialKind'> {
+    if (from.preset)
+      return {
+        behaviour: structuredClone(from.preset.behaviour),
+        from: 'preset',
+        specialKind: from.preset.effect.key.startsWith('boost-pad:speed') ? 'speed-boost' : 'trick-boost',
+        effect: { kind: 'template', template: structuredClone(from.preset.effect) },
+      };
+    if (from.behaviour)
+      return {
+        behaviour: stampBehaviour(level, from.behaviour),
+        from: 'placement',
+        specialKind: store.mdoc.props?.find(prop => prop.id === from.placementId)?.specialKind,
+        ...withEffect(placementEffect(from.placementId)),
+      };
     const props = propLevels.get(level);
-    const source = typeof from.sourceIndex === 'number'
-      ? props?.instances.find(instance => instance.sourceIndex === from.sourceIndex) : undefined;
+    const source =
+      typeof from.sourceIndex === 'number'
+        ? props?.instances.find(instance => instance.sourceIndex === from.sourceIndex)
+        : undefined;
     if (source) {
       const template = source.effect !== undefined ? props?.effects?.[source.effect] : undefined;
-      return { behaviour: instanceBehaviour(level, source), from: 'instance',
-        ...withEffect(template ? { kind: 'template', template: structuredClone(template) } : undefined) };
+      return {
+        behaviour: instanceBehaviour(level, source),
+        from: 'instance',
+        ...withEffect(template ? { kind: 'template', template: structuredClone(template) } : undefined),
+      };
     }
-    return { behaviour: propDefaults(level, model).behaviour, from: 'defaults', ...withEffect(modelEffect(level, model)) };
+    return {
+      behaviour: propDefaults(level, model).behaviour,
+      from: 'defaults',
+      ...withEffect(modelEffect(level, model)),
+    };
   }
 
-  const withEffect = (effect: HeldEffect | undefined) => effect ? { effect } : {};
+  const withEffect = (effect: HeldEffect | undefined) => (effect ? { effect } : {});
 
   /** The portable effect a shipped level's model hands new placements (docs/069 · Effects), with how many of its
    *  visible copies carry it. None for the author's own models, whose effects they attach themselves. */
@@ -107,7 +154,8 @@ export function createPropOps(deps: PropOpsDeps) {
     if (!effects || !placementId) return undefined;
     const attachment = effectAttachments(effects).find(item => item.enabled && item.target.id === placementId);
     return attachment && effects.slots.some(slot => slot.id === attachment.slot)
-      ? { kind: 'slot', slot: attachment.slot, circumstance: attachment.circumstance } : undefined;
+      ? { kind: 'slot', slot: attachment.slot, circumstance: attachment.circumstance }
+      : undefined;
   }
 
   /** The defaults a new placement of this model starts with: the author's saved ones for their own models,
@@ -122,7 +170,11 @@ export function createPropOps(deps: PropOpsDeps) {
    * for anything that reads the placement whole. Members that would all behave alike carry no per-member record.
    */
   function groupDefaults(level: string, def: GroupDef): StampBehaviour {
-    const members = groupMemberDefaults(level, def.props.map(m => m.model), propLevels.get(level));
+    const members = groupMemberDefaults(
+      level,
+      def.props.map(m => m.model),
+      propLevels.get(level),
+    );
     const leader = propDefaults(level, def.props[0].model).behaviour;
     const alike = Object.values(members).every(member => sameBehaviour(member, { ...leader, modePresence: undefined }));
     return alike ? leader : { ...leader, memberBehaviour: members };
@@ -132,8 +184,9 @@ export function createPropOps(deps: PropOpsDeps) {
    *  triggers are not placements OF a model in that sense, and a prop line's members take their settings from
    *  the line, which would put its own back at the next re-layout (docs/070). */
   function placementsOfModel(level: string, model: number): PlacedProp[] {
-    return (store.mdoc.props ?? []).filter(p => p.level === level && p.model === model
-      && !p.group && !p.line && !isEffectTriggerProp(p));
+    return (store.mdoc.props ?? []).filter(
+      p => p.level === level && p.model === model && !p.group && !p.line && !isEffectTriggerProp(p),
+    );
   }
 
   /**
@@ -146,7 +199,8 @@ export function createPropOps(deps: PropOpsDeps) {
     if (level === AUTHORED_MODEL_LEVEL) {
       const record = findModelByNumber(store.mdoc, model);
       if (!record) return false;
-      if (clean) record.defaults = clean; else delete record.defaults;
+      if (clean) record.defaults = clean;
+      else delete record.defaults;
       syncAuthoredModelLevel(); // the resolver reads the re-baked level; renderDoc would get there a frame later
       scheduleRebuild();
       return true;
@@ -156,7 +210,10 @@ export function createPropOps(deps: PropOpsDeps) {
       // Patched in place rather than refetched: nothing else in the catalogue changed, and a refetch would
       // re-register every imported model's geometry for one record's behaviour.
       const entry = propLevels.get(level)?.models.find(m => m.id === model);
-      if (entry) { if (clean) entry.defaults = clean; else delete entry.defaults; }
+      if (entry) {
+        if (clean) entry.defaults = clean;
+        else delete entry.defaults;
+      }
       return true;
     }
     return false;
@@ -167,7 +224,10 @@ export function createPropOps(deps: PropOpsDeps) {
   function applyBehaviourToPlaced(level: string, model: number, behaviour: PropBehaviour): number {
     const placed = placementsOfModel(level, model);
     for (const p of placed) applyBehaviour(p, stampBehaviour(level, behaviour));
-    if (placed.length) { scheduleRebuild(); rebuildTools(); }
+    if (placed.length) {
+      scheduleRebuild();
+      rebuildTools();
+    }
     return placed.length;
   }
 
@@ -185,7 +245,8 @@ export function createPropOps(deps: PropOpsDeps) {
     const m = propLevels.get(level)?.models.find(mm => mm.id === model);
     if (!m) return 0; // geometry not loaded yet (rare — armProp loads it before you can place)
     let minZ = Infinity;
-    for (const s of m.subs) for (let k = 2; k < s.positions.length; k += 3) if (s.positions[k] < minZ) minZ = s.positions[k];
+    for (const s of m.subs)
+      for (let k = 2; k < s.positions.length; k += 3) if (s.positions[k] < minZ) minZ = s.positions[k];
     const base = Number.isFinite(minZ) ? minZ / 100 : 0;
     propBaseOffsetCache.set(key, base);
     return base;
@@ -199,10 +260,15 @@ export function createPropOps(deps: PropOpsDeps) {
     if (propBoxCache.has(key)) return propBoxCache.get(key)!;
     const m = propLevels.get(level)?.models.find(mm => mm.id === model);
     if (!m) return null; // geometry not loaded yet
-    const min: V3 = [Infinity, Infinity, Infinity], max: V3 = [-Infinity, -Infinity, -Infinity];
-    for (const s of m.subs) for (let k = 0; k < s.positions.length; k += 3) for (let j = 0; j < 3; j++) {
-      const v = s.positions[k + j]; if (v < min[j]) min[j] = v; if (v > max[j]) max[j] = v;
-    }
+    const min: V3 = [Infinity, Infinity, Infinity],
+      max: V3 = [-Infinity, -Infinity, -Infinity];
+    for (const s of m.subs)
+      for (let k = 0; k < s.positions.length; k += 3)
+        for (let j = 0; j < 3; j++) {
+          const v = s.positions[k + j];
+          if (v < min[j]) min[j] = v;
+          if (v > max[j]) max[j] = v;
+        }
     const box = Number.isFinite(min[0]) ? { min, max } : null;
     propBoxCache.set(key, box);
     return box;
@@ -221,7 +287,7 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** The mined def a group placement references, or null while its level's defs are still loading. */
   function defOfPlaced(pp: PlacedProp): GroupDef | null {
-    return pp.group ? groupDefIdx.get(`${pp.level}:${pp.group}`) ?? null : null;
+    return pp.group ? (groupDefIdx.get(`${pp.level}:${pp.group}`) ?? null) : null;
   }
 
   /**
@@ -265,8 +331,12 @@ export function createPropOps(deps: PropOpsDeps) {
     if (level === AUTHORED_MODEL_LEVEL) return Promise.resolve(syncAuthoredModelLevel()); // live in-doc definitions, never fetched
     const cached = propLevels.get(level);
     if (cached) {
-      runDiagnosticPhase('props', `${level}:register-models-cached`, () => viewport.registerPropModels(cached),
-        `${cached.models.length} models · ${cached.instances.length} instances`);
+      runDiagnosticPhase(
+        'props',
+        `${level}:register-models-cached`,
+        () => viewport.registerPropModels(cached),
+        `${cached.models.length} models · ${cached.instances.length} instances`,
+      );
       return Promise.resolve(cached);
     }
     let pending = propLoadsByLevel.get(level);
@@ -276,22 +346,37 @@ export function createPropOps(deps: PropOpsDeps) {
       const imported = level === IMPORTED_PROP_LEVEL;
       pending = (async () => {
         const payload = await fetchJson<PropsPayload>(
-          imported ? '/api/custom-props' : `/api/props?level=${encodeURIComponent(level)}`);
+          imported ? '/api/custom-props' : `/api/props?level=${encodeURIComponent(level)}`,
+        );
         if (payload.error) throw new Error(payload.error);
-        const lp = runDiagnosticPhase('props', `${level}:decode`, () => decodeProps(payload),
-          `${payload.models.length} models · ${payload.instances.length} instances`);
+        const lp = runDiagnosticPhase(
+          'props',
+          `${level}:decode`,
+          () => decodeProps(payload),
+          `${payload.models.length} models · ${payload.instances.length} instances`,
+        );
         propLevels.set(level, lp);
         // a re-imported model keeps its number but changes its geometry, so the imported catalogue
         // replace-registers (like authored models) rather than register-once
-        runDiagnosticPhase('props', `${level}:register-models`, () => {
-          if (imported) viewport.syncLiveModels(lp); else viewport.registerPropModels(lp);
-        }, `${lp.models.length} models · ${lp.instances.length} instances`);
+        runDiagnosticPhase(
+          'props',
+          `${level}:register-models`,
+          () => {
+            if (imported) viewport.syncLiveModels(lp);
+            else viewport.registerPropModels(lp);
+          },
+          `${lp.models.length} models · ${lp.instances.length} instances`,
+        );
         return lp;
       })();
       propLoadsByLevel.set(level, pending);
       void pending.then(
-        () => { if (propLoadsByLevel.get(level) === pending) propLoadsByLevel.delete(level); },
-        () => { if (propLoadsByLevel.get(level) === pending) propLoadsByLevel.delete(level); }, // failures retry next time
+        () => {
+          if (propLoadsByLevel.get(level) === pending) propLoadsByLevel.delete(level);
+        },
+        () => {
+          if (propLoadsByLevel.get(level) === pending) propLoadsByLevel.delete(level);
+        }, // failures retry next time
       );
     }
     return pending;
@@ -303,8 +388,10 @@ export function createPropOps(deps: PropOpsDeps) {
   function syncAuthoredModelLevel(): LevelProps {
     const lp = authoredModelLevelProps(store.mdoc);
     propLevels.set(AUTHORED_MODEL_LEVEL, lp);
-    for (const key of [...propBaseOffsetCache.keys()]) if (key.startsWith(`${AUTHORED_MODEL_LEVEL}:`)) propBaseOffsetCache.delete(key);
-    for (const key of [...propBoxCache.keys()]) if (key.startsWith(`${AUTHORED_MODEL_LEVEL}:`)) propBoxCache.delete(key);
+    for (const key of [...propBaseOffsetCache.keys()])
+      if (key.startsWith(`${AUTHORED_MODEL_LEVEL}:`)) propBaseOffsetCache.delete(key);
+    for (const key of [...propBoxCache.keys()])
+      if (key.startsWith(`${AUTHORED_MODEL_LEVEL}:`)) propBoxCache.delete(key);
     viewport.syncLiveModels(lp);
     return lp;
   }
@@ -315,7 +402,8 @@ export function createPropOps(deps: PropOpsDeps) {
   async function reloadImportedProps(): Promise<LevelProps> {
     propLevels.delete(IMPORTED_PROP_LEVEL);
     propLoadsByLevel.delete(IMPORTED_PROP_LEVEL);
-    for (const key of [...propBaseOffsetCache.keys()]) if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) propBaseOffsetCache.delete(key);
+    for (const key of [...propBaseOffsetCache.keys()])
+      if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) propBaseOffsetCache.delete(key);
     for (const key of [...propBoxCache.keys()]) if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) propBoxCache.delete(key);
     const lp = await ensurePropLevel(IMPORTED_PROP_LEVEL);
     scheduleRebuild(); // placements of a replaced model re-render against the new geometry
@@ -335,7 +423,16 @@ export function createPropOps(deps: PropOpsDeps) {
       ...[...defLevels].filter(l => !loadedGroupLevels.has(l)).map(ensureGroupDefs),
     ];
     if (!loads.length) return false;
-    const changed = (await Promise.all(loads.map(load => load.then(() => true, () => false)))).some(Boolean);
+    const changed = (
+      await Promise.all(
+        loads.map(load =>
+          load.then(
+            () => true,
+            () => false,
+          ),
+        ),
+      )
+    ).some(Boolean);
     if (changed && rebuild) scheduleRebuild();
     return changed;
   }
@@ -346,7 +443,10 @@ export function createPropOps(deps: PropOpsDeps) {
    * placement's own slot — and then whatever effects the model declared for itself, so a snow gun goes down
    * already throwing snow. One path for a single drop and for a prop line's members (docs/070).
    */
-  function stampHeldEffects(id: string, armed: Pick<ArmedProp, 'level' | 'model' | 'name' | 'effect' | 'effectOff' | 'specialKind'>) {
+  function stampHeldEffects(
+    id: string,
+    armed: Pick<ArmedProp, 'level' | 'model' | 'name' | 'effect' | 'effectOff' | 'specialKind'>,
+  ) {
     const prop = store.mdoc.props?.find(item => item.id === id);
     if (prop && armed.specialKind) prop.specialKind = armed.specialKind;
     // Before the declared effects, so a copy of an imported prop shares its source's effect rather than growing
@@ -355,7 +455,8 @@ export function createPropOps(deps: PropOpsDeps) {
     if (held && !armed.effectOff) {
       const effects = (store.mdoc.effects ??= createEmptyEffectsDocument(store.mdoc.name));
       if (held.kind === 'template') attachEffectTemplateToProp(effects, id, held.template, shortPropName(armed.name));
-      else if (effects.slots.some(slot => slot.id === held.slot)) attachEffectToProp(effects, id, held.slot, held.circumstance);
+      else if (effects.slots.some(slot => slot.id === held.slot))
+        attachEffectToProp(effects, id, held.slot, held.circumstance);
     }
     // Emitters and scrolling surfaces become ordinary nodes in an ordinary graph the Effects editor then owns;
     // this only fires for a prop with no attachment yet, so retuning or deleting it never touches the next stamp.
@@ -369,7 +470,9 @@ export function createPropOps(deps: PropOpsDeps) {
   /** While set, the next prop picked up — from the Library, or middle-clicked in the world — is handed here
    *  instead of being held: a prop line swapping its model (docs/070). One-shot; answers whether it took it. */
   let pickInterceptor: ((armed: ArmedProp) => boolean) | null = null;
-  function interceptNextPick(take: ((armed: ArmedProp) => boolean) | null) { pickInterceptor = take; }
+  function interceptNextPick(take: ((armed: ArmedProp) => boolean) | null) {
+    pickInterceptor = take;
+  }
   /** Offer a pick to the interceptor first; true when it took the pick and nothing should be held. */
   function intercepted(armed: ArmedProp): boolean {
     const take = pickInterceptor;
@@ -391,9 +494,14 @@ export function createPropOps(deps: PropOpsDeps) {
     const request = replacement;
     if (!request) return false;
     const selection = replacementSelection();
-    if (store.currentMode !== 'props' || store.mdoc !== request.doc
-      || selection.length !== request.selection.length
-      || selection.some(prop => !request.selection.includes(prop)) || store.armedProp) replacement = null;
+    if (
+      store.currentMode !== 'props' ||
+      store.mdoc !== request.doc ||
+      selection.length !== request.selection.length ||
+      selection.some(prop => !request.selection.includes(prop)) ||
+      store.armedProp
+    )
+      replacement = null;
     return replacement !== null;
   }
 
@@ -406,13 +514,15 @@ export function createPropOps(deps: PropOpsDeps) {
     pickInterceptor = null;
     replacement = { doc: store.mdoc, selection, targets };
     lightJoin = null;
-    rebuildTools(); updateCmdSheet();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   function cancelPropReplacement() {
     if (!replacement) return;
     replacement = null;
-    rebuildTools(); updateCmdSheet();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   /**
@@ -426,8 +536,13 @@ export function createPropOps(deps: PropOpsDeps) {
   function lightJoinWaitsFor(): 'light' | null {
     const join = lightJoin;
     if (!join) return null;
-    if (store.currentMode !== 'props' || store.mdoc !== join.doc || store.armedProp
-      || wholeAssembly(store.mdoc, store.multiSel) !== join.group) lightJoin = null;
+    if (
+      store.currentMode !== 'props' ||
+      store.mdoc !== join.doc ||
+      store.armedProp ||
+      wholeAssembly(store.mdoc, store.multiSel) !== join.group
+    )
+      lightJoin = null;
     return lightJoin ? 'light' : null;
   }
 
@@ -436,13 +551,15 @@ export function createPropOps(deps: PropOpsDeps) {
     replacement = null;
     const group = wholeAssembly(store.mdoc, store.multiSel);
     lightJoin = group ? { doc: store.mdoc, group } : null;
-    rebuildTools(); updateCmdSheet();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   function cancelLightJoin() {
     if (!lightJoin) return;
     lightJoin = null;
-    rebuildTools(); updateCmdSheet();
+    rebuildTools();
+    updateCmdSheet();
   }
 
   /** Complete a pending tie with the clicked light, which joins the group; the group stays selected. Answers
@@ -454,9 +571,12 @@ export function createPropOps(deps: PropOpsDeps) {
     const light = store.mdoc.lights?.find(entry => entry.id === lightId);
     if (!light) return true;
     light.assembly = group;
-    store.selectedLight = null; store.selectedProp = null;
+    store.selectedLight = null;
+    store.selectedProp = null;
     store.multiSel = [...store.multiSel];
-    scheduleRebuild(); rebuildTools(); updateCmdSheet();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
     toast(`${light.name ?? `${light.kind} light`} now moves with its group.`, 'ok');
     return true;
   }
@@ -475,8 +595,10 @@ export function createPropOps(deps: PropOpsDeps) {
       target.level = armed.level;
       target.model = armed.model;
       target.name = armed.name;
-      if (armed.group) target.group = armed.group; else delete target.group;
-      if (armed.specialKind) target.specialKind = armed.specialKind; else delete target.specialKind;
+      if (armed.group) target.group = armed.group;
+      else delete target.group;
+      if (armed.specialKind) target.specialKind = armed.specialKind;
+      else delete target.specialKind;
       applyBehaviour(target, armed.behaviour);
       if (doc.effects) detachEffectFromProp(doc.effects, target.id);
       stampHeldEffects(target.id, armed);
@@ -484,16 +606,22 @@ export function createPropOps(deps: PropOpsDeps) {
     }
     if (replaced) {
       scheduleRebuild();
-      toast(`Replaced ${replaced} prop${replaced === 1 ? '' : 's'} with ${shortPropName(armed.name)} — undo restores the original${replaced === 1 ? '' : 's'}.`, 'ok');
+      toast(
+        `Replaced ${replaced} prop${replaced === 1 ? '' : 's'} with ${shortPropName(armed.name)} — undo restores the original${replaced === 1 ? '' : 's'}.`,
+        'ok',
+      );
     }
-    rebuildTools(); updateCmdSheet();
+    rebuildTools();
+    updateCmdSheet();
     return true;
   }
 
   /** Leave prop-line drawing and drop a line selection (docs/070): holding something new ends both. */
   function leavePropLine() {
-    store.lineDrawing = false; viewport.setLineDrawing(false);
-    store.selectedLine = null; store.selectedLineNode = null;
+    store.lineDrawing = false;
+    viewport.setLineDrawing(false);
+    store.selectedLine = null;
+    store.selectedLineNode = null;
   }
 
   /** Pick up a prop (from the Library, or middle-clicking a reference / placed prop): arm placement mode, drop
@@ -501,22 +629,35 @@ export function createPropOps(deps: PropOpsDeps) {
    *  viewport shows it as a ghost under the cursor; a click drops it, Esc puts it down. */
   async function armProp(level: string, model: number, name: string, from: ArmFrom = {}) {
     const request = isReplacingProp() ? replacement : null;
-    try { await ensurePropLevel(level); } catch (e) { toast(`props load failed: ${e}`, 'err'); return; }
+    try {
+      await ensurePropLevel(level);
+    } catch (e) {
+      toast(`props load failed: ${e}`, 'err');
+      return;
+    }
     const armed: ArmedProp = { level, model, name, ...armBehaviour(level, model, from) };
     if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
     store.armedProp = armed;
     leavePropLine();
     store.selectedProp = null; // holding a new prop deselects any placed one (the gizmo releases on the next rebuild)
-    store.multiSel = [];       // …and any box selection
+    store.multiSel = []; // …and any box selection
     // …and a picked reference instance, whose inspector would otherwise sit where the held prop's panel belongs
     store.selectedRefProp = null;
     viewport.clearRefPropSelection();
     viewport.setLightArmed(false); // arming a prop cancels a held light
-    store.railDrawing = false; viewport.setRailArmed(false); // …and cancels rail drawing
-    store.gemArmed = false; viewport.setGemArmed(false); store.trickTool = null; // …and leaves the trick tools
+    store.railDrawing = false;
+    viewport.setRailArmed(false); // …and cancels rail drawing
+    store.gemArmed = false;
+    viewport.setGemArmed(false);
+    store.trickTool = null; // …and leaves the trick tools
     viewport.setPropArmed({ level, model, baseOffset: propBaseOffset(level, model) });
-    if (store.currentMode !== 'props') setMode('props'); else { scheduleRebuild(); rebuildTools(); updateCmdSheet(); }
+    if (store.currentMode !== 'props') setMode('props');
+    else {
+      scheduleRebuild();
+      rebuildTools();
+      updateCmdSheet();
+    }
     propLib.highlight(level, model);
     toast(`${shortPropName(name)} — click to place · Alt+scroll or ← → turns it · Esc puts it down`, 'info');
   }
@@ -534,7 +675,9 @@ export function createPropOps(deps: PropOpsDeps) {
       await armProp(pad.level, pad.model, pad.name, {
         preset: boostPadPreset(kind, propDefaults(pad.level, pad.model).behaviour),
       });
-    } catch (e) { toast(`Boost pad load failed: ${e}`, 'err'); }
+    } catch (e) {
+      toast(`Boost pad load failed: ${e}`, 'err');
+    }
   }
 
   async function editableGem(id: string): Promise<PlacedProp | null> {
@@ -550,9 +693,17 @@ export function createPropOps(deps: PropOpsDeps) {
       const model = library.models.find(item => item.id === source.model);
       if (!model?.subs.length) throw new Error('The gem model has no geometry.');
       if (store.mdoc !== doc || !doc.gems?.includes(gem)) return null;
-      return promoteGem(doc, id, { level: art.gemLevel, model: source.model, name: model.name },
-        propDefaults(art.gemLevel, source.model).behaviour, source.effect);
-    } catch (e) { toast(`Could not open gem tools: ${e instanceof Error ? e.message : e}`, 'err'); return null; }
+      return promoteGem(
+        doc,
+        id,
+        { level: art.gemLevel, model: source.model, name: model.name },
+        propDefaults(art.gemLevel, source.model).behaviour,
+        source.effect,
+      );
+    } catch (e) {
+      toast(`Could not open gem tools: ${e instanceof Error ? e.message : e}`, 'err');
+      return null;
+    }
   }
 
   /** Pick up a GROUP (from the Library's Groups section, or middle-clicking a placed group): arm the whole
@@ -564,16 +715,30 @@ export function createPropOps(deps: PropOpsDeps) {
     try {
       await ensurePropLevel(level); // members render from the same level payload
       def = (await ensureGroupDefs(level)).find(d => d.id === id);
-    } catch (e) { toast(`groups load failed: ${e}`, 'err'); return; }
-    if (!def) { toast(`no group "${id}" in ${level}`, 'err'); return; }
+    } catch (e) {
+      toast(`groups load failed: ${e}`, 'err');
+      return;
+    }
+    if (!def) {
+      toast(`no group "${id}" in ${level}`, 'err');
+      return;
+    }
     const leader = def.props[0];
     // A group gets no effect default: until an effect can attach to one member, it would attach to the whole
     // group, which Test plays as one prop and the ISO as one copy per member. A copied group keeps its own.
-    const armed: ArmedProp = { level, model: leader.model, name: def.name, group: def.id,
+    const armed: ArmedProp = {
+      level,
+      model: leader.model,
+      name: def.name,
+      group: def.id,
       ...(from.behaviour
-        ? { behaviour: stampBehaviour(level, from.behaviour), from: 'placement' as const,
-          ...withEffect(placementEffect(from.placementId)) }
-        : { behaviour: groupDefaults(level, def), from: 'defaults' as const }) };
+        ? {
+            behaviour: stampBehaviour(level, from.behaviour),
+            from: 'placement' as const,
+            ...withEffect(placementEffect(from.placementId)),
+          }
+        : { behaviour: groupDefaults(level, def), from: 'defaults' as const }),
+    };
     if (finishReplacement(request, armed, from.placementId)) return;
     if (intercepted(armed)) return;
     store.armedProp = armed;
@@ -583,10 +748,23 @@ export function createPropOps(deps: PropOpsDeps) {
     store.selectedRefProp = null;
     viewport.clearRefPropSelection();
     viewport.setLightArmed(false);
-    store.railDrawing = false; viewport.setRailArmed(false);
-    store.gemArmed = false; viewport.setGemArmed(false); store.trickTool = null;
-    viewport.setPropArmed({ level, model: leader.model, baseOffset: placedBaseOffset({ level, model: leader.model, group: def.id }), group: def.id });
-    if (store.currentMode !== 'props') setMode('props'); else { scheduleRebuild(); rebuildTools(); updateCmdSheet(); }
+    store.railDrawing = false;
+    viewport.setRailArmed(false);
+    store.gemArmed = false;
+    viewport.setGemArmed(false);
+    store.trickTool = null;
+    viewport.setPropArmed({
+      level,
+      model: leader.model,
+      baseOffset: placedBaseOffset({ level, model: leader.model, group: def.id }),
+      group: def.id,
+    });
+    if (store.currentMode !== 'props') setMode('props');
+    else {
+      scheduleRebuild();
+      rebuildTools();
+      updateCmdSheet();
+    }
     propLib.highlight(level, null); // a group isn't a single model tile
     const bits = [`${def.props.length} prop${def.props.length > 1 ? 's' : ''}`];
     if (def.lights.length) bits.push(`${def.lights.length} light${def.lights.length > 1 ? 's' : ''}`);
@@ -600,7 +778,10 @@ export function createPropOps(deps: PropOpsDeps) {
     store.armedProp = null;
     viewport.setPropArmed(null);
     propLib.highlight(propLib.level, null);
-    if (store.currentMode === 'props') { rebuildTools(); updateCmdSheet(); }
+    if (store.currentMode === 'props') {
+      rebuildTools();
+      updateCmdSheet();
+    }
   }
 
   /** Clear whichever prop/light inspector currently owns Props mode. This is the shared path behind the
@@ -608,9 +789,15 @@ export function createPropOps(deps: PropOpsDeps) {
    *  launcher return together. */
   function deselectPropOrLight() {
     replacement = null;
-    const selected = store.selectedProp !== null || store.multiSel.length > 0 || store.selectedRefProp !== null
-      || store.selectedLight !== null || store.selectedRefLight !== null || store.selectedScreen !== null
-      || store.selectedRefScreen !== null || store.selectedLine !== null;
+    const selected =
+      store.selectedProp !== null ||
+      store.multiSel.length > 0 ||
+      store.selectedRefProp !== null ||
+      store.selectedLight !== null ||
+      store.selectedRefLight !== null ||
+      store.selectedScreen !== null ||
+      store.selectedRefScreen !== null ||
+      store.selectedLine !== null;
     if (!selected) return;
     leavePropLine();
     pickInterceptor = null; // a pending "swap prop" belonged to the line being let go
@@ -619,7 +806,7 @@ export function createPropOps(deps: PropOpsDeps) {
     store.selectedRefProp = null;
     store.selectedLight = null;
     store.selectedRefLight = null;
-    store.selectedScreen = null;   // a screen's inspector uses the same deselect (docs/051)
+    store.selectedScreen = null; // a screen's inspector uses the same deselect (docs/051)
     store.selectedRefScreen = null;
     viewport.clearRefPropSelection();
     viewport.clearScreenSelection();
@@ -672,15 +859,21 @@ export function createPropOps(deps: PropOpsDeps) {
   function removeFromMultiSel(index: number) {
     const lights = selectedSetLights(store);
     const props = store.multiSel.filter(i => i !== index);
-    if (!props.length && lights.length) { store.multiSel = []; store.selectedLight = lights[0]; }
-    else setSelectedSet(store, props, lights);
+    if (!props.length && lights.length) {
+      store.multiSel = [];
+      store.selectedLight = lights[0];
+    } else setSelectedSet(store, props, lights);
     scheduleRebuild(); // its outline drops; the group gizmo re-seats on the smaller set's centroid
     rebuildTools();
   }
 
   /** Drop one free light from the selected set (its list row's ✕) — the light itself stays. */
   function removeLightFromMultiSel(id: string) {
-    setSelectedSet(store, [...store.multiSel], selectedSetLights(store).filter(light => light !== id));
+    setSelectedSet(
+      store,
+      [...store.multiSel],
+      selectedSetLights(store).filter(light => light !== id),
+    );
     scheduleRebuild(); // its outline drops
     rebuildTools();
   }
@@ -692,13 +885,22 @@ export function createPropOps(deps: PropOpsDeps) {
     viewport.flashProp(index);
     // The prop's own id, because that is what an effect binds to — with twenty panes sharing one model name,
     // the model line says WHAT you selected and this says WHICH.
-    propPreview.show(p.level, p.model, shortPropName(p.name), propLevels.get(p.level), defOfPlaced(p),
-      p.id ?? `#${index}`);
+    propPreview.show(
+      p.level,
+      p.model,
+      shortPropName(p.name),
+      propLevels.get(p.level),
+      defOfPlaced(p),
+      p.id ?? `#${index}`,
+    );
   }
 
   /** Everything a model declared for ITSELF (docs/032), for the auto-attach a placement of it performs:
    *  emitters, plus the scrolling surfaces named by material so each lands on the right submesh. */
-  function modelDeclarations(level: string, model: number): {
+  function modelDeclarations(
+    level: string,
+    model: number,
+  ): {
     emitters: { fields: Record<string, number> }[];
     scrolls: { mat: number; effect: UvScrollEffect }[];
     clip: boolean;
@@ -714,21 +916,52 @@ export function createPropOps(deps: PropOpsDeps) {
     // Only an IMPORTED model's clip auto-attaches. A borrowed reference model may well have one too, but
     // that is a level's own animation and the author asks for it in the Effects editor — stamping down a
     // reference blimp should not start it flying on its own.
-    return { emitters: m.emitters ?? [], scrolls,
-      clip: level === IMPORTED_PROP_LEVEL && !!m.animation?.objects.length };
+    return {
+      emitters: m.emitters ?? [],
+      scrolls,
+      clip: level === IMPORTED_PROP_LEVEL && !!m.animation?.objects.length,
+    };
   }
 
   return {
     modelDeclarations,
-    propDefaults, groupDefaults, modelEffect, placementsOfModel, saveModelDefaults, applyBehaviourToPlaced,
-    stampHeldEffects, interceptNextPick,
-    replaceSelectedProp, cancelPropReplacement, isReplacingProp,
-    lightJoinWaitsFor, startLightJoin, cancelLightJoin, finishLightJoin, removeLightFromMultiSel,
-    shortPropName, propBaseOffset, authoredBoxOf, rebuildAuthoredRig, defOfPlaced,
-    ensureGroupDefs, placedBaseOffset, ensurePropLevel, syncPropGeom, syncAuthoredModelLevel,
+    propDefaults,
+    groupDefaults,
+    modelEffect,
+    placementsOfModel,
+    saveModelDefaults,
+    applyBehaviourToPlaced,
+    stampHeldEffects,
+    interceptNextPick,
+    replaceSelectedProp,
+    cancelPropReplacement,
+    isReplacingProp,
+    lightJoinWaitsFor,
+    startLightJoin,
+    cancelLightJoin,
+    finishLightJoin,
+    removeLightFromMultiSel,
+    shortPropName,
+    propBaseOffset,
+    authoredBoxOf,
+    rebuildAuthoredRig,
+    defOfPlaced,
+    ensureGroupDefs,
+    placedBaseOffset,
+    ensurePropLevel,
+    syncPropGeom,
+    syncAuthoredModelLevel,
     reloadImportedProps,
-    armProp, armBoostPad, editableGem, armGroupById, disarmProp, deselectPropOrLight,
-    deleteSelectedProp, deleteMultiSelProps, removeFromMultiSel, identifyMultiProp,
+    armProp,
+    armBoostPad,
+    editableGem,
+    armGroupById,
+    disarmProp,
+    deselectPropOrLight,
+    deleteSelectedProp,
+    deleteMultiSelProps,
+    removeFromMultiSel,
+    identifyMultiProp,
   };
 }
 

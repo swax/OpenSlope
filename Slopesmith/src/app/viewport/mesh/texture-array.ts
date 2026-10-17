@@ -81,11 +81,16 @@ export function planTextureArrayBank(
 ): TextureArrayPlan {
   const maxLayers = Math.max(1, opts.maxLayers ?? TEXTURE_ARRAY_MAX_LAYERS);
   const maxBytes = Math.max(1, opts.maxBytes ?? TEXTURE_ARRAY_MAX_BYTES);
-  const usable = pages.filter(page => page.width > 0 && page.height > 0
-    && Number.isFinite(page.width) && Number.isFinite(page.height));
+  const usable = pages.filter(
+    page => page.width > 0 && page.height > 0 && Number.isFinite(page.width) && Number.isFinite(page.height),
+  );
 
   const empty: TextureArrayPlan = {
-    width: 0, height: 0, arrays: [], slots: new Map(), excluded: pages.map(page => page.key),
+    width: 0,
+    height: 0,
+    arrays: [],
+    slots: new Map(),
+    excluded: pages.map(page => page.key),
   };
   if (!usable.length) return empty;
 
@@ -100,8 +105,11 @@ export function planTextureArrayBank(
   }
   let modal = { width: 0, height: 0, count: -1 };
   for (const entry of counts.values()) {
-    if (entry.count > modal.count
-      || (entry.count === modal.count && entry.width * entry.height > modal.width * modal.height)) modal = entry;
+    if (
+      entry.count > modal.count ||
+      (entry.count === modal.count && entry.width * entry.height > modal.width * modal.height)
+    )
+      modal = entry;
   }
 
   // Two sizes, and the difference matters. `limit` decides MEMBERSHIP — a page bigger than the modal size is
@@ -113,8 +121,10 @@ export function planTextureArrayBank(
   const limitHeight = potCeil(modal.height);
   let width = limitWidth;
   let height = limitHeight;
-  while (width > MIN_CANONICAL && height > MIN_CANONICAL
-    && usable.length * width * height * 4 > maxBytes) { width /= 2; height /= 2; }
+  while (width > MIN_CANONICAL && height > MIN_CANONICAL && usable.length * width * height * 4 > maxBytes) {
+    width /= 2;
+    height /= 2;
+  }
 
   const arrays: string[][] = [];
   const slots = new Map<string, TextureArraySlot>();
@@ -122,9 +132,15 @@ export function planTextureArrayBank(
   const sized = new Map(usable.map(page => [page.key, page]));
   for (const page of pages) {
     const size = sized.get(page.key);
-    if (!size || size.width > limitWidth || size.height > limitHeight) { excluded.push(page.key); continue; }
+    if (!size || size.width > limitWidth || size.height > limitHeight) {
+      excluded.push(page.key);
+      continue;
+    }
     let array = arrays.length - 1;
-    if (array < 0 || arrays[array].length >= maxLayers) { arrays.push([]); array = arrays.length - 1; }
+    if (array < 0 || arrays[array].length >= maxLayers) {
+      arrays.push([]);
+      array = arrays.length - 1;
+    }
     slots.set(page.key, { array, slice: arrays[array].length });
     arrays[array].push(page.key);
   }
@@ -145,9 +161,8 @@ export type TextureArrayImage = CanvasImageSource & { width: number; height: num
 export function asTextureArrayImage(value: unknown): TextureArrayImage | null {
   if (!value || typeof value !== 'object') return null;
   const sized = value as { width?: unknown; height?: unknown };
-  return typeof sized.width === 'number' && sized.width > 0
-    && typeof sized.height === 'number' && sized.height > 0
-    ? value as TextureArrayImage
+  return typeof sized.width === 'number' && sized.width > 0 && typeof sized.height === 'number' && sized.height > 0
+    ? (value as TextureArrayImage)
     : null;
 }
 
@@ -233,7 +248,9 @@ export function buildTextureArrayBank(
   return {
     plan,
     textures,
-    dispose() { for (const texture of textures) texture.dispose(); },
+    dispose() {
+      for (const texture of textures) texture.dispose();
+    },
   };
 }
 
@@ -241,21 +258,32 @@ export function buildTextureArrayBank(
  *  only the colour those texels contribute to a bilinear blend changes. */
 function dilateTransparent(pixels: Uint8ClampedArray, width: number, height: number): void {
   const source = pixels.slice();
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const at = (y * width + x) * 4;
-    if (source[at + 3] !== 0) continue;
-    let r = 0, g = 0, b = 0, found = 0;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dy) continue;
-      const nx = x + dx, ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-      const neighbour = (ny * width + nx) * 4;
-      if (source[neighbour + 3] === 0) continue;
-      r += source[neighbour]; g += source[neighbour + 1]; b += source[neighbour + 2]; found++;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      if (source[at + 3] !== 0) continue;
+      let r = 0,
+        g = 0,
+        b = 0,
+        found = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx,
+            ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const neighbour = (ny * width + nx) * 4;
+          if (source[neighbour + 3] === 0) continue;
+          r += source[neighbour];
+          g += source[neighbour + 1];
+          b += source[neighbour + 2];
+          found++;
+        }
+      if (!found) continue;
+      pixels[at] = r / found;
+      pixels[at + 1] = g / found;
+      pixels[at + 2] = b / found;
     }
-    if (!found) continue;
-    pixels[at] = r / found; pixels[at + 1] = g / found; pixels[at + 2] = b / found;
-  }
 }
 
 /**
@@ -292,11 +320,13 @@ export function textureArrayFragmentShader(fragmentShader: string): string {
 export function textureArrayShaderApplies(): boolean {
   const vertex = textureArrayVertexShader('#include <begin_vertex>\nvoid main() {}');
   const fragment = textureArrayFragmentShader('#include <map_fragment>\nvoid main() {}');
-  return THREE.ShaderChunk.map_fragment.includes('vec4 sampledDiffuseColor = texture2D( map, vMapUv );')
-    && vertex.includes('attribute float texArraySlice;')
-    && vertex.includes('vTexArraySlice = texArraySlice;')
-    && fragment.includes('uniform sampler2DArray uTexArray;')
-    && fragment.includes('texture( uTexArray, vec3( vMapUv, floor( vTexArraySlice + 0.5 ) ) )');
+  return (
+    THREE.ShaderChunk.map_fragment.includes('vec4 sampledDiffuseColor = texture2D( map, vMapUv );') &&
+    vertex.includes('attribute float texArraySlice;') &&
+    vertex.includes('vTexArraySlice = texArraySlice;') &&
+    fragment.includes('uniform sampler2DArray uTexArray;') &&
+    fragment.includes('texture( uTexArray, vec3( vMapUv, floor( vTexArraySlice + 0.5 ) ) )')
+  );
 }
 
 /** userData key marking a material as drawing through an array. Read by anything that has to rebuild a
@@ -318,7 +348,9 @@ export function textureArrayStandIn(): THREE.DataTexture {
 /** Install the array sampler + slice plumbing on a material, preserving whatever `onBeforeCompile` it already
  *  carries (the terrain's back-face tint, a prop's PS2 shading) rather than replacing it. */
 export function useTextureArray<T extends THREE.Material & { map: THREE.Texture | null }>(
-  material: T, texture: THREE.DataArrayTexture, cacheKey: string,
+  material: T,
+  texture: THREE.DataArrayTexture,
+  cacheKey: string,
 ): T {
   const previous = material.onBeforeCompile;
   const previousKey = material.customProgramCacheKey;
@@ -330,7 +362,9 @@ export function useTextureArray<T extends THREE.Material & { map: THREE.Texture 
     shader.vertexShader = textureArrayVertexShader(shader.vertexShader);
     shader.fragmentShader = textureArrayFragmentShader(shader.fragmentShader);
   };
-  material.customProgramCacheKey = function () { return `${previousKey.call(this)}|tex-array:${cacheKey}`; };
+  material.customProgramCacheKey = function () {
+    return `${previousKey.call(this)}|tex-array:${cacheKey}`;
+  };
   return material;
 }
 

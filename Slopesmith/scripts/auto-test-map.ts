@@ -22,9 +22,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  autoTestFixture, autoTestMountain, AUTO_TEST_NAME, type AutoTestCase,
-} from '../src/core/collision/autotest';
+import { autoTestFixture, autoTestMountain, AUTO_TEST_NAME, type AutoTestCase } from '../src/core/collision/autotest';
 import { CUSTOM_TEX_LEVEL, saveSharedCustomTexture } from '../src/server/routes/textures';
 import { saveSharedCustomSound } from '../src/server/routes/sounds';
 import { encodePng } from '../src/server/routes/png';
@@ -50,8 +48,9 @@ const SNOW_GUN_GLB = join(SCRIPT_DIR, '..', 'tools', 'prop-recipes', 'props', 'S
  */
 async function ensureClipModel(cases: readonly AutoTestCase[]): Promise<number | null> {
   if (!cases.some(test => test.shape === 'clip' || test.companionShape === 'clip')) return null;
-  const existing = (await listImportedProps()).find(({ record }) => record.name === 'SnowGun'
-    && record.tris === 190 && record.animation?.clipFrames === 40);
+  const existing = (await listImportedProps()).find(
+    ({ record }) => record.name === 'SnowGun' && record.tris === 190 && record.animation?.clipFrames === 40,
+  );
   if (existing) return existing.record.id;
   const record = await importGlbFile(SNOW_GUN_GLB);
   const saved = await saveImportedProp('SnowGun', record);
@@ -75,13 +74,23 @@ async function tone(name: string, hz: number, seconds: number): Promise<{ file: 
     // Fade the first and last 5 ms so a wrap does not click; the clip is judged by a memory read, but an
     // audible seam would make the same fixture useless for listening to.
     const edge = Math.min(1, i / (rate * 0.005), (frames - 1 - i) / (rate * 0.005));
-    pcm.writeInt16LE(Math.round(12000 * edge * Math.sin(2 * Math.PI * hz * i / rate)), i * 2);
+    pcm.writeInt16LE(Math.round(12000 * edge * Math.sin((2 * Math.PI * hz * i) / rate)), i * 2);
   }
   const wav = Buffer.alloc(44 + pcm.length);
-  wav.write('RIFF', 0); wav.writeUInt32LE(36 + pcm.length, 4); wav.write('WAVE', 8);
-  wav.write('fmt ', 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
-  wav.write('data', 36); wav.writeUInt32LE(pcm.length, 40); pcm.copy(wav, 44);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + pcm.length, 4);
+  wav.write('WAVE', 8);
+  wav.write('fmt ', 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24);
+  wav.writeUInt32LE(rate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(pcm.length, 40);
+  pcm.copy(wav, 44);
   return { file: await saveSharedCustomSound(name, wav), hz };
 }
 
@@ -90,7 +99,10 @@ async function tone(name: string, hz: number, seconds: number): Promise<{ file: 
 async function tile(name: string, rgb: [number, number, number]): Promise<string> {
   const data = new Uint8Array(8 * 8 * 4);
   for (let i = 0; i < data.length; i += 4) {
-    data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255;
+    data[i] = rgb[0];
+    data[i + 1] = rgb[1];
+    data[i + 2] = rgb[2];
+    data[i + 3] = 255;
   }
   return saveSharedCustomTexture(name, encodePng({ w: 8, h: 8, data }));
 }
@@ -110,30 +122,37 @@ async function tile(name: string, rgb: [number, number, number]): Promise<string
  */
 async function publishProject(doc: unknown, name: string): Promise<string> {
   const existing = (await listProjects()).find(project => project.name.toUpperCase() === name);
-  const snapshot = existing
-    ? await saveProject(existing.id, existing.revision, doc)
-    : await createProject(doc);
+  const snapshot = existing ? await saveProject(existing.id, existing.revision, doc) : await createProject(doc);
   const opened = await openProject(snapshot.project.id);
   const reopened = opened.document as {
-    props?: PlacedProp[]; models?: unknown[]; effects?: EffectsDocument; rails?: Rail[];
+    props?: PlacedProp[];
+    models?: unknown[];
+    effects?: EffectsDocument;
+    rails?: Rail[];
   };
   const issues = reopened.effects
-    ? validateEffectsAuthoring(reopened.effects, reopened.props ?? [], reopened.rails ?? [])
-      .filter(issue => issue.severity === 'error')
+    ? validateEffectsAuthoring(reopened.effects, reopened.props ?? [], reopened.rails ?? []).filter(
+        issue => issue.severity === 'error',
+      )
     : [{ path: '$.effects', message: 'the reopened project carries no effects document' }];
   if (issues.length) {
-    throw new Error(`"${snapshot.project.name}" does not reopen cleanly:\n  `
-      + issues.map(issue => `${issue.path}: ${issue.message}`).join('\n  '));
+    throw new Error(
+      `"${snapshot.project.name}" does not reopen cleanly:\n  ` +
+        issues.map(issue => `${issue.path}: ${issue.message}`).join('\n  '),
+    );
   }
-  const what = `${reopened.props?.length ?? 0} prop(s), ${reopened.models?.length ?? 0} model(s), `
-    + `${reopened.effects?.graphs.length ?? 0} graph(s)`;
-  return `${existing ? 'updated' : 'created'} workspace project "${snapshot.project.name}"`
-    + ` (revision ${snapshot.project.revision}); reopens clean with ${what}`;
+  const what =
+    `${reopened.props?.length ?? 0} prop(s), ${reopened.models?.length ?? 0} model(s), ` +
+    `${reopened.effects?.graphs.length ?? 0} graph(s)`;
+  return (
+    `${existing ? 'updated' : 'created'} workspace project "${snapshot.project.name}"` +
+    ` (revision ${snapshot.project.revision}); reopens clean with ${what}`
+  );
 }
 
 async function main(): Promise<number> {
   const flagged = process.argv.indexOf('--fixture');
-  const fixture = autoTestFixture(flagged >= 0 ? process.argv[flagged + 1] ?? AUTO_TEST_NAME : AUTO_TEST_NAME);
+  const fixture = autoTestFixture(flagged >= 0 ? (process.argv[flagged + 1] ?? AUTO_TEST_NAME) : AUTO_TEST_NAME);
   const positional = process.argv.slice(2).find(arg => !arg.startsWith('--') && arg !== fixture.name);
   const outDir = positional || join(mapsRoot(), fixture.name);
   const authoredOnly = process.argv.includes('--authored-only');
@@ -145,15 +164,18 @@ async function main(): Promise<number> {
     process.env.SLOPESMITH_PROJECT_ASSETS_ROOT = temporaryAssets;
   } else {
     const existing = (await listProjects()).find(project => project.name.toUpperCase() === fixture.name);
-    const project = existing ? await openProject(existing.id)
+    const project = existing
+      ? await openProject(existing.id)
       : await createProject({ ...defaultMountain(), name: fixture.name });
     await migrateLegacyProjectAssets(project);
     process.env.SLOPESMITH_PROJECT_ASSETS_ROOT = join(project.project.folder, 'assets');
   }
   console.log(`${fixture.name}: ${fixture.purpose}`);
   if (authoredOnly) {
-    console.log(`Authored-only export: kept ${cases.length} case(s), omitted ${fixture.cases.length - cases.length} `
-      + 'that require retail or imported models.');
+    console.log(
+      `Authored-only export: kept ${cases.length} case(s), omitted ${fixture.cases.length - cases.length} ` +
+        'that require retail or imported models.',
+    );
   }
   const rest = await tile('zz-autotest-rest.png', [40, 40, 40]);
   const frame = await tile('zz-autotest-frame.png', [230, 30, 30]);
@@ -167,7 +189,10 @@ async function main(): Promise<number> {
   const clipModel = await ensureClipModel(cases);
 
   const { doc, plan } = autoTestMountain({
-    name: fixture.name, cases, mode: fixture.mode, strips: fixture.strips,
+    name: fixture.name,
+    cases,
+    mode: fixture.mode,
+    strips: fixture.strips,
     ...(clipModel === null ? {} : { clipModel }),
     ...(fixture.leadInM === undefined ? {} : { leadInM: fixture.leadInM }),
     ...(fixture.windowFrames === undefined ? {} : { windowFrames: fixture.windowFrames }),
@@ -197,8 +222,8 @@ async function main(): Promise<number> {
   // attachments through, and canonical export copies the group name verbatim into InstanceName.
   const effects = JSON.parse(readFileSync(join(outDir, 'Effects.json'), 'utf8'));
   const baked = effects.extensions?.slopesmith?.bakedGroups ?? {};
-  const instances: { InstanceName: string; Location: [number, number, number] }[] = JSON.parse(
-    readFileSync(join(outDir, 'Instances.json'), 'utf8')).Instances ?? [];
+  const instances: { InstanceName: string; Location: [number, number, number] }[] =
+    JSON.parse(readFileSync(join(outDir, 'Instances.json'), 'utf8')).Instances ?? [];
   const known = new Map(instances.map(item => [item.InstanceName, item.Location]));
 
   let mismatches = 0;
@@ -214,12 +239,12 @@ async function main(): Promise<number> {
     // cells share one record, and `Import_<n>_` is what separates them — so for those the family is what there
     // is to check. Every other family this fixture uses is named from something it authored per cell, and
     // there the authored suffix must be present: it is what catches a case wired to the wrong baker.
-    const named = entry.imported
-      ? /^Import(Solid)?_\d+_.+$/.test(actual)
-      : actual.endsWith(`_${entry.propName}`);
+    const named = entry.imported ? /^Import(Solid)?_\d+_.+$/.test(actual) : actual.endsWith(`_${entry.propName}`);
     if (!named) {
-      console.error(`FAIL ${entry.id}: ${actual} is not the ${entry.imported ? 'imported-catalogue' : 'authored'} `
-        + `name this case should have baked (${entry.imported ? 'Import_<n>_<model>' : entry.propName})`);
+      console.error(
+        `FAIL ${entry.id}: ${actual} is not the ${entry.imported ? 'imported-catalogue' : 'authored'} ` +
+          `name this case should have baked (${entry.imported ? 'Import_<n>_<model>' : entry.propName})`,
+      );
       mismatches++;
     }
     const location = known.get(actual);
@@ -239,8 +264,11 @@ async function main(): Promise<number> {
     // disc actually carries.
     const found = item.expect === 'one-shot' ? collisionJoin[item.propId] : ambientJoin[item.propId]?.event;
     if (typeof found !== 'number') {
-      console.error(`FAIL ${item.id}: the export placed no ${item.expect === 'one-shot' ? 'collision sound'
-        : 'ambient emitter'} for ${item.propId}`);
+      console.error(
+        `FAIL ${item.id}: the export placed no ${
+          item.expect === 'one-shot' ? 'collision sound' : 'ambient emitter'
+        } for ${item.propId}`,
+      );
       mismatches++;
       continue;
     }
@@ -271,11 +299,11 @@ async function main(): Promise<number> {
   const byGroup = new Map<string, number[][]>();
   let current: number[][] | null = null;
   for (const line of props.split('\n')) {
-    if (line.startsWith('o ')) byGroup.set(line.slice(2).trim(), current = []);
-    else if (line.startsWith('v ') && current)
-      current.push(line.trim().split(/\s+/).slice(1, 4).map(Number));
+    if (line.startsWith('o ')) byGroup.set(line.slice(2).trim(), (current = []));
+    else if (line.startsWith('v ') && current) current.push(line.trim().split(/\s+/).slice(1, 4).map(Number));
   }
-  const first = plan.entries[0]?.location, second = plan.entries[1]?.location;
+  const first = plan.entries[0]?.location,
+    second = plan.entries[1]?.location;
   if (first && second) {
     const run = Math.hypot(second[0] - first[0], second[1] - first[1]) || 1;
     const fall = [(second[0] - first[0]) / run, (second[1] - first[1]) / run];
@@ -287,17 +315,24 @@ async function main(): Promise<number> {
       if (entry.contactOptional) continue;
       const group = [...byGroup].find(([name]) => name.endsWith(`_${entry.instanceName}`))?.[1];
       if (!group?.length) continue;
-      let span = [0, 0], best = 0;
-      for (let i = 0; i < group.length; i++) for (let k = i + 1; k < group.length; k++) {
-        const d = [group[k][0] - group[i][0], group[k][1] - group[i][1]];
-        const m = Math.hypot(d[0], d[1]);
-        if (m > best) { best = m; span = d; }
-      }
+      let span = [0, 0],
+        best = 0;
+      for (let i = 0; i < group.length; i++)
+        for (let k = i + 1; k < group.length; k++) {
+          const d = [group[k][0] - group[i][0], group[k][1] - group[i][1]];
+          const m = Math.hypot(d[0], d[1]);
+          if (m > best) {
+            best = m;
+            span = d;
+          }
+        }
       const across = Math.abs(span[0] * fall[1] - span[1] * fall[0]);
       const along = Math.abs(span[0] * fall[0] + span[1] * fall[1]);
       if (across <= along) {
-        console.error(`FAIL ${entry.id}: lies ALONG the fall line (across ${across.toFixed(0)},`
-          + ` along ${along.toFixed(0)}) — the rider can pass beside it`);
+        console.error(
+          `FAIL ${entry.id}: lies ALONG the fall line (across ${across.toFixed(0)},` +
+            ` along ${along.toFixed(0)}) — the rider can pass beside it`,
+        );
         mismatches++;
       }
     }
@@ -307,13 +342,29 @@ async function main(): Promise<number> {
   writeFileSync(planPath, JSON.stringify({ ...plan, exportDir: outDir }, null, 1) + '\n');
   console.log(`\n${plan.entries.length} variant(s) -> ${planPath}`);
   for (const entry of plan.entries)
-    console.log(`  ${entry.id.padEnd(22)} ${String(entry.distanceM).padStart(5)} m  mode ${entry.mode}  ${entry.instanceName}`);
+    console.log(
+      `  ${entry.id.padEnd(22)} ${String(entry.distanceM).padStart(5)} m  mode ${entry.mode}  ${entry.instanceName}`,
+    );
   for (const strip of plan.strips ?? [])
-    console.log(`  strip ${strip.label.padEnd(16)} ${String(strip.fromM).padStart(5)}-${strip.toM} m  Surf_${strip.surface}`);
-  if (!existsSync(join(outDir, 'Props.obj'))) { console.error('FAIL: the export wrote no Props.obj'); mismatches++; }
+    console.log(
+      `  strip ${strip.label.padEnd(16)} ${String(strip.fromM).padStart(5)}-${strip.toM} m  Surf_${strip.surface}`,
+    );
+  if (!existsSync(join(outDir, 'Props.obj'))) {
+    console.error('FAIL: the export wrote no Props.obj');
+    mismatches++;
+  }
   if (publishFailed) mismatches++;
   return mismatches ? 1 : 0;
 }
 
-main().then(code => process.exitCode = code, error => { console.error(error); process.exitCode = 1; })
-  .finally(() => { if (temporaryAssets) rmSync(temporaryAssets, { recursive: true, force: true }); });
+main()
+  .then(
+    code => (process.exitCode = code),
+    error => {
+      console.error(error);
+      process.exitCode = 1;
+    },
+  )
+  .finally(() => {
+    if (temporaryAssets) rmSync(temporaryAssets, { recursive: true, force: true });
+  });

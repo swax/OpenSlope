@@ -9,12 +9,16 @@ import { parseTexRef, CUSTOM_TEX_LEVEL } from '../core/paint/textures';
 import { IMPORTED_PROP_LEVEL, type ImportedPropRecord } from '../core/props/imported';
 import { behaviourRecords } from '../core/props/defaults';
 import type { PropBehaviour } from '../core/doc/types';
+import { ensureDir, listDir, pathExists, readJsonOr, writeJsonAtomic } from './fs-async';
 import {
-  ensureDir, listDir, pathExists, readJsonOr, writeJsonAtomic,
-} from './fs-async';
-import {
-  canEditProject, currentProject, listCheckpoints, listProjects, openProject, ProjectPermissionError,
-  readCheckpoint, type ProjectSnapshot,
+  canEditProject,
+  currentProject,
+  listCheckpoints,
+  listProjects,
+  openProject,
+  ProjectPermissionError,
+  readCheckpoint,
+  type ProjectSnapshot,
 } from './projects';
 import type { Identity } from './accounts/guard';
 import { createLogger } from './log';
@@ -87,7 +91,9 @@ function requestClientId(req: IncomingMessage): string | undefined {
 export class NoOpenProjectError extends Error {
   readonly statusCode = 409;
 
-  constructor(message = 'No mountain is open for this editor.') { super(message); }
+  constructor(message = 'No mountain is open for this editor.') {
+    super(message);
+  }
 }
 
 export async function requestProjectSnapshot(req: IncomingMessage): Promise<ProjectSnapshot> {
@@ -95,7 +101,9 @@ export async function requestProjectSnapshot(req: IncomingMessage): Promise<Proj
   // A named mountain that is not here throws from the store rather than answering null, so both ways of
   // having nothing to act on arrive as the same refusal instead of one of them as a 500.
   const snapshot = projectId
-    ? await openProject(projectId).catch(() => { throw new NoOpenProjectError(`This server has no mountain ${projectId}.`); })
+    ? await openProject(projectId).catch(() => {
+        throw new NoOpenProjectError(`This server has no mountain ${projectId}.`);
+      })
     : await currentProject(requestClientId(req));
   if (!snapshot) {
     throw new NoOpenProjectError('No mountain is open. Open one in the editor, or name it with ?project=<id>.');
@@ -104,15 +112,20 @@ export async function requestProjectSnapshot(req: IncomingMessage): Promise<Proj
 }
 
 /** Bind an asset API request to the mountain open in the calling tab. */
-export async function withRequestProjectAssets<T>(req: IncomingMessage, run: () => T | Promise<T>,
-  enforceEdit = false): Promise<T> {
+export async function withRequestProjectAssets<T>(
+  req: IncomingMessage,
+  run: () => T | Promise<T>,
+  enforceEdit = false,
+): Promise<T> {
   const snapshot = await requestProjectSnapshot(req);
   if (enforceEdit) {
     const identity = (req as IncomingMessage & { identity?: Identity }).identity;
     if (!identity || !('user' in identity) || !canEditProject(snapshot.project, identity.user)) {
-      throw new ProjectPermissionError(snapshot.project.editorIds === undefined
-        ? 'Changing this map needs the editor role.'
-        : 'This map is restricted to editors selected by its owner.');
+      throw new ProjectPermissionError(
+        snapshot.project.editorIds === undefined
+          ? 'Changing this map needs the editor role.'
+          : 'This map is restricted to editors selected by its owner.',
+      );
     }
   }
   await migrateLegacyProjectAssets(snapshot);
@@ -149,7 +162,11 @@ interface WantedAssets {
 
 function wantedAssets(): WantedAssets {
   return {
-    textures: new Set(), sounds: new Set(), music: new Set(), skies: new Set(), models: new Set(),
+    textures: new Set(),
+    sounds: new Set(),
+    music: new Set(),
+    skies: new Set(),
+    models: new Set(),
   };
 }
 
@@ -197,7 +214,10 @@ function collectDocumentAssets(document: EditDoc, wanted: WantedAssets): void {
 async function copyIfPresent(source: string, destination: string, copied: string[], missing: string[]): Promise<void> {
   // Project-owned uploads satisfy the dependency even when no legacy source exists.
   if (await pathExists(destination)) return;
-  if (!await pathExists(source)) { missing.push(source); return; }
+  if (!(await pathExists(source))) {
+    missing.push(source);
+    return;
+  }
   await ensureDir(dirname(destination));
   try {
     await copyFile(source, destination, constants.COPYFILE_EXCL);
@@ -208,7 +228,7 @@ async function copyIfPresent(source: string, destination: string, copied: string
 }
 
 async function copyOptional(source: string, destination: string, copied: string[]): Promise<void> {
-  if (!await pathExists(source)) return;
+  if (!(await pathExists(source))) return;
   await ensureDir(dirname(destination));
   try {
     await copyFile(source, destination, constants.COPYFILE_EXCL);
@@ -229,35 +249,47 @@ export async function migrateLegacyProjectAssets(snapshot: ProjectSnapshot): Pro
   const prior = await readJsonOr<{ missing?: string[] } | null>(marker, null);
   // A complete migration is final. An earlier pass with missing dependencies is retried so restoring a
   // legacy file after Slopesmith first noticed the hole does not require marker surgery.
-  if (prior && !(prior.missing?.length)) return;
+  if (prior && !prior.missing?.length) return;
 
   const wanted = wantedAssets();
   collectDocumentAssets(snapshot.document, wanted);
   try {
     const listing = await listCheckpoints(snapshot.project.id);
     for (const checkpoint of listing.checkpoints) {
-      try { collectDocumentAssets((await readCheckpoint(snapshot.project.id, checkpoint.file)).document, wanted); }
-      catch { /* a checkpoint can be thinned between listing and read */ }
+      try {
+        collectDocumentAssets((await readCheckpoint(snapshot.project.id, checkpoint.file)).document, wanted);
+      } catch {
+        /* a checkpoint can be thinned between listing and read */
+      }
     }
-  } catch { /* a project created before checkpoint storage simply has no history dependencies */ }
+  } catch {
+    /* a project created before checkpoint storage simply has no history dependencies */
+  }
 
   const legacyProps = join(mapsRoot(), 'Custom', 'Props');
   const propFiles = (await listDir(legacyProps)).filter(file => /\.json$/i.test(file));
-  const propRecords = await Promise.all(propFiles.map(async file => ({
-    file, record: await readJsonOr<ImportedPropRecord | null>(join(legacyProps, file), null),
-  })));
+  const propRecords = await Promise.all(
+    propFiles.map(async file => ({
+      file,
+      record: await readJsonOr<ImportedPropRecord | null>(join(legacyProps, file), null),
+    })),
+  );
   // A model number is the imported prop's identity. If this project already owns that number, its local
   // record is authoritative even when the legacy bank happens to contain a different prop under the same id.
   // This is also the defensive half of portable import: an older/incomplete import without a marker must
   // never acquire a second record whose id makes thumbnail and placement lookups ambiguous.
   const localPropFiles = (await listDir(join(root, 'props'))).filter(file => /\.json$/i.test(file));
-  const localPropRecords = await Promise.all(localPropFiles.map(file =>
-    readJsonOr<ImportedPropRecord | null>(join(root, 'props', file), null)));
-  const locallyOwnedModels = new Set(localPropRecords
-    .filter((record): record is ImportedPropRecord => !!record && Number.isInteger(record.id))
-    .map(record => record.id));
-  const neededLegacyProps = propRecords.filter(({ record }) =>
-    !!record && wanted.models.has(record.id) && !locallyOwnedModels.has(record.id));
+  const localPropRecords = await Promise.all(
+    localPropFiles.map(file => readJsonOr<ImportedPropRecord | null>(join(root, 'props', file), null)),
+  );
+  const locallyOwnedModels = new Set(
+    localPropRecords
+      .filter((record): record is ImportedPropRecord => !!record && Number.isInteger(record.id))
+      .map(record => record.id),
+  );
+  const neededLegacyProps = propRecords.filter(
+    ({ record }) => !!record && wanted.models.has(record.id) && !locallyOwnedModels.has(record.id),
+  );
   for (const { record } of neededLegacyProps) {
     if (!record) continue;
     for (const material of record.materials ?? []) {
@@ -273,19 +305,38 @@ export async function migrateLegacyProjectAssets(snapshot: ProjectSnapshot): Pro
   const copied: string[] = [];
   const missing: string[] = [];
   await Promise.all([
-    ...[...wanted.textures].map(name => copyIfPresent(
-      join(mapsRoot(), 'Custom', 'Textures', `${basename(name, extname(name))}.png`),
-      join(root, 'textures', `${basename(name, extname(name))}.png`), copied, missing)),
-    ...[...wanted.sounds].map(name => copyIfPresent(
-      join(mapsRoot(), 'Custom', 'Sounds', `${basename(name, extname(name))}.wav`),
-      join(root, 'sounds', `${basename(name, extname(name))}.wav`), copied, missing)),
-    ...[...wanted.music].filter(name => basename(name) === name).map(name => copyIfPresent(
-      join(mapsRoot(), 'Custom', 'Music', name), join(root, 'music', name), copied, missing)),
-    ...[...wanted.skies].map(name => copyIfPresent(
-      join(mapsRoot(), 'Shared', 'Skies', `${basename(name, extname(name))}.png`),
-      join(root, 'skies', `${basename(name, extname(name))}.png`), copied, missing)),
+    ...[...wanted.textures].map(name =>
+      copyIfPresent(
+        join(mapsRoot(), 'Custom', 'Textures', `${basename(name, extname(name))}.png`),
+        join(root, 'textures', `${basename(name, extname(name))}.png`),
+        copied,
+        missing,
+      ),
+    ),
+    ...[...wanted.sounds].map(name =>
+      copyIfPresent(
+        join(mapsRoot(), 'Custom', 'Sounds', `${basename(name, extname(name))}.wav`),
+        join(root, 'sounds', `${basename(name, extname(name))}.wav`),
+        copied,
+        missing,
+      ),
+    ),
+    ...[...wanted.music]
+      .filter(name => basename(name) === name)
+      .map(name =>
+        copyIfPresent(join(mapsRoot(), 'Custom', 'Music', name), join(root, 'music', name), copied, missing),
+      ),
+    ...[...wanted.skies].map(name =>
+      copyIfPresent(
+        join(mapsRoot(), 'Shared', 'Skies', `${basename(name, extname(name))}.png`),
+        join(root, 'skies', `${basename(name, extname(name))}.png`),
+        copied,
+        missing,
+      ),
+    ),
     ...neededLegacyProps.map(({ file }) =>
-      copyIfPresent(join(legacyProps, file), join(root, 'props', file), copied, missing)),
+      copyIfPresent(join(legacyProps, file), join(root, 'props', file), copied, missing),
+    ),
     // Preserve the old libraries' spent names and prop-number high-water mark. These are optional metadata,
     // not missing dependencies, but without them an old checkpoint could later see a deleted name/id reused.
     ...[
@@ -313,8 +364,9 @@ const log = createLogger('assets');
  * the server offline; opening that project later retries the same migration through its request context. */
 export async function migrateLegacyWorkspaceAssets(): Promise<void> {
   for (const project of await listProjects()) {
-    try { await migrateLegacyProjectAssets(await openProject(project.id)); }
-    catch (error) {
+    try {
+      await migrateLegacyProjectAssets(await openProject(project.id));
+    } catch (error) {
       log.warn(`could not migrate ${project.name}`, { error });
     }
   }

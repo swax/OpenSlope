@@ -39,10 +39,30 @@ import { Group } from 'three';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import {
-  CLAVICLE_Y, HEAD_BONE_Y, HELMET_Y,
-  DigitSpec, FigurePart, FigureSpec, PaletteEntry, ShapeMesh, Tile, V3,
-  armChain, box, buildFigure, chamferProfile, exportCharacterGlb, extrude, hexahedron, limb, mirroredX,
-  legChain, placed, riderBones, roundProfile, runCharacterBuild,
+  CLAVICLE_Y,
+  HEAD_BONE_Y,
+  HELMET_Y,
+  DigitSpec,
+  FigurePart,
+  FigureSpec,
+  PaletteEntry,
+  ShapeMesh,
+  Tile,
+  V3,
+  armChain,
+  box,
+  buildFigure,
+  chamferProfile,
+  exportCharacterGlb,
+  extrude,
+  hexahedron,
+  limb,
+  mirroredX,
+  legChain,
+  placed,
+  riderBones,
+  roundProfile,
+  runCharacterBuild,
 } from './figure';
 import { LIGHT_CELL, conduit, conduitStrip, lightAtlas } from './alpine-exo-lights';
 
@@ -50,7 +70,8 @@ import { LIGHT_CELL, conduit, conduitStrip, lightAtlas } from './alpine-exo-ligh
 const ARM_SPREAD = 17;
 /** Wrist to knuckles. With articulated digits the hand bone IS the palm and the fingers continue from it,
  *  which is how a Mixamo skeleton is shaped and what the runtime's palm frame expects to find. */
-const FOOT_LENGTH = 0.19, HAND_LENGTH = 0.084;
+const FOOT_LENGTH = 0.19,
+  HAND_LENGTH = 0.084;
 
 /**
  * The gauntlet's digits, in the hand bone's own frame (+X the way the palm faces, +Y down the fingers, +Z
@@ -66,15 +87,18 @@ const DIGITS: DigitSpec[] = [
   // normal from `middle1 × thumb1`, so an base lifted toward the palm tilts that normal — and with it the
   // curl plane of every finger, which then slides sideways across the palm as it closes instead of shutting
   // straight. Keeping it in the palm plane (x ≈ 0) is what makes the recovered normal the authored one.
-  { digit: 'thumb', base: [0.002, 0.036, 0.054], direction: [0.30, 0.56, 0.77], segments: [0.034, 0.027] },
-  { digit: 'index', base: [0.004, 0.078, 0.050], direction: [0.02, 1, 0.05], segments: [0.031, 0.024, 0.019] },
-  { digit: 'middle', base: [0.004, 0.083, 0.017], direction: [0.02, 1, 0.00], segments: [0.034, 0.026, 0.020] },
+  { digit: 'thumb', base: [0.002, 0.036, 0.054], direction: [0.3, 0.56, 0.77], segments: [0.034, 0.027] },
+  { digit: 'index', base: [0.004, 0.078, 0.05], direction: [0.02, 1, 0.05], segments: [0.031, 0.024, 0.019] },
+  { digit: 'middle', base: [0.004, 0.083, 0.017], direction: [0.02, 1, 0.0], segments: [0.034, 0.026, 0.02] },
   { digit: 'ring', base: [0.004, 0.078, -0.017], direction: [0.02, 1, -0.03], segments: [0.031, 0.024, 0.019] },
-  { digit: 'pinky', base: [0.004, 0.068, -0.050], direction: [0.02, 1, -0.07], segments: [0.027, 0.020, 0.017] },
+  { digit: 'pinky', base: [0.004, 0.068, -0.05], direction: [0.02, 1, -0.07], segments: [0.027, 0.02, 0.017] },
 ];
 
 export const BONES = riderBones({
-  footLength: FOOT_LENGTH, handLength: HAND_LENGTH, armSpread: ARM_SPREAD, digits: DIGITS,
+  footLength: FOOT_LENGTH,
+  handLength: HAND_LENGTH,
+  armSpread: ARM_SPREAD,
+  digits: DIGITS,
 });
 
 const arm = armChain('L', ARM_SPREAD, HAND_LENGTH);
@@ -119,8 +143,13 @@ const PALETTE: PaletteEntry[] = [
   // Negative v because a texture offset moves the PATTERN the other way: this sends the pulses toward each
   // solid's tail, which is up the pack's spine and outward along the limbs — power leaving the reactor.
   {
-    name: 'Core', color: 0x1d1710, emissive: 0xff9538, emissiveTexture: 'conduit',
-    scroll: [0, -0.55], metalness: 0, roughness: 0.6,
+    name: 'Core',
+    color: 0x1d1710,
+    emissive: 0xff9538,
+    emissiveTexture: 'conduit',
+    scroll: [0, -0.55],
+    metalness: 0,
+    roughness: 0.6,
   },
 ];
 
@@ -138,8 +167,13 @@ const FINGER = chamferProfile(0);
 const ROD = roundProfile(6);
 const DOME = roundProfile(8);
 
-const part = (name: string, bone: string, material: string, shape: ShapeMesh, tile?: Tile): FigurePart =>
-  ({ name, bone, material, shape, ...(tile ? { tile } : {}) });
+const part = (name: string, bone: string, material: string, shape: ShapeMesh, tile?: Tile): FigurePart => ({
+  name,
+  bone,
+  material,
+  shape,
+  ...(tile ? { tile } : {}),
+});
 
 /** Mirror a left-side entry onto the right. */
 function mirror(entry: FigurePart): FigurePart {
@@ -160,44 +194,95 @@ function mirror(entry: FigurePart): FigurePart {
  * instead of leaving a helmet floating where the old head used to be.
  */
 const HEAD_PARTS: FigurePart[] = [
-  part('Helm', 'Head', 'Plate', extrude(PLATE, [
-    { y: H - 0.135, scale: [0.100, 0.112], offset: [0, 0.010] },
-    { y: H - 0.075, scale: [0.136, 0.152], offset: [0, 0.012] },
-    { y: H + 0.022, scale: [0.144, 0.158], offset: [0, 0.012] },
-    { y: H + 0.100, scale: [0.128, 0.138], offset: [0, 0.008] },
-    { y: H + 0.142, scale: [0.076, 0.088], offset: [0, 0.004] },
-  ])),
+  part(
+    'Helm',
+    'Head',
+    'Plate',
+    extrude(PLATE, [
+      { y: H - 0.135, scale: [0.1, 0.112], offset: [0, 0.01] },
+      { y: H - 0.075, scale: [0.136, 0.152], offset: [0, 0.012] },
+      { y: H + 0.022, scale: [0.144, 0.158], offset: [0, 0.012] },
+      { y: H + 0.1, scale: [0.128, 0.138], offset: [0, 0.008] },
+      { y: H + 0.142, scale: [0.076, 0.088], offset: [0, 0.004] },
+    ]),
+  ),
   // The respirator: the front face stays vertical so the vent bars can stand proud of it without slicing
   // through, and the flare goes on the sides and the top instead.
-  part('Respirator', 'Head', 'Metal', hexahedron([
-    [-0.060, H - 0.130, 0.086], [-0.060, H - 0.130, 0.190], [0.060, H - 0.130, 0.190], [0.060, H - 0.130, 0.086],
-    [-0.082, H - 0.020, 0.086], [-0.082, H - 0.020, 0.190], [0.082, H - 0.020, 0.190], [0.082, H - 0.020, 0.086],
-  ])),
-  part('Brow', 'Head', 'Plate', hexahedron([
-    [-0.136, H + 0.048, 0.094], [-0.136, H + 0.048, 0.184], [0.136, H + 0.048, 0.184], [0.136, H + 0.048, 0.094],
-    [-0.125, H + 0.100, 0.094], [-0.125, H + 0.100, 0.152], [0.125, H + 0.100, 0.152], [0.125, H + 0.100, 0.094],
-  ])),
-  part('Crest', 'Head', 'Trim', hexahedron([
-    [-0.023, H + 0.102, -0.126], [-0.023, H + 0.102, 0.158], [0.023, H + 0.102, 0.158], [0.023, H + 0.102, -0.126],
-    [-0.011, H + 0.184, -0.062], [-0.011, H + 0.184, 0.104], [0.011, H + 0.184, 0.104], [0.011, H + 0.184, -0.062],
-  ])),
+  part(
+    'Respirator',
+    'Head',
+    'Metal',
+    hexahedron([
+      [-0.06, H - 0.13, 0.086],
+      [-0.06, H - 0.13, 0.19],
+      [0.06, H - 0.13, 0.19],
+      [0.06, H - 0.13, 0.086],
+      [-0.082, H - 0.02, 0.086],
+      [-0.082, H - 0.02, 0.19],
+      [0.082, H - 0.02, 0.19],
+      [0.082, H - 0.02, 0.086],
+    ]),
+  ),
+  part(
+    'Brow',
+    'Head',
+    'Plate',
+    hexahedron([
+      [-0.136, H + 0.048, 0.094],
+      [-0.136, H + 0.048, 0.184],
+      [0.136, H + 0.048, 0.184],
+      [0.136, H + 0.048, 0.094],
+      [-0.125, H + 0.1, 0.094],
+      [-0.125, H + 0.1, 0.152],
+      [0.125, H + 0.1, 0.152],
+      [0.125, H + 0.1, 0.094],
+    ]),
+  ),
+  part(
+    'Crest',
+    'Head',
+    'Trim',
+    hexahedron([
+      [-0.023, H + 0.102, -0.126],
+      [-0.023, H + 0.102, 0.158],
+      [0.023, H + 0.102, 0.158],
+      [0.023, H + 0.102, -0.126],
+      [-0.011, H + 0.184, -0.062],
+      [-0.011, H + 0.184, 0.104],
+      [0.011, H + 0.184, 0.104],
+      [0.011, H + 0.184, -0.062],
+    ]),
+  ),
 ];
 
 const HEAD_SIDE: FigurePart[] = [
-  part('Lens.L', 'Head', 'Lens', placed(
-    box([0.026, H + 0.006, 0.146], [0.120, H + 0.056, 0.180]),
-    { pivot: [0.073, H + 0.031, 0], rotateZ: 9 },
-  ), LIGHT_CELL.visor),
-  part('VentBar.L', 'Head', 'Suit', box([0.008, H - 0.122, 0.184], [0.026, H - 0.036, 0.200])),
-  part('VentBar2.L', 'Head', 'Suit', box([0.034, H - 0.122, 0.184], [0.052, H - 0.036, 0.200])),
-  part('Cowl.L', 'Head', 'Metal', hexahedron([
-    [0.130, H - 0.064, -0.060], [0.130, H - 0.064, 0.064], [0.164, H - 0.064, 0.052], [0.164, H - 0.064, -0.048],
-    [0.130, H + 0.062, -0.060], [0.130, H + 0.062, 0.064], [0.158, H + 0.062, 0.052], [0.158, H + 0.062, -0.048],
-  ])),
+  part(
+    'Lens.L',
+    'Head',
+    'Lens',
+    placed(box([0.026, H + 0.006, 0.146], [0.12, H + 0.056, 0.18]), { pivot: [0.073, H + 0.031, 0], rotateZ: 9 }),
+    LIGHT_CELL.visor,
+  ),
+  part('VentBar.L', 'Head', 'Suit', box([0.008, H - 0.122, 0.184], [0.026, H - 0.036, 0.2])),
+  part('VentBar2.L', 'Head', 'Suit', box([0.034, H - 0.122, 0.184], [0.052, H - 0.036, 0.2])),
+  part(
+    'Cowl.L',
+    'Head',
+    'Metal',
+    hexahedron([
+      [0.13, H - 0.064, -0.06],
+      [0.13, H - 0.064, 0.064],
+      [0.164, H - 0.064, 0.052],
+      [0.164, H - 0.064, -0.048],
+      [0.13, H + 0.062, -0.06],
+      [0.13, H + 0.062, 0.064],
+      [0.158, H + 0.062, 0.052],
+      [0.158, H + 0.062, -0.048],
+    ]),
+  ),
   // A side readout rather than a dark slot: from a chase camera it is the only lit thing on the head that is
   // not the visor, which is what stops a night silhouette reading as two floating eyes.
-  part('CowlSlot.L', 'Head', 'Lens', box([0.156, H - 0.032, -0.022], [0.172, H + 0.036, 0.028]),
-    LIGHT_CELL.bars),
+  part('CowlSlot.L', 'Head', 'Lens', box([0.156, H - 0.032, -0.022], [0.172, H + 0.036, 0.028]), LIGHT_CELL.bars),
 ];
 
 /* ── Neck and torso ────────────────────────────────────────────────────────────────────────────────────
@@ -209,98 +294,184 @@ const HEAD_SIDE: FigurePart[] = [
  * inside the pelvis.
  */
 const TORSO_PARTS: FigurePart[] = [
-  part('NeckSeal', 'Neck', 'Suit', extrude(DOME, [
-    { y: CLAVICLE_Y - 0.030, scale: 0.086 },
-    { y: HEAD_BONE_Y + 0.016, scale: 0.078 },
-  ])),
-  part('Gorget', 'Neck', 'Plate', extrude(PLATE, [
-    { y: CLAVICLE_Y - 0.048, scale: [0.152, 0.148] },
-    { y: CLAVICLE_Y + 0.016, scale: [0.128, 0.126] },
-    { y: HEAD_BONE_Y + 0.014, scale: [0.107, 0.109] },
-  ])),
-  part('GorgetTrim', 'Neck', 'Trim', extrude(PLATE, [
-    { y: CLAVICLE_Y - 0.062, scale: [0.160, 0.155] },
-    { y: CLAVICLE_Y - 0.034, scale: [0.154, 0.150] },
-  ])),
+  part(
+    'NeckSeal',
+    'Neck',
+    'Suit',
+    extrude(DOME, [
+      { y: CLAVICLE_Y - 0.03, scale: 0.086 },
+      { y: HEAD_BONE_Y + 0.016, scale: 0.078 },
+    ]),
+  ),
+  part(
+    'Gorget',
+    'Neck',
+    'Plate',
+    extrude(PLATE, [
+      { y: CLAVICLE_Y - 0.048, scale: [0.152, 0.148] },
+      { y: CLAVICLE_Y + 0.016, scale: [0.128, 0.126] },
+      { y: HEAD_BONE_Y + 0.014, scale: [0.107, 0.109] },
+    ]),
+  ),
+  part(
+    'GorgetTrim',
+    'Neck',
+    'Trim',
+    extrude(PLATE, [
+      { y: CLAVICLE_Y - 0.062, scale: [0.16, 0.155] },
+      { y: CLAVICLE_Y - 0.034, scale: [0.154, 0.15] },
+    ]),
+  ),
   // The cuirass stops at 1.205 and the pelvis starts at 1.185, so the dark `Waist` beneath shows through a
   // two-centimetre inset band. Overlapping them instead — which is what the first draft did — welds the
   // whole torso into one grey mass with no waist at all, and a figure with no waist has no V to read.
-  part('Cuirass', 'Chest', 'Plate', extrude(PLATE, [
-    { y: 1.205, scale: [0.152, 0.130] },
-    { y: 1.272, scale: [0.204, 0.160] },
-    { y: 1.360, scale: [0.230, 0.174] },
-    { y: 1.445, scale: [0.222, 0.166] },
-    { y: 1.500, scale: [0.176, 0.138] },
-  ])),
-  part('CollarTrim', 'Chest', 'Trim', extrude(PLATE, [
-    { y: 1.452, scale: [0.220, 0.164] },
-    { y: 1.484, scale: [0.196, 0.150] },
-  ])),
-  part('Sternum', 'Chest', 'Trim', extrude(RIDGE, [
-    { y: 1.360, scale: [0.056, 0.030], offset: [0, 0.172] },
-    { y: 1.432, scale: [0.062, 0.034], offset: [0, 0.180] },
-    { y: 1.484, scale: [0.044, 0.026], offset: [0, 0.154] },
-  ])),
-  part('ChestVent', 'Chest', 'Suit', extrude(RIDGE, [
-    { y: 1.262, scale: [0.086, 0.026], offset: [0, 0.164] },
-    { y: 1.300, scale: [0.092, 0.028], offset: [0, 0.168] },
-  ])),
+  part(
+    'Cuirass',
+    'Chest',
+    'Plate',
+    extrude(PLATE, [
+      { y: 1.205, scale: [0.152, 0.13] },
+      { y: 1.272, scale: [0.204, 0.16] },
+      { y: 1.36, scale: [0.23, 0.174] },
+      { y: 1.445, scale: [0.222, 0.166] },
+      { y: 1.5, scale: [0.176, 0.138] },
+    ]),
+  ),
+  part(
+    'CollarTrim',
+    'Chest',
+    'Trim',
+    extrude(PLATE, [
+      { y: 1.452, scale: [0.22, 0.164] },
+      { y: 1.484, scale: [0.196, 0.15] },
+    ]),
+  ),
+  part(
+    'Sternum',
+    'Chest',
+    'Trim',
+    extrude(RIDGE, [
+      { y: 1.36, scale: [0.056, 0.03], offset: [0, 0.172] },
+      { y: 1.432, scale: [0.062, 0.034], offset: [0, 0.18] },
+      { y: 1.484, scale: [0.044, 0.026], offset: [0, 0.154] },
+    ]),
+  ),
+  part(
+    'ChestVent',
+    'Chest',
+    'Suit',
+    extrude(RIDGE, [
+      { y: 1.262, scale: [0.086, 0.026], offset: [0, 0.164] },
+      { y: 1.3, scale: [0.092, 0.028], offset: [0, 0.168] },
+    ]),
+  ),
   // The backpack is what says "powered armour" from behind, which is the angle this game spends most of its
   // time at. Bound to the chest, so it swings with the torso rather than sitting on the hips like luggage.
-  part('Pack', 'Chest', 'Plate', extrude(PLATE, [
-    { y: 1.180, scale: [0.148, 0.082], offset: [0, -0.216] },
-    { y: 1.286, scale: [0.170, 0.098], offset: [0, -0.226] },
-    { y: 1.462, scale: [0.170, 0.098], offset: [0, -0.226] },
-    { y: 1.526, scale: [0.138, 0.080], offset: [0, -0.212] },
-  ])),
+  part(
+    'Pack',
+    'Chest',
+    'Plate',
+    extrude(PLATE, [
+      { y: 1.18, scale: [0.148, 0.082], offset: [0, -0.216] },
+      { y: 1.286, scale: [0.17, 0.098], offset: [0, -0.226] },
+      { y: 1.462, scale: [0.17, 0.098], offset: [0, -0.226] },
+      { y: 1.526, scale: [0.138, 0.08], offset: [0, -0.212] },
+    ]),
+  ),
   // The power conduit, and the reason the pack has a spine at all: a channel up the back that pulses. It is
   // tiled three times over its length, so the flow reads as motion rather than as one slow blink.
-  part('PackSpine', 'Chest', 'Core', extrude(RIDGE, [
-    { y: 1.208, scale: [0.028, 0.022], offset: [0, -0.322] },
-    { y: 1.486, scale: [0.032, 0.024], offset: [0, -0.326] },
-  ]), conduit(3)),
+  part(
+    'PackSpine',
+    'Chest',
+    'Core',
+    extrude(RIDGE, [
+      { y: 1.208, scale: [0.028, 0.022], offset: [0, -0.322] },
+      { y: 1.486, scale: [0.032, 0.024], offset: [0, -0.326] },
+    ]),
+    conduit(3),
+  ),
   // One antenna, on one side. Nothing else about this figure is asymmetric, which is what makes it read as
   // a fitted piece of equipment rather than as a modelling slip.
-  part('Antenna', 'Chest', 'Metal', extrude(ROD, [
-    { y: 1.470, scale: 0.013, offset: [-0.132, -0.238] },
-    { y: 1.760, scale: 0.007, offset: [-0.140, -0.244] },
-  ])),
-  part('AntennaTip', 'Chest', 'Trim', extrude(ROD, [
-    { y: 1.756, scale: 0.014, offset: [-0.140, -0.244] },
-    { y: 1.786, scale: 0.008, offset: [-0.141, -0.245] },
-  ])),
-  part('Waist', 'Spine', 'Suit', extrude(PLATE, [
-    { y: 1.140, scale: [0.130, 0.114] },
-    { y: 1.200, scale: [0.138, 0.120] },
-    { y: 1.252, scale: [0.146, 0.126] },
-  ])),
+  part(
+    'Antenna',
+    'Chest',
+    'Metal',
+    extrude(ROD, [
+      { y: 1.47, scale: 0.013, offset: [-0.132, -0.238] },
+      { y: 1.76, scale: 0.007, offset: [-0.14, -0.244] },
+    ]),
+  ),
+  part(
+    'AntennaTip',
+    'Chest',
+    'Trim',
+    extrude(ROD, [
+      { y: 1.756, scale: 0.014, offset: [-0.14, -0.244] },
+      { y: 1.786, scale: 0.008, offset: [-0.141, -0.245] },
+    ]),
+  ),
+  part(
+    'Waist',
+    'Spine',
+    'Suit',
+    extrude(PLATE, [
+      { y: 1.14, scale: [0.13, 0.114] },
+      { y: 1.2, scale: [0.138, 0.12] },
+      { y: 1.252, scale: [0.146, 0.126] },
+    ]),
+  ),
   /** A machined collar in the one gap the plates leave: the detail that makes the waist read as an actual
    *  articulation rather than as a missing piece of armour. */
-  part('WaistRing', 'Spine', 'Metal', extrude(PLATE, [
-    { y: 1.182, scale: [0.142, 0.123] },
-    { y: 1.208, scale: [0.144, 0.125] },
-  ])),
-  part('Pelvis', 'Hips', 'Plate', extrude(PLATE, [
-    { y: 0.996, scale: [0.152, 0.140] },
-    { y: 1.080, scale: [0.160, 0.146] },
-    { y: 1.185, scale: [0.146, 0.132] },
-  ])),
-  part('Belt', 'Hips', 'Suit', extrude(PLATE, [
-    { y: 0.990, scale: [0.164, 0.150] },
-    { y: 1.054, scale: [0.168, 0.153] },
-  ])),
+  part(
+    'WaistRing',
+    'Spine',
+    'Metal',
+    extrude(PLATE, [
+      { y: 1.182, scale: [0.142, 0.123] },
+      { y: 1.208, scale: [0.144, 0.125] },
+    ]),
+  ),
+  part(
+    'Pelvis',
+    'Hips',
+    'Plate',
+    extrude(PLATE, [
+      { y: 0.996, scale: [0.152, 0.14] },
+      { y: 1.08, scale: [0.16, 0.146] },
+      { y: 1.185, scale: [0.146, 0.132] },
+    ]),
+  ),
+  part(
+    'Belt',
+    'Hips',
+    'Suit',
+    extrude(PLATE, [
+      { y: 0.99, scale: [0.164, 0.15] },
+      { y: 1.054, scale: [0.168, 0.153] },
+    ]),
+  ),
   part('Buckle', 'Hips', 'Trim', box([-0.056, 0.994, 0.142], [0.056, 1.058, 0.172])),
   // Bridges the notch the two thigh plates leave under the belt. Without it the figure reads as two legs
   // bolted to a box from the front, and as a hole in a crouch.
-  part('Codpiece', 'Hips', 'Plate', extrude(PLATE, [
-    { y: 0.888, scale: [0.082, 0.088], offset: [0, 0.024] },
-    { y: 0.950, scale: [0.094, 0.100], offset: [0, 0.026] },
-    { y: 1.010, scale: [0.104, 0.108], offset: [0, 0.022] },
-  ])),
-  part('RearPouch', 'Hips', 'Suit', extrude(PLATE, [
-    { y: 1.004, scale: [0.070, 0.030], offset: [0, -0.158] },
-    { y: 1.072, scale: [0.076, 0.032], offset: [0, -0.164] },
-  ])),
+  part(
+    'Codpiece',
+    'Hips',
+    'Plate',
+    extrude(PLATE, [
+      { y: 0.888, scale: [0.082, 0.088], offset: [0, 0.024] },
+      { y: 0.95, scale: [0.094, 0.1], offset: [0, 0.026] },
+      { y: 1.01, scale: [0.104, 0.108], offset: [0, 0.022] },
+    ]),
+  ),
+  part(
+    'RearPouch',
+    'Hips',
+    'Suit',
+    extrude(PLATE, [
+      { y: 1.004, scale: [0.07, 0.03], offset: [0, -0.158] },
+      { y: 1.072, scale: [0.076, 0.032], offset: [0, -0.164] },
+    ]),
+  ),
 ];
 
 /**
@@ -309,41 +480,75 @@ const TORSO_PARTS: FigurePart[] = [
  * it to lie on.
  */
 const TORSO_SIDE: FigurePart[] = [
-  part('Peak.L', 'Chest', 'Mark', placed(
-    box([0.000, 1.328, 0.170], [0.122, 1.354, 0.192]),
-    { pivot: [0, 1.341, 0], rotateZ: -30 },
-  )),
-  part('PackVent.L', 'Chest', 'Metal', box([0.036, 1.296, -0.330], [0.130, 1.334, -0.306])),
-  part('PackVent2.L', 'Chest', 'Metal', box([0.036, 1.350, -0.330], [0.130, 1.388, -0.306])),
+  part(
+    'Peak.L',
+    'Chest',
+    'Mark',
+    placed(box([0.0, 1.328, 0.17], [0.122, 1.354, 0.192]), { pivot: [0, 1.341, 0], rotateZ: -30 }),
+  ),
+  part('PackVent.L', 'Chest', 'Metal', box([0.036, 1.296, -0.33], [0.13, 1.334, -0.306])),
+  part('PackVent2.L', 'Chest', 'Metal', box([0.036, 1.35, -0.33], [0.13, 1.388, -0.306])),
   // On the pack's outer-REAR corner, not inside it. Centred on the pack they were entirely swallowed by it
   // and only their caps showed, which is three solids of geometry spent on a nub.
-  part('Stack.L', 'Chest', 'Metal', extrude(DOME, [
-    { y: 1.372, scale: 0.048, offset: [0.150, -0.300] },
-    { y: 1.560, scale: 0.046, offset: [0.150, -0.300] },
-    { y: 1.664, scale: 0.036, offset: [0.150, -0.300] },
-  ])),
-  part('StackRing.L', 'Chest', 'Trim', extrude(DOME, [
-    { y: 1.578, scale: 0.051, offset: [0.150, -0.300] },
-    { y: 1.612, scale: 0.049, offset: [0.150, -0.300] },
-  ])),
-  part('StackCap.L', 'Chest', 'Suit', extrude(DOME, [
-    { y: 1.656, scale: 0.038, offset: [0.150, -0.300] },
-    { y: 1.682, scale: 0.032, offset: [0.150, -0.300] },
-  ])),
+  part(
+    'Stack.L',
+    'Chest',
+    'Metal',
+    extrude(DOME, [
+      { y: 1.372, scale: 0.048, offset: [0.15, -0.3] },
+      { y: 1.56, scale: 0.046, offset: [0.15, -0.3] },
+      { y: 1.664, scale: 0.036, offset: [0.15, -0.3] },
+    ]),
+  ),
+  part(
+    'StackRing.L',
+    'Chest',
+    'Trim',
+    extrude(DOME, [
+      { y: 1.578, scale: 0.051, offset: [0.15, -0.3] },
+      { y: 1.612, scale: 0.049, offset: [0.15, -0.3] },
+    ]),
+  ),
+  part(
+    'StackCap.L',
+    'Chest',
+    'Suit',
+    extrude(DOME, [
+      { y: 1.656, scale: 0.038, offset: [0.15, -0.3] },
+      { y: 1.682, scale: 0.032, offset: [0.15, -0.3] },
+    ]),
+  ),
   part('PackLight.L', 'Chest', 'Lens', box([0.058, 1.238, -0.332], [0.096, 1.272, -0.312]), LIGHT_CELL.dot),
   // Front conduits flanking the sternum, so the rider is lit from the camera's side too — the pack's spine
   // is only visible from behind, and a chase camera is not the only camera.
-  part('ChestConduit.L', 'Chest', 'Core', extrude(RIDGE, [
-    { y: 1.238, scale: [0.016, 0.014], offset: [0.088, 0.166] },
-    { y: 1.310, scale: [0.017, 0.015], offset: [0.094, 0.174] },
-    { y: 1.404, scale: [0.016, 0.014], offset: [0.090, 0.170] },
-  ]), conduit(2)),
+  part(
+    'ChestConduit.L',
+    'Chest',
+    'Core',
+    extrude(RIDGE, [
+      { y: 1.238, scale: [0.016, 0.014], offset: [0.088, 0.166] },
+      { y: 1.31, scale: [0.017, 0.015], offset: [0.094, 0.174] },
+      { y: 1.404, scale: [0.016, 0.014], offset: [0.09, 0.17] },
+    ]),
+    conduit(2),
+  ),
   // A short side plate, kept inboard of the arms: a full hanging tasset would swing straight through a
   // thigh the moment the rider crouched, and a crouch is the pose this character is in most of the time.
-  part('HipGuard.L', 'Hips', 'Plate', hexahedron([
-    [0.100, 0.896, -0.098], [0.100, 0.896, 0.114], [0.168, 0.896, 0.108], [0.168, 0.896, -0.092],
-    [0.108, 1.006, -0.110], [0.108, 1.006, 0.128], [0.182, 1.006, 0.122], [0.182, 1.006, -0.104],
-  ])),
+  part(
+    'HipGuard.L',
+    'Hips',
+    'Plate',
+    hexahedron([
+      [0.1, 0.896, -0.098],
+      [0.1, 0.896, 0.114],
+      [0.168, 0.896, 0.108],
+      [0.168, 0.896, -0.092],
+      [0.108, 1.006, -0.11],
+      [0.108, 1.006, 0.128],
+      [0.182, 1.006, 0.122],
+      [0.182, 1.006, -0.104],
+    ]),
+  ),
 ];
 
 /* ── Arms ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -354,91 +559,180 @@ const ARM_PARTS: FigurePart[] = [
   // The pauldron is the silhouette, and the numbers that matter are the ones at the TOP: the crown rises
   // above the collar, beside the neck, and leans outboard as it goes so it clears the helmet's jaw rather
   // than growing into it. Bound to the upper arm, so it swings with the shoulder as a strapped-on plate does.
-  part('Pauldron.L', 'UpperArm.L', 'Plate', limb(arm.shoulder, arm.elbow, SHELL, [
-    { t: -0.46, scale: [0.052, 0.060], offset: [OUT * 0.126, 0] },
-    { t: -0.30, scale: [0.098, 0.106], offset: [OUT * 0.128, 0] },
-    { t: -0.08, scale: [0.126, 0.134], offset: [OUT * 0.128, 0] },
-    { t: 0.16, scale: [0.134, 0.142], offset: [OUT * 0.126, 0] },
-    { t: 0.32, scale: [0.130, 0.136], offset: [OUT * 0.120, 0] },
-    { t: 0.44, scale: [0.104, 0.112], offset: [OUT * 0.108, 0] },
-  ])),
-  part('PauldronRim.L', 'UpperArm.L', 'Trim', limb(arm.shoulder, arm.elbow, SHELL, [
-    { t: 0.30, scale: [0.140, 0.146], offset: [OUT * 0.122, 0] },
-    { t: 0.46, scale: [0.112, 0.120], offset: [OUT * 0.108, 0] },
-  ])),
-  part('PauldronBand.L', 'UpperArm.L', 'Mark', limb(arm.shoulder, arm.elbow, SHELL, [
-    { t: -0.04, scale: [0.130, 0.138], offset: [OUT * 0.128, 0] },
-    { t: 0.06, scale: [0.133, 0.141], offset: [OUT * 0.127, 0] },
-  ])),
-  part('PauldronStud.L', 'UpperArm.L', 'Metal', limb(arm.shoulder, arm.elbow, DOME, [
-    { t: -0.34, scale: 0.030, offset: [OUT * 0.128, 0] },
-    { t: -0.24, scale: 0.036, offset: [OUT * 0.136, 0] },
-    { t: -0.16, scale: 0.026, offset: [OUT * 0.132, 0] },
-  ])),
+  part(
+    'Pauldron.L',
+    'UpperArm.L',
+    'Plate',
+    limb(arm.shoulder, arm.elbow, SHELL, [
+      { t: -0.46, scale: [0.052, 0.06], offset: [OUT * 0.126, 0] },
+      { t: -0.3, scale: [0.098, 0.106], offset: [OUT * 0.128, 0] },
+      { t: -0.08, scale: [0.126, 0.134], offset: [OUT * 0.128, 0] },
+      { t: 0.16, scale: [0.134, 0.142], offset: [OUT * 0.126, 0] },
+      { t: 0.32, scale: [0.13, 0.136], offset: [OUT * 0.12, 0] },
+      { t: 0.44, scale: [0.104, 0.112], offset: [OUT * 0.108, 0] },
+    ]),
+  ),
+  part(
+    'PauldronRim.L',
+    'UpperArm.L',
+    'Trim',
+    limb(arm.shoulder, arm.elbow, SHELL, [
+      { t: 0.3, scale: [0.14, 0.146], offset: [OUT * 0.122, 0] },
+      { t: 0.46, scale: [0.112, 0.12], offset: [OUT * 0.108, 0] },
+    ]),
+  ),
+  part(
+    'PauldronBand.L',
+    'UpperArm.L',
+    'Mark',
+    limb(arm.shoulder, arm.elbow, SHELL, [
+      { t: -0.04, scale: [0.13, 0.138], offset: [OUT * 0.128, 0] },
+      { t: 0.06, scale: [0.133, 0.141], offset: [OUT * 0.127, 0] },
+    ]),
+  ),
+  part(
+    'PauldronStud.L',
+    'UpperArm.L',
+    'Metal',
+    limb(arm.shoulder, arm.elbow, DOME, [
+      { t: -0.34, scale: 0.03, offset: [OUT * 0.128, 0] },
+      { t: -0.24, scale: 0.036, offset: [OUT * 0.136, 0] },
+      { t: -0.16, scale: 0.026, offset: [OUT * 0.132, 0] },
+    ]),
+  ),
   // A shoulder lamp: the one light on this figure that exists to be USEFUL rather than decorative, which is
   // why it points along the pauldron's own facing and swings with the arm the way a mounted lamp would.
   // `UP` as the roll because this solid's own axis IS the character's facing, and a roll parallel to the
   // axis it is rolling about has no meaning.
-  part('LampHousing.L', 'UpperArm.L', 'Metal', limb([0.330, 1.352, 0.072], [0.330, 1.352, 0.188], DOME, [
-    { t: 0.00, scale: 0.035 },
-    { t: 0.82, scale: 0.033 },
-    { t: 1.00, scale: 0.029 },
-  ], UP)),
-  part('LampLens.L', 'UpperArm.L', 'Lamp', limb([0.330, 1.352, 0.072], [0.330, 1.352, 0.188], DOME, [
-    { t: 0.86, scale: 0.027 },
-    { t: 1.02, scale: 0.025 },
-  ], UP), LIGHT_CELL.lamp),
-  part('Rerebrace.L', 'UpperArm.L', 'Plate', limb(arm.shoulder, arm.elbow, PLATE, [
-    { t: -0.10, scale: [0.080, 0.084] },
-    { t: 0.18, scale: [0.096, 0.100] },
-    { t: 0.62, scale: [0.098, 0.101] },
-    { t: 0.94, scale: [0.089, 0.092] },
-    { t: 1.14, scale: [0.078, 0.081] },
-  ])),
-  part('ElbowSeal.L', 'UpperArm.L', 'Suit', limb(arm.shoulder, arm.elbow, DOME, [
-    { t: 0.86, scale: 0.077 },
-    { t: 1.24, scale: 0.074 },
-  ])),
-  part('Vambrace.L', 'LowerArm.L', 'Plate', limb(arm.elbow, arm.wrist, PLATE, [
-    { t: -0.14, scale: [0.088, 0.092] },
-    { t: 0.16, scale: [0.096, 0.100] },
-    { t: 0.70, scale: [0.086, 0.090] },
-    { t: 1.04, scale: [0.092, 0.095] },
-    { t: 1.12, scale: [0.083, 0.086] },
-  ])),
-  part('ElbowCop.L', 'LowerArm.L', 'Plate', limb(arm.elbow, arm.wrist, SHELL, [
-    { t: -0.26, scale: [0.068, 0.072], offset: [OUT * 0.012, -0.008] },
-    { t: -0.06, scale: [0.108, 0.112], offset: [OUT * 0.012, 0] },
-    { t: 0.14, scale: [0.106, 0.109], offset: [OUT * 0.009, 0] },
-    { t: 0.28, scale: [0.090, 0.094] },
-  ])),
-  part('CuffTrim.L', 'LowerArm.L', 'Trim', limb(arm.elbow, arm.wrist, PLATE, [
-    { t: 0.96, scale: [0.099, 0.102] },
-    { t: 1.10, scale: [0.090, 0.093] },
-  ])),
+  part(
+    'LampHousing.L',
+    'UpperArm.L',
+    'Metal',
+    limb(
+      [0.33, 1.352, 0.072],
+      [0.33, 1.352, 0.188],
+      DOME,
+      [
+        { t: 0.0, scale: 0.035 },
+        { t: 0.82, scale: 0.033 },
+        { t: 1.0, scale: 0.029 },
+      ],
+      UP,
+    ),
+  ),
+  part(
+    'LampLens.L',
+    'UpperArm.L',
+    'Lamp',
+    limb(
+      [0.33, 1.352, 0.072],
+      [0.33, 1.352, 0.188],
+      DOME,
+      [
+        { t: 0.86, scale: 0.027 },
+        { t: 1.02, scale: 0.025 },
+      ],
+      UP,
+    ),
+    LIGHT_CELL.lamp,
+  ),
+  part(
+    'Rerebrace.L',
+    'UpperArm.L',
+    'Plate',
+    limb(arm.shoulder, arm.elbow, PLATE, [
+      { t: -0.1, scale: [0.08, 0.084] },
+      { t: 0.18, scale: [0.096, 0.1] },
+      { t: 0.62, scale: [0.098, 0.101] },
+      { t: 0.94, scale: [0.089, 0.092] },
+      { t: 1.14, scale: [0.078, 0.081] },
+    ]),
+  ),
+  part(
+    'ElbowSeal.L',
+    'UpperArm.L',
+    'Suit',
+    limb(arm.shoulder, arm.elbow, DOME, [
+      { t: 0.86, scale: 0.077 },
+      { t: 1.24, scale: 0.074 },
+    ]),
+  ),
+  part(
+    'Vambrace.L',
+    'LowerArm.L',
+    'Plate',
+    limb(arm.elbow, arm.wrist, PLATE, [
+      { t: -0.14, scale: [0.088, 0.092] },
+      { t: 0.16, scale: [0.096, 0.1] },
+      { t: 0.7, scale: [0.086, 0.09] },
+      { t: 1.04, scale: [0.092, 0.095] },
+      { t: 1.12, scale: [0.083, 0.086] },
+    ]),
+  ),
+  part(
+    'ElbowCop.L',
+    'LowerArm.L',
+    'Plate',
+    limb(arm.elbow, arm.wrist, SHELL, [
+      { t: -0.26, scale: [0.068, 0.072], offset: [OUT * 0.012, -0.008] },
+      { t: -0.06, scale: [0.108, 0.112], offset: [OUT * 0.012, 0] },
+      { t: 0.14, scale: [0.106, 0.109], offset: [OUT * 0.009, 0] },
+      { t: 0.28, scale: [0.09, 0.094] },
+    ]),
+  ),
+  part(
+    'CuffTrim.L',
+    'LowerArm.L',
+    'Trim',
+    limb(arm.elbow, arm.wrist, PLATE, [
+      { t: 0.96, scale: [0.099, 0.102] },
+      { t: 1.1, scale: [0.09, 0.093] },
+    ]),
+  ),
   // The forearm conduit tracks the vambrace's own taper, so it stays a channel cut into the plate rather
   // than a bar floating off it where the arm narrows.
-  part('ArmConduit.L', 'LowerArm.L', 'Core', limb(arm.elbow, arm.wrist, RIDGE, [
-    { t: 0.08, scale: [0.014, 0.013], offset: [OUT * 0.092, 0] },
-    { t: 0.45, scale: [0.014, 0.013], offset: [OUT * 0.090, 0] },
-    { t: 0.86, scale: [0.012, 0.011], offset: [OUT * 0.086, 0] },
-  ]), conduit(2)),
+  part(
+    'ArmConduit.L',
+    'LowerArm.L',
+    'Core',
+    limb(arm.elbow, arm.wrist, RIDGE, [
+      { t: 0.08, scale: [0.014, 0.013], offset: [OUT * 0.092, 0] },
+      { t: 0.45, scale: [0.014, 0.013], offset: [OUT * 0.09, 0] },
+      { t: 0.86, scale: [0.012, 0.011], offset: [OUT * 0.086, 0] },
+    ]),
+    conduit(2),
+  ),
   // The palm. Its own sections are in the same frame the digits are authored in: x is the palm normal and z
   // crosses the hand, so a plate on the back of the hand is a negative x offset on both hands.
-  part('Palm.L', 'Hand.L', 'Plate', limb(arm.wrist, arm.fingertip, PLATE, [
-    { t: -0.24, scale: [0.049, 0.063] },
-    { t: 0.20, scale: [0.056, 0.074] },
-    { t: 0.75, scale: [0.054, 0.076] },
-    { t: 1.12, scale: [0.047, 0.072] },
-  ])),
-  part('PalmPad.L', 'Hand.L', 'Suit', limb(arm.wrist, arm.fingertip, PLATE, [
-    { t: 0.02, scale: [0.013, 0.058], offset: [0.047, 0] },
-    { t: 1.02, scale: [0.011, 0.060], offset: [0.043, 0] },
-  ])),
-  part('Knuckle.L', 'Hand.L', 'Metal', limb(arm.wrist, arm.fingertip, PLATE, [
-    { t: 0.86, scale: [0.031, 0.072], offset: [-0.029, 0] },
-    { t: 1.16, scale: [0.027, 0.067], offset: [-0.025, 0] },
-  ])),
+  part(
+    'Palm.L',
+    'Hand.L',
+    'Plate',
+    limb(arm.wrist, arm.fingertip, PLATE, [
+      { t: -0.24, scale: [0.049, 0.063] },
+      { t: 0.2, scale: [0.056, 0.074] },
+      { t: 0.75, scale: [0.054, 0.076] },
+      { t: 1.12, scale: [0.047, 0.072] },
+    ]),
+  ),
+  part(
+    'PalmPad.L',
+    'Hand.L',
+    'Suit',
+    limb(arm.wrist, arm.fingertip, PLATE, [
+      { t: 0.02, scale: [0.013, 0.058], offset: [0.047, 0] },
+      { t: 1.02, scale: [0.011, 0.06], offset: [0.043, 0] },
+    ]),
+  ),
+  part(
+    'Knuckle.L',
+    'Hand.L',
+    'Metal',
+    limb(arm.wrist, arm.fingertip, PLATE, [
+      { t: 0.86, scale: [0.031, 0.072], offset: [-0.029, 0] },
+      { t: 1.16, scale: [0.027, 0.067], offset: [-0.025, 0] },
+    ]),
+  ),
 ];
 
 /* ── Legs ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -448,61 +742,117 @@ const ARM_PARTS: FigurePart[] = [
  * and a calf thickest just below the knee are what stop a leg reading as a length of pipe.
  */
 const LEG_PARTS: FigurePart[] = [
-  part('Cuisse.L', 'UpperLeg.L', 'Plate', limb(leg.hip, leg.knee, PLATE, [
-    { t: -0.12, scale: [0.090, 0.102] },
-    { t: 0.10, scale: [0.098, 0.110] },
-    { t: 0.62, scale: [0.090, 0.101] },
-    { t: 1.10, scale: [0.082, 0.093] },
-  ])),
-  part('ThighGuard.L', 'UpperLeg.L', 'Plate', limb(leg.hip, leg.knee, RIDGE, [
-    { t: 0.04, scale: [0.072, 0.032], offset: [0, 0.100] },
-    { t: 0.52, scale: [0.078, 0.034], offset: [0, 0.104] },
-    { t: 0.80, scale: [0.060, 0.026], offset: [0, 0.094] },
-  ])),
-  part('ThighTrim.L', 'UpperLeg.L', 'Trim', limb(leg.hip, leg.knee, PLATE, [
-    { t: 0.20, scale: [0.100, 0.112] },
-    { t: 0.30, scale: [0.098, 0.110] },
-  ])),
-  part('KneeSeal.L', 'UpperLeg.L', 'Suit', limb(leg.hip, leg.knee, DOME, [
-    { t: 0.86, scale: 0.086 },
-    { t: 1.22, scale: 0.083 },
-  ])),
+  part(
+    'Cuisse.L',
+    'UpperLeg.L',
+    'Plate',
+    limb(leg.hip, leg.knee, PLATE, [
+      { t: -0.12, scale: [0.09, 0.102] },
+      { t: 0.1, scale: [0.098, 0.11] },
+      { t: 0.62, scale: [0.09, 0.101] },
+      { t: 1.1, scale: [0.082, 0.093] },
+    ]),
+  ),
+  part(
+    'ThighGuard.L',
+    'UpperLeg.L',
+    'Plate',
+    limb(leg.hip, leg.knee, RIDGE, [
+      { t: 0.04, scale: [0.072, 0.032], offset: [0, 0.1] },
+      { t: 0.52, scale: [0.078, 0.034], offset: [0, 0.104] },
+      { t: 0.8, scale: [0.06, 0.026], offset: [0, 0.094] },
+    ]),
+  ),
+  part(
+    'ThighTrim.L',
+    'UpperLeg.L',
+    'Trim',
+    limb(leg.hip, leg.knee, PLATE, [
+      { t: 0.2, scale: [0.1, 0.112] },
+      { t: 0.3, scale: [0.098, 0.11] },
+    ]),
+  ),
+  part(
+    'KneeSeal.L',
+    'UpperLeg.L',
+    'Suit',
+    limb(leg.hip, leg.knee, DOME, [
+      { t: 0.86, scale: 0.086 },
+      { t: 1.22, scale: 0.083 },
+    ]),
+  ),
   // Without this the figure's night silhouette is all torso and helmet, with nothing below the belt but two
   // boot markers — which reads as a floating chest rather than as a rider.
-  part('LegConduit.L', 'UpperLeg.L', 'Core', limb(leg.hip, leg.knee, RIDGE, [
-    { t: 0.16, scale: [0.015, 0.014], offset: [OUT * 0.096, -0.010] },
-    { t: 0.55, scale: [0.015, 0.014], offset: [OUT * 0.092, -0.010] },
-    { t: 0.84, scale: [0.013, 0.012], offset: [OUT * 0.088, -0.010] },
-  ]), conduit(2)),
-  part('PistonRod.L', 'UpperLeg.L', 'Metal', limb(leg.hip, leg.knee, ROD, [
-    { t: 0.52, scale: 0.020, offset: [OUT * 0.046, -0.100] },
-    { t: 1.04, scale: 0.019, offset: [OUT * 0.046, -0.094] },
-  ])),
-  part('Greave.L', 'LowerLeg.L', 'Plate', limb(leg.knee, leg.ankle, PLATE, [
-    { t: -0.06, scale: [0.086, 0.093] },
-    { t: 0.30, scale: [0.097, 0.104] },
-    { t: 0.78, scale: [0.084, 0.090] },
-    { t: 1.06, scale: [0.078, 0.084] },
-  ])),
-  part('KneeCop.L', 'LowerLeg.L', 'Plate', limb(leg.knee, leg.ankle, SHELL, [
-    { t: -0.24, scale: [0.078, 0.084], offset: [0, 0.014] },
-    { t: -0.05, scale: [0.108, 0.115], offset: [0, 0.020] },
-    { t: 0.14, scale: [0.105, 0.111], offset: [0, 0.016] },
-    { t: 0.26, scale: [0.088, 0.094] },
-  ])),
-  part('KneeBoss.L', 'LowerLeg.L', 'Trim', limb(leg.knee, leg.ankle, DOME, [
-    { t: -0.08, scale: 0.040, offset: [0, 0.108] },
-    { t: 0.03, scale: 0.046, offset: [0, 0.120] },
-    { t: 0.12, scale: 0.032, offset: [0, 0.110] },
-  ])),
-  part('PistonSleeve.L', 'LowerLeg.L', 'Metal', limb(leg.knee, leg.ankle, ROD, [
-    { t: -0.10, scale: 0.028, offset: [OUT * 0.046, -0.098] },
-    { t: 0.30, scale: 0.026, offset: [OUT * 0.046, -0.092] },
-  ])),
-  part('GreaveTrim.L', 'LowerLeg.L', 'Trim', limb(leg.knee, leg.ankle, PLATE, [
-    { t: 0.70, scale: [0.088, 0.094] },
-    { t: 0.80, scale: [0.086, 0.092] },
-  ])),
+  part(
+    'LegConduit.L',
+    'UpperLeg.L',
+    'Core',
+    limb(leg.hip, leg.knee, RIDGE, [
+      { t: 0.16, scale: [0.015, 0.014], offset: [OUT * 0.096, -0.01] },
+      { t: 0.55, scale: [0.015, 0.014], offset: [OUT * 0.092, -0.01] },
+      { t: 0.84, scale: [0.013, 0.012], offset: [OUT * 0.088, -0.01] },
+    ]),
+    conduit(2),
+  ),
+  part(
+    'PistonRod.L',
+    'UpperLeg.L',
+    'Metal',
+    limb(leg.hip, leg.knee, ROD, [
+      { t: 0.52, scale: 0.02, offset: [OUT * 0.046, -0.1] },
+      { t: 1.04, scale: 0.019, offset: [OUT * 0.046, -0.094] },
+    ]),
+  ),
+  part(
+    'Greave.L',
+    'LowerLeg.L',
+    'Plate',
+    limb(leg.knee, leg.ankle, PLATE, [
+      { t: -0.06, scale: [0.086, 0.093] },
+      { t: 0.3, scale: [0.097, 0.104] },
+      { t: 0.78, scale: [0.084, 0.09] },
+      { t: 1.06, scale: [0.078, 0.084] },
+    ]),
+  ),
+  part(
+    'KneeCop.L',
+    'LowerLeg.L',
+    'Plate',
+    limb(leg.knee, leg.ankle, SHELL, [
+      { t: -0.24, scale: [0.078, 0.084], offset: [0, 0.014] },
+      { t: -0.05, scale: [0.108, 0.115], offset: [0, 0.02] },
+      { t: 0.14, scale: [0.105, 0.111], offset: [0, 0.016] },
+      { t: 0.26, scale: [0.088, 0.094] },
+    ]),
+  ),
+  part(
+    'KneeBoss.L',
+    'LowerLeg.L',
+    'Trim',
+    limb(leg.knee, leg.ankle, DOME, [
+      { t: -0.08, scale: 0.04, offset: [0, 0.108] },
+      { t: 0.03, scale: 0.046, offset: [0, 0.12] },
+      { t: 0.12, scale: 0.032, offset: [0, 0.11] },
+    ]),
+  ),
+  part(
+    'PistonSleeve.L',
+    'LowerLeg.L',
+    'Metal',
+    limb(leg.knee, leg.ankle, ROD, [
+      { t: -0.1, scale: 0.028, offset: [OUT * 0.046, -0.098] },
+      { t: 0.3, scale: 0.026, offset: [OUT * 0.046, -0.092] },
+    ]),
+  ),
+  part(
+    'GreaveTrim.L',
+    'LowerLeg.L',
+    'Trim',
+    limb(leg.knee, leg.ankle, PLATE, [
+      { t: 0.7, scale: [0.088, 0.094] },
+      { t: 0.8, scale: [0.086, 0.092] },
+    ]),
+  ),
 ];
 
 /**
@@ -515,30 +865,61 @@ const LEG_PARTS: FigurePart[] = [
  * than through the deck.
  */
 const BOOT_PARTS: FigurePart[] = [
-  part('Sole.L', 'Foot.L', 'Suit', extrude(PLATE, [
-    { y: 0.000, scale: [0.102, 0.162], offset: [0.112, 0.050] },
-    { y: 0.046, scale: [0.105, 0.166], offset: [0.112, 0.050] },
-  ])),
-  part('Sabaton.L', 'Foot.L', 'Plate', extrude(PLATE, [
-    { y: 0.032, scale: [0.103, 0.163], offset: [0.112, 0.050] },
-    { y: 0.132, scale: [0.108, 0.170], offset: [0.112, 0.046] },
-    { y: 0.234, scale: [0.100, 0.132], offset: [0.112, 0.006] },
-  ])),
-  part('ToeCap.L', 'Foot.L', 'Metal', hexahedron([
-    [0.018, 0.028, 0.140], [0.018, 0.028, 0.216], [0.206, 0.028, 0.216], [0.206, 0.028, 0.140],
-    [0.028, 0.130, 0.140], [0.028, 0.130, 0.196], [0.196, 0.130, 0.196], [0.196, 0.130, 0.140],
-  ])),
-  part('BootTrim.L', 'Foot.L', 'Trim', extrude(PLATE, [
-    { y: 0.156, scale: [0.107, 0.152], offset: [0.112, 0.030] },
-    { y: 0.182, scale: [0.106, 0.147], offset: [0.112, 0.026] },
-  ])),
-  part('AnkleGuard.L', 'Foot.L', 'Plate', extrude(PLATE, [
-    { y: 0.204, scale: [0.094, 0.102], offset: [0.112, 0.008] },
-    { y: 0.298, scale: [0.089, 0.097], offset: [0.112, 0.010] },
-  ])),
+  part(
+    'Sole.L',
+    'Foot.L',
+    'Suit',
+    extrude(PLATE, [
+      { y: 0.0, scale: [0.102, 0.162], offset: [0.112, 0.05] },
+      { y: 0.046, scale: [0.105, 0.166], offset: [0.112, 0.05] },
+    ]),
+  ),
+  part(
+    'Sabaton.L',
+    'Foot.L',
+    'Plate',
+    extrude(PLATE, [
+      { y: 0.032, scale: [0.103, 0.163], offset: [0.112, 0.05] },
+      { y: 0.132, scale: [0.108, 0.17], offset: [0.112, 0.046] },
+      { y: 0.234, scale: [0.1, 0.132], offset: [0.112, 0.006] },
+    ]),
+  ),
+  part(
+    'ToeCap.L',
+    'Foot.L',
+    'Metal',
+    hexahedron([
+      [0.018, 0.028, 0.14],
+      [0.018, 0.028, 0.216],
+      [0.206, 0.028, 0.216],
+      [0.206, 0.028, 0.14],
+      [0.028, 0.13, 0.14],
+      [0.028, 0.13, 0.196],
+      [0.196, 0.13, 0.196],
+      [0.196, 0.13, 0.14],
+    ]),
+  ),
+  part(
+    'BootTrim.L',
+    'Foot.L',
+    'Trim',
+    extrude(PLATE, [
+      { y: 0.156, scale: [0.107, 0.152], offset: [0.112, 0.03] },
+      { y: 0.182, scale: [0.106, 0.147], offset: [0.112, 0.026] },
+    ]),
+  ),
+  part(
+    'AnkleGuard.L',
+    'Foot.L',
+    'Plate',
+    extrude(PLATE, [
+      { y: 0.204, scale: [0.094, 0.102], offset: [0.112, 0.008] },
+      { y: 0.298, scale: [0.089, 0.097], offset: [0.112, 0.01] },
+    ]),
+  ),
   // A marker light on the outside of each boot. Low down and outboard is where it is still visible when the
   // rider is laid over in a carve and the torso lights have rotated away from the camera.
-  part('MarkerLight.L', 'Foot.L', 'Lamp', box([0.212, 0.096, 0.010], [0.230, 0.132, 0.086]), LIGHT_CELL.dot),
+  part('MarkerLight.L', 'Foot.L', 'Lamp', box([0.212, 0.096, 0.01], [0.23, 0.132, 0.086]), LIGHT_CELL.dot),
 ];
 
 /**
@@ -563,12 +944,24 @@ function digitPlates(): FigurePart[] {
     const taper = 1 - 0.12 * (segment - 1);
     const wide = (digit === 'Thumb' ? 0.018 : digit === 'Pinky' ? 0.0135 : 0.016) * taper;
     const deep = (digit === 'Thumb' ? 0.019 : 0.017) * taper;
-    plates.push(part(`${bone.name}Plate`, bone.name, tip ? 'Metal' : 'Plate',
-      limb(bone.head, bone.tail, FINGER, [
-        { t: -0.14, scale: [deep * 0.94, wide * 0.94] },
-        { t: 0.50, scale: [deep, wide] },
-        { t: 1.08, scale: [deep * 0.84, wide * 0.86] },
-      ], bone.roll ?? UP)));
+    plates.push(
+      part(
+        `${bone.name}Plate`,
+        bone.name,
+        tip ? 'Metal' : 'Plate',
+        limb(
+          bone.head,
+          bone.tail,
+          FINGER,
+          [
+            { t: -0.14, scale: [deep * 0.94, wide * 0.94] },
+            { t: 0.5, scale: [deep, wide] },
+            { t: 1.08, scale: [deep * 0.84, wide * 0.86] },
+          ],
+          bone.roll ?? UP,
+        ),
+      ),
+    );
   }
   return plates;
 }
@@ -610,6 +1003,8 @@ export const BIND = { armSpread: ARM_SPREAD, arm, leg, footLength: FOOT_LENGTH, 
 const DEFAULT_OUTPUT = fileURLToPath(new URL('../../public/characters/alpine-exo-rigged.glb', import.meta.url));
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  runCharacterBuild(DEFAULT_OUTPUT, exportAlpineExoGlb)
-    .catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });
+  runCharacterBuild(DEFAULT_OUTPUT, exportAlpineExoGlb).catch(error => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }

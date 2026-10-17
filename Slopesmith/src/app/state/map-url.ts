@@ -18,6 +18,9 @@ export function showMapInUrl(name: string, projectId?: string): void {
   if (projectId && search.has('project')) search.set('project', projectId);
   const query = search.size ? `?${search}` : '';
   if (location.pathname === path && location.search === query) return;
-  try { history.replaceState(history.state, '', `${path}${query}${location.hash}`); }
-  catch { /* a browser that refuses history is no reason to fail a load */ }
+  try {
+    history.replaceState(history.state, '', `${path}${query}${location.hash}`);
+  } catch {
+    /* a browser that refuses history is no reason to fail a load */
+  }
 }

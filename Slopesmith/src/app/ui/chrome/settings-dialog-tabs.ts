@@ -88,7 +88,7 @@ export function buildSettingsTabs(includeServer: boolean): SettingsTabs {
   el.append(tablist, panelHost);
   select('integrations');
   const about = panels.get('about')!;
-  buildAboutPanel(about);   // static content: built once, never re-read from a setting
+  buildAboutPanel(about); // static content: built once, never re-read from a setting
   return {
     el,
     integrations: panels.get('integrations')!,

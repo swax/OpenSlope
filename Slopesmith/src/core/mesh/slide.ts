@@ -1,7 +1,14 @@
 import type { QuadMeshDoc, V3 } from '../doc/types';
 import { add, dot, len, norm, sub } from '../math/vec';
 import { patchPoint, splitCubic, splitPatchU, splitPatchV } from '../math/bezier';
-import { INTERIOR_CP, meshFromDoc, quadControlPoints, type EdgeHandle, type MeshAdjacency, type QuadMesh } from './topology';
+import {
+  INTERIOR_CP,
+  meshFromDoc,
+  quadControlPoints,
+  type EdgeHandle,
+  type MeshAdjacency,
+  type QuadMesh,
+} from './topology';
 import { ekey } from './ops';
 import { readVertex } from './primitives';
 import { meshSetHandle, meshSetTwist } from '../doc/mountain';
@@ -62,7 +69,8 @@ export const SLIDE_EPS = 1e-4;
  */
 export const SLIDE_MERGE_SNAP = 0.1;
 
-const clampT = (t: number): number => (Number.isFinite(t) ? Math.min(Math.max(t, SLIDE_EPS), 1 - SLIDE_EPS) : SLIDE_EPS);
+const clampT = (t: number): number =>
+  Number.isFinite(t) ? Math.min(Math.max(t, SLIDE_EPS), 1 - SLIDE_EPS) : SLIDE_EPS;
 
 /** A WEDGE [A,B,C,C] folds its u=1 row to a point (docs/017 S3), so it has no independent D corner and no C–D
  *  curve — `quadControlPoints` special-cases it and a de Casteljau cut across the collapsed axis is undefined.
@@ -88,16 +96,27 @@ const SIDE_SLOTS: Record<QuadSide, readonly [number, number]> = { AB: [0, 1], CD
 /** The boundary a slide along `side` travels TOWARD — the one it becomes if the slide runs the whole span. */
 const OPPOSITE_SIDE: Record<QuadSide, QuadSide> = { AB: 'CD', CD: 'AB', AC: 'BD', BD: 'AC' };
 /** The two RAILS a slide along `side` rides: the boundaries joining it to its opposite. */
-const RAIL_SIDES: Record<QuadSide, readonly [QuadSide, QuadSide]> = { AB: ['AC', 'BD'], CD: ['AC', 'BD'], AC: ['AB', 'CD'], BD: ['AB', 'CD'] };
+const RAIL_SIDES: Record<QuadSide, readonly [QuadSide, QuadSide]> = {
+  AB: ['AC', 'BD'],
+  CD: ['AC', 'BD'],
+  AC: ['AB', 'CD'],
+  BD: ['AB', 'CD'],
+};
 /** Corner slot A/B/C/D → its control point in the row-major 16. */
 const CORNER_CP = [0, 3, 12, 15] as const;
 /** Corner slot A/B/C/D → its patch parameter, the storage contract [A@(u0,v0), B@(u0,v1), C@(u1,v0), D@(u1,v1)]
  *  read as coordinates: `patchPoint(cp, ...CORNER_UV[s])` IS the corner in slot `s`, to the bit. */
-const CORNER_UV: readonly (readonly [number, number])[] = [[0, 0], [0, 1], [1, 0], [1, 1]];
+const CORNER_UV: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [0, 1],
+  [1, 0],
+  [1, 1],
+];
 /** The one patch coordinate two corner slots differ in (0 = u, 1 = v), or -1 when they are the same corner or the
  *  quad's DIAGONAL — the two slots that differ in both. Cycle-adjacency, stated in patch parameters. */
 function slotAxis(a: readonly [number, number], b: readonly [number, number]): number {
-  const du = a[0] !== b[0], dv = a[1] !== b[1];
+  const du = a[0] !== b[0],
+    dv = a[1] !== b[1];
   return du === dv ? -1 : du ? 0 : 1;
 }
 
@@ -108,11 +127,21 @@ function slotAxis(a: readonly [number, number], b: readonly [number, number]): n
  * Null when the three vertices do not sit on `quad` as a corner and its two CYCLE-adjacent neighbours on different
  * axes — a diagonal, a repeat, or a stranger.
  */
-function quadrantParam(quad: readonly number[], V: number, nu: number, nv: number, su: number, sv: number): [number, number] | null {
-  const sV = quad.indexOf(V), sU = quad.indexOf(nu), sW = quad.indexOf(nv);
+function quadrantParam(
+  quad: readonly number[],
+  V: number,
+  nu: number,
+  nv: number,
+  su: number,
+  sv: number,
+): [number, number] | null {
+  const sV = quad.indexOf(V),
+    sU = quad.indexOf(nu),
+    sW = quad.indexOf(nv);
   if (sV < 0 || sU < 0 || sW < 0) return null;
   const uv = CORNER_UV[sV];
-  const cU = slotAxis(uv, CORNER_UV[sU]), cW = slotAxis(uv, CORNER_UV[sW]);
+  const cU = slotAxis(uv, CORNER_UV[sU]),
+    cW = slotAxis(uv, CORNER_UV[sW]);
   if (cU < 0 || cW < 0 || cU === cW) return null;
   const at: [number, number] = [uv[0], uv[1]];
   at[cU] = uv[cU] === 0 ? su : 1 - su;
@@ -120,7 +149,16 @@ function quadrantParam(quad: readonly number[], V: number, nu: number, nv: numbe
   return at;
 }
 /** Directed in-quad edge `"fromSlot>toSlot"` → the control point one third along it, at `from`'s end. */
-const HANDLE_CP: Record<string, number> = { '0>1': 1, '1>0': 2, '0>2': 4, '2>0': 8, '1>3': 7, '3>1': 11, '2>3': 13, '3>2': 14 };
+const HANDLE_CP: Record<string, number> = {
+  '0>1': 1,
+  '1>0': 2,
+  '0>2': 4,
+  '2>0': 8,
+  '1>3': 7,
+  '3>1': 11,
+  '2>3': 13,
+  '3>2': 14,
+};
 
 /** The (unordered) vertex pair boundary `side` names on `quad`. */
 const sideEdge = (quad: readonly number[], side: QuadSide): [number, number] => {
@@ -137,10 +175,14 @@ const sideEdge = (quad: readonly number[], side: QuadSide): [number, number] => 
  */
 function sideSubPatch(cp: V3[], side: QuadSide, t: number): V3[] {
   switch (side) {
-    case 'AB': return splitPatchU(cp, t).upper;
-    case 'CD': return splitPatchU(cp, 1 - t).lower;
-    case 'AC': return splitPatchV(cp, t).upper;
-    case 'BD': return splitPatchV(cp, 1 - t).lower;
+    case 'AB':
+      return splitPatchU(cp, t).upper;
+    case 'CD':
+      return splitPatchU(cp, 1 - t).lower;
+    case 'AC':
+      return splitPatchV(cp, t).upper;
+    case 'BD':
+      return splitPatchV(cp, 1 - t).lower;
   }
 }
 
@@ -221,14 +263,23 @@ export interface VertexSlideItem {
  * non-finite id is skipped, not failed. Mutates `doc`.
  */
 export function slideVerticesAlongEdges(doc: QuadMeshDoc, items: readonly VertexSlideItem[]): void {
-  const live = items.filter(({ vertex, toward }) => vertex !== toward && Number.isFinite(vertex) && Number.isFinite(toward));
+  const live = items.filter(
+    ({ vertex, toward }) => vertex !== toward && Number.isFinite(vertex) && Number.isFinite(toward),
+  );
   if (!live.length) return;
   const { edgeHandle } = meshFromDoc(doc);
   const moved = new Set(live.map(it => it.vertex));
   // `edgeHandle` reads the doc's live vertex buffer, so every cut is taken off the pre-slide net, in one pass
   const staged = live.map(({ vertex, toward, t }) => {
-    const P0 = getVertex(doc, vertex), P3 = getVertex(doc, toward);
-    const { right } = splitCubic(P0, add(P0, edgeHandle(vertex, toward)), add(P3, edgeHandle(toward, vertex)), P3, clampT(t));
+    const P0 = getVertex(doc, vertex),
+      P3 = getVertex(doc, toward);
+    const { right } = splitCubic(
+      P0,
+      add(P0, edgeHandle(vertex, toward)),
+      add(P3, edgeHandle(toward, vertex)),
+      P3,
+      clampT(t),
+    );
     return { vertex, toward, right };
   });
   for (const { vertex, toward, right } of staged) {
@@ -278,23 +329,32 @@ export function slideVertexAlongEdge(doc: QuadMeshDoc, vertex: number, toward: n
  * `toward` that is not one of the quad's corners, and a diagonal or repeated `toward`.
  */
 export function slideVertexOnPatch(
-  doc: QuadMeshDoc, quad: number, vertex: number, towardU: number, tu: number, towardV: number, tv: number,
+  doc: QuadMeshDoc,
+  quad: number,
+  vertex: number,
+  towardU: number,
+  tu: number,
+  towardV: number,
+  tv: number,
 ): void {
   const verts = doc.quads[quad];
   if (!verts || isWedge(verts)) return;
-  const su = clampT(tu), sw = clampT(tv);
+  const su = clampT(tu),
+    sw = clampT(tv);
   const at = quadrantParam(verts, vertex, towardU, towardV, su, sw);
-  if (!at) return;   // a diagonal, a repeat, or `vertex` twice: no two rails to ride
+  if (!at) return; // a diagonal, a repeat, or `vertex` twice: no two rails to ride
 
   const { mesh, edgeHandle } = meshFromDoc(doc);
   const cp = quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad]);
   const P = (i: number) => getVertex(doc, i);
   // both cuts come off the pre-slide net: `edgeHandle` reads the doc's live vertex buffer
   const cut = (toward: number, s: number) => {
-    const P0 = P(vertex), P3 = P(toward);
+    const P0 = P(vertex),
+      P3 = P(toward);
     return splitCubic(P0, add(P0, edgeHandle(vertex, toward)), add(P3, edgeHandle(toward, vertex)), P3, s).right;
   };
-  const cutU = cut(towardU, su), cutW = cut(towardV, sw);
+  const cutU = cut(towardU, su),
+    cutW = cut(towardV, sw);
 
   setVertex(doc, vertex, patchPoint(cp, at[0], at[1]));
   meshSetHandle(doc, vertex, towardU, sub(cutU[1], cutU[0]));
@@ -328,12 +388,21 @@ export interface VertexPlaceItem {
  * has no second axis), or the two rails share an axis. Such a vertex keeps whatever position the shaping passes gave it.
  */
 export function slideQuadrantTargets(
-  mesh: QuadMesh, eh: EdgeHandle, adj: MeshAdjacency, verts: readonly number[],
-  du: V3, dv: V3, tu: number, tv: number, quadTwist?: Readonly<Record<number, readonly V3[]>> | null,
+  mesh: QuadMesh,
+  eh: EdgeHandle,
+  adj: MeshAdjacency,
+  verts: readonly number[],
+  du: V3,
+  dv: V3,
+  tu: number,
+  tv: number,
+  quadTwist?: Readonly<Record<number, readonly V3[]>> | null,
 ): VertexPlaceItem[] {
   if (len(du) < 1e-12 || len(dv) < 1e-12) return [];
-  const dU = norm(du), dV = norm(dv);
-  const su = clampT(tu), sv = clampT(tv);
+  const dU = norm(du),
+    dV = norm(dv);
+  const su = clampT(tu),
+    sv = clampT(tv);
   const P = (i: number): V3 => readVertex(mesh.vertices, i);
   const out: VertexPlaceItem[] = [];
   const seen = new Set<number>();
@@ -343,19 +412,24 @@ export function slideQuadrantTargets(
     const ring = adj.neighbors[V] ?? [];
     // the rail that LEADS: strictly positive agreement, so a rim vertex with no neighbour that way has none
     const lead = (d: V3): number => {
-      let best = -1, agree = 0;
+      let best = -1,
+        agree = 0;
       for (const n of ring) {
         const w = sub(P(n), P(V));
         if (len(w) < 1e-12) continue;
         const a = dot(norm(w), d);
-        if (a > agree) { agree = a; best = n; }
+        if (a > agree) {
+          agree = a;
+          best = n;
+        }
       }
       return best;
     };
-    const nu = lead(dU), nv = lead(dV);
+    const nu = lead(dU),
+      nv = lead(dV);
     if (nu < 0 || nv < 0 || nu === nv) continue;
     const qu = adj.edgeQuads.get(ekey(V, nu)) ?? [];
-    const quad = qu.find(q => (adj.edgeQuads.get(ekey(V, nv)) ?? []).includes(q));   // the one quad carrying both rails
+    const quad = qu.find(q => (adj.edgeQuads.get(ekey(V, nv)) ?? []).includes(q)); // the one quad carrying both rails
     if (quad === undefined || isWedge(mesh.quads[quad])) continue;
     const at = quadrantParam(mesh.quads[quad], V, nu, nv, su, sv);
     if (!at) continue;
@@ -403,7 +477,11 @@ export function slideEdgesInQuads(doc: QuadMeshDoc, items: readonly EdgeSlideIte
     if (!verts || isWedge(verts)) continue;
     const side = quadSide(verts, edge);
     if (!side) continue;
-    staged.push({ quad, side, cp: sideSubPatch(quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad]), side, s) });
+    staged.push({
+      quad,
+      side,
+      cp: sideSubPatch(quadControlPoints(mesh, edgeHandle, quad, doc.quadTwist?.[quad]), side, s),
+    });
   }
   if (!staged.length) return;
   for (const { quad, side, cp } of staged) writeSideEdge(doc, doc.quads[quad], cp, OPPOSITE_SIDE[side]);
@@ -412,7 +490,7 @@ export function slideEdgesInQuads(doc: QuadMeshDoc, items: readonly EdgeSlideIte
     writeSideEdge(doc, verts, cp, side);
     for (const rail of RAIL_SIDES[side]) writeSideHandles(doc, verts, cp, rail);
   }
-  const after = meshFromDoc(doc);   // the zero-twist base every staged quad's interior offset is measured against
+  const after = meshFromDoc(doc); // the zero-twist base every staged quad's interior offset is measured against
   for (const { quad, cp } of staged) writeQuadTwist(doc, after.mesh, after.edgeHandle, quad, cp);
 }
 
@@ -430,17 +508,35 @@ export function slideEdgesInQuads(doc: QuadMeshDoc, items: readonly EdgeSlideIte
  * same statement re-read: CD (u=1) runs back up its columns to A / B, AC (v=0) runs across its rows to B / D,
  * BD (v=1) runs back to A / C.
  */
-export function edgeSlideTargets(quad: readonly number[] | undefined, edge: readonly [number, number]):
-  [[number, number], [number, number]] | null {
+export function edgeSlideTargets(
+  quad: readonly number[] | undefined,
+  edge: readonly [number, number],
+): [[number, number], [number, number]] | null {
   if (!quad || isWedge(quad)) return null;
   const side = quadSide(quad, edge);
   if (!side) return null;
   const [A, B, C, D] = quad;
   switch (side) {
-    case 'AB': return [[A, C], [B, D]];
-    case 'CD': return [[C, A], [D, B]];
-    case 'AC': return [[A, B], [C, D]];
-    case 'BD': return [[B, A], [D, C]];
+    case 'AB':
+      return [
+        [A, C],
+        [B, D],
+      ];
+    case 'CD':
+      return [
+        [C, A],
+        [D, B],
+      ];
+    case 'AC':
+      return [
+        [A, B],
+        [C, D],
+      ];
+    case 'BD':
+      return [
+        [B, A],
+        [D, C],
+      ];
   }
 }
 
@@ -454,7 +550,10 @@ export function edgeSlideTargets(quad: readonly number[] | undefined, edge: read
  * `quads` is the corner table alone — a `QuadMeshDoc`'s `quads`, or the `QuadMesh` a viewport froze at drag-start.
  * The pairing reads nothing else, and a slide never changes the table, so either names the same welds.
  */
-export function slideWeldPairs(quads: readonly (readonly number[])[], items: readonly EdgeSlideItem[]): [number, number][] {
+export function slideWeldPairs(
+  quads: readonly (readonly number[])[],
+  items: readonly EdgeSlideItem[],
+): [number, number][] {
   const seen = new Set<string>();
   const out: [number, number][] = [];
   for (const { quad, edge } of items) {
@@ -482,7 +581,9 @@ export function slideWeldPairs(quads: readonly (readonly number[])[], items: rea
  * target is not itself in motion.
  */
 export function vertexSlideWeldPairs(items: readonly VertexSlideItem[]): [number, number][] {
-  const live = items.filter(({ vertex, toward }) => vertex !== toward && Number.isFinite(vertex) && Number.isFinite(toward));
+  const live = items.filter(
+    ({ vertex, toward }) => vertex !== toward && Number.isFinite(vertex) && Number.isFinite(toward),
+  );
   const moved = new Set(live.map(it => it.vertex));
   const seen = new Set<string>();
   const out: [number, number][] = [];
@@ -525,7 +626,11 @@ export function vertexSlideWeldPairs(items: readonly VertexSlideItem[]): [number
  * degenerate, or every selected cell is a wedge (a collapsed row has no opposite boundary to cut across).
  */
 export function planCellSlide(
-  mesh: QuadMesh, adj: MeshAdjacency, cells: readonly number[], dir: V3, pos: (id: number) => V3,
+  mesh: QuadMesh,
+  adj: MeshAdjacency,
+  cells: readonly number[],
+  dir: V3,
+  pos: (id: number) => V3,
 ): { items: EdgeSlideItem[]; weld: [number, number][]; blocked: boolean } | null {
   if (len(dir) < 1e-12) return null;
   const d = norm(dir);
@@ -536,7 +641,7 @@ export function planCellSlide(
 
   const push = (quad: number, edge: [number, number]) => {
     const k = ekey(edge[0], edge[1]);
-    if (byEdge.has(k)) return;     // an edge is moved once, and the quad ahead of it is decided by `dir` alone
+    if (byEdge.has(k)) return; // an edge is moved once, and the quad ahead of it is decided by `dir` alone
     byEdge.add(k);
     items.push({ quad, edge });
   };
@@ -546,18 +651,25 @@ export function planCellSlide(
     if (!verts || isWedge(verts)) continue;
     // The TRAIL edge is the boundary whose rail heads most nearly along the drag — the edge that travels forward
     // INSIDE Q. Rails are normalised first, so this asks which axis agrees with `dir`, not which rail is longest.
-    let trailSide: QuadSide | null = null, best = 0;
+    let trailSide: QuadSide | null = null,
+      best = 0;
     for (const side of SIDES) {
-      const targets = edgeSlideTargets(verts, sideEdge(verts, side))!;   // a proper quad's four sides all have rails
+      const targets = edgeSlideTargets(verts, sideEdge(verts, side))!; // a proper quad's four sides all have rails
       const agree = dot(norm(sub(pos(targets[0][1]), pos(targets[0][0]))), d);
-      if (agree > best) { best = agree; trailSide = side; }
+      if (agree > best) {
+        best = agree;
+        trailSide = side;
+      }
     }
-    if (!trailSide) continue;      // `dir` runs across both axes, or backwards along both: nothing leads
+    if (!trailSide) continue; // `dir` runs across both axes, or backwards along both: nothing leads
     push(Q, sideEdge(verts, trailSide));
 
     const lead = sideEdge(verts, OPPOSITE_SIDE[trailSide]);
     const N = (adj.edgeQuads.get(ekey(lead[0], lead[1])) ?? []).find(q => q !== Q);
-    if (N === undefined || isWedge(mesh.quads[N])) { blocked = true; continue; }
+    if (N === undefined || isWedge(mesh.quads[N])) {
+      blocked = true;
+      continue;
+    }
     push(N, lead);
   }
   if (!items.length) return null;
@@ -566,7 +678,7 @@ export function planCellSlide(
   if (!blocked) {
     const seen = new Set<string>();
     for (const { quad, edge } of items) {
-      if (selected.has(quad)) continue;                     // a dragged cell survives the clamp; only its target dies
+      if (selected.has(quad)) continue; // a dragged cell survives the clamp; only its target dies
       for (const pair of edgeSlideTargets(mesh.quads[quad], edge) ?? []) {
         const k = `${pair[0]}>${pair[1]}`;
         if (seen.has(k)) continue;
@@ -622,7 +734,8 @@ export function applySlidePlan(doc: QuadMeshDoc, plan: SlidePlan): { ok: true } 
   for (const pass of plan.passes) {
     if (pass.kind === 'edges') slideEdgesInQuads(doc, pass.items, pass.t);
     else if (pass.kind === 'verts') slideVerticesAlongEdges(doc, pass.items);
-    else if (pass.kind === 'patch') slideVertexOnPatch(doc, pass.quad, pass.vertex, pass.towardU, pass.tu, pass.towardV, pass.tv);
+    else if (pass.kind === 'patch')
+      slideVertexOnPatch(doc, pass.quad, pass.vertex, pass.towardU, pass.tu, pass.towardV, pass.tv);
   }
   for (const pass of plan.passes) {
     if (pass.kind !== 'place') continue;

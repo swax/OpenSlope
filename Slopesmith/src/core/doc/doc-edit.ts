@@ -30,8 +30,11 @@ export function setVertex(doc: EditDoc, id: number, p: V3): void {
 /** Offset one vertex by a delta (the group-move primitive). */
 export function moveVertex(doc: EditDoc, id: number, d: V3): void {
   if (doc.quadLocked && vertexIsLocked(doc, id)) return;
-  const a = posBuf(doc), i = id * 3;
-  a[i] += d[0]; a[i + 1] += d[1]; a[i + 2] += d[2];
+  const a = posBuf(doc),
+    i = id * 3;
+  a[i] += d[0];
+  a[i + 1] += d[1];
+  a[i + 2] += d[2];
 }
 
 export function quadCount(doc: EditDoc): number {
@@ -65,7 +68,8 @@ export function orientOf(doc: EditDoc, q: number): { rot: number; mirror: boolea
   return doc.quadOrient?.[q] ?? null;
 }
 export function setOrient(doc: EditDoc, q: number, o: { rot: number; mirror: boolean } | null): void {
-  if (o) (doc.quadOrient ??= {})[q] = o; else if (doc.quadOrient) delete doc.quadOrient[q];
+  if (o) (doc.quadOrient ??= {})[q] = o;
+  else if (doc.quadOrient) delete doc.quadOrient[q];
 }
 /**
  * Turn each painted quad's tile a quarter, or toggle its mirror with `flip` — Paint's ← / → over a cell

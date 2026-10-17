@@ -1,8 +1,17 @@
 import type { CoursePath, Gem, PlacedProp, V3 } from '../core/doc/types';
 import {
-  applyBrush, applyGrabBrush, applyNudgeBrush, stepBrushRadius, createFlattenBrushPlane, createGrabBrushState,
-  type BrushOp, type BrushFalloff, type FlattenMode, type FlattenPlaneBehavior,
-  type FlattenBrushPlane, type GrabBrushState,
+  applyBrush,
+  applyGrabBrush,
+  applyNudgeBrush,
+  stepBrushRadius,
+  createFlattenBrushPlane,
+  createGrabBrushState,
+  type BrushOp,
+  type BrushFalloff,
+  type FlattenMode,
+  type FlattenPlaneBehavior,
+  type FlattenBrushPlane,
+  type GrabBrushState,
 } from '../core/doc/mountain';
 import { setSurf, setTex, setOrient } from '../core/doc/doc-edit';
 import { strokeBrushOp } from './sculpt-shortcuts';
@@ -28,7 +37,12 @@ import { placedPropCollisionProfile } from '../core/props/contact';
 import { applyBehaviour, behaviourOf } from '../core/props/defaults';
 import { unrotateByPlacement, writePropRotation } from '../core/props/pose';
 import {
-  assemblyOf, carryAssemblyLights, lightAssemblyOf, placementPoses, unpackGroupPlacement, withWholeAssemblies,
+  assemblyOf,
+  carryAssemblyLights,
+  lightAssemblyOf,
+  placementPoses,
+  unpackGroupPlacement,
+  withWholeAssemblies,
 } from '../core/props/assembly';
 import { selectedSetLights, setSelectedSet } from './state/store';
 import { newFreeLight } from '../core/lighting/sign-lights';
@@ -52,9 +66,17 @@ export type ViewportWiringDeps = {
   // built before the viewport — passed directly
   store: Store;
   edit: EditSession; // its viewportCallbacks block is spread in; prop picks reset the gizmo through it
-  brush: { op: BrushOp; falloff: BrushFalloff; flattenMode: FlattenMode;
-    flattenPlaneBehavior: FlattenPlaneBehavior; radius: number; strength: number;
-    smoothAmount: number; flattenAmount: number; nudgeAmount: number }; // shared sculpt config
+  brush: {
+    op: BrushOp;
+    falloff: BrushFalloff;
+    flattenMode: FlattenMode;
+    flattenPlaneBehavior: FlattenPlaneBehavior;
+    radius: number;
+    strength: number;
+    smoothAmount: number;
+    flattenAmount: number;
+    nudgeAmount: number;
+  }; // shared sculpt config
   gemTool: { height: number; spacing: number; value: number }; // gem placement defaults (float height, drag-row gap, tier)
   /** Free-light placement defaults — what the next hand-placed light drops as (main.ts owns the object). */
   lightTool: { kind: 'point' | 'spot'; color: string; intensity: number; reach: number; cone: number; glint: number };
@@ -94,12 +116,40 @@ export type ViewportWiringDeps = {
 
 export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallbacks {
   const {
-    store, edit, brush, gemTool, lightTool,
-    toggleViewGrid, setViewGridStep, toggleSnap, setSnapStep, setRotationSnapStep,
-    selectPaintCell, rangeSelectPaintCells, clearPaintSelection,
-    viewport, palette, library, propOps, propLines, propClipboard, play, coursePath,
-    scheduleRebuild, requestCourseSeat, rebuildTools, updateCmdSheet, refreshSelection, undo, redo, xrMixedRealityChanged,
-    getSceneSel, selectScene, showReferenceLightDetails, persistRef, sendRideEvent,
+    store,
+    edit,
+    brush,
+    gemTool,
+    lightTool,
+    toggleViewGrid,
+    setViewGridStep,
+    toggleSnap,
+    setSnapStep,
+    setRotationSnapStep,
+    selectPaintCell,
+    rangeSelectPaintCells,
+    clearPaintSelection,
+    viewport,
+    palette,
+    library,
+    propOps,
+    propLines,
+    propClipboard,
+    play,
+    coursePath,
+    scheduleRebuild,
+    requestCourseSeat,
+    rebuildTools,
+    updateCmdSheet,
+    refreshSelection,
+    undo,
+    redo,
+    xrMixedRealityChanged,
+    getSceneSel,
+    selectScene,
+    showReferenceLightDetails,
+    persistRef,
+    sendRideEvent,
   } = deps;
   const { resetGizmoMode } = edit;
   let grabBrush: GrabBrushState | null = null;
@@ -109,7 +159,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
 
   /** A terrain gesture ended: the run follows the hill it reshaped. A model session reshapes the model, never
    *  the mountain under the run. */
-  const reseatCourse = () => { if (!store.modelEditId) requestCourseSeat(); };
+  const reseatCourse = () => {
+    if (!store.modelEditId) requestCourseSeat();
+  };
 
   const clearReferenceLight = () => {
     if (!store.selectedRefLight) return;
@@ -134,7 +186,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     store.selectedProp = i;
     store.multiSel = []; // a single pick (or an empty-space click) replaces any box selection
     if (i !== null) {
-      store.selectedLight = null; store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
+      store.selectedLight = null;
+      store.selectedRail = null;
+      store.selectedNode = null;
+      store.selectedGem = null;
       clearScreenState();
       clearLineState();
       clearReferenceLight();
@@ -145,8 +200,11 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
   /** Select free light `id` on its own. */
   function selectOneLight(id: string) {
     store.selectedLight = id;
-    store.selectedProp = null; store.multiSel = [];
-    clearScreenState(); clearLineState(); clearReferenceLight();
+    store.selectedProp = null;
+    store.multiSel = [];
+    clearScreenState();
+    clearLineState();
+    clearReferenceLight();
     viewport().setPlacedPropSelection(null, []);
     scheduleRebuild();
     if (store.currentMode === 'props') rebuildTools();
@@ -156,8 +214,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
    *  a set of one, so a Ctrl+click grows it (docs/015 · Authored groups). */
   function currentSet(): { props: number[]; lights: string[] } {
     if (store.multiSel.length) return { props: [...store.multiSel], lights: selectedSetLights(store) };
-    return { props: store.selectedProp === null ? [] : [store.selectedProp],
-      lights: store.selectedLight === null ? [] : [store.selectedLight] };
+    return {
+      props: store.selectedProp === null ? [] : [store.selectedProp],
+      lights: store.selectedLight === null ? [] : [store.selectedLight],
+    };
   }
 
   /** Make `props` and `lights` the selection. A group goes in whole. One prop on its own is an ordinary selection
@@ -167,7 +227,11 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     const whole = withWholeAssemblies(store.mdoc, props);
     if (!whole.length) {
       const keep = lastLight && lights.includes(lastLight) ? lastLight : lights[0];
-      if (keep) selectOneLight(keep); else { viewport().setPlacedPropSelection(null, []); selectOneProp(null); }
+      if (keep) selectOneLight(keep);
+      else {
+        viewport().setPlacedPropSelection(null, []);
+        selectOneProp(null);
+      }
       return;
     }
     if (whole.length === 1 && !lights.length && !assemblyOf(store.mdoc, whole[0])) {
@@ -176,9 +240,14 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       return;
     }
     resetGizmoMode();
-    store.selectedProp = null; store.selectedLight = null;
-    store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
-    clearScreenState(); clearLineState(); clearReferenceLight();
+    store.selectedProp = null;
+    store.selectedLight = null;
+    store.selectedRail = null;
+    store.selectedNode = null;
+    store.selectedGem = null;
+    clearScreenState();
+    clearLineState();
+    clearReferenceLight();
     setSelectedSet(store, whole, lights);
     viewport().setPlacedPropSelection(null, whole);
     if (lights.length) scheduleRebuild(); // the lights layer outlines the set's lights
@@ -195,8 +264,13 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     const props = withWholeAssemblies(store.mdoc, [...(additive ? current.props : []), ...indices]);
     store.selectedProp = null;
     if (props.length) {
-      store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
-      store.selectedGem = null; clearScreenState(); clearLineState(); clearReferenceLight();
+      store.selectedLight = null;
+      store.selectedRail = null;
+      store.selectedNode = null;
+      store.selectedGem = null;
+      clearScreenState();
+      clearLineState();
+      clearReferenceLight();
     }
     setSelectedSet(store, props, props.length ? lights : []);
     viewport().setPlacedPropSelection(null, store.multiSel);
@@ -213,25 +287,60 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
 
   return {
     ...edit.viewportCallbacks,
-    onEditTransformEnd() { edit.viewportCallbacks.onEditTransformEnd?.(); reseatCourse(); },
-    onRideControlContextChange() { updateCmdSheet(); },
-    onRideEvent(event) { sendRideEvent(event); },
-    onUndo() { undo(); },
-    onRedo() { redo(); },
-    onXrMixedRealityChange(on) { xrMixedRealityChanged(on); },
-    onToggleViewGrid() { toggleViewGrid(); },
-    onSetViewGridStep(step) { setViewGridStep(step); },
-    onToggleSnap() { toggleSnap(); },
-    onSetSnapStep(step) { setSnapStep(step); },
-    onSetRotationSnapStep(step) { setRotationSnapStep(step); },
+    onEditTransformEnd() {
+      edit.viewportCallbacks.onEditTransformEnd?.();
+      reseatCourse();
+    },
+    onRideControlContextChange() {
+      updateCmdSheet();
+    },
+    onRideEvent(event) {
+      sendRideEvent(event);
+    },
+    onUndo() {
+      undo();
+    },
+    onRedo() {
+      redo();
+    },
+    onXrMixedRealityChange(on) {
+      xrMixedRealityChanged(on);
+    },
+    onToggleViewGrid() {
+      toggleViewGrid();
+    },
+    onSetViewGridStep(step) {
+      setViewGridStep(step);
+    },
+    onToggleSnap() {
+      toggleSnap();
+    },
+    onSetSnapStep(step) {
+      setSnapStep(step);
+    },
+    onSetRotationSnapStep(step) {
+      setRotationSnapStep(step);
+    },
     onClickTargetUnavailable(component, source) {
-      const noun = component === 'vertex' ? 'point' : component === 'line' ? 'edge' : component === 'surface' ? 'patch'
-        : component === 'knot' ? 'course knot' : component === 'screen' ? 'video screen' : component;
+      const noun =
+        component === 'vertex'
+          ? 'point'
+          : component === 'line'
+            ? 'edge'
+            : component === 'surface'
+              ? 'patch'
+              : component === 'knot'
+                ? 'course knot'
+                : component === 'screen'
+                  ? 'video screen'
+                  : component;
       const target = `${source === 'reference' ? 'a reference ' : 'a '}${noun}`;
-      if (store.currentMode === 'edit'
-        && (component === 'vertex' || component === 'line' || component === 'surface')) {
+      if (store.currentMode === 'edit' && (component === 'vertex' || component === 'line' || component === 'surface')) {
         const filter = component === 'vertex' ? 'Point' : component === 'line' ? 'Edge' : 'Patch';
-        toast(`You clicked ${target}, but ${filter} selection is off. Turn on ${filter} at the top of the Edit toolbox to select it.`, 'warn');
+        toast(
+          `You clicked ${target}, but ${filter} selection is off. Turn on ${filter} at the top of the Edit toolbox to select it.`,
+          'warn',
+        );
         return;
       }
       // Test mode: every click belongs to the mountain being ridden, so the useful thing to say is WHICH
@@ -245,26 +354,42 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
           const riding = store.playTarget === 'reference' ? referenceName : mountainName;
           const slope = store.playTarget === 'reference' ? `${referenceName} terrain` : `${mountainName} terrain`;
           const swap = source === 'reference' ? referenceName : mountainName; // the button for the mountain just clicked
-          toast(`You clicked ${clicked}, but you’re set to ride ${riding}. Click ${slope}, or switch the ride target`
-            + ` to ${swap}.${store.placingStart ? ' The start stays armed.' : ''}`, 'warn');
+          toast(
+            `You clicked ${clicked}, but you’re set to ride ${riding}. Click ${slope}, or switch the ride target` +
+              ` to ${swap}.${store.placingStart ? ' The start stays armed.' : ''}`,
+            'warn',
+          );
           return;
         }
-        toast(`You clicked ${target}, not the slope. Click the terrain itself to `
-          + `${store.placingStart ? 'place the ride start' : 'drop an AI rider'}.`, 'warn');
+        toast(
+          `You clicked ${target}, not the slope. Click the terrain itself to ` +
+            `${store.placingStart ? 'place the ride start' : 'drop an AI rider'}.`,
+          'warn',
+        );
         return;
       }
-      const destination = shortcutForMode(component === 'knot' ? 'info'
-        : component === 'prop' || component === 'light' || component === 'rail' || component === 'gem' ? 'props' : 'edit');
+      const destination = shortcutForMode(
+        component === 'knot'
+          ? 'info'
+          : component === 'prop' || component === 'light' || component === 'rail' || component === 'gem'
+            ? 'props'
+            : 'edit',
+      );
       toast(`You clicked ${target}. Switch to the ${destination.label} view [${destination.key}] to edit.`, 'warn');
     },
-    onSelectEdgeCrossing(crossing) { edit.selectEdgeCrossing(crossing); },
-    onSelectCoincidentVertices(diagnostic) { edit.selectCoincidentVertices(diagnostic); },
+    onSelectEdgeCrossing(crossing) {
+      edit.selectEdgeCrossing(crossing);
+    },
+    onSelectCoincidentVertices(diagnostic) {
+      edit.selectCoincidentVertices(diagnostic);
+    },
     onSelectKnot(i) {
       // Scene-object picks call onSelectKnot(null) to enforce mutual exclusion. In Props mode this is almost
       // always already true; routing that no-op through scheduleRebuild recreated the mountain and every prop
       // on the next animation frame (hundreds of milliseconds on a loaded reference) after the prop itself had
       // already selected. Keep the callback idempotent so only an actual course-selection change renders.
-      if (store.selected === i && store.selectedKnots.length === 0 && (i === null || getSceneSel() === 'course')) return;
+      if (store.selected === i && store.selectedKnots.length === 0 && (i === null || getSceneSel() === 'course'))
+        return;
       store.selected = i;
       store.selectedKnots = [];
       if (i !== null) selectScene('course'); // activate Mountain's Course/knot panels
@@ -274,7 +399,11 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onSelectKnots(indices, additive = false) {
       if (additive && !indices.length) return;
-      const current = store.selectedKnots.length ? store.selectedKnots : store.selected === null ? [] : [store.selected];
+      const current = store.selectedKnots.length
+        ? store.selectedKnots
+        : store.selected === null
+          ? []
+          : [store.selected];
       store.selected = null;
       store.selectedKnots = [...new Set([...(additive ? current : []), ...indices])].sort((a, b) => a - b);
       if (store.selectedKnots.length) selectScene('course');
@@ -297,9 +426,15 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onPaintCell(quad) {
       if (!store.paintBrush) return;
-      if (store.selectedPaintCell !== null || store.selectedRefPatch !== null || store.paintMultiSel.length
-        || palette().inspecting) clearPaintSelection(); // first stroke leaves the sampled source for the live brush
-      const d = store.mdoc, b = store.paintBrush; // a tile brush: carries the tile + its ride feel + D4 orientation
+      if (
+        store.selectedPaintCell !== null ||
+        store.selectedRefPatch !== null ||
+        store.paintMultiSel.length ||
+        palette().inspecting
+      )
+        clearPaintSelection(); // first stroke leaves the sampled source for the live brush
+      const d = store.mdoc,
+        b = store.paintBrush; // a tile brush: carries the tile + its ride feel + D4 orientation
       setTex(d, quad, b.ref);
       setOrient(d, quad, b.rot || b.mirror ? { rot: b.rot, mirror: b.mirror } : null);
       // tile look and SurfaceType (physics) are separate channels in SSX, but every painted tile carries a
@@ -311,22 +446,31 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       // Paint MMB makes the sampled texture the active brush at the orientation it sits at
       // relative to the patch (the green frame-F → pink art-F turn), ride feel and all.
       if (!p.ref) {
-        toast(p.source === 'reference' ? 'that reference patch has no texture'
-          : p.source === 'prop' ? 'that prop surface is untextured'
-          : 'no texture here yet — paint one first', 'warn');
+        toast(
+          p.source === 'reference'
+            ? 'that reference patch has no texture'
+            : p.source === 'prop'
+              ? 'that prop surface is untextured'
+              : 'no texture here yet — paint one first',
+          'warn',
+        );
         return;
       }
-      void library().pickTexture(p.ref, p.surface, p.rot, p.mirror)
+      void library()
+        .pickTexture(p.ref, p.surface, p.rot, p.mirror)
         .then(msg => toast(msg, 'ok'))
-        .catch(error => toast(`texture sample failed: ${error instanceof Error ? error.message : String(error)}`, 'err'));
+        .catch(error =>
+          toast(`texture sample failed: ${error instanceof Error ? error.message : String(error)}`, 'err'),
+        );
     },
     onBeginSculpt(point, quad, normal, mods) {
       smoothStroke = mods.smooth;
       const op = strokeBrushOp(brush.op, { invert: false, smooth: smoothStroke });
       nudgePoint = op === 'nudge' ? [...point] : null;
-      flattenPlane = op === 'flatten' && brush.flattenPlaneBehavior === 'locked'
-        ? createFlattenBrushPlane(store.mdoc, point, brush.radius, quad, brush.falloff, brush.flattenMode, normal)
-        : null;
+      flattenPlane =
+        op === 'flatten' && brush.flattenPlaneBehavior === 'locked'
+          ? createFlattenBrushPlane(store.mdoc, point, brush.radius, quad, brush.falloff, brush.flattenMode, normal)
+          : null;
     },
     onSculpt(point, quad, normal, mods) {
       const op = strokeBrushOp(brush.op, { invert: mods.invert, smooth: smoothStroke });
@@ -340,12 +484,31 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         scheduleRebuild();
         return;
       }
-      applyBrush(store.mdoc, op, point, brush.radius, brush.strength, quad, brush.falloff,
-        brush.flattenMode, normal, flattenPlane, brush.smoothAmount / 100, brush.flattenAmount / 100);
+      applyBrush(
+        store.mdoc,
+        op,
+        point,
+        brush.radius,
+        brush.strength,
+        quad,
+        brush.falloff,
+        brush.flattenMode,
+        normal,
+        flattenPlane,
+        brush.smoothAmount / 100,
+        brush.flattenAmount / 100,
+      );
       scheduleRebuild();
     },
-    onEndSculpt() { flattenPlane = null; nudgePoint = null; smoothStroke = false; reseatCourse(); },
-    isGrabBrush(mods) { return strokeBrushOp(brush.op, { invert: false, smooth: mods.smooth }) === 'grab'; },
+    onEndSculpt() {
+      flattenPlane = null;
+      nudgePoint = null;
+      smoothStroke = false;
+      reseatCourse();
+    },
+    isGrabBrush(mods) {
+      return strokeBrushOp(brush.op, { invert: false, smooth: mods.smooth }) === 'grab';
+    },
     onBeginSculptGrab(point, quad) {
       grabBrush = createGrabBrushState(store.mdoc, point, brush.radius, quad, brush.falloff);
     },
@@ -354,7 +517,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       applyGrabBrush(store.mdoc, grabBrush, delta);
       scheduleRebuild();
     },
-    onEndSculptGrab() { grabBrush = null; reseatCourse(); },
+    onEndSculptGrab() {
+      grabBrush = null;
+      reseatCourse();
+    },
     onStepBrushRadius(steps) {
       brush.radius = stepBrushRadius(brush.radius, steps);
       rebuildTools();
@@ -362,7 +528,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onPlaceProp(pos: V3, yaw: number, scale: number) {
       // A held paste drops its whole set about the anchor the ghost was carried by (docs/012).
-      if (propClipboard().placing()) { propClipboard().place(pos, yaw, scale); return; }
+      if (propClipboard().placing()) {
+        propClipboard().place(pos, yaw, scale);
+        return;
+      }
       if (!store.armedProp) return;
       const props = (store.mdoc.props ??= []);
       // the viewport hands over the ghost's exact pose: pos already seated (base offset × scale taken out of
@@ -371,8 +540,14 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       const id = nextPlacedPropId(props);
       // Every stamp COPIES the held behaviour (docs/069) — the model's defaults, a picked instance's facts, or
       // the placement being copied — so later edits to either side stay independent.
-      const placed: PlacedProp = { id, level: store.armedProp.level, model: store.armedProp.model,
-        name: store.armedProp.name, pos, yaw, scale,
+      const placed: PlacedProp = {
+        id,
+        level: store.armedProp.level,
+        model: store.armedProp.model,
+        name: store.armedProp.name,
+        pos,
+        yaw,
+        scale,
         ...(store.armedProp.group ? { group: store.armedProp.group } : {}),
       };
       props.push(applyBehaviour(placed, store.armedProp.behaviour));
@@ -388,13 +563,19 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onSelectProp(i: number | null) {
       // A group's member answers as its group, which moves, turns and sizes as one (docs/015 · Authored groups).
       const group = i === null ? null : assemblyOf(store.mdoc, i);
-      if (group) selectProps(group); else selectOneProp(i);
+      if (group) selectProps(group);
+      else selectOneProp(i);
     },
-    onToggleProp(i: number) { toggleProp(i); },
+    onToggleProp(i: number) {
+      toggleProp(i);
+    },
     onToggleLight(id: string) {
       // A group's light goes in or out as its group, as the group's props do.
       const group = lightAssemblyOf(store.mdoc, id);
-      if (group) { toggleProp(group[0]); return true; }
+      if (group) {
+        toggleProp(group[0]);
+        return true;
+      }
       const { props, lights } = currentSet();
       if (!props.length && !lights.length) return false; // nothing to add it to: an ordinary click selects it
       selectSet(props, lights.includes(id) ? lights.filter(light => light !== id) : [...lights, id], id);
@@ -412,7 +593,10 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onScaleProp(i: number, pos: V3, scale: number) {
       const p = store.mdoc.props?.[i];
-      if (p) { p.pos = pos; p.scale = scale; }
+      if (p) {
+        p.pos = pos;
+        p.scale = scale;
+      }
       scheduleRebuild();
     },
     onResizeEffectTrigger(i: number, size: V3) {
@@ -420,21 +604,32 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (p?.effectTrigger) p.effectTrigger.size = size;
       scheduleRebuild();
     },
-    onSelectProps(indices, additive = false) { selectProps(indices, additive); },
+    onSelectProps(indices, additive = false) {
+      selectProps(indices, additive);
+    },
     // Each of these carries the set's own lights, and those of any group it holds whole (docs/015).
-    onMoveProps(delta: V3) { // the multi-selection's centre gizmo moved: carry every member along
+    onMoveProps(delta: V3) {
+      // the multi-selection's centre gizmo moved: carry every member along
       if (!store.mdoc.props) return;
       const before = placementPoses(store.mdoc.props, store.multiSel);
       for (const i of store.multiSel) {
         const p = store.mdoc.props[i];
-        if (p) { p.pos[0] += delta[0]; p.pos[1] += delta[1]; p.pos[2] += delta[2]; }
+        if (p) {
+          p.pos[0] += delta[0];
+          p.pos[1] += delta[1];
+          p.pos[2] += delta[2];
+        }
       }
       carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
       scheduleRebuild();
     },
-    onSlideProps(updates) { // a Surface-frame drag: every member lands at its own height over the ground it reached
+    onSlideProps(updates) {
+      // a Surface-frame drag: every member lands at its own height over the ground it reached
       if (!store.mdoc.props) return;
-      const before = placementPoses(store.mdoc.props, updates.map(u => u.index));
+      const before = placementPoses(
+        store.mdoc.props,
+        updates.map(u => u.index),
+      );
       for (const u of updates) {
         const p = store.mdoc.props[u.index];
         if (p) p.pos = u.pos;
@@ -442,22 +637,36 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
       scheduleRebuild();
     },
-    onRotateProps(updates) { // rigid turn around the set's centre: both origins and authored rotations follow
+    onRotateProps(updates) {
+      // rigid turn around the set's centre: both origins and authored rotations follow
       if (!store.mdoc.props) return;
-      const before = placementPoses(store.mdoc.props, updates.map(u => u.index));
+      const before = placementPoses(
+        store.mdoc.props,
+        updates.map(u => u.index),
+      );
       for (const u of updates) {
         const p = store.mdoc.props[u.index];
-        if (p) { p.pos = u.pos; writePropRotation(p, u); }
+        if (p) {
+          p.pos = u.pos;
+          writePropRotation(p, u);
+        }
       }
       carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
       scheduleRebuild();
     },
-    onScaleProps(updates) { // scale the set about its centre: both placement origins and member sizes follow
+    onScaleProps(updates) {
+      // scale the set about its centre: both placement origins and member sizes follow
       if (!store.mdoc.props) return;
-      const before = placementPoses(store.mdoc.props, updates.map(u => u.index));
+      const before = placementPoses(
+        store.mdoc.props,
+        updates.map(u => u.index),
+      );
       for (const u of updates) {
         const p = store.mdoc.props[u.index];
-        if (p) { p.pos = u.pos; p.scale = u.scale; }
+        if (p) {
+          p.pos = u.pos;
+          p.scale = u.scale;
+        }
       }
       carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
       scheduleRebuild();
@@ -466,7 +675,8 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       void propOps().armProp(level, model, name, { sourceIndex });
     }, // MMB a ref prop → hold an exact instance-derived copy
     isPickingProp: () => propOps().isReplacingProp(),
-    onPickPlacedProp(i: number) { // MMB a placed prop → hold its model (or its whole group) to place more
+    onPickPlacedProp(i: number) {
+      // MMB a placed prop → hold its model (or its whole group) to place more
       const p = store.mdoc.props?.[i];
       if (!p || isEffectTriggerProp(p)) return;
       // The copy carries everything the placement does — its sounds and self-lighting too, not only contact.
@@ -475,34 +685,55 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (p.group) void propOps().armGroupById(p.level, p.group, from);
       else void propOps().armProp(p.level, p.model, p.name, from);
     },
-    onSelectReferenceProp(level, model, modelName, inst) { // read-only pick of a reference prop (all-null clears it)
+    onSelectReferenceProp(level, model, modelName, inst) {
+      // read-only pick of a reference prop (all-null clears it)
       const selected = level !== null && model !== null && modelName !== null;
       if (selected) {
         // PointerRouter already dropped the live scene handles. Mirror that mutual exclusion in host state
         // here so selecting a reference prop needs one toolbox refresh and no document rebuild callbacks.
-        store.selectedProp = null; store.multiSel = []; store.selectedLight = null;
-        store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
+        store.selectedProp = null;
+        store.multiSel = [];
+        store.selectedLight = null;
+        store.selectedRail = null;
+        store.selectedNode = null;
+        store.selectedGem = null;
         clearScreenState();
         clearLineState();
         clearReferenceLight();
       }
       store.selectedRefProp = selected
-        ? { level: level!, model: model!, name: inst?.name?.trim() || modelName!, modelName: modelName!,
+        ? {
+            level: level!,
+            model: model!,
+            name: inst?.name?.trim() || modelName!,
+            modelName: modelName!,
             ...(inst ? { sourceIndex: inst.sourceIndex } : {}),
             ltgState: inst?.ltgState ?? 0,
-            collisionSound: inst?.collisionSound ?? -1, contact: inst?.contact,
-            playerCollision: inst?.playerCollision ?? false, playerBounce: inst?.playerBounce ?? false,
-            bounce: inst?.bounce ?? -1, surface: inst?.surface ?? -1, shape: inst?.shape ?? 0,
-            responseMass: inst?.responseMass ?? -1, dynamicMass: inst?.dynamicMass ?? -1,
+            collisionSound: inst?.collisionSound ?? -1,
+            contact: inst?.contact,
+            playerCollision: inst?.playerCollision ?? false,
+            playerBounce: inst?.playerBounce ?? false,
+            bounce: inst?.bounce ?? -1,
+            surface: inst?.surface ?? -1,
+            shape: inst?.shape ?? 0,
+            responseMass: inst?.responseMass ?? -1,
+            dynamicMass: inst?.dynamicMass ?? -1,
             physicsBody: inst?.physicsBody ?? -1,
-            externalSounds: inst?.externalSounds ?? [] } : null;
+            externalSounds: inst?.externalSounds ?? [],
+          }
+        : null;
       if (store.currentMode === 'props') rebuildTools(); // the preview card shows it tagged 'reference'
     },
     onSelectReferenceLight(level, light) {
       const selected = level !== null && light !== null;
       if (selected) {
-        store.selectedProp = null; store.multiSel = []; store.selectedLight = null; store.selectedRefProp = null;
-        store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
+        store.selectedProp = null;
+        store.multiSel = [];
+        store.selectedLight = null;
+        store.selectedRefProp = null;
+        store.selectedRail = null;
+        store.selectedNode = null;
+        store.selectedGem = null;
         clearScreenState();
         clearLineState();
       }
@@ -513,31 +744,50 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onSelectReferenceScreen(level, screen) {
       const selected = level !== null && screen !== null;
       if (selected) {
-        store.selectedProp = null; store.multiSel = []; store.selectedRefProp = null;
-        store.selectedLight = null; store.selectedRail = null; store.selectedNode = null;
-        store.selectedGem = null; store.selectedScreen = null;
+        store.selectedProp = null;
+        store.multiSel = [];
+        store.selectedRefProp = null;
+        store.selectedLight = null;
+        store.selectedRail = null;
+        store.selectedNode = null;
+        store.selectedGem = null;
+        store.selectedScreen = null;
         clearLineState();
         clearReferenceLight();
       }
       store.selectedRefScreen = selected ? { level: level!, screen: screen! } : null;
       if (store.currentMode === 'props') rebuildTools();
     },
-    onSelectPaintCell(quad: number | null) { selectPaintCell(quad); },
-    onRangeSelectPaintCell(quad) { rangeSelectPaintCells(quad); }, // shift-click: add this quad to the set
-    onSelectRefPatch(patch, ref, rot, mirror, surface) { // read-only pick of a reference patch (its tile in the readout)
+    onSelectPaintCell(quad: number | null) {
+      selectPaintCell(quad);
+    },
+    onRangeSelectPaintCell(quad) {
+      rangeSelectPaintCells(quad);
+    }, // shift-click: add this quad to the set
+    onSelectRefPatch(patch, ref, rot, mirror, surface) {
+      // read-only pick of a reference patch (its tile in the readout)
       store.selectedPaintCell = null;
       store.paintMultiSel = [];
       viewport().setSelectedPaintCell(null);
       viewport().setSelectedPaintCells([]);
       store.selectedRefPatch = patch;
       viewport().setSelectedRefPatch(patch);
-      palette().showCell({ ref, surface: surface ?? null, rot, mirror, context: 'terrain',
-        source: 'surface', sourceName: `reference · ${parseTexRef(ref).level} · patch ${patch}` });
+      palette().showCell({
+        ref,
+        surface: surface ?? null,
+        rot,
+        mirror,
+        context: 'terrain',
+        source: 'surface',
+        sourceName: `reference · ${parseTexRef(ref).level} · patch ${patch}`,
+      });
       library().highlightRef(ref);
       updateCmdSheet();
     },
-    onInspectPropTexture(ref, propName, surface, uvEdges) { // paint select mode: a prop click shows the clicked submesh's tile
-      if (!ref) { // off-nominal — there's nothing to put in the panel, so this one stays a toast
+    onInspectPropTexture(ref, propName, surface, uvEdges) {
+      // paint select mode: a prop click shows the clicked submesh's tile
+      if (!ref) {
+        // off-nominal — there's nothing to put in the panel, so this one stays a toast
         toast(propName ? `${propName} — that surface is untextured` : 'that prop surface is untextured', 'warn');
         return;
       }
@@ -551,22 +801,35 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       viewport().setSelectedRefPatch(null);
       const sourceLevel = parseTexRef(ref).level;
       const flipbookFrames = (surface?.frameFiles ?? []).map(name => makeTexRef(sourceLevel, name));
-      palette().showCell({ ref, surface: null, rot: 0, mirror: false, context: 'prop',
-        source: 'model', sourceName: propName || 'unnamed model',
+      palette().showCell({
+        ref,
+        surface: null,
+        rot: 0,
+        mirror: false,
+        context: 'prop',
+        source: 'model',
+        sourceName: propName || 'unnamed model',
         uvEdges: uvEdges ?? undefined, // the submesh's UV wireframe over the art
         flipbookFrames: flipbookFrames.length > 1 ? flipbookFrames : undefined,
         flipbookEffect: surface?.flipbook,
-        appearance: surface ? (surface.alphaMode
-          ? `${surface.alphaMode} (explicit)`
-          : surface.blend ? 'alpha pass — reading alpha…' : 'opaque') : undefined,
+        appearance: surface
+          ? surface.alphaMode
+            ? `${surface.alphaMode} (explicit)`
+            : surface.blend
+              ? 'alpha pass — reading alpha…'
+              : 'opaque'
+          : undefined,
         priority: surface?.prio,
-        scroll: surface?.scroll });
+        scroll: surface?.scroll,
+      });
       library().highlightRef(ref);
       // cutout vs translucent is a texture property — refine the appearance line once the alpha is read
       // (cached; usually instant since the art is already loaded). updateCellAppearance drops a stale refine.
       const { level, name: texName } = parseTexRef(ref);
-      if (surface?.blend && !surface.alphaMode) void analyzeTextureAlpha(level, texName)
-        .then(analysis => palette().updateCellAppearance(ref, alphaAnalysisLabel(analysis, true)));
+      if (surface?.blend && !surface.alphaMode)
+        void analyzeTextureAlpha(level, texName).then(analysis =>
+          palette().updateCellAppearance(ref, alphaAnalysisLabel(analysis, true)),
+        );
       updateCmdSheet();
     },
     onPlaceLight(pos: V3) {
@@ -594,7 +857,13 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         return;
       }
       store.selectedLight = id;
-      if (id !== null) { store.selectedProp = null; store.multiSel = []; clearScreenState(); clearLineState(); clearReferenceLight(); }
+      if (id !== null) {
+        store.selectedProp = null;
+        store.multiSel = [];
+        clearScreenState();
+        clearLineState();
+        clearReferenceLight();
+      }
       scheduleRebuild();
       if (store.currentMode === 'props') rebuildTools();
     },
@@ -607,16 +876,19 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (store.selectedRail === null || !store.mdoc.rails?.[store.selectedRail]) return;
       const rail = store.mdoc.rails[store.selectedRail];
       rail.nodes.push(pos);
-      store.selectedNode = null;   // keep the gizmo off the last node so it doesn't intercept the next placing click
+      store.selectedNode = null; // keep the gizmo off the last node so it doesn't intercept the next placing click
       scheduleRebuild();
-      rebuildTools();        // node count changed
+      rebuildTools(); // node count changed
     },
     onSelectRailNode(rail: number | null, node: number | null) {
       store.selectedRail = rail;
       store.selectedNode = node;
       store.pathHandle = null; // a node takes the gizmo back from a Bézier handle (docs/014)
       if (rail !== null) {
-        store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.railDrawing = false;
+        store.selectedProp = null;
+        store.selectedLight = null;
+        store.multiSel = [];
+        store.railDrawing = false;
         clearScreenState();
         clearLineState();
         clearReferenceLight();
@@ -629,22 +901,35 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (r?.nodes[node]) r.nodes[node] = pos;
       scheduleRebuild();
     },
-    onAppendLineNode(pos: V3) { propLines().appendNode(pos); },
+    onAppendLineNode(pos: V3) {
+      propLines().appendNode(pos);
+    },
     onSelectLineNode(line: string | null, node: number | null) {
       store.selectedLine = line;
       store.selectedLineNode = node;
       store.pathHandle = null; // a node takes the gizmo back from a Bézier handle (docs/014)
       if (line !== null) {
-        store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRefProp = null;
-        store.selectedRail = null; store.selectedNode = null; store.selectedGem = null;
-        store.railDrawing = false; viewport().setRailArmed(false);
+        store.selectedProp = null;
+        store.selectedLight = null;
+        store.multiSel = [];
+        store.selectedRefProp = null;
+        store.selectedRail = null;
+        store.selectedNode = null;
+        store.selectedGem = null;
+        store.railDrawing = false;
+        viewport().setRailArmed(false);
         clearScreenState();
         clearReferenceLight();
       } else if (store.lineDrawing) propLines().finishLine(); // an empty-space click with a line half-drawn ends it
       scheduleRebuild();
-      if (store.currentMode === 'props') { rebuildTools(); updateCmdSheet(); }
+      if (store.currentMode === 'props') {
+        rebuildTools();
+        updateCmdSheet();
+      }
     },
-    onMoveLineNode(line: string, node: number, pos: V3) { propLines().moveNode(line, node, pos); },
+    onMoveLineNode(line: string, node: number, pos: V3) {
+      propLines().moveNode(line, node, pos);
+    },
     onPlaceGem(pos: V3) {
       const gems = (store.mdoc.gems ??= []);
       const placed: Gem = { id: nextGemId(gems), pos, value: gemTool.value };
@@ -656,7 +941,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     },
     onPlaceGemLine(a: V3, b: V3) {
       const gems = (store.mdoc.gems ??= []);
-      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      const dx = b[0] - a[0],
+        dy = b[1] - a[1],
+        dz = b[2] - a[2];
       const len = Math.hypot(dx, dy, dz);
       const n = Math.max(1, Math.round(len / Math.max(0.5, gemTool.spacing))); // segments → n+1 gems, endpoints included
       let last = '';
@@ -676,8 +963,14 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     onSelectGem(id: string | null) {
       store.selectedGem = id;
       if (id !== null) {
-        store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRail = null;
-        store.selectedNode = null; store.railDrawing = false; viewport().setRailArmed(false); store.trickTool = 'gem';
+        store.selectedProp = null;
+        store.selectedLight = null;
+        store.multiSel = [];
+        store.selectedRail = null;
+        store.selectedNode = null;
+        store.railDrawing = false;
+        viewport().setRailArmed(false);
+        store.trickTool = 'gem';
         clearScreenState();
         clearLineState();
         clearReferenceLight();
@@ -694,8 +987,13 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       store.selectedScreen = id;
       store.selectedRefScreen = null;
       if (id !== null) {
-        store.selectedProp = null; store.selectedLight = null; store.multiSel = []; store.selectedRail = null;
-        store.selectedNode = null; store.selectedGem = null; store.railDrawing = false;
+        store.selectedProp = null;
+        store.selectedLight = null;
+        store.multiSel = [];
+        store.selectedRail = null;
+        store.selectedNode = null;
+        store.selectedGem = null;
+        store.railDrawing = false;
         clearLineState();
         clearReferenceLight();
       }
@@ -709,20 +1007,25 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       // is expressed back through the prop it rides — otherwise dragging a screen would silently detach it
       // from the board that carries it.
       const prop = screenProp(screen, store.mdoc.props);
-      screen.pos = prop
-        ? scaleV3(unrotateByPlacement(subV3(pos, prop.pos), prop), 1 / (prop.scale || 1))
-        : pos;
+      screen.pos = prop ? scaleV3(unrotateByPlacement(subV3(pos, prop.pos), prop), 1 / (prop.scale || 1)) : pos;
       scheduleRebuild();
     },
-    onSelectReference() { selectScene('info'); }, // clicked the reference in 3D: show the shared Reference card
-    onMoveReference() { persistRef(); }, // dragged the reference to a new place: save the offset
-    onSelectMountain() { // view mode: clicked the terrain body -> select the Mountain item in the scene tree
+    onSelectReference() {
+      selectScene('info');
+    }, // clicked the reference in 3D: show the shared Reference card
+    onMoveReference() {
+      persistRef();
+    }, // dragged the reference to a new place: save the offset
+    onSelectMountain() {
+      // view mode: clicked the terrain body -> select the Mountain item in the scene tree
       store.selected = null;
       store.selectedKnots = [];
       selectScene('info');
       refreshSelection();
       scheduleRebuild(); // clear any knot highlight in 3D
     },
-    onPlayClick(world) { play().clickSlope(world); }, // Test mode: drop an AI rider, or place the ride start
+    onPlayClick(world) {
+      play().clickSlope(world);
+    }, // Test mode: drop an AI rider, or place the ride start
   };
 }

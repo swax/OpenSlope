@@ -35,13 +35,11 @@ function unpackFloats(encoded: string): Float32Array {
   return out;
 }
 
-function measureVertices(
-  identity: Pick<Measured, 'id' | 'name' | 'tris'>,
-  vertices: V3[],
-): Measured {
+function measureVertices(identity: Pick<Measured, 'id' | 'name' | 'tris'>, vertices: V3[]): Measured {
   if (!vertices.length) throw new Error(`Imported prop "${identity.name}" has no vertices to measure`);
   const axis = (component: number) => {
-    let lo = Infinity, hi = -Infinity;
+    let lo = Infinity,
+      hi = -Infinity;
     for (const vertex of vertices) {
       lo = Math.min(lo, vertex[component]);
       hi = Math.max(hi, vertex[component]);
@@ -62,21 +60,27 @@ function measureVertices(
   const rise = unit([high[0] - low[0], high[1] - low[1]]);
 
   // Sweep horizontal directions instead of using an axis-aligned box, which overstates diagonal props.
-  let long: [number, number] = [1, 0], thin: [number, number] = [0, 1];
-  let widest = -Infinity, narrowest = Infinity;
+  let long: [number, number] = [1, 0],
+    thin: [number, number] = [0, 1];
+  let widest = -Infinity,
+    narrowest = Infinity;
   for (let angle = 0; angle < 180; angle += 5) {
-    const direction: [number, number] = [
-      Math.cos((angle * Math.PI) / 180),
-      Math.sin((angle * Math.PI) / 180),
-    ];
-    let lo = Infinity, hi = -Infinity;
+    const direction: [number, number] = [Math.cos((angle * Math.PI) / 180), Math.sin((angle * Math.PI) / 180)];
+    let lo = Infinity,
+      hi = -Infinity;
     for (const vertex of vertices) {
       const projected = vertex[0] * direction[0] + vertex[2] * direction[1];
       lo = Math.min(lo, projected);
       hi = Math.max(hi, projected);
     }
-    if (hi - lo > widest) { widest = hi - lo; long = direction; }
-    if (hi - lo < narrowest) { narrowest = hi - lo; thin = direction; }
+    if (hi - lo > widest) {
+      widest = hi - lo;
+      long = direction;
+    }
+    if (hi - lo < narrowest) {
+      narrowest = hi - lo;
+      thin = direction;
+    }
   }
 
   return {
@@ -112,11 +116,7 @@ export function measurePropDraft(draft: MeasurablePropDraft, id = 0): Measured {
   const vertices: V3[] = [];
   for (const sub of draft.subs) {
     for (let index = 0; index + 2 < sub.positions.length; index += 3) {
-      vertices.push(editorFromRaw(
-        sub.positions[index],
-        sub.positions[index + 1],
-        sub.positions[index + 2],
-      ));
+      vertices.push(editorFromRaw(sub.positions[index], sub.positions[index + 1], sub.positions[index + 2]));
     }
   }
   return measureVertices({ id, name: draft.name, tris: draft.tris }, vertices);
@@ -135,8 +135,10 @@ export function spanAlong(
   belowLocalY = Infinity,
 ): { lo: number; hi: number } {
   const angle = (yaw * Math.PI) / 180;
-  const cos = Math.cos(angle), sin = Math.sin(angle);
-  let lo = Infinity, hi = -Infinity;
+  const cos = Math.cos(angle),
+    sin = Math.sin(angle);
+  let lo = Infinity,
+    hi = -Infinity;
   for (const [x, y, z] of measured.pts) {
     if (y > belowLocalY) continue;
     const projected = (x * cos + z * sin) * world[0] + (-x * sin + z * cos) * world[1];
@@ -146,12 +148,7 @@ export function spanAlong(
   return lo === Infinity ? { lo: 0, hi: 0 } : { lo: lo * scale, hi: hi * scale };
 }
 
-export const extentAlong = (
-  measured: Measured,
-  yaw: number,
-  world: [number, number],
-  scale: number,
-): number => {
+export const extentAlong = (measured: Measured, yaw: number, world: [number, number], scale: number): number => {
   const { lo, hi } = spanAlong(measured, yaw, world, scale);
   return hi - lo;
 };

@@ -9,10 +9,18 @@ export interface RetopologyReferencePatch extends RawPatch {
   TrickOnlyPatch: boolean;
 }
 
-const TILE_UV = [[0.008, -0.008], [0.992, -0.008], [0.008, -0.992], [0.992, -0.992]];
+const TILE_UV = [
+  [0.008, -0.008],
+  [0.992, -0.008],
+  [0.008, -0.992],
+  [0.992, -0.992],
+];
 
 const addWeighted = (a: V3, b: V3, c: V3, d: V3, u: number, v: number): V3 => {
-  const wa = (1 - u) * (1 - v), wb = (1 - u) * v, wc = u * (1 - v), wd = u * v;
+  const wa = (1 - u) * (1 - v),
+    wb = (1 - u) * v,
+    wc = u * (1 - v),
+    wd = u * v;
   return [
     a[0] * wa + b[0] * wb + c[0] * wc + d[0] * wd,
     a[1] * wa + b[1] * wb + c[1] * wc + d[1] * wd,
@@ -28,13 +36,16 @@ export function polygonPatchPoints(mesh: PolygonMesh, face: number[]): number[][
   if (face.length !== 3 && face.length !== 4) {
     throw new Error(`SSX reference patches require triangles or quads; received a ${face.length}-gon`);
   }
-  const a = mesh.vertices[face[0]], b = mesh.vertices[face[1]];
-  const d = mesh.vertices[face[2]], c = mesh.vertices[face[face.length === 4 ? 3 : 2]];
+  const a = mesh.vertices[face[0]],
+    b = mesh.vertices[face[1]];
+  const d = mesh.vertices[face[2]],
+    c = mesh.vertices[face[face.length === 4 ? 3 : 2]];
   if (!a || !b || !c || !d) throw new Error('Candidate face references a missing vertex');
   const points: number[][] = [];
-  for (let row = 0; row < 4; row++) for (let column = 0; column < 4; column++) {
-    points.push(toRaw(addWeighted(a, b, c, d, row / 3, column / 3)));
-  }
+  for (let row = 0; row < 4; row++)
+    for (let column = 0; column < 4; column++) {
+      points.push(toRaw(addWeighted(a, b, c, d, row / 3, column / 3)));
+    }
   return points;
 }
 

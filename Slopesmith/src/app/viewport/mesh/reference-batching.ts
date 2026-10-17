@@ -92,8 +92,7 @@ export function buildReferenceBatchLayout(
   if (!Number.isInteger(indicesPerPatch) || indicesPerPatch <= 0)
     throw new Error(`invalid reference facesPerPatch: ${facesPerPatch}`);
   const required = patchTextures.length * indicesPerPatch;
-  if (required > source.length)
-    throw new Error(`reference index buffer is short (${source.length} < ${required})`);
+  if (required > source.length) throw new Error(`reference index buffer is short (${source.length} < ${required})`);
 
   const textureRefs: TexRef[] = [];
   const slotOf = new Map<TexRef, number>();
@@ -130,12 +129,18 @@ export function buildReferenceBatchLayout(
   const cells = new Map<string, Cell>();
 
   for (let patch = 0; patch < patchTextures.length; patch++) {
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      minZ = Infinity;
+    let maxX = -Infinity,
+      maxY = -Infinity,
+      maxZ = -Infinity;
     const from = patch * indicesPerPatch;
     for (let i = from; i < from + indicesPerPatch; i++) {
       const v = source[i] * 3;
-      const x = positions[v], y = positions[v + 1], z = positions[v + 2];
+      const x = positions[v],
+        y = positions[v + 1],
+        z = positions[v + 2];
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
@@ -146,7 +151,9 @@ export function buildReferenceBatchLayout(
     }
     // A patch whose positions are absent or non-finite would otherwise carry an inverted box into a bounding
     // sphere and cull unpredictably. Seat it at the origin cell instead: it still draws, it just cannot help.
-    if (minX > maxX) { minX = maxX = minY = maxY = minZ = maxZ = 0; }
+    if (minX > maxX) {
+      minX = maxX = minY = maxY = minZ = maxZ = 0;
+    }
 
     const cx = split ? Math.floor((minX + maxX) / 2 / cellMetres) : 0;
     const cz = split ? Math.floor((minZ + maxZ) / 2 / cellMetres) : 0;
@@ -172,7 +179,7 @@ export function buildReferenceBatchLayout(
 
   // Emit cell-major so each chunk's groups are contiguous, and slot-ascending within a cell so a chunk's
   // material switches follow the same stable order the single-mesh layout used to submit globally.
-  const ordered = [...cells.values()].sort((a, b) => (a.cx - b.cx) || (a.cz - b.cz));
+  const ordered = [...cells.values()].sort((a, b) => a.cx - b.cx || a.cz - b.cz);
   const indices = new Uint32Array(required);
   const patchStarts = new Uint32Array(patchTextures.length);
   const chunks: ReferenceBatchChunk[] = [];
@@ -249,7 +256,7 @@ export function buildPatchSliceAttribute(
   for (let patch = 0; patch < patchSlots.length; patch++) {
     const slot = patchSlots[patch];
     let slice = bySlot.get(slot);
-    if (slice === undefined) bySlot.set(slot, slice = Math.max(0, sliceOfSlot(slot)));
+    if (slice === undefined) bySlot.set(slot, (slice = Math.max(0, sliceOfSlot(slot))));
     if (!slice) continue; // slice 0 is the array's first layer AND the zero-filled default: nothing to write
     const from = patch * indicesPerPatch;
     for (let i = from; i < from + indicesPerPatch; i++) {

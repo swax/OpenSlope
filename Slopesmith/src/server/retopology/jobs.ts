@@ -17,21 +17,36 @@ import {
 import { buildContourCandidate, CONTOUR_RIM_STRIP_CELLS } from '../../core/mesh/retopology/contour';
 import type { PolygonMesh } from '../../core/mesh/retopology/obj';
 import {
-  prepareRetopologyBenchmark, prepareSelectedRetopology, protectedQuadSet, tessellateQuads,
+  prepareRetopologyBenchmark,
+  prepareSelectedRetopology,
+  protectedQuadSet,
+  tessellateQuads,
   type RetopologyConstraints,
 } from '../../core/mesh/retopology/benchmark';
 import { quadWildSharp } from '../../core/mesh/retopology/field';
 import {
-  buildExactTrailBuffer, conformCandidateOuterBoundary, cutCandidateByLockedFootprint, fitBezierSurfaceHeight,
-  generatedProtectedFootprintPenetration, integrateRetopologyCandidate, nudgeCrossingVerticesOffLockedFootprint,
-  nudgeLeaningFacesOffLockedFootprint, refineCoarseCandidateInterface, removeCandidateFacesAndRepairBoundary,
+  buildExactTrailBuffer,
+  conformCandidateOuterBoundary,
+  cutCandidateByLockedFootprint,
+  fitBezierSurfaceHeight,
+  generatedProtectedFootprintPenetration,
+  integrateRetopologyCandidate,
+  nudgeCrossingVerticesOffLockedFootprint,
+  nudgeLeaningFacesOffLockedFootprint,
+  refineCoarseCandidateInterface,
+  removeCandidateFacesAndRepairBoundary,
   splitCandidateFacesToWedges,
 } from '../../core/mesh/retopology/integrate';
 import { scoreSurfaceDeviation } from '../../core/mesh/retopology/metrics';
 import { readObj, writeObj } from '../../core/mesh/retopology/obj';
 import {
-  applyVertexMovesToObj, boundaryLoops, formatFixedSubsides, lockedRimLoops, parseCornersFile,
-  prescribeNearbyHoleSubsides, prescribeRimSubsides,
+  applyVertexMovesToObj,
+  boundaryLoops,
+  formatFixedSubsides,
+  lockedRimLoops,
+  parseCornersFile,
+  prescribeNearbyHoleSubsides,
+  prescribeRimSubsides,
 } from '../../core/mesh/retopology/prescribe';
 import { findTJunctions, normalizeTJunctions } from '../../core/mesh/t-junctions';
 import { APP_ROOT, workspaceConfig } from '../workspace-config';
@@ -73,8 +88,10 @@ const nativeConfig = (): NativeConfig => {
   const legacyRoot = join(APP_ROOT, '..', 'temp', 'retopo', 'quadwild-bimdf');
   // Native dependencies should survive ordinary temp cleanup. Preserve the former temp/ lookup only for
   // existing developer checkouts; a fresh setup and a missing-install diagnostic both point at repo root.
-  const root = resolve(process.env.SLOPESMITH_QUADWILD_ROOT?.trim()
-    || (existsSync(durableRoot) || !existsSync(legacyRoot) ? durableRoot : legacyRoot));
+  const root = resolve(
+    process.env.SLOPESMITH_QUADWILD_ROOT?.trim() ||
+      (existsSync(durableRoot) || !existsSync(legacyRoot) ? durableRoot : legacyRoot),
+  );
   const releaseBin = join(root, 'build-release', 'Build', 'bin', 'Release');
   const configuredBin = process.env.SLOPESMITH_QUADWILD_BIN?.trim();
   const bin = configuredBin ? resolve(configuredBin) : releaseBin;
@@ -88,8 +105,12 @@ const nativeConfig = (): NativeConfig => {
 };
 
 function unavailableReason(config = nativeConfig()): string | undefined {
-  const missing = [config.prepareExecutable, config.quadrangulateExecutable,
-    config.prepareConfig, config.quadrangulateConfig].filter(file => !existsSync(file));
+  const missing = [
+    config.prepareExecutable,
+    config.quadrangulateExecutable,
+    config.prepareConfig,
+    config.quadrangulateConfig,
+  ].filter(file => !existsSync(file));
   return missing.length ? `QuadWild is not installed on this server (${missing[0]} is missing).` : undefined;
 }
 
@@ -97,7 +118,8 @@ function unavailableReason(config = nativeConfig()): string | undefined {
 export const retopologyEnabled = (): boolean => process.env.SLOPESMITH_RETOPOLOGY === '1';
 
 /** What a job route answers while retopology is off. */
-export const RETOPOLOGY_OFF = 'Retopology is turned off on this server. Start it with SLOPESMITH_RETOPOLOGY=1 to turn it on.';
+export const RETOPOLOGY_OFF =
+  'Retopology is turned off on this server. Start it with SLOPESMITH_RETOPOLOGY=1 to turn it on.';
 
 const concurrency = (): number => {
   const parsed = Number(process.env.SLOPESMITH_RETOPOLOGY_CONCURRENCY ?? 1);
@@ -107,7 +129,12 @@ const concurrency = (): number => {
 export function retopologyCapabilities(): RetopologyCapabilities {
   const reason = unavailableReason();
   const strategies: RetopologyStrategyCapability[] = [
-    { id: 'quadwild', available: !reason, ...(reason ? { reason } : {}), scopes: ['whole-unlocked', 'selected-region'] },
+    {
+      id: 'quadwild',
+      available: !reason,
+      ...(reason ? { reason } : {}),
+      scopes: ['whole-unlocked', 'selected-region'],
+    },
     // the contour-flow sweep is pure TypeScript and needs no native install; it rebuilds around the
     // whole mountain's locks only
     { id: 'contour-flow', available: true, scopes: ['whole-unlocked'] },
@@ -140,40 +167,54 @@ function normalizeOptions(input: Partial<RetopologyJobOptions> = {}): Retopology
     strategy: input.strategy ?? DEFAULT_RETOPOLOGY_OPTIONS.strategy,
     influenceRings: Math.floor(finite(input.influenceRings, DEFAULT_RETOPOLOGY_OPTIONS.influenceRings, 0, 5)),
     targetPatchSizeM: finite(input.targetPatchSizeM, DEFAULT_RETOPOLOGY_OPTIONS.targetPatchSizeM, 2, 100),
-    quadWildScale: finite(input.quadWildScale, DEFAULT_RETOPOLOGY_OPTIONS.quadWildScale, .25, 8),
-    maximumSurfaceDeviationM: finite(input.maximumSurfaceDeviationM,
-      DEFAULT_RETOPOLOGY_OPTIONS.maximumSurfaceDeviationM, .1, 500),
+    quadWildScale: finite(input.quadWildScale, DEFAULT_RETOPOLOGY_OPTIONS.quadWildScale, 0.25, 8),
+    maximumSurfaceDeviationM: finite(
+      input.maximumSurfaceDeviationM,
+      DEFAULT_RETOPOLOGY_OPTIONS.maximumSurfaceDeviationM,
+      0.1,
+      500,
+    ),
     qualityResolution: Math.floor(finite(input.qualityResolution, DEFAULT_RETOPOLOGY_OPTIONS.qualityResolution, 2, 8)),
     preserveSurfacePaint: input.preserveSurfacePaint !== false,
   };
 }
 
 function lockedRegionCount(source: QuadMeshDoc): number {
-  const locked = protectedQuadSet(source, 0), remaining = new Set(locked);
+  const locked = protectedQuadSet(source, 0),
+    remaining = new Set(locked);
   if (!remaining.size) return 0;
   const edgeQuads = new Map<string, number[]>();
-  const key = (a: number, b: number) => a < b ? `${a},${b}` : `${b},${a}`;
+  const key = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
   for (const quad of locked) {
     const [A, B, C, D] = source.quads[quad];
-    for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
+    for (const [a, b] of [
+      [A, B],
+      [B, D],
+      [D, C],
+      [C, A],
+    ] as [number, number][]) {
       const found = edgeQuads.get(key(a, b));
-      if (found) found.push(quad); else edgeQuads.set(key(a, b), [quad]);
+      if (found) found.push(quad);
+      else edgeQuads.set(key(a, b), [quad]);
     }
   }
   const neighbors = new Map<number, Set<number>>();
-  for (const quads of edgeQuads.values()) if (quads.length > 1) for (const quad of quads) {
-    const set = neighbors.get(quad) ?? new Set<number>();
-    for (const other of quads) if (other !== quad) set.add(other);
-    neighbors.set(quad, set);
-  }
+  for (const quads of edgeQuads.values())
+    if (quads.length > 1)
+      for (const quad of quads) {
+        const set = neighbors.get(quad) ?? new Set<number>();
+        for (const other of quads) if (other !== quad) set.add(other);
+        neighbors.set(quad, set);
+      }
   let regions = 0;
   while (remaining.size) {
     regions++;
     const queue = [remaining.values().next().value as number];
     remaining.delete(queue[0]);
-    while (queue.length) for (const neighbor of neighbors.get(queue.pop()!) ?? []) {
-      if (remaining.delete(neighbor)) queue.push(neighbor);
-    }
+    while (queue.length)
+      for (const neighbor of neighbors.get(queue.pop()!) ?? []) {
+        if (remaining.delete(neighbor)) queue.push(neighbor);
+      }
   }
   return regions;
 }
@@ -189,14 +230,23 @@ async function runNative(job: JobRecord, executable: string, args: string[], cwd
     let output = '';
     const child = spawn(executable, args, { cwd, windowsHide: true });
     job.child = child;
-    child.stdout?.on('data', chunk => { output = appendLog(output, chunk); });
-    child.stderr?.on('data', chunk => { output = appendLog(output, chunk); });
+    child.stdout?.on('data', chunk => {
+      output = appendLog(output, chunk);
+    });
+    child.stderr?.on('data', chunk => {
+      output = appendLog(output, chunk);
+    });
     child.on('error', reject);
     child.on('exit', (code, signal) => {
       if (job.child === child) job.child = undefined;
       if (job.cancelled) reject(new Error('Retopology cancelled'));
       else if (code === 0) resolveRun(output);
-      else reject(new Error(`${executable.split(/[\\/]/).at(-1)} failed (${signal ?? `exit ${code}`})${output.trim() ? `: ${output.trim().slice(-1200)}` : ''}`));
+      else
+        reject(
+          new Error(
+            `${executable.split(/[\\/]/).at(-1)} failed (${signal ?? `exit ${code}`})${output.trim() ? `: ${output.trim().slice(-1200)}` : ''}`,
+          ),
+        );
     });
   });
 }
@@ -211,21 +261,29 @@ async function executeAttempt(
   retryReason?: string,
 ): Promise<RetopologyJobResult> {
   const contour = job.options.strategy === 'contour-flow';
-  const config = nativeConfig(), unavailable = unavailableReason(config);
+  const config = nativeConfig(),
+    unavailable = unavailableReason(config);
   if (unavailable && !contour) throw new Error(unavailable);
   if (contour && job.options.scope !== 'whole-unlocked') {
-    throw new Error('The contour-flow strategy rebuilds the whole unlocked mountain; use QuadWild for a selected region');
+    throw new Error(
+      'The contour-flow strategy rebuilds the whole unlocked mountain; use QuadWild for a selected region',
+    );
   }
   const regions = lockedRegionCount(job.source);
   if (job.options.scope === 'whole-unlocked' && !regions) {
     throw new Error('Lock the trail or other terrain feature before whole-mountain retopology');
   }
 
-  update(job, 'preparing', 5, forceBoundaryConstraint
-    ? `Retrying with the locked feature as a native boundary${retryReason ? `: ${retryReason}` : ''}`
-    : job.options.scope === 'selected-region'
-    ? 'Building the selected-region topology proxy'
-    : `Building the whole-mountain proxy around ${regions} locked region${regions === 1 ? '' : 's'}`);
+  update(
+    job,
+    'preparing',
+    5,
+    forceBoundaryConstraint
+      ? `Retrying with the locked feature as a native boundary${retryReason ? `: ${retryReason}` : ''}`
+      : job.options.scope === 'selected-region'
+        ? 'Building the selected-region topology proxy'
+        : `Building the whole-mountain proxy around ${regions} locked region${regions === 1 ? '' : 's'}`,
+  );
   const preparation = {
     collarRings: 0,
     targetPatchSizeM: job.options.targetPatchSizeM,
@@ -237,14 +295,16 @@ async function executeAttempt(
   // SLOPESMITH_RETOPOLOGY_HOLE_MODE=always is the docs/ideas/042 rollout: with prescribed seam subdivisions
   // the hole solve is conforming by construction, so first solves can use it too. The contour-flow sweep
   // builds its hole rims on the authored corners directly, so it is a hole-mode conforming solve always.
-  const boundaryConstrainedRepeat = job.options.scope === 'whole-unlocked'
-    && (contour
-      || forceBoundaryConstraint
-      || process.env.SLOPESMITH_RETOPOLOGY_HOLE_MODE === 'always'
-      || (job.source.tJunctions?.length ?? 0) > 0);
-  const prepared = job.options.scope === 'selected-region'
-    ? prepareSelectedRetopology(job.source, job.selectedQuadIds, job.options.influenceRings, preparation)
-    : prepareRetopologyBenchmark(job.source, { ...preparation, wholeSurface: !boundaryConstrainedRepeat });
+  const boundaryConstrainedRepeat =
+    job.options.scope === 'whole-unlocked' &&
+    (contour ||
+      forceBoundaryConstraint ||
+      process.env.SLOPESMITH_RETOPOLOGY_HOLE_MODE === 'always' ||
+      (job.source.tJunctions?.length ?? 0) > 0);
+  const prepared =
+    job.options.scope === 'selected-region'
+      ? prepareSelectedRetopology(job.source, job.selectedQuadIds, job.options.influenceRings, preparation)
+      : prepareRetopologyBenchmark(job.source, { ...preparation, wholeSurface: !boundaryConstrainedRepeat });
   const workRoot = join(workspaceConfig().workspaceRoot, 'cache', 'retopology');
   await mkdir(workRoot, { recursive: true });
   const directory = await mkdtemp(join(workRoot, 'job-'));
@@ -258,8 +318,9 @@ async function executeAttempt(
     // the sweep samples heights from a finer tessellation than the resolution-1 topology proxy, so its
     // graded contours see the bicubic surface rather than the control cage's facets
     const remeshIds = new Set(prepared.constraints.remeshQuadIds);
-    const remeshIndices = new Set(job.source.quadIds
-      .map((id, index) => (remeshIds.has(id) ? index : -1)).filter(index => index >= 0));
+    const remeshIndices = new Set(
+      job.source.quadIds.map((id, index) => (remeshIds.has(id) ? index : -1)).filter(index => index >= 0),
+    );
     const generated = buildContourCandidate({
       surface: tessellateQuads(job.source, remeshIndices, 2),
       boundaryProxy: prepared.input,
@@ -271,108 +332,135 @@ async function executeAttempt(
     candidate = generated.mesh;
     // every locked rim carries exactly one candidate vertex per authored corner, on the corner
     prescribedSeams = true;
-    update(job, 'quadrangulating', 60, `Swept ${generated.stats.sweptQuads + generated.stats.ringQuads} quads `
-      + `over ${generated.stats.levels} graded levels (${generated.stats.caps + generated.stats.pits} caps, `
-      + `${generated.stats.saddles} saddles)`);
+    update(
+      job,
+      'quadrangulating',
+      60,
+      `Swept ${generated.stats.sweptQuads + generated.stats.ringQuads} quads ` +
+        `over ${generated.stats.levels} graded levels (${generated.stats.caps + generated.stats.pits} caps, ` +
+        `${generated.stats.saddles} saddles)`,
+    );
   } else {
-  const input = join(directory, 'input.obj');
-  await writeFile(input, writeObj(prepared.input, 'slopesmith-retopology-proxy'));
-  // This contains the true mountain rim plus both sides of every internal locked-trail edge. QuadWild only
-  // preserves it through remeshing when it is passed explicitly; a same-basename file is not auto-discovered.
-  const sharp = join(directory, 'input.sharp');
-  await writeFile(sharp, quadWildSharp(prepared.input, prepared.constraints.interface));
+    const input = join(directory, 'input.obj');
+    await writeFile(input, writeObj(prepared.input, 'slopesmith-retopology-proxy'));
+    // This contains the true mountain rim plus both sides of every internal locked-trail edge. QuadWild only
+    // preserves it through remeshing when it is passed explicitly; a same-basename file is not auto-discovered.
+    const sharp = join(directory, 'input.sharp');
+    await writeFile(sharp, quadWildSharp(prepared.input, prepared.constraints.interface));
 
-  update(job, 'quadwild-prep', 15, 'Tracing the protected feature through the triangle proxy');
-  const prepLog = await runNative(job, config.prepareExecutable,
-    [input, '2', sharp, config.prepareConfig], config.root);
-  await writeFile(join(directory, 'quadwild-prep.log'), prepLog);
-  const remeshed = join(directory, 'input_rem_p0.obj');
-  if (!existsSync(remeshed)) throw new Error('QuadWild preparation did not produce input_rem_p0.obj');
+    update(job, 'quadwild-prep', 15, 'Tracing the protected feature through the triangle proxy');
+    const prepLog = await runNative(
+      job,
+      config.prepareExecutable,
+      [input, '2', sharp, config.prepareConfig],
+      config.root,
+    );
+    await writeFile(join(directory, 'quadwild-prep.log'), prepLog);
+    const remeshed = join(directory, 'input_rem_p0.obj');
+    if (!existsSync(remeshed)) throw new Error('QuadWild preparation did not produce input_rem_p0.obj');
 
-  // A hole-mode solve can be conforming by construction: pin the subdivision count around every
-  // locked rim to exactly one candidate edge per protected corner (docs/ideas/042). The patched
-  // quad_from_patches honors the sidecar; failing to build one only means the join machinery has
-  // to work with whatever counts the free solve picks, so prescription failures never fail the job.
-  if (boundaryConstrainedRepeat) {
-    // A locked-feature neck narrower than the remesh edge length makes QuadWild tear an extra
-    // sliver hole in the surface, which surfaces much later as an inexplicable seam failure.
-    // Diagnose it here instead.
-    const remeshDoc = readObj(await readFile(remeshed, 'utf8'));
-    const proxyRims = boundaryLoops(prepared.input).length;
-    const remeshRims = boundaryLoops(remeshDoc).length;
-    if (remeshRims !== proxyRims) {
-      throw new Error(`QuadWild's remesh tore the proxy surface (${remeshRims} boundary loops for the proxy's `
-        + `${proxyRims}); a strip of mountain between locked-feature rims is probably narrower than the `
-        + 'remesh edge length');
-    }
-    if (process.env.SLOPESMITH_RETOPOLOGY_PRESCRIBE !== 'off') {
-    let note: string;
-    try {
-      const authoredRims = lockedRimLoops(prepared.input, prepared.constraints.interface);
-      if (authoredRims.length) {
-        const remeshCorners = parseCornersFile(await readFile(join(directory, 'input_rem_p0.corners'), 'utf8'));
-        const prescription = prescribeRimSubsides(remeshDoc, remeshCorners, authoredRims);
-        if (prescription.movedVertices.size) {
-          // corner conforming re-seats layout corners onto their paired authored corners; the
-          // split fractions in the sidecar measure this rewritten rim
-          await writeFile(remeshed,
-            applyVertexMovesToObj(await readFile(remeshed, 'utf8'), prescription.movedVertices));
-        }
-        const records = [...prescription.records];
-        let holeNote = '';
-        if (process.env.SLOPESMITH_RETOPOLOGY_DIRECT_JOIN !== '0') {
-          // a direct join needs nearby hole rims kept at remesh resolution: freely quantized,
-          // a small hole collapses to a few target-size edges whose ring quads reach across
-          // the locked outline, beyond what the leaning nudge can absorb
-          const nearbyHoles = prescribeNearbyHoleSubsides(remeshDoc, remeshCorners,
-            prepared.constraints.interface,
-            new Set(records.flatMap(record => [record.v0, record.v1])),
-            2 * job.options.targetPatchSizeM);
-          if (nearbyHoles.holes) {
-            records.push(...nearbyHoles.records);
-            holeNote = `; ${nearbyHoles.holes} nearby unlocked holes pinned at remesh resolution`;
-          }
-        }
-        await writeFile(join(directory, 'input_rem_p0.fixed'), formatFixedSubsides(records));
-        prescribedSeams = true;
-        note = `Prescribed seam positions: ${prescription.loops
-          .map(loop => `${loop.authoredEdges} over ${loop.arcs} arcs (worst projection `
-            + `${loop.worstProjectionM.toFixed(2)} m, ${loop.movedCorners} corners conformed up to `
-            + `${loop.worstCornerMoveM.toFixed(2)} m, residual ${loop.worstResidualM.toFixed(2)} m)`)
-          .join(', ')}${holeNote}`;
-      } else {
-        note = 'Seam prescription skipped: no locked rim among the proxy boundary loops';
+    // A hole-mode solve can be conforming by construction: pin the subdivision count around every
+    // locked rim to exactly one candidate edge per protected corner (docs/ideas/042). The patched
+    // quad_from_patches honors the sidecar; failing to build one only means the join machinery has
+    // to work with whatever counts the free solve picks, so prescription failures never fail the job.
+    if (boundaryConstrainedRepeat) {
+      // A locked-feature neck narrower than the remesh edge length makes QuadWild tear an extra
+      // sliver hole in the surface, which surfaces much later as an inexplicable seam failure.
+      // Diagnose it here instead.
+      const remeshDoc = readObj(await readFile(remeshed, 'utf8'));
+      const proxyRims = boundaryLoops(prepared.input).length;
+      const remeshRims = boundaryLoops(remeshDoc).length;
+      if (remeshRims !== proxyRims) {
+        throw new Error(
+          `QuadWild's remesh tore the proxy surface (${remeshRims} boundary loops for the proxy's ` +
+            `${proxyRims}); a strip of mountain between locked-feature rims is probably narrower than the ` +
+            'remesh edge length',
+        );
       }
-    } catch (error) {
-      note = `Seam prescription skipped: ${(error as Error).message}`;
+      if (process.env.SLOPESMITH_RETOPOLOGY_PRESCRIBE !== 'off') {
+        let note: string;
+        try {
+          const authoredRims = lockedRimLoops(prepared.input, prepared.constraints.interface);
+          if (authoredRims.length) {
+            const remeshCorners = parseCornersFile(await readFile(join(directory, 'input_rem_p0.corners'), 'utf8'));
+            const prescription = prescribeRimSubsides(remeshDoc, remeshCorners, authoredRims);
+            if (prescription.movedVertices.size) {
+              // corner conforming re-seats layout corners onto their paired authored corners; the
+              // split fractions in the sidecar measure this rewritten rim
+              await writeFile(
+                remeshed,
+                applyVertexMovesToObj(await readFile(remeshed, 'utf8'), prescription.movedVertices),
+              );
+            }
+            const records = [...prescription.records];
+            let holeNote = '';
+            if (process.env.SLOPESMITH_RETOPOLOGY_DIRECT_JOIN !== '0') {
+              // a direct join needs nearby hole rims kept at remesh resolution: freely quantized,
+              // a small hole collapses to a few target-size edges whose ring quads reach across
+              // the locked outline, beyond what the leaning nudge can absorb
+              const nearbyHoles = prescribeNearbyHoleSubsides(
+                remeshDoc,
+                remeshCorners,
+                prepared.constraints.interface,
+                new Set(records.flatMap(record => [record.v0, record.v1])),
+                2 * job.options.targetPatchSizeM,
+              );
+              if (nearbyHoles.holes) {
+                records.push(...nearbyHoles.records);
+                holeNote = `; ${nearbyHoles.holes} nearby unlocked holes pinned at remesh resolution`;
+              }
+            }
+            await writeFile(join(directory, 'input_rem_p0.fixed'), formatFixedSubsides(records));
+            prescribedSeams = true;
+            note = `Prescribed seam positions: ${prescription.loops
+              .map(
+                loop =>
+                  `${loop.authoredEdges} over ${loop.arcs} arcs (worst projection ` +
+                  `${loop.worstProjectionM.toFixed(2)} m, ${loop.movedCorners} corners conformed up to ` +
+                  `${loop.worstCornerMoveM.toFixed(2)} m, residual ${loop.worstResidualM.toFixed(2)} m)`,
+              )
+              .join(', ')}${holeNote}`;
+          } else {
+            note = 'Seam prescription skipped: no locked rim among the proxy boundary loops';
+          }
+        } catch (error) {
+          note = `Seam prescription skipped: ${(error as Error).message}`;
+        }
+        await writeFile(join(directory, 'prescription.log'), `${note}\n`);
+      }
     }
-    await writeFile(join(directory, 'prescription.log'), `${note}\n`);
-    }
-  }
 
-  const template = await readFile(config.quadrangulateConfig, 'utf8');
-  if (!/^scaleFact\s+.+$/m.test(template)) throw new Error('QuadWild configuration has no scaleFact setting');
-  const quadrangulateConfig = join(directory, 'flow_noalign_slopesmith.txt');
-  // 1.6 is the calibrated 25 m whole-mountain solve. Normalize by physical solve area because QuadWild first
-  // remeshes both a whole mountain and a small selected region to approximately the same triangle count.
-  // A regional solve also has to honor a comparatively dense exact outer boundary. Past scale 5 the coarse
-  // interior strips can fold while snapping back to that boundary, so regional density is conservatively capped.
-  const maximumNativeScale = job.options.scope === 'selected-region' ? 5 : 32;
-  const nativeScale = Math.max(.25, Math.min(maximumNativeScale,
-    job.options.quadWildScale
-      * job.options.targetPatchSizeM / DEFAULT_RETOPOLOGY_OPTIONS.targetPatchSizeM
-      * Math.sqrt(QUADWILD_CALIBRATION_AREA_M2 / Math.max(1, prepared.constraints.sourceAreaM2))));
-  await writeFile(quadrangulateConfig, template.replace(/^scaleFact\s+.+$/m, `scaleFact ${nativeScale}`));
-  const tag = Math.round(nativeScale * 100) + 1;
-  update(job, 'quadrangulating', 45, `Generating approximately ${job.options.targetPatchSizeM.toFixed(1)} m quads`);
-  const quadLog = await runNative(job, config.quadrangulateExecutable,
-    [remeshed, String(tag), quadrangulateConfig], config.root);
-  await writeFile(join(directory, 'quadwild-quadrangulate.log'), quadLog);
-  const smoothCandidate = join(directory, `input_rem_p0_${tag}_quadrangulation_smooth.obj`);
-  const rawCandidate = join(directory, `input_rem_p0_${tag}_quadrangulation.obj`);
-  const candidateFile = existsSync(smoothCandidate) ? smoothCandidate : rawCandidate;
-  if (!existsSync(candidateFile)) throw new Error('QuadWild did not produce the expected quadrangulation');
-  candidate = readObj(await readFile(candidateFile, 'utf8'));
+    const template = await readFile(config.quadrangulateConfig, 'utf8');
+    if (!/^scaleFact\s+.+$/m.test(template)) throw new Error('QuadWild configuration has no scaleFact setting');
+    const quadrangulateConfig = join(directory, 'flow_noalign_slopesmith.txt');
+    // 1.6 is the calibrated 25 m whole-mountain solve. Normalize by physical solve area because QuadWild first
+    // remeshes both a whole mountain and a small selected region to approximately the same triangle count.
+    // A regional solve also has to honor a comparatively dense exact outer boundary. Past scale 5 the coarse
+    // interior strips can fold while snapping back to that boundary, so regional density is conservatively capped.
+    const maximumNativeScale = job.options.scope === 'selected-region' ? 5 : 32;
+    const nativeScale = Math.max(
+      0.25,
+      Math.min(
+        maximumNativeScale,
+        ((job.options.quadWildScale * job.options.targetPatchSizeM) / DEFAULT_RETOPOLOGY_OPTIONS.targetPatchSizeM) *
+          Math.sqrt(QUADWILD_CALIBRATION_AREA_M2 / Math.max(1, prepared.constraints.sourceAreaM2)),
+      ),
+    );
+    await writeFile(quadrangulateConfig, template.replace(/^scaleFact\s+.+$/m, `scaleFact ${nativeScale}`));
+    const tag = Math.round(nativeScale * 100) + 1;
+    update(job, 'quadrangulating', 45, `Generating approximately ${job.options.targetPatchSizeM.toFixed(1)} m quads`);
+    const quadLog = await runNative(
+      job,
+      config.quadrangulateExecutable,
+      [remeshed, String(tag), quadrangulateConfig],
+      config.root,
+    );
+    await writeFile(join(directory, 'quadwild-quadrangulate.log'), quadLog);
+    const smoothCandidate = join(directory, `input_rem_p0_${tag}_quadrangulation_smooth.obj`);
+    const rawCandidate = join(directory, `input_rem_p0_${tag}_quadrangulation.obj`);
+    const candidateFile = existsSync(smoothCandidate) ? smoothCandidate : rawCandidate;
+    if (!existsSync(candidateFile)) throw new Error('QuadWild did not produce the expected quadrangulation');
+    candidate = readObj(await readFile(candidateFile, 'utf8'));
   }
 
   update(job, 'integrating', 78, 'Reinserting exact locked patches and restoring the bicubic surface');
@@ -400,8 +488,13 @@ async function executeAttempt(
       if (leaning.resolved) {
         if (leaning.nudgedVertices) {
           candidate = leaning.mesh;
-          update(job, 'integrating', 78, `Nudged ${leaning.nudgedVertices} first-row vertex/vertices `
-            + `clear of the locked outline (maximum ${leaning.maximumNudgeM.toFixed(2)} m)`);
+          update(
+            job,
+            'integrating',
+            78,
+            `Nudged ${leaning.nudgedVertices} first-row vertex/vertices ` +
+              `clear of the locked outline (maximum ${leaning.maximumNudgeM.toFixed(2)} m)`,
+          );
         }
       } else if (process.env.SLOPESMITH_RETOPOLOGY_DIRECT_JOIN === 'keep') {
         // Keep the direct join on the UNNUDGED candidate and leave the crossings to the seam-repair loop
@@ -418,17 +511,30 @@ async function executeAttempt(
         // It is opt-in because the collar fallback is the safe answer for a map where the rim really is
         // grazed, and only a caller that knows its locked features stand clear of one another should ask
         // for this instead.
-        update(job, 'integrating', 78, `${leaning.passes} nudge pass(es) left first-row slivers on the `
-          + 'locked outline; joining directly anyway and leaving them to seam repair');
+        update(
+          job,
+          'integrating',
+          78,
+          `${leaning.passes} nudge pass(es) left first-row slivers on the ` +
+            'locked outline; joining directly anyway and leaving them to seam repair',
+        );
       } else {
         directJoin = false;
-        update(job, 'integrating', 78, 'A first-row face cannot clear the locked outline; '
-          + 'keeping the transition-collar join for this solve');
+        update(
+          job,
+          'integrating',
+          78,
+          'A first-row face cannot clear the locked outline; ' + 'keeping the transition-collar join for this solve',
+        );
       }
     }
     if (!directJoin) {
-      candidate = cutCandidateByLockedFootprint(job.source, candidate,
-        boundaryConstrainedRepeat ? Math.max(4, job.options.qualityResolution) : 1, 0).mesh;
+      candidate = cutCandidateByLockedFootprint(
+        job.source,
+        candidate,
+        boundaryConstrainedRepeat ? Math.max(4, job.options.qualityResolution) : 1,
+        0,
+      ).mesh;
     }
     if (boundaryConstrainedRepeat) constraints = prepared.constraints;
     else {
@@ -453,7 +559,8 @@ async function executeAttempt(
       arcLengthInterfaceParameters: true,
     },
   };
-  let seamRepairPasses = 0, seamRepairFaces = 0;
+  let seamRepairPasses = 0,
+    seamRepairFaces = 0;
   const seamRepairHistory: string[] = [];
   let refinement: ReturnType<typeof refineCoarseCandidateInterface> | undefined;
   let integrated: ReturnType<typeof integrateRetopologyCandidate>;
@@ -464,55 +571,82 @@ async function executeAttempt(
     // loop below handles residual crossings.
     const rim = conformCandidateOuterBoundary(job.source, candidate);
     candidate = rim.mesh;
-    update(job, 'integrating', 79,
+    update(
+      job,
+      'integrating',
+      79,
       `Re-seated ${rim.movedVertices} outer-rim vertices (maximum ${rim.maximumMoveM.toFixed(2)} m); ` +
-      'joining exact locked patches directly across the prescribed seams');
+        'joining exact locked patches directly across the prescribed seams',
+    );
     // No boundary refinement: the conforming rim maps one-to-one onto the protected corners.
     // Alignment options match the collar path's: a hole-rim vertex legitimately sits ON the locked
     // boundary, where the protected-side enforcement penalty misfires.
-    integrated = integrateRetopologyCandidate(job.source, candidate, constraints,
-      job.source.name, undefined, {
-        preserveSurfacePaint: job.options.preserveSurfacePaint,
-        topologyAwareAlignment: false,
-        enforceProtectedSide: false,
-        collapseFlatInterfaceFaces: true,
-        conformingSeams: true,
-      });
+    integrated = integrateRetopologyCandidate(job.source, candidate, constraints, job.source.name, undefined, {
+      preserveSurfacePaint: job.options.preserveSurfacePaint,
+      topologyAwareAlignment: false,
+      enforceProtectedSide: false,
+      collapseFlatInterfaceFaces: true,
+      conformingSeams: true,
+    });
   } else if (boundaryConstrainedRepeat) {
     const rim = conformCandidateOuterBoundary(job.source, candidate);
     candidate = rim.mesh;
-    update(job, 'integrating', 79,
-      `Re-seated ${rim.movedVertices} outer-rim vertices (maximum ${rim.maximumMoveM.toFixed(2)} m)`);
+    update(
+      job,
+      'integrating',
+      79,
+      `Re-seated ${rim.movedVertices} outer-rim vertices (maximum ${rim.maximumMoveM.toFixed(2)} m)`,
+    );
     const trailConstraints = constraints;
     bufferedRepeat = true;
-    let collarMinimumWidthM = job.options.targetPatchSizeM * .5;
+    let collarMinimumWidthM = job.options.targetPatchSizeM * 0.5;
     let previousDeletionCrossings = Infinity;
     for (;;) {
       const boundaryRefinement = refineCoarseCandidateInterface(job.source, candidate, trailConstraints) ?? undefined;
       if (boundaryRefinement) candidate = boundaryRefinement.mesh;
-      const buffer = buildExactTrailBuffer(job.source, candidate, trailConstraints, boundaryRefinement,
-        collarMinimumWidthM);
-      integrationSource = buffer.source; constraints = buffer.constraints;
+      const buffer = buildExactTrailBuffer(
+        job.source,
+        candidate,
+        trailConstraints,
+        boundaryRefinement,
+        collarMinimumWidthM,
+      );
+      integrationSource = buffer.source;
+      constraints = buffer.constraints;
       refinement = buffer.refinement;
-      update(job, 'integrating', 80,
-        `Built ${buffer.collarPatches} exact transition patches; adjusted ${buffer.adjustedOuterVertices} outer corners`);
-      integrated = integrateRetopologyCandidate(integrationSource, candidate, constraints,
-        job.source.name, refinement, {
+      update(
+        job,
+        'integrating',
+        80,
+        `Built ${buffer.collarPatches} exact transition patches; adjusted ${buffer.adjustedOuterVertices} outer corners`,
+      );
+      integrated = integrateRetopologyCandidate(
+        integrationSource,
+        candidate,
+        constraints,
+        job.source.name,
+        refinement,
+        {
           preserveSurfacePaint: job.options.preserveSurfacePaint,
           topologyAwareAlignment: false,
           enforceProtectedSide: false,
           collapseFlatInterfaceFaces: true,
-        });
+        },
+      );
       const crossing = integrated.report.crossingInterfaceFaces;
       if (!crossing.length || seamRepairPasses >= 6) break;
       seamRepairPasses++;
       // Around a tight feature the minimum-width push fans the collar chords across the candidate's first
       // rows. Narrow the collar first: a thin transition patch is valid geometry, a crossed one is rejected.
-      if (collarMinimumWidthM > job.options.targetPatchSizeM * .13) {
-        collarMinimumWidthM *= .5;
+      if (collarMinimumWidthM > job.options.targetPatchSizeM * 0.13) {
+        collarMinimumWidthM *= 0.5;
         seamRepairHistory.push(`collar-width:${collarMinimumWidthM.toFixed(1)}`);
-        update(job, 'integrating', 81,
-          `Rebuilding ${crossing.length} crossed transition chord(s) with a ${collarMinimumWidthM.toFixed(1)} m collar`);
+        update(
+          job,
+          'integrating',
+          81,
+          `Rebuilding ${crossing.length} crossed transition chord(s) with a ${collarMinimumWidthM.toFixed(1)} m collar`,
+        );
         continue;
       }
       // Only then remove crossed faces so the rebuilt collar follows the enlarged hole. Deletion must make
@@ -523,13 +657,13 @@ async function executeAttempt(
       seamRepairHistory.push(`collar-crossing:${crossing.length}`);
       try {
         const repaired = removeCandidateFacesAndRepairBoundary(candidate, new Set(crossing));
-        candidate = repaired.mesh; seamRepairFaces += repaired.removedFaces;
+        candidate = repaired.mesh;
+        seamRepairFaces += repaired.removedFaces;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`${message} (repair history: ${seamRepairHistory.join(' -> ')})`, { cause: error });
       }
-      update(job, 'integrating', 81,
-        `Removed ${seamRepairFaces} candidate face(s) crossing the transition collar`);
+      update(job, 'integrating', 81, `Removed ${seamRepairFaces} candidate face(s) crossing the transition collar`);
     }
   } else {
     // A whole-mountain free solve can present a rim too coarse for the protected corners. The
@@ -538,24 +672,37 @@ async function executeAttempt(
     try {
       refinement = refineCoarseCandidateInterface(integrationSource, candidate, constraints) ?? undefined;
       if (refinement) candidate = refinement.mesh;
-      integrated = integrateRetopologyCandidate(integrationSource, candidate, constraints,
-        job.source.name, refinement, {
+      integrated = integrateRetopologyCandidate(
+        integrationSource,
+        candidate,
+        constraints,
+        job.source.name,
+        refinement,
+        {
           preserveSurfacePaint: job.options.preserveSurfacePaint,
           topologyAwareAlignment: job.options.scope === 'whole-unlocked',
           enforceProtectedSide: true,
-        });
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (job.options.scope === 'whole-unlocked' && !boundaryConstrainedRepeat
-        && message.startsWith('Candidate interface has')) {
+      if (
+        job.options.scope === 'whole-unlocked' &&
+        !boundaryConstrainedRepeat &&
+        message.startsWith('Candidate interface has')
+      ) {
         throw new BoundaryConstrainedRetry(message);
       }
       throw error;
     }
   }
   if (integrated.report.collapsedInterfaceFaces.length) {
-    update(job, 'integrating', 82,
-      `Collapsed ${integrated.report.collapsedInterfaceFaces.length} redundant interface knot(s)`);
+    update(
+      job,
+      'integrating',
+      82,
+      `Collapsed ${integrated.report.collapsedInterfaceFaces.length} redundant interface knot(s)`,
+    );
   }
   const repairableSeamFaces = () => ({
     crossing: new Set([
@@ -565,31 +712,45 @@ async function executeAttempt(
     wedges: new Map(integrated.report.interfaceWedgeSplits.map(split => [split.face, split.diagonal] as const)),
   });
   let seamProblems = repairableSeamFaces();
-  while (!bufferedRepeat && job.options.scope === 'whole-unlocked'
-    && (seamProblems.crossing.size || seamProblems.wedges.size)
-    && seamRepairPasses < 8) {
+  while (
+    !bufferedRepeat &&
+    job.options.scope === 'whole-unlocked' &&
+    (seamProblems.crossing.size || seamProblems.wedges.size) &&
+    seamRepairPasses < 8
+  ) {
     if (seamProblems.crossing.size && directJoin) {
       // A conforming join can never delete a first-row face — that changes the rim's boundary topology.
       // Slide the offending interior vertices off the locked footprint instead, escalating clearance
       // each pass; the surface-height fit re-seats them on the terrain afterwards.
-      const marginM = Math.min(job.options.targetPatchSizeM * .5, .5 * 2 ** seamRepairPasses);
-      const nudged = nudgeCrossingVerticesOffLockedFootprint(job.source, candidate,
-        seamProblems.crossing, marginM);
-      seamRepairHistory.push(`nudge:${seamProblems.crossing.size}`
-        + (nudged.unresolvedVertices ? `(${nudged.unresolvedVertices} unresolved)` : ''));
+      const marginM = Math.min(job.options.targetPatchSizeM * 0.5, 0.5 * 2 ** seamRepairPasses);
+      const nudged = nudgeCrossingVerticesOffLockedFootprint(job.source, candidate, seamProblems.crossing, marginM);
+      seamRepairHistory.push(
+        `nudge:${seamProblems.crossing.size}` +
+          (nudged.unresolvedVertices ? `(${nudged.unresolvedVertices} unresolved)` : ''),
+      );
       if (!nudged.nudgedVertices) break;
-      candidate = nudged.mesh; seamRepairFaces += nudged.nudgedVertices;
-      update(job, 'integrating', 83, `Nudged ${nudged.nudgedVertices} interior vertex/vertices off the `
-        + `locked footprint (maximum ${nudged.maximumNudgeM.toFixed(2)} m)`);
+      candidate = nudged.mesh;
+      seamRepairFaces += nudged.nudgedVertices;
+      update(
+        job,
+        'integrating',
+        83,
+        `Nudged ${nudged.nudgedVertices} interior vertex/vertices off the ` +
+          `locked footprint (maximum ${nudged.maximumNudgeM.toFixed(2)} m)`,
+      );
     } else if (seamProblems.crossing.size) {
       seamRepairHistory.push(`crossing:${seamProblems.crossing.size}`);
       try {
         const repaired = removeCandidateFacesAndRepairBoundary(candidate, seamProblems.crossing);
-        candidate = repaired.mesh; seamRepairFaces += repaired.removedFaces;
+        candidate = repaired.mesh;
+        seamRepairFaces += repaired.removedFaces;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const detail = `${message} (repair history: ${seamRepairHistory.join(' -> ')})`;
-        if (!boundaryConstrainedRepeat && message.startsWith('Local seam repair changed candidate boundary loop count')) {
+        if (
+          !boundaryConstrainedRepeat &&
+          message.startsWith('Local seam repair changed candidate boundary loop count')
+        ) {
           throw new BoundaryConstrainedRetry(detail);
         }
         throw new Error(detail, { cause: error });
@@ -603,35 +764,49 @@ async function executeAttempt(
     if (directJoin) {
       // Options mirror the conforming first integration above: the prescribed rim maps one-to-one onto
       // the protected corners, so no boundary refinement and no protected-side enforcement.
-      integrated = integrateRetopologyCandidate(integrationSource, candidate, constraints,
-        job.source.name, undefined, {
-          preserveSurfacePaint: job.options.preserveSurfacePaint,
-          topologyAwareAlignment: false,
-          enforceProtectedSide: false,
-          collapseFlatInterfaceFaces: true,
-          conformingSeams: true,
-        });
+      integrated = integrateRetopologyCandidate(integrationSource, candidate, constraints, job.source.name, undefined, {
+        preserveSurfacePaint: job.options.preserveSurfacePaint,
+        topologyAwareAlignment: false,
+        enforceProtectedSide: false,
+        collapseFlatInterfaceFaces: true,
+        conformingSeams: true,
+      });
     } else {
       refinement = refineCoarseCandidateInterface(integrationSource, candidate, constraints) ?? undefined;
       if (refinement) candidate = refinement.mesh;
-      integrated = integrateRetopologyCandidate(integrationSource, candidate, constraints,
-        job.source.name, refinement, {
+      integrated = integrateRetopologyCandidate(
+        integrationSource,
+        candidate,
+        constraints,
+        job.source.name,
+        refinement,
+        {
           preserveSurfacePaint: job.options.preserveSurfacePaint,
           topologyAwareAlignment: true,
           enforceProtectedSide: true,
-        });
+        },
+      );
     }
     seamProblems = repairableSeamFaces();
   }
-  if (seamRepairPasses) update(job, 'integrating', 84,
-    `Repaired ${seamRepairFaces} local QuadWild seam face(s) in ${seamRepairPasses} pass(es)`);
-  if (!boundaryConstrainedRepeat && integrated.report.crossingInterfaceEdges) throw new BoundaryConstrainedRetry(
-    `${integrated.report.crossingInterfaceEdges} mountain edge(s) still cross the locked feature after ${seamRepairPasses} local repair pass(es)`,
-  );
-  const fit = fitBezierSurfaceHeight(job.source, integrated.document,
+  if (seamRepairPasses)
+    update(
+      job,
+      'integrating',
+      84,
+      `Repaired ${seamRepairFaces} local QuadWild seam face(s) in ${seamRepairPasses} pass(es)`,
+    );
+  if (!boundaryConstrainedRepeat && integrated.report.crossingInterfaceEdges)
+    throw new BoundaryConstrainedRetry(
+      `${integrated.report.crossingInterfaceEdges} mountain edge(s) still cross the locked feature after ${seamRepairPasses} local repair pass(es)`,
+    );
+  const fit = fitBezierSurfaceHeight(
+    job.source,
+    integrated.document,
     bufferedRepeat ? persistentProtectedPatches : integrated.report.protectedPatches,
     job.options.qualityResolution,
-    bufferedRepeat ? { maximumSampleCorrectionM: (job.source.spacing || job.options.targetPatchSizeM) * 2 } : {});
+    bufferedRepeat ? { maximumSampleCorrectionM: (job.source.spacing || job.options.targetPatchSizeM) * 2 } : {},
+  );
   integrated = { ...integrated, document: fit.document };
   if (contour) {
     // Integration's fold relaxation moves interior vertices without knowing where the locked features
@@ -645,7 +820,12 @@ async function executeAttempt(
     const undirected = (a: number, b: number): string => (a < b ? `${a},${b}` : `${b},${a}`);
     for (const quad of locked) {
       const [A, B, C, D] = document.quads[quad];
-      for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as const) {
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as const) {
         lockedVertices.add(a);
         lockedVertices.add(b);
         edgeQuadCount.set(undirected(a, b), (edgeQuadCount.get(undirected(a, b)) ?? 0) + 1);
@@ -663,8 +843,11 @@ async function executeAttempt(
     const visited = new Set<number>();
     for (const start of rimNeighbors.keys()) {
       if (visited.has(start) || (rimNeighbors.get(start)?.length ?? 0) !== 2) continue;
-      const xs: number[] = [], zs: number[] = [], ids: number[] = [];
-      let previous = -1, at = start;
+      const xs: number[] = [],
+        zs: number[] = [],
+        ids: number[] = [];
+      let previous = -1,
+        at = start;
       for (let guard = 0; guard <= rimNeighbors.size; guard++) {
         xs.push(document.vertices[at * 3]);
         zs.push(document.vertices[at * 3 + 2]);
@@ -686,7 +869,12 @@ async function executeAttempt(
     for (let quad = 0; quad < document.quads.length; quad++) {
       if (locked.has(quad)) continue;
       const [A, B, C, D] = document.quads[quad];
-      for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as const) {
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as const) {
         if (lockedVertices.has(a) && !lockedVertices.has(b)) generatedNeighbour.set(a, b);
         if (lockedVertices.has(b) && !lockedVertices.has(a)) generatedNeighbour.set(b, a);
       }
@@ -698,7 +886,8 @@ async function executeAttempt(
       for (let i = 0; i < n; i++) {
         const ring = generatedNeighbour.get(polygon.ids[i]);
         if (ring === undefined) continue;
-        const px = polygon.xs[i], pz = polygon.zs[i];
+        const px = polygon.xs[i],
+          pz = polygon.zs[i];
         const tx = polygon.xs[(i + 1) % n] - polygon.xs[(i - 1 + n) % n];
         const tz = polygon.zs[(i + 1) % n] - polygon.zs[(i - 1 + n) % n];
         const length = Math.hypot(tx, tz) || 1;
@@ -706,9 +895,13 @@ async function executeAttempt(
           [px - (tz / length) * stripOffsetM, pz + (tx / length) * stripOffsetM],
           [px + (tz / length) * stripOffsetM, pz - (tx / length) * stripOffsetM],
         ];
-        const rx = document.vertices[ring * 3], rz = document.vertices[ring * 3 + 2];
-        const pick = Math.hypot(candidates[0][0] - rx, candidates[0][1] - rz)
-          <= Math.hypot(candidates[1][0] - rx, candidates[1][1] - rz) ? candidates[0] : candidates[1];
+        const rx = document.vertices[ring * 3],
+          rz = document.vertices[ring * 3 + 2];
+        const pick =
+          Math.hypot(candidates[0][0] - rx, candidates[0][1] - rz) <=
+          Math.hypot(candidates[1][0] - rx, candidates[1][1] - rz)
+            ? candidates[0]
+            : candidates[1];
         if (Math.hypot(pick[0] - rx, pick[1] - rz) > 0.01) {
           document.vertices[ring * 3] = pick[0];
           document.vertices[ring * 3 + 2] = pick[1];
@@ -723,28 +916,43 @@ async function executeAttempt(
         const n = polygon.xs.length;
         let inside = false;
         for (let i = 0, j = n - 1; i < n; j = i++) {
-          if ((polygon.zs[i] > z) !== (polygon.zs[j] > z)
-            && x < polygon.xs[i] + ((polygon.xs[j] - polygon.xs[i]) * (z - polygon.zs[i]))
-              / (polygon.zs[j] - polygon.zs[i])) inside = !inside;
+          if (
+            polygon.zs[i] > z !== polygon.zs[j] > z &&
+            x <
+              polygon.xs[i] + ((polygon.xs[j] - polygon.xs[i]) * (z - polygon.zs[i])) / (polygon.zs[j] - polygon.zs[i])
+          )
+            inside = !inside;
         }
-        let bestD = Infinity, bestX = 0, bestZ = 0;
+        let bestD = Infinity,
+          bestX = 0,
+          bestZ = 0;
         for (let i = 0; i < n; i++) {
-          const ax = polygon.xs[i], az = polygon.zs[i];
-          const bx = polygon.xs[(i + 1) % n], bz = polygon.zs[(i + 1) % n];
-          const abx = bx - ax, abz = bz - az;
+          const ax = polygon.xs[i],
+            az = polygon.zs[i];
+          const bx = polygon.xs[(i + 1) % n],
+            bz = polygon.zs[(i + 1) % n];
+          const abx = bx - ax,
+            abz = bz - az;
           const len2 = abx * abx + abz * abz;
           const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / len2)) : 0;
-          const qx = ax + t * abx, qz = az + t * abz;
+          const qx = ax + t * abx,
+            qz = az + t * abz;
           const d = Math.hypot(x - qx, z - qz);
-          if (d < bestD) { bestD = d; bestX = qx; bestZ = qz; }
+          if (d < bestD) {
+            bestD = d;
+            bestX = qx;
+            bestZ = qz;
+          }
         }
         if (inside || bestD < marginM) return { inside, d: bestD, x: bestX, z: bestZ };
       }
       return null;
     };
     const pushVertex = (vertex: number, from: { inside: boolean; x: number; z: number }): void => {
-      const x = document.vertices[vertex * 3], z = document.vertices[vertex * 3 + 2];
-      const nx = x - from.x, nz = z - from.z;
+      const x = document.vertices[vertex * 3],
+        z = document.vertices[vertex * 3 + 2];
+      const nx = x - from.x,
+        nz = z - from.z;
       const length = Math.hypot(nx, nz);
       const sign = from.inside ? -1 : 1;
       document.vertices[vertex * 3] = from.x + (length > 1e-9 ? (sign * nx) / length : 1) * marginM;
@@ -755,28 +963,43 @@ async function executeAttempt(
     for (let vertex = 0; vertex < vertexCount; vertex++) {
       if (lockedVertices.has(vertex)) continue;
       const hit = clearPoint(document.vertices[vertex * 3], document.vertices[vertex * 3 + 2]);
-      if (hit) { pushVertex(vertex, hit); pushed++; }
+      if (hit) {
+        pushVertex(vertex, hit);
+        pushed++;
+      }
     }
     // an edge between two clear vertices can still cut a rim corner: lift both ends outward along their
     // OWN normals until the midpoint clears (additive — repositioning them to the midpoint's outline
     // point would collapse the edge)
     const pushOutward = (vertex: number, extraM: number): void => {
-      const x = document.vertices[vertex * 3], z = document.vertices[vertex * 3 + 2];
-      let bestD = Infinity, bestX = 0, bestZ = 0;
+      const x = document.vertices[vertex * 3],
+        z = document.vertices[vertex * 3 + 2];
+      let bestD = Infinity,
+        bestX = 0,
+        bestZ = 0;
       for (const polygon of polygons) {
         const n = polygon.xs.length;
         for (let i = 0; i < n; i++) {
-          const ax = polygon.xs[i], az = polygon.zs[i];
-          const bx = polygon.xs[(i + 1) % n], bz = polygon.zs[(i + 1) % n];
-          const abx = bx - ax, abz = bz - az;
+          const ax = polygon.xs[i],
+            az = polygon.zs[i];
+          const bx = polygon.xs[(i + 1) % n],
+            bz = polygon.zs[(i + 1) % n];
+          const abx = bx - ax,
+            abz = bz - az;
           const len2 = abx * abx + abz * abz;
           const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / len2)) : 0;
-          const qx = ax + t * abx, qz = az + t * abz;
+          const qx = ax + t * abx,
+            qz = az + t * abz;
           const d = Math.hypot(x - qx, z - qz);
-          if (d < bestD) { bestD = d; bestX = qx; bestZ = qz; }
+          if (d < bestD) {
+            bestD = d;
+            bestX = qx;
+            bestZ = qz;
+          }
         }
       }
-      const nx = x - bestX, nz = z - bestZ;
+      const nx = x - bestX,
+        nz = z - bestZ;
       const length = Math.hypot(nx, nz);
       if (!(length > 1e-9)) return;
       document.vertices[vertex * 3] = x + (nx / length) * extraM;
@@ -787,7 +1010,12 @@ async function executeAttempt(
       for (let quad = 0; quad < document.quads.length; quad++) {
         if (locked.has(quad)) continue;
         const [A, B, C, D] = document.quads[quad];
-        for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as const) {
+        for (const [a, b] of [
+          [A, B],
+          [B, D],
+          [D, C],
+          [C, A],
+        ] as const) {
           if (lockedVertices.has(a) || lockedVertices.has(b)) continue;
           const mx = (document.vertices[a * 3] + document.vertices[b * 3]) / 2;
           const mz = (document.vertices[a * 3 + 2] + document.vertices[b * 3 + 2]) / 2;
@@ -806,14 +1034,18 @@ async function executeAttempt(
     // the cross-seam edges, but a Bessel ring-to-ring edge beside a rim corner still bows metres past
     // its chord, and the footprint gate samples that bow
     const nearRim = (vertex: number): boolean => {
-      const x = document.vertices[vertex * 3], z = document.vertices[vertex * 3 + 2];
+      const x = document.vertices[vertex * 3],
+        z = document.vertices[vertex * 3 + 2];
       const reachM = job.options.targetPatchSizeM * 1.2;
       for (const polygon of polygons) {
         const n = polygon.xs.length;
         for (let i = 0; i < n; i++) {
-          const ax = polygon.xs[i], az = polygon.zs[i];
-          const bx = polygon.xs[(i + 1) % n], bz = polygon.zs[(i + 1) % n];
-          const abx = bx - ax, abz = bz - az;
+          const ax = polygon.xs[i],
+            az = polygon.zs[i];
+          const bx = polygon.xs[(i + 1) % n],
+            bz = polygon.zs[(i + 1) % n];
+          const abx = bx - ax,
+            abz = bz - az;
           const len2 = abx * abx + abz * abz;
           const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / len2)) : 0;
           if (Math.hypot(x - ax - t * abx, z - az - t * abz) <= reachM) return true;
@@ -826,7 +1058,12 @@ async function executeAttempt(
     for (let quad = 0; quad < document.quads.length; quad++) {
       if (locked.has(quad)) continue;
       const [A, B, C, D] = document.quads[quad];
-      for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as const) {
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as const) {
         // seam edges (both endpoints locked) keep their exact handles; a cross-seam edge whose free
         // endpoint the pushes moved needs its chord REFRESHED, or the stale linear handle bows
         if (lockedVertices.has(a) && lockedVertices.has(b)) continue;
@@ -841,59 +1078,80 @@ async function executeAttempt(
       }
     }
     integrated = { ...integrated, document: { ...document, edgeHandles: handles } };
-    if (pushed || creased) update(job, 'validating', 90,
-      `Pushed ${pushed} vertex move(s) and creased ${creased} first-row edges along the locked rims`);
+    if (pushed || creased)
+      update(
+        job,
+        'validating',
+        90,
+        `Pushed ${pushed} vertex move(s) and creased ${creased} first-row edges along the locked rims`,
+      );
   }
 
   update(job, 'validating', 91, 'Checking topology, interfaces, control cages, and surface deviation');
-  if (integrated.report.connectedComponents !== 1) throw new Error(`Result has ${integrated.report.connectedComponents} disconnected components`);
+  if (integrated.report.connectedComponents !== 1)
+    throw new Error(`Result has ${integrated.report.connectedComponents} disconnected components`);
   if (integrated.report.invertedCandidatePatches) {
     const worst = integrated.report.worstCandidatePatches[0];
-    throw new Error(`Result has ${integrated.report.invertedCandidatePatches} inverted patches after ${seamRepairPasses} seam repair pass(es)${worst
-      ? ` (worst candidate face ${worst.patch}, Jacobian ${worst.jacobian.toFixed(4)}, ${worst.fixedVertices} fixed / ${worst.interfaceVertices} trail-interface vertices)` : ''}`);
+    throw new Error(
+      `Result has ${integrated.report.invertedCandidatePatches} inverted patches after ${seamRepairPasses} seam repair pass(es)${
+        worst
+          ? ` (worst candidate face ${worst.patch}, Jacobian ${worst.jacobian.toFixed(4)}, ${worst.fixedVertices} fixed / ${worst.interfaceVertices} trail-interface vertices)`
+          : ''
+      }`,
+    );
   }
-  if (integrated.report.crossingInterfaceEdges) throw new Error(
-    `Result has ${integrated.report.crossingInterfaceEdges} mountain edge(s) crossing through a locked feature after ${seamRepairPasses} local repair pass(es); the preview was rejected`,
-  );
-  const footprint = job.options.scope === 'whole-unlocked'
-    ? generatedProtectedFootprintPenetration(integrated.document, persistentProtectedPatches,
-      Math.max(directJoin ? 8 : 4, job.options.qualityResolution))
-    : { overlappingTriangles: [], penetratingCentroids: 0, maximumCentroidDepthM: 0, worstPenetrations: [] };
-  const shallowBufferedLimitM = job.options.targetPatchSizeM * .08;
+  if (integrated.report.crossingInterfaceEdges)
+    throw new Error(
+      `Result has ${integrated.report.crossingInterfaceEdges} mountain edge(s) crossing through a locked feature after ${seamRepairPasses} local repair pass(es); the preview was rejected`,
+    );
+  const footprint =
+    job.options.scope === 'whole-unlocked'
+      ? generatedProtectedFootprintPenetration(
+          integrated.document,
+          persistentProtectedPatches,
+          Math.max(directJoin ? 8 : 4, job.options.qualityResolution),
+        )
+      : { overlappingTriangles: [], penetratingCentroids: 0, maximumCentroidDepthM: 0, worstPenetrations: [] };
+  const shallowBufferedLimitM = job.options.targetPatchSizeM * 0.08;
   // A conforming join shares the bicubic outline curve with the locked feature, and the gate's two
   // independent piecewise-linear samplings of that same curve always interleave in hairline slivers —
   // sliver existence is meaningless there, so genuine leaning is judged by centroid depth instead.
   const invalidFootprint = bufferedRepeat
-    ? footprint.maximumCentroidDepthM > shallowBufferedLimitM
-      || footprint.overlappingTriangles.length > persistentProtectedPatches
+    ? footprint.maximumCentroidDepthM > shallowBufferedLimitM ||
+      footprint.overlappingTriangles.length > persistentProtectedPatches
     : directJoin
-      ? footprint.maximumCentroidDepthM > job.options.targetPatchSizeM * .01
+      ? footprint.maximumCentroidDepthM > job.options.targetPatchSizeM * 0.01
       : footprint.overlappingTriangles.length > 0;
   if (invalidFootprint) {
     // keep the rejected document for post-mortem: which patch actually leans is invisible from counts
     await writeFile(join(directory, 'rejected-document.json'), JSON.stringify(integrated.document));
     throw new Error(
-      `Result overlaps a locked feature in top view (${footprint.overlappingTriangles.length} triangle(s), ${footprint.penetratingCentroids} interior centroid(s), maximum depth ${footprint.maximumCentroidDepthM.toFixed(2)} m`
-      + `${footprint.worstPenetrations.length ? ` at ${footprint.worstPenetrations.map(p => `${p.x.toFixed(0)},${p.z.toFixed(0)}`).join(' ')}` : ''}; `
-      + `boundary snap ${integrated.report.maximumBoundarySnapM.toFixed(2)} m, `
-      + `${integrated.report.interfaceLoops.length} interface loop(s) `
-      + integrated.report.interfaceLoops.map(loop => `${loop.protectedEdges}/${loop.candidateEdges}`).join(' ')
-      + '); the preview was rejected',
+      `Result overlaps a locked feature in top view (${footprint.overlappingTriangles.length} triangle(s), ${footprint.penetratingCentroids} interior centroid(s), maximum depth ${footprint.maximumCentroidDepthM.toFixed(2)} m` +
+        `${footprint.worstPenetrations.length ? ` at ${footprint.worstPenetrations.map(p => `${p.x.toFixed(0)},${p.z.toFixed(0)}`).join(' ')}` : ''}; ` +
+        `boundary snap ${integrated.report.maximumBoundarySnapM.toFixed(2)} m, ` +
+        `${integrated.report.interfaceLoops.length} interface loop(s) ` +
+        integrated.report.interfaceLoops.map(loop => `${loop.protectedEdges}/${loop.candidateEdges}`).join(' ') +
+        '); the preview was rejected',
     );
   }
   // A local cut expansion can deliberately move a small boundary section farther than the ordinary two-patch
   // stitching budget. It is accepted only after the crossing/inversion/aspect gates prove the repaired sheet;
   // the preview remains non-destructive and exposes the resulting edge flow before Apply.
   const maximumSafeSnapM = job.options.targetPatchSizeM * (seamRepairPasses ? 4 : 2);
-  if (integrated.report.maximumBoundarySnapM > maximumSafeSnapM) throw new Error(
-    `Locked interface would move ${integrated.report.maximumBoundarySnapM.toFixed(2)} m during stitching (safe limit ${maximumSafeSnapM.toFixed(2)} m); the preview was rejected`,
-  );
+  if (integrated.report.maximumBoundarySnapM > maximumSafeSnapM)
+    throw new Error(
+      `Locked interface would move ${integrated.report.maximumBoundarySnapM.toFixed(2)} m during stitching (safe limit ${maximumSafeSnapM.toFixed(2)} m); the preview was rejected`,
+    );
   if (integrated.report.candidateAspectRatio.p95 > 5 || integrated.report.candidateAspectRatio.max > 100) {
-    throw new Error(`Result has distorted patches (aspect ratio p95 ${integrated.report.candidateAspectRatio.p95.toFixed(2)}, max ${integrated.report.candidateAspectRatio.max.toFixed(2)}); adjust the selection, influence rings, or density`);
+    throw new Error(
+      `Result has distorted patches (aspect ratio p95 ${integrated.report.candidateAspectRatio.p95.toFixed(2)}, max ${integrated.report.candidateAspectRatio.max.toFixed(2)}); adjust the selection, influence rings, or density`,
+    );
   }
-  if (integrated.report.protectedControlDeviationM > 1e-8) throw new Error('A locked bicubic control point moved during integration');
+  if (integrated.report.protectedControlDeviationM > 1e-8)
+    throw new Error('A locked bicubic control point moved during integration');
   const normalized = normalizeTJunctions(integrated.document);
-  if (normalized.length !== (integrated.document.tJunctions?.length ?? 0)) throw new Error('Result contains invalid T-junction records');
+  if (normalized.length !== (integrated.document.tJunctions?.length ?? 0))
+    throw new Error('Result contains invalid T-junction records');
   const maximumTJunctionGapM = Math.max(0, ...findTJunctions(integrated.document).map(node => node.distance));
   if (maximumTJunctionGapM > 1e-6) throw new Error(`Result has a ${maximumTJunctionGapM.toFixed(4)} m T-junction gap`);
   const allSource = new Set(job.source.quads.map((_quad, index) => index));
@@ -903,7 +1161,9 @@ async function executeAttempt(
     tessellateQuads(integrated.document, allResult, job.options.qualityResolution),
   );
   if ((deviation.symmetricMaxM ?? Infinity) > job.options.maximumSurfaceDeviationM) {
-    throw new Error(`Maximum surface deviation ${deviation.symmetricMaxM?.toFixed(3) ?? 'unknown'} m exceeds the ${job.options.maximumSurfaceDeviationM.toFixed(3)} m limit`);
+    throw new Error(
+      `Maximum surface deviation ${deviation.symmetricMaxM?.toFixed(3) ?? 'unknown'} m exceeds the ${job.options.maximumSurfaceDeviationM.toFixed(3)} m limit`,
+    );
   }
   const summary: RetopologyResultSummary = {
     scope: job.options.scope,
@@ -936,7 +1196,8 @@ async function execute(job: JobRecord): Promise<RetopologyJobResult> {
   try {
     return await executeAttempt(job);
   } catch (error) {
-    if (!(error instanceof BoundaryConstrainedRetry) || job.options.scope !== 'whole-unlocked' || job.cancelled) throw error;
+    if (!(error instanceof BoundaryConstrainedRetry) || job.options.scope !== 'whole-unlocked' || job.cancelled)
+      throw error;
     return executeAttempt(job, true, error.message);
   }
 }
@@ -964,26 +1225,35 @@ function drain(): void {
     if (job.cancelled) continue;
     active++;
     job.status = { ...job.status, startedAt: new Date().toISOString() };
-    void execute(job).then(result => {
-      job.result = result;
-      job.status = {
-        ...job.status, phase: 'complete', progress: 100, detail: 'Validated result ready',
-        finishedAt: new Date().toISOString(), summary: result.summary,
-      };
-    }).catch(error => {
-      const cancelled = job.cancelled;
-      job.status = {
-        ...job.status, phase: cancelled ? 'cancelled' : 'failed', progress: job.status.progress,
-        detail: cancelled ? 'Cancelled' : 'Retopology failed',
-        error: cancelled ? undefined : error instanceof Error ? error.message : String(error),
-        finishedAt: new Date().toISOString(),
-      };
-    }).finally(() => {
-      job.child = undefined;
-      active--;
-      expire(job);
-      drain();
-    });
+    void execute(job)
+      .then(result => {
+        job.result = result;
+        job.status = {
+          ...job.status,
+          phase: 'complete',
+          progress: 100,
+          detail: 'Validated result ready',
+          finishedAt: new Date().toISOString(),
+          summary: result.summary,
+        };
+      })
+      .catch(error => {
+        const cancelled = job.cancelled;
+        job.status = {
+          ...job.status,
+          phase: cancelled ? 'cancelled' : 'failed',
+          progress: job.status.progress,
+          detail: cancelled ? 'Cancelled' : 'Retopology failed',
+          error: cancelled ? undefined : error instanceof Error ? error.message : String(error),
+          finishedAt: new Date().toISOString(),
+        };
+      })
+      .finally(() => {
+        job.child = undefined;
+        active--;
+        expire(job);
+        drain();
+      });
   }
 }
 
@@ -1011,7 +1281,10 @@ export function createRetopologyJob(
     directories: [],
     cancelled: false,
     status: {
-      id, phase: 'queued', progress: 0, detail: 'Waiting for the retopology worker',
+      id,
+      phase: 'queued',
+      progress: 0,
+      detail: 'Waiting for the retopology worker',
       createdAt: new Date().toISOString(),
     },
   };
@@ -1033,7 +1306,8 @@ export function retopologyJobResult(id: string): RetopologyJobResult | null {
 export function cancelRetopologyJob(id: string): RetopologyJobStatus | null {
   const job = jobs.get(id);
   if (!job) return null;
-  if (job.status.phase === 'complete' || job.status.phase === 'failed' || job.status.phase === 'cancelled') return publicStatus(job);
+  if (job.status.phase === 'complete' || job.status.phase === 'failed' || job.status.phase === 'cancelled')
+    return publicStatus(job);
   job.cancelled = true;
   const at = pending.indexOf(job);
   if (at >= 0) {

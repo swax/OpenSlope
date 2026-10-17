@@ -1,8 +1,6 @@
 import type { LabelDefinition, QuadMeshDoc } from './types';
 
-const LABEL_COLORS = [
-  '#f06292', '#ffb74d', '#ffd54f', '#81c784', '#4dd0e1', '#64b5f6', '#9575cd', '#ba68c8',
-] as const;
+const LABEL_COLORS = ['#f06292', '#ffb74d', '#ffd54f', '#81c784', '#4dd0e1', '#64b5f6', '#9575cd', '#ba68c8'] as const;
 
 /** Mint a short document-local id without coupling labels to geometry's id counter. */
 export function nextLabelId(labels: readonly LabelDefinition[] | undefined): string {
@@ -34,10 +32,12 @@ export function normalizeLabels(doc: QuadMeshDoc): void {
     let id = typeof raw.id === 'string' && raw.id && !used.has(raw.id) ? raw.id : nextLabelId(definitions);
     while (used.has(id)) id = nextLabelId(definitions);
     used.add(id);
-    const color = typeof raw.color === 'string' && /^#[0-9a-f]{6}$/i.test(raw.color) ? raw.color.toLowerCase() : undefined;
+    const color =
+      typeof raw.color === 'string' && /^#[0-9a-f]{6}$/i.test(raw.color) ? raw.color.toLowerCase() : undefined;
     definitions.push({ id, name, ...(color ? { color } : {}) });
   }
-  if (definitions.length) doc.labels = definitions; else delete doc.labels;
+  if (definitions.length) doc.labels = definitions;
+  else delete doc.labels;
 
   const known = new Set(definitions.map(label => label.id));
   const quadLabels: Record<number, string[]> = {};
@@ -47,10 +47,12 @@ export function normalizeLabels(doc: QuadMeshDoc): void {
     const labels = cleanMembership(raw, known);
     if (labels.length) quadLabels[quad] = labels;
   }
-  if (Object.keys(quadLabels).length) doc.quadLabels = quadLabels; else delete doc.quadLabels;
+  if (Object.keys(quadLabels).length) doc.quadLabels = quadLabels;
+  else delete doc.quadLabels;
 
   for (const prop of doc.props ?? []) {
     const labels = cleanMembership(prop.labels, known);
-    if (labels.length) prop.labels = labels; else delete prop.labels;
+    if (labels.length) prop.labels = labels;
+    else delete prop.labels;
   }
 }

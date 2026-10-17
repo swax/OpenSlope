@@ -25,7 +25,10 @@ export function packageRootFromModuleId(moduleId: string): string | null;
 export function recordsFromModuleIds(moduleIds: Iterable<string>, appRoot: string): Promise<InstalledPackageRecord[]>;
 export function inventoryDocument(records: InstalledPackageRecord[]): Record<string, unknown>;
 export function renderInstalledNotices(records: InstalledPackageRecord[], heading: string): Promise<string>;
-export function installedDependencyClosure(appRoot: string, directNames: Iterable<string>): Promise<InstalledPackageRecord[]>;
+export function installedDependencyClosure(
+  appRoot: string,
+  directNames: Iterable<string>,
+): Promise<InstalledPackageRecord[]>;
 export function externalPackageNames(metafile: Metafile): Set<string>;
 export function assertPolicyCategory(label: string, actual: Iterable<string>, expected: Iterable<string>): void;
 export function dependencyNoticesPlugin(appRoot: string): Plugin;

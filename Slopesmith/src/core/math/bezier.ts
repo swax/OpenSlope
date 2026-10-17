@@ -19,8 +19,10 @@ export type HandleDir = 'u-' | 'u+' | 'v-' | 'v+';
 /** Chord-weighted (Bessel) tangent at b per index step; one-sided where a or c is missing (ends). */
 export function besselTangent(a: V3 | null, b: V3, c: V3 | null): V3 {
   if (a && c) {
-    const d0 = sub(b, a), d1 = sub(c, b);
-    const h0 = Math.max(1e-9, len(d0)), h1 = Math.max(1e-9, len(d1));
+    const d0 = sub(b, a),
+      d1 = sub(c, b);
+    const h0 = Math.max(1e-9, len(d0)),
+      h1 = Math.max(1e-9, len(d1));
     // Bessel: weight each one-sided slope by the OTHER side's span
     return add(mul(d1, h0 / (h0 + h1)), mul(d0, h1 / (h0 + h1)));
   }
@@ -29,20 +31,13 @@ export function besselTangent(a: V3 | null, b: V3, c: V3 | null): V3 {
   return [0, 0, 0];
 }
 
-
 function bez(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
   const s = 1 - t;
-  return add(
-    add(mul(p0, s * s * s), mul(p1, 3 * s * s * t)),
-    add(mul(p2, 3 * s * t * t), mul(p3, t * t * t)),
-  );
+  return add(add(mul(p0, s * s * s), mul(p1, 3 * s * s * t)), add(mul(p2, 3 * s * t * t), mul(p3, t * t * t)));
 }
 function bezD(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
   const s = 1 - t;
-  return add(
-    add(mul(sub(p1, p0), 3 * s * s), mul(sub(p2, p1), 6 * s * t)),
-    mul(sub(p3, p2), 3 * t * t),
-  );
+  return add(add(mul(sub(p1, p0), 3 * s * s), mul(sub(p2, p1), 6 * s * t)), mul(sub(p3, p2), 3 * t * t));
 }
 
 /** A single cubic Bezier edge (4 control points) evaluated at t = 0..1 — the point on the shared boundary
@@ -69,10 +64,19 @@ const dup = (p: V3): V3 => [p[0], p[1], p[2]];
  * reparameterization — the same curve, re-cut, not a fit. The shared endpoint is the curve point at t and
  * each half inherits the parent's tangent there, so the seam is watertight and G1 for free.
  */
-export function splitCubic(p0: V3, p1: V3, p2: V3, p3: V3, t: number): { left: [V3, V3, V3, V3]; right: [V3, V3, V3, V3] } {
-  const q0 = lerp(p0, p1, t), q1 = lerp(p1, p2, t), q2 = lerp(p2, p3, t);
-  const r0 = lerp(q0, q1, t), r1 = lerp(q1, q2, t);
-  const s = lerp(r0, r1, t);                     // the curve point at t — the new shared corner
+export function splitCubic(
+  p0: V3,
+  p1: V3,
+  p2: V3,
+  p3: V3,
+  t: number,
+): { left: [V3, V3, V3, V3]; right: [V3, V3, V3, V3] } {
+  const q0 = lerp(p0, p1, t),
+    q1 = lerp(p1, p2, t),
+    q2 = lerp(p2, p3, t);
+  const r0 = lerp(q0, q1, t),
+    r1 = lerp(q1, q2, t);
+  const s = lerp(r0, r1, t); // the curve point at t — the new shared corner
   return { left: [dup(p0), q0, r0, s], right: [dup(s), r1, q2, dup(p3)] };
 }
 
@@ -90,10 +94,14 @@ export function splitCubic(p0: V3, p1: V3, p2: V3, p3: V3, t: number): { left: [
  * boundary alone bows the sub-patch off the surface it was cut from.
  */
 export function splitPatchU(cp: V3[], t: number): { lower: V3[]; upper: V3[] } {
-  const lower: V3[] = new Array(16), upper: V3[] = new Array(16);
+  const lower: V3[] = new Array(16),
+    upper: V3[] = new Array(16);
   for (let c = 0; c < 4; c++) {
     const { left, right } = splitCubic(cp[c], cp[4 + c], cp[8 + c], cp[12 + c], t);
-    for (let r = 0; r < 4; r++) { lower[r * 4 + c] = left[r]; upper[r * 4 + c] = right[r]; }
+    for (let r = 0; r < 4; r++) {
+      lower[r * 4 + c] = left[r];
+      upper[r * 4 + c] = right[r];
+    }
   }
   return { lower, upper };
 }
@@ -105,10 +113,14 @@ export function splitPatchU(cp: V3[], t: number): { lower: V3[]; upper: V3[] } {
  * (Ferguson) patch have a real twist, so a caller must carry the interior CPs across, not just the boundary.
  */
 export function splitPatchV(cp: V3[], t: number): { lower: V3[]; upper: V3[] } {
-  const lower: V3[] = new Array(16), upper: V3[] = new Array(16);
+  const lower: V3[] = new Array(16),
+    upper: V3[] = new Array(16);
   for (let r = 0; r < 4; r++) {
     const { left, right } = splitCubic(cp[4 * r], cp[4 * r + 1], cp[4 * r + 2], cp[4 * r + 3], t);
-    for (let c = 0; c < 4; c++) { lower[r * 4 + c] = left[c]; upper[r * 4 + c] = right[c]; }
+    for (let c = 0; c < 4; c++) {
+      lower[r * 4 + c] = left[c];
+      upper[r * 4 + c] = right[c];
+    }
   }
   return { lower, upper };
 }
@@ -136,18 +148,28 @@ export function cubicPolyline(p0: V3, p1: V3, p2: V3, p3: V3, seg: number): V3[]
  */
 export function nearestCubicT(p0: V3, p1: V3, p2: V3, p3: V3, p: V3, seg = 32): number {
   const pl = cubicPolyline(p0, p1, p2, p3, seg);
-  let best = 0, bestD = Infinity;
+  let best = 0,
+    bestD = Infinity;
   for (let i = 0; i <= seg; i++) {
-    const d = sub(pl[i], p), q = dot(d, d);
-    if (q < bestD) { bestD = q; best = i; }
+    const d = sub(pl[i], p),
+      q = dot(d, d);
+    if (q < bestD) {
+      bestD = q;
+      best = i;
+    }
   }
   const g = (t: number) => dot(sub(bez(p0, p1, p2, p3, t), p), bezD(p0, p1, p2, p3, t));
   // `best` is the sampled minimum, so its two neighbouring samples are no closer and the foot lies between them.
   // The early returns therefore only fire at the curve's own ends (a = 0 / b = 1), where the foot is the endpoint.
-  let a = Math.max(0, (best - 1) / seg), b = Math.min(1, (best + 1) / seg);
+  let a = Math.max(0, (best - 1) / seg),
+    b = Math.min(1, (best + 1) / seg);
   if (g(a) >= 0) return a;
   if (g(b) <= 0) return b;
-  for (let i = 0; i < 32; i++) { const m = (a + b) / 2; if (g(m) <= 0) a = m; else b = m; }
+  for (let i = 0; i < 32; i++) {
+    const m = (a + b) / 2;
+    if (g(m) <= 0) a = m;
+    else b = m;
+  }
   return (a + b) / 2;
 }
 
@@ -155,7 +177,8 @@ export function nearestCubicT(p0: V3, p1: V3, p2: V3, p3: V3, p: V3, seg = 32): 
  *  segment's two endpoints to `out` as a flat [ax,ay,az, bx,by,bz, ...] list for a THREE.LineSegments. */
 export function pushCubicEdge(out: number[], p0: V3, p1: V3, p2: V3, p3: V3, seg: number): void {
   const pl = cubicPolyline(p0, p1, p2, p3, seg);
-  for (let i = 0; i < pl.length - 1; i++) out.push(pl[i][0], pl[i][1], pl[i][2], pl[i + 1][0], pl[i + 1][1], pl[i + 1][2]);
+  for (let i = 0; i < pl.length - 1; i++)
+    out.push(pl[i][0], pl[i][1], pl[i][2], pl[i + 1][0], pl[i + 1][1], pl[i + 1][2]);
 }
 
 /** The (un-normalised) skyward normal at (u,v): the quilt's uÃ—v cross points down, so cross(dv, du). */
@@ -184,22 +207,35 @@ export function patchDerivatives(cp: V3[], u: number, v: number): { du: V3; dv: 
  *  little off the analytic surface, so this recovers where on the patch it actually landed. */
 export function nearestPatchParam(cp: V3[], p: V3, grid = 8): [number, number] {
   const unit = (t: number) => Math.min(1, Math.max(0, t));
-  let u = 0.5, v = 0.5, best = Infinity;
+  let u = 0.5,
+    v = 0.5,
+    best = Infinity;
   for (let i = 0; i <= grid; i++) {
     for (let j = 0; j <= grid; j++) {
-      const d = sub(patchPoint(cp, i / grid, j / grid), p), d2 = dot(d, d);
-      if (d2 < best) { best = d2; u = i / grid; v = j / grid; }
+      const d = sub(patchPoint(cp, i / grid, j / grid), p),
+        d2 = dot(d, d);
+      if (d2 < best) {
+        best = d2;
+        u = i / grid;
+        v = j / grid;
+      }
     }
   }
   for (let iter = 0; iter < 8; iter++) {
     const r = sub(patchPoint(cp, u, v), p);
     const { du, dv } = patchDerivatives(cp, u, v);
-    const a = dot(du, du), b = dot(du, dv), c = dot(dv, dv), det = a * c - b * b;
+    const a = dot(du, du),
+      b = dot(du, dv),
+      c = dot(dv, dv),
+      det = a * c - b * b;
     if (Math.abs(det) < 1e-18) break; // a collapsed wedge apex has no frame to step in
-    const gu = dot(du, r), gv = dot(dv, r);
-    const nu = unit(u - (c * gu - b * gv) / det), nv = unit(v - (a * gv - b * gu) / det);
+    const gu = dot(du, r),
+      gv = dot(dv, r);
+    const nu = unit(u - (c * gu - b * gv) / det),
+      nv = unit(v - (a * gv - b * gu) / det);
     const moved = Math.abs(nu - u) + Math.abs(nv - v);
-    u = nu; v = nv;
+    u = nu;
+    v = nv;
     if (moved < 1e-10) break;
   }
   return [u, v];
@@ -211,6 +247,9 @@ export function nearestPatchParam(cp: V3[], p: V3, grid = 8): [number, number] {
  *  proper patch never triggers the nudge, so its normals are byte-identical to before. */
 export function patchNormal(cp: V3[], u: number, v: number): V3 {
   let c = patchCross(cp, u, v);
-  if (len(c) < 1e-9) { const e = 1e-3; c = patchCross(cp, Math.min(Math.max(u, e), 1 - e), Math.min(Math.max(v, e), 1 - e)); }
+  if (len(c) < 1e-9) {
+    const e = 1e-3;
+    c = patchCross(cp, Math.min(Math.max(u, e), 1 - e), Math.min(Math.max(v, e), 1 - e));
+  }
   return len(c) < 1e-9 ? [0, 1, 0] : norm(c);
 }

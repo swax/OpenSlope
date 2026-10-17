@@ -8,11 +8,7 @@ import type { Stage } from '../stage';
 /** Unity's VR glint shader forms its cyclopean projection by averaging the left/right view-projection
  *  matrices element-by-element. Keep the browser operation explicit and testable: multiplying a world point
  *  by this matrix produces one shared screen position for laws that must not disagree between the eyes. */
-export function averageStereoMatrices(
-  target: THREE.Matrix4,
-  left: THREE.Matrix4,
-  right: THREE.Matrix4,
-): THREE.Matrix4 {
+export function averageStereoMatrices(target: THREE.Matrix4, left: THREE.Matrix4, right: THREE.Matrix4): THREE.Matrix4 {
   const out = target.elements;
   const a = left.elements;
   const b = right.elements;
@@ -109,13 +105,19 @@ export function createGlintLayer(stage: Stage) {
   /** The authored PARTICLE.SSH glint atlas: a 2×2 quadrant sheet whose ALPHA carries the three sparkle
    *  elements — halo ring (top-left), bright core (top-right), spiked twinkle star (bottom-left). It is the
    *  same shared sprite bank in every extracted level, so it loads once with no level preference. */
-  const hasAtlas = { value: 0 };   // the uniform itself, so the load callback needs nothing else in scope
-  const atlas = new THREE.TextureLoader(renderLoadingManager).load(particleTextureUrl('lens.png', ''),
-    () => { hasAtlas.value = 1; },
+  const hasAtlas = { value: 0 }; // the uniform itself, so the load callback needs nothing else in scope
+  const atlas = new THREE.TextureLoader(renderLoadingManager).load(
+    particleTextureUrl('lens.png', ''),
+    () => {
+      hasAtlas.value = 1;
+    },
     undefined,
-    () => { /* no extracted bank on this install — the procedural blob below stands in */ });
+    () => {
+      /* no extracted bank on this install — the procedural blob below stands in */
+    },
+  );
   atlas.colorSpace = THREE.SRGBColorSpace;
-  atlas.generateMipmaps = true;                       // the halo ring samples a blurrier mip for a soft rim
+  atlas.generateMipmaps = true; // the halo ring samples a blurrier mip for a soft rim
   atlas.minFilter = THREE.LinearMipmapLinearFilter;
   atlas.magFilter = THREE.LinearFilter;
   atlas.wrapS = atlas.wrapT = THREE.ClampToEdgeWrapping;
@@ -221,8 +223,10 @@ export function createGlintLayer(stage: Stage) {
    *  the same way up as they do in Unity. */
   function baseQuad(): THREE.InstancedBufferGeometry {
     const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(
-      [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3),
+    );
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
     geometry.instanceCount = 0;
@@ -233,8 +237,10 @@ export function createGlintLayer(stage: Stage) {
   function createCloud(parent: THREE.Object3D) {
     const geometry = baseQuad();
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.frustumCulled = false;   // the shader blooms and pulls the quad well outside the base geometry's AABB
-    mesh.raycast = () => { /* display-only: the source bulbs own the click (docs/013) */ };
+    mesh.frustumCulled = false; // the shader blooms and pulls the quad well outside the base geometry's AABB
+    mesh.raycast = () => {
+      /* display-only: the source bulbs own the click (docs/013) */
+    };
     mesh.visible = false;
     parent.add(mesh);
     let count = 0;
@@ -242,12 +248,18 @@ export function createGlintLayer(stage: Stage) {
     function set(list: Glint[]) {
       count = list.length;
       if (count > 0) {
-        const pos = new Float32Array(count * 3), hue = new Float32Array(count * 3);
-        const size = new Float32Array(count), nudge = new Float32Array(count);
+        const pos = new Float32Array(count * 3),
+          hue = new Float32Array(count * 3);
+        const size = new Float32Array(count),
+          nudge = new Float32Array(count);
         for (let i = 0; i < count; i++) {
           const g = list[i];
-          pos[i * 3] = g.pos[0]; pos[i * 3 + 1] = g.pos[1]; pos[i * 3 + 2] = g.pos[2];
-          hue[i * 3] = g.hue[0]; hue[i * 3 + 1] = g.hue[1]; hue[i * 3 + 2] = g.hue[2];
+          pos[i * 3] = g.pos[0];
+          pos[i * 3 + 1] = g.pos[1];
+          pos[i * 3 + 2] = g.pos[2];
+          hue[i * 3] = g.hue[0];
+          hue[i * 3 + 1] = g.hue[1];
+          hue[i * 3 + 2] = g.hue[2];
           size[i] = g.quadM;
           nudge[i] = g.nudgeM;
         }
@@ -260,19 +272,31 @@ export function createGlintLayer(stage: Stage) {
       mesh.visible = visible && count > 0;
     }
 
-    return { set, show: () => { mesh.visible = visible && count > 0; }, get count() { return count; } };
+    return {
+      set,
+      show: () => {
+        mesh.visible = visible && count > 0;
+      },
+      get count() {
+        return count;
+      },
+    };
   }
 
   let visible = false;
-  const authored = createCloud(stage.worldRoot);   // the course's own lights, in data coords
-  const reference = createCloud(stage.refRoot);    // a loaded reference's rig, riding its placement offset
+  const authored = createCloud(stage.worldRoot); // the course's own lights, in data coords
+  const reference = createCloud(stage.refRoot); // a loaded reference's rig, riding its placement offset
   const drawingBufferSize = new THREE.Vector2();
 
   /** The course's authored rig (sign, group and free lights) — only those an author gave a glint class. */
-  function setAuthored(rig: LightRig | null) { authored.set(rigGlints(rig)); }
+  function setAuthored(rig: LightRig | null) {
+    authored.set(rigGlints(rig));
+  }
 
   /** A loaded reference level's own rig: its lamps and flares glint exactly as the engine gates them. */
-  function setReference(rig: LightRig | null) { reference.set(rigGlints(rig)); }
+  function setReference(rig: LightRig | null) {
+    reference.set(rigGlints(rig));
+  }
 
   /** Rides effective Local lights — a glint IS light the source casts, not rigging that marks where it is. */
   function show(on: boolean) {
@@ -288,9 +312,16 @@ export function createGlintLayer(stage: Stage) {
   }
 
   return {
-    setAuthored, setReference, show, sync,
-    get authoredCount() { return authored.count; },
-    get referenceCount() { return reference.count; },
+    setAuthored,
+    setReference,
+    show,
+    sync,
+    get authoredCount() {
+      return authored.count;
+    },
+    get referenceCount() {
+      return reference.count;
+    },
   };
 }
 

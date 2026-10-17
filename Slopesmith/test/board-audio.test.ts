@@ -22,18 +22,42 @@ let contextLatencyHint: AudioContextLatencyCategory | number | undefined;
 
 class FakeParam {
   value = 0;
-  linearRampToValueAtTime(value: number) { this.value = value; return this; }
-  setValueAtTime(value: number) { this.value = value; return this; }
-  cancelScheduledValues() { return this; }
+  linearRampToValueAtTime(value: number) {
+    this.value = value;
+    return this;
+  }
+  setValueAtTime(value: number) {
+    this.value = value;
+    return this;
+  }
+  cancelScheduledValues() {
+    return this;
+  }
 }
 class FakeNode {
-  connect() { return this; }
-  disconnect() { return this; }
+  connect() {
+    return this;
+  }
+  disconnect() {
+    return this;
+  }
 }
-class FakeGain extends FakeNode { gain = new FakeParam(); }
+class FakeGain extends FakeNode {
+  gain = new FakeParam();
+}
 /** Gains in creation order (see the BoardAudio constructor). Per-one-shot gains append past these. */
 const gains: FakeGain[] = [];
-const LAYER = { game: 0, master: 1, transients: 2, cues: 3, glide: 4, carve: 5, grind: 6, bigAir: 7, boost: 8 } as const;
+const LAYER = {
+  game: 0,
+  master: 1,
+  transients: 2,
+  cues: 3,
+  glide: 4,
+  carve: 5,
+  grind: 6,
+  bigAir: 7,
+  boost: 8,
+} as const;
 const level = (layer: keyof typeof LAYER): number => gains[LAYER[layer]].gain.value;
 class FakeSource extends FakeNode {
   buffer: object | null = null;
@@ -41,8 +65,12 @@ class FakeSource extends FakeNode {
   playbackRate = new FakeParam();
   onended: (() => void) | null = null;
   stopped = false;
-  start() { started.push({ url: bufferUrls.get(this.buffer!) ?? '?', loop: this.loop, node: this }); }
-  stop() { this.stopped = true; }
+  start() {
+    started.push({ url: bufferUrls.get(this.buffer!) ?? '?', loop: this.loop, node: this });
+  }
+  stop() {
+    this.stopped = true;
+  }
 }
 class FakeContext {
   state = 'running';
@@ -52,11 +80,24 @@ class FakeContext {
     contextCount++;
     contextLatencyHint = options?.latencyHint;
   }
-  createGain() { const gain = new FakeGain(); gains.push(gain); return gain; }
-  createBufferSource() { return new FakeSource(); }
-  decodeAudioData(bytes: ArrayBuffer) { return Promise.resolve(bytes as unknown as AudioBuffer); }
-  resume() { return Promise.resolve(); }
-  close() { contextCloseCount++; return Promise.resolve(); }
+  createGain() {
+    const gain = new FakeGain();
+    gains.push(gain);
+    return gain;
+  }
+  createBufferSource() {
+    return new FakeSource();
+  }
+  decodeAudioData(bytes: ArrayBuffer) {
+    return Promise.resolve(bytes as unknown as AudioBuffer);
+  }
+  resume() {
+    return Promise.resolve();
+  }
+  close() {
+    contextCloseCount++;
+    return Promise.resolve();
+  }
 }
 
 // Each URL decodes to its own distinct "buffer", so a started source names the slot it is playing.
@@ -78,7 +119,13 @@ function rideState(overrides: Partial<Record<string, unknown>> = {}): RideState 
   return {
     vel: new THREE.Vector3(0, 0, 0),
     contactN: new THREE.Vector3(0, 1, 0),
-    lean: 0, slip: 0, surf: 1, grounded: true, railIdx: -1, popTime: 0, popDrive: 0,
+    lean: 0,
+    slip: 0,
+    surf: 1,
+    grounded: true,
+    railIdx: -1,
+    popTime: 0,
+    popDrive: 0,
     predictedAirTime: 0,
     ...overrides,
   } as unknown as RideState;
@@ -87,8 +134,12 @@ function rideState(overrides: Partial<Record<string, unknown>> = {}): RideState 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const FRAME = 1 / 60;
 /** Run the bed for `seconds` of frames on one state. */
-async function ride(audio: NonNullable<ReturnType<typeof createBoardAudio>>, st: RideState,
-  seconds: number, boosting = false) {
+async function ride(
+  audio: NonNullable<ReturnType<typeof createBoardAudio>>,
+  st: RideState,
+  seconds: number,
+  boosting = false,
+) {
   for (let t = 0; t < seconds; t += FRAME) audio.update(st, FRAME, boosting);
   await settle();
 }
@@ -116,15 +167,19 @@ check(!!audio, 'the default mix builds a bed');
 await settle();
 const boostUrl = '/api/board-sound?bank=zbxsfx&slot=120&loop=1';
 const speedPadUrl = '/api/board-sound?bank=zbxsfx&slot=115';
-check(contextCount === 1 && contextLatencyHint === 'interactive',
-  'board audio opens one shared interactive-latency context');
+check(
+  contextCount === 1 && contextLatencyHint === 'interactive',
+  'board audio opens one shared interactive-latency context',
+);
 setGameAudioVolume(0.4);
 check(level('game') === 0.4, 'the Test game-volume master applies live over the board graph');
 setGameAudioVolume(0);
 check(level('game') === 0, 'zero game volume is a real master mute');
 setGameAudioVolume(1);
-check(fetchCounts.get(boostUrl) === 1 && fetchCounts.get(speedPadUrl) === 1,
-  'ride-critical boost and cue buffers are fetched before their event edges');
+check(
+  fetchCounts.get(boostUrl) === 1 && fetchCounts.get(speedPadUrl) === 1,
+  'ride-critical boost and cue buffers are fetched before their event edges',
+);
 
 // Riding packed snow fast and clean: OpenSlope's authored response opens glide at natural pitch and leaves
 // the carve row shut.
@@ -158,34 +213,56 @@ check(playing(4).length === 2, 'coming back to packed snow restarts the PACK loo
 await ride(audio, rideState({ vel: new THREE.Vector3(0, 0, 14), railIdx: 2, surf: 1 }), 0.5);
 check(playing(52).length === 1, 'a grind runs the RAIL family glide loop (slot 052) — the row terrain never picks');
 check(playing(4).length === 2 && playing(3).length === 2, 'the grind does not restart the terrain loops');
-check(level('grind') > 0.3 && level('glide') < 0.02 && level('carve') < 0.02,
-  'the grind scrape replaces the snow bed rather than layering over it');
+check(
+  level('grind') > 0.3 && level('glide') < 0.02 && level('carve') < 0.02,
+  'the grind scrape replaces the snow bed rather than layering over it',
+);
 
 // Catching a rail out of the air is a grind, not a thud in the snow.
-await ride(audio, rideState({
-  vel: new THREE.Vector3(0, -8, 14), grounded: false, predictedAirTime: 1.5,
-}), 0.2);
+await ride(
+  audio,
+  rideState({
+    vel: new THREE.Vector3(0, -8, 14),
+    grounded: false,
+    predictedAirTime: 1.5,
+  }),
+  0.2,
+);
 await ride(audio, rideState({ vel: new THREE.Vector3(0, 0, 14), railIdx: 2 }), 0.2);
 check(playing(1).length === 0, 'catching a rail out of the air raises no landing thud');
 check(playing(32, 'zbxsfx').length === 0, 'a predicted 1.5-second flight does not pass the retail strict threshold');
 
 // The ollie pop fires once on the launch edge, not every frame of the pop.
 const popping = rideState({
-  vel: new THREE.Vector3(0, 4, 14), grounded: false, popTime: 0.2, popDrive: 0.8, predictedAirTime: 2.2,
+  vel: new THREE.Vector3(0, 4, 14),
+  grounded: false,
+  popTime: 0.2,
+  popDrive: 0.8,
+  predictedAirTime: 2.2,
 });
 await ride(audio, popping, 0.15);
 check(playing(2).length === 1, 'the traced BOARD +2 ollie pop fires once on the launch edge');
 check(!playing(2)[0].loop, 'a transient is a one-shot, not a loop');
-check(playing(32, 'zbxsfx').length === 1 && playing(32, 'zbxsfx')[0].loop,
-  'a predicted >1.5-second flight starts the rider-owned MAIN/032 wind loop');
+check(
+  playing(32, 'zbxsfx').length === 1 && playing(32, 'zbxsfx')[0].loop,
+  'a predicted >1.5-second flight starts the rider-owned MAIN/032 wind loop',
+);
 
 // Airborne, the ride bed goes quiet with no explicit stop.
-await ride(audio, rideState({
-  vel: new THREE.Vector3(0, -6, 14), grounded: false, predictedAirTime: 2.2,
-}), 1);
+await ride(
+  audio,
+  rideState({
+    vel: new THREE.Vector3(0, -6, 14),
+    grounded: false,
+    predictedAirTime: 2.2,
+  }),
+  1,
+);
 check(playing(4).length === 2 && playing(52).length === 1, 'nothing new starts in the air');
-check(level('glide') === 0 && level('carve') === 0 && level('grind') === 0,
-  'leaving the snow cuts the whole bed, with no explicit stop');
+check(
+  level('glide') === 0 && level('carve') === 0 && level('grind') === 0,
+  'leaving the snow cuts the whole bed, with no explicit stop',
+);
 check(level('bigAir') > 0.4, 'the qualifying flight keeps the big-air wind audible while airborne');
 
 // Touchdown: a hard arrival thuds, a soft set-down doesn't.
@@ -199,8 +276,10 @@ check(playing(1).length === 1, 'a drift-down onto the snow is below the thud thr
 
 // Held boost: the roar comes from the OTHER shared bank, loops, and stops when the boost is released.
 await ride(audio, cruising, 0.3, true);
-check(playing(120, 'zbxsfx').length === 1 && playing(120, 'zbxsfx')[0].loop,
-  'held boost runs the full-meter roar from zbxsfx, looping');
+check(
+  playing(120, 'zbxsfx').length === 1 && playing(120, 'zbxsfx')[0].loop,
+  'held boost runs the full-meter roar from zbxsfx, looping',
+);
 const boostSource = playing(120, 'zbxsfx')[0].node;
 await ride(audio, cruising, 1.5);
 check(boostSource.stopped, 'releasing boost fades the roar out and stops it');
@@ -210,8 +289,10 @@ check(playing(120, 'zbxsfx').length === 1, 'ordinary off-board flight does not s
 audio.updateFlightBoost(true, 0.3);
 await settle();
 check(playing(120, 'zbxsfx').length === 2, 'applied Superman boost starts the same boost roar');
-check(level('glide') === 0 && level('carve') === 0 && level('grind') === 0 && level('bigAir') === 0,
-  'flight boost keeps every board-specific bed silent');
+check(
+  level('glide') === 0 && level('carve') === 0 && level('grind') === 0 && level('bigAir') === 0,
+  'flight boost keeps every board-specific bed silent',
+);
 const flightBoostSource = playing(120, 'zbxsfx').at(-1)!.node;
 audio.updateFlightBoost(false, 1.5);
 check(flightBoostSource.stopped, 'ending applied flight boost fades its roar out');
@@ -221,29 +302,45 @@ audio.gemChime(2);
 audio.gemChime(3);
 audio.gemChime(5);
 await settle();
-check(playing(116, 'zbxsfx').length === 1 && playing(117, 'zbxsfx').length === 1
-  && playing(118, 'zbxsfx').length === 1, 'the gem chime picks its tier off the multiplier: ×2/×3/×5 → 116/117/118');
-check(playing(116, 'zbxsfx').every(s => !s.loop), 'a chime is a one-shot');
+check(
+  playing(116, 'zbxsfx').length === 1 && playing(117, 'zbxsfx').length === 1 && playing(118, 'zbxsfx').length === 1,
+  'the gem chime picks its tier off the multiplier: ×2/×3/×5 → 116/117/118',
+);
+check(
+  playing(116, 'zbxsfx').every(s => !s.loop),
+  'a chime is a one-shot',
+);
 audio.gemChime(4);
 await settle();
-check(playing(117, 'zbxsfx').length === 2,
-  'an authored ×4 chimes like a ×3 — the engine thresholds on the value, not on a tier index');
+check(
+  playing(117, 'zbxsfx').length === 2,
+  'an authored ×4 chimes like a ×3 — the engine thresholds on the value, not on a tier index',
+);
 audio.padCue('speed');
 audio.padCue('trick');
 await settle();
 check(playing(115, 'zbxsfx').length === 1, 'a speed pad (MainType 17) plays MAIN slot 115');
 check(playing(114, 'zbxsfx').length === 1, 'a trick pad (MainType 18) plays MAIN slot 114');
-check(level('cues') === DEFAULT_BOARD_SOUND.cues && level('transients') === DEFAULT_BOARD_SOUND.transients,
-  'cues and board transients ride their own trims');
+check(
+  level('cues') === DEFAULT_BOARD_SOUND.cues && level('transients') === DEFAULT_BOARD_SOUND.transients,
+  'cues and board transients ride their own trims',
+);
 
 audio.dispose();
-check(started.every(s => s.node.stopped || !s.loop), 'disposing the bed stops every loop it started');
+check(
+  started.every(s => s.node.stopped || !s.loop),
+  'disposing the bed stops every loop it started',
+);
 const nextRun = createBoardAudio(DEFAULT_BOARD_SOUND, testSurfaceGroups)!;
 await settle();
-check(contextCount === 1 && contextCloseCount === 0,
-  'Stop → Play reuses the warm context instead of reopening the audio device');
-check(fetchCounts.get(boostUrl) === 1 && fetchCounts.get(speedPadUrl) === 1,
-  'Stop → Play reuses decoded buffers instead of fetching them again');
+check(
+  contextCount === 1 && contextCloseCount === 0,
+  'Stop → Play reuses the warm context instead of reopening the audio device',
+);
+check(
+  fetchCounts.get(boostUrl) === 1 && fetchCounts.get(speedPadUrl) === 1,
+  'Stop → Play reuses decoded buffers instead of fetching them again',
+);
 nextRun.dispose();
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall board-audio checks passed');

@@ -55,17 +55,33 @@ window.ready = true;
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const css = ['base', 'dock', 'toolbar', 'menus']
-  .map(name => readFileSync(new URL(`../src/app/styles/${name}.css`, import.meta.url), 'utf8')).join('\n');
-const bundle = await build({ stdin: { contents: source, resolveDir: root, loader: 'ts' },
-  bundle: true, write: false, format: 'esm', platform: 'browser', logLevel: 'silent' });
+  .map(name => readFileSync(new URL(`../src/app/styles/${name}.css`, import.meta.url), 'utf8'))
+  .join('\n');
+const bundle = await build({
+  stdin: { contents: source, resolveDir: root, loader: 'ts' },
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'browser',
+  logLevel: 'silent',
+});
 const server = createServer((request, response) => {
   response.setHeader('content-type', request.url === '/fixture.js' ? 'text/javascript' : 'text/html');
-  response.end(request.url === '/fixture.js' ? bundle.outputFiles[0].text
-    : `<!doctype html><style>${css}</style><div id="dock-top"></div><script type="module" src="/fixture.js"></script>`);
+  response.end(
+    request.url === '/fixture.js'
+      ? bundle.outputFiles[0].text
+      : `<!doctype html><style>${css}</style><div id="dock-top"></div><script type="module" src="/fixture.js"></script>`,
+  );
 });
 await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
 
-interface BarState { classes: string[]; bar: string[]; more: string[]; pick: string[]; overflow: boolean }
+interface BarState {
+  classes: string[];
+  bar: string[];
+  more: string[];
+  pick: string[];
+  overflow: boolean;
+}
 type FixtureWindow = Window & { ready?: boolean; barState(): BarState; frames(): Promise<void> };
 
 const browser = await chromium.launch({ executablePath: chromiumExecutable(), headless: true });
@@ -83,18 +99,28 @@ try {
   // How far down the ladder a state is, asserting it is a prefix: nothing given up before a cheaper loss.
   const ladder: ((s: BarState) => boolean)[] = [
     s => s.classes.includes('sp-fit-captions'),
-    s => s.more.includes('C'), s => s.more.includes('A'), s => s.more.includes('B'), s => s.pick.includes('M'),
+    s => s.more.includes('C'),
+    s => s.more.includes('A'),
+    s => s.more.includes('B'),
+    s => s.pick.includes('M'),
   ];
   const given = (s: BarState) => {
     const taken = ladder.map(step => step(s));
     const count = taken.indexOf(false) < 0 ? taken.length : taken.indexOf(false);
-    assert.deepEqual(taken, taken.map((_, i) => i < count), `the ladder is taken in order: ${JSON.stringify(s)}`);
+    assert.deepEqual(
+      taken,
+      taken.map((_, i) => i < count),
+      `the ladder is taken in order: ${JSON.stringify(s)}`,
+    );
     return count;
   };
 
   const whole = await state();
-  assert.deepEqual(whole, { classes: [], bar: ['M', 'caption', 'A', 'B', 'C'], more: [], pick: [], overflow: false },
-    'a wide window shows the whole bar, its fold triggers hidden');
+  assert.deepEqual(
+    whole,
+    { classes: [], bar: ['M', 'caption', 'A', 'B', 'C'], more: [], pick: [], overflow: false },
+    'a wide window shows the whole bar, its fold triggers hidden',
+  );
 
   let last = 0;
   const seen = new Map<string, BarState>();
@@ -109,7 +135,11 @@ try {
   assert.equal(last, ladder.length, 'the narrowest window takes the whole ladder');
   assert(seen.has('C'), 'a width exists where only the first group is folded');
   assert(seen.has('A,C'), 'the panel lists folded groups in bar order, not in the order they folded');
-  assert.deepEqual(seen.get('A,B,C')!.bar.filter(name => name === 'more'), ['more'], 'the trigger shows while it holds groups');
+  assert.deepEqual(
+    seen.get('A,B,C')!.bar.filter(name => name === 'more'),
+    ['more'],
+    'the trigger shows while it holds groups',
+  );
 
   assert.deepEqual(await state(900), whole, 'widening restores the bar exactly, in its own order');
 
@@ -123,13 +153,19 @@ try {
     document.getElementById('dock-top')!.append(extra);
   });
   const crowded = await state();
-  assert(given(crowded) > 1 && !crowded.overflow, `a group appended later folds the bar further: ${JSON.stringify(crowded)}`);
+  assert(
+    given(crowded) > 1 && !crowded.overflow,
+    `a group appended later folds the bar further: ${JSON.stringify(crowded)}`,
+  );
 
   // While the headset's wrist palette mirrors the bar, nothing folds; words still compact.
   await page.evaluate(() => document.body.classList.add('os-xr-editing'));
   const xr = await state(200);
-  assert.deepEqual([xr.more, xr.pick, xr.classes], [[], [], ['sp-fit-captions']],
-    'the wrist palette keeps every group in the bar');
+  assert.deepEqual(
+    [xr.more, xr.pick, xr.classes],
+    [[], [], ['sp-fit-captions']],
+    'the wrist palette keeps every group in the bar',
+  );
   await page.evaluate(() => document.body.classList.remove('os-xr-editing'));
   assert(given(await state()) > 1, 'folding resumes when the palette closes');
 
@@ -150,4 +186,7 @@ try {
 
   assert.deepEqual(errors, []);
   console.log('BAR FIT BROWSER TEST PASSED');
-} finally { await browser.close(); server.close(); }
+} finally {
+  await browser.close();
+  server.close();
+}

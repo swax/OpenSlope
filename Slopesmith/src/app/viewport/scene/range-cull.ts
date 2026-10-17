@@ -148,7 +148,10 @@ export function createRangeCull(deps: RangeCullDeps) {
 
   function pass(eye: THREE.Vector3): void {
     const metres = range as number;
-    let chunks = 0, chunksDrawn = 0, slots = 0, slotsDrawn = 0;
+    let chunks = 0,
+      chunksDrawn = 0,
+      slots = 0,
+      slotsDrawn = 0;
 
     for (const chunk of deps.chunks()) {
       const sphere = chunk.geometry.boundingSphere;
@@ -170,7 +173,10 @@ export function createRangeCull(deps: RangeCullDeps) {
       if (!count) continue;
       const centres = centresOf(batch);
       let flags = gated.get(batch);
-      if (!flags || flags.length < count) { flags = new Uint8Array(count); gated.set(batch, flags); }
+      if (!flags || flags.length < count) {
+        flags = new Uint8Array(count);
+        gated.set(batch, flags);
+      }
       toLocal(batch, eye);
       slots += count;
       for (let i = 0; i < count; i++) {
@@ -179,7 +185,10 @@ export function createRangeCull(deps: RangeCullDeps) {
         const dz = centres[i * 3 + 2] - eyeLocal.z;
         if (dx * dx + dy * dy + dz * dz <= limit) {
           slotsDrawn++;
-          if (flags[i]) { batch.setVisibleAt(i, true); flags[i] = 0; }
+          if (flags[i]) {
+            batch.setVisibleAt(i, true);
+            flags[i] = 0;
+          }
         } else if (!flags[i]) {
           batch.setVisibleAt(i, false);
           flags[i] = 1;
@@ -198,7 +207,11 @@ export function createRangeCull(deps: RangeCullDeps) {
     for (const batch of touched) {
       const flags = gated.get(batch);
       if (!flags) continue;
-      for (let i = 0; i < flags.length; i++) if (flags[i]) { batch.setVisibleAt(i, true); flags[i] = 0; }
+      for (let i = 0; i < flags.length; i++)
+        if (flags[i]) {
+          batch.setVisibleAt(i, true);
+          flags[i] = 0;
+        }
     }
     touched.clear();
     armed = false;
@@ -210,14 +223,19 @@ export function createRangeCull(deps: RangeCullDeps) {
     // fogged material's program key, so a swap recompiles them, while moving near/far is free.
     const fog = deps.scene.fog;
     if (range === null) {
-      if (fogHeld && fog instanceof THREE.Fog) { fog.near = FOG_OUT_OF_REACH; fog.far = FOG_OUT_OF_REACH * 2; }
-      else deps.scene.fog = null;
+      if (fogHeld && fog instanceof THREE.Fog) {
+        fog.near = FOG_OUT_OF_REACH;
+        fog.far = FOG_OUT_OF_REACH * 2;
+      } else deps.scene.fog = null;
       return;
     }
     const colour = deps.fogColor() ?? new THREE.Color(DEFAULT_FOG);
     const near = Math.max(0, Math.min(FOG_START_METRES, range - FOG_BAND_MIN_METRES));
-    if (fog instanceof THREE.Fog) { fog.color.copy(colour); fog.near = near; fog.far = range; }
-    else deps.scene.fog = new THREE.Fog(colour, near, range);
+    if (fog instanceof THREE.Fog) {
+      fog.color.copy(colour);
+      fog.near = near;
+      fog.far = range;
+    } else deps.scene.fog = new THREE.Fog(colour, near, range);
   }
 
   return {
@@ -233,7 +251,11 @@ export function createRangeCull(deps: RangeCullDeps) {
       range = next;
       fogHeld = holdFog;
       dirty = true;
-      if (range === null) { if (wasOn) restore(); applyFog(); return; }
+      if (range === null) {
+        if (wasOn) restore();
+        applyFog();
+        return;
+      }
       applyFog();
       if (!wasOn) lastPopulation = -1; // a fresh arming re-reads the population it is about to gate
     },
@@ -250,10 +272,18 @@ export function createRangeCull(deps: RangeCullDeps) {
     update(eye: THREE.Vector3): void {
       if (range === null) return;
       const population = deps.chunks().length * 4096 + deps.propMeshes().length;
-      if (population !== lastPopulation) { lastPopulation = population; dirty = true; }
+      if (population !== lastPopulation) {
+        lastPopulation = population;
+        dirty = true;
+      }
       const now = performance.now();
-      if (armed && !dirty && now - lastPass < RECHECK_MS
-        && eye.distanceToSquared(lastEye) < RECHECK_METRES * RECHECK_METRES) return;
+      if (
+        armed &&
+        !dirty &&
+        now - lastPass < RECHECK_MS &&
+        eye.distanceToSquared(lastEye) < RECHECK_METRES * RECHECK_METRES
+      )
+        return;
       pass(eye);
       lastEye.copy(eye);
       lastPass = now;
@@ -261,7 +291,9 @@ export function createRangeCull(deps: RangeCullDeps) {
       dirty = false;
     },
 
-    stats(): RangeCullStats { return stats; },
+    stats(): RangeCullStats {
+      return stats;
+    },
   };
 }
 

@@ -1,9 +1,7 @@
 import type { NativeCollisionProfile } from '../doc/types';
 import type { EffectLatchCircumstance, EffectNodeTemplateId } from '../effects/authoring';
 import type { RgbaColor } from '../effects/emitter-colors';
-import {
-  COLLISION_LAB_CASES, COLLISION_LAB_MODE1_BOUNCE_OFF_CASE,
-} from './lab';
+import { COLLISION_LAB_CASES, COLLISION_LAB_MODE1_BOUNCE_OFF_CASE } from './lab';
 
 /**
  * Fixture courses whose only job is to be ridden by a machine.
@@ -98,8 +96,8 @@ export const GATE_HEIGHT_M = 8;
 export type AutoTestSignal = 'entity-node' | 'particle' | 'texture-flip' | 'sound';
 
 /** A measurement taken off the RIDER rather than off the host, for cells whose node acts on the player. */
-export type AutoTestRiderSignal = 'rise' | 'climb' | 'speed' | 'boost-request' | 'trick-window' | 'jump'
-  | 'gem-multiplier' | 'impact';
+export type AutoTestRiderSignal =
+  'rise' | 'climb' | 'speed' | 'boost-request' | 'trick-window' | 'jump' | 'gem-multiplier' | 'impact';
 
 export interface AutoTestCase {
   id: string;
@@ -153,16 +151,16 @@ export interface AutoTestCase {
    *  native multi-circumstance shape [Trailmap: 150-logic].
    *
    *  Nothing in either fixture has ever exercised that column, so these cells ask a question no collision
-    *  cell can: does an authored persistent effect install at all? A persistent node is built at level load,
-    *  so the cell's semantic live-node observation is occupied from the first sample — dispatch comes back `pre-occupied`
+   *  cell can: does an authored persistent effect install at all? A persistent node is built at level load,
+   *  so the cell's semantic live-node observation is occupied from the first sample — dispatch comes back `pre-occupied`
    *  and grades `unobservable`, which is correct and beside the point. The claim moves to the probe: the
    *  slot's sub-type word at baseline is the authored node or it is not. */
   persistentNode?: EffectNodeTemplateId;
   /** Further nodes appended to the SAME persistent graph, after `persistentNode`.
    *
    *  A persistent chain of more than one node is ordinary in retail and was unreachable here, and the gap
-    *  matters for one family in particular: a node that installs nothing in the instance's live-node slot —
-    *  such as a particle emitter — leaves a persistent graph with no observable at all, so
+   *  matters for one family in particular: a node that installs nothing in the instance's live-node slot —
+   *  such as a particle emitter — leaves a persistent graph with no observable at all, so
    *  "the emitter installed" and "the graph never ran" are the same reading. Putting a node that DOES take
    *  the slot behind it makes the graph legible: the slot filling proves execution reached past the node
    *  that cannot be seen. Order is the whole mechanism, so these append rather than merge. */
@@ -245,7 +243,7 @@ export interface AutoTestCase {
   /** Lay down a SECOND panel beside this one, off the rider's line, carrying no chain of its own — and hop
    *  to it with a MainType-7 node at the head of this cell's chain, running the named template there.
    *
-    *  It is the companion's own live-node observation that answers the question. The rider never touches it and it
+   *  It is the companion's own live-node observation that answers the question. The rider never touches it and it
    *  has nothing attached, so a node appearing on it can only have come from the hop. A hop that fails to
    *  resolve is a silent no-op in the engine — the resolver bounds-checks and returns — so a test that
    *  watched only the host would report a perfect pass for a hop that went nowhere. */
@@ -376,8 +374,8 @@ export interface AutoTestCase {
    *   `speed`          peak carried speed in m/s, the whole vector. Where the shared cap shows up: a
    *                    scripted boost node raises nothing, so a grounded rider stays bounded at ~27.9
    *                    however hard the push, and only an airborne one can pass it.
-    *   `boost-request`  speed-cap request countdown. A speed pad raises the cap rather than writing velocity.
-    *   `trick-window`   trick-window countdown, in seconds.
+   *   `boost-request`  speed-cap request countdown. A speed pad raises the cap rather than writing velocity.
+   *   `trick-window`   trick-window countdown, in seconds.
    *   `jump`           largest single-sample displacement in m — the observable for every opcode that MOVES
    *                    a rider rather than pushing one, which is the course reset (13) and the teleport (24).
    *                    Neither writes a boarder field saying it happened, so the position discontinuity is
@@ -385,8 +383,8 @@ export interface AutoTestCase {
    *   `impact`         largest one-sample velocity change across contact, in m/s. This is the collision
    *                    lab's physical-response signal: contact-only cases retain their approach velocity,
    *                    while a solid response can reverse, stop, or redirect it depending on hit normal.
-    *   `gem-multiplier` active trick-score multiplier. It rests at exactly 1.0, so unlike every other signal
-    *                    here its BASELINE is a
+   *   `gem-multiplier` active trick-score multiplier. It rests at exactly 1.0, so unlike every other signal
+   *                    here its BASELINE is a
    *                    claim too: a course where non-gem cells read anything else has a bad offset rather
    *                    than a failing cell.
    */
@@ -412,7 +410,12 @@ export interface AutoTestCase {
 }
 
 export const profile = (mode: 0 | 1 | 2 | 3, over: Partial<NativeCollisionProfile> = {}): NativeCollisionProfile => ({
-  mode, playerCollision: true, responseMass: 0, playerBounce: true, bounceAmount: 0, ...over,
+  mode,
+  playerCollision: true,
+  responseMass: 0,
+  playerBounce: true,
+  bounceAmount: 0,
+  ...over,
 });
 
 /**
@@ -468,7 +471,6 @@ const FLIP_BATCH = 'runs 20260806-151423, -151624 and -151824 (AUTOTEST2)';
  *  playing; `KEYFRAME_BATCH` is where a real window was first read. */
 const CLIP_BATCH = 'runs 20260806-161020, -161222 and -161421 (AUTOTEST2)';
 
-
 /** The second bench batch: the speed gate's threshold word, and the units it is compared in. */
 const THRESHOLD_BATCH = 'runs 20260806-083132, -083333 and -083533 (AUTOTEST2)';
 
@@ -490,8 +492,9 @@ const TELEPORT_BATCH = 'runs 20260807-165202, -165433 and -165613 (AUTOTEST5, sh
 const AUDIO_BATCH = 'runs 20260811-150418, -150615 and -150905 (AUTOTEST8, showoff)';
 /** The same opcode with five opponents, behind a human-rider gate: the warp lands on the PLAYER, and the
  *  lane it lands them in is rideable for ~1 km before a stopped rider is reclaimed to the race line. */
-const FIELD_BATCH = 'runs 20260807-183720, -183922 and -184123 (AUTOTEST3, race, roster trace); '
-  + 'corroborated on earlier layouts by -181113 / -181203 / -181253 and -175233 / -175325 / -175414';
+const FIELD_BATCH =
+  'runs 20260807-183720, -183922 and -184123 (AUTOTEST3, race, roster trace); ' +
+  'corroborated on earlier layouts by -181113 / -181203 / -181253 and -175233 / -175325 / -175414';
 /** The call batch: the first authored function ever packed, and both halves of what a MainType-21 node does
  *  with one. */
 const CALL_BATCH = 'runs 20260807-230446, -230633 and -230815 (AUTOTEST6, showoff)';
@@ -525,22 +528,32 @@ const collisionAutoCase = (
   continueAfterResponse = false,
 ): AutoTestCase => ({
   id,
-  question: `${test.label}: ${dispatch ? 'contact graph dispatches' : 'no contact graph dispatches'}; `
-    + (response === null ? 'no contact means no physical response.'
-      : response ? 'the rider receives the solid bounce response.'
+  question:
+    `${test.label}: ${dispatch ? 'contact graph dispatches' : 'no contact graph dispatches'}; ` +
+    (response === null
+      ? 'no contact means no physical response.'
+      : response
+        ? 'the rider receives the solid bounce response.'
         : 'the rider remains pass-through despite contact.'),
-  shape: 'bag', profile: structuredClone(test.profile), color: test.color,
+  shape: 'bag',
+  profile: structuredClone(test.profile),
+  color: test.color,
   stageMessage: test.label,
   expect: dispatch ? 'dispatch' : 'no-dispatch',
-  ...(response === null ? {} : {
-    // The migrated run establishes a categorical gap, not a feel threshold: contact-only controls read
-    // 0.00-0.02 m/s while the softest admitted response reads 1.17 m/s. One metre per second sits cleanly
-    // between them and still catches a response branch that silently becomes contact-only.
-    expectRider: [{ signal: 'impact' as const, ...(response ? { atLeast: 1 } : { atMost: 0.1 }) }],
-  }),
-  ...(continueAfterResponse ? {
-    tailNodes: ['wait' as const, 'rider-teleport' as const], teleportNext: true,
-  } : {}),
+  ...(response === null
+    ? {}
+    : {
+        // The migrated run establishes a categorical gap, not a feel threshold: contact-only controls read
+        // 0.00-0.02 m/s while the softest admitted response reads 1.17 m/s. One metre per second sits cleanly
+        // between them and still catches a response branch that silently becomes contact-only.
+        expectRider: [{ signal: 'impact' as const, ...(response ? { atLeast: 1 } : { atMost: 0.1 }) }],
+      }),
+  ...(continueAfterResponse
+    ? {
+        tailNodes: ['wait' as const, 'rider-teleport' as const],
+        teleportNext: true,
+      }
+    : {}),
   demonstrated: COLLISION_LAB_PROOF,
 });
 
@@ -643,7 +656,8 @@ const COUNTER_STATE_WATCH = {
   // count is a halfword at +0x34 and the marked-input bitmask the halfword above it, so little-endian this
   // word reads `mask<<16 | count`. A successful mark sets its bit AND steps the count down; a mark of an
   // input already marked does neither, which is why the pair has to be read together.
-  label: 'counter', offsets: [0x34],
+  label: 'counter',
+  offsets: [0x34],
 };
 /**
  * The Cracked node's whole state, read off the three words its constructor writes
@@ -665,12 +679,14 @@ const UV_SCROLL_STATE_WATCH = {
   // +0x3c/+0x40 are the live U/V phase (commands 5 and 6), +0x54/+0x58 the two scroll rates (commands 1
   // and 2). The template scrolls in U only, so V holds still and a written phase stays legible; U drifting
   // on its own is the corroboration that the node is running rather than merely present.
-  label: 'uvScroll', offsets: [0x3c, 0x40, 0x54, 0x58],
+  label: 'uvScroll',
+  offsets: [0x3c, 0x40, 0x54, 0x58],
 };
 const ANIM_DELTA_STATE_WATCH = {
   // Accumulated clip budget in seconds. The adjusted operational location follows
   // [Trailmap: 150-control-state].
-  label: 'animDelta', offsets: [0x38],
+  label: 'animDelta',
+  offsets: [0x38],
 };
 
 /**
@@ -691,31 +707,40 @@ const ANIM_DELTA_STATE_WATCH = {
  * a cell that reports its own window can never again be read as though it had one.
  */
 const ANIM_CLIP_WATCH = {
-  label: 'animClip', offsets: [-0x0c, -0x10, -0x08, -0x04, -0x20, 0x2c],
+  label: 'animClip',
+  offsets: [-0x0c, -0x10, -0x08, -0x04, -0x20, 0x2c],
 };
 
 /** Effect-thread host and owner observations. Comparing the owner with the measured rider explains whether a
  *  rider-acting opcode targets this rider [Trailmap: 360-pads-ownership]. */
 const PAD_OWNER_WATCH = {
-  label: 'thread', offsets: [0xe4, 0xe8],
+  label: 'thread',
+  offsets: [0xe4, 0xe8],
 };
 
 /** Heap-located effect-thread watch. It includes the ticking delay and host identity needed to reject false
  *  candidates, then reports the owner [Trailmap: 150-dispatch-runtime, 360-pads-ownership]. */
 const PAD_THREAD_LATE_WATCH = {
-  label: 'thread', backPointer: 0xe4, offsets: [0x40, 0xe8, 0xe4, 0xe0], seconds: 4,
+  label: 'thread',
+  backPointer: 0xe4,
+  offsets: [0x40, 0xe8, 0xe4, 0xe0],
+  seconds: 4,
 };
 
 /** Historical negative-control mappings for the spline mover. They remain executable so a future engine or
  *  fixture change can expose a host-reachable mover [Trailmap: 230-splinemover]. */
 const SPLINE_TRAVEL_WATCH = {
-  label: 'spline', offsets: [0x4c, 0x50, 0x74, 0x78, 0x1c, 0x20, 0x44, 0x48],
+  label: 'spline',
+  offsets: [0x4c, 0x50, 0x74, 0x78, 0x1c, 0x20, 0x44, 0x48],
 };
 
 /** Heap-located spline-mover state. Changing travel confirms a working mover even though its host translation
  *  remains static. The search needs a window that ends before the level restarts [Trailmap: 230-splinemover]. */
 const SPLINE_MOVER_LATE_WATCH = {
-  label: 'mover', backPointer: 0x78, offsets: [0x40, 0x4c, 0x50, 0x74], seconds: 4,
+  label: 'mover',
+  backPointer: 0x78,
+  offsets: [0x40, 0x4c, 0x50, 0x74],
+  seconds: 4,
 };
 
 /**
@@ -729,53 +754,84 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
     question: 'Control: a retail model with a mode-1 proxy dispatches — proven live in the collision lab.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'auth-gate-m1',
-    question: 'Does an AUTHORED model\'s mode-1 triangle proxy dispatch at all? Yes.',
-    shape: 'gate', profile: profile(1), color: [0.05, 1, 0.2, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question: "Does an AUTHORED model's mode-1 triangle proxy dispatch at all? Yes.",
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.05, 1, 0.2, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'auth-gate-m2',
-    question: 'Does mode-2 instance bounds dispatch from an authored host? Yes — the mode every retail trigger volume uses.',
-    shape: 'gate', profile: profile(2), color: [0.05, 0.55, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Does mode-2 instance bounds dispatch from an authored host? Yes — the mode every retail trigger volume uses.',
+    shape: 'gate',
+    profile: profile(2),
+    color: [0.05, 0.55, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'auth-pad-m1',
-    question: 'Does a flat proxy lying ON the snow dispatch? Yes — coincidence with the ride surface does not suppress it.',
-    shape: 'pad', profile: profile(1), color: [1, 0.8, 0.05, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Does a flat proxy lying ON the snow dispatch? Yes — coincidence with the ride surface does not suppress it.',
+    shape: 'pad',
+    profile: profile(1),
+    color: [1, 0.8, 0.05, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'auth-gate-m1-lifted',
-    question: 'A mode-1 gate lifted 2 m clear of the snow does NOT dispatch — the rider passes beneath it. '
-      + 'Consistent with the ground stab reaching only ~2 m above the board, but the mechanism is unconfirmed: '
-      + 'this pins the fixture\'s behaviour, not an engine rule.',
-    shape: 'gate', profile: profile(1), color: [1, 0.45, 0.05, 1], liftM: 2,
-    expect: 'no-dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'A mode-1 gate lifted 2 m clear of the snow does NOT dispatch — the rider passes beneath it. ' +
+      'Consistent with the ground stab reaching only ~2 m above the board, but the mechanism is unconfirmed: ' +
+      "this pins the fixture's behaviour, not an engine rule.",
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.45, 0.05, 1],
+    liftM: 2,
+    expect: 'no-dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'auth-gate-m1-solid',
-    question: 'Does response mass change dispatch? No — nonzero mass (which also routes the bake through ModelSolid_) still dispatches.',
-    shape: 'gate', profile: profile(1, { responseMass: 1e30 }), color: [1, 0.05, 0.55, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Does response mass change dispatch? No — nonzero mass (which also routes the bake through ModelSolid_) still dispatches.',
+    shape: 'gate',
+    profile: profile(1, { responseMass: 1e30 }),
+    color: [1, 0.05, 0.55, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'trigger-volume',
-    question: 'Does an invisible effect-trigger volume dispatch? Yes — the editor\'s purpose-built contact host works.',
-    shape: 'volume', profile: profile(1), color: [0.05, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question: "Does an invisible effect-trigger volume dispatch? Yes — the editor's purpose-built contact host works.",
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.05, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'auth-gate-sound',
-    question: 'Does a collision chain carrying a Play-sound node dispatch from an authored host? Yes. '
-      + 'Whether the sound is AUDIBLE is a separate question this cell cannot answer.',
-    shape: 'gate', profile: profile(1), color: [0.9, 0.9, 0.3, 1], extraNode: 'sound',
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Does a collision chain carrying a Play-sound node dispatch from an authored host? Yes. ' +
+      'Whether the sound is AUDIBLE is a separate question this cell cannot answer.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.9, 0.9, 0.3, 1],
+    extraNode: 'sound',
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   // ---- gates (MainType 5) --------------------------------------------------------------------------
   // Four gate modes, 453 bindings across the retail corpus, and not one of them had been behaviorally observed
@@ -787,158 +843,249 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
   // tunable mode is asked in both directions and the pair together pins the word's sense.
   {
     id: 'gate-human',
-    question: 'A human-rider gate passes for the player, so a gate node does not break the chain it leads. '
-      + 'Whether it REJECTS an AI rider is a different question this fixture cannot ask — it has one board.',
-    shape: 'gate', profile: profile(1), color: [0.2, 0.9, 0.6, 1], leadNode: 'gate-human',
-    expect: 'dispatch', demonstrated: GATE_BATCH,
+    question:
+      'A human-rider gate passes for the player, so a gate node does not break the chain it leads. ' +
+      'Whether it REJECTS an AI rider is a different question this fixture cannot ask — it has one board.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.2, 0.9, 0.6, 1],
+    leadNode: 'gate-human',
+    expect: 'dispatch',
+    demonstrated: GATE_BATCH,
   },
   {
     id: 'gate-random-always',
-    question: 'A random gate at p=1 always passes, and its p=0 partner below never does. The pair pins the '
-      + 'probability word: the value IS the chance of passing, read the way the template writes it.',
-    shape: 'gate', profile: profile(1), color: [0.4, 0.8, 0.95, 1], leadNode: 'gate-random',
-    tuneLead: payload => { (payload.type5 as Record<string, unknown>).U2 = f32(1); },
-    expect: 'dispatch', demonstrated: GATE_BATCH,
+    question:
+      'A random gate at p=1 always passes, and its p=0 partner below never does. The pair pins the ' +
+      'probability word: the value IS the chance of passing, read the way the template writes it.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.4, 0.8, 0.95, 1],
+    leadNode: 'gate-random',
+    tuneLead: payload => {
+      (payload.type5 as Record<string, unknown>).U2 = f32(1);
+    },
+    expect: 'dispatch',
+    demonstrated: GATE_BATCH,
   },
   {
     id: 'gate-random-never',
-    question: 'The same random gate at p=0 never passes — three passes, nothing constructed, not once. This '
-      + 'is the half of the pair that carries the weight: it proves the gate can STOP a chain, which is the '
-      + 'only thing that makes the other four gate modes worth authoring.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.5, 0.2, 1], leadNode: 'gate-random',
-    tuneLead: payload => { (payload.type5 as Record<string, unknown>).U2 = f32(0); },
-    expect: 'no-dispatch', demonstrated: GATE_BATCH,
+    question:
+      'The same random gate at p=0 never passes — three passes, nothing constructed, not once. This ' +
+      'is the half of the pair that carries the weight: it proves the gate can STOP a chain, which is the ' +
+      'only thing that makes the other four gate modes worth authoring.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.5, 0.2, 1],
+    leadNode: 'gate-random',
+    tuneLead: payload => {
+      (payload.type5 as Record<string, unknown>).U2 = f32(0);
+    },
+    expect: 'no-dispatch',
+    demonstrated: GATE_BATCH,
   },
   // The speed gate, on the selector-0 side, which is the side that is settled end to end. Three cells: the
   // selector against a fixed threshold, and the threshold against a fixed selector. Together they are a
   // working, tunable gate — the one authored control the node has.
   {
     id: 'gate-speed-shut',
-    question: 'The first speed gate ever seen to STOP a chain. Selector 0 — at most — against a threshold of '
-      + 'zero, which no moving rider is under: nothing was constructed in any pass. Read with the two cells '
-      + 'below, which move one word each, this is a gate whose sense AND threshold are both demonstrated.',
-    shape: 'gate', profile: profile(1), color: [0.9, 0.3, 0.3, 1], leadNode: 'gate-speed',
-    tuneLead: payload => { Object.assign(payload.type5 as object, { U0: 0, U1: 0, U2: f32(0) }); },
-    expect: 'no-dispatch', demonstrated: SPEED_SWEEP,
+    question:
+      'The first speed gate ever seen to STOP a chain. Selector 0 — at most — against a threshold of ' +
+      'zero, which no moving rider is under: nothing was constructed in any pass. Read with the two cells ' +
+      'below, which move one word each, this is a gate whose sense AND threshold are both demonstrated.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.9, 0.3, 0.3, 1],
+    leadNode: 'gate-speed',
+    tuneLead: payload => {
+      Object.assign(payload.type5 as object, { U0: 0, U1: 0, U2: f32(0) });
+    },
+    expect: 'no-dispatch',
+    demonstrated: SPEED_SWEEP,
   },
   {
     id: 'gate-speed-atleast-pass',
-    question: 'The other sense, and it only works when the selector is spelled exactly. The word is declared '
-      + 'a float and read as an int, so retail\'s at-least selector is the float whose BITS are 1 — it prints '
-      + 'as 1e-45. This cell carries that, against a threshold of 30, and fires every pass. Authoring 1.0 '
-      + 'instead reaches the runtime as 1065353216, matches nothing, and falls through to a path that simply '
-      + 'passes: a gate that looks tuned and gates nothing.',
-    shape: 'gate', profile: profile(1), color: [0.3, 0.85, 0.4, 1], leadNode: 'gate-speed',
-    tuneLead: payload => { Object.assign(payload.type5 as object, { U0: 0, U1: SELECTOR_AT_LEAST, U2: f32(30) }); },
-    expect: 'dispatch', demonstrated: SELECTOR_BATCH,
+    question:
+      'The other sense, and it only works when the selector is spelled exactly. The word is declared ' +
+      "a float and read as an int, so retail's at-least selector is the float whose BITS are 1 — it prints " +
+      'as 1e-45. This cell carries that, against a threshold of 30, and fires every pass. Authoring 1.0 ' +
+      'instead reaches the runtime as 1065353216, matches nothing, and falls through to a path that simply ' +
+      'passes: a gate that looks tuned and gates nothing.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.3, 0.85, 0.4, 1],
+    leadNode: 'gate-speed',
+    tuneLead: payload => {
+      Object.assign(payload.type5 as object, { U0: 0, U1: SELECTOR_AT_LEAST, U2: f32(30) });
+    },
+    expect: 'dispatch',
+    demonstrated: SELECTOR_BATCH,
   },
   {
     id: 'gate-speed-atleast-block',
-    question: 'The same bit-exact at-least selector against 1e6, a speed nothing reaches — and it BLOCKS, '
-      + 'every pass. This is the cell that closes the node out: both senses work, both read the threshold, '
-      + 'and the earlier "at-least never blocks anything" result was a wrong selector spelling rather than a '
-      + 'branch that ignores its word. A speed gate is fully tunable in either direction.',
-    shape: 'gate', profile: profile(1), color: [0.85, 0.45, 0.75, 1], leadNode: 'gate-speed',
-    tuneLead: payload => { Object.assign(payload.type5 as object, { U0: 0, U1: SELECTOR_AT_LEAST, U2: f32(1e6) }); },
-    expect: 'no-dispatch', demonstrated: SELECTOR_BATCH,
+    question:
+      'The same bit-exact at-least selector against 1e6, a speed nothing reaches — and it BLOCKS, ' +
+      'every pass. This is the cell that closes the node out: both senses work, both read the threshold, ' +
+      'and the earlier "at-least never blocks anything" result was a wrong selector spelling rather than a ' +
+      'branch that ignores its word. A speed gate is fully tunable in either direction.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.85, 0.45, 0.75, 1],
+    leadNode: 'gate-speed',
+    tuneLead: payload => {
+      Object.assign(payload.type5 as object, { U0: 0, U1: SELECTOR_AT_LEAST, U2: f32(1e6) });
+    },
+    expect: 'no-dispatch',
+    demonstrated: SELECTOR_BATCH,
   },
   {
     id: 'gate-speed-threshold',
-    question: 'The THRESHOLD is read, and it is read in raw engine units. Same at-most selector as the shut '
-      + 'cell, threshold moved from 0.0 to 1e6: this one fires, where 0.0 and 30.0 both block. Since the '
-      + 'rider crosses at about 25 m/s, a threshold of 30 blocking places the compared speed above 30 and '
-      + 'below 1e6 — i.e. centimetres per second, ~2500, not metres. That also makes retail\'s one authored '
-      + 'speed gate legible at last: Merqury City writes 30.0, which on this reading is a gate almost nothing '
-      + 'gets under.',
-    shape: 'gate', profile: profile(1), color: [0.4, 0.8, 0.95, 1], leadNode: 'gate-speed',
-    tuneLead: payload => { Object.assign(payload.type5 as object, { U0: 0, U1: 0, U2: f32(1e6) }); },
-    expect: 'dispatch', demonstrated: THRESHOLD_BATCH,
+    question:
+      'The THRESHOLD is read, and it is read in raw engine units. Same at-most selector as the shut ' +
+      'cell, threshold moved from 0.0 to 1e6: this one fires, where 0.0 and 30.0 both block. Since the ' +
+      'rider crosses at about 25 m/s, a threshold of 30 blocking places the compared speed above 30 and ' +
+      "below 1e6 — i.e. centimetres per second, ~2500, not metres. That also makes retail's one authored " +
+      'speed gate legible at last: Merqury City writes 30.0, which on this reading is a gate almost nothing ' +
+      'gets under.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.4, 0.8, 0.95, 1],
+    leadNode: 'gate-speed',
+    tuneLead: payload => {
+      Object.assign(payload.type5 as object, { U0: 0, U1: 0, U2: f32(1e6) });
+    },
+    expect: 'dispatch',
+    demonstrated: THRESHOLD_BATCH,
   },
   {
     id: 'gate-speed-retail-30',
-    question: 'Merqury City\'s own speed gate, authored value and all: at most 30.0. It blocks, every pass. '
-      + 'That is the cell that pins the UNITS — a rider crossing at ~25 m/s would be under a 30 m/s ceiling '
-      + 'and would pass, so the compared speed is not in metres. It is above 30 and below 1e6, which is the '
-      + 'engine\'s centimetres: ~2500. Retail\'s gate is therefore a near-closed one, not a mid-range filter.',
-    shape: 'gate', profile: profile(1), color: [0.35, 0.7, 0.9, 1], leadNode: 'gate-speed',
-    tuneLead: payload => { Object.assign(payload.type5 as object, { U0: 0, U1: 0, U2: f32(30) }); },
-    expect: 'no-dispatch', demonstrated: THRESHOLD_BATCH,
+    question:
+      "Merqury City's own speed gate, authored value and all: at most 30.0. It blocks, every pass. " +
+      'That is the cell that pins the UNITS — a rider crossing at ~25 m/s would be under a 30 m/s ceiling ' +
+      'and would pass, so the compared speed is not in metres. It is above 30 and below 1e6, which is the ' +
+      "engine's centimetres: ~2500. Retail's gate is therefore a near-closed one, not a mid-range filter.",
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.35, 0.7, 0.9, 1],
+    leadNode: 'gate-speed',
+    tuneLead: payload => {
+      Object.assign(payload.type5 as object, { U0: 0, U1: 0, U2: f32(30) });
+    },
+    expect: 'no-dispatch',
+    demonstrated: THRESHOLD_BATCH,
   },
   {
     id: 'gate-no-live-node',
-    question: 'The fourth gate mode passes on an instance that is running nothing. Its rejecting half is out '
-      + 'of this fixture\'s reach: an instance already holding a node reports its slot as spoken for, so the '
-      + 'dispatch signal cannot say whether the gate rejected or the reading was simply unavailable.',
-    shape: 'gate', profile: profile(1), color: [0.5, 0.9, 0.4, 1], leadNode: 'gate-no-live-node',
-    expect: 'dispatch', demonstrated: SPEED_SWEEP,
+    question:
+      'The fourth gate mode passes on an instance that is running nothing. Its rejecting half is out ' +
+      "of this fixture's reach: an instance already holding a node reports its slot as spoken for, so the " +
+      'dispatch signal cannot say whether the gate rejected or the reading was simply unavailable.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.5, 0.9, 0.4, 1],
+    leadNode: 'gate-no-live-node',
+    expect: 'dispatch',
+    demonstrated: SPEED_SWEEP,
   },
   // ---- nodes that report more than their own construction ------------------------------------------
   {
     id: 'boost-directional',
-    question: 'A directional boost node builds on an authored prop and carries the mode it was authored with '
-      + '(+0x14 sub-type 7, +0x60 mode 1). Its +0x5c countdown read 0 at every sample, so this cell says the '
-      + 'node is CONSTRUCTED and correctly configured. That it also PUSHES is the separate cell below, which '
-      + 'needed a host with depth rather than this thin panel.\n\n'
-      + 'This cell is the suite\'s least reliably OBSERVED, and the node is not the reason. Across eleven '
-      + 'runs its live-node slot read empty in five, including one of three on a control ISO carrying '
-      + 'neither the message nodes nor the executable patch — so the miss pre-dates them. Every run built '
-      + 'with --patches hud-text posted its banner, all seven of seven, including all four the slot missed: the '
-      + 'chain ran every time and the host-side sampler did not always catch the node. That is what the '
-      + 'banner grade in verdict.py is for, and this is the cell that established the need for it.',
-    shape: 'gate', profile: profile(1), color: [1, 0.75, 0.1, 1], extraNode: 'directional-boost',
-    expect: 'dispatch', demonstrated: GATE_BATCH,
+    question:
+      'A directional boost node builds on an authored prop and carries the mode it was authored with ' +
+      '(+0x14 sub-type 7, +0x60 mode 1). Its +0x5c countdown read 0 at every sample, so this cell says the ' +
+      'node is CONSTRUCTED and correctly configured. That it also PUSHES is the separate cell below, which ' +
+      'needed a host with depth rather than this thin panel.\n\n' +
+      "This cell is the suite's least reliably OBSERVED, and the node is not the reason. Across eleven " +
+      'runs its live-node slot read empty in five, including one of three on a control ISO carrying ' +
+      'neither the message nodes nor the executable patch — so the miss pre-dates them. Every run built ' +
+      'with --patches hud-text posted its banner, all seven of seven, including all four the slot missed: the ' +
+      'chain ran every time and the host-side sampler did not always catch the node. That is what the ' +
+      'banner grade in verdict.py is for, and this is the cell that established the need for it.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.75, 0.1, 1],
+    extraNode: 'directional-boost',
+    expect: 'dispatch',
+    demonstrated: GATE_BATCH,
   },
   {
     id: 'lap-boost',
-    question: 'A lap boost builds and lifts NOBODY, and the pair with the cell above is what makes that a '
-      + 'finding rather than a broken node: identical box, identical lift tuning (retail\'s own finish-tube '
-      + 'rate 5 / target 25 / axis 0,0,1), and one launches the rider every pass while this one never does. '
-      + 'Its node is real — the slot reads sub-type 15 — and the run reports laps_remaining 0 for its whole '
-      + 'length, which is the gate: the node snapshots each rider\'s lap counter as it is built and drops '
-      + 'anyone whose snapshot goes negative on the first tick. The counter is seeded from the COURSE, 4 on '
-      + 'Megaplex and 0 everywhere else, so a lap boost anywhere but that one slot is inert by construction.',
-    shape: 'volume', profile: profile(1), color: [0.4, 0.35, 1, 1], sizeM: BOOST_BOX_M,
+    question:
+      'A lap boost builds and lifts NOBODY, and the pair with the cell above is what makes that a ' +
+      "finding rather than a broken node: identical box, identical lift tuning (retail's own finish-tube " +
+      'rate 5 / target 25 / axis 0,0,1), and one launches the rider every pass while this one never does. ' +
+      'Its node is real — the slot reads sub-type 15 — and the run reports laps_remaining 0 for its whole ' +
+      "length, which is the gate: the node snapshots each rider's lap counter as it is built and drops " +
+      'anyone whose snapshot goes negative on the first tick. The counter is seeded from the COURSE, 4 on ' +
+      'Megaplex and 0 everywhere else, so a lap boost anywhere but that one slot is inert by construction.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.4, 0.35, 1, 1],
+    sizeM: BOOST_BOX_M,
     extraNode: 'lap-boost',
-    expect: 'dispatch', expectRider: [{ signal: 'rise', atMost: 2 }], demonstrated: SPEED_SWEEP,
+    expect: 'dispatch',
+    expectRider: [{ signal: 'rise', atMost: 2 }],
+    demonstrated: SPEED_SWEEP,
   },
   {
     id: 'prop-roller',
-    question: 'A roller on a CUSTOM prop builds, runs, and moves NOTHING — which is the answer Slopesmith\'s '
-      + 'validator predicts and the reason to keep its warning. The instance status changes exactly as the '
-      + 'spec describes, but its world translation holds one value for the whole run. A built node and a '
-      + 'working roller look identical from the effect slot; an authored ISO prop has no native body for the '
-      + 'roller to drive [Trailmap: 150-control-state].',
-    shape: 'gate', profile: profile(1), color: [0.75, 0.4, 0.15, 1], extraNode: 'roller',
-    watchEntityFlags: true, watchEntityPos: true, expect: 'dispatch', demonstrated: GATE_BATCH,
+    question:
+      "A roller on a CUSTOM prop builds, runs, and moves NOTHING — which is the answer Slopesmith's " +
+      'validator predicts and the reason to keep its warning. The instance status changes exactly as the ' +
+      'spec describes, but its world translation holds one value for the whole run. A built node and a ' +
+      'working roller look identical from the effect slot; an authored ISO prop has no native body for the ' +
+      'roller to drive [Trailmap: 150-control-state].',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.75, 0.4, 0.15, 1],
+    extraNode: 'roller',
+    watchEntityFlags: true,
+    watchEntityPos: true,
+    expect: 'dispatch',
+    demonstrated: GATE_BATCH,
   },
   {
     id: 'flip-suppressed-by-kill',
-    question: 'A breakable-kill (SubType 5) leading a flip chain does NOT suppress it: the slot reads '
-      + 'sub-type 11 and the flip paints normally, frame 0 -> 1 over one material and two frames. The kill '
-      + 'node is destroyed by the flip exactly as a Debounce is — the factory drops a live node of a '
-      + 'different sub-type before building — so within ONE chain a sub-5 node gates nothing. This does not '
-      + 'touch the separate claim that a sub-5 node left live by an EARLIER dispatch blocks a later one. '
-      + 'the instance status also caught the draw gate opening and closing: while the flip '
-      + 'runs, the low bits leave the drawn state, which is the disappearance a failed flip leaves behind.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.55, 0.6, 1], recipe: 'button-no-debounce',
-    leadNode: 'breakable-kill', needsFlipbook: true, watchEntityFlags: true,
-    expect: 'dispatch', expectPaint: true, demonstrated: GATE_BATCH,
+    question:
+      'A breakable-kill (SubType 5) leading a flip chain does NOT suppress it: the slot reads ' +
+      'sub-type 11 and the flip paints normally, frame 0 -> 1 over one material and two frames. The kill ' +
+      'node is destroyed by the flip exactly as a Debounce is — the factory drops a live node of a ' +
+      'different sub-type before building — so within ONE chain a sub-5 node gates nothing. This does not ' +
+      'touch the separate claim that a sub-5 node left live by an EARLIER dispatch blocks a later one. ' +
+      'the instance status also caught the draw gate opening and closing: while the flip ' +
+      'runs, the low bits leave the drawn state, which is the disappearance a failed flip leaves behind.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.55, 0.6, 1],
+    recipe: 'button-no-debounce',
+    leadNode: 'breakable-kill',
+    needsFlipbook: true,
+    watchEntityFlags: true,
+    expect: 'dispatch',
+    expectPaint: true,
+    demonstrated: GATE_BATCH,
   },
   {
     id: 'breakable-kill-hides',
-    question: 'A breakable kill DOES hide its prop, and the hide lasts exactly as long as its node. Read as '
-      + 'two ordered traces against each other: the instance flag word leaves the drawn state '
-      + '(0x…01a3 -> 0x…0105) on the same sample the node appears in the effect slot, and returns to it '
-      + '(-> 0x…00a3) on the same sample the node disappears — identical timestamps, three passes of three. '
-      + 'That is what separates "the kill does not apply to authored props" from "the node was torn down and '
-      + 'restored the draw", and it is the second. A set of observed values could never have told them apart. '
-      + 'What the kill leaves installed is its OWN kind of tombstone, sub-type 1006 rather than the plain 5 '
-      + 'that DeadNodeMode 2 leaves further up the course — the distinct tag that stops a kill being '
-      + 'reapplied. One lasting mark remains: bit 0x0100 clears at teardown and stays clear, meaning '
-      + 'unrecovered. Holding a prop hidden past that end is what the latch columns exist for — untested here.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.55, 0.6, 1], extraNode: 'breakable-kill',
-    watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: PAD_BATCH,
+    question:
+      'A breakable kill DOES hide its prop, and the hide lasts exactly as long as its node. Read as ' +
+      'two ordered traces against each other: the instance flag word leaves the drawn state ' +
+      '(0x…01a3 -> 0x…0105) on the same sample the node appears in the effect slot, and returns to it ' +
+      '(-> 0x…00a3) on the same sample the node disappears — identical timestamps, three passes of three. ' +
+      'That is what separates "the kill does not apply to authored props" from "the node was torn down and ' +
+      'restored the draw", and it is the second. A set of observed values could never have told them apart. ' +
+      'What the kill leaves installed is its OWN kind of tombstone, sub-type 1006 rather than the plain 5 ' +
+      'that DeadNodeMode 2 leaves further up the course — the distinct tag that stops a kill being ' +
+      'reapplied. One lasting mark remains: bit 0x0100 clears at teardown and stays clear, meaning ' +
+      'unrecovered. Holding a prop hidden past that end is what the latch columns exist for — untested here.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.55, 0.6, 1],
+    extraNode: 'breakable-kill',
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: PAD_BATCH,
   },
   // ---- how long a node lives, and what ends it -----------------------------------------------------
   // Read as slot HISTORIES rather than as values: sub-type 5 acts on whatever node the instance currently has
@@ -948,53 +1095,79 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
   // identical to a 20 Hz sampler.
   {
     id: 'debounce-baseline',
-    question: 'An untouched 3 s Debounce holds the live-node slot for 2.98-3.05 s, three passes of three. '
-      + 'This is the control the three cells below are read against: each of them puts a Wait and one '
-      + 'node-lifetime command behind the same Debounce, and what they change is this number.',
-    shape: 'gate', profile: profile(1), color: [0.6, 0.6, 0.6, 1],
-    watchLiveNode: true, expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'An untouched 3 s Debounce holds the live-node slot for 2.98-3.05 s, three passes of three. ' +
+      'This is the control the three cells below are read against: each of them puts a Wait and one ' +
+      'node-lifetime command behind the same Debounce, and what they change is this number.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.6, 0.6, 0.6, 1],
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'dead-destroy',
-    question: 'DeadNodeMode 0 TEARS THE LIVE NODE DOWN. The same Debounce, one second of Wait, then the '
-      + 'destroy: the slot empties at 0.98-1.07 s instead of the cell above\'s three seconds, in nine '
-      + 'crossings across three passes. A node lifetime is therefore something an authored chain can end early.',
-    shape: 'gate', profile: profile(1), color: [0.9, 0.25, 0.25, 1],
-    tailNodes: ['wait', 'node-destroy'], watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'DeadNodeMode 0 TEARS THE LIVE NODE DOWN. The same Debounce, one second of Wait, then the ' +
+      "destroy: the slot empties at 0.98-1.07 s instead of the cell above's three seconds, in nine " +
+      'crossings across three passes. A node lifetime is therefore something an authored chain can end early.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.9, 0.25, 0.25, 1],
+    tailNodes: ['wait', 'node-destroy'],
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'dead-pause',
-    question: 'DeadNodeMode 1 ends the node\'s hold on the instance too, at the same 1.00-1.03 s — and the '
-      + 'slot cannot tell it apart from mode 0. The disassembly says they differ (mode 1 calls a stop virtual '
-      + 'where mode 0 calls the destructor), the measurement says both release the slot, and reporting only '
-      + 'what was seen is the difference between a catalogue and a wish list. What is proven is that the mode '
-      + 'ACTS; which of the two things it does is not observable from here.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.65, 0.2, 1],
-    tailNodes: ['wait', 'node-pause'], watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      "DeadNodeMode 1 ends the node's hold on the instance too, at the same 1.00-1.03 s — and the " +
+      'slot cannot tell it apart from mode 0. The disassembly says they differ (mode 1 calls a stop virtual ' +
+      'where mode 0 calls the destructor), the measurement says both release the slot, and reporting only ' +
+      'what was seen is the difference between a catalogue and a wish list. What is proven is that the mode ' +
+      'ACTS; which of the two things it does is not observable from here.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.65, 0.2, 1],
+    tailNodes: ['wait', 'node-pause'],
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'dead-tombstone',
-    question: 'DeadNodeMode 2 is the one mode that leaves something behind, and it is the only one this '
-      + 'fixture can name outright: the sub-type word moves 2 -> 5 one Wait after contact and the slot NEVER '
-      + 'empties again for the rest of the run, where both cells above release it. The Debounce is destroyed '
-      + 'and a fresh sub-type-5 tombstone takes its place, which is also why this cell fires once and the '
-      + 'others re-fire on every crossing — the mode bails on a node that is already tagged 5.',
-    shape: 'gate', profile: profile(1), color: [0.6, 0.45, 0.95, 1],
-    tailNodes: ['wait', 'node-tombstone'], watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'DeadNodeMode 2 is the one mode that leaves something behind, and it is the only one this ' +
+      'fixture can name outright: the sub-type word moves 2 -> 5 one Wait after contact and the slot NEVER ' +
+      'empties again for the rest of the run, where both cells above release it. The Debounce is destroyed ' +
+      'and a fresh sub-type-5 tombstone takes its place, which is also why this cell fires once and the ' +
+      'others re-fire on every crossing — the mode bails on a node that is already tagged 5.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.6, 0.45, 0.95, 1],
+    tailNodes: ['wait', 'node-tombstone'],
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'wait-delays-kill',
-    question: 'A Wait node HOLDS ITS CHAIN, proven against an effect already known to leave a mark. The '
-      + 'breakable kill takes the instance out of the drawn state on the same sample its node appears — that '
-      + 'is what `breakable-kill-hides` above shows. Put a Wait in front and the two come apart by '
-      + '1.017 s every time: the slot fills with the Debounce on contact, and only a second later does the '
-      + 'sub-type become 1006 and the draw bits move. Nothing but a working delay produces that gap.',
-    shape: 'gate', profile: profile(1), color: [0.3, 0.8, 0.85, 1],
-    tailNodes: ['wait', 'breakable-kill'], watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'A Wait node HOLDS ITS CHAIN, proven against an effect already known to leave a mark. The ' +
+      'breakable kill takes the instance out of the drawn state on the same sample its node appears — that ' +
+      'is what `breakable-kill-hides` above shows. Put a Wait in front and the two come apart by ' +
+      '1.017 s every time: the slot fills with the Debounce on contact, and only a second later does the ' +
+      'sub-type become 1006 and the draw bits move. Nothing but a working delay produces that gap.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.3, 0.8, 0.85, 1],
+    tailNodes: ['wait', 'breakable-kill'],
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   // ---- bound-node control messages, seen arriving --------------------------------------------------
   // The first authored MainType-3 nodes ever caught leaving a mark. They only reach anything because the
@@ -1004,24 +1177,35 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
   // live — and the pair below is what turns "the node was built" into "the command arrived".
   {
     id: 'flag-set',
-    question: 'A Set-instance-flag command ARRIVES: the instance status word gains bit 0x0800 on the same '
-      + 'sample the contact fills the slot, three passes of three, and — the part worth authoring around — '
-      + 'it KEEPS it after the Debounce that received the command has expired and released the slot. The '
-      + 'mark outlives the node, where the breakable kill\'s draw bits are restored at teardown.',
-    shape: 'gate', profile: profile(1), color: [0.35, 0.9, 0.45, 1],
-    tailNodes: ['instance-flag-set'], watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'A Set-instance-flag command ARRIVES: the instance status word gains bit 0x0800 on the same ' +
+      'sample the contact fills the slot, three passes of three, and — the part worth authoring around — ' +
+      'it KEEPS it after the Debounce that received the command has expired and released the slot. The ' +
+      "mark outlives the node, where the breakable kill's draw bits are restored at teardown.",
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.35, 0.9, 0.45, 1],
+    tailNodes: ['instance-flag-set'],
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'flag-set-clear',
-    question: 'And the other command takes it back. Set on contact, Wait, clear: the word steps up to 0x0800 '
-      + 'and returns exactly 1.00-1.02 s later, on every crossing of every pass. The pair pins both opcodes '
-      + 'and the Wait between them at once, and it is the same word read three ways — set-and-hold above, '
-      + 'set-and-release here.',
-    shape: 'gate', profile: profile(1), color: [0.2, 0.7, 0.55, 1],
+    question:
+      'And the other command takes it back. Set on contact, Wait, clear: the word steps up to 0x0800 ' +
+      'and returns exactly 1.00-1.02 s later, on every crossing of every pass. The pair pins both opcodes ' +
+      'and the Wait between them at once, and it is the same word read three ways — set-and-hold above, ' +
+      'set-and-release here.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.2, 0.7, 0.55, 1],
     tailNodes: ['instance-flag-set', 'wait', 'instance-flag-clear'],
-    watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   // ---- the node builds, and that is the whole claim ------------------------------------------------
   // A factory branch existing in the ELF is not evidence that an AUTHORED payload survives the exporter, the
@@ -1030,28 +1214,45 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
   // memory. Saying so is the difference between a catalogue and a demo reel.
   {
     id: 'fence-builds',
-    question: 'An authored fence flex reaches the disc and builds: the live slot reads sub-type 12 on every '
-      + 'crossing of every pass. Whether the prop visibly springs is not readable from here.',
-    shape: 'gate', profile: profile(1), color: [0.5, 0.75, 0.9, 1], extraNode: 'fence',
-    watchEntityFlags: true, expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'An authored fence flex reaches the disc and builds: the live slot reads sub-type 12 on every ' +
+      'crossing of every pass. Whether the prop visibly springs is not readable from here.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.5, 0.75, 0.9, 1],
+    extraNode: 'fence',
+    watchEntityFlags: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'mesh-throw-builds',
-    question: 'The breakable shatter builds too — sub-type 20, three passes of three. Its host does not move '
-      + 'while it runs: the instance translation holds one value for the whole run, which is what a node that '
-      + 'throws the model\'s PIECES rather than the model should do, and is worth having on the record beside '
-      + 'the roller cell, where the same reading means the opposite.',
-    shape: 'gate', profile: profile(1), color: [0.8, 0.55, 0.3, 1], extraNode: 'mesh-animation',
-    watchEntityFlags: true, watchEntityPos: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'The breakable shatter builds too — sub-type 20, three passes of three. Its host does not move ' +
+      'while it runs: the instance translation holds one value for the whole run, which is what a node that ' +
+      "throws the model's PIECES rather than the model should do, and is worth having on the record beside " +
+      'the roller cell, where the same reading means the opposite.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.8, 0.55, 0.3, 1],
+    extraNode: 'mesh-animation',
+    watchEntityFlags: true,
+    watchEntityPos: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'counter-builds',
-    question: 'The multi-switch gate builds, sub-type 6. Construction only, and deliberately: driving a '
-      + 'counter takes the two MainType-3 commands that mark and decrement it, and neither has a recovered '
-      + 'word to read its remaining count from, so a cell that claimed more would be claiming it blind.',
-    shape: 'gate', profile: profile(1), color: [0.75, 0.7, 0.35, 1], extraNode: 'counter',
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'The multi-switch gate builds, sub-type 6. Construction only, and deliberately: driving a ' +
+      'counter takes the two MainType-3 commands that mark and decrement it, and neither has a recovered ' +
+      'word to read its remaining count from, so a cell that claimed more would be claiming it blind.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.75, 0.7, 0.35, 1],
+    extraNode: 'counter',
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   // ---- the persistent circumstance ------------------------------------------------------------------
   // Everything above, and every cell before it, is a COLLISION effect. These four are the other column: a
@@ -1069,30 +1270,48 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
   // mountain, not to the level, and an author who needs one running before it is approached should know that.
   {
     id: 'persist-uv-scroll',
-    question: 'An authored PERSISTENT effect installs on hardware. A UV scroll — the river\'s own flow node — '
-      + 'takes the live-node slot with sub-type 10 while the rider is still 7 s up the course, three passes '
-      + 'of three, and hands it to the collision chain\'s Debounce (sub-type 2) on contact. Nothing in the '
-      + 'collision chain could have put a 10 there, so this is the persistent column running.',
-    shape: 'gate', profile: profile(1), color: [0.25, 0.6, 1, 1], persistentNode: 'uv-scroll',
-    watchLiveNode: true, expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      "An authored PERSISTENT effect installs on hardware. A UV scroll — the river's own flow node — " +
+      'takes the live-node slot with sub-type 10 while the rider is still 7 s up the course, three passes ' +
+      "of three, and hands it to the collision chain's Debounce (sub-type 2) on contact. Nothing in the " +
+      'collision chain could have put a 10 there, so this is the persistent column running.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.25, 0.6, 1, 1],
+    persistentNode: 'uv-scroll',
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'persist-flag-wave',
-    question: 'The wind-waved banner in the same column, sub-type 13, every pass. This one keeps the slot '
-      + 'until its part of the course goes away rather than yielding it on contact. Whether the cloth moves '
-      + 'is not readable from here; that the node is installed and running is.',
-    shape: 'gate', profile: profile(1), color: [0.9, 0.4, 0.6, 1], persistentNode: 'flag',
-    watchLiveNode: true, expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'The wind-waved banner in the same column, sub-type 13, every pass. This one keeps the slot ' +
+      'until its part of the course goes away rather than yielding it on contact. Whether the cloth moves ' +
+      'is not readable from here; that the node is installed and running is.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.9, 0.4, 0.6, 1],
+    persistentNode: 'flag',
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   {
     id: 'persist-crowd-box',
-    question: 'The grandstand descriptor, sub-type 17 — and the one persistent node that leaves a mark on '
-      + 'the instance as well as the slot: the status word moves to 0x…01a5 as the node installs and back '
-      + 'when it goes, setting the same 0x04 the other draw-affecting nodes set. Consistent with a node that '
-      + 'takes over how the prop is drawn, which is exactly what a crowd box is for.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.85, 0.4, 1], persistentNode: 'crowd-box',
-    watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'The grandstand descriptor, sub-type 17 — and the one persistent node that leaves a mark on ' +
+      'the instance as well as the slot: the status word moves to 0x…01a5 as the node installs and back ' +
+      'when it goes, setting the same 0x04 the other draw-affecting nodes set. Consistent with a node that ' +
+      'takes over how the prop is drawn, which is exactly what a crowd box is for.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.85, 0.4, 1],
+    persistentNode: 'crowd-box',
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
 ] as const;
 
@@ -1119,10 +1338,14 @@ export const AUTO_TEST_CASES: readonly AutoTestCase[] = [
 export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the retail crash bag every course here leads with. A run where this stays dark '
-      + 'indicts the harness or the menu prelude, so nothing below it is worth reading.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Control: the retail crash bag every course here leads with. A run where this stays dark ' +
+      'indicts the harness or the menu prelude, so nothing below it is worth reading.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   // ---- a chain runs THROUGH a particle emitter, in both columns ------------------------------------
   // Worth starting from what was already true, because it is what made the real question invisible: the
@@ -1137,37 +1360,56 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // one appearing is execution having run through the first.
   {
     id: 'emitter-burst',
-    question: 'A chain RUNS ON past a particle emitter. The emitter leads and the ordinary Debounce sits '
-      + 'behind it: the slot took sub-type 2 on contact and held it 3.00 s — the Debounce\'s own full life — '
-      + 'in three passes of three. That is the collision column\'s answer to the one thing sixty passes of '
-      + 'marker emitters could not show, since a marker is always the last node in its chain. Nothing here '
-      + 'reads a particle; the harness reads memory, and what it read is that a MainType-2 node hands its '
-      + 'chain on rather than ending it.',
-    shape: 'gate', profile: profile(1), color: [0.35, 0.95, 0.75, 1], leadNode: 'timer-emitter',
-    watchLiveNode: true, expect: 'dispatch', demonstrated: EMITTER_BATCH,
+    question:
+      'A chain RUNS ON past a particle emitter. The emitter leads and the ordinary Debounce sits ' +
+      "behind it: the slot took sub-type 2 on contact and held it 3.00 s — the Debounce's own full life — " +
+      "in three passes of three. That is the collision column's answer to the one thing sixty passes of " +
+      'marker emitters could not show, since a marker is always the last node in its chain. Nothing here ' +
+      'reads a particle; the harness reads memory, and what it read is that a MainType-2 node hands its ' +
+      'chain on rather than ending it.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.35, 0.95, 0.75, 1],
+    leadNode: 'timer-emitter',
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: EMITTER_BATCH,
   },
   {
     id: 'emitter-persistent',
-    question: 'The same, in the column an emitter is actually authored in — and the first persistent graph '
-      + 'here of more than one node. Emitter, then a Flag wave: the slot came up holding sub-type 13, the '
-      + 'Flag, and kept it 18 s rather than a Debounce\'s 3, while the instance status word moved '
-      + '0x00a100a3 -> 0x00a101a5 and back, which is the same draw bit every persistent draw-affecting node '
-      + 'sets. Three passes of three. The pairing is the whole design: an emitter alone in a persistent '
-      + 'graph installs nothing, so "it ran" and "the graph never started" would be one reading — the node '
-      + 'behind it is what makes the column legible.',
-    shape: 'gate', profile: profile(1), color: [0.2, 0.8, 0.55, 1],
-    persistentNode: 'timer-emitter', persistentTailNodes: ['flag'],
-    watchLiveNode: true, watchEntityFlags: true, expect: 'dispatch', demonstrated: EMITTER_BATCH,
+    question:
+      'The same, in the column an emitter is actually authored in — and the first persistent graph ' +
+      'here of more than one node. Emitter, then a Flag wave: the slot came up holding sub-type 13, the ' +
+      "Flag, and kept it 18 s rather than a Debounce's 3, while the instance status word moved " +
+      '0x00a100a3 -> 0x00a101a5 and back, which is the same draw bit every persistent draw-affecting node ' +
+      'sets. Three passes of three. The pairing is the whole design: an emitter alone in a persistent ' +
+      'graph installs nothing, so "it ran" and "the graph never started" would be one reading — the node ' +
+      'behind it is what makes the column legible.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.2, 0.8, 0.55, 1],
+    persistentNode: 'timer-emitter',
+    persistentTailNodes: ['flag'],
+    watchLiveNode: true,
+    watchEntityFlags: true,
+    expect: 'dispatch',
+    demonstrated: EMITTER_BATCH,
   },
   {
     id: 'persist-anim-object',
-    question: 'A model clip installs even on a model that HAS no clip: sub-type 256 every pass, on an '
-      + 'authored panel with no keyframes anywhere in it. The constructor does not refuse, and the prop never '
-      + 'translates — so an author who attaches this to the wrong model gets a node that builds, runs and '
-      + 'animates nothing, with no error anywhere to tell them.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.85, 0.65, 1], persistentNode: 'anim-object',
-    watchEntityPos: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LIFETIME_BATCH,
+    question:
+      'A model clip installs even on a model that HAS no clip: sub-type 256 every pass, on an ' +
+      'authored panel with no keyframes anywhere in it. The constructor does not refuse, and the prop never ' +
+      'translates — so an author who attaches this to the wrong model gets a node that builds, runs and ' +
+      'animates nothing, with no error anywhere to tell them.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.85, 0.65, 1],
+    persistentNode: 'anim-object',
+    watchEntityPos: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LIFETIME_BATCH,
   },
   // ---- the two suppression latches -----------------------------------------------------------------
   // Every cell above this point measures something the engine DOES. These seven measure something it stops
@@ -1181,80 +1423,134 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // would have concluded the opposite of the truth.
   {
     id: 'latch-persist-control',
-    question: 'CONTROL for the cell below. A persistent flag-wave with both latch columns empty: the node '
-      + 'installs ahead of the rider and the slot EMPTIES 17.6-17.9 s later when that stretch of mountain '
-      + 'deactivates behind them, putting the instance flag word back to its rest value. That teardown is '
-      + 'the thing the next cell suppresses.',
-    shape: 'gate', profile: profile(1), color: [0.9, 0.4, 0.6, 1], persistentNode: 'flag',
-    watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atLeast: 1 }, demonstrated: LATCH_BATCH,
+    question:
+      'CONTROL for the cell below. A persistent flag-wave with both latch columns empty: the node ' +
+      'installs ahead of the rider and the slot EMPTIES 17.6-17.9 s later when that stretch of mountain ' +
+      'deactivates behind them, putting the instance flag word back to its rest value. That teardown is ' +
+      'the thing the next cell suppresses.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.9, 0.4, 0.6, 1],
+    persistentNode: 'flag',
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atLeast: 1 },
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'latch-persist-region',
-    question: 'The region-exit latch WORKS, and one empty graph in column 3 is the whole of it. Identical '
-      + 'flag-wave, identical everything else: this slot never empties for the rest of the run, where the '
-      + 'control\'s lets go at 17.6 s, three passes of three. The flag word settles one bit away from the '
-      + 'control\'s too — the node keeps the draw bit it set and only the region-active bit clears — which '
-      + 'is the spec\'s "keeps its node and its current pose" read off the instance.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.55, 0.75, 1], persistentNode: 'flag',
-    latches: ['slot3'], watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atMost: 0 }, demonstrated: LATCH_BATCH,
+    question:
+      'The region-exit latch WORKS, and one empty graph in column 3 is the whole of it. Identical ' +
+      'flag-wave, identical everything else: this slot never empties for the rest of the run, where the ' +
+      "control's lets go at 17.6 s, three passes of three. The flag word settles one bit away from the " +
+      "control's too — the node keeps the draw bit it set and only the region-active bit clears — which " +
+      'is the spec\'s "keeps its node and its current pose" read off the instance.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.55, 0.75, 1],
+    persistentNode: 'flag',
+    latches: ['slot3'],
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atMost: 0 },
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'latch-kill-control',
-    question: 'CONTROL for the two kill cells below, and a restatement of what a bare breakable does: the '
-      + 'prop leaves the drawn state when the node is built and is put BACK when the node goes, 8.8-9.0 s '
-      + 'later. A breakable that unbreaks itself is the problem the next two cells are shopping for a fix to.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.55, 0.6, 1], extraNode: 'breakable-kill',
-    watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atLeast: 1 }, demonstrated: LATCH_BATCH,
+    question:
+      'CONTROL for the two kill cells below, and a restatement of what a bare breakable does: the ' +
+      'prop leaves the drawn state when the node is built and is put BACK when the node goes, 8.8-9.0 s ' +
+      'later. A breakable that unbreaks itself is the problem the next two cells are shopping for a fix to.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.55, 0.6, 1],
+    extraNode: 'breakable-kill',
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atLeast: 1 },
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'latch-kill-end',
-    question: 'The effect-end latch does NOTHING for a breakable kill, and that negative is half the finding. '
-      + 'Column 4 populated, and the cell behaves exactly like the control above: node built, prop hidden, '
-      + 'node torn down, prop drawn again, three passes of three. Column 4 is consulted when a node reaches '
-      + 'its OWN end and asks to retire, and a kill\'s tombstone never does — so the column is never read. '
-      + 'The obvious-sounding latch is the wrong one here.',
-    shape: 'gate', profile: profile(1), color: [0.45, 0.45, 0.5, 1], extraNode: 'breakable-kill',
-    latches: ['slot4'], watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atLeast: 1 }, demonstrated: LATCH_BATCH,
+    question:
+      'The effect-end latch does NOTHING for a breakable kill, and that negative is half the finding. ' +
+      'Column 4 populated, and the cell behaves exactly like the control above: node built, prop hidden, ' +
+      'node torn down, prop drawn again, three passes of three. Column 4 is consulted when a node reaches ' +
+      "its OWN end and asks to retire, and a kill's tombstone never does — so the column is never read. " +
+      'The obvious-sounding latch is the wrong one here.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.45, 0.45, 0.5, 1],
+    extraNode: 'breakable-kill',
+    latches: ['slot4'],
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atLeast: 1 },
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'latch-kill-region',
-    question: 'And this is the one that keeps a prop broken. Same kill, column 3 instead: the slot never '
-      + 'empties and the instance is still in the undrawn state at the end of the run, where both cells '
-      + 'above are drawn again — three passes, byte-identical. What ends a kill is its region unloading '
-      + 'rather than the node retiring, so suppressing THAT teardown is what makes the break permanent. '
-      + 'This pairing is the `breakable-permanent` recipe.',
-    shape: 'gate', profile: profile(1), color: [0.65, 0.6, 0.55, 1], extraNode: 'breakable-kill',
-    latches: ['slot3'], watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atMost: 0 }, demonstrated: LATCH_BATCH,
+    question:
+      'And this is the one that keeps a prop broken. Same kill, column 3 instead: the slot never ' +
+      'empties and the instance is still in the undrawn state at the end of the run, where both cells ' +
+      'above are drawn again — three passes, byte-identical. What ends a kill is its region unloading ' +
+      'rather than the node retiring, so suppressing THAT teardown is what makes the break permanent. ' +
+      'This pairing is the `breakable-permanent` recipe.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.65, 0.6, 0.55, 1],
+    extraNode: 'breakable-kill',
+    latches: ['slot3'],
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atMost: 0 },
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'latch-flip-control',
-    question: 'CONTROL for the cell below, and the fixture\'s only node that reliably ends ITSELF: the '
-      + 'proven ride-over button, whose flip is a pulse because of its authored Length. Three separate nodes '
-      + 'are built and released over 2.6 s, each living 0.47-0.50 s — the authored half second, measured.',
-    shape: 'gate', profile: profile(1), color: [1, 0.08, 0.08, 1], recipe: 'ride-over-button',
-    needsFlipbook: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atLeast: 2 }, expectPaint: true, demonstrated: LATCH_BATCH,
+    question:
+      "CONTROL for the cell below, and the fixture's only node that reliably ends ITSELF: the " +
+      'proven ride-over button, whose flip is a pulse because of its authored Length. Three separate nodes ' +
+      'are built and released over 2.6 s, each living 0.47-0.50 s — the authored half second, measured.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.08, 0.08, 1],
+    recipe: 'ride-over-button',
+    needsFlipbook: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atLeast: 2 },
+    expectPaint: true,
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'latch-flip-end',
-    question: 'The effect-end latch WORKS, on the node that actually takes that path. Same button, column 4 '
-      + 'populated: ONE node per crossing instead of three, holding the slot for 10.6-11.0 s instead of half '
-      + 'a second — kept alive at its end instead of destructing, which is what the column is documented to '
-      + 'do. Read against `latch-kill-end` above, the pair says the column is real and only reaches effects '
-      + 'that finish on their own. This cell deliberately claims nothing about the slot COUNT, and that is a '
-      + 'correction: the claim is per crossing, the harness counts per run, and a region that reactivates '
-      + 'long after the rider has gone adds a whole second cycle. It did exactly that in one gold pass of '
-      + 'three — same node, same 10.2 s life, two cycles instead of one — and a bar tight enough to be worth '
-      + 'setting was a bar fitted to how long the bench course happened to be. The control above keeps its '
-      + 'bar because cycling can only ADD pulses to it, never take them away.',
-    shape: 'gate', profile: profile(1), color: [1, 0.35, 0.15, 1], recipe: 'ride-over-button',
-    needsFlipbook: true, latches: ['slot4'], watchLiveNode: true,
-    expect: 'dispatch', expectPaint: true, demonstrated: LATCH_BATCH,
+    question:
+      'The effect-end latch WORKS, on the node that actually takes that path. Same button, column 4 ' +
+      'populated: ONE node per crossing instead of three, holding the slot for 10.6-11.0 s instead of half ' +
+      'a second — kept alive at its end instead of destructing, which is what the column is documented to ' +
+      'do. Read against `latch-kill-end` above, the pair says the column is real and only reaches effects ' +
+      'that finish on their own. This cell deliberately claims nothing about the slot COUNT, and that is a ' +
+      'correction: the claim is per crossing, the harness counts per run, and a region that reactivates ' +
+      'long after the rider has gone adds a whole second cycle. It did exactly that in one gold pass of ' +
+      'three — same node, same 10.2 s life, two cycles instead of one — and a bar tight enough to be worth ' +
+      'setting was a bar fitted to how long the bench course happened to be. The control above keeps its ' +
+      'bar because cycling can only ADD pulses to it, never take them away.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.35, 0.15, 1],
+    recipe: 'ride-over-button',
+    needsFlipbook: true,
+    latches: ['slot4'],
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectPaint: true,
+    demonstrated: LATCH_BATCH,
   },
   // ---- bound-node control, read off the receiver's own state -----------------------------------------
   // These four commands were authorable and ungradeable for the whole life of the fixture: a MainType-3
@@ -1268,57 +1564,81 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // now the receiver. Anything between them that takes the slot redirects the message, silently.
   {
     id: 'ctl-uv-phase',
-    question: 'Set UV phase reaches a UV-scroll receiver, and the receiver is genuinely SCROLLING while it '
-      + 'does. The node builds from this collision chain (sub-type 10, which retail only ever authors '
-      + 'persistently), its rate word reads back the authored -0.02 exactly, its U phase advances every '
-      + 'sample — and its V phase holds both values the chain writes, 2.5 and then -3.0 a Wait later, three '
-      + 'passes of three. Two arbitrary numbers turning up where the chain asked for them is not something '
-      + 'drift or a default produces.',
-    shape: 'gate', profile: profile(1), color: [0.25, 0.6, 1, 1],
-    extraNode: 'uv-scroll', tailNodes: ['material-uv-offset', 'wait', 'material-uv-offset'],
+    question:
+      'Set UV phase reaches a UV-scroll receiver, and the receiver is genuinely SCROLLING while it ' +
+      'does. The node builds from this collision chain (sub-type 10, which retail only ever authors ' +
+      'persistently), its rate word reads back the authored -0.02 exactly, its U phase advances every ' +
+      'sample — and its V phase holds both values the chain writes, 2.5 and then -3.0 a Wait later, three ' +
+      'passes of three. Two arbitrary numbers turning up where the chain asked for them is not something ' +
+      'drift or a default produces.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.25, 0.6, 1, 1],
+    extraNode: 'uv-scroll',
+    tailNodes: ['material-uv-offset', 'wait', 'material-uv-offset'],
     tuneTail: (payload, id, index) => {
       if (id === 'material-uv-offset') (payload.type3 as Record<string, unknown>).U1 = index === 0 ? 2.5 : -3;
     },
-    nodeWatch: UV_SCROLL_STATE_WATCH, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LATCH_BATCH,
+    nodeWatch: UV_SCROLL_STATE_WATCH,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'ctl-counter-mark',
-    question: 'A counter COUNTS, and one 32-bit read carries both halves of its state. A two-input counter '
-      + 'goes to "input 1 marked, one to go" on contact and "inputs 1 and 2 marked, none to go" a Wait later '
-      + '— so a mark sets its own bit AND steps the count down, which the disassembly says is one operation '
-      + 'and this walks end to end. The node then lives exactly 1.02-1.08 s, which is that Wait: a counter '
-      + 'reaching zero fires its slot\'s trigger column and retires, so its own lifetime IS the elapse.',
-    shape: 'gate', profile: profile(1), color: [0.75, 0.7, 0.35, 1],
-    extraNode: 'counter', tailNodes: ['counter-mark', 'wait', 'counter-mark'],
+    question:
+      'A counter COUNTS, and one 32-bit read carries both halves of its state. A two-input counter ' +
+      'goes to "input 1 marked, one to go" on contact and "inputs 1 and 2 marked, none to go" a Wait later ' +
+      '— so a mark sets its own bit AND steps the count down, which the disassembly says is one operation ' +
+      'and this walks end to end. The node then lives exactly 1.02-1.08 s, which is that Wait: a counter ' +
+      "reaching zero fires its slot's trigger column and retires, so its own lifetime IS the elapse.",
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.75, 0.7, 0.35, 1],
+    extraNode: 'counter',
+    tailNodes: ['counter-mark', 'wait', 'counter-mark'],
     tuneTail: (payload, id, index) => {
       if (id === 'counter-mark') (payload.type3 as Record<string, unknown>).U1 = index === 0 ? 1 : 2;
     },
-    nodeWatch: COUNTER_STATE_WATCH, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LATCH_BATCH,
+    nodeWatch: COUNTER_STATE_WATCH,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'ctl-counter-decrement',
-    question: 'The other counter command, on the same word, and the contrast is the point: this one reads '
-      + '"one to go, NOTHING marked" where the cell above reads "input 1 marked, one to go". A decrement '
-      + 'steps the count without bookkeeping about which input arrived, which is what separates counting '
-      + 'occurrences from collecting distinct switches.',
-    shape: 'gate', profile: profile(1), color: [0.85, 0.6, 0.25, 1],
-    extraNode: 'counter', tailNodes: ['counter-decrement', 'wait', 'counter-decrement'],
-    nodeWatch: COUNTER_STATE_WATCH, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LATCH_BATCH,
+    question:
+      'The other counter command, on the same word, and the contrast is the point: this one reads ' +
+      '"one to go, NOTHING marked" where the cell above reads "input 1 marked, one to go". A decrement ' +
+      'steps the count without bookkeeping about which input arrived, which is what separates counting ' +
+      'occurrences from collecting distinct switches.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.85, 0.6, 0.25, 1],
+    extraNode: 'counter',
+    tailNodes: ['counter-decrement', 'wait', 'counter-decrement'],
+    nodeWatch: COUNTER_STATE_WATCH,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LATCH_BATCH,
   },
   {
     id: 'ctl-anim-budget',
-    question: 'Grant clip budget lands AND is spent. The receiver stores seconds and the command divides the '
-      + 'authored frame count by the engine\'s 30 fps timebase, so 30 frames arrives as exactly 1.000 s — '
-      + 'and that second then drains smoothly to zero over the following second before the chain grants it '
-      + 'again, every pass. A budget being consumed in real time is the gate this node exists to be, which '
-      + 'no reading of the command alone could have shown.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.85, 0.65, 1],
-    extraNode: 'anim-delta', tailNodes: ['anim-delta-grant', 'wait', 'anim-delta-grant'],
-    nodeWatch: ANIM_DELTA_STATE_WATCH, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: LATCH_BATCH,
+    question:
+      'Grant clip budget lands AND is spent. The receiver stores seconds and the command divides the ' +
+      "authored frame count by the engine's 30 fps timebase, so 30 frames arrives as exactly 1.000 s — " +
+      'and that second then drains smoothly to zero over the following second before the chain grants it ' +
+      'again, every pass. A budget being consumed in real time is the gate this node exists to be, which ' +
+      'no reading of the command alone could have shown.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.85, 0.65, 1],
+    extraNode: 'anim-delta',
+    tailNodes: ['anim-delta-grant', 'wait', 'anim-delta-grant'],
+    nodeWatch: ANIM_DELTA_STATE_WATCH,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: LATCH_BATCH,
   },
   // ---- the deferred column, and the one payload that is safe in it ---------------------------------
   // The trigger column is the odd circumstance out: nothing outside the effects runtime can reach it. It is
@@ -1336,48 +1656,72 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // twenty column-5 chains do carry a DeadNode and every one is fired by a Cracked node instead.
   {
     id: 'trig-counter-control',
-    question: 'CONTROL for the two below: a one-input Counter, a Wait, and the mark that empties it, with '
-      + 'the trigger column left EMPTY. The counter builds, counts, and releases the instance about a second '
-      + 'later, and nothing else happens — no draw change, no flag. Without it the cells below would only '
-      + 'show that something happened near a counter, which the collision chain is also standing next to.',
-    shape: 'gate', profile: profile(1), color: [0.5, 0.5, 0.5, 1],
-    extraNode: 'counter', tuneExtra: payload => {
+    question:
+      'CONTROL for the two below: a one-input Counter, a Wait, and the mark that empties it, with ' +
+      'the trigger column left EMPTY. The counter builds, counts, and releases the instance about a second ' +
+      'later, and nothing else happens — no draw change, no flag. Without it the cells below would only ' +
+      'show that something happened near a counter, which the collision chain is also standing next to.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.5, 0.5, 0.5, 1],
+    extraNode: 'counter',
+    tuneExtra: payload => {
       (payload.type0 as { Counter: Record<string, unknown> }).Counter.Count = 1;
     },
     tailNodes: ['wait', 'counter-mark'],
-    nodeWatch: COUNTER_STATE_WATCH, watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: TRIGGER_BATCH,
+    nodeWatch: COUNTER_STATE_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: TRIGGER_BATCH,
   },
   {
     id: 'trig-counter-flag',
-    question: 'A bound-node command in the trigger column reaches NOBODY, and the negative is worth as much '
-      + 'as the cell below. Same schedule, a Set-instance-flag in the column: bit 0x0800 never appears, on '
-      + 'any pass — while the identical command in a COLLISION chain sets it every time (`flag-set`). The '
-      + 'column did run; the message had nothing to address. A deferred chain runs a beat after the counter '
-      + 'that scheduled it has retired and let the instance go, so put the effect itself here rather than a '
-      + 'message aimed at one.',
-    shape: 'gate', profile: profile(1), color: [0.35, 0.9, 0.45, 1],
-    extraNode: 'counter', tuneExtra: payload => {
+    question:
+      'A bound-node command in the trigger column reaches NOBODY, and the negative is worth as much ' +
+      'as the cell below. Same schedule, a Set-instance-flag in the column: bit 0x0800 never appears, on ' +
+      'any pass — while the identical command in a COLLISION chain sets it every time (`flag-set`). The ' +
+      'column did run; the message had nothing to address. A deferred chain runs a beat after the counter ' +
+      'that scheduled it has retired and let the instance go, so put the effect itself here rather than a ' +
+      'message aimed at one.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.35, 0.9, 0.45, 1],
+    extraNode: 'counter',
+    tuneExtra: payload => {
       (payload.type0 as { Counter: Record<string, unknown> }).Counter.Count = 1;
     },
-    tailNodes: ['wait', 'counter-mark'], triggerNodes: ['instance-flag-set'],
-    nodeWatch: COUNTER_STATE_WATCH, watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: TRIGGER_BATCH,
+    tailNodes: ['wait', 'counter-mark'],
+    triggerNodes: ['instance-flag-set'],
+    nodeWatch: COUNTER_STATE_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: TRIGGER_BATCH,
   },
   {
     id: 'trig-counter-hop',
-    question: 'THE TRIGGER CIRCUMSTANCE RUNS — the last authorable column that had never been demonstrated. '
-      + 'Contact builds a one-input Counter, a Wait holds a second, the mark empties it, and that counter\'s '
-      + 'own update fires column 5. What the column carries is retail\'s own answer: a MainType-7 hop, the '
-      + 'only payload that does not install on the counter it would be pulling out from under. The claim is '
-      + 'read off the COMPANION beside this cell, not off this one.',
-    shape: 'gate', profile: profile(1), color: [0.6, 0.45, 0.95, 1],
-    extraNode: 'counter', tuneExtra: payload => {
+    question:
+      'THE TRIGGER CIRCUMSTANCE RUNS — the last authorable column that had never been demonstrated. ' +
+      "Contact builds a one-input Counter, a Wait holds a second, the mark empties it, and that counter's " +
+      "own update fires column 5. What the column carries is retail's own answer: a MainType-7 hop, the " +
+      'only payload that does not install on the counter it would be pulling out from under. The claim is ' +
+      'read off the COMPANION beside this cell, not off this one.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.6, 0.45, 0.95, 1],
+    extraNode: 'counter',
+    tuneExtra: payload => {
       (payload.type0 as { Counter: Record<string, unknown> }).Counter.Count = 1;
     },
-    tailNodes: ['wait', 'counter-mark'], triggerNodes: ['act-on-instance'], companion: 'debounce',
-    nodeWatch: COUNTER_STATE_WATCH, watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: TRIGGER_BATCH,
+    tailNodes: ['wait', 'counter-mark'],
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    nodeWatch: COUNTER_STATE_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: TRIGGER_BATCH,
   },
   // ---- the flip, asked so the answer can only be the command ---------------------------------------
   // A pair, and the pair is the whole proof. `material-texture-frame` sat unbadged through four batches for
@@ -1388,42 +1732,61 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // argument into a reading.
   {
     id: 'flip-frame-command',
-    question: 'Set texture frame SELECTS a frame. The receiver is a flipbook authored at Speed 0, a node '
-      + 'with no clock of its own, and it sits on frame 1 — the frame this chain names — for the whole of '
-      + 'its life, three passes of three. Read against the control below, which is the identical node '
-      + 'without the command and rests at frame 0.',
-    shape: 'gate', profile: profile(1), color: [1, 0.5, 0.1, 1],
-    extraNode: 'texture-flip', tuneExtra: payload => {
+    question:
+      'Set texture frame SELECTS a frame. The receiver is a flipbook authored at Speed 0, a node ' +
+      'with no clock of its own, and it sits on frame 1 — the frame this chain names — for the whole of ' +
+      'its life, three passes of three. Read against the control below, which is the identical node ' +
+      'without the command and rests at frame 0.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.5, 0.1, 1],
+    extraNode: 'texture-flip',
+    tuneExtra: payload => {
       const flip = (payload.type0 as { TextureFlip: Record<string, unknown> }).TextureFlip;
       Object.assign(flip, { Speed: 0, Length: 0 });
     },
-    tailNodes: ['material-texture-frame'], needsFlipbook: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: FLIP_BATCH,
+    tailNodes: ['material-texture-frame'],
+    needsFlipbook: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: FLIP_BATCH,
   },
   {
     id: 'flip-frame-control',
-    question: 'CONTROL for the cell above, and the reason that cell is a proof rather than a coincidence. '
-      + 'The same Speed-0 flipbook with nothing addressing it rests at frame 0 in every pass. A commanded '
-      + 'cell reading frame 1 means nothing until this one has been read: a resting frame of 1 would have '
-      + 'looked identical, and no amount of repetition would have separated them.',
-    shape: 'gate', profile: profile(1), color: [0.7, 0.4, 0.2, 1],
-    extraNode: 'texture-flip', tuneExtra: payload => {
+    question:
+      'CONTROL for the cell above, and the reason that cell is a proof rather than a coincidence. ' +
+      'The same Speed-0 flipbook with nothing addressing it rests at frame 0 in every pass. A commanded ' +
+      'cell reading frame 1 means nothing until this one has been read: a resting frame of 1 would have ' +
+      'looked identical, and no amount of repetition would have separated them.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.7, 0.4, 0.2, 1],
+    extraNode: 'texture-flip',
+    tuneExtra: payload => {
       const flip = (payload.type0 as { TextureFlip: Record<string, unknown> }).TextureFlip;
       Object.assign(flip, { Speed: 0, Length: 0 });
     },
-    needsFlipbook: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: FLIP_BATCH,
+    needsFlipbook: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: FLIP_BATCH,
   },
   {
     id: 'flip-dwell',
-    question: 'The dwell screen is a flipbook with a different CLOCK, and the clock is the whole evidence — '
-      + 'there is no value here a plain flip does not also hold. Frame 1 is flashed for 0.084-0.116 s, a '
-      + 'fixed tenth of a second, and frame 0 held between flashes for 1.22-3.23 s, differing run to run, '
-      + 'which is the randomization the node is named for. A plain flipbook at Speed 3.5 changes about every '
-      + '0.3 s and spends equal time on each frame.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.85, 0.4, 1],
-    persistentNode: 'texture-flip-dwell', needsFlipbook: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: FLIP_BATCH,
+    question:
+      'The dwell screen is a flipbook with a different CLOCK, and the clock is the whole evidence — ' +
+      'there is no value here a plain flip does not also hold. Frame 1 is flashed for 0.084-0.116 s, a ' +
+      'fixed tenth of a second, and frame 0 held between flashes for 1.22-3.23 s, differing run to run, ' +
+      'which is the randomization the node is named for. A plain flipbook at Speed 3.5 changes about every ' +
+      '0.3 s and spends equal time on each frame.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.85, 0.4, 1],
+    persistentNode: 'texture-flip-dwell',
+    needsFlipbook: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: FLIP_BATCH,
   },
   // ---- the first authored spline mover, and the proof that it runs ---------------------------------
   // The HOST cannot show motion and never could: a mover keeps one pose per copy in a separate buffer rebuilt
@@ -1435,46 +1798,66 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // end, which is the whole mover class proven on one cell.
   {
     id: 'spline-mover',
-    question: 'An authored spline mover SURVIVES, which was the open question — without the packer\'s '
-      + 'preamble the payload reaches RAM and no mover allocation lives past the frame. Its host holds the '
-      + 'shape every retail mover runs inside: the slot fills a few seconds ahead of the rider and never '
-      + 'lets go. The host itself never moves, and that is correct rather than a failure — the copies are '
-      + 'drawn elsewhere. And it MOVES: the mover is not reachable from its host at all — its distance word '
-      + 'is at neither offset off the slot pointer, because the object in the slot is not the mover — so it '
-      + 'is found in the heap by the pointer it holds back to this instance. One candidate of four advances, '
-      + 'at 2000.3 units a second against the 2000.0 its authored 33.3333 a tick implies at 60 Hz, wrapping '
-      + 'to near zero on reaching the route\'s 12715.7 end. Needs a window bounded short of the finish; a '
-      + 'full-length pass reports SEARCH SKIPPED, which is correct rather than a regression.',
-    shape: 'gate', profile: profile(1), color: [0.4, 0.7, 1, 1],
+    question:
+      "An authored spline mover SURVIVES, which was the open question — without the packer's " +
+      'preamble the payload reaches RAM and no mover allocation lives past the frame. Its host holds the ' +
+      'shape every retail mover runs inside: the slot fills a few seconds ahead of the rider and never ' +
+      'lets go. The host itself never moves, and that is correct rather than a failure — the copies are ' +
+      'drawn elsewhere. And it MOVES: the mover is not reachable from its host at all — its distance word ' +
+      'is at neither offset off the slot pointer, because the object in the slot is not the mover — so it ' +
+      'is found in the heap by the pointer it holds back to this instance. One candidate of four advances, ' +
+      'at 2000.3 units a second against the 2000.0 its authored 33.3333 a tick implies at 60 Hz, wrapping ' +
+      "to near zero on reaching the route's 12715.7 end. Needs a window bounded short of the finish; a " +
+      'full-length pass reports SEARCH SKIPPED, which is correct rather than a regression.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.4, 0.7, 1, 1],
     persistentNode: 'spline-animation',
-    nodeWatch: SPLINE_TRAVEL_WATCH, lateWatch: SPLINE_MOVER_LATE_WATCH,
-    watchEntityFlags: true, watchEntityPos: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atMost: 0 }, demonstrated: FLIP_BATCH,
+    nodeWatch: SPLINE_TRAVEL_WATCH,
+    lateWatch: SPLINE_MOVER_LATE_WATCH,
+    watchEntityFlags: true,
+    watchEntityPos: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atMost: 0 },
+    demonstrated: FLIP_BATCH,
   },
   {
     id: 'spline-mover-halt',
-    question: 'A mover\'s own prop CANNOT ALSO BE A TRIGGER, and this cell is how that was found. It carries '
-      + 'the identical Wait-then-set-instance-flag chain as `flag-set-plain` below, and the bit never '
-      + 'appears — not once in three passes — where the plain prop gets it every time. The mover\'s packed '
-      + 'source reads undrawn from the first sample: the engine draws copies and hides the original, so '
-      + 'there is nothing there to hit. Put the contact on a second placement and reach the mover with '
-      + 'Run-on-another-instance.',
-    shape: 'gate', profile: profile(1), color: [0.3, 0.5, 0.95, 1],
+    question:
+      "A mover's own prop CANNOT ALSO BE A TRIGGER, and this cell is how that was found. It carries " +
+      'the identical Wait-then-set-instance-flag chain as `flag-set-plain` below, and the bit never ' +
+      "appears — not once in three passes — where the plain prop gets it every time. The mover's packed " +
+      'source reads undrawn from the first sample: the engine draws copies and hides the original, so ' +
+      'there is nothing there to hit. Put the contact on a second placement and reach the mover with ' +
+      'Run-on-another-instance.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.3, 0.5, 0.95, 1],
     persistentNode: 'spline-animation',
     tailNodes: ['wait', 'instance-flag-set'],
-    watchEntityFlags: true, watchEntityPos: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atMost: 0 }, demonstrated: FLIP_BATCH,
+    watchEntityFlags: true,
+    watchEntityPos: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atMost: 0 },
+    demonstrated: FLIP_BATCH,
   },
   {
     id: 'flag-set-plain',
-    question: 'CONTROL for the cell above: the same chain on an ordinary prop, where bit 0x0800 appears in '
-      + 'every pass. Without it, a mover host that never gains the bit would read as a broken command '
-      + 'rather than as a prop nothing can touch — and the bit matters more than it used to, because a '
-      + 'spline mover destroys itself the frame it finds this set on its host.',
-    shape: 'gate', profile: profile(1), color: [0.45, 0.85, 0.55, 1],
+    question:
+      'CONTROL for the cell above: the same chain on an ordinary prop, where bit 0x0800 appears in ' +
+      'every pass. Without it, a mover host that never gains the bit would read as a broken command ' +
+      'rather than as a prop nothing can touch — and the bit matters more than it used to, because a ' +
+      'spline mover destroys itself the frame it finds this set on its host.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.45, 0.85, 0.55, 1],
     tailNodes: ['wait', 'instance-flag-set'],
-    watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: FLIP_BATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: FLIP_BATCH,
   },
   // ---- does a model clip actually PLAY -------------------------------------------------------------
   // Every cell above that touches a model clip is built on an authored panel: four flat vertices with no
@@ -1502,81 +1885,126 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // rider and are judged on what the clock does, not on whether the prop can be hit.
   {
     id: 'clip-flat-control',
-    question: 'CONTROL, and the one that makes the others mean something: the same model-clip node on the '
-      + 'fixture\'s own flat panel, which has no keyframes at all. It should report a play window of 0 and '
-      + 'zero animated records — and its clock should advance anyway, because a wrapping clip with nothing '
-      + 'to wrap around free-runs at one second per second. That pairing IS the lesson: a clip cell judged '
-      + 'on an advancing clock would call this one a success.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.85, 0.65, 1],
-    persistentNode: 'anim-object', nodeWatch: ANIM_CLIP_WATCH, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: CLIP_BATCH,
+    question:
+      'CONTROL, and the one that makes the others mean something: the same model-clip node on the ' +
+      "fixture's own flat panel, which has no keyframes at all. It should report a play window of 0 and " +
+      'zero animated records — and its clock should advance anyway, because a wrapping clip with nothing ' +
+      'to wrap around free-runs at one second per second. That pairing IS the lesson: a clip cell judged ' +
+      'on an advancing clock would call this one a success.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.85, 0.65, 1],
+    persistentNode: 'anim-object',
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: CLIP_BATCH,
   },
   {
     id: 'clip-model-loops',
-    question: 'Does a model clip PLAY? A wrapping model-clip node on an imported model carrying 40 authored '
-      + 'frames. The claim is categorical rather than a number to judge: the window reads 1.3333 s where the '
-      + 'flat-panel control reads 0, and the clock RETURNS to the window start instead of counting past it. '
-      + 'A free-running clock proves nothing on its own — the control free-runs too.',
-    shape: 'clip', profile: profile(1), color: [1, 1, 1, 1], liftM: 2, contactOptional: true,
-    persistentNode: 'anim-object', nodeWatch: ANIM_CLIP_WATCH,
-    watchEntityPos: true, watchLiveNode: true,
-    expect: 'dispatch', demonstrated: CLIP_BATCH,
+    question:
+      'Does a model clip PLAY? A wrapping model-clip node on an imported model carrying 40 authored ' +
+      'frames. The claim is categorical rather than a number to judge: the window reads 1.3333 s where the ' +
+      'flat-panel control reads 0, and the clock RETURNS to the window start instead of counting past it. ' +
+      'A free-running clock proves nothing on its own — the control free-runs too.',
+    shape: 'clip',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    liftM: 2,
+    contactOptional: true,
+    persistentNode: 'anim-object',
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchEntityPos: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    demonstrated: CLIP_BATCH,
   },
   {
     id: 'clip-once-plain',
-    question: 'A PLAY-ONCE clip on the same imported model, with no latch. The engine clamps a loop-mode-0 '
-      + 'clip at its window end, sets the node\'s finished flag, and asks the node to retire — so the clock '
-      + 'should advance, stop AT 1.3333, and the slot let go. On the trick gem this cell used to ride, the '
-      + 'window ended at 0 and the clock read exactly 0.0 in every pass ever recorded: the node still ended '
-      + 'and the slot still released, so the latch below stayed readable, but nothing about a clip PLAYING '
-      + 'was ever in the reading.',
-    shape: 'clip', profile: profile(1), color: [0.9, 0.7, 0.2, 1], liftM: 2, contactOptional: true,
+    question:
+      'A PLAY-ONCE clip on the same imported model, with no latch. The engine clamps a loop-mode-0 ' +
+      "clip at its window end, sets the node's finished flag, and asks the node to retire — so the clock " +
+      'should advance, stop AT 1.3333, and the slot let go. On the trick gem this cell used to ride, the ' +
+      'window ended at 0 and the clock read exactly 0.0 in every pass ever recorded: the node still ended ' +
+      'and the slot still released, so the latch below stayed readable, but nothing about a clip PLAYING ' +
+      'was ever in the reading.',
+    shape: 'clip',
+    profile: profile(1),
+    color: [0.9, 0.7, 0.2, 1],
+    liftM: 2,
+    contactOptional: true,
     persistentNode: 'anim-object',
     tunePersistent: payload => {
       (payload.type0 as { type0Sub256: Record<string, unknown> }).type0Sub256.U0 = 0;
     },
-    nodeWatch: ANIM_CLIP_WATCH, watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atLeast: 1 }, demonstrated: CLIP_BATCH,
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atLeast: 1 },
+    demonstrated: CLIP_BATCH,
   },
   {
     id: 'clip-once-latched',
-    question: 'The iris door, which is the spec\'s own worked example: the identical play-once clip plus '
-      + 'both latch columns. If column 4 does what it is documented to do the node is kept alive at its end '
-      + 'instead of destructing — same clock, stopped at the same final value, but a slot that never lets go '
-      + 'where the cell above releases it. The latch half of this was settled on a zero-length clip, where '
-      + 'the end arrives on tick one; on a model with a real 1.3333 s window it is the same assertion about '
-      + 'a clip that took time to get there.',
-    shape: 'clip', profile: profile(1), color: [0.95, 0.55, 0.75, 1], liftM: 2, contactOptional: true,
+    question:
+      "The iris door, which is the spec's own worked example: the identical play-once clip plus " +
+      'both latch columns. If column 4 does what it is documented to do the node is kept alive at its end ' +
+      'instead of destructing — same clock, stopped at the same final value, but a slot that never lets go ' +
+      'where the cell above releases it. The latch half of this was settled on a zero-length clip, where ' +
+      'the end arrives on tick one; on a model with a real 1.3333 s window it is the same assertion about ' +
+      'a clip that took time to get there.',
+    shape: 'clip',
+    profile: profile(1),
+    color: [0.95, 0.55, 0.75, 1],
+    liftM: 2,
+    contactOptional: true,
     persistentNode: 'anim-object',
     tunePersistent: payload => {
       (payload.type0 as { type0Sub256: Record<string, unknown> }).type0Sub256.U0 = 0;
     },
     latches: ['slot3', 'slot4'],
-    nodeWatch: ANIM_CLIP_WATCH, watchEntityFlags: true, watchLiveNode: true,
-    expect: 'dispatch', expectSlot: { atMost: 0 }, demonstrated: CLIP_BATCH,
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectSlot: { atMost: 0 },
+    demonstrated: CLIP_BATCH,
   },
   {
     id: 'hop-remote',
-    question: 'Can an authored chain act on a DIFFERENT object? This is retail\'s own button shape — the '
-      + 'thing you ride over and the thing that reacts are two instances joined by a MainType-7 hop — and '
-      + 'until now the repack compiler refused any graph that named the instance table, so no authored level '
-      + 'could express it. The companion beside this gate carries no chain and is never touched; a node on '
-      + 'ITS slot can only have arrived through the hop.',
-    shape: 'gate', profile: profile(1), color: [0.1, 0.95, 0.85, 1],
-    leadNode: 'act-on-instance', companion: 'debounce',
-    expect: 'dispatch', demonstrated: GATE_BATCH,
+    question:
+      "Can an authored chain act on a DIFFERENT object? This is retail's own button shape — the " +
+      'thing you ride over and the thing that reacts are two instances joined by a MainType-7 hop — and ' +
+      'until now the repack compiler refused any graph that named the instance table, so no authored level ' +
+      'could express it. The companion beside this gate carries no chain and is never touched; a node on ' +
+      'ITS slot can only have arrived through the hop.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.1, 0.95, 0.85, 1],
+    leadNode: 'act-on-instance',
+    companion: 'debounce',
+    expect: 'dispatch',
+    demonstrated: GATE_BATCH,
   },
   {
     id: 'cracked-pad',
-    question: 'A Cracked surface FIRES its slot\'s deferred-trigger column when its strength runs out — the '
-      + 'first authored use of that column by anything other than a Counter, and the half of the two-stage '
-      + 'break that is not the crack. Retail\'s own pane payload (lifetime -1, strength 5) on a flat panel '
-      + 'ridden over, and the claim is read off the COMPANION: a prop with no chain of its own that the '
-      + 'rider never approaches, whose slot a node can only have reached through the crack giving way.',
-    shape: 'pad', profile: profile(1), color: [0.85, 0.95, 1, 1],
-    extraNode: 'cracked', triggerNodes: ['act-on-instance'], companion: 'debounce',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
-    expect: 'dispatch', demonstrated: CRACKED_BATCH,
+    question:
+      "A Cracked surface FIRES its slot's deferred-trigger column when its strength runs out — the " +
+      'first authored use of that column by anything other than a Counter, and the half of the two-stage ' +
+      "break that is not the crack. Retail's own pane payload (lifetime -1, strength 5) on a flat panel " +
+      'ridden over, and the claim is read off the COMPANION: a prop with no chain of its own that the ' +
+      'rider never approaches, whose slot a node can only have reached through the crack giving way.',
+    shape: 'pad',
+    profile: profile(1),
+    color: [0.85, 0.95, 1, 1],
+    extraNode: 'cracked',
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
+    expect: 'dispatch',
+    demonstrated: CRACKED_BATCH,
   },
   // The pair that says the STRENGTH is the gate, and the reason they graduated together: each is the other's
   // control, and either alone is worth nothing. A cracked surface that fires its column proves the mechanism
@@ -1593,52 +2021,85 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // graded as the ones being added.
   {
     id: 'cracked-shatters',
-    question: 'A Cracked surface FIRES its slot\'s trigger column when its pool runs out. Strength 0.1, low '
-      + 'enough that any contact exhausts it, hopping onto a companion 130 m off the line that carries no '
-      + 'chain and that the rider never approaches — so a node in that slot has exactly one possible sender. '
-      + 'It arrived in every pass of three. A bound-node command was the obvious payload and would have been '
-      + 'unreadable: the Cracked node is what a column-5 chain addresses, and its control method answers to '
-      + 'the lifetime and the strength only, so every other command is dropped without a trace and a column '
-      + 'that fired perfectly would read as one that never ran.',
-    shape: 'volume', profile: profile(1), color: [0.95, 0.35, 0.45, 1], sizeM: CRACKED_BOX_M,
-    extraNode: 'cracked', tuneExtra: payload => {
+    question:
+      "A Cracked surface FIRES its slot's trigger column when its pool runs out. Strength 0.1, low " +
+      'enough that any contact exhausts it, hopping onto a companion 130 m off the line that carries no ' +
+      'chain and that the rider never approaches — so a node in that slot has exactly one possible sender. ' +
+      'It arrived in every pass of three. A bound-node command was the obvious payload and would have been ' +
+      'unreadable: the Cracked node is what a column-5 chain addresses, and its control method answers to ' +
+      'the lifetime and the strength only, so every other command is dropped without a trace and a column ' +
+      'that fired perfectly would read as one that never ran.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.95, 0.35, 0.45, 1],
+    sizeM: CRACKED_BOX_M,
+    extraNode: 'cracked',
+    tuneExtra: payload => {
       (payload.type0 as { type0Sub14: Record<string, unknown> }).type0Sub14.U1 = 0.1;
     },
-    triggerNodes: ['act-on-instance'], companion: 'debounce',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
-    expect: 'dispatch', demonstrated: CRACKED_BATCH,
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
+    expect: 'dispatch',
+    demonstrated: CRACKED_BATCH,
   },
   {
     id: 'cracked-tough',
-    question: 'The same chain, the same trigger column and the same companion at strength 1000, which a '
-      + 'crossing cannot spend — and the companion stayed EMPTY in every pass of three where its twin above '
-      + 'picked up a node in every one. That is what makes the pair a reading rather than an observation: '
-      + 'the column is fired by the surface giving way and by nothing else, so the strength is the gate. '
-      + 'This cell grades its companion at no-dispatch while grading itself at dispatch, because ordinary '
-      + 'contact still builds the Cracked node here; only the deferred half is suppressed.',
-    shape: 'volume', profile: profile(1), color: [0.35, 0.45, 0.6, 1], sizeM: CRACKED_BOX_M,
-    extraNode: 'cracked', tuneExtra: payload => {
+    question:
+      'The same chain, the same trigger column and the same companion at strength 1000, which a ' +
+      'crossing cannot spend — and the companion stayed EMPTY in every pass of three where its twin above ' +
+      'picked up a node in every one. That is what makes the pair a reading rather than an observation: ' +
+      'the column is fired by the surface giving way and by nothing else, so the strength is the gate. ' +
+      'This cell grades its companion at no-dispatch while grading itself at dispatch, because ordinary ' +
+      'contact still builds the Cracked node here; only the deferred half is suppressed.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.35, 0.45, 0.6, 1],
+    sizeM: CRACKED_BOX_M,
+    extraNode: 'cracked',
+    tuneExtra: payload => {
       (payload.type0 as { type0Sub14: Record<string, unknown> }).type0Sub14.U1 = 1000;
     },
-    triggerNodes: ['act-on-instance'], companion: 'debounce', companionExpect: 'no-dispatch',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
-    expect: 'dispatch', demonstrated: CRACKED_BATCH,
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    companionExpect: 'no-dispatch',
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
+    expect: 'dispatch',
+    demonstrated: CRACKED_BATCH,
   },
   {
     id: 'button-no-debounce',
-    question: 'The button\'s leading Debounce does NOTHING in a directly-attached chain: without it the cell '
-      + 'behaves identically to the full recipe — sub-type 11 node, applied frame moving 0 to 1. The flip '
-      + 'destroys the debounce one dispatch later, so the flip\'s own Length is the real gate.',
-    shape: 'gate', profile: profile(1), color: [1, 0.5, 0.1, 1], recipe: 'button-no-debounce',
-    needsFlipbook: true, expect: 'dispatch', expectPaint: true, demonstrated: 'run 20260806-062643',
+    question:
+      "The button's leading Debounce does NOTHING in a directly-attached chain: without it the cell " +
+      'behaves identically to the full recipe — sub-type 11 node, applied frame moving 0 to 1. The flip ' +
+      "destroys the debounce one dispatch later, so the flip's own Length is the real gate.",
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.5, 0.1, 1],
+    recipe: 'button-no-debounce',
+    needsFlipbook: true,
+    expect: 'dispatch',
+    expectPaint: true,
+    demonstrated: 'run 20260806-062643',
   },
   {
     id: 'button-flip',
-    question: 'A ride-over button WORKS end to end on hardware: the chain dispatches, a texture-flip node is '
-      + 'built (sub-type 11) and its applied frame moves between 0 and 1 with one material and two frames '
-      + 'captured. This is the cell that proves authored buttons are supported.',
-    shape: 'gate', profile: profile(1), color: [1, 0.08, 0.08, 1], recipe: 'ride-over-button', needsFlipbook: true,
-    expect: 'dispatch', expectPaint: true, demonstrated: 'run 20260806-061609',
+    question:
+      'A ride-over button WORKS end to end on hardware: the chain dispatches, a texture-flip node is ' +
+      'built (sub-type 11) and its applied frame moves between 0 and 1 with one material and two frames ' +
+      'captured. This is the cell that proves authored buttons are supported.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.08, 0.08, 1],
+    recipe: 'ride-over-button',
+    needsFlipbook: true,
+    expect: 'dispatch',
+    expectPaint: true,
+    demonstrated: 'run 20260806-061609',
   },
   // LAST, and it has to be. This is the only cell that throws the rider into the air, and a launched rider
   // arrives at whatever follows both airborne and climbing — which cost the lap-boost cell above three false
@@ -1647,12 +2108,16 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
   // the launcher at the bottom of the course means it never has to be relied on.
   {
     id: 'boost-up-lifts',
-    question: 'A directional boost really MOVES the rider, which no dispatch reading could have shown. Retail '
-      + 'exhaust-vent tuning — straight up, rate 5, target 25 m/s — in a box deep enough to hold the rider '
-      + 'for around 90 ticks, because rider selection is a containment test re-run every frame and a thin '
-      + 'panel offers one or two ticks of push. The rider goes from descending at 7.5 m/s to climbing, and '
-      + 'the climb is the fastest it rises anywhere on the course in every pass.',
-    shape: 'volume', profile: profile(1), color: [1, 0.75, 0.1, 1], sizeM: BOOST_BOX_M,
+    question:
+      'A directional boost really MOVES the rider, which no dispatch reading could have shown. Retail ' +
+      'exhaust-vent tuning — straight up, rate 5, target 25 m/s — in a box deep enough to hold the rider ' +
+      'for around 90 ticks, because rider selection is a containment test re-run every frame and a thin ' +
+      'panel offers one or two ticks of push. The rider goes from descending at 7.5 m/s to climbing, and ' +
+      'the climb is the fastest it rises anywhere on the course in every pass.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [1, 0.75, 0.1, 1],
+    sizeM: BOOST_BOX_M,
     extraNode: 'directional-boost',
     tuneExtra: payload => {
       const boost = (payload.type0 as { Boost: Record<string, unknown> }).Boost;
@@ -1664,23 +2129,30 @@ export const AUTO_TEST_CASES_B: readonly AutoTestCase[] = [
     // not a failure. The course's own noise floor is the answer to where the bar goes: every cell without a
     // boost reports a rise around -7.5, and the largest positive reading anywhere else on the course is 0.8,
     // from a landing. 1.5 clears that and sits under every push ever measured here.
-    expect: 'dispatch', expectRider: [{ signal: 'rise', atLeast: 1.5 }], demonstrated: SPEED_SWEEP,
+    expect: 'dispatch',
+    expectRider: [{ signal: 'rise', atLeast: 1.5 }],
+    demonstrated: SPEED_SWEEP,
   },
   {
     id: 'rider-reset',
-    question: 'A reset zone dispatches, every pass — and this cell deliberately claims NOTHING about the '
-      + 'rider, which is a correction rather than a gap. The node carries whoever it catches back onto the '
-      + 'course line, so the distance it moves them is how far OFF that line they already were: 2975-2983 m '
-      + 'on the short bench course where the run had sailed past the end into nothing, and 22-25 m here. That '
-      + 'second number was never this cell\'s to claim. It was the rider still being airborne from the boost '
-      + 'launcher one field above, and when the course grew from 2690 m to 3950 m they began landing first — '
-      + 'so the same node, unchanged, moved them 22.3 m in one pass of three and about 2 m in the other two. '
-      + 'A magnitude that belongs to the cell UPHILL is not a property of this node, and the honest move is to '
-      + 'stop asserting it here rather than to lower the bar until it passes. The node\'s own proof is the '
-      + 'bench batch, where the rider was thousands of metres off the line and it brought them back. LAST on '
-      + 'the course of necessity: it is the one node that sends the rider somewhere else.',
-    shape: 'gate', profile: profile(1), color: [1, 0.3, 0.5, 1], extraNode: 'rider-reset',
-    expect: 'dispatch', demonstrated: RESET_BATCH,
+    question:
+      'A reset zone dispatches, every pass — and this cell deliberately claims NOTHING about the ' +
+      'rider, which is a correction rather than a gap. The node carries whoever it catches back onto the ' +
+      'course line, so the distance it moves them is how far OFF that line they already were: 2975-2983 m ' +
+      'on the short bench course where the run had sailed past the end into nothing, and 22-25 m here. That ' +
+      "second number was never this cell's to claim. It was the rider still being airborne from the boost " +
+      'launcher one field above, and when the course grew from 2690 m to 3950 m they began landing first — ' +
+      'so the same node, unchanged, moved them 22.3 m in one pass of three and about 2 m in the other two. ' +
+      'A magnitude that belongs to the cell UPHILL is not a property of this node, and the honest move is to ' +
+      "stop asserting it here rather than to lower the bar until it passes. The node's own proof is the " +
+      'bench batch, where the rider was thousands of metres off the line and it brought them back. LAST on ' +
+      'the course of necessity: it is the one node that sends the rider somewhere else.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.3, 0.5, 1],
+    extraNode: 'rider-reset',
+    expect: 'dispatch',
+    demonstrated: RESET_BATCH,
   },
 ] as const;
 
@@ -1717,83 +2189,140 @@ interface AutoTestGoldCell {
  * is a selection over it, so widening or narrowing the regression suite is editing this list.
  */
 const AUTO_TEST_GOLD_CELLS: readonly AutoTestGoldCell[] = [
-  { id: 'ctl-retail-bag',
-    regression: 'The harness control: a retail model whose mode-1 proxy dispatches. A dark row here indicts '
-      + 'the ride, the menu prelude or the packer, and nothing below it is worth reading.' },
-  { id: 'auth-gate-m1',
-    regression: 'An AUTHORED model\'s mode-1 triangle proxy still dispatches — the baseline every authored '
-      + 'collision shape in Slopesmith depends on.' },
-  { id: 'auth-gate-m2',
-    regression: 'Mode-2 instance bounds still dispatch from an authored host. This is the mode every retail '
-      + 'trigger volume uses, so a red row here breaks trigger volumes generally.' },
-  { id: 'auth-gate-m1-lifted',
-    regression: 'NEGATIVE control: a gate lifted clear of the snow must NOT dispatch. This is the row that '
-      + 'fails when the harness has stopped being able to report silence — without it, a bug that fires '
-      + 'everything reads as a clean sweep.' },
-  { id: 'gate-speed-atleast-pass',
-    regression: 'The circumstance-gate evaluator still lets a satisfied condition through.' },
-  { id: 'gate-speed-atleast-block',
-    regression: 'NEGATIVE control, and the other half of the evaluator: an unsatisfied condition still '
-      + 'blocks. Paired with the cell above, a gate stuck open or stuck shut shows up as one red row.' },
-  { id: 'boost-directional',
-    regression: 'A directional boost node still builds on an authored prop carrying the mode it was authored '
-      + 'with.' },
-  { id: 'lap-boost',
-    regression: 'RIDER-GRADED: a speed pad still moves the player. Graded on the boarder\'s own request '
-      + 'field rather than on dispatch, so a node that builds correctly and pushes nobody fails here.' },
-  { id: 'flip-suppressed-by-kill',
-    regression: 'PAINT-GRADED: a texture flip still paints its applied frame when a breakable-kill leads the '
-      + 'chain. Grades the frame the engine actually applied, not the node that was built.' },
-  { id: 'debounce-baseline',
-    regression: 'The debounce node still builds and re-arms — the timing primitive most authored chains are '
-      + 'wired through.' },
-  { id: 'dead-tombstone',
-    regression: 'DeadNodeMode 2 still leaves its tombstone: the sub-type word moves 2 -> 5 one Wait after '
-      + 'contact and the slot never empties again. The one dead-node mode with an observable aftermath.' },
-  { id: 'wait-delays-kill',
-    regression: 'A Wait still holds a chain across ticks, which is what makes every multi-stage chain in the '
-      + 'catalogue mean anything.' },
-  { id: 'counter-builds',
-    regression: 'A counter node still builds from authored payload.' },
-  { id: 'mesh-throw-builds',
-    regression: 'A mesh-throw node still builds — the breakable-props path.' },
-  { id: 'persist-uv-scroll',
-    regression: 'A persistent UV-scroll node still installs. Scrolling materials are authored per level, so '
-      + 'this covers the whole texture-animation path.' },
-  { id: 'persist-anim-object',
-    regression: 'A model clip still installs (sub-type 256) from an authored chain.' },
-  { id: 'latch-persist-control',
-    regression: 'SLOT-GRADED, and the only row here that proves TEARDOWN: a persistent node fills its slot '
-      + 'and the slot empties again when that stretch of mountain deactivates. Everything else on this '
-      + 'course that fills a slot is expected to hold it, so a leak would hide without this row.' },
-  { id: 'spline-mover',
-    regression: 'SLOT-GRADED: an authored spline mover survives past the frame it was built in. This is the '
-      + 'cell that fails if the packer\'s mover preamble regresses.' },
-  { id: 'clip-once-latched',
-    regression: 'SLOT-GRADED: the latch columns still keep a play-once clip alive at its end frame instead '
-      + 'of letting it destruct. The spec\'s own iris-door example.' },
-  { id: 'hop-remote',
-    regression: 'An authored chain still acts on a DIFFERENT instance through a MainType-7 hop. This is the '
-      + 'row that fails if the repack compiler goes back to refusing graphs that name the instance table, '
-      + 'which would take every authored button with it.' },
-  { id: 'button-flip',
-    regression: 'PAINT-GRADED, end to end: a ride-over button dispatches, builds a flip node and its applied '
-      + 'frame moves. The single row that most closely matches what an author actually builds.' },
-  { id: 'cracked-pad',
-    regression: 'The deferred-trigger column still fires from something other than a Counter: a Cracked '
-      + 'surface carrying retail\'s own payload spends its strength on contact and hops a node onto a '
-      + 'companion the rider never touches. Graded on the COMPANION, so the row means the column resolved '
-      + 'and ran, not merely that the crack was built. The negative control that gives it its meaning — '
-      + 'the same chain at a strength no pass can spend — rides the catalogue as `cracked-tough` rather '
-      + 'than this course, because it needs a volume deeper than GOLD spaces its cells.' },
-  { id: 'boost-up-lifts',
-    regression: 'RIDER-GRADED: a launcher still moves the player, graded on a position discontinuity. The '
-      + 'strongest evidence on the course that an effect reached the rider at all.' },
+  {
+    id: 'ctl-retail-bag',
+    regression:
+      'The harness control: a retail model whose mode-1 proxy dispatches. A dark row here indicts ' +
+      'the ride, the menu prelude or the packer, and nothing below it is worth reading.',
+  },
+  {
+    id: 'auth-gate-m1',
+    regression:
+      "An AUTHORED model's mode-1 triangle proxy still dispatches — the baseline every authored " +
+      'collision shape in Slopesmith depends on.',
+  },
+  {
+    id: 'auth-gate-m2',
+    regression:
+      'Mode-2 instance bounds still dispatch from an authored host. This is the mode every retail ' +
+      'trigger volume uses, so a red row here breaks trigger volumes generally.',
+  },
+  {
+    id: 'auth-gate-m1-lifted',
+    regression:
+      'NEGATIVE control: a gate lifted clear of the snow must NOT dispatch. This is the row that ' +
+      'fails when the harness has stopped being able to report silence — without it, a bug that fires ' +
+      'everything reads as a clean sweep.',
+  },
+  {
+    id: 'gate-speed-atleast-pass',
+    regression: 'The circumstance-gate evaluator still lets a satisfied condition through.',
+  },
+  {
+    id: 'gate-speed-atleast-block',
+    regression:
+      'NEGATIVE control, and the other half of the evaluator: an unsatisfied condition still ' +
+      'blocks. Paired with the cell above, a gate stuck open or stuck shut shows up as one red row.',
+  },
+  {
+    id: 'boost-directional',
+    regression:
+      'A directional boost node still builds on an authored prop carrying the mode it was authored ' + 'with.',
+  },
+  {
+    id: 'lap-boost',
+    regression:
+      "RIDER-GRADED: a speed pad still moves the player. Graded on the boarder's own request " +
+      'field rather than on dispatch, so a node that builds correctly and pushes nobody fails here.',
+  },
+  {
+    id: 'flip-suppressed-by-kill',
+    regression:
+      'PAINT-GRADED: a texture flip still paints its applied frame when a breakable-kill leads the ' +
+      'chain. Grades the frame the engine actually applied, not the node that was built.',
+  },
+  {
+    id: 'debounce-baseline',
+    regression:
+      'The debounce node still builds and re-arms — the timing primitive most authored chains are ' + 'wired through.',
+  },
+  {
+    id: 'dead-tombstone',
+    regression:
+      'DeadNodeMode 2 still leaves its tombstone: the sub-type word moves 2 -> 5 one Wait after ' +
+      'contact and the slot never empties again. The one dead-node mode with an observable aftermath.',
+  },
+  {
+    id: 'wait-delays-kill',
+    regression:
+      'A Wait still holds a chain across ticks, which is what makes every multi-stage chain in the ' +
+      'catalogue mean anything.',
+  },
+  { id: 'counter-builds', regression: 'A counter node still builds from authored payload.' },
+  { id: 'mesh-throw-builds', regression: 'A mesh-throw node still builds — the breakable-props path.' },
+  {
+    id: 'persist-uv-scroll',
+    regression:
+      'A persistent UV-scroll node still installs. Scrolling materials are authored per level, so ' +
+      'this covers the whole texture-animation path.',
+  },
+  { id: 'persist-anim-object', regression: 'A model clip still installs (sub-type 256) from an authored chain.' },
+  {
+    id: 'latch-persist-control',
+    regression:
+      'SLOT-GRADED, and the only row here that proves TEARDOWN: a persistent node fills its slot ' +
+      'and the slot empties again when that stretch of mountain deactivates. Everything else on this ' +
+      'course that fills a slot is expected to hold it, so a leak would hide without this row.',
+  },
+  {
+    id: 'spline-mover',
+    regression:
+      'SLOT-GRADED: an authored spline mover survives past the frame it was built in. This is the ' +
+      "cell that fails if the packer's mover preamble regresses.",
+  },
+  {
+    id: 'clip-once-latched',
+    regression:
+      'SLOT-GRADED: the latch columns still keep a play-once clip alive at its end frame instead ' +
+      "of letting it destruct. The spec's own iris-door example.",
+  },
+  {
+    id: 'hop-remote',
+    regression:
+      'An authored chain still acts on a DIFFERENT instance through a MainType-7 hop. This is the ' +
+      'row that fails if the repack compiler goes back to refusing graphs that name the instance table, ' +
+      'which would take every authored button with it.',
+  },
+  {
+    id: 'button-flip',
+    regression:
+      'PAINT-GRADED, end to end: a ride-over button dispatches, builds a flip node and its applied ' +
+      'frame moves. The single row that most closely matches what an author actually builds.',
+  },
+  {
+    id: 'cracked-pad',
+    regression:
+      'The deferred-trigger column still fires from something other than a Counter: a Cracked ' +
+      "surface carrying retail's own payload spends its strength on contact and hops a node onto a " +
+      'companion the rider never touches. Graded on the COMPANION, so the row means the column resolved ' +
+      'and ran, not merely that the crack was built. The negative control that gives it its meaning — ' +
+      'the same chain at a strength no pass can spend — rides the catalogue as `cracked-tough` rather ' +
+      'than this course, because it needs a volume deeper than GOLD spaces its cells.',
+  },
+  {
+    id: 'boost-up-lifts',
+    regression:
+      'RIDER-GRADED: a launcher still moves the player, graded on a position discontinuity. The ' +
+      'strongest evidence on the course that an effect reached the rider at all.',
+  },
   // LAST, and it has to be: the reset teleports, so anything below it would be graded on a rider who never
   // rode past it.
-  { id: 'rider-reset',
-    regression: 'The rider-reset still fires. It runs last because it teleports the player, which is also '
-      + 'why nothing can be appended below it.' },
+  {
+    id: 'rider-reset',
+    regression:
+      'The rider-reset still fires. It runs last because it teleports the player, which is also ' +
+      'why nothing can be appended below it.',
+  },
 ];
 
 /** GOLD's cases: the selection above, resolved against the catalogue and carrying its regression text.
@@ -1807,8 +2336,10 @@ export const AUTO_TEST_GOLD_CASES: readonly AutoTestCase[] = AUTO_TEST_GOLD_CELL
   // against one of them would silently stop finding whatever moved across the seam.
   const found = [...AUTO_TEST_CASES, ...AUTO_TEST_CASES_B].find(test => test.id === pick.id);
   if (!found) {
-    throw new Error(`GOLD selects "${pick.id}", which is not in AUTO_TEST_CASES. Either it was renamed — `
-      + 'update the id here — or it was removed, and GOLD needs a different cell for that mechanism.');
+    throw new Error(
+      `GOLD selects "${pick.id}", which is not in AUTO_TEST_CASES. Either it was renamed — ` +
+        'update the id here — or it was removed, and GOLD needs a different cell for that mechanism.',
+    );
   }
   return { ...found, question: pick.regression };
 });
@@ -1827,10 +2358,14 @@ export const AUTO_TEST_GOLD_CASES: readonly AutoTestCase[] = AUTO_TEST_GOLD_CELL
 export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the same retail crash bag the gold map leads with. A bench run where this stays dark '
-      + 'indicts the harness, so nothing below it is worth reading.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Control: the same retail crash bag the gold map leads with. A bench run where this stays dark ' +
+      'indicts the harness, so nothing below it is worth reading.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   // ---- the two pad opcodes --------------------------------------------------------------------------
   // Both pads request five-second rider countdowns rather than directly changing velocity. In race-mode
@@ -1840,26 +2375,37 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // [Trailmap: 360-pads-duration, 360-pads-ownership].
   {
     id: 'speed-pad',
-    question: 'A MainType-17 speed pad raises the speed-cap request rather than pushing velocity, and it works. '
-      + 'Observed values 5.000, 4.967 and 5.000 show the specified countdown. The request targets the effect '
-      + 'thread\'s owner: race passes may select another rider, while single-rider SHOWOFF makes all pad cells '
-      + 'write in one pass [Trailmap: 360-pads-duration, 360-pads-ownership].',
-    shape: 'gate', profile: profile(1), color: [0.2, 0.75, 1, 1], leadNode: 'speed-boost',
-    nodeWatch: PAD_OWNER_WATCH, watchLiveNode: true, watchLowMemory: true,
+    question:
+      'A MainType-17 speed pad raises the speed-cap request rather than pushing velocity, and it works. ' +
+      'Observed values 5.000, 4.967 and 5.000 show the specified countdown. The request targets the effect ' +
+      "thread's owner: race passes may select another rider, while single-rider SHOWOFF makes all pad cells " +
+      'write in one pass [Trailmap: 360-pads-duration, 360-pads-ownership].',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.2, 0.75, 1, 1],
+    leadNode: 'speed-boost',
+    nodeWatch: PAD_OWNER_WATCH,
+    watchLiveNode: true,
+    watchLowMemory: true,
   },
   {
     id: 'trick-pad',
-    question: 'The same for MainType 18 and the trick-window countdown. Across 42 passes this cell and the one above it '
-      + 'never once disagreed, which was the clue that broke the question open: whatever gates them is not '
-      + 'on either prop. It is the one owner word a prop\'s contact thread hands every opcode in its chain, '
-      + 'read directly by `pad-gate` below — so two opcodes on ONE prop cannot split, and two props can. The '
-      + 'passes that work carry the arithmetic that makes them unarguable: this cell reads its own 5.000 of '
-      + 'trick window while the speed request from the pad above reads 2.100, which is 5.0 less the 2.90 s '
-      + 'between the two slots filling, to three figures. Unlike the speed request, a motion-state transition '
-      + 'can clear the trick window between frames, which is why the harness oversamples the pair '
-      + '[Trailmap: 360-pads-duration, 360-pads-ownership].',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.8, 0.2, 1], leadNode: 'trick-boost',
-    nodeWatch: PAD_OWNER_WATCH, watchLiveNode: true,
+    question:
+      'The same for MainType 18 and the trick-window countdown. Across 42 passes this cell and the one above it ' +
+      'never once disagreed, which was the clue that broke the question open: whatever gates them is not ' +
+      "on either prop. It is the one owner word a prop's contact thread hands every opcode in its chain, " +
+      'read directly by `pad-gate` below — so two opcodes on ONE prop cannot split, and two props can. The ' +
+      'passes that work carry the arithmetic that makes them unarguable: this cell reads its own 5.000 of ' +
+      'trick window while the speed request from the pad above reads 2.100, which is 5.0 less the 2.90 s ' +
+      'between the two slots filling, to three figures. Unlike the speed request, a motion-state transition ' +
+      'can clear the trick window between frames, which is why the harness oversamples the pair ' +
+      '[Trailmap: 360-pads-duration, 360-pads-ownership].',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.8, 0.2, 1],
+    leadNode: 'trick-boost',
+    nodeWatch: PAD_OWNER_WATCH,
+    watchLiveNode: true,
   },
   // ---- the half of the iris door that the persistent cells cannot reach ----------------------------
   // `one-shot-clip` is a COLLISION recipe — ride into the prop, its clip plays once, the latches hold the
@@ -1895,23 +2441,30 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // [cell `clip-contact-keyframes`].
   {
     id: 'clip-on-contact',
-    question: 'A GEM TAKES CONTACT — settled here, three passes of three, and the first time anything in '
-      + 'this fixture asked: every other gem is read through a persistent install that needs no contact at '
-      + 'all. The slot fills on the rider arriving and holds sub-type 0x100, the play-once clip this chain '
-      + 'authored rather than the Debounce ahead of it, which is the last-property-node-wins rule shown in '
-      + 'the collision column instead of inferred from retail. The node also reaches an END and the latch '
-      + 'keeps it: the control below, this cell minus its latches, releases and rebuilds two to four times '
-      + 'in the seconds the rider is on it where this one fills once and holds. That end is instant rather '
-      + 'than the finish of a clip — the borrowed gem\'s play window arrives at 0, which its clock reading '
-      + '0.0 throughout is reporting honestly — so what this pair proves is contact, slot ownership and the '
-      + 'latch, on a clip with no frames to play.',
-    shape: 'gem', profile: profile(2), color: [0.3, 0.9, 0.45, 1], liftM: 2, contactOptional: true,
+    question:
+      'A GEM TAKES CONTACT — settled here, three passes of three, and the first time anything in ' +
+      'this fixture asked: every other gem is read through a persistent install that needs no contact at ' +
+      'all. The slot fills on the rider arriving and holds sub-type 0x100, the play-once clip this chain ' +
+      'authored rather than the Debounce ahead of it, which is the last-property-node-wins rule shown in ' +
+      'the collision column instead of inferred from retail. The node also reaches an END and the latch ' +
+      'keeps it: the control below, this cell minus its latches, releases and rebuilds two to four times ' +
+      'in the seconds the rider is on it where this one fills once and holds. That end is instant rather ' +
+      "than the finish of a clip — the borrowed gem's play window arrives at 0, which its clock reading " +
+      '0.0 throughout is reporting honestly — so what this pair proves is contact, slot ownership and the ' +
+      'latch, on a clip with no frames to play.',
+    shape: 'gem',
+    profile: profile(2),
+    color: [0.3, 0.9, 0.45, 1],
+    liftM: 2,
+    contactOptional: true,
     tailNodes: ['anim-object'],
     tuneTail: payload => {
       (payload.type0 as { type0Sub256: Record<string, unknown> }).type0Sub256.U0 = 0;
     },
     latches: ['slot3', 'slot4'],
-    nodeWatch: ANIM_CLIP_WATCH, watchEntityFlags: true, watchLiveNode: true,
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
   },
   // The control the cell above needs, and it is one field different: the same play-once clip installed by
   // the same contact on the same model, WITHOUT the latches. A slot that releases here while the latched one
@@ -1921,18 +2474,25 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // the model's play window is 0, so the end they are splitting on arrives on the first tick.
   {
     id: 'clip-on-contact-plain',
-    question: 'CONTROL for the cell above, differing in one field: the same play-once clip, same contact, '
-      + 'same model, NO latches. The pair is what makes either readable. A slot that releases here while '
-      + 'the latched cell holds means the node reached an end — only a latch keeps a finished node — which '
-      + 'is the recipe\'s own claim demonstrated in the column it ships in. Both clocks read 0 throughout '
-      + 'and neither is being misread: the borrowed model\'s play window is 0, so there is no clip to time, '
-      + 'and the end being compared arrives on the node\'s first tick.',
-    shape: 'gem', profile: profile(2), color: [0.2, 0.6, 0.9, 1], liftM: 2, contactOptional: true,
+    question:
+      'CONTROL for the cell above, differing in one field: the same play-once clip, same contact, ' +
+      'same model, NO latches. The pair is what makes either readable. A slot that releases here while ' +
+      'the latched cell holds means the node reached an end — only a latch keeps a finished node — which ' +
+      "is the recipe's own claim demonstrated in the column it ships in. Both clocks read 0 throughout " +
+      "and neither is being misread: the borrowed model's play window is 0, so there is no clip to time, " +
+      "and the end being compared arrives on the node's first tick.",
+    shape: 'gem',
+    profile: profile(2),
+    color: [0.2, 0.6, 0.9, 1],
+    liftM: 2,
+    contactOptional: true,
     tailNodes: ['anim-object'],
     tuneTail: payload => {
       (payload.type0 as { type0Sub256: Record<string, unknown> }).type0Sub256.U0 = 0;
     },
-    nodeWatch: ANIM_CLIP_WATCH, watchEntityFlags: true, watchLiveNode: true,
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
   },
   // ---- the iris door reached the way retail reaches its buttons ------------------------------------
   // The recipe's own arrangement puts the clip on the prop you ride into. Retail's buttons do not: the thing
@@ -1946,16 +2506,21 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // one node. Its model is the imported one with real frames, so the clock has a window to be read against.
   {
     id: 'clip-hop',
-    question: 'Retail\'s button shape carrying a CLIP: a gate the rider must cross, hopping a play-once '
-      + 'model clip onto a prop 116 m off the course that carries 40 authored frames. The companion has no '
-      + 'chain of its own and is never touched, so a node on its slot can only have arrived through the hop '
-      + '— and its target graph holds exactly one node, so unlike a contact chain there is no Debounce ahead '
-      + 'of the clip to take the slot first. That makes it the cleanest reading of a clip anywhere in this '
-      + 'fixture: whatever its clock does here, it does without anything else in the way, and the window '
-      + 'beside the clock says the clip is real. This is also the arrangement an author needs for a door, '
-      + 'since a door is rarely the thing you ride into.',
-    shape: 'gate', profile: profile(1), color: [0.85, 0.35, 0.9, 1],
-    leadNode: 'act-on-instance', companion: 'anim-object', companionShape: 'clip',
+    question:
+      "Retail's button shape carrying a CLIP: a gate the rider must cross, hopping a play-once " +
+      'model clip onto a prop 116 m off the course that carries 40 authored frames. The companion has no ' +
+      'chain of its own and is never touched, so a node on its slot can only have arrived through the hop ' +
+      '— and its target graph holds exactly one node, so unlike a contact chain there is no Debounce ahead ' +
+      'of the clip to take the slot first. That makes it the cleanest reading of a clip anywhere in this ' +
+      'fixture: whatever its clock does here, it does without anything else in the way, and the window ' +
+      'beside the clock says the clip is real. This is also the arrangement an author needs for a door, ' +
+      'since a door is rarely the thing you ride into.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.85, 0.35, 0.9, 1],
+    leadNode: 'act-on-instance',
+    companion: 'anim-object',
+    companionShape: 'clip',
     tuneCompanion: payload => {
       (payload.type0 as { type0Sub256: Record<string, unknown> }).type0Sub256.U0 = 0;
     },
@@ -1985,38 +2550,48 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // inert — the exact reading this cell exists to replace.
   {
     id: 'gem-multiplier',
-    question: 'THE MODE GATE IS NOT THE ANSWER, and that is what this cell has settled. A MainType-14 node '
-      + 'at retail\'s top tier (5.0) dispatched in three passes of three — the Debounce behind it took the '
-      + 'slot for its full 3 s, so the chain unarguably ran — and the score multiplier stayed at exactly '
-      + '1.0 every sample of every pass, at 0.46-0.84 m of approach. The run says `gameMode 3` and '
-      + '`riderCount 1`: showoff, alone, which is the mode the handler tests for and the mountain that '
-      + 'removes the owner lottery.\n\n'
-      + 'Four explanations die with it, which is why the negative is worth as much as a write would have '
-      + 'been. NOT the mode gate: the run read 3. NOT the sampler: the field is read every sample and rests '
-      + 'at exactly 1.0 rather than at noise, so the offset is right. NOT the owner word: the speed pad and '
-      + 'the trick pad on THIS course in THESE passes wrote 4.9-5.0 into their own fields, so a '
-      + 'rider-acting opcode did reach this rider. NOT chain position: all three are the leading node.\n\n'
-      + 'What is left is narrower and worth a batch: either the handler carries a condition beyond the mode '
-      + 'compare, or the multiplier is set and reset inside a frame. `TrickScore_ResetCombo` puts the field '
-      + 'back to 1.0 on the next land or bail, and a rider crossing a full-corridor panel is landing '
-      + 'constantly — so the next cell to build is this one on a host the rider cannot land on, or with the '
-      + 'field read from a code cave at the store rather than at 20 Hz.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.3, 0.95, 1], leadNode: 'score-multiplier',
-    tuneLead: payload => { payload.MultiplierScore = 5; },
+    question:
+      'THE MODE GATE IS NOT THE ANSWER, and that is what this cell has settled. A MainType-14 node ' +
+      "at retail's top tier (5.0) dispatched in three passes of three — the Debounce behind it took the " +
+      'slot for its full 3 s, so the chain unarguably ran — and the score multiplier stayed at exactly ' +
+      '1.0 every sample of every pass, at 0.46-0.84 m of approach. The run says `gameMode 3` and ' +
+      '`riderCount 1`: showoff, alone, which is the mode the handler tests for and the mountain that ' +
+      'removes the owner lottery.\n\n' +
+      'Four explanations die with it, which is why the negative is worth as much as a write would have ' +
+      'been. NOT the mode gate: the run read 3. NOT the sampler: the field is read every sample and rests ' +
+      'at exactly 1.0 rather than at noise, so the offset is right. NOT the owner word: the speed pad and ' +
+      'the trick pad on THIS course in THESE passes wrote 4.9-5.0 into their own fields, so a ' +
+      'rider-acting opcode did reach this rider. NOT chain position: all three are the leading node.\n\n' +
+      'What is left is narrower and worth a batch: either the handler carries a condition beyond the mode ' +
+      'compare, or the multiplier is set and reset inside a frame. `TrickScore_ResetCombo` puts the field ' +
+      'back to 1.0 on the next land or bail, and a rider crossing a full-corridor panel is landing ' +
+      'constantly — so the next cell to build is this one on a host the rider cannot land on, or with the ' +
+      'field read from a code cave at the store rather than at 20 Hz.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.3, 0.95, 1],
+    leadNode: 'score-multiplier',
+    tuneLead: payload => {
+      payload.MultiplierScore = 5;
+    },
     watchLiveNode: true,
   },
   // ---- withdrawn from the gold map, kept here -------------------------------------------------------
   {
     id: 'auth-gate-scaled',
-    question: 'Scale does not GATE dispatch, but it does cost reliability, and the two findings are '
-      + 'different. A x2/x4/x6/x8 ladder ran six passes against a suspected ceiling above x4 and found none: '
-      + 'the misses moved between scales run to run, and in run 20260806-065749 the x4 gate went dark at '
-      + '9.21 m while x2 at 9.17 m and x8 at 9.24 m both fired. So the ladder collapsed to this one cell at '
-      + 'the extreme — which then fired 5 passes of 7 while every UNSCALED gate beside it fired every time. '
-      + 'It lives here rather than in the gold map because an expectation set on it produced a REGRESSION in '
-      + 'run 20260806-072247, and a cell that cries wolf once a batch costs the whole suite its credibility. '
-      + 'What it is worth is the warning that a heavily scaled instance is a less certain contact.',
-    shape: 'gate', profile: profile(1), color: [0.6, 0.05, 1, 1], scale: 8,
+    question:
+      'Scale does not GATE dispatch, but it does cost reliability, and the two findings are ' +
+      'different. A x2/x4/x6/x8 ladder ran six passes against a suspected ceiling above x4 and found none: ' +
+      'the misses moved between scales run to run, and in run 20260806-065749 the x4 gate went dark at ' +
+      '9.21 m while x2 at 9.17 m and x8 at 9.24 m both fired. So the ladder collapsed to this one cell at ' +
+      'the extreme — which then fired 5 passes of 7 while every UNSCALED gate beside it fired every time. ' +
+      'It lives here rather than in the gold map because an expectation set on it produced a REGRESSION in ' +
+      'run 20260806-072247, and a cell that cries wolf once a batch costs the whole suite its credibility. ' +
+      'What it is worth is the warning that a heavily scaled instance is a less certain contact.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.6, 0.05, 1, 1],
+    scale: 8,
   },
   // ---- the two-stage break: a surface that cracks now and gives way later ---------------------------
   // The Cracked node (type-0 sub 14) is the corpus's rarest property — twenty instances, all of them Megaplex
@@ -2035,16 +2610,22 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // while the rider is inside, so the box IS the experiment.
   {
     id: 'cracked-retail',
-    question: 'Retail\'s own glass pane, payload for payload — the U0 = -1 / U1 = 5 that all twenty Megaplex '
-      + 'panes carry. Three words say whether the ELF reading holds up: the lifetime should read -60 frames '
-      + '(the authored -1 s times 60) and never move, the 30-frame gate should SAWTOOTH while the rider is '
-      + 'inside and run flat once they leave, and the strength should start at 5.0 and fall in steps. How '
-      + 'many steps, and how big, is the number an author needs and nothing on paper can supply. No trigger '
-      + 'column here on purpose: the Update retires the node instead when field 4 is absent, so this cell '
-      + 'also asks what an unfinished crack does.',
-    shape: 'volume', profile: profile(1), color: [0.55, 0.8, 0.95, 1], sizeM: CRACKED_BOX_M,
+    question:
+      "Retail's own glass pane, payload for payload — the U0 = -1 / U1 = 5 that all twenty Megaplex " +
+      'panes carry. Three words say whether the ELF reading holds up: the lifetime should read -60 frames ' +
+      '(the authored -1 s times 60) and never move, the 30-frame gate should SAWTOOTH while the rider is ' +
+      'inside and run flat once they leave, and the strength should start at 5.0 and fall in steps. How ' +
+      'many steps, and how big, is the number an author needs and nothing on paper can supply. No trigger ' +
+      'column here on purpose: the Update retires the node instead when field 4 is absent, so this cell ' +
+      'also asks what an unfinished crack does.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.55, 0.8, 0.95, 1],
+    sizeM: CRACKED_BOX_M,
     extraNode: 'cracked',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
   },
   // `cracked-pad` was here and has GRADUATED: retail's own payload firing the trigger column, which is the
   // fact worth regressing, so it is a graded cell in the catalogue and a row on GOLD. It does NOT reproduce
@@ -2060,74 +2641,106 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // reaches.
   {
     id: 'cracked-ride',
-    question: 'Retail\'s pane with retail\'s own OBJECT PROPERTY, which is the variable every earlier cell '
-      + 'got wrong by inventing one. MEGAPLE property 120 is mode 1, response mass 0, BitFlags 4129 — '
-      + 'visible and player-collision set, and PLAYER BOUNCE CLEAR — against the bounce-on profile every '
-      + 'cell above uses. Bounce-off preserves contact and effect dispatch while suppressing the physical '
-      + 'response, which is exactly a floor that carries a rider without shoving them, and it is why the '
-      + 'two solid cells fought the rider instead of being ridden (one launched them, one stopped them '
-      + 'dead at 3 m/s). Same payload, same profile, flush with the snow and 64 m long: if the strength '
-      + 'now drains over several gate periods instead of vanishing in one contact, the deferral is '
-      + 'reproduced and the authored recipe matches the game.',
-    shape: 'pad', profile: profile(1, { responseMass: 0, playerBounce: false }), color: [0.6, 0.85, 1, 1],
-    padDepthM: 64, followsSlope: true, liftM: 0.15,
-    extraNode: 'cracked', triggerNodes: ['act-on-instance'], companion: 'debounce',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
+    question:
+      "Retail's pane with retail's own OBJECT PROPERTY, which is the variable every earlier cell " +
+      'got wrong by inventing one. MEGAPLE property 120 is mode 1, response mass 0, BitFlags 4129 — ' +
+      'visible and player-collision set, and PLAYER BOUNCE CLEAR — against the bounce-on profile every ' +
+      'cell above uses. Bounce-off preserves contact and effect dispatch while suppressing the physical ' +
+      'response, which is exactly a floor that carries a rider without shoving them, and it is why the ' +
+      'two solid cells fought the rider instead of being ridden (one launched them, one stopped them ' +
+      'dead at 3 m/s). Same payload, same profile, flush with the snow and 64 m long: if the strength ' +
+      'now drains over several gate periods instead of vanishing in one contact, the deferral is ' +
+      'reproduced and the authored recipe matches the game.',
+    shape: 'pad',
+    profile: profile(1, { responseMass: 0, playerBounce: false }),
+    color: [0.6, 0.85, 1, 1],
+    padDepthM: 64,
+    followsSlope: true,
+    liftM: 0.15,
+    extraNode: 'cracked',
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
   },
   {
     id: 'cracked-ride-cost',
-    question: 'The instrument beside it, and the cell that carries the number an author needs. The same solid '
-      + 'ridden panel at strength 1000, which a traversal cannot spend — so instead of giving way it records '
-      + 'the whole decrement trace, one step per 30-frame gate period, for as long as the rider is on it. '
-      + 'The step size IS the cost of a supported contact, which is the quantity every cell so far has '
-      + 'measured the wrong version of. If the steps come back near 87 the ride-on distinction is wrong and '
-      + 'the retail delay is somewhere else again; if they come back near 1, retail\'s authored 5 is about '
-      + 'five gate periods of riding and the whole mechanism is explained. Carries retail\'s property too, '
-      + 'so it differs from the cell above in the payload alone.',
-    shape: 'pad', profile: profile(1, { responseMass: 0, playerBounce: false }), color: [0.4, 0.6, 0.9, 1],
-    padDepthM: 64, followsSlope: true, liftM: 0.15,
-    extraNode: 'cracked', tuneExtra: payload => {
+    question:
+      'The instrument beside it, and the cell that carries the number an author needs. The same solid ' +
+      'ridden panel at strength 1000, which a traversal cannot spend — so instead of giving way it records ' +
+      'the whole decrement trace, one step per 30-frame gate period, for as long as the rider is on it. ' +
+      'The step size IS the cost of a supported contact, which is the quantity every cell so far has ' +
+      'measured the wrong version of. If the steps come back near 87 the ride-on distinction is wrong and ' +
+      "the retail delay is somewhere else again; if they come back near 1, retail's authored 5 is about " +
+      "five gate periods of riding and the whole mechanism is explained. Carries retail's property too, " +
+      'so it differs from the cell above in the payload alone.',
+    shape: 'pad',
+    profile: profile(1, { responseMass: 0, playerBounce: false }),
+    color: [0.4, 0.6, 0.9, 1],
+    padDepthM: 64,
+    followsSlope: true,
+    liftM: 0.15,
+    extraNode: 'cracked',
+    tuneExtra: payload => {
       (payload.type0 as { type0Sub14: Record<string, unknown> }).type0Sub14.U1 = 1000;
     },
-    triggerNodes: ['act-on-instance'], companion: 'debounce',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
   },
   {
     id: 'cracked-solid',
-    question: 'The last variable, and the one that came back NEGATIVE — kept because a negative is only worth '
-      + 'anything while it keeps reproducing. A hit costs 80-88 whether the rider flies through an 80 m '
-      + 'pass-through box or rides over a flat panel, so the cost is not the approach angle and not the '
-      + 'speed. The one thing every one of those cells shared is the one thing a retail glass pane is not: '
-      + 'PASS-THROUGH, response mass 0. This is the solid twin — a host that really stops the rider — and it '
-      + 'cost 87.55 a hit, the same as everything else, entering at 24 m/s and leaving at 17. So the collision '
-      + 'response is ruled out with the shapes, retail\'s authored 5 is spent by its first contact on '
-      + 'anything measurable here, and whatever makes a Megaplex pane look like a TWO-stage break is '
-      + 'somewhere none of these cells has looked.',
-    shape: 'gate', profile: profile(1, { responseMass: 1e30 }), color: [1, 0.4, 0.75, 1],
-    extraNode: 'cracked', tuneExtra: payload => {
+    question:
+      'The last variable, and the one that came back NEGATIVE — kept because a negative is only worth ' +
+      'anything while it keeps reproducing. A hit costs 80-88 whether the rider flies through an 80 m ' +
+      'pass-through box or rides over a flat panel, so the cost is not the approach angle and not the ' +
+      'speed. The one thing every one of those cells shared is the one thing a retail glass pane is not: ' +
+      'PASS-THROUGH, response mass 0. This is the solid twin — a host that really stops the rider — and it ' +
+      'cost 87.55 a hit, the same as everything else, entering at 24 m/s and leaving at 17. So the collision ' +
+      "response is ruled out with the shapes, retail's authored 5 is spent by its first contact on " +
+      'anything measurable here, and whatever makes a Megaplex pane look like a TWO-stage break is ' +
+      'somewhere none of these cells has looked.',
+    shape: 'gate',
+    profile: profile(1, { responseMass: 1e30 }),
+    color: [1, 0.4, 0.75, 1],
+    extraNode: 'cracked',
+    tuneExtra: payload => {
       (payload.type0 as { type0Sub14: Record<string, unknown> }).type0Sub14.U1 = 1000;
     },
-    triggerNodes: ['act-on-instance'], companion: 'debounce',
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
+    triggerNodes: ['act-on-instance'],
+    companion: 'debounce',
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
   },
   // `cracked-shatters` and `cracked-tough` were here and have GRADUATED as a pair — the trigger column
   // firing when a strength pool runs out, with the strong twin beside it that says the strength is the gate
   // rather than decoration. A pair is the smallest thing either of them could graduate as.
   {
     id: 'cracked-heals',
-    question: 'The other payload word. U0 = 2 with a strength no ride can spend, so the only thing that can '
-      + 'happen is the lifetime running out — and the claim is read off the LIVE-NODE SLOT emptying about '
-      + 'two seconds after it filled, not off any offset that could be wrong. That would make U0 seconds of '
-      + 'crack rather than seconds of anything else, and would mean an authored crack can heal: the node '
-      + 'retires and takes the damage it had accumulated with it, which is exactly why retail authors -1 on '
-      + 'every pane it ships.',
-    shape: 'volume', profile: profile(1), color: [0.6, 0.9, 0.5, 1], sizeM: CRACKED_BOX_M,
-    extraNode: 'cracked', tuneExtra: payload => {
+    question:
+      'The other payload word. U0 = 2 with a strength no ride can spend, so the only thing that can ' +
+      'happen is the lifetime running out — and the claim is read off the LIVE-NODE SLOT emptying about ' +
+      'two seconds after it filled, not off any offset that could be wrong. That would make U0 seconds of ' +
+      'crack rather than seconds of anything else, and would mean an authored crack can heal: the node ' +
+      'retires and takes the damage it had accumulated with it, which is exactly why retail authors -1 on ' +
+      'every pane it ships.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.6, 0.9, 0.5, 1],
+    sizeM: CRACKED_BOX_M,
+    extraNode: 'cracked',
+    tuneExtra: payload => {
       const cracked = (payload.type0 as { type0Sub14: Record<string, unknown> }).type0Sub14;
       cracked.U0 = 2;
       cracked.U1 = 1000;
     },
-    nodeWatch: CRACKED_STATE_WATCH, watchLiveNode: true, watchEntityFlags: true,
+    nodeWatch: CRACKED_STATE_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
   },
   // The launcher, and the only cell on the bench that puts the rider in the air: a launched rider arrives at
   // whatever follows both airborne and climbing. Unlike `boost-up-lifts` on the gold map it is tuned to THROW
@@ -2142,18 +2755,22 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // that belonged to this cell.
   {
     id: 'vent-throw',
-    question: 'HOW FAR does a boost node actually throw a rider, at the tuning and the SIZE Megaplex ships? '
-      + 'Retail\'s exhaust vent, verbatim: mode 1, window 0, rate 3.0, target 100 m/s, axis straight up — '
-      + 'inside a box carrying that host model\'s own 3.29 m of height and 3.60 m of depth rather than the '
-      + '40 m one the existing boost cell uses. The pair is the point. `boost-up-lifts` proves a boost '
-      + 'PUSHES and says nothing about magnitude, because it was sized to guarantee contact rather than to '
-      + 'reproduce one; every port reading it has had to guess how long a real vent holds a rider. This cell '
-      + 'reads the three numbers that answer it — peak rise, metres climbed, and peak carried speed — so a '
-      + 'port can be checked against a throw instead of against a direction. Peak speed is the half most '
-      + 'likely to be got wrong: the node writes neither pad-request field, so it raises no cap, and a '
-      + 'grounded rider stays bounded at ~27.9 m/s however violent the push while an airborne one is not '
-      + 'bounded at all.',
-    shape: 'volume', profile: profile(1), color: [1, 0.55, 0.05, 1], sizeM: VENT_BOX_M,
+    question:
+      'HOW FAR does a boost node actually throw a rider, at the tuning and the SIZE Megaplex ships? ' +
+      "Retail's exhaust vent, verbatim: mode 1, window 0, rate 3.0, target 100 m/s, axis straight up — " +
+      "inside a box carrying that host model's own 3.29 m of height and 3.60 m of depth rather than the " +
+      '40 m one the existing boost cell uses. The pair is the point. `boost-up-lifts` proves a boost ' +
+      'PUSHES and says nothing about magnitude, because it was sized to guarantee contact rather than to ' +
+      'reproduce one; every port reading it has had to guess how long a real vent holds a rider. This cell ' +
+      'reads the three numbers that answer it — peak rise, metres climbed, and peak carried speed — so a ' +
+      'port can be checked against a throw instead of against a direction. Peak speed is the half most ' +
+      'likely to be got wrong: the node writes neither pad-request field, so it raises no cap, and a ' +
+      'grounded rider stays bounded at ~27.9 m/s however violent the push while an airborne one is not ' +
+      'bounded at all.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [1, 0.55, 0.05, 1],
+    sizeM: VENT_BOX_M,
     extraNode: 'directional-boost',
     tuneExtra: payload => {
       const boost = (payload.type0 as { Boost: Record<string, unknown> }).Boost;
@@ -2169,25 +2786,34 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // Re-measure that window after adding or removing earlier cells [Trailmap: 360-pads-ownership].
   {
     id: 'pad-gate',
-    question: 'THE EFFECT-THREAD OWNER IS THE GATE. A speed pad, a trick pad and a course reset share one '
-      + 'chain and owner, with the thread found by its host relationship. Three '
-      + 'passes, and the correlation is exact: the two that wrote 4.983 and 4.950 into the boost request AND '
-      + 'moved the rider 17.2 m and 32.1 m both read an owner equal to `rider.boarder` to the bit, and the '
-      + 'one that wrote nothing and moved the rider 2.24 m (under the noise floor) carried two different '
-      + 'boarder-shaped pointers, neither of them this rider. The pads and the reset never split, which is '
-      + 'what one shared word predicts. Still open, and smaller: WHAT DECIDES which boarder a contact is '
-      + 'handed. Note the negative half is the weaker one — the harness reports only heap candidates whose '
-      + 'words changed, so the failing pass shows the blocks it reported were not this rider rather than '
-      + 'that none was.',
-    shape: 'volume', profile: profile(1), color: [0.1, 0.95, 0.85, 1], sizeM: PAD_GATE_BOX_M,
-    extraNode: 'speed-boost', tailNodes: ['trick-boost', 'rider-reset', 'wait'],
+    question:
+      'THE EFFECT-THREAD OWNER IS THE GATE. A speed pad, a trick pad and a course reset share one ' +
+      'chain and owner, with the thread found by its host relationship. Three ' +
+      'passes, and the correlation is exact: the two that wrote 4.983 and 4.950 into the boost request AND ' +
+      'moved the rider 17.2 m and 32.1 m both read an owner equal to `rider.boarder` to the bit, and the ' +
+      'one that wrote nothing and moved the rider 2.24 m (under the noise floor) carried two different ' +
+      'boarder-shaped pointers, neither of them this rider. The pads and the reset never split, which is ' +
+      'what one shared word predicts. Still open, and smaller: WHAT DECIDES which boarder a contact is ' +
+      'handed. Note the negative half is the weaker one — the harness reports only heap candidates whose ' +
+      'words changed, so the failing pass shows the blocks it reported were not this rider rather than ' +
+      'that none was.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.1, 0.95, 0.85, 1],
+    sizeM: PAD_GATE_BOX_M,
+    extraNode: 'speed-boost',
+    tailNodes: ['trick-boost', 'rider-reset', 'wait'],
     // Ten minutes, which is longer than any window this fixture rides. The number is not a duration anybody
     // waits for — it is "never", expressed in the only units the node has.
-    tuneTail: (payload, id) => { if (id === 'wait') payload.WaitTime = 600; },
+    tuneTail: (payload, id) => {
+      if (id === 'wait') payload.WaitTime = 600;
+    },
     // Both probes remain on purpose: the live-node-relative control rejects itself, while the heap-located
     // thread returns the semantic owner observation.
     // Keeping the failing one is what shows the search was necessary rather than ornamental.
-    nodeWatch: PAD_OWNER_WATCH, lateWatch: PAD_THREAD_LATE_WATCH, watchLiveNode: true,
+    nodeWatch: PAD_OWNER_WATCH,
+    lateWatch: PAD_THREAD_LATE_WATCH,
+    watchLiveNode: true,
   },
   // ---- a clip on a model that actually HAS one ----------------------------------------------------------
   // The first cell in this fixture to place a prop from the imported catalogue rather than a retail donor
@@ -2202,16 +2828,23 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // rather than the clip.
   {
     id: 'clip-real-keyframes',
-    question: 'Does a model clip PLAY, asked with a model that HAS one? `SnowGun_9` from the imported '
-      + 'catalogue carries 40 authored frames, and that path is known to reach the disc verbatim — '
-      + 'TEST_MTN_6 and TEST_MTN_7 pack AnimTime 40, 90, 144 and 300, the authored clipFrames unchanged. '
-      + 'The read is categorical rather than a number to judge: at 40 frames the window is 1.33 s, and a '
-      + 'looping clip on a real model RETURNS to its window start well inside the few seconds a node lives, '
-      + 'where the same node on a keyframeless model counts past it forever. A wrap is the answer. The '
-      + 'window words beside the clock say which case this is before the clock is worth reading at all.',
-    shape: 'clip', profile: profile(1), color: [0.55, 0.85, 1, 1], liftM: 2, contactOptional: true,
-    persistentNode: 'anim-object', nodeWatch: ANIM_CLIP_WATCH,
-    watchLiveNode: true, watchEntityFlags: true,
+    question:
+      'Does a model clip PLAY, asked with a model that HAS one? `SnowGun_9` from the imported ' +
+      'catalogue carries 40 authored frames, and that path is known to reach the disc verbatim — ' +
+      'TEST_MTN_6 and TEST_MTN_7 pack AnimTime 40, 90, 144 and 300, the authored clipFrames unchanged. ' +
+      'The read is categorical rather than a number to judge: at 40 frames the window is 1.33 s, and a ' +
+      'looping clip on a real model RETURNS to its window start well inside the few seconds a node lives, ' +
+      'where the same node on a keyframeless model counts past it forever. A wrap is the answer. The ' +
+      'window words beside the clock say which case this is before the clock is worth reading at all.',
+    shape: 'clip',
+    profile: profile(1),
+    color: [0.55, 0.85, 1, 1],
+    liftM: 2,
+    contactOptional: true,
+    persistentNode: 'anim-object',
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchLiveNode: true,
+    watchEntityFlags: true,
   },
   // The `one-shot-clip` recipe with the one thing its badge claims and its cells have never had: a model
   // whose clip has frames. `clip-on-contact` settled contact, slot ownership and the latch on the borrowed
@@ -2224,25 +2857,32 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // nothing is what lets it report that instead of failing the course.
   {
     id: 'clip-contact-keyframes',
-    question: 'The iris door with a clip that has frames: ride into the imported model and its 1.3333 s '
-      + 'play-once clip runs, both latch columns holding the finished node. Two things are being asked at '
-      + 'once and they separate cleanly. Can the rider contact an IMPORTED prop at all — nothing in this '
-      + 'fixture has tried, and a crossing with an empty slot answers it in the negative without ambiguity. '
-      + 'And if contact lands: does the clock stop AT the window end rather than at 0, which is the reading '
-      + 'the borrowed gem could never produce and the only thing standing between this recipe\'s badge and '
-      + 'the claim it actually makes.',
+    question:
+      'The iris door with a clip that has frames: ride into the imported model and its 1.3333 s ' +
+      'play-once clip runs, both latch columns holding the finished node. Two things are being asked at ' +
+      'once and they separate cleanly. Can the rider contact an IMPORTED prop at all — nothing in this ' +
+      'fixture has tried, and a crossing with an empty slot answers it in the negative without ambiguity. ' +
+      'And if contact lands: does the clock stop AT the window end rather than at 0, which is the reading ' +
+      "the borrowed gem could never produce and the only thing standing between this recipe's badge and " +
+      'the claim it actually makes.',
     // Everything but the model is `clip-on-contact`'s proven arrangement: mode 2, so the tested shape is the
     // bounding box the gem is hit through rather than a 190-triangle proxy. No lift, because this model's
     // origin is at its BASE (raw Z runs 0 to 432) where the gem's is centred — and scaled up, because at its
     // authored 2.72 x 2.55 m it is a narrower target than anything the rider has ever been asked to hit. At
     // 6x that is a 16 x 15 m footprint standing 26 m tall, still well inside the 90 m cell spacing.
-    shape: 'clip', profile: profile(2), color: [1, 0.45, 0.35, 1], scale: 6, contactOptional: true,
+    shape: 'clip',
+    profile: profile(2),
+    color: [1, 0.45, 0.35, 1],
+    scale: 6,
+    contactOptional: true,
     tailNodes: ['anim-object'],
     tuneTail: payload => {
       (payload.type0 as { type0Sub256: Record<string, unknown> }).type0Sub256.U0 = 0;
     },
     latches: ['slot3', 'slot4'],
-    nodeWatch: ANIM_CLIP_WATCH, watchEntityFlags: true, watchLiveNode: true,
+    nodeWatch: ANIM_CLIP_WATCH,
+    watchEntityFlags: true,
+    watchLiveNode: true,
   },
   // ---- the vertical lift, newly authorable and not yet ridden -------------------------------------------
   // The directional boost's own rate/target/axis triple plus the two fields that make it an elevator: a
@@ -2254,15 +2894,19 @@ export const AUTO_TEST_LAB_CASES: readonly AutoTestCase[] = [
   // also exactly what the editor's `bindZBoostToPlacement` does for an author.
   {
     id: 'lift-raises',
-    question: 'Does the vertical lift LIFT? It shares rate, target speed and axis with the directional boost '
-      + 'already proven on the catalogue, and the fields that differ are the question: a target altitude, set '
-      + 'here to 25 m above this cell\'s own ground, that the node carries riders up to and releases them at. '
-      + 'The reading is the same attributed rider rise the directional boost is graded on, so the two are '
-      + 'directly comparable — the course floor is about -7.5 and the largest positive anywhere no node is '
-      + 'pushing is 0.8. This node also zeroes horizontal velocity every tick, so a rider it catches should '
-      + 'STOP as well as climb, which nothing else on the course does and which the speed signal beside the '
-      + 'rise should show. Asserting nothing until a batch answers it.',
-    shape: 'volume', profile: profile(1), color: [0.4, 0.55, 1, 1], sizeM: BOOST_BOX_M,
+    question:
+      'Does the vertical lift LIFT? It shares rate, target speed and axis with the directional boost ' +
+      'already proven on the catalogue, and the fields that differ are the question: a target altitude, set ' +
+      "here to 25 m above this cell's own ground, that the node carries riders up to and releases them at. " +
+      'The reading is the same attributed rider rise the directional boost is graded on, so the two are ' +
+      'directly comparable — the course floor is about -7.5 and the largest positive anywhere no node is ' +
+      'pushing is 0.8. This node also zeroes horizontal velocity every tick, so a rider it catches should ' +
+      'STOP as well as climb, which nothing else on the course does and which the speed signal beside the ' +
+      'rise should show. Asserting nothing until a batch answers it.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.4, 0.55, 1, 1],
+    sizeM: BOOST_BOX_M,
     extraNode: 'z-boost',
     tuneExtra: (payload, groundM) => {
       const sub = (payload.type0 as { type0Sub18: Record<string, number> }).type0Sub18;
@@ -2342,26 +2986,39 @@ export const AUTO_TEST_FIELD_CASES: readonly AutoTestCase[] = [
   //                                     it, not less.
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the retail crash bag every course here leads with. A run where this stays dark '
-      + 'indicts the harness or the menu prelude, so nothing below it is worth reading. On this course it '
-      + 'sits further down the hill than on the solo ones — a control has to be somewhere the rider reliably '
-      + 'IS, and for the first couple of hundred metres of a race that is not the fall line.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIELD_BATCH,
+    question:
+      'Control: the retail crash bag every course here leads with. A run where this stays dark ' +
+      'indicts the harness or the menu prelude, so nothing below it is worth reading. On this course it ' +
+      'sits further down the hill than on the solo ones — a control has to be somewhere the rider reliably ' +
+      'IS, and for the first couple of hundred metres of a race that is not the fall line.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIELD_BATCH,
   },
   {
     id: 'pad-gate',
-    question: 'The same chain as the bench\'s `pad-gate`, ridden with five opponents instead of alone — '
-      + 'which is the whole experiment. Solo, the effect thread\'s owner can only be this rider and every '
-      + 'pad on the course writes in one pass. Here it is one of six, and the open question is what picks '
-      + 'it: the roster is now read per run, so an owner that is not this rider can be matched against the '
-      + 'field by address rather than reported as a bare pointer. The reset rides along for the second '
-      + 'question — its placement averages the OTHER riders\' distance to finish, so this is the only course '
-      + 'where the distance it moves you means anything.',
-    shape: 'volume', profile: profile(1), color: [0.1, 0.95, 0.85, 1], sizeM: PAD_GATE_BOX_M,
-    extraNode: 'speed-boost', tailNodes: ['trick-boost', 'rider-reset', 'wait'],
-    tuneTail: (payload, id) => { if (id === 'wait') payload.WaitTime = 600; },
-    nodeWatch: PAD_OWNER_WATCH, lateWatch: PAD_THREAD_LATE_WATCH, watchLiveNode: true,
+    question:
+      "The same chain as the bench's `pad-gate`, ridden with five opponents instead of alone — " +
+      "which is the whole experiment. Solo, the effect thread's owner can only be this rider and every " +
+      'pad on the course writes in one pass. Here it is one of six, and the open question is what picks ' +
+      'it: the roster is now read per run, so an owner that is not this rider can be matched against the ' +
+      'field by address rather than reported as a bare pointer. The reset rides along for the second ' +
+      "question — its placement averages the OTHER riders' distance to finish, so this is the only course " +
+      'where the distance it moves you means anything.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.1, 0.95, 0.85, 1],
+    sizeM: PAD_GATE_BOX_M,
+    extraNode: 'speed-boost',
+    tailNodes: ['trick-boost', 'rider-reset', 'wait'],
+    tuneTail: (payload, id) => {
+      if (id === 'wait') payload.WaitTime = 600;
+    },
+    nodeWatch: PAD_OWNER_WATCH,
+    lateWatch: PAD_THREAD_LATE_WATCH,
+    watchLiveNode: true,
   },
   // The negative half of the mode gate, and the reason it is HERE rather than beside its twin: this course
   // is the one that rides RACE, so the two cells differ in the game mode and in nothing else — same node,
@@ -2375,15 +3032,21 @@ export const AUTO_TEST_FIELD_CASES: readonly AutoTestCase[] = [
   // in a mode where a null result cannot be blamed on the field.
   {
     id: 'gem-multiplier-race',
-    question: 'The mode gate\'s other side. The identical MainType-14 node the bench rides in showoff, here '
-      + 'in RACE — mode 2, outside the {3, 5} the handler tests — where `TrickScore_ApplyGemMultiplier` is '
-      + 'branched past entirely and the multiplier must stay at its 1.0 rest. The chain around it still has '
-      + 'to run: the marker behind the node reports whether a gated-out opcode is inert or fatal, and a '
-      + 'scoring node that quietly ends its chain in three of the game\'s modes is worth knowing about '
-      + 'before anyone authors one into a race course. Read `gem-multiplier` beside the bench twin; a 5.0 '
-      + 'here would retire the gate outright.',
-    shape: 'gate', profile: profile(1), color: [0.55, 0.3, 0.95, 1], leadNode: 'score-multiplier',
-    tuneLead: payload => { payload.MultiplierScore = 5; },
+    question:
+      "The mode gate's other side. The identical MainType-14 node the bench rides in showoff, here " +
+      'in RACE — mode 2, outside the {3, 5} the handler tests — where `TrickScore_ApplyGemMultiplier` is ' +
+      'branched past entirely and the multiplier must stay at its 1.0 rest. The chain around it still has ' +
+      'to run: the marker behind the node reports whether a gated-out opcode is inert or fatal, and a ' +
+      "scoring node that quietly ends its chain in three of the game's modes is worth knowing about " +
+      'before anyone authors one into a race course. Read `gem-multiplier` beside the bench twin; a 5.0 ' +
+      'here would retire the gate outright.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.55, 0.3, 0.95, 1],
+    leadNode: 'score-multiplier',
+    tuneLead: payload => {
+      payload.MultiplierScore = 5;
+    },
     watchLiveNode: true,
   },
   // CAN THE RIDER BE TAKEN OFF THE RACE LINE AND LEFT THERE — the question a lane-based course rests on, and
@@ -2424,19 +3087,26 @@ export const AUTO_TEST_FIELD_CASES: readonly AutoTestCase[] = [
   // as the 139.12 m reclaim that happened three quarters of a minute later.
   {
     id: 'human-gate-warp',
-    question: 'A HUMAN-RIDER GATE REJECTS AN AI, AND A TELEPORT BEHIND IT TAKES THE PLAYER OFF THE RACE LINE '
-      + 'ALONE. Two facts and one cell, both read off the roster trace rather than the local rider. Three '
-      + 'passes of three, six riders: exactly ONE body was relocated each time and it was the player — '
-      + '125.9, 115.1 and 126.0 m on the frame the cell fired. Not one opponent moved, and they were not '
-      + 'merely absent: FIFTEEN AI contacts within 0.2-1.6 m of the panel\'s origin against three human '
-      + 'ones, and the tally is 0 warps to 3. In two of the three passes all five opponents crossed BEFORE '
-      + 'the human with the slot still empty and nothing was built, which is the half a debounce cannot '
-      + 'explain away. That is `gate-human`\'s rejecting half — the one no solo course can ask, because it '
-      + 'needs a second board on the mountain and a way to see what that board did.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.55, 0.15, 1],
-    leadNode: 'gate-human', tailNodes: ['rider-teleport'], teleportTarget: true,
+    question:
+      'A HUMAN-RIDER GATE REJECTS AN AI, AND A TELEPORT BEHIND IT TAKES THE PLAYER OFF THE RACE LINE ' +
+      'ALONE. Two facts and one cell, both read off the roster trace rather than the local rider. Three ' +
+      'passes of three, six riders: exactly ONE body was relocated each time and it was the player — ' +
+      '125.9, 115.1 and 126.0 m on the frame the cell fired. Not one opponent moved, and they were not ' +
+      "merely absent: FIFTEEN AI contacts within 0.2-1.6 m of the panel's origin against three human " +
+      'ones, and the tally is 0 warps to 3. In two of the three passes all five opponents crossed BEFORE ' +
+      'the human with the slot still empty and nothing was built, which is the half a debounce cannot ' +
+      "explain away. That is `gate-human`'s rejecting half — the one no solo course can ask, because it " +
+      'needs a second board on the mountain and a way to see what that board did.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.55, 0.15, 1],
+    leadNode: 'gate-human',
+    tailNodes: ['rider-teleport'],
+    teleportTarget: true,
     watchLiveNode: true,
-    expect: 'dispatch', expectRider: [{ signal: 'jump', atLeast: 100 }], demonstrated: FIELD_BATCH,
+    expect: 'dispatch',
+    expectRider: [{ signal: 'jump', atLeast: 100 }],
+    demonstrated: FIELD_BATCH,
   },
 ] as const;
 
@@ -2479,22 +3149,33 @@ export const AUTO_TEST_FIELD_CASES: readonly AutoTestCase[] = [
 export const AUTO_TEST_RELAY_CASES: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the retail crash bag every course here leads with. A run where this stays dark '
-      + 'indicts the harness or the menu prelude, so nothing below it is worth reading.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Control: the retail crash bag every course here leads with. A run where this stays dark ' +
+      'indicts the harness or the menu prelude, so nothing below it is worth reading.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'teleport-warp',
-    question: 'AN AUTHORED TELEPORT MOVES THE RIDER, and lands them where the handler says it will. A '
-      + 'MainType-24 node leading the chain, aimed at a bare panel 130 m off the fall line that carries no '
-      + 'chain and that the rider has no way to reach — so arriving there has exactly one possible cause. '
-      + 'Three passes of three: 132.9 m between two adjacent samples, arriving 3.00 m from the panel with '
-      + 'speed cut from 23.9 m/s to nothing. This reproduces the specified arrival offset and zero-speed '
-      + 'placement to three figures rather than reporting a bare displacement [Trailmap: 390-teleport].',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.75, 0.2, 1],
-    leadNode: 'rider-teleport', teleportTarget: true, watchLiveNode: true,
-    expect: 'dispatch', expectRider: [{ signal: 'jump', atLeast: 100 }], demonstrated: TELEPORT_BATCH,
+    question:
+      'AN AUTHORED TELEPORT MOVES THE RIDER, and lands them where the handler says it will. A ' +
+      'MainType-24 node leading the chain, aimed at a bare panel 130 m off the fall line that carries no ' +
+      'chain and that the rider has no way to reach — so arriving there has exactly one possible cause. ' +
+      'Three passes of three: 132.9 m between two adjacent samples, arriving 3.00 m from the panel with ' +
+      'speed cut from 23.9 m/s to nothing. This reproduces the specified arrival offset and zero-speed ' +
+      'placement to three figures rather than reporting a bare displacement [Trailmap: 390-teleport].',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.75, 0.2, 1],
+    leadNode: 'rider-teleport',
+    teleportTarget: true,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectRider: [{ signal: 'jump', atLeast: 100 }],
+    demonstrated: TELEPORT_BATCH,
   },
 ] as const;
 
@@ -2516,10 +3197,14 @@ export const AUTO_TEST_RELAY_CASES: readonly AutoTestCase[] = [
 export const AUTO_TEST_CALL_CASES: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the retail crash bag every course here leads with. A run where this stays dark '
-      + 'indicts the harness or the menu prelude, so nothing below it is worth reading.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Control: the retail crash bag every course here leads with. A run where this stays dark ' +
+      'indicts the harness or the menu prelude, so nothing below it is worth reading.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   // The rider cell rides SECOND, ahead of the hop cell, and the order is load-bearing on a course this
   // short. The export derives the fall line from the first two plan entries, and a companion's entry is
@@ -2528,32 +3213,43 @@ export const AUTO_TEST_CALL_CASES: readonly AutoTestCase[] = [
   // be the second one.
   {
     id: 'call-function-rider',
-    question: 'A CALLED BODY IS HANDED THE RIDER WHO TOUCHED THE CALLER. The chain carries no rider-acting '
-      + 'node at all — only debounce, marker and a MainType-21 call — and the speed pad sits inside the '
-      + 'called function, yet the rider\'s boost request reads 4.933, 5.000 and 5.000 against the authored '
-      + '5.0. That is the handler passing its own thread\'s owner down [Trailmap: 150-logic], and it is what '
-      + 'separates this opcode from the detached call (MainType 26), whose whole difference is that it does '
-      + 'not. The arithmetic corroborates it rather than resting on one word: the cell below reads the same '
-      + 'request three seconds later at 1.95 / 1.983 / 1.933, which is this 5.0 less the gap between the two '
-      + 'contacts — a countdown that is running, not a value that was written once and read stale.',
-    shape: 'gate', profile: profile(1), color: [0.95, 0.55, 0.3, 1],
+    question:
+      'A CALLED BODY IS HANDED THE RIDER WHO TOUCHED THE CALLER. The chain carries no rider-acting ' +
+      'node at all — only debounce, marker and a MainType-21 call — and the speed pad sits inside the ' +
+      "called function, yet the rider's boost request reads 4.933, 5.000 and 5.000 against the authored " +
+      "5.0. That is the handler passing its own thread's owner down [Trailmap: 150-logic], and it is what " +
+      'separates this opcode from the detached call (MainType 26), whose whole difference is that it does ' +
+      'not. The arithmetic corroborates it rather than resting on one word: the cell below reads the same ' +
+      'request three seconds later at 1.95 / 1.983 / 1.933, which is this 5.0 less the gap between the two ' +
+      'contacts — a countdown that is running, not a value that was written once and read stale.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.95, 0.55, 0.3, 1],
     functionNodes: ['speed-boost'],
-    nodeWatch: PAD_OWNER_WATCH, watchLiveNode: true,
-    expect: 'dispatch', expectRider: [{ signal: 'boost-request', atLeast: 4.5 }], demonstrated: CALL_BATCH,
+    nodeWatch: PAD_OWNER_WATCH,
+    watchLiveNode: true,
+    expect: 'dispatch',
+    expectRider: [{ signal: 'boost-request', atLeast: 4.5 }],
+    demonstrated: CALL_BATCH,
   },
   {
     id: 'call-function-hop',
-    question: 'A MainType-21 CALL RUNS AN AUTHORED FUNCTION. The chain is debounce, marker and a call; the '
-      + 'called body is a single MainType-7 hop onto a companion 130 m off the fall line that carries no '
-      + 'chain and that the rider never approaches. The companion took a node in all three passes, on the '
-      + 'same sample the caller fired, with the rider measured 129.8 m away — so the call resolved its index '
-      + 'into the appended function table, the engine spun a thread up on that function, and the body ran. '
-      + '`hop-remote-target` on the catalogue is the control: the same hop reached directly from a chain, so '
-      + 'a run where that lands and this does not means the indirection failed rather than the hop.',
-    shape: 'gate', profile: profile(1), color: [0.85, 0.4, 0.95, 1],
-    functionNodes: ['act-on-instance'], companion: 'debounce',
+    question:
+      'A MainType-21 CALL RUNS AN AUTHORED FUNCTION. The chain is debounce, marker and a call; the ' +
+      'called body is a single MainType-7 hop onto a companion 130 m off the fall line that carries no ' +
+      'chain and that the rider never approaches. The companion took a node in all three passes, on the ' +
+      'same sample the caller fired, with the rider measured 129.8 m away — so the call resolved its index ' +
+      'into the appended function table, the engine spun a thread up on that function, and the body ran. ' +
+      '`hop-remote-target` on the catalogue is the control: the same hop reached directly from a chain, so ' +
+      'a run where that lands and this does not means the indirection failed rather than the hop.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.85, 0.4, 0.95, 1],
+    functionNodes: ['act-on-instance'],
+    companion: 'debounce',
     watchLiveNode: true,
-    expect: 'dispatch', demonstrated: CALL_BATCH,
+    expect: 'dispatch',
+    demonstrated: CALL_BATCH,
   },
 ] as const;
 
@@ -2581,18 +3277,26 @@ export interface AutoTestSurfaceStrip {
 export const AUTO_TEST_SIGNALS_CASES: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the retail crash bag every course here leads with. A run where this stays dark '
-      + 'indicts the harness or the menu prelude, so nothing below it is worth reading.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Control: the retail crash bag every course here leads with. A run where this stays dark ' +
+      'indicts the harness or the menu prelude, so nothing below it is worth reading.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'fall-line-anchor',
-    question: 'The second raw-space anchor: with the control above it, the signal analyzer derives the fall '
-      + 'line it projects every rider sample onto. An invisible pass-through volume, so the descent it '
-      + 'anchors is exactly the descent being measured.',
-    shape: 'volume', profile: profile(1), color: [0.05, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'The second raw-space anchor: with the control above it, the signal analyzer derives the fall ' +
+      'line it projects every rider sample onto. An invisible pass-through volume, so the descent it ' +
+      'anchors is exactly the descent being measured.',
+    shape: 'volume',
+    profile: profile(1),
+    color: [0.05, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
 ];
 
@@ -2686,57 +3390,81 @@ export const AUTO_TEST_SIGNAL_STRIPS: readonly AutoTestSurfaceStrip[] = [
 export const AUTO_TEST_AUDIO_CASES: readonly AutoTestCase[] = [
   {
     id: 'ctl-retail-bag',
-    question: 'Control: the retail crash bag every course here leads with. A run where this stays dark '
-      + 'indicts the harness or the menu prelude, so nothing below it is worth reading.',
-    shape: 'bag', profile: profile(1), color: [1, 1, 1, 1],
-    expect: 'dispatch', demonstrated: FIRST_LIVE_PASS,
+    question:
+      'Control: the retail crash bag every course here leads with. A run where this stays dark ' +
+      'indicts the harness or the menu prelude, so nothing below it is worth reading.',
+    shape: 'bag',
+    profile: profile(1),
+    color: [1, 1, 1, 1],
+    expect: 'dispatch',
+    demonstrated: FIRST_LIVE_PASS,
   },
   {
     id: 'amb-retail-bank',
-    question: 'Does a placed emitter carrying a RETAIL global event sound? It loads a whole named bank of '
-      + 'its own and needs nothing injected, so it is the control that separates the placed-emitter path '
-      + 'from anything this toolchain does to a course bank.',
-    shape: 'gate', profile: profile(1), color: [0.3, 0.6, 1, 1],
-    expect: 'dispatch', demonstrated: AUDIO_BATCH,
+    question:
+      'Does a placed emitter carrying a RETAIL global event sound? It loads a whole named bank of ' +
+      'its own and needs nothing injected, so it is the control that separates the placed-emitter path ' +
+      'from anything this toolchain does to a course bank.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.3, 0.6, 1, 1],
+    expect: 'dispatch',
+    demonstrated: AUDIO_BATCH,
     ambient: { event: 116, expect: 'sounds' },
   },
   {
     id: 'amb-retail-course-slot',
-    question: 'A RETAIL event resolving to a course-bank SLOT, used as a continuing emitter — the branch the '
-      + 'custom cells take, which the bank control above does not. Predicted silent, and it is NOT: it holds '
-      + 'a voice for its whole residency on a slot with no loop region, which is what makes the pool a '
-      + 'measure of allocation rather than of sound.',
-    shape: 'gate', profile: profile(1), color: [0.6, 0.6, 0.6, 1],
-    expect: 'dispatch', demonstrated: AUDIO_BATCH,
+    question:
+      'A RETAIL event resolving to a course-bank SLOT, used as a continuing emitter — the branch the ' +
+      'custom cells take, which the bank control above does not. Predicted silent, and it is NOT: it holds ' +
+      'a voice for its whole residency on a slot with no loop region, which is what makes the pool a ' +
+      'measure of allocation rather than of sound.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.6, 0.6, 0.6, 1],
+    expect: 'dispatch',
+    demonstrated: AUDIO_BATCH,
     ambient: { event: 31, expect: 'open' },
   },
   {
     id: 'amb-custom-loop',
-    question: 'Does a CUSTOM continuing emitter sound? This is the whole injection path — a reserved event '
-      + 'id, the clip encoded into the target course bank, and a loop region on the slot. It shipped silent '
-      + 'for want of the last of those.',
-    shape: 'gate', profile: profile(1), color: [0.3, 1, 0.5, 1],
-    expect: 'dispatch', demonstrated: AUDIO_BATCH,
+    question:
+      'Does a CUSTOM continuing emitter sound? This is the whole injection path — a reserved event ' +
+      'id, the clip encoded into the target course bank, and a loop region on the slot. It shipped silent ' +
+      'for want of the last of those.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.3, 1, 0.5, 1],
+    expect: 'dispatch',
+    demonstrated: AUDIO_BATCH,
     ambient: { tone: 'loop', expect: 'sounds' },
   },
   {
     id: 'amb-custom-gated',
-    question: 'Is a hit-gated custom emitter silent until its prop is hit, and sounding afterwards? Both '
-      + 'halves matter: the second is the feature, and the FIRST is this course\'s silence control — a pass '
-      + 'where everything sounds has to fail somewhere.',
-    shape: 'gate', profile: profile(1), color: [1, 0.8, 0.2, 1],
-    expect: 'dispatch', demonstrated: AUDIO_BATCH,
+    question:
+      'Is a hit-gated custom emitter silent until its prop is hit, and sounding afterwards? Both ' +
+      "halves matter: the second is the feature, and the FIRST is this course's silence control — a pass " +
+      'where everything sounds has to fail somewhere.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [1, 0.8, 0.2, 1],
+    expect: 'dispatch',
+    demonstrated: AUDIO_BATCH,
     ambient: { tone: 'gated', hitGated: true, expect: 'gated' },
   },
   {
     id: 'amb-custom-hit',
-    question: 'A custom collision one-shot, carried by the same injection. Ungraded here on purpose: a '
-      + 'one-shot is a transient voice rather than a pool entry, so the probe cannot see it — what it '
-      + 'proves is that its bank slot comes out UNlooped while its neighbours come out looped. It is also '
-      + 'the course\'s standing evidence that a one-shot may overwrite slot 64, the shared stereo glass '
-      + 'smash, which a sustaining clip may not.',
-    shape: 'gate', profile: profile(1), color: [0.9, 0.4, 0.9, 1],
-    expect: 'dispatch', demonstrated: AUDIO_BATCH,
+    question:
+      'A custom collision one-shot, carried by the same injection. Ungraded here on purpose: a ' +
+      'one-shot is a transient voice rather than a pool entry, so the probe cannot see it — what it ' +
+      'proves is that its bank slot comes out UNlooped while its neighbours come out looped. It is also ' +
+      "the course's standing evidence that a one-shot may overwrite slot 64, the shared stereo glass " +
+      'smash, which a sustaining clip may not.',
+    shape: 'gate',
+    profile: profile(1),
+    color: [0.9, 0.4, 0.9, 1],
+    expect: 'dispatch',
+    demonstrated: AUDIO_BATCH,
     collisionTone: 'hit',
   },
 ];
@@ -2780,9 +3508,11 @@ export interface AutoTestFixture {
 export const AUTO_TEST_FIXTURES: readonly AutoTestFixture[] = [
   {
     name: AUTO_TEST_GOLD_NAME,
-    purpose: 'The regression test, and the one to ride by default. One cell per mechanism, short enough to '
-      + 'fit the solo mountain — so a red row is news rather than weather.',
-    cases: AUTO_TEST_GOLD_CASES, mode: 'showoff',
+    purpose:
+      'The regression test, and the one to ride by default. One cell per mechanism, short enough to ' +
+      'fit the solo mountain — so a red row is news rather than weather.',
+    cases: AUTO_TEST_GOLD_CASES,
+    mode: 'showoff',
   },
   {
     // RACE, and not by preference — the full catalogue does not FIT in a showoff run. Measured: a showoff
@@ -2798,67 +3528,86 @@ export const AUTO_TEST_FIXTURES: readonly AutoTestFixture[] = [
     // contact built the node; the rider-graded cells are on GOLD, the bench and the field, which all ride
     // alone.
     name: AUTO_TEST_NAME,
-    purpose: 'The catalogue, first half. Every cell is a fact hardware has demonstrated — ride this and '
-      + 'AUTOTEST1B for the full sweep, or GOLD for the regression subset.',
-    cases: AUTO_TEST_CASES, mode: 'race',
+    purpose:
+      'The catalogue, first half. Every cell is a fact hardware has demonstrated — ride this and ' +
+      'AUTOTEST1B for the full sweep, or GOLD for the regression subset.',
+    cases: AUTO_TEST_CASES,
+    mode: 'race',
   },
   {
     // The catalogue outgrew one course. At 70 cases its last row sat at 6,350 m against the ~5,900 m a race
     // pass reaches, so six rows could never report — and the cost of that was not only the six: it taxed
     // every future graduation, because anything added to the bottom pushed something else out of reach.
     name: AUTO_TEST_NAME_B,
-    purpose: 'The catalogue, second half. Same job as AUTOTEST1 and the same standard of evidence; it is a '
-      + 'separate course only because one race pass cannot reach 70 cells.',
-    cases: AUTO_TEST_CASES_B, mode: 'race',
+    purpose:
+      'The catalogue, second half. Same job as AUTOTEST1 and the same standard of evidence; it is a ' +
+      'separate course only because one race pass cannot reach 70 cells.',
+    cases: AUTO_TEST_CASES_B,
+    mode: 'race',
   },
   {
     name: AUTO_TEST_LAB_NAME,
     purpose: 'The bench. Open questions only — cells here assert nothing until a batch has answered them.',
-    cases: AUTO_TEST_LAB_CASES, mode: 'showoff',
+    cases: AUTO_TEST_LAB_CASES,
+    mode: 'showoff',
   },
   {
     name: AUTO_TEST_FIELD_NAME,
     purpose: 'The field. The only course ridden with company, for the questions that are ABOUT company.',
-    cases: AUTO_TEST_FIELD_CASES, mode: 'race', leadInM: FIELD_LEAD_IN_M,
+    cases: AUTO_TEST_FIELD_CASES,
+    mode: 'race',
+    leadInM: FIELD_LEAD_IN_M,
   },
   {
     name: AUTO_TEST_SIGNALS_NAME,
-    purpose: 'The instrument. The terrain is the experiment: painted surface strips ridden straight while '
-      + 'the harness samples the board-audio interface signals (Slip / Dig / Lean).',
-    cases: AUTO_TEST_SIGNALS_CASES, mode: 'showoff',
+    purpose:
+      'The instrument. The terrain is the experiment: painted surface strips ridden straight while ' +
+      'the harness samples the board-audio interface signals (Slip / Dig / Lean).',
+    cases: AUTO_TEST_SIGNALS_CASES,
+    mode: 'showoff',
     strips: AUTO_TEST_SIGNAL_STRIPS,
   },
   {
     name: AUTO_TEST_RELAY_NAME,
-    purpose: 'The relay. Asks whether a teleport moves the rider — the one opcode that could make a course '
-      + 'something other than a single line, and the thing a lane-based fixture would rest on.',
-    cases: AUTO_TEST_RELAY_CASES, mode: 'showoff',
+    purpose:
+      'The relay. Asks whether a teleport moves the rider — the one opcode that could make a course ' +
+      'something other than a single line, and the thing a lane-based fixture would rest on.',
+    cases: AUTO_TEST_RELAY_CASES,
+    mode: 'showoff',
   },
   {
     name: AUTO_TEST_CALL_NAME,
-    purpose: 'The call. Asks what a MainType-21 node does with an authored function — whether the body runs '
-      + 'at all, and whether it is handed the rider who touched the caller.',
-    cases: AUTO_TEST_CALL_CASES, mode: 'showoff',
+    purpose:
+      'The call. Asks what a MainType-21 node does with an authored function — whether the body runs ' +
+      'at all, and whether it is handed the rider who touched the caller.',
+    cases: AUTO_TEST_CALL_CASES,
+    mode: 'showoff',
   },
   {
     name: AUTO_TEST_COLLISION_NAME,
-    purpose: 'The migrated collision lab. The original sixteen-cell live matrix plus its mode-1 bounce-off '
-      + 'follow-up, linearized and graded on both contact dispatch and the rider\'s contact impulse.',
-    cases: AUTO_TEST_COLLISION_CASES, mode: 'showoff', windowFrames: 4800,
+    purpose:
+      'The migrated collision lab. The original sixteen-cell live matrix plus its mode-1 bounce-off ' +
+      "follow-up, linearized and graded on both contact dispatch and the rider's contact impulse.",
+    cases: AUTO_TEST_COLLISION_CASES,
+    mode: 'showoff',
+    windowFrames: 4800,
   },
   {
     name: AUTO_TEST_AUDIO_NAME,
-    purpose: 'The audio bench. Placed ambient emitters, graded on whether the engine actually started a '
-      + 'voice for them rather than on whether a node got built — which is the only question ambience has.',
-    cases: AUTO_TEST_AUDIO_CASES, mode: 'showoff',
+    purpose:
+      'The audio bench. Placed ambient emitters, graded on whether the engine actually started a ' +
+      'voice for them rather than on whether a node got built — which is the only question ambience has.',
+    cases: AUTO_TEST_AUDIO_CASES,
+    mode: 'showoff',
   },
 ];
 
 export function autoTestFixture(name: string): AutoTestFixture {
   const found = AUTO_TEST_FIXTURES.find(fixture => fixture.name.toUpperCase() === name.toUpperCase());
   if (!found) {
-    throw new Error(`No auto-test fixture named ${name}. Known: `
-      + AUTO_TEST_FIXTURES.map(fixture => fixture.name).join(', '));
+    throw new Error(
+      `No auto-test fixture named ${name}. Known: ` + AUTO_TEST_FIXTURES.map(fixture => fixture.name).join(', '),
+    );
   }
   return found;
 }

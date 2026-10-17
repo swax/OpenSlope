@@ -28,7 +28,10 @@ export function crossHeight(p: CrossSection, s: number): number {
   let h: number;
   if (a <= e) h = 0;
   else if (a <= e + L) h = p.wall * smoothstep((a - e) / L);
-  else { const sh = Math.max(p.shoulder, 0.5); h = p.wall + 0.15 * sh * smoothstep((a - e - L) / sh); }
+  else {
+    const sh = Math.max(p.shoulder, 0.5);
+    h = p.wall + 0.15 * sh * smoothstep((a - e - L) / sh);
+  }
   return h + s * Math.sin((p.bank * Math.PI) / 180); // bank rolls the section about the spine
 }
 
@@ -55,25 +58,38 @@ export const courseSamples = (line: CoursePath): CourseSamples | null =>
  */
 const STRIDE = 4;
 function nearestSample(samples: SpineSample[], x: number, z: number): SpineSample {
-  let best = 0, bestD2 = Infinity;
+  let best = 0,
+    bestD2 = Infinity;
   for (let i = 0; i < samples.length; i += STRIDE) {
-    const dx = samples[i].pos[0] - x, dz = samples[i].pos[2] - z;
+    const dx = samples[i].pos[0] - x,
+      dz = samples[i].pos[2] - z;
     const d2 = dx * dx + dz * dz;
-    if (d2 < bestD2) { bestD2 = d2; best = i; }
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = i;
+    }
   }
-  const lo = Math.max(0, best - STRIDE - 2), hi = Math.min(samples.length - 1, best + STRIDE + 2);
+  const lo = Math.max(0, best - STRIDE - 2),
+    hi = Math.min(samples.length - 1, best + STRIDE + 2);
   for (let i = lo; i <= hi; i++) {
-    const dx = samples[i].pos[0] - x, dz = samples[i].pos[2] - z;
+    const dx = samples[i].pos[0] - x,
+      dz = samples[i].pos[2] - z;
     const d2 = dx * dx + dz * dz;
-    if (d2 < bestD2) { bestD2 = d2; best = i; }
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = i;
+    }
   }
   return samples[best];
 }
 
 /** The run's influence at (x, z): the pull toward the ribbon (t in 0..1), the target world height there, the
  *  floor surface, and whether (x, z) sits over the floor (for the strip paint). Null beyond the blend. */
-export function seatSample(cs: CourseSamples, x: number, z: number):
-{ t: number; y: number; surface: number; onFloor: boolean } | null {
+export function seatSample(
+  cs: CourseSamples,
+  x: number,
+  z: number,
+): { t: number; y: number; surface: number; onFloor: boolean } | null {
   const sp = nearestSample(cs.samples, x, z);
   const { side } = frameAt(sp.fwd);
   const off = (x - sp.pos[0]) * side[0] + (z - sp.pos[2]) * side[2]; // signed lateral offset (horizontal)
@@ -89,6 +105,7 @@ export const KNOT_WIDTH_LIMITS = { min: 20, max: 3000, step: 5 } as const;
 
 /** A floor width clamped to KNOT_WIDTH_LIMITS (a non-number reads as the minimum). */
 export function clampKnotWidth(width: number): number {
-  return Number.isFinite(width) ? Math.min(KNOT_WIDTH_LIMITS.max, Math.max(KNOT_WIDTH_LIMITS.min, width))
+  return Number.isFinite(width)
+    ? Math.min(KNOT_WIDTH_LIMITS.max, Math.max(KNOT_WIDTH_LIMITS.min, width))
     : KNOT_WIDTH_LIMITS.min;
 }

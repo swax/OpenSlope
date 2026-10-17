@@ -21,19 +21,19 @@ const GEM_SPIN_RADIANS_PER_SECOND = THREE.MathUtils.degToRad(179.82031 * 1.5);
 export function createGemsLayer(stage: Stage, assets: PropAssets) {
   const gemGroup = new THREE.Group();
   let gems: Gem[] = [];
-  let selectedGem: string | null = null;                // the selected gem's stable id (docs/039)
-  let gemArmed = false;                                 // the Gem tool is active: a click drops a gem / a drag a row
-  let gemLine: { start: V3; end: V3 } | null = null;    // in-progress drag-to-row (final authored positions)
-  let gemGhost: THREE.Group | null = null;              // translucent drop preview riding the cursor while armed
-  let gemArmOpts = { value: 2, height: 2 };             // the pending drop the ghost previews (host's tool defaults)
+  let selectedGem: string | null = null; // the selected gem's stable id (docs/039)
+  let gemArmed = false; // the Gem tool is active: a click drops a gem / a drag a row
+  let gemLine: { start: V3; end: V3 } | null = null; // in-progress drag-to-row (final authored positions)
+  let gemGhost: THREE.Group | null = null; // translucent drop preview riding the cursor while armed
+  let gemArmOpts = { value: 2, height: 2 }; // the pending drop the ghost previews (host's tool defaults)
 
-  let visible = true;                                   // the Tricks view filter (coordinated with the rails by the shell)
-  let playMode: RaceMode | null = null;                 // null outside Test; native gems exist only in Showoff
+  let visible = true; // the Tricks view filter (coordinated with the rails by the shell)
+  let playMode: RaceMode | null = null; // null outside Test; native gems exist only in Showoff
   let worldEffectsEnabled = false;
-  const gemMoveHandle = new THREE.Object3D();           // scene-root gizmo anchor for the selected gem
+  const gemMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected gem
   let gemModels: Map<number, { level: string; model: number }> | null = null; // tier (2/3/5) -> native gem model
-  let gemGhostMats: THREE.Material[] = [];              // ghost material clones, disposed on rebuild
-  let gemSelMats: THREE.Material[] = [];               // selected-marker material clones, disposed on setGems
+  let gemGhostMats: THREE.Material[] = []; // ghost material clones, disposed on rebuild
+  let gemSelMats: THREE.Material[] = []; // selected-marker material clones, disposed on setGems
   // stand-in tints per tier while the native geometry loads — yellow ×2 / orange ×3 / red ×5, like the crystals
   const gemMatTier = new Map<number, THREE.MeshLambertMaterial>([
     [2, new THREE.MeshLambertMaterial({ color: 0xf2c744, emissive: 0x4a3a08 })],
@@ -61,7 +61,10 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
   function setModels(models: Map<number, { level: string; model: number }>) {
     gemModels = models;
     setGems(gems, selectedGem);
-    if (gemArmed) { disposeGemGhost(); buildGemGhost(); }
+    if (gemArmed) {
+      disposeGemGhost();
+      buildGemGhost();
+    }
   }
 
   const applyVisibility = () => {
@@ -92,16 +95,14 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
 
   function stepWorldEffects(dt: number) {
     if (!worldEffectsEnabled || dt <= 0) return;
-    if (gemGroup.visible) for (const gem of gemGroup.children)
-      gem.rotation.y -= dt * GEM_SPIN_RADIANS_PER_SECOND;
+    if (gemGroup.visible) for (const gem of gemGroup.children) gem.rotation.y -= dt * GEM_SPIN_RADIANS_PER_SECOND;
     if (gemGhost?.visible) gemGhost.rotation.y -= dt * GEM_SPIN_RADIANS_PER_SECOND;
   }
 
   /** Where the selected gem sits in the list right now, or -1. The selection names a gem rather than the slot
    *  it happens to occupy, so it is resolved fresh on every rebuild: deleting a gem below it moves its index
    *  and leaves the selection exactly where it was (docs/039). */
-  const selectedIndex = (): number =>
-    selectedGem === null ? -1 : gems.findIndex(gem => gem.id === selectedGem);
+  const selectedIndex = (): number => (selectedGem === null ? -1 : gems.findIndex(gem => gem.id === selectedGem));
 
   /** Rebuild the gem markers from the doc, and keep the selected gem's gizmo in sync. Parallels setRails.
    *  Marker geometry is shared (the octahedron / the propGeom cache), so only the selection clones dispose. */
@@ -132,19 +133,24 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
    *  tier-tinted octahedron stands in. */
   function buildGemMarker(gem: Gem, index: number, selected: boolean): THREE.Object3D {
     const tier = gemTier(gem.value ?? 1);
-    const native = buildGemModel(tier, selected ? mat => {
-      const m = mat.clone();
-      m.emissive = new THREE.Color(0x666655);
-      gemSelMats.push(m);
-      return m;
-    } : undefined);
-    const marker: THREE.Object3D = native ?? new THREE.Mesh(
-      GEM_GEO,
-      selected ? gemSelMat : (gemMatTier.get(tier) ?? gemMatTier.get(2)!),
+    const native = buildGemModel(
+      tier,
+      selected
+        ? mat => {
+            const m = mat.clone();
+            m.emissive = new THREE.Color(0x666655);
+            gemSelMats.push(m);
+            return m;
+          }
+        : undefined,
     );
+    const marker: THREE.Object3D =
+      native ?? new THREE.Mesh(GEM_GEO, selected ? gemSelMat : (gemMatTier.get(tier) ?? gemMatTier.get(2)!));
     marker.scale.setScalar(selected ? (native ? 1.25 : 1.5) : 1);
     marker.position.set(gem.pos[0], gem.pos[1], gem.pos[2]);
-    marker.traverse(o => { o.userData.gemIndex = index; });
+    marker.traverse(o => {
+      o.userData.gemIndex = index;
+    });
     return marker;
   }
 
@@ -214,14 +220,22 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
       g = new THREE.Group();
       g.add(new THREE.Mesh(GEM_GEO, ghostMat(gemMatTier.get(tier) ?? gemMatTier.get(2)!)));
     }
-    g.traverse(o => { if (o instanceof THREE.Mesh) o.raycast = () => { /* the ghost is never a pick target */ }; });
+    g.traverse(o => {
+      if (o instanceof THREE.Mesh)
+        o.raycast = () => {
+          /* the ghost is never a pick target */
+        };
+    });
     g.visible = false;
     stage.worldRoot.add(g);
     gemGhost = g;
   }
 
   function disposeGemGhost() {
-    if (gemGhost) { stage.worldRoot.remove(gemGhost); gemGhost = null; }
+    if (gemGhost) {
+      stage.worldRoot.remove(gemGhost);
+      gemGhost = null;
+    }
     for (const m of gemGhostMats) m.dispose();
     gemGhostMats = [];
   }
@@ -230,7 +244,10 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
   function updateGemGhost() {
     if (!gemArmed || !gemGhost || !stage.terrainMesh) return;
     const hit = stage.groundHit(); // BVH-accelerated: this runs on every pointer move (see Stage.groundHit)
-    if (!hit) { gemGhost.visible = false; return; }
+    if (!hit) {
+      gemGhost.visible = false;
+      return;
+    }
     const p = stage.snapDataPoint([hit.x, hit.y + gemArmOpts.height, -hit.z]);
     gemGhost.position.set(p[0], p[1], p[2]);
     gemGhost.visible = true;
@@ -243,17 +260,43 @@ export function createGemsLayer(stage: Stage, assets: PropAssets) {
   stage.worldRoot.add(gemLinePreview);
 
   return {
-    get gemGroup() { return gemGroup; },
-    get gems() { return gems; },
-    get selectedGem() { return selectedGem; },
-    get gemArmed() { return gemArmed; },
-    get gemLine() { return gemLine; },
-    set gemLine(v: { start: V3; end: V3 } | null) { gemLine = v; },
-    get gemLinePreview() { return gemLinePreview; },
-    get gemGhost() { return gemGhost; },
-    get gemArmOpts() { return gemArmOpts; },
-    setArmed, setModels, setVisible, setPlayMode, setWorldEffectsEnabled, stepWorldEffects,
-    setGems, seatGem, clearSelection, updateGemGhost,
+    get gemGroup() {
+      return gemGroup;
+    },
+    get gems() {
+      return gems;
+    },
+    get selectedGem() {
+      return selectedGem;
+    },
+    get gemArmed() {
+      return gemArmed;
+    },
+    get gemLine() {
+      return gemLine;
+    },
+    set gemLine(v: { start: V3; end: V3 } | null) {
+      gemLine = v;
+    },
+    get gemLinePreview() {
+      return gemLinePreview;
+    },
+    get gemGhost() {
+      return gemGhost;
+    },
+    get gemArmOpts() {
+      return gemArmOpts;
+    },
+    setArmed,
+    setModels,
+    setVisible,
+    setPlayMode,
+    setWorldEffectsEnabled,
+    stepWorldEffects,
+    setGems,
+    seatGem,
+    clearSelection,
+    updateGemGhost,
   };
 }
 

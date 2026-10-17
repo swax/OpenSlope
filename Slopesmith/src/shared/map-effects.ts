@@ -1,16 +1,14 @@
 import { joinMapPath as join, safeMapName as safeDataName, type MapDataSource } from './map-data';
 import {
-  CANONICAL_SEMANTIC_TYPES, compatibleEffectSemanticTypes, type EffectsDocument, type JsonObject,
+  CANONICAL_SEMANTIC_TYPES,
+  compatibleEffectSemanticTypes,
+  type EffectsDocument,
+  type JsonObject,
 } from '../core/effects/document';
 import type { V3 } from '../core/doc/types';
-import {
-  type ReferenceEffectInstance,
-  type ReferenceEffectsPayload,
-} from '../core/reference/effects';
+import { type ReferenceEffectInstance, type ReferenceEffectsPayload } from '../core/reference/effects';
 import { particleVolumesFromNative } from '../core/particles/volumes';
-import {
-  NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode,
-} from '../core/collision/native';
+import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } from '../core/collision/native';
 
 interface RawInstance {
   InstanceName?: string;
@@ -35,13 +33,13 @@ interface RawModel {
   ModelName?: string;
 }
 
-const vec3 = (raw: number[] | undefined, fallback: V3): V3 => raw && raw.length >= 3
-  ? [Number(raw[0]), Number(raw[1]), Number(raw[2])]
-  : fallback;
+const vec3 = (raw: number[] | undefined, fallback: V3): V3 =>
+  raw && raw.length >= 3 ? [Number(raw[0]), Number(raw[1]), Number(raw[2])] : fallback;
 
 function instanceContact(raw: RawInstance): 'through' | 'solid' {
   const mode = Number.isInteger(raw.CollsionMode)
-    ? raw.CollsionMode as NativeCollisionMode : NATIVE_COLLISION_MODE.none;
+    ? (raw.CollsionMode as NativeCollisionMode)
+    : NATIVE_COLLISION_MODE.none;
   const contact = nativeContactState({
     visible: raw.Visable !== false,
     playerCollision: raw.PlayerCollision !== false,
@@ -63,13 +61,20 @@ export async function readMapEffectsDocument(io: MapDataSource, directory: strin
     io.readJsonOr<EffectsDocument | null>(join(directory, 'Effects.json'), null),
     io.readJsonOr<{ PhysicsHeaders?: { PhysicsDatas?: JsonObject[] }[] } | null>(join(directory, 'Physics.json'), null),
   ]);
-  if (!document || !Array.isArray(document.slots) || !Array.isArray(document.graphs) || !Array.isArray(document.functions)) return null;
-  for (const owner of [...document.graphs, ...document.functions]) for (const node of owner.nodes ?? []) {
-    if (node.semanticType !== undefined) continue;
-    const meanings = compatibleEffectSemanticTypes(node);
-    // Receiver-dependent controls and unknown opcodes retain their original meaning rather than guessing.
-    if (meanings?.length === 1 && CANONICAL_SEMANTIC_TYPES.has(meanings[0])) node.semanticType = meanings[0];
-  }
+  if (
+    !document ||
+    !Array.isArray(document.slots) ||
+    !Array.isArray(document.graphs) ||
+    !Array.isArray(document.functions)
+  )
+    return null;
+  for (const owner of [...document.graphs, ...document.functions])
+    for (const node of owner.nodes ?? []) {
+      if (node.semanticType !== undefined) continue;
+      const meanings = compatibleEffectSemanticTypes(node);
+      // Receiver-dependent controls and unknown opcodes retain their original meaning rather than guessing.
+      if (meanings?.length === 1 && CANONICAL_SEMANTIC_TYPES.has(meanings[0])) node.semanticType = meanings[0];
+    }
   for (const [index, header] of (physics?.PhysicsHeaders ?? []).entries()) {
     if (!Array.isArray(header.PhysicsDatas)) continue;
     const record = document.physics?.find((record, row) => (record.originalIndex ?? row) === index);
@@ -88,29 +93,32 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
     readMapEffectsDocument(io, dir),
     io.readJsonOr<{ Instances?: RawInstance[] } | null>(join(dir, 'Instances.json'), null),
   ]);
-  if (rawDocument === null)
-    throw new Error(`${safe} has no Effects.json; re-extract or re-export the level`);
-  if (!rawInstancesFile)
-    throw new Error(`no Instances.json for ${safe}; re-extract or re-export the level`);
+  if (rawDocument === null) throw new Error(`${safe} has no Effects.json; re-extract or re-export the level`);
+  if (!rawInstancesFile) throw new Error(`no Instances.json for ${safe}; re-extract or re-export the level`);
   const rawInstances = rawInstancesFile.Instances ?? [];
   const rawModels = (await io.readJsonOr<{ Models?: RawModel[] }>(join(dir, 'Models.json'), {})).Models ?? [];
   const instances: ReferenceEffectInstance[] = rawInstances.map((raw, index) => ({
     index,
     name: String(raw.InstanceName ?? `Instance ${index}`),
-    modelName: String(rawModels[Number(raw.ModelID ?? -1)]?.ModelName ?? raw.InstanceName ?? `Model ${raw.ModelID ?? -1}`),
+    modelName: String(
+      rawModels[Number(raw.ModelID ?? -1)]?.ModelName ?? raw.InstanceName ?? `Model ${raw.ModelID ?? -1}`,
+    ),
     model: Number(raw.ModelID ?? -1),
     loc: vec3(raw.Location, [0, 0, 0]),
-    rot: raw.Rotation && raw.Rotation.length >= 4
-      ? [Number(raw.Rotation[0]), Number(raw.Rotation[1]), Number(raw.Rotation[2]), Number(raw.Rotation[3])]
-      : [0, 0, 0, 1],
+    rot:
+      raw.Rotation && raw.Rotation.length >= 4
+        ? [Number(raw.Rotation[0]), Number(raw.Rotation[1]), Number(raw.Rotation[2]), Number(raw.Rotation[3])]
+        : [0, 0, 0, 1],
     scale: vec3(raw.Scale, [1, 1, 1]),
     effectSlotIndex: Number.isInteger(raw.EffectSlotIndex) ? Number(raw.EffectSlotIndex) : -1,
     ltgState: Number.isInteger(raw.LTGState) ? Number(raw.LTGState) : 0,
     visible: raw.Visable !== false,
     // The ADL collision-sound EVENT id (not a bank slot - core/effects/collision-sound.ts resolves it).
     // -1 = the instance ships no sound record; authored-silent ids (e.g. 0) are carried as-is.
-    collisionSound: raw.IncludeSound !== false && raw.Sounds && Number.isInteger(raw.Sounds.CollisonSound)
-      ? Number(raw.Sounds.CollisonSound) : -1,
+    collisionSound:
+      raw.IncludeSound !== false && raw.Sounds && Number.isInteger(raw.Sounds.CollisonSound)
+        ? Number(raw.Sounds.CollisonSound)
+        : -1,
     contact: instanceContact(raw),
   }));
   const [particleInstancesFile, particleModelsFile] = await Promise.all([
@@ -118,9 +126,10 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
     io.readJsonOr<{ ParticlePrefabs?: unknown[] } | null>(join(dir, 'ParticleModels.json'), null),
   ]);
   // Both files are needed to place a volume; a level shipping only one contributes none.
-  const particleVolumes = particleInstancesFile && particleModelsFile
-    ? particleVolumesFromNative(particleInstancesFile.Particles ?? [], particleModelsFile.ParticlePrefabs ?? [])
-    : [] as ReturnType<typeof particleVolumesFromNative>;
+  const particleVolumes =
+    particleInstancesFile && particleModelsFile
+      ? particleVolumesFromNative(particleInstancesFile.Particles ?? [], particleModelsFile.ParticlePrefabs ?? [])
+      : ([] as ReturnType<typeof particleVolumesFromNative>);
 
   return {
     level: safe,

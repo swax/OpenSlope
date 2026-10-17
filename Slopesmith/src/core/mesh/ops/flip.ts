@@ -1,8 +1,6 @@
 import type { QuadMeshDoc } from '../../doc/types';
 
-export type MeshFlipResult =
-  | { ok: true; doc: QuadMeshDoc; flipped: number }
-  | { ok: false; error: string };
+export type MeshFlipResult = { ok: true; doc: QuadMeshDoc; flipped: number } | { ok: false; error: string };
 
 /**
  * Reverse which side of the selected patches is ridable. The engine's contact is one-sided along the patch's

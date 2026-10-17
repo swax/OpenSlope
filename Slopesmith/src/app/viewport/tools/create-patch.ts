@@ -31,17 +31,24 @@ export function createPatchToolLayer(
   const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: LINE_COLOR }));
   for (const object of [...dots, hoverDot, line]) {
     object.visible = false;
-    object.raycast = () => { /* placement previews are never pick targets */ };
+    object.raycast = () => {
+      /* placement previews are never pick targets */
+    };
     stage.worldRoot.add(object);
   }
 
   function placement(axisLocked = false, onSurface = false): PlacementEndpoint | null {
-    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, { axisLocked, onSurface });
+    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, {
+      axisLocked,
+      onSurface,
+    });
   }
 
   function samePoint(a: PlacementEndpoint, b: PlacementEndpoint) {
-    return (a.vertex !== null && b.vertex !== null && a.vertex === b.vertex)
-      || Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1], a.pos[2] - b.pos[2]) < 1e-6;
+    return (
+      (a.vertex !== null && b.vertex !== null && a.vertex === b.vertex) ||
+      Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1], a.pos[2] - b.pos[2]) < 1e-6
+    );
   }
 
   function closesTriangle(endpoint: PlacementEndpoint | null) {
@@ -67,7 +74,10 @@ export function createPatchToolLayer(
       line.visible = true;
     } else line.visible = false;
     if (closesTriangle(hover)) {
-      preview.setPreview([[0, 1, 2, 2]], points.flatMap(point => point.pos));
+      preview.setPreview(
+        [[0, 1, 2, 2]],
+        points.flatMap(point => point.pos),
+      );
     } else if (points.length === sides - 1 && hover) {
       const positions = [...points.map(point => point.pos), hover.pos].flat();
       preview.setPreview(sides === 3 ? [[0, 1, 2, 2]] : [[0, 1, 3, 2]], positions);
@@ -81,7 +91,9 @@ export function createPatchToolLayer(
     points = [];
     hover = null;
     if (!on) {
-      dots.forEach(dot => { dot.visible = false; });
+      dots.forEach(dot => {
+        dot.visible = false;
+      });
       hoverDot.visible = false;
       line.visible = false;
       preview.setPreview(null);
@@ -112,7 +124,8 @@ export function createPatchToolLayer(
     points.push(endpoint);
     hover = null;
     if (points.length === sides) {
-      const corners = points as [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint]
+      const corners = points as
+        | [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint]
         | [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint, PlacementEndpoint];
       if (stage.cb.onCreatePatch?.(corners) === false) points.pop();
       else points = [];
@@ -140,10 +153,19 @@ export function createPatchToolLayer(
     onHover,
     onCommit,
     refresh,
-    setPreviewListener(next: (() => void) | null) { listener = next; listener?.(); },
-    get active() { return active; },
-    get points(): readonly PlacementEndpoint[] { return points; },
-    get hover(): PlacementEndpoint | null { return hover; },
+    setPreviewListener(next: (() => void) | null) {
+      listener = next;
+      listener?.();
+    },
+    get active() {
+      return active;
+    },
+    get points(): readonly PlacementEndpoint[] {
+      return points;
+    },
+    get hover(): PlacementEndpoint | null {
+      return hover;
+    },
   };
 }
 

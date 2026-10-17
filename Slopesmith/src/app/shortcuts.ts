@@ -79,27 +79,94 @@ export type ShortcutDeps = {
 /** Install the window keydown listener. */
 export function installShortcuts(deps: ShortcutDeps) {
   const {
-    store, viewport, edit, trickTools, propOps, propLines, propClipboard, sculptBrush,
-    undo, redo, setMode, rebuildTools, updateCmdSheet, scheduleRebuild, refreshSelection, deleteKnot, courseReset,
-    cageActive, focusActive, clearPaintSel, deleteSelectedLight, deleteSelectedScreen, deleteSelectedPaintTile, turnPaintTexture,
-    turnModelTexture, disarmBrush, stopWatch,
-    cancelStartPlacement, exitModelEdit, sceneBack, effects, chatFocused, openChat,
+    store,
+    viewport,
+    edit,
+    trickTools,
+    propOps,
+    propLines,
+    propClipboard,
+    sculptBrush,
+    undo,
+    redo,
+    setMode,
+    rebuildTools,
+    updateCmdSheet,
+    scheduleRebuild,
+    refreshSelection,
+    deleteKnot,
+    courseReset,
+    cageActive,
+    focusActive,
+    clearPaintSel,
+    deleteSelectedLight,
+    deleteSelectedScreen,
+    deleteSelectedPaintTile,
+    turnPaintTexture,
+    turnModelTexture,
+    disarmBrush,
+    stopWatch,
+    cancelStartPlacement,
+    exitModelEdit,
+    sceneBack,
+    effects,
+    chatFocused,
+    openChat,
   } = deps;
   const {
-    transformSelectionActive, rotatableSelection, setGizmoMode, activeEditFamily, mixedEditSelection,
-    clearCellSel, clearEdgeSel, deselectEdit, refreshHandles,
-    hideSelectedMesh, showAllHidden, canHideSelection, toggleSelectedControlCages, canEditCurvature,
-    selectConnected, canSelectConnected,
-    startBridge, addBridgeRail, cancelBridge, completeBridge,
-    endCreateEdgeChain, finishCreateEdge, clearCreateEdge, finishCreateTube, cancelCreateTube, finishCreateGrid, cancelCreateGrid,
-    finishCreateTrail, cancelCreateTrail, undoCreateTrailPoint,
-    beginEdgeExtrusion, flipEdgeExtrusionSide, commitEdgeExtrusion, ripEdges,
-    creaseVertices, smoothVertices,
-    beginPointWeld, cancelPointWeld, commitPointWeld, beginEdgeWeld, cancelEdgeWeld, commitEdgeWeld,
-    copySelectedVertices, cutSelectedVertices, canCopyVertices,
-    pasteSelectedVertices, canPasteVertices, cancelPastePlacement,
-    deleteSelectedMesh, dissolveSelectedMesh, canDissolveSelectedMesh,
-    flipSelectedMesh, canFlipSelectedMesh,
+    transformSelectionActive,
+    rotatableSelection,
+    setGizmoMode,
+    activeEditFamily,
+    mixedEditSelection,
+    clearCellSel,
+    clearEdgeSel,
+    deselectEdit,
+    refreshHandles,
+    hideSelectedMesh,
+    showAllHidden,
+    canHideSelection,
+    toggleSelectedControlCages,
+    canEditCurvature,
+    selectConnected,
+    canSelectConnected,
+    startBridge,
+    addBridgeRail,
+    cancelBridge,
+    completeBridge,
+    endCreateEdgeChain,
+    finishCreateEdge,
+    clearCreateEdge,
+    finishCreateTube,
+    cancelCreateTube,
+    finishCreateGrid,
+    cancelCreateGrid,
+    finishCreateTrail,
+    cancelCreateTrail,
+    undoCreateTrailPoint,
+    beginEdgeExtrusion,
+    flipEdgeExtrusionSide,
+    commitEdgeExtrusion,
+    ripEdges,
+    creaseVertices,
+    smoothVertices,
+    beginPointWeld,
+    cancelPointWeld,
+    commitPointWeld,
+    beginEdgeWeld,
+    cancelEdgeWeld,
+    commitEdgeWeld,
+    copySelectedVertices,
+    cutSelectedVertices,
+    canCopyVertices,
+    pasteSelectedVertices,
+    canPasteVertices,
+    cancelPastePlacement,
+    deleteSelectedMesh,
+    dissolveSelectedMesh,
+    canDissolveSelectedMesh,
+    flipSelectedMesh,
+    canFlipSelectedMesh,
     insertCellEdge,
   } = edit;
 
@@ -124,19 +191,36 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (deps.propDeform.active && !typing) {
       if (mod && (key === 'z' || key === 'y')) {
         e.preventDefault();
-        if (key === 'y' || e.shiftKey) deps.propDeform.redo(); else deps.propDeform.undo();
+        if (key === 'y' || e.shiftKey) deps.propDeform.redo();
+        else deps.propDeform.undo();
         return;
       }
-      if (e.key === 'Escape') { e.preventDefault(); deps.propDeform.close(); return; }
-      if (!mod && !e.altKey && ['w', 'e', 'r'].includes(key)) {
-        e.preventDefault(); deps.propDeform.transform(key === 'w' ? 'move' : key === 'e' ? 'rotate' : 'scale'); return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        deps.propDeform.close();
+        return;
       }
-      if (['Delete', 'Backspace', 'Enter'].includes(e.key) || mod && ['c', 'x', 'v'].includes(key)) {
-        e.preventDefault(); return;
+      if (!mod && !e.altKey && ['w', 'e', 'r'].includes(key)) {
+        e.preventDefault();
+        deps.propDeform.transform(key === 'w' ? 'move' : key === 'e' ? 'rotate' : 'scale');
+        return;
+      }
+      if (['Delete', 'Backspace', 'Enter'].includes(e.key) || (mod && ['c', 'x', 'v'].includes(key))) {
+        e.preventDefault();
+        return;
       }
     }
-    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
-    if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      redo();
+      return;
+    }
     if (typing) return; // let knot/param text fields handle their own keys
     // Highlighted inspector text owns Copy/Cut even when the mesh or a prop also has a selection.
     if (mod && (key === 'c' || key === 'x') && window.getSelection?.()?.toString()) return;
@@ -144,8 +228,15 @@ export function installShortcuts(deps: ShortcutDeps) {
     // browser's reload never lands mid-edit; any other open tool finishes first (Esc), as with L / P.
     if (mod && !e.altKey && !e.shiftKey && key === 'r' && store.currentMode === 'edit') {
       e.preventDefault();
-      if (store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
-        && !viewport.pastePlacing && !viewport.edgeExtrusionStaged) edit.armLoopCut();
+      if (
+        store.bridgeRails === null &&
+        !store.surgeryTool &&
+        !store.weldTool &&
+        !store.createEdgeTool &&
+        !viewport.pastePlacing &&
+        !viewport.edgeExtrusionStaged
+      )
+        edit.armLoopCut();
       return;
     }
     // Ctrl+R / Ctrl+P in Sculpt: the opposite of R / P (Lower / Push), the same Ctrl that inverts a stroke — and
@@ -154,7 +245,10 @@ export function installShortcuts(deps: ShortcutDeps) {
       const opposite = sculptToolForKey(e.key, false, true);
       if (opposite) {
         e.preventDefault();
-        if (!e.repeat && sculptBrush.op !== opposite) { sculptBrush.op = opposite; rebuildTools(); }
+        if (!e.repeat && sculptBrush.op !== opposite) {
+          sculptBrush.op = opposite;
+          rebuildTools();
+        }
         return;
       }
     }
@@ -176,7 +270,8 @@ export function installShortcuts(deps: ShortcutDeps) {
         e.preventDefault();
         // 5 m steps on the 5 m grid, down to the minimum; like a typed size, they may pass the slider's end.
         const r = sculptBrush.radius;
-        sculptBrush.radius = e.key === ']' ? Math.floor(r / 5) * 5 + 5 : Math.max(SCULPT_RADIUS_MIN, Math.ceil(r / 5) * 5 - 5);
+        sculptBrush.radius =
+          e.key === ']' ? Math.floor(r / 5) * 5 + 5 : Math.max(SCULPT_RADIUS_MIN, Math.ceil(r / 5) * 5 - 5);
         viewport.brushRadius = sculptBrush.radius;
         rebuildTools();
         return;
@@ -185,7 +280,10 @@ export function installShortcuts(deps: ShortcutDeps) {
       const tool = sculptToolForKey(e.key, e.shiftKey);
       if (tool) {
         e.preventDefault();
-        if (!e.repeat && sculptBrush.op !== tool) { sculptBrush.op = tool; rebuildTools(); }
+        if (!e.repeat && sculptBrush.op !== tool) {
+          sculptBrush.op = tool;
+          rebuildTools();
+        }
         return;
       }
     }
@@ -196,17 +294,28 @@ export function installShortcuts(deps: ShortcutDeps) {
     // and a prop with no tile declines, leaving the key to the browser.
     // In Edit, the trail tile set builder's selected square takes them too (components/tile-set-builder.ts) — and ↑ / ↓
     // mirror it there, the builder's own key for the flip, otherwise unbound.
-    if (!mod && !e.altKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && store.currentMode === 'edit'
-      && !store.modelEditId) {
+    if (
+      !mod &&
+      !e.altKey &&
+      ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) &&
+      store.currentMode === 'edit' &&
+      !store.modelEditId
+    ) {
       const flip = e.shiftKey || e.key === 'ArrowUp' || e.key === 'ArrowDown';
-      if (turnBuilderSquare(e.key === 'ArrowLeft' ? 1 : -1, flip)) { e.preventDefault(); return; }
+      if (turnBuilderSquare(e.key === 'ArrowLeft' ? 1 : -1, flip)) {
+        e.preventDefault();
+        return;
+      }
     }
-    if (!mod && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
-      && (store.currentMode === 'paint' || (store.currentMode === 'edit' && store.modelEditId))) {
+    if (
+      !mod &&
+      !e.altKey &&
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+      (store.currentMode === 'paint' || (store.currentMode === 'edit' && store.modelEditId))
+    ) {
       const dir = e.key === 'ArrowLeft' ? 1 : -1;
-      const turned = store.currentMode === 'paint'
-        ? turnPaintTexture(dir, e.shiftKey)
-        : turnModelTexture(dir, e.shiftKey);
+      const turned =
+        store.currentMode === 'paint' ? turnPaintTexture(dir, e.shiftKey) : turnModelTexture(dir, e.shiftKey);
       if (turned) e.preventDefault();
       return;
     }
@@ -217,120 +326,339 @@ export function installShortcuts(deps: ShortcutDeps) {
       return;
     }
     if (!mod && e.altKey && key === 'h' && store.currentMode === 'edit') {
-      e.preventDefault(); showAllHidden(); return;
+      e.preventDefault();
+      showAllHidden();
+      return;
     }
     if (!mod && !e.altKey && key === 'h' && canHideSelection()) {
-      e.preventDefault(); hideSelectedMesh(); return;
+      e.preventDefault();
+      hideSelectedMesh();
+      return;
     }
     const referenceCageSelection = !!store.refEdgeSel?.length || !!store.refCellSel?.length;
-    if (!mod && !e.altKey && key === 'g' && store.currentMode === 'edit' && cageActive()
-      && (referenceCageSelection || canEditCurvature())
-      && store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
-      && !viewport.pastePlacing && !viewport.edgeExtrusionStaged && !mixedEditSelection()
-      && (referenceCageSelection || store.edgeSel.length > 0 || store.cellSel.length > 0)) {
-      e.preventDefault(); toggleSelectedControlCages(); return;
+    if (
+      !mod &&
+      !e.altKey &&
+      key === 'g' &&
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      (referenceCageSelection || canEditCurvature()) &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      !viewport.pastePlacing &&
+      !viewport.edgeExtrusionStaged &&
+      !mixedEditSelection() &&
+      (referenceCageSelection || store.edgeSel.length > 0 || store.cellSel.length > 0)
+    ) {
+      e.preventDefault();
+      toggleSelectedControlCages();
+      return;
     }
     if (mod && !e.altKey && key === 'a' && canSelectConnected()) {
-      e.preventDefault(); selectConnected(); return;
+      e.preventDefault();
+      selectConnected();
+      return;
     }
-    if (mod && e.key.toLowerCase() === 'c' && canCopyVertices()) { e.preventDefault(); copySelectedVertices(); return; }
-    if (mod && e.key.toLowerCase() === 'x' && canCopyVertices()) { e.preventDefault(); cutSelectedVertices(); return; }
-    if (mod && e.key.toLowerCase() === 'v' && canPasteVertices()) { e.preventDefault(); pasteSelectedVertices(); return; }
+    if (mod && e.key.toLowerCase() === 'c' && canCopyVertices()) {
+      e.preventDefault();
+      copySelectedVertices();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'x' && canCopyVertices()) {
+      e.preventDefault();
+      cutSelectedVertices();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'v' && canPasteVertices()) {
+      e.preventDefault();
+      pasteSelectedVertices();
+      return;
+    }
     // Prop selections in Props or Edit (docs/012).
     if (mod && !e.altKey && (key === 'c' || key === 'x') && propClipboard.canCopy()) {
-      e.preventDefault(); if (key === 'c') propClipboard.copy(); else propClipboard.cut(); return;
+      e.preventDefault();
+      if (key === 'c') propClipboard.copy();
+      else propClipboard.cut();
+      return;
     }
-    if (mod && !e.altKey && key === 'v' && propClipboard.canPaste()) { e.preventDefault(); void propClipboard.paste(); return; }
+    if (mod && !e.altKey && key === 'v' && propClipboard.canPaste()) {
+      e.preventDefault();
+      void propClipboard.paste();
+      return;
+    }
     if (store.currentMode === 'edit' && store.bridgeRails !== null) {
-      if (!mod && !e.altKey && key === 'a') { e.preventDefault(); addBridgeRail(); return; }
-      if (e.key === 'Enter') { e.preventDefault(); completeBridge(); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); clearEdgeSel(); rebuildTools(); return; }
-      if (e.key === 'Escape') { e.preventDefault(); cancelBridge(); return; }
+      if (!mod && !e.altKey && key === 'a') {
+        e.preventDefault();
+        addBridgeRail();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        completeBridge();
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        clearEdgeSel();
+        rebuildTools();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBridge();
+        return;
+      }
     }
-    if (e.key === 'Enter' && store.railDrawing) { e.preventDefault(); trickTools.finishRail(); return; } // Enter finishes the rail being laid
-    if (e.key === 'Enter' && store.lineDrawing) { e.preventDefault(); propLines.finishLine(); return; } // …and the prop line (docs/070)
-    if (e.key === 'Enter' && viewport.edgeExtrusionStaged) { e.preventDefault(); commitEdgeExtrusion(); return; }
+    if (e.key === 'Enter' && store.railDrawing) {
+      e.preventDefault();
+      trickTools.finishRail();
+      return;
+    } // Enter finishes the rail being laid
+    if (e.key === 'Enter' && store.lineDrawing) {
+      e.preventDefault();
+      propLines.finishLine();
+      return;
+    } // …and the prop line (docs/070)
+    if (e.key === 'Enter' && viewport.edgeExtrusionStaged) {
+      e.preventDefault();
+      commitEdgeExtrusion();
+      return;
+    }
     if (!mod && !e.altKey && key === 'f' && viewport.edgeExtrusionStaged && viewport.edgeExtrusionSideFlippable) {
-      e.preventDefault(); flipEdgeExtrusionSide(); return;
+      e.preventDefault();
+      flipEdgeExtrusionSide();
+      return;
     }
-    if (e.key === 'Enter' && store.weldTool === 'weld') { e.preventDefault(); commitPointWeld(); return; }
-    if (e.key === 'Enter' && store.weldTool === 'edge-weld') { e.preventDefault(); commitEdgeWeld(); return; }
-    if (e.key === 'Enter' && store.createEdgeTool) { e.preventDefault(); finishCreateEdge(); return; }
-    if (e.key === 'Enter' && store.surgeryTool === 'tube') { e.preventDefault(); finishCreateTube(); return; }
-    if (e.key === 'Enter' && store.surgeryTool === 'grid') { e.preventDefault(); finishCreateGrid(); return; }
-    if (e.key === 'Enter' && store.surgeryTool === 'trail') { e.preventDefault(); finishCreateTrail(); return; }
-    if (e.key === 'Enter' && store.surgeryTool === 'patch') { e.preventDefault(); edit.finishCreatePatch(true); return; }
+    if (e.key === 'Enter' && store.weldTool === 'weld') {
+      e.preventDefault();
+      commitPointWeld();
+      return;
+    }
+    if (e.key === 'Enter' && store.weldTool === 'edge-weld') {
+      e.preventDefault();
+      commitEdgeWeld();
+      return;
+    }
+    if (e.key === 'Enter' && store.createEdgeTool) {
+      e.preventDefault();
+      finishCreateEdge();
+      return;
+    }
+    if (e.key === 'Enter' && store.surgeryTool === 'tube') {
+      e.preventDefault();
+      finishCreateTube();
+      return;
+    }
+    if (e.key === 'Enter' && store.surgeryTool === 'grid') {
+      e.preventDefault();
+      finishCreateGrid();
+      return;
+    }
+    if (e.key === 'Enter' && store.surgeryTool === 'trail') {
+      e.preventDefault();
+      finishCreateTrail();
+      return;
+    }
+    if (e.key === 'Enter' && store.surgeryTool === 'patch') {
+      e.preventDefault();
+      edit.finishCreatePatch(true);
+      return;
+    }
     // A trail (docs/023): Delete takes the picked point, else — while drawing — the newest one, else the paths.
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.surgeryTool === 'trail') {
       e.preventDefault();
-      if (store.trailPoint !== null) edit.deleteSelectedTrailKnot(); else undoCreateTrailPoint();
+      if (store.trailPoint !== null) edit.deleteSelectedTrailKnot();
+      else undoCreateTrailPoint();
       return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && store.currentMode === 'edit' && !mod && edit.selectedTrail()) {
       e.preventDefault();
-      if (store.trailPoint !== null) edit.deleteSelectedTrailKnot(); else edit.deleteSelectedTrail();
+      if (store.trailPoint !== null) edit.deleteSelectedTrailKnot();
+      else edit.deleteSelectedTrail();
       return;
     }
     // A course being redrawn (Scene ▸ Course ▸ reset course): Enter commits it, Backspace takes a point back and
     // Esc puts it down — ahead of Info's own Esc, which would otherwise leave the Course card.
     if (store.currentMode === 'info' && viewport.courseDrawing) {
-      if (e.key === 'Enter') { e.preventDefault(); courseReset.finish(); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); courseReset.undoPoint(); return; }
-      if (e.key === 'Escape') { e.preventDefault(); courseReset.cancel(); return; }
-    }
-    const creationShortcutAvailable = !mod && !e.altKey && store.currentMode === 'edit'
-      && store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
-      && !viewport.pastePlacing && !viewport.edgeExtrusionStaged && !transformSelectionActive()
-      && !mixedEditSelection()
-      && viewport.referenceControlPointSelectionCount() === 0 && !viewport.refMeasure();
-    if (creationShortcutAvailable && key === 'l') { e.preventDefault(); edit.armCreateEdge(); return; }
-    if (creationShortcutAvailable && key === 'p') { e.preventDefault(); edit.armCreatePatch(); return; }
-    if (!mod && !e.altKey && key === 'm' && store.currentMode === 'edit' && cageActive()
-      && store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
-      && !mixedEditSelection()) {
-      const points = store.controlSel.length
-        ? store.controlSel.flatMap(id => id.kind === 'vertex' ? [id.vertex] : [])
-        : store.regionSel.length ? store.regionSel
-        : store.selectedCorner !== null ? [store.selectedCorner] : [];
-      if (points.length) { e.preventDefault(); beginPointWeld(); return; }
-      if (store.edgeSel.length) { e.preventDefault(); beginEdgeWeld(); return; }
-    }
-    if (!mod && !e.altKey && store.currentMode === 'edit' && cageActive() && store.bridgeRails === null
-      && !store.surgeryTool && !store.weldTool && !store.createEdgeTool && !mixedEditSelection()
-      && (store.edgeSel.length || store.cellSel.length)) {
-      if (key === 'x') { e.preventDefault(); beginEdgeExtrusion(); return; }
-      if (store.edgeSel.length && key === 'k') { e.preventDefault(); ripEdges(); return; }
-      if (store.edgeSel.length && key === 'b') { e.preventDefault(); startBridge(); return; }
-    }
-    if (!mod && !e.altKey && store.currentMode === 'edit' && cageActive() && canEditCurvature() && store.bridgeRails === null
-      && !store.surgeryTool && !store.weldTool && !store.createEdgeTool && !mixedEditSelection()
-      && (key === 'c' || key === 's')) {
-      const vertices = store.controlSel.length
-        ? store.controlSel.flatMap(id => id.kind === 'vertex' ? [id.vertex] : [])
-        : store.regionSel.length ? store.regionSel
-        : store.selectedCorner !== null ? [store.selectedCorner]
-        : store.edgeSel.length ? store.edgeSel.flatMap(([a, b]) => [a, b])
-        : vertexNames(store.mdoc, quadIndices(store.mdoc, store.cellSel).flatMap(quad => quadVerts(store.mdoc, quad)));
-      const unique = [...new Set(vertices)];
-      if (unique.length) {
+      if (e.key === 'Enter') {
         e.preventDefault();
-        if (key === 'c') creaseVertices(unique); else smoothVertices(unique);
+        courseReset.finish();
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        courseReset.undoPoint();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        courseReset.cancel();
         return;
       }
     }
-    if (!mod && !e.altKey && key === 'd' && store.currentMode === 'edit' && cageActive()
-      && store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
-      && canDissolveSelectedMesh()) {
-      e.preventDefault(); dissolveSelectedMesh(); return;
+    const creationShortcutAvailable =
+      !mod &&
+      !e.altKey &&
+      store.currentMode === 'edit' &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      !viewport.pastePlacing &&
+      !viewport.edgeExtrusionStaged &&
+      !transformSelectionActive() &&
+      !mixedEditSelection() &&
+      viewport.referenceControlPointSelectionCount() === 0 &&
+      !viewport.refMeasure();
+    if (creationShortcutAvailable && key === 'l') {
+      e.preventDefault();
+      edit.armCreateEdge();
+      return;
     }
-    if (!mod && !e.altKey && key === 'i' && store.currentMode === 'edit' && cageActive()
-      && store.bridgeRails === null && !store.surgeryTool && !store.weldTool && !store.createEdgeTool
-      && store.cellSel.length && !mixedEditSelection()) {
-      e.preventDefault(); insertCellEdge(); return;
+    if (creationShortcutAvailable && key === 'p') {
+      e.preventDefault();
+      edit.armCreatePatch();
+      return;
     }
-    if (!mod && !e.altKey && key === 'n' && store.bridgeRails === null
-      && !store.surgeryTool && !store.weldTool && !store.createEdgeTool && canFlipSelectedMesh()) {
-      e.preventDefault(); flipSelectedMesh(); return;
+    if (
+      !mod &&
+      !e.altKey &&
+      key === 'm' &&
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      !mixedEditSelection()
+    ) {
+      const points = store.controlSel.length
+        ? store.controlSel.flatMap(id => (id.kind === 'vertex' ? [id.vertex] : []))
+        : store.regionSel.length
+          ? store.regionSel
+          : store.selectedCorner !== null
+            ? [store.selectedCorner]
+            : [];
+      if (points.length) {
+        e.preventDefault();
+        beginPointWeld();
+        return;
+      }
+      if (store.edgeSel.length) {
+        e.preventDefault();
+        beginEdgeWeld();
+        return;
+      }
+    }
+    if (
+      !mod &&
+      !e.altKey &&
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      !mixedEditSelection() &&
+      (store.edgeSel.length || store.cellSel.length)
+    ) {
+      if (key === 'x') {
+        e.preventDefault();
+        beginEdgeExtrusion();
+        return;
+      }
+      if (store.edgeSel.length && key === 'k') {
+        e.preventDefault();
+        ripEdges();
+        return;
+      }
+      if (store.edgeSel.length && key === 'b') {
+        e.preventDefault();
+        startBridge();
+        return;
+      }
+    }
+    if (
+      !mod &&
+      !e.altKey &&
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      canEditCurvature() &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      !mixedEditSelection() &&
+      (key === 'c' || key === 's')
+    ) {
+      const vertices = store.controlSel.length
+        ? store.controlSel.flatMap(id => (id.kind === 'vertex' ? [id.vertex] : []))
+        : store.regionSel.length
+          ? store.regionSel
+          : store.selectedCorner !== null
+            ? [store.selectedCorner]
+            : store.edgeSel.length
+              ? store.edgeSel.flatMap(([a, b]) => [a, b])
+              : vertexNames(
+                  store.mdoc,
+                  quadIndices(store.mdoc, store.cellSel).flatMap(quad => quadVerts(store.mdoc, quad)),
+                );
+      const unique = [...new Set(vertices)];
+      if (unique.length) {
+        e.preventDefault();
+        if (key === 'c') creaseVertices(unique);
+        else smoothVertices(unique);
+        return;
+      }
+    }
+    if (
+      !mod &&
+      !e.altKey &&
+      key === 'd' &&
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      canDissolveSelectedMesh()
+    ) {
+      e.preventDefault();
+      dissolveSelectedMesh();
+      return;
+    }
+    if (
+      !mod &&
+      !e.altKey &&
+      key === 'i' &&
+      store.currentMode === 'edit' &&
+      cageActive() &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      store.cellSel.length &&
+      !mixedEditSelection()
+    ) {
+      e.preventDefault();
+      insertCellEdge();
+      return;
+    }
+    if (
+      !mod &&
+      !e.altKey &&
+      key === 'n' &&
+      store.bridgeRails === null &&
+      !store.surgeryTool &&
+      !store.weldTool &&
+      !store.createEdgeTool &&
+      canFlipSelectedMesh()
+    ) {
+      e.preventDefault();
+      flipSelectedMesh();
+      return;
     }
     if (!mod && (key === 'w' || key === 'e' || key === 'r') && transformSelectionActive()) {
       if (key === 'r' && mixedEditSelection()) return; // mixed families share Move + Rotate; Scale has no cross-type contract
@@ -341,69 +669,180 @@ export function installShortcuts(deps: ShortcutDeps) {
     }
     if (e.key.toLowerCase() === 'f') focusActive(); // frame the course / mountain (Unity-style)
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (store.currentMode === 'effects') { if (effects.deleteSelection()) e.preventDefault(); }
-      else if (store.currentMode === 'props' && store.multiSel.length) propOps.deleteMultiSelProps();
-      else if (store.currentMode === 'props' && (store.railDrawing || store.selectedRail !== null)) { if (store.selectedNode !== null) trickTools.deleteSelectedRailNode(); else trickTools.deleteSelectedRail(); }
-      else if (store.currentMode === 'props' && store.selectedLine !== null) { if (store.selectedLineNode !== null) propLines.deleteSelectedNode(); else propLines.deleteSelectedLine(); }
-      else if (store.currentMode === 'props' && store.selectedGem !== null) trickTools.deleteSelectedGem();
+      if (store.currentMode === 'effects') {
+        if (effects.deleteSelection()) e.preventDefault();
+      } else if (store.currentMode === 'props' && store.multiSel.length) propOps.deleteMultiSelProps();
+      else if (store.currentMode === 'props' && (store.railDrawing || store.selectedRail !== null)) {
+        if (store.selectedNode !== null) trickTools.deleteSelectedRailNode();
+        else trickTools.deleteSelectedRail();
+      } else if (store.currentMode === 'props' && store.selectedLine !== null) {
+        if (store.selectedLineNode !== null) propLines.deleteSelectedNode();
+        else propLines.deleteSelectedLine();
+      } else if (store.currentMode === 'props' && store.selectedGem !== null) trickTools.deleteSelectedGem();
       else if (store.currentMode === 'props' && store.selectedScreen !== null) deleteSelectedScreen();
       else if (store.currentMode === 'props' && store.selectedLight !== null) deleteSelectedLight();
       else if (store.currentMode === 'props' && store.selectedProp !== null) propOps.deleteSelectedProp();
-      else if (store.currentMode === 'props' && store.selectedRefProp) { /* the reference is read-only */ }
-      else if (store.currentMode === 'edit' && (store.selectedCorner !== null || store.regionSel.length || store.edgeSel.length || store.cellSel.length
-        || mixedEditSelection() && (store.selectedProp !== null || store.multiSel.length))) { e.preventDefault(); deleteSelectedMesh(); }
+      else if (store.currentMode === 'props' && store.selectedRefProp) {
+        /* the reference is read-only */
+      } else if (
+        store.currentMode === 'edit' &&
+        (store.selectedCorner !== null ||
+          store.regionSel.length ||
+          store.edgeSel.length ||
+          store.cellSel.length ||
+          (mixedEditSelection() && (store.selectedProp !== null || store.multiSel.length)))
+      ) {
+        e.preventDefault();
+        deleteSelectedMesh();
+      }
       // Edit selects placements and free lights too (its click picks them as Props mode does); Delete removes them
       // the same way. Mixed Edit selections are handled above as one geometry/placement action.
-      else if (store.currentMode === 'edit' && store.multiSel.length && !mixedEditSelection()) { e.preventDefault(); propOps.deleteMultiSelProps(); }
-      else if (store.currentMode === 'edit' && store.selectedProp !== null && !mixedEditSelection()) { e.preventDefault(); propOps.deleteSelectedProp(); }
-      else if (store.currentMode === 'edit' && store.selectedLight !== null) { e.preventDefault(); deleteSelectedLight(); }
-      else if (store.currentMode === 'paint' && store.selectedPaintCell !== null) deleteSelectedPaintTile();
-      else if (store.currentMode === 'paint' && store.selectedRefPatch !== null) { /* the reference is read-only */ }
-      else deleteKnot();
+      else if (store.currentMode === 'edit' && store.multiSel.length && !mixedEditSelection()) {
+        e.preventDefault();
+        propOps.deleteMultiSelProps();
+      } else if (store.currentMode === 'edit' && store.selectedProp !== null && !mixedEditSelection()) {
+        e.preventDefault();
+        propOps.deleteSelectedProp();
+      } else if (store.currentMode === 'edit' && store.selectedLight !== null) {
+        e.preventDefault();
+        deleteSelectedLight();
+      } else if (store.currentMode === 'paint' && store.selectedPaintCell !== null) deleteSelectedPaintTile();
+      else if (store.currentMode === 'paint' && store.selectedRefPatch !== null) {
+        /* the reference is read-only */
+      } else deleteKnot();
     }
     if (e.key === 'Escape') {
-      if (store.currentMode === 'effects' && effects.clearSelection()) { e.preventDefault(); return; }
-      if (store.currentMode === 'info' && sceneBack()) { e.preventDefault(); return; }
-      if (store.placingStart) { cancelStartPlacement(); return; } // the armed one-shot: Esc puts it down, like any other placement
-      if (viewport.watching) { stopWatch(); return; } // spectating the AI field: Esc puts it away, as it stops a ride
+      if (store.currentMode === 'effects' && effects.clearSelection()) {
+        e.preventDefault();
+        return;
+      }
+      if (store.currentMode === 'info' && sceneBack()) {
+        e.preventDefault();
+        return;
+      }
+      if (store.placingStart) {
+        cancelStartPlacement();
+        return;
+      } // the armed one-shot: Esc puts it down, like any other placement
+      if (viewport.watching) {
+        stopWatch();
+        return;
+      } // spectating the AI field: Esc puts it away, as it stops a ride
       // A headset session: the same key that stops a ride ends it, from the desk. Ahead of the ride's own Esc
       // because in VR a board is something you are riding INSIDE the session, and Esc ends the outer thing.
-      if (viewport.xrPlaying) { viewport.stopXrPlay(); return; }
-      if (store.railDrawing) { trickTools.finishRail(); return; } // Esc finishes the rail (as the placement toast says)
-      if (store.lineDrawing) { propLines.finishLine(); return; } // …and a prop line being drawn
+      if (viewport.xrPlaying) {
+        viewport.stopXrPlay();
+        return;
+      }
+      if (store.railDrawing) {
+        trickTools.finishRail();
+        return;
+      } // Esc finishes the rail (as the placement toast says)
+      if (store.lineDrawing) {
+        propLines.finishLine();
+        return;
+      } // …and a prop line being drawn
       // The first Esc ends the strand being drawn and keeps the tool; the next leaves it.
-      if (store.createEdgeTool) { if (!endCreateEdgeChain()) finishCreateEdge(); return; }
-      if (store.currentMode === 'edit' && store.surgeryTool === 'tube') { cancelCreateTube(); return; }
-      if (store.currentMode === 'edit' && store.surgeryTool === 'grid') { cancelCreateGrid(); return; }
-      if (store.currentMode === 'edit' && store.surgeryTool === 'trail') { cancelCreateTrail(); return; }
-      if (store.currentMode === 'edit' && store.surgeryTool === 'patch') { edit.finishCreatePatch(false); return; }
+      if (store.createEdgeTool) {
+        if (!endCreateEdgeChain()) finishCreateEdge();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'tube') {
+        cancelCreateTube();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'grid') {
+        cancelCreateGrid();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'trail') {
+        cancelCreateTrail();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'patch') {
+        edit.finishCreatePatch(false);
+        return;
+      }
       // first Esc cancels placement mode (puts the held prop / brush / surgery / weld tool down); the next clears the selection
-      if (store.currentMode === 'edit' && viewport.pastePlacing) { cancelPastePlacement(); return; }
-      if (store.currentMode === 'edit' && store.surgeryTool) { store.surgeryTool = null; viewport.setSurgeryTool(null); rebuildTools(); updateCmdSheet(); return; }
-      if (store.currentMode === 'edit' && store.weldTool === 'weld') { cancelPointWeld(); return; }
-      if (store.currentMode === 'edit' && store.weldTool === 'edge-weld') { cancelEdgeWeld(); return; }
+      if (store.currentMode === 'edit' && viewport.pastePlacing) {
+        cancelPastePlacement();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool) {
+        store.surgeryTool = null;
+        viewport.setSurgeryTool(null);
+        rebuildTools();
+        updateCmdSheet();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.weldTool === 'weld') {
+        cancelPointWeld();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.weldTool === 'edge-weld') {
+        cancelEdgeWeld();
+        return;
+      }
       if (store.currentMode === 'edit') {
         // Layered Esc in a model edit session: a live selection clears first; then a locked session gives
         // up its lock; an unlocked one ends — the keyboard mirror of the click-on / click-off flow.
-        const selectionLive = activeEditFamily() !== null || store.selected !== null
-          || !!store.selectedEdgeCrossing || !!store.selectedCoincidentVertices
-          || store.selectedProp !== null || store.multiSel.length > 0 || store.selectedLight !== null
-          || store.refControlSel.length > 0 || store.refEdgeSel.length > 0 || store.refCellSel.length > 0;
+        const selectionLive =
+          activeEditFamily() !== null ||
+          store.selected !== null ||
+          !!store.selectedEdgeCrossing ||
+          !!store.selectedCoincidentVertices ||
+          store.selectedProp !== null ||
+          store.multiSel.length > 0 ||
+          store.selectedLight !== null ||
+          store.refControlSel.length > 0 ||
+          store.refEdgeSel.length > 0 ||
+          store.refCellSel.length > 0;
         if (store.modelEditId && !selectionLive) {
-          if (store.modelEditLocked) { store.modelEditLocked = false; rebuildTools(); updateCmdSheet(); return; }
-          exitModelEdit(); return;
+          if (store.modelEditLocked) {
+            store.modelEditLocked = false;
+            rebuildTools();
+            updateCmdSheet();
+            return;
+          }
+          exitModelEdit();
+          return;
         }
-        deselectEdit(); return;
+        deselectEdit();
+        return;
       }
-      if (store.currentMode === 'props' && propOps.isReplacingProp()) { propOps.cancelPropReplacement(); return; }
-      if (store.currentMode === 'props' && propOps.lightJoinWaitsFor()) { propOps.cancelLightJoin(); return; }
-      if (store.currentMode === 'props' && store.armedProp) { propOps.disarmProp(); return; }
-      if (store.currentMode === 'props' && propClipboard.placing()) { propClipboard.cancel(); return; } // …and a held paste
-      if (store.currentMode === 'paint' && store.paintBrush) { disarmBrush(); return; }
-      if (store.currentMode === 'props' && (store.selectedProp !== null || store.multiSel.length > 0
-        || store.selectedRefProp !== null || store.selectedLight !== null || store.selectedRefLight !== null
-        || store.selectedScreen !== null || store.selectedRefScreen !== null || store.selectedLine !== null)) {
-        propOps.deselectPropOrLight(); return;
+      if (store.currentMode === 'props' && propOps.isReplacingProp()) {
+        propOps.cancelPropReplacement();
+        return;
+      }
+      if (store.currentMode === 'props' && propOps.lightJoinWaitsFor()) {
+        propOps.cancelLightJoin();
+        return;
+      }
+      if (store.currentMode === 'props' && store.armedProp) {
+        propOps.disarmProp();
+        return;
+      }
+      if (store.currentMode === 'props' && propClipboard.placing()) {
+        propClipboard.cancel();
+        return;
+      } // …and a held paste
+      if (store.currentMode === 'paint' && store.paintBrush) {
+        disarmBrush();
+        return;
+      }
+      if (
+        store.currentMode === 'props' &&
+        (store.selectedProp !== null ||
+          store.multiSel.length > 0 ||
+          store.selectedRefProp !== null ||
+          store.selectedLight !== null ||
+          store.selectedRefLight !== null ||
+          store.selectedScreen !== null ||
+          store.selectedRefScreen !== null ||
+          store.selectedLine !== null)
+      ) {
+        propOps.deselectPropOrLight();
+        return;
       }
       store.selected = null;
       store.selectedKnots = [];
@@ -418,7 +857,9 @@ export function installShortcuts(deps: ShortcutDeps) {
       store.selectedRail = null;
       store.selectedNode = null;
       store.selectedGem = null;
-      store.gemArmed = false; viewport.setGemArmed(false); store.trickTool = null; // drop the trick tools
+      store.gemArmed = false;
+      viewport.setGemArmed(false);
+      store.trickTool = null; // drop the trick tools
       clearCreateEdge();
       viewport.setLightArmed(false); // cancel a held light too
       clearPaintSel(); // drop any selected painted cell / reference patch

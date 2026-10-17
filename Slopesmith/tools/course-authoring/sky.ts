@@ -26,8 +26,8 @@ export function wrapBlendX(image: Rgba, band = 0.18): Rgba {
       const opposite = at(image, (x + half) % image.w, y);
       const target = at(out, x, y);
       for (let channel = 0; channel < 4; channel++) {
-        out.data[target + channel] = image.data[opposite + channel] * (1 - blend)
-          + image.data[source + channel] * blend;
+        out.data[target + channel] =
+          image.data[opposite + channel] * (1 - blend) + image.data[source + channel] * blend;
       }
     }
   }
@@ -61,9 +61,15 @@ export function calmTop(image: Rgba, topV: number, fade = 0.12): Rgba {
   return out;
 }
 
-const colorHex = (rgb: [number, number, number]): string => '#' + rgb
-  .map(channel => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0'))
-  .join('');
+const colorHex = (rgb: [number, number, number]): string =>
+  '#' +
+  rgb
+    .map(channel =>
+      Math.max(0, Math.min(255, Math.round(channel)))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('');
 
 export interface PrepareCourseSkyOptions {
   skyName: string;
@@ -78,20 +84,19 @@ export interface PrepareCourseSkyOptions {
 
 export async function prepareCourseSky(options: PrepareCourseSkyOptions): Promise<SkyboxDoc> {
   const levels = await levelsWithSkybox();
-  const ringLevel = options.preferredRing && levels.includes(options.preferredRing)
-    ? options.preferredRing
-    : levels.includes('GARI') ? 'GARI' : levels[0];
+  const ringLevel =
+    options.preferredRing && levels.includes(options.preferredRing)
+      ? options.preferredRing
+      : levels.includes('GARI')
+        ? 'GARI'
+        : levels[0];
   if (!ringLevel) {
     throw new Error(`${options.courseLabel} sky needs one extracted level with Skybox/Ring.json`);
   }
 
   const ring = await readSkyRing(ringLevel);
   const generated = decodePng(await readFile(options.sourceFile));
-  const conditioned = calmTop(
-    wrapBlendX(generated, options.wrapBand),
-    ringTopEquirectV(ring),
-    options.topFade,
-  );
+  const conditioned = calmTop(wrapBlendX(generated, options.wrapBand), ringTopEquirectV(ring), options.topFade);
   const size = panoramaSize(SKY_TIERS.high.upper, ring);
   const band = fitToBand(conditioned, size.w, size.h, ring, 'equirect');
   const bytes = encodePng(band);

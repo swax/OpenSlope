@@ -13,7 +13,9 @@ type FakeMedia = {
 const media = (): FakeMedia => ({
   hidden: false,
   removed: false,
-  remove() { this.removed = true; },
+  remove() {
+    this.removed = true;
+  },
 });
 
 const hosted: FakeMedia[] = [];
@@ -57,19 +59,36 @@ assert.equal(hosted.includes(ignored), false, 'voice playback ignores non-audio 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/app/main.ts', import.meta.url), 'utf8');
 const chat = readFileSync(new URL('../src/app/ui/chrome/chat-box.ts', import.meta.url), 'utf8');
-assert.match(html, /<div id="voice-audio" aria-hidden="true"><\/div>/,
-  'the editor page provides a permanent audio host outside the rebuilt mode panel');
-assert.match(main, /audioHost: document\.getElementById\('voice-audio'\)!/,
-  'the voice session receives the permanent page host');
-assert.doesNotMatch(chat, /body\.os-riding \.sp-chat \{ display: none; \}/,
-  'a Test ride no longer hides the passive recent-chat feed');
-assert.match(chat, /body\.os-riding \.sp-chat-line \{ pointer-events: none; cursor: default; \}/,
-  'ride chat stays passive and cannot steal a steering or camera gesture');
-assert.match(main, /chat\.setSpeakers\(voice\.members\(\)\.filter\(member => member\.speaking\)\)/,
-  'LiveKit active-speaker changes feed the chat HUD');
-assert.match(main, /chat\.setDocked\(!!target\)/,
-  'starting a Test ride keeps chat docked and available beside the mountain');
-assert.match(chat, /speaker\.username} is speaking in voice/,
-  'the chat HUD labels each active voice speaker by name');
+assert.match(
+  html,
+  /<div id="voice-audio" aria-hidden="true"><\/div>/,
+  'the editor page provides a permanent audio host outside the rebuilt mode panel',
+);
+assert.match(
+  main,
+  /audioHost: document\.getElementById\('voice-audio'\)!/,
+  'the voice session receives the permanent page host',
+);
+assert.doesNotMatch(
+  chat,
+  /body\.os-riding \.sp-chat \{ display: none; \}/,
+  'a Test ride no longer hides the passive recent-chat feed',
+);
+assert.match(
+  chat,
+  /body\.os-riding \.sp-chat-line \{ pointer-events: none; cursor: default; \}/,
+  'ride chat stays passive and cannot steal a steering or camera gesture',
+);
+assert.match(
+  main,
+  /chat\.setSpeakers\(voice\.members\(\)\.filter\(member => member\.speaking\)\)/,
+  'LiveKit active-speaker changes feed the chat HUD',
+);
+assert.match(
+  main,
+  /chat\.setDocked\(!!target\)/,
+  'starting a Test ride keeps chat docked and available beside the mountain',
+);
+assert.match(chat, /speaker\.username} is speaking in voice/, 'the chat HUD labels each active voice speaker by name');
 
 console.log('voice UI: stable playback, ride chat, and named active-speaker HUD');

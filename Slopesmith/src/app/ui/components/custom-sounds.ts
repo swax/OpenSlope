@@ -33,7 +33,8 @@ export function loadCustomSounds(force = false): Promise<string[]> {
   if (!force && cached) return Promise.resolve(cached);
   if (!force && inFlight) return inFlight;
   cached ??= [];
-  inFlight = clientFetch('/api/custom-sounds').then(r => r.json())
+  inFlight = clientFetch('/api/custom-sounds')
+    .then(r => r.json())
     .then((body: { sounds?: string[] }) => body.sounds ?? [])
     .catch(() => [])
     .then(sounds => {
@@ -53,7 +54,8 @@ export function customSounds(): readonly string[] {
 }
 
 /** Compact display path for an uploaded clip in the open mountain. */
-export const customSoundFilepath = (file: string, mountainName = 'Mountain'): string => `${mountainName}/Sounds/${file}`;
+export const customSoundFilepath = (file: string, mountainName = 'Mountain'): string =>
+  `${mountainName}/Sounds/${file}`;
 
 /**
  * Open a file picker, upload the chosen WAV, and report the name it landed under.
@@ -71,11 +73,16 @@ export function pickCustomSound(): Promise<string | null> {
     // caller's continuation is "assign a sound", which is correctly a no-op when nothing was chosen.
     picker.onchange = async () => {
       const chosen = picker.files?.[0];
-      if (!chosen) { resolve(null); return; }
+      if (!chosen) {
+        resolve(null);
+        return;
+      }
       try {
-        const response = await clientFetch(`/api/sound-upload?name=${encodeURIComponent(chosen.name)}`,
-          { method: 'POST', body: await chosen.arrayBuffer() });
-        const result = await response.json() as { name?: string; error?: string };
+        const response = await clientFetch(`/api/sound-upload?name=${encodeURIComponent(chosen.name)}`, {
+          method: 'POST',
+          body: await chosen.arrayBuffer(),
+        });
+        const result = (await response.json()) as { name?: string; error?: string };
         if (!result.name) throw new Error(result.error ?? 'upload failed');
         await loadCustomSounds(true);
         resolve(result.name);

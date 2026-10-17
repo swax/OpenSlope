@@ -73,23 +73,29 @@ try {
     headless: true,
     chromiumSandbox: false,
     args: [
-      `--use-angle=${backend}`, '--enable-gpu-benchmarking',
+      `--use-angle=${backend}`,
+      '--enable-gpu-benchmarking',
       ...(backend === 'swiftshader' ? ['--enable-unsafe-swiftshader'] : []),
     ],
   });
   const page = await browser.newPage();
   const consoleErrors: string[] = [];
-  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('console', message => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
   page.on('pageerror', error => consoleErrors.push(error.stack ?? error.message));
   await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!document.documentElement.dataset.particleBlend, null, { timeout: 25_000 });
-  const result = await page.evaluate(() =>
-    (globalThis as typeof globalThis & { __particleBlend?: ParticleBlendResult }).__particleBlend);
+  const result = await page.evaluate(
+    () => (globalThis as typeof globalThis & { __particleBlend?: ParticleBlendResult }).__particleBlend,
+  );
   assert(result, 'Browser fixture did not publish a result');
   assert(result.ok, result.error ?? 'Particle blend fixture failed');
   assert.deepEqual(consoleErrors, [], `Browser emitted shader errors:\n${consoleErrors.join('\n')}`);
-  console.log(`PARTICLE WEBGL: PASS (${result.renderer}; blend modes, stereo billboards, atlas updates and context recovery; `
-    + `legacy atlas cleared: ${result.legacyAtlasCleared})`);
+  console.log(
+    `PARTICLE WEBGL: PASS (${result.renderer}; blend modes, stereo billboards, atlas updates and context recovery; ` +
+      `legacy atlas cleared: ${result.legacyAtlasCleared})`,
+  );
 } finally {
   await browser?.close();
   await new Promise<void>(resolve => server.close(() => resolve()));

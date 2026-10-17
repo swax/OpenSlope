@@ -1,29 +1,45 @@
 import type { Gem, PlacedProp, V3 } from '../doc/types';
 import {
-  addEffectTemplateToProp, bindRiderTeleport, bindZBoostToPlacement, createEmptyEffectsDocument,
-  effectAttachments, effectNode, nextPlacedPropId,
+  addEffectTemplateToProp,
+  bindRiderTeleport,
+  bindZBoostToPlacement,
+  createEmptyEffectsDocument,
+  effectAttachments,
+  effectNode,
+  nextPlacedPropId,
 } from '../effects/authoring';
 import type { EffectNode, EffectsDocument } from '../effects/document';
 import type { EffectTemplateId } from '../effects/authoring-catalogue';
 import { EFFECT_TRIGGER_LEVEL, effectTriggerCollisionProfile } from '../effects/trigger-volume';
 
 export const SPECIAL_LABELS = {
-  'speed-boost': 'Speed boost', 'trick-boost': 'Trick boost', 'reset-zone': 'Reset zone',
-  'teleport-entrance': 'Teleport entrance', 'teleport-destination': 'Teleport destination',
-  'wind-zone': 'Wind zone', 'vertical-lift': 'Vertical lift', gem: 'Gem',
+  'speed-boost': 'Speed boost',
+  'trick-boost': 'Trick boost',
+  'reset-zone': 'Reset zone',
+  'teleport-entrance': 'Teleport entrance',
+  'teleport-destination': 'Teleport destination',
+  'wind-zone': 'Wind zone',
+  'vertical-lift': 'Vertical lift',
+  gem: 'Gem',
 } as const;
 export type SpecialPropKind = keyof typeof SPECIAL_LABELS;
 export type SpecialZoneKind = Exclude<SpecialPropKind, 'speed-boost' | 'trick-boost' | 'gem'>;
 export type SpecialDocument = { name: string; props?: PlacedProp[]; gems?: Gem[]; effects?: EffectsDocument };
 
 const SEMANTICS: Partial<Record<SpecialPropKind, string>> = {
-  'speed-boost': 'rider.boost', 'trick-boost': 'trick.boost', 'reset-zone': 'rider.reset',
-  'teleport-entrance': 'rider.teleport', 'wind-zone': 'property.boost',
-  'vertical-lift': 'property.z-boost', gem: 'score.multiplier',
+  'speed-boost': 'rider.boost',
+  'trick-boost': 'trick.boost',
+  'reset-zone': 'rider.reset',
+  'teleport-entrance': 'rider.teleport',
+  'wind-zone': 'property.boost',
+  'vertical-lift': 'property.z-boost',
+  gem: 'score.multiplier',
 };
 const TEMPLATES: Record<Exclude<SpecialZoneKind, 'teleport-destination'>, EffectTemplateId> = {
-  'reset-zone': 'rider-reset', 'teleport-entrance': 'rider-teleport',
-  'wind-zone': 'directional-boost', 'vertical-lift': 'z-boost',
+  'reset-zone': 'rider-reset',
+  'teleport-entrance': 'rider-teleport',
+  'wind-zone': 'directional-boost',
+  'vertical-lift': 'z-boost',
 };
 
 export function specialPropNodes(effects: EffectsDocument | undefined, prop: PlacedProp): EffectNode[] {
@@ -39,24 +55,35 @@ export function specialPropKind(prop: PlacedProp | undefined, effects?: EffectsD
   if (!prop) return null;
   if (prop.specialKind && prop.specialKind in SPECIAL_LABELS) return prop.specialKind;
   const nodes = specialPropNodes(effects, prop);
-  return (Object.keys(SEMANTICS) as SpecialPropKind[])
-    .find(kind => nodes.some(node => node.semanticType === SEMANTICS[kind])) ?? null;
+  return (
+    (Object.keys(SEMANTICS) as SpecialPropKind[]).find(kind =>
+      nodes.some(node => node.semanticType === SEMANTICS[kind]),
+    ) ?? null
+  );
 }
 
-export function specialPropNode(effects: EffectsDocument | undefined, prop: PlacedProp,
-  kind: SpecialPropKind): EffectNode | undefined {
+export function specialPropNode(
+  effects: EffectsDocument | undefined,
+  prop: PlacedProp,
+  kind: SpecialPropKind,
+): EffectNode | undefined {
   return specialPropNodes(effects, prop).find(node => node.semanticType === SEMANTICS[kind]);
 }
 
 /** Add an ordinary invisible prop and wire its ordinary effect. The destination is a non-contact marker. */
 export function addSpecialZone(doc: SpecialDocument, kind: SpecialZoneKind, position: V3): PlacedProp {
   const props = (doc.props ??= []);
-  const size: V3 = kind === 'reset-zone' ? [40, 2, 40]
-    : kind === 'teleport-destination' ? [2, 2, 2] : [12, 6, 12];
+  const size: V3 = kind === 'reset-zone' ? [40, 2, 40] : kind === 'teleport-destination' ? [2, 2, 2] : [12, 6, 12];
   const prop: PlacedProp = {
-    id: nextPlacedPropId(props), level: EFFECT_TRIGGER_LEVEL, model: 0,
+    id: nextPlacedPropId(props),
+    level: EFFECT_TRIGGER_LEVEL,
+    model: 0,
     name: `${SPECIAL_LABELS[kind]} ${props.filter(item => item.specialKind === kind).length + 1}`,
-    specialKind: kind, pos: [...position], yaw: 0, scale: 1, effectTrigger: { size },
+    specialKind: kind,
+    pos: [...position],
+    yaw: 0,
+    scale: 1,
+    effectTrigger: { size },
     nativeCollision: effectTriggerCollisionProfile(),
   };
   if (kind === 'teleport-destination') {

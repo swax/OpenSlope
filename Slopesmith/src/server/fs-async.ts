@@ -32,25 +32,43 @@ export async function pathExists(path: string): Promise<boolean> {
   try {
     await access(path, constants.F_OK);
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 export async function isDirectory(path: string): Promise<boolean> {
-  try { return (await stat(path)).isDirectory(); } catch { return false; }
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 export async function isFile(path: string): Promise<boolean> {
-  try { return (await stat(path)).isFile(); } catch { return false; }
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /** File bytes, or null when the file is not there. */
 export async function readBytesOrNull(file: string): Promise<Buffer | null> {
-  try { return await readFile(file); } catch (error) { return missingOrThrow(error, null); }
+  try {
+    return await readFile(file);
+  } catch (error) {
+    return missingOrThrow(error, null);
+  }
 }
 
 /** File text, or null when the file is not there. */
 export async function readTextOrNull(file: string): Promise<string | null> {
-  try { return await readFile(file, 'utf8'); } catch (error) { return missingOrThrow(error, null); }
+  try {
+    return await readFile(file, 'utf8');
+  } catch (error) {
+    return missingOrThrow(error, null);
+  }
 }
 
 /** Parsed JSON. Throws with the file named on both absence and malformed content, so a failing route says
@@ -58,8 +76,13 @@ export async function readTextOrNull(file: string): Promise<string | null> {
 export async function readJson<T>(file: string): Promise<T> {
   const text = await readTextOrNull(file);
   if (text === null) throw new Error(`no such file: ${file}`);
-  try { return JSON.parse(text) as T; }
-  catch (error) { throw new Error(`invalid JSON in ${file}: ${String(error instanceof Error ? error.message : error)}`, { cause: error }); }
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new Error(`invalid JSON in ${file}: ${String(error instanceof Error ? error.message : error)}`, {
+      cause: error,
+    });
+  }
 }
 
 /** Parsed JSON, or the fallback when the file is absent *or* unreadable. The many reference readers that
@@ -67,21 +90,34 @@ export async function readJson<T>(file: string): Promise<T> {
 export async function readJsonOr<T>(file: string, fallback: T): Promise<T> {
   try {
     const text = await readTextOrNull(file);
-    return text === null ? fallback : JSON.parse(text) as T;
-  } catch { return fallback; }
+    return text === null ? fallback : (JSON.parse(text) as T);
+  } catch {
+    return fallback;
+  }
 }
 
 /** Directory entry names, or an empty list when the directory is absent. */
 export async function listDir(dir: string): Promise<string[]> {
-  try { return await readdir(dir); } catch (error) { return missingOrThrow(error, [] as string[]); }
+  try {
+    return await readdir(dir);
+  } catch (error) {
+    return missingOrThrow(error, [] as string[]);
+  }
 }
 
 /** Directory entries with their kind, for callers that filter files from subdirectories without a stat each. */
-export async function listEntries(dir: string): Promise<Array<{ name: string; isFile: boolean; isDirectory: boolean }>> {
+export async function listEntries(
+  dir: string,
+): Promise<Array<{ name: string; isFile: boolean; isDirectory: boolean }>> {
   try {
-    return (await readdir(dir, { withFileTypes: true }))
-      .map(entry => ({ name: entry.name, isFile: entry.isFile(), isDirectory: entry.isDirectory() }));
-  } catch (error) { return missingOrThrow(error, []); }
+    return (await readdir(dir, { withFileTypes: true })).map(entry => ({
+      name: entry.name,
+      isFile: entry.isFile(),
+      isDirectory: entry.isDirectory(),
+    }));
+  } catch (error) {
+    return missingOrThrow(error, []);
+  }
 }
 
 /** Subdirectory names only. */
@@ -109,7 +145,11 @@ export async function ensureDir(dir: string): Promise<void> {
  * directory is there, and a watch is worth attempting even on a path this could not canonicalise.
  */
 export async function canonicalDir(dir: string): Promise<string> {
-  try { return await realpath(dir); } catch { return dir; }
+  try {
+    return await realpath(dir);
+  } catch {
+    return dir;
+  }
 }
 
 /**
@@ -125,7 +165,9 @@ export async function writeFileAtomic(file: string, data: string | Buffer): Prom
     await writeFile(temp, data);
     await renameOver(temp, file);
   } catch (error) {
-    await rm(temp, { force: true }).catch(() => { /* the original failure is the one worth reporting */ });
+    await rm(temp, { force: true }).catch(() => {
+      /* the original failure is the one worth reporting */
+    });
     throw error;
   }
 }
@@ -168,7 +210,9 @@ export async function fileStamp(file: string): Promise<string | null> {
   try {
     const info = await stat(file, { bigint: true });
     return `${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
-  } catch (error) { return missingOrThrow(error, null); }
+  } catch (error) {
+    return missingOrThrow(error, null);
+  }
 }
 
 /**
@@ -179,8 +223,11 @@ export async function fileStamp(file: string): Promise<string | null> {
  * descriptor limit (EMFILE). Bounded concurrency is what makes the conversion an improvement rather than a
  * different failure.
  */
-export async function mapLimit<T, R>(items: readonly T[], limit: number,
-  worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
   const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {

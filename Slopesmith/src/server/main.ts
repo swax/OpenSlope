@@ -31,7 +31,9 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const log = createLogger('api');
 const accountsLog = createLogger('accounts');
 /** Command results, for the person or script that ran the command: not events, so no timestamp or level. */
-const print = (text: string): void => { process.stdout.write(`${text}\n`); };
+const print = (text: string): void => {
+  process.stdout.write(`${text}\n`);
+};
 
 export interface ApiServiceOptions {
   /** TCP port to bind. Defaults to `PORT`, then 5180. */
@@ -90,8 +92,10 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
   });
   const loopback = LOOPBACK_HOSTS.has(host.toLowerCase());
   if (!requiresAccounts() && !loopback && options.unsafeOpenNetwork !== true) {
-    throw new Error(`Refusing to publish Slopesmith without accounts on ${host}. Add --accounts, or explicitly`
-      + ' accept owner-level network access with --unsafe-open-network.');
+    throw new Error(
+      `Refusing to publish Slopesmith without accounts on ${host}. Add --accounts, or explicitly` +
+        ' accept owner-level network access with --unsafe-open-network.',
+    );
   }
   await migrateLegacyWorkspaceAssets();
   await characterLibraryDir();
@@ -102,23 +106,25 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
   const telemetry = startServerTelemetry();
   const instance = randomUUID();
   let restartClaimed = false;
-  const controls = options.restart ? {
-    restart: {
-      instance,
-      request: (): boolean => {
-        if (restartClaimed) return false;
-        restartClaimed = true;
-        // Let the 202 and its final TCP bytes leave before closing this listener and all session sockets.
-        setTimeout(() => {
-          void Promise.resolve(options.restart!()).catch(error => {
-            log.error('requested restart failed', { error });
-            restartClaimed = false;
-          });
-        }, 750);
-        return true;
-      },
-    },
-  } : {};
+  const controls = options.restart
+    ? {
+        restart: {
+          instance,
+          request: (): boolean => {
+            if (restartClaimed) return false;
+            restartClaimed = true;
+            // Let the 202 and its final TCP bytes leave before closing this listener and all session sockets.
+            setTimeout(() => {
+              void Promise.resolve(options.restart!()).catch(error => {
+                log.error('requested restart failed', { error });
+                restartClaimed = false;
+              });
+            }, 750);
+            return true;
+          },
+        },
+      }
+    : {};
 
   const server = createServer((req, res) => {
     observeApiRequest(req, res);
@@ -149,7 +155,10 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
   try {
     await new Promise<void>((ready, failed) => {
       server.once('error', failed);
-      server.listen(port, host, () => { server.off('error', failed); ready(); });
+      server.listen(port, host, () => {
+        server.off('error', failed);
+        ready();
+      });
     });
   } catch (error) {
     telemetry.stop();
@@ -168,16 +177,19 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
   // The enrolment code names a URL a person is meant to open, and this service is not always that URL — in
   // development an editor sits in front of it and forwards `/api`. So the code is handed back rather than
   // printed, and whoever knows where the browser goes announces it.
-  const adminCode = requiresAccounts()
-    ? await announceAccounts(url, loopback, options.newAdminCode === true)
-    : null;
+  const adminCode = requiresAccounts() ? await announceAccounts(url, loopback, options.newAdminCode === true) : null;
   if (!requiresAccounts() && !loopback) {
-    log.warn(`UNSAFE open network on ${host}: anyone who can reach this port is served as the owner`
-      + ' of this machine\'s maps, workspace and projects.');
+    log.warn(
+      `UNSAFE open network on ${host}: anyone who can reach this port is served as the owner` +
+        " of this machine's maps, workspace and projects.",
+    );
   }
 
   return {
-    host, port: bound, url, adminCode,
+    host,
+    port: bound,
+    url,
+    adminCode,
     close: async () => {
       telemetry.stop();
       stopWatchingMaps();
@@ -187,7 +199,7 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
       // checkpoint that closing it owes, and that write finishes before the process is told it may stop.
       await stopSessionChannel();
       server.closeAllConnections();
-      await new Promise<void>((closed, failed) => server.close(error => error ? failed(error) : closed()));
+      await new Promise<void>((closed, failed) => server.close(error => (error ? failed(error) : closed())));
     },
   };
 }
@@ -201,19 +213,25 @@ export async function startApiService(options: ApiServiceOptions = {}): Promise<
  */
 async function announceAccounts(url: string, loopback: boolean, regenerate: boolean): Promise<string | null> {
   if (!loopback && !behindProxy()) {
-    accountsLog.warn('this server refuses passwords over plain HTTP, so nobody off this machine can'
-      + ' sign in until TLS is in front of it. Add --behind-proxy once a reverse proxy terminates TLS.');
+    accountsLog.warn(
+      'this server refuses passwords over plain HTTP, so nobody off this machine can' +
+        ' sign in until TLS is in front of it. Add --behind-proxy once a reverse proxy terminates TLS.',
+    );
   }
   const code = await issueAdminCode();
   if (code) return code;
   if (regenerate) {
-    accountsLog.info('this server already has an admin, so there is no enrolment code to regenerate —'
-      + ' use `invite --role admin` instead.');
+    accountsLog.info(
+      'this server already has an admin, so there is no enrolment code to regenerate —' +
+        ' use `invite --role admin` instead.',
+    );
   }
   const users = await listUsers();
   const enabled = users.filter(user => !user.disabled).length;
-  accountsLog.info(`sign-in required — ${enabled} member${enabled === 1 ? '' : 's'}`
-    + `${users.length > enabled ? `, ${users.length - enabled} disabled` : ''}.`);
+  accountsLog.info(
+    `sign-in required — ${enabled} member${enabled === 1 ? '' : 's'}` +
+      `${users.length > enabled ? `, ${users.length - enabled} disabled` : ''}.`,
+  );
   return null;
 }
 
@@ -224,7 +242,10 @@ export function parseApiArgs(argv: readonly string[]): ApiServiceOptions {
     const arg = argv[index];
     if (arg === '--host') {
       const next = argv[index + 1];
-      if (next && !next.startsWith('-')) { options.host = next; index++; } else options.host = '0.0.0.0';
+      if (next && !next.startsWith('-')) {
+        options.host = next;
+        index++;
+      } else options.host = '0.0.0.0';
     } else if (arg.startsWith('--host=')) {
       options.host = arg.slice('--host='.length) || '0.0.0.0';
     } else if (arg === '--port') {
@@ -284,8 +305,14 @@ function requireRole(value: string | undefined, fallback: Role = 'editor'): Role
 }
 
 const columns = (rows: string[][]): string =>
-  rows.map(row => row.map((cell, at) =>
-    at === row.length - 1 ? cell : cell.padEnd(Math.max(...rows.map(other => other[at]?.length ?? 0)))).join('  '))
+  rows
+    .map(row =>
+      row
+        .map((cell, at) =>
+          at === row.length - 1 ? cell : cell.padEnd(Math.max(...rows.map(other => other[at]?.length ?? 0))),
+        )
+        .join('  '),
+    )
     .join('\n');
 
 const USAGE = `Slopesmith server
@@ -329,21 +356,37 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
         by: 'cli',
       });
       const base = (values.url ?? '').replace(/\/+$/, '');
-      print(`Invite minted for ${invite.handle}: ${invite.role}, expires `
-        + new Date(invite.expiresAt).toLocaleString());
+      print(
+        `Invite minted for ${invite.handle}: ${invite.role}, expires ` + new Date(invite.expiresAt).toLocaleString(),
+      );
       print('');
       print(base ? `  ${base}/editor#invite=${token}` : `  /editor#invite=${token}`);
       print('');
-      print('The link is the credential until it is redeemed, and worthless afterwards. It is shown'
-        + ' once — the server keeps only its digest.');
+      print(
+        'The link is the credential until it is redeemed, and worthless afterwards. It is shown' +
+          ' once — the server keeps only its digest.',
+      );
       return 0;
     }
     case 'invites': {
       const invites = await listInvites();
-      if (!invites.length) { print('No invites.'); return 0; }
-      print(columns([['ID', 'HANDLE', 'ROLE', 'STATE', 'EXPIRES', 'REDEEMED BY'],
-        ...invites.map(invite => [invite.id.slice(0, 8), invite.handle, invite.role, invite.state,
-          new Date(invite.expiresAt).toISOString().slice(0, 16), invite.redeemedBy ?? '—'])]));
+      if (!invites.length) {
+        print('No invites.');
+        return 0;
+      }
+      print(
+        columns([
+          ['ID', 'HANDLE', 'ROLE', 'STATE', 'EXPIRES', 'REDEEMED BY'],
+          ...invites.map(invite => [
+            invite.id.slice(0, 8),
+            invite.handle,
+            invite.role,
+            invite.state,
+            new Date(invite.expiresAt).toISOString().slice(0, 16),
+            invite.redeemedBy ?? '—',
+          ]),
+        ]),
+      );
       return 0;
     }
     case 'revoke-invite': {
@@ -359,16 +402,28 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
     case 'users': {
       const users = await listUsers();
       if (!users.length) {
-        print(await bootstrapPending()
-          ? 'No members yet — start the server with --accounts and redeem the admin code it prints.'
-          : 'No members.');
+        print(
+          (await bootstrapPending())
+            ? 'No members yet — start the server with --accounts and redeem the admin code it prints.'
+            : 'No members.',
+        );
         return 0;
       }
       const sessions = await Promise.all(users.map(user => countUserSessions(user.id)));
       const records = new Map((await readAccounts()).users.map(user => [user.id, user]));
-      print(columns([['USERNAME', 'INVITE HANDLE', 'ROLE', 'STATE', 'SESSIONS', 'CREATED'],
-        ...users.map((user, at) => [user.username, records.get(user.id)?.inviteHandle ?? '—', user.role,
-          user.disabled ? 'disabled' : 'active', String(sessions[at]), user.createdAt.slice(0, 10)])]));
+      print(
+        columns([
+          ['USERNAME', 'INVITE HANDLE', 'ROLE', 'STATE', 'SESSIONS', 'CREATED'],
+          ...users.map((user, at) => [
+            user.username,
+            records.get(user.id)?.inviteHandle ?? '—',
+            user.role,
+            user.disabled ? 'disabled' : 'active',
+            String(sessions[at]),
+            user.createdAt.slice(0, 10),
+          ]),
+        ]),
+      );
       return 0;
     }
     case 'set-role': {
@@ -390,9 +445,11 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
       const username = rest[0];
       if (!username) throw new Error(`${command} <username>`);
       const user = await setUserDisabled(username, command === 'disable');
-      print(command === 'disable'
-        ? `${user.username} is disabled and signed out everywhere.`
-        : `${user.username} may sign in again.`);
+      print(
+        command === 'disable'
+          ? `${user.username} is disabled and signed out everywhere.`
+          : `${user.username} may sign in again.`,
+      );
       return 0;
     }
     case 'reset-password': {
@@ -417,8 +474,10 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
     case 'new-admin-code': {
       const code = await issueAdminCode();
       if (!code) {
-        print('This server already has an admin, so there is no enrolment code to regenerate.'
-          + ' Use `invite --role admin`, or `reset-password <admin>`.');
+        print(
+          'This server already has an admin, so there is no enrolment code to regenerate.' +
+            ' Use `invite --role admin`, or `reset-password <admin>`.',
+        );
         return 1;
       }
       print(adminCodeBanner(code, (values.url ?? 'the server').replace(/\/+$/, '')));
@@ -426,29 +485,40 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
     }
     case 'maps': {
       const maps = await listProjects();
-      if (!maps.length) { print('No maps in this workspace.'); return 0; }
-      print(columns([['NAME', 'ID', 'REVISION', 'UPDATED'],
-        ...maps.map(map => [map.name, map.id, `r${map.revision}`, map.updatedAt.slice(0, 16)])]));
+      if (!maps.length) {
+        print('No maps in this workspace.');
+        return 0;
+      }
+      print(
+        columns([
+          ['NAME', 'ID', 'REVISION', 'UPDATED'],
+          ...maps.map(map => [map.name, map.id, `r${map.revision}`, map.updatedAt.slice(0, 16)]),
+        ]),
+      );
       return 0;
     }
     case 'delete-map': {
       const wanted = rest[0];
       if (!wanted) throw new Error('delete-map <id|name>');
       const maps = await listProjects();
-      const match = maps.find(map => map.id === wanted)
-        ?? maps.find(map => map.name.toLowerCase() === wanted.toLowerCase());
+      const match =
+        maps.find(map => map.id === wanted) ?? maps.find(map => map.name.toLowerCase() === wanted.toLowerCase());
       if (!match) throw new Error(`No such map: ${wanted}`);
       const deleted = await deleteProject(match.id);
-      print(`Deleted ${deleted.name} (${deleted.folder}). Its name is retired rather than returned to`
-        + ` the pool, so the next map called ${deleted.name} lands beside it under a suffixed name.`);
+      print(
+        `Deleted ${deleted.name} (${deleted.folder}). Its name is retired rather than returned to` +
+          ` the pool, so the next map called ${deleted.name} lands beside it under a suffixed name.`,
+      );
       return 0;
     }
     case 'accounts': {
       // What the record holds, for an operator working out why a server is refusing them.
       const accounts = await readAccounts();
-      print(`users ${accounts.users.length} · invites ${accounts.invites.length}`
-        + ` · sessions ${accounts.sessions.length}`
-        + ` · enrolment ${await bootstrapPending() ? 'outstanding' : 'done'}`);
+      print(
+        `users ${accounts.users.length} · invites ${accounts.invites.length}` +
+          ` · sessions ${accounts.sessions.length}` +
+          ` · enrolment ${(await bootstrapPending()) ? 'outstanding' : 'done'}`,
+      );
       return 0;
     }
     default:
@@ -459,9 +529,25 @@ async function runCommand(command: string, argv: readonly string[]): Promise<num
 
 /** Which words start the management surface rather than the service. Anything else — including no argument
  *  at all and a bare `serve` — starts the server. */
-const COMMANDS = new Set(['invite', 'invites', 'revoke-invite', 'users', 'set-role', 'disable', 'enable',
-  'set-handle', 'reset-password', 'sign-out', 'new-admin-code', 'maps', 'delete-map', 'accounts',
-  'help', '--help', '-h']);
+const COMMANDS = new Set([
+  'invite',
+  'invites',
+  'revoke-invite',
+  'users',
+  'set-role',
+  'disable',
+  'enable',
+  'set-handle',
+  'reset-password',
+  'sign-out',
+  'new-admin-code',
+  'maps',
+  'delete-map',
+  'accounts',
+  'help',
+  '--help',
+  '-h',
+]);
 
 // Running this file is running the service; importing it (`scripts/dev.ts`) only borrows the starter.
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
@@ -481,8 +567,9 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       if (stopping) return;
       stopping = true;
       log.info(`${signal}; closing sessions and snapshots`);
-      try { await service.close(); }
-      catch (error) {
+      try {
+        await service.close();
+      } catch (error) {
         log.error('graceful shutdown failed', { error });
         process.exitCode = 1;
       }
@@ -490,10 +577,12 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     // The updater drop-in is installed only on the supervised production service. Its systemd unit uses
     // Restart=on-failure, so a deliberate non-zero exit recreates the whole startup graph without granting
     // the web process permission to invoke systemctl.
-    const restart = configuredUpdateRoot() ? async () => {
-      process.exitCode = 1;
-      await stop('restart requested');
-    } : undefined;
+    const restart = configuredUpdateRoot()
+      ? async () => {
+          process.exitCode = 1;
+          await stop('restart requested');
+        }
+      : undefined;
     const service = await startApiService({ ...options, ...(restart ? { restart } : {}) });
     // Nothing is in front of this one, so the service's own address is where enrolment happens. The banner is
     // a boxed block an operator copies the code out of (docs/041), so it goes to stdout as it is: a timestamp
@@ -503,7 +592,11 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
 
     // systemd's SIGTERM and a terminal's Ctrl+C take the same graceful path as tests: sockets stop first so
     // every room lands the snapshot its last participant leaving owes, then the HTTP listener closes.
-    process.once('SIGTERM', () => { void stop('SIGTERM'); });
-    process.once('SIGINT', () => { void stop('SIGINT'); });
+    process.once('SIGTERM', () => {
+      void stop('SIGTERM');
+    });
+    process.once('SIGINT', () => {
+      void stop('SIGINT');
+    });
   }
 }

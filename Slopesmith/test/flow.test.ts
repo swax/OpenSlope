@@ -6,21 +6,25 @@ import type { SheetPoint } from '../src/core/mesh/sheet';
 import { check, failures } from './check';
 
 /** Exact union-of-capsules field — the same region the generator is asked to stay inside. */
-const fieldOf = (runs: readonly FlowRun[]) => (x: number, z: number): number => {
-  let best = 1e9;
-  for (const run of runs) {
-    for (let s = 0; s + 1 < run.line.length; s++) {
-      const a = run.line[s], b = run.line[s + 1];
-      const dx = b.x - a.x, dz = b.z - a.z;
-      const len2 = dx * dx + dz * dz;
-      if (len2 < 1e-12) continue;
-      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / len2));
-      const h = run.half[s] + (run.half[s + 1] - run.half[s]) * t;
-      best = Math.min(best, Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t)) - h);
+const fieldOf =
+  (runs: readonly FlowRun[]) =>
+  (x: number, z: number): number => {
+    let best = 1e9;
+    for (const run of runs) {
+      for (let s = 0; s + 1 < run.line.length; s++) {
+        const a = run.line[s],
+          b = run.line[s + 1];
+        const dx = b.x - a.x,
+          dz = b.z - a.z;
+        const len2 = dx * dx + dz * dz;
+        if (len2 < 1e-12) continue;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / len2));
+        const h = run.half[s] + (run.half[s + 1] - run.half[s]) * t;
+        best = Math.min(best, Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t)) - h);
+      }
     }
-  }
-  return best;
-};
+    return best;
+  };
 
 const line = (from: SheetPoint, to: SheetPoint, points = 12): SheetPoint[] =>
   Array.from({ length: points }, (_, i) => ({
@@ -42,8 +46,12 @@ interface Measured {
   junctionMinAngle: number;
 }
 const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Measured => {
-  let inverted = 0, errSum = 0, directed = 0, areaM2 = 0;
-  let junctionAspect = 1, junctionMinAngle = 90;
+  let inverted = 0,
+    errSum = 0,
+    directed = 0,
+    areaM2 = 0;
+  let junctionAspect = 1,
+    junctionMinAngle = 90;
   const valence = new Map<number, number>();
   const corners = new Map<number, number[]>();
   const boundary = flow.boundary;
@@ -60,10 +68,18 @@ const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Mea
     if (Math.sign(doubled / 2) !== flow.winding && doubled !== 0) inverted++;
     ring.forEach((v, k) => {
       valence.set(v, (valence.get(v) ?? 0) + 1);
-      const a = p[(k + 3) % 4], b = p[k], c = p[(k + 1) % 4];
-      const angle = Math.abs(Math.atan2(
-        Math.abs((a.x - b.x) * (c.z - b.z) - (a.z - b.z) * (c.x - b.x)),
-        (a.x - b.x) * (c.x - b.x) + (a.z - b.z) * (c.z - b.z))) * 180 / Math.PI;
+      const a = p[(k + 3) % 4],
+        b = p[k],
+        c = p[(k + 1) % 4];
+      const angle =
+        (Math.abs(
+          Math.atan2(
+            Math.abs((a.x - b.x) * (c.z - b.z) - (a.z - b.z) * (c.x - b.x)),
+            (a.x - b.x) * (c.x - b.x) + (a.z - b.z) * (c.z - b.z),
+          ),
+        ) *
+          180) /
+        Math.PI;
       (corners.get(v) ?? (corners.set(v, []), corners.get(v)!)).push(angle);
       if (flow.kinds[i] === 'junction') junctionMinAngle = Math.min(junctionMinAngle, angle);
     });
@@ -72,8 +88,10 @@ const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Mea
     }
     const bearing = flow.flowAngle[i];
     if (bearing === null) return;
-    const a = flow.points[q[0]], b = flow.points[q[1]], c = flow.points[q[2]];
-    const off = (axis: number) => Math.abs((((bearing - axis) * 180) / Math.PI % 180 + 270) % 180 - 90);
+    const a = flow.points[q[0]],
+      b = flow.points[q[1]],
+      c = flow.points[q[2]];
+    const off = (axis: number) => Math.abs(((((((bearing - axis) * 180) / Math.PI) % 180) + 270) % 180) - 90);
     errSum += Math.min(off(Math.atan2(b.z - a.z, b.x - a.x)), off(Math.atan2(c.z - a.z, c.x - a.x)));
     directed++;
   });
@@ -101,8 +119,10 @@ const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Mea
     check(flow.made.cap > 0, `straight: the trail ends close with caps (${flow.made.cap} cells)`);
     check(m.poles.length === 0, 'straight: no interior poles');
     // 400 m × 28 m of capsule plus the rounded caps the ends now carry
-    check(m.areaM2 > 0.85 * 400 * 28 && m.areaM2 < 1.05 * (400 * 28 + Math.PI * 14 * 14),
-      `straight: covers its ground (${(m.areaM2 / 1e4).toFixed(2)} ha)`);
+    check(
+      m.areaM2 > 0.85 * 400 * 28 && m.areaM2 < 1.05 * (400 * 28 + Math.PI * 14 * 14),
+      `straight: covers its ground (${(m.areaM2 / 1e4).toFixed(2)} ha)`,
+    );
   }
 }
 
@@ -120,12 +140,18 @@ const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Mea
     const m = measure(flow);
     check(flow.made.junction > 0, `wye-less Y: carries a junction patch (${flow.made.junction} cells)`);
     check(m.inverted === 0 && flow.loops.length === 1, 'wye-less Y: one manifold sheet, one rim');
-    check(m.poles.length === 1 && m.poles[0].valence === 3,
-      `wye-less Y: exactly one pole, the valence-3 centre (${m.poles.map(p => `v${p.valence}`).join(' ') || 'none'})`);
-    check(m.poles.length === 1 && m.poles[0].spreadDeg < 45,
-      `wye-less Y: the centre's sectors stay even (${m.poles[0]?.spreadDeg.toFixed(0)}° spread)`);
-    check(m.junctionAspect < 3.5 && m.junctionMinAngle > 30,
-      `wye-less Y: junction cells stay square-ish (aspect ${m.junctionAspect.toFixed(1)}, min angle ${m.junctionMinAngle.toFixed(0)}°)`);
+    check(
+      m.poles.length === 1 && m.poles[0].valence === 3,
+      `wye-less Y: exactly one pole, the valence-3 centre (${m.poles.map(p => `v${p.valence}`).join(' ') || 'none'})`,
+    );
+    check(
+      m.poles.length === 1 && m.poles[0].spreadDeg < 45,
+      `wye-less Y: the centre's sectors stay even (${m.poles[0]?.spreadDeg.toFixed(0)}° spread)`,
+    );
+    check(
+      m.junctionAspect < 3.5 && m.junctionMinAngle > 30,
+      `wye-less Y: junction cells stay square-ish (aspect ${m.junctionAspect.toFixed(1)}, min angle ${m.junctionMinAngle.toFixed(0)}°)`,
+    );
   }
 }
 
@@ -177,20 +203,26 @@ const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Mea
     const m = measure(flow);
     check(flow.made.junction > 0, `crossing: carries a junction patch (${flow.made.junction} cells)`);
     check(m.inverted === 0 && flow.loops.length === 1, 'crossing: one manifold sheet, one rim');
-    check(flow.quads.every(q => new Set(q).size === 4), 'crossing: every cell is a true quad');
+    check(
+      flow.quads.every(q => new Set(q).size === 4),
+      'crossing: every cell is a true quad',
+    );
     check(m.poles.length === 0, `crossing: an even crossing needs no pole at all (${m.poles.length})`);
-    check(m.junctionAspect < 3.5 && m.junctionMinAngle > 30,
-      `crossing: junction cells stay square-ish (aspect ${m.junctionAspect.toFixed(1)}, min angle ${m.junctionMinAngle.toFixed(0)}°)`);
+    check(
+      m.junctionAspect < 3.5 && m.junctionMinAngle > 30,
+      `crossing: junction cells stay square-ish (aspect ${m.junctionAspect.toFixed(1)}, min angle ${m.junctionMinAngle.toFixed(0)}°)`,
+    );
   }
 }
 
 // Two runs braiding the same ground between the same two nodes are one corridor, not two overlapping wyes:
 // the fused sheet covers the union once, so its area is far under the two swaths counted separately.
 {
-  const bend = (sign: number): SheetPoint[] => Array.from({ length: 24 }, (_, i) => {
-    const t = i / 23;
-    return { x: 500 * t, z: sign * 14 * Math.sin(t * Math.PI) };
-  });
+  const bend = (sign: number): SheetPoint[] =>
+    Array.from({ length: 24 }, (_, i) => {
+      const t = i / 23;
+      return { x: 500 * t, z: sign * 14 * Math.sin(t * Math.PI) };
+    });
   const runs: FlowRun[] = [
     { line: bend(1), half: widths(24, 13), from: 0, to: 1 },
     { line: bend(-1), half: widths(24, 13), from: 0, to: 1 },
@@ -199,7 +231,10 @@ const measure = (flow: Extract<ReturnType<typeof buildFlow>, { ok: true }>): Mea
   check(flow.ok, 'braid: builds');
   if (flow.ok) {
     const m = measure(flow);
-    check(flow.notes.some(note => note.includes('fused')), 'braid: the pair fuses into one corridor');
+    check(
+      flow.notes.some(note => note.includes('fused')),
+      'braid: the pair fuses into one corridor',
+    );
     check(m.inverted === 0, 'braid: nothing inverted');
     check(m.areaM2 < 500 * 54 * 1.15, `braid: the union is covered once (${(m.areaM2 / 1e4).toFixed(2)} ha)`);
   }

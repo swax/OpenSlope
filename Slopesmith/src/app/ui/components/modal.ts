@@ -10,6 +10,8 @@ export function modal(opts: { sticky?: boolean } = {}): { host: HTMLDivElement; 
   back.appendChild(host);
   document.body.appendChild(back);
   const close = () => back.remove();
-  back.onclick = e => { if (!opts.sticky && e.target === back) close(); };
+  back.onclick = e => {
+    if (!opts.sticky && e.target === back) close();
+  };
   return { host, close };
 }

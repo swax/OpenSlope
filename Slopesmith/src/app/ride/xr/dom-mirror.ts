@@ -48,7 +48,12 @@ const PART_PAD = 4;
 const MAX_ASSETS = 256;
 const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 
-export interface Rect { x: number; y: number; width: number; height: number }
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface DomMirrorSpec {
   /** Id of the element whose subtree is cloned. */
@@ -62,7 +67,10 @@ export interface DomMirrorSpec {
 }
 
 /** One drawn part: its key and where it sat on the page when the current image was taken. */
-export interface MirrorPart { key: string | null; rect: Rect }
+export interface MirrorPart {
+  key: string | null;
+  rect: Rect;
+}
 
 export interface DomMirrorStats {
   /** Clone + bake + serialize: the synchronous share, paid inside whichever frame asked for the repaint. */
@@ -88,14 +96,23 @@ export interface DomMirrorStats {
 /** Split a selector list on its top-level commas — not those inside `:is(a, b)`, attribute values or strings. */
 export function splitSelectorList(text: string): string[] {
   const out: string[] = [];
-  let depth = 0, quote = '', start = 0;
+  let depth = 0,
+    quote = '',
+    start = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (quote) { if (c === '\\') i++; else if (c === quote) quote = ''; continue; }
-    if (c === '"' || c === '\'') quote = c;
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
     else if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
-    else if (c === ',' && depth === 0) { out.push(text.slice(start, i).trim()); start = i + 1; }
+    else if (c === ',' && depth === 0) {
+      out.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
   }
   out.push(text.slice(start).trim());
   return out.filter(Boolean);
@@ -107,13 +124,14 @@ function stripOptionalParts(selector: string): string {
   let out = '';
   for (let i = 0; i < selector.length; i++) {
     const c = selector[i];
-    if (c === '"' || c === '\'') {
+    if (c === '"' || c === "'") {
       for (i++; i < selector.length && selector[i] !== c; i++) if (selector[i] === '\\') i++;
       continue;
     }
     if (c === '[') {
       for (let depth = 1; depth > 0 && ++i < selector.length;) {
-        if (selector[i] === '[') depth++; else if (selector[i] === ']') depth--;
+        if (selector[i] === '[') depth++;
+        else if (selector[i] === ']') depth--;
       }
       continue;
     }
@@ -122,7 +140,8 @@ function stripOptionalParts(selector: string): string {
       if (name) {
         i += name[0].length;
         for (let depth = 1; depth > 0 && i < selector.length; i++) {
-          if (selector[i] === '(') depth++; else if (selector[i] === ')') depth--;
+          if (selector[i] === '(') depth++;
+          else if (selector[i] === ')') depth--;
         }
         i--;
         continue;
@@ -156,23 +175,28 @@ export function ruleMayApply(needs: readonly (readonly string[])[] | null, token
 
 export function unionRect(a: Rect | null, b: Rect): Rect {
   if (!a) return { x: b.x, y: b.y, width: b.width, height: b.height };
-  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  const x = Math.min(a.x, b.x),
+    y = Math.min(a.y, b.y);
   return {
-    x, y,
+    x,
+    y,
     width: Math.max(a.x + a.width, b.x + b.width) - x,
     height: Math.max(a.y + a.height, b.y + b.height) - y,
   };
 }
 
 export function intersectRect(a: Rect, b: Rect): Rect | null {
-  const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
-  const right = Math.min(a.x + a.width, b.x + b.width), bottom = Math.min(a.y + a.height, b.y + b.height);
+  const x = Math.max(a.x, b.x),
+    y = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width),
+    bottom = Math.min(a.y + a.height, b.y + b.height);
   return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
 }
 
 /** Grow by `pad`, clip to the window, and snap outward to whole CSS pixels so texels land on pixel edges. */
 export function paddedPixelRect(rect: Rect, pad: number, viewWidth: number, viewHeight: number): Rect | null {
-  const left = Math.max(0, Math.floor(rect.x - pad)), top = Math.max(0, Math.floor(rect.y - pad));
+  const left = Math.max(0, Math.floor(rect.x - pad)),
+    top = Math.max(0, Math.floor(rect.y - pad));
   const right = Math.min(viewWidth, Math.ceil(rect.x + rect.width + pad));
   const bottom = Math.min(viewHeight, Math.ceil(rect.y + rect.height + pad));
   return right - left >= 1 && bottom - top >= 1 ? { x: left, y: top, width: right - left, height: bottom - top } : null;
@@ -198,7 +222,7 @@ export function partUvRect(region: Rect, part: Rect): [number, number, number, n
 export function nextSelectableIndex(disabled: readonly boolean[], current: number, direction: 1 | -1): number {
   const n = disabled.length;
   for (let step = 1; step <= n; step++) {
-    const index = ((current + direction * step) % n + n) % n;
+    const index = (((current + direction * step) % n) + n) % n;
     if (!disabled[index]) return index;
   }
   return current;
@@ -207,7 +231,10 @@ export function nextSelectableIndex(disabled: readonly boolean[], current: numbe
 // ---------------------------------------------------------------------------------------------------------------
 // the page's CSS, flattened against the real window
 
-interface CssEntry { text: string; needs: string[][] | null }
+interface CssEntry {
+  text: string;
+  needs: string[][] | null;
+}
 
 let cssCache: { key: string; rules: CssEntry[] } | null = null;
 /** Bumped when a fetched asset lands, so CSS `url()`s rewritten before it arrived are rewritten again. */
@@ -219,7 +246,11 @@ function mediaMatches(text: string): boolean {
 }
 
 function readRules(sheet: CSSStyleSheet): CSSRuleList | null {
-  try { return sheet.cssRules; } catch { return null; } // a cross-origin sheet: unreadable, and unused by the panels
+  try {
+    return sheet.cssRules;
+  } catch {
+    return null;
+  } // a cross-origin sheet: unreadable, and unused by the panels
 }
 
 function flattenRules(rules: CSSRuleList, base: string, out: CssEntry[]) {
@@ -246,8 +277,14 @@ function cssKey(): string {
   let rules = 0;
   for (const sheet of Array.from(document.styleSheets)) rules += readRules(sheet)?.length ?? 0;
   return [
-    document.styleSheets.length, rules, innerWidth, innerHeight, devicePixelRatio,
-    matchMedia('(pointer: coarse)').matches, matchMedia('(hover: hover)').matches, assetGeneration,
+    document.styleSheets.length,
+    rules,
+    innerWidth,
+    innerHeight,
+    devicePixelRatio,
+    matchMedia('(pointer: coarse)').matches,
+    matchMedia('(hover: hover)').matches,
+    assetGeneration,
   ].join('|');
 }
 
@@ -273,36 +310,52 @@ const assets = new Map<string, string | null>();
 function assetUrl(raw: string, base: string): string | null {
   if (raw.startsWith('data:')) return raw;
   let url: URL;
-  try { url = new URL(raw, base); } catch { return null; }
+  try {
+    url = new URL(raw, base);
+  } catch {
+    return null;
+  }
   if (url.origin !== location.origin) return null;
   const key = url.href;
   const known = assets.get(key);
   if (known !== undefined) {
     // Most recently drawn last, so eviction below takes the asset that has been off screen longest.
-    if (known !== null) { assets.delete(key); assets.set(key, known); }
+    if (known !== null) {
+      assets.delete(key);
+      assets.set(key, known);
+    }
     return known;
   }
   if (assets.size >= MAX_ASSETS) {
     // A library grid scrolls through far more tiles than it shows at once: make room rather than refuse. Pending
     // and failed entries stay, so neither is fetched again.
-    for (const [old, data] of assets) if (data !== null) { assets.delete(old); break; }
+    for (const [old, data] of assets)
+      if (data !== null) {
+        assets.delete(old);
+        break;
+      }
     if (assets.size >= MAX_ASSETS) return null;
   }
   assets.set(key, null);
   void fetch(key, { credentials: 'same-origin' })
-    .then(response => response.ok ? response.blob() : Promise.reject(new Error(String(response.status))))
-    .then(blob => new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    }))
+    .then(response => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
+    .then(
+      blob =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        }),
+    )
     .then(data => {
       assets.set(key, data);
       assetGeneration++;
       for (const mirror of liveMirrors) mirror.markDirty();
     })
-    .catch(() => { /* stays null: drawn without it rather than retried every repaint */ });
+    .catch(() => {
+      /* stays null: drawn without it rather than retried every repaint */
+    });
   return null;
 }
 
@@ -319,8 +372,20 @@ function rewriteCssUrls(text: string, base: string): string {
 // the clone
 
 /** Elements that can be hidden or box-less for reasons that do not remove what they contribute. */
-const NEVER_PRUNE = new Set(['br', 'wbr', 'option', 'optgroup', 'style', 'source', 'track', 'col', 'colgroup',
-  'area', 'map', 'template']);
+const NEVER_PRUNE = new Set([
+  'br',
+  'wbr',
+  'option',
+  'optgroup',
+  'style',
+  'source',
+  'track',
+  'col',
+  'colgroup',
+  'area',
+  'map',
+  'template',
+]);
 /** Leaves whose insides are either replaced here or rendered by the element itself. */
 const NO_DESCEND = new Set(['svg', 'select', 'canvas', 'img', 'textarea', 'picture', 'math']);
 const REMOVE = new Set(['script', 'noscript', 'iframe', 'object', 'embed', 'video', 'audio']);
@@ -329,19 +394,25 @@ const canvasSnapshots = new WeakMap<HTMLCanvasElement, { url: string; at: number
 
 function hidden(element: Element): boolean {
   if (!(element instanceof HTMLElement) || NEVER_PRUNE.has(element.localName)) return false;
-  if (typeof element.checkVisibility === 'function' ? element.checkVisibility() : element.getClientRects().length) return false;
+  if (typeof element.checkVisibility === 'function' ? element.checkVisibility() : element.getClientRects().length)
+    return false;
   return getComputedStyle(element).display === 'none'; // `display: contents` has no box but must keep its children
 }
 
 function setFlag(element: Element, name: string, on: boolean) {
-  if (on) element.setAttribute(name, ''); else element.removeAttribute(name);
+  if (on) element.setAttribute(name, '');
+  else element.removeAttribute(name);
 }
 
 function canvasUrl(canvas: HTMLCanvasElement, now: number): string {
   const cached = canvasSnapshots.get(canvas);
   if (cached && now - cached.at < CANVAS_REFRESH_MS) return cached.url;
   let url = TRANSPARENT_PIXEL;
-  try { if (canvas.width && canvas.height) url = canvas.toDataURL(); } catch { /* tainted: leave it blank */ }
+  try {
+    if (canvas.width && canvas.height) url = canvas.toDataURL();
+  } catch {
+    /* tainted: leave it blank */
+  }
   canvasSnapshots.set(canvas, { url, at: now });
   return url;
 }
@@ -352,9 +423,13 @@ function bake(source: Element, copy: Element, now: number): Element {
   if (REMOVE.has(name)) {
     // Keep the box, lose the content: a video or iframe would load nothing inside an image anyway.
     const stand = document.createElement('div');
-    for (const attr of ['id', 'class', 'style']) { const v = copy.getAttribute(attr); if (v !== null) stand.setAttribute(attr, v); }
+    for (const attr of ['id', 'class', 'style']) {
+      const v = copy.getAttribute(attr);
+      if (v !== null) stand.setAttribute(attr, v);
+    }
     if (source instanceof HTMLElement && name !== 'script' && name !== 'noscript') {
-      stand.style.width = `${source.offsetWidth}px`; stand.style.height = `${source.offsetHeight}px`;
+      stand.style.width = `${source.offsetWidth}px`;
+      stand.style.height = `${source.offsetHeight}px`;
     } else stand.style.display = 'none';
     copy.replaceWith(stand);
     return stand;
@@ -408,7 +483,8 @@ function culled(source: Element, clip: Rect): source is HTMLElement {
   if (!(source instanceof HTMLElement) || NEVER_PRUNE.has(source.localName)) return false;
   const r = source.getBoundingClientRect();
   if (r.width <= 0 || r.height <= 0) return false;
-  if (r.right > clip.x && r.left < clip.x + clip.width && r.bottom > clip.y && r.top < clip.y + clip.height) return false;
+  if (r.right > clip.x && r.left < clip.x + clip.width && r.bottom > clip.y && r.top < clip.y + clip.height)
+    return false;
   const display = getComputedStyle(source).display;
   return display !== 'inline' && display !== 'contents';
 }
@@ -420,13 +496,18 @@ function hollow(source: HTMLElement, copy: Element) {
   box.replaceChildren();
   if (!pin(source, box)) {
     // A transformed box or a table row: offsetWidth/Height still give its layout size, rounded to whole pixels.
-    important(box, { 'box-sizing': 'border-box', width: `${source.offsetWidth}px`, height: `${source.offsetHeight}px` });
+    important(box, {
+      'box-sizing': 'border-box',
+      width: `${source.offsetWidth}px`,
+      height: `${source.offsetHeight}px`,
+    });
   }
   important(box, { visibility: 'hidden', 'background-image': 'none' });
 }
 
 /** Displays whose width and height mean nothing: inline runs, box-less wrappers, and table rows and groups. */
-const UNPINNABLE = /^(inline|contents|none|table-(row|row-group|header-group|footer-group|column|column-group|caption))$/;
+const UNPINNABLE =
+  /^(inline|contents|none|table-(row|row-group|header-group|footer-group|column|column-group|caption))$/;
 const px = (value: number) => `${Math.round(value * 1000) / 1000}px`;
 
 /**
@@ -449,8 +530,9 @@ function pin(source: HTMLElement, copy: HTMLElement): boolean {
 }
 const PIN_ATTRIBUTE = 'data-xr-pin';
 /** An auto minimum is the content's size, which the image's thicker borders make larger than the pinned box. */
-const PINNED_CSS = `[${PIN_ATTRIBUTE}]{box-sizing:border-box!important;flex:none!important;min-width:0!important;`
-  + 'min-height:0!important;max-width:none!important;max-height:none!important}';
+const PINNED_CSS =
+  `[${PIN_ATTRIBUTE}]{box-sizing:border-box!important;flex:none!important;min-width:0!important;` +
+  'min-height:0!important;max-width:none!important;max-height:none!important}';
 
 function snapshot(root: HTMLElement, now: number, clip: Rect): { clone: HTMLElement; nodes: number } {
   const clone = root.cloneNode(true) as HTMLElement;
@@ -460,7 +542,8 @@ function snapshot(root: HTMLElement, now: number, clip: Rect): { clone: HTMLElem
     const baked = bake(source, copy, now);
     if (source instanceof HTMLElement && baked instanceof HTMLElement && source !== root) pin(source, baked);
     if (NO_DESCEND.has(source.localName) || baked !== copy) return;
-    const sources = Array.from(source.children), copies = Array.from(copy.children);
+    const sources = Array.from(source.children),
+      copies = Array.from(copy.children);
     for (let i = 0; i < sources.length && i < copies.length; i++) {
       const child = sources[i];
       if (hidden(child)) copies[i].remove();
@@ -492,8 +575,15 @@ function copyCustomProperties(from: HTMLElement, to: HTMLElement) {
 
 /** Wrap the clone in stand-ins for html, body and any ancestors so ancestor-scoped selectors still match, place it
  *  where it sits relative to `region`, and serialize the lot as one SVG. */
-function buildSvg(root: HTMLElement, clone: HTMLElement, rootRect: Rect, region: Rect, scale: number): {
-  svg: string; cssRules: number;
+function buildSvg(
+  root: HTMLElement,
+  clone: HTMLElement,
+  rootRect: Rect,
+  region: Rect,
+  scale: number,
+): {
+  svg: string;
+  cssRules: number;
 } {
   const html = document.createElement('html');
   html.className = document.documentElement.className;
@@ -502,8 +592,14 @@ function buildSvg(root: HTMLElement, clone: HTMLElement, rootRect: Rect, region:
   body.className = document.body.className;
   copyCustomProperties(document.body, body);
   const frame = {
-    margin: '0', padding: '0', border: '0', background: 'transparent', overflow: 'visible',
-    width: `${region.width}px`, height: `${region.height}px`, position: 'relative',
+    margin: '0',
+    padding: '0',
+    border: '0',
+    background: 'transparent',
+    overflow: 'visible',
+    width: `${region.width}px`,
+    height: `${region.height}px`,
+    position: 'relative',
   };
   important(html, frame);
   important(body, frame);
@@ -518,24 +614,43 @@ function buildSvg(root: HTMLElement, clone: HTMLElement, rootRect: Rect, region:
     if (ancestor.id) stand.id = ancestor.id;
     if (ancestor.className) stand.className = ancestor.className;
     important(stand, {
-      display: 'block', position: 'static', margin: '0', padding: '0', border: '0', width: 'auto', height: 'auto',
-      transform: 'none', overflow: 'visible', background: 'transparent',
+      display: 'block',
+      position: 'static',
+      margin: '0',
+      padding: '0',
+      border: '0',
+      width: 'auto',
+      height: 'auto',
+      transform: 'none',
+      overflow: 'visible',
+      background: 'transparent',
     });
     tokensOf(stand, tokens);
     parent.appendChild(stand);
     parent = stand;
   }
   important(clone, {
-    position: 'absolute', left: `${rootRect.x - region.x}px`, top: `${rootRect.y - region.y}px`,
-    right: 'auto', bottom: 'auto', width: `${rootRect.width}px`, height: `${rootRect.height}px`,
-    margin: '0', transform: 'none', 'box-sizing': 'border-box',
-    'max-width': 'none', 'max-height': 'none', 'min-width': '0', 'min-height': '0',
+    position: 'absolute',
+    left: `${rootRect.x - region.x}px`,
+    top: `${rootRect.y - region.y}px`,
+    right: 'auto',
+    bottom: 'auto',
+    width: `${rootRect.width}px`,
+    height: `${rootRect.height}px`,
+    margin: '0',
+    transform: 'none',
+    'box-sizing': 'border-box',
+    'max-width': 'none',
+    'max-height': 'none',
+    'min-width': '0',
+    'min-height': '0',
   });
   parent.appendChild(clone);
   tokensOf(clone, tokens);
   for (const element of Array.from(clone.querySelectorAll('[class], [id]'))) tokensOf(element, tokens);
 
-  let css = '', cssRules = 0;
+  let css = '',
+    cssRules = 0;
   for (const rule of pageCss()) {
     if (!ruleMayApply(rule.needs, tokens)) continue;
     css += rule.text + '\n';
@@ -549,10 +664,12 @@ function buildSvg(root: HTMLElement, clone: HTMLElement, rootRect: Rect, region:
   html.append(head, body);
 
   const markup = new XMLSerializer().serializeToString(html);
-  const w = Math.max(1, Math.round(region.width * scale)), h = Math.max(1, Math.round(region.height * scale));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" `
-    + `viewBox="0 0 ${region.width} ${region.height}"><foreignObject x="0" y="0" `
-    + `width="${region.width}" height="${region.height}">${markup}</foreignObject></svg>`;
+  const w = Math.max(1, Math.round(region.width * scale)),
+    h = Math.max(1, Math.round(region.height * scale));
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" ` +
+    `viewBox="0 0 ${region.width} ${region.height}"><foreignObject x="0" y="0" ` +
+    `width="${region.width}" height="${region.height}">${markup}</foreignObject></svg>`;
   return { svg, cssRules };
 }
 
@@ -562,8 +679,11 @@ function clientRect(element: Element): Rect {
 }
 
 /** Where each part sits on the page right now, and the region that covers them. Null when nothing is visible. */
-function measure(root: HTMLElement, keys: readonly string[] | null, ownBox = false):
-  { region: Rect; parts: MirrorPart[] } | null {
+function measure(
+  root: HTMLElement,
+  keys: readonly string[] | null,
+  ownBox = false,
+): { region: Rect; parts: MirrorPart[] } | null {
   const view = (rect: Rect) => paddedPixelRect(rect, keys ? PART_PAD : 0, innerWidth, innerHeight);
   if (!keys && ownBox) {
     const rect = view(clientRect(root));
@@ -603,12 +723,16 @@ function measure(root: HTMLElement, keys: readonly string[] | null, ownBox = fal
 
 export function createDomMirror(spec: DomMirrorSpec, scale = MIRROR_SCALE) {
   const canvas = document.createElement('canvas');
-  canvas.width = 1; canvas.height = 1;
+  canvas.width = 1;
+  canvas.height = 1;
   const ctx = canvas.getContext('2d')!;
   let root: HTMLElement | null = null;
   let observer: MutationObserver | null = null;
-  let active = false, dirty = true, decoding = false;
-  let lastPaint = -Infinity, lastSerialize = -Infinity;
+  let active = false,
+    dirty = true,
+    decoding = false;
+  let lastPaint = -Infinity,
+    lastSerialize = -Infinity;
   let lastSignature = '';
   /** Where the CURRENT image came from, so hit mapping matches the pixels on show rather than a newer layout. */
   let region: Rect | null = null;
@@ -616,9 +740,19 @@ export function createDomMirror(spec: DomMirrorSpec, scale = MIRROR_SCALE) {
   let version = 0;
   let taintChecked = false;
   const stats: DomMirrorStats = {
-    syncMs: 0, decodeMs: 0, drawMs: 0, bytes: 0, nodes: 0, cssRules: 0, repaints: 0, unchanged: 0, error: null,
+    syncMs: 0,
+    decodeMs: 0,
+    drawMs: 0,
+    bytes: 0,
+    nodes: 0,
+    cssRules: 0,
+    repaints: 0,
+    unchanged: 0,
+    error: null,
   };
-  const markDirty = () => { dirty = true; };
+  const markDirty = () => {
+    dirty = true;
+  };
   const handle = { markDirty };
 
   function detach() {
@@ -651,13 +785,23 @@ export function createDomMirror(spec: DomMirrorSpec, scale = MIRROR_SCALE) {
   function setActive(on: boolean) {
     if (on === active) return;
     active = on;
-    if (on) { liveMirrors.add(handle); attach(); dirty = true; lastSignature = ''; }
-    else { liveMirrors.delete(handle); detach(); }
+    if (on) {
+      liveMirrors.add(handle);
+      attach();
+      dirty = true;
+      lastSignature = '';
+    } else {
+      liveMirrors.delete(handle);
+      detach();
+    }
   }
 
   function clear() {
     if (!region) return;
-    region = null; parts = []; lastSignature = ''; version++;
+    region = null;
+    parts = [];
+    lastSignature = '';
+    version++;
   }
 
   /**
@@ -673,7 +817,10 @@ export function createDomMirror(spec: DomMirrorSpec, scale = MIRROR_SCALE) {
     lastSerialize = now;
     const started = performance.now();
     const layout = measure(root, spec.parts, spec.ownBox);
-    if (!layout) { clear(); return true; }
+    if (!layout) {
+      clear();
+      return true;
+    }
     const rootRect = clientRect(root);
     const { clone, nodes } = snapshot(root, now, layout.region);
     const { svg, cssRules } = buildSvg(root, clone, rootRect, layout.region, scale);
@@ -681,7 +828,10 @@ export function createDomMirror(spec: DomMirrorSpec, scale = MIRROR_SCALE) {
     stats.nodes = nodes;
     stats.cssRules = cssRules;
     const signature = svg + JSON.stringify(layout);
-    if (signature === lastSignature) { stats.unchanged++; return true; }
+    if (signature === lastSignature) {
+      stats.unchanged++;
+      return true;
+    }
     lastSignature = signature;
     lastPaint = now;
     decoding = true;
@@ -691,44 +841,75 @@ export function createDomMirror(spec: DomMirrorSpec, scale = MIRROR_SCALE) {
     image.decoding = 'async';
     image.src = url;
     const decodeStarted = performance.now();
-    image.decode().then(() => {
-      stats.decodeMs = performance.now() - decodeStarted;
-      const drawStarted = performance.now();
-      const w = Math.max(1, Math.round(layout.region.width * scale));
-      const h = Math.max(1, Math.round(layout.region.height * scale));
-      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-      else ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(image, 0, 0, w, h);
-      stats.drawMs = performance.now() - drawStarted;
-      if (!taintChecked) {
-        taintChecked = true;
-        // A tainted canvas cannot be uploaded to WebGL at all; say so once instead of failing every frame.
-        try { ctx.getImageData(0, 0, 1, 1); } catch { stats.error = 'canvas tainted by the SVG image'; }
-      }
-      if (stats.error && !stats.error.startsWith('canvas tainted')) stats.error = null;
-      region = layout.region;
-      parts = layout.parts;
-      stats.repaints++;
-      version++;
-    }).catch((error: unknown) => {
-      stats.error = `decode failed: ${error instanceof Error ? error.message : String(error)}`;
-      lastSignature = '';
-    }).finally(() => { decoding = false; });
+    image
+      .decode()
+      .then(() => {
+        stats.decodeMs = performance.now() - decodeStarted;
+        const drawStarted = performance.now();
+        const w = Math.max(1, Math.round(layout.region.width * scale));
+        const h = Math.max(1, Math.round(layout.region.height * scale));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        } else ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(image, 0, 0, w, h);
+        stats.drawMs = performance.now() - drawStarted;
+        if (!taintChecked) {
+          taintChecked = true;
+          // A tainted canvas cannot be uploaded to WebGL at all; say so once instead of failing every frame.
+          try {
+            ctx.getImageData(0, 0, 1, 1);
+          } catch {
+            stats.error = 'canvas tainted by the SVG image';
+          }
+        }
+        if (stats.error && !stats.error.startsWith('canvas tainted')) stats.error = null;
+        region = layout.region;
+        parts = layout.parts;
+        stats.repaints++;
+        version++;
+      })
+      .catch((error: unknown) => {
+        stats.error = `decode failed: ${error instanceof Error ? error.message : String(error)}`;
+        lastSignature = '';
+      })
+      .finally(() => {
+        decoding = false;
+      });
     return true;
   }
 
   return {
-    spec, canvas, stats,
+    spec,
+    canvas,
+    stats,
     /** Changes whenever the canvas holds a new image (or none). */
-    get version() { return version; },
-    get region() { return region; },
-    get parts() { return parts; },
-    get root() { return root; },
-    get tainted() { return stats.error !== null && stats.error.startsWith('canvas tainted'); },
-    setActive, tick, markDirty,
+    get version() {
+      return version;
+    },
+    get region() {
+      return region;
+    },
+    get parts() {
+      return parts;
+    },
+    get root() {
+      return root;
+    },
+    get tainted() {
+      return stats.error !== null && stats.error.startsWith('canvas tainted');
+    },
+    setActive,
+    tick,
+    markDirty,
     /** Client point under a texture UV on the image currently shown. */
-    toClient(u: number, v: number) { return region ? mirrorUvToClient(region, u, v) : null; },
-    dispose() { setActive(false); canvas.width = canvas.height = 1; },
+    toClient(u: number, v: number) {
+      return region ? mirrorUvToClient(region, u, v) : null;
+    },
+    dispose() {
+      setActive(false);
+      canvas.width = canvas.height = 1;
+    },
   };
 }
 
@@ -737,15 +918,21 @@ export type DomMirror = ReturnType<typeof createDomMirror>;
 // ---------------------------------------------------------------------------------------------------------------
 // input: trigger edges into the events a mouse would have produced
 
-export interface DomPointerTarget { root: HTMLElement; x: number; y: number }
+export interface DomPointerTarget {
+  root: HTMLElement;
+  x: number;
+  y: number;
+}
 
 /** What the highlight frames: the control a press would act on, not the text node inside it. */
-const ACTIONABLE = 'button, a[href], input, select, textarea, label, summary, [role="button"], [tabindex], '
-  + '.lil-controller, .lil-title';
+const ACTIONABLE =
+  'button, a[href], input, select, textarea, label, summary, [role="button"], [tabindex], ' +
+  '.lil-controller, .lil-title';
 /** Chrome's mouse is pointer 1. Reusing it lets `setPointerCapture` succeed where a mouse exists at all. */
 const POINTER_ID = 1;
 /** Hover hit-testing is repeated only when the point moves this far, or this long has passed. */
-const HOVER_EPSILON_PX = 0.5, HOVER_REFRESH_MS = 100;
+const HOVER_EPSILON_PX = 0.5,
+  HOVER_REFRESH_MS = 100;
 
 export function createDomPointer() {
   let hovered: Element | null = null;
@@ -756,7 +943,8 @@ export function createDomPointer() {
   let last: DomPointerTarget | null = null;
   let down = false;
   /** The secondary (right) button: a press, a release, and the context menu — the Palette's ride-feel menu. */
-  let rightDown = false, rightOn: Element | null = null;
+  let rightDown = false,
+    rightOn: Element | null = null;
   let notice = '';
 
   function elementAt(target: DomPointerTarget): Element | null {
@@ -767,9 +955,16 @@ export function createDomPointer() {
   }
 
   function refreshHover(target: DomPointerTarget | null, now: number) {
-    if (!target) { hovered = null; hoveredAt = null; return; }
-    const moved = !hoveredAt || hoveredAt.root !== target.root
-      || Math.abs(hoveredAt.x - target.x) >= HOVER_EPSILON_PX || Math.abs(hoveredAt.y - target.y) >= HOVER_EPSILON_PX;
+    if (!target) {
+      hovered = null;
+      hoveredAt = null;
+      return;
+    }
+    const moved =
+      !hoveredAt ||
+      hoveredAt.root !== target.root ||
+      Math.abs(hoveredAt.x - target.x) >= HOVER_EPSILON_PX ||
+      Math.abs(hoveredAt.y - target.y) >= HOVER_EPSILON_PX;
     if (!moved && now - hoveredTime < HOVER_REFRESH_MS) return;
     hovered = elementAt(target);
     hoveredAt = target;
@@ -777,20 +972,40 @@ export function createDomPointer() {
   }
 
   /** `button` is the one that changed (0 primary, 2 secondary); moves report none, -1 for pointer events. */
-  function fire(element: Element, type: string, at: { x: number; y: number }, buttons: number, moving = false,
-                button = 0) {
+  function fire(
+    element: Element,
+    type: string,
+    at: { x: number; y: number },
+    buttons: number,
+    moving = false,
+    button = 0,
+  ) {
     const pointer = type.startsWith('pointer');
     const init: MouseEventInit = {
-      bubbles: true, cancelable: true, composed: true, view: window,
-      clientX: at.x, clientY: at.y, screenX: at.x, screenY: at.y,
-      button: moving && pointer ? -1 : button, buttons,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+      clientX: at.x,
+      clientY: at.y,
+      screenX: at.x,
+      screenY: at.y,
+      button: moving && pointer ? -1 : button,
+      buttons,
     };
-    element.dispatchEvent(pointer
-      ? new PointerEvent(type, {
-        ...init, pointerId: POINTER_ID, pointerType: 'mouse', isPrimary: true, width: 1, height: 1,
-        pressure: buttons ? 0.5 : 0,
-      })
-      : new MouseEvent(type, init));
+    element.dispatchEvent(
+      pointer
+        ? new PointerEvent(type, {
+            ...init,
+            pointerId: POINTER_ID,
+            pointerType: 'mouse',
+            isPrimary: true,
+            width: 1,
+            height: 1,
+            pressure: buttons ? 0.5 : 0,
+          })
+        : new MouseEvent(type, init),
+    );
   }
 
   function commonAncestor(a: Element, b: Element): Element | null {
@@ -805,14 +1020,20 @@ export function createDomPointer() {
     const select = element.closest('select');
     if (select instanceof HTMLSelectElement) {
       // A native dropdown's popup is browser chrome a headset never sees; step through it instead.
-      const next = nextSelectableIndex(Array.from(select.options, option => option.disabled), select.selectedIndex, 1);
+      const next = nextSelectableIndex(
+        Array.from(select.options, option => option.disabled),
+        select.selectedIndex,
+        1,
+      );
       if (next !== select.selectedIndex) {
         select.selectedIndex = next;
         select.dispatchEvent(new Event('input', { bubbles: true }));
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      const name = select.getAttribute('aria-label')
-        ?? select.closest('.lil-controller')?.querySelector('.lil-name')?.textContent?.trim() ?? 'Dropdown';
+      const name =
+        select.getAttribute('aria-label') ??
+        select.closest('.lil-controller')?.querySelector('.lil-name')?.textContent?.trim() ??
+        'Dropdown';
       notice = `${name} → ${select.options[next]?.text ?? ''}`;
       return;
     }
@@ -821,8 +1042,12 @@ export function createDomPointer() {
       notice = field.type === 'file' ? 'File pickers are desktop-only' : 'Colour pickers are desktop-only';
       return;
     }
-    if ((field instanceof HTMLTextAreaElement || (field instanceof HTMLInputElement && TYPED.has(field.type)))
-      && !field.disabled && !field.readOnly) notice = 'Typing is desktop-only · drag a number to scrub it';
+    if (
+      (field instanceof HTMLTextAreaElement || (field instanceof HTMLInputElement && TYPED.has(field.type))) &&
+      !field.disabled &&
+      !field.readOnly
+    )
+      notice = 'Typing is desktop-only · drag a number to scrub it';
     fire(element, 'click', at, 0);
   }
 
@@ -830,8 +1055,10 @@ export function createDomPointer() {
    *  would produce, on the nearest element containing both the press and the release. */
   function release(target: DomPointerTarget | null, click: boolean) {
     down = false;
-    const from = pressedOn, root = pressRoot;
-    pressedOn = null; pressRoot = null;
+    const from = pressedOn,
+      root = pressRoot;
+    pressedOn = null;
+    pressRoot = null;
     if (!from || !last) return;
     const at = target ?? last;
     const upOn = (target && hovered) || from;
@@ -886,7 +1113,8 @@ export function createDomPointer() {
     }
     if (pressed && down) {
       if (!pressedOn || !target) return;
-      if (last && Math.abs(last.x - target.x) < HOVER_EPSILON_PX && Math.abs(last.y - target.y) < HOVER_EPSILON_PX) return;
+      if (last && Math.abs(last.x - target.x) < HOVER_EPSILON_PX && Math.abs(last.y - target.y) < HOVER_EPSILON_PX)
+        return;
       last = target;
       fire(pressedOn, 'pointermove', target, 1, true);
       fire(pressedOn, 'mousemove', target, 1, true);
@@ -909,20 +1137,31 @@ export function createDomPointer() {
   }
 
   return {
-    update, scroll,
+    update,
+    scroll,
     /** The deepest element under the point, and the control it belongs to (null over empty panel space). */
-    get hovered() { return hovered; },
+    get hovered() {
+      return hovered;
+    },
     get hoveredControl(): Element | null {
       const root = hoveredAt?.root;
       const control = hovered?.closest(ACTIONABLE) ?? null;
       return control && root?.contains(control) ? control : null;
     },
     /** True between a press that landed on a panel and its release: that button belongs to the panel. */
-    get dragging() { return (down && pressedOn !== null) || (rightDown && rightOn !== null); },
-    get pressed() { return down || rightDown; },
+    get dragging() {
+      return (down && pressedOn !== null) || (rightDown && rightOn !== null);
+    },
+    get pressed() {
+      return down || rightDown;
+    },
     /** The last thing worth telling the wearer (a dropdown step, a desktop-only control). */
-    get notice() { return notice; },
-    clearNotice() { notice = ''; },
+    get notice() {
+      return notice;
+    },
+    clearNotice() {
+      notice = '';
+    },
     /** Put the pointer away: a drag in progress is released without a click. */
     reset() {
       if (down) release(null, false);
@@ -930,7 +1169,11 @@ export function createDomPointer() {
         fire(rightOn, 'pointerup', last, 0, false, 2);
         fire(rightOn, 'mouseup', last, 0, false, 2);
       }
-      down = false; rightDown = false; rightOn = null; hovered = null; hoveredAt = null;
+      down = false;
+      rightDown = false;
+      rightOn = null;
+      hovered = null;
+      hoveredAt = null;
     },
   };
 }

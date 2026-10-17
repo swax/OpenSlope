@@ -12,9 +12,30 @@ import { createXrContext } from './xr-context';
  *  (terrain corner / course knot / tangent handle / reference / placed prop / free light / rail node / gem)
  *  routes through the one gizmo, and the kind tells the shell where a drag report should go. */
 export type GizmoKind =
-  | 'corner' | 'corners' | 'controlpoints' | 'knot' | 'anchor' | 'handle' | 'cagehandle' | 'reference'
-  | 'prop' | 'props' | 'editmixed' | 'light' | 'railnode' | 'linenode' | 'trailknot' | 'trail' | 'pathhandle' | 'gem' | 'screen'
-  | 'effect' | 'edgeextrusion' | 'propdeform' | 'gridcorner' | 'grid';
+  | 'corner'
+  | 'corners'
+  | 'controlpoints'
+  | 'knot'
+  | 'anchor'
+  | 'handle'
+  | 'cagehandle'
+  | 'reference'
+  | 'prop'
+  | 'props'
+  | 'editmixed'
+  | 'light'
+  | 'railnode'
+  | 'linenode'
+  | 'trailknot'
+  | 'trail'
+  | 'pathhandle'
+  | 'gem'
+  | 'screen'
+  | 'effect'
+  | 'edgeextrusion'
+  | 'propdeform'
+  | 'gridcorner'
+  | 'grid';
 
 /**
  * The shared 3D substrate every viewport layer draws into: the renderer, scene, the active camera pair, the
@@ -30,15 +51,19 @@ export class Stage {
    *  builds an XR layer selects off vs XR antialiasing without changing the already-created desktop context. */
   private xrLayerAttributes: WebGLContextAttributes | null = null;
   private readonly xrContext: ReturnType<typeof createXrContext>;
-  get xrContextPreparing(): boolean { return this.xrContext.preparing; }
-  prepareXrContext(): Promise<void> { return this.xrContext.prepare(); }
+  get xrContextPreparing(): boolean {
+    return this.xrContext.preparing;
+  }
+  prepareXrContext(): Promise<void> {
+    return this.xrContext.prepare();
+  }
   readonly scene = new THREE.Scene();
   /** Active view camera (perspective by default, swapped to orthographic by the projection toggle). */
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   perspCam: THREE.PerspectiveCamera;
   orthoCam: THREE.OrthographicCamera | null = null;
   isOrtho = false;
-  orthoHalfH = 100;   // ortho frustum half-height, kept across resizes (zoom changes camera.zoom)
+  orthoHalfH = 100; // ortho frustum half-height, kept across resizes (zoom changes camera.zoom)
   authoredFar = 4000; // far plane sized to the authored mountain's span (restored when a reference clears)
   readonly controls: OrbitControls;
 
@@ -77,8 +102,8 @@ export class Stage {
   private readonly pickInv = new THREE.Matrix4();
   private readonly eyeAt = new THREE.Vector3(); // worldPerPixel's camera position scratch
 
-  readonly marqueeEl: HTMLDivElement;      // rubber-band rectangle for box-select (HTML overlay over the canvas)
-  readonly pivotMarker: THREE.Sprite;      // reticle (white dot + black ring) flashed at the orbit / zoom point
+  readonly marqueeEl: HTMLDivElement; // rubber-band rectangle for box-select (HTML overlay over the canvas)
+  readonly pivotMarker: THREE.Sprite; // reticle (white dot + black ring) flashed at the orbit / zoom point
   private pivotTimer = 0;
 
   // --- hooks the shell wires after it has built the layer controllers (kept as no-ops until then) ---
@@ -103,7 +128,12 @@ export class Stage {
     if (!attributes) return { applied: false, restore: () => {} };
     const previous = attributes.antialias;
     attributes.antialias = enabled;
-    return { applied: enabled, restore: () => { attributes.antialias = previous; } };
+    return {
+      applied: enabled,
+      restore: () => {
+        attributes.antialias = previous;
+      },
+    };
   }
 
   constructor(
@@ -118,7 +148,9 @@ export class Stage {
     // Select the XR adapter before any native XR session exists. On Chrome PCVR, switching adapters after
     // requestSession can restore WebGL successfully while leaving that first session's headset output black.
     const context = canvas.getContext('webgl2', {
-      antialias, powerPreference: 'high-performance', xrCompatible: true,
+      antialias,
+      powerPreference: 'high-performance',
+      xrCompatible: true,
     });
     if (context) {
       this.xrContext = createXrContext(context);
@@ -140,14 +172,20 @@ export class Stage {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 90, 60);
 
-    this.worldRoot.scale.z = -1;   // mirror the whole scene to the game's chirality (WYSIWYG)
+    this.worldRoot.scale.z = -1; // mirror the whole scene to the game's chirality (WYSIWYG)
     this.scene.add(this.worldRoot);
     this.worldRoot.add(this.refRoot); // worldRoot supplies the game-chirality flip; refRoot only adds the offset
 
     // navigation pivot: a small white dot ringed in black (a reticle), flashed at the orbit / zoom point.
-    this.pivotMarker = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: makeReticleTexture(), depthTest: false, depthWrite: false, transparent: true, fog: false,
-    }));
+    this.pivotMarker = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: makeReticleTexture(),
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        fog: false,
+      }),
+    );
     this.pivotMarker.renderOrder = 20;
     this.pivotMarker.visible = false;
     this.scene.add(this.pivotMarker);
@@ -177,17 +215,25 @@ export class Stage {
     // (docs/068), so there the centre stays: a free 3D move, as a prop's is. TransformControls recomputes handle
     // visibility each frame, so wrap the helper's updateMatrixWorld to force our hides LAST, on both the drawn
     // gizmo AND the invisible pickers.
-    const gz = (this.gizmo as unknown as { _gizmo: { updateMatrixWorld(f?: boolean): void;
-      gizmo: Record<string, THREE.Object3D>; picker: Record<string, THREE.Object3D> } })._gizmo;
+    const gz = (
+      this.gizmo as unknown as {
+        _gizmo: {
+          updateMatrixWorld(f?: boolean): void;
+          gizmo: Record<string, THREE.Object3D>;
+          picker: Record<string, THREE.Object3D>;
+        };
+      }
+    )._gizmo;
     this.gizmoPickers = gz.picker;
-    const hideNames = new Set(['XY', 'YZ', 'XYZ']), headsetHideNames = new Set(['XY', 'YZ']);
+    const hideNames = new Set(['XY', 'YZ', 'XYZ']),
+      headsetHideNames = new Set(['XY', 'YZ']);
     const arcs = createGizmoArcs(gz.gizmo.translate, gz.picker.translate);
     const baseUpdate = gz.updateMatrixWorld.bind(gz);
     gz.updateMatrixWorld = (force?: boolean) => {
       baseUpdate(force);
       // The same wrapper bends the two in-plane arrows along the rails the slide runs down (gizmo/arcs.ts), so what
       // the user pulls is the curve the corner takes. No rails — World mode, a knot, a corner region — no arcs.
-      arcs.update(this.gizmoRestrict ? this.surfaceRails?.() ?? null : null);
+      arcs.update(this.gizmoRestrict ? (this.surfaceRails?.() ?? null) : null);
       if (!this.gizmoRestrict) return;
       const hide = this.renderer.xr.isPresenting ? headsetHideNames : hideNames;
       for (const grp of [gz.gizmo.translate, gz.picker.translate])
@@ -208,7 +254,8 @@ export class Stage {
    * headset's hand drives a translate through here (ride/xr/hand-drag.ts), in the depth a mouse cannot reach.
    */
   driveGizmoTo(world: THREE.Vector3): boolean {
-    const g = this.gizmo, anchor = g.object;
+    const g = this.gizmo,
+      anchor = g.object;
     if (!anchor || !g.dragging || g.mode !== 'translate') return false;
     anchor.position.copy(world);
     if (anchor.parent) anchor.parent.worldToLocal(anchor.position);
@@ -276,8 +323,8 @@ export class Stage {
     this.pickLocalRay.copy(this.ray.ray).applyMatrix4(this.pickInv); // the BVH indexes geometry-local space
     const hit = bvh.raycastFirst(this.pickLocalRay, THREE.DoubleSide);
     if (!hit) return null;
-    hit.point.applyMatrix4(mesh.matrixWorld);                    // local -> world, as a stock hit reports it
-    hit.distance = this.ray.ray.origin.distanceTo(hit.point);    // ...and its distance measured there
+    hit.point.applyMatrix4(mesh.matrixWorld); // local -> world, as a stock hit reports it
+    hit.distance = this.ray.ray.origin.distanceTo(hit.point); // ...and its distance measured there
     hit.object = mesh;
     return hit;
   }
@@ -292,7 +339,7 @@ export class Stage {
       // to the size of a house. Its world position is right in both. And three sets `fov` to the headset's, so
       // a pixel is the eye buffer's — the same pixel a size-in-pixels point marker is drawn in there.
       if (this.renderer.xr.isPresenting) h = this.renderer.xr.getCamera().cameras[0]?.viewport.w || h;
-      return (2 * pc.getWorldPosition(this.eyeAt).distanceTo(at) * Math.tan((pc.fov * Math.PI / 180) / 2)) / h;
+      return (2 * pc.getWorldPosition(this.eyeAt).distanceTo(at) * Math.tan((pc.fov * Math.PI) / 180 / 2)) / h;
     }
     const oc = this.camera as THREE.OrthographicCamera;
     return (oc.top - oc.bottom) / oc.zoom / h;
@@ -304,12 +351,14 @@ export class Stage {
     let factor: number;
     if ((this.camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       const pc = this.camera as THREE.PerspectiveCamera;
-      factor = pc.getWorldPosition(this.eyeAt).distanceTo(at) * Math.min(1.9 * Math.tan(Math.PI * pc.fov / 360) / pc.zoom, 7);
+      factor =
+        pc.getWorldPosition(this.eyeAt).distanceTo(at) *
+        Math.min((1.9 * Math.tan((Math.PI * pc.fov) / 360)) / pc.zoom, 7);
     } else {
       const oc = this.camera as THREE.OrthographicCamera;
       factor = (oc.top - oc.bottom) / oc.zoom;
     }
-    return 0.1 * factor * this.gizmo.size / 4;
+    return (0.1 * factor * this.gizmo.size) / 4;
   }
 
   /** A selected point's marker radius: `px` screen pixels at the desk. In a headset (docs/068) a few pixels is a
@@ -346,9 +395,10 @@ export class Stage {
   showPivot(p: THREE.Vector3) {
     clearTimeout(this.pivotTimer);
     this.pivotMarker.position.copy(p);
-    const s = this.isOrtho && this.orthoCam
-      ? (this.orthoHalfH / this.orthoCam.zoom) * 0.032
-      : this.camera.position.distanceTo(p) * 0.016; // sprite quad size in world units → ~constant on screen
+    const s =
+      this.isOrtho && this.orthoCam
+        ? (this.orthoHalfH / this.orthoCam.zoom) * 0.032
+        : this.camera.position.distanceTo(p) * 0.016; // sprite quad size in world units → ~constant on screen
     this.pivotMarker.scale.setScalar(Math.max(0.6, s));
     this.pivotMarker.visible = true;
   }
@@ -356,7 +406,9 @@ export class Stage {
   /** Hide the pivot marker shortly after the last wheel tick (orbit hides it explicitly on release). */
   scheduleHidePivot() {
     clearTimeout(this.pivotTimer);
-    this.pivotTimer = window.setTimeout(() => { this.pivotMarker.visible = false; }, 450);
+    this.pivotTimer = window.setTimeout(() => {
+      this.pivotMarker.visible = false;
+    }, 450);
   }
 
   hidePivot() {

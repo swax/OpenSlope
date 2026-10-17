@@ -19,14 +19,19 @@ const M = -Math.tan(10 * D2R);
 const yOf = (z: number) => M * z;
 
 const XS = [-15, -7.5, 0, 7.5, 15];
-const ZMAX = 160, ZSTEP = 1.5, NZ = Math.floor(ZMAX / ZSTEP);
+const ZMAX = 160,
+  ZSTEP = 1.5,
+  NZ = Math.floor(ZMAX / ZSTEP);
 const positions: number[] = [];
 for (let iz = 0; iz <= NZ; iz++) for (const x of XS) positions.push(x, yOf(iz * ZSTEP), iz * ZSTEP);
 const index: number[] = [];
 const W = XS.length;
 for (let iz = 0; iz < NZ; iz++) {
   for (let ix = 0; ix < W - 1; ix++) {
-    const a = iz * W + ix, b = a + 1, c = a + W, d = c + 1;
+    const a = iz * W + ix,
+      b = a + 1,
+      c = a + W,
+      d = c + 1;
     index.push(a, c, b, b, c, d);
   }
 }
@@ -43,10 +48,13 @@ const railNodes = (z0: number, z1: number): V3[] => {
   for (let z = z0; z <= z1 + 1e-6; z += (z1 - z0) / 2) nodes.push([0, yOf(z) + FLOAT, z]);
   return nodes;
 };
-const toSegs = (nodes: V3[]) => railBezierSegments(nodes).map(seg =>
-  seg.map(p => new THREE.Vector3(p[0], p[1], p[2])) as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]);
+const toSegs = (nodes: V3[]) =>
+  railBezierSegments(nodes).map(
+    seg =>
+      seg.map(p => new THREE.Vector3(p[0], p[1], p[2])) as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3],
+  );
 const rails = createGrindRails([
-  { surf: 13, seat: RAIL_TUBE_RADIUS, segments: toSegs(railNodes(20, 60)) },   // rail 0
+  { surf: 13, seat: RAIL_TUBE_RADIUS, segments: toSegs(railNodes(20, 60)) }, // rail 0
   { surf: 13, seat: RAIL_TUBE_RADIUS, segments: toSegs(railNodes(60.5, 90)) }, // rail 1 — chained across the junction
 ]);
 
@@ -67,16 +75,29 @@ model.start();
 
 const st = model.st;
 const H = 1 / 60;
-console.log(`=== rail trace${doOllie ? ' (ollie at 0.8 s of grind)' : ''} — 2 rails, ${rails.segmentCount} segments ===`);
+console.log(
+  `=== rail trace${doOllie ? ' (ollie at 0.8 s of grind)' : ''} — 2 rails, ${rails.segmentCount} segments ===`,
+);
 console.log('tick     z       y     |v|     vy    rail surf  gnd  yaw   note');
 
-let prevRail = -1, prevGrounded = false;
-let catchSpeed = 0, grindTicks = 0, speedAtGrind60 = 0, ollieTick = -1, relockTick = -1, offEndTick = -1;
+let prevRail = -1,
+  prevGrounded = false;
+let catchSpeed = 0,
+  grindTicks = 0,
+  speedAtGrind60 = 0,
+  ollieTick = -1,
+  relockTick = -1,
+  offEndTick = -1;
 const events: string[] = [];
 for (let t = 0; t < 1500; t++) {
   if (process.argv.includes('spin')) keys.right = st.railIdx >= 0; // hold a boardslide while grinding
-  if (doOllie && st.railIdx >= 0 && st.railTime >= 0.8 && ollieTick < 0) { model.ollieDown(); }
-  if (doOllie && st.railIdx >= 0 && st.railTime >= 0.9 && ollieTick < 0) { model.ollieUp(); ollieTick = t; }
+  if (doOllie && st.railIdx >= 0 && st.railTime >= 0.8 && ollieTick < 0) {
+    model.ollieDown();
+  }
+  if (doOllie && st.railIdx >= 0 && st.railTime >= 0.9 && ollieTick < 0) {
+    model.ollieUp();
+    ollieTick = t;
+  }
   model.step(H);
   const note: string[] = [];
   if (st.railIdx >= 0 && prevRail < 0) {
@@ -85,15 +106,21 @@ for (let t = 0; t < 1500; t++) {
     if (relockTick < 0 && ollieTick >= 0) relockTick = t;
   }
   if (st.railIdx >= 0 && prevRail >= 0 && st.railIdx !== prevRail) note.push(`>>> CHAINED ${prevRail} → ${st.railIdx}`);
-  if (st.railIdx < 0 && prevRail >= 0) { note.push('<<< OFF RAIL'); if (offEndTick < 0 && ollieTick < 0) offEndTick = t; }
+  if (st.railIdx < 0 && prevRail >= 0) {
+    note.push('<<< OFF RAIL');
+    if (offEndTick < 0 && ollieTick < 0) offEndTick = t;
+  }
   if (!prevGrounded && st.grounded && st.railIdx < 0) note.push('<<< touchdown (terrain)');
-  if (st.railIdx >= 0) { grindTicks++; if (grindTicks === 60) speedAtGrind60 = st.vel.length(); }
+  if (st.railIdx >= 0) {
+    grindTicks++;
+    if (grindTicks === 60) speedAtGrind60 = st.vel.length();
+  }
   if (note.length || (st.railIdx >= 0 && grindTicks % 30 === 0)) {
     console.log(
       `${String(t).padStart(4)}  ${st.pos.z.toFixed(2).padStart(6)}  ${st.pos.y.toFixed(2).padStart(6)}` +
-      `  ${st.vel.length().toFixed(2).padStart(5)}  ${st.vel.y.toFixed(2).padStart(5)}` +
-      `  ${String(st.railIdx).padStart(4)}  ${String(st.surf).padStart(4)}  ${st.grounded ? ' G ' : ' A '}` +
-      `  ${st.railYaw.toFixed(0).padStart(4)}  ${note.join(' ')}`,
+        `  ${st.vel.length().toFixed(2).padStart(5)}  ${st.vel.y.toFixed(2).padStart(5)}` +
+        `  ${String(st.railIdx).padStart(4)}  ${String(st.surf).padStart(4)}  ${st.grounded ? ' G ' : ' A '}` +
+        `  ${st.railYaw.toFixed(0).padStart(4)}  ${note.join(' ')}`,
     );
     events.push(...note);
   }

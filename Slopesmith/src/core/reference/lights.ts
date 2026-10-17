@@ -43,7 +43,11 @@ export interface RawRigLight {
 }
 
 /** The compact JSON the server sends: the level's name + its trimmed light records. */
-export interface LightRigPayload { level: string; lights: RawRigLight[]; error?: string; }
+export interface LightRigPayload {
+  level: string;
+  lights: RawRigLight[];
+  error?: string;
+}
 
 /** One decoded light in editor space, ready for the viewport to draw as a gizmo. */
 export interface RigLight {
@@ -70,7 +74,11 @@ export interface RigLight {
 }
 
 /** A decoded rig: every light in editor space + a per-category count for the summary line. */
-export interface LightRig { level: string; lights: RigLight[]; counts: Record<string, number>; }
+export interface LightRig {
+  level: string;
+  lights: RigLight[];
+  counts: Record<string, number>;
+}
 
 const KIND: Record<number, LightKind> = { 0: 'sun', 1: 'spot', 2: 'point', 3: 'ambient' };
 
@@ -85,15 +93,22 @@ function dirEditor(d: number[]): V3 {
 /** The light's reach in metres: the distance from the source to the farthest corner of its influence box. */
 export function reachM(pos: number[], lo: number[], hi: number[]): number {
   let d2 = 0;
-  for (const cx of [lo[0], hi[0]]) for (const cy of [lo[1], hi[1]]) for (const cz of [lo[2], hi[2]]) {
-    const dx = cx - pos[0], dy = cy - pos[1], dz = cz - pos[2];
-    const s = dx * dx + dy * dy + dz * dz;
-    if (s > d2) d2 = s;
-  }
+  for (const cx of [lo[0], hi[0]])
+    for (const cy of [lo[1], hi[1]])
+      for (const cz of [lo[2], hi[2]]) {
+        const dx = cx - pos[0],
+          dy = cy - pos[1],
+          dz = cz - pos[2];
+        const s = dx * dx + dy * dy + dz * dz;
+        if (s > d2) d2 = s;
+      }
   return Math.sqrt(d2) / 100;
 }
 
-const hex2 = (x: number) => Math.round(clamp01(x) * 255).toString(16).padStart(2, '0');
+const hex2 = (x: number) =>
+  Math.round(clamp01(x) * 255)
+    .toString(16)
+    .padStart(2, '0');
 
 /** Display colour: a subtractive light reads as a cool slate (it removes light); a positive light keeps its
  *  own hue, normalised by its peak channel so intensity doesn't wash the colour out. */
@@ -134,7 +149,12 @@ function categorize(name: string, kind: LightKind, negative: boolean): LightCate
  * vertical billboard faces, so they add little to the (near-horizontal) snow — correctly; the point / tunnel
  * / downward lights are what pool on the terrain.
  */
-export function bakeRigLighting(positions: Float32Array, normals: Float32Array, rig: LightRig, weightK = 3): Float32Array {
+export function bakeRigLighting(
+  positions: Float32Array,
+  normals: Float32Array,
+  rig: LightRig,
+  weightK = 3,
+): Float32Array {
   const n = positions.length / 3;
   const out = new Float32Array(n * 3);
   for (const L of rig.lights) {
@@ -147,30 +167,42 @@ export function bakeRigLighting(positions: Float32Array, normals: Float32Array, 
     const R2 = R * R;
     const d0 = Math.min(Math.max(R * 0.25, 5), 30); // inverse-square falloff radius (concentrates the glow)
     const d0sq = d0 * d0;
-    const px = L.pos[0], py = L.pos[1], pz = L.pos[2];
-    const dx = L.dir[0], dy = L.dir[1], dz = L.dir[2];
+    const px = L.pos[0],
+      py = L.pos[1],
+      pz = L.pos[2];
+    const dx = L.dir[0],
+      dy = L.dir[1],
+      dz = L.dir[2];
     const isSpot = L.kind === 'spot';
     const coneCos = L.coneCos;
     const w = L.intensity / (L.intensity + weightK); // saturating weight: dim lights dim, HDR-hot lights don't dominate (authored sign lights pass a smaller K so a white I=1 light still registers)
     const [tr, tg, tb] = hexToRgb(L.colorHex);
     for (let i = 0; i < n; i++) {
-      const vx = positions[i * 3], vy = positions[i * 3 + 1], vz = positions[i * 3 + 2];
-      const ex = px - vx, ey = py - vy, ez = pz - vz;         // surface → light
+      const vx = positions[i * 3],
+        vy = positions[i * 3 + 1],
+        vz = positions[i * 3 + 2];
+      const ex = px - vx,
+        ey = py - vy,
+        ez = pz - vz; // surface → light
       const dsq = ex * ex + ey * ey + ez * ez;
       if (dsq > R2 || dsq < 0.25) continue;
       const d = Math.sqrt(dsq);
-      const lx = ex / d, ly = ey / d, lz = ez / d;
+      const lx = ex / d,
+        ly = ey / d,
+        lz = ez / d;
       const ndl = normals[i * 3] * lx + normals[i * 3 + 1] * ly + normals[i * 3 + 2] * lz;
-      if (ndl <= 0) continue;                                  // back-facing to the light
+      if (ndl <= 0) continue; // back-facing to the light
       let coneF = 1;
       if (isSpot) {
-        const ca = -(lx * dx + ly * dy + lz * dz);             // cos(angle of light→surface vs the aim)
-        if (ca < coneCos) continue;                            // outside the cone
+        const ca = -(lx * dx + ly * dy + lz * dz); // cos(angle of light→surface vs the aim)
+        if (ca < coneCos) continue; // outside the cone
         coneF = (ca - coneCos) / (1 - coneCos + 1e-6);
-        coneF *= coneF;                                        // soften the rim
+        coneF *= coneF; // soften the rim
       }
-      const g = w * ndl * coneF / (1 + dsq / d0sq);
-      out[i * 3] += g * tr; out[i * 3 + 1] += g * tg; out[i * 3 + 2] += g * tb;
+      const g = (w * ndl * coneF) / (1 + dsq / d0sq);
+      out[i * 3] += g * tr;
+      out[i * 3 + 1] += g * tg;
+      out[i * 3 + 2] += g * tb;
     }
   }
   return out;
@@ -183,13 +215,20 @@ export function bakeRigLighting(positions: Float32Array, normals: Float32Array, 
  * it aims at. Same exclusions + falloff as the terrain bake (local lights only; capped inverse-square cone).
  */
 export function propRigGlow(pos: V3, rig: LightRig): [number, number, number] {
-  let r = 0, g = 0, b = 0;
-  const x = pos[0], y = pos[1], z = pos[2];
+  let r = 0,
+    g = 0,
+    b = 0;
+  const x = pos[0],
+    y = pos[1],
+    z = pos[2];
   for (const L of rig.lights) {
     if (L.kind === 'sun' || L.kind === 'ambient' || L.category === 'sun' || L.negative) continue;
     if (!(L.reach > 0)) continue;
-    const R = Math.min(L.reach, 120), R2 = R * R;
-    const ex = L.pos[0] - x, ey = L.pos[1] - y, ez = L.pos[2] - z; // point → light
+    const R = Math.min(L.reach, 120),
+      R2 = R * R;
+    const ex = L.pos[0] - x,
+      ey = L.pos[1] - y,
+      ez = L.pos[2] - z; // point → light
     const dsq = ex * ex + ey * ey + ez * ez;
     if (dsq > R2 || dsq < 0.25) continue;
     const d = Math.sqrt(dsq);
@@ -203,9 +242,11 @@ export function propRigGlow(pos: V3, rig: LightRig): [number, number, number] {
     const d0 = Math.min(Math.max(R * 0.25, 5), 30);
     // gentler intensity weight than the terrain bake (I/(I+0.5) vs I/(I+3)): the sign lights are authored dim
     // (intensity ≈ 1) yet clearly meant to light their billboard, so don't starve them next to the hot lights.
-    const e = (L.intensity / (L.intensity + 0.5)) * coneF / (1 + dsq / (d0 * d0));
+    const e = ((L.intensity / (L.intensity + 0.5)) * coneF) / (1 + dsq / (d0 * d0));
     const [tr, tg, tb] = hexToRgb(L.colorHex);
-    r += e * tr; g += e * tg; b += e * tb;
+    r += e * tr;
+    g += e * tg;
+    b += e * tb;
   }
   return [r, g, b];
 }

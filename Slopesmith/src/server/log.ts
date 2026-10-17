@@ -19,8 +19,16 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type LogFields = Record<string, unknown>;
 type Say = (message: string, fields?: LogFields) => void;
-export interface Logger { debug: Say; info: Say; warn: Say; error: Say }
-export interface LogSettings { level: LogLevel; format: 'text' | 'json' }
+export interface Logger {
+  debug: Say;
+  info: Say;
+  warn: Say;
+  error: Say;
+}
+export interface LogSettings {
+  level: LogLevel;
+  format: 'text' | 'json';
+}
 
 const LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error'];
 const isLevel = (value: string): value is LogLevel => (LEVELS as readonly string[]).includes(value);
@@ -37,8 +45,9 @@ export function configureLog(env: Record<string, string | undefined> = process.e
   };
   // Said once, at the level it fell back to, so a typo in a unit file is visible in the journal that unit fills.
   if (asked && !isLevel(wanted)) {
-    createLogger('log').warn(`SLOPESMITH_LOG_LEVEL=${asked} is not a level; logging at info`,
-      { levels: LEVELS.join('|') });
+    createLogger('log').warn(`SLOPESMITH_LOG_LEVEL=${asked} is not a level; logging at info`, {
+      levels: LEVELS.join('|'),
+    });
   }
   return settings;
 }
@@ -55,11 +64,17 @@ const SINK: Record<LogLevel, (line: string) => void> = {
 };
 
 /** A value that reads unambiguously without quoting: a bare word, a number, a boolean. Everything else is JSON. */
-const simple = (value: unknown): boolean => typeof value === 'number' || typeof value === 'boolean'
-  || (typeof value === 'string' && value !== '' && !/[\s"'\\=]/.test(value));
+const simple = (value: unknown): boolean =>
+  typeof value === 'number' ||
+  typeof value === 'boolean' ||
+  (typeof value === 'string' && value !== '' && !/[\s"'\\=]/.test(value));
 
 const encode = (value: unknown): string => {
-  try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
 };
 
 /** An error's own fields do not survive `JSON.stringify`, which renders it as `{}`. */
@@ -87,9 +102,11 @@ function jsonLine(level: LogLevel, component: string, message: string, fields: L
 
 function emit(level: LogLevel, component: string, message: string, fields: LogFields = {}): void {
   if (LEVELS.indexOf(level) < LEVELS.indexOf(settings.level)) return;
-  SINK[level](settings.format === 'json'
-    ? jsonLine(level, component, message, fields)
-    : textLine(level, component, message, fields));
+  SINK[level](
+    settings.format === 'json'
+      ? jsonLine(level, component, message, fields)
+      : textLine(level, component, message, fields),
+  );
 }
 
 /** One per module, named for the subsystem an operator would search the journal for: `accounts`, `session`… */

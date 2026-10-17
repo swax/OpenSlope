@@ -9,13 +9,19 @@ const end = renderLoadingManager.itemEnd.bind(renderLoadingManager);
 const fail = renderLoadingManager.itemError.bind(renderLoadingManager);
 renderLoadingManager.itemStart = url => {
   const queue = held.get(url) ?? [];
-  queue.push({ finish: captureProgress.begin(url) }); held.set(url, queue); start(url);
+  queue.push({ finish: captureProgress.begin(url) });
+  held.set(url, queue);
+  start(url);
 };
 renderLoadingManager.itemError = url => {
-  const item = held.get(url)?.[0]; if (item) item.error = 'Could not load scene asset.';
+  const item = held.get(url)?.[0];
+  if (item) item.error = 'Could not load scene asset.';
   fail(url);
 };
 renderLoadingManager.itemEnd = url => {
-  const queue = held.get(url), item = queue?.shift();
-  item?.finish(item.error); if (!queue?.length) held.delete(url); end(url);
+  const queue = held.get(url),
+    item = queue?.shift();
+  item?.finish(item.error);
+  if (!queue?.length) held.delete(url);
+  end(url);
 };

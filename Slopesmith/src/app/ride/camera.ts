@@ -16,7 +16,8 @@ import type {
 // that filter. At 100 units/m the pre-filter boom is therefore 1.8 m (2.1 m at full boost), projected through the
 // followed camera pitch below. The associated subject remains 1.0 m above the rider root. The 35 is a local-vector
 // component, not a field of view.
-const CAM_BOOM = 1.8, CAM_TARGET_HEIGHT = 1.0;
+const CAM_BOOM = 1.8,
+  CAM_TARGET_HEIGHT = 1.0;
 const CAM_PITCH = -0.16 - Math.atan2(35, 180);
 const CAM_BOOST_SCALE = 1 + 30 / 180;
 // The authored boost seat is 30 units / 0.3 m farther back, but switching that boom in one render frame makes the
@@ -26,10 +27,9 @@ const CAM_BOOST_FOLLOW_RATE = 8;
 // The live render-gather record carries 0.825 rad as the HORIZONTAL half-angle. The PS2 projection builder
 // takes tan(0.825), then applies its fixed 4:3 display correction; Three's PerspectiveCamera wants a vertical
 // full-angle, so convert explicitly. This is ≈78.145° vertical (≈94.538° horizontal at retail 4:3).
-const RETAIL_HALF_FOV_X = 0.825, RETAIL_ASPECT = 4 / 3;
-const CAM_FOV_Y_DEG = THREE.MathUtils.radToDeg(
-  2 * Math.atan(Math.tan(RETAIL_HALF_FOV_X) / RETAIL_ASPECT),
-);
+const RETAIL_HALF_FOV_X = 0.825,
+  RETAIL_ASPECT = 4 / 3;
+const CAM_FOV_Y_DEG = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(RETAIL_HALF_FOV_X) / RETAIL_ASPECT));
 // The adjacent live projection scalar is 15 engine units = 0.15 m. This matters to wall clearance: the
 // editor's normal 0.5 m near plane can cross a surface even while the eye is correctly padded 0.4 m from it.
 const CAM_NEAR = 0.15;
@@ -50,7 +50,10 @@ const CAM_EYE_FOLLOW_RATE = -60 * Math.log(CAM_EYE_RETAIN_60HZ);
 // clearance measured perpendicular to the snow, which also pushes it horizontally off the hill face. `chase
 // near` ships the small constants (its authored boom 180 is under the 500-unit threshold): 0.4 m sight-line pad,
 // 0.4 m slope/lateral clearance, and the cast origin unburies through a 1.5 m up-window with a 0.2 m pad.
-const CAM_LOS_PAD = 0.4, CAM_CLEARANCE = 0.4, CAM_UNBURY_WINDOW = 1.5, CAM_UNBURY_PAD = 0.2;
+const CAM_LOS_PAD = 0.4,
+  CAM_CLEARANCE = 0.4,
+  CAM_UNBURY_WINDOW = 1.5,
+  CAM_UNBURY_PAD = 0.2;
 // The retail-style axis casts reproduce the traced response, but a point eye plus three segments can miss a
 // diagonal face and a single normal correction can remain inside the neighbouring face of a concave bank. The
 // rendered near-plane corners fit inside this eye-centred shell, so a bounded closest-surface post-pass closes
@@ -58,7 +61,8 @@ const CAM_LOS_PAD = 0.4, CAM_CLEARANCE = 0.4, CAM_UNBURY_WINDOW = 1.5, CAM_UNBUR
 // Garibaldi side-wall trace was geometrically correct at exactly 0.400 m, but the active 2:1 projection plane
 // still scraped the faceted wall at its outer edge. Four projections solve the same practical corner depth used
 // by the rider's collide-and-slide pass.
-const CAM_VOLUME_CLEARANCE = 0.45, CAM_VOLUME_ITERATIONS = 4;
+const CAM_VOLUME_CLEARANCE = 0.45,
+  CAM_VOLUME_ITERATIONS = 4;
 // The sight line starts above the deck, on the rider's torso — and the unbury step keeps a dip's own floor from
 // false-blocking it.
 const CAM_BLOCK_ANCHOR_Y = 1.25;
@@ -68,22 +72,29 @@ const CAM_TRAVEL_MIN = 1.5;
 // A ride owns the editor camera, but the player can still look around by orbiting the chase seat with RMB or a
 // touch drag. These offsets are deliberately layered over the followed travel bearing / trajectory pitch: physics
 // keeps supplying the moving subject, while the pointer supplies only a view-relative yaw and pitch.
-const CAM_ORBIT_YAW_PER_PIXEL = 0.006, CAM_ORBIT_PITCH_PER_PIXEL = 0.004;
-const CAM_ORBIT_PITCH_MIN = -0.8, CAM_ORBIT_PITCH_MAX = 0.55;
+const CAM_ORBIT_YAW_PER_PIXEL = 0.006,
+  CAM_ORBIT_PITCH_PER_PIXEL = 0.004;
+const CAM_ORBIT_PITCH_MIN = -0.8,
+  CAM_ORBIT_PITCH_MAX = 0.55;
 // Letting go is a glance, not a new chase seat: once nothing has held or moved the look for this long, the offsets
 // ease back out (per second) and the chase view settles behind the rider again — ~95% of the way in 0.4 s.
-const CAM_ORBIT_RETURN_DELAY = 0, CAM_ORBIT_RETURN_RATE = 8;
+const CAM_ORBIT_RETURN_DELAY = 0,
+  CAM_ORBIT_RETURN_RATE = 8;
 // Desktop third-person wheel/pinch zoom scales the existing camera-to-subject boom, preserving its exact line.
 // The bounds keep the near seat outside the avatar and the far seat useful without turning the rider into a dot.
-export const THIRD_PERSON_ZOOM_MIN = 0.35, THIRD_PERSON_ZOOM_MAX = 4;
+export const THIRD_PERSON_ZOOM_MIN = 0.35,
+  THIRD_PERSON_ZOOM_MAX = 4;
 /** Slopesmith's user-facing playtest preset. The camera core keeps scale 1 available for retail trace checks. */
 export const DEFAULT_THIRD_PERSON_ZOOM = 2;
 // The walking follow camera has no terrain line-of-sight/volume pass of its own. Its desired eye can therefore
 // land deeper than a short local probe on a steep bank, so it retains a long-range vertical hard floor.
-const CAM_FLOOR_CLEARANCE = 0.4, CAM_FLOOR_LOOKUP_ABOVE = 4;
+const CAM_FLOOR_CLEARANCE = 0.4,
+  CAM_FLOOR_LOOKUP_ABOVE = 4;
 
 export type ThirdPersonCameraGroundQuery = (
-  x: number, z: number, fromY: number,
+  x: number,
+  z: number,
+  fromY: number,
 ) => { y: number; normal: THREE.Vector3 } | null;
 
 export function clampThirdPersonZoom(scale: number): number {
@@ -99,7 +110,10 @@ export function thirdPersonWheelZoomFactor(deltaY: number, deltaMode = 0): numbe
 /** Place a neutral third-person eye behind and above its subject. `forward` may include an orbit pitch; callers
  * layer the fixed rise over it so a level view never settles directly behind the character at torso height. */
 export function thirdPersonFollowEye(
-  target: THREE.Vector3, forward: THREE.Vector3, distance: number, height: number,
+  target: THREE.Vector3,
+  forward: THREE.Vector3,
+  distance: number,
+  height: number,
   out = new THREE.Vector3(),
 ): THREE.Vector3 {
   return out.copy(target).addScaledVector(forward, -distance).addScaledVector(WORLD_UP, height);
@@ -107,7 +121,9 @@ export function thirdPersonFollowEye(
 
 /** Mutates a third-person eye only when it has fallen below the ground at its horizontal position. */
 export function keepThirdPersonCameraAboveGround(
-  eye: THREE.Vector3, anchorY: number, groundAt: ThirdPersonCameraGroundQuery,
+  eye: THREE.Vector3,
+  anchorY: number,
+  groundAt: ThirdPersonCameraGroundQuery,
 ): boolean {
   const ground = groundAt(eye.x, eye.z, Math.max(anchorY, eye.y) + CAM_FLOOR_LOOKUP_ABOVE);
   if (!ground) return false;
@@ -122,16 +138,29 @@ export interface RideCameraDeps {
   /** Initial user framing scale; playtest sessions start wider while trace harnesses may retain scale 1. */
   initialThirdPersonZoom?: number;
   /** A world segment cast against the ride BVH (LOCAL-space hit + geometric normal), for the clearance pass. */
-  castSeg(from: THREE.Vector3, to: THREE.Vector3): { point: THREE.Vector3; faceIndex: number; normal: THREE.Vector3 } | null;
+  castSeg(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+  ): { point: THREE.Vector3; faceIndex: number; normal: THREE.Vector3 } | null;
   /** terrain local → world, for the hit points. */
   toWorld: THREE.Matrix4;
   /** A world-space segment cast against solid prop/collision geometry. */
-  castObstacleSeg?(from: THREE.Vector3, to: THREE.Vector3): {
-    point: THREE.Vector3; normal: THREE.Vector3; key: string;
+  castObstacleSeg?(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+  ): {
+    point: THREE.Vector3;
+    normal: THREE.Vector3;
+    key: string;
   } | null;
   /** Closest rendered terrain surface within maxDistance, in world space. */
-  closestTerrainPoint?(point: THREE.Vector3, maxDistance: number): {
-    point: THREE.Vector3; normal: THREE.Vector3; distance: number;
+  closestTerrainPoint?(
+    point: THREE.Vector3,
+    maxDistance: number,
+  ): {
+    point: THREE.Vector3;
+    normal: THREE.Vector3;
+    distance: number;
   } | null;
 }
 
@@ -141,19 +170,28 @@ export function createRideCamera(o: RideCameraDeps) {
   o.camera.near = CAM_NEAR;
   o.camera.updateProjectionMatrix();
   const camHeading = new THREE.Vector3(0, 0, 1); // flattened travel direction, smoothed
-  let camTrajectoryPitch = 0;                    // smoothed rider flight-path contribution
+  let camTrajectoryPitch = 0; // smoothed rider flight-path contribution
   let targetTrajectoryPitch = 0;
-  let orbitYaw = 0, orbitPitch = 0;
-  let orbitHeld = false, orbitIdle = 0; // seconds of chase view since the last look input or hold
+  let orbitYaw = 0,
+    orbitPitch = 0;
+  let orbitHeld = false,
+    orbitIdle = 0; // seconds of chase view since the last look input or hold
   let thirdPersonZoom = clampThirdPersonZoom(o.initialThirdPersonZoom ?? 1);
   const camTmp = new THREE.Vector3();
   const orbitHeading = new THREE.Vector3();
-  const firstForward = new THREE.Vector3(), firstUp = new THREE.Vector3(), firstRight = new THREE.Vector3();
-  const camSubject = new THREE.Vector3(), camCandidate = new THREE.Vector3(), camLook = new THREE.Vector3();
-  const camEye = new THREE.Vector3(), camSafetyStart = new THREE.Vector3();
+  const firstForward = new THREE.Vector3(),
+    firstUp = new THREE.Vector3(),
+    firstRight = new THREE.Vector3();
+  const camSubject = new THREE.Vector3(),
+    camCandidate = new THREE.Vector3(),
+    camLook = new THREE.Vector3();
+  const camEye = new THREE.Vector3(),
+    camSafetyStart = new THREE.Vector3();
   let camEyeValid = false;
-  let camBoost = false, camBoostBlend = 0;
-  let camClearance: RideCameraClearance = 'none', camOriginUnburied = false;
+  let camBoost = false,
+    camBoostBlend = 0;
+  let camClearance: RideCameraClearance = 'none',
+    camOriginUnburied = false;
   let camCorrectionDistance = 0;
   let camProbes: RideCameraProbe[] = [];
   // Normals cross local→world through the inverse-transpose, because the terrain matrix may carry scale and a
@@ -166,7 +204,12 @@ export function createRideCamera(o: RideCameraDeps) {
    * showing him the landing. Horizontal velocity, meanwhile, IS the landing bearing: nothing in the air model
    * steers it (`340`), so it points at the ground you're going to hit from the moment you leave.
    */
-  function camTargetHeading(out: THREE.Vector3, vel: THREE.Vector3, grounded: boolean, fwd: THREE.Vector3): THREE.Vector3 {
+  function camTargetHeading(
+    out: THREE.Vector3,
+    vel: THREE.Vector3,
+    grounded: boolean,
+    fwd: THREE.Vector3,
+  ): THREE.Vector3 {
     out.set(vel.x, 0, vel.z);
     if (out.lengthSq() > CAM_TRAVEL_MIN * CAM_TRAVEL_MIN) return out.normalize();
     // Too slow to carry a direction. Grounded, the facing is the next best thing — it's within a slip angle of the
@@ -179,7 +222,14 @@ export function createRideCamera(o: RideCameraDeps) {
     return out.copy(camHeading);
   }
 
-  function update(t: number, pos: THREE.Vector3, vel: THREE.Vector3, fwd: THREE.Vector3, grounded: boolean, boost: boolean) {
+  function update(
+    t: number,
+    pos: THREE.Vector3,
+    vel: THREE.Vector3,
+    fwd: THREE.Vector3,
+    grounded: boolean,
+    boost: boolean,
+  ) {
     setNear(CAM_NEAR);
     o.camera.up.copy(WORLD_UP);
     camProbes = [];
@@ -225,9 +275,7 @@ export function createRideCamera(o: RideCameraDeps) {
     camCorrectionDistance = desired.distanceTo(camCandidate);
     // Retail order: authored eye -> authored clearance -> retained translation. `t <= 0` is an explicit reseat
     // used by view toggles/zoom; long gaps and invalidated state are cuts, not a slow flight from stale history.
-    const kEye = !camEyeValid || t <= 0 || t >= 1
-      ? 1
-      : 1 - Math.exp(-CAM_EYE_FOLLOW_RATE * t);
+    const kEye = !camEyeValid || t <= 0 || t >= 1 ? 1 : 1 - Math.exp(-CAM_EYE_FOLLOW_RATE * t);
     if (!camEyeValid) camEye.copy(desired);
     else camEye.lerp(desired, kEye);
     camEyeValid = true;
@@ -239,8 +287,7 @@ export function createRideCamera(o: RideCameraDeps) {
     camSafetyStart.copy(camEye);
     const filteredBlocked = filteredLineOfSightPass(clearance.origin, camEye);
     const volumeCorrected = volumePass(anchor, camEye);
-    camClearance = volumeCorrected ? 'volume'
-      : filteredBlocked ? 'line-of-sight' : clearance.kind;
+    camClearance = volumeCorrected ? 'volume' : filteredBlocked ? 'line-of-sight' : clearance.kind;
     camOriginUnburied = clearance.originUnburied;
     // Keep this metric about collision response rather than counting intentional follow lag as a correction.
     camCorrectionDistance = Math.max(camCorrectionDistance, camEye.distanceTo(camSafetyStart));
@@ -269,9 +316,11 @@ export function createRideCamera(o: RideCameraDeps) {
     orbitIdle = 0; // first person's look stays aimed; V back to chase gets the full delay before it returns
 
     firstUp.copy(up);
-    if (firstUp.lengthSq() < 1e-8) firstUp.copy(WORLD_UP); else firstUp.normalize();
+    if (firstUp.lengthSq() < 1e-8) firstUp.copy(WORLD_UP);
+    else firstUp.normalize();
     firstForward.copy(forward);
-    if (firstForward.lengthSq() < 1e-8) firstForward.copy(camHeading); else firstForward.normalize();
+    if (firstForward.lengthSq() < 1e-8) firstForward.copy(camHeading);
+    else firstForward.normalize();
     // Chase orbit treats the pointer as dragging the camera seat around the subject. First person treats it as
     // direct mouse-look, which is the opposite operation: mouse right looks right and mouse down looks down.
     // `orbitYaw` decreases when the mouse moves right. Applying it directly turns toward the camera's LOCAL
@@ -295,26 +344,44 @@ export function createRideCamera(o: RideCameraDeps) {
 
   /** A segment cast with the hit lifted to world space: point via the terrain matrix, normal via its
    *  inverse-transpose, still as authored (unflipped). */
-  function castWorld(kind: RideCameraProbeKind, from: THREE.Vector3, to: THREE.Vector3): {
-    point: THREE.Vector3; normal: THREE.Vector3;
+  function castWorld(
+    kind: RideCameraProbeKind,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+  ): {
+    point: THREE.Vector3;
+    normal: THREE.Vector3;
   } | null {
     const terrainHit = o.castSeg(from, to);
-    const terrain = terrainHit ? {
-      point: terrainHit.point.clone().applyMatrix4(o.toWorld),
-      normal: terrainHit.normal.applyMatrix3(camNormalMat).normalize(),
-      source: 'terrain' as const,
-      obstacleKey: undefined,
-    } : null;
+    const terrain = terrainHit
+      ? {
+          point: terrainHit.point.clone().applyMatrix4(o.toWorld),
+          normal: terrainHit.normal.applyMatrix3(camNormalMat).normalize(),
+          source: 'terrain' as const,
+          obstacleKey: undefined,
+        }
+      : null;
     const obstacleHit = o.castObstacleSeg?.(from, to) ?? null;
-    const obstacle = obstacleHit ? {
-      point: obstacleHit.point.clone(), normal: obstacleHit.normal.clone().normalize(),
-      source: 'obstacle' as const, obstacleKey: obstacleHit.key,
-    } : null;
-    const hit = terrain && obstacle
-      ? (from.distanceToSquared(terrain.point) <= from.distanceToSquared(obstacle.point) ? terrain : obstacle)
-      : terrain ?? obstacle;
+    const obstacle = obstacleHit
+      ? {
+          point: obstacleHit.point.clone(),
+          normal: obstacleHit.normal.clone().normalize(),
+          source: 'obstacle' as const,
+          obstacleKey: obstacleHit.key,
+        }
+      : null;
+    const hit =
+      terrain && obstacle
+        ? from.distanceToSquared(terrain.point) <= from.distanceToSquared(obstacle.point)
+          ? terrain
+          : obstacle
+        : (terrain ?? obstacle);
     const probe: RideCameraProbe = {
-      kind, from: tuple(from), to: tuple(to), segmentLength: from.distanceTo(to), hit: !!hit,
+      kind,
+      from: tuple(from),
+      to: tuple(to),
+      segmentLength: from.distanceTo(to),
+      hit: !!hit,
     };
     if (hit) {
       probe.hitDistance = from.distanceTo(hit.point);
@@ -338,8 +405,13 @@ export function createRideCamera(o: RideCameraDeps) {
    * is the same shape — the eye lands on the hit surface padded out along its normal — which on a descent
    * reads as the camera gliding a constant 0.4 m off the snow instead of digging into the uphill face.
    */
-  function clearancePass(origin: THREE.Vector3, eye: THREE.Vector3): {
-    kind: RideCameraClearance; originUnburied: boolean; origin: THREE.Vector3;
+  function clearancePass(
+    origin: THREE.Vector3,
+    eye: THREE.Vector3,
+  ): {
+    kind: RideCameraClearance;
+    originUnburied: boolean;
+    origin: THREE.Vector3;
   } {
     let originUnburied = false;
     // Unbury the cast origin: an up-facing surface within the window above it means the origin sits under the
@@ -372,7 +444,8 @@ export function createRideCamera(o: RideCameraDeps) {
     const axis = camTmp.copy(eye).sub(origin).normalize();
     axis.crossVectors(WORLD_UP, axis).multiplyScalar(CAM_CLEARANCE);
     if (axis.lengthSq() < 1e-6) return { kind: 'none', originUnburied, origin };
-    const side = eye.clone().add(axis), farSide = eye.clone().sub(axis);
+    const side = eye.clone().add(axis),
+      farSide = eye.clone().sub(axis);
     const wall = castWorld('lateral', side, farSide);
     if (wall) {
       eye.copy(wall.point).addScaledVector(towardOrigin(wall.normal, side, farSide), CAM_CLEARANCE);
@@ -402,8 +475,12 @@ export function createRideCamera(o: RideCameraDeps) {
       const query = eye.clone();
       const hit = o.closestTerrainPoint(query, CAM_VOLUME_CLEARANCE);
       const probe: RideCameraProbe = {
-        kind: 'volume', iteration, from: tuple(query), to: tuple(hit?.point ?? query),
-        segmentLength: hit?.distance ?? 0, hit: !!hit,
+        kind: 'volume',
+        iteration,
+        from: tuple(query),
+        to: tuple(hit?.point ?? query),
+        segmentLength: hit?.distance ?? 0,
+        hit: !!hit,
       };
       if (hit) {
         const normal = hit.normal.clone().normalize();
@@ -423,19 +500,26 @@ export function createRideCamera(o: RideCameraDeps) {
     return corrected;
   }
 
-  function setHeading(fwd: THREE.Vector3) { camHeading.copy(fwd); }
+  function setHeading(fwd: THREE.Vector3) {
+    camHeading.copy(fwd);
+  }
 
   function resetAim(_pos: THREE.Vector3) {
     camTrajectoryPitch = 0;
     camEyeValid = false;
   }
 
-  function setThirdPersonZoom(scale: number) { thirdPersonZoom = clampThirdPersonZoom(scale); }
+  function setThirdPersonZoom(scale: number) {
+    thirdPersonZoom = clampThirdPersonZoom(scale);
+  }
 
   /** Ease the chase seat back behind the rider once the look has been let go for `CAM_ORBIT_RETURN_DELAY`. Only
    *  the chase view does this; first person's look is the player's own aim and stays put. */
   function returnOrbit(t: number) {
-    if (orbitHeld) { orbitIdle = 0; return; }
+    if (orbitHeld) {
+      orbitIdle = 0;
+      return;
+    }
     if (!(t > 0)) return;
     const before = orbitIdle;
     orbitIdle += t;
@@ -448,14 +532,18 @@ export function createRideCamera(o: RideCameraDeps) {
 
   /** Whether something is still holding the look — a pressed RMB, a finger on the look surface, or a pause being
    *  inspected. Held, the aimed view stays; the return clock starts only once it is let go. */
-  function holdOrbit(held: boolean) { orbitHeld = held; }
+  function holdOrbit(held: boolean) {
+    orbitHeld = held;
+  }
 
   /** Add a desktop RMB / touch / right-stick look delta to the rider-relative camera seat. The chase view holds
    * where it was aimed while the look is held, then snaps back behind the rider as soon as it is let go. */
   function orbit(deltaX: number, deltaY: number) {
     orbitIdle = 0;
-    orbitYaw = Math.atan2(Math.sin(orbitYaw - deltaX * CAM_ORBIT_YAW_PER_PIXEL),
-      Math.cos(orbitYaw - deltaX * CAM_ORBIT_YAW_PER_PIXEL));
+    orbitYaw = Math.atan2(
+      Math.sin(orbitYaw - deltaX * CAM_ORBIT_YAW_PER_PIXEL),
+      Math.cos(orbitYaw - deltaX * CAM_ORBIT_YAW_PER_PIXEL),
+    );
     orbitPitch = THREE.MathUtils.clamp(
       orbitPitch - deltaY * CAM_ORBIT_PITCH_PER_PIXEL,
       CAM_ORBIT_PITCH_MIN,

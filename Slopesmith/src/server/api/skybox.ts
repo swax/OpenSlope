@@ -1,12 +1,29 @@
 import { responseCache } from '../response-cache';
 import {
-  levelsWithSkybox, listCustomSkies, readCustomGroundPng, readCustomSkyPng, readLevelGroundPng,
-  readLevelGroundRevision, readLevelPanorama, readLevelPanoramaRevision, readSkyPageBytes,
-  readSkyPageRevision, readSkyRing, readSkyRingFiles, resolveSkyRingLevel, saveCustomSky,
+  levelsWithSkybox,
+  listCustomSkies,
+  readCustomGroundPng,
+  readCustomSkyPng,
+  readLevelGroundPng,
+  readLevelGroundRevision,
+  readLevelPanorama,
+  readLevelPanoramaRevision,
+  readSkyPageBytes,
+  readSkyPageRevision,
+  readSkyRing,
+  readSkyRingFiles,
+  resolveSkyRingLevel,
+  saveCustomSky,
 } from '../routes/skybox';
 import {
-  CUSTOM_ASSET_CACHE_CONTROL, invalidateProjectLibrary, readBody, readFalGenerationHeader,
-  referenceAssetCacheControl, REFERENCE_ASSET_CACHE_CONTROL, RequestBodyTooLargeError, type ApiHandler,
+  CUSTOM_ASSET_CACHE_CONTROL,
+  invalidateProjectLibrary,
+  readBody,
+  readFalGenerationHeader,
+  referenceAssetCacheControl,
+  REFERENCE_ASSET_CACHE_CONTROL,
+  RequestBodyTooLargeError,
+  type ApiHandler,
 } from './common';
 import { projectAssetCacheKey } from '../project-assets';
 
@@ -33,16 +50,23 @@ export const skyboxRoutes: Record<string, ApiHandler> = {
         if (url.pathname === '/page') {
           const level = url.searchParams.get('level') ?? '';
           const index = Number(url.searchParams.get('index') ?? '-1');
-          await responseCache.bytes(req, res, `sky-page:${level}:${index}`, 'image/png',
-            REFERENCE_ASSET_CACHE_CONTROL, () => readSkyPageBytes(level, index));
-        return;
+          await responseCache.bytes(
+            req,
+            res,
+            `sky-page:${level}:${index}`,
+            'image/png',
+            REFERENCE_ASSET_CACHE_CONTROL,
+            () => readSkyPageBytes(level, index),
+          );
+          return;
         }
         const preferred = url.searchParams.get('level') ?? '';
         await responseCache.json(req, res, `sky-ring:${preferred}`, async () => {
           const level = await resolveSkyRingLevel(preferred);
           const [files, ring] = await Promise.all([readSkyRingFiles(level), readSkyRing(level)]);
-          const pageVersions = await Promise.all(Array.from(
-            { length: ring.tiles.length }, (_unused, index) => readSkyPageRevision(level, index)));
+          const pageVersions = await Promise.all(
+            Array.from({ length: ring.tiles.length }, (_unused, index) => readSkyPageRevision(level, index)),
+          );
           return {
             level,
             ring,
@@ -60,19 +84,26 @@ export const skyboxRoutes: Record<string, ApiHandler> = {
     try {
       await responseCache.json(req, res, projectAssetCacheKey('skybox'), async () => {
         const levels = await levelsWithSkybox();
-        const entries = await Promise.all(levels.map(async level => {
-          const [ring, panorama, ground] = await Promise.all([
-            readSkyRing(level),
-            readLevelPanoramaRevision(level).catch(() => null),
-            readLevelGroundRevision(level).catch(() => null),
-          ]);
-          return { level, ring, panorama, ground };
-        }));
+        const entries = await Promise.all(
+          levels.map(async level => {
+            const [ring, panorama, ground] = await Promise.all([
+              readSkyRing(level),
+              readLevelPanoramaRevision(level).catch(() => null),
+              readLevelGroundRevision(level).catch(() => null),
+            ]);
+            return { level, ring, panorama, ground };
+          }),
+        );
         const rings = Object.fromEntries(entries.map(entry => [entry.level, entry.ring]));
-        const versions = Object.fromEntries(entries.map(entry => [entry.level, {
-          ...(entry.panorama ? { panorama: entry.panorama } : {}),
-          ...(entry.ground ? { ground: entry.ground } : {}),
-        }]));
+        const versions = Object.fromEntries(
+          entries.map(entry => [
+            entry.level,
+            {
+              ...(entry.panorama ? { panorama: entry.panorama } : {}),
+              ...(entry.ground ? { ground: entry.ground } : {}),
+            },
+          ]),
+        );
         return { levels, skies: await listCustomSkies(), rings, versions };
       });
     } catch (e) {
@@ -85,15 +116,19 @@ export const skyboxRoutes: Record<string, ApiHandler> = {
   '/api/skypano': async (req, res) => {
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-      const level = q.get('level'), sky = q.get('sky');
+      const level = q.get('level'),
+        sky = q.get('sky');
       // A stored panorama's name is its identity, so a custom sky is immutable. A replaceable extracted sky
       // is immutable when its URL carries the content digest published by the catalogue; older clients get
       // a bounded lifetime instead.
-      await responseCache.bytes(req, res, level ? `skypano:level:${level}`
-        : projectAssetCacheKey(`skypano:custom:${sky ?? ''}`),
-        'image/png', level
-          ? referenceAssetCacheControl(await readLevelPanoramaRevision(level)) : CUSTOM_ASSET_CACHE_CONTROL,
-        () => level ? readLevelPanorama(level) : readCustomSkyPng(sky ?? ''));
+      await responseCache.bytes(
+        req,
+        res,
+        level ? `skypano:level:${level}` : projectAssetCacheKey(`skypano:custom:${sky ?? ''}`),
+        'image/png',
+        level ? referenceAssetCacheControl(await readLevelPanoramaRevision(level)) : CUSTOM_ASSET_CACHE_CONTROL,
+        () => (level ? readLevelPanorama(level) : readCustomSkyPng(sky ?? '')),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -105,11 +140,16 @@ export const skyboxRoutes: Record<string, ApiHandler> = {
   '/api/skyground': async (req, res) => {
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-      const level = q.get('level'), sky = q.get('sky');
-      await responseCache.bytes(req, res, level ? `skyground:level:${level}`
-        : projectAssetCacheKey(`skyground:custom:${sky ?? ''}`),
-        'image/png', level ? REFERENCE_ASSET_CACHE_CONTROL : CUSTOM_ASSET_CACHE_CONTROL,
-        () => level ? readLevelGroundPng(level) : readCustomGroundPng(sky ?? '', q.get('ring') ?? ''));
+      const level = q.get('level'),
+        sky = q.get('sky');
+      await responseCache.bytes(
+        req,
+        res,
+        level ? `skyground:level:${level}` : projectAssetCacheKey(`skyground:custom:${sky ?? ''}`),
+        'image/png',
+        level ? REFERENCE_ASSET_CACHE_CONTROL : CUSTOM_ASSET_CACHE_CONTROL,
+        () => (level ? readLevelGroundPng(level) : readCustomGroundPng(sky ?? '', q.get('ring') ?? '')),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -117,13 +157,21 @@ export const skyboxRoutes: Record<string, ApiHandler> = {
   },
 
   '/api/skyupload': async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
       const fit = (q.get('fit') ?? 'auto') as 'auto' | 'band' | 'equirect';
       const name = await saveCustomSky(
-        q.get('name') ?? 'sky', await readBody(req, SKY_UPLOAD_LIMIT), fit, q.get('ring') ?? '',
-        readFalGenerationHeader(req));
+        q.get('name') ?? 'sky',
+        await readBody(req, SKY_UPLOAD_LIMIT),
+        fit,
+        q.get('ring') ?? '',
+        readFalGenerationHeader(req),
+      );
       invalidateProjectLibrary();
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ name }));

@@ -1,5 +1,10 @@
 import type { V3 } from '../doc/types';
-import { collisionSoundEventIds, collisionSoundLabel, collisionSoundSource, resolveCollisionSound } from './collision-sound';
+import {
+  collisionSoundEventIds,
+  collisionSoundLabel,
+  collisionSoundSource,
+  resolveCollisionSound,
+} from './collision-sound';
 import { FIXED_EXTERNAL_BANKS } from './external-sound-banks.generated';
 
 /**
@@ -52,8 +57,7 @@ export const HIT_GATED_EVENT_POOL: readonly number[] = [16, 28, 57];
  * would slide every later claim onto a different event id — and so onto a different course-bank slot, which
  * silently changes which retail props a still-claimed file overrides.
  */
-export function hitGatedEventForFile(file: string | undefined,
-  claims: readonly string[] | undefined): number {
+export function hitGatedEventForFile(file: string | undefined, claims: readonly string[] | undefined): number {
   if (!file) return -1;
   const index = claims?.indexOf(file) ?? -1;
   return index >= 0 && index < HIT_GATED_EVENT_POOL.length ? HIT_GATED_EVENT_POOL[index] : -1;
@@ -66,17 +70,18 @@ export function hitGatedEventForFile(file: string | undefined,
  * sound while behaving as the gated event it took over, and an unclaimed one stays on the ordinary reserved
  * pool the export allocates later — which is never gated, because the classifier does not test those ids.
  */
-export function authoredAmbientEvent(event: number | undefined, file: string | undefined,
-  claims: readonly string[] | undefined): number {
+export function authoredAmbientEvent(
+  event: number | undefined,
+  file: string | undefined,
+  claims: readonly string[] | undefined,
+): number {
   const claimed = hitGatedEventForFile(file, claims);
   if (claimed >= 0) return claimed;
   return typeof event === 'number' ? event : -1;
 }
 
 export type ResolvedExternalSound =
-  | { kind: 'course'; slot: number }
-  | { kind: 'crowd'; slot: number }
-  | { kind: 'fixed'; bank: string; slot: 0 };
+  { kind: 'course'; slot: number } | { kind: 'crowd'; slot: number } | { kind: 'fixed'; bank: string; slot: 0 };
 
 /** Resolve the complete context-free ExternalSounds event space: fixed global environment banks first,
  * followed by the ordinary course/crowd event resolver. */
@@ -92,8 +97,9 @@ export function resolveExternalSound(eventId: number, level?: string): ResolvedE
  * banks are joined by the ordinary course/crowd ids, because an emitter event that names no fixed bank falls
  * through to the same resolver a collision event uses. */
 export function externalSoundEventIds(level?: string): number[] {
-  return [...new Set([...Object.keys(FIXED_EXTERNAL_BANKS).map(Number), ...collisionSoundEventIds(level)])]
-    .sort((a, b) => a - b);
+  return [...new Set([...Object.keys(FIXED_EXTERNAL_BANKS).map(Number), ...collisionSoundEventIds(level)])].sort(
+    (a, b) => a - b,
+  );
 }
 
 /** Short display label for an emitter event: the fixed bank's own name where it has one — these are
@@ -146,12 +152,15 @@ export const AUTHORED_AMBIENT_DEFAULT_M = 80;
 export const AUTHORED_AMBIENT_DEFAULT_CURVE = 2;
 
 const clampMetres = (value: number | undefined, fallback: number): number =>
-  Math.max(AUTHORED_AMBIENT_MIN_M,
-    Math.min(AUTHORED_AMBIENT_MAX_M, typeof value === 'number' && Number.isFinite(value) ? value : fallback));
+  Math.max(
+    AUTHORED_AMBIENT_MIN_M,
+    Math.min(AUTHORED_AMBIENT_MAX_M, typeof value === 'number' && Number.isFinite(value) ? value : fallback),
+  );
 
 const clampCurve = (value: number | undefined): number =>
   typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(0, Math.min(5, Math.trunc(value))) : AUTHORED_AMBIENT_DEFAULT_CURVE;
+    ? Math.max(0, Math.min(5, Math.trunc(value)))
+    : AUTHORED_AMBIENT_DEFAULT_CURVE;
 
 /**
  * The authored spec as an emitter measured in EDITOR metres — what the viewport draws the cyan region from,
@@ -170,8 +179,15 @@ export function authoredAmbientEmitter(spec: AuthoredAmbientSpec): ExternalSound
       // but retail ships only three type-1 records and every one carries a real axis, so a zero vector is
       // untested territory in an engine that may normalize it. A unit axis costs nothing and stays inside
       // what the shipped data demonstrates.
-      params: [clampMetres(x, AUTHORED_AMBIENT_DEFAULT_M), clampMetres(y, AUTHORED_AMBIENT_DEFAULT_M),
-        clampMetres(z, AUTHORED_AMBIENT_DEFAULT_M), 0, 0, 1, curve],
+      params: [
+        clampMetres(x, AUTHORED_AMBIENT_DEFAULT_M),
+        clampMetres(y, AUTHORED_AMBIENT_DEFAULT_M),
+        clampMetres(z, AUTHORED_AMBIENT_DEFAULT_M),
+        0,
+        0,
+        1,
+        curve,
+      ],
     };
   }
   return {
@@ -202,9 +218,7 @@ export function authoredAmbientRecord(spec: AuthoredAmbientSpec): number[] {
   return [cm(editor.params[0]), editor.params[1]];
 }
 
-export type ExternalSoundShape =
-  | { kind: 'sphere'; radius: number }
-  | { kind: 'ellipsoid'; halfExtents: V3; axis: V3 };
+export type ExternalSoundShape = { kind: 'sphere'; radius: number } | { kind: 'ellipsoid'; halfExtents: V3; axis: V3 };
 
 const finitePositive = (value: number | undefined): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -212,8 +226,8 @@ const finitePositive = (value: number | undefined): value is number =>
 /** The listener-region boundary that is safe to draw from the recovered runtime contract. */
 export function externalSoundShape(emitter: ExternalSoundEmitter): ExternalSoundShape | null {
   if (emitter.type === 1) {
-    if (!finitePositive(emitter.params[0]) || !finitePositive(emitter.params[1])
-      || !finitePositive(emitter.params[2])) return null;
+    if (!finitePositive(emitter.params[0]) || !finitePositive(emitter.params[1]) || !finitePositive(emitter.params[2]))
+      return null;
     return {
       kind: 'ellipsoid',
       halfExtents: [emitter.params[0], emitter.params[1], emitter.params[2]],
@@ -236,7 +250,8 @@ export function externalSoundFalloff(emitter: ExternalSoundEmitter): number | nu
  *  is still a point region, but calling it "continuing" would misdescribe when it is heard. */
 export function externalSoundEmitterTypeLabel(emitter: ExternalSoundEmitter): string {
   return isInteractiveAmbientEvent(emitter.sound) && emitter.type === 0
-    ? 'point · hit-gated' : externalSoundTypeLabel(emitter.type);
+    ? 'point · hit-gated'
+    : externalSoundTypeLabel(emitter.type);
 }
 
 export function externalSoundTypeLabel(type: number): string {
@@ -248,14 +263,16 @@ export function externalSoundTypeLabel(type: number): string {
 }
 
 export function externalSoundFalloffLabel(curve: number): string {
-  return [
-    '1 − d²',
-    'rational distance',
-    'linear (1 − d)',
-    'rational inverse distance',
-    '(1 − d)²',
-    'flat to 70%, then linear',
-  ][curve] ?? `unknown curve ${curve}`;
+  return (
+    [
+      '1 − d²',
+      'rational distance',
+      'linear (1 − d)',
+      'rational inverse distance',
+      '(1 − d)²',
+      'flat to 70%, then linear',
+    ][curve] ?? `unknown curve ${curve}`
+  );
 }
 
 /** The six exact falloff choices over normalized distance `d` [Trailmap: 420-audio-runtime]. Index order and
@@ -310,8 +327,7 @@ export function externalSoundNormalizedDistance(emitter: ExternalSoundEmitter, d
   if (!shape) return null;
   if (shape.kind === 'sphere') return Math.hypot(delta[0], delta[1], delta[2]) / shape.radius;
   const local = unrotateFromAxis(delta, shape.axis);
-  return Math.hypot(
-    local[0] / shape.halfExtents[0], local[1] / shape.halfExtents[1], local[2] / shape.halfExtents[2]);
+  return Math.hypot(local[0] / shape.halfExtents[0], local[1] / shape.halfExtents[1], local[2] / shape.halfExtents[2]);
 }
 
 /**
@@ -367,8 +383,11 @@ export interface ExternalSoundVoice {
  * distance is the point: a wide quiet region and a tight loud one are not comparable by range, and gain is
  * what a listener actually notices. Everything here is raw native centimetres [Trailmap: 420-audio-runtime].
  */
-export function externalSoundField(placements: readonly ExternalSoundPlacement[], listener: V3,
-  limit = Number.POSITIVE_INFINITY): ExternalSoundVoice[] {
+export function externalSoundField(
+  placements: readonly ExternalSoundPlacement[],
+  listener: V3,
+  limit = Number.POSITIVE_INFINITY,
+): ExternalSoundVoice[] {
   const heard: ExternalSoundVoice[] = [];
   for (const placement of placements) {
     // The interactive class is inaudible at any range until its owner has been hit, however close the

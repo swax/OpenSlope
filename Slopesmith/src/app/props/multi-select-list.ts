@@ -37,10 +37,14 @@ export class MultiSelectList {
   private listEl = document.createElement('div');
   private activeIdx: number | null = null; // the last-identified prop's doc index (row highlight)
 
-  constructor(private cb: {
-    onIdentify(index: number): void; onFocus(index: number): void; onRemove(index: number): void;
-    onRemoveLight(id: string): void;
-  }) {
+  constructor(
+    private cb: {
+      onIdentify(index: number): void;
+      onFocus(index: number): void;
+      onRemove(index: number): void;
+      onRemoveLight(id: string): void;
+    },
+  ) {
     installStyles('prop-multi-select', css);
     this.el.className = 'ms-card';
     this.titleEl.className = 'ms-title';
@@ -53,7 +57,10 @@ export class MultiSelectList {
 
   /** (Re)build the rows from the host's selection. Each item carries its DOC index (stable while the set
    *  lives — placements only re-index on delete, which rebuilds the whole selection). */
-  show(items: { index: number; label: string }[], lights: readonly { id: string; label: string; color: string }[] = []) {
+  show(
+    items: { index: number; label: string }[],
+    lights: readonly { id: string; label: string; color: string }[] = [],
+  ) {
     this.el.classList.add('on');
     const lightsText = lights.length ? ` + ${lights.length} light${lights.length === 1 ? '' : 's'}` : '';
     this.titleEl.textContent = `${items.length} prop${items.length === 1 ? '' : 's'}${lightsText} selected`;
@@ -70,7 +77,10 @@ export class MultiSelectList {
       x.className = 'ms-x';
       x.textContent = '✕';
       x.title = 'remove from selection (keeps the prop)';
-      x.onclick = ev => { ev.stopPropagation(); this.cb.onRemove(it.index); };
+      x.onclick = ev => {
+        ev.stopPropagation();
+        this.cb.onRemove(it.index);
+      };
       row.onclick = event => {
         this.activeIdx = it.index;
         for (const r of this.listEl.children) r.classList.toggle('active', r === row);
@@ -94,7 +104,10 @@ export class MultiSelectList {
       x.className = 'ms-x';
       x.textContent = '✕';
       x.title = 'remove from selection (keeps the light)';
-      x.onclick = ev => { ev.stopPropagation(); this.cb.onRemoveLight(light.id); };
+      x.onclick = ev => {
+        ev.stopPropagation();
+        this.cb.onRemoveLight(light.id);
+      };
       row.append(dot, name, x);
       this.listEl.appendChild(row);
     }

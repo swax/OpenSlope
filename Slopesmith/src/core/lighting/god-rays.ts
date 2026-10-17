@@ -34,9 +34,7 @@ export const GODRAY_SPOKES: readonly GodRaySpoke[] = Array.from({ length: GODRAY
   deg: i * (360 / GODRAY_SPOKE_COUNT) + Math.sin(i * GOLDEN_PHASE) * 3.2,
   // Keep the independently generated selection close to the engine table's measured contrast and mean:
   // deep gaps matter as much as bright spokes, or an additive fan becomes an even wash.
-  amp: 0.18
-    + 0.24 * (1 + Math.sin(i * GOLDEN_PHASE + 0.9))
-    + 0.12 * (1 + Math.sin(i * 1.173 + 2.1)),
+  amp: 0.18 + 0.24 * (1 + Math.sin(i * GOLDEN_PHASE + 0.9)) + 0.12 * (1 + Math.sin(i * 1.173 + 2.1)),
 }));
 
 export const GODRAY_LAW = {
@@ -114,7 +112,10 @@ export const DEFAULT_GODRAY_COURSE: GodRayCourse = {
  * A shallow camera pulls the sun under its far plane and shrinks it by the same ratio, preserving its authored
  * angular size. The XR ray disc has its own fixed angular reach; the console's desktop fan still fills the view.
  */
-export function godRayPresentation(course: GodRayCourse, cameraFar: number): {
+export function godRayPresentation(
+  course: GodRayCourse,
+  cameraFar: number,
+): {
   distance: number;
   sunRadius: number;
   xrRayRadius: number;
@@ -167,8 +168,8 @@ export function sceneDirFromGlareAzEl(azDeg: number, elDeg: number): [number, nu
   const a = (azDeg * Math.PI) / 180;
   const e = (elDeg * Math.PI) / 180;
   const raw: [number, number, number] = [Math.cos(a) * Math.cos(e), Math.sin(a) * Math.cos(e), Math.sin(e)];
-  const editor: [number, number, number] = [-raw[0], raw[2], -raw[1]];   // editorFromRaw's rotation
-  return [editor[0], editor[1], -editor[2]];                             // …and worldRoot's Z mirror
+  const editor: [number, number, number] = [-raw[0], raw[2], -raw[1]]; // editorFromRaw's rotation
+  return [editor[0], editor[1], -editor[2]]; // …and worldRoot's Z mirror
 }
 
 /** One fan vertex in NDC, with the brightness the engine gives it. */
@@ -228,7 +229,12 @@ export function buildGodRayRim(sunNdc: { x: number; y: number }): GodRayVertex[]
     rad: (s.deg * Math.PI) / 180,
     amp: s.amp,
   }));
-  for (const [gx, gy] of [[1, 1], [-1, 1], [-1, -1], [1, -1]] as const) {
+  for (const [gx, gy] of [
+    [1, 1],
+    [-1, 1],
+    [-1, -1],
+    [1, -1],
+  ] as const) {
     const rad = ((Math.atan2(gy - cy, gx - cx) % TAU) + TAU) % TAU;
     // A corner carries no brightness of its own; it inherits the ramp between its neighbouring spokes.
     angles.push({ rad, amp: spokeIntensityAt(rad) });

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import {
-  estimatedRidePacingMs, measuredRideCpuMs, unmeasuredRideFrameMs,
-  type GpuTimerState, type RidePerf,
+  estimatedRidePacingMs,
+  measuredRideCpuMs,
+  unmeasuredRideFrameMs,
+  type GpuTimerState,
+  type RidePerf,
 } from '../perf';
 import type { XrLayerMode } from './config';
 import { formatRunClock } from '../../../core/doc/race';
@@ -26,7 +29,9 @@ import { boostMeterSegments, RIDE_BOOST_METER_SEGMENTS } from '../score';
  * panel repaints at `REPAINT_HZ`, which is also as fast as anyone can read a changing number.
  */
 
-const W = 512, PERF_H = 752, COMPACT_H = 486;
+const W = 512,
+  PERF_H = 752,
+  COMPACT_H = 486;
 /**
  * Full panel size in metres. Sized for the distance the session parks it at (`session.ts`, ~1.2 m): about 22° wide,
  * which puts the 21 px profiler rows a shade under a degree tall — the size text stops being work to read.
@@ -37,7 +42,8 @@ const PERF_W = 0.48;
 const COMPACT_W = 0.18;
 /** The watch as worn, in metres and in the left grip's space (session `placeWatch`): lying on top of the wrist,
  *  face up, its top edge toward the fingers. The EDIT palette is laid out around it (edit-palette.ts). */
-export const XR_WATCH_WIDTH = COMPACT_W, XR_WATCH_HEIGHT = COMPACT_W * COMPACT_H / W;
+export const XR_WATCH_WIDTH = COMPACT_W,
+  XR_WATCH_HEIGHT = (COMPACT_W * COMPACT_H) / W;
 export const XR_WATCH_POSITION: readonly [number, number, number] = [0, 0.045, 0.015];
 export const XR_WATCH_TILT = -Math.PI / 2;
 export type XrHudAction = 'calibrate' | 'restart' | 'stats' | 'view' | 'controls' | 'edit' | 'exit' | 'mixed' | 'place';
@@ -54,7 +60,14 @@ export interface XrWatchEdit {
  *  EDIT opens the wrist palette of real editor panels (docs/068); like T-POSE it is an on-foot action. While it
  *  is on, a button's `edit` action replaces its own: RESTART shows the palette's placement bar (MOVE UI), and the
  *  third-person toggle becomes MIXED REALITY. */
-const WATCH_BUTTONS: ReadonlyArray<{ action: XrHudAction; edit?: XrHudAction; x: number; y: number; w: number; h: number }> = [
+const WATCH_BUTTONS: ReadonlyArray<{
+  action: XrHudAction;
+  edit?: XrHudAction;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}> = [
   { action: 'calibrate', x: 18, y: 108, w: 476, h: 52 },
   { action: 'restart', edit: 'place', x: 18, y: 172, w: 232, h: 52 },
   { action: 'exit', x: 262, y: 172, w: 232, h: 52 },
@@ -69,7 +82,8 @@ const WATCH_HIT_PAD = 5;
 /** How often the canvas is redrawn and re-uploaded. Five times a second is legible and costs ~4 MB/s. */
 const REPAINT_HZ = 5;
 /** Frame-time colouring against the display's own budget: inside it, over it, and badly over it. */
-const OVER_BUDGET = 1.05, WAY_OVER = 1.5;
+const OVER_BUDGET = 1.05,
+  WAY_OVER = 1.5;
 
 export interface XrHudState {
   /** Metres per second; the panel converts. */
@@ -104,33 +118,37 @@ export interface XrControllerDiagramLabels {
  * changed binding fail a headless test before stale instructions reach a headset. */
 export function xrControllerDiagramLabels(mode: XrControlsMode): XrControllerDiagramLabels {
   // EDIT (docs/068, `stepEdit`): the right hand is the editor's mouse; left trigger, left X and right B are unbound.
-  if (mode === 'edit') return {
-    left: [
-      { control: 'GRIP', action: 'DRAG MAP · BOTH ZOOM / TURN' },
-      { control: 'STICK', action: 'FLY · CLICK UNDO' },
-      { control: 'Y', action: 'SHOW / HIDE MENU' },
-    ],
-    right: [
-      { control: 'TRIGGER', action: 'CLICK' },
-      { control: 'GRIP', action: 'DRAG MAP · BOTH ZOOM / TURN' },
-      { control: 'STICK', action: 'TURN · RISE · CLICK REDO' },
-      { control: 'A', action: 'RIGHT CLICK' },
-    ],
-  };
+  if (mode === 'edit')
+    return {
+      left: [
+        { control: 'GRIP', action: 'DRAG MAP · BOTH ZOOM / TURN' },
+        { control: 'STICK', action: 'FLY · CLICK UNDO' },
+        { control: 'Y', action: 'SHOW / HIDE MENU' },
+      ],
+      right: [
+        { control: 'TRIGGER', action: 'CLICK' },
+        { control: 'GRIP', action: 'DRAG MAP · BOTH ZOOM / TURN' },
+        { control: 'STICK', action: 'TURN · RISE · CLICK REDO' },
+        { control: 'A', action: 'RIGHT CLICK' },
+      ],
+    };
   return {
-    left: mode === 'ride' ? [
-      { control: 'TRIGGER', action: 'DISMOUNT' },
-      { control: 'GRIP', action: 'CARRY' },
-      { control: 'STICK', action: 'CARVE · TUCK/BRAKE' },
-      { control: 'X', action: 'COURSE RESPAWN' },
-      { control: 'Y', action: 'SHOW / HIDE MENU' },
-    ] : [
-      { control: 'TRIGGER', action: 'RIDE' },
-      { control: 'GRIP', action: 'CARRY' },
-      { control: 'STICK', action: 'MOVE' },
-      { control: 'X', action: 'SPAWN BOARD' },
-      { control: 'Y', action: 'SHOW / HIDE MENU' },
-    ],
+    left:
+      mode === 'ride'
+        ? [
+            { control: 'TRIGGER', action: 'DISMOUNT' },
+            { control: 'GRIP', action: 'CARRY' },
+            { control: 'STICK', action: 'CARVE · TUCK/BRAKE' },
+            { control: 'X', action: 'COURSE RESPAWN' },
+            { control: 'Y', action: 'SHOW / HIDE MENU' },
+          ]
+        : [
+            { control: 'TRIGGER', action: 'RIDE' },
+            { control: 'GRIP', action: 'CARRY' },
+            { control: 'STICK', action: 'MOVE' },
+            { control: 'X', action: 'SPAWN BOARD' },
+            { control: 'Y', action: 'SHOW / HIDE MENU' },
+          ],
     right: [
       { control: 'TRIGGER', action: mode === 'ride' ? 'DISMOUNT' : 'RIDE' },
       { control: 'GRIP', action: 'CARRY' },
@@ -207,14 +225,24 @@ export interface XrHudPerf {
 }
 
 /** Convert compact-panel UV into an action. Exported so its hit geometry stays headless-tested. */
-export function xrHudActionAt(showPerf: boolean, uv: THREE.Vector2, controlsOpen = false,
-                              editing = false): XrHudAction | null {
+export function xrHudActionAt(
+  showPerf: boolean,
+  uv: THREE.Vector2,
+  controlsOpen = false,
+  editing = false,
+): XrHudAction | null {
   if (showPerf) return null;
-  const x = uv.x * W, y = (1 - uv.y) * COMPACT_H;
+  const x = uv.x * W,
+    y = (1 - uv.y) * COMPACT_H;
   const buttons = controlsOpen ? [CONTROLS_BACK_BUTTON] : WATCH_BUTTONS;
   for (const b of buttons) {
-    if (x >= b.x - WATCH_HIT_PAD && x <= b.x + b.w + WATCH_HIT_PAD
-      && y >= b.y - WATCH_HIT_PAD && y <= b.y + b.h + WATCH_HIT_PAD) return watchAction(b, editing);
+    if (
+      x >= b.x - WATCH_HIT_PAD &&
+      x <= b.x + b.w + WATCH_HIT_PAD &&
+      y >= b.y - WATCH_HIT_PAD &&
+      y <= b.y + b.h + WATCH_HIT_PAD
+    )
+      return watchAction(b, editing);
   }
   return null;
 }
@@ -238,7 +266,11 @@ export function createXrHud(label: string, showPerf = true) {
     // Never occluded: it floats a metre or so ahead of the rider, and a board that vanishes into the snow the
     // moment they crest a rise is no use to whoever is reading it. The session owns where it sits.
     new THREE.MeshBasicMaterial({
-      map: texture, transparent: true, toneMapped: false, depthWrite: false, depthTest: false,
+      map: texture,
+      transparent: true,
+      toneMapped: false,
+      depthWrite: false,
+      depthTest: false,
       // The watch follows a real wrist and can be rolled through either side; its single two-triangle face is
       // cheap enough to keep readable there. The front-facing profiler is always aimed at the eyes.
       side: showPerf ? THREE.FrontSide : THREE.DoubleSide,
@@ -251,11 +283,19 @@ export function createXrHud(label: string, showPerf = true) {
   let nextPaint = 0;
 
   /** Repaint, at most `REPAINT_HZ` times a second. `now` is the frame's own clock, so the gate costs no timer. */
-  function draw(now: number, state: XrHudState | null, stats: XrHudPerf | null,
-                calibration: XrHudCalibration | null = null, statsEnabled = false, thirdPerson = false,
-                run: RideRunStatus | null = null, controlsOpen = false,
-                controlsMode: XrControlsMode = state ? 'ride' : 'foot', carrying = false,
-                edit: XrWatchEdit | null = null) {
+  function draw(
+    now: number,
+    state: XrHudState | null,
+    stats: XrHudPerf | null,
+    calibration: XrHudCalibration | null = null,
+    statsEnabled = false,
+    thirdPerson = false,
+    run: RideRunStatus | null = null,
+    controlsOpen = false,
+    controlsMode: XrControlsMode = state ? 'ride' : 'foot',
+    carrying = false,
+    edit: XrWatchEdit | null = null,
+  ) {
     if (now < nextPaint) return;
     nextPaint = now + 1000 / REPAINT_HZ;
 
@@ -274,9 +314,11 @@ export function createXrHud(label: string, showPerf = true) {
     ctx.fillText(label, 26, 42);
     if (stats) {
       ctx.textAlign = 'right';
-      ctx.fillText(stats.displayHz > 0
-        ? `${Math.round(stats.displayHz)} Hz${stats.rateKnown ? '' : ' est'}`
-        : '? Hz', W - 26, 42);
+      ctx.fillText(
+        stats.displayHz > 0 ? `${Math.round(stats.displayHz)} Hz${stats.rateKnown ? '' : ' est'}` : '? Hz',
+        W - 26,
+        42,
+      );
       ctx.textAlign = 'left';
     }
 
@@ -294,9 +336,13 @@ export function createXrHud(label: string, showPerf = true) {
       ctx.fillText(run.phase === 'finished' ? 'FINISHED' : 'TIME UP', 26, 78);
       ctx.fillStyle = '#eaf4ff';
       ctx.font = '600 22px system-ui, sans-serif';
-      ctx.fillText(run.mode === 'showoff'
-        ? `${formatRunClock(run.elapsedSeconds)} · ${Math.max(0, Math.round(run.score)).toLocaleString()} pts`
-        : formatRunClock(run.elapsedSeconds), 26, 105);
+      ctx.fillText(
+        run.mode === 'showoff'
+          ? `${formatRunClock(run.elapsedSeconds)} · ${Math.max(0, Math.round(run.score)).toLocaleString()} pts`
+          : formatRunClock(run.elapsedSeconds),
+        26,
+        105,
+      );
     } else if (state) {
       const digits = String(Math.round(state.speed * MPH_PER_MPS));
       ctx.fillStyle = '#eaf4ff';
@@ -305,10 +351,15 @@ export function createXrHud(label: string, showPerf = true) {
       ctx.fillStyle = '#7f96ad';
       ctx.font = '600 24px system-ui, sans-serif';
       ctx.fillText('mph', 26 + measure(ctx, digits, '700 68px system-ui, sans-serif') + 10, 106);
-      const flags = [run?.mode === 'showoff' && run.phase === 'running'
-        ? `${Math.max(0, Math.round(run.score)).toLocaleString()} pts` : '',
+      const flags = [
+        run?.mode === 'showoff' && run.phase === 'running'
+          ? `${Math.max(0, Math.round(run.score)).toLocaleString()} pts`
+          : '',
         state.grinding ? 'GRIND' : !state.grounded ? 'AIR' : state.boosting ? 'BOOST' : '',
-        state.lead < 0 ? 'SWITCH' : ''].filter(Boolean).join(' · ');
+        state.lead < 0 ? 'SWITCH' : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
       if (flags) {
         ctx.fillStyle = '#5fd0ff';
         ctx.font = '600 24px system-ui, sans-serif';
@@ -351,14 +402,18 @@ export function createXrHud(label: string, showPerf = true) {
   }
 
   /** The one line of guidance for the state the rider is in; the session sets it as that state changes. */
-  function setHint(text: string) { hint = text; }
+  function setHint(text: string) {
+    hint = text;
+  }
 
   function actionAt(uv: THREE.Vector2, controlsOpen = false, editing = false): XrHudAction | null {
     return xrHudActionAt(showPerf, uv, controlsOpen, editing);
   }
 
   /** Menu page changes should paint on the next frame instead of waiting behind the five-Hz data throttle. */
-  function invalidate() { nextPaint = 0; }
+  function invalidate() {
+    nextPaint = 0;
+  }
 
   function dispose() {
     object.geometry.dispose();
@@ -411,13 +466,22 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
   // The headline: this frame against the one the display is actually going to show, coloured so a glance is
   // enough. `worst` is the last second's slowest frame — the hitch an average quietly buries.
   ctx.font = '700 30px system-ui, sans-serif';
-  ctx.fillStyle = Number.isNaN(over) ? '#9fb6cc'
-    : over > WAY_OVER ? '#ff6b6b' : over > OVER_BUDGET ? '#ffc14a' : '#63e08a';
+  ctx.fillStyle = Number.isNaN(over)
+    ? '#9fb6cc'
+    : over > WAY_OVER
+      ? '#ff6b6b'
+      : over > OVER_BUDGET
+        ? '#ffc14a'
+        : '#63e08a';
   ctx.fillText(`${ms(p.frameMs)} ms`, 26, 176);
   ctx.font = '500 22px system-ui, sans-serif';
   ctx.fillStyle = '#8fa8c0';
-  ctx.fillText(`of ${s.budgetMs > 0 ? ms(s.budgetMs) : '?'} · best ${ms(s.bestMs)}`
-    + ` · worst ${ms(s.worstMs)} · ${Math.round(p.fps)} fps`, 150, 176);
+  ctx.fillText(
+    `of ${s.budgetMs > 0 ? ms(s.budgetMs) : '?'} · best ${ms(s.bestMs)}` +
+      ` · worst ${ms(s.worstMs)} · ${Math.round(p.fps)} fps`,
+    150,
+    176,
+  );
 
   // CPU and GPU overlap, so the third value is frame - max(CPU, GPU), never frame - CPU - GPU.
   ctx.font = '600 22px system-ui, sans-serif';
@@ -437,7 +501,10 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
     ctx.fillText(title, 26, y);
     ctx.strokeStyle = 'rgba(120,190,255,0.12)';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(26, y + 5); ctx.lineTo(W - 26, y + 5); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(26, y + 5);
+    ctx.lineTo(W - 26, y + 5);
+    ctx.stroke();
     y += 20;
   };
   const row = (value: string, colour = '#9fb6cc') => {
@@ -449,16 +516,23 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
 
   const xrMs = p.xrBeginMs + p.xrEndMs;
   const phases = [
-    ['XR', xrMs], ['world', p.worldMs], ['ride', p.rideMs], ['play FX', p.effectsMs],
-    ['scene', p.sceneMs], ['render', p.renderMs], ['post-frame', p.postFrameMs],
+    ['XR', xrMs],
+    ['world', p.worldMs],
+    ['ride', p.rideMs],
+    ['play FX', p.effectsMs],
+    ['scene', p.sceneMs],
+    ['render', p.renderMs],
+    ['post-frame', p.postFrameMs],
   ] as const;
-  const largest = phases.reduce((best, phase) => phase[1] > best[1] ? phase : best);
+  const largest = phases.reduce((best, phase) => (phase[1] > best[1] ? phase : best));
   const timingCell = (label: string, value: number, x: number) => {
     const hot = label === largest[0] && value > 0;
     ctx.font = `${hot ? 650 : 500} 18px system-ui, sans-serif`;
     ctx.fillStyle = hot ? '#ffc14a' : '#9fb6cc';
-    ctx.textAlign = 'left'; ctx.fillText(label, x, y);
-    ctx.textAlign = 'right'; ctx.fillText(ms(value), x + 210, y);
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x, y);
+    ctx.textAlign = 'right';
+    ctx.fillText(ms(value), x + 210, y);
     ctx.textAlign = 'left';
   };
 
@@ -471,77 +545,135 @@ function drawPerf(ctx: CanvasRenderingContext2D, s: XrHudPerf) {
 
   section('DETAIL · ALREADY INSIDE THE PHASES ABOVE');
   row(`ride → physics ${ms(p.physicsMs)}  · cast ${ms(p.castMs)}  · AI ${ms(p.aiMs)}`);
-  row(`ride → pose ${ms(p.poseMs)}  · camera ${ms(p.cameraMs)}  · telemetry ${ms(p.telemetryMs)}  · HUD ${ms(p.hudMs)}`);
-  row(`walk → ${ms(p.walkCollisionMs)}  · ${count(p.walkGroundCasts)} ground  · ${count(p.walkSweeps)} sweep`
-    + `  · ${count(p.walkTriangleTests)} tri  · ${count(p.walkLiveRefits)} refit`);
+  row(
+    `ride → pose ${ms(p.poseMs)}  · camera ${ms(p.cameraMs)}  · telemetry ${ms(p.telemetryMs)}  · HUD ${ms(p.hudMs)}`,
+  );
+  row(
+    `walk → ${ms(p.walkCollisionMs)}  · ${count(p.walkGroundCasts)} ground  · ${count(p.walkSweeps)} sweep` +
+      `  · ${count(p.walkTriangleTests)} tri  · ${count(p.walkLiveRefits)} refit`,
+  );
   row(`render → prep ${ms(p.renderPrepMs)}  · Three.js submit ${ms(p.renderSubmitMs)}`);
 
   const views = Math.max(1, s.views);
   section(`RENDER WORK · COUNTS INCLUDE ${views === 2 ? 'BOTH EYES' : `${views} VIEW${views === 1 ? '' : 'S'}`}`);
-  const submitUsPerCall = p.drawCalls > 0 ? p.renderSubmitMs * 1000 / p.drawCalls : 0;
-  row(`draw ${count(p.drawCalls)} total  · ${count(p.drawCalls / views)}/view ×${views}`
-    + `  · ${count(submitUsPerCall)} µs/call`,
-    p.drawCalls / views >= 100 ? '#ffc14a' : '#9fb6cc');
-  row(`props/view  ref ${count(p.propBatchDraws)} batch + ${count(p.propIsolatedDraws)} isolated`
-    + `  · authored ${count(p.authoredPropDraws)}`);
+  const submitUsPerCall = p.drawCalls > 0 ? (p.renderSubmitMs * 1000) / p.drawCalls : 0;
+  row(
+    `draw ${count(p.drawCalls)} total  · ${count(p.drawCalls / views)}/view ×${views}` +
+      `  · ${count(submitUsPerCall)} µs/call`,
+    p.drawCalls / views >= 100 ? '#ffc14a' : '#9fb6cc',
+  );
+  row(
+    `props/view  ref ${count(p.propBatchDraws)} batch + ${count(p.propIsolatedDraws)} isolated` +
+      `  · authored ${count(p.authoredPropDraws)}`,
+  );
   row(`batch path  ${p.multiDraw ? 'native multi-draw' : 'merged fallback'}`);
-  row(`list/view  ${count(p.renderOpaqueItems)} opaque  · ${count(p.renderTransparentItems)} transparent`
-    + `  · ${count(p.renderTransmissiveItems)} transmissive`);
-  row(`trans src  ref ${count(p.renderTransparentRefBatches)}b+${count(p.renderTransparentRefIsolated)}i`
-    + `  · auth ${count(p.renderTransparentAuthoredProps)}  · other ${count(p.renderTransparentOther)}`
-    + (p.renderTransparentOtherSources ? ` [${short(p.renderTransparentOtherSources, 25)}]` : ''));
-  row(`${millions(p.renderTriangles)} tris total  · ${millions(p.renderTriangles / views)}/view`
-    + `  · ${count(p.programs)} programs`);
+  row(
+    `list/view  ${count(p.renderOpaqueItems)} opaque  · ${count(p.renderTransparentItems)} transparent` +
+      `  · ${count(p.renderTransmissiveItems)} transmissive`,
+  );
+  row(
+    `trans src  ref ${count(p.renderTransparentRefBatches)}b+${count(p.renderTransparentRefIsolated)}i` +
+      `  · auth ${count(p.renderTransparentAuthoredProps)}  · other ${count(p.renderTransparentOther)}` +
+      (p.renderTransparentOtherSources ? ` [${short(p.renderTransparentOtherSources, 25)}]` : ''),
+  );
+  row(
+    `${millions(p.renderTriangles)} tris total  · ${millions(p.renderTriangles / views)}/view` +
+      `  · ${count(p.programs)} programs`,
+  );
 
   section('XR OUTPUT');
   // Never silent: `n/a` is the answer when the runtime does not expose a capability.
   row(`eye ${s.eyeWidth}×${s.eyeHeight} ×${s.views} = ${megapixels(s)} Mpix/frame`);
-  row(`layer ${s.layerRequested}${s.layerRequested === 'webgl' ? (s.layerOverrideApplied ? ' forced' : ' FORCE FAILED') : ''}`
-    + ` → ${s.layerKind}  · depth ${s.depthIgnored === null ? '?' : s.depthIgnored ? 'ignored' : 'used'}`);
-  row(`AA context ${onOff(s.contextAntialias)}  · layer ${onOff(s.layerAntialias)}`
-    + `  · samples ${s.samples ?? '?'}  · ${s.powerPreference}`);
-  row(`scale ${s.renderScale.toFixed(2)}  · foveation ${s.foveation === null ? 'n/a' : s.foveation.toFixed(2)}`
-    + `  · near ${s.nearClip.toFixed(2)} m`);
+  row(
+    `layer ${s.layerRequested}${s.layerRequested === 'webgl' ? (s.layerOverrideApplied ? ' forced' : ' FORCE FAILED') : ''}` +
+      ` → ${s.layerKind}  · depth ${s.depthIgnored === null ? '?' : s.depthIgnored ? 'ignored' : 'used'}`,
+  );
+  row(
+    `AA context ${onOff(s.contextAntialias)}  · layer ${onOff(s.layerAntialias)}` +
+      `  · samples ${s.samples ?? '?'}  · ${s.powerPreference}`,
+  );
+  row(
+    `scale ${s.renderScale.toFixed(2)}  · foveation ${s.foveation === null ? 'n/a' : s.foveation.toFixed(2)}` +
+      `  · near ${s.nearClip.toFixed(2)} m`,
+  );
   row(`GPU timer ${gpuTimerStatus(p.gpuTimerState)}`);
   row(`adapter ${short(s.gpu, 42)}`);
-  row(`tracking hands ${s.handTracking}  · lower body IK`
-    + `${s.standingHeight === null ? '  · body uncalibrated' : `  · body ${s.standingHeight.toFixed(2)} m`}`);
+  row(
+    `tracking hands ${s.handTracking}  · lower body IK` +
+      `${s.standingHeight === null ? '  · body uncalibrated' : `  · body ${s.standingHeight.toFixed(2)} m`}`,
+  );
   row(`view Y ${s.rawHeadY.toFixed(2)}→${s.correctedHeadY.toFixed(2)} m  · floor ${signed(s.floorOffset)}`);
 }
 
-function drawWatchMenu(ctx: CanvasRenderingContext2D, calibration: XrHudCalibration, onFoot: boolean,
-                       statsEnabled: boolean, thirdPerson: boolean, edit: XrWatchEdit | null) {
+function drawWatchMenu(
+  ctx: CanvasRenderingContext2D,
+  calibration: XrHudCalibration,
+  onFoot: boolean,
+  statsEnabled: boolean,
+  thirdPerson: boolean,
+  edit: XrWatchEdit | null,
+) {
   for (const button of WATCH_BUTTONS) {
     const action = watchAction(button, !!edit);
-    const enabled = action === 'mixed' ? !!edit?.mixedRealityAvailable
-      : action === 'restart' || action === 'stats' || action === 'view' || action === 'controls' || action === 'exit'
-        || action === 'place' || onFoot;
+    const enabled =
+      action === 'mixed'
+        ? !!edit?.mixedRealityAvailable
+        : action === 'restart' ||
+          action === 'stats' ||
+          action === 'view' ||
+          action === 'controls' ||
+          action === 'exit' ||
+          action === 'place' ||
+          onFoot;
     const calibrating = action === 'calibrate' && calibration.phase === 'countdown';
     const saved = action === 'calibrate' && calibration.phase === 'saved';
     const error = action === 'calibrate' && calibration.phase === 'error';
-    const active = (action === 'stats' && statsEnabled) || (action === 'view' && thirdPerson)
-      || (action === 'edit' && !!edit) || (action === 'mixed' && !!edit?.mixedReality)
-      || (action === 'place' && !!edit?.placing);
+    const active =
+      (action === 'stats' && statsEnabled) ||
+      (action === 'view' && thirdPerson) ||
+      (action === 'edit' && !!edit) ||
+      (action === 'mixed' && !!edit?.mixedReality) ||
+      (action === 'place' && !!edit?.placing);
     const danger = action === 'exit';
-    ctx.fillStyle = !enabled ? 'rgba(110,125,140,0.12)'
-      : error || danger ? 'rgba(238,91,91,0.25)'
-        : saved || active ? 'rgba(66,185,114,0.30)'
-          : calibrating ? 'rgba(255,193,74,0.30)' : 'rgba(73,154,222,0.24)';
+    ctx.fillStyle = !enabled
+      ? 'rgba(110,125,140,0.12)'
+      : error || danger
+        ? 'rgba(238,91,91,0.25)'
+        : saved || active
+          ? 'rgba(66,185,114,0.30)'
+          : calibrating
+            ? 'rgba(255,193,74,0.30)'
+            : 'rgba(73,154,222,0.24)';
     roundRect(ctx, button.x, button.y, button.w, button.h, 12);
     ctx.fill();
-    ctx.strokeStyle = !enabled ? 'rgba(150,165,180,0.22)'
-      : error || danger ? '#ff8d8d' : saved || active ? '#74e6a3' : '#8fd7ff';
+    ctx.strokeStyle = !enabled
+      ? 'rgba(150,165,180,0.22)'
+      : error || danger
+        ? '#ff8d8d'
+        : saved || active
+          ? '#74e6a3'
+          : '#8fd7ff';
     ctx.lineWidth = 2;
     ctx.stroke();
-    const onOff = (on: boolean) => on ? 'ON' : 'OFF';
-    let title = action === 'calibrate' ? 'T-POSE'
-      : action === 'restart' ? 'RESTART'
-        : action === 'place' ? `MOVE UI ${onOff(!!edit?.placing)}`
-          : action === 'stats' ? `VR STATS ${onOff(statsEnabled)}`
-            : action === 'view' ? `3RD PERSON ${onOff(thirdPerson)}`
-              : action === 'mixed' ? `MIXED REALITY ${onOff(!!edit?.mixedReality)}`
-                : action === 'controls' ? 'CONTROLS'
-                  : action === 'edit' ? `EDIT ${onOff(!!edit)}` : 'EXIT VR';
+    const onOff = (on: boolean) => (on ? 'ON' : 'OFF');
+    let title =
+      action === 'calibrate'
+        ? 'T-POSE'
+        : action === 'restart'
+          ? 'RESTART'
+          : action === 'place'
+            ? `MOVE UI ${onOff(!!edit?.placing)}`
+            : action === 'stats'
+              ? `VR STATS ${onOff(statsEnabled)}`
+              : action === 'view'
+                ? `3RD PERSON ${onOff(thirdPerson)}`
+                : action === 'mixed'
+                  ? `MIXED REALITY ${onOff(!!edit?.mixedReality)}`
+                  : action === 'controls'
+                    ? 'CONTROLS'
+                    : action === 'edit'
+                      ? `EDIT ${onOff(!!edit)}`
+                      : 'EXIT VR';
     if (action === 'calibrate') {
       if (calibrating) title = String(calibration.count ?? 3);
       else if (saved && calibration.standingHeight) title = `${calibration.standingHeight.toFixed(2)} M`;
@@ -563,8 +695,11 @@ function drawControlsPage(ctx: CanvasRenderingContext2D, mode: XrControlsMode, c
   ctx.fillStyle = '#8fd7ff';
   ctx.font = '700 17px system-ui, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(mode === 'ride' ? 'RIDING' : mode === 'edit' ? 'EDITING'
-    : carrying ? 'ON FOOT · HOLDING BOARD' : 'ON FOOT', W - 26, 76);
+  ctx.fillText(
+    mode === 'ride' ? 'RIDING' : mode === 'edit' ? 'EDITING' : carrying ? 'ON FOOT · HOLDING BOARD' : 'ON FOOT',
+    W - 26,
+    76,
+  );
   ctx.textAlign = 'left';
 
   const labels = xrControllerDiagramLabels(mode);
@@ -575,8 +710,15 @@ function drawControlsPage(ctx: CanvasRenderingContext2D, mode: XrControlsMode, c
   ctx.font = '800 14px system-ui, sans-serif';
   ctx.fillText(mode === 'edit' ? 'EDIT FLIGHT' : 'FLIGHT & BOARD', 26, 300);
   ctx.textAlign = 'right';
-  ctx.fillText(mode === 'ride' ? 'X RESPAWN · MENU RESTART' : mode === 'edit' ? 'MENU EDIT TO LEAVE'
-    : 'X SPAWN BOARD · MENU RESTART', W - 26, 300);
+  ctx.fillText(
+    mode === 'ride'
+      ? 'X RESPAWN · MENU RESTART'
+      : mode === 'edit'
+        ? 'MENU EDIT TO LEAVE'
+        : 'X SPAWN BOARD · MENU RESTART',
+    W - 26,
+    300,
+  );
   ctx.textAlign = 'left';
   ctx.font = '600 14px system-ui, sans-serif';
   (mode === 'edit' ? XR_EDIT_CONTROL_NOTES : XR_BOARD_CONTROL_NOTES).forEach((note, index) => {
@@ -598,8 +740,14 @@ function drawControlsPage(ctx: CanvasRenderingContext2D, mode: XrControlsMode, c
   ctx.textAlign = 'left';
 }
 
-function drawControllerCard(ctx: CanvasRenderingContext2D, x: number, y: number, title: string,
-                            handedness: 'left' | 'right', rows: readonly XrControllerDiagramRow[]) {
+function drawControllerCard(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  title: string,
+  handedness: 'left' | 'right',
+  rows: readonly XrControllerDiagramRow[],
+) {
   ctx.fillStyle = 'rgba(19,31,43,0.82)';
   roundRect(ctx, x, y, 232, 190, 14);
   ctx.fill();
@@ -640,8 +788,13 @@ export function xrMiniControllerLayout(handedness: 'left' | 'right') {
 
 /** Small orientation diagram: the coloured T/G/S and face-button marks correspond to the labelled rows beside
  * it, including the same inward-only grip paddle as the tracked 3D controller. */
-function drawMiniController(ctx: CanvasRenderingContext2D, cx: number, cy: number,
-                            handedness: 'left' | 'right', rows: readonly XrControllerDiagramRow[]) {
+function drawMiniController(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  handedness: 'left' | 'right',
+  rows: readonly XrControllerDiagramRow[],
+) {
   ctx.fillStyle = '#252a31';
   roundRect(ctx, cx - 15, cy - 8, 30, 82, 15);
   ctx.fill();
@@ -654,31 +807,27 @@ function drawMiniController(ctx: CanvasRenderingContext2D, cx: number, cy: numbe
 
   const has = (control: XrControllerDiagramRow['control']) => rows.some(row => row.control === control);
   const layout = xrMiniControllerLayout(handedness);
-  if (has('STICK')) miniControl(
-    ctx, cx + layout.stick.x, cy + layout.stick.y, 'S', controlColour('STICK'), 8,
-  );
+  if (has('STICK')) miniControl(ctx, cx + layout.stick.x, cy + layout.stick.y, 'S', controlColour('STICK'), 8);
   if (handedness === 'left') {
-    if (has('X')) miniControl(
-      ctx, cx + layout.faceLower.x, cy + layout.faceLower.y, 'X', controlColour('X'), 7,
-    );
-    if (has('Y')) miniControl(
-      ctx, cx + layout.faceUpper.x, cy + layout.faceUpper.y, 'Y', controlColour('Y'), 7,
-    );
+    if (has('X')) miniControl(ctx, cx + layout.faceLower.x, cy + layout.faceLower.y, 'X', controlColour('X'), 7);
+    if (has('Y')) miniControl(ctx, cx + layout.faceUpper.x, cy + layout.faceUpper.y, 'Y', controlColour('Y'), 7);
   } else {
-    if (has('A')) miniControl(
-      ctx, cx + layout.faceLower.x, cy + layout.faceLower.y, 'A', controlColour('A'), 7,
-    );
-    if (has('B')) miniControl(
-      ctx, cx + layout.faceUpper.x, cy + layout.faceUpper.y, 'B', controlColour('B'), 7,
-    );
+    if (has('A')) miniControl(ctx, cx + layout.faceLower.x, cy + layout.faceLower.y, 'A', controlColour('A'), 7);
+    if (has('B')) miniControl(ctx, cx + layout.faceUpper.x, cy + layout.faceUpper.y, 'B', controlColour('B'), 7);
   }
   if (has('TRIGGER')) miniControl(ctx, cx, cy - 45, 'T', controlColour('TRIGGER'), 7);
   const gripX = cx + (handedness === 'left' ? 16 : -16);
   if (has('GRIP')) miniControl(ctx, gripX, cy + 23, 'G', controlColour('GRIP'), 7);
 }
 
-function miniControl(ctx: CanvasRenderingContext2D, x: number, y: number, text: string,
-                     colour: string, radius: number) {
+function miniControl(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  text: string,
+  colour: string,
+  radius: number,
+) {
   ctx.fillStyle = colour;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -703,7 +852,9 @@ function controlColour(control: XrControllerDiagramRow['control']): string {
 function drawBoostMeter(ctx: CanvasRenderingContext2D, meter: number) {
   const lit = boostMeterSegments(meter);
   const colours = ['#ffe05a', '#ffc44d', '#ffa447', '#ff7d4c', '#ff555f'];
-  const x = 91, y = 368, gap = 3;
+  const x = 91,
+    y = 368,
+    gap = 3;
   const width = W - x - 18;
   const cell = (width - gap * (RIDE_BOOST_METER_SEGMENTS - 1)) / RIDE_BOOST_METER_SEGMENTS;
   ctx.fillStyle = '#ffd56a';
@@ -726,8 +877,14 @@ function drawTrick(ctx: CanvasRenderingContext2D, trick: NonNullable<RideRunStat
   ctx.fillText(`+${Math.max(0, Math.round(trick.points)).toLocaleString()}`, 26, y);
   if (trick.detail) {
     ctx.textAlign = 'right';
-    ctx.fillStyle = trick.state === 'bailed' ? '#ff8a7a'
-      : trick.kind === 'grind' ? '#c6a3ff' : trick.kind === 'grab' ? '#ffb3d1' : '#9fd4ff';
+    ctx.fillStyle =
+      trick.state === 'bailed'
+        ? '#ff8a7a'
+        : trick.kind === 'grind'
+          ? '#c6a3ff'
+          : trick.kind === 'grab'
+            ? '#ffb3d1'
+            : '#9fd4ff';
     ctx.font = '650 16px system-ui, sans-serif';
     ctx.fillText(trick.detail, W - 26, y - 2);
     ctx.textAlign = 'left';
@@ -739,14 +896,18 @@ const count = (value: number) => Math.round(value).toLocaleString();
 const millions = (value: number) => (value >= 1e6 ? `${(value / 1e6).toFixed(2)}M` : count(value));
 const megapixels = (s: XrHudPerf) => ((s.eyeWidth * s.eyeHeight * s.views) / 1e6).toFixed(1);
 const signed = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)} m`;
-const onOff = (value: boolean | null) => value === null ? '?' : value ? 'on' : 'off';
-const gpuTime = (value: number | null, state: GpuTimerState) => state === 'unsupported' ? 'unavail'
-  : state === 'disjoint' ? 'reset' : value === null ? 'wait' : ms(value);
-const gpuTimerStatus = (state: GpuTimerState) => state === 'unsupported'
-  ? 'unavailable · EXT timer not exposed by browser/runtime'
-  : state === 'pending' ? 'waiting for asynchronous query'
-    : state === 'disjoint' ? 'reset · invalid/disjoint result' : 'active · asynchronous elapsed query';
-const short = (value: string, limit: number) => value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
+const onOff = (value: boolean | null) => (value === null ? '?' : value ? 'on' : 'off');
+const gpuTime = (value: number | null, state: GpuTimerState) =>
+  state === 'unsupported' ? 'unavail' : state === 'disjoint' ? 'reset' : value === null ? 'wait' : ms(value);
+const gpuTimerStatus = (state: GpuTimerState) =>
+  state === 'unsupported'
+    ? 'unavailable · EXT timer not exposed by browser/runtime'
+    : state === 'pending'
+      ? 'waiting for asynchronous query'
+      : state === 'disjoint'
+        ? 'reset · invalid/disjoint result'
+        : 'active · asynchronous elapsed query';
+const short = (value: string, limit: number) => (value.length <= limit ? value : `${value.slice(0, limit - 1)}…`);
 
 /** Width of `text` at `font`, without disturbing the caller's current font. */
 function measure(ctx: CanvasRenderingContext2D, text: string, font: string): number {

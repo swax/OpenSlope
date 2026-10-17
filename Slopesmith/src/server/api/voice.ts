@@ -42,10 +42,18 @@ export function voiceConfig(): VoiceConfig | null {
   }
 
   let parsed: URL;
-  try { parsed = new URL(serverUrl); }
-  catch { throw new Error('SLOPESMITH_LIVEKIT_URL must be a valid ws:// or wss:// URL'); }
-  if ((parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') || parsed.username || parsed.password
-    || parsed.search || parsed.hash) {
+  try {
+    parsed = new URL(serverUrl);
+  } catch {
+    throw new Error('SLOPESMITH_LIVEKIT_URL must be a valid ws:// or wss:// URL');
+  }
+  if (
+    (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
     throw new Error('SLOPESMITH_LIVEKIT_URL must be a ws:// or wss:// URL without credentials, query, or hash');
   }
   if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'wss:') {
@@ -61,7 +69,7 @@ function requestClientId(req: ApiRequest): string {
   const raw = req.headers['x-slopesmith-client'];
   const value = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? '';
   if (!value || value.length > MAX_CLIENT_ID || !/^[a-zA-Z0-9._:-]+$/.test(value)) {
-    throw new Error('Voice chat needs this browser tab\'s valid client id.');
+    throw new Error("Voice chat needs this browser tab's valid client id.");
   }
   return value;
 }
@@ -76,7 +84,11 @@ export const voiceRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 200, { enabled: !!config });
         return;
       }
-      if (req.method !== 'POST') { res.statusCode = 405; res.end('GET or POST only'); return; }
+      if (req.method !== 'POST') {
+        res.statusCode = 405;
+        res.end('GET or POST only');
+        return;
+      }
       if (!config) {
         jsonResponse(res, 503, { error: 'Voice chat is not configured on this server.' });
         return;

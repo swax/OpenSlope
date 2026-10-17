@@ -65,8 +65,11 @@ const args = process.argv.slice(2);
 const minAt = args.indexOf('--min');
 const MIN_ROWS = minAt >= 0 ? Number(args[minAt + 1]) : 3;
 const named = args.filter((arg, i) => !arg.startsWith('--') && (minAt < 0 || i !== minAt + 1));
-const levels = named.length ? named
-  : readdirSync(MAPS_DIR).filter(level => existsSync(join(MAPS_DIR, level, 'Patches.json'))).sort();
+const levels = named.length
+  ? named
+  : readdirSync(MAPS_DIR)
+      .filter(level => existsSync(join(MAPS_DIR, level, 'Patches.json')))
+      .sort();
 
 /** A row turning tighter than this is a turn — the radius a path's turn tiles start at — and wider, straight. */
 const TURN_RADIUS_M = 80;
@@ -97,38 +100,72 @@ const sub = (a: V, b: V) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dist = (a: V, b: V) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const key = (p: V) => p.map(x => Math.round(x * 20)).join(',');
 const near = (a: number, b: number) => Math.abs(a - b) < 0.05;
-const median = (xs: readonly number[]) => { const s = [...xs].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] ?? NaN; };
+const median = (xs: readonly number[]) => {
+  const s = [...xs].sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)] ?? NaN;
+};
 const bump = <K>(map: Map<K, number>, k: K, by = 1) => map.set(k, (map.get(k) ?? 0) + by);
 
 /** One way two edge tiles are laid — which is on a rider's left going downhill, whether the art's top faces downhill,
  *  and which is the picture's left — and the rows laid so: how many, which way they turn, how tightly, how wide, and
  *  the tiles between their edges. */
 interface Laying {
-  left: string; right: string; topDownhill: boolean; pictureLeft: string; pictureRight: string;
-  rows: number; lefts: number; rights: number; straight: number; radii: number[];
-  widths: Map<number, number>; middles: Map<string, number>;
+  left: string;
+  right: string;
+  topDownhill: boolean;
+  pictureLeft: string;
+  pictureRight: string;
+  rows: number;
+  lefts: number;
+  rights: number;
+  straight: number;
+  radii: number[];
+  widths: Map<number, number>;
+  middles: Map<string, number>;
 }
 /** One tile as a rider sees it travelling out toward the trail's end: which way its art's top faces — 0 ahead, 1 right,
  *  2 back, 3 left — and whether it is mirrored. */
-interface Seen { tile: string; turn: number; mirror: boolean }
+interface Seen {
+  tile: string;
+  turn: number;
+  mirror: boolean;
+}
 /** A cap: its rows from the trail's last row of the set outward, each from the rider's left; how often it was found; and
  *  that last row, as seen from the same place. */
-interface Cap { rows: Seen[][]; count: number; body: Seen[] }
+interface Cap {
+  rows: Seen[][];
+  count: number;
+  body: Seen[];
+}
 /** Two edge tiles, every way they are laid, and the ground under them; how their trails end; how the next row of them
  *  along a trail is laid; the other couples whose rows are next along it, by id; and how often their rows were another
  *  set's cap. */
 interface Couple {
-  id: string; level: string; layings: Map<string, Laying>; surfaces: Map<number, number>;
-  caps: Map<string, Cap>; bareEnds: number; along: Map<string, number>; next: Map<string, number>; capRows: number;
+  id: string;
+  level: string;
+  layings: Map<string, Laying>;
+  surfaces: Map<number, number>;
+  caps: Map<string, Cap>;
+  bareEnds: number;
+  along: Map<string, number>;
+  next: Map<string, number>;
+  capRows: number;
 }
 /** A map's rows by edge tiles, and the tiles it lays on trail ground. */
-interface Study { couples: Couple[]; tiles: Map<string, number> }
+interface Study {
+  couples: Couple[];
+  tiles: Map<string, number>;
+}
 
 // ---- the art -----------------------------------------------------------------------------------------------------
 
 /** A tile's left and right art edges as colour columns, `SAMPLES` blocks top to bottom, each the mean of its rows,
  *  and its whole picture's mean colour. */
-interface Edges { left: Float64Array; right: Float64Array; mean: Float64Array }
+interface Edges {
+  left: Float64Array;
+  right: Float64Array;
+  mean: Float64Array;
+}
 const SAMPLES = 32;
 const edgeCache = new Map<string, Edges | null>();
 
@@ -141,7 +178,8 @@ function edgesOf(level: string, file: string): Edges | null {
     const column = (x: number) => {
       const col = new Float64Array(SAMPLES * 3);
       for (let y = 0; y < h; y++) {
-        const s = Math.min(SAMPLES - 1, Math.floor((y * SAMPLES) / h)), at = (y * w + x) * 4;
+        const s = Math.min(SAMPLES - 1, Math.floor((y * SAMPLES) / h)),
+          at = (y * w + x) * 4;
         for (let ch = 0; ch < 3; ch++) col[s * 3 + ch] += data[at + ch] / (255 * (h / SAMPLES));
       }
       return col;
@@ -149,7 +187,9 @@ function edgesOf(level: string, file: string): Edges | null {
     const mean = new Float64Array(3);
     for (let i = 0; i < w * h; i++) for (let ch = 0; ch < 3; ch++) mean[ch] += data[i * 4 + ch] / (255 * w * h);
     out = { left: column(0), right: column(w - 1), mean };
-  } catch { /* a tile that cannot be read is no candidate */ }
+  } catch {
+    /* a tile that cannot be read is no candidate */
+  }
   edgeCache.set(id, out);
   return out;
 }
@@ -164,10 +204,19 @@ function apart(a: Float64Array, b: Float64Array): number {
 /** Every trail row of one map, by its edge tiles. */
 function study(level: string): Study {
   const raw = JSON.parse(readFileSync(join(MAPS_DIR, level, 'Patches.json'), 'utf8')) as { Patches: RawPatch[] };
-  const ref = buildReferenceMesh(raw.Patches.filter(p => p.Points?.length >= 16), undefined, 1);
+  const ref = buildReferenceMesh(
+    raw.Patches.filter(p => p.Points?.length >= 16),
+    undefined,
+    1,
+  );
   const { patchCorners: corners, patchUV: uvs, patchTex: tex, patchSurf: surf } = ref;
   // A patch's four sides as corner pairs, corners [A, B, C, D] at (0,0), (0,1), (1,0), (1,1).
-  const SIDES: readonly (readonly [number, number])[] = [[0, 1], [1, 3], [3, 2], [2, 0]];
+  const SIDES: readonly (readonly [number, number])[] = [
+    [0, 1],
+    [1, 3],
+    [3, 2],
+    [2, 0],
+  ];
   const opposite = (side: readonly number[]) => SIDES.find(s => !s.includes(side[0]) && !s.includes(side[1]))!;
   const sideKey = (patch: number, side: readonly number[]) =>
     [key(corners[patch][side[0]]), key(corners[patch][side[1]])].sort().join('|');
@@ -188,7 +237,9 @@ function study(level: string): Study {
   const artEdge = (patch: number, side: readonly [number, number]) => {
     const uv = uvs[patch]!;
     const floor = Math.floor(Math.min(...uv.map(p => p[0])) + 1e-6);
-    const [i, j] = side, xi = uv[i][0] - floor, xj = uv[j][0] - floor;
+    const [i, j] = side,
+      xi = uv[i][0] - floor,
+      xj = uv[j][0] - floor;
     if (!near(xi, xj) || !(near(xi, 0) || near(xi, 1))) return null;
     return { right: near(xi, 1), top: -uv[i][1] > -uv[j][1] ? i : j };
   };
@@ -202,7 +253,8 @@ function study(level: string): Study {
   for (const list of bySide.values()) {
     if (list.length !== 2) continue;
     const [a, b] = list;
-    const ea = artEdge(a.patch, a.side), eb = artEdge(b.patch, b.side);
+    const ea = artEdge(a.patch, a.side),
+      eb = artEdge(b.patch, b.side);
     if (!ea || !eb || ea.right === eb.right) continue;
     if (key(corners[a.patch][ea.top]) !== key(corners[b.patch][eb.top])) continue;
     const [l, r, top] = ea.right ? [a, b, ea.top] : [b, a, eb.top];
@@ -237,45 +289,82 @@ function study(level: string): Study {
     while (last >= first && ground(whole[last])) last--;
     const row = whole.slice(first, last + 1);
     if (row.length < 2 || row.length > MAX_LANES) continue;
-    const edges = [tex[row[0]]!, tex[row.at(-1)!]!], middles = row.slice(1, -1).map(patch => tex[patch]!);
+    const edges = [tex[row[0]]!, tex[row.at(-1)!]!],
+      middles = row.slice(1, -1).map(patch => tex[patch]!);
     if (edges[0] === edges[1] || middles.some(middle => edges.includes(middle))) continue;
     // Downhill along the row's first seam, its picture's left patch `a` and right `b`.
     const { left: a, right: b, top } = rightOf.get(row[0])!;
     const c = corners[a.patch];
     const [p, q] = [c[a.side[0]], c[a.side[1]]];
     const [high, low] = p[1] >= q[1] ? [p, q] : [q, p];
-    const flow = sub(low, high), run = Math.hypot(flow[0], flow[2]);
+    const flow = sub(low, high),
+      run = Math.hypot(flow[0], flow[2]);
     if (run < 1e-6) continue;
     // Data space is the game's left-handed frame: facing `flow`, a rider's left is (−fz, 0, fx).
     const leftward = [-flow[2] / run, 0, flow[0] / run];
     const mid = [(high[0] + low[0]) / 2, (high[1] + low[1]) / 2, (high[2] + low[2]) / 2];
     const centre = (patch: number) => [0, 1, 2].map(k => corners[patch].reduce((s, v) => s + v[k], 0) / 4);
-    const pictureLeftOnLeft = (() => { const d = sub(centre(a.patch), mid); return d[0] * leftward[0] + d[2] * leftward[2] > 0; })();
+    const pictureLeftOnLeft = (() => {
+      const d = sub(centre(a.patch), mid);
+      return d[0] * leftward[0] + d[2] * leftward[2] > 0;
+    })();
     // Going downhill, the art's top faces downhill when the picture reads as found — its left on the left.
     const topDownhill = key(c[top]) === key(low);
-    const outer: [Half, Half] = [{ patch: row[0], side: opposite(a.side) }, {
-      patch: row.at(-1)!, side: opposite(row.length === 2 ? b.side : rightOf.get(row.at(-2)!)!.right.side),
-    }];
+    const outer: [Half, Half] = [
+      { patch: row[0], side: opposite(a.side) },
+      {
+        patch: row.at(-1)!,
+        side: opposite(row.length === 2 ? b.side : rightOf.get(row.at(-2)!)!.right.side),
+      },
+    ];
     const [riderLeft, riderRight] = pictureLeftOnLeft ? outer : [outer[1], outer[0]];
     // The turn, from the rims: each edge's side across from the rest of the row.
-    const rim = (half: Half) => { const k = corners[half.patch]; return { len: dist(k[half.side[0]], k[half.side[1]]), at: [0, 1, 2].map(i => (k[half.side[0]][i] + k[half.side[1]][i]) / 2) }; };
-    const l = rim(riderLeft), r = rim(riderRight);
+    const rim = (half: Half) => {
+      const k = corners[half.patch];
+      return {
+        len: dist(k[half.side[0]], k[half.side[1]]),
+        at: [0, 1, 2].map(i => (k[half.side[0]][i] + k[half.side[1]][i]) / 2),
+      };
+    };
+    const l = rim(riderLeft),
+      r = rim(riderRight);
     const theta = (r.len - l.len) / Math.max(dist(l.at, r.at), 1e-6); // > 0: the right rim is longer, turning left
     const radius = Math.abs(theta) > 1e-4 ? dist(high, low) / Math.abs(theta) : Infinity;
-    const left = tex[riderLeft.patch]!, right = tex[riderRight.patch]!;
+    const left = tex[riderLeft.patch]!,
+      right = tex[riderRight.patch]!;
     const id = [left, right].sort().join('|');
     const couple = couples.get(id) ?? {
-      id, level, layings: new Map<string, Laying>(), surfaces: new Map<number, number>(),
-      caps: new Map<string, Cap>(), bareEnds: 0, along: new Map<string, number>(), next: new Map<string, number>(), capRows: 0,
+      id,
+      level,
+      layings: new Map<string, Laying>(),
+      surfaces: new Map<number, number>(),
+      caps: new Map<string, Cap>(),
+      bareEnds: 0,
+      along: new Map<string, number>(),
+      next: new Map<string, number>(),
+      capRows: 0,
     };
     rows.push({ patches: row, id });
     const how = `${left}|${right}|${topDownhill}`;
     const lay: Laying = couple.layings.get(how) ?? {
-      left, right, topDownhill, pictureLeft: edges[0], pictureRight: edges[1],
-      rows: 0, lefts: 0, rights: 0, straight: 0, radii: [], widths: new Map(), middles: new Map(),
+      left,
+      right,
+      topDownhill,
+      pictureLeft: edges[0],
+      pictureRight: edges[1],
+      rows: 0,
+      lefts: 0,
+      rights: 0,
+      straight: 0,
+      radii: [],
+      widths: new Map(),
+      middles: new Map(),
     };
-    lay.rows++; lay.radii.push(radius);
-    if (radius > TURN_RADIUS_M) lay.straight++; else if (theta > 0) lay.lefts++; else lay.rights++;
+    lay.rows++;
+    lay.radii.push(radius);
+    if (radius > TURN_RADIUS_M) lay.straight++;
+    else if (theta > 0) lay.lefts++;
+    else lay.rights++;
     bump(lay.widths, row.length);
     for (const middle of middles) bump(lay.middles, middle);
     couple.layings.set(how, lay);
@@ -285,8 +374,10 @@ function study(level: string): Study {
   // ---- along the trails: how the rows follow each other, and how they end ----------------------------------------
   /** A patch's art right and art up as plan vectors (x, z), read off its UVs; null for a patch not one whole tile. */
   const artFrame = (patch: number): { right: [number, number]; up: [number, number] } | null => {
-    const uv = uvs[patch]!, k = corners[patch];
-    const fu = Math.floor(Math.min(...uv.map(p => p[0])) + 1e-6), fv = Math.floor(Math.min(...uv.map(p => p[1])) + 1e-6);
+    const uv = uvs[patch]!,
+      k = corners[patch];
+    const fu = Math.floor(Math.min(...uv.map(p => p[0])) + 1e-6),
+      fv = Math.floor(Math.min(...uv.map(p => p[1])) + 1e-6);
     const at = (u: number, v: number) => uv.findIndex(p => near(p[0] - fu, u) && near(p[1] - fv, v));
     const [tl, tr, bl] = [at(0, 0), at(1, 0), at(0, 1)];
     if (tl < 0 || tr < 0 || bl < 0) return null;
@@ -294,18 +385,22 @@ function study(level: string): Study {
   };
   /** The side of a patch its art's top (or bottom) edge lies on. */
   const artEnd = (patch: number, end: 'top' | 'bottom') => {
-    const uv = uvs[patch]!, fv = Math.floor(Math.min(...uv.map(p => p[1])) + 1e-6), want = end === 'top' ? 0 : 1;
+    const uv = uvs[patch]!,
+      fv = Math.floor(Math.min(...uv.map(p => p[1])) + 1e-6),
+      want = end === 'top' ? 0 : 1;
     return SIDES.find(([i, j]) => near(uv[i][1] - fv, want) && near(uv[j][1] - fv, want)) ?? null;
   };
   type Step = { patch: number; side: readonly [number, number] } | null;
   /** The patches across each of these sides, and the side of each across from where it was entered. */
-  const step = (from: readonly Step[]): Step[] => from.map(h => {
-    const list = h && bySide.get(sideKey(h.patch, h.side));
-    const next = list?.length === 2 ? list.find(other => other.patch !== h!.patch) : undefined;
-    return next && tex[next.patch] ? { patch: next.patch, side: opposite(next.side) } : null;
-  });
+  const step = (from: readonly Step[]): Step[] =>
+    from.map(h => {
+      const list = h && bySide.get(sideKey(h.patch, h.side));
+      const next = list?.length === 2 ? list.find(other => other.patch !== h!.patch) : undefined;
+      return next && tex[next.patch] ? { patch: next.patch, side: opposite(next.side) } : null;
+    });
   const patchesOf = (row: readonly Step[]) => row.map(h => h?.patch ?? null);
-  const open = (patches: readonly (number | null)[]) => patches.filter(p => p === null || ground(p)).length * 2 >= patches.length;
+  const open = (patches: readonly (number | null)[]) =>
+    patches.filter(p => p === null || ground(p)).length * 2 >= patches.length;
   const plan = (patches: readonly number[]): [number, number] => {
     const at = patches.flatMap(p => corners[p]);
     return [at.reduce((s, v) => s + v[0], 0) / at.length, at.reduce((s, v) => s + v[2], 0) / at.length];
@@ -317,15 +412,19 @@ function study(level: string): Study {
     // Data space is the game's left-handed frame: facing f, a rider's right is (fz, −fx).
     const r: [number, number] = [f[1], -f[0]];
     const coords = (v: [number, number]) => [v[0] * r[0] + v[1] * r[1], v[0] * f[0] + v[1] * f[1]];
-    const [ur, uf] = coords(frame.up), [rr, rf] = coords(frame.right);
-    const turn = Math.abs(uf) >= Math.abs(ur) ? (uf > 0 ? 0 : 2) : (ur > 0 ? 1 : 3);
+    const [ur, uf] = coords(frame.up),
+      [rr, rf] = coords(frame.right);
+    const turn = Math.abs(uf) >= Math.abs(ur) ? (uf > 0 ? 0 : 2) : ur > 0 ? 1 : 3;
     // Unmirrored, art right is art up turned a quarter clockwise.
     return { tile: tex[patch]!, turn, mirror: rr * uf - rf * ur < 0 };
   };
   /** A row's patches from the left of a rider facing `f`. */
   const fromLeft = (patches: readonly number[], f: [number, number]) => {
     const r = [f[1], -f[0]];
-    return [...patches].sort((p, q) => { const [a, b] = [plan([p]), plan([q])]; return a[0] * r[0] + a[1] * r[1] - (b[0] * r[0] + b[1] * r[1]); });
+    return [...patches].sort((p, q) => {
+      const [a, b] = [plan([p]), plan([q])];
+      return a[0] * r[0] + a[1] * r[1] - (b[0] * r[0] + b[1] * r[1]);
+    });
   };
   const rowAt = new Map<number, number>();
   rows.forEach((row, i) => row.patches.forEach(patch => rowAt.set(patch, i)));
@@ -343,18 +442,25 @@ function study(level: string): Study {
       let cur: Step[] = [{ patch, side }];
       for (let k = 1; k < best; k++) {
         const next = step(cur);
-        if (!next[0] || ground(next[0].patch)) { best = k; break; }
+        if (!next[0] || ground(next[0].patch)) {
+          best = k;
+          break;
+        }
         cur = next;
       }
     }
     return best;
   };
   const reaches = new Map<string, number[]>();
-  tex.forEach((name, patch) => { if (name && uvs[patch] && !ground(patch)) (reaches.get(name) ?? reaches.set(name, []).get(name)!).push(toEnd(patch)); });
+  tex.forEach((name, patch) => {
+    if (name && uvs[patch] && !ground(patch))
+      (reaches.get(name) ?? reaches.set(name, []).get(name)!).push(toEnd(patch));
+  });
   const endDepth = new Map<string, number>();
   for (const [name, list] of reaches) {
     let depth = Infinity;
-    for (let d = MAX_CAP_ROWS; d >= 1; d--) if (list.length >= 2 && list.filter(k => k <= d).length >= list.length * 0.6) depth = d;
+    for (let d = MAX_CAP_ROWS; d >= 1; d--)
+      if (list.length >= 2 && list.filter(k => k <= d).length >= list.length * 0.6) depth = d;
     endDepth.set(name, depth);
   }
   /** Whether a row's tiles all lie within `depth` rows of an end, as a cap's do. */
@@ -370,21 +476,26 @@ function study(level: string): Study {
       const passed: number[][] = [];
       let ended = false;
       for (let k = 0; k <= MAX_CAP_ROWS; k++) {
-        const next = step(cur), patches = patchesOf(next);
+        const next = step(cur),
+          patches = patchesOf(next);
         if (!k) {
           // The next row along, where it is one row of another couple's: the set the trail runs on into — a turn's.
-          const theirs = new Set(patches.map(p => p === null ? undefined : rowAt.get(p)));
+          const theirs = new Set(patches.map(p => (p === null ? undefined : rowAt.get(p))));
           const [j] = theirs;
           if (theirs.size === 1 && j !== undefined && rows[j].id !== id) bump(couple.next, rows[j].id);
         }
-        if (open(patches)) { ended = true; break; }
+        if (open(patches)) {
+          ended = true;
+          break;
+        }
         if (patches.some(p => p === null || ground(p))) break;
         if (!k && !capRow(patches as number[], MAX_CAP_ROWS)) {
           // The trail running on: how its next row is laid against this one.
           const [mine, theirs] = [artFrame(body[0]), artFrame(patches[0]!)];
           if (mine && theirs) {
             const dot = (u: number[], v: number[]) => u[0] * v[0] + u[1] * v[1];
-            const up = dot(mine.up, theirs.up) > 0, right = dot(mine.right, theirs.right) > 0;
+            const up = dot(mine.up, theirs.up) > 0,
+              right = dot(mine.right, theirs.right) > 0;
             bump(couple.along, up ? (right ? 'repeated' : 'mirrored') : right ? 'flipped' : 'turned');
           }
         }
@@ -395,10 +506,16 @@ function study(level: string): Study {
       // A row of the set itself is no cap tile's: the end is bare where it runs straight into ground, and capped where
       // every row passed is a cap's, each within its own distance of the end.
       if (capRow(body, passed.length + 1)) continue;
-      if (!passed.length) { couple.bareEnds++; continue; }
+      if (!passed.length) {
+        couple.bareEnds++;
+        continue;
+      }
       // Each within its own distance of the end, and on trail ground: a trail running into a cliff is not capped by it.
-      if (!passed.every((row, i) => capRow(row, passed.length - i) && row.every(p => !NOT_TRAIL.has(surf[p])))) continue;
-      const a = plan(body), b = plan(passed[0]), len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (!passed.every((row, i) => capRow(row, passed.length - i) && row.every(p => !NOT_TRAIL.has(surf[p]))))
+        continue;
+      const a = plan(body),
+        b = plan(passed[0]),
+        len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (len < 1e-6) continue;
       const f: [number, number] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
       const seen = passed.map(row => fromLeft(row, f).map(p => seenIn(p, f)));
@@ -429,19 +546,35 @@ function study(level: string): Study {
 
 /** A tile scored as the middle between a picture's left and right tiles: how far its edges are from theirs (`fit`),
  *  from each other (`self`, how it repeats beside itself), and its colour from theirs (`body`); `score` all three. */
-interface MiddleFit { tile: string; fit: number; self: number; body: number; score: number }
+interface MiddleFit {
+  tile: string;
+  fit: number;
+  self: number;
+  body: number;
+  score: number;
+}
 
 /** Every trail tile of the map but the edges, as a middle between them, best first. */
-function middlesByArt(level: string, pictureLeft: string, pictureRight: string, tiles: Map<string, number>): { seam: number; fits: MiddleFit[] } | null {
-  const l = edgesOf(level, pictureLeft), r = edgesOf(level, pictureRight);
+function middlesByArt(
+  level: string,
+  pictureLeft: string,
+  pictureRight: string,
+  tiles: Map<string, number>,
+): { seam: number; fits: MiddleFit[] } | null {
+  const l = edgesOf(level, pictureLeft),
+    r = edgesOf(level, pictureRight);
   if (!l || !r) return null;
   const fits: MiddleFit[] = [];
   for (const [tile, uses] of tiles) {
     if (uses < MIN_TILE_USE || tile === pictureLeft || tile === pictureRight) continue;
     const m = edgesOf(level, tile);
     if (!m) continue;
-    const fit = (apart(l.right, m.left) + apart(m.right, r.left)) / 2, self = apart(m.right, m.left);
-    const body = apart(m.mean, l.mean.map((v, ch) => (v + r.mean[ch]) / 2));
+    const fit = (apart(l.right, m.left) + apart(m.right, r.left)) / 2,
+      self = apart(m.right, m.left);
+    const body = apart(
+      m.mean,
+      l.mean.map((v, ch) => (v + r.mean[ch]) / 2),
+    );
     fits.push({ tile, fit, self, body, score: fit + self / 2 + body });
   }
   fits.sort((x, y) => x.score - y.score);
@@ -453,13 +586,21 @@ function middlesByArt(level: string, pictureLeft: string, pictureRight: string, 
 /** What a row is: a trail's, a turn's one way or either, or a cap's. */
 type Kind = 'trail' | 'left-turn' | 'right-turn' | 'turn' | 'cap';
 /** A row the study finds, as the row of a set it would be: its map, its name there, and what it is. */
-interface FoundRow extends TrailTileRow { level: string; name: string; kind: Kind }
+interface FoundRow extends TrailTileRow {
+  level: string;
+  name: string;
+  kind: Kind;
+}
 
 /** A candidate row for `trail-textures.ts`, and the evidence for it. */
 interface Candidate {
   set: FoundRow;
   /** Rows of the tiles together — or, for a turn set, laid its way — and how they turn. */
-  rows: number; left: number; right: number; straight: number; radius: number;
+  rows: number;
+  left: number;
+  right: number;
+  straight: number;
+  radius: number;
   /** Of them, laid exactly as the set is. */
   laid: number;
   surfaces: number[];
@@ -467,16 +608,20 @@ interface Candidate {
   widths: [number, number][];
   seen: [string, number][];
   /** Its picture's left and right tiles, for the art. */
-  pictureLeft: string; pictureRight: string;
+  pictureLeft: string;
+  pictureRight: string;
   /** How far its edges are from each other, and the middles by art. */
   seam: number | null;
   byArt: MiddleFit[];
   /** Where its middle came from. */
   middleFrom: 'seen' | 'art' | null;
   /** Its trails' caps, commonest first; how many ended bare; and how the next row along is laid. */
-  caps: Cap[]; bareEnds: number; along: [string, number][];
+  caps: Cap[];
+  bareEnds: number;
+  along: [string, number][];
   /** Its two edge tiles' id, and the sets its rows run on into, commonest first — by the names they are given. */
-  couple: string; next: [string, number][];
+  couple: string;
+  next: [string, number][];
   /** A trail's whole set: it, its turns and its cap. */
   full?: TrailTileSet;
 }
@@ -488,12 +633,18 @@ const tileRef = (level: string, file: string) => (file.includes('/') ? file : `$
 function candidates(couple: Couple): Candidate[] {
   const layings = [...couple.layings.values()];
   const sum = (pick: (lay: Laying) => number) => layings.reduce((n, lay) => n + pick(lay), 0);
-  const rows = sum(lay => lay.rows), lefts = sum(lay => lay.lefts), rights = sum(lay => lay.rights);
+  const rows = sum(lay => lay.rows),
+    lefts = sum(lay => lay.lefts),
+    rights = sum(lay => lay.rights);
   const surfaces = [...couple.surfaces.keys()].sort((x, y) => x - y);
   // Laid with its top downhill a tile is upright to a rider: a trail tile's own half turn plus two
   // (`trailTileViewOrient`); with its top uphill, as the trail tile's own turn.
   const set = (lay: Laying, kind: Kind): FoundRow => ({
-    level: couple.level, name: '', kind, left: tileRef(couple.level, lay.left), right: tileRef(couple.level, lay.right),
+    level: couple.level,
+    name: '',
+    kind,
+    left: tileRef(couple.level, lay.left),
+    right: tileRef(couple.level, lay.right),
     quarterTurns: lay.topDownhill ? 2 : 0,
   });
   // The middles and widths of every laying of the tiles: a middle seen between them fits however they are laid.
@@ -507,23 +658,60 @@ function candidates(couple: Couple): Candidate[] {
   const rotated = (lay: Laying) => `${lay.right}|${lay.left}|${!lay.topDownhill}`;
   const caps = [...couple.caps.values()].sort((x, y) => y.count - x.count);
   const along = [...couple.along].sort((x, y) => y[1] - x[1]);
-  const evidence = (lay: Laying, n: { rows: number; lefts: number; rights: number; straight: number; radii: number[] }) => ({
-    rows: n.rows, left: n.lefts, right: n.rights, straight: n.straight, radius: median(n.radii), surfaces, laid: lay.rows,
-    widths, seen, pictureLeft: lay.pictureLeft, pictureRight: lay.pictureRight, seam: null, byArt: [], middleFrom: null,
-    caps, bareEnds: couple.bareEnds, along, couple: couple.id, next: [...couple.next].sort((x, y) => y[1] - x[1]),
+  const evidence = (
+    lay: Laying,
+    n: { rows: number; lefts: number; rights: number; straight: number; radii: number[] },
+  ) => ({
+    rows: n.rows,
+    left: n.lefts,
+    right: n.rights,
+    straight: n.straight,
+    radius: median(n.radii),
+    surfaces,
+    laid: lay.rows,
+    widths,
+    seen,
+    pictureLeft: lay.pictureLeft,
+    pictureRight: lay.pictureRight,
+    seam: null,
+    byArt: [],
+    middleFrom: null,
+    caps,
+    bareEnds: couple.bareEnds,
+    along,
+    couple: couple.id,
+    next: [...couple.next].sort((x, y) => y[1] - x[1]),
   });
   if ((lefts + rights) / rows < TURN_SHARE) {
-    const commonest = layings.reduce((best, lay) => lay.rows > best.rows ? lay : best);
-    return [{ set: set(commonest, 'trail'), ...evidence(commonest, { rows, lefts, rights, straight: sum(lay => lay.straight), radii: layings.flatMap(lay => lay.radii) }) }];
+    const commonest = layings.reduce((best, lay) => (lay.rows > best.rows ? lay : best));
+    return [
+      {
+        set: set(commonest, 'trail'),
+        ...evidence(commonest, {
+          rows,
+          lefts,
+          rights,
+          straight: sum(lay => lay.straight),
+          radii: layings.flatMap(lay => lay.radii),
+        }),
+      },
+    ];
   }
   // Each way of turning: the laying used most for it — on a tie, the other way's laying turned round, as Mesa's are.
-  const best = (count: (lay: Laying) => number, partner?: Laying) => layings.reduce((top, lay) =>
-    count(lay) > count(top) || (count(lay) === count(top) && partner && `${lay.left}|${lay.right}|${lay.topDownhill}` === rotated(partner)) ? lay : top);
+  const best = (count: (lay: Laying) => number, partner?: Laying) =>
+    layings.reduce((top, lay) =>
+      count(lay) > count(top) ||
+      (count(lay) === count(top) && partner && `${lay.left}|${lay.right}|${lay.topDownhill}` === rotated(partner))
+        ? lay
+        : top,
+    );
   // A way of turning seen on fewer than two rows is not one the map marks.
   const forLeft = lefts ? best(lay => lay.lefts) : null;
   const forRight = rights ? best(lay => lay.rights, forLeft ?? undefined) : null;
-  const leftOk = !!forLeft && forLeft.lefts >= 2, rightOk = !!forRight && forRight.rights >= 2;
-  if (leftOk && rightOk && forLeft === forRight) return [{ set: set(forLeft!, 'turn'), ...evidence(forLeft!, forLeft!) }];
+  const leftOk = !!forLeft && forLeft.lefts >= 2,
+    rightOk = !!forRight && forRight.rights >= 2;
+  if (leftOk && rightOk && forLeft === forRight)
+    return [{ set: set(forLeft!, 'turn'), ...evidence(forLeft!, forLeft!) }];
   const out: Candidate[] = [];
   if (leftOk) out.push({ set: set(forLeft!, 'left-turn'), ...evidence(forLeft!, forLeft!) });
   if (rightOk) out.push({ set: set(forRight!, 'right-turn'), ...evidence(forRight!, forRight!) });
@@ -535,25 +723,46 @@ function candidates(couple: Couple): Candidate[] {
  *  about their colour (`MAX_BODY`). */
 function dress(c: Candidate, tiles: Map<string, number>) {
   const art = middlesByArt(c.set.level, c.pictureLeft, c.pictureRight, tiles);
-  if (art) { c.seam = art.seam; c.byArt = art.fits.slice(0, ART_SHOWN); }
+  if (art) {
+    c.seam = art.seam;
+    c.byArt = art.fits.slice(0, ART_SHOWN);
+  }
   const [seen, times] = c.seen[0] ?? [];
-  if (seen && times! >= 2) { c.set.middle = tileRef(c.set.level, seen); c.middleFrom = 'seen'; return; }
+  if (seen && times! >= 2) {
+    c.set.middle = tileRef(c.set.level, seen);
+    c.middleFrom = 'seen';
+    return;
+  }
   const top = c.byArt[0];
   if (top && c.seam !== null && top.fit <= Math.max(c.seam * 2, 0.06) && top.body <= MAX_BODY) {
-    c.set.middle = tileRef(c.set.level, top.tile); c.middleFrom = 'art';
+    c.set.middle = tileRef(c.set.level, top.tile);
+    c.middleFrom = 'art';
   }
 }
 
-const KIND_WORDS: Record<Kind, string> = { trail: 'Trail', 'left-turn': 'Left Turn', 'right-turn': 'Right Turn', turn: 'Turn', cap: 'Cap' };
+const KIND_WORDS: Record<Kind, string> = {
+  trail: 'Trail',
+  'left-turn': 'Left Turn',
+  'right-turn': 'Right Turn',
+  turn: 'Turn',
+  cap: 'Cap',
+};
 const KIND_ORDER: Kind[] = ['trail', 'left-turn', 'right-turn', 'turn'];
 /** The rows of a set a found row is. */
 const ROW_KEYS: Record<Kind, string[]> = {
-  trail: ['trail'], 'left-turn': ['leftTurn'], 'right-turn': ['rightTurn'], turn: ['rightTurn', 'leftTurn'], cap: ['cap'],
+  trail: ['trail'],
+  'left-turn': ['leftTurn'],
+  'right-turn': ['rightTurn'],
+  turn: ['rightTurn', 'leftTurn'],
+  cap: ['cap'],
 };
 
 /** A found row as a set's row. */
 const rowOf = (s: FoundRow): TrailTileRow => ({
-  left: s.left, right: s.right, ...(s.middle ? { middle: s.middle } : {}), ...(s.mirrored?.length ? { mirrored: [...s.mirrored] } : {}),
+  left: s.left,
+  right: s.right,
+  ...(s.middle ? { middle: s.middle } : {}),
+  ...(s.mirrored?.length ? { mirrored: [...s.mirrored] } : {}),
   quarterTurns: s.quarterTurns,
 });
 
@@ -569,16 +778,26 @@ function fullSet(c: Candidate, found: readonly Candidate[]): TrailTileSet {
         const t = byName.get(name);
         if (!t || !kinds.includes(t.set.kind)) continue;
         const row = rowOf(t.set);
-        if (t.middleFrom !== 'seen') { delete row.middle; if (trail.middle) row.middle = trail.middle; }
+        if (t.middleFrom !== 'seen') {
+          delete row.middle;
+          if (trail.middle) row.middle = trail.middle;
+        }
         return row;
       }
     }
     return undefined;
   };
-  const leftTurn = turn(['left-turn', 'turn']), rightTurn = turn(['right-turn', 'turn']);
-  const cap = c.caps.map(found => capRow(c.set.level, found.rows.at(-1)!, null, trail.middle)).find(row => !!row) ?? undefined;
+  const leftTurn = turn(['left-turn', 'turn']),
+    rightTurn = turn(['right-turn', 'turn']);
+  const cap =
+    c.caps.map(found => capRow(c.set.level, found.rows.at(-1)!, null, trail.middle)).find(row => !!row) ?? undefined;
   return {
-    level: c.set.level, name: c.set.name, ...(cap ? { cap } : {}), trail, ...(rightTurn ? { rightTurn } : {}), ...(leftTurn ? { leftTurn } : {}),
+    level: c.set.level,
+    name: c.set.name,
+    ...(cap ? { cap } : {}),
+    trail,
+    ...(rightTurn ? { rightTurn } : {}),
+    ...(leftTurn ? { leftTurn } : {}),
   };
 }
 
@@ -590,28 +809,44 @@ for (const level of levels) {
   const ordered: Candidate[] = [];
   for (const kind of KIND_ORDER) {
     const own = found.filter(c => c.set.kind === kind).sort((x, y) => y.rows - x.rows);
-    own.forEach((c, i) => { c.set.name = `${KIND_WORDS[kind]} ${i + 1}`; dress(c, tiles); });
+    own.forEach((c, i) => {
+      c.set.name = `${KIND_WORDS[kind]} ${i + 1}`;
+      dress(c, tiles);
+    });
     ordered.push(...own);
   }
   // The sets run on into, by name: a couple laid through both ways of turning is two sets, named together.
   const named = new Map<string, string>();
-  for (const c of ordered) named.set(c.couple, named.has(c.couple) ? `${named.get(c.couple)} / ${c.set.name}` : c.set.name);
+  for (const c of ordered)
+    named.set(c.couple, named.has(c.couple) ? `${named.get(c.couple)} / ${c.set.name}` : c.set.name);
   for (const c of ordered) c.next = c.next.filter(([id]) => named.has(id)).map(([id, n]) => [named.get(id)!, n]);
   for (const c of ordered) if (c.set.kind === 'trail') c.full = fullSet(c, ordered);
   report.push({ level, candidates: ordered });
 
-  const wide = ordered.filter(c => c.seen.length).length, capped = ordered.filter(c => c.caps.length).length;
-  console.log(`\n${level}: ${ordered.length} candidate set${ordered.length === 1 ? '' : 's'} (on ${MIN_ROWS}+ rows), ${wide} seen with a middle,`
-    + ` ${capped} with a cap`);
+  const wide = ordered.filter(c => c.seen.length).length,
+    capped = ordered.filter(c => c.caps.length).length;
+  console.log(
+    `\n${level}: ${ordered.length} candidate set${ordered.length === 1 ? '' : 's'} (on ${MIN_ROWS}+ rows), ${wide} seen with a middle,` +
+      ` ${capped} with a cap`,
+  );
   for (const c of ordered) {
     const r = Number.isFinite(c.radius) ? `${c.radius.toFixed(0)} m` : 'straight';
-    const middle = c.middleFrom === 'seen' ? `middle seen ×${c.seen[0][1]}` : c.middleFrom === 'art' ? `middle by art ${c.byArt[0].fit.toFixed(3)}` : 'no middle';
-    console.log(`  ${`${c.set.level}/${c.set.name}`.padEnd(22)} ${String(c.rows).padStart(3)} rows  median ${r.padEnd(8)}`
-      + ` turns L${c.left} R${c.right} straight ${c.straight}  widths ${c.widths.map(([w, n]) => `${w}×${n}`).join(' ')}  ${middle}`
-      + `  seam ${c.seam?.toFixed(3) ?? '?'}  surface ${c.surfaces.map(surfaceTypeLabel).join(', ')}`);
-    console.log(`    ends: ${c.caps.length ? `caps ${c.caps.map(cap => `×${cap.count}`).join(' ')}, ` : ''}bare ×${c.bareEnds}`
-      + `  along: ${c.along.map(([how, n]) => `${how} ×${n}`).join(', ') || '—'}`
-      + `  runs into: ${c.next.map(([name, n]) => `${name} ×${n}`).join(', ') || '—'}`);
+    const middle =
+      c.middleFrom === 'seen'
+        ? `middle seen ×${c.seen[0][1]}`
+        : c.middleFrom === 'art'
+          ? `middle by art ${c.byArt[0].fit.toFixed(3)}`
+          : 'no middle';
+    console.log(
+      `  ${`${c.set.level}/${c.set.name}`.padEnd(22)} ${String(c.rows).padStart(3)} rows  median ${r.padEnd(8)}` +
+        ` turns L${c.left} R${c.right} straight ${c.straight}  widths ${c.widths.map(([w, n]) => `${w}×${n}`).join(' ')}  ${middle}` +
+        `  seam ${c.seam?.toFixed(3) ?? '?'}  surface ${c.surfaces.map(surfaceTypeLabel).join(', ')}`,
+    );
+    console.log(
+      `    ends: ${c.caps.length ? `caps ${c.caps.map(cap => `×${cap.count}`).join(' ')}, ` : ''}bare ×${c.bareEnds}` +
+        `  along: ${c.along.map(([how, n]) => `${how} ×${n}`).join(', ') || '—'}` +
+        `  runs into: ${c.next.map(([name, n]) => `${name} ×${n}`).join(', ') || '—'}`,
+    );
     console.log(`    ${line(c.set)}`);
     if (c.caps[0]) console.log(`    // cap ×${c.caps[0].count}: ${capWords(c.set.level, c.caps[0])}`);
     if (c.full) console.log(`    whole set:\n${setLiteral(c.full).replace(/^/gm, '      ')}`);
@@ -625,7 +860,9 @@ function line(set: FoundRow): string {
 }
 /** A cap in words, its rows outward, each tile from the left: its ref, which way its art's top faces, and a mirror. */
 function capWords(level: string, cap: Cap): string {
-  return cap.rows.map(row => row.map(s => `${tileRef(level, s.tile)} ${'↑→↓←'[s.turn]}${s.mirror ? ' mirrored' : ''}`).join(' | ')).join(' / ');
+  return cap.rows
+    .map(row => row.map(s => `${tileRef(level, s.tile)} ${'↑→↓←'[s.turn]}${s.mirror ? ' mirrored' : ''}`).join(' | '))
+    .join(' / ');
 }
 const picture = (ref: string, quarterTurns: number, cls = '') => {
   const [level, file] = [ref.slice(0, ref.indexOf('/')), ref.slice(ref.indexOf('/') + 1)];
@@ -635,13 +872,22 @@ const picture = (ref: string, quarterTurns: number, cls = '') => {
 const blank = '<span class="blank">no middle</span>';
 /** A tile as a rider travelling out to the trail's end sees it. */
 const seenPicture = (level: string, s: Seen) => {
-  const ref = tileRef(level, s.tile), file = ref.slice(ref.indexOf('/') + 1);
-  return `<img src="../Maps/${esc(level)}/Textures/${esc(file)}" alt="${esc(ref)}" title="${esc(`${ref} ${'↑→↓←'[s.turn]}${s.mirror ? ' mirrored' : ''}`)}"`
-    + ` style="transform: rotate(${s.turn * 90}deg)${s.mirror ? ' scaleX(-1)' : ''}">`;
+  const ref = tileRef(level, s.tile),
+    file = ref.slice(ref.indexOf('/') + 1);
+  return (
+    `<img src="../Maps/${esc(level)}/Textures/${esc(file)}" alt="${esc(ref)}" title="${esc(`${ref} ${'↑→↓←'[s.turn]}${s.mirror ? ' mirrored' : ''}`)}"` +
+    ` style="transform: rotate(${s.turn * 90}deg)${s.mirror ? ' scaleX(-1)' : ''}">`
+  );
 };
 /** A cap drawn above the set's last row, the trail running up the page to its end. */
-const capBlock = (level: string, cap: Cap) => `<div class="cap"><div class="blocks">${[...cap.rows].reverse().concat([cap.body])
-  .map((row, i, all) => `<div class="brow${i === all.length - 1 ? ' body' : ''}">${row.map(s => seenPicture(level, s)).join('')}</div>`).join('')}</div>
+const capBlock = (level: string, cap: Cap) => `<div class="cap"><div class="blocks">${[...cap.rows]
+  .reverse()
+  .concat([cap.body])
+  .map(
+    (row, i, all) =>
+      `<div class="brow${i === all.length - 1 ? ' body' : ''}">${row.map(s => seenPicture(level, s)).join('')}</div>`,
+  )
+  .join('')}</div>
   <span>×${cap.count}</span></div>`;
 const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -685,14 +931,29 @@ that row of a set in TRAIL_TILE_SETS (core/mesh/trail-textures.ts). A row's caps
 the trail running up the page to its end, each tile as it is laid there. A trail is drawn as a whole set too — the 4×3 a
 path wears: its cap, itself, and the turn rows it runs on into most, a row it has none of faded — with the literal to
 paste. Minimum ${MIN_ROWS} rows.</p>
-${report.map(({ level, candidates: found }) => `<h2>${esc(level)} <span class="kind">${found.length} candidates</span></h2>
-${found.length ? `<div class="grid">${found.map(c => {
-    const q = c.set.quarterTurns;
-    const middle = c.set.middle ? picture(c.set.middle, q, `mid${c.middleFrom === 'seen' ? ' seen' : ''}`) : blank;
-    const seen = c.seen.slice(0, ART_SHOWN).map(([tile, n]) => `<div class="alt seen">${picture(tileRef(c.set.level, tile), q)}<b>×${n}</b></div>`).join('');
-    const art = c.byArt.map(fit => `<div class="alt">${picture(tileRef(c.set.level, fit.tile), q)}<span>${fit.fit.toFixed(3)}</span>`
-      + `<span>rep ${fit.self.toFixed(3)}</span><span>col ${fit.body.toFixed(3)}</span></div>`).join('');
-    return `<div class="card">
+${report
+  .map(
+    ({ level, candidates: found }) => `<h2>${esc(level)} <span class="kind">${found.length} candidates</span></h2>
+${
+  found.length
+    ? `<div class="grid">${found
+        .map(c => {
+          const q = c.set.quarterTurns;
+          const middle = c.set.middle
+            ? picture(c.set.middle, q, `mid${c.middleFrom === 'seen' ? ' seen' : ''}`)
+            : blank;
+          const seen = c.seen
+            .slice(0, ART_SHOWN)
+            .map(([tile, n]) => `<div class="alt seen">${picture(tileRef(c.set.level, tile), q)}<b>×${n}</b></div>`)
+            .join('');
+          const art = c.byArt
+            .map(
+              fit =>
+                `<div class="alt">${picture(tileRef(c.set.level, fit.tile), q)}<span>${fit.fit.toFixed(3)}</span>` +
+                `<span>rep ${fit.self.toFixed(3)}</span><span>col ${fit.body.toFixed(3)}</span></div>`,
+            )
+            .join('');
+          return `<div class="card">
   <div class="art">${picture(c.set.left, q)}${middle}${picture(c.set.right, q)}</div>
   <div class="lmr"><span>left</span><span>middle</span><span>right</span></div>
   <div><span class="name">${esc(`${c.set.level}/${c.set.name}`)}</span><span class="kind">${c.set.kind}</span></div>
@@ -701,20 +962,40 @@ ${found.length ? `<div class="grid">${found.map(c => {
   <div class="stats">ends: ${c.caps.length ? `capped ×${c.caps.reduce((n, cap) => n + cap.count, 0)}, ` : ''}bare ×${c.bareEnds}
     · along: ${esc(c.along.map(([how, n]) => `${how} ×${n}`).join(', ') || '—')}
     · runs into: ${esc(c.next.map(([name, n]) => `${name} ×${n}`).join(', ') || '—')}</div>
-  ${c.caps.length ? `<div class="label">caps</div><div class="caps">${c.caps.slice(0, CAPS_SHOWN).map(cap => capBlock(c.set.level, cap)).join('')}</div>` : ''}
+  ${
+    c.caps.length
+      ? `<div class="label">caps</div><div class="caps">${c.caps
+          .slice(0, CAPS_SHOWN)
+          .map(cap => capBlock(c.set.level, cap))
+          .join('')}</div>`
+      : ''
+  }
   ${seen ? `<div class="label">middles seen between them</div><div class="alts">${seen}</div>` : ''}
   ${art ? `<div class="label">middles by art (edge fit · repeats · colour)</div><div class="alts">${art}</div>` : ''}
   <code>${esc(line(c.set))}</code>
   ${c.full ? `<div class="label">as a whole set: its cap, itself, and the turns it runs into</div>${setHtml(c.full)}<pre>${esc(setLiteral(c.full))}</pre>` : ''}
 </div>`;
-  }).join('\n')}</div>` : '<p>No matched trail rows on this map.</p>'}`).join('\n')}
+        })
+        .join('\n')}</div>`
+    : '<p>No matched trail rows on this map.</p>'
+}`,
+  )
+  .join('\n')}
 </main></body></html>
 `;
 const sheet = tempFile('trail-sets.html');
 writeFileSync(sheet, html);
-writeFileSync(tempFile('trail-sets.json'), JSON.stringify(report.map(({ level, candidates: found }) => ({
-  level, candidates: found.map(c => ({ ...c, radius: Number.isFinite(c.radius) ? c.radius : null })),
-})), null, 2));
+writeFileSync(
+  tempFile('trail-sets.json'),
+  JSON.stringify(
+    report.map(({ level, candidates: found }) => ({
+      level,
+      candidates: found.map(c => ({ ...c, radius: Number.isFinite(c.radius) ? c.radius : null })),
+    })),
+    null,
+    2,
+  ),
+);
 console.log(`\nwrote ${sheet}`);
 
 // ---- the caps sheet: each cap on its trail, two lanes wide and three ---------------------------------------------
@@ -724,7 +1005,11 @@ function imageOf(level: string, file: string): Rgba | null {
   const id = `${level}/${file}`;
   if (!imageCache.has(id)) {
     let image: Rgba | null = null;
-    try { image = decodePng(readFileSync(join(MAPS_DIR, level, 'Textures', file))); } catch { /* none */ }
+    try {
+      image = decodePng(readFileSync(join(MAPS_DIR, level, 'Textures', file)));
+    } catch {
+      /* none */
+    }
     imageCache.set(id, image);
   }
   return imageCache.get(id)!;
@@ -744,11 +1029,20 @@ function seenEdge(level: string, s: Seen, side: 'left' | 'right' | 'top' | 'bott
     for (let k = 0; k < n; k++) {
       // The point on the page, 0..1 across, then back through the turn (clockwise quarters) and the mirror to the art.
       const along = (k + 0.5) / n;
-      let [u, v] = side === 'left' ? [0.001, along] : side === 'right' ? [0.999, along] : side === 'top' ? [along, 0.001] : [along, 0.999];
+      let [u, v] =
+        side === 'left'
+          ? [0.001, along]
+          : side === 'right'
+            ? [0.999, along]
+            : side === 'top'
+              ? [along, 0.001]
+              : [along, 0.999];
       for (let t = 0; t < s.turn; t++) [u, v] = [v, 1 - u];
       if (s.mirror) u = 1 - u;
-      const x = Math.min(image.w - 1, Math.floor(u * image.w)), y = Math.min(image.h - 1, Math.floor(v * image.h));
-      const block = Math.floor((k * SAMPLES) / n), at = (y * image.w + x) * 4;
+      const x = Math.min(image.w - 1, Math.floor(u * image.w)),
+        y = Math.min(image.h - 1, Math.floor(v * image.h));
+      const block = Math.floor((k * SAMPLES) / n),
+        at = (y * image.w + x) * 4;
       for (let ch = 0; ch < 3; ch++) out[block * 3 + ch] += image.data[at + ch] / (255 * (n / SAMPLES));
     }
   }
@@ -758,11 +1052,23 @@ function seenEdge(level: string, s: Seen, side: 'left' | 'right' | 'top' | 'bott
 
 /** A tile scored as the middle of a cap row: its edges against the cap's edge tiles (`fit`), its bottom against the
  *  trail's middle below it (`along`), and its colour against the cap's (`body`). */
-interface CapMiddle { tile: Seen; fit: number; along: number | null; body: number; score: number }
+interface CapMiddle {
+  tile: Seen;
+  fit: number;
+  along: number | null;
+  body: number;
+  score: number;
+}
 
 /** Every trail tile of the map, each way round, as the middle between a cap row's left and right tiles above the
  *  trail's own middle, best first — one way round a tile. */
-function capMiddles(level: string, left: Seen, right: Seen, below: Seen | null, tiles: Map<string, number>): CapMiddle[] {
+function capMiddles(
+  level: string,
+  left: Seen,
+  right: Seen,
+  below: Seen | null,
+  tiles: Map<string, number>,
+): CapMiddle[] {
   const [l, r] = [seenEdge(level, left, 'right'), seenEdge(level, right, 'left')];
   const [lm, rm] = [edgesOf(level, left.tile)?.mean, edgesOf(level, right.tile)?.mean];
   const top = below && seenEdge(level, below, 'top');
@@ -773,15 +1079,22 @@ function capMiddles(level: string, left: Seen, right: Seen, below: Seen | null, 
     const mean = edgesOf(level, tile)?.mean;
     if (!mean) continue;
     let best: CapMiddle | null = null;
-    for (let turn = 0; turn < 4; turn++) for (const mirror of [false, true]) {
-      const s = { tile, turn, mirror };
-      const ml = seenEdge(level, s, 'left'), mr = seenEdge(level, s, 'right'), mb = seenEdge(level, s, 'bottom');
-      if (!ml || !mr || !mb) continue;
-      const fit = (apart(l, ml) + apart(mr, r)) / 2, along = top ? apart(mb, top) : null;
-      const body = apart(mean, lm.map((v, ch) => (v + rm[ch]) / 2));
-      const score = fit + (along ?? 0) / 2 + body;
-      if (!best || score < best.score) best = { tile: s, fit, along, body, score };
-    }
+    for (let turn = 0; turn < 4; turn++)
+      for (const mirror of [false, true]) {
+        const s = { tile, turn, mirror };
+        const ml = seenEdge(level, s, 'left'),
+          mr = seenEdge(level, s, 'right'),
+          mb = seenEdge(level, s, 'bottom');
+        if (!ml || !mr || !mb) continue;
+        const fit = (apart(l, ml) + apart(mr, r)) / 2,
+          along = top ? apart(mb, top) : null;
+        const body = apart(
+          mean,
+          lm.map((v, ch) => (v + rm[ch]) / 2),
+        );
+        const score = fit + (along ?? 0) / 2 + body;
+        if (!best || score < best.score) best = { tile: s, fit, along, body, score };
+      }
     if (best) out.push(best);
   }
   return out.sort((x, y) => x.score - y.score).slice(0, ART_SHOWN);
@@ -790,8 +1103,15 @@ function capMiddles(level: string, left: Seen, right: Seen, below: Seen | null, 
 /** One cap of a map, wherever it was found: the sets it closed, and the one it closed most; its name in the map and its
  *  number on the sheet, to choose it by. */
 interface CapEntry {
-  level: string; cap: Cap; count: number; sets: string[]; home: Candidate; middles: CapMiddle[]; line: string | null;
-  name: string; number: number;
+  level: string;
+  cap: Cap;
+  count: number;
+  sets: string[];
+  home: Candidate;
+  middles: CapMiddle[];
+  line: string | null;
+  name: string;
+  number: number;
 }
 
 /** A cap row — two tiles and a middle, or three — as a set's cap row, where its tiles are laid at one turn, some
@@ -800,12 +1120,21 @@ interface CapEntry {
  *  the opposite. A two-tile row with no middle of its own takes `middle`, a ref, where one is given. */
 function capRow(level: string, row: readonly Seen[], between: Seen | null, middle?: string): TrailTileRow | null {
   const turnOf = (s: Seen) => (s.mirror ? s.turn + 2 : 6 - s.turn) % 4;
-  const [left, right, mid] = row.length === 3 ? [row[0], row[2], row[1]] : row.length === 2 ? [row[0], row[1], between] : [null, null, null];
+  const [left, right, mid] =
+    row.length === 3 ? [row[0], row[2], row[1]] : row.length === 2 ? [row[0], row[1], between] : [null, null, null];
   if (!left || !right || [left, right, ...(mid ? [mid] : [])].some(s => turnOf(s) !== turnOf(left))) return null;
-  const mirrored = ([['left', left], ['middle', mid], ['right', right]] as const).flatMap(([which, s]) => s?.mirror ? [which] : []);
+  const mirrored = (
+    [
+      ['left', left],
+      ['middle', mid],
+      ['right', right],
+    ] as const
+  ).flatMap(([which, s]) => (s?.mirror ? [which] : []));
   return {
-    left: tileRef(level, left.tile), right: tileRef(level, right.tile),
-    ...(mid ? { middle: tileRef(level, mid.tile) } : middle ? { middle } : {}), ...(mirrored.length ? { mirrored } : {}),
+    left: tileRef(level, left.tile),
+    right: tileRef(level, right.tile),
+    ...(mid ? { middle: tileRef(level, mid.tile) } : middle ? { middle } : {}),
+    ...(mirrored.length ? { mirrored } : {}),
     quarterTurns: turnOf(left),
   };
 }
@@ -818,15 +1147,29 @@ function capLine(level: string, name: string, row: readonly Seen[], middle: Seen
 const capReport: { level: string; caps: CapEntry[] }[] = [];
 for (const { level, candidates: found } of report) {
   const tiles = new Map<string, number>();
-  for (const name of readdirSync(join(MAPS_DIR, level, 'Textures')).filter(f => f.endsWith('.png'))) tiles.set(name, MIN_TILE_USE);
+  for (const name of readdirSync(join(MAPS_DIR, level, 'Textures')).filter(f => f.endsWith('.png')))
+    tiles.set(name, MIN_TILE_USE);
   const bySig = new Map<string, CapEntry>();
   for (const c of found) {
     for (const cap of c.caps) {
       const sig = JSON.stringify(cap.rows);
-      const entry = bySig.get(sig) ?? { level, cap, count: 0, sets: [], home: c, middles: [], line: null, name: '', number: 0 };
+      const entry = bySig.get(sig) ?? {
+        level,
+        cap,
+        count: 0,
+        sets: [],
+        home: c,
+        middles: [],
+        line: null,
+        name: '',
+        number: 0,
+      };
       entry.count += cap.count;
       entry.sets.push(`${c.set.name} ×${cap.count}`);
-      if (cap.count > (entry.home.caps.find(x => JSON.stringify(x.rows) === sig)?.count ?? 0)) { entry.home = c; entry.cap = cap; }
+      if (cap.count > (entry.home.caps.find(x => JSON.stringify(x.rows) === sig)?.count ?? 0)) {
+        entry.home = c;
+        entry.cap = cap;
+      }
       bySig.set(sig, entry);
     }
   }
@@ -837,8 +1180,11 @@ for (const { level, candidates: found } of report) {
     entry.name = `Cap ${i + 1}`;
     entry.number = before + i + 1;
     const row = entry.cap.rows[0];
-    const below = entry.home.set.middle ? { ...entry.cap.body[0], tile: entry.home.set.middle.slice(entry.home.set.middle.indexOf('/') + 1) } : null;
-    if (entry.cap.rows.length === 1 && row.length === 2) entry.middles = capMiddles(level, row[0], row[1], below, tiles);
+    const below = entry.home.set.middle
+      ? { ...entry.cap.body[0], tile: entry.home.set.middle.slice(entry.home.set.middle.indexOf('/') + 1) }
+      : null;
+    if (entry.cap.rows.length === 1 && row.length === 2)
+      entry.middles = capMiddles(level, row[0], row[1], below, tiles);
     const middle = entry.middles[0] && entry.middles[0].fit <= 0.08 ? entry.middles[0].tile : null;
     entry.line = capLine(level, entry.name, row, middle) ?? capLine(level, entry.name, row, null);
   });
@@ -846,15 +1192,22 @@ for (const { level, candidates: found } of report) {
   if (caps.length) {
     console.log(`\n${level} caps:`);
     for (const entry of caps) {
-      console.log(`  #${entry.number} ${entry.name}  ×${entry.count} ${capWords(level, entry.cap)}  (${entry.sets.join(', ')})`
-        + `${entry.line ? `\n    ${entry.line}` : '  — turned tile by tile; not one set'}`);
+      console.log(
+        `  #${entry.number} ${entry.name}  ×${entry.count} ${capWords(level, entry.cap)}  (${entry.sets.join(', ')})` +
+          `${entry.line ? `\n    ${entry.line}` : '  — turned tile by tile; not one set'}`,
+      );
     }
   }
 }
 
 /** A block of rows drawn as a rider travelling out to the end sees them, the end at the top. */
-const square = (level: string, rows: readonly (readonly (Seen | null)[])[], bodyRows: number) => `<div class="blocks">${rows.map((row, i) =>
-  `<div class="brow${i >= rows.length - bodyRows ? ' body' : ''}">${row.map(s => s ? seenPicture(level, s) : '<span class="hole"></span>').join('')}</div>`).join('')}</div>`;
+const square = (level: string, rows: readonly (readonly (Seen | null)[])[], bodyRows: number) =>
+  `<div class="blocks">${rows
+    .map(
+      (row, i) =>
+        `<div class="brow${i >= rows.length - bodyRows ? ' body' : ''}">${row.map(s => (s ? seenPicture(level, s) : '<span class="hole"></span>')).join('')}</div>`,
+    )
+    .join('')}</div>`;
 const capsHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Trail caps</title>
@@ -888,16 +1241,37 @@ left two lanes (2×2); on the right three (2×3), the set's middle in the trail'
 cap's — its edges running on from the cap's left and right tiles, its foot from the trail's middle. A cap laid at one
 turn has its line as a set's cap row, to paste into a set in TRAIL_TILE_SETS (core/mesh/trail-textures.ts); a path
 wears it with "caps" in its Textures.</p>
-${capReport.filter(({ caps }) => caps.length).map(({ level, caps }) => `<h2>${esc(level)} <span class="label">${caps.length} caps</span></h2>
-<div class="grid">${caps.map(entry => {
-    const { cap } = entry, middle = entry.middles[0]?.tile ?? null;
-    const setMiddle = entry.home.set.middle ? { ...cap.body[0], tile: entry.home.set.middle.slice(entry.home.set.middle.indexOf('/') + 1) } : null;
-    const two = square(level, [...[...cap.rows].reverse(), cap.body], 1);
-    const three = cap.rows.length === 1 && cap.body.length === 2
-      ? square(level, [[cap.rows[0][0], middle, cap.rows[0][1]], [cap.body[0], setMiddle, cap.body[1]]], 1) : '';
-    const alts = entry.middles.map(m => `<div class="alt">${seenPicture(level, m.tile)}<span>${m.fit.toFixed(3)}</span>`
-      + `<span>${m.along === null ? '' : `foot ${m.along.toFixed(3)}`}</span></div>`).join('');
-    return `<div class="card">
+${capReport
+  .filter(({ caps }) => caps.length)
+  .map(
+    ({ level, caps }) => `<h2>${esc(level)} <span class="label">${caps.length} caps</span></h2>
+<div class="grid">${caps
+      .map(entry => {
+        const { cap } = entry,
+          middle = entry.middles[0]?.tile ?? null;
+        const setMiddle = entry.home.set.middle
+          ? { ...cap.body[0], tile: entry.home.set.middle.slice(entry.home.set.middle.indexOf('/') + 1) }
+          : null;
+        const two = square(level, [...[...cap.rows].reverse(), cap.body], 1);
+        const three =
+          cap.rows.length === 1 && cap.body.length === 2
+            ? square(
+                level,
+                [
+                  [cap.rows[0][0], middle, cap.rows[0][1]],
+                  [cap.body[0], setMiddle, cap.body[1]],
+                ],
+                1,
+              )
+            : '';
+        const alts = entry.middles
+          .map(
+            m =>
+              `<div class="alt">${seenPicture(level, m.tile)}<span>${m.fit.toFixed(3)}</span>` +
+              `<span>${m.along === null ? '' : `foot ${m.along.toFixed(3)}`}</span></div>`,
+          )
+          .join('');
+        return `<div class="card">
   <div class="title"><span class="number">#${entry.number}</span><span class="name">${esc(`${level}/${entry.name}`)}</span></div>
   <div class="pair"><figure>${two}<figcaption>2 lanes</figcaption></figure>${three ? `<figure>${three}<figcaption>3 lanes</figcaption></figure>` : ''}</div>
   <div class="stats">found ×${entry.count} closing ${esc(entry.sets.join(', '))}</div>
@@ -905,7 +1279,10 @@ ${capReport.filter(({ caps }) => caps.length).map(({ level, caps }) => `<h2>${es
   ${alts ? `<div class="label">cap middles by art (edge fit · foot)</div><div class="alts">${alts}</div>` : ''}
   ${entry.line ? `<code>${esc(entry.line)}</code>` : '<div class="label">laid tile by tile — turned apart — so not one set</div>'}
 </div>`;
-  }).join('\n')}</div>`).join('\n')}
+      })
+      .join('\n')}</div>`,
+  )
+  .join('\n')}
 </main></body></html>
 `;
 const capSheet = tempFile('trail-caps.html');

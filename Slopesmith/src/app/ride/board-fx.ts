@@ -68,10 +68,10 @@ const WAKE_MIN_SPEED = 1;
 const WAKE_GROUND_REACH = 0.9;
 const WAKE_HEIGHT = 0.03;
 const WAKE_DARKEN = 0.06;
-const WAKE_SUN_SPLIT = 0.30;
+const WAKE_SUN_SPLIT = 0.3;
 const BOARD_HALF_LENGTH = 1.35 * 0.5;
-const BOARD_HALF_WIDTH = 0.40 * 0.5;
-const SKI_HALF_LENGTH = 1.70 * 0.5;
+const BOARD_HALF_WIDTH = 0.4 * 0.5;
+const SKI_HALF_LENGTH = 1.7 * 0.5;
 const SKI_PAIR_HALF_WIDTH = 0.15;
 const SKI_TRACK_HALF_SPAN = 0.105;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -91,23 +91,27 @@ const U = 0.01;
  * column is that buffer's fade TIME. Net: full width ≈ 3.5 cm per lifetime unit (snow 10 cm, powder 27 cm,
  * ice 4 cm), matching the live speck sizes.
  */
-const P6_SIZE_SCALE = 2 * 0.924 / 0.528 * U;
+const P6_SIZE_SCALE = ((2 * 0.924) / 0.528) * U;
 /** P6 ages a slot at `r = 5` engine seconds per wall second; its drag curve is written against that clock. */
 const P6_RATE = 5;
 const P6_CURVE_CLAMP = 2.7;
-const P6_GRAVITY = -100 * U / (P6_RATE * P6_RATE); // qw5 = gravity / r², world-down
+const P6_GRAVITY = (-100 * U) / (P6_RATE * P6_RATE); // qw5 = gravity / r², world-down
 /** Every additive buffer draws white at GS 128 (= 1.0). Kept as one knob because monitors are not a PS2 on a CRT. */
 const SPRAY_BRIGHTNESS = 1.0;
 
 // Sprite atlas: the shared PARTICLE.SSH names each buffer binds, in a 4×3 grid (headless tests keep a 1×1 white).
 const BOARD_SPRITE_COLUMNS = 4;
 const BOARD_SPRITE_CELL = 128;
-const BOARD_SPRITES = [
-  'ex06', 'ex07', 'ex08', 'ex09', 'spry', 'blb1', 'swp2', 'str3', 'cnf2', 'part',
-] as const;
+const BOARD_SPRITES = ['ex06', 'ex07', 'ex08', 'ex09', 'spry', 'blb1', 'swp2', 'str3', 'cnf2', 'part'] as const;
 const BOARD_SPRITE_ROWS = Math.ceil(BOARD_SPRITES.length / BOARD_SPRITE_COLUMNS);
 const BOARD_SPRITE = {
-  ex06: 0, spry: 4, snow: 5, offTrack: 6, powder: 7, ice: 8, grit: 9,
+  ex06: 0,
+  spry: 4,
+  snow: 5,
+  offTrack: 6,
+  powder: 7,
+  ice: 8,
+  grit: 9,
 } as const;
 
 /** The material table's spray columns for the surfaces that spray (rate 0 rows spray nothing at all). */
@@ -124,16 +128,21 @@ interface SurfaceSprayRow {
 const SURFACE_SPRAY: Readonly<Record<number, SurfaceSprayRow>> = {
   1: { rate: 0.0752, size: 3.008, fade: 0.2425, alpha: 0.401, sprite: BOARD_SPRITE.snow },
   2: { rate: 0.1591, size: 4.323, fade: 0.4518, alpha: 0.4066, sprite: BOARD_SPRITE.offTrack },
-  3: { rate: 0.5052, size: 7.852, fade: 0.5816, alpha: 0.2310, sprite: BOARD_SPRITE.powder },
+  3: { rate: 0.5052, size: 7.852, fade: 0.5816, alpha: 0.231, sprite: BOARD_SPRITE.powder },
   5: { rate: 0.1999, size: 1.214, fade: 0.2695, alpha: 0.508, sprite: BOARD_SPRITE.ice },
 };
 /** The airborne/rail puff the same ring emits: `swp2`, size [2,4), 0.6 s fade, alpha 0.25, additive. */
 const AIR_SPRAY: SurfaceSprayRow = { rate: 0, size: 3, fade: 0.6, alpha: 0.25, sprite: BOARD_SPRITE.offTrack };
 /** Spray sheet per-surface columns: `trail_emit_intensity` (alpha gain) and `trail_motion_scale` (throw). */
 const SHEET_ROWS: Readonly<Record<number, { gain: number; throw: number }>> = {
-  1: { gain: 0.2514, throw: 1.661 }, 2: { gain: 0.6, throw: 2.0 }, 3: { gain: 0.2586, throw: 3.003 },
-  4: { gain: 1.0788, throw: 3.951 }, 5: { gain: 0.00078, throw: 2.0 }, 8: { gain: 0.6, throw: 2.0 },
-  15: { gain: 0.6, throw: 2.0 }, 16: { gain: 0.6, throw: 2.0 },
+  1: { gain: 0.2514, throw: 1.661 },
+  2: { gain: 0.6, throw: 2.0 },
+  3: { gain: 0.2586, throw: 3.003 },
+  4: { gain: 1.0788, throw: 3.951 },
+  5: { gain: 0.00078, throw: 2.0 },
+  8: { gain: 0.6, throw: 2.0 },
+  15: { gain: 0.6, throw: 2.0 },
+  16: { gain: 0.6, throw: 2.0 },
 };
 const HARD_SURFACES = new Set([9, 13, 18, 19]);
 /**
@@ -144,7 +153,7 @@ const HARD_SURFACES = new Set([9, 13, 18, 19]);
 const SPARK_RATE = 12;
 const SPARK_COPIES = 7;
 const SPARK_COPY_AGE_STEP = 0.084;
-const SPARK_GRAVITY = -2000 * U / (SPARK_RATE * SPARK_RATE);
+const SPARK_GRAVITY = (-2000 * U) / (SPARK_RATE * SPARK_RATE);
 const SPARK_STEADY = 50;
 const SPARK_BURST = 1050;
 const SPARK_BURST_CHANCE = 1 / 60;
@@ -267,12 +276,16 @@ export function wakeSurfaceWidth(surface: number): number {
   return 1;
 }
 
-export function isPowderSurface(surface: number): boolean { return surface === 3 || surface === 4; }
+export function isPowderSurface(surface: number): boolean {
+  return surface === 3 || surface === 4;
+}
 export function isSnowFxSurface(surface: number): boolean {
   return surface === 1 || surface === 3 || surface === 4 || surface === 8 || surface === 16;
 }
 
-function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = clamp01((value - edge0) / Math.max(1e-9, edge1 - edge0));
   return t * t * (3 - 2 * t);
@@ -327,36 +340,44 @@ function createBoardParticleAtlas(): BoardParticleAtlas {
   canvas.width = BOARD_SPRITE_COLUMNS * BOARD_SPRITE_CELL;
   canvas.height = BOARD_SPRITE_ROWS * BOARD_SPRITE_CELL;
   const context = canvas.getContext('2d');
-  if (context) for (let index = 0; index < BOARD_SPRITES.length; index++) {
-    const x = (index % BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
-    const y = Math.floor(index / BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
-    const gradient = context.createRadialGradient(x + 64, y + 64, 4, x + 64, y + 64, 62);
-    gradient.addColorStop(0, 'rgba(255,255,255,1)');
-    gradient.addColorStop(0.65, 'rgba(255,255,255,0.55)');
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-    context.fillStyle = gradient;
-    context.fillRect(x, y, BOARD_SPRITE_CELL, BOARD_SPRITE_CELL);
-  }
+  if (context)
+    for (let index = 0; index < BOARD_SPRITES.length; index++) {
+      const x = (index % BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
+      const y = Math.floor(index / BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
+      const gradient = context.createRadialGradient(x + 64, y + 64, 4, x + 64, y + 64, 62);
+      gradient.addColorStop(0, 'rgba(255,255,255,1)');
+      gradient.addColorStop(0.65, 'rgba(255,255,255,0.55)');
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      context.fillStyle = gradient;
+      context.fillRect(x, y, BOARD_SPRITE_CELL, BOARD_SPRITE_CELL);
+    }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.flipY = false;
   texture.generateMipmaps = false;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  if (context) BOARD_SPRITES.forEach((name, index) => {
-    const image = new Image();
-    image.onload = () => {
-      const x = (index % BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
-      const y = Math.floor(index / BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
-      const scale = Math.min(BOARD_SPRITE_CELL / image.width, BOARD_SPRITE_CELL / image.height);
-      const width = image.width * scale, height = image.height * scale;
-      context.clearRect(x, y, BOARD_SPRITE_CELL, BOARD_SPRITE_CELL);
-      context.drawImage(image, x + (BOARD_SPRITE_CELL - width) * 0.5,
-        y + (BOARD_SPRITE_CELL - height) * 0.5, width, height);
-      texture.needsUpdate = true;
-    };
-    image.src = resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png`);
-  });
+  if (context)
+    BOARD_SPRITES.forEach((name, index) => {
+      const image = new Image();
+      image.onload = () => {
+        const x = (index % BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
+        const y = Math.floor(index / BOARD_SPRITE_COLUMNS) * BOARD_SPRITE_CELL;
+        const scale = Math.min(BOARD_SPRITE_CELL / image.width, BOARD_SPRITE_CELL / image.height);
+        const width = image.width * scale,
+          height = image.height * scale;
+        context.clearRect(x, y, BOARD_SPRITE_CELL, BOARD_SPRITE_CELL);
+        context.drawImage(
+          image,
+          x + (BOARD_SPRITE_CELL - width) * 0.5,
+          y + (BOARD_SPRITE_CELL - height) * 0.5,
+          width,
+          height,
+        );
+        texture.needsUpdate = true;
+      };
+      image.src = resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png`);
+    });
   return { texture };
 }
 
@@ -427,8 +448,12 @@ function spryMaterial(atlas: THREE.Texture): THREE.ShaderMaterial {
     },
     // The engine primes the sheet with its always-pass depth state, so the ground rail draws over the snow
     // instead of being clipped until the upper rails rise clear.
-    transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending, toneMapped: false,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
     vertexShader: `
       attribute float particleAlpha;
       varying vec2 vUv;
@@ -470,9 +495,10 @@ class BillboardBatch {
   count = 0;
 
   constructor(name: string, atlas: THREE.Texture, blending: THREE.Blending, renderOrder: number) {
-    this.geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-      -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0,
-    ], 3));
+    this.geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3),
+    );
     this.geometry.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
     this.geometry.setIndex([0, 1, 2, 0, 2, 3]);
     const instance = (array: Float32Array, itemSize: number) =>
@@ -490,24 +516,50 @@ class BillboardBatch {
     this.mesh.renderOrder = renderOrder;
   }
 
-  begin() { this.count = 0; }
+  begin() {
+    this.count = 0;
+  }
 
   /** One camera-facing quad of the given world HALF-extents. Alpha at or below zero is skipped outright. */
-  push(position: THREE.Vector3, halfX: number, halfY: number, alpha: number, r: number, g: number, b: number,
-    sprite: number, flipU = false, flipV = false) {
+  push(
+    position: THREE.Vector3,
+    halfX: number,
+    halfY: number,
+    alpha: number,
+    r: number,
+    g: number,
+    b: number,
+    sprite: number,
+    flipU = false,
+    flipV = false,
+  ) {
     if (this.count >= MAX_BILLBOARDS || alpha <= 0.0005) return;
-    const i = this.count++, at = i * 3, at2 = i * 2;
-    this.position[at] = position.x; this.position[at + 1] = position.y; this.position[at + 2] = position.z;
-    this.color[at] = r * SPRAY_BRIGHTNESS; this.color[at + 1] = g * SPRAY_BRIGHTNESS; this.color[at + 2] = b * SPRAY_BRIGHTNESS;
-    this.size[at2] = halfX; this.size[at2 + 1] = halfY;
+    const i = this.count++,
+      at = i * 3,
+      at2 = i * 2;
+    this.position[at] = position.x;
+    this.position[at + 1] = position.y;
+    this.position[at + 2] = position.z;
+    this.color[at] = r * SPRAY_BRIGHTNESS;
+    this.color[at + 1] = g * SPRAY_BRIGHTNESS;
+    this.color[at + 2] = b * SPRAY_BRIGHTNESS;
+    this.size[at2] = halfX;
+    this.size[at2 + 1] = halfY;
     this.alpha[i] = Math.min(1, alpha);
     this.sprite[i] = sprite;
-    this.flip[at2] = flipU ? 1 : 0; this.flip[at2 + 1] = flipV ? 1 : 0;
+    this.flip[at2] = flipU ? 1 : 0;
+    this.flip[at2 + 1] = flipV ? 1 : 0;
   }
 
   end() {
-    for (const name of ['instancePosition', 'instanceColor', 'instanceSize', 'instanceAlpha', 'instanceSprite',
-      'instanceFlip'])
+    for (const name of [
+      'instancePosition',
+      'instanceColor',
+      'instanceSize',
+      'instanceAlpha',
+      'instanceSprite',
+      'instanceFlip',
+    ])
       (this.geometry.getAttribute(name) as THREE.BufferAttribute).needsUpdate = true;
     this.geometry.instanceCount = this.count;
   }
@@ -579,7 +631,10 @@ export class BoardFx {
   private speed = 0;
   private slipFraction = 0;
 
-  constructor(private readonly scene: THREE.Object3D, private readonly ground?: WalkGroundQuery) {
+  constructor(
+    private readonly scene: THREE.Object3D,
+    private readonly ground?: WalkGroundQuery,
+  ) {
     this.group.name = 'PlayerBoardFx';
     this.group.matrixAutoUpdate = false; // every vertex is already in world space
 
@@ -590,10 +645,15 @@ export class BoardFx {
     const wakeIndex = new Uint16Array(WAKE_MAX * (WAKE_CROSS - 1) * 6);
     let wi = 0;
     for (let row = 0; row < WAKE_MAX; row++) {
-      const a = row * WAKE_CROSS, b = (row + 1) * WAKE_CROSS;
+      const a = row * WAKE_CROSS,
+        b = (row + 1) * WAKE_CROSS;
       for (let col = 0; col < WAKE_CROSS - 1; col++) {
-        wakeIndex[wi++] = a + col; wakeIndex[wi++] = a + col + 1; wakeIndex[wi++] = b + col;
-        wakeIndex[wi++] = b + col; wakeIndex[wi++] = a + col + 1; wakeIndex[wi++] = b + col + 1;
+        wakeIndex[wi++] = a + col;
+        wakeIndex[wi++] = a + col + 1;
+        wakeIndex[wi++] = b + col;
+        wakeIndex[wi++] = b + col;
+        wakeIndex[wi++] = a + col + 1;
+        wakeIndex[wi++] = b + col + 1;
       }
     }
     this.wakeGeometry.setIndex(new THREE.BufferAttribute(wakeIndex, 1));
@@ -605,23 +665,35 @@ export class BoardFx {
 
     // Engine order: plume → sheet → chunks → landing → powder, all depth-tested without writing. Additive
     // buffers commute, so one additive batch under the alpha chunks and the sheet on top is the same picture.
-    this.additive = new BillboardBatch('PlayerBoardSnowParticles', this.particleAtlas.texture,
-      THREE.AdditiveBlending, 4);
+    this.additive = new BillboardBatch(
+      'PlayerBoardSnowParticles',
+      this.particleAtlas.texture,
+      THREE.AdditiveBlending,
+      4,
+    );
     this.chunks = new BillboardBatch('PlayerBoardSnowChunks', this.particleAtlas.texture, THREE.NormalBlending, 5);
 
-    this.spryGeometry.setAttribute('position',
-      new THREE.BufferAttribute(this.spryPosition, 3).setUsage(THREE.DynamicDrawUsage));
-    this.spryGeometry.setAttribute('uv',
-      new THREE.BufferAttribute(this.spryUv, 2).setUsage(THREE.DynamicDrawUsage));
-    this.spryGeometry.setAttribute('particleAlpha',
-      new THREE.BufferAttribute(this.spryAlpha, 1).setUsage(THREE.DynamicDrawUsage));
+    this.spryGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.spryPosition, 3).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.spryGeometry.setAttribute('uv', new THREE.BufferAttribute(this.spryUv, 2).setUsage(THREE.DynamicDrawUsage));
+    this.spryGeometry.setAttribute(
+      'particleAlpha',
+      new THREE.BufferAttribute(this.spryAlpha, 1).setUsage(THREE.DynamicDrawUsage),
+    );
     const spryIndex = new Uint16Array((MAX_SPRY_COLUMNS - 1) * (SPRY_RAILS - 1) * 6);
     let si = 0;
     for (let column = 0; column < MAX_SPRY_COLUMNS - 1; column++) {
-      const a = column * SPRY_RAILS, b = a + SPRY_RAILS;
+      const a = column * SPRY_RAILS,
+        b = a + SPRY_RAILS;
       for (let rail = 0; rail < SPRY_RAILS - 1; rail++) {
-        spryIndex[si++] = a + rail; spryIndex[si++] = b + rail; spryIndex[si++] = a + rail + 1;
-        spryIndex[si++] = a + rail + 1; spryIndex[si++] = b + rail; spryIndex[si++] = b + rail + 1;
+        spryIndex[si++] = a + rail;
+        spryIndex[si++] = b + rail;
+        spryIndex[si++] = a + rail + 1;
+        spryIndex[si++] = a + rail + 1;
+        spryIndex[si++] = b + rail;
+        spryIndex[si++] = b + rail + 1;
       }
     }
     this.spryGeometry.setIndex(new THREE.BufferAttribute(spryIndex, 1));
@@ -642,11 +714,19 @@ export class BoardFx {
     if (teleported) this.clear();
     this.buildContactFrame(frame);
     this.age(h);
-    this.boostTrail.update({
-      position: frame.boardPosition, quaternion: frame.boardQuaternion, velocity: frame.vel,
-      active: frame.boostActive, energy: frame.boostEnergy, pad: frame.padBoost, gear,
-      thrustDirection: frame.boostDirection,
-    }, h);
+    this.boostTrail.update(
+      {
+        position: frame.boardPosition,
+        quaternion: frame.boardQuaternion,
+        velocity: frame.vel,
+        active: frame.boostActive,
+        energy: frame.boostEnergy,
+        pad: frame.padBoost,
+        gear,
+        thrustDirection: frame.boostDirection,
+      },
+      h,
+    );
 
     const onSnow = frame.grounded && !frame.grinding;
     const airborne = !frame.grounded && !frame.grinding;
@@ -659,7 +739,10 @@ export class BoardFx {
       if (this.airTime > 0.15 || impact > 2) this.touchdown(frame, this.lastVelocity.length());
     }
     if (!airborne) this.airTime = 0;
-    if (onSnow) { this.airLatched = false; this.airBurst = 0; }
+    if (onSnow) {
+      this.airLatched = false;
+      this.airBurst = 0;
+    }
     this.wasOnSnow = onSnow;
 
     if (wakeNearSurface) this.updateWake(frame, gear);
@@ -696,17 +779,22 @@ export class BoardFx {
     this.spryColumns.length = 0;
     this.boostTrail.clear();
     this.wakeGeometry.setDrawRange(0, 0);
-    this.additive.begin(); this.additive.end();
-    this.chunks.begin(); this.chunks.end();
+    this.additive.begin();
+    this.additive.end();
+    this.chunks.begin();
+    this.chunks.end();
     this.spryGeometry.setDrawRange(0, 0);
     this.haveFrame = false;
     this.wasOnSnow = false;
     this.airTime = 0;
     this.havePlumePosition = false;
     this.tickCarry = 0;
-    this.airBurst = 0; this.airLatched = false;
+    this.airBurst = 0;
+    this.airLatched = false;
     this.landingA = this.landingB = 0;
-    this.spryArmed = false; this.spryThrow = this.spryAlphaLp = this.spryJitter = 0; this.sprySide = 0;
+    this.spryArmed = false;
+    this.spryThrow = this.spryAlphaLp = this.spryJitter = 0;
+    this.sprySide = 0;
   }
 
   dispose() {
@@ -730,14 +818,23 @@ export class BoardFx {
   systemStats() {
     const newest = this.surfaceSlots[this.surfaceSlots.length - 1];
     return {
-      surface: this.surfaceBillboards(), surfaceSlots: this.surfaceSlots.length,
-      plume: this.plume.length, landing: this.landing.length, powder: this.powder.length,
-      sparks: this.sparkDots(), spryColumns: this.spryColumns.length,
-      boostSamples: this.boostTrail.stats().samples, boostVertices: this.boostTrail.stats().vertices,
-      newestSurface: newest ? {
-        count: newest.count, additive: newest.additive, sprite: newest.sprite,
-        throw: [newest.vBase.x, newest.vBase.y, newest.vBase.z] as const,
-      } : null,
+      surface: this.surfaceBillboards(),
+      surfaceSlots: this.surfaceSlots.length,
+      plume: this.plume.length,
+      landing: this.landing.length,
+      powder: this.powder.length,
+      sparks: this.sparkDots(),
+      spryColumns: this.spryColumns.length,
+      boostSamples: this.boostTrail.stats().samples,
+      boostVertices: this.boostTrail.stats().vertices,
+      newestSurface: newest
+        ? {
+            count: newest.count,
+            additive: newest.additive,
+            sprite: newest.sprite,
+            throw: [newest.vBase.x, newest.vBase.y, newest.vBase.z] as const,
+          }
+        : null,
     };
   }
 
@@ -786,7 +883,7 @@ export class BoardFx {
    * lateral chunk throw rotates from sideways toward vertical as the carve deepens.
    */
   private rolledLateral(lean: number, out: THREE.Vector3): THREE.Vector3 {
-    const theta = Math.min(Math.PI / 2, (120 * Math.PI / 180) * Math.abs(lean));
+    const theta = Math.min(Math.PI / 2, ((120 * Math.PI) / 180) * Math.abs(lean));
     this.outward(lean, out).multiplyScalar(Math.cos(theta)).addScaledVector(this.n, Math.sin(theta));
     return out.normalize();
   }
@@ -834,8 +931,10 @@ export class BoardFx {
     if (onSnow && this.slipFraction > 0.7 && speedU > 277.78) this.landingA = Math.min(1, this.landingA + 0.05);
     if (this.landingA > 0) {
       if (this.landingB < this.landingA * 0.1 + 0.5) {
-        this.spawnLandingPuff(this.contact.clone().addScaledVector(this.travel, this.range(0.1, 0.2)),
-          this.landingA * 0.05);
+        this.spawnLandingPuff(
+          this.contact.clone().addScaledVector(this.travel, this.range(0.1, 0.2)),
+          this.landingA * 0.05,
+        );
         this.landingB += 1;
       }
       this.landingA -= 1 / TICK_HZ;
@@ -844,13 +943,16 @@ export class BoardFx {
 
     // Sparks: rails, and rock/metal ridden on the ground. The snow buffers below all stand down on those.
     const onRail = frame.grinding;
-    if ((onRail || (onSnow && HARD_SURFACES.has(frame.surf))) && this.speed >= SPRAY_MIN_SPEED) this.tickSparks(frame, onRail);
+    if ((onRail || (onSnow && HARD_SURFACES.has(frame.surf))) && this.speed >= SPRAY_MIN_SPEED)
+      this.tickSparks(frame, onRail);
 
     if (airborne) {
       // The takeoff puff: the surface ring keeps emitting in the air from the board's tail, off a scalar seeded
       // to 70 on the first airborne tick that decays toward a trickle of 10, scaled down below ~2.8 m/s.
-      if (!this.airLatched) { this.airLatched = true; this.airBurst = 70; }
-      else if (this.airBurst > 10) this.airBurst *= 0.9467;
+      if (!this.airLatched) {
+        this.airLatched = true;
+        this.airBurst = 70;
+      } else if (this.airBurst > 10) this.airBurst *= 0.9467;
       const scalar = this.airBurst * Math.min(1, speedU / 277.78);
       const count = Math.floor(scalar / TICK_HZ + this.random());
       if (count > 0) this.spawnAirSlot(frame, count);
@@ -867,7 +969,7 @@ export class BoardFx {
     const row = SURFACE_SPRAY[frame.surf];
     if (row) {
       const motion = speedU * 0.006 * (1 + 149 * lean * lean);
-      const count = Math.floor(motion * row.rate / TICK_HZ + this.random());
+      const count = Math.floor((motion * row.rate) / TICK_HZ + this.random());
       if (count > 0) this.spawnGroundSlot(frame, row, Math.min(32, count));
     }
 
@@ -897,9 +999,21 @@ export class BoardFx {
     const randoms = new Float32Array(count * 6);
     for (let i = 0; i < randoms.length; i++) randoms[i] = 1 + this.random();
     const slot: SurfaceSlot = {
-      count, age: 0, pos: new THREE.Vector3(), scatterA: new THREE.Vector3(), scatterB: new THREE.Vector3(),
-      vBase: new THREE.Vector3(), vA: new THREE.Vector3(), vB: new THREE.Vector3(), vC: new THREE.Vector3(),
-      size: row.size, fade: row.fade, alpha: row.alpha, sprite: row.sprite, additive, randoms,
+      count,
+      age: 0,
+      pos: new THREE.Vector3(),
+      scatterA: new THREE.Vector3(),
+      scatterB: new THREE.Vector3(),
+      vBase: new THREE.Vector3(),
+      vA: new THREE.Vector3(),
+      vB: new THREE.Vector3(),
+      vC: new THREE.Vector3(),
+      size: row.size,
+      fade: row.fade,
+      alpha: row.alpha,
+      sprite: row.sprite,
+      additive,
+      randoms,
     };
     this.surfaceSlots.push(slot);
     return slot;
@@ -955,16 +1069,27 @@ export class BoardFx {
   private spawnPlumePuff(pos: THREE.Vector3, peak: number, knee: number) {
     if (this.plume.length >= PLUME_SLOTS) this.plume.shift();
     this.plume.push({
-      age: 0, sprite: this.randomExSprite(), flipU: this.random() < 0.5, flipV: this.random() < 0.5,
-      pos: pos.clone(), up: this.n.clone(), peak, knee,
+      age: 0,
+      sprite: this.randomExSprite(),
+      flipU: this.random() < 0.5,
+      flipV: this.random() < 0.5,
+      pos: pos.clone(),
+      up: this.n.clone(),
+      peak,
+      knee,
     });
   }
 
   private spawnLandingPuff(near: THREE.Vector3, peak: number) {
     if (this.landing.length >= LANDING_SLOTS) this.landing.shift();
     this.landing.push({
-      age: 0, sprite: this.randomExSprite(), flipU: this.random() < 0.5, flipV: this.random() < 0.5,
-      near, normal: this.n.clone(), peak,
+      age: 0,
+      sprite: this.randomExSprite(),
+      flipU: this.random() < 0.5,
+      flipV: this.random() < 0.5,
+      near,
+      normal: this.n.clone(),
+      peak,
     });
   }
 
@@ -978,7 +1103,9 @@ export class BoardFx {
     const speedU = impactSpeed / U;
     const bursts = Math.max(2, Math.min(8, Math.floor(0.0009 * speedU)));
     for (let i = 0; i < bursts; i++) {
-      const at = this.contact.clone().addScaledVector(this.travelDir, this.range(-0.4, 0.4))
+      const at = this.contact
+        .clone()
+        .addScaledVector(this.travelDir, this.range(-0.4, 0.4))
         .addScaledVector(this.side, this.range(-0.4, 0.4));
       this.spawnLandingPuff(at, 0.1);
     }
@@ -990,11 +1117,15 @@ export class BoardFx {
     if (this.powder.length >= POWDER_SLOTS) this.powder.shift();
     const lifeScale = Math.min(1, this.speed / 9.7222);
     this.powder.push({
-      age: 0, sprite: this.randomExSprite(), flipU: this.random() < 0.5, flipV: this.random() < 0.5,
+      age: 0,
+      sprite: this.randomExSprite(),
+      flipU: this.random() < 0.5,
+      flipV: this.random() < 0.5,
       life: Math.max(0.05, this.range(0.8, 1.2) * 0.4465 * lifeScale),
       maxHalf: this.range(0.8, 1.2) * 18.493 * U,
       grow: this.range(0.8, 1.2) * 113.95 * U,
-      scatterA: this.range(-44.17, 44.17) * U, scatterB: this.range(-44.17, 44.17) * U,
+      scatterA: this.range(-44.17, 44.17) * U,
+      scatterB: this.range(-44.17, 44.17) * U,
     });
   }
 
@@ -1017,11 +1148,16 @@ export class BoardFx {
     const origin = onRail ? frame.pos.clone() : this.contact.clone();
     origin.addScaledVector(frame.vel, onRail ? 0.04 : 0.02);
     this.sparks.push({
-      count, age: 0, fade: burst ? 0.65 : 0.25,
+      count,
+      age: 0,
+      fade: burst ? 0.65 : 0.25,
       pos: origin,
       scatterA: this.side.clone().multiplyScalar(30 * U),
       scatterB: this.travelDir.clone().multiplyScalar(-180 * U),
-      vBase: this.n.clone().multiplyScalar(0.05 * f).addScaledVector(this.travelDir, -0.1 * f),
+      vBase: this.n
+        .clone()
+        .multiplyScalar(0.05 * f)
+        .addScaledVector(this.travelDir, -0.1 * f),
       vA: this.side.clone().multiplyScalar(spread),
       vB: this.travelDir.clone().multiplyScalar(0.2 * f),
       vC: this.n.clone().multiplyScalar(0.2 * f),
@@ -1040,7 +1176,10 @@ export class BoardFx {
    */
   private tickSpry(frame: BoardFxFrame) {
     const row = SHEET_ROWS[frame.surf];
-    if (!row) { this.spryArmed = false; return; }
+    if (!row) {
+      this.spryArmed = false;
+      return;
+    }
     const carve = Math.abs(frame.lean) * (1 - this.slipFraction);
     const sideSign = frame.lean > 0 ? 1 : -1;
     const seed = row.gain * Math.max(0, carve - 0.2);
@@ -1053,16 +1192,24 @@ export class BoardFx {
       this.spryThrow = 0;
       this.spryAlphaLp = seed;
       this.spryColumns.length = 0;
-      this.spryDirection.copy(this.outward(frame.lean, new THREE.Vector3()))
-        .addScaledVector(this.n, SPRY_LAUNCH_TILT).normalize();
+      this.spryDirection
+        .copy(this.outward(frame.lean, new THREE.Vector3()))
+        .addScaledVector(this.n, SPRY_LAUNCH_TILT)
+        .normalize();
       this.lastSpryCommit.copy(this.contact);
       this.commitSpryColumn(true);
       return;
     }
-    if (sideSign !== this.sprySide) { this.spryArmed = false; return; }
+    if (sideSign !== this.sprySide) {
+      this.spryArmed = false;
+      return;
+    }
     this.spryThrow += (throwSpeed - this.spryThrow) * 0.0333;
     this.spryAlphaLp = seed * 0.3333 + this.spryAlphaLp * 0.6667;
-    if (this.spryAlphaLp <= 0.02) { this.spryArmed = false; return; }
+    if (this.spryAlphaLp <= 0.02) {
+      this.spryArmed = false;
+      return;
+    }
     const launch = this.outward(frame.lean, new THREE.Vector3()).addScaledVector(this.n, SPRY_LAUNCH_TILT).normalize();
     this.spryDirection.multiplyScalar(0.8333).addScaledVector(launch, 0.1667).normalize();
     const moved = this.contact.distanceTo(this.lastSpryCommit) > SPRY_COMMIT_SPACING;
@@ -1077,11 +1224,16 @@ export class BoardFx {
 
   private commitSpryColumn(fresh: boolean) {
     const last = this.spryColumns[this.spryColumns.length - 1];
-    const column: SpryColumn = fresh || !last ? {
-      points: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
-      velocities: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
-      age: 0, alpha: 0, u: this.spryCounter++ * 0.25,
-    } : last;
+    const column: SpryColumn =
+      fresh || !last
+        ? {
+            points: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+            velocities: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+            age: 0,
+            alpha: 0,
+            u: this.spryCounter++ * 0.25,
+          }
+        : last;
     if (fresh || !last) {
       if (this.spryColumns.length >= MAX_SPRY_COLUMNS) this.spryColumns.shift();
       this.spryColumns.push(column);
@@ -1126,13 +1278,18 @@ export class BoardFx {
     const boardSide = this.normalized(new THREE.Vector3().crossVectors(n, forward), side);
     const halfLength = gear === 'skis' ? SKI_HALF_LENGTH : BOARD_HALF_LENGTH;
     const halfWidth = gear === 'skis' ? SKI_PAIR_HALF_WIDTH : BOARD_HALF_WIDTH;
-    const fAcross = forward.dot(side), fAlong = forward.dot(tdir);
-    const sAcross = boardSide.dot(side), sAlong = boardSide.dot(tdir);
+    const fAcross = forward.dot(side),
+      fAlong = forward.dot(tdir);
+    const sAcross = boardSide.dot(side),
+      sAlong = boardSide.dot(tdir);
     const half = (halfLength * Math.abs(fAcross) + halfWidth * Math.abs(sAcross)) * wakeSurfaceWidth(frame.surf);
     const back = halfLength * Math.abs(fAlong) + halfWidth * Math.abs(sAlong);
     // `surfaceGap` seats the fallback on the probed plane even during a bump-skip. On real terrain, sample the
     // trailing edge itself: concave snow can rise behind the board faster than a tangent-plane projection.
-    const centre = frame.pos.clone().addScaledVector(n, -frame.surfaceGap + WAKE_HEIGHT).addScaledVector(tdir, -back);
+    const centre = frame.pos
+      .clone()
+      .addScaledVector(n, -frame.surfaceGap + WAKE_HEIGHT)
+      .addScaledVector(tdir, -back);
     const trailGround = this.ground?.(centre.x, centre.z, frame.pos.y + back);
     if (trailGround) centre.y = trailGround.y + WAKE_HEIGHT;
 
@@ -1148,7 +1305,11 @@ export class BoardFx {
       this.rows.push({ centre, side: side.clone(), half, age: 0, depth, gear });
       return;
     }
-    head.centre.copy(centre); head.side.copy(side); head.half = half; head.depth = depth; head.gear = gear;
+    head.centre.copy(centre);
+    head.side.copy(side);
+    head.half = half;
+    head.depth = depth;
+    head.gear = gear;
     head.age = 0;
     if (!committed || committed.centre.distanceToSquared(centre) >= WAKE_SPACING ** 2) {
       if (this.rows.length >= WAKE_MAX) this.rows.shift();
@@ -1157,16 +1318,19 @@ export class BoardFx {
   }
 
   private rebuildWake() {
-    if (this.rows.length < 2) { this.wakeGeometry.setDrawRange(0, 0); return; }
+    if (this.rows.length < 2) {
+      this.wakeGeometry.setDrawRange(0, 0);
+      return;
+    }
     for (let rowIndex = 0; rowIndex < this.rows.length; rowIndex++) {
       const row = this.rows[rowIndex];
       const fade = clamp01(1 - row.age / WAKE_LIFE);
       const depth = clamp01(row.depth);
-      const inner = THREE.MathUtils.lerp(0.82, 0.30, clamp01((depth - 0.4) / 0.5));
+      const inner = THREE.MathUtils.lerp(0.82, 0.3, clamp01((depth - 0.4) / 0.5));
       const sunSide = -row.side.dot(WAKE_SUN);
-      const columnStep = row.half * 2 / (WAKE_CROSS - 1);
+      const columnStep = (row.half * 2) / (WAKE_CROSS - 1);
       for (let col = 0; col < WAKE_CROSS; col++) {
-        const off = col / (WAKE_CROSS - 1) * 2 - 1;
+        const off = (col / (WAKE_CROSS - 1)) * 2 - 1;
         const vertex = rowIndex * WAKE_CROSS + col;
         const at = vertex * 3;
         this.wakePosition[at] = row.centre.x + row.side.x * off * row.half;
@@ -1269,9 +1433,10 @@ export class BoardFx {
     // Carve plume: max(2·age, 0.8) half-extent, lifted half its half-extent up the board's normal.
     for (const puff of this.plume) {
       const half = Math.max(200 * U * puff.age, 80 * U);
-      const opacity = puff.age < puff.knee
-        ? puff.peak * puff.age / puff.knee
-        : puff.peak * (2 - puff.age) / Math.max(0.001, 2 - puff.knee);
+      const opacity =
+        puff.age < puff.knee
+          ? (puff.peak * puff.age) / puff.knee
+          : (puff.peak * (2 - puff.age)) / Math.max(0.001, 2 - puff.knee);
       at.copy(puff.pos).addScaledVector(puff.up, half * 0.5);
       this.additive.push(at, half, half, opacity, 1, 1, 1, puff.sprite, puff.flipU, puff.flipV);
     }
@@ -1280,9 +1445,10 @@ export class BoardFx {
     // far up the normal it has risen; brightness ramps in over 0.2 s then falls off quadratically to 2 s.
     for (const puff of this.landing) {
       const length = (puff.age < 0.2 ? 600 * puff.age : 120 + 72.22 * (puff.age - 0.2)) * U;
-      const brightness = puff.age < 0.2
-        ? puff.peak * puff.age / 0.2
-        : puff.peak * (2 - puff.age) * 0.5556 * (0.6 + 0.2222 * (2 - puff.age));
+      const brightness =
+        puff.age < 0.2
+          ? (puff.peak * puff.age) / 0.2
+          : puff.peak * (2 - puff.age) * 0.5556 * (0.6 + 0.2222 * (2 - puff.age));
       at.copy(puff.near).addScaledVector(puff.normal, 0.9 * length);
       this.additive.push(at, length, length, brightness, 1, 1, 1, puff.sprite, puff.flipU, puff.flipV);
     }
@@ -1291,7 +1457,7 @@ export class BoardFx {
     // puff sliding 2 m/s backward — and lifted half its half-extent so it sits on the snow.
     for (const puff of this.powder) {
       if (puff.age >= puff.life) continue;
-      const half = Math.min(puff.grow / puff.life * puff.age, puff.maxHalf);
+      const half = Math.min((puff.grow / puff.life) * puff.age, puff.maxHalf);
       const opacity = 0.17 * (1 - puff.age / puff.life);
       at.copy(this.contact)
         .addScaledVector(this.travelDir, puff.scatterA - 200 * U * puff.age)
@@ -1305,14 +1471,18 @@ export class BoardFx {
   }
 
   private rebuildSpry() {
-    if (this.spryColumns.length < 2) { this.spryGeometry.setDrawRange(0, 0); return; }
+    if (this.spryColumns.length < 2) {
+      this.spryGeometry.setDrawRange(0, 0);
+      return;
+    }
     const railV = [0.98, 0.66, 0.34, 0.02];
     for (let column = 0; column < this.spryColumns.length; column++) {
       const sample = this.spryColumns[column];
       const alpha = sample.alpha * clamp01((SPRY_LIFE - sample.age) / SPRY_LIFE);
       for (let rail = 0; rail < SPRY_RAILS; rail++) {
         const vertex = column * SPRY_RAILS + rail;
-        const p = vertex * 3, uv = vertex * 2;
+        const p = vertex * 3,
+          uv = vertex * 2;
         this.spryPosition[p] = sample.points[rail].x;
         this.spryPosition[p + 1] = sample.points[rail].y;
         this.spryPosition[p + 2] = sample.points[rail].z;
@@ -1332,14 +1502,20 @@ export class BoardFx {
     return value.lengthSq() > 1e-8 ? value.clone().normalize() : fallback.clone().normalize();
   }
 
-  private randomExSprite(): number { return BOARD_SPRITE.ex06 + Math.floor(this.random() * 4); }
+  private randomExSprite(): number {
+    return BOARD_SPRITE.ex06 + Math.floor(this.random() * 4);
+  }
 
   private random(): number {
     let x = this.rng | 0;
-    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
     this.rng = x >>> 0;
     return this.rng / 0x1_0000_0000;
   }
 
-  private range(min: number, max: number): number { return min + (max - min) * this.random(); }
+  private range(min: number, max: number): number {
+    return min + (max - min) * this.random();
+  }
 }

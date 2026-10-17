@@ -29,7 +29,9 @@ const css = `
 
 /** Shell shared by both dialogs: panel, Escape-to-cancel, and a settle-once resolve. */
 function promptShell<T>(cancelValue: T): {
-  host: HTMLDivElement; done: Promise<T>; settle: (value: T) => void;
+  host: HTMLDivElement;
+  done: Promise<T>;
+  settle: (value: T) => void;
 } {
   installStyles('prompts', css);
   const { host, close } = modal();
@@ -46,10 +48,14 @@ function promptShell<T>(cancelValue: T): {
     };
   });
   // the shared backdrop click removes the DOM but cannot know our resolve value, so watch for it too
-  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') settle(cancelValue); };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') settle(cancelValue);
+  };
   document.addEventListener('keydown', onKey, true);
   const backdrop = host.parentElement!;
-  backdrop.addEventListener('click', e => { if (e.target === backdrop) settle(cancelValue); });
+  backdrop.addEventListener('click', e => {
+    if (e.target === backdrop) settle(cancelValue);
+  });
   return { host, done, settle };
 }
 
@@ -104,14 +110,22 @@ export function askName(opts: AskNameOptions): Promise<string | null> {
 
   const check = () => {
     const value = input.value.trim();
-    const problem = !value ? '' : opts.validate?.(value) ?? null;
+    const problem = !value ? '' : (opts.validate?.(value) ?? null);
     err.textContent = problem ?? '';
     ok.disabled = !value || !!problem;
     return ok.disabled ? null : value;
   };
-  const commit = () => { const value = check(); if (value) settle(value); };
+  const commit = () => {
+    const value = check();
+    if (value) settle(value);
+  };
   input.oninput = check;
-  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } };
+  input.onkeydown = e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    }
+  };
   ok.onclick = commit;
 
   check();
@@ -153,6 +167,6 @@ export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
   actions.append(cancel, ok);
 
   host.append(title, body, actions);
-  cancel.focus();  // destructive default is Cancel, so Enter cannot delete anything
+  cancel.focus(); // destructive default is Cancel, so Enter cannot delete anything
   return done;
 }

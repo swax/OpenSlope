@@ -18,25 +18,33 @@ export interface AnnouncerSettings {
 export type AnnouncerIndex = Record<AnnouncerEvent, string[]>;
 
 const record = (v: unknown): Record<string, unknown> =>
-  v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 const number = (v: unknown, fallback: number, max: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : fallback;
 
 export function normalizeAnnouncer(value: unknown): AnnouncerSettings {
-  const raw = record(value), events = record(raw.events);
+  const raw = record(value),
+    events = record(raw.events);
   return {
     volume: number(raw.volume, 0.85, 1),
     cooldownSeconds: number(raw.cooldownSeconds, 5, 60),
-    events: Object.fromEntries(ANNOUNCER_EVENT_IDS.map(id => {
-      const event = record(events[id]);
-      const file = typeof event.file === 'string' && /^[A-Za-z0-9_-]+\.wav$/i.test(event.file)
-        ? event.file : undefined;
-      return [id, { chance: number(event.chance, ANNOUNCER_EVENTS[id].chance, 1), ...(file ? { file } : {}) }];
-    })) as AnnouncerSettings['events'],
+    events: Object.fromEntries(
+      ANNOUNCER_EVENT_IDS.map(id => {
+        const event = record(events[id]);
+        const file =
+          typeof event.file === 'string' && /^[A-Za-z0-9_-]+\.wav$/i.test(event.file) ? event.file : undefined;
+        return [id, { chance: number(event.chance, ANNOUNCER_EVENTS[id].chance, 1), ...(file ? { file } : {}) }];
+      }),
+    ) as AnnouncerSettings['events'],
   };
 }
 
-export interface AnnouncerRideFrame { grounded: boolean; airTime: number; speed01: number; boosting: boolean }
+export interface AnnouncerRideFrame {
+  grounded: boolean;
+  airTime: number;
+  speed01: number;
+  boosting: boolean;
+}
 
 /** Fixed-tick event detector. A reset/remount clears flight state without inventing a landing or a GO. */
 export class AnnouncerRideEvents {
@@ -47,7 +55,11 @@ export class AnnouncerRideEvents {
   private sweet = 0;
 
   reset(): void {
-    this.airTime = 0; this.bigAirCalled = false; this.slow = 0; this.boostCooldown = 10; this.sweet = 0;
+    this.airTime = 0;
+    this.bigAirCalled = false;
+    this.slow = 0;
+    this.boostCooldown = 10;
+    this.sweet = 0;
   }
 
   step(dt: number, frame: AnnouncerRideFrame): AnnouncerEvent[] {
@@ -59,18 +71,28 @@ export class AnnouncerRideEvents {
       this.bigAirCalled = false;
     } else {
       this.airTime = frame.airTime;
-      if (!this.bigAirCalled && frame.airTime >= 1.4) { this.bigAirCalled = true; events.push('bigAir'); }
+      if (!this.bigAirCalled && frame.airTime >= 1.4) {
+        this.bigAirCalled = true;
+        events.push('bigAir');
+      }
     }
     this.boostCooldown -= dt;
     if (frame.boosting && frame.grounded && this.boostCooldown <= 0) {
-      events.push('boost'); this.boostCooldown = 45;
+      events.push('boost');
+      this.boostCooldown = 45;
     }
     if (frame.grounded && frame.speed01 < 0.18) {
       this.slow += dt;
-      if (this.slow > 6) { events.push('slow'); this.slow = -30; }
+      if (this.slow > 6) {
+        events.push('slow');
+        this.slow = -30;
+      }
     } else if (this.slow > 0) this.slow = 0;
     if (frame.grounded && frame.speed01 > 0.5) this.sweet += dt;
-    if (this.sweet > 40) { events.push('sweet'); this.sweet = 0; }
+    if (this.sweet > 40) {
+      events.push('sweet');
+      this.sweet = 0;
+    }
     return events;
   }
 }

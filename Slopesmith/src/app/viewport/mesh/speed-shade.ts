@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { captureProgress } from '../../state/capture-progress';
-import { mountainSpeedSolver, type MountainSpeedSolver, type SpeedLine, type SpeedQuilt } from '../../ride/mountain-speed';
+import {
+  mountainSpeedSolver,
+  type MountainSpeedSolver,
+  type SpeedLine,
+  type SpeedQuilt,
+} from '../../ride/mountain-speed';
 import { TRAIL_SPEED_FILL_OPACITY } from '../constants';
 import { trailSpeedColor } from './trail-speed-colors';
 
@@ -34,19 +39,29 @@ export interface SpeedShadeHost {
  * left bare.
  */
 export function createSpeedShade(parent: THREE.Object3D, host: SpeedShadeHost) {
-  const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: TRAIL_SPEED_FILL_OPACITY,
-    depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: TRAIL_SPEED_FILL_OPACITY,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
   // The terrain's own `color` attribute carries its tint and light; the wash reads `speedColor` in its place, whose
   // alpha leaves a wall bare.
   material.onBeforeCompile = shader => {
-    shader.vertexShader = 'attribute vec4 speedColor;\n'
-      + shader.vertexShader.replace('#include <color_vertex>', 'vColor = speedColor;');
+    shader.vertexShader =
+      'attribute vec4 speedColor;\n' + shader.vertexShader.replace('#include <color_vertex>', 'vColor = speedColor;');
   };
   material.customProgramCacheKey = () => 'mountain-speed-shade';
   const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
   mesh.renderOrder = 8; // over the terrain, under the selection's fills (9) and the cage wires
   mesh.visible = false;
-  mesh.raycast = () => { /* a pure wash, never a pick target */ };
+  mesh.raycast = () => {
+    /* a pure wash, never a pick target */
+  };
   parent.add(mesh);
 
   let on = false;
@@ -74,12 +89,18 @@ export function createSpeedShade(parent: THREE.Object3D, host: SpeedShadeHost) {
       else g.setAttribute('speedColor', new THREE.BufferAttribute(colors!, 4));
     }
     const shown = on && host.applies() && fits;
-    if (shown !== mesh.visible) { mesh.visible = shown; host.shown(shown); }
-    host.note?.(!shown || startGap <= FAR_START_M ? null
-      : Number.isFinite(startGap)
-        ? `The course starts ${startGap.toFixed(0)} m from any ground to ride, so nearly nothing is reached — `
-          + 'move it onto the mountain.'
-        : 'There is no ground to ride along the course.');
+    if (shown !== mesh.visible) {
+      mesh.visible = shown;
+      host.shown(shown);
+    }
+    host.note?.(
+      !shown || startGap <= FAR_START_M
+        ? null
+        : Number.isFinite(startGap)
+          ? `The course starts ${startGap.toFixed(0)} m from any ground to ride, so nearly nothing is reached — ` +
+            'move it onto the mountain.'
+          : 'There is no ground to ride along the course.',
+    );
   }
 
   function stop() {
@@ -101,11 +122,17 @@ export function createSpeedShade(parent: THREE.Object3D, host: SpeedShadeHost) {
   function slice() {
     timer = null;
     const quilt = host.quilt();
-    if (!on || !quilt || linesKey === null || !host.applies()) { stop(); return; }
+    if (!on || !quilt || linesKey === null || !host.applies()) {
+      stop();
+      return;
+    }
     solver ??= mountainSpeedSolver(quilt, host.lines());
     const until = performance.now() + SLICE_MS;
     const result = solver.run(() => performance.now() < until);
-    if (!result) { timer = setTimeout(slice, 0); return; }
+    if (!result) {
+      timer = setTimeout(slice, 0);
+      return;
+    }
     stop();
     // Ground no lane comes near, or nobody rides, is left bare rather than shown as ground never reached.
     const rgba = new Float32Array(result.speed.length * 4);
@@ -124,7 +151,11 @@ export function createSpeedShade(parent: THREE.Object3D, host: SpeedShadeHost) {
       if (next === on) return;
       on = next;
       // Nothing follows the quilt while the wash is off, so what it last showed is no guide to the next.
-      if (on) schedule(0); else { stop(); colors = null; }
+      if (on) schedule(0);
+      else {
+        stop();
+        colors = null;
+      }
       present();
     },
     /** The course's lines may have changed: `key` names what they are now, so the same lines ride nothing again,
@@ -143,7 +174,9 @@ export function createSpeedShade(parent: THREE.Object3D, host: SpeedShadeHost) {
       schedule();
     },
     /** Patches moved or were repainted in place: re-ride once they settle. */
-    changed() { schedule(); },
+    changed() {
+      schedule();
+    },
     /** Whether the quilt is a mountain's may have changed (a model edit began or ended): if it did, show or hide, and
      *  re-ride. A model's mesh takes the terrain's place meanwhile, so nothing shown before it is kept. Hosts call
      *  this on every synced document too, so it does nothing while the answer stands. */

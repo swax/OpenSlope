@@ -104,7 +104,9 @@ export interface RoomPolicy {
   awarenessMs: number;
 }
 
-export interface LibraryChange { scope: 'custom' | 'shared' }
+export interface LibraryChange {
+  scope: 'custom' | 'shared';
+}
 
 export interface SessionWelcome {
   sessionId: string;
@@ -268,7 +270,11 @@ export function createSessionChannel(deps: {
   onRevision?: (push: { projectId: string; project: ClientProject; document: EditDoc }) => void;
   /** Ownership/edit policy changed without replacing the document. */
   onProjectAccess?: (change: {
-    projectId: string; project: ClientProject; writable: boolean; reason?: string; document?: EditDoc;
+    projectId: string;
+    project: ClientProject;
+    writable: boolean;
+    reason?: string;
+    document?: EditDoc;
   }) => void;
   /** The map this tab was on has been deleted on the server, so there is nothing left to watch or write to. */
   onGone?: (map: { projectId: string; name: string }) => void;
@@ -337,12 +343,16 @@ export function createSessionChannel(deps: {
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let trackingActivity = false;
 
-  const url = deps.url ?? ((): string => {
-    const secure = location.protocol === 'https:';
-    return `${secure ? 'wss' : 'ws'}://${location.host}/api/session`
-      + `?client=${encodeURIComponent(deps.clientId)}`
-      + `&device=${encodeURIComponent(deps.deviceLabel ?? 'device')}`;
-  });
+  const url =
+    deps.url ??
+    ((): string => {
+      const secure = location.protocol === 'https:';
+      return (
+        `${secure ? 'wss' : 'ws'}://${location.host}/api/session` +
+        `?client=${encodeURIComponent(deps.clientId)}` +
+        `&device=${encodeURIComponent(deps.deviceLabel ?? 'device')}`
+      );
+    });
   /** Where the socket connects. The replica is added to whichever address is used, so a caller that supplies its
    *  own still says whose batches it carries. */
   const address = (): string => {
@@ -364,19 +374,30 @@ export function createSessionChannel(deps: {
   const checkIdle = (): void => {
     idleTimer = null;
     const remaining = MEMBER_IDLE_AFTER_MS - (Date.now() - lastActivity);
-    if (remaining > 0) { idleTimer = setTimeout(checkIdle, remaining); return; }
-    if (!idle) { idle = true; post({ t: 'idle', idle: true }); }
+    if (remaining > 0) {
+      idleTimer = setTimeout(checkIdle, remaining);
+      return;
+    }
+    if (!idle) {
+      idle = true;
+      post({ t: 'idle', idle: true });
+    }
   };
   const armIdleTimer = (): void => {
     if (!idleTimer) idleTimer = setTimeout(checkIdle, MEMBER_IDLE_AFTER_MS);
   };
   const noteActivity = (): void => {
     lastActivity = Date.now();
-    if (idle) { idle = false; post({ t: 'idle', idle: false }); }
+    if (idle) {
+      idle = false;
+      post({ t: 'idle', idle: false });
+    }
     armIdleTimer();
   };
   const activity = (): void => noteActivity();
-  const visibilityActivity = (): void => { if (!document.hidden) noteActivity(); };
+  const visibilityActivity = (): void => {
+    if (!document.hidden) noteActivity();
+  };
   const startActivityTracking = (): void => {
     if (trackingActivity || typeof window === 'undefined' || typeof document === 'undefined') return;
     trackingActivity = true;
@@ -395,7 +416,10 @@ export function createSessionChannel(deps: {
     }
     window.removeEventListener('focus', activity);
     document.removeEventListener('visibilitychange', visibilityActivity);
-    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
   };
 
   function handle(message: ServerMessage): void {
@@ -416,15 +440,20 @@ export function createSessionChannel(deps: {
         post({ t: 'playing', playing });
         post({ t: 'idle', idle });
         if (!deps.publicPlay) post({ t: 'screen-share', enabled: screenSharing });
-        if (observedSessionId) post({
-          t: 'screen-observe', sessionId: observedSessionId, active: screenObservationActive,
-        });
+        if (observedSessionId)
+          post({
+            t: 'screen-observe',
+            sessionId: observedSessionId,
+            active: screenObservationActive,
+          });
         lastScreenState = '';
         deps.onWelcome?.(welcome);
         return;
       }
       case 'pong': {
-        const echo = Number(message.echo), serverTime = Number(message.serverTime), received = Date.now();
+        const echo = Number(message.echo),
+          serverTime = Number(message.serverTime),
+          received = Date.now();
         if (Number.isFinite(echo) && Number.isFinite(serverTime) && echo <= received) {
           // NTP's midpoint estimate: symmetric delay is the best information a browser socket can provide. Ease
           // later samples so a route change corrects clock drift without moving every remote player in one cut.
@@ -439,10 +468,12 @@ export function createSessionChannel(deps: {
         deps.onPresence?.(presenceMaps);
         return;
       case 'presence-delta': {
-        const change = message.change as {
-          sessionId?: string;
-          to?: { projectId?: string; entry?: PresenceEntry } | null;
-        } | undefined;
+        const change = message.change as
+          | {
+              sessionId?: string;
+              to?: { projectId?: string; entry?: PresenceEntry } | null;
+            }
+          | undefined;
         const sessionId = change?.sessionId;
         if (!sessionId) return;
         // A delta is absolute for this session. Remove it wherever an older delivery left it, then place the
@@ -464,18 +495,23 @@ export function createSessionChannel(deps: {
         // A rejoin stays at the sequence it asked from until its catch-up lands: the replica does not hold what
         // lies between, and a claim or a reconnection measured from the room's head would skip it.
         if (view.projectId === watching) {
-          if (!catchingUp) { at = view.at; room = view.room; }
+          if (!catchingUp) {
+            at = view.at;
+            room = view.room;
+          }
           writable = view.writable;
         }
         deps.onJoined?.(view);
         return;
       }
       case 'sync': {
-        const push = message as unknown as
-          { projectId: string; at: number; changes: RegisterAssignment[]; by: string };
+        const push = message as unknown as { projectId: string; at: number; changes: RegisterAssignment[]; by: string };
         // A relay for the map this tab just left belongs to a document it no longer holds.
         if (watching !== undefined && push.projectId !== watching) return;
-        if (catchingUp) { catchingUp.push(message); return; }
+        if (catchingUp) {
+          catchingUp.push(message);
+          return;
+        }
         at = Math.max(at, push.at);
         deps.onSync?.(push);
         return;
@@ -495,18 +531,26 @@ export function createSessionChannel(deps: {
       case 'topology': {
         const push = message as unknown as TopologyPush;
         if (watching !== undefined && push.projectId !== watching) return;
-        if (catchingUp) { catchingUp.push(message); return; }
+        if (catchingUp) {
+          catchingUp.push(message);
+          return;
+        }
         at = Math.max(at, push.at);
         deps.onTopology?.(push);
         return;
       }
       case 'digest':
-        deps.onDigest?.(message as unknown as
-          { projectId: string; at: number; root: string; sections: Record<string, string> });
+        deps.onDigest?.(
+          message as unknown as { projectId: string; at: number; root: string; sections: Record<string, string> },
+        );
         return;
       case 'sections': {
-        const repair = message as unknown as
-          { projectId: string; at: number; registers: RegisterAssignment[]; document?: EditDoc };
+        const repair = message as unknown as {
+          projectId: string;
+          at: number;
+          registers: RegisterAssignment[];
+          document?: EditDoc;
+        };
         at = Math.max(at, repair.at);
         deps.onSections?.(repair);
         return;
@@ -577,12 +621,15 @@ export function createSessionChannel(deps: {
         if (typeof message.userId === 'string') deps.onStatusChanged?.(message.userId);
         return;
       case 'revision':
-        deps.onRevision?.(message as unknown as
-          { projectId: string; project: ClientProject; document: EditDoc });
+        deps.onRevision?.(message as unknown as { projectId: string; project: ClientProject; document: EditDoc });
         return;
       case 'project-access': {
         const change = message as unknown as {
-          projectId: string; project: ClientProject; writable: boolean; reason?: string; document?: EditDoc;
+          projectId: string;
+          project: ClientProject;
+          writable: boolean;
+          reason?: string;
+          document?: EditDoc;
         };
         if (change.projectId === watching) writable = change.writable;
         deps.onProjectAccess?.(change);
@@ -592,7 +639,11 @@ export function createSessionChannel(deps: {
         const map = message as unknown as { projectId: string; name: string };
         // The server has already taken this tab off the map. Forgetting it here as well is what keeps a
         // reconnection from asking to rejoin one that is not there.
-        if (map.projectId === watching) { watching = null; at = 0; room = undefined; }
+        if (map.projectId === watching) {
+          watching = null;
+          at = 0;
+          room = undefined;
+        }
         deps.onGone?.(map);
         return;
       }
@@ -611,16 +662,20 @@ export function createSessionChannel(deps: {
       case 'ride-event': {
         const event = message as unknown as SharedRideEvent;
         const currentProject = watching === undefined ? welcome?.projectId : watching;
-        const referenceEvent = playing === 'reference' && referenceLevel && event.projectId === referenceRoom(referenceLevel);
+        const referenceEvent =
+          playing === 'reference' && referenceLevel && event.projectId === referenceRoom(referenceLevel);
         if ((!currentProject || event.projectId !== currentProject) && !referenceEvent) return;
-        if (typeof event.fromSessionId !== 'string'
-          || !Number.isSafeInteger(event.id)) return;
+        if (typeof event.fromSessionId !== 'string' || !Number.isSafeInteger(event.id)) return;
         const previous = lastRideEventBySession.get(event.fromSessionId) ?? -1;
         if (event.id <= previous) return;
         lastRideEventBySession.set(event.fromSessionId, event.id);
         const serverNow = Date.now() + serverOffsetMs;
-        if (!Number.isFinite(event.sentAt) || event.sentAt < serverNow - MAX_RIDE_EVENT_AGE_MS
-          || event.sentAt > serverNow + 30_000) return;
+        if (
+          !Number.isFinite(event.sentAt) ||
+          event.sentAt < serverNow - MAX_RIDE_EVENT_AGE_MS ||
+          event.sentAt > serverNow + 30_000
+        )
+          return;
         deps.onRideEvent?.(event);
         return;
       }
@@ -651,31 +706,44 @@ export function createSessionChannel(deps: {
     if (!wanted || socket) return;
     deps.onStatus?.('connecting');
     let opened: WebSocket;
-    try { opened = new WebSocket(address()); }
-    catch { schedule(); return; }
+    try {
+      opened = new WebSocket(address());
+    } catch {
+      schedule();
+      return;
+    }
     socket = opened;
     opened.onopen = () => {
       deps.onStatus?.('open');
       if (beat) clearInterval(beat);
-      const ping = () => { post({ t: 'ping', at: Date.now() }); };
+      const ping = () => {
+        post({ t: 'ping', at: Date.now() });
+      };
       ping();
       beat = setInterval(ping, PING_MS);
     };
     opened.onmessage = event => {
-      try { handle(JSON.parse(String(event.data)) as ServerMessage); }
-      catch { /* a message this client does not speak is not a reason to drop the channel */ }
+      try {
+        handle(JSON.parse(String(event.data)) as ServerMessage);
+      } catch {
+        /* a message this client does not speak is not a reason to drop the channel */
+      }
     };
     opened.onclose = event => {
       if (socket !== opened) return;
       socket = null;
       welcome = null;
       catchingUp = null;
-      if (beat) { clearInterval(beat); beat = null; }
+      if (beat) {
+        clearInterval(beat);
+        beat = null;
+      }
       deps.onStatus?.('closed');
       if (event.code === 4001 || event.code === 4002) {
         wanted = false;
-        deps.onAccessChanged?.(event.reason || (event.code === 4002
-          ? 'Your access changed.' : 'This login session ended.'));
+        deps.onAccessChanged?.(
+          event.reason || (event.code === 4002 ? 'Your access changed.' : 'This login session ended.'),
+        );
         return;
       }
       if (event.code === CAPACITY_CLOSE_CODE) {
@@ -688,13 +756,18 @@ export function createSessionChannel(deps: {
       }
       if (!closedByUs) schedule();
     };
-    opened.onerror = () => { /* onclose follows, and that is where reconnection is decided */ };
+    opened.onerror = () => {
+      /* onclose follows, and that is where reconnection is decided */
+    };
   }
 
   function schedule(): void {
     if (!wanted) return;
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => { socket = null; connect(); }, backoff);
+    reconnectTimer = setTimeout(() => {
+      socket = null;
+      connect();
+    }, backoff);
     backoff = Math.min(RECONNECT_MAX_MS, backoff * 2);
   }
 
@@ -724,7 +797,9 @@ export function createSessionChannel(deps: {
     },
     /** Say the same map again, from where this replica actually is — what a reconnection sends so the room
      *  hands back exactly what was missed. */
-    rejoin(): void { rewatch(); },
+    rejoin(): void {
+      rewatch();
+    },
     /** Publish the extracted mountain in this tab's read-only Reference slot. Retained for reconnects. */
     reference(level: string | null): boolean {
       referenceLevel = level?.trim() || null;
@@ -764,7 +839,8 @@ export function createSessionChannel(deps: {
       // A register holding NOTHING travels as the key alone: JSON cannot carry `undefined` inside an array,
       // and `["q/1/tex", null]` is a different assignment from "this face is unpainted".
       return post({
-        t: 'assign', batch,
+        t: 'assign',
+        batch,
         changes: changes.map(([key, value]) => (value === undefined ? [key] : [key, value])),
       });
     },
@@ -772,7 +848,11 @@ export function createSessionChannel(deps: {
      *  delta it made, and the registers that came with it. */
     claim(ids: string[], delta: TopologyDelta, changes: RegisterAssignment[], batch: number): boolean {
       return post({
-        t: 'claim', ids, at, delta, batch,
+        t: 'claim',
+        ids,
+        at,
+        delta,
+        batch,
         changes: changes.map(([key, value]) => (value === undefined ? [key] : [key, value])),
       });
     },
@@ -781,23 +861,37 @@ export function createSessionChannel(deps: {
       return post({ t: 'digest', ...digest });
     },
     /** Refetch exactly the sections that diverged. */
-    fetchSections(sections: string[]): boolean { return post({ t: 'fetch', sections }); },
+    fetchSections(sections: string[]): boolean {
+      return post({ t: 'fetch', sections });
+    },
     /** What this tab is selecting and dragging, plus its player pose. */
-    aware(aware: Partial<Awareness>): boolean { return post({ t: 'aware', aware }); },
+    aware(aware: Partial<Awareness>): boolean {
+      return post({ t: 'aware', aware });
+    },
     /** Relay an interaction only after it has already run locally. A closed socket simply means this disposable
      * cue is lost; unlike document edits it must never be queued and replayed into a later Play run. */
     rideEvent(event: RideEvent): boolean {
       return post({ t: 'ride-event', ...event, sentAt: Date.now() + serverOffsetMs });
     },
     /** Current session-server time, continuously refined by socket round trips. */
-    serverNow(): number { return Date.now() + serverOffsetMs; },
+    serverNow(): number {
+      return Date.now() + serverOffsetMs;
+    },
     /** Say something in the room. Slash commands travel as typed: the server owns what `/msg` and `/r` mean,
      *  so a private line is relayed rather than assembled by whichever client happened to send it. */
-    say(text: string): void { post({ t: 'chat', text }); },
+    say(text: string): void {
+      post({ t: 'chat', text });
+    },
     /** Add one public source identity. Every browser resolves it through its own local bridge. */
-    addJukeboxVideo(url: string): boolean { return post({ t: 'jukebox-add', url }); },
-    removeJukeboxVideo(id: string): boolean { return post({ t: 'jukebox-remove', id }); },
-    skipJukeboxVideo(id: string): boolean { return post({ t: 'jukebox-skip', id }); },
+    addJukeboxVideo(url: string): boolean {
+      return post({ t: 'jukebox-add', url });
+    },
+    removeJukeboxVideo(id: string): boolean {
+      return post({ t: 'jukebox-remove', id });
+    },
+    skipJukeboxVideo(id: string): boolean {
+      return post({ t: 'jukebox-skip', id });
+    },
     seekJukeboxVideo(id: string, position: number): boolean {
       return post({ t: 'jukebox-seek', id, position });
     },
@@ -810,27 +904,35 @@ export function createSessionChannel(deps: {
     close(): void {
       wanted = false;
       closedByUs = true;
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      if (beat) { clearInterval(beat); beat = null; }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (beat) {
+        clearInterval(beat);
+        beat = null;
+      }
       stopActivityTracking();
       socket?.close();
       socket = null;
     },
     isOpen: (): boolean => socket?.readyState === WebSocket.OPEN,
     /** Whether this member may change a map at all. Moderators retain editor access; viewers follow read-only. */
-    mayWrite: (): boolean => writable
-      && (welcome?.member.role === 'editor' || welcome?.member.role === 'moderator'
-        || welcome?.member.role === 'admin'),
+    mayWrite: (): boolean =>
+      writable &&
+      (welcome?.member.role === 'editor' || welcome?.member.role === 'moderator' || welcome?.member.role === 'admin'),
     /** Every author may start a map of their own; the server records them as its owner. */
-    mayCreateMountains: (): boolean => welcome?.member.role === 'editor'
-      || welcome?.member.role === 'moderator' || welcome?.member.role === 'admin',
+    mayCreateMountains: (): boolean =>
+      welcome?.member.role === 'editor' || welcome?.member.role === 'moderator' || welcome?.member.role === 'admin',
     /** Ownership grants map management; moderators/admins retain an operational override. */
-    mayManageMountain: (project?: ClientProject | null): boolean => !!project && !!welcome
-      && (project.ownerId === welcome.member.id
-        || welcome.member.role === 'moderator' || welcome.member.role === 'admin'),
-    mayDeleteMountains: (project?: ClientProject | null): boolean => !!project && !!welcome
-      && (project.ownerId === welcome.member.id
-        || welcome.member.role === 'moderator' || welcome.member.role === 'admin'),
+    mayManageMountain: (project?: ClientProject | null): boolean =>
+      !!project &&
+      !!welcome &&
+      (project.ownerId === welcome.member.id || welcome.member.role === 'moderator' || welcome.member.role === 'admin'),
+    mayDeleteMountains: (project?: ClientProject | null): boolean =>
+      !!project &&
+      !!welcome &&
+      (project.ownerId === welcome.member.id || welcome.member.role === 'moderator' || welcome.member.role === 'admin'),
     member: (): SessionMember | null => welcome?.member ?? null,
     /** This participant's own colour, the one everybody else draws them in. */
     color: (): string => welcome?.color ?? '#f2a33c',
@@ -843,11 +945,17 @@ export type SessionChannel = ReturnType<typeof createSessionChannel>;
 /** Presence as a member list rather than a session list: one row per person, with however many tabs they
  *  have open. Keyed by session and displayed by user is the whole rule, and this is the second half of it. */
 export function membersOn(entries: readonly PresenceEntry[]): Array<{
-  userId: string; username: string; role: MemberRole; color: string;
-  sessions: number; lastSeen: number;
+  userId: string;
+  username: string;
+  role: MemberRole;
+  color: string;
+  sessions: number;
+  lastSeen: number;
 }> {
-  const byUser = new Map<string, { userId: string; username: string; role: MemberRole;
-    color: string; sessions: number; lastSeen: number }>();
+  const byUser = new Map<
+    string,
+    { userId: string; username: string; role: MemberRole; color: string; sessions: number; lastSeen: number }
+  >();
   for (const entry of entries) {
     const found = byUser.get(entry.userId);
     if (found) {
@@ -855,8 +963,12 @@ export function membersOn(entries: readonly PresenceEntry[]): Array<{
       found.lastSeen = Math.max(found.lastSeen, entry.lastSeen);
     } else {
       byUser.set(entry.userId, {
-        userId: entry.userId, username: entry.username, role: entry.role,
-        color: entry.color, sessions: 1, lastSeen: entry.lastSeen,
+        userId: entry.userId,
+        username: entry.username,
+        role: entry.role,
+        color: entry.color,
+        sessions: 1,
+        lastSeen: entry.lastSeen,
       });
     }
   }

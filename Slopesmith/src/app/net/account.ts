@@ -54,7 +54,11 @@ export type Account =
   | { accounts: 'required'; user: Member }
   | { accounts: 'required' };
 
-interface SessionBody { accounts?: string; bootstrap?: boolean; user?: Member }
+interface SessionBody {
+  accounts?: string;
+  bootstrap?: boolean;
+  user?: Member;
+}
 
 /**
  * Ask who this browser is.
@@ -68,11 +72,13 @@ interface SessionBody { accounts?: string; bootstrap?: boolean; user?: Member }
 async function probeAccount(): Promise<Account> {
   try {
     const response = await fetch('/api/auth/session', { headers: { accept: 'application/json' } });
-    const body = await response.json().catch(() => ({})) as SessionBody;
+    const body = (await response.json().catch(() => ({}))) as SessionBody;
     if (body.accounts !== 'required') return { accounts: 'open' };
     if (response.ok && body.user) return { accounts: 'required', user: body.user };
     return body.bootstrap ? { accounts: 'required', bootstrap: true } : { accounts: 'required' };
-  } catch { return { accounts: 'open' }; }
+  } catch {
+    return { accounts: 'open' };
+  }
 }
 
 /** The probe's answer, asked once. `boot.ts` runs it before anything else; everything that later needs to
@@ -82,7 +88,7 @@ const accountListeners = new Set<(user: Member) => void>();
 
 /** Who this browser is, as the boot probe found it. Resolved before the editor module is even fetched. */
 export function currentAccount(): Promise<Account> {
-  return asked ??= probeAccount();
+  return (asked ??= probeAccount());
 }
 
 /**
@@ -136,11 +142,7 @@ export function inviteIn(hash: string): string {
  * accounts is somebody locked out of their own files. A function over a value can be checked in a test
  * without a browser (`test/login-gate.test.ts`); a branch inside a DOM entry point cannot.
  */
-export type Gate =
-  | { show: 'editor' }
-  | { show: 'enrol' }
-  | { show: 'redeem'; invite: string }
-  | { show: 'sign-in' };
+export type Gate = { show: 'editor' } | { show: 'enrol' } | { show: 'redeem'; invite: string } | { show: 'sign-in' };
 
 export function gateFor(account: Account, hash: string): Gate {
   if (account.accounts === 'open' || 'user' in account) return { show: 'editor' };

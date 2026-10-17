@@ -17,6 +17,7 @@
 
     "Slopesmith/media/slopesmith-authoring.png": "2187x1522 screenshot of an authored course open in the Slopesmith editor. Captured from the running editor. Original.",
     "Slopesmith/media/slopesmith-riding.png": "2189x1520 screenshot of test-riding in the Slopesmith editor. Captured from the running editor. Original.",
+    "Slopesmith/src/app/assets/course-background.webp": "Screenshot of a custom map built by the project author, used as Slopesmith's page background. Original project artwork.",
     "Slopesmith/media/slopesmith_anvil_icon_source.png": "1408x1408 master brand mark, designed and drawn by the project author and used as the input every other icon is traced from. Original.",
     "Slopesmith/public/favicon.ico": "16/32/48 px favicon with PNG entries. Traced from the icon master by Slopesmith/tools/generate-icons. Generated.",
     "Slopesmith/public/apple-touch-icon.png": "180x180 iOS home-screen tile. Traced from the icon master by Slopesmith/tools/generate-icons. Generated.",

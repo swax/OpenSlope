@@ -13,6 +13,7 @@ const scratch = new THREE.Vector3();
 /** Keep the visible markers `px` on screen at their own depth (a headset's minimum where one is presenting). */
 export function scaleDrawMarkers(stage: Stage, markers: readonly THREE.Object3D[], px = DRAW_POINT_PX) {
   for (const marker of markers) {
-    if (marker.visible) marker.scale.setScalar(Math.max(1e-4, stage.pointMarkerRadius(marker.getWorldPosition(scratch), px)));
+    if (marker.visible)
+      marker.scale.setScalar(Math.max(1e-4, stage.pointMarkerRadius(marker.getWorldPosition(scratch), px)));
   }
 }

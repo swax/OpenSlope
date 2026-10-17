@@ -40,8 +40,15 @@ export interface RetopologyStrategyCapability {
 }
 
 export type RetopologyJobPhase =
-  | 'queued' | 'preparing' | 'quadwild-prep' | 'quadrangulating'
-  | 'integrating' | 'validating' | 'complete' | 'failed' | 'cancelled';
+  | 'queued'
+  | 'preparing'
+  | 'quadwild-prep'
+  | 'quadrangulating'
+  | 'integrating'
+  | 'validating'
+  | 'complete'
+  | 'failed'
+  | 'cancelled';
 
 export interface RetopologyResultSummary {
   scope: RetopologyScope;

@@ -29,16 +29,14 @@ export type PropKind = 'tiled' | 'textured';
 
 /** Which kind a prop-library level holds. `@models` is the only tiled one; everything else — an imported
  *  record, a shipped level's own props — carries an authored UV layout. */
-export const propKindOf = (level: string): PropKind =>
-  level === AUTHORED_MODEL_LEVEL ? 'tiled' : 'textured';
+export const propKindOf = (level: string): PropKind => (level === AUTHORED_MODEL_LEVEL ? 'tiled' : 'textured');
 
 /** Whether Slopesmith's own mesh tools can edit this prop's geometry. Only a tiled prop, and only because
  *  its mapping is derived: there is nothing to invalidate by moving a corner. */
 export const editableHere = (level: string): boolean => level === AUTHORED_MODEL_LEVEL;
 
 /** Whether the author owns this geometry, or is looking at a shipped level's read-only reference. */
-export const ownGeometry = (level: string): boolean =>
-  level === AUTHORED_MODEL_LEVEL || level === IMPORTED_PROP_LEVEL;
+export const ownGeometry = (level: string): boolean => level === AUTHORED_MODEL_LEVEL || level === IMPORTED_PROP_LEVEL;
 
 /** What the selection panel, the library tile and the add-on all say about one prop. */
 export interface PropDescription {
@@ -66,8 +64,7 @@ export interface PropFacts {
   from?: string;
 }
 
-const count = (n: number, one: string, many = `${one}s`): string =>
-  `${n.toLocaleString()} ${n === 1 ? one : many}`;
+const count = (n: number, one: string, many = `${one}s`): string => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
 /**
  * Describe a prop the way the editor should say it.
@@ -96,13 +93,14 @@ export function describeProp(facts: PropFacts): PropDescription {
     kind,
     label: kind === 'tiled' ? 'Tiled prop' : 'Textured prop',
     detail: parts.join(' · '),
-    note: kind === 'tiled'
-      ? 'Every quad wears the whole tile, so it wraps and scrolls. Reshaping is free — the mapping is '
-        + 'computed, not stored.'
-      : readOnly
-        ? 'It carries its own UV layout. Make an editable copy to change it.'
-        : 'It carries its own UV layout. Bend or stretch a static copy with Deform with cage; edit topology and UVs in Blender. '
-          + 'Tiles live in the Texture Library.',
+    note:
+      kind === 'tiled'
+        ? 'Every quad wears the whole tile, so it wraps and scrolls. Reshaping is free — the mapping is ' +
+          'computed, not stored.'
+        : readOnly
+          ? 'It carries its own UV layout. Make an editable copy to change it.'
+          : 'It carries its own UV layout. Bend or stretch a static copy with Deform with cage; edit topology and UVs in Blender. ' +
+            'Tiles live in the Texture Library.',
     readOnly,
   };
 }

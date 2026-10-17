@@ -36,33 +36,66 @@ import { check, failures } from './check';
  */
 function fakeAudio(): { listener: THREE.AudioListener; context: AudioContext } {
   const param = () => ({
-    value: 1, setTargetAtTime() {}, linearRampToValueAtTime() {}, setValueAtTime() {},
-    cancelScheduledValues() {}, exponentialRampToValueAtTime() {},
+    value: 1,
+    setTargetAtTime() {},
+    linearRampToValueAtTime() {},
+    setValueAtTime() {},
+    cancelScheduledValues() {},
+    exponentialRampToValueAtTime() {},
   });
   const node = (): Record<string, unknown> => ({
-    connect: () => node(), disconnect() {}, gain: param(), playbackRate: param(),
-    detune: param(), positionX: param(), positionY: param(), positionZ: param(),
-    setPosition() {}, setOrientation() {},
-    panningModel: 'HRTF', distanceModel: 'linear', refDistance: 1, maxDistance: 10_000,
-    rolloffFactor: 1, coneInnerAngle: 360, coneOuterAngle: 0, coneOuterGain: 0,
+    connect: () => node(),
+    disconnect() {},
+    gain: param(),
+    playbackRate: param(),
+    detune: param(),
+    positionX: param(),
+    positionY: param(),
+    positionZ: param(),
+    setPosition() {},
+    setOrientation() {},
+    panningModel: 'HRTF',
+    distanceModel: 'linear',
+    refDistance: 1,
+    maxDistance: 10_000,
+    rolloffFactor: 1,
+    coneInnerAngle: 360,
+    coneOuterAngle: 0,
+    coneOuterGain: 0,
   });
   const context = {
-    currentTime: 0, state: 'running', sampleRate: 48_000, destination: node(),
-    createGain: () => node(), createPanner: () => node(),
-    createBufferSource: () => ({ ...node(), buffer: null, loop: false, loopStart: 0, loopEnd: 0,
-      onended: null, start() {}, stop() {} }),
+    currentTime: 0,
+    state: 'running',
+    sampleRate: 48_000,
+    destination: node(),
+    createGain: () => node(),
+    createPanner: () => node(),
+    createBufferSource: () => ({
+      ...node(),
+      buffer: null,
+      loop: false,
+      loopStart: 0,
+      loopEnd: 0,
+      onended: null,
+      start() {},
+      stop() {},
+    }),
   } as unknown as AudioContext;
   return { listener: { context, getInput: () => node() } as unknown as THREE.AudioListener, context };
 }
 
 /** A decoded buffer standing in for one clip. Identity is all that is read. */
 const buffer = (tag: string): AudioBuffer =>
-  ({ duration: 1, sampleRate: 48_000, length: 48_000, numberOfChannels: 1, tag } as unknown as AudioBuffer);
+  ({ duration: 1, sampleRate: 48_000, length: 48_000, numberOfChannels: 1, tag }) as unknown as AudioBuffer;
 
 /** A type-0 point emitter: `params` is [radius, curve]. Event 105 is an ordinary proximity id, not a gated
  *  one, so it sounds on range alone. */
-const point = (radius: number): ExternalSoundEmitter =>
-  ({ type: 0, sound: 105, offset: [0, 0, 0], params: [radius, 2] });
+const point = (radius: number): ExternalSoundEmitter => ({
+  type: 0,
+  sound: 105,
+  offset: [0, 0, 0],
+  params: [radius, 2],
+});
 
 /**
  * The two frames, standing in for the viewport's. Raw is centimetres; editor is metres under a root that
@@ -82,8 +115,7 @@ function layer() {
       return new THREE.Vector3(raw[0] / CM_PER_M, raw[1] / CM_PER_M, raw[2] / CM_PER_M);
     },
     worldToRaw: world => [world.x * CM_PER_M, world.y * CM_PER_M, world.z * CM_PER_M],
-    editorToRaw: editor =>
-      [editor[0] * CM_PER_M + EDITOR_ROOT_OFFSET_CM, editor[1] * CM_PER_M, editor[2] * CM_PER_M],
+    editorToRaw: editor => [editor[0] * CM_PER_M + EDITOR_ROOT_OFFSET_CM, editor[1] * CM_PER_M, editor[2] * CM_PER_M],
     // No buffer means no voice object, which is what keeps this free of an audio context. The seating
     // happens before the load either way.
     loadBuffer: () => Promise.resolve(null),
@@ -92,8 +124,13 @@ function layer() {
   return { ambient, seatedAt };
 }
 
-const authored = (center: [number, number, number]): AmbientSoundSource =>
-  ({ key: 'authored', emitter: point(3_200), center, space: 'editor', owner: 'prop-1' });
+const authored = (center: [number, number, number]): AmbientSoundSource => ({
+  key: 'authored',
+  emitter: point(3_200),
+  center,
+  space: 'editor',
+  owner: 'prop-1',
+});
 
 // ---- an authored emitter is seated from its CONVERTED centre ----
 
@@ -106,8 +143,10 @@ const authored = (center: [number, number, number]): AmbientSoundSource =>
   ambient.step(1, new THREE.Vector3(82.1, 0, 0));
 
   check(seatedAt.length === 1, `the emitter is audible and was seated once (seated ${seatedAt.length})`);
-  check(seatedAt[0]?.[0] === 12 * CM_PER_M + EDITOR_ROOT_OFFSET_CM,
-    `seated from the raw centre, not the editor one (got ${seatedAt[0]?.[0]}, want ${12 * CM_PER_M + EDITOR_ROOT_OFFSET_CM})`);
+  check(
+    seatedAt[0]?.[0] === 12 * CM_PER_M + EDITOR_ROOT_OFFSET_CM,
+    `seated from the raw centre, not the editor one (got ${seatedAt[0]?.[0]}, want ${12 * CM_PER_M + EDITOR_ROOT_OFFSET_CM})`,
+  );
   // The precise failure this pins: 12 would be the editor metres handed straight to `rawToWorld`.
   check(seatedAt[0]?.[0] !== 12, 'the editor-space centre never reaches rawToWorld');
 }
@@ -117,13 +156,15 @@ const authored = (center: [number, number, number]): AmbientSoundSource =>
 {
   const { ambient, seatedAt } = layer();
   const reference: AmbientSoundSource = {
-    key: 'reference', emitter: point(3_200), center: [1_200, 0, 0], owner: 'ref-9',
+    key: 'reference',
+    emitter: point(3_200),
+    center: [1_200, 0, 0],
+    owner: 'ref-9',
   };
   ambient.setSources('DONOR', [reference]);
   ambient.step(1, new THREE.Vector3(12.1, 0, 0));
 
-  check(seatedAt[0]?.[0] === 1_200,
-    `a raw centre passes through untouched (got ${seatedAt[0]?.[0]}, want 1200)`);
+  check(seatedAt[0]?.[0] === 1_200, `a raw centre passes through untouched (got ${seatedAt[0]?.[0]}, want 1200)`);
 }
 
 // ---- gain and seating read the SAME centre, which is the invariant that broke ----
@@ -137,8 +178,7 @@ const authored = (center: [number, number, number]): AmbientSoundSource =>
 
   const heard = ambient.active();
   check(heard.length === 0, 'no voice is reported without a decoded buffer, however loud the field is');
-  check(seatedAt.length === 1,
-    'the emitter the gain found is the emitter that got seated — one centre, one owner');
+  check(seatedAt.length === 1, 'the emitter the gain found is the emitter that got seated — one centre, one owner');
 }
 
 // ---- retargeting a playing emitter drops the clip it was playing ----
@@ -152,20 +192,24 @@ function soundingLayer(load: (url: string) => Promise<AudioBuffer | null>) {
     root: new THREE.Object3D(),
     rawToWorld: raw => new THREE.Vector3(raw[0] / CM_PER_M, raw[1] / CM_PER_M, raw[2] / CM_PER_M),
     worldToRaw: world => [world.x * CM_PER_M, world.y * CM_PER_M, world.z * CM_PER_M],
-    editorToRaw: editor =>
-      [editor[0] * CM_PER_M + EDITOR_ROOT_OFFSET_CM, editor[1] * CM_PER_M, editor[2] * CM_PER_M],
-    loadBuffer: url => { asked.push(url); return load(url); },
+    editorToRaw: editor => [editor[0] * CM_PER_M + EDITOR_ROOT_OFFSET_CM, editor[1] * CM_PER_M, editor[2] * CM_PER_M],
+    loadBuffer: url => {
+      asked.push(url);
+      return load(url);
+    },
   });
   ambient.setEnabled(true);
   return { ambient, asked };
 }
 
 /** One authored emitter playing an uploaded WAV — the case an author retargets in the editor. */
-const withFile = (file: string): AmbientSoundSource =>
-  ({ ...authored([12, 0, 0]), file });
+const withFile = (file: string): AmbientSoundSource => ({ ...authored([12, 0, 0]), file });
 
 const AT_THE_EMITTER = new THREE.Vector3((12 * CM_PER_M + EDITOR_ROOT_OFFSET_CM) / CM_PER_M, 0, 0);
-const flush = (): Promise<void> => new Promise(resolve => { setTimeout(resolve, 0); });
+const flush = (): Promise<void> =>
+  new Promise(resolve => {
+    setTimeout(resolve, 0);
+  });
 
 async function retargetChecks(): Promise<void> {
   {
@@ -182,7 +226,10 @@ async function retargetChecks(): Promise<void> {
 
     ambient.step(1, AT_THE_EMITTER);
     await flush();
-    check(asked.some(url => url.includes('birds.wav')), 'the new clip is then requested');
+    check(
+      asked.some(url => url.includes('birds.wav')),
+      'the new clip is then requested',
+    );
     check(ambient.active().length === 1, 'and the emitter is sounding again, on the clip that is authored now');
   }
 
@@ -190,10 +237,15 @@ async function retargetChecks(): Promise<void> {
     // The same change, made while the first decode is still in flight: the buffer that arrives is already
     // stale and must be dropped rather than seated.
     let release: (buffer: AudioBuffer) => void = () => {};
-    const pending = new Promise<AudioBuffer | null>(resolve => { release = resolve; });
+    const pending = new Promise<AudioBuffer | null>(resolve => {
+      release = resolve;
+    });
     let first = true;
     const { ambient } = soundingLayer(url => {
-      if (first) { first = false; return pending; }
+      if (first) {
+        first = false;
+        return pending;
+      }
       return Promise.resolve(buffer(url));
     });
 

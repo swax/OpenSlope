@@ -101,13 +101,15 @@ export function texDestName(ref: TexRef): string {
  */
 export function suggestTextureName(prompt: string, taken: Set<string>): string {
   const subject = /texture of\s+([^.\n]+)/i.exec(prompt)?.[1] ?? prompt;
-  const base = subject.toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 4)
-    .join('-') || 'texture';
+  const base =
+    subject
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 4)
+      .join('-') || 'texture';
   if (!taken.has(base)) return base;
   for (let i = 2; ; i++) if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
 }

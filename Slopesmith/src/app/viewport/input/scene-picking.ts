@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import type { Stage } from '../stage';
 import {
-  isReferencePropMesh, referencePropHitSlot, referencePropInstanceId, referencePropSlot,
+  isReferencePropMesh,
+  referencePropHitSlot,
+  referencePropInstanceId,
+  referencePropSlot,
   type ReferencePropMesh,
 } from '../scene/reference-prop-mesh';
 
@@ -10,11 +13,25 @@ export type ReferencePropScope = 'standard' | 'effects';
 
 export type ScenePick =
   | { target: 'prop'; source: 'authored'; hit: THREE.Intersection; propIndex: number }
-  | { target: 'prop'; source: 'reference'; hit: THREE.Intersection; instance: ReferencePropMesh;
-      instanceId: number; sourceIndex?: number; level: string; model: number; name: string }
+  | {
+      target: 'prop';
+      source: 'reference';
+      hit: THREE.Intersection;
+      instance: ReferencePropMesh;
+      instanceId: number;
+      sourceIndex?: number;
+      level: string;
+      model: number;
+      name: string;
+    }
   | { target: 'light'; source: 'authored'; hit: THREE.Intersection; lightIndex: number }
-  | { target: 'source'; source: ScenePickSource; hit: THREE.Intersection;
-      sourceKind: 'light' | 'sound' | 'prop'; sourceIndex: number }
+  | {
+      target: 'source';
+      source: ScenePickSource;
+      hit: THREE.Intersection;
+      sourceKind: 'light' | 'sound' | 'prop';
+      sourceIndex: number;
+    }
   | { target: 'rail'; source: 'authored'; hit: THREE.Intersection; railIndex: number; railNode?: number }
   /** A shipped level's grind curve, by its stable `Splines.json` row — the only place that rail exists. */
   | { target: 'rail'; source: 'reference'; hit: THREE.Intersection; splineIndex: number }
@@ -23,8 +40,13 @@ export type ScenePick =
   | { target: 'gem'; source: 'authored'; hit: THREE.Intersection; gemIndex: number }
   /** A video screen's panel/movie marker, by its position in the authored or reference screen table. */
   | { target: 'screen'; source: ScenePickSource; hit: THREE.Intersection; screenIndex: number }
-  | { target: 'particleVolume'; source: ScenePickSource; hit: THREE.Intersection;
-      volumeIndex: number; volumeId?: string }
+  | {
+      target: 'particleVolume';
+      source: ScenePickSource;
+      hit: THREE.Intersection;
+      volumeIndex: number;
+      volumeId?: string;
+    }
   | { target: 'knot'; source: 'authored'; hit: THREE.Intersection }
   | { target: 'surface'; source: ScenePickSource; hit: THREE.Intersection };
 
@@ -93,12 +115,15 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
   ): THREE.Intersection | undefined {
     const visibleRoots = roots.filter(visibleInTree);
     if (!visibleRoots.length) return undefined;
-    return stage.ray.intersectObjects(visibleRoots, recursive)
-      .find(hit => visibleInTree(hit.object) && accept(hit));
+    return stage.ray.intersectObjects(visibleRoots, recursive).find(hit => visibleInTree(hit.object) && accept(hit));
   }
 
-  function referencePropHit(roots: readonly THREE.Object3D[], scope: ReferencePropScope): THREE.Intersection | undefined {
-    const hits = stage.ray.intersectObjects(roots.filter(visibleInTree), true)
+  function referencePropHit(
+    roots: readonly THREE.Object3D[],
+    scope: ReferencePropScope,
+  ): THREE.Intersection | undefined {
+    const hits = stage.ray
+      .intersectObjects(roots.filter(visibleInTree), true)
       .filter(hit => visibleInTree(hit.object) && isReferencePropMesh(hit.object));
     const nearest = hits[0];
     if (!nearest || scope !== 'effects') return nearest;
@@ -110,131 +135,198 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
     // the hidden outline remains selectable anywhere it does not overlap the visible state.
     const visibleColocated = hits.find(hit => {
       const candidate = placement(hit);
-      return candidate?.visible !== false && candidate?.loc?.length === nearestPlacement.loc!.length
-        && candidate.loc.every((value, index) => value === nearestPlacement.loc![index]);
+      return (
+        candidate?.visible !== false &&
+        candidate?.loc?.length === nearestPlacement.loc!.length &&
+        candidate.loc.every((value, index) => value === nearestPlacement.loc![index])
+      );
     });
     return visibleColocated ?? nearest;
   }
 
   function pick(query: ScenePickQuery): ScenePick | null {
     const candidates: ScenePick[] = [];
-    const consider = (candidate: ScenePick | null) => { if (candidate) candidates.push(candidate); };
+    const consider = (candidate: ScenePick | null) => {
+      if (candidate) candidates.push(candidate);
+    };
 
     if (query.props) {
-      const authored = firstHit(access.authoredPropRoots(), true,
-        hit => Number.isInteger(hit.object.userData.propIndex));
-      if (authored) consider({
-        target: 'prop', source: 'authored', hit: authored,
-        propIndex: authored.object.userData.propIndex as number,
-      });
+      const authored = firstHit(access.authoredPropRoots(), true, hit =>
+        Number.isInteger(hit.object.userData.propIndex),
+      );
+      if (authored)
+        consider({
+          target: 'prop',
+          source: 'authored',
+          hit: authored,
+          propIndex: authored.object.userData.propIndex as number,
+        });
 
       const reference = referencePropHit(access.referencePropRoots(query.props), query.props);
       const instanceId = reference ? referencePropInstanceId(reference) : null;
       if (reference && instanceId !== null && isReferencePropMesh(reference.object)) {
         const instance = reference.object;
         const slot = referencePropSlot(instance, instanceId);
-        if (slot) consider({
-          target: 'prop', source: 'reference', hit: reference, instance, instanceId,
-          sourceIndex: slot.inst.sourceIndex,
-          level: slot.level,
-          model: slot.model,
-          name: slot.name,
-        });
-        else if (instance instanceof THREE.InstancedMesh
-          && typeof instance.userData.propLevel === 'string' && Number.isInteger(instance.userData.propModel)) {
+        if (slot)
+          consider({
+            target: 'prop',
+            source: 'reference',
+            hit: reference,
+            instance,
+            instanceId,
+            sourceIndex: slot.inst.sourceIndex,
+            level: slot.level,
+            model: slot.model,
+            name: slot.name,
+          });
+        else if (
+          instance instanceof THREE.InstancedMesh &&
+          typeof instance.userData.propLevel === 'string' &&
+          Number.isInteger(instance.userData.propModel)
+        ) {
           // Small embedders/tests may still provide the pre-batching mesh-level identity without full source data.
-          consider({ target: 'prop', source: 'reference', hit: reference, instance, instanceId,
-            level: instance.userData.propLevel as string, model: instance.userData.propModel as number,
-            name: instance.name });
+          consider({
+            target: 'prop',
+            source: 'reference',
+            hit: reference,
+            instance,
+            instanceId,
+            level: instance.userData.propLevel as string,
+            model: instance.userData.propModel as number,
+            name: instance.name,
+          });
         }
       }
     }
 
     if (query.lights) {
-      const hit = firstHit(access.lightRoots(), true,
-        candidate => Number.isInteger(candidate.object.userData.lightIndex)
-          || (candidate.object.userData.lightPoints === true && Number.isInteger(candidate.index)));
-      if (hit) consider({
-        target: 'light', source: 'authored', hit,
-        lightIndex: Number.isInteger(hit.object.userData.lightIndex)
-          ? hit.object.userData.lightIndex as number : hit.index as number,
-      });
+      const hit = firstHit(
+        access.lightRoots(),
+        true,
+        candidate =>
+          Number.isInteger(candidate.object.userData.lightIndex) ||
+          (candidate.object.userData.lightPoints === true && Number.isInteger(candidate.index)),
+      );
+      if (hit)
+        consider({
+          target: 'light',
+          source: 'authored',
+          hit,
+          lightIndex: Number.isInteger(hit.object.userData.lightIndex)
+            ? (hit.object.userData.lightIndex as number)
+            : (hit.index as number),
+        });
     }
 
     if (query.sources) {
       const hit = firstHit(access.sourceRoots(), true, candidate => {
         const kind = candidate.object.userData.sourceKind;
         const origin = candidate.object.userData.sourceOrigin;
-        return (kind === 'light' || kind === 'sound' || kind === 'prop')
-          && (origin === 'authored' || origin === 'reference') && Number.isInteger(candidate.index);
+        return (
+          (kind === 'light' || kind === 'sound' || kind === 'prop') &&
+          (origin === 'authored' || origin === 'reference') &&
+          Number.isInteger(candidate.index)
+        );
       });
-      if (hit) consider({
-        target: 'source',
-        source: hit.object.userData.sourceOrigin as ScenePickSource,
-        hit,
-        sourceKind: hit.object.userData.sourceKind as 'light' | 'sound' | 'prop',
-        sourceIndex: hit.index as number,
-      });
+      if (hit)
+        consider({
+          target: 'source',
+          source: hit.object.userData.sourceOrigin as ScenePickSource,
+          hit,
+          sourceKind: hit.object.userData.sourceKind as 'light' | 'sound' | 'prop',
+          sourceIndex: hit.index as number,
+        });
     }
 
     if (query.rails) {
-      const hit = firstHit(access.railRoots(), true,
-        candidate => Number.isInteger(candidate.object.userData.railIndex));
-      if (hit) consider({
-        target: 'rail', source: 'authored', hit,
-        railIndex: hit.object.userData.railIndex as number,
-        railNode: Number.isInteger(hit.object.userData.railNode)
-          ? hit.object.userData.railNode as number : undefined,
-      });
-      const refHit = firstHit(access.referenceRailRoots?.() ?? [], true,
-        candidate => Number.isInteger(candidate.object.userData.refSplineIndex));
-      if (refHit) consider({
-        target: 'rail', source: 'reference', hit: refHit,
-        splineIndex: refHit.object.userData.refSplineIndex as number,
-      });
+      const hit = firstHit(access.railRoots(), true, candidate =>
+        Number.isInteger(candidate.object.userData.railIndex),
+      );
+      if (hit)
+        consider({
+          target: 'rail',
+          source: 'authored',
+          hit,
+          railIndex: hit.object.userData.railIndex as number,
+          railNode: Number.isInteger(hit.object.userData.railNode)
+            ? (hit.object.userData.railNode as number)
+            : undefined,
+        });
+      const refHit = firstHit(access.referenceRailRoots?.() ?? [], true, candidate =>
+        Number.isInteger(candidate.object.userData.refSplineIndex),
+      );
+      if (refHit)
+        consider({
+          target: 'rail',
+          source: 'reference',
+          hit: refHit,
+          splineIndex: refHit.object.userData.refSplineIndex as number,
+        });
     }
 
     if (query.lines) {
-      const hit = firstHit(access.lineRoots?.() ?? [], true,
-        candidate => typeof candidate.object.userData.lineId === 'string' && Number.isInteger(candidate.object.userData.lineNode));
-      if (hit) consider({
-        target: 'lineNode', source: 'authored', hit,
-        lineId: hit.object.userData.lineId as string, node: hit.object.userData.lineNode as number,
-      });
+      const hit = firstHit(
+        access.lineRoots?.() ?? [],
+        true,
+        candidate =>
+          typeof candidate.object.userData.lineId === 'string' && Number.isInteger(candidate.object.userData.lineNode),
+      );
+      if (hit)
+        consider({
+          target: 'lineNode',
+          source: 'authored',
+          hit,
+          lineId: hit.object.userData.lineId as string,
+          node: hit.object.userData.lineNode as number,
+        });
     }
 
     if (query.gems) {
-      const hit = firstHit(access.gemRoots(), true,
-        candidate => Number.isInteger(candidate.object.userData.gemIndex));
-      if (hit) consider({
-        target: 'gem', source: 'authored', hit,
-        gemIndex: hit.object.userData.gemIndex as number,
-      });
+      const hit = firstHit(access.gemRoots(), true, candidate => Number.isInteger(candidate.object.userData.gemIndex));
+      if (hit)
+        consider({
+          target: 'gem',
+          source: 'authored',
+          hit,
+          gemIndex: hit.object.userData.gemIndex as number,
+        });
     }
 
     if (query.screens || query.screenMarkers) {
       // Either half of a screen answers: its panel carries the index, and its movie marker is one point of a
       // batched cloud, so the point's own index is the screen's. Same shape as a light's bulb versus its rig.
-      const hit = firstHit(access.screenRoots?.() ?? [], true,
-        candidate => (query.screens === true && Number.isInteger(candidate.object.userData.screenIndex))
-          || (candidate.object.userData.screenPoints === true && Number.isInteger(candidate.index)));
+      const hit = firstHit(
+        access.screenRoots?.() ?? [],
+        true,
+        candidate =>
+          (query.screens === true && Number.isInteger(candidate.object.userData.screenIndex)) ||
+          (candidate.object.userData.screenPoints === true && Number.isInteger(candidate.index)),
+      );
       const source = hit?.object.userData.screenSource;
-      if (hit && (source === 'authored' || source === 'reference')) consider({
-        target: 'screen', source, hit,
-        screenIndex: Number.isInteger(hit.object.userData.screenIndex)
-          ? hit.object.userData.screenIndex as number : hit.index as number,
-      });
+      if (hit && (source === 'authored' || source === 'reference'))
+        consider({
+          target: 'screen',
+          source,
+          hit,
+          screenIndex: Number.isInteger(hit.object.userData.screenIndex)
+            ? (hit.object.userData.screenIndex as number)
+            : (hit.index as number),
+        });
     }
 
     if (query.particleVolumes) {
       const particle = (source: ScenePickSource, roots: readonly THREE.Object3D[]) => {
-        const hit = firstHit(roots, true,
-          candidate => Number.isInteger(candidate.object.userData.particleVolumeIndex));
+        const hit = firstHit(roots, true, candidate => Number.isInteger(candidate.object.userData.particleVolumeIndex));
         if (!hit) return;
-        consider({ target: 'particleVolume', source, hit,
+        consider({
+          target: 'particleVolume',
+          source,
+          hit,
           volumeIndex: hit.object.userData.particleVolumeIndex as number,
           ...(typeof hit.object.userData.particleVolumeId === 'string'
-            ? { volumeId: hit.object.userData.particleVolumeId as string } : {}) });
+            ? { volumeId: hit.object.userData.particleVolumeId as string }
+            : {}),
+        });
       };
       particle('authored', access.authoredParticleRoots?.() ?? []);
       particle('reference', access.referenceParticleRoots?.() ?? []);
@@ -246,7 +338,7 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
     }
 
     let best = candidates.reduce<ScenePick | null>(
-      (nearest, candidate) => !nearest || candidate.hit.distance < nearest.hit.distance ? candidate : nearest,
+      (nearest, candidate) => (!nearest || candidate.hit.distance < nearest.hit.distance ? candidate : nearest),
       null,
     );
 
@@ -261,8 +353,7 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
         const hit = stage.ray.intersectObject(target.object, false)[0];
         if (hit && (!surface || hit.distance < surface.hit.distance)) surface = { source: target.source, hit };
       }
-      const occludes = surface && best
-        && surface.hit.distance + (query.surfaceEpsilon ?? 0) < best.hit.distance;
+      const occludes = surface && best && surface.hit.distance + (query.surfaceEpsilon ?? 0) < best.hit.distance;
       if (query.occludeWithSurfaces && occludes) return null;
       // Candidate queries return the surface when it is meaningfully nearer, or when no entity was hit.
       if (query.surfaces && surface && (!best || occludes)) {

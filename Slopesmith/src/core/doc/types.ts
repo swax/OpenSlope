@@ -653,8 +653,10 @@ export interface Screen {
 
 /** What every member of a prop line copies: a placement minus its identity and its pose — the model (or
  *  group), its label memberships and its behaviour (docs/070). */
-export type PropLineTemplate =
-  Omit<PlacedProp, 'id' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale' | 'line' | 'effectTrigger'>;
+export type PropLineTemplate = Omit<
+  PlacedProp,
+  'id' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale' | 'line' | 'effectTrigger'
+>;
 
 /**
  * A PROP LINE (docs/070): a path laid on the ground that owns a row of placements of one model — a fence, a
@@ -850,11 +852,21 @@ export interface PlacedProp {
  * placement of it (docs/069) — contact and collision, ride surface, mode presence, impact and ambient sound,
  * self-lighting. The same field names as `PlacedProp`, so one inspector edits a placement or a model's defaults.
  */
-export type PropBehaviour = Pick<PlacedProp,
-  | 'nativeCollision' | 'surface' | 'modePresence'
-  | 'collisionSound' | 'collisionSoundFile'
-  | 'ambientSound' | 'ambientSoundFile' | 'ambientRadius' | 'ambientFalloff' | 'ambientHalfExtents'
-  | 'fullBright' | 'memberBehaviour'>;
+export type PropBehaviour = Pick<
+  PlacedProp,
+  | 'nativeCollision'
+  | 'surface'
+  | 'modePresence'
+  | 'collisionSound'
+  | 'collisionSoundFile'
+  | 'ambientSound'
+  | 'ambientSoundFile'
+  | 'ambientRadius'
+  | 'ambientFalloff'
+  | 'ambientHalfExtents'
+  | 'fullBright'
+  | 'memberBehaviour'
+>;
 
 export type RaceMusicMode = 'retail-graph' | 'linear-loop';
 
@@ -921,7 +933,16 @@ export interface SunLight {
  *  A_S (intensity) where 255 = the full-bright base texture, so lit snow must reach it to read WHITE in-engine
  *  (a lower sun caps the brightest slope below full and the terrain renders grey). The slider still dims it. */
 export const DEFAULT_SUN: SunLight = {
-  on: true, el: 52, az: 210, ambient: 0.28, sun: 1.0, shadow: 0.42, ao: 0.32, sunTint: '#fff2dc', skyTint: '#b8daf2', bakeExposure: 1,
+  on: true,
+  el: 52,
+  az: 210,
+  ambient: 0.28,
+  sun: 1.0,
+  shadow: 0.42,
+  ao: 0.32,
+  sunTint: '#fff2dc',
+  skyTint: '#b8daf2',
+  bakeExposure: 1,
 };
 
 /**
@@ -937,9 +958,7 @@ export const DEFAULT_SUN: SunLight = {
  *           supplies the geometry.
  */
 export interface SkyboxDoc {
-  source:
-    | { kind: 'level'; level: string }
-    | { kind: 'custom'; name: string };
+  source: { kind: 'level'; level: string } | { kind: 'custom'; name: string };
   /**
    * The level whose ring a CUSTOM sky was composed against: the export copies that ring's meshes + materials
    * into `Skybox/` and slices the panorama on its real azimuth spans, so the seams land on the geometry that
@@ -994,26 +1013,26 @@ export const DEFAULT_SURFACE = 1;
  * with no picture of its own borrows the nearest one.
  */
 export const SURFACE_STYLE: Record<number, { color: V3; tex: string }> = {
-  0: { color: [0.88, 0.28, 0.30], tex: 'oob.png' },      // reset (OOB) — red
-  1: { color: [0.96, 0.97, 0.99], tex: 'snow.png' },     // snow — white anchor
+  0: { color: [0.88, 0.28, 0.3], tex: 'oob.png' }, // reset (OOB) — red
+  1: { color: [0.96, 0.97, 0.99], tex: 'snow.png' }, // snow — white anchor
   2: { color: [0.64, 0.66, 0.68], tex: 'offtrack.png' }, // off-track — grey
-  3: { color: [0.52, 0.82, 0.55], tex: 'powder.png' },   // powder — green (the main ridable)
-  4: { color: [0.93, 0.82, 0.42], tex: 'powder.png' },   // slow powder — amber (warm = sticky)
-  5: { color: [0.40, 0.82, 0.95], tex: 'ice.png' },      // ice — cyan (slippery)
-  6: { color: [0.26, 0.14, 0.46], tex: 'rock.png' },     // bounce / unskiable — violet (a barrier, like wall)
-  7: { color: [0.05, 0.21, 0.34], tex: 'ice.png' },      // ice / water no trail — deep water blue
-  8: { color: [0.35, 0.79, 0.58], tex: 'snow.png' },     // glidy snow particles — mint (a snow that runs)
-  9: { color: [0.60, 0.44, 0.33], tex: 'rock.png' },     // rock — brown
-  10: { color: [0.42, 0.45, 0.53], tex: 'rock.png' },    // wall — steel slate
-  11: { color: [0.39, 0.62, 0.67], tex: 'ice.png' },     // ice crunch no trail — pale ice grey
-  12: { color: [0.46, 0.19, 0.04], tex: 'rock.png' },    // wood — saturated warm brown against rock's pale tan
-  13: { color: [0.21, 0.45, 0.68], tex: 'rock.png' },    // off-track metal — steel blue
-  14: { color: [0.60, 0.74, 0.05], tex: 'ice.png' },     // speed / grinding — chartreuse (fast)
-  15: { color: [0.86, 0.85, 0.82], tex: 'snow.png' },    // standard — warm grey
-  16: { color: [0.67, 0.48, 0.19], tex: 'offtrack.png' },// sand — khaki
-  17: { color: [0.86, 0.42, 0.85], tex: 'offtrack.png' },// no collision — magenta
-  18: { color: [1.00, 0.55, 0.15], tex: 'rock.png' },    // show-off ramp — orange
-  19: { color: [0.38, 0.30, 0.38], tex: 'rock.png' },    // unknown (chute audio) — plum grey
+  3: { color: [0.52, 0.82, 0.55], tex: 'powder.png' }, // powder — green (the main ridable)
+  4: { color: [0.93, 0.82, 0.42], tex: 'powder.png' }, // slow powder — amber (warm = sticky)
+  5: { color: [0.4, 0.82, 0.95], tex: 'ice.png' }, // ice — cyan (slippery)
+  6: { color: [0.26, 0.14, 0.46], tex: 'rock.png' }, // bounce / unskiable — violet (a barrier, like wall)
+  7: { color: [0.05, 0.21, 0.34], tex: 'ice.png' }, // ice / water no trail — deep water blue
+  8: { color: [0.35, 0.79, 0.58], tex: 'snow.png' }, // glidy snow particles — mint (a snow that runs)
+  9: { color: [0.6, 0.44, 0.33], tex: 'rock.png' }, // rock — brown
+  10: { color: [0.42, 0.45, 0.53], tex: 'rock.png' }, // wall — steel slate
+  11: { color: [0.39, 0.62, 0.67], tex: 'ice.png' }, // ice crunch no trail — pale ice grey
+  12: { color: [0.46, 0.19, 0.04], tex: 'rock.png' }, // wood — saturated warm brown against rock's pale tan
+  13: { color: [0.21, 0.45, 0.68], tex: 'rock.png' }, // off-track metal — steel blue
+  14: { color: [0.6, 0.74, 0.05], tex: 'ice.png' }, // speed / grinding — chartreuse (fast)
+  15: { color: [0.86, 0.85, 0.82], tex: 'snow.png' }, // standard — warm grey
+  16: { color: [0.67, 0.48, 0.19], tex: 'offtrack.png' }, // sand — khaki
+  17: { color: [0.86, 0.42, 0.85], tex: 'offtrack.png' }, // no collision — magenta
+  18: { color: [1.0, 0.55, 0.15], tex: 'rock.png' }, // show-off ramp — orange
+  19: { color: [0.38, 0.3, 0.38], tex: 'rock.png' }, // unknown (chute audio) — plum grey
 };
 
 /** Snow answers for an out-of-table integer only: paint accepts any int, and so does an extracted level. */

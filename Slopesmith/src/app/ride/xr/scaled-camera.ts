@@ -15,7 +15,9 @@ import * as THREE from 'three';
  * runs it straight after three's own camera update, before the frame is culled. At scale 1 it does nothing.
  */
 
-const posL = new THREE.Vector3(), posR = new THREE.Vector3(), scaleOf = new THREE.Vector3();
+const posL = new THREE.Vector3(),
+  posR = new THREE.Vector3(),
+  scaleOf = new THREE.Vector3();
 
 /** Refit `cameraXR`'s culling union for its eyes' world scale, then re-seat `userCamera` on it the way three's
  *  `updateUserCamera` does. False (and nothing touched) when the rig is unscaled or not stereo. */
@@ -30,14 +32,16 @@ export function correctXrUnionForScale(cameraXR: THREE.ArrayCamera, userCamera: 
   posL.setFromMatrixPosition(cameraL.matrixWorld);
   posR.setFromMatrixPosition(cameraR.matrixWorld);
   const ipd = posL.distanceTo(posR) / scale;
-  const projL = cameraL.projectionMatrix.elements, projR = cameraR.projectionMatrix.elements;
+  const projL = cameraL.projectionMatrix.elements,
+    projR = cameraR.projectionMatrix.elements;
   const near = projL[14] / (projL[10] - 1);
   const far = projL[14] / (projL[10] + 1);
   const topFov = (projL[9] + 1) / projL[5];
   const bottomFov = (projL[9] - 1) / projL[5];
   const leftFov = (projL[8] - 1) / projL[0];
   const rightFov = (projR[8] + 1) / projR[0];
-  const left = near * leftFov, right = near * rightFov;
+  const left = near * leftFov,
+    right = near * rightFov;
   const zOffset = ipd / (-leftFov + rightFov);
   const xOffset = zOffset * -leftFov;
 
@@ -50,9 +54,15 @@ export function correctXrUnionForScale(cameraXR: THREE.ArrayCamera, userCamera: 
     cameraXR.projectionMatrix.copy(cameraL.projectionMatrix);
     cameraXR.projectionMatrixInverse.copy(cameraL.projectionMatrixInverse);
   } else {
-    const near2 = near + zOffset, far2 = far + zOffset;
+    const near2 = near + zOffset,
+      far2 = far + zOffset;
     cameraXR.projectionMatrix.makePerspective(
-      left - xOffset, right + (ipd - xOffset), topFov * far / far2 * near2, bottomFov * far / far2 * near2, near2, far2,
+      left - xOffset,
+      right + (ipd - xOffset),
+      ((topFov * far) / far2) * near2,
+      ((bottomFov * far) / far2) * near2,
+      near2,
+      far2,
     );
     cameraXR.projectionMatrixInverse.copy(cameraXR.projectionMatrix).invert();
   }
@@ -79,5 +89,7 @@ export function installScaledRigCullFix(xr: THREE.WebXRManager): () => void {
     original.call(this, camera);
     correctXrUnionForScale(xr.getCamera(), camera);
   };
-  return () => { manager.updateCamera = original; };
+  return () => {
+    manager.updateCamera = original;
+  };
 }

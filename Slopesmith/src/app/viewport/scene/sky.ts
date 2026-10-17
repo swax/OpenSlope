@@ -68,7 +68,11 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
 
   const initial = skyBackdrop(SKY_RADIUS, AUTHORING_SKY_GEOMETRY);
   const meshes: THREE.Mesh[] = [];
-  for (const [data, mat] of [[initial.wall, wallMat], [initial.ground, groundMat], [initial.top, topMat]] as const) {
+  for (const [data, mat] of [
+    [initial.wall, wallMat],
+    [initial.ground, groundMat],
+    [initial.top, topMat],
+  ] as const) {
     const mesh = new THREE.Mesh(geom(data), mat);
     mesh.renderOrder = -1000;
     mesh.frustumCulled = false; // it is always around the camera; culling it against its own centre is moot
@@ -84,14 +88,20 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
   // than making the sky pop back on when the image finally arrives.
   let visible = false;
 
-  const syncVisibility = () => { group.visible = visible && !!wallMat.map; };
+  const syncVisibility = () => {
+    group.visible = visible && !!wallMat.map;
+  };
 
-  const dispose = (m: THREE.MeshBasicMaterial) => { m.map?.dispose(); m.map = null; };
+  const dispose = (m: THREE.MeshBasicMaterial) => {
+    m.map?.dispose();
+    m.map = null;
+  };
 
   /** The mean of the panorama's top row — the sky exactly where it runs out of geometry. */
   function topColorFrom(img: HTMLImageElement): THREE.Color {
     const c = document.createElement('canvas');
-    c.width = img.naturalWidth; c.height = 1;
+    c.width = img.naturalWidth;
+    c.height = 1;
     const ctx = c.getContext('2d', { willReadFrequently: true })!;
     ctx.drawImage(img, 0, 0, img.naturalWidth, 1, 0, 0, img.naturalWidth, 1);
     const row = ctx.getImageData(0, 0, c.width, 1);
@@ -112,7 +122,8 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
     const img = wallMat.map?.image as HTMLImageElement | undefined;
     if (!img?.naturalWidth || !img.naturalHeight) return null;
     const c = document.createElement('canvas');
-    c.width = img.naturalWidth; c.height = 1;
+    c.width = img.naturalWidth;
+    c.height = 1;
     const ctx = c.getContext('2d', { willReadFrequently: true })!;
     ctx.drawImage(img, 0, img.naturalHeight - 1, img.naturalWidth, 1, 0, 0, img.naturalWidth, 1);
     const row = ctx.getImageData(0, 0, c.width, 1);
@@ -144,9 +155,12 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
     });
 
     loader.load(view.panorama, tex => {
-      if (mine !== token) { tex.dispose(); return; }
+      if (mine !== token) {
+        tex.dispose();
+        return;
+      }
       tex.colorSpace = THREE.SRGBColorSpace;
-      tex.wrapS = THREE.RepeatWrapping;      // the panorama is a 360° loop: its two edges are neighbours
+      tex.wrapS = THREE.RepeatWrapping; // the panorama is a 360° loop: its two edges are neighbours
       tex.wrapT = THREE.ClampToEdgeWrapping; // but its top is open sky and its bottom is ground — never wrap those together
       tex.minFilter = THREE.LinearMipmapLinearFilter;
       tex.generateMipmaps = true;
@@ -169,7 +183,10 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
     dispose(groundMat);
     groundMat.color = new THREE.Color(0xffffff);
     loader.load(view.ground, tex => {
-      if (mine !== token) { tex.dispose(); return; }
+      if (mine !== token) {
+        tex.dispose();
+        return;
+      }
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; // a radial projection: wrapping it smears the rim
       groundMat.map = tex;
@@ -196,7 +213,16 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
     group.position.copy(eye);
   }
 
-  return { setSky, setTopColor, setVisible, follow, horizonColor, get loaded() { return !!wallMat.map; } };
+  return {
+    setSky,
+    setTopColor,
+    setVisible,
+    follow,
+    horizonColor,
+    get loaded() {
+      return !!wallMat.map;
+    },
+  };
 }
 
 export type SkyLayer = ReturnType<typeof createSky>;

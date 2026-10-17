@@ -16,7 +16,11 @@ import { tooltip } from './tooltip';
  */
 
 /** One square's tile: its picture, its ref, and how it shows (`orientCss`). */
-export interface BuilderTile { src: string; ref: string; view: { rot: number; mirror: boolean } }
+export interface BuilderTile {
+  src: string;
+  ref: string;
+  view: { rot: number; mirror: boolean };
+}
 
 /** One row of the set: its name and where it is worn, its tiles left to right (null for none), whether it is the
  *  trail row shown for want of its own, and whether it can be taken off. */
@@ -29,7 +33,10 @@ export interface BuilderRow {
 }
 
 /** A square: its row, and its column among the builder's `lanes`. */
-export interface BuilderSquare { row: number; col: number }
+export interface BuilderSquare {
+  row: number;
+  col: number;
+}
 
 export interface TileSetBuilderOptions {
   title: string;
@@ -123,12 +130,22 @@ export function tileSetBuilder(g: GUI, opts: TileSetBuilderOptions): HTMLElement
     tooltip(b, hint);
     return b;
   };
-  head.append(title,
-    button(opts.libraryOpen ? '▦ close library' : '▦ texture library', opts.libraryOpen
-      ? 'Close the Texture Library.'
-      : 'Open the Texture Library below: drag its tiles onto the squares, or select a square and click a tile there.',
-    opts.onLibrary, opts.libraryOpen),
-    button('⧉ copy layout', 'Copy this set as it is written in the built-in sets — to paste, or to send as a preset.', opts.onCopy));
+  head.append(
+    title,
+    button(
+      opts.libraryOpen ? '▦ close library' : '▦ texture library',
+      opts.libraryOpen
+        ? 'Close the Texture Library.'
+        : 'Open the Texture Library below: drag its tiles onto the squares, or select a square and click a tile there.',
+      opts.onLibrary,
+      opts.libraryOpen,
+    ),
+    button(
+      '⧉ copy layout',
+      'Copy this set as it is written in the built-in sets — to paste, or to send as a preset.',
+      opts.onCopy,
+    ),
+  );
 
   const grid = document.createElement('div');
   grid.className = 'sp-sb-grid';
@@ -143,7 +160,9 @@ export function tileSetBuilder(g: GUI, opts: TileSetBuilderOptions): HTMLElement
   const squares: HTMLElement[][] = [];
   const select = (square: BuilderSquare | null) => {
     opts.focus = square;
-    squares.forEach((row, r) => row.forEach((el, c) => el.classList.toggle('sel', !!square && square.row === r && square.col === c)));
+    squares.forEach((row, r) =>
+      row.forEach((el, c) => el.classList.toggle('sel', !!square && square.row === r && square.col === c)),
+    );
     opts.onFocus(square);
   };
   opts.rows.forEach((row, r) => {
@@ -152,7 +171,10 @@ export function tileSetBuilder(g: GUI, opts: TileSetBuilderOptions): HTMLElement
     const words = document.createElement('span');
     words.textContent = row.label;
     label.append(words);
-    tooltip(label, `${row.hint}${row.borrowed ? ' This set has none of its own: faded, its trail row is worn here.' : ''}`);
+    tooltip(
+      label,
+      `${row.hint}${row.borrowed ? ' This set has none of its own: faded, its trail row is worn here.' : ''}`,
+    );
     if (row.removable) {
       const x = document.createElement('button');
       x.type = 'button';
@@ -162,71 +184,87 @@ export function tileSetBuilder(g: GUI, opts: TileSetBuilderOptions): HTMLElement
       label.append(x);
     }
     grid.append(label);
-    squares.push(row.tiles.map((tile, c) => {
-      const square = { row: r, col: c };
-      const el = document.createElement('div');
-      el.className = `sp-sb-sq${tile ? '' : ' empty'}${row.borrowed ? ' borrowed' : ''}`
-        + `${opts.focus?.row === r && opts.focus.col === c ? ' sel' : ''}`;
-      if (tile) {
-        const art = document.createElement('div');
-        art.className = 'sp-sb-art';
-        art.style.backgroundImage = `url(${tile.src})`;
-        art.style.transform = orientCss(tile.view.rot, tile.view.mirror);
-        el.append(art);
-        el.draggable = true;
-        el.ondragstart = e => {
-          e.dataTransfer?.setData(DRAG_SQUARE, JSON.stringify(square));
-          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove';
-        };
-        if (!row.borrowed) {
-          const x = document.createElement('button');
-          x.type = 'button';
-          x.className = 'sp-sb-x';
-          x.textContent = '✕';
-          x.onclick = e => { e.stopPropagation(); opts.onClear(square); };
-          tooltip(x, 'Clear this square.');
-          el.append(x);
-        }
-      }
-      tooltip(el, `${row.label} · ${opts.lanes[c]}${tile ? ` · ${tile.ref}${tile.view.mirror ? ' (mirrored)' : ''}` : ' · none'}\n`
-        + 'Click to select it — then ← / → turn its tile, ↑ / ↓ mirror it, and a Texture Library click fills it. Drag a tile '
-        + 'here from the Library, or drag another square here to swap (⇧ copies).');
-      el.onclick = () => select(opts.focus?.row === r && opts.focus.col === c ? null : square);
-      const accepts = (e: DragEvent) => !!e.dataTransfer?.types.some(type => type === DRAG_SQUARE || type === DRAG_TILE);
-      el.ondragover = e => {
-        if (!accepts(e)) return;
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = e.shiftKey || e.dataTransfer.types.includes(DRAG_TILE) ? 'copy' : 'move';
-      };
-      el.ondragenter = e => { if (accepts(e)) el.classList.add('over'); };
-      el.ondragleave = () => el.classList.remove('over');
-      el.ondrop = e => {
-        e.preventDefault();
-        el.classList.remove('over');
-        const dt = e.dataTransfer;
-        if (!dt) return;
-        try {
-          const moved = dt.getData(DRAG_SQUARE);
-          if (moved) {
-            const from = JSON.parse(moved) as BuilderSquare;
-            if (from.row !== r || from.col !== c) opts.onMove(from, square, e.shiftKey);
-            return;
+    squares.push(
+      row.tiles.map((tile, c) => {
+        const square = { row: r, col: c };
+        const el = document.createElement('div');
+        el.className =
+          `sp-sb-sq${tile ? '' : ' empty'}${row.borrowed ? ' borrowed' : ''}` +
+          `${opts.focus?.row === r && opts.focus.col === c ? ' sel' : ''}`;
+        if (tile) {
+          const art = document.createElement('div');
+          art.className = 'sp-sb-art';
+          art.style.backgroundImage = `url(${tile.src})`;
+          art.style.transform = orientCss(tile.view.rot, tile.view.mirror);
+          el.append(art);
+          el.draggable = true;
+          el.ondragstart = e => {
+            e.dataTransfer?.setData(DRAG_SQUARE, JSON.stringify(square));
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove';
+          };
+          if (!row.borrowed) {
+            const x = document.createElement('button');
+            x.type = 'button';
+            x.className = 'sp-sb-x';
+            x.textContent = '✕';
+            x.onclick = e => {
+              e.stopPropagation();
+              opts.onClear(square);
+            };
+            tooltip(x, 'Clear this square.');
+            el.append(x);
           }
-          const dropped = dt.getData(DRAG_TILE);
-          if (!dropped) return;
-          const { ref, rot, mirror } = JSON.parse(dropped) as { ref: string; rot?: number; mirror?: boolean };
-          if (ref) opts.onDrop(square, { ref, ...(rot !== undefined ? { view: { rot, mirror: !!mirror } } : {}) });
-        } catch { /* a malformed payload drops nothing */ }
-      };
-      grid.append(el);
-      return el;
-    }));
+        }
+        tooltip(
+          el,
+          `${row.label} · ${opts.lanes[c]}${tile ? ` · ${tile.ref}${tile.view.mirror ? ' (mirrored)' : ''}` : ' · none'}\n` +
+            'Click to select it — then ← / → turn its tile, ↑ / ↓ mirror it, and a Texture Library click fills it. Drag a tile ' +
+            'here from the Library, or drag another square here to swap (⇧ copies).',
+        );
+        el.onclick = () => select(opts.focus?.row === r && opts.focus.col === c ? null : square);
+        const accepts = (e: DragEvent) =>
+          !!e.dataTransfer?.types.some(type => type === DRAG_SQUARE || type === DRAG_TILE);
+        el.ondragover = e => {
+          if (!accepts(e)) return;
+          e.preventDefault();
+          if (e.dataTransfer)
+            e.dataTransfer.dropEffect = e.shiftKey || e.dataTransfer.types.includes(DRAG_TILE) ? 'copy' : 'move';
+        };
+        el.ondragenter = e => {
+          if (accepts(e)) el.classList.add('over');
+        };
+        el.ondragleave = () => el.classList.remove('over');
+        el.ondrop = e => {
+          e.preventDefault();
+          el.classList.remove('over');
+          const dt = e.dataTransfer;
+          if (!dt) return;
+          try {
+            const moved = dt.getData(DRAG_SQUARE);
+            if (moved) {
+              const from = JSON.parse(moved) as BuilderSquare;
+              if (from.row !== r || from.col !== c) opts.onMove(from, square, e.shiftKey);
+              return;
+            }
+            const dropped = dt.getData(DRAG_TILE);
+            if (!dropped) return;
+            const { ref, rot, mirror } = JSON.parse(dropped) as { ref: string; rot?: number; mirror?: boolean };
+            if (ref) opts.onDrop(square, { ref, ...(rot !== undefined ? { view: { rot, mirror: !!mirror } } : {}) });
+          } catch {
+            /* a malformed payload drops nothing */
+          }
+        };
+        grid.append(el);
+        return el;
+      }),
+    );
   });
 
   const hint = document.createElement('p');
   hint.className = 'sp-sb-hint';
-  hint.textContent = 'Drag tiles from the Texture Library onto the squares, or select a square and click a tile there. '
-    + 'Drag a square onto another to swap them (⇧ copies). ← / → turn the selected tile, ↑ / ↓ mirror it.';
+  hint.textContent =
+    'Drag tiles from the Texture Library onto the squares, or select a square and click a tile there. ' +
+    'Drag a square onto another to swap them (⇧ copies). ← / → turn the selected tile, ↑ / ↓ mirror it.';
   block.append(head, grid, hint);
   g.$children.appendChild(block);
   live = { el: block, opts };

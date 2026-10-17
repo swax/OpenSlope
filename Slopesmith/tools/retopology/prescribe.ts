@@ -34,7 +34,9 @@ const requestedEdges = authoredEdgesArg >= 0 ? Number(args[authoredEdgesArg + 1]
 const authored = readObj(readFileSync(join(jobDir, 'input.obj'), 'utf8'));
 const authoredLoops = boundaryLoops(authored);
 if (!authoredLoops.length) throw new Error('input.obj has no boundary loops (not a hole-mode proxy)');
-console.log(`input.obj: ${authored.vertices.length} verts, boundary loops: ${authoredLoops.map(l => l.length).join(', ')} edges`);
+console.log(
+  `input.obj: ${authored.vertices.length} verts, boundary loops: ${authoredLoops.map(l => l.length).join(', ')} edges`,
+);
 
 let protectedLoop: number[] | undefined;
 if (requestedEdges !== undefined) {
@@ -56,9 +58,13 @@ const corners = parseCornersFile(readFileSync(join(jobDir, 'input_rem_p0.corners
 const prescription = prescribeRimSubsides(remesh, corners, [protectedLoop.map(v => authored.vertices[v])]);
 
 const [loop] = prescription.loops;
-console.log(`matched remesh rim: ${loop.rimEdges} edges, ${loop.arcs} arcs, worst authored projection ${loop.worstProjectionM.toFixed(3)}`);
-console.log(`corner conforming: moved ${loop.movedCorners} corners (max ${loop.worstCornerMoveM.toFixed(2)} m), `
-  + `worst residual ${loop.worstResidualM.toFixed(2)} m, ${prescription.movedVertices.size} rim vertices re-seated`);
+console.log(
+  `matched remesh rim: ${loop.rimEdges} edges, ${loop.arcs} arcs, worst authored projection ${loop.worstProjectionM.toFixed(3)}`,
+);
+console.log(
+  `corner conforming: moved ${loop.movedCorners} corners (max ${loop.worstCornerMoveM.toFixed(2)} m), ` +
+    `worst residual ${loop.worstResidualM.toFixed(2)} m, ${prescription.movedVertices.size} rim vertices re-seated`,
+);
 if (prescription.movedVertices.size) {
   if (!existsSync(backupFile)) writeFileSync(backupFile, remeshText);
   writeFileSync(remeshFile, applyVertexMovesToObj(remeshText, prescription.movedVertices));
@@ -68,8 +74,10 @@ console.log('\nprescribed rim arcs:');
 console.log('arc | v0 -> v1       | count | fractions');
 for (let k = 0; k < prescription.records.length; k++) {
   const record = prescription.records[k];
-  console.log(`${String(k).padStart(3)} | ${`${record.v0}->${record.v1}`.padEnd(14)} | ${String(record.count).padStart(5)} | `
-    + record.fractions.map(fraction => fraction.toFixed(3)).join(' '));
+  console.log(
+    `${String(k).padStart(3)} | ${`${record.v0}->${record.v1}`.padEnd(14)} | ${String(record.count).padStart(5)} | ` +
+      record.fractions.map(fraction => fraction.toFixed(3)).join(' '),
+  );
 }
 const outFile = join(jobDir, 'input_rem_p0.fixed');
 writeFileSync(outFile, formatFixedSubsides(prescription.records));

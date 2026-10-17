@@ -61,7 +61,8 @@ function crc32(bytes: Uint8Array): number {
 }
 
 function adler32(bytes: Uint8Array): number {
-  let a = 1, b = 0;
+  let a = 1,
+    b = 0;
   for (const byte of bytes) {
     a = (a + byte) % 65521;
     b = (b + a) % 65521;
@@ -112,8 +113,8 @@ export function encodeGreyPng(image: GreyImage): Uint8Array {
   const headerView = new DataView(header.buffer);
   headerView.setUint32(0, width);
   headerView.setUint32(4, height);
-  header[8] = 8;   // bit depth
-  header[9] = 0;   // colour type 0: greyscale
+  header[8] = 8; // bit depth
+  header[9] = 0; // colour type 0: greyscale
   const parts = [
     new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', header),
@@ -122,13 +123,17 @@ export function encodeGreyPng(image: GreyImage): Uint8Array {
   ];
   const png = new Uint8Array(parts.reduce((sum, one) => sum + one.length, 0));
   let at = 0;
-  for (const one of parts) { png.set(one, at); at += one.length; }
+  for (const one of parts) {
+    png.set(one, at);
+    at += one.length;
+  }
   return png;
 }
 
 /* ── GLB ───────────────────────────────────────────────────────────────────────────────────────────── */
 
-const JSON_CHUNK = 0x4e4f534a, BIN_CHUNK = 0x004e4942;
+const JSON_CHUNK = 0x4e4f534a,
+  BIN_CHUNK = 0x004e4942;
 
 interface GlbJson {
   buffers?: { byteLength?: number; uri?: string }[];
@@ -153,8 +158,11 @@ const align4 = (value: number) => (value + 3) & ~3;
  * image/sampler/texture triple pointing at that. Materials are matched by name and given a white
  * `emissiveFactor` only if they had none, so a palette entry that chose its own glow colour keeps it.
  */
-export function attachEmissiveTextures(glb: Uint8Array, textures: readonly EmbeddedTexture[],
-                                       assignments: readonly EmissiveAssignment[]): Uint8Array {
+export function attachEmissiveTextures(
+  glb: Uint8Array,
+  textures: readonly EmbeddedTexture[],
+  assignments: readonly EmissiveAssignment[],
+): Uint8Array {
   if (!textures.length) return glb;
   const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
   let json: GlbJson | null = null;
@@ -171,10 +179,10 @@ export function attachEmissiveTextures(glb: Uint8Array, textures: readonly Embed
   }
   if (!json) throw new Error('exported GLB has no JSON chunk');
 
-  const images = json.images ??= [];
-  const samplers = json.samplers ??= [];
-  const glTextures = json.textures ??= [];
-  const bufferViews = json.bufferViews ??= [];
+  const images = (json.images ??= []);
+  const samplers = (json.samplers ??= []);
+  const glTextures = (json.textures ??= []);
+  const bufferViews = (json.bufferViews ??= []);
   const appended: Uint8Array[] = [];
   let binLength = bin.byteLength;
   const textureIndex = new Map<string, number>();
@@ -192,7 +200,8 @@ export function attachEmissiveTextures(glb: Uint8Array, textures: readonly Embed
     // and the whole figure would haze over. The masks are smooth and small, which is what makes the
     // aliasing this trades for a non-issue.
     samplers.push({
-      magFilter: 9729, minFilter: 9729,
+      magFilter: 9729,
+      minFilter: 9729,
       wrapS: texture.wrap === 'repeat' ? 10497 : 33071,
       wrapT: texture.wrap === 'repeat' ? 10497 : 33071,
     });
@@ -230,7 +239,10 @@ export function attachEmissiveTextures(glb: Uint8Array, textures: readonly Embed
   outView.setUint32(binAt + 4, BIN_CHUNK, true);
   out.set(bin, binAt + 8);
   let at = binAt + 8 + bin.byteLength;
-  for (const block of appended) { out.set(block, at); at += block.byteLength; }
+  for (const block of appended) {
+    out.set(block, at);
+    at += block.byteLength;
+  }
   return out;
 }
 
@@ -238,7 +250,8 @@ export function attachEmissiveTextures(glb: Uint8Array, textures: readonly Embed
  *  built-in actually carries, without pulling in an image decoder. */
 export function decodeGreyPng(png: Uint8Array): GreyImage {
   const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
-  let width = 0, height = 0;
+  let width = 0,
+    height = 0;
   const data: Uint8Array[] = [];
   for (let at = 8; at + 8 <= png.byteLength;) {
     const length = view.getUint32(at);
@@ -253,7 +266,10 @@ export function decodeGreyPng(png: Uint8Array): GreyImage {
   }
   const joined = new Uint8Array(data.reduce((sum, one) => sum + one.length, 0));
   let offset = 0;
-  for (const one of data) { joined.set(one, offset); offset += one.length; }
+  for (const one of data) {
+    joined.set(one, offset);
+    offset += one.length;
+  }
   // Skip the two-byte zlib header and the trailing four-byte adler checksum; the rest is stored blocks.
   const raw = inflateStored(joined.subarray(2, joined.length - 4));
   const pixels = new Uint8Array(width * height);
@@ -269,7 +285,7 @@ function inflateStored(deflated: Uint8Array): Uint8Array {
   const parts: Uint8Array[] = [];
   for (let at = 0; at < deflated.length;) {
     const header = deflated[at];
-    if ((header >> 1 & 0b11) !== 0) throw new Error('encodeGreyPng only writes stored deflate blocks');
+    if (((header >> 1) & 0b11) !== 0) throw new Error('encodeGreyPng only writes stored deflate blocks');
     const length = deflated[at + 1] | (deflated[at + 2] << 8);
     parts.push(deflated.subarray(at + 5, at + 5 + length));
     at += 5 + length;
@@ -277,6 +293,9 @@ function inflateStored(deflated: Uint8Array): Uint8Array {
   }
   const out = new Uint8Array(parts.reduce((sum, one) => sum + one.length, 0));
   let offset = 0;
-  for (const one of parts) { out.set(one, offset); offset += one.length; }
+  for (const one of parts) {
+    out.set(one, offset);
+    offset += one.length;
+  }
   return out;
 }

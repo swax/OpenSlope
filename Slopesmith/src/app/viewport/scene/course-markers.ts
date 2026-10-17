@@ -37,18 +37,28 @@ export function createCourseMarkersLayer(stage: Stage) {
 
   const spawnMat = new THREE.MeshBasicMaterial({ color: 0x41d06a });
   const startLineMat = new THREE.MeshBasicMaterial({
-    color: 0x41d06a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false,
+    color: 0x41d06a,
+    transparent: true,
+    opacity: 0.45,
+    side: THREE.DoubleSide,
+    depthWrite: false,
   });
   const spawnGeo = new THREE.SphereGeometry(0.35, 12, 10);
   const beadGeo = new THREE.SphereGeometry(1.6, 8, 6); // exported path points: well under the knot handles
   const beadMat = new THREE.MeshBasicMaterial({ color: 0x36a746 }); // the line's green, a step dimmer: derived data, not grabbable
   const checkpointMat = new THREE.MeshBasicMaterial({
-    color: 0xffa83d, transparent: true, opacity: 0.82, side: THREE.DoubleSide, depthWrite: false,
+    color: 0xffa83d,
+    transparent: true,
+    opacity: 0.82,
+    side: THREE.DoubleSide,
+    depthWrite: false,
   });
 
   // 2x2 black/white checker, repeated per metre across the finish strip
   const checker = new THREE.DataTexture(
-    new Uint8Array([30, 30, 30, 255, 235, 235, 235, 255, 235, 235, 235, 255, 30, 30, 30, 255]), 2, 2,
+    new Uint8Array([30, 30, 30, 255, 235, 235, 235, 255, 235, 235, 235, 255, 30, 30, 30, 255]),
+    2,
+    2,
   );
   checker.magFilter = THREE.NearestFilter;
   checker.wrapS = checker.wrapT = THREE.RepeatWrapping;
@@ -69,7 +79,9 @@ export function createCourseMarkersLayer(stage: Stage) {
     ctx.strokeText(text, 256, 32);
     ctx.fillStyle = color;
     ctx.fillText(text, 256, 32);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }),
+    );
     sprite.scale.set(w, w / 8, 1);
     return sprite;
   }
@@ -88,9 +100,16 @@ export function createCourseMarkersLayer(stage: Stage) {
   function anchorHandle(which: 'start' | 'finish') {
     const mesh = new THREE.Mesh(handleGeo, handleMat);
     mesh.userData.anchor = which;
-    const stem = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
-      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -ANCHOR_HANDLE_LIFT, 0)]), stemMat);
-    stem.raycast = () => { /* the flag is the grab target, not its pole */ };
+    const stem = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, -ANCHOR_HANDLE_LIFT, 0),
+      ]),
+      stemMat,
+    );
+    stem.raycast = () => {
+      /* the flag is the grab target, not its pole */
+    };
     mesh.add(stem);
     group.add(mesh);
     return mesh;
@@ -115,7 +134,10 @@ export function createCourseMarkersLayer(stage: Stage) {
       c.traverse(n => {
         if (n instanceof THREE.InstancedMesh) n.dispose(); // the instance-matrix buffer is the mesh's own (beadGeo is shared)
         if (n instanceof THREE.Mesh && n.geometry !== spawnGeo && n.geometry !== beadGeo) n.geometry.dispose();
-        if (n instanceof THREE.Sprite) { n.material.map?.dispose(); n.material.dispose(); }
+        if (n instanceof THREE.Sprite) {
+          n.material.map?.dispose();
+          n.material.dispose();
+        }
       });
       rebuilt.remove(c);
     }
@@ -155,10 +177,13 @@ export function createCourseMarkersLayer(stage: Stage) {
       if (bonus <= 0) return;
       const a = course.knots[Math.max(0, i - 1)].pos;
       const b = course.knots[Math.min(course.knots.length - 1, i + 1)].pos;
-      const dx = b[0] - a[0], dz = b[2] - a[2], h = Math.hypot(dx, dz) || 1;
+      const dx = b[0] - a[0],
+        dz = b[2] - a[2],
+        h = Math.hypot(dx, dz) || 1;
       const side: V3 = [-dz / h, 0, dx / h];
       rebuilt.add(strip(knot.pos, side, MARKER_WIDTH_M, 2.2, checkpointMat));
-      const minutes = Math.floor(bonus / 60), seconds = bonus % 60;
+      const minutes = Math.floor(bonus / 60),
+        seconds = bonus % 60;
       const tag = label(`CHECKPOINT +${minutes}:${String(seconds).padStart(2, '0')}`, '#ffbd66', 32);
       const p = flip(knot.pos);
       tag.position.set(p[0], p[1] + 8, p[2]);

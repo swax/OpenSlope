@@ -72,20 +72,26 @@ export interface CrackedSurface extends CrackedSurfaceSpec {
  * Join what the graphs authored to what the ride can test, exactly as `buildBoostVolumes` does for the boost
  * family — and for the same reason, since both act per tick on a rider who is merely PRESENT.
  */
-export function buildCrackedSurfaces(obstacles: readonly RideObstacleSource[] | undefined,
-  specs: ReadonlyMap<string, CrackedSurfaceSpec> | undefined): CrackedSurface[] {
+export function buildCrackedSurfaces(
+  obstacles: readonly RideObstacleSource[] | undefined,
+  specs: ReadonlyMap<string, CrackedSurfaceSpec> | undefined,
+): CrackedSurface[] {
   if (!specs?.size || !obstacles?.length) return [];
   const built: CrackedSurface[] = [];
   for (const source of obstacles) {
     // Must match reference-effects' runtimeObjectKey exactly — the two sides meet only on this string.
-    const objectKey = source.object.kind === 'reference'
-      ? `reference:${source.object.index}` : `authored:${source.object.id}`;
+    const objectKey =
+      source.object.kind === 'reference' ? `reference:${source.object.index}` : `authored:${source.object.id}`;
     const spec = specs.get(objectKey);
     if (!spec) continue;
     const box = crackedBounds(source);
     if (!box) continue;
-    built.push({ ...spec, key: source.key, box: box.applyMatrix4(source.matrixWorld),
-      triangles: worldTriangles(source) });
+    built.push({
+      ...spec,
+      key: source.key,
+      box: box.applyMatrix4(source.matrixWorld),
+      triangles: worldTriangles(source),
+    });
   }
   return built;
 }
@@ -99,8 +105,8 @@ function worldTriangles(source: RideObstacleSource): THREE.Triangle[] {
   const index = geometry.getIndex();
   const count = index ? index.count : position.count;
   const out: THREE.Triangle[] = [];
-  const vertex = (at: number) => new THREE.Vector3()
-    .fromBufferAttribute(position, index ? index.getX(at) : at).applyMatrix4(source.matrixWorld);
+  const vertex = (at: number) =>
+    new THREE.Vector3().fromBufferAttribute(position, index ? index.getX(at) : at).applyMatrix4(source.matrixWorld);
   for (let at = 0; at + 2 < count; at += 3) out.push(new THREE.Triangle(vertex(at), vertex(at + 1), vertex(at + 2)));
   return out;
 }
@@ -199,8 +205,10 @@ export interface CrackedSurfaceRuntime {
   strengthOf(key: string): number | null;
 }
 
-export function createCrackedSurfaceRuntime(surfaces: readonly CrackedSurface[],
-  events: CrackedSurfaceEvents = {}): CrackedSurfaceRuntime {
+export function createCrackedSurfaceRuntime(
+  surfaces: readonly CrackedSurface[],
+  events: CrackedSurfaceEvents = {},
+): CrackedSurfaceRuntime {
   const states = new Map<string, SurfaceState>();
   const swept = new THREE.Box3();
   const sample = new THREE.Vector3();
@@ -312,14 +320,20 @@ export function createCrackedSurfaceRuntime(surfaces: readonly CrackedSurface[],
         if (!obstacleKeyCovers(stateKey, key)) continue;
         state.strength = state.spec.strength;
         state.gate = 0;
-        state.life = state.spec.lifetimeSeconds > 0
-          ? state.spec.lifetimeSeconds : Number.POSITIVE_INFINITY;
+        state.life = state.spec.lifetimeSeconds > 0 ? state.spec.lifetimeSeconds : Number.POSITIVE_INFINITY;
         state.cracked = false;
         state.broken = false;
       }
     },
-    isBroken(key) { return states.get(key)?.broken ?? false; },
-    isCracked(key) { const s = states.get(key); return !!s && s.cracked && !s.broken; },
-    strengthOf(key) { return states.get(key)?.strength ?? null; },
+    isBroken(key) {
+      return states.get(key)?.broken ?? false;
+    },
+    isCracked(key) {
+      const s = states.get(key);
+      return !!s && s.cracked && !s.broken;
+    },
+    strengthOf(key) {
+      return states.get(key)?.strength ?? null;
+    },
   };
 }

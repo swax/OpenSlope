@@ -35,15 +35,18 @@ const hex2rgb = (h: string): [number, number, number] => {
 // This is INDEPENDENT of the render tessellation (TerrainBundle RES=4) - the lightmap is always baked at 8x8
 // and the render samples it bilinearly. 256 tiles/page (16x16) => a level's patches pack into as many pages
 // as needed, exactly like the original's packed lightmap SSH.
-const RES = 7;              // lightmap tessellation: 8 samples per patch edge
-const SIDE = RES + 1;       // 8 samples / texels per patch axis
-const TILE = SIDE;          // 8x8 lightmap texel tile per patch
-const MAP = 128;            // lightmap page size (the bake loads 128x128 pages only)
-const PER_ROW = Math.floor(MAP / TILE);   // 16 tiles across a page
-const PER_MAP = PER_ROW * PER_ROW;        // 256 patches per page
+const RES = 7; // lightmap tessellation: 8 samples per patch edge
+const SIDE = RES + 1; // 8 samples / texels per patch axis
+const TILE = SIDE; // 8x8 lightmap texel tile per patch
+const MAP = 128; // lightmap page size (the bake loads 128x128 pages only)
+const PER_ROW = Math.floor(MAP / TILE); // 16 tiles across a page
+const PER_MAP = PER_ROW * PER_ROW; // 256 patches per page
 
 /** Where one patch's lightmap tile lives: which page (LightmapID) + its sub-rect (LightMapPoint). */
-export interface PatchLm { id: number; rect: [number, number, number, number]; }
+export interface PatchLm {
+  id: number;
+  rect: [number, number, number, number];
+}
 export interface BakedLightmaps {
   /** Page images keyed by filename ("0000.png" .. "000F.png") for Lightmaps/. */
   maps: Record<string, Rgba>;
@@ -94,8 +97,12 @@ export type DiffuseSampler = (patchIndex: number, tileU: number, tileV: number) 
  * default white base (C_D = 1) it collapses to the texture-free C_S = 0.5 - Lc/(A_S*255/128).
  */
 export function encodeLightmapTexel(
-  lr: number, lg: number, lb: number,
-  dr = 1, dg = 1, db = 1,
+  lr: number,
+  lg: number,
+  lb: number,
+  dr = 1,
+  dg = 1,
+  db = 1,
 ): [number, number, number, number] {
   const a8 = clamp8(Math.max(lr, lg, lb) * 255);
   if (a8 <= 0) return [0, 0, 0, 0];
@@ -108,8 +115,13 @@ export function encodeLightmapTexel(
  *  default white base (C_D = 1) this is the texture-free (0.5 - C_S)·k the reference's baked-lightmap view
  *  uses, so a white-base round-trip stays on the reference's scale; pass C_D to get the in-game texture × light. */
 export function decodeLightmapTexel(
-  r8: number, g8: number, b8: number, a8: number,
-  dr = 1, dg = 1, db = 1,
+  r8: number,
+  g8: number,
+  b8: number,
+  a8: number,
+  dr = 1,
+  dg = 1,
+  db = 1,
 ): [number, number, number] {
   const k = a8 / 128; // = A_S * 255/128
   return [
@@ -130,10 +142,14 @@ export function decodeLightmapTexel(
 export function bakedLightmapDisplay(colored: Float32Array, diffuse?: Float32Array): Float32Array {
   const out = new Float32Array(colored.length);
   for (let i = 0; i < colored.length; i += 3) {
-    const dr = diffuse ? diffuse[i] : 1, dg = diffuse ? diffuse[i + 1] : 1, db = diffuse ? diffuse[i + 2] : 1;
+    const dr = diffuse ? diffuse[i] : 1,
+      dg = diffuse ? diffuse[i + 1] : 1,
+      db = diffuse ? diffuse[i + 2] : 1;
     const [r8, g8, b8, a8] = encodeLightmapTexel(colored[i], colored[i + 1], colored[i + 2], dr, dg, db);
     const [r, g, b] = decodeLightmapTexel(r8, g8, b8, a8, dr, dg, db);
-    out[i] = r; out[i + 1] = g; out[i + 2] = b;
+    out[i] = r;
+    out[i + 1] = g;
+    out[i + 2] = b;
   }
   return out;
 }
@@ -159,10 +175,16 @@ export function compositeRigGlow(colored: Float32Array, glow: Float32Array): voi
  *  sky direction); appending them to the query set costs a few extra lookups instead of a second full bake.
  *  They are appended AFTER the terrain vertices and contribute no triangles, so the terrain's own indices,
  *  normals and per-vertex results are untouched. */
-export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: DiffuseSampler, rig?: LightRig,
-                              probes?: readonly V3[]): BakedLightmaps {
+export function bakeLightmaps(
+  patches: RawPatch[],
+  sun: SunLight,
+  diffuse?: DiffuseSampler,
+  rig?: LightRig,
+  probes?: readonly V3[],
+): BakedLightmaps {
   const mesh = buildReferenceMesh(patches, undefined, RES); // editor-space positions + analytic normals + tile UVs at the 8x8 lightmap tessellation
-  const e = (sun.el * Math.PI) / 180, a = (sun.az * Math.PI) / 180;
+  const e = (sun.el * Math.PI) / 180,
+    a = (sun.az * Math.PI) / 180;
   const dir: [number, number, number] = [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
   // Probes ride the terrain's own occlusion pass as extra QUERY points. They are kept out of the depth map's
   // PROJECTION (`bakeSunShadow`/`bakeAO` still size it from `mesh.positions` alone) because the map's bounds
@@ -171,20 +193,33 @@ export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: Diff
   // reads rather than a second rasterisation. Probe normals point at the sky: the openness an upright prop sees.
   const vertCount = mesh.positions.length / 3;
   const probeCount = probes?.length ?? 0;
-  let qPos = mesh.positions, qNrm = mesh.normals;
+  let qPos = mesh.positions,
+    qNrm = mesh.normals;
   if (probeCount) {
     qPos = new Float32Array((vertCount + probeCount) * 3);
     qNrm = new Float32Array((vertCount + probeCount) * 3);
-    qPos.set(mesh.positions); qNrm.set(mesh.normals);
+    qPos.set(mesh.positions);
+    qNrm.set(mesh.normals);
     probes!.forEach((p, i) => {
       const j = (vertCount + i) * 3;
-      qPos[j] = p[0]; qPos[j + 1] = p[1]; qPos[j + 2] = p[2];
+      qPos[j] = p[0];
+      qPos[j + 1] = p[1];
+      qPos[j + 2] = p[2];
       qNrm[j + 1] = 1;
     });
   }
   const shadow = sun.shadow > 0 ? bakeSunShadow(mesh.positions, mesh.indices, dir, 1536, qPos) : undefined;
-  const ao = sun.ao > 0 ? bakeAO(mesh.positions, mesh.indices, mesh.normals, 16, 1024,
-    probeCount ? { positions: qPos, normals: qNrm } : undefined) : undefined;
+  const ao =
+    sun.ao > 0
+      ? bakeAO(
+          mesh.positions,
+          mesh.indices,
+          mesh.normals,
+          16,
+          1024,
+          probeCount ? { positions: qPos, normals: qNrm } : undefined,
+        )
+      : undefined;
   // the probes' tail of that shared pass; absent terms read as fully lit / fully open, which is what
   // "the author turned that darkening off" means everywhere else in this model
   const probeSlice = (src: Float32Array | undefined) => {
@@ -193,7 +228,8 @@ export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: Diff
     if (src) for (let i = 0; i < probeCount; i++) out[i] = src[vertCount + i];
     return out;
   };
-  const probeShadow = probeSlice(shadow), probeAO = probeSlice(ao);
+  const probeShadow = probeSlice(shadow),
+    probeAO = probeSlice(ao);
   // bakeExposure / bakeAmbient scale the DIRECTIONAL sun + ambient floor for the lightmap only (level.ts
   // buildLightsJson keeps the raw record values): a record-seeded HDR sun (~2.47) is the true dynamic-object
   // light, but the terrain bake must reproduce the reference's own, lower lightmap exposure (~0.7) and
@@ -206,17 +242,32 @@ export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: Diff
   // OVERSHOOTS the ceiling by a real margin (a stale/un-exposed HDR sun, e.g. a raw 2.47 with bakeExposure 1),
   // which means the bake-exposure wasn't applied and the bake would be a flat white-out.
   if (reqSun > BAKE_CEIL + 0.1) {
-    console.warn(`light-bake: HDR sun ${sun.sun.toFixed(2)} x bakeExposure ${(sun.bakeExposure ?? 1).toFixed(2)} = ${reqSun.toFixed(2)} exceeds the LDR ceiling ${BAKE_CEIL} — clamping (the bake-exposure wasn't applied; re-run 'use for my map').`);
+    console.warn(
+      `light-bake: HDR sun ${sun.sun.toFixed(2)} x bakeExposure ${(sun.bakeExposure ?? 1).toFixed(2)} = ${reqSun.toFixed(2)} exceeds the LDR ceiling ${BAKE_CEIL} — clamping (the bake-exposure wasn't applied; re-run 'use for my map').`,
+    );
   }
   const reqAmbient = sun.bakeAmbient ?? sun.ambient;
-  if (reqAmbient > BAKE_CEIL) console.warn(`light-bake: bake ambient ${reqAmbient.toFixed(2)} exceeds ${BAKE_CEIL} — clamping to avoid washing out shadows.`);
+  if (reqAmbient > BAKE_CEIL)
+    console.warn(
+      `light-bake: bake ambient ${reqAmbient.toFixed(2)} exceeds ${BAKE_CEIL} — clamping to avoid washing out shadows.`,
+    );
   const colored = computeModelColored(
-    mesh.normals, dir,
-    { ambient: effectiveBakeAmbient(sun), sun: effSun, shadow: sun.shadow, ao: sun.ao, sunTint: hex2rgb(sun.sunTint), skyTint: hex2rgb(sun.skyTint) },
-    shadow, ao,
+    mesh.normals,
+    dir,
+    {
+      ambient: effectiveBakeAmbient(sun),
+      sun: effSun,
+      shadow: sun.shadow,
+      ao: sun.ao,
+      sunTint: hex2rgb(sun.sunTint),
+      skyTint: hex2rgb(sun.skyTint),
+    },
+    shadow,
+    ao,
   ); // per-vertex RGB = the sun/sky-tinted colour Unity should reproduce (=> encoded into C_S)
   // fold the authored sign lights' glow into the terrain, so a billboard's snow pool bakes into the lightmap
-  if (rig && rig.lights.length) compositeRigGlow(colored, bakeRigLighting(mesh.positions, mesh.normals, rig, SIGN_TERRAIN_WEIGHT_K));
+  if (rig && rig.lights.length)
+    compositeRigGlow(colored, bakeRigLighting(mesh.positions, mesh.normals, rig, SIGN_TERRAIN_WEIGHT_K));
 
   // Sampled AFTER the rig glow so a prop standing in a billboard's pool reads the light that actually ships
   // in the lightmap, not the pre-composite value. The sampler is shared with the editor preview so the two
@@ -225,7 +276,9 @@ export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: Diff
   probeLight.fill(1);
   if (probeCount && probes) {
     const sampleGround = groundLightSampler(mesh.positions, colored);
-    probes.forEach((p, i) => { probeLight[i] = sampleGround(p); });
+    probes.forEach((p, i) => {
+      probeLight[i] = sampleGround(p);
+    });
   }
 
   const n = patches.length;
@@ -241,13 +294,16 @@ export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: Diff
 
   const patchLm: PatchLm[] = [];
   for (let pi = 0; pi < n; pi++) {
-    const id = Math.floor(pi / PER_MAP), slot = pi % PER_MAP;
-    const bx = (slot % PER_ROW) * TILE, by = Math.floor(slot / PER_ROW) * TILE;
+    const id = Math.floor(pi / PER_MAP),
+      slot = pi % PER_MAP;
+    const bx = (slot % PER_ROW) * TILE,
+      by = Math.floor(slot / PER_ROW) * TILE;
     const data = buffers[id];
     const vBase = pi * SIDE * SIDE;
     for (let iu = 0; iu < SIDE; iu++) {
       for (let iv = 0; iv < SIDE; iv++) {
-        const vi = vBase + iu * SIDE + iv, ci = vi * 3;
+        const vi = vBase + iu * SIDE + iv,
+          ci = vi * 3;
         // A_S = the peak channel, so every channel's C_S = C_D·(0.5 - Lc/(A_S*255/128)) stays in range and
         // the shader's (0.5*C_D - C_S)*(A_S*255/128) reproduces C_D·Lc (texture × light). The diffuse C_D is
         // sampled at this texel's tile UV; absent => white (C_S = 0.5 - Lc/k). Alpha doubles as the grey
@@ -257,7 +313,10 @@ export function bakeLightmaps(patches: RawPatch[], sun: SunLight, diffuse?: Diff
           ? encodeLightmapTexel(colored[ci], colored[ci + 1], colored[ci + 2], cd[0], cd[1], cd[2])
           : encodeLightmapTexel(colored[ci], colored[ci + 1], colored[ci + 2]);
         const o = ((by + iu) * MAP + (bx + iv)) * 4; // mode-6 transpose: texel (x=v, y=u) holds vertex (u,v)
-        data[o] = r; data[o + 1] = g; data[o + 2] = b; data[o + 3] = a8;
+        data[o] = r;
+        data[o + 1] = g;
+        data[o + 2] = b;
+        data[o + 3] = a8;
       }
     }
     patchLm.push({ id, rect: [bx / MAP, by / MAP, TILE / MAP, TILE / MAP] });

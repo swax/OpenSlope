@@ -4,9 +4,15 @@ import { editorAccountUrl, mapNameAtPath, mapPath, pageInPath } from '../src/app
 import { mapNameInUrl, showMapInUrl } from '../src/app/state/map-url';
 
 for (const [pathname, page] of [
-  ['/maps', 'maps'], ['/isos', 'isos'], ['/play/RUN', 'play'], ['/editor/RUN', 'editor'],
-  ['/editor', 'editor'], ['/ISOS/', 'isos'], ['/play/Elysium%20Alps', 'play'],
-] as const) assert.equal(pageInPath(pathname), page);
+  ['/maps', 'maps'],
+  ['/isos', 'isos'],
+  ['/play/RUN', 'play'],
+  ['/editor/RUN', 'editor'],
+  ['/editor', 'editor'],
+  ['/ISOS/', 'isos'],
+  ['/play/Elysium%20Alps', 'play'],
+] as const)
+  assert.equal(pageInPath(pathname), page);
 for (const pathname of ['/maps/RUN', '/isos/RUN', '/editor/RUN/other', '/players', '/RUN', '/home']) {
   assert.equal(pageInPath(pathname), null);
 }
@@ -28,13 +34,17 @@ let current = new URL('https://slopesmith.example/editor/RUN?agent=1#camera');
 let replacements = 0;
 const state = { retained: true };
 Object.defineProperty(globalThis, 'location', { configurable: true, get: () => current });
-Object.defineProperty(globalThis, 'history', { configurable: true, value: {
-  state,
-  replaceState(next: unknown, _unused: string, url: string) {
-    assert.equal(next, state);
-    current = new URL(url, current); replacements++;
+Object.defineProperty(globalThis, 'history', {
+  configurable: true,
+  value: {
+    state,
+    replaceState(next: unknown, _unused: string, url: string) {
+      assert.equal(next, state);
+      current = new URL(url, current);
+      replacements++;
+    },
   },
-} });
+});
 try {
   assert.equal(mapNameInUrl(), 'RUN');
   showMapInUrl('RENAMED');

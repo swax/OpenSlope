@@ -54,13 +54,14 @@ export const isEffectCounterInput = (node: EffectNode): boolean =>
  */
 export function effectCounterMarkInput(node: EffectNode): number | null {
   if (node.semanticType !== 'counter.mark') return null;
-  const control = node.mainType === 3 ? node.payload.type3
-    : node.mainType === 9 ? node.payload.type9 : null;
+  const control = node.mainType === 3 ? node.payload.type3 : node.mainType === 9 ? node.payload.type9 : null;
   return isObject(control) ? wholeNumber(control.U1) : null;
 }
 
-export const newEffectCounter = (count: number): EffectCounterState =>
-  ({ remaining: Math.max(0, Math.trunc(count)), marked: new Set() });
+export const newEffectCounter = (count: number): EffectCounterState => ({
+  remaining: Math.max(0, Math.trunc(count)),
+  marked: new Set(),
+});
 
 /**
  * Count one input against an installed counter, mutating it. Returns true when this input took the counter to

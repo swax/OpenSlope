@@ -9,7 +9,12 @@ import { ALPINE_EXO_CHARACTER_ID, builtinCharacter } from '../src/core/character
 import { REQUIRED_CHARACTER_BONES, normalizedCharacterBoneName } from '../src/core/characters/contract';
 import { ShapeMesh, UV_SCROLL_KEY, V3, shapeBounds, shapeVolume } from '../tools/character-models/figure';
 import {
-  ALPINE_EXO, BIND, BONES, PARTS, buildAlpineExo, exportAlpineExoGlb,
+  ALPINE_EXO,
+  BIND,
+  BONES,
+  PARTS,
+  buildAlpineExo,
+  exportAlpineExoGlb,
 } from '../tools/character-models/alpine-exo';
 import { decodeGreyPng } from '../tools/character-models/embed-texture';
 import { checkCharacterGlb } from '../tools/character-models/check';
@@ -41,7 +46,7 @@ for (const spec of BONES) {
 }
 
 // Winter's stature fractions on the procedural rider's 1.70 m, which is what `app/ride/rider.ts` solves.
-const RIDER_H = 1.70;
+const RIDER_H = 1.7;
 close(length('UpperLeg.L'), 0.245 * RIDER_H, 'thigh');
 close(length('LowerLeg.L'), 0.246 * RIDER_H, 'shank');
 close(length('UpperArm.L'), 0.186 * RIDER_H, 'upper arm');
@@ -65,8 +70,10 @@ for (const side of ['L', 'R'] as const) {
   const sign = side === 'L' ? 1 : -1;
   const shoulder = new Vector3(...bone(`UpperArm.${side}`).head);
   const wrist = new Vector3(...bone(`Hand.${side}`).head);
-  assert((wrist.x - shoulder.x) * sign > 0.15,
-    `${side} wrist hangs outboard of its shoulder (a straight-down arm has no room beside this waist)`);
+  assert(
+    (wrist.x - shoulder.x) * sign > 0.15,
+    `${side} wrist hangs outboard of its shoulder (a straight-down arm has no room beside this waist)`,
+  );
   assert(Math.abs(wrist.z - shoulder.z) < 1e-9, `${side} arm swings in the frontal plane only`);
 }
 
@@ -75,9 +82,11 @@ for (const side of ['L', 'R'] as const) {
  * an inverted solid is simply invisible from outside and a missing cap is a hole you have to be standing
  * in the right place to see. So each shape is checked for what makes it a closed orientable surface.
  */
-const key = (shape: ShapeMesh, vertex: number) => [0, 1, 2]
-  // `+ 0` normalizes the negative zero `mirroredX` produces, which would otherwise key as its own corner.
-  .map(axis => Number(shape.positions[vertex * 3 + axis].toFixed(6)) + 0).join(',');
+const key = (shape: ShapeMesh, vertex: number) =>
+  [0, 1, 2]
+    // `+ 0` normalizes the negative zero `mirroredX` produces, which would otherwise key as its own corner.
+    .map(axis => Number(shape.positions[vertex * 3 + axis].toFixed(6)) + 0)
+    .join(',');
 
 function assertClosed(name: string, shape: ShapeMesh) {
   const directed = new Map<string, number>();
@@ -104,8 +113,10 @@ for (const entry of PARTS) {
   assertClosed(entry.name, entry.shape);
   // Positive by the divergence theorem means every face is wound outward. Backwards, the solid renders as a
   // hole through the character on any renderer that culls back faces — which is all of them.
-  assert(shapeVolume(entry.shape) > 1e-9,
-    `${entry.name} is wound inside out (signed volume ${shapeVolume(entry.shape).toExponential(2)})`);
+  assert(
+    shapeVolume(entry.shape) > 1e-9,
+    `${entry.name} is wound inside out (signed volume ${shapeVolume(entry.shape).toExponential(2)})`,
+  );
 }
 
 /**
@@ -115,11 +126,18 @@ for (const entry of PARTS) {
  * that rides on top of one of these.
  */
 const PRIMARY = new Map<string, string>([
-  ['Head', 'Helm'], ['Neck', 'Gorget'], ['Chest', 'Cuirass'], ['Spine', 'Waist'], ['Hips', 'Pelvis'],
+  ['Head', 'Helm'],
+  ['Neck', 'Gorget'],
+  ['Chest', 'Cuirass'],
+  ['Spine', 'Waist'],
+  ['Hips', 'Pelvis'],
   ...['L', 'R'].flatMap((side): [string, string][] => [
-    [`UpperArm.${side}`, `Rerebrace.${side}`], [`LowerArm.${side}`, `Vambrace.${side}`],
-    [`Hand.${side}`, `Palm.${side}`], [`UpperLeg.${side}`, `Cuisse.${side}`],
-    [`LowerLeg.${side}`, `Greave.${side}`], [`Foot.${side}`, `Sabaton.${side}`],
+    [`UpperArm.${side}`, `Rerebrace.${side}`],
+    [`LowerArm.${side}`, `Vambrace.${side}`],
+    [`Hand.${side}`, `Palm.${side}`],
+    [`UpperLeg.${side}`, `Cuisse.${side}`],
+    [`LowerLeg.${side}`, `Greave.${side}`],
+    [`Foot.${side}`, `Sabaton.${side}`],
   ]),
 ]);
 for (const [boneName, partName] of PRIMARY) {
@@ -128,17 +146,25 @@ for (const [boneName, partName] of PRIMARY) {
   assert.equal(entry.bone, boneName, `${partName} is bound to ${boneName}`);
   const { min, max } = shapeBounds(entry.shape);
   const spec = bone(boneName);
-  for (const [end, point] of [['head', spec.head], ['tail', spec.tail]] as const) {
+  for (const [end, point] of [
+    ['head', spec.head],
+    ['tail', spec.tail],
+  ] as const) {
     for (let axis = 0; axis < 3; axis++) {
-      assert(point[axis] >= min[axis] - 1e-9 && point[axis] <= max[axis] + 1e-9,
-        `${partName} does not enclose ${boneName}'s ${end} on axis ${axis}`);
+      assert(
+        point[axis] >= min[axis] - 1e-9 && point[axis] <= max[axis] + 1e-9,
+        `${partName} does not enclose ${boneName}'s ${end} on axis ${axis}`,
+      );
     }
   }
 }
 // Every driven bone carries geometry: an unused one is a limb that vanishes rather than a limb that moves.
 for (const spec of BONES) {
   if (spec.name.startsWith('Clavicle') || spec.name.startsWith('Pelvis.')) continue; // pure connectors
-  assert(PARTS.some(entry => entry.bone === spec.name), `${spec.name} has geometry bound to it`);
+  assert(
+    PARTS.some(entry => entry.bone === spec.name),
+    `${spec.name} has geometry bound to it`,
+  );
 }
 
 /* ── Hands ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -147,14 +173,18 @@ for (const spec of BONES) {
  * hand that silently never closes, so the naming is asserted against the same shape the runtime matches.
  */
 const RUNTIME_DIGIT = /^(left|right)hand(thumb|index|middle|ring|pinky)([1-4])$/;
-const fingerBoneNames = BONES.map(spec => spec.name)
-  .filter(name => RUNTIME_DIGIT.test(normalizedCharacterBoneName(name)));
+const fingerBoneNames = BONES.map(spec => spec.name).filter(name =>
+  RUNTIME_DIGIT.test(normalizedCharacterBoneName(name)),
+);
 assert.equal(fingerBoneNames.length, 28, 'both hands carry a thumb of two segments and four fingers of three');
 for (const side of ['Left', 'Right'] as const) {
   // The two the driver looks up BY NAME to build the hand's palm frame. Without them it falls back to the
   // bind axes, and every digit's curl axis comes out of that fallback instead of the actual thumb.
   for (const required of [`${side}HandMiddle1`, `${side}HandThumb1`]) {
-    assert(BONES.some(spec => spec.name === required), `the driver can find ${required}`);
+    assert(
+      BONES.some(spec => spec.name === required),
+      `the driver can find ${required}`,
+    );
   }
   for (const spec of BONES) {
     const match = /^(Left|Right)Hand(Thumb|Index|Middle|Ring|Pinky)(\d)$/.exec(spec.name);
@@ -167,8 +197,7 @@ for (const side of ['Left', 'Right'] as const) {
 }
 // The wrist-to-knuckle length the driver reads as `palmLength`, which sets where a WebXR grip puts the
 // wrist. Outside this range it is clamped, and the gauntlet stops sitting in the tracked hand.
-const palmLength = new Vector3(...bone('LeftHandMiddle1').head)
-  .distanceTo(new Vector3(...bone('Hand.L').head));
+const palmLength = new Vector3(...bone('LeftHandMiddle1').head).distanceTo(new Vector3(...bone('Hand.L').head));
 assert(palmLength > 0.045 && palmLength < 0.14, `palm length is ${palmLength.toFixed(3)} m`);
 
 // The sole is the origin of the standing figure: nothing may hang below it, and the boots must reach it.
@@ -227,8 +256,10 @@ for (const plate of armPlates) {
   for (let vertex = 0; vertex < plate.shape.positions.length / 3; vertex++) {
     const point = [0, 1, 2].map(axis => plate.shape.positions[vertex * 3 + axis]) as unknown as V3;
     for (const core of corePlates) {
-      assert(!inside(point, core.shape),
-        `${plate.name} has a corner inside ${core.name} at ${point.map(v => v.toFixed(3)).join(', ')}`);
+      assert(
+        !inside(point, core.shape),
+        `${plate.name} has a corner inside ${core.name} at ${point.map(v => v.toFixed(3)).join(', ')}`,
+      );
     }
   }
 }
@@ -246,7 +277,9 @@ for (const plate of armPlates) {
   const figure = buildAlpineExo();
   figure.updateMatrixWorld(true);
   const posed = new Map<string, Bone>();
-  figure.traverse(object => { if (object instanceof Bone) posed.set(object.name, object); });
+  figure.traverse(object => {
+    if (object instanceof Bone) posed.set(object.name, object);
+  });
 
   const hand = posed.get('Hand.L')!;
   const wrist = hand.getWorldPosition(new Vector3());
@@ -259,15 +292,20 @@ for (const plate of armPlates) {
   const localX = new Vector3().setFromMatrixColumn(hand.matrixWorld, 0).normalize();
   // The driver builds this from `middle1 × thumb1`, so it is really a check on where the thumb's BASE sits:
   // lift it out of the palm plane and the recovered normal tilts, taking every finger's curl plane with it.
-  assert(palm.dot(localX) > 0.98,
-    `the driver recovers the palm normal the digits were authored against (dot ${palm.dot(localX).toFixed(3)})`);
+  assert(
+    palm.dot(localX) > 0.98,
+    `the driver recovers the palm normal the digits were authored against (dot ${palm.dot(localX).toFixed(3)})`,
+  );
 
   const tipInHand = (digit: string): Vector3 => {
-    let last: Bone | undefined, segment = 1;
+    let last: Bone | undefined,
+      segment = 1;
     while (posed.get(`LeftHand${digit}${segment}`)) last = posed.get(`LeftHand${digit}${segment++}`)!;
-    const length = new Vector3().setFromMatrixPosition(last!.matrixWorld)
+    const length = new Vector3()
+      .setFromMatrixPosition(last!.matrixWorld)
       .distanceTo(new Vector3().setFromMatrixPosition(last!.parent!.matrixWorld));
-    return new Vector3(0, length, 0).applyMatrix4(last!.matrixWorld)
+    return new Vector3(0, length, 0)
+      .applyMatrix4(last!.matrixWorld)
       .applyMatrix4(new Matrix4().copy(hand.matrixWorld).invert());
   };
   const open = Object.fromEntries(['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].map(d => [d, tipInHand(d)]));
@@ -289,28 +327,34 @@ for (const plate of armPlates) {
   }
   figure.updateMatrixWorld(true);
 
-  const palmSurface = 0.060; // the outer face of `PalmPad`, in the hand's own frame
+  const palmSurface = 0.06; // the outer face of `PalmPad`, in the hand's own frame
   for (const digit of ['Index', 'Middle', 'Ring', 'Pinky']) {
-    const extended = open[digit], closed = tipInHand(digit);
+    const extended = open[digit],
+      closed = tipInHand(digit);
     assert(extended.y > 0.11, `${digit} reaches out when open, not ${extended.y.toFixed(3)} m`);
     assert(closed.y < extended.y - 0.05, `${digit} actually curls: ${extended.y.toFixed(3)} → ${closed.y.toFixed(3)}`);
     // Toward the palm and stopping ON it. A tip that overshoots into negative x has folded straight through
     // the back of the hand, which is what a segment count or a rest direction gets wrong.
-    assert(closed.x > palmSurface * 0.8 && closed.x < palmSurface + 0.030,
-      `${digit} closes onto the palm, not through it (x ${closed.x.toFixed(3)} against a surface at ${palmSurface})`);
+    assert(
+      closed.x > palmSurface * 0.8 && closed.x < palmSurface + 0.03,
+      `${digit} closes onto the palm, not through it (x ${closed.x.toFixed(3)} against a surface at ${palmSurface})`,
+    );
     // And it closes STRAIGHT. A finger that slides across the palm as it shuts is the visible symptom of a
     // tilted palm normal, which is a property of the thumb's base rather than of this finger at all.
-    assert(Math.abs(closed.z - extended.z) < 0.012,
-      `${digit} curls in its own plane (across ${extended.z.toFixed(3)} → ${closed.z.toFixed(3)})`);
+    assert(
+      Math.abs(closed.z - extended.z) < 0.012,
+      `${digit} curls in its own plane (across ${extended.z.toFixed(3)} → ${closed.z.toFixed(3)})`,
+    );
   }
   // The thumb tucks under the fingers rather than lying over them — two segments against the driver's fixed
   // 1.15 + 1.45 rad is more fold than a thumb has, and this is where that lands. What matters is that it
   // stays inside the fist: not out through the back of the hand, and not floating off the palm.
   const thumb = tipInHand('Thumb');
-  assert(thumb.x > 0.015 && thumb.x < palmSurface + 0.030,
-    `the thumb folds into the fist (x ${thumb.x.toFixed(3)})`);
-  assert(thumb.y > 0 && thumb.y < 0.06,
-    `the thumb lands across the palm rather than past the wrist (y ${thumb.y.toFixed(3)})`);
+  assert(thumb.x > 0.015 && thumb.x < palmSurface + 0.03, `the thumb folds into the fist (x ${thumb.x.toFixed(3)})`);
+  assert(
+    thumb.y > 0 && thumb.y < 0.06,
+    `the thumb lands across the palm rather than past the wrist (y ${thumb.y.toFixed(3)})`,
+  );
   assert(Math.abs(thumb.z) < 0.05, `the thumb comes in over the palm (z ${thumb.z.toFixed(3)})`);
 }
 
@@ -328,8 +372,10 @@ assert.equal(report.animations, 0);
 assert.equal(report.maxInfluencesPerVertex, 1, 'every plate is rigidly bound to one bone');
 const triangles = PARTS.reduce((sum, entry) => sum + entry.shape.indices.length / 3, 0);
 assert.equal(report.triangles, triangles, 'the mesh is exactly the parts table, with no stray geometry');
-assert(report.heightMetres !== null && report.heightMetres > 1.6 && report.heightMetres < 2.1,
-  `standing height is ${report.heightMetres} m`);
+assert(
+  report.heightMetres !== null && report.heightMetres > 1.6 && report.heightMetres < 2.1,
+  `standing height is ${report.heightMetres} m`,
+);
 assert(Math.abs(report.boundsMin?.[1] ?? 1) < 1e-6, 'the skinned figure starts at the ground plane');
 // Breadth is the whole design; a change that quietly narrows it has changed the character.
 const width = (report.boundsMax?.[0] ?? 0) - (report.boundsMin?.[0] ?? 0);
@@ -354,8 +400,9 @@ for (const entry of PARTS) {
   // A part on a lit material with no tile would land on UNLIT and simply not glow — the kind of omission
   // that reads as "the light is broken" rather than as a missing line in a table.
   assert(entry.tile, `${entry.name} is on the lit material ${entry.material} and must name a tile`);
-  const texture = ALPINE_EXO.textures?.find(one =>
-    one.name === ALPINE_EXO.palette.find(p => p.name === entry.material)?.emissiveTexture);
+  const texture = ALPINE_EXO.textures?.find(
+    one => one.name === ALPINE_EXO.palette.find(p => p.name === entry.material)?.emissiveTexture,
+  );
   if (texture?.wrap === 'clamp') {
     for (const value of entry.tile) {
       assert(value >= 0 && value <= 1, `${entry.name} samples outside a clamped atlas at ${value}`);
@@ -367,7 +414,10 @@ for (const entry of PARTS) {
 const atlas = ALPINE_EXO.textures![0];
 assert.equal(atlas.name, 'lights');
 assert.equal(atlas.pixels[0], 0, 'the atlas texel UNLIT points at is black');
-assert(atlas.pixels.some(value => value > 200), 'the atlas has something bright in it');
+assert(
+  atlas.pixels.some(value => value > 200),
+  'the atlas has something bright in it',
+);
 
 /** Split a GLB the way the browser will, so the images can be read out of the bytes that actually ship. */
 function glbChunks(bytes: Uint8Array) {
@@ -375,7 +425,8 @@ function glbChunks(bytes: Uint8Array) {
   let json: Record<string, any> = {};
   let bin: Uint8Array<ArrayBufferLike> = new Uint8Array();
   for (let offset = 12; offset < bytes.byteLength;) {
-    const length = view.getUint32(offset, true), type = view.getUint32(offset + 4, true);
+    const length = view.getUint32(offset, true),
+      type = view.getUint32(offset + 4, true);
     const body = bytes.subarray(offset + 8, offset + 8 + length);
     if (type === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(body));
     else if (type === 0x004e4942) bin = body;
@@ -420,10 +471,18 @@ assert(core.emissiveTexture, 'Core samples a mask');
  */
 const browserish = globalThis as Record<string, unknown>;
 browserish.self ??= globalThis;
-browserish.createImageBitmap ??= async () => ({ width: 1, height: 1, close() { /* stub */ } });
+browserish.createImageBitmap ??= async () => ({
+  width: 1,
+  height: 1,
+  close() {
+    /* stub */
+  },
+});
 
 const gltf = await new GLTFLoader().parseAsync(
-  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer, '');
+  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer,
+  '',
+);
 const root = gltf.scene as Group;
 root.updateMatrixWorld(true);
 const loadedBones = new Map<string, Bone>();
@@ -447,16 +506,24 @@ for (const spec of BONES) driven(spec.name);
  * Feet: the importer's mirrored roll, `Foot.L` local +X sole-up and `Foot.R` local −X (docs/030), with
  * local +Y running out over the toes.
  */
-const spread = BIND.armSpread * Math.PI / 180;
-for (const [name, side, inward] of [['Hand.L', 1, -1], ['Hand.R', -1, 1]] as const) {
+const spread = (BIND.armSpread * Math.PI) / 180;
+for (const [name, side, inward] of [
+  ['Hand.L', 1, -1],
+  ['Hand.R', -1, 1],
+] as const) {
   const bind = driven(name).getWorldQuaternion(new Quaternion());
   const fingers = new Vector3(0, 1, 0).applyQuaternion(bind);
   const palm = new Vector3(side, 0, 0).applyQuaternion(bind);
-  assert(Math.abs(fingers.y + Math.cos(spread)) < 1e-3 && fingers.x * side > 0,
-    `${name} bind fingers run down its own A-posed arm`);
+  assert(
+    Math.abs(fingers.y + Math.cos(spread)) < 1e-3 && fingers.x * side > 0,
+    `${name} bind fingers run down its own A-posed arm`,
+  );
   assert(palm.x * inward > 0.9, `${name} bind palm faces the body`);
 }
-for (const [name, up] of [['Foot.L', 1], ['Foot.R', -1]] as const) {
+for (const [name, up] of [
+  ['Foot.L', 1],
+  ['Foot.R', -1],
+] as const) {
   const bind = driven(name).getWorldQuaternion(new Quaternion());
   assert(new Vector3(0, 1, 0).applyQuaternion(bind).z > 0.99, `${name} bind +Y runs out over the toes`);
   assert(new Vector3(up, 0, 0).applyQuaternion(bind).y > 0.99, `${name} bind roll is sole-up`);
@@ -469,8 +536,10 @@ assert(character, 'Alpine Exo is a registered built-in');
 const tracked = await readFile(new URL(`../public/characters/${character.file}`, import.meta.url));
 // Compared as buffers rather than with deepEqual: the failure that matters is "stale", and a byte-by-byte
 // diff of a third of a megabyte buries that one-line instruction under the whole model.
-assert(tracked.equals(Buffer.from(glb)),
-  `public/characters/${character.file} is stale (${tracked.byteLength} bytes on disk, ${glb.byteLength} generated); `
-  + 're-run tools/character-models/alpine-exo.ts');
+assert(
+  tracked.equals(Buffer.from(glb)),
+  `public/characters/${character.file} is stale (${tracked.byteLength} bytes on disk, ${glb.byteLength} generated); ` +
+    're-run tools/character-models/alpine-exo.ts',
+);
 
 console.log(`ALPINE EXO: PASS (${PARTS.length} solids, ${triangles} triangles, ${glb.byteLength} bytes)`);

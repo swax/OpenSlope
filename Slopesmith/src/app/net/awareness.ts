@@ -56,7 +56,8 @@ export function createAwareness(deps: {
   let periodMs = AWARE_MS;
 
   const frame = (): AwarenessFrame => {
-    const picked = deps.selection(), live = deps.editing();
+    const picked = deps.selection(),
+      live = deps.editing();
     return {
       cursor: deps.cursor(),
       vertices: [...new Set([...picked.vertices, ...live.vertices])],
@@ -102,7 +103,9 @@ export function createAwareness(deps: {
     period: (): number => periodMs,
     /** The room has forgotten what this tab said — a map it left, or a socket it lost. Both leave the server
      *  holding empty awareness for this session, so that is what has to be believed of it again. */
-    reset(): void { said = JSON.stringify(EMPTY); },
+    reset(): void {
+      said = JSON.stringify(EMPTY);
+    },
   };
 }
 

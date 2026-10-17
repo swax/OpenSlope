@@ -18,7 +18,9 @@ import { CAGE_OCCLUDED_DIM } from '../constants';
  */
 
 /** Editor metres. A zero-speed node still draws its axis at the floor length. */
-const MIN_LENGTH = 6, MAX_LENGTH = 24, LENGTH_PER_SPEED = 0.06;
+const MIN_LENGTH = 6,
+  MAX_LENGTH = 24,
+  LENGTH_PER_SPEED = 0.06;
 
 export interface BoostArrow {
   /** Anchor in the parent's frame — the host instance's origin, where the selection ring sits. */
@@ -56,24 +58,24 @@ export function boostArrowSegments(arrows: readonly BoostArrow[]): number[] {
   return out;
 }
 
-const X_AXIS = new THREE.Vector3(1, 0, 0), Y_AXIS = new THREE.Vector3(0, 1, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0),
+  Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 function appendArrow(out: number[], arrow: BoostArrow): void {
   if (arrow.dir.lengthSq() < 1e-8) return;
   const dir = arrow.dir.clone().normalize();
   const length = Math.min(MAX_LENGTH, Math.max(MIN_LENGTH, MIN_LENGTH + arrow.speed * LENGTH_PER_SPEED));
-  const head = length * 0.2, half = head * 0.45;
+  const head = length * 0.2,
+    half = head * 0.45;
   // Two perpendiculars, so the head reads as an arrow from any camera angle rather than collapsing to a line
   // when viewed along its own fin plane.
   const p = new THREE.Vector3().crossVectors(Math.abs(dir.y) > 0.9 ? X_AXIS : Y_AXIS, dir).normalize();
   const q = new THREE.Vector3().crossVectors(dir, p).normalize();
   const tip = arrow.origin.clone().addScaledVector(dir, length);
-  const segment = (a: THREE.Vector3, b: THREE.Vector3) =>
-    out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+  const segment = (a: THREE.Vector3, b: THREE.Vector3) => out.push(a.x, a.y, a.z, b.x, b.y, b.z);
   // Anchor cross: which prop owns the arrow, for a vent sitting shoulder to shoulder with its twin.
-  for (const side of [p, q]) segment(
-    arrow.origin.clone().addScaledVector(side, -half),
-    arrow.origin.clone().addScaledVector(side, half));
+  for (const side of [p, q])
+    segment(arrow.origin.clone().addScaledVector(side, -half), arrow.origin.clone().addScaledVector(side, half));
   segment(arrow.origin, tip);
   for (let barb = 0; barb < Math.max(1, arrow.barbs); barb++) {
     const apex = tip.clone().addScaledVector(dir, -barb * head * 0.7);
@@ -96,8 +98,10 @@ export function createBoostArrowLayer(parent: THREE.Object3D) {
   group.visible = false;
   parent.add(group);
   const materials = [
-    boostArrowMaterial(false, false), boostArrowMaterial(false, true),
-    boostArrowMaterial(true, false), boostArrowMaterial(true, true),
+    boostArrowMaterial(false, false),
+    boostArrowMaterial(false, true),
+    boostArrowMaterial(true, false),
+    boostArrowMaterial(true, true),
   ] as const;
   let geometries: LineSegmentsGeometry[] = [];
 
@@ -109,7 +113,9 @@ export function createBoostArrowLayer(parent: THREE.Object3D) {
 
   return {
     /** Fat lines rasterise in pixels, so the host's resize() keeps these fresh. */
-    get materials() { return materials; },
+    get materials() {
+      return materials;
+    },
     setArrows(plain: readonly BoostArrow[], emphasised: readonly BoostArrow[]) {
       clear();
       for (const [set, arrows] of [plain, emphasised].entries()) {
@@ -122,12 +128,16 @@ export function createBoostArrowLayer(parent: THREE.Object3D) {
         for (const occluded of [true, false]) {
           const lines = new LineSegments2(geometry, materials[set * 2 + (occluded ? 1 : 0)]);
           lines.renderOrder = 100;
-          lines.raycast = () => { /* never a pick target */ };
+          lines.raycast = () => {
+            /* never a pick target */
+          };
           group.add(lines);
         }
       }
     },
-    setVisible(on: boolean) { group.visible = on; },
+    setVisible(on: boolean) {
+      group.visible = on;
+    },
     dispose() {
       clear();
       parent.remove(group);

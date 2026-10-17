@@ -52,39 +52,53 @@ async function exercise(recursive: boolean): Promise<void> {
   try {
     tree = await watchTree(root, listener, { recursive, onError: error => errors.push(error) });
     const watching = tree;
-    check(watching.directories === (recursive ? 1 : 3),
-      `${mode}: one watch per directory, none per file`, `${watching.directories} watches for 3 directories`);
+    check(
+      watching.directories === (recursive ? 1 : 3),
+      `${mode}: one watch per directory, none per file`,
+      `${watching.directories} watches for 3 directories`,
+    );
 
     writeFileSync(join(root, 'GARI', 'Textures', '7.json'), '{"edited":true}');
-    check(await until(() => seen.has('GARI/Textures/7.json')),
-      `${mode}: an edit two levels down is reported`);
+    check(await until(() => seen.has('GARI/Textures/7.json')), `${mode}: an edit two levels down is reported`);
 
     // An install script stages a level elsewhere and renames it in whole; its contents predate any watch.
     files(join(outside, 'SSX3_ARA1', 'Lightmaps'), 30);
     renameSync(join(outside, 'SSX3_ARA1'), join(root, 'SSX3_ARA1'));
     check(await until(() => seen.has('SSX3_ARA1')), `${mode}: a level renamed in is reported`);
     if (!recursive) {
-      check(await until(() => watching.directories === 5),
-        'walk: the renamed-in level and its folders are watched', `${watching.directories} watches`);
-      check(await until(() => seen.has('SSX3_ARA1/Lightmaps/12.json')),
-        'walk: what the renamed-in level already held is reported too');
+      check(
+        await until(() => watching.directories === 5),
+        'walk: the renamed-in level and its folders are watched',
+        `${watching.directories} watches`,
+      );
+      check(
+        await until(() => seen.has('SSX3_ARA1/Lightmaps/12.json')),
+        'walk: what the renamed-in level already held is reported too',
+      );
     }
     writeFileSync(join(root, 'SSX3_ARA1', 'Lightmaps', 'late.json'), '{}');
-    check(await until(() => seen.has('SSX3_ARA1/Lightmaps/late.json')),
-      `${mode}: an edit inside the renamed-in level is reported`);
+    check(
+      await until(() => seen.has('SSX3_ARA1/Lightmaps/late.json')),
+      `${mode}: an edit inside the renamed-in level is reported`,
+    );
 
     // The projects watch's case: a new folder, then a manifest written as a temporary renamed over the name.
     mkdirSync(join(root, 'project-1'));
     writeFileSync(join(root, 'project-1', 'project.json.tmp'), '{}');
     renameSync(join(root, 'project-1', 'project.json.tmp'), join(root, 'project-1', 'project.json'));
-    check(await until(() => seen.has('project-1/project.json')),
-      `${mode}: an atomic manifest write in a new folder is reported`);
+    check(
+      await until(() => seen.has('project-1/project.json')),
+      `${mode}: an atomic manifest write in a new folder is reported`,
+    );
 
     // Windows refuses to finish removing a directory while a watch on it is open, so this half is POSIX-only.
     if (!recursive && process.platform !== 'win32') {
       rmSync(join(root, 'SSX3_ARA1'), { recursive: true });
-      check(await until(() => watching.directories === 4),
-        'walk: a removed level gives its watches back', `${watching.directories} watches`);
+      check(
+        await until(() => watching.directories === 4),
+        'walk: a removed level gives its watches back',
+        `${watching.directories} watches`,
+      );
     }
     check(errors.length === 0, `${mode}: nothing reported as unwatched`, errors.map(e => e.message).join('; '));
   } finally {
@@ -100,8 +114,9 @@ async function exhausted(): Promise<void> {
   files(join(root, 'OPEN'), 5);
   const limited = ((path: string, ...rest: unknown[]) => {
     if (/[\\/]BLOCKED$/.test(String(path))) {
-      throw Object.assign(new Error(`ENOSPC: System limit for number of file watchers reached, watch '${path}'`),
-        { code: 'ENOSPC' });
+      throw Object.assign(new Error(`ENOSPC: System limit for number of file watchers reached, watch '${path}'`), {
+        code: 'ENOSPC',
+      });
     }
     return (watch as (...args: unknown[]) => ReturnType<typeof watch>)(path, ...rest);
   }) as typeof watch;
@@ -111,13 +126,21 @@ async function exhausted(): Promise<void> {
   try {
     check(errors.length === 1, 'exhausted: the refused directory is reported, once', `${errors.length} reports`);
     const message = errors[0]?.message ?? '';
-    check(/^1 directory under .* could not be watched/.test(message) && message.includes('max_user_watches'),
-      'exhausted: the report counts what is unwatched and names the limit to raise', message);
-    check(tree.directories === 3, 'exhausted: the folders beside and below it are still watched',
-      `${tree.directories} watches`);
+    check(
+      /^1 directory under .* could not be watched/.test(message) && message.includes('max_user_watches'),
+      'exhausted: the report counts what is unwatched and names the limit to raise',
+      message,
+    );
+    check(
+      tree.directories === 3,
+      'exhausted: the folders beside and below it are still watched',
+      `${tree.directories} watches`,
+    );
     writeFileSync(join(root, 'BLOCKED', 'Textures', 'late.json'), '{}');
-    check(await until(() => seen.has('BLOCKED/Textures/late.json')),
-      'exhausted: an edit below the refused directory is still reported');
+    check(
+      await until(() => seen.has('BLOCKED/Textures/late.json')),
+      'exhausted: an edit below the refused directory is still reported',
+    );
   } finally {
     tree.close();
   }

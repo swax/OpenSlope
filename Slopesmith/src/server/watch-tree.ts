@@ -4,7 +4,10 @@ import { join, relative, sep } from 'node:path';
 import { canonicalDir } from './fs-async';
 
 /** What one walk could not watch: a count, and the first reason, for one report rather than one per folder. */
-interface Unwatched { failed: number; error?: Error }
+interface Unwatched {
+  failed: number;
+  error?: Error;
+}
 
 const gone = (error: unknown): boolean => {
   const code = (error as NodeJS.ErrnoException).code;
@@ -49,20 +52,28 @@ const NATIVE_RECURSIVE = process.platform === 'win32' || process.platform === 'd
  * stopping the rest.
  */
 export async function watchTree(
-  root: string, listener: TreeListener, options: TreeWatchOptions = {},
+  root: string,
+  listener: TreeListener,
+  options: TreeWatchOptions = {},
 ): Promise<TreeWatch> {
   // Canonical, because a recursive watch opened on an 8.3 short path aborts the process — see `canonicalDir`.
   // Everything reported is relative to whatever was watched, so the rest works off that path.
   const base = await canonicalDir(root);
   if (options.recursive ?? NATIVE_RECURSIVE) {
     const watcher = watch(base, { recursive: true }, (_event, filename) =>
-      listener(filename === null ? null : filename.toString()));
+      listener(filename === null ? null : filename.toString()),
+    );
     // Losing the watch costs freshness, never correctness: every response is still ETag-validated.
     watcher.on('error', error => options.onError?.(error));
     let live = true;
     return {
-      get directories() { return live ? 1 : 0; },
-      close: () => { live = false; watcher.close(); },
+      get directories() {
+        return live ? 1 : 0;
+      },
+      close: () => {
+        live = false;
+        watcher.close();
+      },
     };
   }
 
@@ -83,11 +94,17 @@ export async function watchTree(
   const walk = async (dir: string, announce: boolean): Promise<Unwatched> => {
     if (closed || watchers.has(dir)) return { failed: 0 };
     const result: Unwatched = { failed: 0 };
-    const miss = (error: unknown): void => { result.failed++; result.error ??= error as Error; };
+    const miss = (error: unknown): void => {
+      result.failed++;
+      result.error ??= error as Error;
+    };
     try {
       // Watch before listing: anything created after the watch is reported, anything before it is listed.
       const watcher = open(dir, (event, name) => changed(dir, event, name));
-      watcher.on('error', () => { watcher.close(); if (watchers.get(dir) === watcher) watchers.delete(dir); });
+      watcher.on('error', () => {
+        watcher.close();
+        if (watchers.get(dir) === watcher) watchers.delete(dir);
+      });
       watchers.set(dir, watcher);
     } catch (error) {
       if (gone(error)) return { failed: 0 };
@@ -99,19 +116,24 @@ export async function watchTree(
       entries = await readdir(dir, { withFileTypes: true });
     } catch (error) {
       // A directory removed while being walked is simply gone, not a hole in the watch.
-      if (gone(error)) { forget(dir); return { failed: 0 }; }
+      if (gone(error)) {
+        forget(dir);
+        return { failed: 0 };
+      }
       if (watchers.has(dir)) miss(error);
       return result;
     }
     if (closed) return { failed: 0 };
-    await Promise.all(entries.map(async entry => {
-      const path = join(dir, entry.name);
-      if (announce) listener(relative(base, path));
-      if (!entry.isDirectory()) return;
-      const below = await walk(path, announce);
-      result.failed += below.failed;
-      result.error ??= below.error;
-    }));
+    await Promise.all(
+      entries.map(async entry => {
+        const path = join(dir, entry.name);
+        if (announce) listener(relative(base, path));
+        if (!entry.isDirectory()) return;
+        const below = await walk(path, announce);
+        result.failed += below.failed;
+        result.error ??= below.error;
+      }),
+    );
     return result;
   };
 
@@ -120,13 +142,15 @@ export async function watchTree(
     const cause = result.error as NodeJS.ErrnoException;
     const hint = cause.code === 'ENOSPC' ? '; raise fs.inotify.max_user_watches' : '';
     const count = `${result.failed} ${result.failed === 1 ? 'directory' : 'directories'}`;
-    options.onError?.(new Error(`${count} under ${base} could not be watched (${cause.message})${hint}`,
-      { cause }));
+    options.onError?.(new Error(`${count} under ${base} could not be watched (${cause.message})${hint}`, { cause }));
   };
 
   const changed = (dir: string, event: WatchEventType, name: string | null): void => {
     if (closed) return;
-    if (name === null) { listener(null); return; }
+    if (name === null) {
+      listener(null);
+      return;
+    }
     const path = join(dir, name);
     listener(relative(base, path));
     // A write or an attribute change cannot add or remove a directory; only a 'rename' can.
@@ -137,13 +161,17 @@ export async function watchTree(
         if (stats.isDirectory()) return walk(path, true).then(report);
         if (watchers.has(path)) forget(path);
       },
-      () => { if (watchers.has(path)) forget(path); },
+      () => {
+        if (watchers.has(path)) forget(path);
+      },
     );
   };
 
   report(await walk(base, false));
   return {
-    get directories() { return watchers.size; },
+    get directories() {
+      return watchers.size;
+    },
     close: () => {
       closed = true;
       for (const watcher of watchers.values()) watcher.close();

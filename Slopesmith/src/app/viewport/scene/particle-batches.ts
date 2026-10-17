@@ -81,8 +81,12 @@ const FRAGMENT_SHADER = `
 `;
 
 /** Build both billboard batches over `capacity` sprite slots, sampling a `columns` x `rows` atlas. */
-export function createParticleBatches(atlas: THREE.Texture, columns: number, rows: number,
-  capacity: number): ParticleBatches {
+export function createParticleBatches(
+  atlas: THREE.Texture,
+  columns: number,
+  rows: number,
+  capacity: number,
+): ParticleBatches {
   const makeBuffers = () => ({
     position: new Float32Array(capacity * 3),
     color: new Float32Array(capacity * 3),
@@ -101,17 +105,25 @@ export function createParticleBatches(atlas: THREE.Texture, columns: number, row
   // RGB already zeroed by the packer, so `src*a + dst*(1-a)` collapses to exactly the engine's multiply toward
   // black — colour ignored, alpha alone deciding how far the framebuffer darkens.
   const shared = {
-    uniforms, vertexShader: VERTEX_SHADER, fragmentShader: FRAGMENT_SHADER,
-    transparent: true, depthWrite: false,
+    uniforms,
+    vertexShader: VERTEX_SHADER,
+    fragmentShader: FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
     // Fog batches live below the mirrored world root, but their corners are expanded AFTER that transform.
     // Draw either winding in one pass, so the negative parent cannot cull or double-blend the billboard.
-    side: THREE.DoubleSide, forceSinglePass: true,
+    side: THREE.DoubleSide,
+    forceSinglePass: true,
   } as const;
   const additiveMaterial = new THREE.ShaderMaterial({
-    ...shared, name: 'SSF particles additive', blending: THREE.AdditiveBlending,
+    ...shared,
+    name: 'SSF particles additive',
+    blending: THREE.AdditiveBlending,
   });
   const alphaMaterial = new THREE.ShaderMaterial({
-    ...shared, name: 'SSF particles alpha', blending: THREE.NormalBlending,
+    ...shared,
+    name: 'SSF particles alpha',
+    blending: THREE.NormalBlending,
   });
 
   const batch = (data: typeof buffers, material: THREE.ShaderMaterial, order: number) => {
@@ -125,9 +137,10 @@ export function createParticleBatches(atlas: THREE.Texture, columns: number, row
       particleSprite: instance(data.sprite, 1),
     };
     const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-      -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
-    ], 3));
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3),
+    );
     // Point-sprite UVs start at the top left; retain that orientation for the existing atlas images.
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
@@ -147,11 +160,12 @@ export function createParticleBatches(atlas: THREE.Texture, columns: number, row
       mesh,
       publish(count: number) {
         geometry.instanceCount = count;
-        if (count) for (const attribute of Object.values(attributes)) {
-          attribute.clearUpdateRanges();
-          attribute.addUpdateRange(0, count * attribute.itemSize);
-          attribute.needsUpdate = true;
-        }
+        if (count)
+          for (const attribute of Object.values(attributes)) {
+            attribute.clearUpdateRanges();
+            attribute.addUpdateRange(0, count * attribute.itemSize);
+            attribute.needsUpdate = true;
+          }
       },
     };
   };
@@ -163,10 +177,11 @@ export function createParticleBatches(atlas: THREE.Texture, columns: number, row
     alphaMesh: alpha.mesh,
     buffers,
     setDrawRanges(additiveCount, alphaCount) {
-      if (alphaCount) for (const key of Object.keys(buffers) as (keyof typeof buffers)[]) {
-        const width = key === 'position' || key === 'color' ? 3 : 1;
-        alphaBuffers[key].set(buffers[key].subarray(additiveCount * width, (additiveCount + alphaCount) * width));
-      }
+      if (alphaCount)
+        for (const key of Object.keys(buffers) as (keyof typeof buffers)[]) {
+          const width = key === 'position' || key === 'color' ? 3 : 1;
+          alphaBuffers[key].set(buffers[key].subarray(additiveCount * width, (additiveCount + alphaCount) * width));
+        }
       additive.publish(additiveCount);
       alpha.publish(alphaCount);
     },

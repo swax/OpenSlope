@@ -18,7 +18,8 @@ export interface SpineSample {
 const DENSITY = 32; // samples per knot segment for the arc-length table
 
 function cr(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
-  const t2 = t * t, t3 = t2 * t;
+  const t2 = t * t,
+    t3 = t2 * t;
   const f = (a: number, b: number, c: number, d: number) =>
     0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
   return [f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1]), f(p0[2], p1[2], p2[2], p3[2])];
@@ -57,12 +58,15 @@ export function spineAt(samples: SpineSample[], s: number): SpineSample {
   const total = samples[samples.length - 1].s;
   const t = Math.max(0, Math.min(total, s));
   // binary search the bracketing pair
-  let lo = 0, hi = samples.length - 1;
+  let lo = 0,
+    hi = samples.length - 1;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
-    if (samples[mid].s <= t) lo = mid; else hi = mid;
+    if (samples[mid].s <= t) lo = mid;
+    else hi = mid;
   }
-  const a = samples[lo], b = samples[hi];
+  const a = samples[lo],
+    b = samples[hi];
   const span = Math.max(1e-9, b.s - a.s);
   const f = (t - a.s) / span;
   return { pos: lerp(a.pos, b.pos, f), fwd: norm(lerp(a.fwd, b.fwd, f)), s: t, k: a.k + (b.k - a.k) * f };
@@ -73,7 +77,8 @@ export function paramsAt(knots: CourseKnot[], k: number): Pick<CourseKnot, 'widt
   const i = Math.max(0, Math.min(knots.length - 2, Math.floor(k)));
   const t = Math.max(0, Math.min(1, k - i));
   const sm = t * t * (3 - 2 * t); // smoothstep so params ease between knots
-  const a = knots[i], b = knots[i + 1];
+  const a = knots[i],
+    b = knots[i + 1];
   const mix = (x: number, y: number) => x + (y - x) * sm;
   return {
     width: mix(a.width, b.width),

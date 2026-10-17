@@ -47,15 +47,18 @@ function axisWeights(n: number): Float32Array {
 export function makeSeamless(img: Rgba): Rgba {
   const { w, h } = img;
   if (w < 8 || h < 8) return img;
-  const hx = w >> 1, hy = h >> 1;
-  const wx = axisWeights(w), wy = axisWeights(h);
+  const hx = w >> 1,
+    hy = h >> 1;
+  const wx = axisWeights(w),
+    wy = axisWeights(h);
   const data = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
     const oy = (y + hy) % h;
     for (let x = 0; x < w; x++) {
       const ox = (x + hx) % w;
       const k = wx[x] * wy[y];
-      const a = (y * w + x) * 4, b = (oy * w + ox) * 4;
+      const a = (y * w + x) * 4,
+        b = (oy * w + ox) * 4;
       for (let c = 0; c < 4; c++) data[a + c] = Math.round(img.data[a + c] * k + img.data[b + c] * (1 - k));
     }
   }
@@ -69,13 +72,20 @@ export function makeSeamless(img: Rgba): Rgba {
  */
 export function seamError(img: Rgba): number {
   const { w, h, data } = img;
-  let total = 0, n = 0;
+  let total = 0,
+    n = 0;
   const at = (x: number, y: number, c: number) => data[(y * w + x) * 4 + c];
   for (let y = 0; y < h; y++) {
-    for (let c = 0; c < 4; c++) { total += Math.abs(at(0, y, c) - at(w - 1, y, c)); n++; }
+    for (let c = 0; c < 4; c++) {
+      total += Math.abs(at(0, y, c) - at(w - 1, y, c));
+      n++;
+    }
   }
   for (let x = 0; x < w; x++) {
-    for (let c = 0; c < 4; c++) { total += Math.abs(at(x, 0, c) - at(x, h - 1, c)); n++; }
+    for (let c = 0; c < 4; c++) {
+      total += Math.abs(at(x, 0, c) - at(x, h - 1, c));
+      n++;
+    }
   }
   return n ? total / n : 0;
 }

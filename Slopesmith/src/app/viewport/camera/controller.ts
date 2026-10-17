@@ -29,20 +29,24 @@ export function hoveredGizmoPivot(gizmo: {
  * gesture methods and reads `flying` / `orbiting` / `twist`; the render loop reads `viewHelper` + calls
  * `flyMove`. All the shared camera objects (camera / controls / cameras / projection state) live on the Stage.
  */
-export function createCameraController(stage: Stage, grid: {
-  active: () => boolean;
-  toggle: () => void;
-  step: () => SnapStep;
-  setStep: (step: SnapStep) => void;
-  projectionChanged: () => void;
-}, snap: {
-  active: () => boolean;
-  toggle: () => void;
-  step: () => SnapStep;
-  setStep: (step: SnapStep) => void;
-  rotationStep: () => RotationSnapStep;
-  setRotationStep: (step: RotationSnapStep) => void;
-}) {
+export function createCameraController(
+  stage: Stage,
+  grid: {
+    active: () => boolean;
+    toggle: () => void;
+    step: () => SnapStep;
+    setStep: (step: SnapStep) => void;
+    projectionChanged: () => void;
+  },
+  snap: {
+    active: () => boolean;
+    toggle: () => void;
+    step: () => SnapStep;
+    setStep: (step: SnapStep) => void;
+    rotationStep: () => RotationSnapStep;
+    setRotationStep: (step: RotationSnapStep) => void;
+  },
+) {
   // upper-right navigation gizmo (clickable axis nubs -> snap view) + its own tiny renderer
   let viewHelper!: ViewHelper;
   let gizmoRenderer!: THREE.WebGLRenderer;
@@ -87,12 +91,18 @@ export function createCameraController(stage: Stage, grid: {
   /** WASD/QE fly while Alt is held — no click needed — or through an Alt+RMB look-drag, which outlives the Alt
    *  that started it. Plain letters stay shortcuts otherwise. */
   function flyKey(e: KeyboardEvent, down: boolean) {
-    if (e.key === 'Alt') { if (!down && !flying) releaseFlyKeys(); return; }
+    if (e.key === 'Alt') {
+      if (!down && !flying) releaseFlyKeys();
+      return;
+    }
     flyKeys.shift = e.shiftKey; // read off every key, so a Shift pressed before Alt still boosts
     const k = flyLetter(e);
     if (k === 'shift' || !(k in flyKeys)) return;
     // a release belongs to the press even if focus moved into a field in between
-    if (!down) { (flyKeys as Record<string, boolean>)[k] = false; return; }
+    if (!down) {
+      (flyKeys as Record<string, boolean>)[k] = false;
+      return;
+    }
     const t = e.target as HTMLElement | null;
     if (t?.matches?.('input, textarea, select')) return;
     if (!flying && !(e.altKey && !e.ctrlKey && !e.metaKey)) return; // AltGr (Ctrl+Alt) types characters
@@ -132,9 +142,15 @@ export function createCameraController(stage: Stage, grid: {
    *  orbit pivot rides along, so Alt+WASD without a look-drag keeps OrbitControls' view (endFly re-seats it). */
   function flyMove(dt: number) {
     const k = flyKeys;
-    const v = new THREE.Vector3((k.d ? 1 : 0) - (k.a ? 1 : 0), (k.e ? 1 : 0) - (k.q ? 1 : 0), (k.s ? 1 : 0) - (k.w ? 1 : 0));
+    const v = new THREE.Vector3(
+      (k.d ? 1 : 0) - (k.a ? 1 : 0),
+      (k.e ? 1 : 0) - (k.q ? 1 : 0),
+      (k.s ? 1 : 0) - (k.w ? 1 : 0),
+    );
     if (v.lengthSq() === 0) return;
-    v.normalize().multiplyScalar(flySpeed * (k.shift ? 4 : 1) * dt).applyQuaternion(stage.camera.quaternion);
+    v.normalize()
+      .multiplyScalar(flySpeed * (k.shift ? 4 : 1) * dt)
+      .applyQuaternion(stage.camera.quaternion);
     stage.camera.position.add(v);
     stage.controls.target.add(v);
   }
@@ -147,9 +163,11 @@ export function createCameraController(stage: Stage, grid: {
   // ---- orbit (desktop RMB / single-finger touch): rigid turntable around the gesture pivot ----
 
   function startOrbit(e: PointerEvent) {
-    orbitPivot.copy(hoveredGizmoPivot(stage.gizmo)
-      ?? stage.pivotAt(e)
-      ?? stage.rayPoint(e, stage.camera.position.distanceTo(stage.controls.target)));
+    orbitPivot.copy(
+      hoveredGizmoPivot(stage.gizmo) ??
+        stage.pivotAt(e) ??
+        stage.rayPoint(e, stage.camera.position.distanceTo(stage.controls.target)),
+    );
     orbiting = true;
     orbitLast = { x: e.clientX, y: e.clientY };
     // desktop: disable OrbitControls while we drive the camera. Touch: keep it ENABLED so a second finger
@@ -161,7 +179,8 @@ export function createCameraController(stage: Stage, grid: {
   /** Yaw about world up and pitch about the camera's right axis, both THROUGH the pivot (rigid orbit). */
   function applyOrbit(dx: number, dy: number) {
     const SENS = 0.005;
-    const cam = stage.camera, P = orbitPivot;
+    const cam = stage.camera,
+      P = orbitPivot;
     const yaw = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, -dx * SENS);
     cam.position.sub(P).applyQuaternion(yaw).add(P);
     cam.quaternion.premultiply(yaw);
@@ -183,8 +202,8 @@ export function createCameraController(stage: Stage, grid: {
    *  itself (touch pointers don't report movementX/Y reliably). */
   function applyOrbitMove(e: PointerEvent) {
     const touch = e.pointerType === 'touch';
-    const dx = touch ? e.clientX - orbitLast.x : (e.movementX || 0);
-    const dy = touch ? e.clientY - orbitLast.y : (e.movementY || 0);
+    const dx = touch ? e.clientX - orbitLast.x : e.movementX || 0;
+    const dy = touch ? e.clientY - orbitLast.y : e.movementY || 0;
     orbitLast = { x: e.clientX, y: e.clientY };
     applyOrbit(dx, dy);
   }
@@ -226,7 +245,8 @@ export function createCameraController(stage: Stage, grid: {
     const [a, b] = [...touchPts.values()];
     const angle = Math.atan2(b.y - a.y, b.x - a.x);
     let d = angle - t.angle;
-    if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI; // shortest signed arc
+    if (d > Math.PI) d -= 2 * Math.PI;
+    else if (d < -Math.PI) d += 2 * Math.PI; // shortest signed arc
     if (!t.active) {
       if (Math.abs(d) < TWIST_ENGAGE) return; // not a twist yet — just pan / pinch noise
       t.active = true;
@@ -273,7 +293,9 @@ export function createCameraController(stage: Stage, grid: {
     stage.pointer.set(0, 0); // screen centre in NDC = the camera's forward ray
     stage.ray.setFromCamera(stage.pointer, stage.camera);
     const hit = stage.ray.intersectObjects(stage.pickTargets(), false)[0];
-    reseatTargetAhead(hit ? stage.camera.position.distanceTo(hit.point) : stage.camera.position.distanceTo(stage.controls.target));
+    reseatTargetAhead(
+      hit ? stage.camera.position.distanceTo(hit.point) : stage.camera.position.distanceTo(stage.controls.target),
+    );
   }
 
   /**
@@ -299,12 +321,16 @@ export function createCameraController(stage: Stage, grid: {
 
     viewHelper = new ViewHelper(stage.camera, gizmoCanvas);
     viewHelper.center = stage.controls.target; // snap orbits around the current view target
-    gizmoCanvas.addEventListener('pointerdown', e => { viewHelper.center = stage.controls.target; viewHelper.handleClick(e); });
+    gizmoCanvas.addEventListener('pointerdown', e => {
+      viewHelper.center = stage.controls.target;
+      viewHelper.handleClick(e);
+    });
     gizmoFrame.appendChild(gizmoCanvas);
 
     const btnColumn = document.createElement('div');
     // stretch to the gizmo canvas width and centre both controls under it (cluster is otherwise right-aligned)
-    btnColumn.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:3px; pointer-events:auto; align-self:stretch;';
+    btnColumn.style.cssText =
+      'display:flex; flex-direction:column; align-items:center; gap:3px; pointer-events:auto; align-self:stretch;';
     projBtn = document.createElement('button');
     projBtn.className = 'sp-gizmo-btn'; // borderless: label + the current-projection glyph
     projBtn.title = 'Projection — click to switch between perspective and orthographic (parallel) view';
@@ -312,11 +338,31 @@ export function createCameraController(stage: Stage, grid: {
     projBtn.onclick = () => setProjection(!stage.isOrtho);
 
     gridControl = buildStepControl('Grid', VIEW_ICON.grid, 'drafting grid', grid.toggle);
-    addStepSection(gridControl, 'Grid', 'grid', [1, 5, 10], v => `${v} m`, v => grid.setStep(v as SnapStep));
+    addStepSection(
+      gridControl,
+      'Grid',
+      'grid',
+      [1, 5, 10],
+      v => `${v} m`,
+      v => grid.setStep(v as SnapStep),
+    );
     snapControl = buildStepControl('Snap', VIEW_ICON.magnet, 'transform and placement snapping', snap.toggle);
-    addStepSection(snapControl, 'Move', 'move', [1, 5, 10], v => `${v} m`, v => snap.setStep(v as SnapStep));
-    addStepSection(snapControl, 'Rotate', 'rotate', [5, 15, 45], v => `${v}°`,
-      v => snap.setRotationStep(v as RotationSnapStep));
+    addStepSection(
+      snapControl,
+      'Move',
+      'move',
+      [1, 5, 10],
+      v => `${v} m`,
+      v => snap.setStep(v as SnapStep),
+    );
+    addStepSection(
+      snapControl,
+      'Rotate',
+      'rotate',
+      [5, 15, 45],
+      v => `${v}°`,
+      v => snap.setRotationStep(v as RotationSnapStep),
+    );
     refreshProjBtn();
     refreshGridBtn();
     refreshSnapBtn();
@@ -327,9 +373,7 @@ export function createCameraController(stage: Stage, grid: {
   }
 
   /** One compact split row: label + feature icon toggles; the separate chevron opens its increment menu. */
-  function buildStepControl(
-    label: string, icon: string, noun: string, toggle: () => void,
-  ): StepControl {
+  function buildStepControl(label: string, icon: string, noun: string, toggle: () => void): StepControl {
     const row = document.createElement('div');
     row.className = 'sp-gizmo-step';
     const main = document.createElement('button');
@@ -355,14 +399,21 @@ export function createCameraController(stage: Stage, grid: {
     };
     row.addEventListener('pointerdown', e => e.stopPropagation());
     document.addEventListener('pointerdown', e => {
-      if (!row.contains(e.target as Node)) { menu.classList.remove('open'); drop.setAttribute('aria-expanded', 'false'); }
+      if (!row.contains(e.target as Node)) {
+        menu.classList.remove('open');
+        drop.setAttribute('aria-expanded', 'false');
+      }
     });
     row.append(main, drop, menu);
     return { row, main, drop, menu };
   }
 
   function addStepSection(
-    control: StepControl, title: string, kind: string, values: number[], format: (value: number) => string,
+    control: StepControl,
+    title: string,
+    kind: string,
+    values: number[],
+    format: (value: number) => string,
     select: (value: number) => void,
   ) {
     const section = document.createElement('div');
@@ -391,14 +442,19 @@ export function createCameraController(stage: Stage, grid: {
   }
 
   function refreshStepControl(
-    control: StepControl, label: string, icon: string, active: boolean, selected: Record<string, number>,
+    control: StepControl,
+    label: string,
+    icon: string,
+    active: boolean,
+    selected: Record<string, number>,
   ) {
     control.main.innerHTML = `<span class="sp-gizmo-lbl">${label}</span>${icon}`;
     control.main.classList.toggle('on', active);
     control.main.setAttribute('aria-pressed', String(active));
     for (const option of control.menu.querySelectorAll<HTMLButtonElement>('button')) {
       const on = selected[option.dataset.kind ?? ''] === Number(option.dataset.step);
-      option.classList.toggle('on', on); option.setAttribute('aria-checked', String(on));
+      option.classList.toggle('on', on);
+      option.setAttribute('aria-checked', String(on));
     }
   }
 
@@ -416,20 +472,30 @@ export function createCameraController(stage: Stage, grid: {
 
   /** Snap is global and projection-independent, so its row is always present below Grid / Projection. */
   function refreshSnapBtn() {
-    refreshStepControl(snapControl, `Snap ${snap.step()}m · ${snap.rotationStep()}°`, VIEW_ICON.magnet, snap.active(),
-      { move: snap.step(), rotate: snap.rotationStep() });
+    refreshStepControl(snapControl, `Snap ${snap.step()}m · ${snap.rotationStep()}°`, VIEW_ICON.magnet, snap.active(), {
+      move: snap.step(),
+      rotate: snap.rotationStep(),
+    });
   }
 
   /** Swap the active camera between perspective and orthographic, preserving the framing + target. */
   function setProjection(ortho: boolean) {
     if (ortho === stage.isOrtho) return;
-    const w = stage.container.clientWidth || 1, h = stage.container.clientHeight || 1;
+    const w = stage.container.clientWidth || 1,
+      h = stage.container.clientHeight || 1;
     const aspect = w / h;
     const target = stage.controls.target;
     if (ortho) {
       const dist = stage.perspCam.position.distanceTo(target);
-      stage.orthoHalfH = dist * Math.tan((stage.perspCam.fov * Math.PI / 180) / 2);
-      const cam = new THREE.OrthographicCamera(-stage.orthoHalfH * aspect, stage.orthoHalfH * aspect, stage.orthoHalfH, -stage.orthoHalfH, 0.5, stage.perspCam.far);
+      stage.orthoHalfH = dist * Math.tan((stage.perspCam.fov * Math.PI) / 180 / 2);
+      const cam = new THREE.OrthographicCamera(
+        -stage.orthoHalfH * aspect,
+        stage.orthoHalfH * aspect,
+        stage.orthoHalfH,
+        -stage.orthoHalfH,
+        0.5,
+        stage.perspCam.far,
+      );
       cam.position.copy(stage.perspCam.position);
       cam.quaternion.copy(stage.perspCam.quaternion);
       cam.zoom = 1;
@@ -439,7 +505,7 @@ export function createCameraController(stage: Stage, grid: {
       const o = stage.orthoCam!;
       // carry any ortho zoom back into a matching perspective distance so the view doesn't jump
       const height = (stage.orthoHalfH * 2) / o.zoom;
-      const dist = (height / 2) / Math.tan((stage.perspCam.fov * Math.PI / 180) / 2);
+      const dist = height / 2 / Math.tan((stage.perspCam.fov * Math.PI) / 180 / 2);
       const dir = o.position.clone().sub(target).normalize();
       stage.perspCam.position.copy(target).addScaledVector(dir, dist);
       stage.perspCam.quaternion.copy(o.quaternion);
@@ -482,13 +548,15 @@ export function createCameraController(stage: Stage, grid: {
     const quaternion = camera.getWorldQuaternion(new THREE.Quaternion());
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion).normalize();
     const fov = (camera as THREE.PerspectiveCamera).isPerspectiveCamera
-      ? (camera as THREE.PerspectiveCamera).fov : stage.perspCam.fov;
-    if (!renderedCamera) return {
-      ...stored,
-      up: [up.x, up.y, up.z],
-      fov,
-      near: camera.near,
-    };
+      ? (camera as THREE.PerspectiveCamera).fov
+      : stage.perspCam.fov;
+    if (!renderedCamera)
+      return {
+        ...stored,
+        up: [up.x, up.y, up.z],
+        fov,
+        near: camera.near,
+      };
     const pos = camera.getWorldPosition(new THREE.Vector3());
     const target = camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(10).add(pos);
     return {
@@ -539,8 +607,13 @@ export function createCameraController(stage: Stage, grid: {
     if (v.ortho) {
       const aspect = (stage.container.clientWidth || 1) / (stage.container.clientHeight || 1);
       const cam = new THREE.OrthographicCamera(
-        -stage.orthoHalfH * aspect, stage.orthoHalfH * aspect, stage.orthoHalfH, -stage.orthoHalfH,
-        v.near ?? 0.5, stage.perspCam.far);
+        -stage.orthoHalfH * aspect,
+        stage.orthoHalfH * aspect,
+        stage.orthoHalfH,
+        -stage.orthoHalfH,
+        v.near ?? 0.5,
+        stage.perspCam.far,
+      );
       cam.up.copy(up);
       cam.position.set(v.pos[0], v.pos[1], v.pos[2]);
       cam.lookAt(target);
@@ -570,7 +643,10 @@ export function createCameraController(stage: Stage, grid: {
    * projection transition needs the heavier restore path that swaps the camera object and rebuilds the gizmo.
    */
   function followView(v: RestorableView) {
-    if (v.ortho !== stage.isOrtho) { applyView(v); return; }
+    if (v.ortho !== stage.isOrtho) {
+      applyView(v);
+      return;
+    }
     const target = new THREE.Vector3(v.target[0], v.target[1], v.target[2]);
     const up = viewUp(v);
     stage.controls.target.copy(target);
@@ -638,19 +714,56 @@ export function createCameraController(stage: Stage, grid: {
   stage.controls.zoomToCursor = true; // still used by two-finger pinch (we own the desktop wheel)
 
   return {
-    get viewHelper() { return viewHelper; },
-    get gizmoRenderer() { return gizmoRenderer; },
-    get flying() { return flying; },
-    get orbiting() { return orbiting; },
-    get activePointers() { return activePointers; },
-    get touchPts() { return touchPts; },
-    get twist() { return twist; },
-    set twist(v: TwistState | null) { twist = v; },
-    flyKey, releaseFlyKeys, startFly, endFly, applyLook, flyMove, trimFlySpeed,
-    startOrbit, applyOrbit, applyOrbitMove, endOrbit, cancelOrbit,
-    beginTwist, applyTwist, reseatTargetAhead, wheelZoom, seatTargetAhead,
-    setProjection, serializeView, serializeSharedView, applyView, followView, frameSphere, lookFrom,
-    refreshGridBtn, refreshSnapBtn,
+    get viewHelper() {
+      return viewHelper;
+    },
+    get gizmoRenderer() {
+      return gizmoRenderer;
+    },
+    get flying() {
+      return flying;
+    },
+    get orbiting() {
+      return orbiting;
+    },
+    get activePointers() {
+      return activePointers;
+    },
+    get touchPts() {
+      return touchPts;
+    },
+    get twist() {
+      return twist;
+    },
+    set twist(v: TwistState | null) {
+      twist = v;
+    },
+    flyKey,
+    releaseFlyKeys,
+    startFly,
+    endFly,
+    applyLook,
+    flyMove,
+    trimFlySpeed,
+    startOrbit,
+    applyOrbit,
+    applyOrbitMove,
+    endOrbit,
+    cancelOrbit,
+    beginTwist,
+    applyTwist,
+    reseatTargetAhead,
+    wheelZoom,
+    seatTargetAhead,
+    setProjection,
+    serializeView,
+    serializeSharedView,
+    applyView,
+    followView,
+    frameSphere,
+    lookFrom,
+    refreshGridBtn,
+    refreshSnapBtn,
   };
 }
 

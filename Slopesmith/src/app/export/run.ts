@@ -2,7 +2,11 @@ import type { EditDoc } from '../../core/doc/doc-edit';
 import { buildExportFolder, exportFolderName } from '../../core/export/folder';
 import { browserExportProvider } from './provider';
 import {
-  canPickDirectory, directoryTarget, downloadTarget, pickMapsDirectory, rememberedMapsDirectory,
+  canPickDirectory,
+  directoryTarget,
+  downloadTarget,
+  pickMapsDirectory,
+  rememberedMapsDirectory,
   type ExportTarget,
 } from './landing';
 
@@ -38,10 +42,14 @@ export async function resolveExportTarget(doc: EditDoc): Promise<ExportTarget | 
   return picked ? directoryTarget(picked, folderName) : null;
 }
 
-export async function exportMapFolder(doc: EditDoc, target: ExportTarget,
-  opts?: { lighting?: boolean; aiPaths?: boolean }): Promise<BrowserExportResult> {
+export async function exportMapFolder(
+  doc: EditDoc,
+  target: ExportTarget,
+  opts?: { lighting?: boolean; aiPaths?: boolean },
+): Promise<BrowserExportResult> {
   const provider = browserExportProvider({
-    folderName: target.folderName, existingFile: path => target.existingFile(path),
+    folderName: target.folderName,
+    existingFile: path => target.existingFile(path),
   });
   const folder = await buildExportFolder(doc, provider, { lighting: opts?.lighting, aiPaths: opts?.aiPaths });
   const landed = await target.land(folder);

@@ -11,7 +11,9 @@ export async function readSoundIndex(level: string): Promise<CollisionSoundIndex
   const safeLevel = safeDataName(level);
   if (!safeLevel) return null;
   const index = await readJsonOr<CollisionSoundIndex | null>(
-    join(mapsRoot(), safeLevel, 'Audio', 'SoundIndex.json'), null);
+    join(mapsRoot(), safeLevel, 'Audio', 'SoundIndex.json'),
+    null,
+  );
   return index?.Schema === 'openslope-sound-index/v1' ? index : null;
 }
 
@@ -20,14 +22,18 @@ export async function readEnvironmentAudio(level: string): Promise<EnvironmentAu
   const safeLevel = safeDataName(level);
   if (!safeLevel) return null;
   const document = await readJsonOr<EnvironmentAudioDocument | null>(
-    join(mapsRoot(), safeLevel, 'Audio', 'Environment.json'), null);
+    join(mapsRoot(), safeLevel, 'Audio', 'Environment.json'),
+    null,
+  );
   return validEnvironmentDocument(document) ? document : null;
 }
 
 /** Read the disc-global board surface routes generated beside the shared zboard bank. */
 export async function readBoardSoundIndex(): Promise<BoardSoundIndex | null> {
   const index = await readJsonOr<BoardSoundIndex | null>(
-    join(mapsRoot(), 'Shared', 'Audio', 'BoardSoundIndex.json'), null);
+    join(mapsRoot(), 'Shared', 'Audio', 'BoardSoundIndex.json'),
+    null,
+  );
   if (index?.Schema !== 'openslope-board-sound-index/v1' || !Array.isArray(index.SurfaceGroups)) return null;
   return index.SurfaceGroups.every(group => Number.isInteger(group) && group >= 0) ? index : null;
 }
@@ -37,13 +43,15 @@ async function soundRequest(level: string, slot: number, loop = false) {
   const safeSlot = Math.trunc(slot);
   if (!safeLevel || safeSlot < 0 || safeSlot > 999) throw new Error(`invalid effect sound ${level}/${slot}`);
   const root = join(mapsRoot(), safeLevel, 'Audio', 'SFX');
-  if (!await isDirectory(root)) throw new Error(`no extracted SFX for ${safeLevel}`);
+  if (!(await isDirectory(root))) throw new Error(`no extracted SFX for ${safeLevel}`);
   const stem = `${safeSlot}`.padStart(3, '0');
   // A continuing ExternalSounds voice wants the BNKl loop region Snowknife writes beside the slot, the same
   // clean sustain the board ride reads. Most environment banks ship one; the clips that do not (and every
   // one-shot, which wants its attack) fall back to the whole WAV. [Trailmap: 190-audio-data]
   return {
-    safeLevel, root, filename: `${stem}.wav`,
+    safeLevel,
+    root,
+    filename: `${stem}.wav`,
     filenames: loop ? [`${stem}.loop.wav`, `${stem}.wav`] : [`${stem}.wav`],
   };
 }
@@ -63,17 +71,23 @@ async function readFirst(files: string[]): Promise<Buffer | null> {
  * excluding the shared rider/crowd/wind banks that may contain an unrelated WAV with the same numeric
  * filename. `crowd` serves the shared Crowd bank (group 3) — the target of collision event ids 97–99
  * [Trailmap: 420-audio-runtime]. */
-export async function readCourseEffectSoundBytes(level: string, slot: number,
-  bank: 'course' | 'crowd' = 'course', loop = false): Promise<Buffer> {
+export async function readCourseEffectSoundBytes(
+  level: string,
+  slot: number,
+  bank: 'course' | 'crowd' = 'course',
+  loop = false,
+): Promise<Buffer> {
   const { safeLevel, root, filename, filenames } = await soundRequest(level, slot, loop);
   const entries = await listEntries(root);
   const named = (await readSoundIndex(safeLevel))?.Banks['2'] ?? null;
-  const banks = bank === 'crowd'
-    ? entries.filter(entry => entry.name.toLowerCase() === 'crowd').map(entry => entry.name)
-    // No folder scan fallback: fixed environmental banks share numeric filenames with the course bank. An
-    // extraction without SoundIndex is unresolved, which is safer than auditioning a different sound.
-    : entries.filter(entry => entry.isDirectory && named
-        && entry.name.toLowerCase() === named.toLowerCase()).map(entry => entry.name);
+  const banks =
+    bank === 'crowd'
+      ? entries.filter(entry => entry.name.toLowerCase() === 'crowd').map(entry => entry.name)
+      : // No folder scan fallback: fixed environmental banks share numeric filenames with the course bank. An
+        // extraction without SoundIndex is unresolved, which is safer than auditioning a different sound.
+        entries
+          .filter(entry => entry.isDirectory && named && entry.name.toLowerCase() === named.toLowerCase())
+          .map(entry => entry.name);
   // Preference order is per bank, not across banks: a loop region only ever substitutes for its own slot.
   const bytes = await readFirst(banks.flatMap(dir => filenames.map(name => join(root, dir, name))));
   if (!bytes) throw new Error(`no ${bank}-bank sound ${safeLevel}/${filename}`);
@@ -106,25 +120,31 @@ function bankKind(courseBank: string | null, name: string): SoundBankKind {
 export async function listSoundBanks(level: string): Promise<SoundBankListing[]> {
   const safeLevel = safeDataName(level);
   const root = safeLevel ? join(mapsRoot(), safeLevel, 'Audio', 'SFX') : '';
-  if (!root || !await isDirectory(root)) return [];
+  if (!root || !(await isDirectory(root))) return [];
   const courseBank = (await readSoundIndex(safeLevel))?.Banks['2'] ?? null;
   const order: Record<SoundBankKind, number> = { course: 0, crowd: 1, board: 2, named: 3 };
-  const banks = await Promise.all((await listSubdirectories(root)).map(async name => ({
-    name,
-    kind: bankKind(courseBank, name),
-    slots: (await listDir(join(root, name)))
-      .map(file => SLOT_WAV.exec(file)?.[1]).filter((n): n is string => !!n)
-      .map(Number).sort((a, b) => a - b),
-  })));
-  return banks.filter(bank => bank.slots.length)
+  const banks = await Promise.all(
+    (await listSubdirectories(root)).map(async name => ({
+      name,
+      kind: bankKind(courseBank, name),
+      slots: (await listDir(join(root, name)))
+        .map(file => SLOT_WAV.exec(file)?.[1])
+        .filter((n): n is string => !!n)
+        .map(Number)
+        .sort((a, b) => a - b),
+    })),
+  );
+  return banks
+    .filter(bank => bank.slots.length)
     .sort((a, b) => order[a.kind] - order[b.kind] || a.name.localeCompare(b.name));
 }
 
 /** Levels with an extracted Audio/SFX tree, ascending — the Sound Library's level picker. */
 export async function listSoundBankLevels(): Promise<string[]> {
   const levels = await listDir(mapsRoot());
-  const found = await Promise.all(levels.map(async level =>
-    await isDirectory(join(mapsRoot(), level, 'Audio', 'SFX')) ? level : null));
+  const found = await Promise.all(
+    levels.map(async level => ((await isDirectory(join(mapsRoot(), level, 'Audio', 'SFX'))) ? level : null)),
+  );
   return found.filter((level): level is string => !!level).sort();
 }
 
@@ -163,8 +183,12 @@ export async function readBoardSoundBytes(bank: string, slot: number, loop: bool
 
 /** Read a fixed global environmental bank selected by a native ExternalSounds event. The requested bank is
  * one safe path segment and is matched case-insensitively to the extracted AUDIO.BIG folder. */
-export async function readNamedEffectSoundBytes(level: string, slot: number, bank: string,
-  loop = false): Promise<Buffer> {
+export async function readNamedEffectSoundBytes(
+  level: string,
+  slot: number,
+  bank: string,
+  loop = false,
+): Promise<Buffer> {
   const { safeLevel, root, filename, filenames } = await soundRequest(level, slot, loop);
   const requested = bank.trim();
   if (!requested || safeDataName(requested) !== requested) throw new Error(`invalid effect sound bank ${bank}`);
@@ -181,7 +205,7 @@ export async function environmentSoundSource(bank: string): Promise<{ level: str
   if (!requested || safeDataName(requested) !== requested) return null;
   for (const level of (await listDir(mapsRoot())).sort()) {
     const root = join(mapsRoot(), level, 'Audio', 'SFX');
-    if (!await isDirectory(root)) continue;
+    if (!(await isDirectory(root))) continue;
     const named = (await listSubdirectories(root)).find(name => name.toLowerCase() === requested.toLowerCase());
     if (named) return { level, dir: join(root, named) };
   }

@@ -92,9 +92,13 @@ export function createPeersLayer(stage: Stage) {
     ctx.strokeText(peer.username, 8, 32);
     ctx.fillStyle = peer.color;
     ctx.fillText(peer.username, 8, 32);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true,
-    }));
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(canvas),
+        depthTest: false,
+        transparent: true,
+      }),
+    );
     sprite.scale.set(14, 3.5, 1);
     sprite.center.set(0, 0.5);
     labels.set(peer.sessionId, sprite);
@@ -128,8 +132,10 @@ export function createPeersLayer(stage: Stage) {
       for (const name of peer.vertices) {
         const point = cornerAt(name);
         if (!point) continue;
-        const mesh = new THREE.Mesh(dragging.has(name) ? dragGeo : pointGeo,
-          dragging.has(name) ? colors.soft : colors.solid);
+        const mesh = new THREE.Mesh(
+          dragging.has(name) ? dragGeo : pointGeo,
+          dragging.has(name) ? colors.soft : colors.solid,
+        );
         place(mesh, point);
         mesh.renderOrder = 6;
         group.add(mesh);
@@ -185,7 +191,10 @@ export function createPeersLayer(stage: Stage) {
       stage.worldRoot.remove(group);
       for (const sprite of labels.values()) sprite.material.map?.dispose();
       labels.clear();
-      for (const pair of materials.values()) { pair.solid.dispose(); pair.soft.dispose(); }
+      for (const pair of materials.values()) {
+        pair.solid.dispose();
+        pair.soft.dispose();
+      }
       materials.clear();
       pointGeo.dispose();
       dragGeo.dispose();

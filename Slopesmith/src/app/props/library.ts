@@ -154,7 +154,7 @@ export class PropLibrary {
   private filter = '';
   private kwFilter: string | null = MISC_KW; // active keyword chip (a KW_CHIPS.kw or MISC_KW); null = all shown. Misc by default
   private chipEls = new Map<string, HTMLButtonElement>(); // keyword → its header chip button (to toggle .on)
-  private customModels = 0;    // authored + imported models the author owns — decides the opening view
+  private customModels = 0; // authored + imported models the author owns — decides the opening view
   private levelChosen = false; // the author picked a level themselves; stop re-deriving the opening view
   private selModel: number | null = null;
   private selLevel: string | null = null; // the armed tile's OWN level — the Custom view mixes two
@@ -177,7 +177,10 @@ export class PropLibrary {
     const title = document.createElement('span');
     title.className = 'pl-title';
     title.textContent = 'Prop Library';
-    this.levelSel.onchange = () => { this.levelChosen = true; void this.loadLevel(this.levelSel.value); };
+    this.levelSel.onchange = () => {
+      this.levelChosen = true;
+      void this.loadLevel(this.levelSel.value);
+    };
 
     this.search.className = 'pl-search';
     this.search.type = 'search';
@@ -203,10 +206,15 @@ export class PropLibrary {
       this.chipEls.set(key, b);
       chips.appendChild(b);
     };
-    mkChip('Misc', MISC_KW, 'Show props that match none of the keyword filters (the default). Click again to show all.');
+    mkChip(
+      'Misc',
+      MISC_KW,
+      'Show props that match none of the keyword filters (the default). Click again to show all.',
+    );
     // assemblies: e.g. a hydrant and its lid, a sign and its stand, a lamp and its light
     mkChip('Groups', GROUPS_KW, 'Show assemblies mined from this level’s placements; one click places the whole set.');
-    for (const c of KW_CHIPS) mkChip(c.label, c.kw, `Show only ${c.label} props (name contains “${c.kw}”). Click again to show all.`);
+    for (const c of KW_CHIPS)
+      mkChip(c.label, c.kw, `Show only ${c.label} props (name contains “${c.kw}”). Click again to show all.`);
 
     this.countEl.className = 'pl-count';
     const grow = document.createElement('span');
@@ -229,13 +237,22 @@ export class PropLibrary {
     document.body.appendChild(this.el);
 
     // lazy thumbnails: render one only when its swatch scrolls into view
-    this.io = new IntersectionObserver(entries => {
-      for (const e of entries) if (e.isIntersecting) { this.io.unobserve(e.target); this.queue.push(e.target as HTMLElement); }
-      this.pump();
-    }, { root: this.body, rootMargin: '120px' });
+    this.io = new IntersectionObserver(
+      entries => {
+        for (const e of entries)
+          if (e.isIntersecting) {
+            this.io.unobserve(e.target);
+            this.queue.push(e.target as HTMLElement);
+          }
+        this.pump();
+      },
+      { root: this.body, rootMargin: '120px' },
+    );
   }
 
-  private mountainName(): string { return this.cb.mountainName?.().trim() || 'Mountain'; }
+  private mountainName(): string {
+    return this.cb.mountainName?.().trim() || 'Mountain';
+  }
 
   /** The opening view, per the shared rule. The Custom view mixes both authored pseudo-levels, so it counts
    *  as populated when either the document's own models or the imported GLB catalogue holds anything. */
@@ -271,13 +288,24 @@ export class PropLibrary {
   /** How much the author has of their own: authored models plus imported GLBs, the two the Custom view mixes. */
   private async countCustomModels(): Promise<void> {
     const count = async (level: string, load: () => Promise<LevelProps>) => {
-      try { return (await load()).models.filter(model => !model.line).length; } catch { return 0; } // a sheet's pieces are not the author's models
+      try {
+        return (await load()).models.filter(model => !model.line).length;
+      } catch {
+        return 0;
+      } // a sheet's pieces are not the author's models
     };
-    this.customModels = await count(AUTHORED_MODEL_LEVEL, () => this.cb.loadLevel(AUTHORED_MODEL_LEVEL))
-      + (this.cb.importedProps ? await count(IMPORTED_PROP_LEVEL, () => this.cb.importedProps!()) : 0);
+    this.customModels =
+      (await count(AUTHORED_MODEL_LEVEL, () => this.cb.loadLevel(AUTHORED_MODEL_LEVEL))) +
+      (this.cb.importedProps ? await count(IMPORTED_PROP_LEVEL, () => this.cb.importedProps!()) : 0);
   }
-  hide() { this.open = false; this.el.style.display = 'none'; this.cb.onHeightChange?.(); }
-  get level(): string { return this.props?.level ?? this.levelSel.value; }
+  hide() {
+    this.open = false;
+    this.el.style.display = 'none';
+    this.cb.onHeightChange?.();
+  }
+  get level(): string {
+    return this.props?.level ?? this.levelSel.value;
+  }
 
   /** Same-name custom art changed: final thumbnail data URLs also need invalidating, not only GPU textures. */
   invalidateThumbnails() {
@@ -290,9 +318,18 @@ export class PropLibrary {
 
   async init(preferredLevel?: string) {
     let levels: string[] = [];
-    try { levels = await this.cb.levels(); } catch { /* dev server down */ }
+    try {
+      levels = await this.cb.levels();
+    } catch {
+      /* dev server down */
+    }
     this.levelSel.innerHTML = '';
-    if (!levels.length) { const o = document.createElement('option'); o.textContent = '(dev server only)'; this.levelSel.appendChild(o); return; }
+    if (!levels.length) {
+      const o = document.createElement('option');
+      o.textContent = '(dev server only)';
+      this.levelSel.appendChild(o);
+      return;
+    }
     for (const l of levels) {
       const o = document.createElement('option');
       o.value = l;
@@ -300,8 +337,7 @@ export class PropLibrary {
       this.levelSel.appendChild(o);
     }
     await this.countCustomModels();
-    const prefer = preferredLevel && levels.includes(preferredLevel)
-      ? preferredLevel : this.preferredSource(levels);
+    const prefer = preferredLevel && levels.includes(preferredLevel) ? preferredLevel : this.preferredSource(levels);
     this.levelSel.value = prefer;
     // The library is normally closed at boot. Populate its cheap catalogue now, but leave the multi-MB
     // geometry payload (and the Groups mining request) until the panel is actually opened.
@@ -313,7 +349,11 @@ export class PropLibrary {
     const selected = this.levelSel.value;
     this.props = null;
     this.imported = null;
-    try { await this.cb.onImported?.(); } catch { /* a reconnect can race the HTTP service */ }
+    try {
+      await this.cb.onImported?.();
+    } catch {
+      /* a reconnect can race the HTTP service */
+    }
     await this.init(selected);
     this.invalidateThumbnails();
   }
@@ -342,7 +382,8 @@ export class PropLibrary {
     const generation = ++this.loadGeneration;
     // authored models are LIVE definitions — drop their cached thumbnails so an edited model re-renders
     if (level === AUTHORED_MODEL_LEVEL)
-      for (const key of [...this.thumbCache.keys()]) if (key.startsWith(`${AUTHORED_MODEL_LEVEL}:`)) this.thumbCache.delete(key);
+      for (const key of [...this.thumbCache.keys()])
+        if (key.startsWith(`${AUTHORED_MODEL_LEVEL}:`)) this.thumbCache.delete(key);
     let loaded: LevelProps | null;
     let imported: LevelProps | null = null;
     try {
@@ -350,7 +391,7 @@ export class PropLibrary {
       // GLBs. They stay separate LEVELS (docs/032) but read as one grid.
       [loaded, imported] = await Promise.all([
         this.cb.loadLevel(level),
-        level === AUTHORED_MODEL_LEVEL ? this.cb.importedProps?.().catch(() => null) ?? null : null,
+        level === AUTHORED_MODEL_LEVEL ? (this.cb.importedProps?.().catch(() => null) ?? null) : null,
       ]);
     } catch {
       loaded = null;
@@ -364,7 +405,9 @@ export class PropLibrary {
   }
 
   /** Whether the Custom entry is showing — the one view that mixes levels and offers the + import tile. */
-  private get isCustomView(): boolean { return this.props?.level === AUTHORED_MODEL_LEVEL; }
+  private get isCustomView(): boolean {
+    return this.props?.level === AUTHORED_MODEL_LEVEL;
+  }
 
   /** The LevelProps a tile's level came from — the Custom view draws from two. */
   private lpFor(level: string): LevelProps | null {
@@ -387,8 +430,10 @@ export class PropLibrary {
     this.selLevel = listed ? level : null;
     this.selModel = listed ? model : null;
     for (const el of Array.from(this.body.querySelectorAll<HTMLElement>('.pl-tile')))
-      el.classList.toggle('sel', this.selModel != null && el.dataset.level === this.selLevel
-        && Number(el.dataset.model) === this.selModel);
+      el.classList.toggle(
+        'sel',
+        this.selModel != null && el.dataset.level === this.selLevel && Number(el.dataset.model) === this.selModel,
+      );
   }
 
   /** Switch the active keyword chip (or null to clear), repaint the chips' pressed state, and re-render. */
@@ -407,7 +452,11 @@ export class PropLibrary {
     if (this.groupLoad?.level === level) return;
     const promise = (async () => {
       let groups: GroupDef[];
-      try { groups = await this.cb.groups(level); } catch { groups = []; }
+      try {
+        groups = await this.cb.groups(level);
+      } catch {
+        groups = [];
+      }
       if (this.props?.level !== level) return;
       this.groupList = groups;
       if (!this.filter && this.kwFilter === GROUPS_KW) this.render();
@@ -420,8 +469,14 @@ export class PropLibrary {
   private render() {
     this.body.innerHTML = '';
     this.queue = [];
-    if (!this.props) { this.countEl.textContent = ''; return; }
-    if (!this.filter && this.kwFilter === GROUPS_KW) { this.renderGroups(); return; } // a search falls through to the models
+    if (!this.props) {
+      this.countEl.textContent = '';
+      return;
+    }
+    if (!this.filter && this.kwFilter === GROUPS_KW) {
+      this.renderGroups();
+      return;
+    } // a search falls through to the models
     const all = this.entries();
     const total = all.length;
     let shown = all;
@@ -437,8 +492,8 @@ export class PropLibrary {
     const hint = document.createElement('p');
     hint.className = 'pl-hint';
     hint.textContent = this.isCustomView
-      ? 'Your own geometry. ▦ tiled props wear one tile and are editable here; ▽ textured props carry their '
-        + 'own UV layout — import one with ＋. Click one to pick it up, then click the mountain to place it.'
+      ? 'Your own geometry. ▦ tiled props wear one tile and are editable here; ▽ textured props carry their ' +
+        'own UV layout — import one with ＋. Click one to pick it up, then click the mountain to place it.'
       : 'Click a prop to pick it up, then click the mountain to place it — scroll turns it, ⇧scroll resizes, Esc puts it down.';
     this.body.appendChild(hint);
     const grid = document.createElement('div');
@@ -454,17 +509,23 @@ export class PropLibrary {
     const folded = new Set<Fold>();
     for (const e of shown) {
       const fold = e.lp === this.props ? foldOf.get(e.model.id) : undefined;
-      if (!fold) { grid.appendChild(this.swatch(e.lp, e.model)); continue; }
+      if (!fold) {
+        grid.appendChild(this.swatch(e.lp, e.model));
+        continue;
+      }
       if (folded.has(fold)) continue;
       folded.add(fold);
-      grid.appendChild(fold.kind === 'sheet' ? this.sheetSwatch(e.lp, fold.family) : this.railSwatch(e.lp, fold.family));
+      grid.appendChild(
+        fold.kind === 'sheet' ? this.sheetSwatch(e.lp, fold.family) : this.railSwatch(e.lp, fold.family),
+      );
     }
     if (folded.size) {
       const pieces = [...folded].reduce((n, fold) => n + fold.family.models.length, 0);
       const sheets = [...folded].filter(fold => fold.kind === 'sheet').length;
-      this.countEl.textContent = `${shown.length - pieces + folded.size} props`
-        + (sheets ? ` · ${sheets} sheet${sheets === 1 ? '' : 's'}` : '')
-        + (folded.size > sheets ? ' · rail pipes' : '');
+      this.countEl.textContent =
+        `${shown.length - pieces + folded.size} props` +
+        (sheets ? ` · ${sheets} sheet${sheets === 1 ? '' : 's'}` : '') +
+        (folded.size > sheets ? ' · rail pipes' : '');
     }
     this.body.appendChild(grid);
   }
@@ -507,12 +568,19 @@ export class PropLibrary {
     name.className = 'pl-name';
     name.textContent = 'Rail pipe';
     el.append(thumb, badge, name);
-    tooltip(el, `${family.key} — ${level}’s grind-rail pipes, swept into ${family.pieces} pieces · click to lay a `
-      + 'rail pipe with this tube tile');
+    tooltip(
+      el,
+      `${family.key} — ${level}’s grind-rail pipes, swept into ${family.pieces} pieces · click to lay a ` +
+        'rail pipe with this tube tile',
+    );
     const cached = this.thumbCache.get(`${level}:${family.models[0]}`);
     if (cached) thumb.style.backgroundImage = `url(${cached})`;
     else this.io.observe(el);
-    el.onclick = () => { this.selModel = null; this.highlight(level, null); this.cb.onPickRail?.(level, family); };
+    el.onclick = () => {
+      this.selModel = null;
+      this.highlight(level, null);
+      this.cb.onPickRail?.(level, family);
+    };
     return el;
   }
 
@@ -535,12 +603,19 @@ export class PropLibrary {
     name.className = 'pl-name';
     name.textContent = shortName(family.key);
     el.append(thumb, badge, name);
-    tooltip(el, `${family.key} — a ${family.lie ? 'lying' : 'standing'} sheet, cut into ${family.pieces} pieces in `
-      + `${level} · click to lay a new one along a path`);
+    tooltip(
+      el,
+      `${family.key} — a ${family.lie ? 'lying' : 'standing'} sheet, cut into ${family.pieces} pieces in ` +
+        `${level} · click to lay a new one along a path`,
+    );
     const cached = this.thumbCache.get(`${level}:${family.representative.model}`);
     if (cached) thumb.style.backgroundImage = `url(${cached})`;
     else this.io.observe(el);
-    el.onclick = () => { this.selModel = null; this.highlight(level, null); this.cb.onPickSheet?.(level, family); };
+    el.onclick = () => {
+      this.selModel = null;
+      this.highlight(level, null);
+      this.cb.onPickSheet?.(level, family);
+    };
     return el;
   }
 
@@ -564,9 +639,12 @@ export class PropLibrary {
     gen.className = 'pl-tile pl-add' + (this.importing ? ' pl-busy' : '');
     gen.textContent = '✨';
     tooltip(gen, 'Generate a prop with fal.ai — describe an object; a textured model lands here like an imported GLB.');
-    gen.onclick = () => void import('./prop-gen').then(m => m.openPropGenDialog({
-      importGlb: (file, meters, generation) => this.importGenerated(file, meters, generation),
-    }));
+    gen.onclick = () =>
+      void import('./prop-gen').then(m =>
+        m.openPropGenDialog({
+          importGlb: (file, meters, generation) => this.importGenerated(file, meters, generation),
+        }),
+      );
     return gen;
   }
 
@@ -577,11 +655,12 @@ export class PropLibrary {
     this.countEl.textContent = groups ? `${groups.length} group${groups.length === 1 ? '' : 's'}` : '';
     const hint = document.createElement('p');
     hint.className = 'pl-hint';
-    hint.textContent = groups === null
-      ? 'mining this level’s assemblies…'
-      : groups.length
-        ? 'Assemblies mined from this level’s own placements. Click one to pick it up — one click places the whole set (props + lights together).'
-        : 'No assemblies found in this level’s placement data.';
+    hint.textContent =
+      groups === null
+        ? 'mining this level’s assemblies…'
+        : groups.length
+          ? 'Assemblies mined from this level’s own placements. Click one to pick it up — one click places the whole set (props + lights together).'
+          : 'No assemblies found in this level’s placement data.';
     this.body.appendChild(hint);
     if (!groups?.length) return;
     const grid = document.createElement('div');
@@ -610,7 +689,11 @@ export class PropLibrary {
     const cached = this.thumbCache.get(`${level}:g:${g.id}`);
     if (cached) thumb.style.backgroundImage = `url(${cached})`;
     else this.io.observe(el);
-    el.onclick = () => { this.selModel = null; this.highlight(level, null); this.cb.onPickGroup(level, g.id); };
+    el.onclick = () => {
+      this.selModel = null;
+      this.highlight(level, null);
+      this.cb.onPickGroup(level, g.id);
+    };
     return el;
   }
 
@@ -652,19 +735,32 @@ export class PropLibrary {
       fx.scroll ? `${fx.scroll} scrolling surface${fx.scroll > 1 ? 's' : ''}` : '',
     ].filter(Boolean);
     const own = this.isOwnGeometry(level);
-    const kind = propKindOf(level) === 'tiled'
-      ? 'Tiled prop — one tile, mapping computed, editable with the mesh tools'
-      : `Textured prop — its own UV layout${imported ? ', imported from a GLB' : ''}`;
-    tooltip(el, `${m.name} · ${kind}`
-      + (carries.length ? ` · brings its own ${carries.join(' + ')}` : '') + ' · click to place'
-      + (own ? ' · right-click to rename, duplicate or delete' : ''));
+    const kind =
+      propKindOf(level) === 'tiled'
+        ? 'Tiled prop — one tile, mapping computed, editable with the mesh tools'
+        : `Textured prop — its own UV layout${imported ? ', imported from a GLB' : ''}`;
+    tooltip(
+      el,
+      `${m.name} · ${kind}` +
+        (carries.length ? ` · brings its own ${carries.join(' + ')}` : '') +
+        ' · click to place' +
+        (own ? ' · right-click to rename, duplicate or delete' : ''),
+    );
     const cached = this.thumbCache.get(`${level}:${m.id}`);
     if (cached) thumb.style.backgroundImage = `url(${cached})`;
     else this.io.observe(el); // render its thumbnail when it scrolls into view
-    el.onclick = () => { this.selLevel = level; this.selModel = m.id; this.highlight(level, m.id); this.cb.onPick(level, m.id, m.name); };
+    el.onclick = () => {
+      this.selLevel = level;
+      this.selModel = m.id;
+      this.highlight(level, m.id);
+      this.cb.onPick(level, m.id, m.name);
+    };
     if (own) {
       el.tabIndex = 0; // so the keyboard Menu key / Shift+F10 can raise the same actions
-      el.oncontextmenu = e => { e.preventDefault(); this.openModelMenu(level, m, { x: e.clientX, y: e.clientY }); };
+      el.oncontextmenu = e => {
+        e.preventDefault();
+        this.openModelMenu(level, m, { x: e.clientX, y: e.clientY });
+      };
     }
     return el;
   }
@@ -688,26 +784,46 @@ export class PropLibrary {
    */
   private openModelMenu(level: string, m: LevelProps['models'][number], at: { x: number; y: number }) {
     const imported = level === IMPORTED_PROP_LEVEL;
-    contextMenu([
-      { label: '✎ Rename…', desc: 'Every placement of it follows the new name.',
-        onClick: () => void this.renameModel(level, m) },
-      { label: '⧉ Duplicate…', desc: imported
-        ? 'Copy it to a second prop — keep this one before replacing its geometry. Nothing already placed follows the copy.'
-        : 'Copy the definition to a second prop. Nothing already placed follows the copy.',
-        onClick: () => void this.duplicateModel(level, m) },
-      ...(imported ? [{ label: '⟳ Replace geometry…',
-        desc: 'Load a new GLB over this prop. Everything already placed picks up the new mesh.',
-        onClick: () => void this.replaceModel(m) }] : []),
-      { label: '⬈ Edit in Blender…',
-        desc: imported
-          ? 'Take the mesh out to Blender and push it straight back onto this prop — placements and all.'
-          : 'Take the quad cage out to Blender and push it straight back. Quads survive the round trip.',
-        onClick: () => this.sendToBlender(level, m) },
-      { label: '🗑 Delete…', desc: imported
-        ? `Remove ${m.name} from the library. Asks first, and says what is placed.`
-        : `Remove ${m.name} from this mountain. Asks first, and says what is placed.`,
-        onClick: () => void this.deleteModel(level, m) },
-    ], at);
+    contextMenu(
+      [
+        {
+          label: '✎ Rename…',
+          desc: 'Every placement of it follows the new name.',
+          onClick: () => void this.renameModel(level, m),
+        },
+        {
+          label: '⧉ Duplicate…',
+          desc: imported
+            ? 'Copy it to a second prop — keep this one before replacing its geometry. Nothing already placed follows the copy.'
+            : 'Copy the definition to a second prop. Nothing already placed follows the copy.',
+          onClick: () => void this.duplicateModel(level, m),
+        },
+        ...(imported
+          ? [
+              {
+                label: '⟳ Replace geometry…',
+                desc: 'Load a new GLB over this prop. Everything already placed picks up the new mesh.',
+                onClick: () => void this.replaceModel(m),
+              },
+            ]
+          : []),
+        {
+          label: '⬈ Edit in Blender…',
+          desc: imported
+            ? 'Take the mesh out to Blender and push it straight back onto this prop — placements and all.'
+            : 'Take the quad cage out to Blender and push it straight back. Quads survive the round trip.',
+          onClick: () => this.sendToBlender(level, m),
+        },
+        {
+          label: '🗑 Delete…',
+          desc: imported
+            ? `Remove ${m.name} from the library. Asks first, and says what is placed.`
+            : `Remove ${m.name} from this mountain. Asks first, and says what is placed.`,
+          onClick: () => void this.deleteModel(level, m),
+        },
+      ],
+      at,
+    );
   }
 
   /** Names already in the Custom view, for the "that one exists" check while typing. Models are addressed by
@@ -715,23 +831,26 @@ export class PropLibrary {
   private nameTaken(exclude?: string) {
     const taken = new Set(this.entries().map(e => e.model.name.trim().toLowerCase()));
     if (exclude) taken.delete(exclude.trim().toLowerCase());
-    return (value: string) => taken.has(value.trim().toLowerCase())
-      ? 'Another of your props already has that name.' : null;
+    return (value: string) =>
+      taken.has(value.trim().toLowerCase()) ? 'Another of your props already has that name.' : null;
   }
 
   private async renameModel(level: string, m: LevelProps['models'][number]) {
     const to = await askName({
-      title: 'Rename prop', label: 'New name', value: m.name, confirmLabel: 'Rename',
-      hint: level === IMPORTED_PROP_LEVEL
-        ? 'The prop keeps its number, so everything already placed follows the new name — and its stored file is renamed to match.'
-        : 'The definition and every placement of it take the new name.',
+      title: 'Rename prop',
+      label: 'New name',
+      value: m.name,
+      confirmLabel: 'Rename',
+      hint:
+        level === IMPORTED_PROP_LEVEL
+          ? 'The prop keeps its number, so everything already placed follows the new name — and its stored file is renamed to match.'
+          : 'The definition and every placement of it take the new name.',
       validate: this.nameTaken(m.name),
     });
     if (!to || to === m.name) return;
     if (level === IMPORTED_PROP_LEVEL) {
       try {
-        const res = await postJson<{ name: string }>(
-          `/api/custom-prop-rename?id=${m.id}&to=${encodeURIComponent(to)}`);
+        const res = await postJson<{ name: string }>(`/api/custom-prop-rename?id=${m.id}&to=${encodeURIComponent(to)}`);
         this.cb.docModels?.rename(level, m.id, res.name);
         await this.adoptImportedChange();
         toast(`Renamed to ${res.name}.`, 'ok');
@@ -749,7 +868,10 @@ export class PropLibrary {
     if (level === AUTHORED_MODEL_LEVEL) {
       // the document's own duplicate names the copy by the revision rule ('<name> v2'), so nothing is asked
       const copy = this.cb.docModels?.duplicate(m.id);
-      if (!copy) { toast('Duplicate failed — the prop is no longer in this mountain.', 'err'); return; }
+      if (!copy) {
+        toast('Duplicate failed — the prop is no longer in this mountain.', 'err');
+        return;
+      }
       await this.loadLevel(AUTHORED_MODEL_LEVEL);
       toast(`Duplicated as ${copy.name}.`, 'ok');
       return;
@@ -758,14 +880,18 @@ export class PropLibrary {
     let suggestion = `${m.name} copy`;
     for (let i = 2; taken.has(suggestion.toLowerCase()); i++) suggestion = `${m.name} copy ${i}`;
     const to = await askName({
-      title: 'Duplicate prop', label: 'Name for the copy', value: suggestion, confirmLabel: 'Duplicate',
+      title: 'Duplicate prop',
+      label: 'Name for the copy',
+      value: suggestion,
+      confirmLabel: 'Duplicate',
       hint: 'Copies the geometry to a second prop with its own number. Nothing already placed changes — the copy starts unplaced.',
       validate: this.nameTaken(),
     });
     if (!to) return;
     try {
       const res = await postJson<{ id: number; name: string }>(
-        `/api/custom-prop-clone?id=${m.id}&to=${encodeURIComponent(to)}`);
+        `/api/custom-prop-clone?id=${m.id}&to=${encodeURIComponent(to)}`,
+      );
       await this.adoptImportedChange();
       toast(`Duplicated as ${res.name}.`, 'ok');
     } catch (e) {
@@ -789,23 +915,30 @@ export class PropLibrary {
     const ok = await confirmAction({
       title: `Replace ${m.name} with ${file.name}?`,
       confirmLabel: 'Replace',
-      body: `The prop keeps its number, so its geometry, materials and any effects it declares are taken `
-        + `from ${file.name}.`
-        + (placements
-          ? ` The ${placements} placement${placements === 1 ? '' : 's'} in this mountain re-render against the new mesh — `
-            + 'their positions, rotations and scales are untouched.'
+      body:
+        `The prop keeps its number, so its geometry, materials and any effects it declares are taken ` +
+        `from ${file.name}.` +
+        (placements
+          ? ` The ${placements} placement${placements === 1 ? '' : 's'} in this mountain re-render against the new mesh — ` +
+            'their positions, rotations and scales are untouched.'
           : ' Nothing is currently placed, so only the library changes.'),
     });
     if (!ok) return;
     try {
       const draft = await glbToPropDraft(file);
       const staged = await this.stageDraftTextures(draft, file.name.replace(/\.[^.]*$/, ''));
-      await postJson<{ id: number; name: string }>(`/api/custom-prop-replace?id=${m.id}`,
-        JSON.stringify(draftToRecord(draft, staged.tiles, staged.frames)));
+      await postJson<{ id: number; name: string }>(
+        `/api/custom-prop-replace?id=${m.id}`,
+        JSON.stringify(draftToRecord(draft, staged.tiles, staged.frames)),
+      );
       await this.adoptImportedChange();
       const [w, h, d] = draft.size;
-      toast(`${m.name} now shows ${file.name} — ${draft.tris.toLocaleString()} tris · `
-        + `${w.toFixed(1)}×${d.toFixed(1)}×${h.toFixed(1)} m.`, 'ok', 5000);
+      toast(
+        `${m.name} now shows ${file.name} — ${draft.tris.toLocaleString()} tris · ` +
+          `${w.toFixed(1)}×${d.toFixed(1)}×${h.toFixed(1)} m.`,
+        'ok',
+        5000,
+      );
     } catch (e) {
       toast(`Replace failed — ${message(e)}`, 'err', 6000);
     }
@@ -832,16 +965,16 @@ export class PropLibrary {
     const imported = level === IMPORTED_PROP_LEVEL;
     const placements = this.cb.docModels?.usage(level, m.id) ?? 0;
     const placed = placements
-      ? ` The ${placements} placement${placements === 1 ? '' : 's'} in this mountain `
-        + `${placements === 1 ? 'goes' : 'go'} with it — that part is undoable.`
+      ? ` The ${placements} placement${placements === 1 ? '' : 's'} in this mountain ` +
+        `${placements === 1 ? 'goes' : 'go'} with it — that part is undoable.`
       : ' Nothing is currently placed.';
     const ok = await confirmAction({
       title: `Delete ${m.name}?`,
       danger: true,
       confirmLabel: 'Delete',
       body: imported
-        ? `Removes the stored prop from this mountain’s assets/props folder. The file itself is not undoable, and its `
-          + `number is spent — a later import lands beside it rather than under it.${placed}`
+        ? `Removes the stored prop from this mountain’s assets/props folder. The file itself is not undoable, and its ` +
+          `number is spent — a later import lands beside it rather than under it.${placed}`
         : `Removes the prop definition from this mountain.${placed}`,
     });
     if (!ok) return;
@@ -854,8 +987,12 @@ export class PropLibrary {
       }
     }
     this.cb.docModels?.remove(level, m.id);
-    if (this.selLevel === level && this.selModel === m.id) { this.selLevel = null; this.selModel = null; }
-    if (imported) await this.adoptImportedChange(); else await this.loadLevel(AUTHORED_MODEL_LEVEL);
+    if (this.selLevel === level && this.selModel === m.id) {
+      this.selLevel = null;
+      this.selModel = null;
+    }
+    if (imported) await this.adoptImportedChange();
+    else await this.loadLevel(AUTHORED_MODEL_LEVEL);
     toast(`Deleted ${m.name}.`, 'ok');
   }
 
@@ -863,7 +1000,8 @@ export class PropLibrary {
    *  Geometry caches are the host's to clear (onImported), because the viewport holds them. */
   private async adoptImportedChange() {
     this.imported = (await this.cb.onImported?.()) ?? this.imported;
-    for (const key of [...this.thumbCache.keys()]) if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) this.thumbCache.delete(key);
+    for (const key of [...this.thumbCache.keys()])
+      if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) this.thumbCache.delete(key);
     this.render();
   }
 
@@ -890,15 +1028,22 @@ export class PropLibrary {
     }
     this.fileInput.value = ''; // so re-picking the same file re-fires onchange
     this.importing = false;
-    if (!last) { this.render(); if (!failures) toast('nothing imported', 'warn'); return; }
+    if (!last) {
+      this.render();
+      if (!failures) toast('nothing imported', 'warn');
+      return;
+    }
     await this.adoptImported(last);
   }
 
   /** Convert, stage and save ONE GLB — the per-file body of the ＋ tile's batch, shared with the ✨
    *  generator. `targetMeters` rescales the draft before it is stored (generated models arrive normalized,
    *  so their authored scale means nothing — docs/032). */
-  private async importOne(file: File, targetMeters?: number, generation?: FalGenerationProvenance):
-  Promise<{ level: string; model: number; name: string }> {
+  private async importOne(
+    file: File,
+    targetMeters?: number,
+    generation?: FalGenerationProvenance,
+  ): Promise<{ level: string; model: number; name: string }> {
     const draft = await glbToPropDraft(file);
     if (targetMeters) scaleDraftTo(draft, targetMeters);
     const stem = file.name.replace(/\.[^.]*$/, '');
@@ -906,10 +1051,14 @@ export class PropLibrary {
     const record = { ...draftToRecord(draft, staged.tiles, staged.frames), ...(generation ? { generation } : {}) };
     const saved = await fetchJson<{ id: number; name: string; error?: string }>(
       `/api/custom-prop-import?name=${encodeURIComponent(stem)}`,
-      { method: 'POST', body: JSON.stringify(record) });
+      { method: 'POST', body: JSON.stringify(record) },
+    );
     if (saved.error) throw new Error(saved.error);
     const [w, h, d] = draft.size;
-    toast(`${saved.name} — ${draft.tris.toLocaleString()} tris · ${w.toFixed(1)}×${d.toFixed(1)}×${h.toFixed(1)} m`, 'info');
+    toast(
+      `${saved.name} — ${draft.tris.toLocaleString()} tris · ${w.toFixed(1)}×${d.toFixed(1)}×${h.toFixed(1)} m`,
+      'info',
+    );
     return { level: IMPORTED_PROP_LEVEL, model: saved.id, name: saved.name };
   }
 
@@ -920,26 +1069,29 @@ export class PropLibrary {
    *  A flipbook material stages every frame, since each is its own bank tile the way an extracted level's
    *  are. `tiles` is frame 0 (the material's own art) and `frames` the rest, so an ordinary material's
    *  staging is byte-for-byte what it always was. */
-  private async stageDraftTextures(draft: { textures: (Blob | null)[]; flipbooks?: (Blob[] | null)[] },
-    stem: string, generation?: FalGenerationProvenance):
-  Promise<{ tiles: (string | null)[]; frames: (string[] | null)[] }> {
+  private async stageDraftTextures(
+    draft: { textures: (Blob | null)[]; flipbooks?: (Blob[] | null)[] },
+    stem: string,
+    generation?: FalGenerationProvenance,
+  ): Promise<{ tiles: (string | null)[]; frames: (string[] | null)[] }> {
     const upload = async (blob: Blob, name: string): Promise<string> => {
       // the stored name is the upload's answer, not the request: a tile name already in the bank lands
       // beside it as <name>_2, and the record has to wear the ref that actually exists (docs/038)
-      const saved = await fetchJson<{ name: string }>(
-        `/api/texture-upload?name=${encodeURIComponent(name)}`, {
-          method: 'POST',
-          headers: generation ? { [FAL_GENERATION_HEADER]: JSON.stringify(generation) } : undefined,
-          body: blob,
-        });
+      const saved = await fetchJson<{ name: string }>(`/api/texture-upload?name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: generation ? { [FAL_GENERATION_HEADER]: JSON.stringify(generation) } : undefined,
+        body: blob,
+      });
       return makeTexRef(CUSTOM_TEX_LEVEL, saved.name);
     };
-    const tiles = await Promise.all(draft.textures.map(async (blob, i) =>
-      blob ? upload(blob, `${stem}_${i}`) : null));
-    const frames = await Promise.all((draft.flipbooks ?? []).map(async (book, i) =>
-      book && tiles[i]
-        ? Promise.all(book.slice(1).map((blob, f) => upload(blob, `${stem}_${i}_f${f + 1}`)))
-        : null));
+    const tiles = await Promise.all(
+      draft.textures.map(async (blob, i) => (blob ? upload(blob, `${stem}_${i}`) : null)),
+    );
+    const frames = await Promise.all(
+      (draft.flipbooks ?? []).map(async (book, i) =>
+        book && tiles[i] ? Promise.all(book.slice(1).map((blob, f) => upload(blob, `${stem}_${i}_f${f + 1}`))) : null,
+      ),
+    );
     return { tiles, frames };
   }
 
@@ -951,7 +1103,8 @@ export class PropLibrary {
     this.selLevel = last.level;
     this.selModel = last.model;
     this.cb.onPick(last.level, last.model, last.name);
-    this.body.querySelector<HTMLElement>(`.pl-tile[data-level="${last.level}"][data-model="${last.model}"]`)
+    this.body
+      .querySelector<HTMLElement>(`.pl-tile[data-level="${last.level}"][data-model="${last.model}"]`)
       ?.scrollIntoView({ block: 'center' });
   }
 
@@ -967,7 +1120,10 @@ export class PropLibrary {
       this.importing = false;
       await this.adoptImported(last);
     } finally {
-      if (this.importing) { this.importing = false; this.render(); } // the failure path; success re-rendered
+      if (this.importing) {
+        this.importing = false;
+        this.render();
+      } // the failure path; success re-rendered
     }
   }
 
@@ -995,8 +1151,14 @@ export class PropLibrary {
         url = this.thumbCache.get(key);
         if (!url) {
           const entries = g.props
-            .map(m => ({ model: this.props!.models.find(mm => mm.id === m.model), relPos: m.relPos, relYaw: m.relYaw }))
-            .filter((e): e is { model: NonNullable<typeof e.model>; relPos: typeof e.relPos; relYaw: number } => !!e.model);
+            .map(m => ({
+              model: this.props!.models.find(mm => mm.id === m.model),
+              relPos: m.relPos,
+              relYaw: m.relYaw,
+            }))
+            .filter(
+              (e): e is { model: NonNullable<typeof e.model>; relPos: typeof e.relPos; relYaw: number } => !!e.model,
+            );
           if (!entries.length) continue;
           url = await this.thumb.renderSet(entries, level, this.props!.materials);
           if (generation !== this.thumbnailGeneration) continue;
@@ -1021,7 +1183,7 @@ export class PropLibrary {
   }
 }
 
-const message = (e: unknown) => e instanceof Error ? e.message : String(e);
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Ask for one model file, resolving null if the picker is dismissed. Replace's way in — the library's own
  *  hidden ＋ input is a multi-file adder and belongs to that route. */

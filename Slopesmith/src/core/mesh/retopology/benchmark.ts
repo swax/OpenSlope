@@ -60,9 +60,13 @@ const DEFAULT_OPTIONS: RetopologyBenchmarkOptions = {
   arcLengthInterfaceParameters: false,
 };
 
-const perimeter = ([A, B, C, D]: readonly number[]): [number, number][] =>
-  [[A, B], [B, D], [D, C], [C, A]];
-const edgeKey = (a: number, b: number): string => a < b ? `${a},${b}` : `${b},${a}`;
+const perimeter = ([A, B, C, D]: readonly number[]): [number, number][] => [
+  [A, B],
+  [B, D],
+  [D, C],
+  [C, A],
+];
+const edgeKey = (a: number, b: number): string => (a < b ? `${a},${b}` : `${b},${a}`);
 const pointAt = (vertices: readonly number[], vertex: number): V3 => {
   const at = vertex * 3;
   return [vertices[at], vertices[at + 1], vertices[at + 2]];
@@ -70,7 +74,8 @@ const pointAt = (vertices: readonly number[], vertex: number): V3 => {
 
 /** Locked patches plus N edge-adjacent rings. This is the same collar the eventual editor operation retains. */
 export function protectedQuadSet(doc: QuadMeshDoc, collarRings: number): Set<number> {
-  const derived = deriveQuadMesh(doc), protectedQuads = new Set<number>();
+  const derived = deriveQuadMesh(doc),
+    protectedQuads = new Set<number>();
   for (const key of Object.keys(doc.quadLocked ?? {})) {
     const quad = Number(key);
     if (doc.quadLocked?.[quad] === true && quad >= 0 && quad < doc.quads.length) protectedQuads.add(quad);
@@ -78,9 +83,10 @@ export function protectedQuadSet(doc: QuadMeshDoc, collarRings: number): Set<num
   const rings = Math.max(0, Math.min(3, Math.floor(collarRings)));
   for (let ring = 0; ring < rings; ring++) {
     const frontier = [...protectedQuads];
-    for (const quad of frontier) for (const edge of derived.mesh.topology.cellEdges[quad] ?? []) {
-      for (const neighbor of derived.mesh.topology.edgeCells[edge] ?? []) protectedQuads.add(neighbor);
-    }
+    for (const quad of frontier)
+      for (const edge of derived.mesh.topology.cellEdges[quad] ?? []) {
+        for (const neighbor of derived.mesh.topology.edgeCells[edge] ?? []) protectedQuads.add(neighbor);
+      }
   }
   return protectedQuads;
 }
@@ -88,11 +94,13 @@ export function protectedQuadSet(doc: QuadMeshDoc, collarRings: number): Set<num
 /** Count edge-connected components in a source-patch set. Vertex-only contact does not make one editable
  * region: it would leave two independent boundary cycles touching at a non-manifold point. */
 export function quadRegionCount(doc: QuadMeshDoc, quads: ReadonlySet<number>): number {
-  const derived = deriveQuadMesh(doc), remaining = new Set(quads);
+  const derived = deriveQuadMesh(doc),
+    remaining = new Set(quads);
   let regions = 0;
   while (remaining.size) {
     regions++;
-    const seed = remaining.values().next().value as number, queue = [seed];
+    const seed = remaining.values().next().value as number,
+      queue = [seed];
     remaining.delete(seed);
     while (queue.length) {
       const quad = queue.pop()!;
@@ -107,13 +115,15 @@ export function quadRegionCount(doc: QuadMeshDoc, quads: ReadonlySet<number>): n
 }
 
 function growQuadSet(doc: QuadMeshDoc, seed: ReadonlySet<number>, requestedRings: number): Set<number> {
-  const derived = deriveQuadMesh(doc), grown = new Set(seed);
+  const derived = deriveQuadMesh(doc),
+    grown = new Set(seed);
   const rings = Math.max(0, Math.min(5, Math.floor(requestedRings)));
   for (let ring = 0; ring < rings; ring++) {
     const frontier = [...grown];
-    for (const quad of frontier) for (const edge of derived.mesh.topology.cellEdges[quad] ?? []) {
-      for (const neighbor of derived.mesh.topology.edgeCells[edge] ?? []) grown.add(neighbor);
-    }
+    for (const quad of frontier)
+      for (const edge of derived.mesh.topology.cellEdges[quad] ?? []) {
+        for (const neighbor of derived.mesh.topology.edgeCells[edge] ?? []) grown.add(neighbor);
+      }
   }
   return grown;
 }
@@ -137,7 +147,9 @@ function sampleKey(quad: readonly number[], q: number, u: number, v: number, res
 }
 
 export function tessellateQuads(doc: QuadMeshDoc, quads: ReadonlySet<number>, resolution: number): PolygonMesh {
-  const derived = deriveQuadMesh(doc), vertices: V3[] = [], faces: number[][] = [];
+  const derived = deriveQuadMesh(doc),
+    vertices: V3[] = [],
+    faces: number[][] = [];
   const welded = new Map<string, number>();
   const res = Math.max(1, Math.floor(resolution));
   for (const q of [...quads].sort((a, b) => a - b)) {
@@ -145,22 +157,27 @@ export function tessellateQuads(doc: QuadMeshDoc, quads: ReadonlySet<number>, re
     if (!quad) continue;
     const controls = quadControlPoints(derived.mesh, derived.edgeHandle, q, derived.twistOf(q));
     const lattice: number[][] = Array.from({ length: res + 1 }, () => new Array<number>(res + 1));
-    for (let u = 0; u <= res; u++) for (let v = 0; v <= res; v++) {
-      const key = sampleKey(quad, q, u, v, res);
-      let index = welded.get(key);
-      if (index === undefined) {
-        index = vertices.length;
-        vertices.push(patchPoint(controls, u / res, v / res));
-        welded.set(key, index);
+    for (let u = 0; u <= res; u++)
+      for (let v = 0; v <= res; v++) {
+        const key = sampleKey(quad, q, u, v, res);
+        let index = welded.get(key);
+        if (index === undefined) {
+          index = vertices.length;
+          vertices.push(patchPoint(controls, u / res, v / res));
+          welded.set(key, index);
+        }
+        lattice[u][v] = index;
       }
-      lattice[u][v] = index;
-    }
-    for (let u = 0; u < res; u++) for (let v = 0; v < res; v++) {
-      const a = lattice[u][v], b = lattice[u][v + 1], c = lattice[u + 1][v], d = lattice[u + 1][v + 1];
-      // Match the production tessellator's skyward winding. Collapsed wedge facets are omitted.
-      if (new Set([a, d, c]).size === 3) faces.push([a, d, c]);
-      if (new Set([a, b, d]).size === 3) faces.push([a, b, d]);
-    }
+    for (let u = 0; u < res; u++)
+      for (let v = 0; v < res; v++) {
+        const a = lattice[u][v],
+          b = lattice[u][v + 1],
+          c = lattice[u + 1][v],
+          d = lattice[u + 1][v + 1];
+        // Match the production tessellator's skyward winding. Collapsed wedge facets are omitted.
+        if (new Set([a, d, c]).size === 3) faces.push([a, d, c]);
+        if (new Set([a, b, d]).size === 3) faces.push([a, b, d]);
+      }
   }
   return { vertices, faces };
 }
@@ -172,9 +189,8 @@ function triangleArea(a: V3, b: V3, c: V3): number {
 export function polygonArea(mesh: PolygonMesh): number {
   let area = 0;
   for (const face of mesh.faces) {
-    for (let i = 1; i + 1 < face.length; i++) area += triangleArea(
-      mesh.vertices[face[0]], mesh.vertices[face[i]], mesh.vertices[face[i + 1]],
-    );
+    for (let i = 1; i + 1 < face.length; i++)
+      area += triangleArea(mesh.vertices[face[0]], mesh.vertices[face[i]], mesh.vertices[face[i + 1]]);
   }
   return area;
 }
@@ -186,10 +202,12 @@ function protectedComponents(
   adjacency: ReturnType<typeof meshAdjacency>,
   protectedQuads: ReadonlySet<number>,
 ): number[][] {
-  const components: number[][] = [], visited = new Set<number>();
+  const components: number[][] = [],
+    visited = new Set<number>();
   for (const start of protectedQuads) {
     if (visited.has(start)) continue;
-    const component: number[] = [], stack = [start];
+    const component: number[] = [],
+      stack = [start];
     visited.add(start);
     while (stack.length) {
       const quad = stack.pop()!;
@@ -210,14 +228,18 @@ function protectedComponents(
 }
 
 function interfaceCurves(doc: QuadMeshDoc, protectedQuads: ReadonlySet<number>, resolution: number): InterfaceCurve[] {
-  const derived = deriveQuadMesh(doc), adjacency = meshAdjacency(derived.mesh);
-  const curves: InterfaceCurve[] = [], seen = new Set<string>();
+  const derived = deriveQuadMesh(doc),
+    adjacency = meshAdjacency(derived.mesh);
+  const curves: InterfaceCurve[] = [],
+    seen = new Set<string>();
   const append = (a: number, b: number) => {
     const key = edgeKey(a, b);
     if (a === b || seen.has(key)) return;
     seen.add(key);
-    const p0 = pointAt(doc.vertices, a), p3 = pointAt(doc.vertices, b);
-    const p1 = add(p0, derived.edgeHandle(a, b)), p2 = add(p3, derived.edgeHandle(b, a));
+    const p0 = pointAt(doc.vertices, a),
+      p3 = pointAt(doc.vertices, b);
+    const p1 = add(p0, derived.edgeHandle(a, b)),
+      p2 = add(p3, derived.edgeHandle(b, a));
     const samples = Array.from({ length: resolution + 1 }, (_, i) => cubicPoint(p0, p1, p2, p3, i / resolution));
     curves.push({ edgeVertexIds: [doc.vertexIds[a], doc.vertexIds[b]], samples });
   };
@@ -239,9 +261,11 @@ function interfaceCurves(doc: QuadMeshDoc, protectedQuads: ReadonlySet<number>, 
   // interface it never borders. A component that touches the remesh region anywhere is already stitched by
   // the loop above and contributes no rim of its own.
   for (const component of protectedComponents(derived.mesh, adjacency, protectedQuads)) {
-    const touchesRemesh = component.some(q => (derived.mesh.quads[q] ? perimeter(derived.mesh.quads[q]) : [])
-      .some(([a, b]) => (adjacency.edgeQuads.get(edgeKey(a, b)) ?? [])
-        .some(neighbor => !protectedQuads.has(neighbor))));
+    const touchesRemesh = component.some(q =>
+      (derived.mesh.quads[q] ? perimeter(derived.mesh.quads[q]) : []).some(([a, b]) =>
+        (adjacency.edgeQuads.get(edgeKey(a, b)) ?? []).some(neighbor => !protectedQuads.has(neighbor)),
+      ),
+    );
     if (touchesRemesh) continue;
     for (const q of component) {
       const quad = derived.mesh.quads[q];
@@ -256,7 +280,8 @@ function interfaceCurves(doc: QuadMeshDoc, protectedQuads: ReadonlySet<number>, 
   // for the unsplit protected edge. Restore that host edge to the interface or a second retopo sees an open
   // protected chain (degree 1) instead of the same closed loop used by the first solve.
   for (const junction of doc.tJunctions ?? []) {
-    const [a, b] = junction.edge, neighbors = adjacency.edgeQuads.get(edgeKey(a, b)) ?? [];
+    const [a, b] = junction.edge,
+      neighbors = adjacency.edgeQuads.get(edgeKey(a, b)) ?? [];
     if (neighbors.filter(quad => protectedQuads.has(quad)).length === 1) append(a, b);
   }
   return curves;
@@ -269,31 +294,42 @@ export function prepareRetopologyBenchmark(
 ): PreparedRetopologyBenchmark {
   const options: RetopologyBenchmarkOptions = {
     collarRings: Math.max(0, Math.min(3, Math.floor(requested.collarRings ?? DEFAULT_OPTIONS.collarRings))),
-    targetPatchSizeM: Math.max(.01, requested.targetPatchSizeM ?? DEFAULT_OPTIONS.targetPatchSizeM),
+    targetPatchSizeM: Math.max(0.01, requested.targetPatchSizeM ?? DEFAULT_OPTIONS.targetPatchSizeM),
     // Resolution 1 is useful for topology-only solves: it exposes one boundary segment per authored patch
     // edge, then the integration stage fits the resulting layout back to the original bicubic surface.
-    tessellationResolution: Math.max(1, Math.floor(requested.tessellationResolution ?? DEFAULT_OPTIONS.tessellationResolution)),
+    tessellationResolution: Math.max(
+      1,
+      Math.floor(requested.tessellationResolution ?? DEFAULT_OPTIONS.tessellationResolution),
+    ),
     wholeSurface: requested.wholeSurface === true,
     regularizeCandidate: requested.regularizeCandidate === true,
     refineBoundaryCorners: requested.refineBoundaryCorners !== false,
     arcLengthInterfaceParameters: requested.arcLengthInterfaceParameters === true,
   };
   const locked = new Set<number>();
-  for (const key of Object.keys(doc.quadLocked ?? {})) if (doc.quadLocked?.[Number(key)] === true) locked.add(Number(key));
-  if (!locked.size) throw new Error('Retopology benchmark needs at least one locked patch to define the preserved region');
+  for (const key of Object.keys(doc.quadLocked ?? {}))
+    if (doc.quadLocked?.[Number(key)] === true) locked.add(Number(key));
+  if (!locked.size)
+    throw new Error('Retopology benchmark needs at least one locked patch to define the preserved region');
   const lockedGuideQuads = protectedQuadSet(doc, 0);
   const protectedQuads = options.wholeSurface ? new Set<number>() : protectedQuadSet(doc, options.collarRings);
-  const remeshQuads = new Set(Array.from({ length: doc.quads.length }, (_, q) => q)
-    .filter(q => options.wholeSurface || !protectedQuads.has(q)));
+  const remeshQuads = new Set(
+    Array.from({ length: doc.quads.length }, (_, q) => q).filter(q => options.wholeSurface || !protectedQuads.has(q)),
+  );
   if (!remeshQuads.size) throw new Error('The protected region and collar cover the whole mountain');
   const input = tessellateQuads(doc, remeshQuads, options.tessellationResolution);
-  const protectedMesh = tessellateQuads(doc, options.wholeSurface ? lockedGuideQuads : protectedQuads, options.tessellationResolution);
+  const protectedMesh = tessellateQuads(
+    doc,
+    options.wholeSurface ? lockedGuideQuads : protectedQuads,
+    options.tessellationResolution,
+  );
   const sourceAreaM2 = polygonArea(input);
   const warnings: string[] = [];
-  if (doc.tJunctions?.length) warnings.push(
-    `${doc.tJunctions.length} T-junction(s) are present; candidates should be checked for manifold preprocessing changes.`,
-  );
-  const targetFaces = Math.max(1, Math.round(sourceAreaM2 / (options.targetPatchSizeM ** 2)));
+  if (doc.tJunctions?.length)
+    warnings.push(
+      `${doc.tJunctions.length} T-junction(s) are present; candidates should be checked for manifold preprocessing changes.`,
+    );
+  const targetFaces = Math.max(1, Math.round(sourceAreaM2 / options.targetPatchSizeM ** 2));
   return {
     input,
     protected: protectedMesh,
@@ -305,8 +341,11 @@ export function prepareRetopologyBenchmark(
       protectedQuadIds: [...protectedQuads].sort((a, b) => a - b).map(q => doc.quadIds[q]),
       remeshQuadIds: [...remeshQuads].sort((a, b) => a - b).map(q => doc.quadIds[q]),
       // Field guidance needs the actual curve even when the topology input deliberately uses resolution 1.
-      interface: interfaceCurves(doc, options.wholeSurface ? lockedGuideQuads : protectedQuads,
-        Math.max(8, options.tessellationResolution)),
+      interface: interfaceCurves(
+        doc,
+        options.wholeSurface ? lockedGuideQuads : protectedQuads,
+        Math.max(8, options.tessellationResolution),
+      ),
       sourceAreaM2,
       targetFaces,
       warnings,
@@ -332,19 +371,24 @@ export function prepareSelectedRetopology(
   }
   if (!selected.size) throw new Error('Select one connected patch region before regional retopology');
   const selectedRegions = quadRegionCount(doc, selected);
-  if (selectedRegions !== 1) throw new Error(`Selected-region retopology requires one connected patch region; found ${selectedRegions}`);
+  if (selectedRegions !== 1)
+    throw new Error(`Selected-region retopology requires one connected patch region; found ${selectedRegions}`);
   const topology = deriveQuadMesh(doc).mesh.topology;
   const rimQuads = new Set<number>();
-  for (let quad = 0; quad < doc.quads.length; quad++) if ((topology.cellEdges[quad] ?? [])
-    .some(edge => (topology.edgeCells[edge] ?? []).length === 1)) rimQuads.add(quad);
+  for (let quad = 0; quad < doc.quads.length; quad++)
+    if ((topology.cellEdges[quad] ?? []).some(edge => (topology.edgeCells[edge] ?? []).length === 1))
+      rimQuads.add(quad);
   if ([...selected].some(quad => rimQuads.has(quad))) {
     throw new Error('Selected-region retopology must leave at least one frozen patch ring at the mountain rim');
   }
 
   const options: RetopologyBenchmarkOptions = {
     collarRings: 0,
-    targetPatchSizeM: Math.max(.01, requested.targetPatchSizeM ?? DEFAULT_OPTIONS.targetPatchSizeM),
-    tessellationResolution: Math.max(1, Math.floor(requested.tessellationResolution ?? DEFAULT_OPTIONS.tessellationResolution)),
+    targetPatchSizeM: Math.max(0.01, requested.targetPatchSizeM ?? DEFAULT_OPTIONS.targetPatchSizeM),
+    tessellationResolution: Math.max(
+      1,
+      Math.floor(requested.tessellationResolution ?? DEFAULT_OPTIONS.tessellationResolution),
+    ),
     wholeSurface: false,
     regularizeCandidate: requested.regularizeCandidate === true,
     refineBoundaryCorners: requested.refineBoundaryCorners !== false,
@@ -356,15 +400,17 @@ export function prepareSelectedRetopology(
   for (const quad of rimQuads) influenced.delete(quad);
   const remeshQuads = new Set([...influenced].filter(quad => !locked.has(quad)));
   if (!remeshQuads.size) throw new Error('The selected region contains only locked patches');
-  const protectedQuads = new Set(Array.from({ length: doc.quads.length }, (_unused, quad) => quad)
-    .filter(quad => !remeshQuads.has(quad)));
+  const protectedQuads = new Set(
+    Array.from({ length: doc.quads.length }, (_unused, quad) => quad).filter(quad => !remeshQuads.has(quad)),
+  );
   const input = tessellateQuads(doc, remeshQuads, options.tessellationResolution);
   const protectedMesh = tessellateQuads(doc, protectedQuads, options.tessellationResolution);
   const sourceAreaM2 = polygonArea(input);
   const warnings: string[] = [];
-  if (doc.tJunctions?.length) warnings.push(
-    `${doc.tJunctions.length} T-junction(s) are present; candidates should be checked for manifold preprocessing changes.`,
-  );
+  if (doc.tJunctions?.length)
+    warnings.push(
+      `${doc.tJunctions.length} T-junction(s) are present; candidates should be checked for manifold preprocessing changes.`,
+    );
   return {
     input,
     protected: protectedMesh,
@@ -377,7 +423,7 @@ export function prepareSelectedRetopology(
       remeshQuadIds: [...remeshQuads].sort((a, b) => a - b).map(quad => doc.quadIds[quad]),
       interface: interfaceCurves(doc, protectedQuads, Math.max(8, options.tessellationResolution)),
       sourceAreaM2,
-      targetFaces: Math.max(1, Math.round(sourceAreaM2 / (options.targetPatchSizeM ** 2))),
+      targetFaces: Math.max(1, Math.round(sourceAreaM2 / options.targetPatchSizeM ** 2)),
       warnings,
     },
   };

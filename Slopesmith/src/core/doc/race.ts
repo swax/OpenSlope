@@ -133,8 +133,18 @@ export function normalizeCheckpointBonus(value: unknown): number | undefined {
  *  390-showoff-clock]). Mirrors snowknife's `RaceBundle.RetailShowoffSeconds`, which supplies the same number to
  *  the Unity bundle. UNTRACKED and the trick tutorial are zero because those slots host no showoff event. */
 const REFERENCE_SHOWOFF_SECONDS: Record<string, number> = {
-  GARI: 120, SNOW: 90, ELYSIUM: 90, MESA: 90, MERQUER: 90, ALOHA: 90,
-  PIPE: 90, UNTRACK: 0, MEGAPLE: 90, BIGAIR: 90, TRICK: 0, ALASKA: 135,
+  GARI: 120,
+  SNOW: 90,
+  ELYSIUM: 90,
+  MESA: 90,
+  MERQUER: 90,
+  ALOHA: 90,
+  PIPE: 90,
+  UNTRACK: 0,
+  MEGAPLE: 90,
+  BIGAIR: 90,
+  TRICK: 0,
+  ALASKA: 135,
 };
 
 /** Showoff seconds an extracted level runs — what a loaded reference reports. A level we ship no knowledge of

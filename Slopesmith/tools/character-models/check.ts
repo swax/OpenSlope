@@ -5,9 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Matrix4, Quaternion, Vector3 } from 'three';
-import {
-  REQUIRED_CHARACTER_BONES, normalizedCharacterBoneName,
-} from '../../src/core/characters/contract';
+import { REQUIRED_CHARACTER_BONES, normalizedCharacterBoneName } from '../../src/core/characters/contract';
 
 interface GltfNode {
   name?: string;
@@ -80,10 +78,21 @@ const GLB_MAGIC = 0x46546c67;
 const JSON_CHUNK = 0x4e4f534a;
 const BIN_CHUNK = 0x004e4942;
 const COMPONENTS: Record<string, number> = {
-  SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16,
+  SCALAR: 1,
+  VEC2: 2,
+  VEC3: 3,
+  VEC4: 4,
+  MAT2: 4,
+  MAT3: 9,
+  MAT4: 16,
 };
 const COMPONENT_BYTES: Record<number, number> = {
-  5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4,
+  5120: 1,
+  5121: 1,
+  5122: 2,
+  5123: 2,
+  5125: 4,
+  5126: 4,
 };
 
 function splitGlb(bytes: Uint8Array): { json: GltfDocument; bin: Uint8Array } {
@@ -102,7 +111,8 @@ function splitGlb(bytes: Uint8Array): { json: GltfDocument; bin: Uint8Array } {
     if (offset + 8 > bytes.byteLength) throw new Error('truncated GLB chunk header');
     const length = header.getUint32(offset, true);
     const type = header.getUint32(offset + 4, true);
-    const start = offset + 8, end = start + length;
+    const start = offset + 8,
+      end = start + length;
     if (end > bytes.byteLength) throw new Error('truncated GLB chunk body');
     if (type === JSON_CHUNK) {
       if (json) throw new Error('GLB contains more than one JSON chunk');
@@ -114,7 +124,8 @@ function splitGlb(bytes: Uint8Array): { json: GltfDocument; bin: Uint8Array } {
     offset = end;
   }
   if (!json) throw new Error('GLB has no JSON chunk');
-  if (json.asset?.version !== '2.0') throw new Error(`JSON asset version is ${json.asset?.version ?? 'missing'}, not 2.0`);
+  if (json.asset?.version !== '2.0')
+    throw new Error(`JSON asset version is ${json.asset?.version ?? 'missing'}, not 2.0`);
   if ((json.buffers?.length ?? 0) > 1 || json.buffers?.[0]?.uri) {
     throw new Error('character GLB must carry its geometry in the single embedded binary buffer');
   }
@@ -151,13 +162,20 @@ function readAccessor(json: GltfDocument, bin: Uint8Array, index: number): Acces
   const normalized = accessor.normalized === true;
   const read = (at: number): number => {
     switch (accessor.componentType) {
-      case 5126: return view.getFloat32(at, true);
-      case 5125: return view.getUint32(at, true);
-      case 5123: return normalized ? view.getUint16(at, true) / 65535 : view.getUint16(at, true);
-      case 5122: return normalized ? Math.max(-1, view.getInt16(at, true) / 32767) : view.getInt16(at, true);
-      case 5121: return normalized ? view.getUint8(at) / 255 : view.getUint8(at);
-      case 5120: return normalized ? Math.max(-1, view.getInt8(at) / 127) : view.getInt8(at);
-      default: throw new Error(`unsupported accessor component type ${accessor.componentType}`);
+      case 5126:
+        return view.getFloat32(at, true);
+      case 5125:
+        return view.getUint32(at, true);
+      case 5123:
+        return normalized ? view.getUint16(at, true) / 65535 : view.getUint16(at, true);
+      case 5122:
+        return normalized ? Math.max(-1, view.getInt16(at, true) / 32767) : view.getInt16(at, true);
+      case 5121:
+        return normalized ? view.getUint8(at) / 255 : view.getUint8(at);
+      case 5120:
+        return normalized ? Math.max(-1, view.getInt8(at) / 127) : view.getInt8(at);
+      default:
+        throw new Error(`unsupported accessor component type ${accessor.componentType}`);
     }
   };
   for (let row = 0; row < count; row++) {
@@ -190,13 +208,31 @@ function rounded(v: Vector3): [number, number, number] {
 
 /** Inspect a self-contained GLB without invoking Blender or a browser image decoder. */
 export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): CharacterCheckReport {
-  const errors: string[] = [], warnings: string[] = [];
+  const errors: string[] = [],
+    warnings: string[] = [];
   const report: CharacterCheckReport = {
-    source, valid: false, errors, warnings, bytes: bytes.byteLength,
-    nodes: 0, bones: 0, meshNodes: 0, skinnedMeshes: 0, vertices: 0, triangles: 0,
-    materials: 0, images: 0, embeddedImages: 0, externalImages: [], animations: 0,
-    unweightedVertices: 0, maxInfluencesPerVertex: 0, maxWeightSumError: 0,
-    boundsMin: null, boundsMax: null, heightMetres: null,
+    source,
+    valid: false,
+    errors,
+    warnings,
+    bytes: bytes.byteLength,
+    nodes: 0,
+    bones: 0,
+    meshNodes: 0,
+    skinnedMeshes: 0,
+    vertices: 0,
+    triangles: 0,
+    materials: 0,
+    images: 0,
+    embeddedImages: 0,
+    externalImages: [],
+    animations: 0,
+    unweightedVertices: 0,
+    maxInfluencesPerVertex: 0,
+    maxWeightSumError: 0,
+    boundsMin: null,
+    boundsMax: null,
+    heightMetres: null,
   };
 
   try {
@@ -259,21 +295,33 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
         if (matches.length > 1) errors.push(`required bone ${name} appears ${matches.length} times`);
       }
     }
-    report.bones = new Set((json.skins ?? []).flatMap(skin => skin.joints ?? []).filter(index => reachable.has(index))).size;
+    report.bones = new Set(
+      (json.skins ?? []).flatMap(skin => skin.joints ?? []).filter(index => reachable.has(index)),
+    ).size;
 
     const mustDescend: [string, string][] = [
-      ['Chest', 'Hips'], ['Head', 'Chest'],
-      ['UpperArm.L', 'Chest'], ['LowerArm.L', 'UpperArm.L'], ['Hand.L', 'LowerArm.L'],
-      ['UpperArm.R', 'Chest'], ['LowerArm.R', 'UpperArm.R'], ['Hand.R', 'LowerArm.R'],
-      ['UpperLeg.L', 'Hips'], ['LowerLeg.L', 'UpperLeg.L'], ['Foot.L', 'LowerLeg.L'],
-      ['UpperLeg.R', 'Hips'], ['LowerLeg.R', 'UpperLeg.R'], ['Foot.R', 'LowerLeg.R'],
+      ['Chest', 'Hips'],
+      ['Head', 'Chest'],
+      ['UpperArm.L', 'Chest'],
+      ['LowerArm.L', 'UpperArm.L'],
+      ['Hand.L', 'LowerArm.L'],
+      ['UpperArm.R', 'Chest'],
+      ['LowerArm.R', 'UpperArm.R'],
+      ['Hand.R', 'LowerArm.R'],
+      ['UpperLeg.L', 'Hips'],
+      ['LowerLeg.L', 'UpperLeg.L'],
+      ['Foot.L', 'LowerLeg.L'],
+      ['UpperLeg.R', 'Hips'],
+      ['LowerLeg.R', 'UpperLeg.R'],
+      ['Foot.R', 'LowerLeg.R'],
     ];
     const isDescendant = (child: number, ancestor: number) => {
       for (let at = parents[child]; at >= 0; at = parents[at]) if (at === ancestor) return true;
       return false;
     };
     for (const [childName, ancestorName] of mustDescend) {
-      const child = canonical.get(childName), ancestor = canonical.get(ancestorName);
+      const child = canonical.get(childName),
+        ancestor = canonical.get(ancestorName);
       if (child !== undefined && ancestor !== undefined && !isDescendant(child, ancestor)) {
         errors.push(`${childName} is not a descendant of ${ancestorName}`);
       }
@@ -303,8 +351,8 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
       const skin = json.skins?.[skinIndex];
       if (!skin) return [];
       const joints = skin.joints ?? [];
-      const inverseBinds = skin.inverseBindMatrices === undefined
-        ? null : readAccessor(json, bin, skin.inverseBindMatrices);
+      const inverseBinds =
+        skin.inverseBindMatrices === undefined ? null : readAccessor(json, bin, skin.inverseBindMatrices);
       if (inverseBinds && (inverseBinds.components !== 16 || inverseBinds.count !== joints.length)) {
         throw new Error(`skin ${skinIndex} inverse-bind accessor does not match its ${joints.length} joints`);
       }
@@ -321,7 +369,9 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
 
     const minimum = new Vector3(Infinity, Infinity, Infinity);
     const maximum = new Vector3(-Infinity, -Infinity, -Infinity);
-    const point = new Vector3(), sourcePoint = new Vector3(), influenced = new Vector3();
+    const point = new Vector3(),
+      sourcePoint = new Vector3(),
+      influenced = new Vector3();
     const measuredMeshNodes = new Set<number>();
     for (const nodeIndex of meshNodes) {
       const node = nodes[nodeIndex];
@@ -341,16 +391,18 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
         const positions = readAccessor(json, bin, positionIndex);
         if (positions.components !== 3) throw new Error(`POSITION accessor ${positionIndex} is not VEC3`);
         report.vertices += positions.count;
-        const corners = primitive.indices === undefined ? positions.count : readAccessor(json, bin, primitive.indices).count;
+        const corners =
+          primitive.indices === undefined ? positions.count : readAccessor(json, bin, primitive.indices).count;
         if ((primitive.mode ?? 4) === 4) report.triangles += Math.floor(corners / 3);
         else warnings.push(`mesh ${mesh.name ?? node.mesh} uses non-triangle primitive mode ${primitive.mode}`);
 
         if (!skinned) {
           for (let vertex = 0; vertex < positions.count; vertex++) {
-            point.set(
-              positions.values[vertex * 3], positions.values[vertex * 3 + 1], positions.values[vertex * 3 + 2],
-            ).applyMatrix4(worldOf(nodeIndex));
-            minimum.min(point); maximum.max(point);
+            point
+              .set(positions.values[vertex * 3], positions.values[vertex * 3 + 1], positions.values[vertex * 3 + 2])
+              .applyMatrix4(worldOf(nodeIndex));
+            minimum.min(point);
+            maximum.max(point);
           }
           continue;
         }
@@ -365,8 +417,11 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
           }
           const joints = readAccessor(json, bin, jointIndex);
           const weights = readAccessor(json, bin, weightIndex);
-          if (joints.count !== positions.count || weights.count !== positions.count
-              || joints.components !== weights.components) {
+          if (
+            joints.count !== positions.count ||
+            weights.count !== positions.count ||
+            joints.components !== weights.components
+          ) {
             errors.push(`mesh ${mesh.name ?? node.mesh} has mismatched skin accessors`);
             break;
           }
@@ -379,10 +434,13 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
         }
         const transforms = transformsForSkin(node.skin!);
         for (let vertex = 0; vertex < positions.count; vertex++) {
-          let influences = 0, sum = 0;
+          let influences = 0,
+            sum = 0;
           point.set(0, 0, 0);
           sourcePoint.set(
-            positions.values[vertex * 3], positions.values[vertex * 3 + 1], positions.values[vertex * 3 + 2],
+            positions.values[vertex * 3],
+            positions.values[vertex * 3 + 1],
+            positions.values[vertex * 3 + 2],
           );
           for (const { joints, weights } of skinSets) {
             for (let component = 0; component < weights.components; component++) {
@@ -404,7 +462,8 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
             report.maxWeightSumError = Math.max(report.maxWeightSumError, Math.abs(sum - 1));
           }
           report.maxInfluencesPerVertex = Math.max(report.maxInfluencesPerVertex, influences);
-          minimum.min(point); maximum.max(point);
+          minimum.min(point);
+          maximum.max(point);
         }
       }
     }
@@ -446,10 +505,14 @@ export function checkCharacterGlb(bytes: Uint8Array, source = '<memory>'): Chara
 
 function printReport(report: CharacterCheckReport) {
   console.log(`${report.valid ? 'PASS' : 'FAIL'} ${report.source}`);
-  console.log(`  ${report.skinnedMeshes} skinned mesh(es), ${report.vertices.toLocaleString()} vertices, `
-    + `${report.triangles.toLocaleString()} triangles, ${report.bones} skin bones`);
-  console.log(`  influences ${report.maxInfluencesPerVertex} max, ${report.unweightedVertices} unweighted; `
-    + `${report.embeddedImages} embedded image(s); height ${report.heightMetres?.toFixed(3) ?? '?'} m`);
+  console.log(
+    `  ${report.skinnedMeshes} skinned mesh(es), ${report.vertices.toLocaleString()} vertices, ` +
+      `${report.triangles.toLocaleString()} triangles, ${report.bones} skin bones`,
+  );
+  console.log(
+    `  influences ${report.maxInfluencesPerVertex} max, ${report.unweightedVertices} unweighted; ` +
+      `${report.embeddedImages} embedded image(s); height ${report.heightMetres?.toFixed(3) ?? '?'} m`,
+  );
   for (const warning of report.warnings) console.log(`  warning: ${warning}`);
   for (const error of report.errors) console.log(`  error: ${error}`);
 }
@@ -468,11 +531,28 @@ async function main() {
       reports.push(checkCharacterGlb(await readFile(path), path));
     } catch (error) {
       reports.push({
-        source: path, valid: false, errors: [error instanceof Error ? error.message : String(error)], warnings: [],
-        bytes: 0, nodes: 0, bones: 0, meshNodes: 0, skinnedMeshes: 0, vertices: 0, triangles: 0,
-        materials: 0, images: 0, embeddedImages: 0, externalImages: [], animations: 0,
-        unweightedVertices: 0, maxInfluencesPerVertex: 0, maxWeightSumError: 0,
-        boundsMin: null, boundsMax: null, heightMetres: null,
+        source: path,
+        valid: false,
+        errors: [error instanceof Error ? error.message : String(error)],
+        warnings: [],
+        bytes: 0,
+        nodes: 0,
+        bones: 0,
+        meshNodes: 0,
+        skinnedMeshes: 0,
+        vertices: 0,
+        triangles: 0,
+        materials: 0,
+        images: 0,
+        embeddedImages: 0,
+        externalImages: [],
+        animations: 0,
+        unweightedVertices: 0,
+        maxInfluencesPerVertex: 0,
+        maxWeightSumError: 0,
+        boundsMin: null,
+        boundsMax: null,
+        heightMetres: null,
       });
     }
   }
@@ -482,5 +562,8 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });
+  main().catch(error => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }

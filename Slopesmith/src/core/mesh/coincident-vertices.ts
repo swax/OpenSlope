@@ -18,18 +18,21 @@ export function findCoincidentVertices(
   tolerance = COINCIDENT_VERTEX_TOLERANCE_M,
 ): CoincidentVertices[] {
   if (!(tolerance > 0) || !Number.isFinite(tolerance)) return [];
-  const { mesh } = meshFromDoc(doc), adj = meshAdjacency(mesh);
-  const grid = new SpatialHash3D<number>(tolerance), out: CoincidentVertices[] = [];
+  const { mesh } = meshFromDoc(doc),
+    adj = meshAdjacency(mesh);
+  const grid = new SpatialHash3D<number>(tolerance),
+    out: CoincidentVertices[] = [];
   const tolerance2 = tolerance * tolerance;
   for (let vertex = 0; vertex < mesh.vertexCount; vertex++) {
-    if (!(adj.neighbors[vertex]?.length)) continue;
+    if (!adj.neighbors[vertex]?.length) continue;
     const p = readVertex(mesh.vertices, vertex);
     for (const other of grid.queryPointNeighborhood(p)) {
       const q = readVertex(mesh.vertices, other);
       const distance2 = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
       if (distance2 > tolerance2) continue;
       out.push({
-        vertices: [other, vertex], points: [q, p],
+        vertices: [other, vertex],
+        points: [q, p],
         point: [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2],
         distance: Math.sqrt(distance2),
       });
@@ -50,7 +53,9 @@ export function coincidentVertexGroup(
   const count = doc.vertices.length / 3;
   if (!Number.isInteger(vertex) || vertex < 0 || vertex >= count) return [];
   const group = new Set([vertex]);
-  for (const { vertices: [a, b] } of findCoincidentVertices(doc, tolerance)) {
+  for (const {
+    vertices: [a, b],
+  } of findCoincidentVertices(doc, tolerance)) {
     if (a === vertex) group.add(b);
     else if (b === vertex) group.add(a);
   }

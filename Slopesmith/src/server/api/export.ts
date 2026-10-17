@@ -9,9 +9,13 @@ import { readJsonBody, RequestBodyTooLargeError, type ApiHandler } from './commo
  *  — served by the ordinary library routes — and nothing else. */
 export const exportRoutes: Record<string, ApiHandler> = {
   '/api/preflight': async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     try {
-      const body = await readJsonBody(req) as { doc?: unknown };
+      const body = (await readJsonBody(req)) as { doc?: unknown };
       const doc = body.doc as Parameters<typeof preflightFor>[0] | undefined;
       // Said once, plainly: everything below reads a mountain's surface, and a body that carries none fails
       // deep inside the classifier with a message about an undefined length.

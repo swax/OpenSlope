@@ -11,7 +11,9 @@ const holders = new Set<() => string | null>();
 /** Register a check. Returns the function that removes it again, for a holder that outlives only a dialog. */
 export function holdUnsavedWork(check: () => string | null): () => void {
   holders.add(check);
-  return () => { holders.delete(check); };
+  return () => {
+    holders.delete(check);
+  };
 }
 
 /** What every holder is currently keeping, in registration order. */

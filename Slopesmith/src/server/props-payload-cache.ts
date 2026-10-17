@@ -4,7 +4,13 @@ import type { PropsPayload } from '../core/reference/props';
 import { isCrowdFrameFile } from '../shared/map-crowd';
 import { ensureWorkspace } from './workspace-config';
 import {
-  fileStamp, listEntries, mapLimit, pathExists, readBytesOrNull, writeFileAtomic, READ_CONCURRENCY,
+  fileStamp,
+  listEntries,
+  mapLimit,
+  pathExists,
+  readBytesOrNull,
+  writeFileAtomic,
+  READ_CONCURRENCY,
 } from './fs-async';
 import { createLogger } from './log';
 
@@ -27,7 +33,14 @@ export interface PersistentPropsJson {
 /** Only these inputs can affect routes/props.readLevelProps. Texture pixels are served separately; the prop
  * payload depends on CROWD frame names, so those few files are included while ordinary tiles are skipped. */
 const TOP_LEVEL_INPUTS = [
-  'Models.json', 'Instances.json', 'Materials.json', 'TextureAlpha.overrides.json', 'Effects.json', 'Physics.json', 'Crowd.json', 'Props.obj',
+  'Models.json',
+  'Instances.json',
+  'Materials.json',
+  'TextureAlpha.overrides.json',
+  'Effects.json',
+  'Physics.json',
+  'Crowd.json',
+  'Props.obj',
 ] as const;
 
 /** A metadata fingerprint is deliberate: validating roughly 3,000 MERQUER source files takes about 200 ms,
@@ -42,22 +55,27 @@ export async function propsPayloadFingerprint(levelDir: string): Promise<string>
   hash.update(`slopesmith-props:${PROP_PAYLOAD_CACHE_SCHEMA}\n`);
   hash.update(process.platform === 'win32' ? root.toLowerCase() : root).update('\n');
 
-  const stampOf = async (relativeName: string) =>
-    ({ relativeName, stamp: await fileStamp(join(root, relativeName)) });
+  const stampOf = async (relativeName: string) => ({ relativeName, stamp: await fileStamp(join(root, relativeName)) });
   const addStamp = ({ relativeName, stamp }: { relativeName: string; stamp: string | null }) => {
     if (stamp === null) hash.update(`${relativeName}:missing\n`);
     else hash.update(`${relativeName.replace(/\\/g, '/').toLowerCase()}:${stamp}\n`);
   };
 
   const topLevel = await mapLimit(
-    [...TOP_LEVEL_INPUTS, join('Audio', 'SoundIndex.json'), join('gltf', 'manifest.json')], READ_CONCURRENCY, stampOf);
+    [...TOP_LEVEL_INPUTS, join('Audio', 'SoundIndex.json'), join('gltf', 'manifest.json')],
+    READ_CONCURRENCY,
+    stampOf,
+  );
   topLevel.forEach(addStamp);
 
   const addDirectory = async (name: string, accept: (file: string) => boolean) => {
     const dir = join(root, name);
     // An absent directory and an empty one are distinct inputs, and the fingerprint has always told them
     // apart — collapsing them would let a deleted Collision/ hash the same as an emptied one.
-    if (!await pathExists(dir)) { hash.update(`${name}:missing\n`); return; }
+    if (!(await pathExists(dir))) {
+      hash.update(`${name}:missing\n`);
+      return;
+    }
     const files = (await listEntries(dir))
       .filter(entry => entry.isFile && accept(entry.name))
       .map(entry => entry.name)
@@ -74,15 +92,21 @@ export async function propsPayloadFingerprint(levelDir: string): Promise<string>
 const validPayload = (value: unknown, level: string): value is PropsPayload => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const payload = value as Partial<PropsPayload>;
-  return payload.level === level && Array.isArray(payload.models)
-    && Array.isArray(payload.materials) && Array.isArray(payload.instances);
+  return (
+    payload.level === level &&
+    Array.isArray(payload.models) &&
+    Array.isArray(payload.materials) &&
+    Array.isArray(payload.instances)
+  );
 };
 
 const payloadFromJson = (json: Buffer, level: string): PropsPayload | null => {
   try {
     const value: unknown = JSON.parse(json.toString('utf8'));
     return validPayload(value, level) ? value : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 };
 
 const defaultCacheRoot = async () => join((await ensureWorkspace()).workspaceRoot, 'cache', 'reference-props');
@@ -94,16 +118,21 @@ const defaultCacheRoot = async () => join((await ensureWorkspace()).workspaceRoo
  * persist it, compress it and send it without cloning a multi-megabyte object into the main isolate or asking
  * that isolate to stringify it again. Cache files live under the workspace, never inside the map library.
  */
-export async function readPersistentPropsJson(level: string, levelDir: string,
-  build: () => Promise<Uint8Array>, cacheRoot?: string): Promise<PersistentPropsJson> {
-  const root = cacheRoot ?? await defaultCacheRoot();
+export async function readPersistentPropsJson(
+  level: string,
+  levelDir: string,
+  build: () => Promise<Uint8Array>,
+  cacheRoot?: string,
+): Promise<PersistentPropsJson> {
+  const root = cacheRoot ?? (await defaultCacheRoot());
   const fingerprint = await propsPayloadFingerprint(levelDir);
   const cacheFile = join(root, level, `${fingerprint}.json`);
   const cached = await readBytesOrNull(cacheFile);
   if (cached && payloadFromJson(cached, level)) return { json: cached, cache: 'hit', fingerprint };
 
   const built = await build();
-  const json = Buffer.isBuffer(built) ? built
+  const json = Buffer.isBuffer(built)
+    ? built
     : built.buffer instanceof ArrayBuffer
       ? Buffer.from(built.buffer, built.byteOffset, built.byteLength)
       : Buffer.from(built);
@@ -119,10 +148,18 @@ export async function readPersistentPropsJson(level: string, levelDir: string,
 }
 
 /** Object form for server-side consumers and tests that inspect the payload rather than sending its bytes. */
-export async function readPersistentPropsPayload(level: string, levelDir: string,
-  build: () => Promise<PropsPayload>, cacheRoot?: string): Promise<PersistentPropsPayload> {
-  const stored = await readPersistentPropsJson(level, levelDir,
-    async () => Buffer.from(JSON.stringify(await build())), cacheRoot);
+export async function readPersistentPropsPayload(
+  level: string,
+  levelDir: string,
+  build: () => Promise<PropsPayload>,
+  cacheRoot?: string,
+): Promise<PersistentPropsPayload> {
+  const stored = await readPersistentPropsJson(
+    level,
+    levelDir,
+    async () => Buffer.from(JSON.stringify(await build())),
+    cacheRoot,
+  );
   const payload = payloadFromJson(stored.json, level);
   if (!payload) throw new Error(`generated props payload for ${level} was invalid`);
   return { payload, cache: stored.cache, fingerprint: stored.fingerprint };

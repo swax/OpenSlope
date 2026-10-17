@@ -48,26 +48,37 @@ export interface GizmoArcs {
 
 // three's own translate gizmo, in handle-local units (TransformControls.js `gizmoTranslate`): a 3-sided shaft of
 // radius 0.0075 out to 0.5, then a 12-sided cone head from 0.5 to the tip at 0.6.
-const SHAFT_R = 0.0075, SHAFT_SIDES = 3, SHAFT_SEGS = 16;
-const HEAD_R = 0.04, HEAD_LEN = 0.1, HEAD_SIDES = 12;
+const SHAFT_R = 0.0075,
+  SHAFT_SIDES = 3,
+  SHAFT_SEGS = 16;
+const HEAD_R = 0.04,
+  HEAD_LEN = 0.1,
+  HEAD_SIDES = 12;
 const TIP = 0.6;
 // ...and its invisible picker: a 4-sided cone, apex on the anchor, widening to radius 0.2 at the tip.
-const PICK_R = 0.2, PICK_SIDES = 4, PICK_SEGS = 8;
+const PICK_R = 0.2,
+  PICK_SIDES = 4,
+  PICK_SEGS = 8;
 
-const LUT = 32;        // chord samples the arc-length table is built from
-const MIN_ARC = 0.02;  // a rail this short in handle units has nowhere to point: the arrow is drawn empty
+const LUT = 32; // chord samples the arc-length table is built from
+const MIN_ARC = 0.02; // a rail this short in handle units has nowhere to point: the arrow is drawn empty
 
 // ---- vector helpers (V3 tuples; three.js only enters at the quaternion) -------------------------------------
 const vsub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const vmul = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
 const vdot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const vcross = (a: V3, b: V3): V3 =>
-  [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const vcross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const vlen = (a: V3) => Math.hypot(a[0], a[1], a[2]);
-const vnorm = (a: V3): V3 => { const l = vlen(a); return l > 1e-12 ? vmul(a, 1 / l) : [0, 0, 0]; };
+const vnorm = (a: V3): V3 => {
+  const l = vlen(a);
+  return l > 1e-12 ? vmul(a, 1 / l) : [0, 0, 0];
+};
 
 /** A rail resampled by arc length: the cubic plus the cumulative chord table that inverts it. */
-interface Curve { rail: Rail; cum: number[] }
+interface Curve {
+  rail: Rail;
+  cum: number[];
+}
 
 function measure(rail: Rail): Curve {
   const cum = [0];
@@ -85,8 +96,13 @@ function tAt(c: Curve, L: number): number {
   const n = c.cum.length - 1;
   if (L <= 0) return 0;
   if (L >= c.cum[n]) return 1;
-  let lo = 0, hi = n;
-  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c.cum[m] <= L) lo = m; else hi = m; }
+  let lo = 0,
+    hi = n;
+  while (hi - lo > 1) {
+    const m = (lo + hi) >> 1;
+    if (c.cum[m] <= L) lo = m;
+    else hi = m;
+  }
   const span = c.cum[hi] - c.cum[lo];
   return (lo + (span > 1e-12 ? (L - c.cum[lo]) / span : 0)) / n;
 }
@@ -99,9 +115,12 @@ const pointAt = (c: Curve, L: number): V3 => {
 /** The unit tangent at arc length `L`. The hodograph collapses on a rail whose first handle sits on its own vertex
  *  (a pinched net), so fall back to the chord. */
 function tangentAt(c: Curve, L: number): V3 {
-  const t = tAt(c, L), s = 1 - t, r = c.rail;
-  const d: V3 = [0, 1, 2].map(k =>
-    3 * s * s * (r[1][k] - r[0][k]) + 6 * s * t * (r[2][k] - r[1][k]) + 3 * t * t * (r[3][k] - r[2][k])) as V3;
+  const t = tAt(c, L),
+    s = 1 - t,
+    r = c.rail;
+  const d: V3 = [0, 1, 2].map(
+    k => 3 * s * s * (r[1][k] - r[0][k]) + 6 * s * t * (r[2][k] - r[1][k]) + 3 * t * t * (r[3][k] - r[2][k]),
+  ) as V3;
   return vlen(d) > 1e-9 ? vnorm(d) : vnorm(vsub(r[3], r[0]));
 }
 
@@ -111,7 +130,10 @@ const seedNormal = (t: V3): V3 => vnorm(vcross(t, Math.abs(t[0]) < 0.9 ? [1, 0, 
 /** Ring frames at `n + 1` equally arc-spaced stations over `[L0, L1]`, parallel-transported so the tube carries no
  *  twist. `(e1, e2, T)` is right-handed (`e1 × e2 = T`), which is what makes the windings below front-facing. */
 function stations(c: Curve, L0: number, L1: number, n: number) {
-  const P: V3[] = [], T: V3[] = [], E1: V3[] = [], E2: V3[] = [];
+  const P: V3[] = [],
+    T: V3[] = [],
+    E1: V3[] = [],
+    E2: V3[] = [];
   let e1: V3 | null = null;
   for (let i = 0; i <= n; i++) {
     const L = L0 + (L1 - L0) * (i / n);
@@ -120,7 +142,10 @@ function stations(c: Curve, L0: number, L1: number, n: number) {
       const proj = vsub(e1, vmul(t, vdot(e1, t)));
       e1 = vlen(proj) > 1e-6 ? vnorm(proj) : seedNormal(t);
     } else e1 = seedNormal(t);
-    P.push(pointAt(c, L)); T.push(t); E1.push(e1); E2.push(vcross(t, e1));
+    P.push(pointAt(c, L));
+    T.push(t);
+    E1.push(e1);
+    E2.push(vcross(t, e1));
   }
   return { P, T, E1, E2 };
 }
@@ -134,17 +159,19 @@ function tubeIndices(out: number[], segs: number, sides: number, base = 0) {
   for (let i = 0; i < segs; i++) {
     for (let j = 0; j < sides; j++) {
       const j1 = (j + 1) % sides;
-      const a = base + i * sides + j, b = base + i * sides + j1;
-      const c = base + (i + 1) * sides + j1, d = base + (i + 1) * sides + j;
+      const a = base + i * sides + j,
+        b = base + i * sides + j1;
+      const c = base + (i + 1) * sides + j1,
+        d = base + (i + 1) * sides + j;
       out.push(a, b, c, a, c, d);
     }
   }
 }
 
 const ARC_SHAFT_V = (SHAFT_SEGS + 1) * SHAFT_SIDES;
-const ARC_RING = ARC_SHAFT_V;              // the cone's base ring
+const ARC_RING = ARC_SHAFT_V; // the cone's base ring
 const ARC_APEX = ARC_RING + HEAD_SIDES;
-const ARC_CTR = ARC_APEX + 1;              // the cone's base-cap centre
+const ARC_CTR = ARC_APEX + 1; // the cone's base-cap centre
 const ARC_V = ARC_CTR + 1;
 
 function arcIndices(): number[] {
@@ -152,14 +179,14 @@ function arcIndices(): number[] {
   tubeIndices(idx, SHAFT_SEGS, SHAFT_SIDES);
   for (let j = 0; j < HEAD_SIDES; j++) {
     const j1 = (j + 1) % HEAD_SIDES;
-    idx.push(ARC_RING + j, ARC_RING + j1, ARC_APEX);   // cone side
-    idx.push(ARC_CTR, ARC_RING + j1, ARC_RING + j);    // cone base cap, facing back down the shaft
+    idx.push(ARC_RING + j, ARC_RING + j1, ARC_APEX); // cone side
+    idx.push(ARC_CTR, ARC_RING + j1, ARC_RING + j); // cone base cap, facing back down the shaft
   }
   return idx;
 }
 
 const PICK_RINGS = (PICK_SEGS + 1) * PICK_SIDES;
-const PICK_CTR = PICK_RINGS;               // the far cap's centre
+const PICK_CTR = PICK_RINGS; // the far cap's centre
 const PICK_V = PICK_CTR + 1;
 
 function pickIndices(): number[] {
@@ -177,7 +204,11 @@ function makeGeometry(verts: number, indices: number[]): THREE.BufferGeometry {
   return g;
 }
 
-const put = (pos: Float32Array, i: number, p: V3) => { pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2]; };
+const put = (pos: Float32Array, i: number, p: V3) => {
+  pos[i * 3] = p[0];
+  pos[i * 3 + 1] = p[1];
+  pos[i * 3 + 2] = p[2];
+};
 
 /** Where the arrow ends: the rail's own length, but never past the stock arrow's reach. Zero means the rail is a
  *  speck and the arrow draws nothing. */
@@ -190,10 +221,15 @@ const arrowTip = (c: Curve) => {
 function writeArc(geo: THREE.BufferGeometry, rail: Rail): boolean {
   const c = measure(rail);
   const tip = arrowTip(c);
-  if (!tip) { geo.setDrawRange(0, 0); return false; }
+  if (!tip) {
+    geo.setDrawRange(0, 0);
+    return false;
+  }
   // a short rail gets a proportionally short head, so a stub arrow still reads as an arrow rather than a lone cone
   const k = tip / TIP;
-  const headLen = HEAD_LEN * k, headR = HEAD_R * k, base = tip - headLen;
+  const headLen = HEAD_LEN * k,
+    headR = HEAD_R * k,
+    base = tip - headLen;
 
   const pos = (geo.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
   const st = stations(c, 0, base, SHAFT_SEGS);
@@ -204,7 +240,9 @@ function writeArc(geo: THREE.BufferGeometry, rail: Rail): boolean {
       put(pos, i * SHAFT_SIDES + j, [0, 1, 2].map(x => st.P[i][x] + r[x] * SHAFT_R) as V3);
     }
   }
-  const bp = st.P[SHAFT_SEGS], e1 = st.E1[SHAFT_SEGS], e2 = st.E2[SHAFT_SEGS];
+  const bp = st.P[SHAFT_SEGS],
+    e1 = st.E1[SHAFT_SEGS],
+    e2 = st.E2[SHAFT_SEGS];
   for (let j = 0; j < HEAD_SIDES; j++) {
     const a = (2 * Math.PI * j) / HEAD_SIDES;
     put(pos, ARC_RING + j, [0, 1, 2].map(x => bp[x] + (e1[x] * Math.cos(a) + e2[x] * Math.sin(a)) * headR) as V3);
@@ -221,7 +259,10 @@ function writeArc(geo: THREE.BufferGeometry, rail: Rail): boolean {
 function writePick(geo: THREE.BufferGeometry, rail: Rail): boolean {
   const c = measure(rail);
   const tip = arrowTip(c);
-  if (!tip) { geo.setDrawRange(0, 0); return false; }
+  if (!tip) {
+    geo.setDrawRange(0, 0);
+    return false;
+  }
 
   const pos = (geo.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
   const st = stations(c, 0, tip, PICK_SEGS);
@@ -229,8 +270,11 @@ function writePick(geo: THREE.BufferGeometry, rail: Rail): boolean {
     const r = (PICK_R * i) / PICK_SEGS;
     for (let j = 0; j < PICK_SIDES; j++) {
       const a = (2 * Math.PI * j) / PICK_SIDES;
-      put(pos, i * PICK_SIDES + j,
-        [0, 1, 2].map(x => st.P[i][x] + (st.E1[i][x] * Math.cos(a) + st.E2[i][x] * Math.sin(a)) * r) as V3);
+      put(
+        pos,
+        i * PICK_SIDES + j,
+        [0, 1, 2].map(x => st.P[i][x] + (st.E1[i][x] * Math.cos(a) + st.E2[i][x] * Math.sin(a)) * r) as V3,
+      );
     }
   }
   put(pos, PICK_CTR, st.P[PICK_SEGS]);
@@ -241,13 +285,18 @@ function writePick(geo: THREE.BufferGeometry, rail: Rail): boolean {
 }
 
 // ---- the four directions --------------------------------------------------------------------------------------
-interface ArcDir { axis: 'X' | 'Z'; sign: 1 | -1; arc: THREE.Mesh; pick: THREE.Mesh }
+interface ArcDir {
+  axis: 'X' | 'Z';
+  sign: 1 | -1;
+  arc: THREE.Mesh;
+  pick: THREE.Mesh;
+}
 
 const AXES: readonly ('X' | 'Z')[] = ['X', 'Z'];
 const SIGNS: readonly (1 | -1)[] = [1, -1];
 
 const railOf = (r: SurfaceRails, d: ArcDir) =>
-  d.axis === 'X' ? (d.sign > 0 ? r.xPlus : r.xMinus) : (d.sign > 0 ? r.zPlus : r.zMinus);
+  d.axis === 'X' ? (d.sign > 0 ? r.xPlus : r.xMinus) : d.sign > 0 ? r.zPlus : r.zMinus;
 
 /**
  * A data-space rail point in the handle's own frame: negate Z into the scene root, un-rotate, un-scale.
@@ -259,7 +308,10 @@ const railOf = (r: SurfaceRails, d: ArcDir) =>
  * `tv` here and half the nets draw that arrow backwards.
  */
 export function railToLocal(p: V3, anchor: V3, qInv: THREE.Quaternion, s: number, out: THREE.Vector3): V3 {
-  out.set(p[0] - anchor[0], p[1] - anchor[1], -(p[2] - anchor[2])).applyQuaternion(qInv).divideScalar(s);
+  out
+    .set(p[0] - anchor[0], p[1] - anchor[1], -(p[2] - anchor[2]))
+    .applyQuaternion(qInv)
+    .divideScalar(s);
   return [out.x, out.y, out.z];
 }
 
@@ -275,7 +327,8 @@ const straightRail = (d: ArcDir): Rail => {
  * scale and quaternion it just wrote, and respect the visibility it just decided.
  */
 export function createGizmoArcs(gizmo: THREE.Object3D, picker: THREE.Object3D): GizmoArcs {
-  const arcIdx = arcIndices(), pickIdx = pickIndices();
+  const arcIdx = arcIndices(),
+    pickIdx = pickIndices();
   const dirs: ArcDir[] = [];
   const stock: THREE.Mesh[] = [];
 
@@ -288,9 +341,9 @@ export function createGizmoArcs(gizmo: THREE.Object3D, picker: THREE.Object3D): 
       const arc = new THREE.Mesh(makeGeometry(ARC_V, arcIdx), gMeshes[0].material as THREE.Material);
       const pick = new THREE.Mesh(makeGeometry(PICK_V, pickIdx), pMeshes[0].material as THREE.Material);
       for (const m of [arc, pick]) {
-        m.name = axis;              // the helper seats it, hides it with its axis, and names `gizmo.axis` from it
-        m.renderOrder = Infinity;   // ...matching the stock meshes, which draw over the whole scene
-        m.frustumCulled = false;    // the bounds are rewritten every frame; the gizmo is never off-screen anyway
+        m.name = axis; // the helper seats it, hides it with its axis, and names `gizmo.axis` from it
+        m.renderOrder = Infinity; // ...matching the stock meshes, which draw over the whole scene
+        m.frustumCulled = false; // the bounds are rewritten every frame; the gizmo is never off-screen anyway
         m.visible = false;
       }
       gizmo.add(arc);
@@ -306,25 +359,38 @@ export function createGizmoArcs(gizmo: THREE.Object3D, picker: THREE.Object3D): 
   return {
     update(rails: SurfaceRails | null) {
       if (!rails) {
-        for (const d of dirs) { d.arc.visible = false; d.pick.visible = false; }
+        for (const d of dirs) {
+          d.arc.visible = false;
+          d.pick.visible = false;
+        }
         return; // the stock meshes keep the visibility the helper just gave them
       }
       for (const m of stock) m.visible = false;
       // the gizmo handles ride whatever position the helper just wrote — worldPositionStart while dragging, so a
       // stock arrow stays put as the object slides out from under it. The arcs instead seat on the LIVE anchor
       // (`rails.anchor` follows the corner every frame), so they track the slide. data → scene: negate Z.
-      const seatX = rails.anchor[0], seatY = rails.anchor[1], seatZ = -rails.anchor[2];
+      const seatX = rails.anchor[0],
+        seatY = rails.anchor[1],
+        seatZ = -rails.anchor[2];
       for (const d of dirs) {
         const s = d.arc.scale.x;
         // the helper hides an axis pointing at the camera (and shrinks it to nothing); its arcs go with it
-        if (!d.arc.visible || s <= 1e-9) { d.arc.visible = false; d.pick.visible = false; continue; }
+        if (!d.arc.visible || s <= 1e-9) {
+          d.arc.visible = false;
+          d.pick.visible = false;
+          continue;
+        }
         d.arc.position.set(seatX, seatY, seatZ);
         d.pick.position.set(seatX, seatY, seatZ);
         qInv.copy(d.arc.quaternion).invert();
         const rail = railOf(rails, d);
         const local: Rail = rail
-          ? [toLocal(rail[0], rails.anchor, s), toLocal(rail[1], rails.anchor, s),
-             toLocal(rail[2], rails.anchor, s), toLocal(rail[3], rails.anchor, s)]
+          ? [
+              toLocal(rail[0], rails.anchor, s),
+              toLocal(rail[1], rails.anchor, s),
+              toLocal(rail[2], rails.anchor, s),
+              toLocal(rail[3], rails.anchor, s),
+            ]
           : straightRail(d);
         d.arc.visible = writeArc(d.arc.geometry, local);
         d.pick.visible = writePick(d.pick.geometry, local);

@@ -36,20 +36,25 @@ const arg = (value: string) => (/\s/.test(value) ? `"${value}"` : value);
 export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: ExportFile[]; log: string[] } {
   const inputIso = 'ssx-tricky.iso';
   const outputIso = `ssx-tricky-${name.toLowerCase()}.iso`;
-  const manifest = JSON.stringify({
-    InputIso: inputIso,
-    OutputIso: outputIso,
-    Levels: [{ Slot: DISC_SLOT, LevelData: paths.levelDataRelative, Export: '.' }],
-    // Retail-shaped indexed pages keep a prop-heavy export under the measured GS-VRAM ceiling. Type 5 is
-    // lossless but costs four times as much and corrupts later custom pages once their aggregate gets large.
-    TextureType2: true,
-    // The slot's own props ride along otherwise: not drawn once a prop build delists them, but still
-    // sounding their emitters over the author's own and still holding their course-bank slots.
-    BareSlot: true,
-    // The public recipe keeps the supplied executable byte-identical. Sky colour and developer inspection
-    // patches remain explicit, local choices rather than properties of every generated build.
-    SkyColors: false,
-  }, null, 2) + '\n';
+  const manifest =
+    JSON.stringify(
+      {
+        InputIso: inputIso,
+        OutputIso: outputIso,
+        Levels: [{ Slot: DISC_SLOT, LevelData: paths.levelDataRelative, Export: '.' }],
+        // Retail-shaped indexed pages keep a prop-heavy export under the measured GS-VRAM ceiling. Type 5 is
+        // lossless but costs four times as much and corrupts later custom pages once their aggregate gets large.
+        TextureType2: true,
+        // The slot's own props ride along otherwise: not drawn once a prop build delists them, but still
+        // sounding their emitters over the author's own and still holding their course-bank slots.
+        BareSlot: true,
+        // The public recipe keeps the supplied executable byte-identical. Sky colour and developer inspection
+        // patches remain explicit, local choices rather than properties of every generated build.
+        SkyColors: false,
+      },
+      null,
+      2,
+    ) + '\n';
 
   const here = paths.exportDir;
   const repack = ['repack', arg(inputIso), DISC_SLOT, arg(paths.levelData), arg(here), arg(outputIso)];
@@ -105,7 +110,7 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     'budget. Remove `--texture-type2` (or set `TextureType2` false in the manifest) only when the dry-run',
     'shows the lossless 32-bit type-5 aggregate is inside that budget.',
     '',
-    'It also passes `--bare-slot` (`BareSlot` in the manifest), because your course replaces the slot\'s',
+    "It also passes `--bare-slot` (`BareSlot` in the manifest), because your course replaces the slot's",
     "terrain but inherits the retail course's whole prop population, still standing where that course left",
     'them. A prop build delists those props so they neither draw nor collide, but a placed emitter is dispatched',
     "from the level's sound data rather than the world grid — so without the flag the donor's crowd and",
@@ -113,8 +118,8 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     'Drop it only when you mean to keep the retail scenery.',
     '',
     'Custom prop sounds are re-encoded at the rate the target course bank is played at, whatever rate you',
-    'authored them in. That is not a size decision but a pitch one: the engine ignores a sound\'s own rate tag',
-    'and plays the slot at the bank\'s, so a clip left at 48 kHz would come out slow and flat. The build says',
+    "authored them in. That is not a size decision but a pitch one: the engine ignores a sound's own rate tag",
+    "and plays the slot at the bank's, so a clip left at 48 kHz would come out slow and flat. The build says",
     'which rate it picked.',
     '',
     'It is still worth knowing what a clip costs, because the bank is uploaded whole and must not outgrow the',
@@ -128,7 +133,7 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     'Replacing a course does not change whether the retail menu exposes that slot. Prefer a slot already',
     'available in the mode and profile your players will use, and test it with an empty memory card.',
     '',
-    'For a locked slot, the player can use the retail game\'s built-in course-access cheat, entered at the title',
+    "For a locked slot, the player can use the retail game's built-in course-access cheat, entered at the title",
     'screen; the code is widely published and is not repeated here. The setting lasts for the current run and may',
     'need to be entered again after restarting. It uses a feature already present in the game; Snowknife does not',
     'rewrite progression or provide a memory-card save.',
@@ -136,7 +141,7 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
     '## Optional local course inspection',
     '',
     'Noclip is not required to build or select the course. For local geometry and collision inspection only,',
-    'append `--patches noclip` to the build command. This explicitly modifies the output image\'s executable;',
+    "append `--patches noclip` to the build command. This explicitly modifies the output image's executable;",
     'keep it off normal release-candidate builds.',
     '',
     '## Several courses in one image',
@@ -155,6 +160,8 @@ export function discRecipeFiles(name: string, paths: DiscRecipePaths): { files: 
 
   return {
     files: [textFile(DISC_MANIFEST, manifest), textFile(DISC_NOTES, notes)],
-    log: [`wrote ${DISC_NOTES} + ${DISC_MANIFEST} (the glTF bake + the disc step, riding as ${DISC_SLOT} — edit the slot)`],
+    log: [
+      `wrote ${DISC_NOTES} + ${DISC_MANIFEST} (the glTF bake + the disc step, riding as ${DISC_SLOT} — edit the slot)`,
+    ],
   };
 }

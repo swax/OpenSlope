@@ -3,8 +3,12 @@ import { APP_ROOT } from '../workspace-config';
 import { displayUpdateRepository, resolveUpdateRepository } from '../version';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
 import {
-  configuredUpdateRoot, queueUpdate, readUpdateRepository, readUpdateStatus,
-  UpdateAlreadyQueuedError, validUpdateRevision,
+  configuredUpdateRoot,
+  queueUpdate,
+  readUpdateRepository,
+  readUpdateStatus,
+  UpdateAlreadyQueuedError,
+  validUpdateRevision,
 } from '../update';
 
 /** Production publishes its root-owned choice into the updater state. A development server instead reports
@@ -39,7 +43,7 @@ export const updateRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 409, { error: 'Another update is already in progress.', update: availability });
         return;
       }
-      const body = await readJsonBody(req, 4 * 1024) as { target?: unknown };
+      const body = (await readJsonBody(req, 4 * 1024)) as { target?: unknown };
       let revision: string;
       if (body.target === 'latest') {
         const version = await appVersionInfo(true);

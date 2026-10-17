@@ -5,15 +5,24 @@ import { parseTexRef } from '../paint/textures';
 import type { PlacedProp, V3 } from '../doc/types';
 import { environmentDocument, normalizeEnvironmentBed } from '../audio/environment';
 import {
-  authoredPropTextureFlip, authoredPropUvScroll, createEmptyEffectsDocument,
-  effectNodeSoundFile, syncAuthoredMotionPathEffectResources,
+  authoredPropTextureFlip,
+  authoredPropUvScroll,
+  createEmptyEffectsDocument,
+  effectNodeSoundFile,
+  syncAuthoredMotionPathEffectResources,
 } from '../effects/authoring';
 import { cloneEffectsDocument, type EffectsDocument } from '../effects/document';
 import {
-  CUSTOM_EFFECT_SOUND_SLOTS, CUSTOM_SOUND_EVENT_POOL, registerCollisionSoundIndex, resolveCollisionSound,
+  CUSTOM_EFFECT_SOUND_SLOTS,
+  CUSTOM_SOUND_EVENT_POOL,
+  registerCollisionSoundIndex,
+  resolveCollisionSound,
 } from '../effects/collision-sound';
 import {
-  AUTHORED_AMBIENT_DEFAULT_M, HIT_GATED_EVENT_POOL, hitGatedEventForFile, resolveExternalSound,
+  AUTHORED_AMBIENT_DEFAULT_M,
+  HIT_GATED_EVENT_POOL,
+  hitGatedEventForFile,
+  resolveExternalSound,
 } from '../effects/external-sound';
 import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../lighting/sign-lights';
@@ -27,16 +36,29 @@ import { particleDonorLevel } from '../particles/volumes';
 import { buildLevelFiles, toRaw } from './level';
 import { buildMaterialCombiner } from './materials';
 import {
-  bakeAuthoredModelProps, bakeEffectTriggerProps, bakeGemModels, bakeImportedProps, bakePlacedProps,
-  bakeRailTubes, modelGeometryBox, placementMatrix, placementSimilarity, rawInstanceQuat,
-  type BakedGroups, type BakedPropClips, type BakedPropGroup, type BakedPropPose,
+  bakeAuthoredModelProps,
+  bakeEffectTriggerProps,
+  bakeGemModels,
+  bakeImportedProps,
+  bakePlacedProps,
+  bakeRailTubes,
+  modelGeometryBox,
+  placementMatrix,
+  placementSimilarity,
+  rawInstanceQuat,
+  type BakedGroups,
+  type BakedPropClips,
+  type BakedPropGroup,
+  type BakedPropPose,
 } from './props';
 import { buildCanonicalProps, type NativeCollisionExport } from './canonical-props';
 import { discRecipeFiles } from './disc';
 import { DEFAULT_LAPS } from '../doc/race';
 import {
-  classifyExportProvenance, SLOPESMITH_EXPORT_MANIFEST,
-  type SlopesmithExportManifest, type SlopesmithTextureSource,
+  classifyExportProvenance,
+  SLOPESMITH_EXPORT_MANIFEST,
+  type SlopesmithExportManifest,
+  type SlopesmithTextureSource,
 } from './manifest';
 import { authoredOrigin, MAP_ORIGIN_FILE } from './origin';
 import { textFile, type ExportFile, type ExportFolder } from './files';
@@ -78,8 +100,11 @@ export function exportFolderName(doc: EditDoc): string {
  * race track — needs bytes, and those arrive through `provider`, so this composition is the same whether it
  * runs on the server or in the browser.
  */
-export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
-  opts?: ExportFolderOptions): Promise<ExportFolder> {
+export async function buildExportFolder(
+  doc: EditDoc,
+  provider: ExportProvider,
+  opts?: ExportFolderOptions,
+): Promise<ExportFolder> {
   const name = exportFolderName(doc);
   const remove: string[] = [];
   const out: ExportFile[] = [];
@@ -88,8 +113,9 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // Audio event ids become bank slots only through the user's extracted executable. Prime the resolver from
   // each retail source level (or any installed map for an authored/imported-only document) before allocating
   // custom events or staging native clips.
-  const audioLevels = [...new Set((doc.props ?? []).map(prop => prop.level)
-    .filter(level => level && !level.startsWith('@')))];
+  const audioLevels = [
+    ...new Set((doc.props ?? []).map(prop => prop.level).filter(level => level && !level.startsWith('@'))),
+  ];
   const soundIndexes = audioLevels.length
     ? await Promise.all(audioLevels.map(level => provider.soundIndex(level)))
     : [await provider.soundIndex()];
@@ -114,7 +140,8 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // Derive a sign light per placed billboard from its model's bbox — folded into the terrain lightmap bake
   // and written into Lights.json by buildLevelFiles (docs/013).
   const boxCache = new Map<string, LocalBox | null>(
-    [...modelKeys].map(([key, ref]) => [key, modelGeometryBox(geometryOf(ref.level, ref.model))]));
+    [...modelKeys].map(([key, ref]) => [key, modelGeometryBox(geometryOf(ref.level, ref.model))]),
+  );
   const boxOf = (level: string, model: number) => boxCache.get(`${level}:${model}`) ?? null;
 
   const signLights = authoredSignLights(doc.props, boxOf);
@@ -136,13 +163,13 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // three prop kinds keeps its own geometry, so each measures its own lowest point.
   const authoredByNumber = new Map((doc.models ?? []).map(m => [modelNumber(m.id), m]));
   const baseOffsets = new Map<string, number>();
-  const imported = (doc.props ?? []).some(p => p.level === IMPORTED_PROP_LEVEL)
-    ? await importedCatalogue() : null;
+  const imported = (doc.props ?? []).some(p => p.level === IMPORTED_PROP_LEVEL) ? await importedCatalogue() : null;
   const modelBaseOffset = (level: string, model: number): number => {
     const key = `${level}:${model}`;
     const hit = baseOffsets.get(key);
     if (hit !== undefined) return hit;
-    let off = 0, min = Infinity;
+    let off = 0,
+      min = Infinity;
     if (level === AUTHORED_MODEL_LEVEL) {
       // authored quad cages carry EDITOR-space vertices (metres, Y-up) around an explicit anchor
       const m = authoredByNumber.get(model);
@@ -150,7 +177,8 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       if (Number.isFinite(min)) off = min - m!.anchor[1];
     } else if (level === IMPORTED_PROP_LEVEL) {
       const m = imported?.models.find(mo => mo.id === model);
-      for (const s of m?.subs ?? []) for (let k = 2; k < s.positions.length; k += 3) if (s.positions[k] < min) min = s.positions[k];
+      for (const s of m?.subs ?? [])
+        for (let k = 2; k < s.positions.length; k += 3) if (s.positions[k] < min) min = s.positions[k];
       if (Number.isFinite(min)) off = min / 100; // raw cm, Z-up
     } else {
       const box = boxOf(level, model); // source-level model, raw cm from its own geometry
@@ -172,13 +200,23 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // boundary so a route edited immediately before export cannot carry a stale native spline-table index.
   const exportDoc: EditDoc = doc.effects ? { ...doc, effects: cloneEffectsDocument(doc.effects) } : doc;
   if (exportDoc.effects) syncAuthoredMotionPathEffectResources(exportDoc.effects, exportDoc.rails);
-  const files = buildLevelFiles(exportDoc, lights,
-    { lighting: opts?.lighting, aiPaths: opts?.aiPaths, propBaseOffset: placedBaseOffset });
+  const files = buildLevelFiles(exportDoc, lights, {
+    lighting: opts?.lighting,
+    aiPaths: opts?.aiPaths,
+    propBaseOffset: placedBaseOffset,
+  });
   const propGroups: BakedPropGroup[] = [];
 
-  if (opts?.lighting === false) logLines.push('lighting OFF (export setting): no Lights.json / Lightmaps/ — an ISO repack keeps the target level\'s original lighting verbatim');
-  else if (lights.length) logLines.push(`authored lighting: ${signLights.length} billboard sign light(s) + ${freeLights.length} free light(s) + ${groupLights.length} group light(s) → Lights.json + baked terrain glow`);
-  if (opts?.aiPaths) logLines.push('AI path variation ON: six gate-anchored race routes carry seeded lateral variation');
+  if (opts?.lighting === false)
+    logLines.push(
+      "lighting OFF (export setting): no Lights.json / Lightmaps/ — an ISO repack keeps the target level's original lighting verbatim",
+    );
+  else if (lights.length)
+    logLines.push(
+      `authored lighting: ${signLights.length} billboard sign light(s) + ${freeLights.length} free light(s) + ${groupLights.length} group light(s) → Lights.json + baked terrain glow`,
+    );
+  if (opts?.aiPaths)
+    logLines.push('AI path variation ON: six gate-anchored race routes carry seeded lateral variation');
   else logLines.push('AI path variation OFF: six required gate-to-center race routes still ship in AIP.json');
 
   // bake any placed props into Props.obj (appended after the staging plates the core emits). Each placed prop
@@ -194,18 +232,38 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // shipped levels' own dialect — a deduped Scroll.json motion table + `mat_<id>_scr<k>` material tags —
   // so the bundle resolves the motion exactly as it does a reference level's river segments (Unity docs/008).
   const scrollSpeeds: {
-    U: number; V: number; Mode: number; ActiveDuration: number; PauseDuration: number; Lifetime: number;
+    U: number;
+    V: number;
+    Mode: number;
+    ActiveDuration: number;
+    PauseDuration: number;
+    Lifetime: number;
   }[] = [];
   const scrollIdxByProp = new Map<string, number>();
   for (const pp of doc.props ?? []) {
     const uv = pp.id && doc.effects ? authoredPropUvScroll(doc.effects, pp.id) : null;
     if (!uv || (uv.uPerTick === 0 && uv.vPerTick === 0)) continue;
-    const spec = { U: uv.uPerTick, V: uv.vPerTick, Mode: uv.mode,
-      ActiveDuration: uv.activeDuration, PauseDuration: uv.pauseDuration, Lifetime: uv.lifetime };
-    let k = scrollSpeeds.findIndex(s => s.U === spec.U && s.V === spec.V && s.Mode === spec.Mode
-      && s.ActiveDuration === spec.ActiveDuration && s.PauseDuration === spec.PauseDuration
-      && s.Lifetime === spec.Lifetime);
-    if (k < 0) { k = scrollSpeeds.length; scrollSpeeds.push(spec); }
+    const spec = {
+      U: uv.uPerTick,
+      V: uv.vPerTick,
+      Mode: uv.mode,
+      ActiveDuration: uv.activeDuration,
+      PauseDuration: uv.pauseDuration,
+      Lifetime: uv.lifetime,
+    };
+    let k = scrollSpeeds.findIndex(
+      s =>
+        s.U === spec.U &&
+        s.V === spec.V &&
+        s.Mode === spec.Mode &&
+        s.ActiveDuration === spec.ActiveDuration &&
+        s.PauseDuration === spec.PauseDuration &&
+        s.Lifetime === spec.Lifetime,
+    );
+    if (k < 0) {
+      k = scrollSpeeds.length;
+      scrollSpeeds.push(spec);
+    }
     scrollIdxByProp.set(pp.id!, k);
   }
   const scrollIndexOf = (p: { id?: string }) =>
@@ -231,8 +289,13 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     // joins on; effects, poses and clips keep joining on the placement id.
     const expanded = refPlacements.flatMap(pp => {
       const def = pp.group ? defIdx.get(`${pp.level}:${pp.group}`) : undefined;
-      return def ? expandGroupProps(pp, def).map(member => ({ ...member, id: pp.id,
-        ...(pp.id ? { memberKey: groupMemberKey(pp.id, member.model) } : {}) })) : [pp];
+      return def
+        ? expandGroupProps(pp, def).map(member => ({
+            ...member,
+            id: pp.id,
+            ...(pp.id ? { memberKey: groupMemberKey(pp.id, member.model) } : {}),
+          }))
+        : [pp];
     });
     const { obj: startObj, v, vt } = objCounts();
     const bake = bakePlacedProps(expanded, geometryOf, combiner, v, vt, scrollIndexOf);
@@ -241,7 +304,9 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       files.text['Props.obj'] = startObj + bake.obj;
       propGroups.push(...bake.groups);
       mergeBaked(bake.bakedGroups);
-      logLines.push(`baked ${refPlacements.length} placement(s) (${expanded.length} prop mesh(es) incl. group members) into Props.obj`);
+      logLines.push(
+        `baked ${refPlacements.length} placement(s) (${expanded.length} prop mesh(es) incl. group members) into Props.obj`,
+      );
     }
   }
   // authored-model placements ('@models'): polygon bakes at their poses, tile through the combiner's tile
@@ -270,18 +335,21 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       propGroups.push(...bake.groups);
       mergeBaked(bake.bakedGroups);
       Object.assign(propClips, bake.propClips);
-      logLines.push(`baked ${bake.baked} imported GLB placement(s), `
-        + `${bake.tris.toLocaleString()} triangle(s), into Props.obj`);
+      logLines.push(
+        `baked ${bake.baked} imported GLB placement(s), ` + `${bake.tris.toLocaleString()} triangle(s), into Props.obj`,
+      );
       // per model, because the aggregate hides which import is the heavy one — geometry bakes once per
       // placement, so the answer to "where did the space go" is placements × per-copy triangles
       const perModel = new Map<number, number>();
       for (const pp of importedPlacements) perModel.set(pp.model, (perModel.get(pp.model) ?? 0) + 1);
       for (const [id, count] of [...perModel].sort((a, b) => a[0] - b[0])) {
         const model = importedCat.models.find(m => m.id === id);
-        if (!model) continue;   // the missing-record warning below already names it
+        if (!model) continue; // the missing-record warning below already names it
         const tris = model.subs.reduce((n, s) => n + s.indices.length / 3, 0);
-        logLines.push(`  imported "${model.name}": ${count} × ${tris.toLocaleString()} tris`
-          + ` = ${(count * tris).toLocaleString()} baked`);
+        logLines.push(
+          `  imported "${model.name}": ${count} × ${tris.toLocaleString()} tris` +
+            ` = ${(count * tris).toLocaleString()} baked`,
+        );
       }
     }
     for (const warning of bake.warnings) logLines.push(`WARN: ${warning}`);
@@ -290,9 +358,11 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     // is a flag to go look, not a hard limit: the reference point is docs/028's census, where GARI's entire
     // 648-model prop library is ~225k triangles.
     if (bake.tris > 150_000)
-      logLines.push(`WARN: imported props alone bake ${bake.tris.toLocaleString()} triangles — comparable to a `
-        + 'retail level\'s ENTIRE prop library (~225k for GARI\'s 648 models). This is not a proven limit, but '
-        + 'if a repacked ISO stutters or drops geometry, decimate the densest imports or place fewer copies.');
+      logLines.push(
+        `WARN: imported props alone bake ${bake.tris.toLocaleString()} triangles — comparable to a ` +
+          "retail level's ENTIRE prop library (~225k for GARI's 648 models). This is not a proven limit, but " +
+          'if a repacked ISO stutters or drops geometry, decimate the densest imports or place fewer copies.',
+      );
   }
   // Effects trigger volumes are generated boxes rather than prop-library models. Their dedicated group-name
   // contract makes the ISO instance invisible while retaining the render-model bounds for mode-3 contact.
@@ -314,9 +384,16 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   const collisionSoundClips: Record<string, string> = {};
   /** Editor metres, not centimetres: the unit conversion and the editor→native axis reorder both belong to
    *  `authoredAmbientRecord`, at the one point the native record is stamped. */
-  const ambientSounds: Record<string, {
-    event: number; radius: number; falloff?: number; halfExtents?: V3; clip?: string;
-  }> = {};
+  const ambientSounds: Record<
+    string,
+    {
+      event: number;
+      radius: number;
+      falloff?: number;
+      halfExtents?: V3;
+      clip?: string;
+    }
+  > = {};
   /** Reserved ADL event → staged WAV. Snowknife resolves the event to the target ISO's slot at repack time. */
   const customEventFiles: Record<string, string> = {};
   const customSlotFiles: Record<string, string> = {};
@@ -328,8 +405,7 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
    *  their slot is a fact of the target ISO's resolver, not of this portable export. */
   const customSlotByFile = new Map<string, number>();
   const stagedSounds = new Map<string, Uint8Array>();
-  const stageCustom = async (file: string, role: CustomSoundRole)
-  : Promise<{ event: number; clip: string } | null> => {
+  const stageCustom = async (file: string, role: CustomSoundRole): Promise<{ event: number; clip: string } | null> => {
     // A CLAIMED file takes the gated id its position names instead of drawing from the ordinary reserved
     // pool. It has to: the engine's interactive class tests those three ids and nothing else, so a hit-gated
     // custom loop is only possible by taking one over [Trailmap: 420-interactive-ambient].
@@ -349,19 +425,26 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       // Counted separately from the map: a claimed file must not consume a reserved-pool id, or every
       // ordinary custom sound after it would be pushed one slot along and the eighth would fall off.
       else if (pooledCustomEvents >= CUSTOM_SOUND_EVENT_POOL.length) {
-        logLines.push(`WARN: more than ${CUSTOM_SOUND_EVENT_POOL.length} distinct custom prop sounds — "${file}" dropped`);
+        logLines.push(
+          `WARN: more than ${CUSTOM_SOUND_EVENT_POOL.length} distinct custom prop sounds — "${file}" dropped`,
+        );
         return null;
       } else event = CUSTOM_SOUND_EVENT_POOL[pooledCustomEvents++];
       customEventByFile.set(cacheKey, event);
       const other = customEventByFile.get(`${role === 'hit' ? 'emitter' : 'hit'} ${file}`);
       if (other !== undefined)
-        logLines.push(`note: "${file}" is used as both an impact and an ambient loop, so it takes two `
-          + `reserved events (${other} and ${event}) and two bank slots — one looping, one not`);
+        logLines.push(
+          `note: "${file}" is used as both an impact and an ambient loop, so it takes two ` +
+            `reserved events (${other} and ${event}) and two bank slots — one looping, one not`,
+        );
     }
     const clip = `custom_${file}`;
-    try { stagedSounds.set(clip, await provider.customSound(file)); }
-    catch (e) {
-      logLines.push(`WARN: custom sound ${file} missing (${e instanceof Error ? e.message : e}) — its props fall silent`);
+    try {
+      stagedSounds.set(clip, await provider.customSound(file));
+    } catch (e) {
+      logLines.push(
+        `WARN: custom sound ${file} missing (${e instanceof Error ? e.message : e}) — its props fall silent`,
+      );
       return null;
     }
     customEventFiles[String(event)] = clip;
@@ -375,13 +458,18 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     const shared = customSlotByFile.get(file);
     if (shared !== undefined) return shared;
     if (effectSoundSlotsUsed >= CUSTOM_EFFECT_SOUND_SLOTS.length) {
-      logLines.push(`WARN: more than ${CUSTOM_EFFECT_SOUND_SLOTS.length} distinct custom Play sound clips — "${file}" dropped`);
+      logLines.push(
+        `WARN: more than ${CUSTOM_EFFECT_SOUND_SLOTS.length} distinct custom Play sound clips — "${file}" dropped`,
+      );
       return null;
     }
     const clip = `custom_${file}`;
-    try { stagedSounds.set(clip, await provider.customSound(file)); }
-    catch (e) {
-      logLines.push(`WARN: custom sound ${file} missing (${e instanceof Error ? e.message : e}) — its Play sound nodes fall silent`);
+    try {
+      stagedSounds.set(clip, await provider.customSound(file));
+    } catch (e) {
+      logLines.push(
+        `WARN: custom sound ${file} missing (${e instanceof Error ? e.message : e}) — its Play sound nodes fall silent`,
+      );
       return null;
     }
     const slot = CUSTOM_EFFECT_SOUND_SLOTS[effectSoundSlotsUsed++];
@@ -395,9 +483,12 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     const safeLevel = level.replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase();
     const clip = `bank_${safeLevel}_${resolved.bank}_${String(resolved.slot).padStart(3, '0')}.wav`;
     if (!stagedSounds.has(clip)) {
-      try { stagedSounds.set(clip, await provider.courseEffectSound(level, resolved.slot, resolved.bank)); }
-      catch (e) {
-        logLines.push(`WARN: ${level} event ${event} could not be staged for Unity (${e instanceof Error ? e.message : e})`);
+      try {
+        stagedSounds.set(clip, await provider.courseEffectSound(level, resolved.slot, resolved.bank));
+      } catch (e) {
+        logLines.push(
+          `WARN: ${level} event ${event} could not be staged for Unity (${e instanceof Error ? e.message : e})`,
+        );
         return undefined;
       }
     }
@@ -411,11 +502,16 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     const clip = `bank_${safeLevel}_${bank.toLowerCase()}_${String(resolved.slot).padStart(3, '0')}.wav`;
     if (!stagedSounds.has(clip)) {
       try {
-        stagedSounds.set(clip, resolved.kind === 'fixed'
-          ? await provider.namedEffectSound(level, resolved.slot, resolved.bank)
-          : await provider.courseEffectSound(level, resolved.slot, resolved.kind));
+        stagedSounds.set(
+          clip,
+          resolved.kind === 'fixed'
+            ? await provider.namedEffectSound(level, resolved.slot, resolved.bank)
+            : await provider.courseEffectSound(level, resolved.slot, resolved.kind),
+        );
       } catch (e) {
-        logLines.push(`WARN: ${level} external event ${event} could not be staged for Unity (${e instanceof Error ? e.message : e})`);
+        logLines.push(
+          `WARN: ${level} external event ${event} could not be staged for Unity (${e instanceof Error ? e.message : e})`,
+        );
         return undefined;
       }
     }
@@ -503,13 +599,13 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
         responseMass: pp.nativeCollision.responseMass,
         playerBounce: pp.nativeCollision.playerBounce,
         bounceAmount: pp.nativeCollision.bounceAmount,
-        ...(pp.nativeCollision.physicsSource
-          ? { physicsSource: { ...pp.nativeCollision.physicsSource } } : {}),
+        ...(pp.nativeCollision.physicsSource ? { physicsSource: { ...pp.nativeCollision.physicsSource } } : {}),
         // Editor +Y yaw maps to raw-space -Z yaw under RAW_TO_EDITOR (rawInstanceQuat carries the general
         // form). Every explicit collision profile keeps this instance transform so mesh/bounds/source-sphere
         // shapes and the visual model share one local frame.
         transform: {
-          location: toRaw(pp.pos), rotation: rawInstanceQuat(pp),
+          location: toRaw(pp.pos),
+          rotation: rawInstanceQuat(pp),
           scale: [pp.scale, pp.scale, pp.scale],
         },
       };
@@ -531,16 +627,25 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // the same matrix/frame conversion as the vertices rather than re-encoding the coordinate-system signs here.
   const propPivots: Record<string, number[]> = {};
   const propPoses: Record<string, BakedPropPose> = {};
-  for (const pp of exportDoc.props ?? []) if (pp.id && bakedGroups[pp.id]) {
-    propPivots[pp.id] = toRaw(pp.pos);
-    propPoses[pp.id] = placementSimilarity(placementMatrix(pp));
-  }
+  for (const pp of exportDoc.props ?? [])
+    if (pp.id && bakedGroups[pp.id]) {
+      propPivots[pp.id] = toRaw(pp.pos);
+      propPoses[pp.id] = placementSimilarity(placementMatrix(pp));
+    }
   // A mountain can assign hit sounds / contact tuning without authoring any effects; the joins still ride
   // Effects.json extensions, so synthesize an empty document to carry them.
   if ((soundCount || ambientCount || tuningCount || lightingCount) && !files.text['Effects.json'])
     files.text['Effects.json'] = JSON.stringify(createEmptyEffectsDocument(doc.name)) + '\n';
-  if (files.text['Effects.json'] && (Object.keys(bakedGroups).length || soundCount || ambientCount
-    || tuningCount || lightingCount || Object.keys(customEventFiles).length || Object.keys(customSlotFiles).length)) {
+  if (
+    files.text['Effects.json'] &&
+    (Object.keys(bakedGroups).length ||
+      soundCount ||
+      ambientCount ||
+      tuningCount ||
+      lightingCount ||
+      Object.keys(customEventFiles).length ||
+      Object.keys(customSlotFiles).length)
+  ) {
     const effectsDoc = JSON.parse(files.text['Effects.json']);
     const slopesmith = ((effectsDoc.extensions ??= {}).slopesmith ??= {});
     if (Object.keys(bakedGroups).length) slopesmith.bakedGroups = bakedGroups;
@@ -558,19 +663,27 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     if (Object.keys(propClips).length) slopesmith.propClips = propClips;
     files.text['Effects.json'] = JSON.stringify(effectsDoc, null, 2) + '\n';
     if (Object.keys(propClips).length) {
-      const moving = Object.values(propClips).reduce((n, clip) =>
-        n + clip.objects.filter(o => o.channels?.some(curve => !!curve?.length)).length, 0);
-      logLines.push(`model clips: ${Object.keys(propClips).length} placement(s) / ${moving} moving object(s) `
-        + '→ propClips join in Effects.json');
+      const moving = Object.values(propClips).reduce(
+        (n, clip) => n + clip.objects.filter(o => o.channels?.some(curve => !!curve?.length)).length,
+        0,
+      );
+      logLines.push(
+        `model clips: ${Object.keys(propClips).length} placement(s) / ${moving} moving object(s) ` +
+          '→ propClips join in Effects.json',
+      );
     }
     if (Object.keys(bakedGroups).length)
-      logLines.push(`effect attachment join: ${Object.keys(bakedGroups).length} placement id(s) → baked group names in Effects.json`);
+      logLines.push(
+        `effect attachment join: ${Object.keys(bakedGroups).length} placement id(s) → baked group names in Effects.json`,
+      );
     if (soundCount)
-      logLines.push(`hit sounds: ${soundCount} placement(s) → collisionSounds join in Effects.json`
-        + (Object.keys(customEventFiles).length
-          ? ` (+ ${Object.keys(customEventFiles).length} custom event/file join(s))` : ''));
-    if (ambientCount)
-      logLines.push(`ambient loops: ${ambientCount} placement(s) → ambientSounds join in Effects.json`);
+      logLines.push(
+        `hit sounds: ${soundCount} placement(s) → collisionSounds join in Effects.json` +
+          (Object.keys(customEventFiles).length
+            ? ` (+ ${Object.keys(customEventFiles).length} custom event/file join(s))`
+            : ''),
+      );
+    if (ambientCount) logLines.push(`ambient loops: ${ambientCount} placement(s) → ambientSounds join in Effects.json`);
     // A hit-gated claim takes over a retail event id, and with it the course-bank slot that id resolves to,
     // for the WHOLE target level. Say exactly which ids left the pool so the repack's own conflict check has
     // something to answer to rather than the author discovering it by ear.
@@ -580,21 +693,36 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
         logLines.push(`WARN: "${file}" claims a hit-gated slot beyond the engine's three — ignored`);
         continue;
       }
-      logLines.push(`hit-gated loop: "${file}" claims event ${event} — it overrides that event's course-bank `
-        + 'slot on the target level, so any retail prop using it plays this clip instead');
+      logLines.push(
+        `hit-gated loop: "${file}" claims event ${event} — it overrides that event's course-bank ` +
+          'slot on the target level, so any retail prop using it plays this clip instead',
+      );
     }
     if (effectSoundNodes)
-      logLines.push(`custom Play sound clips: ${effectSoundNodes} node(s) → course-bank slot(s) `
-        + [...new Set(Object.entries(customSlotFiles)
-          .filter(([slot]) => CUSTOM_EFFECT_SOUND_SLOTS.includes(Number(slot))).map(([slot]) => slot))].join(', '));
+      logLines.push(
+        `custom Play sound clips: ${effectSoundNodes} node(s) → course-bank slot(s) ` +
+          [
+            ...new Set(
+              Object.entries(customSlotFiles)
+                .filter(([slot]) => CUSTOM_EFFECT_SOUND_SLOTS.includes(Number(slot)))
+                .map(([slot]) => slot),
+            ),
+          ].join(', '),
+      );
     if (tuningCount)
-      logLines.push(`contact tuning: ${Object.keys(propBounce).length} legacy bounce / ${Object.keys(propSurfaces).length} surface / ${nativeCollisionCount} explicit collision profile(s)`);
+      logLines.push(
+        `contact tuning: ${Object.keys(propBounce).length} legacy bounce / ${Object.keys(propSurfaces).length} surface / ${nativeCollisionCount} explicit collision profile(s)`,
+      );
     if (nativeCollisionCount)
-      logLines.push(`collision profiles: ${nativeCollisionCount} placement(s) preserve shape/gates/response mass/bounce/body donor + instance transform`);
+      logLines.push(
+        `collision profiles: ${nativeCollisionCount} placement(s) preserve shape/gates/response mass/bounce/body donor + instance transform`,
+      );
     if (lightingCount) {
       const shaded = Object.values(propLighting).filter(l => Math.max(...l.key) < 1).length;
-      logLines.push(`prop lighting: ${lightingCount} placement(s) lit from the authored sun`
-        + (shaded ? ` (${shaded} fully shadowed — sky fill only)` : ''));
+      logLines.push(
+        `prop lighting: ${lightingCount} placement(s) lit from the authored sun` +
+          (shaded ? ` (${shaded} fully shadowed — sky fill only)` : ''),
+      );
     }
   }
   // Both animation tables are complete snapshots of what the document's effects install, and each is written
@@ -603,7 +731,9 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   remove.push('Scroll.json', 'Flip.json');
   if (scrollSpeeds.length) {
     files.text['Scroll.json'] = JSON.stringify({ Speeds: scrollSpeeds });
-    logLines.push(`authored UV scroll: ${scrollIdxByProp.size} placement(s) using ${scrollSpeeds.length} motion profile(s) → Scroll.json + _scr-tagged material slots`);
+    logLines.push(
+      `authored UV scroll: ${scrollIdxByProp.size} placement(s) using ${scrollSpeeds.length} motion profile(s) → Scroll.json + _scr-tagged material slots`,
+    );
   }
   // authored flipbooks: a placement carrying an always-on texture flip publishes its rate through the shipped
   // levels' own dialect — Flip.json, keyed by the combined MaterialID its meshes drew with — so the bundle
@@ -626,9 +756,11 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       const held = flipMaterials.get(slot);
       if (!held) flipMaterials.set(slot, { Id: slot, Speed: flip.speed, U4: u4 });
       else if (held.Speed !== flip.speed || held.U4 !== u4)
-        logLines.push(`WARN: material ${slot} already flips at ${held.Speed}/s and "${pp.name || pp.id}" asks for `
-          + `${flip.speed}/s — the first rate wins. One rate per material is what the native table stores; give the `
-          + 'second prop its own tile (or its own frame list) to flip it differently.');
+        logLines.push(
+          `WARN: material ${slot} already flips at ${held.Speed}/s and "${pp.name || pp.id}" asks for ` +
+            `${flip.speed}/s — the first rate wins. One rate per material is what the native table stores; give the ` +
+            'second prop its own tile (or its own frame list) to flip it differently.',
+        );
     }
   }
   if (flipMaterials.size) {
@@ -636,13 +768,15 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       Materials: [...flipMaterials.values()].sort((a, b) => a.Id - b.Id),
     });
     const dwelling = [...flipMaterials.values()].filter(entry => entry.U4).length;
-    logLines.push(`authored flipbooks: ${flipMaterials.size} material(s) cycle free-running → Flip.json`
-      + (dwelling ? ` (${dwelling} on the dwell/flash screen law)` : ''));
+    logLines.push(
+      `authored flipbooks: ${flipMaterials.size} material(s) cycle free-running → Flip.json` +
+        (dwelling ? ` (${dwelling} on the dwell/flash screen law)` : ''),
+    );
   }
   // Rails and gems both borrow shipped art, so the donor is resolved once and only when one of them is
   // authored — a mountain with neither never asks which level ships a rail tube.
   let art: NativeArt | undefined;
-  const nativeArt = async () => art ??= await provider.nativeArt();
+  const nativeArt = async () => (art ??= await provider.nativeArt());
   // the authored rails' visual tubes: the same sweep the viewport previews, each in its own texture or its
   // material's default skin, appended as static props (the ridable grind is Splines.json — the tube is the
   // decoration along it)
@@ -653,8 +787,10 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       files.text['Props.obj'] = startObj + tubes.obj;
       propGroups.push(...tubes.groups);
       const looks = [...tubes.textures, ...(tubes.untextured ? [`${tubes.untextured} untextured`] : [])];
-      logLines.push(`baked ${tubes.tubes} rail tube(s) into Props.obj (${looks.join(', ')})`
-        + (tubes.posts ? ` + ${tubes.posts} support post(s)` : ''));
+      logLines.push(
+        `baked ${tubes.tubes} rail tube(s) into Props.obj (${looks.join(', ')})` +
+          (tubes.posts ? ` + ${tubes.posts} support post(s)` : ''),
+      );
     }
   }
   // the gem tier crystals as their own GemModels.obj — separate from Props.obj so they DON'T merge into the
@@ -662,7 +798,8 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   if (doc.gems?.length) {
     const source = await nativeArt();
     const gemGeometry = await provider.modelGeometry(
-      source.gemTiers.map(t => ({ level: source.gemLevel, model: t.model })));
+      source.gemTiers.map(t => ({ level: source.gemLevel, model: t.model })),
+    );
     const gm = bakeGemModels(source.gemTiers, source.gemLevel, gemGeometry, combiner);
     if (gm) {
       files.text['GemModels.obj'] = gm.obj;
@@ -680,7 +817,9 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   }
   if (combiner.materials.length) {
     for (const c of combiner.texCopies) files.copyTextures[c.dest] = { level: c.level, name: c.name };
-    logLines.push(`combined material table: ${combiner.materials.length} material(s), ${combiner.texCopies.length} texture(s)`);
+    logLines.push(
+      `combined material table: ${combiner.materials.length} material(s), ${combiner.texCopies.length} texture(s)`,
+    );
   }
 
   // The staging anchors go on the END of the list, after every placed prop, so their arrival doesn't
@@ -688,17 +827,29 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   propGroups.push(...files.anchorGroups);
 
   const canonical = buildCanonicalProps(propGroups, {
-    bakedGroups, propClips, propPoses, collisionSounds, collisionSoundClips, ambientSounds,
-    propBounce, propSurfaces, propModePresence, nativeCollisions, propLighting, effects: exportDoc.effects,
+    bakedGroups,
+    propClips,
+    propPoses,
+    collisionSounds,
+    collisionSoundClips,
+    ambientSounds,
+    propBounce,
+    propSurfaces,
+    propModePresence,
+    nativeCollisions,
+    propLighting,
+    effects: exportDoc.effects,
   });
   // These directories are complete snapshots of the structured prop bake. Clearing them is what makes a
   // re-export deterministic when a model loses a material submesh or a collision profile is disabled.
   remove.push('Meshes', 'Collision');
   Object.assign(files.text, canonical.text);
-  logLines.push(`canonical props: ${canonical.instances} instance(s), ${canonical.models} model(s), `
-    + `${canonical.meshes} render mesh(es), ${canonical.collisionMeshes} collision mesh(es); `
-    + `${canonical.animatedModels} animated, ${canonical.effectBindings} effect-bound, `
-    + `${canonical.posedInstances} posed`);
+  logLines.push(
+    `canonical props: ${canonical.instances} instance(s), ${canonical.models} model(s), ` +
+      `${canonical.meshes} render mesh(es), ${canonical.collisionMeshes} collision mesh(es); ` +
+      `${canonical.animatedModels} animated, ${canonical.effectBindings} effect-bound, ` +
+      `${canonical.posedInstances} posed`,
+  );
   for (const warning of canonical.warnings) logLines.push(`WARN: ${warning}`);
 
   for (const [fname, content] of Object.entries(files.text)) {
@@ -723,11 +874,13 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   if (doc.skybox) {
     try {
       const sky = await provider.skybox(doc.skybox);
-      remove.push('Skybox');   // a complete snapshot: a retired page cannot survive a re-export
+      remove.push('Skybox'); // a complete snapshot: a retired page cannot survive a re-export
       out.push(...sky.files);
       logLines.push(...sky.log);
     } catch (e) {
-      logLines.push(`WARN: skybox not exported (${e instanceof Error ? e.message : e}) — the repack will keep the target level's own sky`);
+      logLines.push(
+        `WARN: skybox not exported (${e instanceof Error ? e.message : e}) — the repack will keep the target level's own sky`,
+      );
     }
   }
 
@@ -737,8 +890,14 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     out.push({ path: `Sounds/${file}`, bytes });
     const slot = Object.entries(customSlotFiles).find(([, value]) => value === file)?.[0];
     const event = Object.entries(customEventFiles).find(([, value]) => value === file)?.[0];
-    logLines.push(`wrote Sounds/${file}` + (event ? ` (custom prop sound → event ${event})`
-      : slot ? ` (custom PlaySound clip → course-bank slot ${slot})` : ' (direct Unity clip)'));
+    logLines.push(
+      `wrote Sounds/${file}` +
+        (event
+          ? ` (custom prop sound → event ${event})`
+          : slot
+            ? ` (custom PlaySound clip → course-bank slot ${slot})`
+            : ' (direct Unity clip)'),
+    );
   }
 
   // real tiles a cell was texture-painted with: copy the extracted PNG verbatim (the same bytes the source
@@ -761,8 +920,10 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   }
   const queuedTex = Object.keys(files.copyTextures).length;
   if (queuedTex && !copied)
-    logLines.push(`ERROR: all ${queuedTex} texture copies failed — Textures/ is empty, so a repack has no `
-      + 'pages to install and every borrowed/custom material falls back to slot 0000 in-game.');
+    logLines.push(
+      `ERROR: all ${queuedTex} texture copies failed — Textures/ is empty, so a repack has no ` +
+        'pages to install and every borrowed/custom material falls back to slot 0000 in-game.',
+    );
 
   // Patches.json names each page by its flattened file name, which loses the donor. Preserve the portable
   // level/name provenance beside the staged files: it is what `repack` resolves a page's disc treatment
@@ -788,12 +949,21 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
     patches: files.patchIds,
     textures: textureSources,
     props: {
-      format: 'ssx-native-map-v1', instances: 'Instances.json', models: 'Models.json',
-      meshes: 'Meshes', collision: 'Collision', materials: 'Materials.json', preview: 'Props.obj',
+      format: 'ssx-native-map-v1',
+      instances: 'Instances.json',
+      models: 'Models.json',
+      meshes: 'Meshes',
+      collision: 'Collision',
+      materials: 'Materials.json',
+      preview: 'Props.obj',
     },
     canonical: {
-      schema: 1, format: 'ssx-native-map-v1', instances: canonical.instances, models: canonical.models,
-      meshes: canonical.meshes, collisionMeshes: canonical.collisionMeshes,
+      schema: 1,
+      format: 'ssx-native-map-v1',
+      instances: canonical.instances,
+      models: canonical.models,
+      meshes: canonical.meshes,
+      collisionMeshes: canonical.collisionMeshes,
     },
   };
   out.push(textFile(SLOPESMITH_EXPORT_MANIFEST, JSON.stringify(manifest, null, 2) + '\n'));
@@ -804,14 +974,18 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   // whether somebody may open the folder as a reference at all (core/export/origin.ts).
   const origin = authoredOrigin(provenance);
   out.push(textFile(MAP_ORIGIN_FILE, JSON.stringify(origin, null, 2) + '\n'));
-  logLines.push(`wrote ${MAP_ORIGIN_FILE} (${origin.Origin}`
-    + `${origin.RetailData ? `, retail data: ${origin.Reasons.join(', ')}` : ', no retail data'})`);
+  logLines.push(
+    `wrote ${MAP_ORIGIN_FILE} (${origin.Origin}` +
+      `${origin.RetailData ? `, retail data: ${origin.Reasons.join(', ')}` : ', no retail data'})`,
+  );
 
-  logLines.push(`wrote ${SLOPESMITH_EXPORT_MANIFEST} (${files.patchIds.length} patch id(s), `
-    + `${Object.keys(textureSources).length} texture source(s)`
-    + `${manifest.laps ? `, ${manifest.laps} laps` : ''}`
-    + `${manifest.showoffSeconds !== undefined ? `, ${manifest.showoffSeconds}s showoff` : ''}, `
-    + `public distribution: ${provenance.publicDistribution})`);
+  logLines.push(
+    `wrote ${SLOPESMITH_EXPORT_MANIFEST} (${files.patchIds.length} patch id(s), ` +
+      `${Object.keys(textureSources).length} texture source(s)` +
+      `${manifest.laps ? `, ${manifest.laps} laps` : ''}` +
+      `${manifest.showoffSeconds !== undefined ? `, ${manifest.showoffSeconds}s showoff` : ''}, ` +
+      `public distribution: ${provenance.publicDistribution})`,
+  );
 
   const disc = discRecipeFiles(name, await provider.discRecipePaths());
   out.push(...disc.files);
@@ -831,9 +1005,13 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
       ]);
       out.push({ path: bed.Clip, bytes: full });
       out.push({ path: bed.Clip.replace(/\.wav$/i, '.loop.wav'), bytes: loop });
-      logLines.push(`environment bed: ${bed.Bank}/${String(bed.Slot).padStart(3, '0')} at ${bed.Volume.toFixed(2)} → Audio/Environment.json`);
+      logLines.push(
+        `environment bed: ${bed.Bank}/${String(bed.Slot).padStart(3, '0')} at ${bed.Volume.toFixed(2)} → Audio/Environment.json`,
+      );
     } catch (e) {
-      logLines.push(`WARN: environment bed ${bed.Bank}/${String(bed.Slot).padStart(3, '0')} declared but its shared bank is unavailable (${e instanceof Error ? e.message : e}) — run snowknife shared or import one retail map`);
+      logLines.push(
+        `WARN: environment bed ${bed.Bank}/${String(bed.Slot).padStart(3, '0')} declared but its shared bank is unavailable (${e instanceof Error ? e.message : e}) — run snowknife shared or import one retail map`,
+      );
     }
   } else logLines.push('environment bed: disabled in Audio/Environment.json');
 
@@ -852,11 +1030,15 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   }
   if (doc.particleVolumes?.length && !particleRefs.fog0) {
     try {
-      out.push({ path: 'Textures/Particles/fog0.png',
-        bytes: await provider.particleTexture('fog0.png', particleDonorLevel(doc.particleVolumes)) });
+      out.push({
+        path: 'Textures/Particles/fog0.png',
+        bytes: await provider.particleTexture('fog0.png', particleDonorLevel(doc.particleVolumes)),
+      });
       logLines.push('copied Textures/Particles/fog0.png from the shared particle bank');
     } catch (e) {
-      logLines.push(`WARN: shared fog0.png missing (${e instanceof Error ? e.message : e}) — ISO output is unaffected; Unity will need \`snowknife particles\``);
+      logLines.push(
+        `WARN: shared fog0.png missing (${e instanceof Error ? e.message : e}) — ISO output is unaffected; Unity will need \`snowknife particles\``,
+      );
     }
   }
 
@@ -867,7 +1049,9 @@ export async function buildExportFolder(doc: EditDoc, provider: ExportProvider,
   remove.push(...raceMusic.remove);
   out.push(...raceMusic.files);
   if (raceMusic.status === 'staged') {
-    logLines.push(`race music: ${doc.raceMusic} → Music/track.wav + arrangement.json (${raceMusic.mode}, PCM16, 36 kHz stereo, ${raceMusic.bytes!.toLocaleString()} bytes)`);
+    logLines.push(
+      `race music: ${doc.raceMusic} → Music/track.wav + arrangement.json (${raceMusic.mode}, PCM16, 36 kHz stereo, ${raceMusic.bytes!.toLocaleString()} bytes)`,
+    );
   } else if (raceMusic.status === 'cleared' && raceMusic.existing) {
     logLines.push('race music: cleared Music/track.wav');
   } else if (raceMusic.status === 'legacy' && raceMusic.existing) {

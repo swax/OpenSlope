@@ -14,7 +14,10 @@ export interface UpdateStatus {
   exitCode?: number;
 }
 
-export interface QueuedUpdate { queued: true; revision: string }
+export interface QueuedUpdate {
+  queued: true;
+  revision: string;
+}
 
 export const loadUpdateStatus = (): Promise<UpdateStatus> => fetchJson('/api/update');
 export const requestUpdate = (target: 'latest' | string): Promise<QueuedUpdate> =>

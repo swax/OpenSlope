@@ -4,8 +4,15 @@ import { promisify } from 'node:util';
 import { gunzip, gzip } from 'node:zlib';
 import type { EditDoc } from '../core/doc/doc-edit';
 import {
-  ensureDir, listDir, mapLimit, pathExists, readBytesOrNull, readJsonOr, writeFileAtomic,
-  writeJsonAtomic, READ_CONCURRENCY,
+  ensureDir,
+  listDir,
+  mapLimit,
+  pathExists,
+  readBytesOrNull,
+  readJsonOr,
+  writeFileAtomic,
+  writeJsonAtomic,
+  READ_CONCURRENCY,
 } from './fs-async';
 import { createLogger } from './log';
 import { serialize } from './serialize';
@@ -122,7 +129,11 @@ const checkpointDir = (dir: string) => join(dir, 'autosaves');
 const documentFile = (dir: string) => join(dir, 'mountain.slope.json');
 const ringKey = (dir: string) => `checkpoints:${dir}`;
 
-interface CheckpointNote { note?: string; namedBy?: string; members?: string[] }
+interface CheckpointNote {
+  note?: string;
+  namedBy?: string;
+  members?: string[];
+}
 
 interface CheckpointIndex {
   entries?: Record<string, CheckpointNote>;
@@ -138,15 +149,23 @@ const gzipBytes = promisify(gzip);
 const gunzipBytes = promisify(gunzip);
 
 async function checkpointFiles(dir: string): Promise<string[]> {
-  return (await listDir(checkpointDir(dir))).filter(name => CHECKPOINT_PATTERN.test(name)).sort().reverse();
+  return (await listDir(checkpointDir(dir)))
+    .filter(name => CHECKPOINT_PATTERN.test(name))
+    .sort()
+    .reverse();
 }
 
 function describeCheckpoint(file: string, bytes: number, note?: CheckpointNote): ProjectCheckpoint {
   const [, revision, date, hour, minute, second, millis, reason] = CHECKPOINT_PATTERN.exec(file)!;
   const why = (reason ?? 'timer') as CheckpointReason;
   return {
-    file, revision: Number(revision), takenAt: `${date}T${hour}:${minute}:${second}.${millis}Z`, bytes,
-    reason: why, pinned: PINNED.has(why), members: note?.members ?? [],
+    file,
+    revision: Number(revision),
+    takenAt: `${date}T${hour}:${minute}:${second}.${millis}Z`,
+    bytes,
+    reason: why,
+    pinned: PINNED.has(why),
+    members: note?.members ?? [],
     ...(note?.note ? { note: note.note } : {}),
     ...(note?.namedBy ? { namedBy: note.namedBy } : {}),
   };
@@ -164,7 +183,11 @@ function checkpointName(file: string): string {
 }
 
 async function fileSize(file: string): Promise<number> {
-  try { return (await stat(file)).size; } catch { return 0; }
+  try {
+    return (await stat(file)).size;
+  } catch {
+    return 0;
+  }
 }
 
 async function ringEntries(dir: string): Promise<ProjectCheckpoint[]> {
@@ -177,23 +200,36 @@ async function ringEntries(dir: string): Promise<ProjectCheckpoint[]> {
 }
 
 /** Decide which checkpoints survive the age schedule and byte budget. */
-export function planRetention(checkpoints: readonly ProjectCheckpoint[], now: number,
-  policy: CheckpointPolicy = checkpointPolicy): RetentionPlan {
+export function planRetention(
+  checkpoints: readonly ProjectCheckpoint[],
+  now: number,
+  policy: CheckpointPolicy = checkpointPolicy,
+): RetentionPlan {
   const ordered = [...checkpoints].sort((a, b) => b.takenAt.localeCompare(a.takenAt));
   const claimed = new Set<string>();
   const keep: ProjectCheckpoint[] = [];
   const thinned: ProjectCheckpoint[] = [];
   let weeks = 0;
   for (const entry of ordered) {
-    if (entry.pinned) { keep.push(entry); continue; }
+    if (entry.pinned) {
+      keep.push(entry);
+      continue;
+    }
     const at = Date.parse(entry.takenAt);
     const age = now - at;
-    const bucket = age < policy.everyMs ? `each:${entry.file}`
-      : age < policy.hourlyMs ? `hour:${Math.floor(at / HOUR)}`
-        : age < policy.dailyMs ? `day:${Math.floor(at / DAY)}`
-          : `week:${Math.floor(at / WEEK)}`;
+    const bucket =
+      age < policy.everyMs
+        ? `each:${entry.file}`
+        : age < policy.hourlyMs
+          ? `hour:${Math.floor(at / HOUR)}`
+          : age < policy.dailyMs
+            ? `day:${Math.floor(at / DAY)}`
+            : `week:${Math.floor(at / WEEK)}`;
     const weekly = bucket.startsWith('week:');
-    if (claimed.has(bucket) || (weekly && weeks >= policy.weeklyKeep)) { thinned.push(entry); continue; }
+    if (claimed.has(bucket) || (weekly && weeks >= policy.weeklyKeep)) {
+      thinned.push(entry);
+      continue;
+    }
     claimed.add(bucket);
     if (weekly) weeks++;
     keep.push(entry);
@@ -209,8 +245,11 @@ export function planRetention(checkpoints: readonly ProjectCheckpoint[], now: nu
   return { keep: keep.filter(entry => !dropped.has(entry.file)), thinned, overBudget, bytes };
 }
 
-async function writeCheckpoint(dir: string, revision: number,
-  request: CheckpointRequest): Promise<ProjectCheckpoint | null> {
+async function writeCheckpoint(
+  dir: string,
+  revision: number,
+  request: CheckpointRequest,
+): Promise<ProjectCheckpoint | null> {
   const bytes = await readBytesOrNull(documentFile(dir));
   if (!bytes) return null;
   await ensureDir(checkpointDir(dir));
@@ -218,13 +257,14 @@ async function writeCheckpoint(dir: string, revision: number,
   const file = `r${String(revision).padStart(6, '0')}-${stamp}-${request.reason}.slope.json.gz`;
   const packed = await gzipBytes(bytes);
   await writeFileAtomic(join(checkpointDir(dir), file), packed);
-  const note: CheckpointNote | undefined = request.note || request.by || request.members?.length
-    ? {
-      ...(request.note ? { note: request.note } : {}),
-      ...(request.by ? { namedBy: request.by } : {}),
-      ...(request.members?.length ? { members: request.members } : {}),
-    }
-    : undefined;
+  const note: CheckpointNote | undefined =
+    request.note || request.by || request.members?.length
+      ? {
+          ...(request.note ? { note: request.note } : {}),
+          ...(request.by ? { namedBy: request.by } : {}),
+          ...(request.members?.length ? { members: request.members } : {}),
+        }
+      : undefined;
   if (note) {
     const index = await readCheckpointIndex(dir);
     await writeCheckpointIndex(dir, { ...index, entries: { ...index.entries, [file]: note } });
@@ -237,20 +277,30 @@ async function pruneRing(dir: string): Promise<RetentionPlan> {
   const dropped = [...plan.thinned, ...plan.overBudget];
   await mapLimit(dropped, READ_CONCURRENCY, entry => rm(join(checkpointDir(dir), entry.file), { force: true }));
   if (plan.overBudget.length) {
-    log.warn(`${basename(dir)}: the ${checkpointPolicy.budgetBytes}-byte checkpoint budget was `
-      + `reached, so the ${plan.overBudget.length} oldest unnamed checkpoints were dropped`);
+    log.warn(
+      `${basename(dir)}: the ${checkpointPolicy.budgetBytes}-byte checkpoint budget was ` +
+        `reached, so the ${plan.overBudget.length} oldest unnamed checkpoints were dropped`,
+    );
   }
   const index = await readCheckpointIndex(dir);
   const survivors = new Set(plan.keep.map(entry => entry.file));
   const entries = Object.fromEntries(Object.entries(index.entries ?? {}).filter(([file]) => survivors.has(file)));
   const budget = plan.overBudget.length
-    ? { at: new Date().toISOString(), dropped: plan.overBudget.length, bytes: plan.bytes, limit: checkpointPolicy.budgetBytes }
+    ? {
+        at: new Date().toISOString(),
+        dropped: plan.overBudget.length,
+        bytes: plan.bytes,
+        limit: checkpointPolicy.budgetBytes,
+      }
     : index.budget;
   if (dropped.length || budget !== index.budget) await writeCheckpointIndex(dir, { ...index, entries, budget });
   return plan;
 }
 
-interface Cadence { lastAt: number; changed: number }
+interface Cadence {
+  lastAt: number;
+  changed: number;
+}
 const cadence = new Map<string, Cadence>();
 
 async function cadenceOf(dir: string): Promise<Cadence> {
@@ -265,7 +315,9 @@ async function cadenceOf(dir: string): Promise<Cadence> {
 const markCheckpointed = (dir: string, at = Date.now()) => cadence.set(dir, { lastAt: at, changed: 0 });
 
 /** Forget the transient cadence state when its project is deleted. */
-export const clearCheckpointCadence = (dir: string): void => { cadence.delete(dir); };
+export const clearCheckpointCadence = (dir: string): void => {
+  cadence.delete(dir);
+};
 
 /** The span of the document that differs between two saves. */
 export function changedDocumentSpan(before: string, after: string): number {
@@ -273,19 +325,27 @@ export function changedDocumentSpan(before: string, after: string): number {
   let head = 0;
   while (head < shared && before.charCodeAt(head) === after.charCodeAt(head)) head++;
   let tail = 0;
-  while (tail < shared - head
-    && before.charCodeAt(before.length - 1 - tail) === after.charCodeAt(after.length - 1 - tail)) tail++;
+  while (
+    tail < shared - head &&
+    before.charCodeAt(before.length - 1 - tail) === after.charCodeAt(after.length - 1 - tail)
+  )
+    tail++;
   return Math.max(before.length, after.length) - head - tail;
 }
 
 /** Set the outgoing document aside when the cadence or a forced request says it should be. */
-export async function checkpointOutgoing(dir: string, revision: number, changed: number,
-  forced?: CheckpointRequest): Promise<void> {
+export async function checkpointOutgoing(
+  dir: string,
+  revision: number,
+  changed: number,
+  forced?: CheckpointRequest,
+): Promise<void> {
   const state = await cadenceOf(dir);
   state.changed += changed;
   const now = Date.now();
-  const due = !state.lastAt
-    || (now - state.lastAt >= checkpointPolicy.intervalMs && state.changed >= checkpointPolicy.changeBytes);
+  const due =
+    !state.lastAt ||
+    (now - state.lastAt >= checkpointPolicy.intervalMs && state.changed >= checkpointPolicy.changeBytes);
   if (!forced && !due) return;
   await serialize(ringKey(dir), async () => {
     await writeCheckpoint(dir, revision, forced ?? { reason: 'timer' });
@@ -309,13 +369,21 @@ export async function listProjectCheckpoints(dir: string): Promise<CheckpointLis
 
 async function parseCheckpoint(path: string, bytes: Buffer): Promise<unknown> {
   const text = (path.endsWith('.gz') ? await gunzipBytes(bytes) : bytes).toString('utf8');
-  try { return JSON.parse(text) as unknown; }
-  catch (error) { throw new Error(`invalid JSON in ${path}: ${String(error instanceof Error ? error.message : error)}`, { cause: error }); }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw new Error(`invalid JSON in ${path}: ${String(error instanceof Error ? error.message : error)}`, {
+      cause: error,
+    });
+  }
 }
 
 /** Read and normalize one checkpoint from a trusted project directory. */
-export async function readProjectCheckpoint(dir: string, file: string,
-  normalize: (value: unknown) => EditDoc): Promise<{ checkpoint: ProjectCheckpoint; document: EditDoc }> {
+export async function readProjectCheckpoint(
+  dir: string,
+  file: string,
+  normalize: (value: unknown) => EditDoc,
+): Promise<{ checkpoint: ProjectCheckpoint; document: EditDoc }> {
   const name = checkpointName(file);
   const path = join(checkpointDir(dir), name);
   const bytes = await readBytesOrNull(path);
@@ -326,8 +394,11 @@ export async function readProjectCheckpoint(dir: string, file: string,
 }
 
 /** Write and prune an immediate checkpoint. The caller holds the project's own queue. */
-export async function checkpointProjectNow(dir: string, revision: number,
-  request: CheckpointRequest): Promise<ProjectCheckpoint | null> {
+export async function checkpointProjectNow(
+  dir: string,
+  revision: number,
+  request: CheckpointRequest,
+): Promise<ProjectCheckpoint | null> {
   const written = await serialize(ringKey(dir), async () => {
     const checkpoint = await writeCheckpoint(dir, revision, request);
     await pruneRing(dir);
@@ -338,13 +409,17 @@ export async function checkpointProjectNow(dir: string, revision: number,
 }
 
 /** Name and pin a checkpoint in one serialized ring update. */
-export async function nameProjectCheckpoint(dir: string, file: string, note: string,
-  by = ''): Promise<ProjectCheckpoint> {
+export async function nameProjectCheckpoint(
+  dir: string,
+  file: string,
+  note: string,
+  by = '',
+): Promise<ProjectCheckpoint> {
   const name = checkpointName(file);
   const wanted = note.trim();
   if (!wanted) throw new Error('A named checkpoint needs a note');
   return serialize(ringKey(dir), async () => {
-    if (!await pathExists(join(checkpointDir(dir), name))) throw new CheckpointGoneError(name);
+    if (!(await pathExists(join(checkpointDir(dir), name)))) throw new CheckpointGoneError(name);
     const named = renameForReason(name, 'named');
     if (named !== name) await rename(join(checkpointDir(dir), name), join(checkpointDir(dir), named));
     const index = await readCheckpointIndex(dir);

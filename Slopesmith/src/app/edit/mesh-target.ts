@@ -27,6 +27,11 @@ export function commitEditMesh(store: Store, doc: EditDoc): void {
 /** Re-seat the substrate after the document itself was replaced (undo restore / load); exits stale ids. */
 export function refreshModelEditTarget(store: Store): void {
   const model = findModel(store.mdoc, store.modelEditId);
-  if (!model) { store.modelEditId = null; store.modelEditDoc = null; store.modelEditPlacementId = null; return; }
+  if (!model) {
+    store.modelEditId = null;
+    store.modelEditDoc = null;
+    store.modelEditPlacementId = null;
+    return;
+  }
   store.modelEditDoc = modelEditDocFor(store.mdoc, model);
 }

@@ -52,7 +52,7 @@ const fingerprint = () => censusFingerprint(level);
 const first = await fingerprint();
 
 // ---- stability: the same folder must fingerprint the same, every time ---------------------------------------
-check(first === await fingerprint(), 'the same folder hashes the same twice — otherwise the cache never hits');
+check(first === (await fingerprint()), 'the same folder hashes the same twice — otherwise the cache never hits');
 check(/^[A-Za-z0-9_-]+$/.test(first), 'and the digest is filename-safe, because it IS the cache file name');
 
 // ---- every input the census parses moves it ------------------------------------------------------------------
@@ -63,17 +63,22 @@ const moves = async (label: string, change: () => Promise<void>) => {
   check(before !== after, label);
 };
 
-await moves('an in-place edit to a mesh moves the fingerprint — the triangle count could have changed',
-  () => writeFile(join(level, 'Meshes', '0.obj'), 'f 1 2 3\nf 4 5 6\n'));
-await moves('a mesh added beside it moves it, because the level now carries more geometry',
-  () => writeFile(join(level, 'Meshes', '1.obj'), 'f 1 2 3\n'));
-await moves('a mesh removed moves it too — a shrinking level must re-price, not keep its old total',
-  () => rm(join(level, 'Meshes', '1.obj')));
-await moves('a texture page added moves it: pages are the budget that runs out first',
-  () => writeFile(join(level, 'Textures', '0001.png'), 'another'));
+await moves('an in-place edit to a mesh moves the fingerprint — the triangle count could have changed', () =>
+  writeFile(join(level, 'Meshes', '0.obj'), 'f 1 2 3\nf 4 5 6\n'),
+);
+await moves('a mesh added beside it moves it, because the level now carries more geometry', () =>
+  writeFile(join(level, 'Meshes', '1.obj'), 'f 1 2 3\n'),
+);
+await moves('a mesh removed moves it too — a shrinking level must re-price, not keep its old total', () =>
+  rm(join(level, 'Meshes', '1.obj')),
+);
+await moves('a texture page added moves it: pages are the budget that runs out first', () =>
+  writeFile(join(level, 'Textures', '0001.png'), 'another'),
+);
 await moves('an edited patch table moves it', () => writeFile(join(level, 'Patches.json'), '{"Patches":[{}]}'));
-await moves('a slot WAV added inside an audio BANK moves it — the nested walk is easy to get wrong',
-  () => writeFile(join(level, 'Audio', 'SFX', 'testmtn1', '035.wav'), 'RIFF'));
+await moves('a slot WAV added inside an audio BANK moves it — the nested walk is easy to get wrong', () =>
+  writeFile(join(level, 'Audio', 'SFX', 'testmtn1', '035.wav'), 'RIFF'),
+);
 await moves('a whole new audio bank moves it', async () => {
   await mkdir(join(level, 'Audio', 'SFX', 'crowd'), { recursive: true });
   await writeFile(join(level, 'Audio', 'SFX', 'crowd', '001.wav'), 'RIFF');
@@ -100,9 +105,11 @@ await moves('and touching that sidecar alone moves it, because only its mtime ca
   const before = await fingerprint();
   await writeFile(join(level, 'Lightmaps', '0.png'), 'rebaked, and larger than it was');
   await writeFile(join(level, 'Lightmaps', '1.png'), 'a new one');
-  check(before === await fingerprint(),
-    'a lightmap re-bake does NOT move it — nothing the census counts can have changed, so re-pricing forty '
-    + 'mountains over it would be pure waste');
+  check(
+    before === (await fingerprint()),
+    'a lightmap re-bake does NOT move it — nothing the census counts can have changed, so re-pricing forty ' +
+      'mountains over it would be pure waste',
+  );
 }
 
 // ---- an absent directory is not an empty one ---------------------------------------------------------------------
@@ -111,8 +118,10 @@ await moves('and touching that sidecar alone moves it, because only its mtime ca
   await rm(join(level, 'Textures', '0001.png'));
   const emptied = await fingerprint();
   await rm(join(level, 'Textures'), { recursive: true });
-  check(emptied !== await fingerprint(),
-    'an emptied Textures/ and a deleted one hash differently — they price the same but only one is a mistake');
+  check(
+    emptied !== (await fingerprint()),
+    'an emptied Textures/ and a deleted one hash differently — they price the same but only one is a mistake',
+  );
   await mkdir(join(level, 'Textures'), { recursive: true });
 }
 
@@ -120,14 +129,21 @@ await moves('and touching that sidecar alone moves it, because only its mtime ca
 {
   const record = (name: string): CensusRecord => ({
     census: censusFromTables(name, {
-      models: [], instances: [], materials: [], patches: [{}],
-      meshTris: new Map(), textures: { pages: 1, texels: 4 },
+      models: [],
+      instances: [],
+      materials: [],
+      patches: [{}],
+      meshTris: new Map(),
+      textures: { pages: 1, texels: 4 },
     }),
     provenance: { course: null, laps: 1, showoffSeconds: 120, exported: null },
   });
 
   let builds = 0;
-  const build = async () => { builds++; return record('TESTMTN'); };
+  const build = async () => {
+    builds++;
+    return record('TESTMTN');
+  };
 
   const miss = await readPersistentCensus('TESTMTN', level, build, { cacheRoot });
   check(builds === 1 && miss?.census.patches === 1, 'an unmeasured folder is built once');
@@ -162,21 +178,40 @@ await moves('and touching that sidecar alone moves it, because only its mtime ca
   await readPersistentCensus('TESTMTN', level, build, { cacheRoot, force: true });
   check(builds === 6, 'force measures over a valid entry — the whole point, since nothing else can');
   await readPersistentCensus('TESTMTN', level, build, { cacheRoot });
-  check(builds === 6,
-    '...and stores what it measured, so a re-measure costs the measurement once rather than turning the cache '
-    + 'off for every read after it');
+  check(
+    builds === 6,
+    '...and stores what it measured, so a re-measure costs the measurement once rather than turning the cache ' +
+      'off for every read after it',
+  );
 
   // "Not a map" is asked of a folder nothing has priced — the level above already has a valid entry, and a
   // cache that ignored it to re-ask the question would be no cache at all.
   const notAMap = join(work, 'NOTAMAP');
   await mkdir(notAMap, { recursive: true });
   let asked = 0;
-  const absent = await readPersistentCensus('NOTAMAP', notAMap,
-    async () => { asked++; return null; }, { cacheRoot });
+  const absent = await readPersistentCensus(
+    'NOTAMAP',
+    notAMap,
+    async () => {
+      asked++;
+      return null;
+    },
+    { cacheRoot },
+  );
   check(absent === null && asked === 1, 'a folder that is not a map answers null');
-  await readPersistentCensus('NOTAMAP', notAMap, async () => { asked++; return null; }, { cacheRoot });
-  check(asked === 2,
-    '...and stores nothing, so it is re-asked rather than remembered as an absence needing its own expiry');
+  await readPersistentCensus(
+    'NOTAMAP',
+    notAMap,
+    async () => {
+      asked++;
+      return null;
+    },
+    { cacheRoot },
+  );
+  check(
+    asked === 2,
+    '...and stores nothing, so it is re-asked rather than remembered as an absence needing its own expiry',
+  );
 }
 
 await rm(work, { recursive: true, force: true });

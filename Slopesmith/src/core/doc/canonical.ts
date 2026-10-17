@@ -61,22 +61,39 @@ export function canonicalJson(value: unknown): string {
 
 function write(value: unknown, out: string[]): void {
   switch (typeof value) {
-    case 'number': out.push(canonicalNumber(value)); return;
-    case 'boolean': out.push(value ? 'true' : 'false'); return;
-    case 'string': out.push(JSON.stringify(value)); return;
-    case 'object': break;
+    case 'number':
+      out.push(canonicalNumber(value));
+      return;
+    case 'boolean':
+      out.push(value ? 'true' : 'false');
+      return;
+    case 'string':
+      out.push(JSON.stringify(value));
+      return;
+    case 'object':
+      break;
     // Functions, symbols and bigints are not document data; a document that somehow carries one says nothing.
-    default: out.push('null'); return;
+    default:
+      out.push('null');
+      return;
   }
-  if (value === null) { out.push('null'); return; }
+  if (value === null) {
+    out.push('null');
+    return;
+  }
   if (Array.isArray(value)) {
     out.push('[');
-    value.forEach((item, at) => { if (at) out.push(','); write(item, out); });
+    value.forEach((item, at) => {
+      if (at) out.push(',');
+      write(item, out);
+    });
     out.push(']');
     return;
   }
   const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).filter(key => record[key] !== undefined).sort();
+  const keys = Object.keys(record)
+    .filter(key => record[key] !== undefined)
+    .sort();
   out.push('{');
   keys.forEach((key, at) => {
     if (at) out.push(',');

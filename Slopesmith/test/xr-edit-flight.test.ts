@@ -15,8 +15,14 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
-  rigToWorld, solveOneHandGrab, solveTwoHandGrab, turnRigAbout, XR_EDIT_MAX_SCALE, XR_EDIT_ZOOM_EXPONENT,
-  type RigPose, type Vec3,
+  rigToWorld,
+  solveOneHandGrab,
+  solveTwoHandGrab,
+  turnRigAbout,
+  XR_EDIT_MAX_SCALE,
+  XR_EDIT_ZOOM_EXPONENT,
+  type RigPose,
+  type Vec3,
 } from '../src/app/ride/xr/world-grab';
 import { CLICK_SLOP, createXrWorldPointer } from '../src/app/ride/xr/world-pointer';
 import { headsetPickRadiusPx, XR_PICK_DEG_PER_PX } from '../src/app/viewport/input/mesh-picking';
@@ -36,11 +42,16 @@ const v = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
   rig.scale.setScalar(pose.scale);
   rig.updateMatrixWorld(true);
   const local = new THREE.Vector3(0.4, 1.6, -0.3);
-  near(rigToWorld(pose, local), local.clone().applyMatrix4(rig.matrixWorld), 'rigToWorld is the rig Object3D transform');
+  near(
+    rigToWorld(pose, local),
+    local.clone().applyMatrix4(rig.matrixWorld),
+    'rigToWorld is the rig Object3D transform',
+  );
 }
 
 const start: RigPose = { x: 10, y: 5, z: -4, yaw: 0.3, scale: 1 };
-const a0 = v(-0.2, 1.2, -0.4), b0 = v(0.2, 1.2, -0.4);
+const a0 = v(-0.2, 1.2, -0.4),
+  b0 = v(0.2, 1.2, -0.4);
 const grab = { pose: start, a: a0, b: b0 };
 
 // ---- holding still changes nothing
@@ -53,7 +64,8 @@ const grab = { pose: start, a: a0, b: b0 };
 // ---- pan: both hands move together, the world under them moves with them
 {
   const shift = v(0.15, -0.1, 0.05);
-  const a = v(a0.x + shift.x, a0.y + shift.y, a0.z + shift.z), b = v(b0.x + shift.x, b0.y + shift.y, b0.z + shift.z);
+  const a = v(a0.x + shift.x, a0.y + shift.y, a0.z + shift.z),
+    b = v(b0.x + shift.x, b0.y + shift.y, b0.z + shift.z);
   const pose = solveTwoHandGrab(grab, a, b);
   near(rigToWorld(pose, a), rigToWorld(start, a0), 'the world point in the left hand stays in it');
   near(rigToWorld(pose, b), rigToWorld(start, b0), 'and the right');
@@ -65,36 +77,59 @@ const grab = { pose: start, a: a0, b: b0 };
   const hold = { pose: { ...start, scale: 3, yaw: 0.9 }, hand: v(0.2, 1.1, -0.3) };
   const moved = v(0.5, 0.8, -0.1);
   const pose = solveOneHandGrab(hold, moved);
-  near(rigToWorld(pose, moved), rigToWorld(hold.pose, hold.hand), 'the world point in the hand follows it, up and down too');
+  near(
+    rigToWorld(pose, moved),
+    rigToWorld(hold.pose, hold.hand),
+    'the world point in the hand follows it, up and down too',
+  );
   assert(pose.scale === 3 && pose.yaw === 0.9, 'one hand drags; it neither zooms nor turns');
   near(solveOneHandGrab(hold, hold.hand), hold.pose, 'a still hand leaves the map where it was');
 }
 
 // ---- rotate: the pair turns about its midpoint, the map turns with it
 {
-  const mid = v(0, 1.2, -0.4), turn = 0.7;
+  const mid = v(0, 1.2, -0.4),
+    turn = 0.7;
   const spin = (p: Vec3) => {
-    const dx = p.x - mid.x, dz = p.z - mid.z, c = Math.cos(turn), s = Math.sin(turn);
+    const dx = p.x - mid.x,
+      dz = p.z - mid.z,
+      c = Math.cos(turn),
+      s = Math.sin(turn);
     return v(mid.x + dx * c + dz * s, p.y, mid.z - dx * s + dz * c);
   };
-  const a = spin(a0), b = spin(b0);
+  const a = spin(a0),
+    b = spin(b0);
   const pose = solveTwoHandGrab(grab, a, b);
   near(rigToWorld(pose, a), rigToWorld(start, a0), 'turning the hands carries the grabbed point round with them');
   near(rigToWorld(pose, b), rigToWorld(start, b0), 'both hands stay on their points');
-  assert(Math.abs(pose.yaw - (start.yaw - turn)) < 1e-9, 'the rig turns opposite to the hands, so the map follows them');
+  assert(
+    Math.abs(pose.yaw - (start.yaw - turn)) < 1e-9,
+    'the rig turns opposite to the hands, so the map follows them',
+  );
 }
 
 // ---- zoom: apart is SMALLER (zoom in, the map stretched out between the hands), together bigger; the point
 //      between the hands stays between them
 {
-  const a = v(-0.4, 1.2, -0.4), b = v(0.4, 1.2, -0.4); // spread doubled
+  const a = v(-0.4, 1.2, -0.4),
+    b = v(0.4, 1.2, -0.4); // spread doubled
   const pose = solveTwoHandGrab(grab, a, b);
-  assert(Math.abs(pose.scale - 2 ** -XR_EDIT_ZOOM_EXPONENT) < 1e-9,
-    `doubling the spread shrinks the player to 1/${2 ** XR_EDIT_ZOOM_EXPONENT}`);
-  near(rigToWorld(pose, v(0, 1.2, -0.4)), rigToWorld(start, v(0, 1.2, -0.4)), 'the midpoint is the pivot of the resize');
+  assert(
+    Math.abs(pose.scale - 2 ** -XR_EDIT_ZOOM_EXPONENT) < 1e-9,
+    `doubling the spread shrinks the player to 1/${2 ** XR_EDIT_ZOOM_EXPONENT}`,
+  );
+  near(
+    rigToWorld(pose, v(0, 1.2, -0.4)),
+    rigToWorld(start, v(0, 1.2, -0.4)),
+    'the midpoint is the pivot of the resize',
+  );
   const bigger = solveTwoHandGrab(grab, v(-0.1, 1.2, -0.4), v(0.1, 1.2, -0.4));
   assert(bigger.scale > 1, 'bringing the hands together grows the player (zoom out)');
-  const huge = solveTwoHandGrab({ pose: { ...start, scale: 900 }, a: a0, b: b0 }, v(-0.02, 1.2, -0.4), v(0.02, 1.2, -0.4));
+  const huge = solveTwoHandGrab(
+    { pose: { ...start, scale: 900 }, a: a0, b: b0 },
+    v(-0.02, 1.2, -0.4),
+    v(0.02, 1.2, -0.4),
+  );
   assert.equal(huge.scale, XR_EDIT_MAX_SCALE, 'size is clamped');
 }
 
@@ -116,7 +151,8 @@ const grab = { pose: start, a: a0, b: b0 };
     constructor(type: string, init: Record<string, unknown> = {}) {
       super(type, init);
       // Event's own flags (bubbles, cancelable, composed) are getters it already took from `init`.
-      for (const [key, value] of Object.entries(init)) if (!(key in Event.prototype)) Object.assign(this, { [key]: value });
+      for (const [key, value] of Object.entries(init))
+        if (!(key in Event.prototype)) Object.assign(this, { [key]: value });
     }
   }
   const g = globalThis as unknown as Record<string, unknown>;
@@ -126,12 +162,24 @@ const grab = { pose: start, a: a0, b: b0 };
   const events: { type: string; clientX: number; clientY: number; button: number; buttons: number }[] = [];
   let captureThrew = false;
   class Canvas {
-    getBoundingClientRect() { return { left: 40, top: 30, width: 800, height: 600 }; }
-    setPointerCapture(_id: number) { throw new Error('NotFoundError'); }
-    releasePointerCapture(_id: number) { throw new Error('NotFoundError'); }
+    getBoundingClientRect() {
+      return { left: 40, top: 30, width: 800, height: 600 };
+    }
+    setPointerCapture(_id: number) {
+      throw new Error('NotFoundError');
+    }
+    releasePointerCapture(_id: number) {
+      throw new Error('NotFoundError');
+    }
     dispatchEvent(event: Event) {
       events.push(event as unknown as (typeof events)[number]);
-      if (event.type === 'pointerdown') { try { this.setPointerCapture(1); } catch { captureThrew = true; } }
+      if (event.type === 'pointerdown') {
+        try {
+          this.setPointerCapture(1);
+        } catch {
+          captureThrew = true;
+        }
+      }
       return true;
     }
   }
@@ -152,39 +200,68 @@ const grab = { pose: start, a: a0, b: b0 };
   const ray = new THREE.Ray(hand, target.clone().sub(hand).normalize());
 
   pointer.update(ray, false, false, 1000);
-  assert.deepEqual(events.map(e => e.type), ['pointerover', 'pointerenter', 'pointermove', 'mousemove'],
-    'the cursor arrives on the canvas like a mouse does');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointerover', 'pointerenter', 'pointermove', 'mousemove'],
+    'the cursor arrives on the canvas like a mouse does',
+  );
   assert(pointer.onCanvas && pointer.onSurface);
   near(pointer.point, target, 'the cursor is where the controller ray meets the mountain', 1e-6);
   // The editor casts from the pixel it was given: that ray must pass through the aimed-at point.
   const move = events[2];
-  const ndc = new THREE.Vector2((move.clientX - 40) / 800 * 2 - 1, -((move.clientY - 30) / 600) * 2 + 1);
+  const ndc = new THREE.Vector2(((move.clientX - 40) / 800) * 2 - 1, -((move.clientY - 30) / 600) * 2 + 1);
   const cast = new THREE.Raycaster();
   cast.setFromCamera(ndc, camera);
-  near(cast.ray.intersectPlane(ground, new THREE.Vector3())!, target,
-    "the editor's own pick ray from that pixel lands on the controller's point", 1e-4);
+  near(
+    cast.ray.intersectPlane(ground, new THREE.Vector3())!,
+    target,
+    "the editor's own pick ray from that pixel lands on the controller's point",
+    1e-4,
+  );
 
   events.length = 0;
   pointer.update(ray, true, false, 1000);
-  assert.deepEqual(events.map(e => [e.type, e.button, e.buttons]), [['pointerdown', 0, 1], ['mousedown', 0, 1]],
-    'the trigger is the left button');
+  assert.deepEqual(
+    events.map(e => [e.type, e.button, e.buttons]),
+    [
+      ['pointerdown', 0, 1],
+      ['mousedown', 0, 1],
+    ],
+    'the trigger is the left button',
+  );
   assert(!captureThrew, 'a router that captures the pointer on press does not throw on the synthetic one');
   assert.throws(() => canvas.setPointerCapture(1), 'the capture shim is gone once the dispatch is over');
   events.length = 0;
   pointer.update(ray, false, false, 1000);
-  assert.deepEqual(events.map(e => e.type), ['pointerup', 'mouseup', 'click'], 'a release clicks');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointerup', 'mouseup', 'click'],
+    'a release clicks',
+  );
 
   events.length = 0;
   pointer.update(ray, false, true, 1000);
   pointer.update(ray, false, false, 1000);
-  assert.deepEqual(events.map(e => [e.type, e.button]),
-    [['pointerdown', 2], ['mousedown', 2], ['pointerup', 2], ['mouseup', 2], ['contextmenu', 2]], 'A is the right button');
+  assert.deepEqual(
+    events.map(e => [e.type, e.button]),
+    [
+      ['pointerdown', 2],
+      ['mousedown', 2],
+      ['pointerup', 2],
+      ['mouseup', 2],
+      ['contextmenu', 2],
+    ],
+    'A is the right button',
+  );
 
   events.length = 0;
   pointer.update(ray, true, false, 1000);
   pointer.reset();
-  assert.deepEqual(events.map(e => e.type), ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'pointerout', 'pointerleave'],
-    'putting the mouse away mid-press lets go without clicking whatever was under it');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'pointerout', 'pointerleave'],
+    'putting the mouse away mid-press lets go without clicking whatever was under it',
+  );
 
   events.length = 0;
   const away = new THREE.Ray(hand, new THREE.Vector3(0, 0.2, 1).normalize()); // back over the shoulder, into the sky
@@ -198,16 +275,25 @@ const grab = { pose: start, a: a0, b: b0 };
   events.length = 0;
   const aside = new THREE.Ray(hand, new THREE.Vector3(-2, 0, 4).sub(hand).normalize());
   pointer.update(aside, true, false, 1000, true);
-  assert.deepEqual(events.map(e => e.type), [], 'a held move sends nothing');
+  assert.deepEqual(
+    events.map(e => e.type),
+    [],
+    'a held move sends nothing',
+  );
   assert(pointer.onCanvas && pointer.pressed, 'though the cursor is still tracked, and the press still held');
   pointer.update(aside, false, false, 1000, true);
-  assert.deepEqual(events.map(e => e.type), ['pointerup', 'mouseup', 'click'], 'the release still lands, ending the drag');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointerup', 'mouseup', 'click'],
+    'the release still lands, ending the drag',
+  );
 
   // Click slop: a trigger pull turns the hand a little, and the router makes a 4 px move a box select.
   const aimAt = (p: THREE.Vector3) => new THREE.Ray(hand, p.clone().sub(hand).normalize());
   const eye = camera.position;
   const turnFromEye = (p: THREE.Vector3) => p.clone().sub(eye).angleTo(target.clone().sub(eye));
-  const jiggle = new THREE.Vector3(3.3, 0, 2), sweep = new THREE.Vector3(5, 0, 2);
+  const jiggle = new THREE.Vector3(3.3, 0, 2),
+    sweep = new THREE.Vector3(5, 0, 2);
   assert(turnFromEye(jiggle) < CLICK_SLOP && turnFromEye(sweep) > CLICK_SLOP);
   pointer.update(ray, false, false, 1000);
   events.length = 0;
@@ -215,35 +301,57 @@ const grab = { pose: start, a: a0, b: b0 };
   const down = events.find(e => e.type === 'pointerdown')!;
   events.length = 0;
   pointer.update(aimAt(jiggle), true, false, 1000);
-  assert.deepEqual(events.map(e => e.type), [], 'a press holds still while the aim stays inside the slop');
+  assert.deepEqual(
+    events.map(e => e.type),
+    [],
+    'a press holds still while the aim stays inside the slop',
+  );
   pointer.update(aimAt(jiggle), false, false, 1000);
-  assert.deepEqual(events.map(e => e.type), ['pointerup', 'mouseup', 'click'], 'and letting go there is a click');
-  assert(events.every(e => e.clientX === down.clientX && e.clientY === down.clientY), 'on the point it was pressed on');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointerup', 'mouseup', 'click'],
+    'and letting go there is a click',
+  );
+  assert(
+    events.every(e => e.clientX === down.clientX && e.clientY === down.clientY),
+    'on the point it was pressed on',
+  );
 
   pointer.update(ray, false, false, 1000);
   pointer.update(ray, true, false, 1000);
   events.length = 0;
   pointer.update(aimAt(jiggle), true, false, 1000);
   pointer.update(aimAt(sweep), true, false, 1000);
-  assert.deepEqual(events.map(e => e.type), ['pointermove', 'mousemove'], 'past the slop the press is a drag');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointermove', 'mousemove'],
+    'past the slop the press is a drag',
+  );
   const moved = events[0];
   events.length = 0;
   pointer.update(aimAt(jiggle), true, false, 1000);
-  assert.deepEqual(events.map(e => e.type), ['pointermove', 'mousemove'], 'and stays one, even back inside it');
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['pointermove', 'mousemove'],
+    'and stays one, even back inside it',
+  );
   pointer.update(aimAt(sweep), false, false, 1000);
-  assert(events.at(-3)!.type === 'pointerup' && events.at(-3)!.clientX === moved.clientX,
-    'a drag lets go where the aim is');
+  assert(
+    events.at(-3)!.type === 'pointerup' && events.at(-3)!.clientX === moved.clientX,
+    'a drag lets go where the aim is',
+  );
 }
 
 // ---- pick radii in a headset (mesh-picking.ts)
 {
   // A headset-wide view on a big page canvas: the desk's pixels are much finer than a laser can aim.
-  const width = 1600, height = 1200;
+  const width = 1600,
+    height = 1200;
   const camera = new THREE.PerspectiveCamera(100, width / height, 0.1, 1000);
   const radius = (ndc: THREE.Vector2) => headsetPickRadiusPx(16, camera.projectionMatrix, width, height, ndc);
   const across = (angle: number) => {
     const v = new THREE.Vector3(Math.sin(angle), 0, -Math.cos(angle)).project(camera);
-    return v.x * width / 2;
+    return (v.x * width) / 2;
   };
   const angle = THREE.MathUtils.degToRad(16 * XR_PICK_DEG_PER_PX);
   const centre = radius(new THREE.Vector2(0, 0));
@@ -253,45 +361,83 @@ const grab = { pose: start, a: a0, b: b0 };
   const aside = radius(new THREE.Vector2(new THREE.Vector3(Math.sin(side), 0, -Math.cos(side)).project(camera).x, 0));
   assert(Math.abs(across(side + angle) - across(side) - aside) / aside < 0.1, 'and off to the side');
   const small = new THREE.PerspectiveCamera(100, 400 / 300, 0.1, 1000);
-  assert.equal(headsetPickRadiusPx(16, small.projectionMatrix, 400, 300, new THREE.Vector2()), 16,
-    'never tighter than at the desk');
+  assert.equal(
+    headsetPickRadiusPx(16, small.projectionMatrix, 400, 300, new THREE.Vector2()),
+    16,
+    'never tighter than at the desk',
+  );
 }
 
 // ---- the hand's depth on a held gizmo translate (hand-drag.ts)
 {
-  const origin = new THREE.Vector3(0, 1.4, 0), dir = new THREE.Vector3(0, 0, -1);
+  const origin = new THREE.Vector3(0, 1.4, 0),
+    dir = new THREE.Vector3(0, 0, -1);
   const anchor = new THREE.Vector3(0.5, 1, -20);
   const grab = beginHandGrab(new THREE.Ray(origin, dir), anchor, new THREE.Quaternion());
-  const at = (o: THREE.Vector3, d = dir, scale = 1) => handGrabPoint(grab, new THREE.Ray(o, d), scale, new THREE.Vector3());
+  const at = (o: THREE.Vector3, d = dir, scale = 1) =>
+    handGrabPoint(grab, new THREE.Ray(o, d), scale, new THREE.Vector3());
   const start = origin.clone().addScaledVector(dir, grab.distance);
   near(at(origin), start, 'a still hand holds the point where it was grabbed');
   const reach = XR_HAND_DEPTH_REACH;
-  near(at(origin.clone().addScaledVector(dir, reach)), origin.clone().addScaledVector(dir, 2 * grab.distance),
-    'pushing the hand one reach out doubles the held distance from where the hand began', 1e-9);
-  near(at(origin.clone().addScaledVector(dir, -reach)), origin,
-    'pulling it one reach back brings the point to where the hand began', 1e-9);
-  near(at(origin.clone().addScaledVector(dir, -2 * reach)), origin.clone().addScaledVector(dir, -2 * reach + 0.05),
-    'and pulled further it stays just ahead of the hand', 1e-9);
-  near(at(origin.clone().addScaledVector(dir, reach), dir, 100), origin.clone().addScaledVector(dir, reach + grab.distance),
-    'a giant\'s reach is a giant\'s: the same push barely moves a point that is near at that size', 1e-9);
+  near(
+    at(origin.clone().addScaledVector(dir, reach)),
+    origin.clone().addScaledVector(dir, 2 * grab.distance),
+    'pushing the hand one reach out doubles the held distance from where the hand began',
+    1e-9,
+  );
+  near(
+    at(origin.clone().addScaledVector(dir, -reach)),
+    origin,
+    'pulling it one reach back brings the point to where the hand began',
+    1e-9,
+  );
+  near(
+    at(origin.clone().addScaledVector(dir, -2 * reach)),
+    origin.clone().addScaledVector(dir, -2 * reach + 0.05),
+    'and pulled further it stays just ahead of the hand',
+    1e-9,
+  );
+  near(
+    at(origin.clone().addScaledVector(dir, reach), dir, 100),
+    origin.clone().addScaledVector(dir, reach + grab.distance),
+    "a giant's reach is a giant's: the same push barely moves a point that is near at that size",
+    1e-9,
+  );
   const sideways = new THREE.Vector3(1, 0, 0);
   near(at(origin.clone().add(sideways)), start.clone().add(sideways), 'moving the hand across carries the point 1:1');
   const close = beginHandGrab(new THREE.Ray(origin, dir), new THREE.Vector3(0, 1.4, -0.2), new THREE.Quaternion());
-  near(handGrabPoint(close, new THREE.Ray(origin.clone().setZ(-0.1), dir), 1, new THREE.Vector3()), v(0, 1.4, -0.3),
-    'near the hand the push is 1:1, never less');
+  near(
+    handGrabPoint(close, new THREE.Ray(origin.clone().setZ(-0.1), dir), 1, new THREE.Vector3()),
+    v(0, 1.4, -0.3),
+    'near the hand the push is 1:1, never less',
+  );
 
   // Masked to the grabbed handle, the way TransformControls masks a mouse drag.
-  const delta = new THREE.Vector3(1, 2, -3), out = new THREE.Vector3();
+  const delta = new THREE.Vector3(1, 2, -3),
+    out = new THREE.Vector3();
   near(handTranslateTarget(grab, delta, 'X', 'world', null, out), v(1.5, 1, -20), 'an X arrow moves along X only');
   near(handTranslateTarget(grab, delta, 'XZ', 'world', null, out), v(1.5, 1, -23), 'the XZ square stays level');
   near(handTranslateTarget(grab, delta, 'XYZ', 'world', null, out), v(1.5, 3, -23), 'the free centre goes anywhere');
-  const tilted = beginHandGrab(new THREE.Ray(origin, dir), anchor,
-    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)); // local X is world Y
-  near(handTranslateTarget(tilted, delta, 'X', 'local', null, out), v(0.5, 3, -20), 'a local arrow runs along its own axis');
-  near(handTranslateTarget(tilted, delta, 'XYZ', 'local', null, out), v(1.5, 3, -23),
-    'the free centre ignores a local frame, as the gizmo does');
-  near(handTranslateTarget(grab, new THREE.Vector3(0.26, 0, 0), 'X', 'world', 0.5, out), v(1, 1, -20),
-    'snapping rounds the moved axes of the world position');
+  const tilted = beginHandGrab(
+    new THREE.Ray(origin, dir),
+    anchor,
+    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2),
+  ); // local X is world Y
+  near(
+    handTranslateTarget(tilted, delta, 'X', 'local', null, out),
+    v(0.5, 3, -20),
+    'a local arrow runs along its own axis',
+  );
+  near(
+    handTranslateTarget(tilted, delta, 'XYZ', 'local', null, out),
+    v(1.5, 3, -23),
+    'the free centre ignores a local frame, as the gizmo does',
+  );
+  near(
+    handTranslateTarget(grab, new THREE.Vector3(0.26, 0, 0), 'X', 'world', 0.5, out),
+    v(1, 1, -20),
+    'snapping rounds the moved axes of the world position',
+  );
 }
 
 // ---- culling a scaled rig: the stereo union must not cull what is right in front of a giant's eyes
@@ -311,13 +457,18 @@ const grab = { pose: start, a: a0, b: b0 };
       // Asymmetric like a real headset: more field outward than toward the nose.
       const near = 0.03;
       camera.projectionMatrix.makePerspective(
-        x < 0 ? -outward * near : -inward * near, x < 0 ? inward * near : outward * near, 1.1 * near, -1.1 * near,
-        near, 4000,
+        x < 0 ? -outward * near : -inward * near,
+        x < 0 ? inward * near : outward * near,
+        1.1 * near,
+        -1.1 * near,
+        near,
+        4000,
       );
       camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
       return camera;
     };
-    const left = eye(-0.032, 0.9, 1.3), right = eye(0.032, 0.9, 1.3);
+    const left = eye(-0.032, 0.9, 1.3),
+      right = eye(0.032, 0.9, 1.3);
     const user = new THREE.PerspectiveCamera();
     view.add(user);
     rig.updateMatrixWorld(true);
@@ -325,9 +476,10 @@ const grab = { pose: start, a: a0, b: b0 };
     const union = new THREE.ArrayCamera([left, right]);
     return { rig, view, union, user };
   };
-  const inView = (camera: THREE.Camera, local: THREE.Vector3, rig: THREE.Object3D) => new THREE.Frustum()
-    .setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
-    .containsPoint(local.clone().applyMatrix4(rig.matrixWorld));
+  const inView = (camera: THREE.Camera, local: THREE.Vector3, rig: THREE.Object3D) =>
+    new THREE.Frustum()
+      .setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+      .containsPoint(local.clone().applyMatrix4(rig.matrixWorld));
 
   const unit = pair(1);
   assert.equal(correctXrUnionForScale(unit.union, unit.user), false, 'a life-size rig is left to three');
@@ -336,9 +488,12 @@ const grab = { pose: start, a: a0, b: b0 };
   const giant = pair(100);
   assert(correctXrUnionForScale(reference.union, reference.user));
   assert(correctXrUnionForScale(giant.union, giant.user));
-  const a = reference.union.projectionMatrix.elements, b = giant.union.projectionMatrix.elements;
-  assert(a.every((value, i) => Math.abs(value - b[i]) < 1e-6 * Math.max(1, Math.abs(value))),
-    "the union's projection is in the rig's units, so a giant culls exactly like a life-size rider");
+  const a = reference.union.projectionMatrix.elements,
+    b = giant.union.projectionMatrix.elements;
+  assert(
+    a.every((value, i) => Math.abs(value - b[i]) < 1e-6 * Math.max(1, Math.abs(value))),
+    "the union's projection is in the rig's units, so a giant culls exactly like a life-size rider",
+  );
   const seat = (p: ReturnType<typeof pair>) =>
     new THREE.Vector3().setFromMatrixPosition(p.union.matrixWorld).applyMatrix4(p.rig.matrixWorld.clone().invert());
   near(seat(giant), seat(reference), 'and it sits in the same place relative to the eyes', 1e-6);
@@ -351,8 +506,11 @@ const grab = { pose: start, a: a0, b: b0 };
     assert(inView(giant.union, local, giant.rig), `a 100× giant does not cull ${what}`);
   }
   assert(!inView(giant.union, new THREE.Vector3(0, 1.6, 2), giant.rig), 'what is behind the eyes is still culled');
-  near(new THREE.Vector3().setFromMatrixPosition(giant.user.matrixWorld),
-    new THREE.Vector3().setFromMatrixPosition(giant.union.matrixWorld), 'the user camera is re-seated on the corrected union');
+  near(
+    new THREE.Vector3().setFromMatrixPosition(giant.user.matrixWorld),
+    new THREE.Vector3().setFromMatrixPosition(giant.union.matrixWorld),
+    'the user camera is re-seated on the corrected union',
+  );
   assert(giant.user.projectionMatrix.equals(giant.union.projectionMatrix), 'and carries its projection');
 }
 

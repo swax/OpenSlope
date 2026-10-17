@@ -94,7 +94,11 @@ export interface ChatDirectory {
 // ---- text ----
 
 const ESCAPES: Record<string, string> = {
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
 };
 
 /**
@@ -108,8 +112,11 @@ const ESCAPES: Record<string, string> = {
 export const asText = (raw: string): string => raw.replace(/[&<>"']/g, character => ESCAPES[character]);
 
 /** What a member actually typed: one line, no control characters, no leading or trailing space. */
-// eslint-disable-next-line no-control-regex -- strips control characters from a member-typed chat line
-const clean = (raw: unknown): string => String(raw ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+const clean = (raw: unknown): string =>
+  String(raw ?? '')
+    // eslint-disable-next-line no-control-regex -- strips control characters from a member-typed chat line
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim();
 
 // ---- the room ----
 
@@ -135,7 +142,11 @@ function deliver(line: Omit<ChatLine, 'id'>, audience: ChatAudience, keep: boole
     if (retained.length > chatPolicy.history) retained.splice(0, retained.length - chatPolicy.history);
   }
   for (const listener of listeners) {
-    try { listener(delivery); } catch (error) { log.error('a line listener failed', { error }); }
+    try {
+      listener(delivery);
+    } catch (error) {
+      log.error('a line listener failed', { error });
+    }
   }
   return delivery.line;
 }
@@ -198,8 +209,11 @@ function parseChat(text: string): Command {
 }
 
 function sendPrivate(from: ChatWho, to: ChatWho, body: string, now: number): ChatLine {
-  const line = deliver({ at: now, kind: 'private', from, to, text: asText(body) },
-    from.userId === to.userId ? [from.userId] : [from.userId, to.userId], true);
+  const line = deliver(
+    { at: now, kind: 'private', from, to, text: asText(body) },
+    from.userId === to.userId ? [from.userId] : [from.userId, to.userId],
+    true,
+  );
   // What `/r` replies to. A line to yourself leaves it alone, so `/r` still answers whoever really wrote.
   if (from.userId !== to.userId) lastPrivate.set(to.userId, from);
   return line;
@@ -212,8 +226,12 @@ function sendPrivate(from: ChatWho, to: ChatWho, body: string, now: number): Cha
  * before it is parsed, and a command is resolved before anything is delivered. Every refusal answers the
  * sender alone — the room never sees somebody else's mistyped command.
  */
-export async function submitChat(from: ChatWho, raw: unknown, directory: ChatDirectory,
-  now = Date.now()): Promise<ChatLine | null> {
+export async function submitChat(
+  from: ChatWho,
+  raw: unknown,
+  directory: ChatDirectory,
+  now = Date.now(),
+): Promise<ChatLine | null> {
   const text = clean(raw);
   if (!text) return null;
   if (text.length > chatPolicy.maxLength) {
@@ -235,14 +253,17 @@ export async function submitChat(from: ChatWho, raw: unknown, directory: ChatDir
       const last = lastPrivate.get(from.userId);
       if (!last) return notice(from, 'Nobody has sent you a private line yet, so there is nobody to reply to.');
       // Resolved again rather than trusted: a role or username may have moved since they wrote.
-      const to = await directory.find(last.username) ?? last;
+      const to = (await directory.find(last.username)) ?? last;
       return sendPrivate(from, to, command.text, now);
     }
     case 'incomplete':
       return notice(from, command.usage);
     default:
-      return notice(from, `${command.command} is not a command here. /msg <user> <text> sends a private line,`
-        + ' and /r <text> replies to whoever messaged you last.');
+      return notice(
+        from,
+        `${command.command} is not a command here. /msg <user> <text> sends a private line,` +
+          ' and /r <text> replies to whoever messaged you last.',
+      );
   }
 }
 

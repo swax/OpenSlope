@@ -59,7 +59,11 @@ export function createRebuilder(deps: {
     cancelSettle();
     settleTimer = setTimeout(() => {
       settleTimer = null;
-      try { deps.settle!(); } catch (e) { deps.onError(e); }
+      try {
+        deps.settle!();
+      } catch (e) {
+        deps.onError(e);
+      }
     }, deps.settleMs ?? SETTLE_MS);
   }
 
@@ -72,7 +76,7 @@ export function createRebuilder(deps: {
   /** Receiving a document must redraw it without creating a local edit or autosaving it back. */
   function scheduleRemoteRebuild(replaced = false) {
     if (replaced) edited = false; // queued work described the document that was replaced
-    cancelSettle();        // something moved again; whatever was about to settle is out of date
+    cancelSettle(); // something moved again; whatever was about to settle is out of date
     if (queued) return;
     queued = true;
     requestAnimationFrame(flush);
@@ -89,7 +93,17 @@ export function createRebuilder(deps: {
     queued = false;
     const wasEdited = edited;
     edited = false;
-    try { deps.render(wasEdited); } catch (e) { deps.onError(e); }
+    try {
+      deps.render(wasEdited);
+    } catch (e) {
+      deps.onError(e);
+    }
   }
-  return { scheduleRebuild, scheduleRemoteRebuild, scheduleSettle, flush, isPending: () => queued || settleTimer !== null };
+  return {
+    scheduleRebuild,
+    scheduleRemoteRebuild,
+    scheduleSettle,
+    flush,
+    isPending: () => queued || settleTimer !== null,
+  };
 }

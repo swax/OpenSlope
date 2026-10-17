@@ -14,17 +14,36 @@ function addSourceTick(seg: LineSink, x: number, y: number, z: number, s: number
 }
 
 /** A circle of `n` segments centred at (cx,cy,cz), radius r, in the plane spanned by basis vectors u, w. */
-function addRing(seg: LineSink, cx: number, cy: number, cz: number, r: number, u: THREE.Vector3, w: THREE.Vector3, n: number) {
-  let px = 0, py = 0, pz = 0;
+function addRing(
+  seg: LineSink,
+  cx: number,
+  cy: number,
+  cz: number,
+  r: number,
+  u: THREE.Vector3,
+  w: THREE.Vector3,
+  n: number,
+) {
+  let px = 0,
+    py = 0,
+    pz = 0;
   for (let i = 0; i <= n; i++) {
-    const t = (i / n) * Math.PI * 2, c = Math.cos(t) * r, s = Math.sin(t) * r;
-    const x = cx + u.x * c + w.x * s, y = cy + u.y * c + w.y * s, z = cz + u.z * c + w.z * s;
+    const t = (i / n) * Math.PI * 2,
+      c = Math.cos(t) * r,
+      s = Math.sin(t) * r;
+    const x = cx + u.x * c + w.x * s,
+      y = cy + u.y * c + w.y * s,
+      z = cz + u.z * c + w.z * s;
     if (i) seg(px, py, pz, x, y, z);
-    px = x; py = y; pz = z;
+    px = x;
+    py = y;
+    pz = z;
   }
 }
 
-const _lu = new THREE.Vector3(), _lw = new THREE.Vector3(), _ld = new THREE.Vector3();
+const _lu = new THREE.Vector3(),
+  _lw = new THREE.Vector3(),
+  _ld = new THREE.Vector3();
 
 type AimedLight = Pick<RigLight, 'kind' | 'pos' | 'dir' | 'reach'>;
 
@@ -34,9 +53,7 @@ export function lightAimTarget(L: AimedLight): THREE.Vector3 {
   const direction = new THREE.Vector3(...L.dir);
   if (direction.lengthSq() < 1e-9) return new THREE.Vector3(...L.pos);
   direction.normalize();
-  const distance = L.kind === 'sun'
-    ? Math.min(Math.max(L.reach, 120), 500)
-    : Math.min(Math.max(L.reach, 8), 80);
+  const distance = L.kind === 'sun' ? Math.min(Math.max(L.reach, 120), 500) : Math.min(Math.max(L.reach, 8), 80);
   return new THREE.Vector3(...L.pos).addScaledVector(direction, distance);
 }
 
@@ -70,9 +87,12 @@ export function addLightGizmo(pos: number[], colArr: number[], L: RigLight, col:
   const isSun = L.kind === 'sun';
   const target = lightAimTarget(L);
   const h = target.distanceTo(new THREE.Vector3(px, py, pz));
-  const bx = target.x, by = target.y, bz = target.z; // aim endpoint (cone base centre)
+  const bx = target.x,
+    by = target.y,
+    bz = target.z; // aim endpoint (cone base centre)
   seg(px, py, pz, bx, by, bz); // the beam axis
-  if (isSun) { // a plain arrowhead — the directional sun has no cone
+  if (isSun) {
+    // a plain arrowhead — the directional sun has no cone
     const a = Math.max(h * 0.06, 6);
     seg(bx, by, bz, bx - d.x * a + u.x * a * 0.5, by - d.y * a + u.y * a * 0.5, bz - d.z * a + u.z * a * 0.5);
     seg(bx, by, bz, bx - d.x * a - u.x * a * 0.5, by - d.y * a - u.y * a * 0.5, bz - d.z * a - u.z * a * 0.5);
@@ -83,7 +103,9 @@ export function addLightGizmo(pos: number[], colArr: number[], L: RigLight, col:
   const r = Math.tan(half) * h;
   addRing(seg, bx, by, bz, r, u, w, 16);
   for (let k = 0; k < 4; k++) {
-    const t = (k / 4) * Math.PI * 2, cc = Math.cos(t) * r, ss = Math.sin(t) * r;
+    const t = (k / 4) * Math.PI * 2,
+      cc = Math.cos(t) * r,
+      ss = Math.sin(t) * r;
     seg(px, py, pz, bx + u.x * cc + w.x * ss, by + u.y * cc + w.y * ss, bz + u.z * cc + w.z * ss);
   }
 }
@@ -102,16 +124,25 @@ export function addLightMarker(pos: number[], colArr: number[], L: RigLight, col
 
 /** A 64px canvas reticle — a small white centre dot ringed in black — for the navigation pivot sprite. */
 export function makeReticleTexture(): THREE.CanvasTexture {
-  const S = 64, c = document.createElement('canvas');
+  const S = 64,
+    c = document.createElement('canvas');
   c.width = c.height = S;
   const x = c.getContext('2d')!;
   const m = S / 2;
-  x.lineWidth = 5; x.strokeStyle = '#000';        // black ring around the dot
-  x.beginPath(); x.arc(m, m, 22, 0, Math.PI * 2); x.stroke();
-  x.beginPath(); x.arc(m, m, 8, 0, Math.PI * 2);  // white centre dot with a crisp black edge
-  x.fillStyle = '#fff'; x.fill();
-  x.lineWidth = 2; x.strokeStyle = '#000'; x.stroke();
+  x.lineWidth = 5;
+  x.strokeStyle = '#000'; // black ring around the dot
+  x.beginPath();
+  x.arc(m, m, 22, 0, Math.PI * 2);
+  x.stroke();
+  x.beginPath();
+  x.arc(m, m, 8, 0, Math.PI * 2); // white centre dot with a crisp black edge
+  x.fillStyle = '#fff';
+  x.fill();
+  x.lineWidth = 2;
+  x.strokeStyle = '#000';
+  x.stroke();
   const t = new THREE.CanvasTexture(c);
-  t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; // keep the small reticle sharp
+  t.minFilter = THREE.LinearFilter;
+  t.generateMipmaps = false; // keep the small reticle sharp
   return t;
 }

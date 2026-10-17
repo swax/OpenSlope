@@ -46,6 +46,5 @@ export function mayManageJukeboxEntry(
   member: { id: string; role: string } | null,
   entry: JukeboxEntry | null,
 ): boolean {
-  return !!member && !!entry
-    && (member.id === entry.userId || member.role === 'moderator' || member.role === 'admin');
+  return !!member && !!entry && (member.id === entry.userId || member.role === 'moderator' || member.role === 'admin');
 }

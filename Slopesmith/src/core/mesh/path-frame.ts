@@ -35,10 +35,12 @@ export function levelTrust(tangent: V3): number {
  * path does. Null for a zero tangent or one pointing straight back. */
 function carriedPathFrame(previous: PathFrame, tangent: V3): PathFrame | null {
   if (len(tangent) < 1e-12) return null;
-  const x = norm(tangent), c = dot(previous.x, x);
+  const x = norm(tangent),
+    c = dot(previous.x, x);
   if (c <= -1 + 1e-9) return null;
   // Rodrigues with v = a × b, |v| = sin θ: R·y = y + v × y + v × (v × y) / (1 + cos θ)
-  const v = cross(previous.x, x), vy = cross(v, previous.y);
+  const v = cross(previous.x, x),
+    vy = cross(v, previous.y);
   let y = add(add(previous.y, vy), mul(cross(v, vy), 1 / (1 + c)));
   y = sub(y, mul(x, dot(y, x)));
   if (len(y) < 1e-9) return levelPathFrame(x, previous.y);
@@ -87,7 +89,8 @@ export function sweepPathFrames(tangents: readonly V3[]): PathFrame[] | null {
  * rotation leaves once its tangent handles have carried the rest (QuadMeshDoc.vertexRoll). */
 export function rolledPathFrame(frame: PathFrame, roll: number): PathFrame {
   if (!roll) return frame;
-  const c = Math.cos(roll), s = Math.sin(roll);
+  const c = Math.cos(roll),
+    s = Math.sin(roll);
   return { x: frame.x, y: add(mul(frame.y, c), mul(frame.z, s)), z: sub(mul(frame.z, c), mul(frame.y, s)) };
 }
 
@@ -96,7 +99,8 @@ export function rolledPathFrame(frame: PathFrame, roll: number): PathFrame {
 export function pathRollOf(tangent: V3, up: V3): number {
   const level = levelPathFrame(tangent);
   if (!level) return 0;
-  const y = dot(up, level.y), z = dot(up, level.z);
+  const y = dot(up, level.y),
+    z = dot(up, level.z);
   return Math.hypot(y, z) < 1e-12 ? 0 : Math.atan2(z, y);
 }
 
@@ -107,8 +111,10 @@ export const pathRunsForward = (ids: readonly string[] | undefined, a: number, b
   ids ? ids[a] < ids[b] : a < b;
 
 /** A vertex's authored roll, 0 when it has none. Keyed by stable vertex id (see QuadMeshDoc.vertexRoll). */
-export const vertexRollOf = (doc: { vertexIds: readonly string[]; vertexRoll?: Record<string, number> }, vertex: number) =>
-  doc.vertexRoll?.[doc.vertexIds[vertex]] ?? 0;
+export const vertexRollOf = (
+  doc: { vertexIds: readonly string[]; vertexRoll?: Record<string, number> },
+  vertex: number,
+) => doc.vertexRoll?.[doc.vertexIds[vertex]] ?? 0;
 
 /** A point on a path rather than a surface: it has edges, and none of them borders a patch. Its local frame is
  * the rolled level frame, which is why rotating one on its own means something. */
@@ -123,18 +129,28 @@ export function isFreePoint(adj: MeshAdjacency, vertex: number): boolean {
  * runs from the earlier neighbour to the later (pathRunsForward), which gives both ends of one free edge the same
  * X and a roll one sense everywhere. Y is as near world-up as X permits, then turned by `roll` about X. Null for
  * an isolated point or a zero-length chord. */
-export function edgePathFrame(pos: ArrayLike<number>, adj: MeshAdjacency, id: number,
+export function edgePathFrame(
+  pos: ArrayLike<number>,
+  adj: MeshAdjacency,
+  id: number,
   { handle, roll = 0, ids }: { handle?: (from: number, to: number) => V3; roll?: number; ids?: readonly string[] } = {},
 ): PathFrame | null {
   const point = (index: number): V3 => [pos[index * 3], pos[index * 3 + 1], pos[index * 3 + 2]];
   const neighbours = (adj.neighbors[id] ?? []).filter(index => index >= 0 && index * 3 + 2 < pos.length);
   if (!neighbours.length) return null;
-  let a = id, b = neighbours[0], best = -1;
+  let a = id,
+    b = neighbours[0],
+    best = -1;
   if (neighbours.length > 1) {
-    for (let i = 0; i < neighbours.length - 1; i++) for (let j = i + 1; j < neighbours.length; j++) {
-      const d = len(sub(point(neighbours[i]), point(neighbours[j])));
-      if (d > best) { best = d; a = neighbours[i]; b = neighbours[j]; }
-    }
+    for (let i = 0; i < neighbours.length - 1; i++)
+      for (let j = i + 1; j < neighbours.length; j++) {
+        const d = len(sub(point(neighbours[i]), point(neighbours[j])));
+        if (d > best) {
+          best = d;
+          a = neighbours[i];
+          b = neighbours[j];
+        }
+      }
   }
   if (!pathRunsForward(ids, a, b)) [a, b] = [b, a];
   const chord = sub(point(b), point(a));

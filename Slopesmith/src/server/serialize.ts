@@ -17,9 +17,11 @@ export function serialize<T>(key: string, work: () => Promise<T>): Promise<T> {
   const previous = chains.get(key) ?? Promise.resolve();
   const next = previous.then(work, work);
   // Keep the map from growing without bound: the last link removes itself once nothing is waiting behind it.
-  const tracked = next.catch(() => undefined).then(() => {
-    if (chains.get(key) === tracked) chains.delete(key);
-  });
+  const tracked = next
+    .catch(() => undefined)
+    .then(() => {
+      if (chains.get(key) === tracked) chains.delete(key);
+    });
   chains.set(key, tracked);
   return next;
 }

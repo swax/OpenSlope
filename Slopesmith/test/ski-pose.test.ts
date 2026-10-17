@@ -34,27 +34,37 @@ const boardModel = createBoard('snowboard');
   // The whole ski body below only comes out facing forward because the two boots are side by side ACROSS the
   // deck rather than along it. That is a property of the model, so it is checked here rather than assumed.
   const span = skiModel.ankleFront.clone().sub(skiModel.ankleRear);
-  assert(Math.abs(span.z) < 1e-9 && Math.abs(span.x) > 0.15,
-    `a pair of skis should seat its two boots across the deck, not along it (got ${span.toArray()})`);
-  assert(skiModel.ankleFront.x < 0,
-    'ankleFront is the rider\'s anatomical LEFT when the feet face forward, which is the −X ski');
+  assert(
+    Math.abs(span.z) < 1e-9 && Math.abs(span.x) > 0.15,
+    `a pair of skis should seat its two boots across the deck, not along it (got ${span.toArray()})`,
+  );
+  assert(
+    skiModel.ankleFront.x < 0,
+    "ankleFront is the rider's anatomical LEFT when the feet face forward, which is the −X ski",
+  );
   const boardSpan = boardModel.ankleFront.clone().sub(boardModel.ankleRear);
-  assert(Math.abs(boardSpan.x) < 1e-9 && boardSpan.z > 0.4,
-    'a snowboard still seats its two bindings along the deck, nose-ward first');
+  assert(
+    Math.abs(boardSpan.x) < 1e-9 && boardSpan.z > 0.4,
+    'a snowboard still seats its two bindings along the deck, nose-ward first',
+  );
 
-  assert(boardModel.group.children.length === 1 && boardModel.group.children[0] instanceof THREE.Mesh,
-    'the snowboard model should expose its topsheet without binding or proxy-boot meshes');
-  assert(skiModel.group.children.every(pivot => pivot.children.length === 1
-    && pivot.children[0] instanceof THREE.Mesh),
-  'each ski model should expose its topsheet without binding or proxy-boot meshes');
-  assert(!('carried' in skiModel) && !('hold' in skiModel),
-    'ski gear should not create or place separate pole models');
+  assert(
+    boardModel.group.children.length === 1 && boardModel.group.children[0] instanceof THREE.Mesh,
+    'the snowboard model should expose its topsheet without binding or proxy-boot meshes',
+  );
+  assert(
+    skiModel.group.children.every(pivot => pivot.children.length === 1 && pivot.children[0] instanceof THREE.Mesh),
+    'each ski model should expose its topsheet without binding or proxy-boot meshes',
+  );
+  assert(!('carried' in skiModel) && !('hold' in skiModel), 'ski gear should not create or place separate pole models');
 
   // Switching gear mid-run may not leave the body hovering or sunk: every generated and imported character is
   // modelled to one ankle height, and both stacks are built to reach exactly it.
-  assert(Math.abs(skiModel.ankleFront.y - ANKLE_ABOVE_BASE) < 1e-12
-    && Math.abs(boardModel.ankleFront.y - ANKLE_ABOVE_BASE) < 1e-12,
-    'both gears must put the ankle joint the same height above the snow');
+  assert(
+    Math.abs(skiModel.ankleFront.y - ANKLE_ABOVE_BASE) < 1e-12 &&
+      Math.abs(boardModel.ankleFront.y - ANKLE_ABOVE_BASE) < 1e-12,
+    'both gears must put the ankle joint the same height above the snow',
+  );
 }
 
 {
@@ -65,7 +75,8 @@ const boardModel = createBoard('snowboard');
   const bank = 44;
   const flat = new THREE.Quaternion();
   const rolled = new THREE.Quaternion().setFromAxisAngle(NOSE, -bank * D2R);
-  const ankleA = new THREE.Vector3(), ankleB = new THREE.Vector3();
+  const ankleA = new THREE.Vector3(),
+    ankleB = new THREE.Vector3();
   skiModel.seat(new THREE.Vector3(), flat, rolled, ankleA, ankleB);
   skiModel.group.updateMatrixWorld(true);
 
@@ -74,22 +85,32 @@ const boardModel = createBoard('snowboard');
   const normals = pivots.map(pivot => {
     const world = new THREE.Vector3();
     pivot.getWorldPosition(world);
-    assert(Math.abs(world.y) < 1e-9,
-      `a ${bank}° carve left one ski's centreline ${(world.y * 100).toFixed(1)} cm off the snow`);
+    assert(
+      Math.abs(world.y) < 1e-9,
+      `a ${bank}° carve left one ski's centreline ${(world.y * 100).toFixed(1)} cm off the snow`,
+    );
     return UP.clone().applyQuaternion(pivot.getWorldQuaternion(new THREE.Quaternion()));
   });
   assert(normals[0].angleTo(normals[1]) < 1e-9, 'both skis must edge in parallel, not against each other');
-  assert(Math.abs(normals[0].angleTo(UP) / D2R - bank) < 1e-6,
-    'each ski should carry the full carve angle about its own centreline');
+  assert(
+    Math.abs(normals[0].angleTo(UP) / D2R - bank) < 1e-6,
+    'each ski should carry the full carve angle about its own centreline',
+  );
 
-  const boardAnkleA = new THREE.Vector3(), boardAnkleB = new THREE.Vector3();
+  const boardAnkleA = new THREE.Vector3(),
+    boardAnkleB = new THREE.Vector3();
   boardModel.seat(new THREE.Vector3(), flat, rolled, boardAnkleA, boardAnkleB);
-  assert(boardModel.group.quaternion.angleTo(rolled) < 1e-9,
-    'a snowboard is one rigid deck and takes the carve roll in its own transform');
-  assert(skiModel.group.quaternion.angleTo(flat) < 1e-9,
-    'a pair of skis carries facing only; the roll belongs to each ski');
+  assert(
+    boardModel.group.quaternion.angleTo(rolled) < 1e-9,
+    'a snowboard is one rigid deck and takes the carve roll in its own transform',
+  );
+  assert(
+    skiModel.group.quaternion.angleTo(flat) < 1e-9,
+    'a pair of skis carries facing only; the roll belongs to each ski',
+  );
   // The boots still go over with their own edge on both, so the ankle is lifted through the ROLLED frame.
-  const expected = new THREE.Vector3(0, ANKLE_ABOVE_BASE, 0).applyQuaternion(rolled)
+  const expected = new THREE.Vector3(0, ANKLE_ABOVE_BASE, 0)
+    .applyQuaternion(rolled)
     .add(new THREE.Vector3(skiModel.ankleFront.x, 0, 0));
   assert(ankleA.distanceTo(expected) < 1e-9, 'a banked ski carries its own boot round with it');
 }
@@ -103,10 +124,17 @@ function point(name: string): THREE.Vector3 {
 }
 
 const base: RiderInput = {
-  ankleFront: new THREE.Vector3(), ankleRear: new THREE.Vector3(),
-  deckUp: UP.clone(), soleUp: UP.clone(), bank: 0,
-  vel: new THREE.Vector3(), accel: new THREE.Vector3(),
-  grounded: true, dt: 1 / 60, crouch: 0, lean: 0,
+  ankleFront: new THREE.Vector3(),
+  ankleRear: new THREE.Vector3(),
+  deckUp: UP.clone(),
+  soleUp: UP.clone(),
+  bank: 0,
+  vel: new THREE.Vector3(),
+  accel: new THREE.Vector3(),
+  grounded: true,
+  dt: 1 / 60,
+  crouch: 0,
+  lean: 0,
 };
 
 /**
@@ -115,17 +143,26 @@ const base: RiderInput = {
  * centripetal load of a turn held at that angle rides along, because a rider decides which way is up from
  * apparent gravity and a carve with no load is a rider being flung sideways off a tilted deck.
  */
-function carving(gear: 'snowboard' | 'skis', lean: number, bankDeg: number,
-                 extra: Partial<RiderInput> = {}): RiderInput {
+function carving(
+  gear: 'snowboard' | 'skis',
+  lean: number,
+  bankDeg: number,
+  extra: Partial<RiderInput> = {},
+): RiderInput {
   const model = gear === 'skis' ? skiModel : boardModel;
   const flat = new THREE.Quaternion();
   const rolled = new THREE.Quaternion().setFromAxisAngle(NOSE, -bankDeg * D2R);
-  const ankleFront = new THREE.Vector3(), ankleRear = new THREE.Vector3();
+  const ankleFront = new THREE.Vector3(),
+    ankleRear = new THREE.Vector3();
   model.seat(new THREE.Vector3(), flat, rolled, ankleFront, ankleRear);
   return {
-    ...base, ankleFront, ankleRear,
+    ...base,
+    ankleFront,
+    ankleRear,
     soleUp: UP.clone().applyQuaternion(rolled),
-    bank: bankDeg, lean, vel: new THREE.Vector3(0, 0, 22),
+    bank: bankDeg,
+    lean,
+    vel: new THREE.Vector3(0, 0, 22),
     accel: new THREE.Vector3(RIDE_GROUND_TANGENTIAL_PULL * Math.tan(bankDeg * D2R), 0, 0),
     ...extra,
   };
@@ -147,30 +184,44 @@ function settle(input: RiderInput, frames = 180) {
   // cross products in `rider.ts`, so this is the check that the triad turned with the feet.
   rider = createRider(undefined, 'balanced', 'skis');
   rider.reset(skiNeutral);
-  assert(rider.solved.feet === 'forward',
-    'a skier\'s feet are side by side and point down the fall line, like a walker\'s');
-  assert(rider.solved.toe.dot(NOSE) > 0.99,
-    `a skier's chest and knees should face the fall line (toe·nose = ${rider.solved.toe.dot(NOSE).toFixed(3)})`);
-  assert(Math.abs(rider.solved.along.dot(NOSE)) < 0.01 && rider.solved.along.dot(RIGHT) < -0.99,
-    'a skier\'s hips and shoulders span their own lateral, front (left) toward −X');
+  assert(
+    rider.solved.feet === 'forward',
+    "a skier's feet are side by side and point down the fall line, like a walker's",
+  );
+  assert(
+    rider.solved.toe.dot(NOSE) > 0.99,
+    `a skier's chest and knees should face the fall line (toe·nose = ${rider.solved.toe.dot(NOSE).toFixed(3)})`,
+  );
+  assert(
+    Math.abs(rider.solved.along.dot(NOSE)) < 0.01 && rider.solved.along.dot(RIGHT) < -0.99,
+    "a skier's hips and shoulders span their own lateral, front (left) toward −X",
+  );
   assert(rider.solved.headForward.dot(NOSE) > 0.98, 'and the face looks down the course, not across it');
 
   const shoulders = rider.solved.shoulderFront.clone().sub(rider.solved.shoulderRear);
-  assert(Math.abs(shoulders.dot(NOSE)) < 0.03 * shoulders.length(),
-    'a skier\'s shoulder line is square to travel, so the chase camera sees a back and not a shoulder');
+  assert(
+    Math.abs(shoulders.dot(NOSE)) < 0.03 * shoulders.length(),
+    "a skier's shoulder line is square to travel, so the chase camera sees a back and not a shoulder",
+  );
   const hips = rider.solved.hipFront.clone().sub(rider.solved.hipRear);
   assert(hips.dot(RIGHT) < 0, 'the left hip belongs over the left ski; crossed hips means crossed legs');
-  assert(Math.abs(rider.solved.ankleFront.x - skiNeutral.ankleFront.x) < 1e-9,
-    'and the feet stay bolted to their own bindings');
+  assert(
+    Math.abs(rider.solved.ankleFront.x - skiNeutral.ankleFront.x) < 1e-9,
+    'and the feet stay bolted to their own bindings',
+  );
 
   const board = createRider(undefined, 'balanced', 'snowboard');
   board.reset(boardNeutral);
-  assert(board.solved.feet === 'bindings', 'a snowboarder\'s feet keep their binding angles');
-  assert(board.solved.toe.dot(RIGHT) > 0.99 && board.solved.along.dot(NOSE) > 0.99,
-    'a snowboarder still stands across the deck, chest to the toe edge');
+  assert(board.solved.feet === 'bindings', "a snowboarder's feet keep their binding angles");
+  assert(
+    board.solved.toe.dot(RIGHT) > 0.99 && board.solved.along.dot(NOSE) > 0.99,
+    'a snowboarder still stands across the deck, chest to the toe edge',
+  );
   const boardShoulders = board.solved.shoulderFront.clone().sub(board.solved.shoulderRear);
-  assert(Math.abs(boardShoulders.dot(NOSE)) > 0.6 * boardShoulders.length(),
-    'and spans their shoulders along the board, which is what makes the two silhouettes different at all');
+  assert(
+    Math.abs(boardShoulders.dot(NOSE)) > 0.6 * boardShoulders.length(),
+    'and spans their shoulders along the board, which is what makes the two silhouettes different at all',
+  );
   board.dispose();
 }
 
@@ -205,30 +256,64 @@ assert(STYLE_IDS.length === 4, 'the ski table is generated per style id; keep th
   }
 }
 
-const JOINTS = ['hips', 'upper-back', 'clavicle-root', 'head-bone', 'head',
-  'hip-front', 'knee-front', 'hip-rear', 'knee-rear',
-  'shoulder-front', 'elbow-front', 'hand-front',
-  'shoulder-rear', 'elbow-rear', 'hand-rear'] as const;
+const JOINTS = [
+  'hips',
+  'upper-back',
+  'clavicle-root',
+  'head-bone',
+  'head',
+  'hip-front',
+  'knee-front',
+  'hip-rear',
+  'knee-rear',
+  'shoulder-front',
+  'elbow-front',
+  'hand-front',
+  'shoulder-rear',
+  'elbow-rear',
+  'hand-rear',
+] as const;
 /** Left and right are the same joint on opposite sides, so a mirrored pose swaps front for rear as well. */
-const MIRROR_OF: Record<typeof JOINTS[number], typeof JOINTS[number]> = {
-  hips: 'hips', 'upper-back': 'upper-back', 'clavicle-root': 'clavicle-root',
-  'head-bone': 'head-bone', head: 'head',
-  'hip-front': 'hip-rear', 'knee-front': 'knee-rear',
-  'hip-rear': 'hip-front', 'knee-rear': 'knee-front',
-  'shoulder-front': 'shoulder-rear', 'elbow-front': 'elbow-rear', 'hand-front': 'hand-rear',
-  'shoulder-rear': 'shoulder-front', 'elbow-rear': 'elbow-front', 'hand-rear': 'hand-front',
+const MIRROR_OF: Record<(typeof JOINTS)[number], (typeof JOINTS)[number]> = {
+  hips: 'hips',
+  'upper-back': 'upper-back',
+  'clavicle-root': 'clavicle-root',
+  'head-bone': 'head-bone',
+  head: 'head',
+  'hip-front': 'hip-rear',
+  'knee-front': 'knee-rear',
+  'hip-rear': 'hip-front',
+  'knee-rear': 'knee-front',
+  'shoulder-front': 'shoulder-rear',
+  'elbow-front': 'elbow-rear',
+  'hand-front': 'hand-rear',
+  'shoulder-rear': 'shoulder-front',
+  'elbow-rear': 'elbow-front',
+  'hand-rear': 'hand-front',
 };
 
 // ---------------------------------------------------------------- every style, every stance
-const H = 1.70;
-const THIGH = 0.245 * H, SHIN = 0.246 * H, UPPER_ARM = 0.186 * H, FOREARM = 0.146 * H;
+const H = 1.7;
+const THIGH = 0.245 * H,
+  SHIN = 0.246 * H,
+  UPPER_ARM = 0.186 * H,
+  FOREARM = 0.146 * H;
 /** A ski's own waist is far narrower than a snowboard's, so an edged ski cuts a much shallower trench and the
  *  rider has correspondingly less room to reach into. Plus the few centimetres of spray any edge throws. */
-const SKI_WAIST_HALF = 0.0645, SNOW_GRAZE = -0.03;
+const SKI_WAIST_HALF = 0.0645,
+  SNOW_GRAZE = -0.03;
 const JOINT_RADII: Record<string, number> = {
-  'hip-front': 0.112, 'hip-rear': 0.112, 'knee-front': 0.102, 'knee-rear': 0.102,
-  'shoulder-front': 0.085, 'shoulder-rear': 0.085, 'elbow-front': 0.06, 'elbow-rear': 0.06,
-  'hand-front': 0.065, 'hand-rear': 0.065, 'head': 0.135,
+  'hip-front': 0.112,
+  'hip-rear': 0.112,
+  'knee-front': 0.102,
+  'knee-rear': 0.102,
+  'shoulder-front': 0.085,
+  'shoulder-rear': 0.085,
+  'elbow-front': 0.06,
+  'elbow-rear': 0.06,
+  'hand-front': 0.065,
+  'hand-rear': 0.065,
+  'head': 0.135,
 };
 
 const layIn: Array<{ style: string; degrees: number }> = [];
@@ -246,8 +331,10 @@ for (const id of STYLE_IDS) {
   // A skier stands taller than a snowboarder — an upright ski stance spends less of its height on bent knees —
   // but is the same 1.70 m person, and the chase camera is framed for that. A hand's width either way.
   const silhouette = point('head').y + 0.135;
-  assert(silhouette > 1.66 && silhouette < 1.80,
-    `${id} skis ${silhouette.toFixed(3)} m tall on the snow, outside the sized silhouette`);
+  assert(
+    silhouette > 1.66 && silhouette < 1.8,
+    `${id} skis ${silhouette.toFixed(3)} m tall on the snow, outside the sized silhouette`,
+  );
 
   // ------------------------------------------------------------- the stances a run actually holds
   const stances: Array<[string, RiderInput]> = [
@@ -266,13 +353,17 @@ for (const id of STYLE_IDS) {
     const floor = -SKI_WAIST_HALF * Math.abs(Math.sin(input.bank * D2R)) + SNOW_GRAZE;
     for (const [joint, radius] of Object.entries(JOINT_RADII)) {
       const clearance = point(joint).y - radius;
-      assert(clearance > floor,
-        `${id} ${name}: the ${joint} is ${((floor - clearance) * 100).toFixed(1)} cm inside the snow`);
+      assert(
+        clearance > floor,
+        `${id} ${name}: the ${joint} is ${((floor - clearance) * 100).toFixed(1)} cm inside the snow`,
+      );
     }
     for (const joint of JOINTS) {
       const p = point(joint);
-      assert(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z),
-        `${id} ${name}: the ${joint} solved to a non-finite position`);
+      assert(
+        Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z),
+        `${id} ${name}: the ${joint} solved to a non-finite position`,
+      );
     }
   }
 
@@ -285,8 +376,10 @@ for (const id of STYLE_IDS) {
   const ankleMid = right.ankleFront.clone().add(right.ankleRear).multiplyScalar(0.5);
   const hipCentre = rightTurn.get('hips')!.clone().sub(ankleMid);
   const degrees = THREE.MathUtils.radToDeg(Math.atan2(hipCentre.x, hipCentre.y));
-  assert(degrees > 20,
-    `${id}: a committed turn should lay the hips into it, not sit them over the skis (${degrees.toFixed(1)}°)`);
+  assert(
+    degrees > 20,
+    `${id}: a committed turn should lay the hips into it, not sit them over the skis (${degrees.toFixed(1)}°)`,
+  );
   layIn.push({ style: id, degrees });
 
   // ...and the other way round is the same body reflected, which is what a skier's two turns are and a
@@ -297,8 +390,10 @@ for (const id of STYLE_IDS) {
     const here = point(joint);
     const there = rightTurn.get(MIRROR_OF[joint])!;
     const gap = Math.hypot(here.x + there.x, here.y - there.y, here.z - there.z);
-    assert(gap < 2e-3,
-      `${id}: the left turn's ${joint} is ${(gap * 1000).toFixed(1)} mm off the right turn's mirror image`);
+    assert(
+      gap < 2e-3,
+      `${id}: the left turn's ${joint} is ${(gap * 1000).toFixed(1)} mm off the right turn's mirror image`,
+    );
   }
 
   rider.dispose();
@@ -306,9 +401,11 @@ for (const id of STYLE_IDS) {
 
 // The four styles are one axis, realistic to arcade: each lays further into the turn than the last.
 for (let i = 1; i < layIn.length; i++) {
-  assert(layIn[i].degrees > layIn[i - 1].degrees + 1,
-    `${layIn[i].style} should lay further into a turn than ${layIn[i - 1].style} `
-    + `(${layIn[i - 1].degrees.toFixed(1)}° → ${layIn[i].degrees.toFixed(1)}°)`);
+  assert(
+    layIn[i].degrees > layIn[i - 1].degrees + 1,
+    `${layIn[i].style} should lay further into a turn than ${layIn[i - 1].style} ` +
+      `(${layIn[i - 1].degrees.toFixed(1)}° → ${layIn[i].degrees.toFixed(1)}°)`,
+  );
 }
 
 console.log(`SKI POSE TESTS PASSED — lay-in ${layIn.map(l => `${l.style} ${l.degrees.toFixed(1)}°`).join(', ')}`);

@@ -1,7 +1,9 @@
 import { createLogger } from './log';
 
 /** A shared asset catalogue changed on disk. Bytes keep immutable names; clients only need to refetch lists. */
-export interface LibraryChange { scope: 'custom' | 'shared' }
+export interface LibraryChange {
+  scope: 'custom' | 'shared';
+}
 
 const log = createLogger('library');
 
@@ -23,8 +25,11 @@ export function announceLibraryChanged(scope: string): void {
     for (const held of pending) {
       const change: LibraryChange = { scope: held };
       for (const listener of listeners) {
-        try { listener(change); }
-        catch (error) { log.error('a change listener failed', { error }); }
+        try {
+          listener(change);
+        } catch (error) {
+          log.error('a change listener failed', { error });
+        }
       }
     }
     pending.clear();

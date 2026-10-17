@@ -1,13 +1,18 @@
 import { join } from 'node:path';
 import { readJsonOr } from '../fs-async';
 import {
-  isSlopesmithExportManifest, SLOPESMITH_EXPORT_MANIFEST, type SlopesmithExportManifest,
+  isSlopesmithExportManifest,
+  SLOPESMITH_EXPORT_MANIFEST,
+  type SlopesmithExportManifest,
 } from '../../core/export/manifest';
 
 export {
-  SLOPESMITH_EXPORT_MANIFEST, SLOPESMITH_EXPORT_SCHEMA,
-  type PublicDistributionStatus, type SlopesmithContentProvenance,
-  type SlopesmithExportManifest, type SlopesmithTextureSource,
+  SLOPESMITH_EXPORT_MANIFEST,
+  SLOPESMITH_EXPORT_SCHEMA,
+  type PublicDistributionStatus,
+  type SlopesmithContentProvenance,
+  type SlopesmithExportManifest,
+  type SlopesmithTextureSource,
 } from '../../core/export/manifest';
 
 /** The manifest of a built map folder on disk, or null when the folder carries none this build understands. */

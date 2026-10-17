@@ -105,13 +105,19 @@ export interface MaterialControl {
  * it is never added to the effect document or exported to the native graph.
  */
 export function crackedMaterialControlFromGraph(graph: EffectGraph | null | undefined): MaterialControl | null {
-  if (!graph?.nodes.some(node => {
-    const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-    return node.semanticType === 'property.cracked' || (node.mainType === 0 && type0?.SubType === 14);
-  })) return null;
-  return { receiver: 'texture-flip', effect: {
-    textureFlip: { direction: 0, speed: 0, length: 0, dwell: false },
-  } };
+  if (
+    !graph?.nodes.some(node => {
+      const type0 = object(node.payload.type0) ? node.payload.type0 : null;
+      return node.semanticType === 'property.cracked' || (node.mainType === 0 && type0?.SubType === 14);
+    })
+  )
+    return null;
+  return {
+    receiver: 'texture-flip',
+    effect: {
+      textureFlip: { direction: 0, speed: 0, length: 0, dwell: false },
+    },
+  };
 }
 
 /** Existing editor/Unity approximation. Retail CrowdBox advances 16 independent cell states every fifth
@@ -125,10 +131,12 @@ const finite = (value: unknown, fallback = 0): number =>
 
 function decodeUvScrollNode(node: EffectNode, includeStatic: boolean): UvScrollEffect | null {
   const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-  if (node.mainType !== 0 || !type0 || (type0.SubType !== 10 && node.semanticType !== 'property.uv-scroll')) return null;
+  if (node.mainType !== 0 || !type0 || (type0.SubType !== 10 && node.semanticType !== 'property.uv-scroll'))
+    return null;
   const raw = object(type0.UVScroll) ? type0.UVScroll : null;
   if (!raw) return null;
-  const uPerTick = finite(raw.U1), vPerTick = finite(raw.U2);
+  const uPerTick = finite(raw.U1),
+    vPerTick = finite(raw.U2);
   if (!includeStatic && uPerTick === 0 && vPerTick === 0) return null;
   return {
     mode: finite(raw.U0),
@@ -176,8 +184,7 @@ export function nodeAppliesToMaterial(node: EffectNode, mat: number | undefined)
 
 /** First active UV-scroll node in graph order, optionally limited to the material being drawn. Retail
  *  material scrollers carry one. */
-export function uvScrollFromGraph(graph: EffectGraph | null | undefined,
-  mat?: number): UvScrollEffect | null {
+export function uvScrollFromGraph(graph: EffectGraph | null | undefined, mat?: number): UvScrollEffect | null {
   if (!graph) return null;
   for (const node of graph.nodes) {
     if (!nodeAppliesToMaterial(node, mat)) continue;
@@ -226,18 +233,20 @@ export function createUvScrollPlayback(effect: UvScrollEffect): UvScrollPlayback
 /** Advance the native fixed-tick UV-scroll state and return the texture-space offset delta. The original
  * routine handles an interval boundary before applying that tick's motion, so mode 2's boundary tick already
  * travels in the reversed direction while mode 1 contributes zero at the endpoint. */
-export function stepUvScrollPlayback(state: UvScrollPlayback, effect: UvScrollEffect,
-  dtSeconds: number): [number, number] {
+export function stepUvScrollPlayback(
+  state: UvScrollPlayback,
+  effect: UvScrollEffect,
+  dtSeconds: number,
+): [number, number] {
   if (state.finished || !Number.isFinite(dtSeconds) || dtSeconds <= 0) return [0, 0];
   state.tickRemainder += dtSeconds * 60;
   const ticks = Math.floor(state.tickRemainder + 1e-9);
   state.tickRemainder = Math.max(0, state.tickRemainder - ticks);
-  let nativeU = 0, nativeV = 0;
+  let nativeU = 0,
+    nativeV = 0;
   const specialMode = effect.mode === 1 || effect.mode === 2;
   // Native durations are compared after adding one fixed tick, so a partial-tick duration rounds up.
-  const durationTicks = (seconds: number): number => seconds > 0
-    ? Math.max(1, Math.ceil(seconds * 60 - 1e-6))
-    : 0;
+  const durationTicks = (seconds: number): number => (seconds > 0 ? Math.max(1, Math.ceil(seconds * 60 - 1e-6)) : 0);
   const activeTicks = durationTicks(effect.activeDuration);
   const pauseTicks = durationTicks(effect.pauseDuration);
 
@@ -275,7 +284,8 @@ export function stepUvScrollPlayback(state: UvScrollPlayback, effect: UvScrollEf
 /** Decode one texture-flip property without relying on its optional semantic label. */
 export function textureFlipFromNode(node: EffectNode): TextureFlipEffect | null {
   const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-  if (node.mainType !== 0 || !type0 || (type0.SubType !== 11 && node.semanticType !== 'property.texture-flip')) return null;
+  if (node.mainType !== 0 || !type0 || (type0.SubType !== 11 && node.semanticType !== 'property.texture-flip'))
+    return null;
   const raw = object(type0.TextureFlip) ? type0.TextureFlip : null;
   if (!raw) return null;
   return {
@@ -297,8 +307,7 @@ export function textureFlipFromGraph(graph: EffectGraph | null | undefined): Tex
 
 export function crowdBoxFromNode(node: EffectNode): boolean {
   const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-  return node.mainType === 0 && !!type0
-    && (type0.SubType === 17 || node.semanticType === 'property.crowd-box');
+  return node.mainType === 0 && !!type0 && (type0.SubType === 17 || node.semanticType === 'property.crowd-box');
 }
 
 export function crowdBoxFromGraph(graph: EffectGraph | null | undefined): boolean {
@@ -308,8 +317,8 @@ export function crowdBoxFromGraph(graph: EffectGraph | null | undefined): boolea
 /** Decode the model-animation property from its raw portable payload. */
 export function animObjectFromNode(node: EffectNode): AnimObjectEffect | null {
   const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-  if (node.mainType !== 0 || !type0
-    || (type0.SubType !== 256 && node.semanticType !== 'property.anim-object')) return null;
+  if (node.mainType !== 0 || !type0 || (type0.SubType !== 256 && node.semanticType !== 'property.anim-object'))
+    return null;
   const raw = object(type0.type0Sub256) ? type0.type0Sub256 : null;
   if (!raw) return null;
   return {
@@ -327,8 +336,8 @@ export function animObjectFromNode(node: EffectNode): AnimObjectEffect | null {
  * AnimObject, but the clock starts frozen and advances only while control command 2 has granted budget. */
 export function animDeltaFromNode(node: EffectNode): AnimObjectEffect | null {
   const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-  if (node.mainType !== 0 || !type0
-    || (type0.SubType !== 257 && node.semanticType !== 'property.anim-delta')) return null;
+  if (node.mainType !== 0 || !type0 || (type0.SubType !== 257 && node.semanticType !== 'property.anim-delta'))
+    return null;
   const raw = object(type0.type0Sub257) ? type0.type0Sub257 : null;
   if (!raw) return null;
   return {
@@ -346,8 +355,8 @@ export function animDeltaFromNode(node: EffectNode): AnimObjectEffect | null {
  * same offsets, read by the same engine init — and the four after them describe the triggered window. */
 export function animComboFromNode(node: EffectNode): AnimComboEffect | null {
   const type0 = object(node.payload.type0) ? node.payload.type0 : null;
-  if (node.mainType !== 0 || !type0
-    || (type0.SubType !== 258 && node.semanticType !== 'property.anim-combo')) return null;
+  if (node.mainType !== 0 || !type0 || (type0.SubType !== 258 && node.semanticType !== 'property.anim-combo'))
+    return null;
   const raw = object(type0.type0Sub258) ? type0.type0Sub258 : null;
   if (!raw) return null;
   const end = finite(raw.U11);
@@ -394,10 +403,21 @@ export function animDeltaFromGraph(graph: EffectGraph | null | undefined): AnimO
 }
 
 export function animObjectEffectKey(effect: AnimObjectEffect | null | undefined): string {
-  const combo = effect && isAnimComboEffect(effect)
-    ? `:combo:${effect.comboStartFrame}:${effect.comboEndFrame}:${effect.comboRate}:${effect.comboEnd}` : '';
-  return effect ? [effect.loopMode, effect.startFrame, effect.endFrame, effect.rate,
-    effect.randomRateUpper, effect.randomStart ? 1 : 0, effect.reverse ? 1 : 0].join(':') + combo : 'static';
+  const combo =
+    effect && isAnimComboEffect(effect)
+      ? `:combo:${effect.comboStartFrame}:${effect.comboEndFrame}:${effect.comboRate}:${effect.comboEnd}`
+      : '';
+  return effect
+    ? [
+        effect.loopMode,
+        effect.startFrame,
+        effect.endFrame,
+        effect.rate,
+        effect.randomRateUpper,
+        effect.randomStart ? 1 : 0,
+        effect.reverse ? 1 : 0,
+      ].join(':') + combo
+    : 'static';
 }
 
 export function isAnimComboEffect(effect: AnimObjectEffect | null | undefined): effect is AnimComboEffect {
@@ -456,8 +476,10 @@ export interface AnimComboSample {
 }
 
 function playbackRandom(seed: number): number {
-  let x = (seed | 0) || 1;
-  x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+  let x = seed | 0 || 1;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
   return (x >>> 0) / 0x100000000;
 }
 
@@ -470,20 +492,23 @@ function playbackRandom(seed: number): number {
  * prop in the editor that stands still on the disc, which is the one failure this player must not
  * hide: it looks like authored intent rather than a dead payload.
  */
-export function createAnimObjectPlayback(effect: AnimObjectEffect, clipFrames: number,
-  seed = 1): AnimObjectPlayback {
+export function createAnimObjectPlayback(effect: AnimObjectEffect, clipFrames: number, seed = 1): AnimObjectPlayback {
   const clipEnd = Math.max(0, clipFrames);
   const startFrame = effect.startFrame < 0 ? 0 : Math.min(clipEnd, Math.max(0, effect.startFrame));
   const endFrame = effect.endFrame < 0 ? clipEnd : Math.min(clipEnd, Math.max(0, effect.endFrame));
   const baseRate = effect.rate > 0 ? effect.rate : 30;
   const upperRate = effect.randomRateUpper > 0 ? effect.randomRateUpper : baseRate;
-  const lo = Math.min(baseRate, upperRate), hi = Math.max(baseRate, upperRate);
+  const lo = Math.min(baseRate, upperRate),
+    hi = Math.max(baseRate, upperRate);
   const rateRandom = playbackRandom(seed ^ 0x68bc21eb);
   const phaseRandom = playbackRandom(seed ^ 0x02e5be93);
   const direction: 1 | -1 = effect.reverse ? -1 : 1;
   return {
-    frame: effect.randomStart ? startFrame + (endFrame - startFrame) * phaseRandom
-      : direction < 0 ? endFrame : startFrame,
+    frame: effect.randomStart
+      ? startFrame + (endFrame - startFrame) * phaseRandom
+      : direction < 0
+        ? endFrame
+        : startFrame,
     direction,
     framesPerSecond: lo + (hi - lo) * rateRandom,
     startFrame,
@@ -493,25 +518,42 @@ export function createAnimObjectPlayback(effect: AnimObjectEffect, clipFrames: n
 
 /** Construct the bounded player shared by manual Preview and Play-triggered animated props. Auto-return is
  * meaningful only for a play-once window; wrap and ping-pong previews still run one complete cycle. */
-export function createTriggeredAnimObjectPlayback(effect: AnimObjectEffect, clipFrames: number, seed: number,
-  holdAtEnd: boolean, autoReturnDelay: number | null = null): TriggeredAnimObjectPlayback {
+export function createTriggeredAnimObjectPlayback(
+  effect: AnimObjectEffect,
+  clipFrames: number,
+  seed: number,
+  holdAtEnd: boolean,
+  autoReturnDelay: number | null = null,
+): TriggeredAnimObjectPlayback {
   const playback = createAnimObjectPlayback(effect, clipFrames, seed);
   const width = Math.max(0, playback.endFrame - playback.startFrame);
   const cycleFrames = width * (effect.loopMode === 2 ? 2 : 1);
   const rawDuration = playback.framesPerSecond > 0 ? cycleFrames / playback.framesPerSecond : 0;
   const outboundSeconds = Math.max(1 / 30, Math.min(60, rawDuration || 1 / 30));
-  const canReturn = autoReturnDelay !== null && Number.isFinite(autoReturnDelay)
-    && autoReturnDelay >= 0 && effect.loopMode !== 1 && effect.loopMode !== 2
-    && width > 0 && playback.framesPerSecond > 0;
+  const canReturn =
+    autoReturnDelay !== null &&
+    Number.isFinite(autoReturnDelay) &&
+    autoReturnDelay >= 0 &&
+    effect.loopMode !== 1 &&
+    effect.loopMode !== 2 &&
+    width > 0 &&
+    playback.framesPerSecond > 0;
   return {
-    effect, playback, phase: 'outbound', remaining: outboundSeconds, outboundSeconds, holdAtEnd,
+    effect,
+    playback,
+    phase: 'outbound',
+    remaining: outboundSeconds,
+    outboundSeconds,
+    holdAtEnd,
     autoReturnDelay: canReturn ? autoReturnDelay : null,
   };
 }
 
 /** Advance through outbound -> hold -> reverse-return without losing excess frame time at a phase boundary. */
-export function stepTriggeredAnimObjectPlayback(state: TriggeredAnimObjectPlayback,
-  seconds0: number): TriggeredAnimObjectSample {
+export function stepTriggeredAnimObjectPlayback(
+  state: TriggeredAnimObjectPlayback,
+  seconds0: number,
+): TriggeredAnimObjectSample {
   let seconds = Number.isFinite(seconds0) && seconds0 > 0 ? seconds0 : 0;
   let guard = 0;
   while (state.phase !== 'done' && seconds > 0 && guard++ < 4) {
@@ -560,8 +602,7 @@ export function retriggerTriggeredAnimObjectPlayback(state: TriggeredAnimObjectP
   return true;
 }
 
-export function createAnimDeltaPlayback(effect: AnimObjectEffect, clipFrames: number,
-  seed = 1): AnimDeltaPlayback {
+export function createAnimDeltaPlayback(effect: AnimObjectEffect, clipFrames: number, seed = 1): AnimDeltaPlayback {
   return { ...createAnimObjectPlayback(effect, clipFrames, seed), budgetSeconds: 0 };
 }
 
@@ -573,14 +614,12 @@ export function createAnimDeltaPlayback(effect: AnimObjectEffect, clipFrames: nu
  * whole clip. Retail spells both out anyway (61 and 100 against a 100-frame clip), so the defaults are only
  * reached by a document that leaves them blank.
  */
-export function createAnimComboPlayback(effect: AnimComboEffect, clipFrames: number,
-  seed = 1): AnimComboPlayback {
+export function createAnimComboPlayback(effect: AnimComboEffect, clipFrames: number, seed = 1): AnimComboPlayback {
   const base = createAnimObjectPlayback(effect, clipFrames, seed);
   const clipEnd = Math.max(0, clipFrames);
-  const comboStart = effect.comboStartFrame < 0
-    ? base.endFrame : Math.min(clipEnd, Math.max(0, effect.comboStartFrame));
-  const comboEnd = effect.comboEndFrame < 0
-    ? clipEnd : Math.min(clipEnd, Math.max(0, effect.comboEndFrame));
+  const comboStart =
+    effect.comboStartFrame < 0 ? base.endFrame : Math.min(clipEnd, Math.max(0, effect.comboStartFrame));
+  const comboEnd = effect.comboEndFrame < 0 ? clipEnd : Math.min(clipEnd, Math.max(0, effect.comboEndFrame));
   return {
     ...base,
     comboStart,
@@ -614,8 +653,7 @@ export function triggerAnimComboPlayback(state: AnimComboPlayback): boolean {
  * the engine's order — clear `active`, latch if the payload says to, and only THEN decide the pose — which is
  * why a `resume` combo never shows its final frame and a `hold-combo` one shows nothing else ever again.
  */
-export function stepAnimComboPlayback(state: AnimComboPlayback, effect: AnimComboEffect,
-  dt: number): AnimComboSample {
+export function stepAnimComboPlayback(state: AnimComboPlayback, effect: AnimComboEffect, dt: number): AnimComboSample {
   if (state.latched) {
     return effect.comboEnd === 'hold-combo'
       ? { frame: state.comboFrame, basis: state.snapshotFrame }
@@ -653,8 +691,7 @@ export function stepAnimObjectPlayback(state: AnimObjectPlayback, effect: AnimOb
   if (dt <= 0 || width <= 0 || state.framesPerSecond <= 0) return state.frame;
   const delta = state.framesPerSecond * dt * state.direction;
   if (effect.loopMode === 1) {
-    state.frame = state.startFrame
-      + (((state.frame + delta - state.startFrame) % width) + width) % width;
+    state.frame = state.startFrame + ((((state.frame + delta - state.startFrame) % width) + width) % width);
     return state.frame;
   }
   if (effect.loopMode === 2) {
@@ -678,14 +715,16 @@ export function stepAnimObjectPlayback(state: AnimObjectPlayback, effect: AnimOb
 }
 
 /** Collect every supported always-on material property in graph order. */
-export function materialWorldEffectsFromGraph(graph: EffectGraph | null | undefined,
-  mat?: number): MaterialWorldEffects | null {
+export function materialWorldEffectsFromGraph(
+  graph: EffectGraph | null | undefined,
+  mat?: number,
+): MaterialWorldEffects | null {
   if (!graph) return null;
   const uvScroll = uvScrollFromGraph(graph, mat) ?? undefined;
   const crowd = crowdBoxFromGraph(graph);
   const textureFlip = crowd
     ? { direction: 0, speed: CROWD_FRAMES_PER_SECOND * 2, length: 0, dwell: false }
-    : textureFlipFromGraph(graph) ?? undefined;
+    : (textureFlipFromGraph(graph) ?? undefined);
   return uvScroll || textureFlip || crowd ? { uvScroll, textureFlip, ...(crowd ? { crowd: true } : {}) } : null;
 }
 
@@ -697,7 +736,7 @@ export function materialWorldEffectsFromNode(node: EffectNode): MaterialWorldEff
   const crowd = crowdBoxFromNode(node);
   const textureFlip = crowd
     ? { direction: 0, speed: CROWD_FRAMES_PER_SECOND * 2, length: 0, dwell: false }
-    : textureFlipFromNode(node) ?? undefined;
+    : (textureFlipFromNode(node) ?? undefined);
   return uvScroll || textureFlip || crowd ? { uvScroll, textureFlip, ...(crowd ? { crowd: true } : {}) } : null;
 }
 
@@ -711,11 +750,15 @@ export function materialControlFromGraph(graph: EffectGraph | null | undefined):
   let staticUv: UvScrollEffect | null = null;
   for (const node of graph.nodes) {
     const uv = uvScrollReceiverFromNode(node);
-    if (uv) { receiver = 'uv-scroll'; staticUv = uv; }
+    if (uv) {
+      receiver = 'uv-scroll';
+      staticUv = uv;
+    }
     if (textureFlipFromNode(node)) receiver = 'texture-flip';
   }
-  const effect = receiver ? materialWorldEffectsFromGraph(graph)
-    ?? (receiver === 'uv-scroll' && staticUv ? { uvScroll: staticUv } : null) : null;
+  const effect = receiver
+    ? (materialWorldEffectsFromGraph(graph) ?? (receiver === 'uv-scroll' && staticUv ? { uvScroll: staticUv } : null))
+    : null;
   return receiver && effect ? { receiver, effect } : null;
 }
 
@@ -724,11 +767,15 @@ export function materialWorldEffectsKey(effect: MaterialWorldEffects | null | un
   if (!effect) return 'static';
   const uv = effect.uvScroll;
   const flip = effect.textureFlip;
-  return [
-    uv ? `uv:${uv.mode}:${uv.uPerTick}:${uv.vPerTick}:${uv.activeDuration}:${uv.pauseDuration}:${uv.lifetime}` : '',
-    flip ? `flip:${flip.direction}:${flip.speed}:${flip.length}:${flip.dwell ? 1 : 0}:${flip.seed ?? 0}` : '',
-    effect.crowd ? 'crowd' : '',
-  ].filter(Boolean).join('|') || 'static';
+  return (
+    [
+      uv ? `uv:${uv.mode}:${uv.uPerTick}:${uv.vPerTick}:${uv.activeDuration}:${uv.pauseDuration}:${uv.lifetime}` : '',
+      flip ? `flip:${flip.direction}:${flip.speed}:${flip.length}:${flip.dwell ? 1 : 0}:${flip.seed ?? 0}` : '',
+      effect.crowd ? 'crowd' : '',
+    ]
+      .filter(Boolean)
+      .join('|') || 'static'
+  );
 }
 
 export interface TextureFlipPlayback {
@@ -750,7 +797,7 @@ export function createTextureFlipPlayback(effect: TextureFlipEffect): TextureFli
     phase: 0,
     dwellPhase: 'hold',
     remaining: effect.dwell && effect.speed > 0 ? 1 / effect.speed : 0,
-    randomState: ((effect.seed ?? 1) | 0) || 1,
+    randomState: (effect.seed ?? 1) | 0 || 1,
     life: 0,
   };
 }
@@ -767,8 +814,7 @@ export function startTextureFlipPulse(state: TextureFlipPlayback, effect: Textur
 
 /** Native TextureFlip command 2 selects an absolute flipbook frame. Retail countdown graphs author integral
  * values, but clamping here keeps malformed/custom documents from addressing outside the loaded frame bank. */
-export function selectTextureFlipPlaybackFrame(state: TextureFlipPlayback, frameCount: number,
-  value: number): boolean {
+export function selectTextureFlipPlaybackFrame(state: TextureFlipPlayback, frameCount: number, value: number): boolean {
   if (frameCount <= 0 || !Number.isFinite(value)) return false;
   const frame = Math.min(frameCount - 1, Math.max(0, Math.trunc(value)));
   const changed = state.frame !== frame;
@@ -780,7 +826,9 @@ export function selectTextureFlipPlaybackFrame(state: TextureFlipPlayback, frame
 function nextRandom(state: TextureFlipPlayback): number {
   // Small deterministic xorshift: stable previews/tests, while different prop seeds still drift independently.
   let x = state.randomState | 0;
-  x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
   state.randomState = x || 1;
   return (state.randomState >>> 0) / 0x100000000;
 }
@@ -791,8 +839,12 @@ function nextRandom(state: TextureFlipPlayback): number {
  * ODD number of steps across a two-frame material, so that hand-off lands on the frame already showing and
  * the death itself is invisible.
  */
-function stepTextureFlipPulse(state: TextureFlipPlayback, effect: TextureFlipEffect, frameCount: number,
-  dt: number): boolean {
+function stepTextureFlipPulse(
+  state: TextureFlipPlayback,
+  effect: TextureFlipEffect,
+  frameCount: number,
+  dt: number,
+): boolean {
   if (state.life <= 0) return false;
   const active = Math.min(dt, state.life);
   state.life -= active;
@@ -802,7 +854,7 @@ function stepTextureFlipPulse(state: TextureFlipPlayback, effect: TextureFlipEff
   if (steps) {
     state.phase -= steps;
     const direction = effect.direction === 0 ? 1 : -1;
-    state.frame = ((state.frame + direction * steps) % frameCount + frameCount) % frameCount;
+    state.frame = (((state.frame + direction * steps) % frameCount) + frameCount) % frameCount;
   }
   if (state.life <= 0) {
     state.life = 0;
@@ -813,8 +865,12 @@ function stepTextureFlipPulse(state: TextureFlipPlayback, effect: TextureFlipEff
 }
 
 /** Advance recovered flipbook timing. Returns true when the visible frame changed. */
-export function stepTextureFlipPlayback(state: TextureFlipPlayback, effect: TextureFlipEffect,
-  frameCount: number, dt: number): boolean {
+export function stepTextureFlipPlayback(
+  state: TextureFlipPlayback,
+  effect: TextureFlipEffect,
+  frameCount: number,
+  dt: number,
+): boolean {
   if (frameCount < 2 || effect.speed <= 0 || dt <= 0) return false;
   if (isTextureFlipPulse(effect)) return stepTextureFlipPulse(state, effect, frameCount, dt);
   let changed = false;
@@ -824,7 +880,7 @@ export function stepTextureFlipPlayback(state: TextureFlipPlayback, effect: Text
     if (!steps) return false;
     state.phase -= steps;
     const direction = effect.direction === 0 ? 1 : -1;
-    state.frame = ((state.frame + direction * steps) % frameCount + frameCount) % frameCount;
+    state.frame = (((state.frame + direction * steps) % frameCount) + frameCount) % frameCount;
     return true;
   }
 
@@ -840,7 +896,7 @@ export function stepTextureFlipPlayback(state: TextureFlipPlayback, effect: Text
     } else {
       state.dwellPhase = 'hold';
       state.frame = 0;
-      state.remaining = (1 / effect.speed) / (0.25 + nextRandom(state) * 0.75);
+      state.remaining = 1 / effect.speed / (0.25 + nextRandom(state) * 0.75);
     }
     changed = true;
   }

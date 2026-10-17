@@ -66,7 +66,8 @@ export const STANCE_KEYS = [
   'crossFold',
   /** Where the chest is carried off the spine's own line: across the deck, and along the board. The trunk curls
    *  into it progressively, so the fold is a back and not a hinge. */
-  'chestCross', 'chestFore',
+  'chestCross',
+  'chestFore',
   /** Degrees the shoulder line turns about the spine from square with the board, positive opening the front
    *  shoulder toeward. */
   'counterRotation',
@@ -81,24 +82,32 @@ export const STANCE_KEYS = [
    *  `angulation` this sets how much of the turn the head inherits. */
   'chestBalance',
   /** The knee bends over its toes; this cants that direction noseward (+) or tailward, per leg. */
-  'kneeTrackFront', 'kneeTrackRear',
+  'kneeTrackFront',
+  'kneeTrackRear',
   /** Degrees the head turns into the turn, underneath the wandering glance. */
   'headYaw',
   /** Where the rider keeps his hands. Each arm bone is a direction in the torso's own frame: `Drop` is how far
    *  it swings off hanging straight down, `Swing` is which way that points — 0 noseward, 90 over the toe edge,
    *  180 tailward, 270 over the heel edge. Four bones, so both arms are placed without a single joint target. */
-  'leadUpperDrop', 'leadUpperSwing', 'leadForeDrop', 'leadForeSwing',
-  'trailUpperDrop', 'trailUpperSwing', 'trailForeDrop', 'trailForeSwing',
+  'leadUpperDrop',
+  'leadUpperSwing',
+  'leadForeDrop',
+  'leadForeSwing',
+  'trailUpperDrop',
+  'trailUpperSwing',
+  'trailForeDrop',
+  'trailForeSwing',
 ] as const;
 
-export type Stance = { -readonly [K in typeof STANCE_KEYS[number]]: number };
+export type Stance = { -readonly [K in (typeof STANCE_KEYS)[number]]: number };
 
 export interface RidingStyle {
   label: string;
   /** Cruising a flat base. */
   neutral: Stance;
   /** The two committed edges, faded in by `|lean|` and only while grounded. */
-  heel: Stance; toe: Stance;
+  heel: Stance;
+  toe: Stance;
   /** The coil, **additive** on top of whichever edge is under him, so a crouched carve needs no fifth stance. */
   crouch: Stance;
 }
@@ -146,71 +155,136 @@ export function crossStance(out: Stance, from: Stance, to: Stance, t: number) {
 const REALISTIC: RidingStyle = {
   label: 'Realistic',
   neutral: {
-    hipHeight: 0.720, hipCross: -0.020, hipFore: 0.010,
-    inclination: 0, angulation: 6, crossFold: 0,
-    chestCross: 0.030, chestFore: 0.010,
-    counterRotation: -10, shoulderSlope: -0.060, chestBalance: 1.0,
-    kneeTrackFront: 0.040, kneeTrackRear: 0.040,
+    hipHeight: 0.72,
+    hipCross: -0.02,
+    hipFore: 0.01,
+    inclination: 0,
+    angulation: 6,
+    crossFold: 0,
+    chestCross: 0.03,
+    chestFore: 0.01,
+    counterRotation: -10,
+    shoulderSlope: -0.06,
+    chestBalance: 1.0,
+    kneeTrackFront: 0.04,
+    kneeTrackRear: 0.04,
     headYaw: 0,
-    leadUpperDrop: 30, leadUpperSwing: 0, leadForeDrop: 50, leadForeSwing: 60,
-    trailUpperDrop: 30, trailUpperSwing: 195, trailForeDrop: 40, trailForeSwing: 120,
+    leadUpperDrop: 30,
+    leadUpperSwing: 0,
+    leadForeDrop: 50,
+    leadForeSwing: 60,
+    trailUpperDrop: 30,
+    trailUpperSwing: 195,
+    trailForeDrop: 40,
+    trailForeSwing: 120,
   },
   heel: {
-    hipHeight: 0.640, hipCross: -0.050, hipFore: -0.030,
-    inclination: -44, angulation: 4, crossFold: 0,
-    chestCross: 0.030, chestFore: 0.020,
-    counterRotation: 22, shoulderSlope: -0.100, chestBalance: 1.0,
-    kneeTrackFront: 0.020, kneeTrackRear: 0.020,
+    hipHeight: 0.64,
+    hipCross: -0.05,
+    hipFore: -0.03,
+    inclination: -44,
+    angulation: 4,
+    crossFold: 0,
+    chestCross: 0.03,
+    chestFore: 0.02,
+    counterRotation: 22,
+    shoulderSlope: -0.1,
+    chestBalance: 1.0,
+    kneeTrackFront: 0.02,
+    kneeTrackRear: 0.02,
     headYaw: 8,
-    leadUpperDrop: 42, leadUpperSwing: 300, leadForeDrop: 62, leadForeSwing: 330,
-    trailUpperDrop: 34, trailUpperSwing: 205, trailForeDrop: 48, trailForeSwing: 150,
+    leadUpperDrop: 42,
+    leadUpperSwing: 300,
+    leadForeDrop: 62,
+    leadForeSwing: 330,
+    trailUpperDrop: 34,
+    trailUpperSwing: 205,
+    trailForeDrop: 48,
+    trailForeSwing: 150,
   },
   toe: {
-    hipHeight: 0.660, hipCross: 0.050, hipFore: 0.020,
-    inclination: 44, angulation: -4, crossFold: 0,
-    chestCross: 0.020, chestFore: 0.010,
-    counterRotation: -18, shoulderSlope: -0.020, chestBalance: 1.0,
-    kneeTrackFront: 0.080, kneeTrackRear: 0.070,
+    hipHeight: 0.66,
+    hipCross: 0.05,
+    hipFore: 0.02,
+    inclination: 44,
+    angulation: -4,
+    crossFold: 0,
+    chestCross: 0.02,
+    chestFore: 0.01,
+    counterRotation: -18,
+    shoulderSlope: -0.02,
+    chestBalance: 1.0,
+    kneeTrackFront: 0.08,
+    kneeTrackRear: 0.07,
     headYaw: -8,
-    leadUpperDrop: 38, leadUpperSwing: 40, leadForeDrop: 58, leadForeSwing: 75,
-    trailUpperDrop: 28, trailUpperSwing: 190, trailForeDrop: 36, trailForeSwing: 105,
+    leadUpperDrop: 38,
+    leadUpperSwing: 40,
+    leadForeDrop: 58,
+    leadForeSwing: 75,
+    trailUpperDrop: 28,
+    trailUpperSwing: 190,
+    trailForeDrop: 36,
+    trailForeSwing: 105,
   },
   crouch: {
-    hipHeight: -0.220, hipCross: -0.030, hipFore: 0.020,
-    inclination: 0, angulation: 30, crossFold: 0,
-    chestCross: 0.030, chestFore: -0.020,
-    counterRotation: 0, shoulderSlope: 0, chestBalance: 0,
+    hipHeight: -0.22,
+    hipCross: -0.03,
+    hipFore: 0.02,
+    inclination: 0,
+    angulation: 30,
+    crossFold: 0,
+    chestCross: 0.03,
+    chestFore: -0.02,
+    counterRotation: 0,
+    shoulderSlope: 0,
+    chestBalance: 0,
     // The knees come *in* under a coil, not further out over the toes. Driving them further would put the
     // trailing knee through the snow on a deep toe edge, which is exactly where a coiled carve puts it.
-    kneeTrackFront: -0.030, kneeTrackRear: -0.030,
+    kneeTrackFront: -0.03,
+    kneeTrackRear: -0.03,
     headYaw: 0,
-    leadUpperDrop: 12, leadUpperSwing: 10, leadForeDrop: 10, leadForeSwing: -15,
-    trailUpperDrop: 8, trailUpperSwing: -10, trailForeDrop: 8, trailForeSwing: -15,
+    leadUpperDrop: 12,
+    leadUpperSwing: 10,
+    leadForeDrop: 10,
+    leadForeSwing: -15,
+    trailUpperDrop: 8,
+    trailUpperSwing: -10,
+    trailForeDrop: 8,
+    trailForeSwing: -15,
   },
 };
 
 /** Halfway, and the default: the body takes most of the deck's roll but still folds at the waist. */
 const BALANCED: RidingStyle = {
   label: 'Balanced',
-  neutral: { ...REALISTIC.neutral, chestBalance: 0.7, hipHeight: 0.710 },
+  neutral: { ...REALISTIC.neutral, chestBalance: 0.7, hipHeight: 0.71 },
   heel: {
     ...REALISTIC.heel,
     chestBalance: 0.7,
-    hipHeight: 0.600, hipCross: -0.040,
-    inclination: -50, angulation: 5,
-    chestCross: 0.025, counterRotation: 24,
+    hipHeight: 0.6,
+    hipCross: -0.04,
+    inclination: -50,
+    angulation: 5,
+    chestCross: 0.025,
+    counterRotation: 24,
     headYaw: 9,
-    leadUpperDrop: 44, leadForeDrop: 64,
+    leadUpperDrop: 44,
+    leadForeDrop: 64,
   },
   toe: {
     ...REALISTIC.toe,
     chestBalance: 0.7,
-    hipHeight: 0.620, hipCross: 0.040,
-    inclination: 50, angulation: -5,
-    chestCross: 0.020, counterRotation: -20,
-    kneeTrackFront: 0.085, kneeTrackRear: 0.075,
+    hipHeight: 0.62,
+    hipCross: 0.04,
+    inclination: 50,
+    angulation: -5,
+    chestCross: 0.02,
+    counterRotation: -20,
+    kneeTrackFront: 0.085,
+    kneeTrackRear: 0.075,
     headYaw: -9,
-    leadUpperDrop: 40, leadForeDrop: 60,
+    leadUpperDrop: 40,
+    leadForeDrop: 60,
   },
   crouch: { ...REALISTIC.crouch },
 };
@@ -219,54 +293,80 @@ const BALANCED: RidingStyle = {
  *  the hips come down near the bindings and inside the turn, and the waist barely folds. */
 const ARCADE: RidingStyle = {
   label: 'Arcade',
-  neutral: { ...REALISTIC.neutral, chestBalance: 0.4, hipHeight: 0.700, angulation: 5 },
+  neutral: { ...REALISTIC.neutral, chestBalance: 0.4, hipHeight: 0.7, angulation: 5 },
   heel: {
     ...REALISTIC.heel,
     chestBalance: 0.4,
-    hipHeight: 0.550, hipCross: -0.030,
-    inclination: -56, angulation: 4,
-    chestCross: 0.020, counterRotation: 26,
-    kneeTrackFront: 0.015, kneeTrackRear: 0.015,
+    hipHeight: 0.55,
+    hipCross: -0.03,
+    inclination: -56,
+    angulation: 4,
+    chestCross: 0.02,
+    counterRotation: 26,
+    kneeTrackFront: 0.015,
+    kneeTrackRear: 0.015,
     headYaw: 11,
-    leadUpperDrop: 46, leadForeDrop: 66, trailUpperDrop: 38, trailForeDrop: 52,
+    leadUpperDrop: 46,
+    leadForeDrop: 66,
+    trailUpperDrop: 38,
+    trailForeDrop: 52,
   },
   toe: {
     ...REALISTIC.toe,
     chestBalance: 0.4,
-    hipHeight: 0.570, hipCross: 0.030,
-    inclination: 56, angulation: -4,
-    chestCross: 0.015, counterRotation: -22,
-    kneeTrackFront: 0.085, kneeTrackRear: 0.075,
+    hipHeight: 0.57,
+    hipCross: 0.03,
+    inclination: 56,
+    angulation: -4,
+    chestCross: 0.015,
+    counterRotation: -22,
+    kneeTrackFront: 0.085,
+    kneeTrackRear: 0.075,
     headYaw: -11,
-    leadUpperDrop: 42, leadForeDrop: 62, trailUpperDrop: 32, trailForeDrop: 40,
+    leadUpperDrop: 42,
+    leadForeDrop: 62,
+    trailUpperDrop: 32,
+    trailForeDrop: 40,
   },
-  crouch: { ...REALISTIC.crouch, hipHeight: -0.210 },
+  crouch: { ...REALISTIC.crouch, hipHeight: -0.21 },
 };
 
 /** Past the game: the body lays further still and the waist all but stops folding, so a tight turn brings the
  *  hips and the trailing knee round to within a hand's width of the snow. */
 const EXTREME: RidingStyle = {
   label: 'Extreme',
-  neutral: { ...REALISTIC.neutral, chestBalance: 0.2, hipHeight: 0.690, angulation: 4 },
+  neutral: { ...REALISTIC.neutral, chestBalance: 0.2, hipHeight: 0.69, angulation: 4 },
   heel: {
     ...ARCADE.heel,
     chestBalance: 0.2,
-    hipHeight: 0.530, hipCross: -0.020,
-    inclination: -63, angulation: 2,
-    chestCross: 0.015, counterRotation: 28,
+    hipHeight: 0.53,
+    hipCross: -0.02,
+    inclination: -63,
+    angulation: 2,
+    chestCross: 0.015,
+    counterRotation: 28,
     headYaw: 13,
-    leadUpperDrop: 48, leadForeDrop: 68, trailUpperDrop: 42, trailForeDrop: 56,
+    leadUpperDrop: 48,
+    leadForeDrop: 68,
+    trailUpperDrop: 42,
+    trailForeDrop: 56,
   },
   toe: {
     ...ARCADE.toe,
     chestBalance: 0.2,
-    hipHeight: 0.570, hipCross: 0.020,
-    inclination: 61, angulation: -2,
-    chestCross: 0.010, counterRotation: -24,
+    hipHeight: 0.57,
+    hipCross: 0.02,
+    inclination: 61,
+    angulation: -2,
+    chestCross: 0.01,
+    counterRotation: -24,
     headYaw: -13,
-    leadUpperDrop: 44, leadForeDrop: 64, trailUpperDrop: 36, trailForeDrop: 44,
+    leadUpperDrop: 44,
+    leadForeDrop: 64,
+    trailUpperDrop: 36,
+    trailForeDrop: 44,
   },
-  crouch: { ...REALISTIC.crouch, hipHeight: -0.200 },
+  crouch: { ...REALISTIC.crouch, hipHeight: -0.2 },
 };
 /** Ordered along the axis, realistic first — the dropdown reads as the dial it is. */
 const SNOWBOARD_STYLES = {
@@ -302,16 +402,28 @@ export const DEFAULT_RIDING_STYLE: RidingStyleId = 'balanced';
  */
 function mirrorStance(s: Stance): Stance {
   return {
-    hipHeight: s.hipHeight, hipCross: s.hipCross, hipFore: -s.hipFore,
-    inclination: -s.inclination, angulation: s.angulation, crossFold: -s.crossFold,
-    chestCross: s.chestCross, chestFore: -s.chestFore,
-    counterRotation: -s.counterRotation, shoulderSlope: -s.shoulderSlope, chestBalance: s.chestBalance,
-    kneeTrackFront: -s.kneeTrackRear, kneeTrackRear: -s.kneeTrackFront,
+    hipHeight: s.hipHeight,
+    hipCross: s.hipCross,
+    hipFore: -s.hipFore,
+    inclination: -s.inclination,
+    angulation: s.angulation,
+    crossFold: -s.crossFold,
+    chestCross: s.chestCross,
+    chestFore: -s.chestFore,
+    counterRotation: -s.counterRotation,
+    shoulderSlope: -s.shoulderSlope,
+    chestBalance: s.chestBalance,
+    kneeTrackFront: -s.kneeTrackRear,
+    kneeTrackRear: -s.kneeTrackFront,
     headYaw: -s.headYaw,
-    leadUpperDrop: s.trailUpperDrop, leadUpperSwing: 180 - s.trailUpperSwing,
-    leadForeDrop: s.trailForeDrop, leadForeSwing: 180 - s.trailForeSwing,
-    trailUpperDrop: s.leadUpperDrop, trailUpperSwing: 180 - s.leadUpperSwing,
-    trailForeDrop: s.leadForeDrop, trailForeSwing: 180 - s.leadForeSwing,
+    leadUpperDrop: s.trailUpperDrop,
+    leadUpperSwing: 180 - s.trailUpperSwing,
+    leadForeDrop: s.trailForeDrop,
+    leadForeSwing: 180 - s.trailForeSwing,
+    trailUpperDrop: s.leadUpperDrop,
+    trailUpperSwing: 180 - s.leadUpperSwing,
+    trailForeDrop: s.leadForeDrop,
+    trailForeSwing: 180 - s.leadForeSwing,
   };
 }
 
@@ -336,33 +448,61 @@ function mirrorStance(s: Stance): Stance {
  * not a shortcut standing in for four hand-tuned tables: a skier's styles genuinely differ in commitment and
  * not in technique, and the numbers that do move with commitment are the four `commit` scales below.
  */
-const SKI_LAY_IN = 44;   // degrees of lay-in at commitment 1, past the skis' own edge angle
+const SKI_LAY_IN = 44; // degrees of lay-in at commitment 1, past the skis' own edge angle
 
 const SKI_NEUTRAL: Stance = {
-  hipHeight: 0.745, hipCross: 0.020, hipFore: 0,
-  inclination: 0, angulation: 10, crossFold: 0,
-  chestCross: 0.045, chestFore: 0,
-  counterRotation: 0, shoulderSlope: 0, chestBalance: 1.0,
-  kneeTrackFront: 0, kneeTrackRear: 0,
+  hipHeight: 0.745,
+  hipCross: 0.02,
+  hipFore: 0,
+  inclination: 0,
+  angulation: 10,
+  crossFold: 0,
+  chestCross: 0.045,
+  chestFore: 0,
+  counterRotation: 0,
+  shoulderSlope: 0,
+  chestBalance: 1.0,
+  kneeTrackFront: 0,
+  kneeTrackRear: 0,
   headYaw: 0,
-  leadUpperDrop: 26, leadUpperSwing: 52, leadForeDrop: 70, leadForeSwing: 62,
-  trailUpperDrop: 26, trailUpperSwing: 128, trailForeDrop: 70, trailForeSwing: 118,
+  leadUpperDrop: 26,
+  leadUpperSwing: 52,
+  leadForeDrop: 70,
+  leadForeSwing: 62,
+  trailUpperDrop: 26,
+  trailUpperSwing: 128,
+  trailForeDrop: 70,
+  trailForeSwing: 118,
 };
 
 /** The tuck, additive like the snowboard's: down, folded hard at the waist, both hands driven out in front
  *  with the pole tips swept back under the arms. Symmetric, because a tuck is. */
 const SKI_CROUCH: Stance = {
-  hipHeight: -0.235, hipCross: -0.030, hipFore: 0,
-  inclination: 0, angulation: 34, crossFold: 0,
-  chestCross: 0.060, chestFore: 0,
-  counterRotation: 0, shoulderSlope: 0, chestBalance: 0,
-  kneeTrackFront: 0, kneeTrackRear: 0,
+  hipHeight: -0.235,
+  hipCross: -0.03,
+  hipFore: 0,
+  inclination: 0,
+  angulation: 34,
+  crossFold: 0,
+  chestCross: 0.06,
+  chestFore: 0,
+  counterRotation: 0,
+  shoulderSlope: 0,
+  chestBalance: 0,
+  kneeTrackFront: 0,
+  kneeTrackRear: 0,
   headYaw: 0,
   // The hands come FORWARD, not down: the spine has already folded 34° over the thighs and carried the whole
   // shoulder line with it, so any drop added on top of that is a hand reaching for the snow — which on a
   // committed edge is exactly where the snow is.
-  leadUpperDrop: 6, leadUpperSwing: 26, leadForeDrop: -6, leadForeSwing: 18,
-  trailUpperDrop: 6, trailUpperSwing: -26, trailForeDrop: -6, trailForeSwing: -18,
+  leadUpperDrop: 6,
+  leadUpperSwing: 26,
+  leadForeDrop: -6,
+  leadForeSwing: 18,
+  trailUpperDrop: 6,
+  trailUpperSwing: -26,
+  trailForeDrop: -6,
+  trailForeSwing: -18,
 };
 
 /**
@@ -374,30 +514,51 @@ const SKI_CROUCH: Stance = {
  * which is what a trained skier looks like and is why they can still see where they are going. The arcade end
  * gives that up and throws the whole rider in, exactly as the snowboard axis does.
  */
-function skiStyle(label: string, commit: number, cruise: number, stand: number,
-                  angulate: number, balance: number): RidingStyle {
+function skiStyle(
+  label: string,
+  commit: number,
+  cruise: number,
+  stand: number,
+  angulate: number,
+  balance: number,
+): RidingStyle {
   const layIn = SKI_LAY_IN * commit;
   // The LEFT-hand turn: lean left, hips inside it, chest and outside ski holding the other way.
   const left: Stance = {
-    hipHeight: stand, hipCross: 0.030, hipFore: 0.055 * commit,
-    inclination: -layIn, angulation: 12, crossFold: layIn * angulate,
-    chestCross: 0.050, chestFore: -0.035,
-    counterRotation: 16 * commit, shoulderSlope: -0.045, chestBalance: balance,
+    hipHeight: stand,
+    hipCross: 0.03,
+    hipFore: 0.055 * commit,
+    inclination: -layIn,
+    angulation: 12,
+    crossFold: layIn * angulate,
+    chestCross: 0.05,
+    chestFore: -0.035,
+    counterRotation: 16 * commit,
+    shoulderSlope: -0.045,
+    chestBalance: balance,
     // Both knees drive into the turn, the inside one hardest — a skier steers with the legs under a quiet
     // upper body, which is the opposite of the snowboard case where only the edge under them moves.
-    kneeTrackFront: 0.070, kneeTrackRear: 0.060,
+    kneeTrackFront: 0.07,
+    kneeTrackRear: 0.06,
     headYaw: 11 * commit,
     // Both hands come UP off the spine and out in FRONT — a bigger drop is a bigger angle off the spine, and
     // with the body laid into the turn the spine is the direction the snow is in. The inside one (the lead, on
     // the low side of a left turn) comes up hardest, where the next pole plant is; a skier who lets the
     // downhill hand hang at a committed edge angle is dragging it through the hill.
-    leadUpperDrop: 48, leadUpperSwing: 60, leadForeDrop: 88, leadForeSwing: 76,
-    trailUpperDrop: 34, trailUpperSwing: 120, trailForeDrop: 78, trailForeSwing: 100,
+    leadUpperDrop: 48,
+    leadUpperSwing: 60,
+    leadForeDrop: 88,
+    leadForeSwing: 76,
+    trailUpperDrop: 34,
+    trailUpperSwing: 120,
+    trailForeDrop: 78,
+    trailForeSwing: 100,
   };
   return {
     label,
     neutral: { ...SKI_NEUTRAL, hipHeight: cruise, chestBalance: balance },
-    heel: left, toe: mirrorStance(left),
+    heel: left,
+    toe: mirrorStance(left),
     crouch: { ...SKI_CROUCH },
   };
 }
@@ -412,10 +573,10 @@ function skiStyle(label: string, commit: number, cruise: number, stand: number,
  */
 const SKI_STYLES: Record<RidingStyleId, RidingStyle> = {
   //                                commit  cruise  stand  angulate  balance
-  realistic: skiStyle('Realistic', 1.00, 0.745, 0.700, 0.55, 1.0),
-  balanced: skiStyle('Balanced', 1.09, 0.735, 0.680, 0.51, 0.7),
-  arcade: skiStyle('Arcade', 1.18, 0.725, 0.660, 0.47, 0.4),
-  extreme: skiStyle('Extreme', 1.22, 0.715, 0.640, 0.46, 0.2),
+  realistic: skiStyle('Realistic', 1.0, 0.745, 0.7, 0.55, 1.0),
+  balanced: skiStyle('Balanced', 1.09, 0.735, 0.68, 0.51, 0.7),
+  arcade: skiStyle('Arcade', 1.18, 0.725, 0.66, 0.47, 0.4),
+  extreme: skiStyle('Extreme', 1.22, 0.715, 0.64, 0.46, 0.2),
 };
 
 /** One set of four per gear, under the same four ids — the dial means the same thing on either kit, so
@@ -427,8 +588,7 @@ export const RIDING_STYLES: Record<RideGear, Record<RidingStyleId, RidingStyle>>
 
 /** The catalogue the Test panel offers. Fixed and built in — unlike characters, nothing here comes off disk. */
 export function ridingStyleOptions(): ReadonlyArray<{ id: RidingStyleId; label: string }> {
-  return (Object.keys(SNOWBOARD_STYLES) as RidingStyleId[])
-    .map(id => ({ id, label: SNOWBOARD_STYLES[id].label }));
+  return (Object.keys(SNOWBOARD_STYLES) as RidingStyleId[]).map(id => ({ id, label: SNOWBOARD_STYLES[id].label }));
 }
 
 export function ridingStyle(id: string | undefined, gear: RideGear = 'snowboard'): RidingStyle {

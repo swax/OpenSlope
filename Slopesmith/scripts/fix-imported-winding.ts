@@ -30,8 +30,7 @@ import { migrateLegacyProjectAssets } from '../src/server/project-assets';
 const APPLY = process.argv.includes('--apply');
 
 /** Base64 → typed array, the packing the wire format and the record store share. */
-function unpack<T extends Float32Array | Uint32Array>(
-  b64: string, Ctor: new (b: ArrayBuffer) => T): T {
+function unpack<T extends Float32Array | Uint32Array>(b64: string, Ctor: new (b: ArrayBuffer) => T): T {
   const bin = Buffer.from(b64, 'base64');
   return new Ctor(bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength));
 }
@@ -43,10 +42,18 @@ const pack = (view: ArrayBufferView): string =>
 function volume6(pos: Float32Array, idx: Uint32Array): number {
   let sum = 0;
   for (let k = 0; k + 2 < idx.length; k += 3) {
-    const a = idx[k] * 3, b = idx[k + 1] * 3, c = idx[k + 2] * 3;
-    const ax = pos[a], ay = pos[a + 1], az = pos[a + 2];
-    const bx = pos[b], by = pos[b + 1], bz = pos[b + 2];
-    const cx = pos[c], cy = pos[c + 1], cz = pos[c + 2];
+    const a = idx[k] * 3,
+      b = idx[k + 1] * 3,
+      c = idx[k + 2] * 3;
+    const ax = pos[a],
+      ay = pos[a + 1],
+      az = pos[a + 2];
+    const bx = pos[b],
+      by = pos[b + 1],
+      bz = pos[b + 2];
+    const cx = pos[c],
+      cy = pos[c + 1],
+      cz = pos[c + 2];
     sum += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
   }
   return sum;
@@ -67,29 +74,49 @@ function boxVolume(pos: Float32Array): number {
   return Math.max(0, hi[0] - lo[0]) * Math.max(0, hi[1] - lo[1]) * Math.max(0, hi[2] - lo[2]);
 }
 
-interface Sub { mat: number; pos: string; uv: string; idx: string }
-interface Record { id: number; name: string; subs: Sub[]; [k: string]: unknown }
+interface Sub {
+  mat: number;
+  pos: string;
+  uv: string;
+  idx: string;
+}
+interface Record {
+  id: number;
+  name: string;
+  subs: Sub[];
+  [k: string]: unknown;
+}
 
 async function main() {
   const project = await currentProject();
   if (!project) throw new Error('open a mountain before inspecting its imported props');
   await migrateLegacyProjectAssets(project);
   const dir = join(project.project.folder, 'assets', 'props');
-  const files = (await readdir(dir).catch(() => [] as string[]))
-    .filter(f => /\.json$/i.test(f)).sort();
-  if (!files.length) { console.log(`no records under ${dir}`); return; }
+  const files = (await readdir(dir).catch(() => [] as string[])).filter(f => /\.json$/i.test(f)).sort();
+  if (!files.length) {
+    console.log(`no records under ${dir}`);
+    return;
+  }
 
   console.log(`${dir}\n`);
   console.log(`${'record'.padEnd(28)}${'tris'.padStart(8)}${'volume / box'.padStart(16)}  verdict`);
-  let inverted = 0, repaired = 0, unclear = 0;
+  let inverted = 0,
+    repaired = 0,
+    unclear = 0;
 
   for (const file of files) {
     const path = join(dir, file);
     let record: Record;
-    try { record = JSON.parse(await readFile(path, 'utf8')) as Record; }
-    catch { console.log(`${file.padEnd(28)}${'—'.padStart(8)}${'—'.padStart(16)}  unreadable, skipped`); continue; }
+    try {
+      record = JSON.parse(await readFile(path, 'utf8')) as Record;
+    } catch {
+      console.log(`${file.padEnd(28)}${'—'.padStart(8)}${'—'.padStart(16)}  unreadable, skipped`);
+      continue;
+    }
 
-    let v6 = 0, box = 0, tris = 0;
+    let v6 = 0,
+      box = 0,
+      tris = 0;
     for (const sub of record.subs ?? []) {
       const pos = unpack(sub.pos, Float32Array);
       const idx = unpack(sub.idx, Uint32Array);
@@ -108,7 +135,9 @@ async function main() {
         for (const sub of record.subs) {
           const idx = unpack(sub.idx, Uint32Array);
           for (let k = 0; k + 2 < idx.length; k += 3) {
-            const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t;
+            const t = idx[k + 1];
+            idx[k + 1] = idx[k + 2];
+            idx[k + 2] = t;
           }
           sub.idx = pack(idx);
         }
@@ -123,14 +152,19 @@ async function main() {
       note = 'inconclusive — open shell, left alone';
     }
 
-    console.log(`${file.replace(/\.json$/, '').padEnd(28)}${String(tris).padStart(8)}`
-      + `${ratio.toFixed(4).padStart(16)}  ${note}`);
+    console.log(
+      `${file.replace(/\.json$/, '').padEnd(28)}${String(tris).padStart(8)}` +
+        `${ratio.toFixed(4).padStart(16)}  ${note}`,
+    );
   }
 
-  console.log(`\n${files.length} record(s): ${inverted} inverted, ${unclear} inconclusive`
-    + (APPLY ? `, ${repaired} repaired` : ''));
+  console.log(
+    `\n${files.length} record(s): ${inverted} inverted, ${unclear} inconclusive` +
+      (APPLY ? `, ${repaired} repaired` : ''),
+  );
   if (inverted && !APPLY) console.log('re-run with --apply to rewrite them in place (ids and placements are kept)');
-  if (unclear) console.log('inconclusive records enclose ~no volume (open backs); check those with the F arrows in the editor');
+  if (unclear)
+    console.log('inconclusive records enclose ~no volume (open backs); check those with the F arrows in the editor');
 }
 
 void main();

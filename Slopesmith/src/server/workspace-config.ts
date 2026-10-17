@@ -38,9 +38,8 @@ export interface ResolvedBootstrapConfig extends BootstrapConfig {
 }
 
 const MODULE_DIR = import.meta.dirname ?? process.cwd();
-const inferredAppRoot = basename(MODULE_DIR) === 'dist-server'
-  ? resolve(MODULE_DIR, '..')
-  : resolve(MODULE_DIR, '..', '..');
+const inferredAppRoot =
+  basename(MODULE_DIR) === 'dist-server' ? resolve(MODULE_DIR, '..') : resolve(MODULE_DIR, '..', '..');
 /** Explicit in packaged deployments, and inferred correctly from either src/server or dist-server. */
 export const APP_ROOT = resolve(process.env.SLOPESMITH_APP_ROOT?.trim() || inferredAppRoot);
 export const BOOTSTRAP_DIR = join(APP_ROOT, '.slopesmith');
@@ -84,7 +83,7 @@ function resolveFromApp(value: unknown, fallback: string): string {
 
 /** Stored files and environment variables may contain numeric text; an API save must already be a number. */
 function resolvedMaxPlayers(value: unknown, strict = false): number {
-  const parsed = strict ? value : (typeof value === 'string' && value.trim() ? Number(value) : value);
+  const parsed = strict ? value : typeof value === 'string' && value.trim() ? Number(value) : value;
   if (Number.isSafeInteger(parsed) && Number(parsed) >= 1) return Number(parsed);
   if (strict) throw new Error('Max players must be a whole number of at least 1');
   return DEFAULT_MAX_PLAYERS;
@@ -96,12 +95,15 @@ export const resolveAppPath = (value: string): string => resolveFromApp(value, '
 /** The bootstrap file as written, or an empty record when it is absent or unreadable. */
 function storedConfig(): Partial<BootstrapConfig> {
   try {
-    const { referenceRoot, ...stored } =
-      JSON.parse(readFileSync(BOOTSTRAP_FILE, 'utf8')) as Partial<BootstrapConfig> & { referenceRoot?: string };
+    const { referenceRoot, ...stored } = JSON.parse(
+      readFileSync(BOOTSTRAP_FILE, 'utf8'),
+    ) as Partial<BootstrapConfig> & { referenceRoot?: string };
     // `referenceRoot` names the same field on a machine configured before it became `mapsRoot`: adopt it so the
     // library is kept rather than silently reverting to the default. The next Save writes the current name.
     return referenceRoot && stored.mapsRoot === undefined ? { ...stored, mapsRoot: referenceRoot } : stored;
-  } catch { return {}; /* first run or an invalid file: use safe, deterministic defaults */ }
+  } catch {
+    return {}; /* first run or an invalid file: use safe, deterministic defaults */
+  }
 }
 
 /**
@@ -126,7 +128,7 @@ export function forgetWorkspaceConfig(): void {
 }
 
 export function workspaceConfig(): ResolvedBootstrapConfig {
-  return memoisedConfig ??= resolveWorkspaceConfig();
+  return (memoisedConfig ??= resolveWorkspaceConfig());
 }
 
 /** The map library: extracted reference levels are read from it and exports are written into it. An accessor
@@ -145,20 +147,25 @@ function resolveWorkspaceConfig(): ResolvedBootstrapConfig {
     (Object.keys(ENV_OVERRIDE) as (keyof BootstrapConfig)[]).map(field => [field, !!env(field)]),
   ) as Record<keyof BootstrapConfig, boolean>;
   return {
-    appRoot: APP_ROOT, configFile: BOOTSTRAP_FILE, configured: existsSync(BOOTSTRAP_FILE),
-    workspaceRoot, mapsRoot, maxPlayers,
+    appRoot: APP_ROOT,
+    configFile: BOOTSTRAP_FILE,
+    configured: existsSync(BOOTSTRAP_FILE),
+    workspaceRoot,
+    mapsRoot,
+    maxPlayers,
     overrides,
-    overrideVars: Object.entries(overrides).filter(([, on]) => on)
+    overrideVars: Object.entries(overrides)
+      .filter(([, on]) => on)
       .map(([field]) => ENV_OVERRIDE[field as keyof BootstrapConfig]),
   };
 }
 
 async function ensureDirectory(path: string, create: boolean, label: string): Promise<void> {
-  if (!await pathExists(path)) {
+  if (!(await pathExists(path))) {
     if (!create) throw new Error(`${label} does not exist: ${path}`);
     await ensureDir(path);
   }
-  if (!await isDirectory(path)) throw new Error(`${label} is not a folder: ${path}`);
+  if (!(await isDirectory(path))) throw new Error(`${label} is not a folder: ${path}`);
 }
 
 /** Validate and persist the machine-local settings. Slopesmith's own folders may be created; a library it
@@ -174,7 +181,7 @@ export async function saveWorkspaceConfig(input: Partial<BootstrapConfig>): Prom
   const next: Partial<BootstrapConfig> = storedConfig();
   const owned = (name: keyof BootstrapConfig) => !before.overrides[name];
   // An omitted field keeps the current value; an explicitly emptied one clears it.
-  const edited = (name: keyof BootstrapConfig) => input[name] === undefined ? before[name] : input[name];
+  const edited = (name: keyof BootstrapConfig) => (input[name] === undefined ? before[name] : input[name]);
 
   if (owned('workspaceRoot')) next.workspaceRoot = resolveFromApp(edited('workspaceRoot'), defaultWorkspaceRoot());
   const workspaceRoot = next.workspaceRoot ?? before.workspaceRoot;
@@ -199,8 +206,9 @@ export async function saveWorkspaceConfig(input: Partial<BootstrapConfig>): Prom
 export async function ensureWorkspace(): Promise<ResolvedBootstrapConfig> {
   const config = workspaceConfig();
   if (!ensuredWorkspace || ensuredWorkspace.root !== config.workspaceRoot) {
-    const folders = ['projects', 'library', 'cache', 'logs']
-      .map(folder => ensureDir(join(config.workspaceRoot, folder)));
+    const folders = ['projects', 'library', 'cache', 'logs'].map(folder =>
+      ensureDir(join(config.workspaceRoot, folder)),
+    );
     // The DEFAULT library is Slopesmith's own folder by convention, so it is created like the rest. The
     // library WATCHER only attaches to a root that already exists, and a root that appears afterwards stays
     // unwatched until a restart — which is how a freshly extracted map can land in exactly the right place
@@ -210,7 +218,9 @@ export async function ensureWorkspace(): Promise<ResolvedBootstrapConfig> {
     const ready = Promise.all(folders).then(() => undefined);
     ensuredWorkspace = { root: config.workspaceRoot, ready };
     // A failed first attempt must be retryable after the operator fixes the filesystem.
-    void ready.catch(() => { if (ensuredWorkspace?.ready === ready) ensuredWorkspace = null; });
+    void ready.catch(() => {
+      if (ensuredWorkspace?.ready === ready) ensuredWorkspace = null;
+    });
   }
   await ensuredWorkspace.ready;
   return config;

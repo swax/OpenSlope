@@ -13,8 +13,10 @@ import type { Controller } from 'lil-gui';
 export function banner(host: HTMLElement, text: string, tone: 'info' | 'warn' = 'info'): HTMLElement {
   const el = document.createElement('div');
   el.className = 'sp-modal-note';
-  el.style.cssText = 'padding:8px 10px;margin-bottom:6px;font-size:12px;line-height:1.45;border-radius:4px;'
-    + (tone === 'warn' ? 'color:#f0d9cf;background:#3a2a26;border-left:3px solid #c2543a;'
+  el.style.cssText =
+    'padding:8px 10px;margin-bottom:6px;font-size:12px;line-height:1.45;border-radius:4px;' +
+    (tone === 'warn'
+      ? 'color:#f0d9cf;background:#3a2a26;border-left:3px solid #c2543a;'
       : 'color:#cdd6e3;background:#2a2f3a;border-left:3px solid #3a6ea5;');
   el.textContent = text;
   host.insertBefore(el, host.firstChild);
@@ -29,15 +31,22 @@ export function errorLine(host: HTMLElement): (message: string) => void {
   el.style.cssText = 'padding:0 2px;margin:6px 0 0;color:#f0a89c;font-size:11px;line-height:1.45;min-height:15px;';
   host.appendChild(el);
   // A refusal describes the values that were submitted, not the form after somebody starts correcting it.
-  host.addEventListener('input', () => { el.textContent = ''; });
-  return message => { el.textContent = message; };
+  host.addEventListener('input', () => {
+    el.textContent = '';
+  });
+  return message => {
+    el.textContent = message;
+  };
 }
 
 /** lil-gui renders a string field as a text input; a password is the same field the browser must not show,
  *  autofill into the wrong box, or offer as a suggestion from another site. */
 export function secret(controller: Controller, autocomplete: string): Controller {
   const input = controller.domElement.querySelector<HTMLInputElement>('input');
-  if (input) { input.type = 'password'; input.setAttribute('autocomplete', autocomplete); }
+  if (input) {
+    input.type = 'password';
+    input.setAttribute('autocomplete', autocomplete);
+  }
   return controller;
 }
 
@@ -56,11 +65,15 @@ export function focusField(controller: Controller): Controller {
 /** Enter submits, because a two-field form that only responds to a mouse is a form people fight.
  *  lil-gui stops keyboard events at its own root, so this must listen on the capture phase above it. */
 export function submitOnEnter(host: HTMLElement, submit: () => void): void {
-  host.addEventListener('keydown', event => {
-    const input = event.target as HTMLInputElement | null;
-    if (event.key !== 'Enter' || event.isComposing || input?.tagName !== 'INPUT') return;
-    event.preventDefault();
-    input.blur();
-    submit();
-  }, true);
+  host.addEventListener(
+    'keydown',
+    event => {
+      const input = event.target as HTMLInputElement | null;
+      if (event.key !== 'Enter' || event.isComposing || input?.tagName !== 'INPUT') return;
+      event.preventDefault();
+      input.blur();
+      submit();
+    },
+    true,
+  );
 }

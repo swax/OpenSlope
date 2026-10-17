@@ -12,15 +12,20 @@ export const olderCore = (session: { coreVersion?: string }): boolean =>
 /** Collapse field edits to the objects as they stand at this sequence, including later clears or replacements
  *  in a catch-up batch. Replaying an earlier whole value after a field's snapshot would undo that field. */
 export function legacyAssignments(doc: EditDoc, changes: readonly RegisterAssignment[]): RegisterAssignment[] {
-  const objects = new Set(changes.flatMap(([key]) => {
-    const field = objectFieldOf(key);
-    return field ? [field.object] : [];
-  }));
+  const objects = new Set(
+    changes.flatMap(([key]) => {
+      const field = objectFieldOf(key);
+      return field ? [field.object] : [];
+    }),
+  );
   const sent = new Set<string>();
   const result: RegisterAssignment[] = [];
   for (const change of changes) {
     const key = objectFieldOf(change[0])?.object ?? change[0];
-    if (!objects.has(key)) { result.push(change); continue; }
+    if (!objects.has(key)) {
+      result.push(change);
+      continue;
+    }
     if (sent.has(key)) continue;
     sent.add(key);
     result.push([key, readRegister(doc, key)]);
@@ -33,13 +38,22 @@ export function legacyAssignments(doc: EditDoc, changes: readonly RegisterAssign
 export function broadcastRegisters(room: Room, written: AssignResult, by: string, except?: string): void {
   if (!written.landed.length) return;
   let current: PreparedText | undefined, legacy: PreparedText | undefined;
-  const frame = (changes: readonly RegisterAssignment[]): PreparedText => prepareWebSocketText(JSON.stringify({
-    t: 'sync', projectId: room.projectId, at: written.at, changes: onWire(changes), by,
-  }));
+  const frame = (changes: readonly RegisterAssignment[]): PreparedText =>
+    prepareWebSocketText(
+      JSON.stringify({
+        t: 'sync',
+        projectId: room.projectId,
+        at: written.at,
+        changes: onWire(changes),
+        by,
+      }),
+    );
   for (const session of sessionsOn(room.projectId)) {
     if (session.sessionId === except) continue;
-    session.sendPrepared(olderCore(session)
-      ? legacy ??= frame(legacyAssignments(room.doc, written.landed))
-      : current ??= frame(written.landed));
+    session.sendPrepared(
+      olderCore(session)
+        ? (legacy ??= frame(legacyAssignments(room.doc, written.landed)))
+        : (current ??= frame(written.landed)),
+    );
   }
 }

@@ -36,9 +36,12 @@ export interface TextureAlphaPolicy {
 
 /** UI wording for a classified alpha-pass surface. */
 export function alphaClassLabel(c: AlphaClass): string {
-  return c === 'cutout' ? 'cutout — alpha-test holes'
-    : c === 'translucent' ? 'translucent — alpha blend'
-      : c === 'opaque-alpha' ? 'alpha pass — opaque alpha (reads solid)'
+  return c === 'cutout'
+    ? 'cutout — alpha-test holes'
+    : c === 'translucent'
+      ? 'translucent — alpha blend'
+      : c === 'opaque-alpha'
+        ? 'alpha pass — opaque alpha (reads solid)'
         : 'alpha pass';
 }
 
@@ -65,7 +68,8 @@ export function setCutoutAlphaToCoverage(enabled: boolean): void {
 export function analyzeTexturePixels(data: ArrayLike<number>, width: number, height: number): TextureAlphaAnalysis {
   const total = Math.min(Math.max(0, width * height), Math.floor(data.length / 4));
   if (!total) return { kind: 'unknown', glow: false };
-  let clear = 0, solid = 0;
+  let clear = 0,
+    solid = 0;
   for (let pixel = 0; pixel < total; pixel++) {
     const a = data[pixel * 4 + 3];
     if (a < 8) clear++;
@@ -78,35 +82,58 @@ export function analyzeTexturePixels(data: ArrayLike<number>, width: number, hei
 
   // Glow sheets are bright, smooth alpha ramps over a transparent background. The thresholds sit in the
   // measured gaps documented by Snowknife/TextureBundle and Unity/docs/005.
-  let visible = 0, partial = 0, gradient = 0, pairs = 0, weightedBrightness = 0, alphaWeight = 0;
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const pixel = y * width + x;
-    if (pixel >= total) continue;
-    const at = pixel * 4, a = data[at + 3];
-    if (a >= 8) {
-      visible++;
-      if (a < 250) partial++;
-      weightedBrightness += Math.max(data[at], data[at + 1], data[at + 2]) * a;
-      alphaWeight += a;
+  let visible = 0,
+    partial = 0,
+    gradient = 0,
+    pairs = 0,
+    weightedBrightness = 0,
+    alphaWeight = 0;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const pixel = y * width + x;
+      if (pixel >= total) continue;
+      const at = pixel * 4,
+        a = data[at + 3];
+      if (a >= 8) {
+        visible++;
+        if (a < 250) partial++;
+        weightedBrightness += Math.max(data[at], data[at + 1], data[at + 2]) * a;
+        alphaWeight += a;
+      }
+      if (x + 1 < width && pixel + 1 < total) {
+        const other = data[at + 7];
+        if (a >= 8 || other >= 8) {
+          gradient += Math.abs(a - other);
+          pairs++;
+        }
+      }
+      if (y + 1 < height && pixel + width < total) {
+        const other = data[at + width * 4 + 3];
+        if (a >= 8 || other >= 8) {
+          gradient += Math.abs(a - other);
+          pairs++;
+        }
+      }
     }
-    if (x + 1 < width && pixel + 1 < total) {
-      const other = data[at + 7];
-      if (a >= 8 || other >= 8) { gradient += Math.abs(a - other); pairs++; }
-    }
-    if (y + 1 < height && pixel + width < total) {
-      const other = data[at + width * 4 + 3];
-      if (a >= 8 || other >= 8) { gradient += Math.abs(a - other); pairs++; }
-    }
-  }
-  const glow = visible > 0 && pairs > 0 && alphaWeight > 0
-    && partial / visible >= 0.60 && gradient / pairs < 25 && weightedBrightness / alphaWeight >= 128;
+  const glow =
+    visible > 0 &&
+    pairs > 0 &&
+    alphaWeight > 0 &&
+    partial / visible >= 0.6 &&
+    gradient / pairs < 25 &&
+    weightedBrightness / alphaWeight >= 128;
   return { kind, glow };
 }
 
 /** Analyze a decoded browser image synchronously. TextureLoader has already made it same-origin by the time
  * the viewport calls this; callers still catch a canvas/security failure and retain their safe fallback. */
 export function analyzeTextureImage(image: CanvasImageSource): TextureAlphaAnalysis {
-  const sized = image as CanvasImageSource & { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number };
+  const sized = image as CanvasImageSource & {
+    naturalWidth?: number;
+    naturalHeight?: number;
+    width?: number;
+    height?: number;
+  };
   const width = sized.naturalWidth || sized.width || 0;
   const height = sized.naturalHeight || sized.height || 0;
   if (!width || !height) return { kind: 'unknown', glow: false };
@@ -121,11 +148,15 @@ export function analyzeTextureImage(image: CanvasImageSource): TextureAlphaAnaly
 
 /** Resolve texture facts through the material policy, then aggregate a flipbook with cutout precedence. */
 export function resolvePropAlphaMode(
-  analyses: readonly (TextureAlphaAnalysis | undefined)[], policy: TextureAlphaPolicy,
+  analyses: readonly (TextureAlphaAnalysis | undefined)[],
+  policy: TextureAlphaPolicy,
 ): TextureAlphaMode {
   if (policy.mode) return policy.mode;
-  const fallback: TextureAlphaMode = policy.alphaPass ? 'blend'
-    : policy.pixelAlpha || policy.priority ? 'cutout' : 'opaque';
+  const fallback: TextureAlphaMode = policy.alphaPass
+    ? 'blend'
+    : policy.pixelAlpha || policy.priority
+      ? 'cutout'
+      : 'opaque';
   const modeOf = (analysis: TextureAlphaAnalysis | undefined): TextureAlphaMode => {
     if (!analysis || analysis.kind === 'unknown') return fallback;
     if (policy.pixelAlpha) {
@@ -144,9 +175,13 @@ export function resolvePropAlphaMode(
     return 'opaque';
   };
   const modes = analyses.length ? analyses.map(modeOf) : [fallback];
-  return modes.includes('cutout') ? 'cutout'
-    : modes.includes('glow') ? 'glow'
-      : modes.includes('blend') ? 'blend' : 'opaque';
+  return modes.includes('cutout')
+    ? 'cutout'
+    : modes.includes('glow')
+      ? 'glow'
+      : modes.includes('blend')
+        ? 'blend'
+        : 'opaque';
 }
 
 /** Apply the framebuffer state shared by prop, terrain-array, and thumbnail materials. With the default-on MSAA
@@ -160,9 +195,14 @@ export function applyTextureAlphaMode(material: THREE.Material, mode: TextureAlp
   const alphaTest = mode === 'glow' || (mode === 'cutout' && !coverage) ? 0.05 : 0;
   const depthWrite = mode === 'blend' ? !sheet : true;
   const alphaHash = mode === 'cutout' && !coverage;
-  if (material.transparent === transparent && material.alphaTest === alphaTest
-    && material.depthWrite === depthWrite && material.alphaHash === alphaHash
-    && material.alphaToCoverage === coverage) return;
+  if (
+    material.transparent === transparent &&
+    material.alphaTest === alphaTest &&
+    material.depthWrite === depthWrite &&
+    material.alphaHash === alphaHash &&
+    material.alphaToCoverage === coverage
+  )
+    return;
   material.transparent = transparent;
   material.alphaTest = alphaTest;
   material.depthWrite = depthWrite;

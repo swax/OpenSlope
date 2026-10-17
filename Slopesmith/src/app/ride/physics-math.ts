@@ -36,7 +36,7 @@ export type SurfaceRow = RideContractSurfaceRow;
 export const SURFACE_ROWS = RIDE_SURFACE_ROWS;
 /** Out-of-range SurfaceTypes fall on row 15, the table's own "standard" generic bucket. */
 export function surfaceFor(t: number): SurfaceRow {
-  return (t >= 0 && t < SURFACE_ROWS.length) ? SURFACE_ROWS[t] : SURFACE_ROWS[15];
+  return t >= 0 && t < SURFACE_ROWS.length ? SURFACE_ROWS[t] : SURFACE_ROWS[15];
 }
 
 /** Zero-lean equilibrium penetration inside the response row's linear bog zone. */
@@ -65,10 +65,10 @@ export function contactResponse(A: number, P: number, error: number, vn: number,
   const accel = A / RESPONSE.UNITS_CENTIMETRES_PER_METRE;
   // Above: soft pull, damped only if separating.
   if (error > 0) return -(A / RESPONSE.CONTACT_ABOVE_LENGTH_CM) * error - (vn > 0 ? P * vn : 0);
-  if (error > -bog) return -accel * (error / bog) - P * vn;     // bog zone: 0 → A across the soft give
+  if (error > -bog) return -accel * (error / bog) - P * vn; // bog zone: 0 → A across the soft give
   // Guard the slewed fields' degenerate start; the deep zone rises from A at −bog to 3A at −budget.
   const span = Math.max(budget - bog, RESPONSE.GUARDS_CONTACT_SPAN_METRES);
-  return accel * (1 - RESPONSE.CONTACT_DEEP_GAIN * (Math.max(error, -budget) + bog) / span) - P * vn;
+  return accel * (1 - (RESPONSE.CONTACT_DEEP_GAIN * (Math.max(error, -budget) + bog)) / span) - P * vn;
 }
 
 // ---- small vector helpers ----
@@ -113,15 +113,22 @@ const UNION_NORMAL_BAND = 3;
  * the hit leaf alone would report its own curvature. Weighted by how near each leaf's surface lies to the
  * point, so a distant leaf never drags the normal off the face it belongs to.
  */
-export function unionLeafNormal(leaves: Float32Array, point: THREE.Vector3, hitIndex: number, out: THREE.Vector3,
-  band = UNION_NORMAL_BAND) {
+export function unionLeafNormal(
+  leaves: Float32Array,
+  point: THREE.Vector3,
+  hitIndex: number,
+  out: THREE.Vector3,
+  band = UNION_NORMAL_BAND,
+) {
   const hitRadius = Math.max(1e-4, leaves[hitIndex + 3]);
   const reach = hitRadius * band;
   out.set(0, 0, 0);
   for (let i = 0; i + 3 < leaves.length; i += 4) {
     const r = leaves[i + 3];
     if (r <= 0) continue;
-    const dx = point.x - leaves[i], dy = point.y - leaves[i + 1], dz = point.z - leaves[i + 2];
+    const dx = point.x - leaves[i],
+      dy = point.y - leaves[i + 1],
+      dz = point.z - leaves[i + 2];
     const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (distance < 1e-9) continue;
     // How far this leaf's own surface sits from the point; only leaves sharing this stretch of boundary count.
@@ -133,6 +140,6 @@ export function unionLeafNormal(leaves: Float32Array, point: THREE.Vector3, hitI
     out.z += (dz / distance) * weight;
   }
   // A lone leaf (or a degenerate sum) falls back to the plain radial normal it would have reported anyway.
-  if (out.lengthSq() < 1e-12) out.set(
-    point.x - leaves[hitIndex], point.y - leaves[hitIndex + 1], point.z - leaves[hitIndex + 2]);
+  if (out.lengthSq() < 1e-12)
+    out.set(point.x - leaves[hitIndex], point.y - leaves[hitIndex + 1], point.z - leaves[hitIndex + 2]);
 }

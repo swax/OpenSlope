@@ -37,11 +37,13 @@ export const SUPERMAN_CRUISE_SPEED_SCALE = 0.5;
 /** Steeper than this is not floor: you slide off it rather than stroll up it (≈66°). */
 const MIN_GROUND_NY = 0.4;
 /** How far a step may rise in one move, and how far the walker stays stuck to a surface falling away below. */
-const STEP_UP = 0.55, SNAP_DOWN = 0.5;
+const STEP_UP = 0.55,
+  SNAP_DOWN = 0.5;
 /** How far short of a struck terrain face the airborne sweep stops, so next frame's chord starts outside it. */
 const BARRIER_SKIN = 0.05;
 /** Ground probes start this far above the query height so a walker already sunk a little still finds its floor. */
-const PROBE_ABOVE = 2, PROBE_BELOW = 200;
+const PROBE_ABOVE = 2,
+  PROBE_BELOW = 200;
 /** Horizontal move is resolved in bites no longer than this, so a fast walker cannot step over a thin ridge. */
 const MAX_SUBSTEP = 0.25;
 
@@ -107,14 +109,23 @@ export function createWalker(o: WalkerOpts) {
   const pos = new THREE.Vector3();
   const vel = new THREE.Vector3();
   let grounded = false;
-  let flightActive = false, flightThrottle = 0, flightBoostApplied = false;
+  let flightActive = false,
+    flightThrottle = 0,
+    flightBoostApplied = false;
   /** A grounded jump arms exactly one airborne second press. Walking off a ledge is not a first jump. */
   let directionalFlightArmed = false;
-  const right = new THREE.Vector3(), wish = new THREE.Vector3(), flat = new THREE.Vector3();
-  const move = new THREE.Vector3(), probe = new THREE.Vector3(), flightDirection = new THREE.Vector3();
-  const airStart = new THREE.Vector3(), airEnd = new THREE.Vector3();
-  const chord = new THREE.Vector3(), face = new THREE.Vector3();
-  const resolvedFrom = new THREE.Vector3(), resolvedTo = new THREE.Vector3();
+  const right = new THREE.Vector3(),
+    wish = new THREE.Vector3(),
+    flat = new THREE.Vector3();
+  const move = new THREE.Vector3(),
+    probe = new THREE.Vector3(),
+    flightDirection = new THREE.Vector3();
+  const airStart = new THREE.Vector3(),
+    airEnd = new THREE.Vector3();
+  const chord = new THREE.Vector3(),
+    face = new THREE.Vector3();
+  const resolvedFrom = new THREE.Vector3(),
+    resolvedTo = new THREE.Vector3();
 
   /**
    * Put the walker down at a world point. Without a carry that is a placement: dropped onto whatever surface is
@@ -140,12 +151,22 @@ export function createWalker(o: WalkerOpts) {
   }
 
   /** Where the walker's feet are. Live — the host reads it every frame to seat the rig; treat it as read-only. */
-  function position() { return pos; }
-  function velocity() { return vel; }
-  function isGrounded() { return grounded; }
-  function isFlying() { return flightActive; }
+  function position() {
+    return pos;
+  }
+  function velocity() {
+    return vel;
+  }
+  function isGrounded() {
+    return grounded;
+  }
+  function isFlying() {
+    return flightActive;
+  }
   /** True only for a frame where Boost actually multiplied non-zero directional flight thrust. */
-  function isFlightBoosting() { return flightBoostApplied; }
+  function isFlightBoosting() {
+    return flightBoostApplied;
+  }
 
   /**
    * Apply real tracked-room displacement without turning it into stick velocity. The same bite/step/slope law
@@ -183,7 +204,9 @@ export function createWalker(o: WalkerOpts) {
     // m/s run used to cross an OpenSlope mountain; sideways/backward retain the precise 4.065 m/s setting. Clamp the
     // resulting ellipse at run speed so a diagonal never outruns straight-ahead travel.
     const forwardSpeed = intent.moveY >= 0 ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED;
-    wish.copy(right).multiplyScalar(intent.moveX * PLAYER_STRAFE_SPEED)
+    wish
+      .copy(right)
+      .multiplyScalar(intent.moveX * PLAYER_STRAFE_SPEED)
       .addScaledVector(flat, intent.moveY * forwardSpeed);
     if (wish.length() > PLAYER_RUN_SPEED) wish.setLength(PLAYER_RUN_SPEED);
     if (intent.crouch) wish.multiplyScalar(CROUCH_SPEED_SCALE);
@@ -197,16 +220,20 @@ export function createWalker(o: WalkerOpts) {
     // A second Jump edge retains the original double-jump entry. Boost during the armed jump is the alternate
     // chord entry, whether B / Shift was already held at takeoff or was pressed once the jump was airborne.
     // Board-speed dismounts are not armed, so Boost can still add aimed thrust to those without changing modes.
-    const directionalFlightStarted = !grounded && directionalFlightArmed
-      && ((!launched && intent.jump) || !!intent.boost);
+    const directionalFlightStarted =
+      !grounded && directionalFlightArmed && ((!launched && intent.jump) || !!intent.boost);
     if (!flightActive && directionalFlightStarted) {
       flightActive = true;
       directionalFlightArmed = false;
     }
     // A board in the hand is the thruster itself. Unlike empty-handed Superman controls it needs no jump chord:
     // pointing the deck up and pressing Boost must be able to lift the player from a standstill.
-    const boardJetpackLaunched = grounded && intent.boardJetpack && intent.boost && intent.boostDirection
-      && intent.boostDirection.lengthSq() > 1e-6;
+    const boardJetpackLaunched =
+      grounded &&
+      intent.boardJetpack &&
+      intent.boost &&
+      intent.boostDirection &&
+      intent.boostDirection.lengthSq() > 1e-6;
     if (boardJetpackLaunched) {
       grounded = false;
       directionalFlightArmed = false;
@@ -218,8 +245,10 @@ export function createWalker(o: WalkerOpts) {
 
     // Grounded, the stick IS the velocity — a walker has no momentum worth modelling, which is exactly the
     // frictionless capsule the board was invented to escape. Airborne, it eases so a jump keeps its arc.
-    if (grounded || launched) { vel.x = wish.x; vel.z = wish.z; }
-    else if (!flightActive) {
+    if (grounded || launched) {
+      vel.x = wish.x;
+      vel.z = wish.z;
+    } else if (!flightActive) {
       // A board-speed carry is subject to the same gentle air response as an ordinary jump. Stick input steers
       // toward walking speed instead of replacing the inherited trajectory in one frame; centred input is the
       // requested 0.3/s horizontal resistance.
@@ -244,7 +273,9 @@ export function createWalker(o: WalkerOpts) {
         if (intent.boostDirection) flightDirection.copy(intent.boostDirection);
         else flightDirection.set(0, 0, 0); // controller tracking was explicitly unavailable
       } else {
-        flightDirection.copy(right).multiplyScalar(intent.moveX)
+        flightDirection
+          .copy(right)
+          .multiplyScalar(intent.moveX)
           .addScaledVector(flat, intent.moveY)
           .addScaledVector(UP, Number(!!intent.jumpHeld) - Number(!!intent.crouch));
       }
@@ -258,9 +289,10 @@ export function createWalker(o: WalkerOpts) {
         flightDirection.normalize();
         const speedScale = intent.boost ? 1 : SUPERMAN_CRUISE_SPEED_SCALE;
         const opposing = -vel.dot(flightDirection);
-        const thrustScale = SUPERMAN_BACK_THRUST > 0 && opposing > 0
-          ? THREE.MathUtils.clamp(opposing * SUPERMAN_BACK_THRUST, 1, SUPERMAN_MAX_BACK_THRUST_SCALE)
-          : 1;
+        const thrustScale =
+          SUPERMAN_BACK_THRUST > 0 && opposing > 0
+            ? THREE.MathUtils.clamp(opposing * SUPERMAN_BACK_THRUST, 1, SUPERMAN_MAX_BACK_THRUST_SCALE)
+            : 1;
         vel.addScaledVector(flightDirection, SUPERMAN_ACCEL * speedScale * flightThrottle * thrustScale * dt);
         flightBoostApplied = !!intent.boost;
       }
@@ -276,7 +308,8 @@ export function createWalker(o: WalkerOpts) {
       const horizontalCap = SUPERMAN_MAX_HORIZONTAL_SPEED * speedScale;
       if (horizontalSpeed > horizontalCap) {
         const scale = horizontalCap / horizontalSpeed;
-        vel.x *= scale; vel.z *= scale;
+        vel.x *= scale;
+        vel.z *= scale;
       }
       const verticalCap = SUPERMAN_MAX_VERTICAL_SPEED * speedScale;
       vel.y = THREE.MathUtils.clamp(vel.y, -verticalCap, verticalCap);
@@ -320,12 +353,21 @@ export function createWalker(o: WalkerOpts) {
         // The exact chord parameter comes from the 3D hit point where the caster reports one; a height-only
         // caster retains the descending-chord Y interpolation and cannot name a barrier. A t≈0 hit is the
         // surface just left and must not glue an edge fall.
-        const t = !swept ? -1
-          : swept.point ? chord.dot(probe.copy(swept.point).sub(airStart)) / (chordLength * chordLength)
-            : descending ? (swept.y - airStart.y) / (airEnd.y - airStart.y) : -1;
+        const t = !swept
+          ? -1
+          : swept.point
+            ? chord.dot(probe.copy(swept.point).sub(airStart)) / (chordLength * chordLength)
+            : descending
+              ? (swept.y - airStart.y) / (airEnd.y - airStart.y)
+              : -1;
         if (swept && t > 1e-5 && t <= 1) {
-          if (descending && swept.normal.y >= MIN_GROUND_NY) { sweptGround = swept; sweptT = t; }
-          else if (swept.point) { barrier = swept; barrierT = t; }
+          if (descending && swept.normal.y >= MIN_GROUND_NY) {
+            sweptGround = swept;
+            sweptT = t;
+          } else if (swept.point) {
+            barrier = swept;
+            barrierT = t;
+          }
         }
       }
       if (sweptGround) {
@@ -353,10 +395,10 @@ export function createWalker(o: WalkerOpts) {
         directionalFlightArmed = false;
       }
     } else if (under && pos.y - under.y <= SNAP_DOWN) {
-      pos.y = under.y;      // stay welded to the surface over crests and dips, rather than skipping off them
+      pos.y = under.y; // stay welded to the surface over crests and dips, rather than skipping off them
       vel.y = 0;
     } else {
-      grounded = false;     // walked off an edge
+      grounded = false; // walked off an edge
       vel.y = 0;
     }
 
@@ -390,13 +432,23 @@ export function createWalker(o: WalkerOpts) {
 
   /** Commit a bite if there is standable floor at the far end, within one step's rise. */
   function accept(delta: THREE.Vector3): boolean {
-    const x = pos.x + delta.x, z = pos.z + delta.z;
+    const x = pos.x + delta.x,
+      z = pos.z + delta.z;
     const g = o.ground(x, z, pos.y);
     // Nothing under the destination at all: airborne, that is just flying over a gap and is allowed; on foot it
     // is the lip of the world, and the walker keeps its footing rather than stepping into nothing.
-    if (!g) { if (grounded) return false; pos.x = x; pos.z = z; return true; }
-    if (!grounded) { pos.x = x; pos.z = z; return true; }
-    if (g.y - pos.y > STEP_UP) return false;              // a wall, or a step too tall to stroll up
+    if (!g) {
+      if (grounded) return false;
+      pos.x = x;
+      pos.z = z;
+      return true;
+    }
+    if (!grounded) {
+      pos.x = x;
+      pos.z = z;
+      return true;
+    }
+    if (g.y - pos.y > STEP_UP) return false; // a wall, or a step too tall to stroll up
     if (g.normal.y < MIN_GROUND_NY && g.y > pos.y) return false; // a face too steep to gain height on
     pos.x = x;
     pos.z = z;
@@ -422,7 +474,8 @@ export type Walker = ReturnType<typeof createWalker>;
 export function downwardGroundQuery(
   castSegment: (from: THREE.Vector3, to: THREE.Vector3) => WalkGround | null,
 ): WalkGroundQuery {
-  const from = new THREE.Vector3(), to = new THREE.Vector3();
+  const from = new THREE.Vector3(),
+    to = new THREE.Vector3();
   const query: WalkGroundQuery = (x, z, fromY) => {
     from.set(x, fromY + PROBE_ABOVE, z);
     to.set(x, fromY - PROBE_BELOW, z);

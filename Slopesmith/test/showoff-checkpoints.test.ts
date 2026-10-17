@@ -43,21 +43,35 @@ check(normalizeCheckpointBonus(999) === 600, 'authoring: a malformed oversized p
 // Two path records at the same remaining DTF are alternate copies of one logical checkpoint, even when their
 // route awards differ (the MEGAPLEX shape). Positions still remain separate for viewport/runtime route choice.
 {
-  const file: CoursePathFile = { RaceLines: [
-    {
-      DistanceToFinish: 10000, PathPos: [0, 0, 0], PathPoints: [[0, 0, 0], [10000, 0, 0]],
-      PathEvents: [{ EventType: 11, EventValue: 150, EventStart: 5000, EventEnd: 5000 }],
-    },
-    {
-      DistanceToFinish: 10050, PathPos: [0, -2000, 0], PathPoints: [[0, 0, 0], [10000, 0, 0]],
-      PathEvents: [{ EventType: 11, EventValue: 120, EventStart: 5050, EventEnd: 5050 }],
-    },
-  ] };
+  const file: CoursePathFile = {
+    RaceLines: [
+      {
+        DistanceToFinish: 10000,
+        PathPos: [0, 0, 0],
+        PathPoints: [
+          [0, 0, 0],
+          [10000, 0, 0],
+        ],
+        PathEvents: [{ EventType: 11, EventValue: 150, EventStart: 5000, EventEnd: 5000 }],
+      },
+      {
+        DistanceToFinish: 10050,
+        PathPos: [0, -2000, 0],
+        PathPoints: [
+          [0, 0, 0],
+          [10000, 0, 0],
+        ],
+        PathEvents: [{ EventType: 11, EventValue: 120, EventStart: 5050, EventEnd: 5050 }],
+      },
+    ],
+  };
   const checkpoints = showoffCheckpoints(file);
   check(checkpoints.length === 2, 'reference: every route-specific SOP event remains visible');
   check(checkpoints[0].group === checkpoints[1].group, 'reference: equal-DTF route copies form one logical checkpoint');
-  check(Math.abs(checkpoints[0].pos[0] + 50) < 0.01 && Math.abs(checkpoints[1].pos[2] - 20) < 0.01,
-    'reference: EventStart is interpolated to each route’s own editor-space position');
+  check(
+    Math.abs(checkpoints[0].pos[0] + 50) < 0.01 && Math.abs(checkpoints[1].pos[2] - 20) < 0.01,
+    'reference: EventStart is interpolated to each route’s own editor-space position',
+  );
 }
 
 // The playtest query is a forward progress crossing, not a radius around the visual marker. A reverse crossing
@@ -68,12 +82,19 @@ check(normalizeCheckpointBonus(999) === 600, 'authoring: a malformed oversized p
     { pos: new THREE.Vector3(50, 0, 0), dtf: 50, bonusSeconds: 150, group: 4 },
     { pos: new THREE.Vector3(50, 0, 20), dtf: 50, bonusSeconds: 120, group: 4 },
   ])!;
-  check(tracker.step(new THREE.Vector3(40, 0, 18)).length === 0, 'runtime: initial placement grants no past checkpoint');
-  check(tracker.step(new THREE.Vector3(60, 0, 18))[0]?.bonusSeconds === 120,
-    'runtime: a forward crossing chooses the nearest alternate route’s payload');
+  check(
+    tracker.step(new THREE.Vector3(40, 0, 18)).length === 0,
+    'runtime: initial placement grants no past checkpoint',
+  );
+  check(
+    tracker.step(new THREE.Vector3(60, 0, 18))[0]?.bonusSeconds === 120,
+    'runtime: a forward crossing chooses the nearest alternate route’s payload',
+  );
   check(tracker.step(new THREE.Vector3(40, 0, 1)).length === 0, 'runtime: crossing backward grants no time');
-  check(tracker.step(new THREE.Vector3(60, 0, 1))[0]?.bonusSeconds === 150,
-    'runtime: a later forward re-cross can fire and chooses the other route');
+  check(
+    tracker.step(new THREE.Vector3(60, 0, 1))[0]?.bonusSeconds === 150,
+    'runtime: a later forward re-cross can fire and chooses the other route',
+  );
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll showoff-checkpoint checks passed.');

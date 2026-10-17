@@ -3,7 +3,13 @@ import { join, resolve } from 'node:path';
 import type { LevelCensus, MountainProvenance } from '../core/reference/census';
 import { ensureWorkspace } from './workspace-config';
 import {
-  fileStamp, listEntries, listSubdirectories, mapLimit, pathExists, readTextOrNull, writeFileAtomic,
+  fileStamp,
+  listEntries,
+  listSubdirectories,
+  mapLimit,
+  pathExists,
+  readTextOrNull,
+  writeFileAtomic,
   READ_CONCURRENCY,
 } from './fs-async';
 import { createLogger } from './log';
@@ -48,10 +54,17 @@ export interface CensusRecord {
  *  cost stats without making the answer any more correct. */
 const TOP_LEVEL_INPUTS = [
   // priced directly
-  'Patches.json', 'Models.json', 'Instances.json', 'Materials.json',
-  'Lights.json', 'ParticleInstances.json', 'Splines.json',
+  'Patches.json',
+  'Models.json',
+  'Instances.json',
+  'Materials.json',
+  'Lights.json',
+  'ParticleInstances.json',
+  'Splines.json',
   // the recovered course line, and the export date
-  'AIP.json', 'SOP.json', 'Slopesmith.json',
+  'AIP.json',
+  'SOP.json',
+  'Slopesmith.json',
   // the collision-sound index is not counted, but the folder's own race table is read beside it
   join('Audio', 'SoundIndex.json'),
 ] as const;
@@ -82,15 +95,22 @@ export async function censusFingerprint(levelDir: string): Promise<string> {
     const dir = join(root, name);
     // An absent directory and an empty one are distinct inputs: a deleted Meshes/ must not hash the same as
     // an emptied one, because the two price differently and only one of them is a mistake.
-    if (!await pathExists(dir)) { shapes.push(`${name.replace(/\\/g, '/')}:missing`); return []; }
-    const files = (await listEntries(dir)).filter(entry => entry.isFile && accept(entry.name))
+    if (!(await pathExists(dir))) {
+      shapes.push(`${name.replace(/\\/g, '/')}:missing`);
+      return [];
+    }
+    const files = (await listEntries(dir))
+      .filter(entry => entry.isFile && accept(entry.name))
       .map(entry => join(name, entry.name));
     shapes.push(`${name.replace(/\\/g, '/')}:count:${files.length}`);
     return files;
   };
   const banksIn = async (tree: string): Promise<string[]> => {
     const dir = join(root, 'Audio', tree);
-    if (!await pathExists(dir)) { shapes.push(`Audio/${tree}:missing`); return []; }
+    if (!(await pathExists(dir))) {
+      shapes.push(`Audio/${tree}:missing`);
+      return [];
+    }
     const folders = (await listSubdirectories(dir)).sort();
     // The folder NAMES are hashed as well as their contents, so a renamed bank changes the fingerprint even
     // when every byte inside it is the same file it was.
@@ -99,16 +119,20 @@ export async function censusFingerprint(levelDir: string): Promise<string> {
   };
 
   const [meshes, textures, sfxBanks, songs] = await Promise.all([
-    listing('Meshes', obj), listing('Textures', png), banksIn('SFX'), banksIn('Music'),
+    listing('Meshes', obj),
+    listing('Textures', png),
+    banksIn('SFX'),
+    banksIn('Music'),
   ]);
-  const audio = (await Promise.all([
-    ...sfxBanks.map(bank => listing(bank, slotWav)),
-    ...songs.map(song => listing(song, graph)),
-  ])).flat();
+  const audio = (
+    await Promise.all([...sfxBanks.map(bank => listing(bank, slotWav)), ...songs.map(song => listing(song, graph))])
+  ).flat();
 
   const paths = [...TOP_LEVEL_INPUTS, ...meshes, ...textures, ...audio];
-  const stamps = await mapLimit(paths, READ_CONCURRENCY,
-    async name => ({ name: name.replace(/\\/g, '/').toLowerCase(), stamp: await fileStamp(join(root, name)) }));
+  const stamps = await mapLimit(paths, READ_CONCURRENCY, async name => ({
+    name: name.replace(/\\/g, '/').toLowerCase(),
+    stamp: await fileStamp(join(root, name)),
+  }));
 
   // Folded in a fixed order, because a fingerprint that depended on completion order would change between
   // runs over identical data and defeat the cache. Ordered by code point, NOT `localeCompare`: a collation
@@ -127,8 +151,15 @@ function validRecord(value: unknown, level: string): value is CensusRecord {
   if (!value || typeof value !== 'object') return false;
   const record = value as Partial<CensusRecord>;
   const census = record.census;
-  return !!census && census.level === level && Array.isArray(census.costs)
-    && !!census.pages && !!census.extras && !!census.sound && !!record.provenance;
+  return (
+    !!census &&
+    census.level === level &&
+    Array.isArray(census.costs) &&
+    !!census.pages &&
+    !!census.extras &&
+    !!census.sound &&
+    !!record.provenance
+  );
 }
 
 const defaultCacheRoot = async () => join((await ensureWorkspace()).workspaceRoot, 'cache', 'level-census');
@@ -157,9 +188,13 @@ export interface CensusReadOptions {
  * `build` returning null means "not a map folder", which is not cached: it costs one read to establish and
  * caching it would need its own absence-shaped entry to invalidate.
  */
-export async function readPersistentCensus(level: string, levelDir: string,
-  build: () => Promise<CensusRecord | null>, options: CensusReadOptions = {}): Promise<CensusRecord | null> {
-  const root = options.cacheRoot ?? await defaultCacheRoot();
+export async function readPersistentCensus(
+  level: string,
+  levelDir: string,
+  build: () => Promise<CensusRecord | null>,
+  options: CensusReadOptions = {},
+): Promise<CensusRecord | null> {
+  const root = options.cacheRoot ?? (await defaultCacheRoot());
   const fingerprint = await censusFingerprint(levelDir);
   const cacheFile = join(root, level, `${fingerprint}.json`);
 
@@ -170,7 +205,9 @@ export async function readPersistentCensus(level: string, levelDir: string,
     try {
       const value: unknown = JSON.parse(cached);
       if (validRecord(value, level)) return value;
-    } catch { /* corrupt entry — rebuild over it */ }
+    } catch {
+      /* corrupt entry — rebuild over it */
+    }
   }
 
   const built = await build();

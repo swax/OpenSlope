@@ -19,13 +19,20 @@ function makeNoise(seed: number, cells: number) {
   for (let i = 0; i < lattice.length; i++) lattice[i] = rnd();
   return (x: number, y: number) => {
     // x, y in [0,1)
-    const fx = x * cells, fy = y * cells;
-    const x0 = Math.floor(fx) % cells, y0 = Math.floor(fy) % cells;
-    const x1 = (x0 + 1) % cells, y1 = (y0 + 1) % cells;
-    const tx = fx - Math.floor(fx), ty = fy - Math.floor(fy);
-    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
-    const a = lattice[y0 * cells + x0], b = lattice[y0 * cells + x1];
-    const c = lattice[y1 * cells + x0], d = lattice[y1 * cells + x1];
+    const fx = x * cells,
+      fy = y * cells;
+    const x0 = Math.floor(fx) % cells,
+      y0 = Math.floor(fy) % cells;
+    const x1 = (x0 + 1) % cells,
+      y1 = (y0 + 1) % cells;
+    const tx = fx - Math.floor(fx),
+      ty = fy - Math.floor(fy);
+    const sx = tx * tx * (3 - 2 * tx),
+      sy = ty * ty * (3 - 2 * ty);
+    const a = lattice[y0 * cells + x0],
+      b = lattice[y0 * cells + x1];
+    const c = lattice[y1 * cells + x0],
+      d = lattice[y1 * cells + x1];
     return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
   };
 }
@@ -41,11 +48,14 @@ function paint(
   const octaves = opts.octaves ?? 3;
   for (let y = 0; y < W; y++) {
     for (let x = 0; x < W; x++) {
-      const u = x / W, v = y / W;
-      let n = 0, amp = 0.55, tot = 0;
+      const u = x / W,
+        v = y / W;
+      let n = 0,
+        amp = 0.55,
+        tot = 0;
       for (let o = 0; o < octaves; o++) {
         // streakX stretches noise along x for directional surfaces like ice
-        n += layers[o](((u * (opts.streakX ?? 1)) % 1 + 1) % 1, v) * amp;
+        n += layers[o]((((u * (opts.streakX ?? 1)) % 1) + 1) % 1, v) * amp;
         tot += amp;
         amp *= 0.5;
       }
@@ -67,16 +77,28 @@ function paint(
  */
 export function sampleRgba(tex: Rgba, u: number, v: number): [number, number, number] {
   const { w, h, data } = tex;
-  const wrap = (t: number, n: number) => { const m = t - Math.floor(t); return m * n; }; // [0,1) -> [0,n)
-  const fx = wrap(u, w) - 0.5, fy = wrap(v, h) - 0.5; // -0.5 centres the bilinear kernel on texel centres
-  const x0 = Math.floor(fx), y0 = Math.floor(fy);
-  const tx = fx - x0, ty = fy - y0;
-  const ix = (x: number) => ((x % w) + w) % w, iy = (y: number) => ((y % h) + h) % h;
-  const x1 = ix(x0 + 1), y1 = iy(y0 + 1), cx0 = ix(x0), cy0 = iy(y0);
+  const wrap = (t: number, n: number) => {
+    const m = t - Math.floor(t);
+    return m * n;
+  }; // [0,1) -> [0,n)
+  const fx = wrap(u, w) - 0.5,
+    fy = wrap(v, h) - 0.5; // -0.5 centres the bilinear kernel on texel centres
+  const x0 = Math.floor(fx),
+    y0 = Math.floor(fy);
+  const tx = fx - x0,
+    ty = fy - y0;
+  const ix = (x: number) => ((x % w) + w) % w,
+    iy = (y: number) => ((y % h) + h) % h;
+  const x1 = ix(x0 + 1),
+    y1 = iy(y0 + 1),
+    cx0 = ix(x0),
+    cy0 = iy(y0);
   const out: [number, number, number] = [0, 0, 0];
   for (let c = 0; c < 3; c++) {
-    const a = data[(cy0 * w + cx0) * 4 + c], b = data[(cy0 * w + x1) * 4 + c];
-    const d = data[(y1 * w + cx0) * 4 + c], e = data[(y1 * w + x1) * 4 + c];
+    const a = data[(cy0 * w + cx0) * 4 + c],
+      b = data[(cy0 * w + x1) * 4 + c];
+    const d = data[(y1 * w + cx0) * 4 + c],
+      e = data[(y1 * w + x1) * 4 + c];
     out[c] = ((a + (b - a) * tx) * (1 - ty) + (d + (e - d) * tx) * ty) / 255;
   }
   return out;

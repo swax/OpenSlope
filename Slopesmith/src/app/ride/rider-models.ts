@@ -19,15 +19,19 @@ let catalog: RiderModelOption[] = [...builtins, procedural];
 let catalogRequest: Promise<readonly RiderModelOption[]> | null = null;
 let catalogSettled = false;
 
-export function riderModelOptions(): readonly RiderModelOption[] { return catalog; }
-export function riderModelCatalogSettled(): boolean { return catalogSettled; }
+export function riderModelOptions(): readonly RiderModelOption[] {
+  return catalog;
+}
+export function riderModelCatalogSettled(): boolean {
+  return catalogSettled;
+}
 
 /** Fetch the flat server-wide character catalogue once. Every built-in choice survives an API failure. */
 export function ensureRiderModelCatalog(): Promise<readonly RiderModelOption[]> {
   catalogRequest ??= fetch('/api/characters', { cache: 'no-store' })
     .then(async response => {
       if (!response.ok) throw new Error(`character catalog returned ${response.status}`);
-      const payload = await response.json() as { characters?: unknown };
+      const payload = (await response.json()) as { characters?: unknown };
       const raw = Array.isArray(payload.characters) ? payload.characters : [];
       const found: RiderModelOption[] = [];
       for (const value of raw) {
@@ -44,7 +48,9 @@ export function ensureRiderModelCatalog(): Promise<readonly RiderModelOption[]> 
       console.warn('Character catalog did not load; keeping the built-in rider choices.', error);
       return catalog;
     })
-    .finally(() => { catalogSettled = true; });
+    .finally(() => {
+      catalogSettled = true;
+    });
   return catalogRequest;
 }
 

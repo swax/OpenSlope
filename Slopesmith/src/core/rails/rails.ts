@@ -35,7 +35,7 @@ export const railMaterialLabel = (style: number): string => {
 };
 
 /** Documents written before motion paths contain only grind rails, so an absent discriminator is grind. */
-export const railKind = (rail: Rail): 'grind' | 'motion' => rail.kind === 'motion' ? 'motion' : 'grind';
+export const railKind = (rail: Rail): 'grind' | 'motion' => (rail.kind === 'motion' ? 'motion' : 'grind');
 export const isMotionPath = (rail: Rail): boolean => railKind(rail) === 'motion';
 
 /** Whether this rail waits outside the rail network for a `Rail on / off` effect to switch it in. Only a grind
@@ -76,7 +76,9 @@ export function nextRailId(rails: readonly Rail[]): string {
 }
 
 /** Stable identity for an effects-owned, non-grind motion path. */
-export function nextMotionPathId(rails: readonly Rail[]): string { return nextSplineId(rails, 'path'); }
+export function nextMotionPathId(rails: readonly Rail[]): string {
+  return nextSplineId(rails, 'path');
+}
 
 /** Upgrade old documents and repair duplicate/empty rail ids in place. */
 export function ensureRailIds(rails: Rail[] | undefined): void {
@@ -86,7 +88,10 @@ export function ensureRailIds(rails: Rail[] | undefined): void {
     if (typeof rail.id === 'string' && rail.id && !used.has(rail.id)) used.add(rail.id);
     else {
       const prefix = isMotionPath(rail) ? 'path' : 'rail';
-      rail.id = nextSplineId([...used].map(id => ({ id } as Rail)), prefix);
+      rail.id = nextSplineId(
+        [...used].map(id => ({ id }) as Rail),
+        prefix,
+      );
       used.add(rail.id);
     }
   }
@@ -117,7 +122,9 @@ export interface RailPipeFamily {
  * all placed exactly once — an instanced kit piece that happened to share the name would not be a pipe chunk.
  * (Wood and ice rails ship no pipe: retail rides them along logs and icicles that are ordinary props.)
  */
-export function mineRailPipes(lp: Pick<LevelProps, 'level' | 'models' | 'instances' | 'materials'>): RailPipeFamily | null {
+export function mineRailPipes(
+  lp: Pick<LevelProps, 'level' | 'models' | 'instances' | 'materials'>,
+): RailPipeFamily | null {
   const models = lp.models.filter(model => !model.line && RAIL_PIPE_MODEL.test(model.name));
   if (models.length < 2) return null;
   const placements = new Map<number, number>();
@@ -125,7 +132,8 @@ export function mineRailPipes(lp: Pick<LevelProps, 'level' | 'models' | 'instanc
     if (instance.visible !== false) placements.set(instance.model, (placements.get(instance.model) ?? 0) + 1);
   }
   const placed = models.filter(model => placements.get(model.id));
-  if (!placed.length || placed.filter(model => placements.get(model.id) === 1).length < placed.length * 0.75) return null;
+  if (!placed.length || placed.filter(model => placements.get(model.id) === 1).length < placed.length * 0.75)
+    return null;
   const material = lp.materials.get(placed[0].subs[0]?.mat ?? -1);
   return {
     key: placed[0].name.replace(/_\d+$/, ''),
@@ -183,8 +191,10 @@ const addV = (a: readonly number[], b: readonly number[]): V3 => [a[0] + b[0], a
  *  clamped (P[-1]=P[0], P[n]=P[n-1]) — the same clamping sampleSpine does, so a path matches the run spine.
  *  The arriving handle is its negation. */
 function autoOut(nodes: readonly V3[], i: number): V3 {
-  const n = nodes.length, at = (k: number) => nodes[Math.max(0, Math.min(n - 1, k))];
-  const a = at(i - 1), b = at(i + 1);
+  const n = nodes.length,
+    at = (k: number) => nodes[Math.max(0, Math.min(n - 1, k))];
+  const a = at(i - 1),
+    b = at(i + 1);
   return [(b[0] - a[0]) / 6, (b[1] - a[1]) / 6, (b[2] - a[2]) / 6];
 }
 
@@ -194,10 +204,11 @@ function autoOut(nodes: readonly V3[], i: number): V3 {
  */
 export function pathHandleOffsets(nodes: readonly V3[], handles?: PathHandleList): { in: V3 | null; out: V3 | null }[] {
   return nodes.map((_, i) => {
-    const auto = autoOut(nodes, i), own = handles?.[i];
+    const auto = autoOut(nodes, i),
+      own = handles?.[i];
     return {
-      in: i > 0 ? own?.in ?? [-auto[0], -auto[1], -auto[2]] : null,
-      out: i < nodes.length - 1 ? own?.out ?? auto : null,
+      in: i > 0 ? (own?.in ?? [-auto[0], -auto[1], -auto[2]]) : null,
+      out: i < nodes.length - 1 ? (own?.out ?? auto) : null,
     };
   });
 }
@@ -212,7 +223,8 @@ export function railBezierSegments(nodes: readonly V3[], handles?: PathHandleLis
   const offsets = pathHandleOffsets(nodes, handles);
   const segs: [V3, V3, V3, V3][] = [];
   for (let i = 0; i < nodes.length - 1; i++) {
-    const p1 = nodes[i], p2 = nodes[i + 1];
+    const p1 = nodes[i],
+      p2 = nodes[i + 1];
     segs.push([p1, addV(p1, offsets[i].out!), addV(p2, offsets[i + 1].in!), p2]);
   }
   return segs;
@@ -223,9 +235,15 @@ export function railBezierSegments(nodes: readonly V3[], handles?: PathHandleLis
  * keeping its own length, so the curve stays smooth through the node; `independent` (Alt) moves only the one,
  * which is how a path takes a corner. Returns the new list, trimmed of trailing nodes with no override.
  */
-export function setPathHandle(nodes: readonly V3[], handles: PathHandleList, node: number, side: 'in' | 'out',
-  offset: V3, independent = false): (PathHandles | null)[] {
-  const out: (PathHandles | null)[] = nodes.map((_, i) => handles?.[i] ? { ...handles[i] } : null);
+export function setPathHandle(
+  nodes: readonly V3[],
+  handles: PathHandleList,
+  node: number,
+  side: 'in' | 'out',
+  offset: V3,
+  independent = false,
+): (PathHandles | null)[] {
+  const out: (PathHandles | null)[] = nodes.map((_, i) => (handles?.[i] ? { ...handles[i] } : null));
   if (!nodes[node]) return trimHandles(out);
   const entry: PathHandles = { ...(out[node] ?? {}), [side]: [offset[0], offset[1], offset[2]] };
   const other = side === 'in' ? 'out' : 'in';
@@ -241,7 +259,7 @@ export function setPathHandle(nodes: readonly V3[], handles: PathHandleList, nod
 
 /** Put node `node` back on the automatic curve. */
 export function resetPathHandles(handles: PathHandleList, node: number): (PathHandles | null)[] {
-  return trimHandles((handles ?? []).map((own, i) => i === node ? null : own ?? null));
+  return trimHandles((handles ?? []).map((own, i) => (i === node ? null : (own ?? null))));
 }
 
 /** The handle list once node `node` is deleted, so every later node keeps its own. */
@@ -259,8 +277,13 @@ function trimHandles(list: (PathHandles | null)[]): (PathHandles | null)[] {
 }
 
 const bezierPoint = (b: [V3, V3, V3, V3], t: number): V3 => {
-  const u = 1 - t, uu = u * u, tt = t * t;
-  const a = uu * u, bb = 3 * uu * t, cc = 3 * u * tt, dd = tt * t;
+  const u = 1 - t,
+    uu = u * u,
+    tt = t * t;
+  const a = uu * u,
+    bb = 3 * uu * t,
+    cc = 3 * u * tt,
+    dd = tt * t;
   return [
     a * b[0][0] + bb * b[1][0] + cc * b[2][0] + dd * b[3][0],
     a * b[0][1] + bb * b[1][1] + cc * b[2][1] + dd * b[3][1],

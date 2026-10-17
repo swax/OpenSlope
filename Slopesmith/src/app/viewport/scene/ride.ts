@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import type { BoardSoundMix, RaceMusicArrangement, Rail, V3 } from '../../../core/doc/types';
 import {
-  editorFromRaw, referenceSplineIsGrindRail, type ReferenceMesh, type RefAiPath, type RefSplineRaw,
+  editorFromRaw,
+  referenceSplineIsGrindRail,
+  type ReferenceMesh,
+  type RefAiPath,
+  type RefSplineRaw,
 } from '../../../core/reference/terrain';
 import { isMotionPath, railBezierSegments, railHasTube, railStartsOff, railStyle } from '../../../core/rails/rails';
 import { RAIL_TUBE_RADIUS } from '../../../core/rails/rail-mesh';
@@ -10,8 +14,11 @@ import { DEFAULT_LINE_RATING } from '../../../core/doc/course';
 import { createGrindRails, type GrindRails } from '../../ride/grind';
 import { buildBoostVolumes, type BoostVolume, type BoostVolumeSpec } from '../../ride/boost-volumes';
 import {
-  buildCrackedSurfaces, createCrackedSurfaceRuntime,
-  type CrackedSurface, type CrackedSurfaceRuntime, type CrackedSurfaceSpec,
+  buildCrackedSurfaces,
+  createCrackedSurfaceRuntime,
+  type CrackedSurface,
+  type CrackedSurfaceRuntime,
+  type CrackedSurfaceSpec,
 } from '../../ride/cracked-surfaces';
 import { authoredPatchContact, referencePatchContact } from '../../ride/patch-contact';
 import { MAX_SPEED, RIDER_HEAD_Y } from '../../ride/physics-tuning';
@@ -30,7 +37,10 @@ import type { PreviewData } from '../../../core/mesh/tessellation';
 import { pickTree, type TreeGeometry } from '../mesh/surface-trees';
 import type { Stage } from '../stage';
 import {
-  DEFAULT_RIDE_GEAR, DEFAULT_SNOWBOARD_STANCE, type EquipmentAppearance, type RideGear,
+  DEFAULT_RIDE_GEAR,
+  DEFAULT_SNOWBOARD_STANCE,
+  type EquipmentAppearance,
+  type RideGear,
   type SnowboardStance,
 } from '../../ride/gear';
 import { DEFAULT_RIDER_MODEL_ID } from '../../ride/rider-models';
@@ -175,7 +185,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   let aiMax = 0; // zero = off; the host restores Test's persisted AI rider count immediately after construction
   let riderModel = DEFAULT_RIDER_MODEL_ID; // built-in/library character id used by newly mounted player/AI riders
   let riderStyle: string = DEFAULT_RIDING_STYLE; // riding style used by newly mounted player/AI riders
-  let rideGear: RideGear = DEFAULT_RIDE_GEAR;    // snowboard or skis, for the player and the whole AI field
+  let rideGear: RideGear = DEFAULT_RIDE_GEAR; // snowboard or skis, for the player and the whole AI field
   let snowboardStance: SnowboardStance = DEFAULT_SNOWBOARD_STANCE; // snowboard foot order, retained on skis
   let equipmentAppearance: EquipmentAppearance | undefined; // signed-in local rider only; AI keeps stock gear
   // Local-player wake/spray only. AI riders are built by mountAiField and never receive a BoardFx instance.
@@ -183,9 +193,14 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   let watching = false; // ...or racing alone, with no board and the editor's own camera (spectate)
   let rideRestore: {
     camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
-    pos: THREE.Vector3; quat: THREE.Quaternion; target: THREE.Vector3;
-    perspFov: number; perspNear: number;
-    controls: boolean; gizmoOn: boolean; gizmoVis: boolean;
+    pos: THREE.Vector3;
+    quat: THREE.Quaternion;
+    target: THREE.Vector3;
+    perspFov: number;
+    perspNear: number;
+    controls: boolean;
+    gizmoOn: boolean;
+    gizmoVis: boolean;
   } | null = null;
   // Test mode: which mountain is being set up + the world-space start marker. Mountain visibility is not part
   // of setup: the non-target mountain is hidden only for the lifetime of an actual ride.
@@ -207,8 +222,11 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   /** Test mode's collider overlay (docs/016). Parented at the scene root because ride collision is solved in
    *  world space, which is the frame the obstacle sources are already in. */
   const colliderOverlay = createRideColliderOverlay(stage.scene);
-  const castRay = new THREE.Ray(), castFrom = new THREE.Vector3(), castTo = new THREE.Vector3();
-  const castInverse = new THREE.Matrix4(), castNormals = new THREE.Matrix3();
+  const castRay = new THREE.Ray(),
+    castFrom = new THREE.Vector3(),
+    castTo = new THREE.Vector3();
+  const castInverse = new THREE.Matrix4(),
+    castNormals = new THREE.Matrix3();
 
   function ensureWalkObstacles(t: RideTarget): WalkObstacleWorld {
     if (walkObstacles && walkObstacleReference === t.reference) return walkObstacles;
@@ -274,8 +292,12 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
 
   /** Complete timings arrive after render; AI is timed here because it is nested inside the broad ride phase.
    *  The headset takes the same sample: its wrist profiler has to keep running between boards (docs/048). */
-  function recordFramePerf(sample: Omit<RideFrameTimingSample,
-    'aiMs' | 'walkCollisionMs' | 'walkGroundCasts' | 'walkSweeps' | 'walkTriangleTests' | 'walkLiveRefits'>) {
+  function recordFramePerf(
+    sample: Omit<
+      RideFrameTimingSample,
+      'aiMs' | 'walkCollisionMs' | 'walkGroundCasts' | 'walkSweeps' | 'walkTriangleTests' | 'walkLiveRefits'
+    >,
+  ) {
     const walk = walkObstacles?.perf;
     const full = {
       ...sample,
@@ -296,7 +318,9 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     xr?.beginFrame(frame, dt);
   }
   /** ...and the rig's seat, after it. */
-  function endXrFrame() { xr?.endFrame(); }
+  function endXrFrame() {
+    xr?.endFrame();
+  }
 
   /**
    * The authored mountain's AI field in world space (the world root's chirality flip applied) — the same lines
@@ -343,7 +367,10 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       markers: p.markers,
       points: p.points.map(q => new THREE.Vector3(q[0], q[1], q[2]).applyMatrix4(m)),
     }));
-    const gates = raw.map((p, i) => (p.start ? i : -1)).filter(i => i >= 0).slice(0, 6);
+    const gates = raw
+      .map((p, i) => (p.start ? i : -1))
+      .filter(i => i >= 0)
+      .slice(0, 6);
     // Its recovered main course line is the progress ruler the standings sort on ([Trailmap: 140]).
     const course = (deps.getRefCourse() ?? []).map(p => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(m));
     return { paths, starts: gates.length ? gates : paths.slice(0, 6).map((_p, i) => i), course };
@@ -384,10 +411,13 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     const root = reference ? deps.getReference() : stage.worldRoot;
     if (!root) return [];
     root.updateWorldMatrix(true, false);
-    if (reference) return deps.getRefCheckpoints().map(checkpoint => ({
-      pos: new THREE.Vector3(checkpoint.pos[0], checkpoint.pos[1], checkpoint.pos[2]).applyMatrix4(root.matrixWorld),
-      bonusSeconds: checkpoint.bonusSeconds, group: checkpoint.group, dtf: checkpoint.dtf,
-    }));
+    if (reference)
+      return deps.getRefCheckpoints().map(checkpoint => ({
+        pos: new THREE.Vector3(checkpoint.pos[0], checkpoint.pos[1], checkpoint.pos[2]).applyMatrix4(root.matrixWorld),
+        bonusSeconds: checkpoint.bonusSeconds,
+        group: checkpoint.group,
+        dtf: checkpoint.dtf,
+      }));
     return deps.getCourseCheckpoints().map(checkpoint => ({
       pos: new THREE.Vector3(checkpoint.pos[0], checkpoint.pos[1], checkpoint.pos[2]).applyMatrix4(root.matrixWorld),
       bonusSeconds: checkpoint.bonusSeconds,
@@ -407,18 +437,29 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     stage.worldRoot.updateWorldMatrix(true, false);
     const m = stage.worldRoot.matrixWorld;
     const disabled = deps.getModeDisabledRails?.('authored', deps.getRaceMode()) ?? new Set();
-    const railsIn = deps.getRails()
+    const railsIn = deps
+      .getRails()
       .map(r => ({
-        enabled: () => deps.getRailEnabled?.('authored', r.id ?? '',
-          !isMotionPath(r) && !railStartsOff(r) && !disabled.has(r.id ?? ''))
-          ?? (!isMotionPath(r) && !railStartsOff(r) && !disabled.has(r.id ?? '')),
+        enabled: () =>
+          deps.getRailEnabled?.(
+            'authored',
+            r.id ?? '',
+            !isMotionPath(r) && !railStartsOff(r) && !disabled.has(r.id ?? ''),
+          ) ??
+          (!isMotionPath(r) && !railStartsOff(r) && !disabled.has(r.id ?? '')),
         surf: railStyle(r),
         // Only Slopesmith's generated pipe is centred on its spline. Bare curves are laid directly on the
         // intended contact line, just like extracted retail splines.
         seat: railHasTube(r) ? RAIL_TUBE_RADIUS : 0,
-        segments: railBezierSegments(r.nodes, r.handles).map(seg =>
-          seg.map(p => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(m)) as
-            [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]),
+        segments: railBezierSegments(r.nodes, r.handles).map(
+          seg =>
+            seg.map(p => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(m)) as [
+              THREE.Vector3,
+              THREE.Vector3,
+              THREE.Vector3,
+              THREE.Vector3,
+            ],
+        ),
       }))
       .filter(r => r.segments.length > 0);
     return railsIn.length ? createGrindRails(railsIn) : null;
@@ -440,25 +481,34 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     const disabled = deps.getModeDisabledRails?.('reference', deps.getRaceMode()) ?? new Set();
     const railsIn = raw
       .map(s => ({
-        enabled: () => deps.getRailEnabled?.('reference', s.originalIndex,
-          referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex))
-          ?? (referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex)),
+        enabled: () =>
+          deps.getRailEnabled?.(
+            'reference',
+            s.originalIndex,
+            referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex),
+          ) ??
+          (referenceSplineIsGrindRail(s) && !disabled.has(s.originalIndex)),
         surf: s.style,
         // Retail authored the rider clearance into the spline itself; the engine adds no fixed rail height.
         seat: 0,
         segments: s.segments
           .filter(seg => seg.length === 4)
-          .map(seg => seg.map(p => {
-            const e = editorFromRaw(p);
-            return new THREE.Vector3(e[0], e[1], e[2]).applyMatrix4(m);
-          }) as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]),
+          .map(
+            seg =>
+              seg.map(p => {
+                const e = editorFromRaw(p);
+                return new THREE.Vector3(e[0], e[1], e[2]).applyMatrix4(m);
+              }) as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3],
+          ),
       }))
       .filter(r => r.segments.length > 0);
     return railsIn.length ? createGrindRails(railsIn) : null;
   }
 
   /** True when the loaded reference world can be ridden (its terrain + surface data are present). */
-  function canRide() { return !!(deps.getReference() && deps.getRefData()); }
+  function canRide() {
+    return !!(deps.getReference() && deps.getRefData());
+  }
 
   /**
    * A default world-space start point for the reference: a slot on the START ROW, the head of one of the six
@@ -485,10 +535,11 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
      * Over a BASELINE rather than the first step, because a start path's first delta is a metre or two of
      * staging jog: Elysium's climbs steeply enough to read as "up the hill" on its own.
      */
-    const HEADING_BASELINE = 15;   // m of path to average the facing over
+    const HEADING_BASELINE = 15; // m of path to average the facing over
     const pathHeading = (points: V3[]): V3 | null => {
       const a = toWorld(points[0]);
-      let far = a, run = 0;
+      let far = a,
+        run = 0;
       for (let i = 1; i < points.length && run < HEADING_BASELINE; i++) {
         const b = toWorld(points[i]);
         run += Math.hypot(b[0] - far[0], b[1] - far[1], b[2] - far[2]);
@@ -511,12 +562,14 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     if (course && course.length >= 2) {
       let total = 0;
       for (let i = 1; i < course.length; i++) {
-        const a = course[i - 1], b = course[i];
+        const a = course[i - 1],
+          b = course[i];
         total += Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
       }
       let along = Math.min(4, total * 0.03); // same intent as the authored start: just clear of the gate
       for (let i = 1; i < course.length; i++) {
-        const a = course[i - 1], b = course[i];
+        const a = course[i - 1],
+          b = course[i];
         const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
         if (len <= 1e-6) continue;
         if (along <= len) {
@@ -532,13 +585,16 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       }
     }
     const box = new THREE.Box3().setFromObject(reference);
-    const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
+    const cx = (box.min.x + box.max.x) / 2,
+      cz = (box.min.z + box.max.z) / 2;
     // This is an internal vertical probe, not a pointer cast. A dedicated raycaster is important: mutating
     // Stage's shared picker (especially its `far`) made subsequent camera clicks beyond that range miss, so
     // Play's click-to-place start appeared broken after the reference default had been calculated.
     const ray = new THREE.Raycaster(
-      new THREE.Vector3(cx, box.max.y + 10, cz), new THREE.Vector3(0, -1, 0),
-      0, (box.max.y - box.min.y) + 100,
+      new THREE.Vector3(cx, box.max.y + 10, cz),
+      new THREE.Vector3(0, -1, 0),
+      0,
+      box.max.y - box.min.y + 100,
     );
     const hit = ray.intersectObject(reference, false)[0];
     return {
@@ -554,7 +610,10 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   function setPlayActive(on: boolean, target: 'authored' | 'reference') {
     if ((!on || target !== playTarget) && !xr) clearAiField();
     playTarget = target;
-    if (!on) { showRideSpawn(null); return; }
+    if (!on) {
+      showRideSpawn(null);
+      return;
+    }
     const reference = target === 'reference';
     // size the start marker to the mountain (a few % of its span) so it reads from the editor's framing
     const mesh = reference ? deps.getReference() : deps.getTerrain();
@@ -570,17 +629,33 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    *  headset session is up: the flag is put away for the whole session (`startXrPlay`), and re-entering Test from
    *  the wrist EDIT palette must not plant a mountain-scaled pole on top of the rider. */
   function showRideSpawn(world: V3 | null) {
-    if (!world || xr) { if (playMarker) playMarker.visible = false; return; }
+    if (!world || xr) {
+      if (playMarker) playMarker.visible = false;
+      return;
+    }
     if (!playMarker) {
       const g = new THREE.Group();
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3, 8), new THREE.MeshBasicMaterial({ color: 0x35e06a }));
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 3, 8),
+        new THREE.MeshBasicMaterial({ color: 0x35e06a }),
+      );
       pole.position.y = 1.5;
-      const flag = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.1, 4), new THREE.MeshBasicMaterial({ color: 0x35e06a }));
-      flag.position.y = 3.1; flag.rotation.y = Math.PI / 4;
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.1, 24), new THREE.MeshBasicMaterial({ color: 0x35e06a, side: THREE.DoubleSide, transparent: true, opacity: 0.7 }));
-      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05;
+      const flag = new THREE.Mesh(
+        new THREE.ConeGeometry(0.5, 1.1, 4),
+        new THREE.MeshBasicMaterial({ color: 0x35e06a }),
+      );
+      flag.position.y = 3.1;
+      flag.rotation.y = Math.PI / 4;
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.8, 1.1, 24),
+        new THREE.MeshBasicMaterial({ color: 0x35e06a, side: THREE.DoubleSide, transparent: true, opacity: 0.7 }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.05;
       g.add(pole, flag, ring);
-      g.traverse(o => { o.raycast = () => {}; });
+      g.traverse(o => {
+        o.raycast = () => {};
+      });
       stage.scene.add(g); // world space, like the board
       playMarker = g;
     }
@@ -615,10 +690,13 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     const mesh = reference ? deps.getReference()! : deps.getTerrain();
     mesh.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(mesh);
-    const rd = deps.getRefData(), pv = deps.getPreview();
+    const rd = deps.getRefData(),
+      pv = deps.getPreview();
     const surfaceOf = reference
-      ? (faceIndex: number): number | null => (rd ? (rd.patchSurf[Math.floor(faceIndex / rd.facesPerPatch)] ?? null) : null)
-      : (faceIndex: number): number | null => (pv ? (pv.cellSurf[Math.floor(faceIndex / pv.facesPerCell)] ?? null) : null);
+      ? (faceIndex: number): number | null =>
+          rd ? (rd.patchSurf[Math.floor(faceIndex / rd.facesPerPatch)] ?? null) : null
+      : (faceIndex: number): number | null =>
+          pv ? (pv.cellSurf[Math.floor(faceIndex / pv.facesPerCell)] ?? null) : null;
     // The level's colliders and the volumes built over them are shared by whoever mounts on this target — a
     // spectated field meets the same architecture and the same boost volumes a ridden board would, which is the
     // whole point of the field being the player's own model. Gathered LAZILY and once: `rideTarget` is also what
@@ -627,17 +705,21 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     let obstacles: RideObstacleSource[] | null = null;
     let volumes: BoostVolume[] | null = null;
     let cracked: CrackedSurface[] | null = null;
-    const captureObstacles = () => (obstacles ??=
-      reference ? deps.getReferencePropColliders() : deps.getAuthoredPropColliders());
+    const captureObstacles = () =>
+      (obstacles ??= reference ? deps.getReferencePropColliders() : deps.getAuthoredPropColliders());
     return {
-      reference, mesh, surfaceOf,
-      get obstacles() { return captureObstacles(); },
+      reference,
+      mesh,
+      surfaceOf,
+      get obstacles() {
+        return captureObstacles();
+      },
       get boostVolumes() {
-        return volumes ??= buildBoostVolumes(captureObstacles(), deps.getBoostVolumeSpecs?.());
+        return (volumes ??= buildBoostVolumes(captureObstacles(), deps.getBoostVolumeSpecs?.()));
       },
       resetVolumes: deps.getResetVolumeKeys?.() ?? EMPTY_KEYS,
       get crackedSurfaces() {
-        return cracked ??= buildCrackedSurfaces(captureObstacles(), deps.getCrackedSurfaceSpecs?.());
+        return (cracked ??= buildCrackedSurfaces(captureObstacles(), deps.getCrackedSurfaceSpecs?.()));
       },
       onCrackedChange: deps.onCrackedChange,
       onCrackedBreak: deps.onCrackedBreak,
@@ -646,8 +728,8 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       showoffSeconds: reference ? deps.getRefShowoffSeconds() : deps.getShowoffSeconds(),
       checkpoints: rideCheckpoints(reference),
       oobFloorY: box.min.y - 100,
-      patchContact: (reference ? referencePatchContact(deps.getRefData())
-        : authoredPatchContact(deps.getPreview())) ?? undefined,
+      patchContact:
+        (reference ? referencePatchContact(deps.getRefData()) : authoredPatchContact(deps.getPreview())) ?? undefined,
       rails: (reference ? referenceGrindRails() : authoredGrindRails()) ?? undefined,
     };
   }
@@ -671,17 +753,32 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     if (!gates && !starts.length) return false;
     aiField?.dispose();
     aiField = createAiRiders({
-      paths, starts: seeded, course, terrain: t.mesh, scene: stage.scene,
-      surfaceOf: t.surfaceOf, oobFloorY: t.oobFloorY, patchContact: t.patchContact, rails: t.rails,
-      obstacles: t.obstacles, boostVolumes: t.boostVolumes, resetVolumes: t.resetVolumes,
+      paths,
+      starts: seeded,
+      course,
+      terrain: t.mesh,
+      scene: stage.scene,
+      surfaceOf: t.surfaceOf,
+      oobFloorY: t.oobFloorY,
+      patchContact: t.patchContact,
+      rails: t.rails,
+      obstacles: t.obstacles,
+      boostVolumes: t.boostVolumes,
+      resetVolumes: t.resetVolumes,
       crackedSurfaces: t.crackedSurfaces,
       onCrackedChange: (slot, key, cracked) => t.onCrackedChange?.(key, cracked, slot),
       onCrackedBreak: (slot, key) => t.onCrackedBreak?.(key, slot),
-      finish: t.finish, laps: t.laps,
+      finish: t.finish,
+      laps: t.laps,
       // An opponent's prop contacts run the level's collision graphs like the player's do: the button it rides
       // over lights up, the door it hits opens, and the pad's speed boost lands on IT rather than on you.
       onPropCollision: (slot, hit) => deps.onPropCollision?.(hit, slot),
-      maxRiders: aiMax, player, riderModel, riderStyle, gear: rideGear, snowboardStance,
+      maxRiders: aiMax,
+      player,
+      riderModel,
+      riderStyle,
+      gear: rideGear,
+      snowboardStance,
     });
     return true;
   }
@@ -770,9 +867,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    *  target, hide every authored child under worldRoot — not just the terrain solid — so its cage / box / overlays
    *  cannot remain behind as a "wireframe mountain". The reference has its own refRoot child and stays visible. */
   function hideOtherMountain(reference: boolean) {
-    const other = reference
-      ? stage.worldRoot.children.filter(o => o !== stage.refRoot)
-      : [stage.refRoot];
+    const other = reference ? stage.worldRoot.children.filter(o => o !== stage.refRoot) : [stage.refRoot];
     rideVis = other.map(o => ({ o, v: o.visible }));
     for (const { o } of rideVis) o.visible = false;
   }
@@ -790,7 +885,10 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     if (!rideVis) return;
     for (const entry of rideVis) {
       if (on) entry.o.visible = entry.v;
-      else { entry.v = entry.o.visible; entry.o.visible = false; }
+      else {
+        entry.v = entry.o.visible;
+        entry.o.visible = false;
+      }
     }
   }
 
@@ -837,8 +935,16 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    *  This hides the other mountain + the marker and drives the board.
    *  `ai` fields the ghost opponents on the target's AI paths. `onExit` fires when the rider presses Esc.
    *  Saves + restores the editor camera / controls / gizmo. */
-  function startRide(target: 'authored' | 'reference', spawn: V3, heading: V3 | null, onExit: () => void,
-    ai = false, countdown: RideCountdown | null = null, telemetry = false, touchControls = true) {
+  function startRide(
+    target: 'authored' | 'reference',
+    spawn: V3,
+    heading: V3 | null,
+    onExit: () => void,
+    ai = false,
+    countdown: RideCountdown | null = null,
+    telemetry = false,
+    touchControls = true,
+  ) {
     if (ride || watching) return;
     const t = rideTarget(target);
     if (!t) return;
@@ -849,48 +955,77 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
 
   /** Seat a board on an already-prepared target. Split out of `startRide` because a VR session mounts and
    *  dismounts repeatedly inside ONE held editor view, and must not re-save it each time. */
-  function mountBoard(t: RideTarget, spawn: V3, heading: V3 | null, onExit: () => void,
-    ai: boolean, countdown: RideCountdown | null, telemetry: boolean,
-    touchControls = true, view: 'chase' | 'vr' = 'chase', gaze?: () => THREE.Vector3 | null) {
-    const reference = t.reference, rideMesh = t.mesh;
+  function mountBoard(
+    t: RideTarget,
+    spawn: V3,
+    heading: V3 | null,
+    onExit: () => void,
+    ai: boolean,
+    countdown: RideCountdown | null,
+    telemetry: boolean,
+    touchControls = true,
+    view: 'chase' | 'vr' = 'chase',
+    gaze?: () => THREE.Vector3 | null,
+  ) {
+    const reference = t.reference,
+      rideMesh = t.mesh;
     const boardFxGround = downwardGroundQuery((from, to) => castTerrain(t, from, to));
     const walkGround = downwardGroundQuery((from, to) => castWalkGround(t, from, to));
 
     ride = new TestRide({
       spawn: new THREE.Vector3(spawn[0], spawn[1], spawn[2]),
       heading: heading ? new THREE.Vector3(heading[0], heading[1], heading[2]) : undefined,
-      terrain: rideMesh, scene: stage.scene, camera: stage.perspCam, container: stage.container,
+      terrain: rideMesh,
+      scene: stage.scene,
+      camera: stage.perspCam,
+      container: stage.container,
       pointerTarget: view === 'chase' ? stage.renderer.domElement : undefined,
       touchControls: view === 'chase' && touchControls,
       fullscreen: fullscreenControlEnabled,
-      surfaceOf: t.surfaceOf, oobFloorY: t.oobFloorY, patchContact: t.patchContact, rails: t.rails,
-      obstacles: t.obstacles, onObstacleHit: hit => deps.onPropCollision?.(hit, null),
+      surfaceOf: t.surfaceOf,
+      oobFloorY: t.oobFloorY,
+      patchContact: t.patchContact,
+      rails: t.rails,
+      obstacles: t.obstacles,
+      onObstacleHit: hit => deps.onPropCollision?.(hit, null),
       boostVolumes: t.boostVolumes,
       crackedSurfaces: t.crackedSurfaces,
-      crackedSurfaceRuntime: view === 'vr' ? xrCrackedSurfaces ?? undefined : undefined,
-      onCrackedChange: t.onCrackedChange, onCrackedBreak: t.onCrackedBreak,
+      crackedSurfaceRuntime: view === 'vr' ? (xrCrackedSurfaces ?? undefined) : undefined,
+      onCrackedChange: t.onCrackedChange,
+      onCrackedBreak: t.onCrackedBreak,
       shovedBodies: deps.shovedBodySamples,
       course: (reference ? referenceAiWorldPaths() : authoredAiWorldPaths()).course,
-      finish: t.finish, laps: t.laps,
-      raceMode: deps.getRaceMode(), showoffSeconds: t.showoffSeconds,
+      finish: t.finish,
+      laps: t.laps,
+      raceMode: deps.getRaceMode(),
+      showoffSeconds: t.showoffSeconds,
       checkpoints: t.checkpoints,
       countdown,
       telemetry,
       boardSound: deps.getBoardSound(),
       onAnnouncerEvent: event => announcer.fire(event),
-      onAnnouncerTick: tick => announcer.step(tick.dt, {
-        grounded: tick.closing.grounded, airTime: tick.closing.airTime,
-        speed01: Math.min(1, tick.closing.speed / MAX_SPEED), boosting: ride?.boostActive() ?? false,
-      }),
-      riderModel, riderStyle, gear: rideGear, snowboardStance, equipmentAppearance,
-      boardFx: boardFxEnabled, boardFxGround,
-      view, gaze,
+      onAnnouncerTick: tick =>
+        announcer.step(tick.dt, {
+          grounded: tick.closing.grounded,
+          airTime: tick.closing.airTime,
+          speed01: Math.min(1, tick.closing.speed / MAX_SPEED),
+          boosting: ride?.boostActive() ?? false,
+        }),
+      riderModel,
+      riderStyle,
+      gear: rideGear,
+      snowboardStance,
+      equipmentAppearance,
+      boardFx: boardFxEnabled,
+      boardFxGround,
+      view,
+      gaze,
       walkGround: view === 'chase' ? walkGround : undefined,
-      walkResolveMove: view === 'chase'
-        ? (from, to, velocity) => ensureWalkObstacles(t).resolveMove(from, to, velocity)
-        : undefined,
+      walkResolveMove:
+        view === 'chase' ? (from, to, velocity) => ensureWalkObstacles(t).resolveMove(from, to, velocity) : undefined,
       onControlContextChange: () => stage.cb.onRideControlContextChange?.(),
-      label: `Riding: ${reference ? deps.getRefLevel() || 'Reference' : deps.getMountainName() || 'Mountain'}`, onExit,
+      label: `Riding: ${reference ? deps.getRefLevel() || 'Reference' : deps.getMountainName() || 'Mountain'}`,
+      onExit,
     });
     announcer.reset();
     announcer.configure(deps.getAnnouncer(), announcerEnabled);
@@ -963,52 +1098,69 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    * `enter` must be reached from a user gesture (WebXR gates `requestSession` on user activation), so the caller
    * awaits nothing before calling this. False when the headset refused, leaving the editor untouched.
    */
-  async function startXrPlay(target: 'authored' | 'reference', spawn: V3, heading: V3 | null,
-    onExit: () => void, ai = false, telemetry = false, renderScale = DEFAULT_XR_RENDER_SCALE,
-    layerMode: XrLayerMode = 'webgl', antialias = false, showStats = true,
+  async function startXrPlay(
+    target: 'authored' | 'reference',
+    spawn: V3,
+    heading: V3 | null,
+    onExit: () => void,
+    ai = false,
+    telemetry = false,
+    renderScale = DEFAULT_XR_RENDER_SCALE,
+    layerMode: XrLayerMode = 'webgl',
+    antialias = false,
+    showStats = true,
     onStatsChanged?: (enabled: boolean) => void,
-    onEyeBufferMeasured?: (measurement: XrEyeBufferMeasurement) => XrEyeBufferMeasurement | void): Promise<boolean> {
+    onEyeBufferMeasured?: (measurement: XrEyeBufferMeasurement) => XrEyeBufferMeasurement | void,
+  ): Promise<boolean> {
     if (ride || watching || xr) return false;
     const t = rideTarget(target);
     if (!t) return false;
     music.beginRun();
     const at = new THREE.Vector3(spawn[0], spawn[1], spawn[2]);
-    const facing = heading
-      ? new THREE.Vector3(heading[0], heading[1], heading[2])
-      : new THREE.Vector3(0, 0, 1);
+    const facing = heading ? new THREE.Vector3(heading[0], heading[1], heading[2]) : new THREE.Vector3(0, 0, 1);
     xrBrokenSurfaces.clear();
     xrCrackedSurfaces = t.crackedSurfaces.length
       ? createCrackedSurfaceRuntime(t.crackedSurfaces, {
-        onCrack: key => t.onCrackedChange?.(key, true),
-        onHeal: key => t.onCrackedChange?.(key, false),
-        onBreak: key => {
-          xrBrokenSurfaces.add(key);
-          t.onCrackedBreak?.(key);
-        },
-      })
+          onCrack: key => t.onCrackedChange?.(key, true),
+          onHeal: key => t.onCrackedChange?.(key, false),
+          onBreak: key => {
+            xrBrokenSurfaces.add(key);
+            t.onCrackedBreak?.(key);
+          },
+        })
       : null;
     const session = createXrPlay({
-      renderer: stage.renderer, scene: stage.scene, camera: stage.perspCam,
+      renderer: stage.renderer,
+      scene: stage.scene,
+      camera: stage.perspCam,
       groundCast: (from, to) => castWalkGround(t, from, to),
       resolveWalkMove: (from, to, velocity) => ensureWalkObstacles(t).resolveMove(from, to, velocity),
       // The walker's standing height rides along so a chest-high pane registers on the torso, not the feet.
       stepFootContact: (from, to, velocity, dt) => xrCrackedSurfaces?.step(from, to, velocity, dt, RIDER_HEAD_Y),
       oobFloorY: t.oobFloorY,
       label: t.reference ? deps.getRefLevel() || 'Reference' : deps.getMountainName() || 'Mountain',
-      spawn: at, heading: facing, renderScale, antialias,
+      spawn: at,
+      heading: facing,
+      renderScale,
+      antialias,
       prepareContext: () => stage.prepareXrContext(),
       prepareAntialias: enabled => stage.prepareXrAntialias(enabled),
-      layerMode, showStats, onStatsChanged, onEyeBufferMeasured,
-      riderModel, riderStyle, gear: rideGear, snowboardStance, equipmentAppearance,
+      layerMode,
+      showStats,
+      onStatsChanged,
+      onEyeBufferMeasured,
+      riderModel,
+      riderStyle,
+      gear: rideGear,
+      snowboardStance,
+      equipmentAppearance,
       // Build the session-owned board during the headset's opening transition, then stand it down. Its visible
       // loose-board counterpart remains the XR session's parked deck; this retained TestRide is only the warm
       // physics/pose/audio runtime that the first mount will re-seat and reveal.
       prepareRide: gaze => prepareVrBoard(t, at, facing, gaze, ai, telemetry),
       // Every mount is an ordinary `TestRide` on the same prepared target — same contact model, same rails, same
       // volumes, same collision dispatch. Only the view and the input differ, which is the whole design.
-      startRide: (from, into, gaze) => seatVrBoard(
-        t, from, into, gaze, ai, telemetry,
-      ),
+      startRide: (from, into, gaze) => seatVrBoard(t, from, into, gaze, ai, telemetry),
       stopRide: () => parkVrBoard(),
       restartField: () => restartVrField(t, ai),
       setFlightBoostAudio: (active, dt) => vrRide?.setFlightBoostAudio(active, dt),
@@ -1017,9 +1169,13 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       // the camera it casts from, and the surface a controller ray is pointing at — and the move gizmo, which the
       // hand can push in depth where a mouse only slides it.
       editor: {
-        canvas: stage.renderer.domElement, camera: () => stage.camera, aimHit: editAimHit,
+        canvas: stage.renderer.domElement,
+        camera: () => stage.camera,
+        aimHit: editAimHit,
         translateDrag: () => stage.translateDrag(),
-        driveTranslate: world => { stage.driveGizmoTo(world); },
+        driveTranslate: world => {
+          stage.driveGizmoTo(world);
+        },
       },
       undo: () => deps.undo?.(),
       redo: () => deps.redo?.(),
@@ -1046,8 +1202,14 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    * prop-collision BVH alone can cost tens to hundreds of milliseconds, plus the AI field when enabled. Paying
    * that during the headset's opening transition keeps it out of the first trigger press / step onto the deck.
    */
-  function prepareVrBoard(t: RideTarget, at: THREE.Vector3, facing: THREE.Vector3,
-    gaze: () => THREE.Vector3 | null, ai: boolean, telemetry: boolean): TestRide | null {
+  function prepareVrBoard(
+    t: RideTarget,
+    at: THREE.Vector3,
+    facing: THREE.Vector3,
+    gaze: () => THREE.Vector3 | null,
+    ai: boolean,
+    telemetry: boolean,
+  ): TestRide | null {
     if (!vrRide) {
       seatVrBoard(t, at, facing, gaze, ai, telemetry);
       parkVrBoard();
@@ -1071,11 +1233,28 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    * fallback if a future XR host elects not to prewarm. Every later mount is only a warp: the expensive ride
    * runtime and AI field remain alive until the headset session ends.
    */
-  function seatVrBoard(t: RideTarget, from: THREE.Vector3, into: THREE.Vector3,
-    gaze: () => THREE.Vector3 | null, ai: boolean, telemetry: boolean): TestRide | null {
+  function seatVrBoard(
+    t: RideTarget,
+    from: THREE.Vector3,
+    into: THREE.Vector3,
+    gaze: () => THREE.Vector3 | null,
+    ai: boolean,
+    telemetry: boolean,
+  ): TestRide | null {
     if (!vrRide) {
-      vrRide = mountBoard(t, [from.x, from.y, from.z], [into.x, into.y, into.z],
-        () => xr?.exit(), ai, null, telemetry, false, 'vr', gaze) ?? null;
+      vrRide =
+        mountBoard(
+          t,
+          [from.x, from.y, from.z],
+          [into.x, into.y, into.z],
+          () => xr?.exit(),
+          ai,
+          null,
+          telemetry,
+          false,
+          'vr',
+          gaze,
+        ) ?? null;
       for (const key of xrBrokenSurfaces) vrRide?.retireObstacle(key);
       vrFieldStarted = !!vrRide;
       aiField?.setVisible(vrFieldStarted);
@@ -1099,7 +1278,8 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     colliderOverlay.setSources([]);
   }
 
-  const editRay = new THREE.Ray(), editHit = new THREE.Vector3();
+  const editRay = new THREE.Ray(),
+    editHit = new THREE.Vector3();
   /**
    * The first thing along a world ray the editor can pick — the authored mountain or the loaded reference, a scene
    * object standing on them, or a gizmo handle: where the headset's world mouse puts its cursor (docs/068). The
@@ -1108,7 +1288,8 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
    */
   function editAimHit(ray: THREE.Ray): THREE.Vector3 | null {
     editRay.copy(stage.ray.ray);
-    const near = stage.ray.near, far = stage.ray.far;
+    const near = stage.ray.near,
+      far = stage.ray.far;
     stage.ray.ray.copy(ray);
     stage.ray.near = 0;
     stage.ray.far = Infinity;
@@ -1131,12 +1312,14 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   }
 
   /** Leave VR (the Stop button, or Esc). The session's own `end` runs the teardown either way. */
-  function stopXrPlay() { xr?.exit(); }
+  function stopXrPlay() {
+    xr?.exit();
+  }
 
   /** The session has actually ended: put the board away, the mountains back, and the editor's view back. */
   function finishXrPlay(onExit: () => void) {
     const session = xr;
-    xr = null;              // cleared FIRST so the stopRide below takes its ordinary restore path
+    xr = null; // cleared FIRST so the stopRide below takes its ordinary restore path
     // The session's board outlived every one of its mounts; this is where it finally goes. A rider who left the
     // headset while ON the board takes the ordinary teardown, which is the same object either way.
     if (!ride && vrRide) ride = vrRide;
@@ -1210,7 +1393,9 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     for (const broken of xrBrokenSurfaces) if (obstacleKeyCovers(broken, key)) xrBrokenSurfaces.delete(broken);
   }
 
-  function togglePause() { if (ride) ride.setPaused(!ride.paused); }
+  function togglePause() {
+    if (ride) ride.setPaused(!ride.paused);
+  }
 
   /** Test ▸ Position player join. Desktop Play keeps the current ride runtime and relocates its active body. */
   function teleportPlayer(position: THREE.Vector3, heading: THREE.Vector3): boolean {
@@ -1218,60 +1403,130 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   }
 
   /** Pointer deltas from captured mouse-look or the third-person RMB fallback; the camera stays rider-centered. */
-  function orbitCamera(deltaX: number, deltaY: number) { ride?.orbitCamera(deltaX, deltaY); }
+  function orbitCamera(deltaX: number, deltaY: number) {
+    ride?.orbitCamera(deltaX, deltaY);
+  }
   function zoomThirdPersonWheel(deltaY: number, deltaMode = 0): boolean {
     return ride?.zoomThirdPersonWheel(deltaY, deltaMode) ?? false;
   }
-  function setDesktopBoardAim(ndc: readonly [number, number] | null) { ride?.setDesktopBoardAim(ndc); }
-  function beginDesktopPointer(button: number): boolean { return ride?.beginDesktopPointer(button) ?? false; }
-  function endDesktopPointer(button: number): boolean { return ride?.endDesktopPointer(button) ?? false; }
+  function setDesktopBoardAim(ndc: readonly [number, number] | null) {
+    ride?.setDesktopBoardAim(ndc);
+  }
+  function beginDesktopPointer(button: number): boolean {
+    return ride?.beginDesktopPointer(button) ?? false;
+  }
+  function endDesktopPointer(button: number): boolean {
+    return ride?.endDesktopPointer(button) ?? false;
+  }
 
   return {
-    get riding() { return !!ride; },
-    get paused() { return !!ride?.paused; },
+    get riding() {
+      return !!ride;
+    },
+    get paused() {
+      return !!ride?.paused;
+    },
     /** Live participant position for effects. A headset session retains it while its board is parked. */
-    get riderPosition() { return ride?.activePosition ?? (xr?.presenting ? xr.activePosition : null); },
-    get riderVelocity() { return ride?.activeVelocity ?? (xr?.presenting ? xr.activeVelocity : null); },
+    get riderPosition() {
+      return ride?.activePosition ?? (xr?.presenting ? xr.activePosition : null);
+    },
+    get riderVelocity() {
+      return ride?.activeVelocity ?? (xr?.presenting ? xr.activeVelocity : null);
+    },
     /** Collision/proximity graphs stay dormant only while the race gate or pause holds the participant. Walking
      * and flight are still Play states and must not tear down counters, sounds, or persistent world effects. */
     get riderCanTrigger() {
-      return xr?.presenting ? !ride?.countingDown && !ride?.paused
-        : !!ride && !ride.countingDown && !ride.paused;
+      return xr?.presenting ? !ride?.countingDown && !ride?.paused : !!ride && !ride.countingDown && !ride.paused;
     },
     /** Desktop Play is still active on foot; this says whether its board is currently parked. */
-    get walking() { return !!ride?.onFoot; },
+    get walking() {
+      return !!ride?.onFoot;
+    },
     /** Desktop view context for the lower-left Test key-mapping sheet. */
-    get firstPerson() { return !!ride?.firstPerson; },
-    get watching() { return watching; },
-    get canRideReference() { return canRide(); },
-    get playTarget() { return playTarget; },
+    get firstPerson() {
+      return !!ride?.firstPerson;
+    },
+    get watching() {
+      return watching;
+    },
+    get canRideReference() {
+      return canRide();
+    },
+    get playTarget() {
+      return playTarget;
+    },
     /** A headset session is up — the rider is in VR, on foot or on the board (docs/048). */
-    get xrPresenting() { return !!xr?.presenting; },
+    get xrPresenting() {
+      return !!xr?.presenting;
+    },
     /** The headset's wrist EDIT is open (docs/068): an editor flying the mountain, not a rider on it. */
-    get xrEditing() { return !!xr?.editing; },
+    get xrEditing() {
+      return !!xr?.editing;
+    },
     /** GPU timing follows the visible profiler: desktop rides always show it; VR can switch it live at the wrist. */
-    get perfDiagnostics() { return xr ? xr.presenting && xr.diagnosticsEnabled : !!ride; },
+    get perfDiagnostics() {
+      return xr ? xr.presenting && xr.diagnosticsEnabled : !!ride;
+    },
     /** Local participant pose, whichever Play state owns it. WebXR adds tracked head/hands over the board. */
-    get playerPose(): LocalPlayerPose | null { return xr?.playerPose() ?? ride?.playerPose() ?? null; },
+    get playerPose(): LocalPlayerPose | null {
+      return xr?.playerPose() ?? ride?.playerPose() ?? null;
+    },
     /** How many AI riders are out on the mountain right now (gate riders + hand-dropped ones). */
-    get aiRiderCount() { return aiField?.count ?? 0; },
-    step, recordFramePerf, referenceSpawn, setPlayActive, showRideSpawn, pickPlaySurface,
-    startRide, stopRide, startWatch, stopWatch, dropAiRider, setAiMax, setRiderModel, setRiderStyle,
-    setRideGear, setSnowboardStance, setEquipmentAppearance, setBoardFxEnabled,
-    setFullscreenControlEnabled(on: boolean) { fullscreenControlEnabled = on; },
-    startXrPlay, stopXrPlay, beginXrFrame, endXrFrame,
-    applyEffect, retireObstacle, restoreObstacle, teleportPlayer,
+    get aiRiderCount() {
+      return aiField?.count ?? 0;
+    },
+    step,
+    recordFramePerf,
+    referenceSpawn,
+    setPlayActive,
+    showRideSpawn,
+    pickPlaySurface,
+    startRide,
+    stopRide,
+    startWatch,
+    stopWatch,
+    dropAiRider,
+    setAiMax,
+    setRiderModel,
+    setRiderStyle,
+    setRideGear,
+    setSnowboardStance,
+    setEquipmentAppearance,
+    setBoardFxEnabled,
+    setFullscreenControlEnabled(on: boolean) {
+      fullscreenControlEnabled = on;
+    },
+    startXrPlay,
+    stopXrPlay,
+    beginXrFrame,
+    endXrFrame,
+    applyEffect,
+    retireObstacle,
+    restoreObstacle,
+    teleportPlayer,
     /** Test mode's collider overlay toggle — world collision shapes plus the rider's own probe volume. */
-    setCollidersVisible(on: boolean) { colliderOverlay.setVisible(on); },
+    setCollidersVisible(on: boolean) {
+      colliderOverlay.setVisible(on);
+    },
     /** Test's live music master: environment off-board and race track on-board. */
-    setMusicEnabled(on: boolean) { musicEnabled = on; if (!on) music.stop(); },
+    setMusicEnabled(on: boolean) {
+      musicEnabled = on;
+      if (!on) music.stop();
+    },
     setAnnouncerEnabled(on: boolean) {
       announcerEnabled = on;
       announcer.configure(deps.getAnnouncer(), on && !!ride && !ride.onFoot && !ride.paused);
       if (on && (ride || xr?.presenting)) announcer.preload();
     },
-    get collidersVisible() { return colliderOverlay.visible; },
-    togglePause, orbitCamera, zoomThirdPersonWheel, setDesktopBoardAim, beginDesktopPointer, endDesktopPointer,
+    get collidersVisible() {
+      return colliderOverlay.visible;
+    },
+    togglePause,
+    orbitCamera,
+    zoomThirdPersonWheel,
+    setDesktopBoardAim,
+    beginDesktopPointer,
+    endDesktopPointer,
   };
 }
 

@@ -40,8 +40,11 @@ export interface HandGrab {
 
 export function beginHandGrab(ray: THREE.Ray, anchor: THREE.Vector3, frame: THREE.Quaternion): HandGrab {
   return {
-    origin: ray.origin.clone(), dir: ray.direction.clone().normalize(), distance: ray.origin.distanceTo(anchor),
-    anchor: anchor.clone(), frame: frame.clone(),
+    origin: ray.origin.clone(),
+    dir: ray.direction.clone().normalize(),
+    distance: ray.origin.distanceTo(anchor),
+    anchor: anchor.clone(),
+    frame: frame.clone(),
   };
 }
 
@@ -69,8 +72,14 @@ function moveSpace(axis: GizmoAxis, space: 'local' | 'world'): 'local' | 'world'
  * and snapped, as TransformControls' own pointer move does. Anchors are scene-root objects (no parent
  * transform), which is what lets world and parent space be one here.
  */
-export function handTranslateTarget(grab: HandGrab, delta: THREE.Vector3, axis: GizmoAxis, space: 'local' | 'world',
-                                    snap: number | null, out: THREE.Vector3): THREE.Vector3 {
+export function handTranslateTarget(
+  grab: HandGrab,
+  delta: THREE.Vector3,
+  axis: GizmoAxis,
+  space: 'local' | 'world',
+  snap: number | null,
+  out: THREE.Vector3,
+): THREE.Vector3 {
   const local = moveSpace(axis, space) === 'local';
   out.copy(delta);
   if (local) out.applyQuaternion(inverse.copy(grab.frame).invert());

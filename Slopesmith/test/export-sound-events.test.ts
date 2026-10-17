@@ -55,10 +55,26 @@ function doc(hitGated?: string[]): EditDoc {
   return {
     ...base,
     props: [
-      { id: 'impact', level: 'DONOR', model: 1, name: 'Mdl_Crate', pos: [0, 0, 0], yaw: 0, scale: 1,
-        collisionSoundFile: SHARED },
-      { id: 'bed', level: 'DONOR', model: 1, name: 'Mdl_Crate', pos: [10, 0, 0], yaw: 0, scale: 1,
-        ambientSoundFile: SHARED },
+      {
+        id: 'impact',
+        level: 'DONOR',
+        model: 1,
+        name: 'Mdl_Crate',
+        pos: [0, 0, 0],
+        yaw: 0,
+        scale: 1,
+        collisionSoundFile: SHARED,
+      },
+      {
+        id: 'bed',
+        level: 'DONOR',
+        model: 1,
+        name: 'Mdl_Crate',
+        pos: [10, 0, 0],
+        yaw: 0,
+        scale: 1,
+        ambientSoundFile: SHARED,
+      },
     ],
     ...(hitGated ? { hitGatedSounds: hitGated } : {}),
   } as unknown as EditDoc;
@@ -79,14 +95,13 @@ async function main(): Promise<void> {
     const collision = slopesmith.collisionSounds as unknown as Record<string, number>;
     const ambient = slopesmith.ambientSounds as unknown as Record<string, { event: number }>;
 
-    check(collision.impact !== undefined && ambient.bed !== undefined,
-      'both uses of the WAV survive the export');
-    check(collision.impact !== ambient.bed?.event,
-      `one WAV in two roles takes two events (impact ${collision.impact}, bed ${ambient.bed?.event})`);
-    check(Object.keys(events).length === 2,
-      `and therefore two reserved events (got ${Object.keys(events).length})`);
-    check(new Set(Object.values(events)).size === 1,
-      'both events name the same staged clip — one WAV, encoded twice');
+    check(collision.impact !== undefined && ambient.bed !== undefined, 'both uses of the WAV survive the export');
+    check(
+      collision.impact !== ambient.bed?.event,
+      `one WAV in two roles takes two events (impact ${collision.impact}, bed ${ambient.bed?.event})`,
+    );
+    check(Object.keys(events).length === 2, `and therefore two reserved events (got ${Object.keys(events).length})`);
+    check(new Set(Object.values(events)).size === 1, 'both events name the same staged clip — one WAV, encoded twice');
   }
 
   {
@@ -96,10 +111,14 @@ async function main(): Promise<void> {
     const collision = slopesmith.collisionSounds as unknown as Record<string, number>;
     const ambient = slopesmith.ambientSounds as unknown as Record<string, { event: number }>;
 
-    check(collision.impact === ambient.bed?.event,
-      `a hit-gated claim keeps ONE id across both roles (impact ${collision.impact}, bed ${ambient.bed?.event})`);
-    check(collision.impact === 16 || collision.impact === 28 || collision.impact === 57,
-      `and that id is one the engine's interactive class tests (got ${collision.impact})`);
+    check(
+      collision.impact === ambient.bed?.event,
+      `a hit-gated claim keeps ONE id across both roles (impact ${collision.impact}, bed ${ambient.bed?.event})`,
+    );
+    check(
+      collision.impact === 16 || collision.impact === 28 || collision.impact === 57,
+      `and that id is one the engine's interactive class tests (got ${collision.impact})`,
+    );
   }
 
   console.log(failures ? `\n${failures} failure(s)` : '\nall ok');

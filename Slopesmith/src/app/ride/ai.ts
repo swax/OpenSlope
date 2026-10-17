@@ -1,8 +1,19 @@
 import * as THREE from 'three';
 import {
-  RESET_SPEED, WORLD_UP, clamp, createRideModel, moveTowards, projectOnPlane, rideForward, riderDrive,
-  type PatchContact, type RideModel, type RideObstacleHit, type RideObstacleObject,
-  type RideObstacleSource, type RideState,
+  RESET_SPEED,
+  WORLD_UP,
+  clamp,
+  createRideModel,
+  moveTowards,
+  projectOnPlane,
+  rideForward,
+  riderDrive,
+  type PatchContact,
+  type RideModel,
+  type RideObstacleHit,
+  type RideObstacleObject,
+  type RideObstacleSource,
+  type RideState,
 } from './physics';
 import type { BoostVolume } from './boost-volumes';
 import type { CrackedSurface } from './cracked-surfaces';
@@ -58,46 +69,47 @@ import { createRiderPose, type RiderPose } from './pose';
 
 // ---- the tracker + steering law ([Trailmap: 395], engine units converted: 100 u = 1 m) ----
 // Every arc below is HORIZONTAL arc — plan-view metres along the line, the climb discarded. See `AiPath`.
-const LOOKAHEAD = 8.0;            // m of arc ahead of the projection — fixed, NOT speed-scaled (800 u)
-const STEER_GAIN = 6.2897;        // stick per radian of bearing error
-const STEER_DEADBAND = 0.2;       // below this the stick stays centred (≈1.8° of error)
-const STEER_CLAMP = 0.9705;       // and it saturates here (≈8.8° of error)
-const TRACK_WINDOW = 30.0;        // m of arc the forward-only projection scans per frame (3000 u)
+const LOOKAHEAD = 8.0; // m of arc ahead of the projection — fixed, NOT speed-scaled (800 u)
+const STEER_GAIN = 6.2897; // stick per radian of bearing error
+const STEER_DEADBAND = 0.2; // below this the stick stays centred (≈1.8° of error)
+const STEER_CLAMP = 0.9705; // and it saturates here (≈8.8° of error)
+const TRACK_WINDOW = 30.0; // m of arc the forward-only projection scans per frame (3000 u)
 
 // The path chain ([Trailmap: 395]).
-const END_MARGIN = 2.0;           // m — this close to a path's end, hand off to the next one (200 u)
-const OFF_PATH = 5.0;             // m of HORIZONTAL perp — shoved this far off the line, re-choose (500 u)
-const RECHOOSE_EVERY = 1.0;       // s — and no more often than this
-const CANDIDATES = 6;             // the nearest N paths are the only ones considered
-const RATING_WEIGHT = 2.3189357;  // m² of score per rating point matched (23189.357 u²) — worth ~15 m at a match
+const END_MARGIN = 2.0; // m — this close to a path's end, hand off to the next one (200 u)
+const OFF_PATH = 5.0; // m of HORIZONTAL perp — shoved this far off the line, re-choose (500 u)
+const RECHOOSE_EVERY = 1.0; // s — and no more often than this
+const CANDIDATES = 6; // the nearest N paths are the only ones considered
+const RATING_WEIGHT = 2.3189357; // m² of score per rating point matched (23189.357 u²) — worth ~15 m at a match
 
 // The jump ([Trailmap: 395]): the AI's ollie is AUTHORED, not emergent. It presses on a type-25 path marker.
-const MARKER_AHEAD = 3.0;         // m — the marker query window runs [lastArc, arc + this] (300 u)
-const MARKER_HOLD = 0.5;          // m — it keeps the button held while a marker is inside this shorter window (50 u)
-const MARKER_PERP = 1.5310;       // m — and only presses when it is this close to its line (153.102 u)
-const MARKER_STEER = 0.5361633;   // ...and only when it is going straight: |stick| under this
-const SPEED_SLOP = 1.3889;        // m/s — 5 km/h: the band around a marker's target speed (138.889 u/s)
+const MARKER_AHEAD = 3.0; // m — the marker query window runs [lastArc, arc + this] (300 u)
+const MARKER_HOLD = 0.5; // m — it keeps the button held while a marker is inside this shorter window (50 u)
+const MARKER_PERP = 1.531; // m — and only presses when it is this close to its line (153.102 u)
+const MARKER_STEER = 0.5361633; // ...and only when it is going straight: |stick| under this
+const SPEED_SLOP = 1.3889; // m/s — 5 km/h: the band around a marker's target speed (138.889 u/s)
 
 // Rivals ([Trailmap: 395]): who a rider is reacting to, re-scored every 12th frame.
-const RIVAL_EVERY = 0.2;          // s (12 frames)
-const RIVAL_ACQUIRE = 7.0;        // m — the acquisition radius (700 u)
-const RIVAL_DROP = 10.5;          // m — drop the rival past this (1050 u)
-const RIVAL_DROP_OFF = 6.0;       // m off my own path — too lost to care about anyone (600 u)
-const RIVAL_HOLD_OFF = 5.4;       // m off my own path — too lost to acquire anyone (540 u)
-const AVOID_CLEAR = 1.5;          // m — the clearance disc the avoid cone is drawn around a rival (150 u)
-const BUMP_SPLIT = 0.55;          // each rider takes this much of the separation when two bodies overlap
-const BUMP_RADIUS = 0.55;         // m — OURS: the engine tests authored collision volumes, which we don't have
+const RIVAL_EVERY = 0.2; // s (12 frames)
+const RIVAL_ACQUIRE = 7.0; // m — the acquisition radius (700 u)
+const RIVAL_DROP = 10.5; // m — drop the rival past this (1050 u)
+const RIVAL_DROP_OFF = 6.0; // m off my own path — too lost to care about anyone (600 u)
+const RIVAL_HOLD_OFF = 5.4; // m off my own path — too lost to acquire anyone (540 u)
+const AVOID_CLEAR = 1.5; // m — the clearance disc the avoid cone is drawn around a rival (150 u)
+const BUMP_SPLIT = 0.55; // each rider takes this much of the separation when two bodies overlap
+const BUMP_RADIUS = 0.55; // m — OURS: the engine tests authored collision volumes, which we don't have
 
 // Catch-up ([Trailmap: 395]): a per-rider timestep multiplier, banded on the along-course gap to its reference.
-const CATCHUP_BAND = 5.1734;      // m — inside this, time runs normally
-const CATCHUP_BEHIND = 1.13598;   // linear ramp coefficient once the rider is more than a band behind
-const CATCHUP_AHEAD = 0.0204874;  // reciprocal falloff coefficient once it is more than a band ahead (m)
-const CATCHUP_MIN = 0.70008, CATCHUP_MAX = 1.50227;
-const CATCHUP_SLEW = 0.008444;    // per 60 Hz tick — a full swing takes ~1.6 s, so the band is never entered abruptly
+const CATCHUP_BAND = 5.1734; // m — inside this, time runs normally
+const CATCHUP_BEHIND = 1.13598; // linear ramp coefficient once the rider is more than a band behind
+const CATCHUP_AHEAD = 0.0204874; // reciprocal falloff coefficient once it is more than a band ahead (m)
+const CATCHUP_MIN = 0.70008,
+  CATCHUP_MAX = 1.50227;
+const CATCHUP_SLEW = 0.008444; // per 60 Hz tick — a full swing takes ~1.6 s, so the band is never entered abruptly
 
-const STANDINGS_EVERY = 0.1;      // s — the engine re-sorts the field every 6th frame
-const SKILL_SWITCH_EVERY = 1.0;   // s — and re-picks each rider's skill scalar every 60th
-const SKILL_COMMIT_DIV = 1.1039;  // skill ÷ this = the odds a rider commits to its mood instead of the safe line
+const STANDINGS_EVERY = 0.1; // s — the engine re-sorts the field every 6th frame
+const SKILL_SWITCH_EVERY = 1.0; // s — and re-picks each rider's skill scalar every 60th
+const SKILL_COMMIT_DIV = 1.1039; // skill ÷ this = the odds a rider commits to its mood instead of the safe line
 
 /** One topsheet tint per rider, so the field reads apart from the chase camera. */
 const TINTS = [0xff5a4a, 0xffb84a, 0x7ee04a, 0x4ad0ff, 0xb06cff, 0xff6cd0];
@@ -109,12 +121,12 @@ const TINTS = [0xff5a4a, 0xffb84a, 0x7ee04a, 0x4ad0ff, 0xb06cff, 0xff6cd0];
  * which every rider shares — so it decides who recovers first out of a bad corner, not who is fastest.
  */
 const CHARACTERS: { skill: [number, number]; speed: number }[] = [
-  { skill: [1.00, 1.06], speed: 0.95 },  // quick, tidy
-  { skill: [0.92, 0.99], speed: 0.55 },  // steady mid-pack
-  { skill: [1.08, 1.10], speed: 0.80 },
-  { skill: [0.96, 1.02], speed: 0.30 },  // slow but neat
+  { skill: [1.0, 1.06], speed: 0.95 }, // quick, tidy
+  { skill: [0.92, 0.99], speed: 0.55 }, // steady mid-pack
+  { skill: [1.08, 1.1], speed: 0.8 },
+  { skill: [0.96, 1.02], speed: 0.3 }, // slow but neat
   { skill: [1.04, 1.08], speed: 0.68 },
-  { skill: [0.88, 0.95], speed: 0.42 },  // sloppy: wanders off the line, gets re-chosen back onto it
+  { skill: [0.88, 0.95], speed: 0.42 }, // sloppy: wanders off the line, gets re-chosen back onto it
 ];
 
 /** Deterministic per-field PRNG (mulberry32), so a run is reproducible and the tests are not flaky. */
@@ -252,9 +264,9 @@ export interface AiRidersOpts {
  */
 interface AiPath {
   pts: THREE.Vector3[];
-  cum: Float64Array;      // cumulative HORIZONTAL arc length per point — the metric the file's arcs are in
-  flat: Float64Array;     // per-segment horizontal length², for the projection's divide
-  total: number;          // ...and the horizontal total
+  cum: Float64Array; // cumulative HORIZONTAL arc length per point — the metric the file's arcs are in
+  flat: Float64Array; // per-segment horizontal length², for the projection's divide
+  total: number; // ...and the horizontal total
   rating: number;
   respawnable: boolean;
   markers: AiPathMarker[];
@@ -270,31 +282,31 @@ interface AiPath {
 type Behaviour = 'approach' | 'cruise' | 'avoid';
 
 interface AiRider {
-  born: number;           // monotonic: who has been out on the mountain longest (a full field recycles that one)
-  home: number;           // the start-gate path it was fielded on
-  path: number;           // index into the network of the path it is riding NOW
-  arc: number;            // arc length of the rider's projection onto that path — MONOTONIC, never rewinds
-  prevArc: number;        // ...and last frame's, which is the back edge of the marker query window
-  seg: number;            // the cached segment the forward-only scan resumes at; −1 = re-scan the whole path
-  perp: number;           // HORIZONTAL distance from the line (a rider flying over it is barely off it)
-  sinceChoice: number;    // s since the last re-choice, so an off-path rider re-chooses at most once a second
+  born: number; // monotonic: who has been out on the mountain longest (a full field recycles that one)
+  home: number; // the start-gate path it was fielded on
+  path: number; // index into the network of the path it is riding NOW
+  arc: number; // arc length of the rider's projection onto that path — MONOTONIC, never rewinds
+  prevArc: number; // ...and last frame's, which is the back edge of the marker query window
+  seg: number; // the cached segment the forward-only scan resumes at; −1 = re-scan the whole path
+  perp: number; // HORIZONTAL distance from the line (a rider flying over it is barely off it)
+  sinceChoice: number; // s since the last re-choice, so an off-path rider re-chooses at most once a second
   skills: [number, number]; // the two authored steering gains: [reference behind me, reference ahead of me]
-  skill: number;          // whichever of those is live right now (re-picked once a second)
-  progress: number;       // arc length along the course ruler — the standings key
-  place: number;          // 0 = leading the field (the player counts)
-  refProgress: number;    // the progress of the competitor this rider is banded to
-  refAhead: boolean;      // ...and whether that competitor is in front of it
-  timeScale: number;      // the engine's rubber band: this rider's dt multiplier
+  skill: number; // whichever of those is live right now (re-picked once a second)
+  progress: number; // arc length along the course ruler — the standings key
+  place: number; // 0 = leading the field (the player counts)
+  refProgress: number; // the progress of the competitor this rider is banded to
+  refAhead: boolean; // ...and whether that competitor is in front of it
+  timeScale: number; // the engine's rubber band: this rider's dt multiplier
   state: Behaviour;
-  rival: number;          // index into `riders` of the competitor it is reacting to, or −1
-  targetSpeed: number;    // m/s, from the marker it is running at; 0 = none
-  jumpHeld: boolean;      // the ollie button is down (the charge is building)
-  resetPending: boolean;  // out of play: the course reset fires on the next step
-  inWarp: boolean;        // ...and the reset's own teleport must not re-arm it (see courseReset)
-  resets: number;         // how many times it has been put back on the course
+  rival: number; // index into `riders` of the competitor it is reacting to, or −1
+  targetSpeed: number; // m/s, from the marker it is running at; 0 = none
+  jumpHeld: boolean; // the ollie button is down (the charge is building)
+  resetPending: boolean; // out of play: the course reset fires on the next step
+  inWarp: boolean; // ...and the reset's own teleport must not re-arm it (see courseReset)
+  resets: number; // how many times it has been put back on the course
   model: RideModel;
   pose: RiderPose;
-  keys: RideKeys;         // synthesized, never touched by a device
+  keys: RideKeys; // synthesized, never touched by a device
   stick: { active: boolean; x: number };
 }
 
@@ -305,7 +317,9 @@ const objectKey = (object: RideObstacleObject): string =>
 
 /** Signed angle in the ground plane. Every bearing below — to a rival, along a path, of a rider's facing — is
  *  this same convention, so only their *differences* are ever used and the world's chirality cannot flip a sign. */
-function bearing(dx: number, dz: number): number { return Math.atan2(dz, dx); }
+function bearing(dx: number, dz: number): number {
+  return Math.atan2(dz, dx);
+}
 /** Wrap to (−π, π] — the engine wraps every bearing difference exactly here. */
 function wrapPi(a: number): number {
   const t = (a + Math.PI) % (2 * Math.PI);
@@ -318,19 +332,24 @@ export function createAiRiders(o: AiRidersOpts) {
   const net: AiPath[] = [];
   const netIndex: number[] = []; // net[j] came from o.paths[netIndex[j]] — so `starts` still resolves after culls
   for (let i = 0; i < o.paths.length; i++) {
-    const src = o.paths[i], pts = src.points;
+    const src = o.paths[i],
+      pts = src.points;
     if (pts.length < 2) continue;
     const cum = new Float64Array(pts.length);
     const flat = new Float64Array(Math.max(1, pts.length - 1));
     for (let k = 1; k < pts.length; k++) {
-      const dx = pts[k].x - pts[k - 1].x, dz = pts[k].z - pts[k - 1].z;
+      const dx = pts[k].x - pts[k - 1].x,
+        dz = pts[k].z - pts[k - 1].z;
       flat[k - 1] = dx * dx + dz * dz;
       cum[k] = cum[k - 1] + Math.sqrt(flat[k - 1]); // horizontal: the climb is not arc (see AiPath)
     }
     const total = cum[pts.length - 1];
     if (total < 1) continue;
     net.push({
-      pts, cum, flat, total,
+      pts,
+      cum,
+      flat,
+      total,
       rating: src.rating,
       respawnable: src.respawnable !== false,
       markers: (src.markers ?? []).slice().sort((a, b) => a.arc - b.arc),
@@ -340,10 +359,17 @@ export function createAiRiders(o: AiRidersOpts) {
   const fromSource = new Map(netIndex.map((src, j) => [src, j]));
 
   const riders: AiRider[] = [];
-  const tmpA = new THREE.Vector3(); const tmpB = new THREE.Vector3(); const seg = new THREE.Vector3();
-  const target = new THREE.Vector3(); const tan = new THREE.Vector3(); const candTarget = new THREE.Vector3();
-  const closest = new THREE.Vector3(); const fwdN = new THREE.Vector3(); const right = new THREE.Vector3();
-  const toTarget = new THREE.Vector3(); const push = new THREE.Vector3();
+  const tmpA = new THREE.Vector3();
+  const tmpB = new THREE.Vector3();
+  const seg = new THREE.Vector3();
+  const target = new THREE.Vector3();
+  const tan = new THREE.Vector3();
+  const candTarget = new THREE.Vector3();
+  const closest = new THREE.Vector3();
+  const fwdN = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const toTarget = new THREE.Vector3();
+  const push = new THREE.Vector3();
   const aiRideTmp = new THREE.Vector3(); // the rider's ridden direction, rebuilt per query — never retained
   // The reset's query point needs its own vector: `project3` uses tmpA/tmpB as scratch, so handing it one of
   // those as the point to search FROM silently shreds it on the first segment.
@@ -373,20 +399,27 @@ export function createAiRiders(o: AiRidersOpts) {
    * (−1 ⇒ full re-scan) exactly when the rider's path changes.
    */
   function track(r: AiRider) {
-    const p = net[r.path], pos = r.model.st.pos;
+    const p = net[r.path],
+      pos = r.model.st.pos;
     const cached = r.seg >= 0;
     const limit = cached ? r.arc + TRACK_WINDOW : Infinity;
-    let bestD = Infinity, bestArc = cached ? r.arc : 0, bestSeg = cached ? r.seg : 0;
+    let bestD = Infinity,
+      bestArc = cached ? r.arc : 0,
+      bestSeg = cached ? r.seg : 0;
     for (let k = cached ? r.seg : 0; k + 1 < p.pts.length; k++) {
       if (p.cum[k] > limit) break;
-      const a = p.pts[k], len2 = p.flat[k];
+      const a = p.pts[k],
+        len2 = p.flat[k];
       if (len2 < 1e-9) continue;
-      const dx = p.pts[k + 1].x - a.x, dz = p.pts[k + 1].z - a.z;
+      const dx = p.pts[k + 1].x - a.x,
+        dz = p.pts[k + 1].z - a.z;
       const t = clamp(((pos.x - a.x) * dx + (pos.z - a.z) * dz) / len2, 0, 1);
-      const fx = pos.x - (a.x + dx * t), fz = pos.z - (a.z + dz * t);
+      const fx = pos.x - (a.x + dx * t),
+        fz = pos.z - (a.z + dz * t);
       const d = fx * fx + fz * fz; // horizontal, and only horizontal
       if (d < bestD) {
-        bestD = d; bestSeg = k;
+        bestD = d;
+        bestSeg = k;
         bestArc = p.cum[k] + t * (p.cum[k + 1] - p.cum[k]);
       }
       if (cached && t > 0 && t < 1) break; // the foot lies inside this segment: the engine stops looking
@@ -402,8 +435,13 @@ export function createAiRiders(o: AiRidersOpts) {
    *  fraction along it is the same whichever way you measure). */
   function sample(p: AiPath, s: number, outPos: THREE.Vector3, outTan: THREE.Vector3) {
     const t = clamp(s, 0, p.total);
-    let lo = 0, hi = p.pts.length - 1;
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (p.cum[mid] <= t) lo = mid; else hi = mid; }
+    let lo = 0,
+      hi = p.pts.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (p.cum[mid] <= t) lo = mid;
+      else hi = mid;
+    }
     const span = Math.max(1e-9, p.cum[hi] - p.cum[lo]);
     outPos.lerpVectors(p.pts[lo], p.pts[hi], (t - p.cum[lo]) / span);
     outTan.copy(p.pts[hi]).sub(p.pts[lo]).normalize();
@@ -414,15 +452,20 @@ export function createAiRiders(o: AiRidersOpts) {
    *  is what stops a rider picking a line that flies over its head. The *distance* is 3-D; the arc it reports is
    *  still the path's own horizontal one (on a straight segment the fraction along is the same either way). */
   function project3(p: AiPath, pos: THREE.Vector3): { arc: number; dist: number } {
-    let bestD = Infinity, bestArc = 0;
+    let bestD = Infinity,
+      bestArc = 0;
     for (let k = 0; k + 1 < p.pts.length; k++) {
-      const a = p.pts[k], b = p.pts[k + 1];
+      const a = p.pts[k],
+        b = p.pts[k + 1];
       seg.copy(b).sub(a);
       const len2 = seg.lengthSq();
       if (len2 < 1e-9) continue;
       const t = clamp(tmpA.copy(pos).sub(a).dot(seg) / len2, 0, 1);
       const d = tmpB.copy(a).addScaledVector(seg, t).distanceToSquared(pos);
-      if (d < bestD) { bestD = d; bestArc = p.cum[k] + t * (p.cum[k + 1] - p.cum[k]); }
+      if (d < bestD) {
+        bestD = d;
+        bestArc = p.cum[k] + t * (p.cum[k + 1] - p.cum[k]);
+      }
     }
     return { arc: bestArc, dist: Math.sqrt(bestD) };
   }
@@ -463,12 +506,18 @@ export function createAiRiders(o: AiRidersOpts) {
     near.sort((a, b) => a.dist - b.dist);
     near.length = Math.min(near.length, CANDIDATES);
 
-    let best = -1, bestScore = Infinity, bestArc = 0;
+    let best = -1,
+      bestScore = Infinity,
+      bestArc = 0;
     for (const c of near) {
       sample(net[c.i], c.arc + LOOKAHEAD, candTarget, tan);
-      const score = c.dist * c.dist + candTarget.distanceToSquared(pos)
-        - (100 - Math.abs(net[c.i].rating - want)) * RATING_WEIGHT;
-      if (score < bestScore) { bestScore = score; best = c.i; bestArc = c.arc; }
+      const score =
+        c.dist * c.dist + candTarget.distanceToSquared(pos) - (100 - Math.abs(net[c.i].rating - want)) * RATING_WEIGHT;
+      if (score < bestScore) {
+        bestScore = score;
+        best = c.i;
+        bestArc = c.arc;
+      }
     }
     return best < 0 ? null : { path: best, arc: bestArc };
   }
@@ -546,7 +595,9 @@ export function createAiRiders(o: AiRidersOpts) {
     const delta = Math.max(0, mean - r.progress);
 
     sample(net[r.path], r.arc + delta, aim, tan); // where down the course the field is by now
-    let best = -1, bestScore = Infinity, bestArc = 0;
+    let best = -1,
+      bestScore = Infinity,
+      bestArc = 0;
     const near: { i: number; arc: number; dist: number }[] = [];
     for (let i = 0; i < net.length; i++) {
       if (!net[i].respawnable) continue; // the whole point of the flag
@@ -554,13 +605,21 @@ export function createAiRiders(o: AiRidersOpts) {
       near.push({ i, arc, dist });
     }
     // A network with nothing to be put back on: fall back to the rider's own gate.
-    if (!near.length) { r.model.respawn(); r.inWarp = false; return; }
+    if (!near.length) {
+      r.model.respawn();
+      r.inWarp = false;
+      return;
+    }
     near.sort((a, b) => a.dist - b.dist);
     near.length = Math.min(near.length, CANDIDATES);
     for (const c of near) {
       sample(net[c.i], c.arc + LOOKAHEAD, candTarget, tan);
       const score = c.dist * c.dist + candTarget.distanceToSquared(aim);
-      if (score < bestScore) { bestScore = score; best = c.i; bestArc = c.arc; }
+      if (score < bestScore) {
+        bestScore = score;
+        best = c.i;
+        bestArc = c.arc;
+      }
     }
     setPath(r, best, bestArc);
     sample(net[best], bestArc, closest, tan);
@@ -592,40 +651,76 @@ export function createAiRiders(o: AiRidersOpts) {
     const who = CHARACTERS[slot % CHARACTERS.length];
     const r: AiRider = {
       born: born++,
-      home: path, path, arc, prevArc: arc, seg: -1, perp: 0, sinceChoice: 0,
-      skills: who.skill, skill: who.skill[0],
-      progress: 0, place: 0, refProgress: 0, refAhead: false,
-      timeScale: 1, state: 'cruise', rival: -1, targetSpeed: 0, jumpHeld: false, resetPending: false, inWarp: false,
-      resets: 0, keys, stick,
+      home: path,
+      path,
+      arc,
+      prevArc: arc,
+      seg: -1,
+      perp: 0,
+      sinceChoice: 0,
+      skills: who.skill,
+      skill: who.skill[0],
+      progress: 0,
+      place: 0,
+      refProgress: 0,
+      refAhead: false,
+      timeScale: 1,
+      state: 'cruise',
+      rival: -1,
+      targetSpeed: 0,
+      jumpHeld: false,
+      resetPending: false,
+      inWarp: false,
+      resets: 0,
+      keys,
+      stick,
       pose: createRiderPose({
-        scene: o.scene, tint: TINTS[slot % TINTS.length],
-        riderModel: o.riderModel, riderStyle: o.riderStyle, gear: o.gear,
+        scene: o.scene,
+        tint: TINTS[slot % TINTS.length],
+        riderModel: o.riderModel,
+        riderStyle: o.riderStyle,
+        gear: o.gear,
         snowboardStance: o.snowboardStance,
       }),
       model: createRideModel({
         spawn: pos.clone(),
         heading: fwd.clone(),
-        terrain: o.terrain, surfaceOf: o.surfaceOf, patchContact: o.patchContact, rails: o.rails,
-        obstacles: o.obstacles, boostVolumes: o.boostVolumes,
+        terrain: o.terrain,
+        surfaceOf: o.surfaceOf,
+        patchContact: o.patchContact,
+        rails: o.rails,
+        obstacles: o.obstacles,
+        boostVolumes: o.boostVolumes,
         crackedSurfaces: o.crackedSurfaces,
         onCrackedChange: (key, cracked) => o.onCrackedChange?.(riders.indexOf(r), key, cracked),
         onCrackedBreak: key => o.onCrackedBreak?.(riders.indexOf(r), key),
-        onObstacleHit: o.resetVolumes?.size || o.onPropCollision ? hit => {
-          // The level's own boundary, arming the same course reset the out-of-bounds floor does...
-          if (o.resetVolumes?.has(objectKey(hit.object))) r.resetPending = true;
-          // ...and the contact itself, which is what runs the prop's collision graph for this rider.
-          o.onPropCollision?.(riders.indexOf(r), hit);
-        } : undefined,
+        onObstacleHit:
+          o.resetVolumes?.size || o.onPropCollision
+            ? hit => {
+                // The level's own boundary, arming the same course reset the out-of-bounds floor does...
+                if (o.resetVolumes?.has(objectKey(hit.object))) r.resetPending = true;
+                // ...and the contact itself, which is what runs the prop's collision graph for this rider.
+                o.onPropCollision?.(riders.indexOf(r), hit);
+              }
+            : undefined,
         // Its own lap countdown over the shared course line: the gate on the lap-gated volume is per rider.
-        course: o.course, finish: o.finish, laps: o.laps,
+        course: o.course,
+        finish: o.finish,
+        laps: o.laps,
         onLap: remaining => o.onLap?.(riders.indexOf(r), remaining),
-        oobFloorY: o.oobFloorY, keys, stick,
+        oobFloorY: o.oobFloorY,
+        keys,
+        stick,
         carryBack: false, // the field's own reset places this rider, and it is armed by the plain respawn below
         drive: riderDrive(who.speed), // its speed statistic: this is the board it rides, and they differ
         // The model respawns itself when the rider leaves the world (the out-of-bounds floor, a reset surface).
         // That is exactly the engine's out-of-play condition, so it arms the course reset: the rider is put back
         // on a respawnable path with the field, not dropped at the top of its own start gate.
-        onRespawn: () => { if (!r.inWarp) r.resetPending = true; r.seg = -1; r.jumpHeld = false; },
+        onRespawn: () => {
+          if (!r.inWarp) r.resetPending = true;
+          r.seg = -1;
+          r.jumpHeld = false;
+        },
       }),
     };
     r.model.start();
@@ -671,7 +766,9 @@ export function createAiRiders(o: AiRidersOpts) {
     if (riders.length < max) {
       const rider = makeRider(riders.length, pick.path, pick.arc, pos, heading);
       if (initialSpeed > 0) {
-        rider.inWarp = true; rider.model.warpTo(pos, heading, initialSpeed); rider.inWarp = false;
+        rider.inWarp = true;
+        rider.model.warpTo(pos, heading, initialSpeed);
+        rider.inWarp = false;
         if (initialHeading?.lengthSq()) rider.model.st.vel.copy(heading).multiplyScalar(initialSpeed);
         rider.resetPending = false;
       }
@@ -682,7 +779,9 @@ export function createAiRiders(o: AiRidersOpts) {
     riders[slot].pose.dispose();
     const rider = makeRider(slot, pick.path, pick.arc, pos, heading);
     if (initialSpeed > 0) {
-      rider.inWarp = true; rider.model.warpTo(pos, heading, initialSpeed); rider.inWarp = false;
+      rider.inWarp = true;
+      rider.model.warpTo(pos, heading, initialSpeed);
+      rider.inWarp = false;
       if (initialHeading?.lengthSq()) rider.model.st.vel.copy(heading).multiplyScalar(initialSpeed);
       rider.resetPending = false;
     }
@@ -747,24 +846,30 @@ export function createAiRiders(o: AiRidersOpts) {
 
   // ---- the course ruler: one arc-length line every competitor's progress is measured on ----
   const rulerCum = new Float64Array(o.course?.length ?? 0);
-  if (o.course) for (let k = 1; k < o.course.length; k++) {
-    rulerCum[k] = rulerCum[k - 1] + o.course[k].distanceTo(o.course[k - 1]);
-  }
+  if (o.course)
+    for (let k = 1; k < o.course.length; k++) {
+      rulerCum[k] = rulerCum[k - 1] + o.course[k].distanceTo(o.course[k - 1]);
+    }
   const haveRuler = !!o.course && o.course.length >= 2;
 
   /** How far down the course a point is: arc length of its closest-point projection onto the spine. */
   function progressOf(pos: THREE.Vector3): number {
     if (!haveRuler) return 0;
     const line = o.course!;
-    let bestD = Infinity, bestS = 0;
+    let bestD = Infinity,
+      bestS = 0;
     for (let k = 0; k + 1 < line.length; k++) {
-      const a = line[k], b = line[k + 1];
+      const a = line[k],
+        b = line[k + 1];
       seg.copy(b).sub(a);
       const len2 = seg.lengthSq();
       if (len2 < 1e-9) continue;
       const t = clamp(tmpA.copy(pos).sub(a).dot(seg) / len2, 0, 1);
       const d = tmpB.copy(a).addScaledVector(seg, t).distanceToSquared(pos);
-      if (d < bestD) { bestD = d; bestS = rulerCum[k] + t * Math.sqrt(len2); }
+      if (d < bestD) {
+        bestD = d;
+        bestS = rulerCum[k] + t * Math.sqrt(len2);
+      }
     }
     return bestS;
   }
@@ -812,22 +917,30 @@ export function createAiRiders(o: AiRidersOpts) {
       const d = Math.hypot(cur.model.st.pos.x - st.pos.x, cur.model.st.pos.z - st.pos.z);
       if (d > RIVAL_DROP || r.perp > RIVAL_DROP_OFF) r.rival = -1;
     }
-    if (r.perp >= RIVAL_HOLD_OFF) { r.rival = -1; return; }
+    if (r.perp >= RIVAL_HOLD_OFF) {
+      r.rival = -1;
+      return;
+    }
     // "In front of it" is the direction the rider is travelling, which on a rider knocked switch is the tail.
     const ride = rideForward(st, aiRideTmp);
     const face = bearing(ride.x, ride.z);
-    let best = -1, bestScore = Infinity;
+    let best = -1,
+      bestScore = Infinity;
     for (let i = 0; i < riders.length; i++) {
       if (riders[i] === r) continue;
       const other = riders[i].model.st.pos;
-      const dx = other.x - st.pos.x, dz = other.z - st.pos.z;
+      const dx = other.x - st.pos.x,
+        dz = other.z - st.pos.z;
       const dist = Math.hypot(dx, dz);
       if (dist > RIVAL_ACQUIRE) continue;
       // Not "attackable" in a race (the engine gates that on the game mode), so the weight is 1 − cos(off-nose):
       // zero straight ahead, 2 directly behind. A rider reacts to what is in front of it.
       const off = wrapPi(bearing(dx, dz) - face);
       const score = dist * (1 - Math.cos(off));
-      if (score < bestScore) { bestScore = score; best = i; }
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
     }
     if (best >= 0) r.rival = best;
   }
@@ -868,7 +981,9 @@ export function createAiRiders(o: AiRidersOpts) {
   /** The jump marker the rider is running at, if any: the engine queries its path for type-25 items in the arc
    *  window `[lastFrameArc, arc + window]`, so a marker cannot be stepped over however fast the rider is going. */
   function markerIn(r: AiRider, window: number): AiPathMarker | null {
-    const p = net[r.path], lo = Math.min(r.prevArc, r.arc), hi = r.arc + window;
+    const p = net[r.path],
+      lo = Math.min(r.prevArc, r.arc),
+      hi = r.arc + window;
     for (const m of p.markers) {
       if (m.arc < lo) continue;
       if (m.arc > hi) break;
@@ -897,7 +1012,8 @@ export function createAiRiders(o: AiRidersOpts) {
   function behave(r: AiRider) {
     const st = r.model.st;
     const p = net[r.path];
-    r.keys.boost = false; r.keys.brake = false;
+    r.keys.boost = false;
+    r.keys.brake = false;
 
     // Aim: the pursuit target is a point ON the line, LOOKAHEAD of arc further along. Nothing displaces it
     // sideways — the engine has no per-rider "lane", which is worth stating because it is the obvious thing to
@@ -923,11 +1039,13 @@ export function createAiRiders(o: AiRidersOpts) {
       const rival = r.rival >= 0 ? riders[r.rival] : null;
       const rst = rival?.model.st;
       if (rst) {
-        const dx = rst.pos.x - st.pos.x, dz = rst.pos.z - st.pos.z;
+        const dx = rst.pos.x - st.pos.x,
+          dz = rst.pos.z - st.pos.z;
         const dist = Math.max(0.01, Math.hypot(dx, dz));
         const off = wrapPi(bearing(dx, dz) - pathHeading); // where the rival sits relative to where I'm going
         const halfWidth = Math.atan(AVOID_CLEAR / dist);
-        const mySpeed = st.vel.length(), itsSpeed = rst.vel.length();
+        const mySpeed = st.vel.length(),
+          itsSpeed = rst.vel.length();
         if (Math.abs(off) > halfWidth || mySpeed <= itsSpeed) {
           r.state = 'cruise'; // not in my way, or I can't get past it: hold the line and take the block
           r.stick.x = steerTo(r, target);
@@ -983,12 +1101,18 @@ export function createAiRiders(o: AiRidersOpts) {
   function bumps() {
     for (let i = 0; i < riders.length; i++) {
       for (let j = i + 1; j < riders.length; j++) {
-        const a = riders[i].model.st.pos, b = riders[j].model.st.pos;
-        const dx = b.x - a.x, dz = b.z - a.z;
+        const a = riders[i].model.st.pos,
+          b = riders[j].model.st.pos;
+        const dx = b.x - a.x,
+          dz = b.z - a.z;
         const d = Math.hypot(dx, dz);
         const min = BUMP_RADIUS * 2;
         if (d > min || Math.abs(b.y - a.y) > 2) continue; // side by side, not one flying over the other
-        if (d < 1e-4) { push.set(1, 0, 0); } else { push.set(dx / d, 0, dz / d); }
+        if (d < 1e-4) {
+          push.set(1, 0, 0);
+        } else {
+          push.set(dx / d, 0, dz / d);
+        }
         const sep = (min - d) * BUMP_SPLIT;
         a.addScaledVector(push, -sep);
         b.addScaledVector(push, sep);
@@ -996,15 +1120,22 @@ export function createAiRiders(o: AiRidersOpts) {
     }
   }
 
-  let sinceStandings = Infinity, sinceSkill = Infinity, sinceRival = Infinity;
+  let sinceStandings = Infinity,
+    sinceSkill = Infinity,
+    sinceRival = Infinity;
 
   function step(dt: number) {
     if (dt <= 0) return;
 
     // The engine re-sorts the field every 6th frame, re-picks each rider's skill every 60th and re-scores rivals
     // every 12th; the cadence is what stops a rider's reference (and so its time dilation) from chattering.
-    sinceStandings += dt; sinceSkill += dt; sinceRival += dt;
-    if (sinceStandings >= STANDINGS_EVERY) { standings(); sinceStandings = 0; }
+    sinceStandings += dt;
+    sinceSkill += dt;
+    sinceRival += dt;
+    if (sinceStandings >= STANDINGS_EVERY) {
+      standings();
+      sinceStandings = 0;
+    }
     if (sinceSkill >= SKILL_SWITCH_EVERY) {
       // Two authored gains per rider: chasing sharpens it, leading its own duel relaxes it ([Trailmap: 395]).
       for (const r of riders) r.skill = r.refAhead ? r.skills[1] : r.skills[0];
@@ -1014,7 +1145,10 @@ export function createAiRiders(o: AiRidersOpts) {
     if (rescoreRivals) sinceRival = 0;
 
     for (const r of riders) {
-      if (r.resetPending) { courseReset(r); continue; } // out of play: warped, and it rides again next frame
+      if (r.resetPending) {
+        courseReset(r);
+        continue;
+      } // out of play: warped, and it rides again next frame
       r.sinceChoice += dt;
 
       track(r); // where am I on my line — horizontal, forward-only
@@ -1022,7 +1156,10 @@ export function createAiRiders(o: AiRidersOpts) {
       if (net[r.path].total - r.arc < END_MARGIN) {
         // The line ran out. Hand off to the next one; if the network has nothing left, this rider is at the
         // bottom of the mountain — put it back with the field so a long editing session keeps a field on it.
-        if (!choosePath(r, true)) { courseReset(r); continue; }
+        if (!choosePath(r, true)) {
+          courseReset(r);
+          continue;
+        }
       } else if (r.sinceChoice >= RECHOOSE_EVERY && (r.perp > OFF_PATH || lostUnderLine(r))) {
         // Shoved clean off the line — measured HORIZONTALLY, so being *under* it does not count, which is the
         // engine's rule and the whole reason a rider can fly its line over a jump. `lostUnderLine` is the one case
@@ -1046,8 +1183,12 @@ export function createAiRiders(o: AiRidersOpts) {
   }
 
   /** A shared pickup pop removes/re-arms the object for every rider's private collider snapshot. */
-  function retireObstacle(key: string) { for (const r of riders) r.model.retireObstacle(key); }
-  function restoreObstacle(key: string) { for (const r of riders) r.model.restoreObstacle(key); }
+  function retireObstacle(key: string) {
+    for (const r of riders) r.model.retireObstacle(key);
+  }
+  function restoreObstacle(key: string) {
+    for (const r of riders) r.model.restoreObstacle(key);
+  }
 
   /**
    * Apply an SSF graph's rider-directed action to the opponent that earned it ([Trailmap: 390-pickups-and-race]).
@@ -1061,39 +1202,75 @@ export function createAiRiders(o: AiRidersOpts) {
     const r = riders[slot];
     if (!r) return;
     switch (action.kind) {
-      case 'speed-boost': r.model.applyPadBoost(action.amount); return;
-      case 'reset': r.resetPending = true; return; // through the field's own warp, onto a respawnable line
+      case 'speed-boost':
+        r.model.applyPadBoost(action.amount);
+        return;
+      case 'reset':
+        r.resetPending = true;
+        return; // through the field's own warp, onto a respawnable line
       case 'teleport':
         r.model.warpTo(action.position, action.heading, Math.max(8, r.model.st.vel.length()));
         r.seg = -1; // the tracker cache means nothing on the line it lands beside
         return;
-      case 'trick-boost': case 'score-multiplier': case 'hud-message': return;
+      case 'trick-boost':
+      case 'score-multiplier':
+      case 'hud-message':
+        return;
     }
   }
 
   /** What the field is actually doing — the controller's own numbers, for the tests and for tracing a bad line. */
   function probe() {
     return riders.map(r => ({
-      path: r.path, arc: r.arc, total: net[r.path].total, perp: r.perp, seg: r.seg,
-      stick: r.stick.x, timeScale: r.timeScale, skill: r.skill,
-      state: r.state, rival: r.rival, jumpHeld: r.jumpHeld, targetSpeed: r.targetSpeed, resets: r.resets,
-      place: r.place, progress: r.progress, refProgress: r.refProgress, refAhead: r.refAhead,
-      pos: r.model.st.pos, speed: r.model.st.vel.length(), velY: r.model.st.vel.y,
+      path: r.path,
+      arc: r.arc,
+      total: net[r.path].total,
+      perp: r.perp,
+      seg: r.seg,
+      stick: r.stick.x,
+      timeScale: r.timeScale,
+      skill: r.skill,
+      state: r.state,
+      rival: r.rival,
+      jumpHeld: r.jumpHeld,
+      targetSpeed: r.targetSpeed,
+      resets: r.resets,
+      place: r.place,
+      progress: r.progress,
+      refProgress: r.refProgress,
+      refAhead: r.refAhead,
+      pos: r.model.st.pos,
+      speed: r.model.st.vel.length(),
+      velY: r.model.st.vel.y,
       boostRequest: r.model.padBoostSeconds,
       grounded: r.model.st.grounded,
-      charging: r.model.st.charging, airTime: r.model.st.airTime,
+      charging: r.model.st.charging,
+      airTime: r.model.st.airTime,
       // Its own race, not the field's: which pass it is on, what the lap-gated volume reads, and whether it
       // has taken the flag ([Trailmap: 390-lap-counter]).
-      lap: r.model.laps?.lap ?? 1, lapsRemaining: r.model.laps?.remaining ?? 0,
+      lap: r.model.laps?.lap ?? 1,
+      lapsRemaining: r.model.laps?.remaining ?? 0,
       finished: r.model.laps?.finished ?? false,
     }));
   }
 
   return {
-    step, dispose, probe, spawnAt, setMax, setRiderModel, setRiderStyle, setGear, setSnowboardStance,
-    setVisible, applyEffect,
-    retireObstacle, restoreObstacle,
-    get count() { return riders.length; },
+    step,
+    dispose,
+    probe,
+    spawnAt,
+    setMax,
+    setRiderModel,
+    setRiderStyle,
+    setGear,
+    setSnowboardStance,
+    setVisible,
+    applyEffect,
+    retireObstacle,
+    restoreObstacle,
+    get count() {
+      return riders.length;
+    },
   };
 }
 

@@ -3,7 +3,12 @@ import { nameIndex } from './ids';
 import { textHash, topologyDigest } from './digest';
 import { directedEdgeEnds, directedEdgeName } from './serialize';
 import {
-  OBJECT_LISTS, QUAD_CHANNELS, edgeLockRegister, handleRegister, quadRegister, vertexRegister,
+  OBJECT_LISTS,
+  QUAD_CHANNELS,
+  edgeLockRegister,
+  handleRegister,
+  quadRegister,
+  vertexRegister,
   type RegisterKey,
 } from './registers';
 import { readVertex, undirectedEdgeKey } from '../mesh/primitives';
@@ -39,7 +44,8 @@ export type VertexRun = readonly [from: number, count: number] | readonly [id: s
 
 /** One stretch of the new quad order: a run of the previous order kept as it stood (corners remapped), or one
  *  quad written whole with its four corners named by vertex id — one this delta adds, or one it rewired. */
-export type QuadRun = readonly [from: number, count: number] | readonly [id: string, a: string, b: string, c: string, d: string];
+export type QuadRun =
+  readonly [from: number, count: number] | readonly [id: string, a: string, b: string, c: string, d: string];
 
 /** A T-node named by id rather than by index. */
 export interface NamedTJunction {
@@ -135,20 +141,26 @@ export function topologyDelta(base: TopologyBase, doc: QuadMeshDoc): TopologyDel
   });
 
   const delta: TopologyDelta = {
-    vertices, quads,
+    vertices,
+    quads,
     freeEdges: doc.freeEdges === undefined ? null : namedEdges(doc.freeEdges, doc.vertexIds),
-    tJunctions: doc.tJunctions === undefined ? null : doc.tJunctions.map(node => ({
-      vertex: doc.vertexIds[node.vertex],
-      edge: [doc.vertexIds[node.edge[0]], doc.vertexIds[node.edge[1]]],
-      t: node.t,
-    })),
+    tJunctions:
+      doc.tJunctions === undefined
+        ? null
+        : doc.tJunctions.map(node => ({
+            vertex: doc.vertexIds[node.vertex],
+            edge: [doc.vertexIds[node.edge[0]], doc.vertexIds[node.edge[1]]],
+            t: node.t,
+          })),
     nextId: doc.nextId,
     structure: topologyDigest(doc, textHash),
   };
 
-  const was = base.tombstones, now = doc.tombstones;
-  if (now === undefined) { if (was !== undefined) delta.tombstones = null; }
-  else {
+  const was = base.tombstones,
+    now = doc.tombstones;
+  if (now === undefined) {
+    if (was !== undefined) delta.tombstones = null;
+  } else {
     let stands = 0;
     if (was) while (stands < was.length && stands < now.length && was[stands] === now[stands]) stands++;
     if (was === undefined || stands !== was.length || stands !== now.length) {
@@ -168,7 +180,8 @@ function detachLists(doc: QuadMeshDoc): void {
   const record = doc as unknown as Record<string, unknown>;
   for (const list of OBJECT_LISTS) {
     const held = record[list];
-    if (Array.isArray(held)) record[list] = held.map(member => member && typeof member === 'object' ? { ...member } : member);
+    if (Array.isArray(held))
+      record[list] = held.map(member => (member && typeof member === 'object' ? { ...member } : member));
   }
   if (doc.effects) doc.effects = structuredClone(doc.effects);
 }
@@ -197,7 +210,9 @@ export function detachedDocument(doc: QuadMeshDoc): QuadMeshDoc {
  *  every one of them is the same — this replica's base is not the one the delta was written against. */
 export class DeltaRefused extends Error {}
 
-function refuse(why: string): never { throw new DeltaRefused(why); }
+function refuse(why: string): never {
+  throw new DeltaRefused(why);
+}
 
 const isCount = (value: unknown, below: number): value is number =>
   Number.isInteger(value) && (value as number) >= 0 && (value as number) <= below;
@@ -217,7 +232,10 @@ const isCoordinate = (value: unknown): value is number => typeof value === 'numb
  * Every check here is about refusing malformed input instead of throwing on it. The guarantee that the result
  * is exactly the structure the claimant holds is the `structure` hash, checked last.
  */
-export function applyTopologyDelta(doc: QuadMeshDoc, input: unknown): { ok: true; applied: AppliedDelta } | { ok: false; error: string } {
+export function applyTopologyDelta(
+  doc: QuadMeshDoc,
+  input: unknown,
+): { ok: true; applied: AppliedDelta } | { ok: false; error: string } {
   try {
     return { ok: true, applied: applyOrRefuse(doc, input) };
   } catch (error) {
@@ -229,7 +247,8 @@ export function applyTopologyDelta(doc: QuadMeshDoc, input: unknown): { ok: true
 function applyOrRefuse(doc: QuadMeshDoc, input: unknown): AppliedDelta {
   if (!input || typeof input !== 'object') refuse('a topology delta has to be an object');
   const delta = input as Partial<TopologyDelta>;
-  if (!Array.isArray(delta.vertices) || !Array.isArray(delta.quads)) refuse('a topology delta names its vertices and quads');
+  if (!Array.isArray(delta.vertices) || !Array.isArray(delta.quads))
+    refuse('a topology delta names its vertices and quads');
   if (!Number.isSafeInteger(delta.nextId) || delta.nextId! < doc.nextId) {
     refuse('a topology delta carries the next id, and never moves it backwards');
   }
@@ -247,8 +266,13 @@ function applyOrRefuse(doc: QuadMeshDoc, input: unknown): AppliedDelta {
     if (!Array.isArray(run)) refuse('a vertex run has to be a list');
     if (typeof run[0] === 'number') {
       const [from, count] = run as unknown[];
-      if (run.length !== 2 || !isCount(from, oldVertexCount) || !isCount(count, oldVertexCount - (from as number))
-        || count === 0) refuse('a kept vertex run reaches outside the vertices this document has');
+      if (
+        run.length !== 2 ||
+        !isCount(from, oldVertexCount) ||
+        !isCount(count, oldVertexCount - (from as number)) ||
+        count === 0
+      )
+        refuse('a kept vertex run reaches outside the vertices this document has');
       for (let at = from as number, end = at + (count as number); at < end; at++) {
         if (vertexTo[at] !== -1) refuse(`vertex ${oldVertexIds[at]} is kept twice`);
         vertexTo[at] = vertexIds.length;
@@ -290,16 +314,23 @@ function applyOrRefuse(doc: QuadMeshDoc, input: unknown): AppliedDelta {
     if (!Array.isArray(run)) refuse('a quad run has to be a list');
     if (typeof run[0] === 'number') {
       const [from, count] = run as unknown[];
-      if (run.length !== 2 || !isCount(from, oldQuadCount) || !isCount(count, oldQuadCount - (from as number))
-        || count === 0) refuse('a kept quad run reaches outside the quads this document has');
+      if (
+        run.length !== 2 ||
+        !isCount(from, oldQuadCount) ||
+        !isCount(count, oldQuadCount - (from as number)) ||
+        count === 0
+      )
+        refuse('a kept quad run reaches outside the quads this document has');
       for (let at = from as number, end = at + (count as number); at < end; at++) {
         if (quadTo[at] !== -1) refuse(`quad ${oldQuadIds[at]} is kept twice`);
         quadTo[at] = quadIds.length;
         quadIds.push(oldQuadIds[at]);
-        quads.push(doc.quads[at].map(was => {
-          const now = vertexTo[was] ?? -1;
-          return now < 0 ? refuse(`quad ${oldQuadIds[at]} is kept but a corner of it is not`) : now;
-        }));
+        quads.push(
+          doc.quads[at].map(was => {
+            const now = vertexTo[was] ?? -1;
+            return now < 0 ? refuse(`quad ${oldQuadIds[at]} is kept but a corner of it is not`) : now;
+          }),
+        );
       }
     } else {
       const [id, ...corners] = run as unknown[];
@@ -330,51 +361,83 @@ function applyOrRefuse(doc: QuadMeshDoc, input: unknown): AppliedDelta {
   // Creases follow both their ends; one whose end went goes with it.
   if (doc.edgeHandles) {
     const handles: Record<string, V3> = {};
-    let carried = 0, held = 0;
+    let carried = 0,
+      held = 0;
     for (const key in doc.edgeHandles) {
       held++;
       const ends = directedEdgeEnds(key);
-      const from = ends ? Number(ends[0]) : NaN, to = ends ? Number(ends[1]) : NaN;
-      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0
-        || from >= oldVertexCount || to >= oldVertexCount) continue;
-      const nowFrom = vertexTo[from], nowTo = vertexTo[to];
-      if (nowFrom >= 0 && nowTo >= 0) { handles[directedEdgeName(nowFrom, nowTo)] = doc.edgeHandles[key]; carried++; }
-      else cleared.push(handleRegister(oldVertexIds[from], oldVertexIds[to]));
+      const from = ends ? Number(ends[0]) : NaN,
+        to = ends ? Number(ends[1]) : NaN;
+      if (
+        !Number.isInteger(from) ||
+        !Number.isInteger(to) ||
+        from < 0 ||
+        to < 0 ||
+        from >= oldVertexCount ||
+        to >= oldVertexCount
+      )
+        continue;
+      const nowFrom = vertexTo[from],
+        nowTo = vertexTo[to];
+      if (nowFrom >= 0 && nowTo >= 0) {
+        handles[directedEdgeName(nowFrom, nowTo)] = doc.edgeHandles[key];
+        carried++;
+      } else cleared.push(handleRegister(oldVertexIds[from], oldVertexIds[to]));
     }
     // A channel the delta empties goes, as an operation's own rewrite drops it; one that was already empty
     // stays exactly as the document had it.
-    if (carried || !held) next.edgeHandles = handles; else delete next.edgeHandles;
+    if (carried || !held) next.edgeHandles = handles;
+    else delete next.edgeHandles;
   }
   // Edge locks follow both their ends the same way.
   if (doc.edgeLocked) {
     const locks: Record<string, true> = {};
-    let carried = 0, held = 0;
+    let carried = 0,
+      held = 0;
     for (const key in doc.edgeLocked) {
       held++;
       const cut = key.indexOf(',');
-      const a = Number(key.slice(0, cut)), b = Number(key.slice(cut + 1));
-      if (cut <= 0 || !Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0
-        || a >= oldVertexCount || b >= oldVertexCount || a === b) continue;
-      const nowA = vertexTo[a], nowB = vertexTo[b];
-      if (nowA >= 0 && nowB >= 0) { locks[undirectedEdgeKey(nowA, nowB)] = true; carried++; }
-      else cleared.push(edgeLockRegister(oldVertexIds[a], oldVertexIds[b]));
+      const a = Number(key.slice(0, cut)),
+        b = Number(key.slice(cut + 1));
+      if (
+        cut <= 0 ||
+        !Number.isInteger(a) ||
+        !Number.isInteger(b) ||
+        a < 0 ||
+        b < 0 ||
+        a >= oldVertexCount ||
+        b >= oldVertexCount ||
+        a === b
+      )
+        continue;
+      const nowA = vertexTo[a],
+        nowB = vertexTo[b];
+      if (nowA >= 0 && nowB >= 0) {
+        locks[undirectedEdgeKey(nowA, nowB)] = true;
+        carried++;
+      } else cleared.push(edgeLockRegister(oldVertexIds[a], oldVertexIds[b]));
     }
-    if (carried || !held) next.edgeLocked = locks; else delete next.edgeLocked;
+    if (carried || !held) next.edgeLocked = locks;
+    else delete next.edgeLocked;
   }
   for (const [field, channel] of QUAD_CHANNELS) {
     const old = doc[channel] as Record<number, unknown> | undefined;
     if (!old) continue;
     const out: Record<number, unknown> = {};
-    let carried = 0, held = 0;
+    let carried = 0,
+      held = 0;
     for (const key in old) {
       held++;
       const was = Number(key);
       if (!Number.isInteger(was) || was < 0 || was >= oldQuadCount) continue;
       const now = quadTo[was];
-      if (now >= 0) { out[now] = old[was]; carried++; }
-      else cleared.push(quadRegister(oldQuadIds[was], field));
+      if (now >= 0) {
+        out[now] = old[was];
+        carried++;
+      } else cleared.push(quadRegister(oldQuadIds[was], field));
     }
-    if (carried || !held) record[channel] = out; else delete record[channel];
+    if (carried || !held) record[channel] = out;
+    else delete record[channel];
   }
 
   // Free edges and T-nodes travel whole, every time.
@@ -391,7 +454,13 @@ function applyOrRefuse(doc: QuadMeshDoc, input: unknown): AppliedDelta {
   else {
     if (!Array.isArray(delta.tJunctions)) refuse('a topology delta carries its T-nodes');
     next.tJunctions = delta.tJunctions.map((node): EdgeEmbeddedTJunction => {
-      if (!node || typeof node !== 'object' || !Array.isArray(node.edge) || node.edge.length !== 2 || !isCoordinate(node.t)) {
+      if (
+        !node ||
+        typeof node !== 'object' ||
+        !Array.isArray(node.edge) ||
+        node.edge.length !== 2 ||
+        !isCoordinate(node.t)
+      ) {
         refuse('a T-node is a vertex, a host edge and a parameter');
       }
       return { vertex: corner(node.vertex), edge: [corner(node.edge[0]), corner(node.edge[1])], t: node.t };

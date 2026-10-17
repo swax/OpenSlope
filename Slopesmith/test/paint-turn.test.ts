@@ -54,7 +54,11 @@ assert.equal(turnOrient(doc, [0, 7], -1, false), 1, 'a mixed set turns only its 
 let handler: ((e: unknown) => void) | null = null;
 Object.defineProperty(globalThis, 'window', {
   configurable: true,
-  value: { addEventListener: (type: string, fn: (e: unknown) => void) => { if (type === 'keydown') handler = fn; } },
+  value: {
+    addEventListener: (type: string, fn: (e: unknown) => void) => {
+      if (type === 'keydown') handler = fn;
+    },
+  },
 });
 
 const { installShortcuts } = await import('../src/app/shortcuts');
@@ -63,18 +67,45 @@ const turns: [number, boolean][] = [];
 let turnable = true;
 const propTurns: number[] = [];
 let propHeld = false;
-const store = { currentMode: 'paint', paintBrush: null, selectedPaintCell: null, paintMultiSel: [],
-  bridgeRails: null, surgeryTool: null as string | null, weldTool: null, createEdgeTool: false };
+const store = {
+  currentMode: 'paint',
+  paintBrush: null,
+  selectedPaintCell: null,
+  paintMultiSel: [],
+  bridgeRails: null,
+  surgeryTool: null as string | null,
+  weldTool: null,
+  createEdgeTool: false,
+};
 let chatFocused = false;
 const viewport = {
-  riding: false, pastePlacing: false, edgeExtrusionStaged: false,
-  turnHeldProp: (deg: number) => { if (!propHeld) return false; propTurns.push(deg); return true; },
+  riding: false,
+  pastePlacing: false,
+  edgeExtrusionStaged: false,
+  turnHeldProp: (deg: number) => {
+    if (!propHeld) return false;
+    propTurns.push(deg);
+    return true;
+  },
 };
 let loopCuts = 0;
-const edit = { armLoopCut: () => { loopCuts++; } };
+const edit = {
+  armLoopCut: () => {
+    loopCuts++;
+  },
+};
 installShortcuts({
-  store, viewport, edit, trickTools: {}, propOps: {}, propDeform: { active: false }, sculptBrush: {},
-  turnPaintTexture: (dir: 1 | -1, flip: boolean) => { turns.push([dir, flip]); return turnable; },
+  store,
+  viewport,
+  edit,
+  trickTools: {},
+  propOps: {},
+  propDeform: { active: false },
+  sculptBrush: {},
+  turnPaintTexture: (dir: 1 | -1, flip: boolean) => {
+    turns.push([dir, flip]);
+    return turnable;
+  },
   chatFocused: () => chatFocused,
   openChat: () => {},
 } as unknown as Parameters<typeof installShortcuts>[0]);
@@ -83,8 +114,18 @@ assert.ok(handler, 'installShortcuts registers a keydown listener');
 let prevented = 0;
 const press = (key: string, extra: Record<string, unknown> = {}) => {
   prevented = 0;
-  handler!({ key, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, target: null,
-    preventDefault: () => { prevented++; }, ...extra });
+  handler!({
+    key,
+    shiftKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    target: null,
+    preventDefault: () => {
+      prevented++;
+    },
+    ...extra,
+  });
 };
 
 press('ArrowRight');

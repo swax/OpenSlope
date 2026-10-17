@@ -182,6 +182,26 @@ the repository's `Maps/` folder. Slopesmith reads that output directly; no glTF 
 In **Scene ▸ Reference**, choose the imported mountain and wait for it to load. Then enter **Test**,
 select **Reference** as the ride target, and click **Play**.
 
+## Formatting
+
+[`Slopesmith/.prettierrc.json`](.prettierrc.json) defines the source style: two spaces, single quotes,
+semicolons, and a 120-column wrapping target. Prettier is pinned in `devDependencies` and installed by
+`npm ci` in `Slopesmith/`; no global formatter is needed. Run from the repository root:
+
+```text
+npm run format:slopesmith        # apply formatting
+npm run format:slopesmith:check  # check without writing; exits nonzero on differences
+```
+
+Inside `Slopesmith/`, the equivalent commands are `npm run format` and `npm run format:check`.
+They cover hand-written TypeScript, JavaScript, CSS, and HTML in `src/`, `test/`, `scripts/`, `tools/`,
+and the top-level configuration and entry point. Generated contracts, vendored code, upstream patches,
+build output, and local map/workspace data are excluded by [`.prettierignore`](.prettierignore).
+Line endings match [`.gitattributes`](../.gitattributes): LF for scripts and CRLF for CSS.
+Embedded languages in template strings are left intact. As with the native, Snowknife, and Unity
+formatters, these are explicit local commands rather than an additional CI gate; ESLint remains a
+separate correctness check.
+
 ## Editing workflow
 
 Every mode edits or observes the same mountain document:

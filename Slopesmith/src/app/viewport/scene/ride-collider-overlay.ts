@@ -62,7 +62,10 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
 
   let sources: readonly RideObstacleSource[] = [];
   let visible = false;
-  interface LiveSourcePose { matrix: THREE.Matrix4; version?: number }
+  interface LiveSourcePose {
+    matrix: THREE.Matrix4;
+    version?: number;
+  }
   // `matrixWorld` is the launch snapshot used to seed collision. The solver subsequently consumes liveMatrix,
   // so the debug view needs its own consumed snapshots too or it keeps drawing the very ghost pose it is meant
   // to diagnose. A WeakMap avoids retaining retired ride sources after the overlay changes targets.
@@ -75,17 +78,24 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
   const ownedRider: THREE.BufferGeometry[] = [];
 
   const scratchSphere = new THREE.Sphere();
-  const scratchVec = new THREE.Vector3(), scratchCentre = new THREE.Vector3();
+  const scratchVec = new THREE.Vector3(),
+    scratchCentre = new THREE.Vector3();
   const probeOffsets = Array.from({ length: RIDER_PROBE_SAMPLES }, () => new THREE.Vector3());
-  const riderForward = new THREE.Vector3(), riderRight = new THREE.Vector3(), riderUp = new THREE.Vector3();
+  const riderForward = new THREE.Vector3(),
+    riderRight = new THREE.Vector3(),
+    riderUp = new THREE.Vector3();
 
   function dispose(bucket: THREE.BufferGeometry[]) {
     for (const geometry of bucket) geometry.dispose();
     bucket.length = 0;
   }
 
-  function addLines(positions: number[], material: THREE.LineBasicMaterial, into: THREE.Group,
-    bucket: THREE.BufferGeometry[]) {
+  function addLines(
+    positions: number[],
+    material: THREE.LineBasicMaterial,
+    into: THREE.Group,
+    bucket: THREE.BufferGeometry[],
+  ) {
     if (!positions.length) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -93,20 +103,24 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
     const lines = new THREE.LineSegments(geometry, material);
     lines.renderOrder = 120;
     lines.frustumCulled = false;
-    lines.raycast = () => { /* display-only overlay */ };
+    lines.raycast = () => {
+      /* display-only overlay */
+    };
     into.add(lines);
   }
 
   /** Twelve edges of a box given in some local frame, transformed into world space by `matrix`. */
   function pushOrientedBox(out: number[], min: THREE.Vector3, max: THREE.Vector3, matrix: THREE.Matrix4) {
-    const xs = [min.x, max.x], ys = [min.y, max.y], zs = [min.z, max.z];
-    const corner = (i: number) => scratchVec
-      .set(xs[i & 1], ys[(i >> 1) & 1], zs[(i >> 2) & 1]).applyMatrix4(matrix);
+    const xs = [min.x, max.x],
+      ys = [min.y, max.y],
+      zs = [min.z, max.z];
+    const corner = (i: number) => scratchVec.set(xs[i & 1], ys[(i >> 1) & 1], zs[(i >> 2) & 1]).applyMatrix4(matrix);
     for (let i = 0; i < 8; i++) {
       for (const bit of [1, 2, 4]) {
         const j = i | bit;
         if (j === i) continue;
-        const a = corner(i).clone(), b = corner(j);
+        const a = corner(i).clone(),
+          b = corner(j);
         out.push(a.x, a.y, a.z, b.x, b.y, b.z);
       }
     }
@@ -115,9 +129,14 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
   /** Three great circles of a world-space sphere — enough to read a radius without a shaded ball in the way. */
   function pushSphere(out: number[], centre: THREE.Vector3, radius: number, segments = 20) {
     if (radius <= 0) return;
-    for (const [ax, ay] of [[0, 1], [0, 2], [1, 2]] as const) {
+    for (const [ax, ay] of [
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ] as const) {
       for (let i = 0; i < segments; i++) {
-        const a = i * Math.PI * 2 / segments, b = (i + 1) * Math.PI * 2 / segments;
+        const a = (i * Math.PI * 2) / segments,
+          b = ((i + 1) * Math.PI * 2) / segments;
         for (const angle of [a, b]) {
           const point = [centre.x, centre.y, centre.z];
           point[ax] += Math.cos(angle) * radius;
@@ -135,7 +154,9 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
     if (!geometry || !attribute) return;
     const index = geometry.getIndex();
     const count = Math.floor((index?.count ?? attribute.count) / 3);
-    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const a = new THREE.Vector3(),
+      b = new THREE.Vector3(),
+      c = new THREE.Vector3();
     for (let face = 0; face < count; face++) {
       const at = face * 3;
       const [ia, ib, ic] = index ? [index.getX(at), index.getX(at + 1), index.getX(at + 2)] : [at, at + 1, at + 2];
@@ -152,11 +173,17 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
       scratchVec.setFromMatrixPosition(matrix);
       let reach = 0;
       for (let i = 0; i + 3 < source.spheres.length; i += 4)
-        reach = Math.max(reach, Math.hypot(source.spheres[i], source.spheres[i + 1], source.spheres[i + 2])
-          + Math.max(0, source.spheres[i + 3]));
+        reach = Math.max(
+          reach,
+          Math.hypot(source.spheres[i], source.spheres[i + 1], source.spheres[i + 2]) +
+            Math.max(0, source.spheres[i + 3]),
+        );
       const elements = matrix.elements;
-      const scale = Math.max(Math.hypot(elements[0], elements[1], elements[2]),
-        Math.hypot(elements[4], elements[5], elements[6]), Math.hypot(elements[8], elements[9], elements[10]));
+      const scale = Math.max(
+        Math.hypot(elements[0], elements[1], elements[2]),
+        Math.hypot(elements[4], elements[5], elements[6]),
+        Math.hypot(elements[8], elements[9], elements[10]),
+      );
       return scratchVec.distanceTo(centre) <= NEAR_RADIUS + reach * scale;
     }
     const geometry = source.geometry;
@@ -199,7 +226,8 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
   function gatherWorld(centre: THREE.Vector3) {
     worldGroup.clear();
     dispose(ownedWorld);
-    const solid: number[] = [], through: number[] = [];
+    const solid: number[] = [],
+      through: number[] = [];
     for (const source of sources) {
       const matrix = sourceMatrix(source);
       if (!nearby(source, centre, matrix)) continue;
@@ -210,9 +238,11 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
           // Non-uniform placement scale turns a leaf into an ellipsoid; the wire ball uses the mean axis, which
           // is what a reader needs from an overlay rather than an exact silhouette.
           const elements = matrix.elements;
-          const scale = (Math.hypot(elements[0], elements[1], elements[2])
-            + Math.hypot(elements[4], elements[5], elements[6])
-            + Math.hypot(elements[8], elements[9], elements[10])) / 3;
+          const scale =
+            (Math.hypot(elements[0], elements[1], elements[2]) +
+              Math.hypot(elements[4], elements[5], elements[6]) +
+              Math.hypot(elements[8], elements[9], elements[10])) /
+            3;
           pushSphere(out, scratchVec, Math.max(0, source.spheres[i + 3]) * scale, 14);
         }
         continue;
@@ -241,7 +271,8 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
     dispose(ownedRider);
     riderUp.copy(state.boardUp.lengthSq() > 1e-6 ? state.boardUp : WORLD_UP).normalize();
     riderForward.copy(state.fwd).addScaledVector(riderUp, -state.fwd.dot(riderUp));
-    if (riderForward.lengthSq() < 1e-6) riderForward.set(0, 0, 1); else riderForward.normalize();
+    if (riderForward.lengthSq() < 1e-6) riderForward.set(0, 0, 1);
+    else riderForward.normalize();
     riderRight.crossVectors(riderUp, riderForward).normalize();
     riderProbeOffsets(riderForward, riderRight, riderUp, probeOffsets);
 
@@ -258,7 +289,11 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
     // The upper samples are marks rather than a body: what matters is where they are, not a fictional silhouette.
     for (let index = RIDER_DECK_SAMPLES; index < RIDER_PROBE_SAMPLES; index++) {
       const at = world(index).clone();
-      for (const axis of [[RIDER_BARRIER_PAD, 0, 0], [0, RIDER_BARRIER_PAD, 0], [0, 0, RIDER_BARRIER_PAD]]) {
+      for (const axis of [
+        [RIDER_BARRIER_PAD, 0, 0],
+        [0, RIDER_BARRIER_PAD, 0],
+        [0, 0, RIDER_BARRIER_PAD],
+      ]) {
         rider.push(at.x - axis[0], at.y - axis[1], at.z - axis[2]);
         rider.push(at.x + axis[0], at.y + axis[1], at.z + axis[2]);
       }
@@ -284,12 +319,16 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
       visible = on;
       group.visible = on;
       if (!on) {
-        worldGroup.clear(); riderGroup.clear();
-        dispose(ownedWorld); dispose(ownedRider);
+        worldGroup.clear();
+        riderGroup.clear();
+        dispose(ownedWorld);
+        dispose(ownedRider);
         gatheredAt = null;
       }
     },
-    get visible() { return visible; },
+    get visible() {
+      return visible;
+    },
     /** Called once a frame while a ride is running. No-op when the toggle is off. */
     update(state: RideProbePose | null) {
       if (!visible || !state) return;
@@ -299,8 +338,10 @@ export function createRideColliderOverlay(parent: THREE.Object3D) {
     },
     dispose() {
       group.removeFromParent();
-      worldGroup.clear(); riderGroup.clear();
-      dispose(ownedWorld); dispose(ownedRider);
+      worldGroup.clear();
+      riderGroup.clear();
+      dispose(ownedWorld);
+      dispose(ownedRider);
       for (const material of Object.values(materials)) material.dispose();
     },
   };

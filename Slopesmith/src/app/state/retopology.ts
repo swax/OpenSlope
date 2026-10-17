@@ -13,7 +13,9 @@ export const retopologyEnabled = (): boolean => enabled;
 
 /** Ask the server, once; resolves true when retopology is on. */
 export function loadRetopologyEnabled(): Promise<boolean> {
-  asked ??= fetchJson<RetopologyCapabilities>('/api/retopology/capabilities', { cache: 'no-store' })
-    .then(capabilities => (enabled = capabilities.enabled === true), () => false);
+  asked ??= fetchJson<RetopologyCapabilities>('/api/retopology/capabilities', { cache: 'no-store' }).then(
+    capabilities => (enabled = capabilities.enabled === true),
+    () => false,
+  );
   return asked;
 }

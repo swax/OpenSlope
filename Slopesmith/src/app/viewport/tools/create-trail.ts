@@ -18,9 +18,23 @@ const SNAP_PX = 14;
 const LINE_COLOR = 0x8ffff8;
 /** Marker radii on screen, px: a point's bulb, the picked one's, the dark rim round each, the amber ring round a
  *  point a moving one may land on (with a dark middle, where no bulb fills it), and the point it is about to. */
-const POINT_PX = 6.5, PICKED_PX = 8.5, RIM_PX = 2, CATCH_PX = 12, CATCH_RING_PX = 3, SNAPPED_PX = 10;
+const POINT_PX = 6.5,
+  PICKED_PX = 8.5,
+  RIM_PX = 2,
+  CATCH_PX = 12,
+  CATCH_RING_PX = 3,
+  SNAPPED_PX = 10;
 /** Draw order among the markers, which all draw over everything (each marker group's own order is 10 000). */
-const enum Layer { Catch = 1, CatchHole, Rim, Bulb, PickedRim, Picked, SnapRim, Snapped }
+const enum Layer {
+  Catch = 1,
+  CatchHole,
+  Rim,
+  Bulb,
+  PickedRim,
+  Picked,
+  SnapRim,
+  Snapped,
+}
 
 /**
  * A trail's centre splines in Edit mode (docs/023): a bulb per shown point, the rail Catmull-Rom guide along each
@@ -86,14 +100,18 @@ export function createTrailToolLayer(
   /** A whole-selection drag's start, scene space: the anchor's pose. */
   let wholeDrag: { pivot: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 } | null = null;
   const markerMat = (color: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false });
-  const pointMat = markerMat(POINT_COLOR), selectedMat = markerMat(0xffffff), rimMat = markerMat(RIM_COLOR);
+  const pointMat = markerMat(POINT_COLOR),
+    selectedMat = markerMat(0xffffff),
+    rimMat = markerMat(RIM_COLOR);
   const snapMat = markerMat(SNAP_COLOR);
   /** A marker `px` across on screen, drawn at `layer`; never hit by a scene-wide pick (pickKnot tests the rims). */
   const marker = (material: THREE.Material, layer: Layer, px: number) => {
     const mesh = new THREE.Mesh(POINT_GEO, material);
     mesh.renderOrder = layer;
     mesh.userData.px = px;
-    mesh.raycast = () => { /* picked explicitly */ };
+    mesh.raycast = () => {
+      /* picked explicitly */
+    };
     return mesh;
   };
   const dots = new THREE.Group(); // a bulb and a rim per shown point
@@ -115,7 +133,9 @@ export function createTrailToolLayer(
   for (const object of [dots, catches, cursor, line]) {
     object.visible = false;
     object.renderOrder = 10_000;
-    object.raycast = () => { /* the knot bulbs are picked explicitly by pickKnot */ };
+    object.raycast = () => {
+      /* the knot bulbs are picked explicitly by pickKnot */
+    };
     stage.worldRoot.add(object);
   }
   const scratch = new THREE.Vector3();
@@ -141,13 +161,20 @@ export function createTrailToolLayer(
     if (!draw) return null;
     const nodes = draw.path === null ? null : paths[draw.path]?.nodes;
     const at = nodes ? (draw.end === 'start' ? nodes[0] : nodes.at(-1)) : draw.from;
-    return at === null || at === undefined ? null : knots[at] ?? null;
+    return at === null || at === undefined ? null : (knots[at] ?? null);
   }
 
   /** A polyline through `nodes` on `target`, or hidden when there are not two. */
-  function setLine(target: THREE.Line, nodes: readonly V3[], nodeHandles?: readonly (PathHandles | null | undefined)[]) {
+  function setLine(
+    target: THREE.Line,
+    nodes: readonly V3[],
+    nodeHandles?: readonly (PathHandles | null | undefined)[],
+  ) {
     const guide = sampleRail(nodes, 16, nodeHandles);
-    if (guide.length < 2) { target.visible = false; return; }
+    if (guide.length < 2) {
+      target.visible = false;
+      return;
+    }
     target.geometry.dispose();
     target.geometry = new THREE.BufferGeometry().setFromPoints(guide.map(p => new THREE.Vector3(p[0], p[1], p[2])));
     target.visible = true;
@@ -174,13 +201,19 @@ export function createTrailToolLayer(
    */
   function snapNear(targets: readonly V3[], from: { x: number; y: number } | null): V3 | null {
     if (!from) return null;
-    let best: V3 | null = null, bestD2 = SNAP_PX * SNAP_PX, bestZ = Infinity;
+    let best: V3 | null = null,
+      bestD2 = SNAP_PX * SNAP_PX,
+      bestZ = Infinity;
     for (const target of targets) {
       const at = onScreen(dataToScene(target));
       if (!at) continue;
       const d2 = (at.x - from.x) ** 2 + (at.y - from.y) ** 2;
       if (d2 > SNAP_PX * SNAP_PX) continue;
-      if (d2 < bestD2 - 0.25 || (Math.abs(d2 - bestD2) <= 0.25 && at.z < bestZ)) { best = target; bestD2 = d2; bestZ = at.z; }
+      if (d2 < bestD2 - 0.25 || (Math.abs(d2 - bestD2) <= 0.25 && at.z < bestZ)) {
+        best = target;
+        bestD2 = d2;
+        bestZ = at.z;
+      }
     }
     return best;
   }
@@ -190,9 +223,11 @@ export function createTrailToolLayer(
     snapped = snapNear(snaps, cursorOnScreen());
     if (snapped) return { pos: [snapped[0], snapped[1], snapped[2]], vertex: null };
     // a trail is drawn over the ground, so every knot takes the surface (lifted), not just the first
-    return resolvePlacementEndpoint(
-      { stage, terrain, pickVertex }, drawFrom(), { axisLocked, surfaceLiftM, followsGround: true },
-    );
+    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, drawFrom(), {
+      axisLocked,
+      surfaceLiftM,
+      followsGround: true,
+    });
   }
 
   /** Whether the picked point is being dragged now. */
@@ -200,7 +235,11 @@ export function createTrailToolLayer(
 
   /** Keep `pool` at `count` markers, made by `make` for the one at each place, in `group`. */
   function fill(pool: THREE.Mesh[], group: THREE.Group, count: number, make: (i: number) => THREE.Mesh) {
-    while (pool.length < count) { const mesh = make(pool.length); pool.push(mesh); group.add(mesh); }
+    while (pool.length < count) {
+      const mesh = make(pool.length);
+      pool.push(mesh);
+      group.add(mesh);
+    }
     while (pool.length > count) group.remove(pool.pop()!);
   }
 
@@ -225,9 +264,13 @@ export function createTrailToolLayer(
     // Where the point moving now may land: the next one drawn, or the picked one dragged.
     const dragging = draggingKnot();
     const targets = dragging ? dragSnaps : active ? snaps : [];
-    fill(catchRings, catches, targets.length * 2, i => i % 2
-      ? marker(rimMat, Layer.CatchHole, CATCH_PX - CATCH_RING_PX) : marker(snapMat, Layer.Catch, CATCH_PX));
-    catchRings.forEach((ring, i) => { const at = targets[i >> 1]; ring.position.set(at[0], at[1], at[2]); });
+    fill(catchRings, catches, targets.length * 2, i =>
+      i % 2 ? marker(rimMat, Layer.CatchHole, CATCH_PX - CATCH_RING_PX) : marker(snapMat, Layer.Catch, CATCH_PX),
+    );
+    catchRings.forEach((ring, i) => {
+      const at = targets[i >> 1];
+      ring.position.set(at[0], at[1], at[2]);
+    });
     catches.visible = targets.length > 0;
     const ghost = !!(active && hover) && !snapped && !dragging;
     hoverDot.visible = hoverRim.visible = ghost;
@@ -240,22 +283,29 @@ export function createTrailToolLayer(
     while (pathLines.length < paths.length) {
       const pathLine = new THREE.Line(new THREE.BufferGeometry(), lineMat);
       pathLine.renderOrder = 10_000;
-      pathLine.raycast = () => { /* the knot bulbs are picked explicitly by pickKnot */ };
+      pathLine.raycast = () => {
+        /* the knot bulbs are picked explicitly by pickKnot */
+      };
       pathLines.push(pathLine);
       stage.worldRoot.add(pathLine);
     }
     pathLines.forEach((pathLine, p) => {
       const path = paths[p];
-      if (!path) { pathLine.visible = false; return; }
+      if (!path) {
+        pathLine.visible = false;
+        return;
+      }
       const nodes = path.nodes.map(node => knots[node]).filter(Boolean);
       // The path being drawn runs on to the cursor, from whichever end grows.
-      if (next && draw?.path === p && draw.end === 'start') setLine(pathLine, [next, ...nodes], path.handles?.length ? [null, ...path.handles] : path.handles);
+      if (next && draw?.path === p && draw.end === 'start')
+        setLine(pathLine, [next, ...nodes], path.handles?.length ? [null, ...path.handles] : path.handles);
       else if (next && draw?.path === p) setLine(pathLine, [...nodes, next], path.handles);
       else setLine(pathLine, nodes, path.handles);
     });
     // A new path not laid yet is its point alone, so the guide runs from there to the cursor.
     const from = draw && draw.path === null ? drawFrom() : null;
-    if (next && from) setLine(line, [from, next]); else line.visible = false;
+    if (next && from) setLine(line, [from, next]);
+    else line.visible = false;
   }
 
   /** Keep the gizmo on the selected knot, or on the whole trail, except while it is being dragged: then it owns
@@ -267,7 +317,8 @@ export function createTrailToolLayer(
       if (stage.gizmoKind === 'trailknot' && stage.gizmo.dragging) return;
       moveHandle.position.set(knot[0], knot[1], -knot[2]);
       moveHandle.visible = true;
-      if (stage.gizmoKind !== 'trailknot' || stage.gizmoKnot !== selected) stage.attachGizmo(moveHandle, 'trailknot', selected!);
+      if (stage.gizmoKind !== 'trailknot' || stage.gizmoKnot !== selected)
+        stage.attachGizmo(moveHandle, 'trailknot', selected!);
       return;
     }
     moveHandle.visible = false;
@@ -279,7 +330,8 @@ export function createTrailToolLayer(
       wholeHandle.quaternion.identity();
       wholeHandle.scale.setScalar(1);
       wholeHandle.visible = true;
-      if (stage.gizmoKind !== 'trail' || stage.gizmo.object !== wholeHandle) stage.attachGizmo(wholeHandle, 'trail', -1);
+      if (stage.gizmoKind !== 'trail' || stage.gizmo.object !== wholeHandle)
+        stage.attachGizmo(wholeHandle, 'trail', -1);
     } else {
       wholeHandle.visible = false;
       if (stage.gizmoKind === 'trail') stage.detachGizmo();
@@ -294,7 +346,11 @@ export function createTrailToolLayer(
       wholeHandle.scale.setScalar(1);
       return;
     }
-    wholeDrag = { pivot: wholeHandle.position.clone(), quaternion: wholeHandle.quaternion.clone(), scale: wholeHandle.scale.clone() };
+    wholeDrag = {
+      pivot: wholeHandle.position.clone(),
+      quaternion: wholeHandle.quaternion.clone(),
+      scale: wholeHandle.scale.clone(),
+    };
   }
 
   /** The whole-selection gizmo moved, turned or scaled: report the transform from the drag's start. A handle is an
@@ -375,9 +431,11 @@ export function createTrailToolLayer(
     const endpoint = placement(axisLocked);
     if (!endpoint) return;
     const previous = drawFrom();
-    if (previous && Math.hypot(
-      previous[0] - endpoint.pos[0], previous[1] - endpoint.pos[1], previous[2] - endpoint.pos[2],
-    ) < 0.1) return;
+    if (
+      previous &&
+      Math.hypot(previous[0] - endpoint.pos[0], previous[1] - endpoint.pos[1], previous[2] - endpoint.pos[2]) < 0.1
+    )
+      return;
     hover = null;
     onAppend?.(endpoint.pos);
   }
@@ -389,7 +447,14 @@ export function createTrailToolLayer(
   }
 
   return {
-    setActive, setKnots, pickKnot, onHover, onCommit, refresh, wholeDragging, wholeChanged,
+    setActive,
+    setKnots,
+    pickKnot,
+    onHover,
+    onCommit,
+    refresh,
+    wholeDragging,
+    wholeChanged,
     /** A dragged point at `pos`: onto a point it may land on when it is near enough on screen, else where it is. */
     snapDrag(pos: V3): V3 {
       snapped = snapNear(dragSnaps, onScreen(dataToScene(pos)));
@@ -397,23 +462,43 @@ export function createTrailToolLayer(
       return snapped ? [snapped[0], snapped[1], snapped[2]] : pos;
     },
     /** A point drag began — ring where it may land — or ended: no snap any more. */
-    knotDragging(dragging: boolean) { if (!dragging) snapped = null; redraw(); },
+    knotDragging(dragging: boolean) {
+      if (!dragging) snapped = null;
+      redraw();
+    },
     scaleMarkers,
-    setSurfaceLift(value: number) { surfaceLiftM = Math.max(0, value); refresh(); },
+    setSurfaceLift(value: number) {
+      surfaceLiftM = Math.max(0, value);
+      refresh();
+    },
     /** Hover changes, for the panel's next-segment read-out. */
-    setListener(next: (() => void) | null) { listener = next; },
+    setListener(next: (() => void) | null) {
+      listener = next;
+    },
     setHost(host: {
-      append: (pos: V3) => void; select: (knot: number | null) => void;
+      append: (pos: V3) => void;
+      select: (knot: number | null) => void;
       transform: (xf: TrailTransform) => void;
       /** Where a click would lay the next knot now (null: nowhere), for the host's ghost of it. */
       hover?: (pos: V3 | null) => void;
     }) {
-      onAppend = host.append; onSelect = host.select; onTransform = host.transform; onHoverAt = host.hover ?? null;
+      onAppend = host.append;
+      onSelect = host.select;
+      onTransform = host.transform;
+      onHoverAt = host.hover ?? null;
     },
-    get active() { return active; },
-    get knots(): readonly V3[] { return knots; },
-    get selectedKnot() { return selected; },
-    get hover(): V3 | null { return hover?.pos ?? null; },
+    get active() {
+      return active;
+    },
+    get knots(): readonly V3[] {
+      return knots;
+    },
+    get selectedKnot() {
+      return selected;
+    },
+    get hover(): V3 | null {
+      return hover?.pos ?? null;
+    },
   };
 }
 

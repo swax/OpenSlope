@@ -12,9 +12,7 @@ import { createParticleBatches } from '../src/app/viewport/scene/particle-batche
 import { createParticleAtlasTexture } from '../src/app/viewport/scene/particle-atlas';
 import { createXrContext } from '../src/app/viewport/xr-context';
 import { checkParticleBillboards } from './particle-billboard-webgl.fixture';
-import {
-  emitterBlendKeepsColor, emitterBlendMode, type EmitterBlendMode,
-} from '../src/core/effects/emitter-preview';
+import { emitterBlendKeepsColor, emitterBlendMode, type EmitterBlendMode } from '../src/core/effects/emitter-preview';
 
 interface ParticleBlendResult {
   ok: boolean;
@@ -36,14 +34,21 @@ const publish = (result: ParticleBlendResult) => {
 
 const SIZE = 64;
 
-interface Sprite { rgb: [number, number, number]; alpha: number; blend: EmitterBlendMode; sprite?: number }
+interface Sprite {
+  rgb: [number, number, number];
+  alpha: number;
+  blend: EmitterBlendMode;
+  sprite?: number;
+}
 
 async function run(): Promise<void> {
   const canvas = document.createElement('canvas');
   document.body.append(canvas);
   THREE.ColorManagement.enabled = false;
   const context = canvas.getContext('webgl2', {
-    antialias: false, preserveDrawingBuffer: true, xrCompatible: true,
+    antialias: false,
+    preserveDrawingBuffer: true,
+    xrCompatible: true,
   })!;
   const xrContext = createXrContext(context); // use the same context-attribute wrapper as Stage
   const initiallyCompatible = context.getContextAttributes()?.xrCompatible === true;
@@ -54,11 +59,15 @@ async function run(): Promise<void> {
   renderer.setClearColor(0x808080, 1);
   renderer.debug.checkShaderErrors = true;
   renderer.debug.onShaderError = (gl, program, vertex, fragment) => {
-    throw new Error([
-      gl.getProgramInfoLog(program),
-      `VERTEX: ${gl.getShaderInfoLog(vertex)}`,
-      `FRAGMENT: ${gl.getShaderInfoLog(fragment)}`,
-    ].filter(Boolean).join('\n'));
+    throw new Error(
+      [
+        gl.getProgramInfoLog(program),
+        `VERTEX: ${gl.getShaderInfoLog(vertex)}`,
+        `FRAGMENT: ${gl.getShaderInfoLog(fragment)}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
   };
 
   // A fully opaque white sheet: the sprite contributes nothing of its own, so every pixel read below
@@ -84,7 +93,9 @@ async function run(): Promise<void> {
     let cursor = 0;
     const write = (item: Sprite) => {
       const k = cursor * 3;
-      position[k] = 0; position[k + 1] = 0; position[k + 2] = 0;
+      position[k] = 0;
+      position[k + 1] = 0;
+      position[k + 2] = 0;
       const keepColor = emitterBlendKeepsColor(item.blend);
       color[k] = keepColor ? item.rgb[0] : 0;
       color[k + 1] = keepColor ? item.rgb[1] : 0;
@@ -133,15 +144,22 @@ async function run(): Promise<void> {
   const loseContext = renderer.getContext().getExtension('WEBGL_lose_context');
   if (!loseContext) throw new Error('WEBGL_lose_context is required for particle restoration coverage');
   let compatibilityCalls = 0;
-  Object.defineProperty(context, 'makeXRCompatible', { configurable: true, value: async () => {
-    if (++compatibilityCalls !== 1) return;
-    canvas.addEventListener('webglcontextlost', () => {
-      if (!xrContext.preparing) throw new Error('viewport gate released before context loss');
-      setTimeout(() => loseContext.restoreContext(), 0);
-    }, { once: true });
-    loseContext.loseContext();
-    throw new DOMException('adapter transition lost the context', 'InvalidStateError');
-  } });
+  Object.defineProperty(context, 'makeXRCompatible', {
+    configurable: true,
+    value: async () => {
+      if (++compatibilityCalls !== 1) return;
+      canvas.addEventListener(
+        'webglcontextlost',
+        () => {
+          if (!xrContext.preparing) throw new Error('viewport gate released before context loss');
+          setTimeout(() => loseContext.restoreContext(), 0);
+        },
+        { once: true },
+      );
+      loseContext.loseContext();
+      throw new DOMException('adapter transition lost the context', 'InvalidStateError');
+    },
+  });
   await xrContext.prepare();
   Reflect.deleteProperty(context, 'makeXRCompatible');
   if (compatibilityCalls !== (initiallyCompatible ? 0 : 2) || xrContext.preparing)
@@ -149,20 +167,32 @@ async function run(): Promise<void> {
   renderer.setClearColor(0x808080, 1);
   const restoredPixel = draw([{ rgb: [1, 1, 1], alpha: 0.25, blend: 'additive' }]);
   if (!restoredPixel.every((value, index) => near(value, additivePixel[index])))
-    failures.push(`restored particle ${restoredPixel.join('/')} differs from before context loss ${additivePixel.join('/')}`);
+    failures.push(
+      `restored particle ${restoredPixel.join('/')} differs from before context loss ${additivePixel.join('/')}`,
+    );
   const compatibilityError = context.getError();
-  if (compatibilityError !== context.NO_ERROR) failures.push(`WebGL error after compatibility recovery: ${compatibilityError}`);
+  if (compatibilityError !== context.NO_ERROR)
+    failures.push(`WebGL error after compatibility recovery: ${compatibilityError}`);
 
   // Full GPU-process reset also loses accelerated Canvas2D contents, unlike WEBGL_lose_context above.
   // An old CanvasTexture is the control: its white sprite becomes transparent, while retained atlas data stays.
-  const gpuTest = (globalThis as typeof globalThis & { chrome?: { gpuBenchmarking?: {
-    crashGpuProcess(): void; isAcceleratedCanvasImageSource(canvas: HTMLCanvasElement): boolean;
-  } } }).chrome?.gpuBenchmarking;
+  const gpuTest = (
+    globalThis as typeof globalThis & {
+      chrome?: {
+        gpuBenchmarking?: {
+          crashGpuProcess(): void;
+          isAcceleratedCanvasImageSource(canvas: HTMLCanvasElement): boolean;
+        };
+      };
+    }
+  ).chrome?.gpuBenchmarking;
   if (!gpuTest) throw new Error('GPU reset coverage requires --enable-gpu-benchmarking');
   const legacyCanvas = document.createElement('canvas');
-  legacyCanvas.width = 1024; legacyCanvas.height = 1280;
+  legacyCanvas.width = 1024;
+  legacyCanvas.height = 1280;
   const legacyContext = legacyCanvas.getContext('2d')!;
-  legacyContext.fillStyle = 'white'; legacyContext.fillRect(0, 0, 1024, 1280);
+  legacyContext.fillStyle = 'white';
+  legacyContext.fillRect(0, 0, 1024, 1280);
   const accelerated = gpuTest.isAcceleratedCanvasImageSource(legacyCanvas);
   const legacyTexture = new THREE.CanvasTexture(legacyCanvas);
   const sampleSpark = () => draw([{ rgb: [1, 1, 1], alpha: 0.25, blend: 'additive' }]);
@@ -171,11 +201,32 @@ async function run(): Promise<void> {
   if (!near(sampleSpark()[0], 192)) failures.push('legacy canvas control was not visible before reset');
   atlasUniform.value = atlas;
   await new Promise<void>((resolve, reject) => {
-    let glRestored = false, canvasRestored = !accelerated;
+    let glRestored = false,
+      canvasRestored = !accelerated;
     const timer = setTimeout(() => reject(new Error('GPU-process reset did not restore contexts')), 10_000);
-    const complete = () => { if (glRestored && canvasRestored) { clearTimeout(timer); resolve(); } };
-    canvas.addEventListener('webglcontextrestored', () => { glRestored = true; complete(); }, { once: true });
-    if (accelerated) legacyCanvas.addEventListener('contextrestored', () => { canvasRestored = true; complete(); }, { once: true });
+    const complete = () => {
+      if (glRestored && canvasRestored) {
+        clearTimeout(timer);
+        resolve();
+      }
+    };
+    canvas.addEventListener(
+      'webglcontextrestored',
+      () => {
+        glRestored = true;
+        complete();
+      },
+      { once: true },
+    );
+    if (accelerated)
+      legacyCanvas.addEventListener(
+        'contextrestored',
+        () => {
+          canvasRestored = true;
+          complete();
+        },
+        { once: true },
+      );
     gpuTest.crashGpuProcess();
   });
   renderer.setClearColor(0x808080, 1);
@@ -187,7 +238,9 @@ async function run(): Promise<void> {
   }
   const resetError = context.getError();
   if (resetError !== context.NO_ERROR) failures.push(`WebGL error after GPU reset: ${resetError}`);
-  atlasContext.fillStyle = 'blue'; atlasContext.fillRect(8, 8, 8, 8); updateAtlas(8, 8, 8, 8);
+  atlasContext.fillStyle = 'blue';
+  atlasContext.fillRect(8, 8, 8, 8);
+  updateAtlas(8, 8, 8, 8);
   const updated = draw([{ rgb: [1, 1, 1], alpha: 1, blend: 'alpha', sprite: 3 }]);
   const unchanged = draw([{ rgb: [1, 1, 1], alpha: 1, blend: 'alpha', sprite: 2 }]);
   if (!near(updated[0], 0) || !near(updated[2], 255) || !near(unchanged[0], 255))
@@ -199,14 +252,20 @@ async function run(): Promise<void> {
     legacyAtlasCleared: accelerated,
     error: failures.join('; ') || undefined,
     renderer: renderer.getContext().getExtension('WEBGL_debug_renderer_info')
-      ? renderer.getContext().getParameter(0x9246) as string
-      : renderer.getContext().getParameter(renderer.getContext().RENDERER) as string,
-    backgroundPixel, additivePixel, darkenPixel, alphaPixel, darkenDrawnAdditivePixel,
+      ? (renderer.getContext().getParameter(0x9246) as string)
+      : (renderer.getContext().getParameter(renderer.getContext().RENDERER) as string),
+    backgroundPixel,
+    additivePixel,
+    darkenPixel,
+    alphaPixel,
+    darkenDrawnAdditivePixel,
     flareBlend: emitterBlendMode(4),
   });
 }
 
-run().catch((error: unknown) => publish({
-  ok: false,
-  error: error instanceof Error ? (error.stack ?? error.message) : String(error),
-}));
+run().catch((error: unknown) =>
+  publish({
+    ok: false,
+    error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+  }),
+);

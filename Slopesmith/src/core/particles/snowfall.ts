@@ -70,8 +70,8 @@ export const SNOWFALL_PORT: SnowfallSettings = {
   fallMin: 2.2,
   fallMax: 4.0,
   drift: 0.7,
-  sizeMin: 0.10,
-  sizeMax: 0.30,
+  sizeMin: 0.1,
+  sizeMax: 0.3,
   nearFadeStart: 0.25,
   nearFadeEnd: 0.6,
   edgeFade: 0.2,
@@ -111,8 +111,8 @@ export const SNOWFALL_BLIZZARD: SnowfallSettings = {
   fallMin: 5.0,
   fallMax: 8.0,
   drift: 12.0,
-  sizeMin: 0.10,
-  sizeMax: 0.30,
+  sizeMin: 0.1,
+  sizeMax: 0.3,
   nearFadeStart: 0.25,
   nearFadeEnd: 0.6,
   edgeFade: 0.2,
@@ -166,7 +166,8 @@ const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 export function snowfallAt(amount: number): SnowfallSettings {
   const a = clamp(amount, 0, AMOUNT_MAX);
   const b = Math.max(0, (a - AMOUNT_PORT) / (AMOUNT_MAX - AMOUNT_PORT)) ** RAMP_CURVE;
-  const p = SNOWFALL_PORT, z = SNOWFALL_BLIZZARD;
+  const p = SNOWFALL_PORT,
+    z = SNOWFALL_BLIZZARD;
   return {
     // Below the port the count is the ONLY thing the dial touches; above it, it climbs with everything else.
     flakes: Math.round(a < AMOUNT_PORT ? (p.flakes * a) / AMOUNT_PORT : mix(p.flakes, z.flakes, b)),
@@ -205,8 +206,7 @@ export interface SnowFlakes {
 
 /** The corner offsets of the one unit quad every flake instances, in {-0.5,+0.5}² — which doubles as the
  *  fragment's falloff UV. Wound as two triangles by {@link SNOWFLAKE_QUAD_INDICES}. */
-export const SNOWFLAKE_QUAD_CORNERS: readonly number[] =
-  [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
+export const SNOWFLAKE_QUAD_CORNERS: readonly number[] = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
 
 export const SNOWFLAKE_QUAD_INDICES: readonly number[] = [0, 1, 2, 0, 2, 3];
 
@@ -253,11 +253,16 @@ export function bakeSnowFlakes(count = MAX_FLAKES, seed = BAKE_SEED): SnowFlakes
 }
 
 /** GLSL `fract`: `x - floor(x)`, which is in [0,1) for negatives too — the whole wrap depends on that. */
-export function fract(x: number): number { return x - Math.floor(x); }
+export function fract(x: number): number {
+  return x - Math.floor(x);
+}
 
 /** The flake's per-flake fall speed, quad size and drift velocity, from its baked randoms. */
-export function flakeMotion(rnd: ArrayLike<number>, s: SnowfallSettings, offset = 0):
-{ fall: number; size: number; drift: [number, number] } {
+export function flakeMotion(
+  rnd: ArrayLike<number>,
+  s: SnowfallSettings,
+  offset = 0,
+): { fall: number; size: number; drift: [number, number] } {
   return {
     fall: mix(s.fallMin, s.fallMax, rnd[offset]),
     size: mix(s.sizeMin, s.sizeMax, rnd[offset + 1]),
@@ -271,11 +276,7 @@ export function flakeMotion(rnd: ArrayLike<number>, s: SnowfallSettings, offset 
  */
 export function flakePath(base: V3, rnd: ArrayLike<number>, t: number, s: SnowfallSettings): V3 {
   const { fall, drift } = flakeMotion(rnd, s);
-  return [
-    base[0] * s.box[0] + drift[0] * t,
-    base[1] * s.box[1] - fall * t,
-    base[2] * s.box[2] + drift[1] * t,
-  ];
+  return [base[0] * s.box[0] + drift[0] * t, base[1] * s.box[1] - fall * t, base[2] * s.box[2] + drift[1] * t];
 }
 
 /** The wrap box's centre for an eye at `eye`: the eye itself, lifted so more of the box is overhead. */
@@ -307,10 +308,13 @@ export function wrapFlake(p: V3, centre: V3, s: SnowfallSettings): V3 {
  * interpolator, and an additive dot's light scales with its area, so the shrink already reads as a fade.
  */
 export function edgeFadeScale(off: V3, s: SnowfallSettings): number {
-  const e = Math.max(Math.abs(off[0]) / (s.box[0] * 0.5),
-    Math.abs(off[1]) / (s.box[1] * 0.5), Math.abs(off[2]) / (s.box[2] * 0.5));
+  const e = Math.max(
+    Math.abs(off[0]) / (s.box[0] * 0.5),
+    Math.abs(off[1]) / (s.box[1] * 0.5),
+    Math.abs(off[2]) / (s.box[2] * 0.5),
+  );
   const f = clamp((1 - e) / s.edgeFade, 0, 1);
-  return f * f * (3 - 2 * f);   // smoothstep: no kink where a flake enters the band
+  return f * f * (3 - 2 * f); // smoothstep: no kink where a flake enters the band
 }
 
 /** The near fade, as a size scale in [0,1]: 0 at the eye, 1 once the flake is far enough to be looked at. */

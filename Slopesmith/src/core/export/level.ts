@@ -12,7 +12,16 @@ import { glintSizeClass } from '../lighting/glints';
 import { nativeSplineFields, railBezierSegments, railStyle, RAIL_STYLE_ICE } from '../rails/rails';
 import { deriveQuadMesh, type DerivedQuadMesh } from '../doc/mountain';
 import { quadControlPoints } from '../mesh/topology';
-import { aiLineRatings, aiPathLines, courseCenters, finishFrame, startFrame, startGateLines, DEFAULT_AI_SEED, DEFAULT_LINE_RATING } from '../doc/course';
+import {
+  aiLineRatings,
+  aiPathLines,
+  courseCenters,
+  finishFrame,
+  startFrame,
+  startGateLines,
+  DEFAULT_AI_SEED,
+  DEFAULT_LINE_RATING,
+} from '../doc/course';
 import { generateTexture, sampleRgba, type Rgba } from '../paint/ground-textures';
 import { parseTexRef, texDestName } from '../paint/textures';
 import { orientUV } from '../paint/orientation';
@@ -121,11 +130,13 @@ export interface LevelFileOpts {
  *  procedural tile - SurfaceType still rides the same either way (texture is appearance only). Reads the
  *  topology-general QuadMesh (mountain.ts `deriveQuadMesh`); each quad's 16 CPs come from
  *  `quadControlPoints`, so the emitted patches are independent of the net's topology (regular or poled). */
-function quiltPatches(
-  d: DerivedQuadMesh,
-): { patches: PatchRecord[]; ids: string[]; texUsed: Set<string>;
+function quiltPatches(d: DerivedQuadMesh): {
+  patches: PatchRecord[];
+  ids: string[];
+  texUsed: Set<string>;
   copies: Record<string, { level: string; name: string }>;
-  sources: Record<string, { level: string; name: string; staged?: string }> } {
+  sources: Record<string, { level: string; name: string; staged?: string }>;
+} {
   const patches: PatchRecord[] = [];
   const ids: string[] = [];
   const texUsed = new Set<string>();
@@ -162,7 +173,10 @@ function quiltPatches(
         const [a, b] = o ? orientUV(u, v, o.rot, o.mirror) : [u, v];
         return [UV_INSET + (1 - 2 * UV_INSET) * a, -(UV_INSET + (1 - 2 * UV_INSET) * b)];
       };
-      const d00 = uv(0, 0), d10 = uv(1, 0), d01 = uv(0, 1), d11 = uv(1, 1);
+      const d00 = uv(0, 0),
+        d10 = uv(1, 0),
+        d01 = uv(0, 1),
+        d11 = uv(1, 1);
 
       ids.push(d.id(q));
       patches.push({
@@ -202,14 +216,23 @@ interface RaceLineCheckpoint {
  *  The nearest segment is chosen in 3D so a folded course cannot bind a high bridge to the line underneath;
  *  the station itself advances in the engine's horizontal metric. */
 function raceLineStation(raw: V3[], point: V3): number {
-  let arc = 0, bestDist = Infinity, bestStation = 0;
+  let arc = 0,
+    bestDist = Infinity,
+    bestStation = 0;
   for (let i = 1; i < raw.length; i++) {
-    const a = raw[i - 1], b = raw[i];
-    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+    const a = raw[i - 1],
+      b = raw[i];
+    const dx = b[0] - a[0],
+      dy = b[1] - a[1],
+      dz = b[2] - a[2];
     const len2 = dx * dx + dy * dy + dz * dz;
-    const t = len2 > 1e-9 ? Math.max(0, Math.min(1,
-      ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) / len2)) : 0;
-    const qx = a[0] + dx * t, qy = a[1] + dy * t, qz = a[2] + dz * t;
+    const t =
+      len2 > 1e-9
+        ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) / len2))
+        : 0;
+    const qx = a[0] + dx * t,
+      qy = a[1] + dy * t,
+      qz = a[2] + dz * t;
     const d = (point[0] - qx) ** 2 + (point[1] - qy) ** 2 + (point[2] - qz) ** 2;
     if (d < bestDist) {
       bestDist = d;
@@ -233,7 +256,8 @@ function raceLineJson(rawCenters: V3[], rawFinish: V3, checkpoints: RaceLineChec
   // DTF is the horizontal arc from the line's head to the FINISH, which is the tail only when no finish
   // anchor moved it. Walking to the anchor's nearest station instead of summing every delta is what lets a
   // lap course put its crossing mid-line, the way MEGAPLEX does.
-  let dtf = 0, arc = 0;
+  let dtf = 0,
+    arc = 0;
   let p: V3 = rawCenters[0];
   const gap = (a: V3) => (a[0] - rawFinish[0]) ** 2 + (a[1] - rawFinish[1]) ** 2 + (a[2] - rawFinish[2]) ** 2;
   let best = gap(p);
@@ -241,7 +265,10 @@ function raceLineJson(rawCenters: V3[], rawFinish: V3, checkpoints: RaceLineChec
     arc += Math.hypot(d[0], d[1]);
     p = [p[0] + d[0], p[1] + d[1], p[2] + d[2]];
     const g = gap(p);
-    if (g < best) { best = g; dtf = arc; }
+    if (g < best) {
+      best = g;
+      dtf = arc;
+    }
   }
   const tail = deltas[deltas.length - 1];
   const h = Math.hypot(tail[0], tail[1]) || 1;
@@ -251,8 +278,10 @@ function raceLineJson(rawCenters: V3[], rawFinish: V3, checkpoints: RaceLineChec
   const events = checkpoints.map(checkpoint => {
     const station = raceLineStation(rawCenters, checkpoint.pos);
     return {
-      EventType: 11, EventValue: showoff ? checkpoint.bonusSeconds : 0,
-      EventStart: station, EventEnd: station,
+      EventType: 11,
+      EventValue: showoff ? checkpoint.bonusSeconds : 0,
+      EventStart: station,
+      EventEnd: station,
     };
   });
   events.push({ EventType: 9, EventValue: 0, EventStart: dtf, EventEnd: dtf });
@@ -277,14 +306,24 @@ function raceLineJson(rawCenters: V3[], rawFinish: V3, checkpoints: RaceLineChec
  * and the race line is unchanged. The export option controls lateral wandering, not the required six-entry start
  * field — and with wandering off there is nothing to tell the lines apart, so they all rate the default.
  */
-function aipJson(name: string, centers: V3[], aiLines: V3[][], ratings: number[], finish: V3,
-  checkpoints: RaceLineCheckpoint[]): object {
+function aipJson(
+  name: string,
+  centers: V3[],
+  aiLines: V3[][],
+  ratings: number[],
+  finish: V3,
+  checkpoints: RaceLineCheckpoint[],
+): object {
   const rawCenters = centers.map(toRaw);
   const ai = aiLines.map((line, i) => {
     const raw = line.map(toRaw);
     return {
-      Name: `AI Path ${i}`, U3: ratings[i] ?? DEFAULT_LINE_RATING, Respawnable: true,
-      PathPos: raw[0], PathPoints: [[0, 0, 0], ...deltasOf(raw)], PathEvents: [],
+      Name: `AI Path ${i}`,
+      U3: ratings[i] ?? DEFAULT_LINE_RATING,
+      Respawnable: true,
+      PathPos: raw[0],
+      PathPoints: [[0, 0, 0], ...deltasOf(raw)],
+      PathEvents: [],
     };
   });
   return {
@@ -292,8 +331,12 @@ function aipJson(name: string, centers: V3[], aiLines: V3[][], ratings: number[]
     AIPaths: [
       ...ai,
       {
-        Name: name, U3: DEFAULT_LINE_RATING, Respawnable: true,
-        PathPos: rawCenters[0], PathPoints: [[0, 0, 0], ...deltasOf(rawCenters)], PathEvents: [],
+        Name: name,
+        U3: DEFAULT_LINE_RATING,
+        Respawnable: true,
+        PathPos: rawCenters[0],
+        PathPoints: [[0, 0, 0], ...deltasOf(rawCenters)],
+        PathEvents: [],
       },
     ],
     RaceLines: [raceLineJson(rawCenters, toRaw(finish), checkpoints, false)],
@@ -308,8 +351,12 @@ function sopJson(gateLines: V3[][], centers: V3[], finish: V3, checkpoints: Race
   const gates = gateLines.map((line, i) => {
     const raw = line.map(toRaw);
     return {
-      Name: `Start Gate ${i}`, U3: DEFAULT_LINE_RATING, Respawnable: true,
-      PathPos: raw[0], PathPoints: [[0, 0, 0], ...deltasOf(raw)], PathEvents: [],
+      Name: `Start Gate ${i}`,
+      U3: DEFAULT_LINE_RATING,
+      Respawnable: true,
+      PathPos: raw[0],
+      PathPoints: [[0, 0, 0], ...deltasOf(raw)],
+      PathEvents: [],
     };
   });
   return {
@@ -343,8 +390,7 @@ function buildSplinesJson(rails: Rail[]): object {
       // author calls one "Frozen ledge", so a harmless rename cannot remove it from the bundled rail network.
       if (rail.kind !== 'motion' && railStyle(rail) === RAIL_STYLE_ICE && !name.includes('Rail'))
         name = `IceRail_${name}`;
-      return { SplineName: name,
-        U0: native.u0, U1: native.u1, SplineStyle: native.style, Segments: segs };
+      return { SplineName: name, U0: native.u0, U1: native.u1, SplineStyle: native.style, Segments: segs };
     })
     .filter(s => s.Segments.length > 0);
   return { Splines };
@@ -423,10 +469,16 @@ function proceduralDiffuse(patches: PatchRecord[]): DiffuseSampler {
   const tiles = patches.map(p => {
     if (!PROCEDURAL_TEX.has(p.TexturePath)) return null;
     let t = cache.get(p.TexturePath);
-    if (!t) { t = generateTexture(p.TexturePath); cache.set(p.TexturePath, t); }
+    if (!t) {
+      t = generateTexture(p.TexturePath);
+      cache.set(p.TexturePath, t);
+    }
     return t;
   });
-  return (pi, u, v) => { const t = tiles[pi]; return t ? sampleRgba(t, u, v) : [1, 1, 1]; };
+  return (pi, u, v) => {
+    const t = tiles[pi];
+    return t ? sampleRgba(t, u, v) : [1, 1, 1];
+  };
 }
 
 /**
@@ -464,14 +516,23 @@ function buildWorldJson(glare: GodRayCourse): object {
 }
 
 function buildLightsJson(sun: SunLight, rawMin: V3, rawMax: V3, signLights: PlacedLight[] = []): object {
-  const e = (sun.el * Math.PI) / 180, a = (sun.az * Math.PI) / 180;
+  const e = (sun.el * Math.PI) / 180,
+    a = (sun.az * Math.PI) / 180;
   const dir = [Math.cos(e) * Math.cos(a), Math.cos(e) * Math.sin(a), -Math.sin(e)];
-  const st = hexToRgb(sun.sunTint), sk = hexToRgb(sun.skyTint);
+  const st = hexToRgb(sun.sunTint),
+    sk = hexToRgb(sun.skyTint);
   const center: V3 = [(rawMin[0] + rawMax[0]) / 2, (rawMin[1] + rawMax[1]) / 2, (rawMin[2] + rawMax[2]) / 2];
   const common = {
-    SpriteRes: 0, UnknownFloat1: 1, UnknownInt1: 0,
-    LowestXYZ: rawMin, HighestXYZ: rawMax,
-    UnknownFloat2: 0, UnknownInt2: 0, UnknownFloat3: 0, UnknownInt3: 0, Hash: 0,
+    SpriteRes: 0,
+    UnknownFloat1: 1,
+    UnknownInt1: 0,
+    LowestXYZ: rawMin,
+    HighestXYZ: rawMax,
+    UnknownFloat2: 0,
+    UnknownInt2: 0,
+    UnknownFloat3: 0,
+    UnknownInt3: 0,
+    Hash: 0,
   };
   // one PBD spot per billboard sign light: editor → raw for position (toRaw) and propagation direction
   // (editor [ex,ey,ez] → raw [−ex,−ez,ey], the inverse of ref-lights' dirEditor), a cube influence box sized
@@ -481,22 +542,44 @@ function buildLightsJson(sun: SunLight, rawMin: V3, rawMax: V3, signLights: Plac
     const p = toRaw(L.pos);
     const h = L.reach * 100; // reach (m) → cm cube half-extent
     return {
-      LightName: L.name, Type: L.kind === 'spot' ? 1 : 2,
+      LightName: L.name,
+      Type: L.kind === 'spot' ? 1 : 2,
       Colour: [r * L.intensity, g * L.intensity, b * L.intensity],
       Direction: [-L.dir[0], -L.dir[2], L.dir[1]],
       Position: p,
       // The engine's runtime GLINT gate (docs/047): a small resolution class (16/32/64) makes the light draw
       // its halo/core/star sparkle — on console, in Snowknife's LightGlows bundle, and in the Unity import,
       // all of which read this one field. 0 = no glint, as the shipped SignLights carry.
-      SpriteRes: glintSizeClass(L.glint), UnknownFloat1: 1, UnknownInt1: 0,
-      LowestXYZ: [p[0] - h, p[1] - h, p[2] - h], HighestXYZ: [p[0] + h, p[1] + h, p[2] + h],
-      UnknownFloat2: L.kind === 'spot' ? L.coneCos : 0, UnknownInt2: 0, UnknownFloat3: 0, UnknownInt3: 0, Hash: 0,
+      SpriteRes: glintSizeClass(L.glint),
+      UnknownFloat1: 1,
+      UnknownInt1: 0,
+      LowestXYZ: [p[0] - h, p[1] - h, p[2] - h],
+      HighestXYZ: [p[0] + h, p[1] + h, p[2] + h],
+      UnknownFloat2: L.kind === 'spot' ? L.coneCos : 0,
+      UnknownInt2: 0,
+      UnknownFloat3: 0,
+      UnknownInt3: 0,
+      Hash: 0,
     };
   });
   return {
     Lights: [
-      { LightName: 'Slopesmith Sun', Type: 0, Colour: [st[0] * sun.sun, st[1] * sun.sun, st[2] * sun.sun], Direction: dir, Position: center, ...common },
-      { LightName: 'Slopesmith Ambient', Type: 3, Colour: [sk[0] * sun.ambient, sk[1] * sun.ambient, sk[2] * sun.ambient], Direction: [1, 0, 0], Position: center, ...common },
+      {
+        LightName: 'Slopesmith Sun',
+        Type: 0,
+        Colour: [st[0] * sun.sun, st[1] * sun.sun, st[2] * sun.sun],
+        Direction: dir,
+        Position: center,
+        ...common,
+      },
+      {
+        LightName: 'Slopesmith Ambient',
+        Type: 3,
+        Colour: [sk[0] * sun.ambient, sk[1] * sun.ambient, sk[2] * sun.ambient],
+        Direction: [1, 0, 0],
+        Position: center,
+        ...common,
+      },
       ...spots,
     ],
   };
@@ -511,12 +594,13 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
   // the run: its spine is the race/respawn path and hosts the per-mode start paths (core/doc/course — the same
   // functions the viewport's start/finish preview draws, so the markers match the disc)
   const main = doc.course;
-  if (main.knots.length < 2) throw new Error('Mountain export needs a run of at least two knots (the AIP / spawn line).');
+  if (main.knots.length < 2)
+    throw new Error('Mountain export needs a run of at least two knots (the AIP / spawn line).');
   const centers = courseCenters(main);
   const checkpoints: RaceLineCheckpoint[] = main.knots
     .filter(knot => (knot.checkpointBonus ?? 0) > 0)
     .map(knot => ({ pos: toRaw(knot.pos), bonusSeconds: Math.round(knot.checkpointBonus!) }));
-  const finishPos = finishFrame(main).pos;   // where DTF reaches zero: the run's tail, or its finish anchor
+  const finishPos = finishFrame(main).pos; // where DTF reaches zero: the run's tail, or its finish anchor
 
   // Bake the authored sun into original-form lightmap pages, and point each patch at its tile. The bake
   // is gated by the EXPORT's lighting option (default on), not the viewport's sun preview toggle — the
@@ -531,9 +615,16 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
   const stageAreas = buildStageAreaMarkers(startFrame(main).pos, finishPos);
   const text: Record<string, string> = {
     'Props.obj': stageAreas.obj,
-    'AIP.json': JSON.stringify(aipJson(AIP_PATH_NAME, centers,
-      aiPathLines(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true),
-      aiLineRatings(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true), finishPos, checkpoints)),
+    'AIP.json': JSON.stringify(
+      aipJson(
+        AIP_PATH_NAME,
+        centers,
+        aiPathLines(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true),
+        aiLineRatings(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true),
+        finishPos,
+        checkpoints,
+      ),
+    ),
     'SOP.json': JSON.stringify(sopJson(startGateLines(main), centers, finishPos, checkpoints)),
   };
   // Native course splines: grind rails plus invisible Effects motion routes (only when a path actually
@@ -571,8 +662,7 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
     // while their ground stood in full sun. Standing at the base is also the invariant this bake is for:
     // a prop and the snow under it are lit by the same numbers.
     const litProps = (doc.props ?? []).filter(p => p.id && !isEffectTriggerProp(p));
-    const standsAt = (p: PlacedProp): V3 =>
-      [p.pos[0], p.pos[1] + p.scale * (opts?.propBaseOffset?.(p) ?? 0), p.pos[2]];
+    const standsAt = (p: PlacedProp): V3 => [p.pos[0], p.pos[1] + p.scale * (opts?.propBaseOffset?.(p) ?? 0), p.pos[2]];
     const baked = bakeLightmaps(patches, sun, proceduralDiffuse(patches), rig, litProps.map(standsAt));
     const light = (p: PlacedProp, i: number, fullBright: boolean) =>
       roundPropLight(propInstanceLight(sun, baked.probeLight[i], baked.probeAO[i], fullBright, p));
@@ -582,7 +672,9 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
       for (const [model, member] of Object.entries(p.memberBehaviour ?? {}))
         propLights[groupMemberKey(p.id!, Number(model))] = light(p, i, member.fullBright === true);
     });
-    litProps.forEach((p, i) => { propLights[p.id!] = light(p, i, p.fullBright === true); });
+    litProps.forEach((p, i) => {
+      propLights[p.id!] = light(p, i, p.fullBright === true);
+    });
     for (let i = 0; i < patches.length; i++) {
       patches[i].LightMapPoint = baked.patchLm[i].rect;
       patches[i].LightmapID = baked.patchLm[i].id;
@@ -590,8 +682,14 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
     lightmaps = baked.maps;
     // self-describe the lighting: a directional + ambient light over the terrain's raw bounds, plus a spot
     // per billboard sign light so a from-scratch course carries its own sign lighting
-    const rmin: V3 = [Infinity, Infinity, Infinity], rmax: V3 = [-Infinity, -Infinity, -Infinity];
-    for (const p of patches) for (const pt of p.Points) for (let k = 0; k < 3; k++) { if (pt[k] < rmin[k]) rmin[k] = pt[k]; if (pt[k] > rmax[k]) rmax[k] = pt[k]; }
+    const rmin: V3 = [Infinity, Infinity, Infinity],
+      rmax: V3 = [-Infinity, -Infinity, -Infinity];
+    for (const p of patches)
+      for (const pt of p.Points)
+        for (let k = 0; k < 3; k++) {
+          if (pt[k] < rmin[k]) rmin[k] = pt[k];
+          if (pt[k] > rmax[k]) rmax[k] = pt[k];
+        }
     if (Number.isFinite(rmin[0])) text['Lights.json'] = JSON.stringify(buildLightsJson(sun, rmin, rmax, signLights));
   }
   // World.json — the mountain-level settings that belong to the course rather than to any of its geometry.
@@ -636,8 +734,13 @@ type PlateBox = { base: V3; size: V3 };
 function buildStageAreaMarkers(start: V3, finish: V3): { obj: string; groups: BakedPropGroup[] } {
   const plate = (pos: V3): PlateBox => ({ base: [pos[0], pos[1], pos[2]], size: [1, 0.1, 1] });
   const s = boxesGroup('Mdl_StageArea_Start_0', 'Slopesmith start staging anchor', [plate(start)], toRaw(start));
-  const f = boxesGroup('Mdl_StageArea_Finish_0', 'Slopesmith finish staging anchor',
-    [plate(finish)], toRaw(finish), s.vertices);
+  const f = boxesGroup(
+    'Mdl_StageArea_Finish_0',
+    'Slopesmith finish staging anchor',
+    [plate(finish)],
+    toRaw(finish),
+    s.vertices,
+  );
   return { obj: s.obj + f.obj, groups: [s.group, f.group] };
 }
 
@@ -649,18 +752,23 @@ function buildStageAreaMarkers(start: V3, finish: V3): { obj: string; groups: Ba
  * `vertexBase` is how many `v` lines the file already holds: OBJ face indices are FILE-global while the baked
  * submesh's are group-local, so the two count differently once a file carries more than one group.
  */
-function boxesGroup(name: string, comment: string, boxes: PlateBox[], origin?: number[], vertexBase = 0):
-  { obj: string; group: BakedPropGroup; vertices: number } {
+function boxesGroup(
+  name: string,
+  comment: string,
+  boxes: PlateBox[],
+  origin?: number[],
+  vertexBase = 0,
+): { obj: string; group: BakedPropGroup; vertices: number } {
   const lines: string[] = [`# ${comment}`, `o ${name}`, 'usemtl mat_untextured'];
-  const positions: number[] = [], indices: number[] = [];
+  const positions: number[] = [],
+    indices: number[] = [];
   let vBase = 1;
   for (const { base, size } of boxes) {
     const [cx, cy, cz] = base;
     const [sx, sy, sz] = size;
     const corners: V3[] = [];
     for (const dy of [0, sy])
-      for (const dz of [-sz / 2, sz / 2])
-        for (const dx of [-sx / 2, sx / 2]) corners.push([cx + dx, cy + dy, cz + dz]);
+      for (const dz of [-sz / 2, sz / 2]) for (const dx of [-sx / 2, sx / 2]) corners.push([cx + dx, cy + dy, cz + dz]);
     // corners order: y0:[z- x-, z- x+, z+ x-, z+ x+], then y1 same
     for (const p of corners) {
       const r = toRaw(p);
@@ -668,10 +776,9 @@ function boxesGroup(name: string, comment: string, boxes: PlateBox[], origin?: n
       lines.push(`v ${r[0].toFixed(2)} ${r[1].toFixed(2)} ${r[2].toFixed(2)}`);
     }
     const q = (a: number, b: number, c: number, d: number) => {
-      const localBase = vBase - 1;                 // group-local, 0-based: what the baked submesh indexes
-      const fileBase = vertexBase + vBase;         // file-global, 1-based: what an OBJ face references
-      indices.push(localBase + a, localBase + b, localBase + c,
-        localBase + a, localBase + c, localBase + d);
+      const localBase = vBase - 1; // group-local, 0-based: what the baked submesh indexes
+      const fileBase = vertexBase + vBase; // file-global, 1-based: what an OBJ face references
+      indices.push(localBase + a, localBase + b, localBase + c, localBase + a, localBase + c, localBase + d);
       lines.push(`f ${fileBase + a} ${fileBase + b} ${fileBase + c}`);
       lines.push(`f ${fileBase + a} ${fileBase + c} ${fileBase + d}`);
     };

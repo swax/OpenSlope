@@ -38,7 +38,8 @@ function unit(p: readonly number[], fallback: V3): V3 {
 
 const triple = (value: unknown): number[] | null =>
   Array.isArray(value) && value.length >= 3 && value.every(entry => typeof entry === 'number')
-    ? value as number[] : null;
+    ? (value as number[])
+    : null;
 
 /**
  * Decode a `Billboards.json` document. Anything malformed is dropped rather than thrown: this is a sidecar a
@@ -50,15 +51,19 @@ export function decodeBillboards(document: unknown): ReferenceScreen[] {
   const out: ReferenceScreen[] = [];
   for (const entry of screens) {
     const record = entry as Record<string, unknown>;
-    const center = triple(record.Center), normal = triple(record.Normal), up = triple(record.Up);
-    const width = record.Width, height = record.Height;
+    const center = triple(record.Center),
+      normal = triple(record.Normal),
+      up = triple(record.Up);
+    const width = record.Width,
+      height = record.Height;
     if (!center || !normal || !up) continue;
     if (typeof width !== 'number' || typeof height !== 'number' || !(width > 0) || !(height > 0)) continue;
     out.push({
       name: typeof record.Name === 'string' && record.Name ? record.Name : `screen ${out.length + 1}`,
       ...(typeof record.Family === 'string' && record.Family ? { family: record.Family } : {}),
       ...(Number.isInteger(record.Instance) && (record.Instance as number) >= 0
-        ? { instance: record.Instance as number } : {}),
+        ? { instance: record.Instance as number }
+        : {}),
       ...(typeof record.Page === 'string' && record.Page ? { page: record.Page } : {}),
       center: fromMesh(center),
       normal: unit(normal, [0, 0, 1]),
@@ -71,5 +76,7 @@ export function decodeBillboards(document: unknown): ReferenceScreen[] {
 }
 
 /** The read-only identity/measurement shown after picking a reference screen. */
-export type ReferenceScreenPickDetails = Pick<ReferenceScreen,
-  'name' | 'family' | 'instance' | 'page' | 'width' | 'height'>;
+export type ReferenceScreenPickDetails = Pick<
+  ReferenceScreen,
+  'name' | 'family' | 'instance' | 'page' | 'width' | 'height'
+>;

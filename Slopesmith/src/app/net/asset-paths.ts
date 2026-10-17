@@ -6,8 +6,12 @@ const referenceTextureRevisions = new Map<string, Map<string, string>>();
 const referenceSkyRevisions = new Map<string, { panorama?: string; ground?: string }>();
 let assetResolver: (url: string) => string = url => url;
 /** Public play supplies local Blob URLs for disc art; editor requests retain their ordinary HTTP URLs. */
-export function setAssetUrlResolver(resolve: (url: string) => string): void { assetResolver = resolve; }
-export function resolveAssetUrl(url: string): string { return assetResolver(url); }
+export function setAssetUrlResolver(resolve: (url: string) => string): void {
+  assetResolver = resolve;
+}
+export function resolveAssetUrl(url: string): string {
+  return assetResolver(url);
+}
 
 const levelKey = (level: string) => level.trim().toLowerCase();
 const withRevision = (url: string, revision?: string): string =>
@@ -19,9 +23,7 @@ export function registerReferenceTextureRevisions(level: string, revisions: Reco
 }
 
 /** Replace the shared sky revision table after `/api/skybox` is revalidated. */
-export function registerReferenceSkyRevisions(
-  revisions: Record<string, { panorama?: string; ground?: string }>,
-): void {
+export function registerReferenceSkyRevisions(revisions: Record<string, { panorama?: string; ground?: string }>): void {
   referenceSkyRevisions.clear();
   for (const [level, version] of Object.entries(revisions)) referenceSkyRevisions.set(levelKey(level), version);
 }
@@ -68,13 +70,16 @@ export function customSoundUrl(name: string): string {
 
 /** One slot of a level's course / crowd bank, or of a named fixed global environment bank. */
 export function effectSoundUrl(level: string, slot: number, bank: string): string {
-  return assetResolver(`/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}&bank=${encodeURIComponent(bank)}`);
+  return assetResolver(
+    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}&bank=${encodeURIComponent(bank)}`,
+  );
 }
 
 /** A shared environment-bank slot for authored mountains, without coupling them to a donor level name. */
 export function environmentSoundUrl(bank: string, slot: number, loop = true): string {
-  return assetResolver(`/api/environment-sound?bank=${encodeURIComponent(bank)}&slot=${Math.trunc(slot)}`
-    + (loop ? '&loop=1' : ''));
+  return assetResolver(
+    `/api/environment-sound?bank=${encodeURIComponent(bank)}&slot=${Math.trunc(slot)}` + (loop ? '&loop=1' : ''),
+  );
 }
 
 /** One page of a level's shipped sky bank, addressed by its generated ring slot. */

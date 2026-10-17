@@ -14,8 +14,11 @@ import type { MemberRole } from '../../net/session-channel';
 import type { ClientProject } from '../../state/project-sync';
 import { youtubeVideoId } from '../../net/video-bridge';
 import {
-  emptyJukeboxState, jukeboxPosition, mayManageJukeboxEntry,
-  type JukeboxEntry, type JukeboxState,
+  emptyJukeboxState,
+  jukeboxPosition,
+  mayManageJukeboxEntry,
+  type JukeboxEntry,
+  type JukeboxState,
 } from '../../../core/session/jukebox';
 import type { VoiceChat, VoiceMemberState } from './voice-chat';
 import type { ManualAvailability, MemberStatus } from '../../../core/session/member-status';
@@ -259,7 +262,10 @@ interface RosterMember {
   sessions: number;
   devices: string[];
   maps: Array<{
-    id: string; name: string; reference?: string; playing?: Array<'authored' | 'reference'>;
+    id: string;
+    name: string;
+    reference?: string;
+    playing?: Array<'authored' | 'reference'>;
     /** Exact opt-in browser tab behind this map/reference pair. */
     sharingSessionId?: string;
   }>;
@@ -268,12 +274,17 @@ interface RosterMember {
 const initialsFor = (username: string): string => {
   const parts = username.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
-  return (parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`)
-    .toLocaleUpperCase();
+  return (
+    parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`
+  ).toLocaleUpperCase();
 };
 
 const STATUS_LABELS: Record<MemberStatus, string> = {
-  online: 'Online', idle: 'Idle', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline',
+  online: 'Online',
+  idle: 'Idle',
+  away: 'Away',
+  dnd: 'Do Not Disturb',
+  offline: 'Offline',
 };
 
 /** Tolerate one cached browser bundle briefly talking to a pre-status service during a rolling restart. */
@@ -320,9 +331,12 @@ function showInviteLink(token: string, role: MemberRole, days: number): void {
   const { host, close } = modal();
   const gui = new GUI({ container: host, title: 'Invite link' });
   const link = `${location.origin}${EDITOR_PATH}#invite=${encodeURIComponent(token)}`;
-  note(gui, `One ${role} account, expiring in ${days} `
-    + `day${days === 1 ? '' : 's'}. The link is the credential until it is redeemed and worthless afterwards, `
-    + 'so send it the way you would send a password. This is the only time it is shown.');
+  note(
+    gui,
+    `One ${role} account, expiring in ${days} ` +
+      `day${days === 1 ? '' : 's'}. The link is the credential until it is redeemed and worthless afterwards, ` +
+      'so send it the way you would send a password. This is the only time it is shown.',
+  );
   const field = document.createElement('input');
   field.className = 'sp-users-link';
   field.readOnly = true;
@@ -330,14 +344,20 @@ function showInviteLink(token: string, role: MemberRole, days: number): void {
   gui.$children.appendChild(field);
   field.focus();
   field.select();
-  gui.add({
-    copy: () => {
-      field.select();
-      void navigator.clipboard?.writeText(link)
-        .then(() => toast('Invite link copied.', 'ok'))
-        .catch(() => toast('Copy it from the field — this browser refused the clipboard.', 'warn'));
-    },
-  }, 'copy').name('Copy the link');
+  gui
+    .add(
+      {
+        copy: () => {
+          field.select();
+          void navigator.clipboard
+            ?.writeText(link)
+            .then(() => toast('Invite link copied.', 'ok'))
+            .catch(() => toast('Copy it from the field — this browser refused the clipboard.', 'warn'));
+        },
+      },
+      'copy',
+    )
+    .name('Copy the link');
   gui.add({ done: close }, 'done').name('Done');
 }
 
@@ -414,7 +434,17 @@ export function createUsersMode(deps: {
     const infoGui = new GUI({ container: host, title: info.title });
     note(infoGui, info.body);
     if (info.action && info.actionLabel) {
-      infoGui.add({ open: () => { close(); info.action?.(); } }, 'open').name(info.actionLabel);
+      infoGui
+        .add(
+          {
+            open: () => {
+              close();
+              info.action?.();
+            },
+          },
+          'open',
+        )
+        .name(info.actionLabel);
     }
     infoGui.add({ done: close }, 'done').name('Done');
   };
@@ -430,7 +460,9 @@ export function createUsersMode(deps: {
       info.textContent = 'i';
       info.setAttribute('aria-label', jukeboxInfo.title);
       tooltip(info, `More information: ${jukeboxInfo.title}`);
-      info.onclick = () => { if (jukeboxInfo) showJukeboxMessageInfo(jukeboxInfo); };
+      info.onclick = () => {
+        if (jukeboxInfo) showJukeboxMessageInfo(jukeboxInfo);
+      };
       jukeboxStateEl.appendChild(info);
     }
     jukeboxStateEl.hidden = !jukebox.current && jukeboxMessage === 'The shared queue is empty.';
@@ -448,7 +480,10 @@ export function createUsersMode(deps: {
   };
 
   const stopJukeboxUi = () => {
-    if (jukeboxTimer) { clearInterval(jukeboxTimer); jukeboxTimer = null; }
+    if (jukeboxTimer) {
+      clearInterval(jukeboxTimer);
+      jukeboxTimer = null;
+    }
     jukeboxStateEl = null;
     jukeboxPauseEl = null;
     deps.mountVideo(null);
@@ -463,10 +498,11 @@ export function createUsersMode(deps: {
     }
   };
 
-  const mayManage = (member: RosterMember): boolean => !!roster
-    && roster.accounts === 'required'
-    && roster.me.id !== member.id
-    && (roster.admin || (roster.moderator && (member.role === 'viewer' || member.role === 'editor')));
+  const mayManage = (member: RosterMember): boolean =>
+    !!roster &&
+    roster.accounts === 'required' &&
+    roster.me.id !== member.id &&
+    (roster.admin || (roster.moderator && (member.role === 'viewer' || member.role === 'editor')));
 
   const fullDate = (iso: string): string => new Date(iso).toLocaleString();
 
@@ -486,7 +522,7 @@ export function createUsersMode(deps: {
       toast(`${member.username} is online, but does not have a map open.`, 'info');
       return;
     }
-    if (destination.id !== currentId && !await deps.openProject(destination.id)) return;
+    if (destination.id !== currentId && !(await deps.openProject(destination.id))) return;
 
     // Opening their map causes the server to send that room's live awareness. Give the avatar pose a brief
     // chance to arrive rather than making the user click Go to player a second time after the map loads.
@@ -494,8 +530,11 @@ export function createUsersMode(deps: {
       if (deps.goToPlayer(member.id)) return;
       await new Promise<void>(resolve => window.setTimeout(resolve, 100));
     }
-    toast(`Could not find ${member.username}'s live position. They may have changed maps or entered Play.`,
-      'info', 6000);
+    toast(
+      `Could not find ${member.username}'s live position. They may have changed maps or entered Play.`,
+      'info',
+      6000,
+    );
   }
 
   function showMemberProfile(member: RosterMember): void {
@@ -542,9 +581,7 @@ export function createUsersMode(deps: {
     const roleValue = add('Role', member.role);
     if (mayManage(member)) {
       const path = `/api/members/${encodeURIComponent(member.username)}`;
-      const roles: MemberRole[] = roster?.admin
-        ? ['viewer', 'editor', 'moderator', 'admin']
-        : ['viewer', 'editor'];
+      const roles: MemberRole[] = roster?.admin ? ['viewer', 'editor', 'moderator', 'admin'] : ['viewer', 'editor'];
       const roleDescriptions: Record<MemberRole, string> = {
         viewer: 'Follows read-only.',
         editor: 'Changes existing maps.',
@@ -595,20 +632,23 @@ export function createUsersMode(deps: {
       save.type = 'button';
       save.className = 'sp-btn accent';
       save.textContent = 'Save';
-      save.onclick = () => void (async () => {
-        save.disabled = true;
-        try {
-          await postJson(`/api/members/${encodeURIComponent(member.username)}/handle`,
-            JSON.stringify({ handle: input.value }));
-          member.inviteHandle = input.value.trim();
-          toast(`Invite handle saved for ${member.username}.`, 'ok');
-          close();
-          refresh();
-        } catch (error) {
-          save.disabled = false;
-          toast(`Could not save invite handle: ${error instanceof Error ? error.message : error}`, 'err', 6000);
-        }
-      })();
+      save.onclick = () =>
+        void (async () => {
+          save.disabled = true;
+          try {
+            await postJson(
+              `/api/members/${encodeURIComponent(member.username)}/handle`,
+              JSON.stringify({ handle: input.value }),
+            );
+            member.inviteHandle = input.value.trim();
+            toast(`Invite handle saved for ${member.username}.`, 'ok');
+            close();
+            refresh();
+          } catch (error) {
+            save.disabled = false;
+            toast(`Could not save invite handle: ${error instanceof Error ? error.message : error}`, 'err', 6000);
+          }
+        })();
       edit.append(input, save);
       privateBox.append(privateTitle, explanation, edit);
       host.appendChild(privateBox);
@@ -627,12 +667,15 @@ export function createUsersMode(deps: {
       access.type = 'button';
       access.className = `sp-btn${member.disabled ? '' : ' danger'}`;
       access.textContent = member.disabled ? 'Enable account' : 'Disable account';
-      tooltip(access, member.disabled ? 'Let them sign in again.'
-        : 'Refuse sign-in and end every session it holds, right now.');
+      tooltip(
+        access,
+        member.disabled ? 'Let them sign in again.' : 'Refuse sign-in and end every session it holds, right now.',
+      );
       access.onclick = () => {
         close();
-        void act('Changing an account',
-          () => postJson(`${path}/disabled`, JSON.stringify({ disabled: !member.disabled })));
+        void act('Changing an account', () =>
+          postJson(`${path}/disabled`, JSON.stringify({ disabled: !member.disabled })),
+        );
       };
       accountActions.appendChild(access);
 
@@ -642,14 +685,20 @@ export function createUsersMode(deps: {
         setPasswordButton.className = 'sp-btn';
         setPasswordButton.textContent = 'Set password…';
         tooltip(setPasswordButton, 'Choose a new password and end every session it protected.');
-        setPasswordButton.onclick = () => { close(); void setPassword(member); };
+        setPasswordButton.onclick = () => {
+          close();
+          void setPassword(member);
+        };
 
         const generatePasswordButton = document.createElement('button');
         generatePasswordButton.type = 'button';
         generatePasswordButton.className = 'sp-btn';
         generatePasswordButton.textContent = 'Generate password';
         tooltip(generatePasswordButton, 'Generate a password, show it once, and end every session it protected.');
-        generatePasswordButton.onclick = () => { close(); void generatePassword(member); };
+        generatePasswordButton.onclick = () => {
+          close();
+          void generatePassword(member);
+        };
 
         const signOut = document.createElement('button');
         signOut.type = 'button';
@@ -684,29 +733,47 @@ export function createUsersMode(deps: {
   function voiceIndicator(member: RosterMember, state: VoiceMemberState): HTMLElement {
     const indicator = document.createElement(state.self ? 'span' : 'button');
     if (indicator instanceof HTMLButtonElement) indicator.type = 'button';
-    indicator.className = `sp-users-voice-state${state.speaking ? ' speaking' : ''}`
-      + `${state.microphone ? '' : ' muted'}${state.locallyMuted ? ' local-muted' : ''}`;
-    indicator.setAttribute('aria-label', state.self
-      ? state.speaking ? 'You are speaking in voice'
-        : state.microphone ? 'You are in voice with microphone on' : 'You are in voice with microphone muted'
-      : state.locallyMuted ? `Unmute ${member.username}` : `Mute ${member.username}`);
+    indicator.className =
+      `sp-users-voice-state${state.speaking ? ' speaking' : ''}` +
+      `${state.microphone ? '' : ' muted'}${state.locallyMuted ? ' local-muted' : ''}`;
+    indicator.setAttribute(
+      'aria-label',
+      state.self
+        ? state.speaking
+          ? 'You are speaking in voice'
+          : state.microphone
+            ? 'You are in voice with microphone on'
+            : 'You are in voice with microphone muted'
+        : state.locallyMuted
+          ? `Unmute ${member.username}`
+          : `Mute ${member.username}`,
+    );
     if (!state.self) indicator.setAttribute('aria-pressed', String(state.locallyMuted));
-    indicator.innerHTML = '<svg class="mic" viewBox="0 0 20 20" aria-hidden="true">'
-      + '<rect x="7" y="3" width="6" height="9" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5M7.5 17.5h5"/>'
-      + '<path class="slash" d="M3 3l14 14"/></svg>'
-      + '<svg class="speaker" viewBox="0 0 20 20" aria-hidden="true">'
-      + '<path d="M3 8h3l4-3.5v11L6 12H3zM13 7a4 4 0 0 1 0 6M15 4.5a7 7 0 0 1 0 11"/></svg>'
-      + '<svg class="speaker-muted" viewBox="0 0 20 20" aria-hidden="true">'
-      + '<path d="M3 8h3l4-3.5v11L6 12H3zM13 8l4 4M17 8l-4 4"/></svg>';
-    tooltip(indicator, state.self
-      ? state.speaking ? 'You are speaking in server voice.'
-        : state.microphone ? 'Your microphone is on.' : 'Your microphone is muted or listen-only.'
-      : state.locallyMuted ? `You cannot hear ${member.username}. Click to unmute.`
-        : `${state.speaking ? `${member.username} is speaking` : `${member.username} is in voice`}. Click to mute.`);
-    if (!state.self) indicator.onclick = event => {
-      event.stopPropagation();
-      deps.voice.toggleMemberMute(member.id);
-    };
+    indicator.innerHTML =
+      '<svg class="mic" viewBox="0 0 20 20" aria-hidden="true">' +
+      '<rect x="7" y="3" width="6" height="9" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5M7.5 17.5h5"/>' +
+      '<path class="slash" d="M3 3l14 14"/></svg>' +
+      '<svg class="speaker" viewBox="0 0 20 20" aria-hidden="true">' +
+      '<path d="M3 8h3l4-3.5v11L6 12H3zM13 7a4 4 0 0 1 0 6M15 4.5a7 7 0 0 1 0 11"/></svg>' +
+      '<svg class="speaker-muted" viewBox="0 0 20 20" aria-hidden="true">' +
+      '<path d="M3 8h3l4-3.5v11L6 12H3zM13 8l4 4M17 8l-4 4"/></svg>';
+    tooltip(
+      indicator,
+      state.self
+        ? state.speaking
+          ? 'You are speaking in server voice.'
+          : state.microphone
+            ? 'Your microphone is on.'
+            : 'Your microphone is muted or listen-only.'
+        : state.locallyMuted
+          ? `You cannot hear ${member.username}. Click to unmute.`
+          : `${state.speaking ? `${member.username} is speaking` : `${member.username} is in voice`}. Click to mute.`,
+    );
+    if (!state.self)
+      indicator.onclick = event => {
+        event.stopPropagation();
+        deps.voice.toggleMemberMute(member.id);
+      };
     return indicator;
   }
 
@@ -714,8 +781,7 @@ export function createUsersMode(deps: {
     const connected = member.online || !!state;
     const status = connected ? displayedStatus(member, !!state) : 'offline';
     const row = document.createElement('div');
-    row.className = `sp-gui-custom sp-users-row status-${status}`
-      + `${member.disabled ? ' disabled' : ''}`;
+    row.className = `sp-gui-custom sp-users-row status-${status}` + `${member.disabled ? ' disabled' : ''}`;
     const avatar = document.createElement('button');
     avatar.type = 'button';
     avatar.className = 'sp-users-avatar';
@@ -726,7 +792,10 @@ export function createUsersMode(deps: {
       const picture = document.createElement('img');
       picture.alt = '';
       picture.src = member.profilePictureUrl;
-      picture.onload = () => { avatar.textContent = ''; avatar.append(picture, dot); };
+      picture.onload = () => {
+        avatar.textContent = '';
+        avatar.append(picture, dot);
+      };
       picture.onerror = () => picture.remove();
       avatar.appendChild(picture);
     }
@@ -734,10 +803,13 @@ export function createUsersMode(deps: {
     dot.className = 'sp-users-dot';
     dot.setAttribute('role', 'img');
     dot.setAttribute('aria-label', `${member.username}: ${STATUS_LABELS[status]}`);
-    tooltip(dot, connected
-      ? `${STATUS_LABELS[status]}. Connected${member.sessions > 1 ? ` in ${member.sessions} sessions` : ''}`
-        + `${member.devices.length ? ` — ${member.devices.join(', ')}` : ''}.`
-      : 'Offline. Not connected.');
+    tooltip(
+      dot,
+      connected
+        ? `${STATUS_LABELS[status]}. Connected${member.sessions > 1 ? ` in ${member.sessions} sessions` : ''}` +
+            `${member.devices.length ? ` — ${member.devices.join(', ')}` : ''}.`
+        : 'Offline. Not connected.',
+    );
     avatar.appendChild(dot);
     const who = document.createElement('div');
     who.className = 'sp-users-who';
@@ -791,7 +863,9 @@ export function createUsersMode(deps: {
         open.className = 'sp-users-map';
         open.textContent = map.name;
         tooltip(open, `Open ${map.name}.`);
-        open.onclick = () => { void deps.openProject(map.id); };
+        open.onclick = () => {
+          void deps.openProject(map.id);
+        };
         sub.append(open);
         if (map.reference) {
           sub.append(' / ');
@@ -809,16 +883,18 @@ export function createUsersMode(deps: {
     who.append(nameLine, sub);
     const actions = document.createElement('div');
     actions.className = 'sp-users-actions';
-    const sharedMap = member.id === roster?.me.id
-      ? undefined : member.maps.find(map => !!map.sharingSessionId);
+    const sharedMap = member.id === roster?.me.id ? undefined : member.maps.find(map => !!map.sharingSessionId);
     if (sharedMap?.sharingSessionId) {
       const view = document.createElement('button');
       view.type = 'button';
       view.className = 'sp-users-view';
       view.innerHTML = svg(SCREEN_ICON_BODY);
       view.setAttribute('aria-label', `View ${member.username}'s shared screen`);
-      tooltip(view, `View ${member.username}'s screen on ${sharedMap.name}`
-        + `${sharedMap.reference ? ` with ${sharedMap.reference} as Reference` : ''}.`);
+      tooltip(
+        view,
+        `View ${member.username}'s screen on ${sharedMap.name}` +
+          `${sharedMap.reference ? ` with ${sharedMap.reference} as Reference` : ''}.`,
+      );
       view.onclick = event => {
         event.stopPropagation();
         deps.observeScreen(sharedMap.sharingSessionId!, member.username);
@@ -834,23 +910,28 @@ export function createUsersMode(deps: {
     tooltip(more, `Options for ${member.username}.`);
     more.onclick = event => {
       event.stopPropagation();
-      const items: MenuItem[] = [{
-        label: 'Profile',
-        desc: `View ${member.username}'s profile.`,
-        onClick: () => showMemberProfile(member),
-      }];
-      if (connected && member.id !== roster?.me.id) items.push(
+      const items: MenuItem[] = [
         {
-          label: 'Message',
-          desc: `Send ${member.username} a private message.`,
-          onClick: () => deps.openChat(`/msg ${member.username} `),
+          label: 'Profile',
+          desc: `View ${member.username}'s profile.`,
+          onClick: () => showMemberProfile(member),
         },
-        {
-          label: 'Go to player',
-          desc: `Open ${member.username}'s map and move in front of their live avatar.`,
-          onClick: () => { void goToMember(member); },
-        },
-      );
+      ];
+      if (connected && member.id !== roster?.me.id)
+        items.push(
+          {
+            label: 'Message',
+            desc: `Send ${member.username} a private message.`,
+            onClick: () => deps.openChat(`/msg ${member.username} `),
+          },
+          {
+            label: 'Go to player',
+            desc: `Open ${member.username}'s map and move in front of their live avatar.`,
+            onClick: () => {
+              void goToMember(member);
+            },
+          },
+        );
       const rect = more.getBoundingClientRect();
       contextMenu(items, { x: rect.left, y: rect.bottom + 3 });
     };
@@ -859,8 +940,7 @@ export function createUsersMode(deps: {
     into.$children.appendChild(row);
   }
 
-  const passwordPath = (member: RosterMember): string =>
-    `/api/members/${encodeURIComponent(member.username)}/password`;
+  const passwordPath = (member: RosterMember): string => `/api/members/${encodeURIComponent(member.username)}/password`;
 
   async function setPassword(member: RosterMember): Promise<void> {
     const chosen = await askName({
@@ -868,8 +948,7 @@ export function createUsersMode(deps: {
       label: 'New password',
       hint: 'Every session this account holds ends. Hand it over out of band; they change it once they are in.',
       confirmLabel: 'Set it',
-      validate: value => value.length >= MIN_PASSWORD_LENGTH
-        ? null : `At least ${MIN_PASSWORD_LENGTH} characters.`,
+      validate: value => (value.length >= MIN_PASSWORD_LENGTH ? null : `At least ${MIN_PASSWORD_LENGTH} characters.`),
     });
     if (!chosen) return;
     await act('Setting a password', async () => {
@@ -935,7 +1014,9 @@ export function createUsersMode(deps: {
     let playbackEnabled = deps.videoEnabled();
     const folder = gui.addFolder(`Jukebox · ${playbackEnabled ? 'On' : 'Off'}`);
     folder.open(jukeboxOpen);
-    folder.onOpenClose(() => { jukeboxOpen = !folder._closed; });
+    folder.onOpenClose(() => {
+      jukeboxOpen = !folder._closed;
+    });
     const body = document.createElement('div');
     body.className = 'sp-gui-custom sp-jukebox';
 
@@ -985,9 +1066,7 @@ export function createUsersMode(deps: {
       preview.className = 'sp-jukebox-player sp-jukebox-empty';
       preview.style.display = 'grid';
       preview.style.placeItems = 'center';
-      preview.textContent = jukebox.current
-        ? 'Playback is off in this browser.'
-        : 'The shared queue is empty.';
+      preview.textContent = jukebox.current ? 'Playback is off in this browser.' : 'The shared queue is empty.';
       body.appendChild(preview);
     }
 
@@ -1014,7 +1093,9 @@ export function createUsersMode(deps: {
         ? `${clock(dragging ? Number(slider.value) : shown)} / ${duration > 0 ? clock(duration) : '–:––'}`
         : '0:00 / –:––';
     };
-    slider.onpointerdown = () => { dragging = true; };
+    slider.onpointerdown = () => {
+      dragging = true;
+    };
     slider.oninput = () => {
       dragging = true;
       time.textContent = `${clock(Number(slider.value))} / ${clock(Number(slider.max))}`;
@@ -1025,7 +1106,9 @@ export function createUsersMode(deps: {
         setJukeboxMessage('The server connection is not open.', 'err');
       }
     };
-    slider.onpointerup = () => { dragging = false; };
+    slider.onpointerup = () => {
+      dragging = false;
+    };
     seek.append(slider, time);
     body.appendChild(seek);
     paintPosition();
@@ -1070,7 +1153,10 @@ export function createUsersMode(deps: {
     };
     paintMute();
     mute.title = 'Mute or unmute only this browser';
-    mute.onclick = () => { deps.setVideoMuted(!deps.videoMuted()); paintMute(); };
+    mute.onclick = () => {
+      deps.setVideoMuted(!deps.videoMuted());
+      paintMute();
+    };
     controls.append(pause, skip, mute);
     body.appendChild(controls);
 
@@ -1116,7 +1202,9 @@ export function createUsersMode(deps: {
     url.autocomplete = 'off';
     url.spellcheck = false;
     url.setAttribute('aria-label', 'YouTube video URL');
-    url.oninput = () => { jukeboxUrl = url.value; };
+    url.oninput = () => {
+      jukeboxUrl = url.value;
+    };
     const addButton = document.createElement('button');
     addButton.type = 'button';
     addButton.className = 'sp-jukebox-btn';
@@ -1158,12 +1246,19 @@ export function createUsersMode(deps: {
       queue.appendChild(upNext);
       for (const entry of jukebox.queue) {
         const mayRemove = mayManageJukeboxEntry(roster?.me ?? null, entry);
-        queue.appendChild(sourceLine(entry, mayRemove ? {
-          label: 'Remove',
-          run: () => {
-            if (!deps.removeVideo(entry.id)) setJukeboxMessage('The server connection is not open.', 'err');
-          },
-        } : undefined));
+        queue.appendChild(
+          sourceLine(
+            entry,
+            mayRemove
+              ? {
+                  label: 'Remove',
+                  run: () => {
+                    if (!deps.removeVideo(entry.id)) setJukeboxMessage('The server connection is not open.', 'err');
+                  },
+                }
+              : undefined,
+          ),
+        );
       }
     } else if (!jukebox.current) {
       const empty = document.createElement('div');
@@ -1180,23 +1275,36 @@ export function createUsersMode(deps: {
     if (roster.accounts === 'required') {
       const folder = gui.addFolder('Invite somebody');
       folder.close();
-      note(folder, 'Each link creates one account.',
-        'The private handle records who you intended to invite and where you contacted them; only moderators '
-        + 'can see it.');
-      tip(folder.add(invite, 'handle').name('invite handle'),
-        'Use a source prefix when useful, such as discord:joe123 or email:joe@example.com. Members never see it.');
-      folder.add(invite, 'role', roster.admin
-        ? ['viewer', 'editor', 'moderator', 'admin']
-        : ['viewer', 'editor']).name('role');
+      note(
+        folder,
+        'Each link creates one account.',
+        'The private handle records who you intended to invite and where you contacted them; only moderators ' +
+          'can see it.',
+      );
+      tip(
+        folder.add(invite, 'handle').name('invite handle'),
+        'Use a source prefix when useful, such as discord:joe123 or email:joe@example.com. Members never see it.',
+      );
+      folder
+        .add(invite, 'role', roster.admin ? ['viewer', 'editor', 'moderator', 'admin'] : ['viewer', 'editor'])
+        .name('role');
       folder.add(invite, 'days', 1, 90, 1).name('expires in (days)');
-      tip(folder.add({
-        mint: () => void act('Minting an invite', async () => {
-          const minted = await postJson<{ token: string }>('/api/members/invite', JSON.stringify(invite));
-          showInviteLink(minted.token, invite.role, invite.days);
-          invite.handle = '';
-        }),
-      }, 'mint').name('Mint an invite link'),
-      'The token is shown once and never stored — only its digest is, so nothing here can read one back.');
+      tip(
+        folder
+          .add(
+            {
+              mint: () =>
+                void act('Minting an invite', async () => {
+                  const minted = await postJson<{ token: string }>('/api/members/invite', JSON.stringify(invite));
+                  showInviteLink(minted.token, invite.role, invite.days);
+                  invite.handle = '';
+                }),
+            },
+            'mint',
+          )
+          .name('Mint an invite link'),
+        'The token is shown once and never stored — only its digest is, so nothing here can read one back.',
+      );
     }
   }
 
@@ -1209,12 +1317,17 @@ export function createUsersMode(deps: {
     const policy = { restricted: project.editorIds !== undefined };
     const folder = gui.addFolder(`Map permissions · ${policy.restricted ? 'Restricted' : 'Open'}`);
     folder.open(mapPermissionsOpen);
-    folder.onOpenClose(() => { mapPermissionsOpen = !folder._closed; });
+    folder.onOpenClose(() => {
+      mapPermissionsOpen = !folder._closed;
+    });
     const owner = roster.members.find(member => member.id === project.ownerId);
     const manager = project.ownerId === roster.me.id || roster.me.role === 'moderator' || roster.me.role === 'admin';
-    note(folder, owner
-      ? `${owner.username} owns this map. ${manager ? 'Owners and moderators can change this policy.' : ''}`
-      : 'This map predates ownership. A moderator can manage it.');
+    note(
+      folder,
+      owner
+        ? `${owner.username} owns this map. ${manager ? 'Owners and moderators can change this policy.' : ''}`
+        : 'This map predates ownership. A moderator can manage it.',
+    );
 
     const sharing = document.createElement('div');
     sharing.className = 'sp-gui-custom sp-public-sharing';
@@ -1225,8 +1338,11 @@ export function createUsersMode(deps: {
     share.checked = publication?.id === project.id && publication.published;
     share.disabled = !manager || publication?.id !== project.id;
     label.append(share);
-    tooltip(label, 'List this map on the Slopesmith homepage for anyone to play. Visitors without a game ISO '
-      + 'can still ride; missing game textures and props are omitted.');
+    tooltip(
+      label,
+      'List this map on the Slopesmith homepage for anyone to play. Visitors without a game ISO ' +
+        'can still ride; missing game textures and props are omitted.',
+    );
     const copy = document.createElement('button');
     copy.type = 'button';
     copy.className = 'sp-copy-public-link';
@@ -1243,13 +1359,20 @@ export function createUsersMode(deps: {
           const { host, close } = modal();
           host.setAttribute('role', 'dialog');
           host.setAttribute('aria-label', 'Copy public link');
-          const title = document.createElement('h3'); title.textContent = 'Copy public link';
+          const title = document.createElement('h3');
+          title.textContent = 'Copy public link';
           const field = document.createElement('input');
-          field.className = 'sp-users-link'; field.readOnly = true; field.value = link;
+          field.className = 'sp-users-link';
+          field.readOnly = true;
+          field.value = link;
           field.setAttribute('aria-label', 'Public play link');
-          const done = document.createElement('button'); done.type = 'button'; done.textContent = 'Done'; done.onclick = close;
+          const done = document.createElement('button');
+          done.type = 'button';
+          done.textContent = 'Done';
+          done.onclick = close;
           host.append(title, field, done);
-          field.focus(); field.select();
+          field.focus();
+          field.select();
         }
       })();
     };
@@ -1265,21 +1388,27 @@ export function createUsersMode(deps: {
         } catch (error) {
           share.checked = !published;
           throw error;
-        } finally { share.disabled = !manager; copy.disabled = !share.checked; }
+        } finally {
+          share.disabled = !manager;
+          copy.disabled = !share.checked;
+        }
       });
     };
-    if (publication?.id !== project.id) detail(folder, 'Public sharing status is unavailable. Reopen Users to retry.', 'sharing');
+    if (publication?.id !== project.id)
+      detail(folder, 'Public sharing status is unavailable. Reopen Users to retry.', 'sharing');
 
     const restrict = folder.add(policy, 'restricted').name('restrict editing');
     tip(restrict, 'Off: every editor may edit. On: only selected editors, the owner, and moderators/admins may edit.');
     if (!manager) restrict.disable();
-    else restrict.onChange((restricted: boolean) => {
-      const initial = restricted
-        ? roster!.members.filter(member => member.role === 'editor' && member.id !== project!.ownerId)
-          .map(member => member.id)
-        : null;
-      void act('Changing map permissions', () => deps.setProjectEditors(initial));
-    });
+    else
+      restrict.onChange((restricted: boolean) => {
+        const initial = restricted
+          ? roster!.members
+              .filter(member => member.role === 'editor' && member.id !== project!.ownerId)
+              .map(member => member.id)
+          : null;
+        void act('Changing map permissions', () => deps.setProjectEditors(initial));
+      });
 
     if (!policy.restricted) {
       detail(folder, 'All members with the editor role can edit.', 'editing');
@@ -1296,10 +1425,12 @@ export function createUsersMode(deps: {
       const control = folder.add(choice, 'allowed').name(member.username);
       tip(control, `Allow ${member.username} to edit ${project.name}.`);
       if (!manager) control.disable();
-      else control.onChange((allowed: boolean) => {
-        if (allowed) selected.add(member.id); else selected.delete(member.id);
-        void act('Changing map permissions', () => deps.setProjectEditors([...selected]));
-      });
+      else
+        control.onChange((allowed: boolean) => {
+          if (allowed) selected.add(member.id);
+          else selected.delete(member.id);
+          void act('Changing map permissions', () => deps.setProjectEditors([...selected]));
+        });
     }
     detail(folder, 'The owner and moderators/admins always retain editing access.', 'implicit access');
   }
@@ -1314,9 +1445,10 @@ export function createUsersMode(deps: {
     chat.className = 'sp-users-chat';
     chat.setAttribute('aria-label', 'Open text chat');
     chat.title = 'Open and focus the lower-left server chat';
-    chat.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true">'
-      + '<path d="M3 4.5h14v9H9l-4 3v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>'
-      + '<span>Text chat</span><span class="sp-users-chat-key">T</span>';
+    chat.innerHTML =
+      '<svg viewBox="0 0 20 20" aria-hidden="true">' +
+      '<path d="M3 4.5h14v9H9l-4 3v-3H3z"/><path d="M6.5 8h7M6.5 10.5h4.5"/></svg>' +
+      '<span>Text chat</span><span class="sp-users-chat-key">T</span>';
     chat.onclick = () => deps.openChat();
     comms.append(chat, deps.voice.el);
     gui.$children.appendChild(comms);
@@ -1330,14 +1462,23 @@ export function createUsersMode(deps: {
       const me = roster.members.find(member => member.id === roster!.me.id);
       if (me) {
         const choice = { availability: me.availability ?? 'available' };
-        const control = gui.add(choice, 'availability', {
-          Available: 'available', Away: 'away', 'Do Not Disturb': 'dnd',
-        }).name('Your status');
-        tip(control, 'Available turns Idle after five minutes without input. Away and Do Not Disturb stay set until you change them.');
+        const control = gui
+          .add(choice, 'availability', {
+            Available: 'available',
+            Away: 'away',
+            'Do Not Disturb': 'dnd',
+          })
+          .name('Your status');
+        tip(
+          control,
+          'Available turns Idle after five minutes without input. Away and Do Not Disturb stay set until you change them.',
+        );
         control.onChange((availability: ManualAvailability) => {
           control.disable();
-          void postJson<{ user: { availability: ManualAvailability } }>('/api/auth/availability',
-            JSON.stringify({ availability }))
+          void postJson<{ user: { availability: ManualAvailability } }>(
+            '/api/auth/availability',
+            JSON.stringify({ availability }),
+          )
             .then(() => refresh())
             .catch(error => {
               toast(`Could not change your status: ${error instanceof Error ? error.message : error}`, 'err', 6000);
@@ -1347,13 +1488,22 @@ export function createUsersMode(deps: {
       }
     }
     const sharing = { enabled: deps.screenSharing() };
-    tip(gui.add(sharing, 'enabled').name('Share screen').onChange((enabled: boolean) => {
-      deps.setScreenSharing(enabled);
-    }), 'Let other connected members follow this tab’s mountain, Reference, view options, and camera.');
+    tip(
+      gui
+        .add(sharing, 'enabled')
+        .name('Share screen')
+        .onChange((enabled: boolean) => {
+          deps.setScreenSharing(enabled);
+        }),
+      'Let other connected members follow this tab’s mountain, Reference, view options, and camera.',
+    );
     // A server with no accounts is somebody's own workspace on loopback: one member, and nothing to join.
     if (roster.accounts === 'open') {
-      note(gui, 'This server has no accounts — it serves whoever is running it.',
-        'Start it with --accounts to require a sign-in and invite other people.');
+      note(
+        gui,
+        'This server has no accounts — it serves whoever is running it.',
+        'Start it with --accounts to require a sign-in and invite other people.',
+      );
     }
     const list = gui.addFolder(`Online ${online}`);
     const members = [...roster.members].sort((a, b) => {
@@ -1401,7 +1551,10 @@ export function createUsersMode(deps: {
     const projectId = deps.currentProject()?.id;
     void Promise.all([
       fetchJson<Roster>('/api/members'),
-      projectId ? coursePublication('project', projectId).then(published => ({ id: projectId, published })).catch(() => null)
+      projectId
+        ? coursePublication('project', projectId)
+            .then(published => ({ id: projectId, published }))
+            .catch(() => null)
         : Promise.resolve(null),
     ])
       .then(([answer, shared]) => {
@@ -1409,7 +1562,9 @@ export function createUsersMode(deps: {
         roster = answer;
         if (deps.currentProject()?.id === projectId) publication = shared;
       })
-      .catch(() => { if (version === refreshVersion) roster = null; })
+      .catch(() => {
+        if (version === refreshVersion) roster = null;
+      })
       .finally(() => {
         if (version !== refreshVersion) return;
         loading = false;
@@ -1419,18 +1574,22 @@ export function createUsersMode(deps: {
   }
 
   function showMyProfile(): void {
-    void fetchJson<Roster>('/api/members').then(answer => {
-      roster = answer;
-      const member = answer.members.find(candidate => candidate.id === answer.me.id);
-      if (!member) throw new Error('Your profile is not in the member roster.');
-      showMemberProfile(member);
-      if (active) render();
-    }).catch(error => {
-      toast(`Could not open your profile: ${error instanceof Error ? error.message : error}`, 'err', 6000);
-    });
+    void fetchJson<Roster>('/api/members')
+      .then(answer => {
+        roster = answer;
+        const member = answer.members.find(candidate => candidate.id === answer.me.id);
+        if (!member) throw new Error('Your profile is not in the member roster.');
+        showMemberProfile(member);
+        if (active) render();
+      })
+      .catch(error => {
+        toast(`Could not open your profile: ${error instanceof Error ? error.message : error}`, 'err', 6000);
+      });
   }
 
-  deps.voice.subscribe(() => { if (active && roster) render(); });
+  deps.voice.subscribe(() => {
+    if (active && roster) render();
+  });
 
   return {
     active: () => active,
@@ -1438,7 +1597,11 @@ export function createUsersMode(deps: {
       if (active === on) return;
       active = on;
       gui.domElement.style.display = on ? '' : 'none';
-      if (on) refresh(); else { stopJukeboxUi(); clearGui(gui); }
+      if (on) refresh();
+      else {
+        stopJukeboxUi();
+        clearGui(gui);
+      }
       deps.rebuildTools();
     },
     refresh,

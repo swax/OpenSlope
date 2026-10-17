@@ -58,8 +58,14 @@ export interface Awareness {
   at: number;
 }
 
-export const emptyAwareness = (): Awareness =>
-  ({ cursor: null, vertices: [], quads: [], dragging: [], player: null, at: 0 });
+export const emptyAwareness = (): Awareness => ({
+  cursor: null,
+  vertices: [],
+  quads: [],
+  dragging: [],
+  player: null,
+  at: 0,
+});
 
 export interface PresenceEntry {
   userId: string;
@@ -232,9 +238,7 @@ function removeFromProject(projectId: string | null, sessionId: string): void {
  * lightness, which keeps two participants distinguishable against the terrain without any of them reading as
  * a selection colour the editor already uses.
  */
-const PRESENCE_COLORS = [
-  '#f2a33c', '#63c4e8', '#8ad06a', '#e88f6a', '#c58ff0', '#f07f9c', '#5fd3b2', '#e6d75a',
-];
+const PRESENCE_COLORS = ['#f2a33c', '#63c4e8', '#8ad06a', '#e88f6a', '#c58ff0', '#f07f9c', '#5fd3b2', '#e6d75a'];
 
 export function colorFor(userId: string): string {
   let hash = 0;
@@ -244,20 +248,40 @@ export function colorFor(userId: string): string {
 
 // ---- sessions ----
 
-export function openSession(session: Omit<LiveSession,
-  'lastSeen' | 'aware' | 'at' | 'writable' | 'referenceLevel' | 'playing' | 'screenSharing' | 'idle'
-    | 'screenWatchingSessionId'>
-  & Partial<Pick<LiveSession, 'writable'>>): LiveSession {
+export function openSession(
+  session: Omit<
+    LiveSession,
+    | 'lastSeen'
+    | 'aware'
+    | 'at'
+    | 'writable'
+    | 'referenceLevel'
+    | 'playing'
+    | 'screenSharing'
+    | 'idle'
+    | 'screenWatchingSessionId'
+  > &
+    Partial<Pick<LiveSession, 'writable'>>,
+): LiveSession {
   const live: LiveSession = {
-    ...session, referenceLevel: null, playing: null, screenSharing: false, screenWatchingSessionId: null,
+    ...session,
+    referenceLevel: null,
+    playing: null,
+    screenSharing: false,
+    screenWatchingSessionId: null,
     idle: false,
-    lastSeen: Date.now(), aware: emptyAwareness(), at: 0,
+    lastSeen: Date.now(),
+    aware: emptyAwareness(),
+    at: 0,
     writable: session.writable ?? true,
   };
   sessions.set(live.sessionId, live);
   addToProject(live.projectId, live.sessionId);
   announce({
-    kind: 'open', sessionId: live.sessionId, userId: live.member.id, from: null,
+    kind: 'open',
+    sessionId: live.sessionId,
+    userId: live.member.id,
+    from: null,
     to: live.projectId ? { projectId: live.projectId, entry: entryFor(live) } : null,
   });
   // A tab with no map produces no presence delta, but it still changes the server roster from Offline.
@@ -271,7 +295,7 @@ export const liveSessions = (): LiveSession[] => [...sessions.values()];
 
 /** Every session looking at one map — the list a register broadcast and a presence change go to. */
 export const sessionsOn = (projectId: string): LiveSession[] =>
-  [...projectSessions.get(projectId) ?? []].flatMap(id => {
+  [...(projectSessions.get(projectId) ?? [])].flatMap(id => {
     const session = sessions.get(id);
     return session ? [session] : [];
   });
@@ -337,7 +361,9 @@ export function watchProject(sessionId: string, projectId: string | null): void 
   addToProject(projectId, sessionId);
   if (left) settleIdle(left);
   announce({
-    kind: 'move', sessionId, userId: session.member.id,
+    kind: 'move',
+    sessionId,
+    userId: session.member.id,
     from: left && before ? { projectId: left, entry: before } : null,
     to: projectId ? { projectId, entry: entryFor(session) } : null,
   });
@@ -383,7 +409,10 @@ export function watchScreenWatching(sessionId: string, targetSessionId: string |
 function announceUpdate(session: LiveSession): void {
   session.lastSeen = Date.now();
   announce({
-    kind: 'update', sessionId: session.sessionId, userId: session.member.id, from: null,
+    kind: 'update',
+    sessionId: session.sessionId,
+    userId: session.member.id,
+    from: null,
     to: session.projectId ? { projectId: session.projectId, entry: entryFor(session) } : null,
   });
 }
@@ -404,7 +433,9 @@ export function closeSession(sessionId: string): void {
   removeFromProject(left, sessionId);
   if (left) settleIdle(left);
   announce({
-    kind: 'close', sessionId, userId: session.member.id,
+    kind: 'close',
+    sessionId,
+    userId: session.member.id,
     from: left && before ? { projectId: left, entry: before } : null,
     to: null,
   });
@@ -433,7 +464,8 @@ const entryFor = (session: LiveSession): PresenceEntry => ({
 /** Presence for one map, oldest arrival first so the list does not reshuffle under a reader. */
 export function presenceFor(projectId: string, now = Date.now()): PresenceEntry[] {
   return sessionsOn(projectId)
-    .filter(session => now - session.lastSeen < sessionPolicy.presenceTtlMs).map(entryFor);
+    .filter(session => now - session.lastSeen < sessionPolicy.presenceTtlMs)
+    .map(entryFor);
 }
 
 /** The whole table, which is what every client is pushed: which maps have somebody on them, and who. */

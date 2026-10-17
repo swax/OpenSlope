@@ -21,8 +21,13 @@ export const angleGap = (a: number, b: number): number => {
 // ---- polyline readings -------------------------------------------------------------------------------------
 
 /** The two ends of a realized row, told apart by which side of the group's bearing they sit on. */
-export const rowEnds = (points: SheetPoint[], bearing: number, node: SheetPoint): { cw: SheetPoint; ccw: SheetPoint } => {
-  const first = points[0], last = points[points.length - 1];
+export const rowEnds = (
+  points: SheetPoint[],
+  bearing: number,
+  node: SheetPoint,
+): { cw: SheetPoint; ccw: SheetPoint } => {
+  const first = points[0],
+    last = points[points.length - 1];
   const side = (p: SheetPoint) => angleGap(Math.atan2(p.z - node.z, p.x - node.x), bearing);
   return side(first) < side(last) ? { cw: first, ccw: last } : { cw: last, ccw: first };
 };
@@ -30,8 +35,10 @@ export const rowEnds = (points: SheetPoint[], bearing: number, node: SheetPoint)
 export const distToPolyline = (p: SheetPoint, pts: SheetPoint[]): number => {
   let best = Infinity;
   for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i], b = pts[i + 1];
-    const dx = b.x - a.x, dz = b.z - a.z;
+    const a = pts[i],
+      b = pts[i + 1];
+    const dx = b.x - a.x,
+      dz = b.z - a.z;
     const len2 = dx * dx + dz * dz;
     const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2)) : 0;
     best = Math.min(best, Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t)));
@@ -55,8 +62,13 @@ export const resample = (pts: SheetPoint[], edges: number): SheetPoint[] => {
   const out: SheetPoint[] = [pts[0]];
   for (let e = 1; e < edges; e++) {
     const s = (total * e) / edges;
-    let low = 0, high = cumulative.length - 1;
-    while (high - low > 1) { const middle = (low + high) >> 1; if (cumulative[middle] <= s) low = middle; else high = middle; }
+    let low = 0,
+      high = cumulative.length - 1;
+    while (high - low > 1) {
+      const middle = (low + high) >> 1;
+      if (cumulative[middle] <= s) low = middle;
+      else high = middle;
+    }
     const span = cumulative[high] - cumulative[low];
     const t = span > 1e-9 ? (s - cumulative[low]) / span : 0;
     out.push({ x: pts[low].x + (pts[high].x - pts[low].x) * t, z: pts[low].z + (pts[high].z - pts[low].z) * t });
@@ -66,7 +78,8 @@ export const resample = (pts: SheetPoint[], edges: number): SheetPoint[] => {
 };
 
 export const segCross = (a: SheetPoint, b: SheetPoint, c: SheetPoint, d: SheetPoint): SheetPoint | null => {
-  const r = { x: b.x - a.x, z: b.z - a.z }, s = { x: d.x - c.x, z: d.z - c.z };
+  const r = { x: b.x - a.x, z: b.z - a.z },
+    s = { x: d.x - c.x, z: d.z - c.z };
   const denominator = cross2(r.x, r.z, s.x, s.z);
   if (Math.abs(denominator) < 1e-12) return null;
   const t = cross2(c.x - a.x, c.z - a.z, s.x, s.z) / denominator;

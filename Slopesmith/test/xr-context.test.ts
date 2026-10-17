@@ -6,10 +6,16 @@ import { WebXRManager } from 'three/src/renderers/webxr/WebXRManager.js';
 import { createXrContext } from '../src/app/viewport/xr-context';
 
 function context() {
-  let lost = false, compatible = false, calls = 0;
+  let lost = false,
+    compatible = false,
+    calls = 0;
   const listeners = new Set<EventListenerOrEventListenerObject>();
   class Canvas extends EventTarget {
-    override addEventListener(type: string, callback: EventListenerOrEventListenerObject, options?: AddEventListenerOptions) {
+    override addEventListener(
+      type: string,
+      callback: EventListenerOrEventListenerObject,
+      options?: AddEventListenerOptions,
+    ) {
       listeners.add(callback);
       super.addEventListener(type, callback, options);
     }
@@ -21,22 +27,36 @@ function context() {
   const canvas = new Canvas();
   const fake = {
     canvas,
-    getContextAttributes: () => lost ? null : { xrCompatible: compatible, antialias: false, depth: true, stencil: false },
+    getContextAttributes: () =>
+      lost ? null : { xrCompatible: compatible, antialias: false, depth: true, stencil: false },
     isContextLost: () => lost,
-    makeXRCompatible: async () => { calls++; await negotiate(); },
+    makeXRCompatible: async () => {
+      calls++;
+      await negotiate();
+    },
   };
-  let negotiate = async () => { compatible = true; };
+  let negotiate = async () => {
+    compatible = true;
+  };
   return {
     gl: fake as unknown as WebGL2RenderingContext,
-    get calls() { return calls; },
-    set negotiate(value: () => Promise<void>) { negotiate = value; },
-    compatible() { compatible = true; },
+    get calls() {
+      return calls;
+    },
+    set negotiate(value: () => Promise<void>) {
+      negotiate = value;
+    },
+    compatible() {
+      compatible = true;
+    },
     lose(deliverEvent = true) {
-      lost = true; compatible = false;
+      lost = true;
+      compatible = false;
       if (deliverEvent) canvas.dispatchEvent(new Event('webglcontextlost'));
     },
     restore(xrCompatible = false) {
-      lost = false; compatible = xrCompatible;
+      lost = false;
+      compatible = xrCompatible;
       canvas.dispatchEvent(new Event('webglcontextrestored'));
     },
     listeners,
@@ -83,7 +103,10 @@ for (const restoredCompatible of [false, true]) {
   fake.negotiate = async () => {
     if (fake.calls === 1) {
       fake.lose(false);
-      setTimeout(() => { fake.lose(); fake.restore(restoredCompatible); }, 0);
+      setTimeout(() => {
+        fake.lose();
+        fake.restore(restoredCompatible);
+      }, 0);
       throw invalidState();
     }
     assert.equal(fake.gl.isContextLost(), false, 'never retry while the context is lost');
@@ -110,7 +133,8 @@ for (const restoredCompatible of [false, true]) {
 {
   const fake = context();
   fake.negotiate = async () => {
-    fake.lose(); fake.restore(true);
+    fake.lose();
+    fake.restore(true);
     throw invalidState(); // restoration can also finish before the rejected promise's continuation
   };
   await createXrContext(fake.gl).prepare();
@@ -119,7 +143,9 @@ for (const restoredCompatible of [false, true]) {
 
 for (const error of [invalidState(), new DOMException('permission denied', 'NotAllowedError')]) {
   const fake = context();
-  fake.negotiate = async () => { throw error; };
+  fake.negotiate = async () => {
+    throw error;
+  };
   const preparation = createXrContext(fake.gl);
   await assert.rejects(preparation.prepare(), candidate => candidate === error);
   assert.equal(fake.calls, 1, 'errors without context-loss evidence are not retried');
@@ -129,7 +155,10 @@ for (const error of [invalidState(), new DOMException('permission denied', 'NotA
 
 {
   const fake = context();
-  fake.negotiate = async () => { fake.lose(); throw invalidState(); };
+  fake.negotiate = async () => {
+    fake.lose();
+    throw invalidState();
+  };
   const preparation = createXrContext(fake.gl);
   await assert.rejects(preparation.prepare(10), /did not restore/);
   assert.equal(fake.calls, 1, 'permanent loss does not enter a retry loop');
@@ -140,12 +169,21 @@ for (const error of [invalidState(), new DOMException('permission denied', 'NotA
 // Use the installed Three manager, so this checks its actual retained-attributes and session-end behavior.
 class Session extends EventTarget {
   renderState = {};
-  updateRenderState(value: object) { Object.assign(this.renderState, value); }
-  async requestReferenceSpace() { return {}; }
-  requestAnimationFrame() { return 1; }
+  updateRenderState(value: object) {
+    Object.assign(this.renderState, value);
+  }
+  async requestReferenceSpace() {
+    return {};
+  }
+  requestAnimationFrame() {
+    return 1;
+  }
   cancelAnimationFrame() {}
 }
-class WebGLLayer { framebufferWidth = 2048; framebufferHeight = 1024; }
+class WebGLLayer {
+  framebufferWidth = 2048;
+  framebufferHeight = 1024;
+}
 const priorLayer = Object.getOwnPropertyDescriptor(globalThis, 'XRWebGLLayer');
 try {
   Object.defineProperty(globalThis, 'XRWebGLLayer', { value: WebGLLayer, configurable: true });
@@ -162,13 +200,20 @@ try {
   const preparation = createXrContext(fake.gl);
   let pixelRatio = 2;
   const dimensions = new Vector2(800, 600);
-  const manager = new WebXRManager({
-    getRenderTarget: () => null, setRenderTarget: () => {},
-    getPixelRatio: () => pixelRatio, setPixelRatio: (value: number) => { pixelRatio = value; },
-    getSize: (size: Vector2) => size.copy(dimensions),
-    setSize: (width: number, height: number) => dimensions.set(width, height),
-    outputColorSpace: SRGBColorSpace,
-  } as unknown as WebGLRenderer, fake.gl);
+  const manager = new WebXRManager(
+    {
+      getRenderTarget: () => null,
+      setRenderTarget: () => {},
+      getPixelRatio: () => pixelRatio,
+      setPixelRatio: (value: number) => {
+        pixelRatio = value;
+      },
+      getSize: (size: Vector2) => size.copy(dimensions),
+      setSize: (width: number, height: number) => dimensions.set(width, height),
+      outputColorSpace: SRGBColorSpace,
+    } as unknown as WebGLRenderer,
+    fake.gl,
+  );
   await preparation.prepare();
   const session = new Session();
   await manager.setSession(session as unknown as XRSession);

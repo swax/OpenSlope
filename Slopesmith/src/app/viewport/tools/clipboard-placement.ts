@@ -49,7 +49,9 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
   const cage = new THREE.Group();
   const props = new THREE.Group();
   fill.renderOrder = 10;
-  fill.raycast = () => { /* placement preview is never a pick target */ };
+  fill.raycast = () => {
+    /* placement preview is never a pick target */
+  };
   group.add(fill, cage, props);
   group.visible = false;
   stage.worldRoot.add(group);
@@ -71,10 +73,14 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
     const source = deps.meshDoc();
     if (!clip?.vertices.length || !source) return false;
 
-    let x = 0, y = 0, z = 0;
+    let x = 0,
+      y = 0,
+      z = 0;
     const count = clip.vertices.length / 3;
     for (let i = 0; i < clip.vertices.length; i += 3) {
-      x += clip.vertices[i]; y += clip.vertices[i + 1]; z += clip.vertices[i + 2];
+      x += clip.vertices[i];
+      y += clip.vertices[i + 1];
+      z += clip.vertices[i + 2];
     }
     center = [x / count, y / count, z / count];
 
@@ -116,7 +122,8 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
       // third coordinate verbatim instead of borrowing depth from a terrain hit or the navigation target.
       return clipboardPlacementOffset(stage.snapDataPoint(point), center, lockedViewAxis(stage.camera));
     };
-    const terrain = deps.terrain(), reference = deps.reference();
+    const terrain = deps.terrain(),
+      reference = deps.reference();
     const targets: THREE.Object3D[] = reference ? [terrain, reference] : [terrain];
     const hit = stage.ray.intersectObjects(targets, false)[0];
     // Keep authored terrain as the surface-placement target. A nearer loaded reference still occludes placement,
@@ -153,7 +160,9 @@ export function createClipboardPlacementLayer(stage: Stage, deps: ClipboardPlace
     onHover,
     onCommit,
     refresh: update,
-    get active() { return !!clip; },
+    get active() {
+      return !!clip;
+    },
   };
 }
 

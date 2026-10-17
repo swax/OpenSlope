@@ -43,7 +43,8 @@ export function sculptToolShortcut(op: BrushOp): { label: string; keys: string }
  *  trackpad's stream of small deltas walks a few sizes instead of racing through dozens. A pause
  *  longer than `idleMs` starts a fresh gesture. */
 export function createWheelStepper(notchPx = 100, idleMs = 400) {
-  let gathered = 0, last = -Infinity;
+  let gathered = 0,
+    last = -Infinity;
   return (e: { deltaY: number; deltaX: number; deltaMode: number; timeStamp: number }): number => {
     // DOM_DELTA_LINE: a classic three-line notch reads as one notch; DOM_DELTA_PAGE: a page is many.
     const scale = e.deltaMode === 1 ? notchPx / 3 : e.deltaMode === 2 ? notchPx * 8 : 1;
@@ -51,7 +52,10 @@ export function createWheelStepper(notchPx = 100, idleMs = 400) {
     if (!delta) return 0;
     const fresh = e.timeStamp - last > idleMs;
     last = e.timeStamp;
-    if (fresh) { gathered = 0; return Math.sign(delta); }
+    if (fresh) {
+      gathered = 0;
+      return Math.sign(delta);
+    }
     gathered += delta;
     const steps = Math.trunc(gathered / notchPx);
     gathered -= steps * notchPx;
@@ -67,5 +71,5 @@ export type SculptModifiers = { invert: boolean; smooth: boolean };
  *  leaves the tools without one alone. */
 export function strokeBrushOp(op: BrushOp, { invert, smooth }: SculptModifiers): BrushOp {
   if (smooth) return 'smooth';
-  return invert ? oppositeBrushOp(op) ?? op : op;
+  return invert ? (oppositeBrushOp(op) ?? op) : op;
 }

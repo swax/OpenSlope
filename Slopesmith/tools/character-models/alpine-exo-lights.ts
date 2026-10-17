@@ -35,10 +35,7 @@ const CELL = ATLAS_SIZE / CELLS;
 /** The window of the atlas a part samples, one texel inside cell (column, row). */
 export function cell(column: number, row: number): Tile {
   const inset = 1 / ATLAS_SIZE;
-  return [
-    column / CELLS + inset, row / CELLS + inset,
-    (column + 1) / CELLS - inset, (row + 1) / CELLS - inset,
-  ];
+  return [column / CELLS + inset, row / CELLS + inset, (column + 1) / CELLS - inset, (row + 1) / CELLS - inset];
 }
 
 export const LIGHT_CELL = {
@@ -67,11 +64,11 @@ function atlasCell(column: number, row: number, u: number, v: number): number {
   if (column === 3 && row === 0) {
     const radius = Math.hypot(u - 0.5, v - 0.5) * 2;
     // Hot centre, a dark gap, then a faint rim: a lamp in a housing rather than a glowing ball.
-    return smoothstep(0.72, 0.30, radius) + 0.18 * smoothstep(0.74, 0.80, radius) * smoothstep(0.96, 0.88, radius);
+    return smoothstep(0.72, 0.3, radius) + 0.18 * smoothstep(0.74, 0.8, radius) * smoothstep(0.96, 0.88, radius);
   }
   if (column === 0 && row === 1) {
     const bar = Math.floor(v * 3);
-    const within = smoothstep(0.10, 0.26, (v * 3) % 1) * smoothstep(0.10, 0.26, 1 - (v * 3) % 1);
+    const within = smoothstep(0.1, 0.26, (v * 3) % 1) * smoothstep(0.1, 0.26, 1 - ((v * 3) % 1));
     return within * smoothstep(0.06, 0.18, u) * smoothstep(0.06, 0.18, 1 - u) * [1, 0.45, 0.75][bar % 3];
   }
   return 0;
@@ -81,8 +78,10 @@ export function lightAtlas(): EmbeddedTexture {
   const pixels = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
   for (let y = 0; y < ATLAS_SIZE; y++) {
     for (let x = 0; x < ATLAS_SIZE; x++) {
-      const column = Math.floor(x / CELL), row = Math.floor(y / CELL);
-      const u = ((x % CELL) + 0.5) / CELL, v = ((y % CELL) + 0.5) / CELL;
+      const column = Math.floor(x / CELL),
+        row = Math.floor(y / CELL);
+      const u = ((x % CELL) + 0.5) / CELL,
+        v = ((y % CELL) + 0.5) / CELL;
       pixels[y * ATLAS_SIZE + x] = Math.round(255 * clamp01(atlasCell(column, row, u, v)));
     }
   }
@@ -100,16 +99,18 @@ export function lightAtlas(): EmbeddedTexture {
  * The wave is a ramp with a hard drop rather than a symmetric blob, because a symmetric pulse gives no clue
  * which way it is travelling — and travelling is the whole point.
  */
-export const CONDUIT_WIDTH = 16, CONDUIT_HEIGHT = 64;
+export const CONDUIT_WIDTH = 16,
+  CONDUIT_HEIGHT = 64;
 const PULSES = 1;
 
 export function conduitStrip(): EmbeddedTexture {
   const pixels = new Uint8Array(CONDUIT_WIDTH * CONDUIT_HEIGHT);
   for (let y = 0; y < CONDUIT_HEIGHT; y++) {
     for (let x = 0; x < CONDUIT_WIDTH; x++) {
-      const u = (x + 0.5) / CONDUIT_WIDTH, v = (y + 0.5) / CONDUIT_HEIGHT;
+      const u = (x + 0.5) / CONDUIT_WIDTH,
+        v = (y + 0.5) / CONDUIT_HEIGHT;
       // Dark at the strip's edges so it reads as a channel cut into the plate, not as a painted band.
-      const across = smoothstep(0.0, 0.30, u) * smoothstep(0.0, 0.30, 1 - u);
+      const across = smoothstep(0.0, 0.3, u) * smoothstep(0.0, 0.3, 1 - u);
       const phase = (v * PULSES) % 1;
       const pulse = phase ** 1.6;
       // The floor is the point, and it is high: the conduit stays a continuously lit channel with a bright

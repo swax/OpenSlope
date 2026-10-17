@@ -25,10 +25,10 @@ export function zipStoreOnly(folderName: string, files: readonly ExportFile[]): 
 
     const header = new Uint8Array(30 + name.length);
     const headerView = new DataView(header.buffer);
-    headerView.setUint32(0, 0x04034b50, true);   // local file header
-    headerView.setUint16(4, 20, true);           // version needed: 2.0
-    headerView.setUint16(6, 0x0800, true);       // flag bit 11: the name is UTF-8
-    headerView.setUint16(8, 0, true);            // method: stored
+    headerView.setUint32(0, 0x04034b50, true); // local file header
+    headerView.setUint16(4, 20, true); // version needed: 2.0
+    headerView.setUint16(6, 0x0800, true); // flag bit 11: the name is UTF-8
+    headerView.setUint16(8, 0, true); // method: stored
     headerView.setUint16(10, time, true);
     headerView.setUint16(12, date, true);
     headerView.setUint32(14, crc, true);
@@ -40,9 +40,9 @@ export function zipStoreOnly(folderName: string, files: readonly ExportFile[]): 
 
     const entry = new Uint8Array(46 + name.length);
     const entryView = new DataView(entry.buffer);
-    entryView.setUint32(0, 0x02014b50, true);    // central directory header
-    entryView.setUint16(4, 20, true);            // version made by
-    entryView.setUint16(6, 20, true);            // version needed
+    entryView.setUint32(0, 0x02014b50, true); // central directory header
+    entryView.setUint16(4, 20, true); // version made by
+    entryView.setUint16(6, 20, true); // version needed
     entryView.setUint16(8, 0x0800, true);
     entryView.setUint16(10, 0, true);
     entryView.setUint16(12, time, true);
@@ -51,7 +51,7 @@ export function zipStoreOnly(folderName: string, files: readonly ExportFile[]): 
     entryView.setUint32(20, file.bytes.length, true);
     entryView.setUint32(24, file.bytes.length, true);
     entryView.setUint16(28, name.length, true);
-    entryView.setUint32(42, offset, true);       // where this entry's local header sits
+    entryView.setUint32(42, offset, true); // where this entry's local header sits
     entry.set(name, 46);
     central.push(entry);
 
@@ -61,7 +61,7 @@ export function zipStoreOnly(folderName: string, files: readonly ExportFile[]): 
   const directoryBytes = central.reduce((n, entry) => n + entry.length, 0);
   const end = new Uint8Array(22);
   const endView = new DataView(end.buffer);
-  endView.setUint32(0, 0x06054b50, true);        // end of central directory
+  endView.setUint32(0, 0x06054b50, true); // end of central directory
   endView.setUint16(8, files.length, true);
   endView.setUint16(10, files.length, true);
   endView.setUint32(12, directoryBytes, true);

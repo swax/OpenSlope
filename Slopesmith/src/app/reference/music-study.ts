@@ -1,18 +1,25 @@
 import GUI from 'lil-gui';
-import { musicWalkAtLevel, type ReferenceIntroMusic, type ReferenceMusicIndex,
-  type ReferenceMusicSummary } from '../../core/reference/music';
+import {
+  musicWalkAtLevel,
+  type ReferenceIntroMusic,
+  type ReferenceMusicIndex,
+  type ReferenceMusicSummary,
+} from '../../core/reference/music';
 import type { EnvironmentAudioBed } from '../../core/audio/environment';
 import { BIG_AIR_WIND_SLOT, BOOST_BANK } from '../../core/audio/board-sound';
 import { fetchJson } from '../net/fetch-json';
 import { clearGui, detail, note, tip } from '../ui/components/gui';
 import { openMusicGraphDialog } from '../ui/dialogs/music-graph';
 import {
-  auditionBoardSound, auditionEnvironmentBed, auditionReferenceIntroMusic, auditionReferenceMusicWalk,
-  boardSoundAuditionPlaying, onBoardSoundAuditionChange, stopAudition,
+  auditionBoardSound,
+  auditionEnvironmentBed,
+  auditionReferenceIntroMusic,
+  auditionReferenceMusicWalk,
+  boardSoundAuditionPlaying,
+  onBoardSoundAuditionChange,
+  stopAudition,
 } from '../ui/components/audition';
-import {
-  preloadReferenceRideMusic, referenceMusicGraph,
-} from '../audio/ride-music';
+import { preloadReferenceRideMusic, referenceMusicGraph } from '../audio/ride-music';
 
 /** Populate Scene ▸ Sound ▸ Reference with the shared rider cue plus the race-music graph JSON extracted
  * beside the level. Kept apart from the reference terrain session because it has no viewport state: it is a
@@ -41,13 +48,22 @@ export function createReferenceMusicStudy(folder: GUI) {
     detail(rider, `${BOOST_BANK} ${String(BIG_AIR_WIND_SLOT).padStart(3, '0')}`, 'source');
     detail(rider, 'predicted flight > 1.5 s', 'trigger');
     note(rider, 'Shared focused-rider audio — not a map background bed or a weather sound.');
-    const auditionControl = tip(rider.add({ audition: () => {
-      if (boardSoundAuditionPlaying(BIG_AIR_WIND_SLOT, BOOST_BANK)) stopAudition();
-      else auditionBoardSound(BIG_AIR_WIND_SLOT, BOOST_BANK);
-    } }, 'audition'),
-    'Hear the loop played while a jump is predicted to stay airborne past 1.5 s.');
-    const syncAuditionControl = () => auditionControl.name(
-      boardSoundAuditionPlaying(BIG_AIR_WIND_SLOT, BOOST_BANK) ? '■ stop big air' : '▶ preview big air');
+    const auditionControl = tip(
+      rider.add(
+        {
+          audition: () => {
+            if (boardSoundAuditionPlaying(BIG_AIR_WIND_SLOT, BOOST_BANK)) stopAudition();
+            else auditionBoardSound(BIG_AIR_WIND_SLOT, BOOST_BANK);
+          },
+        },
+        'audition',
+      ),
+      'Hear the loop played while a jump is predicted to stay airborne past 1.5 s.',
+    );
+    const syncAuditionControl = () =>
+      auditionControl.name(
+        boardSoundAuditionPlaying(BIG_AIR_WIND_SLOT, BOOST_BANK) ? '■ stop big air' : '▶ preview big air',
+      );
     unsubscribeBigAirAudition = onBoardSoundAuditionChange(syncAuditionControl);
     syncAuditionControl();
     rider.close();
@@ -56,7 +72,10 @@ export function createReferenceMusicStudy(folder: GUI) {
   function clear() {
     stopAudition();
     request++;
-    level = null; intro = null; environment = null; songs = [];
+    level = null;
+    intro = null;
+    environment = null;
+    songs = [];
     beginPanel();
     note(folder, 'Load a reference mountain to inspect its race-music graph.');
   }
@@ -65,7 +84,9 @@ export function createReferenceMusicStudy(folder: GUI) {
     if (nextLevel !== level) stopAudition();
     const token = ++request;
     level = nextLevel;
-    intro = null; environment = null; songs = [];
+    intro = null;
+    environment = null;
+    songs = [];
     beginPanel();
     if (!nextLevel) {
       note(folder, 'Load a reference mountain to inspect its race-music graph.');
@@ -84,8 +105,10 @@ export function createReferenceMusicStudy(folder: GUI) {
       if (token !== request || level !== nextLevel) return;
       beginPanel();
       note(folder, `No extracted race-music study for ${nextLevel}.`);
-      tip(folder.add({ retry: () => void setLevel(nextLevel) }, 'retry').name('↻ retry'),
-        `The study expects Maps/${nextLevel}/Audio/Music/playlist.json and each song's graph.json from snowknife race-music. ${error instanceof Error ? error.message : error}`);
+      tip(
+        folder.add({ retry: () => void setLevel(nextLevel) }, 'retry').name('↻ retry'),
+        `The study expects Maps/${nextLevel}/Audio/Music/playlist.json and each song's graph.json from snowknife race-music. ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 
@@ -98,9 +121,24 @@ export function createReferenceMusicStudy(folder: GUI) {
       detail(bed, `${environment.Bank} ${String(environment.Slot).padStart(3, '0')}`, 'source');
       detail(bed, environment.Volume.toFixed(2), 'volume');
       detail(bed, 'off-board', 'use');
-      note(bed, 'An OpenSlope silence filler (Audio/Environment.json), not a retail weather or ExternalSounds emitter.');
-      bed.add({ preview: () => auditionEnvironmentBed(`reference-environment:${level}`,
-        environment!.Bank, environment!.Slot, environment!.Volume, level!) }, 'preview')
+      note(
+        bed,
+        'An OpenSlope silence filler (Audio/Environment.json), not a retail weather or ExternalSounds emitter.',
+      );
+      bed
+        .add(
+          {
+            preview: () =>
+              auditionEnvironmentBed(
+                `reference-environment:${level}`,
+                environment!.Bank,
+                environment!.Slot,
+                environment!.Volume,
+                level!,
+              ),
+          },
+          'preview',
+        )
         .name('▶ preview environment');
       bed.add({ stop: stopAudition }, 'stop').name('■ stop preview');
       bed.close();
@@ -116,14 +154,24 @@ export function createReferenceMusicStudy(folder: GUI) {
       introStemByLevel.set(level, stem);
       const stemState = { stem };
       const stemOptions = Object.fromEntries(intro.stems.map(name => [name, name]));
-      introFolder.add(stemState, 'stem', stemOptions).name('stem').onChange((name: string) => {
-        stopAudition();
-        introStemByLevel.set(level!, name);
-      });
-      introFolder.add({ preview: () => {
-        const selected = introStemByLevel.get(level!) ?? intro!.stems[0];
-        auditionReferenceIntroMusic(level!, selected);
-      } }, 'preview').name('▶ preview stem');
+      introFolder
+        .add(stemState, 'stem', stemOptions)
+        .name('stem')
+        .onChange((name: string) => {
+          stopAudition();
+          introStemByLevel.set(level!, name);
+        });
+      introFolder
+        .add(
+          {
+            preview: () => {
+              const selected = introStemByLevel.get(level!) ?? intro!.stems[0];
+              auditionReferenceIntroMusic(level!, selected);
+            },
+          },
+          'preview',
+        )
+        .name('▶ preview stem');
       introFolder.add({ stop: stopAudition }, 'stop').name('■ stop preview');
       introFolder.close();
     } else note(folder, 'This reference has no extracted intro-music stems.');
@@ -139,28 +187,50 @@ export function createReferenceMusicStudy(folder: GUI) {
     const state = { song: selected };
     const options: Record<string, string> = {};
     for (const song of songs) options[`${song.title} · ${song.bpm.toFixed(1)} BPM`] = song.id;
-    tip(race.add(state, 'song', options).name('race song').onChange((id: string) => {
-      if (!level) return;
-      stopAudition();
-      selectedByLevel.set(level, id);
-      render();
-    }), 'A course cycles through these PathFinder songs between races. Choose one to inspect its native graph.');
+    tip(
+      race
+        .add(state, 'song', options)
+        .name('race song')
+        .onChange((id: string) => {
+          if (!level) return;
+          stopAudition();
+          selectedByLevel.set(level, id);
+          render();
+        }),
+      'A course cycles through these PathFinder songs between races. Choose one to inspect its native graph.',
+    );
 
     const song = songs.find(item => item.id === selected) ?? songs[0];
     detail(race, `${song.nodes} nodes · ${song.samples} audio samples`, 'graph');
     detail(race, `${song.sections} sections · ${song.events} event slots · ${song.routers} routers`, 'routing');
-    detail(race, `${(song.totalSeconds / 60).toFixed(1)} min of graph slots · ${song.averageChunkSeconds.toFixed(2)} s average`, 'streaming');
+    detail(
+      race,
+      `${(song.totalSeconds / 60).toFixed(1)} min of graph slots · ${song.averageChunkSeconds.toFixed(2)} s average`,
+      'streaming',
+    );
     note(race, 'Test follows path level 0–127 from speed, air and boost, and switches at native chunk boundaries.');
-    tip(race.add({ preview: () => void (async () => {
-      const graph = await referenceMusicGraph(level!, song.id);
-      if (!graph) return;
-      const walk = musicWalkAtLevel(graph, 0, 80, 12);
-      if (walk.samples.length) void auditionReferenceMusicWalk(level!, song.id, walk.samples);
-    })() }, 'preview').name('▶ preview normal path'),
-    'Play twelve native chunks at the game’s normal path level (80).');
+    tip(
+      race
+        .add(
+          {
+            preview: () =>
+              void (async () => {
+                const graph = await referenceMusicGraph(level!, song.id);
+                if (!graph) return;
+                const walk = musicWalkAtLevel(graph, 0, 80, 12);
+                if (walk.samples.length) void auditionReferenceMusicWalk(level!, song.id, walk.samples);
+              })(),
+          },
+          'preview',
+        )
+        .name('▶ preview normal path'),
+      'Play twelve native chunks at the game’s normal path level (80).',
+    );
     race.add({ stop: stopAudition }, 'stop').name('■ stop preview');
-    tip(race.add({ open: () => level && openMusicGraphDialog(level, song) }, 'open').name('↗ open annotated graph…'),
-      'Open the complete node/link diagram.');
+    tip(
+      race.add({ open: () => level && openMusicGraphDialog(level, song) }, 'open').name('↗ open annotated graph…'),
+      'Open the complete node/link diagram.',
+    );
     race.close();
   }
 

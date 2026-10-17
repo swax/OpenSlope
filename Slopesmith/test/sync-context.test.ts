@@ -12,8 +12,23 @@ import { quadRegister, readRegister, vertexRegister, writeRegister } from '../sr
 import { topologyDelta, type TopologyDelta } from '../src/core/doc/topology-delta';
 
 const before = migrateMountain(defaultMountain());
-before.props = ['one', 'two'].map(id => ({ id, name: id, level: 'Custom', model: 0, pos: [0, 0, 0], yaw: 0, scale: 1 }));
-before.rails = ['one', 'two'].map(id => ({ id, nodes: [[0, 0, 0], [1, 0, 0]], height: 1 }));
+before.props = ['one', 'two'].map(id => ({
+  id,
+  name: id,
+  level: 'Custom',
+  model: 0,
+  pos: [0, 0, 0],
+  yaw: 0,
+  scale: 1,
+}));
+before.rails = ['one', 'two'].map(id => ({
+  id,
+  nodes: [
+    [0, 0, 0],
+    [1, 0, 0],
+  ],
+  height: 1,
+}));
 const store = createStore({ mdoc: before, currentMode: 'edit', storedUi: {} });
 const selected = before.quadIds[1];
 store.cellSel = [before.quadIds[0], selected];
@@ -61,7 +76,13 @@ try {
   let commits = 0;
   const rendered: boolean[] = [];
   const rebuild = createRebuilder({
-    scheduleCommit: () => { commits++; }, render: edited => rendered.push(edited), onError: error => { throw error; },
+    scheduleCommit: () => {
+      commits++;
+    },
+    render: edited => rendered.push(edited),
+    onError: error => {
+      throw error;
+    },
   });
   rebuild.scheduleRemoteRebuild(true);
   rebuild.scheduleRemoteRebuild(true);
@@ -86,19 +107,41 @@ try {
 // base, and that is the one replacement and the one notice.
 function harness(start: typeof before) {
   const state = {
-    doc: structuredClone(start), batch: 0, replacements: 0, rejections: 0,
-    applied: [] as string[], fetches: [] as string[][], claims: [] as { delta: TopologyDelta; changes: RegisterAssignment[] }[],
+    doc: structuredClone(start),
+    batch: 0,
+    replacements: 0,
+    rejections: 0,
+    applied: [] as string[],
+    fetches: [] as string[][],
+    claims: [] as { delta: TopologyDelta; changes: RegisterAssignment[] }[],
     assigns: [] as { batch: number; changes: RegisterAssignment[] }[],
   };
   const sync = createRegisterSync({
-    getDoc: () => state.doc, setDoc: next => { state.doc = next; state.replacements++; },
+    getDoc: () => state.doc,
+    setDoc: next => {
+      state.doc = next;
+      state.replacements++;
+    },
     channel: {
-      assign: (changes, id) => { state.assigns.push({ batch: id, changes: structuredClone(changes) }); return true; },
-      claim: (_ids, delta, changes, id) => { state.batch = id; state.claims.push({ delta, changes }); return true; },
-      checkDrift: () => true, fetchSections: sections => { state.fetches.push([...sections]); return true; },
+      assign: (changes, id) => {
+        state.assigns.push({ batch: id, changes: structuredClone(changes) });
+        return true;
+      },
+      claim: (_ids, delta, changes, id) => {
+        state.batch = id;
+        state.claims.push({ delta, changes });
+        return true;
+      },
+      checkDrift: () => true,
+      fetchSections: sections => {
+        state.fetches.push([...sections]);
+        return true;
+      },
     },
     onApplied: kind => state.applied.push(kind),
-    onTopologyRejected: () => { state.rejections++; },
+    onTopologyRejected: () => {
+      state.rejections++;
+    },
   });
   sync.connect();
   return { state, sync };
@@ -106,7 +149,10 @@ function harness(start: typeof before) {
 
 const winnerDoc = applyMeshDelete(structuredClone(before), { quads: [1] });
 assert(winnerDoc.ok);
-const winnerStep = { delta: topologyDelta(before, winnerDoc.doc), changes: [['g/name', 'Winner']] as RegisterAssignment[] };
+const winnerStep = {
+  delta: topologyDelta(before, winnerDoc.doc),
+  changes: [['g/name', 'Winner']] as RegisterAssignment[],
+};
 {
   const { state, sync } = harness(before);
   state.doc = structuredClone(removed.doc);
@@ -165,10 +211,16 @@ const winnerStep = { delta: topologyDelta(before, winnerDoc.doc), changes: [['g/
   sync.noteEdit();
   sync.applyTopology({ ...winnerStep, changes: [[key, [11, 12, 13]]] });
   assert.deepEqual(readRegister(state.doc, key), [91, 92, 93], 'the unsent move survives the remote delta');
-  assert.deepEqual(state.assigns.map(sent => sent.changes), [[[key, [91, 92, 93]]]],
-    'the move is sent once, so the room will keep it too');
-  assert.deepEqual(sync.sealStep(), { priors: [[key, prior]], afters: [[key, [91, 92, 93]]] },
-    'undo records the local move, not the remote value');
+  assert.deepEqual(
+    state.assigns.map(sent => sent.changes),
+    [[[key, [91, 92, 93]]]],
+    'the move is sent once, so the room will keep it too',
+  );
+  assert.deepEqual(
+    sync.sealStep(),
+    { priors: [[key, prior]], afters: [[key, [91, 92, 93]]] },
+    'undo records the local move, not the remote value',
+  );
   sync.landed({ batch: state.assigns[0].batch });
   sync.flush();
   assert.deepEqual(sync.pending(), []);
@@ -238,8 +290,10 @@ const winnerStep = { delta: topologyDelta(before, winnerDoc.doc), changes: [['g/
   const assignsBefore = state.assigns.length;
   sync.claimed({ batch: state.batch, ok: false, steps: [winnerStep] });
   assert.deepEqual(readRegister(state.doc, vertexRegister(corner)), [9, 9, 9], 'the edit survives the rebuild');
-  assert(state.assigns.slice(assignsBefore).some(sent => sent.changes.some(([key]) => key === vertexRegister(corner))),
-    'and goes to the room straight away');
+  assert(
+    state.assigns.slice(assignsBefore).some(sent => sent.changes.some(([key]) => key === vertexRegister(corner))),
+    'and goes to the room straight away',
+  );
   assert.equal(state.fetches.length, 0, 'with no drift check racing it');
   sync.stop();
 }
@@ -297,13 +351,23 @@ const winnerStep = { delta: topologyDelta(before, winnerDoc.doc), changes: [['g/
   let pendingStep: RegisterStep | null = null;
   const reasserted: RegisterAssignment[][] = [];
   const registers = {
-    sealStep: () => { const sealed = pendingStep; pendingStep = null; return sealed; },
-    resetSteps: () => { pendingStep = null; },
-    reassert: (changes: readonly RegisterAssignment[]) => { reasserted.push([...changes]); },
+    sealStep: () => {
+      const sealed = pendingStep;
+      pendingStep = null;
+      return sealed;
+    },
+    resetSteps: () => {
+      pendingStep = null;
+    },
+    reassert: (changes: readonly RegisterAssignment[]) => {
+      reasserted.push([...changes]);
+    },
   } as unknown as RegisterSync;
   const history = createHistory({
     getDocJson: () => JSON.stringify(live),
-    onRestore: json => { live = JSON.parse(json) as typeof live; },
+    onRestore: json => {
+      live = JSON.parse(json) as typeof live;
+    },
     refreshButtons: () => {},
     registers: () => registers,
   });
@@ -317,8 +381,15 @@ const winnerStep = { delta: topologyDelta(before, winnerDoc.doc), changes: [['g/
   assert(own.ok);
   live = own.doc;
   history.commit();
-  assert.deepEqual(history.entries().map(entry => entry.summary).slice(1).map(summary => summary.split(' ')[0]),
-    ['Move', 'Mesh'], 'a register entry, then this participant’s own topology edit');
+  assert.deepEqual(
+    history
+      .entries()
+      .map(entry => entry.summary)
+      .slice(1)
+      .map(summary => summary.split(' ')[0]),
+    ['Move', 'Mesh'],
+    'a register entry, then this participant’s own topology edit',
+  );
   const remote = applyMeshDelete(live, { quads: [0] });
   assert(remote.ok);
   live = remote.doc;

@@ -1,13 +1,27 @@
 import * as THREE from 'three';
 import type { MeshBVH } from 'three-mesh-bvh';
 import type { PlacedProp, QuadMeshDoc, V3 } from '../../../core/doc/types';
-import { buildQuadMesh, meshAdjacency, meshEdgeHandles, vertexAxes, vertexFrame, type EdgeHandle, type MeshAdjacency } from '../../../core/mesh/topology';
+import {
+  buildQuadMesh,
+  meshAdjacency,
+  meshEdgeHandles,
+  vertexAxes,
+  vertexFrame,
+  type EdgeHandle,
+  type MeshAdjacency,
+} from '../../../core/mesh/topology';
 import { planCellSlide } from '../../../core/mesh/slide';
 import { edgePathFrame, isFreePoint, pathRollOf, vertexRollOf } from '../../../core/mesh/path-frame';
 import { mul } from '../../../core/math/vec';
 import { controlPointKey, type MeshControlPoint, type MeshControlPointId } from '../../../core/mesh/control-points';
 import type { PreviewData } from '../../../core/mesh/tessellation';
-import { frozenPos, planSlideRecut, slideDragFrame, slideRail, type SlideExact } from '../../../core/mesh/slide-gesture';
+import {
+  frozenPos,
+  planSlideRecut,
+  slideDragFrame,
+  slideRail,
+  type SlideExact,
+} from '../../../core/mesh/slide-gesture';
 import type { SurfaceRails } from './arcs';
 import type { QuadName, VertexName } from '../../state/mesh-names';
 import type { GizmoFrame, GizmoMode, PropGizmoFrame } from '../types';
@@ -16,13 +30,24 @@ import { dataToScene, sceneToData, setScenePositionFromData } from '../coordinat
 import { clampEffectTriggerSize, isEffectTriggerProp } from '../../../core/effects/trigger-volume';
 import { placementQuat, propRotationFromQuat } from '../../../core/props/pose';
 import {
-  freezeSurfaceFollow, placementSurfaceItems, scaleOverSurface, slideOverSurface, type SurfaceFollow, type SurfaceHeight,
+  freezeSurfaceFollow,
+  placementSurfaceItems,
+  scaleOverSurface,
+  slideOverSurface,
+  type SurfaceFollow,
+  type SurfaceHeight,
 } from '../../../core/props/surface-follow';
 
 /** The point-like things Props mode places that the prop World / Surface pill also frames (docs/012 · Surface
  *  frame): a free light, a rail or prop-line point, a gem and a free-standing screen. Each gizmo rides a plain
  *  scene-root anchor whose orientation means nothing, so it can take the slope frame and drop it again. */
-const SURFACE_POINT_KINDS: ReadonlySet<GizmoKind | null> = new Set<GizmoKind>(['light', 'railnode', 'linenode', 'gem', 'screen']);
+const SURFACE_POINT_KINDS: ReadonlySet<GizmoKind | null> = new Set<GizmoKind>([
+  'light',
+  'railnode',
+  'linenode',
+  'gem',
+  'screen',
+]);
 
 /** Resolve the persisted frame plus the one-drag Shift override into the frame TransformControls should use. */
 export function resolveGizmoFrame(frame: GizmoFrame, forceWorld: boolean): GizmoFrame {
@@ -33,8 +58,12 @@ export type LocalFrame = { tu: THREE.Vector3; tv: THREE.Vector3; n: THREE.Vector
 
 /** A stable slope-free frame for a vertex connected only by free edges: its path frame (core edgePathFrame —
  *  X along the path, Y as near world-up as X permits, turned by the point's roll), as the gizmo's LocalFrame. */
-export function edgeConnectedFrame(pos: number[], adj: MeshAdjacency, id: number,
-  options: { handle?: EdgeHandle; roll?: number; ids?: readonly string[] } = {}): LocalFrame | null {
+export function edgeConnectedFrame(
+  pos: number[],
+  adj: MeshAdjacency,
+  id: number,
+  options: { handle?: EdgeHandle; roll?: number; ids?: readonly string[] } = {},
+): LocalFrame | null {
   const frame = edgePathFrame(pos, adj, id, options);
   if (!frame) return null;
   const v = (c: V3) => new THREE.Vector3(c[0], c[1], c[2]);
@@ -113,8 +142,11 @@ export interface TransformHostHooks {
  * seating and the onGizmoChange routing, calling in as the drag lifecycle fires.
  */
 export function createTransformLayer(
-  stage: Stage, mesh: TransformMeshAccess, sel: TransformSelectionAccess,
-  anchors: TransformAnchors, host: TransformHostHooks,
+  stage: Stage,
+  mesh: TransformMeshAccess,
+  sel: TransformSelectionAccess,
+  anchors: TransformAnchors,
+  host: TransformHostHooks,
 ) {
   // Corner-gizmo framing for terrain editing (docs/006), a single World / Local / Surface pill:
   //  • SURFACE (default) re-frames the gizmo to the picked corner's slope (local X = down-mountain, Y =
@@ -144,7 +176,7 @@ export function createTransformLayer(
   let gizmoFrame: GizmoFrame = 'surface'; // host-driven frame pill; Surface alone implies a constrained slide
   let propFrame: PropGizmoFrame = 'surface'; // the prop pill; Shift forces World here too
   let gizmoMode: GizmoMode = 'move'; // W / E / R transform tool; rotate / scale are selection-gated below
-  let gizmoShift = false;      // Shift held → force World for this drag (free 3D off-surface)
+  let gizmoShift = false; // Shift held → force World for this drag (free 3D off-surface)
   type FrozenCorners = {
     members: { vertex: VertexName; pos: THREE.Vector3 }[];
     edgeHandles: { from: VertexName; to: VertexName; offset: THREE.Vector3 }[];
@@ -156,41 +188,65 @@ export function createTransformLayer(
   type FrozenProp = { index: number; pos: THREE.Vector3; rot: THREE.Quaternion };
   // Rotation always evaluates the drag-start snapshot, so repeated objectChange events never accumulate drift.
   // Scene-root positions carry the editor's Z flip; converting back to authored data negates Z once at the edge.
-  let rotationDrag: ({ kind: 'corners'; anchor: THREE.Quaternion; pivot: THREE.Vector3 } & FrozenCorners) | {
-    kind: 'controlpoints'; anchor: THREE.Quaternion; pivot: THREE.Vector3;
-    members: { id: MeshControlPointId; pos: THREE.Vector3 }[];
-  } | {
-    kind: 'prop' | 'props'; anchor: THREE.Quaternion; pivot: THREE.Vector3;
-    members: FrozenProp[];
-  } | {
-    kind: 'editmixed'; anchor: THREE.Quaternion; pivot: THREE.Vector3;
-    corners: FrozenCorners | null;
-    controlPoints: FrozenControlPoint[];
-    props: FrozenProp[];
-  } | null = null;
+  let rotationDrag:
+    | ({ kind: 'corners'; anchor: THREE.Quaternion; pivot: THREE.Vector3 } & FrozenCorners)
+    | {
+        kind: 'controlpoints';
+        anchor: THREE.Quaternion;
+        pivot: THREE.Vector3;
+        members: { id: MeshControlPointId; pos: THREE.Vector3 }[];
+      }
+    | {
+        kind: 'prop' | 'props';
+        anchor: THREE.Quaternion;
+        pivot: THREE.Vector3;
+        members: FrozenProp[];
+      }
+    | {
+        kind: 'editmixed';
+        anchor: THREE.Quaternion;
+        pivot: THREE.Vector3;
+        corners: FrozenCorners | null;
+        controlPoints: FrozenControlPoint[];
+        props: FrozenProp[];
+      }
+    | null = null;
   // Scale mirrors rotation's frozen-snapshot contract, but reads the anchor's live scale instead of quaternion.
-  let scaleDrag: ({ kind: 'corners'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3 }
-    & FrozenCorners) | {
-    kind: 'controlpoints'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3;
-    members: { id: MeshControlPointId; pos: THREE.Vector3 }[];
-  } | {
-    kind: 'prop' | 'props'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3;
-    members: { index: number; pos: THREE.Vector3; scale: number; triggerSize?: V3 }[];
-    /** Surface frame: the members as they stood over the ground, which the scale pivots on. */
-    surface: SurfaceFollow | null;
-  } | null = null;
+  let scaleDrag:
+    | ({ kind: 'corners'; anchor: THREE.Quaternion; startScale: THREE.Vector3; pivot: THREE.Vector3 } & FrozenCorners)
+    | {
+        kind: 'controlpoints';
+        anchor: THREE.Quaternion;
+        startScale: THREE.Vector3;
+        pivot: THREE.Vector3;
+        members: { id: MeshControlPointId; pos: THREE.Vector3 }[];
+      }
+    | {
+        kind: 'prop' | 'props';
+        anchor: THREE.Quaternion;
+        startScale: THREE.Vector3;
+        pivot: THREE.Vector3;
+        members: { index: number; pos: THREE.Vector3; scale: number; triggerSize?: V3 }[];
+        /** Surface frame: the members as they stood over the ground, which the scale pivots on. */
+        surface: SurfaceFollow | null;
+      }
+    | null = null;
   let slideBVH: MeshBVH | null = null; // frozen surface for slide re-projection, built at corner drag-start
-  const slideRay = new THREE.Ray();    // reused down-ray for the slide surface probe (regions + a degenerate frame)
+  const slideRay = new THREE.Ray(); // reused down-ray for the slide surface probe (regions + a degenerate frame)
   // multi-corner slide: a frozen snapshot of the net + the group's grid frame captured at drag-start, so a
   // group slide moves every member the same FRACTION of its own cell toward its next vertex (ratio-preserving,
   // riding the frozen surface) rather than a rigid world delta.
   let slideGroup: {
-    net0: Float32Array; adj: MeshAdjacency;            // frozen net positions + the topology neighbour-ring
+    net0: Float32Array;
+    adj: MeshAdjacency; // frozen net positions + the topology neighbour-ring
     // the members as the frozen net numbers them, each carrying the name the host will write it back under
     members: { vertex: VertexName; index: number }[];
-    tu: THREE.Vector3; tv: THREE.Vector3; n: THREE.Vector3; // group averaged surface frame (data space, unit)
-    rowStepAvg: number; colStepAvg: number;           // mean neighbour distance over the selection (cell size)
-    handle0: THREE.Vector3;                            // the centre handle's data-space position at drag-start
+    tu: THREE.Vector3;
+    tv: THREE.Vector3;
+    n: THREE.Vector3; // group averaged surface frame (data space, unit)
+    rowStepAvg: number;
+    colStepAvg: number; // mean neighbour distance over the selection (cell size)
+    handle0: THREE.Vector3; // the centre handle's data-space position at drag-start
   } | null = null;
   // exact slide (gizmo axis 'X' / 'Z' / 'XZ'): the frozen net the drag re-cuts, and whether the cursor has run
   // past a far end so a release would weld. Seated for a single corner, an edge / edge-loop and a cell selection.
@@ -222,8 +278,10 @@ export function createTransformLayer(
 
   /** The gizmo is on a placed prop or prop set, or a Props-mode point, in the Surface frame (Shift forces World). */
   function propSurfaceActive(): boolean {
-    return (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || surfacePointKind())
-      && resolveGizmoFrame(propFrame, gizmoShift) === 'surface';
+    return (
+      (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || surfacePointKind()) &&
+      resolveGizmoFrame(propFrame, gizmoShift) === 'surface'
+    );
   }
 
   /** The placements the prop gizmo carries: the lone selection, or the multi-selection its centre handle drives. */
@@ -273,8 +331,10 @@ export function createTransformLayer(
       const props = sel.multiSelProps().length + (sel.selectedProp() === null ? 0 : 1);
       return sel.cornerGroupIdx().length + sel.controlPointSel().length + props > 1;
     }
-    return (stage.gizmoKind === 'prop' && sel.selectedProp() !== null)
-      || (stage.gizmoKind === 'props' && sel.multiSelProps().length > 0);
+    return (
+      (stage.gizmoKind === 'prop' && sel.selectedProp() !== null) ||
+      (stage.gizmoKind === 'props' && sel.multiSelProps().length > 0)
+    );
   }
 
   /** Scale has the same extent requirement as rotation; a lone point has no size to transform. */
@@ -285,8 +345,10 @@ export function createTransformLayer(
     if (stage.gizmoKind === 'edgeextrusion') return sel.extrusionStaged();
     if (stage.gizmoKind === 'corners') return sel.cornerGroupIdx().length > 1;
     if (stage.gizmoKind === 'controlpoints') return sel.controlPointSel().length > 1;
-    return (stage.gizmoKind === 'prop' && sel.selectedProp() !== null)
-      || (stage.gizmoKind === 'props' && sel.multiSelProps().length > 0);
+    return (
+      (stage.gizmoKind === 'prop' && sel.selectedProp() !== null) ||
+      (stage.gizmoKind === 'props' && sel.multiSelProps().length > 0)
+    );
   }
 
   /** Re-evaluate the corner gizmo's frame from (kind, pill, Shift). Surface orients the gizmo to the slope
@@ -297,7 +359,9 @@ export function createTransformLayer(
     const rotating = rotationActive();
     const scaling = scaleActive();
     stage.gizmo.setMode(rotating ? 'rotate' : scaling ? 'scale' : 'translate');
-    stage.gizmo.showX = true; stage.gizmo.showY = true; stage.gizmo.showZ = true;
+    stage.gizmo.showX = true;
+    stage.gizmo.showY = true;
+    stage.gizmo.showZ = true;
     if (stage.gizmoKind === 'edgeextrusion' && sel.extrusionFanMode()) {
       stage.gizmoRestrict = false;
       stage.gizmo.setMode('translate');
@@ -328,7 +392,9 @@ export function createTransformLayer(
       // twist point on its own corner vertex (both carried as `vertex`).
       const handle = sel.selectedCageHandle();
       const slopeFrame = local && handle ? cornerFrame(handle.vertex, activeFrame === 'local') : null;
-      anchors.cageHandleAnchor.quaternion.copy(slopeFrame ? frameQuat(slopeFrame.tu, slopeFrame.tv, slopeFrame.n) : new THREE.Quaternion());
+      anchors.cageHandleAnchor.quaternion.copy(
+        slopeFrame ? frameQuat(slopeFrame.tu, slopeFrame.tv, slopeFrame.n) : new THREE.Quaternion(),
+      );
       return;
     }
     if (stage.gizmoKind === 'controlpoints') {
@@ -341,7 +407,9 @@ export function createTransformLayer(
       stage.gizmoRestrict = false;
       stage.gizmo.setSpace(local ? 'local' : 'world');
       const slopeFrame = local ? controlPointFrame(activeFrame === 'local') : null;
-      anchors.cornerGroupHandle.quaternion.copy(slopeFrame ? frameQuat(slopeFrame.tu, slopeFrame.tv, slopeFrame.n) : new THREE.Quaternion());
+      anchors.cornerGroupHandle.quaternion.copy(
+        slopeFrame ? frameQuat(slopeFrame.tu, slopeFrame.tv, slopeFrame.n) : new THREE.Quaternion(),
+      );
       return;
     }
     const isCorner = stage.gizmoKind === 'corner' || stage.gizmoKind === 'corners';
@@ -353,8 +421,13 @@ export function createTransformLayer(
       if (stage.gizmoKind === 'knot' || stage.gizmoKind === 'anchor') stage.gizmo.showY = false;
       // These remaining anchors carry no authored orientation, so clear any stale local rotation before Scale
       // (always local in TransformControls) reads it.
-      if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || stage.gizmoKind === 'editmixed'
-        || SURFACE_POINT_KINDS.has(stage.gizmoKind)) stage.gizmo.object?.quaternion.identity();
+      if (
+        stage.gizmoKind === 'prop' ||
+        stage.gizmoKind === 'props' ||
+        stage.gizmoKind === 'editmixed' ||
+        SURFACE_POINT_KINDS.has(stage.gizmoKind)
+      )
+        stage.gizmo.object?.quaternion.identity();
       // All three rings show for props: a placement authors a full rotation (yaw / pitch / roll, core/props/pose),
       // so tilting one onto a slope or laying it on its side is an ordinary drag rather than something the
       // document would silently discard. Rings stay WORLD-aligned, which is the frame a turn is judged in.
@@ -404,15 +477,23 @@ export function createTransformLayer(
    * frozen here would then land on a different corner, which is exactly the silent kind of wrong.
    */
   function freezeCorners(mixed = false): FrozenCorners | null {
-    const net = mesh.net(), doc = mesh.meshDoc(), single = !mixed ? selectedFreePoint() : null;
+    const net = mesh.net(),
+      doc = mesh.meshDoc(),
+      single = !mixed ? selectedFreePoint() : null;
     const groupIdx = single !== null ? [single] : sel.cornerGroupIdx();
-    if ((!mixed && single === null && stage.gizmoKind !== 'corners') || !net || !doc
-      || groupIdx.length < (mixed || single !== null ? 1 : 2)) return null;
+    if (
+      (!mixed && single === null && stage.gizmoKind !== 'corners') ||
+      !net ||
+      !doc ||
+      groupIdx.length < (mixed || single !== null ? 1 : 2)
+    )
+      return null;
     const selected = new Set(groupIdx);
     const members = groupIdx.flatMap(index => {
       const vertex = doc.vertexIds[index];
       if (vertex === undefined) return [];
-      const j = index * 3, p = net.positions;
+      const j = index * 3,
+        p = net.positions;
       return [{ vertex, pos: new THREE.Vector3(p[j], p[j + 1], -p[j + 2]) }];
     });
     // A directed-edge handle is owned by its FROM vertex: when that vertex rotates, its handle vector rotates
@@ -420,24 +501,38 @@ export function createTransformLayer(
     // overrides. On a connected quilt the default reads an opposite, possibly unselected neighbour; letting it
     // re-derive after the corners move would leave the visible boundary CP behind instead of rotating rigidly.
     const eh = mesh.edgeHandle();
-    const edgeHandles = eh ? groupIdx.flatMap(from => (net.adj.neighbors[from] ?? []).flatMap(to => {
-      const a = doc.vertexIds[from], b = doc.vertexIds[to];
-      return a === undefined || b === undefined ? [] : [{ from: a, to: b, offset: dataToScene(eh(from, to)) }];
-    })) : [];
+    const edgeHandles = eh
+      ? groupIdx.flatMap(from =>
+          (net.adj.neighbors[from] ?? []).flatMap(to => {
+            const a = doc.vertexIds[from],
+              b = doc.vertexIds[to];
+            return a === undefined || b === undefined ? [] : [{ from: a, to: b, offset: dataToScene(eh(from, to)) }];
+          }),
+        )
+      : [];
     // Interior twist belongs to the patch, not a lone corner. Carry it only when every corner of that patch
     // participates in this rigid selection (always true for the selected-cell family; also true for a region
     // that covers a whole patch). Partial edge / corner selections continue to deform neighbouring interiors.
     const quadTwist = Object.entries(doc.quadTwist ?? {}).flatMap(([key, offsets]) => {
-      const quad = Number(key), corners = doc.quads[quad], name = doc.quadIds[quad];
+      const quad = Number(key),
+        corners = doc.quads[quad],
+        name = doc.quadIds[quad];
       if (!corners?.every(index => selected.has(index)) || name === undefined) return [];
-      const vectors = offsets.map(v => dataToScene(v)) as
-        [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
+      const vectors = offsets.map(v => dataToScene(v)) as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
       return [{ quad: name, offsets: vectors }];
     });
     const frames = groupIdx.flatMap(index => {
-      const frame = freePointFrame(index), vertex = doc.vertexIds[index];
+      const frame = freePointFrame(index),
+        vertex = doc.vertexIds[index];
       return frame && vertex !== undefined
-        ? [{ vertex, x: dataToScene([frame.tu.x, frame.tu.y, frame.tu.z]), y: dataToScene([frame.n.x, frame.n.y, frame.n.z]) }] : [];
+        ? [
+            {
+              vertex,
+              x: dataToScene([frame.tu.x, frame.tu.y, frame.tu.z]),
+              y: dataToScene([frame.n.x, frame.n.y, frame.n.z]),
+            },
+          ]
+        : [];
     });
     return { members, edgeHandles, quadTwist, frames };
   }
@@ -479,13 +574,17 @@ export function createTransformLayer(
     if (stage.gizmoKind === 'editmixed') {
       const selectedProp = sel.selectedProp();
       const props = freezeProps([...sel.multiSelProps(), ...(selectedProp === null ? [] : [selectedProp])]);
-      const corners = freezeCorners(true), controlPoints = freezeControlPoints();
+      const corners = freezeCorners(true),
+        controlPoints = freezeControlPoints();
       if (corners || controlPoints.length || props.length)
         rotationDrag = { kind: 'editmixed', anchor, pivot, corners, controlPoints, props };
       return;
     }
     const frozen = freezeCorners();
-    if (frozen) { rotationDrag = { kind: 'corners', anchor, pivot, ...frozen }; return; }
+    if (frozen) {
+      rotationDrag = { kind: 'corners', anchor, pivot, ...frozen };
+      return;
+    }
     if (stage.gizmoKind === 'controlpoints') {
       const members = freezeControlPoints();
       if (members.length > 1) rotationDrag = { kind: 'controlpoints', anchor, pivot, members };
@@ -493,16 +592,15 @@ export function createTransformLayer(
     }
     if (stage.gizmoKind !== 'prop' && stage.gizmoKind !== 'props') return;
     const selectedProp = sel.selectedProp();
-    const indices = stage.gizmoKind === 'prop'
-      ? (selectedProp === null ? [] : [selectedProp])
-      : sel.multiSelProps();
+    const indices = stage.gizmoKind === 'prop' ? (selectedProp === null ? [] : [selectedProp]) : sel.multiSelProps();
     const members = freezeProps(indices);
     if (members.length) rotationDrag = { kind: stage.gizmoKind, anchor, pivot, members };
   }
 
   /** Apply the current anchor quaternion to the frozen member snapshot and emit authored absolute values. */
   function rotateSelection() {
-    const drag = rotationDrag, obj = stage.gizmo.object;
+    const drag = rotationDrag,
+      obj = stage.gizmo.object;
     if (!drag || !obj) return;
     // qNow * inverse(qStart) is the world-space delta for both local-axis (Surface) and world-axis rotation.
     const delta = obj.quaternion.clone().multiply(drag.anchor.clone().invert()).normalize();
@@ -517,7 +615,9 @@ export function createTransformLayer(
         return { vertex: member.vertex, pos: sceneToData(p) };
       }),
       edgeHandles: corners.edgeHandles.map(handle => ({
-        from: handle.from, to: handle.to, offset: rotatedVector(handle.offset),
+        from: handle.from,
+        to: handle.to,
+        offset: rotatedVector(handle.offset),
       })),
       quadTwist: corners.quadTwist.map(twist => ({
         quad: twist.quad,
@@ -525,7 +625,8 @@ export function createTransformLayer(
       })),
       // The handles above carry the point's path direction round; what is left of its frame is a roll.
       vertexRoll: corners.frames.map(frame => ({
-        vertex: frame.vertex, roll: pathRollOf(rotatedVector(frame.x), rotatedVector(frame.y)),
+        vertex: frame.vertex,
+        roll: pathRollOf(rotatedVector(frame.x), rotatedVector(frame.y)),
       })),
     });
     if (drag.kind === 'corners') {
@@ -549,10 +650,11 @@ export function createTransformLayer(
       const q = delta.clone().multiply(start).normalize();
       return propRotationFromQuat([-q.x, -q.y, q.z, q.w]);
     };
-    const propUpdates = (members: FrozenProp[]) => members.map(member => {
-      const p = rotated(member.pos);
-      return { index: member.index, pos: sceneToData(p), ...authoredRotation(member.rot) };
-    });
+    const propUpdates = (members: FrozenProp[]) =>
+      members.map(member => {
+        const p = rotated(member.pos);
+        return { index: member.index, pos: sceneToData(p), ...authoredRotation(member.rot) };
+      });
     if (drag.kind === 'editmixed') {
       const controlPoints = drag.controlPoints.map(member => {
         const p = rotated(member.pos);
@@ -576,8 +678,13 @@ export function createTransformLayer(
   /** Finish a rotation and return the invisible anchor to its canonical frame for the next gesture. */
   function endRotation() {
     rotationDrag = null;
-    if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || stage.gizmoKind === 'controlpoints'
-      || stage.gizmoKind === 'editmixed') stage.gizmo.object?.quaternion.identity();
+    if (
+      stage.gizmoKind === 'prop' ||
+      stage.gizmoKind === 'props' ||
+      stage.gizmoKind === 'controlpoints' ||
+      stage.gizmoKind === 'editmixed'
+    )
+      stage.gizmo.object?.quaternion.identity();
     applyGizmoFrame();
   }
 
@@ -586,9 +693,14 @@ export function createTransformLayer(
     scaleDrag = null;
     const obj = stage.gizmo.object;
     if (!obj) return;
-    const anchor = obj.quaternion.clone(), startScale = obj.scale.clone(), pivot = obj.position.clone();
+    const anchor = obj.quaternion.clone(),
+      startScale = obj.scale.clone(),
+      pivot = obj.position.clone();
     const frozen = freezeCorners();
-    if (frozen) { scaleDrag = { kind: 'corners', anchor, startScale, pivot, ...frozen }; return; }
+    if (frozen) {
+      scaleDrag = { kind: 'corners', anchor, startScale, pivot, ...frozen };
+      return;
+    }
     if (stage.gizmoKind === 'controlpoints') {
       const byKey = sel.authoredControlPointByKey();
       const members = sel.controlPointSel().flatMap(id => {
@@ -602,39 +714,57 @@ export function createTransformLayer(
     const indices = gizmoPropIndices();
     const members = indices.flatMap(index => {
       const p = sel.placedProp(index);
-      return p ? [{ index, pos: dataToScene(p.pos), scale: p.scale,
-        ...(isEffectTriggerProp(p) ? { triggerSize: clampEffectTriggerSize(p.effectTrigger.size) } : {}) }] : [];
+      return p
+        ? [
+            {
+              index,
+              pos: dataToScene(p.pos),
+              scale: p.scale,
+              ...(isEffectTriggerProp(p) ? { triggerSize: clampEffectTriggerSize(p.effectTrigger.size) } : {}),
+            },
+          ]
+        : [];
     });
-    const surface = propSurfaceActive() ? freezeSurfaceFollow(placementSurfaceItems(sel.placedProp, indices), groundHeight) : null;
+    const surface = propSurfaceActive()
+      ? freezeSurfaceFollow(placementSurfaceItems(sel.placedProp, indices), groundHeight)
+      : null;
     if (members.length) scaleDrag = { kind: stage.gizmoKind, anchor, startScale, pivot, members, surface };
   }
 
   /** Apply the live scale relative to the frozen drag-start snapshot and emit authored absolute values. */
   function scaleSelection() {
-    const drag = scaleDrag, obj = stage.gizmo.object;
+    const drag = scaleDrag,
+      obj = stage.gizmo.object;
     if (!drag || !obj) return;
     const factors = obj.scale.clone().divide(drag.startScale);
     // A generated trigger box is the one placed-prop kind with independent authored dimensions. Its origin
     // is the box centre, so per-axis Scale changes only the extents and the volume stays centred in place.
     if (drag.kind === 'prop' && drag.members[0]?.triggerSize) {
       const size = drag.members[0].triggerSize;
-      stage.cb.onResizeEffectTrigger?.(drag.members[0].index, clampEffectTriggerSize([
-        size[0] * factors.x, size[1] * factors.y, size[2] * factors.z,
-      ]));
+      stage.cb.onResizeEffectTrigger?.(
+        drag.members[0].index,
+        clampEffectTriggerSize([size[0] * factors.x, size[1] * factors.y, size[2] * factors.z]),
+      );
       return;
     }
     // Props have one authored scale value. Any axis handle therefore behaves as a uniform size handle; the
     // component that moved farthest from 1 is the TransformControls handle the pointer is driving.
     if (drag.kind === 'prop' || drag.kind === 'props') {
-      const factor = Math.max(0.01, [factors.x, factors.y, factors.z]
-        .reduce((best, value) => Math.abs(value - 1) > Math.abs(best - 1) ? value : best, factors.x));
+      const factor = Math.max(
+        0.01,
+        [factors.x, factors.y, factors.z].reduce(
+          (best, value) => (Math.abs(value - 1) > Math.abs(best - 1) ? value : best),
+          factors.x,
+        ),
+      );
       const scaled = (p: THREE.Vector3) => p.clone().sub(drag.pivot).multiplyScalar(factor).add(drag.pivot);
       // Surface: the spacing spreads about the pivot over the ground, and each prop grows about the ground under it.
-      const updates = drag.surface ? scaleOverSurface(drag.surface, factor, sceneToData(drag.pivot), groundHeight)
+      const updates = drag.surface
+        ? scaleOverSurface(drag.surface, factor, sceneToData(drag.pivot), groundHeight)
         : drag.members.map(m => {
-          const p = scaled(m.pos);
-          return { index: m.index, pos: sceneToData(p), scale: m.scale * factor };
-        });
+            const p = scaled(m.pos);
+            return { index: m.index, pos: sceneToData(p), scale: m.scale * factor };
+          });
       if (drag.kind === 'prop') {
         const u = updates[0];
         if (u) stage.cb.onScaleProp?.(u.index, u.pos, u.scale);
@@ -644,7 +774,8 @@ export function createTransformLayer(
     // TransformControls scale is local to the anchor. Move into that frame, apply the per-axis factors, then
     // return to scene space; World has an identity anchor, while Local / Surface carry the slope frame.
     const inv = drag.anchor.clone().invert();
-    const scaledVector = (v: THREE.Vector3) => v.clone().applyQuaternion(inv).multiply(factors).applyQuaternion(drag.anchor);
+    const scaledVector = (v: THREE.Vector3) =>
+      v.clone().applyQuaternion(inv).multiply(factors).applyQuaternion(drag.anchor);
     const scaledPoint = (p: THREE.Vector3) => scaledVector(p.clone().sub(drag.pivot)).add(drag.pivot);
     const authoredVector = (v: THREE.Vector3): V3 => {
       const p = scaledVector(v);
@@ -697,7 +828,10 @@ export function createTransformLayer(
     slideExact = null;
     slideMergePending = false;
     propSlide = null;
-    if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || surfacePointKind()) { beginPropSlide(); return; }
+    if (stage.gizmoKind === 'prop' || stage.gizmoKind === 'props' || surfacePointKind()) {
+      beginPropSlide();
+      return;
+    }
     if (resolveGizmoFrame(gizmoFrame, gizmoShift) !== 'surface') return;
     if (stage.gizmoKind !== 'corner' && stage.gizmoKind !== 'corners') return;
     if (stage.gizmo.axis === 'XYZ') return;
@@ -727,11 +861,15 @@ export function createTransformLayer(
    *  the anchor. The up post is the deliberate move off the surface, and the headset's free centre a free 3D move,
    *  so both stay ordinary moves. */
   function beginPropSlide() {
-    const ax = stage.gizmo.axis, obj = stage.gizmo.object;
+    const ax = stage.gizmo.axis,
+      obj = stage.gizmo.object;
     if (!obj || !propSurfaceActive() || (ax !== 'X' && ax !== 'Z' && ax !== 'XZ')) return;
-    const anchor0 = sceneToData(obj.position), point = surfacePointKind();
-    const follow = freezeSurfaceFollow(point ? [{ index: -1, pos: anchor0 }]
-      : placementSurfaceItems(sel.placedProp, gizmoPropIndices()), groundHeight);
+    const anchor0 = sceneToData(obj.position),
+      point = surfacePointKind();
+    const follow = freezeSurfaceFollow(
+      point ? [{ index: -1, pos: anchor0 }] : placementSurfaceItems(sel.placedProp, gizmoPropIndices()),
+      groundHeight,
+    );
     if (follow.members.length) propSlide = { follow, anchor0, point };
   }
 
@@ -827,7 +965,9 @@ export function createTransformLayer(
    * because the mesh, its adjacency and its edge handles are all already cached from the last rebuild.
    */
   function buildSlideExact(freeze: boolean): SlideExact | null {
-    const doc = mesh.meshDoc(), pv = mesh.preview(), net = mesh.net();
+    const doc = mesh.meshDoc(),
+      pv = mesh.preview(),
+      net = mesh.net();
     if (!doc || !pv || !net) return null;
     const group = stage.gizmoKind === 'corners';
     const corner = stage.gizmoKind === 'corner' ? sel.selectedCorner() : null;
@@ -838,7 +978,9 @@ export function createTransformLayer(
     if (!frame) return null; // a pinched net has no surface axes: nothing tells the handles apart
     const anchor = corner !== null ? anchors.cornerMarker : anchors.cornerGroupHandle;
     const quadMesh = freeze ? buildQuadMesh(doc.vertices.slice(), doc.quads, doc.freeEdges) : pv.mesh;
-    const eh = freeze ? meshEdgeHandles(quadMesh, doc.edgeHandles ? { ...doc.edgeHandles } : undefined) : mesh.edgeHandle();
+    const eh = freeze
+      ? meshEdgeHandles(quadMesh, doc.edgeHandles ? { ...doc.edgeHandles } : undefined)
+      : mesh.edgeHandle();
     if (!eh) return null;
     // the gizmo's Z arrow: `frameQuat` builds local Z as X × Y, which in data space is `n × tu` — orthonormal to
     // `tu`, and generally NOT the frame's own `tv` (see SlideExact). A pad drag decomposes in (tu, padV).
@@ -877,8 +1019,10 @@ export function createTransformLayer(
     if (!s) return null;
     const rails: SurfaceRails = {
       anchor: s.anchor0,
-      xPlus: slideRail(s, s.tu), xMinus: slideRail(s, mul(s.tu, -1)),
-      zPlus: slideRail(s, s.padV), zMinus: slideRail(s, mul(s.padV, -1)),
+      xPlus: slideRail(s, s.tu),
+      xMinus: slideRail(s, mul(s.tu, -1)),
+      zPlus: slideRail(s, s.padV),
+      zMinus: slideRail(s, mul(s.padV, -1)),
     };
     return rails.xPlus || rails.xMinus || rails.zPlus || rails.zMinus ? rails : null;
   }
@@ -919,7 +1063,9 @@ export function createTransformLayer(
    *  can express the drag as a uniform grid FRACTION (each member advances that fraction of its own cell). */
   function captureSlideGroup() {
     slideGroup = null;
-    const net = mesh.net(), doc = mesh.meshDoc(), groupIdx = sel.cornerGroupIdx();
+    const net = mesh.net(),
+      doc = mesh.meshDoc(),
+      groupIdx = sel.cornerGroupIdx();
     if (!net || !doc || !groupIdx.length) return;
     const frame = regionFrame();
     if (!frame) return;
@@ -932,19 +1078,35 @@ export function createTransformLayer(
     if (!members.length) return;
     const { positions, adj } = net;
     const net0 = Float32Array.from(positions);
-    const dist = (i: number, j: number) => Math.hypot(net0[i * 3] - net0[j * 3], net0[i * 3 + 1] - net0[j * 3 + 1], net0[i * 3 + 2] - net0[j * 3 + 2]);
-    let rs = 0, rn = 0, cs = 0, cn = 0; // mean neighbour distance (cell size) over the selection, per surface axis
+    const dist = (i: number, j: number) =>
+      Math.hypot(net0[i * 3] - net0[j * 3], net0[i * 3 + 1] - net0[j * 3 + 1], net0[i * 3 + 2] - net0[j * 3 + 2]);
+    let rs = 0,
+      rn = 0,
+      cs = 0,
+      cn = 0; // mean neighbour distance (cell size) over the selection, per surface axis
     for (const idx of groupIdx) {
       const { u, v } = vertexAxes(adj, idx);
-      const un = u[1] >= 0 ? u[1] : u[0], vn = v[1] >= 0 ? v[1] : v[0]; // a neighbour along each axis (either side)
-      if (un >= 0) { rs += dist(idx, un); rn++; }
-      if (vn >= 0) { cs += dist(idx, vn); cn++; }
+      const un = u[1] >= 0 ? u[1] : u[0],
+        vn = v[1] >= 0 ? v[1] : v[0]; // a neighbour along each axis (either side)
+      if (un >= 0) {
+        rs += dist(idx, un);
+        rn++;
+      }
+      if (vn >= 0) {
+        cs += dist(idx, vn);
+        cn++;
+      }
     }
     const h = anchors.cornerGroupHandle.position;
     slideGroup = {
-      net0, adj, members,
-      tu: frame.tu.clone(), tv: frame.tv.clone(), n: frame.n.clone(),
-      rowStepAvg: rn ? rs / rn : 1, colStepAvg: cn ? cs / cn : 1,
+      net0,
+      adj,
+      members,
+      tu: frame.tu.clone(),
+      tv: frame.tv.clone(),
+      n: frame.n.clone(),
+      rowStepAvg: rn ? rs / rn : 1,
+      colStepAvg: cn ? cs / cn : 1,
       handle0: new THREE.Vector3(h.x, h.y, -h.z), // scene → data
     };
   }
@@ -972,10 +1134,12 @@ export function createTransformLayer(
    *  handle's current data-space position. */
   function slideGroupUpdate(p: V3) {
     const g = slideGroup!;
-    const dx = p[0] - g.handle0.x, dy = p[1] - g.handle0.y, dz = p[2] - g.handle0.z; // handle displacement (data)
+    const dx = p[0] - g.handle0.x,
+      dy = p[1] - g.handle0.y,
+      dz = p[2] - g.handle0.z; // handle displacement (data)
     const fu = (dx * g.tu.x + dy * g.tu.y + dz * g.tu.z) / g.rowStepAvg; // fraction of a cell down-mountain (u)
     const fv = (dx * g.tv.x + dy * g.tv.y + dz * g.tv.z) / g.colStepAvg; // fraction of a cell cross-slope (v)
-    const fn = dx * g.n.x + dy * g.n.y + dz * g.n.z;                     // normal lift (world units, off-surface)
+    const fn = dx * g.n.x + dy * g.n.y + dz * g.n.z; // normal lift (world units, off-surface)
     const { net0, adj } = g;
     const updates: { vertex: VertexName; pos: V3 }[] = [];
     for (const { vertex, index: idx } of g.members) {
@@ -985,15 +1149,25 @@ export function createTransformLayer(
       const { u, v } = vertexAxes(adj, idx);
       const rowJ = (u[1] >= 0 ? u[1] : u[0] >= 0 ? u[0] : idx) * 3;
       const colJ = (v[1] >= 0 ? v[1] : v[0] >= 0 ? v[0] : idx) * 3;
-      const rvy = net0[rowJ + 1] - net0[b + 1], cvy = net0[colJ + 1] - net0[b + 1];
-      let rvx = net0[rowJ] - net0[b], rvz = net0[rowJ + 2] - net0[b + 2];
-      let cvx = net0[colJ] - net0[b], cvz = net0[colJ + 2] - net0[b + 2];
-      if (rvx * g.tu.x + rvy * g.tu.y + rvz * g.tu.z < 0) { rvx = -rvx; rvz = -rvz; }
-      if (cvx * g.tv.x + cvy * g.tv.y + cvz * g.tv.z < 0) { cvx = -cvx; cvz = -cvz; }
+      const rvy = net0[rowJ + 1] - net0[b + 1],
+        cvy = net0[colJ + 1] - net0[b + 1];
+      let rvx = net0[rowJ] - net0[b],
+        rvz = net0[rowJ + 2] - net0[b + 2];
+      let cvx = net0[colJ] - net0[b],
+        cvz = net0[colJ + 2] - net0[b + 2];
+      if (rvx * g.tu.x + rvy * g.tu.y + rvz * g.tu.z < 0) {
+        rvx = -rvx;
+        rvz = -rvz;
+      }
+      if (cvx * g.tv.x + cvy * g.tv.y + cvz * g.tv.z < 0) {
+        cvx = -cvx;
+        cvz = -cvz;
+      }
       const nx = net0[b] + fu * rvx + fv * cvx;
       const nz = net0[b + 2] + fu * rvz + fv * cvz;
       let ny = net0[b + 1];
-      if (slideBVH) { // ride the frozen surface at the slid (x, z)
+      if (slideBVH) {
+        // ride the frozen surface at the slid (x, z)
         slideRay.origin.set(nx, 1e5, nz);
         slideRay.direction.set(0, -1, 0);
         const hit = slideBVH.raycastFirst(slideRay, THREE.DoubleSide, 0, 2e5);
@@ -1008,8 +1182,12 @@ export function createTransformLayer(
    *  may fall back to an edge-connected frame when the selection has no surface. */
   function orientGizmoToLocal(edgeFallback = false) {
     const corner = sel.selectedCorner();
-    const frame = stage.gizmoKind === 'corners' ? regionFrame(edgeFallback)
-      : corner !== null ? cornerFrame(corner, edgeFallback) : null;
+    const frame =
+      stage.gizmoKind === 'corners'
+        ? regionFrame(edgeFallback)
+        : corner !== null
+          ? cornerFrame(corner, edgeFallback)
+          : null;
     const anchor = stage.gizmoKind === 'corners' ? anchors.cornerGroupHandle : anchors.cornerMarker;
     if (frame) anchor.quaternion.copy(frameQuat(frame.tu, frame.tv, frame.n));
     else anchor.quaternion.identity();
@@ -1028,24 +1206,33 @@ export function createTransformLayer(
     const n = new THREE.Vector3(f.n[0], f.n[1], f.n[2]);
     if (tu.lengthSq() < 1e-10 || tv.lengthSq() < 1e-10 || n.lengthSq() < 1e-10) {
       const doc = mesh.meshDoc();
-      return edgeFallback ? edgeConnectedFrame(net.positions, net.adj, index, {
-        handle: mesh.edgeHandle() ?? undefined, roll: doc ? vertexRollOf(doc, index) : 0, ids: doc?.vertexIds,
-      }) : null;
+      return edgeFallback
+        ? edgeConnectedFrame(net.positions, net.adj, index, {
+            handle: mesh.edgeHandle() ?? undefined,
+            roll: doc ? vertexRollOf(doc, index) : 0,
+            ids: doc?.vertexIds,
+          })
+        : null;
     }
     return { tu: tu.normalize(), tv: tv.normalize(), n }; // n already unit from vertexFrame
   }
 
   /** A free point's rolled path frame (edgeConnectedFrame), or null when `index` is not a free point. */
   function freePointFrame(index: number): LocalFrame | null {
-    const net = mesh.net(), doc = mesh.meshDoc();
+    const net = mesh.net(),
+      doc = mesh.meshDoc();
     if (!net || !doc || !isFreePoint(net.adj, index)) return null;
-    return edgeConnectedFrame(net.positions, net.adj, index,
-      { handle: mesh.edgeHandle() ?? undefined, roll: vertexRollOf(doc, index), ids: doc.vertexIds });
+    return edgeConnectedFrame(net.positions, net.adj, index, {
+      handle: mesh.edgeHandle() ?? undefined,
+      roll: vertexRollOf(doc, index),
+      ids: doc.vertexIds,
+    });
   }
 
   /** The single selected corner when it is a free point — the one lone point Rotate applies to. */
   function selectedFreePoint(): number | null {
-    const corner = stage.gizmoKind === 'corner' ? sel.selectedCorner() : null, net = mesh.net();
+    const corner = stage.gizmoKind === 'corner' ? sel.selectedCorner() : null,
+      net = mesh.net();
     return corner !== null && net && isFreePoint(net.adj, corner) ? corner : null;
   }
 
@@ -1068,12 +1255,15 @@ export function createTransformLayer(
 
   /** Average any set of owner corners into one stable tangent frame for a centroid gizmo. */
   function averagedCornerFrame(indices: readonly number[], edgeFallback = false): LocalFrame | null {
-    const sumN = new THREE.Vector3(), sumU = new THREE.Vector3();
+    const sumN = new THREE.Vector3(),
+      sumU = new THREE.Vector3();
     let cnt = 0;
     for (const idx of indices) {
       const f = cornerFrame(idx, edgeFallback);
       if (!f) continue;
-      sumN.add(f.n); sumU.add(f.tu); cnt++;
+      sumN.add(f.n);
+      sumU.add(f.tu);
+      cnt++;
     }
     if (!cnt || sumN.lengthSq() < 1e-8) return null;
     const n = sumN.normalize();
@@ -1089,9 +1279,12 @@ export function createTransformLayer(
   function frameQuat(tu: THREE.Vector3, tv: THREE.Vector3, n: THREE.Vector3): THREE.Quaternion {
     const flipZ = (v: THREE.Vector3) => new THREE.Vector3(v.x, v.y, -v.z); // data dir → flipped scene-root dir
     const yAxis = flipZ(n).normalize();
-    let xAxis = flipZ(tu); xAxis.addScaledVector(yAxis, -xAxis.dot(yAxis)); // project off the normal → in-plane
-    if (xAxis.lengthSq() < 1e-8) { // down-mountain ~parallel to the normal — use the cross-slope dir instead
-      xAxis = flipZ(tv); xAxis.addScaledVector(yAxis, -xAxis.dot(yAxis));
+    let xAxis = flipZ(tu);
+    xAxis.addScaledVector(yAxis, -xAxis.dot(yAxis)); // project off the normal → in-plane
+    if (xAxis.lengthSq() < 1e-8) {
+      // down-mountain ~parallel to the normal — use the cross-slope dir instead
+      xAxis = flipZ(tv);
+      xAxis.addScaledVector(yAxis, -xAxis.dot(yAxis));
     }
     xAxis.normalize();
     const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
@@ -1114,14 +1307,33 @@ export function createTransformLayer(
       setSlideMergePending(false);
     },
     /** The active W / E / R transform tool; rotate / scale are selection-gated (rotationActive / scaleActive). */
-    get mode() { return gizmoMode; },
+    get mode() {
+      return gizmoMode;
+    },
     /** A frozen-net group slide is live (a corner-REGION drag): its updates belong to slideGroupUpdate. */
-    get groupSliding() { return slideGroup !== null; },
-    setGizmoFrame, setPropGizmoFrame, setGizmoMode, shiftKey, applyGizmoFrame,
-    rotationActive, scaleActive,
-    beginRotation, rotateSelection, endRotation,
-    beginScale, scaleSelection, endScale,
-    beginSlide, endSlide, slideRecut, slideProject, slideGroupUpdate, slideProps, slidePoint,
+    get groupSliding() {
+      return slideGroup !== null;
+    },
+    setGizmoFrame,
+    setPropGizmoFrame,
+    setGizmoMode,
+    shiftKey,
+    applyGizmoFrame,
+    rotationActive,
+    scaleActive,
+    beginRotation,
+    rotateSelection,
+    endRotation,
+    beginScale,
+    scaleSelection,
+    endScale,
+    beginSlide,
+    endSlide,
+    slideRecut,
+    slideProject,
+    slideGroupUpdate,
+    slideProps,
+    slidePoint,
   };
 }
 

@@ -7,20 +7,31 @@ import type { LevelProps } from '../src/core/reference/props';
 
 // The prop operations import the shared toast; no rendered DOM is needed by the asset-loading path.
 Object.defineProperty(globalThis, 'document', {
-  configurable: true, value: { getElementById: () => ({ textContent: '', className: '' }) },
+  configurable: true,
+  value: { getElementById: () => ({ textContent: '', className: '' }) },
 });
 const { createPropOps } = await import('../src/app/props/operations');
 const store = createStore({ mdoc: migrateMountain(defaultMountain()), currentMode: 'props', storedUi: {} });
 const levels = new Map<string, LevelProps>();
 const requests: string[] = [];
-let renders = 0, modelRegistrations = 0, groupRegistrations = 0;
+let renders = 0,
+  modelRegistrations = 0,
+  groupRegistrations = 0;
 const ops = createPropOps({
-  store, propLevels: levels, groupDefIdx: new Map(),
+  store,
+  propLevels: levels,
+  groupDefIdx: new Map(),
   viewport: {
-    registerPropModels: () => { modelRegistrations++; },
-    registerGroupDefs: () => { groupRegistrations++; },
+    registerPropModels: () => {
+      modelRegistrations++;
+    },
+    registerGroupDefs: () => {
+      groupRegistrations++;
+    },
   },
-  scheduleRebuild: () => { renders++; },
+  scheduleRebuild: () => {
+    renders++;
+  },
 } as unknown as Parameters<typeof createPropOps>[0]);
 const originalFetch = globalThis.fetch;
 let fail = false;
@@ -31,8 +42,9 @@ globalThis.fetch = async input => {
   requests.push(url);
   await waiting;
   if (fail) return new Response('Unavailable', { status: 503 });
-  return Response.json(url.startsWith('/api/groups') ? { groups: [] }
-    : { level: 'TEST', models: [], instances: [], materials: [] });
+  return Response.json(
+    url.startsWith('/api/groups') ? { groups: [] } : { level: 'TEST', models: [], instances: [], materials: [] },
+  );
 };
 const place = (level: string, group?: string) => {
   store.mdoc.props = [{ id: 'p', name: 'Prop', level, model: 0, pos: [0, 0, 0], yaw: 0, scale: 1, group }];
@@ -44,12 +56,18 @@ try {
   assert.equal(requests.length, 0);
 
   place('TEST', 'group');
-  waiting = new Promise<void>(resolve => { release = resolve; });
+  waiting = new Promise<void>(resolve => {
+    release = resolve;
+  });
   const first = ops.syncPropGeom(false);
   const overlapping = ops.syncPropGeom(false);
   assert.equal(requests.length, 2, 'overlapping snapshots share model and group requests');
   release!();
-  assert.deepEqual(await Promise.all([first, overlapping]), [true, true], 'each waiting snapshot learns that assets arrived');
+  assert.deepEqual(
+    await Promise.all([first, overlapping]),
+    [true, true],
+    'each waiting snapshot learns that assets arrived',
+  );
   assert.equal(renders, 0, 'callers can render newly loaded assets themselves');
   assert.equal(modelRegistrations, 1);
   assert.equal(groupRegistrations, 1);

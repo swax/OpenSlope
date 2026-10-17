@@ -1,4 +1,3 @@
-
 import type { V3 } from '../doc/types';
 import { add, dot, len, mul, norm, sub } from '../math/vec';
 import { cubicPoint, nearestCubicT, patchPoint } from '../math/bezier';
@@ -6,8 +5,17 @@ import { quadControlPoints, vertexAxes, type EdgeHandle, type MeshAdjacency, typ
 import { ekey } from './ops';
 import { readVertex } from './primitives';
 import {
-  SLIDE_EPS, SLIDE_MERGE_SNAP, edgeSlideTargets, planCellSlide, slideQuadrantTargets, slideWeldPairs, vertexSlideWeldPairs,
-  type EdgeSlideItem, type SlidePass, type SlidePlan, type VertexSlideItem,
+  SLIDE_EPS,
+  SLIDE_MERGE_SNAP,
+  edgeSlideTargets,
+  planCellSlide,
+  slideQuadrantTargets,
+  slideWeldPairs,
+  vertexSlideWeldPairs,
+  type EdgeSlideItem,
+  type SlidePass,
+  type SlidePlan,
+  type VertexSlideItem,
 } from './slide';
 
 /**
@@ -59,12 +67,12 @@ export interface SlideExact {
   adj: MeshAdjacency;
   twist?: Record<number, [V3, V3, V3, V3]>;
   anchor0: V3;
-  tu: V3;                       // down-mountain axis tangent = the gizmo's X arrow (unit)
-  tv: V3;                       // cross-slope axis tangent, orienting `vertexAxes`' v pair (unit)
-  padV: V3;                     // the gizmo's Z arrow, `n × tu` (unit, ⟂ tu) — the pad's second coordinate
-  vertex: number;               // the slid corner, or -1 when an edge / cell selection is sliding
-  edges: [number, number][];    // the slid edge / edge loop, empty for a corner / a cell
-  cells: number[];              // the slid cell selection (quad ids), empty for a corner / an edge
+  tu: V3; // down-mountain axis tangent = the gizmo's X arrow (unit)
+  tv: V3; // cross-slope axis tangent, orienting `vertexAxes`' v pair (unit)
+  padV: V3; // the gizmo's Z arrow, `n × tu` (unit, ⟂ tu) — the pad's second coordinate
+  vertex: number; // the slid corner, or -1 when an edge / cell selection is sliding
+  edges: [number, number][]; // the slid edge / edge loop, empty for a corner / a cell
+  cells: number[]; // the slid cell selection (quad ids), empty for a corner / an edge
 }
 
 /**
@@ -78,22 +86,42 @@ export interface SlideExact {
  * — which is the drag vector itself under the arrow, so the quad searches see what they always saw.
  */
 export interface SlideDrag {
-  du: number; dv: number;
-  uOn: boolean; vOn: boolean;   // the axis carries enough travel to name a direction
-  dirU: V3; dirV: V3;           // the signed per-axis drag vectors (`p_axis − anchor0`)
-  pu: V3; pv: V3;               // the pointer, one axis's travel removed
+  du: number;
+  dv: number;
+  uOn: boolean;
+  vOn: boolean; // the axis carries enough travel to name a direction
+  dirU: V3;
+  dirV: V3; // the signed per-axis drag vectors (`p_axis − anchor0`)
+  pu: V3;
+  pv: V3; // the pointer, one axis's travel removed
 }
 
 /** One axis of a drag frame against the frozen net: whether the drag rides it, whether it has anywhere to go (a rim,
  *  or a wedge ahead, pins it at `t = 0` and forbids its merge), and its raw parameter on its own rail. */
-interface SlideAxis { on: boolean; blocked: boolean; raw: number }
+interface SlideAxis {
+  on: boolean;
+  blocked: boolean;
+  raw: number;
+}
 
 /** Which passes a resolved pair of axes emits, at which parameters, and which one merges. */
-interface SlideAxesPlan { tu: number; tv: number; uPass: boolean; vPass: boolean; place: boolean; mergeU: boolean; mergeV: boolean }
+interface SlideAxesPlan {
+  tu: number;
+  tv: number;
+  uPass: boolean;
+  vPass: boolean;
+  place: boolean;
+  mergeU: boolean;
+  mergeV: boolean;
+}
 
 /** One frame of a slide, resolved: the re-cut the host applies, where the gizmo anchor is parked (on the geometry,
  *  not a hair off it), and whether the cursor has run PAST a far end (a release there merges). */
-export interface SlideCut { plan: SlidePlan; pos: V3; merge: boolean }
+export interface SlideCut {
+  plan: SlidePlan;
+  pos: V3;
+  merge: boolean;
+}
 
 /** The travel below which an axis has not yet committed to a sign — the drag names no neighbour, so the frozen net
  *  simply stands. An arrow's other axis is a literal zero and always sits here. */
@@ -106,7 +134,12 @@ const clampSlideT = (t: number) => Math.min(Math.max(t, SLIDE_EPS), 1 - SLIDE_EP
 /** Corner slot A/B/C/D → its patch parameter, the storage contract [A@(u0,v0), B@(u0,v1), C@(u1,v0), D@(u1,v1)] read
  *  as coordinates. The planner's copy of core/mesh/slide.ts's own table: the gizmo parks on the point a `patch` pass
  *  writes, and that point is a `patchPoint` at the fold below. */
-const SLIDE_CORNER_UV: readonly (readonly [number, number])[] = [[0, 0], [0, 1], [1, 0], [1, 1]];
+const SLIDE_CORNER_UV: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [0, 1],
+  [1, 0],
+  [1, 1],
+];
 
 /** An axis the drag does not ride: no pass, no parameter, no merge. */
 const AXIS_OFF: SlideAxis = { on: false, blocked: false, raw: 0 };
@@ -134,13 +167,23 @@ const AXIS_OFF: SlideAxis = { on: false, blocked: false, raw: 0 };
 function resolveSlideAxes(u: SlideAxis, v: SlideAxis): SlideAxesPlan {
   const satU = u.on && !u.blocked && u.raw >= 1 - SLIDE_EPS;
   const satV = v.on && !v.blocked && v.raw >= 1 - SLIDE_EPS;
-  if (satU && !satV && v.raw <= SLIDE_MERGE_SNAP) return { tu: u.raw, tv: 0, uPass: true, vPass: false, place: false, mergeU: true, mergeV: false };
-  if (satV && !satU && u.raw <= SLIDE_MERGE_SNAP) return { tu: 0, tv: v.raw, uPass: false, vPass: true, place: false, mergeU: false, mergeV: true };
+  if (satU && !satV && v.raw <= SLIDE_MERGE_SNAP)
+    return { tu: u.raw, tv: 0, uPass: true, vPass: false, place: false, mergeU: true, mergeV: false };
+  if (satV && !satU && u.raw <= SLIDE_MERGE_SNAP)
+    return { tu: 0, tv: v.raw, uPass: false, vPass: true, place: false, mergeU: false, mergeV: true };
   const uLive = u.on && !u.blocked && u.raw > SLIDE_EPS;
   const vLive = v.on && !v.blocked && v.raw > SLIDE_EPS;
   const uPass = uLive || (u.on && !v.on);
   const vPass = vLive || (v.on && !u.on);
-  return { tu: uPass ? u.raw : 0, tv: vPass ? v.raw : 0, uPass, vPass, place: uLive && vLive, mergeU: false, mergeV: false };
+  return {
+    tu: uPass ? u.raw : 0,
+    tv: vPass ? v.raw : 0,
+    uPass,
+    vPass,
+    place: uLive && vLive,
+    mergeU: false,
+    mergeV: false,
+  };
 }
 
 /** Every vertex a batch of edges moves — their endpoints, each once. These are the `place` pass's subjects: the
@@ -148,7 +191,10 @@ function resolveSlideAxes(u: SlideAxis, v: SlideAxis): SlideAxesPlan {
  *  which is the selection's whole moved rim (a face carries BOTH of its boundaries forward). */
 function slideEdgeVerts(edges: readonly (readonly number[])[]): number[] {
   const seen = new Set<number>();
-  for (const e of edges) { seen.add(e[0]); seen.add(e[1]); }
+  for (const e of edges) {
+    seen.add(e[0]);
+    seen.add(e[1]);
+  }
   return [...seen];
 }
 
@@ -162,14 +208,16 @@ export function frozenPos(s: SlideExact, id: number): V3 {
  *  point at t is exactly where the corner lands; for an edge the anchor rides the selection's centroid, and the copy
  *  turns the anchor's travel into the same parameter the re-cut consumes. */
 function frozenRail(s: SlideExact, from: number, to: number): [V3, V3, V3, V3] {
-  const A = frozenPos(s, from), B = frozenPos(s, to);
+  const A = frozenPos(s, from),
+    B = frozenPos(s, to);
   const o = sub(s.anchor0, A);
   return [add(A, o), add(add(A, s.eh(from, to)), o), add(add(B, s.eh(to, from)), o), add(B, o)];
 }
 
 /** Where a rail's cubic carries the anchor at parameter `t`, held inside the bound core/mesh/slide.ts clamps the geometry
  *  to — so the gizmo parks on the point the doc was re-cut to. */
-const railPoint = (rail: [V3, V3, V3, V3], t: number): V3 => cubicPoint(rail[0], rail[1], rail[2], rail[3], clampSlideT(t));
+const railPoint = (rail: [V3, V3, V3, V3], t: number): V3 =>
+  cubicPoint(rail[0], rail[1], rail[2], rail[3], clampSlideT(t));
 
 /** Where the anchor lands when both axes moved: each rail's own travel, summed. A rail's cubic already starts AT the
  *  anchor (`frozenRail`), so its travel is `point − anchor0`. One rail alone parks straight on its own point — the
@@ -189,13 +237,17 @@ function anchorDistSq(s: SlideExact, id: number): number {
  *  anchor, riding toward the far corner it would arrive at. Nearest, because that is the edge under the user's hand;
  *  any of them would do, since the sub-patch cut moves them all to the same parameter. */
 function leadSlideRail(s: SlideExact, items: readonly EdgeSlideItem[]): [number, number] | null {
-  let bestPair: [number, number] | null = null, bestD = Infinity;
+  let bestPair: [number, number] | null = null,
+    bestD = Infinity;
   for (const { quad, edge } of items) {
     const targets = edgeSlideTargets(s.mesh.quads[quad], edge);
     if (!targets) continue;
     for (const [from, to] of targets) {
       const q = anchorDistSq(s, from);
-      if (q < bestD) { bestD = q; bestPair = [from, to]; }
+      if (q < bestD) {
+        bestD = q;
+        bestPair = [from, to];
+      }
     }
   }
   return bestPair;
@@ -209,17 +261,25 @@ function edgeSlideItems(s: SlideExact, dir: V3): { items: EdgeSlideItem[]; block
   const items: EdgeSlideItem[] = [];
   let blocked = false;
   for (const e of s.edges) {
-    let ahead = -1, best = 0, any = -1;
+    let ahead = -1,
+      best = 0,
+      any = -1;
     for (const q of s.adj.edgeQuads.get(ekey(e[0], e[1])) ?? []) {
       const targets = edgeSlideTargets(s.mesh.quads[q], e);
       if (!targets) continue; // a wedge / a non-boundary edge — exactly what slideEdgesInQuads skips
       if (any < 0) any = q;
       const rail = sub(frozenPos(s, targets[0][1]), frozenPos(s, targets[0][0]));
       const k = dot(rail, dir);
-      if (k > best) { best = k; ahead = q; }
+      if (k > best) {
+        best = k;
+        ahead = q;
+      }
     }
     if (ahead >= 0) items.push({ quad: ahead, edge: e });
-    else if (any >= 0) { items.push({ quad: any, edge: e }); blocked = true; }
+    else if (any >= 0) {
+      items.push({ quad: any, edge: e });
+      blocked = true;
+    }
   }
   return { items, blocked };
 }
@@ -232,12 +292,16 @@ function vertexSlideItems(s: SlideExact, verts: readonly number[], dir: V3): Ver
   const d = norm(dir);
   const out: VertexSlideItem[] = [];
   for (const V of verts) {
-    let toward = -1, best = 0;
+    let toward = -1,
+      best = 0;
     for (const n of s.adj.neighbors[V] ?? []) {
       const w = sub(frozenPos(s, n), frozenPos(s, V));
       if (len(w) < 1e-12) continue;
       const a = dot(norm(w), d);
-      if (a > best) { best = a; toward = n; }
+      if (a > best) {
+        best = a;
+        toward = n;
+      }
     }
     if (toward >= 0) out.push({ vertex: V, toward, t: 0 });
   }
@@ -247,20 +311,22 @@ function vertexSlideItems(s: SlideExact, verts: readonly number[], dir: V3): Ver
 /** The endpoint closest to the handle is the selection's lead along-edge rail. Keeping this choice shared between
  *  the gizmo and the planner makes the curve drawn under the handle the exact curve used to read the drag. */
 function leadVertexSlideItem(s: SlideExact, items: readonly VertexSlideItem[]): VertexSlideItem | null {
-  return items.length ? items.reduce((a, b) => anchorDistSq(s, a.vertex) <= anchorDistSq(s, b.vertex) ? a : b) : null;
+  return items.length ? items.reduce((a, b) => (anchorDistSq(s, a.vertex) <= anchorDistSq(s, b.vertex) ? a : b)) : null;
 }
 
 /** Which of the two gizmo arrows the SELECTED EDGES travel down: their mean rail direction, unsigned (an edge's rail
  *  points opposite ways in its two quads, and a loop's edges need not agree either) against the pad's own orthonormal
  *  axes. The winner slides the edges ACROSS their quads; the loser slides their endpoints ALONG. */
 function edgesRunAcross(s: SlideExact): boolean {
-  let au = 0, av = 0;
+  let au = 0,
+    av = 0;
   for (const e of s.edges) {
     for (const q of s.adj.edgeQuads.get(ekey(e[0], e[1])) ?? []) {
       const targets = edgeSlideTargets(s.mesh.quads[q], e);
       if (!targets) continue;
       const r = norm(sub(frozenPos(s, targets[0][1]), frozenPos(s, targets[0][0])));
-      au += Math.abs(dot(r, s.tu)); av += Math.abs(dot(r, s.padV));
+      au += Math.abs(dot(r, s.tu));
+      av += Math.abs(dot(r, s.padV));
       break; // one quad names the rail's axis; the other names its negation
     }
   }
@@ -281,18 +347,30 @@ function quadrantQuad(s: SlideExact, V: number, nu: number, nv: number): number 
  *  three vertices are not a corner of `quad` and its two CYCLE-adjacent neighbours on different axes (a diagonal, a
  *  repeat, a stranger), or `quad` is a WEDGE whose collapsed row carries no second axis — exactly the cases
  *  `slideVertexOnPatch` refuses, so a null here is the signal to slide one axis instead. */
-function quadrantPoint(s: SlideExact, quad: number, V: number, nu: number, nv: number, tu: number, tv: number): V3 | null {
+function quadrantPoint(
+  s: SlideExact,
+  quad: number,
+  V: number,
+  nu: number,
+  nv: number,
+  tu: number,
+  tv: number,
+): V3 | null {
   const verts = s.mesh.quads[quad];
   if (!verts || verts[2] === verts[3]) return null;
-  const sV = verts.indexOf(V), sU = verts.indexOf(nu), sW = verts.indexOf(nv);
+  const sV = verts.indexOf(V),
+    sU = verts.indexOf(nu),
+    sW = verts.indexOf(nv);
   if (sV < 0 || sU < 0 || sW < 0) return null;
   const uv = SLIDE_CORNER_UV[sV];
   /** The ONE coordinate two corner slots differ in (0 = u, 1 = v), or −1 for the diagonal / the same corner. */
   const slotAxis = (b: readonly [number, number]): number => {
-    const du = uv[0] !== b[0], dv = uv[1] !== b[1];
+    const du = uv[0] !== b[0],
+      dv = uv[1] !== b[1];
     return du === dv ? -1 : du ? 0 : 1;
   };
-  const cU = slotAxis(SLIDE_CORNER_UV[sU]), cW = slotAxis(SLIDE_CORNER_UV[sW]);
+  const cU = slotAxis(SLIDE_CORNER_UV[sU]),
+    cW = slotAxis(SLIDE_CORNER_UV[sW]);
   if (cU < 0 || cW < 0 || cU === cW) return null;
   const at: [number, number] = [uv[0], uv[1]];
   at[cU] = uv[cU] === 0 ? clampSlideT(tu) : 1 - clampSlideT(tu);
@@ -328,9 +406,11 @@ export function slideRail(s: SlideExact, dir: V3): [V3, V3, V3, V3] | null {
       return lead ? frozenRail(s, lead.vertex, lead.toward) : null;
     }
   }
-  const found = s.cells.length ? planCellSlide(s.mesh, s.adj, s.cells, dir, id => frozenPos(s, id))
-    : s.edges.length ? edgeSlideItems(s, dir)
-    : null;
+  const found = s.cells.length
+    ? planCellSlide(s.mesh, s.adj, s.cells, dir, id => frozenPos(s, id))
+    : s.edges.length
+      ? edgeSlideItems(s, dir)
+      : null;
   if (!found || found.blocked || !found.items.length) return null;
   const lead = leadSlideRail(s, found.items);
   return lead && frozenRail(s, lead[0], lead[1]);
@@ -347,7 +427,8 @@ export function slideDragFrame(s: SlideExact, ax: 'X' | 'Z' | 'XZ', p: V3): Slid
   const d = sub(p, s.anchor0);
   const du = ax === 'Z' ? 0 : dot(d, s.tu);
   const dv = ax === 'X' ? 0 : dot(d, s.padV);
-  const uOn = Math.abs(du) >= SLIDE_DEADZONE, vOn = Math.abs(dv) >= SLIDE_DEADZONE;
+  const uOn = Math.abs(du) >= SLIDE_DEADZONE,
+    vOn = Math.abs(dv) >= SLIDE_DEADZONE;
   if (!uOn && !vOn) return null;
   const pu = vOn ? sub(p, mul(s.padV, dv)) : p;
   const pv = uOn ? sub(p, mul(s.tu, du)) : p;
@@ -397,10 +478,15 @@ function planCornerSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
   if (r.place && U && V) {
     const quad = quadrantQuad(s, s.vertex, U.toward, V.toward);
     const pos = quad < 0 ? null : quadrantPoint(s, quad, s.vertex, U.toward, V.toward, r.tu, r.tv);
-    if (pos) return {
-      plan: { passes: [{ kind: 'patch', quad, vertex: s.vertex, towardU: U.toward, tu: r.tu, towardV: V.toward, tv: r.tv }], weld: [] },
-      pos, merge: false, // a corner inside its quadrant quad has arrived at no vertex: there is nothing to fuse with
-    };
+    if (pos)
+      return {
+        plan: {
+          passes: [{ kind: 'patch', quad, vertex: s.vertex, towardU: U.toward, tu: r.tu, towardV: V.toward, tv: r.tv }],
+          weld: [],
+        },
+        pos,
+        merge: false, // a corner inside its quadrant quad has arrived at no vertex: there is nothing to fuse with
+      };
     const uDom = Math.abs(g.du) >= Math.abs(g.dv); // no quadrant quad: the axis the drag leans on carries it alone
     r = resolveSlideAxes(uDom ? U.st : AXIS_OFF, uDom ? AXIS_OFF : V.st);
   }
@@ -411,7 +497,10 @@ function planCornerSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
   // `slideVerticesAlongEdges` clamps short of it, so the drag holds there and a release merges the two.
   const merge = r.mergeU || r.mergeV;
   return {
-    plan: { passes: [{ kind: 'verts', items: [{ vertex: s.vertex, toward: A.toward, t: A.t }] }], weld: merge ? [[s.vertex, A.toward]] : [] },
+    plan: {
+      passes: [{ kind: 'verts', items: [{ vertex: s.vertex, toward: A.toward, t: A.t }] }],
+      weld: merge ? [[s.vertex, A.toward]] : [],
+    },
     pos: railPoint(A.rail, A.t),
     merge,
   };
@@ -446,7 +535,11 @@ function planEdgesSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
     const lead = items.length ? leadSlideRail(s, items) : null;
     if (lead) {
       const rail = frozenRail(s, lead[0], lead[1]);
-      across = { items, rail, st: { on: true, blocked, raw: blocked ? 0 : nearestCubicT(rail[0], rail[1], rail[2], rail[3], probeA) } };
+      across = {
+        items,
+        rail,
+        st: { on: true, blocked, raw: blocked ? 0 : nearestCubicT(rail[0], rail[1], rail[2], rail[3], probeA) },
+      };
     }
   }
   let along: { items: VertexSlideItem[]; rail: [V3, V3, V3, V3]; st: SlideAxis } | null = null;
@@ -455,10 +548,15 @@ function planEdgesSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
     const near = leadVertexSlideItem(s, items);
     if (near) {
       const rail = frozenRail(s, near.vertex, near.toward);
-      along = { items, rail, st: { on: true, blocked: false, raw: nearestCubicT(rail[0], rail[1], rail[2], rail[3], probeB) } };
+      along = {
+        items,
+        rail,
+        st: { on: true, blocked: false, raw: nearestCubicT(rail[0], rail[1], rail[2], rail[3], probeB) },
+      };
     }
   }
-  const stA = across?.st ?? AXIS_OFF, stB = along?.st ?? AXIS_OFF;
+  const stA = across?.st ?? AXIS_OFF,
+    stB = along?.st ?? AXIS_OFF;
   const r = resolveSlideAxes(acrossU ? stA : stB, acrossU ? stB : stA);
   const [passA, tA, mergeA] = acrossU ? [r.uPass, r.tu, r.mergeU] : [r.vPass, r.tv, r.mergeV];
   const [passB, tB, mergeB] = acrossU ? [r.vPass, r.tv, r.mergeV] : [r.uPass, r.tu, r.mergeU];
@@ -467,15 +565,28 @@ function planEdgesSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
   if (passA && across) passes.push({ kind: 'edges', items: across.items, t: tA });
   const alongItems = along ? along.items.map(it => ({ ...it, t: tB })) : [];
   if (passB && along) passes.push({ kind: 'verts', items: alongItems });
-  if (r.place) passes.push({ kind: 'place', items: slideQuadrantTargets(s.mesh, s.eh, s.adj, ends, g.dirU, g.dirV, r.tu, r.tv, s.twist) });
+  if (r.place)
+    passes.push({
+      kind: 'place',
+      items: slideQuadrantTargets(s.mesh, s.eh, s.adj, ends, g.dirU, g.dirV, r.tu, r.tv, s.twist),
+    });
 
-  const pos = railSum(s, passA && across ? railPoint(across.rail, tA) : null, passB && along ? railPoint(along.rail, tB) : null);
+  const pos = railSum(
+    s,
+    passA && across ? railPoint(across.rail, tA) : null,
+    passB && along ? railPoint(along.rail, tB) : null,
+  );
   if (!pos) return null; // no quad ahead of any edge and no endpoint to run along: the frozen net stands
   return {
     // the across merge fuses each moved corner into the far corner it arrived at; the along merge fuses only the run's
     // LEAD endpoint — every earlier one merely vacates a seat its successor has already left
-    plan: { passes, weld: mergeA && across ? slideWeldPairs(s.mesh.quads, across.items) : mergeB ? vertexSlideWeldPairs(alongItems) : [] },
-    pos, merge: r.mergeU || r.mergeV,
+    plan: {
+      passes,
+      weld:
+        mergeA && across ? slideWeldPairs(s.mesh.quads, across.items) : mergeB ? vertexSlideWeldPairs(alongItems) : [],
+    },
+    pos,
+    merge: r.mergeU || r.mergeV,
   };
 }
 
@@ -507,7 +618,8 @@ function planCellsSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
     const raw = plan.blocked ? 0 : nearestCubicT(rail[0], rail[1], rail[2], rail[3], probe);
     return { plan, rail, st: { on: true, blocked: plan.blocked, raw } as SlideAxis };
   };
-  const U = seat(g.uOn, g.dirU, g.pu), V = seat(g.vOn, g.dirV, g.pv);
+  const U = seat(g.uOn, g.dirU, g.pu),
+    V = seat(g.vOn, g.dirV, g.pv);
   if (!U && !V) return null;
 
   const r = resolveSlideAxes(U?.st ?? AXIS_OFF, V?.st ?? AXIS_OFF);
@@ -516,12 +628,16 @@ function planCellsSlide(s: SlideExact, g: SlideDrag): SlideCut | null {
   if (r.vPass && V) passes.push({ kind: 'edges', items: V.plan.items, t: r.tv });
   if (r.place && U && V) {
     const moved = slideEdgeVerts([...U.plan.items, ...V.plan.items].map(it => it.edge)); // the selection's whole moved rim
-    passes.push({ kind: 'place', items: slideQuadrantTargets(s.mesh, s.eh, s.adj, moved, g.dirU, g.dirV, r.tu, r.tv, s.twist) });
+    passes.push({
+      kind: 'place',
+      items: slideQuadrantTargets(s.mesh, s.eh, s.adj, moved, g.dirU, g.dirV, r.tu, r.tv, s.twist),
+    });
   }
   const pos = railSum(s, r.uPass && U ? railPoint(U.rail, r.tu) : null, r.vPass && V ? railPoint(V.rail, r.tv) : null);
   if (!pos) return null;
   return {
     plan: { passes, weld: r.mergeU && U ? U.plan.weld : r.mergeV && V ? V.plan.weld : [] },
-    pos, merge: r.mergeU || r.mergeV,
+    pos,
+    merge: r.mergeU || r.mergeV,
   };
 }

@@ -1,8 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-  FAL_3D_MODELS, FAL_MODELS, createFalGenerationProvenance, estimateUsd,
-  fal3dModel, falEndpointMayGenerate, usdText, type FalGenerationProvenance,
+  FAL_3D_MODELS,
+  FAL_MODELS,
+  createFalGenerationProvenance,
+  estimateUsd,
+  fal3dModel,
+  falEndpointMayGenerate,
+  usdText,
+  type FalGenerationProvenance,
 } from '../../core/paint/fal-models';
 import { MAX_IMPORT_TRIS } from '../../core/props/imported';
 import { THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION } from './thumb-renderer';
@@ -39,9 +45,9 @@ const CONCEPT_SIZE = 1024;
 /** The fixed half of the prompt: everything that makes the image an OBJECT SHOT the image-to-3D models are
  *  built for — one subject, clean background, most of the frame — rather than a scene. */
 const PROP_GUIDANCE =
-  'A single isolated object, whole and fully in frame, filling most of the frame, centered on a plain flat '
-  + 'light grey background, three-quarter view, even studio lighting, no cast shadow, no text, no watermark, '
-  + 'no people.';
+  'A single isolated object, whole and fully in frame, filling most of the frame, centered on a plain flat ' +
+  'light grey background, three-quarter view, even studio lighting, no cast shadow, no text, no watermark, ' +
+  'no people.';
 
 const propPromptFor = (subject: string) => (subject ? `${subject}. ${PROP_GUIDANCE}` : PROP_GUIDANCE);
 
@@ -63,9 +69,9 @@ export interface PropGenDeps {
 
 /** Open the Generate prop dialog. Nothing is billed until Generate / Build, nothing stored until Add. */
 export function openPropGenDialog(deps: PropGenDeps): void {
-  ensureTexGenStyles();   // this dialog wears the Generate texture dialog's chrome
+  ensureTexGenStyles(); // this dialog wears the Generate texture dialog's chrome
   const prefs = { ...loadSettings().propGen };
-  const { host, close: closeModal } = modal({ sticky: true });   // a paid mesh must not die to a stray click
+  const { host, close: closeModal } = modal({ sticky: true }); // a paid mesh must not die to a stray click
   const onEsc = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();
@@ -86,13 +92,17 @@ export function openPropGenDialog(deps: PropGenDeps): void {
   // ---- no-key banner (same contract as the other generators: explain before asking) ----
   const banner = document.createElement('div');
   banner.className = 'banner';
-  banner.textContent = 'No fal.ai API key yet. Generation calls fal.ai with your own key and bills your '
-    + 'own account — add one to switch this on.';
+  banner.textContent =
+    'No fal.ai API key yet. Generation calls fal.ai with your own key and bills your ' +
+    'own account — add one to switch this on.';
   const bannerBtn = document.createElement('button');
   bannerBtn.type = 'button';
   bannerBtn.className = 'sp-btn';
   bannerBtn.textContent = 'Open Settings…';
-  bannerBtn.onclick = () => { close(); openSettingsDialog(); };
+  bannerBtn.onclick = () => {
+    close();
+    openSettingsDialog();
+  };
   banner.appendChild(bannerBtn);
 
   // ---- subject ----
@@ -105,8 +115,8 @@ export function openPropGenDialog(deps: PropGenDeps): void {
   subject.placeholder = 'a weathered wooden trail sign on a single post';
   const subjectHint = document.createElement('p');
   subjectHint.className = 'hint';
-  subjectHint.textContent = 'One thing, not a scene. The studio-shot wording is added for you, and the '
-    + 'prop is named from this too.';
+  subjectHint.textContent =
+    'One thing, not a scene. The studio-shot wording is added for you, and the ' + 'prop is named from this too.';
 
   const presets = document.createElement('div');
   presets.className = 'presets';
@@ -115,11 +125,17 @@ export function openPropGenDialog(deps: PropGenDeps): void {
     b.type = 'button';
     b.className = 'sp-btn';
     b.textContent = p.label;
-    b.onclick = () => { subject.value = p.subject; onChanged(); };
+    b.onclick = () => {
+      subject.value = p.subject;
+      onChanged();
+    };
     presets.appendChild(b);
   }
 
-  const rig = promptRig(() => propPromptFor(subject.value.trim()), () => onChanged());
+  const rig = promptRig(
+    () => propPromptFor(subject.value.trim()),
+    () => onChanged(),
+  );
 
   // ---- the two models, priced apart ----
   const imgLabel = document.createElement('label');
@@ -207,8 +223,9 @@ export function openPropGenDialog(deps: PropGenDeps): void {
   const colsHint = document.createElement('p');
   colsHint.className = 'hint';
   // A generated model has no real-world scale of its own, hence the explicit imported size.
-  colsHint.textContent = 'Longest side lands at this size (⇧scroll resizes a placed prop). '
-    + 'Re-using a name replaces that model wherever it is placed.';
+  colsHint.textContent =
+    'Longest side lands at this size (⇧scroll resizes a placed prop). ' +
+    'Re-using a name replaces that model wherever it is placed.';
 
   // ---- the two result slots: concept image, then the mesh built from it ----
   const slots = document.createElement('div');
@@ -218,7 +235,7 @@ export function openPropGenDialog(deps: PropGenDeps): void {
     const wrap = document.createElement('div');
     const slot = document.createElement('div');
     slot.className = 'slot empty';
-    slot.style.backgroundSize = 'contain';   // the object, whole — not a crop of it
+    slot.style.backgroundSize = 'contain'; // the object, whole — not a crop of it
     slot.textContent = placeholder;
     const capEl = document.createElement('div');
     capEl.className = 'slot-cap';
@@ -251,10 +268,30 @@ export function openPropGenDialog(deps: PropGenDeps): void {
   add.className = 'sp-btn accent';
   actions.append(cancel, genImg, build, add);
 
-  host.append(title, banner, subjectLabel, subject, subjectHint, presets, rig.el,
-    imgLabel, imgSel, imgRights, meshLabel, meshSel, meshHint, meshRights,
-    detailLabel, detailSel, detailHint,
-    cols, colsHint, slots, previewCap, actions);
+  host.append(
+    title,
+    banner,
+    subjectLabel,
+    subject,
+    subjectHint,
+    presets,
+    rig.el,
+    imgLabel,
+    imgSel,
+    imgRights,
+    meshLabel,
+    meshSel,
+    meshHint,
+    meshRights,
+    detailLabel,
+    detailSel,
+    detailHint,
+    cols,
+    colsHint,
+    slots,
+    previewCap,
+    actions,
+  );
 
   // ---- live state ----
   let concept: HTMLCanvasElement | null = null;
@@ -284,13 +321,15 @@ export function openPropGenDialog(deps: PropGenDeps): void {
     const described = !!subject.value.trim() || rig.edited();
     genImg.disabled = !!busy || !keyed || !described || !falEndpointMayGenerate(imgSel.value);
     genImg.textContent = busy === 'image' ? 'Generating…' : concept ? 'Regenerate image' : 'Generate image';
-    build.disabled = !!busy || !keyed || !concept || !conceptModel
-      || !falEndpointMayGenerate(meshSel.value);
+    build.disabled = !!busy || !keyed || !concept || !conceptModel || !falEndpointMayGenerate(meshSel.value);
     build.textContent = busy === 'mesh' ? 'Building…' : glb ? 'Rebuild 3D' : 'Build 3D model';
     add.disabled = !!busy || !glb || !glbGeneration;
     add.textContent = busy === 'import' ? 'Importing…' : 'Add to library';
   };
-  const onChanged = () => { rig.sync(); refresh(); };
+  const onChanged = () => {
+    rig.sync();
+    refresh();
+  };
 
   const showIn = (slot: { slot: HTMLDivElement }, url: string) => {
     slot.slot.classList.remove('empty');
@@ -299,7 +338,10 @@ export function openPropGenDialog(deps: PropGenDeps): void {
   };
 
   imgSel.onchange = refresh;
-  meshSel.onchange = () => { syncDetail(); refresh(); };
+  meshSel.onchange = () => {
+    syncDetail();
+    refresh();
+  };
 
   genImg.onclick = async () => {
     const key = loadSettings().falKey.trim();
@@ -309,8 +351,11 @@ export function openPropGenDialog(deps: PropGenDeps): void {
     previewCap.textContent = 'Painting the concept image — a few seconds…';
     try {
       const usedModel = imgSel.value;
-      const { image } = await postFal('/api/fal-texture', key,
-        { model: usedModel, prompt: rig.value(), size: CONCEPT_SIZE });
+      const { image } = await postFal('/api/fal-texture', key, {
+        model: usedModel,
+        prompt: rig.value(),
+        size: CONCEPT_SIZE,
+      });
       concept = image;
       conceptModel = usedModel;
       showIn(conceptSlot, image.toDataURL('image/png'));
@@ -336,7 +381,9 @@ export function openPropGenDialog(deps: PropGenDeps): void {
       const usedMeshModel = meshSel.value;
       const mesh = fal3dModel(usedMeshModel);
       const res = await falFetch('/api/fal-3d', key, {
-        model: usedMeshModel, prompt: rig.value(), image: concept.toDataURL('image/png'),
+        model: usedMeshModel,
+        prompt: rig.value(),
+        image: concept.toDataURL('image/png'),
         ...(mesh?.details?.length ? { detail: detailSel.value } : {}),
       });
       const blob = await res.blob();
@@ -350,8 +397,10 @@ export function openPropGenDialog(deps: PropGenDeps): void {
       meshView.set(parsed.scene);
       meshSlot.cap.textContent = '3D model — drag to orbit';
       const over = tris > MAX_IMPORT_TRIS;
-      previewCap.textContent = `${tris.toLocaleString()} tris · ${verts.toLocaleString()} verts`
-        + (over ? ` — past the ${MAX_IMPORT_TRIS.toLocaleString()} import cap, so Add will refuse; rebuild (Trellis simplifies hardest)`
+      previewCap.textContent =
+        `${tris.toLocaleString()} tris · ${verts.toLocaleString()} verts` +
+        (over
+          ? ` — past the ${MAX_IMPORT_TRIS.toLocaleString()} import cap, so Add will refuse; rebuild (Trellis simplifies hardest)`
           : ' — look it over, set the size, and add it to the library.');
       saveSettings({ propGen: { ...loadSettings().propGen, meshModel: meshSel.value, meshDetail: detailSel.value } });
     } catch (e) {
@@ -373,7 +422,9 @@ export function openPropGenDialog(deps: PropGenDeps): void {
     try {
       const file = new File([glb], `${stem}.glb`, { type: 'model/gltf-binary' });
       await deps.importGlb(file, meters, glbGeneration);
-      saveSettings({ propGen: { imageModel: imgSel.value, meshModel: meshSel.value, meshDetail: detailSel.value, sizeM: meters } });
+      saveSettings({
+        propGen: { imageModel: imgSel.value, meshModel: meshSel.value, meshDetail: detailSel.value, sizeM: meters },
+      });
       close();
     } catch (e) {
       busy = false;
@@ -383,7 +434,12 @@ export function openPropGenDialog(deps: PropGenDeps): void {
   };
 
   subject.oninput = onChanged;
-  subject.onkeydown = e => { if (e.key === 'Enter' && !genImg.disabled) { e.preventDefault(); genImg.click(); } };
+  subject.onkeydown = e => {
+    if (e.key === 'Enter' && !genImg.disabled) {
+      e.preventDefault();
+      genImg.click();
+    }
+  };
   onChanged();
   subject.focus();
 }
@@ -391,7 +447,8 @@ export function openPropGenDialog(deps: PropGenDeps): void {
 /** Triangle / vertex counts across every mesh in a loaded glTF scene — caption estimates; the importer
  *  recounts exactly (and enforces the cap) when the model is actually added. */
 function countGeo(scene: THREE.Object3D): { tris: number; verts: number } {
-  let tris = 0, verts = 0;
+  let tris = 0,
+    verts = 0;
   scene.traverse(o => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh || !mesh.geometry) return;
@@ -403,8 +460,8 @@ function countGeo(scene: THREE.Object3D): { tris: number; verts: number } {
   return { tris, verts };
 }
 
-const ORBIT_SENSITIVITY = 0.01;   // radians of orbit per pixel dragged — matches the Prop Tools preview
-const MAX_ELEVATION = 1.45;       // clamp the pitch just shy of straight over / under the model
+const ORBIT_SENSITIVITY = 0.01; // radians of orbit per pixel dragged — matches the Prop Tools preview
+const MAX_ELEVATION = 1.45; // clamp the pitch just shy of straight over / under the model
 const VIEW_FOV = 35;
 
 /**
@@ -419,7 +476,7 @@ class MeshOrbitView {
   readonly el = document.createElement('div');
   private renderer: THREE.WebGLRenderer | null = null;
   private world = new THREE.Scene();
-  private holder = new THREE.Group();   // the parsed scene swaps inside this
+  private holder = new THREE.Group(); // the parsed scene swaps inside this
   private cam = new THREE.PerspectiveCamera(VIEW_FOV, 1, 0.01, 100);
   private centre = new THREE.Vector3();
   private dist = 1;
@@ -447,7 +504,7 @@ class MeshOrbitView {
     const box = new THREE.Box3().setFromObject(scene);
     box.getCenter(this.centre);
     const radius = Math.max(1e-6, box.getSize(new THREE.Vector3()).length() / 2);
-    this.dist = (radius / Math.tan((VIEW_FOV * Math.PI / 180) / 2)) * 1.1;
+    this.dist = (radius / Math.tan((VIEW_FOV * Math.PI) / 180 / 2)) * 1.1;
     this.cam.near = this.dist / 100;
     this.cam.far = this.dist * 10;
     this.cam.updateProjectionMatrix();
@@ -476,7 +533,10 @@ class MeshOrbitView {
   private scheduleDraw() {
     if (this.drawQueued) return;
     this.drawQueued = true;
-    requestAnimationFrame(() => { this.drawQueued = false; this.draw(); });
+    requestAnimationFrame(() => {
+      this.drawQueued = false;
+      this.draw();
+    });
   }
 
   /** Pointer drag orbits (horizontal → azimuth, vertical → elevation); pointer capture keeps the drag
@@ -493,7 +553,7 @@ class MeshOrbitView {
     });
     this.el.addEventListener('pointermove', e => {
       if (!this.dragging) return;
-      this.azimuth -= (e.clientX - this.lastX) * ORBIT_SENSITIVITY;   // drag right → the model turns to follow
+      this.azimuth -= (e.clientX - this.lastX) * ORBIT_SENSITIVITY; // drag right → the model turns to follow
       this.elevation += (e.clientY - this.lastY) * ORBIT_SENSITIVITY; // drag down → look from lower
       this.elevation = Math.max(-MAX_ELEVATION, Math.min(MAX_ELEVATION, this.elevation));
       this.lastX = e.clientX;
@@ -504,7 +564,11 @@ class MeshOrbitView {
       if (!this.dragging) return;
       this.dragging = false;
       this.el.style.cursor = 'grab';
-      try { this.el.releasePointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+      try {
+        this.el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* pointer already gone */
+      }
     };
     this.el.addEventListener('pointerup', end);
     this.el.addEventListener('pointercancel', end);

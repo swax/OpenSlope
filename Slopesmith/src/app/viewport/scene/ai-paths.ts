@@ -27,10 +27,17 @@ export function createAiPathsLayer(stage: Stage) {
     group.visible = visible && built;
     if (!course || !built) return;
     for (const line of aiPathLines(course, seed)) {
-      group.add(new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints(line.map(p => { const q = flip(p); return new THREE.Vector3(q[0], q[1], q[2]); })),
-        mat,
-      ));
+      group.add(
+        new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(
+            line.map(p => {
+              const q = flip(p);
+              return new THREE.Vector3(q[0], q[1], q[2]);
+            }),
+          ),
+          mat,
+        ),
+      );
     }
   }
 
@@ -41,7 +48,9 @@ export function createAiPathsLayer(stage: Stage) {
   }
 
   /** Fade the lines back while a replacement course is being drawn (1 restores them). */
-  function setFade(factor: number) { fadeMaterial(mat, factor); }
+  function setFade(factor: number) {
+    fadeMaterial(mat, factor);
+  }
 
   stage.scene.add(group);
   return { setCourse, setVisible, setFade };

@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import {
-  BOARD_COLLISION_Y, BOARD_HALF_LENGTH, BOARD_HALF_WIDTH, RIDER_BODY_Y, RIDER_HEAD_Y, RIDER_SHOULDER_R,
-  RIDER_TORSO_Y, WORLD_UP,
+  BOARD_COLLISION_Y,
+  BOARD_HALF_LENGTH,
+  BOARD_HALF_WIDTH,
+  RIDER_BODY_Y,
+  RIDER_HEAD_Y,
+  RIDER_SHOULDER_R,
+  RIDER_TORSO_Y,
+  WORLD_UP,
 } from './physics-tuning';
 
 /**
@@ -28,14 +34,20 @@ export const RIDER_PROBE_SAMPLES = 13;
  * for ordinary walls because its forward corners lead the torso.
  */
 export function riderProbeOffsets(
-  forward: THREE.Vector3, right: THREE.Vector3, up: THREE.Vector3, out: readonly THREE.Vector3[],
+  forward: THREE.Vector3,
+  right: THREE.Vector3,
+  up: THREE.Vector3,
+  out: readonly THREE.Vector3[],
 ): void {
   let at = 0;
   for (let ai = -1; ai <= 1; ai++) {
     const along = ai * BOARD_HALF_LENGTH;
     for (let bi = -1; bi <= 1; bi++) {
-      out[at++].copy(forward).multiplyScalar(along)
-        .addScaledVector(right, bi * BOARD_HALF_WIDTH).addScaledVector(up, BOARD_COLLISION_Y);
+      out[at++]
+        .copy(forward)
+        .multiplyScalar(along)
+        .addScaledVector(right, bi * BOARD_HALF_WIDTH)
+        .addScaledVector(up, BOARD_COLLISION_Y);
     }
   }
   out[9].copy(WORLD_UP).multiplyScalar(RIDER_TORSO_Y);

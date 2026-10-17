@@ -34,7 +34,7 @@ export type NamedCoincidentVertices = Omit<CoincidentVertices, 'vertices'> & { v
 
 /** Both ends of an edge in canonical order, so one undirected edge has exactly one named form. Ids are
  *  opaque strings, so the order is theirs rather than the array positions they happen to sit at today. */
-export const canonicalNamedEdge = (a: VertexName, b: VertexName): NamedEdge => a <= b ? [a, b] : [b, a];
+export const canonicalNamedEdge = (a: VertexName, b: VertexName): NamedEdge => (a <= b ? [a, b] : [b, a]);
 
 // The id→index map docs/039 has the document rebuild on load, cached per identity array. Every op hands back
 // fresh arrays, so the cache turns over with the topology; the size check catches an in-place append.
@@ -50,8 +50,7 @@ function lookup(ids: readonly string[]): Map<string, number> {
 
 export const vertexIndex = (doc: QuadMeshDoc, name: VertexName): number | null =>
   lookup(doc.vertexIds).get(name) ?? null;
-export const quadIndex = (doc: QuadMeshDoc, name: QuadName): number | null =>
-  lookup(doc.quadIds).get(name) ?? null;
+export const quadIndex = (doc: QuadMeshDoc, name: QuadName): number | null => lookup(doc.quadIds).get(name) ?? null;
 export const vertexName = (doc: QuadMeshDoc, index: number): VertexName | null => doc.vertexIds[index] ?? null;
 export const quadName = (doc: QuadMeshDoc, index: number): QuadName | null => doc.quadIds[index] ?? null;
 
@@ -81,23 +80,32 @@ export const quadIndices = (doc: QuadMeshDoc, names: Iterable<QuadName>): number
   [...names].flatMap(name => quadIndex(doc, name) ?? []);
 
 export function namedEdge(doc: QuadMeshDoc, edge: readonly [number, number]): NamedEdge | null {
-  const a = vertexName(doc, edge[0]), b = vertexName(doc, edge[1]);
+  const a = vertexName(doc, edge[0]),
+    b = vertexName(doc, edge[1]);
   return a === null || b === null ? null : canonicalNamedEdge(a, b);
 }
 
 export function edgeIndex(doc: QuadMeshDoc, edge: readonly [VertexName, VertexName]): [number, number] | null {
-  const a = vertexIndex(doc, edge[0]), b = vertexIndex(doc, edge[1]);
+  const a = vertexIndex(doc, edge[0]),
+    b = vertexIndex(doc, edge[1]);
   return a === null || b === null ? null : a < b ? [a, b] : [b, a];
 }
 
 export const namedEdges = (doc: QuadMeshDoc, edges: Iterable<readonly [number, number]>): NamedEdge[] =>
-  [...edges].flatMap(edge => { const named = namedEdge(doc, edge); return named ? [named] : []; });
+  [...edges].flatMap(edge => {
+    const named = namedEdge(doc, edge);
+    return named ? [named] : [];
+  });
 export const edgeIndices = (doc: QuadMeshDoc, edges: Iterable<readonly [VertexName, VertexName]>): [number, number][] =>
-  [...edges].flatMap(edge => { const at = edgeIndex(doc, edge); return at ? [at] : []; });
+  [...edges].flatMap(edge => {
+    const at = edgeIndex(doc, edge);
+    return at ? [at] : [];
+  });
 
 /** A directed edge keeps its direction: a crease handle belongs to the end that owns it. */
 export function directedEdgeIndex(doc: QuadMeshDoc, from: VertexName, to: VertexName): [number, number] | null {
-  const a = vertexIndex(doc, from), b = vertexIndex(doc, to);
+  const a = vertexIndex(doc, from),
+    b = vertexIndex(doc, to);
   return a === null || b === null ? null : [a, b];
 }
 
@@ -108,15 +116,18 @@ export function controlPointIndex(doc: QuadMeshDoc, id: MeshControlPointId): Mes
     return vertex === null ? null : { kind: 'vertex', vertex };
   }
   if (id.kind === 'edge') {
-    const from = vertexIndex(doc, id.from), to = vertexIndex(doc, id.to);
+    const from = vertexIndex(doc, id.from),
+      to = vertexIndex(doc, id.to);
     return from === null || to === null ? null : { kind: 'edge', from, to };
   }
   const quad = quadIndex(doc, id.quad);
   return quad === null ? null : { kind: 'twist', quad, corner: id.corner };
 }
 
-export const controlPointIndices = (doc: QuadMeshDoc, ids: Iterable<MeshControlPointId>): MeshControlPointId<number>[] =>
-  [...ids].flatMap(id => controlPointIndex(doc, id) ?? []);
+export const controlPointIndices = (
+  doc: QuadMeshDoc,
+  ids: Iterable<MeshControlPointId>,
+): MeshControlPointId<number>[] => [...ids].flatMap(id => controlPointIndex(doc, id) ?? []);
 
 /** A live control point named by the document's ids, or null when an index is past the arrays. */
 export function controlPointName(doc: QuadMeshDoc, id: MeshControlPointId<number>): MeshControlPointId | null {
@@ -125,7 +136,8 @@ export function controlPointName(doc: QuadMeshDoc, id: MeshControlPointId<number
     return vertex === null ? null : { kind: 'vertex', vertex };
   }
   if (id.kind === 'edge') {
-    const from = vertexName(doc, id.from), to = vertexName(doc, id.to);
+    const from = vertexName(doc, id.from),
+      to = vertexName(doc, id.to);
     return from === null || to === null ? null : { kind: 'edge', from, to };
   }
   const quad = quadName(doc, id.quad);
@@ -135,7 +147,7 @@ export function controlPointName(doc: QuadMeshDoc, id: MeshControlPointId<number
 /** Every vertex a control-point selection puts a name on — the corners it holds directly plus the corners
  *  that own its floating tangents and interiors, which is what the bulk crease / smooth tools act on. */
 export const controlPointVertexNames = (ids: Iterable<MeshControlPointId>): VertexName[] =>
-  [...ids].flatMap(id => id.kind === 'vertex' ? [id.vertex] : []);
+  [...ids].flatMap(id => (id.kind === 'vertex' ? [id.vertex] : []));
 
 export function namedSurfaceCutPoint(doc: QuadMeshDoc, point: SurfaceCutPoint): NamedSurfaceCutPoint | null {
   if ('vertex' in point) {
@@ -161,21 +173,25 @@ export const surfaceCutPathIndices = (doc: QuadMeshDoc, path: readonly NamedSurf
   path.flatMap(point => surfaceCutPointIndex(doc, point) ?? []);
 
 export function namedEdgeCrossing(doc: QuadMeshDoc, crossing: EdgeCrossing): NamedEdgeCrossing | null {
-  const first = namedEdge(doc, crossing.edges[0]), second = namedEdge(doc, crossing.edges[1]);
+  const first = namedEdge(doc, crossing.edges[0]),
+    second = namedEdge(doc, crossing.edges[1]);
   return first && second ? { ...crossing, edges: [first, second] } : null;
 }
 
 export function edgeCrossingIndex(doc: QuadMeshDoc, crossing: NamedEdgeCrossing): EdgeCrossing | null {
-  const first = edgeIndex(doc, crossing.edges[0]), second = edgeIndex(doc, crossing.edges[1]);
+  const first = edgeIndex(doc, crossing.edges[0]),
+    second = edgeIndex(doc, crossing.edges[1]);
   return first && second ? { ...crossing, edges: [first, second] } : null;
 }
 
 export function namedCoincidentVertices(doc: QuadMeshDoc, pair: CoincidentVertices): NamedCoincidentVertices | null {
-  const a = vertexName(doc, pair.vertices[0]), b = vertexName(doc, pair.vertices[1]);
+  const a = vertexName(doc, pair.vertices[0]),
+    b = vertexName(doc, pair.vertices[1]);
   return a !== null && b !== null ? { ...pair, vertices: [a, b] } : null;
 }
 
 export function coincidentVertexIndices(doc: QuadMeshDoc, pair: NamedCoincidentVertices): [number, number] | null {
-  const a = vertexIndex(doc, pair.vertices[0]), b = vertexIndex(doc, pair.vertices[1]);
+  const a = vertexIndex(doc, pair.vertices[0]),
+    b = vertexIndex(doc, pair.vertices[1]);
   return a !== null && b !== null ? [a, b] : null;
 }

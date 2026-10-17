@@ -27,7 +27,13 @@ export interface BarFold {
 }
 
 /** A fold-away trigger and its panel. `heading` titles the panel — the caption its groups lose in the bar. */
-export function barFold(opts: { label: string; icon: string; heading: string; title?: () => string; closeOnPick?: boolean }): BarFold {
+export function barFold(opts: {
+  label: string;
+  icon: string;
+  heading: string;
+  title?: () => string;
+  closeOnPick?: boolean;
+}): BarFold {
   const trigger = document.createElement('button');
   trigger.className = 'sp-btn sp-menu-btn sp-bar-fold';
   trigger.innerHTML = opts.icon;
@@ -62,15 +68,22 @@ export function fitBar(bar: HTMLElement, steps: readonly BarFitStep[]): void {
     homes.set(step.fold, home);
   }
   const barOrder = [...homes.keys()].sort((a, b) =>
-    homes.get(a)!.compareDocumentPosition(homes.get(b)!) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
-  const folds = [...new Set(steps.flatMap(step => 'fold' in step ? [step.into] : []))];
+    homes.get(a)!.compareDocumentPosition(homes.get(b)!) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  );
+  const folds = [...new Set(steps.flatMap(step => ('fold' in step ? [step.into] : [])))];
   const xrEditing = () => document.body.classList.contains('os-xr-editing');
   const overflows = () => bar.scrollWidth > bar.clientWidth;
 
   const mutations = new MutationObserver(schedule);
-  let queued = 0, given = -1, givenInXr = false;
+  let queued = 0,
+    given = -1,
+    givenInXr = false;
   function schedule() {
-    if (!queued) queued = requestAnimationFrame(() => { queued = 0; fit(); });
+    if (!queued)
+      queued = requestAnimationFrame(() => {
+        queued = 0;
+        fit();
+      });
   }
   function fit() {
     // Whole again, in bar order...
@@ -86,7 +99,10 @@ export function fitBar(bar: HTMLElement, steps: readonly BarFitStep[]): void {
       if (!overflows()) break;
       if ('compact' in step) bar.classList.add(step.compact);
       else if (inXr) continue;
-      else { step.into.el.hidden = false; step.into.list.append(step.fold); }
+      else {
+        step.into.el.hidden = false;
+        step.into.list.append(step.fold);
+      }
       count++;
     }
     for (const fold of folds) {
@@ -94,14 +110,16 @@ export function fitBar(bar: HTMLElement, steps: readonly BarFitStep[]): void {
     }
     // An open menu was placed against the old row; one listing groups that just moved is stale too.
     if (count !== given || inXr !== givenInXr) closeMenu();
-    given = count; givenInXr = inXr;
+    given = count;
+    givenInXr = inXr;
     mutations.takeRecords(); // our own moves are not new content
   }
 
   mutations.observe(bar, { childList: true, subtree: true, characterData: true });
   new ResizeObserver(fit).observe(bar);
-  new MutationObserver(() => { if (xrEditing() !== givenInXr) schedule(); })
-    .observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  new MutationObserver(() => {
+    if (xrEditing() !== givenInXr) schedule();
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   bar.addEventListener('load', schedule, true); // the brand mark has no width until its image arrives
   void document.fonts?.ready.then(schedule);
   fit();

@@ -98,8 +98,12 @@ async function projectSpend(name: string, census: Map<string, LevelCensus>): Pro
     for (const page of pages) propPages.add(page);
     bakedTris += cost.tris * entry.placements;
     rows.push({
-      level: entry.level, name: cost.name, placements: entry.placements,
-      tris: cost.tris, baked: cost.tris * entry.placements, pages,
+      level: entry.level,
+      name: cost.name,
+      placements: entry.placements,
+      tris: cost.tris,
+      baked: cost.tris * entry.placements,
+      pages,
     });
   }
   rows.sort((a, b) => b.baked - a.baked);
@@ -122,38 +126,65 @@ async function projectSpend(name: string, census: Map<string, LevelCensus>): Pro
 // ---- report ---------------------------------------------------------------------------------------------------
 
 const n = (x: number) => x.toLocaleString('en-US');
-const pad = (text: string, width: number, right = true) =>
-  right ? text.padStart(width) : text.padEnd(width);
+const pad = (text: string, width: number, right = true) => (right ? text.padStart(width) : text.padEnd(width));
 
 function printCensus(all: LevelCensus[]): void {
-  const head = ['level', 'inst', 'vis', 'models', 'meshes', 'geom tris', 'baked tris', 'tris/inst',
-    'pages', 'terr', 'prop', 'both', 'other', 'MB@1B'];
+  const head = [
+    'level',
+    'inst',
+    'vis',
+    'models',
+    'meshes',
+    'geom tris',
+    'baked tris',
+    'tris/inst',
+    'pages',
+    'terr',
+    'prop',
+    'both',
+    'other',
+    'MB@1B',
+  ];
   const rows = all.map(c => [
     c.level,
-    n(c.instances.total), n(c.instances.visible), n(c.models.placed), n(c.meshes),
-    n(c.geomTris), n(c.bakedTris),
+    n(c.instances.total),
+    n(c.instances.visible),
+    n(c.models.placed),
+    n(c.meshes),
+    n(c.geomTris),
+    n(c.bakedTris),
     c.instances.visible ? n(Math.round(c.bakedTris / c.instances.visible)) : '—',
-    n(c.pages.onDisk), n(c.pages.terrain), n(c.pages.props), n(c.pages.shared), n(c.pages.unused),
+    n(c.pages.onDisk),
+    n(c.pages.terrain),
+    n(c.pages.props),
+    n(c.pages.shared),
+    n(c.pages.unused),
     (c.pages.texels / 1024 / 1024).toFixed(2),
   ]);
   const width = head.map((h, i) => Math.max(h.length, ...rows.map(r => r[i].length)));
   console.log(head.map((h, i) => pad(h, width[i], i > 0)).join('  '));
   for (const row of rows) console.log(row.map((cell, i) => pad(cell, width[i], i > 0)).join('  '));
-  console.log('\n`other` is pages neither a patch nor a placed prop names — the shared 16-page crowd flipbook'
-    + ' bank (cd00–cd15),\nparticle and pickup art. Every level carries 17–20 of them, so terrain and props'
-    + ' get the bank minus that.');
+  console.log(
+    '\n`other` is pages neither a patch nor a placed prop names — the shared 16-page crowd flipbook' +
+      ' bank (cd00–cd15),\nparticle and pickup art. Every level carries 17–20 of them, so terrain and props' +
+      ' get the bank minus that.',
+  );
 }
 
 function printLevelDetail(c: LevelCensus): void {
   console.log(`\n${c.level} — the twelve heaviest models, by what they cost baked:`);
   for (const cost of c.costs.slice(0, 12)) {
-    console.log(`  ${pad(n(cost.instances * cost.tris), 9)}  ${pad(`${cost.instances}×`, 6)} `
-      + `${pad(`${n(cost.tris)} tris`, 11)}  ${cost.name}  [${cost.pages.join(' ')}]`);
+    console.log(
+      `  ${pad(n(cost.instances * cost.tris), 9)}  ${pad(`${cost.instances}×`, 6)} ` +
+        `${pad(`${n(cost.tris)} tris`, 11)}  ${cost.name}  [${cost.pages.join(' ')}]`,
+    );
   }
   const modules = c.costs.filter(cost => cost.instances >= 20);
   const fromModules = modules.reduce((sum, cost) => sum + cost.instances, 0);
-  console.log(`  ${modules.length} models are placed 20+ times and carry ${fromModules} of ${c.instances.visible} `
-    + `visible instances (${((100 * fromModules) / c.instances.visible).toFixed(0)}%) — the repeated-module share`);
+  console.log(
+    `  ${modules.length} models are placed 20+ times and carry ${fromModules} of ${c.instances.visible} ` +
+      `visible instances (${((100 * fromModules) / c.instances.visible).toFixed(0)}%) — the repeated-module share`,
+  );
 }
 
 function printSpend(spend: ProjectSpend, all: LevelCensus[]): void {
@@ -167,14 +198,18 @@ function printSpend(spend: ProjectSpend, all: LevelCensus[]): void {
   // Against retail's GEOMETRY column: an authored export bakes one mesh per placement, so this is the level's
   // own geometry rather than the draw count an instancing renderer earns.
   console.log(`  ${n(spend.bakedTris)} baked triangles   retail levels carry ${band(c => c.geomTris)}`);
-  console.log(`  ${n(spend.propPages.length)} prop pages + ${n(spend.terrainPages.length)} painted terrain pages`
-    + `   retail banks hold ${band(c => c.pages.onDisk)} pages`);
+  console.log(
+    `  ${n(spend.propPages.length)} prop pages + ${n(spend.terrainPages.length)} painted terrain pages` +
+      `   retail banks hold ${band(c => c.pages.onDisk)} pages`,
+  );
   if (spend.donors.length) console.log(`  donor levels: ${spend.donors.join(', ')}`);
   if (spend.byModel.length) {
     console.log('\n  by model:');
     for (const row of spend.byModel) {
-      console.log(`  ${pad(n(row.baked), 8)}  ${pad(`${row.placements}×`, 6)} ${pad(`${n(row.tris)} tris`, 10)}  `
-        + `${row.level}/${row.name}`);
+      console.log(
+        `  ${pad(n(row.baked), 8)}  ${pad(`${row.placements}×`, 6)} ${pad(`${n(row.tris)} tris`, 10)}  ` +
+          `${row.level}/${row.name}`,
+      );
     }
   }
   if (spend.propPages.length) console.log(`\n  prop pages: ${spend.propPages.join(', ')}`);
@@ -194,8 +229,9 @@ for (const level of levels) {
   const found = await levelCensus(level);
   if (found) census.push(found);
 }
-const retailFirst = [...census].sort((a, b) =>
-  Number(b.retail) - Number(a.retail) || a.instances.visible - b.instances.visible);
+const retailFirst = [...census].sort(
+  (a, b) => Number(b.retail) - Number(a.retail) || a.instances.visible - b.instances.visible,
+);
 
 if (JSON_OUT) {
   console.log(JSON.stringify({ census: retailFirst.map(({ costs, ...rest }) => rest) }, null, 2));
@@ -203,14 +239,16 @@ if (JSON_OUT) {
   // Choosing a kit is a budget decision, so the price is what a search returns: one copy's triangles and the
   // pages it drags in. A model wearing three pages is three slots of the level's bank whoever places it.
   console.log(`models matching "${FIND}" — per-copy cost\n`);
-  const hits = census.flatMap(c => c.costs
-    .filter(cost => cost.name.toLowerCase().includes(FIND))
-    .map(cost => ({ level: c.level, cost })));
+  const hits = census.flatMap(c =>
+    c.costs.filter(cost => cost.name.toLowerCase().includes(FIND)).map(cost => ({ level: c.level, cost })),
+  );
   hits.sort((a, b) => a.cost.tris - b.cost.tris);
   for (const { level, cost } of hits) {
-    console.log(`  ${pad(n(cost.tris), 6)} tris  ${pad(`${cost.instances}× in level`, 16, false)} `
-      + `${pad(`${cost.pages.length} page${cost.pages.length === 1 ? '' : 's'}`, 8, false)} `
-      + `${level}/${cost.name}  [${cost.pages.join(' ')}]`);
+    console.log(
+      `  ${pad(n(cost.tris), 6)} tris  ${pad(`${cost.instances}× in level`, 16, false)} ` +
+        `${pad(`${cost.pages.length} page${cost.pages.length === 1 ? '' : 's'}`, 8, false)} ` +
+        `${level}/${cost.name}  [${cost.pages.join(' ')}]`,
+    );
   }
   if (!hits.length) console.log('  (none)');
 } else {

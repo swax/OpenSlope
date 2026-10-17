@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import {
-  JUKEBOX_MAX_ITEMS, emptyJukeboxState, jukeboxPosition,
-  type JukeboxEntry, type JukeboxState,
+  JUKEBOX_MAX_ITEMS,
+  emptyJukeboxState,
+  jukeboxPosition,
+  type JukeboxEntry,
+  type JukeboxState,
 } from '../../core/session/jukebox';
 import type { SessionMember } from './presence';
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const MAX_POSITION_SECONDS = 24 * 60 * 60;
 
-export type JukeboxResult =
-  | { ok: true; state: JukeboxState }
-  | { ok: false; error: string };
+export type JukeboxResult = { ok: true; state: JukeboxState } | { ok: false; error: string };
 
 /** Accept the same public YouTube identities as the browser bridge, then store one stable, credential-free URL. */
 export function canonicalJukeboxUrl(value: unknown): string | null {
@@ -18,7 +19,11 @@ export function canonicalJukeboxUrl(value: unknown): string | null {
   const candidate = value.trim();
   if (VIDEO_ID.test(candidate)) return `https://www.youtube.com/watch?v=${candidate}`;
   let url: URL;
-  try { url = new URL(candidate); } catch { return null; }
+  try {
+    url = new URL(candidate);
+  } catch {
+    return null;
+  }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
   const host = url.hostname.toLowerCase().replace(/\.$/, '');
   let id = '';
@@ -61,13 +66,16 @@ export function createJukebox(now: () => number = Date.now) {
 
   const promote = (queue: JukeboxEntry[], stopWhenEmpty: boolean): JukeboxResult => {
     const current = queue[0] ?? null;
-    return changed({
-      current,
-      queue: current ? queue.slice(1) : [],
-      position: 0,
-      changedAt: now(),
-      playing: !!current,
-    }, !!current || !stopWhenEmpty);
+    return changed(
+      {
+        current,
+        queue: current ? queue.slice(1) : [],
+        position: 0,
+        changedAt: now(),
+        playing: !!current,
+      },
+      !!current || !stopWhenEmpty,
+    );
   };
 
   return {
@@ -80,7 +88,11 @@ export function createJukebox(now: () => number = Date.now) {
         return { ok: false, error: `The jukebox is full (${JUKEBOX_MAX_ITEMS} videos).` };
       }
       const entry: JukeboxEntry = {
-        id: randomUUID(), url, userId: member.id, username: member.username, addedAt: now(),
+        id: randomUUID(),
+        url,
+        userId: member.id,
+        username: member.username,
+        addedAt: now(),
       };
       if (!state.current) {
         return changed({ current: entry, position: 0, changedAt: now(), playing: true }, true);
@@ -94,7 +106,10 @@ export function createJukebox(now: () => number = Date.now) {
         const item = state.queue[index];
         const itemRound = (occurrence.get(item.userId) ?? 0) + 1;
         occurrence.set(item.userId, itemRound);
-        if (itemRound > round) { insertAt = index; break; }
+        if (itemRound > round) {
+          insertAt = index;
+          break;
+        }
       }
       const queue = state.queue.slice();
       queue.splice(insertAt, 0, entry);

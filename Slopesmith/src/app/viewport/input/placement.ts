@@ -58,7 +58,9 @@ export function resolvePlacementEndpoint(
   if (!endpoint && anchor && opts.levelPlane) {
     const through = dataToScene(anchor);
     const point = stage.ray.ray.intersectPlane(
-      new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), through), new THREE.Vector3());
+      new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), through),
+      new THREE.Vector3(),
+    );
     const origin = stage.ray.ray.origin;
     if (point && point.distanceTo(origin) <= LEVEL_PLANE_REACH * Math.max(1, through.distanceTo(origin))) {
       // Snap across the plane only: rounding the height would tilt the grid off an anchor between snap steps.
@@ -74,9 +76,10 @@ export function resolvePlacementEndpoint(
   // for a lift get it only on a real mesh/vertex contact; free-space construction remains exactly under the
   // cursor. Clear the source vertex because the lifted point is intentionally a new position, not a topology
   // snap to that vertex.
-  if (endpoint && surfaceContact && surfaceLiftM !== 0) endpoint = {
-    pos: [endpoint.pos[0], endpoint.pos[1] + surfaceLiftM, endpoint.pos[2]],
-    vertex: null,
-  };
+  if (endpoint && surfaceContact && surfaceLiftM !== 0)
+    endpoint = {
+      pos: [endpoint.pos[0], endpoint.pos[1] + surfaceLiftM, endpoint.pos[2]],
+      vertex: null,
+    };
   return endpoint ? constrainPlacement(endpoint, anchor, !!opts.axisLocked) : null;
 }

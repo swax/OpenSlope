@@ -36,11 +36,22 @@ const BULB_RADIUS = { rail: 0.6, line: 0.6, trail: 1.15 } as const;
 
 /** Write a handle list onto its path, dropping the field once nothing is overridden. */
 export function assignHandles(path: { handles?: (PathHandles | null)[] }, handles: (PathHandles | null)[]) {
-  if (handles.length) path.handles = handles; else delete path.handles;
+  if (handles.length) path.handles = handles;
+  else delete path.handles;
 }
 
 export function createPathHandleOps(deps: PathHandleDeps) {
-  const { store, viewport, trailPath, selectTrailNode, setTrailHandles, trailDrag, setLineHandles, scheduleRebuild, rebuildTools } = deps;
+  const {
+    store,
+    viewport,
+    trailPath,
+    selectTrailNode,
+    setTrailHandles,
+    trailDrag,
+    setLineHandles,
+    scheduleRebuild,
+    rebuildTools,
+  } = deps;
 
   /** The one path whose handles can show — the trail path in Edit mode, else the selected prop line or rail — and
    *  its selected point, the one whose handles do. */
@@ -48,18 +59,37 @@ export function createPathHandleOps(deps: PathHandleDeps) {
     const mode = store.currentMode;
     if (mode === 'edit') {
       const path = trailPath();
-      return path ? { owner: { family: 'trail', id: path.id }, nodes: path.nodes, handles: path.handles,
-        node: path.node, bulbRadius: BULB_RADIUS.trail } : null;
+      return path
+        ? {
+            owner: { family: 'trail', id: path.id },
+            nodes: path.nodes,
+            handles: path.handles,
+            node: path.node,
+            bulbRadius: BULB_RADIUS.trail,
+          }
+        : null;
     }
     if (mode === 'props' && store.selectedLine !== null && !store.lineDrawing) {
       const line = store.mdoc.propLines?.find(candidate => candidate.id === store.selectedLine);
-      if (line?.id) return { owner: { family: 'line', id: line.id }, nodes: line.nodes, handles: line.handles,
-        node: store.selectedLineNode, bulbRadius: BULB_RADIUS.line };
+      if (line?.id)
+        return {
+          owner: { family: 'line', id: line.id },
+          nodes: line.nodes,
+          handles: line.handles,
+          node: store.selectedLineNode,
+          bulbRadius: BULB_RADIUS.line,
+        };
     }
     if ((mode === 'props' || mode === 'effects') && store.selectedRail !== null && !store.railDrawing) {
       const rail = store.mdoc.rails?.[store.selectedRail];
-      if (rail?.id) return { owner: { family: 'rail', id: rail.id }, nodes: rail.nodes, handles: rail.handles,
-        node: store.selectedNode, bulbRadius: BULB_RADIUS.rail };
+      if (rail?.id)
+        return {
+          owner: { family: 'rail', id: rail.id },
+          nodes: rail.nodes,
+          handles: rail.handles,
+          node: store.selectedNode,
+          bulbRadius: BULB_RADIUS.rail,
+        };
     }
     return null;
   }
@@ -75,7 +105,10 @@ export function createPathHandleOps(deps: PathHandleDeps) {
     const held = store.pathHandle;
     if (held && !(path && held.family === path.owner.family && held.id === path.owner.id && path.nodes[held.node]))
       store.pathHandle = null;
-    viewport.setPathHandles(path, store.pathHandle ? { node: store.pathHandle.node, side: store.pathHandle.side } : null);
+    viewport.setPathHandles(
+      path,
+      store.pathHandle ? { node: store.pathHandle.node, side: store.pathHandle.side } : null,
+    );
   }
 
   /** A handle was clicked: it carries the gizmo, and its node is the family's selected node for the panel. */
@@ -98,8 +131,14 @@ export function createPathHandleOps(deps: PathHandleDeps) {
 
   /** Put a new handle list on its path and let whatever the path lays out follow. */
   function apply(owner: PathOwner, handles: (PathHandles | null)[], live: boolean) {
-    if (owner.family === 'trail') { setTrailHandles(handles, live); return; }
-    if (owner.family === 'line') { setLineHandles(owner.id, handles); return; }
+    if (owner.family === 'trail') {
+      setTrailHandles(handles, live);
+      return;
+    }
+    if (owner.family === 'line') {
+      setLineHandles(owner.id, handles);
+      return;
+    }
     const rail = store.mdoc.rails?.find(candidate => candidate.id === owner.id);
     if (!rail) return;
     assignHandles(rail, handles);
@@ -127,7 +166,8 @@ export function createPathHandleOps(deps: PathHandleDeps) {
 
   /** Whether the panel's node has a dragged handle, and whether the path has any. */
   function resetState(): { node: boolean; path: boolean } {
-    const path = selectedPath(), node = selectedNode();
+    const path = selectedPath(),
+      node = selectedNode();
     return {
       node: !!path && node !== null && pathNodeHasHandles(path.handles, node),
       path: !!path?.handles?.some(Boolean),
@@ -136,7 +176,8 @@ export function createPathHandleOps(deps: PathHandleDeps) {
 
   /** Put the panel's node back on the automatic curve. */
   function resetNode() {
-    const path = selectedPath(), node = selectedNode();
+    const path = selectedPath(),
+      node = selectedNode();
     if (!path || node === null) return;
     store.pathHandle = null;
     apply(path.owner, resetPathHandles(path.handles, node), false);

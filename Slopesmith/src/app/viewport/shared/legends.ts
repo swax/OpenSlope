@@ -1,14 +1,29 @@
 import * as THREE from 'three';
 import { DEFAULT_SURFACE, SURFACE_STYLE, surfaceStyle, SURFACE_TYPES } from '../../../core/doc/types';
 import {
-  SURFACE_AUTHOR_OPTIONS, SURFACE_TYPES as REFERENCE_SURFACE_TYPES,
+  SURFACE_AUTHOR_OPTIONS,
+  SURFACE_TYPES as REFERENCE_SURFACE_TYPES,
 } from '../../../core/reference/surface-types';
 import { CREASE_DEGREES } from '../../../core/mesh/creases';
-import { CAGE_INTERIOR_COLOR, CAGE_BOUNDARY_COLOR, CAGE_CREASE_COLOR, CAGE_LOCKED_COLOR, CAGE_TEAR_COLOR, FRAME_GLYPH_COLOR,
-  CAGE_EXTRA3_COLOR, CAGE_EXTRA5_COLOR, CAGE_POINT_COLOR } from '../constants';
+import {
+  CAGE_INTERIOR_COLOR,
+  CAGE_BOUNDARY_COLOR,
+  CAGE_CREASE_COLOR,
+  CAGE_LOCKED_COLOR,
+  CAGE_TEAR_COLOR,
+  FRAME_GLYPH_COLOR,
+  CAGE_EXTRA3_COLOR,
+  CAGE_EXTRA5_COLOR,
+  CAGE_POINT_COLOR,
+} from '../constants';
 import { BACKFACE_TINT_RGB } from '../mesh/backface-tint';
-import { PROP_DARK_TINT_MIX, PROP_CLAY_COLOR, PROP_SOLID_COLOR, PROP_THROUGH_COLOR,
-  propContactTint } from '../scene/prop-shade';
+import {
+  PROP_DARK_TINT_MIX,
+  PROP_CLAY_COLOR,
+  PROP_SOLID_COLOR,
+  PROP_THROUGH_COLOR,
+  propContactTint,
+} from '../scene/prop-shade';
 import type { ShadeMode } from '../types';
 import { foldHeader, foldOnClick, refold } from '../../ui/components/fold-panel';
 import { trailSpeedKey } from '../mesh/trail-speed-colors';
@@ -27,11 +42,17 @@ function buildLegendPanel(id: string, title: string, items: (LegendRow | string)
   el.className = 'll-panel';
   el.dataset.xrEdit = 'legend'; // what the headset's wrist EDIT palette crops out of #lowerleft (docs/068)
   el.style.display = 'none';
-  el.innerHTML = foldHeader(title, `key:${id}`)
-    + '<div class="ll-body">' + items.map((item, index) => typeof item === 'string'
-      ? `${index ? '<div class="ll-sep"></div>' : ''}<div class="ll-group">${item}</div>`
-      : `<div class="ll-row"><span class="ll-swatch" style="background:${item[0]};${item[2]}"></span>${item[1]}</div>`)
-      .join('') + '</div>';
+  el.innerHTML =
+    foldHeader(title, `key:${id}`) +
+    '<div class="ll-body">' +
+    items
+      .map((item, index) =>
+        typeof item === 'string'
+          ? `${index ? '<div class="ll-sep"></div>' : ''}<div class="ll-group">${item}</div>`
+          : `<div class="ll-row"><span class="ll-swatch" style="background:${item[0]};${item[2]}"></span>${item[1]}</div>`,
+      )
+      .join('') +
+    '</div>';
   refold(el);
   foldOnClick(el);
   return el;
@@ -48,14 +69,16 @@ export function createLegends(container: HTMLElement) {
   const host = document.getElementById('lowerleft') ?? container;
   const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
   // cage line colours (cage-only view): thin line swatches, matching how the edges draw
-  const cageRows: [string, string, string][] = ([
-    [CAGE_INTERIOR_COLOR, 'Grid'],
-    [CAGE_BOUNDARY_COLOR, 'Rim (outer edge)'],
-    [CAGE_TEAR_COLOR, 'Tear (bright = exposed · dim = watertight)'],
-    [CAGE_LOCKED_COLOR, 'Locked patch edge'],
-    [CAGE_CREASE_COLOR, `Crease (patches meet over ${CREASE_DEGREES}°)`],
-    [FRAME_GLYPH_COLOR, 'Patch frame F (with the F overlay on)'],
-  ] as [number, string][]).map(([c, label]) => [hex(c), label, 'width:16px;height:3px']);
+  const cageRows: [string, string, string][] = (
+    [
+      [CAGE_INTERIOR_COLOR, 'Grid'],
+      [CAGE_BOUNDARY_COLOR, 'Rim (outer edge)'],
+      [CAGE_TEAR_COLOR, 'Tear (bright = exposed · dim = watertight)'],
+      [CAGE_LOCKED_COLOR, 'Locked patch edge'],
+      [CAGE_CREASE_COLOR, `Crease (patches meet over ${CREASE_DEGREES}°)`],
+      [FRAME_GLYPH_COLOR, 'Patch frame F (with the F overlay on)'],
+    ] as [number, string][]
+  ).map(([c, label]) => [hex(c), label, 'width:16px;height:3px']);
   // extraordinary poles draw as dots (over the reference cage), so swatch them round, not as line strokes
   cageRows.push(
     [hex(CAGE_EXTRA3_COLOR), 'Pole · valence 3', 'width:8px;height:8px;border-radius:50%'],
@@ -83,8 +106,11 @@ export function createLegends(container: HTMLElement) {
   // than the surface it claims to key, by a lot once a family is saturated rather than pastel.
   const surfaceRow = (type: number): LegendRow => {
     const name = SURFACE_TYPES[type] ?? REFERENCE_SURFACE_TYPES[type]?.label ?? 'unknown';
-    return [`#${new THREE.Color(...surfaceStyle(type).color).getHexString()}`,
-      `${type} ${name}`, 'width:12px;height:12px'];
+    return [
+      `#${new THREE.Color(...surfaceStyle(type).color).getHexString()}`,
+      `${type} ${name}`,
+      'width:12px;height:12px',
+    ];
   };
   const surfaceGroup = (caption: string, keep: (type: number) => boolean): (LegendRow | string)[] => {
     const rows = styledTypes.filter(keep).map(surfaceRow);
@@ -100,15 +126,19 @@ export function createLegends(container: HTMLElement) {
   // different kind of object: these ride the collision profile — authored on a placement, compiled from the
   // shipped facts on a reference instance — rather than a painted tile. The dark row sits here rather than
   // up there because it states a prop's own lighting, the thing terrain gets from the lightmap instead.
-  const mixed = (base: number) => `rgb(${BACKFACE_TINT_RGB.map((c, i) =>
-    Math.round(255 * (((base >> (16 - i * 8)) & 0xff) / 255 * (1 - PROP_DARK_TINT_MIX)
-      + c * PROP_DARK_TINT_MIX))).join(',')})`;
+  const mixed = (base: number) =>
+    `rgb(${BACKFACE_TINT_RGB.map((c, i) =>
+      Math.round(255 * ((((base >> (16 - i * 8)) & 0xff) / 255) * (1 - PROP_DARK_TINT_MIX) + c * PROP_DARK_TINT_MIX)),
+    ).join(',')})`;
   const propRows: [string, string, string][] = [
     [hex(PROP_SOLID_COLOR), 'Solid — obstacle (no ride surface)', 'width:12px;height:12px'],
     // A rideable solid wears its SurfaceType's own colour from the key above, so this row shows the default
     // rather than repeating all eleven swatches a second time.
-    [hex(propContactTint('solid', DEFAULT_SURFACE)), 'Solid — rideable · wears its ride-feel colour above',
-      'width:12px;height:12px'],
+    [
+      hex(propContactTint('solid', DEFAULT_SURFACE)),
+      'Solid — rideable · wears its ride-feel colour above',
+      'width:12px;height:12px',
+    ],
     [hex(PROP_THROUGH_COLOR), 'Ride-through — no response, effects and sounds fire', 'width:12px;height:12px'],
     [hex(PROP_CLAY_COLOR), 'Decorative — no contact', 'width:12px;height:12px'],
     // Swatched as the MIX the clay actually renders at full darkness, not the raw hue, so the row matches
@@ -119,18 +149,23 @@ export function createLegends(container: HTMLElement) {
   // The predicted ride over selected trail patches, or over the whole mountain from its start (docs/023 · Predicted
   // speed): not a shade view's key but theirs, so it shows whenever either shading does.
   const speedWords = ['stalled, or never reached', 'a slow climb', 'cruising — about flat snow', 'the speed cap'];
-  const speedLegend = buildLegendPanel('trail-speed', 'Predicted speed', trailSpeedKey().map(({ hex, speed }, i) => [
-    hex, speed === null ? 'Airborne' : `${mphText(speed)} · ${speedWords[i]}`,
-    'width:12px;height:12px',
-  ]));
+  const speedLegend = buildLegendPanel(
+    'trail-speed',
+    'Predicted speed',
+    trailSpeedKey().map(({ hex, speed }, i) => [
+      hex,
+      speed === null ? 'Airborne' : `${mphText(speed)} · ${speedWords[i]}`,
+      'width:12px;height:12px',
+    ]),
+  );
   const speedNote = document.createElement('div');
   speedNote.className = 'll-note';
   speedNote.style.display = 'none';
   speedLegend.querySelector('.ll-body')!.append(speedNote);
   host.prepend(speedLegend);
-  host.prepend(propLegend);    // stacks under Surface types, which prepends after it
+  host.prepend(propLegend); // stacks under Surface types, which prepends after it
   host.prepend(surfaceLegend); // order between cage and surface is irrelevant — never both shown
-  host.prepend(cageLegend);    // all three land left of #cmdsheet (the controls list)
+  host.prepend(cageLegend); // all three land left of #cmdsheet (the controls list)
 
   /** Show the colour keys that ride this shade view: cage-only (none), or the SurfaceType + prop pair. */
   function setShadeMode(m: ShadeMode) {
@@ -142,7 +177,8 @@ export function createLegends(container: HTMLElement) {
   /** Show the predicted-speed key while selected trail patches, the mountain or the reference are shaded by it. */
   const speedShown = new Set<'trail' | 'mountain' | 'reference'>();
   function setSpeedKey(by: 'trail' | 'mountain' | 'reference', shown: boolean) {
-    if (shown) speedShown.add(by); else speedShown.delete(by);
+    if (shown) speedShown.add(by);
+    else speedShown.delete(by);
     speedLegend.style.display = speedShown.size ? 'block' : 'none';
   }
 

@@ -43,7 +43,21 @@ export type TrickToolsDeps = {
 };
 
 export function createTrickTools(deps: TrickToolsDeps) {
-  const { store, viewport, gemTool, propLibToggle, ensurePropLevel, toggleTricks, armLight, revealScreens, addSheet, setMode, scheduleRebuild, rebuildTools, log } = deps;
+  const {
+    store,
+    viewport,
+    gemTool,
+    propLibToggle,
+    ensurePropLevel,
+    toggleTricks,
+    armLight,
+    revealScreens,
+    addSheet,
+    setMode,
+    scheduleRebuild,
+    rebuildTools,
+    log,
+  } = deps;
 
   /**
    * Resolve the trick layer's native art and hand it to the viewport: each rail material's default tube skin
@@ -63,13 +77,18 @@ export function createTrickTools(deps: TrickToolsDeps) {
       if (!art.gemLevel || !art.gemTiers.length) return;
       await ensurePropLevel(art.gemLevel); // the crystals' geometry registers with the level's payload
       viewport.setGemModels(new Map(art.gemTiers.map(t => [t.tier, { level: art.gemLevel, model: t.model }])));
-    })().catch(e => { trickArtReady = null; log(`trick art: ${e}`); }));
+    })().catch(e => {
+      trickArtReady = null;
+      log(`trick art: ${e}`);
+    }));
   }
 
   /** A trick tool taking over ends a prop line's draw and selection (docs/070), as it does a held prop's. */
   function leavePropLine() {
-    store.lineDrawing = false; viewport.setLineDrawing(false);
-    store.selectedLine = null; store.selectedLineNode = null;
+    store.lineDrawing = false;
+    viewport.setLineDrawing(false);
+    store.selectedLine = null;
+    store.selectedLineNode = null;
   }
 
   /** Standoff (m) a fresh rail floats above the terrain — a low grind-rail height you then tune per rail. */
@@ -87,11 +106,18 @@ export function createTrickTools(deps: TrickToolsDeps) {
     store.armedProp = null;
     viewport.setPropArmed(null);
     viewport.setLightArmed(false);
-    store.gemArmed = false; viewport.setGemArmed(false); // the Rail tool and the Gem tool are exclusive
+    store.gemArmed = false;
+    viewport.setGemArmed(false); // the Rail tool and the Gem tool are exclusive
     leavePropLine();
     const texture = opts.texture && opts.texture !== viewport.railSkins.metal ? opts.texture : undefined;
-    rails.push({ id: nextRailId(rails), kind: 'grind', nodes: [], height: DEFAULT_RAIL_HEIGHT, style: RAIL_STYLE_METAL,
-      ...(texture ? { texture } : {}) });
+    rails.push({
+      id: nextRailId(rails),
+      kind: 'grind',
+      nodes: [],
+      height: DEFAULT_RAIL_HEIGHT,
+      style: RAIL_STYLE_METAL,
+      ...(texture ? { texture } : {}),
+    });
     void ensureTrickArt(); // tubes upgrade to their material's default skin when the shipped art lands
     store.selectedRail = rails.length - 1;
     store.selectedNode = null;
@@ -102,7 +128,11 @@ export function createTrickTools(deps: TrickToolsDeps) {
     store.trickTool = 'rail';
     store.railDrawing = true;
     viewport.setRailArmed(true);
-    if (store.currentMode !== 'props') setMode('props'); else { scheduleRebuild(); rebuildTools(); }
+    if (store.currentMode !== 'props') setMode('props');
+    else {
+      scheduleRebuild();
+      rebuildTools();
+    }
     toast('click the mountain to drop rail points — Enter / Esc to finish', 'info');
   }
 
@@ -110,19 +140,28 @@ export function createTrickTools(deps: TrickToolsDeps) {
    *  lays a spaced row. Enters Props mode, disarms the other tools, turns the Tricks layer on so you can see them. */
   function armGem() {
     if (!store.tricksVisible) toggleTricks();
-    store.armedProp = null; viewport.setPropArmed(null);
+    store.armedProp = null;
+    viewport.setPropArmed(null);
     viewport.setLightArmed(false);
     discardUnfinishedRail();
-    store.railDrawing = false; viewport.setRailArmed(false);
+    store.railDrawing = false;
+    viewport.setRailArmed(false);
     leavePropLine();
-    store.selectedRail = null; store.selectedNode = null;
-    store.selectedProp = null; store.selectedLight = null;
+    store.selectedRail = null;
+    store.selectedNode = null;
+    store.selectedProp = null;
+    store.selectedLight = null;
     store.multiSel = [];
     store.selectedGem = null;
     store.trickTool = 'gem';
-    store.gemArmed = true; viewport.setGemArmed(true, { value: gemTool.value, height: gemTool.height });
+    store.gemArmed = true;
+    viewport.setGemArmed(true, { value: gemTool.value, height: gemTool.height });
     void ensureTrickArt(); // the ghost + markers upgrade to the native crystals when the donor geometry lands
-    if (store.currentMode !== 'props') setMode('props'); else { scheduleRebuild(); rebuildTools(); }
+    if (store.currentMode !== 'props') setMode('props');
+    else {
+      scheduleRebuild();
+      rebuildTools();
+    }
     toast('click to drop a gem — drag to lay a row', 'info');
   }
 
@@ -159,8 +198,10 @@ export function createTrickTools(deps: TrickToolsDeps) {
     store.selectedRail = null;
     store.selectedNode = null;
     store.selectedGem = null;
-    store.railDrawing = false; viewport.setRailArmed(false);
-    store.gemArmed = false; viewport.setGemArmed(false);
+    store.railDrawing = false;
+    viewport.setRailArmed(false);
+    store.gemArmed = false;
+    viewport.setGemArmed(false);
     store.trickTool = null;
   }
 
@@ -179,7 +220,11 @@ export function createTrickTools(deps: TrickToolsDeps) {
   function finishRail() {
     store.railDrawing = false;
     viewport.setRailArmed(false);
-    if (store.selectedRail !== null && store.mdoc.rails && (store.mdoc.rails[store.selectedRail]?.nodes.length ?? 0) < 2) {
+    if (
+      store.selectedRail !== null &&
+      store.mdoc.rails &&
+      (store.mdoc.rails[store.selectedRail]?.nodes.length ?? 0) < 2
+    ) {
       store.mdoc.rails.splice(store.selectedRail, 1);
       leaveTrickTools(); // the rail it was showing is gone — hand the panel back rather than blanking it
     }
@@ -194,7 +239,10 @@ export function createTrickTools(deps: TrickToolsDeps) {
     rail.nodes.splice(store.selectedNode, 1);
     assignHandles(rail, withoutPathNode(rail.handles, store.selectedNode)); // later nodes keep their own
     store.selectedNode = null;
-    if (rail.nodes.length < 2) { store.mdoc.rails.splice(store.selectedRail, 1); leaveTrickTools(); }
+    if (rail.nodes.length < 2) {
+      store.mdoc.rails.splice(store.selectedRail, 1);
+      leaveTrickTools();
+    }
     scheduleRebuild();
     rebuildTools();
   }
@@ -217,7 +265,7 @@ export function createTrickTools(deps: TrickToolsDeps) {
    * route entirely: select the prop and its inspector fits one to the board's own face.
    */
   function addFreeScreen() {
-    revealScreens();   // screens live in the Sources view; dropping one into a hidden layer shows nothing
+    revealScreens(); // screens live in the Sources view; dropping one into a hidden layer shows nothing
     if (store.currentMode !== 'props') setMode('props');
     const screens = (store.mdoc.screens ??= []);
     const target = viewport.controls.target;
@@ -243,60 +291,127 @@ export function createTrickTools(deps: TrickToolsDeps) {
     // The shared svg() glyph carries no width/height (the top-bar sizes it via CSS); size it here to match the
     // Prop Library button's icon, else it renders at its huge intrinsic size.
     const glyph = b.querySelector('svg');
-    if (glyph) { glyph.setAttribute('width', '13'); glyph.setAttribute('height', '13'); }
+    if (glyph) {
+      glyph.setAttribute('width', '13');
+      glyph.setAttribute('height', '13');
+    }
     tooltip(b, title);
     b.onclick = onClick;
     return b;
   }
-  const addRailBtn = propToolBtn(VIEW_ICON.addRail, 'Add rail pipe',
+  const addRailBtn = propToolBtn(
+    VIEW_ICON.addRail,
+    'Add rail pipe',
     'Add rail pipe — lay a grind rail with its own tube: click points on the mountain and the rail splines between them, floated at a height you set. Enter / Esc finishes. Click a rail to edit its points / height / material. Add rail spline in this section lays the grind curve along existing props without building a tube.',
-    () => armRail());
-  const addGemBtn = propToolBtn(VIEW_ICON.addGem, 'Add gem',
+    () => armRail(),
+  );
+  const addGemBtn = propToolBtn(
+    VIEW_ICON.addGem,
+    'Add gem',
     'Add gem — place gem pickups: click to drop one, drag to lay a spaced row. Tune float height / row spacing / value in Tools.',
-    () => armGem());
-  const addSpeedBoostBtn = propToolBtn(VIEW_ICON.addSpeedBoost, 'Add speed boost',
+    () => armGem(),
+  );
+  const addSpeedBoostBtn = propToolBtn(
+    VIEW_ICON.addSpeedBoost,
+    'Add speed boost',
     'Place a speed boost pad. Click the mountain to place it; turn and size it like a prop. Starts with a five-second boost, editable in Effects.',
-    () => void deps.armBoostPad('speed'));
-  const addTrickBoostBtn = propToolBtn(VIEW_ICON.addTrickBoost, 'Add trick boost',
+    () => void deps.armBoostPad('speed'),
+  );
+  const addTrickBoostBtn = propToolBtn(
+    VIEW_ICON.addTrickBoost,
+    'Add trick boost',
     'Place a trick boost pad. Click the mountain to place it; turn and size it like a prop. Starts with a five-second trick window, editable in Effects.',
-    () => void deps.armBoostPad('trick'));
-  const addLightBtn = propToolBtn(VIEW_ICON.addLight, 'Add light',
+    () => void deps.armBoostPad('trick'),
+  );
+  const addLightBtn = propToolBtn(
+    VIEW_ICON.addLight,
+    'Add light',
     'Add light — drop a free coloured light on the course, then click the mountain to place it. Tune its colour / brightness / reach (and spot cone) in Tools.',
-    () => armLight());
-  const addScreenBtn = propToolBtn(VIEW_ICON.addScreen, 'Add screen',
-    'Add screen — drop a free-standing video screen where you are looking, facing you, then drag it into place. '
-    + 'A screen on a BOARD is better added with that prop selected: its inspector fits one to the board’s own '
-    + 'face. Screens export as Billboards.json and play video in Unity / VRChat (docs/051).',
-    () => addFreeScreen());
-  const addSheetBtn = propToolBtn(VIEW_ICON.addSheet, 'Add sheet',
-    'Add sheet — lay one textured surface along a path: a fence standing up, or a river lying flat. Click points on '
-    + 'the mountain; neighbouring pieces share their edges exactly, like the shipped fences. Give it a tile in its '
-    + 'panel — or pick a shipped sheet in the Prop Library to start from its look.',
-    () => addSheet());
-  const addTriggerBtn = propToolBtn(VIEW_ICON.addTrigger, 'Add trigger box',
+    () => armLight(),
+  );
+  const addScreenBtn = propToolBtn(
+    VIEW_ICON.addScreen,
+    'Add screen',
+    'Add screen — drop a free-standing video screen where you are looking, facing you, then drag it into place. ' +
+      'A screen on a BOARD is better added with that prop selected: its inspector fits one to the board’s own ' +
+      'face. Screens export as Billboards.json and play video in Unity / VRChat (docs/051).',
+    () => addFreeScreen(),
+  );
+  const addSheetBtn = propToolBtn(
+    VIEW_ICON.addSheet,
+    'Add sheet',
+    'Add sheet — lay one textured surface along a path: a fence standing up, or a river lying flat. Click points on ' +
+      'the mountain; neighbouring pieces share their edges exactly, like the shipped fences. Give it a tile in its ' +
+      'panel — or pick a shipped sheet in the Prop Library to start from its look.',
+    () => addSheet(),
+  );
+  const addTriggerBtn = propToolBtn(
+    VIEW_ICON.addTrigger,
+    'Add trigger box',
     'Place an invisible, resizable box where you are looking, with an empty collision effect. Opens its effect toolbox to configure what happens when a rider enters.',
-    () => deps.addEffectScenery('trigger'));
-  const addFogBtn = propToolBtn(VIEW_ICON.addFog, 'Add fog volume',
+    () => deps.addEffectScenery('trigger'),
+  );
+  const addFogBtn = propToolBtn(
+    VIEW_ICON.addFog,
+    'Add fog volume',
     'Place a fog bank above where you are looking and open its position, scale and particle-volume settings.',
-    () => deps.addEffectScenery('fog'));
-  const addMotionPathBtn = propToolBtn(VIEW_ICON.addMotionPath, 'Add motion path',
+    () => deps.addEffectScenery('fog'),
+  );
+  const addMotionPathBtn = propToolBtn(
+    VIEW_ICON.addMotionPath,
+    'Add motion path',
     'Draw an invisible route for a moving prop. Opens the path editor in Effects; click points, then Enter or Esc to finish.',
-    () => deps.addEffectScenery('motion-path'));
-  const addRailSplineBtn = propToolBtn(VIEW_ICON.addRailSpline, 'Add rail spline',
+    () => deps.addEffectScenery('motion-path'),
+  );
+  const addRailSplineBtn = propToolBtn(
+    VIEW_ICON.addRailSpline,
+    'Add rail spline',
     'Draw a grindable curve along existing scenery without building a tube. Opens the spline editor in Effects; click points, then Enter or Esc to finish.',
-    () => deps.addEffectScenery('rail-spline'));
+    () => deps.addEffectScenery('rail-spline'),
+  );
   const addTrickRow = document.createElement('div');
   addTrickRow.className = 'sp-prop-launcher-stack';
-  const zoneButtons = ([
-    ['reset-zone', 'Add reset zone', VIEW_ICON.addReset, 'Add a broad, thin reset volume. Riders touching it return to the course.'],
-    ['teleport-entrance', 'Add teleport entrance', VIEW_ICON.addTeleport, 'Add a teleport entrance and its paired destination. Choose or move the destination in its settings.'],
-    ['teleport-destination', 'Add teleport destination', VIEW_ICON.addDestination, 'Add an invisible destination marker. Pair entrances with it in their settings.'],
-    ['wind-zone', 'Add wind zone', VIEW_ICON.addWind, 'Add an invisible box that pushes riders in a chosen world direction while they are inside.'],
-    ['vertical-lift', 'Add vertical lift', VIEW_ICON.addLift, 'Add an air shaft that carries riders up to a target height.'],
-  ] as const).map(([kind, label, icon, hint]) => propToolBtn(icon, label, hint, () => deps.addSpecialZone(kind)));
-  const timeBonusBtn = propToolBtn(VIEW_ICON.addTime, 'Time bonus (unavailable)',
+  const zoneButtons = (
+    [
+      [
+        'reset-zone',
+        'Add reset zone',
+        VIEW_ICON.addReset,
+        'Add a broad, thin reset volume. Riders touching it return to the course.',
+      ],
+      [
+        'teleport-entrance',
+        'Add teleport entrance',
+        VIEW_ICON.addTeleport,
+        'Add a teleport entrance and its paired destination. Choose or move the destination in its settings.',
+      ],
+      [
+        'teleport-destination',
+        'Add teleport destination',
+        VIEW_ICON.addDestination,
+        'Add an invisible destination marker. Pair entrances with it in their settings.',
+      ],
+      [
+        'wind-zone',
+        'Add wind zone',
+        VIEW_ICON.addWind,
+        'Add an invisible box that pushes riders in a chosen world direction while they are inside.',
+      ],
+      [
+        'vertical-lift',
+        'Add vertical lift',
+        VIEW_ICON.addLift,
+        'Add an air shaft that carries riders up to a target height.',
+      ],
+    ] as const
+  ).map(([kind, label, icon, hint]) => propToolBtn(icon, label, hint, () => deps.addSpecialZone(kind)));
+  const timeBonusBtn = propToolBtn(
+    VIEW_ICON.addTime,
+    'Time bonus (unavailable)',
     'Time bonus authoring is unavailable: the native award format and units are not established.',
-    () => toast('Time bonuses are not available yet: their native award format and units still need verification.', 'info'));
+    () =>
+      toast('Time bonuses are not available yet: their native award format and units still need verification.', 'info'),
+  );
   function addSection(label: string, buttons: HTMLButtonElement[]) {
     const section = document.createElement('details');
     section.className = 'sp-prop-launcher-section';
@@ -328,8 +443,15 @@ export function createTrickTools(deps: TrickToolsDeps) {
   }
 
   return {
-    ensureTrickArt, armRail, armGem, finishRail, cancelTrickTools, discardUnfinishedRail,
-    deleteSelectedRail, deleteSelectedRailNode, deleteSelectedGem,
+    ensureTrickArt,
+    armRail,
+    armGem,
+    finishRail,
+    cancelTrickTools,
+    discardUnfinishedRail,
+    deleteSelectedRail,
+    deleteSelectedRailNode,
+    deleteSelectedGem,
     syncAddTrickBtns,
   };
 }

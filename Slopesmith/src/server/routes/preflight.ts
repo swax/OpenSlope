@@ -22,8 +22,11 @@ import { readSkyRing, resolveSkyRingLevel } from './skybox';
 export async function preflightFor(doc: EditDoc): Promise<Preflight> {
   let ring;
   if (doc.skybox?.source.kind === 'custom') {
-    try { ring = await readSkyRing(await resolveSkyRingLevel(doc.skybox.ring ?? '')); }
-    catch { /* export reports the missing ring; preflight keeps a zero-sized estimate */ }
+    try {
+      ring = await readSkyRing(await resolveSkyRingLevel(doc.skybox.ring ?? ''));
+    } catch {
+      /* export reports the missing ring; preflight keeps a zero-sized estimate */
+    }
   }
   return withPlacedProps(doc, await withImportedModels(doc, computePreflight(doc, ring)));
 }
@@ -59,7 +62,11 @@ async function withImportedModels(doc: EditDoc, pf: Preflight): Promise<Prefligh
 }
 
 /** One model's price, whatever it was borrowed, authored or imported from. */
-interface PricedModel { name: string; tris: number; pages: string[] }
+interface PricedModel {
+  name: string;
+  tris: number;
+  pages: string[];
+}
 
 /**
  * Price every placement the doc carries: how much geometry the level has to hold, how much the Unity bundle
@@ -77,8 +84,7 @@ async function withPlacedProps(doc: EditDoc, pf: Preflight): Promise<Preflight> 
   if (!placements.length) return pf;
 
   const groupLevels = new Set(placements.flatMap(p => (p.group ? [p.level] : [])));
-  const defs: ReadonlyMap<string, GroupDef> = groupLevels.size
-    ? await groupDefIndex(groupLevels) : new Map();
+  const defs: ReadonlyMap<string, GroupDef> = groupLevels.size ? await groupDefIndex(groupLevels) : new Map();
   const expanded: PlacedProp[] = placements.flatMap(pp => {
     const def = pp.group ? defs.get(`${pp.level}:${pp.group}`) : undefined;
     return def ? expandGroupProps(pp, def) : [pp];
@@ -97,10 +103,14 @@ async function withPlacedProps(doc: EditDoc, pf: Preflight): Promise<Preflight> 
   const rows: PreflightProps['rows'] = [];
   const pages = new Set<string>();
   const missing: string[] = [];
-  let geomTris = 0, bakedTris = 0;
+  let geomTris = 0,
+    bakedTris = 0;
   for (const [key, { level, count }] of counts) {
     const model = priced.get(key);
-    if (!model) { missing.push(`${key} × ${count}`); continue; }
+    if (!model) {
+      missing.push(`${key} × ${count}`);
+      continue;
+    }
     geomTris += model.tris;
     bakedTris += model.tris * count;
     for (const page of model.pages) pages.add(page);
@@ -123,8 +133,10 @@ async function withPlacedProps(doc: EditDoc, pf: Preflight): Promise<Preflight> 
 }
 
 /** Resolve each placed `<level>/<model>` to its triangles and its pages, from whichever store owns it. */
-async function priceModels(doc: EditDoc, counts: Map<string, { level: string; model: number }>):
-Promise<Map<string, PricedModel>> {
+async function priceModels(
+  doc: EditDoc,
+  counts: Map<string, { level: string; model: number }>,
+): Promise<Map<string, PricedModel>> {
   const out = new Map<string, PricedModel>();
 
   // borrowed models: geometry off the source level's meshes, pages out of its material table
@@ -166,7 +178,7 @@ Promise<Map<string, PricedModel>> {
       const geom = authored.models.find(m => m.id === id);
       if (!geom) continue;
       const frames = authoredModelFrames(model);
-      const pages = new Set<string>(frames.length ? frames : (model.texture ? [model.texture] : []));
+      const pages = new Set<string>(frames.length ? frames : model.texture ? [model.texture] : []);
       out.set(`${AUTHORED_MODEL_LEVEL}/${id}`, {
         name: model.name,
         tris: geom.subs.reduce((n, sub) => n + sub.indices.length / 3, 0),

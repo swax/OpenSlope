@@ -22,8 +22,10 @@ export const lerp = (a: V3, b: V3, t: number): V3 => [
 
 /** Rotate a vector about a unit axis with Rodrigues' formula. */
 export function rotateAroundAxis(v: V3, axis: V3, angle: number): V3 {
-  const cosine = Math.cos(angle), sine = Math.sin(angle);
-  const crossTerm = cross(axis, v), projection = dot(axis, v) * (1 - cosine);
+  const cosine = Math.cos(angle),
+    sine = Math.sin(angle);
+  const crossTerm = cross(axis, v),
+    projection = dot(axis, v) * (1 - cosine);
   return [
     v[0] * cosine + crossTerm[0] * sine + axis[0] * projection,
     v[1] * cosine + crossTerm[1] * sine + axis[1] * projection,

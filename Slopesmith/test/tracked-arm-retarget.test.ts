@@ -19,7 +19,9 @@ import { createRider, type RiderInput } from '../src/app/ride/rider';
 
 const glb = await exportBlockyRiderGlb();
 const gltf = await new GLTFLoader().parseAsync(
-  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer, '');
+  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer,
+  '',
+);
 const root = gltf.scene as THREE.Group;
 root.updateMatrixWorld(true);
 const bone = (name: string): THREE.Bone => {
@@ -60,7 +62,8 @@ const ctl = (a: THREE.Vector3, b: THREE.Vector3) => ({
   b: { position: b, quaternion: new THREE.Quaternion() },
 });
 rider.reset(tracked(0));
-const shF = rider.solved.shoulderFront.clone(), shR = rider.solved.shoulderRear.clone();
+const shF = rider.solved.shoulderFront.clone(),
+  shR = rider.solved.shoulderRear.clone();
 
 function skinnedHands(): THREE.Vector3[] {
   driver.pose(rider.solved);
@@ -74,21 +77,34 @@ const nearest = (target: THREE.Vector3, hands: THREE.Vector3[]) =>
 for (const [label, input] of [
   ['upright', tracked(0)],
   ['crouched 25 cm', tracked(0.25)],
-  ['leaning 15 cm', { ...tracked(0), headTarget: { ...tracked(0).headTarget!, position: eye.clone().add(new THREE.Vector3(0, 0, 0.15)) } }],
+  [
+    'leaning 15 cm',
+    {
+      ...tracked(0),
+      headTarget: { ...tracked(0).headTarget!, position: eye.clone().add(new THREE.Vector3(0, 0, 0.15)) },
+    },
+  ],
 ] as const) {
-  const a = shF.clone().add(new THREE.Vector3(0, -0.2, 0.3)), b = shR.clone().add(new THREE.Vector3(0, -0.2, 0.3));
+  const a = shF.clone().add(new THREE.Vector3(0, -0.2, 0.3)),
+    b = shR.clone().add(new THREE.Vector3(0, -0.2, 0.3));
   rider.pose({ ...input, handTargets: ctl(a, b) });
   const hands = skinnedHands();
-  assert(nearest(a, hands) < 5e-3 && nearest(b, hands) < 5e-3,
-    `${label}: tracked hand bones land on their controllers (${(nearest(a, hands) * 100).toFixed(1)} / ${(nearest(b, hands) * 100).toFixed(1)} cm off)`);
-  assert(Math.abs(at('UpperArm.L').distanceTo(at('LowerArm.L')) - restUpper) < 1e-6
-    && Math.abs(at('LowerArm.L').distanceTo(at('Hand.L')) - restFore) < 1e-6,
-    `${label}: the re-solve writes rotations only, so the imported arm keeps its bind lengths`);
+  assert(
+    nearest(a, hands) < 5e-3 && nearest(b, hands) < 5e-3,
+    `${label}: tracked hand bones land on their controllers (${(nearest(a, hands) * 100).toFixed(1)} / ${(nearest(b, hands) * 100).toFixed(1)} cm off)`,
+  );
+  assert(
+    Math.abs(at('UpperArm.L').distanceTo(at('LowerArm.L')) - restUpper) < 1e-6 &&
+      Math.abs(at('LowerArm.L').distanceTo(at('Hand.L')) - restFore) < 1e-6,
+    `${label}: the re-solve writes rotations only, so the imported arm keeps its bind lengths`,
+  );
 }
 
 // On foot the imported shoulder is 3 cm from the landmark's even standing straight.
 const footTracked: RiderInput = {
-  ...neutral, ankleFront: new THREE.Vector3(0.105, 0, 0), ankleRear: new THREE.Vector3(-0.105, 0, 0),
+  ...neutral,
+  ankleFront: new THREE.Vector3(0.105, 0, 0),
+  ankleRear: new THREE.Vector3(-0.105, 0, 0),
   locomotion: { phase: 0, weight: 0, facing: new THREE.Vector3(0, 0, 1) },
   headTarget: { position: eye.clone().add(new THREE.Vector3(0, -0.1, 0)), quaternion: look, exactPosition: true },
 };
@@ -98,7 +114,10 @@ rider.reset(footTracked);
   const b = rider.solved.shoulderRear.clone().add(new THREE.Vector3(0, -0.2, 0.3));
   rider.pose({ ...footTracked, handTargets: ctl(a, b) });
   const hands = skinnedHands();
-  assert(nearest(a, hands) < 5e-3 && nearest(b, hands) < 5e-3, 'on foot the tracked hand bones land on their controllers');
+  assert(
+    nearest(a, hands) < 5e-3 && nearest(b, hands) < 5e-3,
+    'on foot the tracked hand bones land on their controllers',
+  );
 }
 
 // Past full extension the arm straightens toward the controller and falls short along the line to it, exactly
@@ -110,11 +129,15 @@ rider.reset(tracked(0));
   rider.pose({ ...tracked(0), handTargets: ctl(far, b) });
   const hands = skinnedHands();
   const side = hands[0].distanceTo(far) < hands[1].distanceTo(far) ? 'L' : 'R';
-  const shoulder = at(`UpperArm.${side}`), hand = at(`Hand.${side}`);
-  assert(Math.abs(shoulder.distanceTo(hand) - (restUpper + restFore)) < 0.01,
-    'an unreachable controller straightens the imported arm without stretching it');
-  const toHand = hand.clone().sub(shoulder).normalize(), toTarget = far.clone().sub(shoulder).normalize();
-  assert(toHand.angleTo(toTarget) < 3 * Math.PI / 180, 'the straightened arm points at the controller');
+  const shoulder = at(`UpperArm.${side}`),
+    hand = at(`Hand.${side}`);
+  assert(
+    Math.abs(shoulder.distanceTo(hand) - (restUpper + restFore)) < 0.01,
+    'an unreachable controller straightens the imported arm without stretching it',
+  );
+  const toHand = hand.clone().sub(shoulder).normalize(),
+    toTarget = far.clone().sub(shoulder).normalize();
+  assert(toHand.angleTo(toTarget) < (3 * Math.PI) / 180, 'the straightened arm points at the controller');
 }
 
 console.log('TRACKED ARM RETARGET: PASS');

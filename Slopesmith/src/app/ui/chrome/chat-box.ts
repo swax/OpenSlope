@@ -152,9 +152,11 @@ export function createChatBox(deps: {
   note.className = 'sp-chat-note';
   // Said once, here, rather than left for people to assume: the server relays and retains a private line like
   // any other, so it is private from other members and not from whoever runs the machine.
-  note.textContent = '/msg <user> <text> · /r <text> replies. Private lines are private from other members, '
-    + 'not from whoever runs this server — it relays and retains them. Esc closes.';
-  if (deps.docked) note.textContent = 'Enter to chat while riding. Esc returns to the mountain. /msg and /r work here too.';
+  note.textContent =
+    '/msg <user> <text> · /r <text> replies. Private lines are private from other members, ' +
+    'not from whoever runs this server — it relays and retains them. Esc closes.';
+  if (deps.docked)
+    note.textContent = 'Enter to chat while riding. Esc returns to the mountain. /msg and /r work here too.';
   el.append(speakerList, log, entry, note);
   document.body.appendChild(el);
 
@@ -179,8 +181,8 @@ export function createChatBox(deps: {
   function nameOf(line: ChatLine): string {
     const mine = deps.me()?.id;
     if (line.kind !== 'private') return line.from?.username ?? '';
-    const to = line.to?.userId === mine ? 'you' : line.to?.username ?? '';
-    const from = line.from?.userId === mine ? 'you' : line.from?.username ?? '';
+    const to = line.to?.userId === mine ? 'you' : (line.to?.username ?? '');
+    const from = line.from?.userId === mine ? 'you' : (line.from?.username ?? '');
     return `${from} → ${to}`;
   }
 
@@ -230,7 +232,10 @@ export function createChatBox(deps: {
   function scheduleFade(): void {
     const pending = !open && lines.slice(-RECENT_LINES).some(line => Date.now() - line.at <= RECENT_MS);
     if (pending && !fade) fade = window.setInterval(paint, 1000);
-    if (!pending && fade) { clearInterval(fade); fade = 0; }
+    if (!pending && fade) {
+      clearInterval(fade);
+      fade = 0;
+    }
   }
 
   function remember(line: ChatLine): void {
@@ -245,22 +250,27 @@ export function createChatBox(deps: {
 
   function setSpeakers(active: readonly ChatSpeaker[]): void {
     speakerList.replaceChildren();
-    const unique = new Map(active.filter(speaker => speaker.userId && speaker.username)
-      .map(speaker => [speaker.userId, speaker]));
+    const unique = new Map(
+      active.filter(speaker => speaker.userId && speaker.username).map(speaker => [speaker.userId, speaker]),
+    );
     const sorted = [...unique.values()].sort((a, b) => a.username.localeCompare(b.username));
     for (const speaker of sorted) {
       const row = document.createElement('span');
       row.className = 'sp-chat-speaker';
       row.setAttribute('aria-label', `${speaker.username} is speaking in voice`);
-      row.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true">'
-        + '<path d="M3 8h3l4-3.5v11L6 12H3zM13 7a4 4 0 0 1 0 6M15 4.5a7 7 0 0 1 0 11"/></svg>';
+      row.innerHTML =
+        '<svg viewBox="0 0 20 20" aria-hidden="true">' +
+        '<path d="M3 8h3l4-3.5v11L6 12H3zM13 7a4 4 0 0 1 0 6M15 4.5a7 7 0 0 1 0 11"/></svg>';
       row.append(document.createTextNode(speaker.username));
       speakerList.appendChild(row);
     }
     speakerList.classList.toggle('on', sorted.length > 0);
-    speakerList.setAttribute('aria-label', sorted.length
-      ? `${sorted.map(speaker => speaker.username).join(', ')} speaking in voice`
-      : 'Nobody speaking in voice');
+    speakerList.setAttribute(
+      'aria-label',
+      sorted.length
+        ? `${sorted.map(speaker => speaker.username).join(', ')} speaking in voice`
+        : 'Nobody speaking in voice',
+    );
   }
 
   function send(): void {
@@ -280,15 +290,26 @@ export function createChatBox(deps: {
     paint();
   }
 
-  input.addEventListener('focus', () => { holding = true; });
-  input.addEventListener('blur', () => { holding = false; });
+  input.addEventListener('focus', () => {
+    holding = true;
+  });
+  input.addEventListener('blur', () => {
+    holding = false;
+  });
   input.addEventListener('keydown', event => {
     // Every key typed here is a character. Stopping propagation is belt to the suppression brace in
     // `shortcuts.ts`, which is the rule that actually holds — a listener attached elsewhere is not this
     // box's to know about.
     event.stopPropagation();
-    if (event.key === 'Enter') { event.preventDefault(); send(); return; }
-    if (event.key === 'Escape') { event.preventDefault(); close(); }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      send();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    }
   });
   el.addEventListener('mousedown', event => {
     if (open || deps.suspended?.()) return;
@@ -298,7 +319,10 @@ export function createChatBox(deps: {
 
   const api: ChatBox = {
     el,
-    push(line: ChatLine): void { remember(line); paint(); },
+    push(line: ChatLine): void {
+      remember(line);
+      paint();
+    },
     replay(replayed: ChatLine[]): void {
       lines.length = 0;
       for (const row of rows.values()) row.remove();
@@ -308,9 +332,13 @@ export function createChatBox(deps: {
     },
     setSpeakers,
     setDocked(on): void {
-      docked = on; open = on;
-      el.classList.toggle('sp-chat-docked', on); el.classList.toggle('open', on);
-      el.style.bottom = ''; anchor(); paint();
+      docked = on;
+      open = on;
+      el.classList.toggle('sp-chat-docked', on);
+      el.classList.toggle('open', on);
+      el.style.bottom = '';
+      anchor();
+      paint();
     },
     open(prefill = ''): void {
       if (deps.suspended?.()) return;
@@ -324,10 +352,22 @@ export function createChatBox(deps: {
     close,
     focused: (): boolean => holding,
   };
-  window.addEventListener('keydown', event => {
-    if (!docked || deps.suspended?.() || event.key !== 'Enter'
-      || (event.target as HTMLElement | null)?.closest?.('input, textarea, select, button, a, [contenteditable="true"]')) return;
-    event.preventDefault(); event.stopPropagation(); document.exitPointerLock?.(); api.open();
-  }, true);
+  window.addEventListener(
+    'keydown',
+    event => {
+      if (
+        !docked ||
+        deps.suspended?.() ||
+        event.key !== 'Enter' ||
+        (event.target as HTMLElement | null)?.closest?.('input, textarea, select, button, a, [contenteditable="true"]')
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      document.exitPointerLock?.();
+      api.open();
+    },
+    true,
+  );
   return api;
 }

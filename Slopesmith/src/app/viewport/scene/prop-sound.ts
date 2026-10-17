@@ -5,7 +5,9 @@ import { groupMemberKey } from '../../../core/props/defaults';
 import type { RideObstacleObject } from '../../ride/physics';
 import {
   createAmbientSoundLayer,
-  type AmbientSoundHooks, type AmbientSoundLayer, type AmbientSoundSource,
+  type AmbientSoundHooks,
+  type AmbientSoundLayer,
+  type AmbientSoundSource,
 } from './ambient-sound';
 
 /**
@@ -51,9 +53,15 @@ export const propOwnerKey = (object: RideObstacleObject): string =>
  * loudness, not pitch (`RideableBoard.PlayImpactSound`, `ContactSound.PlayForSpeed`, `PhysicsProp.Knock`).
  */
 export type PropSoundContact = 'solid' | 'through' | 'movable';
-const IMPACT_RESPONSE: Record<PropSoundContact, {
-  minSpeed: number; fullSpeed: number; volumeFloor: number; volumeRange: number;
-}> = {
+const IMPACT_RESPONSE: Record<
+  PropSoundContact,
+  {
+    minSpeed: number;
+    fullSpeed: number;
+    volumeFloor: number;
+    volumeRange: number;
+  }
+> = {
   // A blocking collider: Unity's board impact path opens from silence at 2 m/s and is full at 16 m/s.
   solid: { minSpeed: 2, fullSpeed: 16, volumeFloor: 0, volumeRange: 1 },
   // A ride-through trigger keeps an audible floor once its gentler 0.5 m/s entry gate has been cleared.
@@ -101,8 +109,10 @@ export interface PropSoundSource {
  * audio depend on it leaves a fully working collider with no sound source. `sourceIndex` is the identity the
  * obstacle reports, so this join cannot drift from the geometry it describes.
  */
-export function referencePropSoundSources(level: string,
-  instances: readonly Pick<PropInstance, 'sourceIndex' | 'collisionSound' | 'contact'>[]): Map<number, PropSoundSource> {
+export function referencePropSoundSources(
+  level: string,
+  instances: readonly Pick<PropInstance, 'sourceIndex' | 'collisionSound' | 'contact'>[],
+): Map<number, PropSoundSource> {
   const sources = new Map<number, PropSoundSource>();
   for (const instance of instances) {
     if (instance.collisionSound < 0) continue;
@@ -110,8 +120,7 @@ export function referencePropSoundSources(level: string,
       key: `reference:${instance.sourceIndex}`,
       level,
       event: instance.collisionSound,
-      contact: instance.contact === 'movable' ? 'movable'
-        : instance.contact === 'solid' ? 'solid' : 'through',
+      contact: instance.contact === 'movable' ? 'movable' : instance.contact === 'solid' ? 'solid' : 'through',
     });
   }
   return sources;
@@ -132,8 +141,13 @@ export interface PropSoundLayer {
    * A rider hit this prop. Arms its hit-gated ambience first and unconditionally, then plays the collision
    * one-shot if the prop has one that resolves — the order retail uses, and the reason hydrants spray.
    */
-  contact(object: RideObstacleObject, position: THREE.Vector3, impactSpeed: number, elapsed: number,
-    contactOverride?: PropSoundContact): void;
+  contact(
+    object: RideObstacleObject,
+    position: THREE.Vector3,
+    impactSpeed: number,
+    elapsed: number,
+    contactOverride?: PropSoundContact,
+  ): void;
   /** A run boundary: drop the debounces and every arming, as retail's full audio reset does. */
   resetRun(): void;
   /** Stop every ambient voice now, keeping the installed sources and their arming. */
@@ -157,31 +171,49 @@ export function createPropSoundLayer(hooks: PropSoundHooks): PropSoundLayer {
    *  ids simply produce nothing — by then the ambience has already been armed. */
   function impactVolume(contact: PropSoundContact | undefined, impactSpeed: number): number | null {
     const fallback = hooks.riderSpeed();
-    const speed = Number.isFinite(impactSpeed) ? Math.max(0, impactSpeed)
-      : Number.isFinite(fallback) ? Math.max(0, fallback) : 0;
+    const speed = Number.isFinite(impactSpeed)
+      ? Math.max(0, impactSpeed)
+      : Number.isFinite(fallback)
+        ? Math.max(0, fallback)
+        : 0;
     // A source map can survive a dev hot-reload (or arrive from an older API response) without the contact
     // discriminator added alongside these curves. Treat that legacy shape as an ordinary blocking impact;
     // malformed runtime data must never turn a harmless prop touch into a render-loop exception.
     const response = IMPACT_RESPONSE[contact ?? 'solid'] ?? IMPACT_RESPONSE.solid;
     if (speed < response.minSpeed) return null;
-    const t = Math.min(1, Math.max(0,
-      (speed - response.minSpeed) / Math.max(0.01, response.fullSpeed - response.minSpeed)));
+    const t = Math.min(
+      1,
+      Math.max(0, (speed - response.minSpeed) / Math.max(0.01, response.fullSpeed - response.minSpeed)),
+    );
     return response.volumeFloor + response.volumeRange * t;
   }
 
   function playOneShot(source: PropSoundSource, position: THREE.Vector3, volume: number): void {
-    if (source.file) { hooks.playOneShot(hooks.fileBuffer(source.file), position, volume); return; }
+    if (source.file) {
+      hooks.playOneShot(hooks.fileBuffer(source.file), position, volume);
+      return;
+    }
     const resolved = resolveCollisionSound(source.event, source.level);
     if (!resolved) return; // authored-silent id
     hooks.playOneShot(hooks.bankBuffer(source.level, resolved.slot, resolved.bank), position, volume);
   }
 
   return {
-    setReferenceSources(sources) { referenceSources = sources; },
-    setAuthoredSources(sources) { authoredSources = sources; },
-    setPlacedAmbience(level, sources) { ambient.setSources(level, sources); },
-    setAmbientEnabled(on) { ambient.setEnabled(on); },
-    step(dt, listenerWorld) { ambient.step(dt, listenerWorld); },
+    setReferenceSources(sources) {
+      referenceSources = sources;
+    },
+    setAuthoredSources(sources) {
+      authoredSources = sources;
+    },
+    setPlacedAmbience(level, sources) {
+      ambient.setSources(level, sources);
+    },
+    setAmbientEnabled(on) {
+      ambient.setEnabled(on);
+    },
+    step(dt, listenerWorld) {
+      ambient.step(dt, listenerWorld);
+    },
 
     contact(object, position, impactSpeed, elapsed, contactOverride) {
       // Arming comes first and is NEVER gated on the prop having an audible collision row, because retail
@@ -189,8 +221,10 @@ export function createPropSoundLayer(hooks: PropSoundHooks): PropSoundLayer {
       // carrying a gated event is hit-gated in retail exactly as a reference one is, so Test has to be too.
       ambient.arm(propOwnerKey(object));
       // A group member with behaviour of its own sounds as that member alone — silent if its entry is.
-      const source = object.kind === 'reference' ? referenceSources.get(object.index)
-        : authoredSources.get(object.member === undefined ? object.id : groupMemberKey(object.id, object.member));
+      const source =
+        object.kind === 'reference'
+          ? referenceSources.get(object.index)
+          : authoredSources.get(object.member === undefined ? object.id : groupMemberKey(object.id, object.member));
       // The debounce guards the one-shot alone. Arming is permanent and idempotent, so rate-limiting it
       // would only risk dropping the very first contact — the one that has to land.
       if (!source) return;
@@ -202,10 +236,18 @@ export function createPropSoundLayer(hooks: PropSoundHooks): PropSoundLayer {
       playOneShot(source, position, volume);
     },
 
-    resetRun() { soundNext.clear(); ambient.disarmAll(); },
-    stopAmbient() { ambient.stopAll(); },
+    resetRun() {
+      soundNext.clear();
+      ambient.disarmAll();
+    },
+    stopAmbient() {
+      ambient.stopAll();
+    },
     ambientVoices: () => ambient.active().sort((a, b) => b.gain - a.gain),
     isArmed: owner => ambient.isArmed(owner),
-    dispose() { soundNext.clear(); ambient.dispose(); },
+    dispose() {
+      soundNext.clear();
+      ambient.dispose();
+    },
   };
 }

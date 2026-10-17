@@ -81,8 +81,9 @@ const propStem = (name: string) => safeDataName(name) || 'prop';
 export async function listImportedProps(): Promise<{ file: string; record: ImportedPropRecord }[]> {
   const dir = importedDir();
   const files = (await listDir(dir)).filter(f => JSON_EXT.test(f)).sort((a, b) => a.localeCompare(b));
-  const records = await mapLimit(files, READ_CONCURRENCY,
-    file => readJsonOr<ImportedPropRecord | null>(join(dir, file), null));
+  const records = await mapLimit(files, READ_CONCURRENCY, file =>
+    readJsonOr<ImportedPropRecord | null>(join(dir, file), null),
+  );
   return files.flatMap((file, index) => {
     const record = records[index];
     // An unreadable record is skipped rather than poisoning the catalogue.
@@ -101,8 +102,10 @@ export async function listImportedProps(): Promise<{ file: string; record: Impor
  * placements persist the number, so a record's number must name the same geometry for as long as the record
  * exists, and a number is never reused.
  */
-export async function saveImportedProp(name: string, record: Omit<ImportedPropRecord, 'id'>):
-  Promise<{ file: string; record: ImportedPropRecord }> {
+export async function saveImportedProp(
+  name: string,
+  record: Omit<ImportedPropRecord, 'id'>,
+): Promise<{ file: string; record: ImportedPropRecord }> {
   const dir = importedDir();
   const { name: stem, stored } = await storeUnderFreeName({
     library: dir,
@@ -131,8 +134,7 @@ export async function saveImportedProp(name: string, record: Omit<ImportedPropRe
  * past a stem that is taken, and the stem it leaves is retired like any freed name. The display name is
  * whatever was typed, because nothing addresses a model by it.
  */
-export async function renameImportedProp(id: number, to: string):
-  Promise<{ id: number; name: string; file: string }> {
+export async function renameImportedProp(id: number, to: string): Promise<{ id: number; name: string; file: string }> {
   const dir = importedDir();
   const { file, record } = await findImportedProp(id);
   const display = to.trim();
@@ -142,9 +144,10 @@ export async function renameImportedProp(id: number, to: string):
     library: dir,
     name: propStem(display),
     fallback: 'prop',
-    taken: candidate => candidate.toLowerCase() === source.toLowerCase()
-      ? Promise.resolve(false)   // its own file is not in its way
-      : pathExists(join(dir, `${candidate}.json`)),
+    taken: candidate =>
+      candidate.toLowerCase() === source.toLowerCase()
+        ? Promise.resolve(false) // its own file is not in its way
+        : pathExists(join(dir, `${candidate}.json`)),
     write: async stored => {
       await writeFile(join(dir, `${source}.json`), JSON.stringify({ ...record, name: display }));
       if (stored !== source) await rename(join(dir, `${source}.json`), join(dir, `${stored}.json`));
@@ -157,8 +160,7 @@ export async function renameImportedProp(id: number, to: string):
 
 /** Copy a stored model under a new name and a NEW model number — the "keep this one before I replace it"
  *  move. Nothing already placed follows the copy: it starts unplaced, exactly like a fresh import. */
-export async function cloneImportedProp(id: number, to: string):
-  Promise<{ id: number; name: string; file: string }> {
+export async function cloneImportedProp(id: number, to: string): Promise<{ id: number; name: string; file: string }> {
   const { record } = await findImportedProp(id);
   const display = to.trim();
   if (!display) throw new Error('a model needs a name');
@@ -176,14 +178,15 @@ export async function cloneImportedProp(id: number, to: string):
  * mountain-local catalogue is served as one revalidated payload rather than per-model URLs, so no cache
  * holds a stale record, and the client re-registers the geometry against the number it already has.
  */
-export async function replaceImportedProp(id: number, next: Omit<ImportedPropRecord, 'id' | 'name'>):
-  Promise<{ id: number; name: string; file: string }> {
+export async function replaceImportedProp(
+  id: number,
+  next: Omit<ImportedPropRecord, 'id' | 'name'>,
+): Promise<{ id: number; name: string; file: string }> {
   // Import can only ever ADD a bad record; replace would write one over a model the author is already using,
   // and `listImportedProps` skips what it cannot read — so a malformed body would delete the model rather
   // than fail. Refuse it while the original is still on disk.
   const shape = next as Partial<ImportedPropRecord> | null;
-  if (!shape?.subs?.length || !Array.isArray(shape.materials))
-    throw new Error('that file did not convert to a model');
+  if (!shape?.subs?.length || !Array.isArray(shape.materials)) throw new Error('that file did not convert to a model');
   const { file, record } = await findImportedProp(id);
   // New geometry is not a new behaviour: the model's saved defaults (docs/069) outlive a Replace, as its name does.
   const defaults = sanitizePropBehaviour(shape.defaults) ?? record.defaults;
@@ -198,8 +201,10 @@ export async function replaceImportedProp(id: number, next: Omit<ImportedPropRec
  * materials, clip and emitters exactly as they are. A narrow patch like the material one: the body is a
  * behaviour record only, sanitized field by field, and `null` (or nothing usable) clears the defaults.
  */
-export async function updateImportedPropDefaults(id: number, next: unknown):
-  Promise<{ id: number; name: string; defaults: ImportedPropRecord['defaults'] | null }> {
+export async function updateImportedPropDefaults(
+  id: number,
+  next: unknown,
+): Promise<{ id: number; name: string; defaults: ImportedPropRecord['defaults'] | null }> {
   const { file, record } = await findImportedProp(id);
   const defaults = sanitizePropBehaviour(next);
   const { defaults: _old, ...rest } = record;
@@ -215,14 +220,18 @@ export async function updateImportedPropDefaults(id: number, next: unknown):
  * the existing ones by id and only the assignable fields are taken — anything the record knows that the
  * client does not (a declared scroll, a field added later) survives an edit made by an older tab.
  */
-export async function updateImportedPropMaterials(id: number, next: unknown):
-  Promise<{ id: number; name: string; materials: ImportedPropRecord['materials'] }> {
+export async function updateImportedPropMaterials(
+  id: number,
+  next: unknown,
+): Promise<{ id: number; name: string; materials: ImportedPropRecord['materials'] }> {
   if (!Array.isArray(next)) throw new Error('materials must be an array');
   const { file, record } = await findImportedProp(id);
   const str = (value: unknown): string | null => (typeof value === 'string' && value ? value : null);
-  const byId = new Map((next as { id?: unknown; tex?: unknown; frames?: unknown }[])
-    .filter(row => !!row && Number.isInteger(row.id))
-    .map(row => [row.id as number, row]));
+  const byId = new Map(
+    (next as { id?: unknown; tex?: unknown; frames?: unknown }[])
+      .filter(row => !!row && Number.isInteger(row.id))
+      .map(row => [row.id as number, row]),
+  );
   const materials = record.materials.map(material => {
     const edit = byId.get(material.id);
     if (!edit) return material;
@@ -230,7 +239,8 @@ export async function updateImportedPropMaterials(id: number, next: unknown):
     // A state list always begins at the material's own tile, so an edit cannot make one that starts
     // elsewhere — and dropping to a single frame is dropping the flipbook, not keeping a list of one.
     const rest = (Array.isArray(edit.frames) ? edit.frames.slice(1) : [])
-      .map(str).filter((frame): frame is string => !!frame);
+      .map(str)
+      .filter((frame): frame is string => !!frame);
     const { frames: _drop, ...kept } = material;
     return tex && rest.length ? { ...kept, tex, frames: [tex, ...rest] } : { ...kept, tex };
   });
@@ -249,7 +259,7 @@ export async function deleteImportedProp(id: number): Promise<boolean> {
   const stem = found.file.replace(JSON_EXT, '');
   return retireName(dir, stem, async () => {
     const file = join(dir, found.file);
-    if (!await pathExists(file)) return false;
+    if (!(await pathExists(file))) return false;
     await rm(file, { force: true });
     return true;
   });
@@ -264,8 +274,9 @@ export async function deleteImportedProp(id: number): Promise<boolean> {
  */
 export async function countImportedTextureUsers(ref: string): Promise<number> {
   const wanted = ref.toLowerCase();
-  return (await listImportedProps())
-    .filter(({ record }) => record.materials?.some(m => (m.tex ?? '').toLowerCase() === wanted)).length;
+  return (await listImportedProps()).filter(({ record }) =>
+    record.materials?.some(m => (m.tex ?? '').toLowerCase() === wanted),
+  ).length;
 }
 
 /**
@@ -276,10 +287,11 @@ export async function countImportedTextureUsers(ref: string): Promise<number> {
  */
 export async function retargetImportedTexture(from: string, to: string): Promise<number> {
   const wanted = from.toLowerCase();
-  const affected = (await listImportedProps())
-    .filter(({ record }) => record.materials?.some(m => (m.tex ?? '').toLowerCase() === wanted));
+  const affected = (await listImportedProps()).filter(({ record }) =>
+    record.materials?.some(m => (m.tex ?? '').toLowerCase() === wanted),
+  );
   await mapLimit(affected, READ_CONCURRENCY, async ({ file, record }) => {
-    record.materials = record.materials.map(m => (m.tex ?? '').toLowerCase() === wanted ? { ...m, tex: to } : m);
+    record.materials = record.materials.map(m => ((m.tex ?? '').toLowerCase() === wanted ? { ...m, tex: to } : m));
     await writeFile(join(importedDir(), file), JSON.stringify(record));
   });
   return affected.length;
@@ -302,18 +314,26 @@ export async function importedPropsPayload(): Promise<PropsPayload> {
       // resolves a frame list against the bank the tile already named — so the wire carries bare names.
       const frames = m.frames?.map(ref => ref.slice(ref.indexOf('/') + 1)) ?? [];
       const alphaMode = propAlphaMode(m.alphaMode);
-      materials.push({ id: matBase + m.id, tex: m.tex,
+      materials.push({
+        id: matBase + m.id,
+        tex: m.tex,
         ...(frames.length ? { frames } : {}),
         ...(m.blend ? { blend: true } : {}),
         ...(alphaMode ? { alphaMode } : {}),
         pixelAlpha: true,
-        ...(m.scroll ? { scroll: m.scroll } : {}) });
+        ...(m.scroll ? { scroll: m.scroll } : {}),
+      });
     }
     models.push({
       id: record.id,
       name: record.name,
-      subs: record.subs.map(s => ({ mat: matBase + s.mat, pos: s.pos, uv: s.uv, idx: s.idx,
-        ...(Number.isInteger(s.object) ? { object: s.object } : {}) })),
+      subs: record.subs.map(s => ({
+        mat: matBase + s.mat,
+        pos: s.pos,
+        uv: s.uv,
+        idx: s.idx,
+        ...(Number.isInteger(s.object) ? { object: s.object } : {}),
+      })),
       ...(record.emitters?.length ? { emitters: record.emitters } : {}),
       // Object indices are LOCAL to the record and stay that way — unlike materials, nothing shares the
       // hierarchy across models, so there is no counter to rebase against.

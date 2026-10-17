@@ -1,6 +1,12 @@
 // tier: fast
 
-import { DEFAULT_KNOT_PROFILE, redrawCourse, seatRunOnTerrain, courseCenters, startFrame } from '../src/core/doc/course';
+import {
+  DEFAULT_KNOT_PROFILE,
+  redrawCourse,
+  seatRunOnTerrain,
+  courseCenters,
+  startFrame,
+} from '../src/core/doc/course';
 import { blankMountain, buildMeshFromCourse, coursePathFromLine, defaultMountain } from '../src/core/doc/mountain';
 import { buildMountainLevel } from '../src/core/export/level';
 import { surfaceSampleAt, surfaceSamplesAt } from '../src/core/mesh/surface-height';
@@ -16,8 +22,11 @@ import { check, failures, near } from './check';
 
 const mountain = () => {
   const cur = defaultMountain();
-  return buildMeshFromCourse(cur.course, { widthM: 400, roughness: 0.5, targetPatchM: 50, seed: 12345 },
-    { name: cur.name, baseSurface: cur.baseSurface })!;
+  return buildMeshFromCourse(
+    cur.course,
+    { widthM: 400, roughness: 0.5, targetPatchM: 50, seed: 12345 },
+    { name: cur.name, baseSurface: cur.baseSurface },
+  )!;
 };
 
 // ---- the batched sampler is the single-point sampler, many times over one build --------------------------------
@@ -31,10 +40,15 @@ const mountain = () => {
   ];
   const batched = surfaceSamplesAt(doc, probes);
   const single = probes.map(([x, z]) => surfaceSampleAt(doc, x, z));
-  check(batched.every((b, i) => {
-    const s = single[i];
-    return b === null ? s === null : s !== null && b.height === s.height && b.quad === s.quad && b.surface === s.surface;
-  }), 'surfaceSamplesAt answers exactly what surfaceSampleAt does at every probe');
+  check(
+    batched.every((b, i) => {
+      const s = single[i];
+      return b === null
+        ? s === null
+        : s !== null && b.height === s.height && b.quad === s.quad && b.surface === s.surface;
+    }),
+    'surfaceSamplesAt answers exactly what surfaceSampleAt does at every probe',
+  );
   check(batched.at(-1) === null, 'a point off the mountain samples as null');
 }
 
@@ -55,13 +69,18 @@ const mountain = () => {
     const y = surfaceSampleAt(doc, p[0], p[2])?.height;
     return y !== undefined && Math.abs(p[1] - y) <= 1e-3;
   };
-  check(doc.course.knots.every(k => onSurface(k.pos)), 'every knot is back on the terrain');
+  check(
+    doc.course.knots.every(k => onSurface(k.pos)),
+    'every knot is back on the terrain',
+  );
   check(onSurface(doc.course.start.pos), 'the placed START flag is seated with them');
   check(onSurface(doc.course.finish.pos), 'and so is the placed FINISH flag');
 
   const before = JSON.stringify(doc.course);
-  check(seatRunOnTerrain(doc) === 0 && JSON.stringify(doc.course) === before,
-    'seating a seated run moves nothing and writes nothing');
+  check(
+    seatRunOnTerrain(doc) === 0 && JSON.stringify(doc.course) === before,
+    'seating a seated run moves nothing and writes nothing',
+  );
 }
 
 // Where the mountain passes over itself, a point keeps to the deck it is on: two flat 100 m decks, 20 m apart,
@@ -70,19 +89,34 @@ const mountain = () => {
   const doc = mountain();
   const deck = (h: number) => [0, h, 0, 0, h, 100, 100, h, 0, 100, h, 100]; // corners A(0,0) B(0,1) C(1,0) D(1,1)
   doc.vertices = [...deck(0), ...deck(20)];
-  doc.quads = [[0, 1, 2, 3], [4, 5, 6, 7]];
+  doc.quads = [
+    [0, 1, 2, 3],
+    [4, 5, 6, 7],
+  ];
   doc.freeEdges = [];
-  delete doc.edgeHandles; delete doc.quadTwist; delete doc.quadPaint;
-  doc.course = { blend: 30, surface: 1, knots: [
-    { pos: [20, 3, 50], ...DEFAULT_KNOT_PROFILE },  // just above the lower deck, under the upper one
-    { pos: [80, 17, 50], ...DEFAULT_KNOT_PROFILE }, // just below the upper deck
-  ] };
+  delete doc.edgeHandles;
+  delete doc.quadTwist;
+  delete doc.quadPaint;
+  doc.course = {
+    blend: 30,
+    surface: 1,
+    knots: [
+      { pos: [20, 3, 50], ...DEFAULT_KNOT_PROFILE }, // just above the lower deck, under the upper one
+      { pos: [80, 17, 50], ...DEFAULT_KNOT_PROFILE }, // just below the upper deck
+    ],
+  };
   doc.course.start = { pos: [50, 4, 50] };
   seatRunOnTerrain(doc);
-  check(doc.course.knots[0].pos[1] === 0 && doc.course.start.pos[1] === 0,
+  check(
+    doc.course.knots[0].pos[1] === 0 && doc.course.start.pos[1] === 0,
     'a point under an overhang seats on the deck it is on, not the one above it',
-    `${doc.course.knots[0].pos[1]} m / start ${doc.course.start.pos[1]} m`);
-  check(doc.course.knots[1].pos[1] === 20, 'and one nearer the upper deck seats there', `${doc.course.knots[1].pos[1]} m`);
+    `${doc.course.knots[0].pos[1]} m / start ${doc.course.start.pos[1]} m`,
+  );
+  check(
+    doc.course.knots[1].pos[1] === 20,
+    'and one nearer the upper deck seats there',
+    `${doc.course.knots[1].pos[1]} m`,
+  );
   check(surfaceSampleAt(doc, 20, 50)?.height === 20, 'while a plain sample still answers the topmost surface');
 }
 
@@ -91,8 +125,10 @@ const mountain = () => {
   const doc = mountain();
   doc.course.start = { pos: [1, 2, 3] };
   const flat = seatRunOnTerrain(doc, points => points.map(([x]) => (x > 1e5 ? null : 7)));
-  check(flat > 0 && doc.course.knots.every(k => k.pos[1] === 7) && doc.course.start.pos[1] === 7,
-    'a supplied ground sampler is what the run seats on');
+  check(
+    flat > 0 && doc.course.knots.every(k => k.pos[1] === 7) && doc.course.start.pos[1] === 7,
+    'a supplied ground sampler is what the run seats on',
+  );
 }
 
 {
@@ -110,20 +146,36 @@ const mountain = () => {
       { pos: [0, 100, 0], width: 140, wall: 12, bank: 5, shoulder: 20, checkpointBonus: 10 },
       { pos: [100, 50, 0], width: 80, wall: 0, bank: 0, shoulder: 8, checkpointBonus: 15 },
     ],
-    blend: 45, surface: 3,
-    start: { pos: [10, 95, 0] }, finish: { pos: [90, 55, 0] },
+    blend: 45,
+    surface: 3,
+    start: { pos: [10, 95, 0] },
+    finish: { pos: [90, 55, 0] },
   };
   const before = JSON.stringify(course);
-  check(!redrawCourse(course, [[0, 0, 0]]) && JSON.stringify(course) === before,
-    'one point is not a course: the run is left untouched');
+  check(
+    !redrawCourse(course, [[0, 0, 0]]) && JSON.stringify(course) === before,
+    'one point is not a course: the run is left untouched',
+  );
 
-  const points: V3[] = [[5, 200, 5], [60, 150, 40], [140, 90, 70], [220, 20, 90]];
+  const points: V3[] = [
+    [5, 200, 5],
+    [60, 150, 40],
+    [140, 90, 70],
+    [220, 20, 90],
+  ];
   check(redrawCourse(course, points), 'two or more points redraw the run');
-  check(course.knots.length === 4 && course.knots.every((k, i) => k.pos.every((v, a) => v === points[i][a])),
-    'one knot per point, start first, finish last');
-  check(course.knots.every(k => k.width === 30 && k.wall === 0 && k.bank === 0 && k.shoulder === 8),
-    'every new knot is a 30 m open floor, not the old head’s profile');
-  check(course.knots.every(k => k.checkpointBonus === undefined), 'checkpoint bonuses go with the old stations');
+  check(
+    course.knots.length === 4 && course.knots.every((k, i) => k.pos.every((v, a) => v === points[i][a])),
+    'one knot per point, start first, finish last',
+  );
+  check(
+    course.knots.every(k => k.width === 30 && k.wall === 0 && k.bank === 0 && k.shoulder === 8),
+    'every new knot is a 30 m open floor, not the old head’s profile',
+  );
+  check(
+    course.knots.every(k => k.checkpointBonus === undefined),
+    'checkpoint bonuses go with the old stations',
+  );
   check(!course.start && !course.finish, 'placed flags are dropped — the drawn ends are the race’s ends');
   check(course.blend === 45 && course.surface === 3, 'the run’s blend and floor surface are kept');
   points[0][1] = -1;
@@ -135,24 +187,48 @@ const mountain = () => {
   const doc = mountain();
   doc.props = [];
   const files = buildMountainLevel(doc, undefined, { lighting: false });
-  const groups = files.text['Props.obj'].split('\n').filter(l => l.startsWith('o ')).map(l => l.slice(2));
-  check(groups.length === 2 && groups[0] === 'Mdl_StageArea_Start_0' && groups[1] === 'Mdl_StageArea_Finish_0',
-    'Props.obj carries the two staging plates and no start gate', groups.join(', '));
+  const groups = files.text['Props.obj']
+    .split('\n')
+    .filter(l => l.startsWith('o '))
+    .map(l => l.slice(2));
+  check(
+    groups.length === 2 && groups[0] === 'Mdl_StageArea_Start_0' && groups[1] === 'Mdl_StageArea_Finish_0',
+    'Props.obj carries the two staging plates and no start gate',
+    groups.join(', '),
+  );
   check(files.anchorGroups.length === 2, 'and they are the only prop models the core hands the export');
   const start = startFrame(doc.course);
-  const plate = files.text['Props.obj'].split('\n').filter(l => l.startsWith('v ')).slice(0, 8)
-    .map(l => l.split(' ').slice(1).map(Number)).map(([x, y, z]) => [-x / 100, z / 100, -y / 100] as V3); // raw cm → m
+  const plate = files.text['Props.obj']
+    .split('\n')
+    .filter(l => l.startsWith('v '))
+    .slice(0, 8)
+    .map(l => l.split(' ').slice(1).map(Number))
+    .map(([x, y, z]) => [-x / 100, z / 100, -y / 100] as V3); // raw cm → m
   const centre = [0, 2].map(axis => plate.reduce((sum, p) => sum + p[axis], 0) / plate.length);
-  check(near(centre[0], start.pos[0], 0.01) && near(centre[1], start.pos[2], 0.01),
-    'the start plate still stands where the field is staged');
+  check(
+    near(centre[0], start.pos[0], 0.01) && near(centre[1], start.pos[2], 0.01),
+    'the start plate still stands where the field is staged',
+  );
 }
 
 // ---- a new mountain's run is a 30 m floor, whatever width the terrain was lofted to ----------------------------
 {
-  check(defaultMountain().course.knots.every(k => k.width === 30), 'New mountain’s starter run has a 30 m floor');
-  check(coursePathFromLine([[0, 100, 0], [300, 0, 50], [600, -100, 0]]).knots.every(k => k.width === 30),
-    'and so does a reference line borrowed into one');
-  check(blankMountain().course.knots.every(k => k.width === 30), 'and a blank mountain’s guide run');
+  check(
+    defaultMountain().course.knots.every(k => k.width === 30),
+    'New mountain’s starter run has a 30 m floor',
+  );
+  check(
+    coursePathFromLine([
+      [0, 100, 0],
+      [300, 0, 50],
+      [600, -100, 0],
+    ]).knots.every(k => k.width === 30),
+    'and so does a reference line borrowed into one',
+  );
+  check(
+    blankMountain().course.knots.every(k => k.width === 30),
+    'and a blank mountain’s guide run',
+  );
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nAll course-redraw checks passed.');

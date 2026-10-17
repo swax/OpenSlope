@@ -16,13 +16,13 @@ import type { WalkGround } from './xr/walk';
  * one set of placements, live transforms and object identities.
  */
 
-const WALK_RADIUS = 0.30;
+const WALK_RADIUS = 0.3;
 const WALK_PADDING = 0.015;
 /** The controller may step over everything below this height; its first wall sample begins just above it. */
 const WALK_SAMPLE_Y = [0.58, 1.12, 1.62] as const;
 const MIN_GROUND_NY = 0.4;
 const MAX_SLIDE_PLANES = 4;
-const HIT_COOLDOWN_MS = 50 / 60 * 1000;
+const HIT_COOLDOWN_MS = (50 / 60) * 1000;
 
 interface ObstacleMeta {
   source: RideObstacleSource;
@@ -123,10 +123,15 @@ export function createWalkObstacleWorld(
         }
         faceMeta.push(metaIndex);
       }
-      if (local && source.liveMatrix) lives.push({
-        meta, local, start, applied: source.matrixWorld.clone(),
-        poseVersion: source.poseVersion, appliedVersion: source.poseVersion?.(),
-      });
+      if (local && source.liveMatrix)
+        lives.push({
+          meta,
+          local,
+          start,
+          applied: source.matrixWorld.clone(),
+          poseVersion: source.poseVersion,
+          appliedVersion: source.poseVersion?.(),
+        });
     }
 
     if (source.spheres && source.spheres.length >= 4) {
@@ -143,9 +148,17 @@ export function createWalkObstacleWorld(
         localRadius = Math.max(localRadius, localCenter.distanceTo(vertex) + Math.max(0, source.spheres[i + 3]));
       }
       const body: SphereBody = {
-        meta, spheres: source.spheres, matrixWorld: new THREE.Matrix4(), toLocal: new THREE.Matrix4(),
-        normalMatrix: new THREE.Matrix3(), localCenter, localRadius, bound: new THREE.Sphere(),
-        liveMatrix: source.liveMatrix, poseVersion: source.poseVersion, appliedVersion: source.poseVersion?.(),
+        meta,
+        spheres: source.spheres,
+        matrixWorld: new THREE.Matrix4(),
+        toLocal: new THREE.Matrix4(),
+        normalMatrix: new THREE.Matrix3(),
+        localCenter,
+        localRadius,
+        bound: new THREE.Sphere(),
+        liveMatrix: source.liveMatrix,
+        poseVersion: source.poseVersion,
+        appliedVersion: source.poseVersion?.(),
       };
       placeSphereBody(body, source.matrixWorld);
       sphereBodies.push(body);
@@ -159,20 +172,29 @@ export function createWalkObstacleWorld(
   const refitNodes = new Set<number>();
   assignLiveRefitNodes();
   const ray = new THREE.Ray();
-  const rayHit = new THREE.Vector3(), rayBoxHit = new THREE.Vector3();
-  const motion = new THREE.Vector3(), direction = new THREE.Vector3(), right = new THREE.Vector3();
-  const root = new THREE.Vector3(), remaining = new THREE.Vector3();
+  const rayHit = new THREE.Vector3(),
+    rayBoxHit = new THREE.Vector3();
+  const motion = new THREE.Vector3(),
+    direction = new THREE.Vector3(),
+    right = new THREE.Vector3();
+  const root = new THREE.Vector3(),
+    remaining = new THREE.Vector3();
   const offset = new THREE.Vector3();
   const sampleFrom = Array.from({ length: WALK_SAMPLE_Y.length * 3 }, () => new THREE.Vector3());
   const sampleTo = Array.from({ length: WALK_SAMPLE_Y.length * 3 }, () => new THREE.Vector3());
   const sweepBounds = new THREE.Box3();
-  const localFrom = new THREE.Vector3(), localTo = new THREE.Vector3(), localDir = new THREE.Vector3();
-  const localHit = new THREE.Vector3(), localNormal = new THREE.Vector3();
-  const worldNormal = new THREE.Vector3(), worldPoint = new THREE.Vector3();
+  const localFrom = new THREE.Vector3(),
+    localTo = new THREE.Vector3(),
+    localDir = new THREE.Vector3();
+  const localHit = new THREE.Vector3(),
+    localNormal = new THREE.Vector3();
+  const worldNormal = new THREE.Vector3(),
+    worldPoint = new THREE.Vector3();
   const touches = new Map<string, WalkTouch>();
   const hitNext = new Map<string, number>();
   const perf: WalkCollisionPerf = { ms: 0, groundCasts: 0, sweeps: 0, triangleTests: 0, liveRefits: 0 };
-  let frame = 0, syncedFrame = -1;
+  let frame = 0,
+    syncedFrame = -1;
 
   /** Map each moving triangle run to its leaf nodes and ancestors. A full refit on a reference course can touch
    * hundreds of thousands of static triangles just because one lift or breakable moved; the riding collider
@@ -180,8 +202,7 @@ export function createWalkObstacleWorld(
   function assignLiveRefitNodes() {
     if (!bvh || !lives.length) return;
     const liveOfTriangle = new Int32Array(faceMeta.length).fill(-1);
-    lives.forEach((live, at) =>
-      liveOfTriangle.fill(at, live.start / 3, live.start / 3 + live.local.length / 9));
+    lives.forEach((live, at) => liveOfTriangle.fill(at, live.start / 3, live.start / 3 + live.local.length / 9));
     const path: number[] = [0];
     bvh.shapecast({
       intersectsBounds: (_box, _isLeaf, _score, depth, nodeIndex) => {
@@ -213,7 +234,8 @@ export function createWalkObstacleWorld(
   function syncLive() {
     if (syncedFrame === frame) return;
     syncedFrame = frame;
-    let meshMoved = false, refitAll = false;
+    let meshMoved = false,
+      refitAll = false;
     refitNodes.clear();
     for (const live of lives) {
       if (live.poseVersion) {
@@ -228,7 +250,9 @@ export function createWalkObstacleWorld(
       for (let v = 0; v < live.local.length; v += 3) {
         vertex.set(live.local[v], live.local[v + 1], live.local[v + 2]).applyMatrix4(matrix);
         const out = live.start * 3 + v;
-        target[out] = vertex.x; target[out + 1] = vertex.y; target[out + 2] = vertex.z;
+        target[out] = vertex.x;
+        target[out + 1] = vertex.y;
+        target[out + 2] = vertex.z;
       }
       live.meta.body = worldMassProps(live.meta.source, matrix);
       meshMoved = true;
@@ -260,7 +284,10 @@ export function createWalkObstacleWorld(
     perf.groundCasts++;
     syncLive();
     const far = from.distanceTo(to);
-    if (far < 1e-9) { perf.ms += performance.now() - started; return null; }
+    if (far < 1e-9) {
+      perf.ms += performance.now() - started;
+      return null;
+    }
     motion.copy(to).sub(from);
     let best: { distance: number; y: number; normal: THREE.Vector3; point: THREE.Vector3 } | null = null;
 
@@ -272,8 +299,7 @@ export function createWalkObstacleWorld(
       bvh.shapecast({
         boundsTraverseOrder: box => rayEntryDistance(box),
         intersectsBounds: (_box, _isLeaf, score) =>
-          score !== undefined && score <= far && score <= (best?.distance ?? far)
-            ? INTERSECTED : NOT_INTERSECTED,
+          score !== undefined && score <= far && score <= (best?.distance ?? far) ? INTERSECTED : NOT_INTERSECTED,
         intersectsTriangle: (triangle, faceIndex) => {
           perf.triangleTests++;
           const meta = metas[faceMeta[faceIndex]];
@@ -320,10 +346,15 @@ export function createWalkObstacleWorld(
       if (length < 1e-8) break;
       direction.copy(remaining).divideScalar(length);
       right.set(direction.z, 0, -direction.x);
-      if (right.lengthSq() < 1e-8) right.set(1, 0, 0); else right.normalize();
+      if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+      else right.normalize();
       prepareSweepSamples(root, remaining, direction, right);
       const earliest = castSweptBarriers(length, remaining, velocity, touches);
-      if (!earliest) { root.add(remaining); remaining.set(0, 0, 0); break; }
+      if (!earliest) {
+        root.add(remaining);
+        remaining.set(0, 0, 0);
+        break;
+      }
 
       // Keep the full skin even when already close. Halving it asymptotically walks the leading sample onto the
       // plane; once float error puts that sample a hair inside a closed mesh, a short next bite sees no exit and
@@ -344,24 +375,28 @@ export function createWalkObstacleWorld(
 
   /** Build the same nine leading capsule rails the original resolver cast independently, plus one conservative
    * swept bound that lets all nine share a single BVH traversal. */
-  function prepareSweepSamples(at: THREE.Vector3, move: THREE.Vector3,
-    forward: THREE.Vector3, lateral: THREE.Vector3) {
+  function prepareSweepSamples(at: THREE.Vector3, move: THREE.Vector3, forward: THREE.Vector3, lateral: THREE.Vector3) {
     sweepBounds.makeEmpty();
     let sample = 0;
-    for (const y of WALK_SAMPLE_Y) for (const side of [-WALK_RADIUS, 0, WALK_RADIUS]) {
-      offset.copy(forward).multiplyScalar(WALK_RADIUS).addScaledVector(lateral, side).setY(y);
-      sampleFrom[sample].copy(at).add(offset);
-      sampleTo[sample].copy(sampleFrom[sample]).add(move);
-      sweepBounds.expandByPoint(sampleFrom[sample]);
-      sweepBounds.expandByPoint(sampleTo[sample]);
-      sample++;
-    }
+    for (const y of WALK_SAMPLE_Y)
+      for (const side of [-WALK_RADIUS, 0, WALK_RADIUS]) {
+        offset.copy(forward).multiplyScalar(WALK_RADIUS).addScaledVector(lateral, side).setY(y);
+        sampleFrom[sample].copy(at).add(offset);
+        sampleTo[sample].copy(sampleFrom[sample]).add(move);
+        sweepBounds.expandByPoint(sampleFrom[sample]);
+        sweepBounds.expandByPoint(sampleTo[sample]);
+        sample++;
+      }
   }
 
   /** One traversal for the walking capsule's nine rails. Candidate triangles are tested against all rails while
    * hot in cache; the old path traversed the whole BVH and allocated/sorted a hit array nine times per plane. */
-  function castSweptBarriers(far: number, move: THREE.Vector3,
-    velocity: THREE.Vector3, out: Map<string, WalkTouch>): WalkBarrier | null {
+  function castSweptBarriers(
+    far: number,
+    move: THREE.Vector3,
+    velocity: THREE.Vector3,
+    out: Map<string, WalkTouch>,
+  ): WalkBarrier | null {
     perf.sweeps++;
     let earliest: WalkBarrier | null = null;
 
@@ -370,9 +405,9 @@ export function createWalkObstacleWorld(
       bvh.shapecast({
         boundsTraverseOrder: box => sweepNodeDistance(box),
         intersectsBounds: (box, _isLeaf, score) =>
-          box.intersectsBox(sweepBounds)
-          && score !== undefined && score <= far && score <= (earliest?.distance ?? far)
-            ? INTERSECTED : NOT_INTERSECTED,
+          box.intersectsBox(sweepBounds) && score !== undefined && score <= far && score <= (earliest?.distance ?? far)
+            ? INTERSECTED
+            : NOT_INTERSECTED,
         intersectsTriangle: (triangle, faceIndex) => {
           perf.triangleTests++;
           const meta = metas[faceMeta[faceIndex]];
@@ -393,11 +428,18 @@ export function createWalkObstacleWorld(
           }
           if (!Number.isFinite(nearest)) return false;
           keepNearest(out, {
-            meta, point: point.clone(), normal: worldNormal.clone(),
-            impactSpeed: Math.max(0, -velocity.dot(worldNormal)), distance: nearest,
+            meta,
+            point: point.clone(),
+            normal: worldNormal.clone(),
+            impactSpeed: Math.max(0, -velocity.dot(worldNormal)),
+            distance: nearest,
           });
-          if (meta.source.solid && (meta.source.dynamicMass ?? 0) <= 0 && worldNormal.y < MIN_GROUND_NY
-            && nearest < (earliest?.distance ?? Infinity)) {
+          if (
+            meta.source.solid &&
+            (meta.source.dynamicMass ?? 0) <= 0 &&
+            worldNormal.y < MIN_GROUND_NY &&
+            nearest < (earliest?.distance ?? Infinity)
+          ) {
             earliest = { distance: nearest, normal: worldNormal.clone() };
           }
           return false;
@@ -416,11 +458,18 @@ export function createWalkObstacleWorld(
       }
       if (nearest) {
         keepNearest(out, {
-          meta: body.meta, point: nearest.point.clone(), normal: nearest.normal.clone(),
-          impactSpeed: Math.max(0, -velocity.dot(nearest.normal)), distance: nearest.distance,
+          meta: body.meta,
+          point: nearest.point.clone(),
+          normal: nearest.normal.clone(),
+          impactSpeed: Math.max(0, -velocity.dot(nearest.normal)),
+          distance: nearest.distance,
         });
-        if (body.meta.source.solid && (body.meta.source.dynamicMass ?? 0) <= 0
-          && nearest.normal.y < MIN_GROUND_NY && nearest.distance < (earliest?.distance ?? Infinity)) {
+        if (
+          body.meta.source.solid &&
+          (body.meta.source.dynamicMass ?? 0) <= 0 &&
+          nearest.normal.y < MIN_GROUND_NY &&
+          nearest.distance < (earliest?.distance ?? Infinity)
+        ) {
           earliest = { distance: nearest.distance, normal: nearest.normal.clone() };
         }
       }
@@ -434,8 +483,13 @@ export function createWalkObstacleWorld(
     return nearest;
   }
 
-  function castSphereBody(body: SphereBody, from: THREE.Vector3, to: THREE.Vector3,
-    move: THREE.Vector3, incomingOnly: boolean): { distance: number; point: THREE.Vector3; normal: THREE.Vector3 } | null {
+  function castSphereBody(
+    body: SphereBody,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    move: THREE.Vector3,
+    incomingOnly: boolean,
+  ): { distance: number; point: THREE.Vector3; normal: THREE.Vector3 } | null {
     const far = from.distanceTo(to);
     localFrom.copy(from).applyMatrix4(body.toLocal);
     localTo.copy(to).applyMatrix4(body.toLocal);
@@ -452,8 +506,10 @@ export function createWalkObstacleWorld(
       const cc = mx * mx + my * my + mz * mz - r * r;
       const disc = bb * bb - 4 * aa * cc;
       if (disc < 0) continue;
-      const rootDisc = Math.sqrt(disc), inv = 1 / (2 * aa);
-      const enter = (-bb - rootDisc) * inv, exit = (-bb + rootDisc) * inv;
+      const rootDisc = Math.sqrt(disc),
+        inv = 1 / (2 * aa);
+      const enter = (-bb - rootDisc) * inv,
+        exit = (-bb + rootDisc) * inv;
       const u = enter >= 1e-6 ? enter : exit >= 1e-6 ? exit : -1;
       if (u < 0 || u > 1 || (best && u >= best.u)) continue;
       localHit.copy(localDir).multiplyScalar(u).add(localFrom);
@@ -492,17 +548,24 @@ export function createWalkObstacleWorld(
 
   function setEnabled(key: string, enabled: boolean) {
     hitNext.delete(key);
-    for (const meta of metas) if (obstacleKeyCovers(meta.source.key, key)) {
-      meta.enabled = enabled;
-      hitNext.delete(meta.source.key);
-    }
+    for (const meta of metas)
+      if (obstacleKeyCovers(meta.source.key, key)) {
+        meta.enabled = enabled;
+        hitNext.delete(meta.source.key);
+      }
   }
 
-  function retire(key: string) { setEnabled(key, false); }
+  function retire(key: string) {
+    setEnabled(key, false);
+  }
 
-  function restore(key: string) { setEnabled(key, true); }
+  function restore(key: string) {
+    setEnabled(key, true);
+  }
 
-  function dispose() { geometry.dispose(); }
+  function dispose() {
+    geometry.dispose();
+  }
 
   return { beginFrame, groundCast, resolveMove, retire, restore, perf, dispose };
 }
@@ -517,32 +580,34 @@ function placeSphereBody(body: SphereBody, matrix: THREE.Matrix4) {
   body.toLocal.copy(matrix).invert();
   body.normalMatrix.getNormalMatrix(matrix);
   const e = matrix.elements;
-  const maxScale = Math.max(
-    Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10]),
-  );
+  const maxScale = Math.max(Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10]));
   body.bound.center.copy(body.localCenter).applyMatrix4(matrix);
   body.bound.radius = body.localRadius * maxScale;
 }
 
-function worldMassProps(source: RideObstacleSource, matrix = source.matrixWorld):
-  { com: THREE.Vector3; invInertia: Float32Array } | null {
+function worldMassProps(
+  source: RideObstacleSource,
+  matrix = source.matrixWorld,
+): { com: THREE.Vector3; invInertia: Float32Array } | null {
   if (!source.body || source.body.invInertia.length < 9) return null;
   const m = matrix.elements;
   const linear = [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]];
-  const det = linear[0] * (linear[4] * linear[8] - linear[5] * linear[7])
-    - linear[1] * (linear[3] * linear[8] - linear[5] * linear[6])
-    + linear[2] * (linear[3] * linear[7] - linear[4] * linear[6]);
+  const det =
+    linear[0] * (linear[4] * linear[8] - linear[5] * linear[7]) -
+    linear[1] * (linear[3] * linear[8] - linear[5] * linear[6]) +
+    linear[2] * (linear[3] * linear[7] - linear[4] * linear[6]);
   const scale = Math.cbrt(Math.abs(det));
   if (!(scale > 1e-12)) return null;
   const r = linear.map(value => value / scale);
   const local = source.body.invInertia;
   const world = new Float32Array(9);
-  for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
-    let value = 0;
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
-      value += r[row * 3 + i] * local[i * 3 + j] * r[col * 3 + j];
-    world[row * 3 + col] = value / (scale * scale);
-  }
+  for (let row = 0; row < 3; row++)
+    for (let col = 0; col < 3; col++) {
+      let value = 0;
+      for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 3; j++) value += r[row * 3 + i] * local[i * 3 + j] * r[col * 3 + j];
+      world[row * 3 + col] = value / (scale * scale);
+    }
   return { com: new THREE.Vector3(...source.body.com).applyMatrix4(matrix), invInertia: world };
 }
 
@@ -560,14 +625,15 @@ function shoveMovable(touch: WalkTouch, velocity: THREE.Vector3): RideObstacleHi
   }
   const denominator = invMass + RIDER_MASS_TERM + rotational;
   if (!(denominator > 1e-9)) return null;
-  const impulse = SHOVE_RESTITUTION * touch.impactSpeed / denominator;
+  const impulse = (SHOVE_RESTITUTION * touch.impactSpeed) / denominator;
   velocity.addScaledVector(touch.normal, impulse * RIDER_MASS_TERM);
   const applied = touch.normal.clone().multiplyScalar(-impulse);
   return {
     linear: applied.clone().multiplyScalar(invMass),
-    angular: body && offset
-      ? applyInvInertia(body.invInertia, offset.clone().cross(applied), new THREE.Vector3())
-      : new THREE.Vector3(),
+    angular:
+      body && offset
+        ? applyInvInertia(body.invInertia, offset.clone().cross(applied), new THREE.Vector3())
+        : new THREE.Vector3(),
     body: body ? { invInertia: body.invInertia, com: body.com.clone(), invMass } : null,
   };
 }

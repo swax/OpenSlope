@@ -83,10 +83,16 @@ export function buildMaterialCombiner(tables: ReadonlyMap<string, readonly Sourc
       if (cached !== undefined) return cached;
       const src = materialsOf(level)[mat];
       const tex = src?.TexturePath;
-      if (!tex) { slotOf.set(key, -1); return -1; }
+      if (!tex) {
+        slotOf.set(key, -1);
+        return -1;
+      }
       const queueTexture = (name: string): string => {
         const dest = `p_${lvl}_${name}`;
-        if (!seenDest.has(dest)) { seenDest.add(dest); texCopies.push({ dest, level, name }); }
+        if (!seenDest.has(dest)) {
+          seenDest.add(dest);
+          texCopies.push({ dest, level, name });
+        }
         if (src.AlphaMode) alphaOverrides[dest] = src.AlphaMode;
         return dest;
       };
@@ -96,31 +102,38 @@ export function buildMaterialCombiner(tables: ReadonlyMap<string, readonly Sourc
       materials.push({
         MaterialName: `prop_${lvl}_${mat}`,
         TexturePath: dest,
-        UnknownInt18: src.AlphaMode && src.AlphaMode !== 'opaque'
-          ? (src.UnknownInt18 ?? 0) | 0x40000
-          : src.AlphaMode === 'opaque' ? (src.UnknownInt18 ?? 0) & ~0x40000 : src.UnknownInt18 ?? 0,
+        UnknownInt18:
+          src.AlphaMode && src.AlphaMode !== 'opaque'
+            ? (src.UnknownInt18 ?? 0) | 0x40000
+            : src.AlphaMode === 'opaque'
+              ? (src.UnknownInt18 ?? 0) & ~0x40000
+              : (src.UnknownInt18 ?? 0),
         TextureFlipbook: flipbook,
       });
       slotOf.set(key, id);
       return id;
     },
-    resolveTileSlot(ref: string, frames: readonly string[] = [], blend = false,
-      alphaMode?: PropAlphaMode): number {
+    resolveTileSlot(ref: string, frames: readonly string[] = [], blend = false, alphaMode?: PropAlphaMode): number {
       const slash = ref.indexOf('/');
       if (slash <= 0 || slash === ref.length - 1) return -1;
-      const level = ref.slice(0, slash), name = ref.slice(slash + 1);
+      const level = ref.slice(0, slash),
+        name = ref.slice(slash + 1);
       const lvl = safeDataName(level);
       const states = frames.filter(frame => typeof frame === 'string' && !!frame);
       const src = materialsOf(level).find(m => m.TexturePath === name);
       const resolvedAlpha = alphaMode ?? src?.AlphaMode;
-      const key = `tile:${lvl}:${name}${states.length ? `:flip:${states.join(',')}` : ''}`
-        + `${blend ? ':blend' : ''}${resolvedAlpha ? `:alpha-${resolvedAlpha}` : ''}`;
+      const key =
+        `tile:${lvl}:${name}${states.length ? `:flip:${states.join(',')}` : ''}` +
+        `${blend ? ':blend' : ''}${resolvedAlpha ? `:alpha-${resolvedAlpha}` : ''}`;
       const cached = slotOf.get(key);
       if (cached !== undefined) return cached;
       // inherit the source level's alpha-blend flag for this tile — the first material wearing it is canon
       const queueTile = (file: string): string => {
         const dest = `p_${lvl}_${file}`;
-        if (!seenDest.has(dest)) { seenDest.add(dest); texCopies.push({ dest, level, name: file }); }
+        if (!seenDest.has(dest)) {
+          seenDest.add(dest);
+          texCopies.push({ dest, level, name: file });
+        }
         if (resolvedAlpha) alphaOverrides[dest] = resolvedAlpha;
         return dest;
       };
@@ -129,10 +142,12 @@ export function buildMaterialCombiner(tables: ReadonlyMap<string, readonly Sourc
       materials.push({
         MaterialName: `model_${lvl}_${name.replace(/\.png$/i, '')}`,
         TexturePath: dest,
-        UnknownInt18: resolvedAlpha && resolvedAlpha !== 'opaque'
-          ? (src?.UnknownInt18 ?? 0) | 0x40000
-          : resolvedAlpha === 'opaque' ? (src?.UnknownInt18 ?? 0) & ~0x40000
-            : (src?.UnknownInt18 ?? 0) | (blend ? 0x40000 : 0),
+        UnknownInt18:
+          resolvedAlpha && resolvedAlpha !== 'opaque'
+            ? (src?.UnknownInt18 ?? 0) | 0x40000
+            : resolvedAlpha === 'opaque'
+              ? (src?.UnknownInt18 ?? 0) & ~0x40000
+              : (src?.UnknownInt18 ?? 0) | (blend ? 0x40000 : 0),
         TextureFlipbook: states.map(queueTile),
       });
       slotOf.set(key, id);

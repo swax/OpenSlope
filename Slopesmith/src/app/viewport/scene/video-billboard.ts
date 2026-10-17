@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import type { Stage } from '../stage';
 import {
-  describeVideoBridgeFallback, playableYatteeAdaptivePair, playableYatteeStream, resolveYatteeVideo, youtubeVideoId,
+  describeVideoBridgeFallback,
+  playableYatteeAdaptivePair,
+  playableYatteeStream,
+  resolveYatteeVideo,
+  youtubeVideoId,
   type VideoBridgeFallback,
 } from '../../net/video-bridge';
-import {
-  loadYouTubeIframeApi, youtubePlayerErrorMessage,
-  type YouTubePlayer,
-} from '../../net/youtube-iframe';
+import { loadYouTubeIframeApi, youtubePlayerErrorMessage, type YouTubePlayer } from '../../net/youtube-iframe';
 import { loadSettings, SETTINGS_CHANGED_EVENT } from '../../state/settings';
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, cssText: string) {
@@ -18,12 +19,15 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, cssText: string)
 
 export type VideoPlaybackResult = {
   title: string;
-} & ({
-  provider: 'bridge';
-} | {
-  provider: 'youtube';
-  bridge: VideoBridgeFallback;
-});
+} & (
+  | {
+      provider: 'bridge';
+    }
+  | {
+      provider: 'youtube';
+      bridge: VideoBridgeFallback;
+    }
+);
 
 export type VideoBillboard = {
   setMountainBounds(bounds: THREE.Box3 | null): void;
@@ -56,22 +60,42 @@ export function createVideoBillboard(
   stage: Stage,
   onPlaybackTexture: (texture: THREE.Texture | null) => void = () => undefined,
 ): VideoBillboard {
-  const root = element('div', [
-    'width:640px', 'height:360px', 'box-sizing:border-box', 'overflow:hidden',
-    'position:relative', 'border:5px solid #f4a33a', 'border-radius:18px',
-    'background:linear-gradient(145deg,#172331,#0a1018)', 'color:#f7fbff',
-    'font:600 20px/1.25 system-ui,-apple-system,Segoe UI,sans-serif',
-    'box-shadow:0 18px 50px rgba(0,0,0,.48)', 'user-select:none',
-  ].join(';'));
+  const root = element(
+    'div',
+    [
+      'width:640px',
+      'height:360px',
+      'box-sizing:border-box',
+      'overflow:hidden',
+      'position:relative',
+      'border:5px solid #f4a33a',
+      'border-radius:18px',
+      'background:linear-gradient(145deg,#172331,#0a1018)',
+      'color:#f7fbff',
+      'font:600 20px/1.25 system-ui,-apple-system,Segoe UI,sans-serif',
+      'box-shadow:0 18px 50px rgba(0,0,0,.48)',
+      'user-select:none',
+    ].join(';'),
+  );
   root.setAttribute('aria-label', 'Slopesmith Jukebox video');
 
   // Keep every decoder in one page-stable subtree. Moving an iframe between parents destroys its browsing
   // context, while Android may suspend a detached <video>; the Users panel is therefore only a positioning
   // anchor for this fixed portal and may rebuild freely without touching the live media elements.
-  const decoderHost = element('div', [
-    'position:fixed', 'left:-10000px', 'top:0', 'width:640px', 'height:360px',
-    'z-index:21', 'opacity:0', 'pointer-events:none', 'overflow:hidden',
-  ].join(';'));
+  const decoderHost = element(
+    'div',
+    [
+      'position:fixed',
+      'left:-10000px',
+      'top:0',
+      'width:640px',
+      'height:360px',
+      'z-index:21',
+      'opacity:0',
+      'pointer-events:none',
+      'overflow:hidden',
+    ].join(';'),
+  );
   decoderHost.setAttribute('aria-hidden', 'true');
   decoderHost.inert = true;
   document.body.appendChild(decoderHost);
@@ -79,9 +103,10 @@ export function createVideoBillboard(
   root.style.width = '100%';
   root.style.height = '100%';
 
-  const video = element('video', [
-    'width:100%', 'height:100%', 'display:none', 'object-fit:contain', 'background:#000',
-  ].join(';'));
+  const video = element(
+    'video',
+    ['width:100%', 'height:100%', 'display:none', 'object-fit:contain', 'background:#000'].join(';'),
+  );
   video.crossOrigin = 'anonymous';
   // Transport is shared and lives in Users. Native controls would allow a local-only pause, so the dock owns
   // the one seek slider and the video element here remains a pure decoder/picture.
@@ -105,18 +130,29 @@ export function createVideoBillboard(
 
   // The iframe fallback is a normal DOM surface. Unlike the Yattee-backed <video>, cross-origin iframe pixels
   // cannot become a VideoTexture, so this remains a panel/audio fallback and never reaches course screens.
-  const youtubeSurface = element('div', [
-    'position:absolute', 'inset:0', 'display:none', 'width:100%', 'height:100%', 'background:#000',
-  ].join(';'));
+  const youtubeSurface = element(
+    'div',
+    ['position:absolute', 'inset:0', 'display:none', 'width:100%', 'height:100%', 'background:#000'].join(';'),
+  );
   let youtubePlayerHost = element('div', 'width:100%;height:100%');
   youtubeSurface.appendChild(youtubePlayerHost);
   root.appendChild(youtubeSurface);
 
-  const card = element('div', [
-    'position:absolute', 'inset:0', 'display:flex', 'flex-direction:column',
-    'align-items:center', 'justify-content:center', 'gap:18px', 'padding:34px',
-    'box-sizing:border-box', 'text-align:center',
-  ].join(';'));
+  const card = element(
+    'div',
+    [
+      'position:absolute',
+      'inset:0',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:center',
+      'justify-content:center',
+      'gap:18px',
+      'padding:34px',
+      'box-sizing:border-box',
+      'text-align:center',
+    ].join(';'),
+  );
   root.appendChild(card);
 
   const eyebrow = element('div', 'color:#f4a33a;font-size:15px;letter-spacing:.12em;text-transform:uppercase');
@@ -131,11 +167,20 @@ export function createVideoBillboard(
   status.textContent = 'Paste a YouTube URL into Users → Jukebox, then choose Add.';
   card.appendChild(status);
 
-  const play = element('button', [
-    'appearance:none', 'border:0', 'border-radius:999px', 'padding:15px 27px',
-    'background:#f4a33a', 'color:#17202b', 'font:800 20px system-ui', 'cursor:pointer',
-    'box-shadow:0 8px 24px rgba(244,163,58,.28)',
-  ].join(';'));
+  const play = element(
+    'button',
+    [
+      'appearance:none',
+      'border:0',
+      'border-radius:999px',
+      'padding:15px 27px',
+      'background:#f4a33a',
+      'color:#17202b',
+      'font:800 20px system-ui',
+      'cursor:pointer',
+      'box-shadow:0 8px 24px rgba(244,163,58,.28)',
+    ].join(';'),
+  );
   play.type = 'button';
   play.textContent = '▶  Replay video';
   play.style.display = 'none';
@@ -150,7 +195,10 @@ export function createVideoBillboard(
   movieTexture.magFilter = THREE.LinearFilter;
   movieTexture.colorSpace = THREE.SRGBColorSpace;
   const material = new THREE.MeshBasicMaterial({
-    map: movieTexture, color: 0xffffff, side: THREE.DoubleSide, toneMapped: false,
+    map: movieTexture,
+    color: 0xffffff,
+    side: THREE.DoubleSide,
+    toneMapped: false,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'jukebox-video-billboard';
@@ -214,7 +262,11 @@ export function createVideoBillboard(
     activePlayback = 'none';
     youtubeNeedsGesture = false;
     youtubeSurface.style.display = 'none';
-    try { youtubePlayer?.stopVideo(); } catch { /* a player still starting has nothing to stop yet */ }
+    try {
+      youtubePlayer?.stopVideo();
+    } catch {
+      /* a player still starting has nothing to stop yet */
+    }
     if (pendingYouTubeStart) {
       const pending = pendingYouTubeStart;
       window.clearTimeout(pending.timer);
@@ -251,7 +303,8 @@ export function createVideoBillboard(
     if (!pending) return;
     window.clearTimeout(pending.timer);
     pendingYouTubeStart = null;
-    if (error) pending.reject(error); else pending.resolve();
+    if (error) pending.reject(error);
+    else pending.resolve();
   }
 
   function showYouTubeGesturePrompt() {
@@ -269,79 +322,82 @@ export function createVideoBillboard(
 
   function ensureYouTubePlayer(): Promise<YouTubePlayer> {
     if (youtubeReady) return youtubeReady;
-    youtubeReady = loadYouTubeIframeApi().then(api => {
-      const attempt = ++youtubePlayerAttempt;
-      return new Promise<YouTubePlayer>((resolve, reject) => {
-        let readySettled = false;
-        const readyTimer = window.setTimeout(() => {
-          if (attempt !== youtubePlayerAttempt || readySettled) return;
-          readySettled = true;
-          reject(new Error('YouTube did not initialize its embedded player within 15 seconds.'));
-        }, 15_000);
-        try {
-          youtubePlayer = new api.Player(youtubePlayerHost, {
-            width: '100%',
-            height: '100%',
-            playerVars: {
-              autoplay: 1,
-              controls: 0,
-              disablekb: 1,
-              playsinline: 1,
-              rel: 0,
-              origin: window.location.origin,
-            },
-            events: {
-              onReady: event => {
-                if (attempt !== youtubePlayerAttempt || readySettled) return;
-                readySettled = true;
-                window.clearTimeout(readyTimer);
-                youtubePlayer = event.target;
-                youtubePlayer.setVolume(Math.round(localVolume * 100));
-                if (localMuted) youtubePlayer.mute(); else youtubePlayer.unMute();
-                resolve(youtubePlayer);
+    youtubeReady = loadYouTubeIframeApi()
+      .then(api => {
+        const attempt = ++youtubePlayerAttempt;
+        return new Promise<YouTubePlayer>((resolve, reject) => {
+          let readySettled = false;
+          const readyTimer = window.setTimeout(() => {
+            if (attempt !== youtubePlayerAttempt || readySettled) return;
+            readySettled = true;
+            reject(new Error('YouTube did not initialize its embedded player within 15 seconds.'));
+          }, 15_000);
+          try {
+            youtubePlayer = new api.Player(youtubePlayerHost, {
+              width: '100%',
+              height: '100%',
+              playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                playsinline: 1,
+                rel: 0,
+                origin: window.location.origin,
               },
-              onStateChange: event => {
-                if (attempt !== youtubePlayerAttempt) return;
-                if (pendingYouTubeStart?.generation === playbackGeneration
-                  && event.data !== -1) settleYouTubeStart();
-                if (activePlayback !== 'youtube') return;
-                if (event.data === api.PlayerState.PLAYING) {
-                  youtubeNeedsGesture = false;
-                  card.style.display = 'none';
-                  play.style.display = 'none';
-                  showPlayerChrome(false);
-                  if (!requestedPlaying) event.target.pauseVideo();
-                } else if (event.data === api.PlayerState.ENDED) {
-                  if (endedListener) endedListener(); else stopPlayback();
-                }
+              events: {
+                onReady: event => {
+                  if (attempt !== youtubePlayerAttempt || readySettled) return;
+                  readySettled = true;
+                  window.clearTimeout(readyTimer);
+                  youtubePlayer = event.target;
+                  youtubePlayer.setVolume(Math.round(localVolume * 100));
+                  if (localMuted) youtubePlayer.mute();
+                  else youtubePlayer.unMute();
+                  resolve(youtubePlayer);
+                },
+                onStateChange: event => {
+                  if (attempt !== youtubePlayerAttempt) return;
+                  if (pendingYouTubeStart?.generation === playbackGeneration && event.data !== -1) settleYouTubeStart();
+                  if (activePlayback !== 'youtube') return;
+                  if (event.data === api.PlayerState.PLAYING) {
+                    youtubeNeedsGesture = false;
+                    card.style.display = 'none';
+                    play.style.display = 'none';
+                    showPlayerChrome(false);
+                    if (!requestedPlaying) event.target.pauseVideo();
+                  } else if (event.data === api.PlayerState.ENDED) {
+                    if (endedListener) endedListener();
+                    else stopPlayback();
+                  }
+                },
+                onError: event => {
+                  if (attempt !== youtubePlayerAttempt) return;
+                  const error = new Error(youtubePlayerErrorMessage(event.data));
+                  if (pendingYouTubeStart?.generation === playbackGeneration) settleYouTubeStart(error);
+                  else if (activePlayback === 'youtube') showPlaybackError(error.message);
+                },
+                onAutoplayBlocked: () => {
+                  if (attempt !== youtubePlayerAttempt) return;
+                  if (pendingYouTubeStart?.generation === playbackGeneration) settleYouTubeStart();
+                  showYouTubeGesturePrompt();
+                },
               },
-              onError: event => {
-                if (attempt !== youtubePlayerAttempt) return;
-                const error = new Error(youtubePlayerErrorMessage(event.data));
-                if (pendingYouTubeStart?.generation === playbackGeneration) settleYouTubeStart(error);
-                else if (activePlayback === 'youtube') showPlaybackError(error.message);
-              },
-              onAutoplayBlocked: () => {
-                if (attempt !== youtubePlayerAttempt) return;
-                if (pendingYouTubeStart?.generation === playbackGeneration) settleYouTubeStart();
-                showYouTubeGesturePrompt();
-              },
-            },
-          });
-        } catch (error) {
-          readySettled = true;
-          window.clearTimeout(readyTimer);
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
+            });
+          } catch (error) {
+            readySettled = true;
+            window.clearTimeout(readyTimer);
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+      })
+      .catch(error => {
+        youtubeReady = null;
+        youtubePlayer = null;
+        youtubePlayerAttempt++;
+        youtubePlayerHost = element('div', 'width:100%;height:100%');
+        youtubeSurface.replaceChildren(youtubePlayerHost);
+        throw error;
       });
-    }).catch(error => {
-      youtubeReady = null;
-      youtubePlayer = null;
-      youtubePlayerAttempt++;
-      youtubePlayerHost = element('div', 'width:100%;height:100%');
-      youtubeSurface.replaceChildren(youtubePlayerHost);
-      throw error;
-    });
     return youtubeReady;
   }
 
@@ -354,7 +410,8 @@ export function createVideoBillboard(
     youtubeSurface.style.display = 'block';
     video.style.display = 'none';
     player.setVolume(Math.round(localVolume * 100));
-    if (localMuted) player.mute(); else player.unMute();
+    if (localMuted) player.mute();
+    else player.unMute();
 
     await new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(() => {
@@ -362,8 +419,9 @@ export function createVideoBillboard(
         settleYouTubeStart(new Error('YouTube did not start the embedded video within 10 seconds.'));
       }, 10_000);
       pendingYouTubeStart = { generation, resolve, reject, timer };
-      try { player.loadVideoById({ videoId, startSeconds: Math.max(0, startAtSeconds) }); }
-      catch (error) {
+      try {
+        player.loadVideoById({ videoId, startSeconds: Math.max(0, startAtSeconds) });
+      } catch (error) {
         settleYouTubeStart(error instanceof Error ? error : new Error(String(error)));
       }
     });
@@ -394,7 +452,9 @@ export function createVideoBillboard(
     return new Promise((resolve, reject) => {
       const loaded = () => finish(resolve);
       const failed = () => finish(() => reject(new Error('The relayed stream did not expose media metadata.')));
-      const emptied = () => { if (generation !== playbackGeneration) finish(resolve); };
+      const emptied = () => {
+        if (generation !== playbackGeneration) finish(resolve);
+      };
       const finish = (done: () => void) => {
         media.removeEventListener('loadedmetadata', loaded);
         media.removeEventListener('error', failed);
@@ -419,8 +479,11 @@ export function createVideoBillboard(
     for (const media of [video, audio]) {
       if (!media.currentSrc) continue;
       const duration = Number.isFinite(media.duration) ? media.duration : Infinity;
-      try { media.currentTime = Math.min(pendingPosition, Math.max(0, duration - 0.05)); }
-      catch { return; /* metadata has not arrived; resolveAndPlay applies pendingPosition once it does */ }
+      try {
+        media.currentTime = Math.min(pendingPosition, Math.max(0, duration - 0.05));
+      } catch {
+        return; /* metadata has not arrived; resolveAndPlay applies pendingPosition once it does */
+      }
     }
     if (audio.currentSrc) lastAdaptiveAudioSyncAt = performance.now();
   }
@@ -428,7 +491,8 @@ export function createVideoBillboard(
   function setPlaying(playing: boolean) {
     requestedPlaying = playing;
     if (activePlayback === 'youtube' && youtubePlayer) {
-      if (playing) youtubePlayer.playVideo(); else youtubePlayer.pauseVideo();
+      if (playing) youtubePlayer.playVideo();
+      else youtubePlayer.pauseVideo();
       if (youtubeNeedsGesture) showYouTubeGesturePrompt();
       return;
     }
@@ -438,16 +502,18 @@ export function createVideoBillboard(
       audio.pause();
       return;
     }
-    void Promise.all([video.play(), ...(audio.currentSrc ? [audio.play()] : [])])
-      .catch(error => showPlaybackError(
+    void Promise.all([video.play(), ...(audio.currentSrc ? [audio.play()] : [])]).catch(error =>
+      showPlaybackError(
         `${error instanceof Error ? error.message : String(error)} Click Retry video to resume in this browser.`,
-      ));
+      ),
+    );
   }
 
   function setMuted(muted: boolean) {
     localMuted = muted;
     if (youtubePlayer) {
-      if (localMuted) youtubePlayer.mute(); else youtubePlayer.unMute();
+      if (localMuted) youtubePlayer.mute();
+      else youtubePlayer.unMute();
     }
     // Adaptive playback carries sound in the separate audio element; its video track must remain muted.
     video.muted = localMuted || !!audio.currentSrc;
@@ -462,12 +528,7 @@ export function createVideoBillboard(
     audio.volume = localVolume;
   }
 
-  async function startResolvedStream(
-    videoUrl: string,
-    serverUrl: string,
-    generation: number,
-    audioUrl?: string,
-  ) {
+  async function startResolvedStream(videoUrl: string, serverUrl: string, generation: number, audioUrl?: string) {
     activePlayback = 'yattee';
     youtubeSurface.style.display = 'none';
     video.muted = localMuted || !!audioUrl;
@@ -481,10 +542,7 @@ export function createVideoBillboard(
     // hidden audio element is still discovering metadata creates enough drift
     // to trigger a seek/reload loop in Chromium.
     if (pendingPosition > 0 || audioUrl) {
-      await Promise.all([
-        mediaMetadata(video, generation),
-        ...(audioUrl ? [mediaMetadata(audio, generation)] : []),
-      ]);
+      await Promise.all([mediaMetadata(video, generation), ...(audioUrl ? [mediaMetadata(audio, generation)] : [])]);
       if (generation !== playbackGeneration) return;
       if (pendingPosition > 0) seekPlayback(pendingPosition);
     }
@@ -505,9 +563,8 @@ export function createVideoBillboard(
     play.disabled = true;
     play.style.display = 'none';
     card.style.display = 'flex';
-    status.textContent = preferYouTubeForVideoId === videoId
-      ? 'Loading the YouTube fallback…'
-      : 'Asking Yattee to resolve the stream…';
+    status.textContent =
+      preferYouTubeForVideoId === videoId ? 'Loading the YouTube fallback…' : 'Asking Yattee to resolve the stream…';
 
     try {
       const prefs = loadSettings().videoBridge;
@@ -636,17 +693,20 @@ export function createVideoBillboard(
         if (generation !== videoPaintGeneration) return;
         const now = performance.now();
         if (
-          audio.currentSrc
-          && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-          && audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-          && !video.seeking
-          && !audio.seeking
-          && now - lastAdaptiveAudioSyncAt >= adaptiveAudioSyncIntervalMs
-          && Math.abs(audio.currentTime - video.currentTime) > adaptiveAudioSyncThresholdSeconds
+          audio.currentSrc &&
+          video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+          audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+          !video.seeking &&
+          !audio.seeking &&
+          now - lastAdaptiveAudioSyncAt >= adaptiveAudioSyncIntervalMs &&
+          Math.abs(audio.currentTime - video.currentTime) > adaptiveAudioSyncThresholdSeconds
         ) {
           lastAdaptiveAudioSyncAt = now;
-          try { audio.currentTime = video.currentTime; }
-          catch { /* A later frame can retry once the adaptive audio range is seekable. */ }
+          try {
+            audio.currentTime = video.currentTime;
+          } catch {
+            /* A later frame can retry once the adaptive audio range is seekable. */
+          }
         }
         if (!video.ended) paintDecodedFrame();
       });
@@ -666,7 +726,7 @@ export function createVideoBillboard(
     }
     const size = bounds.getSize(new THREE.Vector3());
     const width = THREE.MathUtils.clamp(Math.max(size.x, size.z) * 0.16, 24, 90);
-    const height = width * 9 / 16;
+    const height = (width * 9) / 16;
     mesh.scale.setScalar(width / 16);
     // Stage.scene uses render coordinates directly; negate document Z exactly as worldRoot does.
     mesh.position.set(bounds.max.x + width * 0.6, bounds.max.y + height * 0.15, -bounds.max.z);
@@ -719,16 +779,16 @@ export function createVideoBillboard(
       return;
     }
 
-    const geometry = [left, top, width, height, clipTop, clipRight, clipBottom, clipLeft]
-      .map(portalPixel).join('|');
+    const geometry = [left, top, width, height, clipTop, clipRight, clipBottom, clipLeft].map(portalPixel).join('|');
     if (previewPortalGeometry === geometry) return;
     previewPortalGeometry = geometry;
     decoderHost.style.left = `${portalPixel(left)}px`;
     decoderHost.style.top = `${portalPixel(top)}px`;
     decoderHost.style.width = `${portalPixel(width)}px`;
     decoderHost.style.height = `${portalPixel(height)}px`;
-    decoderHost.style.clipPath = `inset(${portalPixel(clipTop)}px ${portalPixel(clipRight)}px `
-      + `${portalPixel(clipBottom)}px ${portalPixel(clipLeft)}px)`;
+    decoderHost.style.clipPath =
+      `inset(${portalPixel(clipTop)}px ${portalPixel(clipRight)}px ` +
+      `${portalPixel(clipBottom)}px ${portalPixel(clipLeft)}px)`;
     decoderHost.style.opacity = '1';
     decoderHost.style.pointerEvents = 'auto';
     decoderHost.inert = false;
@@ -749,20 +809,21 @@ export function createVideoBillboard(
     setVolume,
     volume: () => localVolume,
     currentTime: () => {
-      const current = activePlayback === 'youtube' && youtubePlayer
-        ? youtubePlayer.getCurrentTime() : video.currentTime;
+      const current =
+        activePlayback === 'youtube' && youtubePlayer ? youtubePlayer.getCurrentTime() : video.currentTime;
       return Number.isFinite(current) ? current : 0;
     },
     duration: () => {
-      const length = activePlayback === 'youtube' && youtubePlayer
-        ? youtubePlayer.getDuration() : video.duration;
+      const length = activePlayback === 'youtube' && youtubePlayer ? youtubePlayer.getDuration() : video.duration;
       return Number.isFinite(length) ? length : 0;
     },
     mountPreview(host) {
       previewHost = host;
       seatPreview();
     },
-    onEnded(listener) { endedListener = listener; },
+    onEnded(listener) {
+      endedListener = listener;
+    },
     stop: stopPlayback,
 
     update(camera, nextInGame) {
@@ -776,8 +837,8 @@ export function createVideoBillboard(
       if (!mesh.visible) return;
       // VideoTexture normally follows requestVideoFrameCallback. Quest Chromium has shipped builds where that
       // callback stalls during immersive presentation, so also dirty the direct video upload from our XR frame.
-      if (showingVideo && !video.paused && !video.ended
-        && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) movieTexture.needsUpdate = true;
+      if (showingVideo && !video.paused && !video.ended && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)
+        movieTexture.needsUpdate = true;
       // Face the editor camera while retaining the anchor at the mountain's upper AABB corner.
       mesh.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));
       mesh.updateMatrixWorld(true);

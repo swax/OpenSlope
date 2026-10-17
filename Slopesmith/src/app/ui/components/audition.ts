@@ -10,7 +10,9 @@ let auditionElement: HTMLAudioElement | null = null;
 let auditionGeneration = 0;
 let auditionContext: AudioContext | null = null;
 let auditionSources: AudioBufferSourceNode[] = [];
-const closeContext = (context: AudioContext): void => { void context.close().catch(() => {}); };
+const closeContext = (context: AudioContext): void => {
+  void context.close().catch(() => {});
+};
 
 // Board-loop previews are ordinary audio-element auditions, but their panel uses one play/stop control. Keep
 // only that small piece of identity here, beside the audio owner, so another preview stealing the shared
@@ -35,7 +37,9 @@ export const boardSoundAuditionActive = (): boolean => boardAuditionKey !== null
 /** Subscribe to a board surface preview starting, stopping, ending, failing, or being replaced. */
 export function onBoardSoundAuditionChange(listener: () => void): () => void {
   boardAuditionListeners.add(listener);
-  return () => { boardAuditionListeners.delete(listener); };
+  return () => {
+    boardAuditionListeners.delete(listener);
+  };
 }
 
 /**
@@ -53,7 +57,9 @@ export const loopAuditionKey = (): string | null => loopKey;
 /** Subscribe to the continuing audition starting or stopping; returns an unsubscribe. */
 export function onLoopAuditionChange(listener: () => void): () => void {
   loopListeners.add(listener);
-  return () => { loopListeners.delete(listener); };
+  return () => {
+    loopListeners.delete(listener);
+  };
 }
 
 function setLoopKey(next: string | null): void {
@@ -105,7 +111,10 @@ function startBufferLoopAudition(key: string, url: string, volume: number): void
       if (!response.ok) throw new Error(response.statusText || `sound ${response.status}`);
       const buffer = await context.decodeAudioData(await response.arrayBuffer());
       // Stopped, or superseded by another audition, while this was decoding.
-      if (generation !== auditionGeneration || auditionContext !== context) { closeContext(context); return; }
+      if (generation !== auditionGeneration || auditionContext !== context) {
+        closeContext(context);
+        return;
+      }
       const gain = context.createGain();
       gain.gain.value = volume;
       gain.connect(context.destination);
@@ -135,16 +144,22 @@ export const auditionEffectSound = (level: string, slot: number): boolean => {
 export const auditionBankSlot = (level: string, bank: string, slot: number): boolean => {
   const sourceSlot = Math.trunc(slot);
   if (!level.trim() || !Number.isFinite(slot) || sourceSlot < 0 || sourceSlot > 999) return false;
-  startElementAudition(`/api/effect-sound?level=${encodeURIComponent(level)}&slot=${sourceSlot}`
-    + (bank && bank !== 'course' ? `&bank=${encodeURIComponent(bank)}` : ''), 0.9);
+  startElementAudition(
+    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${sourceSlot}` +
+      (bank && bank !== 'course' ? `&bank=${encodeURIComponent(bank)}` : ''),
+    0.9,
+  );
   return true;
 };
 
 export const auditionCollisionSound = (level: string, eventId: number): boolean => {
   const resolved = resolveCollisionSound(eventId, level);
   if (!resolved) return false;
-  startElementAudition(`/api/effect-sound?level=${encodeURIComponent(level)}&slot=${resolved.slot}`
-    + (resolved.bank === 'crowd' ? '&bank=crowd' : ''), 0.9);
+  startElementAudition(
+    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${resolved.slot}` +
+      (resolved.bank === 'crowd' ? '&bank=crowd' : ''),
+    0.9,
+  );
   return true;
 };
 
@@ -154,8 +169,11 @@ export const auditionExternalSound = (level: string, eventId: number): boolean =
   const resolved = resolveExternalSound(eventId, level);
   if (!resolved || !level.trim()) return false;
   const bank = resolved.kind === 'fixed' ? resolved.bank : resolved.kind;
-  startElementAudition(`/api/effect-sound?level=${encodeURIComponent(level)}&slot=${resolved.slot}`
-    + (bank === 'course' ? '' : `&bank=${encodeURIComponent(bank)}`), 0.9);
+  startElementAudition(
+    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${resolved.slot}` +
+      (bank === 'course' ? '' : `&bank=${encodeURIComponent(bank)}`),
+    0.9,
+  );
   return true;
 };
 
@@ -168,8 +186,13 @@ export const auditionExternalSoundLoop = (key: string, level: string, eventId: n
   const resolved = resolveExternalSound(eventId, level);
   if (!resolved || !level.trim()) return false;
   const bank = resolved.kind === 'fixed' ? resolved.bank : resolved.kind;
-  startBufferLoopAudition(key, `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${resolved.slot}`
-    + (bank === 'course' ? '' : `&bank=${encodeURIComponent(bank)}`) + '&loop=1', 0.9);
+  startBufferLoopAudition(
+    key,
+    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${resolved.slot}` +
+      (bank === 'course' ? '' : `&bank=${encodeURIComponent(bank)}`) +
+      '&loop=1',
+    0.9,
+  );
   return true;
 };
 
@@ -180,13 +203,18 @@ export const auditionCustomSoundLoop = (key: string, name: string): void => {
 
 /** Preview the Maps environment-bed contract. A reference names its own extracted copy; an authored mountain
  * reads the identical bank from any installed extraction, exactly as Test and export do. */
-export function auditionEnvironmentBed(key: string, bank: string, slot: number, volume: number,
-  level?: string): boolean {
+export function auditionEnvironmentBed(
+  key: string,
+  bank: string,
+  slot: number,
+  volume: number,
+  level?: string,
+): boolean {
   const sourceSlot = Math.trunc(slot);
   if (!bank.trim() || !Number.isInteger(slot) || sourceSlot < 0 || sourceSlot > 999) return false;
   const url = level?.trim()
-    ? `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${sourceSlot}`
-      + `&bank=${encodeURIComponent(bank)}&loop=1`
+    ? `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${sourceSlot}` +
+      `&bank=${encodeURIComponent(bank)}&loop=1`
     : environmentSoundUrl(bank, sourceSlot, true);
   startBufferLoopAudition(key, url, Math.min(1, Math.max(0, volume)));
   return true;
@@ -197,7 +225,8 @@ export const externalSoundMeta = (eventId: number, level?: string): string => {
   if (eventId < 0) return 'none';
   const resolved = resolveExternalSound(eventId, level);
   if (!resolved) return 'unresolved';
-  return resolved.kind === 'fixed' ? `${resolved.bank} 000`
+  return resolved.kind === 'fixed'
+    ? `${resolved.bank} 000`
     : `${resolved.kind} ${String(resolved.slot).padStart(3, '0')}`;
 };
 
@@ -214,8 +243,11 @@ export const collisionSoundMeta = (eventId: number, level?: string): string => {
 export const auditionBoardSound = (slot: number, bank = 'zboard'): boolean => {
   const sourceSlot = Math.trunc(slot);
   if (!Number.isFinite(slot) || sourceSlot < 0 || sourceSlot > 999) return false;
-  startElementAudition(`/api/board-sound?bank=${encodeURIComponent(bank)}&slot=${sourceSlot}&loop=1`, 0.9,
-    boardKey(sourceSlot, bank));
+  startElementAudition(
+    `/api/board-sound?bank=${encodeURIComponent(bank)}&slot=${sourceSlot}&loop=1`,
+    0.9,
+    boardKey(sourceSlot, bank),
+  );
   return true;
 };
 
@@ -233,8 +265,10 @@ export const auditionCustomMusic = (name: string): void => {
 /** Preview one native intro stem from Scene ▸ Sound. Test mode sequences the whole selected tier; the panel
  * keeps the preview intentionally finite so it never disguises a single bar as a separately authored song. */
 export const auditionReferenceIntroMusic = (level: string, stem: string): void => {
-  startElementAudition(`/api/reference-intro-music?level=${encodeURIComponent(level)}`
-    + `&stem=${encodeURIComponent(stem)}`, 0.8);
+  startElementAudition(
+    `/api/reference-intro-music?level=${encodeURIComponent(level)}` + `&stem=${encodeURIComponent(stem)}`,
+    0.8,
+  );
 };
 
 export interface ReferenceMusicAuditionStep {
@@ -251,8 +285,12 @@ export interface ReferenceMusicAuditionHooks {
 
 /** Fetch and schedule extracted PathFinder chunks on one Web Audio clock. Scheduling the whole deterministic
  * walk up front avoids an HTMLAudio hand-off gap between the retail graph's ~1.7-second WAV files. */
-export async function auditionReferenceMusicWalk(level: string, song: string,
-  steps: ReferenceMusicAuditionStep[], hooks: ReferenceMusicAuditionHooks = {}): Promise<boolean> {
+export async function auditionReferenceMusicWalk(
+  level: string,
+  song: string,
+  steps: ReferenceMusicAuditionStep[],
+  hooks: ReferenceMusicAuditionHooks = {},
+): Promise<boolean> {
   if (!level.trim() || !song.trim() || !steps.length) return false;
   stopAudition();
   const generation = auditionGeneration;
@@ -260,19 +298,30 @@ export async function auditionReferenceMusicWalk(level: string, song: string,
     const context = new AudioContext();
     auditionContext = context;
     await context.resume();
-    const buffers = await Promise.all(steps.map(async step => {
-      const response = await fetch(`/api/reference-music-sample?level=${encodeURIComponent(level)}`
-        + `&song=${encodeURIComponent(song)}&sample=${step.sample}`);
-      if (!response.ok) throw new Error(`sample ${step.sample}: ${await response.text() || response.statusText}`);
-      return context.decodeAudioData(await response.arrayBuffer());
-    }));
-    if (generation !== auditionGeneration || auditionContext !== context) { closeContext(context); return false; }
-    const gain = context.createGain(); gain.gain.value = 0.8; gain.connect(context.destination);
+    const buffers = await Promise.all(
+      steps.map(async step => {
+        const response = await fetch(
+          `/api/reference-music-sample?level=${encodeURIComponent(level)}` +
+            `&song=${encodeURIComponent(song)}&sample=${step.sample}`,
+        );
+        if (!response.ok) throw new Error(`sample ${step.sample}: ${(await response.text()) || response.statusText}`);
+        return context.decodeAudioData(await response.arrayBuffer());
+      }),
+    );
+    if (generation !== auditionGeneration || auditionContext !== context) {
+      closeContext(context);
+      return false;
+    }
+    const gain = context.createGain();
+    gain.gain.value = 0.8;
+    gain.connect(context.destination);
     const total = buffers.reduce((sum, buffer) => sum + buffer.duration, 0);
     hooks.onReady?.(total);
     let when = context.currentTime + 0.05;
     auditionSources = buffers.map((buffer, index) => {
-      const source = context.createBufferSource(); source.buffer = buffer; source.connect(gain);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(gain);
       source.onended = () => {
         if (generation !== auditionGeneration) return;
         if (index + 1 < steps.length) hooks.onStep?.(steps[index + 1], index + 1);
@@ -283,7 +332,8 @@ export async function auditionReferenceMusicWalk(level: string, song: string,
           hooks.onEnded?.();
         }
       };
-      source.start(when); when += buffer.duration;
+      source.start(when);
+      when += buffer.duration;
       return source;
     });
     hooks.onStep?.(steps[0], 0);
@@ -305,7 +355,13 @@ export const stopAudition = (): void => {
   setBoardAuditionKey(null);
   // Any other preview starting also ends the loop, so the stop button never outlives the sound it stops.
   setLoopKey(null);
-  for (const source of auditionSources) { try { source.stop(); } catch { /* already stopped */ } }
+  for (const source of auditionSources) {
+    try {
+      source.stop();
+    } catch {
+      /* already stopped */
+    }
+  }
   auditionSources = [];
   if (auditionContext) closeContext(auditionContext);
   auditionContext = null;

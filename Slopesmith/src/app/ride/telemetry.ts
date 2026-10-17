@@ -1,8 +1,4 @@
-import {
-  RIDE_CONTRACT_PROFILE,
-  RIDE_CONTRACT_SCHEMA,
-  RIDE_CONTRACT_VERSION,
-} from './ride-contract.generated';
+import { RIDE_CONTRACT_PROFILE, RIDE_CONTRACT_SCHEMA, RIDE_CONTRACT_VERSION } from './ride-contract.generated';
 
 /**
  * Fixed-tick ride telemetry shared by the live TestRide recorder and headless physics diagnostics.
@@ -136,7 +132,7 @@ export interface RideTelemetryTick {
 
 export type RideCameraClearance = 'none' | 'line-of-sight' | 'ground' | 'lateral' | 'volume';
 export type RideCameraProbeKind =
-  | 'origin-unbury' | 'line-of-sight' | 'ground' | 'lateral' | 'filtered-line-of-sight' | 'volume';
+  'origin-unbury' | 'line-of-sight' | 'ground' | 'lateral' | 'filtered-line-of-sight' | 'volume';
 export type RideCameraProbeHitSource = 'terrain' | 'obstacle';
 
 /** One exact query made by the render-frame camera clearance pass. Misses retain both endpoints. */
@@ -277,8 +273,12 @@ export interface RideTelemetryFooter {
 }
 
 export type RideTelemetryRecord =
-  | RideTelemetryHeader | RideTelemetryTick | RideTelemetryCamera | RideTelemetryShovedBody
-  | RideTelemetryMarker | RideTelemetryFooter;
+  | RideTelemetryHeader
+  | RideTelemetryTick
+  | RideTelemetryCamera
+  | RideTelemetryShovedBody
+  | RideTelemetryMarker
+  | RideTelemetryFooter;
 
 export interface RideTelemetryOutput {
   baseName: string;
@@ -312,8 +312,12 @@ export class RideTelemetryCapture {
     this.now = opts.now ?? (() => new Date());
   }
 
-  get active() { return this.recording; }
-  get markerCount() { return this.nextMarker - 1; }
+  get active() {
+    return this.recording;
+  }
+  get markerCount() {
+    return this.nextMarker - 1;
+  }
 
   ingest(frame: RideTelemetryTick) {
     this.latestFrame = frame.frame;
@@ -324,7 +328,10 @@ export class RideTelemetryCapture {
   /** Record the actual render camera after its interpolation and terrain-clearance pass. */
   ingestCamera(state: RideCameraState) {
     const sample: RideTelemetryCamera = {
-      kind: 'camera', frame: this.latestFrame, renderFrame: ++this.latestRenderFrame, ...state,
+      kind: 'camera',
+      frame: this.latestFrame,
+      renderFrame: ++this.latestRenderFrame,
+      ...state,
     };
     if (this.recording) this.records.push(sample);
     this.pushPreRoll(sample);
@@ -336,7 +343,10 @@ export class RideTelemetryCapture {
   ingestShovedBodies(samples: readonly RideShovedBodySample[]) {
     for (const sample of samples) {
       const record: RideTelemetryShovedBody = {
-        kind: 'shoved-body', frame: this.latestFrame, renderFrame: this.latestRenderFrame, ...sample,
+        kind: 'shoved-body',
+        frame: this.latestFrame,
+        renderFrame: this.latestRenderFrame,
+        ...sample,
       };
       if (this.recording) this.records.push(record);
       this.pushPreRoll(record);
@@ -366,7 +376,11 @@ export class RideTelemetryCapture {
     const summary = summarizeRideTelemetry(this.records, this.label);
     const complete: RideTelemetryRecord[] = [...this.records, { kind: 'footer', summary }];
     const stamp = this.startedAt.toISOString().replace(/[:.]/g, '-');
-    const safeLabel = this.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'ride';
+    const safeLabel =
+      this.label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'ride';
     const output: RideTelemetryOutput = {
       baseName: `${safeLabel}-${stamp}`,
       jsonl: `${complete.map(record => JSON.stringify(record)).join('\n')}\n`,
@@ -381,10 +395,16 @@ export class RideTelemetryCapture {
 
   private header(at: Date): RideTelemetryHeader {
     return {
-      kind: 'header', schema: RIDE_TELEMETRY_SCHEMA, capturedAtUtc: at.toISOString(), label: this.label,
-      simulationHz: 60, coordinates: { upAxis: 'Y', unitsPerMeter: 1 },
+      kind: 'header',
+      schema: RIDE_TELEMETRY_SCHEMA,
+      capturedAtUtc: at.toISOString(),
+      label: this.label,
+      simulationHz: 60,
+      coordinates: { upAxis: 'Y', unitsPerMeter: 1 },
       rideContract: {
-        schema: RIDE_CONTRACT_SCHEMA, version: RIDE_CONTRACT_VERSION, profile: RIDE_CONTRACT_PROFILE,
+        schema: RIDE_CONTRACT_SCHEMA,
+        version: RIDE_CONTRACT_VERSION,
+        profile: RIDE_CONTRACT_PROFILE,
       },
       controls: { startOrSave: 'F8', marker: 'M', preRollSeconds: this.preRollTicks / 60 },
     };
@@ -399,29 +419,55 @@ export class RideTelemetryCapture {
 
 export function summarizeRideTelemetry(records: readonly RideTelemetryRecord[], label: string): RideTelemetrySummary {
   const summary: RideTelemetrySummary = {
-    schema: RIDE_TELEMETRY_SCHEMA, label, frames: 0, cameraFrames: 0,
-    firstFrame: null, lastFrame: null, markers: 0,
-    takeoffs: 0, touchdowns: 0, launches: 0, barrierResolutions: 0, deferredFloorCrossings: 0,
-    propShoves: 0, propShovesWithoutBody: 0, shovedBodySamples: 0, shovedBodies: [],
+    schema: RIDE_TELEMETRY_SCHEMA,
+    label,
+    frames: 0,
+    cameraFrames: 0,
+    firstFrame: null,
+    lastFrame: null,
+    markers: 0,
+    takeoffs: 0,
+    touchdowns: 0,
+    launches: 0,
+    barrierResolutions: 0,
+    deferredFloorCrossings: 0,
+    propShoves: 0,
+    propShovesWithoutBody: 0,
+    shovedBodySamples: 0,
+    shovedBodies: [],
     takeoffSamples: [],
   };
   const shovedDigests = new Map<string, RideTelemetrySummary['shovedBodies'][number]>();
   for (const record of records) {
-    if (record.kind === 'marker') { summary.markers++; continue; }
-    if (record.kind === 'camera') { summary.cameraFrames++; continue; }
+    if (record.kind === 'marker') {
+      summary.markers++;
+      continue;
+    }
+    if (record.kind === 'camera') {
+      summary.cameraFrames++;
+      continue;
+    }
     if (record.kind === 'shoved-body') {
       summary.shovedBodySamples++;
       let digest = shovedDigests.get(record.key);
       if (!digest) {
-        digest = { key: record.key, samples: 0, settled: false, launch: record.com, rest: record.com,
-          travelM: 0, peakUndersideM: null };
+        digest = {
+          key: record.key,
+          samples: 0,
+          settled: false,
+          launch: record.com,
+          rest: record.com,
+          travelM: 0,
+          peakUndersideM: null,
+        };
         shovedDigests.set(record.key, digest);
         summary.shovedBodies.push(digest);
       }
       digest.samples++;
       digest.settled = record.asleep;
       digest.rest = record.com;
-      const dx = record.com[0] - digest.launch[0], dz = record.com[2] - digest.launch[2];
+      const dx = record.com[0] - digest.launch[0],
+        dz = record.com[2] - digest.launch[2];
       digest.travelM = Math.round(Math.hypot(dx, dz) * 100) / 100;
       if (record.groundY !== null) {
         const underside = record.com[1] - record.radius - record.groundY;
@@ -438,12 +484,12 @@ export function summarizeRideTelemetry(records: readonly RideTelemetryRecord[], 
       if (event.type === 'takeoff') {
         summary.takeoffs++;
         summary.takeoffSamples.push({
-          frame: record.frame, speed: record.closing.speed,
+          frame: record.frame,
+          speed: record.closing.speed,
           trajectoryPitchDeg: record.closing.trajectoryPitchDeg,
           boardPitchDeg: record.closing.boardPitchDeg,
         });
-      }
-      else if (event.type === 'touchdown') summary.touchdowns++;
+      } else if (event.type === 'touchdown') summary.touchdowns++;
       else if (event.type === 'launch') summary.launches++;
       else if (event.type === 'barrier-resolved') summary.barrierResolutions++;
       else if (event.type === 'floor-crossing-deferred') summary.deferredFloorCrossings++;

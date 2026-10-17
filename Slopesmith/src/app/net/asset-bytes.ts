@@ -25,7 +25,9 @@ export function assetBytes(url: string): Promise<Uint8Array> {
     pending = fetchBytes(url);
     cache.set(url, pending);
     // A failed read must not become the permanent answer for this address.
-    void pending.catch(() => { if (cache.get(url) === pending) cache.delete(url); });
+    void pending.catch(() => {
+      if (cache.get(url) === pending) cache.delete(url);
+    });
   }
   return pending;
 }

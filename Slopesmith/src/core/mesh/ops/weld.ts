@@ -37,7 +37,11 @@ function weldCell(c: number[]): number[] | 'drop' | null {
   const cyc = quadCycle(c);
   if (cyc[0] === cyc[2] || cyc[1] === cyc[3]) return null; // the fused pair is a diagonal of the cycle
   let i = -1;
-  for (let k = 0; k < 4; k++) if (cyc[k] === cyc[(k + 1) % 4]) { i = k; break; }
+  for (let k = 0; k < 4; k++)
+    if (cyc[k] === cyc[(k + 1) % 4]) {
+      i = k;
+      break;
+    }
   if (i < 0) return null; // unreachable: 3 distinct with no adjacent and no diagonal pair
   const rot = (i + 2) % 4;
   const p = [0, 1, 2, 3].map(j => cyc[(j + rot) % 4]);
@@ -56,7 +60,8 @@ function weldCell(c: number[]): number[] | 'drop' | null {
  */
 function weldEdgeHandles(doc: QuadMeshDoc, weld: (v: number) => number): Record<string, V3> {
   const src = doc.edgeHandles ?? {};
-  const creased: [number, number][] = [], seen = new Set<string>();
+  const creased: [number, number][] = [],
+    seen = new Set<string>();
   const collect = (from: number, to: number) => {
     if (from === to) return;
     const key = directedEdgeKey(from, to);
@@ -64,13 +69,21 @@ function weldEdgeHandles(doc: QuadMeshDoc, weld: (v: number) => number): Record<
     seen.add(key);
     if (src[key] !== undefined) creased.push([from, to]);
   };
-  for (const q of doc.quads) for (const [a, b] of quadEdges(q)) { collect(a, b); collect(b, a); }
-  for (const [a, b] of doc.freeEdges ?? []) { collect(a, b); collect(b, a); }
+  for (const q of doc.quads)
+    for (const [a, b] of quadEdges(q)) {
+      collect(a, b);
+      collect(b, a);
+    }
+  for (const [a, b] of doc.freeEdges ?? []) {
+    collect(a, b);
+    collect(b, a);
+  }
   creased.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const out: Record<string, V3> = {};
   for (const [from, to] of creased) {
-    const f = weld(from), t = weld(to);
-    if (f === t) continue;                       // both ends welded together: the edge is gone
+    const f = weld(from),
+      t = weld(to);
+    if (f === t) continue; // both ends welded together: the edge is gone
     const key = directedEdgeKey(f, t);
     if (out[key] === undefined) out[key] = src[directedEdgeKey(from, to)]; // lowest original (from,to) wins
   }
@@ -92,8 +105,10 @@ function weldEdgeHandles(doc: QuadMeshDoc, weld: (v: number) => number): Record<
  * per-corner offsets no longer name the control points they were sculpted against. Then the shared manifold
  * guard + `remapIds` compaction, like every op here. Pure: returns a NEW doc, the input is untouched.
  */
-export function applyVertexWeld(doc: QuadMeshDoc, pairs: readonly (readonly [number, number])[]):
-  { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
+export function applyVertexWeld(
+  doc: QuadMeshDoc,
+  pairs: readonly (readonly [number, number])[],
+): { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
   if (!pairs.length) return { ok: false, error: 'Weld found no vertex pairs to merge.' };
   const vcount = doc.vertices.length / 3;
   for (const [from, into] of pairs) {
@@ -105,9 +120,16 @@ export function applyVertexWeld(doc: QuadMeshDoc, pairs: readonly (readonly [num
   // union-find, always pointing the FROM's root at the INTO's root (no union-by-rank), so a root only ever
   // migrates toward an `into` — the root of a group IS the survivor, and a chain resolves to its final `into`.
   const parent = Array.from({ length: vcount }, (_, i) => i);
-  const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
   for (const [from, into] of pairs) {
-    const rf = find(from), ri = find(into);
+    const rf = find(from),
+      ri = find(into);
     if (rf !== ri) parent[rf] = ri;
   }
 
@@ -117,27 +139,46 @@ export function applyVertexWeld(doc: QuadMeshDoc, pairs: readonly (readonly [num
   const { edgeHandle } = meshContext(doc);
   const point = (vertex: number): V3 => readVertex(doc.vertices, vertex);
   for (const node of normalizeTJunctions(doc)) {
-    const vertex = find(node.vertex), a = find(node.edge[0]), b = find(node.edge[1]);
+    const vertex = find(node.vertex),
+      a = find(node.edge[0]),
+      b = find(node.edge[1]);
     if (vertex === a || vertex === b) continue; // the weld resolves the T into conforming topology
     const unchanged = vertex === node.vertex && a === node.edge[0] && b === node.edge[1];
     if (unchanged) continue;
     if (a !== node.edge[0] || b !== node.edge[1])
-      return { ok: false, error: 'Weld would reshape an edge that still hosts a T-junction. Resolve that T-junction first.' };
-    const p0 = point(a), p3 = point(b), target = point(vertex);
-    const p1 = add(p0, edgeHandle(a, b)), p2 = add(p3, edgeHandle(b, a));
-    const t = nearestCubicT(p0, p1, p2, p3, target, 64), onCurve = cubicPoint(p0, p1, p2, p3, t);
+      return {
+        ok: false,
+        error: 'Weld would reshape an edge that still hosts a T-junction. Resolve that T-junction first.',
+      };
+    const p0 = point(a),
+      p3 = point(b),
+      target = point(vertex);
+    const p1 = add(p0, edgeHandle(a, b)),
+      p2 = add(p3, edgeHandle(b, a));
+    const t = nearestCubicT(p0, p1, p2, p3, target, 64),
+      onCurve = cubicPoint(p0, p1, p2, p3, t);
     if (Math.hypot(target[0] - onCurve[0], target[1] - onCurve[1], target[2] - onCurve[2]) > 0.05)
-      return { ok: false, error: 'Weld would move a T-junction away from its host edge. Weld it to a coincident point or resolve it into a host endpoint.' };
+      return {
+        ok: false,
+        error:
+          'Weld would move a T-junction away from its host edge. Weld it to a coincident point or resolve it into a host endpoint.',
+      };
   }
 
   const quads: (number[] | null)[] = new Array(doc.quads.length);
   const quadTwist = doc.quadTwist ? { ...doc.quadTwist } : undefined;
   for (let q = 0; q < doc.quads.length; q++) {
     const folded = weldCell(doc.quads[q].map(v => find(v)));
-    if (folded === null) return { ok: false, error: 'Weld would fuse two DIAGONAL corners of a cell — a quad can only encode the edge-collapsed wedge [A,B,C,C]. Rejected.' };
+    if (folded === null)
+      return {
+        ok: false,
+        error:
+          'Weld would fuse two DIAGONAL corners of a cell — a quad can only encode the edge-collapsed wedge [A,B,C,C]. Rejected.',
+      };
     quads[q] = folded === 'drop' ? null : folded;
     // a cell that collapsed to a wedge was rotated and lost its D corner: its twist can't follow (like the cut)
-    if (quadTwist && folded !== 'drop' && new Set(folded).size === 3 && new Set(doc.quads[q]).size === 4) delete quadTwist[q];
+    if (quadTwist && folded !== 'drop' && new Set(folded).size === 3 && new Set(doc.quads[q]).size === 4)
+      delete quadTwist[q];
   }
   const kept = quads.filter(Boolean) as number[][];
   if (!kept.length && doc.quads.length) return { ok: false, error: 'Weld would collapse every cell — rejected.' };
@@ -151,20 +192,28 @@ export function applyVertexWeld(doc: QuadMeshDoc, pairs: readonly (readonly [num
     keepVertices: looseVertexIds(doc).map(find),
     freeEdges: doc.freeEdges?.map(([a, b]) => [find(a), find(b)] as [number, number]),
     tJunctions: doc.tJunctions?.map(node => ({
-      vertex: find(node.vertex), edge: [find(node.edge[0]), find(node.edge[1])] as [number, number], t: node.t,
+      vertex: find(node.vertex),
+      edge: [find(node.edge[0]), find(node.edge[1])] as [number, number],
+      t: node.t,
     })),
     edgeHandles: doc.edgeHandles ? weldEdgeHandles(doc, find) : undefined,
     // A locked edge follows its ends onto the survivors; one whose ends weld together is gone with it.
-    edgeLocked: doc.edgeLocked ? Object.fromEntries(explicitLockedEdges(doc)
-      .map(([a, b]) => [find(a), find(b)]).filter(([a, b]) => a !== b)
-      .map(([a, b]) => [undirectedEdgeKey(a, b), true as const])) : undefined,
+    edgeLocked: doc.edgeLocked
+      ? Object.fromEntries(
+          explicitLockedEdges(doc)
+            .map(([a, b]) => [find(a), find(b)])
+            .filter(([a, b]) => a !== b)
+            .map(([a, b]) => [undirectedEdgeKey(a, b), true as const]),
+        )
+      : undefined,
     quadPaint: doc.quadPaint ? { ...doc.quadPaint } : undefined,
     quadTex: doc.quadTex ? { ...doc.quadTex } : undefined,
     quadOrient: doc.quadOrient ? { ...doc.quadOrient } : undefined,
     quadLocked: doc.quadLocked ? { ...doc.quadLocked } : undefined,
     quadTwist,
-    quadLabels: doc.quadLabels ? Object.fromEntries(Object.entries(doc.quadLabels)
-      .map(([quad, labels]) => [quad, [...labels]])) : undefined,
+    quadLabels: doc.quadLabels
+      ? Object.fromEntries(Object.entries(doc.quadLabels).map(([quad, labels]) => [quad, [...labels]]))
+      : undefined,
   });
   return { ok: true, doc: out };
 }
@@ -172,12 +221,17 @@ export function applyVertexWeld(doc: QuadMeshDoc, pairs: readonly (readonly [num
 /** Collapse one selected vertex set into a deterministic survivor. The lowest id survives at its current
  * position; every other unique id is welded directly into it in the same guarded atomic rewrite as an ordinary
  * source-to-target weld. This is the point-weld tool's "to each other" path for overlapping points/T-nodes. */
-export function applyVertexWeldTogether(doc: QuadMeshDoc, vertices: readonly number[]):
-  { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
+export function applyVertexWeldTogether(
+  doc: QuadMeshDoc,
+  vertices: readonly number[],
+): { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
   const unique = [...new Set(vertices)].sort((a, b) => a - b);
   if (unique.length < 2) return { ok: false, error: 'Weld to each other needs at least two selected points.' };
   const survivor = unique[0];
-  return applyVertexWeld(doc, unique.slice(1).map(vertex => [vertex, survivor] as [number, number]));
+  return applyVertexWeld(
+    doc,
+    unique.slice(1).map(vertex => [vertex, survivor] as [number, number]),
+  );
 }
 
 /** Stitch equal-size source/target edge sets in one atomic vertex weld. The edges define two unique endpoint
@@ -188,18 +242,26 @@ export function applyEdgeWeldSets(
   targets: readonly (readonly [number, number])[],
 ): { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
   if (!sources.length || targets.length !== sources.length)
-    return { ok: false, error: `Edge weld needs equally sized source and target sets (${sources.length} vs ${targets.length}).` };
+    return {
+      ok: false,
+      error: `Edge weld needs equally sized source and target sets (${sources.length} vs ${targets.length}).`,
+    };
   const { mesh, adj } = meshContext(doc);
   const count = mesh.vertexCount;
-  for (const edge of [...sources, ...targets]) for (const vertex of edge)
-    if (!Number.isInteger(vertex) || vertex < 0 || vertex >= count)
-    return { ok: false, error: 'Edge weld names an edge that is no longer in the mesh.' };
+  for (const edge of [...sources, ...targets])
+    for (const vertex of edge)
+      if (!Number.isInteger(vertex) || vertex < 0 || vertex >= count)
+        return { ok: false, error: 'Edge weld names an edge that is no longer in the mesh.' };
   const free = new Set((doc.freeEdges ?? []).map(([a, b]) => ekey(a, b)));
-  const exists = (edge: readonly [number, number]) => (adj.edgeQuads.get(ekey(edge[0], edge[1]))?.length ?? 0) > 0
-    || free.has(ekey(edge[0], edge[1]));
-  if ([...sources, ...targets].some(edge => !exists(edge))) return { ok: false, error: 'Edge weld needs live surface or free edges.' };
+  const exists = (edge: readonly [number, number]) =>
+    (adj.edgeQuads.get(ekey(edge[0], edge[1]))?.length ?? 0) > 0 || free.has(ekey(edge[0], edge[1]));
+  if ([...sources, ...targets].some(edge => !exists(edge)))
+    return { ok: false, error: 'Edge weld needs live surface or free edges.' };
   const sourceKeys = new Set(sources.map(edge => ekey(edge[0], edge[1])));
-  if (sourceKeys.size !== sources.length || new Set(targets.map(edge => ekey(edge[0], edge[1]))).size !== targets.length)
+  if (
+    sourceKeys.size !== sources.length ||
+    new Set(targets.map(edge => ekey(edge[0], edge[1]))).size !== targets.length
+  )
     return { ok: false, error: 'Edge weld selections contain the same edge more than once.' };
   if (targets.some(edge => sourceKeys.has(ekey(edge[0], edge[1]))))
     return { ok: false, error: 'Source and target edge sets must be separate.' };
@@ -208,9 +270,13 @@ export function applyEdgeWeldSets(
   const sourceVertices = [...new Set(sources.flatMap(edge => [...edge]))];
   const targetVertices = [...new Set(targets.flatMap(edge => [...edge]))];
   if (sourceVertices.length !== targetVertices.length)
-    return { ok: false, error: `The source edges contain ${sourceVertices.length} unique vertices, but the targets contain ${targetVertices.length}.` };
+    return {
+      ok: false,
+      error: `The source edges contain ${sourceVertices.length} unique vertices, but the targets contain ${targetVertices.length}.`,
+    };
   const distance = (a: number, b: number) => {
-    const pa = p(a), pb = p(b);
+    const pa = p(a),
+      pb = p(b);
     return (pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2 + (pa[2] - pb[2]) ** 2;
   };
   const pairs: [number, number][] = [];
@@ -218,13 +284,19 @@ export function applyEdgeWeldSets(
     const memo = new Map<string, { cost: number; target: number }>();
     const solve = (i: number, used: number): number => {
       if (i === sourceVertices.length) return 0;
-      const key = `${i}:${used}`, cached = memo.get(key);
+      const key = `${i}:${used}`,
+        cached = memo.get(key);
       if (cached) return cached.cost;
-      let cost = Infinity, choice = -1;
-      for (let j = 0; j < targetVertices.length; j++) if (!(used & (1 << j))) {
-        const total = distance(sourceVertices[i], targetVertices[j]) + solve(i + 1, used | (1 << j));
-        if (total < cost) { cost = total; choice = j; }
-      }
+      let cost = Infinity,
+        choice = -1;
+      for (let j = 0; j < targetVertices.length; j++)
+        if (!(used & (1 << j))) {
+          const total = distance(sourceVertices[i], targetVertices[j]) + solve(i + 1, used | (1 << j));
+          if (total < cost) {
+            cost = total;
+            choice = j;
+          }
+        }
       memo.set(key, { cost, target: choice });
       return cost;
     };
@@ -232,19 +304,29 @@ export function applyEdgeWeldSets(
     let used = 0;
     for (let i = 0; i < sourceVertices.length; i++) {
       const target = memo.get(`${i}:${used}`)!.target;
-      const from = targetVertices[target], into = sourceVertices[i];
+      const from = targetVertices[target],
+        into = sourceVertices[i];
       if (from !== into) pairs.push([from, into]);
       used |= 1 << target;
     }
   } else {
-    const remainingSources = [...sourceVertices], remainingTargets = [...targetVertices];
+    const remainingSources = [...sourceVertices],
+      remainingTargets = [...targetVertices];
     while (remainingSources.length) {
-      let ai = 0, aj = 0, best = Infinity;
-      for (let i = 0; i < remainingSources.length; i++) for (let j = 0; j < remainingTargets.length; j++) {
-        const cost = distance(remainingSources[i], remainingTargets[j]);
-        if (cost < best) { best = cost; ai = i; aj = j; }
-      }
-      const into = remainingSources.splice(ai, 1)[0], from = remainingTargets.splice(aj, 1)[0];
+      let ai = 0,
+        aj = 0,
+        best = Infinity;
+      for (let i = 0; i < remainingSources.length; i++)
+        for (let j = 0; j < remainingTargets.length; j++) {
+          const cost = distance(remainingSources[i], remainingTargets[j]);
+          if (cost < best) {
+            best = cost;
+            ai = i;
+            aj = j;
+          }
+        }
+      const into = remainingSources.splice(ai, 1)[0],
+        from = remainingTargets.splice(aj, 1)[0];
       if (from !== into) pairs.push([from, into]);
     }
   }
@@ -258,13 +340,17 @@ export function applyEdgeWeldSets(
     for (const [A, B, C, D] of welded.doc.quads)
       for (const [a, b] of quadPerimeterEdges([A, B, C, D])) surface.add(ekey(a, b));
     const remaining = welded.doc.freeEdges.filter(([a, b]) => !surface.has(ekey(a, b)));
-    if (remaining.length) welded.doc.freeEdges = remaining; else delete welded.doc.freeEdges;
+    if (remaining.length) welded.doc.freeEdges = remaining;
+    else delete welded.doc.freeEdges;
   }
   return welded;
 }
 
 /** Single-pair convenience wrapper retained for callers and tests. */
-export function applyEdgeWeld(doc: QuadMeshDoc, source: readonly [number, number], target: readonly [number, number]):
-  { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
+export function applyEdgeWeld(
+  doc: QuadMeshDoc,
+  source: readonly [number, number],
+  target: readonly [number, number],
+): { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
   return applyEdgeWeldSets(doc, [source], [target]);
 }

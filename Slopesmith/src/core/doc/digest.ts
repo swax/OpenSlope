@@ -1,8 +1,6 @@
 import type { QuadMeshDoc } from './types';
 import { canonicalJson } from './canonical';
-import {
-  documentSections, registerSection, sectionRegisters, structuralDocument, type RegisterKey,
-} from './registers';
+import { documentSections, registerSection, sectionRegisters, structuralDocument, type RegisterKey } from './registers';
 
 /**
  * Two-level hashing, so drift says WHERE (docs/039).
@@ -40,7 +38,8 @@ export type HashText = (text: string) => string;
  * names a stored document by sha256 over the same canonical text.
  */
 export function textHash(text: string): string {
-  let low = 0xdeadbeef, high = 0x41c6ce57;
+  let low = 0xdeadbeef,
+    high = 0x41c6ce57;
   for (let at = 0; at < text.length; at++) {
     const unit = text.charCodeAt(at);
     low = Math.imul(low ^ unit, 2654435761);
@@ -65,7 +64,11 @@ export interface DocumentDigest {
 
 /** Section names in order, so the record enumerates the same way whichever route built it. */
 const ordered = (sections: Record<string, string>): Record<string, string> =>
-  Object.fromEntries(Object.keys(sections).sort().map(name => [name, sections[name]]));
+  Object.fromEntries(
+    Object.keys(sections)
+      .sort()
+      .map(name => [name, sections[name]]),
+  );
 
 const rootOf = (sections: Record<string, string>, hash: HashText): string => hash(canonicalJson(sections));
 
@@ -116,8 +119,12 @@ export function digestDocument(doc: QuadMeshDoc, hash: HashText): DocumentDigest
  * That is also the fallback taken here whenever a changed key cannot be placed on the document — a name it
  * has never carried, or one it has since retired — because both mean the numbering moved underneath.
  */
-export function updateDigest(doc: QuadMeshDoc, previous: DocumentDigest, changed: Iterable<RegisterKey>,
-  hash: HashText): DocumentDigest {
+export function updateDigest(
+  doc: QuadMeshDoc,
+  previous: DocumentDigest,
+  changed: Iterable<RegisterKey>,
+  hash: HashText,
+): DocumentDigest {
   const dirty = new Set<string>();
   for (const key of changed) {
     const section = registerSection(doc, key);
@@ -128,7 +135,8 @@ export function updateDigest(doc: QuadMeshDoc, previous: DocumentDigest, changed
   const sections = { ...previous.sections };
   for (const name of dirty) {
     const digest = sectionDigest(doc, name, hash);
-    if (digest === null) delete sections[name]; else sections[name] = digest;
+    if (digest === null) delete sections[name];
+    else sections[name] = digest;
   }
   const named = ordered(sections);
   return { root: rootOf(named, hash), sections: named };

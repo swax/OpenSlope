@@ -16,36 +16,49 @@ process.env.SLOPESMITH_WORKSPACE_ROOT = workspaceRoot;
 process.env.SLOPESMITH_MAPS_ROOT = mapsRoot;
 
 try {
-  const {
-    BOOTSTRAP_FILE, DEFAULT_MAX_PLAYERS, forgetWorkspaceConfig, saveWorkspaceConfig, workspaceConfig,
-  } = await import('../src/server/workspace-config');
+  const { BOOTSTRAP_FILE, DEFAULT_MAX_PLAYERS, forgetWorkspaceConfig, saveWorkspaceConfig, workspaceConfig } =
+    await import('../src/server/workspace-config');
 
-  check(DEFAULT_MAX_PLAYERS === 16 && workspaceConfig().maxPlayers === 16,
-    'an installation with no saved capacity defaults to 16 players');
+  check(
+    DEFAULT_MAX_PLAYERS === 16 && workspaceConfig().maxPlayers === 16,
+    'an installation with no saved capacity defaults to 16 players',
+  );
 
   let belowMinimum = '';
-  try { await saveWorkspaceConfig({ maxPlayers: 0 }); }
-  catch (error) { belowMinimum = String(error instanceof Error ? error.message : error); }
-  check(/whole number of at least 1/i.test(belowMinimum) && !existsSync(BOOTSTRAP_FILE),
-    'a value below one is refused before a configuration file is written');
+  try {
+    await saveWorkspaceConfig({ maxPlayers: 0 });
+  } catch (error) {
+    belowMinimum = String(error instanceof Error ? error.message : error);
+  }
+  check(
+    /whole number of at least 1/i.test(belowMinimum) && !existsSync(BOOTSTRAP_FILE),
+    'a value below one is refused before a configuration file is written',
+  );
 
   let fractional = '';
-  try { await saveWorkspaceConfig({ maxPlayers: 1.5 }); }
-  catch (error) { fractional = String(error instanceof Error ? error.message : error); }
+  try {
+    await saveWorkspaceConfig({ maxPlayers: 1.5 });
+  } catch (error) {
+    fractional = String(error instanceof Error ? error.message : error);
+  }
   check(/whole number/i.test(fractional), 'fractional player counts are refused');
 
   const large = await saveWorkspaceConfig({ maxPlayers: 1_000_000 });
   const stored = JSON.parse(readFileSync(BOOTSTRAP_FILE, 'utf8')) as { maxPlayers?: number };
-  check(large.config.maxPlayers === 1_000_000 && stored.maxPlayers === 1_000_000
-    && large.restartRequired === false,
-    'large limits are accepted without an arbitrary UI cap, persisted, and take effect without a restart');
+  check(
+    large.config.maxPlayers === 1_000_000 && stored.maxPlayers === 1_000_000 && large.restartRequired === false,
+    'large limits are accepted without an arbitrary UI cap, persisted, and take effect without a restart',
+  );
 
   process.env.SLOPESMITH_MAX_PLAYERS = '23';
   forgetWorkspaceConfig();
   const overridden = workspaceConfig();
-  check(overridden.maxPlayers === 23 && overridden.overrides.maxPlayers
-    && overridden.overrideVars.includes('SLOPESMITH_MAX_PLAYERS'),
-    'the environment can own player capacity just like the server path settings');
+  check(
+    overridden.maxPlayers === 23 &&
+      overridden.overrides.maxPlayers &&
+      overridden.overrideVars.includes('SLOPESMITH_MAX_PLAYERS'),
+    'the environment can own player capacity just like the server path settings',
+  );
 } catch (error) {
   recordFailure();
   console.error('FAIL', error);

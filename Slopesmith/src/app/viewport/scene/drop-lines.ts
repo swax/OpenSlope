@@ -37,13 +37,15 @@ const DROP_LINE_RENDER_ORDER = 95;
 
 /** A soft round dot, built as data rather than on a canvas so the layer needs no DOM. */
 function dotTexture(): THREE.DataTexture {
-  const n = 16, data = new Uint8Array(n * n * 4);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const r = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
-    const i = (y * n + x) * 4;
-    data[i] = data[i + 1] = data[i + 2] = 255;
-    data[i + 3] = Math.round(255 * Math.min(1, Math.max(0, (1 - r) * 4)));
-  }
+  const n = 16,
+    data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const r = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
+      const i = (y * n + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 255;
+      data[i + 3] = Math.round(255 * Math.min(1, Math.max(0, (1 - r) * 4)));
+    }
   const texture = new THREE.DataTexture(data, n, n);
   texture.needsUpdate = true;
   return texture;
@@ -58,17 +60,35 @@ export function createDropLinesLayer(stage: Stage, source: DropLineSource) {
   const dotGeometry = new THREE.BufferGeometry();
   dotGeometry.setAttribute('position', new THREE.BufferAttribute(dotPositions, 3));
   dotGeometry.setDrawRange(0, 0);
-  const lines = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({
-    color: DROP_LINE_COLOR, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false,
-  }));
-  const dots = new THREE.Points(dotGeometry, new THREE.PointsMaterial({
-    color: DROP_LINE_COLOR, size: 7, sizeAttenuation: false, map: dotTexture(), transparent: true,
-    alphaTest: 0.05, depthTest: false, depthWrite: false,
-  }));
+  const lines = new THREE.LineSegments(
+    lineGeometry,
+    new THREE.LineBasicMaterial({
+      color: DROP_LINE_COLOR,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  const dots = new THREE.Points(
+    dotGeometry,
+    new THREE.PointsMaterial({
+      color: DROP_LINE_COLOR,
+      size: 7,
+      sizeAttenuation: false,
+      map: dotTexture(),
+      transparent: true,
+      alphaTest: 0.05,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
   for (const object of [lines, dots]) {
     object.renderOrder = DROP_LINE_RENDER_ORDER;
     object.frustumCulled = false; // the buffers are rewritten in place; their bounds are never recomputed
-    object.raycast = () => { /* an indicator, never a pick target */ };
+    object.raycast = () => {
+      /* an indicator, never a pick target */
+    };
   }
   const group = new THREE.Group();
   group.name = 'Drop lines';
@@ -86,7 +106,11 @@ export function createDropLinesLayer(stage: Stage, source: DropLineSource) {
     const ground = count ? source.groundVersion() : lastGround;
     let same = count * 3 === lastPoints.length && ground === lastGround;
     for (let i = 0; same && i < count; i++)
-      for (let k = 0; k < 3; k++) if (points[i][k] !== lastPoints[i * 3 + k]) { same = false; break; }
+      for (let k = 0; k < 3; k++)
+        if (points[i][k] !== lastPoints[i * 3 + k]) {
+          same = false;
+          break;
+        }
     if (same) return;
     lastPoints = [];
     lastGround = ground;
@@ -111,12 +135,17 @@ export function createDropLinesLayer(stage: Stage, source: DropLineSource) {
   return {
     sync,
     /** How many lines are drawn now. */
-    get count() { return shown; },
+    get count() {
+      return shown;
+    },
     /** The drawn lines' ends, data space: `[top, foot]` per line. */
     segments(): [V3, V3][] {
       return Array.from({ length: shown }, (_, i) => {
         const p = linePositions.subarray(i * 6, i * 6 + 6);
-        return [[p[0], p[1], p[2]], [p[3], p[4], p[5]]];
+        return [
+          [p[0], p[1], p[2]],
+          [p[3], p[4], p[5]],
+        ];
       });
     },
   };

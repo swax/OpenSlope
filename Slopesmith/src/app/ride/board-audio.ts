@@ -1,11 +1,29 @@
 import {
-  BIG_AIR_WIND_SLOT, BOARD_AUDIO_GROUPS, BOARD_BANK, BOARD_BEND_SPAN, BOARD_BOOST_SLOT, BOARD_LAND_SLOT,
-  BOARD_OLLIE_SLOT, BOARD_RAIL_GROUP, BOOST_BANK, SPEED_PAD_SLOT, TRICK_PAD_SLOT, bigAirWindActive,
-  boardAudioGroup, boardBedFrame, boardCarveSlot, boardGlideSlot, gemChimeSlot,
+  BIG_AIR_WIND_SLOT,
+  BOARD_AUDIO_GROUPS,
+  BOARD_BANK,
+  BOARD_BEND_SPAN,
+  BOARD_BOOST_SLOT,
+  BOARD_LAND_SLOT,
+  BOARD_OLLIE_SLOT,
+  BOARD_RAIL_GROUP,
+  BOOST_BANK,
+  SPEED_PAD_SLOT,
+  TRICK_PAD_SLOT,
+  bigAirWindActive,
+  boardAudioGroup,
+  boardBedFrame,
+  boardCarveSlot,
+  boardGlideSlot,
+  gemChimeSlot,
 } from '../../core/audio/board-sound';
 import type { BoardSoundMix } from '../../core/doc/types';
 import {
-  gameAudioDestination, preloadAudio, resumeSharedAudio, sharedAudioBuffer, sharedAudioContext,
+  gameAudioDestination,
+  preloadAudio,
+  resumeSharedAudio,
+  sharedAudioBuffer,
+  sharedAudioContext,
 } from '../audio/runtime';
 import type { RideState } from './physics';
 import { resolveAssetUrl } from '../net/asset-paths';
@@ -77,7 +95,7 @@ export function preloadBoardAudio(): void {
   preloadAudio(urls);
 }
 
-const clamp01 = (v: number): number => v < 0 ? 0 : v > 1 ? 1 : v;
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 const moveTowards = (from: number, to: number, step: number): number =>
   Math.abs(to - from) <= step ? to : from + Math.sign(to - from) * step;
@@ -98,7 +116,11 @@ class LoopLayer {
   private level = 0;
   private rate = 1;
 
-  constructor(private readonly host: BoardAudio, destination: AudioNode, private readonly bank = BOARD_BANK) {
+  constructor(
+    private readonly host: BoardAudio,
+    destination: AudioNode,
+    private readonly bank = BOARD_BANK,
+  ) {
     this.gain = host.context.createGain();
     this.gain.gain.value = 0;
     this.gain.connect(destination);
@@ -146,7 +168,11 @@ class LoopLayer {
 
   private stopSource(): void {
     if (!this.source) return;
-    try { this.source.stop(); } catch { /* already ended */ }
+    try {
+      this.source.stop();
+    } catch {
+      /* already ended */
+    }
     this.source.disconnect();
     this.source = null;
   }
@@ -164,16 +190,19 @@ export class BoardAudio {
   private readonly boostGain: GainNode;
   private boostSource: AudioBufferSourceNode | null = null;
   private boostLevel = 0;
-  private boostHeld = 0;      // seconds the current engage has been thrusting (drives the punch)
-  private boosting = false;   // last frame's engage state, for the punch re-arm edge
+  private boostHeld = 0; // seconds the current engage has been thrusting (drives the punch)
+  private boosting = false; // last frame's engage state, for the punch re-arm edge
   private surfaceGroups: number[] | null = null;
   private disposed = false;
   // Edge trackers: the ride state is a snapshot, so the transients are found by watching it change.
   private wasGrounded = true;
-  private wasPopping = true;  // suppress the spawn frame's pose from firing an ollie
+  private wasPopping = true; // suppress the spawn frame's pose from firing an ollie
   private airVelocity: [number, number, number] = [0, 0, 0];
 
-  constructor(private readonly mix: BoardSoundMix, surfaceGroups?: readonly number[]) {
+  constructor(
+    private readonly mix: BoardSoundMix,
+    surfaceGroups?: readonly number[],
+  ) {
     this.surfaceGroups = surfaceGroups ? [...surfaceGroups] : null;
     this.context = sharedAudioContext();
     this.master = this.context.createGain();
@@ -197,11 +226,17 @@ export class BoardAudio {
     resumeSharedAudio();
     if (!surfaceGroups) {
       void fetch(resolveAssetUrl('/api/board-audio'))
-        .then(response => response.ok
-          ? response.json() as Promise<{ surfaceGroups?: number[] | null }>
-          : Promise.reject(new Error(`HTTP ${response.status}`)))
-        .then(body => { this.surfaceGroups = Array.isArray(body.surfaceGroups) ? body.surfaceGroups : null; })
-        .catch(() => { /* no local index: the safe PACK fallback remains */ });
+        .then(response =>
+          response.ok
+            ? (response.json() as Promise<{ surfaceGroups?: number[] | null }>)
+            : Promise.reject(new Error(`HTTP ${response.status}`)),
+        )
+        .then(body => {
+          this.surfaceGroups = Array.isArray(body.surfaceGroups) ? body.surfaceGroups : null;
+        })
+        .catch(() => {
+          /* no local index: the safe PACK fallback remains */
+        });
     }
     preloadBoardAudio();
   }
@@ -225,10 +260,8 @@ export class BoardAudio {
     // a parked-but-grounded board silent; boardBedFrame's own smooth speed envelope shapes the approach.
     const frame = boardBedFrame(group, st.slip * 100, Math.abs(st.lean) * 127, speed01);
     const open = clamp01(speed01 * 6);
-    this.glide.perform(onSnow ? this.mix.glide * frame.glideVol * open : 0,
-      1 + frame.glideBend * BOARD_BEND_SPAN, dt);
-    this.carve.perform(onSnow ? this.mix.carve * frame.carveVol * open : 0,
-      1 + frame.carveBend * BOARD_BEND_SPAN, dt);
+    this.glide.perform(onSnow ? this.mix.glide * frame.glideVol * open : 0, 1 + frame.glideBend * BOARD_BEND_SPAN, dt);
+    this.carve.perform(onSnow ? this.mix.carve * frame.carveVol * open : 0, 1 + frame.carveBend * BOARD_BEND_SPAN, dt);
 
     // Rails answer with the RAIL family's own loop — the one row the terrain mapper never selects.
     if (grinding) this.grind.play(boardGlideSlot(BOARD_RAIL_GROUP));
@@ -249,7 +282,8 @@ export class BoardAudio {
     // Landing thud, on the touchdown edge: quiet on a soft set-down, loud on a slam. The arriving speed is
     // gone by the time the state is readable (the contact model has already answered it), so this measures
     // the last airborne velocity against the contact normal.
-    if (onSnow && !this.wasGrounded) { // a rail catch is a grind, not a thud in the snow
+    if (onSnow && !this.wasGrounded) {
+      // a rail catch is a grind, not a thud in the snow
       const [vx, vy, vz] = this.airVelocity;
       const n = st.contactN;
       const impact = Math.max(0, -(vx * n.x + vy * n.y + vz * n.z));
@@ -291,7 +325,9 @@ export class BoardAudio {
   }
 
   /** Fade the whole bed out without touching the edge trackers — a paused ride still holds its state. */
-  fadeSilent(dt: number): void { this.updateFlightBoost(false, dt); }
+  fadeSilent(dt: number): void {
+    this.updateFlightBoost(false, dt);
+  }
 
   dispose(): void {
     if (this.disposed) return;
@@ -354,7 +390,11 @@ export class BoardAudio {
     this.boostGain.gain.cancelScheduledValues(now); // drop any ramp still queued behind the release
     this.boostGain.gain.setValueAtTime(0, now);
     if (!this.boostSource) return;
-    try { this.boostSource.stop(); } catch { /* already ended */ }
+    try {
+      this.boostSource.stop();
+    } catch {
+      /* already ended */
+    }
     this.boostSource.disconnect();
     this.boostSource = null;
   }
@@ -379,7 +419,10 @@ export class BoardAudio {
       source.buffer = buffer;
       source.connect(gain);
       gain.connect(bus);
-      source.onended = () => { source.disconnect(); gain.disconnect(); };
+      source.onended = () => {
+        source.disconnect();
+        gain.disconnect();
+      };
       source.start();
     });
   }

@@ -76,8 +76,10 @@ export function nativeInstanceIsShowoffOnly(instance: { ltgState?: number; model
 
 /** Whether an effect host is instantiated in one participant's selected mode. Shared ride events may cross
  * mode boundaries, but they must not resurrect an object that the receiving mode deliberately leaves out. */
-export function effectHostIsPresentInMode(mode: RaceMode,
-  presence: { showoffOnly?: boolean; hiddenByMode?: boolean }): boolean {
+export function effectHostIsPresentInMode(
+  mode: RaceMode,
+  presence: { showoffOnly?: boolean; hiddenByMode?: boolean },
+): boolean {
   return !presence.hiddenByMode && (mode === 'showoff' || !presence.showoffOnly);
 }
 

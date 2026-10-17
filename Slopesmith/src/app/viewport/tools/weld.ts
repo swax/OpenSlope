@@ -18,7 +18,12 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
   let edgeFrom: [number, number][] = [];
 
   const fromGeometry = new THREE.SphereGeometry(1, 12, 8);
-  const fromMaterial = new THREE.MeshBasicMaterial({ color: WELD_FROM_COLOR, depthTest: false, transparent: true, opacity: 0.95 });
+  const fromMaterial = new THREE.MeshBasicMaterial({
+    color: WELD_FROM_COLOR,
+    depthTest: false,
+    transparent: true,
+    opacity: 0.95,
+  });
   const fromDots = new THREE.Group();
   fromDots.renderOrder = 14;
   stage.scene.add(fromDots);
@@ -28,7 +33,9 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
   );
   fromEdges.renderOrder = 14;
   fromEdges.visible = false;
-  fromEdges.raycast = () => { /* feedback only */ };
+  fromEdges.raycast = () => {
+    /* feedback only */
+  };
   stage.scene.add(fromEdges);
 
   const aimLine = new THREE.Line(
@@ -37,7 +44,9 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
   );
   aimLine.renderOrder = 14;
   aimLine.visible = false;
-  aimLine.raycast = () => { /* feedback only */ };
+  aimLine.raycast = () => {
+    /* feedback only */
+  };
   stage.scene.add(aimLine);
 
   function scaleMarker() {
@@ -56,7 +65,9 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
       const dot = new THREE.Mesh(fromGeometry, fromMaterial);
       setScenePositionFromData(dot.position, point);
       dot.renderOrder = 14;
-      dot.raycast = () => { /* feedback only */ };
+      dot.raycast = () => {
+        /* feedback only */
+      };
       fromDots.add(dot);
     }
     scaleMarker();
@@ -75,7 +86,8 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
     edgeFrom = edges?.map(edge => [...edge] as [number, number]) ?? [];
     setFrom([...new Set(edgeFrom.flatMap(edge => edge))]);
     const positions = edgeFrom.flatMap(([a, b]) => {
-      const pa = deps.cornerPos(a), pb = deps.cornerPos(b);
+      const pa = deps.cornerPos(a),
+        pb = deps.cornerPos(b);
       return pa && pb ? [pa[0], pa[1], -pa[2], pb[0], pb[1], -pb[2]] : [];
     });
     fromEdges.geometry.dispose();
@@ -95,14 +107,15 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
     stage.castAt(event);
     const points = from.map(vertex => deps.cornerPos(vertex)).filter((point): point is V3 => point !== null);
     const source: V3 | null = points.length
-      ? points.reduce<V3>((sum, p) => [sum[0] + p[0] / points.length, sum[1] + p[1] / points.length, sum[2] + p[2] / points.length], [0, 0, 0])
+      ? points.reduce<V3>(
+          (sum, p) => [sum[0] + p[0] / points.length, sum[1] + p[1] / points.length, sum[2] + p[2] / points.length],
+          [0, 0, 0],
+        )
       : null;
     // the aim line re-solves per pointer move — accelerated through the surface's cached tree (Stage.pickSurface)
     const hit = source ? stage.pickSurface(deps.terrain()) : undefined;
     if (source && hit) {
-      (aimLine.geometry as THREE.BufferGeometry).setFromPoints([
-        dataToScene(source), hit.point.clone(),
-      ]);
+      (aimLine.geometry as THREE.BufferGeometry).setFromPoints([dataToScene(source), hit.point.clone()]);
       aimLine.visible = true;
     } else aimLine.visible = false;
     return false;
@@ -114,7 +127,9 @@ export function createWeldToolLayer(stage: Stage, deps: WeldToolDeps) {
     onCommit,
     onHover,
     scaleMarker,
-    get active() { return active; },
+    get active() {
+      return active;
+    },
   };
 }
 

@@ -27,12 +27,14 @@ import { check, failures } from './check';
 
 const near = (a: number, b: number, eps = 1e-4) => Math.abs(a - b) <= eps;
 
-console.log('== the gate is the engine\'s own: spriteRes & 0x70 ==');
+console.log("== the gate is the engine's own: spriteRes & 0x70 ==");
 check(!glints(0) && !glints(undefined), 'no resolution (an ordinary light) never glints');
 check(glints(16) && glints(32) && glints(64), 'the small classes 16 / 32 / 64 glint');
 check(!glints(256) && !glints(512), 'the large classes never glint — a level using only those ships zero glints');
-check(glints(0x70) && glintSizeClass(0x70) === 0,
-  'a resolution passing the mask but naming no single class is admitted by the gate yet has no size class of its own');
+check(
+  glints(0x70) && glintSizeClass(0x70) === 0,
+  'a resolution passing the mask but naming no single class is admitted by the gate yet has no size class of its own',
+);
 check(glintSizeClass(33) === 32, 'the class is the masked resolution, so stray low bits do not invent a new size');
 check(glintSizeClass(256) === 0 && glintSizeClass(-1) === 0, 'anything the gate rejects means "no glint"');
 
@@ -44,7 +46,10 @@ console.log('\n== the colour law: Euclidean, so hue survives and the authored pe
   check(near(white[0], 0.5774) && near(white[1], 0.5774), 'a white light sits at 0.577 — dimmer, per the law');
   const dimWhite = glintHue([0.25, 0.25, 0.25]);
   check(near(dimWhite[0], white[0]), 'the authored peak divides out: a dim white glints exactly as a bright one');
-  check(glintHue([0, 0, 0]).every(c => c === 0), 'a black light yields no colour rather than a divide-by-zero');
+  check(
+    glintHue([0, 0, 0]).every(c => c === 0),
+    'a black light yields no colour rather than a divide-by-zero',
+  );
 }
 
 console.log('\n== WebXR stereo: one halo bloom, eye-specific spike rotation ==');
@@ -61,20 +66,26 @@ console.log('\n== WebXR stereo: one halo bloom, eye-specific spike rotation ==')
     const clip = light.clone().applyMatrix4(matrix);
     return clip.x / clip.w;
   };
-  const leftX = ndcX(leftVp), rightX = ndcX(rightVp), bloomX = ndcX(cyclopeanVp);
+  const leftX = ndcX(leftVp),
+    rightX = ndcX(rightVp),
+    bloomX = ndcX(cyclopeanVp);
   check(!near(leftX, rightX), 'the two eyes retain distinct projected X positions for the spiky glint');
-  check(near(bloomX, (leftX + rightX) * 0.5),
-    'the averaged stereo matrix gives both eye draws one cyclopean halo position');
-  check(GLINT_VERTEX_SHADER.includes('length(ndcBloom)')
-    && GLINT_VERTEX_SHADER.includes('vFade.y = -1.5707963 * ndcEye.x * twinkle'),
-  'the shader sizes bloom from cyclopean NDC while rotating spikes from per-eye NDC');
+  check(
+    near(bloomX, (leftX + rightX) * 0.5),
+    'the averaged stereo matrix gives both eye draws one cyclopean halo position',
+  );
+  check(
+    GLINT_VERTEX_SHADER.includes('length(ndcBloom)') &&
+      GLINT_VERTEX_SHADER.includes('vFade.y = -1.5707963 * ndcEye.x * twinkle'),
+    'the shader sizes bloom from cyclopean NDC while rotating spikes from per-eye NDC',
+  );
 }
 
 console.log('\n== a rig becomes glints: only the gated lights, at their own size and pull ==');
 {
   const lights: AuthoredLight[] = [
     { id: 'a', kind: 'point', pos: [0, 10, 0], color: '#ff0000', intensity: 1, reach: 40, glint: 32 },
-    { id: 'b', kind: 'point', pos: [5, 10, 0], color: '#ffffff', intensity: 5700, reach: 40 },        // no glint
+    { id: 'b', kind: 'point', pos: [5, 10, 0], color: '#ffffff', intensity: 5700, reach: 40 }, // no glint
     { id: 'c', kind: 'spot', pos: [9, 10, 0], color: '#00ff00', intensity: 1, reach: 40, glint: 64 },
     { id: 'd', kind: 'point', pos: [12, 10, 0], color: '#0000ff', intensity: 1, reach: 40, glint: 16 },
   ];
@@ -85,22 +96,38 @@ console.log('\n== a rig becomes glints: only the gated lights, at their own size
   const large = list.find(g => g.sizeClass === 64)!;
   const small = list.find(g => g.sizeClass === 16)!;
   // The quad carries the AURA — the game's second, larger same-hue glow — so it spans sparkle x aura.
-  check(near(medium.quadM, GLINT_SPARKLE_M * GLINT_LAW.auraScale),
-    `a res-32 sparkle is ${GLINT_SPARKLE_M} m across (quad ${medium.quadM.toFixed(2)} m with its aura)`);
-  check(near(large.quadM, medium.quadM * 2) && near(small.quadM, medium.quadM * 0.5),
-    'the size classes scale by res / 32');
-  check(near(large.nudgeM, 8) && near(medium.nudgeM, 5) && near(small.nudgeM, 3),
-    'the camera-ward pull is the engine\'s per-class 3 / 5 / 8 m');
-  check(near(medium.hue[0], 1) && near(medium.hue[1], 0), 'each glint keeps its own light\'s hue');
-  check(list.every(g => g.pos !== undefined), 'a glint is anchored on its light\'s own position');
+  check(
+    near(medium.quadM, GLINT_SPARKLE_M * GLINT_LAW.auraScale),
+    `a res-32 sparkle is ${GLINT_SPARKLE_M} m across (quad ${medium.quadM.toFixed(2)} m with its aura)`,
+  );
+  check(
+    near(large.quadM, medium.quadM * 2) && near(small.quadM, medium.quadM * 0.5),
+    'the size classes scale by res / 32',
+  );
+  check(
+    near(large.nudgeM, 8) && near(medium.nudgeM, 5) && near(small.nudgeM, 3),
+    "the camera-ward pull is the engine's per-class 3 / 5 / 8 m",
+  );
+  check(near(medium.hue[0], 1) && near(medium.hue[1], 0), "each glint keeps its own light's hue");
+  check(
+    list.every(g => g.pos !== undefined),
+    "a glint is anchored on its light's own position",
+  );
   check(rigGlints(null).length === 0, 'no rig means no glints');
 }
 
 console.log('\n== a subtractive shadow light draws nothing (a black additive sprite is invisible anyway) ==');
 {
   const raw = (over: Partial<RawRigLight>): RawRigLight => ({
-    name: 'L', type: 2, colour: [1, 1, 1], dir: [0, 0, -1], pos: [0, 0, 0],
-    lo: [-100, -100, -100], hi: [100, 100, 100], cone: 1, ...over,
+    name: 'L',
+    type: 2,
+    colour: [1, 1, 1],
+    dir: [0, 0, -1],
+    pos: [0, 0, 0],
+    lo: [-100, -100, -100],
+    hi: [100, 100, 100],
+    cone: 1,
+    ...over,
   });
   const rig = decodeLightRig({
     level: 'TEST',
@@ -110,11 +137,15 @@ console.log('\n== a subtractive shadow light draws nothing (a black additive spr
       raw({ name: 'plain', spriteRes: 256 }),
     ],
   });
-  check(rig.lights.every(l => l.spriteRes !== undefined),
-    'the decoded rig carries each record\'s SpriteRes through from the server trim');
+  check(
+    rig.lights.every(l => l.spriteRes !== undefined),
+    "the decoded rig carries each record's SpriteRes through from the server trim",
+  );
   const list = rigGlints(rig);
-  check(list.length === 1 && list[0].name === 'lamp',
-    `only the gated, additive light glints (${list.map(g => g.name).join(', ') || 'none'})`);
+  check(
+    list.length === 1 && list[0].name === 'lamp',
+    `only the gated, additive light glints (${list.map(g => g.name).join(', ') || 'none'})`,
+  );
 }
 
 console.log('\n== SpriteRes carries an authored glint out of the editor ==');
@@ -130,13 +161,17 @@ console.log('\n== SpriteRes carries an authored glint out of the editor ==');
   const written = JSON.parse(files.text['Lights.json']) as { Lights: { LightName: string; SpriteRes: number }[] };
   const byName = new Map(written.Lights.map(l => [l.LightName, l.SpriteRes]));
   check(byName.get('flare') === 32, `the glinting light exports SpriteRes 32 (got ${byName.get('flare')})`);
-  check(byName.get('plain') === 0, 'a light with no glint exports 0 — Snowknife\'s gate then skips it');
-  check(byName.get('Slopesmith Sun') === 0 && byName.get('Slopesmith Ambient') === 0,
-    'the sun and sky ambient never glint');
+  check(byName.get('plain') === 0, "a light with no glint exports 0 — Snowknife's gate then skips it");
+  check(
+    byName.get('Slopesmith Sun') === 0 && byName.get('Slopesmith Ambient') === 0,
+    'the sun and sky ambient never glint',
+  );
   // What the far end actually does with the field, so this pin fails if the gate is ever written wrong.
   const gated = written.Lights.filter(l => (l.SpriteRes & 0x70) !== 0).map(l => l.LightName);
-  check(gated.length === 1 && gated[0] === 'flare',
-    `Snowknife's BuildLightGlows would bundle exactly the authored glint (${gated.join(', ') || 'none'})`);
+  check(
+    gated.length === 1 && gated[0] === 'flare',
+    `Snowknife's BuildLightGlows would bundle exactly the authored glint (${gated.join(', ') || 'none'})`,
+  );
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall light-glint checks passed');

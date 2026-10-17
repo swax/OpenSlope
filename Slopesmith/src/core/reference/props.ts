@@ -17,10 +17,15 @@ export function propAlphaMode(value: unknown): PropAlphaMode | undefined {
 /** One render state must cover every frame of a material. Use the same strongest-state precedence as the
  * viewport's pixel classifier when page-specific overrides disagree across a flipbook. */
 export function combinePropAlphaModes(modes: readonly (PropAlphaMode | undefined)[]): PropAlphaMode | undefined {
-  return modes.includes('cutout') ? 'cutout'
-    : modes.includes('glow') ? 'glow'
-      : modes.includes('blend') ? 'blend'
-        : modes.includes('opaque') ? 'opaque' : undefined;
+  return modes.includes('cutout')
+    ? 'cutout'
+    : modes.includes('glow')
+      ? 'glow'
+      : modes.includes('blend')
+        ? 'blend'
+        : modes.includes('opaque')
+          ? 'opaque'
+          : undefined;
 }
 
 /**
@@ -78,8 +83,8 @@ export interface PropModelRotation {
   translation?: [PropModelCurve | null, PropModelCurve | null, PropModelCurve | null];
 }
 
-export type PropModelTransformChannel = 'translate-x' | 'translate-y' | 'translate-z'
-  | 'rotate-x' | 'rotate-y' | 'rotate-z';
+export type PropModelTransformChannel =
+  'translate-x' | 'translate-y' | 'translate-z' | 'rotate-x' | 'rotate-y' | 'rotate-z';
 export type PropModelAnimationChannelId = PropModelTransformChannel | `object-${number}-${PropModelTransformChannel}`;
 
 /** One native ModelObject in a general model clip. `rest*` is the exact Models.json transform used to bake its
@@ -94,8 +99,14 @@ export interface PropModelAnimationObject {
   /** Native animation Euler base in degrees. Unity and the reference renderer apply it in ZXY order. */
   baseEuler?: V3;
   /** X/Y/Z translation then X/Y/Z rotation. Null means that component keeps its base pose. */
-  channels?: [PropModelCurve | null, PropModelCurve | null, PropModelCurve | null,
-    PropModelCurve | null, PropModelCurve | null, PropModelCurve | null];
+  channels?: [
+    PropModelCurve | null,
+    PropModelCurve | null,
+    PropModelCurve | null,
+    PropModelCurve | null,
+    PropModelCurve | null,
+    PropModelCurve | null,
+  ];
 }
 
 /** Full object-hierarchy clip used when a model cannot be reduced to the compact merged-renderer subset.
@@ -120,12 +131,15 @@ export const SSX_TRICKY_MAX_NATIVE_MODEL_OBJECTS = 27;
 /** Whether the clip already carries the unanimated identity root the export/packer contract requires. */
 export function propModelAnimationHasIdentityRoot(animation: PropModelAnimation): boolean {
   const first = animation.objects[0];
-  return !!first && first.parent < 0
-    && !first.channels?.some(curve => !!curve?.length)
-    && first.restPosition.every(v => v === 0)
-    && Math.abs(first.restRotation[3]) === 1
-    && Math.hypot(first.restRotation[0], first.restRotation[1], first.restRotation[2]) === 0
-    && first.restScale.every(v => v === 1);
+  return (
+    !!first &&
+    first.parent < 0 &&
+    !first.channels?.some(curve => !!curve?.length) &&
+    first.restPosition.every(v => v === 0) &&
+    Math.abs(first.restRotation[3]) === 1 &&
+    Math.hypot(first.restRotation[0], first.restRotation[1], first.restRotation[2]) === 0 &&
+    first.restScale.every(v => v === 1)
+  );
 }
 
 /** Project the ordinary final native ModelObjects count without packing geometry. `bakedPropClip` guarantees
@@ -296,39 +310,74 @@ export interface PropsPayload {
   level: string;
   /** Snowknife's map-local, user-generated audio resolver sidecar. */
   soundIndex?: CollisionSoundIndex;
-  models: { id: number; name: string; subs: { mat: number; pos: string; uv: string; nor?: string; idx: string;
-    /** vertex-lighting stream index per vertex, Float32 */ li?: string;
-    piece?: number; piecePivot?: number[]; object?: number }[];
-    rotation?: PropModelRotation; animation?: PropModelAnimation;
+  models: {
+    id: number;
+    name: string;
+    subs: {
+      mat: number;
+      pos: string;
+      uv: string;
+      nor?: string;
+      idx: string;
+      /** vertex-lighting stream index per vertex, Float32 */ li?: string;
+      piece?: number;
+      piecePivot?: number[];
+      object?: number;
+    }[];
+    rotation?: PropModelRotation;
+    animation?: PropModelAnimation;
     /** Emitters the SOURCE MODEL declared (an imported GLB's glTF `extras`, docs/032). */
     emitters?: { fields: Record<string, number> }[];
     /** The author's saved defaults for an imported model (docs/069). */
     defaults?: PropBehaviour;
     /** Effect default: template index into `effects`, with its matching / total visible copies (docs/069). */
-    fx?: { t: number; n: number; of: number } }[];
+    fx?: { t: number; n: number; of: number };
+  }[];
   /** An extracted level's portable effects, which models and instances index by `fx` (docs/069). */
   effects?: PropEffectTemplate[];
   /** `scroll` is material motion the SOURCE MODEL declared for itself — an imported GLB reading its own
    *  glTF `extras`. Extracted levels leave it unset and get their motion from the level's effect graphs
    *  instead; this exists because an imported prop has no graph to be attached to. */
-  materials: { id: number; tex: string | null; frames?: string[]; blend?: boolean; pixelAlpha?: boolean;
-    alphaMode?: PropAlphaMode; prio?: boolean;
-    scroll?: UvScrollEffect }[];
+  materials: {
+    id: number;
+    tex: string | null;
+    frames?: string[];
+    blend?: boolean;
+    pixelAlpha?: boolean;
+    alphaMode?: PropAlphaMode;
+    prio?: boolean;
+    scroll?: UvScrollEffect;
+  }[];
   crowdFrames?: string[];
   /** Native mode-1 collision proxies, packed independently from visible prop models. */
   collisionMeshes?: { id: string; pos: string; idx: string }[];
   /** Native mode-3 sphere-tree leaves, packed x/y/z/r as Float32 values, plus the body's mass properties:
    *  `com` the model-local raw-cm centre of mass and `ii` the row-major inverse inertia tensor as 9 Float32s.
    *  Both are omitted for a body that authored no usable tensor. */
-  physicsBodies?: { id: number; sph: string; com?: number[]; ii?: string;
+  physicsBodies?: {
+    id: number;
+    sph: string;
+    com?: number[];
+    ii?: string;
     /** Unity body recipe: doorway/sparse selector, body bounds, body shape, and compact-tilt shape. */
-    up?: { d: boolean; bb: number[]; b?: number[]; c?: number[]; tb?: number[]; tc?: number[] } }[];
-  instances: { i: number; m: number; p: number[]; q: number[]; s: number[]; n: string; v?: boolean;
+    up?: { d: boolean; bb: number[]; b?: number[]; c?: number[]; tb?: number[]; tc?: number[] };
+  }[];
+  instances: {
+    i: number;
+    m: number;
+    p: number[];
+    q: number[];
+    s: number[];
+    n: string;
+    v?: boolean;
     /** Native LTG list state; omitted for the common state 0. */ ls?: number;
     /** Native ambient RGB plus three flattened key RGB / direction vectors. */
-    la?: number[]; lk?: number[]; lv?: number[];
+    la?: number[];
+    lk?: number[];
+    lv?: number[];
     /** baked vertex lighting, ABGR1555 halfwords (SSX 3); omitted when it does not cover the model */ vl?: string;
-    /** exact PlayerCollision / PlayerBounce gates */ pc?: boolean; pb?: boolean;
+    /** exact PlayerCollision / PlayerBounce gates */ pc?: boolean;
+    pb?: boolean;
     /** collision-sound event id; omitted when the instance ships no sound record */ hs?: number;
     /** contact class: 0 ghost, 1 ride-through touch, 2 solid; 3 is accepted from older cached payloads */ c?: number;
     /** bounce kickback: 0 for contact-only, else PlayerBounceAmmount */ bn?: number;
@@ -340,7 +389,8 @@ export interface PropsPayload {
     /** native mode-1 Collision/*.obj ids; omitted when the instance carries no collision proxy */ cp?: string[];
     /** ExternalSounds: type, event, world-axis offset, and type-specific U5+ tail. */
     xs?: { t: number; s: number; o: number[]; p: number[] }[];
-    /** index into `effects` when this copy's effect is portable; omitted otherwise */ fx?: number }[];
+    /** index into `effects` when this copy's effect is portable; omitted otherwise */ fx?: number;
+  }[];
   error?: string;
 }
 
@@ -367,8 +417,13 @@ function halfwords(bytes: Uint8Array): Uint16Array {
  * graphs that shipped with it, so there is nothing self-declared to find. The prop library badges the
  * difference, because "this prop arrives already animated" is not otherwise visible until it is placed.
  */
-export function modelDeclaredEffects(props: LevelProps, model: PropModel): {
-  scroll: number; emitters: number; any: boolean;
+export function modelDeclaredEffects(
+  props: LevelProps,
+  model: PropModel,
+): {
+  scroll: number;
+  emitters: number;
+  any: boolean;
 } {
   let scroll = 0;
   for (const sub of model.subs) if (props.materials.get(sub.mat)?.scroll) scroll++;
@@ -399,9 +454,16 @@ export function propModelMaterials(props: LevelProps, model: PropModel): PropMod
   const used = new Map<number, PropModelMaterialUse>();
   for (const sub of model.subs) {
     let entry = used.get(sub.mat);
-    if (!entry) used.set(sub.mat, entry = {
-      mat: sub.mat, material: props.materials.get(sub.mat) ?? null, subs: 0, triangles: 0,
-    });
+    if (!entry)
+      used.set(
+        sub.mat,
+        (entry = {
+          mat: sub.mat,
+          material: props.materials.get(sub.mat) ?? null,
+          subs: 0,
+          triangles: 0,
+        }),
+      );
     entry.subs++;
     entry.triangles += sub.indices.length / 3;
   }
@@ -437,7 +499,8 @@ export function decodeProps(payload: PropsPayload): LevelProps {
         ...(lb ? { light: new Float32Array(lb.buffer, 0, lb.byteLength / 4) } : {}),
         ...(Number.isInteger(s.piece) ? { piece: s.piece } : {}),
         ...(s.piecePivot?.length === 3
-          ? { piecePivot: [s.piecePivot[0], s.piecePivot[1], s.piecePivot[2]] as V3 } : {}),
+          ? { piecePivot: [s.piecePivot[0], s.piecePivot[1], s.piecePivot[2]] as V3 }
+          : {}),
         ...(Number.isInteger(s.object) ? { object: s.object } : {}),
       };
     }),
@@ -469,45 +532,63 @@ export function decodeProps(payload: PropsPayload): LevelProps {
       params: x.p.filter(Number.isFinite),
     })),
     ...(effectAt(i.fx) ? { effect: i.fx } : {}),
-    ...(i.la?.length === 3 ? {
-      lighting: {
-        ambient: [i.la[0], i.la[1], i.la[2]] as V3,
-        keys: [0, 1, 2].flatMap(index => {
-          const color = i.lk?.slice(index * 3, index * 3 + 3);
-          const direction = i.lv?.slice(index * 3, index * 3 + 3);
-          return color?.length === 3 && direction?.length === 3
-            ? [{ color: [color[0], color[1], color[2]] as V3,
-              direction: [direction[0], direction[1], direction[2]] as V3 }]
-            : [];
-        }),
-      },
-    } : {}),
+    ...(i.la?.length === 3
+      ? {
+          lighting: {
+            ambient: [i.la[0], i.la[1], i.la[2]] as V3,
+            keys: [0, 1, 2].flatMap(index => {
+              const color = i.lk?.slice(index * 3, index * 3 + 3);
+              const direction = i.lv?.slice(index * 3, index * 3 + 3);
+              return color?.length === 3 && direction?.length === 3
+                ? [
+                    {
+                      color: [color[0], color[1], color[2]] as V3,
+                      direction: [direction[0], direction[1], direction[2]] as V3,
+                    },
+                  ]
+                : [];
+            }),
+          },
+        }
+      : {}),
     ...(i.vl ? { vertexLight: halfwords(b64ToBytes(i.vl)) } : {}),
   }));
-  const materials = new Map<number, PropMaterial>(payload.materials.map(x => {
-    const alphaMode = propAlphaMode(x.alphaMode);
-    return [x.id, {
-      tex: x.tex,
-      frames: x.frames ?? [],
-      ...(x.blend ? { blend: true } : {}),
-      ...(x.pixelAlpha ? { pixelAlpha: true } : {}),
-      ...(alphaMode ? { alphaMode } : {}),
-      ...(x.prio ? { prio: true } : {}),
-      ...(x.scroll ? { scroll: x.scroll } : {}),
-    }];
-  }));
-  const collisionMeshes = new Map((payload.collisionMeshes ?? []).map(mesh => {
-    const pb = b64ToBytes(mesh.pos);
-    const ib = b64ToBytes(mesh.idx);
-    return [mesh.id, {
-      positions: new Float32Array(pb.buffer, 0, pb.byteLength / 4),
-      indices: new Uint32Array(ib.buffer, 0, ib.byteLength / 4),
-    }];
-  }));
-  const physicsBodies = new Map((payload.physicsBodies ?? []).map(body => {
-    const sb = b64ToBytes(body.sph);
-    return [body.id, new Float32Array(sb.buffer, 0, sb.byteLength / 4)];
-  }));
+  const materials = new Map<number, PropMaterial>(
+    payload.materials.map(x => {
+      const alphaMode = propAlphaMode(x.alphaMode);
+      return [
+        x.id,
+        {
+          tex: x.tex,
+          frames: x.frames ?? [],
+          ...(x.blend ? { blend: true } : {}),
+          ...(x.pixelAlpha ? { pixelAlpha: true } : {}),
+          ...(alphaMode ? { alphaMode } : {}),
+          ...(x.prio ? { prio: true } : {}),
+          ...(x.scroll ? { scroll: x.scroll } : {}),
+        },
+      ];
+    }),
+  );
+  const collisionMeshes = new Map(
+    (payload.collisionMeshes ?? []).map(mesh => {
+      const pb = b64ToBytes(mesh.pos);
+      const ib = b64ToBytes(mesh.idx);
+      return [
+        mesh.id,
+        {
+          positions: new Float32Array(pb.buffer, 0, pb.byteLength / 4),
+          indices: new Uint32Array(ib.buffer, 0, ib.byteLength / 4),
+        },
+      ];
+    }),
+  );
+  const physicsBodies = new Map(
+    (payload.physicsBodies ?? []).map(body => {
+      const sb = b64ToBytes(body.sph);
+      return [body.id, new Float32Array(sb.buffer, 0, sb.byteLength / 4)];
+    }),
+  );
   const decodeBodyShape = (boxes: number[] | undefined, capsules: number[] | undefined): BodyShape => ({
     boxes: Array.from({ length: Math.floor((boxes?.length ?? 0) / 6) }, (_, index) => ({
       center: boxes!.slice(index * 6, index * 6 + 3) as [number, number, number],
@@ -519,29 +600,53 @@ export function decodeProps(payload: PropsPayload): LevelProps {
       radius: capsules![index * 7 + 6],
     })),
   });
-  const unityBodyRecipes = new Map((payload.physicsBodies ?? []).flatMap(body => {
-    const recipe = body.up;
-    if (!recipe || recipe.bb.length < 6) return [];
-    return [[body.id, {
-      doorwayOrSparse: recipe.d,
-      bounds: { center: recipe.bb.slice(0, 3) as [number, number, number],
-        size: recipe.bb.slice(3, 6) as [number, number, number] },
-      body: decodeBodyShape(recipe.b, recipe.c),
-      tilt: decodeBodyShape(recipe.tb, recipe.tc),
-    } satisfies UnityBodyRecipe] as const];
-  }));
-  const physicsMassProps = new Map((payload.physicsBodies ?? []).flatMap(body => {
-    if (!body.ii || !body.com || body.com.length < 3) return [];
-    const ib = b64ToBytes(body.ii);
-    const invInertia = new Float32Array(ib.buffer, 0, ib.byteLength / 4);
-    if (invInertia.length < 9) return [];
-    return [[body.id, {
-      com: [body.com[0], body.com[1], body.com[2]] as [number, number, number], invInertia,
-    }] as const];
-  }));
+  const unityBodyRecipes = new Map(
+    (payload.physicsBodies ?? []).flatMap(body => {
+      const recipe = body.up;
+      if (!recipe || recipe.bb.length < 6) return [];
+      return [
+        [
+          body.id,
+          {
+            doorwayOrSparse: recipe.d,
+            bounds: {
+              center: recipe.bb.slice(0, 3) as [number, number, number],
+              size: recipe.bb.slice(3, 6) as [number, number, number],
+            },
+            body: decodeBodyShape(recipe.b, recipe.c),
+            tilt: decodeBodyShape(recipe.tb, recipe.tc),
+          } satisfies UnityBodyRecipe,
+        ] as const,
+      ];
+    }),
+  );
+  const physicsMassProps = new Map(
+    (payload.physicsBodies ?? []).flatMap(body => {
+      if (!body.ii || !body.com || body.com.length < 3) return [];
+      const ib = b64ToBytes(body.ii);
+      const invInertia = new Float32Array(ib.buffer, 0, ib.byteLength / 4);
+      if (invInertia.length < 9) return [];
+      return [
+        [
+          body.id,
+          {
+            com: [body.com[0], body.com[1], body.com[2]] as [number, number, number],
+            invInertia,
+          },
+        ] as const,
+      ];
+    }),
+  );
   return {
-    level: payload.level, models, instances, materials, crowdFrames: payload.crowdFrames ?? [],
-    collisionMeshes, physicsBodies, unityBodyRecipes, physicsMassProps,
+    level: payload.level,
+    models,
+    instances,
+    materials,
+    crowdFrames: payload.crowdFrames ?? [],
+    collisionMeshes,
+    physicsBodies,
+    unityBodyRecipes,
+    physicsMassProps,
     ...(effects.length ? { effects } : {}),
   };
 }
@@ -550,8 +655,9 @@ export function decodeProps(payload: PropsPayload): LevelProps {
 export function samplePropModelRotation(rotation: PropModelRotation, frame: number): number {
   if (!rotation.segments?.length) return 0;
   const seconds = frame / 30;
-  const segment = rotation.segments.find(s => seconds >= s[4] && seconds <= s[5])
-    ?? (seconds < rotation.segments[0][4] ? rotation.segments[0] : rotation.segments[rotation.segments.length - 1]);
+  const segment =
+    rotation.segments.find(s => seconds >= s[4] && seconds <= s[5]) ??
+    (seconds < rotation.segments[0][4] ? rotation.segments[0] : rotation.segments[rotation.segments.length - 1]);
   const t = Math.min(segment[5], Math.max(segment[4], seconds));
   return ((segment[0] * t + segment[1]) * t + segment[2]) * t + segment[3];
 }
@@ -561,19 +667,24 @@ export function samplePropModelTranslation(rotation: PropModelRotation, frame: n
   const seconds = frame / 30;
   const sample = (segments: PropModelCurve | null): number => {
     if (!segments?.length) return 0;
-    const segment = segments.find(s => seconds >= s[4] && seconds <= s[5])
-      ?? (seconds < segments[0][4] ? segments[0] : segments[segments.length - 1]);
+    const segment =
+      segments.find(s => seconds >= s[4] && seconds <= s[5]) ??
+      (seconds < segments[0][4] ? segments[0] : segments[segments.length - 1]);
     const t = Math.min(segment[5], Math.max(segment[4], seconds));
     return ((segment[0] * t + segment[1]) * t + segment[2]) * t + segment[3];
   };
-  return [sample(rotation.translation?.[0] ?? null), sample(rotation.translation?.[1] ?? null),
-    sample(rotation.translation?.[2] ?? null)];
+  return [
+    sample(rotation.translation?.[0] ?? null),
+    sample(rotation.translation?.[1] ?? null),
+    sample(rotation.translation?.[2] ?? null),
+  ];
 }
 
 /** Sorted, de-duplicated segment boundaries expressed on the model clip's native 30 fps frame axis. */
 export function propModelCurveBoundaryFrames(curve: PropModelCurve, clipFrames: number): number[] {
   const end = Math.max(0, clipFrames);
-  const frames = curve.flatMap(segment => [segment[4] * 30, segment[5] * 30])
+  const frames = curve
+    .flatMap(segment => [segment[4] * 30, segment[5] * 30])
     .filter(Number.isFinite)
     .map(frame => Math.min(end, Math.max(0, frame)))
     .sort((a, b) => a - b);
@@ -590,12 +701,15 @@ export function propModelAnimationChannels(rotation: PropModelClip): PropModelAn
       for (let component = 0; component < 6; component++) {
         const curve = modelObject.channels?.[component];
         if (!curve?.length) continue;
-        const kind = component < 3 ? 'translate' as const : 'rotate' as const;
+        const kind = component < 3 ? ('translate' as const) : ('rotate' as const);
         const axis = (component % 3) as 0 | 1 | 2;
         channels.push({
           id: `object-${object}-${components[component]}`,
           label: `Object ${object} · ${kind === 'translate' ? 'Position' : 'Rotation'} ${axes[axis]}`,
-          unit: kind === 'translate' ? 'cm' : 'deg', kind, axis, object,
+          unit: kind === 'translate' ? 'cm' : 'deg',
+          kind,
+          axis,
+          object,
           segments: curve.length,
           boundaryFrames: propModelCurveBoundaryFrames(curve, rotation.clipFrames),
         });
@@ -633,8 +747,11 @@ export function propModelAnimationChannels(rotation: PropModelClip): PropModelAn
 }
 
 /** Sample one timeline channel without making the UI understand the compact curve storage layout. */
-export function samplePropModelAnimationChannel(rotation: PropModelClip,
-  channel: PropModelAnimationChannelId, frame: number): number {
+export function samplePropModelAnimationChannel(
+  rotation: PropModelClip,
+  channel: PropModelAnimationChannelId,
+  frame: number,
+): number {
   if (isPropModelAnimation(rotation)) {
     const match = /^object-(\d+)-(translate|rotate)-([xyz])$/.exec(channel);
     if (!match) return 0;
@@ -654,8 +771,8 @@ export function samplePropModelAnimationChannel(rotation: PropModelClip,
 export function samplePropModelCurve(curve: PropModelCurve | null | undefined, frame: number): number {
   if (!curve?.length) return 0;
   const seconds = frame / 30;
-  const segment = curve.find(s => seconds >= s[4] && seconds <= s[5])
-    ?? (seconds < curve[0][4] ? curve[0] : curve[curve.length - 1]);
+  const segment =
+    curve.find(s => seconds >= s[4] && seconds <= s[5]) ?? (seconds < curve[0][4] ? curve[0] : curve[curve.length - 1]);
   const t = Math.min(segment[5], Math.max(segment[4], seconds));
   return ((segment[0] * t + segment[1]) * t + segment[2]) * t + segment[3];
 }

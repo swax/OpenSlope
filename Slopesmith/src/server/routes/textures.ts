@@ -2,7 +2,13 @@ import { copyFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { mapsRoot } from '../workspace-config';
 import {
-  ensureDir, listDir, listEntries, mapLimit, pathExists, readBytesOrNull, readJsonOr,
+  ensureDir,
+  listDir,
+  listEntries,
+  mapLimit,
+  pathExists,
+  readBytesOrNull,
+  readJsonOr,
   READ_CONCURRENCY,
 } from '../fs-async';
 import { CUSTOM_TEX_LEVEL, makeTexRef, type LevelTextures, type TexTile } from '../../core/paint/textures';
@@ -32,45 +38,53 @@ export async function levelsWithTextures(): Promise<string[]> {
   const candidates = (await listEntries(mapsRoot()))
     .filter(entry => entry.isDirectory && entry.name.toLowerCase() !== CUSTOM_TEX_LEVEL.toLowerCase())
     .map(entry => entry.name);
-  const textured = await mapLimit(candidates, READ_CONCURRENCY,
-    async name => (await listDir(join(mapsRoot(), name, 'Textures'))).some(f => PNG.test(f)));
+  const textured = await mapLimit(candidates, READ_CONCURRENCY, async name =>
+    (await listDir(join(mapsRoot(), name, 'Textures'))).some(f => PNG.test(f)),
+  );
   return candidates.filter((_name, index) => textured[index]).sort();
 }
 
-const textureDir = (level: string): string => level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
-  ? projectAssetPath('textures') : join(mapsRoot(), safeDataName(level), 'Textures');
+const textureDir = (level: string): string =>
+  level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
+    ? projectAssetPath('textures')
+    : join(mapsRoot(), safeDataName(level), 'Textures');
 
 /** All PNG file names in a level's Textures/ folder — a level's whole texture bank, slots included. */
 export async function textureFiles(level: string): Promise<string[]> {
-  return (await listDir(textureDir(level)))
-    .filter(f => PNG.test(f)).sort();
+  return (await listDir(textureDir(level))).filter(f => PNG.test(f)).sort();
 }
 
 /** The exact digest ResponseCache will use as this tile's ETag. Metadata routes publish it before image
  * loaders start, so the first byte request already has a permanent content-addressed URL. */
 export function referenceTextureRevision(level: string, name: string): Promise<string> {
   const lvl = safeDataName(level);
-  return referenceAssetRevision(`texture:${lvl.toLowerCase()}:${name}`,
-    () => readReferenceTextureBytes(lvl, name));
+  return referenceAssetRevision(`texture:${lvl.toLowerCase()}:${name}`, () => readReferenceTextureBytes(lvl, name));
 }
 
 /** Revisions for the unique texture paths a catalogue or terrain payload is about to expose. */
 export async function referenceTextureRevisions(
-  level: string, names: Iterable<string>,
+  level: string,
+  names: Iterable<string>,
 ): Promise<Record<string, string>> {
   const unique = [...new Set([...names].filter(Boolean))];
   const values = await mapLimit(unique, READ_CONCURRENCY, async name => {
-    try { return await referenceTextureRevision(level, name); }
-    catch { return null; /* a missing page stays a missing page; it must not keep the terrain from loading */ }
+    try {
+      return await referenceTextureRevision(level, name);
+    } catch {
+      return null; /* a missing page stays a missing page; it must not keep the terrain from loading */
+    }
   });
-  return Object.fromEntries(unique.flatMap((name, index) => values[index] ? [[name, values[index]]] : []));
+  return Object.fromEntries(unique.flatMap((name, index) => (values[index] ? [[name, values[index]]] : [])));
 }
 
 /** Read a level's Patches.json once: tile -> count of terrain patches that use it. Missing -> empty. */
 async function terrainUsage(level: string): Promise<Map<string, number>> {
   const usage = new Map<string, number>();
   if (level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) return usage;
-  const json = await readJsonOr<{ Patches?: unknown[] } | null>(join(mapsRoot(), safeDataName(level), 'Patches.json'), null);
+  const json = await readJsonOr<{ Patches?: unknown[] } | null>(
+    join(mapsRoot(), safeDataName(level), 'Patches.json'),
+    null,
+  );
   if (!json) return usage;
   const arr = (json.Patches ?? (json as unknown as unknown[])) as Array<Record<string, unknown>>;
   for (const p of arr) {
@@ -88,8 +102,8 @@ async function terrainUsage(level: string): Promise<Map<string, number>> {
 export async function deriveLevelTextures(level: string): Promise<LevelTextures> {
   const lvl = safeDataName(level);
   const [usage, files] = await Promise.all([terrainUsage(lvl), textureFiles(lvl)]);
-  const revisions = lvl.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
-    ? {} : await referenceTextureRevisions(lvl, files);
+  const revisions =
+    lvl.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase() ? {} : await referenceTextureRevisions(lvl, files);
   const tiles: TexTile[] = files
     .map((name): TexTile => ({
       name,
@@ -109,8 +123,11 @@ export async function readTextureBytes(level: string, name: string): Promise<Buf
 }
 
 async function tryTexture(level: string, name: string): Promise<Buffer | null> {
-  try { return await readTextureBytes(level, name); }
-  catch { return null; }
+  try {
+    return await readTextureBytes(level, name);
+  } catch {
+    return null;
+  }
 }
 
 /** Resolve a Patches.json texture as a reference asset. Authored ISO exports can carry three forms:
@@ -180,9 +197,8 @@ const customTexturePath = (name: string) => join(customTextureDir(), `${customTe
 const customTextureGenerationPath = (name: string) =>
   join(customTextureDir(), `${customTextureStem(name)}.generation.json`);
 
-const writeGeneration = (file: string, generation?: FalGenerationProvenance) => generation
-  ? writeFile(file, JSON.stringify(generation, null, 2) + '\n', 'utf8')
-  : Promise.resolve();
+const writeGeneration = (file: string, generation?: FalGenerationProvenance) =>
+  generation ? writeFile(file, JSON.stringify(generation, null, 2) + '\n', 'utf8') : Promise.resolve();
 
 const customTileTaken = async (stem: string) => pathExists(join(customTextureDir(), `${stem}.png`));
 
@@ -192,8 +208,11 @@ const customTileTaken = async (stem: string) => pathExists(join(customTextureDir
  * MAX_CUSTOM_TEX — so a stored custom tile is the same kind of file the extracted levels carry. Returns the
  * stored file name, which is `name_2.png` and up when the name was already taken.
  */
-export async function saveCustomTexture(name: string, bytes: Buffer,
-  generation?: FalGenerationProvenance): Promise<string> {
+export async function saveCustomTexture(
+  name: string,
+  bytes: Buffer,
+  generation?: FalGenerationProvenance,
+): Promise<string> {
   const png = encodePng(shrinkToFit(decodePng(bytes), MAX_CUSTOM_TEX));
   const { name: stem } = await storeUnderFreeName({
     library: customTextureDir(),
@@ -265,10 +284,10 @@ export async function customTextureExists(name: string): Promise<boolean> {
 export async function renameCustomTexture(from: string, to: string): Promise<string> {
   const source = customTextureStem(from);
   const src = join(customTextureDir(), `${source}.png`);
-  if (!await pathExists(src)) throw new Error(`no custom texture ${from}`);
+  if (!(await pathExists(src))) throw new Error(`no custom texture ${from}`);
   const stem = safeDataName(to.replace(PNG, ''));
   if (!stem) throw new Error('the new name has no usable characters');
-  if (stem.toLowerCase() === source.toLowerCase()) return `${stem}.png`;  // no-op, not a collision
+  if (stem.toLowerCase() === source.toLowerCase()) return `${stem}.png`; // no-op, not a collision
   const { name: free } = await storeUnderFreeName({
     library: customTextureDir(),
     name: stem,
@@ -289,7 +308,7 @@ export async function renameCustomTexture(from: string, to: string): Promise<str
 /** Duplicate a Custom tile under a new name — the "keep this one, then regenerate over the copy" move. */
 export async function cloneCustomTexture(from: string, to: string): Promise<string> {
   const src = customTexturePath(from);
-  if (!await pathExists(src)) throw new Error(`no custom texture ${from}`);
+  if (!(await pathExists(src))) throw new Error(`no custom texture ${from}`);
   const stem = safeDataName(to.replace(PNG, ''));
   if (!stem) throw new Error('the new name has no usable characters');
   const { name: free } = await storeUnderFreeName({
@@ -321,7 +340,7 @@ export async function cloneCustomTexture(from: string, to: string): Promise<stri
  */
 export async function replaceCustomTexture(from: string, bytes: Buffer): Promise<{ from: string; to: string }> {
   const stem = safeDataName(from.replace(PNG, ''));
-  if (!stem || !await customTextureExists(stem)) throw new Error(`no custom texture ${from}`);
+  if (!stem || !(await customTextureExists(stem))) throw new Error(`no custom texture ${from}`);
   // The new art asks for the BASE name, not the one it is replacing. A replace can never reuse a name — new
   // bytes need a new ref — but it need not compound one either: replacing `lamp_2` walks the counter on to
   // `lamp_3`, where asking under `lamp_2` would land `lamp_2_2`, then `lamp_2_2_2`. Iterating on one tile is
@@ -343,11 +362,12 @@ export async function replaceCustomTexture(from: string, bytes: Buffer): Promise
  * It belongs to the browser and goes through history, so both callers hand the returned `{replaced, name}`
  * pair to a client that repoints it as an undoable edit (`retargetDocTex`).
  */
-export async function replaceCustomTextureArt(name: string, bytes: Buffer):
-Promise<{ name: string; replaced: string; repointed: number }> {
+export async function replaceCustomTextureArt(
+  name: string,
+  bytes: Buffer,
+): Promise<{ name: string; replaced: string; repointed: number }> {
   const { from, to } = await replaceCustomTexture(name, bytes);
-  const repointed = await retargetImportedTexture(
-    makeTexRef(CUSTOM_TEX_LEVEL, from), makeTexRef(CUSTOM_TEX_LEVEL, to));
+  const repointed = await retargetImportedTexture(makeTexRef(CUSTOM_TEX_LEVEL, from), makeTexRef(CUSTOM_TEX_LEVEL, to));
   await deleteCustomTexture(from);
   return { name: to, replaced: from, repointed };
 }
@@ -360,11 +380,8 @@ export async function deleteCustomTexture(name: string): Promise<boolean> {
   const stem = customTextureStem(name);
   return retireName(customTextureDir(), stem, async () => {
     const file = join(customTextureDir(), `${stem}.png`);
-    if (!await pathExists(file)) return false;
-    await Promise.all([
-      rm(file, { force: true }),
-      rm(customTextureGenerationPath(stem), { force: true }),
-    ]);
+    if (!(await pathExists(file))) return false;
+    await Promise.all([rm(file, { force: true }), rm(customTextureGenerationPath(stem), { force: true })]);
     return true;
   });
 }
@@ -381,14 +398,21 @@ function resample(img: Rgba, w: number, h: number): Rgba {
   const out = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
     const sy = ((y + 0.5) * img.h) / h - 0.5;
-    const y0 = Math.max(0, Math.floor(sy)), y1 = Math.min(img.h - 1, y0 + 1), fy = sy - y0;
+    const y0 = Math.max(0, Math.floor(sy)),
+      y1 = Math.min(img.h - 1, y0 + 1),
+      fy = sy - y0;
     for (let x = 0; x < w; x++) {
       const sx = ((x + 0.5) * img.w) / w - 0.5;
-      const x0 = Math.max(0, Math.floor(sx)), x1 = Math.min(img.w - 1, x0 + 1), fx = sx - x0;
+      const x0 = Math.max(0, Math.floor(sx)),
+        x1 = Math.min(img.w - 1, x0 + 1),
+        fx = sx - x0;
       for (let c = 0; c < 4; c++) {
-        const tl = img.data[(y0 * img.w + x0) * 4 + c], tr = img.data[(y0 * img.w + x1) * 4 + c];
-        const bl = img.data[(y1 * img.w + x0) * 4 + c], br = img.data[(y1 * img.w + x1) * 4 + c];
-        const top = tl + (tr - tl) * fx, bot = bl + (br - bl) * fx;
+        const tl = img.data[(y0 * img.w + x0) * 4 + c],
+          tr = img.data[(y0 * img.w + x1) * 4 + c];
+        const bl = img.data[(y1 * img.w + x0) * 4 + c],
+          br = img.data[(y1 * img.w + x1) * 4 + c];
+        const top = tl + (tr - tl) * fx,
+          bot = bl + (br - bl) * fx;
         out[(y * w + x) * 4 + c] = Math.round(top + (bot - top) * fy);
       }
     }

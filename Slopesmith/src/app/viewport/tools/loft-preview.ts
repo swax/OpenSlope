@@ -18,20 +18,24 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   // Back faces tint magenta like the terrain's (backface-tint.ts): the ghost is wound exactly as the commit
   // will be, so a tube shows its dead exterior before it exists.
-  const material = tintBackfaces(new THREE.MeshBasicMaterial({
-    color: LOFT_PREVIEW_FILL_COLOR,
-    transparent: true,
-    opacity: LOFT_PREVIEW_FILL_OPACITY,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-  }));
+  const material = tintBackfaces(
+    new THREE.MeshBasicMaterial({
+      color: LOFT_PREVIEW_FILL_COLOR,
+      transparent: true,
+      opacity: LOFT_PREVIEW_FILL_OPACITY,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    }),
+  );
   const fill = new THREE.Mesh(new THREE.BufferGeometry(), material);
   fill.renderOrder = 9;
   fill.visible = false;
-  fill.raycast = () => { /* action preview, never a pick target */ };
+  fill.raycast = () => {
+    /* action preview, never a pick target */
+  };
   stage.worldRoot.add(fill);
 
   function replaceGeometry(positions: number[], indices: number[]) {
@@ -45,7 +49,7 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   function setPreview(next: readonly (readonly number[])[] | null, source?: readonly number[] | QuadMeshDoc | null) {
     quads = next ?? [];
-    doc = next && source && !Array.isArray(source) ? source as QuadMeshDoc : null;
+    doc = next && source && !Array.isArray(source) ? (source as QuadMeshDoc) : null;
     vertices = next && source && Array.isArray(source) ? source : null;
     quadIds = doc ? quads.map(quad => doc!.quads.indexOf(quad as number[])) : [];
     rebuild();
@@ -53,44 +57,62 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   function rebuild() {
     const preview = getPreview();
-    if (!preview || !quads.length) { fill.visible = false; return; }
+    if (!preview || !quads.length) {
+      fill.visible = false;
+      return;
+    }
 
     if (doc) {
       const { mesh, edgeHandle } = meshFromDoc(doc);
       const side = PREVIEW_RES + 1;
-      const positions: number[] = [], indices: number[] = [];
+      const positions: number[] = [],
+        indices: number[] = [];
       for (const quadId of quadIds) {
         if (quadId < 0 || quadId >= mesh.quadCount) continue;
         const controls = quadControlPoints(mesh, edgeHandle, quadId, doc.quadTwist?.[quadId] ?? null);
         const base = positions.length / 3;
-        for (let u = 0; u < side; u++) for (let v = 0; v < side; v++)
-          positions.push(...patchPoint(controls, u / PREVIEW_RES, v / PREVIEW_RES));
-        for (let u = 0; u < PREVIEW_RES; u++) for (let v = 0; v < PREVIEW_RES; v++) {
-          const a = base + u * side + v, b = a + 1, c = a + side, d = c + 1;
-          indices.push(a, d, c, a, b, d);
-        }
+        for (let u = 0; u < side; u++)
+          for (let v = 0; v < side; v++) positions.push(...patchPoint(controls, u / PREVIEW_RES, v / PREVIEW_RES));
+        for (let u = 0; u < PREVIEW_RES; u++)
+          for (let v = 0; v < PREVIEW_RES; v++) {
+            const a = base + u * side + v,
+              b = a + 1,
+              c = a + side,
+              d = c + 1;
+            indices.push(a, d, c, a, b, d);
+          }
       }
-      if (!positions.length) { fill.visible = false; return; }
+      if (!positions.length) {
+        fill.visible = false;
+        return;
+      }
       replaceGeometry(positions, indices);
       return;
     }
 
-    const source = vertices ?? preview.mesh.vertices, count = source.length / 3;
-    const positions: number[] = [], indices: number[] = [];
+    const source = vertices ?? preview.mesh.vertices,
+      count = source.length / 3;
+    const positions: number[] = [],
+      indices: number[] = [];
     for (const quad of quads) {
       if (quad.length !== 4 || quad.some(id => id < 0 || id >= count)) continue;
       const base = positions.length / 3;
       for (const id of quad) positions.push(source[id * 3], source[id * 3 + 1], source[id * 3 + 2]);
       indices.push(base, base + 3, base + 2, base, base + 1, base + 3);
     }
-    if (!positions.length) { fill.visible = false; return; }
+    if (!positions.length) {
+      fill.visible = false;
+      return;
+    }
     replaceGeometry(positions, indices);
   }
 
   return {
     setPreview,
     rebuild,
-    hide() { fill.visible = false; },
+    hide() {
+      fill.visible = false;
+    },
   };
 }
 

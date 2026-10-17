@@ -37,10 +37,7 @@ const CELL = ATLAS_SIZE / CELLS;
 /** The window of the atlas a part samples, one texel inside cell (column, row). */
 export function cell(column: number, row: number): Tile {
   const inset = 1 / ATLAS_SIZE;
-  return [
-    column / CELLS + inset, row / CELLS + inset,
-    (column + 1) / CELLS - inset, (row + 1) / CELLS - inset,
-  ];
+  return [column / CELLS + inset, row / CELLS + inset, (column + 1) / CELLS - inset, (row + 1) / CELLS - inset];
 }
 
 export const LIGHT_CELL = {
@@ -70,16 +67,16 @@ function atlasCell(column: number, row: number, u: number, v: number): number {
   if (column === 2 && row === 0) return smoothstep(1, 0.15, radius);
   if (column === 3 && row === 0) {
     // Hot centre, a dark gap, then a faint rim: a lamp in a housing rather than a glowing ball.
-    return smoothstep(0.72, 0.30, radius) + 0.18 * smoothstep(0.74, 0.80, radius) * smoothstep(0.96, 0.88, radius);
+    return smoothstep(0.72, 0.3, radius) + 0.18 * smoothstep(0.74, 0.8, radius) * smoothstep(0.96, 0.88, radius);
   }
   if (column === 0 && row === 1) {
     const bar = Math.floor(v * 3);
-    const within = smoothstep(0.10, 0.26, (v * 3) % 1) * smoothstep(0.10, 0.26, 1 - (v * 3) % 1);
+    const within = smoothstep(0.1, 0.26, (v * 3) % 1) * smoothstep(0.1, 0.26, 1 - ((v * 3) % 1));
     return within * smoothstep(0.06, 0.18, u) * smoothstep(0.06, 0.18, 1 - u) * [1, 0.45, 0.75][bar % 3];
   }
   if (column === 1 && row === 1) {
-    const band = smoothstep(0.20, 0.42, v) * smoothstep(0.20, 0.42, 1 - v);
-    return band * smoothstep(0.04, 0.20, u) * smoothstep(0.04, 0.20, 1 - u);
+    const band = smoothstep(0.2, 0.42, v) * smoothstep(0.2, 0.42, 1 - v);
+    return band * smoothstep(0.04, 0.2, u) * smoothstep(0.04, 0.2, 1 - u);
   }
   return 0;
 }
@@ -88,8 +85,10 @@ export function lightAtlas(): EmbeddedTexture {
   const pixels = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
   for (let y = 0; y < ATLAS_SIZE; y++) {
     for (let x = 0; x < ATLAS_SIZE; x++) {
-      const column = Math.floor(x / CELL), row = Math.floor(y / CELL);
-      const u = ((x % CELL) + 0.5) / CELL, v = ((y % CELL) + 0.5) / CELL;
+      const column = Math.floor(x / CELL),
+        row = Math.floor(y / CELL);
+      const u = ((x % CELL) + 0.5) / CELL,
+        v = ((y % CELL) + 0.5) / CELL;
       pixels[y * ATLAS_SIZE + x] = Math.round(255 * clamp01(atlasCell(column, row, u, v)));
     }
   }
@@ -108,18 +107,20 @@ export function lightAtlas(): EmbeddedTexture {
  * The floor is high on purpose. It keeps the strip a continuously lit channel with a bright packet running
  * along it, so a stationary rider has a glowing spine rather than a row of separate lamps.
  */
-export const FEED_WIDTH = 16, FEED_HEIGHT = 64;
+export const FEED_WIDTH = 16,
+  FEED_HEIGHT = 64;
 
 export function feedStrip(): EmbeddedTexture {
   const pixels = new Uint8Array(FEED_WIDTH * FEED_HEIGHT);
   for (let y = 0; y < FEED_HEIGHT; y++) {
     for (let x = 0; x < FEED_WIDTH; x++) {
-      const u = (x + 0.5) / FEED_WIDTH, v = (y + 0.5) / FEED_HEIGHT;
+      const u = (x + 0.5) / FEED_WIDTH,
+        v = (y + 0.5) / FEED_HEIGHT;
       // Dark at the strip's edges so it reads as a channel cut into the plate, not as a painted band.
-      const across = smoothstep(0.0, 0.30, u) * smoothstep(0.0, 0.30, 1 - u);
+      const across = smoothstep(0.0, 0.3, u) * smoothstep(0.0, 0.3, 1 - u);
       // Asymmetric on purpose: a symmetric packet gives no clue which way it is travelling, and travelling
       // is the whole point. The leading edge is sharp and the trail fades out behind it.
-      const dash = smoothstep(0.52, 0.74, v) * smoothstep(1.00, 0.82, v);
+      const dash = smoothstep(0.52, 0.74, v) * smoothstep(1.0, 0.82, v);
       pixels[y * FEED_WIDTH + x] = Math.round(255 * clamp01(across * (0.32 + 0.68 * dash)));
     }
   }

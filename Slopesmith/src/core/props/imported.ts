@@ -116,8 +116,11 @@ function finite(value: unknown): number | null {
  * takes a slightly different route lands a metre off the muzzle, which reads as a physics bug rather
  * than an import one and is the sort of thing that survives review.
  */
-export function rawFromGltfPoint(p: readonly [number, number, number],
-  centreX: number, centreY: number): [number, number, number] {
+export function rawFromGltfPoint(
+  p: readonly [number, number, number],
+  centreX: number,
+  centreY: number,
+): [number, number, number] {
   return [-100 * p[0] - centreX, -100 * p[2] - centreY, 100 * p[1]];
 }
 
@@ -130,7 +133,9 @@ export function rawFromGltfPoint(p: readonly [number, number, number],
  * direction the author wanted and is simply flipped if it comes out wrong.
  */
 export function rawFromGltfDirection(v: readonly [number, number, number]): [number, number, number] {
-  const x = -v[0], y = -v[2], z = v[1];
+  const x = -v[0],
+    y = -v[2],
+    z = v[1];
   const length = Math.hypot(x, y, z);
   return length > 0 ? [x / length, y / length, z / length] : [0, 0, 1];
 }
@@ -142,13 +147,18 @@ export function rawFromGltfDirection(v: readonly [number, number, number]): [num
  * As with the scroll, this is untrusted: every field is checked, the count is bounded, and a payload
  * missing the fields the runtime reads is dropped rather than handed on half-formed.
  */
-export function importedEmittersFromExtras(extras: unknown):
-{ at: [number, number, number]; emitter: ImportedEmitter }[] {
+export function importedEmittersFromExtras(
+  extras: unknown,
+): { at: [number, number, number]; emitter: ImportedEmitter }[] {
   const raw = readExtra(extras, OS_EMITTERS_EXTRA, LEGACY_EMITTERS_EXTRA);
   if (raw === undefined || raw === null) return [];
   let parsed: unknown = raw;
   if (typeof raw === 'string') {
-    try { parsed = JSON.parse(raw); } catch { return []; }
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
   }
   if (!Array.isArray(parsed)) return [];
   const out: { at: [number, number, number]; emitter: ImportedEmitter }[] = [];
@@ -164,12 +174,15 @@ export function importedEmittersFromExtras(extras: unknown):
       const value = finite((source as Record<string, unknown>)[`U${i}`]);
       // A missing field is a zero — that is what the native reader does — but a present-and-unusable
       // one means the payload was not written by anything that understood the format.
-      if (value === null && (source as Record<string, unknown>)[`U${i}`] !== undefined) { bad = true; break; }
+      if (value === null && (source as Record<string, unknown>)[`U${i}`] !== undefined) {
+        bad = true;
+        break;
+      }
       fields[`U${i}`] = value ?? 0;
     }
     if (bad) continue;
-    if (!(fields.U0 >= 1)) continue;                       // no particles: nothing to schedule
-    fields.U0 = Math.min(512, Math.round(fields.U0));      // bound the per-emitter particle budget
+    if (!(fields.U0 >= 1)) continue; // no particles: nothing to schedule
+    fields.U0 = Math.min(512, Math.round(fields.U0)); // bound the per-emitter particle budget
     out.push({ at: position as [number, number, number], emitter: { fields } });
   }
   return out;
@@ -197,17 +210,19 @@ export const MAX_IMPORT_SPINS = 4;
 
 /** One node's declared rotation. A spin turns continuously; a swing traces a smooth pendulum cycle.
  *  `axis` is in the file's own glTF frame (metres, Y-up) and need not be unit. */
-export type ImportedSpin = {
-  axis: [number, number, number];
-  revsPerSecond: number;
-  amplitudeDegrees?: undefined;
-  periodSeconds?: undefined;
-} | {
-  axis: [number, number, number];
-  revsPerSecond?: undefined;
-  amplitudeDegrees: number;
-  periodSeconds: number;
-};
+export type ImportedSpin =
+  | {
+      axis: [number, number, number];
+      revsPerSecond: number;
+      amplitudeDegrees?: undefined;
+      periodSeconds?: undefined;
+    }
+  | {
+      axis: [number, number, number];
+      revsPerSecond?: undefined;
+      amplitudeDegrees: number;
+      periodSeconds: number;
+    };
 
 /** Keep authored pendulums plausible and their native clips compact. */
 const MAX_SWING_DEGREES = 89;
@@ -225,7 +240,11 @@ export function importedSpinFromExtras(extras: unknown): ImportedSpin | null {
   if (raw === undefined || raw === null) return null;
   let parsed: unknown = raw;
   if (typeof raw === 'string') {
-    try { parsed = JSON.parse(raw); } catch { return null; }
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
   }
   const declaration = parsed as { spin?: Record<string, unknown>; swing?: Record<string, unknown> } | null;
   const spin = declaration?.spin;
@@ -237,17 +256,17 @@ export function importedSpinFromExtras(extras: unknown): ImportedSpin | null {
   const parts = axis.map(v => finite(v));
   if (parts.some(v => v === null)) return null;
   const [x, y, z] = parts as number[];
-  if (!(Math.hypot(x, y, z) > 1e-6)) return null;                  // no axis: nothing to turn about
+  if (!(Math.hypot(x, y, z) > 1e-6)) return null; // no axis: nothing to turn about
   if (motion === spin) {
     const revsPerSecond = finite(spin.revsPerSecond);
-    if (revsPerSecond === null || revsPerSecond === 0) return null;   // declared, but stationary
+    if (revsPerSecond === null || revsPerSecond === 0) return null; // declared, but stationary
     if (Math.abs(revsPerSecond) > MAX_SPIN_REVS_PER_SECOND) return null;
     return { axis: [x, y, z], revsPerSecond };
   }
   const amplitudeDegrees = finite(swing!.amplitudeDegrees);
   const periodSeconds = finite(swing!.periodSeconds);
-  if (amplitudeDegrees === null || !(Math.abs(amplitudeDegrees) > 0)
-    || Math.abs(amplitudeDegrees) > MAX_SWING_DEGREES) return null;
+  if (amplitudeDegrees === null || !(Math.abs(amplitudeDegrees) > 0) || Math.abs(amplitudeDegrees) > MAX_SWING_DEGREES)
+    return null;
   if (periodSeconds === null || !(periodSeconds > 0) || periodSeconds > MAX_SWING_PERIOD_SECONDS) return null;
   return { axis: [x, y, z], amplitudeDegrees, periodSeconds };
 }
@@ -256,7 +275,7 @@ export function importedSpinFromExtras(extras: unknown): ImportedSpin | null {
 function quaternionFromUnitY(axis: readonly [number, number, number]): [number, number, number, number] {
   const [ax, ay, az] = axis;
   if (ay > 0.999999) return [0, 0, 0, 1];
-  if (ay < -0.999999) return [0, 0, 1, 0];    // 180°, about any perpendicular — Z will do
+  if (ay < -0.999999) return [0, 0, 1, 0]; // 180°, about any perpendicular — Z will do
   // cross((0,1,0), axis) = (az, 0, -ax)
   const s = Math.sqrt((1 + ay) * 2);
   return [az / s, 0, -ax / s, s / 2];
@@ -267,8 +286,10 @@ function quaternionConjugate(q: readonly [number, number, number, number]): [num
 }
 
 /** Hamilton product, applying `b` first and then `a`. */
-function quaternionMultiply(a: readonly [number, number, number, number],
-  b: readonly [number, number, number, number]): [number, number, number, number] {
+function quaternionMultiply(
+  a: readonly [number, number, number, number],
+  b: readonly [number, number, number, number],
+): [number, number, number, number] {
   return [
     a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
     a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
@@ -277,19 +298,27 @@ function quaternionMultiply(a: readonly [number, number, number, number],
   ];
 }
 
-function rotateByQuaternion(v: readonly [number, number, number],
-  q: readonly [number, number, number, number]): [number, number, number] {
+function rotateByQuaternion(
+  v: readonly [number, number, number],
+  q: readonly [number, number, number, number],
+): [number, number, number] {
   const p: [number, number, number, number] = [v[0], v[1], v[2], 0];
   const turned = quaternionMultiply(quaternionMultiply(q, p), quaternionConjugate(q));
   return [turned[0], turned[1], turned[2]];
 }
 
 /** One absolute-time cubic Hermite segment in the native [a,b,c,d,start,end] representation. */
-function hermiteSegment(start: number, end: number, from: number, to: number,
-  fromSlope: number, toSlope: number): PropModelCurve[number] {
+function hermiteSegment(
+  start: number,
+  end: number,
+  from: number,
+  to: number,
+  fromSlope: number,
+  toSlope: number,
+): PropModelCurve[number] {
   const h = end - start;
-  const localA = (2 * from - 2 * to + h * (fromSlope + toSlope)) / (h ** 3);
-  const localB = (-3 * from + 3 * to - h * (2 * fromSlope + toSlope)) / (h ** 2);
+  const localA = (2 * from - 2 * to + h * (fromSlope + toSlope)) / h ** 3;
+  const localB = (-3 * from + 3 * to - h * (2 * fromSlope + toSlope)) / h ** 2;
   return [
     localA,
     localB - 3 * localA * start,
@@ -304,16 +333,17 @@ function hermiteSegment(start: number, end: number, from: number, to: number,
 function swingCurve(amplitude: number, cycles: number, seconds: number): PropModelCurve {
   const curve: PropModelCurve = [];
   const period = seconds / cycles;
-  const slope = amplitude * 2 * Math.PI / period;
+  const slope = (amplitude * 2 * Math.PI) / period;
   const values = [0, amplitude, 0, -amplitude, 0];
   const slopes = [slope, 0, -slope, 0, slope];
   for (let cycle = 0; cycle < cycles; cycle++) {
     const cycleStart = cycle * period;
     for (let quarter = 0; quarter < 4; quarter++) {
-      const start = cycleStart + quarter * period / 4;
-      const end = cycleStart + (quarter + 1) * period / 4;
-      curve.push(hermiteSegment(start, end, values[quarter], values[quarter + 1],
-        slopes[quarter], slopes[quarter + 1]));
+      const start = cycleStart + (quarter * period) / 4;
+      const end = cycleStart + ((quarter + 1) * period) / 4;
+      curve.push(
+        hermiteSegment(start, end, values[quarter], values[quarter + 1], slopes[quarter], slopes[quarter + 1]),
+      );
     }
   }
   return curve;
@@ -346,20 +376,37 @@ function swingCurve(amplitude: number, cycles: number, seconds: number): PropMod
  * snapped to a whole number of turns/cycles within it; a fractional cycle would jump at the loop wrap.
  */
 export function importedSpinAnimation(
-  spins: readonly ({ pivot: readonly [number, number, number]; axis: readonly [number, number, number];
-    parent?: number } & ({ revsPerSecond: number; amplitudeDegrees?: undefined; periodSeconds?: undefined }
-      | { revsPerSecond?: undefined; amplitudeDegrees: number; periodSeconds: number }))[],
+  spins: readonly ({
+    pivot: readonly [number, number, number];
+    axis: readonly [number, number, number];
+    parent?: number;
+  } & (
+    | { revsPerSecond: number; amplitudeDegrees?: undefined; periodSeconds?: undefined }
+    | { revsPerSecond?: undefined; amplitudeDegrees: number; periodSeconds: number }
+  ))[],
 ): { animation: PropModelAnimation; objectOf: number[] } | null {
   if (!spins.length) return null;
-  if (spins.some((spin, i) => spin.parent !== undefined
-    && (!Number.isInteger(spin.parent) || spin.parent < 0 || spin.parent >= i))) return null;
-  if (spins.some(spin => spin.revsPerSecond !== undefined
-    ? !Number.isFinite(spin.revsPerSecond) || spin.revsPerSecond === 0
-    : !Number.isFinite(spin.amplitudeDegrees) || spin.amplitudeDegrees === 0
-      || !Number.isFinite(spin.periodSeconds) || !(spin.periodSeconds > 0))) return null;
+  if (
+    spins.some(
+      (spin, i) => spin.parent !== undefined && (!Number.isInteger(spin.parent) || spin.parent < 0 || spin.parent >= i),
+    )
+  )
+    return null;
+  if (
+    spins.some(spin =>
+      spin.revsPerSecond !== undefined
+        ? !Number.isFinite(spin.revsPerSecond) || spin.revsPerSecond === 0
+        : !Number.isFinite(spin.amplitudeDegrees) ||
+          spin.amplitudeDegrees === 0 ||
+          !Number.isFinite(spin.periodSeconds) ||
+          !(spin.periodSeconds > 0),
+    )
+  )
+    return null;
   // The slowest motion sets the window, so every faster one still completes whole cycles in it.
-  const nominalPeriods = spins.map(s => s.revsPerSecond !== undefined
-    ? 1 / Math.abs(s.revsPerSecond) : s.periodSeconds);
+  const nominalPeriods = spins.map(s =>
+    s.revsPerSecond !== undefined ? 1 / Math.abs(s.revsPerSecond) : s.periodSeconds,
+  );
   const clipFrames = Math.max(1, Math.round(30 * Math.max(...nominalPeriods)));
   const seconds = clipFrames / 30;
   const objects: PropModelAnimationObject[] = [
@@ -381,9 +428,10 @@ export function importedSpinAnimation(
       parentObject = objectOf[parentSpin];
       const inverseParent = quaternionConjugate(worldRotations[parentSpin]);
       const parentPivot = worldPivots[parentSpin];
-      restPosition = rotateByQuaternion([
-        spin.pivot[0] - parentPivot[0], spin.pivot[1] - parentPivot[1], spin.pivot[2] - parentPivot[2],
-      ], inverseParent);
+      restPosition = rotateByQuaternion(
+        [spin.pivot[0] - parentPivot[0], spin.pivot[1] - parentPivot[1], spin.pivot[2] - parentPivot[2]],
+        inverseParent,
+      );
       restRotation = quaternionMultiply(inverseParent, worldRotation);
     }
     const mount = objects.length;
@@ -393,15 +441,21 @@ export function importedSpinAnimation(
       restRotation,
       restScale: [1, 1, 1],
     });
-    const cycles = Math.max(1, Math.round(seconds / (spin.revsPerSecond !== undefined
-      ? 1 / Math.abs(spin.revsPerSecond) : spin.periodSeconds)));
-    const rotation: PropModelCurve = spin.revsPerSecond !== undefined
-      ? [[0, 0, 360 * cycles * Math.sign(spin.revsPerSecond) / seconds, 0, 0, seconds]]
-      : swingCurve(spin.amplitudeDegrees, cycles, seconds);
+    const cycles = Math.max(
+      1,
+      Math.round(seconds / (spin.revsPerSecond !== undefined ? 1 / Math.abs(spin.revsPerSecond) : spin.periodSeconds)),
+    );
+    const rotation: PropModelCurve =
+      spin.revsPerSecond !== undefined
+        ? [[0, 0, (360 * cycles * Math.sign(spin.revsPerSecond)) / seconds, 0, 0, seconds]]
+        : swingCurve(spin.amplitudeDegrees, cycles, seconds);
     objects.push({
       parent: mount,
-      restPosition: [0, 0, 0], restRotation: [0, 0, 0, 1], restScale: [1, 1, 1],
-      basePosition: [0, 0, 0], baseEuler: [0, 0, 0],
+      restPosition: [0, 0, 0],
+      restRotation: [0, 0, 0, 1],
+      restScale: [1, 1, 1],
+      basePosition: [0, 0, 0],
+      baseEuler: [0, 0, 0],
       // [a, b, c, d, startSeconds, endSeconds] by Horner: linear for spins, cubic for pendulums.
       channels: [null, null, null, null, rotation, null],
     });
@@ -425,7 +479,11 @@ export function importedMaterialScroll(extras: unknown): UvScrollEffect | null {
   let parsed: unknown = raw;
   if (typeof raw === 'string') {
     // Blender writes custom properties as strings; a malformed one must not take the import down.
-    try { parsed = JSON.parse(raw); } catch { return null; }
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
   }
   const scroll = (parsed as { uvScroll?: Record<string, unknown> } | null)?.uvScroll;
   if (!scroll || typeof scroll !== 'object') return null;
@@ -435,7 +493,7 @@ export function importedMaterialScroll(extras: unknown): UvScrollEffect | null {
   const pauseDuration = finite(scroll.pauseDuration) ?? finite(scroll.vLength) ?? 0;
   const lifetime = finite(scroll.lifetime) ?? 0;
   if (!(activeDuration > 0) || pauseDuration < 0 || lifetime < 0) return null;
-  if (uPerTick === 0 && vPerTick === 0) return null;              // declared, but stationary
+  if (uPerTick === 0 && vPerTick === 0) return null; // declared, but stationary
   if (Math.abs(uPerTick) > MAX_SCROLL_PER_TICK || Math.abs(vPerTick) > MAX_SCROLL_PER_TICK) return null;
   return { mode: finite(scroll.mode) ?? 0, uPerTick, vPerTick, activeDuration, pauseDuration, lifetime };
 }
@@ -457,7 +515,11 @@ export function importedMaterialFlipbook(extras: unknown): number | null {
   if (raw === undefined || raw === null) return null;
   let parsed: unknown = raw;
   if (typeof raw === 'string') {
-    try { parsed = JSON.parse(raw); } catch { return null; }
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
   }
   const flipbook = (parsed as { flipbook?: Record<string, unknown> } | null)?.flipbook;
   if (!flipbook || typeof flipbook !== 'object') return null;
@@ -490,11 +552,16 @@ export interface ImportedPropRecord {
    *  another stay put — a snow gun's plume scrolls while its bodywork does not. `frames` is the material's
    *  flipbook state list in the same cross-level ref form, `frames[0] === tex`; the importer cut it out of
    *  the filmstrip page the GLB declared (see `importedMaterialFlipbook`). */
-  materials: { id: number; tex: string | null; scroll?: UvScrollEffect; frames?: string[];
+  materials: {
+    id: number;
+    tex: string | null;
+    scroll?: UvScrollEffect;
+    frames?: string[];
     /** Draw through the native alpha-blend pass instead of treating partial alpha as a cutout mask. */
     blend?: boolean;
     /** Explicit glTF/author verdict. MASK becomes cutout and BLEND becomes blend; absent keeps pixel auto. */
-    alphaMode?: PropAlphaMode }[];
+    alphaMode?: PropAlphaMode;
+  }[];
   /** Particle emitters the model declared for itself, spawn points already in model-local raw cm. A
    *  placement of this model auto-attaches them as an effect graph (docs/032 · particles). */
   emitters?: ImportedEmitter[];
@@ -511,7 +578,10 @@ export interface ImportedPropRecord {
 
 /** Display name for an imported model, from its GLB file name: "old_lamp_post.glb" → "old lamp post". */
 export function importedPropName(file: string): string {
-  const stem = file.replace(/\.(glb|gltf)$/i, '').replace(/[-_]+/g, ' ').trim();
+  const stem = file
+    .replace(/\.(glb|gltf)$/i, '')
+    .replace(/[-_]+/g, ' ')
+    .trim();
   return stem || file;
 }
 
@@ -522,8 +592,8 @@ export function importedPropName(file: string): string {
  * purpose: only the fields the maths touches, so it stays testable without pulling in the glTF loader.
  */
 export function scaleDraftTo(
-  draft: { size: [number, number, number]; subs: { positions: Float32Array }[];
-    emitters?: ImportedEmitter[] }, meters: number,
+  draft: { size: [number, number, number]; subs: { positions: Float32Array }[]; emitters?: ImportedEmitter[] },
+  meters: number,
 ): void {
   const longest = Math.max(...draft.size);
   if (!(longest > 0) || !(meters > 0)) return;

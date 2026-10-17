@@ -43,7 +43,10 @@ import type { PropLinesLayer } from '../scene/prop-lines';
 import type { ReferenceDecor } from '../scene/reference-decor';
 import type { PaintLayer } from '../mesh/paint';
 import {
-  referencePropHitFaceIndex, referencePropHitGeometry, referencePropHitSlot, type ReferencePropMesh,
+  referencePropHitFaceIndex,
+  referencePropHitGeometry,
+  referencePropHitSlot,
+  type ReferencePropMesh,
 } from '../scene/reference-prop-mesh';
 
 /** The layer controllers a pointer gesture routes through — the router calls their pick / commit / hover /
@@ -119,7 +122,13 @@ export interface RouterHostHooks {
  * the mode, the mesh substrate and the whole-reference selection the router reaches back into
  * (`RouterAccess` / `RouterHostHooks`).
  */
-export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layers: RouterLayers, access: RouterAccess, host: RouterHostHooks) {
+export function createPointerRouter(
+  stage: Stage,
+  sel: MeshSelectionState,
+  layers: RouterLayers,
+  access: RouterAccess,
+  host: RouterHostHooks,
+) {
   let painting = false;
   let sculpting = false;
   let sculptDabbing = false;
@@ -161,14 +170,18 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** Ordinary Edit selection-family gate. Disabled hits are acknowledged but may fall through to the next
    * enabled family in the point > edge > patch precedence chain. */
   function editPickEnabled(kind: MeshComponentHit['kind']): boolean {
-    return kind === 'vertex' ? sel.editPickKinds.point
-      : kind === 'line' ? sel.editPickKinds.edge
-      : sel.editPickKinds.patch;
+    return kind === 'vertex'
+      ? sel.editPickKinds.point
+      : kind === 'line'
+        ? sel.editPickKinds.edge
+        : sel.editPickKinds.patch;
   }
 
   function rejectUnsupportedPropPick(modelBanner = false, toggle = false): boolean {
     const pick = layers.scenePicking.pick({
-      props: 'standard', occludeWithSurfaces: true, surfaceEpsilon: 1e-3,
+      props: 'standard',
+      occludeWithSurfaces: true,
+      surfaceEpsilon: 1e-3,
     });
     if (pick?.target !== 'prop') return false;
     // Edit mode: a clicked authored placement is selected — or its group, or a second click on a MODEL piece
@@ -184,7 +197,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
    * prop on the OTHER mountain stays a rejected click, like the terrain under it. True = click consumed here. */
   function playPropPick(): boolean {
     const pick = layers.scenePicking.pick({
-      props: 'standard', occludeWithSurfaces: true, surfaceEpsilon: 1e-3,
+      props: 'standard',
+      occludeWithSurfaces: true,
+      surfaceEpsilon: 1e-3,
     });
     if (pick?.target !== 'prop') return false;
     if (pick.source !== layers.rideCtl.playTarget) {
@@ -199,8 +214,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** The texture identity at a prop hit: the clicked material submesh's frame-zero tile + appearance
    *  details, stamped on the mesh by reference-decor / scene/props (a model with several textures
    *  resolves to exactly the one under the cursor). Null ref = that surface is untextured (neutral clay). */
-  function propPickTex(hit: THREE.Intersection): { ref: TexRef | null; name: string;
-    surface: RefPropSurfaceDetails | null } {
+  function propPickTex(hit: THREE.Intersection): {
+    ref: TexRef | null;
+    name: string;
+    surface: RefPropSurfaceDetails | null;
+  } {
     const ud = hit.object.userData;
     const slot = referencePropHitSlot(hit);
     const tex = slot?.tex ?? (typeof ud.propTex === 'string' ? ud.propTex : null);
@@ -224,7 +242,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       for (let k = 0; k < 3; k++) {
         const v = index.getX(t * 3 + k);
         const arr = trisOf.get(v);
-        if (arr) arr.push(t); else trisOf.set(v, [t]);
+        if (arr) arr.push(t);
+        else trisOf.set(v, [t]);
       }
     }
     const inGroup = new Set<number>([faceIndex]);
@@ -233,7 +252,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       const t = stack.pop()!;
       for (let k = 0; k < 3; k++) {
         for (const n of trisOf.get(index.getX(t * 3 + k)) ?? []) {
-          if (!inGroup.has(n)) { inGroup.add(n); stack.push(n); }
+          if (!inGroup.has(n)) {
+            inGroup.add(n);
+            stack.push(n);
+          }
         }
       }
     }
@@ -258,8 +280,12 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     };
     const triCount = Math.floor(index.count / 3);
     for (const t of faces ?? Array.from({ length: triCount }, (_, i) => i)) {
-      const a = index.getX(t * 3), b = index.getX(t * 3 + 1), c = index.getX(t * 3 + 2);
-      edge(a, b); edge(b, c); edge(c, a);
+      const a = index.getX(t * 3),
+        b = index.getX(t * 3 + 1),
+        c = index.getX(t * 3 + 2);
+      edge(a, b);
+      edge(b, c);
+      edge(c, a);
     }
     return out.length ? new Float32Array(out) : null;
   }
@@ -270,16 +296,22 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
    *  untextured prop surface, or its texture ref. */
   function inspectPropTextureAtPointer(): TexRef | null | undefined {
     const pick = layers.scenePicking.pick({
-      props: 'standard', occludeWithSurfaces: true, surfaceEpsilon: 1e-3,
+      props: 'standard',
+      occludeWithSurfaces: true,
+      surfaceEpsilon: 1e-3,
     });
     if (pick?.target !== 'prop') return undefined;
     const t = propPickTex(pick.hit);
     const faces = t.ref ? propPickFaceGroup(pick.hit) : null;
-    if (t.ref) layers.refDecor.inspectSurface(pick.hit.object,
-      pick.source === 'reference' ? pick.instanceId : 0, faces);
+    if (t.ref)
+      layers.refDecor.inspectSurface(pick.hit.object, pick.source === 'reference' ? pick.instanceId : 0, faces);
     else layers.refDecor.clearSurfaceInspection(); // untextured: the toast explains; nothing to mark
-    stage.cb.onInspectPropTexture?.(t.ref, pick.source === 'reference' ? pick.name : pick.hit.object.name,
-      t.surface, t.ref ? propPickUvEdges(pick.hit, faces) : null);
+    stage.cb.onInspectPropTexture?.(
+      t.ref,
+      pick.source === 'reference' ? pick.name : pick.hit.object.name,
+      t.surface,
+      t.ref ? propPickUvEdges(pick.hit, faces) : null,
+    );
     return t.ref;
   }
 
@@ -298,8 +330,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   stage.scene.add(brushRing);
   // The brush's shape: a faint inner ring where the falloff drops to half strength — small for a pointed
   // profile, wide for a soft-shouldered one, absent for constant's hard edge. A child, so it rides the footprint.
-  const brushShapeRing = new THREE.LineLoop(brushRing.geometry,
-    new THREE.LineBasicMaterial({ color: 0x6ee7a8, depthTest: false, transparent: true, opacity: 0.35 }));
+  const brushShapeRing = new THREE.LineLoop(
+    brushRing.geometry,
+    new THREE.LineBasicMaterial({ color: 0x6ee7a8, depthTest: false, transparent: true, opacity: 0.35 }),
+  );
   brushShapeRing.renderOrder = 10;
   brushRing.add(brushShapeRing);
   const showBrushShape = () => {
@@ -315,7 +349,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
    *  behind reports its far side's winding. Pull / Push read "toward me / away from me" off this. */
   function sculptWorldNormal(hit: THREE.Intersection): THREE.Vector3 {
     const normal = hit.face?.normal.clone().transformDirection(hit.object.matrixWorld) ?? brushUp.clone();
-    if (normal.lengthSq() < 1e-10) normal.copy(brushUp); else normal.normalize();
+    if (normal.lengthSq() < 1e-10) normal.copy(brushUp);
+    else normal.normalize();
     if (normal.dot(stage.ray.ray.direction) > 0) normal.negate();
     return normal;
   }
@@ -333,14 +368,18 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   }
 
   /** Ctrl (⌘) inverts and Shift smooths, read off the pointer event itself so a touch stroke holds neither. */
-  const sculptModifiers = (e: PointerEvent): SculptModifiers => ({ invert: e.ctrlKey || e.metaKey, smooth: e.shiftKey });
+  const sculptModifiers = (e: PointerEvent): SculptModifiers => ({
+    invert: e.ctrlKey || e.metaKey,
+    smooth: e.shiftKey,
+  });
 
   function sculptAt(hit: THREE.Intersection, e: PointerEvent) {
     const quad = sculptQuad(hit);
     if (quad == null) return;
     const normal = sculptWorldNormal(hit);
     stage.cb.onSculpt(
-      [hit.point.x, hit.point.y, -hit.point.z], quad,
+      [hit.point.x, hit.point.y, -hit.point.z],
+      quad,
       [normal.x, normal.y, -normal.z], // flipped world point/vector -> data
       sculptModifiers(e),
     );
@@ -351,7 +390,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   // a held press builds slower and stays controllable; any move restarts the wait. Each held dab re-casts the
   // last pointer, so it follows the surface as that surface moves.
   const HOLD_DAB_MS = 100;
-  let holdFrame = 0, holdPointer: PointerEvent | null = null, lastDabAt = 0;
+  let holdFrame = 0,
+    holdPointer: PointerEvent | null = null,
+    lastDabAt = 0;
   function holdDab(now: number) {
     holdFrame = requestAnimationFrame(holdDab);
     if (!holdPointer || now - lastDabAt < HOLD_DAB_MS) return;
@@ -359,7 +400,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     stage.castAt(holdPointer);
     const hit = stage.pickSurface(access.terrain(), false);
     brushRing.visible = !!hit;
-    if (hit) { updateSculptRing(hit); sculptAt(hit, holdPointer); }
+    if (hit) {
+      updateSculptRing(hit);
+      sculptAt(hit, holdPointer);
+    }
   }
 
   function beginSculptDab(hit: THREE.Intersection, e: PointerEvent): boolean {
@@ -367,20 +411,23 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (quad == null) return false;
     const normal = sculptWorldNormal(hit);
     stage.cb.onBeginSculpt(
-      [hit.point.x, hit.point.y, -hit.point.z], quad,
+      [hit.point.x, hit.point.y, -hit.point.z],
+      quad,
       [normal.x, normal.y, -normal.z],
       sculptModifiers(e),
     );
     sculptDabbing = true;
     sculptAt(hit, e);
-    holdPointer = e; lastDabAt = performance.now();
+    holdPointer = e;
+    lastDabAt = performance.now();
     holdFrame = requestAnimationFrame(holdDab);
     return true;
   }
 
   function endSculptDab() {
     if (holdFrame) cancelAnimationFrame(holdFrame); // every pointer-up lands here; most never started a hold
-    holdFrame = 0; holdPointer = null;
+    holdFrame = 0;
+    holdPointer = null;
     if (!sculptDabbing) return;
     sculptDabbing = false;
     stage.cb.onEndSculpt();
@@ -390,7 +437,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     const quad = sculptQuad(hit);
     if (quad == null) return false;
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-      stage.camera.getWorldDirection(new THREE.Vector3()), hit.point,
+      stage.camera.getWorldDirection(new THREE.Vector3()),
+      hit.point,
     );
     sculptGrab = { plane, start: hit.point.clone(), center: hit.point.clone() };
     stage.cb.onBeginSculptGrab([hit.point.x, hit.point.y, -hit.point.z], quad);
@@ -422,7 +470,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       layers.rideCtl.zoomThirdPersonWheel(e.deltaY, e.deltaMode);
       return; // a test ride owns the camera; first person deliberately consumes the wheel without zooming
     }
-    if (layers.cameraCtl.flying) { layers.cameraCtl.trimFlySpeed(e.deltaY); return; } // fly mode: the wheel trims speed
+    if (layers.cameraCtl.flying) {
+      layers.cameraCtl.trimFlySpeed(e.deltaY);
+      return;
+    } // fly mode: the wheel trims speed
     // Alt+wheel adjusts whatever is about to be committed, so holding a tool never takes the camera's zoom away.
     // Loop-cut surgery: Alt+wheel SLIDES the cut along the strip; with no live ghost the layer declines and it zooms.
     if (e.altKey && access.mode() === 'edit' && layers.surgery.onWheel(e)) return;
@@ -430,15 +481,26 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // Ctrl+wheel and zooms the camera, and Ctrl inverts a stroke.
     if (e.shiftKey && !e.altKey && access.mode() === 'sculpt') {
       const steps = radiusWheel(e);
-      if (steps) { brushRadius = stage.cb.onStepBrushRadius(steps); brushRing.scale.setScalar(brushRadius); }
+      if (steps) {
+        brushRadius = stage.cb.onStepBrushRadius(steps);
+        brushRing.scale.setScalar(brushRadius);
+      }
       return;
     }
     // Props placement, over the ghost: Alt+wheel turns the held prop (← / → too, shortcuts.ts), Shift+wheel
     // resizes it. Off the terrain (no ghost) both zoom as usual.
-    if ((e.altKey || e.shiftKey) && access.mode() === 'props' && layers.props.propArm && layers.props.propGhost?.visible) {
+    if (
+      (e.altKey || e.shiftKey) &&
+      access.mode() === 'props' &&
+      layers.props.propArm &&
+      layers.props.propGhost?.visible
+    ) {
       if (e.altKey) layers.props.turnPending(e.deltaY < 0 ? 15 : -15);
       else {
-        layers.props.pendingScale = Math.min(5, Math.max(0.1, layers.props.pendingScale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+        layers.props.pendingScale = Math.min(
+          5,
+          Math.max(0.1, layers.props.pendingScale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)),
+        );
         layers.props.seatPropGhost();
       }
       return;
@@ -446,11 +508,16 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.cameraCtl.wheelZoom(e);
   }
 
-  function hideMarquee() { marquee = null; marqueeSelectionMode = 'replace'; stage.marqueeEl.style.display = 'none'; }
+  function hideMarquee() {
+    marquee = null;
+    marqueeSelectionMode = 'replace';
+    stage.marqueeEl.style.display = 'none';
+  }
 
   function updateMarqueeRect(x1: number, y1: number) {
     if (!marquee) return;
-    const x = Math.min(marquee.x0, x1), y = Math.min(marquee.y0, y1);
+    const x = Math.min(marquee.x0, x1),
+      y = Math.min(marquee.y0, y1);
     stage.marqueeEl.style.left = `${x}px`;
     stage.marqueeEl.style.top = `${y}px`;
     stage.marqueeEl.style.width = `${Math.abs(x1 - marquee.x0)}px`;
@@ -461,7 +528,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   function finishEditMarquee(mode: 'replace' | 'add' | 'remove' = 'replace') {
     const props = sel.editPickKinds.prop ? propsInMarquee() : [];
     layers.selection.finishEditMarquee(
-      mode, marquee, marqueeVertexHint, props,
+      mode,
+      marquee,
+      marqueeVertexHint,
+      props,
       layers.props.selectedProp !== null || layers.props.multiSelProps.length > 0,
     );
     marqueeVertexHint = null;
@@ -471,8 +541,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   function propsInMarquee(): number[] {
     if (!marquee || !layers.props.placedPropGroup.visible) return [];
     const r = stage.container.getBoundingClientRect();
-    const left = parseFloat(stage.marqueeEl.style.left), top = parseFloat(stage.marqueeEl.style.top);
-    const right = left + parseFloat(stage.marqueeEl.style.width), bottom = top + parseFloat(stage.marqueeEl.style.height);
+    const left = parseFloat(stage.marqueeEl.style.left),
+      top = parseFloat(stage.marqueeEl.style.top);
+    const right = left + parseFloat(stage.marqueeEl.style.width),
+      bottom = top + parseFloat(stage.marqueeEl.style.height);
     const v = new THREE.Vector3();
     const out: number[] = [];
     for (let i = 0; i < layers.props.lastPlacedProps.length; i++) {
@@ -480,7 +552,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       const p = layers.props.lastPlacedProps[i].pos;
       v.set(p[0], p[1], -p[2]).project(stage.camera); // data pos; on-screen position is Z-flipped like the corners
       if (v.z < -1 || v.z > 1) continue; // behind the camera / beyond the far plane
-      const sx = (v.x * 0.5 + 0.5) * r.width, sy = (-v.y * 0.5 + 0.5) * r.height;
+      const sx = (v.x * 0.5 + 0.5) * r.width,
+        sy = (-v.y * 0.5 + 0.5) * r.height;
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) out.push(i);
     }
     return out;
@@ -492,15 +565,18 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     const knots = access.courseKnots();
     if (!knots.length) return [];
     const r = stage.container.getBoundingClientRect();
-    const left = parseFloat(stage.marqueeEl.style.left), top = parseFloat(stage.marqueeEl.style.top);
-    const right = left + parseFloat(stage.marqueeEl.style.width), bottom = top + parseFloat(stage.marqueeEl.style.height);
+    const left = parseFloat(stage.marqueeEl.style.left),
+      top = parseFloat(stage.marqueeEl.style.top);
+    const right = left + parseFloat(stage.marqueeEl.style.width),
+      bottom = top + parseFloat(stage.marqueeEl.style.height);
     const world = new THREE.Vector3();
     const out: number[] = [];
     for (const knot of knots) {
       knot.getWorldPosition(world);
       const projected = world.clone().project(stage.camera);
       if (projected.z < -1 || projected.z > 1) continue;
-      const sx = (projected.x * 0.5 + 0.5) * r.width, sy = (-projected.y * 0.5 + 0.5) * r.height;
+      const sx = (projected.x * 0.5 + 0.5) * r.width,
+        sy = (-projected.y * 0.5 + 0.5) * r.height;
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) out.push(knot.userData.knot as number);
     }
     return out.sort((a, b) => a - b);
@@ -550,7 +626,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
    *  T-junction). Past the first point any other surface edge, or the terrain, takes it only under Ctrl: in a
    *  busy map one is almost always under the cursor, and the chain's own depth carries on. A provisional surface
    *  cut keeps sticking — it can only continue across an edge or end on a point. */
-  function createEdgePlacement(axisLocked = createEdgeMods.axisLocked, stick = createEdgeMods.stick): CreateEdgeEndpoint | null {
+  function createEdgePlacement(
+    axisLocked = createEdgeMods.axisLocked,
+    stick = createEdgeMods.stick,
+  ): CreateEdgeEndpoint | null {
     const start = layers.createEdge.start;
     const sticks = placementTakesSurface(start, { onSurface: stick || layers.createEdge.cutting });
     const cid = layers.picking.pickCorner();
@@ -623,7 +702,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.gems.clearSelection();
     layers.screens.clearSelection();
     dropLineSelection();
-    if (n === null) layers.rails.seatRail(r); else layers.rails.seatNode(r, n);
+    if (n === null) layers.rails.seatRail(r);
+    else layers.rails.seatNode(r, n);
   }
 
   /** Select gem `i`: clear the other scene-object selections, then seat the gizmo on it. */
@@ -670,8 +750,15 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
    *  pointerUp — a stationary release drops one gem, a dragged release lays a spaced row). */
   function gemPointerDown(e: PointerEvent) {
     const pick = layers.scenePicking.pick({ gems: true, surfaces: 'authored' });
-    if (pick?.target === 'gem') { selectGem(pick.gemIndex); return; }
-    if (pick?.target !== 'surface') { layers.gems.clearSelection(); stage.cb.onSelectGem?.(null); return; }
+    if (pick?.target === 'gem') {
+      selectGem(pick.gemIndex);
+      return;
+    }
+    if (pick?.target !== 'surface') {
+      layers.gems.clearSelection();
+      stage.cb.onSelectGem?.(null);
+      return;
+    }
     const p = gemPlacementPoint(pick.hit.point);
     layers.gems.gemLine = { start: p, end: p };
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -684,8 +771,12 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     const ground = stage.pickSurface(access.terrain()); // per pointer move — accelerated
     if (!ground) return;
     layers.gems.gemLine.end = gemPlacementPoint(ground.point);
-    const a = layers.gems.gemLine.start, b = layers.gems.gemLine.end;
-    layers.gems.gemLinePreview.geometry.setFromPoints([new THREE.Vector3(a[0], a[1], a[2]), new THREE.Vector3(b[0], b[1], b[2])]);
+    const a = layers.gems.gemLine.start,
+      b = layers.gems.gemLine.end;
+    layers.gems.gemLinePreview.geometry.setFromPoints([
+      new THREE.Vector3(a[0], a[1], a[2]),
+      new THREE.Vector3(b[0], b[1], b[2]),
+    ]);
     layers.gems.gemLinePreview.visible = true;
     layers.gems.updateGemGhost(); // the ghost tracks the row's far end while dragging
   }
@@ -697,10 +788,12 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.gems.gemLinePreview.visible = false;
     (e.target as Element).releasePointerCapture?.(e.pointerId);
     if (!line) return;
-    const a = line.start, b = line.end;
+    const a = line.start,
+      b = line.end;
     const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-    if (len < 3) stage.cb.onPlaceGem?.(a);            // barely moved → a single gem
-    else stage.cb.onPlaceGemLine?.(a, b);             // dragged → a spaced row between the ends
+    if (len < 3)
+      stage.cb.onPlaceGem?.(a); // barely moved → a single gem
+    else stage.cb.onPlaceGemLine?.(a, b); // dragged → a spaced row between the ends
   }
 
   /** Props-mode middle-click copy: pick up whatever prop is under the cursor — a placed
@@ -725,7 +818,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface' && hit.source === 'authored')) return;
       const hit = stage.ray.intersectObject(access.terrain(), false)[0];
       const rail = layers.rails.selectedRail === null ? null : layers.rails.rails[layers.rails.selectedRail];
-      if (hit && rail) stage.cb.onAppendRailNode?.(access.snapPoint([hit.point.x, hit.point.y + rail.height, -hit.point.z]));
+      if (hit && rail)
+        stage.cb.onAppendRailNode?.(access.snapPoint([hit.point.x, hit.point.y + rail.height, -hit.point.z]));
       return;
     }
     // prop-line drawing (docs/070): the same chain of clicks, each appending a node on the ground itself —
@@ -756,27 +850,43 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // position is behind the prop/terrain it annotates.
     const sourcePick = layers.scenePicking.pick({ sources: true, screenMarkers: true });
     if (sourcePick?.target === 'screen') {
-      selectScreen(sourcePick.source, sourcePick.screenIndex); return;
+      selectScreen(sourcePick.source, sourcePick.screenIndex);
+      return;
     }
     if (sourcePick?.target === 'source') {
-      selectSourceMarker(sourcePick.source, sourcePick.sourceKind, sourcePick.sourceIndex); return;
+      selectSourceMarker(sourcePick.source, sourcePick.sourceKind, sourcePick.sourceIndex);
+      return;
     }
     // A prop line's node bulbs draw on top of everything, like the source icons, and for the same reason win the
     // click on top: a node sits at a joint between two members, inside the very fence it lays out (docs/070).
     const linePick = layers.scenePicking.pick({ lines: true });
-    if (linePick?.target === 'lineNode') { selectLineNode(linePick.lineId, linePick.node); return; }
+    if (linePick?.target === 'lineNode') {
+      selectLineNode(linePick.lineId, linePick.node);
+      return;
+    }
     // The selected path's Bézier handles draw on top too, and are only there while it is selected (docs/014).
     if (layers.pathHandles.pickHandle()) return;
     const pick = layers.scenePicking.pick({
-      props: 'standard', lights: true, rails: true, gems: true, screens: true,
-      surfaces: true, surfaceEpsilon: 1e-3,
+      props: 'standard',
+      lights: true,
+      rails: true,
+      gems: true,
+      screens: true,
+      surfaces: true,
+      surfaceEpsilon: 1e-3,
     });
 
     // nearest under the cursor decides the action (a reference prop selects READ-ONLY — MMB picks it up)
-    if (pick?.target === 'gem') { selectGem(pick.gemIndex); return; }
+    if (pick?.target === 'gem') {
+      selectGem(pick.gemIndex);
+      return;
+    }
     // A screen sits a hand's width proud of the board it covers, so it wins the click there — which is what
     // makes an attached screen editable at all (the board behind it would otherwise always be nearer).
-    if (pick?.target === 'screen') { selectScreen(pick.source, pick.screenIndex); return; }
+    if (pick?.target === 'screen') {
+      selectScreen(pick.source, pick.screenIndex);
+      return;
+    }
     if (pick?.target === 'light') {
       // Ctrl/Cmd+click adds a light to the selection beside the props, as it does a prop.
       const lightId = toggle ? layers.lights.freeLights[pick.lightIndex]?.id : undefined;
@@ -793,23 +903,30 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       return;
     }
     if (pick?.target === 'prop' && pick.source === 'reference') {
-      selectReferenceProp(pick.instance, pick.instanceId); return;
+      selectReferenceProp(pick.instance, pick.instanceId);
+      return;
     }
     // Authored only: a shipped level's grind curve is drawn for Effects mode and is not a thing Props edits
     // (its guide layer is hidden here anyway, so this is the type narrowing catching up with the visibility).
     if (pick?.target === 'rail' && pick.source === 'authored') {
       // a node bulb resolves its exact node; a hit on the tube grabs the node nearest the click
       const p = pick.hit.point;
-      selectRailNode(pick.railIndex, pick.railNode
-        ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z]));
+      selectRailNode(pick.railIndex, pick.railNode ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z]));
       return;
     }
     if (pick?.target === 'surface') {
       const placementEnabled = layers.gems.gemArmed || layers.lights.lightArmed;
-      if (rejectUnsupportedMeshPick(hit => placementEnabled && hit.kind === 'surface' && hit.source === 'authored')) return;
+      if (rejectUnsupportedMeshPick(hit => placementEnabled && hit.kind === 'surface' && hit.source === 'authored'))
+        return;
       const p: V3 = [pick.hit.point.x, pick.hit.point.y, -pick.hit.point.z];
-      if (layers.gems.gemArmed) { stage.cb.onPlaceGem?.(gemPlacementPoint(pick.hit.point)); return; } // touch tap
-      if (layers.lights.lightArmed) { stage.cb.onPlaceLight?.(p); return; }
+      if (layers.gems.gemArmed) {
+        stage.cb.onPlaceGem?.(gemPlacementPoint(pick.hit.point));
+        return;
+      } // touch tap
+      if (layers.lights.lightArmed) {
+        stage.cb.onPlaceLight?.(p);
+        return;
+      }
     }
     // Bare mesh components are not selectable in Props view. Keep the current scene-object selection intact
     // and acknowledge the exact component instead of treating it as an empty-space deselect.
@@ -837,9 +954,14 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   function pickAttachedEffect(additive = false) {
     if (layers.pathHandles.pickHandle()) return; // a motion path's handles, while one of its points is selected
     const pick = layers.scenePicking.pick({
-      props: 'effects', lights: true, rails: true, gems: true, knots: true,
+      props: 'effects',
+      lights: true,
+      rails: true,
+      gems: true,
+      knots: true,
       particleVolumes: true,
-      surfaces: true, surfaceEpsilon: 1e-3,
+      surfaces: true,
+      surfaceEpsilon: 1e-3,
     });
     if (pick && pick.target !== 'surface') {
       if (pick.target === 'particleVolume') {
@@ -859,14 +981,20 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       }
       if (pick.target === 'rail' && layers.rails.rails[pick.railIndex]) {
         const p = pick.hit.point;
-        selectRailNode(pick.railIndex, railHasTube(layers.rails.rails[pick.railIndex]) ? null
-          : pick.railNode ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z]));
+        selectRailNode(
+          pick.railIndex,
+          railHasTube(layers.rails.rails[pick.railIndex])
+            ? null
+            : (pick.railNode ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z])),
+        );
         return;
       }
       if (pick.target !== 'prop') {
         // (a prop line's bulbs are not queried here; its node would read as the props it lays out)
-        stage.cb.onClickTargetUnavailable?.(pick.target === 'source' ? 'light'
-          : pick.target === 'lineNode' ? 'prop' : pick.target, pick.source);
+        stage.cb.onClickTargetUnavailable?.(
+          pick.target === 'source' ? 'light' : pick.target === 'lineNode' ? 'prop' : pick.target,
+          pick.source,
+        );
         return;
       }
       if (pick.source === 'authored') {
@@ -874,8 +1002,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         if (!selected) stage.cb.onClickTargetUnavailable?.('prop', 'authored');
         return;
       }
-      const selected = pick.sourceIndex !== undefined
-        ? stage.cb.onSelectReferenceEffectProp?.(pick.sourceIndex, additive) ?? false : false;
+      const selected =
+        pick.sourceIndex !== undefined
+          ? (stage.cb.onSelectReferenceEffectProp?.(pick.sourceIndex, additive) ?? false)
+          : false;
       if (!selected) stage.cb.onClickTargetUnavailable?.('prop', 'reference');
       return;
     }
@@ -976,7 +1106,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.createEdge.armed) return; // endpoint clicks own the gesture; Enter/Esc finishes
     if (access.mode() === 'info' && layers.courseDraw.ownsDoubleClick()) return; // …as a course being redrawn's do
     stage.castAt(e);
-    const preview = access.preview(), reference = access.reference(), refData = access.refData();
+    const preview = access.preview(),
+      reference = access.reference(),
+      refData = access.refData();
     // Edit + cage: on the authored net a double-click near a control-net edge selects its whole EDGE-loop
     // (the complete perimeter when that edge is on a boundary; the straight-through loop otherwise), and
     // one into the open face its FACE-loop strip (not a camera focus); the read-only reference does the edge-loop.
@@ -995,7 +1127,9 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         const freeEdge = layers.picking.pickFreeEdgeAt();
         if (freeEdge) {
           if (!filtered('line', 'authored')) {
-            layers.edgeExtrusion.setSideHint(null); stage.cb.onSelectEdgeLoop?.(freeEdge, e.shiftKey); return;
+            layers.edgeExtrusion.setSideHint(null);
+            stage.cb.onSelectEdgeLoop?.(freeEdge, e.shiftKey);
+            return;
           }
         }
         const hit = stage.ray.intersectObject(access.terrain(), false)[0];
@@ -1004,17 +1138,22 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
           const edge = layers.picking.pickEdgeAt(quad, true);
           if (edge) {
             if (!filtered('line', 'authored')) {
-              layers.edgeExtrusion.setSideHint(quad); stage.cb.onSelectEdgeLoop?.(edge, e.shiftKey); return;
+              layers.edgeExtrusion.setSideHint(quad);
+              stage.cb.onSelectEdgeLoop?.(edge, e.shiftKey);
+              return;
             }
           } // edge-loop, skip the focus
           if (!filtered('surface', 'authored')) {
-            stage.cb.onSelectCellLoop?.(quad, e.shiftKey); return;            // face double-click → the face-loop strip
+            stage.cb.onSelectCellLoop?.(quad, e.shiftKey);
+            return; // face double-click → the face-loop strip
           }
         }
         const edge = stage.isOrtho ? layers.picking.pickAnyEdgeAt(true) : null;
         if (edge) {
           if (!filtered('line', 'authored')) {
-            layers.edgeExtrusion.setSideHint(null); stage.cb.onSelectEdgeLoop?.(edge, e.shiftKey); return;
+            layers.edgeExtrusion.setSideHint(null);
+            stage.cb.onSelectEdgeLoop?.(edge, e.shiftKey);
+            return;
           }
         } // edge-on ortho: no face ray to seed the loop
       }
@@ -1022,29 +1161,40 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         const re = layers.picking.pickRefEdge();
         if (re) {
           if (!filtered('line', 'reference')) {
-            layers.selection.clearRefCells(); layers.selection.clearRefVertices(); layers.selection.refEdgeSelect(re, e.shiftKey ? 'loopAdd' : 'loop'); return;
+            layers.selection.clearRefCells();
+            layers.selection.clearRefVertices();
+            layers.selection.refEdgeSelect(re, e.shiftKey ? 'loopAdd' : 'loop');
+            return;
           }
         } // edge-loop
         const rp = layers.picking.pickRefPatch();
         if (rp !== null) {
           if (!filtered('surface', 'reference')) {
-            layers.selection.clearRefEdges(); layers.selection.clearRefVertices(); layers.selection.refCellLoop(rp, e.shiftKey); return;
+            layers.selection.clearRefEdges();
+            layers.selection.clearRefVertices();
+            layers.selection.refCellLoop(rp, e.shiftKey);
+            return;
           }
         } // patch double-click → the face-loop strip
       }
       if (filteredNoticeSent) return;
     }
-    let center: THREE.Vector3 | null = null, radius = 0;
+    let center: THREE.Vector3 | null = null,
+      radius = 0;
     const knotHit = access.pickKnot();
     if (knotHit) {
-      center = knotHit.point.clone(); radius = Math.max(60, access.netSpacing() * 2);
+      center = knotHit.point.clone();
+      radius = Math.max(60, access.netSpacing() * 2);
     } else {
       // frame the CLICKED SPOT on whichever surface is nearer under the cursor (reference or authored terrain) —
       // NOT the whole reference bbox, which read as a jarring zoom-out on a double-click meant to inspect a patch.
       const refHit = reference && refData ? stage.ray.intersectObject(reference, false)[0] : undefined;
       const terrHit = stage.ray.intersectObject(access.terrain(), false)[0];
       const hit = refHit && (!terrHit || refHit.distance <= terrHit.distance) ? refHit : terrHit;
-      if (hit) { center = hit.point.clone(); radius = Math.max(100, access.netSpacing() * 3); }
+      if (hit) {
+        center = hit.point.clone();
+        radius = Math.max(100, access.netSpacing() * 3);
+      }
     }
     if (!center) return; // double-clicked empty space — leave the camera be
     layers.cameraCtl.frameSphere(center, radius);
@@ -1080,18 +1230,26 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (playPropPick()) return;
       const surfaceSource = layers.picking.vertexSourceAtPointer();
       if (rejectUnsupportedMeshPick(() => surfaceSource === layers.rideCtl.playTarget)) return;
-      layers.rideCtl.pickPlaySurface(); return;
+      layers.rideCtl.pickPlaySurface();
+      return;
     }
     // desktop camera: RMB = orbit around the cursor's surface hit; Alt+RMB = fly look (WASD flies under Alt alone).
     if (e.pointerType !== 'touch') {
       if (e.button === 2) {
         // A headset owns the camera: the wrist palette's right-click (docs/068) has no orbit or fly to start.
         if (layers.rideCtl.xrPresenting) return;
-        if (e.altKey) { layers.cameraCtl.startFly(e); return; } // Alt+RMB: fly look + WASD
-        layers.cameraCtl.startOrbit(e); return;
+        if (e.altKey) {
+          layers.cameraCtl.startFly(e);
+          return;
+        } // Alt+RMB: fly look + WASD
+        layers.cameraCtl.startOrbit(e);
+        return;
       }
       // MMB pans on drag; a stationary Paint click selects/arms a texture and a Props click picks up a prop.
-      if (e.button === 1) { layers.cameraCtl.seatTargetAhead(); mmbDown = access.mode() === 'paint' || access.mode() === 'props' ? { x: e.clientX, y: e.clientY } : null; }
+      if (e.button === 1) {
+        layers.cameraCtl.seatTargetAhead();
+        mmbDown = access.mode() === 'paint' || access.mode() === 'props' ? { x: e.clientX, y: e.clientY } : null;
+      }
     }
     if (e.button !== 0) return; // MMB (pan) handled by OrbitControls; ignore here
     // Replace owns the click before gizmos and marquee selection can move or deselect its target.
@@ -1110,36 +1268,45 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       // right under its arrows — so over a point the press passes the gizmo by. This capture listener runs
       // before the gizmo's own, which finds it disabled; it is back as soon as this press is dispatched.
       stage.gizmo.enabled = false;
-      setTimeout(() => { stage.gizmo.enabled = true; });
+      setTimeout(() => {
+        stage.gizmo.enabled = true;
+      });
     }
     const touch = e.pointerType === 'touch';
     stage.castAt(e);
     if (layers.propDeform.active) {
       if (stage.gizmo.enabled) layers.propDeform.pickHandle();
-      e.stopImmediatePropagation(); return;
+      e.stopImmediatePropagation();
+      return;
     }
 
     if (access.mode() === 'sculpt' && rejectUnsupportedPropPick()) return;
     // Paint: without a brush, LMB on a prop inspects its clicked submesh without arming it. With a brush
     // armed the click rejects instead — a mis-tap on an overhanging prop must not repaint the terrain.
     if (access.mode() === 'paint') {
-      if (layers.paint.paintArm) { if (rejectUnsupportedPropPick()) return; }
-      else if (inspectPropTextureAtPointer() !== undefined) return;
+      if (layers.paint.paintArm) {
+        if (rejectUnsupportedPropPick()) return;
+      } else if (inspectPropTextureAtPointer() !== undefined) return;
     }
 
     // Surface-driven views treat point / edge overlays as transparent when a valid surface lies under them.
     // Only a component with no usable surface underneath is acknowledged as unsupported. Sculpt remains
     // authored-only; unarmed Paint may inspect the reference but cannot apply a brush to it.
     const surfaceSource = layers.picking.vertexSourceAtPointer();
-    if (access.mode() === 'paint' && rejectUnsupportedMeshPick(() => surfaceSource === 'authored'
-      || (surfaceSource === 'reference' && !layers.paint.paintArm))) return;
-    if (access.mode() === 'sculpt'
-      && rejectUnsupportedMeshPick(() => surfaceSource === 'authored')) return;
+    if (
+      access.mode() === 'paint' &&
+      rejectUnsupportedMeshPick(
+        () => surfaceSource === 'authored' || (surfaceSource === 'reference' && !layers.paint.paintArm),
+      )
+    )
+      return;
+    if (access.mode() === 'sculpt' && rejectUnsupportedMeshPick(() => surfaceSource === 'authored')) return;
 
     if (access.mode() === 'paint') {
       // reaching here means the click did NOT land on a prop — any inspected-submesh outline is stale
       layers.refDecor.clearSurfaceInspection();
-      if (layers.paint.paintArm) { // placement mode: left button places the active tile (drag = a stroke of them)
+      if (layers.paint.paintArm) {
+        // placement mode: left button places the active tile (drag = a stroke of them)
         painting = paintAtPointer();
         if (painting && !touch) stage.controls.enabled = false;
       } else layers.paint.paintSelectAtPointer(e.shiftKey); // select/inspect only; MMB or the panel button arms it
@@ -1151,7 +1318,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (hit) {
         const grab = stage.cb.isGrabBrush(sculptModifiers(e));
         sculpting = grab ? beginSculptGrab(hit) : beginSculptDab(hit, e);
-        if (!touch) { stage.controls.enabled = false; (e.target as Element).setPointerCapture(e.pointerId); }
+        if (!touch) {
+          stage.controls.enabled = false;
+          (e.target as Element).setPointerCapture(e.pointerId);
+        }
         updateSculptRing(hit);
       }
       return;
@@ -1160,10 +1330,17 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // nav modes (Info / Edit): a single finger defers — a drag orbits around the touched surface point (the
     // custom ray-cast orbit, same as desktop RMB), a stationary tap selects on release (see pointerUp), so
     // picking a knot / corner still works. A mouse click selects immediately.
-    if (touch) { touchNav = { x: e.clientX, y: e.clientY }; (e.target as Element).setPointerCapture?.(e.pointerId); return; }
+    if (touch) {
+      touchNav = { x: e.clientX, y: e.clientY };
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      return;
+    }
     // Reset course: each click drops the next point of the new run on the terrain (clicking the newest one
     // again finishes). It owns Info's clicks while armed — no knot pick, no marquee.
-    if (access.mode() === 'info' && layers.courseDraw.active) { layers.courseDraw.onCommit(e); return; }
+    if (access.mode() === 'info' && layers.courseDraw.active) {
+      layers.courseDraw.onCommit(e);
+      return;
+    }
     // Info: defer the press so a still click keeps ordinary knot/reference selection while a drag can
     // rubber-band several authored course knots for bulk deletion.
     if (access.mode() === 'info') {
@@ -1172,7 +1349,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       return;
     }
     // Gem tool (mouse): drag-aware — a press selects a gem or begins a row on the terrain (committed on release).
-    if (access.mode() === 'props' && layers.gems.gemArmed) { gemPointerDown(e); return; }
+    if (access.mode() === 'props' && layers.gems.gemArmed) {
+      gemPointerDown(e);
+      return;
+    }
     // props select mode (nothing armed): defer the press — a still click selects on release (pointerUp),
     // a drag past the tap threshold rubber-bands a multi-selection instead (see pointerMove).
     if (access.mode() === 'props' && !layers.props.propArm && !layers.rails.railArmed && !layers.lights.lightArmed) {
@@ -1181,21 +1361,33 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       return;
     }
     // Clipboard paste: one terrain or construction-plane click commits the hovering copy, then disarms it.
-    if (access.mode() === 'edit' && layers.clipboardPlacement.active) { layers.clipboardPlacement.onCommit(); return; }
+    if (access.mode() === 'edit' && layers.clipboardPlacement.active) {
+      layers.clipboardPlacement.onCommit();
+      return;
+    }
     // loop-cut surgery (docs/017): a left click commits the previewed cut (the ghost the hover built) and
     // stays armed for another. The click IS the commit — no corner select / box-select deferral.
     if (access.mode() === 'edit' && layers.surgery.onCommit()) return;
     // Create Tube: collect its two axis endpoints; the panel controls derive a live quad shell from them.
-    if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
+    if (access.mode() === 'edit' && layers.tubeTool.active) {
+      layers.tubeTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
+      return;
+    }
     // Create Grid: collect its three corners; the panel's counts and the cursor shape the live lattice.
-    if (access.mode() === 'edit' && layers.gridTool.active) { layers.gridTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
+    if (access.mode() === 'edit' && layers.gridTool.active) {
+      layers.gridTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
+      return;
+    }
     // Trail drawing (docs/023): a click on a knot picks it up to move; anywhere else extends the centre spline.
     if (access.mode() === 'edit' && layers.trailTool.active) {
       if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(e.shiftKey);
       return;
     }
     // Create patch: collect four terrain / free-space / existing-vertex corners, then append and disarm.
-    if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey); return; }
+    if (access.mode() === 'edit' && layers.patchTool.active) {
+      layers.patchTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
+      return;
+    }
     // target-weld gesture (docs/023 S4): a left click picks the FROM vertex, the next the INTO survivor, then
     // fuses via onWeld. The click IS the pick — no corner select / box-select deferral.
     if (access.mode() === 'edit' && layers.weldTool.active && layers.weldTool.onCommit()) return;
@@ -1221,15 +1413,30 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // hover preview to commit, so swallow it rather than fall through to corner selection.
     if (access.mode() === 'edit' && layers.surgery.tool) return;
     // Clipboard-paste touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.clipboardPlacement.active) { layers.clipboardPlacement.onCommit(); return; }
+    if (access.mode() === 'edit' && layers.clipboardPlacement.active) {
+      layers.clipboardPlacement.onCommit();
+      return;
+    }
     // Reset-course touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'info' && layers.courseDraw.active) { layers.courseDraw.onCommit(); return; }
+    if (access.mode() === 'info' && layers.courseDraw.active) {
+      layers.courseDraw.onCommit();
+      return;
+    }
     // Create patch touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.patchTool.active) { layers.patchTool.onCommit(shift, ctrl); return; }
+    if (access.mode() === 'edit' && layers.patchTool.active) {
+      layers.patchTool.onCommit(shift, ctrl);
+      return;
+    }
     // Create Tube touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.tubeTool.active) { layers.tubeTool.onCommit(shift, ctrl); return; }
+    if (access.mode() === 'edit' && layers.tubeTool.active) {
+      layers.tubeTool.onCommit(shift, ctrl);
+      return;
+    }
     // Create Grid touch tap (mouse is handled in pointerDown).
-    if (access.mode() === 'edit' && layers.gridTool.active) { layers.gridTool.onCommit(shift, ctrl); return; }
+    if (access.mode() === 'edit' && layers.gridTool.active) {
+      layers.gridTool.onCommit(shift, ctrl);
+      return;
+    }
     // Trail drawing touch tap (mouse is handled in pointerDown).
     if (access.mode() === 'edit' && layers.trailTool.active) {
       if (!layers.trailTool.pickKnot() && !layers.pathHandles.pickHandle()) layers.trailTool.onCommit(shift);
@@ -1239,14 +1446,20 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.weldTool.active && layers.weldTool.onCommit()) return;
     // props mode: place the armed prop at its ghost, or (select mode) grab what's under the cursor / clear.
     // Runs for a mouse click (pointerDown) and a touch tap (pointerUp).
-    if (access.mode() === 'props') { pickOrPlaceProp(ctrl); return; }
+    if (access.mode() === 'props') {
+      pickOrPlaceProp(ctrl);
+      return;
+    }
     if (access.mode() === 'effects') {
       if (layers.rails.railArmed) pickOrPlaceProp();
       else pickAttachedEffect(ctrl);
       return;
     }
 
-    if (access.mode() === 'edit' && layers.createEdge.armed) { createEdgeClick(shift, ctrl); return; }
+    if (access.mode() === 'edit' && layers.createEdge.armed) {
+      createEdgeClick(shift, ctrl);
+      return;
+    }
 
     let filteredNoticeSent = false;
     const filteredEditPick = (kind: MeshComponentHit['kind'], source: MeshComponentHit['source']) => {
@@ -1316,7 +1529,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       stage.cb.onSelectCoincidentVertices?.(null);
     }
 
-    const reference = access.reference(), refData = access.refData();
+    const reference = access.reference(),
+      refData = access.refData();
     // Info mode: select a knot / the reference / the mountain body so it highlights in the scene tree.
     // The terrain stays read-only here, but Info's own objects move: a course knot seats the translate
     // gizmo (the run line is Info's document — its drag reroutes the exported spawn/respawn/race line),
@@ -1351,14 +1565,20 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (rejectUnsupportedPropPick()) return;
       // Info handles a terrain body / reference surface as a Scene selection, but has no vertex or line edit.
       if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface')) return;
-      if (reference && stage.ray.intersectObject(reference, false)[0]) { host.selectReference(); return; }
+      if (reference && stage.ray.intersectObject(reference, false)[0]) {
+        host.selectReference();
+        return;
+      }
       host.clearRefSelection(); // clicking off the reference drops its move handle / gizmo
-      if (stage.gizmoKind === 'knot') { stage.detachGizmo(); stage.cb.onSelectKnot(null); } // clicking off a knot drops it too
+      if (stage.gizmoKind === 'knot') {
+        stage.detachGizmo();
+        stage.cb.onSelectKnot(null);
+      } // clicking off a knot drops it too
       stage.cb.onSelectMountain?.(); // terrain or empty space -> select the mountain (clears any reference box)
       return;
     }
 
-    const anchorHit = access.pickAnchor();   // the flags sit above the knots; grab them first
+    const anchorHit = access.pickAnchor(); // the flags sit above the knots; grab them first
     if (anchorHit) {
       stage.cb.onSelectKnot(null);
       layers.selection.placeCornerMarker(null);
@@ -1372,7 +1592,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (knotHit) {
       const idx = knotHit.object.userData.knot as number;
       stage.cb.onSelectKnot(idx);
-      layers.selection.placeCornerMarker(null);   // a knot and a corner can't both be the gizmo target
+      layers.selection.placeCornerMarker(null); // a knot and a corner can't both be the gizmo target
       stage.cb.onSelectCorner(null);
       layers.selection.clearRefLoops();
       stage.attachGizmo(knotHit.object as THREE.Mesh, 'knot', idx); // drag it with the translate gizmo
@@ -1384,8 +1604,14 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (access.mode() === 'edit' && layers.cage.cage && layers.cage.subCage && layers.transforms.mode === 'move') {
       const authoredPoint = access.isMountain() ? layers.picking.pickSubCagePoint() : null;
       const referencePoint = layers.picking.pickReferenceSubCagePoint();
-      const source = authoredPoint && referencePoint ? (layers.picking.vertexSourceAtPointer() ?? 'authored')
-        : referencePoint ? 'reference' : authoredPoint ? 'authored' : null;
+      const source =
+        authoredPoint && referencePoint
+          ? (layers.picking.vertexSourceAtPointer() ?? 'authored')
+          : referencePoint
+            ? 'reference'
+            : authoredPoint
+              ? 'authored'
+              : null;
       const pointFiltered = source ? filteredEditPick('vertex', source) : false;
       if (!pointFiltered && source === 'authored' && authoredPoint) {
         if ((shift || ctrl) && layers.selection.referenceMeshSelectionActive()) return;
@@ -1424,7 +1650,12 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // eight edge tangents (any single selection) plus the four interior twist points (a single cell). Click one
     // to seat the translate gizmo on it and pull that handle (Surface⇄World pill respected). Priority over the
     // corner / edge / face picks, like the tangent nubs (the cell / edge / corner families are mutually exclusive).
-    if (access.isMountain() && access.mode() === 'edit' && layers.transforms.mode === 'move' && layers.selection.cageHandleMeshes.length) {
+    if (
+      access.isMountain() &&
+      access.mode() === 'edit' &&
+      layers.transforms.mode === 'move' &&
+      layers.selection.cageHandleMeshes.length
+    ) {
       const hit = stage.ray.intersectObjects(layers.selection.cageHandleMeshes, false)[0];
       if (hit && !filteredEditPick('vertex', 'authored')) {
         layers.selection.selectCageHandle(hit.object.userData as CageHandleId);
@@ -1446,7 +1677,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (ci !== null && !filteredEditPick('vertex', 'authored')) {
         if ((shift || ctrl) && layers.selection.referenceMeshSelectionActive()) return; // modified picks never cross surfaces/families
         stage.cb.onSelectKnot(null);
-        layers.selection.clearRefLoops();       // a corner pick (any modifier) replaces any reference highlight
+        layers.selection.clearRefLoops(); // a corner pick (any modifier) replaces any reference highlight
         // Ctrl toggles this corner in / out of a multi-selection; Shift takes the rectangular block of corners
         // spanned to the anchor across the quad grid — both build the group selection (the host seats the
         // centroid gizmo), matching the edge modifiers. A plain click single-selects: seat the translate gizmo
@@ -1454,13 +1685,24 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         // With control cages pinned a Shift range runs over the whole control lattice, so the handles and
         // interiors between the two corners come too (the host falls back to the corner block when none show).
         const mixedControlSelection = layers.selection.controlPointSel.some(id => id.kind !== 'vertex');
-        const doc = access.meshDoc(), picked = doc ? vertexName(doc, ci) : null;
-        if (ctrl && mixedControlSelection && picked !== null) { stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'toggle'); return; }
-        if (shift && (mixedControlSelection || layers.cage.subCage) && picked !== null) {
-          stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'range'); return;
+        const doc = access.meshDoc(),
+          picked = doc ? vertexName(doc, ci) : null;
+        if (ctrl && mixedControlSelection && picked !== null) {
+          stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'toggle');
+          return;
         }
-        if (ctrl) { stage.cb.onToggleCorner?.(ci); return; }
-        if (shift) { stage.cb.onRangeSelectCorner?.(ci); return; }
+        if (shift && (mixedControlSelection || layers.cage.subCage) && picked !== null) {
+          stage.cb.onSelectControlPoints?.([{ kind: 'vertex', vertex: picked }], 'range');
+          return;
+        }
+        if (ctrl) {
+          stage.cb.onToggleCorner?.(ci);
+          return;
+        }
+        if (shift) {
+          stage.cb.onRangeSelectCorner?.(ci);
+          return;
+        }
         layers.selection.placeCornerMarker(ci); // seat the invisible gizmo anchor on the corner
         stage.attachGizmo(layers.selection.cornerMarker, 'corner', ci); // gizmo on the corner
         stage.cb.onSelectCorner(ci);
@@ -1491,7 +1733,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         stage.detachGizmo();
         layers.selection.placeCornerMarker(null);
         stage.cb.onSelectCorner(null);
-        layers.selection.clearRefCells();       // edge is the active ref family (a plain pick drops the cell shading)
+        layers.selection.clearRefCells(); // edge is the active ref family (a plain pick drops the cell shading)
         layers.selection.clearRefVertices();
         layers.selection.refEdgeSelect(re, mode);
         return;
@@ -1505,7 +1747,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         stage.detachGizmo();
         layers.selection.placeCornerMarker(null);
         stage.cb.onSelectCorner(null);
-        layers.selection.clearRefEdges();       // patch is the active ref family (a plain pick drops the edge selection)
+        layers.selection.clearRefEdges(); // patch is the active ref family (a plain pick drops the edge selection)
         layers.selection.clearRefVertices();
         layers.selection.refCellSelect(rp, mode);
         return;
@@ -1628,8 +1870,11 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
         layers.rideCtl.setDesktopBoardAim(ridePointerNdc(e.clientX, e.clientY));
       // Captured RMB-look is driven from ride/pointer-lock's document mousemove. Keep this path as the fallback
       // while the request is pending, after Escape breaks the capture, or when Pointer Lock is unavailable.
-      if (e.pointerType === 'mouse' && rideOrbitMouse
-        && (typeof document === 'undefined' || document.pointerLockElement !== dom)) {
+      if (
+        e.pointerType === 'mouse' &&
+        rideOrbitMouse &&
+        (typeof document === 'undefined' || document.pointerLockElement !== dom)
+      ) {
         layers.rideCtl.orbitCamera(e.movementX || 0, e.movementY || 0);
         e.preventDefault();
       }
@@ -1639,15 +1884,36 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // the view as yaw (OrbitControls keeps driving the simultaneous pinch-zoom / pan from the same moves)
     if (e.pointerType === 'touch' && layers.cameraCtl.touchPts.has(e.pointerId)) {
       layers.cameraCtl.touchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (layers.cameraCtl.twist && layers.cameraCtl.touchPts.size === 2) { layers.cameraCtl.applyTwist(); return; }
+      if (layers.cameraCtl.twist && layers.cameraCtl.touchPts.size === 2) {
+        layers.cameraCtl.applyTwist();
+        return;
+      }
     }
-    if (layers.cameraCtl.orbiting) { layers.cameraCtl.applyOrbitMove(e); return; }
-    if (layers.cameraCtl.flying) { layers.cameraCtl.applyLook(e.movementX || 0, e.movementY || 0); return; }
-    if (layers.edgeExtrusion.dragging) { layers.edgeExtrusion.update(e); return; }
+    if (layers.cameraCtl.orbiting) {
+      layers.cameraCtl.applyOrbitMove(e);
+      return;
+    }
+    if (layers.cameraCtl.flying) {
+      layers.cameraCtl.applyLook(e.movementX || 0, e.movementY || 0);
+      return;
+    }
+    if (layers.edgeExtrusion.dragging) {
+      layers.edgeExtrusion.update(e);
+      return;
+    }
     if (layers.edgeExtrusion.staged && layers.edgeExtrusion.mode === 'pull') return;
-    if (layers.gems.gemLine) { gemPointerMove(e); return; } // dragging a gem row
+    if (layers.gems.gemLine) {
+      gemPointerMove(e);
+      return;
+    } // dragging a gem row
     // a deferred single-finger touch that moves past the tap threshold is an orbit-drag, not a tap-to-select
-    if (touchNav) { if (Math.hypot(e.clientX - touchNav.x, e.clientY - touchNav.y) > 4) { touchNav = null; layers.cameraCtl.startOrbit(e); } return; }
+    if (touchNav) {
+      if (Math.hypot(e.clientX - touchNav.x, e.clientY - touchNav.y) > 4) {
+        touchNav = null;
+        layers.cameraCtl.startOrbit(e);
+      }
+      return;
+    }
     // a deferred Info press that moves past the tap threshold becomes a course-knot marquee
     if (infoClickPending) {
       if (Math.hypot(e.clientX - infoClickPending.x, e.clientY - infoClickPending.y) > 4) {
@@ -1698,7 +1964,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     if (access.mode() === 'sculpt') {
       stage.castAt(e);
-      if (sculpting && sculptGrab) { updateSculptGrab(); return; }
+      if (sculpting && sculptGrab) {
+        updateSculptGrab();
+        return;
+      }
       // The terrain's cached pick tree answers the ring's hover in microseconds; the stock triangle walk is
       // ~56 ms on a big mountain, which is what left the ring — and any MMB pan taken while Sculpt is hovered
       // — trailing the cursor. A live dab keeps that same tree: the quilt is re-emitted through the buffers it
@@ -1709,7 +1978,10 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       if (sculptDabbing) holdPointer = e; // a held dab re-casts from here, on or off the terrain
       if (hit) {
         updateSculptRing(hit);
-        if (sculpting) { sculptAt(hit, e); lastDabAt = performance.now(); }
+        if (sculpting) {
+          sculptAt(hit, e);
+          lastDabAt = performance.now();
+        }
       }
       return;
     }
@@ -1746,9 +2018,16 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     // every node (corner, knot, tangent nub) is moved by the translate gizmo now; only the placement
     // ghosts and painting still ride the raw pointer here.
     if (access.mode() === 'props') {
-      if (layers.props.propArm) { stage.castAt(e); layers.props.updateGhost(); } // the held prop's ghost rides the hover
-      else if (layers.gems.gemArmed && !layers.gems.gemLine) { stage.castAt(e); layers.gems.updateGemGhost(); } // so does the gem tool's crystal
-      else if (layers.propLines.drawing) { // …and a line being drawn stretches a band to where the next node would land
+      if (layers.props.propArm) {
+        stage.castAt(e);
+        layers.props.updateGhost();
+      } // the held prop's ghost rides the hover
+      else if (layers.gems.gemArmed && !layers.gems.gemLine) {
+        stage.castAt(e);
+        layers.gems.updateGemGhost();
+      } // so does the gem tool's crystal
+      else if (layers.propLines.drawing) {
+        // …and a line being drawn stretches a band to where the next node would land
         stage.castAt(e);
         const hit = stage.groundHit();
         layers.propLines.updateBand(hit ? access.snapPoint([hit.x, hit.y, -hit.z]) : null);
@@ -1757,7 +2036,7 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     }
     if (access.mode() === 'paint' && layers.paint.paintArm) {
       stage.castAt(e);
-      layers.paint.updatePaintGhost(painting);    // the brush ghost rides the hover (and the stroke)
+      layers.paint.updatePaintGhost(painting); // the brush ghost rides the hover (and the stroke)
       if (painting) paintAtPointer(true); // left button held: keep painting the stroke
     }
   }
@@ -1767,14 +2046,23 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
    *  early-returns on !enabled), so the click falls through to the nub branch and re-seats the gizmo
    *  there - i.e. nubs take precedence over the corner's gizmo handles drawn on top of them. */
   function gizmoHoverGate(e: PointerEvent) {
-    if (access.mode() !== 'edit' || !access.isMountain() || painting || !stage.gizmo.object || stage.gizmo.dragging) return;
-    if (layers.transforms.mode !== 'move') { stage.gizmo.enabled = true; return; } // rotate / scale handles own the gesture until W returns to point editing
+    if (access.mode() !== 'edit' || !access.isMountain() || painting || !stage.gizmo.object || stage.gizmo.dragging)
+      return;
+    if (layers.transforms.mode !== 'move') {
+      stage.gizmo.enabled = true;
+      return;
+    } // rotate / scale handles own the gesture until W returns to point editing
     const nubs = layers.cage.visibleNubs().filter(m => m !== stage.gizmo.object);
     // cage handles win over the anchor's gizmo the same way nubs do — but never the PICKED handle: it IS the
     // gizmo target, so hovering it must let the gizmo arrows through (to drag), not re-gate the press.
-    const handles = layers.selection.cageHandleMeshes.filter(m => !layers.selection.cageHandleMatches(layers.selection.selectedCageHandle, m.userData as CageHandleId));
+    const handles = layers.selection.cageHandleMeshes.filter(
+      m => !layers.selection.cageHandleMatches(layers.selection.selectedCageHandle, m.userData as CageHandleId),
+    );
     const others = [...nubs, ...handles];
-    if (!others.length) { stage.gizmo.enabled = true; return; }
+    if (!others.length) {
+      stage.gizmo.enabled = true;
+      return;
+    }
     stage.castAt(e);
     stage.gizmo.enabled = stage.ray.intersectObjects(others, false).length === 0;
   }
@@ -1782,8 +2070,14 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   /** A Ctrl/Cmd press in Edit's point editing that lands on a control point — a corner, or a dot of a pinned
    *  control cage — rather than on the gizmo drawn over it. */
   function ctrlPicksPastGizmo(e: PointerEvent): boolean {
-    if (!(e.ctrlKey || e.metaKey) || access.mode() !== 'edit' || !access.isMountain() || !layers.cage.cage
-      || layers.transforms.mode !== 'move') return false;
+    if (
+      !(e.ctrlKey || e.metaKey) ||
+      access.mode() !== 'edit' ||
+      !access.isMountain() ||
+      !layers.cage.cage ||
+      layers.transforms.mode !== 'move'
+    )
+      return false;
     stage.castAt(e);
     return layers.picking.pickSubCagePoint() !== null || layers.picking.pickCorner(true) !== null;
   }
@@ -1796,13 +2090,28 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     layers.cameraCtl.activePointers.delete(e.pointerId);
     layers.cameraCtl.touchPts.delete(e.pointerId);
     if (layers.cameraCtl.twist && layers.cameraCtl.touchPts.size < 2) layers.cameraCtl.twist = null; // a finger lifted: the twist gesture is over
-    if (layers.cameraCtl.orbiting) { layers.cameraCtl.endOrbit(e); return; }
-    if (layers.cameraCtl.flying) { layers.cameraCtl.endFly(e); return; }
-    if (layers.propDeform.active) { mmbDown = null; return; }
+    if (layers.cameraCtl.orbiting) {
+      layers.cameraCtl.endOrbit(e);
+      return;
+    }
+    if (layers.cameraCtl.flying) {
+      layers.cameraCtl.endFly(e);
+      return;
+    }
+    if (layers.propDeform.active) {
+      mmbDown = null;
+      return;
+    }
     // A staged Path extrusion still needs ordinary clicks/taps to select its guide. Only a live pull drag owns release.
-    if (layers.edgeExtrusion.dragging) { layers.edgeExtrusion.finish(e, e.type !== 'pointercancel'); return; }
+    if (layers.edgeExtrusion.dragging) {
+      layers.edgeExtrusion.finish(e, e.type !== 'pointercancel');
+      return;
+    }
     if (layers.edgeExtrusion.staged && layers.edgeExtrusion.mode === 'pull') return;
-    if (layers.gems.gemLine) { gemPointerUp(e); return; } // finished a gem-row drag (or a stationary single gem)
+    if (layers.gems.gemLine) {
+      gemPointerUp(e);
+      return;
+    } // finished a gem-row drag (or a stationary single gem)
     // a deferred single-finger touch that never dragged is a tap: select what's under it, like a mouse click
     if (touchNav) {
       touchNav = null;
@@ -1900,17 +2209,23 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     if (!preserveInspection) layers.refDecor.clearSurfaceInspection();
     // props first: a model surface in front of the terrain picks ITS texture (occluded props lose)
     const propPick = layers.scenePicking.pick({
-      props: 'standard', occludeWithSurfaces: true, surfaceEpsilon: 1e-3,
+      props: 'standard',
+      occludeWithSurfaces: true,
+      surfaceEpsilon: 1e-3,
     });
     if (propPick?.target === 'prop') {
       const t = propPickTex(propPick.hit);
       stage.cb.onPick({ source: 'prop', ref: t.ref, surface: null, name: t.name, rot: 0, mirror: false });
       return;
     }
-    const reference = access.reference(), refData = access.refData();
+    const reference = access.reference(),
+      refData = access.refData();
     const targets: THREE.Object3D[] = reference ? [access.terrain(), reference] : [access.terrain()];
     const hit = stage.ray.intersectObjects(targets, false)[0];
-    if (!hit || hit.faceIndex == null) { stage.cb.onPick({ source: 'current', ref: null, surface: null, name: '', rot: 0, mirror: false }); return; }
+    if (!hit || hit.faceIndex == null) {
+      stage.cb.onPick({ source: 'current', ref: null, surface: null, name: '', rot: 0, mirror: false });
+      return;
+    }
     if (reference && hit.object === reference && refData) {
       const rd = refData;
       const patch = Math.floor(hit.faceIndex / rd.facesPerPatch);
@@ -1920,19 +2235,33 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
       const uv = rd.patchUV[patch];
       const o = ref && uv ? orientFromPatchUV(uv) : { rot: 0, mirror: false };
       stage.cb.onPick({
-        source: 'reference', ref, surface: rd.patchSurf[patch] ?? null,
-        name: name ?? '', rot: o.rot, mirror: o.mirror,
+        source: 'reference',
+        ref,
+        surface: rd.patchSurf[patch] ?? null,
+        name: name ?? '',
+        rot: o.rot,
+        mirror: o.mirror,
       });
       return;
     }
     const preview = access.preview();
-    if (!preview) { stage.cb.onPick({ source: 'current', ref: null, surface: null, name: '', rot: 0, mirror: false }); return; }
+    if (!preview) {
+      stage.cb.onPick({ source: 'current', ref: null, surface: null, name: '', rot: 0, mirror: false });
+      return;
+    }
     const pv = preview;
     const cell = Math.floor(hit.faceIndex / pv.facesPerCell);
     const ref = pv.cellTex[cell] ?? null;
     const surface = pv.cellSurf[cell] ?? null;
     const o = pv.cellOrient[cell] ?? { rot: 0, mirror: false }; // an authored cell keeps the exact orientation it was painted at
-    stage.cb.onPick({ source: 'current', ref, surface, name: ref ? parseTexRef(ref).name : '', rot: o.rot, mirror: o.mirror });
+    stage.cb.onPick({
+      source: 'current',
+      ref,
+      surface,
+      name: ref ? parseTexRef(ref).name : '',
+      rot: o.rot,
+      mirror: o.mirror,
+    });
   }
 
   const dom = stage.renderer.domElement;
@@ -2010,7 +2339,8 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
   // leave a deferred click / rubber-band behind in that case; the next click must start from a clean slate.
   dom.addEventListener('lostpointercapture', () => {
     clearRideMouseButtons();
-    cancelSelectionDrag(); cancelSculptDrag();
+    cancelSelectionDrag();
+    cancelSculptDrag();
   });
   dom.style.touchAction = 'none'; // single finger is ours; CameraController configures the OrbitControls slots
   dom.addEventListener('contextmenu', e => e.preventDefault()); // RMB-drag must not pop the menu
@@ -2028,13 +2358,24 @@ export function createPointerRouter(stage: Stage, sel: MeshSelectionState, layer
     createEdgePlacement,
     refreshCreateEdgeGhost,
     /** Where the pointer is over the canvas, or null once it has left it. */
-    get pointerAt() { return pointerAt; },
+    get pointerAt() {
+      return pointerAt;
+    },
     /** Sculpt brush footprint radius (world units); the ring overlay tracks it live. */
-    get brushRadius() { return brushRadius; },
-    set brushRadius(v: number) { brushRadius = v; },
+    get brushRadius() {
+      return brushRadius;
+    },
+    set brushRadius(v: number) {
+      brushRadius = v;
+    },
     /** Sculpt brush falloff; the ring's inner half-strength circle draws its shape. */
-    get brushFalloff() { return brushFalloff; },
-    set brushFalloff(v: BrushFalloff) { brushFalloff = v; showBrushShape(); },
+    get brushFalloff() {
+      return brushFalloff;
+    },
+    set brushFalloff(v: BrushFalloff) {
+      brushFalloff = v;
+      showBrushShape();
+    },
   };
 }
 

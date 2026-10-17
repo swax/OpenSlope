@@ -3,8 +3,13 @@ import { surfaceStyle } from '../doc/types';
 import { deriveQuadMesh, type DerivedQuadMesh } from '../doc/mountain';
 import { patchNormal, patchPoint } from '../math/bezier';
 import {
-  bilinearTwist, docEdgeHandles, meshAdjacency, quadControlPoints,
-  type EdgeHandle, type MeshAdjacency, type QuadMesh,
+  bilinearTwist,
+  docEdgeHandles,
+  meshAdjacency,
+  quadControlPoints,
+  type EdgeHandle,
+  type MeshAdjacency,
+  type QuadMesh,
 } from './topology';
 import type { TexRef } from '../paint/textures';
 import { orientUV } from '../paint/orientation';
@@ -58,12 +63,17 @@ export interface PreviewData {
 }
 
 /** The quilt buffers one patch is written into — everything a patch owns a contiguous slice of. */
-type QuiltBuffers = Pick<PreviewData,
-  'positions' | 'normals' | 'colors' | 'uvs' | 'indices' | 'cellTex' | 'cellSurf' | 'cellOrient'>;
+type QuiltBuffers = Pick<
+  PreviewData,
+  'positions' | 'normals' | 'colors' | 'uvs' | 'indices' | 'cellTex' | 'cellSurf' | 'cellOrient'
+>;
 
 /** What emitting one patch reads: the shape `deriveQuadMesh` hands back, minus the parts only the export
  *  needs. Named narrowly so the incremental refresh can supply it from a live quilt plus the document. */
-type PatchSource = Pick<DerivedQuadMesh, 'mesh' | 'edgeHandle' | 'surfOf' | 'texOf' | 'orientOf' | 'twistOf' | 'parity'>;
+type PatchSource = Pick<
+  DerivedQuadMesh,
+  'mesh' | 'edgeHandle' | 'surfOf' | 'texOf' | 'orientOf' | 'twistOf' | 'parity'
+>;
 
 /**
  * Write ONE patch into the quilt at the slot its quad index owns.
@@ -73,7 +83,8 @@ type PatchSource = Pick<DerivedQuadMesh, 'mesh' | 'edgeHandle' | 'surfOf' | 'tex
  * the incremental refresh share this function instead of agreeing to match: they ARE the same write.
  */
 function patchWriter(out: QuiltBuffers, d: PatchSource) {
-  const res = PREVIEW_RES, side = res + 1;
+  const res = PREVIEW_RES,
+    side = res + 1;
   return (q: number): void => {
     const cp = quadControlPoints(d.mesh, d.edgeHandle, q, d.twistOf(q));
     const surf = d.surfOf(q);
@@ -85,15 +96,23 @@ function patchWriter(out: QuiltBuffers, d: PatchSource) {
     out.cellOrient[q] = o;
 
     const vBase = q * PATCH_VERTS;
-    let vp = vBase * 3, tp = vBase * 2;
+    let vp = vBase * 3,
+      tp = vBase * 2;
     for (let iu = 0; iu < side; iu++) {
       for (let iv = 0; iv < side; iv++) {
-        const u = iu / res, v = iv / res;
+        const u = iu / res,
+          v = iv / res;
         const p = patchPoint(cp, u, v);
         const n = patchNormal(cp, u, v);
-        out.positions[vp] = p[0]; out.positions[vp + 1] = p[1]; out.positions[vp + 2] = p[2];
-        out.normals[vp] = n[0]; out.normals[vp + 1] = n[1]; out.normals[vp + 2] = n[2];
-        out.colors[vp] = tint[0] * shade; out.colors[vp + 1] = tint[1] * shade; out.colors[vp + 2] = tint[2] * shade;
+        out.positions[vp] = p[0];
+        out.positions[vp + 1] = p[1];
+        out.positions[vp + 2] = p[2];
+        out.normals[vp] = n[0];
+        out.normals[vp + 1] = n[1];
+        out.normals[vp + 2] = n[2];
+        out.colors[vp] = tint[0] * shade;
+        out.colors[vp + 1] = tint[1] * shade;
+        out.colors[vp + 2] = tint[2] * shade;
         vp += 3;
         // one tile per patch (the SSX convention): U 0->1 down the rows, V 0->-1 across the cols. The export
         // writes the same tile pulled in by its seam inset (level.ts UV_INSET) - invisible at 0.8%, so the
@@ -113,8 +132,12 @@ function patchWriter(out: QuiltBuffers, d: PatchSource) {
         const dd = c2 + 1;
         // wound so the CCW face normal matches the skyward analytic normal
         // (du×dv points down here - see spine.ts frameAt / mountain.ts orientation - wind against it)
-        out.indices[ip++] = a; out.indices[ip++] = dd; out.indices[ip++] = c2;
-        out.indices[ip++] = a; out.indices[ip++] = b; out.indices[ip++] = dd;
+        out.indices[ip++] = a;
+        out.indices[ip++] = dd;
+        out.indices[ip++] = c2;
+        out.indices[ip++] = a;
+        out.indices[ip++] = b;
+        out.indices[ip++] = dd;
       }
     }
   };
@@ -220,7 +243,7 @@ export function refreshPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, qu
   if (!previewMatchesTopology(doc, preview)) return 0;
   preview.mesh.vertices = doc.vertices;
   preview.edgeHandle = docEdgeHandles(preview.mesh, doc, preview.adjacency);
-  preview.twistOf = q => doc.linearCage ? bilinearTwist(preview.mesh, q) : doc.quadTwist?.[q] ?? null;
+  preview.twistOf = q => (doc.linearCage ? bilinearTwist(preview.mesh, q) : (doc.quadTwist?.[q] ?? null));
   const write = patchWriter(preview, {
     mesh: preview.mesh,
     edgeHandle: preview.edgeHandle,
@@ -249,10 +272,16 @@ export function refreshPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, qu
  */
 export function previewMismatch(doc: QuadMeshDoc, preview: PreviewData): string | null {
   const full = buildMountainPreview(doc);
-  const numeric: (keyof PreviewData & ('positions' | 'normals' | 'colors' | 'uvs' | 'indices'))[] =
-    ['positions', 'normals', 'colors', 'uvs', 'indices'];
+  const numeric: (keyof PreviewData & ('positions' | 'normals' | 'colors' | 'uvs' | 'indices'))[] = [
+    'positions',
+    'normals',
+    'colors',
+    'uvs',
+    'indices',
+  ];
   for (const field of numeric) {
-    const mine = preview[field], theirs = full[field];
+    const mine = preview[field],
+      theirs = full[field];
     if (mine.length !== theirs.length) return `${field}: ${mine.length} values, a full rebuild has ${theirs.length}`;
     for (let at = 0; at < mine.length; at++) {
       if (mine[at] === theirs[at]) continue;
@@ -261,9 +290,11 @@ export function previewMismatch(doc: QuadMeshDoc, preview: PreviewData): string 
     }
   }
   for (let q = 0; q < full.mesh.quadCount; q++) {
-    if (preview.cellSurf[q] !== full.cellSurf[q]) return `cellSurf[${q}]: ${preview.cellSurf[q]} vs ${full.cellSurf[q]}`;
+    if (preview.cellSurf[q] !== full.cellSurf[q])
+      return `cellSurf[${q}]: ${preview.cellSurf[q]} vs ${full.cellSurf[q]}`;
     if (preview.cellTex[q] !== full.cellTex[q]) return `cellTex[${q}]: ${preview.cellTex[q]} vs ${full.cellTex[q]}`;
-    const mine = preview.cellOrient[q], theirs = full.cellOrient[q];
+    const mine = preview.cellOrient[q],
+      theirs = full.cellOrient[q];
     if (JSON.stringify(mine ?? null) !== JSON.stringify(theirs ?? null)) {
       return `cellOrient[${q}]: ${JSON.stringify(mine ?? null)} vs ${JSON.stringify(theirs ?? null)}`;
     }

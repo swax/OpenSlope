@@ -1,7 +1,17 @@
 import * as THREE from 'three';
 import {
-  COAST_AIR_RESISTANCE, COAST_FRICTION, COAST_GRAVITY, COAST_MAX_TIME, COAST_QUADRATIC_DRAG, COAST_SEAT, COAST_SEPARATION_SPEED, COAST_STICK,
-  COAST_STOP_SPEED, D2R, TILT_RATE, WORLD_UP,
+  COAST_AIR_RESISTANCE,
+  COAST_FRICTION,
+  COAST_GRAVITY,
+  COAST_MAX_TIME,
+  COAST_QUADRATIC_DRAG,
+  COAST_SEAT,
+  COAST_SEPARATION_SPEED,
+  COAST_STICK,
+  COAST_STOP_SPEED,
+  D2R,
+  TILT_RATE,
+  WORLD_UP,
 } from './physics-tuning';
 import { projectOnPlane, rotateTowards } from './physics-math';
 import type { WalkGround, WalkGroundQuery } from './xr/walk';
@@ -72,9 +82,12 @@ export function createBoardCoast(o: BoardCoastOpts) {
   /** That tumble: a world axis scaled by degrees per second. */
   const spin = new THREE.Vector3();
 
-  const next = new THREE.Vector3(), gravity = new THREE.Vector3();
-  const normal = new THREE.Vector3(), hitNormal = new THREE.Vector3();
-  const tumble = new THREE.Quaternion(), tumbleAxis = new THREE.Vector3();
+  const next = new THREE.Vector3(),
+    gravity = new THREE.Vector3();
+  const normal = new THREE.Vector3(),
+    hitNormal = new THREE.Vector3();
+  const tumble = new THREE.Quaternion(),
+    tumbleAxis = new THREE.Vector3();
 
   /** Hand the deck the complete dismount velocity. `boardUp` is the ride model's own, so a board dropped on a
    *  bank starts lying on that bank rather than snapping level. */
@@ -97,8 +110,13 @@ export function createBoardCoast(o: BoardCoastOpts) {
    * arc and tumbles the way it was thrown until it first hits something, and only then starts sliding and
    * settling like any other loose board.
    */
-  function throwFrom(at: THREE.Vector3, velocity: THREE.Vector3, heading: THREE.Vector3,
-                     deckUp: THREE.Vector3, angular: THREE.Vector3) {
+  function throwFrom(
+    at: THREE.Vector3,
+    velocity: THREE.Vector3,
+    heading: THREE.Vector3,
+    deckUp: THREE.Vector3,
+    angular: THREE.Vector3,
+  ) {
     launch(at, velocity, heading, deckUp);
     thrown = true;
     spin.copy(angular);
@@ -206,7 +224,11 @@ export function createBoardCoast(o: BoardCoastOpts) {
     groundAtPositionValid = true;
 
     // Off the mountain entirely. Park it, then hand the host the chance to put it somewhere a rider can walk to.
-    if (o.oobFloorY !== undefined && pos.y < o.oobFloorY) { parkHere(null); o.onLost?.(); return; }
+    if (o.oobFloorY !== undefined && pos.y < o.oobFloorY) {
+      parkHere(null);
+      o.onLost?.();
+      return;
+    }
 
     // Settle. A deck resting slow on the ground has arrived. The safety timer must never freeze one in MID-AIR
     // — it would hang there on nothing — so an expiry that catches it airborne drops the horizontal carry and
@@ -216,8 +238,14 @@ export function createBoardCoast(o: BoardCoastOpts) {
     if (land && vel.length() < COAST_STOP_SPEED) parkHere(hitNormal);
     else if (time <= 0) {
       if (land) parkHere(hitNormal);
-      else if (time <= -2) { parkHere(null); o.onLost?.(); return; }
-      else { vel.x = 0; vel.z = 0; }
+      else if (time <= -2) {
+        parkHere(null);
+        o.onLost?.();
+        return;
+      } else {
+        vel.x = 0;
+        vel.z = 0;
+      }
     }
   }
 
@@ -252,9 +280,13 @@ export function createBoardCoast(o: BoardCoastOpts) {
    */
   function setAxes(deckUp: THREE.Vector3, heading: THREE.Vector3) {
     up.copy(deckUp);
-    if (up.lengthSq() < 1e-6) up.copy(WORLD_UP); else up.normalize();
+    if (up.lengthSq() < 1e-6) up.copy(WORLD_UP);
+    else up.normalize();
     projectOnPlane(heading, up, fwd);
-    if (fwd.lengthSq() > 1e-6) { fwd.normalize(); return; }
+    if (fwd.lengthSq() > 1e-6) {
+      fwd.normalize();
+      return;
+    }
     // A heading square to the deck's own up carries no facing at all; take any axis that does.
     projectOnPlane(FORWARD, up, fwd);
     if (fwd.lengthSq() < 1e-6) projectOnPlane(RIGHT, up, fwd);
@@ -264,21 +296,40 @@ export function createBoardCoast(o: BoardCoastOpts) {
   /** `normal`, as a unit up-facing axis. A mirrored terrain facet can report its normal into the mountain. */
   function surfaceNormal(source: THREE.Vector3): THREE.Vector3 {
     normal.copy(source);
-    if (normal.lengthSq() < 1e-6) normal.copy(WORLD_UP); else normal.normalize();
+    if (normal.lengthSq() < 1e-6) normal.copy(WORLD_UP);
+    else normal.normalize();
     if (normal.y < 0) normal.negate();
     return normal;
   }
 
   return {
-    launch, throwFrom, park, step, stop, pos, vel, up, fwd,
+    launch,
+    throwFrom,
+    park,
+    step,
+    stop,
+    pos,
+    vel,
+    up,
+    fwd,
     /** A throw still in flight: ballistic and tumbling, until the first thing it hits. */
-    get thrown() { return thrown; },
+    get thrown() {
+      return thrown;
+    },
     /** Still moving: the host keeps drawing the deck from this until it goes false. */
-    get active() { return active; },
+    get active() {
+      return active;
+    },
     /** The coast owns where the deck is — moving or parked. False only before a dismount and after a mount. */
-    get launched() { return launched; },
-    get grounded() { return grounded; },
-    get epoch() { return epoch; },
+    get launched() {
+      return launched;
+    },
+    get grounded() {
+      return grounded;
+    },
+    get epoch() {
+      return epoch;
+    },
   };
 }
 

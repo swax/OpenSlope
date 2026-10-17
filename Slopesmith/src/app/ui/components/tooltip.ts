@@ -44,7 +44,8 @@ function show(anchor: HTMLElement, text: string, opts: TooltipOptions) {
   t.classList.toggle('wide', !!opts.wide);
   t.textContent = text; // set first so the measurements below reflect the real size
   const r = anchor.getBoundingClientRect();
-  const w = t.offsetWidth, h = t.offsetHeight;
+  const w = t.offsetWidth,
+    h = t.offsetHeight;
   const left = Math.max(6, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 6));
   // honour the preferred side unless it has no room and the other side does
   const prefBottom = (opts.placement ?? 'bottom') !== 'top';
@@ -79,7 +80,10 @@ export function tooltip(el: HTMLElement, text: string | (() => string), opts: To
     // mouseenter does not refire on an ancestor the pointer never left, so re-show its tip explicitly
     for (let p = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null; p; p = p.parentElement) {
       const reshow = anchors.get(p);
-      if (reshow) { reshow(); return; }
+      if (reshow) {
+        reshow();
+        return;
+      }
     }
   };
   el.addEventListener('mouseenter', onEnter);

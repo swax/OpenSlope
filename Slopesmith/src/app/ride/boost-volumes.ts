@@ -35,31 +35,39 @@ export type BoostMode = number;
 
 export type BoostVolumeSpec =
   /** Sub-7. The general directional velocity driver: conveyors, exhaust vents, sand boosts, wind. */
-  | { kind: 'directional'; dir: THREE.Vector3; target: number; rate: number;
-      mode: BoostMode; seconds: number }
+  | { kind: 'directional'; dir: THREE.Vector3; target: number; rate: number; mode: BoostMode; seconds: number }
   /**
    * Sub-18. An elevator, not a push: it cancels horizontal motion, aims at an ALTITUDE rather than a speed,
    * and writes the rider to that altitude once within `snapTolerance` of it. A tolerance of zero never snaps
    * and eases all the way in; one larger than any gap it can see snaps on the first tick.
    */
-  | { kind: 'vertical-lift'; dir: THREE.Vector3; target: number; rate: number;
-      targetY: number; snapTolerance: number }
+  | { kind: 'vertical-lift'; dir: THREE.Vector3; target: number; rate: number; targetY: number; snapTolerance: number }
   /**
    * Sub-15. Lifts like the elevator but bounded by the volume rather than an altitude, and additionally
    * classifies the rider into a launch stage that the tube-end volume consumes. The stage is latched on entry
    * and never revised ([Trailmap: 360-tube-latch]).
    */
-  | { kind: 'lap-gated'; dir: THREE.Vector3; target: number; rate: number;
+  | {
+      kind: 'lap-gated';
+      dir: THREE.Vector3;
+      target: number;
+      rate: number;
       /** The host's own +X in editor world space — the one field in the family the engine turns by the host's
        *  instance matrix. The stage test reads which side of the box centre the rider is on along it. */
       axis: THREE.Vector3;
       /** Height above the volume's own floor a rider must clear for a stage above 0 — the engine's 10 m. */
-      stageFloorOffset: number }
+      stageFloorOffset: number;
+    }
   /** Sub-24. The staged launch: the recorded stage picks one of three (direction, speed) pairs. Its
    *  constructor calls sub-7's and its per-tick update IS sub-7's, so it inherits the same mode/window
    *  lifetime ([Trailmap: 360-tubeend]). */
-  | { kind: 'tube-end'; stages: readonly { dir: THREE.Vector3; speed: number }[]; rate: number;
-      mode: BoostMode; seconds: number };
+  | {
+      kind: 'tube-end';
+      stages: readonly { dir: THREE.Vector3; speed: number }[];
+      rate: number;
+      mode: BoostMode;
+      seconds: number;
+    };
 
 export interface BoostVolume {
   key: string;
@@ -103,14 +111,16 @@ function sourceBounds(source: RideObstacleSource): THREE.Box3 | null {
  * latch and the captured launch axis are per-rider and live in the runtime built around it, so the player and
  * each AI opponent get their own `createBoostVolumeRuntime` over this one list.
  */
-export function buildBoostVolumes(obstacles: readonly RideObstacleSource[] | undefined,
-  specs: ReadonlyMap<string, BoostVolumeSpec> | undefined): BoostVolume[] {
+export function buildBoostVolumes(
+  obstacles: readonly RideObstacleSource[] | undefined,
+  specs: ReadonlyMap<string, BoostVolumeSpec> | undefined,
+): BoostVolume[] {
   if (!specs?.size || !obstacles?.length) return [];
   const built: BoostVolume[] = [];
   for (const source of obstacles) {
     // Must match reference-effects' runtimeObjectKey exactly — the two sides meet only on this string.
-    const objectKey = source.object.kind === 'reference'
-      ? `reference:${source.object.index}` : `authored:${source.object.id}`;
+    const objectKey =
+      source.object.kind === 'reference' ? `reference:${source.object.index}` : `authored:${source.object.id}`;
     const spec = specs.get(objectKey);
     if (!spec) continue;
     const box = sourceBounds(source);
@@ -159,8 +169,8 @@ interface VolumeState {
  * observed in data, so this is the traced rule applied to a model the trace did not cover.
  */
 function suppressed(mode: BoostMode, seconds: number, state: VolumeState): boolean {
-  if (mode >= 2) return true;               // never seeded, retires on its first tick — inert by construction
-  if (mode === 0) return state.elapsed < seconds;   // the cooldown: alive, and pushing nobody while it runs
+  if (mode >= 2) return true; // never seeded, retires on its first tick — inert by construction
+  if (mode === 0) return state.elapsed < seconds; // the cooldown: alive, and pushing nobody while it runs
   return false;
 }
 
@@ -185,7 +195,8 @@ export interface BoostVolumeRuntime {
 }
 
 const scratch = new THREE.Vector3();
-const sweepLo = new THREE.Vector3(), sweepHi = new THREE.Vector3();
+const sweepLo = new THREE.Vector3(),
+  sweepHi = new THREE.Vector3();
 
 /**
  * Does the rider's travel THIS TICK meet the volume? The engine's presence pass gates every node in the family
@@ -196,12 +207,19 @@ const sweepLo = new THREE.Vector3(), sweepHi = new THREE.Vector3();
  * A slab test on the segment, which for a zero-length movement degenerates to exactly the point test.
  */
 function sweepHitsBox(box: THREE.Box3, from: THREE.Vector3, to: THREE.Vector3): boolean {
-  let enter = 0, exit = 1;
+  let enter = 0,
+    exit = 1;
   for (const axis of ['x', 'y', 'z'] as const) {
-    const a = from[axis], delta = to[axis] - a;
-    const lo = box.min[axis], hi = box.max[axis];
-    if (Math.abs(delta) < 1e-9) { if (a < lo || a > hi) return false; continue; }
-    const t0 = (lo - a) / delta, t1 = (hi - a) / delta;
+    const a = from[axis],
+      delta = to[axis] - a;
+    const lo = box.min[axis],
+      hi = box.max[axis];
+    if (Math.abs(delta) < 1e-9) {
+      if (a < lo || a > hi) return false;
+      continue;
+    }
+    const t0 = (lo - a) / delta,
+      t1 = (hi - a) / delta;
     enter = Math.max(enter, Math.min(t0, t1));
     exit = Math.min(exit, Math.max(t0, t1));
     if (enter > exit) return false;
@@ -227,12 +245,17 @@ function killHorizontal(vel: THREE.Vector3): void {
   vel.z = 0;
 }
 
-export function createBoostVolumeRuntime(volumes: readonly BoostVolume[],
-  opts: BoostVolumeOpts = {}): BoostVolumeRuntime {
+export function createBoostVolumeRuntime(
+  volumes: readonly BoostVolume[],
+  opts: BoostVolumeOpts = {},
+): BoostVolumeRuntime {
   const states = new Map<string, VolumeState>();
   const runtime: BoostVolumeRuntime = {
     stage: 0,
-    reset() { states.clear(); runtime.stage = 0; },
+    reset() {
+      states.clear();
+      runtime.stage = 0;
+    },
     step(pos, vel, dt, from) {
       if (!volumes.length || dt <= 0) return;
       sweepLo.copy(from ?? pos);
@@ -260,8 +283,15 @@ export function createBoostVolumeRuntime(volumes: readonly BoostVolume[],
   return runtime;
 }
 
-function applyVolume(volume: BoostVolume, state: VolumeState, runtime: BoostVolumeRuntime,
-  opts: BoostVolumeOpts, pos: THREE.Vector3, vel: THREE.Vector3, dt: number): void {
+function applyVolume(
+  volume: BoostVolume,
+  state: VolumeState,
+  runtime: BoostVolumeRuntime,
+  opts: BoostVolumeOpts,
+  pos: THREE.Vector3,
+  vel: THREE.Vector3,
+  dt: number,
+): void {
   const spec = volume.spec;
   switch (spec.kind) {
     case 'directional':
@@ -274,7 +304,10 @@ function applyVolume(volume: BoostVolume, state: VolumeState, runtime: BoostVolu
       // the node ends here. That is the lift's whole lifetime rule, and it is what makes the volume a ride
       // rather than a trampoline: it carries the rider up once, and a rider who falls back through the target
       // afterwards meets nothing ([Trailmap: 360-zboost]).
-      if (pos.y >= spec.targetY) { state.retired = true; return; }
+      if (pos.y >= spec.targetY) {
+        state.retired = true;
+        return;
+      }
       const gap = spec.targetY - pos.y;
       if (gap < spec.snapTolerance) {
         // The arrival branch writes the ALTITUDE and nothing else about the climb: the vertical velocity
@@ -328,8 +361,11 @@ function applyVolume(volume: BoostVolume, state: VolumeState, runtime: BoostVolu
  * +X. Note stage 0 is what a real run of the retail course produces, because a rider enters the shaft at its
  * base — well under the floor line — and the answer is latched there ([Trailmap: 360-tube-latch]).
  */
-function classifyStage(spec: Extract<BoostVolumeSpec, { kind: 'lap-gated' }>, box: THREE.Box3,
-  pos: THREE.Vector3): number {
+function classifyStage(
+  spec: Extract<BoostVolumeSpec, { kind: 'lap-gated' }>,
+  box: THREE.Box3,
+  pos: THREE.Vector3,
+): number {
   if (pos.y <= box.min.y + spec.stageFloorOffset) return 0;
   box.getCenter(scratch);
   scratch.subVectors(pos, scratch).setY(0);

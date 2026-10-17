@@ -11,15 +11,8 @@ import {
   buildProfileSection,
   type ProfileSaveResult,
 } from './settings-dialog-account';
-import {
-  buildEquipmentSection,
-  type EquipmentSaveResult,
-} from './settings-dialog-equipment';
-import {
-  buildAgentApiSection,
-  buildKeysSection,
-  buildVideoBridgeSection,
-} from './settings-dialog-integrations';
+import { buildEquipmentSection, type EquipmentSaveResult } from './settings-dialog-equipment';
+import { buildAgentApiSection, buildKeysSection, buildVideoBridgeSection } from './settings-dialog-integrations';
 import {
   buildServerConfigSection,
   buildVersionSection,
@@ -34,14 +27,15 @@ import { buildSettingsTabs, type SettingsTabName } from './settings-dialog-tabs'
  * configuration. Each section owns its UI and persistence details; this module owns the modal transaction.
  */
 
-const KEY_HELP = 'Your own key, and it stays yours: generation is billed to whoever pasted it, so on a server '
-  + 'with several members everybody sets their own here. Unlocks Generate texture in the Texture Library, '
-  + 'Generate prop in the Prop Library, and ✨ generate on the Skybox panel. Create a key at '
-  + 'fal.ai/dashboard/keys.\n\n'
-  + 'Stored in this browser’s localStorage and sent with your own generate requests to the Slopesmith server, '
-  + 'which forwards it to fal.ai for that one call and never writes it to disk or shows it to another member. '
-  + 'Anyone with access to this browser profile can read it — treat it like a key in a local .env, and revoke '
-  + 'it at fal.ai if that changes.';
+const KEY_HELP =
+  'Your own key, and it stays yours: generation is billed to whoever pasted it, so on a server ' +
+  'with several members everybody sets their own here. Unlocks Generate texture in the Texture Library, ' +
+  'Generate prop in the Prop Library, and ✨ generate on the Skybox panel. Create a key at ' +
+  'fal.ai/dashboard/keys.\n\n' +
+  'Stored in this browser’s localStorage and sent with your own generate requests to the Slopesmith server, ' +
+  'which forwards it to fal.ai for that one call and never writes it to disk or shows it to another member. ' +
+  'Anyone with access to this browser profile can read it — treat it like a key in a local .env, and revoke ' +
+  'it at fal.ai if that changes.';
 
 /** The Settings modal. Nothing is written until Save; only its explicit Close button discards staged edits. */
 export function openSettingsDialog(initialTab: SettingsTabName = 'integrations'): void {
@@ -153,8 +147,9 @@ function renderSettingsDialog(initialTab: SettingsTabName, mayAdminister: boolea
   save.onclick = async () => {
     const key = input.value.trim();
     let bridgePrefs: VideoBridgePrefs;
-    try { bridgePrefs = videoBridge.value(); }
-    catch (error) {
+    try {
+      bridgePrefs = videoBridge.value();
+    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       videoBridge.fail(message);
       tabs.select('integrations');
@@ -198,14 +193,26 @@ function renderSettingsDialog(initialTab: SettingsTabName, mayAdminister: boolea
       const bridgeMessage = ' Video bridge settings saved.';
       const usernameMessage = profileChange.username ? ' Username saved.' : '';
       const bioMessage = profileChange.bio ? ' Bio saved.' : '';
-      const profileMessage = profileChange.picture === 'saved' ? ' Profile picture saved.'
-        : profileChange.picture === 'removed' ? ' Profile picture removed.' : '';
-      const deviceMessage = deviceName ? ` Device renamed to “${deviceName}”; it will appear after Settings closes.` : '';
+      const profileMessage =
+        profileChange.picture === 'saved'
+          ? ' Profile picture saved.'
+          : profileChange.picture === 'removed'
+            ? ' Profile picture removed.'
+            : '';
+      const deviceMessage = deviceName
+        ? ` Device renamed to “${deviceName}”; it will appear after Settings closes.`
+        : '';
       const equipmentMessage = equipmentChange === 'saved' ? ' Equipment artwork saved.' : '';
       const savedMessage = `${keyMessage}${bridgeMessage}${usernameMessage}${bioMessage}${profileMessage}${deviceMessage}${equipmentMessage}`;
-      toast(!result ? savedMessage : result.restartRequired
-        ? `${savedMessage} Storage paths saved — restart Slopesmith to use them.`
-        : `${savedMessage} Server settings saved.`, 'ok', result?.restartRequired ? 7000 : 3500);
+      toast(
+        !result
+          ? savedMessage
+          : result.restartRequired
+            ? `${savedMessage} Storage paths saved — restart Slopesmith to use them.`
+            : `${savedMessage} Server settings saved.`,
+        'ok',
+        result?.restartRequired ? 7000 : 3500,
+      );
     } catch (error) {
       save.disabled = false;
       closeButton.disabled = false;
@@ -221,5 +228,10 @@ function renderSettingsDialog(initialTab: SettingsTabName, mayAdminister: boolea
 
   if (initialTab === 'integrations') input.focus();
   // Enter saves from the key field; Close is deliberately the only dismissal control.
-  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } };
+  input.onkeydown = e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      save.click();
+    }
+  };
 }

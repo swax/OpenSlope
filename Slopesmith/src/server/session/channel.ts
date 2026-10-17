@@ -17,38 +17,84 @@ import { workspaceConfig } from '../workspace-config';
 import { onLibraryChanged } from '../library-events';
 import { createLogger } from '../log';
 import {
-  activeProjectFor, canEditProject, canManageProject, checkpointOnSessionEnd, onProjectDeleted,
-  onProjectPermissionsChanged, onProjectWritten, projectManifest, type ProjectManifest, type ProjectSnapshot,
+  activeProjectFor,
+  canEditProject,
+  canManageProject,
+  checkpointOnSessionEnd,
+  onProjectDeleted,
+  onProjectPermissionsChanged,
+  onProjectWritten,
+  projectManifest,
+  type ProjectManifest,
+  type ProjectSnapshot,
 } from '../projects';
 import {
-  onChatLine, scrollbackFor, submitChat, systemEvent,
-  type ChatDirectory, type ChatLine, type ChatWho,
+  onChatLine,
+  scrollbackFor,
+  submitChat,
+  systemEvent,
+  type ChatDirectory,
+  type ChatLine,
+  type ChatWho,
 } from './chat';
 import {
-  closeSession, colorFor, forgetWriters, liveSessions, noteWriter, onMemberStatusChanged,
-  onPresenceChanged, onProjectIdle, openSession, presenceTable, sessionById, sessionPolicy, sessionsOn,
-  setAwareness, setSessionIdle, sweepSessions,
-  touchSession, watchPlaying, watchProject, watchReference, watchScreenSharing, watchScreenWatching,
-  type Awareness, type PresenceChange, type PresenceEntry, type SessionMember,
+  closeSession,
+  colorFor,
+  forgetWriters,
+  liveSessions,
+  noteWriter,
+  onMemberStatusChanged,
+  onPresenceChanged,
+  onProjectIdle,
+  openSession,
+  presenceTable,
+  sessionById,
+  sessionPolicy,
+  sessionsOn,
+  setAwareness,
+  setSessionIdle,
+  sweepSessions,
+  touchSession,
+  watchPlaying,
+  watchProject,
+  watchReference,
+  watchScreenSharing,
+  watchScreenWatching,
+  type Awareness,
+  type PresenceChange,
+  type PresenceEntry,
+  type SessionMember,
 } from './presence';
 import {
-  assign, claimTopology, closeRoom, discardRoom, joinRoom, landedFrom, noteLanded, onWire, roomDigest, roomFor,
-  roomSection, stepsSince, type RegisterAssignment, type RoomStep,
+  assign,
+  claimTopology,
+  closeRoom,
+  discardRoom,
+  joinRoom,
+  landedFrom,
+  noteLanded,
+  onWire,
+  roomDigest,
+  roomFor,
+  roomSection,
+  stepsSince,
+  type RegisterAssignment,
+  type RoomStep,
 } from './room';
 import type { TopologyDelta } from '../../core/doc/topology-delta';
 import { awarenessPolicyFor, type AwarenessPolicy } from './awareness-policy';
 import { CAPACITY_CLOSE_CODE, CAPACITY_CLOSE_REASON, reservePlayerSeat } from './capacity';
 import { sanitizePlayerPose } from '../../core/session/player-pose';
-import {
-  sanitizeRideEventMessage, type RideEventMessage, type SharedRideEvent,
-} from '../../core/session/ride-event';
+import { sanitizeRideEventMessage, type RideEventMessage, type SharedRideEvent } from '../../core/session/ride-event';
 import { acceptWebSocket, isWebSocketUpgrade, prepareWebSocketText, refuseUpgrade } from './socket';
 import { createJukebox, type ServerJukebox } from './jukebox';
 import type { JukeboxState } from '../../core/session/jukebox';
 import { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
 import { broadcastRegisters, legacyAssignments, olderCore } from './register-messages';
 import {
-  sanitizeSharedScreenState, type SharedScreenFrame, type SharedScreenState,
+  sanitizeSharedScreenState,
+  type SharedScreenFrame,
+  type SharedScreenState,
 } from '../../core/session/screen-share';
 
 const log = createLogger('session');
@@ -145,8 +191,17 @@ export type ClientMessage =
   | { t: 'ping'; at?: number };
 
 export type ServerMessage =
-  | { t: 'welcome'; sessionId: string; clientId: string; accounts: 'open' | 'required'; member: SessionMember;
-    projectId: string | null; color: string; serverTime: number; versions: { doc: number; core: string } }
+  | {
+      t: 'welcome';
+      sessionId: string;
+      clientId: string;
+      accounts: 'open' | 'required';
+      member: SessionMember;
+      projectId: string | null;
+      color: string;
+      serverTime: number;
+      versions: { doc: number; core: string };
+    }
   | { t: 'presence'; maps: Record<string, PresenceEntry[]> }
   /** One participant joined, left or moved. Absolute upserts make repeated or coalesced delivery harmless. */
   | { t: 'presence-delta'; change: PresenceChange }
@@ -162,8 +217,15 @@ export type ServerMessage =
   | { t: 'claim'; batch: number; ok: boolean; at: number; refused?: string[]; steps?: RoomStep[]; document?: EditDoc }
   /** Somebody else's accepted topology, as the delta it made and the registers with it. A session on an older
    *  core is sent the document instead, which is all it can read. */
-  | { t: 'topology'; projectId: string; at: number; delta?: TopologyDelta; changes?: RegisterAssignment[];
-    document?: EditDoc; by: string }
+  | {
+      t: 'topology';
+      projectId: string;
+      at: number;
+      delta?: TopologyDelta;
+      changes?: RegisterAssignment[];
+      document?: EditDoc;
+      by: string;
+    }
   /** The room's digest, answering a drift check. */
   | { t: 'digest'; projectId: string; at: number; root: string; sections: Record<string, string> }
   /** The repair: one divergent section's registers, or the document when what diverged was the topology. */
@@ -174,8 +236,16 @@ export type ServerMessage =
    *  batches the room had answered before it rejoined, so a batch whose acknowledgement died with the old socket
    *  is not replayed over somebody's later write. `room` is the room `at` is counted in, which is not the one the
    *  client named when it was answered with the document for that reason. */
-  | { t: 'caught-up'; projectId: string; at: number; room: string; steps?: RoomStep[];
-    changes?: RegisterAssignment[]; document?: EditDoc; landed: number }
+  | {
+      t: 'caught-up';
+      projectId: string;
+      at: number;
+      room: string;
+      steps?: RoomStep[];
+      changes?: RegisterAssignment[];
+      document?: EditDoc;
+      landed: number;
+    }
   /** The disposable states that changed during one room window, encoded once and shared by every socket. */
   | { t: 'awareness-batch'; projectId: string; peers: AwarenessPeer[] }
   /** The cadence browsers on this room should use when publishing disposable awareness. */
@@ -192,8 +262,14 @@ export type ServerMessage =
   /** A whole document that arrived outside the room — an import, a checkpoint restore, a script. */
   | { t: 'revision'; projectId: string; project: ProjectSnapshot['project']; document: ProjectSnapshot['document'] }
   /** Ownership/edit policy changed without changing the mountain document. */
-  | { t: 'project-access'; projectId: string; project: ProjectSnapshot['project']; writable: boolean;
-    reason?: string; document?: EditDoc }
+  | {
+      t: 'project-access';
+      projectId: string;
+      project: ProjectSnapshot['project'];
+      writable: boolean;
+      reason?: string;
+      document?: EditDoc;
+    }
   /** The map this tab was on has been deleted, so it is on no map now and there is nothing left to write to. */
   | { t: 'gone'; projectId: string; name: string }
   // The room (docs/038). A joiner is replayed what it missed, and hears every line after that one at a time.
@@ -225,7 +301,9 @@ function memberOf(identity: Identity): SessionMember | null {
   if (identity.kind === 'owner' || identity.kind === 'member') {
     const { id, username, role, snowboardTextureUrl, skiTextureUrl, equipmentEdgeColor } = identity.user;
     return {
-      id, username, role,
+      id,
+      username,
+      role,
       ...(snowboardTextureUrl ? { snowboardTextureUrl } : {}),
       ...(skiTextureUrl ? { skiTextureUrl } : {}),
       ...(equipmentEdgeColor ? { equipmentEdgeColor } : {}),
@@ -236,32 +314,54 @@ function memberOf(identity: Identity): SessionMember | null {
 
 /** The same member, as a chat line names them. */
 const whoOf = (member: SessionMember): ChatWho => ({
-  userId: member.id, username: member.username, role: member.role,
+  userId: member.id,
+  username: member.username,
+  role: member.role,
 });
 
 // ---- the connected fleet ----
 
 const send = (sessionId: string, message: ServerMessage): void => sessionById(sessionId)?.send(message);
 
-const PUBLIC_MESSAGES = new Set(['welcome', 'joined', 'room-policy', 'awareness-batch', 'pong', 'error',
-  'ride-event', 'gone', 'chat', 'chat-history', 'presence', 'presence-delta']);
+const PUBLIC_MESSAGES = new Set([
+  'welcome',
+  'joined',
+  'room-policy',
+  'awareness-batch',
+  'pong',
+  'error',
+  'ride-event',
+  'gone',
+  'chat',
+  'chat-history',
+  'presence',
+  'presence-delta',
+]);
 function publicMessage(message: ServerMessage): ServerMessage | null {
   if (!PUBLIC_MESSAGES.has(message.t)) return null;
-  if ('projectId' in message && typeof message.projectId === 'string' && !publicRoomKnown(message.projectId)) return null;
-  if (message.t === 'awareness-batch' && referenceInRoom(message.projectId) === null) return {
-    ...message, peers: message.peers.filter(peer => sessionById(peer.sessionId)?.playing !== 'reference')
-      .map(peer => ({ ...peer, aware: { ...peer.aware, vertices: [], quads: [], dragging: [], cursor: null } })),
-  };
+  if ('projectId' in message && typeof message.projectId === 'string' && !publicRoomKnown(message.projectId))
+    return null;
+  if (message.t === 'awareness-batch' && referenceInRoom(message.projectId) === null)
+    return {
+      ...message,
+      peers: message.peers
+        .filter(peer => sessionById(peer.sessionId)?.playing !== 'reference')
+        .map(peer => ({ ...peer, aware: { ...peer.aware, vertices: [], quads: [], dragging: [], cursor: null } })),
+    };
   if (message.t === 'chat' && message.line.kind === 'system') return null;
   if (message.t === 'chat-history') return { ...message, lines: message.lines.filter(line => line.kind !== 'system') };
-  if (message.t === 'presence') return {
-    ...message, maps: publicPresenceTable(message.maps),
-  };
+  if (message.t === 'presence')
+    return {
+      ...message,
+      maps: publicPresenceTable(message.maps),
+    };
   if (message.t === 'presence-delta') {
     const clean = (value: PresenceChange['from']) => {
       if (!value) return null;
-      const riding = value.entry.playing === 'reference' && value.entry.referenceLevel
-        ? referenceRoom(value.entry.referenceLevel) : null;
+      const riding =
+        value.entry.playing === 'reference' && value.entry.referenceLevel
+          ? referenceRoom(value.entry.referenceLevel)
+          : null;
       const projectId = riding && publicRoomKnown(riding) ? riding : value.projectId;
       return publicRoomKnown(projectId) ? { projectId, entry: publicPresence(value.entry) } : null;
     };
@@ -272,11 +372,12 @@ function publicMessage(message: ServerMessage): ServerMessage | null {
 }
 function publicPresenceTable(maps: Record<string, PresenceEntry[]>): Record<string, PresenceEntry[]> {
   const result: Record<string, PresenceEntry[]> = {};
-  for (const [id, entries] of Object.entries(maps)) for (const entry of entries) {
-    const riding = entry.playing === 'reference' && entry.referenceLevel ? referenceRoom(entry.referenceLevel) : null;
-    const room = riding && publicRoomKnown(riding) ? riding : id;
-    if (publicRoomKnown(room)) (result[room] ??= []).push(publicPresence(entry));
-  }
+  for (const [id, entries] of Object.entries(maps))
+    for (const entry of entries) {
+      const riding = entry.playing === 'reference' && entry.referenceLevel ? referenceRoom(entry.referenceLevel) : null;
+      const room = riding && publicRoomKnown(riding) ? riding : id;
+      if (publicRoomKnown(room)) (result[room] ??= []).push(publicPresence(entry));
+    }
   return result;
 }
 function publicPresence(entry: PresenceEntry): PresenceEntry {
@@ -285,8 +386,11 @@ function publicPresence(entry: PresenceEntry): PresenceEntry {
 }
 
 /** Encode one fleet message once, including its WebSocket frame, and share those immutable bytes. */
-function sendMany(recipients: Iterable<ReturnType<typeof liveSessions>[number]>, message: ServerMessage,
-  options: { except?: string; coalesceKey?: string } = {}): void {
+function sendMany(
+  recipients: Iterable<ReturnType<typeof liveSessions>[number]>,
+  message: ServerMessage,
+  options: { except?: string; coalesceKey?: string } = {},
+): void {
   const prepared = prepareWebSocketText(JSON.stringify(message));
   for (const session of recipients) {
     if (session.sessionId === options.except) continue;
@@ -324,9 +428,12 @@ function screenFrame(targetSessionId: string, state: SharedScreenState): ServerM
   const target = sessionById(targetSessionId);
   if (!target?.screenSharing || !target.projectId) return null;
   return {
-    t: 'screen-state', sessionId: targetSessionId,
-    userId: target.member.id, username: target.member.username,
-    projectId: target.projectId, referenceLevel: target.referenceLevel,
+    t: 'screen-state',
+    sessionId: targetSessionId,
+    userId: target.member.id,
+    username: target.member.username,
+    projectId: target.projectId,
+    referenceLevel: target.referenceLevel,
     ...state,
   };
 }
@@ -365,7 +472,10 @@ function closeScreenSession(sessionId: string): void {
 
 function observeScreen(observerSessionId: string, targetSessionId: string | null, active: boolean): void {
   const currentTarget = screenTargetByObserver.get(observerSessionId);
-  if (!targetSessionId) { stopObserving(observerSessionId); return; }
+  if (!targetSessionId) {
+    stopObserving(observerSessionId);
+    return;
+  }
   const target = sessionById(targetSessionId);
   if (!target?.screenSharing || !target.projectId || targetSessionId === observerSessionId) {
     stopObserving(observerSessionId);
@@ -402,7 +512,7 @@ function publishScreen(targetSessionId: string, input: unknown): void {
   const frame = state && screenFrame(targetSessionId, state);
   if (!state || !frame) return;
   latestScreenByTarget.set(targetSessionId, state);
-  const recipients = [...screenObserversByTarget.get(targetSessionId) ?? []]
+  const recipients = [...(screenObserversByTarget.get(targetSessionId) ?? [])]
     .filter(sessionId => screenObserverActive.get(sessionId) === true)
     .flatMap(sessionId => {
       const observer = sessionById(sessionId);
@@ -428,8 +538,11 @@ const pendingAwareness = new Map<string, PendingAwareness>();
 const awarenessPolicies = new Map<string, AwarenessPolicy>();
 function awarenessSessionsOn(room: string) {
   const level = referenceInRoom(room);
-  return level === null ? sessionsOn(room) : liveSessions().filter(session =>
-    session.playing === 'reference' && session.referenceLevel?.toUpperCase() === level);
+  return level === null
+    ? sessionsOn(room)
+    : liveSessions().filter(
+        session => session.playing === 'reference' && session.referenceLevel?.toUpperCase() === level,
+      );
 }
 
 function projectAwarenessPolicy(projectId: string): AwarenessPolicy {
@@ -450,7 +563,10 @@ const sameAwarenessPolicy = (a: AwarenessPolicy | undefined, b: AwarenessPolicy)
  */
 function sendRoomPolicy(projectId: string, newcomerId?: string): void {
   const recipients = awarenessSessionsOn(projectId);
-  if (!recipients.length) { awarenessPolicies.delete(projectId); return; }
+  if (!recipients.length) {
+    awarenessPolicies.delete(projectId);
+    return;
+  }
   const previous = awarenessPolicies.get(projectId);
   const policy = projectAwarenessPolicy(projectId);
   const message: ServerMessage = { t: 'room-policy', projectId, awarenessMs: policy.publishMs };
@@ -541,15 +657,20 @@ const here = new Map<string, { username: string; sessions: number }>();
 
 /** Why a tab may not write. A viewer follows read-only, and so does an install that would evaluate this
  *  mountain differently from everybody else on it (docs/039). */
-function writeRefusal(member: SessionMember, project: ProjectManifest,
-  versions: { doc?: number; core?: string }): string {
+function writeRefusal(
+  member: SessionMember,
+  project: ProjectManifest,
+  versions: { doc?: number; core?: string },
+): string {
   if (!holds(member.role, 'editor')) return 'Following read-only: changing a map needs the editor role.';
   if (!canEditProject(project, member)) {
     return 'Following read-only: this map is restricted to editors selected by its owner.';
   }
   if (versions.doc !== undefined && versions.doc !== DOCUMENT_VERSION) {
-    return `Following read-only: this build reads documents at version ${versions.doc}, and this server holds `
-      + `version ${DOCUMENT_VERSION}.`;
+    return (
+      `Following read-only: this build reads documents at version ${versions.doc}, and this server holds ` +
+      `version ${DOCUMENT_VERSION}.`
+    );
   }
   if (versions.core !== undefined && versions.core !== CORE_VERSION) {
     return 'Following read-only: this build evaluates mountains differently from the rest of the room.';
@@ -565,12 +686,16 @@ function writeRefusal(member: SessionMember, project: ProjectManifest,
  * exactly what it missed, or the document when the tail no longer reaches that far or the sequence was counted
  * in another room.
  */
-async function joinMap(sessionId: string, wanted: string | null,
-  asked: { at?: number; room?: unknown; doc?: number; core?: string }): Promise<void> {
+async function joinMap(
+  sessionId: string,
+  wanted: string | null,
+  asked: { at?: number; room?: unknown; doc?: number; core?: string },
+): Promise<void> {
   const joining = sessionById(sessionId);
   if (!joining) return;
-  if (joining.publicPlay && wanted && !await publicRoomAllowed(wanted)) {
-    send(sessionId, { t: 'error', message: 'This course is not public.' }); return;
+  if (joining.publicPlay && wanted && !(await publicRoomAllowed(wanted))) {
+    send(sessionId, { t: 'error', message: 'This course is not public.' });
+    return;
   }
   if (joining.publicPlay || (wanted && referenceInRoom(wanted) !== null)) {
     watchProject(sessionId, wanted);
@@ -596,18 +721,33 @@ async function joinMap(sessionId: string, wanted: string | null,
   const room = await joinRoom(wanted);
   if (sessionById(sessionId) !== session || session.projectId !== wanted) return;
   send(sessionId, {
-    t: 'joined', projectId: wanted, at: room.at, room: room.id, writable: session.writable,
+    t: 'joined',
+    projectId: wanted,
+    at: room.at,
+    room: room.id,
+    writable: session.writable,
     ...(refusal ? { reason: refusal } : {}),
   });
-  if (asked.at === undefined) { session.at = room.at; return; }
+  if (asked.at === undefined) {
+    session.at = room.at;
+    return;
+  }
   const missed = stepsSince(room, asked.at, typeof asked.room === 'string' ? asked.room : undefined);
   session.at = room.at;
   const here = { projectId: wanted, at: room.at, room: room.id, landed };
   if (missed === null || (olderCore(session) && missed.some(step => step.delta))) {
     send(sessionId, { t: 'caught-up', ...here, document: room.doc });
   } else if (olderCore(session)) {
-    send(sessionId, { t: 'caught-up', ...here,
-      changes: onWire(legacyAssignments(room.doc, missed.flatMap(step => step.changes))) });
+    send(sessionId, {
+      t: 'caught-up',
+      ...here,
+      changes: onWire(
+        legacyAssignments(
+          room.doc,
+          missed.flatMap(step => step.changes),
+        ),
+      ),
+    });
   } else {
     send(sessionId, { t: 'caught-up', ...here, steps: stepsOnWire(missed) });
   }
@@ -636,12 +776,24 @@ function assignments(value: unknown, limit = MAX_ASSIGNMENTS): RegisterAssignmen
 function onAssign(sessionId: string, message: Extract<ClientMessage, { t: 'assign' }>): void {
   const session = sessionById(sessionId);
   const projectId = session?.projectId;
-  if (!session || !projectId) { send(sessionId, { t: 'error', message: 'Open a map before editing it.' }); return; }
-  if (!session.writable) { send(sessionId, { t: 'error', message: 'This tab is following read-only.' }); return; }
+  if (!session || !projectId) {
+    send(sessionId, { t: 'error', message: 'Open a map before editing it.' });
+    return;
+  }
+  if (!session.writable) {
+    send(sessionId, { t: 'error', message: 'This tab is following read-only.' });
+    return;
+  }
   const changes = assignments(message.changes);
-  if (!changes) { send(sessionId, { t: 'error', message: 'That was not a set of register assignments.' }); return; }
+  if (!changes) {
+    send(sessionId, { t: 'error', message: 'That was not a set of register assignments.' });
+    return;
+  }
   const room = roomFor(projectId);
-  if (!room) { send(sessionId, { t: 'error', message: 'This map is not open on the server.' }); return; }
+  if (!room) {
+    send(sessionId, { t: 'error', message: 'This map is not open on the server.' });
+    return;
+  }
 
   const renameKey = globalRegister('name');
   const refusedRename = session.managesProject ? [] : changes.filter(([key]) => key === renameKey);
@@ -650,8 +802,11 @@ function onAssign(sessionId: string, message: Extract<ClientMessage, { t: 'assig
   session.at = written.at;
   noteLanded(room, session.replica, Number.isSafeInteger(message.batch) ? message.batch! : 0);
   send(sessionId, {
-    t: 'landed', batch: message.batch ?? 0, at: written.at,
-    retired: written.retired, refused: [...written.refused, ...refusedRename.map(([key]) => key)],
+    t: 'landed',
+    batch: message.batch ?? 0,
+    at: written.at,
+    retired: written.retired,
+    refused: [...written.refused, ...refusedRename.map(([key]) => key)],
   });
   // Only what moved the document is relayed: an assignment for geometry somebody has deleted, or one that
   // wrote the value a register already held, is not news anybody else has to be told.
@@ -668,7 +823,10 @@ function onClaim(sessionId: string, message: Extract<ClientMessage, { t: 'claim'
   if (!session || !projectId || !room) {
     // Still a claim answer: the client waits on exactly that before it sends anything else. With no room there
     // is no document to hand back; its drift check settles whatever it applied once it is on a map again.
-    send(sessionId, { t: 'error', message: projectId ? 'This map is not open on the server.' : 'Open a map before editing it.' });
+    send(sessionId, {
+      t: 'error',
+      message: projectId ? 'This map is not open on the server.' : 'Open a map before editing it.',
+    });
     send(sessionId, { t: 'claim', batch, ok: false, at: room?.at ?? 0 });
     return;
   }
@@ -679,28 +837,43 @@ function onClaim(sessionId: string, message: Extract<ClientMessage, { t: 'claim'
     send(sessionId, { t: 'error', message: why });
     send(sessionId, { t: 'claim', batch, ok: false, at: room.at, document: room.doc });
   };
-  if (!session.writable) { refuse('This tab is following read-only.'); return; }
+  if (!session.writable) {
+    refuse('This tab is following read-only.');
+    return;
+  }
   if (!message.delta || typeof message.delta !== 'object') {
     refuse('A topology claim carries the delta it produced.');
     return;
   }
   const ids = strings(message.ids);
-  if (ids.length > MAX_CLAIM_IDS) { refuse(`A topology claim may name at most ${MAX_CLAIM_IDS} ids.`); return; }
+  if (ids.length > MAX_CLAIM_IDS) {
+    refuse(`A topology claim may name at most ${MAX_CLAIM_IDS} ids.`);
+    return;
+  }
   const changes = assignments(message.changes ?? [], MAX_CLAIM_ASSIGNMENTS);
-  if (!changes) { refuse('A topology claim\'s registers were not a set of assignments.'); return; }
+  if (!changes) {
+    refuse("A topology claim's registers were not a set of assignments.");
+    return;
+  }
   const renameKey = globalRegister('name');
   const refusedRename = session.managesProject ? [] : changes.filter(([key]) => key === renameKey);
   const allowed = refusedRename.length ? changes.filter(([key]) => key !== renameKey) : changes;
-  const held = claimTopology(room, { ids, at: Number(message.at) || 0, delta: message.delta, changes: allowed },
-    session.member.username);
+  const held = claimTopology(
+    room,
+    { ids, at: Number(message.at) || 0, delta: message.delta, changes: allowed },
+    session.member.username,
+  );
   session.at = held.at;
   noteLanded(room, session.replica, batch);
   if (!held.ok) {
     // The loser is handed what won, so it goes from its own optimistic geometry to the authoritative geometry
     // in one step rather than back through the geometry it started with.
-    send(sessionId, 'steps' in held
-      ? { t: 'claim', batch, ok: false, at: held.at, steps: stepsOnWire(held.steps) }
-      : { t: 'claim', batch, ok: false, at: held.at, document: held.document });
+    send(
+      sessionId,
+      'steps' in held
+        ? { t: 'claim', batch, ok: false, at: held.at, steps: stepsOnWire(held.steps) }
+        : { t: 'claim', batch, ok: false, at: held.at, document: held.document },
+    );
     return;
   }
   const refused = [...held.refused, ...refusedRename.map(([key]) => key)];
@@ -709,9 +882,13 @@ function onClaim(sessionId: string, message: Extract<ClientMessage, { t: 'claim'
   const by = session.member.username;
   const current = sessionsOn(projectId).filter(other => !olderCore(other));
   const older = sessionsOn(projectId).filter(olderCore);
-  sendMany(current, { t: 'topology', projectId, at: held.at, delta: held.delta, changes: onWire(held.changes), by },
-    { except: sessionId });
-  if (older.length) sendMany(older, { t: 'topology', projectId, at: held.at, document: room.doc, by }, { except: sessionId });
+  sendMany(
+    current,
+    { t: 'topology', projectId, at: held.at, delta: held.delta, changes: onWire(held.changes), by },
+    { except: sessionId },
+  );
+  if (older.length)
+    sendMany(older, { t: 'topology', projectId, at: held.at, document: room.doc, by }, { except: sessionId });
 }
 
 /**
@@ -728,7 +905,11 @@ function onDigest(sessionId: string): void {
   if (!session?.projectId || !room) return;
   const mine: DocumentDigest = roomDigest(room);
   send(sessionId, {
-    t: 'digest', projectId: session.projectId, at: room.at, root: mine.root, sections: mine.sections,
+    t: 'digest',
+    projectId: session.projectId,
+    at: room.at,
+    root: mine.root,
+    sections: mine.sections,
   });
 }
 
@@ -744,7 +925,10 @@ function onFetch(sessionId: string, message: Extract<ClientMessage, { t: 'fetch'
     else registers.push(...repair.registers);
   }
   send(sessionId, {
-    t: 'sections', projectId: session.projectId, at: room.at, registers: onWire(registers),
+    t: 'sections',
+    projectId: session.projectId,
+    at: room.at,
+    registers: onWire(registers),
     ...(document ? { document } : {}),
   });
 }
@@ -765,7 +949,9 @@ function onAware(sessionId: string, message: Extract<ClientMessage, { t: 'aware'
   if (!aware) return;
   const peer: AwarenessPeer = {
     sessionId,
-    userId: session.member.id, username: session.member.username, deviceLabel: session.deviceLabel,
+    userId: session.member.id,
+    username: session.member.username,
+    deviceLabel: session.deviceLabel,
     color: colorFor(session.member.id),
     ...(session.member.snowboardTextureUrl ? { snowboardTextureUrl: session.member.snowboardTextureUrl } : {}),
     ...(session.member.skiTextureUrl ? { skiTextureUrl: session.member.skiTextureUrl } : {}),
@@ -775,22 +961,34 @@ function onAware(sessionId: string, message: Extract<ClientMessage, { t: 'aware'
   queueAwareness(session.projectId, peer);
   if (session.playing === 'reference' && session.referenceLevel) {
     queueAwareness(referenceRoom(session.referenceLevel), {
-      ...peer, aware: { ...aware, vertices: [], quads: [], dragging: [], cursor: null },
+      ...peer,
+      aware: { ...aware, vertices: [], quads: [], dragging: [], cursor: null },
     });
   }
 }
 
-function onJukebox(sessionId: string,
-  message: Extract<ClientMessage, { t: 'jukebox-add' | 'jukebox-remove' | 'jukebox-skip'
-    | 'jukebox-seek' | 'jukebox-playing' | 'jukebox-ended' }>, jukebox: ServerJukebox): void {
+function onJukebox(
+  sessionId: string,
+  message: Extract<
+    ClientMessage,
+    { t: 'jukebox-add' | 'jukebox-remove' | 'jukebox-skip' | 'jukebox-seek' | 'jukebox-playing' | 'jukebox-ended' }
+  >,
+  jukebox: ServerJukebox,
+): void {
   const session = sessionById(sessionId);
   if (!session) return;
-  const result = message.t === 'jukebox-add' ? jukebox.add(session.member, message.url)
-    : message.t === 'jukebox-remove' ? jukebox.remove(session.member, message.id)
-      : message.t === 'jukebox-skip' ? jukebox.skip(session.member, message.id)
-        : message.t === 'jukebox-seek' ? jukebox.seek(message.id, message.position)
-          : message.t === 'jukebox-playing' ? jukebox.setPlaying(message.id, message.playing)
-            : jukebox.ended(message.id, message.mediaVersion);
+  const result =
+    message.t === 'jukebox-add'
+      ? jukebox.add(session.member, message.url)
+      : message.t === 'jukebox-remove'
+        ? jukebox.remove(session.member, message.id)
+        : message.t === 'jukebox-skip'
+          ? jukebox.skip(session.member, message.id)
+          : message.t === 'jukebox-seek'
+            ? jukebox.seek(message.id, message.position)
+            : message.t === 'jukebox-playing'
+              ? jukebox.setPlaying(message.id, message.playing)
+              : jukebox.ended(message.id, message.mediaVersion);
   if (!result.ok) {
     // Every decoder can notice the same end. The first matching epoch advances; later reports are harmlessly
     // stale and should not turn into an error banner on otherwise healthy clients.
@@ -800,20 +998,33 @@ function onJukebox(sessionId: string,
   sendMany(liveSessions(), { t: 'jukebox-state', state: result.state });
 }
 
-function handleMessage(sessionId: string, raw: string, jukebox: ServerJukebox,
-  onRideEvent: (message: Extract<ClientMessage, { t: 'ride-event' }>) => void): void {
+function handleMessage(
+  sessionId: string,
+  raw: string,
+  jukebox: ServerJukebox,
+  onRideEvent: (message: Extract<ClientMessage, { t: 'ride-event' }>) => void,
+): void {
   let parsed: ClientMessage;
-  try { parsed = JSON.parse(raw) as ClientMessage; }
-  catch { send(sessionId, { t: 'error', message: 'That was not a message this channel speaks.' }); return; }
+  try {
+    parsed = JSON.parse(raw) as ClientMessage;
+  } catch {
+    send(sessionId, { t: 'error', message: 'That was not a message this channel speaks.' });
+    return;
+  }
   touchSession(sessionId);
   const currentSession = sessionById(sessionId);
   if (!currentSession) return;
-  if (currentSession.publicPlay && !['ping', 'idle', 'watch', 'reference', 'playing', 'aware', 'ride-event', 'chat'].includes(parsed?.t)) {
-    send(sessionId, { t: 'error', message: 'Public riders can ride and chat; editing requires a member account.' }); return;
+  if (
+    currentSession.publicPlay &&
+    !['ping', 'idle', 'watch', 'reference', 'playing', 'aware', 'ride-event', 'chat'].includes(parsed?.t)
+  ) {
+    send(sessionId, { t: 'error', message: 'Public riders can ride and chat; editing requires a member account.' });
+    return;
   }
   if (currentSession.publicPlay && currentSession.projectId && !publicRoomKnown(currentSession.projectId)) {
     watchProject(sessionId, null);
-    send(sessionId, { t: 'error', message: 'This course is no longer public.' }); return;
+    send(sessionId, { t: 'error', message: 'This course is no longer public.' });
+    return;
   }
 
   switch (parsed?.t) {
@@ -825,25 +1036,27 @@ function handleMessage(sessionId: string, raw: string, jukebox: ServerJukebox,
       return;
     case 'watch': {
       const wanted = typeof parsed.projectId === 'string' && parsed.projectId ? parsed.projectId : null;
-      void joinMap(sessionId, wanted, parsed)
-        .catch(error => {
-          log.error('joining a map failed', { error });
-          send(sessionId, { t: 'error', message: 'That map could not be opened on the server.' });
-        });
+      void joinMap(sessionId, wanted, parsed).catch(error => {
+        log.error('joining a map failed', { error });
+        send(sessionId, { t: 'error', message: 'That map could not be opened on the server.' });
+      });
       return;
     }
     case 'reference': {
-      const level = typeof parsed.level === 'string'
-        // eslint-disable-next-line no-control-regex -- strips control characters from a client-supplied level name
-        ? parsed.level.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 128) || null
-        : null;
+      const level =
+        typeof parsed.level === 'string'
+          ? parsed.level
+              // eslint-disable-next-line no-control-regex -- strips control characters from a client-supplied level name
+              .replace(/[\u0000-\u001f\u007f]/g, ' ')
+              .trim()
+              .slice(0, 128) || null
+          : null;
       if (currentSession.publicPlay && level && !publicRoomKnown(referenceRoom(level))) return;
       watchReference(sessionId, level);
       return;
     }
     case 'playing':
-      watchPlaying(sessionId, parsed.playing === 'authored' || parsed.playing === 'reference'
-        ? parsed.playing : null);
+      watchPlaying(sessionId, parsed.playing === 'authored' || parsed.playing === 'reference' ? parsed.playing : null);
       return;
     case 'screen-share': {
       const enabled = parsed.enabled === true;
@@ -856,8 +1069,7 @@ function handleMessage(sessionId: string, raw: string, jukebox: ServerJukebox,
       publishScreen(sessionId, parsed.state);
       return;
     case 'screen-observe':
-      observeScreen(sessionId, typeof parsed.sessionId === 'string' ? parsed.sessionId : null,
-        parsed.active !== false);
+      observeScreen(sessionId, typeof parsed.sessionId === 'string' ? parsed.sessionId : null, parsed.active !== false);
       return;
     case 'assign':
       onAssign(sessionId, parsed);
@@ -888,8 +1100,9 @@ function handleMessage(sessionId: string, raw: string, jukebox: ServerJukebox,
     case 'chat':
       // Whatever a client sends is a line from whoever sent it. There is no shape of message here that
       // produces a system line, which is what makes one a fact rather than a claim.
-      void submitChat(whoOf(sessionById(sessionId)!.member), parsed.text, directory)
-        .catch(error => { log.error('a chat message failed', { error }); });
+      void submitChat(whoOf(sessionById(sessionId)!.member), parsed.text, directory).catch(error => {
+        log.error('a chat message failed', { error });
+      });
       return;
     default:
       send(sessionId, { t: 'error', message: 'That was not a message this channel speaks.' });
@@ -906,8 +1119,7 @@ function inboundAllowance(): (text: string) => boolean {
     const now = Date.now();
     const elapsed = Math.max(0, now - at) / 1000;
     at = now;
-    messageTokens = Math.min(INBOUND_MESSAGE_BURST,
-      messageTokens + elapsed * INBOUND_MESSAGES_PER_SECOND);
+    messageTokens = Math.min(INBOUND_MESSAGE_BURST, messageTokens + elapsed * INBOUND_MESSAGES_PER_SECOND);
     byteTokens = Math.min(INBOUND_BYTE_BURST, byteTokens + elapsed * INBOUND_BYTES_PER_SECOND);
     const bytes = Buffer.byteLength(text);
     if (messageTokens < 1 || byteTokens < bytes) return false;
@@ -924,7 +1136,7 @@ function rideEventAllowance(): () => boolean {
   let at = Date.now();
   return () => {
     const now = Date.now();
-    tokens = Math.min(RIDE_EVENT_BURST, tokens + Math.max(0, now - at) / 1000 * RIDE_EVENTS_PER_SECOND);
+    tokens = Math.min(RIDE_EVENT_BURST, tokens + (Math.max(0, now - at) / 1000) * RIDE_EVENTS_PER_SECOND);
     at = now;
     if (tokens < 1) return false;
     tokens--;
@@ -945,7 +1157,8 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   const stopWatchingPublicCourses = onPublicCoursesChanged(() => {
     for (const session of liveSessions()) {
       if (session.publicPlay && session.projectId && !publicRoomKnown(session.projectId)) {
-        session.close(4004, 'This course is no longer public.'); closeSession(session.sessionId);
+        session.close(4004, 'This course is no longer public.');
+        closeSession(session.sessionId);
       }
     }
   });
@@ -954,13 +1167,17 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   // the browser reload through the ordinary auth path; a revoked cookie or old role must not keep editing
   // merely because its transport is long-lived.
   const stopWatchingAccess = onAccountAccessChanged(event => {
-    const affected = liveSessions().filter(session => event.kind === 'session-revoked'
-      ? session.accountSessionId === event.accountSessionId
-      : session.member.id === (event.kind === 'role-changed' ? event.user.id : event.userId));
+    const affected = liveSessions().filter(session =>
+      event.kind === 'session-revoked'
+        ? session.accountSessionId === event.accountSessionId
+        : session.member.id === (event.kind === 'role-changed' ? event.user.id : event.userId),
+    );
     const roleChanged = event.kind === 'role-changed';
     for (const session of affected) {
-      session.close(roleChanged ? 4002 : 4001,
-        roleChanged ? 'Your role changed; reloading access.' : 'This login session ended.');
+      session.close(
+        roleChanged ? 4002 : 4001,
+        roleChanged ? 'Your role changed; reloading access.' : 'This login session ended.',
+      );
     }
   });
 
@@ -971,12 +1188,13 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   const stopWatchingProfiles = onAccountProfileChanged(user => {
     // Presentation is not authority, so an open socket stays open; refresh its cached member shape so the next
     // awareness heartbeat carries the new immutable image URL/edge colour to every rider already in the room.
-    for (const session of liveSessions()) if (session.member.id === user.id) {
-      session.member.username = user.username;
-      session.member.snowboardTextureUrl = user.snowboardTextureUrl;
-      session.member.skiTextureUrl = user.skiTextureUrl;
-      session.member.equipmentEdgeColor = user.equipmentEdgeColor;
-    }
+    for (const session of liveSessions())
+      if (session.member.id === user.id) {
+        session.member.username = user.username;
+        session.member.snowboardTextureUrl = user.snowboardTextureUrl;
+        session.member.skiTextureUrl = user.skiTextureUrl;
+        session.member.equipmentEdgeColor = user.equipmentEdgeColor;
+      }
     sendMany(liveSessions(), { t: 'profile-changed', userId: user.id });
   });
 
@@ -990,9 +1208,15 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   // so nothing here fires for them.
   const stopWatchingWrites = onProjectWritten(({ snapshot, by }) => {
     const message: ServerMessage = {
-      t: 'revision', projectId: snapshot.project.id, project: snapshot.project, document: snapshot.document,
+      t: 'revision',
+      projectId: snapshot.project.id,
+      project: snapshot.project,
+      document: snapshot.document,
     };
-    sendMany(sessionsOn(snapshot.project.id).filter(session => !session.clientId || session.clientId !== by), message);
+    sendMany(
+      sessionsOn(snapshot.project.id).filter(session => !session.clientId || session.clientId !== by),
+      message,
+    );
   });
 
   const stopWatchingPermissions = onProjectPermissionsChanged(project => {
@@ -1005,7 +1229,10 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
       // Only a tab this leaves read-only is handed the room's document, to drop whatever it had not sent; one
       // that may still write goes on from its own replica, so the mountain would be bytes it never reads.
       send(session.sessionId, {
-        t: 'project-access', projectId: project.id, project, writable: session.writable,
+        t: 'project-access',
+        projectId: project.id,
+        project,
+        writable: session.writable,
         ...(refusal ? { reason: refusal } : {}),
         ...(document && refusal ? { document } : {}),
       });
@@ -1040,10 +1267,14 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     // A delta is absolute for one session: clients remove that id wherever it was and then apply `to`. That
     // makes a newer move safe to coalesce over an older one for a slow peer.
     if (change.from || change.to) {
-      sendMany(liveSessions(), { t: 'presence-delta', change }, {
-        except: change.kind === 'open' ? change.sessionId : undefined,
-        coalesceKey: `presence:${change.sessionId}`,
-      });
+      sendMany(
+        liveSessions(),
+        { t: 'presence-delta', change },
+        {
+          except: change.kind === 'open' ? change.sessionId : undefined,
+          coalesceKey: `presence:${change.sessionId}`,
+        },
+      );
     }
     // Membership is the input to awareness pacing. Departures may make the room cross a faster tier; an
     // arrival always needs the current policy itself, and makes everybody hear it only if the tier changed.
@@ -1075,8 +1306,10 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   // was between. Which map anybody is on has nothing to do with it.
   const stopWatchingChat = onChatLine(({ line, audience }) => {
     const message: ServerMessage = { t: 'chat', line };
-    sendMany(liveSessions().filter(session =>
-      audience === 'everyone' || audience.includes(session.member.id)), message);
+    sendMany(
+      liveSessions().filter(session => audience === 'everyone' || audience.includes(session.member.id)),
+      message,
+    );
   });
 
   // The last client left a map: the room writes whatever it has not written and lets go, and the work of that
@@ -1086,8 +1319,10 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   const stopWatchingIdle = onProjectIdle((projectId, members) => {
     if (referenceInRoom(projectId) !== null) return;
     const settling = closeRoom(projectId)
-      .then(() => members.length ? checkpointOnSessionEnd(projectId, members) : null)
-      .catch(error => { log.error(`closing the room on ${projectId} failed`, { error }); })
+      .then(() => (members.length ? checkpointOnSessionEnd(projectId, members) : null))
+      .catch(error => {
+        log.error(`closing the room on ${projectId} failed`, { error });
+      })
       .finally(() => closing.delete(settling));
     closing.add(settling);
   });
@@ -1099,15 +1334,24 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const publicPlay = url.pathname.replace(/\/+$/, '') === '/api/public/session';
     if (!publicPlay && url.pathname.replace(/\/+$/, '') !== SESSION_PATH) return;
-    if (!isWebSocketUpgrade(req)) { refuseUpgrade(socket, 400, 'This endpoint speaks WebSocket.'); return; }
+    if (!isWebSocketUpgrade(req)) {
+      refuseUpgrade(socket, 400, 'This endpoint speaks WebSocket.');
+      return;
+    }
 
     const authority = authorityRefusal(req);
-    if (authority) { refuseUpgrade(socket, authority.status, String(authority.body.error)); return; }
+    if (authority) {
+      refuseUpgrade(socket, authority.status, String(authority.body.error));
+      return;
+    }
 
     // Nothing in the handshake stops a page on another site opening a socket here; on a server with no
     // accounts there is not even a cookie whose absence would refuse it. The origin is what that page cannot hide.
     const crossSite = crossSiteRefusal(req);
-    if (crossSite) { refuseUpgrade(socket, crossSite.status, String(crossSite.body.error)); return; }
+    if (crossSite) {
+      refuseUpgrade(socket, crossSite.status, String(crossSite.body.error));
+      return;
+    }
 
     // The same table, the same guard and the same cookie every `/api/*` route goes through.
     const decision = await authorizeRequest(req, publicPlay ? 'public' : accessFor(SESSION_PATH)('GET', '/'));
@@ -1116,7 +1360,10 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
       return;
     }
     const member = memberOf(decision.identity) ?? (publicPlay ? await guestMember(req) : null);
-    if (!member) { refuseUpgrade(socket, 401, 'Sign in to use this server.'); return; }
+    if (!member) {
+      refuseUpgrade(socket, 401, 'Sign in to use this server.');
+      return;
+    }
 
     const peer = acceptWebSocket(req, socket, head);
     if (!peer) return;
@@ -1133,40 +1380,61 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
         peer.close(1008, 'channel rate limit exceeded');
         return;
       }
-      if (!sessionReady) { earlyMessages.push(text); return; }
-      try { handleMessage(sessionId, text, jukebox, rawEvent => {
-        if (!acceptsRideEvent()) {
-          peer.close(1008, 'ride event rate limit exceeded');
-          return;
-        }
-        const serverAt = Date.now();
-        const event = sanitizeRideEventMessage(rawEvent, serverAt);
-        if (!event) {
-          send(sessionId, { t: 'error', message: 'That was not a valid ride event.' });
-          return;
-        }
-        // The id is sender-monotonic. Repeated/reordered delivery is harmless, and a reconnect receives a new
-        // authenticated session id so its counter may begin again without colliding with the old connection.
-        if (event.id <= lastRideEventId) return;
-        const sender = sessionById(sessionId);
-        const projectId = sender?.projectId;
-        if (!projectId) {
-          send(sessionId, { t: 'error', message: 'Open a map before sharing a ride interaction.' });
-          return;
-        }
-        lastRideEventId = event.id;
-        if (event.target.kind === 'reference' && sender?.referenceLevel?.toUpperCase() === event.target.level.toUpperCase()) {
-          const referenceId = referenceRoom(sender.referenceLevel);
-          sendMany(awarenessSessionsOn(referenceId), {
-            t: 'ride-event', ...event, projectId: referenceId, fromSessionId: sessionId, serverAt,
-          }, { except: sessionId });
-          return;
-        }
-        relay(projectId, sessionId, {
-          t: 'ride-event', ...event, projectId, fromSessionId: sessionId, serverAt,
+      if (!sessionReady) {
+        earlyMessages.push(text);
+        return;
+      }
+      try {
+        handleMessage(sessionId, text, jukebox, rawEvent => {
+          if (!acceptsRideEvent()) {
+            peer.close(1008, 'ride event rate limit exceeded');
+            return;
+          }
+          const serverAt = Date.now();
+          const event = sanitizeRideEventMessage(rawEvent, serverAt);
+          if (!event) {
+            send(sessionId, { t: 'error', message: 'That was not a valid ride event.' });
+            return;
+          }
+          // The id is sender-monotonic. Repeated/reordered delivery is harmless, and a reconnect receives a new
+          // authenticated session id so its counter may begin again without colliding with the old connection.
+          if (event.id <= lastRideEventId) return;
+          const sender = sessionById(sessionId);
+          const projectId = sender?.projectId;
+          if (!projectId) {
+            send(sessionId, { t: 'error', message: 'Open a map before sharing a ride interaction.' });
+            return;
+          }
+          lastRideEventId = event.id;
+          if (
+            event.target.kind === 'reference' &&
+            sender?.referenceLevel?.toUpperCase() === event.target.level.toUpperCase()
+          ) {
+            const referenceId = referenceRoom(sender.referenceLevel);
+            sendMany(
+              awarenessSessionsOn(referenceId),
+              {
+                t: 'ride-event',
+                ...event,
+                projectId: referenceId,
+                fromSessionId: sessionId,
+                serverAt,
+              },
+              { except: sessionId },
+            );
+            return;
+          }
+          relay(projectId, sessionId, {
+            t: 'ride-event',
+            ...event,
+            projectId,
+            fromSessionId: sessionId,
+            serverAt,
+          });
         });
-      }); }
-      catch (error) { log.error('a channel message failed', { error }); }
+      } catch (error) {
+        log.error('a channel message failed', { error });
+      }
     };
 
     const sessionId = randomUUID();
@@ -1174,9 +1442,12 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     // A client that names no replica is one nothing is remembered for across a reconnection, so a batch whose
     // acknowledgement it lost is replayed, as it always was.
     const replica = (url.searchParams.get('replica') ?? '').slice(0, 64) || sessionId;
-    const deviceLabel = (url.searchParams.get('device') ?? 'device')
-      // eslint-disable-next-line no-control-regex -- strips control characters from a client-supplied device label
-      .replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 32) || 'device';
+    const deviceLabel =
+      (url.searchParams.get('device') ?? 'device')
+        // eslint-disable-next-line no-control-regex -- strips control characters from a client-supplied device label
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .trim()
+        .slice(0, 32) || 'device';
     let accessCheck: ReturnType<typeof setInterval> | null = null;
     peer.onMessage(receive);
     peer.onClose(() => {
@@ -1202,7 +1473,12 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     // Welcome first, directly on the peer: a client learns who it is, what colour it wears and what this
     // server evaluates documents with before it is told who else is here.
     const welcome: ServerMessage = {
-      t: 'welcome', sessionId, clientId, member, projectId, color: colorFor(member.id),
+      t: 'welcome',
+      sessionId,
+      clientId,
+      member,
+      projectId,
+      color: colorFor(member.id),
       serverTime: Date.now(),
       accounts: requiresAccounts() ? 'required' : 'open',
       versions: { doc: DOCUMENT_VERSION, core: CORE_VERSION },
@@ -1210,11 +1486,19 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     peer.send(JSON.stringify(welcome));
     // What this member missed, before they are told anything new — so the box they open already reads as a
     // conversation rather than filling in from whatever happens next.
-    const replay: ServerMessage = { t: 'chat-history', lines: scrollbackFor(member.id)
-      .filter(line => !publicPlay || line.kind !== 'system') };
+    const replay: ServerMessage = {
+      t: 'chat-history',
+      lines: scrollbackFor(member.id).filter(line => !publicPlay || line.kind !== 'system'),
+    };
     peer.send(JSON.stringify(replay));
     const live = openSession({
-      sessionId, clientId, replica, deviceLabel, member, projectId, publicPlay,
+      sessionId,
+      clientId,
+      replica,
+      deviceLabel,
+      member,
+      projectId,
+      publicPlay,
       ...(decision.identity.kind === 'member' ? { accountSessionId: decision.identity.sessionId } : {}),
       writable: !publicPlay && holds(member.role, 'editor'),
       send: (message: unknown) => {
@@ -1227,15 +1511,20 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     if (decision.identity.kind === 'member') {
       const granted = decision.identity;
       accessCheck = setInterval(() => {
-        void authorizeRequest(req, 'viewer').then(current => {
-          if (peer.closed) return;
-          if (!current.allowed || current.identity.kind !== 'member'
-            || current.identity.sessionId !== granted.sessionId) {
-            peer.close(4001, 'This login session ended.');
-          } else if (current.identity.user.role !== member.role) {
-            peer.close(4002, 'Your role changed; reloading access.');
-          }
-        }).catch(() => peer.close(4001, 'This login session could not be verified.'));
+        void authorizeRequest(req, 'viewer')
+          .then(current => {
+            if (peer.closed) return;
+            if (
+              !current.allowed ||
+              current.identity.kind !== 'member' ||
+              current.identity.sessionId !== granted.sessionId
+            ) {
+              peer.close(4001, 'This login session ended.');
+            } else if (current.identity.user.role !== member.role) {
+              peer.close(4002, 'Your role changed; reloading access.');
+            }
+          })
+          .catch(() => peer.close(4001, 'This login session could not be verified.'));
       }, ACCESS_RECHECK_MS);
       accessCheck.unref();
     }
@@ -1250,7 +1539,11 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     }
     // A socket that went away between the handshake and here would otherwise sit in presence until it was
     // swept for silence.
-    if (peer.closed) { closeScreenSession(sessionId); closeSession(sessionId); return; }
+    if (peer.closed) {
+      closeScreenSession(sessionId);
+      closeSession(sessionId);
+      return;
+    }
     if (projectId) {
       await joinMap(sessionId, projectId, {}).catch(error => {
         log.error('opening the seeded map failed', { error });
@@ -1261,7 +1554,11 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   const upgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     void onUpgrade(req, socket, head).catch(error => {
       log.error('an upgrade failed', { error });
-      try { refuseUpgrade(socket, 500, 'This server could not open a session channel.'); } catch { socket.destroy(); }
+      try {
+        refuseUpgrade(socket, 500, 'This server could not open a session channel.');
+      } catch {
+        socket.destroy();
+      }
     });
   };
   server.on('upgrade', upgrade);
@@ -1287,8 +1584,12 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     // wait until systemd's stop timeout. `peer.close` synchronously raises its close listener, which removes
     // the session through the table and starts the last-client checkpoint before we await it below.
     for (const session of liveSessions()) {
-      try { session.close(1012, 'Slopesmith is restarting.'); }
-      finally { closeScreenSession(session.sessionId); closeSession(session.sessionId); }
+      try {
+        session.close(1012, 'Slopesmith is restarting.');
+      } finally {
+        closeScreenSession(session.sessionId);
+        closeSession(session.sessionId);
+      }
     }
     screenTargetByObserver.clear();
     screenObserversByTarget.clear();

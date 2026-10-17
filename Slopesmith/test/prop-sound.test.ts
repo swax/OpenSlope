@@ -17,7 +17,11 @@
  */
 import { registerCollisionSoundIndex } from '../src/core/effects/collision-sound';
 import {
-  authoredOwnerKey, createPropSoundLayer, referenceOwnerKey, referencePropSoundSources, type PropSoundSource,
+  authoredOwnerKey,
+  createPropSoundLayer,
+  referenceOwnerKey,
+  referencePropSoundSources,
+  type PropSoundSource,
 } from '../src/app/viewport/scene/prop-sound';
 import { check, checkNear, failures } from './check';
 
@@ -33,7 +37,11 @@ registerCollisionSoundIndex({
   },
 });
 
-interface Shot { kind: 'bank' | 'file'; id: string; volume: number }
+interface Shot {
+  kind: 'bank' | 'file';
+  id: string;
+  volume: number;
+}
 
 function layer() {
   const shots: Shot[] = [];
@@ -48,8 +56,11 @@ function layer() {
     fileBuffer: file => Promise.resolve({ kind: 'file', id: file } as unknown as AudioBuffer),
     riderSpeed: () => 0,
     ambient: {
-      listener: null as never, root: null as never,
-      rawToWorld: () => vector, worldToRaw: () => [0, 0, 0], editorToRaw: () => [0, 0, 0],
+      listener: null as never,
+      root: null as never,
+      rawToWorld: () => vector,
+      worldToRaw: () => [0, 0, 0],
+      editorToRaw: () => [0, 0, 0],
       loadBuffer: () => Promise.resolve(null),
     },
   });
@@ -68,20 +79,26 @@ const police: PropSoundSource = { key: 'police', level: 'MERQUER', event: 11, co
     { sourceIndex: 11, collisionSound: 11, contact: 'through' },
     { sourceIndex: 12, collisionSound: -1, contact: 'ghost' },
   ]);
-  check(sources.size === 3 && sources.get(9)?.key === 'reference:9'
-    && sources.get(9)?.level === 'MERQUER' && sources.get(9)?.event === 11,
-  'the collider-owning prop payload builds the impact registry by sourceIndex');
-  check(sources.get(10)?.contact === 'movable' && sources.get(11)?.contact === 'through'
-    && !sources.has(12), 'the registry preserves contact curves and drops missing sound rows');
+  check(
+    sources.size === 3 &&
+      sources.get(9)?.key === 'reference:9' &&
+      sources.get(9)?.level === 'MERQUER' &&
+      sources.get(9)?.event === 11,
+    'the collider-owning prop payload builds the impact registry by sourceIndex',
+  );
+  check(
+    sources.get(10)?.contact === 'movable' && sources.get(11)?.contact === 'through' && !sources.has(12),
+    'the registry preserves contact curves and drops missing sound rows',
+  );
 }
 
 // A source registry can outlive a dev hot-reload that introduces a new discriminator. The exact legacy shape
 // from before contact curves existed must remain playable instead of throwing while the ride tick is running.
 {
   const legacy = layer();
-  legacy.propSound.setReferenceSources(new Map([[9,
-    { key: 'legacy-police', level: 'MERQUER', event: 11 } as PropSoundSource,
-  ]]));
+  legacy.propSound.setReferenceSources(
+    new Map([[9, { key: 'legacy-police', level: 'MERQUER', event: 11 } as PropSoundSource]]),
+  );
   legacy.propSound.contact({ kind: 'reference', index: 9 }, legacy.position, 9, 1);
   await Promise.resolve();
   checkNear(legacy.shots[0].volume, 0.5, 'a legacy source without contact metadata safely uses the solid curve');
@@ -91,26 +108,44 @@ const police: PropSoundSource = { key: 'police', level: 'MERQUER', event: 11, co
 
 {
   const { propSound, shots, position } = layer();
-  propSound.setReferenceSources(new Map([[5, hydrant], [9, police]]));
+  propSound.setReferenceSources(
+    new Map([
+      [5, hydrant],
+      [9, police],
+    ]),
+  );
 
   propSound.contact({ kind: 'reference', index: 5 }, position, 20, 1);
   await Promise.resolve();
-  check(propSound.isArmed(referenceOwnerKey(5)), 'a hydrant hit arms its ambience even though its collision row is silent');
+  check(
+    propSound.isArmed(referenceOwnerKey(5)),
+    'a hydrant hit arms its ambience even though its collision row is silent',
+  );
   check(shots.length === 0, '…and plays no one-shot at all, because event 0 resolves to nothing');
 
   propSound.contact({ kind: 'reference', index: 9 }, position, 20, 1);
   await Promise.resolve();
   check(propSound.isArmed(referenceOwnerKey(9)), 'a police car hit arms its siren');
-  check(shots.length === 1 && shots[0].id === 'MERQUER/course/33',
-    '…and also plays its ordinary body one-shot from the course bank');
+  check(
+    shots.length === 1 && shots[0].id === 'MERQUER/course/33',
+    '…and also plays its ordinary body one-shot from the course bank',
+  );
 }
 
 // Arming is per instance, or one hit would start the whole street.
 {
   const { propSound, position } = layer();
-  propSound.setReferenceSources(new Map([[5, hydrant], [6, hydrant]]));
+  propSound.setReferenceSources(
+    new Map([
+      [5, hydrant],
+      [6, hydrant],
+    ]),
+  );
   propSound.contact({ kind: 'reference', index: 5 }, position, 20, 1);
-  check(propSound.isArmed(referenceOwnerKey(5)) && !propSound.isArmed(referenceOwnerKey(6)), 'hitting one hydrant leaves its neighbour unarmed');
+  check(
+    propSound.isArmed(referenceOwnerKey(5)) && !propSound.isArmed(referenceOwnerKey(6)),
+    'hitting one hydrant leaves its neighbour unarmed',
+  );
 }
 
 // A prop with NO collision row at all still arms: the registry lookup must not gate the arming.
@@ -149,16 +184,23 @@ const police: PropSoundSource = { key: 'police', level: 'MERQUER', event: 11, co
 
 {
   const { propSound, shots, position } = layer();
-  propSound.setAuthoredSources(new Map([
-    ['a', { key: 'a', level: 'MERQUER', event: 11, contact: 'solid' }],
-    ['b', { key: 'b', level: 'MERQUER', event: 11, contact: 'solid', file: 'thud.wav' }],
-  ]));
+  propSound.setAuthoredSources(
+    new Map([
+      ['a', { key: 'a', level: 'MERQUER', event: 11, contact: 'solid' }],
+      ['b', { key: 'b', level: 'MERQUER', event: 11, contact: 'solid', file: 'thud.wav' }],
+    ]),
+  );
   propSound.contact({ kind: 'authored', id: 'a' }, position, 20, 1);
   propSound.contact({ kind: 'authored', id: 'b' }, position, 20, 1);
   await Promise.resolve();
-  check(shots.some(s => s.id === 'MERQUER/course/33'), 'an authored prop plays its bank slot');
-  check(shots.some(s => s.kind === 'file' && s.id === 'thud.wav'),
-    '…and an uploaded clip takes precedence over the event id');
+  check(
+    shots.some(s => s.id === 'MERQUER/course/33'),
+    'an authored prop plays its bank slot',
+  );
+  check(
+    shots.some(s => s.kind === 'file' && s.id === 'thud.wav'),
+    '…and an uploaded clip takes precedence over the event id',
+  );
   // An authored placement carrying a gated event is hit-gated in retail exactly as a reference one is, so a
   // contact has to arm it here too — this is the half that used to be reference-only.
   check(propSound.isArmed(authoredOwnerKey('a')), 'an authored prop arms its own hit-gated ambience');
@@ -168,8 +210,10 @@ const police: PropSoundSource = { key: 'police', level: 'MERQUER', event: 11, co
 {
   const { propSound, position } = layer();
   propSound.contact({ kind: 'reference', index: 7 }, position, 20, 1);
-  check(propSound.isArmed(referenceOwnerKey(7)) && !propSound.isArmed(authoredOwnerKey('7')),
-    'a reference hit does not arm the authored prop that shares its number');
+  check(
+    propSound.isArmed(referenceOwnerKey(7)) && !propSound.isArmed(authoredOwnerKey('7')),
+    'a reference hit does not arm the authored prop that shares its number',
+  );
 }
 
 // ---- Unity-parity speed gates and volume ramps; playback pitch remains untouched ----

@@ -3,8 +3,14 @@ import { AUTHORED_MODEL_LEVEL, modelIdFromNumber, modelNumber } from '../../core
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { AuthoredModel } from '../../core/doc/types';
 import {
-  authoredModelPortal, cageFromPortal, importedGeometryFromPortal, importedPropPortal, portalGlb,
-  type CageUpdate, type PortalKind, type PortalMesh,
+  authoredModelPortal,
+  cageFromPortal,
+  importedGeometryFromPortal,
+  importedPropPortal,
+  portalGlb,
+  type CageUpdate,
+  type PortalKind,
+  type PortalMesh,
 } from '../../core/blender/portal';
 import { CUSTOM_TEX_LEVEL, makeTexRef, parseTexRef } from '../../core/paint/textures';
 import { IMPORTED_PROP_LEVEL, type ImportedPropRecord } from '../../core/props/imported';
@@ -13,9 +19,7 @@ import { projectAssetPath } from '../project-assets';
 import { listProjects } from '../projects';
 import { ensureDir, readJsonOr, writeJsonAtomic } from '../fs-async';
 import { listImportedProps, replaceImportedProp } from './imported-props';
-import {
-  customTextureExists, readReferenceTextureBytes, replaceCustomTextureArt, saveCustomTexture,
-} from './textures';
+import { customTextureExists, readReferenceTextureBytes, replaceCustomTextureArt, saveCustomTexture } from './textures';
 
 /**
  * The Blender bridge's server half (docs/046) — what a checked-out model is, and what happens when one comes
@@ -73,11 +77,15 @@ export interface BlenderCatalogue {
  * An extracted level's bank is global and needs none of this. It is sent anyway: a URL whose correctness
  * depends on which kind of ref it happens to name is a URL that gets built wrong later.
  */
-const textureUrl = (project: string) => (ref: string): string => {
-  const { level, name } = parseTexRef(ref);
-  return `/api/texture?level=${encodeURIComponent(level)}&name=${encodeURIComponent(name)}`
-    + `&project=${encodeURIComponent(project)}`;
-};
+const textureUrl =
+  (project: string) =>
+  (ref: string): string => {
+    const { level, name } = parseTexRef(ref);
+    return (
+      `/api/texture?level=${encodeURIComponent(level)}&name=${encodeURIComponent(name)}` +
+      `&project=${encodeURIComponent(project)}`
+    );
+  };
 
 const authoredModels = (document: EditDoc): AuthoredModel[] => document.models ?? [];
 
@@ -91,7 +99,8 @@ function base64Bytes(encoded: string): number {
  *  extracted level's props are deliberately absent — they are the reference, not the work (docs/032), and
  *  the way to edit one is to revise it into a model first (docs/028). */
 export async function blenderCatalogue(
-  project: { id: string; name: string }, document: EditDoc,
+  project: { id: string; name: string },
+  document: EditDoc,
 ): Promise<BlenderCatalogue> {
   const models: BlenderCatalogueEntry[] = authoredModels(document).map(model => ({
     kind: 'model' as const,
@@ -104,7 +113,10 @@ export async function blenderCatalogue(
   }));
   for (const { record } of await listImportedProps()) {
     models.push({
-      kind: 'import', id: record.id, name: record.name, level: IMPORTED_PROP_LEVEL,
+      kind: 'import',
+      id: record.id,
+      name: record.name,
+      level: IMPORTED_PROP_LEVEL,
       faces: record.tris,
       // Counted off the base64 LENGTH rather than by decoding every submesh: this is a catalogue row, and
       // unpacking a fifty-thousand-triangle record to put a number beside its name is not worth the pass.
@@ -132,8 +144,12 @@ async function findImportedRecord(id: number): Promise<ImportedPropRecord> {
 }
 
 /** One checked-out model as the portal payload the addon builds a Blender mesh from. */
-export async function blenderPortal(document: EditDoc, projectId: string, kind: PortalKind, id: number):
-Promise<PortalMesh> {
+export async function blenderPortal(
+  document: EditDoc,
+  projectId: string,
+  kind: PortalKind,
+  id: number,
+): Promise<PortalMesh> {
   const tile = textureUrl(projectId);
   if (kind === 'model') {
     const model = findAuthoredModel(document, id);
@@ -159,7 +175,9 @@ export async function blenderPortalGlb(mesh: PortalMesh): Promise<Uint8Array> {
       const bytes = await readReferenceTextureBytes(level, name);
       imageOfSlot.set(material.id, images.length);
       images.push({ name: material.tex, mimeType: 'image/png', bytes: new Uint8Array(bytes) });
-    } catch { /* a missing tile draws as clay in Blender, which is legible; a failed export is not */ }
+    } catch {
+      /* a missing tile draws as clay in Blender, which is legible; a failed export is not */
+    }
   }
   return portalGlb(mesh, images, slot => imageOfSlot.get(slot) ?? null);
 }
@@ -222,15 +240,16 @@ export interface TexturePushResult {
 export async function applyTexturePushes(mesh: PortalMesh): Promise<TexturePushResult> {
   const slotTex = new Map<number, string>();
   const moved: { from: string; to: string }[] = [];
-  let written = 0, forked = 0;
+  let written = 0,
+    forked = 0;
 
   for (const material of mesh.materials) {
     if (!material.png) continue;
     const bytes = Buffer.from(material.png, 'base64');
     if (!bytes.length) continue;
     const wearing = material.tex ? parseTexRef(material.tex) : null;
-    const ours = wearing?.level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
-      && await customTextureExists(wearing.name);
+    const ours =
+      wearing?.level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase() && (await customTextureExists(wearing.name));
     if (ours) {
       const { name, replaced } = await replaceCustomTextureArt(wearing!.name, bytes);
       const to = makeTexRef(CUSTOM_TEX_LEVEL, name);
@@ -240,8 +259,7 @@ export async function applyTexturePushes(mesh: PortalMesh): Promise<TexturePushR
       // Named for the PROP, not for the tile it forked from: "0012" is a page number in somebody else's
       // atlas, and the author looking for this art in the Texture Library later will look for the prop.
       // Spaces are spelled `_` rather than left for `safeDataName` to drop, which would give "Railjump".
-      const stem = (mesh.stamp.name + (mesh.materials.length > 1 ? ` ${material.id + 1}` : ''))
-        .replace(/\s+/g, '_');
+      const stem = (mesh.stamp.name + (mesh.materials.length > 1 ? ` ${material.id + 1}` : '')).replace(/\s+/g, '_');
       slotTex.set(material.id, makeTexRef(CUSTOM_TEX_LEVEL, await saveCustomTexture(stem, bytes)));
       forked++;
     }
@@ -261,20 +279,28 @@ export async function applyTexturePushes(mesh: PortalMesh): Promise<TexturePushR
  * `slotTex` is where a texture push lands, and it is applied AFTER the table is extended so a slot the artist
  * invented in Blender can arrive already wearing the art they painted on it.
  */
-export async function applyImportedPush(mesh: PortalMesh, slotTex?: ReadonlyMap<number, string>):
-Promise<BlenderPushResult> {
+export async function applyImportedPush(
+  mesh: PortalMesh,
+  slotTex?: ReadonlyMap<number, string>,
+): Promise<BlenderPushResult> {
   const record = await findImportedRecord(mesh.stamp.id);
   const geometry = importedGeometryFromPortal(mesh, record.materials.length);
   const materials = [...record.materials];
   for (let i = 0; i < geometry.addedMaterials; i++) materials.push({ id: materials.length, tex: null });
   const { id: _id, name: _name, ...rest } = record;
   await replaceImportedProp(record.id, {
-    ...rest, tris: geometry.tris, subs: geometry.subs,
+    ...rest,
+    tris: geometry.tris,
+    subs: geometry.subs,
     materials: materials.map(material =>
-      slotTex?.has(material.id) ? { ...material, tex: slotTex.get(material.id)! } : material),
+      slotTex?.has(material.id) ? { ...material, tex: slotTex.get(material.id)! } : material,
+    ),
   });
   return {
-    kind: 'import', id: record.id, name: record.name, faces: geometry.tris,
+    kind: 'import',
+    id: record.id,
+    name: record.name,
+    faces: geometry.tris,
     ...(geometry.addedMaterials ? { addedMaterials: geometry.addedMaterials } : {}),
   };
 }
@@ -323,7 +349,7 @@ const inboxFile = () => projectAssetPath('blender', 'pending.json');
 
 async function readInbox(): Promise<PendingBlenderPush[]> {
   const stored = await readJsonOr<{ pushes?: unknown }>(inboxFile(), {});
-  return Array.isArray(stored.pushes) ? stored.pushes as PendingBlenderPush[] : [];
+  return Array.isArray(stored.pushes) ? (stored.pushes as PendingBlenderPush[]) : [];
 }
 
 /** Keep the newest few of each kind, in the order they were queued. */
@@ -351,13 +377,22 @@ export async function queueModelPush(mesh: PortalMesh, texture?: string): Promis
   const cage = cageFromPortal(mesh, mesh.anchor);
   if (!cage.quads.length) throw new Error('that mesh has no faces a cage can hold');
   const push: PendingCagePush = {
-    token: randomUUID(), at: Date.now(), kind: 'model', id: mesh.stamp.id, name: mesh.stamp.name, cage,
+    token: randomUUID(),
+    at: Date.now(),
+    kind: 'model',
+    id: mesh.stamp.id,
+    name: mesh.stamp.name,
+    cage,
     ...(texture ? { texture } : {}),
   };
   const held = (await readInbox()).filter(pending => pending.kind !== 'model' || pending.id !== push.id);
   await writeInbox([...held, push]);
   return {
-    kind: 'model', id: push.id, name: push.name, faces: cage.quads.length, pending: true,
+    kind: 'model',
+    id: push.id,
+    name: push.name,
+    faces: cage.quads.length,
+    pending: true,
     ...(cage.fanned ? { fanned: cage.fanned } : {}),
     ...(cage.dropped ? { dropped: cage.dropped } : {}),
   };
@@ -375,9 +410,12 @@ export async function queueTextureRetarget(moves: readonly { from: string; to: s
   if (!moves.length) return;
   const held = await readInbox();
   for (const move of moves) {
-    const chained = held.find(push => push.kind === 'retex' && push.to === move.from) as
-      PendingRetexPush | undefined;
-    if (chained) { chained.to = move.to; chained.at = Date.now(); continue; }
+    const chained = held.find(push => push.kind === 'retex' && push.to === move.from) as PendingRetexPush | undefined;
+    if (chained) {
+      chained.to = move.to;
+      chained.at = Date.now();
+      continue;
+    }
     held.push({ token: randomUUID(), at: Date.now(), kind: 'retex', from: move.from, to: move.to });
   }
   await writeInbox(held);

@@ -1,7 +1,11 @@
 import { responseCache } from '../response-cache';
 import { customMusicContentType, listCustomMusic, readCustomMusicBytes, saveCustomMusic } from '../routes/music';
 import {
-  CUSTOM_ASSET_CACHE_CONTROL, invalidateProjectLibrary, readBody, RequestBodyTooLargeError, type ApiHandler,
+  CUSTOM_ASSET_CACHE_CONTROL,
+  invalidateProjectLibrary,
+  readBody,
+  RequestBodyTooLargeError,
+  type ApiHandler,
 } from './common';
 import { projectAssetCacheKey } from '../project-assets';
 
@@ -13,8 +17,9 @@ export const musicRoutes: Record<string, ApiHandler> = {
   '/api/custom-music': async (req, res) => {
     try {
       if (req.method === 'GET') {
-        await responseCache.json(req, res, projectAssetCacheKey('custom-music'),
-          async () => ({ tracks: await listCustomMusic() }));
+        await responseCache.json(req, res, projectAssetCacheKey('custom-music'), async () => ({
+          tracks: await listCustomMusic(),
+        }));
         return;
       }
       if (req.method === 'POST') {
@@ -36,12 +41,22 @@ export const musicRoutes: Record<string, ApiHandler> = {
   },
 
   '/api/custom-music-file': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     try {
       const name = new URL(req.url ?? '', 'http://localhost').searchParams.get('name') ?? '';
       // a track's name is its identity in the library, so a multi-megabyte audition downloads once
-      await responseCache.bytes(req, res, projectAssetCacheKey(`custom-music-file:${name}`), customMusicContentType(name),
-        CUSTOM_ASSET_CACHE_CONTROL, () => readCustomMusicBytes(name));
+      await responseCache.bytes(
+        req,
+        res,
+        projectAssetCacheKey(`custom-music-file:${name}`),
+        customMusicContentType(name),
+        CUSTOM_ASSET_CACHE_CONTROL,
+        () => readCustomMusicBytes(name),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));

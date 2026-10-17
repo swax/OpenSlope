@@ -17,12 +17,13 @@ import { tooltip } from '../ui/components/tooltip';
 import { customSoundFilepath, customSounds, loadCustomSounds } from '../ui/components/custom-sounds';
 import { defaultLibrarySource } from '../ui/components/library-default';
 import {
-  collisionSoundEventIds, collisionSoundLabel, registerCollisionSoundIndex, resolveCollisionSound,
+  collisionSoundEventIds,
+  collisionSoundLabel,
+  registerCollisionSoundIndex,
+  resolveCollisionSound,
   type CollisionSoundIndex,
 } from '../../core/effects/collision-sound';
-import {
-  externalSoundEventIds, externalSoundLabel, resolveExternalSound,
-} from '../../core/effects/external-sound';
+import { externalSoundEventIds, externalSoundLabel, resolveExternalSound } from '../../core/effects/external-sound';
 
 export type SoundBankKind = 'course' | 'crowd' | 'board' | 'named';
 
@@ -33,7 +34,8 @@ interface SoundBank {
 }
 
 const KIND_NOTE: Record<SoundBankKind, string> = {
-  course: 'The level’s group-2 course bank — the slots a Play sound node indexes and the target of prop collision-sound events.',
+  course:
+    'The level’s group-2 course bank — the slots a Play sound node indexes and the target of prop collision-sound events.',
   crowd: 'The shared Crowd bank, reached by collision events 97–99.',
   board: 'A shared level-independent board bank (the ride’s own glide/carve/boost beds).',
   named: 'A fixed global environment bank, reached by name from an ExternalSounds event rather than by course slot.',
@@ -97,12 +99,14 @@ const MODE_TITLE: Record<SoundPickMode, string> = {
 
 const MODE_NOTE: Record<SoundPickMode, string> = {
   slots: '',
-  'collision-events': 'Prop hits store an ADL event id, not a slot — the engine remaps it through one global '
-    + 'table, so an id means the same KIND of surface on every level, realized by whatever that level’s bank '
-    + 'ships. Auditioned here against the level chosen above.',
-  'external-events': 'Emitters store an ExternalSounds event id. Named events select clip 000 of a fixed '
-    + 'global bank and sound the same everywhere; the rest fall through to the course/crowd resolver and '
-    + 'depend on the level.',
+  'collision-events':
+    'Prop hits store an ADL event id, not a slot — the engine remaps it through one global ' +
+    'table, so an id means the same KIND of surface on every level, realized by whatever that level’s bank ' +
+    'ships. Auditioned here against the level chosen above.',
+  'external-events':
+    'Emitters store an ExternalSounds event id. Named events select clip 000 of a fixed ' +
+    'global bank and sound the same everywhere; the rest fall through to the course/crowd resolver and ' +
+    'depend on the level.',
 };
 
 /** Where one event id's clip lives, as a bank folder the audition route can read. Resolution uses the
@@ -186,7 +190,10 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
   done.textContent = 'Close';
   actions.appendChild(done);
 
-  const close = () => { stopAudition(); closeModal(); };
+  const close = () => {
+    stopAudition();
+    closeModal();
+  };
   done.onclick = close;
 
   let banks: SoundBank[] = [];
@@ -199,8 +206,9 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
     slots.replaceChildren();
     slots.classList.add('events');
     bankSelect.parentElement?.style.setProperty('display', 'none');
-    note.textContent = 'This mountain’s uploaded WAVs. Export stages the chosen clip into a '
-      + 'reserved course-bank slot, so these carry into a repacked ISO as well as into Unity.';
+    note.textContent =
+      'This mountain’s uploaded WAVs. Export stages the chosen clip into a ' +
+      'reserved course-bank slot, so these carry into a repacked ISO as well as into Unity.';
     const files = customSounds();
     if (!files.length) {
       const empty = document.createElement('div');
@@ -223,14 +231,19 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
       const play = document.createElement('button');
       play.textContent = '▶';
       tooltip(play, `Audition ${file}.`);
-      play.onclick = () => { auditionCustomSound(file); };
+      play.onclick = () => {
+        auditionCustomSound(file);
+      };
       acts.appendChild(play);
       if (opts.assignFile) {
         const use = document.createElement('button');
         use.className = 'use';
         use.textContent = 'use';
         tooltip(use, `Assign ${file}.`);
-        use.onclick = () => { opts.assignFile!(file); close(); };
+        use.onclick = () => {
+          opts.assignFile!(file);
+          close();
+        };
         acts.appendChild(use);
       }
       cell.append(num, where, acts);
@@ -251,15 +264,16 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
       num.textContent = row.label;
       const where = document.createElement('div');
       where.className = 'where';
-      where.textContent = row.source
-        ? `${row.source.bank} ${String(row.source.slot).padStart(3, '0')}` : 'silent';
+      where.textContent = row.source ? `${row.source.bank} ${String(row.source.slot).padStart(3, '0')}` : 'silent';
       const acts = document.createElement('div');
       acts.className = 'acts';
       if (row.source) {
         const play = document.createElement('button');
         play.textContent = '▶';
         tooltip(play, `Audition event ${row.id} as ${levelSelect.value} realizes it.`);
-        play.onclick = () => { auditionBankSlot(levelSelect.value, row.source!.bank, row.source!.slot); };
+        play.onclick = () => {
+          auditionBankSlot(levelSelect.value, row.source!.bank, row.source!.slot);
+        };
         acts.appendChild(play);
       }
       if (opts.assign) {
@@ -267,7 +281,10 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
         use.className = 'use';
         use.textContent = 'use';
         tooltip(use, `Assign event id ${row.id}.`);
-        use.onclick = () => { opts.assign!(row.id, levelSelect.value); close(); };
+        use.onclick = () => {
+          opts.assign!(row.id, levelSelect.value);
+          close();
+        };
         acts.appendChild(use);
       }
       cell.append(num, where, acts);
@@ -298,7 +315,9 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
       const play = document.createElement('button');
       play.textContent = '▶';
       tooltip(play, `Audition ${levelSelect.value} ${bank.name} slot ${String(slot).padStart(3, '0')}.`);
-      play.onclick = () => { auditionBankSlot(levelSelect.value, bank.name, slot); };
+      play.onclick = () => {
+        auditionBankSlot(levelSelect.value, bank.name, slot);
+      };
       acts.appendChild(play);
       // Only the course bank is addressable by a PlaySound slot number; assigning a crowd or named-bank
       // index would name a course slot that holds something else entirely, so those stay browse-only.
@@ -307,7 +326,10 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
         use.className = 'use';
         use.textContent = 'use';
         tooltip(use, `Set this Play sound node's slot to ${slot}.`);
-        use.onclick = () => { opts.assign!(slot, levelSelect.value); close(); };
+        use.onclick = () => {
+          opts.assign!(slot, levelSelect.value);
+          close();
+        };
         acts.appendChild(use);
       }
       cell.append(num, acts);
@@ -323,7 +345,10 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
   }
 
   async function loadLevel(level: string): Promise<void> {
-    if (level === CUSTOM_SOUND_LEVEL) { renderCustom(); return; }
+    if (level === CUSTOM_SOUND_LEVEL) {
+      renderCustom();
+      return;
+    }
     slots.classList.remove('events');
     bankSelect.parentElement?.style.removeProperty('display');
     slots.replaceChildren();
@@ -333,8 +358,13 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
       const body = (await response.json()) as { banks?: SoundBank[]; soundIndex?: CollisionSoundIndex };
       banks = body.banks ?? [];
       registerCollisionSoundIndex(body.soundIndex);
-    } catch { banks = []; }
-    if (mode !== 'slots') { renderEvents(); return; }
+    } catch {
+      banks = [];
+    }
+    if (mode !== 'slots') {
+      renderEvents();
+      return;
+    }
     bankSelect.replaceChildren();
     for (const bank of banks) {
       const option = document.createElement('option');
@@ -346,14 +376,21 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
     renderSlots();
   }
 
-  levelSelect.onchange = () => { void loadLevel(levelSelect.value); };
+  levelSelect.onchange = () => {
+    void loadLevel(levelSelect.value);
+  };
   bankSelect.onchange = renderSlots;
 
   let levels: string[] = [];
   const [, uploads] = await Promise.all([
-    fetch('/api/sound-banks').then(r => r.json())
-      .then((body: { levels?: string[] }) => { levels = body.levels ?? []; })
-      .catch(() => { levels = []; }),
+    fetch('/api/sound-banks')
+      .then(r => r.json())
+      .then((body: { levels?: string[] }) => {
+        levels = body.levels ?? [];
+      })
+      .catch(() => {
+        levels = [];
+      }),
     loadCustomSounds(),
   ]);
   // Custom leads whether or not it holds anything — like the Texture Library's own bank, it is the one

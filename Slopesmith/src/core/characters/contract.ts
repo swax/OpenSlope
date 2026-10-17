@@ -26,11 +26,21 @@ export type MixamoBone = keyof typeof MIXAMO_TO_SLOPESMITH;
 export type CanonicalCharacterBone = (typeof MIXAMO_TO_SLOPESMITH)[MixamoBone];
 
 export const REQUIRED_CHARACTER_BONES = [
-  'Hips', 'Chest', 'Head',
-  'UpperArm.L', 'LowerArm.L', 'Hand.L',
-  'UpperArm.R', 'LowerArm.R', 'Hand.R',
-  'UpperLeg.L', 'LowerLeg.L', 'Foot.L',
-  'UpperLeg.R', 'LowerLeg.R', 'Foot.R',
+  'Hips',
+  'Chest',
+  'Head',
+  'UpperArm.L',
+  'LowerArm.L',
+  'Hand.L',
+  'UpperArm.R',
+  'LowerArm.R',
+  'Hand.R',
+  'UpperLeg.L',
+  'LowerLeg.L',
+  'Foot.L',
+  'UpperLeg.R',
+  'LowerLeg.R',
+  'Foot.R',
 ] as const satisfies readonly CanonicalCharacterBone[];
 
 /**

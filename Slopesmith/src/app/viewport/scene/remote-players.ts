@@ -3,8 +3,13 @@ import type { PlayerMode, PlayerPose, PlayerTransform } from '../../../core/sess
 import { RemotePlayerMotion } from '../../net/remote-player-motion';
 import { OnFootFacing } from '../../ride/on-foot-facing';
 import {
-  createBoard, DEFAULT_RIDE_GEAR, DEFAULT_SNOWBOARD_STANCE, type BoardModel, type EquipmentAppearance,
-  type RideGear, type SnowboardStance,
+  createBoard,
+  DEFAULT_RIDE_GEAR,
+  DEFAULT_SNOWBOARD_STANCE,
+  type BoardModel,
+  type EquipmentAppearance,
+  type RideGear,
+  type SnowboardStance,
 } from '../../ride/gear';
 import { createRider, type Rider, type RiderHandTarget } from '../../ride/rider';
 import { riderLookTarget } from '../../ride/pose';
@@ -12,12 +17,14 @@ import type { PeerMarks } from './peers';
 import type { Stage } from '../stage';
 
 const UP = new THREE.Vector3(0, 1, 0);
-const FORWARD = new THREE.Vector3(0, 0, 1);   // deck-local nose: the axis a carve rolls about
+const FORWARD = new THREE.Vector3(0, 0, 1); // deck-local nose: the axis a carve rolls about
 const DEG = Math.PI / 180;
 const CHAT_BUBBLE_SECONDS = 6;
 /** A name tag's world size, and a chat bubble's width, from `LABEL_FULL_SIZE_AT` or further out: sized for the
  *  editor's camera, which usually watches players from tens of metres. */
-const LABEL_WIDTH = 10, LABEL_HEIGHT = 1.4, CHAT_BUBBLE_WIDTH = 7;
+const LABEL_WIDTH = 10,
+  LABEL_HEIGHT = 1.4,
+  CHAT_BUBBLE_WIDTH = 7;
 /** Nearer than this, name tags and chat bubbles shrink with distance and keep the size they have on screen here
  *  (the name's letters about 1.3° tall). At full size they towered over a player a few metres away in a headset. */
 const LABEL_FULL_SIZE_AT = 30;
@@ -51,7 +58,9 @@ export interface PlayerNavigationTarget {
 /** Derive both meanings of Test ▸ Position ▸ Go to player from the same owner-authoritative pose. */
 export function playerNavigationTarget(pose: PlayerPose): PlayerNavigationTarget {
   const position = new THREE.Vector3(...pose.body.p);
-  const heading = FORWARD.clone().applyQuaternion(new THREE.Quaternion(...pose.body.q)).setY(0);
+  const heading = FORWARD.clone()
+    .applyQuaternion(new THREE.Quaternion(...pose.body.q))
+    .setY(0);
   // A switch rider travels off the other end of the deck. Frame and join the direction their body is actually
   // riding, not the snowboard's fixed local nose.
   if (pose.mode === 'ride' && pose.animation?.lead === -1) heading.negate();
@@ -64,8 +73,7 @@ export function playerNavigationTarget(pose: PlayerPose): PlayerNavigationTarget
   return {
     position,
     heading,
-    eye: focus.clone().addScaledVector(heading, PLAYER_VIEW_DISTANCE)
-      .addScaledVector(UP, PLAYER_VIEW_HEIGHT),
+    eye: focus.clone().addScaledVector(heading, PLAYER_VIEW_DISTANCE).addScaledVector(UP, PLAYER_VIEW_HEIGHT),
     focus,
     join: position.clone().addScaledVector(heading, -PLAYER_JOIN_DISTANCE),
   };
@@ -86,8 +94,10 @@ interface SmoothedLocalTransform {
 }
 
 const localTransform = (): SmoothedLocalTransform => ({
-  position: new THREE.Vector3(), quaternion: new THREE.Quaternion(),
-  targetPosition: new THREE.Vector3(), targetQuaternion: new THREE.Quaternion(),
+  position: new THREE.Vector3(),
+  quaternion: new THREE.Quaternion(),
+  targetPosition: new THREE.Vector3(),
+  targetQuaternion: new THREE.Quaternion(),
 });
 
 class RemoteAvatar {
@@ -121,10 +131,12 @@ class RemoteAvatar {
   private readonly lookForward = new THREE.Vector3();
   private readonly lookTurnScratch = new THREE.Vector3();
   private readonly handA: RiderHandTarget = {
-    position: new THREE.Vector3(), quaternion: new THREE.Quaternion(),
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
   };
   private readonly handB: RiderHandTarget = {
-    position: new THREE.Vector3(), quaternion: new THREE.Quaternion(),
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
   };
   private readonly headWorldPosition = new THREE.Vector3();
   private readonly headWorldQuaternion = new THREE.Quaternion();
@@ -135,10 +147,12 @@ class RemoteAvatar {
   private turnDirection = 1;
   private readonly pointActive: Record<'left' | 'right', boolean> = { left: false, right: false };
   private readonly pointDirections: Record<'left' | 'right', THREE.Vector3> = {
-    left: new THREE.Vector3(0, 0, 1), right: new THREE.Vector3(0, 0, 1),
+    left: new THREE.Vector3(0, 0, 1),
+    right: new THREE.Vector3(0, 0, 1),
   };
   private readonly pointTargets: Record<'left' | 'right', THREE.Vector3> = {
-    left: new THREE.Vector3(), right: new THREE.Vector3(),
+    left: new THREE.Vector3(),
+    right: new THREE.Vector3(),
   };
   private readonly pointHasTarget: Record<'left' | 'right', boolean> = { left: false, right: false };
   private readonly heldEquipmentDirection = new THREE.Vector3();
@@ -147,7 +161,11 @@ class RemoteAvatar {
   /** A bubble's height per unit width: it grows with its line count. */
   private chatBubbleAspect = 0;
 
-  constructor(private readonly scene: THREE.Object3D, peer: PeerMarks, sampleAt: number) {
+  constructor(
+    private readonly scene: THREE.Object3D,
+    peer: PeerMarks,
+    sampleAt: number,
+  ) {
     this.userId = peer.userId;
     this.latest = peer.player!;
     this.avatarId = this.latest.avatar;
@@ -163,7 +181,9 @@ class RemoteAvatar {
     this.receive(peer, sampleAt);
   }
 
-  navigationTarget(): PlayerNavigationTarget { return playerNavigationTarget(this.latest); }
+  navigationTarget(): PlayerNavigationTarget {
+    return playerNavigationTarget(this.latest);
+  }
 
   /** The close conversational framing used by the server-wide Users action. */
   frontView(): { eye: THREE.Vector3; target: THREE.Vector3 } {
@@ -192,7 +212,9 @@ class RemoteAvatar {
   /** Put this peer's body and kit into the scene. Neither may ever answer a ground pick. */
   private addBody() {
     for (const object of [this.rider.group, this.board.group]) {
-      object.traverse(child => { child.raycast = () => {}; });
+      object.traverse(child => {
+        child.raycast = () => {};
+      });
       this.scene.add(object);
     }
   }
@@ -222,7 +244,8 @@ class RemoteAvatar {
     const appearance = equipmentOf(peer);
     const nextAppearanceKey = equipmentKey(appearance);
     if (frame.avatar !== this.avatarId || gear !== this.gear || stance !== this.stance) {
-      const previousRider = this.rider, previousBoard = this.board;
+      const previousRider = this.rider,
+        previousBoard = this.board;
       const rebuildGear = gear !== this.gear || stance !== this.stance;
       this.avatarId = frame.avatar;
       this.gear = gear;
@@ -251,8 +274,14 @@ class RemoteAvatar {
     else this.handPresent[slot] = present;
     if (!value) return;
     const bodyQ = new THREE.Quaternion(...this.latest.body.q).normalize();
-    out.targetPosition.set(...value.p).sub(new THREE.Vector3(...this.latest.body.p)).applyQuaternion(bodyQ.clone().invert());
-    out.targetQuaternion.set(...value.q).premultiply(bodyQ.clone().invert()).normalize();
+    out.targetPosition
+      .set(...value.p)
+      .sub(new THREE.Vector3(...this.latest.body.p))
+      .applyQuaternion(bodyQ.clone().invert());
+    out.targetQuaternion
+      .set(...value.q)
+      .premultiply(bodyQ.clone().invert())
+      .normalize();
     if (this.firstPose) {
       out.position.copy(out.targetPosition);
       out.quaternion.copy(out.targetQuaternion);
@@ -262,9 +291,14 @@ class RemoteAvatar {
   private captureEquipment(frame: PlayerPose, sampleAt: number) {
     const equipment = frame.equipment;
     this.equipmentPresent = !!equipment;
-    if (equipment) this.equipmentMotion.pushTransform(
-      frame.seq, equipment.teleport, equipment.transform, equipment.velocity, sampleAt,
-    );
+    if (equipment)
+      this.equipmentMotion.pushTransform(
+        frame.seq,
+        equipment.teleport,
+        equipment.transform,
+        equipment.velocity,
+        sampleAt,
+      );
   }
 
   step(dt: number, now: number): void {
@@ -278,11 +312,13 @@ class RemoteAvatar {
     }
     this.board.group.visible = this.equipmentPresent;
 
-    const headTarget = this.headPresent ? {
-      position: this.worldPosition(this.head, this.headWorldPosition),
-      quaternion: this.worldQuaternion(this.head, this.headWorldQuaternion),
-      exactPosition: this.latest.vr,
-    } : null;
+    const headTarget = this.headPresent
+      ? {
+          position: this.worldPosition(this.head, this.headWorldPosition),
+          quaternion: this.worldQuaternion(this.head, this.headWorldQuaternion),
+          exactPosition: this.latest.vr,
+        }
+      : null;
     const horizontalSpeed = Math.hypot(this.motion.velocity.x, this.motion.velocity.z);
     const walking = this.latest.mode === 'walk';
     const flying = walking && this.latest.animation?.flying === true;
@@ -294,12 +330,11 @@ class RemoteAvatar {
       this.walkPhase += dt * Math.PI * 2 * (1.2 + Math.min(horizontalSpeed, 7) * 0.22);
       if (this.walkPhase > Math.PI * 2) this.walkPhase %= Math.PI * 2;
     }
-    const facing = this.onFootFacing.step(dt, this.motion.quaternion, headTarget?.quaternion ?? null,
-      horizontalSpeed);
+    const facing = this.onFootFacing.step(dt, this.motion.quaternion, headTarget?.quaternion ?? null, horizontalSpeed);
     const turnDelta = this.onFootFacing.turnDelta;
     if (Math.abs(turnDelta) > 1e-6) this.turnDirection = Math.sign(turnDelta);
-    this.turnWeight += (Number(walking && Math.abs(turnDelta) > 1e-6) - this.turnWeight)
-      * (1 - Math.exp(-16 * Math.max(0, dt)));
+    this.turnWeight +=
+      (Number(walking && Math.abs(turnDelta) > 1e-6) - this.turnWeight) * (1 - Math.exp(-16 * Math.max(0, dt)));
     if (walking && horizontalSpeed <= 0.05 && this.turnWeight > 0.01) {
       this.walkPhase += dt * Math.PI * 2 * 2.2;
       if (this.walkPhase > Math.PI * 2) this.walkPhase %= Math.PI * 2;
@@ -313,15 +348,19 @@ class RemoteAvatar {
     // carries facing only, and the roll goes back on from the animation bank. Seating it is the gear's own
     // job either way, which is what keeps a remote skier's two skis flat to each other and both on the snow.
     const mounted = this.latest.equipment?.state === 'mounted';
-    const bank = mounted ? this.latest.animation?.bank ?? 0 : 0;
+    const bank = mounted ? (this.latest.animation?.bank ?? 0) : 0;
     this.rolledQuaternion.copy(this.equipmentMotion.quaternion);
     if (mounted && this.gear === 'skis' && bank !== 0) {
       this.rolledQuaternion.multiply(this.bankQuaternion.setFromAxisAngle(FORWARD, -bank * DEG));
     }
-    if (this.equipmentPresent) this.board.seat(
-      this.equipmentMotion.position, this.equipmentMotion.quaternion, this.rolledQuaternion,
-      this.ankleA, this.ankleB,
-    );
+    if (this.equipmentPresent)
+      this.board.seat(
+        this.equipmentMotion.position,
+        this.equipmentMotion.quaternion,
+        this.rolledQuaternion,
+        this.ankleA,
+        this.ankleB,
+      );
     const riderFrame = mounted ? this.rolledQuaternion : this.motion.quaternion;
     if (!mounted) {
       // Preserve the former on-foot anchor law without using the now-visible loose kit as the feet frame.
@@ -339,51 +378,85 @@ class RemoteAvatar {
       handTargets = { a: this.handA, b: this.handB };
     }
     const pointTargets: Array<{
-      hand: 'left' | 'right'; direction: THREE.Vector3; weight: number; target?: THREE.Vector3;
-    }> = this.latest.mode === 'ride' ? [] : (['left', 'right'] as const).flatMap(hand => {
-      if (!this.pointActive[hand]) return [];
-      return [{
-        hand, direction: this.pointDirections[hand], weight: 1,
-        ...(this.pointHasTarget[hand] ? { target: this.pointTargets[hand] } : {}),
-      }];
-    });
+      hand: 'left' | 'right';
+      direction: THREE.Vector3;
+      weight: number;
+      target?: THREE.Vector3;
+    }> =
+      this.latest.mode === 'ride'
+        ? []
+        : (['left', 'right'] as const).flatMap(hand => {
+            if (!this.pointActive[hand]) return [];
+            return [
+              {
+                hand,
+                direction: this.pointDirections[hand],
+                weight: 1,
+                ...(this.pointHasTarget[hand] ? { target: this.pointTargets[hand] } : {}),
+              },
+            ];
+          });
     // Desktop has no tracked wrist packet, but its held-equipment state is enough to keep the carrying arm on
     // the visible deck instead of leaving it swinging through the walk cycle like a telekinetic grab.
     if (!this.latest.vr && this.latest.equipment?.state === 'held' && !this.pointActive.right) {
-      this.heldEquipmentDirection.copy(this.equipmentMotion.position)
-        .sub(headTarget?.position ?? this.motion.position).normalize();
+      this.heldEquipmentDirection
+        .copy(this.equipmentMotion.position)
+        .sub(headTarget?.position ?? this.motion.position)
+        .normalize();
       pointTargets.push({
-        hand: 'right', direction: this.heldEquipmentDirection,
-        target: this.equipmentMotion.position, weight: 1,
+        hand: 'right',
+        direction: this.heldEquipmentDirection,
+        target: this.equipmentMotion.position,
+        weight: 1,
       });
     }
     const stanceSign = this.gear === 'snowboard' && this.stance === 'standard' ? -1 : 1;
     const grounded = this.latest.animation?.grounded ?? this.latest.mode !== 'ride';
     const lean = this.latest.animation?.lean ?? 0;
-    this.rideForward.set(0, 0, 1).applyQuaternion(riderFrame)
+    this.rideForward
+      .set(0, 0, 1)
+      .applyQuaternion(riderFrame)
       .multiplyScalar(this.latest.animation?.lead ?? 1);
     riderLookTarget(
-      { grounded, lean, landEta: Infinity }, this.motion.velocity, this.rideForward, this.soleUp,
-      this.lookForward, this.lookTurnScratch,
+      { grounded, lean, landEta: Infinity },
+      this.motion.velocity,
+      this.rideForward,
+      this.soleUp,
+      this.lookForward,
+      this.lookTurnScratch,
     );
     const input = {
-      ankleFront: this.ankleA, ankleRear: this.ankleB,
-      deckUp: this.soleUp, soleUp: this.soleUp, bank: bank * stanceSign,
-      rideForward: this.rideForward, lookForward: this.lookForward,
-      vel: this.motion.velocity, accel: this.motion.acceleration,
+      ankleFront: this.ankleA,
+      ankleRear: this.ankleB,
+      deckUp: this.soleUp,
+      soleUp: this.soleUp,
+      bank: bank * stanceSign,
+      rideForward: this.rideForward,
+      lookForward: this.lookForward,
+      vel: this.motion.velocity,
+      accel: this.motion.acceleration,
       grounded,
-      dt, crouch: this.latest.animation?.crouch ?? 0,
+      dt,
+      crouch: this.latest.animation?.crouch ?? 0,
       lean: lean * stanceSign,
-      locomotion: this.latest.mode === 'ride' ? null : {
-        phase: this.walkPhase, weight: this.walkWeight, facing,
-        turn: this.turnDirection * this.turnWeight,
-        flying,
-      },
+      locomotion:
+        this.latest.mode === 'ride'
+          ? null
+          : {
+              phase: this.walkPhase,
+              weight: this.walkWeight,
+              facing,
+              turn: this.turnDirection * this.turnWeight,
+              flying,
+            },
       pointTargets: pointTargets.length ? pointTargets : null,
-      handTargets, headTarget,
+      handTargets,
+      headTarget,
     };
-    if (this.firstPose) { this.rider.reset(input); this.firstPose = false; }
-    else this.rider.pose(input);
+    if (this.firstPose) {
+      this.rider.reset(input);
+      this.firstPose = false;
+    } else this.rider.pose(input);
     const labelAt = headTarget?.position ?? this.motion.position;
     this.label.position.set(labelAt.x, labelAt.y + (headTarget ? 0.3 : 1.95), labelAt.z);
   }
@@ -393,7 +466,8 @@ class RemoteAvatar {
    *  scale in its eyes' view matrices, and three's Sprite adds its size in view units, so a tag drawn unadjusted
    *  would grow with the player. */
   fitLabels(eye: THREE.Vector3, viewerScale = 1): void {
-    const k = labelScaleAt(this.label.position.distanceTo(eye)), drawn = k / viewerScale;
+    const k = labelScaleAt(this.label.position.distanceTo(eye)),
+      drawn = k / viewerScale;
     this.label.scale.set(LABEL_WIDTH * drawn, LABEL_HEIGHT * drawn, 1);
     if (!this.chatBubble) return;
     this.chatBubble.scale.set(CHAT_BUBBLE_WIDTH * drawn, CHAT_BUBBLE_WIDTH * this.chatBubbleAspect * drawn, 1);
@@ -421,15 +495,28 @@ class RemoteAvatar {
 }
 
 function makeLabel(name: string, color: string): THREE.Sprite {
-  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 72;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 72;
   const ctx = canvas.getContext('2d')!;
-  ctx.font = 'bold 36px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(name, 256, 36);
-  ctx.fillStyle = color; ctx.fillText(name, 256, 36);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true,
-  }));
-  sprite.scale.set(LABEL_WIDTH, LABEL_HEIGHT, 1); sprite.center.set(0.5, 0); sprite.renderOrder = 12;
+  ctx.font = 'bold 36px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(0,0,0,.85)';
+  ctx.strokeText(name, 256, 36);
+  ctx.fillStyle = color;
+  ctx.fillText(name, 256, 36);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(canvas),
+      depthTest: false,
+      transparent: true,
+    }),
+  );
+  sprite.scale.set(LABEL_WIDTH, LABEL_HEIGHT, 1);
+  sprite.center.set(0.5, 0);
+  sprite.renderOrder = 12;
   return sprite;
 }
 
@@ -454,8 +541,14 @@ function bubbleLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: numb
   return lines.length ? lines : [''];
 }
 
-function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number,
-  radius: number): void {
+function roundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
   ctx.moveTo(x + radius, y);
   ctx.lineTo(x + width - radius, y);
   ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
@@ -473,7 +566,9 @@ function makeChatBubble(text: string): THREE.Sprite {
   const measuring = canvas.getContext('2d')!;
   measuring.font = '600 30px system-ui, sans-serif';
   const lines = bubbleLines(measuring, text, 448, 4);
-  const lineHeight = 38, paddingY = 17, tailHeight = 19;
+  const lineHeight = 38,
+    paddingY = 17,
+    tailHeight = 19;
   canvas.height = paddingY * 2 + lineHeight * lines.length + tailHeight + 6;
   const ctx = canvas.getContext('2d')!;
   ctx.font = '600 30px system-ui, sans-serif';
@@ -483,7 +578,9 @@ function makeChatBubble(text: string): THREE.Sprite {
   ctx.lineWidth = 4;
   ctx.fillStyle = 'rgba(10, 22, 32, 0.94)';
   ctx.strokeStyle = '#7fc3ef';
-  const boxX = 8, boxY = 4, boxWidth = canvas.width - 16;
+  const boxX = 8,
+    boxY = 4,
+    boxWidth = canvas.width - 16;
   const boxHeight = canvas.height - tailHeight - 8;
   ctx.beginPath();
   roundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 23);
@@ -501,10 +598,14 @@ function makeChatBubble(text: string): THREE.Sprite {
   lines.forEach((line, index) => ctx.fillText(line, 256, boxY + paddingY + lineHeight * (index + 0.5)));
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: texture, depthTest: false, transparent: true,
-  }));
-  sprite.scale.set(CHAT_BUBBLE_WIDTH, CHAT_BUBBLE_WIDTH * canvas.height / canvas.width, 1);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      depthTest: false,
+      transparent: true,
+    }),
+  );
+  sprite.scale.set(CHAT_BUBBLE_WIDTH, (CHAT_BUBBLE_WIDTH * canvas.height) / canvas.width, 1);
   sprite.center.set(0.5, 0);
   sprite.renderOrder = 13;
   return sprite;
@@ -515,11 +616,24 @@ export function createRemotePlayersLayer(stage: Stage) {
   const viewerScaleOf = new THREE.Vector3();
   let activePlayers: ActiveMapPlayer[] = [];
   function setPeers(peers: readonly PeerMarks[], serverNow: number) {
-    activePlayers = peers.flatMap(peer => peer.player ? [{
-      sessionId: peer.sessionId, userId: peer.userId, username: peer.username, mode: peer.player.mode,
-    }] : []);
+    activePlayers = peers.flatMap(peer =>
+      peer.player
+        ? [
+            {
+              sessionId: peer.sessionId,
+              userId: peer.userId,
+              username: peer.username,
+              mode: peer.player.mode,
+            },
+          ]
+        : [],
+    );
     const here = new Set(peers.filter(peer => peer.player).map(peer => peer.sessionId));
-    for (const [id, avatar] of avatars) if (!here.has(id)) { avatar.dispose(); avatars.delete(id); }
+    for (const [id, avatar] of avatars)
+      if (!here.has(id)) {
+        avatar.dispose();
+        avatars.delete(id);
+      }
     const localNow = performance.now() / 1000;
     for (const peer of peers) {
       if (!peer.player) continue;
@@ -538,9 +652,14 @@ export function createRemotePlayersLayer(stage: Stage) {
       // In a headset, three hands the rig's scale (the player's size) on to the camera it seats (WebXRManager
       // `updateUserCamera`); a desktop camera has no scaled parent.
       const viewerScale = stage.camera.getWorldScale(viewerScaleOf).x;
-      for (const avatar of avatars.values()) { avatar.step(dt, now); avatar.fitLabels(eye, viewerScale); }
+      for (const avatar of avatars.values()) {
+        avatar.step(dt, now);
+        avatar.fitLabels(eye, viewerScale);
+      }
     },
-    players(): readonly ActiveMapPlayer[] { return activePlayers; },
+    players(): readonly ActiveMapPlayer[] {
+      return activePlayers;
+    },
     navigationTarget(sessionId: string): PlayerNavigationTarget | null {
       return avatars.get(sessionId)?.navigationTarget() ?? null;
     },
@@ -555,7 +674,11 @@ export function createRemotePlayersLayer(stage: Stage) {
         break;
       }
     },
-    dispose() { for (const avatar of avatars.values()) avatar.dispose(); avatars.clear(); activePlayers = []; },
+    dispose() {
+      for (const avatar of avatars.values()) avatar.dispose();
+      avatars.clear();
+      activePlayers = [];
+    },
   };
 }
 

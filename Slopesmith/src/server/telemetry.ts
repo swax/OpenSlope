@@ -59,15 +59,23 @@ export function observeApiRequest(req: IncomingMessage, res: ServerResponse): vo
 
     if (aborted || res.statusCode >= 500 || (slowMs > 0 && elapsed >= slowMs)) {
       const length = res.getHeader('content-length');
-      const bytes = typeof length === 'number' ? length
-        : typeof length === 'string' && /^\d+$/.test(length) ? Number(length) : null;
-      apiLog.warn(`${method} ${url} -> ${res.statusCode} ${elapsed.toFixed(1)}ms`
-        + `${bytes === null ? '' : ` ${bytes}B`}${aborted ? ' aborted' : ''}`);
+      const bytes =
+        typeof length === 'number'
+          ? length
+          : typeof length === 'string' && /^\d+$/.test(length)
+            ? Number(length)
+            : null;
+      apiLog.warn(
+        `${method} ${url} -> ${res.statusCode} ${elapsed.toFixed(1)}ms` +
+          `${bytes === null ? '' : ` ${bytes}B`}${aborted ? ' aborted' : ''}`,
+      );
     }
   };
 
   res.once('finish', () => finish(false));
-  res.once('close', () => { if (!res.writableFinished) finish(true); });
+  res.once('close', () => {
+    if (!res.writableFinished) finish(true);
+  });
 }
 
 export interface ServerTelemetry {
@@ -89,50 +97,53 @@ export function startServerTelemetry(): ServerTelemetry {
   delay.enable();
   let priorCpu = process.cpuUsage();
   let priorAt = performance.now();
-  const timer = setInterval(() => {
-    const now = performance.now();
-    const intervalElapsed = now - priorAt;
-    const elapsedMicros = Math.max(1, intervalElapsed * 1_000);
-    const cpu = process.cpuUsage(priorCpu);
-    priorCpu = process.cpuUsage();
-    priorAt = now;
-    const memory = process.memoryUsage();
-    const durations = window.durations.splice(0);
-    const requests = {
-      total: window.total,
-      failed: window.failed,
-      aborted: window.aborted,
-      active: window.active,
-      sampled: durations.length,
-      averageMs: durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0,
-      p95Ms: percentile(durations, 0.95),
-      maxMs: durations.length ? Math.max(...durations) : 0,
-    };
-    window.total = 0;
-    window.failed = 0;
-    window.aborted = 0;
+  const timer = setInterval(
+    () => {
+      const now = performance.now();
+      const intervalElapsed = now - priorAt;
+      const elapsedMicros = Math.max(1, intervalElapsed * 1_000);
+      const cpu = process.cpuUsage(priorCpu);
+      priorCpu = process.cpuUsage();
+      priorAt = now;
+      const memory = process.memoryUsage();
+      const durations = window.durations.splice(0);
+      const requests = {
+        total: window.total,
+        failed: window.failed,
+        aborted: window.aborted,
+        active: window.active,
+        sampled: durations.length,
+        averageMs: durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0,
+        p95Ms: percentile(durations, 0.95),
+        maxMs: durations.length ? Math.max(...durations) : 0,
+      };
+      window.total = 0;
+      window.failed = 0;
+      window.aborted = 0;
 
-    telemetryLog.info('heartbeat', {
-      intervalMs: Math.round(intervalElapsed),
-      cpuPercent: ((cpu.user + cpu.system) / elapsedMicros) * 100,
-      memory: {
-        rss: memory.rss,
-        heapUsed: memory.heapUsed,
-        heapTotal: memory.heapTotal,
-        external: memory.external,
-        arrayBuffers: memory.arrayBuffers,
-      },
-      eventLoop: {
-        p95Ms: delay.percentile(95) / 1e6,
-        maxMs: delay.max / 1e6,
-      },
-      requests,
-      sockets: liveSessions().length,
-      cache: responseCache.stats(),
-      workers: workerPoolStats(),
-    });
-    delay.reset();
-  }, Math.max(5_000, intervalMs));
+      telemetryLog.info('heartbeat', {
+        intervalMs: Math.round(intervalElapsed),
+        cpuPercent: ((cpu.user + cpu.system) / elapsedMicros) * 100,
+        memory: {
+          rss: memory.rss,
+          heapUsed: memory.heapUsed,
+          heapTotal: memory.heapTotal,
+          external: memory.external,
+          arrayBuffers: memory.arrayBuffers,
+        },
+        eventLoop: {
+          p95Ms: delay.percentile(95) / 1e6,
+          maxMs: delay.max / 1e6,
+        },
+        requests,
+        sockets: liveSessions().length,
+        cache: responseCache.stats(),
+        workers: workerPoolStats(),
+      });
+      delay.reset();
+    },
+    Math.max(5_000, intervalMs),
+  );
   timer.unref();
 
   return {

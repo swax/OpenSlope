@@ -28,7 +28,8 @@ try {
 
   const patch = (x: number) => ({
     Points: Array.from({ length: 16 }, (_, index) => {
-      const u = Math.floor(index / 4), v = index % 4;
+      const u = Math.floor(index / 4),
+        v = index % 4;
       return [x + u * 100, v * 100, (u + v) * 4];
     }),
     SurfaceType: 0,
@@ -39,39 +40,54 @@ try {
   let terrainYields = 0;
   const progressiveMesh = await buildReferenceMeshProgressive(terrainPatches, {
     frameBudgetMs: 0,
-    yieldControl: async () => { terrainYields++; },
+    yieldControl: async () => {
+      terrainYields++;
+    },
   });
-  const sameTyped = (a: ArrayLike<number>, b: ArrayLike<number>) => a.length === b.length
-    && Array.from(a).every((value, index) => value === b[index]);
-  check(terrainYields >= 2 && sameTyped(syncMesh.positions, progressiveMesh.positions)
-    && sameTyped(syncMesh.normals, progressiveMesh.normals)
-    && sameTyped(syncMesh.indices, progressiveMesh.indices)
-    && JSON.stringify(syncMesh.topology) === JSON.stringify(progressiveMesh.topology),
-  'progressive reference tessellation yields between chunks without changing mesh identity or topology');
+  const sameTyped = (a: ArrayLike<number>, b: ArrayLike<number>) =>
+    a.length === b.length && Array.from(a).every((value, index) => value === b[index]);
+  check(
+    terrainYields >= 2 &&
+      sameTyped(syncMesh.positions, progressiveMesh.positions) &&
+      sameTyped(syncMesh.normals, progressiveMesh.normals) &&
+      sameTyped(syncMesh.indices, progressiveMesh.indices) &&
+      JSON.stringify(syncMesh.topology) === JSON.stringify(progressiveMesh.topology),
+    'progressive reference tessellation yields between chunks without changing mesh identity or topology',
+  );
 
   // Seam tiers on the reference cage: two flat patches continue smoothly, a third folds up 90 degrees into a wall.
   const flat = (x: number) => ({
     Points: Array.from({ length: 16 }, (_, index) => [x + Math.floor(index / 4) * 100, (index % 4) * 100, 0]),
-    SurfaceType: 0, TexturePath: '0012.png',
+    SurfaceType: 0,
+    TexturePath: '0012.png',
   });
   const wall = {
     Points: Array.from({ length: 16 }, (_, index) => [600, (index % 4) * 100, Math.floor(index / 4) * 100]),
-    SurfaceType: 0, TexturePath: '0012.png',
+    SurfaceType: 0,
+    TexturePath: '0012.png',
   };
   const folded = buildReferenceMesh([flat(0), flat(300), wall]);
   const segs = (a: Float32Array) => a.length / 6;
-  check(segs(folded.cornerSeg) > 0 && segs(folded.cornerSegCrease) > 0
-    && segs(folded.cornerSegCrease) === segs(folded.cornerSeg),
-  'reference cage: the smooth seam stays on the grid and the 90-degree wall seam draws as a crease');
+  check(
+    segs(folded.cornerSeg) > 0 &&
+      segs(folded.cornerSegCrease) > 0 &&
+      segs(folded.cornerSegCrease) === segs(folded.cornerSeg),
+    'reference cage: the smooth seam stays on the grid and the 90-degree wall seam draws as a crease',
+  );
 
-  const png = encodePng({ w: 2, h: 2, data: new Uint8Array([
-    10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255,
-  ]) });
+  const png = encodePng({
+    w: 2,
+    h: 2,
+    data: new Uint8Array([10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255]),
+  });
   const donor = join(root, 'DONOR');
   mkdirSync(join(donor, 'Textures'), { recursive: true });
-  writeFileSync(join(donor, 'Patches.json'), JSON.stringify({
-    Patches: [{ SurfaceType: 0, TexturePath: '0012.png' }],
-  }));
+  writeFileSync(
+    join(donor, 'Patches.json'),
+    JSON.stringify({
+      Patches: [{ SurfaceType: 0, TexturePath: '0012.png' }],
+    }),
+  );
   writeFileSync(join(donor, 'Textures', '0012.png'), png);
   const custom = join(root, '_assets', 'textures');
   mkdirSync(custom, { recursive: true });
@@ -88,69 +104,109 @@ try {
   // How a map is RACED can only travel in the sidecar: retail decides both numbers by the disc slot, so no
   // native file has a field for either (core/doc/race). A mountain that set neither says neither, and inherits
   // whatever slot it is packed onto.
-  check(manifest?.laps === undefined && manifest?.showoffSeconds === undefined,
-    'a mountain with no authored race settings writes neither into the sidecar');
+  check(
+    manifest?.laps === undefined && manifest?.showoffSeconds === undefined,
+    'a mountain with no authored race settings writes neither into the sidecar',
+  );
 
   const raced = defaultMountain();
   raced.name = 'RACED_REF';
   raced.laps = 3;
   raced.showoffSeconds = 150;
-  raced.boardSound = { enabled: false, volume: .35, glide: .4, carve: .5, transients: .6, cues: .7 };
+  raced.boardSound = { enabled: false, volume: 0.35, glide: 0.4, carve: 0.5, transients: 0.6, cues: 0.7 };
   const racedOut = join(root, raced.name);
   await exportLevel(raced, { outDir: racedOut, lighting: false });
   const racedManifest = await readSlopesmithExportManifest(racedOut);
-  check(racedManifest?.laps === 3 && racedManifest?.showoffSeconds === 150,
-    'an authored lap count and showoff clock ride out in Slopesmith.json for snowknife to prefer');
-  check(manifest?.boardSound?.enabled === true && manifest.boardSound.volume === .8,
-    'an export carries the normalized default board mix');
-  check(JSON.stringify(racedManifest?.boardSound) === JSON.stringify(raced.boardSound),
-    'an authored board and cue mix travels in the portable manifest');
-  check(manifest?.textures['DONOR_0012.png']?.level === 'DONOR'
-    && manifest?.textures['DONOR_0012.png']?.staged === 'DONOR_0012.png',
-  'a page lifted from a level ships under a portable slot name and keeps its donor in the manifest');
-  check(manifest?.textures['Custom_candy.png']?.level === 'Custom'
-    && manifest?.textures['Custom_candy.png']?.staged === 'Custom_candy.png',
-  'a custom page records its staged portable copy');
-  check(manifest?.provenance?.publicDistribution === 'blocked-retail-derived'
-    && manifest.provenance.reasons.includes('retail-texture')
-    && manifest.provenance.reasons.includes('user-texture'),
-  'the export blocks public staging when it combines retail and user-supplied texture bytes');
-  check(racedManifest?.provenance?.publicDistribution === 'allowed'
-    && racedManifest.provenance.reasons.length === 0,
-  'a procedural authored-only export is machine-classified for public staging');
-  check(existsSync(join(out, 'Textures', 'DONOR_0012.png'))
-    && existsSync(join(out, 'Textures', 'Custom_candy.png')),
-  'export stages both pages for reference use');
-  check(resolveTerrainTexRef('AUTHORED_REF', 'DONOR_0012.png') === 'AUTHORED_REF/DONOR_0012.png'
-    && resolveTerrainTexRef('AUTHORED_REF', 'Custom/candy.png') === 'Custom/candy.png',
-  'terrain refs qualify bare names once and preserve already-qualified dependencies');
+  check(
+    racedManifest?.laps === 3 && racedManifest?.showoffSeconds === 150,
+    'an authored lap count and showoff clock ride out in Slopesmith.json for snowknife to prefer',
+  );
+  check(
+    manifest?.boardSound?.enabled === true && manifest.boardSound.volume === 0.8,
+    'an export carries the normalized default board mix',
+  );
+  check(
+    JSON.stringify(racedManifest?.boardSound) === JSON.stringify(raced.boardSound),
+    'an authored board and cue mix travels in the portable manifest',
+  );
+  check(
+    manifest?.textures['DONOR_0012.png']?.level === 'DONOR' &&
+      manifest?.textures['DONOR_0012.png']?.staged === 'DONOR_0012.png',
+    'a page lifted from a level ships under a portable slot name and keeps its donor in the manifest',
+  );
+  check(
+    manifest?.textures['Custom_candy.png']?.level === 'Custom' &&
+      manifest?.textures['Custom_candy.png']?.staged === 'Custom_candy.png',
+    'a custom page records its staged portable copy',
+  );
+  check(
+    manifest?.provenance?.publicDistribution === 'blocked-retail-derived' &&
+      manifest.provenance.reasons.includes('retail-texture') &&
+      manifest.provenance.reasons.includes('user-texture'),
+    'the export blocks public staging when it combines retail and user-supplied texture bytes',
+  );
+  check(
+    racedManifest?.provenance?.publicDistribution === 'allowed' && racedManifest.provenance.reasons.length === 0,
+    'a procedural authored-only export is machine-classified for public staging',
+  );
+  check(
+    existsSync(join(out, 'Textures', 'DONOR_0012.png')) && existsSync(join(out, 'Textures', 'Custom_candy.png')),
+    'export stages both pages for reference use',
+  );
+  check(
+    resolveTerrainTexRef('AUTHORED_REF', 'DONOR_0012.png') === 'AUTHORED_REF/DONOR_0012.png' &&
+      resolveTerrainTexRef('AUTHORED_REF', 'Custom/candy.png') === 'Custom/candy.png',
+    'terrain refs qualify bare names once and preserve already-qualified dependencies',
+  );
 
   unlinkSync(join(out, 'Textures', 'DONOR_0012.png'));
-  check((await readReferenceTextureBytes('AUTHORED_REF', 'DONOR_0012.png')).equals(png),
-    'the manifest resolves a missing staged page through the level it came from');
-  check((await readReferenceTextureBytes('AUTHORED_REF', 'Custom/candy.png')).equals(png),
-    'a qualified texture resolves through the receiver reference library');
+  check(
+    (await readReferenceTextureBytes('AUTHORED_REF', 'DONOR_0012.png')).equals(png),
+    'the manifest resolves a missing staged page through the level it came from',
+  );
+  check(
+    (await readReferenceTextureBytes('AUTHORED_REF', 'Custom/candy.png')).equals(png),
+    'a qualified texture resolves through the receiver reference library',
+  );
 
   const obsolete = join(root, 'OBSOLETE_FLAT_EXPORT');
   mkdirSync(join(obsolete, 'Textures'), { recursive: true });
-  writeFileSync(join(obsolete, 'Patches.json'), JSON.stringify({
-    Patches: [{ SurfaceType: 0, TexturePath: '0012.png' }],
-  }));
+  writeFileSync(
+    join(obsolete, 'Patches.json'),
+    JSON.stringify({
+      Patches: [{ SurfaceType: 0, TexturePath: '0012.png' }],
+    }),
+  );
   writeFileSync(join(obsolete, 'Props.obj'), 'o Legacy\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');
-  writeFileSync(join(obsolete, 'Materials.json'), JSON.stringify({
-    Materials: [{ TexturePath: 'p_DONOR_0003.png' }],
-  }));
+  writeFileSync(
+    join(obsolete, 'Materials.json'),
+    JSON.stringify({
+      Materials: [{ TexturePath: 'p_DONOR_0003.png' }],
+    }),
+  );
   writeFileSync(join(obsolete, 'Effects.json'), JSON.stringify(createEmptyEffectsDocument('OBSOLETE_FLAT_EXPORT')));
-  let propsRejected = false, effectsRejected = false, textureRejected = false;
-  try { await readLevelProps('OBSOLETE_FLAT_EXPORT'); }
-  catch (error) { propsRejected = String(error).includes('no Instances.json'); }
-  try { await readReferenceEffects('OBSOLETE_FLAT_EXPORT'); }
-  catch (error) { effectsRejected = String(error).includes('no Instances.json'); }
-  try { await readReferenceTextureBytes('OBSOLETE_FLAT_EXPORT', '0012.png'); }
-  catch (error) { textureRejected = String(error).includes('no reference texture'); }
-  check(propsRejected && effectsRejected && textureRejected,
-    'an obsolete flattened export is rejected instead of being reconstructed or assigned an inferred donor');
-
+  let propsRejected = false,
+    effectsRejected = false,
+    textureRejected = false;
+  try {
+    await readLevelProps('OBSOLETE_FLAT_EXPORT');
+  } catch (error) {
+    propsRejected = String(error).includes('no Instances.json');
+  }
+  try {
+    await readReferenceEffects('OBSOLETE_FLAT_EXPORT');
+  } catch (error) {
+    effectsRejected = String(error).includes('no Instances.json');
+  }
+  try {
+    await readReferenceTextureBytes('OBSOLETE_FLAT_EXPORT', '0012.png');
+  } catch (error) {
+    textureRejected = String(error).includes('no reference texture');
+  }
+  check(
+    propsRejected && effectsRejected && textureRejected,
+    'an obsolete flattened export is rejected instead of being reconstructed or assigned an inferred donor',
+  );
 } catch (error) {
   recordFailure();
   console.error(error);

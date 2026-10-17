@@ -143,9 +143,7 @@ export function quadLoop(quad: readonly number[]): number[] {
 /** The inverse: a polygon loop back to the stored [A, B, C, D]. A triangle stores as the wedge [A, B, C, C]
  *  the mesh tools already understand. */
 export function loopQuad(loop: readonly number[]): [number, number, number, number] {
-  return loop.length >= 4
-    ? [loop[0], loop[1], loop[3], loop[2]]
-    : [loop[0], loop[1], loop[2], loop[2]];
+  return loop.length >= 4 ? [loop[0], loop[1], loop[3], loop[2]] : [loop[0], loop[1], loop[2], loop[2]];
 }
 
 /** Fan an arbitrary loop into triangles — how an n-gon reaches a format that has none. */
@@ -175,10 +173,14 @@ export function authoredModelPortal(model: AuthoredModel, project: string, texUr
     anchor: [ax, ay, az],
     verts,
     faces: model.quads.map(quadLoop),
-    materials: [{
-      id: 0, name: model.texture ?? 'clay', tex: model.texture ?? null,
-      ...(texUrl ? { texUrl } : {}),
-    }],
+    materials: [
+      {
+        id: 0,
+        name: model.texture ?? 'clay',
+        tex: model.texture ?? null,
+        ...(texUrl ? { texUrl } : {}),
+      },
+    ],
     cage: true,
   };
 }
@@ -213,11 +215,18 @@ export function cageFromPortal(mesh: PortalMesh, anchor: V3): CageUpdate {
   }
   const count = vertices.length / 3;
   const quads: [number, number, number, number][] = [];
-  let fanned = 0, dropped = 0;
+  let fanned = 0,
+    dropped = 0;
   for (const face of mesh.faces) {
     const loop = face.filter(index => Number.isInteger(index) && index >= 0 && index < count);
-    if (new Set(loop).size < 3) { dropped++; continue; }
-    if (loop.length <= 4) { quads.push(loopQuad(loop)); continue; }
+    if (new Set(loop).size < 3) {
+      dropped++;
+      continue;
+    }
+    if (loop.length <= 4) {
+      quads.push(loopQuad(loop));
+      continue;
+    }
     fanned++;
     for (const triangle of fan(loop)) quads.push(loopQuad(triangle));
   }
@@ -259,8 +268,11 @@ function pack(view: ArrayBufferView): string {
  * Submeshes are concatenated into one vertex pool with a per-face material slot, because Blender's unit of
  * work is an object with material slots, not a bag of primitives.
  */
-export function importedPropPortal(record: ImportedPropRecord, project: string,
-  texUrl?: (ref: string) => string | undefined): PortalMesh {
+export function importedPropPortal(
+  record: ImportedPropRecord,
+  project: string,
+  texUrl?: (ref: string) => string | undefined,
+): PortalMesh {
   const verts: number[] = [];
   const uvs: number[] = [];
   const faces: number[][] = [];
@@ -332,15 +344,18 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
     const slot = Math.max(0, Math.trunc(mesh.faceMaterial?.[face] ?? 0));
     highest = Math.max(highest, slot);
     let bucket = bySlot.get(slot);
-    if (!bucket) bySlot.set(slot, bucket = { pos: [], uv: [], idx: [], remap: new Map() });
+    if (!bucket) bySlot.set(slot, (bucket = { pos: [], uv: [], idx: [], remap: new Map() }));
     const emit = (source: number): number => {
       let mapped = bucket!.remap.get(source);
       if (mapped === undefined) {
         mapped = bucket!.pos.length / 3;
         bucket!.remap.set(source, mapped);
-        const x = mesh.verts[source * 3], y = mesh.verts[source * 3 + 1], z = mesh.verts[source * 3 + 2];
+        const x = mesh.verts[source * 3],
+          y = mesh.verts[source * 3 + 1],
+          z = mesh.verts[source * 3 + 2];
         bucket!.pos.push(-100 * x, -100 * z, 100 * y);
-        const u = mesh.uvs?.[source * 2] ?? 0, v = mesh.uvs?.[source * 2 + 1] ?? 0;
+        const u = mesh.uvs?.[source * 2] ?? 0,
+          v = mesh.uvs?.[source * 2 + 1] ?? 0;
         bucket!.uv.push(u, 1 - v);
       }
       return mapped;
@@ -349,7 +364,7 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
     if (new Set(valid).size < 3) continue;
     for (const [a, b, c] of fan(valid)) {
       if (a === b || b === c || c === a) continue;
-      bucket.idx.push(emit(a), emit(c), emit(b));   // the raw frame is a mirror — reverse on the way in
+      bucket.idx.push(emit(a), emit(c), emit(b)); // the raw frame is a mirror — reverse on the way in
       tris++;
     }
   }
@@ -360,12 +375,14 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
   }
   return {
     tris,
-    subs: [...bySlot.entries()].sort((a, b) => a[0] - b[0]).map(([mat, bucket]) => ({
-      mat,
-      pos: pack(new Float32Array(bucket.pos)),
-      uv: pack(new Float32Array(bucket.uv)),
-      idx: pack(new Uint32Array(bucket.idx)),
-    })),
+    subs: [...bySlot.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([mat, bucket]) => ({
+        mat,
+        pos: pack(new Float32Array(bucket.pos)),
+        uv: pack(new Float32Array(bucket.uv)),
+        idx: pack(new Uint32Array(bucket.idx)),
+      })),
     addedMaterials: Math.max(0, highest - (slots - 1)),
   };
 }
@@ -374,10 +391,19 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
 
 /** UV corners of an authored quad, in glTF's top-down V: A(0,0) B(1,0) C(0,1) D(1,1) as raw prop UVs, so
  *  `v_gltf = 1 − v_prop`. The loop order is the one `quadLoop` produces — A, B, D, C. */
-const CAGE_LOOP_UV: readonly (readonly [number, number])[] = [[0, 1], [1, 1], [1, 0], [0, 0]];
+const CAGE_LOOP_UV: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [1, 1],
+  [1, 0],
+  [0, 0],
+];
 
 /** The wedge's third corner takes the tile's top-centre, matching `authoredModelLevelProps`. */
-const CAGE_WEDGE_UV: readonly (readonly [number, number])[] = [[0, 1], [1, 1], [0.5, 0]];
+const CAGE_WEDGE_UV: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [1, 1],
+  [0.5, 0],
+];
 
 /**
  * A portal mesh as a self-contained GLB — the file for a tool that is not the addon.
@@ -391,8 +417,11 @@ const CAGE_WEDGE_UV: readonly (readonly [number, number])[] = [[0, 1], [1, 1], [
  * file that goes out through here and comes back through the addon is still lossless — the triangles are for
  * whoever is looking, the cage is for whoever is editing.
  */
-export function portalGlb(mesh: PortalMesh, images: EncodeImage[] = [],
-  imageOfMaterial: (slot: number) => number | null = () => null): Uint8Array {
+export function portalGlb(
+  mesh: PortalMesh,
+  images: EncodeImage[] = [],
+  imageOfMaterial: (slot: number) => number | null = () => null,
+): Uint8Array {
   const slots = mesh.materials.length || 1;
   const runs = new Map<number, { positions: number[]; uvs: number[]; normals: number[]; indices: number[] }>();
 
@@ -400,10 +429,9 @@ export function portalGlb(mesh: PortalMesh, images: EncodeImage[] = [],
     if (loop.length < 3) continue;
     const slot = Math.min(slots - 1, Math.max(0, Math.trunc(mesh.faceMaterial?.[face] ?? 0)));
     let run = runs.get(slot);
-    if (!run) runs.set(slot, run = { positions: [], uvs: [], normals: [], indices: [] });
+    if (!run) runs.set(slot, (run = { positions: [], uvs: [], normals: [], indices: [] }));
     const base = run.positions.length / 3;
-    const at = (index: number): V3 =>
-      [mesh.verts[index * 3], mesh.verts[index * 3 + 1], mesh.verts[index * 3 + 2]];
+    const at = (index: number): V3 => [mesh.verts[index * 3], mesh.verts[index * 3 + 1], mesh.verts[index * 3 + 2]];
     // Flat normal: `∂u × ∂v`, the side the bake winds toward (docs/028). On a cage loop [A, B, D, C] the
     // first and last edges ARE the u and v directions (A→B is +u, A→C is +v), and on a triangle they are the
     // two the fan winds around — so one formula answers both, and it agrees with the fan below by
@@ -411,7 +439,8 @@ export function portalGlb(mesh: PortalMesh, images: EncodeImage[] = [],
     const [ox, oy, oz] = at(loop[0]);
     const [ux, uy, uz] = at(loop[1]);
     const [vx, vy, vz] = at(loop[loop.length - 1]);
-    const e1 = [ux - ox, uy - oy, uz - oz], e2 = [vx - ox, vy - oy, vz - oz];
+    const e1 = [ux - ox, uy - oy, uz - oz],
+      e2 = [vx - ox, vy - oy, vz - oz];
     const nx = e1[1] * e2[2] - e1[2] * e2[1];
     const ny = e1[2] * e2[0] - e1[0] * e2[2];
     const nz = e1[0] * e2[1] - e1[1] * e2[0];
@@ -423,7 +452,7 @@ export function portalGlb(mesh: PortalMesh, images: EncodeImage[] = [],
       run.positions.push(...at(index));
       run.normals.push(...normal);
       if (mesh.uvs && mesh.uvs.length >= (index + 1) * 2) run.uvs.push(mesh.uvs[index * 2], mesh.uvs[index * 2 + 1]);
-      else run.uvs.push(...(cageUv[Math.min(corner, cageUv.length - 1)]));
+      else run.uvs.push(...cageUv[Math.min(corner, cageUv.length - 1)]);
     }
     for (let i = 1; i + 1 < loop.length; i++) run.indices.push(base, base + i, base + i + 1);
   }
@@ -442,33 +471,37 @@ export function portalGlb(mesh: PortalMesh, images: EncodeImage[] = [],
     generator: `Slopesmith Blender portal v${PORTAL_VERSION}`,
     images,
     materials,
-    meshes: [{
-      name: mesh.stamp.name,
-      primitives: used.map((slot, index) => {
-        const run = runs.get(slot)!;
-        return {
-          positions: new Float32Array(run.positions),
-          uvs: new Float32Array(run.uvs),
-          normals: new Float32Array(run.normals),
-          indices: new Uint32Array(run.indices),
-          material: index,
-        };
-      }),
-    }],
-    nodes: [{
-      name: mesh.stamp.name,
-      mesh: 0,
-      // Both payloads travel as JSON STRINGS on the NODE, not as nested objects on the mesh. Two reasons, and
-      // they point the same way: Blender stores a node's extras as ID properties on the OBJECT — which its
-      // exporter reliably writes back — and only a string survives that with its structure intact. It is the
-      // same convention `OpenSlope_effect` already uses (docs/032).
-      extras: {
-        [OS_PORTAL_EXTRA]: JSON.stringify(mesh.stamp),
-        ...(mesh.cage
-          ? { [OS_CAGE_EXTRA]: JSON.stringify({ verts: mesh.verts, faces: mesh.faces, anchor: mesh.anchor }) }
-          : {}),
+    meshes: [
+      {
+        name: mesh.stamp.name,
+        primitives: used.map((slot, index) => {
+          const run = runs.get(slot)!;
+          return {
+            positions: new Float32Array(run.positions),
+            uvs: new Float32Array(run.uvs),
+            normals: new Float32Array(run.normals),
+            indices: new Uint32Array(run.indices),
+            material: index,
+          };
+        }),
       },
-    }],
+    ],
+    nodes: [
+      {
+        name: mesh.stamp.name,
+        mesh: 0,
+        // Both payloads travel as JSON STRINGS on the NODE, not as nested objects on the mesh. Two reasons, and
+        // they point the same way: Blender stores a node's extras as ID properties on the OBJECT — which its
+        // exporter reliably writes back — and only a string survives that with its structure intact. It is the
+        // same convention `OpenSlope_effect` already uses (docs/032).
+        extras: {
+          [OS_PORTAL_EXTRA]: JSON.stringify(mesh.stamp),
+          ...(mesh.cage
+            ? { [OS_CAGE_EXTRA]: JSON.stringify({ verts: mesh.verts, faces: mesh.faces, anchor: mesh.anchor }) }
+            : {}),
+        },
+      },
+    ],
   });
 }
 
@@ -490,15 +523,21 @@ export function readPortalStamp(value: unknown): PortalStamp | null {
   if (!Number.isInteger(stamp.id) || (stamp.id as number) < 0) return null;
   if (typeof stamp.project !== 'string' || !stamp.project) return null;
   return {
-    v: Number.isInteger(stamp.v) ? stamp.v as number : PORTAL_VERSION,
-    kind: stamp.kind, id: stamp.id as number,
+    v: Number.isInteger(stamp.v) ? (stamp.v as number) : PORTAL_VERSION,
+    kind: stamp.kind,
+    id: stamp.id as number,
     name: typeof stamp.name === 'string' ? stamp.name : `model ${stamp.id}`,
-    project: stamp.project, unit: 'm',
+    project: stamp.project,
+    unit: 'm',
   };
 }
 
 function safeParse(text: string): unknown {
-  try { return JSON.parse(text); } catch { return null; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -536,31 +575,36 @@ export function readPortalMesh(value: unknown): PortalMesh {
   if (uvs && uvs.length !== (verts.length / 3) * 2) throw new Error('that push has one UV per vertex missing');
   return {
     stamp,
-    anchor: Array.isArray(body.anchor) && body.anchor.length === 3
-      ? [Number(body.anchor[0]) || 0, Number(body.anchor[1]) || 0, Number(body.anchor[2]) || 0]
-      : [0, 0, 0],
+    anchor:
+      Array.isArray(body.anchor) && body.anchor.length === 3
+        ? [Number(body.anchor[0]) || 0, Number(body.anchor[1]) || 0, Number(body.anchor[2]) || 0]
+        : [0, 0, 0],
     verts,
     ...(uvs ? { uvs } : {}),
     faces,
     ...(Array.isArray(body.faceMaterial)
       ? { faceMaterial: body.faceMaterial.map(slot => Math.max(0, Math.trunc(Number(slot)) || 0)) }
       : {}),
-    materials: Array.isArray(body.materials) ? body.materials.map((material, index) => {
-      const row = material as Partial<PortalMaterial> | null;
-      const png = typeof row?.png === 'string' ? row.png : '';
-      // Sized off the base64 LENGTH rather than by decoding: a payload meant to exhaust the heap must be
-      // refused before anything allocates a buffer for it.
-      if (png.length > Math.ceil(MAX_PORTAL_TEX_BYTES / 3) * 4) {
-        throw new Error(`slot ${index}'s tile is larger than the`
-          + ` ${Math.round(MAX_PORTAL_TEX_BYTES / 1024 / 1024)} MB a push may carry`);
-      }
-      return {
-        id: Number.isInteger(row?.id) ? row!.id as number : index,
-        name: String(row?.name ?? `slot ${index}`),
-        tex: typeof row?.tex === 'string' && row.tex ? row.tex : null,
-        ...(png ? { png } : {}),
-      };
-    }) : [],
+    materials: Array.isArray(body.materials)
+      ? body.materials.map((material, index) => {
+          const row = material as Partial<PortalMaterial> | null;
+          const png = typeof row?.png === 'string' ? row.png : '';
+          // Sized off the base64 LENGTH rather than by decoding: a payload meant to exhaust the heap must be
+          // refused before anything allocates a buffer for it.
+          if (png.length > Math.ceil(MAX_PORTAL_TEX_BYTES / 3) * 4) {
+            throw new Error(
+              `slot ${index}'s tile is larger than the` +
+                ` ${Math.round(MAX_PORTAL_TEX_BYTES / 1024 / 1024)} MB a push may carry`,
+            );
+          }
+          return {
+            id: Number.isInteger(row?.id) ? (row!.id as number) : index,
+            name: String(row?.name ?? `slot ${index}`),
+            tex: typeof row?.tex === 'string' && row.tex ? row.tex : null,
+            ...(png ? { png } : {}),
+          };
+        })
+      : [],
     cage: body.cage === true,
   };
 }

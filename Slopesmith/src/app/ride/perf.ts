@@ -113,21 +113,57 @@ export interface RidePerf {
 
 export function createRidePerf(): RidePerf {
   return {
-    fps: 0, frameMs: 0,
-    xrBeginMs: 0, walkCollisionMs: 0, walkGroundCasts: 0, walkSweeps: 0,
-    walkTriangleTests: 0, walkLiveRefits: 0,
-    worldMs: 0, rideMs: 0, effectsMs: 0, sceneMs: 0, xrEndMs: 0,
-    renderPrepMs: 0, renderSubmitMs: 0, renderMs: 0, postFrameMs: 0, gpuMs: null,
-    gpuTimerState: 'pending', aiMs: 0,
-    physicsMs: 0, castMs: 0, poseMs: 0, cameraMs: 0, telemetryMs: 0, hudMs: 0,
-    drawCalls: 0, renderTriangles: 0, renderLines: 0, renderPoints: 0,
-    renderOpaqueItems: 0, renderTransparentItems: 0, renderTransmissiveItems: 0,
-    renderTransparentRefBatches: 0, renderTransparentRefIsolated: 0,
-    renderTransparentAuthoredProps: 0, renderTransparentOther: 0, renderTransparentOtherSources: '',
-    geometries: 0, textures: 0, programs: 0, multiDraw: false,
-    propBatchDraws: 0, propBatchSlots: 0, propIsolatedDraws: 0, propIsolatedSlots: 0,
-    authoredPropDraws: 0, propIsolation: '',
-    castAccum: 0, stepT0: 0, rideTris: 0,
+    fps: 0,
+    frameMs: 0,
+    xrBeginMs: 0,
+    walkCollisionMs: 0,
+    walkGroundCasts: 0,
+    walkSweeps: 0,
+    walkTriangleTests: 0,
+    walkLiveRefits: 0,
+    worldMs: 0,
+    rideMs: 0,
+    effectsMs: 0,
+    sceneMs: 0,
+    xrEndMs: 0,
+    renderPrepMs: 0,
+    renderSubmitMs: 0,
+    renderMs: 0,
+    postFrameMs: 0,
+    gpuMs: null,
+    gpuTimerState: 'pending',
+    aiMs: 0,
+    physicsMs: 0,
+    castMs: 0,
+    poseMs: 0,
+    cameraMs: 0,
+    telemetryMs: 0,
+    hudMs: 0,
+    drawCalls: 0,
+    renderTriangles: 0,
+    renderLines: 0,
+    renderPoints: 0,
+    renderOpaqueItems: 0,
+    renderTransparentItems: 0,
+    renderTransmissiveItems: 0,
+    renderTransparentRefBatches: 0,
+    renderTransparentRefIsolated: 0,
+    renderTransparentAuthoredProps: 0,
+    renderTransparentOther: 0,
+    renderTransparentOtherSources: '',
+    geometries: 0,
+    textures: 0,
+    programs: 0,
+    multiDraw: false,
+    propBatchDraws: 0,
+    propBatchSlots: 0,
+    propIsolatedDraws: 0,
+    propIsolatedSlots: 0,
+    authoredPropDraws: 0,
+    propIsolation: '',
+    castAccum: 0,
+    stepT0: 0,
+    rideTris: 0,
   };
 }
 
@@ -194,8 +230,16 @@ function safeCount(value: number): number {
 
 /** Mutually-exclusive CPU phases only. Ride drill-down values must not be added here a second time. */
 export function measuredRideCpuMs(perf: Readonly<RidePerf>): number {
-  return perf.xrBeginMs + perf.worldMs + perf.rideMs + perf.effectsMs + perf.sceneMs
-    + perf.xrEndMs + perf.renderMs + perf.postFrameMs;
+  return (
+    perf.xrBeginMs +
+    perf.worldMs +
+    perf.rideMs +
+    perf.effectsMs +
+    perf.sceneMs +
+    perf.xrEndMs +
+    perf.renderMs +
+    perf.postFrameMs
+  );
 }
 
 /** Time not observed on the JS thread: normally vsync/idle plus GPU work, but also browser/OS scheduling. */

@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { createRidePointerLock } from '../src/app/ride/pointer-lock';
 
 class FakeWindow extends EventTarget {
-  matchMedia() { return { matches: true }; }
+  matchMedia() {
+    return { matches: true };
+  }
 }
 
 class FakeDocument extends EventTarget {
@@ -22,7 +24,9 @@ class FakeDocument extends EventTarget {
 
 class FakeTarget extends EventTarget {
   requests = 0;
-  constructor(readonly ownerDocument: FakeDocument) { super(); }
+  constructor(readonly ownerDocument: FakeDocument) {
+    super();
+  }
   requestPointerLock() {
     this.requests++;
     this.ownerDocument.pointerLockElement = this as unknown as Element;
@@ -86,7 +90,14 @@ assert.equal(lock.firstPerson, true);
 doc.dispatchEvent(mouseMove(40, 20));
 assert.deepEqual(moves, [[7, -3]], 'first-person capture also suppresses its first delta');
 doc.dispatchEvent(mouseMove(-5, 6));
-assert.deepEqual(moves, [[7, -3], [-5, 6]], 'captured first-person movement looks around');
+assert.deepEqual(
+  moves,
+  [
+    [7, -3],
+    [-5, 6],
+  ],
+  'captured first-person movement looks around',
+);
 
 const firstPersonEscape = keyboard('keydown', 'Escape');
 doc.dispatchEvent(firstPersonEscape);
@@ -97,9 +108,24 @@ assert.equal(target.requests, 3, 'any viewport click recaptures first person');
 doc.dispatchEvent(mouseMove(30, 0));
 doc.defaultView!.dispatchEvent(new Event('focus'));
 doc.dispatchEvent(mouseMove(-120, 0));
-assert.deepEqual(moves, [[7, -3], [-5, 6]], 'the first delta after recapture or refocus is ignored');
+assert.deepEqual(
+  moves,
+  [
+    [7, -3],
+    [-5, 6],
+  ],
+  'the first delta after recapture or refocus is ignored',
+);
 doc.dispatchEvent(mouseMove(3, 2));
-assert.deepEqual(moves, [[7, -3], [-5, 6], [3, 2]], 'ordinary movement resumes immediately after refocus');
+assert.deepEqual(
+  moves,
+  [
+    [7, -3],
+    [-5, 6],
+    [3, 2],
+  ],
+  'ordinary movement resumes immediately after refocus',
+);
 doc.dispatchEvent(mouseButton('mouseup', 0));
 assert.equal(lock.locked, true, 'releasing a first-person click keeps the cursor captured');
 doc.dispatchEvent(mouseButton('mouseup', 2));

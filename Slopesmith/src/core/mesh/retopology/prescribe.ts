@@ -72,7 +72,10 @@ export function boundaryLoops(mesh: PolygonMesh): number[][] {
   for (const [key, uses] of edgeUse) {
     if (uses !== 1) continue;
     const [a, b] = key.split('_').map(Number);
-    for (const [from, to] of [[a, b], [b, a]] as const) {
+    for (const [from, to] of [
+      [a, b],
+      [b, a],
+    ] as const) {
       let list = adjacency.get(from);
       if (!list) adjacency.set(from, (list = []));
       list.push(to);
@@ -101,10 +104,9 @@ export function boundaryLoops(mesh: PolygonMesh): number[][] {
 
 /** First line is the record count; each record is "v0 v1 vMid count [f1 ... fn]" (see load_save.cpp). */
 export function formatFixedSubsides(records: PrescribedSubside[]): string {
-  return `${records.length}\n${records.map(r => [
-    `${r.v0} ${r.v1} ${r.vMid} ${r.count}`,
-    ...r.fractions.map(fraction => fraction.toFixed(6)),
-  ].join(' ')).join('\n')}\n`;
+  return `${records.length}\n${records
+    .map(r => [`${r.v0} ${r.v1} ${r.vMid} ${r.count}`, ...r.fractions.map(fraction => fraction.toFixed(6))].join(' '))
+    .join('\n')}\n`;
 }
 
 /** QuadWild .corners sidecar: patch count, then per patch a corner count and vertex ids. */
@@ -171,7 +173,8 @@ function projectOntoLoop(point: V3, positions: V3[], cumulative: number[]): { s:
 function pointOnLoop(positions: V3[], cumulative: number[], s: number): V3 {
   const total = cumulative[positions.length];
   const t = ((s % total) + total) % total;
-  let low = 0, high = positions.length - 1;
+  let low = 0,
+    high = positions.length - 1;
   while (low < high) {
     const mid = (low + high + 1) >> 1;
     if (cumulative[mid] <= t) low = mid;
@@ -191,7 +194,8 @@ function pointOnLoop(positions: V3[], cumulative: number[], s: number): V3 {
  * arc-length-sorted authored list (take mod authored count to address it).
  */
 function pairCornersToAuthored(cornerS: number[], authoredS: number[], total: number): number[] {
-  const corners = cornerS.length, authored = authoredS.length;
+  const corners = cornerS.length,
+    authored = authoredS.length;
   const cyclic = (cornerIndex: number, unwrapped: number): number => {
     const raw = Math.abs(cornerS[cornerIndex] - authoredS[unwrapped % authored]);
     return Math.min(raw, total - raw);
@@ -212,9 +216,12 @@ function pairCornersToAuthored(cornerS: number[], authoredS: number[], total: nu
       let bestPrior = -1;
       for (let offset = j; offset <= authored - 1 - (corners - 1 - j); offset++) {
         const prior = offset - 1;
-        if (max[j - 1][prior] < Infinity && (bestPrior < 0
-          || max[j - 1][prior] < max[j - 1][bestPrior]
-          || (max[j - 1][prior] === max[j - 1][bestPrior] && sum[j - 1][prior] < sum[j - 1][bestPrior]))) {
+        if (
+          max[j - 1][prior] < Infinity &&
+          (bestPrior < 0 ||
+            max[j - 1][prior] < max[j - 1][bestPrior] ||
+            (max[j - 1][prior] === max[j - 1][bestPrior] && sum[j - 1][prior] < sum[j - 1][bestPrior]))
+        ) {
           bestPrior = prior;
         }
         if (bestPrior < 0) continue;
@@ -227,8 +234,8 @@ function pairCornersToAuthored(cornerS: number[], authoredS: number[], total: nu
     for (let offset = corners - 1; offset < authored; offset++) {
       const last = corners - 1;
       if (max[last][offset] === Infinity) continue;
-      if (best && (max[last][offset] > best.max
-        || (max[last][offset] === best.max && sum[last][offset] >= best.sum))) continue;
+      if (best && (max[last][offset] > best.max || (max[last][offset] === best.max && sum[last][offset] >= best.sum)))
+        continue;
       const offsets = [offset];
       for (let j = last; j > 0; j--) offsets.unshift(parent[j - 1][offsets[0]]);
       best = {
@@ -277,8 +284,9 @@ export function prescribeRimSubsides(
       const candidatePositions = candidate.map(v => remesh.vertices[v]);
       const cumulative = [0];
       for (let i = 1; i <= candidatePositions.length; i++) {
-        cumulative.push(cumulative[i - 1]
-          + distance(candidatePositions[i - 1], candidatePositions[i % candidatePositions.length]));
+        cumulative.push(
+          cumulative[i - 1] + distance(candidatePositions[i - 1], candidatePositions[i % candidatePositions.length]),
+        );
       }
       const params: number[] = [];
       let candidateWorst = 0;
@@ -308,11 +316,13 @@ export function prescribeRimSubsides(
     }
 
     // authored corners in rim traversal order
-    const sorted = authored
-      .map((point, index) => ({ point, s: authoredS[index] }))
-      .sort((a, b) => a.s - b.s);
+    const sorted = authored.map((point, index) => ({ point, s: authoredS[index] })).sort((a, b) => a.s - b.s);
     const cornerS = cornerIndices.map(index => rimCumulative[index]);
-    const assignment = pairCornersToAuthored(cornerS, sorted.map(entry => entry.s), rimTotal);
+    const assignment = pairCornersToAuthored(
+      cornerS,
+      sorted.map(entry => entry.s),
+      rimTotal,
+    );
 
     // conform layout corners onto their paired authored corners; a pairing beyond the gate keeps
     // the corner where tracing put it (the join absorbs the residual there instead)
@@ -338,12 +348,17 @@ export function prescribeRimSubsides(
         const next = (j + 1) % cornerIndices.length;
         const originalSpan = (cornerS[next] - cornerS[j] + rimTotal) % rimTotal || rimTotal;
         const span = originalSpan + (conform[next].newS - cornerS[next]) - (conform[j].newS - cornerS[j]);
-        if (span < worstSpan) { worstSpan = span; worstPair = j; }
+        if (span < worstSpan) {
+          worstSpan = span;
+          worstPair = j;
+        }
       }
       if (worstPair < 0) break;
       const next = (worstPair + 1) % cornerIndices.length;
-      const offender = Math.abs(conform[worstPair].newS - cornerS[worstPair])
-        >= Math.abs(conform[next].newS - cornerS[next]) ? worstPair : next;
+      const offender =
+        Math.abs(conform[worstPair].newS - cornerS[worstPair]) >= Math.abs(conform[next].newS - cornerS[next])
+          ? worstPair
+          : next;
       if (conform[offender].newS === cornerS[offender]) {
         throw new Error('corner conforming cannot keep every rim arc a positive span');
       }
@@ -370,9 +385,10 @@ export function prescribeRimSubsides(
     // so a moved corner stretches its arcs smoothly instead of degenerating its first rim edge
     for (let j = 0; j < cornerIndices.length; j++) {
       const next = (j + 1) % cornerIndices.length;
-      const fromS = cornerS[j], toS = cornerS[j] + ((cornerS[next] - cornerS[j] + rimTotal) % rimTotal || rimTotal);
-      const newFromS = newCornerS[j], newToS = newCornerS[j]
-        + ((newCornerS[next] - newCornerS[j] + rimTotal) % rimTotal || rimTotal);
+      const fromS = cornerS[j],
+        toS = cornerS[j] + ((cornerS[next] - cornerS[j] + rimTotal) % rimTotal || rimTotal);
+      const newFromS = newCornerS[j],
+        newToS = newCornerS[j] + ((newCornerS[next] - newCornerS[j] + rimTotal) % rimTotal || rimTotal);
       if (Math.abs(newFromS - fromS) < 1e-9 && Math.abs(newToS - toS) < 1e-9) continue;
       for (let i = (cornerIndices[j] + 1) % rim.length; i !== cornerIndices[next]; i = (i + 1) % rim.length) {
         const s = fromS + ((rimCumulative[i] - fromS + rimTotal) % rimTotal);
@@ -386,15 +402,13 @@ export function prescribeRimSubsides(
     const newPositions = rim.map((v, i) => movedVertices.get(v) ?? positions[i]);
     const newCumulative = [0];
     for (let i = 1; i <= newPositions.length; i++) {
-      newCumulative.push(newCumulative[i - 1]
-        + distance(newPositions[i - 1], newPositions[i % newPositions.length]));
+      newCumulative.push(newCumulative[i - 1] + distance(newPositions[i - 1], newPositions[i % newPositions.length]));
     }
     const newTotal = newCumulative[newPositions.length];
 
     for (let j = 0; j < cornerIndices.length; j++) {
       const next = (j + 1) % cornerIndices.length;
-      const count = assignment[(j + 1) % assignment.length] - assignment[j]
-        + (next === 0 ? sorted.length : 0);
+      const count = assignment[(j + 1) % assignment.length] - assignment[j] + (next === 0 ? sorted.length : 0);
       if (count < 1) throw new Error('corner pairing produced an empty arc');
       const arcFromS = newCumulative[cornerIndices[j]];
       const arcLength = (newCumulative[cornerIndices[next]] - arcFromS + newTotal) % newTotal || newTotal;

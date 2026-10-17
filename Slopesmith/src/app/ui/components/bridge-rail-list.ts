@@ -28,7 +28,13 @@ export class BridgeRailList {
   private titleEl = document.createElement('div');
   private listEl = document.createElement('div');
 
-  constructor(private cb: { onReverse(index: number): void; onRemove(index: number): void; onMove(from: number, to: number): void }) {
+  constructor(
+    private cb: {
+      onReverse(index: number): void;
+      onRemove(index: number): void;
+      onMove(from: number, to: number): void;
+    },
+  ) {
     installStyles('bridge-rail-list', css);
     this.el.className = 'br-card';
     this.titleEl.className = 'br-title';
@@ -54,16 +60,21 @@ export class BridgeRailList {
         if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
       };
       row.ondragend = () => row.classList.remove('dragging');
-      row.ondragover = ev => { ev.preventDefault(); row.classList.add('over'); };
+      row.ondragover = ev => {
+        ev.preventDefault();
+        row.classList.add('over');
+      };
       row.ondragleave = () => row.classList.remove('over');
       row.ondrop = ev => {
-        ev.preventDefault(); row.classList.remove('over');
+        ev.preventDefault();
+        row.classList.remove('over');
         const from = Number(ev.dataTransfer?.getData('text/plain'));
         if (Number.isInteger(from) && from !== index) this.cb.onMove(from, index);
       };
 
       const grip = document.createElement('span');
-      grip.className = 'br-grip'; grip.textContent = '⋮⋮';
+      grip.className = 'br-grip';
+      grip.textContent = '⋮⋮';
       const dot = document.createElement('span');
       dot.className = 'br-dot';
       const color = BRIDGE_RAIL_COLORS[index % BRIDGE_RAIL_COLORS.length].toString(16).padStart(6, '0');
@@ -72,15 +83,21 @@ export class BridgeRailList {
       name.className = 'br-name';
       name.textContent = `${index + 1}  ${rail.length} vertices  →`;
       const reverse = document.createElement('button');
-      reverse.className = 'br-action'; reverse.textContent = 'reverse'; reverse.title = 'Reverse this rail direction';
+      reverse.className = 'br-action';
+      reverse.textContent = 'reverse';
+      reverse.title = 'Reverse this rail direction';
       reverse.onclick = () => this.cb.onReverse(index);
       const remove = document.createElement('button');
-      remove.className = 'br-action br-remove'; remove.textContent = '✕'; remove.title = 'Remove this rail from the bridge';
+      remove.className = 'br-action br-remove';
+      remove.textContent = '✕';
+      remove.title = 'Remove this rail from the bridge';
       remove.onclick = () => this.cb.onRemove(index);
       row.append(grip, dot, name, reverse, remove);
       this.listEl.appendChild(row);
     });
   }
 
-  hide() { this.el.classList.remove('on'); }
+  hide() {
+    this.el.classList.remove('on');
+  }
 }

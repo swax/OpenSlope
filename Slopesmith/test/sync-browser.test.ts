@@ -21,7 +21,8 @@ forgetWorkspaceConfig();
 const api = await startApiService({ host: '127.0.0.1', port: 0 });
 process.env.PORT = String(api.port);
 const vite = await createServer({
-  root: process.cwd(), logLevel: 'error',
+  root: process.cwd(),
+  logLevel: 'error',
   server: { host: '127.0.0.1', port: 0, proxy: { '/api': { target: api.url, ws: true } } },
 });
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -40,21 +41,34 @@ type Observation = {
 try {
   const corners: number[] = [];
   for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) corners.push(r * 20, 0, c * 20);
-  const authored = meshFromNet({ rows: 6, cols: 6, spacing: 20, corners, paint: {} },
-    { name: 'SYNC_BROWSER', course: starterCourse(), baseSurface: 1 });
+  const authored = meshFromNet(
+    { rows: 6, cols: 6, spacing: 20, corners, paint: {} },
+    { name: 'SYNC_BROWSER', course: starterCourse(), baseSurface: 1 },
+  );
   const centre = [50, 0, 50];
-  authored.rails = [{ id: 'rail:sync', name: 'Sync rail', height: 3, texture: '', nodes: [
-    [centre[0] - 15, centre[1] + 3, centre[2]], [centre[0] + 15, centre[1] + 3, centre[2]],
-  ] }];
+  authored.rails = [
+    {
+      id: 'rail:sync',
+      name: 'Sync rail',
+      height: 3,
+      texture: '',
+      nodes: [
+        [centre[0] - 15, centre[1] + 3, centre[2]],
+        [centre[0] + 15, centre[1] + 3, centre[2]],
+      ],
+    },
+  ];
   const created = await fetch(`${api.url}/api/projects`, {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-slopesmith-client': 'browser-fixture' },
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-slopesmith-client': 'browser-fixture' },
     body: JSON.stringify({ document: authored }),
   });
   assert(created.ok);
-  const project = await created.json() as { project: { id: string }; document: EditDoc };
+  const project = (await created.json()) as { project: { id: string }; document: EditDoc };
   await vite.listen();
   browser = await chromium.launch({
-    executablePath: chromiumExecutable(), headless: true,
+    executablePath: chromiumExecutable(),
+    headless: true,
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -68,15 +82,28 @@ try {
   // A long silent WAV exercises the real preview lifetime without needing extracted game audio.
   const pcmBytes = 8000 * 60 * 2;
   const wav = Buffer.alloc(44 + pcmBytes);
-  wav.write('RIFF'); wav.writeUInt32LE(36 + pcmBytes, 4); wav.write('WAVEfmt ', 8);
-  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(pcmBytes, 40);
+  wav.write('RIFF');
+  wav.writeUInt32LE(36 + pcmBytes, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(16000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(pcmBytes, 40);
   await page.route('**/api/board-audio', route => route.fulfill({ json: { board: 'zboard', surfaceGroups: [] } }));
   await page.route('**/api/board-sound?*', route => route.fulfill({ contentType: 'audio/wav', body: wav }));
   await page.goto(`${vite.resolvedUrls!.local[0]}?map=SYNC_BROWSER&agent=1`);
-  await page.waitForFunction(() => !!(window as unknown as Observation).slopesmith
-    && document.querySelector('#load-status')?.getAttribute('aria-busy') === 'false', undefined, { timeout: 60_000 });
+  await page.waitForFunction(
+    () =>
+      !!(window as unknown as Observation).slopesmith &&
+      document.querySelector('#load-status')?.getAttribute('aria-busy') === 'false',
+    undefined,
+    { timeout: 60_000 },
+  );
   assert.equal(await page.locator('vite-error-overlay').count(), 0);
   assert((await page.locator('body').innerText()).includes('Edit'));
   console.log('Browser loaded: editor controls render, no Vite overlay.');
@@ -94,11 +121,13 @@ try {
   const hit = await page.evaluate(box => {
     const observe = (window as unknown as Observation).slopesmith;
     // The proxy names an endpoint; an open tube has no cap there. Find a nearby ray on the actual tube.
-    for (let dy = -8; dy <= 8; dy += 1) for (let dx = -8; dx <= 8; dx += 1) {
-      const x = box.x + box.width / 2 + dx, y = box.y + box.height / 2 + dy;
-      const pick = observe.pickAt(x, y);
-      if (pick?.target === 'rail' && pick.railIndex === 0) return { x, y };
-    }
+    for (let dy = -8; dy <= 8; dy += 1)
+      for (let dx = -8; dx <= 8; dx += 1) {
+        const x = box.x + box.width / 2 + dx,
+          y = box.y + box.height / 2 + dy;
+        const pick = observe.pickAt(x, y);
+        if (pick?.target === 'rail' && pick.railIndex === 0) return { x, y };
+      }
     return null;
   }, box);
   assert(hit, 'the rail fixture has a pickable tube');
@@ -112,25 +141,39 @@ try {
     const observed = window as unknown as Observation;
     observed.syncLoadCount = 0;
     new MutationObserver(records => {
-      if (records.some(record => record.attributeName === 'aria-busy')
-        && document.querySelector('#load-status')?.getAttribute('aria-busy') === 'true') observed.syncLoadCount++;
+      if (
+        records.some(record => record.attributeName === 'aria-busy') &&
+        document.querySelector('#load-status')?.getAttribute('aria-busy') === 'true'
+      )
+        observed.syncLoadCount++;
     }).observe(document.querySelector('#load-status')!, { attributes: true });
   });
 
-  let doc = project.document, joined = false;
+  let doc = project.document,
+    joined = false;
   const sync = createRegisterSync({
-    getDoc: () => doc, setDoc: next => { doc = next; },
+    getDoc: () => doc,
+    setDoc: next => {
+      doc = next;
+    },
     channel: {
       assign: (changes, batch) => channel!.assign(changes, batch),
       claim: (ids, delta, changes, batch) => channel!.claim(ids, delta, changes, batch),
-      checkDrift: digest => channel!.checkDrift(digest), fetchSections: sections => channel!.fetchSections(sections),
+      checkDrift: digest => channel!.checkDrift(digest),
+      fetchSections: sections => channel!.fetchSections(sections),
     },
   });
   channel = createSessionChannel({
-    clientId: 'remote-browser-test', url: () => `${api.url.replace('http', 'ws')}/api/session?client=remote-browser-test`,
-    onJoined: () => { joined = true; sync.connect(); },
-    onSync: push => sync.applySync(push.changes, push.by), onLanded: ack => sync.landed(ack),
-    onClaim: result => sync.claimed(result), onTopology: push => sync.applyTopology(push),
+    clientId: 'remote-browser-test',
+    url: () => `${api.url.replace('http', 'ws')}/api/session?client=remote-browser-test`,
+    onJoined: () => {
+      joined = true;
+      sync.connect();
+    },
+    onSync: push => sync.applySync(push.changes, push.by),
+    onLanded: ack => sync.landed(ack),
+    onClaim: result => sync.claimed(result),
+    onTopology: push => sync.applyTopology(push),
     onCaughtUp: missed => sync.caughtUp(missed),
   });
   channel.start();
@@ -145,7 +188,10 @@ try {
   doc = deleted.doc;
   sync.noteEdit();
   sync.flush();
-  await page.waitForFunction(count => (window as unknown as Observation).slopesmith.doc().quads.length === count, oldCount - 1);
+  await page.waitForFunction(
+    count => (window as unknown as Observation).slopesmith.doc().quads.length === count,
+    oldCount - 1,
+  );
   await page.waitForTimeout(500);
   const after = await page.evaluate(() => ({
     snapshot: (window as unknown as Observation).slopesmith.snapshot(),
@@ -163,9 +209,18 @@ try {
   // Keep a Sound field focused and a real audio preview playing while another terrain snapshot arrives.
   await page.getByRole('button', { name: 'Scene', exact: true }).first().click();
   await page.locator('.sp-scene-categories').getByRole('button', { name: /Sound/ }).click();
-  await page.locator('.sp-scene-gui .lil-title').filter({ hasText: /^Board sound$/ }).click();
-  await page.getByRole('button', { name: /hear surface/ }).first().click();
-  await page.getByRole('button', { name: /stop sound/ }).first().waitFor({ state: 'visible' });
+  await page
+    .locator('.sp-scene-gui .lil-title')
+    .filter({ hasText: /^Board sound$/ })
+    .click();
+  await page
+    .getByRole('button', { name: /hear surface/ })
+    .first()
+    .click();
+  await page
+    .getByRole('button', { name: /stop sound/ })
+    .first()
+    .waitFor({ state: 'visible' });
   const bpm = page.getByRole('textbox', { name: 'BPM', exact: true });
   await bpm.focus();
   const soundInput = await bpm.elementHandle();
@@ -174,18 +229,35 @@ try {
   const second = applyMeshDelete(doc, { quads: [0] });
   assert(second.ok);
   doc = second.doc;
-  sync.noteEdit(); sync.flush();
-  await page.waitForFunction(count => (window as unknown as Observation).slopesmith.doc().quads.length === count, oldCount - 2);
+  sync.noteEdit();
+  sync.flush();
+  await page.waitForFunction(
+    count => (window as unknown as Observation).slopesmith.doc().quads.length === count,
+    oldCount - 2,
+  );
   await page.waitForTimeout(300);
-  assert(await soundInput.evaluate(input => input.isConnected && document.activeElement === input),
-    'untouched Sound field retains its DOM node and focus');
+  assert(
+    await soundInput.evaluate(input => input.isConnected && document.activeElement === input),
+    'untouched Sound field retains its DOM node and focus',
+  );
   assert(await courseInput.evaluate(input => input.isConnected), 'untouched Course controls retain their DOM nodes');
   assert.equal(musicRequests, initialMusicRequests, 'terrain sync does not refetch the visible music library');
-  assert(await page.getByRole('button', { name: /stop sound/ }).first().isVisible(), 'board preview survives sync');
+  assert(
+    await page
+      .getByRole('button', { name: /stop sound/ })
+      .first()
+      .isVisible(),
+    'board preview survives sync',
+  );
   await bpm.fill('141');
   await bpm.press('Tab');
-  await page.waitForFunction(() => (window as unknown as Observation).slopesmith.doc().raceMusicArrangement?.bpm === 141);
-  await page.locator('.sp-scene-categories').getByRole('button', { name: /Course/ }).click();
+  await page.waitForFunction(
+    () => (window as unknown as Observation).slopesmith.doc().raceMusicArrangement?.bpm === 141,
+  );
+  await page
+    .locator('.sp-scene-categories')
+    .getByRole('button', { name: /Course/ })
+    .click();
   const surface = page.getByLabel('base ride feel', { exact: true });
   const surfaceLabel = await surface.locator('option').filter({ hasText: /^2 / }).textContent();
   assert(surfaceLabel);
@@ -202,10 +274,19 @@ try {
   assert(third.ok);
   doc = third.doc;
   doc.baseSurface = 3;
-  sync.noteEdit(); sync.flush();
-  await page.waitForFunction(count => (window as unknown as Observation).slopesmith.doc().quads.length === count, oldCount - 3);
-  await page.waitForFunction(() => [...document.querySelectorAll('.sp-scene-gui .lil-controller')].some(controller =>
-    controller.querySelector('.lil-name')?.textContent === 'base ride feel' && controller.querySelector('select')?.value.startsWith('3 ')));
+  sync.noteEdit();
+  sync.flush();
+  await page.waitForFunction(
+    count => (window as unknown as Observation).slopesmith.doc().quads.length === count,
+    oldCount - 3,
+  );
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.sp-scene-gui .lil-controller')].some(
+      controller =>
+        controller.querySelector('.lil-name')?.textContent === 'base ride feel' &&
+        controller.querySelector('select')?.value.startsWith('3 '),
+    ),
+  );
   assert((await surface.inputValue()).startsWith('3 '), 'changed Course settings are refreshed');
   assert.equal(await courseInput.evaluate(input => input.isConnected), false, 'affected Course controls are replaced');
 
@@ -221,7 +302,9 @@ try {
   assert.deepEqual(await page.evaluate(() => (window as unknown as Observation).slopesmith.errors()), []);
   assert.deepEqual(errors, []);
   await page.screenshot({ path: join(root, 'synced.png') });
-  console.log(`SYNC BROWSER PASS: remote edits preserve camera, selection, focus and audio; retained controls edit the live map; changed controls refresh. Screenshot: ${join(root, 'synced.png')}`);
+  console.log(
+    `SYNC BROWSER PASS: remote edits preserve camera, selection, focus and audio; retained controls edit the live map; changed controls refresh. Screenshot: ${join(root, 'synced.png')}`,
+  );
 } catch (error) {
   if (failurePage) {
     await failurePage.screenshot({ path: join(root, 'failure.png') });

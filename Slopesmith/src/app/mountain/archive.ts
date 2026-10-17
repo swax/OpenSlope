@@ -1,7 +1,12 @@
 import type { ExportFile } from '../../core/export/files';
 import {
-  MOUNTAIN_ARCHIVE_MANIFEST, MOUNTAIN_ARCHIVE_SCHEMA, PROJECT_BUNDLE_SCHEMA,
-  type BundleAsset, type BundleAssetKind, type MountainArchiveAsset, type MountainArchiveManifest,
+  MOUNTAIN_ARCHIVE_MANIFEST,
+  MOUNTAIN_ARCHIVE_SCHEMA,
+  PROJECT_BUNDLE_SCHEMA,
+  type BundleAsset,
+  type BundleAssetKind,
+  type MountainArchiveAsset,
+  type MountainArchiveManifest,
   type ProjectBundle,
 } from '../../core/project/transfer';
 import { crc32 } from '../export/crc32';
@@ -14,19 +19,31 @@ const MAX_ARCHIVE_FILES = 4096;
 const ASSET_KINDS = new Set<BundleAssetKind>(['texture', 'sound', 'music', 'sky', 'prop']);
 
 /** A complete editable mountain ready for the browser's download handoff. */
-export interface MountainArchiveDownload { filename: string; blob: Blob }
-export interface MountainArchiveOptions { filenameStem?: string; checkpoint?: boolean }
+export interface MountainArchiveDownload {
+  filename: string;
+  blob: Blob;
+}
+export interface MountainArchiveOptions {
+  filenameStem?: string;
+  checkpoint?: boolean;
+}
 
-const filenameStem = (name: string): string => name.trim()
-  // eslint-disable-next-line no-control-regex -- strips the control characters a filename may not carry
-  .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '-')
-  .replace(/[. ]+$/g, '').slice(0, 80) || 'mountain';
+const filenameStem = (name: string): string =>
+  name
+    .trim()
+    // eslint-disable-next-line no-control-regex -- strips the control characters a filename may not carry
+    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '-')
+    .replace(/[. ]+$/g, '')
+    .slice(0, 80) || 'mountain';
 
 /** A sortable, timezone-explicit instant which is also safe in Windows filenames. */
 const filenameTimestamp = (value: string): string => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) throw new Error('the mountain transfer has an invalid capture time');
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  return date
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
 };
 
 const assetExtension = (asset: BundleAsset): string => {
@@ -37,7 +54,7 @@ const assetExtension = (asset: BundleAsset): string => {
   return match?.[0].toLowerCase() ?? '.bin';
 };
 
-const assetFolder = (kind: BundleAssetKind): string => kind === 'music' ? 'music' : `${kind}s`;
+const assetFolder = (kind: BundleAssetKind): string => (kind === 'music' ? 'music' : `${kind}s`);
 
 function base64Bytes(value: string): Uint8Array {
   const binary = atob(value);
@@ -56,8 +73,10 @@ function bytesBase64(bytes: Uint8Array): string {
 }
 
 /** Turn the server's self-contained transfer bundle into the public, ZIP-based mountain format. */
-export function createMountainArchive(bundle: ProjectBundle,
-  options: MountainArchiveOptions = {}): MountainArchiveDownload {
+export function createMountainArchive(
+  bundle: ProjectBundle,
+  options: MountainArchiveOptions = {},
+): MountainArchiveDownload {
   const root = filenameStem(options.filenameStem || bundle.name || bundle.document.name || 'mountain');
   if (!Number.isSafeInteger(bundle.revision) || bundle.revision < 0) {
     throw new Error('the mountain transfer has an invalid revision');
@@ -76,17 +95,18 @@ export function createMountainArchive(bundle: ProjectBundle,
     return { ...asset, hash: asset.hash.toLowerCase(), file };
   });
   const manifest: MountainArchiveManifest = {
-    kind: 'slopesmith-mountain', schema: MOUNTAIN_ARCHIVE_SCHEMA,
+    kind: 'slopesmith-mountain',
+    schema: MOUNTAIN_ARCHIVE_SCHEMA,
     name: bundle.name || bundle.document.name || root,
-    revision: bundle.revision, takenAt: bundle.takenAt,
-    document: 'mountain.slope.json', assets,
+    revision: bundle.revision,
+    takenAt: bundle.takenAt,
+    document: 'mountain.slope.json',
+    assets,
     ...(bundle.missing?.length ? { missing: bundle.missing } : {}),
   };
   const entries: ExportFile[] = [
-    { path: MOUNTAIN_ARCHIVE_MANIFEST,
-      bytes: textEncoder.encode(`${JSON.stringify(manifest, null, 2)}\n`) },
-    { path: manifest.document,
-      bytes: textEncoder.encode(`${JSON.stringify(bundle.document, null, 2)}\n`) },
+    { path: MOUNTAIN_ARCHIVE_MANIFEST, bytes: textEncoder.encode(`${JSON.stringify(manifest, null, 2)}\n`) },
+    { path: manifest.document, bytes: textEncoder.encode(`${JSON.stringify(bundle.document, null, 2)}\n`) },
     ...[...files].map(([path, bytes]) => ({ path, bytes })),
   ];
   if (entries.reduce((total, entry) => total + entry.bytes.length, 0) > MAX_ARCHIVE_BYTES) {
@@ -97,7 +117,13 @@ export function createMountainArchive(bundle: ProjectBundle,
   return { filename: `${root}${checkpoint}-${version}.slopesmith.zip`, blob: zipStoreOnly(root, entries) };
 }
 
-interface ZipEntry { name: string; method: number; compressed: Uint8Array; size: number; crc: number }
+interface ZipEntry {
+  name: string;
+  method: number;
+  compressed: Uint8Array;
+  size: number;
+  crc: number;
+}
 
 const safeRelativePath = (value: unknown, what: string): string => {
   if (typeof value !== 'string' || !value || value.includes('\\') || value.startsWith('/')) {
@@ -115,7 +141,10 @@ function zipDirectory(bytes: Uint8Array): ZipEntry[] {
   let end = -1;
   const earliest = Math.max(0, bytes.length - 65_557);
   for (let at = bytes.length - 22; at >= earliest; at--) {
-    if (view.getUint32(at, true) === 0x06054b50) { end = at; break; }
+    if (view.getUint32(at, true) === 0x06054b50) {
+      end = at;
+      break;
+    }
   }
   if (end < 0) throw new Error('that file is not a ZIP archive');
   const disk = view.getUint16(end + 4, true);
@@ -168,7 +197,8 @@ async function inflateEntry(entry: ZipEntry): Promise<Uint8Array> {
     if (entry.compressed.length !== entry.size) throw new Error(`ZIP entry ${entry.name} has the wrong size`);
     bytes = entry.compressed.slice();
   } else {
-    const stream = new Blob([entry.compressed as BlobPart]).stream()
+    const stream = new Blob([entry.compressed as BlobPart])
+      .stream()
       .pipeThrough(new DecompressionStream('deflate-raw'));
     bytes = new Uint8Array(await new Response(stream).arrayBuffer());
     if (bytes.length !== entry.size) throw new Error(`ZIP entry ${entry.name} has the wrong expanded size`);
@@ -180,24 +210,36 @@ async function inflateEntry(entry: ZipEntry): Promise<Uint8Array> {
 const archiveAsset = (value: unknown): MountainArchiveAsset => {
   if (!value || typeof value !== 'object') throw new Error('the mountain manifest has an invalid asset');
   const asset = value as Partial<MountainArchiveAsset>;
-  if (!ASSET_KINDS.has(asset.kind as BundleAssetKind) || typeof asset.name !== 'string' || !asset.name
-    || typeof asset.hash !== 'string' || !/^[0-9a-f]{64}$/i.test(asset.hash)
-    || !Number.isSafeInteger(asset.size) || Number(asset.size) < 0) {
+  if (
+    !ASSET_KINDS.has(asset.kind as BundleAssetKind) ||
+    typeof asset.name !== 'string' ||
+    !asset.name ||
+    typeof asset.hash !== 'string' ||
+    !/^[0-9a-f]{64}$/i.test(asset.hash) ||
+    !Number.isSafeInteger(asset.size) ||
+    Number(asset.size) < 0
+  ) {
     throw new Error('the mountain manifest has an invalid asset');
   }
   if (asset.model !== undefined && !Number.isSafeInteger(asset.model)) {
     throw new Error(`prop ${asset.name} has an invalid model number`);
   }
-  return { kind: asset.kind as BundleAssetKind, name: asset.name, hash: asset.hash.toLowerCase(),
-    size: Number(asset.size), ...(asset.model === undefined ? {} : { model: Number(asset.model) }),
-    file: safeRelativePath(asset.file, `${asset.kind} ${asset.name}`) };
+  return {
+    kind: asset.kind as BundleAssetKind,
+    name: asset.name,
+    hash: asset.hash.toLowerCase(),
+    size: Number(asset.size),
+    ...(asset.model === undefined ? {} : { model: Number(asset.model) }),
+    file: safeRelativePath(asset.file, `${asset.kind} ${asset.name}`),
+  };
 };
 
 /** Read a mountain ZIP made by Slopesmith, accepting both stored and ordinarily deflated ZIP entries. */
 export async function readMountainArchive(file: Blob): Promise<ProjectBundle> {
   const entries = zipDirectory(new Uint8Array(await file.arrayBuffer()));
-  const manifests = entries.filter(entry => entry.name === MOUNTAIN_ARCHIVE_MANIFEST
-    || entry.name.endsWith(`/${MOUNTAIN_ARCHIVE_MANIFEST}`));
+  const manifests = entries.filter(
+    entry => entry.name === MOUNTAIN_ARCHIVE_MANIFEST || entry.name.endsWith(`/${MOUNTAIN_ARCHIVE_MANIFEST}`),
+  );
   if (manifests.length !== 1) throw new Error('the ZIP must contain exactly one mountain manifest');
   const manifestEntry = manifests[0];
   const root = manifestEntry.name.slice(0, -MOUNTAIN_ARCHIVE_MANIFEST.length);
@@ -213,7 +255,10 @@ export async function readMountainArchive(file: Blob): Promise<ProjectBundle> {
     const entry = directory.get(name);
     if (!entry) return null;
     let pending = inflated.get(name);
-    if (!pending) { pending = inflateEntry(entry); inflated.set(name, pending); }
+    if (!pending) {
+      pending = inflateEntry(entry);
+      inflated.set(name, pending);
+    }
     return pending;
   };
   const manifest = JSON.parse(textDecoder.decode(await readEntry(manifestEntry.name)!)) as MountainArchiveManifest;
@@ -238,12 +283,16 @@ export async function readMountainArchive(file: Blob): Promise<ProjectBundle> {
     blobs[asset.hash] = bytesBase64(bytes);
   }
   return {
-    kind: 'slopesmith-project', schema: PROJECT_BUNDLE_SCHEMA,
+    kind: 'slopesmith-project',
+    schema: PROJECT_BUNDLE_SCHEMA,
     name: typeof manifest.name === 'string' ? manifest.name : '',
     revision: Number.isSafeInteger(manifest.revision) ? manifest.revision : 0,
     takenAt: typeof manifest.takenAt === 'string' ? manifest.takenAt : new Date(0).toISOString(),
-    document, assets: assets.map(({ file: _file, ...asset }) => asset), blobs,
+    document,
+    assets: assets.map(({ file: _file, ...asset }) => asset),
+    blobs,
     ...(Array.isArray(manifest.missing)
-      ? { missing: manifest.missing.filter((entry): entry is string => typeof entry === 'string') } : {}),
+      ? { missing: manifest.missing.filter((entry): entry is string => typeof entry === 'string') }
+      : {}),
   };
 }

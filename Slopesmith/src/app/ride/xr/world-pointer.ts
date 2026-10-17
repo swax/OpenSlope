@@ -49,12 +49,16 @@ type Button = 0 | 2;
 
 export function createXrWorldPointer(deps: XrWorldPointerDeps) {
   const { canvas } = deps;
-  const point = new THREE.Vector3(), ndc = new THREE.Vector3();
-  const eye = new THREE.Vector3(), pressDir = new THREE.Vector3(), aimDir = new THREE.Vector3();
+  const point = new THREE.Vector3(),
+    ndc = new THREE.Vector3();
+  const eye = new THREE.Vector3(),
+    pressDir = new THREE.Vector3(),
+    aimDir = new THREE.Vector3();
   let inside = false;
   let buttons = 0;
   let last: { x: number; y: number } | null = null;
-  let hit = false, located = false;
+  let hit = false,
+    located = false;
   /** A press has not yet left CLICK_SLOP: moves are held, so the router still sees it where it went down. */
   let settling = false;
 
@@ -69,7 +73,9 @@ export function createXrWorldPointer(deps: XrWorldPointerDeps) {
     const target = canvas as unknown as Record<string, unknown>;
     target.setPointerCapture = noCapture;
     target.releasePointerCapture = noCapture;
-    try { run(); } finally {
+    try {
+      run();
+    } finally {
       delete target.setPointerCapture;
       delete target.releasePointerCapture;
     }
@@ -79,15 +85,29 @@ export function createXrWorldPointer(deps: XrWorldPointerDeps) {
     const pointer = type.startsWith('pointer');
     const init: MouseEventInit = {
       bubbles: type !== 'pointerenter' && type !== 'pointerleave',
-      cancelable: true, composed: true, view: window,
-      clientX: at.x, clientY: at.y, screenX: at.x, screenY: at.y, button, buttons,
+      cancelable: true,
+      composed: true,
+      view: window,
+      clientX: at.x,
+      clientY: at.y,
+      screenX: at.x,
+      screenY: at.y,
+      button,
+      buttons,
     };
-    canvas.dispatchEvent(pointer
-      ? new PointerEvent(type, {
-        ...init, pointerId: POINTER_ID, pointerType: 'mouse', isPrimary: true, width: 1, height: 1,
-        pressure: buttons ? 0.5 : 0,
-      })
-      : new MouseEvent(type, init));
+    canvas.dispatchEvent(
+      pointer
+        ? new PointerEvent(type, {
+            ...init,
+            pointerId: POINTER_ID,
+            pointerType: 'mouse',
+            isPrimary: true,
+            width: 1,
+            height: 1,
+            pressure: buttons ? 0.5 : 0,
+          })
+        : new MouseEvent(type, init),
+    );
   }
 
   /** Where the ray meets what it is aimed at, as a client point on the canvas; null when that point is not in view. */
@@ -98,11 +118,15 @@ export function createXrWorldPointer(deps: XrWorldPointerDeps) {
     ndc.copy(point).project(deps.camera());
     if (!(ndc.z > -1 && ndc.z < 1)) return null; // behind the eyes, or past the far plane
     const rect = canvas.getBoundingClientRect();
-    return { x: rect.left + (ndc.x + 1) / 2 * rect.width, y: rect.top + (1 - ndc.y) / 2 * rect.height };
+    return { x: rect.left + ((ndc.x + 1) / 2) * rect.width, y: rect.top + ((1 - ndc.y) / 2) * rect.height };
   }
 
   function press(button: Button, at: { x: number; y: number }) {
-    if (!buttons) { settling = true; last = at; aimFromEye(pressDir); }
+    if (!buttons) {
+      settling = true;
+      last = at;
+      aimFromEye(pressDir);
+    }
     buttons |= BUTTON_MASK[button];
     fire('pointerdown', at, button);
     fire('mousedown', at, button);
@@ -131,7 +155,11 @@ export function createXrWorldPointer(deps: XrWorldPointerDeps) {
     if (holdMoves) settling = false; // the press took a gizmo handle: it is the hand's drag now, not a click
     dispatching(() => {
       if (at) {
-        if (!inside) { fire('pointerover', at, 0); fire('pointerenter', at, 0); inside = true; }
+        if (!inside) {
+          fire('pointerover', at, 0);
+          fire('pointerenter', at, 0);
+          inside = true;
+        }
         if (settling && aimFromEye(aimDir).angleTo(pressDir) > CLICK_SLOP) settling = false;
         const moved = !last || Math.abs(at.x - last.x) >= MOVE_EPSILON_PX || Math.abs(at.y - last.y) >= MOVE_EPSILON_PX;
         if (moved && !holdMoves && !settling) {
@@ -141,36 +169,64 @@ export function createXrWorldPointer(deps: XrWorldPointerDeps) {
         }
       }
       // A press still settling lets go where it went down: a click on what it was pressed on.
-      const from = settling ? last : at ?? last;
-      for (const [button, down] of [[0, left], [2, right]] as const) {
+      const from = settling ? last : (at ?? last);
+      for (const [button, down] of [
+        [0, left],
+        [2, right],
+      ] as const) {
         const held = (buttons & BUTTON_MASK[button]) !== 0;
         if (down && !held && at) press(button, at);
         else if (!down && held && from) release(button, from);
       }
-      if (!at && inside && !buttons && last) { fire('pointerout', last, 0); fire('pointerleave', last, 0); inside = false; }
+      if (!at && inside && !buttons && last) {
+        fire('pointerout', last, 0);
+        fire('pointerleave', last, 0);
+        inside = false;
+      }
     });
   }
 
   /** Put the mouse away: release anything held (without moving), and leave the canvas. */
   function reset() {
-    if (!last) { buttons = 0; inside = false; return; }
+    if (!last) {
+      buttons = 0;
+      inside = false;
+      return;
+    }
     const at = last;
     dispatching(() => {
       for (const button of [0, 2] as const) if (buttons & BUTTON_MASK[button]) release(button, at, false);
-      if (inside) { fire('pointerout', at, 0); fire('pointerleave', at, 0); }
+      if (inside) {
+        fire('pointerout', at, 0);
+        fire('pointerleave', at, 0);
+      }
     });
-    buttons = 0; inside = false; last = null; hit = false; located = false; settling = false;
+    buttons = 0;
+    inside = false;
+    last = null;
+    hit = false;
+    located = false;
+    settling = false;
   }
 
   return {
-    update, reset,
+    update,
+    reset,
     /** The world point under the cursor this frame (what the laser met, or the far stand-in), valid while `onCanvas`. */
-    get point() { return point; },
+    get point() {
+      return point;
+    },
     /** Whether the cursor landed on the canvas this frame, and whether the laser met something pickable. */
-    get onCanvas() { return located; },
-    get onSurface() { return hit; },
+    get onCanvas() {
+      return located;
+    },
+    get onSurface() {
+      return hit;
+    },
     /** A button is held: the drag it started owns the hand until it is released. */
-    get pressed() { return buttons !== 0; },
+    get pressed() {
+      return buttons !== 0;
+    },
   };
 }
 

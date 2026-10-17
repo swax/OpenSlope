@@ -86,7 +86,7 @@ export async function storeUnderFreeName<T>(store: FreeNameStore<T>): Promise<{ 
     for (const name of store.reclaims ?? []) retired.delete(name.toLowerCase());
     const stem = safeDataName(store.name) || store.fallback;
     let name = stem;
-    for (let variant = 2; retired.has(name.toLowerCase()) || await store.taken(name); variant++) {
+    for (let variant = 2; retired.has(name.toLowerCase()) || (await store.taken(name)); variant++) {
       if (variant > MAX_NAME_VARIANTS)
         throw new Error(`there are already ${MAX_NAME_VARIANTS} assets named ${stem} — give this one its own name`);
       name = `${stem}_${variant}`;

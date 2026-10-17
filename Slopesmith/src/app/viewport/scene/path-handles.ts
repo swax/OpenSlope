@@ -24,9 +24,21 @@ export function createPathHandlesLayer(stage: Stage) {
   const bulbs: THREE.Mesh[] = [];
   const moveHandle = new THREE.Object3D(); // scene-root gizmo anchor, Z negated by hand like the other nodes
   const setMat = new THREE.MeshBasicMaterial({ color: HANDLE_COLOR, depthTest: false, depthWrite: false });
-  const autoMat = new THREE.MeshBasicMaterial({ color: HANDLE_COLOR, depthTest: false, depthWrite: false, transparent: true, opacity: 0.45 });
+  const autoMat = new THREE.MeshBasicMaterial({
+    color: HANDLE_COLOR,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.45,
+  });
   const selMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false });
-  const lineMat = new THREE.LineBasicMaterial({ color: HANDLE_COLOR, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
+  const lineMat = new THREE.LineBasicMaterial({
+    color: HANDLE_COLOR,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+    opacity: 0.8,
+  });
   group.renderOrder = 10_001;
   stage.worldRoot.add(group);
   moveHandle.visible = false;
@@ -65,7 +77,9 @@ export function createPathHandlesLayer(stage: Stage) {
         bulb.position.set(at[0], at[1], at[2]);
         bulb.renderOrder = 10_001;
         bulb.userData.pathHandle = { node, side };
-        bulb.raycast = () => { /* scene-wide picks pass the handles by; pickHandle tests them itself */ };
+        bulb.raycast = () => {
+          /* scene-wide picks pass the handles by; pickHandle tests them itself */
+        };
         bulbs.push(bulb);
         group.add(bulb);
         segments.push(p[0], p[1], p[2], at[0], at[1], at[2]);
@@ -75,7 +89,9 @@ export function createPathHandlesLayer(stage: Stage) {
       const lines = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat);
       lines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
       lines.renderOrder = 10_000;
-      lines.raycast = () => { /* the bulbs are what a click lands on */ };
+      lines.raycast = () => {
+        /* the bulbs are what a click lands on */
+      };
       group.add(lines);
     }
   }
@@ -87,7 +103,8 @@ export function createPathHandlesLayer(stage: Stage) {
       if (stage.gizmoKind === 'pathhandle' && stage.gizmo.dragging) return;
       moveHandle.position.set(at[0], at[1], -at[2]);
       moveHandle.visible = true;
-      if (stage.gizmoKind !== 'pathhandle' || stage.gizmo.object !== moveHandle) stage.attachGizmo(moveHandle, 'pathhandle', selected!.node);
+      if (stage.gizmoKind !== 'pathhandle' || stage.gizmo.object !== moveHandle)
+        stage.attachGizmo(moveHandle, 'pathhandle', selected!.node);
     } else {
       selected = null;
       moveHandle.visible = false;
@@ -122,12 +139,19 @@ export function createPathHandlesLayer(stage: Stage) {
   }
 
   return {
-    setPath, pickHandle,
-    setHost(host: { select: (owner: PathOwner, node: number, side: PathHandleSide) => void }) { onSelect = host.select; },
+    setPath,
+    pickHandle,
+    setHost(host: { select: (owner: PathOwner, node: number, side: PathHandleSide) => void }) {
+      onSelect = host.select;
+    },
     /** Whether `owner` is the path shown. */
     shows: (owner: PathOwner | null) => sameOwner(shown?.owner, owner),
-    get owner(): PathOwner | null { return shown?.owner ?? null; },
-    get selected() { return selected; },
+    get owner(): PathOwner | null {
+      return shown?.owner ?? null;
+    },
+    get selected() {
+      return selected;
+    },
   };
 }
 

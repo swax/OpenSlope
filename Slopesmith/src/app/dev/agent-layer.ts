@@ -96,7 +96,9 @@ const PROXY_SIZE = 20;
  *  itself through floating-point noise. A genuinely buried entity clears this by orders of magnitude. */
 const OCCLUSION_MARGIN = 1;
 
-function fmt(n: number): number { return Math.round(n * 100) / 100; }
+function fmt(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 export function installAgentLayer(deps: {
   store: Store;
@@ -115,8 +117,13 @@ export function installAgentLayer(deps: {
   host.setAttribute('role', 'group');
   host.setAttribute('aria-label', 'Scene entities (agent layer)');
   Object.assign(host.style, {
-    position: 'fixed', left: '0', top: '0', width: '100%', height: '100%',
-    pointerEvents: 'none', zIndex: '9000',
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: '9000',
   } satisfies Partial<CSSStyleDeclaration>);
   document.body.appendChild(host);
 
@@ -141,8 +148,11 @@ export function installAgentLayer(deps: {
   let lastVisible: AgentEntity[] = [];
   let lastAnchors: AgentEntity[] = [];
   let lastRef: AgentEntity[] = [];
-  let refShown = 0; let refTruncated = 0; let refOccluded = 0;
-  let markerShown = 0; let markerTruncated = 0;
+  let refShown = 0;
+  let refTruncated = 0;
+  let refOccluded = 0;
+  let markerShown = 0;
+  let markerTruncated = 0;
   let truncated = 0;
   let occludedCount = 0;
   let occludedRefs = new Set<string>();
@@ -154,15 +164,24 @@ export function installAgentLayer(deps: {
   // ground truth the renderer consumes, and it keeps this module's coupling to two calls (dataToWorld,
   // camera) instead of the whole layer surface.
 
-  type Collected = { ref: string; kind: AgentEntityKind; label: string; pos: V3; selected: boolean;
-    world?: THREE.Vector3 };
+  type Collected = {
+    ref: string;
+    kind: AgentEntityKind;
+    label: string;
+    pos: V3;
+    selected: boolean;
+    world?: THREE.Vector3;
+  };
 
   /** Effective visibility: THREE hides a whole subtree when any ancestor is invisible, so the object's own
    *  flag is not enough. */
   function shown(o: THREE.Object3D | null | undefined): boolean {
     let n: THREE.Object3D | null = o ?? null;
     if (!n) return false;
-    while (n) { if (!n.visible) return false; n = n.parent; }
+    while (n) {
+      if (!n.visible) return false;
+      n = n.parent;
+    }
     return true;
   }
 
@@ -189,52 +208,75 @@ export function installAgentLayer(deps: {
     const doc = store.mdoc;
     const vis = visibleKinds();
 
-    if (vis.prop) (doc.props ?? []).forEach((p, i) => {
-      const sel = store.selectedProp === i || store.multiSel.includes(i);
-      // Aim at the rendered geometry's centre, not the placement anchor — see AgentEntity.world. Falls back
-      // to the anchor for placements with no id (pre-migration saves) or nothing rendered yet.
-      const sphere = p.id ? viewport.props.propWorldSphere(p.id) : null;
-      out.push({
-        ref: `prop:${i}`, kind: 'prop', pos: p.pos, selected: sel,
-        world: sphere?.center,
-        label: `Prop ${i}: ${p.name}${p.group ? ' (group)' : ''}`,
+    if (vis.prop)
+      (doc.props ?? []).forEach((p, i) => {
+        const sel = store.selectedProp === i || store.multiSel.includes(i);
+        // Aim at the rendered geometry's centre, not the placement anchor — see AgentEntity.world. Falls back
+        // to the anchor for placements with no id (pre-migration saves) or nothing rendered yet.
+        const sphere = p.id ? viewport.props.propWorldSphere(p.id) : null;
+        out.push({
+          ref: `prop:${i}`,
+          kind: 'prop',
+          pos: p.pos,
+          selected: sel,
+          world: sphere?.center,
+          label: `Prop ${i}: ${p.name}${p.group ? ' (group)' : ''}`,
+        });
       });
-    });
 
-    if (vis.rail) (doc.rails ?? []).forEach((r, i) => {
-      // A rail with no nodes renders nothing, so a proxy for it would be a click target that can never
-      // select anything. `snapshot().counts.rails` still reports it — the mirror just doesn't lie about it.
-      if (!r.nodes.length) return;
-      // Aim at a NODE, not the node centroid. The tube follows a Catmull-Rom spline through the nodes, and
-      // on a bent rail the centroid sits off the curve entirely — measured: a centroid-seated proxy on a
-      // 3-node rail selected nothing. A control point is always on the tube's centreline.
-      out.push({
-        ref: `rail:${i}`, kind: 'rail', pos: r.nodes[Math.floor(r.nodes.length / 2)],
-        selected: store.selectedRail === i,
-        label: `Rail ${i}${r.name ? `: ${r.name}` : ''} (${r.nodes.length} nodes)`,
+    if (vis.rail)
+      (doc.rails ?? []).forEach((r, i) => {
+        // A rail with no nodes renders nothing, so a proxy for it would be a click target that can never
+        // select anything. `snapshot().counts.rails` still reports it — the mirror just doesn't lie about it.
+        if (!r.nodes.length) return;
+        // Aim at a NODE, not the node centroid. The tube follows a Catmull-Rom spline through the nodes, and
+        // on a bent rail the centroid sits off the curve entirely — measured: a centroid-seated proxy on a
+        // 3-node rail selected nothing. A control point is always on the tube's centreline.
+        out.push({
+          ref: `rail:${i}`,
+          kind: 'rail',
+          pos: r.nodes[Math.floor(r.nodes.length / 2)],
+          selected: store.selectedRail === i,
+          label: `Rail ${i}${r.name ? `: ${r.name}` : ''} (${r.nodes.length} nodes)`,
+        });
+        // Nodes are addressable only while their rail is selected — mirroring the editor, and keeping a
+        // multi-rail level from flooding the tree with node proxies.
+        if (store.selectedRail === i) {
+          r.nodes.forEach((n, j) =>
+            out.push({
+              ref: `railnode:${i}.${j}`,
+              kind: 'railnode',
+              pos: n,
+              selected: store.selectedNode === j,
+              label: `Rail ${i} node ${j}`,
+            }),
+          );
+        }
       });
-      // Nodes are addressable only while their rail is selected — mirroring the editor, and keeping a
-      // multi-rail level from flooding the tree with node proxies.
-      if (store.selectedRail === i) {
-        r.nodes.forEach((n, j) => out.push({
-          ref: `railnode:${i}.${j}`, kind: 'railnode', pos: n,
-          selected: store.selectedNode === j,
-          label: `Rail ${i} node ${j}`,
-        }));
-      }
-    });
 
     // Gems and lights are addressed by the id the document gives them, which is already `gem:NNNN` /
     // `light:NNNN` — so a ref an agent is holding names the same object after something below it is deleted.
-    if (vis.gem) (doc.gems ?? []).forEach((g, i) => out.push({
-      ref: g.id ?? `gem:${i}`, kind: 'gem', pos: g.pos, selected: store.selectedGem === g.id,
-      label: `Gem ${i} (tier ${g.value ?? 1})`,
-    }));
+    if (vis.gem)
+      (doc.gems ?? []).forEach((g, i) =>
+        out.push({
+          ref: g.id ?? `gem:${i}`,
+          kind: 'gem',
+          pos: g.pos,
+          selected: store.selectedGem === g.id,
+          label: `Gem ${i} (tier ${g.value ?? 1})`,
+        }),
+      );
 
-    if (vis.light) (doc.lights ?? []).forEach((l, i) => out.push({
-      ref: l.id ?? `light:${i}`, kind: 'light', pos: l.pos, selected: store.selectedLight === l.id,
-      label: `Light ${i}: ${l.kind}${l.name ? ` ${l.name}` : ''} ${l.color}`,
-    }));
+    if (vis.light)
+      (doc.lights ?? []).forEach((l, i) =>
+        out.push({
+          ref: l.id ?? `light:${i}`,
+          kind: 'light',
+          pos: l.pos,
+          selected: store.selectedLight === l.id,
+          label: `Light ${i}: ${l.kind}${l.name ? ` ${l.name}` : ''} ${l.color}`,
+        }),
+      );
 
     return out;
   }
@@ -331,8 +373,9 @@ export function installAgentLayer(deps: {
     return kept.map((h, i) => ({
       ref: `terrain:${COLS[i % COLS.length]}${Math.floor(i / COLS.length) + 1}`,
       kind: 'terrain' as const,
-      label: `Terrain ${COLS[i % COLS.length]}${Math.floor(i / COLS.length) + 1}`
-        + ` (x ${Math.round(h.data[0])}, y ${Math.round(h.data[1])}, z ${Math.round(h.data[2])})`,
+      label:
+        `Terrain ${COLS[i % COLS.length]}${Math.floor(i / COLS.length) + 1}` +
+        ` (x ${Math.round(h.data[0])}, y ${Math.round(h.data[1])}, z ${Math.round(h.data[2])})`,
       pos: h.data,
       // The anchor IS the screen point we cast through, so it needs no reprojection.
       screen: { x: rect.left + h.fx * rect.width, y: rect.top + h.fy * rect.height },
@@ -346,11 +389,18 @@ export function installAgentLayer(deps: {
   const vTmp = new THREE.Vector3();
 
   /** Data-space point (or an explicit world point) -> CSS-pixel viewport coords; null when off screen. */
-  function project(pos: V3, rect: DOMRect, world?: THREE.Vector3): { screen: { x: number; y: number } | null; dist: number } {
+  function project(
+    pos: V3,
+    rect: DOMRect,
+    world?: THREE.Vector3,
+  ): { screen: { x: number; y: number } | null; dist: number } {
     const cam = viewport.camera;
     cam.updateMatrixWorld();
     if (world) vTmp.copy(world);
-    else { const w = viewport.dataToWorld(pos); vTmp.set(w[0], w[1], w[2]); }
+    else {
+      const w = viewport.dataToWorld(pos);
+      vTmp.set(w[0], w[1], w[2]);
+    }
     const dist = vTmp.distanceTo(cam.position);
 
     // View space first: a perspective camera looks down -Z, so a positive z is behind it and would
@@ -382,7 +432,9 @@ export function installAgentLayer(deps: {
       el.dataset.agentRef = e.ref;
       const tint = e.kind === 'terrain' ? '120,220,140' : '0,200,255';
       Object.assign(el.style, {
-        position: 'fixed', width: `${PROXY_SIZE}px`, height: `${PROXY_SIZE}px`,
+        position: 'fixed',
+        width: `${PROXY_SIZE}px`,
+        height: `${PROXY_SIZE}px`,
         pointerEvents: 'none', // load-bearing: this is what lets the click reach the canvas
         background: debugVisible ? `rgba(${tint},.30)` : 'transparent',
         outline: debugVisible ? `1px solid rgba(${tint},.9)` : 'none',
@@ -455,21 +507,30 @@ export function installAgentLayer(deps: {
     lastVisible = visible;
 
     const live = new Set<string>();
-    for (const e of shown) { live.add(e.ref); upsert(entityProxies, e); }
+    for (const e of shown) {
+      live.add(e.ref);
+      upsert(entityProxies, e);
+    }
     prune(entityProxies, live);
 
     // Everything the mirror is NOT showing, and why — stated in the tree itself so an agent reading only
     // the snapshot cannot mistake a filtered view for a complete one.
     const notes: string[] = [];
     if (truncated > 0) {
-      notes.push(`showing nearest ${shown.length} of ${onScreen.length} on-screen entities, ${truncated} over budget (zoom in or select fewer)`);
+      notes.push(
+        `showing nearest ${shown.length} of ${onScreen.length} on-screen entities, ${truncated} over budget (zoom in or select fewer)`,
+      );
     }
     const hidden = hiddenKinds();
     if (hidden.length) {
-      notes.push(`${hidden.join(', ')} hidden by a View toggle and therefore NOT clickable — turn the matching view pill on ('Tricks' for rails + gems, 'Props', 'Sources' for lights)`);
+      notes.push(
+        `${hidden.join(', ')} hidden by a View toggle and therefore NOT clickable — turn the matching view pill on ('Tricks' for rails + gems, 'Props', 'Sources' for lights)`,
+      );
     }
     if (occludedCount > 0) {
-      notes.push(`${occludedCount} on-screen ${occludedCount === 1 ? 'entity is' : 'entities are'} behind the terrain and not clickable from this angle — orbit or zoom to bring ${occludedCount === 1 ? 'it' : 'them'} into view`);
+      notes.push(
+        `${occludedCount} on-screen ${occludedCount === 1 ? 'entity is' : 'entities are'} behind the terrain and not clickable from this angle — orbit or zoom to bring ${occludedCount === 1 ? 'it' : 'them'} into view`,
+      );
     }
     if (notes.length) {
       overflowNode.style.display = '';
@@ -497,7 +558,10 @@ export function installAgentLayer(deps: {
     const rect = container.getBoundingClientRect();
     lastAnchors = collectAnchors(rect);
     const live = new Set<string>();
-    for (const e of lastAnchors) { live.add(e.ref); upsert(anchorProxies, e); }
+    for (const e of lastAnchors) {
+      live.add(e.ref);
+      upsert(anchorProxies, e);
+    }
     prune(anchorProxies, live);
   }
 
@@ -522,7 +586,9 @@ export function installAgentLayer(deps: {
    *  matrix and are skipped — they are exactly what the `marker` mirror addresses instead. */
   function collectRefProps(rect: DOMRect): AgentEntity[] {
     const groups = new Set<THREE.Object3D>([
-      ...viewport.refDecor.propPickGroups, ...viewport.refDecor.effectPropGroups]);
+      ...viewport.refDecor.propPickGroups,
+      ...viewport.refDecor.effectPropGroups,
+    ]);
     const seen = new Set<number>();
     const out: AgentEntity[] = [];
     for (const group of groups) {
@@ -544,12 +610,20 @@ export function installAgentLayer(deps: {
           const m = instMat.elements;
           if (m[0] * m[0] + m[1] * m[1] + m[2] * m[2] < 1e-12) continue; // zero-scale = hidden instance
           seen.add(sourceIndex);
-          const world = refPoint.copy(centre ?? new THREE.Vector3())
-            .applyMatrix4(instMat).applyMatrix4(mesh.matrixWorld).clone();
+          const world = refPoint
+            .copy(centre ?? new THREE.Vector3())
+            .applyMatrix4(instMat)
+            .applyMatrix4(mesh.matrixWorld)
+            .clone();
           const pos = worldToData(world);
           const { screen, dist } = project(pos, rect, world);
           out.push({
-            ref: `refprop:${sourceIndex}`, kind: 'refprop', world, pos, screen, dist,
+            ref: `refprop:${sourceIndex}`,
+            kind: 'refprop',
+            world,
+            pos,
+            screen,
+            dist,
             label: `Ref prop ${sourceIndex}: ${mesh.name}`,
             selected: store.selectedRefProp?.sourceIndex === sourceIndex,
           });
@@ -565,28 +639,34 @@ export function installAgentLayer(deps: {
   function collectMarkers(rect: DOMRect): AgentEntity[] {
     const out: AgentEntity[] = [];
     const roots = [viewport.lights.authoredLightsGroup, ...viewport.refDecor.sourcePickGroups];
-    for (const root of roots) root.traverse(object => {
-      const cloud = object as THREE.Points;
-      const kind = cloud.userData?.sourceKind as string | undefined;
-      const origin = cloud.userData?.sourceOrigin as string | undefined;
-      if (!cloud.isPoints || !kind || !origin || !shown(cloud)) return;
-      const positions = cloud.geometry.getAttribute('position');
-      if (!positions) return;
-      const labels = cloud.userData.sourceLabels as string[] | undefined;
-      const sourceIndices = cloud.userData.sourceSourceIndices as number[] | undefined;
-      cloud.updateWorldMatrix(true, false);
-      for (let i = 0; i < positions.count; i++) {
-        const world = refPoint.fromBufferAttribute(positions, i).applyMatrix4(cloud.matrixWorld).clone();
-        const pos = worldToData(world);
-        const { screen, dist } = project(pos, rect, world);
-        const sourceIndex = sourceIndices?.[i];
-        out.push({
-          ref: `marker:${origin}:${kind}:${i}`, kind: 'marker', world, pos, screen, dist,
-          label: `Marker ${kind}${labels?.[i] ? `: ${labels[i]}` : ` ${i}`} (${origin})`,
-          selected: sourceIndex !== undefined && store.selectedRefProp?.sourceIndex === sourceIndex,
-        });
-      }
-    });
+    for (const root of roots)
+      root.traverse(object => {
+        const cloud = object as THREE.Points;
+        const kind = cloud.userData?.sourceKind as string | undefined;
+        const origin = cloud.userData?.sourceOrigin as string | undefined;
+        if (!cloud.isPoints || !kind || !origin || !shown(cloud)) return;
+        const positions = cloud.geometry.getAttribute('position');
+        if (!positions) return;
+        const labels = cloud.userData.sourceLabels as string[] | undefined;
+        const sourceIndices = cloud.userData.sourceSourceIndices as number[] | undefined;
+        cloud.updateWorldMatrix(true, false);
+        for (let i = 0; i < positions.count; i++) {
+          const world = refPoint.fromBufferAttribute(positions, i).applyMatrix4(cloud.matrixWorld).clone();
+          const pos = worldToData(world);
+          const { screen, dist } = project(pos, rect, world);
+          const sourceIndex = sourceIndices?.[i];
+          out.push({
+            ref: `marker:${origin}:${kind}:${i}`,
+            kind: 'marker',
+            world,
+            pos,
+            screen,
+            dist,
+            label: `Marker ${kind}${labels?.[i] ? `: ${labels[i]}` : ` ${i}`} (${origin})`,
+            selected: sourceIndex !== undefined && store.selectedRefProp?.sourceIndex === sourceIndex,
+          });
+        }
+      });
     return out;
   }
 
@@ -595,31 +675,45 @@ export function installAgentLayer(deps: {
    *  the occlusion test entirely — they draw (and click) x-ray by design. */
   function syncRefEntities() {
     const rect = container.getBoundingClientRect();
-    const instances = collectRefProps(rect).filter(e => e.screen).sort((a, b) => a.dist - b.dist);
+    const instances = collectRefProps(rect)
+      .filter(e => e.screen)
+      .sort((a, b) => a.dist - b.dist);
     const keptInstances: AgentEntity[] = [];
     let buried = 0;
     for (const e of instances) {
       if (keptInstances.length >= REFPROP_MAX) break;
-      if (occluded(e, rect)) { buried++; continue; }
+      if (occluded(e, rect)) {
+        buried++;
+        continue;
+      }
       keptInstances.push(e);
     }
     refShown = keptInstances.length;
     refOccluded = buried;
     refTruncated = instances.length - keptInstances.length - buried;
-    const markers = collectMarkers(rect).filter(e => e.screen).sort((a, b) => a.dist - b.dist);
+    const markers = collectMarkers(rect)
+      .filter(e => e.screen)
+      .sort((a, b) => a.dist - b.dist);
     const keptMarkers = markers.slice(0, MARKER_MAX);
     markerShown = keptMarkers.length;
     markerTruncated = markers.length - keptMarkers.length;
 
     lastRef = [...keptInstances, ...keptMarkers];
     const live = new Set<string>();
-    for (const e of lastRef) { live.add(e.ref); upsert(refProxies, e); }
+    for (const e of lastRef) {
+      live.add(e.ref);
+      upsert(refProxies, e);
+    }
     prune(refProxies, live);
 
     const notes: string[] = [];
-    if (refTruncated > 0) notes.push(`showing nearest ${refShown} of ${instances.length} on-screen reference props, ${refTruncated} over budget (zoom in)`);
+    if (refTruncated > 0)
+      notes.push(
+        `showing nearest ${refShown} of ${instances.length} on-screen reference props, ${refTruncated} over budget (zoom in)`,
+      );
     if (refOccluded > 0) notes.push(`${refOccluded} reference props behind the terrain from this angle`);
-    if (markerTruncated > 0) notes.push(`showing nearest ${markerShown} of ${markers.length} source markers, ${markerTruncated} over budget`);
+    if (markerTruncated > 0)
+      notes.push(`showing nearest ${markerShown} of ${markers.length} source markers, ${markerTruncated} over budget`);
     if (notes.length) {
       refNote.style.display = '';
       refNote.setAttribute('aria-label', `Agent layer (reference): ${notes.join('; ')}.`);
@@ -632,12 +726,20 @@ export function installAgentLayer(deps: {
   /** Like anchors, the reference mirror is stale the moment the camera moves — drop rather than lie. */
   function dropRef() {
     lastRef = [];
-    refShown = 0; refTruncated = 0; refOccluded = 0; markerShown = 0; markerTruncated = 0;
+    refShown = 0;
+    refTruncated = 0;
+    refOccluded = 0;
+    markerShown = 0;
+    markerTruncated = 0;
     prune(refProxies, new Set());
     refNote.style.display = 'none';
   }
 
-  function sync() { syncEntities(); syncAnchors(); syncRefEntities(); }
+  function sync() {
+    syncEntities();
+    syncAnchors();
+    syncRefEntities();
+  }
 
   // Re-sync only when something that moves a proxy or changes its label actually changed. Idle frames cost
   // one string build + compare, so the layer is free to leave on for a whole session.
@@ -659,24 +761,45 @@ export function installAgentLayer(deps: {
   function cameraSig(): string {
     const c = viewport.camera;
     return [
-      fmt(c.position.x), fmt(c.position.y), fmt(c.position.z),
-      fmt(c.quaternion.x), fmt(c.quaternion.y), fmt(c.quaternion.z), fmt(c.quaternion.w),
-      fmt(c.zoom), (c as THREE.OrthographicCamera).isOrthographicCamera ? 'o' : 'p',
+      fmt(c.position.x),
+      fmt(c.position.y),
+      fmt(c.position.z),
+      fmt(c.quaternion.x),
+      fmt(c.quaternion.y),
+      fmt(c.quaternion.z),
+      fmt(c.quaternion.w),
+      fmt(c.zoom),
+      (c as THREE.OrthographicCamera).isOrthographicCamera ? 'o' : 'p',
     ].join(',');
   }
   function stateSig(): string {
     const s = store;
     const v = visibleKinds();
     return [
-      cameraSig(), renderSeq, s.currentMode,
-      s.selectedProp, s.multiSel.join('|'), s.selectedRail, s.selectedNode, s.selectedGem, s.selectedLight,
+      cameraSig(),
+      renderSeq,
+      s.currentMode,
+      s.selectedProp,
+      s.multiSel.join('|'),
+      s.selectedRail,
+      s.selectedNode,
+      s.selectedGem,
+      s.selectedLight,
       s.selectedRefProp?.sourceIndex, // the reference mirror's aria-pressed reads off this
       // View pills gate whole layers in and out of the mirror, and they change nothing else in this list.
-      v.prop, v.rail, v.gem, v.light,
+      v.prop,
+      v.rail,
+      v.gem,
+      v.light,
       // The reference mirror's own gates: the Props/Tricks/Effects prop groups and the Sources markers all
       // flip visibility without a rebuild or camera move, so their shown state must dirty the signature.
-      [...viewport.refDecor.propPickGroups, ...viewport.refDecor.effectPropGroups,
-        ...viewport.refDecor.sourcePickGroups].map(g => shown(g) && g.children.length > 0 ? 1 : 0).join(''),
+      [
+        ...viewport.refDecor.propPickGroups,
+        ...viewport.refDecor.effectPropGroups,
+        ...viewport.refDecor.sourcePickGroups,
+      ]
+        .map(g => (shown(g) && g.children.length > 0 ? 1 : 0))
+        .join(''),
     ].join(',');
   }
 
@@ -699,7 +822,11 @@ export function installAgentLayer(deps: {
       if (camSig !== lastCamSig) {
         lastCamSig = camSig;
         camStillSince = performance.now();
-        if (anchorsFresh) { dropAnchors(); dropRef(); anchorsFresh = false; }
+        if (anchorsFresh) {
+          dropAnchors();
+          dropRef();
+          anchorsFresh = false;
+        }
       } else if (renderSeq !== anchorSeq) {
         anchorsFresh = false;
         camStillSince = performance.now();
@@ -736,10 +863,14 @@ export function installAgentLayer(deps: {
           lights: (doc.lights ?? []).length,
         },
         selection: {
-          prop: store.selectedProp, props: [...store.multiSel],
-          rail: store.selectedRail, railNode: store.selectedNode,
-          gem: store.selectedGem, light: store.selectedLight,
-          knot: store.selected, corner: store.selectedCorner,
+          prop: store.selectedProp,
+          props: [...store.multiSel],
+          rail: store.selectedRail,
+          railNode: store.selectedNode,
+          gem: store.selectedGem,
+          light: store.selectedLight,
+          knot: store.selected,
+          corner: store.selectedCorner,
           refProp: store.selectedRefProp
             ? { name: store.selectedRefProp.name, sourceIndex: store.selectedRefProp.sourceIndex ?? null }
             : null,
@@ -790,8 +921,11 @@ export function installAgentLayer(deps: {
           anchorSamples,
           // The reference-world mirror (native instances + source-marker icons), same settle clock.
           refMirror: {
-            refProps: refShown, refPropsTruncated: refTruncated, refPropsOccluded: refOccluded,
-            markers: markerShown, markersTruncated: markerTruncated,
+            refProps: refShown,
+            refPropsTruncated: refTruncated,
+            refPropsOccluded: refOccluded,
+            markers: markerShown,
+            markersTruncated: markerTruncated,
           },
           renderSeq,
         },
@@ -805,7 +939,11 @@ export function installAgentLayer(deps: {
       return (kind ? all.filter(e => e.kind === kind) : all).map(e => {
         const occl = occludedRefs.has(e.ref);
         return {
-          ref: e.ref, kind: e.kind, label: e.label, screen: e.screen, dist: fmt(e.dist),
+          ref: e.ref,
+          kind: e.kind,
+          label: e.label,
+          screen: e.screen,
+          dist: fmt(e.dist),
           selected: e.selected,
           occluded: occl,
           // The one field to branch on: whether a proxy for this entity exists in the tree right now.
@@ -847,7 +985,9 @@ export function installAgentLayer(deps: {
     },
 
     /** Rebuild errors the funnel's boundary swallowed into the status line. */
-    errors() { return [...buildErrors]; },
+    errors() {
+      return [...buildErrors];
+    },
 
     /**
      * What the editor's OWN picker resolves at a viewport point — i.e. what a click there would act on.
@@ -865,13 +1005,20 @@ export function installAgentLayer(deps: {
         (Record<string, unknown> & { target?: string; hit?: THREE.Intersection }) | null;
       if (sourceHit?.target === 'source') {
         return {
-          target: 'source', source: sourceHit.source,
-          sourceKind: sourceHit.sourceKind, sourceIndex: sourceHit.sourceIndex,
+          target: 'source',
+          source: sourceHit.source,
+          sourceKind: sourceHit.sourceKind,
+          sourceIndex: sourceHit.sourceIndex,
           distance: sourceHit.hit ? fmt(sourceHit.hit.distance) : undefined,
         };
       }
       const p = viewport.scenePicking.pick({
-        props: 'standard', lights: true, rails: true, gems: true, surfaces: true, surfaceEpsilon: 1e-3,
+        props: 'standard',
+        lights: true,
+        rails: true,
+        gems: true,
+        surfaces: true,
+        surfaceEpsilon: 1e-3,
       }) as (Record<string, unknown> & { target?: string }) | null;
       if (!p) return null;
       const out: Record<string, unknown> = { target: p.target };
@@ -903,16 +1050,18 @@ export function installAgentLayer(deps: {
         worldRootHits: anchorRay.intersectObject(viewport.stage.worldRoot, true).length,
         // What the sample sweep costs and finds — the two numbers that explain both "no anchors" and any
         // frame-time complaint about this layer.
-        sampleSweep: mesh ? (() => {
-          const t0 = performance.now();
-          const found = collectAnchors(container.getBoundingClientRect()).length;
-          return {
-            anchors: found,
-            samples: anchorSamples * anchorSamples,
-            sweepMs: Math.round(performance.now() - t0),
-            bvhBuildMs,
-          };
-        })() : null,
+        sampleSweep: mesh
+          ? (() => {
+              const t0 = performance.now();
+              const found = collectAnchors(container.getBoundingClientRect()).length;
+              return {
+                anchors: found,
+                samples: anchorSamples * anchorSamples,
+                sweepMs: Math.round(performance.now() - t0),
+                bvhBuildMs,
+              };
+            })()
+          : null,
       };
     },
 
@@ -943,8 +1092,12 @@ export function installAgentLayer(deps: {
   (window as unknown as Record<string, unknown>).slopesmith = api;
 
   return {
-    onRendered() { renderSeq++; },
-    onBuildError(e: unknown) { buildErrors.push({ at: Date.now(), message: String(e) }); },
+    onRendered() {
+      renderSeq++;
+    },
+    onBuildError(e: unknown) {
+      buildErrors.push({ at: Date.now(), message: String(e) });
+    },
     dispose() {
       cancelAnimationFrame(raf);
       host.remove();

@@ -4,8 +4,15 @@ import { canonicalJson } from '../src/core/doc/canonical';
 import { migrateMountain } from '../src/core/doc/mountain';
 import { carryIdentity } from '../src/core/doc/ids';
 import {
-  applyRegisters, documentRegisters, handleRegister, objectFieldRegister, registerGeometry, structuralDocument,
-  writeRegister, type RegisterKey, type RegisterValue,
+  applyRegisters,
+  documentRegisters,
+  handleRegister,
+  objectFieldRegister,
+  registerGeometry,
+  structuralDocument,
+  writeRegister,
+  type RegisterKey,
+  type RegisterValue,
 } from '../src/core/doc/registers';
 import { applyTopologyDelta, topologyDelta, type TopologyDelta } from '../src/core/doc/topology-delta';
 import type { AuthoredTrail, QuadMeshDoc } from '../src/core/doc/types';
@@ -32,10 +39,16 @@ import { check } from './check';
  */
 
 /** What a register difference says about one document against another: the assignments a claim carries. */
-function registerChanges(before: QuadMeshDoc, after: QuadMeshDoc, delta: TopologyDelta): [RegisterKey, RegisterValue][] {
-  const was = documentRegisters(before), now = documentRegisters(after);
+function registerChanges(
+  before: QuadMeshDoc,
+  after: QuadMeshDoc,
+  delta: TopologyDelta,
+): [RegisterKey, RegisterValue][] {
+  const was = documentRegisters(before),
+    now = documentRegisters(after);
   const written = new Set(delta.vertices.filter(run => typeof run[0] === 'string').map(run => `v/${run[0] as string}`));
-  const liveVertices = new Set(after.vertexIds), liveQuads = new Set(after.quadIds);
+  const liveVertices = new Set(after.vertexIds),
+    liveQuads = new Set(after.quadIds);
   const out: [RegisterKey, RegisterValue][] = [];
   for (const [key, value] of now) {
     if (written.has(key)) continue;
@@ -52,10 +65,12 @@ function registerChanges(before: QuadMeshDoc, after: QuadMeshDoc, delta: Topolog
 
 /** Everything a document states that two replicas have to agree on: its structure (with the T-node parameter
  *  the digest leaves out) and every register, in order. */
-const statement = (doc: QuadMeshDoc): string => canonicalJson({
-  structure: structuralDocument(doc), tJunctions: doc.tJunctions,
-  registers: [...documentRegisters(doc)],
-});
+const statement = (doc: QuadMeshDoc): string =>
+  canonicalJson({
+    structure: structuralDocument(doc),
+    tJunctions: doc.tJunctions,
+    registers: [...documentRegisters(doc)],
+  });
 
 /** Round-trip one operation: write the delta, apply it to an untouched copy of the base, land the registers. */
 function roundTrip(label: string, base: QuadMeshDoc, operated: QuadMeshDoc): TopologyDelta | null {
@@ -63,14 +78,21 @@ function roundTrip(label: string, base: QuadMeshDoc, operated: QuadMeshDoc): Top
   const wire = JSON.parse(JSON.stringify(delta)) as TopologyDelta;
   const replica = structuredClone(base);
   const applied = applyTopologyDelta(replica, wire);
-  if (!applied.ok) { check(false, `${label}: the delta applies to a copy of its base`, applied.error); return null; }
+  if (!applied.ok) {
+    check(false, `${label}: the delta applies to a copy of its base`, applied.error);
+    return null;
+  }
   const changes = registerChanges(base, operated, delta);
   const landed = applyRegisters(applied.applied.doc, changes);
-  check(statement(applied.applied.doc) === statement(operated) && landed.refused === 0 && landed.retired === 0,
+  check(
+    statement(applied.applied.doc) === statement(operated) && landed.refused === 0 && landed.retired === 0,
     `${label}: the applied delta and its registers reproduce the operated document exactly`,
-    `${delta.vertices.length} vertex runs, ${delta.quads.length} quad runs, ${changes.length} registers`);
-  check(canonicalJson(replica) === canonicalJson(structuredClone(base)),
-    `${label}: applying it leaves the document it was applied to as it was`);
+    `${delta.vertices.length} vertex runs, ${delta.quads.length} quad runs, ${changes.length} registers`,
+  );
+  check(
+    canonicalJson(replica) === canonicalJson(structuredClone(base)),
+    `${label}: applying it leaves the document it was applied to as it was`,
+  );
   return delta;
 }
 
@@ -90,8 +112,11 @@ check(deleted.ok, 'a quad far from the creases can be deleted');
 if (deleted.ok) {
   const delta = roundTrip('delete', lab, deleted.doc);
   if (delta) {
-    check(delta.vertices.length + delta.quads.length <= 6, 'a delete is a handful of runs',
-      `${delta.vertices.length} + ${delta.quads.length}`);
+    check(
+      delta.vertices.length + delta.quads.length <= 6,
+      'a delete is a handful of runs',
+      `${delta.vertices.length} + ${delta.quads.length}`,
+    );
     const whole = bytes(deleted.doc);
     console.log(`   delete: delta ${bytes(delta)} bytes against a ${whole}-byte document`);
     check(bytes(delta) * 50 < whole, 'and far smaller than the document');
@@ -103,23 +128,30 @@ if (deleted.ok) {
   if (prop?.id && fielded.ok) {
     const before = canonicalJson(prop);
     writeRegister(fielded.applied.doc, objectFieldRegister('prop', 'pos', prop.id), [123, 456, 789]);
-    check(canonicalJson(prop) === before && fielded.applied.doc.props![0].pos[0] === 123,
-      'a field written onto the result of a delta leaves the object in the document it came from untouched');
+    check(
+      canonicalJson(prop) === before && fielded.applied.doc.props![0].pos[0] === 123,
+      'a field written onto the result of a delta leaves the object in the document it came from untouched',
+    );
   } else check(false, 'the lab mountain carries a prop to write a field of');
 
   // The docs/039 crease case: an unrelated delete beneath a creased vertex leaves the crease byte-identical.
   const creaseKey = handleRegister(lab.vertexIds[a], lab.vertexIds[b]);
   const replica = applyTopologyDelta(structuredClone(lab), topologyDelta(lab, deleted.doc));
-  check(replica.ok && canonicalJson(documentRegisters(replica.applied.doc).get(creaseKey)) === canonicalJson([0.5, 1.25, -0.75]),
-    'a crease survives an unrelated delete beneath it, byte-identical');
+  check(
+    replica.ok &&
+      canonicalJson(documentRegisters(replica.applied.doc).get(creaseKey)) === canonicalJson([0.5, 1.25, -0.75]),
+    'a crease survives an unrelated delete beneath it, byte-identical',
+  );
 
   // Undo: the base restored over the operated document. What it brings back stops being a tombstone, which a
   // delta states as the prefix that stands.
   const restored = structuredClone(lab);
   carryIdentity(restored, deleted.doc);
   const undone = roundTrip('undo of a delete', deleted.doc, restored);
-  check(!!undone && undone.tombstones !== undefined && (undone.tombstones === null || undone.tombstones.add.length === 0),
-    'an undo states its tombstones as a shorter prefix with nothing appended');
+  check(
+    !!undone && undone.tombstones !== undefined && (undone.tombstones === null || undone.tombstones.add.length === 0),
+    'an undo states its tombstones as a shorter prefix with nothing appended',
+  );
 }
 
 // Loop cut: mints vertices and quads and rewires the cut ring.
@@ -143,14 +175,20 @@ if (deleted.ok) {
     const restored = structuredClone(lab);
     carryIdentity(restored, cut.doc);
     const minted = cut.doc.vertexIds.filter(id => !lab.vertexIds.includes(id));
-    check(restored.nextId === cut.doc.nextId && minted.length > 0
-      && minted.every(id => restored.tombstones?.includes(id))
-      && !restored.tombstones?.some(id => restored.vertexIds.includes(id) || restored.quadIds.includes(id)),
-      'a restore keeps the counter where it was, retires what it removes and revives what it brings back');
+    check(
+      restored.nextId === cut.doc.nextId &&
+        minted.length > 0 &&
+        minted.every(id => restored.tombstones?.includes(id)) &&
+        !restored.tombstones?.some(id => restored.vertexIds.includes(id) || restored.quadIds.includes(id)),
+      'a restore keeps the counter where it was, retires what it removes and revives what it brings back',
+    );
     roundTrip('undo of a loop cut', cut.doc, restored);
     const rolledBack = applyTopologyDelta(structuredClone(cut.doc), topologyDelta(cut.doc, lab));
-    check(!rolledBack.ok, 'a delta that moves the counter backwards is refused',
-      rolledBack.ok ? 'applied' : rolledBack.error);
+    check(
+      !rolledBack.ok,
+      'a delta that moves the counter backwards is refused',
+      rolledBack.ok ? 'applied' : rolledBack.error,
+    );
   }
 }
 
@@ -182,7 +220,9 @@ if (deleted.ok) {
   roundTrip('append a standalone patch', lab, patch.doc);
 }
 // An interior edge — one with a patch on both sides — for the operations that take one.
-const neighbour = lab.quads.findIndex((quad, at) => at !== far && quad.filter(corner => lab.quads[far].includes(corner)).length === 2);
+const neighbour = lab.quads.findIndex(
+  (quad, at) => at !== far && quad.filter(corner => lab.quads[far].includes(corner)).length === 2,
+);
 const shared = lab.quads[far].filter(corner => lab.quads[neighbour]?.includes(corner)) as [number, number];
 {
   // A rip opens the edge and duplicates the corners along it.
@@ -194,16 +234,29 @@ const shared = lab.quads[far].filter(corner => lab.quads[neighbour]?.includes(co
   // A creased edge can go while both its ends stay: deleting a rim patch takes its rim edge, and the corners
   // live on in the patches beside it. The crease goes with the edge. That clear names no retired id, so it has
   // to travel as a register; a receiver that kept the crease would hide it until the edge formed again.
-  const owners = new Map<string, number>(), uses = new Map<number, number>();
+  const owners = new Map<string, number>(),
+    uses = new Map<number, number>();
   const edgeKey = (p: number, q: number) => `${Math.min(p, q)},${Math.max(p, q)}`;
   lab.quads.forEach(([qa, qb, qc, qd]) => {
-    for (const [p, q] of [[qa, qb], [qb, qd], [qd, qc], [qc, qa]]) owners.set(edgeKey(p, q), (owners.get(edgeKey(p, q)) ?? 0) + 1);
+    for (const [p, q] of [
+      [qa, qb],
+      [qb, qd],
+      [qd, qc],
+      [qc, qa],
+    ])
+      owners.set(edgeKey(p, q), (owners.get(edgeKey(p, q)) ?? 0) + 1);
     for (const corner of new Set([qa, qb, qc, qd])) uses.set(corner, (uses.get(corner) ?? 0) + 1);
   });
   let rim: { quad: number; edge: [number, number] } | null = null;
   lab.quads.forEach(([qa, qb, qc, qd], quad) => {
-    for (const [p, q] of [[qa, qb], [qb, qd], [qd, qc], [qc, qa]] as [number, number][]) {
-      if (!rim && p !== q && owners.get(edgeKey(p, q)) === 1 && (uses.get(p) ?? 0) > 1 && (uses.get(q) ?? 0) > 1) rim = { quad, edge: [p, q] };
+    for (const [p, q] of [
+      [qa, qb],
+      [qb, qd],
+      [qd, qc],
+      [qc, qa],
+    ] as [number, number][]) {
+      if (!rim && p !== q && owners.get(edgeKey(p, q)) === 1 && (uses.get(p) ?? 0) > 1 && (uses.get(q) ?? 0) > 1)
+        rim = { quad, edge: [p, q] };
     }
   });
   const found = rim as { quad: number; edge: [number, number] } | null;
@@ -216,8 +269,11 @@ const shared = lab.quads[far].filter(corner => lab.quads[neighbour]?.includes(co
       const crease = handleRegister(creased.vertexIds[found.edge[0]], creased.vertexIds[found.edge[1]]);
       const delta = topologyDelta(creased, removed.doc);
       const survives = found.edge.every(corner => removed.doc.vertexIds.includes(creased.vertexIds[corner]));
-      check(survives && registerChanges(creased, removed.doc, delta).some(([key, value]) => key === crease && value === undefined),
-        'a crease whose edge went while both its corners stayed travels as a clear');
+      check(
+        survives &&
+          registerChanges(creased, removed.doc, delta).some(([key, value]) => key === crease && value === undefined),
+        'a crease whose edge went while both its corners stayed travels as a clear',
+      );
       roundTrip('rim delete', creased, removed.doc);
     } else check(false, 'a rim patch can be deleted', removed.error);
   }
@@ -229,12 +285,24 @@ if (deleted.ok) {
   const elsewhere = applyMeshDelete(lab, { quads: [far === 1 ? 2 : 1] });
   if (elsewhere.ok) {
     const result = applyTopologyDelta(elsewhere.doc, delta);
-    check(!result.ok, 'a delta applied to a base it was not written against is refused',
-      result.ok ? 'applied' : result.error);
+    check(
+      !result.ok,
+      'a delta applied to a base it was not written against is refused',
+      result.ok ? 'applied' : result.error,
+    );
   }
   for (const [label, bad] of [
     ['a run past the end', { ...delta, vertices: [[0, lab.vertexIds.length + 1]] }],
-    ['a vertex kept twice', { ...delta, vertices: [[0, 2], [1, 1]] }],
+    [
+      'a vertex kept twice',
+      {
+        ...delta,
+        vertices: [
+          [0, 2],
+          [1, 1],
+        ],
+      },
+    ],
     ['a corner that does not exist', { ...delta, quads: [['q:new', 'nobody', 'nobody', 'nobody', 'nobody']] }],
     ['no structure', { ...delta, structure: '' }],
     ['not an object', 7],
@@ -246,20 +314,34 @@ if (deleted.ok) {
 
 // ---- an owned trail (docs/023): cutting it, and re-cutting it longer, travel as a delta plus its register --------
 {
-  const trail: AuthoredTrail = { id: 'trail:0000', points: [[400, 0, 0], [400, 0, 100]],
-    paths: [{ points: [0, 1], settings: { ...TRAIL_SETTINGS_DEFAULTS } }], vertices: [], quads: [] };
+  const trail: AuthoredTrail = {
+    id: 'trail:0000',
+    points: [
+      [400, 0, 0],
+      [400, 0, 100],
+    ],
+    paths: [{ points: [0, 1], settings: { ...TRAIL_SETTINGS_DEFAULTS } }],
+    vertices: [],
+    quads: [],
+  };
   const cut = cutTrail(lab, trail);
   if (cut.ok) {
     cut.doc.trails = [cut.trail];
     roundTrip('trail cut', lab, cut.doc);
-    const longer = cutTrail(cut.doc, { ...cut.trail, points: [...cut.trail.points, [450, 0, 180]],
-      paths: [{ ...cut.trail.paths[0], points: [0, 1, 2], handles: [null, { out: [0, 0, 20] }] }] });
+    const longer = cutTrail(cut.doc, {
+      ...cut.trail,
+      points: [...cut.trail.points, [450, 0, 180]],
+      paths: [{ ...cut.trail.paths[0], points: [0, 1, 2], handles: [null, { out: [0, 0, 20] }] }],
+    });
     if (longer.ok) {
       longer.doc.trails = [longer.trail];
       roundTrip('trail re-cut', cut.doc, longer.doc);
       // A second path off its middle point: the first splits there, and the junction is cut with it.
-      const branched = cutTrail(longer.doc, { ...longer.trail, points: [...longer.trail.points, [520, 0, 160]],
-        paths: [...longer.trail.paths, { points: [1, 3], settings: { ...TRAIL_SETTINGS_DEFAULTS } }] });
+      const branched = cutTrail(longer.doc, {
+        ...longer.trail,
+        points: [...longer.trail.points, [520, 0, 160]],
+        paths: [...longer.trail.paths, { points: [1, 3], settings: { ...TRAIL_SETTINGS_DEFAULTS } }],
+      });
       if (branched.ok) {
         branched.doc.trails = [branched.trail];
         roundTrip('trail branch', longer.doc, branched.doc);

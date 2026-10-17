@@ -7,13 +7,27 @@ import { migrateMountain } from '../core/doc/mountain';
 import { serializeMountain } from '../core/doc/serialize';
 import { ensureWorkspace } from './workspace-config';
 import {
-  ensureDir, listSubdirectories, mapLimit, pathExists, readJson, readJsonOr, writeFileAtomic,
-  writeJsonAtomic, READ_CONCURRENCY,
+  ensureDir,
+  listSubdirectories,
+  mapLimit,
+  pathExists,
+  readJson,
+  readJsonOr,
+  writeFileAtomic,
+  writeJsonAtomic,
+  READ_CONCURRENCY,
 } from './fs-async';
 import {
-  changedDocumentSpan, checkpointOutgoing, checkpointProjectNow, clearCheckpointCadence,
-  listProjectCheckpoints, nameProjectCheckpoint, readProjectCheckpoint,
-  type CheckpointListing, type CheckpointRequest, type ProjectCheckpoint,
+  changedDocumentSpan,
+  checkpointOutgoing,
+  checkpointProjectNow,
+  clearCheckpointCadence,
+  listProjectCheckpoints,
+  nameProjectCheckpoint,
+  readProjectCheckpoint,
+  type CheckpointListing,
+  type CheckpointRequest,
+  type ProjectCheckpoint,
 } from './project-checkpoints';
 import { retireName, safeDataName, storeUnderFreeName } from './routes/safe-name';
 import { serialize } from './serialize';
@@ -23,9 +37,16 @@ import { holds, type Role } from './accounts/policy';
 import { createLogger } from './log';
 
 export {
-  CheckpointGoneError, checkpointPolicy, configureCheckpoints, planRetention,
-  type CheckpointListing, type CheckpointPolicy, type CheckpointReason, type CheckpointRequest,
-  type ProjectCheckpoint, type RetentionPlan,
+  CheckpointGoneError,
+  checkpointPolicy,
+  configureCheckpoints,
+  planRetention,
+  type CheckpointListing,
+  type CheckpointPolicy,
+  type CheckpointReason,
+  type CheckpointRequest,
+  type ProjectCheckpoint,
+  type RetentionPlan,
 } from './project-checkpoints';
 
 const PROJECT_SCHEMA = 2;
@@ -52,7 +73,10 @@ export interface ProjectManifest {
 }
 
 /** The identity facts map policy needs, deliberately smaller than an HTTP/session identity. */
-export interface ProjectActor { id: string; role: Role }
+export interface ProjectActor {
+  id: string;
+  role: Role;
+}
 
 /** Owners manage their map; moderators and admins can recover/manage any map. */
 export const canManageProject = (project: ProjectManifest, actor: ProjectActor): boolean =>
@@ -61,13 +85,18 @@ export const canManageProject = (project: ProjectManifest, actor: ProjectActor):
 /** Server role is the floor. A restricted map then narrows ordinary editors by stable account id, while its
  *  owner and operational roles retain access. */
 export const canEditProject = (project: ProjectManifest, actor: ProjectActor): boolean =>
-  holds(actor.role, 'editor') && (project.editorIds === undefined
-    || project.ownerId === actor.id || holds(actor.role, 'moderator') || project.editorIds.includes(actor.id));
+  holds(actor.role, 'editor') &&
+  (project.editorIds === undefined ||
+    project.ownerId === actor.id ||
+    holds(actor.role, 'moderator') ||
+    project.editorIds.includes(actor.id));
 
 export class ProjectPermissionError extends Error {
   readonly statusCode = 403;
 
-  constructor(message: string) { super(message); }
+  constructor(message: string) {
+    super(message);
+  }
 }
 
 export interface ProjectSnapshot {
@@ -95,7 +124,13 @@ const hashJson = (json: string) => createHash('sha256').update(json).digest('hex
 const hashDocument = (doc: unknown) => hashJson(canonicalJson(doc));
 
 function safeSlug(value: string): string {
-  return value.trim().replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'mountain';
+  return (
+    value
+      .trim()
+      .replace(/[^A-Za-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64) || 'mountain'
+  );
 }
 
 /**
@@ -119,8 +154,12 @@ function formerNames(manifest: ProjectManifest, retiring?: string): string[] {
   return [...held, retiring];
 }
 
-async function projectRoot(): Promise<string> { return join((await ensureWorkspace()).workspaceRoot, 'projects'); }
-async function sessionFile(): Promise<string> { return join((await ensureWorkspace()).workspaceRoot, 'session.json'); }
+async function projectRoot(): Promise<string> {
+  return join((await ensureWorkspace()).workspaceRoot, 'projects');
+}
+async function sessionFile(): Promise<string> {
+  return join((await ensureWorkspace()).workspaceRoot, 'session.json');
+}
 const manifestFile = (dir: string) => join(dir, 'project.json');
 const documentFile = (dir: string) => join(dir, 'mountain.slope.json');
 
@@ -141,7 +180,11 @@ function locationsFor(root: string): Map<string, string> {
   return projectLocations.byId;
 }
 
-function rememberLocations(root: string, dirs: readonly string[], manifests: readonly (ProjectManifest | null)[]): void {
+function rememberLocations(
+  root: string,
+  dirs: readonly string[],
+  manifests: readonly (ProjectManifest | null)[],
+): void {
   const locations = locationsFor(root);
   for (let index = 0; index < dirs.length; index++) {
     const id = manifests[index]?.id;
@@ -160,8 +203,9 @@ async function findProject(id: string): Promise<string> {
   const cached = locationsFor(root).get(id);
   if (cached) return cached;
   const dirs = await projectDirectories();
-  const manifests = await mapLimit(dirs, READ_CONCURRENCY,
-    dir => readJsonOr<ProjectManifest | null>(manifestFile(dir), null));
+  const manifests = await mapLimit(dirs, READ_CONCURRENCY, dir =>
+    readJsonOr<ProjectManifest | null>(manifestFile(dir), null),
+  );
   rememberLocations(root, dirs, manifests);
   const dir = dirs.find((_candidate, index) => manifests[index]?.id === id);
   if (!dir) throw new Error(`Unknown project: ${id}`);
@@ -203,7 +247,7 @@ let warnedDocumentWorker = false;
  * local path as a correctness fallback for hosts that cannot start workers (and emit one useful warning). */
 async function prepareDocument(document: EditDoc): Promise<PreparedDocument> {
   try {
-    return await runInWorker({ kind: 'document', document }) as PreparedDocument;
+    return (await runInWorker({ kind: 'document', document })) as PreparedDocument;
   } catch (error) {
     if (error instanceof WorkerTaskError) throw error;
     if (!warnedDocumentWorker) {
@@ -220,7 +264,7 @@ async function prepareDocument(document: EditDoc): Promise<PreparedDocument> {
 /** JSON parsing, schema migration and canonicalization are the other whole-document half of a snapshot. */
 async function readPreparedDocument(dir: string): Promise<PreparedRead> {
   try {
-    return await runInWorker({ kind: 'document-read', file: documentFile(dir) }) as PreparedRead;
+    return (await runInWorker({ kind: 'document-read', file: documentFile(dir) })) as PreparedRead;
   } catch (error) {
     if (error instanceof WorkerTaskError) throw error;
     if (!warnedDocumentWorker) {
@@ -249,7 +293,10 @@ const readSnapshot = async (dir: string): Promise<ProjectSnapshot> => {
   return snapshot;
 };
 
-interface ProjectRead { snapshot: ProjectSnapshot; canonical: string }
+interface ProjectRead {
+  snapshot: ProjectSnapshot;
+  canonical: string;
+}
 
 /** Caller holds `projectKey(dir)`. */
 async function snapshotFromDirectory(dir: string): Promise<ProjectSnapshot> {
@@ -266,7 +313,12 @@ async function snapshotStateFromDirectory(dir: string): Promise<ProjectRead> {
   // A hand edit or a crash between the document and manifest renames must never reuse a revision. Reconcile it
   // as an external edit on first read, preserving optimistic-concurrency safety.
   if (actualHash !== manifest.documentHash) {
-    manifest = { ...manifest, revision: manifest.revision + 1, documentHash: actualHash, updatedAt: new Date().toISOString() };
+    manifest = {
+      ...manifest,
+      revision: manifest.revision + 1,
+      documentHash: actualHash,
+      updatedAt: new Date().toISOString(),
+    };
     await writeJsonAtomic(manifestFile(dir), manifest);
   }
   return { snapshot: { project: { ...manifest, folder: dir }, document }, canonical };
@@ -295,9 +347,11 @@ async function readSession(): Promise<SessionFile> {
 
 function activeProjectOf(session: SessionFile, clientId?: string): string | null {
   const key = clientKey(clientId);
-  return session.clients?.[key]?.activeProjectId
+  return (
+    session.clients?.[key]?.activeProjectId ??
     // A record written before this file was keyed carries one project; it belongs to whoever asks first.
-    ?? (key === DEFAULT_CLIENT ? session.activeProjectId ?? null : null);
+    (key === DEFAULT_CLIENT ? (session.activeProjectId ?? null) : null)
+  );
 }
 
 async function setActiveProject(id: string, clientId?: string): Promise<void> {
@@ -305,7 +359,10 @@ async function setActiveProject(id: string, clientId?: string): Promise<void> {
   // Read-modify-write: without a queue, two clients activating at once lose one of the two entries.
   await serialize(`session:${file}`, async () => {
     const session = await readJsonOr<SessionFile>(file, {});
-    const clients = { ...session.clients, [clientKey(clientId)]: { activeProjectId: id, lastSeen: new Date().toISOString() } };
+    const clients = {
+      ...session.clients,
+      [clientKey(clientId)]: { activeProjectId: id, lastSeen: new Date().toISOString() },
+    };
     await writeJsonAtomic(file, { clients });
   });
 }
@@ -339,7 +396,11 @@ export function onProjectWritten(listener: (write: ProjectWrite) => void): () =>
 function announceWrite(write: ProjectWrite): void {
   noteRevision(write.snapshot.project.id, write.snapshot.project.revision);
   for (const listener of writeListeners) {
-    try { listener(write); } catch (error) { log.error('a revision listener failed', { error }); }
+    try {
+      listener(write);
+    } catch (error) {
+      log.error('a revision listener failed', { error });
+    }
   }
 }
 
@@ -374,7 +435,7 @@ const noteRevision = (id: string, revision: number): void => {
  */
 export async function watchProjectWrites(): Promise<() => void> {
   const root = await projectRoot();
-  if (!await pathExists(root)) return () => {};
+  if (!(await pathExists(root))) return () => {};
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
   const reconcile = async (dir: string): Promise<void> => {
@@ -391,18 +452,27 @@ export async function watchProjectWrites(): Promise<() => void> {
 
   // What comes back is relative to the watched directory, so the folder this reconciles stays the one the rest
   // of the store names.
-  const tree = await watchTree(root, filename => {
-    if (filename === null) return;
-    const parts = filename.split(/[\\/]/);
-    if (parts.length !== 2 || basename(parts[1]) !== 'project.json') return;
-    const dir = join(root, parts[0]);
-    // Debounced per project: an atomic write is a temp file plus a rename, and several events for one save.
-    clearTimeout(pending.get(dir));
-    pending.set(dir, setTimeout(() => { void reconcile(dir); }, 150));
-  }, {
-    onError: error => log.warn('projects watch incomplete; outside writes there reach rooms only at their next snapshot',
-      { error }),
-  });
+  const tree = await watchTree(
+    root,
+    filename => {
+      if (filename === null) return;
+      const parts = filename.split(/[\\/]/);
+      if (parts.length !== 2 || basename(parts[1]) !== 'project.json') return;
+      const dir = join(root, parts[0]);
+      // Debounced per project: an atomic write is a temp file plus a rename, and several events for one save.
+      clearTimeout(pending.get(dir));
+      pending.set(
+        dir,
+        setTimeout(() => {
+          void reconcile(dir);
+        }, 150),
+      );
+    },
+    {
+      onError: error =>
+        log.warn('projects watch incomplete; outside writes there reach rooms only at their next snapshot', { error }),
+    },
+  );
   return () => {
     for (const timer of pending.values()) clearTimeout(timer);
     pending.clear();
@@ -426,7 +496,11 @@ export function onProjectDeleted(listener: (project: ProjectManifest & { folder:
 
 function announceDeleted(project: ProjectManifest & { folder: string }): void {
   for (const listener of deleteListeners) {
-    try { listener(project); } catch (error) { log.error('a deletion listener failed', { error }); }
+    try {
+      listener(project);
+    } catch (error) {
+      log.error('a deletion listener failed', { error });
+    }
   }
 }
 
@@ -443,16 +517,20 @@ export function onProjectPermissionsChanged(
 
 function announcePermissions(project: ProjectManifest & { folder: string }): void {
   for (const listener of permissionListeners) {
-    try { listener(project); }
-    catch (error) { log.error('a permission listener failed', { error }); }
+    try {
+      listener(project);
+    } catch (error) {
+      log.error('a permission listener failed', { error });
+    }
   }
 }
 
 export async function listProjects(): Promise<Array<ProjectManifest & { folder: string }>> {
   const root = await projectRoot();
   const dirs = await projectDirectories();
-  const manifests = await mapLimit(dirs, READ_CONCURRENCY,
-    dir => readJsonOr<ProjectManifest | null>(manifestFile(dir), null));
+  const manifests = await mapLimit(dirs, READ_CONCURRENCY, dir =>
+    readJsonOr<ProjectManifest | null>(manifestFile(dir), null),
+  );
   rememberLocations(root, dirs, manifests);
   return dirs
     .flatMap((dir, index) => {
@@ -478,23 +556,31 @@ export async function openProject(id: string, activate = false, clientId?: strin
 /** Read the small policy-bearing manifest without walking the mountain document. */
 export async function projectManifest(id: string): Promise<ProjectManifest & { folder: string }> {
   const folder = await findProject(id);
-  return { ...await readManifest(folder), folder };
+  return { ...(await readManifest(folder)), folder };
 }
 
-export async function requireProjectEdit(id: string, actor: ProjectActor): Promise<ProjectManifest & { folder: string }> {
+export async function requireProjectEdit(
+  id: string,
+  actor: ProjectActor,
+): Promise<ProjectManifest & { folder: string }> {
   const project = await projectManifest(id);
   if (!canEditProject(project, actor)) {
-    throw new ProjectPermissionError(project.editorIds === undefined
-      ? 'Changing this map needs the editor role.'
-      : 'This map is restricted to editors selected by its owner.');
+    throw new ProjectPermissionError(
+      project.editorIds === undefined
+        ? 'Changing this map needs the editor role.'
+        : 'This map is restricted to editors selected by its owner.',
+    );
   }
   return project;
 }
 
-export async function requireProjectManager(id: string, actor: ProjectActor): Promise<ProjectManifest & { folder: string }> {
+export async function requireProjectManager(
+  id: string,
+  actor: ProjectActor,
+): Promise<ProjectManifest & { folder: string }> {
   const project = await projectManifest(id);
   if (!canManageProject(project, actor)) {
-    throw new ProjectPermissionError('Only this map\'s owner or a moderator can manage it.');
+    throw new ProjectPermissionError("Only this map's owner or a moderator can manage it.");
   }
   return project;
 }
@@ -502,11 +588,15 @@ export async function requireProjectManager(id: string, actor: ProjectActor): Pr
 /** Restrict editing to a stable-id allow-list, or pass null to admit every server editor again. Permission
  *  metadata is not a mountain-document revision, so this updates the manifest atomically without advancing
  *  the document's revision line. */
-export async function setProjectEditors(id: string, editorIds: readonly string[] | null):
-  Promise<ProjectManifest & { folder: string }> {
+export async function setProjectEditors(
+  id: string,
+  editorIds: readonly string[] | null,
+): Promise<ProjectManifest & { folder: string }> {
   const dir = await findProject(id);
-  const normalized = editorIds === null ? null : [...new Set(editorIds
-    .map(value => value.trim()).filter(Boolean))].slice(0, 1_000).sort();
+  const normalized =
+    editorIds === null
+      ? null
+      : [...new Set(editorIds.map(value => value.trim()).filter(Boolean))].slice(0, 1_000).sort();
   const next = await serialize(projectKey(dir), async () => {
     const manifest = await readManifest(dir);
     const { editorIds: _previous, ...withoutEditors } = manifest;
@@ -524,8 +614,15 @@ export async function setProjectEditors(id: string, editorIds: readonly string[]
 
 /** What a project owns from the moment it exists, so nothing writes into a folder that is not there yet. */
 const PROJECT_FOLDERS = [
-  '', 'autosaves', 'build', 'assets', 'assets/skies', 'assets/textures', 'assets/props',
-  'assets/music', 'assets/sounds',
+  '',
+  'autosaves',
+  'build',
+  'assets',
+  'assets/skies',
+  'assets/textures',
+  'assets/props',
+  'assets/music',
+  'assets/sounds',
 ];
 
 /**
@@ -539,8 +636,13 @@ const PROJECT_FOLDERS = [
  * The name the map lands under goes into the document as well as the manifest, because the document's name
  * is what the next save writes back — a manifest renamed on its own would be undone by the first autosave.
  */
-export async function createProject(value: unknown, clientId?: string, activate = true,
-  ownerId = 'owner', name?: string): Promise<ProjectSnapshot> {
+export async function createProject(
+  value: unknown,
+  clientId?: string,
+  activate = true,
+  ownerId = 'owner',
+  name?: string,
+): Promise<ProjectSnapshot> {
   const requested = normalizedDocument(value);
   // A caller-supplied name outranks the document's own (the default mountain arrives called MOUNTAIN01) and
   // then walks the same free-name path below, so it behaves exactly as a later g/name rename would:
@@ -565,8 +667,14 @@ export async function createProject(value: unknown, clientId?: string, activate 
       await Promise.all(PROJECT_FOLDERS.map(folder => ensureDir(join(dir, folder))));
       const now = new Date().toISOString();
       const manifest: ProjectManifest = {
-        schema: PROJECT_SCHEMA, id, name, createdAt: now, updatedAt: now,
-        revision: 1, documentHash: hashDocument(document), ownerId,
+        schema: PROJECT_SCHEMA,
+        id,
+        name,
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+        documentHash: hashDocument(document),
+        ownerId,
       };
       // The document lands before the manifest that names its hash, so a crash between the two leaves a
       // project whose next read reconciles as an external edit rather than one with no document at all.
@@ -625,8 +733,9 @@ export async function deleteProject(id: string): Promise<ProjectManifest & { fol
   const file = await sessionFile();
   await serialize(`session:${file}`, async () => {
     const session = await readJsonOr<SessionFile>(file, {});
-    const clients = Object.fromEntries(Object.entries(session.clients ?? {})
-      .filter(([, entry]) => entry.activeProjectId !== id));
+    const clients = Object.fromEntries(
+      Object.entries(session.clients ?? {}).filter(([, entry]) => entry.activeProjectId !== id),
+    );
     await writeJsonAtomic(file, { clients });
   });
   return deleted;
@@ -640,8 +749,10 @@ export async function listCheckpoints(id: string): Promise<CheckpointListing> {
 }
 
 /** One checkpoint's whole document, migrated exactly like the live one so an older schema still opens. */
-export async function readCheckpoint(id: string, file: string):
-  Promise<{ checkpoint: ProjectCheckpoint; document: EditDoc }> {
+export async function readCheckpoint(
+  id: string,
+  file: string,
+): Promise<{ checkpoint: ProjectCheckpoint; document: EditDoc }> {
   return readProjectCheckpoint(await findProject(id), file, normalizedDocument);
 }
 
@@ -677,12 +788,18 @@ export type RestoreResult = ProjectSnapshot & { unchanged: boolean };
  * document being replaced is set aside as a pinned checkpoint on the way through, so a restore nobody wanted
  * is undone by another restore however long it takes to notice.
  */
-export async function restoreCheckpoint(id: string, baseRevision: number, file: string, by?: string,
-  allowRename = true):
-  Promise<RestoreResult> {
+export async function restoreCheckpoint(
+  id: string,
+  baseRevision: number,
+  file: string,
+  by?: string,
+  allowRename = true,
+): Promise<RestoreResult> {
   const { checkpoint, document } = await readCheckpoint(id, file);
   const written = await writeDocument(id, document, {
-    baseRevision, by, allowRename,
+    baseRevision,
+    by,
+    allowRename,
     forced: { reason: 'restore', note: `replaced by a restore of the checkpoint from ${checkpoint.takenAt}` },
   });
   return { ...written.snapshot, unchanged: written.unchanged };
@@ -722,8 +839,11 @@ interface WriteOptions {
  * and the name it moved off is retired. Every other save keeps the name the manifest holds, which is what
  * makes the manifest the authority on what a map is called.
  */
-async function writeDocument(id: string, value: unknown,
-  options: WriteOptions = {}): Promise<{ snapshot: ProjectSnapshot; unchanged: boolean }> {
+async function writeDocument(
+  id: string,
+  value: unknown,
+  options: WriteOptions = {},
+): Promise<{ snapshot: ProjectSnapshot; unchanged: boolean }> {
   const { baseRevision, forced, by, announce = true, roomSnapshot = false, allowRename = true } = options;
   if (!value || typeof value !== 'object') throw new Error('Project document must be a JSON object');
   // This must precede every await. A live room intentionally continues accepting edits while an older
@@ -733,50 +853,52 @@ async function writeDocument(id: string, value: unknown,
   const dir = await findProject(id);
 
   /** Everything the write is, under the name it lands on. `claimed` is set by the rename path only. */
-  const commit = (claimed?: string) => serialize(projectKey(dir), async () => {
-    const currentRead = await snapshotStateFromDirectory(dir);
-    const current = currentRead.snapshot;
-    if (baseRevision !== undefined && current.project.revision !== baseRevision) {
-      throw new ProjectConflictError(current);
-    }
-    // A write that did not claim a name cannot change one, so a save landing behind a rename of the same map
-    // stores what that rename settled on rather than quietly renaming it back. A name and its case variants
-    // are one name, so the case a save asks for is simply stored.
-    const name = claimed
-      ?? (asked && sameName(asked, current.project.name) ? asked : current.project.name);
-    const named = { ...document, name };
-    const prepared = await prepareDocument(named);
-    const documentHash = hashJson(prepared.canonical);
-    // Nothing changed, so there is nothing to record: no revision, and no checkpoint of a document that is
-    // about to be written back over itself.
-    if (documentHash === current.project.documentHash) return { snapshot: current, unchanged: true };
-    await checkpointOutgoing(dir, current.project.revision,
-      changedDocumentSpan(currentRead.canonical, prepared.canonical), forced);
-    const held = formerNames(current.project, claimed ? current.project.name : undefined);
-    const manifest: ProjectManifest = {
-      schema: PROJECT_SCHEMA,
-      id: current.project.id,
-      name,
-      createdAt: current.project.createdAt,
-      updatedAt: new Date().toISOString(),
-      revision: current.project.revision + 1,
-      documentHash,
-      ...(current.project.ownerId ? { ownerId: current.project.ownerId } : {}),
-      ...(current.project.editorIds !== undefined ? { editorIds: current.project.editorIds } : {}),
-      ...(held.length ? { formerNames: held } : {}),
-    };
-    // The name the map lands under goes into the document as well as the manifest, for the reason
-    // `createProject` gives: the document's name is what the next save writes back, so a manifest renamed on
-    // its own would be undone by the first autosave after it.
-    await writeFileAtomic(documentFile(dir), prepared.storedJson);
-    await writeJsonAtomic(manifestFile(dir), manifest);
-    return { snapshot: { project: { ...manifest, folder: dir }, document: named }, unchanged: false };
-  });
+  const commit = (claimed?: string) =>
+    serialize(projectKey(dir), async () => {
+      const currentRead = await snapshotStateFromDirectory(dir);
+      const current = currentRead.snapshot;
+      if (baseRevision !== undefined && current.project.revision !== baseRevision) {
+        throw new ProjectConflictError(current);
+      }
+      // A write that did not claim a name cannot change one, so a save landing behind a rename of the same map
+      // stores what that rename settled on rather than quietly renaming it back. A name and its case variants
+      // are one name, so the case a save asks for is simply stored.
+      const name = claimed ?? (asked && sameName(asked, current.project.name) ? asked : current.project.name);
+      const named = { ...document, name };
+      const prepared = await prepareDocument(named);
+      const documentHash = hashJson(prepared.canonical);
+      // Nothing changed, so there is nothing to record: no revision, and no checkpoint of a document that is
+      // about to be written back over itself.
+      if (documentHash === current.project.documentHash) return { snapshot: current, unchanged: true };
+      await checkpointOutgoing(
+        dir,
+        current.project.revision,
+        changedDocumentSpan(currentRead.canonical, prepared.canonical),
+        forced,
+      );
+      const held = formerNames(current.project, claimed ? current.project.name : undefined);
+      const manifest: ProjectManifest = {
+        schema: PROJECT_SCHEMA,
+        id: current.project.id,
+        name,
+        createdAt: current.project.createdAt,
+        updatedAt: new Date().toISOString(),
+        revision: current.project.revision + 1,
+        documentHash,
+        ...(current.project.ownerId ? { ownerId: current.project.ownerId } : {}),
+        ...(current.project.editorIds !== undefined ? { editorIds: current.project.editorIds } : {}),
+        ...(held.length ? { formerNames: held } : {}),
+      };
+      // The name the map lands under goes into the document as well as the manifest, for the reason
+      // `createProject` gives: the document's name is what the next save writes back, so a manifest renamed on
+      // its own would be undone by the first autosave after it.
+      await writeFileAtomic(documentFile(dir), prepared.storedJson);
+      await writeJsonAtomic(manifestFile(dir), manifest);
+      return { snapshot: { project: { ...manifest, folder: dir }, document: named }, unchanged: false };
+    });
 
   const held = await readManifest(dir);
-  const written = asked && !sameName(asked, held.name)
-    ? await commitRenamed(id, held, asked, commit)
-    : await commit();
+  const written = asked && !sameName(asked, held.name) ? await commitRenamed(id, held, asked, commit) : await commit();
   // Announced outside the queue: a listener that pushes to sockets must not hold up the next save.
   if (!written.unchanged && announce) announceWrite({ snapshot: written.snapshot, by });
   // A room snapshot does not announce, and the file watcher must still know it was ours rather than somebody
@@ -795,8 +917,12 @@ async function writeDocument(id: string, value: unknown,
  * inside it orders every pair of these one way. Only a save that actually changes the name comes here, so an
  * ordinary save never waits on the whole library either.
  */
-async function commitRenamed<T>(id: string, held: ProjectManifest, asked: string,
-  commit: (name: string) => Promise<T>): Promise<T> {
+async function commitRenamed<T>(
+  id: string,
+  held: ProjectManifest,
+  asked: string,
+  commit: (name: string) => Promise<T>,
+): Promise<T> {
   const root = await projectRoot();
   // Read once inside the name lock: the loop that walks _2, _3 … asks repeatedly, and every answer comes from
   // the same listing the free name was chosen against.
@@ -808,8 +934,9 @@ async function commitRenamed<T>(id: string, held: ProjectManifest, asked: string
     // Every OTHER map. A map does not collide with itself, so a rename that changes nothing but a name's case
     // is not answered with a suffixed variant of the name the map already wears.
     taken: async stem => {
-      taken ??= new Set((await listProjects())
-        .flatMap(project => project.id === id ? [] : [project.name.toLowerCase()]));
+      taken ??= new Set(
+        (await listProjects()).flatMap(project => (project.id === id ? [] : [project.name.toLowerCase()])),
+      );
       return taken.has(stem.toLowerCase());
     },
     // Names this map has held are retired for every other map and free for this one, so restoring a revision
@@ -821,9 +948,13 @@ async function commitRenamed<T>(id: string, held: ProjectManifest, asked: string
   return stored;
 }
 
-export async function saveProject(id: string, baseRevision: number, value: unknown, by?: string,
-  allowRename = true):
-  Promise<ProjectSnapshot> {
+export async function saveProject(
+  id: string,
+  baseRevision: number,
+  value: unknown,
+  by?: string,
+  allowRename = true,
+): Promise<ProjectSnapshot> {
   return (await writeDocument(id, value, { baseRevision, by, allowRename })).snapshot;
 }
 
@@ -843,8 +974,7 @@ export async function saveProject(id: string, baseRevision: number, value: unkno
  * document over that one under a higher revision number, which is a silent lost update of exactly the kind
  * the optimistic check exists to prevent. With it, the room is told, and re-reads.
  */
-export async function saveRoomDocument(id: string, value: unknown,
-  baseRevision?: number): Promise<ProjectSnapshot> {
+export async function saveRoomDocument(id: string, value: unknown, baseRevision?: number): Promise<ProjectSnapshot> {
   return (await writeDocument(id, value, { announce: false, roomSnapshot: true, baseRevision })).snapshot;
 }
 

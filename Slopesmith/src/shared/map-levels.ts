@@ -1,20 +1,43 @@
-import { joinMapPath as join, safeMapName as safeDataName, mapLimit, READ_CONCURRENCY, type MapDataSource } from './map-data';
+import {
+  joinMapPath as join,
+  safeMapName as safeDataName,
+  mapLimit,
+  READ_CONCURRENCY,
+  type MapDataSource,
+} from './map-data';
 import type {
-  RawPatch, CoursePathFile, InstancesFile, LightsFile, RefAiPath, RefShowoffCheckpoint, RefSplineRaw, RefSunSeed,
+  RawPatch,
+  CoursePathFile,
+  InstancesFile,
+  LightsFile,
+  RefAiPath,
+  RefShowoffCheckpoint,
+  RefSplineRaw,
+  RefSunSeed,
 } from '../core/reference/terrain';
 import {
-  aiJumpMarkers, dtfZeroFrame, extractMainCourse, reconstructPathLine, showoffCheckpoints, stageAreaAnchors, sunFromLights,
+  aiJumpMarkers,
+  dtfZeroFrame,
+  extractMainCourse,
+  reconstructPathLine,
+  showoffCheckpoints,
+  stageAreaAnchors,
+  sunFromLights,
 } from '../core/reference/terrain';
 import type { LightRigPayload } from '../core/reference/lights';
 import { decodeBillboards, type ReferenceScreen } from '../core/reference/screens';
 import { normalizeGodRayCourse, type GodRayCourse } from '../core/lighting/god-rays';
 import type { V3 } from '../core/doc/types';
+import { normalizeLaps, normalizeShowoffSeconds, referenceLaps, referenceShowoffSeconds } from '../core/doc/race';
 import {
-  normalizeLaps, normalizeShowoffSeconds, referenceLaps, referenceShowoffSeconds,
-} from '../core/doc/race';
-import {
-  MAP_ORIGIN_FILE, MAP_ORIGIN_SCHEMA, UNCLASSIFIED_EXPORT_REASON, UNMARKED_ORIGIN, normalizeMapOrigin,
-  originSummary, type MapOriginRecord, type MapOriginSummary,
+  MAP_ORIGIN_FILE,
+  MAP_ORIGIN_SCHEMA,
+  UNCLASSIFIED_EXPORT_REASON,
+  UNMARKED_ORIGIN,
+  normalizeMapOrigin,
+  originSummary,
+  type MapOriginRecord,
+  type MapOriginSummary,
 } from '../core/export/origin';
 import { SLOPESMITH_EXPORT_MANIFEST, isSlopesmithExportManifest } from '../core/export/manifest';
 
@@ -28,9 +51,9 @@ export async function listLevels(io: MapDataSource): Promise<string[]> {
   // Offline import commands publish through a hidden sibling and rename only once their contract is complete.
   // Never advertise one of those staging folders if a long import writes Patches.json while the server is open.
   const dirs = (await io.listEntries(io.root))
-    .filter(entry => entry.isDirectory && !entry.name.startsWith('.')).map(entry => entry.name);
-  const present = await mapLimit(dirs, READ_CONCURRENCY,
-    name => io.pathExists(join(io.root, name, 'Patches.json')));
+    .filter(entry => entry.isDirectory && !entry.name.startsWith('.'))
+    .map(entry => entry.name);
+  const present = await mapLimit(dirs, READ_CONCURRENCY, name => io.pathExists(join(io.root, name, 'Patches.json')));
   return dirs.filter((_name, index) => present[index]).sort();
 }
 
@@ -77,7 +100,10 @@ export async function listLevelOrigins(io: MapDataSource): Promise<MapOriginSumm
 }
 
 /** Read a level's Patches.json, trimmed to what the reference renderer needs (points + surface). */
-export async function readLevelPatches(io: MapDataSource, name: string): Promise<{ name: string; patches: RawPatch[] }> {
+export async function readLevelPatches(
+  io: MapDataSource,
+  name: string,
+): Promise<{ name: string; patches: RawPatch[] }> {
   const safe = safeDataName(name);
   const json = await io.readJsonOr<{ Patches?: unknown[] } | null>(join(io.root, safe, 'Patches.json'), null);
   if (!json) throw new Error(`no Patches.json for level "${safe}"`);
@@ -139,7 +165,9 @@ export async function readLevelCourse(io: MapDataSource, name: string): Promise<
     try {
       const points = extractMainCourse(raw);
       if (!points || points.length < 2) continue;
-      let length = 0, minY = Infinity, maxY = -Infinity;
+      let length = 0,
+        minY = Infinity,
+        maxY = -Infinity;
       for (let i = 0; i < points.length; i++) {
         const p = points[i];
         if (p[1] < minY) minY = p[1];
@@ -148,12 +176,19 @@ export async function readLevelCourse(io: MapDataSource, name: string): Promise<
       }
       const finish = dtfZeroFrame(aip ?? raw) ?? dtfZeroFrame(raw);
       return {
-        source: file.replace('.json', ''), points, length, drop: maxY - minY,
-        start: anchors.start, finish: finish?.pos ?? null, finishFwd: finish?.fwd ?? null,
+        source: file.replace('.json', ''),
+        points,
+        length,
+        drop: maxY - minY,
+        start: anchors.start,
+        finish: finish?.pos ?? null,
+        finishFwd: finish?.fwd ?? null,
         podium: anchors.podium,
         checkpoints: file === 'SOP.json' ? showoffCheckpoints(raw) : [],
       };
-    } catch { /* unreadable / unexpected shape - try the next file */ }
+    } catch {
+      /* unreadable / unexpected shape - try the next file */
+    }
   }
   return null;
 }
@@ -180,7 +215,9 @@ export async function readLevelShowoffSeconds(io: MapDataSource, name: string): 
 async function readLevelRace(io: MapDataSource, name: string): Promise<{ laps: number; showoffSeconds: number }> {
   const safe = safeDataName(name);
   const sidecar = await io.readJsonOr<{ laps?: unknown; showoffSeconds?: unknown } | null>(
-    join(io.root, safe, 'Slopesmith.json'), null);
+    join(io.root, safe, 'Slopesmith.json'),
+    null,
+  );
   return {
     laps: normalizeLaps(sidecar?.laps) ?? referenceLaps(safe),
     showoffSeconds: normalizeShowoffSeconds(sidecar?.showoffSeconds) ?? referenceShowoffSeconds(safe),
@@ -201,7 +238,9 @@ export async function readLevelAiPaths(io: MapDataSource, name: string): Promise
     const starts = new Set(raw.StartPosList ?? []);
     const paths = (raw.AIPaths ?? [])
       .map((p, i) => ({
-        name: p.Name ?? `AI Path ${i}`, start: starts.has(i), rating: p.U3 ?? 50,
+        name: p.Name ?? `AI Path ${i}`,
+        start: starts.has(i),
+        rating: p.U3 ?? 50,
         // The two fields the AI field reads besides the points ([Trailmap: 395]): where it may be put back after a
         // fall, and where it jumps. Levels we generate ship neither yet, and default sensibly.
         respawnable: p.Respawnable !== false,
@@ -315,8 +354,7 @@ export async function readLevelLightRig(io: MapDataSource, name: string): Promis
   const raw = await io.readJsonOr<{ Lights?: RawLightRecord[] } | null>(join(io.root, safe, 'Lights.json'), null);
   if (!raw) return null;
   try {
-    const num3 = (a: number[] | undefined, fb: number[]) =>
-      (a && a.length >= 3 ? [a[0], a[1], a[2]] : fb).map(Number);
+    const num3 = (a: number[] | undefined, fb: number[]) => (a && a.length >= 3 ? [a[0], a[1], a[2]] : fb).map(Number);
     const lights = (raw.Lights ?? []).map(l => {
       const pos = num3(l.Position, [0, 0, 0]);
       return {

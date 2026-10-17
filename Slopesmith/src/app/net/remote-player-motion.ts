@@ -10,9 +10,15 @@ export const REMOTE_SNAP_DISTANCE = 50;
 
 /** Unity-compatible critically damped chase, including its rational exponential approximation. */
 export function smoothDampVector(
-  current: THREE.Vector3, target: THREE.Vector3, velocity: THREE.Vector3, smoothTime: number, dt: number,
+  current: THREE.Vector3,
+  target: THREE.Vector3,
+  velocity: THREE.Vector3,
+  smoothTime: number,
+  dt: number,
 ): THREE.Vector3 {
-  const time = Math.max(0.0001, smoothTime), omega = 2 / time, x = omega * Math.max(0, dt);
+  const time = Math.max(0.0001, smoothTime),
+    omega = 2 / time,
+    x = omega * Math.max(0, dt);
   const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
   const change = current.clone().sub(target);
   const temp = velocity.clone().addScaledVector(change, omega).multiplyScalar(dt);
@@ -27,7 +33,10 @@ function extrapolatedRotation(base: THREE.Quaternion, delta: THREE.Quaternion, f
   const sin = Math.sqrt(Math.max(0, 1 - d.w * d.w));
   if (angle < 1e-6 || sin < 1e-6) return base.clone();
   const axis = new THREE.Vector3(d.x / sin, d.y / sin, d.z / sin);
-  return new THREE.Quaternion().setFromAxisAngle(axis, angle * fraction).multiply(base).normalize();
+  return new THREE.Quaternion()
+    .setFromAxisAngle(axis, angle * fraction)
+    .multiply(base)
+    .normalize();
 }
 
 /**
@@ -57,8 +66,13 @@ export class RemotePlayerMotion {
   }
 
   /** Feed another owner-authoritative moving object (currently loose equipment) through the same follower. */
-  pushTransform(seq: number, teleport: number, transform: PlayerTransform, velocity: PlayerVec3,
-    localSampleAtSeconds: number): boolean {
+  pushTransform(
+    seq: number,
+    teleport: number,
+    transform: PlayerTransform,
+    velocity: PlayerVec3,
+    localSampleAtSeconds: number,
+  ): boolean {
     if (seq <= this.seq) return false;
     const nextPosition = new THREE.Vector3(...transform.p);
     const nextRotation = new THREE.Quaternion(...transform.q).normalize();
@@ -67,10 +81,10 @@ export class RemotePlayerMotion {
 
     if (nextVelocity.lengthSq() < 1e-4) this.acceleration.set(0, 0, 0);
     else if (this.initialized && interval > 0.04 && interval < 1) {
-        const measured = nextVelocity.clone().sub(this.velocity).divideScalar(interval);
-        if (nextVelocity.dot(this.velocity) < 0) measured.set(0, 0, 0);
-        measured.clampLength(0, REMOTE_MAX_ACCELERATION);
-        this.acceleration.lerp(measured, 0.35);
+      const measured = nextVelocity.clone().sub(this.velocity).divideScalar(interval);
+      if (nextVelocity.dot(this.velocity) < 0) measured.set(0, 0, 0);
+      measured.clampLength(0, REMOTE_MAX_ACCELERATION);
+      this.acceleration.lerp(measured, 0.35);
     }
     if (this.initialized && interval > 0.04 && interval < 1) {
       const delta = nextRotation.clone().multiply(this.sampleRotation.clone().invert()).normalize();
@@ -86,7 +100,10 @@ export class RemotePlayerMotion {
     this.seq = seq;
     if (!this.initialized || teleport !== this.teleport) {
       this.snapPending = true;
-      if (this.initialized) { this.acceleration.set(0, 0, 0); this.rotationValid = false; }
+      if (this.initialized) {
+        this.acceleration.set(0, 0, 0);
+        this.rotationValid = false;
+      }
     }
     this.teleport = teleport;
     this.initialized = true;
@@ -97,7 +114,9 @@ export class RemotePlayerMotion {
     if (!this.initialized) return;
     const age = THREE.MathUtils.clamp(nowSeconds - this.sampleAt, 0, REMOTE_MAX_EXTRAPOLATION);
     const accelAge = Math.min(age, 0.5);
-    const target = this.samplePosition.clone().addScaledVector(this.velocity, age)
+    const target = this.samplePosition
+      .clone()
+      .addScaledVector(this.velocity, age)
       .addScaledVector(this.acceleration, 0.5 * accelAge * accelAge);
     if (this.snapPending || this.position.distanceToSquared(target) > REMOTE_SNAP_DISTANCE ** 2) {
       this.snapPending = false;
@@ -106,13 +125,12 @@ export class RemotePlayerMotion {
       this.smoothVelocity.set(0, 0, 0);
       return;
     }
-    this.position.copy(smoothDampVector(
-      this.position, target, this.smoothVelocity, REMOTE_SMOOTH_TIME, dt,
-    ));
+    this.position.copy(smoothDampVector(this.position, target, this.smoothVelocity, REMOTE_SMOOTH_TIME, dt));
     let targetRotation = this.sampleRotation;
     if (this.rotationValid && this.rotationInterval > 1e-3) {
       targetRotation = extrapolatedRotation(
-        this.sampleRotation, this.rotationDelta,
+        this.sampleRotation,
+        this.rotationDelta,
         Math.min(REMOTE_MAX_ROTATION_INTERVALS, age / this.rotationInterval),
       );
     }

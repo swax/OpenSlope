@@ -6,16 +6,25 @@
  */
 import type { TrailTileRow, TrailTileSet } from '../../src/core/doc/types';
 import {
-  TRAIL_TILE_ROW_WORDS, TRAIL_TILE_ROWS, trailTileRowLanes, trailTileRowLiteral, trailTileRowView, trailTileSetLiteral,
+  TRAIL_TILE_ROW_WORDS,
+  TRAIL_TILE_ROWS,
+  trailTileRowLanes,
+  trailTileRowLiteral,
+  trailTileRowView,
+  trailTileSetLiteral,
   trailTileSetRow,
 } from '../../src/core/mesh/trail-textures';
 import { orientCss } from '../../src/core/paint/orientation';
 
-export const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+export const esc = (s: string) =>
+  s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 
-let source = (ref: string) => `../Maps/${esc(ref.slice(0, ref.indexOf('/')))}/Textures/${esc(ref.slice(ref.indexOf('/') + 1))}`;
+let source = (ref: string) =>
+  `../Maps/${esc(ref.slice(0, ref.indexOf('/')))}/Textures/${esc(ref.slice(ref.indexOf('/') + 1))}`;
 /** Where the sheets' pictures come from — beside `Maps/`, from a sheet in `temp/`, unless set otherwise. */
-export function setTileSource(src: (ref: string) => string) { source = src; }
+export function setTileSource(src: (ref: string) => string) {
+  source = src;
+}
 /** A tile ref's picture. */
 export const tileSrc = (ref: string) => source(ref);
 
@@ -23,12 +32,13 @@ export const tileSrc = (ref: string) => source(ref);
  *  — faded where the row is another's, worn for want of the set's own. */
 export function rowHtml(row: TrailTileRow, faded = false, narrow = false): string {
   const tile = (which: 'left' | 'middle' | 'right') => {
-    const ref = trailTileRowLanes(row).find(lane => lane.which === which)?.ref, view = trailTileRowView(row, which);
+    const ref = trailTileRowLanes(row).find(lane => lane.which === which)?.ref,
+      view = trailTileRowView(row, which);
     return ref
       ? `<img src="${tileSrc(ref)}" alt="${esc(ref)}" title="${esc(`${ref}${view.mirror ? ' mirrored' : ''}`)}" style="transform: ${orientCss(view.rot, view.mirror)}">`
       : '<span class="hole" title="none"></span>';
   };
-  const lanes = narrow ? ['left', 'right'] as const : ['left', 'middle', 'right'] as const;
+  const lanes = narrow ? (['left', 'right'] as const) : (['left', 'middle', 'right'] as const);
   return `<div class="srow${faded ? ' faded' : ''}">${lanes.map(tile).join('')}</div>`;
 }
 

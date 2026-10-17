@@ -1,5 +1,9 @@
 import {
-  request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse,
+  request as httpRequest,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
 } from 'node:http';
 import { connect as netConnect } from 'node:net';
 import type { Duplex } from 'node:stream';
@@ -32,10 +36,20 @@ function upstream(): URL | null {
   if (!voiceConfig()) return null;
   const raw = process.env.SLOPESMITH_LIVEKIT_UPSTREAM?.trim() || DEFAULT_UPSTREAM;
   let parsed: URL;
-  try { parsed = new URL(raw); }
-  catch { throw new Error('SLOPESMITH_LIVEKIT_UPSTREAM must be a valid loopback http:// URL'); }
-  if (parsed.protocol !== 'http:' || !LOOPBACK.has(parsed.hostname) || parsed.username || parsed.password
-    || parsed.search || parsed.hash || (parsed.pathname !== '/' && parsed.pathname !== '')) {
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('SLOPESMITH_LIVEKIT_UPSTREAM must be a valid loopback http:// URL');
+  }
+  if (
+    parsed.protocol !== 'http:' ||
+    !LOOPBACK.has(parsed.hostname) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== '/' && parsed.pathname !== '')
+  ) {
     throw new Error('SLOPESMITH_LIVEKIT_UPSTREAM must be a loopback http:// URL without a path or credentials');
   }
   return parsed;
@@ -60,8 +74,9 @@ export function proxyVoiceRequest(req: IncomingMessage, res: ServerResponse): bo
   const path = targetPath(req);
   if (path === null) return false;
   let destination: URL | null;
-  try { destination = upstream(); }
-  catch (error) {
+  try {
+    destination = upstream();
+  } catch (error) {
     log.error('invalid signalling proxy configuration', { error });
     answer(res, 503, { error: 'Voice signalling is not configured correctly.' });
     return true;
@@ -76,9 +91,15 @@ export function proxyVoiceRequest(req: IncomingMessage, res: ServerResponse): bo
   const method = req.method ?? 'GET';
   void (async () => {
     const crossSite = SAFE_METHODS.has(method) ? null : crossSiteRefusal(req);
-    if (crossSite) { answer(res, crossSite.status, crossSite.body); return; }
+    if (crossSite) {
+      answer(res, crossSite.status, crossSite.body);
+      return;
+    }
     const decision = await authorizeRequest(req, accessFor(VOICE_PROXY_PATH)(method, path));
-    if (!decision.allowed) { answer(res, decision.status, decision.body); return; }
+    if (!decision.allowed) {
+      answer(res, decision.status, decision.body);
+      return;
+    }
     relay(req, res, destination, path);
   })().catch(error => {
     log.error('a signalling request failed', { error });
@@ -93,17 +114,23 @@ function relay(req: IncomingMessage, res: ServerResponse, destination: URL, path
   delete headers.connection;
   delete headers.upgrade;
   delete headers['proxy-connection'];
-  const outgoing = httpRequest({
-    hostname: destination.hostname,
-    port: destination.port || 80,
-    method: req.method,
-    path,
-    headers,
-  }, incoming => {
-    if (res.destroyed) { incoming.destroy(); return; }
-    res.writeHead(incoming.statusCode ?? 502, incoming.statusMessage, incoming.headers);
-    incoming.pipe(res);
-  });
+  const outgoing = httpRequest(
+    {
+      hostname: destination.hostname,
+      port: destination.port || 80,
+      method: req.method,
+      path,
+      headers,
+    },
+    incoming => {
+      if (res.destroyed) {
+        incoming.destroy();
+        return;
+      }
+      res.writeHead(incoming.statusCode ?? 502, incoming.statusMessage, incoming.headers);
+      incoming.pipe(res);
+    },
+  );
   outgoing.setTimeout(20_000, () => outgoing.destroy(new Error('LiveKit signalling timed out')));
   outgoing.on('error', error => {
     if (!res.headersSent && !res.destroyed) answer(res, 502, { error: 'Voice signalling is unavailable.' });
@@ -114,13 +141,19 @@ function relay(req: IncomingMessage, res: ServerResponse, destination: URL, path
 }
 
 const REASON: Record<number, string> = {
-  401: 'Unauthorized', 403: 'Forbidden', 500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  500: 'Internal Server Error',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
 };
 
 function refuseUpgrade(socket: Duplex, status: number, message: string): void {
   const body = JSON.stringify({ error: message });
-  socket.end(`HTTP/1.1 ${status} ${REASON[status] ?? 'Bad Request'}\r\nconnection: close\r\n`
-    + `content-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+  socket.end(
+    `HTTP/1.1 ${status} ${REASON[status] ?? 'Bad Request'}\r\nconnection: close\r\n` +
+      `content-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+  );
 }
 
 /** Re-serialize the browser's already-parsed upgrade request to the loopback LiveKit listener. */
@@ -128,10 +161,14 @@ async function proxyUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer):
   const path = targetPath(req);
   if (path === null) return;
   const authority = authorityRefusal(req);
-  if (authority) { refuseUpgrade(socket, authority.status, String(authority.body.error)); return; }
+  if (authority) {
+    refuseUpgrade(socket, authority.status, String(authority.body.error));
+    return;
+  }
   let destination: URL | null;
-  try { destination = upstream(); }
-  catch (error) {
+  try {
+    destination = upstream();
+  } catch (error) {
     log.error('invalid signalling proxy configuration', { error });
     refuseUpgrade(socket, 503, 'Voice signalling is not configured correctly.');
     return;
@@ -142,9 +179,15 @@ async function proxyUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer):
   }
   // The upgrade carries the same cookie a fetch would, so it is gated the same way the session channel's is.
   const crossSite = crossSiteRefusal(req);
-  if (crossSite) { refuseUpgrade(socket, crossSite.status, String(crossSite.body.error)); return; }
+  if (crossSite) {
+    refuseUpgrade(socket, crossSite.status, String(crossSite.body.error));
+    return;
+  }
   const decision = await authorizeRequest(req, accessFor(VOICE_PROXY_PATH)('GET', path));
-  if (!decision.allowed) { refuseUpgrade(socket, decision.status, String(decision.body.error ?? 'Refused.')); return; }
+  if (!decision.allowed) {
+    refuseUpgrade(socket, decision.status, String(decision.body.error ?? 'Refused.'));
+    return;
+  }
   if (socket.destroyed) return;
 
   const peer = netConnect(Number(destination.port || 80), destination.hostname);
@@ -176,7 +219,11 @@ export function attachVoiceProxy(server: Server): () => void {
   const upgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     void proxyUpgrade(req, socket, head).catch(error => {
       log.error('a signalling upgrade failed', { error });
-      try { refuseUpgrade(socket, 500, 'Voice signalling could not be opened.'); } catch { socket.destroy(); }
+      try {
+        refuseUpgrade(socket, 500, 'Voice signalling could not be opened.');
+      } catch {
+        socket.destroy();
+      }
     });
   };
   server.on('upgrade', upgrade);

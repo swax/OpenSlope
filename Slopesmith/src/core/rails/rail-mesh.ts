@@ -31,7 +31,10 @@ export interface RailTubeGeom {
   indices: number[];
 }
 
-const norm = (a: V3): V3 => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const norm = (a: V3): V3 => {
+  const l = len(a) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+};
 
 /**
  * Sweep one rail's curve into its tube. The curve is densely sampled then resampled to the shipped ring
@@ -40,22 +43,28 @@ const norm = (a: V3): V3 => { const l = len(a) || 1; return [a[0] / l, a[1] / l,
  * one rotated by the minimal turn between tangents, so the tube never twists through a bend. Fewer than two
  * curve points (a half-drawn rail) yields null, mirroring the exporter's empty-spline guard.
  */
-export function sweepRail(rail: Rail, radius = RAIL_TUBE_RADIUS, sides = RAIL_TUBE_SIDES,
-                          ringSpacing = RAIL_RING_SPACING): RailTubeGeom | null {
+export function sweepRail(
+  rail: Rail,
+  radius = RAIL_TUBE_RADIUS,
+  sides = RAIL_TUBE_SIDES,
+  ringSpacing = RAIL_RING_SPACING,
+): RailTubeGeom | null {
   const dense = sampleRail(rail.nodes, 24, rail.handles);
   if (dense.length < 2) return null;
   const pts: V3[] = [dense[0]];
   let acc = 0;
   for (let i = 1; i < dense.length; i++) {
     acc += len(sub(dense[i], dense[i - 1]));
-    if (acc >= ringSpacing) { pts.push(dense[i]); acc = 0; }
+    if (acc >= ringSpacing) {
+      pts.push(dense[i]);
+      acc = 0;
+    }
   }
   if (acc > 1e-3 || pts.length < 2) pts.push(dense[dense.length - 1]); // always ring the far end
   if (pts.length < 2) return null;
 
   // tangent per ring: central difference (clamped ends)
-  const tangents: V3[] = pts.map((_, i) =>
-    norm(sub(pts[Math.min(pts.length - 1, i + 1)], pts[Math.max(0, i - 1)])));
+  const tangents: V3[] = pts.map((_, i) => norm(sub(pts[Math.min(pts.length - 1, i + 1)], pts[Math.max(0, i - 1)])));
 
   // initial frame: side = t × up, falling back for a vertical start; b completes the ring basis
   let n = cross(tangents[0], [0, 1, 0]);
@@ -88,7 +97,8 @@ export function sweepRail(rail: Rail, radius = RAIL_TUBE_RADIUS, sides = RAIL_TU
       uvs.push(around, v);
     }
     if (i > 0) {
-      const r0 = (i - 1) * ringVerts, r1 = i * ringVerts;
+      const r0 = (i - 1) * ringVerts,
+        r1 = i * ringVerts;
       for (let j = 0; j < sides; j++) {
         indices.push(r0 + j, r1 + j, r1 + j + 1);
         indices.push(r0 + j, r1 + j + 1, r0 + j + 1);
@@ -130,7 +140,10 @@ export function railSupportPosts(rail: Rail, radius = RAIL_POST_RADIUS): RailTub
       for (let k = 0; k < 4; k++) uvs.push(0.5, 0.5);
     }
     for (let j = 0; j < 4; j++) {
-      const a = base + j, b = base + ((j + 1) % 4), c = base + 4 + ((j + 1) % 4), d = base + 4 + j;
+      const a = base + j,
+        b = base + ((j + 1) % 4),
+        c = base + 4 + ((j + 1) % 4),
+        d = base + 4 + j;
       indices.push(a, b, c);
       indices.push(a, c, d);
     }

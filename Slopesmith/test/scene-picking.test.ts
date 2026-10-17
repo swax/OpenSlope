@@ -115,21 +115,38 @@ referenceScreens.add(referenceScreenPanel, referenceScreenMarkers);
 
 const authoredParticles = new THREE.Group();
 const fog = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 4), new THREE.MeshBasicMaterial());
-fog.position.z = 7; fog.userData.particleVolumeIndex = 2; fog.userData.particleVolumeId = 'fog-volume-3';
+fog.position.z = 7;
+fog.userData.particleVolumeIndex = 2;
+fog.userData.particleVolumeId = 'fog-volume-3';
 authoredParticles.add(fog);
 const referenceParticles = new THREE.Group();
 
 const knot = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
 knot.position.z = 6;
 
-scene.add(authoredProps, standardReferenceProps, effectReferenceProps, colocatedEffectStates, lights, sources, rails, gems,
-  screens, referenceScreens, authoredParticles, referenceParticles, knot);
+scene.add(
+  authoredProps,
+  standardReferenceProps,
+  effectReferenceProps,
+  colocatedEffectStates,
+  lights,
+  sources,
+  rails,
+  gems,
+  screens,
+  referenceScreens,
+  authoredParticles,
+  referenceParticles,
+  knot,
+);
 scene.updateMatrixWorld(true);
 
 const picking = createScenePicking(stage, {
   authoredPropRoots: () => [authoredProps],
-  referencePropRoots: scope => scope === 'effects'
-    ? [standardReferenceProps, effectReferenceProps, colocatedEffectStates] : [standardReferenceProps],
+  referencePropRoots: scope =>
+    scope === 'effects'
+      ? [standardReferenceProps, effectReferenceProps, colocatedEffectStates]
+      : [standardReferenceProps],
   authoredParticleRoots: () => [authoredParticles],
   referenceParticleRoots: () => [referenceParticles],
   lightRoots: () => [lights],
@@ -145,44 +162,62 @@ const picking = createScenePicking(stage, {
 });
 
 let pick = picking.pick({ props: 'standard', surfaces: true });
-check(pick?.target === 'prop' && pick.source === 'authored' && pick.propIndex === 7,
-  'standard prop query resolves the nearest authored prop and its stable index');
+check(
+  pick?.target === 'prop' && pick.source === 'authored' && pick.propIndex === 7,
+  'standard prop query resolves the nearest authored prop and its stable index',
+);
 
 pick = picking.pick({ sources: true });
-check(pick?.target === 'source' && pick.source === 'reference'
-  && pick.sourceKind === 'sound' && pick.sourceIndex === 0,
-  'source query resolves a batched speaker marker and its stable point index');
+check(
+  pick?.target === 'source' && pick.source === 'reference' && pick.sourceKind === 'sound' && pick.sourceIndex === 0,
+  'source query resolves a batched speaker marker and its stable point index',
+);
 
 soundSources.position.z = -12; // move its point from z=3.5 to z=-8.5, behind the terrain at z=-5
 scene.updateMatrixWorld(true);
 pick = picking.pick({ sources: true });
-check(pick?.target === 'source' && pick.sourceKind === 'sound',
-  'source query remains click-through when its icon is behind terrain');
+check(
+  pick?.target === 'source' && pick.sourceKind === 'sound',
+  'source query remains click-through when its icon is behind terrain',
+);
 soundSources.position.z = 0;
 scene.updateMatrixWorld(true);
 
 pick = picking.pick({ particleVolumes: true, surfaces: true });
-check(pick?.target === 'particleVolume' && pick.source === 'authored'
-  && pick.volumeIndex === 2 && pick.volumeId === 'fog-volume-3',
-  'Effects particle query resolves a standalone fog volume and its stable authored ID');
+check(
+  pick?.target === 'particleVolume' &&
+    pick.source === 'authored' &&
+    pick.volumeIndex === 2 &&
+    pick.volumeId === 'fog-volume-3',
+  'Effects particle query resolves a standalone fog volume and its stable authored ID',
+);
 
 authoredProps.visible = false;
 pick = picking.pick({ props: 'standard', surfaces: true });
-check(pick?.target === 'prop' && pick.source === 'reference'
-  && pick.sourceIndex === 17 && pick.level === 'TEST' && pick.name === 'standard-ref',
-  'reference prop hit decodes native source index and copy metadata');
+check(
+  pick?.target === 'prop' &&
+    pick.source === 'reference' &&
+    pick.sourceIndex === 17 &&
+    pick.level === 'TEST' &&
+    pick.name === 'standard-ref',
+  'reference prop hit decodes native source index and copy metadata',
+);
 
 pick = picking.pick({ props: 'effects', surfaces: true });
-check(pick?.target === 'prop' && pick.source === 'reference' && pick.sourceIndex === 42,
-  'Effects scope includes the effect-only reference host proxy');
+check(
+  pick?.target === 'prop' && pick.source === 'reference' && pick.sourceIndex === 42,
+  'Effects scope includes the effect-only reference host proxy',
+);
 
 effectReferenceProps.visible = false;
 standardReferenceProps.visible = false;
 colocatedEffectStates.visible = true;
 scene.updateMatrixWorld(true);
 pick = picking.pick({ props: 'effects', surfaces: true });
-check(pick?.target === 'prop' && pick.source === 'reference' && pick.sourceIndex === 100,
-  'Effects picking prefers the visible state when a hidden replacement overlaps it');
+check(
+  pick?.target === 'prop' && pick.source === 'reference' && pick.sourceIndex === 100,
+  'Effects picking prefers the visible state when a hidden replacement overlaps it',
+);
 
 colocatedEffectStates.visible = false;
 pick = picking.pick({ props: 'effects', surfaces: true });
@@ -190,10 +225,15 @@ check(pick?.target === 'surface', 'hidden scene roots are excluded and the visib
 
 let terrainRaycasts = 0;
 const terrainRaycast = terrain.raycast.bind(terrain);
-terrain.raycast = (raycaster, intersections) => { terrainRaycasts++; terrainRaycast(raycaster, intersections); };
+terrain.raycast = (raycaster, intersections) => {
+  terrainRaycasts++;
+  terrainRaycast(raycaster, intersections);
+};
 pick = picking.pick({ props: 'standard', occludeWithSurfaces: true });
-check(pick === null && terrainRaycasts === 0,
-  'occlusion-only query skips the terrain raycast when no entity candidate exists');
+check(
+  pick === null && terrainRaycasts === 0,
+  'occlusion-only query skips the terrain raycast when no entity candidate exists',
+);
 
 authoredProps.visible = true;
 prop.position.z = -8;
@@ -207,43 +247,59 @@ prop.position.z = 0;
 lights.visible = true;
 scene.updateMatrixWorld(true);
 pick = picking.pick({ props: 'standard', lights: true, surfaces: true });
-check(pick?.target === 'light' && pick.lightIndex === 3,
-  'nearest-family resolution skips untagged decoration and decodes the tagged light');
+check(
+  pick?.target === 'light' && pick.lightIndex === 3,
+  'nearest-family resolution skips untagged decoration and decodes the tagged light',
+);
 
 lights.visible = false;
 pick = picking.pick({ rails: true, gems: true, surfaces: true });
-check(pick?.target === 'rail' && pick.source === 'authored' && pick.railIndex === 8 && pick.railNode === 2,
-  'rail hits carry both the rail and exact node identity');
+check(
+  pick?.target === 'rail' && pick.source === 'authored' && pick.railIndex === 8 && pick.railNode === 2,
+  'rail hits carry both the rail and exact node identity',
+);
 
 // Video screens: the marker cloud is nearer along this ray, so it answers first and reports the POINT index.
 pick = picking.pick({ screens: true, surfaces: true });
-check(pick?.target === 'screen' && pick.source === 'authored' && pick.screenIndex === 0,
-  'a screen’s movie marker resolves the screen by its point index');
+check(
+  pick?.target === 'screen' && pick.source === 'authored' && pick.screenIndex === 0,
+  'a screen’s movie marker resolves the screen by its point index',
+);
 screenMarkers.visible = false;
 pick = picking.pick({ screens: true, surfaces: true });
-check(pick?.target === 'screen' && pick.screenIndex === 4,
-  'and its panel resolves the same screen by the index it carries');
+check(
+  pick?.target === 'screen' && pick.screenIndex === 4,
+  'and its panel resolves the same screen by the index it carries',
+);
 screenMarkers.visible = true;
 screens.visible = false;
 
 referenceScreens.visible = true;
 pick = picking.pick({ screenMarkers: true });
-check(pick?.target === 'screen' && pick.source === 'reference' && pick.screenIndex === 0,
-  'a reference movie marker is an overlay pick and retains its reference identity');
+check(
+  pick?.target === 'screen' && pick.source === 'reference' && pick.screenIndex === 0,
+  'a reference movie marker is an overlay pick and retains its reference identity',
+);
 referenceScreenMarkers.visible = false;
 pick = picking.pick({ screens: true, surfaces: true });
-check(pick?.target === 'screen' && pick.source === 'reference' && pick.screenIndex === 9,
-  'a detected reference panel is selectable through the same screen path');
+check(
+  pick?.target === 'screen' && pick.source === 'reference' && pick.screenIndex === 9,
+  'a detected reference panel is selectable through the same screen path',
+);
 referenceScreens.visible = false;
 
 pick = picking.pick({ knots: true, surfaces: true });
 check(pick?.target === 'knot', 'the same nearest-hit resolver supports course knots');
 referenceTerrain.visible = true;
 scene.updateMatrixWorld(true);
-check(picking.pick({ surfaces: 'authored' })?.source === 'authored',
-  'authored-only tools ignore a nearer reference surface');
-check(picking.pick({ surfaces: true })?.source === 'reference',
-  'unfiltered scene queries resolve the nearest visible mountain surface');
+check(
+  picking.pick({ surfaces: 'authored' })?.source === 'authored',
+  'authored-only tools ignore a nearer reference surface',
+);
+check(
+  picking.pick({ surfaces: true })?.source === 'reference',
+  'unfiltered scene queries resolve the nearest visible mountain surface',
+);
 check(picking.pick({}) === null, 'an empty scene-pick query resolves nothing');
 
 if (failures) process.exitCode = 1;

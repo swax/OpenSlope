@@ -76,22 +76,51 @@ export interface CharacterRigHandle {
 }
 
 type DrivenBoneName =
-  | 'Hips' | 'Spine' | 'Chest' | 'Neck' | 'Head'
-  | 'Pelvis.L' | 'Pelvis.R'
-  | 'Clavicle.L' | 'Clavicle.R'
-  | 'UpperArm.L' | 'LowerArm.L' | 'Hand.L'
-  | 'UpperArm.R' | 'LowerArm.R' | 'Hand.R'
-  | 'UpperLeg.L' | 'LowerLeg.L' | 'Foot.L'
-  | 'UpperLeg.R' | 'LowerLeg.R' | 'Foot.R';
+  | 'Hips'
+  | 'Spine'
+  | 'Chest'
+  | 'Neck'
+  | 'Head'
+  | 'Pelvis.L'
+  | 'Pelvis.R'
+  | 'Clavicle.L'
+  | 'Clavicle.R'
+  | 'UpperArm.L'
+  | 'LowerArm.L'
+  | 'Hand.L'
+  | 'UpperArm.R'
+  | 'LowerArm.R'
+  | 'Hand.R'
+  | 'UpperLeg.L'
+  | 'LowerLeg.L'
+  | 'Foot.L'
+  | 'UpperLeg.R'
+  | 'LowerLeg.R'
+  | 'Foot.R';
 
-const OPTIONAL_BONES = new Set<DrivenBoneName>([
-  'Spine', 'Neck', 'Pelvis.L', 'Pelvis.R', 'Clavicle.L', 'Clavicle.R',
-]);
+const OPTIONAL_BONES = new Set<DrivenBoneName>(['Spine', 'Neck', 'Pelvis.L', 'Pelvis.R', 'Clavicle.L', 'Clavicle.R']);
 const DRIVEN_BONES: DrivenBoneName[] = [
-  'Hips', 'Spine', 'Chest', 'Neck', 'Head',
-  'Pelvis.L', 'Pelvis.R', 'Clavicle.L', 'Clavicle.R',
-  'UpperArm.L', 'LowerArm.L', 'Hand.L', 'UpperArm.R', 'LowerArm.R', 'Hand.R',
-  'UpperLeg.L', 'LowerLeg.L', 'Foot.L', 'UpperLeg.R', 'LowerLeg.R', 'Foot.R',
+  'Hips',
+  'Spine',
+  'Chest',
+  'Neck',
+  'Head',
+  'Pelvis.L',
+  'Pelvis.R',
+  'Clavicle.L',
+  'Clavicle.R',
+  'UpperArm.L',
+  'LowerArm.L',
+  'Hand.L',
+  'UpperArm.R',
+  'LowerArm.R',
+  'Hand.R',
+  'UpperLeg.L',
+  'LowerLeg.L',
+  'Foot.L',
+  'UpperLeg.R',
+  'LowerLeg.R',
+  'Foot.R',
 ];
 const HIPS_LENGTH = 0.14;
 /** @internal Proximal-to-distal bends, exported so a hand-authored rig can be checked against the angles it
@@ -117,7 +146,8 @@ const HEAD_HIDE_SCALE = 1e-3;
  * crossing the ulna along the whole forearm, with humeral rotation carrying the rest, not a hinge at either
  * end. Raising `FOREARM` toward 1 moves the twist back onto the elbow; lowering it moves it to the wrist.
  */
-const SHOULDER_TWIST_SHARE = 0.30, FOREARM_TWIST_SHARE = 0.65;
+const SHOULDER_TWIST_SHARE = 0.3,
+  FOREARM_TWIST_SHARE = 0.65;
 
 interface BoneState {
   bone: THREE.Bone;
@@ -143,7 +173,7 @@ interface FingerState {
 }
 
 const templatePromises = new Map<string, Promise<THREE.Group>>();
-const DEFAULT_PALM_LENGTH = 0.10;
+const DEFAULT_PALM_LENGTH = 0.1;
 
 /** Imported Mixamo accessory/finger names retain their source prefix while the driven hand is renamed. */
 function sourceBoneKey(name: string): string {
@@ -192,7 +222,8 @@ class DrivenCharacterRig {
   constructor(private readonly root: THREE.Group) {
     root.updateMatrixWorld(true);
     this.restUp = new THREE.Vector3(0, 1, 0)
-      .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion())).normalize();
+      .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion()))
+      .normalize();
     const importedBones = new Map<string, THREE.Bone>();
     const sourceBones = new Map<string, THREE.Bone>();
     root.traverse(object => {
@@ -223,11 +254,15 @@ class DrivenCharacterRig {
 
   private measureArm(side: 'L' | 'R') {
     const at = (name: DrivenBoneName) => this.bones.get(name)!.bone.getWorldPosition(new THREE.Vector3());
-    const shoulder = at(`UpperArm.${side}`), elbow = at(`LowerArm.${side}`), hand = at(`Hand.${side}`);
+    const shoulder = at(`UpperArm.${side}`),
+      elbow = at(`LowerArm.${side}`),
+      hand = at(`Hand.${side}`);
     return { upper: shoulder.distanceTo(elbow), lower: elbow.distanceTo(hand) };
   }
 
-  setFirstPerson(on: boolean) { this.firstPerson = on; }
+  setFirstPerson(on: boolean) {
+    this.firstPerson = on;
+  }
 
   pose(p: CharacterPose) {
     this.root.updateWorldMatrix(true, true);
@@ -243,7 +278,8 @@ class DrivenCharacterRig {
     // optional Spine continue from that exact tail. A world-up helper leaves an orphan tail in a crouch; making
     // Spine branch separately from the hips pivot hides the orphan but duplicates the lower-back segment.
     _hipsTail.copy(p.upperBack).sub(p.hips);
-    if (_hipsTail.lengthSq() < 1e-8) _hipsTail.copy(p.up); else _hipsTail.normalize();
+    if (_hipsTail.lengthSq() < 1e-8) _hipsTail.copy(p.up);
+    else _hipsTail.normalize();
     _hipsTail.multiplyScalar(HIPS_LENGTH).add(p.hips);
     this.aim('Hips', p.hips, _hipsTail, p.toe);
     // The shoulder line supplies the chest's axial rotation, so a torso turns with the shoulders a stance swings
@@ -281,18 +317,14 @@ class DrivenCharacterRig {
     this.aim('LowerLeg.L', kneeL, ankleL, p.toe);
     const bindings = p.feet === 'bindings';
     if (bindings) boardFootAxes(p, _boardToe, _boardAlong);
-    if (bindings) footDirection(
-      _footDirection, _boardToe, _boardAlong, swap ? p.bindingRear : p.bindingFront,
-    );
+    if (bindings) footDirection(_footDirection, _boardToe, _boardAlong, swap ? p.bindingRear : p.bindingFront);
     else _footDirection.copy(p.toe);
     this.orientFoot('Foot.L', _footDirection, p.soleUp);
 
     this.aimOptional('Pelvis.R', p.hips, hipR, p.up);
     this.aim('UpperLeg.R', hipR, kneeR, p.toe);
     this.aim('LowerLeg.R', kneeR, ankleR, p.toe);
-    if (bindings) footDirection(
-      _footDirection, _boardToe, _boardAlong, swap ? p.bindingFront : p.bindingRear,
-    );
+    if (bindings) footDirection(_footDirection, _boardToe, _boardAlong, swap ? p.bindingFront : p.bindingRear);
     else _footDirection.copy(p.toe);
     this.orientFoot('Foot.R', _footDirection, p.soleUp);
 
@@ -306,10 +338,32 @@ class DrivenCharacterRig {
     const handR = swap ? p.handFront : p.handRear;
     const handFingerR = swap ? p.handFrontFinger : p.handRearFinger;
     const handPalmR = swap ? p.handFrontPalm : p.handRearPalm;
-    this.poseArm('L', p, shoulderL, elbowL, handL, handFingerL, handPalmL,
-      swap ? p.handRearTracked : p.handFrontTracked, _handRotationL, _upperRollL, _forearmRollL);
-    this.poseArm('R', p, shoulderR, elbowR, handR, handFingerR, handPalmR,
-      swap ? p.handFrontTracked : p.handRearTracked, _handRotationR, _upperRollR, _forearmRollR);
+    this.poseArm(
+      'L',
+      p,
+      shoulderL,
+      elbowL,
+      handL,
+      handFingerL,
+      handPalmL,
+      swap ? p.handRearTracked : p.handFrontTracked,
+      _handRotationL,
+      _upperRollL,
+      _forearmRollL,
+    );
+    this.poseArm(
+      'R',
+      p,
+      shoulderR,
+      elbowR,
+      handR,
+      handFingerR,
+      handPalmR,
+      swap ? p.handFrontTracked : p.handRearTracked,
+      _handRotationR,
+      _upperRollR,
+      _forearmRollR,
+    );
     this.poseFingers('left', swap ? p.handRearCurl : p.handFrontCurl);
     this.poseFingers('right', swap ? p.handFrontCurl : p.handRearCurl);
 
@@ -332,13 +386,25 @@ class DrivenCharacterRig {
    * they are. A controller past full extension still straightens the arm toward it, exactly as the landmark
    * solver does, and the hand falls short by the reach it does not have.
    */
-  private poseArm(side: 'L' | 'R', p: CharacterPose, shoulder: THREE.Vector3, elbow: THREE.Vector3,
-                  hand: THREE.Vector3, finger: THREE.Vector3, palm: THREE.Vector3, tracked: boolean,
-                  handRotation: THREE.Quaternion, upperRoll: THREE.Vector3, forearmRoll: THREE.Vector3) {
-    const upper = `UpperArm.${side}` as const, lower = `LowerArm.${side}` as const;
+  private poseArm(
+    side: 'L' | 'R',
+    p: CharacterPose,
+    shoulder: THREE.Vector3,
+    elbow: THREE.Vector3,
+    hand: THREE.Vector3,
+    finger: THREE.Vector3,
+    palm: THREE.Vector3,
+    tracked: boolean,
+    handRotation: THREE.Quaternion,
+    upperRoll: THREE.Vector3,
+    forearmRoll: THREE.Vector3,
+  ) {
+    const upper = `UpperArm.${side}` as const,
+      lower = `LowerArm.${side}` as const;
     const handBone = `Hand.${side}` as const;
     this.aimOptional(`Clavicle.${side}`, p.clavicleRoot, shoulder, _chestAxis);
-    let root = shoulder, mid = elbow;
+    let root = shoulder,
+      mid = elbow;
     if (tracked) {
       root = this.boneHead(upper, _armRoot);
       _armBend.copy(elbow).sub(_armChord.copy(shoulder).add(hand).multiplyScalar(0.5));
@@ -363,8 +429,7 @@ class DrivenCharacterRig {
     return out.copy(state.restLocalPosition).applyMatrix4(parent.matrixWorld);
   }
 
-  private aimOptional(name: DrivenBoneName, head: THREE.Vector3, tail: THREE.Vector3,
-                      forward: THREE.Vector3) {
+  private aimOptional(name: DrivenBoneName, head: THREE.Vector3, tail: THREE.Vector3, forward: THREE.Vector3) {
     if (this.bones.has(name)) this.aim(name, head, tail, forward);
   }
 
@@ -390,7 +455,10 @@ class DrivenCharacterRig {
   /** A hand's bind rotation does not promise that local +Z is its palm. Mixamo fingers retain their authored
    * anatomy, so recover the finger/thumb frame once and rotate that whole frame onto the tracked palm. */
   private captureHandFrames(sourceBones: Map<string, THREE.Bone>) {
-    for (const [name, side] of [['Hand.L', 'left'], ['Hand.R', 'right']] as const) {
+    for (const [name, side] of [
+      ['Hand.L', 'left'],
+      ['Hand.R', 'right'],
+    ] as const) {
       const hand = this.bones.get(name)!;
       hand.bone.getWorldPosition(_restHandHead);
       const middle = sourceBones.get(`${side}handmiddle1`);
@@ -434,14 +502,16 @@ class DrivenCharacterRig {
       _fingerCurlAxis.normalize().applyQuaternion(_fingerInverse.copy(_fingerWorldRotation).invert());
       bone.matrixAutoUpdate = true;
       this.fingers[side].push({
-        bone, digit, segment,
-        restLocalRotation: bone.quaternion.clone(), curlAxis: _fingerCurlAxis.clone(),
+        bone,
+        digit,
+        segment,
+        restLocalRotation: bone.quaternion.clone(),
+        curlAxis: _fingerCurlAxis.clone(),
       });
     }
   }
 
-  private handRotation(name: HandBoneName, finger: THREE.Vector3, palm: THREE.Vector3,
-                       out: THREE.Quaternion) {
+  private handRotation(name: HandBoneName, finger: THREE.Vector3, palm: THREE.Vector3, out: THREE.Quaternion) {
     const state = this.bones.get(name)!;
     const rest = this.handFrames.get(name)!;
     retargetHandWorldRotation(state.restWorldRotation, rest.finger, rest.palm, finger, palm, out);
@@ -456,10 +526,17 @@ class DrivenCharacterRig {
    * makes it something that can be divided: each bone is rolled off `neutral` by its own share, so the
    * shoulder, the elbow and the wrist each carry a third of what one joint used to.
    */
-  private armRolls(lower: 'LowerArm.L' | 'LowerArm.R', hand: HandBoneName,
-                   handTarget: THREE.Quaternion, neutral: THREE.Vector3,
-                   shoulder: THREE.Vector3, elbow: THREE.Vector3, wrist: THREE.Vector3,
-                   outUpper: THREE.Vector3, outLower: THREE.Vector3) {
+  private armRolls(
+    lower: 'LowerArm.L' | 'LowerArm.R',
+    hand: HandBoneName,
+    handTarget: THREE.Quaternion,
+    neutral: THREE.Vector3,
+    shoulder: THREE.Vector3,
+    elbow: THREE.Vector3,
+    wrist: THREE.Vector3,
+    outUpper: THREE.Vector3,
+    outLower: THREE.Vector3,
+  ) {
     const lowerRest = this.bones.get(lower)!.restWorldRotation;
     const handRest = this.bones.get(hand)!.restWorldRotation;
     _handDelta.copy(handTarget).multiply(_inverseHandRest.copy(handRest).invert()).normalize();
@@ -487,7 +564,8 @@ class DrivenCharacterRig {
     for (const finger of this.fingers[side]) {
       const amount = THREE.MathUtils.clamp(curl?.[finger.digit] ?? 0, 0, 1);
       const angle = FINGER_CURL_ANGLES[Math.min(finger.segment - 1, FINGER_CURL_ANGLES.length - 1)];
-      finger.bone.quaternion.copy(finger.restLocalRotation)
+      finger.bone.quaternion
+        .copy(finger.restLocalRotation)
         .multiply(_fingerCurlRotation.setFromAxisAngle(finger.curlAxis, amount * angle));
       finger.bone.updateMatrix();
       finger.bone.matrixWorldNeedsUpdate = true;
@@ -526,8 +604,7 @@ class DrivenCharacterRig {
     // skinning normal matrix on some drivers, which loses the WHOLE body rather than just its head.
     if (this.firstPerson && name === 'Head') {
       _world.compose(_boneHead, rotation, _headHidden.copy(state.restWorldScale).multiplyScalar(HEAD_HIDE_SCALE));
-    }
-    else _world.compose(_boneHead, rotation, state.restWorldScale);
+    } else _world.compose(_boneHead, rotation, state.restWorldScale);
     _local.copy(parent.matrixWorld).invert().multiply(_world);
     state.bone.matrix.copy(_local);
     state.bone.matrixWorldNeedsUpdate = true;
@@ -559,16 +636,21 @@ function footFrame(up: THREE.Vector3, forward: THREE.Vector3, out: THREE.Quatern
 }
 
 /** @internal Exact foot bind-frame retargeting, exported so the invariant can be covered without WebGL. */
-export function retargetFootWorldRotation(restWorldRotation: THREE.Quaternion, restUp: THREE.Vector3,
-                                          targetUp: THREE.Vector3, targetForward: THREE.Vector3,
-                                          out = new THREE.Quaternion()) {
+export function retargetFootWorldRotation(
+  restWorldRotation: THREE.Quaternion,
+  restUp: THREE.Vector3,
+  targetUp: THREE.Vector3,
+  targetForward: THREE.Vector3,
+  out = new THREE.Quaternion(),
+) {
   // A humanoid foot bone runs from ankle toward ToeBase, commonly 25-45 degrees below its actual sole.
   // Hand-authored rigs may additionally mirror either local transverse axis. The delta between these two
   // surrounding sole frames retains both facts because it rotates the complete bind quaternion unchanged.
   _restFootForward.set(0, 1, 0).applyQuaternion(restWorldRotation);
   footFrame(restUp, _restFootForward, _restFootFrame);
   footFrame(targetUp, targetForward, _targetFootFrame);
-  return out.copy(_targetFootFrame)
+  return out
+    .copy(_targetFootFrame)
     .multiply(_inverseFootFrame.copy(_restFootFrame).invert())
     .multiply(restWorldRotation);
 }
@@ -604,61 +686,84 @@ export function axialTwist(axis: THREE.Vector3, from: THREE.Vector3, to: THREE.V
  * shoulder→hand chord, swung toward `pole`. A hand past full extension straightens the arm toward it. The same
  * solve the landmark rider uses, applied to the imported skeleton's own root and lengths.
  */
-export function solveArmElbow(root: THREE.Vector3, tip: THREE.Vector3, upper: number, lower: number,
-                              pole: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+export function solveArmElbow(
+  root: THREE.Vector3,
+  tip: THREE.Vector3,
+  upper: number,
+  lower: number,
+  pole: THREE.Vector3,
+  out: THREE.Vector3,
+): THREE.Vector3 {
   const dir = _armDir.copy(tip).sub(root);
   const d = dir.length();
-  if (d < 1e-5) dir.set(0, -1, 0); else dir.divideScalar(d);
+  if (d < 1e-5) dir.set(0, -1, 0);
+  else dir.divideScalar(d);
   const reach = THREE.MathUtils.clamp(d, Math.abs(upper - lower) + 1e-3, upper + lower - 1e-3);
   const cosA = (upper * upper + reach * reach - lower * lower) / (2 * upper * reach);
   const a = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1));
   const perp = _armPerp.copy(pole).addScaledVector(dir, -pole.dot(dir));
   if (perp.lengthSq() < 1e-8) perp.set(dir.y, -dir.x, 0);
   perp.normalize();
-  return out.copy(root).addScaledVector(dir, upper * Math.cos(a)).addScaledVector(perp, upper * Math.sin(a));
+  return out
+    .copy(root)
+    .addScaledVector(dir, upper * Math.cos(a))
+    .addScaledVector(perp, upper * Math.sin(a));
 }
 
 /** @internal Positive curl turns an extended digit toward the side its open palm faces. */
-export function fingerCurlAxis(finger: THREE.Vector3, palm: THREE.Vector3,
-                               out = new THREE.Vector3()): THREE.Vector3 {
+export function fingerCurlAxis(finger: THREE.Vector3, palm: THREE.Vector3, out = new THREE.Vector3()): THREE.Vector3 {
   out.crossVectors(finger, palm);
   return out.lengthSq() < 1e-8 ? out.set(1, 0, 0) : out.normalize();
 }
 
 /** @internal The controller stays at WebXR's source-of-truth palm origin. Move the wrist behind it by the
  * selected model's palm length and slightly away from the palm face so the shell rests in, not behind, the hand. */
-export function gripToWristOffset(rotation: THREE.Quaternion, palmLength = DEFAULT_PALM_LENGTH,
-                                  out = new THREE.Vector3()): THREE.Vector3 {
+export function gripToWristOffset(
+  rotation: THREE.Quaternion,
+  palmLength = DEFAULT_PALM_LENGTH,
+  out = new THREE.Vector3(),
+): THREE.Vector3 {
   const along = THREE.MathUtils.clamp(palmLength * 0.55, 0.045, 0.075);
-  const clearance = THREE.MathUtils.clamp(palmLength * 0.20, 0.016, 0.026);
+  const clearance = THREE.MathUtils.clamp(palmLength * 0.2, 0.016, 0.026);
   return out.set(0, -along, -clearance).applyQuaternion(rotation);
 }
 
 /** @internal Retarget the imported hand's actual anatomical bind frame, not an assumed local axis. This is what
  * keeps a palms-forward T-pose palms-forward and thumb-up on mirrored Mixamo hands. */
-export function retargetHandWorldRotation(restWorldRotation: THREE.Quaternion,
-                                          restFinger: THREE.Vector3, restPalm: THREE.Vector3,
-                                          targetFinger: THREE.Vector3, targetPalm: THREE.Vector3,
-                                          out = new THREE.Quaternion()) {
+export function retargetHandWorldRotation(
+  restWorldRotation: THREE.Quaternion,
+  restFinger: THREE.Vector3,
+  restPalm: THREE.Vector3,
+  targetFinger: THREE.Vector3,
+  targetPalm: THREE.Vector3,
+  out = new THREE.Quaternion(),
+) {
   handFrame(restFinger, restPalm, _restHandFrame);
   handFrame(targetFinger, targetPalm, _targetHandFrame);
-  return out.copy(_targetHandFrame)
+  return out
+    .copy(_targetHandFrame)
     .multiply(_inverseHandFrame.copy(_restHandFrame).invert())
-    .multiply(restWorldRotation).normalize();
+    .multiply(restWorldRotation)
+    .normalize();
 }
 
 /** The bindings live in the board plane, not the body-balance plane. Rebuild its long/toe axes from the two
  * ankle seats plus the actual banked sole normal so a world-upright torso cannot lift the imported toe bones. */
 function boardFootAxes(p: CharacterPose, toe: THREE.Vector3, along: THREE.Vector3) {
   along.copy(p.ankleFront).sub(p.ankleRear);
-  if (along.lengthSq() < 1e-8) along.copy(p.along); else along.normalize();
+  if (along.lengthSq() < 1e-8) along.copy(p.along);
+  else along.normalize();
   toe.crossVectors(p.soleUp, along);
-  if (toe.lengthSq() < 1e-8) toe.copy(p.toe); else toe.normalize();
+  if (toe.lengthSq() < 1e-8) toe.copy(p.toe);
+  else toe.normalize();
 }
 
 /** Attach the asset asynchronously; the procedural body remains the failure/loading fallback. */
-export function attachCharacterRig(owner: THREE.Group, procedural: THREE.Object3D,
-                                   modelId = DEFAULT_RIDER_MODEL_ID): CharacterRigHandle {
+export function attachCharacterRig(
+  owner: THREE.Group,
+  procedural: THREE.Object3D,
+  modelId = DEFAULT_RIDER_MODEL_ID,
+): CharacterRigHandle {
   let alive = true;
   let model: THREE.Group | null = null;
   let driver: DrivenCharacterRig | null = null;
@@ -666,41 +771,48 @@ export function attachCharacterRig(owner: THREE.Group, procedural: THREE.Object3
   let firstPerson = false;
   owner.userData.riderVisual = 'procedural';
 
-  loadTemplate(modelId)?.then(template => {
-    if (!alive) return;
-    const clone = cloneSkeleton(template) as THREE.Group;
-    clone.name = `rider.model.${modelId}`;
-    clone.traverse(object => {
-      object.raycast = () => {};
-      if (object instanceof THREE.SkinnedMesh) object.frustumCulled = false;
+  loadTemplate(modelId)
+    ?.then(template => {
+      if (!alive) return;
+      const clone = cloneSkeleton(template) as THREE.Group;
+      clone.name = `rider.model.${modelId}`;
+      clone.traverse(object => {
+        object.raycast = () => {};
+        if (object instanceof THREE.SkinnedMesh) object.frustumCulled = false;
+      });
+      owner.add(clone);
+      let nextDriver: DrivenCharacterRig;
+      try {
+        clone.updateMatrixWorld(true);
+        nextDriver = new DrivenCharacterRig(clone);
+      } catch (error) {
+        owner.remove(clone);
+        throw error;
+      }
+      if (!alive) {
+        owner.remove(clone);
+        return;
+      }
+      model = clone;
+      driver = nextDriver;
+      driver.setFirstPerson(firstPerson); // a VR ride may have asked for this while the GLB was still in flight
+      if (latestPose) driver.pose(latestPose);
+      procedural.visible = false;
+      owner.userData.riderVisual = modelId;
+    })
+    .catch(error => {
+      console.warn(`Rider model ${modelId} did not load; keeping the procedural rider.`, error);
     });
-    owner.add(clone);
-    let nextDriver: DrivenCharacterRig;
-    try {
-      clone.updateMatrixWorld(true);
-      nextDriver = new DrivenCharacterRig(clone);
-    } catch (error) {
-      owner.remove(clone);
-      throw error;
-    }
-    if (!alive) { owner.remove(clone); return; }
-    model = clone;
-    driver = nextDriver;
-    driver.setFirstPerson(firstPerson); // a VR ride may have asked for this while the GLB was still in flight
-    if (latestPose) driver.pose(latestPose);
-    procedural.visible = false;
-    owner.userData.riderVisual = modelId;
-  }).catch(error => {
-    console.warn(`Rider model ${modelId} did not load; keeping the procedural rider.`, error);
-  });
 
   return {
     // Keep the latest solved landmarks even while the GLB is in flight. This seats a model immediately when it
     // finishes loading during a paused ride, where no subsequent animation frame will call pose again.
-    pose: pose => { latestPose = pose; driver?.pose(pose); },
-    gripToWrist: (handedness, rotation, out) => driver
-      ? driver.gripToWrist(handedness, rotation, out)
-      : gripToWristOffset(rotation, DEFAULT_PALM_LENGTH, out),
+    pose: pose => {
+      latestPose = pose;
+      driver?.pose(pose);
+    },
+    gripToWrist: (handedness, rotation, out) =>
+      driver ? driver.gripToWrist(handedness, rotation, out) : gripToWristOffset(rotation, DEFAULT_PALM_LENGTH, out),
     setFirstPerson: on => {
       firstPerson = on;
       driver?.setFirstPerson(on);
@@ -716,32 +828,64 @@ export function attachCharacterRig(owner: THREE.Group, procedural: THREE.Object3
   };
 }
 
-const _hipsTail = new THREE.Vector3(), _footDirection = new THREE.Vector3();
-const _boardToe = new THREE.Vector3(), _boardAlong = new THREE.Vector3();
+const _hipsTail = new THREE.Vector3(),
+  _footDirection = new THREE.Vector3();
+const _boardToe = new THREE.Vector3(),
+  _boardAlong = new THREE.Vector3();
 const _restFootForward = new THREE.Vector3();
-const _frameX = new THREE.Vector3(), _frameY = new THREE.Vector3(), _frameZ = new THREE.Vector3();
-const _restFootFrame = new THREE.Quaternion(), _targetFootFrame = new THREE.Quaternion();
+const _frameX = new THREE.Vector3(),
+  _frameY = new THREE.Vector3(),
+  _frameZ = new THREE.Vector3();
+const _restFootFrame = new THREE.Quaternion(),
+  _targetFootFrame = new THREE.Quaternion();
 const _inverseFootFrame = new THREE.Quaternion();
 const _footBasis = new THREE.Matrix4();
-const _chestAxis = new THREE.Vector3(), _shoulderSpan = new THREE.Vector3(), _chestForward = new THREE.Vector3();
-const _axisX = new THREE.Vector3(), _axisY = new THREE.Vector3(), _axisZ = new THREE.Vector3();
+const _chestAxis = new THREE.Vector3(),
+  _shoulderSpan = new THREE.Vector3(),
+  _chestForward = new THREE.Vector3();
+const _axisX = new THREE.Vector3(),
+  _axisY = new THREE.Vector3(),
+  _axisZ = new THREE.Vector3();
 const _rotation = new THREE.Quaternion();
-const _basis = new THREE.Matrix4(), _world = new THREE.Matrix4(), _local = new THREE.Matrix4();
+const _basis = new THREE.Matrix4(),
+  _world = new THREE.Matrix4(),
+  _local = new THREE.Matrix4();
 const _boneHead = new THREE.Vector3();
 const _headHidden = new THREE.Vector3();
-const _sideL = new THREE.Vector3(), _sideR = new THREE.Vector3();
-const _restHandHead = new THREE.Vector3(), _restThumb = new THREE.Vector3();
-const _fingerHead = new THREE.Vector3(), _fingerDirection = new THREE.Vector3(), _fingerCurlAxis = new THREE.Vector3();
-const _fingerWorldRotation = new THREE.Quaternion(), _fingerInverse = new THREE.Quaternion();
+const _sideL = new THREE.Vector3(),
+  _sideR = new THREE.Vector3();
+const _restHandHead = new THREE.Vector3(),
+  _restThumb = new THREE.Vector3();
+const _fingerHead = new THREE.Vector3(),
+  _fingerDirection = new THREE.Vector3(),
+  _fingerCurlAxis = new THREE.Vector3();
+const _fingerWorldRotation = new THREE.Quaternion(),
+  _fingerInverse = new THREE.Quaternion();
 const _fingerCurlRotation = new THREE.Quaternion();
-const _handRotationL = new THREE.Quaternion(), _handRotationR = new THREE.Quaternion();
-const _handDelta = new THREE.Quaternion(), _inverseHandRest = new THREE.Quaternion();
-const _forearmRollL = new THREE.Vector3(), _forearmRollR = new THREE.Vector3();
-const _upperRollL = new THREE.Vector3(), _upperRollR = new THREE.Vector3();
-const _rollAligned = new THREE.Vector3(), _forearmAxis = new THREE.Vector3(), _upperAxis = new THREE.Vector3();
-const _armRoot = new THREE.Vector3(), _armElbow = new THREE.Vector3(), _armBend = new THREE.Vector3();
-const _armChord = new THREE.Vector3(), _armDir = new THREE.Vector3(), _armPerp = new THREE.Vector3();
-const _twistFrom = new THREE.Vector3(), _twistTo = new THREE.Vector3(), _twistCross = new THREE.Vector3();
-const _handFrameX = new THREE.Vector3(), _handFrameY = new THREE.Vector3(), _handFrameZ = new THREE.Vector3();
-const _restHandFrame = new THREE.Quaternion(), _targetHandFrame = new THREE.Quaternion();
-const _inverseHandFrame = new THREE.Quaternion(), _handBasis = new THREE.Matrix4();
+const _handRotationL = new THREE.Quaternion(),
+  _handRotationR = new THREE.Quaternion();
+const _handDelta = new THREE.Quaternion(),
+  _inverseHandRest = new THREE.Quaternion();
+const _forearmRollL = new THREE.Vector3(),
+  _forearmRollR = new THREE.Vector3();
+const _upperRollL = new THREE.Vector3(),
+  _upperRollR = new THREE.Vector3();
+const _rollAligned = new THREE.Vector3(),
+  _forearmAxis = new THREE.Vector3(),
+  _upperAxis = new THREE.Vector3();
+const _armRoot = new THREE.Vector3(),
+  _armElbow = new THREE.Vector3(),
+  _armBend = new THREE.Vector3();
+const _armChord = new THREE.Vector3(),
+  _armDir = new THREE.Vector3(),
+  _armPerp = new THREE.Vector3();
+const _twistFrom = new THREE.Vector3(),
+  _twistTo = new THREE.Vector3(),
+  _twistCross = new THREE.Vector3();
+const _handFrameX = new THREE.Vector3(),
+  _handFrameY = new THREE.Vector3(),
+  _handFrameZ = new THREE.Vector3();
+const _restHandFrame = new THREE.Quaternion(),
+  _targetHandFrame = new THREE.Quaternion();
+const _inverseHandFrame = new THREE.Quaternion(),
+  _handBasis = new THREE.Matrix4();

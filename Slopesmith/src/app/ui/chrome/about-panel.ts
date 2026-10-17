@@ -69,15 +69,21 @@ export function buildAboutPanel(panel: HTMLDivElement): void {
 
   const project = document.createElement('section');
   project.append(Object.assign(document.createElement('h4'), { textContent: 'OpenSlope' }));
-  project.append(paragraph(
-    'Slopesmith is OpenSlope\'s collaborative, self-hosted editor for building and riding '
-    + '<em>SSX Tricky</em>-compatible courses.'));
+  project.append(
+    paragraph(
+      "Slopesmith is OpenSlope's collaborative, self-hosted editor for building and riding " +
+        '<em>SSX Tricky</em>-compatible courses.',
+    ),
+  );
   const links = document.createElement('ul');
   links.className = 'about-links';
   for (const { label, href, note } of PROJECT_LINKS) {
     const item = document.createElement('li');
     const anchor = Object.assign(document.createElement('a'), {
-      href, textContent: label, target: '_blank', rel: 'noopener noreferrer',
+      href,
+      textContent: label,
+      target: '_blank',
+      rel: 'noopener noreferrer',
     });
     item.append(anchor, ` — ${note}`);
     links.append(item);
@@ -86,46 +92,61 @@ export function buildAboutPanel(panel: HTMLDivElement): void {
 
   const disclaimer = document.createElement('div');
   disclaimer.className = 'about-callout';
-  disclaimer.append(paragraph(
-    '<strong>This project is not endorsed by or affiliated with EA or its licensors.</strong> '
-    + 'Slopesmith is an independent, unofficial tool. SSX and SSX Tricky are trademarks of '
-    + 'Electronic Arts Inc.'));
-  disclaimer.append(paragraph(
-    'Rights in the music and voice performances on a retail disc are held by their publishers, labels '
-    + 'and performers and are licensed to Electronic Arts. No grant in this program extends to them.'));
+  disclaimer.append(
+    paragraph(
+      '<strong>This project is not endorsed by or affiliated with EA or its licensors.</strong> ' +
+        'Slopesmith is an independent, unofficial tool. SSX and SSX Tricky are trademarks of ' +
+        'Electronic Arts Inc.',
+    ),
+  );
+  disclaimer.append(
+    paragraph(
+      'Rights in the music and voice performances on a retail disc are held by their publishers, labels ' +
+        'and performers and are licensed to Electronic Arts. No grant in this program extends to them.',
+    ),
+  );
 
   const yourCopy = document.createElement('section');
   yourCopy.append(Object.assign(document.createElement('h4'), { textContent: 'Retail game data' }));
-  yourCopy.append(paragraph(
-    'Slopesmith reads levels, textures and audio that you extracted from a disc image you made from '
-    + 'your own copy of the game. That material is derived from Electronic Arts\' copyrighted work and '
-    + 'stays in folders excluded from version control. OpenSlope grants no rights in it; you are responsible '
-    + 'for determining whether your use is permitted by applicable law and contractual terms. Publishing a '
-    + 'course, a world or a repacked image that carries it is outside what this project licenses or condones.'));
+  yourCopy.append(
+    paragraph(
+      'Slopesmith reads levels, textures and audio that you extracted from a disc image you made from ' +
+        "your own copy of the game. That material is derived from Electronic Arts' copyrighted work and " +
+        'stays in folders excluded from version control. OpenSlope grants no rights in it; you are responsible ' +
+        'for determining whether your use is permitted by applicable law and contractual terms. Publishing a ' +
+        'course, a world or a repacked image that carries it is outside what this project licenses or condones.',
+    ),
+  );
 
   const contact = document.createElement('section');
   contact.append(Object.assign(document.createElement('h4'), { textContent: 'Rightsholder enquiries' }));
-  contact.append(paragraph(
-    `If you hold rights in something you believe this project carries, write to `
-    + `<a href="mailto:${RIGHTSHOLDER_CONTACT}">${RIGHTSHOLDER_CONTACT}</a> and we will act on a `
-    + 'specific, good-faith request about specific material. Security reports go through a different '
-    + 'channel — see SECURITY.md in the repository.'));
+  contact.append(
+    paragraph(
+      `If you hold rights in something you believe this project carries, write to ` +
+        `<a href="mailto:${RIGHTSHOLDER_CONTACT}">${RIGHTSHOLDER_CONTACT}</a> and we will act on a ` +
+        'specific, good-faith request about specific material. Security reports go through a different ' +
+        'channel — see SECURITY.md in the repository.',
+    ),
+  );
 
   const notices = document.createElement('section');
   notices.append(Object.assign(document.createElement('h4'), { textContent: 'Licences and notices' }));
-  notices.append(paragraph(
-    'Slopesmith is Apache-2.0. The texts below are the ones this build ships; they are reproduced '
-    + 'verbatim from the repository rather than summarised.'));
-  notices.append(verbatim('Slopesmith NOTICE — scope, third-party components, generated assets',
-                          slopesmithNotice));
-  notices.append(verbatim('Lucide (icon artwork) — ISC, with Feather-derived icons MIT',
-                          lucideLicense));
-  notices.append(verbatim('Bundled npm dependencies and runtime closure — generated legal text',
-                          dependencyNotices));
-  notices.append(paragraph(
-    '<strong>Deploying this?</strong> Keep <code>ThirdPartyNotices/npm-browser-dependencies.txt</code> '
-    + 'with <code>dist/</code>. It is generated from the same checked package inventory as the panel above; '
-    + 'the build fails if Vite bundles a package that the inventory does not name, or stops bundling one it does.'));
+  notices.append(
+    paragraph(
+      'Slopesmith is Apache-2.0. The texts below are the ones this build ships; they are reproduced ' +
+        'verbatim from the repository rather than summarised.',
+    ),
+  );
+  notices.append(verbatim('Slopesmith NOTICE — scope, third-party components, generated assets', slopesmithNotice));
+  notices.append(verbatim('Lucide (icon artwork) — ISC, with Feather-derived icons MIT', lucideLicense));
+  notices.append(verbatim('Bundled npm dependencies and runtime closure — generated legal text', dependencyNotices));
+  notices.append(
+    paragraph(
+      '<strong>Deploying this?</strong> Keep <code>ThirdPartyNotices/npm-browser-dependencies.txt</code> ' +
+        'with <code>dist/</code>. It is generated from the same checked package inventory as the panel above; ' +
+        'the build fails if Vite bundles a package that the inventory does not name, or stops bundling one it does.',
+    ),
+  );
 
   root.append(project, disclaimer, yourCopy, contact, notices);
   panel.appendChild(root);

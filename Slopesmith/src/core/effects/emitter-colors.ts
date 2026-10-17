@@ -11,12 +11,13 @@ const finite = (fields: Record<string, JsonValue>, key: string, fallback = 1): n
 /** Convert the native SSF A,R,G,B quartets at U33..U48 to semantic R,G,B,A tuples. */
 export function emitterColorStopsFromNativeArgb(fields: Record<string, JsonValue>): RgbaColor[] {
   const stops: RgbaColor[] = [];
-  for (let i = 33; i <= 48; i += 4) stops.push([
-    finite(fields, `U${i + 1}`),
-    finite(fields, `U${i + 2}`),
-    finite(fields, `U${i + 3}`),
-    finite(fields, `U${i}`),
-  ]);
+  for (let i = 33; i <= 48; i += 4)
+    stops.push([
+      finite(fields, `U${i + 1}`),
+      finite(fields, `U${i + 2}`),
+      finite(fields, `U${i + 3}`),
+      finite(fields, `U${i}`),
+    ]);
   return stops;
 }
 

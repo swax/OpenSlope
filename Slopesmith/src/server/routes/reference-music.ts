@@ -2,7 +2,16 @@ import { join } from 'node:path';
 import type { ReferenceIntroMusic, ReferenceMusicGraph, ReferenceMusicIndex } from '../../core/reference/music';
 import { summarizeReferenceMusic } from '../../core/reference/music';
 import { mapsRoot } from '../workspace-config';
-import { isDirectory, listEntries, listDir, mapLimit, pathExists, readBytesOrNull, readJsonOr, READ_CONCURRENCY } from '../fs-async';
+import {
+  isDirectory,
+  listEntries,
+  listDir,
+  mapLimit,
+  pathExists,
+  readBytesOrNull,
+  readJsonOr,
+  READ_CONCURRENCY,
+} from '../fs-async';
 import { safeDataName } from './safe-name';
 import { readEnvironmentAudio } from './audio';
 
@@ -15,7 +24,7 @@ function safeSegment(value: string, what: string): string {
 async function musicRoot(level: string): Promise<{ level: string; root: string }> {
   const safeLevel = safeSegment(level, 'reference level');
   const root = join(mapsRoot(), safeLevel, 'Audio', 'Music');
-  if (!await isDirectory(root)) throw new Error(`no extracted race music for ${safeLevel}`);
+  if (!(await isDirectory(root))) throw new Error(`no extracted race music for ${safeLevel}`);
   return { level: safeLevel, root };
 }
 
@@ -25,14 +34,14 @@ async function songIds(root: string): Promise<string[]> {
   const hasGraph = async (name: string) => await pathExists(join(root, name, 'graph.json'));
   const playlist = await readJsonOr<unknown>(join(root, 'playlist.json'), null);
   if (Array.isArray(playlist)) {
-    const named = playlist.filter((item): item is string =>
-      typeof item === 'string' && safeDataName(item) === item);
+    const named = playlist.filter((item): item is string => typeof item === 'string' && safeDataName(item) === item);
     const present = await mapLimit(named, READ_CONCURRENCY, hasGraph);
     return named.filter((_name, index) => present[index]);
   }
   const candidates = (await listDir(root)).filter(name => safeDataName(name) === name);
   const present = await mapLimit(candidates, READ_CONCURRENCY, hasGraph);
-  return candidates.filter((_name, index) => present[index])
+  return candidates
+    .filter((_name, index) => present[index])
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
@@ -52,11 +61,13 @@ async function introMusic(root: string): Promise<ReferenceIntroMusic | null> {
   }
   for (const tier of ['C', 'A', 'B'] as const) {
     const stems = byTier.get(tier);
-    if (stems?.length) return {
-      tier,
-      stems: stems.sort((a, b) => a.index - b.index
-        || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).map(item => item.name),
-    };
+    if (stems?.length)
+      return {
+        tier,
+        stems: stems
+          .sort((a, b) => a.index - b.index || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+          .map(item => item.name),
+      };
   }
   return null;
 }

@@ -98,8 +98,7 @@ export interface Preflight {
    *  by the PS2 uploader), priced here exactly at 4 bytes/texel. The proven reference is the standard tier's
    *  ~1.0 MB ≈ a retail day sky's native ~0.85 MB; the high tier's ~3.3 MB has no characterized budget. */
   sky?:
-    | { kind: 'level'; level: string }
-    | { kind: 'custom'; name: string; tier: SkyTier; pages: number; bytes: number };
+    { kind: 'level'; level: string } | { kind: 'custom'; name: string; tier: SkyTier; pages: number; bytes: number };
 }
 
 export function computePreflight(doc: EditDoc, skyRing?: SkyRing): Preflight {
@@ -139,9 +138,11 @@ export function computePreflight(doc: EditDoc, skyRing?: SkyRing): Preflight {
     const tier: SkyTier = sky.tier ?? 'standard';
     const pages = skyRing ? tileSizes(SKY_TIERS[tier], skyRing) : [];
     out.sky = {
-      kind: 'custom', name: sky.source.name, tier,
+      kind: 'custom',
+      name: sky.source.name,
+      tier,
       pages: pages.length,
-      bytes: pages.reduce((n, d) => n + d.w * d.h * 4, 0),   // forced type-5: 4 bytes/texel
+      bytes: pages.reduce((n, d) => n + d.w * d.h * 4, 0), // forced type-5: 4 bytes/texel
     };
   }
 

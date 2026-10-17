@@ -3,7 +3,12 @@
 import type { IncomingMessage } from 'node:http';
 import { Duplex } from 'node:stream';
 import { constants as zlib, deflateRawSync, inflateRawSync } from 'node:zlib';
-import { acceptsDeflate, acceptWebSocket, prepareWebSocketText, type WebSocketPeer } from '../src/server/session/socket';
+import {
+  acceptsDeflate,
+  acceptWebSocket,
+  prepareWebSocketText,
+  type WebSocketPeer,
+} from '../src/server/session/socket';
 import { check, failures } from './check';
 
 /**
@@ -20,14 +25,21 @@ import { check, failures } from './check';
 /** A socket whose writes are kept and whose reads are whatever the test pushes. */
 class MemorySocket extends Duplex {
   written: Buffer[] = [];
-  _read(): void { /* frames arrive through push() */ }
+  _read(): void {
+    /* frames arrive through push() */
+  }
   _write(chunk: Buffer, _encoding: BufferEncoding, done: (error?: Error | null) => void): void {
     this.written.push(Buffer.from(chunk));
     done();
   }
 }
 
-interface Frame { fin: boolean; rsv1: boolean; opcode: number; payload: Buffer }
+interface Frame {
+  fin: boolean;
+  rsv1: boolean;
+  opcode: number;
+  payload: Buffer;
+}
 
 /** The server's frames after the handshake, parsed. Server frames are never masked. */
 function serverFrames(socket: MemorySocket): { handshake: string; frames: Frame[] } {
@@ -35,11 +47,19 @@ function serverFrames(socket: MemorySocket): { handshake: string; frames: Frame[
   let bytes = Buffer.concat(rest);
   const frames: Frame[] = [];
   while (bytes.length >= 2) {
-    let length = bytes[1] & 0x7f, at = 2;
-    if (length === 126) { length = bytes.readUInt16BE(2); at = 4; }
-    else if (length === 127) { length = Number(bytes.readBigUInt64BE(2)); at = 10; }
+    let length = bytes[1] & 0x7f,
+      at = 2;
+    if (length === 126) {
+      length = bytes.readUInt16BE(2);
+      at = 4;
+    } else if (length === 127) {
+      length = Number(bytes.readBigUInt64BE(2));
+      at = 10;
+    }
     frames.push({
-      fin: (bytes[0] & 0x80) !== 0, rsv1: (bytes[0] & 0x40) !== 0, opcode: bytes[0] & 0x0f,
+      fin: (bytes[0] & 0x80) !== 0,
+      rsv1: (bytes[0] & 0x40) !== 0,
+      opcode: bytes[0] & 0x0f,
       payload: bytes.subarray(at, at + length),
     });
     bytes = bytes.subarray(at + length);
@@ -55,8 +75,13 @@ function clientFrame(opcode: number, payload: Buffer, options: { fin?: boolean; 
   const header = length < 126 ? Buffer.alloc(2) : length < 65536 ? Buffer.alloc(4) : Buffer.alloc(10);
   header[0] = (fin ? 0x80 : 0) | (rsv1 ? 0x40 : 0) | opcode;
   if (length < 126) header[1] = 0x80 | length;
-  else if (length < 65536) { header[1] = 0x80 | 126; header.writeUInt16BE(length, 2); }
-  else { header[1] = 0x80 | 127; header.writeBigUInt64BE(BigInt(length), 2); }
+  else if (length < 65536) {
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(length, 2);
+  } else {
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(length), 2);
+  }
   const masked = Buffer.from(payload);
   for (let index = 0; index < masked.length; index++) masked[index] ^= mask[index & 3];
   return Buffer.concat([header, mask, masked]);
@@ -69,8 +94,9 @@ function clientDeflate(text: string): Buffer {
 }
 
 const inflate = (payload: Buffer): string =>
-  inflateRawSync(Buffer.concat([payload, Buffer.from([0, 0, 0xff, 0xff])]), { finishFlush: zlib.Z_SYNC_FLUSH })
-    .toString('utf8');
+  inflateRawSync(Buffer.concat([payload, Buffer.from([0, 0, 0xff, 0xff])]), {
+    finishFlush: zlib.Z_SYNC_FLUSH,
+  }).toString('utf8');
 
 function open(extensions?: string): { socket: MemorySocket; peer: WebSocketPeer; received: string[] } {
   const socket = new MemorySocket();
@@ -90,36 +116,60 @@ function open(extensions?: string): { socket: MemorySocket; peer: WebSocketPeer;
 
 /** The close code of the last frame written, or null when the server sent no close. */
 function closeCode(socket: MemorySocket): number | null {
-  const close = serverFrames(socket).frames.filter(frame => frame.opcode === 0x8).at(-1);
+  const close = serverFrames(socket)
+    .frames.filter(frame => frame.opcode === 0x8)
+    .at(-1);
   return close ? close.payload.readUInt16BE(0) : null;
 }
 
 const settle = () => new Promise<void>(done => setImmediate(done));
-const large = JSON.stringify({ t: 'awareness-batch', peers: Array.from({ length: 40 }, (_, at) => ({ at, name: 'rider' })) });
+const large = JSON.stringify({
+  t: 'awareness-batch',
+  peers: Array.from({ length: 40 }, (_, at) => ({ at, name: 'rider' })),
+});
 
 // ---- negotiation ----
 check(acceptsDeflate('permessage-deflate; client_max_window_bits'), 'a Chromium offer is accepted');
 check(acceptsDeflate('permessage-deflate'), 'a bare offer is accepted');
-check(acceptsDeflate('permessage-deflate; client_max_window_bits=10; server_no_context_takeover'),
-  'an offer limiting only the client’s window, or asking for no server context, is accepted');
-check(!acceptsDeflate('permessage-deflate; server_max_window_bits=10'),
-  'an offer limiting the server’s window is declined');
-check(acceptsDeflate('permessage-deflate; server_max_window_bits=10, permessage-deflate'),
-  'a later acceptable offer is taken when an earlier one is declined');
-check(!acceptsDeflate('permessage-deflate; client_no_context_takeover; client_no_context_takeover'),
-  'a duplicated parameter declines its offer');
-check(!acceptsDeflate('permessage-deflate; client_max_window_bits=99') && !acceptsDeflate('x-webkit-deflate-frame')
-  && !acceptsDeflate(undefined), 'nonsense, other extensions and no header at all accept nothing');
+check(
+  acceptsDeflate('permessage-deflate; client_max_window_bits=10; server_no_context_takeover'),
+  'an offer limiting only the client’s window, or asking for no server context, is accepted',
+);
+check(
+  !acceptsDeflate('permessage-deflate; server_max_window_bits=10'),
+  'an offer limiting the server’s window is declined',
+);
+check(
+  acceptsDeflate('permessage-deflate; server_max_window_bits=10, permessage-deflate'),
+  'a later acceptable offer is taken when an earlier one is declined',
+);
+check(
+  !acceptsDeflate('permessage-deflate; client_no_context_takeover; client_no_context_takeover'),
+  'a duplicated parameter declines its offer',
+);
+check(
+  !acceptsDeflate('permessage-deflate; client_max_window_bits=99') &&
+    !acceptsDeflate('x-webkit-deflate-frame') &&
+    !acceptsDeflate(undefined),
+  'nonsense, other extensions and no header at all accept nothing',
+);
 
 {
   const { socket, peer } = open('permessage-deflate; client_max_window_bits');
-  check(peer.compressing && /sec-websocket-extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover\r\n/
-    .test(serverFrames(socket).handshake), 'the handshake answers with stateless compression in both directions');
+  check(
+    peer.compressing &&
+      /sec-websocket-extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover\r\n/.test(
+        serverFrames(socket).handshake,
+      ),
+    'the handshake answers with stateless compression in both directions',
+  );
 }
 {
   const { socket, peer } = open();
-  check(!peer.compressing && !/sec-websocket-extensions/i.test(serverFrames(socket).handshake),
-    'a client that offered nothing is answered with no extension');
+  check(
+    !peer.compressing && !/sec-websocket-extensions/i.test(serverFrames(socket).handshake),
+    'a client that offered nothing is answered with no extension',
+  );
 }
 
 // ---- what the server sends ----
@@ -129,9 +179,11 @@ check(!acceptsDeflate('permessage-deflate; client_max_window_bits=99') && !accep
   peer.send('{"t":"pong"}');
   await settle();
   const [big, small] = serverFrames(socket).frames;
-  check(big.rsv1 && big.payload.length < Buffer.byteLength(large) && inflate(big.payload) === large,
+  check(
+    big.rsv1 && big.payload.length < Buffer.byteLength(large) && inflate(big.payload) === large,
     'a large message is compressed and inflates back exactly',
-    `${Buffer.byteLength(large)} → ${big.payload.length} bytes`);
+    `${Buffer.byteLength(large)} → ${big.payload.length} bytes`,
+  );
   check(!small.rsv1 && small.payload.toString() === '{"t":"pong"}', 'a small message stays plain');
 }
 {
@@ -143,14 +195,21 @@ check(!acceptsDeflate('permessage-deflate; client_max_window_bits=99') && !accep
 }
 {
   const prepared = prepareWebSocketText(large);
-  check(prepared.deflated === prepared.deflated && prepared.plain === prepared.plain
-    && prepared.deflated !== prepared.plain, 'a prepared broadcast builds each form once and shares it');
-  const compressed = open('permessage-deflate'), plain = open();
+  check(
+    prepared.deflated === prepared.deflated &&
+      prepared.plain === prepared.plain &&
+      prepared.deflated !== prepared.plain,
+    'a prepared broadcast builds each form once and shares it',
+  );
+  const compressed = open('permessage-deflate'),
+    plain = open();
   compressed.peer.sendPrepared(prepared);
   plain.peer.sendPrepared(prepared);
   await settle();
-  check(serverFrames(compressed.socket).frames[0].rsv1 && !serverFrames(plain.socket).frames[0].rsv1,
-    'one prepared broadcast reaches each peer in the form it negotiated');
+  check(
+    serverFrames(compressed.socket).frames[0].rsv1 && !serverFrames(plain.socket).frames[0].rsv1,
+    'one prepared broadcast reaches each peer in the form it negotiated',
+  );
 }
 
 // ---- what the client sends ----
@@ -159,8 +218,10 @@ check(!acceptsDeflate('permessage-deflate; client_max_window_bits=99') && !accep
   socket.push(clientFrame(0x1, clientDeflate(large), { rsv1: true }));
   socket.push(clientFrame(0x1, Buffer.from('plain still works')));
   await settle();
-  check(received[0] === large && received[1] === 'plain still works',
-    'a compressed client message is inflated, and an uncompressed one beside it is read as it is');
+  check(
+    received[0] === large && received[1] === 'plain still works',
+    'a compressed client message is inflated, and an uncompressed one beside it is read as it is',
+  );
 
   const packed = clientDeflate(large);
   const cut = Math.floor(packed.length / 2);
@@ -195,8 +256,11 @@ check(!acceptsDeflate('permessage-deflate; client_max_window_bits=99') && !accep
   const bomb = deflateRawSync(Buffer.alloc(17 * 1024 * 1024, 0x20), { finishFlush: zlib.Z_SYNC_FLUSH });
   socket.push(clientFrame(0x1, bomb.subarray(0, bomb.length - 4), { rsv1: true }));
   await settle();
-  check(!received.length && closeCode(socket) === 1009,
-    'a small message inflating past the size cap is refused like an oversized one', `${bomb.length} bytes on the wire`);
+  check(
+    !received.length && closeCode(socket) === 1009,
+    'a small message inflating past the size cap is refused like an oversized one',
+    `${bomb.length} bytes on the wire`,
+  );
 }
 {
   const { socket, received } = open('permessage-deflate');

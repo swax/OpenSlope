@@ -38,12 +38,19 @@ export function createGridToolLayer(
   /** What the gizmo is on: a corner, the whole draft, or nothing. */
   let selected: number | 'whole' | null = null;
   /** A whole-draft drag's start: the anchor's pose and the corners it moves from. */
-  let wholeDrag: { pivot: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3; corners: GridCorners } | null = null;
+  let wholeDrag: {
+    pivot: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+    corners: GridCorners;
+  } | null = null;
   /** The camera when the third corner went down, so orbiting before Enter never turns the grid over. */
   let placedEye: V3 | null = null;
   let listener: (() => void) | null = null;
   const material = (color: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false });
-  const pointMat = material(POINT_COLOR), snapMat = material(SNAP_COLOR), selectedMat = material(0xffffff);
+  const pointMat = material(POINT_COLOR),
+    snapMat = material(SNAP_COLOR),
+    selectedMat = material(0xffffff);
   const dots = Array.from({ length: 4 }, () => new THREE.Mesh(DRAW_POINT_GEO, pointMat));
   const hoverDot = new THREE.Mesh(DRAW_POINT_GEO, pointMat);
   const lineMat = new THREE.LineBasicMaterial({ color: LINE_COLOR, depthTest: false, depthWrite: false });
@@ -53,7 +60,9 @@ export function createGridToolLayer(
   for (const object of [...dots, hoverDot, line, lattice]) {
     object.visible = false;
     object.renderOrder = 10_000;
-    object.raycast = () => { /* corners are picked on screen; the guides never are */ };
+    object.raycast = () => {
+      /* corners are picked on screen; the guides never are */
+    };
     stage.worldRoot.add(object);
   }
   const cornerHandle = new THREE.Object3D(); // scene-root gizmo anchors, Z negated by hand
@@ -67,9 +76,11 @@ export function createGridToolLayer(
   const ownsGizmo = () => stage.gizmoKind === 'gridcorner' || stage.gizmoKind === 'grid';
 
   function placement(axisLocked = false, onSurface = false): PlacementEndpoint | null {
-    return resolvePlacementEndpoint(
-      { stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, { axisLocked, onSurface, levelPlane: true },
-    );
+    return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, {
+      axisLocked,
+      onSurface,
+      levelPlane: true,
+    });
   }
 
   function redraw() {
@@ -86,8 +97,13 @@ export function createGridToolLayer(
       hoverDot.material = hover.vertex !== null ? snapMat : pointMat;
       hoverDot.position.set(hover.pos[0], hover.pos[1], hover.pos[2]);
     }
-    const side = corners ? [] : points.length >= 2 ? [points[0].pos, points[1].pos]
-      : points.length === 1 && hover ? [points[0].pos, hover.pos] : [];
+    const side = corners
+      ? []
+      : points.length >= 2
+        ? [points[0].pos, points[1].pos]
+        : points.length === 1 && hover
+          ? [points[0].pos, hover.pos]
+          : [];
     if (side.length === 2) {
       line.geometry.dispose();
       line.geometry = new THREE.BufferGeometry().setFromPoints(side.map(p => new THREE.Vector3(p[0], p[1], p[2])));
@@ -101,11 +117,15 @@ export function createGridToolLayer(
    *  axes, so seating them here stretches the grid's length and width rather than shearing a turned grid along
    *  the world's; a free draft's Move and Rotate stay on world axes, a hinged one's Rotate turns about this X. */
   function gridFrame(draft: GridCorners, hinge: readonly [number, number] | null): THREE.Quaternion {
-    const at = draft.map(corner => dataToScene(corner.pos)), [i, j] = hinge ?? [0, 1];
+    const at = draft.map(corner => dataToScene(corner.pos)),
+      [i, j] = hinge ?? [0, 1];
     const x = at[j].clone().sub(at[i]).normalize();
     const y = new THREE.Vector3().crossVectors(at[(i + 3) % 4].clone().sub(at[i]), x).normalize();
     if (x.lengthSq() < 0.5 || y.lengthSq() < 0.5) return new THREE.Quaternion();
-    if (y.y < 0) { x.negate(); y.negate(); } // turned together, so Z still points across to the far side
+    if (y.y < 0) {
+      x.negate();
+      y.negate();
+    } // turned together, so Z still points across to the far side
     const z = new THREE.Vector3().crossVectors(x, y);
     return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
   }
@@ -127,20 +147,26 @@ export function createGridToolLayer(
       wholeHandle.userData.gridHinge = !!hinge;
       if (stage.gizmoKind !== 'grid' || stage.gizmo.object !== wholeHandle) stage.attachGizmo(wholeHandle, 'grid', -1);
       const at = corners.map(corner => dataToScene(corner.pos));
-      const mean = (of: THREE.Vector3[]) => of.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(of.length);
+      const mean = (of: THREE.Vector3[]) =>
+        of.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(of.length);
       if (!hinge) wholeHandle.position.copy(mean(at));
       else {
         const far = mean(at.filter((_, i) => !hinge.includes(i)));
-        const [from, to] = hinge.map(i => at[i]), along = to.clone().sub(from).normalize();
-        wholeHandle.position.copy(stage.gizmo.mode === 'translate' ? far
-          : from.clone().addScaledVector(along, far.clone().sub(from).dot(along)));
+        const [from, to] = hinge.map(i => at[i]),
+          along = to.clone().sub(from).normalize();
+        wholeHandle.position.copy(
+          stage.gizmo.mode === 'translate'
+            ? far
+            : from.clone().addScaledVector(along, far.clone().sub(from).dot(along)),
+        );
       }
       wholeHandle.quaternion.copy(gridFrame(corners, hinge));
       wholeHandle.scale.setScalar(1);
       return;
     }
     dataToScene(corners[selected].pos, cornerHandle.position);
-    if (stage.gizmoKind !== 'gridcorner' || stage.gizmoKnot !== selected) stage.attachGizmo(cornerHandle, 'gridcorner', selected);
+    if (stage.gizmoKind !== 'gridcorner' || stage.gizmoKnot !== selected)
+      stage.attachGizmo(cornerHandle, 'gridcorner', selected);
   }
 
   function select(next: number | 'whole' | null) {
@@ -159,7 +185,9 @@ export function createGridToolLayer(
     wholeDrag = null;
     placedEye = null;
     if (!on) {
-      dots.forEach(dot => { dot.visible = false; });
+      dots.forEach(dot => {
+        dot.visible = false;
+      });
       hoverDot.visible = false;
       line.visible = false;
       lattice.visible = false;
@@ -172,14 +200,19 @@ export function createGridToolLayer(
   function cornerAtPointer(): number | null {
     if (!corners) return null;
     const rect = stage.renderer.domElement.getBoundingClientRect();
-    const cx = ((stage.pointer.x + 1) / 2) * rect.width, cy = ((1 - stage.pointer.y) / 2) * rect.height;
-    let best: number | null = null, bestD2 = CORNER_PICK_PX ** 2;
+    const cx = ((stage.pointer.x + 1) / 2) * rect.width,
+      cy = ((1 - stage.pointer.y) / 2) * rect.height;
+    let best: number | null = null,
+      bestD2 = CORNER_PICK_PX ** 2;
     for (let i = 0; i < corners.length; i++) {
       if (pinned(corners[i])) continue;
       const v = dataToScene(corners[i].pos, scratch).project(stage.camera);
       if (v.z < -1 || v.z > 1) continue;
       const d2 = (((v.x + 1) / 2) * rect.width - cx) ** 2 + (((1 - v.y) / 2) * rect.height - cy) ** 2;
-      if (d2 <= bestD2) { best = i; bestD2 = d2; }
+      if (d2 <= bestD2) {
+        best = i;
+        bestD2 = d2;
+      }
     }
     return best;
   }
@@ -188,7 +221,8 @@ export function createGridToolLayer(
   function fillAtPointer(): boolean {
     if (!corners) return false;
     const [a, b, c, d] = corners.map(corner => dataToScene(corner.pos));
-    const ray = stage.ray.ray, hit = new THREE.Vector3();
+    const ray = stage.ray.ray,
+      hit = new THREE.Vector3();
     return !!(ray.intersectTriangle(a, b, c, false, hit) || ray.intersectTriangle(a, c, d, false, hit));
   }
 
@@ -198,7 +232,10 @@ export function createGridToolLayer(
   /** A draft click: pick up a free corner, or the whole draft when it can move whole; anywhere else lets go. */
   function pick() {
     const corner = cornerAtPointer();
-    if (corner !== null) { select(corner); return; }
+    if (corner !== null) {
+      select(corner);
+      return;
+    }
     select(corners && wholeMovable(corners) && fillAtPointer() ? 'whole' : null);
   }
 
@@ -213,12 +250,21 @@ export function createGridToolLayer(
 
   function onCommit(axisLocked = false, onSurface = false) {
     if (!active) return;
-    if (corners) { pick(); return; }
+    if (corners) {
+      pick();
+      return;
+    }
     const endpoint = placement(axisLocked, onSurface);
     if (!endpoint) return;
-    if (points.some(point => (point.vertex !== null && point.vertex === endpoint.vertex) || Math.hypot(
-      point.pos[0] - endpoint.pos[0], point.pos[1] - endpoint.pos[1], point.pos[2] - endpoint.pos[2],
-    ) < 1e-3)) return;
+    if (
+      points.some(
+        point =>
+          (point.vertex !== null && point.vertex === endpoint.vertex) ||
+          Math.hypot(point.pos[0] - endpoint.pos[0], point.pos[1] - endpoint.pos[1], point.pos[2] - endpoint.pos[2]) <
+            1e-3,
+      )
+    )
+      return;
     points.push(endpoint);
     hover = null;
     if (points.length === 3) {
@@ -244,9 +290,13 @@ export function createGridToolLayer(
       syncGizmo();
       return;
     }
-    if (selected === 'whole' && corners) wholeDrag = {
-      pivot: wholeHandle.position.clone(), quaternion: wholeHandle.quaternion.clone(), scale: wholeHandle.scale.clone(), corners,
-    };
+    if (selected === 'whole' && corners)
+      wholeDrag = {
+        pivot: wholeHandle.position.clone(),
+        quaternion: wholeHandle.quaternion.clone(),
+        scale: wholeHandle.scale.clone(),
+        corners,
+      };
   }
 
   /** The gizmo moved: carry the picked corner to it, or move, turn and scale the whole draft from the drag's
@@ -258,14 +308,27 @@ export function createGridToolLayer(
       next[selected] = free(sceneToData(cornerHandle.position));
       corners = next as unknown as GridCorners;
     } else if (selected === 'whole' && wholeDrag) {
-      const drag = wholeDrag, unframe = drag.quaternion.clone().invert();
+      const drag = wholeDrag,
+        unframe = drag.quaternion.clone().invert();
       const turn = wholeHandle.quaternion.clone().multiply(unframe);
       const stretch = wholeHandle.scale.clone().divide(drag.scale);
       stretch.set(Math.max(0.01, stretch.x), Math.max(0.01, stretch.y), Math.max(0.01, stretch.z));
       // The stretch is along the anchor's own axes (the grid's sides, gridFrame), so it is applied in that frame.
-      corners = drag.corners.map(corner => pinned(corner) ? corner : free(sceneToData(dataToScene(corner.pos).sub(drag.pivot)
-        .applyQuaternion(unframe).multiply(stretch).applyQuaternion(drag.quaternion)
-        .applyQuaternion(turn).add(wholeHandle.position)))) as unknown as GridCorners;
+      corners = drag.corners.map(corner =>
+        pinned(corner)
+          ? corner
+          : free(
+              sceneToData(
+                dataToScene(corner.pos)
+                  .sub(drag.pivot)
+                  .applyQuaternion(unframe)
+                  .multiply(stretch)
+                  .applyQuaternion(drag.quaternion)
+                  .applyQuaternion(turn)
+                  .add(wholeHandle.position),
+              ),
+            ),
+      ) as unknown as GridCorners;
     }
     redraw();
   }
@@ -282,19 +345,28 @@ export function createGridToolLayer(
   function setLattice(plan: { points: readonly V3[]; columns: number; rows: number } | null) {
     lattice.visible = !!plan && active;
     if (!plan || !active) return;
-    const stride = plan.columns + 1, segments: number[] = [];
+    const stride = plan.columns + 1,
+      segments: number[] = [];
     const join = (a: V3, b: V3) => segments.push(...a, ...b);
-    for (let j = 0; j <= plan.rows; j++) for (let i = 0; i <= plan.columns; i++) {
-      if (i < plan.columns) join(plan.points[j * stride + i], plan.points[j * stride + i + 1]);
-      if (j < plan.rows) join(plan.points[j * stride + i], plan.points[(j + 1) * stride + i]);
-    }
+    for (let j = 0; j <= plan.rows; j++)
+      for (let i = 0; i <= plan.columns; i++) {
+        if (i < plan.columns) join(plan.points[j * stride + i], plan.points[j * stride + i + 1]);
+        if (j < plan.rows) join(plan.points[j * stride + i], plan.points[(j + 1) * stride + i]);
+      }
     lattice.geometry.dispose();
     lattice.geometry = new THREE.BufferGeometry();
     lattice.geometry.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
   }
 
   return {
-    setActive, onHover, onCommit, refresh, setLattice, setCorners, gizmoDragging, gizmoChanged,
+    setActive,
+    onHover,
+    onCommit,
+    refresh,
+    setLattice,
+    setCorners,
+    gizmoDragging,
+    gizmoChanged,
     /** Move / Rotate / Scale was switched: a hinged draft's anchor moves between its far side and its hinge. */
     gizmoModeChanged: syncGizmo,
     /** Per frame: hold the corner and cursor dots at a constant size on screen. */
@@ -302,16 +374,30 @@ export function createGridToolLayer(
       scaleDrawMarkers(stage, dots, corners ? CORNER_PX : undefined);
       scaleDrawMarkers(stage, [hoverDot]);
     },
-    setListener(next: (() => void) | null) { listener = next; },
-    get active() { return active; },
-    get points(): readonly PlacementEndpoint[] { return points; },
-    get hover(): PlacementEndpoint | null { return hover; },
-    get corners(): GridCorners | null { return corners; },
+    setListener(next: (() => void) | null) {
+      listener = next;
+    },
+    get active() {
+      return active;
+    },
+    get points(): readonly PlacementEndpoint[] {
+      return points;
+    },
+    get hover(): PlacementEndpoint | null {
+      return hover;
+    },
+    get corners(): GridCorners | null {
+      return corners;
+    },
     /** Whether the gizmo holds the whole draft, which it can move, turn and scale (about the edge it hinges on, if
      *  any); a corner only moves. */
-    get wholeSelected() { return selected === 'whole'; },
+    get wholeSelected() {
+      return selected === 'whole';
+    },
     /** The camera, in data space: the side the grid is drawn from becomes its front. */
-    get eye(): V3 { return placedEye ?? liveEye(); },
+    get eye(): V3 {
+      return placedEye ?? liveEye();
+    },
   };
 }
 

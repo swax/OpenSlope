@@ -21,12 +21,14 @@ import {
 import { type RgbaColor } from '../../core/effects/emitter-colors';
 import { type EffectGraph, type EffectNode } from '../../core/effects/document';
 import { effectNodeLabel } from '../../core/effects/node-detail';
-import {
-  referenceIncomingEffectCalls,
-} from '../../core/reference/effects';
+import { referenceIncomingEffectCalls } from '../../core/reference/effects';
 import { menu, type MenuItem } from '../ui/components/controls';
 
-export const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] => {
+export const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] => {
   const out = document.createElement(tag);
   if (cls) out.className = cls;
   if (text !== undefined) out.textContent = text;
@@ -35,11 +37,19 @@ export const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, 
 
 export const button = (text: string, title: string, action: () => void, danger = false): HTMLButtonElement => {
   const out = el('button', `sp-fx-btn${danger ? ' danger' : ''}`, text);
-  out.type = 'button'; out.title = title; out.onclick = action;
+  out.type = 'button';
+  out.title = title;
+  out.onclick = action;
   return out;
 };
 
-export const iconButton = (icon: string, label: string, title: string, action: () => void, danger = false): HTMLButtonElement => {
+export const iconButton = (
+  icon: string,
+  label: string,
+  title: string,
+  action: () => void,
+  danger = false,
+): HTMLButtonElement => {
   const out = button('', title, action, danger);
   out.classList.add('sp-fx-icon-btn');
   out.innerHTML = icon;
@@ -59,7 +69,8 @@ export const navigationButton = (text: string, icon: string, title: string, acti
 export const section = (title: string): { root: HTMLElement; body: HTMLElement } => {
   const root = el('section', 'sp-fx-section');
   root.appendChild(el('div', 'sp-fx-section-title', title));
-  const body = el('div', 'sp-fx-section-body'); root.appendChild(body);
+  const body = el('div', 'sp-fx-section-body');
+  root.appendChild(body);
   return { root, body };
 };
 
@@ -81,8 +92,7 @@ export const embedSection = (parent: HTMLElement, child: HTMLElement, title: str
 
 /** Counted meta chips in the effect trees. A "1 nodes" row is small on its own and constant in aggregate —
  * a counter target lists one per caller. */
-export const countLabel = (count: number, noun: string): string =>
-  `${count} ${noun}${count === 1 ? '' : 's'}`;
+export const countLabel = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
 export interface EffectHostListItem {
   label: string;
@@ -98,9 +108,14 @@ export const effectHostListPanel = (items: readonly EffectHostListItem[], note: 
   const list = el('div', 'sp-fx-list');
   for (const entry of items) {
     const item = el('button', `sp-fx-list-row${entry.active ? ' on' : ''}`);
-    item.type = 'button'; item.title = entry.title; item.onclick = entry.select;
-    item.append(el('span', 'sp-fx-node-index', entry.active ? '›' : '✓'),
-      el('span', 'sp-fx-list-name', entry.label), el('span', 'sp-fx-kind', entry.meta));
+    item.type = 'button';
+    item.title = entry.title;
+    item.onclick = entry.select;
+    item.append(
+      el('span', 'sp-fx-node-index', entry.active ? '›' : '✓'),
+      el('span', 'sp-fx-list-name', entry.label),
+      el('span', 'sp-fx-kind', entry.meta),
+    );
     list.appendChild(item);
   }
   s.body.appendChild(list);
@@ -110,14 +125,23 @@ export const effectHostListPanel = (items: readonly EffectHostListItem[], note: 
 export const row = (label: string, control: HTMLElement, title?: string): HTMLElement => {
   const out = el('label', 'sp-fx-field');
   const name = el('span', 'sp-fx-field-name', label);
-  if (title) { out.title = title; name.title = title; }
-  out.append(name, control); return out;
+  if (title) {
+    out.title = title;
+    name.title = title;
+  }
+  out.append(name, control);
+  return out;
 };
 
-export const checkboxRow = (label: string, checked: boolean, title: string,
-  change: (value: boolean) => void): HTMLElement => {
+export const checkboxRow = (
+  label: string,
+  checked: boolean,
+  title: string,
+  change: (value: boolean) => void,
+): HTMLElement => {
   const box = el('input', 'sp-fx-check');
-  box.type = 'checkbox'; box.checked = checked;
+  box.type = 'checkbox';
+  box.checked = checked;
   box.onchange = () => change(box.checked);
   const out = el('label', 'sp-fx-field sp-fx-check-field');
   out.title = title;
@@ -134,25 +158,44 @@ export const helpIcon = (help: string, label = 'More information'): HTMLSpanElem
   return out;
 };
 
-export const input = (value: string, change: (value: string) => void, opts: { readonly?: boolean; type?: string } = {}): HTMLInputElement => {
-  const out = el('input', 'sp-fx-input'); out.type = opts.type ?? 'text'; out.value = value; out.readOnly = !!opts.readonly;
+export const input = (
+  value: string,
+  change: (value: string) => void,
+  opts: { readonly?: boolean; type?: string } = {},
+): HTMLInputElement => {
+  const out = el('input', 'sp-fx-input');
+  out.type = opts.type ?? 'text';
+  out.value = value;
+  out.readOnly = !!opts.readonly;
   if (!opts.readonly) out.onchange = () => change(out.value);
   return out;
 };
 
 export const numberInput = (value: number, change: (value: number) => void, step = 'any'): HTMLInputElement => {
-  const out = input(String(value), raw => {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) change(parsed); else out.value = String(value);
-  }, { type: 'number' });
-  out.step = step; return out;
+  const out = input(
+    String(value),
+    raw => {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) change(parsed);
+      else out.value = String(value);
+    },
+    { type: 'number' },
+  );
+  out.step = step;
+  return out;
 };
 
-export const clampNumber = (value: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, value));
+export const clampNumber = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-export const colorHex = (color: RgbaColor): string => `#${color.slice(0, 3)
-  .map(component => Math.round(clampNumber(component, 0, 1) * 255).toString(16).padStart(2, '0')).join('')}`;
+export const colorHex = (color: RgbaColor): string =>
+  `#${color
+    .slice(0, 3)
+    .map(component =>
+      Math.round(clampNumber(component, 0, 1) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
 
 export const colorRgbFromHex = (value: string): [number, number, number] | null => {
   const match = /^#([0-9a-f]{6})$/i.exec(value);
@@ -173,19 +216,27 @@ export const nodeDisplayName = (node: EffectNode): string => effectNodeLabel(nod
  * where the parent already names the circumstance. */
 export const nodeDisplayNameForCircumstance = (node: EffectNode, circumstance: EffectCircumstance): string =>
   node.semanticType === 'particle.timer'
-    ? (circumstance === 'persistent' ? 'Particle emitter' : 'Particle burst')
+    ? circumstance === 'persistent'
+      ? 'Particle emitter'
+      : 'Particle burst'
     : nodeDisplayName(node);
 
 export const nodeDisplayNameInGraph = (node: EffectNode, circumstance: EffectCircumstance): string =>
   `${effectCircumstanceLabel(circumstance)} · ${nodeDisplayNameForCircumstance(node, circumstance)}`;
 
-export const nodeTemplateLabelInGraph = (template: (typeof EFFECT_TEMPLATES)[number], circumstance?: EffectCircumstance): string => {
+export const nodeTemplateLabelInGraph = (
+  template: (typeof EFFECT_TEMPLATES)[number],
+  circumstance?: EffectCircumstance,
+): string => {
   return template.id === 'timer-emitter' && circumstance && circumstance !== 'persistent'
-    ? 'Particle burst' : template.label;
+    ? 'Particle burst'
+    : template.label;
 };
 
 export const TEMPLATE_GROUP: Record<EffectTemplateKind, string> = {
-  container: 'Empty', node: 'Nodes', recipe: 'Recipes',
+  container: 'Empty',
+  node: 'Nodes',
+  recipe: 'Recipes',
 };
 
 /** Everything in this group has been packed into an ISO, run on PS2 hardware by the test harness, and had
@@ -195,8 +246,8 @@ export const VALIDATED_GROUP = 'Validated';
 /** The hover tier: the usage guidance, and then what hardware was seen to do. Both are optional and most
  *  templates carry neither — the visible summary is the whole story for them. */
 export const templateHover = (template: { summary: string; detail?: string; proven?: EffectTemplateProof }): string =>
-  [template.detail, template.proven && `Validated on PS2 — ${template.proven.observed}`]
-    .filter(Boolean).join('\n\n') || template.summary;
+  [template.detail, template.proven && `Validated on PS2 — ${template.proven.observed}`].filter(Boolean).join('\n\n') ||
+  template.summary;
 
 /**
  * Add-effect / add-node buttons open the shared described menu instead of keeping a neighbouring combo box.
@@ -212,8 +263,17 @@ export const templateHover = (template: { summary: string; detail?: string; prov
  * Every row shows its one-line summary beneath the label. Usage caveats and the hardware record stay in the
  * hover help so the menu stays scannable — a list this long is read by skimming.
  */
-export const templatePicker = <T extends { id?: EffectTemplateId; label: string; summary: string; detail?: string;
-  circumstance?: EffectCircumstance; kind?: EffectTemplateKind; proven?: EffectTemplateProof }>(
+export const templatePicker = <
+  T extends {
+    id?: EffectTemplateId;
+    label: string;
+    summary: string;
+    detail?: string;
+    circumstance?: EffectCircumstance;
+    kind?: EffectTemplateKind;
+    proven?: EffectTemplateProof;
+  },
+>(
   triggerLabel: string,
   title: string,
   templates: readonly T[],
@@ -221,10 +281,12 @@ export const templatePicker = <T extends { id?: EffectTemplateId; label: string;
   labelFor: (template: T) => string = template => template.label,
 ): HTMLButtonElement => {
   const order: EffectTemplateKind[] = ['container', 'node', 'recipe'];
-  const grouped = [...templates].sort((a, b) =>
-    Number(!!b.proven) - Number(!!a.proven)
-    || order.indexOf(a.kind ?? 'node') - order.indexOf(b.kind ?? 'node')
-    || labelFor(a).localeCompare(labelFor(b)));
+  const grouped = [...templates].sort(
+    (a, b) =>
+      Number(!!b.proven) - Number(!!a.proven) ||
+      order.indexOf(a.kind ?? 'node') - order.indexOf(b.kind ?? 'node') ||
+      labelFor(a).localeCompare(labelFor(b)),
+  );
   const picker = menu(triggerLabel, [
     ...grouped.map(template => ({
       label: labelFor(template),
@@ -233,13 +295,15 @@ export const templatePicker = <T extends { id?: EffectTemplateId; label: string;
       group: template.proven ? VALIDATED_GROUP : TEMPLATE_GROUP[template.kind ?? 'node'],
       onClick: () => onPick(template),
     })),
-    ...[...UNAUTHORABLE_EFFECT_NODES].sort((a, b) => a.label.localeCompare(b.label)).map(node => ({
-      label: node.label,
-      detail: node.reason,
-      desc: `${node.semanticType} — ${node.reason}`,
-      group: 'Not addable yet',
-      disabled: true,
-    })),
+    ...[...UNAUTHORABLE_EFFECT_NODES]
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .map(node => ({
+        label: node.label,
+        detail: node.reason,
+        desc: `${node.semanticType} — ${node.reason}`,
+        group: 'Not addable yet',
+        disabled: true,
+      })),
   ]);
   picker.el.classList.remove('sp-btn');
   picker.el.classList.add('sp-fx-btn', 'sp-fx-add-menu');
@@ -257,24 +321,40 @@ export const treeActionMenu = (title: string, kind: 'effect' | 'node', items: Me
   return actionMenu.el;
 };
 
-export const EFFECT_NODE_TEMPLATES = EFFECT_TEMPLATES
-  .filter((template): template is typeof template & { id: EffectNodeTemplateId } => !!template.nodes?.length)
-  .sort((a, b) => a.label.localeCompare(b.label));
+export const EFFECT_NODE_TEMPLATES = EFFECT_TEMPLATES.filter(
+  (template): template is typeof template & { id: EffectNodeTemplateId } => !!template.nodes?.length,
+).sort((a, b) => a.label.localeCompare(b.label));
 
-export const select = <T extends string>(value: T, options: readonly { value: T; label: string }[], change: (value: T) => void): HTMLSelectElement => {
+export const select = <T extends string>(
+  value: T,
+  options: readonly { value: T; label: string }[],
+  change: (value: T) => void,
+): HTMLSelectElement => {
   const out = el('select', 'sp-fx-input');
-  for (const option of options) { const o = el('option'); o.value = option.value; o.textContent = option.label; out.appendChild(o); }
-  out.value = value; out.onchange = () => change(out.value as T); return out;
+  for (const option of options) {
+    const o = el('option');
+    o.value = option.value;
+    o.textContent = option.label;
+    out.appendChild(o);
+  }
+  out.value = value;
+  out.onchange = () => change(out.value as T);
+  return out;
 };
 
-export function effectNodeTree(bindings: readonly { circumstance: EffectCircumstance; graph: EffectGraph }[],
-  current: EffectSelection | null, selectNode: (graph: EffectGraph, node: EffectNode) => void,
+export function effectNodeTree(
+  bindings: readonly { circumstance: EffectCircumstance; graph: EffectGraph }[],
+  current: EffectSelection | null,
+  selectNode: (graph: EffectGraph, node: EffectNode) => void,
   displayNode: (node: EffectNode) => string = nodeDisplayName,
   addNodeControl?: (binding: { circumstance: EffectCircumstance; graph: EffectGraph }) => HTMLElement,
   rowActions?: {
     effect: (binding: { circumstance: EffectCircumstance; graph: EffectGraph }) => HTMLElement;
     node: (binding: { circumstance: EffectCircumstance; graph: EffectGraph }, node: EffectNode) => HTMLElement;
-  }, selectGraph?: (graph: EffectGraph) => void, showNodes = true): HTMLElement {
+  },
+  selectGraph?: (graph: EffectGraph) => void,
+  showNodes = true,
+): HTMLElement {
   const tree = el('div', 'sp-fx-tree');
   if (bindings.length) tree.appendChild(el('div', 'sp-fx-tree-caption', showNodes ? 'Effects / Nodes' : 'Effects'));
   for (const binding of bindings) {
@@ -295,30 +375,43 @@ export function effectNodeTree(bindings: readonly { circumstance: EffectCircumst
         const active = graphActive && current?.nodeId === node.id;
         const content = [
           el('span', 'sp-fx-node-index', String(index + 1)),
-          el('span', 'sp-fx-node-name', displayNode === nodeDisplayName
-            ? nodeDisplayNameForCircumstance(node, binding.circumstance) : displayNode(node)),
+          el(
+            'span',
+            'sp-fx-node-name',
+            displayNode === nodeDisplayName
+              ? nodeDisplayNameForCircumstance(node, binding.circumstance)
+              : displayNode(node),
+          ),
           el('span', 'sp-fx-kind', `M${node.mainType}`),
         ];
         if (rowActions) {
           const item = el('div', `sp-fx-node-row sp-fx-tree-node has-menu${active ? ' on' : ''}`);
           const select = el('button', 'sp-fx-tree-node-select');
-          select.type = 'button'; select.onclick = () => selectNode(binding.graph, node);
+          select.type = 'button';
+          select.onclick = () => selectNode(binding.graph, node);
           select.append(...content);
           item.append(select, rowActions.node(binding, node));
           group.appendChild(item);
         } else {
           const item = el('button', `sp-fx-node-row sp-fx-tree-node${active ? ' on' : ''}`);
-          item.type = 'button'; item.onclick = () => selectNode(binding.graph, node);
+          item.type = 'button';
+          item.onclick = () => selectNode(binding.graph, node);
           item.append(...content);
           group.appendChild(item);
         }
       }
       // An empty latch graph is the retail authored form, not missing content: the engine only tests
       // populated-ness, and its yes suppresses the default state revert [Trailmap: 150-logic §slot-columns].
-      if (!binding.graph.nodes.length) group.appendChild(isEffectLatchCircumstance(binding.circumstance)
-        ? el('div', 'sp-fx-empty sp-fx-tree-empty sp-fx-tree-latch',
-          `⟨latch⟩ ${EFFECT_LATCH_SUMMARY[binding.circumstance]}`)
-        : el('div', 'sp-fx-empty sp-fx-tree-empty', 'No nodes'));
+      if (!binding.graph.nodes.length)
+        group.appendChild(
+          isEffectLatchCircumstance(binding.circumstance)
+            ? el(
+                'div',
+                'sp-fx-empty sp-fx-tree-empty sp-fx-tree-latch',
+                `⟨latch⟩ ${EFFECT_LATCH_SUMMARY[binding.circumstance]}`,
+              )
+            : el('div', 'sp-fx-empty sp-fx-tree-empty', 'No nodes'),
+        );
       const addNode = addNodeControl?.(binding);
       if (addNode) {
         const create = el('div', 'sp-fx-node-add');
@@ -339,14 +432,17 @@ export function effectNodeTree(bindings: readonly { circumstance: EffectCircumst
  * thing — and the only one that could not be opened.
  */
 export function effectCallTree(
-  incoming: ReturnType<typeof referenceIncomingEffectCalls>, current: EffectSelection | null,
-  selectOwner: (entry: ReturnType<typeof referenceIncomingEffectCalls>[number]) => void): HTMLElement {
+  incoming: ReturnType<typeof referenceIncomingEffectCalls>,
+  current: EffectSelection | null,
+  selectOwner: (entry: ReturnType<typeof referenceIncomingEffectCalls>[number]) => void,
+): HTMLElement {
   const tree = el('div', 'sp-fx-tree');
   const groups = new Map<string, typeof incoming>();
   for (const entry of incoming) {
     const key = `${entry.ownerKind}:${entry.owner.id}`;
     const group = groups.get(key);
-    if (group) group.push(entry); else groups.set(key, [entry]);
+    if (group) group.push(entry);
+    else groups.set(key, [entry]);
   }
   for (const entries of groups.values()) {
     const first = entries[0];
@@ -356,17 +452,19 @@ export function effectCallTree(
     // the picker already uses for a function — its caller node is "Call shared effect" — so the row names
     // the other end of that node. The old "· from <prop>" tail is gone: `sources` is filtered to branches
     // this prop reaches, so it only ever named the prop already open, by a different field than the header.
-    const ownerName = first.ownerKind === 'graph' && source
-      ? effectGraphDisplayName(first.owner as EffectGraph, source.circumstance)
-      : `Shared effect ${first.owner.name || first.owner.id}`;
+    const ownerName =
+      first.ownerKind === 'graph' && source
+        ? effectGraphDisplayName(first.owner as EffectGraph, source.circumstance)
+        : `Shared effect ${first.owner.name || first.owner.id}`;
     const active = current?.ownerKind === first.ownerKind && current.ownerId === first.owner.id;
-    const graphRow = el('button',
-      `sp-fx-attachment sp-fx-tree-effect sp-fx-tree-effect-select${active ? ' on' : ''}`);
+    const graphRow = el('button', `sp-fx-attachment sp-fx-tree-effect sp-fx-tree-effect-select${active ? ' on' : ''}`);
     graphRow.type = 'button';
     graphRow.title = `Open ${ownerName} and list the props it acts on.`;
     graphRow.onclick = () => selectOwner(first);
-    graphRow.append(el('span', 'sp-fx-list-name', ownerName),
-      el('span', 'sp-fx-kind', countLabel(entries.length, 'call')));
+    graphRow.append(
+      el('span', 'sp-fx-list-name', ownerName),
+      el('span', 'sp-fx-kind', countLabel(entries.length, 'call')),
+    );
     group.appendChild(graphRow);
     tree.appendChild(group);
   }

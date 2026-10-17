@@ -133,6 +133,9 @@ export interface MapOriginSummary {
 }
 
 export const originSummary = (name: string, record: MapOriginRecord): MapOriginSummary => ({
-  name, origin: record.Origin, ...(record.Course ? { course: record.Course } : {}),
-  retailData: record.RetailData, reasons: record.Reasons,
+  name,
+  origin: record.Origin,
+  ...(record.Course ? { course: record.Course } : {}),
+  retailData: record.RetailData,
+  reasons: record.Reasons,
 });

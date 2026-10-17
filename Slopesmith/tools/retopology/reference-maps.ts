@@ -1,18 +1,24 @@
 /** Package scored retopology OBJ candidates as loadable SlopeSmith reference-map folders. */
-import {
-  copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync,
-} from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { migrateMountain } from '../../src/core/doc/mountain';
 import { buildReferenceMesh, type RawPatch } from '../../src/core/reference/terrain';
 import type { RetopologyConstraints } from '../../src/core/mesh/retopology/benchmark';
 import { readObj } from '../../src/core/mesh/retopology/obj';
 import {
-  candidateReferencePatches, protectedReferencePatch, type RetopologyReferencePatch,
+  candidateReferencePatches,
+  protectedReferencePatch,
+  type RetopologyReferencePatch,
 } from '../../src/core/mesh/retopology/reference-map';
 
-interface PatchFile { Patches: RawPatch[] }
-interface BenchmarkResult { id: string; file: string; score: unknown }
+interface PatchFile {
+  Patches: RawPatch[];
+}
+interface BenchmarkResult {
+  id: string;
+  file: string;
+  score: unknown;
+}
 interface BenchmarkReport {
   generatedAt: string;
   source: string;
@@ -23,7 +29,8 @@ interface BenchmarkReport {
 
 const args = process.argv.slice(2);
 const value = (name: string, fallback?: string): string => {
-  const at = args.indexOf(name), found = at >= 0 ? args[at + 1] : undefined;
+  const at = args.indexOf(name),
+    found = at >= 0 ? args[at + 1] : undefined;
   if (found !== undefined) return found;
   if (fallback !== undefined) return fallback;
   throw new Error(`Missing ${name}`);
@@ -47,11 +54,16 @@ function main(): void {
   const constraints = readJson<RetopologyConstraints>(constraintsFile);
   const report = readJson<BenchmarkReport>(reportFile);
   const prefix = value('--prefix', `${document.name}_RETOPO`);
-  const requested = value('--only', '').split(',').map(item => item.trim()).filter(Boolean);
+  const requested = value('--only', '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
   const results = requested.length ? report.results.filter(result => requested.includes(result.id)) : report.results;
 
   if (sourcePatches.length !== document.quads.length) {
-    throw new Error(`Source patch count ${sourcePatches.length} does not match document quad count ${document.quads.length}`);
+    throw new Error(
+      `Source patch count ${sourcePatches.length} does not match document quad count ${document.quads.length}`,
+    );
   }
   if (!results.length) throw new Error('No benchmark candidates selected');
 
@@ -60,7 +72,8 @@ function main(): void {
     const index = quadIndex.get(id);
     if (index === undefined) throw new Error(`Protected patch ${id} is absent from the source document`);
     const source = sourcePatches[index];
-    if (!source?.Points || source.Points.length !== 16) throw new Error(`Source patch ${id} has no bicubic control net`);
+    if (!source?.Points || source.Points.length !== 16)
+      throw new Error(`Source patch ${id} has no bicubic control net`);
     return protectedReferencePatch(source, `Protected_${id.replace(/[^A-Za-z0-9_-]+/g, '_')}`);
   });
 
@@ -80,7 +93,8 @@ function main(): void {
     // Patches are the large payload; keep it compact like a normal SlopeSmith export for faster reference loads.
     writeFileSync(join(out, 'Patches.json'), `${JSON.stringify({ Patches: patches })}\n`);
     copyFileSync(candidateFile, join(out, 'candidate.obj'));
-    if (existsSync(join(sourceDir, 'Textures'))) cpSync(join(sourceDir, 'Textures'), join(out, 'Textures'), { recursive: true });
+    if (existsSync(join(sourceDir, 'Textures')))
+      cpSync(join(sourceDir, 'Textures'), join(out, 'Textures'), { recursive: true });
     for (const auxiliary of ['AIP.json', 'SOP.json', 'Lights.json']) {
       const source = join(sourceDir, auxiliary);
       if (existsSync(source)) copyFileSync(source, join(out, auxiliary));
@@ -90,7 +104,12 @@ function main(): void {
       version: 1,
       name,
       source: { document: basename(sourceFile), map: document.name },
-      candidate: { id: result.id, obj: 'candidate.obj', vertices: candidate.vertices.length, faces: candidate.faces.length },
+      candidate: {
+        id: result.id,
+        obj: 'candidate.obj',
+        vertices: candidate.vertices.length,
+        faces: candidate.faces.length,
+      },
       protectedPatches: protectedPatches.length,
       totalPatches: protectedPatches.length + candidatePatches.length,
       benchmark: {
@@ -106,11 +125,15 @@ function main(): void {
       ],
     });
     const reference = buildReferenceMesh(patches, undefined, 1);
-    if (reference.patchCount !== patches.length
-      || [...reference.min, ...reference.max].some(coordinate => !Number.isFinite(coordinate))) {
+    if (
+      reference.patchCount !== patches.length ||
+      [...reference.min, ...reference.max].some(coordinate => !Number.isFinite(coordinate))
+    ) {
       throw new Error(`${name} failed SlopeSmith reference-mesh validation`);
     }
-    console.log(`${name}: ${protectedPatches.length} protected + ${candidatePatches.length} candidate patches -> ${out}`);
+    console.log(
+      `${name}: ${protectedPatches.length} protected + ${candidatePatches.length} candidate patches -> ${out}`,
+    );
   }
 }
 

@@ -37,5 +37,4 @@ export function authoredPatches(doc: QuadMeshDoc): RawPatch[] {
 
 /** A document tessellated into the quilt the reference slot holds. Nothing here touches the live project:
  *  the document is read, and what comes back is render geometry with no way back into the editor's grammar. */
-export const authoredReferenceMesh = (doc: QuadMeshDoc): ReferenceMesh =>
-  buildReferenceMesh(authoredPatches(doc));
+export const authoredReferenceMesh = (doc: QuadMeshDoc): ReferenceMesh => buildReferenceMesh(authoredPatches(doc));

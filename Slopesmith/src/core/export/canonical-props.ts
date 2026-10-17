@@ -3,7 +3,12 @@ import { effectAttachments } from '../effects/authoring';
 import { authoredAmbientRecord } from '../effects/external-sound';
 import type { V3 } from '../doc/types';
 import type {
-  BakedGroups, BakedPropClip, BakedPropClipObject, BakedPropClips, BakedPropGroup, BakedPropPose,
+  BakedGroups,
+  BakedPropClip,
+  BakedPropClipObject,
+  BakedPropClips,
+  BakedPropGroup,
+  BakedPropPose,
   BakedPropSubmesh,
 } from './props';
 
@@ -25,9 +30,16 @@ export interface CanonicalPropMetadata {
   collisionSoundClips: Record<string, string>;
   /** Authored ambience per prop. `radius`/`halfExtents` are EDITOR metres; the native record's units and axis
    *  order come from `authoredAmbientRecord`, so this metadata stays in the space it was authored in. */
-  ambientSounds: Record<string, {
-    event: number; radius: number; falloff?: number; halfExtents?: V3; clip?: string;
-  }>;
+  ambientSounds: Record<
+    string,
+    {
+      event: number;
+      radius: number;
+      falloff?: number;
+      halfExtents?: V3;
+      clip?: string;
+    }
+  >;
   propBounce: Record<string, number>;
   propSurfaces: Record<string, number>;
   /** Placement ids authored onto the validated native Showoff-only LTG layer. */
@@ -114,8 +126,7 @@ function joined<T>(groups: BakedGroups, values: Record<string, T>): Map<string, 
 const graphHas = (graph: EffectGraph, predicate: (node: EffectGraph['nodes'][number]) => boolean): boolean =>
   graph.nodes.some(predicate);
 
-function canonicalWirings(document: EffectsDocument | null | undefined,
-                          groups: BakedGroups): Map<string, Wiring> {
+function canonicalWirings(document: EffectsDocument | null | undefined, groups: BakedGroups): Map<string, Wiring> {
   const result = new Map<string, Wiring>();
   if (!document) return result;
   const graphById = new Map(document.graphs.map(graph => [graph.id, graph]));
@@ -124,20 +135,37 @@ function canonicalWirings(document: EffectsDocument | null | undefined,
     if (!attachment.enabled) continue;
     const matched = slotById.get(attachment.slot);
     if (!matched) continue;
-    const wiring: Wiring = { slotIndex: matched.index, uvScroll: false, collision: false,
-      splineMover: false, roller: false };
+    const wiring: Wiring = {
+      slotIndex: matched.index,
+      uvScroll: false,
+      collision: false,
+      splineMover: false,
+      roller: false,
+    };
     for (const [circumstance, graphId] of Object.entries(matched.slot.circumstances)) {
       const graph = graphId ? graphById.get(graphId) : null;
       if (!graph) continue;
       if (circumstance === 'collision') wiring.collision = true;
-      wiring.uvScroll ||= graphHas(graph, node => node.mainType === 0
-        && [10, 19].includes(Number((node.payload.type0 as Record<string, unknown> | undefined)?.SubType)));
-      wiring.splineMover ||= graphHas(graph, node => node.mainType === 2
-        && Number((node.payload.type2 as Record<string, unknown> | undefined)?.SubType) === 1
-        && typeof (node.payload.type2 as Record<string, unknown> | undefined)?.SplineAnimation === 'object');
-      wiring.roller ||= graphHas(graph, node => node.mainType === 0
-        && Number((node.payload.type0 as Record<string, unknown> | undefined)?.SubType) === 0
-        && typeof (node.payload.type0 as Record<string, unknown> | undefined)?.type0Sub0 === 'object');
+      wiring.uvScroll ||= graphHas(
+        graph,
+        node =>
+          node.mainType === 0 &&
+          [10, 19].includes(Number((node.payload.type0 as Record<string, unknown> | undefined)?.SubType)),
+      );
+      wiring.splineMover ||= graphHas(
+        graph,
+        node =>
+          node.mainType === 2 &&
+          Number((node.payload.type2 as Record<string, unknown> | undefined)?.SubType) === 1 &&
+          typeof (node.payload.type2 as Record<string, unknown> | undefined)?.SplineAnimation === 'object',
+      );
+      wiring.roller ||= graphHas(
+        graph,
+        node =>
+          node.mainType === 0 &&
+          Number((node.payload.type0 as Record<string, unknown> | undefined)?.SubType) === 0 &&
+          typeof (node.payload.type0 as Record<string, unknown> | undefined)?.type0Sub0 === 'object',
+      );
     }
     for (const name of groups[attachment.target.id] ?? [])
       if (!result.has(cleanName(name))) result.set(cleanName(name), wiring);
@@ -175,18 +203,27 @@ function setAnimation(entry: NativeModelObject, source: BakedPropClipObject, sca
     if (!curve?.length) continue;
     action |= 1 << channel;
     const k = channel < 3 ? scale : 1;
-    entries.push({ AnimationMaths: curve.map(segment => ({
-      Value1: segment[0] * k, Value2: segment[1] * k,
-      Value3: segment[2] * k, Value4: segment[3] * k,
-      Value5: segment[4], Value6: segment[5],
-    })) });
+    entries.push({
+      AnimationMaths: curve.map(segment => ({
+        Value1: segment[0] * k,
+        Value2: segment[1] * k,
+        Value3: segment[2] * k,
+        Value4: segment[3] * k,
+        Value5: segment[4],
+        Value6: segment[5],
+      })),
+    });
   }
   const basePosition = source.basePosition ?? source.restPosition;
   const baseEuler = source.baseEuler ?? [0, 0, 0];
   const radians = Math.PI / 180;
   entry.Animation = {
-    U1: basePosition[0] * scale, U2: basePosition[1] * scale, U3: basePosition[2] * scale,
-    U4: baseEuler[0] * radians, U5: baseEuler[1] * radians, U6: baseEuler[2] * radians,
+    U1: basePosition[0] * scale,
+    U2: basePosition[1] * scale,
+    U3: basePosition[2] * scale,
+    U4: baseEuler[0] * radians,
+    U5: baseEuler[1] * radians,
+    U6: baseEuler[2] * radians,
     AnimationAction: action,
     AnimationEntries: entries,
   };
@@ -214,9 +251,15 @@ const quatMul = (a: number[], b: number[]): number[] => [
 
 /** Unit quaternion from an orthonormal basis stored as basis[column][row]. */
 function quatFromBasis(m: number[][]): number[] {
-  const m11 = m[0][0], m12 = m[1][0], m13 = m[2][0];
-  const m21 = m[0][1], m22 = m[1][1], m23 = m[2][1];
-  const m31 = m[0][2], m32 = m[1][2], m33 = m[2][2];
+  const m11 = m[0][0],
+    m12 = m[1][0],
+    m13 = m[2][0];
+  const m21 = m[0][1],
+    m22 = m[1][1],
+    m23 = m[2][1];
+  const m31 = m[0][2],
+    m32 = m[1][2],
+    m33 = m[2][2];
   const trace = m11 + m22 + m33;
   if (trace > 0) {
     const s = 0.5 / Math.sqrt(trace + 1);
@@ -244,33 +287,39 @@ function localPoint(point: number[], frame: NativeFrame | null): number[] {
   if (!frame) return [...point];
   const q = normalizedQuat(frame.rotation);
   const inverse = [-q[0], -q[1], -q[2], q[3]];
-  const rotated = quatRotate([
-    point[0] - frame.location[0], point[1] - frame.location[1], point[2] - frame.location[2],
-  ], inverse);
+  const rotated = quatRotate(
+    [point[0] - frame.location[0], point[1] - frame.location[1], point[2] - frame.location[2]],
+    inverse,
+  );
   return rotated.map((value, index) => value / frame.scale[index]);
 }
 
 function objectPoint(point: number[], rest: RestFrame | null): number[] {
   if (!rest) return point;
-  const moved = quatRotate(point.map((value, index) => value - rest.t[index]),
-    [-rest.q[0], -rest.q[1], -rest.q[2], rest.q[3]]);
+  const moved = quatRotate(
+    point.map((value, index) => value - rest.t[index]),
+    [-rest.q[0], -rest.q[1], -rest.q[2], rest.q[3]],
+  );
   const scale = Math.abs(rest.s) > 1e-12 ? rest.s : 1;
   return moved.map(value => value / scale);
 }
 
 function composeRest(parent: RestFrame, position: number[], rotation: number[], scale: number[]): RestFrame {
-  const moved = quatRotate(position.map(value => value * parent.s), parent.q);
+  const moved = quatRotate(
+    position.map(value => value * parent.s),
+    parent.q,
+  );
   return {
     t: parent.t.map((value, index) => value + moved[index]),
     q: quatMul(parent.q, rotation),
-    s: parent.s * (scale[0] + scale[1] + scale[2]) / 3,
+    s: (parent.s * (scale[0] + scale[1] + scale[2])) / 3,
   };
 }
 
 const identitySrt = (position: number[], rotation: number[], scale: number[]): boolean =>
-  position.every(value => Math.abs(value) < 1e-9)
-  && Math.abs(Math.abs(rotation[3]) - 1) < 1e-9
-  && scale.every(value => Math.abs(value - 1) < 1e-9);
+  position.every(value => Math.abs(value) < 1e-9) &&
+  Math.abs(Math.abs(rotation[3]) - 1) < 1e-9 &&
+  scale.every(value => Math.abs(value - 1) < 1e-9);
 
 function packClip(clip: BakedPropClip, frame: NativeFrame | null): PackedClip | null {
   const origin = clip.pose.origin;
@@ -278,17 +327,20 @@ function packClip(clip: BakedPropClip, frame: NativeFrame | null): PackedClip | 
   const basis: number[][] = [];
   const lengths: number[] = [];
   for (let axisIndex = 0; axisIndex < 3; axisIndex++) {
-    const axis = [0, 0, 0]; axis[axisIndex] = clip.pose.scale;
+    const axis = [0, 0, 0];
+    axis[axisIndex] = clip.pose.scale;
     const tip = quatRotate(axis, clip.pose.rotation);
-    const localized = localPoint(origin.map((value, index) => value + tip[index]), frame);
+    const localized = localPoint(
+      origin.map((value, index) => value + tip[index]),
+      frame,
+    );
     const column = localized.map((value, index) => value - frameT[index]);
     basis.push(column);
     lengths.push(length3(column));
   }
   const frameScale = lengths[0];
   if (!(frameScale > 1e-9)) return null;
-  for (let i = 0; i < 3; i++) if (lengths[i] > 1e-9)
-    basis[i] = basis[i].map(value => value / lengths[i]);
+  for (let i = 0; i < 3; i++) if (lengths[i] > 1e-9) basis[i] = basis[i].map(value => value / lengths[i]);
   const frameQ = quatFromBasis(basis);
   const packed: PackedClip = { objects: [], rest: [], packedOf: new Array(clip.objects.length), moving: 0 };
   for (let k = 0; k < clip.objects.length; k++) {
@@ -321,9 +373,11 @@ function packClip(clip: BakedPropClip, frame: NativeFrame | null): PackedClip | 
       }
     }
     const entry = newModelObject(packed.objects.length, parent);
-    if (!identitySrt(position, rotation, source.restScale))
-      setMatrix(entry, position, rotation, source.restScale);
-    if (animated) { setAnimation(entry, source, frameScale); packed.moving++; }
+    if (!identitySrt(position, rotation, source.restScale)) setMatrix(entry, position, rotation, source.restScale);
+    if (animated) {
+      setAnimation(entry, source, frameScale);
+      packed.moving++;
+    }
     packed.packedOf[k] = packed.objects.length;
     packed.rest.push(composeRest(packed.rest[parent], position, rotation, source.restScale));
     packed.objects.push(entry);
@@ -334,9 +388,11 @@ function packClip(clip: BakedPropClip, frame: NativeFrame | null): PackedClip | 
 const fixed = (value: number, places: number): string => (Number.isFinite(value) ? value : 0).toFixed(places);
 
 function renderMesh(sub: BakedPropSubmesh, frame: NativeFrame | null, rest: RestFrame | null): string {
-  const point = (index: number): number[] => objectPoint(localPoint([
-    sub.positions[index * 3], sub.positions[index * 3 + 1], sub.positions[index * 3 + 2],
-  ], frame), rest);
+  const point = (index: number): number[] =>
+    objectPoint(
+      localPoint([sub.positions[index * 3], sub.positions[index * 3 + 1], sub.positions[index * 3 + 2]], frame),
+      rest,
+    );
   const used: number[] = [];
   const localIndex = new Map<number, number>();
   const normals = new Map<number, number[]>();
@@ -347,17 +403,27 @@ function renderMesh(sub: BakedPropSubmesh, frame: NativeFrame | null, rest: Rest
     const v = c.map((value, index) => value - a[index]);
     const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
     for (const id of ids) {
-      if (!localIndex.has(id)) { localIndex.set(id, used.length + 1); used.push(id); }
+      if (!localIndex.has(id)) {
+        localIndex.set(id, used.length + 1);
+        used.push(id);
+      }
       const prior = normals.get(id) ?? [0, 0, 0];
-      normals.set(id, prior.map((value, index) => value + normal[index]));
+      normals.set(
+        id,
+        prior.map((value, index) => value + normal[index]),
+      );
     }
   }
   const lines = ['# SlopeSmith canonical prop mesh'];
-  for (const id of used) lines.push(`v ${point(id).map(value => fixed(value, 3)).join(' ')}`);
-  const hasUvs = sub.uvs.length >= sub.positions.length / 3 * 2;
-  for (const id of used) lines.push(hasUvs
-    ? `vt ${fixed(sub.uvs[id * 2], 6)} ${fixed(sub.uvs[id * 2 + 1], 6)}`
-    : 'vt 0.500000 0.500000');
+  for (const id of used)
+    lines.push(
+      `v ${point(id)
+        .map(value => fixed(value, 3))
+        .join(' ')}`,
+    );
+  const hasUvs = sub.uvs.length >= (sub.positions.length / 3) * 2;
+  for (const id of used)
+    lines.push(hasUvs ? `vt ${fixed(sub.uvs[id * 2], 6)} ${fixed(sub.uvs[id * 2 + 1], 6)}` : 'vt 0.500000 0.500000');
   for (const id of used) {
     let normal = normals.get(id) ?? [0, 0, 1];
     const n = length3(normal);
@@ -375,14 +441,17 @@ function renderMesh(sub: BakedPropSubmesh, frame: NativeFrame | null, rest: Rest
  * `inst<n>_...` is the native join that binds each object to Instances[n]. */
 function renderWorldProps(groups: readonly BakedPropGroup[]): string {
   const lines = ['# SlopeSmith canonical world-space prop preview'];
-  let vertexBase = 0, uvBase = 0;
+  let vertexBase = 0,
+    uvBase = 0;
   groups.forEach((group, groupIndex) => {
     lines.push(`o inst${groupIndex}_${group.name}`);
     for (const sub of group.subs) {
       lines.push(`usemtl ${sub.material}`);
       for (let k = 0; k < sub.positions.length; k += 3)
-        lines.push(`v ${fixed(sub.positions[k], 3)} ${fixed(sub.positions[k + 1], 3)} ${fixed(sub.positions[k + 2], 3)}`);
-      const hasUvs = sub.uvs.length >= sub.positions.length / 3 * 2;
+        lines.push(
+          `v ${fixed(sub.positions[k], 3)} ${fixed(sub.positions[k + 1], 3)} ${fixed(sub.positions[k + 2], 3)}`,
+        );
+      const hasUvs = sub.uvs.length >= (sub.positions.length / 3) * 2;
       if (hasUvs)
         for (let k = 0; k < sub.uvs.length; k += 2)
           lines.push(`vt ${fixed(sub.uvs[k], 6)} ${fixed(sub.uvs[k + 1], 6)}`);
@@ -414,21 +483,27 @@ function collisionMesh(group: BakedPropGroup, frame: NativeFrame | null): string
   const lines = ['# SlopeSmith canonical triangle collision proxy'];
   const indexes = new Map<string, number>();
   const unscaled: NativeFrame | null = frame ? { ...frame, scale: [1, 1, 1] } : null;
-  const local = (sub: BakedPropSubmesh, index: number) => localPoint([
-    sub.positions[index * 3], sub.positions[index * 3 + 1], sub.positions[index * 3 + 2],
-  ], unscaled);
+  const local = (sub: BakedPropSubmesh, index: number) =>
+    localPoint([sub.positions[index * 3], sub.positions[index * 3 + 1], sub.positions[index * 3 + 2]], unscaled);
   group.subs.forEach((sub, subIndex) => {
     for (const index of sub.indices) {
       const key = `${subIndex}:${index}`;
       if (indexes.has(key)) continue;
       indexes.set(key, indexes.size + 1);
-      lines.push(`v ${local(sub, index).map(value => fixed(value, 3)).join(' ')}`);
+      lines.push(
+        `v ${local(sub, index)
+          .map(value => fixed(value, 3))
+          .join(' ')}`,
+      );
     }
   });
   group.subs.forEach((sub, subIndex) => {
     for (let k = 0; k + 2 < sub.indices.length; k += 3)
-      lines.push(`f ${[sub.indices[k], sub.indices[k + 1], sub.indices[k + 2]]
-        .map(index => indexes.get(`${subIndex}:${index}`)).join(' ')}`);
+      lines.push(
+        `f ${[sub.indices[k], sub.indices[k + 1], sub.indices[k + 2]]
+          .map(index => indexes.get(`${subIndex}:${index}`))
+          .join(' ')}`,
+      );
   });
   return lines.join('\n') + '\n';
 }
@@ -438,9 +513,12 @@ const wantsCollision = (name: string): boolean =>
 
 /** Serialize SlopeSmith's structured prop bake into the native-shaped tables an ISO extraction writes.
  * Models.json, Instances.json and Meshes/ are the semantic contract; Props.obj is its world-space view. */
-export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
-                                    metadata: CanonicalPropMetadata): CanonicalPropFiles {
-  const groups = sourceGroups.filter(group => group.subs.some(sub => sub.indices.length >= 3))
+export function buildCanonicalProps(
+  sourceGroups: readonly BakedPropGroup[],
+  metadata: CanonicalPropMetadata,
+): CanonicalPropFiles {
+  const groups = sourceGroups
+    .filter(group => group.subs.some(sub => sub.indices.length >= 3))
     .map(group => ({ ...group, name: cleanName(group.name) }));
   const poses = joined(metadata.bakedGroups, metadata.propPoses);
   const clips = joined(metadata.bakedGroups, metadata.propClips);
@@ -458,16 +536,24 @@ export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
   const instances: Record<string, unknown>[] = [];
   const warnings: string[] = [];
   const collisionWorld = ['# SSX real collision proxies baked to world space from canonical SlopeSmith instances'];
-  let meshes = 0, collisionMeshes = 0, animatedModels = 0, effectBindings = 0, posedInstances = 0;
+  let meshes = 0,
+    collisionMeshes = 0,
+    animatedModels = 0,
+    effectBindings = 0,
+    posedInstances = 0;
 
   groups.forEach((group, groupIndex) => {
     const wiring = wirings.get(group.name);
     if (wiring) effectBindings++;
     const splineMover = wiring?.splineMover === true && wiring.roller !== true;
     const pose = poses.get(group.name);
-    const authoredFrame: NativeFrame | null = pose ? {
-      location: [...pose.origin], rotation: [...pose.rotation], scale: [pose.scale, pose.scale, pose.scale],
-    } : null;
+    const authoredFrame: NativeFrame | null = pose
+      ? {
+          location: [...pose.origin],
+          rotation: [...pose.rotation],
+          scale: [pose.scale, pose.scale, pose.scale],
+        }
+      : null;
     if (authoredFrame) posedInstances++;
     // Native spline nodes own their host's world rotation and never apply the source instance's Rotation or
     // Scale. Keep only the pivot on that instance and localize against a translation-only frame, leaving the
@@ -476,22 +562,29 @@ export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
     // A group with no authored placement may still declare its own pivot (the staging markers). Translation
     // only: the instance carries the point, the mesh localizes against it.
     const ownFrame: NativeFrame | null = group.origin
-      ? { location: [...group.origin], rotation: [0, 0, 0, 1], scale: [1, 1, 1] } : null;
-    const frame: NativeFrame | null = authoredFrame && splineMover ? {
-      location: authoredFrame.location, rotation: [0, 0, 0, 1], scale: [1, 1, 1],
-    } : authoredFrame ?? ownFrame;
+      ? { location: [...group.origin], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }
+      : null;
+    const frame: NativeFrame | null =
+      authoredFrame && splineMover
+        ? {
+            location: authoredFrame.location,
+            rotation: [0, 0, 0, 1],
+            scale: [1, 1, 1],
+          }
+        : (authoredFrame ?? ownFrame);
     const clip = clips.get(group.name);
     const packed = clip ? packClip(clip, frame) : null;
     if (packed) {
       animatedModels++;
       if (packed.objects.length > 27)
-        warnings.push(`${group.name} packs ${packed.objects.length} native ModelObjects; SSX Tricky's safe maximum is 27.`);
+        warnings.push(
+          `${group.name} packs ${packed.objects.length} native ModelObjects; SSX Tricky's safe maximum is 27.`,
+        );
     }
     const objectCount = packed?.objects.length ?? 1;
     const objects = packed?.objects ?? [newModelObject(0, -1)];
     group.subs.forEach((sub, subIndex) => {
-      const owner = packed && sub.object >= 0 && sub.object < packed.packedOf.length
-        ? packed.packedOf[sub.object] : 0;
+      const owner = packed && sub.object >= 0 && sub.object < packed.packedOf.length ? packed.packedOf[sub.object] : 0;
       const meshName = `prop_${String(groupIndex).padStart(4, '0')}_${String(subIndex).padStart(2, '0')}.obj`;
       files[`Meshes/${meshName}`] = renderMesh(sub, frame, packed?.rest[owner] ?? null);
       objects[owner].MeshData.push({ MeshPath: meshName, MaterialID: sub.slot });
@@ -500,8 +593,7 @@ export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
     // A malformed clip tag can only fall back to object zero; keep all object entries so the animation table
     // remains byte-shaped even when an authored moving object owns no visible geometry.
     while (objects.length < objectCount) objects.push(newModelObject(objects.length, -1));
-    models.push({ ModelName: group.name, Unknown3: 0, AnimTime: packed ? clip!.clipFrames : 0,
-      ModelObjects: objects });
+    models.push({ ModelName: group.name, Unknown3: 0, AnimTime: packed ? clip!.clipFrames : 0, ModelObjects: objects });
 
     const native = collisions.get(group.name);
     let solid = wantsCollision(group.name) && !splineMover;
@@ -525,13 +617,18 @@ export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
           const key = `${subIndex}:${index}`;
           if (keys.has(key)) continue;
           keys.set(key, keys.size + 1);
-          collisionWorld.push(`v ${fixed(sub.positions[index * 3], 3)} ${fixed(sub.positions[index * 3 + 1], 3)} ${fixed(sub.positions[index * 3 + 2], 3)}`);
+          collisionWorld.push(
+            `v ${fixed(sub.positions[index * 3], 3)} ${fixed(sub.positions[index * 3 + 1], 3)} ${fixed(sub.positions[index * 3 + 2], 3)}`,
+          );
         }
       });
       group.subs.forEach((sub, subIndex) => {
         for (let k = 0; k + 2 < sub.indices.length; k += 3)
-          collisionWorld.push(`f ${[sub.indices[k], sub.indices[k + 1], sub.indices[k + 2]]
-            .map(index => vertexBase + (keys.get(`${subIndex}:${index}`) ?? 0)).join(' ')}`);
+          collisionWorld.push(
+            `f ${[sub.indices[k], sub.indices[k + 1], sub.indices[k + 2]]
+              .map(index => vertexBase + (keys.get(`${subIndex}:${index}`) ?? 0))
+              .join(' ')}`,
+          );
       });
     }
 
@@ -540,36 +637,59 @@ export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
     // The native tail is derived, never hand-written: `authoredAmbientRecord` owns which U-slot each authored
     // number lands in, so a type-0 sphere and a type-1 ellipsoid cannot disagree with what the editor drew.
     const ambienceTail = ambience ? authoredAmbientRecord(ambience) : null;
-    const externalSounds = ambience && ambienceTail ? [{
-      U0: ambience.halfExtents ? 1 : 0, SoundIndex: ambience.event, U2: 0, U3: 0, U4: 0,
-      U5: ambienceTail[0] ?? 0, U6: ambienceTail[1] ?? 0, U7: ambienceTail[2] ?? 0,
-      U8: ambienceTail[3] ?? 0, U9: ambienceTail[4] ?? 0, U10: ambienceTail[5] ?? 0,
-      U11: ambienceTail[6] ?? 0,
-      SoundClip: ambience.clip ?? null,
-    }] : [];
+    const externalSounds =
+      ambience && ambienceTail
+        ? [
+            {
+              U0: ambience.halfExtents ? 1 : 0,
+              SoundIndex: ambience.event,
+              U2: 0,
+              U3: 0,
+              U4: 0,
+              U5: ambienceTail[0] ?? 0,
+              U6: ambienceTail[1] ?? 0,
+              U7: ambienceTail[2] ?? 0,
+              U8: ambienceTail[3] ?? 0,
+              U9: ambienceTail[4] ?? 0,
+              U10: ambienceTail[5] ?? 0,
+              U11: ambienceTail[6] ?? 0,
+              SoundClip: ambience.clip ?? null,
+            },
+          ]
+        : [];
     instances.push({
       InstanceName: group.name,
       Location: frame?.location ?? [0, 0, 0],
       Rotation: frame?.rotation ?? [0, 0, 0, 1],
       Scale: frame?.scale ?? [1, 1, 1],
       LightVector1: [...(light?.dir ?? [0, 0, 0]), 0],
-      LightVector2: [0, 0, 0, 0], LightVector3: [0, 0, 0, 0], AmbentLightVector: [0, 0, 0, 0],
+      LightVector2: [0, 0, 0, 0],
+      LightVector3: [0, 0, 0, 0],
+      AmbentLightVector: [0, 0, 0, 0],
       LightColour1: [...(light?.key ?? [0, 0, 0]), 0],
-      LightColour2: [0, 0, 0, 0], LightColour3: [0, 0, 0, 0],
+      LightColour2: [0, 0, 0, 0],
+      LightColour3: [0, 0, 0, 0],
       AmbentLightColour: [...(light?.amb ?? [256, 256, 256]), 128],
-      ModelID: groupIndex, PrevInstance: -1, NextInstance: -1,
-      UnknownInt26: 0, UnknownInt27: 0, UnknownInt28: 0,
-      UnknownInt30: 0, UnknownInt31: 0, UnknownInt32: 0,
+      ModelID: groupIndex,
+      PrevInstance: -1,
+      NextInstance: -1,
+      UnknownInt26: 0,
+      UnknownInt27: 0,
+      UnknownInt28: 0,
+      UnknownInt30: 0,
+      UnknownInt31: 0,
+      UnknownInt32: 0,
       // The editor exposes the semantic layer, not this integer. GemIndex/state 2 is retail's complete
       // Showoff-only object set; the ordinary common list remains 0.
       LTGState: modePresence.get(group.name) === 'showoff' ? 2 : 0,
-      Hash: instanceHash(group.name), IncludeSound: true,
+      Hash: instanceHash(group.name),
+      IncludeSound: true,
       Sounds: { CollisonSound: hitSounds.get(group.name) ?? 0, ExternalSounds: externalSounds },
       SoundClip: collisionClips.get(group.name) ?? null,
       ExactCollisionProfile: !!native,
       U0: native?.responseMass ?? (solid ? 1e30 : 0),
-      PlayerBounceAmmount: native?.bounceAmount ?? (bounce.has(group.name)
-        ? Math.max(0, bounce.get(group.name)!) : solid ? 0.5 : 0),
+      PlayerBounceAmmount:
+        native?.bounceAmount ?? (bounce.has(group.name) ? Math.max(0, bounce.get(group.name)!) : solid ? 0.5 : 0),
       U2: 0,
       Visable: !splineMover && !group.name.startsWith('EffectTrigger_'),
       PlayerCollision: native?.playerCollision ?? hasCollisionProxy,
@@ -589,6 +709,15 @@ export function buildCanonicalProps(sourceGroups: readonly BakedPropGroup[],
   files['Instances.json'] = JSON.stringify({ Instances: instances }, null, 2) + '\n';
   files['Props.obj'] = renderWorldProps(groups);
   files['PropsCollision.obj'] = collisionWorld.join('\n') + '\n';
-  return { text: files, instances: instances.length, models: models.length, meshes, collisionMeshes,
-    animatedModels, effectBindings, posedInstances, warnings };
+  return {
+    text: files,
+    instances: instances.length,
+    models: models.length,
+    meshes,
+    collisionMeshes,
+    animatedModels,
+    effectBindings,
+    posedInstances,
+    warnings,
+  };
 }

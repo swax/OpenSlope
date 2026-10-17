@@ -36,7 +36,13 @@ export type PlayDeps = {
 
 export function createPlay(deps: PlayDeps) {
   const {
-    store, viewport, persistUi, rebuildTools, updateCmdSheet, syncSkyVisibility, ensureReferenceEffects,
+    store,
+    viewport,
+    persistUi,
+    rebuildTools,
+    updateCmdSheet,
+    syncSkyVisibility,
+    ensureReferenceEffects,
     onPlayingChanged,
   } = deps;
   let launching: 'play' | 'watch' | null = null;
@@ -51,14 +57,23 @@ export function createPlay(deps: PlayDeps) {
       const start = spineAt(s, Math.min(4, totalLength(s) * 0.03)); // a few m past the gate
       return { pos: start.pos, heading: start.fwd };
     }
-    let x = 0, y = 0, z = 0;
-    const P = docPositions(store.mdoc), n = P.length / 3;
-    for (let i = 0; i < P.length; i += 3) { x += P[i]; y += P[i + 1]; z += P[i + 2]; }
+    let x = 0,
+      y = 0,
+      z = 0;
+    const P = docPositions(store.mdoc),
+      n = P.length / 3;
+    for (let i = 0; i < P.length; i += 3) {
+      x += P[i];
+      y += P[i + 1];
+      z += P[i + 2];
+    }
     return { pos: [x / n, y / n, z / n], heading: null };
   }
 
   /** The current target's start point (world space), or null if none set yet. */
-  function currentPlaySpawn(): V3 | null { return store.playTarget === 'reference' ? store.playSpawnRef : store.playSpawnAuthored; }
+  function currentPlaySpawn(): V3 | null {
+    return store.playTarget === 'reference' ? store.playSpawnRef : store.playSpawnAuthored;
+  }
 
   /** A sensible default start (world): a few metres down either mountain's course (reference centre fallback),
    *  facing down it. The heading matters — courses don't share a compass direction, so a rider dropped without
@@ -75,7 +90,8 @@ export function createPlay(deps: PlayDeps) {
 
   /** Store + show a new start point for the current target (from a slope click or the Reset button). */
   function setPlaySpawn(world: V3, refreshTools = false) {
-    if (store.playTarget === 'reference') store.playSpawnRef = world; else store.playSpawnAuthored = world;
+    if (store.playTarget === 'reference') store.playSpawnRef = world;
+    else store.playSpawnAuthored = world;
     viewport.showRideSpawn(world);
     if (refreshTools && store.currentMode === 'play') rebuildTools();
   }
@@ -120,9 +136,13 @@ export function createPlay(deps: PlayDeps) {
   /** Ensure the current target has a start point + the marker is shown (default it if the user hasn't placed one). */
   function ensurePlaySpawn() {
     const cur = currentPlaySpawn();
-    if (cur) { viewport.showRideSpawn(cur); return; }
+    if (cur) {
+      viewport.showRideSpawn(cur);
+      return;
+    }
     const d = defaultPlaySpawn();
-    if (d) setPlaySpawn(d.pos); else viewport.showRideSpawn(null);
+    if (d) setPlaySpawn(d.pos);
+    else viewport.showRideSpawn(null);
   }
 
   /** Enter Play SETUP for `target`: keep the editor view intact, show its start marker, and rebuild Tools. */
@@ -143,24 +163,44 @@ export function createPlay(deps: PlayDeps) {
   async function startPlay(touchControls = true) {
     if (store.currentMode !== 'play' || launching) return;
     const target = store.playTarget;
-    if (target === 'reference' && !viewport.canRideReference) { toast('Load a reference level first (Scene ▸ Reference).', 'warn'); return; }
+    if (target === 'reference' && !viewport.canRideReference) {
+      toast('Load a reference level first (Scene ▸ Reference).', 'warn');
+      return;
+    }
     // Unlock before reference preparation can yield out of the click/touch gesture. The
     // later board/effect/music callbacks cannot unlock a suspended device on every browser.
     resumeSharedAudio();
     const generation = ++launchGeneration;
-    launching = 'play'; rebuildTools();
+    launching = 'play';
+    rebuildTools();
     try {
       if (target === 'reference') await ensureReferenceEffects();
-      if (generation !== launchGeneration || store.currentMode !== 'play' || store.playTarget !== target ||
-        (target === 'reference' && !viewport.canRideReference)) return;
+      if (
+        generation !== launchGeneration ||
+        store.currentMode !== 'play' ||
+        store.playTarget !== target ||
+        (target === 'reference' && !viewport.canRideReference)
+      )
+        return;
       cancelStartPlacement(false);
       // A custom start is a bare click point, so it borrows the default's heading rather than facing nowhere.
       const fallback = defaultPlaySpawn();
       const placed = currentPlaySpawn();
       const spawn = placed ?? fallback?.pos ?? null;
-      if (!spawn) { toast('No start point — use Position ▸ Set custom start.', 'warn'); return; }
-      viewport.startRide(target, spawn, fallback?.heading ?? null, exitRide, store.playAiMax > 0,
-        store.playCountdownOn, store.playTelemetryOn, touchControls);
+      if (!spawn) {
+        toast('No start point — use Position ▸ Set custom start.', 'warn');
+        return;
+      }
+      viewport.startRide(
+        target,
+        spawn,
+        fallback?.heading ?? null,
+        exitRide,
+        store.playAiMax > 0,
+        store.playCountdownOn,
+        store.playTelemetryOn,
+        touchControls,
+      );
       onPlayingChanged(target);
       syncSkyVisibility(); // the target sky starts with the ride, not while positioning the setup marker
       updateCmdSheet();
@@ -181,25 +221,45 @@ export function createPlay(deps: PlayDeps) {
   async function startVr() {
     if (store.currentMode !== 'play' || launching || viewport.riding || viewport.xrPlaying) return;
     const target = store.playTarget;
-    if (target === 'reference' && !viewport.canRideReference) { toast('Load a reference level first (Scene ▸ Reference).', 'warn'); return; }
+    if (target === 'reference' && !viewport.canRideReference) {
+      toast('Load a reference level first (Scene ▸ Reference).', 'warn');
+      return;
+    }
     cancelStartPlacement(false);
     const fallback = defaultPlaySpawn();
     const spawn = currentPlaySpawn() ?? fallback?.pos ?? null;
-    if (!spawn) { toast('No start point — use Position ▸ Set custom start.', 'warn'); return; }
+    if (!spawn) {
+      toast('No start point — use Position ▸ Set custom start.', 'warn');
+      return;
+    }
     // Resume synchronously without awaiting it: WebXR needs this same user gesture.
     resumeSharedAudio();
-    const entered = await viewport.startXrPlay(target, spawn, fallback?.heading ?? null, exitVr,
-      store.playAiMax > 0, store.playTelemetryOn, store.playVrRenderScale, store.playVrLayerMode,
-      store.playSmoothCutoutsOn, store.playVrStatsOn, enabled => {
+    const entered = await viewport.startXrPlay(
+      target,
+      spawn,
+      fallback?.heading ?? null,
+      exitVr,
+      store.playAiMax > 0,
+      store.playTelemetryOn,
+      store.playVrRenderScale,
+      store.playVrLayerMode,
+      store.playSmoothCutoutsOn,
+      store.playVrStatsOn,
+      enabled => {
         store.playVrStatsOn = enabled;
         persistUi();
-      }, measurement => {
+      },
+      measurement => {
         const reconciled = reconcileXrEyeBuffer(store.playVrEyeBuffer, measurement);
         store.playVrEyeBuffer = reconciled;
         persistUi();
         return reconciled;
-      });
-    if (!entered) { toast('The headset did not start a VR session.', 'err'); return; }
+      },
+    );
+    if (!entered) {
+      toast('The headset did not start a VR session.', 'err');
+      return;
+    }
     onPlayingChanged(target);
     syncSkyVisibility(); // the target sky comes with the run, exactly as it does for a desktop ride
     if (store.currentMode === 'play') rebuildTools();
@@ -212,7 +272,10 @@ export function createPlay(deps: PlayDeps) {
   function exitVr() {
     onPlayingChanged(null);
     syncSkyVisibility();
-    if (store.currentMode === 'play') { viewport.showRideSpawn(currentPlaySpawn()); rebuildTools(); }
+    if (store.currentMode === 'play') {
+      viewport.showRideSpawn(currentPlaySpawn());
+      rebuildTools();
+    }
     updateCmdSheet();
   }
 
@@ -222,7 +285,10 @@ export function createPlay(deps: PlayDeps) {
     viewport.stopRide();
     onPlayingChanged(null);
     syncSkyVisibility(); // back in Play setup: return to the flat editor background
-    if (store.currentMode === 'play') { viewport.showRideSpawn(currentPlaySpawn()); rebuildTools(); }
+    if (store.currentMode === 'play') {
+      viewport.showRideSpawn(currentPlaySpawn());
+      rebuildTools();
+    }
     updateCmdSheet();
   }
 
@@ -230,20 +296,35 @@ export function createPlay(deps: PlayDeps) {
    *  camera exactly where it is — so you keep orbiting the mountain while they run it ([Trailmap: 395]). */
   async function startWatch() {
     if (store.currentMode !== 'play' || launching) return;
-    if (store.playAiMax === 0) { toast('AI riders are off — raise the rider count above zero first.', 'info'); return; }
+    if (store.playAiMax === 0) {
+      toast('AI riders are off — raise the rider count above zero first.', 'info');
+      return;
+    }
     const target = store.playTarget;
-    if (target === 'reference' && !viewport.canRideReference) { toast('Load a reference level first (Scene ▸ Reference).', 'warn'); return; }
+    if (target === 'reference' && !viewport.canRideReference) {
+      toast('Load a reference level first (Scene ▸ Reference).', 'warn');
+      return;
+    }
     // Unlock before reference preparation can yield out of the click/touch gesture. The
     // later board/effect/music callbacks cannot unlock a suspended device on every browser.
     resumeSharedAudio();
     const generation = ++launchGeneration;
-    launching = 'watch'; rebuildTools();
+    launching = 'watch';
+    rebuildTools();
     try {
       if (target === 'reference') await ensureReferenceEffects();
-      if (generation !== launchGeneration || store.currentMode !== 'play' || store.playTarget !== target ||
-        (target === 'reference' && !viewport.canRideReference)) return;
+      if (
+        generation !== launchGeneration ||
+        store.currentMode !== 'play' ||
+        store.playTarget !== target ||
+        (target === 'reference' && !viewport.canRideReference)
+      )
+        return;
       cancelStartPlacement(false);
-      if (!viewport.startWatch(target)) { toast('No AI paths on this mountain to watch.', 'warn'); return; }
+      if (!viewport.startWatch(target)) {
+        toast('No AI paths on this mountain to watch.', 'warn');
+        return;
+      }
       updateCmdSheet();
     } finally {
       if (generation === launchGeneration) launching = null;
@@ -265,11 +346,24 @@ export function createPlay(deps: PlayDeps) {
   }
 
   return {
-    get launching() { return launching; },
-    currentPlaySpawn, defaultPlaySpawn, setPlaySpawn, clickSlope, ensurePlaySpawn, enterPlaySetup,
-    armStartPlacement, cancelStartPlacement, cancelLaunch,
-    startPlay, exitRide, startWatch, stopWatch,
-    startVr, stopVr: () => viewport.stopXrPlay(),
+    get launching() {
+      return launching;
+    },
+    currentPlaySpawn,
+    defaultPlaySpawn,
+    setPlaySpawn,
+    clickSlope,
+    ensurePlaySpawn,
+    enterPlaySetup,
+    armStartPlacement,
+    cancelStartPlacement,
+    cancelLaunch,
+    startPlay,
+    exitRide,
+    startWatch,
+    stopWatch,
+    startVr,
+    stopVr: () => viewport.stopXrPlay(),
   };
 }
 

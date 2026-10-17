@@ -32,8 +32,9 @@ function failed(error: unknown): void {
   root.classList.add('show', 'error');
   root.setAttribute('aria-busy', 'false');
   title.textContent = 'Slopesmith could not start';
-  label.textContent = 'The editor did not finish loading. Reload the page — if this server was just updated,'
-    + ' a reload is all it needs.';
+  label.textContent =
+    'The editor did not finish loading. Reload the page — if this server was just updated,' +
+    ' a reload is all it needs.';
   detail.textContent = String(error instanceof Error ? error.message : error);
 }
 
@@ -46,5 +47,9 @@ export async function enterEditor(): Promise<void> {
     history.replaceState(history.state, '', url);
   }
   splash()?.classList.add('show');
-  try { await import('./main'); } catch (error) { failed(error); }
+  try {
+    await import('./main');
+  } catch (error) {
+    failed(error);
+  }
 }

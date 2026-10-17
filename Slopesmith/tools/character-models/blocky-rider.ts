@@ -33,8 +33,22 @@ import { Group } from 'three';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import {
-  CLAVICLE_Y, ELBOW_Y, HELMET_Y, HEAD_BONE_Y, HIP_SOCKET_Y, KNEE_Y, SHOULDER_Y, UPPER_BACK_Y, V3, WRIST_Y,
-  ANKLE_Y, box, buildFigure, exportFigureGlb, riderBones, runCharacterBuild,
+  CLAVICLE_Y,
+  ELBOW_Y,
+  HELMET_Y,
+  HEAD_BONE_Y,
+  HIP_SOCKET_Y,
+  KNEE_Y,
+  SHOULDER_Y,
+  UPPER_BACK_Y,
+  V3,
+  WRIST_Y,
+  ANKLE_Y,
+  box,
+  buildFigure,
+  exportFigureGlb,
+  riderBones,
+  runCharacterBuild,
 } from './figure';
 
 /** Segment lengths are the procedural rider's, so a boot solved onto the deck arrives on the deck. */
@@ -48,7 +62,7 @@ export const BONES = riderBones({ footLength: 0.16, handLength: 0.12 });
 const PALETTE = [
   { name: 'Jacket', color: 0xe0563f },
   { name: 'Pants', color: 0x33415c },
-  { name: 'Gear', color: 0x1d2430 },   // boots, mitts, goggle frame
+  { name: 'Gear', color: 0x1d2430 }, // boots, mitts, goggle frame
   { name: 'Skin', color: 0xd99a6c },
   { name: 'Beanie', color: 0xf0a23a },
   { name: 'Lens', color: 0x6fd3e8 },
@@ -88,15 +102,45 @@ function mirror(part: PartSpec): PartSpec {
  * socket puts the pivot at its inner-top corner, which is where a blocky avatar's arm turns anyway.
  */
 const LEFT_PARTS: PartSpec[] = [
-  { name: 'UpperArm.L', bone: 'UpperArm.L', material: 'Jacket', min: [0.13, ELBOW_Y - 0.035, -0.11], max: [0.32, SHOULDER_Y + 0.06, 0.11] },
-  { name: 'LowerArm.L', bone: 'LowerArm.L', material: 'Jacket', min: [0.1375, WRIST_Y - 0.02, -0.1025], max: [0.3125, ELBOW_Y + 0.035, 0.1025] },
-  { name: 'Mitt.L', bone: 'Hand.L', material: 'Gear', min: [0.1325, WRIST_Y - 0.16, -0.095], max: [0.3175, WRIST_Y + 0.02, 0.115] },
+  {
+    name: 'UpperArm.L',
+    bone: 'UpperArm.L',
+    material: 'Jacket',
+    min: [0.13, ELBOW_Y - 0.035, -0.11],
+    max: [0.32, SHOULDER_Y + 0.06, 0.11],
+  },
+  {
+    name: 'LowerArm.L',
+    bone: 'LowerArm.L',
+    material: 'Jacket',
+    min: [0.1375, WRIST_Y - 0.02, -0.1025],
+    max: [0.3125, ELBOW_Y + 0.035, 0.1025],
+  },
+  {
+    name: 'Mitt.L',
+    bone: 'Hand.L',
+    material: 'Gear',
+    min: [0.1325, WRIST_Y - 0.16, -0.095],
+    max: [0.3175, WRIST_Y + 0.02, 0.115],
+  },
   // Snow pants do not taper, so the two leg blocks are one column with the knee buried in it.
-  { name: 'UpperLeg.L', bone: 'UpperLeg.L', material: 'Pants', min: [0.0225, KNEE_Y - 0.04, -0.105], max: [0.2125, HIP_SOCKET_Y + 0.05, 0.115] },
-  { name: 'LowerLeg.L', bone: 'LowerLeg.L', material: 'Pants', min: [0.0225, ANKLE_Y - 0.025, -0.10], max: [0.2125, KNEE_Y + 0.04, 0.11] },
+  {
+    name: 'UpperLeg.L',
+    bone: 'UpperLeg.L',
+    material: 'Pants',
+    min: [0.0225, KNEE_Y - 0.04, -0.105],
+    max: [0.2125, HIP_SOCKET_Y + 0.05, 0.115],
+  },
+  {
+    name: 'LowerLeg.L',
+    bone: 'LowerLeg.L',
+    material: 'Pants',
+    min: [0.0225, ANKLE_Y - 0.025, -0.1],
+    max: [0.2125, KNEE_Y + 0.04, 0.11],
+  },
   // The boot's sole IS y = 0. Standing height is measured off it and the driver seats it on the deck from
   // the solver's ankle, so daylight authored under the sole would be daylight under the rider.
-  { name: 'Boot.L', bone: 'Foot.L', material: 'Gear', min: [0.010, 0, -0.11], max: [0.220, 0.235, 0.20] },
+  { name: 'Boot.L', bone: 'Foot.L', material: 'Gear', min: [0.01, 0, -0.11], max: [0.22, 0.235, 0.2] },
 ];
 
 /**
@@ -109,16 +153,64 @@ const LEFT_PARTS: PartSpec[] = [
  * where a 1.70 m rider's joint is.
  */
 export const PARTS: readonly PartSpec[] = [
-  { name: 'Pelvis', bone: 'Hips', material: 'Pants', min: [-0.18, HIP_SOCKET_Y - 0.04, -0.145], max: [0.18, UPPER_BACK_Y - 0.02, 0.145] },
-  { name: 'Jacket', bone: 'Chest', material: 'Jacket', min: [-0.19, UPPER_BACK_Y - 0.103, -0.16], max: [0.19, CLAVICLE_Y + 0.055, 0.16] },
-  { name: 'Collar', bone: 'Neck', material: 'Jacket', min: [-0.10, CLAVICLE_Y - 0.02, -0.10], max: [0.10, HEAD_BONE_Y + 0.005, 0.10] },
-  { name: 'Head', bone: 'Head', material: 'Skin', min: [-0.20, HELMET_Y - 0.17, -0.17], max: [0.20, HELMET_Y + 0.11, 0.19] },
-  { name: 'Beanie', bone: 'Head', material: 'Beanie', min: [-0.21, HELMET_Y + 0.08, -0.18], max: [0.21, HELMET_Y + 0.28, 0.20] },
+  {
+    name: 'Pelvis',
+    bone: 'Hips',
+    material: 'Pants',
+    min: [-0.18, HIP_SOCKET_Y - 0.04, -0.145],
+    max: [0.18, UPPER_BACK_Y - 0.02, 0.145],
+  },
+  {
+    name: 'Jacket',
+    bone: 'Chest',
+    material: 'Jacket',
+    min: [-0.19, UPPER_BACK_Y - 0.103, -0.16],
+    max: [0.19, CLAVICLE_Y + 0.055, 0.16],
+  },
+  {
+    name: 'Collar',
+    bone: 'Neck',
+    material: 'Jacket',
+    min: [-0.1, CLAVICLE_Y - 0.02, -0.1],
+    max: [0.1, HEAD_BONE_Y + 0.005, 0.1],
+  },
+  {
+    name: 'Head',
+    bone: 'Head',
+    material: 'Skin',
+    min: [-0.2, HELMET_Y - 0.17, -0.17],
+    max: [0.2, HELMET_Y + 0.11, 0.19],
+  },
+  {
+    name: 'Beanie',
+    bone: 'Head',
+    material: 'Beanie',
+    min: [-0.21, HELMET_Y + 0.08, -0.18],
+    max: [0.21, HELMET_Y + 0.28, 0.2],
+  },
   // One band right around the skull rather than a patch on the face: from the side and from a chase camera
   // that reads as goggles on a strap, and it leaves the tan face exactly where a face belongs.
-  { name: 'Goggles', bone: 'Head', material: 'Gear', min: [-0.205, HELMET_Y - 0.04, -0.185], max: [0.205, HELMET_Y + 0.07, 0.205] },
-  { name: 'Lens', bone: 'Head', material: 'Lens', min: [-0.145, HELMET_Y - 0.023, 0.20], max: [0.145, HELMET_Y + 0.052, 0.222] },
-  { name: 'Mouth', bone: 'Head', material: 'Gear', min: [-0.0575, HELMET_Y - 0.125, 0.183], max: [0.0575, HELMET_Y - 0.103, 0.197] },
+  {
+    name: 'Goggles',
+    bone: 'Head',
+    material: 'Gear',
+    min: [-0.205, HELMET_Y - 0.04, -0.185],
+    max: [0.205, HELMET_Y + 0.07, 0.205],
+  },
+  {
+    name: 'Lens',
+    bone: 'Head',
+    material: 'Lens',
+    min: [-0.145, HELMET_Y - 0.023, 0.2],
+    max: [0.145, HELMET_Y + 0.052, 0.222],
+  },
+  {
+    name: 'Mouth',
+    bone: 'Head',
+    material: 'Gear',
+    min: [-0.0575, HELMET_Y - 0.125, 0.183],
+    max: [0.0575, HELMET_Y - 0.103, 0.197],
+  },
   ...LEFT_PARTS,
   ...LEFT_PARTS.map(mirror),
 ];
@@ -132,7 +224,10 @@ export function buildBlockyRider(): Group {
     bones: BONES,
     palette: PALETTE,
     parts: PARTS.map(part => ({
-      name: part.name, bone: part.bone, material: part.material, shape: box(part.min, part.max),
+      name: part.name,
+      bone: part.bone,
+      material: part.material,
+      shape: box(part.min, part.max),
     })),
   });
 }
@@ -144,6 +239,8 @@ export async function exportBlockyRiderGlb(): Promise<Uint8Array> {
 const DEFAULT_OUTPUT = fileURLToPath(new URL('../../public/characters/blocky-rider-rigged.glb', import.meta.url));
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  runCharacterBuild(DEFAULT_OUTPUT, exportBlockyRiderGlb)
-    .catch(error => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; });
+  runCharacterBuild(DEFAULT_OUTPUT, exportBlockyRiderGlb).catch(error => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }

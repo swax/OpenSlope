@@ -3,14 +3,25 @@ import { getVertex, quadVerts } from '../../core/doc/doc-edit';
 import { meshFromDoc, quadControlPoints } from '../../core/mesh/topology';
 import { edgeLockIsSet } from '../../core/mesh/locks';
 import {
-  copyMeshVertices, meshClipboardText, pasteMeshVertices, type MeshVertexClipboard,
+  copyMeshVertices,
+  meshClipboardText,
+  pasteMeshVertices,
+  type MeshVertexClipboard,
 } from '../../core/mesh/clipboard';
 import type { MeshControlPointId } from '../../core/mesh/control-points';
 import { clonePlacementTables, copyPlacements, pastePlacements, type PropClipboard } from '../../core/props/clipboard';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
 import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
 import {
-  edgeIndices, namedEdges, quadIndices, quadNames, quadNaming, vertexIndices, vertexNames, vertexNaming, type VertexName,
+  edgeIndices,
+  namedEdges,
+  quadIndices,
+  quadNames,
+  quadNaming,
+  vertexIndices,
+  vertexNames,
+  vertexNaming,
+  type VertexName,
 } from '../state/mesh-names';
 import { commitEditMesh, editMesh } from './mesh-target';
 import type { EditViewportPort } from './viewport-port';
@@ -36,16 +47,28 @@ export type MeshClipboardDeps = {
 /** Session-local topology-aware mesh clipboard and one-shot placement workflow. */
 export function createMeshClipboardSession(deps: MeshClipboardDeps) {
   const {
-    store, viewport: getViewport, cageActive, selectedAuthoredVertices, editMoveSet, seatMoveGizmo,
-    resetGizmoMode, deselectEdit, refreshHandles, scheduleRebuild, rebuildTools, updateCmdSheet,
-    deleteSelectedMesh, refreshMixedSelection,
+    store,
+    viewport: getViewport,
+    cageActive,
+    selectedAuthoredVertices,
+    editMoveSet,
+    seatMoveGizmo,
+    resetGizmoMode,
+    deselectEdit,
+    refreshHandles,
+    scheduleRebuild,
+    rebuildTools,
+    updateCmdSheet,
+    deleteSelectedMesh,
+    refreshMixedSelection,
   } = deps;
   const view = () => getViewport();
   const mdoc = () => editMesh(store); // the edit target: the mountain net, or the model being edited
   let clipboard: MeshVertexClipboard | null = null;
   let clipboardProps: PropClipboard | null = null;
   let clipboardSkippedProps = 0;
-  let clipboardSelection: { points: number[]; edges: [number, number][]; patches: boolean; mixed: boolean } | null = null;
+  let clipboardSelection: { points: number[]; edges: [number, number][]; patches: boolean; mixed: boolean } | null =
+    null;
   let pasteArmed = false;
 
   /** All selected authored components share one vertex table in the clipboard. */
@@ -53,17 +76,29 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     const doc = mdoc();
     const vertices = new Set<VertexName>(selectedAuthoredVertices());
     for (const point of store.controlSel) if (point.kind === 'vertex') vertices.add(point.vertex);
-    for (const [a, b] of store.edgeSel) { vertices.add(a); vertices.add(b); }
+    for (const [a, b] of store.edgeSel) {
+      vertices.add(a);
+      vertices.add(b);
+    }
     for (const quad of quadIndices(doc, store.cellSel))
       for (const vertex of vertexNames(doc, quadVerts(doc, quad))) vertices.add(vertex);
     return [...vertices].sort();
   }
 
-  function copySelectionVertexCount(): number { return selectedCopyVertices().length || view().referenceCopyVertexCount(); }
-  function canCopyVertices(): boolean { return store.currentMode === 'edit' && store.bridgeRails === null && cageActive() && copySelectionVertexCount() > 0; }
+  function copySelectionVertexCount(): number {
+    return selectedCopyVertices().length || view().referenceCopyVertexCount();
+  }
+  function canCopyVertices(): boolean {
+    return store.currentMode === 'edit' && store.bridgeRails === null && cageActive() && copySelectionVertexCount() > 0;
+  }
   function canPasteVertices(): boolean {
-    return store.currentMode === 'edit' && (store.clipboardKind === 'mesh' || store.clipboardKind === 'mixed')
-      && store.bridgeRails === null && cageActive() && !!clipboard?.vertices.length;
+    return (
+      store.currentMode === 'edit' &&
+      (store.clipboardKind === 'mesh' || store.clipboardKind === 'mixed') &&
+      store.bridgeRails === null &&
+      cageActive() &&
+      !!clipboard?.vertices.length
+    );
   }
 
   function captureSelectedVertices(): { source: 'authored' | 'reference'; clip: MeshVertexClipboard } | null {
@@ -93,52 +128,74 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
         tJunctions: doc.tJunctions,
       });
     }
-    if (!clip) { toast('nothing copied — select at least one vertex', 'warn'); return null; }
+    if (!clip) {
+      toast('nothing copied — select at least one vertex', 'warn');
+      return null;
+    }
     clipboard = clip;
-    const props = store.modelEditId ? [] : store.multiSel.length ? store.multiSel
-      : store.selectedProp !== null ? [store.selectedProp] : [];
+    const props = store.modelEditId
+      ? []
+      : store.multiSel.length
+        ? store.multiSel
+        : store.selectedProp !== null
+          ? [store.selectedProp]
+          : [];
     clipboardSelection = null;
     if (!referenceSelected) {
       const doc = mdoc();
       const ordered = [...new Set(vertexIndices(doc, selectedVertices))].sort((a, b) => a - b);
       const local = new Map(ordered.map((index, at) => [index, at] as const));
-      const pointNames = [...new Set([...selectedAuthoredVertices(),
-        ...store.controlSel.flatMap(point => point.kind === 'vertex' ? [point.vertex] : [])])];
+      const pointNames = [
+        ...new Set([
+          ...selectedAuthoredVertices(),
+          ...store.controlSel.flatMap(point => (point.kind === 'vertex' ? [point.vertex] : [])),
+        ]),
+      ];
       const points = vertexIndices(doc, pointNames).flatMap(index => local.get(index) ?? []);
       const edges = edgeIndices(doc, store.edgeSel).flatMap(([a, b]) => {
-        const from = local.get(a), to = local.get(b);
+        const from = local.get(a),
+          to = local.get(b);
         return from !== undefined && to !== undefined ? [[from, to] as [number, number]] : [];
       });
       const patches = store.cellSel.length > 0;
       clipboardSelection = {
-        points, edges, patches,
+        points,
+        edges,
+        patches,
         mixed: Number(points.length > 0) + Number(edges.length > 0) + Number(patches) + Number(props.length > 0) > 1,
       };
     }
     clipboardSkippedProps = props.filter(index => isEffectTriggerProp(store.mdoc.props?.[index])).length;
-    clipboardProps = props.length
-      ? copyPlacements(store.mdoc, props, undefined, selectedSetLights(store)) : null;
+    clipboardProps = props.length ? copyPlacements(store.mdoc, props, undefined, selectedSetLights(store)) : null;
     if (clipboardProps) {
       // The mesh ghost supplies the shared placement delta. Keep prop origins in that same frame.
       const count = clip.vertices.length / 3;
-      clipboardProps.anchor = [0, 1, 2].map(axis =>
-        clip.vertices.reduce((sum, value, index) => index % 3 === axis ? sum + value : sum, 0) / count) as V3;
+      clipboardProps.anchor = [0, 1, 2].map(
+        axis => clip.vertices.reduce((sum, value, index) => (index % 3 === axis ? sum + value : sum), 0) / count,
+      ) as V3;
     }
     store.clipboardKind = clipboardProps ? 'mixed' : 'mesh';
     return { source: referenceSelected ? 'reference' : 'authored', clip };
   }
 
   function clipboardSummary(clip: MeshVertexClipboard): string {
-    const vertices = clip.vertices.length / 3, edges = clip.freeEdges?.length ?? 0, patches = clip.quads.length;
+    const vertices = clip.vertices.length / 3,
+      edges = clip.freeEdges?.length ?? 0,
+      patches = clip.quads.length;
     return `${vertices} ${vertices === 1 ? 'vertex' : 'vertices'}${edges ? ` · ${edges} ${edges === 1 ? 'edge' : 'edges'}` : ''}${patches ? ` · ${patches} ${patches === 1 ? 'patch' : 'patches'}` : ''}`;
   }
 
   function copySelectedVertices() {
     const captured = captureSelectedVertices();
     if (!captured) return;
-    const summary = clipboardSummary(captured.clip)
-      + (clipboardProps ? ` · ${clipboardProps.entries.length} ${clipboardProps.entries.length === 1 ? 'prop' : 'props'}` : '')
-      + (clipboardSkippedProps ? ` · ${clipboardSkippedProps} trigger ${clipboardSkippedProps === 1 ? 'volume' : 'volumes'} skipped` : '');
+    const summary =
+      clipboardSummary(captured.clip) +
+      (clipboardProps
+        ? ` · ${clipboardProps.entries.length} ${clipboardProps.entries.length === 1 ? 'prop' : 'props'}`
+        : '') +
+      (clipboardSkippedProps
+        ? ` · ${clipboardSkippedProps} trigger ${clipboardSkippedProps === 1 ? 'volume' : 'volumes'} skipped`
+        : '');
     const referenceLevel = captured.source === 'reference' ? view().refLevelName : undefined;
     const referenceOffset = captured.source === 'reference' ? view().referenceOffset?.() : undefined;
     let text = meshClipboardText(captured.clip, {
@@ -176,7 +233,10 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     }
     if (captured.source === 'reference') {
       if (clipboardProps) deleteSelectedMesh();
-      toast(`reference is read-only — copied its geometry${clipboardProps ? ' and cut the selected props' : ' instead'}`, 'warn');
+      toast(
+        `reference is read-only — copied its geometry${clipboardProps ? ' and cut the selected props' : ' instead'}`,
+        'warn',
+      );
       rebuildTools();
       return;
     }
@@ -185,23 +245,40 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
 
   function pasteSelectedVertices() {
     if (!canPasteVertices() || !clipboard) return;
-    if (store.surgeryTool) { store.surgeryTool = null; view().setSurgeryTool(null); }
-    if (store.weldTool) { store.weldTool = null; store.weldSource = []; store.weldEdgeSource = []; view().setWeldTool(false); }
+    if (store.surgeryTool) {
+      store.surgeryTool = null;
+      view().setSurgeryTool(null);
+    }
+    if (store.weldTool) {
+      store.weldTool = null;
+      store.weldSource = [];
+      store.weldEdgeSource = [];
+      view().setWeldTool(false);
+    }
     deselectEdit();
     pasteArmed = true;
-    view().setPasteTool(clipboard, store.clipboardKind === 'mixed'
-      ? clipboardProps?.entries.map(entry => entry.prop.pos) : undefined);
-    rebuildTools(); updateCmdSheet();
-    toast(clipboardProps && store.clipboardKind === 'mixed'
-      ? `paste ready — click to place geometry and ${clipboardProps.entries.length} ${clipboardProps.entries.length === 1 ? 'prop' : 'props'} · Esc cancels`
-      : 'paste ready — click terrain or empty space to place it · Esc cancels', 'info');
+    view().setPasteTool(
+      clipboard,
+      store.clipboardKind === 'mixed' ? clipboardProps?.entries.map(entry => entry.prop.pos) : undefined,
+    );
+    rebuildTools();
+    updateCmdSheet();
+    toast(
+      clipboardProps && store.clipboardKind === 'mixed'
+        ? `paste ready — click to place geometry and ${clipboardProps.entries.length} ${clipboardProps.entries.length === 1 ? 'prop' : 'props'} · Esc cancels`
+        : 'paste ready — click terrain or empty space to place it · Esc cancels',
+      'info',
+    );
   }
 
   function cancelPastePlacement(refresh = true) {
     if (!pasteArmed && !view().pastePlacing) return;
     pasteArmed = false;
     view().setPasteTool(null);
-    if (refresh) { rebuildTools(); updateCmdSheet(); }
+    if (refresh) {
+      rebuildTools();
+      updateCmdSheet();
+    }
   }
 
   function commitPastedVertices(translation: V3) {
@@ -210,11 +287,14 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     const source = store.clipboardKind === 'mixed' && clipboardProps ? clonePlacementTables(mdoc()) : mdoc();
     const pasted = pasteMeshVertices(source, clipboard, translation);
     const propsClip = clipboardProps;
-    const placed = store.clipboardKind === 'mixed' && propsClip
-      ? pastePlacements(pasted.doc, propsClip, {
-        pos: [0, 1, 2].map(axis => propsClip.anchor[axis] + translation[axis]) as V3,
-        yaw: 0, scale: 1,
-      }) : null;
+    const placed =
+      store.clipboardKind === 'mixed' && propsClip
+        ? pastePlacements(pasted.doc, propsClip, {
+            pos: [0, 1, 2].map(axis => propsClip.anchor[axis] + translation[axis]) as V3,
+            yaw: 0,
+            scale: 1,
+          })
+        : null;
     cancelPastePlacement(false);
     commitEditMesh(store, pasted.doc);
     resetGizmoMode();
@@ -223,10 +303,22 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     const vertices = vertexNames(doc, pasted.vertices);
     const freeEdges = namedEdges(doc, pasted.freeEdges);
     const mixed = clipboardSelection?.mixed === true;
-    const selectedPoints = mixed ? vertexNames(doc, clipboardSelection!.points.map(local => pasted.vertices[local]))
-      : edgeOnly ? [] : vertices;
-    const selectedEdges = mixed ? namedEdges(doc, clipboardSelection!.edges.map(([a, b]) =>
-      [pasted.vertices[a], pasted.vertices[b]] as [number, number])) : edgeOnly ? freeEdges : [];
+    const selectedPoints = mixed
+      ? vertexNames(
+          doc,
+          clipboardSelection!.points.map(local => pasted.vertices[local]),
+        )
+      : edgeOnly
+        ? []
+        : vertices;
+    const selectedEdges = mixed
+      ? namedEdges(
+          doc,
+          clipboardSelection!.edges.map(([a, b]) => [pasted.vertices[a], pasted.vertices[b]] as [number, number]),
+        )
+      : edgeOnly
+        ? freeEdges
+        : [];
     store.regionSel = selectedPoints;
     store.controlSel = selectedPoints.map(vertex => ({ kind: 'vertex', vertex }) as MeshControlPointId);
     store.edgeSel = selectedEdges;
@@ -243,21 +335,37 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     requestAnimationFrame(() => {
       if ((mixed || placed?.indices.length) && refreshMixedSelection) refreshMixedSelection();
       else if (edgeOnly) {
-        view().refreshEditEdges(); seatMoveGizmo();
+        view().refreshEditEdges();
+        seatMoveGizmo();
       } else {
         const move = editMoveSet();
-        view().setCornerGroup(move.map(vertex => getVertex(mdoc(), vertex)), move);
+        view().setCornerGroup(
+          move.map(vertex => getVertex(mdoc(), vertex)),
+          move,
+        );
         refreshHandles();
       }
     });
-    rebuildTools(); updateCmdSheet();
-    const points = pasted.vertices.length, edges = pasted.freeEdges.length, patches = pasted.quads.length;
-    toast(`pasted ${points} ${points === 1 ? 'vertex' : 'vertices'}${edges ? ` · ${edges} ${edges === 1 ? 'edge' : 'edges'}` : ''}${patches ? ` · ${patches} ${patches === 1 ? 'patch' : 'patches'}` : ''}${placed?.indices.length ? ` · ${placed.indices.length} ${placed.indices.length === 1 ? 'prop' : 'props'}` : ''}${placed?.skipped ? ` · ${placed.skipped} incompatible props skipped` : ''}`, placed?.skipped ? 'warn' : 'ok');
+    rebuildTools();
+    updateCmdSheet();
+    const points = pasted.vertices.length,
+      edges = pasted.freeEdges.length,
+      patches = pasted.quads.length;
+    toast(
+      `pasted ${points} ${points === 1 ? 'vertex' : 'vertices'}${edges ? ` · ${edges} ${edges === 1 ? 'edge' : 'edges'}` : ''}${patches ? ` · ${patches} ${patches === 1 ? 'patch' : 'patches'}` : ''}${placed?.indices.length ? ` · ${placed.indices.length} ${placed.indices.length === 1 ? 'prop' : 'props'}` : ''}${placed?.skipped ? ` · ${placed.skipped} incompatible props skipped` : ''}`,
+      placed?.skipped ? 'warn' : 'ok',
+    );
   }
 
   return {
-    copySelectedVertices, cutSelectedVertices, copySelectionVertexCount, canCopyVertices,
-    pasteSelectedVertices, canPasteVertices, cancelPastePlacement, commitPastedVertices,
+    copySelectedVertices,
+    cutSelectedVertices,
+    copySelectionVertexCount,
+    canCopyVertices,
+    pasteSelectedVertices,
+    canPasteVertices,
+    cancelPastePlacement,
+    commitPastedVertices,
   };
 }
 

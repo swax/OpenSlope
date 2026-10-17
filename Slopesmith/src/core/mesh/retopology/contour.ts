@@ -4,13 +4,32 @@ import type { PolygonMesh } from './obj';
 import { boundaryLoops } from './prescribe';
 import { bilinear, chamfer, grade, rasterize, type Raster } from './contour-raster';
 import {
-  bandComponents, clipToClearance, componentOf, curveLength, marchLevel, resampleCurve, scheduleLevels,
+  bandComponents,
+  clipToClearance,
+  componentOf,
+  curveLength,
+  marchLevel,
+  resampleCurve,
+  scheduleLevels,
   type LevelCurve,
 } from './contour-levels';
 import {
-  Builder, bridgeCycle, capRow, chainArcSets, knitAligned, knitChainIntoHost, knitChainToCycle,
-  knitRings, medianChainDistance, pointInRing, ringCentroid, shrinkCap, skyward, weldCycle,
-  CAP_LIMIT, type Row,
+  Builder,
+  bridgeCycle,
+  capRow,
+  chainArcSets,
+  knitAligned,
+  knitChainIntoHost,
+  knitChainToCycle,
+  knitRings,
+  medianChainDistance,
+  pointInRing,
+  ringCentroid,
+  shrinkCap,
+  skyward,
+  weldCycle,
+  CAP_LIMIT,
+  type Row,
 } from './contour-knit';
 import { joinTargets, resampleFreeRim, type JoinTarget } from './contour-join';
 import { cancelParityTriangles, relaxInterior, splitPinches } from './contour-repair';
@@ -123,7 +142,10 @@ function sweepBands(
   curvesAt.forEach((curves, level) => curves.forEach((curve, index) => curveTag.set(curve, `${level}.${index}`)));
   const chainCache = new Map<string, number[][]>();
   const chainsFor = (arcRows: Row[], arcs: LevelCurve[]): number[][] => {
-    const key = arcs.map(curve => curveTag.get(curve)).sort().join(',');
+    const key = arcs
+      .map(curve => curveTag.get(curve))
+      .sort()
+      .join(',');
     const cached = chainCache.get(key);
     if (cached) return cached;
     const chained = chainArcSets(builder, raster, moat, arcRows, cell);
@@ -133,16 +155,20 @@ function sweepBands(
 
   for (let band = 0; band + 1 < levels.length; band++) {
     const components = bandComponents(raster, levels[band], levels[band + 1], moat);
-    const lowersBy = new Map<number, LevelCurve[]>(), uppersBy = new Map<number, LevelCurve[]>();
+    const lowersBy = new Map<number, LevelCurve[]>(),
+      uppersBy = new Map<number, LevelCurve[]>();
     for (const [curves, uphill, into] of [
-      [curvesAt[band], true, lowersBy], [curvesAt[band + 1], false, uppersBy],
+      [curvesAt[band], true, lowersBy],
+      [curvesAt[band + 1], false, uppersBy],
     ] as const) {
       for (const curve of curves) {
         const label = componentOf(raster, components, curve, uphill);
         if (label < 0) {
           const [x, z] = curve.points[0];
-          notes.push(`band ${band} ${uphill ? 'lower' : 'upper'} ${curve.closed ? 'loop' : 'arc'} `
-            + `(${curve.points.length}p) at ${x.toFixed(0)},${z.toFixed(0)} matched no band component`);
+          notes.push(
+            `band ${band} ${uphill ? 'lower' : 'upper'} ${curve.closed ? 'loop' : 'arc'} ` +
+              `(${curve.points.length}p) at ${x.toFixed(0)},${z.toFixed(0)} matched no band component`,
+          );
           continue;
         }
         const list = into.get(label) ?? [];
@@ -151,21 +177,27 @@ function sweepBands(
       }
     }
     for (const label of new Set([...lowersBy.keys(), ...uppersBy.keys()])) {
-      const lowers = lowersBy.get(label) ?? [], uppers = uppersBy.get(label) ?? [];
+      const lowers = lowersBy.get(label) ?? [],
+        uppers = uppersBy.get(label) ?? [];
       const before = builder.faces.length;
-      const lowerLoops = lowers.filter(curve => curve.closed), lowerArcs = lowers.filter(curve => !curve.closed);
-      const upperLoops = uppers.filter(curve => curve.closed), upperArcs = uppers.filter(curve => !curve.closed);
+      const lowerLoops = lowers.filter(curve => curve.closed),
+        lowerArcs = lowers.filter(curve => !curve.closed);
+      const upperLoops = uppers.filter(curve => curve.closed),
+        upperArcs = uppers.filter(curve => !curve.closed);
       if (process.env.SLOPESMITH_CONTOUR_TRACE) {
         const at = (lowers[0] ?? uppers[0]).points[0];
-        notes.push(`band ${band} comp ${label} @${at[0].toFixed(0)},${at[1].toFixed(0)}: `
-          + `L ${lowerLoops.length}loop+${lowerArcs.length}arc, U ${upperLoops.length}loop+${upperArcs.length}arc`);
+        notes.push(
+          `band ${band} comp ${label} @${at[0].toFixed(0)},${at[1].toFixed(0)}: ` +
+            `L ${lowerLoops.length}loop+${lowerArcs.length}arc, U ${upperLoops.length}loop+${upperArcs.length}arc`,
+        );
       }
       if (!uppers.length) {
         // the component tops out: summits cap; arcs die against the coastline and the join ring closes them
-        for (const curve of lowerLoops) if (rows.has(curve)) {
-          shrinkCap(builder, raster, rows.get(curve)!.ids, cell);
-          stats.caps++;
-        }
+        for (const curve of lowerLoops)
+          if (rows.has(curve)) {
+            shrinkCap(builder, raster, rows.get(curve)!.ids, cell);
+            stats.caps++;
+          }
         if (lowerArcs.length) stats.openBands++;
       } else if (!lowers.length) {
         for (const curve of upperLoops) {
@@ -181,18 +213,31 @@ function sweepBands(
         // way — the wrap chord crosses the coastline gap the ring later closes.
         const composeLoops = (loops: LevelCurve[]): number[] => {
           const loopRows = loops.map(curve => rowFor(curve));
-          const ids = loopRows.length === 1 ? loopRows[0].ids
-            : loopRows.every(row => fresh.has(row))
-              ? weldCycle(builder, raster, loopRows)
-              : bridgeCycle(builder, loopRows.map(row => row.ids));
+          const ids =
+            loopRows.length === 1
+              ? loopRows[0].ids
+              : loopRows.every(row => fresh.has(row))
+                ? weldCycle(builder, raster, loopRows)
+                : bridgeCycle(
+                    builder,
+                    loopRows.map(row => row.ids),
+                  );
           return ids;
         };
         const lowerCycle = lowerLoops.length ? composeLoops(lowerLoops) : null;
         const upperCycle = upperLoops.length ? composeLoops(upperLoops) : null;
         const lowerChains = lowerArcs.length
-          ? chainsFor(lowerArcs.map(curve => rowFor(curve)), lowerArcs) : [];
+          ? chainsFor(
+              lowerArcs.map(curve => rowFor(curve)),
+              lowerArcs,
+            )
+          : [];
         const upperChains = upperArcs.length
-          ? chainsFor(upperArcs.map(curve => rowFor(curve)), upperArcs) : [];
+          ? chainsFor(
+              upperArcs.map(curve => rowFor(curve)),
+              upperArcs,
+            )
+          : [];
         if (lowerCycle && upperCycle) {
           if (lowerLoops.length + upperLoops.length > 2) stats.saddles++;
           stats.parityTriangles += knitAligned(builder, lowerCycle, upperCycle);
@@ -206,22 +251,33 @@ function sweepBands(
         const lowerCycleUsed = lowerCycle && !upperCycle ? lowerCycle.map(() => false) : null;
         const upperCycleUsed = upperCycle && !lowerCycle ? upperCycle.map(() => false) : null;
         const isFree = (used: boolean[]): boolean => used.every(flag => !flag);
-        const consume = (used: boolean[]): void => { used.fill(true); };
+        const consume = (used: boolean[]): void => {
+          used.fill(true);
+        };
         // Candidate pairs knit in ascending distance order: a chain occluding another from its host is
         // by definition the nearer of the two, so it claims the host stretch first and the farther chain
         // clips to what remains. Each chain guests once, whole and free; hosting is per-edge.
         const PAIR_REACH = 3.5 * cell;
-        interface ChainPair { l: number; u: number; d: number }
-        const chainPairs: ChainPair[] = [];
-        for (let l = 0; l < lowerChains.length; l++) for (let u = 0; u < upperChains.length; u++) {
-          const d = Math.min(medianChainDistance(builder, lowerChains[l], upperChains[u]),
-            medianChainDistance(builder, upperChains[u], lowerChains[l]));
-          if (d < PAIR_REACH) chainPairs.push({ l, u, d });
+        interface ChainPair {
+          l: number;
+          u: number;
+          d: number;
         }
+        const chainPairs: ChainPair[] = [];
+        for (let l = 0; l < lowerChains.length; l++)
+          for (let u = 0; u < upperChains.length; u++) {
+            const d = Math.min(
+              medianChainDistance(builder, lowerChains[l], upperChains[u]),
+              medianChainDistance(builder, upperChains[u], lowerChains[l]),
+            );
+            if (d < PAIR_REACH) chainPairs.push({ l, u, d });
+          }
         chainPairs.sort((a, b) => a.d - b.d);
         for (const { l, u } of chainPairs) {
-          const low = lowerChains[l], up = upperChains[u];
-          const lowFree = isFree(lowerUsed[l]), upFree = isFree(upperUsed[u]);
+          const low = lowerChains[l],
+            up = upperChains[u];
+          const lowFree = isFree(lowerUsed[l]),
+            upFree = isFree(upperUsed[u]);
           if (!lowFree && !upFree) continue;
           // guest the shorter free chain into the longer — but a chain whose OPPOSITE side holds the only
           // cycle must never be consumed as a guest: its remaining free runs are what the cycle knits to
@@ -236,8 +292,12 @@ function sweepBands(
         }
         // a chain's remaining free runs (a partial claim leaves some) still knit to a facing cycle —
         // this is how the first closed loop above clipped ground attaches to the arc that wraps it
-        const cycleRuns = (chain: number[], used: boolean[],
-          cycleIds: number[] | null, cycleUsed: boolean[] | null): boolean => {
+        const cycleRuns = (
+          chain: number[],
+          used: boolean[],
+          cycleIds: number[] | null,
+          cycleUsed: boolean[] | null,
+        ): boolean => {
           if (!cycleIds || !cycleUsed) return false;
           let any = false;
           let runStart = -1;
@@ -252,8 +312,10 @@ function sweepBands(
                   any = true;
                 } else if (process.env.SLOPESMITH_CONTOUR_TRACE) {
                   const p = builder.vertices[run[0]];
-                  notes.push(`band ${band}: cycle run (${run.length}v at `
-                    + `${p[0].toFixed(0)},${p[2].toFixed(0)}) declined by the ${cycleIds.length}v cycle`);
+                  notes.push(
+                    `band ${band}: cycle run (${run.length}v at ` +
+                      `${p[0].toFixed(0)},${p[2].toFixed(0)}) declined by the ${cycleIds.length}v cycle`,
+                  );
                 }
               }
               runStart = -1;
@@ -264,17 +326,21 @@ function sweepBands(
         for (let l = 0; l < lowerChains.length; l++) {
           const wasFree = isFree(lowerUsed[l]);
           if (process.env.SLOPESMITH_CONTOUR_TRACE) {
-            notes.push(`band ${band}: lower chain ${l} (${lowerChains[l].length}v) `
-              + `free edges ${lowerUsed[l].filter(flag => !flag).length}/${lowerUsed[l].length}, `
-              + `cycle ${upperCycle ? `${upperCycle.length}v` : 'none'}`);
+            notes.push(
+              `band ${band}: lower chain ${l} (${lowerChains[l].length}v) ` +
+                `free edges ${lowerUsed[l].filter(flag => !flag).length}/${lowerUsed[l].length}, ` +
+                `cycle ${upperCycle ? `${upperCycle.length}v` : 'none'}`,
+            );
           }
           const knitAny = cycleRuns(lowerChains[l], lowerUsed[l], upperCycle, upperCycleUsed);
           if (knitAny || !wasFree) continue;
           stats.openBands++;
           const p = builder.vertices[lowerChains[l][0]];
-          notes.push(`band ${band} lower chain (${lowerChains[l].length}v) at `
-            + `${p[0].toFixed(0)},${p[2].toFixed(0)} found no partner `
-            + `(${upperChains.length} upper chains, cycle ${upperCycle ? 'yes' : 'no'})`);
+          notes.push(
+            `band ${band} lower chain (${lowerChains[l].length}v) at ` +
+              `${p[0].toFixed(0)},${p[2].toFixed(0)} found no partner ` +
+              `(${upperChains.length} upper chains, cycle ${upperCycle ? 'yes' : 'no'})`,
+          );
         }
         for (let u = 0; u < upperChains.length; u++) {
           const wasFree = isFree(upperUsed[u]);
@@ -282,11 +348,13 @@ function sweepBands(
           if (knitAny || !wasFree) continue;
           stats.openBands++;
           const p = builder.vertices[upperChains[u][0]];
-          notes.push(`band ${band} upper chain (${upperChains[u].length}v) at `
-            + `${p[0].toFixed(0)},${p[2].toFixed(0)} found no partner `
-            + `(${lowerChains.length} lower chains at `
-            + `${lowerChains.map(low => medianChainDistance(builder, upperChains[u], low).toFixed(0)).join('/')} m, `
-            + `cycle ${lowerCycle ? 'yes' : 'no'})`);
+          notes.push(
+            `band ${band} upper chain (${upperChains[u].length}v) at ` +
+              `${p[0].toFixed(0)},${p[2].toFixed(0)} found no partner ` +
+              `(${lowerChains.length} lower chains at ` +
+              `${lowerChains.map(low => medianChainDistance(builder, upperChains[u], low).toFixed(0)).join('/')} m, ` +
+              `cycle ${lowerCycle ? 'yes' : 'no'})`,
+          );
         }
       }
       for (const curve of [...lowers, ...uppers]) {
@@ -328,17 +396,32 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   const cell = Math.max(2, input.targetPatchSizeM);
   const notes: string[] = [];
   const stats: ContourCandidateStats = {
-    rasterNodes: 0, levels: 0, sweptQuads: 0, ringQuads: 0, caps: 0, pits: 0, saddles: 0,
-    openBands: 0, islandFills: 0, parityTriangles: 0, relaxedVertices: 0,
+    rasterNodes: 0,
+    levels: 0,
+    sweptQuads: 0,
+    ringQuads: 0,
+    caps: 0,
+    pits: 0,
+    saddles: 0,
+    openBands: 0,
+    islandFills: 0,
+    parityTriangles: 0,
+    relaxedVertices: 0,
   };
 
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (const [x, , z] of input.surface.vertices) {
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
   }
   let step = cell / 4;
-  const spanX = Math.max(1, maxX - minX), spanZ = Math.max(1, maxZ - minZ);
+  const spanX = Math.max(1, maxX - minX),
+    spanZ = Math.max(1, maxZ - minZ);
   if ((spanX / step) * (spanZ / step) > 2.5e6) step = Math.sqrt((spanX * spanZ) / 2.5e6);
   const raster = rasterize(input.surface, step);
   stats.rasterNodes = raster.width * raster.depth;
@@ -351,9 +434,11 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   if (levels.length < 2) {
     throw new Error('the unlocked terrain spans less than two contour bands; use the QuadWild strategy here');
   }
-  const curvesAt = levels.map(level => marchLevel(raster, level)
-    .flatMap(curve => clipToClearance(raster, curve, moat))
-    .filter(curve => curveLength(curve) >= (curve.closed ? 2.5 : 1.2) * cell));
+  const curvesAt = levels.map(level =>
+    marchLevel(raster, level)
+      .flatMap(curve => clipToClearance(raster, curve, moat))
+      .filter(curve => curveLength(curve) >= (curve.closed ? 2.5 : 1.2) * cell),
+  );
 
   const builder = new Builder();
   sweepBands(builder, raster, levels, curvesAt, cell, moat, notes, stats);
@@ -363,42 +448,58 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   const targets = joinTargets(input.boundaryProxy, input.interfaceCurves, cell, notes);
   // "On locked ground" is a NESTING-PARITY question, never a single polygon test: the network outline
   // contains every stand, and a stand's interior (depth 2) is unlocked ground again.
-  const lockedRings = targets.filter(target => target.locked).map(target => {
-    let loX = Infinity, hiX = -Infinity, loZ = Infinity, hiZ = -Infinity;
-    for (const point of target.positions) {
-      loX = Math.min(loX, point[0]); hiX = Math.max(hiX, point[0]);
-      loZ = Math.min(loZ, point[2]); hiZ = Math.max(hiZ, point[2]);
-    }
-    return { ring: target.positions, loX, hiX, loZ, hiZ };
-  });
+  const lockedRings = targets
+    .filter(target => target.locked)
+    .map(target => {
+      let loX = Infinity,
+        hiX = -Infinity,
+        loZ = Infinity,
+        hiZ = -Infinity;
+      for (const point of target.positions) {
+        loX = Math.min(loX, point[0]);
+        hiX = Math.max(hiX, point[0]);
+        loZ = Math.min(loZ, point[2]);
+        hiZ = Math.max(hiZ, point[2]);
+      }
+      return { ring: target.positions, loX, hiX, loZ, hiZ };
+    });
   const insideLockedGround = (x: number, z: number): boolean => {
     let depth = 0;
     for (const polygon of lockedRings) {
       if (x < polygon.loX || x > polygon.hiX || z < polygon.loZ || z > polygon.hiZ) continue;
       let inside = false;
       for (let a = 0, b = polygon.ring.length - 1; a < polygon.ring.length; b = a++) {
-        const pa = polygon.ring[a], pb = polygon.ring[b];
-        if ((pa[2] > z) !== (pb[2] > z)
-          && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2])) inside = !inside;
+        const pa = polygon.ring[a],
+          pb = polygon.ring[b];
+        if (pa[2] > z !== pb[2] > z && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2])) inside = !inside;
       }
       if (inside) depth++;
     }
     return depth % 2 === 1;
   };
   const nearestLockedRimPoint = (x: number, z: number): { d: number; x: number; z: number } => {
-    let bestD = Infinity, bestX = 0, bestZ = 0;
+    let bestD = Infinity,
+      bestX = 0,
+      bestZ = 0;
     for (const polygon of lockedRings) {
-      if (x < polygon.loX - bestD || x > polygon.hiX + bestD
-        || z < polygon.loZ - bestD || z > polygon.hiZ + bestD) continue;
+      if (x < polygon.loX - bestD || x > polygon.hiX + bestD || z < polygon.loZ - bestD || z > polygon.hiZ + bestD)
+        continue;
       const n = polygon.ring.length;
       for (let i = 0; i < n; i++) {
-        const a = polygon.ring[i], b = polygon.ring[(i + 1) % n];
-        const abx = b[0] - a[0], abz = b[2] - a[2];
+        const a = polygon.ring[i],
+          b = polygon.ring[(i + 1) % n];
+        const abx = b[0] - a[0],
+          abz = b[2] - a[2];
         const len2 = abx * abx + abz * abz;
         const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((x - a[0]) * abx + (z - a[2]) * abz) / len2)) : 0;
-        const qx = a[0] + t * abx, qz = a[2] + t * abz;
+        const qx = a[0] + t * abx,
+          qz = a[2] + t * abz;
         const d = Math.hypot(x - qx, z - qz);
-        if (d < bestD) { bestD = d; bestX = qx; bestZ = qz; }
+        if (d < bestD) {
+          bestD = d;
+          bestX = qx;
+          bestZ = qz;
+        }
       }
     }
     return { d: bestD, x: bestX, z: bestZ };
@@ -408,11 +509,13 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   {
     const boundaryDegree = new Map<number, number>();
     const edgeUse = new Map<string, number>();
-    for (const face of builder.faces) for (let i = 0; i < face.length; i++) {
-      const a = face[i], b = face[(i + 1) % face.length];
-      const key = a < b ? `${a},${b}` : `${b},${a}`;
-      edgeUse.set(key, (edgeUse.get(key) ?? 0) + 1);
-    }
+    for (const face of builder.faces)
+      for (let i = 0; i < face.length; i++) {
+        const a = face[i],
+          b = face[(i + 1) % face.length];
+        const key = a < b ? `${a},${b}` : `${b},${a}`;
+        edgeUse.set(key, (edgeUse.get(key) ?? 0) + 1);
+      }
     for (const [key, count] of edgeUse) {
       if (count !== 1) continue;
       for (const id of key.split(',').map(Number)) {
@@ -422,8 +525,10 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     for (const [id, degree] of boundaryDegree) {
       if (degree > 2) {
         const p = builder.vertices[id];
-        throw new Error(`the swept sheet pinches at ${p[0].toFixed(0)},${p[2].toFixed(0)} `
-          + `(${degree} boundary edges on one vertex)`);
+        throw new Error(
+          `the swept sheet pinches at ${p[0].toFixed(0)},${p[2].toFixed(0)} ` +
+            `(${degree} boundary edges on one vertex)`,
+        );
       }
     }
   }
@@ -431,7 +536,9 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   try {
     sweptLoops = boundaryLoops({ vertices: builder.vertices, faces: builder.faces });
   } catch (error) {
-    throw new Error(`the swept contour sheet has a non-manifold boundary: ${(error as Error).message}`, { cause: error });
+    throw new Error(`the swept contour sheet has a non-manifold boundary: ${(error as Error).message}`, {
+      cause: error,
+    });
   }
   // small enclosed gaps (mismatched chords, parity-dropped edges) are capped shut before pairing; an odd
   // gap leaves one triangle for the global cancellation
@@ -459,15 +566,20 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     // corridor the sweep couldn't hold together), which is deleted — the join ring paves its ground.
     const edgeOwner = builder.faces.findIndex(face => {
       for (let i = 0; i < face.length; i++) {
-        const a = face[i], b = face[(i + 1) % face.length];
+        const a = face[i],
+          b = face[(i + 1) % face.length];
         if ((a === ids[0] && b === ids[1]) || (a === ids[1] && b === ids[0])) return true;
       }
       return false;
     });
     if (edgeOwner >= 0) {
       const owner = builder.faces[edgeOwner];
-      let cx = 0, cz = 0;
-      for (const id of owner) { cx += builder.vertices[id][0]; cz += builder.vertices[id][2]; }
+      let cx = 0,
+        cz = 0;
+      for (const id of owner) {
+        cx += builder.vertices[id][0];
+        cz += builder.vertices[id][2];
+      }
       if (pointInRing(builder, ids, cx / owner.length, cz / owner.length)) {
         const keyOf = (a: number, b: number): string => (a < b ? `${a},${b}` : `${b},${a}`);
         const byEdge = new Map<string, number[]>();
@@ -475,7 +587,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
           for (let i = 0; i < face.length; i++) {
             const key = keyOf(face[i], face[(i + 1) % face.length]);
             const list = byEdge.get(key);
-            if (list) list.push(slot); else byEdge.set(key, [slot]);
+            if (list) list.push(slot);
+            else byEdge.set(key, [slot]);
           }
         });
         const fragment = new Set<number>([edgeOwner]);
@@ -485,7 +598,10 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
           for (let i = 0; i < builder.faces[at].length; i++) {
             const key = keyOf(builder.faces[at][i], builder.faces[at][(i + 1) % builder.faces[at].length]);
             for (const other of byEdge.get(key) ?? []) {
-              if (!fragment.has(other)) { fragment.add(other); queue.push(other); }
+              if (!fragment.has(other)) {
+                fragment.add(other);
+                queue.push(other);
+              }
             }
           }
         }
@@ -515,7 +631,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   const paired = new Map<number, JoinTarget[]>();
   const unpaired: JoinTarget[] = [];
   for (const target of targets) {
-    let best = -1, bestDistance = Infinity;
+    let best = -1,
+      bestDistance = Infinity;
     for (let loop = 0; loop < sweptLoops.length; loop++) {
       const ids = sweptLoops[loop];
       const contains = pointInRing(builder, ids, target.centroid[0], target.centroid[1]);
@@ -524,29 +641,36 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
         let inside = false;
         const ring = target.positions;
         for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-          const a = ring[i], b = ring[j];
-          if ((a[2] > z) !== (b[2] > z) && x < a[0] + ((b[0] - a[0]) * (z - a[2])) / (b[2] - a[2])) inside = !inside;
+          const a = ring[i],
+            b = ring[j];
+          if (a[2] > z !== b[2] > z && x < a[0] + ((b[0] - a[0]) * (z - a[2])) / (b[2] - a[2])) inside = !inside;
         }
         return inside;
       })();
       if (!contains && !contained) continue;
-      let sum = 0, count = 0;
+      let sum = 0,
+        count = 0;
       const stride = Math.max(1, Math.floor(ids.length / 24));
       for (let i = 0; i < ids.length; i += stride) {
         const p = builder.vertices[ids[i]];
         let bestSegment = Infinity;
         for (let j = 0; j < target.positions.length; j++) {
-          const a = target.positions[j], b = target.positions[(j + 1) % target.positions.length];
-          const abx = b[0] - a[0], abz = b[2] - a[2];
+          const a = target.positions[j],
+            b = target.positions[(j + 1) % target.positions.length];
+          const abx = b[0] - a[0],
+            abz = b[2] - a[2];
           const len2 = abx * abx + abz * abz;
-          const t = len2 > 1e-12
-            ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
+          const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
           bestSegment = Math.min(bestSegment, Math.hypot(p[0] - a[0] - t * abx, p[2] - a[2] - t * abz));
         }
-        sum += bestSegment; count++;
+        sum += bestSegment;
+        count++;
       }
       const distance = count ? sum / count : Infinity;
-      if (distance < bestDistance) { bestDistance = distance; best = loop; }
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = loop;
+      }
     }
     if (best >= 0) {
       const list = paired.get(best) ?? [];
@@ -560,26 +684,38 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   // trail's far side) is no partner, and such a target falls through to the island fill instead.
   for (let i = unpaired.length - 1; i >= 0; i--) {
     const target = unpaired[i];
-    let best = -1, bestDistance = 3 * cell;
+    let best = -1,
+      bestDistance = 3 * cell;
     for (let loop = 0; loop < sweptLoops.length; loop++) {
       const ids = sweptLoops[loop];
-      let sum = 0, count = 0, nearX = 0, nearZ = 0, nearest = Infinity;
+      let sum = 0,
+        count = 0,
+        nearX = 0,
+        nearZ = 0,
+        nearest = Infinity;
       const stride = Math.max(1, Math.floor(target.positions.length / 16));
       for (let j = 0; j < target.positions.length; j += stride) {
         const p = target.positions[j];
         let bestSegment = Infinity;
         for (let k = 0; k < ids.length; k++) {
-          const a = builder.vertices[ids[k]], b = builder.vertices[ids[(k + 1) % ids.length]];
-          const abx = b[0] - a[0], abz = b[2] - a[2];
+          const a = builder.vertices[ids[k]],
+            b = builder.vertices[ids[(k + 1) % ids.length]];
+          const abx = b[0] - a[0],
+            abz = b[2] - a[2];
           const len2 = abx * abx + abz * abz;
-          const t = len2 > 1e-12
-            ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
-          const qx = a[0] + t * abx, qz = a[2] + t * abz;
+          const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
+          const qx = a[0] + t * abx,
+            qz = a[2] + t * abz;
           const d = Math.hypot(p[0] - qx, p[2] - qz);
           bestSegment = Math.min(bestSegment, d);
-          if (d < nearest) { nearest = d; nearX = qx; nearZ = qz; }
+          if (d < nearest) {
+            nearest = d;
+            nearX = qx;
+            nearZ = qz;
+          }
         }
-        sum += bestSegment; count++;
+        sum += bestSegment;
+        count++;
       }
       const distance = count ? sum / count : Infinity;
       if (distance >= bestDistance) continue;
@@ -594,9 +730,10 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
         let insideOwn = false;
         const own = target.positions;
         for (let a = 0, b = own.length - 1; a < own.length; b = a++) {
-          const pa = own[a], pb = own[b];
-          if ((pa[2] > z) !== (pb[2] > z)
-            && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2])) insideOwn = !insideOwn;
+          const pa = own[a],
+            pb = own[b];
+          if (pa[2] > z !== pb[2] > z && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2]))
+            insideOwn = !insideOwn;
         }
         if (insideOwn) continue;
         if (insideLockedGround(x, z)) blocked = true;
@@ -620,7 +757,11 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       const find = (a: number): number => {
         let root = a;
         while (parent.get(root) !== root) root = parent.get(root)!;
-        while (parent.get(a) !== root) { const next = parent.get(a)!; parent.set(a, root); a = next; }
+        while (parent.get(a) !== root) {
+          const next = parent.get(a)!;
+          parent.set(a, root);
+          a = next;
+        }
         return root;
       };
       for (const face of builder.faces) {
@@ -629,21 +770,31 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       }
       const componentOfLoop = sweptLoops.map(ids => find(ids[0]));
       const componentCount = new Set([...parent.keys()].map(find)).size;
-      const shape = sweptLoops.map((ids, index) => {
-        const [cx, cz] = ringCentroid(builder, ids);
-        let loX = Infinity, hiX = -Infinity, loZ = Infinity, hiZ = -Infinity;
-        for (const id of ids) {
-          const p = builder.vertices[id];
-          loX = Math.min(loX, p[0]); hiX = Math.max(hiX, p[0]);
-          loZ = Math.min(loZ, p[2]); hiZ = Math.max(hiZ, p[2]);
-        }
-        return `#${index}:${ids.length}v@${cx.toFixed(0)},${cz.toFixed(0)}`
-          + `[${loX.toFixed(0)}..${hiX.toFixed(0)},${loZ.toFixed(0)}..${hiZ.toFixed(0)}]`
-          + `c${componentOfLoop[index]}${paired.has(index) ? '*' : ''}`;
-      }).join(' ');
-      const message = `a swept boundary loop near ${x.toFixed(0)},${z.toFixed(0)} `
-        + `(${sweptLoops[loop].length} vertices) matches no region boundary; `
-        + `${targets.length} targets, ${componentCount} sheet component(s), loops ${shape}`;
+      const shape = sweptLoops
+        .map((ids, index) => {
+          const [cx, cz] = ringCentroid(builder, ids);
+          let loX = Infinity,
+            hiX = -Infinity,
+            loZ = Infinity,
+            hiZ = -Infinity;
+          for (const id of ids) {
+            const p = builder.vertices[id];
+            loX = Math.min(loX, p[0]);
+            hiX = Math.max(hiX, p[0]);
+            loZ = Math.min(loZ, p[2]);
+            hiZ = Math.max(hiZ, p[2]);
+          }
+          return (
+            `#${index}:${ids.length}v@${cx.toFixed(0)},${cz.toFixed(0)}` +
+            `[${loX.toFixed(0)}..${hiX.toFixed(0)},${loZ.toFixed(0)}..${hiZ.toFixed(0)}]` +
+            `c${componentOfLoop[index]}${paired.has(index) ? '*' : ''}`
+          );
+        })
+        .join(' ');
+      const message =
+        `a swept boundary loop near ${x.toFixed(0)},${z.toFixed(0)} ` +
+        `(${sweptLoops[loop].length} vertices) matches no region boundary; ` +
+        `${targets.length} targets, ${componentCount} sheet component(s), loops ${shape}`;
       if (!input.lenient) throw new Error(message);
       notes.push(`JOIN FAILURE: ${message}`);
     }
@@ -679,7 +830,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       const p = builder.vertices[id];
       const previous = builder.vertices[ids[(index - 1 + n) % n]];
       const next = builder.vertices[ids[(index + 1) % n]];
-      const tx = next[0] - previous[0], tz = next[2] - previous[2];
+      const tx = next[0] - previous[0],
+        tz = next[2] - previous[2];
       const length = Math.hypot(tx, tz) || 1;
       // two normal candidates; the intermediate ring stands on the side the sheet is on — toward the
       // swept loop when there is one, toward the stand's own interior for an island fill
@@ -693,17 +845,17 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
         // and a corner ring vertex on the wrong diagonal rails the whole strip across the feature
         let best = Infinity;
         for (let i = 0; i < towards.length; i++) {
-          const a = builder.vertices[towards[i]], b = builder.vertices[towards[(i + 1) % towards.length]];
-          const abx = b[0] - a[0], abz = b[2] - a[2];
+          const a = builder.vertices[towards[i]],
+            b = builder.vertices[towards[(i + 1) % towards.length]];
+          const abx = b[0] - a[0],
+            abz = b[2] - a[2];
           const len2 = abx * abx + abz * abz;
-          const t = len2 > 1e-12
-            ? Math.max(0, Math.min(1, ((x - a[0]) * abx + (z - a[2]) * abz) / len2)) : 0;
+          const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((x - a[0]) * abx + (z - a[2]) * abz) / len2)) : 0;
           best = Math.min(best, Math.hypot(x - a[0] - t * abx, z - a[2] - t * abz));
         }
         return best;
       };
-      const [x, z] = towardsSheet(...candidates[0]) <= towardsSheet(...candidates[1])
-        ? candidates[0] : candidates[1];
+      const [x, z] = towardsSheet(...candidates[0]) <= towardsSheet(...candidates[1]) ? candidates[0] : candidates[1];
       const y = bilinear(raster, raster.height, x, z);
       return builder.addVertex(x, Number.isNaN(y) ? p[1] : y, z);
     });
@@ -717,19 +869,26 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   // rings whose targets are all locked have fixed parity and may each cost a triangle; rings carrying a
   // free rim knit last, and the final one also absorbs whatever triangle debt the sheet already carries
   // (sweep knits, gap patches, earlier rings) so the global count pairs up for cancellation
-  const ringGroups = [...paired.entries()]
-    .sort((a, b) => Number(a[1].some(t => !t.locked)) - Number(b[1].some(t => !t.locked)));
-  const lastFree = ringGroups.reduce(
-    (found, [, joined], index) => (joined.some(t => !t.locked) ? index : found), -1);
+  const ringGroups = [...paired.entries()].sort(
+    (a, b) => Number(a[1].some(t => !t.locked)) - Number(b[1].some(t => !t.locked)),
+  );
+  const lastFree = ringGroups.reduce((found, [, joined], index) => (joined.some(t => !t.locked) ? index : found), -1);
   for (let group = 0; group < ringGroups.length; group++) {
     const [loop, joined] = ringGroups[group];
     const swept = sweptLoops[loop];
     const before = builder.faces.length;
     if (process.env.SLOPESMITH_CONTOUR_TRACE) {
       const [cx, cz] = ringCentroid(builder, swept);
-      notes.push(`join group: swept loop #${loop} (${swept.length}v @${cx.toFixed(0)},${cz.toFixed(0)}) <- `
-        + joined.map(target => `${target.locked ? 'locked' : 'free'} ${target.positions.length}c `
-          + `@${target.centroid[0].toFixed(0)},${target.centroid[1].toFixed(0)}`).join(' + '));
+      notes.push(
+        `join group: swept loop #${loop} (${swept.length}v @${cx.toFixed(0)},${cz.toFixed(0)}) <- ` +
+          joined
+            .map(
+              target =>
+                `${target.locked ? 'locked' : 'free'} ${target.positions.length}c ` +
+                `@${target.centroid[0].toFixed(0)},${target.centroid[1].toFixed(0)}`,
+            )
+            .join(' + '),
+      );
     }
     // Each ring must traverse in the direction the swept loop walks past it, or the knit drapes quads
     // across the feature: a merged-moat loop passes a hole's bay OPPOSITE to how it rounds the outer rim,
@@ -739,20 +898,26 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     const loopLine = sweptOriented.map(id => builder.vertices[id]);
     const loopCumulative = [0];
     for (let i = 1; i <= loopLine.length; i++) {
-      const a = loopLine[i - 1], b = loopLine[i % loopLine.length];
+      const a = loopLine[i - 1],
+        b = loopLine[i % loopLine.length];
       loopCumulative.push(loopCumulative[i - 1] + Math.hypot(a[0] - b[0], a[2] - b[2]));
     }
     const loopTotal = loopCumulative[loopLine.length];
     const paramOnLoop = (p: V3): number => {
-      let best = 0, bestDistance = Infinity;
+      let best = 0,
+        bestDistance = Infinity;
       for (let i = 0; i < loopLine.length; i++) {
-        const a = loopLine[i], b = loopLine[(i + 1) % loopLine.length];
-        const abx = b[0] - a[0], abz = b[2] - a[2];
+        const a = loopLine[i],
+          b = loopLine[(i + 1) % loopLine.length];
+        const abx = b[0] - a[0],
+          abz = b[2] - a[2];
         const len2 = abx * abx + abz * abz;
-        const t = len2 > 1e-12
-          ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
+        const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
         const d = Math.hypot(p[0] - a[0] - t * abx, p[2] - a[2] - t * abz);
-        if (d < bestDistance) { bestDistance = d; best = loopCumulative[i] + t * Math.sqrt(len2); }
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = loopCumulative[i] + t * Math.sqrt(len2);
+        }
       }
       return best;
     };
@@ -761,8 +926,12 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     // spokes through the duplicated bridge vertices. Such a target is an island fill.
     const kept: JoinTarget[] = [];
     for (const target of joined) {
-      if (!target.locked || joined.length === 1) { kept.push(target); continue; }
-      let loParam = Infinity, hiParam = -Infinity;
+      if (!target.locked || joined.length === 1) {
+        kept.push(target);
+        continue;
+      }
+      let loParam = Infinity,
+        hiParam = -Infinity;
       const origin = paramOnLoop(target.positions[0]);
       for (const point of target.positions) {
         let param = paramOnLoop(point) - origin;
@@ -780,16 +949,25 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       const probeCount = Math.min(6, target.positions.length);
       for (let probe = 0; probe < probeCount && !visible; probe++) {
         const point = target.positions[Math.floor((probe * target.positions.length) / probeCount)];
-        let bestD = Infinity, nearX = 0, nearZ = 0;
+        let bestD = Infinity,
+          nearX = 0,
+          nearZ = 0;
         for (let i = 0; i < loopLine.length; i++) {
-          const a = loopLine[i], b = loopLine[(i + 1) % loopLine.length];
-          const abx = b[0] - a[0], abz = b[2] - a[2];
+          const a = loopLine[i],
+            b = loopLine[(i + 1) % loopLine.length];
+          const abx = b[0] - a[0],
+            abz = b[2] - a[2];
           const len2 = abx * abx + abz * abz;
-          const t = len2 > 1e-12
-            ? Math.max(0, Math.min(1, ((point[0] - a[0]) * abx + (point[2] - a[2]) * abz) / len2)) : 0;
-          const qx = a[0] + t * abx, qz = a[2] + t * abz;
+          const t =
+            len2 > 1e-12 ? Math.max(0, Math.min(1, ((point[0] - a[0]) * abx + (point[2] - a[2]) * abz) / len2)) : 0;
+          const qx = a[0] + t * abx,
+            qz = a[2] + t * abz;
           const d = Math.hypot(point[0] - qx, point[2] - qz);
-          if (d < bestD) { bestD = d; nearX = qx; nearZ = qz; }
+          if (d < bestD) {
+            bestD = d;
+            nearX = qx;
+            nearZ = qz;
+          }
         }
         let clear = true;
         for (let step = 1; step < 8 && clear; step++) {
@@ -799,9 +977,10 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
           let insideOwn = false;
           const own = target.positions;
           for (let a = 0, b = own.length - 1; a < own.length; b = a++) {
-            const pa = own[a], pb = own[b];
-            if ((pa[2] > z) !== (pb[2] > z)
-              && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2])) insideOwn = !insideOwn;
+            const pa = own[a],
+              pb = own[b];
+            if (pa[2] > z !== pb[2] > z && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2]))
+              insideOwn = !insideOwn;
           }
           if (insideOwn) continue;
           if (insideLockedGround(x, z)) clear = false;
@@ -810,20 +989,23 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       }
       if (span < 2.5 * (loopTotal / sweptOriented.length) || !visible) {
         unpaired.push(target);
-        notes.push(`a locked rim near ${target.centroid[0].toFixed(0)},${target.centroid[1].toFixed(0)} `
-          + `${visible ? 'spans too little of' : 'cannot see'} its swept loop; filled as an island instead`);
+        notes.push(
+          `a locked rim near ${target.centroid[0].toFixed(0)},${target.centroid[1].toFixed(0)} ` +
+            `${visible ? 'spans too little of' : 'cannot see'} its swept loop; filled as an island instead`,
+        );
       } else kept.push(target);
     }
     // a loop must knit to something; a pathological group of only tiny rims keeps its first
     if (!kept.length) kept.push(joined[0]);
     const joinedKept = kept;
-    const lockedCount = joinedKept.filter(target => target.locked)
+    const lockedCount = joinedKept
+      .filter(target => target.locked)
       .reduce((sum, target) => sum + target.positions.length, 0);
     const bridges = 2 * (joinedKept.length - 1);
     // choose the free rims' parity so the ring needs no triangle — or exactly one, when this is the
     // last free ring and the sheet's triangle count is odd
-    let wantFreeParity = (sweptOriented.length + lockedCount + bridges
-      + (group === lastFree ? stats.parityTriangles % 2 : 0)) % 2;
+    let wantFreeParity =
+      (sweptOriented.length + lockedCount + bridges + (group === lastFree ? stats.parityTriangles % 2 : 0)) % 2;
     const rings = joinedKept.map(target => {
       if (target.locked) {
         realize(target, 0);
@@ -849,8 +1031,7 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       if (forward < 0) rings[r] = [...ids].reverse();
     }
     const cycle = joinedKept.length === 1 ? rings[0] : bridgeCycle(builder, rings);
-    const [narrow, wide] = sweptOriented.length <= cycle.length
-      ? [sweptOriented, cycle] : [cycle, sweptOriented];
+    const [narrow, wide] = sweptOriented.length <= cycle.length ? [sweptOriented, cycle] : [cycle, sweptOriented];
     stats.parityTriangles += knitRings(builder, narrow, wide);
     stats.ringQuads += builder.faces.length - before;
   }
@@ -867,8 +1048,9 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       let containedInTarget = false;
       const ring = target.positions;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const a = ring[i], b = ring[j];
-        if ((a[2] > z) !== (b[2] > z) && x < a[0] + ((b[0] - a[0]) * (z - a[2])) / (b[2] - a[2])) {
+        const a = ring[i],
+          b = ring[j];
+        if (a[2] > z !== b[2] > z && x < a[0] + ((b[0] - a[0]) * (z - a[2])) / (b[2] - a[2])) {
           containedInTarget = !containedInTarget;
         }
       }
@@ -880,7 +1062,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       const childIds = children.map(child => realize(child, 0));
       const outerRing = target.locked ? bufferLockedRim(target, childIds[0]) : outerIds;
       const childRings = children.map((child, index) =>
-        child.locked ? bufferLockedRim(child, outerIds) : childIds[index]);
+        child.locked ? bufferLockedRim(child, outerIds) : childIds[index],
+      );
       const cycle = childRings.length === 1 ? childRings[0] : bridgeCycle(builder, childRings);
       stats.parityTriangles += knitAligned(builder, outerRing, cycle);
       children.forEach(child => consumed.add(child));
@@ -894,19 +1077,23 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       for (const other of targets) {
         if (other === target || !other.locked) continue;
         // judged at a rim corner — a concave ring's centroid can sit inside a sibling
-        const x = target.positions[0][0], z = target.positions[0][2];
+        const x = target.positions[0][0],
+          z = target.positions[0][2];
         const ring = other.positions;
         let inside = false;
         for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
-          const pa = ring[a], pb = ring[b];
-          if ((pa[2] > z) !== (pb[2] > z)
-            && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2])) inside = !inside;
+          const pa = ring[a],
+            pb = ring[b];
+          if (pa[2] > z !== pb[2] > z && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2]))
+            inside = !inside;
         }
         if (inside) depth++;
       }
       if (target.locked && depth % 2 === 0) {
-        throw new Error(`a locked feature rim near ${target.centroid[0].toFixed(0)},`
-          + `${target.centroid[1].toFixed(0)} found no swept sheet to join`);
+        throw new Error(
+          `a locked feature rim near ${target.centroid[0].toFixed(0)},` +
+            `${target.centroid[1].toFixed(0)} found no swept sheet to join`,
+        );
       }
       // a disk fill must not contain any OTHER locked ring — a stand whose nested feature paired with
       // its own sweep elsewhere would be paved over silently
@@ -917,15 +1104,17 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
         const ring = target.positions;
         let inside = false;
         for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
-          const pa = ring[a], pb = ring[b];
-          if ((pa[2] > z) !== (pb[2] > z)
-            && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2])) inside = !inside;
+          const pa = ring[a],
+            pb = ring[b];
+          if (pa[2] > z !== pb[2] > z && x < pa[0] + ((pb[0] - pa[0]) * (z - pa[2])) / (pb[2] - pa[2]))
+            inside = !inside;
         }
         if (inside) {
-          const message = `an island fill near ${target.centroid[0].toFixed(0)},`
-            + `${target.centroid[1].toFixed(0)} would pave over the locked rim near `
-            + `${other.centroid[0].toFixed(0)},${other.centroid[1].toFixed(0)}; `
-            + 'its nested structure pairs elsewhere and the fill cannot thread it yet';
+          const message =
+            `an island fill near ${target.centroid[0].toFixed(0)},` +
+            `${target.centroid[1].toFixed(0)} would pave over the locked rim near ` +
+            `${other.centroid[0].toFixed(0)},${other.centroid[1].toFixed(0)}; ` +
+            'its nested structure pairs elsewhere and the fill cannot thread it yet';
           if (!input.lenient) throw new Error(message);
           notes.push(`JOIN FAILURE: ${message}`);
           threaded = true;
@@ -972,7 +1161,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       const onLocked = insideLockedGround(p[0], p[2]);
       const nearest = nearestLockedRimPoint(p[0], p[2]);
       if (!onLocked && nearest.d >= margin) continue;
-      const nx = p[0] - nearest.x, nz = p[2] - nearest.z;
+      const nx = p[0] - nearest.x,
+        nz = p[2] - nearest.z;
       const length = Math.hypot(nx, nz);
       const sign = onLocked ? -1 : 1;
       p[0] = nearest.x + (length > 1e-9 ? (sign * nx) / length : 1) * margin;
@@ -1003,8 +1193,7 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   let wedges = 0;
   for (const face of builder.faces) {
     const unique = new Set(face).size;
-    const wedge = face.length === 4 && unique === 3
-      && face.some((id, i) => id === face[(i + 1) % 4]);
+    const wedge = face.length === 4 && unique === 3 && face.some((id, i) => id === face[(i + 1) % 4]);
     if (wedge) wedges++;
     if (face.length !== 4 || (unique !== 4 && !wedge)) {
       if (!input.lenient) throw new Error('contour candidate holds a non-quad face after parity cancellation');
@@ -1012,7 +1201,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
       continue;
     }
     for (let i = 0; i < 4; i++) {
-      const a = face[i], b = face[(i + 1) % 4];
+      const a = face[i],
+        b = face[(i + 1) % 4];
       if (a === b) continue;
       const key = a < b ? `${a},${b}` : `${b},${a}`;
       use.set(key, (use.get(key) ?? 0) + 1);
@@ -1022,18 +1212,26 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   for (const [key, count] of use) {
     if (count > 2) {
       const [a, b] = key.split(',').map(Number);
-      const pa = builder.vertices[a], pb = builder.vertices[b];
+      const pa = builder.vertices[a],
+        pb = builder.vertices[b];
       const holders = builder.faces
         .map((face, slot) => ({ face, slot }))
         .filter(({ face }) => face.includes(a) && face.includes(b))
         .map(({ face, slot }) => {
-          let cx = 0, cz = 0;
-          for (const id of face) { cx += builder.vertices[id][0]; cz += builder.vertices[id][2]; }
-          return `#${slot}[${builder.faceStage[slot] ?? '?'}]`
-            + `@${(cx / face.length).toFixed(0)},${(cz / face.length).toFixed(0)}`;
+          let cx = 0,
+            cz = 0;
+          for (const id of face) {
+            cx += builder.vertices[id][0];
+            cz += builder.vertices[id][2];
+          }
+          return (
+            `#${slot}[${builder.faceStage[slot] ?? '?'}]` +
+            `@${(cx / face.length).toFixed(0)},${(cz / face.length).toFixed(0)}`
+          );
         });
-      const message = `contour candidate edge ${pa[0].toFixed(0)},${pa[2].toFixed(0)}`
-        + `-${pb[0].toFixed(0)},${pb[2].toFixed(0)} is used ${count} times by ${holders.join(' ')}`;
+      const message =
+        `contour candidate edge ${pa[0].toFixed(0)},${pa[2].toFixed(0)}` +
+        `-${pb[0].toFixed(0)},${pb[2].toFixed(0)} is used ${count} times by ${holders.join(' ')}`;
       if (!input.lenient) throw new Error(message);
       notes.push(`JOIN FAILURE: ${message}`);
     }
@@ -1044,8 +1242,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     const [a, b] = key.split(',').map(Number);
     if (!targetIds.has(a) || !targetIds.has(b)) {
       const p = builder.vertices[a];
-      const message = `the contour sheet has an open edge off the region boundary near `
-        + `${p[0].toFixed(0)},${p[2].toFixed(0)}`;
+      const message =
+        `the contour sheet has an open edge off the region boundary near ` + `${p[0].toFixed(0)},${p[2].toFixed(0)}`;
       if (!input.lenient) throw new Error(message);
       notes.push(`JOIN FAILURE: ${message}`);
       break;
@@ -1057,7 +1255,11 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     const find = (a: number): number => {
       let root = a;
       while (parent.get(root) !== root) root = parent.get(root)!;
-      while (parent.get(a) !== root) { const next = parent.get(a)!; parent.set(a, root); a = next; }
+      while (parent.get(a) !== root) {
+        const next = parent.get(a)!;
+        parent.set(a, root);
+        a = next;
+      }
       return root;
     };
     for (const face of builder.faces) {
@@ -1071,23 +1273,24 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     let expected = 1;
     for (const polygon of lockedRings) {
       // containment is judged at a rim CORNER: a concave ring's centroid can sit inside a sibling
-      const cx = polygon.ring[0][0], cz = polygon.ring[0][2];
+      const cx = polygon.ring[0][0],
+        cz = polygon.ring[0][2];
       let depth = 0;
       for (const other of lockedRings) {
         if (other === polygon) continue;
         let inside = false;
         for (let a = 0, b = other.ring.length - 1; a < other.ring.length; b = a++) {
-          const pa = other.ring[a], pb = other.ring[b];
-          if ((pa[2] > cz) !== (pb[2] > cz)
-            && cx < pa[0] + ((pb[0] - pa[0]) * (cz - pa[2])) / (pb[2] - pa[2])) inside = !inside;
+          const pa = other.ring[a],
+            pb = other.ring[b];
+          if (pa[2] > cz !== pb[2] > cz && cx < pa[0] + ((pb[0] - pa[0]) * (cz - pa[2])) / (pb[2] - pa[2]))
+            inside = !inside;
         }
         if (inside) depth++;
       }
       if (depth % 2 === 1) expected++;
     }
     if (candidateComponents !== expected) {
-      const message = `the contour candidate has ${candidateComponents} component(s) `
-        + `for the region's ${expected}`;
+      const message = `the contour candidate has ${candidateComponents} component(s) ` + `for the region's ${expected}`;
       if (!input.lenient) throw new Error(message);
       notes.push(`JOIN FAILURE: ${message}`);
     }
@@ -1100,9 +1303,14 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   for (let round = 0; round < 24; round++) {
     let draped = 0;
     for (const face of builder.faces) {
-      let cx = 0, cz = 0;
-      for (const id of face) { cx += builder.vertices[id][0]; cz += builder.vertices[id][2]; }
-      cx /= face.length; cz /= face.length;
+      let cx = 0,
+        cz = 0;
+      for (const id of face) {
+        cx += builder.vertices[id][0];
+        cz += builder.vertices[id][2];
+      }
+      cx /= face.length;
+      cz /= face.length;
       if (!insideLockedGround(cx, cz)) continue;
       draped++;
       for (const id of face) {
@@ -1110,7 +1318,8 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
         const p = builder.vertices[id];
         const nearest = nearestLockedRimPoint(p[0], p[2]);
         const sign = insideLockedGround(p[0], p[2]) ? -1 : 1;
-        const nx = p[0] - nearest.x, nz = p[2] - nearest.z;
+        const nx = p[0] - nearest.x,
+          nz = p[2] - nearest.z;
         const length = Math.hypot(nx, nz);
         if (!(length > 1e-9)) continue;
         p[0] += ((sign * nx) / length) * raster.step;
@@ -1124,9 +1333,14 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
   {
     const draped: string[] = [];
     for (const face of builder.faces) {
-      let cx = 0, cz = 0;
-      for (const id of face) { cx += builder.vertices[id][0]; cz += builder.vertices[id][2]; }
-      cx /= face.length; cz /= face.length;
+      let cx = 0,
+        cz = 0;
+      for (const id of face) {
+        cx += builder.vertices[id][0];
+        cz += builder.vertices[id][2];
+      }
+      cx /= face.length;
+      cz /= face.length;
       if (insideLockedGround(cx, cz)) draped.push(`${cx.toFixed(0)},${cz.toFixed(0)}`);
     }
     if (draped.length > 2) {
@@ -1136,13 +1350,17 @@ export function buildContourCandidate(input: ContourCandidateInput): ContourCand
     } else if (draped.length) {
       // a stray survivor of the repair rounds is left to the job's footprint gate, which measures its
       // actual depth instead of its existence
-      notes.push(`${draped.length} face(s) still lean over a locked rim at ${draped.join(' ')}; `
-        + 'the footprint gate judges their depth');
+      notes.push(
+        `${draped.length} face(s) still lean over a locked rim at ${draped.join(' ')}; ` +
+          'the footprint gate judges their depth',
+      );
     }
   }
 
-  notes.push(`${stats.levels} graded elevation levels; ${stats.sweptQuads} swept + ${stats.ringQuads} `
-    + `join-ring quads; ${stats.caps} caps, ${stats.pits} pits, ${stats.saddles} saddles, `
-    + `${stats.openBands} open bands absorbed by the join, ${stats.islandFills} island fills`);
+  notes.push(
+    `${stats.levels} graded elevation levels; ${stats.sweptQuads} swept + ${stats.ringQuads} ` +
+      `join-ring quads; ${stats.caps} caps, ${stats.pits} pits, ${stats.saddles} saddles, ` +
+      `${stats.openBands} open bands absorbed by the join, ${stats.islandFills} island fills`,
+  );
   return { mesh: { vertices: builder.vertices, faces: builder.faces }, notes, stats };
 }

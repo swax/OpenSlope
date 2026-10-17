@@ -24,7 +24,15 @@ import { undirectedEdgeKey } from '../mesh/primitives';
 
 /** The channels that key off a vertex or a quad — everything the two namings disagree about. */
 type KeyedChannel =
-  'freeEdges' | 'tJunctions' | 'edgeHandles' | 'edgeLocked' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist'
+  | 'freeEdges'
+  | 'tJunctions'
+  | 'edgeHandles'
+  | 'edgeLocked'
+  | 'quadPaint'
+  | 'quadTex'
+  | 'quadOrient'
+  | 'quadLocked'
+  | 'quadTwist'
   | 'quadLabels';
 
 /** A T-node as stored: its own vertex and the two ends of its host edge, each named by id. */
@@ -66,12 +74,11 @@ const EDGE_SEPARATOR = '>';
 /** A crease's compound key, from either naming. Exported alongside its parser because the register model
  *  (docs/039) names a crease by the same compound key over ids, and a key that fails silently is exactly the
  *  key that must not have two readers. */
-export const directedEdgeName = (from: string | number, to: string | number): string =>
-  `${from}${EDGE_SEPARATOR}${to}`;
+export const directedEdgeName = (from: string | number, to: string | number): string => `${from}${EDGE_SEPARATOR}${to}`;
 
 /** An undirected edge's name over ids: the directed form with its ends in id order, so one edge answers to one
  *  name however its ends are numbered today. The edge-lock channel stores, and its register is called, this. */
-export const edgeLockName = (a: string, b: string): string => a < b ? directedEdgeName(a, b) : directedEdgeName(b, a);
+export const edgeLockName = (a: string, b: string): string => (a < b ? directedEdgeName(a, b) : directedEdgeName(b, a));
 
 /** The two ends of a directed-edge key, or null when the key is not one. */
 export function directedEdgeEnds(key: string): [string, string] | null {
@@ -86,8 +93,11 @@ export function directedEdgeEnds(key: string): [string, string] | null {
  * names nothing at all. Two keys renaming onto one would merge their entries out of sight, so the count is
  * checked rather than assumed.
  */
-function rekeyed<T>(what: string, channel: Record<string, T> | undefined, rename: (key: string) => string | null):
-  Record<string, T> | undefined {
+function rekeyed<T>(
+  what: string,
+  channel: Record<string, T> | undefined,
+  rename: (key: string) => string | null,
+): Record<string, T> | undefined {
   if (!channel) return undefined;
   const out: Record<string, T> = {};
   let named = 0;
@@ -98,8 +108,10 @@ function rekeyed<T>(what: string, channel: Record<string, T> | undefined, rename
     out[to] = channel[key];
   }
   if (Object.keys(out).length !== named) {
-    throw new Error(`Storing ${what} collapsed ${named} entries onto ${Object.keys(out).length}: `
-      + 'two elements of this mountain answer to one name.');
+    throw new Error(
+      `Storing ${what} collapsed ${named} entries onto ${Object.keys(out).length}: ` +
+        'two elements of this mountain answer to one name.',
+    );
   }
   return out;
 }
@@ -120,42 +132,62 @@ export function storedById(raw: unknown): boolean {
 export function serializeMountain(doc: QuadMeshDoc): StoredMountain {
   const vertexCount = doc.vertices.length / 3;
   if (doc.vertexIds?.length !== vertexCount || doc.quadIds?.length !== doc.quads.length) {
-    throw new Error(`This mountain cannot be stored: its identity names ${doc.vertexIds?.length ?? 0} vertices `
-      + `and ${doc.quadIds?.length ?? 0} quads for a mesh of ${vertexCount} and ${doc.quads.length}.`);
+    throw new Error(
+      `This mountain cannot be stored: its identity names ${doc.vertexIds?.length ?? 0} vertices ` +
+        `and ${doc.quadIds?.length ?? 0} quads for a mesh of ${vertexCount} and ${doc.quads.length}.`,
+    );
   }
   const vertexName = (index: string | number): string | null => doc.vertexIds[Number(index)] ?? null;
   const quadName = (index: string): string | null => doc.quadIds[Number(index)] ?? null;
   const handleName = (key: string): string | null => {
     const ends = directedEdgeEnds(key);
     if (!ends) return null;
-    const from = vertexName(ends[0]), to = vertexName(ends[1]);
+    const from = vertexName(ends[0]),
+      to = vertexName(ends[1]);
     return from !== null && to !== null ? directedEdgeName(from, to) : null;
   };
   const lockName = (key: string): string | null => {
     const cut = key.indexOf(',');
-    const a = cut > 0 ? vertexName(key.slice(0, cut)) : null, b = cut > 0 ? vertexName(key.slice(cut + 1)) : null;
+    const a = cut > 0 ? vertexName(key.slice(0, cut)) : null,
+      b = cut > 0 ? vertexName(key.slice(cut + 1)) : null;
     return a !== null && b !== null && a !== b ? edgeLockName(a, b) : null;
   };
 
   // Written over a copy of the document rather than assembled fresh, so the file carries every field the
   // document has — including any this file has never heard of — in the order the document has them.
-  const { freeEdges, tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels } = doc;
+  const {
+    freeEdges,
+    tJunctions,
+    edgeHandles,
+    edgeLocked,
+    quadPaint,
+    quadTex,
+    quadOrient,
+    quadLocked,
+    quadTwist,
+    quadLabels,
+  } = doc;
   const stored = { ...doc } as unknown as StoredMountain;
   stored.freeEdges = freeEdges?.flatMap(([a, b]) => {
-    const from = vertexName(a), to = vertexName(b);
+    const from = vertexName(a),
+      to = vertexName(b);
     return from !== null && to !== null ? [[from, to] as [string, string]] : [];
   });
   stored.tJunctions = tJunctions?.flatMap(node => {
     const vertex = vertexName(node.vertex);
-    const a = vertexName(node.edge[0]), b = vertexName(node.edge[1]);
+    const a = vertexName(node.edge[0]),
+      b = vertexName(node.edge[1]);
     return vertex !== null && a !== null && b !== null ? [{ vertex, edge: [a, b] as [string, string], t: node.t }] : [];
   });
   stored.edgeHandles = rekeyed('edge handles', edgeHandles, handleName);
   stored.edgeLocked = rekeyed('edge locks', edgeLocked, lockName);
   stored.quadPaint = rekeyed('quad paint', quadPaint as Record<string, number> | undefined, quadName);
   stored.quadTex = rekeyed('quad tiles', quadTex as Record<string, string> | undefined, quadName);
-  stored.quadOrient = rekeyed('quad tile orientation',
-    quadOrient as Record<string, { rot: number; mirror: boolean }> | undefined, quadName);
+  stored.quadOrient = rekeyed(
+    'quad tile orientation',
+    quadOrient as Record<string, { rot: number; mirror: boolean }> | undefined,
+    quadName,
+  );
   stored.quadLocked = rekeyed('quad locks', quadLocked as Record<string, true> | undefined, quadName);
   stored.quadTwist = rekeyed('quad twist', quadTwist as Record<string, [V3, V3, V3, V3]> | undefined, quadName);
   stored.quadLabels = rekeyed('quad labels', quadLabels as Record<string, string[]> | undefined, quadName);
@@ -177,7 +209,8 @@ export function serializeMountain(doc: QuadMeshDoc): StoredMountain {
  */
 export function keyMountainByIndex(doc: QuadMeshDoc): { retiredHandles: number } {
   const stored = doc as unknown as StoredMountain;
-  const vertexAt = nameIndex(doc.vertexIds), quadAt = nameIndex(doc.quadIds);
+  const vertexAt = nameIndex(doc.vertexIds),
+    quadAt = nameIndex(doc.quadIds);
   const retired = new Set(doc.tombstones ?? []);
   let retiredHandles = 0;
   const resolve = (at: Map<string, number>, id: string, what: string): number | null => {
@@ -194,7 +227,8 @@ export function keyMountainByIndex(doc: QuadMeshDoc): { retiredHandles: number }
   const handleIndex = (key: string): string | null => {
     const ends = directedEdgeEnds(key);
     if (!ends) throw new Error(`This mountain carries a crease under a key that names no edge: ${key}`);
-    const from = vertexIndex(ends[0]), to = vertexIndex(ends[1]);
+    const from = vertexIndex(ends[0]),
+      to = vertexIndex(ends[1]);
     if (from !== null && to !== null) return directedEdgeName(from, to);
     retiredHandles++;
     return null;
@@ -203,18 +237,32 @@ export function keyMountainByIndex(doc: QuadMeshDoc): { retiredHandles: number }
   const lockIndex = (key: string): string | null => {
     const ends = directedEdgeEnds(key);
     if (!ends) throw new Error(`This mountain carries an edge lock under a key that names no edge: ${key}`);
-    const a = vertexIndex(ends[0]), b = vertexIndex(ends[1]);
+    const a = vertexIndex(ends[0]),
+      b = vertexIndex(ends[1]);
     return a !== null && b !== null && a !== b ? undirectedEdgeKey(a, b) : null;
   };
 
-  const { freeEdges, tJunctions, edgeHandles, edgeLocked, quadPaint, quadTex, quadOrient, quadLocked, quadTwist, quadLabels } = stored;
+  const {
+    freeEdges,
+    tJunctions,
+    edgeHandles,
+    edgeLocked,
+    quadPaint,
+    quadTex,
+    quadOrient,
+    quadLocked,
+    quadTwist,
+    quadLabels,
+  } = stored;
   doc.freeEdges = freeEdges?.flatMap(([a, b]) => {
-    const from = vertexIndex(a), to = vertexIndex(b);
+    const from = vertexIndex(a),
+      to = vertexIndex(b);
     return from !== null && to !== null ? [[from, to] as [number, number]] : [];
   });
   doc.tJunctions = tJunctions?.flatMap((node): EdgeEmbeddedTJunction[] => {
     const vertex = vertexIndex(node.vertex);
-    const a = vertexIndex(node.edge[0]), b = vertexIndex(node.edge[1]);
+    const a = vertexIndex(node.edge[0]),
+      b = vertexIndex(node.edge[1]);
     return vertex !== null && a !== null && b !== null ? [{ vertex, edge: [a, b], t: node.t }] : [];
   });
   doc.edgeHandles = rekeyed('edge handles', edgeHandles, handleIndex);

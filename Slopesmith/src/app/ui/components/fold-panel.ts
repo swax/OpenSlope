@@ -8,17 +8,27 @@
 const STORAGE_KEY = 'slopesmith-legends-collapsed-v1';
 
 function loadFolds(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, boolean>;
+  } catch {
+    return {};
+  }
 }
 
 function saveFold(id: string, folded: boolean) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadFolds(), [id]: folded })); } catch { /* storage full / disabled */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadFolds(), [id]: folded }));
+  } catch {
+    /* storage full / disabled */
+  }
 }
 
 /** A panel title as its folding header; `id` names the panel in the remembered folds. */
 export function foldHeader(title: string, id: string): string {
-  return `<button type="button" class="ll-title" data-fold="${id}" aria-expanded="true">`
-    + `<span class="ll-caret" aria-hidden="true">▾</span>${title}</button>`;
+  return (
+    `<button type="button" class="ll-title" data-fold="${id}" aria-expanded="true">` +
+    `<span class="ll-caret" aria-hidden="true">▾</span>${title}</button>`
+  );
 }
 
 /** Fold or open `panel` as its header's id was last left (open when it has no folding header). */

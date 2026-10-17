@@ -78,7 +78,16 @@ export function createLoadStatus() {
   /** End the current JS task so a due rendering opportunity can paint incremental patch progress. */
   const yieldToBrowser = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
-  return { begin, update, finish, fail, cancel, afterPaint, yieldToBrowser, isBusy: () => root.getAttribute('aria-busy') === 'true' };
+  return {
+    begin,
+    update,
+    finish,
+    fail,
+    cancel,
+    afterPaint,
+    yieldToBrowser,
+    isBusy: () => root.getAttribute('aria-busy') === 'true',
+  };
 }
 
 export type LoadStatus = ReturnType<typeof createLoadStatus>;

@@ -65,7 +65,7 @@ export const PROP_LAMBERT_IRRADIANCE = Math.PI;
  * factor 2 / instance RGB 256 becomes a light multiplier of exactly 1. A normal authored light stays linear
  * below that reference: default sun 1 + ambient .28 reaches .64 before tint, N.L and ground attenuation. */
 export function propPreviewIntensity(rawFactor: number): number {
-  return PROP_LAMBERT_IRRADIANCE * Math.max(0, rawFactor) / PROP_FULL_BRIGHT_FACTOR;
+  return (PROP_LAMBERT_IRRADIANCE * Math.max(0, rawFactor)) / PROP_FULL_BRIGHT_FACTOR;
 }
 
 /** One PS2 output-channel multiplier from the packed INSTANCE values. The GS modulates the stored
@@ -97,7 +97,8 @@ export interface PropInstanceLight {
  * (−0.518, 0.831, 0.200), and the Unity port independently derived its prop sun as (−0.48, 0.88, 0).
  */
 export function rawSunVector(sun: SunLight): [number, number, number] {
-  const e = (sun.el * Math.PI) / 180, a = (sun.az * Math.PI) / 180;
+  const e = (sun.el * Math.PI) / 180,
+    a = (sun.az * Math.PI) / 180;
   return [-Math.cos(e) * Math.cos(a), -Math.cos(e) * Math.sin(a), Math.sin(e)];
 }
 
@@ -110,7 +111,9 @@ export function rawSunVector(sun: SunLight): [number, number, number] {
 export function localPropSunVector(sun: SunLight, rot: PropRotation = { yaw: 0 }): [number, number, number] {
   const [x, y, z] = rawSunVector(sun);
   if (!isTilted(rot)) {
-    const yaw = (rot.yaw * Math.PI) / 180, c = Math.cos(yaw), s = Math.sin(yaw);
+    const yaw = (rot.yaw * Math.PI) / 180,
+      c = Math.cos(yaw),
+      s = Math.sin(yaw);
     return [c * x - s * y, s * x + c * y, z];
   }
   const [qx, qy, qz, qw] = placementQuat(rot);
@@ -145,9 +148,15 @@ export function localPropSunVector(sun: SunLight, rot: PropRotation = { yaw: 0 }
  * the ground's own light — MINUS the `N·L`, which the prop's own vertex normals supply at draw time.
  * `groundLight` / `ao` are 0..1 (1 = fully lit / open).
  */
-export function propInstanceLight(sun: SunLight, groundLight = 1, ao = 1,
-                                  fullBright = false, rot: PropRotation = { yaw: 0 }): PropInstanceLight {
-  const skyTint = hexToRgb(sun.skyTint), sunTint = hexToRgb(sun.sunTint);
+export function propInstanceLight(
+  sun: SunLight,
+  groundLight = 1,
+  ao = 1,
+  fullBright = false,
+  rot: PropRotation = { yaw: 0 },
+): PropInstanceLight {
+  const skyTint = hexToRgb(sun.skyTint),
+    sunTint = hexToRgb(sun.sunTint);
   const dir = localPropSunVector(sun, rot);
   // A self-lit surface: no key at all, and a clamped-white ambient of exactly FULL_BRIGHT. Retail's own
   // convention, and a flag rather than a value — every full-bright instance across five levels carries
@@ -169,8 +178,12 @@ export function propInstanceLight(sun: SunLight, groundLight = 1, ao = 1,
 
 /** Author instance lighting for a run of props, given the terms the lightmap bake resolved at their
  *  positions (`BakedLightmaps.probeLight` / `probeAO`, index-aligned with the probes). */
-export function propInstanceLights(sun: SunLight, groundLight: Float32Array, ao: Float32Array,
-                                   count: number): PropInstanceLight[] {
+export function propInstanceLights(
+  sun: SunLight,
+  groundLight: Float32Array,
+  ao: Float32Array,
+  count: number,
+): PropInstanceLight[] {
   const out: PropInstanceLight[] = [];
   for (let i = 0; i < count; i++) out.push(propInstanceLight(sun, groundLight[i] ?? 1, ao[i] ?? 1));
   return out;
@@ -190,6 +203,7 @@ export function roundPropLight(l: PropInstanceLight): PropInstanceLight {
 /** Editor-space TOWARD-light vector for the viewport's prop preview — the same sun, mapped through
  *  `editorFromRaw`'s linear part so the editor shades props exactly as the export lights them. */
 export function editorSunVector(sun: SunLight): V3 {
-  const e = (sun.el * Math.PI) / 180, a = (sun.az * Math.PI) / 180;
+  const e = (sun.el * Math.PI) / 180,
+    a = (sun.az * Math.PI) / 180;
   return [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
 }

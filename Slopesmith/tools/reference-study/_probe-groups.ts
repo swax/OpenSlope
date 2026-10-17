@@ -11,20 +11,29 @@ const WANT: Record<string, RegExp> = {
   MESA: /^(Mdl_TreeLeaves_EvergreenA_1003|Mdl_TreeTrunk_EvergreenB_1004)$/,
 };
 for (const [level, want] of Object.entries(WANT)) {
-  const models = JSON.parse(await readFile(join(mapsRoot(), level, 'Models.json'), 'utf8')) as { Models: { ModelName: string }[] };
+  const models = JSON.parse(await readFile(join(mapsRoot(), level, 'Models.json'), 'utf8')) as {
+    Models: { ModelName: string }[];
+  };
   const ids = new Set<number>();
-  models.Models.forEach((m, id) => { if (want.test(m.ModelName)) ids.add(id); });
+  models.Models.forEach((m, id) => {
+    if (want.test(m.ModelName)) ids.add(id);
+  });
   const geoms = await readModelGeometries(level, ids);
   console.log(`--- ${level}`);
   for (const [id, g] of [...geoms].sort((a, b) => a[1].name.localeCompare(b[1].name))) {
-    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    const lo = [Infinity, Infinity, Infinity],
+      hi = [-Infinity, -Infinity, -Infinity];
     for (const sub of g.subs) {
-      for (let i = 0; i < sub.positions.length; i += 3) for (let k = 0; k < 3; k++) {
-        lo[k] = Math.min(lo[k], sub.positions[i + k]); hi[k] = Math.max(hi[k], sub.positions[i + k]);
-      }
+      for (let i = 0; i < sub.positions.length; i += 3)
+        for (let k = 0; k < 3; k++) {
+          lo[k] = Math.min(lo[k], sub.positions[i + k]);
+          hi[k] = Math.max(hi[k], sub.positions[i + k]);
+        }
     }
     const s = hi.map((v, k) => v - lo[k]);
-    console.log(`  #${String(id).padStart(4)} ${g.name.padEnd(32)} raw ${s.map(v => v.toFixed(1).padStart(7)).join(' ')}`
-      + `   /100 -> ${s.map(v => (v / 100).toFixed(2).padStart(6)).join(' ')}   loY ${lo[1].toFixed(0)} rot ${JSON.stringify(g.rotation ?? null)}`);
+    console.log(
+      `  #${String(id).padStart(4)} ${g.name.padEnd(32)} raw ${s.map(v => v.toFixed(1).padStart(7)).join(' ')}` +
+        `   /100 -> ${s.map(v => (v / 100).toFixed(2).padStart(6)).join(' ')}   loY ${lo[1].toFixed(0)} rot ${JSON.stringify(g.rotation ?? null)}`,
+    );
   }
 }

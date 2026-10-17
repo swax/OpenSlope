@@ -1,6 +1,14 @@
 import type { V3 } from '../../core/doc/types';
 import type { EditDoc } from '../../core/doc/doc-edit';
-import type { GizmoFrame, Mode, PropGizmoFrame, RotationSnapStep, ShadeMode, SnapStep, ViewState } from '../viewport/viewport';
+import type {
+  GizmoFrame,
+  Mode,
+  PropGizmoFrame,
+  RotationSnapStep,
+  ShadeMode,
+  SnapStep,
+  ViewState,
+} from '../viewport/viewport';
 import type { DrawDistance } from '../viewport/scene/range-cull';
 import type { XrEyeBufferMeasurement, XrLayerMode } from '../ride/xr/config';
 import type { RideGear, SnowboardStance } from '../ride/gear';
@@ -14,38 +22,106 @@ import type { RideGear, SnowboardStance } from '../ride/gear';
 
 export const MOUNTAIN_KEY = 'slopesmith-mountain-v1';
 export const VIEW_KEY = 'slopesmith-view-v1'; // camera framing, restored on reload so a refresh keeps the current view
-export const REF_KEY = 'slopesmith-ref-v1';   // the loaded reference level (+ its placement offset), re-loaded on reload
-export const UI_KEY = 'slopesmith-ui-v1';     // editor mode + view toggles (shading, cage, XYZ grid), restored on reload
+export const REF_KEY = 'slopesmith-ref-v1'; // the loaded reference level (+ its placement offset), re-loaded on reload
+export const UI_KEY = 'slopesmith-ui-v1'; // editor mode + view toggles (shading, cage, XYZ grid), restored on reload
 export const PINS_KEY = 'slopesmith-mountain-pins-v1'; // mountains pinned to the top of the stats comparison
 
-export interface StoredUi { mode: Mode; cageOn: boolean; viewGrid: boolean; viewGridStep: SnapStep; snapOn: boolean; snapStep: SnapStep; rotationSnapStep: RotationSnapStep; shadeMode: ShadeMode; fOverlay: boolean; /** The whole mountain shades by its predicted ride (docs/023); absent is off. */ speedShade?: boolean; courseGuide: boolean; normals: boolean; aiPaths: boolean; propsVisible: boolean; collisionOverlay: boolean; worldEffects: boolean; lightRig: boolean; propLights: boolean; skybox: boolean; tricks: boolean; textureLib: boolean; propLib: boolean; playTarget: 'authored' | 'reference'; playRiderModel: string; playRiderStyle: string; playRideGear: RideGear; playSnowboardStance: SnowboardStance; playRaceMode: 'race' | 'showoff' | 'freeride'; /** Legacy pre-count toggle, read only while migrating an older saved UI. */ playAi?: boolean; playAiPaths: boolean; /** Zero disables AI; positive values are the field cap. */ playAiMax: number; playCountdown: boolean; playSnow: number; playMusic: boolean; playMusicSongs: Record<string, string>; playAnnouncer: boolean; playGameVolume: number; playTelemetry: boolean; playBoardFx: boolean; playColliders: boolean; playSmoothCutouts: boolean; playVrRenderScale: number; playVrEyeBuffer: XrEyeBufferMeasurement | null; playVrLayerMode: XrLayerMode; playVrStats: boolean; playDrawDistance: DrawDistance; gizmoFrame: GizmoFrame; /** The placed-prop World / Surface pill; absent is Surface. */ propGizmoFrame?: PropGizmoFrame; /** The trail tile set a new path wears: the last chosen. */ trailTileSet?: string | null; /** Selected trail patches shade by predicted speed (docs/023); absent is on. */ trailSpeedColors?: boolean }
-export interface StoredRef { level: string; offset?: V3 }
+export interface StoredUi {
+  mode: Mode;
+  cageOn: boolean;
+  viewGrid: boolean;
+  viewGridStep: SnapStep;
+  snapOn: boolean;
+  snapStep: SnapStep;
+  rotationSnapStep: RotationSnapStep;
+  shadeMode: ShadeMode;
+  fOverlay: boolean;
+  /** The whole mountain shades by its predicted ride (docs/023); absent is off. */ speedShade?: boolean;
+  courseGuide: boolean;
+  normals: boolean;
+  aiPaths: boolean;
+  propsVisible: boolean;
+  collisionOverlay: boolean;
+  worldEffects: boolean;
+  lightRig: boolean;
+  propLights: boolean;
+  skybox: boolean;
+  tricks: boolean;
+  textureLib: boolean;
+  propLib: boolean;
+  playTarget: 'authored' | 'reference';
+  playRiderModel: string;
+  playRiderStyle: string;
+  playRideGear: RideGear;
+  playSnowboardStance: SnowboardStance;
+  playRaceMode: 'race' | 'showoff' | 'freeride';
+  /** Legacy pre-count toggle, read only while migrating an older saved UI. */ playAi?: boolean;
+  playAiPaths: boolean;
+  /** Zero disables AI; positive values are the field cap. */ playAiMax: number;
+  playCountdown: boolean;
+  playSnow: number;
+  playMusic: boolean;
+  playMusicSongs: Record<string, string>;
+  playAnnouncer: boolean;
+  playGameVolume: number;
+  playTelemetry: boolean;
+  playBoardFx: boolean;
+  playColliders: boolean;
+  playSmoothCutouts: boolean;
+  playVrRenderScale: number;
+  playVrEyeBuffer: XrEyeBufferMeasurement | null;
+  playVrLayerMode: XrLayerMode;
+  playVrStats: boolean;
+  playDrawDistance: DrawDistance;
+  gizmoFrame: GizmoFrame;
+  /** The placed-prop World / Surface pill; absent is Surface. */ propGizmoFrame?: PropGizmoFrame;
+  /** The trail tile set a new path wears: the last chosen. */ trailTileSet?: string | null;
+  /** Selected trail patches shade by predicted speed (docs/023); absent is on. */ trailSpeedColors?: boolean;
+}
+export interface StoredRef {
+  level: string;
+  offset?: V3;
+}
 /** Which mountains the stats comparison floats to the top. An object rather than a bare array so the entry can
  *  grow a field without every older browser's copy reading as corrupt. */
-export interface StoredPins { levels: string[] }
+export interface StoredPins {
+  levels: string[];
+}
 
 export function loadStored<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
     if (raw) return JSON.parse(raw) as T;
-  } catch { /* fall through to default */ }
+  } catch {
+    /* fall through to default */
+  }
   return null;
 }
 
 /** Write one entry, degrading to "not saved" on a full or disabled store — the same bargain every writer in
  *  `createPersistence` makes. For state that changes on a click rather than at page unload. */
 export function saveStored(key: string, value: unknown): void {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full / disabled */ }
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full / disabled */
+  }
 }
 
 /** A stored view is usable only if its vectors and scalars are all finite (guards a corrupt / stale entry
  *  from feeding NaNs into the camera, which would blank the viewport). */
 export function isValidView(v: ViewState | null): v is ViewState {
   const vec3 = (a: unknown): a is number[] => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
-  return !!v && vec3(v.pos) && vec3(v.target) && Number.isFinite(v.zoom) && Number.isFinite(v.orthoHalfH)
-    && (v.fov === undefined || Number.isFinite(v.fov) && v.fov >= 1 && v.fov < 180)
-    && (v.near === undefined || Number.isFinite(v.near) && v.near > 0)
-    && (v.up === undefined || vec3(v.up) && Math.hypot(...v.up) > 1e-6);
+  return (
+    !!v &&
+    vec3(v.pos) &&
+    vec3(v.target) &&
+    Number.isFinite(v.zoom) &&
+    Number.isFinite(v.orthoHalfH) &&
+    (v.fov === undefined || (Number.isFinite(v.fov) && v.fov >= 1 && v.fov < 180)) &&
+    (v.near === undefined || (Number.isFinite(v.near) && v.near > 0)) &&
+    (v.up === undefined || (vec3(v.up) && Math.hypot(...v.up) > 1e-6))
+  );
 }
 
 export function createPersistence(deps: {
@@ -59,20 +135,32 @@ export function createPersistence(deps: {
    *  immediately. Its caller separately notifies the durable project/register transports for a user edit;
    *  otherwise the disk project, which wins at boot, would replace this recovery copy on refresh. */
   function persistDoc() {
-    try { localStorage.setItem(MOUNTAIN_KEY, JSON.stringify(deps.getDoc())); } catch { /* storage full / disabled */ }
+    try {
+      localStorage.setItem(MOUNTAIN_KEY, JSON.stringify(deps.getDoc()));
+    } catch {
+      /* storage full / disabled */
+    }
   }
 
   /** Save the current camera framing so a page reload restores the same view (see Viewport.serializeView).
    *  The view changes every frame while flying / orbiting / zooming, so we don't write on each change — only
    *  when the page is being hidden / unloaded (pagehide covers desktop refresh and mobile background). */
   function persistView() {
-    try { localStorage.setItem(VIEW_KEY, JSON.stringify(deps.getView())); } catch { /* storage full / disabled */ }
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(deps.getView()));
+    } catch {
+      /* storage full / disabled */
+    }
   }
 
   /** Save the editor mode + global view toggles (surface / textures / cage-only shading, control cage,
    *  XYZ grid, F overlay) so a reload restores the same working state. Focused Edit sub-cages are transient. */
   function persistUi() {
-    try { localStorage.setItem(UI_KEY, JSON.stringify(deps.getUi())); } catch { /* storage full / disabled */ }
+    try {
+      localStorage.setItem(UI_KEY, JSON.stringify(deps.getUi()));
+    } catch {
+      /* storage full / disabled */
+    }
   }
 
   /** Remember (or, with no loaded reference, forget) which reference level is loaded, so a reload re-loads it.
@@ -83,7 +171,9 @@ export function createPersistence(deps: {
     try {
       if (ref) localStorage.setItem(REF_KEY, JSON.stringify(ref));
       else localStorage.removeItem(REF_KEY);
-    } catch { /* storage full / disabled */ }
+    } catch {
+      /* storage full / disabled */
+    }
   }
 
   return { persistDoc, persistView, persistUi, persistRef };

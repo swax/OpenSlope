@@ -37,10 +37,7 @@ export const fetchForTest = (
 };
 
 /** Fail fixture setup at the request that broke, with the server's own explanation. */
-export async function expectOk(
-  pending: Response | Promise<Response>,
-  label: string,
-): Promise<Response> {
+export async function expectOk(pending: Response | Promise<Response>, label: string): Promise<Response> {
   const response = await pending;
   if (response.ok) return response;
   const body = await response.text();
@@ -51,9 +48,10 @@ export async function expectOk(
  * Windows can retain a just-closed file-watcher handle for a few milliseconds. A bounded retry keeps that
  * OS bookkeeping race from turning an otherwise-passing integration check red.
  */
-export const removeTestTree = (path: string): void => rmSync(path, {
-  recursive: true,
-  force: true,
-  maxRetries: 5,
-  retryDelay: 100,
-});
+export const removeTestTree = (path: string): void =>
+  rmSync(path, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });

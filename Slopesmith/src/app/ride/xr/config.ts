@@ -22,16 +22,20 @@ export const XR_RENDER_SCALE_STEP = 0.1;
 
 /** Put a runtime's arbitrary float onto the slider without ever rounding above the reported ceiling. */
 export function xrScaleAtOrBelow(value: number): number {
-  return Math.max(XR_RENDER_SCALE_STEP,
-    Number((Math.floor((value + 1e-7) / XR_RENDER_SCALE_STEP) * XR_RENDER_SCALE_STEP).toFixed(2)));
+  return Math.max(
+    XR_RENDER_SCALE_STEP,
+    Number((Math.floor((value + 1e-7) / XR_RENDER_SCALE_STEP) * XR_RENDER_SCALE_STEP).toFixed(2)),
+  );
 }
 
 /** The legacy WebGL API exposes the recommended-to-native factor only after requestSession succeeds. Keep it as
  *  an advisory starting point, never a hard ceiling: runtimes can accept supersampling above native resolution. */
 export function xrNativeRenderScale(session: XRSession): number | null {
-  const ctor = (globalThis as typeof globalThis & {
-    XRWebGLLayer?: { getNativeFramebufferScaleFactor?(session: XRSession): number };
-  }).XRWebGLLayer;
+  const ctor = (
+    globalThis as typeof globalThis & {
+      XRWebGLLayer?: { getNativeFramebufferScaleFactor?(session: XRSession): number };
+    }
+  ).XRWebGLLayer;
   if (typeof ctor?.getNativeFramebufferScaleFactor !== 'function') return null;
   try {
     const scale = ctor.getNativeFramebufferScaleFactor(session);
@@ -43,8 +47,10 @@ export function xrNativeRenderScale(session: XRSession): number | null {
 
 /** When a trustworthy 1x sample is available, compare the new real viewport to it and correct both the effective
  *  scale and a likely observed ceiling. The native factor is deliberately excluded: it is not a maximum. */
-export function reconcileXrEyeBuffer(previous: XrEyeBufferMeasurement | null,
-  next: XrEyeBufferMeasurement): XrEyeBufferMeasurement {
+export function reconcileXrEyeBuffer(
+  previous: XrEyeBufferMeasurement | null,
+  next: XrEyeBufferMeasurement,
+): XrEyeBufferMeasurement {
   if (!previous) return next;
   const retained = { ...next, maxRenderScale: next.maxRenderScale ?? previous.maxRenderScale };
   if (Math.abs(previous.renderScale - 1) >= 0.001 || next.renderScale <= 1) return retained;
@@ -53,12 +59,14 @@ export function reconcileXrEyeBuffer(previous: XrEyeBufferMeasurement | null,
   const applied = xrScaleAtOrBelow(observed);
   // Meeting a request above a previously suspected cap disproves it. Otherwise retain the earlier observation.
   // A smaller viewport than requested is the stronger observation in the other direction and becomes the bound.
-  if (observed + XR_RENDER_SCALE_STEP / 2 >= next.renderScale) return {
-    ...next,
-    maxRenderScale: previous.maxRenderScale !== null
-      && next.renderScale > previous.maxRenderScale + XR_RENDER_SCALE_STEP / 2
-      ? null : retained.maxRenderScale,
-  };
+  if (observed + XR_RENDER_SCALE_STEP / 2 >= next.renderScale)
+    return {
+      ...next,
+      maxRenderScale:
+        previous.maxRenderScale !== null && next.renderScale > previous.maxRenderScale + XR_RENDER_SCALE_STEP / 2
+          ? null
+          : retained.maxRenderScale,
+    };
   return {
     ...next,
     renderScale: applied,
@@ -69,8 +77,11 @@ export function reconcileXrEyeBuffer(previous: XrEyeBufferMeasurement | null,
 /** Advisory styling only. A suspected cap never disables a value; it just warns that the projection may not be
  *  allocated as requested. */
 export function xrScaleMayBeCapped(sample: XrEyeBufferMeasurement | null, selectedScale: number): boolean {
-  return sample?.maxRenderScale !== null && sample?.maxRenderScale !== undefined
-    && selectedScale > sample.maxRenderScale + XR_RENDER_SCALE_STEP / 2;
+  return (
+    sample?.maxRenderScale !== null &&
+    sample?.maxRenderScale !== undefined &&
+    selectedScale > sample.maxRenderScale + XR_RENDER_SCALE_STEP / 2
+  );
 }
 
 const scaleText = (scale: number) => `${Number(scale.toFixed(2))}×`;
@@ -89,7 +100,9 @@ export function xrEyeBufferNote(sample: XrEyeBufferMeasurement | null, selectedS
   const bounds = [
     sample.maxRenderScale === null ? null : `likely cap ${scaleText(sample.maxRenderScale)}`,
     sample.nativeRenderScale === null ? null : `runtime native ${scaleText(sample.nativeRenderScale)} (not a cap)`,
-  ].filter((part): part is string => part !== null).join(' · ');
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
   const boundsSuffix = bounds ? ` · ${bounds}` : '';
   const measuredAtOne = Math.abs(sample.renderScale - 1) < 0.001;
   const selectedWasMeasured = Math.abs(sample.renderScale - selectedScale) < 0.001;
@@ -125,9 +138,11 @@ export const DEFAULT_XR_LAYER_MODE: XrLayerMode = 'webgl';
  * path. Null means the capability could not be hidden; the effective-layer diagnostic exposes the fallback.
  */
 export function maskXrLayersForThree(
-  bindingPrototype: object | undefined = (globalThis as typeof globalThis & {
-    XRWebGLBinding?: { prototype: object };
-  }).XRWebGLBinding?.prototype,
+  bindingPrototype: object | undefined = (
+    globalThis as typeof globalThis & {
+      XRWebGLBinding?: { prototype: object };
+    }
+  ).XRWebGLBinding?.prototype,
 ): (() => void) | null {
   if (!bindingPrototype || !('createProjectionLayer' in bindingPrototype)) return () => {};
   let owner: object | null = bindingPrototype;
@@ -140,7 +155,9 @@ export function maskXrLayersForThree(
   } catch {
     return null;
   }
-  const restore = () => { Object.defineProperty(owner, 'createProjectionLayer', prior); };
+  const restore = () => {
+    Object.defineProperty(owner, 'createProjectionLayer', prior);
+  };
   if ('createProjectionLayer' in bindingPrototype) {
     restore();
     return null;

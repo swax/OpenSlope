@@ -24,13 +24,19 @@ for (const fixture of FIXTURES) {
   const seconds = driven * 12 + 1;
   console.log(`\n========== ${fixture} ==========`);
   const result = spawnSync(process.execPath, [tsx, runner, fixture, String(seconds), '--autotest'], {
-    cwd: fileURLToPath(new URL('..', import.meta.url)), stdio: 'inherit', windowsHide: true,
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
+    stdio: 'inherit',
+    windowsHide: true,
   });
-  if (result.error) { console.error(result.error); failed++; }
-  else if (result.status !== 0) failed++;
+  if (result.error) {
+    console.error(result.error);
+    failed++;
+  } else if (result.status !== 0) failed++;
 }
 
-console.log(failed
-  ? `\n${failed}/${FIXTURES.length} fixture(s) have parity mismatches or unobservable assertions`
-  : `\nall ${FIXTURES.length} fixtures match their PS2-proven expectations`);
+console.log(
+  failed
+    ? `\n${failed}/${FIXTURES.length} fixture(s) have parity mismatches or unobservable assertions`
+    : `\nall ${FIXTURES.length} fixtures match their PS2-proven expectations`,
+);
 process.exit(failed ? 1 : 0);

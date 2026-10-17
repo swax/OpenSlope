@@ -13,7 +13,11 @@
  * one of the six axis directions.
  */
 
-export interface XYZ { x: number; y: number; z: number }
+export interface XYZ {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface NativeBoxContact {
   /** Which face answered, as its outward unit axis. */
@@ -25,10 +29,12 @@ export interface NativeBoxContact {
 }
 
 const AXES = ['x', 'y', 'z'] as const;
-type Axis = typeof AXES[number];
+type Axis = (typeof AXES)[number];
 /** The two axes a face's gate is measured on, per face axis. */
 const PERPENDICULAR: Record<Axis, readonly [Axis, Axis]> = {
-  x: ['y', 'z'], y: ['x', 'z'], z: ['x', 'y'],
+  x: ['y', 'z'],
+  y: ['x', 'z'],
+  z: ['x', 'y'],
 };
 
 function unit(axis: Axis, sign: number): XYZ {
@@ -49,17 +55,15 @@ function onFace(centre: XYZ, axis: Axis, plane: number): XYZ {
  * slabs, then both of that axis's faces accepted only when `distance + radius` is non-negative. The running
  * minimum picks the answering face, so a centre deep inside a large box reports its nearest wall.
  */
-export function sphereVsNativeBox(
-  min: XYZ, max: XYZ, centre: XYZ, radius: number,
-): NativeBoxContact | null {
+export function sphereVsNativeBox(min: XYZ, max: XYZ, centre: XYZ, radius: number): NativeBoxContact | null {
   let best = Infinity;
   let contact: NativeBoxContact | null = null;
   for (const axis of AXES) {
     const [i, j] = PERPENDICULAR[axis];
     if (centre[i] < min[i] || centre[i] > max[i]) continue;
     if (centre[j] < min[j] || centre[j] > max[j]) continue;
-    const low = (centre[axis] - min[axis]) + radius;
-    const high = (max[axis] - centre[axis]) + radius;
+    const low = centre[axis] - min[axis] + radius;
+    const high = max[axis] - centre[axis] + radius;
     if (low < 0 || high < 0) continue;
     if (low < best) {
       best = low;
@@ -92,7 +96,11 @@ function clip(span: { lo: number; hi: number }, a: number, b: number): boolean {
  * each face's admitted window is an interval and the earliest interval start is the exact entry moment.
  */
 export function sweptSphereVsNativeBox(
-  min: XYZ, max: XYZ, from: XYZ, to: XYZ, radius: number,
+  min: XYZ,
+  max: XYZ,
+  from: XYZ,
+  to: XYZ,
+  radius: number,
 ): { u: number; contact: NativeBoxContact } | null {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z };
   let earliest = Infinity;
@@ -105,8 +113,8 @@ export function sweptSphereVsNativeBox(
     if (!clip(span, delta[j], from[j] - min[j])) continue;
     if (!clip(span, -delta[j], max[j] - from[j])) continue;
     // Faces: `(centre − min) + r >= 0` and `(max − centre) + r >= 0` on the face axis.
-    if (!clip(span, delta[axis], (from[axis] - min[axis]) + radius)) continue;
-    if (!clip(span, -delta[axis], (max[axis] - from[axis]) + radius)) continue;
+    if (!clip(span, delta[axis], from[axis] - min[axis] + radius)) continue;
+    if (!clip(span, -delta[axis], max[axis] - from[axis] + radius)) continue;
     if (span.lo < earliest) earliest = span.lo;
   }
   if (!Number.isFinite(earliest)) return null;

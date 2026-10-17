@@ -30,7 +30,10 @@ assert.equal(RIDE_CONTRACT_PROFILE, 'pal-carving-response-2026-09-15');
 assert.equal(RIDE_SIMULATION_HZ, 60);
 assert.equal(RIDE_GROUND_QUADRATIC_DRAG, 0);
 assert.equal(RIDE_SURFACE_ROWS.length, 20);
-assert.deepEqual(RIDE_SURFACE_ROWS.map(row => row.type), Array.from({ length: 20 }, (_, i) => i));
+assert.deepEqual(
+  RIDE_SURFACE_ROWS.map(row => row.type),
+  Array.from({ length: 20 }, (_, i) => i),
+);
 assert.equal(RIDE_GOLD_SNOWDREAM_TAKEOFFS.length, 3);
 
 // Slopesmith's public physics surface is now aliases over the generated contract, not a second table/constant set.
@@ -52,7 +55,10 @@ const railBoard = readFileSync(resolve(repo, 'Unity/VRC/Riding/Board/RideableBoa
 const probe = readFileSync(resolve(repo, 'Unity/VRC/Riding/Board/RideableBoard.Probe.cs'), 'utf8');
 const surfaces = readFileSync(resolve(repo, 'Unity/VRC/Riding/Board/RideableBoard.Surface.cs'), 'utf8');
 const patches = readFileSync(resolve(repo, 'Unity/VRC/Riding/TerrainPatches.cs'), 'utf8');
-const generatedUnity = readFileSync(resolve(repo, 'Unity/VRC/Riding/Board/RideableBoard.Contract.Generated.cs'), 'utf8');
+const generatedUnity = readFileSync(
+  resolve(repo, 'Unity/VRC/Riding/Board/RideableBoard.Contract.Generated.cs'),
+  'utf8',
+);
 const basisGenerated = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Contract.Generated.cs'), 'utf8');
 const basisSurfaces = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Surface.cs'), 'utf8');
 const basisRide = readFileSync(resolve(repo, 'Unity/Basis/Riding/BasisBoard.Ride.cs'), 'utf8');

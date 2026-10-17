@@ -20,20 +20,38 @@ export function buildTrailIntegrationGuide(editSection: ToolsContext['editSectio
   if (!retopologyEnabled()) return;
   const guide = editSection('trail-integration', 'Guide · Integrate Trail With Terrain', false);
   steps(guide, [
-    ['create the trail', 'lay the centre spline over the terrain and press Enter. The new patches rest '
-      + 'on top of the mountain, sharing no vertices with it, already locked, and the trail stays selected.'],
-    ['look straight down', 'click the nav gizmo’s Y axis, and the projection button under it for an '
-      + 'orthographic view. The next step masks by what the CURRENT view sees, so a parallel plan view '
-      + 'selects the trail’s true footprint.'],
-    ['select overlapping vertices → Delete', 'with the trail selected, this swaps the selection for '
-      + 'every mountain corner under it. Delete removes the mountain patches beneath, leaving a '
-      + 'trail-shaped hole.'],
-    ['weld edges (M)', 'double-click a border edge to take its whole loop, press M to capture it, '
-      + 'double-click the facing loop across the hole, then Enter. Weld Loops fills the gap with a '
-      + 'connected patch seam without moving either loop, even where the two densities differ.'],
-    ['retopologize', 'rebuild the mountain so its quads flow into the new seam. The locked trail comes '
-      + 'through untouched and joins as one connected surface.'],
-    ['reshape it any time', 'click a trail patch and drag its knots. The patches joined to its rims '
-      + 'stretch to follow; while any are, the trail keeps its patch count.'],
+    [
+      'create the trail',
+      'lay the centre spline over the terrain and press Enter. The new patches rest ' +
+        'on top of the mountain, sharing no vertices with it, already locked, and the trail stays selected.',
+    ],
+    [
+      'look straight down',
+      'click the nav gizmo’s Y axis, and the projection button under it for an ' +
+        'orthographic view. The next step masks by what the CURRENT view sees, so a parallel plan view ' +
+        'selects the trail’s true footprint.',
+    ],
+    [
+      'select overlapping vertices → Delete',
+      'with the trail selected, this swaps the selection for ' +
+        'every mountain corner under it. Delete removes the mountain patches beneath, leaving a ' +
+        'trail-shaped hole.',
+    ],
+    [
+      'weld edges (M)',
+      'double-click a border edge to take its whole loop, press M to capture it, ' +
+        'double-click the facing loop across the hole, then Enter. Weld Loops fills the gap with a ' +
+        'connected patch seam without moving either loop, even where the two densities differ.',
+    ],
+    [
+      'retopologize',
+      'rebuild the mountain so its quads flow into the new seam. The locked trail comes ' +
+        'through untouched and joins as one connected surface.',
+    ],
+    [
+      'reshape it any time',
+      'click a trail patch and drag its knots. The patches joined to its rims ' +
+        'stretch to follow; while any are, the trail keeps its patch count.',
+    ],
   ]);
 }

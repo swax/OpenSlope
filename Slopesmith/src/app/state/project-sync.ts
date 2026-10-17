@@ -110,7 +110,10 @@ export interface MountainImportResult extends ProjectSnapshot {
   absent: string[];
 }
 
-export interface DeletedMountain { id: string; name: string }
+export interface DeletedMountain {
+  id: string;
+  name: string;
+}
 
 const SAVE_DELAY_MS = 450;
 
@@ -133,14 +136,25 @@ const defaultDeviceLabel = (): string => {
 
 /** Stable for this browser profile, while tabs remain separate editors through `clientId` above. */
 export const deviceLabel = (() => {
-  try { return localStorage.getItem(DEVICE_LABEL_KEY)?.trim().slice(0, 32) || defaultDeviceLabel(); }
-  catch { return defaultDeviceLabel(); }
+  try {
+    return localStorage.getItem(DEVICE_LABEL_KEY)?.trim().slice(0, 32) || defaultDeviceLabel();
+  } catch {
+    return defaultDeviceLabel();
+  }
 })();
 
 export function setDeviceLabel(value: string): string {
-  // eslint-disable-next-line no-control-regex -- strips control characters from a user-typed label
-  const label = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 32) || defaultDeviceLabel();
-  try { localStorage.setItem(DEVICE_LABEL_KEY, label); } catch { /* storage is an optional convenience */ }
+  const label =
+    value
+      // eslint-disable-next-line no-control-regex -- strips control characters from a user-typed label
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .trim()
+      .slice(0, 32) || defaultDeviceLabel();
+  try {
+    localStorage.setItem(DEVICE_LABEL_KEY, label);
+  } catch {
+    /* storage is an optional convenience */
+  }
   return label;
 }
 
@@ -151,9 +165,11 @@ function projectFetch(url: string, init?: RequestInit): Promise<Response> {
 
 async function responseError(res: Response): Promise<string> {
   try {
-    const body = await res.json() as { error?: string };
+    const body = (await res.json()) as { error?: string };
     return body.error || `${res.status} ${res.statusText}`;
-  } catch { return `${res.status} ${res.statusText}`; }
+  } catch {
+    return `${res.status} ${res.statusText}`;
+  }
 }
 
 /**
@@ -218,7 +234,7 @@ export function createProjectSync(deps: {
   async function requestSnapshot(url: string, init?: RequestInit): Promise<ProjectSnapshot> {
     const res = await projectFetch(url, init);
     if (!res.ok) throw new Error(await responseError(res));
-    return await res.json() as ProjectSnapshot;
+    return (await res.json()) as ProjectSnapshot;
   }
 
   /** The editor now holds this project's own document — the one point where autosave starts tracking again,
@@ -234,8 +250,10 @@ export function createProjectSync(deps: {
     pending = null;
     previewing = false;
     retryDelay = SAVE_DELAY_MS;
-    state(shared ? 'shared' : 'saved',
-      shared ? `${project.name} · shared` : `${project.name} · revision ${project.revision}`);
+    state(
+      shared ? 'shared' : 'saved',
+      shared ? `${project.name} · shared` : `${project.name} · revision ${project.revision}`,
+    );
     return snapshot.document;
   }
 
@@ -269,13 +287,16 @@ export function createProjectSync(deps: {
           state('loading', 'Choose a mountain to open');
           return recoveryDocument;
         }
-        return accept(await requestSnapshot('/api/projects', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ document: recoveryDocument }),
-        }));
+        return accept(
+          await requestSnapshot('/api/projects', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ document: recoveryDocument }),
+          }),
+        );
       }
       if (!current.ok) throw new Error(await responseError(current));
-      return accept(await current.json() as ProjectSnapshot);
+      return accept((await current.json()) as ProjectSnapshot);
     } catch (error) {
       state('recovery-only', `Local mountain service unavailable: ${error instanceof Error ? error.message : error}`);
       return recoveryDocument;
@@ -288,12 +309,18 @@ export function createProjectSync(deps: {
     await flushBeforeSwitch();
     state('saving', 'Creating mountain');
     try {
-      accept(await requestSnapshot('/api/projects', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ document }),
-      }));
+      accept(
+        await requestSnapshot('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ document }),
+        }),
+      );
     } catch (error) {
-      state(project ? 'error' : 'recovery-only', `Mountain creation failed: ${error instanceof Error ? error.message : error}`);
+      state(
+        project ? 'error' : 'recovery-only',
+        `Mountain creation failed: ${error instanceof Error ? error.message : error}`,
+      );
       throw error;
     }
   }
@@ -301,7 +328,7 @@ export function createProjectSync(deps: {
   async function list(): Promise<ClientProject[]> {
     const res = await projectFetch('/api/projects');
     if (!res.ok) throw new Error(await responseError(res));
-    return (await res.json() as { projects: ClientProject[] }).projects;
+    return ((await res.json()) as { projects: ClientProject[] }).projects;
   }
 
   /** Flush the old replica, activate a different disk project, then hand its document to the host to render. */
@@ -320,9 +347,11 @@ export function createProjectSync(deps: {
     if (!project) throw new Error('No mountain is open.');
     await flushBeforeSwitch();
     const exporting = project;
-    const res = await projectFetch(`/api/projects/${encodeURIComponent(exporting.id)}/download${withBytes ? '?assets=bytes' : ''}`);
+    const res = await projectFetch(
+      `/api/projects/${encodeURIComponent(exporting.id)}/download${withBytes ? '?assets=bytes' : ''}`,
+    );
     if (!res.ok) throw new Error(await responseError(res));
-    return await res.json() as ProjectBundle;
+    return (await res.json()) as ProjectBundle;
   }
 
   const exportMountain = (): Promise<ProjectBundle> => mountainBundle(true);
@@ -334,14 +363,19 @@ export function createProjectSync(deps: {
     state('saving', 'Importing mountain');
     try {
       const res = await projectFetch('/api/projects/transfer', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ bundle, name }),
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bundle, name }),
       });
       if (!res.ok) throw new Error(await responseError(res));
-      const imported = await res.json() as MountainImportResult;
+      const imported = (await res.json()) as MountainImportResult;
       accept(imported);
       return imported;
     } catch (error) {
-      state(project ? 'error' : 'recovery-only', `Mountain import failed: ${error instanceof Error ? error.message : error}`);
+      state(
+        project ? 'error' : 'recovery-only',
+        `Mountain import failed: ${error instanceof Error ? error.message : error}`,
+      );
       throw error;
     }
   }
@@ -358,11 +392,14 @@ export function createProjectSync(deps: {
         { method: 'POST' },
       );
       if (!res.ok) throw new Error(await responseError(res));
-      const duplicated = await res.json() as MountainImportResult;
+      const duplicated = (await res.json()) as MountainImportResult;
       accept(duplicated);
       return duplicated;
     } catch (error) {
-      state(project ? 'error' : 'recovery-only', `Mountain duplicate failed: ${error instanceof Error ? error.message : error}`);
+      state(
+        project ? 'error' : 'recovery-only',
+        `Mountain duplicate failed: ${error instanceof Error ? error.message : error}`,
+      );
       throw error;
     }
   }
@@ -375,7 +412,7 @@ export function createProjectSync(deps: {
     try {
       const res = await projectFetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await responseError(res));
-      const deleted = (await res.json() as { deleted: DeletedMountain }).deleted;
+      const deleted = ((await res.json()) as { deleted: DeletedMountain }).deleted;
       // Nothing queued for a project that no longer exists may leak into the replacement mountain. Keep the
       // project identity momentarily so the host's `gone` handoff can recognise it, but abandon its edit state.
       dirty = false;
@@ -394,8 +431,12 @@ export function createProjectSync(deps: {
    *  nothing to abandon: what it has rendered is somebody else's work. */
   async function flushBeforeSwitch(): Promise<void> {
     if (!project) return;
-    if (!writable) { dirty = false; return; }
-    if (blocked) throw new Error('Resolve the mountain conflict (File ▸ Resolve conflict…) before switching mountains.');
+    if (!writable) {
+      dirty = false;
+      return;
+    }
+    if (blocked)
+      throw new Error('Resolve the mountain conflict (File ▸ Resolve conflict…) before switching mountains.');
     if (dirty || inFlight) await flush();
     if (dirty) throw new Error('The current mountain could not be saved, so the mountain switch was cancelled.');
   }
@@ -421,8 +462,14 @@ export function createProjectSync(deps: {
    * document as it now stands, so this tab never writes something the author cannot see.
    */
   function setWritable(next: boolean, reason = ''): void {
-    if (next === writable) { if (!next && reason) readOnlyReason = reason; return; }
-    if (!next) { follow(reason || 'This map is open read-only.'); return; }
+    if (next === writable) {
+      if (!next && reason) readOnlyReason = reason;
+      return;
+    }
+    if (!next) {
+      follow(reason || 'This map is open read-only.');
+      return;
+    }
     writable = true;
     readOnlyReason = '';
     dirty = false;
@@ -458,10 +505,12 @@ export function createProjectSync(deps: {
   async function setProjectEditors(editorIds: string[] | null): Promise<ClientProject> {
     if (!project) throw new Error('No mountain is open.');
     const res = await projectFetch(`/api/projects/${encodeURIComponent(project.id)}/permissions`, {
-      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ editorIds }),
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ editorIds }),
     });
     if (!res.ok) throw new Error(await responseError(res));
-    const answer = await res.json() as { project: ClientProject };
+    const answer = (await res.json()) as { project: ClientProject };
     applyProjectMetadata(answer.project);
     return answer.project;
   }
@@ -479,7 +528,9 @@ export function createProjectSync(deps: {
     if (shared) return;
     retryDelay = SAVE_DELAY_MS;
     clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(() => { void flush(); }, SAVE_DELAY_MS);
+    saveTimer = window.setTimeout(() => {
+      void flush();
+    }, SAVE_DELAY_MS);
   }
 
   /**
@@ -506,11 +557,16 @@ export function createProjectSync(deps: {
     const document = deps.getDoc();
     const json = JSON.stringify(document);
     dirty = false;
-    if (json === lastSavedJson) { state('saved', `${project.name} · revision ${project.revision}`); return; }
+    if (json === lastSavedJson) {
+      state('saved', `${project.name} · revision ${project.revision}`);
+      return;
+    }
     state('saving', `${project.name} · revision ${project.revision}`);
     try {
       const res = await projectFetch(`/api/projects/${encodeURIComponent(project.id)}/document`, {
-        method: 'PUT', headers: { 'content-type': 'application/json' }, keepalive,
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        keepalive,
         body: JSON.stringify({
           baseRevision: savingProject.revision,
           updateId: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
@@ -518,7 +574,7 @@ export function createProjectSync(deps: {
         }),
       });
       if (res.status === 409) {
-        const server = await res.json() as ProjectSnapshot;
+        const server = (await res.json()) as ProjectSnapshot;
         if (server.project) project = server.project;
         // What the server holds is now the last saved document, so a resolution compares the in-memory
         // document against what is actually on disk rather than against this tab's last write.
@@ -526,7 +582,8 @@ export function createProjectSync(deps: {
         blocked = true;
         dirty = true;
         pending = {
-          project: server.project, document: server.document,
+          project: server.project,
+          document: server.document,
           message: server.error || 'The mountain changed on disk; browser recovery was preserved.',
         };
         state('conflict', pending.message);
@@ -534,7 +591,7 @@ export function createProjectSync(deps: {
         return;
       }
       if (!res.ok) throw new Error(await responseError(res));
-      const saved = await res.json() as ProjectSnapshot;
+      const saved = (await res.json()) as ProjectSnapshot;
       // A project switch while this request was in flight makes the acknowledgement stale.
       if (project?.id !== savingProject.id) return;
       project = saved.project;
@@ -554,17 +611,25 @@ export function createProjectSync(deps: {
     // Shared: what is outstanding is a coalescing window's worth of register assignments, so flushing means
     // sending those rather than writing a document the server would have to reconcile against everybody
     // else's. The revision follows on the room's own cadence.
-    if (shared) { deps.flushShared?.(); dirty = false; return; }
+    if (shared) {
+      deps.flushShared?.();
+      dirty = false;
+      return;
+    }
     if (inFlight) {
       await inFlight;
       if (dirty && !blocked) return await flush(keepalive);
       return;
     }
-    inFlight = runSave(keepalive).finally(() => { inFlight = null; });
+    inFlight = runSave(keepalive).finally(() => {
+      inFlight = null;
+    });
     await inFlight;
     if (dirty && !blocked && project) {
       clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(() => { void flush(); }, retryDelay);
+      saveTimer = window.setTimeout(() => {
+        void flush();
+      }, retryDelay);
     }
   }
 
@@ -604,10 +669,13 @@ export function createProjectSync(deps: {
     const conflicted = pending;
     state('saving', 'Creating mountain');
     try {
-      accept(await requestSnapshot('/api/projects', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ document: deps.getDoc() }),
-      }));
+      accept(
+        await requestSnapshot('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ document: deps.getDoc() }),
+        }),
+      );
     } catch (error) {
       if (conflicted) state('conflict', conflicted.message);
       throw error;
@@ -628,7 +696,7 @@ export function createProjectSync(deps: {
   async function checkpoints(): Promise<CheckpointListing> {
     if (!project) throw new Error('No mountain is open.');
     const res = await checkpointFetch(`/api/projects/${encodeURIComponent(project.id)}/checkpoints`);
-    return await res.json() as CheckpointListing;
+    return (await res.json()) as CheckpointListing;
   }
 
   const checkpointUrl = (id: string, file: string) =>
@@ -638,14 +706,14 @@ export function createProjectSync(deps: {
   async function readCheckpoint(file: string): Promise<EditDoc> {
     if (!project) throw new Error('No mountain is open.');
     const res = await checkpointFetch(checkpointUrl(project.id, file));
-    return (await res.json() as { document: EditDoc }).document;
+    return ((await res.json()) as { document: EditDoc }).document;
   }
 
   /** Export one historical revision through the same self-contained mountain bundle as the live revision. */
   async function exportCheckpoint(file: string): Promise<ProjectBundle> {
     if (!project) throw new Error('No mountain is open.');
     const res = await checkpointFetch(`${checkpointUrl(project.id, file)}/download?assets=bytes`);
-    return await res.json() as ProjectBundle;
+    return (await res.json()) as ProjectBundle;
   }
 
   /** Set the project aside as it stands: a checkpoint someone named, or the forced one a bulk destructive edit
@@ -655,19 +723,22 @@ export function createProjectSync(deps: {
     if (!project) throw new Error('No mountain is open.');
     await flushBeforeSwitch();
     const res = await checkpointFetch(`/api/projects/${encodeURIComponent(project.id)}/checkpoints`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ note, reason }),
     });
-    return (await res.json() as { checkpoint: ProjectCheckpoint | null }).checkpoint;
+    return ((await res.json()) as { checkpoint: ProjectCheckpoint | null }).checkpoint;
   }
 
   /** Name a checkpoint already on the ring, which is what keeps it from ever being thinned. */
   async function nameCheckpoint(file: string, note: string): Promise<ProjectCheckpoint> {
     if (!project) throw new Error('No mountain is open.');
     const res = await checkpointFetch(`${checkpointUrl(project.id, file)}/name`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ note }),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note }),
     });
-    return (await res.json() as { checkpoint: ProjectCheckpoint }).checkpoint;
+    return ((await res.json()) as { checkpoint: ProjectCheckpoint }).checkpoint;
   }
 
   /** Make a checkpoint the newest revision. Pending edits land first, so nothing written a moment ago can
@@ -679,10 +750,11 @@ export function createProjectSync(deps: {
     const target = project;
     state('saving', `${target.name} · restoring a checkpoint`);
     const res = await checkpointFetch(`${checkpointUrl(target.id, file)}/restore`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ baseRevision: target.revision }),
     });
-    const restored = await res.json() as ProjectSnapshot & { unchanged?: boolean };
+    const restored = (await res.json()) as ProjectSnapshot & { unchanged?: boolean };
     return { document: accept(restored), unchanged: restored.unchanged === true };
   }
 
@@ -691,7 +763,7 @@ export function createProjectSync(deps: {
   async function checkpointChanges(file: string): Promise<CheckpointChanges> {
     if (!project) throw new Error('No mountain is open.');
     const res = await checkpointFetch(`${checkpointUrl(project.id, file)}/changes`);
-    return await res.json() as CheckpointChanges;
+    return (await res.json()) as CheckpointChanges;
   }
 
   /**
@@ -709,14 +781,22 @@ export function createProjectSync(deps: {
     const target = project;
     state('saving', `${target.name} · reverting to a checkpoint`);
     const res = await checkpointFetch(`${checkpointUrl(target.id, file)}/revert`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(scope),
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(scope),
     });
-    const outcome = await res.json() as ProjectSnapshot & {
-      reverted: number; unchanged: boolean; checkpoint: ProjectCheckpoint | null; described: string[];
+    const outcome = (await res.json()) as ProjectSnapshot & {
+      reverted: number;
+      unchanged: boolean;
+      checkpoint: ProjectCheckpoint | null;
+      described: string[];
     };
     return {
-      document: accept(outcome), reverted: outcome.reverted, unchanged: outcome.unchanged === true,
-      checkpoint: outcome.checkpoint, described: outcome.described ?? [],
+      document: accept(outcome),
+      reverted: outcome.reverted,
+      unchanged: outcome.unchanged === true,
+      checkpoint: outcome.checkpoint,
+      described: outcome.described ?? [],
     };
   }
 
@@ -731,18 +811,44 @@ export function createProjectSync(deps: {
 
   /** Leave a preview by reopening the project as it stands on disk. */
   async function endPreview(): Promise<EditDoc> {
-    if (!project) { previewing = false; throw new Error('No mountain is open.'); }
+    if (!project) {
+      previewing = false;
+      throw new Error('No mountain is open.');
+    }
     state('loading', 'Reopening the mountain');
     return accept(await requestSnapshot(`/api/projects/${encodeURIComponent(project.id)}`));
   }
 
   return {
-    initialize, create, list, open, exportMountain, importMountain, duplicateMountain, deleteMountain, schedule, flush,
+    initialize,
+    create,
+    list,
+    open,
+    exportMountain,
+    importMountain,
+    duplicateMountain,
+    deleteMountain,
+    schedule,
+    flush,
     prepareToLeave: flushBeforeSwitch,
-    keepMine, takeTheirs, saveMineAsNewProject,
-    checkpoints, readCheckpoint, exportCheckpoint, checkpointNow, nameCheckpoint, restoreCheckpoint,
-    checkpointChanges, revertCheckpoint, beginPreview, endPreview,
-    setWritable, setShared, applyPush, applyProjectMetadata, setProjectEditors,
+    keepMine,
+    takeTheirs,
+    saveMineAsNewProject,
+    checkpoints,
+    readCheckpoint,
+    exportCheckpoint,
+    checkpointNow,
+    nameCheckpoint,
+    restoreCheckpoint,
+    checkpointChanges,
+    revertCheckpoint,
+    beginPreview,
+    endPreview,
+    setWritable,
+    setShared,
+    applyPush,
+    applyProjectMetadata,
+    setProjectEditors,
     isShared: () => shared,
     current: () => project,
     sequence: () => sequence,

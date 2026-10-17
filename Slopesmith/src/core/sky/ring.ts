@@ -74,30 +74,60 @@ export interface SkyRingDocument {
 /** Validate and normalize generated metadata at the untyped filesystem/API boundary. */
 export function skyRingFromDocument(value: unknown): SkyRing | null {
   const d = value as Partial<SkyRingDocument> | null;
-  if (!d || d.Schema !== 'openslope-sky-ring/v1'
-      || !finitePositive(d.Radius) || !finite(d.TopZ) || !finite(d.MidZ) || !finite(d.BottomZ)
-      || !(d.TopZ! > d.MidZ! && d.MidZ! > d.BottomZ!)
-      || !Number.isInteger(d.GroundIndex) || d.GroundIndex! < 0 || !finitePositive(d.GroundUvRadius)
-      || !Array.isArray(d.Panels) || !d.Panels.length || !Array.isArray(d.Tiles) || !d.Tiles.length
-      || d.GroundIndex! >= d.Tiles.length) return null;
+  if (
+    !d ||
+    d.Schema !== 'openslope-sky-ring/v1' ||
+    !finitePositive(d.Radius) ||
+    !finite(d.TopZ) ||
+    !finite(d.MidZ) ||
+    !finite(d.BottomZ) ||
+    !(d.TopZ! > d.MidZ! && d.MidZ! > d.BottomZ!) ||
+    !Number.isInteger(d.GroundIndex) ||
+    d.GroundIndex! < 0 ||
+    !finitePositive(d.GroundUvRadius) ||
+    !Array.isArray(d.Panels) ||
+    !d.Panels.length ||
+    !Array.isArray(d.Tiles) ||
+    !d.Tiles.length ||
+    d.GroundIndex! >= d.Tiles.length
+  )
+    return null;
   const panels: SkyPanel[] = [];
   const panelSlots = new Set<number>();
   for (const panel of d.Panels) {
-    if (!panel || !Number.isInteger(panel.Index) || panel.Index < 0 || panel.Index >= d.Tiles.length
-        || panel.Index === d.GroundIndex || panelSlots.has(panel.Index)
-        || (panel.Band !== 'upper' && panel.Band !== 'lower')
-        || !finite(panel.AzFrom) || !finite(panel.AzTo)) return null;
+    if (
+      !panel ||
+      !Number.isInteger(panel.Index) ||
+      panel.Index < 0 ||
+      panel.Index >= d.Tiles.length ||
+      panel.Index === d.GroundIndex ||
+      panelSlots.has(panel.Index) ||
+      (panel.Band !== 'upper' && panel.Band !== 'lower') ||
+      !finite(panel.AzFrom) ||
+      !finite(panel.AzTo)
+    )
+      return null;
     panelSlots.add(panel.Index);
     panels.push({ index: panel.Index, band: panel.Band, azFrom: panel.AzFrom, azTo: panel.AzTo });
   }
   const tiles = d.Tiles.map(tile => ({ w: tile?.Width, h: tile?.Height }));
   if (tiles.some(tile => !Number.isInteger(tile.w) || tile.w <= 0 || !Number.isInteger(tile.h) || tile.h <= 0))
     return null;
-  if (panels.length !== tiles.length - 1 || !panels.some(panel => panel.band === 'upper')
-      || !panels.some(panel => panel.band === 'lower')) return null;
+  if (
+    panels.length !== tiles.length - 1 ||
+    !panels.some(panel => panel.band === 'upper') ||
+    !panels.some(panel => panel.band === 'lower')
+  )
+    return null;
   return {
-    radius: d.Radius!, topZ: d.TopZ!, midZ: d.MidZ!, bottomZ: d.BottomZ!,
-    groundIndex: d.GroundIndex!, groundUvRadius: d.GroundUvRadius!, panels, tiles,
+    radius: d.Radius!,
+    topZ: d.TopZ!,
+    midZ: d.MidZ!,
+    bottomZ: d.BottomZ!,
+    groundIndex: d.GroundIndex!,
+    groundUvRadius: d.GroundUvRadius!,
+    panels,
+    tiles,
   };
 }
 
@@ -106,14 +136,18 @@ const finitePositive = (value: unknown): value is number => finite(value) && val
 
 /** Fold an angle into (-180, 180]. */
 export function wrapAz(deg: number): number {
-  let a = ((deg + 180) % 360 + 360) % 360 - 180;
+  let a = ((((deg + 180) % 360) + 360) % 360) - 180;
   if (a <= -180) a += 360;
   return a;
 }
 
 /** Authored texture budgets. These are editor presets; the selected ring supplies their slot layout. */
 export type SkyTier = 'standard' | 'high';
-export interface SkyTileSizes { upper: number; lower: number; ground: number }
+export interface SkyTileSizes {
+  upper: number;
+  lower: number;
+  ground: number;
+}
 export const SKY_TIERS: Record<SkyTier, SkyTileSizes> = {
   standard: { upper: 128, lower: 64, ground: 256 },
   high: { upper: 256, lower: 128, ground: 256 },
@@ -130,7 +164,12 @@ export function tileSizes(tier: SkyTileSizes, ring: SkyRing): { w: number; h: nu
 }
 
 /** The rect of a panorama (unit coordinates, y down) sampled by one wall panel. */
-export interface PanelRect { x0: number; x1: number; y0: number; y1: number }
+export interface PanelRect {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
 
 /** How close to the seam, in panorama widths (about 0.0004°), a panel edge counts as on it. A ring measured
  *  from float geometry can put a seam corner a hair past it: SSX 3's measures −179.999995°, which would read
@@ -138,7 +177,8 @@ export interface PanelRect { x0: number; x1: number; y0: number; y1: number }
 const SEAM_TOLERANCE = 1e-6;
 
 export function panelRect(p: SkyPanel, ring: SkyRing): PanelRect {
-  const from = panoramaX(p.azFrom), to = panoramaX(p.azTo);
+  const from = panoramaX(p.azFrom),
+    to = panoramaX(p.azTo);
   const x0 = from > 1 - SEAM_TOLERANCE ? 0 : from;
   const x1 = to < SEAM_TOLERANCE ? 1 : to;
   const [zTop, zBot] = p.band === 'upper' ? [ring.topZ, ring.midZ] : [ring.midZ, ring.bottomZ];
@@ -147,7 +187,8 @@ export function panelRect(p: SkyPanel, ring: SkyRing): PanelRect {
 
 /** Inverse of the measured ground disc's radial UV projection. */
 export function groundTexelDir(u: number, v: number, geometry: SkyGeometry): { az: number; r: number } {
-  const dx = u - 0.5, dy = v - 0.5;
+  const dx = u - 0.5,
+    dy = v - 0.5;
   return { az: (Math.atan2(dy, dx) * 180) / Math.PI, r: Math.hypot(dx, dy) / geometry.groundUvRadius };
 }
 
@@ -176,8 +217,11 @@ function toWorld(azDeg: number, z: number, radius: number, geometry: SkyGeometry
 }
 
 /** Smooth editor backdrop using either a measured ring profile or the generic pre-extraction preview. */
-export function skyBackdrop(radius: number, geometry: SkyGeometry = AUTHORING_SKY_GEOMETRY,
-  segments = 96): SkyBackdrop {
+export function skyBackdrop(
+  radius: number,
+  geometry: SkyGeometry = AUTHORING_SKY_GEOMETRY,
+  segments = 96,
+): SkyBackdrop {
   const scale = radius / geometry.radius;
   const wall: SkyMeshData = { positions: [], uvs: [], indices: [] };
   for (let i = 0; i <= segments; i++) {
@@ -188,7 +232,8 @@ export function skyBackdrop(radius: number, geometry: SkyGeometry = AUTHORING_SK
       wall.uvs.push(u, 1 - panoramaY(z, geometry));
     }
     if (i > 0) {
-      const a = (i - 1) * 3, b = i * 3;
+      const a = (i - 1) * 3,
+        b = i * 3;
       for (const k of [0, 1]) wall.indices.push(a + k, b + k, b + k + 1, a + k, b + k + 1, a + k + 1);
     }
   }
@@ -202,7 +247,10 @@ export function skyBackdrop(radius: number, geometry: SkyGeometry = AUTHORING_SK
     ground.uvs.push(0.5 + geometry.groundUvRadius * Math.cos(a), 0.5 + geometry.groundUvRadius * Math.sin(a));
     top.positions.push(...toWorld(az, geometry.topZ, radius, geometry));
     top.uvs.push(0.5, 0.5);
-    if (i > 0) { ground.indices.push(0, i, i + 1); top.indices.push(0, i + 1, i); }
+    if (i > 0) {
+      ground.indices.push(0, i, i + 1);
+      top.indices.push(0, i + 1, i);
+    }
   }
   return { wall, ground, top };
 }

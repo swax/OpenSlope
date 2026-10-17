@@ -3,8 +3,14 @@
 import assert from 'node:assert/strict';
 import { Vector3 } from 'three';
 import {
-  DIGIT_JOINTS, FINGER_FULL, FINGER_REST, THUMB_FULL, THUMB_REST,
-  chainTurn, trackedFingerCurls, type TrackedHand,
+  DIGIT_JOINTS,
+  FINGER_FULL,
+  FINGER_REST,
+  THUMB_FULL,
+  THUMB_REST,
+  chainTurn,
+  trackedFingerCurls,
+  type TrackedHand,
 } from '../src/app/ride/xr/hand-curl';
 
 /**
@@ -49,7 +55,9 @@ function hand(turn: number, options: { drop?: string; visible?: boolean } = {}):
   };
   for (const names of Object.values(DIGIT_JOINTS)) {
     const points = chain(names.length - 1, 0.03, turn);
-    names.forEach((name, index) => { joints[name] = { position: points[index] }; });
+    names.forEach((name, index) => {
+      joints[name] = { position: points[index] };
+    });
   }
   if (options.drop) delete joints[options.drop];
   return { joints, visible: options.visible };
@@ -101,11 +109,13 @@ assert.equal(trackedFingerCurls({ joints: {} }), null);
  * percent of the truth. It matters because the caller's fallback when this returns null is the CONTROLLER
  * pose, and a tracked hand has no controller — so "I don't know" renders as a splayed hand.
  */
-const whole = trackedFingerCurls(hand(FINGER_FULL / 3 * 0.6));
-const partial = trackedFingerCurls(hand(FINGER_FULL / 3 * 0.6, { drop: 'index-finger-tip' }));
+const whole = trackedFingerCurls(hand((FINGER_FULL / 3) * 0.6));
+const partial = trackedFingerCurls(hand((FINGER_FULL / 3) * 0.6, { drop: 'index-finger-tip' }));
 assert(whole && partial, 'a digit missing its tip still reports');
-assert(Math.abs(partial.index - whole.index) < 0.02,
-  `a dropped joint costs accuracy, not correctness (${whole.index.toFixed(3)} → ${partial.index.toFixed(3)})`);
+assert(
+  Math.abs(partial.index - whole.index) < 0.02,
+  `a dropped joint costs accuracy, not correctness (${whole.index.toFixed(3)} → ${partial.index.toFixed(3)})`,
+);
 assert.equal(partial.middle, whole.middle, 'and it does not disturb the digits that are fully tracked');
 
 console.log('HAND CURL: PASS');

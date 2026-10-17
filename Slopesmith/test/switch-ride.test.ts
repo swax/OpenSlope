@@ -11,9 +11,7 @@
 // full 0.75 yaw band, lost its cruise drive, and was then whipped back to face front over about half a second.
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {
-  D2R, SURFACE_ROWS, SWITCH_LATCH_SPEED, createRideModel, groundRestDepth,
-} from '../src/app/ride/physics';
+import { D2R, SURFACE_ROWS, SWITCH_LATCH_SPEED, createRideModel, groundRestDepth } from '../src/app/ride/physics';
 import { AIR_TURN_RATE } from '../src/app/ride/physics-tuning';
 
 const keys = { left: false, right: false, tuck: false, brake: false, boost: false };
@@ -23,10 +21,32 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 function floorAt(y = 0, extent = 600): THREE.Mesh {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    -extent, y, -extent, -extent, y, extent, extent, y, -extent,
-    extent, y, -extent, -extent, y, extent, extent, y, extent,
-  ], 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        -extent,
+        y,
+        -extent,
+        -extent,
+        y,
+        extent,
+        extent,
+        y,
+        -extent,
+        extent,
+        y,
+        -extent,
+        -extent,
+        y,
+        extent,
+        extent,
+        y,
+        extent,
+      ],
+      3,
+    ),
+  );
   const mesh = new THREE.Mesh(geometry);
   mesh.updateMatrixWorld(true);
   return mesh;
@@ -34,8 +54,15 @@ function floorAt(y = 0, extent = 600): THREE.Mesh {
 
 function ride(drive?: number) {
   const model = createRideModel({
-    spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(0, 0, 1), terrain: floorAt(),
-    surfaceOf: () => 1, oobFloorY: -100, keys, stick, drive, onRespawn: () => {},
+    spawn: new THREE.Vector3(0, 1, 0),
+    heading: new THREE.Vector3(0, 0, 1),
+    terrain: floorAt(),
+    surfaceOf: () => 1,
+    oobFloorY: -100,
+    keys,
+    stick,
+    drive,
+    onRespawn: () => {},
   });
   model.start();
   model.st.pos.set(0, -groundRestDepth(SNOW), 0);
@@ -64,7 +91,9 @@ function drop(facing: THREE.Vector3, velocity: THREE.Vector3, height = 3) {
   return { model, airborne, landed: Math.hypot(model.st.vel.x, model.st.vel.z) };
 }
 
-const clearKeys = () => { keys.left = keys.right = keys.tuck = keys.brake = keys.boost = false; };
+const clearKeys = () => {
+  keys.left = keys.right = keys.tuck = keys.brake = keys.boost = false;
+};
 /** Signed turn from one travel direction to another about world up: positive = one way, negative = the other. */
 const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
   new THREE.Vector3().crossVectors(from.clone().normalize(), to.clone().normalize()).dot(UP);
@@ -84,7 +113,10 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
   clearKeys();
   assert.ok(!model.st.grounded, 'the spin runs entirely in the air');
   const turned = Math.acos(Math.min(1, Math.max(-1, before.dot(model.st.fwd)))) / D2R;
-  assert.ok(Math.abs(turned - 180) < 6, `a held steer turns the board 180° in ${half} ticks (got ${turned.toFixed(1)}°)`);
+  assert.ok(
+    Math.abs(turned - 180) < 6,
+    `a held steer turns the board 180° in ${half} ticks (got ${turned.toFixed(1)}°)`,
+  );
   assert.equal(model.st.lead, 1, 'the lead is not touched in the air — the landing is what commits it');
 }
 
@@ -96,10 +128,14 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
   const switched = drop(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, 14));
   assert.equal(square.model.st.lead, 1, 'a nose-first landing stays regular');
   assert.equal(switched.model.st.lead, -1, 'a backwards landing commits the tail as the leading end');
-  assert.ok(switched.landed > switched.airborne * 0.9,
-    `landing switch keeps its speed (${switched.airborne.toFixed(2)} → ${switched.landed.toFixed(2)} m/s)`);
-  assert.ok(Math.abs(switched.landed - square.landed) < 0.15,
-    `and costs exactly what landing straight costs (${switched.landed.toFixed(2)} vs ${square.landed.toFixed(2)} m/s)`);
+  assert.ok(
+    switched.landed > switched.airborne * 0.9,
+    `landing switch keeps its speed (${switched.airborne.toFixed(2)} → ${switched.landed.toFixed(2)} m/s)`,
+  );
+  assert.ok(
+    Math.abs(switched.landed - square.landed) < 0.15,
+    `and costs exactly what landing straight costs (${switched.landed.toFixed(2)} vs ${square.landed.toFixed(2)} m/s)`,
+  );
   assert.ok(switched.model.st.fwd.z < -0.9, 'the deck is still pointing the way the air left it');
 }
 
@@ -107,8 +143,10 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
 // bites in full. This is the half of the band that riding switch must not soften.
 {
   const slapped = drop(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 14));
-  assert.ok(slapped.landed < slapped.airborne * 0.85,
-    `a 90° landing still pays the yaw band (${slapped.airborne.toFixed(2)} → ${slapped.landed.toFixed(2)} m/s)`);
+  assert.ok(
+    slapped.landed < slapped.airborne * 0.85,
+    `a 90° landing still pays the yaw band (${slapped.airborne.toFixed(2)} → ${slapped.landed.toFixed(2)} m/s)`,
+  );
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -124,16 +162,23 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
 
   const from = new THREE.Vector3(0, 0, 1);
   keys.left = true;
-  for (let i = 0; i < 60; i++) { regular.step(1 / 60); switched.step(1 / 60); }
+  for (let i = 0; i < 60; i++) {
+    regular.step(1 / 60);
+    switched.step(1 / 60);
+  }
   clearKeys();
 
   const turnR = turnOf(from, regular.st.vel);
   const turnS = turnOf(from, switched.st.vel);
   assert.ok(Math.abs(turnR) > 0.05, `a second of held carve bends the line (turn ${turnR.toFixed(3)})`);
-  assert.ok(Math.sign(turnR) === Math.sign(turnS),
-    `the same key carves the same way regular or switch (regular ${turnR.toFixed(3)}, switch ${turnS.toFixed(3)})`);
-  assert.ok(Math.abs(turnS - turnR) < Math.abs(turnR) * 0.25,
-    'and with the same authority — switch is a lead, not a different board');
+  assert.ok(
+    Math.sign(turnR) === Math.sign(turnS),
+    `the same key carves the same way regular or switch (regular ${turnR.toFixed(3)}, switch ${turnS.toFixed(3)})`,
+  );
+  assert.ok(
+    Math.abs(turnS - turnR) < Math.abs(turnR) * 0.25,
+    'and with the same authority — switch is a lead, not a different board',
+  );
   assert.equal(switched.st.lead, -1, 'carving does not right the lead');
   assert.ok(switched.st.fwd.dot(switched.st.vel) < 0, 'the deck stays reversed against its own travel');
 }
@@ -148,8 +193,8 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
   keys.left = true;
   for (let i = 0; i < 30; i++) model.step(1 / 60);
   model.st.bank = model.st.lean * 50; // pose state the physics never writes; stand it in to watch it turn over
-  const leanBefore = model.st.lean * model.st.lead;   // the lean as the WORLD sees it
-  const bankBefore = model.st.bank * model.st.lead;   // ...and the roll the deck is drawn with
+  const leanBefore = model.st.lean * model.st.lead; // the lean as the WORLD sees it
+  const bankBefore = model.st.bank * model.st.lead; // ...and the roll the deck is drawn with
   const slideBefore = model.st.carveSlide * model.st.lead;
   assert.ok(Math.abs(leanBefore) > 0.5, 'the rider is genuinely on an edge before the handover');
 
@@ -158,11 +203,15 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
   model.step(1 / 60);
   clearKeys();
   assert.equal(model.st.lead, -1, 'the travel takes the lead to the other end');
-  assert.ok(Math.abs(model.st.lean * model.st.lead - leanBefore) < 0.2,
-    `the world-frame lean survives the handover (${leanBefore.toFixed(3)} → ${(model.st.lean * model.st.lead).toFixed(3)})`);
+  assert.ok(
+    Math.abs(model.st.lean * model.st.lead - leanBefore) < 0.2,
+    `the world-frame lean survives the handover (${leanBefore.toFixed(3)} → ${(model.st.lean * model.st.lead).toFixed(3)})`,
+  );
   assert.ok(Math.abs(model.st.bank * model.st.lead - bankBefore) < 1e-9, 'and the drawn roll does not jump');
-  assert.ok(Math.abs(model.st.carveSlide * model.st.lead - slideBefore) < 0.05,
-    'and the deck does not hop across its own carve offset');
+  assert.ok(
+    Math.abs(model.st.carveSlide * model.st.lead - slideBefore) < 0.05,
+    'and the deck does not hop across its own carve offset',
+  );
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -204,8 +253,10 @@ const turnOf = (from: THREE.Vector3, to: THREE.Vector3) =>
   for (let i = 0; i < 180; i++) model.step(1 / 60);
   assert.equal(model.st.lead, -1, 'three seconds later it is still switch: nothing rights it but another turn');
   assert.ok(heading.dot(model.st.fwd) > 0.9, 'and the deck was never whipped back round to face front');
-  assert.ok(model.st.vel.length() > SNOW.target - 1,
-    `the switch rider drives on at the surface's cruise target (got ${model.st.vel.length().toFixed(2)} m/s)`);
+  assert.ok(
+    model.st.vel.length() > SNOW.target - 1,
+    `the switch rider drives on at the surface's cruise target (got ${model.st.vel.length().toFixed(2)} m/s)`,
+  );
 
   // ...and the way back is the way out: another half turn in the air puts the nose back in front.
   model.st.pos.y += 3;

@@ -1,8 +1,14 @@
 import type { QuadMeshDoc } from './types';
 import { canonicalJson } from './canonical';
 import {
-  COURSE_REGISTER, documentRegisters, linkedFieldRegisters, objectFieldChanges,
-  type ObjectFamily, type QuadField, type RegisterKey, type RegisterValue,
+  COURSE_REGISTER,
+  documentRegisters,
+  linkedFieldRegisters,
+  objectFieldChanges,
+  type ObjectFamily,
+  type QuadField,
+  type RegisterKey,
+  type RegisterValue,
 } from './registers';
 import { directedEdgeEnds } from './serialize';
 
@@ -55,7 +61,10 @@ export function documentDiff(before: QuadMeshDoc, after: QuadMeshDoc): DocumentD
   const now = documentRegisters(after);
   const diff: DocumentDiff = new Map();
   for (const [key, value] of now) {
-    if (!was.has(key)) { diff.set(key, { key, kind: 'added', before: undefined, after: value }); continue; }
+    if (!was.has(key)) {
+      diff.set(key, { key, kind: 'added', before: undefined, after: value });
+      continue;
+    }
     const held = was.get(key);
     if (canonicalJson(held) !== canonicalJson(value)) {
       diff.set(key, { key, kind: 'changed', before: held, after: value });
@@ -90,7 +99,17 @@ export interface ChangeSummary {
   edgeLocks: { added: number; removed: number };
   /** Faces: how many differ in each attribute, and how many distinct faces that is. `added` and `removed`
    *  count the faces themselves, which is topology rather than paint. */
-  quads: { paint: number; tex: number; orient: number; lock: number; twist: number; labels: number; faces: number; added: number; removed: number };
+  quads: {
+    paint: number;
+    tex: number;
+    orient: number;
+    lock: number;
+    twist: number;
+    labels: number;
+    faces: number;
+    added: number;
+    removed: number;
+  };
   objects: ObjectChanges[];
   /** Whether the run differs. It is one register holding every knot, so there is nothing finer to say. */
   course: boolean;
@@ -98,8 +117,18 @@ export interface ChangeSummary {
   globals: string[];
 }
 
-const OBJECT_FAMILIES: readonly ObjectFamily[] =
-  ['prop', 'light', 'rail', 'gem', 'model', 'volume', 'trail', 'label', 'effect', 'effect-node'];
+const OBJECT_FAMILIES: readonly ObjectFamily[] = [
+  'prop',
+  'light',
+  'rail',
+  'gem',
+  'model',
+  'volume',
+  'trail',
+  'label',
+  'effect',
+  'effect-node',
+];
 
 /** Which family an `o/<family>/<id>` key names, or null when it names none. */
 function objectFamily(key: RegisterKey): ObjectFamily | null {
@@ -113,8 +142,14 @@ function quadField(key: RegisterKey): { quad: string; field: QuadField } | null 
   const cut = key.lastIndexOf('/');
   if (cut <= 2) return null;
   const field = key.slice(cut + 1);
-  return field === 'paint' || field === 'tex' || field === 'orient' || field === 'lock' || field === 'twist' || field === 'labels'
-    ? { quad: key.slice(2, cut), field } : null;
+  return field === 'paint' ||
+    field === 'tex' ||
+    field === 'orient' ||
+    field === 'lock' ||
+    field === 'twist' ||
+    field === 'labels'
+    ? { quad: key.slice(2, cut), field }
+    : null;
 }
 
 /**
@@ -140,10 +175,22 @@ export function summarizeDiff(before: QuadMeshDoc, after: QuadMeshDoc, diff: Doc
   const families = new Map<ObjectFamily, ObjectChanges>();
   for (const change of diff.values()) {
     const { key, kind } = change;
-    if (key === COURSE_REGISTER) { summary.course = true; continue; }
-    if (key.startsWith('v/')) { if (kind === 'changed') summary.vertices.moved++; continue; }
-    if (key.startsWith('h/')) { summary.creases[kind]++; continue; }
-    if (key.startsWith('e/')) { if (kind !== 'changed') summary.edgeLocks[kind]++; continue; }
+    if (key === COURSE_REGISTER) {
+      summary.course = true;
+      continue;
+    }
+    if (key.startsWith('v/')) {
+      if (kind === 'changed') summary.vertices.moved++;
+      continue;
+    }
+    if (key.startsWith('h/')) {
+      summary.creases[kind]++;
+      continue;
+    }
+    if (key.startsWith('e/')) {
+      if (kind !== 'changed') summary.edgeLocks[kind]++;
+      continue;
+    }
     if (key.startsWith('q/')) {
       const named = quadField(key);
       if (!named) continue;
@@ -182,13 +229,21 @@ export function changeSummary(before: QuadMeshDoc, after: QuadMeshDoc): ChangeSu
   return summarizeDiff(before, after, documentDiff(before, after));
 }
 
-const plural = (count: number, one: string, many = `${one}s`): string =>
-  `${count} ${count === 1 ? one : many}`;
+const plural = (count: number, one: string, many = `${one}s`): string => `${count} ${count === 1 ? one : many}`;
 
 /** What each object family is called when it is being counted. */
 const FAMILY_NOUN: Record<ObjectFamily, string> = {
-  prop: 'prop', light: 'light', rail: 'rail', gem: 'gem', model: 'model',
-  volume: 'particle volume', screen: 'video screen', 'prop-line': 'prop line', trail: 'trail', label: 'label', effect: 'effect',
+  prop: 'prop',
+  light: 'light',
+  rail: 'rail',
+  gem: 'gem',
+  model: 'model',
+  volume: 'particle volume',
+  screen: 'video screen',
+  'prop-line': 'prop line',
+  trail: 'trail',
+  label: 'label',
+  effect: 'effect',
   'effect-node': 'effect node',
 };
 
@@ -225,7 +280,8 @@ export function describeChanges(summary: ChangeSummary): string[] {
     if (tally.changed) said.push(`${plural(tally.changed, noun)} edited`);
   }
   if (summary.course) said.push('the run changed');
-  if (summary.globals.length) said.push(`${summary.globals.join(', ')} differ${summary.globals.length === 1 ? 's' : ''}`);
+  if (summary.globals.length)
+    said.push(`${summary.globals.join(', ')} differ${summary.globals.length === 1 ? 's' : ''}`);
   return said;
 }
 
@@ -275,8 +331,7 @@ function inSelection(key: RegisterKey, vertices: Set<string>, quads: Set<string>
  * conflict handling and no storage of its own. A register the earlier document did not hold reverts to
  * nothing, which is what clearing a face somebody painted or removing a prop somebody placed already is.
  */
-export function revertAssignments(diff: DocumentDiff, scope: RevertScope = {}):
-  [RegisterKey, RegisterValue][] {
+export function revertAssignments(diff: DocumentDiff, scope: RevertScope = {}): [RegisterKey, RegisterValue][] {
   const keys = scope.keys ? new Set(scope.keys) : null;
   const kept = new Set(scope.kept ?? []);
   const vertices = new Set(scope.vertices ?? []);
@@ -289,13 +344,16 @@ export function revertAssignments(diff: DocumentDiff, scope: RevertScope = {}):
     // An object both documents hold may have been written a field at a time. Then the revert is the fields
     // this scope wrote — or, for a whole-object write it is credited with, every field except those somebody
     // wrote after it — and a field takes its linked group with it, so the group goes back together.
-    const fields = change.kind === 'changed' && (keys || kept.size)
-      ? objectFieldChanges(change.key, change.after, change.before, sameCanonical) : null;
+    const fields =
+      change.kind === 'changed' && (keys || kept.size)
+        ? objectFieldChanges(change.key, change.after, change.before, sameCanonical)
+        : null;
     if (fields) {
       const groupHeld = (key: RegisterKey, test: (field: RegisterKey) => boolean): boolean =>
         linkedFieldRegisters(key).some(test);
-      const wanted = fields.filter(([key]) => (whole || groupHeld(key, field => keys!.has(field)))
-        && !groupHeld(key, field => kept.has(field)));
+      const wanted = fields.filter(
+        ([key]) => (whole || groupHeld(key, field => keys!.has(field))) && !groupHeld(key, field => kept.has(field)),
+      );
       if (whole && wanted.length === fields.length) out.push([change.key, change.before]);
       else for (const [key, before] of wanted) out.push([key, before]);
       continue;

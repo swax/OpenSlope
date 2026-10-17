@@ -48,11 +48,17 @@ export function isSnowboardStance(value: unknown): value is SnowboardStance {
 
 /** The catalogue the Test panel offers. Fixed and built in — there is nothing on disk to wait for. */
 export function rideGearOptions(): ReadonlyArray<{ id: RideGear; label: string }> {
-  return [{ id: 'snowboard', label: 'Snowboard' }, { id: 'skis', label: 'Skis' }];
+  return [
+    { id: 'snowboard', label: 'Snowboard' },
+    { id: 'skis', label: 'Skis' },
+  ];
 }
 
 export function snowboardStanceOptions(): ReadonlyArray<{ id: SnowboardStance; label: string }> {
-  return [{ id: 'standard', label: 'Standard' }, { id: 'goofy', label: 'Goofy' }];
+  return [
+    { id: 'standard', label: 'Standard' },
+    { id: 'goofy', label: 'Goofy' },
+  ];
 }
 
 /** Account presentation consumed by a board model. URLs are same-origin authenticated image routes. */
@@ -97,15 +103,19 @@ function highlightSwitch(materials: readonly THREE.MeshLambertMaterial[]) {
 // ---- the snowboard (board-local: +Z nose, +Y deck up, +X the toe edge) ----
 // A 186 cm deck: 35.0 cm waist, 41.72 cm at the contact points, 1.44 m of effective edge, and a
 // 7 cm kick at each tip. Thickness is the core, not the profile — 14 mm reads right and hides no contact.
-const BOARD_LEN = 1.86, BOARD_HALF = BOARD_LEN / 2;
-const WAIST_HALF = 0.175, TIP_HALF = 0.2086, BOARD_THICK = 0.014;
-const CONTACT_HALF = 0.72;   // half the effective edge: where the sidecut ends and the tip round begins
-const FLAT_HALF = 0.60;      // where the base stops being flat and the kick starts
+const BOARD_LEN = 1.86,
+  BOARD_HALF = BOARD_LEN / 2;
+const WAIST_HALF = 0.175,
+  TIP_HALF = 0.2086,
+  BOARD_THICK = 0.014;
+const CONTACT_HALF = 0.72; // half the effective edge: where the sidecut ends and the tip round begins
+const FLAT_HALF = 0.6; // where the base stops being flat and the kick starts
 const TIP_RISE = 0.072;
-const TIP_BLUNT = 0.0182;    // the tips are rounded, never knife-edged
-const STANCE_HALF = 0.27;    // 54 cm stance
+const TIP_BLUNT = 0.0182; // the tips are rounded, never knife-edged
+const STANCE_HALF = 0.27; // 54 cm stance
 /** Snowboard foot angles about the deck up. The rider reads them too: an open stance turns the pelvis with it. */
-export const BINDING_ANGLE_FRONT = 15, BINDING_ANGLE_REAR = -3;
+export const BINDING_ANGLE_FRONT = 15,
+  BINDING_ANGLE_REAR = -3;
 /** Preserve the established avatar fit while the former 18 mm binding stand is no longer rendered. */
 const FOOT_CLEARANCE = 0.018;
 const BOARD_STATIONS = 56;
@@ -126,13 +136,21 @@ export const ANKLE_ABOVE_BASE = BOARD_THICK + FOOT_CLEARANCE + SOLE_TO_ANKLE;
 // foot tapering to almost nothing at the tips. The foot is mounted 8.4 cm BEHIND the ski's midpoint, which is
 // where an all-mountain ski is mounted and why the tip runs so much further out in front than the tail does
 // behind — a ski seen from a chase camera is mostly shovel.
-const SKI_AHEAD = 1.104, SKI_BEHIND = 0.936;    // 2.04 m in total, split about the foot
-const SKI_WAIST_HALF = 0.0645, SHOVEL_HALF = 0.093, SKI_TAIL_HALF = 0.081;
-const SHOVEL_Z = 0.816, SKI_TAIL_Z = 0.696;     // where the sidecut reaches its widest, each way
-const SKI_TIP_BLUNT = 0.0165, SKI_TAIL_BLUNT = 0.045; // a shovel rounds off; a tail stays square
-const SKI_FLAT_AHEAD = 0.72, SKI_FLAT_BEHIND = 0.696; // where the base stops being flat
-const SKI_TIP_RISE = 0.062, SKI_TAIL_RISE = 0.016;   // early rise at the shovel, a token kick at the tail
-const SKI_THICK_WAIST = 0.013, SKI_THICK_TIP = 0.005;
+const SKI_AHEAD = 1.104,
+  SKI_BEHIND = 0.936; // 2.04 m in total, split about the foot
+const SKI_WAIST_HALF = 0.0645,
+  SHOVEL_HALF = 0.093,
+  SKI_TAIL_HALF = 0.081;
+const SHOVEL_Z = 0.816,
+  SKI_TAIL_Z = 0.696; // where the sidecut reaches its widest, each way
+const SKI_TIP_BLUNT = 0.0165,
+  SKI_TAIL_BLUNT = 0.045; // a shovel rounds off; a tail stays square
+const SKI_FLAT_AHEAD = 0.72,
+  SKI_FLAT_BEHIND = 0.696; // where the base stops being flat
+const SKI_TIP_RISE = 0.062,
+  SKI_TAIL_RISE = 0.016; // early rise at the shovel, a token kick at the tail
+const SKI_THICK_WAIST = 0.013,
+  SKI_THICK_TIP = 0.005;
 const SKI_STATIONS = 44;
 /**
  * Half the distance between the two skis' centrelines — a 21 cm stance, which is a natural hip-width one and
@@ -199,26 +217,33 @@ function skiThickness(z: number): number {
 
 /** The account editor's overlay is generated from the same sidecut functions and extents as these meshes. */
 export function equipmentTextureRegions(gear: RideGear): EquipmentTextureRegion[] {
-  const regions = gear === 'snowboard'
-    ? [{ label: 'TOP', offset: 0, width: 0.5 }, { label: 'BOTTOM', offset: 0.5, width: 0.5 }]
-    : [
-      { label: 'L FRONT', offset: 0, width: 0.25 }, { label: 'R FRONT', offset: 0.25, width: 0.25 },
-      { label: 'L BACK', offset: 0.5, width: 0.25 }, { label: 'R BACK', offset: 0.75, width: 0.25 },
-    ];
+  const regions =
+    gear === 'snowboard'
+      ? [
+          { label: 'TOP', offset: 0, width: 0.5 },
+          { label: 'BOTTOM', offset: 0.5, width: 0.5 },
+        ]
+      : [
+          { label: 'L FRONT', offset: 0, width: 0.25 },
+          { label: 'R FRONT', offset: 0.25, width: 0.25 },
+          { label: 'L BACK', offset: 0.5, width: 0.25 },
+          { label: 'R BACK', offset: 0.75, width: 0.25 },
+        ];
   const stations = gear === 'snowboard' ? BOARD_STATIONS : SKI_STATIONS;
   const zMin = gear === 'snowboard' ? -BOARD_HALF : -SKI_BEHIND;
   const zMax = gear === 'snowboard' ? BOARD_HALF : SKI_AHEAD;
   const maxHalf = gear === 'snowboard' ? TIP_HALF : SHOVEL_HALF;
-  const halfAt = (z: number) => gear === 'snowboard' ? halfWidth(Math.abs(z)) : skiHalfWidth(z);
+  const halfAt = (z: number) => (gear === 'snowboard' ? halfWidth(Math.abs(z)) : skiHalfWidth(z));
   return regions.map(region => {
-    const side = (sign: -1 | 1) => Array.from({ length: stations }, (_, i) => {
-      // Walk nose to tail on one side and tail to nose on the other to make one closed, non-crossing polygon.
-      const t = sign === 1 ? 1 - i / (stations - 1) : i / (stations - 1);
-      const z = zMin + (zMax - zMin) * t;
-      const u = region.offset + region.width * (0.5 + sign * halfAt(z) / (2 * maxHalf));
-      const y = 1 - (z - zMin) / (zMax - zMin);
-      return [u, y] as const;
-    });
+    const side = (sign: -1 | 1) =>
+      Array.from({ length: stations }, (_, i) => {
+        // Walk nose to tail on one side and tail to nose on the other to make one closed, non-crossing polygon.
+        const t = sign === 1 ? 1 - i / (stations - 1) : i / (stations - 1);
+        const z = zMin + (zMax - zMin) * t;
+        const u = region.offset + region.width * (0.5 + (sign * halfAt(z)) / (2 * maxHalf));
+        const y = 1 - (z - zMin) / (zMax - zMin);
+        return [u, y] as const;
+      });
     return { label: region.label, points: [...side(1), ...side(-1)] };
   });
 }
@@ -228,8 +253,10 @@ type Ring = readonly [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3
 /** One station's four corners: base-left, base-right, top-right, top-left. */
 function ring(z: number, half: number, y: number, thick: number): Ring {
   return [
-    new THREE.Vector3(-half, y, z), new THREE.Vector3(half, y, z),
-    new THREE.Vector3(half, y + thick, z), new THREE.Vector3(-half, y + thick, z),
+    new THREE.Vector3(-half, y, z),
+    new THREE.Vector3(half, y, z),
+    new THREE.Vector3(half, y + thick, z),
+    new THREE.Vector3(-half, y + thick, z),
   ];
 }
 
@@ -242,20 +269,25 @@ function ring(z: number, half: number, y: number, thick: number): Ring {
  * that plan into the board's two halves or the skis' four strips.
  */
 function sweptDeck(rings: readonly Ring[], maxHalf: number): THREE.BufferGeometry {
-  const base: number[] = [], top: number[] = [], edge: number[] = [];
-  const zMin = rings[0][0].z, zMax = rings[rings.length - 1][0].z;
+  const base: number[] = [],
+    top: number[] = [],
+    edge: number[] = [];
+  const zMin = rings[0][0].z,
+    zMax = rings[rings.length - 1][0].z;
   const quad = (out: number[], a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => {
     out.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, a.x, a.y, a.z, c.x, c.y, c.z, d.x, d.y, d.z);
   };
   for (let i = 0; i < rings.length - 1; i++) {
-    const [al, ar] = rings[i], [bl, br] = rings[i + 1];
+    const [al, ar] = rings[i],
+      [bl, br] = rings[i + 1];
     quad(base, al, bl, br, ar);
   }
   for (let i = 0; i < rings.length - 1; i++) {
-    const [abl, abr, atr, atl] = rings[i], [bbl, bbr, btr, btl] = rings[i + 1];
+    const [abl, abr, atr, atl] = rings[i],
+      [bbl, bbr, btr, btl] = rings[i + 1];
     quad(top, atl, atr, btr, btl);
-    quad(edge, abr, bbr, btr, atr);   // toe wall
-    quad(edge, abl, atl, btl, bbl);   // heel wall
+    quad(edge, abr, bbr, btr, atr); // toe wall
+    quad(edge, abl, atl, btl, bbl); // heel wall
   }
   for (const cap of [rings[0], rings[rings.length - 1]]) quad(edge, cap[0], cap[1], cap[2], cap[3]);
 
@@ -277,17 +309,23 @@ function sweptDeck(rings: readonly Ring[], maxHalf: number): THREE.BufferGeometr
 }
 
 function deckGeometry(): THREE.BufferGeometry {
-  return sweptDeck(Array.from({ length: BOARD_STATIONS }, (_, i) => {
-    const z = -BOARD_HALF + BOARD_LEN * (i / (BOARD_STATIONS - 1));
-    return ring(z, halfWidth(Math.abs(z)), baseY(Math.abs(z)), BOARD_THICK);
-  }), TIP_HALF);
+  return sweptDeck(
+    Array.from({ length: BOARD_STATIONS }, (_, i) => {
+      const z = -BOARD_HALF + BOARD_LEN * (i / (BOARD_STATIONS - 1));
+      return ring(z, halfWidth(Math.abs(z)), baseY(Math.abs(z)), BOARD_THICK);
+    }),
+    TIP_HALF,
+  );
 }
 
 function skiGeometry(): THREE.BufferGeometry {
-  return sweptDeck(Array.from({ length: SKI_STATIONS }, (_, i) => {
-    const z = -SKI_BEHIND + (SKI_AHEAD + SKI_BEHIND) * (i / (SKI_STATIONS - 1));
-    return ring(z, skiHalfWidth(z), skiBaseY(z), skiThickness(z));
-  }), SHOVEL_HALF);
+  return sweptDeck(
+    Array.from({ length: SKI_STATIONS }, (_, i) => {
+      const z = -SKI_BEHIND + (SKI_AHEAD + SKI_BEHIND) * (i / (SKI_STATIONS - 1));
+      return ring(z, skiHalfWidth(z), skiBaseY(z), skiThickness(z));
+    }),
+    SHOVEL_HALF,
+  );
 }
 
 export interface BoardModel {
@@ -324,8 +362,13 @@ export interface BoardModel {
    * over with the edge under it, and a span that rides the FLAT one. On a snowboard the span runs along the
    * nose axis, which the roll leaves fixed, so the split says nothing new; on skis it is the whole difference.
    */
-  seat(position: THREE.Vector3, flat: THREE.Quaternion, rolled: THREE.Quaternion,
-       ankleFrontOut: THREE.Vector3, ankleRearOut: THREE.Vector3): void;
+  seat(
+    position: THREE.Vector3,
+    flat: THREE.Quaternion,
+    rolled: THREE.Quaternion,
+    ankleFrontOut: THREE.Vector3,
+    ankleRearOut: THREE.Vector3,
+  ): void;
   /** Replace the account-owned art/edge colour in place; live physics and pose remain untouched. */
   setAppearance(appearance?: EquipmentAppearance): void;
   dispose(): void;
@@ -339,8 +382,12 @@ interface TextureSlot {
 }
 
 /** Owns one model's asynchronously loaded account texture and all per-region GPU clones of it. */
-function createGearSkin(gear: RideGear, slots: readonly TextureSlot[], edge: THREE.MeshLambertMaterial,
-                        defaultEdge: number) {
+function createGearSkin(
+  gear: RideGear,
+  slots: readonly TextureSlot[],
+  edge: THREE.MeshLambertMaterial,
+  defaultEdge: number,
+) {
   let generation = 0;
   const clearMaps = () => {
     const maps = new Set<THREE.Texture>();
@@ -355,12 +402,16 @@ function createGearSkin(gear: RideGear, slots: readonly TextureSlot[], edge: THR
   const setAppearance = (appearance: EquipmentAppearance = {}) => {
     const thisGeneration = ++generation;
     clearMaps();
-    edge.color.set(appearance.edgeColor && /^#[0-9a-f]{6}$/i.test(appearance.edgeColor)
-      ? appearance.edgeColor : defaultEdge);
+    edge.color.set(
+      appearance.edgeColor && /^#[0-9a-f]{6}$/i.test(appearance.edgeColor) ? appearance.edgeColor : defaultEdge,
+    );
     const url = gear === 'snowboard' ? appearance.snowboardTextureUrl : appearance.skiTextureUrl;
     if (!url) return;
     new THREE.TextureLoader().load(url, source => {
-      if (thisGeneration !== generation) { source.dispose(); return; }
+      if (thisGeneration !== generation) {
+        source.dispose();
+        return;
+      }
       source.colorSpace = THREE.SRGBColorSpace;
       source.wrapS = source.wrapT = THREE.ClampToEdgeWrapping;
       slots.forEach((slot, index) => {
@@ -385,9 +436,11 @@ function createGearSkin(gear: RideGear, slots: readonly TextureSlot[], edge: THR
   };
 }
 
-export function createBoard(gear: RideGear = DEFAULT_RIDE_GEAR,
-                            stance: SnowboardStance = DEFAULT_SNOWBOARD_STANCE,
-                            appearance?: EquipmentAppearance): BoardModel {
+export function createBoard(
+  gear: RideGear = DEFAULT_RIDE_GEAR,
+  stance: SnowboardStance = DEFAULT_SNOWBOARD_STANCE,
+  appearance?: EquipmentAppearance,
+): BoardModel {
   return gear === 'skis' ? createSkis(appearance) : createSnowboard(stance, appearance);
 }
 
@@ -398,10 +451,15 @@ function createSnowboard(stance: SnowboardStance, appearance?: EquipmentAppearan
     new THREE.MeshLambertMaterial({ color: 0x18d0e0, side: THREE.DoubleSide }), // topsheet
     new THREE.MeshLambertMaterial({ color: 0x18d0e0, side: THREE.DoubleSide }), // sidewalls + ends
   ];
-  const skin = createGearSkin('snowboard', [
-    { material: mats[0], offset: 0.5, width: 0.5, defaultColor: 0xe4ecf4 },
-    { material: mats[1], offset: 0, width: 0.5, defaultColor: 0x18d0e0 },
-  ], mats[2], 0x18d0e0);
+  const skin = createGearSkin(
+    'snowboard',
+    [
+      { material: mats[0], offset: 0.5, width: 0.5, defaultColor: 0xe4ecf4 },
+      { material: mats[1], offset: 0, width: 0.5, defaultColor: 0x18d0e0 },
+    ],
+    mats[2],
+    0x18d0e0,
+  );
   skin.setAppearance(appearance);
   group.add(new THREE.Mesh(deckGeometry(), mats));
   // Standard/goofy changes which anatomical foot owns each invisible stance seat. Foot yaw is applied by the
@@ -427,7 +485,10 @@ function createSnowboard(stance: SnowboardStance, appearance?: EquipmentAppearan
       seatAnkle(ankleRearOut, position, flat, rolled, 0, rearZ);
     },
     setAppearance: skin.setAppearance,
-    dispose: () => { skin.dispose(); disposeTree(group); },
+    dispose: () => {
+      skin.dispose();
+      disposeTree(group);
+    },
   };
 }
 
@@ -435,15 +496,23 @@ function createSkis(appearance?: EquipmentAppearance): BoardModel {
   const group = new THREE.Group();
   const edge = new THREE.MeshLambertMaterial({ color: 0xf0563a, side: THREE.DoubleSide });
   const surface = (color: number) => new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide });
-  const leftBase = surface(0xe4ecf4), leftTop = surface(0xf0563a);
-  const rightBase = surface(0xe4ecf4), rightTop = surface(0xf0563a);
-  const leftMats = [leftBase, leftTop, edge], rightMats = [rightBase, rightTop, edge];
-  const skin = createGearSkin('skis', [
-    { material: leftBase, offset: 0.5, width: 0.25, defaultColor: 0xe4ecf4 },
-    { material: leftTop, offset: 0, width: 0.25, defaultColor: 0xf0563a },
-    { material: rightBase, offset: 0.75, width: 0.25, defaultColor: 0xe4ecf4 },
-    { material: rightTop, offset: 0.25, width: 0.25, defaultColor: 0xf0563a },
-  ], edge, 0xf0563a);
+  const leftBase = surface(0xe4ecf4),
+    leftTop = surface(0xf0563a);
+  const rightBase = surface(0xe4ecf4),
+    rightTop = surface(0xf0563a);
+  const leftMats = [leftBase, leftTop, edge],
+    rightMats = [rightBase, rightTop, edge];
+  const skin = createGearSkin(
+    'skis',
+    [
+      { material: leftBase, offset: 0.5, width: 0.25, defaultColor: 0xe4ecf4 },
+      { material: leftTop, offset: 0, width: 0.25, defaultColor: 0xf0563a },
+      { material: rightBase, offset: 0.75, width: 0.25, defaultColor: 0xe4ecf4 },
+      { material: rightTop, offset: 0.25, width: 0.25, defaultColor: 0xf0563a },
+    ],
+    edge,
+    0xf0563a,
+  );
   skin.setAppearance(appearance);
   // The two skis are the same shape — a ski is symmetric about its own centreline, so there is no left and no
   // right — and both wear the same materials, so a pair costs one geometry and one tint.
@@ -469,8 +538,7 @@ function createSkis(appearance?: EquipmentAppearance): BoardModel {
     // foot seat sits behind centre on a ski, so the box is offset forward by half the fore/aft difference.
     grabBox: {
       center: new THREE.Vector3(0, ANKLE_ABOVE_BASE / 2, (SKI_AHEAD - SKI_BEHIND) / 2),
-      half: new THREE.Vector3(SKI_SPAN_HALF + SHOVEL_HALF, ANKLE_ABOVE_BASE / 2,
-        (SKI_AHEAD + SKI_BEHIND) / 2),
+      half: new THREE.Vector3(SKI_SPAN_HALF + SHOVEL_HALF, ANKLE_ABOVE_BASE / 2, (SKI_AHEAD + SKI_BEHIND) / 2),
     },
     highlight: highlightSwitch([leftBase, leftTop, rightBase, rightTop, edge]),
     ankleFront: new THREE.Vector3(-SKI_SPAN_HALF, ANKLE_ABOVE_BASE, 0),
@@ -485,19 +553,29 @@ function createSkis(appearance?: EquipmentAppearance): BoardModel {
       seatAnkle(ankleRearOut, position, flat, rolled, SKI_SPAN_HALF, 0);
     },
     setAppearance: skin.setAppearance,
-    dispose: () => { skin.dispose(); disposeTree(group); },
+    dispose: () => {
+      skin.dispose();
+      disposeTree(group);
+    },
   };
 }
 
 /** `position + rolled·(0, ankle, 0) + flat·(x, 0, z)` — the split `seat` documents, without allocating. */
-function seatAnkle(out: THREE.Vector3, position: THREE.Vector3, flat: THREE.Quaternion,
-                   rolled: THREE.Quaternion, x: number, z: number) {
+function seatAnkle(
+  out: THREE.Vector3,
+  position: THREE.Vector3,
+  flat: THREE.Quaternion,
+  rolled: THREE.Quaternion,
+  x: number,
+  z: number,
+) {
   out.set(0, ANKLE_ABOVE_BASE, 0).applyQuaternion(rolled).add(position);
   out.add(_span.set(x, 0, z).applyQuaternion(flat));
 }
 
 function disposeTree(root: THREE.Object3D) {
-  const geos = new Set<THREE.BufferGeometry>(), mats = new Set<THREE.Material>();
+  const geos = new Set<THREE.BufferGeometry>(),
+    mats = new Set<THREE.Material>();
   root.traverse(o => {
     if (!(o instanceof THREE.Mesh)) return;
     geos.add(o.geometry);

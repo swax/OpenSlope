@@ -13,7 +13,15 @@
  * "Texture Library only in Paint mode" rule has to consult `picking` before hiding the panel.
  * See docs/005-texture-paint.md.
  */
-import { CUSTOM_TEX_LEVEL, makeTexRef, parseTexRef, type Brush, type LevelTextures, type TexRef, type TexTile } from '../../core/paint/textures';
+import {
+  CUSTOM_TEX_LEVEL,
+  makeTexRef,
+  parseTexRef,
+  type Brush,
+  type LevelTextures,
+  type TexRef,
+  type TexTile,
+} from '../../core/paint/textures';
 import { DEFAULT_SURFACE } from '../../core/doc/types';
 import { DRAG_TILE } from './drag-drop';
 import { F_SVG_URL } from './glyph';
@@ -117,10 +125,9 @@ const css = `
   to   { box-shadow: 0 0 0 2px #ffc24d, 0 0 12px 3px #ffc24daa; } }
 `;
 
-
 export class TextureLibrary {
   readonly el = document.createElement('div');
-  private titleEl = document.createElement('span');   // 'Texture Library', or the question while picking
+  private titleEl = document.createElement('span'); // 'Texture Library', or the question while picking
   private cancelBtn = document.createElement('button'); // pick mode's way out, beside the ✕
   private levelSel = document.createElement('select');
   private hideUnusedChk = document.createElement('input');
@@ -129,16 +136,16 @@ export class TextureLibrary {
   private hideStagedCap = document.createElement('span');
   private body = document.createElement('div');
   private fileInput = document.createElement('input'); // hidden picker behind the Custom level's + tile
-  private customTiles = 0;    // how many tiles the author's own bank holds — decides the opening view
+  private customTiles = 0; // how many tiles the author's own bank holds — decides the opening view
   private levelChosen = false; // the author picked a level themselves; stop re-deriving the opening view
-  private hideUnused = true;  // hide textures the level never uses on terrain (props/skybox); on by default
-  private hideStaged = true;  // hide tiles already staged in the Palette; on by default (declutter as you build)
+  private hideUnused = true; // hide textures the level never uses on terrain (props/skybox); on by default
+  private hideStaged = true; // hide tiles already staged in the Palette; on by default (declutter as you build)
   private tex: LevelTextures | null = null;
   private selKey = ''; // highlighted brush key
   private open = false;
   private loadGeneration = 0;
   private loadError = '';
-  private pick: TexturePick | null = null;                     // the live "choose a texture" request, if any
+  private pick: TexturePick | null = null; // the live "choose a texture" request, if any
   private pickKeys: ((e: KeyboardEvent) => void) | null = null; // its Esc handler, while it's up
 
   constructor(private cb: PaletteCallbacks) {
@@ -152,7 +159,10 @@ export class TextureLibrary {
     // the ✕), or the question being asked while a pick owns the panel
     this.titleEl.className = 'sp-title';
     this.titleEl.textContent = 'Texture Library';
-    this.levelSel.onchange = () => { this.levelChosen = true; void this.loadLevel(this.levelSel.value); };
+    this.levelSel.onchange = () => {
+      this.levelChosen = true;
+      void this.loadLevel(this.levelSel.value);
+    };
 
     // filter: hide the textures this level never paints on terrain (props / skybox / spares) — on by default
     const filt = document.createElement('label');
@@ -160,7 +170,10 @@ export class TextureLibrary {
     tooltip(filt, 'Hide textures this level never uses on its terrain — props, skybox, spares. On by default.');
     this.hideUnusedChk.type = 'checkbox';
     this.hideUnusedChk.checked = this.hideUnused;
-    this.hideUnusedChk.onchange = () => { this.hideUnused = this.hideUnusedChk.checked; this.render(); };
+    this.hideUnusedChk.onchange = () => {
+      this.hideUnused = this.hideUnusedChk.checked;
+      this.render();
+    };
     this.filterCap.textContent = 'hide unused';
     filt.append(this.hideUnusedChk, this.filterCap);
 
@@ -170,7 +183,10 @@ export class TextureLibrary {
     tooltip(filt2, 'Hide tiles already staged in your Palette. On by default.');
     this.hideStagedChk.type = 'checkbox';
     this.hideStagedChk.checked = this.hideStaged;
-    this.hideStagedChk.onchange = () => { this.hideStaged = this.hideStagedChk.checked; this.render(); };
+    this.hideStagedChk.onchange = () => {
+      this.hideStaged = this.hideStagedChk.checked;
+      this.render();
+    };
     this.hideStagedCap.textContent = 'hide staged';
     filt2.append(this.hideStagedChk, this.hideStagedCap);
 
@@ -188,7 +204,9 @@ export class TextureLibrary {
     close.type = 'button';
     close.textContent = '✕';
     tooltip(close, 'Hide the Texture Library (reopen it from the paint tools).');
-    close.onclick = () => { if (!this.cancelPick()) this.cb.onClose?.(); };
+    close.onclick = () => {
+      if (!this.cancelPick()) this.cb.onClose?.();
+    };
     head.append(this.titleEl, this.levelSel, filt, filt2, grow, this.cancelBtn, close);
 
     this.body.className = 'sp-body';
@@ -201,9 +219,13 @@ export class TextureLibrary {
     document.body.appendChild(this.el);
   }
 
-  private mountainName(): string { return this.cb.mountainName?.().trim() || 'Mountain'; }
+  private mountainName(): string {
+    return this.cb.mountainName?.().trim() || 'Mountain';
+  }
 
-  get level(): string { return this.tex?.level ?? this.levelSel.value ?? ''; }
+  get level(): string {
+    return this.tex?.level ?? this.levelSel.value ?? '';
+  }
 
   /** The opening view, per the shared rule. Kept as a method because the reference loads asynchronously —
    *  `init` runs at boot, before a reference is up, so the answer is asked for again on first open. */
@@ -232,11 +254,17 @@ export class TextureLibrary {
     void this.ensureSelectedLevel();
     this.cb.onHeightChange?.();
   }
-  hide() { this.open = false; this.el.style.display = 'none'; this.cb.onHeightChange?.(); }
+  hide() {
+    this.open = false;
+    this.el.style.display = 'none';
+    this.cb.onHeightChange?.();
+  }
 
   /** True while a pick owns the panel. The host's per-mode rule (Texture Library only in Paint) stands aside
    *  for this — a pick is raised from Edit mode and has to outlive the mode it was raised from. */
-  get picking(): boolean { return this.pick !== null; }
+  get picking(): boolean {
+    return this.pick !== null;
+  }
 
   /**
    * Borrow the panel to answer one question: which texture? Opens it wherever we are, highlights `current`
@@ -281,7 +309,10 @@ export class TextureLibrary {
       }
     }
     this.render();
-    if (!current) { this.body.scrollTop = 0; return; }
+    if (!current) {
+      this.body.scrollTop = 0;
+      return;
+    }
     this.body.querySelector<HTMLElement>(`.sp-tile[data-ref="${current}"]`)?.scrollIntoView({ block: 'center' });
   }
 
@@ -291,12 +322,16 @@ export class TextureLibrary {
     const pick = this.pick;
     if (!pick) return;
     this.pick = null;
-    if (this.pickKeys) { document.removeEventListener('keydown', this.pickKeys, true); this.pickKeys = null; }
+    if (this.pickKeys) {
+      document.removeEventListener('keydown', this.pickKeys, true);
+      this.pickKeys = null;
+    }
     this.cancelBtn.style.display = 'none';
     this.el.classList.remove('sp-picking');
     this.titleEl.textContent = 'Texture Library';
     this.selKey = '';
-    if (ref === undefined) pick.onCancel?.(); else pick.onPick(ref);
+    if (ref === undefined) pick.onCancel?.();
+    else pick.onPick(ref);
     this.render();
     this.cb.onPickEnd?.();
   }
@@ -329,9 +364,12 @@ export class TextureLibrary {
       // that is authored rather than extracted, so it is short or empty.
       try {
         const { tiles } = await fetchJson<{ tiles: TexTile[] }>(
-          `/api/textures?level=${encodeURIComponent(CUSTOM_TEX_LEVEL)}`);
+          `/api/textures?level=${encodeURIComponent(CUSTOM_TEX_LEVEL)}`,
+        );
         this.customTiles = tiles?.length ?? 0;
-      } catch { this.customTiles = 0; }
+      } catch {
+        this.customTiles = 0;
+      }
       const prefer = preferredLevel && has(preferredLevel) ? preferredLevel : this.preferredSource(has, levels);
       this.levelSel.value = prefer;
       // Keep the catalogue cheap at boot. The selected level's metadata (and therefore its thumbnail image
@@ -372,8 +410,10 @@ export class TextureLibrary {
       const tex = await fetchJson<LevelTextures>(`/api/textures?level=${encodeURIComponent(level)}`);
       if (generation !== this.loadGeneration || this.levelSel.value !== level) return null;
       if (level !== CUSTOM_TEX_LEVEL) {
-        registerReferenceTextureRevisions(level, Object.fromEntries(
-          tex.tiles.flatMap(tile => tile.revision ? [[tile.name, tile.revision]] : [])));
+        registerReferenceTextureRevisions(
+          level,
+          Object.fromEntries(tex.tiles.flatMap(tile => (tile.revision ? [[tile.name, tile.revision]] : []))),
+        );
       }
       // Keep the opening-view count honest as tiles are added and deleted under it.
       if (level === CUSTOM_TEX_LEVEL) this.customTiles = tex.tiles?.length ?? 0;
@@ -401,14 +441,21 @@ export class TextureLibrary {
     if (!resolvedLevel) throw new Error(`cannot resolve a source level for ${name}`);
     if (resolvedLevel !== this.tex?.level && [...this.levelSel.options].some(o => o.value === resolvedLevel)) {
       this.levelSel.value = resolvedLevel;
-      if (!await this.loadLevel(resolvedLevel)) throw new Error(this.loadError || `could not load ${resolvedLevel} textures`);
+      if (!(await this.loadLevel(resolvedLevel)))
+        throw new Error(this.loadError || `could not load ${resolvedLevel} textures`);
     }
     const fullRef = makeTexRef(resolvedLevel, name);
     this.selKey = `tile:${fullRef}`;
     const picked = this.tex?.tiles.find(t => t.name === name);
     // reveal a sampled tile that a filter would otherwise hide
-    if (picked && picked.count === 0 && this.hideUnused) { this.hideUnused = false; this.hideUnusedChk.checked = false; }
-    if (this.hideStaged && this.cb.stagedRefs?.().has(fullRef)) { this.hideStaged = false; this.hideStagedChk.checked = false; }
+    if (picked && picked.count === 0 && this.hideUnused) {
+      this.hideUnused = false;
+      this.hideUnusedChk.checked = false;
+    }
+    if (this.hideStaged && this.cb.stagedRefs?.().has(fullRef)) {
+      this.hideStaged = false;
+      this.hideStagedChk.checked = false;
+    }
     this.render();
     const sw = this.body.querySelector<HTMLElement>(`.sp-tile[data-ref="${fullRef}"]`);
     sw?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -417,7 +464,9 @@ export class TextureLibrary {
   }
 
   /** The top-bar F toggle: draw the pink art F on every Library swatch (CSS ::after inside the swatch). */
-  setShowF(on: boolean) { this.el.classList.toggle('show-f', on); }
+  setShowF(on: boolean) {
+    this.el.classList.toggle('show-f', on);
+  }
 
   /** Light up the swatch for `ref` (or clear) without emitting a brush — mirrors the Palette's active tile. */
   highlightRef(ref: TexRef | null) {
@@ -428,10 +477,14 @@ export class TextureLibrary {
       el.classList.toggle('sel', !!ref && el.dataset.ref === ref);
   }
 
-  private select(key: string) { this.selKey = key; this.render(); }
+  private select(key: string) {
+    this.selKey = key;
+    this.render();
+  }
   /** Move the selection box to `selKey` without a re-render, so the grid keeps its place. */
   private markSelected() {
-    for (const tile of this.body.querySelectorAll<HTMLElement>('.sp-tile[data-ref]')) tile.classList.toggle('sel', `tile:${tile.dataset.ref}` === this.selKey);
+    for (const tile of this.body.querySelectorAll<HTMLElement>('.sp-tile[data-ref]'))
+      tile.classList.toggle('sel', `tile:${tile.dataset.ref}` === this.selKey);
   }
 
   private render() {
@@ -455,24 +508,27 @@ export class TextureLibrary {
     // question, so the filter would only hide candidate answers for no reason — it stands down (and hides).
     const filt2 = this.hideStagedChk.parentElement as HTMLElement | null;
     if (filt2) filt2.style.display = this.pick ? 'none' : '';
-    const staged = !this.pick && this.hideStaged ? this.cb.stagedRefs?.() ?? null : null; // refs already in the Palette
-    const shown = this.tex.tiles.filter(t =>
-      (custom || !this.hideUnused || t.count > 0) &&
-      !(staged && staged.has(makeTexRef(this.tex!.level, t.name))));
+    const staged = !this.pick && this.hideStaged ? (this.cb.stagedRefs?.() ?? null) : null; // refs already in the Palette
+    const shown = this.tex.tiles.filter(
+      t => (custom || !this.hideUnused || t.count > 0) && !(staged && staged.has(makeTexRef(this.tex!.level, t.name))),
+    );
     const hint = document.createElement('p');
     hint.className = 'sp-hint';
     hint.textContent = this.pick?.keep
-      ? this.pick.hint ?? 'Click a tile to use it. Esc or Done closes the library.'
+      ? (this.pick.hint ?? 'Click a tile to use it. Esc or Done closes the library.')
       : this.pick
-      ? 'Click a tile to use it. Switch level above to browse another bank; Esc or Cancel keeps the current one.'
-      : custom
-      ? 'Your own tiles. Add an image with the + tile or describe one with ✨, then paint with it or set it on a model from the model banner’s texture swatch (Edit ▸ Editing <model>). Right-click a tile to rename, duplicate or delete it.'
-      : 'Drag a tile from here into your Palette to arrange tiles, or click a tile to paint with it now.';
+        ? 'Click a tile to use it. Switch level above to browse another bank; Esc or Cancel keeps the current one.'
+        : custom
+          ? 'Your own tiles. Add an image with the + tile or describe one with ✨, then paint with it or set it on a model from the model banner’s texture swatch (Edit ▸ Editing <model>). Right-click a tile to rename, duplicate or delete it.'
+          : 'Drag a tile from here into your Palette to arrange tiles, or click a tile to paint with it now.';
     this.body.appendChild(hint);
     const grid = document.createElement('div');
     grid.className = 'sp-tiles';
     if (this.pick) grid.appendChild(this.noneSwatch());
-    if (custom) { grid.appendChild(this.addSwatch()); grid.appendChild(this.genSwatch()); }
+    if (custom) {
+      grid.appendChild(this.addSwatch());
+      grid.appendChild(this.genSwatch());
+    }
     for (const t of shown) grid.appendChild(this.tileSwatch(t));
     this.body.appendChild(grid);
   }
@@ -495,14 +551,28 @@ export class TextureLibrary {
     if (this.selKey === `tile:${ref}`) sw.classList.add('sel');
     sw.style.backgroundImage = `url(${textureUrl(this.tex!.level, t.name)})`;
     const label = t.name.replace(/\.png$/i, '');
-    tooltip(sw, this.tex!.level === CUSTOM_TEX_LEVEL
-      ? `${label} · your custom tile (${ref}) · drag into your Palette · right-click to rename, duplicate or delete`
-      : t.count > 0 ? `${label} · used ${t.count}× · drag into your Palette` : `${label} · not used on terrain · drag into your Palette`);
+    tooltip(
+      sw,
+      this.tex!.level === CUSTOM_TEX_LEVEL
+        ? `${label} · your custom tile (${ref}) · drag into your Palette · right-click to rename, duplicate or delete`
+        : t.count > 0
+          ? `${label} · used ${t.count}× · drag into your Palette`
+          : `${label} · not used on terrain · drag into your Palette`,
+    );
     // While a pick is up a click ANSWERS it; otherwise it arms the paint brush as usual.
     sw.onclick = () => {
-      if (this.pick?.keep) { this.selKey = `tile:${ref}`; this.pick.onPick(ref); this.markSelected(); return; }
-      if (this.pick) { this.endPick(ref); return; }
-      this.select(`tile:${ref}`); this.emitTile(ref);
+      if (this.pick?.keep) {
+        this.selKey = `tile:${ref}`;
+        this.pick.onPick(ref);
+        this.markSelected();
+        return;
+      }
+      if (this.pick) {
+        this.endPick(ref);
+        return;
+      }
+      this.select(`tile:${ref}`);
+      this.emitTile(ref);
     };
     sw.draggable = true;
     sw.ondragstart = e => {
@@ -511,7 +581,10 @@ export class TextureLibrary {
     };
     if (this.tex!.level === CUSTOM_TEX_LEVEL) {
       sw.tabIndex = 0; // so the keyboard Menu key / Shift+F10 can raise the same actions
-      sw.oncontextmenu = e => { e.preventDefault(); this.openTileMenu(t.name, { x: e.clientX, y: e.clientY }); };
+      sw.oncontextmenu = e => {
+        e.preventDefault();
+        this.openTileMenu(t.name, { x: e.clientX, y: e.clientY });
+      };
     }
     return sw;
   }
@@ -523,16 +596,31 @@ export class TextureLibrary {
    *  the deliberate gesture. Custom tiles are focusable, so the keyboard Menu key raises this too. */
   private openTileMenu(name: string, at: { x: number; y: number }) {
     const stem = name.replace(/\.png$/i, '');
-    contextMenu([
-      { label: '✎ Rename…', desc: 'Painted cells, models and imported props follow the new name.',
-        onClick: () => void this.renameTile(name) },
-      { label: '⧉ Duplicate…', desc: 'Copy the art to a second tile — keep this one before regenerating over it.',
-        onClick: () => void this.cloneTile(name) },
-      { label: '⟳ Replace art…', desc: 'Put a new image on this tile. Everything wearing it follows.',
-        onClick: () => void this.replaceTile(name) },
-      { label: '🗑 Delete…', desc: `Remove ${stem}.png from disk. Asks first, and says what is using it.`,
-        onClick: () => void this.deleteTile(name) },
-    ], at);
+    contextMenu(
+      [
+        {
+          label: '✎ Rename…',
+          desc: 'Painted cells, models and imported props follow the new name.',
+          onClick: () => void this.renameTile(name),
+        },
+        {
+          label: '⧉ Duplicate…',
+          desc: 'Copy the art to a second tile — keep this one before regenerating over it.',
+          onClick: () => void this.cloneTile(name),
+        },
+        {
+          label: '⟳ Replace art…',
+          desc: 'Put a new image on this tile. Everything wearing it follows.',
+          onClick: () => void this.replaceTile(name),
+        },
+        {
+          label: '🗑 Delete…',
+          desc: `Remove ${stem}.png from disk. Asks first, and says what is using it.`,
+          onClick: () => void this.deleteTile(name),
+        },
+      ],
+      at,
+    );
   }
 
   /** What a delete or a replace reaches: the live document's painted cells and models, plus the imported-prop
@@ -541,9 +629,11 @@ export class TextureLibrary {
     const inDoc = this.cb.docTexUsage?.(makeTexRef(CUSTOM_TEX_LEVEL, name)) ?? 0;
     let imported = 0;
     try {
-      imported = (await fetchJson<{ importedProps: number }>(
-        `/api/texture-usage?name=${encodeURIComponent(name)}`)).importedProps;
-    } catch { /* usage is advisory — a failed count must not block the action */ }
+      imported = (await fetchJson<{ importedProps: number }>(`/api/texture-usage?name=${encodeURIComponent(name)}`))
+        .importedProps;
+    } catch {
+      /* usage is advisory — a failed count must not block the action */
+    }
     return [
       inDoc ? `${inDoc} place${inDoc === 1 ? '' : 's'} in this mountain` : '',
       imported ? `${imported} imported prop${imported === 1 ? '' : 's'}` : '',
@@ -558,22 +648,27 @@ export class TextureLibrary {
   private nameTaken(exclude?: string) {
     const taken = this.customNames();
     if (exclude) taken.delete(exclude.replace(/\.png$/i, '').toLowerCase());
-    return (value: string) => taken.has(value.replace(/\.png$/i, '').toLowerCase())
-      ? 'A custom tile with that name already exists.' : null;
+    return (value: string) =>
+      taken.has(value.replace(/\.png$/i, '').toLowerCase()) ? 'A custom tile with that name already exists.' : null;
   }
 
   private async renameTile(name: string) {
     const stem = name.replace(/\.png$/i, '');
     const to = await askName({
-      title: 'Rename texture', label: 'New name', value: stem, confirmLabel: 'Rename',
-      hint: 'Painted cells, authored models and imported props are repointed to the new name, so nothing '
-        + 'loses its art. Letters, digits, hyphens and underscores are kept; anything else is dropped.',
+      title: 'Rename texture',
+      label: 'New name',
+      value: stem,
+      confirmLabel: 'Rename',
+      hint:
+        'Painted cells, authored models and imported props are repointed to the new name, so nothing ' +
+        'loses its art. Letters, digits, hyphens and underscores are kept; anything else is dropped.',
       validate: this.nameTaken(stem),
     });
     if (!to) return;
     try {
       const res = await postJson<{ name: string; repointed: number }>(
-        `/api/texture-rename?from=${encodeURIComponent(stem)}&to=${encodeURIComponent(to)}`);
+        `/api/texture-rename?from=${encodeURIComponent(stem)}&to=${encodeURIComponent(to)}`,
+      );
       this.cb.onTextureRenamed?.(makeTexRef(CUSTOM_TEX_LEVEL, name), makeTexRef(CUSTOM_TEX_LEVEL, res.name));
       await this.adoptCustomTexture(res.name);
       toast(`Renamed to ${res.name}${res.repointed ? ` · ${res.repointed} imported prop(s) repointed` : ''}.`, 'ok');
@@ -599,9 +694,10 @@ export class TextureLibrary {
     const ok = await confirmAction({
       title: `Replace ${stem} with ${file.name}?`,
       confirmLabel: 'Replace',
-      body: `The new art is stored as its own tile and everything wearing ${stem}.png is repointed to it, `
-        + `then ${stem}.png is removed.`
-        + (costs.length
+      body:
+        `The new art is stored as its own tile and everything wearing ${stem}.png is repointed to it, ` +
+        `then ${stem}.png is removed.` +
+        (costs.length
           ? ` This changes what ${costs.join(' and ')} show.`
           : ' Nothing is currently using it, so only the library changes.'),
     });
@@ -609,11 +705,17 @@ export class TextureLibrary {
     try {
       const blob = await imageFileToPng(file, 512);
       const res = await postJson<{ name: string; replaced: string; repointed: number }>(
-        `/api/texture-replace?name=${encodeURIComponent(stem)}`, blob);
+        `/api/texture-replace?name=${encodeURIComponent(stem)}`,
+        blob,
+      );
       this.cb.onTextureRenamed?.(makeTexRef(CUSTOM_TEX_LEVEL, res.replaced), makeTexRef(CUSTOM_TEX_LEVEL, res.name));
       await this.adoptCustomTexture(res.name);
-      toast(`${res.replaced} now shows ${file.name}, as ${res.name}`
-        + `${res.repointed ? ` · ${res.repointed} imported prop(s) repointed` : ''}.`, 'ok', 5000);
+      toast(
+        `${res.replaced} now shows ${file.name}, as ${res.name}` +
+          `${res.repointed ? ` · ${res.repointed} imported prop(s) repointed` : ''}.`,
+        'ok',
+        5000,
+      );
     } catch (e) {
       toast(`Replace failed — ${message(e)}`, 'err', 6000);
     }
@@ -625,14 +727,18 @@ export class TextureLibrary {
     let suggestion = `${stem}-copy`;
     for (let i = 2; taken.has(suggestion.toLowerCase()); i++) suggestion = `${stem}-copy-${i}`;
     const to = await askName({
-      title: 'Duplicate texture', label: 'Name for the copy', value: suggestion, confirmLabel: 'Duplicate',
+      title: 'Duplicate texture',
+      label: 'Name for the copy',
+      value: suggestion,
+      confirmLabel: 'Duplicate',
       hint: 'Copies the art to a second tile. Nothing already painted changes — the copy starts unused.',
       validate: this.nameTaken(),
     });
     if (!to) return;
     try {
       const res = await postJson<{ name: string }>(
-        `/api/texture-clone?from=${encodeURIComponent(stem)}&to=${encodeURIComponent(to)}`);
+        `/api/texture-clone?from=${encodeURIComponent(stem)}&to=${encodeURIComponent(to)}`,
+      );
       await this.adoptCustomTexture(res.name);
       toast(`Duplicated as ${res.name}.`, 'ok');
     } catch (e) {
@@ -648,11 +754,12 @@ export class TextureLibrary {
       title: `Delete ${stem}?`,
       danger: true,
       confirmLabel: 'Delete',
-      body: `Removes assets/textures/${stem}.png from this mountain. This is not undoable.`
-        + (costs.length
-          ? ` It is currently used by ${costs.join(' and ')}. Painted cells and authored models are cleared `
-            + 'and fall back to their surface tint; imported props keep the reference and will show as '
-            + 'untextured until you point them somewhere else.'
+      body:
+        `Removes assets/textures/${stem}.png from this mountain. This is not undoable.` +
+        (costs.length
+          ? ` It is currently used by ${costs.join(' and ')}. Painted cells and authored models are cleared ` +
+            'and fall back to their surface tint; imported props keep the reference and will show as ' +
+            'untextured until you point them somewhere else.'
           : ' Nothing is currently using it.'),
     });
     if (!ok) return;
@@ -674,7 +781,13 @@ export class TextureLibrary {
     none.className = 'sp-tile sp-add sp-none' + (this.selKey === '' ? ' sel' : '');
     none.textContent = '∅';
     tooltip(none, 'No texture — the model falls back to untextured clay.');
-    none.onclick = () => { if (this.pick?.keep) { this.pick.onPick(null); return; } this.endPick(null); };
+    none.onclick = () => {
+      if (this.pick?.keep) {
+        this.pick.onPick(null);
+        return;
+      }
+      this.endPick(null);
+    };
     return none;
   }
 
@@ -697,15 +810,19 @@ export class TextureLibrary {
     gen.textContent = '✨';
     // The dialog opens with a tiling prompt already written, model menus priced per run, and a size menu
     // defaulting to the 128² PS2 tiles ship at; results land here as authored tiles like any other image.
-    tooltip(gen, 'Generate a texture with fal.ai — describe it, or inpaint a transition or decal. '
-      + 'Needs a fal.ai API key (Settings ▸ Integrations); bills your own account.');
-    gen.onclick = () => openTextureGenDialog({
-      mountainName: this.mountainName(),
-      onSaved: name => this.adoptCustomTexture(name),
-      // the Transition / Decal tabs choose their input tiles through this very panel's pick mode; the
-      // dialog hides itself while the question is up
-      pickTexture: req => this.openPick(req),
-    });
+    tooltip(
+      gen,
+      'Generate a texture with fal.ai — describe it, or inpaint a transition or decal. ' +
+        'Needs a fal.ai API key (Settings ▸ Integrations); bills your own account.',
+    );
+    gen.onclick = () =>
+      openTextureGenDialog({
+        mountainName: this.mountainName(),
+        onSaved: name => this.adoptCustomTexture(name),
+        // the Transition / Decal tabs choose their input tiles through this very panel's pick mode; the
+        // dialog hides itself while the question is up
+        pickTexture: req => this.openPick(req),
+      });
     return gen;
   }
 
@@ -720,8 +837,10 @@ export class TextureLibrary {
       try {
         const blob = await imageFileToPng(file, 512);
         const stem = file.name.replace(/\.[^.]*$/, '');
-        const { name } = await fetchJson<{ name: string }>(
-          `/api/texture-upload?name=${encodeURIComponent(stem)}`, { method: 'POST', body: blob });
+        const { name } = await fetchJson<{ name: string }>(`/api/texture-upload?name=${encodeURIComponent(stem)}`, {
+          method: 'POST',
+          body: blob,
+        });
         last = name;
       } catch (e) {
         console.warn(`custom texture "${file.name}" failed:`, e);
@@ -746,7 +865,7 @@ export class TextureLibrary {
   }
 }
 
-const message = (e: unknown) => e instanceof Error ? e.message : String(e);
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Ask for one image file, resolving null if the picker is dismissed. The Replace action's way in — the
  *  library's own hidden `+` input is a multi-file adder and belongs to that route. */
@@ -778,7 +897,8 @@ async function imageFileToPng(file: File, max: number): Promise<Blob> {
     canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
     canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
     return await new Promise<Blob>((ok, err) =>
-      canvas.toBlob(b => (b ? ok(b) : err(new Error('PNG encode failed'))), 'image/png'));
+      canvas.toBlob(b => (b ? ok(b) : err(new Error('PNG encode failed'))), 'image/png'),
+    );
   } finally {
     URL.revokeObjectURL(url);
   }

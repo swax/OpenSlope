@@ -55,7 +55,11 @@ export interface PatchDependency {
   /** The patches a set of re-creased edges can change. */
   ofEdges(edges: Iterable<readonly [number, number]>): Set<number>;
   /** Both at once, plus patches named directly (a quad attribute moves only its own patch). */
-  of(change: { vertices?: Iterable<number>; edges?: Iterable<readonly [number, number]>; quads?: Iterable<number> }): Set<number>;
+  of(change: {
+    vertices?: Iterable<number>;
+    edges?: Iterable<readonly [number, number]>;
+    quads?: Iterable<number>;
+  }): Set<number>;
 }
 
 /** Which quads each corner belongs to. Derived from the topology alone, so it is cached against the mesh it
@@ -138,7 +142,7 @@ const whole = (reason: string, renumbered: boolean): NetChange => ({ ...NOTHING,
 
 /** The per-face attribute channels, each a sparse index→value map on the document. */
 const QUAD_CHANNELS = ['quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist'] as const;
-type QuadChannel = typeof QUAD_CHANNELS[number];
+type QuadChannel = (typeof QUAD_CHANNELS)[number];
 
 /** A sparse channel flattened to the values it holds, so the next comparison is a lookup rather than a walk. */
 type Channel = Map<string, unknown>;
@@ -179,20 +183,32 @@ function channelDiff(was: Channel, now: Channel, onKey: (key: string) => void): 
  * cheap enough to run on every rendered frame, which serializing a few thousand quads is not.
  */
 function shapeOf(doc: QuadMeshDoc): string {
-  let low = 0x9e3779b1, high = 0x85ebca6b;
+  let low = 0x9e3779b1,
+    high = 0x85ebca6b;
   const mix = (value: number): void => {
     low = Math.imul(low ^ value, 2654435761);
     high = Math.imul(high ^ (value + 0x9e3779b9), 1597334677);
   };
   mix(doc.vertices.length);
   mix(doc.quads.length);
-  for (const quad of doc.quads) { mix(quad.length); for (const corner of quad) mix(corner); }
+  for (const quad of doc.quads) {
+    mix(quad.length);
+    for (const corner of quad) mix(corner);
+  }
   const free = doc.freeEdges ?? [];
   mix(free.length);
-  for (const [a, b] of free) { mix(a); mix(b); }
+  for (const [a, b] of free) {
+    mix(a);
+    mix(b);
+  }
   const nodes = doc.tJunctions ?? [];
   mix(nodes.length);
-  for (const node of nodes) { mix(node.vertex); mix(node.edge[0]); mix(node.edge[1]); mix(Math.round(node.t * 1e9)); }
+  for (const node of nodes) {
+    mix(node.vertex);
+    mix(node.edge[0]);
+    mix(node.edge[1]);
+    mix(Math.round(node.t * 1e9));
+  }
   low = Math.imul(low ^ (low >>> 16), 2246822507) ^ Math.imul(high ^ (high >>> 13), 3266489909);
   high = Math.imul(high ^ (high >>> 16), 2246822507) ^ Math.imul(low ^ (low >>> 13), 3266489909);
   return `${(high >>> 0).toString(16)}:${(low >>> 0).toString(16)}`;
@@ -221,8 +237,10 @@ const snapshotOf = (doc: QuadMeshDoc): NetSnapshot => {
     vertices: Float64Array.from(doc.vertices),
     handles: channelOf(doc.edgeHandles as Record<string, unknown> | undefined),
     edgeLocks: channelOf(doc.edgeLocked as Record<string, unknown> | undefined),
-    quads: Object.fromEntries(QUAD_CHANNELS.map(channel => [channel, channelOf(record[channel])])) as
-      Record<QuadChannel, Channel>,
+    quads: Object.fromEntries(QUAD_CHANNELS.map(channel => [channel, channelOf(record[channel])])) as Record<
+      QuadChannel,
+      Channel
+    >,
   };
 };
 
@@ -250,24 +268,30 @@ export function createNetWatcher() {
     if (was.globals !== held.globals) return whole('a field every patch reads moved', false);
 
     const vertices: number[] = [];
-    const positions = held.vertices, before = was.vertices;
+    const positions = held.vertices,
+      before = was.vertices;
     for (let v = 0, at = 0; at < positions.length; at += 3, v++) {
-      if (positions[at] !== before[at] || positions[at + 1] !== before[at + 1]
-        || positions[at + 2] !== before[at + 2]) vertices.push(v);
+      if (positions[at] !== before[at] || positions[at + 1] !== before[at + 1] || positions[at + 2] !== before[at + 2])
+        vertices.push(v);
     }
     const edges: [number, number][] = [];
     channelDiff(was.handles, held.handles, key => {
       // A crease is keyed by its directed ends; the patches on either side read it whichever way it points.
       const cut = key.indexOf('>');
-      const from = Number(key.slice(0, cut)), to = Number(key.slice(cut + 1));
+      const from = Number(key.slice(0, cut)),
+        to = Number(key.slice(cut + 1));
       if (cut > 0 && Number.isInteger(from) && Number.isInteger(to)) edges.push([from, to]);
     });
     // A lock changes no tessellated position or material, but it recolours topology edges in the authored
     // wireframe. That batch is partitioned by material only during a cage rebuild, so this rare UI operation
     // deliberately takes the full path rather than pretending a patch-buffer refresh can change its colour.
     let locksChanged = false;
-    channelDiff(was.quads.quadLocked, held.quads.quadLocked, () => { locksChanged = true; });
-    channelDiff(was.edgeLocks, held.edgeLocks, () => { locksChanged = true; });
+    channelDiff(was.quads.quadLocked, held.quads.quadLocked, () => {
+      locksChanged = true;
+    });
+    channelDiff(was.edgeLocks, held.edgeLocks, () => {
+      locksChanged = true;
+    });
     if (locksChanged) return whole('patch or edge protection changed', false);
     const quads = new Set<number>();
     for (const channel of QUAD_CHANNELS) {
@@ -285,7 +309,9 @@ export function createNetWatcher() {
     note,
     /** Forget what was drawn, so the next comparison asks for a full rebuild — what a render that threw
      *  half-way leaves behind, since nothing finished painting the document it had already taken as drawn. */
-    reset(): void { held = null; },
+    reset(): void {
+      held = null;
+    },
   };
 }
 
@@ -297,9 +323,11 @@ export function patchVertexSpans(quads: Iterable<number>, stride: number): [numb
   const sorted = [...new Set(quads)].sort((a, b) => a - b);
   const spans: [number, number][] = [];
   for (const q of sorted) {
-    const from = q * stride, to = from + stride;
+    const from = q * stride,
+      to = from + stride;
     const last = spans[spans.length - 1];
-    if (last && last[1] === from) last[1] = to; else spans.push([from, to]);
+    if (last && last[1] === from) last[1] = to;
+    else spans.push([from, to]);
   }
   return spans;
 }

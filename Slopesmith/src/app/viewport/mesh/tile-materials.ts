@@ -5,12 +5,21 @@ import { textureRefUrl } from '../../net/asset-paths';
 import { SURFACE_POLY_OFFSET } from '../constants';
 import { tintBackfaces } from './backface-tint';
 import {
-  asTextureArrayImage, buildTextureArrayBank, canPackTextureArrays, planTextureArrayBank, useTextureArray,
-  type TextureArrayBank, type TextureArraySlot,
+  asTextureArrayImage,
+  buildTextureArrayBank,
+  canPackTextureArrays,
+  planTextureArrayBank,
+  useTextureArray,
+  type TextureArrayBank,
+  type TextureArraySlot,
 } from './texture-array';
 import {
-  analyzeTextureImage, applyTextureAlphaMode, invalidateTextureAlphaLevel, terrainAlphaMode,
-  type TextureAlphaAnalysis, type TextureAlphaMode,
+  analyzeTextureImage,
+  applyTextureAlphaMode,
+  invalidateTextureAlphaLevel,
+  terrainAlphaMode,
+  type TextureAlphaAnalysis,
+  type TextureAlphaMode,
 } from '../../props/texture-alpha';
 
 /**
@@ -43,8 +52,12 @@ export function createTileMaterials(onLoaded: () => void) {
       texLoader.load(
         textureRefUrl(ref),
         tex => {
-          if (generation !== projectGeneration && parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) {
-            tex.dispose(); return;
+          if (
+            generation !== projectGeneration &&
+            parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
+          ) {
+            tex.dispose();
+            return;
           }
           tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
           tex.colorSpace = THREE.SRGBColorSpace;
@@ -54,15 +67,22 @@ export function createTileMaterials(onLoaded: () => void) {
           // tile lands V-flipped vs the bake. flipY=false makes the editor match the Unity import 1:1.
           tex.flipY = false;
           tex.needsUpdate = true;
-          try { alphaCache.set(ref, analyzeTextureImage(tex.image)); }
-          catch { alphaCache.set(ref, { kind: 'unknown', glow: false }); }
+          try {
+            alphaCache.set(ref, analyzeTextureImage(tex.image));
+          } catch {
+            alphaCache.set(ref, { kind: 'unknown', glow: false });
+          }
           texCache.set(ref, tex);
           texPending.delete(ref);
           onLoaded(); // fold the now-loaded tile into whatever the caller is drawing (terrain / reference / ghost)
         },
         undefined,
         () => {
-          if (generation !== projectGeneration && parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) return;
+          if (
+            generation !== projectGeneration &&
+            parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
+          )
+            return;
           texPending.delete(ref);
           // A reference rebuild runs after every successful sibling tile. Remember this failure for the
           // session so nine absent pages do not turn into hundreds of identical 404s. Reloading retries.
@@ -83,10 +103,13 @@ export function createTileMaterials(onLoaded: () => void) {
   function material(ref: TexRef, tex: THREE.Texture): THREE.MeshLambertMaterial {
     let m = texMats.get(ref);
     if (!m) {
-      m = tintBackfaces(new THREE.MeshLambertMaterial({
-        map: tex, side: THREE.DoubleSide,
-        ...SURFACE_POLY_OFFSET, // sit behind the cage wires
-      }));
+      m = tintBackfaces(
+        new THREE.MeshLambertMaterial({
+          map: tex,
+          side: THREE.DoubleSide,
+          ...SURFACE_POLY_OFFSET, // sit behind the cage wires
+        }),
+      );
       applyTextureAlphaMode(m, terrainAlphaMode(alphaCache.get(ref)));
       texMats.set(ref, m);
     }
@@ -98,10 +121,14 @@ export function createTileMaterials(onLoaded: () => void) {
   function materialLit(ref: TexRef, tex: THREE.Texture): THREE.MeshBasicMaterial {
     let m = texMatsLit.get(ref);
     if (!m) {
-      m = tintBackfaces(new THREE.MeshBasicMaterial({
-        map: tex, vertexColors: true, side: THREE.DoubleSide,
-        ...SURFACE_POLY_OFFSET,
-      }));
+      m = tintBackfaces(
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          vertexColors: true,
+          side: THREE.DoubleSide,
+          ...SURFACE_POLY_OFFSET,
+        }),
+      );
       applyTextureAlphaMode(m, terrainAlphaMode(alphaCache.get(ref)));
       texMatsLit.set(ref, m);
     }
@@ -128,29 +155,40 @@ export function createTileMaterials(onLoaded: () => void) {
     bankKey = key; // claim the key even on a null result, so a bank that cannot build is not retried per frame
     bank = null;
     if (!refs.length) return null;
-    const plan = planTextureArrayBank(refs.map(ref => {
-      const image = asTextureArrayImage(texCache.get(ref)?.image);
-      return { key: ref, width: image?.width ?? 0, height: image?.height ?? 0 };
-    }));
-    const built = buildTextureArrayBank(plan, ref => asTextureArrayImage(texCache.get(ref)?.image),
-      { flipY: false, dilateAlpha: true, anisotropy: 4 }); // terrain tiles ship flipY=false to match snowknife's (u, 1-v) sampling
+    const plan = planTextureArrayBank(
+      refs.map(ref => {
+        const image = asTextureArrayImage(texCache.get(ref)?.image);
+        return { key: ref, width: image?.width ?? 0, height: image?.height ?? 0 };
+      }),
+    );
+    const built = buildTextureArrayBank(plan, ref => asTextureArrayImage(texCache.get(ref)?.image), {
+      flipY: false,
+      dilateAlpha: true,
+      anisotropy: 4,
+    }); // terrain tiles ship flipY=false to match snowknife's (u, 1-v) sampling
     if (!built) return null;
     const modes: TextureAlphaMode[] = ['opaque', 'cutout'];
     const key3d = (index: number, mode: TextureAlphaMode) => `terrain:${key}:${index}:${mode}`;
     bank = {
       bank: built,
-      materials: built.textures.flatMap((texture, index) => modes.map(mode => {
-        const material = tintBackfaces(
-          new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET }));
-        applyTextureAlphaMode(material, mode);
-        return useTextureArray(material, texture, key3d(index, mode));
-      })),
-      materialsLit: built.textures.flatMap((texture, index) => modes.map(mode => {
-        const material = tintBackfaces(
-          new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET }));
-        applyTextureAlphaMode(material, mode);
-        return useTextureArray(material, texture, key3d(index, mode));
-      })),
+      materials: built.textures.flatMap((texture, index) =>
+        modes.map(mode => {
+          const material = tintBackfaces(
+            new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET }),
+          );
+          applyTextureAlphaMode(material, mode);
+          return useTextureArray(material, texture, key3d(index, mode));
+        }),
+      ),
+      materialsLit: built.textures.flatMap((texture, index) =>
+        modes.map(mode => {
+          const material = tintBackfaces(
+            new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET }),
+          );
+          applyTextureAlphaMode(material, mode);
+          return useTextureArray(material, texture, key3d(index, mode));
+        }),
+      ),
       slot: (ref: TexRef) => built.plan.slots.get(ref),
       materialIndex: (ref: TexRef) => {
         const slot = built.plan.slots.get(ref);
@@ -158,9 +196,11 @@ export function createTileMaterials(onLoaded: () => void) {
         return slot.array * modes.length + (terrainAlphaMode(alphaCache.get(ref)) === 'cutout' ? 1 : 0);
       },
     };
-    console.info(`[tile-array] ${key}: ${built.plan.slots.size}/${refs.length} pages in `
-      + `${built.textures.length} array(s) at ${built.plan.width}x${built.plan.height}`
-      + (built.plan.excluded.length ? `, ${built.plan.excluded.length} kept separate` : ''));
+    console.info(
+      `[tile-array] ${key}: ${built.plan.slots.size}/${refs.length} pages in ` +
+        `${built.textures.length} array(s) at ${built.plan.width}x${built.plan.height}` +
+        (built.plan.excluded.length ? `, ${built.plan.excluded.length} kept separate` : ''),
+    );
     return bank;
   }
 
@@ -180,7 +220,11 @@ export function createTileMaterials(onLoaded: () => void) {
     invalidateTextureAlphaLevel(CUSTOM_TEX_LEVEL);
     disposeBank(); // packed copies of the old project's pages; the next reference build repacks
     const authored = (ref: string) => parseTexRef(ref).level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase();
-    for (const [ref, texture] of texCache) if (authored(ref)) { texture.dispose(); texCache.delete(ref); }
+    for (const [ref, texture] of texCache)
+      if (authored(ref)) {
+        texture.dispose();
+        texCache.delete(ref);
+      }
     for (const ref of [...alphaCache.keys()]) if (authored(ref)) alphaCache.delete(ref);
     for (const ref of [...texPending]) if (authored(ref)) texPending.delete(ref);
     // A failure is not immutable asset state. In particular, a recovery document can ask for retail pages
@@ -188,8 +232,16 @@ export function createTileMaterials(onLoaded: () => void) {
     // bank until a full page refresh. A project rebind is the retry boundary, while successfully decoded
     // reference pages above remain warm.
     texMissing.clear();
-    for (const [ref, material] of texMats) if (authored(ref)) { material.dispose(); texMats.delete(ref); }
-    for (const [ref, material] of texMatsLit) if (authored(ref)) { material.dispose(); texMatsLit.delete(ref); }
+    for (const [ref, material] of texMats)
+      if (authored(ref)) {
+        material.dispose();
+        texMats.delete(ref);
+      }
+    for (const [ref, material] of texMatsLit)
+      if (authored(ref)) {
+        material.dispose();
+        texMatsLit.delete(ref);
+      }
   }
 
   return { ensure, material, materialLit, ensureBank, disposeBank, invalidateProjectAssets };

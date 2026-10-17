@@ -6,8 +6,13 @@ import { rollerNodeMass } from '../core/effects/authoring';
 import { referenceEffectDefaults } from '../core/props/effect-defaults';
 import { gemEffectTemplate } from '../core/props/gem';
 import {
-  combinePropAlphaModes, propAlphaMode,
-  type PropAlphaMode, type PropModelAnimation, type PropModelCurve, type PropModelRotation, type PropsPayload,
+  combinePropAlphaModes,
+  propAlphaMode,
+  type PropAlphaMode,
+  type PropModelAnimation,
+  type PropModelCurve,
+  type PropModelRotation,
+  type PropsPayload,
 } from '../core/reference/props';
 import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } from '../core/collision/native';
 import type { V3 } from '../core/doc/types';
@@ -19,11 +24,21 @@ import { buildMaterialCombiner, type MaterialCombiner, type SourceMaterial } fro
 import { modelGeometryBox } from '../core/export/props';
 import type { NativeArt } from '../core/export/provider';
 import {
-  buildUnityBodyRecipe, decodePhysicsBodyTree, type DecodedPhysicsBody, type PhysicsTreeLevel,
+  buildUnityBodyRecipe,
+  decodePhysicsBodyTree,
+  type DecodedPhysicsBody,
+  type PhysicsTreeLevel,
   type UnityBodyRecipe,
 } from '../core/collision/unity-body';
 
-import { joinMapPath as join, mapBasename as basename, safeMapName as safeDataName, mapLimit, READ_CONCURRENCY, type MapDataSource } from './map-data';
+import {
+  joinMapPath as join,
+  mapBasename as basename,
+  safeMapName as safeDataName,
+  mapLimit,
+  READ_CONCURRENCY,
+  type MapDataSource,
+} from './map-data';
 export type { MapDataSource } from './map-data';
 function encodeBytes(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -31,7 +46,9 @@ function encodeBytes(buffer: ArrayBuffer): string {
   for (let i = 0; i < bytes.length; i += 8192) text += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return btoa(text);
 }
-function decodeBytes(text: string): Uint8Array { return Uint8Array.from(atob(text), char => char.charCodeAt(0)); }
+function decodeBytes(text: string): Uint8Array {
+  return Uint8Array.from(atob(text), char => char.charCodeAt(0));
+}
 
 /**
  * Serve an extracted level's PROPS to the editor's reference layer: the placed static objects (trees,
@@ -50,8 +67,9 @@ export async function levelsWithProps(io: MapDataSource): Promise<string[]> {
   const dirs = (await io.listEntries(io.root)).filter(entry => entry.isDirectory).map(entry => entry.name);
   const usable = await mapLimit(dirs, READ_CONCURRENCY, async name => {
     const dir = join(io.root, name);
-    const present = await Promise.all(['Models.json', 'Instances.json', 'Meshes']
-      .map(part => io.pathExists(join(dir, part))));
+    const present = await Promise.all(
+      ['Models.json', 'Instances.json', 'Meshes'].map(part => io.pathExists(join(dir, part))),
+    );
     return present.every(Boolean);
   });
   return dirs.filter((_name, index) => usable[index]).sort();
@@ -117,17 +135,24 @@ function parseObj(text: string): RawMesh {
           const rest = tok.slice(slash + 1); // "vt" or "vt/vn" or "/vn"
           const slash2 = rest.indexOf('/');
           const tiTok = slash2 < 0 ? rest : rest.slice(0, slash2);
-          if (tiTok) { const tt = parseInt(tiTok, 10); if (!Number.isNaN(tt)) ti = tt < 0 ? vtCount + tt : tt - 1; }
+          if (tiTok) {
+            const tt = parseInt(tiTok, 10);
+            if (!Number.isNaN(tt)) ti = tt < 0 ? vtCount + tt : tt - 1;
+          }
           if (slash2 >= 0) {
             const niTok = rest.slice(slash2 + 1);
-            if (niTok) { const nn = parseInt(niTok, 10); if (!Number.isNaN(nn)) ni = nn < 0 ? vnCount + nn : nn - 1; }
+            if (niTok) {
+              const nn = parseInt(niTok, 10);
+              if (!Number.isNaN(nn)) ni = nn < 0 ? vnCount + nn : nn - 1;
+            }
           }
         }
         fv.push(vi < 0 ? vCount + vi : vi - 1); // 1-based → 0-based; negatives are relative
         ft.push(ti);
         fn.push(ni);
       }
-      for (let i = 2; i < fv.length; i++) // fan-triangulate
+      for (let i = 2; i < fv.length; i++)
+        // fan-triangulate
         corners.push(fv[0], ft[0], fn[0], fv[i - 1], ft[i - 1], fn[i - 1], fv[i], ft[i], fn[i]);
     }
   }
@@ -151,7 +176,12 @@ export interface ModelSub {
   object?: number;
 }
 /** One merged model: its name + per-material submeshes and an optional simple rotation clip. */
-export interface ModelGeom { name: string; subs: ModelSub[]; rotation?: PropModelRotation; animation?: PropModelAnimation }
+export interface ModelGeom {
+  name: string;
+  subs: ModelSub[];
+  rotation?: PropModelRotation;
+  animation?: PropModelAnimation;
+}
 
 /** Weld a mesh's (vIdx, tIdx, nIdx) corners into `sub`, baking its model-object rest transform before several objects
  *  sharing a material are merged. This is load-bearing for multi-object models such as the LCD's broken shards. */
@@ -168,7 +198,9 @@ function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4, li
   if (!hadVertices) sub.light = lightBase === undefined ? undefined : [];
   else if (lightBase === undefined) sub.light = undefined;
   for (let k = 0; k < c.length; k += 3) {
-    const vi = c[k], ti = c[k + 1], ni = c[k + 2];
+    const vi = c[k],
+      ti = c[k + 1],
+      ni = c[k + 2];
     const key = `${vi}/${ti}/${ni}`;
     let idx = map.get(key);
     if (idx === undefined) {
@@ -177,7 +209,10 @@ function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4, li
       sub.positions.push(point.x, point.y, point.z);
       sub.uvs.push(ti >= 0 ? mesh.vt[ti * 2] : 0, ti >= 0 ? mesh.vt[ti * 2 + 1] : 0);
       if (sub.normals) {
-        normal.fromArray(mesh.vn, ni * 3).applyMatrix3(normalMatrix).normalize();
+        normal
+          .fromArray(mesh.vn, ni * 3)
+          .applyMatrix3(normalMatrix)
+          .normalize();
         sub.normals.push(normal.x, normal.y, normal.z);
       }
       sub.light?.push(lightBase! + vi);
@@ -188,10 +223,20 @@ function addMeshToSub(sub: ModelSub, mesh: RawMesh, transform: THREE.Matrix4, li
 }
 
 interface ModelAnimationMath {
-  Value1: number; Value2: number; Value3: number; Value4: number; Value5: number; Value6: number;
+  Value1: number;
+  Value2: number;
+  Value3: number;
+  Value4: number;
+  Value5: number;
+  Value6: number;
 }
 interface ModelAnimation {
-  U1?: number; U2?: number; U3?: number; U4?: number; U5?: number; U6?: number;
+  U1?: number;
+  U2?: number;
+  U3?: number;
+  U4?: number;
+  U5?: number;
+  U6?: number;
   AnimationAction: number;
   AnimationEntries: ({ AnimationMaths: ModelAnimationMath[] | null } | null)[] | null;
 }
@@ -205,13 +250,27 @@ interface ModelsJsonModelObject {
   MeshData: ({ MeshPath: string; MaterialID?: number; VertexLightingBase?: number } | null)[] | null;
   Animation?: ModelAnimation | null;
 }
-interface ModelsJsonModel { ModelName: string; AnimTime?: number; ModelObjects: (ModelsJsonModelObject | null)[] | null }
-interface ModelsJson { Models: ModelsJsonModel[] }
+interface ModelsJsonModel {
+  ModelName: string;
+  AnimTime?: number;
+  ModelObjects: (ModelsJsonModelObject | null)[] | null;
+}
+interface ModelsJson {
+  Models: ModelsJsonModel[];
+}
 interface RawExternalSound {
   U0?: number;
   SoundIndex?: number;
-  U2?: number; U3?: number; U4?: number;
-  U5?: number; U6?: number; U7?: number; U8?: number; U9?: number; U10?: number; U11?: number;
+  U2?: number;
+  U3?: number;
+  U4?: number;
+  U5?: number;
+  U6?: number;
+  U7?: number;
+  U8?: number;
+  U9?: number;
+  U10?: number;
+  U11?: number;
 }
 interface InstancesJson {
   Instances: {
@@ -260,14 +319,16 @@ interface InstancesJson {
 /** A level material record — only the fields props need: textures and the alpha-blend flag word. */
 type SsxMaterial = SourceMaterial;
 
-interface EffectPiecePlacement { model: number; effectSlotIndex: number }
+interface EffectPiecePlacement {
+  model: number;
+  effectSlotIndex: number;
+}
 
 /** Models whose geometry must remain partitioned for a decoded Sub20 mesh throw. Most reference props are
  * intentionally merged by material, but that would weld a mailbox's 21 loose letters into one immovable clump.
  * Resolve both ordinary slot-owned graphs and MainType-7 cross-instance calls; nested functions keep the same
  * receiver, so they participate in the graph's mesh-throw classification too. */
-export function meshThrowModelIds(document: EffectsDocument,
-  instances: readonly EffectPiecePlacement[]): Set<number> {
+export function meshThrowModelIds(document: EffectsDocument, instances: readonly EffectPiecePlacement[]): Set<number> {
   const functions = new Map(document.functions.map(fn => [fn.id, fn]));
   const graphs = new Map(document.graphs.map(graph => [graph.id, graph]));
   const memo = new Map<string, boolean>();
@@ -305,7 +366,7 @@ export function meshThrowModelIds(document: EffectsDocument,
   const collectCallTarget = (node: EffectNode) => {
     if (!graphHasMeshThrow(node.references?.effectGraph)) return;
     const index = instanceIndex(node.references?.instance);
-    const model = index === null ? -1 : instances[index]?.model ?? -1;
+    const model = index === null ? -1 : (instances[index]?.model ?? -1);
     if (model >= 0) out.add(model);
   };
   for (const graph of document.graphs) for (const node of graph.nodes) collectCallTarget(node);
@@ -313,14 +374,16 @@ export function meshThrowModelIds(document: EffectsDocument,
   return out;
 }
 
-function readMeshThrowModelIds(document: EffectsDocument | null,
-  instances: InstancesJson['Instances']): Set<number> {
+function readMeshThrowModelIds(document: EffectsDocument | null, instances: InstancesJson['Instances']): Set<number> {
   if (!document) return new Set();
   try {
-    return meshThrowModelIds(document, instances.map(instance => ({
-      model: instance.ModelID,
-      effectSlotIndex: Number.isInteger(instance.EffectSlotIndex) ? instance.EffectSlotIndex! : -1,
-    })));
+    return meshThrowModelIds(
+      document,
+      instances.map(instance => ({
+        model: instance.ModelID,
+        effectSlotIndex: Number.isInteger(instance.EffectSlotIndex) ? instance.EffectSlotIndex! : -1,
+      })),
+    );
   } catch {
     // Props remain usable for an older extraction without a valid portable effects document.
     return new Set();
@@ -328,8 +391,10 @@ function readMeshThrowModelIds(document: EffectsDocument | null,
 }
 
 /** Collision Roller targets and their effect-authored scalar masses, keyed by Instances.json index. */
-export function rollerInstanceMasses(document: EffectsDocument,
-  instances: readonly Pick<InstancesJson['Instances'][number], 'EffectSlotIndex'>[]): Map<number, number> {
+export function rollerInstanceMasses(
+  document: EffectsDocument,
+  instances: readonly Pick<InstancesJson['Instances'][number], 'EffectSlotIndex'>[],
+): Map<number, number> {
   const out = new Map<number, number>();
   const graphs = new Map(document.graphs.map(graph => [graph.id, graph]));
   const slots = new Map(document.slots.map((slot, index) => [slot.originalIndex ?? index, slot]));
@@ -362,11 +427,16 @@ export function rollerInstanceMasses(document: EffectsDocument,
   return out;
 }
 
-function readRollerInstanceMasses(document: EffectsDocument | null,
-  instances: InstancesJson['Instances']): Map<number, number> {
+function readRollerInstanceMasses(
+  document: EffectsDocument | null,
+  instances: InstancesJson['Instances'],
+): Map<number, number> {
   if (!document) return new Map();
-  try { return rollerInstanceMasses(document, instances); }
-  catch { return new Map(); }
+  try {
+    return rollerInstanceMasses(document, instances);
+  } catch {
+    return new Map();
+  }
 }
 
 /** Resolve each Models.json object's local rest pose through ParentID into model space. Per-object OBJ files are
@@ -379,7 +449,8 @@ export function modelObjectRestMatrices(model: ModelsJsonModel): THREE.Matrix4[]
     const s = obj?.Scale;
     const position = new THREE.Vector3(p?.[0] ?? 0, p?.[1] ?? 0, p?.[2] ?? 0);
     const rotation = new THREE.Quaternion(r?.[0] ?? 0, r?.[1] ?? 0, r?.[2] ?? 0, r?.[3] ?? 1);
-    if (rotation.lengthSq() < 1e-12) rotation.identity(); else rotation.normalize();
+    if (rotation.lengthSq() < 1e-12) rotation.identity();
+    else rotation.normalize();
     const scale = new THREE.Vector3(s?.[0] ?? 1, s?.[1] ?? 1, s?.[2] ?? 1);
     return new THREE.Matrix4().compose(position, rotation, scale);
   });
@@ -392,8 +463,8 @@ export function modelObjectRestMatrices(model: ModelsJsonModel): THREE.Matrix4[]
     if (visiting.has(index)) return own;
     visiting.add(index);
     const parent = objects[index]?.ParentID ?? -1;
-    const resolved = parent >= 0 && parent < objects.length && parent !== index
-      ? resolve(parent).clone().multiply(own) : own.clone();
+    const resolved =
+      parent >= 0 && parent < objects.length && parent !== index ? resolve(parent).clone().multiply(own) : own.clone();
     visiting.delete(index);
     world[index] = resolved;
     return resolved;
@@ -403,16 +474,19 @@ export function modelObjectRestMatrices(model: ModelsJsonModel): THREE.Matrix4[]
 
 /** Apply a per-page sidecar to the material table it qualifies. Exported for the fixture check that keeps
  * this contract independent of a developer's extracted Maps library. */
-export function materialsWithAlphaOverrides(materials: readonly SsxMaterial[],
-  raw: Readonly<Record<string, unknown>>): SsxMaterial[] {
+export function materialsWithAlphaOverrides(
+  materials: readonly SsxMaterial[],
+  raw: Readonly<Record<string, unknown>>,
+): SsxMaterial[] {
   const overrides = new Map<string, PropAlphaMode>();
   for (const [file, value] of Object.entries(raw)) {
     const mode = propAlphaMode(typeof value === 'string' ? value.toLowerCase() : value);
     if (mode) overrides.set(basename(file).toLowerCase(), mode);
   }
   return materials.map(material => {
-    const files = [material.TexturePath, ...(material.TextureFlipbook ?? [])]
-      .filter((file): file is string => typeof file === 'string' && !!file);
+    const files = [material.TexturePath, ...(material.TextureFlipbook ?? [])].filter(
+      (file): file is string => typeof file === 'string' && !!file,
+    );
     const mode = combinePropAlphaModes(files.map(file => overrides.get(basename(file).toLowerCase())));
     return mode ? { ...material, AlphaMode: mode } : material;
   });
@@ -423,8 +497,7 @@ export function materialsWithAlphaOverrides(materials: readonly SsxMaterial[],
 async function readLevelMaterials(io: MapDataSource, level: string): Promise<SsxMaterial[]> {
   const [document, overrides] = await Promise.all([
     io.readJsonOr<{ Materials?: SsxMaterial[] }>(join(io.root, safeDataName(level), 'Materials.json'), {}),
-    io.readJsonOr<Record<string, unknown>>(
-      join(io.root, safeDataName(level), 'TextureAlpha.overrides.json'), {}),
+    io.readJsonOr<Record<string, unknown>>(join(io.root, safeDataName(level), 'TextureAlpha.overrides.json'), {}),
   ]);
   return materialsWithAlphaOverrides(document.Materials ?? [], overrides);
 }
@@ -438,7 +511,7 @@ async function readLevelMaterials(io: MapDataSource, level: string): Promise<Ssx
  * bake on one file read per material. The whole library's tables are a fraction of a megabyte.
  */
 export async function readMaterialTables(io: MapDataSource): Promise<ReadonlyMap<string, readonly SsxMaterial[]>> {
-  const levels = [...new Set([...await levelsWithProps(io), CUSTOM_TEX_LEVEL].map(safeDataName))];
+  const levels = [...new Set([...(await levelsWithProps(io)), CUSTOM_TEX_LEVEL].map(safeDataName))];
   const tables = await mapLimit(levels, READ_CONCURRENCY, level => readLevelMaterials(io, level));
   return new Map(levels.map((level, index) => [level, tables[index]]));
 }
@@ -449,10 +522,11 @@ export async function readMaterialTables(io: MapDataSource): Promise<ReadonlyMap
  * six-channel-bitmask kickers, and Merqury City's translating/turning blimp plus its screen twin. */
 export function simpleModelRotation(model: ModelsJsonModel): PropModelRotation | undefined {
   const objects = model.ModelObjects ?? [];
-  const meshObjectIndices = objects.flatMap((obj, index) => obj?.MeshData?.some(mesh => !!mesh) ? [index] : []);
+  const meshObjectIndices = objects.flatMap((obj, index) => (obj?.MeshData?.some(mesh => !!mesh) ? [index] : []));
   if (!meshObjectIndices.length || !(model.AnimTime && model.AnimTime > 0)) return undefined;
   const animatedObjectIndices = objects.flatMap((obj, index) =>
-    obj?.Animation?.AnimationEntries?.length && obj.Animation.AnimationAction ? [index] : []);
+    obj?.Animation?.AnimationEntries?.length && obj.Animation.AnimationAction ? [index] : [],
+  );
   if (animatedObjectIndices.length !== 1) return undefined;
   const animatedObjectIndex = animatedObjectIndices[0];
   const descendsFromAnimatedObject = (index: number): boolean => {
@@ -471,18 +545,29 @@ export function simpleModelRotation(model: ModelsJsonModel): PropModelRotation |
   // hierarchy player used by the Unity export instead. Descendant rest offsets are already baked into geometry
   // and move correctly with the subtree (the blimp's offset tail is the worked example).
   const identityPose = (object: ModelsJsonModelObject | null | undefined): boolean => {
-    const p = object?.Position, r = object?.Rotation, s = object?.Scale;
-    return (!p || p.every(value => Math.abs(value) < 1e-9))
-      && (!r || (Math.abs(r[0] ?? 0) < 1e-9 && Math.abs(r[1] ?? 0) < 1e-9
-        && Math.abs(r[2] ?? 0) < 1e-9 && Math.abs((r[3] ?? 1) - 1) < 1e-9))
-      && (!s || s.every(value => Math.abs(value - 1) < 1e-9));
+    const p = object?.Position,
+      r = object?.Rotation,
+      s = object?.Scale;
+    return (
+      (!p || p.every(value => Math.abs(value) < 1e-9)) &&
+      (!r ||
+        (Math.abs(r[0] ?? 0) < 1e-9 &&
+          Math.abs(r[1] ?? 0) < 1e-9 &&
+          Math.abs(r[2] ?? 0) < 1e-9 &&
+          Math.abs((r[3] ?? 1) - 1) < 1e-9)) &&
+      (!s || s.every(value => Math.abs(value - 1) < 1e-9))
+    );
   };
   for (let current = animatedObjectIndex; current >= 0 && current < objects.length;) {
     if (!identityPose(objects[current])) return undefined;
     current = objects[current]?.ParentID ?? -1;
   }
-  if ([animation?.U1, animation?.U2, animation?.U3, animation?.U4, animation?.U5, animation?.U6]
-    .some(value => typeof value === 'number' && Math.abs(value) > 1e-9)) return undefined;
+  if (
+    [animation?.U1, animation?.U2, animation?.U3, animation?.U4, animation?.U5, animation?.U6].some(
+      value => typeof value === 'number' && Math.abs(value) > 1e-9,
+    )
+  )
+    return undefined;
   const action = animation?.AnimationAction ?? 0;
   const channelBits = [1, 2, 4, 8, 16, 32] as const;
   const activeBits = channelBits.filter(bit => (action & bit) !== 0);
@@ -494,13 +579,22 @@ export function simpleModelRotation(model: ModelsJsonModel): PropModelRotation |
     if (!maths?.length) return undefined;
     const segments: PropModelRotation['segments'] = [];
     for (const value of maths) {
-      const segment: [number, number, number, number, number, number] =
-        [value.Value1, value.Value2, value.Value3, value.Value4, value.Value5, value.Value6];
+      const segment: [number, number, number, number, number, number] = [
+        value.Value1,
+        value.Value2,
+        value.Value3,
+        value.Value4,
+        value.Value5,
+        value.Value6,
+      ];
       if (!segment.every(Number.isFinite) || segment[5] < segment[4]) return undefined;
       segments.push(segment);
     }
-    channels.push({ bit: activeBits[i], segments,
-      moving: segments.some(segment => segment.slice(0, 4).some(value => Math.abs(value) > 1e-9)) });
+    channels.push({
+      bit: activeBits[i],
+      segments,
+      moving: segments.some(segment => segment.slice(0, 4).some(value => Math.abs(value) > 1e-9)),
+    });
   }
   const translations = ([1, 2, 4] as const).map(bit => channels.find(channel => channel.bit === bit));
   let rotations = channels.filter(channel => channel.bit >= 8 && channel.moving);
@@ -512,12 +606,15 @@ export function simpleModelRotation(model: ModelsJsonModel): PropModelRotation |
   if (!rotation && !hasTranslation) return undefined;
   return {
     clipFrames: model.AnimTime,
-    ...(rotation ? {
-      axis: rotation.bit === 8 ? 0 as const : rotation.bit === 16 ? 1 as const : 2 as const,
-      segments: rotation.segments,
-    } : {}),
-    ...(hasTranslation ? { translation: translations.map(channel => channel?.segments ?? null) as
-      PropModelRotation['translation'] } : {}),
+    ...(rotation
+      ? {
+          axis: rotation.bit === 8 ? (0 as const) : rotation.bit === 16 ? (1 as const) : (2 as const),
+          segments: rotation.segments,
+        }
+      : {}),
+    ...(hasTranslation
+      ? { translation: translations.map(channel => channel?.segments ?? null) as PropModelRotation['translation'] }
+      : {}),
   };
 }
 
@@ -533,14 +630,22 @@ export function hierarchicalModelAnimation(model: ModelsJsonModel): PropModelAni
     const rotation = object?.Rotation;
     const scale = object?.Scale;
     const restRotation: [number, number, number, number] = [
-      rotation?.[0] ?? 0, rotation?.[1] ?? 0, rotation?.[2] ?? 0, rotation?.[3] ?? 1,
+      rotation?.[0] ?? 0,
+      rotation?.[1] ?? 0,
+      rotation?.[2] ?? 0,
+      rotation?.[3] ?? 1,
     ];
     const qLength = Math.hypot(...restRotation);
     if (qLength > 1e-12) for (let axis = 0; axis < 4; axis++) restRotation[axis] /= qLength;
     else restRotation[3] = 1;
     const entry: PropModelAnimation['objects'][number] = {
-      parent: object?.ParentID !== undefined && object.ParentID >= 0 && object.ParentID < (model.ModelObjects?.length ?? 0)
-        && object.ParentID !== index ? object.ParentID : -1,
+      parent:
+        object?.ParentID !== undefined &&
+        object.ParentID >= 0 &&
+        object.ParentID < (model.ModelObjects?.length ?? 0) &&
+        object.ParentID !== index
+          ? object.ParentID
+          : -1,
       restPosition: [position?.[0] ?? 0, position?.[1] ?? 0, position?.[2] ?? 0],
       restRotation,
       restScale: [scale?.[0] ?? 1, scale?.[1] ?? 1, scale?.[2] ?? 1],
@@ -550,22 +655,41 @@ export function hierarchicalModelAnimation(model: ModelsJsonModel): PropModelAni
     const activeBits = [1, 2, 4, 8, 16, 32].filter(bit => (action & bit) !== 0);
     const rawChannels = animation?.AnimationEntries ?? [];
     if (activeBits.length && rawChannels.length === activeBits.length) {
-      const channels: NonNullable<PropModelAnimation['objects'][number]['channels']> =
-        [null, null, null, null, null, null];
+      const channels: NonNullable<PropModelAnimation['objects'][number]['channels']> = [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ];
       let valid = true;
       for (let channel = 0; channel < activeBits.length; channel++) {
         const maths = rawChannels[channel]?.AnimationMaths;
         const component = Math.log2(activeBits[channel]);
-        if (!maths?.length || !Number.isInteger(component) || component < 0 || component > 5) { valid = false; break; }
-        const curve: PropModelCurve = maths.map(value =>
-          [value.Value1, value.Value2, value.Value3, value.Value4, value.Value5, value.Value6]);
-        if (curve.some(segment => !segment.every(Number.isFinite) || segment[5] < segment[4])) { valid = false; break; }
+        if (!maths?.length || !Number.isInteger(component) || component < 0 || component > 5) {
+          valid = false;
+          break;
+        }
+        const curve: PropModelCurve = maths.map(value => [
+          value.Value1,
+          value.Value2,
+          value.Value3,
+          value.Value4,
+          value.Value5,
+          value.Value6,
+        ]);
+        if (curve.some(segment => !segment.every(Number.isFinite) || segment[5] < segment[4])) {
+          valid = false;
+          break;
+        }
         channels[component] = curve;
       }
       if (valid) {
         entry.basePosition = [animation?.U1 ?? 0, animation?.U2 ?? 0, animation?.U3 ?? 0];
-        entry.baseEuler = [animation?.U4 ?? 0, animation?.U5 ?? 0, animation?.U6 ?? 0]
-          .map(value => THREE.MathUtils.radToDeg(value)) as V3;
+        entry.baseEuler = [animation?.U4 ?? 0, animation?.U5 ?? 0, animation?.U6 ?? 0].map(value =>
+          THREE.MathUtils.radToDeg(value),
+        ) as V3;
         entry.channels = channels;
         animated = true;
       }
@@ -581,8 +705,12 @@ export function hierarchicalModelAnimation(model: ModelsJsonModel): PropModelAni
  * grouped by their MeshData.MaterialID (so one draw per texture) and welded on (vIdx, tIdx). A model with no
  * static geometry (animated / effect only) is omitted.
  */
-export async function readModelGeometries(io: MapDataSource, level: string, ids: Set<number>,
-  effectPieceModels = new Set<number>()): Promise<Map<number, ModelGeom>> {
+export async function readModelGeometries(
+  io: MapDataSource,
+  level: string,
+  ids: Set<number>,
+  effectPieceModels = new Set<number>(),
+): Promise<Map<number, ModelGeom>> {
   const lvl = safeDataName(level);
   const dir = join(io.root, lvl);
   const modelsJson = await io.readJsonOr<ModelsJson | null>(join(dir, 'Models.json'), null);
@@ -595,8 +723,7 @@ export async function readModelGeometries(io: MapDataSource, level: string, ids:
   const wanted = new Set<string>();
   modelsJson.Models.forEach((m, id) => {
     if (!ids.has(id)) return;
-    for (const obj of m.ModelObjects ?? [])
-      for (const md of obj?.MeshData ?? []) if (md) wanted.add(md.MeshPath);
+    for (const obj of m.ModelObjects ?? []) for (const md of obj?.MeshData ?? []) if (md) wanted.add(md.MeshPath);
   });
   const paths = [...wanted];
   const parsed = await mapLimit(paths, READ_CONCURRENCY, async path => {
@@ -616,15 +743,20 @@ export async function readModelGeometries(io: MapDataSource, level: string, ids:
     // hierarchy instead (MESA's mine cart has a static shell plus a six-channel animated child subtree).
     const animation = rotation ? undefined : hierarchicalModelAnimation(m);
     const meshObjectIndices = (m.ModelObjects ?? []).flatMap((obj, index) =>
-      obj?.MeshData?.some(mesh => !!mesh) ? [index] : []);
+      obj?.MeshData?.some(mesh => !!mesh) ? [index] : [],
+    );
     // Keep transformed multi-object models partitioned, and also preserve every object of a decoded Sub20 target.
     // The latter is load-bearing for identity-transform models such as MERQUER's loose mailbox letters: material
     // batching would otherwise weld all 21 independently thrown objects into one clump.
     const effectPieces = effectPieceModels.has(id);
-    const splitPieces = meshObjectIndices.length > 1 && (effectPieces || !!animation || meshObjectIndices.some(index => {
-      const e = objectMatrices[index]?.elements;
-      return !!e && (Math.abs(e[12]) > 1e-6 || Math.abs(e[13]) > 1e-6 || Math.abs(e[14]) > 1e-6);
-    }));
+    const splitPieces =
+      meshObjectIndices.length > 1 &&
+      (effectPieces ||
+        !!animation ||
+        meshObjectIndices.some(index => {
+          const e = objectMatrices[index]?.elements;
+          return !!e && (Math.abs(e[12]) > 1e-6 || Math.abs(e[13]) > 1e-6 || Math.abs(e[14]) > 1e-6);
+        }));
     const byMat = new Map<string, ModelSub>(); // piece/material → submesh, first-seen order
     for (const [objectIndex, obj] of (m.ModelObjects ?? []).entries()) {
       for (const md of obj?.MeshData ?? []) {
@@ -634,36 +766,51 @@ export async function readModelGeometries(io: MapDataSource, level: string, ids:
         const mat = md.MaterialID ?? -1;
         const key = splitPieces ? `${objectIndex}:${mat}` : String(mat);
         let sub = byMat.get(key);
-        if (!sub) byMat.set(key, (sub = { mat, positions: [], uvs: [], indices: [],
-          ...(splitPieces ? { piece: objectIndex } : {}),
-          ...(animation ? { object: objectIndex } : {}) }));
-        const lightBase = Number.isInteger(md.VertexLightingBase) && md.VertexLightingBase! >= 0
-          ? md.VertexLightingBase : undefined;
+        if (!sub)
+          byMat.set(
+            key,
+            (sub = {
+              mat,
+              positions: [],
+              uvs: [],
+              indices: [],
+              ...(splitPieces ? { piece: objectIndex } : {}),
+              ...(animation ? { object: objectIndex } : {}),
+            }),
+          );
+        const lightBase =
+          Number.isInteger(md.VertexLightingBase) && md.VertexLightingBase! >= 0 ? md.VertexLightingBase : undefined;
         addMeshToSub(sub, g, objectMatrices[objectIndex] ?? new THREE.Matrix4(), lightBase);
       }
     }
     const subs = [...byMat.values()].filter(s => s.indices.length);
     if (splitPieces) {
       const pieceCentroids = new Map<number, V3>();
-      if (effectPieces) for (const piece of meshObjectIndices) {
-        const pieceSubs = subs.filter(sub => sub.piece === piece);
-        const sum: V3 = [0, 0, 0];
-        let count = 0;
-        for (const sub of pieceSubs) for (let k = 0; k + 2 < sub.positions.length; k += 3) {
-          sum[0] += sub.positions[k]; sum[1] += sub.positions[k + 1]; sum[2] += sub.positions[k + 2]; count++;
+      if (effectPieces)
+        for (const piece of meshObjectIndices) {
+          const pieceSubs = subs.filter(sub => sub.piece === piece);
+          const sum: V3 = [0, 0, 0];
+          let count = 0;
+          for (const sub of pieceSubs)
+            for (let k = 0; k + 2 < sub.positions.length; k += 3) {
+              sum[0] += sub.positions[k];
+              sum[1] += sub.positions[k + 1];
+              sum[2] += sub.positions[k + 2];
+              count++;
+            }
+          if (count) pieceCentroids.set(piece, [sum[0] / count, sum[1] / count, sum[2] / count]);
         }
-        if (count) pieceCentroids.set(piece, [sum[0] / count, sum[1] / count, sum[2] / count]);
-      }
       for (const sub of subs) {
         if (sub.piece === undefined) continue;
         // A thrown shard tumbles around its own recovered vertex centroid. Other transformed multi-object models
         // retain their authored object origin, which is the correct pivot for ordinary hierarchy animation.
-        sub.piecePivot = pieceCentroids.get(sub.piece)
-          ?? new THREE.Vector3().setFromMatrixPosition(objectMatrices[sub.piece]).toArray() as V3;
+        sub.piecePivot =
+          pieceCentroids.get(sub.piece) ??
+          (new THREE.Vector3().setFromMatrixPosition(objectMatrices[sub.piece]).toArray() as V3);
       }
     }
-    if (subs.length) out.set(id, { name: m.ModelName, subs,
-      ...(rotation ? { rotation } : {}), ...(animation ? { animation } : {}) });
+    if (subs.length)
+      out.set(id, { name: m.ModelName, subs, ...(rotation ? { rotation } : {}), ...(animation ? { animation } : {}) });
   });
   return out;
 }
@@ -687,10 +834,16 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   if (!instJson) throw new Error(`no Instances.json for level "${lvl}"`);
   const rollerMasses = readRollerInstanceMasses(effectsDocument, instJson.Instances);
   // The effect each model hands a new placement, and each copy's own (docs/069 · Effects), indexed as Instances.json.
-  const effectDefaults = referenceEffectDefaults(lvl, effectsDocument, instJson.Instances.map(instance => ({
-    model: instance.ModelID, visible: instance.Visable !== false, name: String(instance.InstanceName ?? ''),
-    ...(Number.isInteger(instance.EffectSlotIndex) ? { slot: instance.EffectSlotIndex! } : {}),
-  })));
+  const effectDefaults = referenceEffectDefaults(
+    lvl,
+    effectsDocument,
+    instJson.Instances.map(instance => ({
+      model: instance.ModelID,
+      visible: instance.Visable !== false,
+      name: String(instance.InstanceName ?? ''),
+      ...(Number.isInteger(instance.EffectSlotIndex) ? { slot: instance.EffectSlotIndex! } : {}),
+    })),
+  );
 
   // only models that are actually placed need geometry sent
   const used = new Set<number>();
@@ -722,11 +875,9 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
       mat: s.mat,
       pos: encodeBytes(new Float32Array(s.positions).buffer),
       uv: encodeBytes(new Float32Array(s.uvs).buffer),
-      ...(s.normals?.length === s.positions.length
-        ? { nor: encodeBytes(new Float32Array(s.normals).buffer) } : {}),
+      ...(s.normals?.length === s.positions.length ? { nor: encodeBytes(new Float32Array(s.normals).buffer) } : {}),
       idx: encodeBytes(new Uint32Array(s.indices).buffer),
-      ...(s.light?.length === s.positions.length / 3
-        ? { li: encodeBytes(new Float32Array(s.light).buffer) } : {}),
+      ...(s.light?.length === s.positions.length / 3 ? { li: encodeBytes(new Float32Array(s.light).buffer) } : {}),
       ...(s.piece === undefined ? {} : { piece: s.piece }),
       ...(s.piecePivot ? { piecePivot: s.piecePivot } : {}),
       ...(s.object === undefined ? {} : { object: s.object }),
@@ -758,8 +909,9 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     if (instance.CollsionMode !== NATIVE_COLLISION_MODE.triangleProxy) continue;
     for (const path of instance.CollsionModelPaths ?? []) collisionIds.add(safeDataName(path.replace(/\.obj$/i, '')));
   }
-  const collisionTexts = await mapLimit([...collisionIds], READ_CONCURRENCY,
-    id => io.readTextOrNull(join(io.root, lvl, 'Collision', `${id}.obj`)));
+  const collisionTexts = await mapLimit([...collisionIds], READ_CONCURRENCY, id =>
+    io.readTextOrNull(join(io.root, lvl, 'Collision', `${id}.obj`)),
+  );
   const collisionMeshes: NonNullable<PropsPayload['collisionMeshes']> = [];
   for (const [index, id] of [...collisionIds].entries()) {
     const text = collisionTexts[index];
@@ -776,9 +928,13 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   }
 
   const physicsIds = new Set<number>();
-  for (const instance of instJson.Instances) if (instance.CollsionMode === NATIVE_COLLISION_MODE.physicsBodySpheres
-    && typeof instance.PhysicsIndex === 'number' && instance.PhysicsIndex >= 0)
-    physicsIds.add(instance.PhysicsIndex);
+  for (const instance of instJson.Instances)
+    if (
+      instance.CollsionMode === NATIVE_COLLISION_MODE.physicsBodySpheres &&
+      typeof instance.PhysicsIndex === 'number' &&
+      instance.PhysicsIndex >= 0
+    )
+      physicsIds.add(instance.PhysicsIndex);
   const physicsBodies: NonNullable<PropsPayload['physicsBodies']> = [];
   for (const id of physicsIds) {
     const body = await readPhysicsBody(io, lvl, id, effectsDocument);
@@ -787,29 +943,35 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     // impulse between spin and travel, and a body can legitimately ship a shape without a usable tensor.
     const mass = decodePhysicsBodyMassProps(effectsDocument, id);
     physicsBodies.push({
-      id, sph: encodeBytes(new Float32Array(body.decoded.spheres).buffer),
+      id,
+      sph: encodeBytes(new Float32Array(body.decoded.spheres).buffer),
       ...(body.recipe ? { up: encodeUnityBodyRecipe(body.recipe) } : {}),
-      ...(mass ? {
-        com: mass.com,
-        ii: encodeBytes(new Float32Array(mass.invInertia).buffer),
-      } : {}),
+      ...(mass
+        ? {
+            com: mass.com,
+            ii: encodeBytes(new Float32Array(mass.invInertia).buffer),
+          }
+        : {}),
     });
   }
 
-  const instances = instJson.Instances
-    .map((instance, sourceIndex) => ({ instance, sourceIndex }))
+  const instances = instJson.Instances.map((instance, sourceIndex) => ({ instance, sourceIndex }))
     // A hidden/native collision utility can legitimately have no drawable model. Keep it in the reference data;
     // the renderer simply has no mesh to instance, while Play can still consume its collision proxy/body.
-    .filter(({ instance }) => geoms.has(instance.ModelID)
-      || (instance.PlayerCollision !== false
-        && (instance.CollsionMode ?? NATIVE_COLLISION_MODE.none) > NATIVE_COLLISION_MODE.none))
+    .filter(
+      ({ instance }) =>
+        geoms.has(instance.ModelID) ||
+        (instance.PlayerCollision !== false &&
+          (instance.CollsionMode ?? NATIVE_COLLISION_MODE.none) > NATIVE_COLLISION_MODE.none),
+    )
     .map(({ instance, sourceIndex }) => {
       const shape = instance.CollsionMode ?? NATIVE_COLLISION_MODE.none;
-      const touchable = instance.PlayerCollision !== false
-        && shape !== NATIVE_COLLISION_MODE.none
-        && (shape !== NATIVE_COLLISION_MODE.triangleProxy || !!instance.CollsionModelPaths?.length)
-        && (shape !== NATIVE_COLLISION_MODE.physicsBodySpheres
-          || (typeof instance.PhysicsIndex === 'number' && instance.PhysicsIndex >= 0));
+      const touchable =
+        instance.PlayerCollision !== false &&
+        shape !== NATIVE_COLLISION_MODE.none &&
+        (shape !== NATIVE_COLLISION_MODE.triangleProxy || !!instance.CollsionModelPaths?.length) &&
+        (shape !== NATIVE_COLLISION_MODE.physicsBodySpheres ||
+          (typeof instance.PhysicsIndex === 'number' && instance.PhysicsIndex >= 0));
       const contact = nativeContactState({
         visible: instance.Visable !== false,
         playerCollision: instance.PlayerCollision !== false,
@@ -822,8 +984,8 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
       // Preserve the whole variable-sized ExternalSound record in compact form. `p` starts at U5; only the
       // fields actually present are carried, so an old extraction's truncated type-1 row is visible as such
       // instead of silently manufacturing five zero values.
-      const externalSounds = (instance.IncludeSound !== false ? instance.Sounds?.ExternalSounds ?? [] : [])
-        .flatMap(record => {
+      const externalSounds = (instance.IncludeSound !== false ? (instance.Sounds?.ExternalSounds ?? []) : []).flatMap(
+        record => {
           if (!record || !Number.isInteger(record.SoundIndex) || !Number.isInteger(record.U0)) return [];
           const type = Number(record.U0);
           const expected = type === 0 ? 2 : type === 1 || type === 2 ? 7 : type === 3 ? 1 : 7;
@@ -833,48 +995,76 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
             if (typeof value !== 'number' || !Number.isFinite(value)) break;
             params.push(value);
           }
-          return [{ t: type, s: Number(record.SoundIndex),
-            o: [Number(record.U2) || 0, Number(record.U3) || 0, Number(record.U4) || 0], p: params }];
-        });
+          return [
+            {
+              t: type,
+              s: Number(record.SoundIndex),
+              o: [Number(record.U2) || 0, Number(record.U3) || 0, Number(record.U4) || 0],
+              p: params,
+            },
+          ];
+        },
+      );
       return {
-        i: sourceIndex, m: instance.ModelID, p: instance.Location, q: instance.Rotation,
-        s: instance.Scale, n: instance.InstanceName, v: instance.Visable !== false,
+        i: sourceIndex,
+        m: instance.ModelID,
+        p: instance.Location,
+        q: instance.Rotation,
+        s: instance.Scale,
+        n: instance.InstanceName,
+        v: instance.Visable !== false,
         // State 0 is the overwhelmingly common case; omission keeps the payload compact while decodeProps
         // restores it. The other values are authoring/provenance facts and must survive into Prop Details.
-        ...(Number.isInteger(instance.LTGState) && instance.LTGState !== 0
-          ? { ls: Number(instance.LTGState) } : {}),
-        ...(instance.AmbentLightColour?.length ? {
-          la: instance.AmbentLightColour.slice(0, 3),
-          lk: [instance.LightColour1, instance.LightColour2, instance.LightColour3]
-            .flatMap(value => value?.slice(0, 3) ?? [0, 0, 0]),
-          lv: [instance.LightVector1, instance.LightVector2, instance.LightVector3]
-            .flatMap(value => value?.slice(0, 3) ?? [0, 0, 0]),
-        } : {}),
+        ...(Number.isInteger(instance.LTGState) && instance.LTGState !== 0 ? { ls: Number(instance.LTGState) } : {}),
+        ...(instance.AmbentLightColour?.length
+          ? {
+              la: instance.AmbentLightColour.slice(0, 3),
+              lk: [instance.LightColour1, instance.LightColour2, instance.LightColour3].flatMap(
+                value => value?.slice(0, 3) ?? [0, 0, 0],
+              ),
+              lv: [instance.LightVector1, instance.LightVector2, instance.LightVector3].flatMap(
+                value => value?.slice(0, 3) ?? [0, 0, 0],
+              ),
+            }
+          : {}),
         ...(coversModel(instance.VertexLighting, lightNeeded.get(instance.ModelID))
-          ? { vl: instance.VertexLighting } : {}),
-        pc: instance.PlayerCollision !== false, pb: instance.PlayerBounce !== false,
+          ? { vl: instance.VertexLighting }
+          : {}),
+        pc: instance.PlayerCollision !== false,
+        pb: instance.PlayerBounce !== false,
         // the instance's ADL collision-sound event id (the prop-hit one-shot), omitted when none ships
         ...(instance.IncludeSound !== false && instance.Sounds && Number.isInteger(instance.Sounds.CollisonSound)
-          ? { hs: Number(instance.Sounds.CollisonSound) } : {}),
+          ? { hs: Number(instance.Sounds.CollisonSound) }
+          : {}),
         // Shape eligibility, response mass, and PlayerBounce implement [Trailmap: 130-collision-data,
         // 370-world-interaction]. Live mode-1 and mode-2 flag-off controls both dispatched contact and passed through.
         // Dynamic movement does not change this class; dm below comes from the collision Roller effect.
         c: contact === 'none' ? 0 : contact === 'solid' ? 2 : 1,
         // Touchable instances also carry their contact response: zero kickback represents a contact-only
         // flag-off state; otherwise it is the authored restitution. Shape remains independent.
-        ...(touchable ? {
-          bn: instance.PlayerBounce === false ? 0
-            : Math.round((typeof instance.PlayerBounceAmmount === 'number' ? instance.PlayerBounceAmmount : 0.5) * 1000) / 1000,
-        } : {}),
+        ...(touchable
+          ? {
+              bn:
+                instance.PlayerBounce === false
+                  ? 0
+                  : Math.round(
+                      (typeof instance.PlayerBounceAmmount === 'number' ? instance.PlayerBounceAmmount : 0.5) * 1000,
+                    ) / 1000,
+            }
+          : {}),
         // Preserve configured geometry even while PlayerCollision gates it off: the Props inspector renders
         // the disabled shape in slate so the stored mode/body is diagnosable instead of disappearing.
-        ...(typeof instance.CollsionMode === 'number'
-          && instance.CollsionMode > NATIVE_COLLISION_MODE.none ? { cm: instance.CollsionMode } : {}),
+        ...(typeof instance.CollsionMode === 'number' && instance.CollsionMode > NATIVE_COLLISION_MODE.none
+          ? { cm: instance.CollsionMode }
+          : {}),
         ...(typeof instance.U0 === 'number' ? { rm: instance.U0 } : {}),
         ...(rollerMasses.has(sourceIndex) ? { dm: rollerMasses.get(sourceIndex)! } : {}),
-        ...(typeof instance.PhysicsIndex === 'number' && instance.PhysicsIndex >= 0 ? { px: instance.PhysicsIndex } : {}),
+        ...(typeof instance.PhysicsIndex === 'number' && instance.PhysicsIndex >= 0
+          ? { px: instance.PhysicsIndex }
+          : {}),
         ...(instance.CollsionMode === NATIVE_COLLISION_MODE.triangleProxy && instance.CollsionModelPaths?.length
-          ? { cp: instance.CollsionModelPaths.map(path => safeDataName(path.replace(/\.obj$/i, ''))) } : {}),
+          ? { cp: instance.CollsionModelPaths.map(path => safeDataName(path.replace(/\.obj$/i, ''))) }
+          : {}),
         // the rare rideable prop's surface type (ride feel + board-audio family, [Trailmap: 120-objects])
         ...(typeof instance.SurfaceType === 'number' && instance.SurfaceType >= 0 ? { st: instance.SurfaceType } : {}),
         ...(externalSounds.length ? { xs: externalSounds } : {}),
@@ -883,9 +1073,20 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     });
 
   const soundIndex = await io.readJsonOr<CollisionSoundIndex | null>(
-    join(io.root, lvl, 'Audio', 'SoundIndex.json'), null);
-  return { level: lvl, ...(soundIndex ? { soundIndex } : {}), models, materials, crowdFrames, collisionMeshes, physicsBodies, instances,
-    ...(effectDefaults.templates.length ? { effects: effectDefaults.templates } : {}) };
+    join(io.root, lvl, 'Audio', 'SoundIndex.json'),
+    null,
+  );
+  return {
+    level: lvl,
+    ...(soundIndex ? { soundIndex } : {}),
+    models,
+    materials,
+    crowdFrames,
+    collisionMeshes,
+    physicsBodies,
+    instances,
+    ...(effectDefaults.templates.length ? { effects: effectDefaults.templates } : {}),
+  };
 }
 
 /**
@@ -901,7 +1102,10 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
  *   - a node whose mask is 0, or at max depth, is a LEAF sphere of radius U0[depth].
  * Returns [x, y, z, r][] in model-local raw cm, or null when the level/body ships none.
  */
-interface PhysicsBodyPreview { decoded: DecodedPhysicsBody; recipe?: UnityBodyRecipe }
+interface PhysicsBodyPreview {
+  decoded: DecodedPhysicsBody;
+  recipe?: UnityBodyRecipe;
+}
 
 interface NativePhysicsData extends Record<string, unknown> {
   UFloat0?: number;
@@ -915,8 +1119,7 @@ function nativePhysicsData(document: EffectsDocument | null, index: number): Nat
   if (!document || index < 0) return null;
   const records = document.physics?.[index]?.data?.PhysicsDatas;
   const data = Array.isArray(records) ? records[0] : null;
-  return typeof data === 'object' && data !== null && !Array.isArray(data)
-    ? data as NativePhysicsData : null;
+  return typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as NativePhysicsData) : null;
 }
 
 function encodeBodyShape(shape: UnityBodyRecipe['body']) {
@@ -926,41 +1129,70 @@ function encodeBodyShape(shape: UnityBodyRecipe['body']) {
   };
 }
 
-function encodeUnityBodyRecipe(recipe: UnityBodyRecipe): NonNullable<NonNullable<PropsPayload['physicsBodies']>[number]['up']> {
-  const body = encodeBodyShape(recipe.body), tilt = encodeBodyShape(recipe.tilt);
+function encodeUnityBodyRecipe(
+  recipe: UnityBodyRecipe,
+): NonNullable<NonNullable<PropsPayload['physicsBodies']>[number]['up']> {
+  const body = encodeBodyShape(recipe.body),
+    tilt = encodeBodyShape(recipe.tilt);
   return {
-    d: recipe.doorwayOrSparse, bb: [...recipe.bounds.center, ...recipe.bounds.size],
-    ...(body.boxes.length ? { b: body.boxes } : {}), ...(body.capsules.length ? { c: body.capsules } : {}),
-    ...(tilt.boxes.length ? { tb: tilt.boxes } : {}), ...(tilt.capsules.length ? { tc: tilt.capsules } : {}),
+    d: recipe.doorwayOrSparse,
+    bb: [...recipe.bounds.center, ...recipe.bounds.size],
+    ...(body.boxes.length ? { b: body.boxes } : {}),
+    ...(body.capsules.length ? { c: body.capsules } : {}),
+    ...(tilt.boxes.length ? { tb: tilt.boxes } : {}),
+    ...(tilt.capsules.length ? { tc: tilt.capsules } : {}),
   };
 }
 
-async function readPhysicsBody(io: MapDataSource, level: string, index: number,
-  parsedDocument?: EffectsDocument | null): Promise<PhysicsBodyPreview | null> {
-  const document = parsedDocument === undefined
-    ? await readEffectsDocument(io, join(io.root, safeDataName(level))) : parsedDocument;
+async function readPhysicsBody(
+  io: MapDataSource,
+  level: string,
+  index: number,
+  parsedDocument?: EffectsDocument | null,
+): Promise<PhysicsBodyPreview | null> {
+  const document =
+    parsedDocument === undefined ? await readEffectsDocument(io, join(io.root, safeDataName(level))) : parsedDocument;
   const decode = (): PhysicsBodyPreview | null => {
     const data = nativePhysicsData(document, index);
     const levels = data?.uPhysicsStruct0;
-    if (!data || !levels || levels.length < 2 || typeof data.UByteData !== 'string'
-      || !Number.isFinite(data.UFloat0) || !Number.isFinite(data.UFloat1) || !Number.isFinite(data.UFloat2)) return null;
+    if (
+      !data ||
+      !levels ||
+      levels.length < 2 ||
+      typeof data.UByteData !== 'string' ||
+      !Number.isFinite(data.UFloat0) ||
+      !Number.isFinite(data.UFloat1) ||
+      !Number.isFinite(data.UFloat2)
+    )
+      return null;
     const rle = decodeBytes(data.UByteData);
     const masks: number[] = [];
     for (let i = 0; i < rle.length;) {
-      const ctrl = (rle[i++] << 24 >> 24);
+      const ctrl = (rle[i++] << 24) >> 24;
       if (ctrl === 0) break;
       if (ctrl < 0) for (let k = 0; k < -ctrl && i < rle.length; k++) masks.push(rle[i++]);
-      else { const byte = rle[i++]; for (let k = 0; k <= ctrl; k++) masks.push(byte); }
+      else {
+        const byte = rle[i++];
+        for (let k = 0; k <= ctrl; k++) masks.push(byte);
+      }
     }
     const decoded = decodePhysicsBodyTree([data.UFloat0!, data.UFloat1!, data.UFloat2!], levels, masks);
     if (!decoded) return null;
     // A malformed edge-case body must never take away the exact native sphere overlay. Keep the decoded shape
     // even when the Unity simplification cannot be derived.
     let recipe: UnityBodyRecipe | undefined;
-    try { recipe = buildUnityBodyRecipe(decoded); } catch { /* native spheres remain available */ }
+    try {
+      recipe = buildUnityBodyRecipe(decoded);
+    } catch {
+      /* native spheres remain available */
+    }
     return { decoded, ...(recipe ? { recipe } : {}) };
   };
-  try { return decode(); } catch { return null; }
+  try {
+    return decode();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -997,13 +1229,20 @@ function decodePhysicsBodyMassProps(document: EffectsDocument | null, index: num
   return { com: com as [number, number, number], invInertia: invInertia as number[] };
 }
 
-export async function readPhysicsBodyMassProps(io: MapDataSource, level: string, index: number): Promise<PhysicsBodyMassProps | null> {
+export async function readPhysicsBodyMassProps(
+  io: MapDataSource,
+  level: string,
+  index: number,
+): Promise<PhysicsBodyMassProps | null> {
   const document = await readEffectsDocument(io, join(io.root, safeDataName(level)));
   return decodePhysicsBodyMassProps(document, index);
 }
 
-export async function readPhysicsBodySpheres(io: MapDataSource, level: string, index: number):
-  Promise<[number, number, number, number][] | null> {
+export async function readPhysicsBodySpheres(
+  io: MapDataSource,
+  level: string,
+  index: number,
+): Promise<[number, number, number, number][] | null> {
   const packed = (await readPhysicsBody(io, level, index))?.decoded.spheres;
   if (!packed?.length) return null;
   const spheres: [number, number, number, number][] = [];
@@ -1017,7 +1256,11 @@ export async function readPhysicsBodySpheres(io: MapDataSource, level: string, i
  *  its source level is missing. */
 export async function modelLocalBox(io: MapDataSource, level: string, model: number): Promise<LocalBox | null> {
   let g: Map<number, ModelGeom>;
-  try { g = await readModelGeometries(io, level, new Set([model])); } catch { return null; }
+  try {
+    g = await readModelGeometries(io, level, new Set([model]));
+  } catch {
+    return null;
+  }
   return modelGeometryBox(g.get(model) ?? null);
 }
 
@@ -1063,8 +1306,8 @@ export async function nativeArtSource(io: MapDataSource): Promise<NativeArt> {
   let gems: { level: string; tiers: NativeArt['gemTiers'] } | null = null;
   const keys = Object.keys(RAIL_SKIN_MODELS) as RailMaterialKey[];
   for (const level of await levelsWithProps(io)) {
-    const models = (await io.readJsonOr<ModelsJson | null>(
-      join(io.root, safeDataName(level), 'Models.json'), null))?.Models ?? [];
+    const models =
+      (await io.readJsonOr<ModelsJson | null>(join(io.root, safeDataName(level), 'Models.json'), null))?.Models ?? [];
     const materials = tables.get(safeDataName(level)) ?? [];
     for (const key of keys) {
       const tex = railSkins[key] ? null : modelTexture(models, materials, RAIL_SKIN_MODELS[key]);
@@ -1083,15 +1326,20 @@ export async function nativeArtSource(io: MapDataSource): Promise<NativeArt> {
   if (gems) {
     const dir = join(io.root, safeDataName(gems.level));
     const [effects, instances] = await Promise.all([
-      readEffectsDocument(io, dir), io.readJsonOr<InstancesJson | null>(join(dir, 'Instances.json'), null),
+      readEffectsDocument(io, dir),
+      io.readJsonOr<InstancesJson | null>(join(dir, 'Instances.json'), null),
     ]);
-    if (effects) for (const tier of gems.tiers) {
-      for (const instance of instances?.Instances ?? []) {
-        if (instance.ModelID !== tier.model) continue;
-        const template = gemEffectTemplate(gems.level, effects, instance.EffectSlotIndex ?? -1);
-        if (template) { tier.effect = template; break; }
+    if (effects)
+      for (const tier of gems.tiers) {
+        for (const instance of instances?.Instances ?? []) {
+          if (instance.ModelID !== tier.model) continue;
+          const template = gemEffectTemplate(gems.level, effects, instance.EffectSlotIndex ?? -1);
+          if (template) {
+            tier.effect = template;
+            break;
+          }
+        }
       }
-    }
   }
   return { gemLevel: gems?.level ?? '', gemTiers: gems?.tiers ?? [], railSkins, boostPads };
 }
@@ -1109,14 +1357,18 @@ function gemTiersOf(models: readonly ModelsJsonModel[]): NativeArt['gemTiers'] {
 }
 
 /** The texture file of the first textured MeshData binding on the first model whose name matches, or null. */
-function modelTexture(models: readonly ModelsJsonModel[], materials: readonly SsxMaterial[],
-  name: RegExp): string | null {
+function modelTexture(
+  models: readonly ModelsJsonModel[],
+  materials: readonly SsxMaterial[],
+  name: RegExp,
+): string | null {
   for (const m of models) {
     if (!name.test(m.ModelName ?? '')) continue;
-    for (const obj of m.ModelObjects ?? []) for (const md of obj?.MeshData ?? []) {
-      const tex = md && (md.MaterialID ?? -1) >= 0 ? materials[md.MaterialID!]?.TexturePath : undefined;
-      if (tex) return tex;
-    }
+    for (const obj of m.ModelObjects ?? [])
+      for (const md of obj?.MeshData ?? []) {
+        const tex = md && (md.MaterialID ?? -1) >= 0 ? materials[md.MaterialID!]?.TexturePath : undefined;
+        if (tex) return tex;
+      }
   }
   return null;
 }

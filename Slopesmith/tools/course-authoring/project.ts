@@ -29,9 +29,7 @@ export interface PublishedCourseDocument {
   map?: string;
 }
 
-export async function publishCourseDocument(
-  options: PublishCourseDocumentOptions,
-): Promise<PublishedCourseDocument> {
+export async function publishCourseDocument(options: PublishCourseDocumentOptions): Promise<PublishedCourseDocument> {
   await mkdir(dirname(options.sourceFile), { recursive: true });
   await writeFile(options.sourceFile, `${JSON.stringify(serializeMountain(options.document), null, 2)}\n`);
 
@@ -43,9 +41,10 @@ export async function publishCourseDocument(
   const reopened = (await openProject(snapshot.project.id, true)).document as QuadMeshDoc;
   options.verify?.(reopened, options.document);
 
-  const exported = options.export === false
-    ? undefined
-    : await exportLevel(reopened, options.exportOptions ?? { lighting: true, aiPaths: true });
+  const exported =
+    options.export === false
+      ? undefined
+      : await exportLevel(reopened, options.exportOptions ?? { lighting: true, aiPaths: true });
   return {
     action: existing ? 'updated' : 'created',
     snapshot,

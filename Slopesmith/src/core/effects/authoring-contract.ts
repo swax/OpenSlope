@@ -37,16 +37,21 @@ export const EFFECT_LATCH_CIRCUMSTANCES: readonly EffectLatchCircumstance[] = ['
  * flipbook end themselves and are held by slot4; a breakable kill's tombstone never self-ends and is only
  * reached by slot3. Checking the wrong one is a silent no-op. */
 export const EFFECT_LATCH_SUMMARY: Record<EffectLatchCircumstance, string> = {
-  slot3: 'Keeps the prop as it is when the rider leaves the area, instead of resetting it. This is the one that keeps a broken prop broken.',
-  slot4: 'Holds a finished effect where it ended — a play-once clip stays on its last frame — instead of resetting. Only works on effects that finish by themselves.',
+  slot3:
+    'Keeps the prop as it is when the rider leaves the area, instead of resetting it. This is the one that keeps a broken prop broken.',
+  slot4:
+    'Holds a finished effect where it ended — a play-once clip stays on its last frame — instead of resetting. Only works on effects that finish by themselves.',
 };
 
 export const isEffectLatchCircumstance = (circumstance: EffectCircumstance): circumstance is EffectLatchCircumstance =>
   circumstance === 'slot3' || circumstance === 'slot4';
 
 /** True when a slot's populated latch column has the retail authored shape: a reference to a zero-node graph. */
-export function effectSlotLatchIsEmptyGraph(document: EffectsDocument, slot: EffectSlot,
-  circumstance: EffectLatchCircumstance): boolean {
+export function effectSlotLatchIsEmptyGraph(
+  document: EffectsDocument,
+  slot: EffectSlot,
+  circumstance: EffectLatchCircumstance,
+): boolean {
   const graphId = slot.circumstances[circumstance];
   if (!graphId) return false;
   const graph = document.graphs.find(item => item.id === graphId);
@@ -54,8 +59,7 @@ export function effectSlotLatchIsEmptyGraph(document: EffectsDocument, slot: Eff
 }
 
 /** The engine's own test — populated-ness, regardless of what the referenced chain contains. */
-export const effectSlotHoldsAtEnd = (slot: EffectSlot | null | undefined): boolean =>
-  !!slot?.circumstances.slot4;
+export const effectSlotHoldsAtEnd = (slot: EffectSlot | null | undefined): boolean => !!slot?.circumstances.slot4;
 export const effectSlotHoldsOnRegionExit = (slot: EffectSlot | null | undefined): boolean =>
   !!slot?.circumstances.slot3;
 
@@ -79,7 +83,11 @@ export function effectSlotCanSelfEnd(document: EffectsDocument, slot: EffectSlot
   };
   for (const owner of [...document.graphs, ...document.functions])
     for (const node of owner.nodes)
-      if (node.mainType === 7 && playsOnce(node.references?.effectGraph)
-        && slotOfInstance(node.references?.instance) === slot.id) return true;
+      if (
+        node.mainType === 7 &&
+        playsOnce(node.references?.effectGraph) &&
+        slotOfInstance(node.references?.instance) === slot.id
+      )
+        return true;
   return false;
 }

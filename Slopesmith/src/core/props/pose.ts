@@ -38,10 +38,15 @@ export function isTilted(r: PropRotation): boolean {
 
 /** The placement's data-space rotation, YXZ (see the module note). */
 export function placementQuat(r: PropRotation): Quat {
-  const x = (r.pitch ?? 0) * D2R / 2, y = r.yaw * D2R / 2, z = (r.roll ?? 0) * D2R / 2;
-  const c1 = Math.cos(x), s1 = Math.sin(x);
-  const c2 = Math.cos(y), s2 = Math.sin(y);
-  const c3 = Math.cos(z), s3 = Math.sin(z);
+  const x = ((r.pitch ?? 0) * D2R) / 2,
+    y = (r.yaw * D2R) / 2,
+    z = ((r.roll ?? 0) * D2R) / 2;
+  const c1 = Math.cos(x),
+    s1 = Math.sin(x);
+  const c2 = Math.cos(y),
+    s2 = Math.sin(y);
+  const c3 = Math.cos(z),
+    s3 = Math.sin(z);
   return [
     s1 * c2 * c3 + c1 * s2 * s3,
     c1 * s2 * c3 - s1 * c2 * s3,
@@ -54,20 +59,32 @@ export function placementQuat(r: PropRotation): Quat {
  *  every stored placement already use; pitch / roll stay signed about zero, where upright lives. */
 export function propRotationFromQuat(q: Quat): { yaw: number; pitch: number; roll: number } {
   const [x, y, z, w] = q;
-  const x2 = x + x, y2 = y + y, z2 = z + z;
-  const xx = x * x2, xy = x * y2, xz = x * z2;
-  const yy = y * y2, yz = y * z2, zz = z * z2;
-  const wx = w * x2, wy = w * y2, wz = w * z2;
-  const m11 = 1 - (yy + zz), m13 = xz + wy;
-  const m21 = xy + wz, m22 = 1 - (xx + zz), m23 = yz - wx;
-  const m31 = xz - wy, m33 = 1 - (xx + yy);
+  const x2 = x + x,
+    y2 = y + y,
+    z2 = z + z;
+  const xx = x * x2,
+    xy = x * y2,
+    xz = x * z2;
+  const yy = y * y2,
+    yz = y * z2,
+    zz = z * z2;
+  const wx = w * x2,
+    wy = w * y2,
+    wz = w * z2;
+  const m11 = 1 - (yy + zz),
+    m13 = xz + wy;
+  const m21 = xy + wz,
+    m22 = 1 - (xx + zz),
+    m23 = yz - wx;
+  const m31 = xz - wy,
+    m33 = 1 - (xx + yy);
   const pitch = Math.asin(-Math.min(1, Math.max(-1, m23)));
   // At |m23| ≈ 1 the prop points straight up or straight down and yaw / roll turn about the same axis
   // (gimbal lock); attribute the whole turn to yaw, which is the angle authors reach for.
   const locked = Math.abs(m23) >= 0.9999999;
   const yaw = locked ? Math.atan2(-m31, m11) : Math.atan2(m13, m33);
   const roll = locked ? 0 : Math.atan2(m21, m22);
-  return { yaw: ((yaw * R2D) % 360 + 360) % 360, pitch: pitch * R2D, roll: roll * R2D };
+  return { yaw: (((yaw * R2D) % 360) + 360) % 360, pitch: pitch * R2D, roll: roll * R2D };
 }
 
 /** `a · b` — apply b, then a. */
@@ -86,7 +103,8 @@ export function conjugateQuat(q: Quat): Quat {
 }
 
 export function applyQuat(v: V3, q: Quat): V3 {
-  const [qx, qy, qz, qw] = q, [vx, vy, vz] = v;
+  const [qx, qy, qz, qw] = q,
+    [vx, vy, vz] = v;
   const ix = qw * vx + qy * vz - qz * vy;
   const iy = qw * vy + qz * vx - qx * vz;
   const iz = qw * vz + qx * vy - qy * vx;
@@ -111,13 +129,15 @@ export function unrotateByPlacement(v: V3, r: PropRotation): V3 {
 /** Yaw alone about +Y. Kept as its own function because it is exact for the untilted majority and is the
  *  frame group members and mined rigs are authored in. */
 export function rotateY(v: V3, deg: number): V3 {
-  const t = deg * D2R, c = Math.cos(t), s = Math.sin(t);
+  const t = deg * D2R,
+    c = Math.cos(t),
+    s = Math.sin(t);
   return [v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c];
 }
 
 /** Compose a relative yaw (a group member's own turn) onto a placement's rotation. */
 export function composeYaw(r: PropRotation, relYaw: number): { yaw: number; pitch: number; roll: number } {
-  if (!isTilted(r)) return { yaw: ((r.yaw + relYaw) % 360 + 360) % 360, pitch: 0, roll: 0 };
+  if (!isTilted(r)) return { yaw: (((r.yaw + relYaw) % 360) + 360) % 360, pitch: 0, roll: 0 };
   return propRotationFromQuat(multiplyQuat(placementQuat(r), placementQuat({ yaw: relYaw })));
 }
 
@@ -130,9 +150,10 @@ export function tiltFields(r: { pitch?: number; roll?: number }): { pitch?: numb
 /** Write a rotation onto an existing placement, DELETING zero tilt rather than storing it. An untilted prop
  *  therefore round-trips through a rotate drag with the same fields it had before tilt existed — and a
  *  `-0` that `Math.asin` can hand back never reaches a saved document. */
-export function writePropRotation(target: { yaw: number; pitch?: number; roll?: number },
-                                  rot: PropRotation): void {
+export function writePropRotation(target: { yaw: number; pitch?: number; roll?: number }, rot: PropRotation): void {
   target.yaw = rot.yaw;
-  if (rot.pitch) target.pitch = rot.pitch; else delete target.pitch;
-  if (rot.roll) target.roll = rot.roll; else delete target.roll;
+  if (rot.pitch) target.pitch = rot.pitch;
+  else delete target.pitch;
+  if (rot.roll) target.roll = rot.roll;
+  else delete target.roll;
 }

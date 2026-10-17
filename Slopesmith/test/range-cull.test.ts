@@ -35,9 +35,9 @@ function batch(xs: number[]): THREE.BatchedMesh {
 const scene = new THREE.Scene();
 const root = new THREE.Group();
 scene.add(root);
-const near = chunk([0, 0, 0], 50);          // under the viewer
-const far = chunk([500, 0, 0], 50);         // clear of the range
-const wide = chunk([300, 0, 0], 150);       // centre beyond the range, near edge inside it
+const near = chunk([0, 0, 0], 50); // under the viewer
+const far = chunk([500, 0, 0], 50); // clear of the range
+const wide = chunk([300, 0, 0], 150); // centre beyond the range, near edge inside it
 const props = batch([0, 100, 300, 1000]);
 for (const object of [near, far, wide, props]) root.add(object);
 root.updateMatrixWorld(true);
@@ -55,74 +55,89 @@ const visibleSlots = () => [0, 1, 2, 3].filter(i => props.getVisibleAt(i));
 
 // ---- off is off: an editor view is unbounded, and the gate must cost it nothing ----
 cull.update(eye);
-check(scene.fog === null && near.visible && far.visible && visibleSlots().length === 4,
-  'an unarmed gate draws everything and hangs no fog');
+check(
+  scene.fog === null && near.visible && far.visible && visibleSlots().length === 4,
+  'an unarmed gate draws everything and hangs no fog',
+);
 
 // ---- armed ----
 cull.setRange(200);
 cull.update(eye);
-check(near.visible && !far.visible,
-  'a cell beyond the range stops drawing, the one under the viewer keeps drawing');
-check(wide.visible,
-  'a cell whose CENTRE is out of range but whose near edge is inside it keeps drawing');
-check(visibleSlots().join(',') === '0,1',
-  'prop slots beyond the range stop drawing, slot by slot');
-check(scene.fog instanceof THREE.Fog && (scene.fog as THREE.Fog).far === 200
-  && (scene.fog as THREE.Fog).near === 150
-  && (scene.fog as THREE.Fog).color.getHex() === fogColor.getHex(),
-  'a range too short to reach the 300 m haze start keeps a 50 m band off its far plane, in the sky\'s own horizon colour');
+check(near.visible && !far.visible, 'a cell beyond the range stops drawing, the one under the viewer keeps drawing');
+check(wide.visible, 'a cell whose CENTRE is out of range but whose near edge is inside it keeps drawing');
+check(visibleSlots().join(',') === '0,1', 'prop slots beyond the range stop drawing, slot by slot');
+check(
+  scene.fog instanceof THREE.Fog &&
+    (scene.fog as THREE.Fog).far === 200 &&
+    (scene.fog as THREE.Fog).near === 150 &&
+    (scene.fog as THREE.Fog).color.getHex() === fogColor.getHex(),
+  "a range too short to reach the 300 m haze start keeps a 50 m band off its far plane, in the sky's own horizon colour",
+);
 
 // A sky replacement is asynchronous: switching from the authored MESA world to reference GARI can finish
 // after this range was armed. The range stays the same, but its fog must adopt the newly loaded horizon.
 const fogInstanceAtLoad = scene.fog;
 fogColor.set(0x8899aa);
 cull.refreshFogColor();
-check(scene.fog === fogInstanceAtLoad && (scene.fog as THREE.Fog).color.getHex() === fogColor.getHex(),
-  'a newly loaded active sky refreshes the existing fog colour without changing the range');
+check(
+  scene.fog === fogInstanceAtLoad && (scene.fog as THREE.Fog).color.getHex() === fogColor.getHex(),
+  'a newly loaded active sky refreshes the existing fog colour without changing the range',
+);
 const stats = cull.stats();
-check(stats.range === 200 && stats.chunks === 3 && stats.chunksDrawn === 2
-  && stats.slots === 4 && stats.slotsDrawn === 2,
-  `the census reports ${stats.chunksDrawn}/${stats.chunks} cells and ${stats.slotsDrawn}/${stats.slots} slots drawn`);
+check(
+  stats.range === 200 && stats.chunks === 3 && stats.chunksDrawn === 2 && stats.slots === 4 && stats.slotsDrawn === 2,
+  `the census reports ${stats.chunksDrawn}/${stats.chunks} cells and ${stats.slotsDrawn}/${stats.slots} slots drawn`,
+);
 
 // ---- the pass is movement-gated, not per-frame ----
 const fogInstance = scene.fog;
 eye.set(10, 0, 0);
 cull.update(eye);
-check(visibleSlots().join(',') === '0,1',
-  'a step shorter than the recheck distance does not re-run the pass');
+check(visibleSlots().join(',') === '0,1', 'a step shorter than the recheck distance does not re-run the pass');
 // 450 m along: the near cell is 400 m behind its own edge, the far one is now underfoot, and of the props
 // only the slot at 300 is inside 200 m.
 eye.set(450, 0, 0);
 cull.update(eye);
-check(visibleSlots().join(',') === '2' && !near.visible && far.visible,
-  'travelling re-gates: what fell behind drops, what you have reached comes back');
+check(
+  visibleSlots().join(',') === '2' && !near.visible && far.visible,
+  'travelling re-gates: what fell behind drops, what you have reached comes back',
+);
 
 // ---- the gate owns only what it hid ----
-props.setVisibleAt(2, false);   // stand in for a graph hiding a prop while it is well inside the range
+props.setVisibleAt(2, false); // stand in for a graph hiding a prop while it is well inside the range
 eye.set(480, 0, 0);
 cull.update(eye);
-check(!props.getVisibleAt(2),
-  'a slot hidden by something else stays hidden when the gate re-gates it in range');
+check(!props.getVisibleAt(2), 'a slot hidden by something else stays hidden when the gate re-gates it in range');
 
 cull.setRange(600);
-check(scene.fog === fogInstance && (scene.fog as THREE.Fog).far === 600,
-  'changing the range moves the existing fog rather than replacing it (a swap recompiles every material)');
+check(
+  scene.fog === fogInstance && (scene.fog as THREE.Fog).far === 600,
+  'changing the range moves the existing fog rather than replacing it (a swap recompiles every material)',
+);
 // 600 m is the tier a headset rides at and the Unity culler's Quest range; both ports must haze it the same.
-check((scene.fog as THREE.Fog).near === 300,
-  'the haze starts at a fixed 300 m, so widening the range moves its far edge and not its beginning');
+check(
+  (scene.fog as THREE.Fog).near === 300,
+  'the haze starts at a fixed 300 m, so widening the range moves its far edge and not its beginning',
+);
 cull.update(eye);
-check(props.getVisibleAt(3) && !props.getVisibleAt(2),
-  'a wider range re-admits the slots the gate dropped, and still not the one it never hid');
+check(
+  props.getVisibleAt(3) && !props.getVisibleAt(2),
+  'a wider range re-admits the slots the gate dropped, and still not the one it never hid',
+);
 
 // ---- a headset's EDIT: the whole mountain, and the fog held out of reach rather than removed ----
 cull.setRange(null, true);
 check(near.visible && far.visible && wide.visible, 'holding the fog still turns the gate off');
-check(scene.fog === fogInstance && (scene.fog as THREE.Fog).near > 1e6,
-  'the held fog is the same object pushed out of reach: removing it would recompile every fogged material');
+check(
+  scene.fog === fogInstance && (scene.fog as THREE.Fog).near > 1e6,
+  'the held fog is the same object pushed out of reach: removing it would recompile every fogged material',
+);
 cull.setRange(600);
 cull.update(eye);
-check(scene.fog === fogInstance && (scene.fog as THREE.Fog).near === 300 && (scene.fog as THREE.Fog).far === 600,
-  'back from EDIT, the same fog hazes the same band again');
+check(
+  scene.fog === fogInstance && (scene.fog as THREE.Fog).near === 300 && (scene.fog as THREE.Fog).far === 600,
+  'back from EDIT, the same fog hazes the same band again',
+);
 check(props.getVisibleAt(3) && !props.getVisibleAt(2), 'and the gate re-gates as before');
 
 // ---- leaving the ride ----
@@ -132,26 +147,33 @@ check(scene.fog === null, 'leaving the session from EDIT still drops the held fo
 cull.setRange(600);
 cull.update(eye);
 cull.setRange(null);
-check(near.visible && far.visible && wide.visible && scene.fog === null,
-  'turning the gate off re-shows every cell and drops the fog');
-check(visibleSlots().join(',') === '0,1,3',
-  'and re-shows exactly the slots it hid — slot 2 was hidden by someone else and stays that way');
+check(
+  near.visible && far.visible && wide.visible && scene.fog === null,
+  'turning the gate off re-shows every cell and drops the fog',
+);
+check(
+  visibleSlots().join(',') === '0,1,3',
+  'and re-shows exactly the slots it hid — slot 2 was hidden by someone else and stays that way',
+);
 
 // ---- the reference root is offset and Z-flipped; a reflection preserves distance, so the gate is exact ----
 const flipped = new THREE.Group();
 flipped.position.set(2000, 0, 0);
 flipped.scale.set(1, 1, -1);
 scene.add(flipped);
-const inFlipped = chunk([0, 0, 300], 10);   // world (2000, 0, -300)
+const inFlipped = chunk([0, 0, 300], 10); // world (2000, 0, -300)
 flipped.add(inFlipped);
 flipped.updateMatrixWorld(true);
 const flippedCull = createRangeCull({
-  scene, chunks: () => [inFlipped], propMeshes: () => [], fogColor: () => null,
+  scene,
+  chunks: () => [inFlipped],
+  propMeshes: () => [],
+  fogColor: () => null,
 });
 flippedCull.setRange(200);
 flippedCull.update(new THREE.Vector3(2000, 0, -300));
 check(inFlipped.visible, 'a cell under a reflected, offset root is measured at its true world position');
-flippedCull.update(new THREE.Vector3(2000, 0, 300));   // 600 m away through the flip, not 0
+flippedCull.update(new THREE.Vector3(2000, 0, 300)); // 600 m away through the flip, not 0
 check(!inFlipped.visible, 'and the mirrored position 600 m away is correctly out of range');
 
 if (failures) process.exitCode = 1;

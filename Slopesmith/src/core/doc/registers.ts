@@ -62,7 +62,18 @@ export type QuadField = 'paint' | 'tex' | 'orient' | 'lock' | 'twist' | 'labels'
 
 /** The object families whose members are each one whole register. */
 export type ObjectFamily =
-  'prop' | 'light' | 'rail' | 'gem' | 'model' | 'volume' | 'screen' | 'prop-line' | 'trail' | 'label' | 'effect' | 'effect-node';
+  | 'prop'
+  | 'light'
+  | 'rail'
+  | 'gem'
+  | 'model'
+  | 'volume'
+  | 'screen'
+  | 'prop-line'
+  | 'trail'
+  | 'label'
+  | 'effect'
+  | 'effect-node';
 
 const VERTEX_PREFIX = 'v/';
 const HANDLE_PREFIX = 'h/';
@@ -76,10 +87,8 @@ export const handleRegister = (from: string, to: string): RegisterKey =>
   `${HANDLE_PREFIX}${directedEdgeName(from, to)}`;
 /** One edge's lock. An edge has no direction, so its ends are named in id order and either way round is one key. */
 export const edgeLockRegister = (a: string, b: string): RegisterKey => `${EDGE_LOCK_PREFIX}${edgeLockName(a, b)}`;
-export const quadRegister = (quad: string, field: QuadField): RegisterKey =>
-  `${QUAD_PREFIX}${quad}/${field}`;
-export const objectRegister = (family: ObjectFamily, id: string): RegisterKey =>
-  `${OBJECT_PREFIX}${family}/${id}`;
+export const quadRegister = (quad: string, field: QuadField): RegisterKey => `${QUAD_PREFIX}${quad}/${field}`;
+export const objectRegister = (family: ObjectFamily, id: string): RegisterKey => `${OBJECT_PREFIX}${family}/${id}`;
 export const globalRegister = (field: string): RegisterKey => `${GLOBAL_PREFIX}${field}`;
 
 // ---- object fields: assigning part of an object ----------------------------------------------------------
@@ -113,7 +122,13 @@ const FIELD_FAMILIES: ReadonlyMap<ObjectFamily, readonly (readonly string[])[]> 
   ['rail', [['nodes', 'handles']]], // handles are index-parallel with nodes: they land together
   ['gem', []],
   // An attached screen's pose is in its prop's frame, so attachment and pose are one thing; so is its aspect.
-  ['screen', [['prop', 'pos', 'yaw', 'pitch'], ['width', 'height']]],
+  [
+    'screen',
+    [
+      ['prop', 'pos', 'yaw', 'pitch'],
+      ['width', 'height'],
+    ],
+  ],
   ['label', []],
 ]);
 
@@ -169,7 +184,7 @@ export function objectFamilyOf(key: RegisterKey): ObjectFamily | null {
   const head = key.slice(OBJECT_PREFIX.length, cut);
   const dot = head.indexOf('.');
   const family = dot < 0 ? head : head.slice(0, dot);
-  return families.has(family) ? family as ObjectFamily : null;
+  return families.has(family) ? (family as ObjectFamily) : null;
 }
 
 /** The fields of the group `field` belongs to — itself alone when it belongs to none. */
@@ -211,8 +226,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * `same` is the caller's own idea of equal values, so a replica and a revert each compare the way they
  * already do.
  */
-export function objectFieldChanges(key: RegisterKey, before: RegisterValue, after: RegisterValue,
-  same: (a: unknown, b: unknown) => boolean): [RegisterKey, RegisterValue, RegisterValue][] | null {
+export function objectFieldChanges(
+  key: RegisterKey,
+  before: RegisterValue,
+  after: RegisterValue,
+  same: (a: unknown, b: unknown) => boolean,
+): [RegisterKey, RegisterValue, RegisterValue][] | null {
   const named = fieldedObjectOf(key);
   if (!named || !isRecord(before) || !isRecord(after)) return null;
   const changed = new Set<string>();
@@ -222,8 +241,7 @@ export function objectFieldChanges(key: RegisterKey, before: RegisterValue, afte
     changed.add(field);
   }
   for (const field of [...changed]) for (const linked of linkedFields(named.family, field)) changed.add(linked);
-  return [...changed].map(field =>
-    [objectFieldRegister(named.family, field, named.id), after[field], before[field]]);
+  return [...changed].map(field => [objectFieldRegister(named.family, field, named.id), after[field], before[field]]);
 }
 
 /** The run is one register holding every knot: knots are an ordered list of free positions rather than
@@ -246,7 +264,11 @@ export interface RegisterGeometry {
  */
 export function registerGeometry(key: RegisterKey): RegisterGeometry {
   if (key.startsWith(VERTEX_PREFIX)) return { vertices: [key.slice(VERTEX_PREFIX.length)], quads: [] };
-  const edge = key.startsWith(HANDLE_PREFIX) ? HANDLE_PREFIX : key.startsWith(EDGE_LOCK_PREFIX) ? EDGE_LOCK_PREFIX : null;
+  const edge = key.startsWith(HANDLE_PREFIX)
+    ? HANDLE_PREFIX
+    : key.startsWith(EDGE_LOCK_PREFIX)
+      ? EDGE_LOCK_PREFIX
+      : null;
   if (edge) {
     const ends = directedEdgeEnds(key.slice(edge.length));
     return { vertices: ends ? [...ends] : [], quads: [] };
@@ -261,20 +283,52 @@ export function registerGeometry(key: RegisterKey): RegisterGeometry {
 /** What a document IS rather than what it holds: its format markers and its topology. Nothing here is a
  *  register — `vertices` appears only as the buffer vertex registers are read out of and written into. */
 const STRUCTURAL: ReadonlySet<string> = new Set([
-  'kind', 'version', 'vertices', 'vertexIds', 'quads', 'quadIds', 'nextId', 'tombstones',
-  'freeEdges', 'tJunctions',
+  'kind',
+  'version',
+  'vertices',
+  'vertexIds',
+  'quads',
+  'quadIds',
+  'nextId',
+  'tombstones',
+  'freeEdges',
+  'tJunctions',
 ]);
 
 /** The fields that decompose into registers of their own rather than being held whole as one global. */
 const DECOMPOSED: ReadonlySet<string> = new Set([
-  'edgeHandles', 'edgeLocked', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels',
-  'course', 'props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'trails', 'labels',
+  'edgeHandles',
+  'edgeLocked',
+  'quadPaint',
+  'quadTex',
+  'quadOrient',
+  'quadLocked',
+  'quadTwist',
+  'quadLabels',
+  'course',
+  'props',
+  'lights',
+  'rails',
+  'gems',
+  'models',
+  'particleVolumes',
+  'screens',
+  'propLines',
+  'trails',
+  'labels',
   'effects',
 ]);
 
 /** The per-quad channel behind each attribute field, in the order a quad's registers are emitted. */
-export const QUAD_CHANNELS: readonly (readonly [QuadField, 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels'])[] = [
-  ['paint', 'quadPaint'], ['tex', 'quadTex'], ['orient', 'quadOrient'], ['lock', 'quadLocked'], ['twist', 'quadTwist'],
+export const QUAD_CHANNELS: readonly (readonly [
+  QuadField,
+  'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels',
+])[] = [
+  ['paint', 'quadPaint'],
+  ['tex', 'quadTex'],
+  ['orient', 'quadOrient'],
+  ['lock', 'quadLocked'],
+  ['twist', 'quadTwist'],
   ['labels', 'quadLabels'],
 ];
 
@@ -282,14 +336,30 @@ export const QUAD_CHANNELS: readonly (readonly [QuadField, 'quadPaint' | 'quadTe
  *  single fields written onto the member itself, so a copy of the document that registers will be written onto
  *  needs its own copy of each list and of each member. */
 export const OBJECT_LISTS = [
-  'props', 'lights', 'rails', 'gems', 'models', 'particleVolumes', 'screens', 'propLines', 'trails', 'labels',
+  'props',
+  'lights',
+  'rails',
+  'gems',
+  'models',
+  'particleVolumes',
+  'screens',
+  'propLines',
+  'trails',
+  'labels',
 ] as const;
 
 /** The effects document's own tables, each a list of rows named by their own id. */
 const EFFECT_TABLES = [
-  'slots', 'graphs', 'functions', 'objectProperties', 'instances', 'physics', 'collisionModels', 'splines',
+  'slots',
+  'graphs',
+  'functions',
+  'objectProperties',
+  'instances',
+  'physics',
+  'collisionModels',
+  'splines',
 ] as const;
-type EffectTable = typeof EFFECT_TABLES[number];
+type EffectTable = (typeof EFFECT_TABLES)[number];
 const effectTables: ReadonlySet<string> = new Set(EFFECT_TABLES);
 
 /** The two tables whose rows own effect nodes, which are registers in their own right. */
@@ -359,7 +429,10 @@ const quadKeyRows = new WeakMap<readonly string[], KeyRow>();
 
 function keyRow(rows: WeakMap<readonly string[], KeyRow>, ids: readonly string[]): KeyRow {
   let row = rows.get(ids);
-  if (!row) { row = { ids: [], keys: [] }; rows.set(ids, row); }
+  if (!row) {
+    row = { ids: [], keys: [] };
+    rows.set(ids, row);
+  }
   return row;
 }
 
@@ -437,8 +510,13 @@ const handleOrders = new WeakMap<object, HandleOrder>();
  */
 function handleOrder(vertexIds: readonly string[], handles: Record<string, V3>): NamedCrease[] {
   const held = handleOrders.get(handles);
-  if (held && held.vertexIds === vertexIds && held.vertexCount === vertexIds.length && sameKeys(handles, held.keys)
-    && held.named.every(crease => vertexIds[crease.from] === crease.fromId && vertexIds[crease.to] === crease.toId)) {
+  if (
+    held &&
+    held.vertexIds === vertexIds &&
+    held.vertexCount === vertexIds.length &&
+    sameKeys(handles, held.keys) &&
+    held.named.every(crease => vertexIds[crease.from] === crease.fromId && vertexIds[crease.to] === crease.toId)
+  ) {
     return held.named;
   }
   const keys: string[] = [];
@@ -447,12 +525,14 @@ function handleOrder(vertexIds: readonly string[], handles: Record<string, V3>):
     keys.push(key);
     const ends = directedEdgeEnds(key);
     if (!ends) throw new Error(`This mountain carries a crease under a key that names no edge: ${key}`);
-    const from = Number(ends[0]), to = Number(ends[1]);
-    const fromId = vertexIds[from], toId = vertexIds[to];
+    const from = Number(ends[0]),
+      to = Number(ends[1]);
+    const fromId = vertexIds[from],
+      toId = vertexIds[to];
     if (fromId === undefined || toId === undefined) continue;
     named.push({ key, register: handleRegister(fromId, toId), from, to, fromId, toId });
   }
-  named.sort((a, b) => a.register < b.register ? -1 : a.register > b.register ? 1 : 0);
+  named.sort((a, b) => (a.register < b.register ? -1 : a.register > b.register ? 1 : 0));
   handleOrders.set(handles, { vertexIds, vertexCount: vertexIds.length, keys, named });
   return named;
 }
@@ -481,13 +561,15 @@ function emitEdgeLocks(doc: QuadMeshDoc, emit: Emit, from = 0, to = Infinity): v
   for (const key in locks) {
     if (locks[key] !== true) continue;
     const cut = key.indexOf(',');
-    const a = Number(key.slice(0, cut)), b = Number(key.slice(cut + 1));
+    const a = Number(key.slice(0, cut)),
+      b = Number(key.slice(cut + 1));
     if (cut <= 0 || Math.min(a, b) < from || Math.min(a, b) >= to) continue;
-    const aId = doc.vertexIds[a], bId = doc.vertexIds[b];
+    const aId = doc.vertexIds[a],
+      bId = doc.vertexIds[b];
     if (aId === undefined || bId === undefined || aId === bId) continue;
     named.push([edgeLockRegister(aId, bId), true]);
   }
-  named.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  named.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   for (const [key, value] of named) emit(key, value);
 }
 
@@ -502,15 +584,19 @@ function emitQuads(doc: QuadMeshDoc, emit: Emit, from = 0, to = doc.quadIds.leng
       const [field, channel] = QUAD_CHANNELS[index];
       const value = record[channel]?.[at];
       if (value === undefined) continue;
-      const id = ids[at], slot = at * width + index;
+      const id = ids[at],
+        slot = at * width + index;
       emit(heldKey(row, slot, id) ?? holdKey(row, slot, id, quadRegister(id, field)), value);
     }
   }
 }
 
 function emitObjects(doc: QuadMeshDoc, emit: Emit, only?: ObjectFamily): void {
-  const list = <T>(family: ObjectFamily, objects: readonly T[] | undefined,
-    name: (object: T, at: number) => string): void => {
+  const list = <T>(
+    family: ObjectFamily,
+    objects: readonly T[] | undefined,
+    name: (object: T, at: number) => string,
+  ): void => {
     if (only && only !== family) return;
     objects?.forEach((object, at) => emit(objectRegister(family, name(object, at)), object));
   };
@@ -539,8 +625,10 @@ function emitEffects(effects: EffectsDocument | undefined, emit: Emit, only?: Ob
     for (const table of EFFECT_TABLES) {
       for (const row of tableRows(effects, table)) {
         const { nodes: _nodes, ...withoutNodes } = row;
-        emit(objectRegister('effect', `${table}/${keyable(`an effects ${table} row`, row.id, '/')}`),
-          ownsNodes(table) ? withoutNodes : row);
+        emit(
+          objectRegister('effect', `${table}/${keyable(`an effects ${table} row`, row.id, '/')}`),
+          ownsNodes(table) ? withoutNodes : row,
+        );
       }
     }
   }
@@ -604,9 +692,20 @@ const chunkRange = (section: string): [number, number] => {
   return [chunk * REGISTER_CHUNK, (chunk + 1) * REGISTER_CHUNK];
 };
 
-const families: ReadonlySet<string> =
-  new Set<ObjectFamily>(['prop', 'light', 'rail', 'gem', 'model', 'volume', 'screen', 'prop-line', 'trail', 'label', 'effect',
-    'effect-node']);
+const families: ReadonlySet<string> = new Set<ObjectFamily>([
+  'prop',
+  'light',
+  'rail',
+  'gem',
+  'model',
+  'volume',
+  'screen',
+  'prop-line',
+  'trail',
+  'label',
+  'effect',
+  'effect-node',
+]);
 
 /**
  * Which section hashes a register — vertices and quads by the chunk their index falls in, a crease by the
@@ -630,13 +729,14 @@ export function registerSection(doc: QuadMeshDoc, key: RegisterKey): string | nu
   if (key.startsWith(EDGE_LOCK_PREFIX)) {
     const ends = directedEdgeEnds(key.slice(EDGE_LOCK_PREFIX.length));
     if (!ends) return null;
-    const at = nameIndex(doc.vertexIds), a = at.get(ends[0]), b = at.get(ends[1]);
+    const at = nameIndex(doc.vertexIds),
+      a = at.get(ends[0]),
+      b = at.get(ends[1]);
     return a === undefined || b === undefined ? null : chunkSection('edge-locks', Math.min(a, b));
   }
   if (key.startsWith(QUAD_PREFIX)) {
     const cut = key.lastIndexOf('/');
-    const at = cut <= QUAD_PREFIX.length
-      ? undefined : nameIndex(doc.quadIds).get(key.slice(QUAD_PREFIX.length, cut));
+    const at = cut <= QUAD_PREFIX.length ? undefined : nameIndex(doc.quadIds).get(key.slice(QUAD_PREFIX.length, cut));
     return at === undefined ? null : chunkSection('quads', at);
   }
   if (key.startsWith(OBJECT_PREFIX)) {
@@ -665,7 +765,10 @@ export function registerSection(doc: QuadMeshDoc, key: RegisterKey): string | nu
 export function sectionRegisters(doc: QuadMeshDoc, section: string): RegisterMap {
   const out: RegisterMap = new Map();
   const emit: Emit = (key, value) => out.set(key, value);
-  if (section === COURSE_REGISTER) { emitCourse(doc, emit); return out; }
+  if (section === COURSE_REGISTER) {
+    emitCourse(doc, emit);
+    return out;
+  }
   const cut = section.indexOf('/');
   const kind = cut < 0 ? section : section.slice(0, cut);
   const rest = cut < 0 ? '' : section.slice(cut + 1);
@@ -705,12 +808,18 @@ const isPoint = (value: unknown): value is V3 =>
 
 /** A register inside a sparse channel, where assigning nothing removes the entry — which is exactly what an
  *  unpainted face or an uncreased edge is. */
-function inChannel(owner: Record<string, unknown> | undefined, make: () => Record<string, unknown>,
-  key: string): Register {
+function inChannel(
+  owner: Record<string, unknown> | undefined,
+  make: () => Record<string, unknown>,
+  key: string,
+): Register {
   return {
     read: () => owner?.[key],
     write: value => {
-      if (value === undefined) { if (owner) delete owner[key]; return true; }
+      if (value === undefined) {
+        if (owner) delete owner[key];
+        return true;
+      }
       make()[key] = value;
       return true;
     },
@@ -734,7 +843,9 @@ function indexById(list: readonly { id?: string }[] | undefined, id: string): nu
   const held = idIndexes.get(list)?.get(id);
   if (held !== undefined && list[held]?.id === id) return held;
   const index = new Map<string, number>();
-  list.forEach((object, at) => { if (object.id !== undefined && !index.has(object.id)) index.set(object.id, at); });
+  list.forEach((object, at) => {
+    if (object.id !== undefined && !index.has(object.id)) index.set(object.id, at);
+  });
   idIndexes.set(list, index);
   return index.get(id) ?? -1;
 }
@@ -747,15 +858,27 @@ function indexById(list: readonly { id?: string }[] | undefined, id: string): nu
  * effect node whose graph is not here. Reading never creates the list, so asking about an object a document
  * does not have leaves the document as it was.
  */
-function byIdentity<T extends { id?: string }>(read: () => T[] | undefined, make: () => T[] | undefined,
-  want: string): Register {
+function byIdentity<T extends { id?: string }>(
+  read: () => T[] | undefined,
+  make: () => T[] | undefined,
+  want: string,
+): Register {
   const at = (): number => indexById(read(), want);
   return {
-    read: () => { const found = at(); return found < 0 ? undefined : read()![found]; },
+    read: () => {
+      const found = at();
+      return found < 0 ? undefined : read()![found];
+    },
     write: value => {
       const found = at();
-      if (value === undefined) { if (found >= 0) read()!.splice(found, 1); return true; }
-      if (found >= 0) { read()![found] = value as T; return true; }
+      if (value === undefined) {
+        if (found >= 0) read()!.splice(found, 1);
+        return true;
+      }
+      if (found >= 0) {
+        read()![found] = value as T;
+        return true;
+      }
       const made = make();
       if (!made) return false;
       made.push(value as T);
@@ -783,11 +906,17 @@ function effectRegister(doc: QuadMeshDoc, family: 'effect' | 'effect-node', path
       read: () => {
         if (!doc.effects) return undefined;
         const record = doc.effects as unknown as Record<string, unknown>;
-        return Object.fromEntries(Object.keys(record).filter(field => !effectTables.has(field))
-          .map(field => [field, record[field]]));
+        return Object.fromEntries(
+          Object.keys(record)
+            .filter(field => !effectTables.has(field))
+            .map(field => [field, record[field]]),
+        );
       },
       write: value => {
-        if (value === undefined) { delete doc.effects; return true; }
+        if (value === undefined) {
+          delete doc.effects;
+          return true;
+        }
         if (!value || typeof value !== 'object') return false;
         // Replaced whole rather than merged, so a field the previous holder carried and this one does not is
         // gone — which is what last-writer-wins over one value means. The tables are not the header's to move.
@@ -813,11 +942,15 @@ function effectRegister(doc: QuadMeshDoc, family: 'effect' | 'effect-node', path
       write: value => {
         const held = rows();
         const found = held?.findIndex(row => row.id === rest) ?? -1;
-        if (value === undefined) { if (found >= 0) held!.splice(found, 1); return true; }
+        if (value === undefined) {
+          if (found >= 0) held!.splice(found, 1);
+          return true;
+        }
         if (!value || typeof value !== 'object') return false;
-        const nodes = ownsNodes(table) ? { nodes: found >= 0 ? held![found].nodes ?? [] : [] } : {};
+        const nodes = ownsNodes(table) ? { nodes: found >= 0 ? (held![found].nodes ?? []) : [] } : {};
         const row = { ...(value as EffectRow), ...nodes };
-        if (found >= 0) held![found] = row; else grow().push(row);
+        if (found >= 0) held![found] = row;
+        else grow().push(row);
         return true;
       },
     };
@@ -828,13 +961,24 @@ function effectRegister(doc: QuadMeshDoc, family: 'effect' | 'effect-node', path
   const node = split < 0 ? '' : rest.slice(split + 1);
   if (!node) return null;
   const holder = (list?: EffectRow[]): EffectRow | undefined => list?.find(row => row.id === owner);
-  return byIdentity<{ id: string }>(() => holder(rows())?.nodes,
-    () => { const row = holder(rows()); return row && (row.nodes ??= []); }, node);
+  return byIdentity<{ id: string }>(
+    () => holder(rows())?.nodes,
+    () => {
+      const row = holder(rows());
+      return row && (row.nodes ??= []);
+    },
+    node,
+  );
 }
 
 /** Where each field-assigned family keeps its objects on a document. */
 const FIELDED_LISTS: Record<string, 'props' | 'lights' | 'rails' | 'gems' | 'screens' | 'labels'> = {
-  prop: 'props', light: 'lights', rail: 'rails', gem: 'gems', screen: 'screens', label: 'labels',
+  prop: 'props',
+  light: 'lights',
+  rail: 'rails',
+  gem: 'gems',
+  screen: 'screens',
+  label: 'labels',
 };
 
 /**
@@ -853,7 +997,8 @@ function objectFieldRegisterOn(doc: QuadMeshDoc, named: ObjectFieldKey): Registe
   return {
     read: () => object[named.field],
     write: value => {
-      if (value === undefined) delete object[named.field]; else object[named.field] = value;
+      if (value === undefined) delete object[named.field];
+      else object[named.field] = value;
       return true;
     },
   };
@@ -868,7 +1013,7 @@ function objectFieldRegisterOn(doc: QuadMeshDoc, named: ObjectFieldKey): Registe
  */
 function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<RegisterWrite, 'landed'> {
   const record = doc as unknown as Record<string, unknown>;
-  const missing = (id: string): 'retired' | 'refused' => tombstoned(doc, id) ? 'retired' : 'refused';
+  const missing = (id: string): 'retired' | 'refused' => (tombstoned(doc, id) ? 'retired' : 'refused');
 
   if (key === COURSE_REGISTER) {
     return {
@@ -897,7 +1042,8 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
     const ends = directedEdgeEnds(key.slice(HANDLE_PREFIX.length));
     if (!ends) return 'refused';
     const at = nameIndex(doc.vertexIds);
-    const from = at.get(ends[0]), to = at.get(ends[1]);
+    const from = at.get(ends[0]),
+      to = at.get(ends[1]);
     if (from === undefined) return missing(ends[0]);
     if (to === undefined) return missing(ends[1]);
     return inChannel(doc.edgeHandles, () => (doc.edgeHandles ??= {}), directedEdgeName(from, to));
@@ -906,7 +1052,8 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
     const ends = directedEdgeEnds(key.slice(EDGE_LOCK_PREFIX.length));
     if (!ends || ends[0] === ends[1]) return 'refused';
     const at = nameIndex(doc.vertexIds);
-    const a = at.get(ends[0]), b = at.get(ends[1]);
+    const a = at.get(ends[0]),
+      b = at.get(ends[1]);
     if (a === undefined) return missing(ends[0]);
     if (b === undefined) return missing(ends[1]);
     const lock = inChannel(doc.edgeLocked, () => (doc.edgeLocked ??= {}), undirectedEdgeKey(a, b));
@@ -922,8 +1069,11 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
     if (!channel) return 'refused';
     const at = nameIndex(doc.quadIds).get(id);
     if (at === undefined) return missing(id);
-    return inChannel(record[channel] as Record<string, unknown> | undefined,
-      () => (record[channel] ??= {}) as Record<string, unknown>, String(at));
+    return inChannel(
+      record[channel] as Record<string, unknown> | undefined,
+      () => (record[channel] ??= {}) as Record<string, unknown>,
+      String(at),
+    );
   }
   if (key.startsWith(OBJECT_PREFIX)) {
     const fielded = objectFieldOf(key);
@@ -933,8 +1083,19 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
     const family = key.slice(OBJECT_PREFIX.length, cut) as ObjectFamily;
     const id = key.slice(cut + 1);
     if (!id) return 'refused';
-    const list =<T>(field: 'props' | 'lights' | 'rails' | 'gems' | 'models' | 'particleVolumes' | 'screens' | 'propLines' | 'trails'
-      | 'labels') => ({
+    const list = <T>(
+      field:
+        | 'props'
+        | 'lights'
+        | 'rails'
+        | 'gems'
+        | 'models'
+        | 'particleVolumes'
+        | 'screens'
+        | 'propLines'
+        | 'trails'
+        | 'labels',
+    ) => ({
       read: () => record[field] as T[] | undefined,
       make: () => (record[field] ??= []) as T[],
     });
@@ -979,7 +1140,8 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
         const held = list<{ id: string }>('labels');
         return byIdentity(held.read, held.make, id);
       }
-      case 'effect': case 'effect-node':
+      case 'effect':
+      case 'effect-node':
         return effectRegister(doc, family, id) ?? 'refused';
       default:
         return 'refused';
@@ -1013,11 +1175,17 @@ export function writeRegister(doc: QuadMeshDoc, key: RegisterKey, value: Registe
 }
 
 /** How a batch of assignments turned out. */
-export interface RegisterWriteCount { landed: number; retired: number; refused: number }
+export interface RegisterWriteCount {
+  landed: number;
+  retired: number;
+  refused: number;
+}
 
 /** Assign a set of registers in the order given — a full resync, or one participant's batch of changes. */
-export function applyRegisters(doc: QuadMeshDoc,
-  registers: Iterable<readonly [RegisterKey, RegisterValue]>): RegisterWriteCount {
+export function applyRegisters(
+  doc: QuadMeshDoc,
+  registers: Iterable<readonly [RegisterKey, RegisterValue]>,
+): RegisterWriteCount {
   const count: RegisterWriteCount = { landed: 0, retired: 0, refused: 0 };
   for (const [key, value] of registers) count[writeRegister(doc, key, value)]++;
   return count;
@@ -1043,7 +1211,16 @@ export function registerShell(doc: QuadMeshDoc): QuadMeshDoc {
   if (doc.freeEdges) shell.freeEdges = doc.freeEdges.map(([a, b]) => [a, b]);
   if (doc.tJunctions) shell.tJunctions = doc.tJunctions.map(node => ({ ...node, edge: [...node.edge] }));
   if (doc.tombstones) shell.tombstones = [...doc.tombstones];
-  for (const channel of ['edgeHandles', 'edgeLocked', 'quadPaint', 'quadTex', 'quadOrient', 'quadLocked', 'quadTwist', 'quadLabels']) {
+  for (const channel of [
+    'edgeHandles',
+    'edgeLocked',
+    'quadPaint',
+    'quadTex',
+    'quadOrient',
+    'quadLocked',
+    'quadTwist',
+    'quadLabels',
+  ]) {
     if (record[channel] !== undefined) record[channel] = {};
   }
   for (const family of OBJECT_LISTS) {

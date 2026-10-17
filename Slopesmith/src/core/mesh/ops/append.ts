@@ -44,7 +44,8 @@ export function appendTube(
 ): AppendTubeResult {
   if (![...start, ...end, widthDiameter, heightDiameter, sectionLength, ringEdges].every(Number.isFinite))
     return { ok: false, error: 'Tube endpoints and dimensions must be finite numbers.' };
-  const axisDelta = sub(end, start), length = len(axisDelta);
+  const axisDelta = sub(end, start),
+    length = len(axisDelta);
   if (length < 1e-3) return { ok: false, error: 'Draw two different endpoints to give the tube a length.' };
   if (widthDiameter <= 0 || heightDiameter <= 0)
     return { ok: false, error: 'Tube width and height diameters must be greater than zero.' };
@@ -56,7 +57,8 @@ export function appendTube(
   const upSeed: V3 = Math.abs(dot(axis, [0, 1, 0])) < 0.98 ? [0, 1, 0] : [0, 0, 1];
   const heightAxis = norm(sub(upSeed, mul(axis, dot(upSeed, axis))));
   const widthAxis = norm(cross(axis, heightAxis));
-  const rw = widthDiameter * 0.5, rh = heightDiameter * 0.5;
+  const rw = widthDiameter * 0.5,
+    rh = heightDiameter * 0.5;
   const axialSections = Math.max(1, Math.ceil(length / sectionLength));
   const radialSections = ringEdges;
   const patchCount = axialSections * radialSections;
@@ -70,7 +72,7 @@ export function appendTube(
   for (let ring = 0; ring <= axialSections; ring++) {
     const center = add(start, mul(axisDelta, ring / axialSections));
     for (let side = 0; side < radialSections; side++) {
-      const angle = side / radialSections * Math.PI * 2;
+      const angle = (side / radialSections) * Math.PI * 2;
       const point = add(center, add(mul(widthAxis, Math.cos(angle) * rw), mul(heightAxis, Math.sin(angle) * rh)));
       addedVertices.push(vertices.length / 3);
       vertices.push(...point);
@@ -79,21 +81,26 @@ export function appendTube(
   const firstQuad = doc.quads.length;
   const quads = doc.quads.map(quad => quad.slice());
   const addedQuads: number[] = [];
-  for (let ring = 0; ring < axialSections; ring++) for (let side = 0; side < radialSections; side++) {
-    const next = (side + 1) % radialSections;
-    quads.push([
-      ringVertex(ring, side), ringVertex(ring, next),
-      ringVertex(ring + 1, side), ringVertex(ring + 1, next),
-    ]);
-    addedQuads.push(firstQuad + addedQuads.length);
-  }
+  for (let ring = 0; ring < axialSections; ring++)
+    for (let side = 0; side < radialSections; side++) {
+      const next = (side + 1) % radialSections;
+      quads.push([
+        ringVertex(ring, side),
+        ringVertex(ring, next),
+        ringVertex(ring + 1, side),
+        ringVertex(ring + 1, next),
+      ]);
+      addedQuads.push(firstQuad + addedQuads.length);
+    }
   const guard = checkManifold(quads);
   if (!guard.ok) return { ok: false, error: guard.error! };
   return {
     ok: true,
     doc: { ...doc, vertices, quads, ...appendMeshIds(doc, addedVertices.length, addedQuads.length) },
-    quads: addedQuads, vertices: addedVertices,
-    axialSections, radialSections,
+    quads: addedQuads,
+    vertices: addedVertices,
+    axialSections,
+    radialSections,
   };
 }
 
@@ -113,15 +120,21 @@ export function standalonePatchCorners(center: V3, normal: V3, size: number): [V
 
 /** Append one disconnected quad to the document. Existing indices, ids and every sparse map stay
  *  untouched; the new cell inherits `baseSurface` because it intentionally carries no per-quad overrides. */
-export function appendStandalonePatch(doc: QuadMeshDoc, center: V3, normal: V3, size = DEFAULT_STANDALONE_PATCH_SIZE_M):
-  { doc: QuadMeshDoc; quad: number; vertices: [number, number, number, number] } {
+export function appendStandalonePatch(
+  doc: QuadMeshDoc,
+  center: V3,
+  normal: V3,
+  size = DEFAULT_STANDALONE_PATCH_SIZE_M,
+): { doc: QuadMeshDoc; quad: number; vertices: [number, number, number, number] } {
   const corners = standalonePatchCorners(center, normal, size);
   const firstVertex = doc.vertices.length / 3;
   const vertices: [number, number, number, number] = [firstVertex, firstVertex + 1, firstVertex + 2, firstVertex + 3];
   const quad = doc.quads.length;
   return {
     doc: {
-      ...doc, vertices: [...doc.vertices, ...corners.flat()], quads: [...doc.quads, vertices],
+      ...doc,
+      vertices: [...doc.vertices, ...corners.flat()],
+      quads: [...doc.quads, vertices],
       ...appendMeshIds(doc, 4, 1),
     },
     quad,
@@ -134,12 +147,10 @@ export type FreeEdgeEndpoint = number | V3;
 export type FreeEdgeContact = { pos: V3; edge: [number, number]; t: number };
 
 export type AppendFreeEdgeResult =
-  | { ok: true; doc: QuadMeshDoc; edge: [number, number]; appendedVertices: number[] }
-  | { ok: false; error: string };
+  { ok: true; doc: QuadMeshDoc; edge: [number, number]; appendedVertices: number[] } | { ok: false; error: string };
 
 export type AppendPatchResult =
-  | { ok: true; doc: QuadMeshDoc; quad: number; vertices: number[] }
-  | { ok: false; error: string };
+  { ok: true; doc: QuadMeshDoc; quad: number; vertices: number[] } | { ok: false; error: string };
 
 export type PatchCorners =
   | readonly [FreeEdgeEndpoint, FreeEdgeEndpoint, FreeEdgeEndpoint]
@@ -149,37 +160,42 @@ export type PatchCorners =
  * a new point. Triangles use the document's valid wedge encoding [A,B,C,C]; quads store [A,B,D,C], whose
  * perimeter is A-B-C-D. Free edges around the new face are consumed and existing surface tangents at reused
  * vertices are pinned before their valence changes. */
-export function appendPatchFromCorners(
-  doc: QuadMeshDoc,
-  corners: PatchCorners,
-): AppendPatchResult {
+export function appendPatchFromCorners(doc: QuadMeshDoc, corners: PatchCorners): AppendPatchResult {
   const sides = corners.length;
   const count = doc.vertices.length / 3;
   const validId = (v: number) => Number.isInteger(v) && v >= 0 && v < count;
   const finitePoint = (p: V3) => p.length === 3 && p.every(Number.isFinite);
-  if (corners.some(c => typeof c === 'number' ? !validId(c) : !finitePoint(c)))
+  if (corners.some(c => (typeof c === 'number' ? !validId(c) : !finitePoint(c))))
     return { ok: false, error: `One of the patch corners is stale or invalid — place the ${sides} corners again.` };
 
   let next = count;
-  const ids = corners.map(c => typeof c === 'number' ? c : next++);
-  const point = (corner: FreeEdgeEndpoint, id: number): V3 => typeof corner === 'number'
-    ? readVertex(doc.vertices, id)
-    : corner;
+  const ids = corners.map(c => (typeof c === 'number' ? c : next++));
+  const point = (corner: FreeEdgeEndpoint, id: number): V3 =>
+    typeof corner === 'number' ? readVertex(doc.vertices, id) : corner;
   const positions = corners.map((corner, i) => point(corner, ids[i]));
-  for (let i = 0; i < sides; i++) for (let j = i + 1; j < sides; j++) {
-    if (ids[i] === ids[j] || Math.hypot(
-      positions[i][0] - positions[j][0], positions[i][1] - positions[j][1], positions[i][2] - positions[j][2],
-    ) < 1e-6) return { ok: false, error: `A ${sides === 3 ? 'triangle' : 'quad'} needs ${sides} different corner points.` };
-  }
+  for (let i = 0; i < sides; i++)
+    for (let j = i + 1; j < sides; j++) {
+      if (
+        ids[i] === ids[j] ||
+        Math.hypot(
+          positions[i][0] - positions[j][0],
+          positions[i][1] - positions[j][1],
+          positions[i][2] - positions[j][2],
+        ) < 1e-6
+      )
+        return { ok: false, error: `A ${sides === 3 ? 'triangle' : 'quad'} needs ${sides} different corner points.` };
+    }
 
   const clickedEdges = ids.map((id, i) => [id, ids[(i + 1) % sides]] as [number, number]);
-  const edgeUse = new Map<string, number>(), edgeDirection = new Map<string, [number, number]>();
-  for (const q of doc.quads) for (const [a, b] of quadPerimeterEdges(q)) {
-    if (a === b) continue;
-    const key = ekey(a, b);
-    edgeUse.set(key, (edgeUse.get(key) ?? 0) + 1);
-    if (!edgeDirection.has(key)) edgeDirection.set(key, [a, b]);
-  }
+  const edgeUse = new Map<string, number>(),
+    edgeDirection = new Map<string, [number, number]>();
+  for (const q of doc.quads)
+    for (const [a, b] of quadPerimeterEdges(q)) {
+      if (a === b) continue;
+      const key = ekey(a, b);
+      edgeUse.set(key, (edgeUse.get(key) ?? 0) + 1);
+      if (!edgeDirection.has(key)) edgeDirection.set(key, [a, b]);
+    }
   if (clickedEdges.some(([a, b]) => (edgeUse.get(ekey(a, b)) ?? 0) >= 2))
     return { ok: false, error: 'That patch would put a third surface on an interior edge.' };
   const idSet = new Set(ids);
@@ -188,7 +204,8 @@ export function appendPatchFromCorners(
 
   const edgeHandles = { ...(doc.edgeHandles ?? {}) };
   const beforeMesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
-  const beforeAdj = meshAdjacency(beforeMesh), beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
+  const beforeAdj = meshAdjacency(beforeMesh),
+    beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
   for (let i = 0; i < sides; i++) {
     if (typeof corners[i] !== 'number') continue;
     for (const neighbor of beforeAdj.neighbors[ids[i]] ?? []) {
@@ -198,7 +215,9 @@ export function appendPatchFromCorners(
   }
 
   const vertices = [...doc.vertices];
-  corners.forEach(corner => { if (typeof corner !== 'number') vertices.push(...corner); });
+  corners.forEach(corner => {
+    if (typeof corner !== 'number') vertices.push(...corner);
+  });
   // A connected face must traverse every shared seam opposite its neighbor. If the authored click order runs
   // the same way as an existing boundary, reverse the whole perimeter (keeping click 0 as the stable anchor).
   // Several connected neighbors must agree on that one global choice; otherwise their own orientations conflict.
@@ -210,19 +229,24 @@ export function appendPatchFromCorners(
   if (reverseConstraints.size > 1)
     return { ok: false, error: 'The connected patch boundaries have conflicting normal directions.' };
   const perimeter = reverseConstraints.has(true) ? [ids[0], ...ids.slice(1).reverse()] : ids;
-  const quadCorners = sides === 3
-    ? [perimeter[0], perimeter[1], perimeter[2], perimeter[2]]
-    : [perimeter[0], perimeter[1], perimeter[3], perimeter[2]];
+  const quadCorners =
+    sides === 3
+      ? [perimeter[0], perimeter[1], perimeter[2], perimeter[2]]
+      : [perimeter[0], perimeter[1], perimeter[3], perimeter[2]];
   const quads = [...doc.quads, quadCorners];
   const guard = checkManifold(quads);
   if (!guard.ok) return { ok: false, error: guard.error! };
   const consumed = new Set(clickedEdges.map(([a, b]) => ekey(a, b)));
   const freeEdges = (doc.freeEdges ?? []).filter(([a, b]) => !consumed.has(ekey(a, b)));
   const out: QuadMeshDoc = {
-    ...doc, vertices, quads, edgeHandles,
+    ...doc,
+    vertices,
+    quads,
+    edgeHandles,
     ...appendMeshIds(doc, (vertices.length - doc.vertices.length) / 3, 1),
   };
-  if (freeEdges.length) out.freeEdges = freeEdges; else delete out.freeEdges;
+  if (freeEdges.length) out.freeEdges = freeEdges;
+  else delete out.freeEdges;
   return { ok: true, doc: out, quad: doc.quads.length, vertices: ids };
 }
 
@@ -236,18 +260,23 @@ export function appendPatchFromCorners(
  * On a surface edge it stays an explicit T-junction: splitting there would put a fifth side on the patch beyond.
  */
 export function appendFreeEdge(
-  doc: QuadMeshDoc, from: FreeEdgeEndpoint | FreeEdgeContact, to: FreeEdgeEndpoint | FreeEdgeContact,
+  doc: QuadMeshDoc,
+  from: FreeEdgeEndpoint | FreeEdgeContact,
+  to: FreeEdgeEndpoint | FreeEdgeContact,
 ): AppendFreeEdgeResult {
   const count = doc.vertices.length / 3;
   const contact = (endpoint: FreeEdgeEndpoint | FreeEdgeContact): FreeEdgeContact | null =>
     typeof endpoint === 'object' && !Array.isArray(endpoint) ? endpoint : null;
   const rawPoint = (endpoint: FreeEdgeEndpoint | FreeEdgeContact): V3 | null =>
-    typeof endpoint === 'number' ? null : contact(endpoint)?.pos ?? endpoint as V3;
+    typeof endpoint === 'number' ? null : (contact(endpoint)?.pos ?? (endpoint as V3));
   const validId = (v: number) => Number.isInteger(v) && v >= 0 && v < count;
   if ((typeof from === 'number' && !validId(from)) || (typeof to === 'number' && !validId(to)))
     return { ok: false, error: 'The snapped endpoint is stale — pick the edge endpoints again.' };
   const finitePoint = (p: V3) => p.length === 3 && p.every(Number.isFinite);
-  if ((typeof from !== 'number' && !finitePoint(rawPoint(from)!)) || (typeof to !== 'number' && !finitePoint(rawPoint(to)!)))
+  if (
+    (typeof from !== 'number' && !finitePoint(rawPoint(from)!)) ||
+    (typeof to !== 'number' && !finitePoint(rawPoint(to)!))
+  )
     return { ok: false, error: 'An edge endpoint is not a finite 3D point.' };
   for (const endpoint of [from, to]) {
     const hit = contact(endpoint);
@@ -258,7 +287,8 @@ export function appendFreeEdge(
   }
 
   const beforeMesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges);
-  const beforeAdj = meshAdjacency(beforeMesh), beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
+  const beforeAdj = meshAdjacency(beforeMesh),
+    beforeHandle = meshEdgeHandles(beforeMesh, doc.edgeHandles);
   const pos = (id: number) => readVertex(doc.vertices, id);
   const hostExists = ([x, y]: [number, number]) => (beforeAdj.neighbors[x] ?? []).includes(y);
   /** The live free (patch-less) edge this endpoint lands inside, which the new edge splits; else null. */
@@ -277,25 +307,33 @@ export function appendFreeEdge(
     const host = freeHost(endpoint);
     return host ? edgePointAt(host.edge[0], host.edge[1], host.t, beforeHandle, pos) : rawPoint(endpoint)!;
   };
-  const pa = point(from, a), pb = point(to, b);
+  const pa = point(from, a),
+    pb = point(to, b);
   if (Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]) < 1e-6)
     return { ok: false, error: 'An edge needs two different endpoint positions.' };
-  const fromHost = freeHost(from), toHost = freeHost(to);
+  const fromHost = freeHost(from),
+    toHost = freeHost(to);
   if (fromHost && toHost && ekey(fromHost.edge[0], fromHost.edge[1]) === ekey(toHost.edge[0], toHost.edge[1]))
     return { ok: false, error: 'Both ends lie on the same edge.' };
-  if ((fromHost?.edge.includes(b)) || (toHost?.edge.includes(a)))
+  if (fromHost?.edge.includes(b) || toHost?.edge.includes(a))
     return { ok: false, error: 'That edge would double back along the edge it ends on.' };
 
   const key = ekey(a, b);
-  const exists = (doc.freeEdges ?? []).some(([x, y]) => ekey(x, y) === key)
-    || doc.quads.some(q => quadPerimeterEdges(q)
-      .some(([x, y]) => x !== y && ekey(x, y) === key));
+  const exists =
+    (doc.freeEdges ?? []).some(([x, y]) => ekey(x, y) === key) ||
+    doc.quads.some(q => quadPerimeterEdges(q).some(([x, y]) => x !== y && ekey(x, y) === key));
   if (exists) return { ok: false, error: 'Those vertices already share an edge.' };
 
   const appendedVertices: number[] = [];
   const vertices = [...doc.vertices];
-  if (typeof from !== 'number') { vertices.push(...pa); appendedVertices.push(a); }
-  if (typeof to !== 'number') { vertices.push(...pb); appendedVertices.push(b); }
+  if (typeof from !== 'number') {
+    vertices.push(...pa);
+    appendedVertices.push(a);
+  }
+  if (typeof to !== 'number') {
+    vertices.push(...pb);
+    appendedVertices.push(b);
+  }
   const edge: [number, number] = a < b ? [a, b] : [b, a];
   // A new neighbour changes automatic Bessel classification at a reused vertex. If that vertex already belongs
   // to the surface, materialize its current outgoing handles first so snapping on a construction edge cannot warp
@@ -303,7 +341,9 @@ export function appendFreeEdge(
   const edgeHandles = { ...(doc.edgeHandles ?? {}) };
   for (const id of [typeof from === 'number' ? from : null, typeof to === 'number' ? to : null]) {
     if (id === null) continue;
-    const surfaceVertex = (beforeAdj.neighbors[id] ?? []).some(n => (beforeAdj.edgeQuads.get(ekey(id, n))?.length ?? 0) > 0);
+    const surfaceVertex = (beforeAdj.neighbors[id] ?? []).some(
+      n => (beforeAdj.edgeQuads.get(ekey(id, n))?.length ?? 0) > 0,
+    );
     if (!surfaceVertex) continue;
     for (const n of beforeAdj.neighbors[id] ?? []) {
       const h = beforeHandle(id, n);
@@ -315,14 +355,24 @@ export function appendFreeEdge(
   const splits: { edge: [number, number]; vertex: number; t: number }[] = [];
   let tJunctions = [...(doc.tJunctions ?? [])];
   const seenTJunctions = new Set(tJunctions.map(node => `${node.vertex}:${ekey(node.edge[0], node.edge[1])}`));
-  for (const [endpoint, vertex, at] of [[from, a, pa], [to, b, pb]] as const) {
+  for (const [endpoint, vertex, at] of [
+    [from, a, pa],
+    [to, b, pb],
+  ] as const) {
     const host = freeHost(endpoint);
     if (host) {
-      const [x, y] = host.edge, hostKey = ekey(x, y);
+      const [x, y] = host.edge,
+        hostKey = ekey(x, y);
       splitEdgeHandlesExact(edgeHandles, x, y, vertex, host.t, at, beforeHandle, pos);
       splitEdgeLock(edgeLocked, x, y, vertex);
-      freeEdges = freeEdges.flatMap(([p, q]): [number, number][] => ekey(p, q) !== hostKey ? [[p, q]]
-        : [[Math.min(x, vertex), Math.max(x, vertex)], [Math.min(vertex, y), Math.max(vertex, y)]]);
+      freeEdges = freeEdges.flatMap(([p, q]): [number, number][] =>
+        ekey(p, q) !== hostKey
+          ? [[p, q]]
+          : [
+              [Math.min(x, vertex), Math.max(x, vertex)],
+              [Math.min(vertex, y), Math.max(vertex, y)],
+            ],
+      );
       splits.push({ edge: [x, y], vertex, t: host.t });
       continue;
     }
@@ -330,7 +380,8 @@ export function appendFreeEdge(
     if (!hit || !hostExists(hit.edge)) continue;
     const key = `${vertex}:${ekey(hit.edge[0], hit.edge[1])}`;
     if (!seenTJunctions.has(key)) {
-      seenTJunctions.add(key); tJunctions.push({ vertex, edge: [...hit.edge], t: hit.t });
+      seenTJunctions.add(key);
+      tJunctions.push({ vertex, edge: [...hit.edge], t: hit.t });
     }
   }
   // T-nodes already embedded in a split free edge move onto the half that now carries them.

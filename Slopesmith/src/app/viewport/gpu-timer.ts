@@ -73,8 +73,7 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
 
     let newestMs: number | null = null;
     // Query completion is ordered. Consume every ready result so the number returned is the freshest one.
-    while (pending.length > 0
-      && gl.getQueryParameter(pending[0], gl.QUERY_RESULT_AVAILABLE) === true) {
+    while (pending.length > 0 && gl.getQueryParameter(pending[0], gl.QUERY_RESULT_AVAILABLE) === true) {
       const query = pending.shift()!;
       const nanoseconds = Number(gl.getQueryParameter(query, gl.QUERY_RESULT));
       gl.deleteQuery(query);
@@ -90,7 +89,10 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
   }
 
   function beginFrame(): GpuTimerReading {
-    if (gl.isContextLost()) { onContextLost(); return { gpuMs: null, state: 'disjoint' }; }
+    if (gl.isContextLost()) {
+      onContextLost();
+      return { gpuMs: null, state: 'disjoint' };
+    }
     if (!ext) return { gpuMs: null, state: 'unsupported' };
     const reading = poll();
     // A disjoint event invalidates the outstanding interval. Wait for the flag to clear before measuring again.
@@ -105,7 +107,10 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
   }
 
   function endFrame() {
-    if (gl.isContextLost()) { onContextLost(); return; }
+    if (gl.isContextLost()) {
+      onContextLost();
+      return;
+    }
     if (!active) return;
     gl.endQuery(ext!.TIME_ELAPSED_EXT);
     pending.push(active);
@@ -113,7 +118,10 @@ export function createGpuFrameTimer(gl: WebGL2RenderingContext): GpuFrameTimer {
   }
 
   function reset() {
-    if (gl.isContextLost()) { onContextLost(); return; }
+    if (gl.isContextLost()) {
+      onContextLost();
+      return;
+    }
     if (active) {
       gl.endQuery(ext!.TIME_ELAPSED_EXT);
       gl.deleteQuery(active);

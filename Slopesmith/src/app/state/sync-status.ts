@@ -37,9 +37,10 @@ export function createSyncStatus(deps: {
   notice.id = 'sync-status';
   notice.setAttribute('role', 'status');
   notice.setAttribute('aria-live', 'polite');
-  notice.style.cssText = 'position:fixed;top:50px;right:12px;z-index:60;display:none;max-width:320px;'
-    + 'padding:5px 9px;border-radius:6px;border:1px solid #2c3b48;background:rgba(16,22,28,0.92);'
-    + 'color:#8fa6b8;font:11px/1.45 system-ui,sans-serif;pointer-events:none;';
+  notice.style.cssText =
+    'position:fixed;top:50px;right:12px;z-index:60;display:none;max-width:320px;' +
+    'padding:5px 9px;border-radius:6px;border:1px solid #2c3b48;background:rgba(16,22,28,0.92);' +
+    'color:#8fa6b8;font:11px/1.45 system-ui,sans-serif;pointer-events:none;';
   const line = document.createElement('div');
   const actions = document.createElement('div');
   actions.style.cssText = 'margin-top:5px;display:none;gap:6px;pointer-events:auto;';
@@ -47,14 +48,21 @@ export function createSyncStatus(deps: {
     const made = document.createElement('button');
     made.type = 'button';
     made.textContent = text;
-    made.style.cssText = 'padding:2px 8px;border-radius:4px;border:1px solid #35485a;background:#1b2530;'
-      + 'color:#cfe0ee;font:11px system-ui,sans-serif;cursor:pointer;';
+    made.style.cssText =
+      'padding:2px 8px;border-radius:4px;border:1px solid #35485a;background:#1b2530;' +
+      'color:#cfe0ee;font:11px system-ui,sans-serif;cursor:pointer;';
     made.addEventListener('click', run);
     actions.appendChild(made);
     return made;
   };
-  button('Put mine back', () => { deps.replay(); clearReconciliation(); });
-  button('Leave theirs', () => { deps.discard(); clearReconciliation(); });
+  button('Put mine back', () => {
+    deps.replay();
+    clearReconciliation();
+  });
+  button('Leave theirs', () => {
+    deps.discard();
+    clearReconciliation();
+  });
   notice.append(line, actions);
   (deps.host ?? document.body).appendChild(notice);
 
@@ -90,9 +98,7 @@ export function createSyncStatus(deps: {
       message = reconnecting(sync);
     } else if (shared && sync && !sync.landed) {
       state = 'saving';
-      message = sync.inFlight
-        ? `Saving ${sync.inFlight} change${sync.inFlight === 1 ? '' : 's'}…`
-        : 'Saving changes…';
+      message = sync.inFlight ? `Saving ${sync.inFlight} change${sync.inFlight === 1 ? '' : 's'}…` : 'Saving changes…';
     } else if (projectState === 'following') {
       state = 'following';
       message = projectDetail || 'Following this mountain read-only';
@@ -152,9 +158,10 @@ export function createSyncStatus(deps: {
     reconcile(summary: Reconciliation): void {
       pending = summary;
       const minutes = Math.max(1, Math.round(summary.awayMs / 60_000));
-      line.textContent = `Away ${minutes} minute${minutes === 1 ? '' : 's'} — `
-        + `${summary.changes.length} change${summary.changes.length === 1 ? '' : 's'} held`
-        + (summary.contested.length ? `, ${summary.contested.length} changed here since` : '');
+      line.textContent =
+        `Away ${minutes} minute${minutes === 1 ? '' : 's'} — ` +
+        `${summary.changes.length} change${summary.changes.length === 1 ? '' : 's'} held` +
+        (summary.contested.length ? `, ${summary.contested.length} changed here since` : '');
       notice.style.display = 'block';
       notice.style.color = '#d38f6a';
       actions.style.display = 'flex';
@@ -162,13 +169,20 @@ export function createSyncStatus(deps: {
       repaintIndicator();
     },
     pending: (): Reconciliation | null => pending,
-    dispose(): void { detachTooltip(); notice.remove(); indicator.remove(); },
+    dispose(): void {
+      detachTooltip();
+      notice.remove();
+      indicator.remove();
+    },
   };
 
   function setSharedState(next: boolean): void {
     shared = next;
     if (!shared) clearReconciliation();
-    else { repaintNotice(); repaintIndicator(); }
+    else {
+      repaintNotice();
+      repaintIndicator();
+    }
   }
 }
 

@@ -1,6 +1,13 @@
 import type { EdgeEmbeddedTJunction, LabelDefinition, QuadMeshDoc, V3 } from '../doc/types';
 import { appendMeshIds } from '../doc/ids';
-import { buildQuadMesh, meshAdjacency, meshEdgeHandles, quadControlPoints, type EdgeHandle, type QuadMesh } from './topology';
+import {
+  buildQuadMesh,
+  meshAdjacency,
+  meshEdgeHandles,
+  quadControlPoints,
+  type EdgeHandle,
+  type QuadMesh,
+} from './topology';
 import type { MeshNaming } from './selection';
 import { add, sub } from '../math/vec';
 import { nextLabelId } from '../doc/labels';
@@ -44,17 +51,20 @@ export interface MeshClipboardTextContext {
  * study can be pasted into a text editor, issue, or chat without losing the exact cubic boundary curves.
  */
 export function meshClipboardText(clip: MeshVertexClipboard, context: MeshClipboardTextContext): string {
-  const vertices = Array.from({ length: clip.vertices.length / 3 }, (_, i) =>
-    clip.vertices.slice(i * 3, i * 3 + 3) as V3);
+  const vertices = Array.from(
+    { length: clip.vertices.length / 3 },
+    (_, i) => clip.vertices.slice(i * 3, i * 3 + 3) as V3,
+  );
   const edges = (clip.freeEdges ?? []).map(([from, to]) => {
     const fromHandle = clip.edgeHandles?.[`${from}>${to}`];
     const toHandle = clip.edgeHandles?.[`${to}>${from}`];
     return {
       vertices: [from, to] as [number, number],
       // These are the exact p0..p3 controls of the selected boundary cubic, not sampled points.
-      bezier: fromHandle && toHandle
-        ? [vertices[from], add(vertices[from], fromHandle), add(vertices[to], toHandle), vertices[to]]
-        : null,
+      bezier:
+        fromHandle && toHandle
+          ? [vertices[from], add(vertices[from], fromHandle), add(vertices[to], toHandle), vertices[to]]
+          : null,
     };
   });
   const selection: Record<string, unknown> = { vertices, edges, patches: clip.quads };
@@ -62,7 +72,8 @@ export function meshClipboardText(clip: MeshVertexClipboard, context: MeshClipbo
   if (clip.quadPaint && Object.keys(clip.quadPaint).length) selection.patchSurfaces = clip.quadPaint;
   if (clip.quadTex && Object.keys(clip.quadTex).length) selection.patchTextures = clip.quadTex;
   if (clip.quadOrient && Object.keys(clip.quadOrient).length) selection.patchOrientations = clip.quadOrient;
-  if (clip.quadLocked && Object.keys(clip.quadLocked).length) selection.lockedPatches = Object.keys(clip.quadLocked).map(Number);
+  if (clip.quadLocked && Object.keys(clip.quadLocked).length)
+    selection.lockedPatches = Object.keys(clip.quadLocked).map(Number);
   if (clip.edgeLocked && Object.keys(clip.edgeLocked).length) {
     selection.lockedEdges = Object.keys(clip.edgeLocked).map(key => key.split(',').map(Number));
   }
@@ -70,22 +81,28 @@ export function meshClipboardText(clip: MeshVertexClipboard, context: MeshClipbo
   if (clip.quadLabels && Object.keys(clip.quadLabels).length) selection.patchLabels = clip.quadLabels;
   if (clip.labels?.length) selection.labels = clip.labels;
 
-  return JSON.stringify({
-    format: 'slopesmith-mesh-selection',
-    version: 1,
-    source: context.source,
-    ...(context.level ? { referenceLevel: context.level } : {}),
-    ...(context.referenceOffset ? { referenceOffset: context.referenceOffset } : {}),
-    coordinates: {
-      space: 'Slopesmith editor/data space',
-      units: 'metres',
-      upAxis: 'Y',
-      ...(context.source === 'reference'
-        ? { note: 'Vertex positions include referenceOffset; subtract it to recover native reference-map coordinates.' }
-        : {}),
+  return JSON.stringify(
+    {
+      format: 'slopesmith-mesh-selection',
+      version: 1,
+      source: context.source,
+      ...(context.level ? { referenceLevel: context.level } : {}),
+      ...(context.referenceOffset ? { referenceOffset: context.referenceOffset } : {}),
+      coordinates: {
+        space: 'Slopesmith editor/data space',
+        units: 'metres',
+        upAxis: 'Y',
+        ...(context.source === 'reference'
+          ? {
+              note: 'Vertex positions include referenceOffset; subtract it to recover native reference-map coordinates.',
+            }
+          : {}),
+      },
+      selection,
     },
-    selection,
-  }, null, 2);
+    null,
+    2,
+  );
 }
 
 /** A topology-neutral source: authored and reference meshes both provide this same shape. The selection
@@ -118,7 +135,12 @@ export interface MeshVertexCopySource<Id = string> {
   tJunctions?: readonly EdgeEmbeddedTJunction[];
 }
 
-const EDGES: readonly (readonly [number, number])[] = [[0, 1], [1, 3], [3, 2], [2, 0]];
+const EDGES: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [1, 3],
+  [3, 2],
+  [2, 0],
+];
 const INTERIOR = [5, 6, 9, 10] as const;
 const moved = (p: readonly number[], o: V3): V3 => [p[0] + o[0], p[1] + o[1], p[2] + o[2]];
 const hasVector = (v: V3) => v.some(n => Math.abs(n) > 1e-10);
@@ -146,11 +168,12 @@ export function copyMeshVertices<Id>(source: MeshVertexCopySource<Id>): MeshVert
     return index !== null && Number.isInteger(index) && index >= 0 ? index : null;
   };
   const selectedSet = new Set(selected);
-  const sourceQuads = source.selectedQuads === undefined
-    ? source.mesh.quads.flatMap((quad, q) => quad.every(id => selectedSet.has(id)) ? [q] : [])
-    : [...new Set(source.selectedQuads.flatMap(name => quadAt(name) ?? []))]
-      .filter(q => q < source.mesh.quads.length && source.mesh.quads[q].every(id => selectedSet.has(id)))
-      .sort((a, b) => a - b);
+  const sourceQuads =
+    source.selectedQuads === undefined
+      ? source.mesh.quads.flatMap((quad, q) => (quad.every(id => selectedSet.has(id)) ? [q] : []))
+      : [...new Set(source.selectedQuads.flatMap(name => quadAt(name) ?? []))]
+          .filter(q => q < source.mesh.quads.length && source.mesh.quads[q].every(id => selectedSet.has(id)))
+          .sort((a, b) => a - b);
 
   const offset = source.offset ?? [0, 0, 0];
   const localOf = new Map(selected.map((id, local) => [id, local] as const));
@@ -169,30 +192,40 @@ export function copyMeshVertices<Id>(source: MeshVertexCopySource<Id>): MeshVert
   for (const q of sourceQuads) {
     const quad = source.mesh.quads[q];
     for (const [x, y] of EDGES) {
-      const a = quad[x], b = quad[y];
+      const a = quad[x],
+        b = quad[y];
       if (a !== b) coveredEdges.add(a < b ? `${a},${b}` : `${b},${a}`);
     }
   }
-  const edgeSource: readonly (readonly [number, number])[] = source.selectedEdges === undefined
-    ? (() => {
-      const adj = meshAdjacency(source.mesh), edges: [number, number][] = [];
-      for (let a = 0; a < adj.neighbors.length; a++) for (const b of adj.neighbors[a]) {
-        const key = a < b ? `${a},${b}` : `${b},${a}`;
-        if (a < b && selectedSet.has(a) && selectedSet.has(b) && !coveredEdges.has(key)) edges.push([a, b]);
-      }
-      return edges;
-    })()
-    : source.selectedEdges.flatMap(([a, b]) => {
-      const from = at(a), to = at(b);
-      return from !== null && to !== null ? [[from, to] as [number, number]] : [];
-    });
+  const edgeSource: readonly (readonly [number, number])[] =
+    source.selectedEdges === undefined
+      ? (() => {
+          const adj = meshAdjacency(source.mesh),
+            edges: [number, number][] = [];
+          for (let a = 0; a < adj.neighbors.length; a++)
+            for (const b of adj.neighbors[a]) {
+              const key = a < b ? `${a},${b}` : `${b},${a}`;
+              if (a < b && selectedSet.has(a) && selectedSet.has(b) && !coveredEdges.has(key)) edges.push([a, b]);
+            }
+          return edges;
+        })()
+      : source.selectedEdges.flatMap(([a, b]) => {
+          const from = at(a),
+            to = at(b);
+          return from !== null && to !== null ? [[from, to] as [number, number]] : [];
+        });
   const seenEdges = new Set<string>();
   const sourceEdges: [number, number][] = [];
   for (const [a0, b0] of edgeSource) {
     if (!selectedSet.has(a0) || !selectedSet.has(b0) || a0 === b0) continue;
-    const a = Math.min(a0, b0), b = Math.max(a0, b0), key = `${a},${b}`;
+    const a = Math.min(a0, b0),
+      b = Math.max(a0, b0),
+      key = `${a},${b}`;
     // An edge already belonging to a copied patch is part of that patch, not a second loose edge.
-    if (!seenEdges.has(key) && !coveredEdges.has(key)) { seenEdges.add(key); sourceEdges.push([a, b]); }
+    if (!seenEdges.has(key) && !coveredEdges.has(key)) {
+      seenEdges.add(key);
+      sourceEdges.push([a, b]);
+    }
   }
   sourceEdges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const freeEdges = sourceEdges.map(([a, b]) => [localOf.get(a)!, localOf.get(b)!] as [number, number]);
@@ -203,36 +236,49 @@ export function copyMeshVertices<Id>(source: MeshVertexCopySource<Id>): MeshVert
     edgeHandles[`${localTo}>${localFrom}`] = [...source.edgeHandle(to, from)] as V3;
   };
   for (let i = 0; i < sourceQuads.length; i++) {
-    const sq = source.mesh.quads[sourceQuads[i]], lq = quads[i];
+    const sq = source.mesh.quads[sourceQuads[i]],
+      lq = quads[i];
     for (const [x, y] of EDGES) {
-      const from = sq[x], to = sq[y], lf = lq[x], lt = lq[y];
+      const from = sq[x],
+        to = sq[y],
+        lf = lq[x],
+        lt = lq[y];
       if (from === to) continue; // wedge's collapsed side has no directed handle
       pinEdge(from, to, lf, lt);
     }
   }
   for (let i = 0; i < sourceEdges.length; i++) {
-    const [from, to] = sourceEdges[i], [lf, lt] = freeEdges[i];
+    const [from, to] = sourceEdges[i],
+      [lf, lt] = freeEdges[i];
     pinEdge(from, to, lf, lt);
   }
 
   const out: MeshVertexClipboard = { version: 1, vertices, quads };
   if (freeEdges.length) out.freeEdges = freeEdges;
-  const copiedEdgeKeys = new Set([...coveredEdges, ...sourceEdges.map(([a, b]) => a < b ? `${a},${b}` : `${b},${a}`)]);
+  const copiedEdgeKeys = new Set([
+    ...coveredEdges,
+    ...sourceEdges.map(([a, b]) => (a < b ? `${a},${b}` : `${b},${a}`)),
+  ]);
   const tJunctions = (source.tJunctions ?? []).flatMap(node => {
-    const vertex = localOf.get(node.vertex), a = localOf.get(node.edge[0]), b = localOf.get(node.edge[1]);
+    const vertex = localOf.get(node.vertex),
+      a = localOf.get(node.edge[0]),
+      b = localOf.get(node.edge[1]);
     const key = node.edge[0] < node.edge[1] ? `${node.edge[0]},${node.edge[1]}` : `${node.edge[1]},${node.edge[0]}`;
     return vertex !== undefined && a !== undefined && b !== undefined && copiedEdgeKeys.has(key)
-      ? [{ vertex, edge: [a, b] as [number, number], t: node.t }] : [];
+      ? [{ vertex, edge: [a, b] as [number, number], t: node.t }]
+      : [];
   });
   if (tJunctions.length) out.tJunctions = tJunctions;
   if (Object.keys(edgeHandles).length) out.edgeHandles = edgeHandles;
   const edgeLocked: Record<string, true> = {};
-  if (source.edgeLocked) for (const key of copiedEdgeKeys) {
-    const [a, b] = key.split(',').map(Number);
-    if (!source.edgeLocked(a, b)) continue;
-    const la = localOf.get(a)!, lb = localOf.get(b)!;
-    edgeLocked[la < lb ? `${la},${lb}` : `${lb},${la}`] = true;
-  }
+  if (source.edgeLocked)
+    for (const key of copiedEdgeKeys) {
+      const [a, b] = key.split(',').map(Number);
+      if (!source.edgeLocked(a, b)) continue;
+      const la = localOf.get(a)!,
+        lb = localOf.get(b)!;
+      edgeLocked[la < lb ? `${la},${lb}` : `${lb},${la}`] = true;
+    }
   if (Object.keys(edgeLocked).length) out.edgeLocked = edgeLocked;
 
   const localMesh = buildQuadMesh(vertices, quads, freeEdges);
@@ -248,7 +294,12 @@ export function copyMeshVertices<Id>(source: MeshVertexCopySource<Id>): MeshVert
     if (source.controls) {
       const exact = source.controls(sourceQuad);
       const zero = quadControlPoints(localMesh, localHandle, q);
-      const twist = INTERIOR.map((cp, corner) => sub(moved(exact[cp], offset), zero[INTERIOR[corner]])) as [V3, V3, V3, V3];
+      const twist = INTERIOR.map((cp, corner) => sub(moved(exact[cp], offset), zero[INTERIOR[corner]])) as [
+        V3,
+        V3,
+        V3,
+        V3,
+      ];
       if (twist.some(hasVector)) quadTwist[q] = twist;
     }
     const paint = source.paint?.(sourceQuad);
@@ -287,7 +338,11 @@ export interface PasteMeshVerticesResult {
  * `translation` is the placement ghost's final centroid-to-cursor delta; handles/twists are vectors and stay
  * unchanged while vertex positions move into place.
  */
-export function pasteMeshVertices(doc: QuadMeshDoc, clip: MeshVertexClipboard, translation: V3 = [0, 0, 0]): PasteMeshVerticesResult {
+export function pasteMeshVertices(
+  doc: QuadMeshDoc,
+  clip: MeshVertexClipboard,
+  translation: V3 = [0, 0, 0],
+): PasteMeshVerticesResult {
   const firstVertex = doc.vertices.length / 3;
   const firstQuad = doc.quads.length;
   const vertices = Array.from({ length: clip.vertices.length / 3 }, (_, i) => firstVertex + i);
@@ -296,18 +351,28 @@ export function pasteMeshVertices(doc: QuadMeshDoc, clip: MeshVertexClipboard, t
   const next: QuadMeshDoc = {
     ...doc,
     ...appendMeshIds(doc, clip.vertices.length / 3, clip.quads.length),
-    vertices: [...doc.vertices, ...Array.from({ length: clip.vertices.length / 3 }, (_, i) => [
-      clip.vertices[i * 3] + translation[0],
-      clip.vertices[i * 3 + 1] + translation[1],
-      clip.vertices[i * 3 + 2] + translation[2],
-    ] as V3).flat()],
+    vertices: [
+      ...doc.vertices,
+      ...Array.from(
+        { length: clip.vertices.length / 3 },
+        (_, i) =>
+          [
+            clip.vertices[i * 3] + translation[0],
+            clip.vertices[i * 3 + 1] + translation[1],
+            clip.vertices[i * 3 + 2] + translation[2],
+          ] as V3,
+      ).flat(),
+    ],
     quads: [...doc.quads, ...clip.quads.map(q => q.map(v => v + firstVertex))],
     freeEdges: [...(doc.freeEdges ?? []), ...freeEdges],
-    tJunctions: [...(doc.tJunctions ?? []), ...(clip.tJunctions ?? []).map(node => ({
-      vertex: node.vertex + firstVertex,
-      edge: [node.edge[0] + firstVertex, node.edge[1] + firstVertex] as [number, number],
-      t: node.t,
-    }))],
+    tJunctions: [
+      ...(doc.tJunctions ?? []),
+      ...(clip.tJunctions ?? []).map(node => ({
+        vertex: node.vertex + firstVertex,
+        edge: [node.edge[0] + firstVertex, node.edge[1] + firstVertex] as [number, number],
+        t: node.t,
+      })),
+    ],
   };
   if (!next.freeEdges?.length) delete next.freeEdges;
 
@@ -325,7 +390,11 @@ export function pasteMeshVertices(doc: QuadMeshDoc, clip: MeshVertexClipboard, t
       next.edgeLocked[`${a + firstVertex},${b + firstVertex}`] = true;
     }
   }
-  const copyQuadMap = <T>(source: Record<number, T> | undefined, existing: Record<number, T> | undefined, clone: (v: T) => T): Record<number, T> | undefined => {
+  const copyQuadMap = <T>(
+    source: Record<number, T> | undefined,
+    existing: Record<number, T> | undefined,
+    clone: (v: T) => T,
+  ): Record<number, T> | undefined => {
     if (!source || !Object.keys(source).length) return existing;
     const target = { ...(existing ?? {}) };
     for (const [key, value] of Object.entries(source)) target[Number(key) + firstQuad] = clone(value);
@@ -335,28 +404,34 @@ export function pasteMeshVertices(doc: QuadMeshDoc, clip: MeshVertexClipboard, t
   next.quadTex = copyQuadMap(clip.quadTex, doc.quadTex, v => v);
   next.quadOrient = copyQuadMap(clip.quadOrient, doc.quadOrient, v => ({ ...v }));
   next.quadLocked = copyQuadMap(clip.quadLocked, doc.quadLocked, () => true);
-  next.quadTwist = copyQuadMap(clip.quadTwist, doc.quadTwist,
-    v => v.map(p => [...p] as V3) as [V3, V3, V3, V3]);
+  next.quadTwist = copyQuadMap(clip.quadTwist, doc.quadTwist, v => v.map(p => [...p] as V3) as [V3, V3, V3, V3]);
   if (clip.quadLabels && Object.keys(clip.quadLabels).length) {
     const definitions = [...(doc.labels ?? [])].map(label => ({ ...label }));
     const idMap = new Map<string, string>();
     for (const label of clip.labels ?? []) {
       const sameId = definitions.find(held => held.id === label.id);
       if (sameId && sameId.name.toLocaleLowerCase() === label.name.toLocaleLowerCase()) {
-        idMap.set(label.id, sameId.id); continue;
+        idMap.set(label.id, sameId.id);
+        continue;
       }
       const sameName = definitions.find(held => held.name.toLocaleLowerCase() === label.name.toLocaleLowerCase());
-      if (sameName) { idMap.set(label.id, sameName.id); continue; }
+      if (sameName) {
+        idMap.set(label.id, sameName.id);
+        continue;
+      }
       const id = sameId ? nextLabelId(definitions) : label.id;
-      definitions.push({ ...label, id }); idMap.set(label.id, id);
+      definitions.push({ ...label, id });
+      idMap.set(label.id, id);
     }
     const known = new Set(definitions.map(label => label.id));
-    for (const labels of Object.values(clip.quadLabels)) for (const id of labels)
-      if (!idMap.has(id) && known.has(id)) idMap.set(id, id);
-    const memberships = Object.fromEntries(Object.entries(clip.quadLabels).flatMap(([quad, labels]) => {
-      const mapped = [...new Set(labels.flatMap(id => idMap.get(id) ?? []))].sort();
-      return mapped.length ? [[quad, mapped]] : [];
-    }));
+    for (const labels of Object.values(clip.quadLabels))
+      for (const id of labels) if (!idMap.has(id) && known.has(id)) idMap.set(id, id);
+    const memberships = Object.fromEntries(
+      Object.entries(clip.quadLabels).flatMap(([quad, labels]) => {
+        const mapped = [...new Set(labels.flatMap(id => idMap.get(id) ?? []))].sort();
+        return mapped.length ? [[quad, mapped]] : [];
+      }),
+    );
     next.quadLabels = copyQuadMap(memberships, doc.quadLabels, v => [...v]);
     if (definitions.length) next.labels = definitions;
   }

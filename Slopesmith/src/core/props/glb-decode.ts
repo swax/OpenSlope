@@ -97,14 +97,20 @@ export interface DecodedGltf {
   images: GltfImage[];
 }
 
-const GLB_MAGIC = 0x46546c67;         // 'glTF'
-const GLB_CHUNK_JSON = 0x4e4f534a;    // 'JSON'
-const GLB_CHUNK_BIN = 0x004e4942;     // 'BIN\0'
+const GLB_MAGIC = 0x46546c67; // 'glTF'
+const GLB_CHUNK_JSON = 0x4e4f534a; // 'JSON'
+const GLB_CHUNK_BIN = 0x004e4942; // 'BIN\0'
 const MODE_TRIANGLES = 4;
 
 /** Components per element, by the accessor `type` string. */
 const ACCESSOR_COMPONENTS: Record<string, number> = {
-  SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16,
+  SCALAR: 1,
+  VEC2: 2,
+  VEC3: 3,
+  VEC4: 4,
+  MAT2: 4,
+  MAT3: 9,
+  MAT4: 16,
 };
 
 /** Bytes per component, by `componentType`. 5124 is absent because glTF never assigns it. */
@@ -116,20 +122,44 @@ interface GltfJson {
   scene?: number;
   scenes?: { nodes?: number[] }[];
   nodes?: {
-    name?: string; mesh?: number; children?: number[]; extras?: unknown;
-    matrix?: number[]; translation?: number[]; rotation?: number[]; scale?: number[];
+    name?: string;
+    mesh?: number;
+    children?: number[];
+    extras?: unknown;
+    matrix?: number[];
+    translation?: number[];
+    rotation?: number[];
+    scale?: number[];
   }[];
-  meshes?: { name?: string; primitives?: {
-    attributes?: Record<string, number>; indices?: number; material?: number; mode?: number;
-  }[] }[];
-  materials?: { name?: string; extras?: unknown; alphaMode?: unknown; alphaCutoff?: unknown; pbrMetallicRoughness?: {
-    baseColorFactor?: number[]; baseColorTexture?: { index?: number };
-  } }[];
+  meshes?: {
+    name?: string;
+    primitives?: {
+      attributes?: Record<string, number>;
+      indices?: number;
+      material?: number;
+      mode?: number;
+    }[];
+  }[];
+  materials?: {
+    name?: string;
+    extras?: unknown;
+    alphaMode?: unknown;
+    alphaCutoff?: unknown;
+    pbrMetallicRoughness?: {
+      baseColorFactor?: number[];
+      baseColorTexture?: { index?: number };
+    };
+  }[];
   textures?: { source?: number }[];
   images?: { name?: string; mimeType?: string; bufferView?: number; uri?: string }[];
   accessors?: {
-    bufferView?: number; byteOffset?: number; componentType?: number; count?: number;
-    type?: string; normalized?: boolean; sparse?: unknown;
+    bufferView?: number;
+    byteOffset?: number;
+    componentType?: number;
+    count?: number;
+    type?: string;
+    normalized?: boolean;
+    sparse?: unknown;
   }[];
   bufferViews?: { buffer?: number; byteOffset?: number; byteLength?: number; byteStride?: number }[];
   buffers?: { uri?: string; byteLength?: number }[];
@@ -159,14 +189,20 @@ function dataUriBytes(uri: string): Uint8Array {
  *  back as the integers they are, which is what a POSITION stored as shorts means. */
 function componentReader(view: DataView, componentType: number, normalized: boolean): (at: number) => number {
   switch (componentType) {
-    case 5126: return at => view.getFloat32(at, true);
-    case 5125: return at => view.getUint32(at, true);
-    case 5123: return normalized ? at => view.getUint16(at, true) / 65535 : at => view.getUint16(at, true);
-    case 5122: return normalized ? at => Math.max(view.getInt16(at, true) / 32767, -1)
-      : at => view.getInt16(at, true);
-    case 5121: return normalized ? at => view.getUint8(at) / 255 : at => view.getUint8(at);
-    case 5120: return normalized ? at => Math.max(view.getInt8(at) / 127, -1) : at => view.getInt8(at);
-    default: throw new Error(`unsupported glTF componentType ${componentType}`);
+    case 5126:
+      return at => view.getFloat32(at, true);
+    case 5125:
+      return at => view.getUint32(at, true);
+    case 5123:
+      return normalized ? at => view.getUint16(at, true) / 65535 : at => view.getUint16(at, true);
+    case 5122:
+      return normalized ? at => Math.max(view.getInt16(at, true) / 32767, -1) : at => view.getInt16(at, true);
+    case 5121:
+      return normalized ? at => view.getUint8(at) / 255 : at => view.getUint8(at);
+    case 5120:
+      return normalized ? at => Math.max(view.getInt8(at) / 127, -1) : at => view.getInt8(at);
+    default:
+      throw new Error(`unsupported glTF componentType ${componentType}`);
   }
 }
 
@@ -174,15 +210,35 @@ function componentReader(view: DataView, componentType: number, normalized: bool
  *  a node built here and one built by the loader agree to the bit. */
 function composeMatrix(t: readonly number[], q: readonly number[], s: readonly number[]): Mat4 {
   const [x, y, z, w] = q;
-  const x2 = x + x, y2 = y + y, z2 = z + z;
-  const xx = x * x2, xy = x * y2, xz = x * z2;
-  const yy = y * y2, yz = y * z2, zz = z * z2;
-  const wx = w * x2, wy = w * y2, wz = w * z2;
+  const x2 = x + x,
+    y2 = y + y,
+    z2 = z + z;
+  const xx = x * x2,
+    xy = x * y2,
+    xz = x * z2;
+  const yy = y * y2,
+    yz = y * z2,
+    zz = z * z2;
+  const wx = w * x2,
+    wy = w * y2,
+    wz = w * z2;
   return [
-    (1 - (yy + zz)) * s[0], (xy + wz) * s[0], (xz - wy) * s[0], 0,
-    (xy - wz) * s[1], (1 - (xx + zz)) * s[1], (yz + wx) * s[1], 0,
-    (xz + wy) * s[2], (yz - wx) * s[2], (1 - (xx + yy)) * s[2], 0,
-    t[0], t[1], t[2], 1,
+    (1 - (yy + zz)) * s[0],
+    (xy + wz) * s[0],
+    (xz - wy) * s[0],
+    0,
+    (xy - wz) * s[1],
+    (1 - (xx + zz)) * s[1],
+    (yz + wx) * s[1],
+    0,
+    (xz + wy) * s[2],
+    (yz - wx) * s[2],
+    (1 - (xx + yy)) * s[2],
+    0,
+    t[0],
+    t[1],
+    t[2],
+    1,
   ];
 }
 
@@ -191,10 +247,11 @@ export function multiplyMatrix(a: Mat4, b: Mat4): Mat4 {
   const out = new Array<number>(16);
   for (let column = 0; column < 4; column++) {
     for (let row = 0; row < 4; row++) {
-      out[column * 4 + row] = a[row] * b[column * 4]
-        + a[4 + row] * b[column * 4 + 1]
-        + a[8 + row] * b[column * 4 + 2]
-        + a[12 + row] * b[column * 4 + 3];
+      out[column * 4 + row] =
+        a[row] * b[column * 4] +
+        a[4 + row] * b[column * 4 + 1] +
+        a[8 + row] * b[column * 4 + 2] +
+        a[12 + row] * b[column * 4 + 3];
     }
   }
   return out;
@@ -293,15 +350,14 @@ export function decodeGlb(bytes: Uint8Array): DecodedGltf {
       return {
         positions: Float32Array.from(position.values),
         uvs: uv ? Float32Array.from(uv.values) : null,
-        indices: primitive.indices === undefined
-          ? null : Uint32Array.from(readAccessor(primitive.indices).values),
+        indices: primitive.indices === undefined ? null : Uint32Array.from(readAccessor(primitive.indices).values),
         material: primitive.material ?? null,
       };
     }),
   }));
 
   const images: GltfImage[] = (json.images ?? []).map((image, imageIndex) => {
-    const embedded = image.bufferView !== undefined ? views[image.bufferView]?.bytes ?? null : null;
+    const embedded = image.bufferView !== undefined ? (views[image.bufferView]?.bytes ?? null) : null;
     const uri = image.uri ?? null;
     return {
       name: image.name ?? `image${imageIndex}`,
@@ -321,10 +377,12 @@ export function decodeGlb(bytes: Uint8Array): DecodedGltf {
     return {
       name: material.name ?? `material${materialIndex}`,
       baseColorImage: source !== undefined && images[source] ? source : null,
-      baseColorFactor: Array.isArray(factor) && factor.length >= 4
-        ? [factor[0], factor[1], factor[2], factor[3]] : [1, 1, 1, 1],
-      alphaMode: material.alphaMode === 'OPAQUE' || material.alphaMode === 'MASK' || material.alphaMode === 'BLEND'
-        ? material.alphaMode : null,
+      baseColorFactor:
+        Array.isArray(factor) && factor.length >= 4 ? [factor[0], factor[1], factor[2], factor[3]] : [1, 1, 1, 1],
+      alphaMode:
+        material.alphaMode === 'OPAQUE' || material.alphaMode === 'MASK' || material.alphaMode === 'BLEND'
+          ? material.alphaMode
+          : null,
       extras: material.extras,
     };
   });
@@ -395,9 +453,10 @@ function flattenNodes(json: GltfJson): GltfNode[] {
     const node = source[index];
     if (!node || visited.has(index)) return;
     visited.add(index);
-    const local = Array.isArray(node.matrix) && node.matrix.length === 16
-      ? node.matrix.slice()
-      : composeMatrix(node.translation ?? [0, 0, 0], node.rotation ?? [0, 0, 0, 1], node.scale ?? [1, 1, 1]);
+    const local =
+      Array.isArray(node.matrix) && node.matrix.length === 16
+        ? node.matrix.slice()
+        : composeMatrix(node.translation ?? [0, 0, 0], node.rotation ?? [0, 0, 0, 1], node.scale ?? [1, 1, 1]);
     const world = multiplyMatrix(parentWorld, local);
     const here = out.length;
     out.push({

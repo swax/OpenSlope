@@ -1,7 +1,15 @@
 import { readPortalMesh, type PortalKind } from '../../core/blender/portal';
 import {
-  ackBlenderPush, applyImportedPush, applyTexturePushes, blenderCatalogue, blenderPortal, blenderPortalGlb,
-  pendingBlenderPushes, queueModelPush, queueTextureRetarget, type BlenderPushResult,
+  ackBlenderPush,
+  applyImportedPush,
+  applyTexturePushes,
+  blenderCatalogue,
+  blenderPortal,
+  blenderPortalGlb,
+  pendingBlenderPushes,
+  queueModelPush,
+  queueTextureRetarget,
+  type BlenderPushResult,
 } from '../routes/blender';
 import { requestProjectSnapshot } from '../project-assets';
 import { invalidateProjectLibrary, readJsonBody, RequestBodyTooLargeError, type ApiHandler } from './common';
@@ -66,28 +74,37 @@ export const blenderRoutes: Record<string, ApiHandler> = {
           res.end(JSON.stringify({ cleared }));
           return;
         }
-        if (path !== '/mesh') { res.statusCode = 404; res.end('no such bridge route'); return; }
+        if (path !== '/mesh') {
+          res.statusCode = 404;
+          res.end('no such bridge route');
+          return;
+        }
         const snapshot = await requestProjectSnapshot(req);
         const mesh = readPortalMesh(await readJsonBody(req, PUSH_LIMIT));
         if (mesh.stamp.project !== snapshot.project.id) {
-          throw new Error(`that model was pulled from a different mountain (${mesh.stamp.name})`
-            + ` — open it in Slopesmith before pushing`);
+          throw new Error(
+            `that model was pulled from a different mountain (${mesh.stamp.name})` +
+              ` — open it in Slopesmith before pushing`,
+          );
         }
         // The art goes first, and the order is load-bearing: a replaced tile's ref MOVES, so the geometry
         // half has to be written against the refs that exist once it has (docs/046).
         const art = await applyTexturePushes(mesh);
         try {
-          const result: BlenderPushResult = mesh.stamp.kind === 'import'
-            ? await applyImportedPush(mesh, art.slotTex)
-            // A cage has one slot, and the tile it wears is a document field — so it rides in with the cage
-            // rather than as a second edit the author would have to undo separately.
-            : await queueModelPush(mesh, art.slotTex.get(0));
+          const result: BlenderPushResult =
+            mesh.stamp.kind === 'import'
+              ? await applyImportedPush(mesh, art.slotTex)
+              : // A cage has one slot, and the tile it wears is a document field — so it rides in with the cage
+                // rather than as a second edit the author would have to undo separately.
+                await queueModelPush(mesh, art.slotTex.get(0));
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({
-            ...result,
-            ...(art.written ? { textures: art.written } : {}),
-            ...(art.forked ? { forkedTextures: art.forked } : {}),
-          }));
+          res.end(
+            JSON.stringify({
+              ...result,
+              ...(art.written ? { textures: art.written } : {}),
+              ...(art.forked ? { forkedTextures: art.forked } : {}),
+            }),
+          );
         } finally {
           // Reached on the refusal path too, and deliberately. By here the art is on disk and its old ref is
           // gone, so a geometry half that throws — too many triangles, a mesh with no faces a cage can hold —
@@ -103,7 +120,9 @@ export const blenderRoutes: Record<string, ApiHandler> = {
       }
 
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        res.statusCode = 405; res.end('GET or POST'); return;
+        res.statusCode = 405;
+        res.end('GET or POST');
+        return;
       }
 
       const snapshot = await requestProjectSnapshot(req);
@@ -132,12 +151,19 @@ export const blenderRoutes: Record<string, ApiHandler> = {
         res.end(Buffer.from(glb));
         return;
       }
-      if (path !== '/') { res.statusCode = 404; res.end('no such bridge route'); return; }
+      if (path !== '/') {
+        res.statusCode = 404;
+        res.end('no such bridge route');
+        return;
+      }
 
       res.setHeader('content-type', 'application/json');
       res.setHeader('cache-control', 'no-store');
-      res.end(JSON.stringify(await blenderCatalogue(
-        { id: snapshot.project.id, name: snapshot.project.name }, snapshot.document)));
+      res.end(
+        JSON.stringify(
+          await blenderCatalogue({ id: snapshot.project.id, name: snapshot.project.name }, snapshot.document),
+        ),
+      );
     } catch (error) {
       failed(res, error, error instanceof RequestBodyTooLargeError ? 413 : 400);
     }

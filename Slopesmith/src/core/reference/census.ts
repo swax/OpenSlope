@@ -42,7 +42,15 @@
  * a level not in `Maps/` simply never appears — so the list states what retail SHIPPED, not what is here.
  */
 export const RETAIL_LEVELS: ReadonlySet<string> = new Set([
-  'ALASKA', 'ALOHA', 'ELYSIUM', 'GARI', 'MEGAPLE', 'MERQUER', 'MESA', 'SNOW', 'UNTRACK',
+  'ALASKA',
+  'ALOHA',
+  'ELYSIUM',
+  'GARI',
+  'MEGAPLE',
+  'MERQUER',
+  'MESA',
+  'SNOW',
+  'UNTRACK',
 ]);
 
 export const isRetailLevel = (level: string): boolean => RETAIL_LEVELS.has(level.toUpperCase());
@@ -53,10 +61,17 @@ export interface CensusModel {
   ModelName?: string;
   ModelObjects?: ({ MeshData?: ({ MeshPath: string; MaterialID: number } | null)[] | null } | null)[] | null;
 }
-export interface CensusInstance { ModelID: number; Visable?: boolean; PlayerCollision?: boolean }
+export interface CensusInstance {
+  ModelID: number;
+  Visable?: boolean;
+  PlayerCollision?: boolean;
+}
 /** `TextureFlipbook` is a list of page names, and a native flipbook indexes the bank per FRAME — so a
  *  two-frame material claims two slots (`Snowknife/docs/repack-technical-reference.md`, "Placed props"). */
-export interface CensusMaterial { TexturePath?: string; TextureFlipbook?: string[] | null }
+export interface CensusMaterial {
+  TexturePath?: string;
+  TextureFlipbook?: string[] | null;
+}
 
 export interface CensusSource {
   models: CensusModel[];
@@ -164,7 +179,8 @@ export function censusFromTables(level: string, source: CensusSource): LevelCens
   };
 
   const placements = new Map<number, number>();
-  let visible = 0, collidable = 0;
+  let visible = 0,
+    collidable = 0;
   for (const instance of instances) {
     if (instance.PlayerCollision) collidable++;
     if (instance.Visable === false) continue;
@@ -301,12 +317,12 @@ export const statsFromCensus = (census: LevelCensus, provenance: MountainProvena
  * invented, so a reader can SAY so — an unexplained column of zeros is indistinguishable from a mountain that
  * genuinely has none of that thing, which is the version of this bug that does not announce itself.
  */
-export function normalizeMountainStats(
-  raw: readonly MountainStats[],
-): { rows: MountainStats[]; filled: boolean } {
+export function normalizeMountainStats(raw: readonly MountainStats[]): { rows: MountainStats[]; filled: boolean } {
   let filled = false;
   const rows = raw.map(row => {
-    const counted = fillCounts(row, () => { filled = true; });
+    const counted = fillCounts(row, () => {
+      filled = true;
+    });
     return {
       ...row,
       ...counted,
@@ -331,13 +347,16 @@ export function normalizeMountainStats(
  */
 export function normalizeLevelCensus(raw: LevelCensus): { census: LevelCensus; filled: boolean } {
   let filled = false;
-  const counted = fillCounts(raw, () => { filled = true; });
+  const counted = fillCounts(raw, () => {
+    filled = true;
+  });
   return { census: { ...raw, ...counted, costs: raw.costs ?? [] }, filled };
 }
 
 /** The count groups both shapes share, defaulted. `onFill` fires for each one that had to be invented. */
 function fillCounts<T extends Omit<MountainStats, 'course' | 'laps' | 'showoffSeconds' | 'exported'>>(
-  row: Partial<T>, onFill: () => void,
+  row: Partial<T>,
+  onFill: () => void,
 ) {
   const fill = <V>(value: V | undefined | null, fallback: V): V => {
     if (value !== undefined && value !== null) return value;

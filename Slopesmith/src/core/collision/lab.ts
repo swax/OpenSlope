@@ -2,7 +2,11 @@ import type { NativeCollisionProfile, PlacedProp, V3 } from '../doc/types';
 import { buildMeshFromCourse, straightCourse } from '../doc/mountain';
 import { surfaceHeightAt } from '../mesh/surface-height';
 import {
-  addEffectNodeTemplate, addEffectTemplateToProp, createEmptyEffectsDocument, effectNode, timerEmitterFields,
+  addEffectNodeTemplate,
+  addEffectTemplateToProp,
+  createEmptyEffectsDocument,
+  effectNode,
+  timerEmitterFields,
 } from '../effects/authoring';
 import { nativeArgbFieldsFromRgbaColorStops, type RgbaColor } from '../effects/emitter-colors';
 import { NATIVE_COLLISION_MODE, type NativeContactState } from './native';
@@ -24,10 +28,19 @@ type LabCase = {
   profile: NativeCollisionProfile;
 };
 
-const profile = (mode: 0 | 1 | 2 | 3, responseMass: number, over: Partial<NativeCollisionProfile> = {}): NativeCollisionProfile => ({
-  mode, playerCollision: true, responseMass, playerBounce: true, bounceAmount: 0.2,
+const profile = (
+  mode: 0 | 1 | 2 | 3,
+  responseMass: number,
+  over: Partial<NativeCollisionProfile> = {},
+): NativeCollisionProfile => ({
+  mode,
+  playerCollision: true,
+  responseMass,
+  playerBounce: true,
+  bounceAmount: 0.2,
   ...(mode === NATIVE_COLLISION_MODE.physicsBodySpheres
-    ? { physicsSource: { level: COLLISION_LAB_TARGET, body: CRASH_BAG_BODY, instance: CRASH_BAG_INSTANCE } } : {}),
+    ? { physicsSource: { level: COLLISION_LAB_TARGET, body: CRASH_BAG_BODY, instance: CRASH_BAG_INSTANCE } }
+    : {}),
   ...over,
 });
 
@@ -73,7 +86,8 @@ export const COLLISION_LAB_CASES: readonly (readonly LabCase[])[] = [
 /** Seventeenth follow-up control. Its live cyan-marker/pass-through result established that PlayerBounce-off
  * suppresses physical response for mode 1 just as it did for the original matrix's mode-2 control. */
 export const COLLISION_LAB_MODE1_BOUNCE_OFF_CASE: LabCase = {
-  label: 'FOLLOW-UP M1 bounce off', color: [0.05, 1, 1, 1],
+  label: 'FOLLOW-UP M1 bounce off',
+  color: [0.05, 1, 1, 1],
   profile: profile(1, 1e30, { playerBounce: false, bounceAmount: 0.6 }),
 };
 
@@ -88,29 +102,46 @@ type OracleCase = LabCase & {
  * generator tests cannot silently drift away from the documented result. */
 export const COLLISION_LAB_ORACLE_COLUMN: readonly OracleCase[] = [
   {
-    label: 'ORACLE 1 no shape — no marker / through', color: [1, 0.08, 0.08, 1],
-    profile: profile(0, 1e30), expectedContact: 'none', expectedMarker: false,
+    label: 'ORACLE 1 no shape — no marker / through',
+    color: [1, 0.08, 0.08, 1],
+    profile: profile(0, 1e30),
+    expectedContact: 'none',
+    expectedMarker: false,
   },
   {
-    label: 'ORACLE 2 PlayerCollision off — no marker / through', color: [0.05, 0.35, 1, 1],
-    profile: profile(1, 1e30, { playerCollision: false }), expectedContact: 'none', expectedMarker: false,
+    label: 'ORACLE 2 PlayerCollision off — no marker / through',
+    color: [0.05, 0.35, 1, 1],
+    profile: profile(1, 1e30, { playerCollision: false }),
+    expectedContact: 'none',
+    expectedMarker: false,
   },
   {
-    label: 'ORACLE 3 response mass=0 — orange marker / through', color: [1, 0.35, 0.05, 1],
-    profile: profile(1, 0), expectedContact: 'through', expectedMarker: true,
+    label: 'ORACLE 3 response mass=0 — orange marker / through',
+    color: [1, 0.35, 0.05, 1],
+    profile: profile(1, 0),
+    expectedContact: 'through',
+    expectedMarker: true,
   },
   {
-    label: 'ORACLE 4 PlayerBounce off — cyan marker / through', color: [0.05, 1, 1, 1],
+    label: 'ORACLE 4 PlayerBounce off — cyan marker / through',
+    color: [0.05, 1, 1, 1],
     profile: profile(1, 1e30, { playerBounce: false, bounceAmount: 0.6 }),
-    expectedContact: 'through', expectedMarker: true,
+    expectedContact: 'through',
+    expectedMarker: true,
   },
   {
-    label: 'ORACLE 5 bounce=0 — yellow marker / minimum eject', color: [1, 0.9, 0.05, 1],
-    profile: profile(1, 1e30, { bounceAmount: 0 }), expectedContact: 'solid', expectedMarker: true,
+    label: 'ORACLE 5 bounce=0 — yellow marker / minimum eject',
+    color: [1, 0.9, 0.05, 1],
+    profile: profile(1, 1e30, { bounceAmount: 0 }),
+    expectedContact: 'solid',
+    expectedMarker: true,
   },
   {
-    label: 'ORACLE 6 bounce=0.6 — magenta marker / strong rebound', color: [1, 0.05, 0.75, 1],
-    profile: profile(1, 1e30, { bounceAmount: 0.6 }), expectedContact: 'solid', expectedMarker: true,
+    label: 'ORACLE 6 bounce=0.6 — magenta marker / strong rebound',
+    color: [1, 0.05, 0.75, 1],
+    profile: profile(1, 1e30, { bounceAmount: 0.6 }),
+    expectedContact: 'solid',
+    expectedMarker: true,
   },
 ] as const;
 
@@ -125,7 +156,11 @@ export const COLLISION_LAB_BOUNCE_COLUMN: readonly LabCase[] = [
   { label: 'BOUNCE 0.2 — medium tier', color: [0.05, 1, 0.2, 1], profile: profile(1, 1e30, { bounceAmount: 0.2 }) },
   { label: 'BOUNCE 0.5 — common tier', color: [1, 0.8, 0.05, 1], profile: profile(1, 1e30, { bounceAmount: 0.5 }) },
   { label: 'BOUNCE 0.6 — springy tier', color: [1, 0.05, 0.75, 1], profile: profile(1, 1e30, { bounceAmount: 0.6 }) },
-  { label: 'BOUNCE 1.0 — elastic stress control', color: [1, 0.08, 0.08, 1], profile: profile(1, 1e30, { bounceAmount: 1 }) },
+  {
+    label: 'BOUNCE 1.0 — elastic stress control',
+    color: [1, 0.08, 0.08, 1],
+    profile: profile(1, 1e30, { bounceAmount: 1 }),
+  },
 ] as const;
 
 /** Append the lab's high-visibility particle burst to a graph that already exists.
@@ -133,18 +168,25 @@ export const COLLISION_LAB_BOUNCE_COLUMN: readonly LabCase[] = [
  * Split out from `addCollisionBurst` so a fixture can hang the same proven marker off a graph it did not
  * create — a recipe's own collision graph, say — and read "the graph ran" independently of whether the
  * recipe's other nodes did anything. */
-export function addCollisionMarkerNode(doc: ReturnType<typeof createEmptyEffectsDocument>,
-  graph: ReturnType<typeof addEffectTemplateToProp>, label: string, color: RgbaColor): void {
+export function addCollisionMarkerNode(
+  doc: ReturnType<typeof createEmptyEffectsDocument>,
+  graph: ReturnType<typeof addEffectTemplateToProp>,
+  label: string,
+  color: RgbaColor,
+): void {
   const selection = addEffectNodeTemplate(doc, graph, 'timer-emitter');
   const node = selection ? effectNode(doc, selection) : null;
   const fields = node ? timerEmitterFields(node) : null;
   if (!fields) throw new Error(`Could not create the collision marker for ${label}.`);
-  Object.assign(fields, nativeArgbFieldsFromRgbaColorStops([
-    color,
-    [color[0], color[1], color[2], 0.8],
-    [color[0], color[1], color[2], 0.3],
-    [color[0], color[1], color[2], 0],
-  ]));
+  Object.assign(
+    fields,
+    nativeArgbFieldsFromRgbaColorStops([
+      color,
+      [color[0], color[1], color[2], 0.8],
+      [color[0], color[1], color[2], 0.3],
+      [color[0], color[1], color[2], 0],
+    ]),
+  );
   // A diagnostic contact must remain visible long enough to identify while the rider is recovering. The generic
   // emitter starts with zero particle lifetime, which previews safely but produces no native pixels; override the
   // complete visibility-sensitive subset here. A soft additive halo also avoids mistaking the marker for the
@@ -166,7 +208,11 @@ export function addCollisionMarkerNode(doc: ReturnType<typeof createEmptyEffects
   if (owner) owner.name = `${label} contact marker`;
 }
 
-function addCollisionBurst(doc: ReturnType<typeof createEmptyEffectsDocument>, prop: PlacedProp, color: RgbaColor): void {
+function addCollisionBurst(
+  doc: ReturnType<typeof createEmptyEffectsDocument>,
+  prop: PlacedProp,
+  color: RgbaColor,
+): void {
   addCollisionMarkerNode(doc, addEffectTemplateToProp(doc, prop.id!, 'collision-trigger'), prop.name, color);
 }
 
@@ -176,21 +222,32 @@ export function collisionLabMountain(name = COLLISION_LAB_NAME) {
   // quilt forced the oracle column against both the matrix and the out-of-bounds shoulder.
   const course = straightCourse(400, 460, 18);
   const effects = createEmptyEffectsDocument(name);
-  const doc = buildMeshFromCourse(course, {
-    widthM: 460, roughness: 0, targetPatchM: 20, seed: 130,
-  }, { name, baseSurface: 1, effects });
+  const doc = buildMeshFromCourse(
+    course,
+    {
+      widthM: 460,
+      roughness: 0,
+      targetPatchM: 20,
+      seed: 130,
+    },
+    { name, baseSurface: 1, effects },
+  );
   if (!doc) throw new Error('The collision lab slope could not be generated.');
 
   // The general mountain generator deliberately paints a fixed 75 m snow corridor and uses powder beyond it,
   // regardless of total width. A collision lab needs a uniform approach surface so lane choice cannot change
   // speed/feel. Expand snow across every safe interior cell while retaining the outer slow and OOB safety rings.
-  if (doc.quadPaint) for (const key of Object.keys(doc.quadPaint)) {
-    const surface = doc.quadPaint[Number(key)];
-    if (surface !== 0 && surface !== 2) doc.quadPaint[Number(key)] = 1;
-  }
+  if (doc.quadPaint)
+    for (const key of Object.keys(doc.quadPaint)) {
+      const surface = doc.quadPaint[Number(key)];
+      if (surface !== 0 && surface !== 2) doc.quadPaint[Number(key)] = 1;
+    }
 
-  const a = course.knots[0].pos, b = course.knots[course.knots.length - 1].pos;
-  const dx = b[0] - a[0], dz = b[2] - a[2], horizontal = Math.hypot(dx, dz) || 1;
+  const a = course.knots[0].pos,
+    b = course.knots[course.knots.length - 1].pos;
+  const dx = b[0] - a[0],
+    dz = b[2] - a[2],
+    horizontal = Math.hypot(dx, dz) || 1;
   const down: V3 = [dx / horizontal, 0, dz / horizontal];
   const side: V3 = [-down[2], 0, down[0]];
   const rowDistances = [280, 470, 660, 850];
@@ -199,14 +256,17 @@ export function collisionLabMountain(name = COLLISION_LAB_NAME) {
   const place = (test: LabCase, downhillDistance: number, laneOffset: number) => {
     const x = a[0] + down[0] * downhillDistance + side[0] * laneOffset;
     const z = a[2] + down[2] * downhillDistance + side[2] * laneOffset;
-    const ground = surfaceHeightAt(doc, x, z)
-      ?? (a[1] + (b[1] - a[1]) * downhillDistance / horizontal - 1.5);
+    const ground = surfaceHeightAt(doc, x, z) ?? a[1] + ((b[1] - a[1]) * downhillDistance) / horizontal - 1.5;
     const y = ground - CRASH_BAG_BASE_OFFSET_M;
     const ordinal = props.length;
     const prop: PlacedProp = {
       id: `collision-lab:${ordinal.toString().padStart(2, '0')}`,
-      level: COLLISION_LAB_TARGET, model: CRASH_BAG_MODEL, name: test.label,
-      pos: [x, y, z], yaw: 45, scale: 1,
+      level: COLLISION_LAB_TARGET,
+      model: CRASH_BAG_MODEL,
+      name: test.label,
+      pos: [x, y, z],
+      yaw: 45,
+      scale: 1,
       nativeCollision: structuredClone(test.profile),
     };
     props.push(prop);

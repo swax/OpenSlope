@@ -29,7 +29,10 @@ mock.on('upgrade', (req, socket, head) => {
 });
 await new Promise<void>((resolve, reject) => {
   mock.once('error', reject);
-  mock.listen(0, '127.0.0.1', () => { mock.off('error', reject); resolve(); });
+  mock.listen(0, '127.0.0.1', () => {
+    mock.off('error', reject);
+    resolve();
+  });
 });
 const mockAddress = mock.address();
 if (!mockAddress || typeof mockAddress === 'string') throw new Error('mock LiveKit did not bind');
@@ -48,16 +51,27 @@ const { startApiService } = await import('../src/server/main');
 function upgradeStatus(port: number, path: string, headers: Record<string, string> = {}): Promise<number> {
   return new Promise((settle, fail) => {
     const req = request({
-      host: '127.0.0.1', port, path, method: 'GET',
+      host: '127.0.0.1',
+      port,
+      path,
+      method: 'GET',
       headers: {
-        connection: 'Upgrade', upgrade: 'websocket',
-        'sec-websocket-key': randomBytes(16).toString('base64'), 'sec-websocket-version': '13',
+        connection: 'Upgrade',
+        upgrade: 'websocket',
+        'sec-websocket-key': randomBytes(16).toString('base64'),
+        'sec-websocket-version': '13',
         ...headers,
       },
     });
     req.on('error', fail);
-    req.on('response', response => { response.resume(); settle(response.statusCode ?? 0); });
-    req.on('upgrade', (_response, socket) => { socket.destroy(); settle(101); });
+    req.on('response', response => {
+      response.resume();
+      settle(response.statusCode ?? 0);
+    });
+    req.on('upgrade', (_response, socket) => {
+      socket.destroy();
+      settle(101);
+    });
     req.end();
   });
 }
@@ -65,38 +79,58 @@ function upgradeStatus(port: number, path: string, headers: Record<string, strin
 let service: Awaited<ReturnType<typeof startApiService>> | undefined;
 try {
   service = await startApiService({ port: 0, host: '127.0.0.1' });
-  const response = await (await expectOk(fetchForTest(
-    `${service.url}/api/livekit/rtc/v1/validate?access_token=short-lived`,
-  ), 'proxying LiveKit validation')).json() as { path?: string; host?: string };
-  check(response.path === '/rtc/v1/validate?access_token=short-lived',
-    'the HTTP proxy removes only Slopesmith’s public prefix and preserves LiveKit’s path and query');
-  check(response.host === `127.0.0.1:${mockAddress.port}`,
-    'and addresses the configured loopback listener rather than forwarding the public Host');
+  const response = (await (
+    await expectOk(
+      fetchForTest(`${service.url}/api/livekit/rtc/v1/validate?access_token=short-lived`),
+      'proxying LiveKit validation',
+    )
+  ).json()) as { path?: string; host?: string };
+  check(
+    response.path === '/rtc/v1/validate?access_token=short-lived',
+    'the HTTP proxy removes only Slopesmith’s public prefix and preserves LiveKit’s path and query',
+  );
+  check(
+    response.host === `127.0.0.1:${mockAddress.port}`,
+    'and addresses the configured loopback listener rather than forwarding the public Host',
+  );
 
   const message = await new Promise<string>((resolve, reject) => {
-    const socket = new WebSocket(
-      `ws://127.0.0.1:${service!.port}/api/livekit/rtc/v1?access_token=short-lived`,
-    );
-    const timeout = setTimeout(() => { socket.close(); reject(new Error('voice proxy WebSocket timed out')); }, 5_000);
-    socket.addEventListener('message', event => {
-      clearTimeout(timeout);
-      resolve(String(event.data));
+    const socket = new WebSocket(`ws://127.0.0.1:${service!.port}/api/livekit/rtc/v1?access_token=short-lived`);
+    const timeout = setTimeout(() => {
       socket.close();
-    }, { once: true });
-    socket.addEventListener('error', () => {
-      clearTimeout(timeout);
-      reject(new Error('voice proxy WebSocket failed'));
-    }, { once: true });
+      reject(new Error('voice proxy WebSocket timed out'));
+    }, 5_000);
+    socket.addEventListener(
+      'message',
+      event => {
+        clearTimeout(timeout);
+        resolve(String(event.data));
+        socket.close();
+      },
+      { once: true },
+    );
+    socket.addEventListener(
+      'error',
+      () => {
+        clearTimeout(timeout);
+        reject(new Error('voice proxy WebSocket failed'));
+      },
+      { once: true },
+    );
   });
-  check(message === 'proxied' && seen.includes('/rtc/v1?access_token=short-lived'),
-    'the WebSocket upgrade reaches LiveKit with the same stripped path');
+  check(
+    message === 'proxied' && seen.includes('/rtc/v1?access_token=short-lived'),
+    'the WebSocket upgrade reaches LiveKit with the same stripped path',
+  );
 
   const ordinary = await fetchForTest(`${service.url}/api/not-livekit`);
   check(ordinary.status === 404, 'the signalling proxy does not claim neighbouring Slopesmith API paths');
 
   // A page on another site is refused before anything is relayed, on a server with or without accounts.
-  check(await upgradeStatus(service.port, '/api/livekit/rtc/v1', { origin: 'https://evil.example' }) === 403,
-    'a socket opened from a page on another site is refused at the door');
+  check(
+    (await upgradeStatus(service.port, '/api/livekit/rtc/v1', { origin: 'https://evil.example' })) === 403,
+    'a socket opened from a page on another site is refused at the door',
+  );
 
   await service.close();
   service = undefined;
@@ -106,27 +140,41 @@ try {
   forgetRateLimits();
   service = await startApiService({ port: 0, host: '127.0.0.1', accounts: true });
   const enrolled = await fetchForTest(`${service.url}/api/auth/bootstrap`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code: service.adminCode, username: 'ada', password: 'first admin password' }),
   });
-  const cookie = enrolled.headers.getSetCookie().find(line => line.startsWith('slopesmith_session='))?.split(';')[0] ?? '';
+  const cookie =
+    enrolled.headers
+      .getSetCookie()
+      .find(line => line.startsWith('slopesmith_session='))
+      ?.split(';')[0] ?? '';
   check(enrolled.status === 201 && cookie !== '', 'the first admin enrols and holds a session cookie');
 
   seen.length = 0;
   const anonymous = await fetchForTest(`${service.url}/api/livekit/rtc/v1/validate?access_token=guess`);
-  check(anonymous.status === 401 && seen.length === 0,
-    'an anonymous validation request is refused, and LiveKit never hears about it');
-  const member = await fetchForTest(`${service.url}/api/livekit/rtc/v1/validate?access_token=minted`,
-    { headers: { cookie } });
-  check(member.status === 200 && seen.includes('/rtc/v1/validate?access_token=minted'),
-    'a signed-in member\'s request is relayed as before');
+  check(
+    anonymous.status === 401 && seen.length === 0,
+    'an anonymous validation request is refused, and LiveKit never hears about it',
+  );
+  const member = await fetchForTest(`${service.url}/api/livekit/rtc/v1/validate?access_token=minted`, {
+    headers: { cookie },
+  });
+  check(
+    member.status === 200 && seen.includes('/rtc/v1/validate?access_token=minted'),
+    "a signed-in member's request is relayed as before",
+  );
 
   seen.length = 0;
-  check(await upgradeStatus(service.port, '/api/livekit/rtc/v1?access_token=guess') === 401 && seen.length === 0,
-    'an anonymous signalling socket is refused before it reaches LiveKit');
-  check(await upgradeStatus(service.port, '/api/livekit/rtc/v1?access_token=minted', { cookie }) === 101
-    && seen.includes('/rtc/v1?access_token=minted'),
-    'while a member\'s socket, carrying the same cookie a fetch would, is relayed');
+  check(
+    (await upgradeStatus(service.port, '/api/livekit/rtc/v1?access_token=guess')) === 401 && seen.length === 0,
+    'an anonymous signalling socket is refused before it reaches LiveKit',
+  );
+  check(
+    (await upgradeStatus(service.port, '/api/livekit/rtc/v1?access_token=minted', { cookie })) === 101 &&
+      seen.includes('/rtc/v1?access_token=minted'),
+    "while a member's socket, carrying the same cookie a fetch would, is relayed",
+  );
 } finally {
   if (service) await service.close();
   await new Promise<void>(resolve => mock.close(() => resolve()));

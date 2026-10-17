@@ -5,29 +5,59 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import type { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import type { V3 } from '../../../core/doc/types';
 import {
-  isPropModelAnimation, propModelAnimationChannels, samplePropModelRotation,
-  samplePropModelTranslation, type LevelProps, type PropInstance, type PropModelClip,
+  isPropModelAnimation,
+  propModelAnimationChannels,
+  samplePropModelRotation,
+  samplePropModelTranslation,
+  type LevelProps,
+  type PropInstance,
+  type PropModelClip,
 } from '../../../core/reference/props';
 import {
-  referenceAnimComboEffects, referenceAnimDeltaEffects, referenceAnimObjectEffects, referenceMaterialControls,
+  referenceAnimComboEffects,
+  referenceAnimDeltaEffects,
+  referenceAnimObjectEffects,
+  referenceMaterialControls,
   referenceMaterialWorldEffects,
-  referenceImmediateBreakInstances, referenceInstanceBindings, referenceSlot,
-  type ReferenceEffectsData, type ReferenceMaterialControl,
+  referenceImmediateBreakInstances,
+  referenceInstanceBindings,
+  referenceSlot,
+  type ReferenceEffectsData,
+  type ReferenceMaterialControl,
 } from '../../../core/reference/effects';
 import {
-  animObjectEffectKey, crackedMaterialControlFromGraph, createAnimComboPlayback, createAnimDeltaPlayback,
-  createAnimObjectPlayback, createTriggeredAnimObjectPlayback, grantAnimDeltaPlayback, isAnimComboEffect,
-  isTextureFlipPulse, materialWorldEffectsKey, retriggerTriggeredAnimObjectPlayback,
-  stepAnimComboPlayback, stepAnimDeltaPlayback,
-  stepAnimObjectPlayback, stepTriggeredAnimObjectPlayback, triggerAnimComboPlayback,
-  type AnimComboEffect, type AnimComboPlayback,
-  type AnimDeltaPlayback, type AnimObjectEffect, type AnimObjectPlayback, type MaterialWorldEffects,
+  animObjectEffectKey,
+  crackedMaterialControlFromGraph,
+  createAnimComboPlayback,
+  createAnimDeltaPlayback,
+  createAnimObjectPlayback,
+  createTriggeredAnimObjectPlayback,
+  grantAnimDeltaPlayback,
+  isAnimComboEffect,
+  isTextureFlipPulse,
+  materialWorldEffectsKey,
+  retriggerTriggeredAnimObjectPlayback,
+  stepAnimComboPlayback,
+  stepAnimDeltaPlayback,
+  stepAnimObjectPlayback,
+  stepTriggeredAnimObjectPlayback,
+  triggerAnimComboPlayback,
+  type AnimComboEffect,
+  type AnimComboPlayback,
+  type AnimDeltaPlayback,
+  type AnimObjectEffect,
+  type AnimObjectPlayback,
+  type MaterialWorldEffects,
   type TriggeredAnimObjectPlayback,
 } from '../../../core/effects/world-effects';
 import { propRigGlow, type LightRig } from '../../../core/reference/lights';
 import { editorFromRaw } from '../../../core/reference/terrain';
 import {
-  EDIT_EDGE_SEL_COLOR, EFFECT_PROP_OVERLAY_RENDER_ORDER, RAW_TO_EDITOR, REF_TRICK_MODEL_RE, PROP_RIG_MAX_BOOST,
+  EDIT_EDGE_SEL_COLOR,
+  EFFECT_PROP_OVERLAY_RENDER_ORDER,
+  RAW_TO_EDITOR,
+  REF_TRICK_MODEL_RE,
+  PROP_RIG_MAX_BOOST,
 } from '../constants';
 import { addLightGizmo, lightAimTarget } from '../gizmo/geometry';
 import type { PropAssets } from './prop-assets';
@@ -39,14 +69,25 @@ import { applyPropShade, disposePropShade, propContactTint, PROP_CLAY_COLOR, PRO
 import { collisionProfileContactState, collisionProfileFromSourceInstance } from '../../../core/props/contact';
 import type { RideObstacleSource } from '../../ride/physics';
 import { soundRangeMaterial, soundRangeObject } from './sound-ranges';
-import { disposeSourceMarkerPoints, setSourceMarkerSelected, sourceMarkerPoints, type SourceMarkerKind } from './source-markers';
 import {
-  createCollisionOverlay, UNITY_COLLISION_OVERLAY_COLOR, type CollisionOverlayMeshPiece,
+  disposeSourceMarkerPoints,
+  setSourceMarkerSelected,
+  sourceMarkerPoints,
+  type SourceMarkerKind,
+} from './source-markers';
+import {
+  createCollisionOverlay,
+  UNITY_COLLISION_OVERLAY_COLOR,
+  type CollisionOverlayMeshPiece,
 } from './collision-overlay';
 import { scaleBodyShape, unityBodyRecipeKind } from '../../../core/collision/unity-body';
 import {
-  isReferencePropMesh, MergedStaticPropMesh, referencePropGeometry, referencePropSlot,
-  type ReferencePropMesh, type ReferencePropSlot,
+  isReferencePropMesh,
+  MergedStaticPropMesh,
+  referencePropGeometry,
+  referencePropSlot,
+  type ReferencePropMesh,
+  type ReferencePropSlot,
 } from './reference-prop-mesh';
 import { createReferenceCourseDecor } from './reference-decor-course';
 import { hiddenMatrix, hierarchyComboPose, hierarchyPose } from './reference-decor-pose';
@@ -68,38 +109,50 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   // every heterogeneous slot, often producing MORE calls than the former model-level InstancedMeshes. Tests and
   // small embedders without a renderer retain the native path; a real unsupported renderer gets a merged fallback.
   const nativeMultiDraw = stage.renderer ? stage.renderer.extensions.has('WEBGL_multi_draw') : true;
-  const refPropsGroup = new THREE.Group();       // scenery instances (Props filter)
+  const refPropsGroup = new THREE.Group(); // scenery instances (Props filter)
   const refTrickModelsGroup = new THREE.Group(); // rail / gem models (Tricks filter)
   const refEffectPropsGroup = new THREE.Group(); // faint, pickable attached-effect hosts in Reference Effects
-  const refAnimPathGroup = new THREE.Group();    // read-only recovered model-clip trajectory in Effects
+  const refAnimPathGroup = new THREE.Group(); // read-only recovered model-clip trajectory in Effects
   const refEffectPropMat = new THREE.MeshBasicMaterial({
-    color: 0xb66cff, wireframe: true, transparent: true, opacity: 0.72, depthWrite: false,
+    color: 0xb66cff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
   });
   const refAnimPathMat = new THREE.LineBasicMaterial({
-    color: 0x56c9ff, transparent: true, opacity: 0.9, depthTest: false,
+    color: 0x56c9ff,
+    transparent: true,
+    opacity: 0.9,
+    depthTest: false,
   });
   const refAnimKeyMat = new THREE.PointsMaterial({
-    color: 0xa8e8ff, size: 5, sizeAttenuation: false, depthTest: false,
+    color: 0xa8e8ff,
+    size: 5,
+    sizeAttenuation: false,
+    depthTest: false,
   });
   const refAnimPlayheadMat = new THREE.MeshBasicMaterial({ color: 0xffc45a, depthTest: false });
   let refAnimPathSource: number | null = null;
   let refAnimPlayhead: THREE.Mesh | null = null;
-  const refSourcesGroup = new THREE.Group();     // clickable Lights.json bulbs + prop-attached sound speakers
-  const refSourceDetailGroup = new THREE.Group();// the one selected light rig or listener range
+  const refSourcesGroup = new THREE.Group(); // clickable Lights.json bulbs + prop-attached sound speakers
+  const refSourceDetailGroup = new THREE.Group(); // the one selected light rig or listener range
   let refLightMarkers: THREE.Points | null = null;
   let refSoundMarkers: THREE.Points | null = null;
-  const refPropSel = new THREE.Group();          // amber outline seated at the selected reference prop instance
+  const refPropSel = new THREE.Group(); // amber outline seated at the selected reference prop instance
   const collisionOverlay = createCollisionOverlay(stage.refRoot);
   const unityCollisionOverlay = createCollisionOverlay(stage.refRoot, {
-    name: 'Selected Unity collider', activeColor: UNITY_COLLISION_OVERLAY_COLOR,
-    inactiveColor: UNITY_COLLISION_OVERLAY_COLOR, unity: true,
+    name: 'Selected Unity collider',
+    activeColor: UNITY_COLLISION_OVERLAY_COLOR,
+    inactiveColor: UNITY_COLLISION_OVERLAY_COLOR,
+    unity: true,
   });
   let selectedColliderInstance: PropInstance | null = null;
   // The always-on Effects proxy occupies the same surface as this outline. Give the selected reference prop a
   // dedicated top-layer material so its amber state cannot be depth-merged back into the purple map overlay.
   const refPropSelectionMat = assets.propOutlineMat.clone();
   refPropSelectionMat.depthTest = false;
-  const refArrowMat = facingArrowMaterial();     // facing arrows over the highlighted instance (F toggle)
+  const refArrowMat = facingArrowMaterial(); // facing arrows over the highlighted instance (F toggle)
   let refArrowGeos: THREE.BufferGeometry[] = [];
   let refArrowObjs: THREE.Object3D[] = [];
   let refArrowsOn = false;
@@ -107,7 +160,12 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   // carry several, one texture each — this marks which one the palette readout describes). A reference hit
   // seats the lines at the clicked instance's matrix; an authored placed prop attaches them as a child of
   // the hit mesh instead, so they ride its pose and a props rebuild discards them with it.
-  const surfInspectMat = new THREE.LineBasicMaterial({ color: EDIT_EDGE_SEL_COLOR, transparent: true, opacity: 0.95, depthTest: false });
+  const surfInspectMat = new THREE.LineBasicMaterial({
+    color: EDIT_EDGE_SEL_COLOR,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+  });
   const surfInspectGroup = new THREE.Group();
   let surfInspectObjs: THREE.LineSegments[] = [];
   let surfInspectGeos: THREE.BufferGeometry[] = [];
@@ -146,10 +204,13 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
    * retain object ids, and an incomplete extraction is safer on the established whole-instance fallback than on
    * a guessed partial alignment.
    */
-  function collisionModelEntries(entries: readonly RuntimeInstanceEntry[], count: number): RuntimeInstanceEntry[] | null {
+  function collisionModelEntries(
+    entries: readonly RuntimeInstanceEntry[],
+    count: number,
+  ): RuntimeInstanceEntry[] | null {
     const byObject = new Map<number, RuntimeInstanceEntry>();
-    for (const entry of entries) if (entry.object !== null && !byObject.has(entry.object))
-      byObject.set(entry.object, entry);
+    for (const entry of entries)
+      if (entry.object !== null && !byObject.has(entry.object)) byObject.set(entry.object, entry);
     if (byObject.size !== count) return null;
     return [...byObject].sort(([a], [b]) => a - b).map(([, entry]) => entry);
   }
@@ -233,13 +294,18 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     isolatedByKind: Map<string, number>;
   }
   const emptyRenderStats = (): PropRenderStats => ({
-    batchDraws: 0, batchSlots: 0, isolatedDraws: 0, isolatedSlots: 0, isolatedByKind: new Map(),
+    batchDraws: 0,
+    batchSlots: 0,
+    isolatedDraws: 0,
+    isolatedSlots: 0,
+    isolatedByKind: new Map(),
   });
-  let propsRenderStats = emptyRenderStats(), tricksRenderStats = emptyRenderStats();
+  let propsRenderStats = emptyRenderStats(),
+    tricksRenderStats = emptyRenderStats();
   let decorShade: ShadeMode = 'textured'; // the props/tricks groups follow the shade view like the terrains
   let effectPropIndices = new Set<number>();
-  let refLightsVisible = false;                  // retained persistence name; now gates the Sources layer
-  let propRig: LightRig | null = null;           // the reference level's own rig, tinting its props
+  let refLightsVisible = false; // retained persistence name; now gates the Sources layer
+  let propRig: LightRig | null = null; // the reference level's own rig, tinting its props
   let propRigStrength = 0;
   const tintedPropMeshes = new WeakSet<ReferencePropMesh>();
   interface HighlightedProp {
@@ -290,7 +356,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refControlledMaterials.clear();
     refEffectMaterials.clear();
     runtimeEntries.clear();
-    if (replacingLevel) { runtimeVisibility.clear(); runtimeMatrices.clear(); runtimePieceMotions.clear(); }
+    if (replacingLevel) {
+      runtimeVisibility.clear();
+      runtimeMatrices.clear();
+      runtimePieceMotions.clear();
+    }
     refPropData = props;
     assets.propTex.setNativeLighting(props?.instances ?? null);
     assets.propTex.setVertexLighting(props?.instances ?? null);
@@ -302,17 +372,24 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     // placement uses — the extracted facts compile to a native profile, the profile to a contact state
     // (`core/props/contact.ts`), so retail scenery and your own props are keyed by one rule rather than two.
     // Uniform per draw is a real constraint: it is why the batching below partitions on this value.
-    const contactTint = (inst: PropInstance): number => propContactTint(
-      collisionProfileContactState(collisionProfileFromSourceInstance(props.level, inst)), inst.surface);
+    const contactTint = (inst: PropInstance): number =>
+      propContactTint(
+        collisionProfileContactState(collisionProfileFromSourceInstance(props.level, inst)),
+        inst.surface,
+      );
 
     const byModel = new Map<number, PropInstance[]>();
     for (const inst of props.instances) {
       const a = byModel.get(inst.model);
-      if (a) a.push(inst); else byModel.set(inst.model, [inst]);
+      if (a) a.push(inst);
+      else byModel.set(inst.model, [inst]);
     }
     const modelById = new Map(props.models.map(m => [m.id, m]));
-    const raw = new THREE.Matrix4(), edit = new THREE.Matrix4();
-    const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scl = new THREE.Vector3();
+    const raw = new THREE.Matrix4(),
+      edit = new THREE.Matrix4();
+    const pos = new THREE.Vector3(),
+      quat = new THREE.Quaternion(),
+      scl = new THREE.Vector3();
     interface PendingStaticItem {
       geometry: THREE.BufferGeometry;
       instances: PropInstance[];
@@ -346,8 +423,17 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       const key = `${targetKey}:${material.uuid}:${item.shadeTint}`;
       let batch = pendingStaticBatches.get(key);
       if (!batch) {
-        batch = { target, material, shadeTint: item.shadeTint, items: [], instances: 0, vertices: 0, indices: 0,
-          expandedVertices: 0, expandedIndices: 0 };
+        batch = {
+          target,
+          material,
+          shadeTint: item.shadeTint,
+          items: [],
+          instances: 0,
+          vertices: 0,
+          indices: 0,
+          expandedVertices: 0,
+          expandedIndices: 0,
+        };
         pendingStaticBatches.set(key, batch);
       }
       batch.items.push(item);
@@ -371,36 +457,57 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       const effectInsts = insts.filter(inst => effectPropIndices.has(inst.sourceIndex));
       // One InstancedMesh can only carry one material phase. Partition placements by their full recovered
       // material law; dwell flipbooks include an instance seed and therefore remain independently timed.
-      const visibleBuckets = new Map<string, { instances: PropInstance[]; effect: MaterialWorldEffects | null;
-        animation: AnimObjectEffect | null; deltaGated: boolean; controlSourceIndex: number | null;
-        effectControlled: boolean; shadeTint: number }>();
+      const visibleBuckets = new Map<
+        string,
+        {
+          instances: PropInstance[];
+          effect: MaterialWorldEffects | null;
+          animation: AnimObjectEffect | null;
+          deltaGated: boolean;
+          controlSourceIndex: number | null;
+          effectControlled: boolean;
+          shadeTint: number;
+        }
+      >();
       for (const inst of visibleInsts) {
         const effect = refMaterialEffects.get(inst.sourceIndex) ?? null;
         const controlled = refMaterialControls.has(inst.sourceIndex);
         const effectControlled = effectPropIndices.has(inst.sourceIndex);
         const deltaAnimation = refAnimDeltaEffects.get(inst.sourceIndex) ?? null;
-        const animation = refAnimObjectEffects.get(inst.sourceIndex)
-          ?? refAnimComboEffects.get(inst.sourceIndex) ?? deltaAnimation;
+        const animation =
+          refAnimObjectEffects.get(inst.sourceIndex) ?? refAnimComboEffects.get(inst.sourceIndex) ?? deltaAnimation;
         const deltaGated = !!deltaAnimation;
         // Contact class partitions alongside the material law for the same reason it does: one draw carries
         // one material, so instances that must wear different Surface-view colours cannot share one. The key
         // is built ONCE per model and reused across its submeshes, which is what keeps sibling submeshes on
         // the identical instance ordering `propBucket` promises.
         const shadeTint = contactTint(inst);
-        const key = `${materialWorldEffectsKey(effect)}|anim:${deltaGated ? 'delta:' : ''}${animObjectEffectKey(animation)}`
-          + (controlled ? `|control:${inst.sourceIndex}` : '') + `|effect-host:${effectControlled}`
-          + `|contact:${shadeTint}`;
+        const key =
+          `${materialWorldEffectsKey(effect)}|anim:${deltaGated ? 'delta:' : ''}${animObjectEffectKey(animation)}` +
+          (controlled ? `|control:${inst.sourceIndex}` : '') +
+          `|effect-host:${effectControlled}` +
+          `|contact:${shadeTint}`;
         const bucket = visibleBuckets.get(key);
         if (bucket) bucket.instances.push(inst);
-        else visibleBuckets.set(key, { instances: [inst], effect, animation, deltaGated,
-          controlSourceIndex: controlled ? inst.sourceIndex : null, effectControlled, shadeTint });
+        else
+          visibleBuckets.set(key, {
+            instances: [inst],
+            effect,
+            animation,
+            deltaGated,
+            controlSourceIndex: controlled ? inst.sourceIndex : null,
+            effectControlled,
+            shadeTint,
+          });
       }
-      const effectBuckets = new Map<string, { instances: PropInstance[]; animation: AnimObjectEffect | null;
-        deltaGated: boolean }>();
+      const effectBuckets = new Map<
+        string,
+        { instances: PropInstance[]; animation: AnimObjectEffect | null; deltaGated: boolean }
+      >();
       for (const inst of effectInsts) {
         const deltaAnimation = refAnimDeltaEffects.get(inst.sourceIndex) ?? null;
-        const animation = refAnimObjectEffects.get(inst.sourceIndex)
-          ?? refAnimComboEffects.get(inst.sourceIndex) ?? deltaAnimation;
+        const animation =
+          refAnimObjectEffects.get(inst.sourceIndex) ?? refAnimComboEffects.get(inst.sourceIndex) ?? deltaAnimation;
         const deltaGated = !!deltaAnimation;
         const key = `${deltaGated ? 'delta:' : ''}${animObjectEffectKey(animation)}`;
         const bucket = effectBuckets.get(key);
@@ -412,11 +519,22 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       // material or pose state stays on the narrower InstancedMesh path.
       for (const sub of model.subs) {
         const sheet = isSingleFacingSheet(sub.normals); // decides depth write for a blend material
-        const addInstances = (drawInsts: PropInstance[], drawTarget: THREE.Group, material: THREE.Material,
-          bucket: ReferencePropMesh[], bucketKey: string, animation: AnimObjectEffect | null, deltaGated: boolean,
-          proxy = false, controlSourceIndex: number | null = null,
-          surface: RefPropSurfaceDetails | null = null, staticBatch = false, isolatedKind = 'other',
-          shadeTint = PROP_CLAY_COLOR, arraySlice: number | null = null) => {
+        const addInstances = (
+          drawInsts: PropInstance[],
+          drawTarget: THREE.Group,
+          material: THREE.Material,
+          bucket: ReferencePropMesh[],
+          bucketKey: string,
+          animation: AnimObjectEffect | null,
+          deltaGated: boolean,
+          proxy = false,
+          controlSourceIndex: number | null = null,
+          surface: RefPropSurfaceDetails | null = null,
+          staticBatch = false,
+          isolatedKind = 'other',
+          shadeTint = PROP_CLAY_COLOR,
+          arraySlice: number | null = null,
+        ) => {
           if (!drawInsts.length) return;
           const g = new THREE.BufferGeometry();
           g.setAttribute('position', new THREE.BufferAttribute(sub.positions, 3));
@@ -437,12 +555,22 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           // wearing different pages can share one draw at all. Constant across the submesh: a submesh IS one
           // material. Only array-material draws carry it, and a batch never mixes the two because the array
           // material is itself the batch key.
-          if (arraySlice !== null) g.setAttribute('texArraySlice',
-            new THREE.BufferAttribute(new Uint16Array(g.getAttribute('position').count).fill(arraySlice), 1));
+          if (arraySlice !== null)
+            g.setAttribute(
+              'texArraySlice',
+              new THREE.BufferAttribute(new Uint16Array(g.getAttribute('position').count).fill(arraySlice), 1),
+            );
           if (staticBatch && g.getAttribute('position').count && g.getIndex()?.count) {
             queueStatic(drawTarget, material, {
-              geometry: g, instances: drawInsts, model: id, name: model.name, bucket: bucketKey,
-              object: sub.object ?? null, piece: sub.piece ?? null, piecePivot: sub.piecePivot ?? null, surface,
+              geometry: g,
+              instances: drawInsts,
+              model: id,
+              name: model.name,
+              bucket: bucketKey,
+              object: sub.object ?? null,
+              piece: sub.piece ?? null,
+              piecePivot: sub.piecePivot ?? null,
+              surface,
               shadeTint,
             });
             return;
@@ -451,17 +579,17 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           const nativeLighting = assets.propTex.isNative(material);
           if (proxy) im.renderOrder = EFFECT_PROP_OVERLAY_RENDER_ORDER;
           im.name = model.name;
-          im.userData.propModel = id;          // clicking a reference prop arms this model for placement
+          im.userData.propModel = id; // clicking a reference prop arms this model for placement
           im.userData.propLevel = props.level;
-          im.userData.propInsts = drawInsts;   // preserves the native source index for picking/effect joins
-          im.userData.propBucket = bucketKey;  // sibling submeshes must share this exact instance ordering
+          im.userData.propInsts = drawInsts; // preserves the native source index for picking/effect joins
+          im.userData.propBucket = bucketKey; // sibling submeshes must share this exact instance ordering
           im.userData.propBatchKind = proxy ? 'effect-proxy' : isolatedKind;
           im.userData.propObject = sub.object ?? null; // full-hierarchy clips move object submeshes independently
           im.userData.propTex = surface?.tex ?? null; // this submesh's frame-zero texture file — the paint
-          im.userData.propTexLevel = props.level;     // the paint sampler reads both straight off a raycast hit
-          im.userData.propSurface = surface;   // full appearance identity (alpha pass / decal prio / anim)
+          im.userData.propTexLevel = props.level; // the paint sampler reads both straight off a raycast hit
+          im.userData.propSurface = surface; // full appearance identity (alpha pass / decal prio / anim)
           im.userData.propNativeLighting = nativeLighting;
-          im.userData[PROP_SHADE_TINT] = shadeTint;   // uniform across this draw by construction (bucket key)
+          im.userData[PROP_SHADE_TINT] = shadeTint; // uniform across this draw by construction (bucket key)
           const slots: ReferencePropSlot[] = [];
           im.userData.propSlots = slots;
           for (let k = 0; k < drawInsts.length; k++) {
@@ -474,18 +602,36 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
             edit.multiplyMatrices(RAW_TO_EDITOR, raw);
             const base = edit.clone();
             const entry: RuntimeInstanceEntry = {
-              sourceIndex: inst.sourceIndex, mesh: im, instanceId: k, base, defaultVisible: inst.visible, proxy,
-              geometry: g, level: props.level, model: id, name: model.name, object: sub.object ?? null,
+              sourceIndex: inst.sourceIndex,
+              mesh: im,
+              instanceId: k,
+              base,
+              defaultVisible: inst.visible,
+              proxy,
+              geometry: g,
+              level: props.level,
+              model: id,
+              name: model.name,
+              object: sub.object ?? null,
               piece: sub.piece ?? null,
               piecePivot: sub.piecePivot ? new THREE.Vector3(...sub.piecePivot) : null,
               animationDelta: null,
             };
             slots[k] = {
-              inst, level: props.level, model: id, name: model.name, bucket: bucketKey,
-              object: sub.object ?? null, tex: surface?.tex ?? null, surface, geometry: g, faceStart: 0,
+              inst,
+              level: props.level,
+              model: id,
+              name: model.name,
+              bucket: bucketKey,
+              object: sub.object ?? null,
+              tex: surface?.tex ?? null,
+              surface,
+              geometry: g,
+              faceStart: 0,
             };
             const entries = runtimeEntries.get(inst.sourceIndex);
-            if (entries) entries.push(entry); else runtimeEntries.set(inst.sourceIndex, [entry]);
+            if (entries) entries.push(entry);
+            else runtimeEntries.set(inst.sourceIndex, [entry]);
             im.setMatrixAt(k, displayMatrix(entry, base));
             if (nativeLighting) im.setColorAt(k, propLightIndexColor(inst.sourceIndex));
           }
@@ -506,30 +652,36 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           if (clip) {
             const sourceIndices = drawInsts.map(inst => inst.sourceIndex);
             refAnimatedMeshes.push({
-              mesh: im, sourceIndices, clip, object: sub.object ?? null, effect: animation, deltaGated,
-              playbacks: sourceIndices.map(sourceIndex => animation
-                ? isAnimComboEffect(animation)
-                  ? createAnimComboPlayback(animation, clip.clipFrames, sourceIndex + 1)
-                  : deltaGated
-                    ? createAnimDeltaPlayback(animation, clip.clipFrames, sourceIndex + 1)
-                    : createAnimObjectPlayback(animation, clip.clipFrames, sourceIndex + 1)
-                : null),
+              mesh: im,
+              sourceIndices,
+              clip,
+              object: sub.object ?? null,
+              effect: animation,
+              deltaGated,
+              playbacks: sourceIndices.map(sourceIndex =>
+                animation
+                  ? isAnimComboEffect(animation)
+                    ? createAnimComboPlayback(animation, clip.clipFrames, sourceIndex + 1)
+                    : deltaGated
+                      ? createAnimDeltaPlayback(animation, clip.clipFrames, sourceIndex + 1)
+                      : createAnimObjectPlayback(animation, clip.clipFrames, sourceIndex + 1)
+                  : null,
+              ),
             });
           }
         };
         for (const [bucketKey, bucket] of visibleBuckets) {
           const materialData = props.materials.get(sub.mat);
-          const frames = bucket.effect?.crowd ? props.crowdFrames : materialData?.frames ?? [];
+          const frames = bucket.effect?.crowd ? props.crowdFrames : (materialData?.frames ?? []);
           const texFile = frames[0] ?? materialData?.tex ?? null;
-          const runtimeMaterialKey = bucket.controlSourceIndex === null ? undefined
-            : `${props.level}:${bucket.controlSourceIndex}`;
+          const runtimeMaterialKey =
+            bucket.controlSourceIndex === null ? undefined : `${props.level}:${bucket.controlSourceIndex}`;
           // Owning an effect graph does not itself make the geometry unbatchable. BatchedMesh retains a mutable
           // matrix per source slot, so collision/sound/particle hosts, Rollers, spline movers, hide/show, and piece
           // throws can all update in Play without spending one draw per submesh. Only continuously animated pose or
           // private material state needs the narrower InstancedMesh path.
-          const staticBatch = !bucket.animation
-            && !(model.animation ?? model.rotation)
-            && bucket.controlSourceIndex === null;
+          const staticBatch =
+            !bucket.animation && !(model.animation ?? model.rotation) && bucket.controlSourceIndex === null;
           const native = !!bucket.instances[0]?.lighting;
           // SSX 3 lights by colours baked per vertex rather than by a record. A placement missing them (its
           // run did not cover the model) draws at texture brightness inside the same draw.
@@ -537,41 +689,85 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           // The packed bank, when this submesh can use one: a static draw on a plain page. A scroller or a
           // flipbook owns its Texture's offset and Source, neither of which means anything for one slice of a
           // shared array, so those keep the per-page material `material()` builds for them.
-          const packed = staticBatch && !isAnimatedPropMaterial(bucket.effect, frames)
-            ? assets.propTex.propArraySlot(texFile) : undefined;
-          const materialOpts = { blend: materialData?.blend, priority: materialData?.prio,
+          const packed =
+            staticBatch && !isAnimatedPropMaterial(bucket.effect, frames)
+              ? assets.propTex.propArraySlot(texFile)
+              : undefined;
+          const materialOpts = {
+            blend: materialData?.blend,
+            priority: materialData?.prio,
             pixelAlpha: !!bucket.effect?.crowd || materialData?.pixelAlpha,
-            alphaMode: materialData?.alphaMode, sheet, native, vertexLit };
+            alphaMode: materialData?.alphaMode,
+            sheet,
+            native,
+            vertexLit,
+          };
           const arrayMaterial = packed
             ? assets.propTex.propArrayMaterial(packed.array, props.level, texFile!, materialOpts)
             : null;
-          const baseMaterial = arrayMaterial ?? assets.propTex.material(props.level, texFile, bucket.effect,
-            frames, runtimeMaterialKey, materialOpts);
-          const drawMaterial = arrayMaterial ? arrayMaterial
-            : native || vertexLit ? assets.propTex.native(baseMaterial, vertexLit) : baseMaterial;
-          if (bucket.effect) for (const inst of bucket.instances) {
-            const animated = refEffectMaterials.get(inst.sourceIndex);
-            if (animated) animated.add(drawMaterial);
-            else refEffectMaterials.set(inst.sourceIndex, new Set([drawMaterial]));
-          }
-          const isolatedKind = bucket.controlSourceIndex !== null ? 'material-control'
-            : bucket.animation ? 'effect-animation'
-            : (model.animation ?? model.rotation) ? 'model-animation'
-            : bucket.effect ? 'material-effect'
-            : bucket.effectControlled ? 'effect-host' : 'other';
-          addInstances(bucket.instances, target, drawMaterial,
-            refPropMeshes, bucketKey, bucket.animation, bucket.deltaGated, false, bucket.controlSourceIndex,
-            { tex: texFile, blend: !!materialData?.blend,
+          const baseMaterial =
+            arrayMaterial ??
+            assets.propTex.material(props.level, texFile, bucket.effect, frames, runtimeMaterialKey, materialOpts);
+          const drawMaterial = arrayMaterial
+            ? arrayMaterial
+            : native || vertexLit
+              ? assets.propTex.native(baseMaterial, vertexLit)
+              : baseMaterial;
+          if (bucket.effect)
+            for (const inst of bucket.instances) {
+              const animated = refEffectMaterials.get(inst.sourceIndex);
+              if (animated) animated.add(drawMaterial);
+              else refEffectMaterials.set(inst.sourceIndex, new Set([drawMaterial]));
+            }
+          const isolatedKind =
+            bucket.controlSourceIndex !== null
+              ? 'material-control'
+              : bucket.animation
+                ? 'effect-animation'
+                : (model.animation ?? model.rotation)
+                  ? 'model-animation'
+                  : bucket.effect
+                    ? 'material-effect'
+                    : bucket.effectControlled
+                      ? 'effect-host'
+                      : 'other';
+          addInstances(
+            bucket.instances,
+            target,
+            drawMaterial,
+            refPropMeshes,
+            bucketKey,
+            bucket.animation,
+            bucket.deltaGated,
+            false,
+            bucket.controlSourceIndex,
+            {
+              tex: texFile,
+              blend: !!materialData?.blend,
               ...(materialData?.alphaMode ? { alphaMode: materialData.alphaMode } : {}),
               prio: !!materialData?.prio,
-              frames: frames.length, ...(frames.length ? { frameFiles: [...frames] } : {}),
+              frames: frames.length,
+              ...(frames.length ? { frameFiles: [...frames] } : {}),
               ...(bucket.effect?.textureFlip ? { flipbook: { ...bucket.effect.textureFlip } } : {}),
-              scroll: !!bucket.effect?.uvScroll }, staticBatch, isolatedKind, bucket.shadeTint,
-            arrayMaterial ? packed!.slice : null);
+              scroll: !!bucket.effect?.uvScroll,
+            },
+            staticBatch,
+            isolatedKind,
+            bucket.shadeTint,
+            arrayMaterial ? packed!.slice : null,
+          );
         }
         for (const [bucketKey, bucket] of effectBuckets)
-          addInstances(bucket.instances, refEffectPropsGroup, refEffectPropMat, refEffectPropMeshes,
-            `effect-proxy:${bucketKey}`, bucket.animation, bucket.deltaGated, true);
+          addInstances(
+            bucket.instances,
+            refEffectPropsGroup,
+            refEffectPropMat,
+            refEffectPropMeshes,
+            `effect-proxy:${bucketKey}`,
+            bucket.animation,
+            bucket.deltaGated,
+            true,
+          );
       }
       if (effectBuckets.size && !model.subs.some(s => s.indices.length)) {
         // a SURFACELESS effect host (no renderable submesh — invisible in the world, and a wireframe of
@@ -599,15 +795,37 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
             );
             edit.multiplyMatrices(RAW_TO_EDITOR, raw);
             const base = edit.clone();
-            const entry: RuntimeInstanceEntry = { sourceIndex: inst.sourceIndex, mesh: im, instanceId: k,
-              geometry: g, level: props.level, model: id, name: model.name, object: null,
-              base, defaultVisible: inst.visible, proxy: true, piece: null, piecePivot: null, animationDelta: null };
+            const entry: RuntimeInstanceEntry = {
+              sourceIndex: inst.sourceIndex,
+              mesh: im,
+              instanceId: k,
+              geometry: g,
+              level: props.level,
+              model: id,
+              name: model.name,
+              object: null,
+              base,
+              defaultVisible: inst.visible,
+              proxy: true,
+              piece: null,
+              piecePivot: null,
+              animationDelta: null,
+            };
             slots[k] = {
-              inst, level: props.level, model: id, name: model.name, bucket: `effect-proxy:${bucketKey}`,
-              object: null, tex: null, surface: null, geometry: g, faceStart: 0,
+              inst,
+              level: props.level,
+              model: id,
+              name: model.name,
+              bucket: `effect-proxy:${bucketKey}`,
+              object: null,
+              tex: null,
+              surface: null,
+              geometry: g,
+              faceStart: 0,
             };
             const entries = runtimeEntries.get(inst.sourceIndex);
-            if (entries) entries.push(entry); else runtimeEntries.set(inst.sourceIndex, [entry]);
+            if (entries) entries.push(entry);
+            else runtimeEntries.set(inst.sourceIndex, [entry]);
             im.setMatrixAt(k, displayMatrix(entry, base));
           }
           im.instanceMatrix.needsUpdate = true;
@@ -632,8 +850,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       mesh.name = batch.target === refTrickModelsGroup ? 'Static reference tricks' : 'Static reference props';
       mesh.userData.propLevel = props.level;
       mesh.userData.propBucket = mergedFallback ? 'static-merged' : 'static-batched';
-      mesh.userData.propBatchKind = batch.material.transparent ? 'static-transparent'
-        : mergedFallback ? 'static-opaque-merged' : 'static-opaque';
+      mesh.userData.propBatchKind = batch.material.transparent
+        ? 'static-transparent'
+        : mergedFallback
+          ? 'static-opaque-merged'
+          : 'static-opaque';
       const nativeLighting = assets.propTex.isNative(mergedMaterial);
       mesh.userData.propNativeLighting = nativeLighting;
       mesh.userData[PROP_SHADE_TINT] = batch.shadeTint; // the batch key partitions on it, so this is exact
@@ -652,9 +873,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         if (generation !== propsBuildGeneration) return;
         for (const inst of item.instances) {
           const instanceId = mesh.addInstance(geometryId);
-          const faceStart = mesh instanceof THREE.BatchedMesh
-            ? (mesh.getGeometryRangeAt(geometryId)?.start ?? 0) / 3
-            : mesh.getFaceStartAt(instanceId);
+          const faceStart =
+            mesh instanceof THREE.BatchedMesh
+              ? (mesh.getGeometryRangeAt(geometryId)?.start ?? 0) / 3
+              : mesh.getFaceStartAt(instanceId);
           raw.compose(
             pos.set(inst.loc[0], inst.loc[1], inst.loc[2]),
             quat.set(inst.rot[0], inst.rot[1], inst.rot[2], inst.rot[3]),
@@ -663,18 +885,36 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           edit.multiplyMatrices(RAW_TO_EDITOR, raw);
           const base = edit.clone();
           const entry: RuntimeInstanceEntry = {
-            sourceIndex: inst.sourceIndex, mesh, instanceId, geometry: item.geometry,
-            level: props.level, model: item.model, name: item.name, object: item.object,
-            base, defaultVisible: inst.visible, proxy: false, piece: item.piece,
-            piecePivot: item.piecePivot ? new THREE.Vector3(...item.piecePivot) : null, animationDelta: null,
+            sourceIndex: inst.sourceIndex,
+            mesh,
+            instanceId,
+            geometry: item.geometry,
+            level: props.level,
+            model: item.model,
+            name: item.name,
+            object: item.object,
+            base,
+            defaultVisible: inst.visible,
+            proxy: false,
+            piece: item.piece,
+            piecePivot: item.piecePivot ? new THREE.Vector3(...item.piecePivot) : null,
+            animationDelta: null,
           };
           slots[instanceId] = {
-            inst, level: props.level, model: item.model, name: item.name, bucket: item.bucket,
-            object: item.object, tex: item.surface?.tex ?? null, surface: item.surface,
-            geometry: item.geometry, faceStart,
+            inst,
+            level: props.level,
+            model: item.model,
+            name: item.name,
+            bucket: item.bucket,
+            object: item.object,
+            tex: item.surface?.tex ?? null,
+            surface: item.surface,
+            geometry: item.geometry,
+            faceStart,
           };
           const entries = runtimeEntries.get(inst.sourceIndex);
-          if (entries) entries.push(entry); else runtimeEntries.set(inst.sourceIndex, [entry]);
+          if (entries) entries.push(entry);
+          else runtimeEntries.set(inst.sourceIndex, [entry]);
           mesh.setMatrixAt(instanceId, displayMatrix(entry, base));
           if (nativeLighting) mesh.setColorAt(instanceId, propLightIndexColor(inst.sourceIndex));
           if (++installedInstances % 16 === 0) {
@@ -702,8 +942,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           const instanced = object as THREE.InstancedMesh;
           stats.isolatedDraws++;
           stats.isolatedSlots += instanced.count;
-          const kind = typeof instanced.userData.propBatchKind === 'string'
-            ? instanced.userData.propBatchKind : 'other';
+          const kind =
+            typeof instanced.userData.propBatchKind === 'string' ? instanced.userData.propBatchKind : 'other';
           stats.isolatedByKind.set(kind, (stats.isolatedByKind.get(kind) ?? 0) + 1);
         }
       }
@@ -715,13 +955,18 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refTrickModelsGroup.visible = refTricksVisible && refTrickModelsGroup.children.length > 0;
     refEffectPropsGroup.visible = refEffectPropsVisible && refEffectPropsGroup.children.length > 0;
     applyPropRigTint(); // re-tint the fresh meshes if a rig is loaded
-    if (decorShade !== 'textured') { applyPropShade(refPropsGroup, decorShade); applyPropShade(refTrickModelsGroup, decorShade); }
+    if (decorShade !== 'textured') {
+      applyPropShade(refPropsGroup, decorShade);
+      applyPropShade(refTrickModelsGroup, decorShade);
+    }
   }
 
   function setProps(props: LevelProps | null) {
     const generation = ++propsBuildGeneration;
     if (!props) assets.propTex.disposePropArrayBank();
-    for (const _ of setPropsSteps(props, generation)) { /* exhaust synchronously for existing callers */ }
+    for (const _ of setPropsSteps(props, generation)) {
+      /* exhaust synchronously for existing callers */
+    }
   }
 
   /**
@@ -770,8 +1015,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     // The no-multi-draw renderer physically merges opaque props. Its BVH was the last indivisible main-thread
     // task (hundreds of ms on MERQUER). Build against copied geometry in one reusable worker: the live render
     // arrays remain attached, and deserialization back onto the live geometry is small and deterministic.
-    const merged = [...refPropMeshes, ...refEffectPropMeshes]
-      .filter((mesh): mesh is MergedStaticPropMesh => mesh instanceof MergedStaticPropMesh);
+    const merged = [...refPropMeshes, ...refEffectPropMeshes].filter(
+      (mesh): mesh is MergedStaticPropMesh => mesh instanceof MergedStaticPropMesh,
+    );
     if (!merged.length) return;
     const worker = new GenerateMeshBVHWorker();
     try {
@@ -810,34 +1056,38 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     // Crack's frame selection is performed by the engine's Crack handler, so the retail graph contains no
     // TextureFlip receiver to discover. Give each cracked host the same private material path as an explicit
     // control node; otherwise all 77 Megaplex panes would share one material and crack together.
-    if (data) for (const instance of data.instances) {
-      if (refMaterialControls.has(instance.index)) continue;
-      const collision = referenceInstanceBindings(data, instance)
-        .find(binding => binding.circumstance === 'collision')?.graph;
-      const control = crackedMaterialControlFromGraph(collision);
-      if (control) refMaterialControls.set(instance.index, control);
-    }
+    if (data)
+      for (const instance of data.instances) {
+        if (refMaterialControls.has(instance.index)) continue;
+        const collision = referenceInstanceBindings(data, instance).find(
+          binding => binding.circumstance === 'collision',
+        )?.graph;
+        const control = crackedMaterialControlFromGraph(collision);
+        if (control) refMaterialControls.set(instance.index, control);
+      }
     // Dynamically installed receivers (notably StartCountDown's unattached start-light instance) still need
     // their flipbook/scroll material prepared before the first delayed command arrives.
-    for (const [sourceIndex, control] of refMaterialControls) if (!refMaterialEffects.has(sourceIndex)) {
-      const effect = control.effect.textureFlip?.dwell
-        ? { ...control.effect, textureFlip: { ...control.effect.textureFlip, seed: sourceIndex + 1 } }
-        : control.effect;
-      refMaterialEffects.set(sourceIndex, effect);
-    }
+    for (const [sourceIndex, control] of refMaterialControls)
+      if (!refMaterialEffects.has(sourceIndex)) {
+        const effect = control.effect.textureFlip?.dwell
+          ? { ...control.effect, textureFlip: { ...control.effect.textureFlip, seed: sourceIndex + 1 } }
+          : control.effect;
+        refMaterialEffects.set(sourceIndex, effect);
+      }
     refAnimObjectEffects = referenceAnimObjectEffects(data);
     refAnimComboEffects = referenceAnimComboEffects(data);
     refAnimDeltaEffects = referenceAnimDeltaEffects(data);
     refImmediateBreaks = referenceImmediateBreakInstances(data);
     refHoldAtEnd = new Set();
-    if (data) for (const instance of data.instances)
-      if (referenceSlot(data.document, instance.effectSlotIndex)?.circumstances.slot4)
-        refHoldAtEnd.add(instance.index);
+    if (data)
+      for (const instance of data.instances)
+        if (referenceSlot(data.document, instance.effectSlotIndex)?.circumstances.slot4)
+          refHoldAtEnd.add(instance.index);
   }
 
-  const rotationAxes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0),
-    new THREE.Vector3(0, 0, 1)] as const;
-  const animationRotation = new THREE.Matrix4(), animationTranslation = new THREE.Matrix4();
+  const rotationAxes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)] as const;
+  const animationRotation = new THREE.Matrix4(),
+    animationTranslation = new THREE.Matrix4();
   const animationTransform = new THREE.Matrix4();
 
   /** The compact recovered clip for one native placement, when its model carries the supported animation
@@ -856,16 +1106,24 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const sourceClip = referenceAnimObjectClip(sourceIndex);
     const sourceEffect = refAnimObjectEffects.get(sourceIndex);
     if (!source || !sourceClip || !sourceEffect || !refPropData) return [sourceIndex];
-    const same = (a: readonly number[], b: readonly number[]) => a.length === b.length
-      && a.every((value, index) => value === b[index]);
+    const same = (a: readonly number[], b: readonly number[]) =>
+      a.length === b.length && a.every((value, index) => value === b[index]);
     const effectKey = animObjectEffectKey(sourceEffect);
-    return refPropData.instances.filter(candidate => {
-      const clip = referenceAnimObjectClip(candidate.sourceIndex);
-      const effect = refAnimObjectEffects.get(candidate.sourceIndex);
-      return !!clip && clip.clipFrames === sourceClip.clipFrames && !!effect
-        && animObjectEffectKey(effect) === effectKey
-        && same(candidate.loc, source.loc) && same(candidate.rot, source.rot) && same(candidate.scale, source.scale);
-    }).map(candidate => candidate.sourceIndex);
+    return refPropData.instances
+      .filter(candidate => {
+        const clip = referenceAnimObjectClip(candidate.sourceIndex);
+        const effect = refAnimObjectEffects.get(candidate.sourceIndex);
+        return (
+          !!clip &&
+          clip.clipFrames === sourceClip.clipFrames &&
+          !!effect &&
+          animObjectEffectKey(effect) === effectKey &&
+          same(candidate.loc, source.loc) &&
+          same(candidate.rot, source.rot) &&
+          same(candidate.scale, source.scale)
+        );
+      })
+      .map(candidate => candidate.sourceIndex);
   }
 
   function clearAnimObjectPathGeometry() {
@@ -878,13 +1136,15 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   function animObjectPathPoint(sourceIndex: number, clip: PropModelClip, frame: number): THREE.Vector3 | null {
-    const entry = (runtimeEntries.get(sourceIndex) ?? []).find(candidate => !candidate.proxy)
-      ?? (runtimeEntries.get(sourceIndex) ?? [])[0];
+    const entry =
+      (runtimeEntries.get(sourceIndex) ?? []).find(candidate => !candidate.proxy) ??
+      (runtimeEntries.get(sourceIndex) ?? [])[0];
     if (!entry) return null;
     if (isPropModelAnimation(clip)) {
       const objectIndex = clip.objects.findIndex(object => object.channels?.slice(0, 3).some(curve => !!curve?.length));
       if (objectIndex < 0) return null;
-      return new THREE.Vector3().setFromMatrixPosition(hierarchyPose(clip, frame).poseWorld[objectIndex])
+      return new THREE.Vector3()
+        .setFromMatrixPosition(hierarchyPose(clip, frame).poseWorld[objectIndex])
         .applyMatrix4(entry.base);
     }
     const translation = samplePropModelTranslation(clip, frame);
@@ -913,22 +1173,25 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const sampleCount = Math.max(48, Math.min(160, Math.ceil(clip.clipFrames / 2)));
     const path: THREE.Vector3[] = [];
     for (let i = 0; i <= sampleCount; i++) {
-      const point = animObjectPathPoint(sourceIndex, clip, clip.clipFrames * i / sampleCount);
+      const point = animObjectPathPoint(sourceIndex, clip, (clip.clipFrames * i) / sampleCount);
       if (point) path.push(point);
     }
     if (!path.length) return false;
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(path), refAnimPathMat);
-    line.frustumCulled = false; line.renderOrder = 990;
+    line.frustumCulled = false;
+    line.renderOrder = 990;
     refAnimPathGroup.add(line);
-    const boundaryFrames = [...new Set(translationChannels.flatMap(channel => channel.boundaryFrames))]
-      .sort((a, b) => a - b);
+    const boundaryFrames = [...new Set(translationChannels.flatMap(channel => channel.boundaryFrames))].sort(
+      (a, b) => a - b,
+    );
     const boundaries = boundaryFrames.flatMap(frame => {
       const point = animObjectPathPoint(sourceIndex, clip, frame);
       return point ? [point] : [];
     });
     if (boundaries.length) {
       const keys = new THREE.Points(new THREE.BufferGeometry().setFromPoints(boundaries), refAnimKeyMat);
-      keys.frustumCulled = false; keys.renderOrder = 991;
+      keys.frustumCulled = false;
+      keys.renderOrder = 991;
       refAnimPathGroup.add(keys);
     }
     refAnimPlayhead = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 7), refAnimPlayheadMat);
@@ -993,7 +1256,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       mesh.renderOrder = entry.mesh.renderOrder;
       mesh.castShadow = entry.mesh.castShadow;
       mesh.receiveShadow = entry.mesh.receiveShadow;
-      mesh.raycast = () => { /* cosmetic copies share the native source placement; pick that placement instead */ };
+      mesh.raycast = () => {
+        /* cosmetic copies share the native source placement; pick that placement instead */
+      };
       parent.add(mesh);
       if (decorShade !== 'textured') applyPropShade(mesh, decorShade);
       draws.push({ entry, mesh });
@@ -1028,12 +1293,17 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   /** Install the render-only poses after copy zero. Matrices arrive in world space, matching the existing single
    * placement mutation hook; each draw converts them to the visibility group's local frame. */
   function setRuntimeInstanceWorldCopies(sourceIndex: number, matrices: readonly THREE.Matrix4[] | null) {
-    if (!matrices?.length) { clearRuntimeInstanceCopies(sourceIndex); return; }
+    if (!matrices?.length) {
+      clearRuntimeInstanceCopies(sourceIndex);
+      return;
+    }
     let copies = runtimeInstanceCopies.get(sourceIndex);
     let created = false;
     const sourceEntries = runtimeCopySourceEntries(sourceIndex);
-    const entriesChanged = !!copies && (copies.draws.length !== sourceEntries.length
-      || copies.draws.some((draw, index) => draw.entry !== sourceEntries[index]));
+    const entriesChanged =
+      !!copies &&
+      (copies.draws.length !== sourceEntries.length ||
+        copies.draws.some((draw, index) => draw.entry !== sourceEntries[index]));
     // Ambient Effects may start while the progressive reference-prop build is between yields. An empty copy set
     // created before this model's entries exist must not become permanent: reconcile it as entries arrive. Manual
     // Preview naturally starts after the build and therefore did not expose this refresh-order race.
@@ -1060,9 +1330,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const rootWorld = stage.refRoot.matrixWorld;
     const worldBase = rootWorld.clone().multiply(base);
     const worldPivot = entry.piecePivot.clone().applyMatrix4(worldBase);
-    const worldMotion = new THREE.Matrix4().compose(
-      worldPivot.clone().add(motion.offset), motion.rotation, new THREE.Vector3(1, 1, 1),
-    ).multiply(new THREE.Matrix4().makeTranslation(-worldPivot.x, -worldPivot.y, -worldPivot.z));
+    const worldMotion = new THREE.Matrix4()
+      .compose(worldPivot.clone().add(motion.offset), motion.rotation, new THREE.Vector3(1, 1, 1))
+      .multiply(new THREE.Matrix4().makeTranslation(-worldPivot.x, -worldPivot.y, -worldPivot.z));
     return rootWorld.clone().invert().multiply(worldMotion).multiply(worldBase);
   }
 
@@ -1096,15 +1366,20 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   function setRuntimeInstanceVisible(sourceIndex: number, visible: boolean | null) {
-    if (visible === null) runtimeVisibility.delete(sourceIndex); else runtimeVisibility.set(sourceIndex, visible);
+    if (visible === null) runtimeVisibility.delete(sourceIndex);
+    else runtimeVisibility.set(sourceIndex, visible);
     applyRuntimeInstance(sourceIndex);
     applyRuntimeInstanceCopies(sourceIndex);
   }
 
   function runtimeInstancePieceIds(sourceIndex: number): number[] {
-    return [...new Set((runtimeEntries.get(sourceIndex) ?? [])
-      .filter(entry => !entry.proxy && entry.piece !== null)
-      .map(entry => entry.piece!))];
+    return [
+      ...new Set(
+        (runtimeEntries.get(sourceIndex) ?? [])
+          .filter(entry => !entry.proxy && entry.piece !== null)
+          .map(entry => entry.piece!),
+      ),
+    ];
   }
 
   function setRuntimeInstancePieceMotions(sourceIndex: number, motions: readonly RuntimePieceMotion[] | null) {
@@ -1115,10 +1390,16 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
 
   function resetRuntimeInstances() {
     for (const index of stoppedInstanceEffects) setInstanceEffectsStopped(index, false);
-    const changed = new Set([...runtimeVisibility.keys(), ...runtimeMatrices.keys(), ...runtimePieceMotions.keys(),
-      ...runtimeInstanceCopies.keys()]);
+    const changed = new Set([
+      ...runtimeVisibility.keys(),
+      ...runtimeMatrices.keys(),
+      ...runtimePieceMotions.keys(),
+      ...runtimeInstanceCopies.keys(),
+    ]);
     clearAllRuntimeInstanceCopies();
-    runtimeVisibility.clear(); runtimeMatrices.clear(); runtimePieceMotions.clear();
+    runtimeVisibility.clear();
+    runtimeMatrices.clear();
+    runtimePieceMotions.clear();
     for (const sourceIndex of changed) applyRuntimeInstance(sourceIndex);
   }
 
@@ -1129,8 +1410,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     animationTranslation.makeTranslation(translation[0], translation[1], translation[2]);
     const axis = clip.axis;
     if (axis === undefined) animationRotation.identity();
-    else animationRotation.makeRotationAxis(rotationAxes[axis],
-      THREE.MathUtils.degToRad(samplePropModelRotation(clip, frame)));
+    else
+      animationRotation.makeRotationAxis(
+        rotationAxes[axis],
+        THREE.MathUtils.degToRad(samplePropModelRotation(clip, frame)),
+      );
     return animationTransform.multiplyMatrices(animationTranslation, animationRotation);
   }
 
@@ -1142,17 +1426,19 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
    * so a triggered reaction plays from wherever the idle animation had reached [Trailmap: 230-level-ssf sub 258]. */
   function setAnimatedFrame(animated: AnimatedMesh, index: number, frame: number | null, basis: number | null = null) {
     const sourceIndex = animated.sourceIndices[index];
-    const entry = (runtimeEntries.get(sourceIndex) ?? []).find(candidate => candidate.mesh === animated.mesh
-      && candidate.instanceId === index);
+    const entry = (runtimeEntries.get(sourceIndex) ?? []).find(
+      candidate => candidate.mesh === animated.mesh && candidate.instanceId === index,
+    );
     if (!entry) return;
     bumpRuntimePose(sourceIndex);
     entry.animationDelta = null;
     if (frame !== null) {
       if (isPropModelAnimation(animated.clip)) {
         if (animated.object !== null) {
-          const deltas = basis === null
-            ? hierarchyPose(animated.clip, frame).deltas
-            : hierarchyComboPose(animated.clip, frame, basis);
+          const deltas =
+            basis === null
+              ? hierarchyPose(animated.clip, frame).deltas
+              : hierarchyComboPose(animated.clip, frame, basis);
           entry.animationDelta = deltas[animated.object]?.clone() ?? null;
         }
       } else if (basis === null) {
@@ -1173,7 +1459,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const sources = new Set(animObjectScrubSources(sourceIndex));
     const clamped = Math.min(clip.clipFrames, Math.max(0, frame ?? 0));
     for (const index of sources) {
-      if (frame === null) animObjectScrubs.delete(index); else animObjectScrubs.set(index, clamped);
+      if (frame === null) animObjectScrubs.delete(index);
+      else animObjectScrubs.set(index, clamped);
     }
     let handled = false;
     for (const animated of refAnimatedMeshes) {
@@ -1183,8 +1470,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         const scrub = animObjectScrubs.get(animatedSourceIndex);
         const preview = animObjectPreviews.get(animatedSourceIndex);
         const ambientPlayback = animated.playbacks[i];
-        const restored = preview?.playback.frame
-          ?? (animated.effect && (animated.deltaGated || worldEffectsEnabled) ? ambientPlayback?.frame ?? null : null);
+        const restored =
+          preview?.playback.frame ??
+          (animated.effect && (animated.deltaGated || worldEffectsEnabled) ? (ambientPlayback?.frame ?? null) : null);
         setAnimatedFrame(animated, i, scrub ?? restored);
         animated.mesh.instanceMatrix.needsUpdate = true;
         handled = true;
@@ -1198,13 +1486,15 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   function resetAnimatedMeshes(deltaGated: boolean | null = null) {
     for (const animated of refAnimatedMeshes) {
       if (deltaGated !== null && animated.deltaGated !== deltaGated) continue;
-      animated.playbacks = animated.sourceIndices.map(sourceIndex => animated.effect
-        ? isAnimComboEffect(animated.effect)
-          ? createAnimComboPlayback(animated.effect, animated.clip.clipFrames, sourceIndex + 1)
-          : animated.deltaGated
-            ? createAnimDeltaPlayback(animated.effect, animated.clip.clipFrames, sourceIndex + 1)
-            : createAnimObjectPlayback(animated.effect, animated.clip.clipFrames, sourceIndex + 1)
-        : null);
+      animated.playbacks = animated.sourceIndices.map(sourceIndex =>
+        animated.effect
+          ? isAnimComboEffect(animated.effect)
+            ? createAnimComboPlayback(animated.effect, animated.clip.clipFrames, sourceIndex + 1)
+            : animated.deltaGated
+              ? createAnimDeltaPlayback(animated.effect, animated.clip.clipFrames, sourceIndex + 1)
+              : createAnimObjectPlayback(animated.effect, animated.clip.clipFrames, sourceIndex + 1)
+          : null,
+      );
       for (let i = 0; i < animated.sourceIndices.length; i++) setAnimatedFrame(animated, i, null);
       animated.mesh.instanceMatrix.needsUpdate = true;
     }
@@ -1248,13 +1538,17 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         if (combo) {
           const started = triggerAnimComboPlayback(playback as AnimComboPlayback);
           const state = playback as AnimComboPlayback;
-          comboLog(`${sourceIndex} arm ${started ? 'OK' : 'REFUSED (running or latched)'}`
-            + ` · window ${state.comboStart}..${state.comboEnd} · snapshot idle frame ${state.snapshotFrame.toFixed(1)}`
-            + ` · mesh ${animated.mesh.name || animated.mesh.type} object ${animated.object}`);
+          comboLog(
+            `${sourceIndex} arm ${started ? 'OK' : 'REFUSED (running or latched)'}` +
+              ` · window ${state.comboStart}..${state.comboEnd} · snapshot idle frame ${state.snapshotFrame.toFixed(1)}` +
+              ` · mesh ${animated.mesh.name || animated.mesh.type} object ${animated.object}`,
+          );
           if (started) comboTraced.delete(state);
           handled = started || handled;
+        } else {
+          grantAnimDeltaPlayback(playback as AnimDeltaPlayback, value);
+          handled = true;
         }
-        else { grantAnimDeltaPlayback(playback as AnimDeltaPlayback, value); handled = true; }
       }
     }
     return handled;
@@ -1270,7 +1564,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   const comboLog = (message: string): void => {
     try {
       if (localStorage.getItem('slopesmith:control-debug') !== '1') return;
-    } catch { /* storage can be unavailable in a privacy-restricted frame; tracing stays optional */ }
+    } catch {
+      /* storage can be unavailable in a privacy-restricted frame; tracing stays optional */
+    }
     console.log('[Slopesmith combo]', message);
   };
   /** Combo playbacks whose first posed tick has already been traced, so the log is per RUN, not per frame. */
@@ -1279,13 +1575,16 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   /** Does this native instance carry an AnimCombo the trigger command can actually start? Preview asks before
    *  running a bound-node control, because a command with no receiver should draw a ring rather than nothing. */
   function instanceHasTriggerableCombo(sourceIndex: number): boolean {
-    return refAnimatedMeshes.some(animated => isAnimComboEffect(animated.effect)
-      && animated.sourceIndices.includes(sourceIndex));
+    return refAnimatedMeshes.some(
+      animated => isAnimComboEffect(animated.effect) && animated.sourceIndices.includes(sourceIndex),
+    );
   }
 
   function instanceHasBudgetedAnimation(sourceIndex: number): boolean {
-    return installedAnimDeltas.has(sourceIndex) || refAnimatedMeshes.some(animated => animated.deltaGated
-      && animated.sourceIndices.includes(sourceIndex));
+    return (
+      installedAnimDeltas.has(sourceIndex) ||
+      refAnimatedMeshes.some(animated => animated.deltaGated && animated.sourceIndices.includes(sourceIndex))
+    );
   }
 
   /** A constructor replaces the addressed receiver, starting frozen until command 2 grants clip frames. */
@@ -1294,7 +1593,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     if (!animated) return false;
     animObjectPreviews.delete(sourceIndex);
     installedAnimDeltas.set(sourceIndex, {
-      effect, playback: createAnimDeltaPlayback(effect, animated.clip.clipFrames, sourceIndex + 1),
+      effect,
+      playback: createAnimDeltaPlayback(effect, animated.clip.clipFrames, sourceIndex + 1),
     });
     return true;
   }
@@ -1321,10 +1621,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     let handled = animObjectPreviews.delete(sourceIndex);
     handled = installedAnimDeltas.delete(sourceIndex) || handled;
     const control = refMaterialControls.get(sourceIndex);
-    if (control) for (const material of refControlledMaterials.get(sourceIndex) ?? []) {
-      assets.propTex.resetMaterialControl(material, control.receiver);
-      handled = true;
-    }
+    if (control)
+      for (const material of refControlledMaterials.get(sourceIndex) ?? []) {
+        assets.propTex.resetMaterialControl(material, control.receiver);
+        handled = true;
+      }
     for (const animated of refAnimatedMeshes) {
       for (let i = 0; i < animated.sourceIndices.length; i++) {
         if (animated.sourceIndices[i] !== sourceIndex) continue;
@@ -1355,10 +1656,14 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
 
   /** Restart one reference instance's compatible AnimObject clip for the inspector's Preview action. The
    * temporary player is independent of the global Effects toggle and runs one complete wrap/ping-pong cycle. */
-  function previewAnimObject(sourceIndex: number, effect: AnimObjectEffect,
-    autoReturnDelay: number | null = null): boolean {
-    const animated = refAnimatedMeshes.find(candidate => !candidate.deltaGated
-      && candidate.sourceIndices.includes(sourceIndex));
+  function previewAnimObject(
+    sourceIndex: number,
+    effect: AnimObjectEffect,
+    autoReturnDelay: number | null = null,
+  ): boolean {
+    const animated = refAnimatedMeshes.find(
+      candidate => !candidate.deltaGated && candidate.sourceIndices.includes(sourceIndex),
+    );
     if (!animated) return false;
     installedAnimDeltas.delete(sourceIndex);
     const existing = animObjectPreviews.get(sourceIndex);
@@ -1366,8 +1671,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     // A play-once clip on an Effect-end-latched slot keeps its finished node in the game, so its final frame
     // holds (the iris door stays open) until the player is cleared [Trailmap: 150-logic §slot-columns].
     const holdAtEnd = refHoldAtEnd.has(sourceIndex) && effect.loopMode !== 1 && effect.loopMode !== 2;
-    animObjectPreviews.set(sourceIndex, createTriggeredAnimObjectPlayback(effect, animated.clip.clipFrames,
-      sourceIndex + 1, holdAtEnd, autoReturnDelay));
+    animObjectPreviews.set(
+      sourceIndex,
+      createTriggeredAnimObjectPlayback(effect, animated.clip.clipFrames, sourceIndex + 1, holdAtEnd, autoReturnDelay),
+    );
     return true;
   }
 
@@ -1381,8 +1688,12 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         if (!cleared.has(animated.sourceIndices[i])) continue;
         const sourceIndex = animated.sourceIndices[i];
         const ambientPlayback = animated.playbacks[i];
-        setAnimatedFrame(animated, i, animObjectScrubs.get(sourceIndex)
-          ?? (worldEffectsEnabled && animated.effect ? ambientPlayback?.frame ?? null : null));
+        setAnimatedFrame(
+          animated,
+          i,
+          animObjectScrubs.get(sourceIndex) ??
+            (worldEffectsEnabled && animated.effect ? (ambientPlayback?.frame ?? null) : null),
+        );
         changed = true;
       }
       if (changed) animated.mesh.instanceMatrix.needsUpdate = true;
@@ -1405,8 +1716,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     for (const [sourceIndex, preview] of animObjectPreviews) {
       if (stoppedInstanceEffects.has(sourceIndex)) continue;
       const sample = stepTriggeredAnimObjectPlayback(preview, dt);
-      if (sample.done) { animObjectPreviews.delete(sourceIndex); endedPreviews.add(sourceIndex); }
-      else previewFrames.set(sourceIndex, sample.frame);
+      if (sample.done) {
+        animObjectPreviews.delete(sourceIndex);
+        endedPreviews.add(sourceIndex);
+      } else previewFrames.set(sourceIndex, sample.frame);
     }
     for (const animated of refAnimatedMeshes) {
       let changed = false;
@@ -1419,25 +1732,32 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         let frame: number | null;
         let basis: number | null = null;
         const comboPlayback = isAnimComboEffect(animated.effect)
-          ? animated.playbacks[i] as AnimComboPlayback | null : null;
+          ? (animated.playbacks[i] as AnimComboPlayback | null)
+          : null;
         if (scrubFrame !== undefined) frame = scrubFrame;
         else if (deltaFrame !== undefined) frame = deltaFrame;
         else if (previewFrame !== undefined) frame = previewFrame;
         // A triggered combo runs whether or not the ambient Effects toggle is on, for the same reason an
         // AnimDelta grant does: it is a one-shot something in the world asked for, not free-running motion.
         // Its IDLE half still answers to the toggle, which is why the untriggered case falls through.
-        else if (comboPlayback && animated.effect
-          && (worldEffectsEnabled || comboPlayback.active || comboPlayback.latched)) {
+        else if (
+          comboPlayback &&
+          animated.effect &&
+          (worldEffectsEnabled || comboPlayback.active || comboPlayback.latched)
+        ) {
           const sample = stepAnimComboPlayback(comboPlayback, animated.effect as AnimComboEffect, dt);
           frame = sample.frame;
           basis = sample.basis;
           if (basis !== null && !comboTraced.has(comboPlayback)) {
             comboTraced.add(comboPlayback);
-            const posed = (runtimeEntries.get(sourceIndex) ?? []).some(candidate =>
-              candidate.mesh === animated.mesh && candidate.instanceId === i);
-            comboLog(`${sourceIndex} posing frame ${frame.toFixed(1)} onto basis ${basis.toFixed(1)}`
-              + ` · drawn entry ${posed ? 'FOUND' : 'MISSING — nothing to move'}`
-              + ` · object ${animated.object} · effects toggle ${worldEffectsEnabled ? 'on' : 'off'}`);
+            const posed = (runtimeEntries.get(sourceIndex) ?? []).some(
+              candidate => candidate.mesh === animated.mesh && candidate.instanceId === i,
+            );
+            comboLog(
+              `${sourceIndex} posing frame ${frame.toFixed(1)} onto basis ${basis.toFixed(1)}` +
+                ` · drawn entry ${posed ? 'FOUND' : 'MISSING — nothing to move'}` +
+                ` · object ${animated.object} · effects toggle ${worldEffectsEnabled ? 'on' : 'off'}`,
+            );
           }
         } else if (animated.deltaGated && animated.effect && animated.playbacks[i])
           frame = stepAnimDeltaPlayback(animated.playbacks[i] as AnimDeltaPlayback, animated.effect, dt);
@@ -1482,7 +1802,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       // to write the default white tint; once a rig has used it, white is required to clear that prior state.
       if (!active && !tintedPropMeshes.has(mesh)) continue;
       let colors = cache.get(insts);
-      if (active && !colors) { colors = computePropTint(insts, propRig, propRigStrength); cache.set(insts, colors); }
+      if (active && !colors) {
+        colors = computePropTint(insts, propRig, propRigStrength);
+        cache.set(insts, colors);
+      }
       for (let k = 0; k < insts.length; k++) mesh.setColorAt(k, colors?.[k] ?? white);
       if (active) tintedPropMeshes.add(mesh);
       if (mesh instanceof THREE.InstancedMesh && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -1513,11 +1836,13 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     for (const inst of insts) {
       if (rig && strength > 0) {
         const [gr, gg, gb] = propRigGlow(editorFromRaw(inst.loc), rig);
-        out.push(new THREE.Color(
-          1 + M * (1 - Math.exp(-strength * gr)),
-          1 + M * (1 - Math.exp(-strength * gg)),
-          1 + M * (1 - Math.exp(-strength * gb)),
-        ));
+        out.push(
+          new THREE.Color(
+            1 + M * (1 - Math.exp(-strength * gr)),
+            1 + M * (1 - Math.exp(-strength * gg)),
+            1 + M * (1 - Math.exp(-strength * gb)),
+          ),
+        );
       } else {
         out.push(new THREE.Color(1, 1, 1)); // untinted
       }
@@ -1581,7 +1906,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
 
   /** Whether the loaded reference currently has its props built — scenery AND rail/gem models come from one
    *  payload, so this is the built check for either overlay (the host can then skip a re-fetch). */
-  function hasProps(): boolean { return !!refPropData; }
+  function hasProps(): boolean {
+    return !!refPropData;
+  }
 
   // ---- transparent draw order ------------------------------------------------------------------
   // The game ranks translucent object meshes by QUANTIZED CAMERA DEPTH and draws them back to front
@@ -1604,7 +1931,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       const sphere = mesh instanceof MergedStaticPropMesh ? mesh.geometry.boundingSphere : mesh.boundingSphere;
       sortScratch.set(0, 0, 0);
       if (sphere) sortScratch.copy(sphere.center);
-      sortScratch.applyMatrix4(mesh.matrixWorld);   // props never move, so last frame's world matrix is exact
+      sortScratch.applyMatrix4(mesh.matrixWorld); // props never move, so last frame's world matrix is exact
       const ranked = sortRanking[count] ?? { mesh, far: 0 };
       ranked.mesh = mesh;
       ranked.far = sortScratch.distanceToSquared(eye);
@@ -1619,29 +1946,50 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
 
   /** Live draw-object census for the Play profiler. Slots explain how much source geometry each draw covers. */
   const combinedRenderStats = {
-    batchDraws: 0, batchSlots: 0, isolatedDraws: 0, isolatedSlots: 0, isolation: '',
+    batchDraws: 0,
+    batchSlots: 0,
+    isolatedDraws: 0,
+    isolatedSlots: 0,
+    isolation: '',
   };
   const combinedIsolationByKind = new Map<string, number>();
-  let combinedPropsSource: PropRenderStats | null = null, combinedTricksSource: PropRenderStats | null = null;
-  let combinedPropsVisible = false, combinedTricksVisible = false;
+  let combinedPropsSource: PropRenderStats | null = null,
+    combinedTricksSource: PropRenderStats | null = null;
+  let combinedPropsVisible = false,
+    combinedTricksVisible = false;
   function renderStats() {
-    const propsVisible = refPropsGroup.visible, tricksVisible = refTrickModelsGroup.visible;
-    if (combinedPropsSource === propsRenderStats && combinedTricksSource === tricksRenderStats
-      && combinedPropsVisible === propsVisible && combinedTricksVisible === tricksVisible) return combinedRenderStats;
-    combinedPropsSource = propsRenderStats; combinedTricksSource = tricksRenderStats;
-    combinedPropsVisible = propsVisible; combinedTricksVisible = tricksVisible;
-    let batchDraws = 0, batchSlots = 0, isolatedDraws = 0, isolatedSlots = 0;
+    const propsVisible = refPropsGroup.visible,
+      tricksVisible = refTrickModelsGroup.visible;
+    if (
+      combinedPropsSource === propsRenderStats &&
+      combinedTricksSource === tricksRenderStats &&
+      combinedPropsVisible === propsVisible &&
+      combinedTricksVisible === tricksVisible
+    )
+      return combinedRenderStats;
+    combinedPropsSource = propsRenderStats;
+    combinedTricksSource = tricksRenderStats;
+    combinedPropsVisible = propsVisible;
+    combinedTricksVisible = tricksVisible;
+    let batchDraws = 0,
+      batchSlots = 0,
+      isolatedDraws = 0,
+      isolatedSlots = 0;
     combinedIsolationByKind.clear();
     const add = (stats: PropRenderStats) => {
-      batchDraws += stats.batchDraws; batchSlots += stats.batchSlots;
-      isolatedDraws += stats.isolatedDraws; isolatedSlots += stats.isolatedSlots;
+      batchDraws += stats.batchDraws;
+      batchSlots += stats.batchSlots;
+      isolatedDraws += stats.isolatedDraws;
+      isolatedSlots += stats.isolatedSlots;
       for (const [kind, draws] of stats.isolatedByKind)
         combinedIsolationByKind.set(kind, (combinedIsolationByKind.get(kind) ?? 0) + draws);
     };
     if (propsVisible) add(propsRenderStats);
     if (tricksVisible) add(tricksRenderStats);
-    const isolation = [...combinedIsolationByKind].sort((a, b) => b[1] - a[1])
-      .map(([kind, draws]) => `${kind} ${draws}`).join(' · ');
+    const isolation = [...combinedIsolationByKind]
+      .sort((a, b) => b[1] - a[1])
+      .map(([kind, draws]) => `${kind} ${draws}`)
+      .join(' · ');
     Object.assign(combinedRenderStats, { batchDraws, batchSlots, isolatedDraws, isolatedSlots, isolation });
     return combinedRenderStats;
   }
@@ -1649,8 +1997,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   // ---- reference LIGHT + SOUND SOURCES ---------------------------------------------------------
 
   function syncSourcesVisibility() {
-    refSourcesGroup.visible = refLightsVisible
-      && (refLightSources.length > 0 || refSoundSources.length > 0 || refHiddenProps.length > 0);
+    refSourcesGroup.visible =
+      refLightsVisible && (refLightSources.length > 0 || refSoundSources.length > 0 || refHiddenProps.length > 0);
   }
 
   function clearSourceDetail() {
@@ -1684,12 +2032,18 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     disposeSourceMarkerPoints(refLightMarkers);
     refLightSources = (refLightData?.lights ?? []).filter(light => light.kind !== 'ambient');
     refLightMarkers = refLightSources.length
-      ? sourceMarkerPoints(stage, 'light', 'reference', refLightSources.map(light => new THREE.Vector3(...light.pos)), {
-          colors: refLightSources.map(light => light.colorHex),
-          icons: refLightSources.map(light => light.kind === 'spot' ? 'spotlight' : 'bulb'),
-          aimTargets: refLightSources.map(light => lightAimTarget(light)),
-          selectedIndex: selectedSource?.kind === 'light' ? selectedSource.index : null,
-        })
+      ? sourceMarkerPoints(
+          stage,
+          'light',
+          'reference',
+          refLightSources.map(light => new THREE.Vector3(...light.pos)),
+          {
+            colors: refLightSources.map(light => light.colorHex),
+            icons: refLightSources.map(light => (light.kind === 'spot' ? 'spotlight' : 'bulb')),
+            aimTargets: refLightSources.map(light => lightAimTarget(light)),
+            selectedIndex: selectedSource?.kind === 'light' ? selectedSource.index : null,
+          },
+        )
       : null;
     if (refLightMarkers) refSourcesGroup.add(refLightMarkers);
     syncSourcesVisibility();
@@ -1702,17 +2056,30 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refSoundSources = [];
     if (refPropData) {
       const modelNames = new Map(refPropData.models.map(model => [model.id, model.name]));
-      for (const inst of refPropData.instances) for (const emitter of inst.externalSounds) {
-        if (emitter.sound === 0) continue; // event zero is the native silent sentinel, not an audible source
-        refSoundSources.push({ inst, emitter, modelName: modelNames.get(inst.model) ?? inst.name });
-      }
+      for (const inst of refPropData.instances)
+        for (const emitter of inst.externalSounds) {
+          if (emitter.sound === 0) continue; // event zero is the native silent sentinel, not an audible source
+          refSoundSources.push({ inst, emitter, modelName: modelNames.get(inst.model) ?? inst.name });
+        }
     }
-    refSoundMarkers = refSoundSources.length ? sourceMarkerPoints(stage, 'sound', 'reference', refSoundSources.map(source =>
-      new THREE.Vector3(...editorFromRaw([
-        source.inst.loc[0] + source.emitter.offset[0],
-        source.inst.loc[1] + source.emitter.offset[1],
-        source.inst.loc[2] + source.emitter.offset[2],
-      ]))), { selectedIndex: selectedSource?.kind === 'sound' ? selectedSource.index : null }) : null;
+    refSoundMarkers = refSoundSources.length
+      ? sourceMarkerPoints(
+          stage,
+          'sound',
+          'reference',
+          refSoundSources.map(
+            source =>
+              new THREE.Vector3(
+                ...editorFromRaw([
+                  source.inst.loc[0] + source.emitter.offset[0],
+                  source.inst.loc[1] + source.emitter.offset[1],
+                  source.inst.loc[2] + source.emitter.offset[2],
+                ]),
+              ),
+          ),
+          { selectedIndex: selectedSource?.kind === 'sound' ? selectedSource.index : null },
+        )
+      : null;
     if (refSoundMarkers) {
       // per-index identity for the dev agent layer's a11y mirror: owning-model names + effect-join keys
       refSoundMarkers.userData.sourceLabels = refSoundSources.map(s => s.modelName);
@@ -1734,16 +2101,21 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refHiddenProps = [];
     if (refPropData) {
       const modelNames = new Map(refPropData.models.map(model => [model.id, model.name]));
-      const surfaceless = new Set(refPropData.models
-        .filter(model => !model.subs.some(s => s.indices.length)).map(model => model.id));
+      const surfaceless = new Set(
+        refPropData.models.filter(model => !model.subs.some(s => s.indices.length)).map(model => model.id),
+      );
       for (const inst of refPropData.instances) {
         if (inst.visible && !surfaceless.has(inst.model)) continue;
         refHiddenProps.push({ inst, modelName: modelNames.get(inst.model) ?? inst.name });
       }
     }
     if (refHiddenProps.length) {
-      refPropMarkers = sourceMarkerPoints(stage, 'prop', 'reference',
-        refHiddenProps.map(hidden => new THREE.Vector3(...editorFromRaw(hidden.inst.loc))));
+      refPropMarkers = sourceMarkerPoints(
+        stage,
+        'prop',
+        'reference',
+        refHiddenProps.map(hidden => new THREE.Vector3(...editorFromRaw(hidden.inst.loc))),
+      );
       // per-index identity for the dev agent layer's a11y mirror: model names + effect-join keys
       refPropMarkers.userData.sourceLabels = refHiddenProps.map(hidden => hidden.modelName);
       refPropMarkers.userData.sourceSourceIndices = refHiddenProps.map(hidden => hidden.inst.sourceIndex);
@@ -1762,13 +2134,15 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   /** Show the selected marker's full rig/range and, for a sound or hidden prop, identify its owning prop
    *  in Prop Details. */
   function selectSource(kind: SourceMarkerKind, index: number): boolean {
-    const source = kind === 'light' ? refLightSources[index]
-      : kind === 'sound' ? refSoundSources[index] : refHiddenProps[index];
+    const source =
+      kind === 'light' ? refLightSources[index] : kind === 'sound' ? refSoundSources[index] : refHiddenProps[index];
     if (!source) return false;
     clearSourceSelection();
     selectedSource = { kind, index };
-    setSourceMarkerSelected(kind === 'light' ? refLightMarkers
-      : kind === 'sound' ? refSoundMarkers : refPropMarkers, index);
+    setSourceMarkerSelected(
+      kind === 'light' ? refLightMarkers : kind === 'sound' ? refSoundMarkers : refPropMarkers,
+      index,
+    );
     if (kind === 'prop') {
       // an invisible placement (hidden trigger/proxy instance or surfaceless model): route the click to the
       // ordinary reference-prop details flow — any zero-scaled/proxy entry still resolves the highlight seat
@@ -1784,17 +2158,26 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     }
     if (kind === 'light') {
       const light = source as LightRig['lights'][number];
-      const positions: number[] = [], colors: number[] = [];
+      const positions: number[] = [],
+        colors: number[] = [];
       addLightGizmo(positions, colors, light, new THREE.Color());
       if (positions.length) {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
-          vertexColors: true, transparent: light.negative, opacity: light.negative ? 0.7 : 1, depthWrite: false,
-        }));
+        const lines = new THREE.LineSegments(
+          geometry,
+          new THREE.LineBasicMaterial({
+            vertexColors: true,
+            transparent: light.negative,
+            opacity: light.negative ? 0.7 : 1,
+            depthWrite: false,
+          }),
+        );
         lines.userData.ownsSourceDetailMaterial = true;
-        lines.raycast = () => { /* the selected rig never steals clicks from source icons */ };
+        lines.raycast = () => {
+          /* the selected rig never steals clicks from source icons */
+        };
         refSourceDetailGroup.add(lines);
       }
       stage.cb.onSelectReferenceLight?.(refLightData?.level ?? null, light);
@@ -1823,11 +2206,15 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   /** Whether the loaded reference currently has its light rig built (so the host can skip a re-fetch). */
-  function hasLights(): boolean { return !!refLightData; }
+  function hasLights(): boolean {
+    return !!refLightData;
+  }
 
   /** Draw one or more shared read-only prop outlines without changing either editor's semantic selection. */
-  function highlightPropInstances(targets: readonly { mesh: ReferencePropMesh; instanceId: number }[],
-    owner: 'props' | 'effects') {
+  function highlightPropInstances(
+    targets: readonly { mesh: ReferencePropMesh; instanceId: number }[],
+    owner: 'props' | 'effects',
+  ) {
     clearPropHighlight();
     for (const { mesh, instanceId } of targets) {
       const slot = referencePropSlot(mesh, instanceId);
@@ -1839,33 +2226,53 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         ? allEntries.filter(entry => entry.proxy)
         : allEntries.filter(entry => !entry.proxy);
       if (!entries.length) continue;
-      const edgeGeometries = assets.propEdges(slot.level, slot.model, entries.map(entry => entry.geometry));
-      const wireGeometries = assets.propWireEdges(slot.level, slot.model, entries.map(entry => entry.geometry));
-      const addSelectionLines = (outline: THREE.Group, geometry: LineSegmentsGeometry | undefined,
-        topology: 'feature' | 'wire') => {
+      const edgeGeometries = assets.propEdges(
+        slot.level,
+        slot.model,
+        entries.map(entry => entry.geometry),
+      );
+      const wireGeometries = assets.propWireEdges(
+        slot.level,
+        slot.model,
+        entries.map(entry => entry.geometry),
+      );
+      const addSelectionLines = (
+        outline: THREE.Group,
+        geometry: LineSegmentsGeometry | undefined,
+        topology: 'feature' | 'wire',
+      ) => {
         if (!geometry) return;
         const lines = new LineSegments2(geometry, refPropSelectionMat);
         lines.userData.propSelectionTopology = topology;
         lines.visible = topology === (decorShade === 'none' ? 'wire' : 'feature');
         lines.renderOrder = 100;
-        lines.raycast = () => { /* never a pick target */ };
+        lines.raycast = () => {
+          /* never a pick target */
+        };
         outline.add(lines);
       };
       const hierarchy = entries.some(entry => entry.object !== null);
       const outlines: HighlightedProp[] = [];
-      if (hierarchy) for (let sibling = 0; sibling < entries.length; sibling++) {
-        const edge = edgeGeometries[sibling], entry = entries[sibling];
-        const wire = wireGeometries[sibling];
-        if (!edge && !wire) continue;
-        const outline = new THREE.Group();
-        outline.matrixAutoUpdate = false;
-        entry.mesh.getMatrixAt(entry.instanceId, outline.matrix);
-        addSelectionLines(outline, edge, 'feature');
-        addSelectionLines(outline, wire, 'wire');
-        refPropSel.add(outline);
-        outlines.push({ mesh: entry.mesh, instanceId: entry.instanceId,
-          sourceIndex: slot.inst.sourceIndex, outline });
-      } else {
+      if (hierarchy)
+        for (let sibling = 0; sibling < entries.length; sibling++) {
+          const edge = edgeGeometries[sibling],
+            entry = entries[sibling];
+          const wire = wireGeometries[sibling];
+          if (!edge && !wire) continue;
+          const outline = new THREE.Group();
+          outline.matrixAutoUpdate = false;
+          entry.mesh.getMatrixAt(entry.instanceId, outline.matrix);
+          addSelectionLines(outline, edge, 'feature');
+          addSelectionLines(outline, wire, 'wire');
+          refPropSel.add(outline);
+          outlines.push({
+            mesh: entry.mesh,
+            instanceId: entry.instanceId,
+            sourceIndex: slot.inst.sourceIndex,
+            outline,
+          });
+        }
+      else {
         const outline = new THREE.Group();
         outline.matrixAutoUpdate = false;
         targetEntry.mesh.getMatrixAt(targetEntry.instanceId, outline.matrix);
@@ -1874,20 +2281,30 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           addSelectionLines(outline, wireGeometries[i], 'wire');
         }
         refPropSel.add(outline);
-        outlines.push({ mesh: targetEntry.mesh, instanceId: targetEntry.instanceId,
-          sourceIndex: slot.inst.sourceIndex, outline });
+        outlines.push({
+          mesh: targetEntry.mesh,
+          instanceId: targetEntry.instanceId,
+          sourceIndex: slot.inst.sourceIndex,
+          outline,
+        });
       }
       // facing arrows over the selected retail instance (facing-arrows.ts, riding the F toggle): this is
       // the parity read — select a shipped prop and see the normals an authored model should match
-      const arrowPts = hierarchy ? [] : facingArrowSegments(entries.map(entry => entry.geometry),
-        assets.propLocalBox(slot.level, slot.model));
+      const arrowPts = hierarchy
+        ? []
+        : facingArrowSegments(
+            entries.map(entry => entry.geometry),
+            assets.propLocalBox(slot.level, slot.model),
+          );
       if (arrowPts.length) {
         const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(arrowPts, 3));
         refArrowGeos.push(g);
         const arrows = new THREE.LineSegments(g, refArrowMat);
         arrows.renderOrder = 101;
         arrows.visible = refArrowsOn;
-        arrows.raycast = () => { /* never a pick target */ };
+        arrows.raycast = () => {
+          /* never a pick target */
+        };
         refArrowObjs.push(arrows);
         outlines[0]?.outline.add(arrows);
       }
@@ -1950,7 +2367,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const entries = (runtimeEntries.get(inst.sourceIndex) ?? []).filter(entry => !entry.proxy);
     stage.refRoot.updateWorldMatrix(true, false);
     const parentInverse = stage.refRoot.matrixWorld.clone().invert();
-    const raw = new THREE.Matrix4(), edit = new THREE.Matrix4(), world = new THREE.Matrix4();
+    const raw = new THREE.Matrix4(),
+      edit = new THREE.Matrix4(),
+      world = new THREE.Matrix4();
     const baseWorldMatrix = (entry = entries[0]) => {
       if (entry) {
         entry.mesh.updateWorldMatrix(true, false);
@@ -1992,11 +2411,19 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         if (entry.geometry.boundingBox) local.union(entry.geometry.boundingBox);
       }
       if (!local.isEmpty()) {
-        collisionOverlay.showPrimitives({
-          boxes: [{ center: local.getCenter(new THREE.Vector3()).toArray() as V3,
-            size: local.getSize(new THREE.Vector3()).toArray() as V3 }],
-          capsules: [],
-        }, parentMatrix(baseWorldMatrix()), active);
+        collisionOverlay.showPrimitives(
+          {
+            boxes: [
+              {
+                center: local.getCenter(new THREE.Vector3()).toArray() as V3,
+                size: local.getSize(new THREE.Vector3()).toArray() as V3,
+              },
+            ],
+            capsules: [],
+          },
+          parentMatrix(baseWorldMatrix()),
+          active,
+        );
       }
       return;
     }
@@ -2013,8 +2440,15 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           if (entry.geometry.boundingBox) local.union(entry.geometry.boundingBox);
         }
         if (!local.isEmpty()) {
-          const shape = { boxes: [{ center: local.getCenter(new THREE.Vector3()).toArray() as V3,
-            size: local.getSize(new THREE.Vector3()).toArray() as V3 }], capsules: [] };
+          const shape = {
+            boxes: [
+              {
+                center: local.getCenter(new THREE.Vector3()).toArray() as V3,
+                size: local.getSize(new THREE.Vector3()).toArray() as V3,
+              },
+            ],
+            capsules: [],
+          };
           unityCollisionOverlay.showPrimitives(shape, parentMatrix(baseWorldMatrix()));
         }
       } else {
@@ -2083,7 +2517,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const edges = new THREE.EdgesGeometry(source, 30);
     const lines = new THREE.LineSegments(edges, surfInspectMat);
     lines.renderOrder = 100;
-    lines.raycast = () => { /* never a pick target */ };
+    lines.raycast = () => {
+      /* never a pick target */
+    };
     surfInspectGeos.push(edges);
     surfInspectObjs.push(lines);
     if (isReferencePropMesh(object)) {
@@ -2111,7 +2547,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     clearSourceSelection();
     highlightPropInstance(im, instanceId, 'props');
     const slot = referencePropSlot(im, instanceId);
-    const level = slot?.level ?? null, model = slot?.model ?? null;
+    const level = slot?.level ?? null,
+      model = slot?.model ?? null;
     const inst = slot?.inst;
     if (inst) {
       selectedColliderInstance = inst;
@@ -2127,9 +2564,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     const runtimeVisible = runtimeVisibility.get(sourceIndex);
     // A hidden trigger still has a normal textured entry, but its matrix is intentionally zero-scaled. Prefer a
     // genuinely visible normal entry; otherwise seat the amber outline on the full-size purple Effects proxy.
-    const target = entries.find(entry => !entry.proxy && (runtimeVisible ?? entry.defaultVisible))
-      ?? entries.find(entry => entry.proxy)
-      ?? entries.find(entry => !entry.proxy);
+    const target =
+      entries.find(entry => !entry.proxy && (runtimeVisible ?? entry.defaultVisible)) ??
+      entries.find(entry => entry.proxy) ??
+      entries.find(entry => !entry.proxy);
     return target ? { mesh: target.mesh, instanceId: target.instanceId } : null;
   }
 
@@ -2145,7 +2583,10 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       seen.add(key);
       targets.push(target);
     }
-    if (!targets.length) { clearEffectPropHighlight(); return false; }
+    if (!targets.length) {
+      clearEffectPropHighlight();
+      return false;
+    }
     highlightPropInstances(targets, 'effects');
     return true;
   }
@@ -2180,8 +2621,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refPropsGroup.updateWorldMatrix(true, false);
     const out: RideObstacleSource[] = [];
     const worldMatrix = new THREE.Matrix4();
-    const raw = new THREE.Matrix4(), edit = new THREE.Matrix4();
-    const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scale = new THREE.Vector3();
+    const raw = new THREE.Matrix4(),
+      edit = new THREE.Matrix4();
+    const pos = new THREE.Vector3(),
+      quat = new THREE.Quaternion(),
+      scale = new THREE.Vector3();
     const geometryCache = new Map<string, THREE.BufferGeometry>();
     // Live poses for the instances that MOVE during a run. `runtimeEntryMatrix` is the one reading that already
     // folds in the model clip, an effect matrix override and a piece throw, so re-reading it each frame is all a
@@ -2193,8 +2637,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       return livePose.multiplyMatrices(entry.mesh.matrixWorld, runtimeEntryMatrix(entry));
     };
     // Mode 2 tests the instance's world AABB, so its live pose is that box re-derived rather than one transform.
-    const instanceBox = new THREE.Box3(), localBox = new THREE.Box3();
-    const boxMatrix = new THREE.Matrix4(), boxCenter = new THREE.Vector3(), boxSize = new THREE.Vector3();
+    const instanceBox = new THREE.Box3(),
+      localBox = new THREE.Box3();
+    const boxMatrix = new THREE.Matrix4(),
+      boxCenter = new THREE.Vector3(),
+      boxSize = new THREE.Vector3();
     const boxRotation = new THREE.Quaternion();
     const composeInstanceBox = (boxEntries: RuntimeInstanceEntry[], target: THREE.Matrix4) => {
       instanceBox.makeEmpty();
@@ -2205,7 +2652,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         boxMatrix.multiplyMatrices(entry.mesh.matrixWorld, runtimeEntryMatrix(entry));
         instanceBox.union(localBox.copy(entry.geometry.boundingBox).applyMatrix4(boxMatrix));
       }
-      return instanceBox.isEmpty() ? null
+      return instanceBox.isEmpty()
+        ? null
         : target.compose(instanceBox.getCenter(boxCenter), boxRotation, instanceBox.getSize(boxSize));
     };
     const nativeGeometry = (id: string) => {
@@ -2248,16 +2696,20 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       // collider as a sensor so the contact still pops/hides it, but do not bounce the rider before that dispatch.
       const solid = instance.contact === 'solid' && !refImmediateBreaks.has(sourceIndex);
       const common = {
-        key, object: { kind: 'reference' as const, index: sourceIndex }, solid,
+        key,
+        object: { kind: 'reference' as const, index: sourceIndex },
+        solid,
         bounce: solid ? (instance.bounce >= 0 ? instance.bounce : 0.5) : 0,
         playerBounce: instance.playerBounce,
         surface: solid ? instance.surface : -1,
         dynamicMass: movable ? instance.dynamicMass : 0,
         // Only the shove path consumes these, and only a body that authored a tensor has them.
-        ...(movable ? (() => {
-          const props = refPropData.physicsMassProps?.get(instance.physicsBody);
-          return props ? { body: { com: props.com, invInertia: props.invInertia } } : {};
-        })() : {}),
+        ...(movable
+          ? (() => {
+              const props = refPropData.physicsMassProps?.get(instance.physicsBody);
+              return props ? { body: { com: props.com, invInertia: props.invInertia } } : {};
+            })()
+          : {}),
       };
       if (instance.shape === 1) {
         let added = false;
@@ -2276,8 +2728,12 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
             pieceEntry.mesh.updateWorldMatrix(true, false);
             worldMatrix.multiplyMatrices(pieceEntry.mesh.matrixWorld, runtimeEntryMatrix(pieceEntry));
           }
-          out.push({ ...common, geometry, matrixWorld: worldMatrix.clone(),
-            ...(piecePose ? { liveMatrix: piecePose, poseVersion } : {}) });
+          out.push({
+            ...common,
+            geometry,
+            matrixWorld: worldMatrix.clone(),
+            ...(piecePose ? { liveMatrix: piecePose, poseVersion } : {}),
+          });
           added = true;
         }
         if (added) continue;
@@ -2287,8 +2743,12 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       if (instance.shape === 3 && instance.physicsBody >= 0) {
         const spheres = refPropData.physicsBodies?.get(instance.physicsBody);
         if (spheres?.length) {
-          out.push({ ...common, spheres, matrixWorld: worldMatrix.clone(),
-            ...(pose ? { liveMatrix: pose, poseVersion } : {}) });
+          out.push({
+            ...common,
+            spheres,
+            matrixWorld: worldMatrix.clone(),
+            ...(pose ? { liveMatrix: pose, poseVersion } : {}),
+          });
           continue;
         }
         // Same defensive fallback as mode 1 for an incomplete extraction.
@@ -2297,15 +2757,26 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         if (!entries.length) continue;
         const boxWorld = composeInstanceBox(entries, new THREE.Matrix4());
         // An empty re-derivation leaves the box where it was rather than collapsing it onto the origin.
-        if (boxWorld) out.push({ ...common, geometry: rideBoxGeo, matrixWorld: boxWorld,
-          liveMatrix: () => composeInstanceBox(entries, livePose) ?? boxWorld, poseVersion });
+        if (boxWorld)
+          out.push({
+            ...common,
+            geometry: rideBoxGeo,
+            matrixWorld: boxWorld,
+            liveMatrix: () => composeInstanceBox(entries, livePose) ?? boxWorld,
+            poseVersion,
+          });
         continue;
       }
       if (!entries.length) continue;
       for (const entry of entries) {
         entry.mesh.updateWorldMatrix(true, false);
-        out.push({ ...common, geometry: entry.geometry, liveMatrix: entryPose(entry), poseVersion,
-          matrixWorld: new THREE.Matrix4().multiplyMatrices(entry.mesh.matrixWorld, runtimeEntryMatrix(entry)) });
+        out.push({
+          ...common,
+          geometry: entry.geometry,
+          liveMatrix: entryPose(entry),
+          poseVersion,
+          matrixWorld: new THREE.Matrix4().multiplyMatrices(entry.mesh.matrixWorld, runtimeEntryMatrix(entry)),
+        });
       }
     }
     return out;
@@ -2352,59 +2823,116 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   }
 
   /** Clear only Effects' visual host highlight; never touches Props selection or callbacks. */
-  function clearEffectPropHighlight(): boolean { return clearPropHighlight('effects'); }
+  function clearEffectPropHighlight(): boolean {
+    return clearPropHighlight('effects');
+  }
 
-  refPropsGroup.visible = false;     // shown only while the reference's "show props" toggle is on
-  stage.refRoot.add(refPropsGroup);  // props ride the reference's chirality flip + placement offset
+  refPropsGroup.visible = false; // shown only while the reference's "show props" toggle is on
+  stage.refRoot.add(refPropsGroup); // props ride the reference's chirality flip + placement offset
   refPropSel.matrixAutoUpdate = false; // seated by the selected instance's own matrix
   refPropSel.visible = false;
-  stage.refRoot.add(refPropSel);     // the read-only selection outline rides the reference frame too
+  stage.refRoot.add(refPropSel); // the read-only selection outline rides the reference frame too
   surfInspectGroup.matrixAutoUpdate = false; // seated by the inspected instance's own matrix
   surfInspectGroup.visible = false;
   stage.refRoot.add(surfInspectGroup); // the paint-mode surface inspection rides the reference frame too
   refSourceDetailGroup.visible = false;
   refSourcesGroup.add(refSourceDetailGroup);
-  refSourcesGroup.visible = false;    // shown only while the Sources toggle is on
+  refSourcesGroup.visible = false; // shown only while the Sources toggle is on
   stage.refRoot.add(refSourcesGroup); // light/sound sources ride the same reference frame as terrain + props
-  refTrickModelsGroup.visible = false;   // shown only while the Tricks filter is on (with a reference loaded)
+  refTrickModelsGroup.visible = false; // shown only while the Tricks filter is on (with a reference loaded)
   stage.refRoot.add(refTrickModelsGroup); // reference rail / gem models ride the same frame as the props
   refEffectPropsGroup.visible = false;
   stage.refRoot.add(refEffectPropsGroup); // attached native effects are exposed only for Effects-mode picking
   refAnimPathGroup.visible = false;
-  stage.refRoot.add(refAnimPathGroup);     // selected recovered model trajectory uses the reference's own frame
+  stage.refRoot.add(refAnimPathGroup); // selected recovered model trajectory uses the reference's own frame
   // the recovered course line + AI network (reference-decor-course.ts); they add their own refRoot groups here,
   // in the same order they were added when they lived inline
   const courseDecor = createReferenceCourseDecor(stage);
-  const { setCourse, showCourse, setAiPaths, showAiPaths, setRailSplines, selectRailSpline,
-    railSplineMaterials } = courseDecor;
+  const { setCourse, showCourse, setAiPaths, showAiPaths, setRailSplines, selectRailSpline, railSplineMaterials } =
+    courseDecor;
 
   return {
-    get selectionOutlineMat() { return refPropSelectionMat; },
+    get selectionOutlineMat() {
+      return refPropSelectionMat;
+    },
     /** Visible native geometry ordinary Props-mode picking may select. The Effects-only proxy stays excluded. */
-    get propPickGroups() { return [refPropsGroup, refTrickModelsGroup] as const; },
+    get propPickGroups() {
+      return [refPropsGroup, refTrickModelsGroup] as const;
+    },
     /** Every prop draw, for a consumer that gates or measures them wholesale (the ride's range cull reads
      *  this to reach the batched slots). Live array — a props rebuild replaces its contents. */
-    get propDrawMeshes() { return refPropMeshes as readonly ReferencePropMesh[]; },
-    get effectPropGroups() { return [refPropsGroup, refTrickModelsGroup, refEffectPropsGroup] as const; },
-    get sourcePickGroups() { return [refSourcesGroup] as const; },
-    setProps, setPropsProgressive, setEffectsData, setLights, showProps, showTricks, showEffectProps, setShadeMode,
-    setEffectPropIndices, setEffectPropIndicesProgressive,
-    setWorldEffectsEnabled, stepWorldEffects, previewAnimObject, previewMaterialEffect, clearAnimObjectPreviews,
-    referenceAnimObjectClip, setAnimObjectScrubFrame, showAnimObjectPath,
-    setRuntimeInstanceWorldMatrix, setRuntimeInstanceWorldCopies, setRuntimeInstanceVisible, runtimeInstancePieceIds,
-    setRuntimeInstancePieceMotions, resetRuntimeInstances,
-    controlRuntimeInstanceProperty, resetRuntimePropertyControls, resetRuntimeInstanceEffects, instanceHasPulseProperty,
-    startAnimDelta, instanceHasBudgetedAnimation,
+    get propDrawMeshes() {
+      return refPropMeshes as readonly ReferencePropMesh[];
+    },
+    get effectPropGroups() {
+      return [refPropsGroup, refTrickModelsGroup, refEffectPropsGroup] as const;
+    },
+    get sourcePickGroups() {
+      return [refSourcesGroup] as const;
+    },
+    setProps,
+    setPropsProgressive,
+    setEffectsData,
+    setLights,
+    showProps,
+    showTricks,
+    showEffectProps,
+    setShadeMode,
+    setEffectPropIndices,
+    setEffectPropIndicesProgressive,
+    setWorldEffectsEnabled,
+    stepWorldEffects,
+    previewAnimObject,
+    previewMaterialEffect,
+    clearAnimObjectPreviews,
+    referenceAnimObjectClip,
+    setAnimObjectScrubFrame,
+    showAnimObjectPath,
+    setRuntimeInstanceWorldMatrix,
+    setRuntimeInstanceWorldCopies,
+    setRuntimeInstanceVisible,
+    runtimeInstancePieceIds,
+    setRuntimeInstancePieceMotions,
+    resetRuntimeInstances,
+    controlRuntimeInstanceProperty,
+    resetRuntimePropertyControls,
+    resetRuntimeInstanceEffects,
+    instanceHasPulseProperty,
+    startAnimDelta,
+    instanceHasBudgetedAnimation,
     setInstanceEffectsStopped,
     instanceHasTriggerableCombo,
-    showLights, hasProps, hasLights, renderStats, sortTransparentProps, selectSource, clearSourceSelection,
-    setCourse, showCourse, setAiPaths, showAiPaths,
-    setRailSplines, showRailSplines, selectRailSpline, railSplineMaterials,
-    get railSplineGroup() { return courseDecor.railSplineGroup; },
-    setPropRigLighting, selectPropInstance, selectInstanceBySource, inspectSurface, clearSurfaceInspection,
-    highlightEffectPropSourceIndices, propWorldSphere, runtimeEmitterMuzzle,
+    showLights,
+    hasProps,
+    hasLights,
+    renderStats,
+    sortTransparentProps,
+    selectSource,
+    clearSourceSelection,
+    setCourse,
+    showCourse,
+    setAiPaths,
+    showAiPaths,
+    setRailSplines,
+    showRailSplines,
+    selectRailSpline,
+    railSplineMaterials,
+    get railSplineGroup() {
+      return courseDecor.railSplineGroup;
+    },
+    setPropRigLighting,
+    selectPropInstance,
+    selectInstanceBySource,
+    inspectSurface,
+    clearSurfaceInspection,
+    highlightEffectPropSourceIndices,
+    propWorldSphere,
+    runtimeEmitterMuzzle,
     rideColliders,
-    clearPropSelection, clearEffectPropHighlight, setNormalArrows, setCollisionOverlayVisible,
+    clearPropSelection,
+    clearEffectPropHighlight,
+    setNormalArrows,
+    setCollisionOverlayVisible,
   };
 }
 

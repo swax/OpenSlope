@@ -40,12 +40,15 @@ await migrateLegacyProjectAssets(snapshot);
 const doc = snapshot.document as QuadMeshDoc;
 const started = Date.now();
 
-console.log(`${manifest.name} revision ${snapshot.project.revision}: `
-  + `${doc.quads.length} patches, ${(doc.props ?? []).length} props, ${(doc.lights ?? []).length} lights, `
-  + `${(doc.rails ?? []).length} rails, ${(doc.gems ?? []).length} gems`);
+console.log(
+  `${manifest.name} revision ${snapshot.project.revision}: ` +
+    `${doc.quads.length} patches, ${(doc.props ?? []).length} props, ${(doc.lights ?? []).length} lights, ` +
+    `${(doc.rails ?? []).length} rails, ${(doc.gems ?? []).length} gems`,
+);
 
-const { dir, log } = await withProjectAssets(snapshot,
-  () => exportLevel(doc as unknown as EditDoc, { lighting: LIGHTING, aiPaths: AI_PATHS }));
+const { dir, log } = await withProjectAssets(snapshot, () =>
+  exportLevel(doc as unknown as EditDoc, { lighting: LIGHTING, aiPaths: AI_PATHS }),
+);
 console.log(log);
 console.log(`\n  exported to ${dir} in ${((Date.now() - started) / 1000).toFixed(1)} s`);
 console.log(`  race it: npx tsx scripts/ai-course-run.ts ${manifest.name} 260`);

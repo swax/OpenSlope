@@ -68,12 +68,21 @@ function parseObj(file: string, weld: boolean) {
       const p = raw.split(/\s+/).map(Number);
       verts.push([p[0], p[1], p[2]]);
     } else if (line.startsWith('f ')) {
-      faces.push(line.slice(2).trim().split(/\s+/).map(token => remap[parseInt(token.split('/')[0], 10) - 1]));
+      faces.push(
+        line
+          .slice(2)
+          .trim()
+          .split(/\s+/)
+          .map(token => remap[parseInt(token.split('/')[0], 10) - 1]),
+      );
       faceMat.push(current);
     } else if (line.startsWith('usemtl')) {
       const name = line.slice(6).trim();
       let index = mats.indexOf(name);
-      if (index < 0) { mats.push(name); index = mats.length - 1; }
+      if (index < 0) {
+        mats.push(name);
+        index = mats.length - 1;
+      }
       current = index;
     }
   }
@@ -112,7 +121,9 @@ for (const line of readFileSync(join(jobDir, 'input_rem_p0.feature'), 'utf8').tr
 }
 
 console.log(`tri mesh: ${tri.verts.length} verts, ${tri.faces.length} faces, ${numPatches} patches`);
-console.log(`declared corners: ${cornerSet.size} distinct verts; c_feature corners: ${cFeature.size}; feature edges: ${featureEdges.size}`);
+console.log(
+  `declared corners: ${cornerSet.size} distinct verts; c_feature corners: ${cFeature.size}; feature edges: ${featureEdges.size}`,
+);
 
 // ---------- layout graph: arcs are QuadWild subsides ----------
 const edgeFaces = new Map<string, number[]>();
@@ -131,7 +142,8 @@ for (const [key, incident] of edgeFaces) {
   if (incident.length === 1) {
     borderEdges.set(key, [facePatch[incident[0]], -1]);
   } else if (incident.length === 2) {
-    const p = facePatch[incident[0]], q = facePatch[incident[1]];
+    const p = facePatch[incident[0]],
+      q = facePatch[incident[1]];
     if (p !== q) borderEdges.set(key, [Math.min(p, q), Math.max(p, q)]);
   } else {
     throw new Error(`non-manifold edge ${key} (${incident.length} faces)`);
@@ -147,7 +159,8 @@ for (const key of borderEdges.keys()) {
   }
 }
 for (const [v, edges] of vertBorder) {
-  if (edges.length > 2 && !cornerSet.has(v)) fail(`junction vertex ${v} (${edges.length} border edges) is not a declared corner`);
+  if (edges.length > 2 && !cornerSet.has(v))
+    fail(`junction vertex ${v} (${edges.length} border edges) is not a declared corner`);
 }
 
 interface Arc {
@@ -179,18 +192,30 @@ for (const corner of cornerSet) {
       polyline.push(next);
       if (cornerSet.has(next)) break;
       const continuations = (vertBorder.get(next) ?? []).filter(key => key !== edge && !visited.has(key));
-      if (continuations.length !== 1) throw new Error(`arc trace stuck at vertex ${next} (${continuations.length} continuations)`);
+      if (continuations.length !== 1)
+        throw new Error(`arc trace stuck at vertex ${next} (${continuations.length} continuations)`);
       const nextLabel = borderEdges.get(continuations[0])!;
-      if (nextLabel[0] !== label[0] || nextLabel[1] !== label[1]) throw new Error(`patch-pair label change mid-arc at vertex ${next}`);
+      if (nextLabel[0] !== label[0] || nextLabel[1] !== label[1])
+        throw new Error(`patch-pair label change mid-arc at vertex ${next}`);
       previous = next;
       edge = continuations[0];
     }
-    arcs.push({ id: arcs.length, pair: label, vStart: corner, vEnd: polyline[polyline.length - 1], polyline, length, onFeature });
+    arcs.push({
+      id: arcs.length,
+      pair: label,
+      vStart: corner,
+      vEnd: polyline[polyline.length - 1],
+      polyline,
+      length,
+      onFeature,
+    });
   }
 }
 const orphanEdges = [...borderEdges.keys()].filter(key => !visited.has(key)).length;
 if (orphanEdges) fail(`${orphanEdges} border edges not reached from any corner`);
-console.log(`layout graph: ${cornerSet.size} corner nodes, ${arcs.length} subside arcs, ${borderEdges.size} border edges`);
+console.log(
+  `layout graph: ${cornerSet.size} corner nodes, ${arcs.length} subside arcs, ${borderEdges.size} border edges`,
+);
 
 // A declared side can be split by a neighbor patch's corner sitting flat on it; a patch's
 // effective corners are its arcs' endpoints, and .corners must be a subset of them.
@@ -206,7 +231,8 @@ for (let p = 0; p < numPatches; p++) {
     degree.set(arcs[id].vEnd, (degree.get(arcs[id].vEnd) ?? 0) + 1);
   }
   patchEffCorners.push([...degree.keys()].sort((a, b) => a - b));
-  if (!patchCorners[p].every(corner => degree.has(corner))) fail(`patch ${p}: declared corners are not all arc endpoints`);
+  if (!patchCorners[p].every(corner => degree.has(corner)))
+    fail(`patch ${p}: declared corners are not all arc endpoints`);
   if ([...degree.values()].some(d => d !== 2) || patchArcs[p].length !== degree.size) {
     fail(`patch ${p}: arcs do not form a single 2-regular cycle`);
   }
@@ -227,12 +253,17 @@ const cornerQuadVert = new Map<number, number>();
 const quadVertCorner = new Map<number, number>();
 let worstCornerMatch = 0;
 for (const corner of cornerSet) {
-  let best = -1, bestDistance = Infinity;
+  let best = -1,
+    bestDistance = Infinity;
   for (let i = 0; i < quad.verts.length; i++) {
     const d = dist(tri.verts[corner], quad.verts[i]);
-    if (d < bestDistance) { bestDistance = d; best = i; }
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = i;
+    }
   }
-  if (quadVertCorner.has(best)) throw new Error(`corners ${quadVertCorner.get(best)} and ${corner} match the same quad vertex`);
+  if (quadVertCorner.has(best))
+    throw new Error(`corners ${quadVertCorner.get(best)} and ${corner} match the same quad vertex`);
   cornerQuadVert.set(corner, best);
   quadVertCorner.set(best, corner);
   worstCornerMatch = Math.max(worstCornerMatch, bestDistance);
@@ -242,7 +273,10 @@ console.log(`corner -> quad vertex worst match distance: ${worstCornerMatch.toEx
 const matFaces: number[][] = Array.from({ length: quad.mats.length }, () => []);
 for (let f = 0; f < quad.faces.length; f++) matFaces[quad.faceMat[f]].push(f);
 
-interface Side { patch: number; verts: number[] }
+interface Side {
+  patch: number;
+  verts: number[];
+}
 const sides: Side[] = [];
 const matPatch: number[] = [];
 for (let m = 0; m < quad.mats.length; m++) {
@@ -258,14 +292,18 @@ for (let m = 0; m < quad.mats.length; m++) {
   for (const [key, uses] of edgeUse) {
     if (uses !== 1) continue;
     const [a, b] = key.split('_').map(Number);
-    for (const [x, y] of [[a, b], [b, a]] as const) {
+    for (const [x, y] of [
+      [a, b],
+      [b, a],
+    ] as const) {
       let list = adjacency.get(x);
       if (!list) adjacency.set(x, (list = []));
       list.push(y);
     }
   }
   for (const [v, neighbors] of adjacency) {
-    if (neighbors.length !== 2) throw new Error(`material ${m}: boundary vertex ${v} has ${neighbors.length} boundary neighbors`);
+    if (neighbors.length !== 2)
+      throw new Error(`material ${m}: boundary vertex ${v} has ${neighbors.length} boundary neighbors`);
   }
   const boundaryCorners = [...adjacency.keys()].filter(v => quadVertCorner.has(v));
   const start = boundaryCorners[0];
@@ -320,10 +358,14 @@ for (const side of sides) {
   );
   // two arcs of one patch may share both endpoints; the side midpoint disambiguates
   const midpoint = quad.verts[side.verts[Math.floor(side.verts.length / 2)]];
-  const arc = candidates.length === 1
-    ? candidates[0]
-    : candidates.reduce<Arc | undefined>((best, candidate) =>
-        !best || arcDistance(candidate, midpoint) < arcDistance(best, midpoint) ? candidate : best, undefined);
+  const arc =
+    candidates.length === 1
+      ? candidates[0]
+      : candidates.reduce<Arc | undefined>(
+          (best, candidate) =>
+            !best || arcDistance(candidate, midpoint) < arcDistance(best, midpoint) ? candidate : best,
+          undefined,
+        );
   if (!arc) {
     fail(`side of patch ${side.patch} (${first}->${last}) matches no layout arc`);
     continue;
@@ -356,7 +398,7 @@ for (const arc of arcs) {
   const pairLabel = arc.pair[1] === -1 ? `${arc.pair[0]}|hole` : `${arc.pair[0]}|${arc.pair[1]}`;
   console.log(
     `${String(arc.id).padStart(3)} | ${pairLabel.padEnd(7)} | ${`${arc.vStart}->${arc.vEnd}`.padEnd(14)} | ${arc.length.toFixed(0).padStart(6)} | ` +
-    `${String(arc.polyline.length - 1).padStart(4)} | ${String(count).padStart(5)} | ${(arc.length / count).toFixed(1).padStart(7)} | ${arc.onFeature}`,
+      `${String(arc.polyline.length - 1).padStart(4)} | ${String(count).padStart(5)} | ${(arc.length / count).toFixed(1).padStart(7)} | ${arc.onFeature}`,
   );
 }
 console.log(`max deviation of any quad side vertex from its layout arc: ${worstDeviation.toFixed(4)}`);
@@ -369,7 +411,9 @@ for (let p = 0; p < numPatches; p++) {
   if (sum % 2 !== 0) fail(`patch ${p}: side counts sum to odd ${sum}`);
   const quadCount = matFaces[matPatch.indexOf(p)].length;
   accountedQuads += quadCount;
-  console.log(`patch ${String(p).padStart(2)} (${patchCorners[p].length} declared corners, ${patchArcs[p].length} subsides): [${counts.join(', ')}] sum=${sum} quads=${quadCount}`);
+  console.log(
+    `patch ${String(p).padStart(2)} (${patchCorners[p].length} declared corners, ${patchArcs[p].length} subsides): [${counts.join(', ')}] sum=${sum} quads=${quadCount}`,
+  );
 }
 if (accountedQuads !== quad.faces.length) fail(`per-patch quads ${accountedQuads} != mesh total ${quad.faces.length}`);
 
@@ -405,12 +449,18 @@ function reportLoops(label: string, subset: Arc[]): void {
     const featureCorners = [...corners].filter(c => cFeature.has(c)).length;
     console.log(
       `\n${label} ${at === start ? 'loop' : 'chain'}: ${loop.length} arcs, ${corners.size} corners ` +
-      `(${featureCorners} in .c_feature), length ${length.toFixed(1)}, total subdivisions = ${total}`,
+        `(${featureCorners} in .c_feature), length ${length.toFixed(1)}, total subdivisions = ${total}`,
     );
   }
 }
-reportLoops('boundary', arcs.filter(arc => arc.pair[1] === -1));
-reportLoops('interior feature', arcs.filter(arc => arc.pair[1] >= 0 && arc.onFeature === arc.polyline.length - 1));
+reportLoops(
+  'boundary',
+  arcs.filter(arc => arc.pair[1] === -1),
+);
+reportLoops(
+  'interior feature',
+  arcs.filter(arc => arc.pair[1] >= 0 && arc.onFeature === arc.polyline.length - 1),
+);
 
 if (failures) {
   console.error(`\n${failures} verification failure(s)`);

@@ -1,5 +1,9 @@
 import type {
-  Participant, RemoteParticipant, RemoteTrack, RemoteTrackPublication, Room as LiveKitRoom,
+  Participant,
+  RemoteParticipant,
+  RemoteTrack,
+  RemoteTrackPublication,
+  Room as LiveKitRoom,
 } from 'livekit-client';
 import { fetchJson, postJson } from '../../net/fetch-json';
 import { installStyles } from '../components/styles';
@@ -173,8 +177,12 @@ export function createVoiceChat(deps: {
 
   function publishMemberState(): void {
     const signature = voiceMembers()
-      .map(member => `${member.userId}:${member.username}:${Number(member.microphone)}:${Number(member.speaking)}`
-        + `:${Number(member.self)}:${Number(member.locallyMuted)}`).join('|');
+      .map(
+        member =>
+          `${member.userId}:${member.username}:${Number(member.microphone)}:${Number(member.speaking)}` +
+          `:${Number(member.self)}:${Number(member.locallyMuted)}`,
+      )
+      .join('|');
     if (signature === memberSignature) return;
     memberSignature = signature;
     for (const listener of memberListeners) listener();
@@ -186,15 +194,25 @@ export function createVoiceChat(deps: {
     main.disabled = connected || state === 'checking' || state === 'unavailable' || state === 'connecting';
     main.dataset.live = String(connected);
     main.dataset.speaking = String(!!room && speakers.has(room.localParticipant.identity));
-    main.textContent = state === 'checking' ? 'Voice…'
-      : state === 'unavailable' ? 'Voice unavailable'
-      : state === 'connecting' ? 'Joining voice…'
-      : state === 'reconnecting' ? `Voice reconnecting · ${count}`
-      : state === 'connected' ? `Voice · ${count}`
-      : state === 'error' ? 'Retry voice'
-      : 'Join voice';
-    main.title = connected ? `${count} participant${count === 1 ? '' : 's'} in server voice; see the member list below.`
-      : available ? 'Join this server\'s voice chat' : 'This server has not enabled voice chat';
+    main.textContent =
+      state === 'checking'
+        ? 'Voice…'
+        : state === 'unavailable'
+          ? 'Voice unavailable'
+          : state === 'connecting'
+            ? 'Joining voice…'
+            : state === 'reconnecting'
+              ? `Voice reconnecting · ${count}`
+              : state === 'connected'
+                ? `Voice · ${count}`
+                : state === 'error'
+                  ? 'Retry voice'
+                  : 'Join voice';
+    main.title = connected
+      ? `${count} participant${count === 1 ? '' : 's'} in server voice; see the member list below.`
+      : available
+        ? "Join this server's voice chat"
+        : 'This server has not enabled voice chat';
     mic.hidden = !connected;
     mic.disabled = state === 'reconnecting';
     mic.setAttribute('aria-pressed', String(microphone));
@@ -219,8 +237,7 @@ export function createVoiceChat(deps: {
     audio.detach(track);
   }
 
-  const participantUserId = (participant: Participant): string =>
-    participant.attributes['slopesmith.userId'] ?? '';
+  const participantUserId = (participant: Participant): string => participant.attributes['slopesmith.userId'] ?? '';
 
   /** SetVolume remembers the value for a microphone that has not arrived yet, covering late subscriptions. */
   function applyParticipantVolume(participant: RemoteParticipant): void {
@@ -273,41 +290,63 @@ export function createVoiceChat(deps: {
       });
       room = joining;
       joining
-        .on(RoomEvent.TrackSubscribed,
+        .on(
+          RoomEvent.TrackSubscribed,
           (track: RemoteTrack, _publication: RemoteTrackPublication, participant: RemoteParticipant) => {
             if (room !== joining) return;
             attachAudio(track);
             applyParticipantVolume(participant);
-          })
-        .on(RoomEvent.TrackUnsubscribed,
+          },
+        )
+        .on(
+          RoomEvent.TrackUnsubscribed,
           (track: RemoteTrack, _publication: RemoteTrackPublication, _participant: RemoteParticipant) => {
             if (room !== joining) return;
             detachAudio(track);
-          })
+          },
+        )
         .on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
           if (room !== joining) return;
           applyParticipantVolume(participant);
           paint();
         })
-        .on(RoomEvent.ParticipantDisconnected, () => { if (room === joining) paint(); })
-        .on(RoomEvent.ParticipantNameChanged, () => { if (room === joining) paint(); })
+        .on(RoomEvent.ParticipantDisconnected, () => {
+          if (room === joining) paint();
+        })
+        .on(RoomEvent.ParticipantNameChanged, () => {
+          if (room === joining) paint();
+        })
         .on(RoomEvent.ParticipantAttributesChanged, () => {
           if (room !== joining) return;
           applyParticipantVolumes();
           paint();
         })
-        .on(RoomEvent.TrackPublished, () => { if (room === joining) paint(); })
-        .on(RoomEvent.TrackUnpublished, () => { if (room === joining) paint(); })
-        .on(RoomEvent.TrackMuted, () => { if (room === joining) paint(); })
-        .on(RoomEvent.TrackUnmuted, () => { if (room === joining) paint(); })
-        .on(RoomEvent.LocalTrackPublished, () => { if (room === joining) paint(); })
-        .on(RoomEvent.LocalTrackUnpublished, () => { if (room === joining) paint(); })
+        .on(RoomEvent.TrackPublished, () => {
+          if (room === joining) paint();
+        })
+        .on(RoomEvent.TrackUnpublished, () => {
+          if (room === joining) paint();
+        })
+        .on(RoomEvent.TrackMuted, () => {
+          if (room === joining) paint();
+        })
+        .on(RoomEvent.TrackUnmuted, () => {
+          if (room === joining) paint();
+        })
+        .on(RoomEvent.LocalTrackPublished, () => {
+          if (room === joining) paint();
+        })
+        .on(RoomEvent.LocalTrackUnpublished, () => {
+          if (room === joining) paint();
+        })
         .on(RoomEvent.ActiveSpeakersChanged, (active: Participant[]) => {
           if (room !== joining) return;
           speakers = new Set(active.map(participant => participant.identity));
           paint();
         })
-        .on(RoomEvent.AudioPlaybackStatusChanged, () => { if (room === joining) paint(); })
+        .on(RoomEvent.AudioPlaybackStatusChanged, () => {
+          if (room === joining) paint();
+        })
         .on(RoomEvent.Reconnecting, () => {
           if (room !== joining) return;
           state = 'reconnecting';
@@ -368,8 +407,11 @@ export function createVoiceChat(deps: {
       if (room !== active) return;
       microphone = active.localParticipant.isMicrophoneEnabled;
     } catch (error) {
-      deps.notify?.(`Microphone could not be ${microphone ? 'muted' : 'started'}: `
-        + `${error instanceof Error ? error.message : error}`, 'err');
+      deps.notify?.(
+        `Microphone could not be ${microphone ? 'muted' : 'started'}: ` +
+          `${error instanceof Error ? error.message : error}`,
+        'err',
+      );
     }
     paint();
   }
@@ -387,9 +429,13 @@ export function createVoiceChat(deps: {
   main.addEventListener('click', () => {
     if (state !== 'connected' && state !== 'reconnecting') void connect();
   });
-  mic.addEventListener('click', () => { void toggleMicrophone(); });
+  mic.addEventListener('click', () => {
+    void toggleMicrophone();
+  });
   hear.addEventListener('click', () => {
-    void room?.startAudio().then(() => paint())
+    void room
+      ?.startAudio()
+      .then(() => paint())
       .catch(error => deps.notify?.(`Voice playback is still blocked: ${error}`, 'warn'));
   });
   leaveButton.addEventListener('click', leave);

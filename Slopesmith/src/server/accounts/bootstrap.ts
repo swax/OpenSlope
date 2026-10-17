@@ -31,7 +31,7 @@ export async function bootstrapPending(): Promise<boolean> {
  * carrying its replacement is on screen before they can ask about it.
  */
 export async function issueAdminCode(): Promise<string | null> {
-  if (!await bootstrapPending()) return null;
+  if (!(await bootstrapPending())) return null;
   const code = mintToken();
   await updateAccounts(draft => {
     draft.bootstrap = { codeHash: tokenHash(code), createdAt: new Date().toISOString() };
@@ -46,8 +46,10 @@ export async function issueAdminCode(): Promise<string | null> {
  * admin existing is what closes enrolment — so the second attempt with the same code finds neither a live
  * code nor a server that is still waiting for one.
  */
-export async function redeemAdminCode(code: string,
-  account: Omit<NewUser, 'role' | 'inviteHandle'>): Promise<PublicUser> {
+export async function redeemAdminCode(
+  code: string,
+  account: Omit<NewUser, 'role' | 'inviteHandle'>,
+): Promise<PublicUser> {
   const accounts = await readAccounts();
   const hash = tokenHash(code);
   // Checked before the scrypt derivation, so a wrong code costs a digest and a comparison.

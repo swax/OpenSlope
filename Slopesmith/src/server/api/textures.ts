@@ -2,13 +2,26 @@ import { generateFal3dMesh, generateFalInpaint, generateFalPanorama, generateFal
 import { countImportedTextureUsers, retargetImportedTexture } from '../routes/imported-props';
 import { responseCache } from '../response-cache';
 import {
-  CUSTOM_TEX_LEVEL, cloneCustomTexture, deleteCustomTexture, deriveLevelTextures, levelsWithTextures,
-  readParticleTextureBytes, readReferenceTextureBytes, renameCustomTexture, replaceCustomTextureArt,
+  CUSTOM_TEX_LEVEL,
+  cloneCustomTexture,
+  deleteCustomTexture,
+  deriveLevelTextures,
+  levelsWithTextures,
+  readParticleTextureBytes,
+  readReferenceTextureBytes,
+  renameCustomTexture,
+  replaceCustomTextureArt,
   saveCustomTexture,
 } from '../routes/textures';
 import {
-  CUSTOM_ASSET_CACHE_CONTROL, invalidateProjectLibrary, readBody, readFalGenerationHeader, readJsonBody,
-  REFERENCE_ASSET_CACHE_CONTROL, RequestBodyTooLargeError, type ApiHandler,
+  CUSTOM_ASSET_CACHE_CONTROL,
+  invalidateProjectLibrary,
+  readBody,
+  readFalGenerationHeader,
+  readJsonBody,
+  REFERENCE_ASSET_CACHE_CONTROL,
+  RequestBodyTooLargeError,
+  type ApiHandler,
 } from './common';
 import { projectAssetCacheKey } from '../project-assets';
 
@@ -19,10 +32,16 @@ const FAL_REQUEST_LIMIT = 64 * 1024 * 1024;
  *  (upload and replace) ride in the body, and a success invalidates the shared library the tile belongs to.
  *  Refusals are 400 with an `{error}` the client shows verbatim — "no custom texture snow.png" is the whole
  *  content of that response. */
-const manageTexture = (run: (q: URLSearchParams, body: Buffer, req: Parameters<ApiHandler>[0]) =>
-  Promise<Record<string, unknown>>): ApiHandler =>
+const manageTexture =
+  (
+    run: (q: URLSearchParams, body: Buffer, req: Parameters<ApiHandler>[0]) => Promise<Record<string, unknown>>,
+  ): ApiHandler =>
   async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     res.setHeader('content-type', 'application/json');
     try {
       const body = await readBody(req, TEXTURE_UPLOAD_LIMIT);
@@ -35,9 +54,14 @@ const manageTexture = (run: (q: URLSearchParams, body: Buffer, req: Parameters<A
     }
   };
 
-const falProxy = (run: (key: string, body: unknown) => Promise<{ bytes: Buffer; type: string; seed: number | null }>): ApiHandler =>
+const falProxy =
+  (run: (key: string, body: unknown) => Promise<{ bytes: Buffer; type: string; seed: number | null }>): ApiHandler =>
   async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     try {
       const key = String(req.headers['x-fal-key'] ?? '');
       const body = await readJsonBody(req, FAL_REQUEST_LIMIT);
@@ -62,10 +86,15 @@ export const textureRoutes: Record<string, ApiHandler> = {
   '/api/textures': async (req, res) => {
     try {
       const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level');
-      const key = level?.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
-        ? projectAssetCacheKey(`textures:${level}`) : level ? `textures:${level}` : 'texture-levels';
-      await responseCache.json(req, res, key,
-        async () => level ? deriveLevelTextures(level) : { levels: await levelsWithTextures() });
+      const key =
+        level?.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
+          ? projectAssetCacheKey(`textures:${level}`)
+          : level
+            ? `textures:${level}`
+            : 'texture-levels';
+      await responseCache.json(req, res, key, async () =>
+        level ? deriveLevelTextures(level) : { levels: await levelsWithTextures() },
+      );
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -81,12 +110,15 @@ export const textureRoutes: Record<string, ApiHandler> = {
       // A stored custom tile's name is its identity. A replaceable extracted tile becomes equally immutable
       // when its URL carries the content digest published by the level/catalogue response; older clients get
       // a bounded lifetime instead.
-      const key = level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
-        ? projectAssetCacheKey(`texture:${level}:${name}`) : `texture:${level}:${name}`;
-      const cacheControl = level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
-        ? CUSTOM_ASSET_CACHE_CONTROL : REFERENCE_ASSET_CACHE_CONTROL;
-      await responseCache.bytes(req, res, key, 'image/png', cacheControl,
-        () => readReferenceTextureBytes(level, name));
+      const key =
+        level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
+          ? projectAssetCacheKey(`texture:${level}:${name}`)
+          : `texture:${level}:${name}`;
+      const cacheControl =
+        level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()
+          ? CUSTOM_ASSET_CACHE_CONTROL
+          : REFERENCE_ASSET_CACHE_CONTROL;
+      await responseCache.bytes(req, res, key, 'image/png', cacheControl, () => readReferenceTextureBytes(level, name));
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -104,7 +136,11 @@ export const textureRoutes: Record<string, ApiHandler> = {
   // /api/texture-clone?from=&to=, /api/texture-replace?name=, /api/texture-delete?name=. Rename and replace
   // repoint imported-prop records; delete only reports them.
   '/api/texture-usage': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     try {
       const name = new URL(req.url ?? '', 'http://localhost').searchParams.get('name') ?? '';
       res.setHeader('content-type', 'application/json');
@@ -118,7 +154,8 @@ export const textureRoutes: Record<string, ApiHandler> = {
   },
 
   '/api/texture-rename': manageTexture(async q => {
-    const from = q.get('from') ?? '', to = q.get('to') ?? '';
+    const from = q.get('from') ?? '',
+      to = q.get('to') ?? '';
     const name = await renameCustomTexture(from, to);
     const repointed = await retargetImportedTexture(`${CUSTOM_TEX_LEVEL}/${from}`, `${CUSTOM_TEX_LEVEL}/${name}`);
     return { name, repointed };
@@ -177,9 +214,16 @@ export const textureRoutes: Record<string, ApiHandler> = {
   '/api/particle-texture': async (req, res) => {
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-      const name = q.get('name') ?? 'fog0.png', level = q.get('level') ?? '';
-      await responseCache.bytes(req, res, `particle-texture:${level}:${name}`, 'image/png',
-        REFERENCE_ASSET_CACHE_CONTROL, () => readParticleTextureBytes(name, level));
+      const name = q.get('name') ?? 'fog0.png',
+        level = q.get('level') ?? '';
+      await responseCache.bytes(
+        req,
+        res,
+        `particle-texture:${level}:${name}`,
+        'image/png',
+        REFERENCE_ASSET_CACHE_CONTROL,
+        () => readParticleTextureBytes(name, level),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));

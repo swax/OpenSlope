@@ -1,12 +1,7 @@
 import type { PlacedProp, PropBehaviour, QuadMeshDoc } from '../../../core/doc/types';
 import type { PathHandleOps } from '../../paths/handles';
 import type { ResolvedPropDefaults, StampBehaviour } from '../../../core/props/defaults';
-import type {
-  BrushFalloff,
-  BrushOp,
-  FlattenMode,
-  FlattenPlaneBehavior,
-} from '../../../core/doc/mountain';
+import type { BrushFalloff, BrushOp, FlattenMode, FlattenPlaneBehavior } from '../../../core/doc/mountain';
 import type { GroupDef } from '../../../core/reference/groups';
 import type { LevelProps } from '../../../core/reference/props';
 import type { EffectsEditor } from '../../effects/editor';
@@ -24,34 +19,124 @@ import type { Viewport } from '../../viewport/viewport';
 export type ToolsPanelDeps = {
   store: Store;
   viewport: Viewport;
-  edit: Pick<EditSession,
-    | 'deselectEdit' | 'copySelectedVertices' | 'cutSelectedVertices' | 'copySelectionVertexCount' | 'canCopyVertices'
-    | 'hideSelectedMesh' | 'showAllHidden' | 'hiddenMeshCount'
-    | 'toggleSelectedControlCages' | 'selectedControlCagesVisible' | 'hideSubCages' | 'controlCageCount' | 'canEditCurvature'
-    | 'selectionLockState' | 'lockSelection' | 'unlockSelection'
-    | 'labelsAvailable' | 'labelRows' | 'selectedLabelTargets' | 'selectedLabelState' | 'setSelectedLabel'
-    | 'createLabel' | 'renameLabel' | 'deleteLabel' | 'selectLabel'
-    | 'narrowEditSelection' | 'rotatableSelection' | 'selectedFreePoint' | 'setGizmoMode'
-    | 'selectConnected' | 'selectOverlappingVertices'
-    | 'deleteSelectedMesh' | 'dissolveSelectedMesh' | 'flipSelectedMesh' | 'meshDeleteTargetCount' | 'canDeleteMeshSelection'
+  edit: Pick<
+    EditSession,
+    | 'deselectEdit'
+    | 'copySelectedVertices'
+    | 'cutSelectedVertices'
+    | 'copySelectionVertexCount'
+    | 'canCopyVertices'
+    | 'hideSelectedMesh'
+    | 'showAllHidden'
+    | 'hiddenMeshCount'
+    | 'toggleSelectedControlCages'
+    | 'selectedControlCagesVisible'
+    | 'hideSubCages'
+    | 'controlCageCount'
+    | 'canEditCurvature'
+    | 'selectionLockState'
+    | 'lockSelection'
+    | 'unlockSelection'
+    | 'labelsAvailable'
+    | 'labelRows'
+    | 'selectedLabelTargets'
+    | 'selectedLabelState'
+    | 'setSelectedLabel'
+    | 'createLabel'
+    | 'renameLabel'
+    | 'deleteLabel'
+    | 'selectLabel'
+    | 'narrowEditSelection'
+    | 'rotatableSelection'
+    | 'selectedFreePoint'
+    | 'setGizmoMode'
+    | 'selectConnected'
+    | 'selectOverlappingVertices'
+    | 'deleteSelectedMesh'
+    | 'dissolveSelectedMesh'
+    | 'flipSelectedMesh'
+    | 'meshDeleteTargetCount'
+    | 'canDeleteMeshSelection'
     | 'meshLockReason'
-    | 'pasteSelectedVertices' | 'canPasteVertices' | 'cancelPastePlacement'
-    | 'ripEdges' | 'insertCellEdge' | 'resetCellShape' | 'creaseVertices' | 'smoothVertices' | 'createPatchesFromEdges'
-    | 'startBridge' | 'addBridgeRail' | 'reverseBridgeRail' | 'removeBridgeRail' | 'moveBridgeRail'
-    | 'completeBridge' | 'cancelBridge' | 'bridgeCandidate' | 'armCreateEdge' | 'armCreatePatch' | 'finishCreatePatch' | 'finishCreateEdge'
-    | 'armCreateTube' | 'previewCreateTube' | 'finishCreateTube' | 'cancelCreateTube' | 'armLoopCut'
-    | 'armCreateGrid' | 'previewCreateGrid' | 'finishCreateGrid' | 'cancelCreateGrid' | 'createGridPlan'
-    | 'setCreateGridLength' | 'setCreateGridWidth'
-    | 'armCreateTrail' | 'undoCreateTrailPoint' | 'finishCreateTrail' | 'cancelCreateTrail'
-    | 'selectedTrail' | 'trailStatus' | 'trailError' | 'trailRide' | 'syncTrailView' | 'resumeTrail' | 'setTrailSetting'
-    | 'deleteSelectedTrailKnot' | 'disconnectSelectedPoint' | 'splitSelectedPoint' | 'deleteSelectedTrail' | 'dissolveSelectedTrail'
-    | 'trailTileSets' | 'addTrailTileSet' | 'editTrailTileSet' | 'deleteTrailTileSet' | 'trailCustomTileCount' | 'resetTrailTextures'
-    | 'selectedTrailKnot' | 'setTrailKnotSetting' | 'resetTrailKnotSettings' | 'resumeEnds'
-    | 'armPathFrom' | 'selectedPointRole' | 'drawingFrom' | 'focusSettings' | 'selectWholeNetwork' | 'trailDrawAnchor'
-    | 'beginEdgeExtrusion' | 'flipEdgeExtrusionSide' | 'commitEdgeExtrusion' | 'cancelEdgeExtrusion'
-    | 'beginPointWeld' | 'cancelPointWeld' | 'commitPointWeld' | 'commitPointWeldTogether'
-    | 'beginEdgeWeld' | 'cancelEdgeWeld' | 'commitEdgeWeld'
-    | 'weldSelectedEdgeCrossing' | 'weldSelectedCoincidentVertices'>;
+    | 'pasteSelectedVertices'
+    | 'canPasteVertices'
+    | 'cancelPastePlacement'
+    | 'ripEdges'
+    | 'insertCellEdge'
+    | 'resetCellShape'
+    | 'creaseVertices'
+    | 'smoothVertices'
+    | 'createPatchesFromEdges'
+    | 'startBridge'
+    | 'addBridgeRail'
+    | 'reverseBridgeRail'
+    | 'removeBridgeRail'
+    | 'moveBridgeRail'
+    | 'completeBridge'
+    | 'cancelBridge'
+    | 'bridgeCandidate'
+    | 'armCreateEdge'
+    | 'armCreatePatch'
+    | 'finishCreatePatch'
+    | 'finishCreateEdge'
+    | 'armCreateTube'
+    | 'previewCreateTube'
+    | 'finishCreateTube'
+    | 'cancelCreateTube'
+    | 'armLoopCut'
+    | 'armCreateGrid'
+    | 'previewCreateGrid'
+    | 'finishCreateGrid'
+    | 'cancelCreateGrid'
+    | 'createGridPlan'
+    | 'setCreateGridLength'
+    | 'setCreateGridWidth'
+    | 'armCreateTrail'
+    | 'undoCreateTrailPoint'
+    | 'finishCreateTrail'
+    | 'cancelCreateTrail'
+    | 'selectedTrail'
+    | 'trailStatus'
+    | 'trailError'
+    | 'trailRide'
+    | 'syncTrailView'
+    | 'resumeTrail'
+    | 'setTrailSetting'
+    | 'deleteSelectedTrailKnot'
+    | 'disconnectSelectedPoint'
+    | 'splitSelectedPoint'
+    | 'deleteSelectedTrail'
+    | 'dissolveSelectedTrail'
+    | 'trailTileSets'
+    | 'addTrailTileSet'
+    | 'editTrailTileSet'
+    | 'deleteTrailTileSet'
+    | 'trailCustomTileCount'
+    | 'resetTrailTextures'
+    | 'selectedTrailKnot'
+    | 'setTrailKnotSetting'
+    | 'resetTrailKnotSettings'
+    | 'resumeEnds'
+    | 'armPathFrom'
+    | 'selectedPointRole'
+    | 'drawingFrom'
+    | 'focusSettings'
+    | 'selectWholeNetwork'
+    | 'trailDrawAnchor'
+    | 'beginEdgeExtrusion'
+    | 'flipEdgeExtrusionSide'
+    | 'commitEdgeExtrusion'
+    | 'cancelEdgeExtrusion'
+    | 'beginPointWeld'
+    | 'cancelPointWeld'
+    | 'commitPointWeld'
+    | 'commitPointWeldTogether'
+    | 'beginEdgeWeld'
+    | 'cancelEdgeWeld'
+    | 'commitEdgeWeld'
+    | 'weldSelectedEdgeCrossing'
+    | 'weldSelectedCoincidentVertices'
+  >;
   /** The selected path's Bézier handle resets (docs/014), for every panel that edits a path. */
   pathHandles: Pick<PathHandleOps, 'resetState' | 'resetNode' | 'resetPath' | 'sync'>;
   // shared widgets (created by the host, mounted into / driven from this panel)
@@ -61,9 +146,17 @@ export type ToolsPanelDeps = {
   library: TextureLibrary;
   propLibToggle: HTMLElement;
   // mutable tool config, shared with the host's arm / apply code
-  brush: { op: BrushOp; falloff: BrushFalloff; flattenMode: FlattenMode;
-    flattenPlaneBehavior: FlattenPlaneBehavior; radius: number; strength: number;
-    smoothAmount: number; flattenAmount: number; nudgeAmount: number };
+  brush: {
+    op: BrushOp;
+    falloff: BrushFalloff;
+    flattenMode: FlattenMode;
+    flattenPlaneBehavior: FlattenPlaneBehavior;
+    radius: number;
+    strength: number;
+    smoothAmount: number;
+    flattenAmount: number;
+    nudgeAmount: number;
+  };
   gemTool: { height: number; spacing: number; value: number };
   // the Info-mode Scene block (owned by the scene panel) shown in place of the Tools gui
   showScene: (visible: boolean) => void;
@@ -72,15 +165,15 @@ export type ToolsPanelDeps = {
    *  it lives beside the numbered row and its panel is the users module's own. */
   usersActive: () => boolean;
   // top-bar pills this panel keeps in sync
-  refreshShowFilters: () => void;   // the Props / Tricks show pills
-  syncAddTrickBtns: () => void;     // the Add rail / gem / light pressed highlight
+  refreshShowFilters: () => void; // the Props / Tricks show pills
+  syncAddTrickBtns: () => void; // the Add rail / gem / light pressed highlight
   // shared editor ops + reads
   persistUi: () => void;
   cageActive: () => boolean;
   scheduleRebuild: () => void;
   clearPaintSel: () => void;
   syncPropLibBtn: () => void;
-  syncDockTabs: () => void;        // the bottom-edge pull-up tabs for the two hidden libraries
+  syncDockTabs: () => void; // the bottom-edge pull-up tabs for the two hidden libraries
   getRefLevel: () => string;
   propLevels: Map<string, LevelProps>;
   groupDefIdx: Map<string, GroupDef>;
@@ -105,9 +198,17 @@ export type ToolsPanelDeps = {
   // arm
   /** Pick up a prop: with `behaviour`, a copy of a placement's settings; with `sourceIndex`, a reference instance's
    *  own facts; with neither, the model's defaults (docs/069). */
-  armProp: (level: string, model: number, name: string,
-    from?: { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string }) => Promise<void>;
-  armGroupById: (level: string, id: string, from?: { behaviour?: PropBehaviour; placementId?: string }) => Promise<void>;
+  armProp: (
+    level: string,
+    model: number,
+    name: string,
+    from?: { behaviour?: PropBehaviour; sourceIndex?: number; placementId?: string },
+  ) => Promise<void>;
+  armGroupById: (
+    level: string,
+    id: string,
+    from?: { behaviour?: PropBehaviour; placementId?: string },
+  ) => Promise<void>;
   deselectPropOrLight: () => void;
   replaceSelectedProp: () => void;
   cancelPropReplacement: () => void;
@@ -173,7 +274,10 @@ export type ToolsPanelDeps = {
   deleteSelectedProp: () => void;
   deleteMultiSelProps: () => void;
   /** Copy / cut / paste of selected placements in Props or Edit mode (docs/012). */
-  propClipboard: Pick<PropClipboardSession, 'canCopy' | 'canPaste' | 'count' | 'placing' | 'copy' | 'cut' | 'paste' | 'cancel'>;
+  propClipboard: Pick<
+    PropClipboardSession,
+    'canCopy' | 'canPaste' | 'count' | 'placing' | 'copy' | 'cut' | 'paste' | 'cancel'
+  >;
   deleteSelectedLight: () => void;
   deleteSelectedScreen: () => void;
   /** Turn the Sources view on: video screens are drawn there, so one added while it is off is invisible. */

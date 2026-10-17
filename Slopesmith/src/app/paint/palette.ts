@@ -48,7 +48,12 @@ import {
   type TextureFlipPlayback,
 } from '../../core/effects/world-effects';
 
-interface Cell { ref: TexRef; surface: number; rot: number; mirror: boolean; }
+interface Cell {
+  ref: TexRef;
+  surface: number;
+  rot: number;
+  mirror: boolean;
+}
 /** What the big preview can magnify: a pad cell / brush, or an inspected terrain cell whose ride feel may be
  *  unknown (a reference patch carries no SurfaceType) — the readout shows '—' then. A shift-range selection
  *  passes the set's size in `count` (the readout describes the anchor cell and shows the count under it).
@@ -58,27 +63,42 @@ interface Cell { ref: TexRef; surface: number; rot: number; mirror: boolean; }
  *  `appearance` / `priority` / `scroll` are native PROP-surface facts for the details list. `uvEdges` = the inspected prop submesh's
  *  triangle edges in UV space ((u1,v1,u2,v2)-packed) — drawn over the art to show how the surface maps
  *  onto the texture. `flipbookFrames` carries every extracted frame for an inspected animated prop surface. */
-type PreviewCell = { ref: TexRef; surface: number | null; rot: number; mirror: boolean; count?: number;
-  source?: 'model' | 'surface' | 'palette'; sourceName?: string; context?: 'terrain' | 'prop';
-  appearance?: string; priority?: boolean; scroll?: boolean;
-  uvEdges?: Float32Array; flipbookFrames?: TexRef[];
-  flipbookEffect?: TextureFlipEffect };
+type PreviewCell = {
+  ref: TexRef;
+  surface: number | null;
+  rot: number;
+  mirror: boolean;
+  count?: number;
+  source?: 'model' | 'surface' | 'palette';
+  sourceName?: string;
+  context?: 'terrain' | 'prop';
+  appearance?: string;
+  priority?: boolean;
+  scroll?: boolean;
+  uvEdges?: Float32Array;
+  flipbookFrames?: TexRef[];
+  flipbookEffect?: TextureFlipEffect;
+};
 type View = 'texture' | 'surface';
 type Edges = { top: number[]; right: number[]; bottom: number[]; left: number[] }; // RGBA runs along each side
 
-const EDGE_N = 32;            // render each oriented tile this small to sample its edge pixels
-const EDGE_BUCKETS = 4;       // average each edge into this many segments before comparing, so per-pixel grain
-                             // misalignment (two "same snow" edges) doesn't read as a seam — only a coarse
-                             // colour / brightness step (or a large-scale feature break) does
-const SEAM_THRESH = 0.20;     // per-channel diff (0..1) of the WORST-matching segment above which a seam is
-                             // "not aligned" — worst-segment, not average, so a partial mismatch (edges match
-                             // at one end but step apart at the other) still flags instead of averaging out
-const SEAM_W = 3;             // px width of the orange mismatch marker drawn in the 1 px gap
+const EDGE_N = 32; // render each oriented tile this small to sample its edge pixels
+const EDGE_BUCKETS = 4; // average each edge into this many segments before comparing, so per-pixel grain
+// misalignment (two "same snow" edges) doesn't read as a seam — only a coarse
+// colour / brightness step (or a large-scale feature break) does
+const SEAM_THRESH = 0.2; // per-channel diff (0..1) of the WORST-matching segment above which a seam is
+// "not aligned" — worst-segment, not average, so a partial mismatch (edges match
+// at one end but step apart at the other) still flags instead of averaging out
+const SEAM_W = 3; // px width of the orange mismatch marker drawn in the 1 px gap
 const SEAM_COLOR = '#ff8a1e';
-const PREV_STRIP = 0.13;                   // side-strip thickness of the big preview, as a fraction of its width
-const PREV_STRIP_MIN = 14, PREV_STRIP_MAX = 26; // clamped so the strips stay a readable sliver at any panel size
+const PREV_STRIP = 0.13; // side-strip thickness of the big preview, as a fraction of its width
+const PREV_STRIP_MIN = 14,
+  PREV_STRIP_MAX = 26; // clamped so the strips stay a readable sliver at any panel size
 const DEFAULT_FLIPBOOK_EFFECT: TextureFlipEffect = {
-  direction: 0, speed: CROWD_FRAMES_PER_SECOND * 2, length: 0, dwell: false,
+  direction: 0,
+  speed: CROWD_FRAMES_PER_SECOND * 2,
+  length: 0,
+  dwell: false,
 };
 
 export interface PaletteCallbacks {
@@ -93,8 +113,10 @@ export interface PaletteCallbacks {
   onViewChange?(): void;
 }
 
-const ROWS = 15, COLS = 5, N = ROWS * COLS;
-const PADS = 10;                     // independently stored pads, picked from the slot menu above the grid
+const ROWS = 15,
+  COLS = 5,
+  N = ROWS * COLS;
+const PADS = 10; // independently stored pads, picked from the slot menu above the grid
 const KEY = 'slopesmith-scratch-v1'; // the name doesn't match the pad's current UI language; keep it as-is so already-staged palettes keep loading
 const LIB_SVG = // a 2×2 tile grid — the Texture Library
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -229,10 +251,10 @@ export class Palette {
   readonly el = document.createElement('div');
   private prev = document.createElement('div');
   private prevCanvas = document.createElement('canvas'); // big preview: selected cell + its grid-adjacent neighbours
-  private libBtn = document.createElement('button');     // show / hide the Texture Library above the preview
+  private libBtn = document.createElement('button'); // show / hide the Texture Library above the preview
   private showF = false; // the top-bar F toggle: draw the pink art F on the preview + every pad cell
   private seg = document.createElement('div');
-  private padSel = document.createElement('select');     // which of the PADS stored pads the grid is showing
+  private padSel = document.createElement('select'); // which of the PADS stored pads the grid is showing
   private gridWrap = document.createElement('div');
   private grid = document.createElement('div');
   private seams = document.createElement('canvas'); // orange mismatch markers over the grid
@@ -240,7 +262,9 @@ export class Palette {
   private activePad = 0;
   /** The pad on screen. Everything else works cell-by-cell through this, so the whole editor keeps operating
    *  on "the pad" and only the slot menu decides which one that is. */
-  private get cells(): (Cell | null)[] { return this.pads[this.activePad]; }
+  private get cells(): (Cell | null)[] {
+    return this.pads[this.activePad];
+  }
   private view: View = 'texture';
   private current: Cell | null = null; // active brush combo (from the Library, a sampled surface, or a cell)
   private inspect: PreviewCell | null = null; // a terrain cell being INSPECTED (paint select mode) — preview-only, never the brush
@@ -250,13 +274,13 @@ export class Palette {
   private inspectRaf: number | null = null;
   private inspectLastTime = 0;
   private selCell: number | null = null;
-  private imgCache = new Map<string, HTMLImageElement>();      // ref -> loaded texture image
-  private edgeCache = new Map<string, Edges>();                // `ref|rot|mirror` -> oriented edge pixels
-  private typeCache = new Map<string, string>();                // tile ref -> generic PNG alpha classification
+  private imgCache = new Map<string, HTMLImageElement>(); // ref -> loaded texture image
+  private edgeCache = new Map<string, Edges>(); // `ref|rot|mirror` -> oriented edge pixels
+  private typeCache = new Map<string, string>(); // tile ref -> generic PNG alpha classification
   private typePending = new Set<string>();
-  private exCanvas = document.createElement('canvas');         // scratch canvas to read edge pixels from
+  private exCanvas = document.createElement('canvas'); // scratch canvas to read edge pixels from
   private exCtx = this.exCanvas.getContext('2d', { willReadFrequently: true });
-  private surfMenu: HTMLElement | null = null;                 // the ride-feel picker popup (Surface view)
+  private surfMenu: HTMLElement | null = null; // the ride-feel picker popup (Surface view)
   private surfMenuOff: ((e: MouseEvent) => void) | null = null; // its outside-click closer
 
   constructor(private cb: PaletteCallbacks) {
@@ -271,15 +295,24 @@ export class Palette {
     this.prevCanvas.draggable = true;
     this.prevCanvas.ondragstart = e => {
       const c = this.previewCell();
-      if (!c || !e.dataTransfer) { e.preventDefault(); return; }
-      e.dataTransfer.setData(DRAG_TILE, JSON.stringify({ ref: c.ref, surface: c.surface, rot: c.rot, mirror: c.mirror }));
+      if (!c || !e.dataTransfer) {
+        e.preventDefault();
+        return;
+      }
+      e.dataTransfer.setData(
+        DRAG_TILE,
+        JSON.stringify({ ref: c.ref, surface: c.surface, rot: c.rot, mirror: c.mirror }),
+      );
       e.dataTransfer.effectAllowed = 'copy';
     };
     // rotating the active tile is on ← / → everywhere in Paint (shortcuts.ts), so the preview has no menu of
     // its own; suppress the browser's so a stray right-click over it behaves like the rest of the panel
     this.prevCanvas.oncontextmenu = e => e.preventDefault();
     // click the preview to pulse the previewed tile's duplicates elsewhere in the pad (spot where else it's used)
-    this.prevCanvas.onclick = () => { const c = this.previewCell(); if (c) this.flashRef(c.ref); };
+    this.prevCanvas.onclick = () => {
+      const c = this.previewCell();
+      if (c) this.flashRef(c.ref);
+    };
 
     // Texture Library row — a toggle to show / hide the bottom Texture Library panel
     const libBar = document.createElement('div');
@@ -309,7 +342,10 @@ export class Palette {
     tooltip(this.padSel, `Palette slot — ${PADS} pads of staged tiles; each keeps its own combo across reloads.`);
     this.padSel.onchange = () => this.setPad(Number(this.padSel.value));
     this.seg.className = 'sc-seg';
-    for (const [v, label] of [['texture', 'Texture'], ['surface', 'Surface']] as [View, string][]) {
+    for (const [v, label] of [
+      ['texture', 'Texture'],
+      ['surface', 'Surface'],
+    ] as [View, string][]) {
       const b = document.createElement('button');
       b.textContent = label;
       b.onclick = () => this.setView(v);
@@ -320,11 +356,12 @@ export class Palette {
     // the shared info badge next to the view toggle — what the Palette is for
     const help = infoBadge(
       'Palette — stage the tiles you’ll paint with:\n' +
-      '• Drag tiles in from the Texture Library into a cell\n' +
-      '• Drag cells around to arrange a pattern\n' +
-      '• Click a cell to use that tile as the brush\n' +
-      '• ← / → turn the tile a quarter (⇧ mirrors it)\n' +
-      '• Keep combos in the palette slots on the left');
+        '• Drag tiles in from the Texture Library into a cell\n' +
+        '• Drag cells around to arrange a pattern\n' +
+        '• Click a cell to use that tile as the brush\n' +
+        '• ← / → turn the tile a quarter (⇧ mirrors it)\n' +
+        '• Keep combos in the palette slots on the left',
+    );
     bar.append(this.padSel, this.seg, help, grow);
 
     this.grid.className = 'sc-grid';
@@ -346,8 +383,10 @@ export class Palette {
 
   setVisible(on: boolean) {
     this.el.style.display = on ? 'flex' : 'none';
-    if (on) { this.drawSeams(); this.drawPreviewCanvas(); }
-    else this.stopFlipbook();
+    if (on) {
+      this.drawSeams();
+      this.drawPreviewCanvas();
+    } else this.stopFlipbook();
   }
 
   /** Reflect the Texture Library's open/closed state on the "Texture Library" toggle (its pressed highlight).
@@ -381,8 +420,10 @@ export class Palette {
    */
   retargetRef(from: TexRef, to: TexRef | null): void {
     let touched = false;
-    for (const pad of this.pads) {                     // every slot, not just the visible one — an off-screen
-      for (let i = 0; i < pad.length; i++) {           // pad holding a deleted ref would still paint it later
+    for (const pad of this.pads) {
+      // every slot, not just the visible one — an off-screen
+      for (let i = 0; i < pad.length; i++) {
+        // pad holding a deleted ref would still paint it later
         const c = pad[i];
         if (!c || c.ref !== from) continue;
         pad[i] = to ? { ...c, ref: to } : null;
@@ -392,7 +433,7 @@ export class Palette {
     if (this.current?.ref === from) this.current = to ? { ...this.current, ref: to } : null;
     if (this.inspect?.ref === from) this.inspect = null;
     if (!touched && !this.current && !this.inspect) return;
-    if (touched) this.save();                          // else a reload restores the dead ref from storage
+    if (touched) this.save(); // else a reload restores the dead ref from storage
     this.renderGrid();
     this.renderPreview();
   }
@@ -416,21 +457,38 @@ export class Palette {
   }
 
   /** True while the preview is retaining the surface that supplied a newly sampled brush. */
-  get inspecting(): boolean { return this.inspect !== null; }
+  get inspecting(): boolean {
+    return this.inspect !== null;
+  }
 
   /** Show a clicked surface in the preview without touching the brush or pad. Terrain selections expose
    *  paint material + rotation above the action; prop selections omit those and contribute native texture
    *  facts below it. Null returns the preview to the brush / focused pad cell. */
   showCell(c: PreviewCell | null) {
     this.stopFlipbook();
-    this.inspect = c ? { ref: c.ref, surface: c.surface, rot: c.rot, mirror: c.mirror, count: c.count,
-      source: c.source, sourceName: c.sourceName, context: c.context,
-      appearance: c.appearance, priority: c.priority, scroll: c.scroll,
-      uvEdges: c.uvEdges, flipbookFrames: c.flipbookFrames,
-      flipbookEffect: c.flipbookEffect } : null;
+    this.inspect = c
+      ? {
+          ref: c.ref,
+          surface: c.surface,
+          rot: c.rot,
+          mirror: c.mirror,
+          count: c.count,
+          source: c.source,
+          sourceName: c.sourceName,
+          context: c.context,
+          appearance: c.appearance,
+          priority: c.priority,
+          scroll: c.scroll,
+          uvEdges: c.uvEdges,
+          flipbookFrames: c.flipbookFrames,
+          flipbookEffect: c.flipbookEffect,
+        }
+      : null;
     this.inspectFrame = 0;
-    this.inspectFlip = this.inspect?.flipbookFrames && this.inspect.flipbookFrames.length > 1
-      ? createTextureFlipPlayback(this.previewFlipEffect(this.inspect.flipbookEffect)) : null;
+    this.inspectFlip =
+      this.inspect?.flipbookFrames && this.inspect.flipbookFrames.length > 1
+        ? createTextureFlipPlayback(this.previewFlipEffect(this.inspect.flipbookEffect))
+        : null;
     this.renderPreview();
   }
 
@@ -442,7 +500,9 @@ export class Palette {
     this.renderPreview();
   }
 
-  private brushOf(c: Cell): Brush { return { kind: 'tile', ref: c.ref, surface: c.surface, rot: c.rot, mirror: c.mirror }; }
+  private brushOf(c: Cell): Brush {
+    return { kind: 'tile', ref: c.ref, surface: c.surface, rot: c.rot, mirror: c.mirror };
+  }
 
   /** What the preview magnifies: an inspected terrain cell first (paint select mode), else the focused pad
    *  cell, else the active brush (may be null). */
@@ -494,7 +554,10 @@ export class Palette {
     const c = this.inspect;
     const frames = c?.flipbookFrames;
     if (!c || !frames || frames.length < 2) return;
-    if (this.inspectPlaying) { this.stopFlipbook(); return; }
+    if (this.inspectPlaying) {
+      this.stopFlipbook();
+      return;
+    }
     const effect = this.previewFlipEffect(c.flipbookEffect);
     if (!this.inspectFlip) {
       this.inspectFlip = createTextureFlipPlayback(effect);
@@ -539,8 +602,9 @@ export class Palette {
   private syncFlipbookPreview() {
     const c = this.inspect;
     if (!c) return;
-    this.prev.querySelectorAll<HTMLElement>('.sc-pframe').forEach((frame, index) =>
-      frame.classList.toggle('on', index === this.inspectFrame));
+    this.prev
+      .querySelectorAll<HTMLElement>('.sc-pframe')
+      .forEach((frame, index) => frame.classList.toggle('on', index === this.inspectFrame));
     this.syncPreviewDetails();
     this.drawPreviewCanvas();
   }
@@ -550,20 +614,25 @@ export class Palette {
    *  Surface view the ride-feel menu is on right-click instead; see the grid's oncontextmenu.) */
   private clickCell(i: number) {
     this.clearInspection(); // any pad interaction returns the preview to the pad / brush
-    if (this.cells[i]) { this.copyToBrush(i); return; }
+    if (this.cells[i]) {
+      this.copyToBrush(i);
+      return;
+    }
     this.focusCell(i);
   }
   /** Focus the preview on cell `i` (holds the selection there) without touching the brush or pad contents. */
   private focusCell(i: number) {
     this.selCell = i;
-    this.renderGrid(); this.renderPreview();
+    this.renderGrid();
+    this.renderPreview();
     this.flashMatching(i);
   }
   /** Copy an existing cell's tile (ref + surface + orientation) to the active paint brush, and focus it. */
   private copyToBrush(i: number) {
     this.current = { ...this.cells[i]! };
     this.selCell = i;
-    this.renderGrid(); this.renderPreview();
+    this.renderGrid();
+    this.renderPreview();
     this.cb.onSelect(this.brushOf(this.current));
     this.flashMatching(i);
   }
@@ -577,7 +646,7 @@ export class Palette {
   private flashRef(ref: TexRef) {
     const els = this.grid.children as HTMLCollectionOf<HTMLElement>;
     for (let k = 0; k < N; k++) els[k]?.classList.remove('flash');
-    void this.grid.offsetWidth;                          // one reflow so re-adding restarts the animation
+    void this.grid.offsetWidth; // one reflow so re-adding restarts the animation
     for (let k = 0; k < N; k++) if (this.cells[k]?.ref === ref) els[k]?.classList.add('flash');
   }
 
@@ -602,7 +671,11 @@ export class Palette {
       const nm = document.createElement('span');
       nm.textContent = `${val} ${lbl}`;
       row.append(sw, nm);
-      row.onclick = e => { e.stopPropagation(); this.setCellSurface(i, val); this.closeSurfaceMenu(); };
+      row.onclick = e => {
+        e.stopPropagation();
+        this.setCellSurface(i, val);
+        this.closeSurfaceMenu();
+      };
       menu.appendChild(row);
     }
     document.body.appendChild(menu);
@@ -610,21 +683,31 @@ export class Palette {
     menu.style.left = `${Math.round(Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
     menu.style.top = `${Math.round(Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8))}px`;
     this.surfMenu = menu;
-    this.surfMenuOff = (ev: MouseEvent) => { if (this.surfMenu && !this.surfMenu.contains(ev.target as Node)) this.closeSurfaceMenu(); };
+    this.surfMenuOff = (ev: MouseEvent) => {
+      if (this.surfMenu && !this.surfMenu.contains(ev.target as Node)) this.closeSurfaceMenu();
+    };
     setTimeout(() => this.surfMenuOff && document.addEventListener('mousedown', this.surfMenuOff), 0);
   }
   private closeSurfaceMenu() {
     this.surfMenu?.remove();
     this.surfMenu = null;
-    if (this.surfMenuOff) { document.removeEventListener('mousedown', this.surfMenuOff); this.surfMenuOff = null; }
+    if (this.surfMenuOff) {
+      document.removeEventListener('mousedown', this.surfMenuOff);
+      this.surfMenuOff = null;
+    }
   }
   /** Set cell `i`'s ride feel; if it's the focused/brush cell, update the live brush too. */
   private setCellSurface(i: number, surface: number) {
     const c = this.cells[i];
     if (!c) return;
     c.surface = surface;
-    if (this.selCell === i && this.current) { this.current.surface = surface; this.cb.onSelect(this.brushOf(c)); }
-    this.save(); this.renderGrid(); this.renderPreview();
+    if (this.selCell === i && this.current) {
+      this.current.surface = surface;
+      this.cb.onSelect(this.brushOf(c));
+    }
+    this.save();
+    this.renderGrid();
+    this.renderPreview();
   }
   private rotateCell(i: number, dir: 1 | -1, flip: boolean) {
     const c = this.cells[i];
@@ -634,14 +717,18 @@ export class Palette {
     // does, → turns it the same way on screen here as on the mountain. Reads down a quarter (0°→270°→…).
     Object.assign(c, turnD4(c, dir, flip));
     // rotating also makes this the active tile, so the preview + properties track it as you turn
-    this.selCell = i; this.current = { ...c };
-    this.save(); this.renderGrid(); this.renderPreview();
+    this.selCell = i;
+    this.current = { ...c };
+    this.save();
+    this.renderGrid();
+    this.renderPreview();
     this.cb.onSelect(this.brushOf(c), true); // a turn edits the held tile, so a sampled source keeps its outline
   }
   private clearCell(i: number) {
     this.cells[i] = null;
     if (this.selCell === i) this.selCell = null;
-    this.save(); this.renderGrid();
+    this.save();
+    this.renderGrid();
     this.cb.onContentsChange?.();
   }
 
@@ -659,45 +746,76 @@ export class Palette {
     const tile = dt.getData(DRAG_TILE);
     if (tile) {
       try {
-        const { ref, surface, rot, mirror } = JSON.parse(tile) as { ref: TexRef; surface?: number | null; rot?: number; mirror?: boolean };
+        const { ref, surface, rot, mirror } = JSON.parse(tile) as {
+          ref: TexRef;
+          surface?: number | null;
+          rot?: number;
+          mirror?: boolean;
+        };
         this.cells[i] = { ref, surface: surface ?? DEFAULT_SURFACE, rot: rot ?? 0, mirror: mirror ?? false }; // preview drags carry orientation; Library drags don't (rot 0)
-        this.current = { ...this.cells[i]! }; this.selCell = i;
-        this.save(); this.renderGrid(); this.renderPreview();
+        this.current = { ...this.cells[i]! };
+        this.selCell = i;
+        this.save();
+        this.renderGrid();
+        this.renderPreview();
         this.cb.onSelect(this.brushOf(this.cells[i]!));
         this.cb.onContentsChange?.();
         this.flashMatching(i);
-      } catch { /* malformed payload — ignore */ }
+      } catch {
+        /* malformed payload — ignore */
+      }
       return;
     }
     const cell = dt.getData(DRAG_CELL);
     if (cell !== '') {
       const from = Number(cell);
       if (!Number.isInteger(from) || from < 0 || from >= N || from === i) return;
-      if (e.shiftKey) {                                   // Shift+drag = COPY: clone the source into the target, leave the source in place
-        if (!this.cells[from]) return;                    // nothing to copy from an empty source
+      if (e.shiftKey) {
+        // Shift+drag = COPY: clone the source into the target, leave the source in place
+        if (!this.cells[from]) return; // nothing to copy from an empty source
         this.cells[i] = { ...this.cells[from]! };
-        this.save(); this.renderGrid(); this.renderPreview();
-        this.cb.onContentsChange?.();                     // a copy-over can drop the target's old ref from the staged set
+        this.save();
+        this.renderGrid();
+        this.renderPreview();
+        this.cb.onContentsChange?.(); // a copy-over can drop the target's old ref from the staged set
         this.flashMatching(i);
         return;
       }
       [this.cells[from], this.cells[i]] = [this.cells[i], this.cells[from]]; // swap (a swap with null = a move)
-      if (this.selCell === from) this.selCell = i;        // keep the moved brush selected at its new home
+      if (this.selCell === from)
+        this.selCell = i; // keep the moved brush selected at its new home
       else if (this.selCell === i) this.selCell = from;
-      this.save(); this.renderGrid(); this.renderPreview();
+      this.save();
+      this.renderGrid();
+      this.renderPreview();
     }
   }
   /** True while the pad is in Surface view — the host uses this to phrase the Palette help (right-click sets
    *  ride feel here, rotates in Texture view). */
-  get surfaceView(): boolean { return this.view === 'surface'; }
-  private setView(v: View) { this.closeSurfaceMenu(); this.view = v; this.save(); this.syncSeg(); this.renderGrid(); this.renderPreview(); this.cb.onViewChange?.(); }
-  private syncSeg() { [...this.seg.children].forEach((b, i) => b.classList.toggle('on', (i === 0 ? 'texture' : 'surface') === this.view)); }
+  get surfaceView(): boolean {
+    return this.view === 'surface';
+  }
+  private setView(v: View) {
+    this.closeSurfaceMenu();
+    this.view = v;
+    this.save();
+    this.syncSeg();
+    this.renderGrid();
+    this.renderPreview();
+    this.cb.onViewChange?.();
+  }
+  private syncSeg() {
+    [...this.seg.children].forEach((b, i) => b.classList.toggle('on', (i === 0 ? 'texture' : 'surface') === this.view));
+  }
 
   /** Show pad `p`. The armed brush survives the switch — it belongs to the app, not to a slot — but the
    *  focused cell doesn't, since its index addressed the pad we're leaving; the preview falls back to the
    *  brush. The staged set changes wholesale, so the Library re-filters. */
   private setPad(p: number) {
-    if (!Number.isInteger(p) || p < 0 || p >= PADS || p === this.activePad) { this.syncPadSel(); return; }
+    if (!Number.isInteger(p) || p < 0 || p >= PADS || p === this.activePad) {
+      this.syncPadSel();
+      return;
+    }
     this.closeSurfaceMenu();
     this.clearInspection();
     this.activePad = p;
@@ -746,8 +864,10 @@ export class Palette {
     const image = this.imageFor(ref);
     this.setDetail('filepath', ref);
     this.setDetail('type', c.appearance ?? this.textureType(ref));
-    this.setDetail('size', image.complete && image.naturalWidth
-      ? `${image.naturalWidth} × ${image.naturalHeight} px` : 'loading…');
+    this.setDetail(
+      'size',
+      image.complete && image.naturalWidth ? `${image.naturalWidth} × ${image.naturalHeight} px` : 'loading…',
+    );
   }
 
   /** Alpha is an intrinsic texture fact for terrain/library tiles. Prop alpha-pass materials supply their
@@ -759,8 +879,7 @@ export class Palette {
       this.typePending.add(ref);
       const { level, name } = parseTexRef(ref);
       void classifyTextureAlpha(level, name).then((kind: AlphaClass) => {
-        const label = kind === 'opaque-alpha' ? 'opaque'
-          : kind === 'unknown' ? 'unknown' : alphaClassLabel(kind);
+        const label = kind === 'opaque-alpha' ? 'opaque' : kind === 'unknown' ? 'unknown' : alphaClassLabel(kind);
         this.typeCache.set(ref, label);
         this.typePending.delete(ref);
         const showing = this.previewCell();
@@ -822,16 +941,25 @@ export class Palette {
       details.className = 'sc-details';
       details.append(this.detailRow('filepath', shownRef));
       details.append(this.detailRow('type', c.appearance ?? this.textureType(shownRef)));
-      details.append(this.detailRow('size', image.complete && image.naturalWidth
-        ? `${image.naturalWidth} × ${image.naturalHeight} px` : 'loading…'));
+      details.append(
+        this.detailRow(
+          'size',
+          image.complete && image.naturalWidth ? `${image.naturalWidth} × ${image.naturalHeight} px` : 'loading…',
+        ),
+      );
       if (c.flipbookFrames && c.flipbookFrames.length > 1) {
         const effect = c.flipbookEffect ?? DEFAULT_FLIPBOOK_EFFECT;
         const fps = `${Number(effect.speed.toFixed(2))} fps`;
-        details.append(this.detailRow('animation', effect.dwell
-          ? `${c.flipbookFrames.length} frames · dwell timing`
-          : isTextureFlipPulse(effect)
-            ? `${c.flipbookFrames.length} frames · ${fps} · ${Number(effect.length.toFixed(2))} s one-shot`
-            : `${c.flipbookFrames.length} frames · ${fps}`));
+        details.append(
+          this.detailRow(
+            'animation',
+            effect.dwell
+              ? `${c.flipbookFrames.length} frames · dwell timing`
+              : isTextureFlipPulse(effect)
+                ? `${c.flipbookFrames.length} frames · ${fps} · ${Number(effect.length.toFixed(2))} s one-shot`
+                : `${c.flipbookFrames.length} frames · ${fps}`,
+          ),
+        );
       }
       if (c.scroll) details.append(this.detailRow('mapping', 'UV scroll'));
       if (c.priority) details.append(this.detailRow('draw priority', 'enabled · z-fight tiebreaker'));
@@ -854,10 +982,11 @@ export class Palette {
       play.className = 'sc-pplay';
       play.textContent = this.inspectPlaying ? 'Pause' : 'Play';
       const flipEffect = c.flipbookEffect ?? DEFAULT_FLIPBOOK_EFFECT;
-      play.title = flipEffect.dwell ? 'Preview with the recovered native dwell timing'
+      play.title = flipEffect.dwell
+        ? 'Preview with the recovered native dwell timing'
         : isTextureFlipPulse(flipEffect)
-          ? `Browse every frame at ${Number(flipEffect.speed.toFixed(2))} frames per second — in the world a graph`
-            + ` runs this as a ${Number(flipEffect.length.toFixed(2))} s one-shot`
+          ? `Browse every frame at ${Number(flipEffect.speed.toFixed(2))} frames per second — in the world a graph` +
+            ` runs this as a ${Number(flipEffect.length.toFixed(2))} s one-shot`
           : `Preview at ${Number(flipEffect.speed.toFixed(2))} frames per second`;
       play.onclick = () => this.toggleFlipbook();
       head.append(caption, play);
@@ -881,7 +1010,8 @@ export class Palette {
       });
       this.prev.appendChild(strip);
     }
-    if (c?.count && c.count > 1) { // a shift-range selection: the readout describes the anchor; count the set
+    if (c?.count && c.count > 1) {
+      // a shift-range selection: the readout describes the anchor; count the set
       const n = document.createElement('div');
       n.className = 'sc-pcount';
       n.textContent = `${c.count} tiles selected — Del clears them all`;
@@ -895,11 +1025,15 @@ export class Palette {
    *  so the staged combo turns with it — else the loose brush (from the Library or a viewport sample). Bound
    *  to ← / → in Paint mode (shortcuts.ts); returns true when something was there to turn. */
   turnActive(dir: 1 | -1, flip: boolean): boolean {
-    if (this.selCell != null && this.cells[this.selCell]) { this.rotateCell(this.selCell, dir, flip); return true; }
+    if (this.selCell != null && this.cells[this.selCell]) {
+      this.rotateCell(this.selCell, dir, flip);
+      return true;
+    }
     if (!this.current) return false; // nothing held: leave any inspection readout alone, the key is unhandled
     this.clearInspection(); // turning the active tile returns the preview to it
     Object.assign(this.current, turnD4(this.current, dir, flip));
-    this.renderGrid(); this.renderPreview();
+    this.renderGrid();
+    this.renderPreview();
     this.cb.onSelect(this.brushOf(this.current), true); // as above: turning is not a new pick
     return true;
   }
@@ -921,27 +1055,38 @@ export class Palette {
    *  touching edge doesn't align). So the preview mirrors the pad but only shows neighbours that butt cleanly:
    *  the cell to the LEFT meets the centre with its RIGHT edge, the one above with its BOTTOM edge, and so on. */
   private gridNeighbour(side: 'left' | 'right' | 'top' | 'bottom'): Cell | null {
-    if (this.inspect) return null;                       // an inspected terrain cell has no pad neighbourhood
+    if (this.inspect) return null; // an inspected terrain cell has no pad neighbourhood
     const i = this.selCell;
-    if (i == null) return null;                          // brush isn't a placed cell → no grid neighbourhood
+    if (i == null) return null; // brush isn't a placed cell → no grid neighbourhood
     const center = this.cells[i];
     if (!center) return null;
-    const col = i % COLS, row = (i / COLS) | 0;
+    const col = i % COLS,
+      row = (i / COLS) | 0;
     let j = -1;
-    if (side === 'left') { if (col > 0) j = i - 1; }
-    else if (side === 'right') { if (col < COLS - 1) j = i + 1; }
-    else if (side === 'top') { if (row > 0) j = i - COLS; }
-    else { if (row < ROWS - 1) j = i + COLS; }
-    if (j < 0) return null;                              // pad edge → blank side
+    if (side === 'left') {
+      if (col > 0) j = i - 1;
+    } else if (side === 'right') {
+      if (col < COLS - 1) j = i + 1;
+    } else if (side === 'top') {
+      if (row > 0) j = i - COLS;
+    } else {
+      if (row < ROWS - 1) j = i + COLS;
+    }
+    if (j < 0) return null; // pad edge → blank side
     const n = this.cells[j];
-    if (!n) return null;                                 // empty adjacent cell → blank side
-    const ce = this.edgesFor(center), ne = this.edgesFor(n);
-    if (!ce || !ne) return null;                         // still loading
-    const d = side === 'left' ? edgeDiff(ne.right, ce.left)
-      : side === 'right' ? edgeDiff(ne.left, ce.right)
-      : side === 'top' ? edgeDiff(ne.bottom, ce.top)
-      : edgeDiff(ne.top, ce.bottom);
-    return d > SEAM_THRESH ? null : n;                   // separated by an orange seam → don't show it
+    if (!n) return null; // empty adjacent cell → blank side
+    const ce = this.edgesFor(center),
+      ne = this.edgesFor(n);
+    if (!ce || !ne) return null; // still loading
+    const d =
+      side === 'left'
+        ? edgeDiff(ne.right, ce.left)
+        : side === 'right'
+          ? edgeDiff(ne.left, ce.right)
+          : side === 'top'
+            ? edgeDiff(ne.bottom, ce.top)
+            : edgeDiff(ne.top, ce.bottom);
+    return d > SEAM_THRESH ? null : n; // separated by an orange seam → don't show it
   }
 
   /** Draw the selected cell big in the middle of the preview canvas, with a thin strip of its GRID-ADJACENT
@@ -952,51 +1097,54 @@ export class Palette {
     const cv = this.prevCanvas;
     const ctx = cv.getContext('2d');
     if (!ctx) return;
-    const W = cv.clientWidth || 190;                    // fills the panel; the ResizeObserver redraws on real size
+    const W = cv.clientWidth || 190; // fills the panel; the ResizeObserver redraws on real size
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.max(1, Math.round(W * dpr));
-    cv.height = cv.width;                               // square
+    cv.height = cv.width; // square
     cv.style.height = `${W}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, W);
     const c = this.previewCell();
-    if (!c) return;                                     // nothing focused: leave it blank
-    if (this.view === 'surface') {                      // the tile art alone (ride feel lives in the readout below)
+    if (!c) return; // nothing focused: leave it blank
+    if (this.view === 'surface') {
+      // the tile art alone (ride feel lives in the readout below)
       const im = this.imageFor(this.previewRef(c));
       if (im.complete && im.naturalWidth) {
         ctx.save();
         ctx.translate(W / 2, W / 2);
-        ctx.rotate((c.mirror ? c.rot : -c.rot) * Math.PI / 2); // match the terrain's on-surface rotation sense
+        ctx.rotate(((c.mirror ? c.rot : -c.rot) * Math.PI) / 2); // match the terrain's on-surface rotation sense
         ctx.scale(c.mirror ? -1 : 1, 1);
         ctx.drawImage(im, -W / 2, -W / 2, W, W);
-        if (this.showF) drawFGlyph(ctx, W);             // the art F rides the same transform
+        if (this.showF) drawFGlyph(ctx, W); // the art F rides the same transform
         ctx.restore();
       }
       return;
     }
     const T = Math.round(Math.min(PREV_STRIP_MAX, Math.max(PREV_STRIP_MIN, W * PREV_STRIP)));
-    const S = W - 2 * T;                                // centre tile size; strips are one tile shifted off-edge
+    const S = W - 2 * T; // centre tile size; strips are one tile shifted off-edge
     // draw the given cell's oriented tile with its top-left at (dx,dy), clipped to the rect (cx,cy,cw,ch)
     const drawTile = (cell: PreviewCell, dx: number, dy: number, cx: number, cy: number, cw: number, ch: number) => {
       const im = this.imageFor(cell.ref);
-      if (!im.complete || !im.naturalWidth) return;    // still loading — the onload handler redraws
+      if (!im.complete || !im.naturalWidth) return; // still loading — the onload handler redraws
       ctx.save();
-      ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
+      ctx.beginPath();
+      ctx.rect(cx, cy, cw, ch);
+      ctx.clip();
       ctx.translate(dx + S / 2, dy + S / 2);
-      ctx.rotate((cell.mirror ? cell.rot : -cell.rot) * Math.PI / 2); // terrain's rotation sense (rot 0 = upright)
+      ctx.rotate(((cell.mirror ? cell.rot : -cell.rot) * Math.PI) / 2); // terrain's rotation sense (rot 0 = upright)
       ctx.scale(cell.mirror ? -1 : 1, 1);
       ctx.drawImage(im, -S / 2, -S / 2, S, S);
-      if (this.showF) drawFGlyph(ctx, S);              // the art F rides the same transform (clipped like the tile)
+      if (this.showF) drawFGlyph(ctx, S); // the art F rides the same transform (clipped like the tile)
       ctx.restore();
     };
     const left = this.gridNeighbour('left');
     const right = this.gridNeighbour('right');
     const top = this.gridNeighbour('top');
     const bottom = this.gridNeighbour('bottom');
-    if (left) drawTile(left, T - S, T, 0, T, T, S);        // left strip   → its right edge
-    if (right) drawTile(right, T + S, T, T + S, T, T, S);  // right strip  → its left edge
-    if (top) drawTile(top, T, T - S, T, 0, S, T);          // top strip    → its bottom edge
-    if (bottom) drawTile(bottom, T, T + S, T, T + S, S, T);// bottom strip → its top edge
+    if (left) drawTile(left, T - S, T, 0, T, T, S); // left strip   → its right edge
+    if (right) drawTile(right, T + S, T, T + S, T, T, S); // right strip  → its left edge
+    if (top) drawTile(top, T, T - S, T, 0, S, T); // top strip    → its bottom edge
+    if (bottom) drawTile(bottom, T, T + S, T, T + S, S, T); // bottom strip → its top edge
     drawTile({ ...c, ref: this.previewRef(c) }, T, T, T, T, S, S); // active flipbook frame, on top
     if (c.uvEdges?.length) this.drawUvEdges(ctx, c.uvEdges, T, T, S);
   }
@@ -1007,7 +1155,9 @@ export class Palette {
    *  bottom-left origin (the props' flipY texture read), so v maps to canvas y inverted. */
   private drawUvEdges(ctx: CanvasRenderingContext2D, edges: Float32Array, x: number, y: number, s: number) {
     ctx.save();
-    ctx.beginPath(); ctx.rect(x, y, s, s); ctx.clip();
+    ctx.beginPath();
+    ctx.rect(x, y, s, s);
+    ctx.clip();
     ctx.strokeStyle = 'rgba(255,210,26,0.9)'; // shared selected-geometry yellow (#ffd21a)
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -1033,7 +1183,8 @@ export class Palette {
         // with the ride-feel colour, so the cell reads as half texture / half colour (vertical split)
         const img = document.createElement('div');
         img.style.cssText = `position:absolute;inset:0;pointer-events:none;background-size:cover;background-image:url(${textureRefUrl(c.ref)});transform:${orientCss(c.rot, c.mirror)}`;
-        if (this.showF) { // the art F, inside the oriented element so it rides the tile's rotation / mirror
+        if (this.showF) {
+          // the art F, inside the oriented element so it rides the tile's rotation / mirror
           const f = document.createElement('div');
           f.style.cssText = F_OVERLAY_CSS;
           img.appendChild(f);
@@ -1045,14 +1196,23 @@ export class Palette {
           half.style.background = surfCss(c.surface);
           cell.appendChild(half);
         }
-        tooltip(cell, `${parseTexRef(c.ref).name.replace(/\.png$/i, '')} · ${surfText(c.surface)} · ${orientText(c.rot, c.mirror)}`);
+        tooltip(
+          cell,
+          `${parseTexRef(c.ref).name.replace(/\.png$/i, '')} · ${surfText(c.surface)} · ${orientText(c.rot, c.mirror)}`,
+        );
         const x = document.createElement('span');
         x.className = 'sc-x';
         x.textContent = '✕';
-        x.onclick = e => { e.stopPropagation(); this.clearCell(i); };
+        x.onclick = e => {
+          e.stopPropagation();
+          this.clearCell(i);
+        };
         cell.appendChild(x);
         cell.draggable = true; // a filled cell can be dragged onto another to reorder (Shift+drag copies)
-        cell.ondragstart = e => { e.dataTransfer?.setData(DRAG_CELL, String(i)); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove'; };
+        cell.ondragstart = e => {
+          e.dataTransfer?.setData(DRAG_CELL, String(i));
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove';
+        };
       }
       cell.onclick = () => this.clickCell(i);
       cell.oncontextmenu = e => {
@@ -1062,10 +1222,22 @@ export class Palette {
         if (this.view === 'surface' && this.cells[i]) this.openSurfaceMenu(i);
       };
       // drop target: a Library tile stages here, a dragged cell swaps here (Shift = copy → copy cursor)
-      cell.ondragover = e => { if (this.canDrop(e)) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = (e.shiftKey || e.dataTransfer.types.includes(DRAG_TILE)) ? 'copy' : 'move'; } };
-      cell.ondragenter = e => { if (this.canDrop(e)) cell.classList.add('over'); };
+      cell.ondragover = e => {
+        if (this.canDrop(e)) {
+          e.preventDefault();
+          if (e.dataTransfer)
+            e.dataTransfer.dropEffect = e.shiftKey || e.dataTransfer.types.includes(DRAG_TILE) ? 'copy' : 'move';
+        }
+      };
+      cell.ondragenter = e => {
+        if (this.canDrop(e)) cell.classList.add('over');
+      };
       cell.ondragleave = () => cell.classList.remove('over');
-      cell.ondrop = e => { e.preventDefault(); cell.classList.remove('over'); this.dropOnCell(i, e); };
+      cell.ondrop = e => {
+        e.preventDefault();
+        cell.classList.remove('over');
+        this.dropOnCell(i, e);
+      };
       this.grid.appendChild(cell);
     }
     this.drawSeams();
@@ -1077,7 +1249,11 @@ export class Palette {
     let img = this.imgCache.get(ref);
     if (!img) {
       img = new Image();
-      img.onload = () => { this.drawSeams(); this.drawPreviewCanvas(); this.syncPreviewDetails(); };
+      img.onload = () => {
+        this.drawSeams();
+        this.drawPreviewCanvas();
+        this.syncPreviewDetails();
+      };
       img.src = textureRefUrl(ref);
       this.imgCache.set(ref, img);
     }
@@ -1093,14 +1269,17 @@ export class Palette {
     if (!ctx || !img.complete || !img.naturalWidth) return null;
     ctx.clearRect(0, 0, EDGE_N, EDGE_N);
     ctx.save();
-    ctx.translate(EDGE_N / 2, EDGE_N / 2);          // draw the tile exactly as the cell shows it
-    ctx.rotate((c.mirror ? c.rot : -c.rot) * Math.PI / 2); // same sense as the display, so extracted edges match
+    ctx.translate(EDGE_N / 2, EDGE_N / 2); // draw the tile exactly as the cell shows it
+    ctx.rotate(((c.mirror ? c.rot : -c.rot) * Math.PI) / 2); // same sense as the display, so extracted edges match
     ctx.scale(c.mirror ? -1 : 1, 1);
     ctx.drawImage(img, -EDGE_N / 2, -EDGE_N / 2, EDGE_N, EDGE_N);
     ctx.restore();
     let edges: Edges;
-    try { edges = extractEdges(ctx.getImageData(0, 0, EDGE_N, EDGE_N).data, EDGE_N); }
-    catch { return null; } // canvas tainted (shouldn't happen for same-origin textures)
+    try {
+      edges = extractEdges(ctx.getImageData(0, 0, EDGE_N, EDGE_N).data, EDGE_N);
+    } catch {
+      return null;
+    } // canvas tainted (shouldn't happen for same-origin textures)
     this.edgeCache.set(key, edges);
     return edges;
   }
@@ -1109,11 +1288,13 @@ export class Palette {
   private drawSeams() {
     const ctx = this.seams.getContext('2d');
     if (!ctx) return;
-    const w = this.gridWrap.clientWidth, h = this.gridWrap.clientHeight;
+    const w = this.gridWrap.clientWidth,
+      h = this.gridWrap.clientHeight;
     const dpr = window.devicePixelRatio || 1;
     this.seams.width = Math.max(1, Math.round(w * dpr));
     this.seams.height = Math.max(1, Math.round(h * dpr));
-    this.seams.style.width = `${w}px`; this.seams.style.height = `${h}px`;
+    this.seams.style.width = `${w}px`;
+    this.seams.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     if (this.view !== 'texture' || !w || !h) return; // alignment only makes sense on the tile art
@@ -1124,16 +1305,21 @@ export class Palette {
       const c = this.cells[i];
       if (!c) continue;
       const el = els[i];
-      const col = i % COLS, row = (i / COLS) | 0;
-      if (col < COLS - 1) {                                   // seam with the right neighbour
+      const col = i % COLS,
+        row = (i / COLS) | 0;
+      if (col < COLS - 1) {
+        // seam with the right neighbour
         const rn = this.cells[i + 1];
-        const ea = rn && this.edgesFor(c), eb = rn && this.edgesFor(rn);
+        const ea = rn && this.edgesFor(c),
+          eb = rn && this.edgesFor(rn);
         if (ea && eb && edgeDiff(ea.right, eb.left) > SEAM_THRESH)
           ctx.fillRect(el.offsetLeft + el.offsetWidth + 0.5 - SEAM_W / 2, el.offsetTop, SEAM_W, el.offsetHeight);
       }
-      if (row < ROWS - 1) {                                   // seam with the bottom neighbour
+      if (row < ROWS - 1) {
+        // seam with the bottom neighbour
         const bn = this.cells[i + COLS];
-        const ea = bn && this.edgesFor(c), eb = bn && this.edgesFor(bn);
+        const ea = bn && this.edgesFor(c),
+          eb = bn && this.edgesFor(bn);
         if (ea && eb && edgeDiff(ea.bottom, eb.top) > SEAM_THRESH)
           ctx.fillRect(el.offsetLeft, el.offsetTop + el.offsetHeight + 0.5 - SEAM_W / 2, el.offsetWidth, SEAM_W);
       }
@@ -1152,36 +1338,72 @@ export class Palette {
         if (!Array.isArray(pad)) continue;
         for (let i = 0; i < N; i++) {
           const c = pad[i];
-          this.pads[p][i] = c && typeof c.ref === 'string' ? { ref: c.ref, surface: typeof c.surface === 'number' ? c.surface : DEFAULT_SURFACE, rot: c.rot | 0, mirror: !!c.mirror } : null;
+          this.pads[p][i] =
+            c && typeof c.ref === 'string'
+              ? {
+                  ref: c.ref,
+                  surface: typeof c.surface === 'number' ? c.surface : DEFAULT_SURFACE,
+                  rot: c.rot | 0,
+                  mirror: !!c.mirror,
+                }
+              : null;
         }
       }
       if (Number.isInteger(s.pad) && s.pad! >= 0 && s.pad! < PADS) this.activePad = s.pad!;
       if (s.view === 'surface' || s.view === 'texture') this.view = s.view;
-    } catch { /* ignore a corrupt / stale pad */ }
+    } catch {
+      /* ignore a corrupt / stale pad */
+    }
   }
   /** Persist every slot (not just the one on screen) and refresh the slot menu's counts — save() is called
    *  from each pad mutation, so the labels track what the slots hold. */
   private save() {
     this.syncPadSel();
-    try { localStorage.setItem(KEY, JSON.stringify({ pads: this.pads, pad: this.activePad, view: this.view })); } catch { /* storage full / disabled */ }
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ pads: this.pads, pad: this.activePad, view: this.view }));
+    } catch {
+      /* storage full / disabled */
+    }
   }
 }
 
 /** The four borders of an N×N ImageData as coarse RGB runs — each side's outer line (top/bottom left→right,
  *  left/right top→bottom) reduced to EDGE_BUCKETS segment-averages, so grain washes out but position stays. */
 function extractEdges(d: Uint8ClampedArray, n: number): Edges {
-  const top: number[] = [], bottom: number[] = [], left: number[] = [], right: number[] = [];
-  const px = (x: number, y: number, out: number[]) => { const i = (y * n + x) * 4; out.push(d[i], d[i + 1], d[i + 2]); };
-  for (let x = 0; x < n; x++) { px(x, 0, top); px(x, n - 1, bottom); }
-  for (let y = 0; y < n; y++) { px(0, y, left); px(n - 1, y, right); }
+  const top: number[] = [],
+    bottom: number[] = [],
+    left: number[] = [],
+    right: number[] = [];
+  const px = (x: number, y: number, out: number[]) => {
+    const i = (y * n + x) * 4;
+    out.push(d[i], d[i + 1], d[i + 2]);
+  };
+  for (let x = 0; x < n; x++) {
+    px(x, 0, top);
+    px(x, n - 1, bottom);
+  }
+  for (let y = 0; y < n; y++) {
+    px(0, y, left);
+    px(n - 1, y, right);
+  }
   return { top: bucketize(top), right: bucketize(right), bottom: bucketize(bottom), left: bucketize(left) };
 }
 /** Average an n-sample RGB run into EDGE_BUCKETS segment-means (length EDGE_BUCKETS * 3). */
 function bucketize(rgb: number[]): number[] {
-  const n = rgb.length / 3, per = n / EDGE_BUCKETS, out: number[] = [];
+  const n = rgb.length / 3,
+    per = n / EDGE_BUCKETS,
+    out: number[] = [];
   for (let k = 0; k < EDGE_BUCKETS; k++) {
-    let r = 0, g = 0, b = 0, c = 0;
-    for (let i = Math.floor(k * per); i < Math.floor((k + 1) * per); i++) { r += rgb[i * 3]; g += rgb[i * 3 + 1]; b += rgb[i * 3 + 2]; c++; }
+    let r = 0,
+      g = 0,
+      b = 0,
+      c = 0;
+    for (let i = Math.floor(k * per); i < Math.floor((k + 1) * per); i++) {
+      r += rgb[i * 3];
+      g += rgb[i * 3 + 1];
+      b += rgb[i * 3 + 2];
+      c++;
+    }
     out.push(r / c, g / c, b / c);
   }
   return out;
@@ -1193,7 +1415,8 @@ function edgeDiff(a: number[], b: number[]): number {
   const n = Math.min(a.length, b.length);
   if (!n) return 1;
   let worst = 0;
-  for (let i = 0; i + 2 < n; i += 3) { // one RGB segment at a time
+  for (let i = 0; i + 2 < n; i += 3) {
+    // one RGB segment at a time
     const d = (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / (3 * 255);
     if (d > worst) worst = d;
   }

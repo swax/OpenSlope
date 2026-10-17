@@ -28,8 +28,7 @@ export const holds = (role: Role, required: Role): boolean => RANK[role] >= RANK
 
 /** The roles a moderator may grant and act on. Keeping this predicate beside the role order gives the HTTP
  *  route and the atomic account mutation one definition of the privilege boundary. */
-export const isOrdinaryRole = (role: Role): role is 'viewer' | 'editor' =>
-  role === 'viewer' || role === 'editor';
+export const isOrdinaryRole = (role: Role): role is 'viewer' | 'editor' => role === 'viewer' || role === 'editor';
 
 export const isRole = (value: unknown): value is Role =>
   typeof value === 'string' && (ROLES as readonly string[]).includes(value);
@@ -58,7 +57,10 @@ export interface AccountsPolicy {
 
 /** Shared with Vite: the editor and the separately reachable API must accept the same deliberate DNS names. */
 export function allowedAuthoritiesFromEnvironment(): string[] {
-  return (process.env.SLOPESMITH_ALLOWED_HOSTS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+  return (process.env.SLOPESMITH_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
 }
 
 const policy: AccountsPolicy = {
@@ -89,14 +91,21 @@ function requestAuthority(req: IncomingMessage): string {
   return (forwarded ?? header(req, 'host') ?? '').trim();
 }
 
-interface ParsedAuthority { hostname: string; port: string }
+interface ParsedAuthority {
+  hostname: string;
+  port: string;
+}
 
 /** Parse only an HTTP Host-style authority — never credentials, a path, or another URL-shaped ambiguity. */
 function parseAuthority(raw: string): ParsedAuthority | null {
   const value = raw.trim();
   if (!value || /[\\/?#@\s]/.test(value)) return null;
   let parsed: URL;
-  try { parsed = new URL(`http://${value}`); } catch { return null; }
+  try {
+    parsed = new URL(`http://${value}`);
+  } catch {
+    return null;
+  }
   if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
   return { hostname: parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase(), port: parsed.port };
 }
@@ -106,8 +115,9 @@ function matchesConfiguredAuthority(candidate: ParsedAuthority, configured: stri
   const subdomains = raw.startsWith('.');
   const expected = parseAuthority(subdomains ? raw.slice(1) : raw);
   if (!expected || (expected.port && expected.port !== candidate.port)) return false;
-  return candidate.hostname === expected.hostname
-    || (subdomains && candidate.hostname.endsWith(`.${expected.hostname}`));
+  return (
+    candidate.hostname === expected.hostname || (subdomains && candidate.hostname.endsWith(`.${expected.hostname}`))
+  );
 }
 
 /**
@@ -171,12 +181,17 @@ export function isSameSiteOrigin(req: IncomingMessage): boolean {
   const origin = header(req, 'origin');
   if (origin === undefined) return true;
   let page: URL;
-  try { page = new URL(origin); } catch { return false; } // includes the literal `null` an opaque origin sends
+  try {
+    page = new URL(origin);
+  } catch {
+    return false;
+  } // includes the literal `null` an opaque origin sends
   const own = requestAuthority(req);
   if (!own) return false;
   // A browser leaves the scheme's default port off the origin; a Host header may still spell it out.
   const defaultPort = page.protocol === 'https:' ? ':443' : ':80';
-  const trim = (authority: string) => authority.toLowerCase().replace(/:\d+$/, port => port === defaultPort ? '' : port);
+  const trim = (authority: string) =>
+    authority.toLowerCase().replace(/:\d+$/, port => (port === defaultPort ? '' : port));
   return trim(page.host) === trim(own);
 }
 

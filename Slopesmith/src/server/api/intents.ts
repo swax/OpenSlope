@@ -76,7 +76,7 @@ export interface CourseRuler {
 
 /** Yaw (degrees, [0, 360)) whose `rotateY([0,0,1])` is the horizontal direction of `dir`. */
 export function headingOf(dir: V3): number {
-  return ((Math.atan2(dir[0], dir[2]) * 180 / Math.PI) % 360 + 360) % 360;
+  return ((((Math.atan2(dir[0], dir[2]) * 180) / Math.PI) % 360) + 360) % 360;
 }
 
 /**
@@ -86,7 +86,7 @@ export function headingOf(dir: V3): number {
  */
 export function courseRuler(course: CoursePath): CourseRuler {
   if (!Array.isArray(course?.knots) || course.knots.length < 2) {
-    throw new Error('This map\'s course has fewer than two knots, so it has no stations to place by.');
+    throw new Error("This map's course has fewer than two knots, so it has no stations to place by.");
   }
   const samples = sampleSpine(course.knots);
   const length = totalLength(samples);
@@ -95,34 +95,50 @@ export function courseRuler(course: CoursePath): CourseRuler {
     return found ? found.s : length;
   });
   const frame = (sample: SpineSample): StationFrame => ({
-    station: sample.s, pos: sample.pos, fwd: sample.fwd,
+    station: sample.s,
+    pos: sample.pos,
+    fwd: sample.fwd,
     side: norm(cross(sample.fwd, [0, 1, 0])),
     heading: headingOf(sample.fwd),
     width: paramsAt(course.knots, sample.k).width,
   });
   return {
-    length, knotStations,
+    length,
+    knotStations,
     at: station => frame(spineAt(samples, station)),
     nearest: (x, z) => {
-      let best = Infinity, at = 0;
+      let best = Infinity,
+        at = 0;
       for (let i = 0; i < samples.length; i++) {
         const d = (samples[i].pos[0] - x) ** 2 + (samples[i].pos[2] - z) ** 2;
-        if (d < best) { best = d; at = i; }
+        if (d < best) {
+          best = d;
+          at = i;
+        }
       }
       // The nearest sample is a station to within half a sample step — up to a few metres on a long
       // segment — so the point is projected onto the two sampled segments meeting there and the closer
       // projection is the answer, continuous along the line.
       let station = samples[at].s;
-      for (const [a, b] of [[at - 1, at], [at, at + 1]]) {
+      for (const [a, b] of [
+        [at - 1, at],
+        [at, at + 1],
+      ]) {
         if (a < 0 || b >= samples.length) continue;
-        const ax = samples[a].pos[0], az = samples[a].pos[2];
-        const dx = samples[b].pos[0] - ax, dz = samples[b].pos[2] - az;
+        const ax = samples[a].pos[0],
+          az = samples[a].pos[2];
+        const dx = samples[b].pos[0] - ax,
+          dz = samples[b].pos[2] - az;
         const span = dx * dx + dz * dz;
         if (span < 1e-12) continue;
         const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / span));
-        const px = ax + dx * t, pz = az + dz * t;
+        const px = ax + dx * t,
+          pz = az + dz * t;
         const d = (px - x) ** 2 + (pz - z) ** 2;
-        if (d <= best) { best = d; station = samples[a].s + (samples[b].s - samples[a].s) * t; }
+        if (d <= best) {
+          best = d;
+          station = samples[a].s + (samples[b].s - samples[a].s) * t;
+        }
       }
       return station;
     },
@@ -134,9 +150,16 @@ export function courseRuler(course: CoursePath): CourseRuler {
 class Scene {
   private ruler?: CourseRuler;
   private sampler?: GroundSampler;
-  constructor(private readonly document: EditDoc, private readonly makeGround: () => GroundSampler) {}
-  get course(): CourseRuler { return this.ruler ??= courseRuler(this.document.course); }
-  ground(x: number, z: number): number | null { return (this.sampler ??= this.makeGround())(x, z); }
+  constructor(
+    private readonly document: EditDoc,
+    private readonly makeGround: () => GroundSampler,
+  ) {}
+  get course(): CourseRuler {
+    return (this.ruler ??= courseRuler(this.document.course));
+  }
+  ground(x: number, z: number): number | null {
+    return (this.sampler ??= this.makeGround())(x, z);
+  }
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -174,7 +197,10 @@ function groundOffset(value: unknown): number | null {
 
 const asOffset = (metres: number): string => `${metres < 0 ? '-' : '+'}${mm(Math.abs(metres))}`;
 
-interface Resolved { pos: V3; station?: number }
+interface Resolved {
+  pos: V3;
+  station?: number;
+}
 
 /**
  * One position in any of its forms, to a point.
@@ -192,15 +218,18 @@ interface Resolved { pos: V3; station?: number }
 function resolvePosition(scene: Scene, held: unknown, outcomes: IntentOutcomes, what: string): Resolved {
   if (Array.isArray(held)) {
     if (held.length !== 3) throw new Error(`${what} is [x, y, z] — three entries.`);
-    const x = finite(held[0], `${what}[0] (x)`), z = finite(held[2], `${what}[2] (z)`);
+    const x = finite(held[0], `${what}[0] (x)`),
+      z = finite(held[2], `${what}[2] (z)`);
     if (typeof held[1] === 'number') {
       if (!Number.isFinite(held[1])) throw new Error(`${what}[1] (y) is a number.`);
       return { pos: held as V3 };
     }
     const offset = groundOffset(held[1]);
     if (offset === null) {
-      throw new Error(`${what}[1] (y) is a number, null for the ground itself, or "+1.5" / "-0.2" for a `
-        + 'height above or below it.');
+      throw new Error(
+        `${what}[1] (y) is a number, null for the ground itself, or "+1.5" / "-0.2" for a ` +
+          'height above or below it.',
+      );
     }
     const ground = scene.ground(x, z);
     if (ground === null) {
@@ -224,8 +253,10 @@ function resolvePosition(scene: Scene, held: unknown, outcomes: IntentOutcomes, 
     }
     station = ruler.knotStations[knot] + (held.along === undefined ? 0 : finite(held.along, `${what}.along`));
   } else {
-    throw new Error(`${what} names where along the run: { station: <metres from knot 0> } or `
-      + '{ knot: <index>, along: <metres past it> }.');
+    throw new Error(
+      `${what} names where along the run: { station: <metres from knot 0> } or ` +
+        '{ knot: <index>, along: <metres past it> }.',
+    );
   }
   if (held.along !== undefined && held.knot === undefined) {
     throw new Error(`${what}.along is metres past a knot — pair it with knot, or fold it into station.`);
@@ -265,11 +296,13 @@ function resolveYaw(scene: Scene, held: unknown, at: Resolved, what: string): un
   if (typeof held !== 'string') return held;
   const offset = courseYaw(held);
   if (offset === null) {
-    throw new Error(`${what} is degrees, or "course" (facing downhill along the run), "course+90" (facing the `
-      + 'rider\'s left), "course-90" (the rider\'s right), "course+180" (uphill).');
+    throw new Error(
+      `${what} is degrees, or "course" (facing downhill along the run), "course+90" (facing the ` +
+        'rider\'s left), "course-90" (the rider\'s right), "course+180" (uphill).',
+    );
   }
   const station = at.station ?? scene.course.nearest(at.pos[0], at.pos[2]);
-  return mm(((scene.course.at(station).heading + offset) % 360 + 360) % 360);
+  return mm((((scene.course.at(station).heading + offset) % 360) + 360) % 360);
 }
 
 /** The value with every position (and a prop's course-relative yaw) resolved to numbers. */
@@ -279,11 +312,15 @@ function resolvePlacement(scene: Scene, key: RegisterKey, value: unknown, outcom
   if (PLACED.has(family)) {
     if (value.pos === undefined) return value;
     const at = resolvePosition(scene, value.pos, outcomes, `${key} pos`);
-    const yaw = family === 'prop' && value.yaw !== undefined ? resolveYaw(scene, value.yaw, at, `${key} yaw`) : value.yaw;
+    const yaw =
+      family === 'prop' && value.yaw !== undefined ? resolveYaw(scene, value.yaw, at, `${key} yaw`) : value.yaw;
     return { ...value, pos: at.pos, ...(value.yaw === undefined ? {} : { yaw }) };
   }
   if (family === 'rail' && Array.isArray(value.nodes)) {
-    return { ...value, nodes: value.nodes.map((node, i) => resolvePosition(scene, node, outcomes, `${key} nodes[${i}]`).pos) };
+    return {
+      ...value,
+      nodes: value.nodes.map((node, i) => resolvePosition(scene, node, outcomes, `${key} nodes[${i}]`).pos),
+    };
   }
   if (family === 'course' && Array.isArray(value.knots)) {
     return {
@@ -291,8 +328,10 @@ function resolvePlacement(scene: Scene, key: RegisterKey, value: unknown, outcom
       knots: value.knots.map((knot, i) => {
         if (!isObject(knot) || knot.pos === undefined) return knot;
         if (!Array.isArray(knot.pos)) {
-          throw new Error(`course knots[${i}].pos is [x, y, z] or [x, null | "+h", z] — a knot is what defines `
-            + 'the stations, so it cannot be placed by one.');
+          throw new Error(
+            `course knots[${i}].pos is [x, y, z] or [x, null | "+h", z] — a knot is what defines ` +
+              'the stations, so it cannot be placed by one.',
+          );
         }
         return { ...knot, pos: resolvePosition(scene, knot.pos, outcomes, `course knots[${i}].pos`).pos };
       }),
@@ -307,17 +346,28 @@ function resolvePlacement(scene: Scene, key: RegisterKey, value: unknown, outcom
 
 // ---- repeat ------------------------------------------------------------------------------------------------
 
-interface RepeatStep { station?: number; lateral?: number; above?: number; x?: number; y?: number; z?: number; yaw?: number }
+interface RepeatStep {
+  station?: number;
+  lateral?: number;
+  above?: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  yaw?: number;
+}
 const STEP_FIELDS: ReadonlySet<string> = new Set(['station', 'lateral', 'above', 'x', 'y', 'z', 'yaw']);
 
 function repeatStep(held: unknown): RepeatStep {
   if (held === undefined) return {};
-  if (!isObject(held)) throw new Error('repeat.step is an object of per-clone increments: station, lateral, above, x, y, z, yaw.');
+  if (!isObject(held))
+    throw new Error('repeat.step is an object of per-clone increments: station, lateral, above, x, y, z, yaw.');
   const step: RepeatStep = {};
   for (const [field, value] of Object.entries(held)) {
     if (!STEP_FIELDS.has(field)) {
-      throw new Error(`repeat.step.${field} — a step increments station, lateral, above (a run-relative position), `
-        + 'x, y, z (an [x,y,z] position), or yaw.');
+      throw new Error(
+        `repeat.step.${field} — a step increments station, lateral, above (a run-relative position), ` +
+          'x, y, z (an [x,y,z] position), or yaw.',
+      );
     }
     step[field as keyof RepeatStep] = finite(value, `repeat.step.${field}`);
   }
@@ -330,7 +380,9 @@ function shiftedPoint(point: unknown, step: RepeatStep, n: number, what: string)
   if (step.station || step.lateral || step.above) {
     throw new Error(`${what} is [x, y, z], which steps by x/y/z — station/lateral/above step a { station } position.`);
   }
-  const dx = (step.x ?? 0) * n, dy = (step.y ?? 0) * n, dz = (step.z ?? 0) * n;
+  const dx = (step.x ?? 0) * n,
+    dy = (step.y ?? 0) * n,
+    dz = (step.z ?? 0) * n;
   const x = typeof point[0] === 'number' ? mm(point[0] + dx) : point[0];
   const z = typeof point[2] === 'number' ? mm(point[2] + dz) : point[2];
   let y: unknown = point[1];
@@ -346,7 +398,9 @@ function shiftedPosition(pos: unknown, step: RepeatStep, n: number, what: string
   if (Array.isArray(pos)) return shiftedPoint(pos, step, n, what);
   if (!isObject(pos)) return pos;
   if (step.x || step.y || step.z) {
-    throw new Error(`${what} is a { station } position, which steps by station/lateral/above — x/y/z step an [x, y, z].`);
+    throw new Error(
+      `${what} is a { station } position, which steps by station/lateral/above — x/y/z step an [x, y, z].`,
+    );
   }
   const moved: Record<string, unknown> = { ...pos };
   const ds = (step.station ?? 0) * n;
@@ -367,7 +421,7 @@ function shiftedPosition(pos: unknown, step: RepeatStep, n: number, what: string
 function shiftedYaw(yaw: unknown, step: RepeatStep, n: number): unknown {
   const dyaw = (step.yaw ?? 0) * n;
   if (!dyaw) return yaw;
-  if (typeof yaw === 'number') return mm(((yaw + dyaw) % 360 + 360) % 360);
+  if (typeof yaw === 'number') return mm((((yaw + dyaw) % 360) + 360) % 360);
   if (typeof yaw === 'string') {
     const offset = courseYaw(yaw);
     if (offset !== null) return `course${asOffset(offset + dyaw)}`;
@@ -397,7 +451,13 @@ const REPEAT_LIMIT = 1000;
  * the run — from the value's own station to `until`, one every so many metres, the step's `station` set to
  * match — which is how a row of lamps or a fence is actually thought about.
  */
-function repeatCount(scene: Scene, held: Record<string, unknown>, value: unknown, key: RegisterKey, step: RepeatStep): number {
+function repeatCount(
+  scene: Scene,
+  held: Record<string, unknown>,
+  value: unknown,
+  key: RegisterKey,
+  step: RepeatStep,
+): number {
   if (held.count !== undefined) {
     if (held.every !== undefined || held.until !== undefined) {
       throw new Error('repeat takes count, or every + until — not both.');
@@ -409,7 +469,9 @@ function repeatCount(scene: Scene, held: Record<string, unknown>, value: unknown
     return count;
   }
   if (held.every === undefined || held.until === undefined) {
-    throw new Error('repeat says how many: { count } or { every: <metres>, until: <station> } — see /api/schemas/AssignRegisters.');
+    throw new Error(
+      'repeat says how many: { count } or { every: <metres>, until: <station> } — see /api/schemas/AssignRegisters.',
+    );
   }
   const every = finite(held.every, 'repeat.every');
   if (every <= 0) throw new Error('repeat.every is a spacing in metres, above zero.');
@@ -418,8 +480,10 @@ function repeatCount(scene: Scene, held: Record<string, unknown>, value: unknown
   }
   const pos = isObject(value) ? value.pos : undefined;
   if (!isObject(pos) || (pos.station === undefined && pos.knot === undefined)) {
-    throw new Error(`repeat.every spaces a { station } position along the run — ${key} has none. Use count and `
-      + 'a step for an [x, y, z] position.');
+    throw new Error(
+      `repeat.every spaces a { station } position along the run — ${key} has none. Use count and ` +
+        'a step for an [x, y, z] position.',
+    );
   }
   let from: number;
   if (pos.station !== undefined) {
@@ -432,15 +496,23 @@ function repeatCount(scene: Scene, held: Record<string, unknown>, value: unknown
   const until = finite(held.until, 'repeat.until');
   if (until < from) throw new Error(`repeat.until (${until}) is before the position's own station (${mm(from)}).`);
   const count = Math.floor((until - from) / every + 1e-6) + 1;
-  if (count > REPEAT_LIMIT) throw new Error(`That spacing makes ${count} clones; ${REPEAT_LIMIT} is the most one change may repeat.`);
+  if (count > REPEAT_LIMIT)
+    throw new Error(`That spacing makes ${count} clones; ${REPEAT_LIMIT} is the most one change may repeat.`);
   step.station = every;
   return count;
 }
 
-function repeated(scene: Scene, key: RegisterKey, value: unknown, held: unknown): { key: RegisterKey; value: unknown }[] {
+function repeated(
+  scene: Scene,
+  key: RegisterKey,
+  value: unknown,
+  held: unknown,
+): { key: RegisterKey; value: unknown }[] {
   if (!isObject(held)) throw new Error('repeat is an object: { count, step } or { every, until, step }.');
   if (!key.includes('{i}')) {
-    throw new Error(`A repeated key carries "{i}" where each clone's index goes — e.g. ${key.replace(/(\d+)$/, '')}{i}.`);
+    throw new Error(
+      `A repeated key carries "{i}" where each clone's index goes — e.g. ${key.replace(/(\d+)$/, '')}{i}.`,
+    );
   }
   const step = repeatStep(held.step);
   const start = held.start === undefined ? 0 : finite(held.start, 'repeat.start');
@@ -460,8 +532,10 @@ function repeated(scene: Scene, key: RegisterKey, value: unknown, held: unknown)
 function copied(document: EditDoc, key: RegisterKey, from: unknown, value: unknown): unknown {
   if (typeof from !== 'string' || !from) throw new Error('`from` is the register key to copy from.');
   if (from === key) {
-    throw new Error(`\`from\` copies onto a NEW key. To change ${key} where it stands, assign the fields that `
-      + 'change as o/<family>.<field>/<id> keys (docs/039), or read it and assign it whole.');
+    throw new Error(
+      `\`from\` copies onto a NEW key. To change ${key} where it stands, assign the fields that ` +
+        'change as o/<family>.<field>/<id> keys (docs/039), or read it and assign it whole.',
+    );
   }
   const source = readRegister(document, from);
   if (source === undefined) throw new Error(`${from} holds nothing to copy — GET …/registers?keys=${from} to check.`);
@@ -492,7 +566,11 @@ class MeshBuilder {
   private readonly ids = new Map<string, number>();
 
   private vertex(p: V3): number {
-    const r: V3 = [Math.round(p[0] * 1e4) / 1e4 + 0, Math.round(p[1] * 1e4) / 1e4 + 0, Math.round(p[2] * 1e4) / 1e4 + 0];
+    const r: V3 = [
+      Math.round(p[0] * 1e4) / 1e4 + 0,
+      Math.round(p[1] * 1e4) / 1e4 + 0,
+      Math.round(p[2] * 1e4) / 1e4 + 0,
+    ];
     const key = r.join(',');
     const known = this.ids.get(key);
     if (known !== undefined) return known;
@@ -502,7 +580,9 @@ class MeshBuilder {
     return id;
   }
 
-  quad(a: V3, b: V3, c: V3, d: V3): void { this.quads.push([this.vertex(a), this.vertex(b), this.vertex(c), this.vertex(d)]); }
+  quad(a: V3, b: V3, c: V3, d: V3): void {
+    this.quads.push([this.vertex(a), this.vertex(b), this.vertex(c), this.vertex(d)]);
+  }
 
   /** A triangle: the collapsed corner (apex) takes the tile's top centre. */
   wedge(a: V3, b: V3, apex: V3): void {
@@ -531,7 +611,9 @@ const QUAD_LIMIT = 4096;
 
 function sizeOf(held: unknown, count: number, what: string): number[] {
   if (!Array.isArray(held) || held.length !== count) {
-    throw new Error(`${what} is ${count} metres: ${count === 3 ? '[width, height, depth]' : '[width, height] (a roof: [width, depth])'}.`);
+    throw new Error(
+      `${what} is ${count} metres: ${count === 3 ? '[width, height, depth]' : '[width, height] (a roof: [width, depth])'}.`,
+    );
   }
   return held.map((part, i) => {
     const value = finite(part, `${what}[${i}]`);
@@ -544,11 +626,14 @@ function segmentsOf(held: unknown, count: number, what: string): number[] {
   if (held === undefined) return Array.from({ length: count }, () => 1);
   const list = count === 1 && !Array.isArray(held) ? [held] : held;
   if (!Array.isArray(list) || list.length !== count) {
-    throw new Error(`${what} is ${count === 1 ? 'a whole number' : `${count} whole numbers`} of tile repeats, 1 to ${SEGMENT_LIMIT}.`);
+    throw new Error(
+      `${what} is ${count === 1 ? 'a whole number' : `${count} whole numbers`} of tile repeats, 1 to ${SEGMENT_LIMIT}.`,
+    );
   }
   return list.map((part, i) => {
     const value = finite(part, `${what}[${i}]`);
-    if (!Number.isInteger(value) || value < 1 || value > SEGMENT_LIMIT) throw new Error(`${what}[${i}] is a whole number from 1 to ${SEGMENT_LIMIT}.`);
+    if (!Number.isInteger(value) || value < 1 || value > SEGMENT_LIMIT)
+      throw new Error(`${what}[${i}] is a whole number from 1 to ${SEGMENT_LIMIT}.`);
     return value;
   });
 }
@@ -563,12 +648,14 @@ const flag = (held: unknown, fallback: boolean, what: string): boolean => {
 function box(shape: Record<string, unknown>): MeshBuilder {
   const [w, h, d] = sizeOf(shape.size, 3, 'shape.size');
   const [nx, ny, nz] = segmentsOf(shape.segments, 3, 'shape.segments');
-  const hx = w / 2, hz = d / 2, rise: V3 = [0, h / ny, 0];
+  const hx = w / 2,
+    hz = d / 2,
+    rise: V3 = [0, h / ny, 0];
   const mesh = new MeshBuilder();
-  mesh.strip([-hx, 0, hz], [w, 0, 0], rise, nx, ny);     // +Z
-  mesh.strip([hx, 0, -hz], [-w, 0, 0], rise, nx, ny);    // -Z
-  mesh.strip([hx, 0, hz], [0, 0, -d], rise, nz, ny);     // +X
-  mesh.strip([-hx, 0, -hz], [0, 0, d], rise, nz, ny);    // -X
+  mesh.strip([-hx, 0, hz], [w, 0, 0], rise, nx, ny); // +Z
+  mesh.strip([hx, 0, -hz], [-w, 0, 0], rise, nx, ny); // -Z
+  mesh.strip([hx, 0, hz], [0, 0, -d], rise, nz, ny); // +X
+  mesh.strip([-hx, 0, -hz], [0, 0, d], rise, nz, ny); // -X
   if (flag(shape.top, true, 'shape.top')) mesh.strip([-hx, h, hz], [w, 0, 0], [0, 0, -d / nz], nx, nz);
   if (flag(shape.bottom, false, 'shape.bottom')) mesh.strip([-hx, 0, -hz], [w, 0, 0], [0, 0, d / nz], nx, nz);
   return mesh;
@@ -579,16 +666,19 @@ function box(shape: Record<string, unknown>): MeshBuilder {
 function house(shape: Record<string, unknown>): MeshBuilder {
   const [w, wall, d] = sizeOf(shape.size, 3, 'shape.size');
   const ridge = finite(shape.ridge, 'shape.ridge');
-  if (ridge <= wall) throw new Error(`shape.ridge (${ridge}) is the gable apex height — above the wall height ${wall}.`);
+  if (ridge <= wall)
+    throw new Error(`shape.ridge (${ridge}) is the gable apex height — above the wall height ${wall}.`);
   const [long, end] = segmentsOf(shape.segments, 2, 'shape.segments');
-  const hw = w / 2, hd = d / 2, rise: V3 = [0, wall, 0];
+  const hw = w / 2,
+    hd = d / 2,
+    rise: V3 = [0, wall, 0];
   const mesh = new MeshBuilder();
-  mesh.strip([-hw, 0, hd], [w, 0, 0], rise, long);    // +Z front
-  mesh.strip([hw, 0, -hd], [-w, 0, 0], rise, long);   // -Z back
-  mesh.strip([hw, 0, hd], [0, 0, -d], rise, end);     // +X end
-  mesh.strip([-hw, 0, -hd], [0, 0, d], rise, end);    // -X end
-  mesh.wedge([hw, wall, hd], [hw, wall, -hd], [hw, ridge, 0]);     // +X gable
-  mesh.wedge([-hw, wall, -hd], [-hw, wall, hd], [-hw, ridge, 0]);  // -X gable
+  mesh.strip([-hw, 0, hd], [w, 0, 0], rise, long); // +Z front
+  mesh.strip([hw, 0, -hd], [-w, 0, 0], rise, long); // -Z back
+  mesh.strip([hw, 0, hd], [0, 0, -d], rise, end); // +X end
+  mesh.strip([-hw, 0, -hd], [0, 0, d], rise, end); // -X end
+  mesh.wedge([hw, wall, hd], [hw, wall, -hd], [hw, ridge, 0]); // +X gable
+  mesh.wedge([-hw, wall, -hd], [-hw, wall, hd], [-hw, ridge, 0]); // -X gable
   return mesh;
 }
 
@@ -602,10 +692,12 @@ function roof(shape: Record<string, unknown>): MeshBuilder {
   const over = shape.overhang === undefined ? 0.6 : finite(shape.overhang, 'shape.overhang');
   if (over < 0) throw new Error('shape.overhang is metres past the walls, 0 or more.');
   const [segments] = segmentsOf(shape.segments, 1, 'shape.segments');
-  const ex = w / 2 + over, ez = d / 2 + over, rise = ridge - eave;
+  const ex = w / 2 + over,
+    ez = d / 2 + over,
+    rise = ridge - eave;
   const mesh = new MeshBuilder();
-  mesh.strip([-ex, eave, ez], [2 * ex, 0, 0], [0, rise, -ez], segments);   // +Z plane, rising to the ridge
-  mesh.strip([ex, eave, -ez], [-2 * ex, 0, 0], [0, rise, ez], segments);   // -Z plane
+  mesh.strip([-ex, eave, ez], [2 * ex, 0, 0], [0, rise, -ez], segments); // +Z plane, rising to the ridge
+  mesh.strip([ex, eave, -ez], [-2 * ex, 0, 0], [0, rise, ez], segments); // -Z plane
   return mesh;
 }
 
@@ -614,7 +706,8 @@ function roof(shape: Record<string, unknown>): MeshBuilder {
 function panel(shape: Record<string, unknown>): MeshBuilder {
   const [w, h] = sizeOf(shape.size, 2, 'shape.size');
   const [nx, ny] = segmentsOf(shape.segments, 2, 'shape.segments');
-  const hw = w / 2, rise: V3 = [0, h / ny, 0];
+  const hw = w / 2,
+    rise: V3 = [0, h / ny, 0];
   const mesh = new MeshBuilder();
   mesh.strip([-hw, 0, 0], [w, 0, 0], rise, nx, ny);
   if (flag(shape.double, false, 'shape.double')) mesh.strip([hw, 0, 0], [-w, 0, 0], rise, nx, ny);
@@ -628,43 +721,65 @@ const SHAPES: Record<string, (shape: Record<string, unknown>) => MeshBuilder> = 
 function shaped(value: Record<string, unknown>): Record<string, unknown> {
   const { shape, ...rest } = value;
   if (!isObject(shape) || typeof shape.kind !== 'string') {
-    throw new Error(`shape is { kind: ${Object.keys(SHAPES).map(k => `"${k}"`).join(' | ')}, size, … }.`);
+    throw new Error(
+      `shape is { kind: ${Object.keys(SHAPES)
+        .map(k => `"${k}"`)
+        .join(' | ')}, size, … }.`,
+    );
   }
   if (Array.isArray(rest.vertices) && rest.vertices.length) {
     throw new Error('A model takes either `shape` or its own `vertices` / `quads`, not both.');
   }
   const build = SHAPES[shape.kind];
-  if (!build) throw new Error(`shape.kind ${JSON.stringify(shape.kind)} — this server shapes ${Object.keys(SHAPES).join(', ')}.`);
+  if (!build)
+    throw new Error(`shape.kind ${JSON.stringify(shape.kind)} — this server shapes ${Object.keys(SHAPES).join(', ')}.`);
   const mesh = build(shape);
   if (mesh.quads.length > QUAD_LIMIT) {
-    throw new Error(`That shape is ${mesh.quads.length} quads; ${QUAD_LIMIT} is the most one model may carry. Fewer segments.`);
+    throw new Error(
+      `That shape is ${mesh.quads.length} quads; ${QUAD_LIMIT} is the most one model may carry. Fewer segments.`,
+    );
   }
   return {
     ...rest,
     ...(typeof rest.name === 'string' ? {} : { name: shape.kind }),
-    anchor: [0, 0, 0], vertices: mesh.vertices, quads: mesh.quads,
+    anchor: [0, 0, 0],
+    vertices: mesh.vertices,
+    quads: mesh.quads,
   };
 }
 
 // ---- the expansion -----------------------------------------------------------------------------------------
 
-interface PlainChange { key: string; value?: unknown; remove?: boolean }
+interface PlainChange {
+  key: string;
+  value?: unknown;
+  remove?: boolean;
+}
 
 /**
  * The request body with every intent in its `changes` expanded into the plain changes the register write
  * takes. Anything that is not a well-formed change is passed through untouched, so the register path's own
  * refusal — which names the shape it wanted — is the one the caller reads.
  */
-export function expandIntents(document: EditDoc, body: unknown, ground: () => GroundSampler):
-  { body: unknown; outcomes: IntentOutcomes } {
+export function expandIntents(
+  document: EditDoc,
+  body: unknown,
+  ground: () => GroundSampler,
+): { body: unknown; outcomes: IntentOutcomes } {
   const outcomes: IntentOutcomes = { placed: 0, repeated: 0, copied: 0, shaped: 0, unseated: 0 };
   if (!isObject(body) || !Array.isArray(body.changes)) return { body, outcomes };
   const scene = new Scene(document, ground);
   const expanded: unknown[] = [];
   for (const entry of body.changes) {
-    if (!isObject(entry)) { expanded.push(entry); continue; }
+    if (!isObject(entry)) {
+      expanded.push(entry);
+      continue;
+    }
     const key = entry.key;
-    if (typeof key !== 'string' || !key) { expanded.push(entry); continue; }
+    if (typeof key !== 'string' || !key) {
+      expanded.push(entry);
+      continue;
+    }
     const { value, remove, from, repeat } = entry;
     const clearing = remove === true || (!('value' in entry) && from === undefined);
     let base = value;

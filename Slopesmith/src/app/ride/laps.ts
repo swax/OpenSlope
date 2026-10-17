@@ -95,8 +95,10 @@ export interface FinishCrossing {
  * rider gets properly behind the line again so a multi-lap session can observe every pass while its separate
  * {@link LapCounter} decides which one is the last.
  */
-export function createFinishCrossing(course: readonly THREE.Vector3[] | undefined,
-  line?: FinishLine | null): FinishCrossing | null {
+export function createFinishCrossing(
+  course: readonly THREE.Vector3[] | undefined,
+  line?: FinishLine | null,
+): FinishCrossing | null {
   const chosen = chooseFinish(course, line);
   if (!chosen) return null;
   const finish = chosen.pos.clone();
@@ -107,25 +109,30 @@ export function createFinishCrossing(course: readonly THREE.Vector3[] | undefine
   const offset = new THREE.Vector3();
   let before: boolean | null = null;
   return {
-    reset() { before = null; },
+    reset() {
+      before = null;
+    },
     step(pos) {
       offset.subVectors(pos, finish);
       const ahead = offset.dot(forward);
       const wasBefore = before;
       if (ahead < -FINISH_DEPTH) before = true;
       else if (ahead > FINISH_DEPTH) before = false;
-      return wasBefore === true && ahead > FINISH_DEPTH
-        && Math.abs(offset.dot(side)) <= FINISH_HALF_WIDTH
-        && Math.abs(offset.y) <= FINISH_HALF_HEIGHT;
+      return (
+        wasBefore === true &&
+        ahead > FINISH_DEPTH &&
+        Math.abs(offset.dot(side)) <= FINISH_HALF_WIDTH &&
+        Math.abs(offset.y) <= FINISH_HALF_HEIGHT
+      );
     },
   };
 }
 
-function chooseFinish(course: readonly THREE.Vector3[] | undefined,
-  line?: FinishLine | null): FinishLine | null {
-  const tail = course && course.length >= 2
-    ? { pos: course[course.length - 1], fwd: course[course.length - 1].clone().sub(course[course.length - 2]) }
-    : null;
+function chooseFinish(course: readonly THREE.Vector3[] | undefined, line?: FinishLine | null): FinishLine | null {
+  const tail =
+    course && course.length >= 2
+      ? { pos: course[course.length - 1], fwd: course[course.length - 1].clone().sub(course[course.length - 2]) }
+      : null;
   return line ?? tail;
 }
 
@@ -133,8 +140,11 @@ function chooseFinish(course: readonly THREE.Vector3[] | undefined,
  * A counter over a course, or null when the ridden world has no usable finish — a mountain with neither an
  * anchor nor a course line cannot say where its finish is, and a single-pass course has no lap to count.
  */
-export function createLapCounter(course: readonly THREE.Vector3[] | undefined, laps: number,
-  line?: FinishLine | null): LapCounter | null {
+export function createLapCounter(
+  course: readonly THREE.Vector3[] | undefined,
+  laps: number,
+  line?: FinishLine | null,
+): LapCounter | null {
   if (laps <= 1) return null;
   const chosen = chooseFinish(course, line);
   if (!chosen) return null;
@@ -160,13 +170,24 @@ export function createLapCounter(course: readonly THREE.Vector3[] | undefined, l
   let before: boolean | null = null;
 
   const counter: LapCounter = {
-    get remaining() { return remaining; },
-    get lap() { return finished || remaining < 1 ? laps : laps - remaining + 1; },
-    get laps() { return laps; },
-    get finished() { return finished; },
+    get remaining() {
+      return remaining;
+    },
+    get lap() {
+      return finished || remaining < 1 ? laps : laps - remaining + 1;
+    },
+    get laps() {
+      return laps;
+    },
+    get finished() {
+      return finished;
+    },
     reset() {
-      remaining = laps; finished = false; before = null;
-      sinceAny = CROSS_DEBOUNCE_TICKS; sinceVolume = CROSS_DEBOUNCE_TICKS;
+      remaining = laps;
+      finished = false;
+      before = null;
+      sinceAny = CROSS_DEBOUNCE_TICKS;
+      sinceVolume = CROSS_DEBOUNCE_TICKS;
     },
     step(pos) {
       if (sinceAny < CROSS_DEBOUNCE_TICKS) sinceAny++;
@@ -184,7 +205,10 @@ export function createLapCounter(course: readonly THREE.Vector3[] | undefined, l
       if (finished) return false;
       // A pass with nothing left to count ENDS here — the tube's mouth landed the counter on zero and declined
       // the lift, and the plane below is where that ride-through finishes ([Trailmap: 390-lap-events]).
-      if (remaining === 0) { finished = true; return false; }
+      if (remaining === 0) {
+        finished = true;
+        return false;
+      }
       // The tube's mouth counted this same crossing moments ago; the plane is not a second one.
       if (sinceVolume < CROSS_DEBOUNCE_TICKS) return false;
       // Retail's own arithmetic: one decrement per crossing, and the crossing that lands the counter on zero

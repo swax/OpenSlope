@@ -7,9 +7,10 @@ import { tooltip } from '../components/tooltip';
 import { blobDataUrl, encodeCanvas } from './settings-dialog-image';
 import { MIN_PASSWORD_LENGTH } from '../../../core/accounts/password-policy';
 
-const PROFILE_PICTURE_HELP = 'Your username and picture are shown throughout this server. The browser crops the centre '
-  + 'to a 256-pixel square before upload; Slopesmith stores that small copy with your account so every member '
-  + 'sees the same picture. Choose JPG, PNG, WebP or GIF. Save commits the change; Close discards it.';
+const PROFILE_PICTURE_HELP =
+  'Your username and picture are shown throughout this server. The browser crops the centre ' +
+  'to a 256-pixel square before upload; Slopesmith stores that small copy with your account so every member ' +
+  'sees the same picture. Choose JPG, PNG, WebP or GIF. Save commits the change; Close discards it.';
 
 export interface ProfileSaveResult {
   username: boolean;
@@ -25,8 +26,9 @@ interface ProfileSection {
 const profileInitials = (username: string): string => {
   const parts = username.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
-  return (parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`)
-    .toLocaleUpperCase();
+  return (
+    parts.length === 1 ? parts[0].slice(0, 2) : `${parts[0][0]}${parts[parts.length - 1][0]}`
+  ).toLocaleUpperCase();
 };
 
 /** Decode whatever image format the browser accepts, centre-crop it and upload only the small derivative. */
@@ -95,7 +97,9 @@ export function buildProfileSection(): ProfileSection {
   bio.disabled = true;
   bioHead.append(bioLabel, bioCount);
   bioRow.append(bioHead, bio);
-  const paintBioCount = () => { bioCount.textContent = `${bio.value.length}/500`; };
+  const paintBioCount = () => {
+    bioCount.textContent = `${bio.value.length}/500`;
+  };
   bio.oninput = paintBioCount;
   paintBioCount();
 
@@ -155,18 +159,21 @@ export function buildProfileSection(): ProfileSection {
     if (!file) return;
     choose.disabled = true;
     setState('Cropping and compressing…');
-    preparing = prepareProfilePicture(file).then(dataUrl => {
-      staged = dataUrl;
-      dirty = true;
-      showPreview(dataUrl);
-      remove.disabled = false;
-      setState('New picture ready — Save to use it.', 'set');
-    }).catch(error => {
-      setState(error instanceof Error ? error.message : String(error), 'warn');
-    }).finally(() => {
-      choose.disabled = !member;
-      preparing = null;
-    });
+    preparing = prepareProfilePicture(file)
+      .then(dataUrl => {
+        staged = dataUrl;
+        dirty = true;
+        showPreview(dataUrl);
+        remove.disabled = false;
+        setState('New picture ready — Save to use it.', 'set');
+      })
+      .catch(error => {
+        setState(error instanceof Error ? error.message : String(error), 'warn');
+      })
+      .finally(() => {
+        choose.disabled = !member;
+        preparing = null;
+      });
   };
   remove.onclick = () => {
     staged = null;
@@ -204,8 +211,10 @@ export function buildProfileSection(): ProfileSection {
       let usernameChanged = false;
       let bioChanged = false;
       if (username.value.trim().toLowerCase() !== initialUsername) {
-        const answer = await postJson<{ user: Member }>('/api/auth/username',
-          JSON.stringify({ username: username.value }));
+        const answer = await postJson<{ user: Member }>(
+          '/api/auth/username',
+          JSON.stringify({ username: username.value }),
+        );
         member = answer.user;
         initialUsername = answer.user.username;
         username.value = answer.user.username;
@@ -223,8 +232,10 @@ export function buildProfileSection(): ProfileSection {
       }
       if (!dirty) return { username: usernameChanged, bio: bioChanged, picture: null };
       const removed = staged === null;
-      const answer = await postJson<{ user: Member }>('/api/auth/profile-picture',
-        JSON.stringify({ profilePicture: staged }));
+      const answer = await postJson<{ user: Member }>(
+        '/api/auth/profile-picture',
+        JSON.stringify({ profilePicture: staged }),
+      );
       member = answer.user;
       adoptAccount(answer.user);
       currentUrl = answer.user.profilePictureUrl;
@@ -334,44 +345,50 @@ export function buildAccountSecuritySection(): HTMLDivElement {
     setState('Changing your password signs out every other device.');
   });
 
-  change.onclick = () => void (async () => {
-    if (next.value !== repeat.value) {
-      setState('The two new passwords are different.', 'warn');
-      return;
-    }
-    if (next.value.length < MIN_PASSWORD_LENGTH) {
-      setState(`Use at least ${MIN_PASSWORD_LENGTH} characters for the new password.`, 'warn');
-      return;
-    }
-    change.disabled = true;
-    setState('Changing password…');
-    try {
-      const answer = await postJson<{ user: Member }>('/api/auth/password', JSON.stringify({
-        current: current.value, next: next.value,
-      }));
-      adoptAccount(answer.user);
-      current.value = '';
-      next.value = '';
-      repeat.value = '';
-      setState('Password changed. Every other device was signed out.', 'set');
-      toast('Password changed — every other device was signed out.', 'ok', 5000);
-    } catch (error) {
-      setState(error instanceof Error ? error.message : String(error), 'warn');
-    } finally {
-      change.disabled = !available;
-    }
-  })();
+  change.onclick = () =>
+    void (async () => {
+      if (next.value !== repeat.value) {
+        setState('The two new passwords are different.', 'warn');
+        return;
+      }
+      if (next.value.length < MIN_PASSWORD_LENGTH) {
+        setState(`Use at least ${MIN_PASSWORD_LENGTH} characters for the new password.`, 'warn');
+        return;
+      }
+      change.disabled = true;
+      setState('Changing password…');
+      try {
+        const answer = await postJson<{ user: Member }>(
+          '/api/auth/password',
+          JSON.stringify({
+            current: current.value,
+            next: next.value,
+          }),
+        );
+        adoptAccount(answer.user);
+        current.value = '';
+        next.value = '';
+        repeat.value = '';
+        setState('Password changed. Every other device was signed out.', 'set');
+        toast('Password changed — every other device was signed out.', 'ok', 5000);
+      } catch (error) {
+        setState(error instanceof Error ? error.message : String(error), 'warn');
+      } finally {
+        change.disabled = !available;
+      }
+    })();
 
-  everywhere.onclick = () => void (async () => {
-    everywhere.disabled = true;
-    setState('Signing out every device…');
-    try {
-      await postJson('/api/auth/logout-everywhere');
-      location.reload();
-    } catch (error) {
-      everywhere.disabled = !available;
-      setState(error instanceof Error ? error.message : String(error), 'warn');
-    }
-  })();
+  everywhere.onclick = () =>
+    void (async () => {
+      everywhere.disabled = true;
+      setState('Signing out every device…');
+      try {
+        await postJson('/api/auth/logout-everywhere');
+        location.reload();
+      } catch (error) {
+        everywhere.disabled = !available;
+        setState(error instanceof Error ? error.message : String(error), 'warn');
+      }
+    })();
   return sec;
 }

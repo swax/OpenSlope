@@ -41,18 +41,24 @@ type Change =
   | { kind: 'registers'; step: RegisterStep; summary: string }
   | { kind: 'document'; before: string; after: string; summary: string };
 
-const count = (value: unknown): number => Array.isArray(value) ? value.length : value && typeof value === 'object' ? Object.keys(value).length : 0;
+const count = (value: unknown): number =>
+  Array.isArray(value) ? value.length : value && typeof value === 'object' ? Object.keys(value).length : 0;
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 const signed = (n: number, noun: string) => `${n > 0 ? '+' : ''}${n} ${noun}${Math.abs(n) === 1 ? '' : 's'}`;
 
 /** One compact, truthful label for a topology change, from the two documents it sits between. */
 function describeDocuments(beforeJson: string, afterJson: string): string {
-  const before = JSON.parse(beforeJson) as Record<string, unknown>, after = JSON.parse(afterJson) as Record<string, unknown>;
+  const before = JSON.parse(beforeJson) as Record<string, unknown>,
+    after = JSON.parse(afterJson) as Record<string, unknown>;
   const dv = count(after.vertices) / 3 - count(before.vertices) / 3;
   const dq = count(after.quads) - count(before.quads);
   const df = count(after.freeEdges) - count(before.freeEdges);
   if (dv || dq || df || !same(before.quads, after.quads) || !same(before.tJunctions, after.tJunctions)) {
-    const parts = [dv ? signed(dv, 'vertex') : '', dq ? signed(dq, 'patch') : '', df ? signed(df, 'free edge') : ''].filter(Boolean);
+    const parts = [
+      dv ? signed(dv, 'vertex') : '',
+      dq ? signed(dq, 'patch') : '',
+      df ? signed(df, 'free edge') : '',
+    ].filter(Boolean);
     return `Mesh topology${parts.length ? ` · ${parts.join(' · ')}` : ''}`;
   }
   return 'Edit mountain';
@@ -224,8 +230,14 @@ export function createHistory(deps: {
   function entries(): HistoryEntry[] {
     commit();
     const current = undoStack.length;
-    const summaries = ['Initial state',
-      ...undoStack.map(change => change.summary), ...redoStack.slice().reverse().map(change => change.summary)];
+    const summaries = [
+      'Initial state',
+      ...undoStack.map(change => change.summary),
+      ...redoStack
+        .slice()
+        .reverse()
+        .map(change => change.summary),
+    ];
     return summaries.map((summary, index) => ({
       index,
       summary,
@@ -245,13 +257,30 @@ export function createHistory(deps: {
   }
 
   return {
-    scheduleCommit, commit, reset, followTopology, undo, redo, entries, jumpTo,
+    scheduleCommit,
+    commit,
+    reset,
+    followTopology,
+    undo,
+    redo,
+    entries,
+    jumpTo,
     canUndo: () => undoStack.length > 0,
     canRedo: () => redoStack.length > 0,
-    undoSummary: () => undoStack.length ? undoStack[undoStack.length - 1].summary : null,
-    redoSummary: () => redoStack.length ? redoStack[redoStack.length - 1].summary : null,
-    recentUndo: (limit = 6) => undoStack.slice().reverse().slice(0, limit).map(change => change.summary),
-    recentRedo: (limit = 6) => redoStack.slice().reverse().slice(0, limit).map(change => change.summary),
+    undoSummary: () => (undoStack.length ? undoStack[undoStack.length - 1].summary : null),
+    redoSummary: () => (redoStack.length ? redoStack[redoStack.length - 1].summary : null),
+    recentUndo: (limit = 6) =>
+      undoStack
+        .slice()
+        .reverse()
+        .slice(0, limit)
+        .map(change => change.summary),
+    recentRedo: (limit = 6) =>
+      redoStack
+        .slice()
+        .reverse()
+        .slice(0, limit)
+        .map(change => change.summary),
   };
 }
 

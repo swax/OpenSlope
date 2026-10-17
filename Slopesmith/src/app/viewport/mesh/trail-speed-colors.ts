@@ -4,7 +4,10 @@ import { TRAIL_SPEED_AIR_COLOR, TRAIL_SPEED_STOPS } from '../constants';
 
 /** The ramp's stops and the air colour in the renderer's working (linear) space, which is how a vertex-colour
  *  attribute is read — so a swatch and the shade it keys match. */
-const stops = TRAIL_SPEED_STOPS.map(([at, hex]) => ({ speed: at * TRAIL_SPEED_SCALE_MAX, color: new THREE.Color(hex) }));
+const stops = TRAIL_SPEED_STOPS.map(([at, hex]) => ({
+  speed: at * TRAIL_SPEED_SCALE_MAX,
+  color: new THREE.Color(hex),
+}));
 const air = new THREE.Color(TRAIL_SPEED_AIR_COLOR);
 const mixed = new THREE.Color();
 
@@ -15,7 +18,8 @@ export function trailSpeedColor(speed: number, airborne: boolean): THREE.Color {
   const v = Number.isFinite(speed) ? speed : 0;
   const upper = stops.findIndex(stop => stop.speed >= v);
   if (upper <= 0) return upper === 0 ? stops[0].color : stops[stops.length - 1].color;
-  const lo = stops[upper - 1], hi = stops[upper];
+  const lo = stops[upper - 1],
+    hi = stops[upper];
   return mixed.copy(lo.color).lerp(hi.color, (v - lo.speed) / (hi.speed - lo.speed));
 }
 

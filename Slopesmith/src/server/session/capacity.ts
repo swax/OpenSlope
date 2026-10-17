@@ -27,10 +27,11 @@ function connectedAccounts(): ConnectedAccount[] {
 /** Account authority is server-wide, so all of its live sessions normally agree. Choosing the strongest is
  * fail-safe during the instant a role-change close is propagating: stale lower authority cannot evict newer
  * higher authority belonging to the same account. */
-const accountRole = (account: ConnectedAccount): Role => account.sessions.reduce<Role>(
-  (strongest, session) => roleRank(session.member.role) > roleRank(strongest) ? session.member.role : strongest,
-  'viewer',
-);
+const accountRole = (account: ConnectedAccount): Role =>
+  account.sessions.reduce<Role>(
+    (strongest, session) => (roleRank(session.member.role) > roleRank(strongest) ? session.member.role : strongest),
+    'viewer',
+  );
 
 /** Prefer the weakest eligible role, then its oldest connected account. Editors therefore bump viewers;
  * moderators bump viewers before editors; admins bump viewers, then editors, then moderators. */

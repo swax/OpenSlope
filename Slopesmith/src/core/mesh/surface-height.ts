@@ -23,8 +23,10 @@ export function surfaceSamplesAt(doc: QuadMeshDoc, points: readonly SampleColumn
   const test = (a: V3, b: V3, c: V3, quad: number) => {
     const d = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
     if (Math.abs(d) < 1e-12) return;
-    const minX = Math.min(a[0], b[0], c[0]), maxX = Math.max(a[0], b[0], c[0]);
-    const minZ = Math.min(a[2], b[2], c[2]), maxZ = Math.max(a[2], b[2], c[2]);
+    const minX = Math.min(a[0], b[0], c[0]),
+      maxX = Math.max(a[0], b[0], c[0]);
+    const minZ = Math.min(a[2], b[2], c[2]),
+      maxZ = Math.max(a[2], b[2], c[2]);
     for (let i = 0; i < points.length; i++) {
       const [x, z] = points[i];
       // A generous pre-filter only: the barycentric test below is the real (unchanged) inclusion rule.
@@ -45,20 +47,29 @@ export function surfaceSamplesAt(doc: QuadMeshDoc, points: readonly SampleColumn
     const cp = quadControlPoints(mesh, handles, q, doc.quadTwist?.[q]);
     // A Bézier patch lies inside the hull of its control points, so a patch whose control box covers none of
     // the points cannot answer any of them — skip its evaluation, which is nearly all of the cost.
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    let minX = Infinity,
+      maxX = -Infinity,
+      minZ = Infinity,
+      maxZ = -Infinity;
     for (const p of cp) {
-      if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
-      if (p[2] < minZ) minZ = p[2]; if (p[2] > maxZ) maxZ = p[2];
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[2] < minZ) minZ = p[2];
+      if (p[2] > maxZ) maxZ = p[2];
     }
-    if (!points.some(([x, z]) => x >= minX - 1e-3 && x <= maxX + 1e-3 && z >= minZ - 1e-3 && z <= maxZ + 1e-3)) continue;
-    for (let u = 0; u <= RES; u++) for (let v = 0; v <= RES; v++) grid[u * (RES + 1) + v] = patchPoint(cp, u / RES, v / RES);
-    for (let u = 0; u < RES; u++) for (let v = 0; v < RES; v++) {
-      const a = grid[u * (RES + 1) + v];
-      const b = grid[u * (RES + 1) + v + 1];
-      const c = grid[(u + 1) * (RES + 1) + v];
-      const d = grid[(u + 1) * (RES + 1) + v + 1];
-      test(a, d, c, q); test(a, b, d, q);
-    }
+    if (!points.some(([x, z]) => x >= minX - 1e-3 && x <= maxX + 1e-3 && z >= minZ - 1e-3 && z <= maxZ + 1e-3))
+      continue;
+    for (let u = 0; u <= RES; u++)
+      for (let v = 0; v <= RES; v++) grid[u * (RES + 1) + v] = patchPoint(cp, u / RES, v / RES);
+    for (let u = 0; u < RES; u++)
+      for (let v = 0; v < RES; v++) {
+        const a = grid[u * (RES + 1) + v];
+        const b = grid[u * (RES + 1) + v + 1];
+        const c = grid[(u + 1) * (RES + 1) + v];
+        const d = grid[(u + 1) * (RES + 1) + v + 1];
+        test(a, d, c, q);
+        test(a, b, d, q);
+      }
   }
   return best;
 }

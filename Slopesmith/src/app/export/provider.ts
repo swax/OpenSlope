@@ -11,7 +11,13 @@ import { decodeProps, type PropsPayload } from '../../core/reference/props';
 import type { SkyRing } from '../../core/sky/ring';
 import { assetBytes } from '../net/asset-bytes';
 import {
-  customSkyUrl, effectSoundUrl, environmentSoundUrl, customSoundUrl, particleTextureUrl, skyPageUrl, textureUrl,
+  customSkyUrl,
+  effectSoundUrl,
+  environmentSoundUrl,
+  customSoundUrl,
+  particleTextureUrl,
+  skyPageUrl,
+  textureUrl,
 } from '../net/asset-paths';
 import { fetchJson } from '../net/fetch-json';
 import { decodePng, encodePng } from './png';
@@ -66,7 +72,8 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
         }
         if (!source) return null;
         const body = await fetchJson<{ soundIndex?: CollisionSoundIndex }>(
-          `/api/sound-banks?level=${encodeURIComponent(source)}`);
+          `/api/sound-banks?level=${encodeURIComponent(source)}`,
+        );
         return body.soundIndex ?? null;
       })().catch(() => null);
       soundIndexes.set(key, pending);
@@ -76,10 +83,12 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
 
   return {
     async groupDefs(levels) {
-      const payloads = await Promise.all(levels.map(level =>
-        fetchJson<GroupsPayload>(`/api/groups?level=${encodeURIComponent(level)}`)));
+      const payloads = await Promise.all(
+        levels.map(level => fetchJson<GroupsPayload>(`/api/groups?level=${encodeURIComponent(level)}`)),
+      );
       const index = new Map<string, GroupDef>();
-      for (const payload of payloads) for (const group of payload.groups) index.set(`${group.level}:${group.id}`, group);
+      for (const payload of payloads)
+        for (const group of payload.groups) index.set(`${group.level}:${group.id}`, group);
       return index;
     },
 
@@ -95,11 +104,12 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
         if (!payload) continue;
         for (const model of decodeProps(payload).models)
           geometry.set(`${safeDataName(levels[index])}:${model.id}`, {
-            subs: model.subs, rotation: model.rotation, animation: model.animation,
+            subs: model.subs,
+            rotation: model.rotation,
+            animation: model.animation,
           });
       }
-      const lookup: GeometryLookup = (level, model) =>
-        geometry.get(`${safeDataName(level)}:${model}`) ?? null;
+      const lookup: GeometryLookup = (level, model) => geometry.get(`${safeDataName(level)}:${model}`) ?? null;
       return lookup;
     },
 
@@ -151,14 +161,20 @@ const b64ToBytes = (b64: string): Uint8Array => {
 };
 
 async function browserSkyboxFiles(sky: SkyboxDoc): Promise<{ files: ExportFile[]; log: string[] }> {
-  const preferred = sky.source.kind === 'level' ? sky.source.level : sky.ring ?? '';
+  const preferred = sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? '');
   const ring = await fetchJson<SkyRingPayload>(`/api/skybox/ring?level=${encodeURIComponent(preferred)}`);
   const ringFiles: ExportFile[] = ring.files.map(file => ({ path: file.path, bytes: b64ToBytes(file.bytes) }));
-  const pages: SkyboxPageSource = sky.source.kind === 'level'
-    // A level sky lifts every page named by the measured ring, byte for byte, never through a canvas.
-    ? { kind: 'level', pages: await Promise.all(Array.from({ length: ring.ring.tiles.length },
-      (_unused, index) => assetBytes(skyPageUrl(ring.level, index, ring.pageVersions?.[index])))) }
-    : { kind: 'custom',
-      panorama: await decodePng(await assetBytes(customSkyUrl(sky.source.name, 'panorama'))) };
+  const pages: SkyboxPageSource =
+    sky.source.kind === 'level'
+      ? // A level sky lifts every page named by the measured ring, byte for byte, never through a canvas.
+        {
+          kind: 'level',
+          pages: await Promise.all(
+            Array.from({ length: ring.ring.tiles.length }, (_unused, index) =>
+              assetBytes(skyPageUrl(ring.level, index, ring.pageVersions?.[index])),
+            ),
+          ),
+        }
+      : { kind: 'custom', panorama: await decodePng(await assetBytes(customSkyUrl(sky.source.name, 'panorama'))) };
   return composeSkybox(sky, { ringLevel: ring.level, ringFiles, ring: ring.ring, pages }, encodePng);
 }

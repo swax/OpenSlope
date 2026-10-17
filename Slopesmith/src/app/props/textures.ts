@@ -20,13 +20,22 @@ import type { PropInstance } from '../../core/reference/props';
 import type { PropAlphaMode } from '../../core/reference/props';
 import { textureUrl } from '../net/asset-paths';
 import {
-  asTextureArrayImage, buildTextureArrayBank, canPackTextureArrays, materialTextureArray,
-  planTextureArrayBank, useTextureArray,
-  type TextureArrayBank, type TextureArraySlot,
+  asTextureArrayImage,
+  buildTextureArrayBank,
+  canPackTextureArrays,
+  materialTextureArray,
+  planTextureArrayBank,
+  useTextureArray,
+  type TextureArrayBank,
+  type TextureArraySlot,
 } from '../viewport/mesh/texture-array';
 import {
-  analyzeTextureImage, applyTextureAlphaMode, invalidateTextureAlphaLevel, resolvePropAlphaMode,
-  type TextureAlphaAnalysis, type TextureAlphaPolicy,
+  analyzeTextureImage,
+  applyTextureAlphaMode,
+  invalidateTextureAlphaLevel,
+  resolvePropAlphaMode,
+  type TextureAlphaAnalysis,
+  type TextureAlphaPolicy,
 } from './texture-alpha';
 
 /** Preview buckets for a prop's ground light (see `PropTextures.groundLit`). 12 keeps the step under what a
@@ -49,13 +58,22 @@ function emptyNativeLightTexture(): THREE.DataTexture {
 }
 
 /** A square nearest-sampled lookup texture holding `texels` entries in row order. */
-function lookupTexture<T extends Float32Array | Uint8Array>(texels: number, channels: 1 | 4,
-  make: (length: number) => T, fill?: number): { texture: THREE.DataTexture; data: T } {
+function lookupTexture<T extends Float32Array | Uint8Array>(
+  texels: number,
+  channels: 1 | 4,
+  make: (length: number) => T,
+  fill?: number,
+): { texture: THREE.DataTexture; data: T } {
   const size = Math.max(1, Math.ceil(Math.sqrt(texels)));
   const data = make(size * size * channels);
   if (fill !== undefined) data.fill(fill);
-  const texture = new THREE.DataTexture(data, size, size, channels === 1 ? THREE.RedFormat : THREE.RGBAFormat,
-    data instanceof Float32Array ? THREE.FloatType : THREE.UnsignedByteType);
+  const texture = new THREE.DataTexture(
+    data,
+    size,
+    size,
+    channels === 1 ? THREE.RedFormat : THREE.RGBAFormat,
+    data instanceof Float32Array ? THREE.FloatType : THREE.UnsignedByteType,
+  );
   texture.minFilter = texture.magFilter = THREE.NearestFilter;
   texture.needsUpdate = true;
   return { texture, data };
@@ -70,8 +88,10 @@ function lookupTexture<T extends Float32Array | Uint8Array>(texels: number, chan
  * body would silently no-op and the preview would go on quietly lying about inside-out meshes.
  */
 export function ps2NormalShader(fragmentShader: string): string {
-  const patched = THREE.ShaderChunk.normal_fragment_begin
-    .replace('normal *= faceDirection;', 'normal *= mix( faceDirection, 1.0, uPs2Normals );');
+  const patched = THREE.ShaderChunk.normal_fragment_begin.replace(
+    'normal *= faceDirection;',
+    'normal *= mix( faceDirection, 1.0, uPs2Normals );',
+  );
   return fragmentShader
     .replace('void main() {', 'uniform float uPs2Normals;\nvoid main() {')
     .replace('#include <normal_fragment_begin>', patched);
@@ -80,8 +100,10 @@ export function ps2NormalShader(fragmentShader: string): string {
 /** Does the rewrite still bite? Both anchors are three.js source strings, so a three upgrade that renames
  *  either would otherwise revert prop shading to the flip with nothing to notice it. */
 export function ps2NormalShaderApplies(): boolean {
-  return THREE.ShaderChunk.normal_fragment_begin.includes('normal *= faceDirection;')
-    && ps2NormalShader('#include <normal_fragment_begin>\nvoid main() {}').includes('uPs2Normals');
+  return (
+    THREE.ShaderChunk.normal_fragment_begin.includes('normal *= faceDirection;') &&
+    ps2NormalShader('#include <normal_fragment_begin>\nvoid main() {}').includes('uPs2Normals')
+  );
 }
 
 /**
@@ -103,10 +125,14 @@ export function ps2NormalShaderApplies(): boolean {
  */
 export function propKeyScaleShader(fragmentShader: string): string {
   const patched = THREE.ShaderChunk.lights_fragment_begin
-    .replace('getDirectionalLightInfo( directionalLight, directLight );',
-      'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= mix( 1.0, uKeyScale, uPs2Normals );')
-    .replace('vec3 irradiance = getAmbientLightIrradiance( ambientLightColor );',
-      'vec3 irradiance = getAmbientLightIrradiance( ambientLightColor );\n\tirradiance *= mix( 1.0, uFillScale, uPs2Normals );');
+    .replace(
+      'getDirectionalLightInfo( directionalLight, directLight );',
+      'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= mix( 1.0, uKeyScale, uPs2Normals );',
+    )
+    .replace(
+      'vec3 irradiance = getAmbientLightIrradiance( ambientLightColor );',
+      'vec3 irradiance = getAmbientLightIrradiance( ambientLightColor );\n\tirradiance *= mix( 1.0, uFillScale, uPs2Normals );',
+    );
   return fragmentShader
     .replace('void main() {', 'uniform float uKeyScale;\nuniform float uFillScale;\nvoid main() {')
     .replace('#include <lights_fragment_begin>', patched);
@@ -118,14 +144,18 @@ export function propKeyScaleShader(fragmentShader: string): string {
 export function ps2ObjectNormalVertexShader(vertexShader: string): string {
   return vertexShader
     .replace('void main() {', 'attribute vec3 ps2StoredNormal;\nvarying vec3 vPs2ObjectNormal;\nvoid main() {')
-    .replace('#include <beginnormal_vertex>',
-      '#include <beginnormal_vertex>\nvPs2ObjectNormal = normalize( ps2StoredNormal );');
+    .replace(
+      '#include <beginnormal_vertex>',
+      '#include <beginnormal_vertex>\nvPs2ObjectNormal = normalize( ps2StoredNormal );',
+    );
 }
 
 export function ps2ObjectNormalVertexShaderApplies(): boolean {
   const patched = ps2ObjectNormalVertexShader('#include <beginnormal_vertex>\nvoid main() {}');
-  return patched.includes('attribute vec3 ps2StoredNormal;')
-    && patched.includes('vPs2ObjectNormal = normalize( ps2StoredNormal );');
+  return (
+    patched.includes('attribute vec3 ps2StoredNormal;') &&
+    patched.includes('vPs2ObjectNormal = normalize( ps2StoredNormal );')
+  );
 }
 
 /**
@@ -174,8 +204,10 @@ export function ps2VertexLightVertexShaderApplies(): boolean {
 /** As above: a three upgrade that renames the anchor would silently flatten every prop back to one uniform
  *  key, which looks plausible and is exactly the bug this preview exists to rule out. */
 export function propKeyScaleShaderApplies(): boolean {
-  return THREE.ShaderChunk.lights_fragment_begin.includes('getDirectionalLightInfo( directionalLight, directLight );')
-    && propKeyScaleShader('#include <lights_fragment_begin>\nvoid main() {}').includes('uKeyScale');
+  return (
+    THREE.ShaderChunk.lights_fragment_begin.includes('getDirectionalLightInfo( directionalLight, directLight );') &&
+    propKeyScaleShader('#include <lights_fragment_begin>\nvoid main() {}').includes('uKeyScale')
+  );
 }
 
 /**
@@ -189,7 +221,8 @@ export function propKeyScaleShaderApplies(): boolean {
  * material's self-lit variant has zero diffuse and therefore deliberately stays on its emissive path.
  */
 export function ps2ColorModulationShader(fragmentShader: string): string {
-  const anchor = 'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;';
+  const anchor =
+    'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;';
   const replacement = `${anchor}
 
 	if ( uPs2Normals > 0.5 && max( max( diffuseColor.r, diffuseColor.g ), diffuseColor.b ) > 0.000001 ) {
@@ -217,10 +250,11 @@ export function ps2ColorModulationShader(fragmentShader: string): string {
 	}`;
   // SSX 3's vertex alpha (the colour's top bit) is coverage, not light [Trailmap: 513-vertex-alpha]: it fades a
   // snow stream's edges whether or not the preview is lit, and it has to land before the alpha test reads it.
-  const color = THREE.ShaderChunk.color_fragment
-    .replace('diffuseColor *= vColor;', 'diffuseColor *= mix( vColor, vec4( 1.0 ), uNativeRecords );')
-    .replace('diffuseColor.rgb *= vColor;', 'diffuseColor.rgb *= mix( vColor, vec3( 1.0 ), uNativeRecords );')
-    + '\ndiffuseColor.a *= mix( 1.0, vPs2VertexLight.a, uVertexLight );';
+  const color =
+    THREE.ShaderChunk.color_fragment
+      .replace('diffuseColor *= vColor;', 'diffuseColor *= mix( vColor, vec4( 1.0 ), uNativeRecords );')
+      .replace('diffuseColor.rgb *= vColor;', 'diffuseColor.rgb *= mix( vColor, vec3( 1.0 ), uNativeRecords );') +
+    '\ndiffuseColor.a *= mix( 1.0, vPs2VertexLight.a, uVertexLight );';
   const declarations = `uniform float uNativeRecords;
 uniform float uVertexLight;
 uniform sampler2D uNativeLightTable;
@@ -250,18 +284,23 @@ vec4 ps2NativeLightTexel( const in float instanceIndex, const in int field ) {
 /** Guard the exact MeshLambert anchor: a Three upgrade must fail a check rather than silently restoring
  * linear-light modulation and making the preview brighter than the ISO again. */
 export function ps2ColorModulationShaderApplies(): boolean {
-  const anchor = 'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;';
+  const anchor =
+    'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;';
   const patched = ps2ColorModulationShader(`#include <color_fragment>\n${anchor}\nvoid main() {}`);
   // Three r185 unified vertex/instance colours as vec4; older releases emitted a vec3 path for USE_COLOR.
   // Pin whichever shape the installed ShaderChunk publishes so a future rename still fails this guard.
   const nativeColorBypass = THREE.ShaderChunk.color_fragment.includes('diffuseColor *= vColor;')
     ? 'mix( vColor, vec4( 1.0 ), uNativeRecords )'
     : 'mix( vColor, vec3( 1.0 ), uNativeRecords )';
-  return patched.includes('sRGBTransferOETF') && patched.includes('sRGBTransferEOTF')
-    && patched.includes('clamp( ps2Light') && patched.includes('ps2NativeLightTexel')
-    && patched.includes(nativeColorBypass)
-    && patched.includes('#if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )')
-    && patched.includes('return 0.0;');
+  return (
+    patched.includes('sRGBTransferOETF') &&
+    patched.includes('sRGBTransferEOTF') &&
+    patched.includes('clamp( ps2Light') &&
+    patched.includes('ps2NativeLightTexel') &&
+    patched.includes(nativeColorBypass) &&
+    patched.includes('#if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )') &&
+    patched.includes('return 0.0;')
+  );
 }
 
 /** Per-material appearance flags resolved from the source level's data. */
@@ -289,8 +328,10 @@ export interface PropMaterialOpts {
  * It is the line between what can and cannot join a packed bank: a scroller moves `texture.offset` and a
  * flipbook swaps `texture.source`, and neither has any meaning for one slice of a shared array.
  */
-export function isAnimatedPropMaterial(effect: MaterialWorldEffects | null | undefined,
-  frames: readonly string[]): boolean {
+export function isAnimatedPropMaterial(
+  effect: MaterialWorldEffects | null | undefined,
+  frames: readonly string[],
+): boolean {
   return !!effect?.uvScroll || !!(effect?.textureFlip && frames.length > 1);
 }
 
@@ -300,11 +341,19 @@ export function isAnimatedPropMaterial(effect: MaterialWorldEffects | null | und
 const SHEET_MIN_DOT = 0.5;
 export function isSingleFacingSheet(normals: ArrayLike<number> | undefined | null): boolean {
   if (!normals || normals.length < 3) return false;
-  let mx = 0, my = 0, mz = 0;
-  for (let i = 0; i + 2 < normals.length; i += 3) { mx += normals[i]; my += normals[i + 1]; mz += normals[i + 2]; }
+  let mx = 0,
+    my = 0,
+    mz = 0;
+  for (let i = 0; i + 2 < normals.length; i += 3) {
+    mx += normals[i];
+    my += normals[i + 1];
+    mz += normals[i + 2];
+  }
   const len = Math.hypot(mx, my, mz);
   if (len < 1e-6) return false;
-  mx /= len; my /= len; mz /= len;
+  mx /= len;
+  my /= len;
+  mz /= len;
   for (let i = 0; i + 2 < normals.length; i += 3)
     if (normals[i] * mx + normals[i + 1] * my + normals[i + 2] * mz < SHEET_MIN_DOT) return false;
   return true;
@@ -437,7 +486,9 @@ export class PropTextureCache {
   private readonly groundLitMats = new Map<string, THREE.Material>();
   private readonly nativeMats = new Map<string, THREE.Material>();
   private readonly fullBrightMats = new Map<string, THREE.Material>();
-  readonly neutral = this.lit(new THREE.MeshLambertMaterial({ color: 0xc2bbaa, emissive: 0x0d0f12, side: THREE.DoubleSide }));
+  readonly neutral = this.lit(
+    new THREE.MeshLambertMaterial({ color: 0xc2bbaa, emissive: 0x0d0f12, side: THREE.DoubleSide }),
+  );
 
   private alphaPolicy(opts: PropMaterialOpts): TextureAlphaPolicy {
     return { mode: opts.alphaMode, alphaPass: opts.blend, priority: opts.priority, pixelAlpha: opts.pixelAlpha };
@@ -446,7 +497,9 @@ export class PropTextureCache {
   private alphaMode(spec: PropMaterialAlphaSpec) {
     const files = [...new Set([spec.file, ...spec.frames])];
     return resolvePropAlphaMode(
-      files.map(file => this.alphaAnalyses.get(makeTexRef(spec.level, file))), this.alphaPolicy(spec.opts));
+      files.map(file => this.alphaAnalyses.get(makeTexRef(spec.level, file))),
+      this.alphaPolicy(spec.opts),
+    );
   }
 
   private applyTrackedAlpha(material: THREE.Material): void {
@@ -457,11 +510,11 @@ export class PropTextureCache {
   private trackAlpha(material: THREE.Material, spec: PropMaterialAlphaSpec): void {
     const tracked: PropMaterialAlphaSpec = { ...spec, frames: [...spec.frames], opts: { ...spec.opts } };
     this.alphaSpecs.set(material, tracked);
-    const dependencies = [...new Set([tracked.file, ...tracked.frames])]
-      .map(file => makeTexRef(tracked.level, file));
+    const dependencies = [...new Set([tracked.file, ...tracked.frames])].map(file => makeTexRef(tracked.level, file));
     for (const dependency of dependencies) {
       const consumers = this.alphaConsumers.get(dependency);
-      if (consumers) consumers.add(material); else this.alphaConsumers.set(dependency, new Set([material]));
+      if (consumers) consumers.add(material);
+      else this.alphaConsumers.set(dependency, new Set([material]));
     }
     material.addEventListener('dispose', () => {
       for (const dependency of dependencies) {
@@ -478,7 +531,9 @@ export class PropTextureCache {
     let analysis: TextureAlphaAnalysis = { kind: 'unknown', glow: false };
     try {
       if (image) analysis = analyzeTextureImage(image as CanvasImageSource);
-    } catch { /* retain the policy fallback */ }
+    } catch {
+      /* retain the policy fallback */
+    }
     this.alphaAnalyses.set(key, analysis);
     for (const material of this.alphaConsumers.get(key) ?? []) this.applyTrackedAlpha(material);
   }
@@ -492,12 +547,12 @@ export class PropTextureCache {
     const nativeRecords = this.nativeRecordUniform(m);
     const vertexLight = this.vertexLightUniform(m);
     m.onBeforeCompile = shader => {
-      shader.uniforms.uPs2Normals = this.ps2Normals;   // shared: the flip is a global mode
-      shader.uniforms.uKeyScale = keyScale;            // per material: the ground under THIS prop
-      shader.uniforms.uFillScale = fillScale;          // per material: native ambient / authored ambient
+      shader.uniforms.uPs2Normals = this.ps2Normals; // shared: the flip is a global mode
+      shader.uniforms.uKeyScale = keyScale; // per material: the ground under THIS prop
+      shader.uniforms.uFillScale = fillScale; // per material: native ambient / authored ambient
       shader.uniforms.uNativeRecords = nativeRecords;
       shader.uniforms.uNativeLightTable = this.nativeLightTable;
-      shader.uniforms.uVertexLight = vertexLight;      // per material: lit by SSX 3's baked vertex colours
+      shader.uniforms.uVertexLight = vertexLight; // per material: lit by SSX 3's baked vertex colours
       shader.uniforms.uVertexLightTable = this.vertexLightTable;
       shader.uniforms.uVertexLightBases = this.vertexLightBases;
       shader.vertexShader = ps2VertexLightVertexShader(ps2ObjectNormalVertexShader(shader.vertexShader));
@@ -510,25 +565,25 @@ export class PropTextureCache {
    *  it doesn't. Kept off `userData` so a `Material.copy` can't quietly alias two props onto one value. */
   private keyScaleUniform(m: THREE.Material): { value: number } {
     let u = this.keyScales.get(m);
-    if (!u) this.keyScales.set(m, u = { value: 1 });
+    if (!u) this.keyScales.set(m, (u = { value: 1 }));
     return u;
   }
 
   private fillScaleUniform(m: THREE.Material): { value: number } {
     let u = this.fillScales.get(m);
-    if (!u) this.fillScales.set(m, u = { value: 1 });
+    if (!u) this.fillScales.set(m, (u = { value: 1 }));
     return u;
   }
 
   private nativeRecordUniform(m: THREE.Material): { value: number } {
     let u = this.nativeRecords.get(m);
-    if (!u) this.nativeRecords.set(m, u = { value: 0 });
+    if (!u) this.nativeRecords.set(m, (u = { value: 0 }));
     return u;
   }
 
   private vertexLightUniform(m: THREE.Material): { value: number } {
     let u = this.vertexLights.get(m);
-    if (!u) this.vertexLights.set(m, u = { value: 0 });
+    if (!u) this.vertexLights.set(m, (u = { value: 0 }));
     return u;
   }
 
@@ -615,8 +670,10 @@ export class PropTextureCache {
           material,
           texture,
           uv: animated.effect.uvScroll ? createUvScrollPlayback(animated.effect.uvScroll) : null,
-          flip: animated.effect.textureFlip && animated.frameTextures.length > 1
-            ? createTextureFlipPlayback(animated.effect.textureFlip) : null,
+          flip:
+            animated.effect.textureFlip && animated.frameTextures.length > 1
+              ? createTextureFlipPlayback(animated.effect.textureFlip)
+              : null,
           ownsTextureSource: false,
           bound: new Set<THREE.Material>([material]),
         };
@@ -630,10 +687,14 @@ export class PropTextureCache {
     return material;
   }
 
-  isNative(material: THREE.Material): boolean { return this.nativeRecordUniform(material).value > 0.5; }
+  isNative(material: THREE.Material): boolean {
+    return this.nativeRecordUniform(material).value > 0.5;
+  }
 
   /** Lit by SSX 3's baked vertex colours, so its geometry must carry `ps2LightIndex`. */
-  isVertexLit(material: THREE.Material): boolean { return this.vertexLightUniform(material).value > 0.5; }
+  isVertexLit(material: THREE.Material): boolean {
+    return this.vertexLightUniform(material).value > 0.5;
+  }
 
   /**
    * The material for a prop standing on ground lit to `groundLight` (0 dark .. 1 full sun) — the preview
@@ -647,7 +708,7 @@ export class PropTextureCache {
    */
   groundLit<T extends THREE.MeshLambertMaterial>(base: T, groundLight: number): T {
     const step = Math.round(Math.min(1, Math.max(0, groundLight)) * (GROUND_LIGHT_STEPS - 1));
-    if (step === GROUND_LIGHT_STEPS - 1) return base;              // fully lit: the shared material already is
+    if (step === GROUND_LIGHT_STEPS - 1) return base; // fully lit: the shared material already is
     const k = `${base.uuid}:${step}`;
     let m = this.groundLitMats.get(k) as T | undefined;
     if (!m) {
@@ -660,7 +721,9 @@ export class PropTextureCache {
 
   /** Shade props the way the hardware will (normals as stored, no back-face flip) or the way three.js
    *  ordinarily does. Driven by the sun preview: with the authored sun on you are asking what ships. */
-  setPs2Normals(on: boolean) { this.ps2Normals.value = on ? 1 : 0; }
+  setPs2Normals(on: boolean) {
+    this.ps2Normals.value = on ? 1 : 0;
+  }
 
   /** A private copy of a cached prop material (a ghost's translucent variant, a sign's tinted one) that keeps
    *  the shading above — clone it directly and it silently reverts to three.js's back-face flip. Overlays that
@@ -709,21 +772,23 @@ export class PropTextureCache {
     let m = this.fullBrightMats.get(k) as T | undefined;
     if (!m) {
       m = this.variant(base);
-      m.emissiveMap = base.map;          // same Texture object, so UV scroll / frame phase stay in step
+      m.emissiveMap = base.map; // same Texture object, so UV scroll / frame phase stay in step
       // Untextured, the tile can't carry the colour, so the material's own does — otherwise blacking out
       // `color` below would leave a plain white blob where a clay-coloured prop should be.
       m.emissive.copy(base.map ? new THREE.Color(1, 1, 1) : base.color);
-      m.color.setRGB(0, 0, 0);           // no diffuse => the lit term drops out; emissive carries the tile
+      m.color.setRGB(0, 0, 0); // no diffuse => the lit term drops out; emissive carries the tile
       this.fullBrightMats.set(k, m);
     }
     return m;
   }
 
   private key(level: string, file: string, opts?: PropMaterialOpts) {
-    return `${makeTexRef(level, file)}`
-      + `${opts?.alphaMode ? `:alpha-${opts.alphaMode}` : ''}`
-      + `${opts?.blend ? ':alpha-pass' : ''}${opts?.priority ? ':priority' : ''}`
-      + `${opts?.pixelAlpha ? ':pixel-alpha' : ''}${opts?.sheet ? ':sheet' : ''}`;
+    return (
+      `${makeTexRef(level, file)}` +
+      `${opts?.alphaMode ? `:alpha-${opts.alphaMode}` : ''}` +
+      `${opts?.blend ? ':alpha-pass' : ''}${opts?.priority ? ':priority' : ''}` +
+      `${opts?.pixelAlpha ? ':pixel-alpha' : ''}${opts?.sheet ? ':sheet' : ''}`
+    );
   }
 
   /** A cached tile texture, kicking off its download the first time (the render loop folds it in on arrival). */
@@ -733,15 +798,27 @@ export class PropTextureCache {
     if (!t) {
       // Settle rather than resolve-on-success: the array bank packs a whole page set at once, so a 404 has to
       // release the wait exactly as an arrival does or one absent page would strand the whole bank.
-      let settle = () => { /* replaced below, before any load callback can run */ };
-      this.settled.set(k, new Promise<void>(resolve => { settle = resolve; }));
-      t = this.loader.load(textureUrl(level, file), loaded => {
-        this.recordAlpha(level, file, loaded.image);
-        settle();
-      }, undefined, () => {
-        this.recordAlpha(level, file);
-        settle();
-      });
+      let settle = () => {
+        /* replaced below, before any load callback can run */
+      };
+      this.settled.set(
+        k,
+        new Promise<void>(resolve => {
+          settle = resolve;
+        }),
+      );
+      t = this.loader.load(
+        textureUrl(level, file),
+        loaded => {
+          this.recordAlpha(level, file, loaded.image);
+          settle();
+        },
+        undefined,
+        () => {
+          this.recordAlpha(level, file);
+          settle();
+        },
+      );
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 4;
@@ -764,7 +841,9 @@ export class PropTextureCache {
     if (source.image == null) {
       texture.version = 0;
       let disposed = false;
-      texture.addEventListener('dispose', () => { disposed = true; });
+      texture.addEventListener('dispose', () => {
+        disposed = true;
+      });
       void ready.then(() => {
         if (!disposed && texture.image != null) texture.needsUpdate = true;
       });
@@ -795,28 +874,33 @@ export class PropTextureCache {
     return done;
   }
 
-  private async packPropArrayBank(level: string, files: readonly string[],
-    deadlineMs: number): Promise<boolean> {
+  private async packPropArrayBank(level: string, files: readonly string[], deadlineMs: number): Promise<boolean> {
     const refs = [...new Set(files.filter(Boolean))];
     if (!refs.length) return false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<void>(resolve => { timer = setTimeout(resolve, deadlineMs); });
+    const deadline = new Promise<void>(resolve => {
+      timer = setTimeout(resolve, deadlineMs);
+    });
     await Promise.race([Promise.all(refs.map(file => this.textureSettled(level, file))), deadline]);
     clearTimeout(timer);
     if (this.arrayBankBuild && this.arrayBankBuild.level !== level) return false; // a newer level took over
     const image = (file: string) => asTextureArrayImage(this.textures.get(this.key(level, file))?.image);
-    const plan = planTextureArrayBank(refs.map(file => {
-      const source = image(file);
-      return { key: file, width: source?.width ?? 0, height: source?.height ?? 0 };
-    }));
+    const plan = planTextureArrayBank(
+      refs.map(file => {
+        const source = image(file);
+        return { key: file, width: source?.width ?? 0, height: source?.height ?? 0 };
+      }),
+    );
     // Prop UVs are raw OBJ vt, which the loader's default flipY=true matches; the bank has to flip while it
     // packs because WebGL2 refuses UNPACK_FLIP_Y_WEBGL on a texImage3D taking an array buffer.
     const built = buildTextureArrayBank(plan, image, { flipY: true, dilateAlpha: true, anisotropy: 4 });
     if (!built) return false;
     this.arrayBank = built;
-    console.info(`[prop-array] ${level}: ${built.plan.slots.size}/${refs.length} pages in `
-      + `${built.textures.length} array(s) at ${built.plan.width}x${built.plan.height}`
-      + (built.plan.excluded.length ? `, ${built.plan.excluded.length} kept separate` : ''));
+    console.info(
+      `[prop-array] ${level}: ${built.plan.slots.size}/${refs.length} pages in ` +
+        `${built.textures.length} array(s) at ${built.plan.width}x${built.plan.height}` +
+        (built.plan.excluded.length ? `, ${built.plan.excluded.length} kept separate` : ''),
+    );
     return true;
   }
 
@@ -834,8 +918,12 @@ export class PropTextureCache {
    * Built directly rather than through `variant`, because `variant` re-runs `lit`, which REPLACES
    * `onBeforeCompile` — and with it the array sampling this material exists for.
    */
-  propArrayMaterial(array: number, level: string, file: string,
-    opts: PropMaterialOpts & { native?: boolean; vertexLit?: boolean }): THREE.MeshLambertMaterial | null {
+  propArrayMaterial(
+    array: number,
+    level: string,
+    file: string,
+    opts: PropMaterialOpts & { native?: boolean; vertexLit?: boolean },
+  ): THREE.MeshLambertMaterial | null {
     const texture = this.arrayBank?.textures[array];
     if (!texture) return null;
     const mode = this.alphaMode({ level, file, frames: [], opts });
@@ -862,14 +950,21 @@ export class PropTextureCache {
 
   /** The lit material for a prop texture, optionally as an independently animated variant. Variants clone
    * only the Texture wrapper: decoded image storage stays shared while UV offset and frame phase remain local. */
-  material(level: string, file: string | null | undefined, effect?: MaterialWorldEffects | null,
-    frames: readonly string[] = [], runtimeKey?: string, opts?: PropMaterialOpts): THREE.MeshLambertMaterial {
+  material(
+    level: string,
+    file: string | null | undefined,
+    effect?: MaterialWorldEffects | null,
+    frames: readonly string[] = [],
+    runtimeKey?: string,
+    opts?: PropMaterialOpts,
+  ): THREE.MeshLambertMaterial {
     if (!file) return this.neutral;
     const flipFrames = effect?.textureFlip && frames.length > 1 ? [...frames] : [];
     if (isAnimatedPropMaterial(effect, frames)) {
       const activeEffect = effect!; // flipFrames can only be populated from effect.textureFlip
-      const k = `${this.key(level, file, opts)}:${materialWorldEffectsKey(activeEffect)}:frames:${flipFrames.map(name => makeTexRef(level, name)).join(',')}`
-        + (runtimeKey ? `:runtime:${runtimeKey}` : '');
+      const k =
+        `${this.key(level, file, opts)}:${materialWorldEffectsKey(activeEffect)}:frames:${flipFrames.map(name => makeTexRef(level, name)).join(',')}` +
+        (runtimeKey ? `:runtime:${runtimeKey}` : '');
       let animated = this.animatedMats.get(k);
       if (!animated) {
         const base = this.material(level, file, undefined, [], undefined, opts);
@@ -888,8 +983,10 @@ export class PropTextureCache {
           ready,
           effect: activeEffect,
           uv: activeEffect.uvScroll ? createUvScrollPlayback(activeEffect.uvScroll) : null,
-          flip: activeEffect.textureFlip && frameTextures.length > 1
-            ? createTextureFlipPlayback(activeEffect.textureFlip) : null,
+          flip:
+            activeEffect.textureFlip && frameTextures.length > 1
+              ? createTextureFlipPlayback(activeEffect.textureFlip)
+              : null,
           u: 0,
           v: 0,
           runtimeControlled: !!runtimeKey,
@@ -918,13 +1015,16 @@ export class PropTextureCache {
   /** Deliver one receiver-aware property control to a particular material variant. Controlled instances are
    * deliberately given private variants by ReferenceDecor, so selecting a start-light frame cannot change
    * every prop that happens to share its texture. */
-  controlMaterial(material: THREE.Material, receiver: MaterialControlReceiver, command: number,
-    value: number): boolean {
+  controlMaterial(
+    material: THREE.Material,
+    receiver: MaterialControlReceiver,
+    command: number,
+    value: number,
+  ): boolean {
     const animated = this.animatedByMaterial.get(material);
     if (!animated || this.stoppedMats.has(animated)) return false;
     const flipEffect = animated.effect.textureFlip;
-    if (receiver === 'texture-flip' && command === 2 && flipEffect && animated.flip
-      && animated.frameTextures.length) {
+    if (receiver === 'texture-flip' && command === 2 && flipEffect && animated.flip && animated.frameTextures.length) {
       // One graph run installs the flip node and selects its frame, so a one-shot's lifetime starts here and
       // the material returns to frame zero when it expires. An always-on flip builds no node and is unmoved.
       startTextureFlipPulse(animated.flip, flipEffect);
@@ -969,8 +1069,10 @@ export class PropTextureCache {
     // A one-shot flip is deliberately excluded: it rests until a graph builds its node, and the frame select
     // that paints it already reaches Preview through `controlMaterial`. Free-running it here would show a
     // ride-over button pulsing on its own, which is the one thing its Length says it does not do.
-    const flips = !!animated.effect.textureFlip && !isTextureFlipPulse(animated.effect.textureFlip)
-      && animated.frameTextures.length > 1;
+    const flips =
+      !!animated.effect.textureFlip &&
+      !isTextureFlipPulse(animated.effect.textureFlip) &&
+      animated.frameTextures.length > 1;
     if (!animated.effect.uvScroll && !flips) return false;
     if (!this.previewMats.has(animated)) {
       this.restMaterialEffect(animated);
@@ -1008,11 +1110,12 @@ export class PropTextureCache {
   /** The top-bar Effects filter controls world material motion without hiding the props themselves. */
   setWorldEffectsEnabled(on: boolean) {
     this.worldEffectsEnabled = on;
-    if (!on) for (const animated of this.animatedMats.values()) {
-      if (animated.runtimeControlled) continue; // Play owns receiver state until its explicit scene reset
-      if (this.previewMats.has(animated)) continue; // a running Preview owns its host until Stop
-      this.restMaterialEffect(animated);
-    }
+    if (!on)
+      for (const animated of this.animatedMats.values()) {
+        if (animated.runtimeControlled) continue; // Play owns receiver state until its explicit scene reset
+        if (this.previewMats.has(animated)) continue; // a running Preview owns its host until Stop
+        this.restMaterialEffect(animated);
+      }
   }
 
   /** Drop textures/materials whose logical bank belongs to the previous mountain. Reference-level entries
@@ -1024,20 +1127,35 @@ export class PropTextureCache {
       if (key.toLowerCase().startsWith(prefix)) this.alphaAnalyses.delete(key);
     const disposedTextures = new Set<THREE.Texture>();
     const disposedMaterials = new Set<THREE.Material>();
-    for (const [key, texture] of this.textures) if (key.toLowerCase().startsWith(prefix)) {
-      if (!disposedTextures.has(texture)) { texture.dispose(); disposedTextures.add(texture); }
-      this.textures.delete(key);
-    }
-    for (const [key, material] of this.mats) if (key.toLowerCase().startsWith(prefix)) {
-      if (!disposedMaterials.has(material)) { material.dispose(); disposedMaterials.add(material); }
-      this.mats.delete(key);
-    }
-    for (const [key, animated] of this.animatedMats) if (key.toLowerCase().startsWith(prefix)) {
-      if (!disposedMaterials.has(animated.material)) { animated.material.dispose(); disposedMaterials.add(animated.material); }
-      if (!disposedTextures.has(animated.texture)) { animated.texture.dispose(); disposedTextures.add(animated.texture); }
-      this.previewMats.delete(animated);
-      this.animatedMats.delete(key);
-    }
+    for (const [key, texture] of this.textures)
+      if (key.toLowerCase().startsWith(prefix)) {
+        if (!disposedTextures.has(texture)) {
+          texture.dispose();
+          disposedTextures.add(texture);
+        }
+        this.textures.delete(key);
+      }
+    for (const [key, material] of this.mats)
+      if (key.toLowerCase().startsWith(prefix)) {
+        if (!disposedMaterials.has(material)) {
+          material.dispose();
+          disposedMaterials.add(material);
+        }
+        this.mats.delete(key);
+      }
+    for (const [key, animated] of this.animatedMats)
+      if (key.toLowerCase().startsWith(prefix)) {
+        if (!disposedMaterials.has(animated.material)) {
+          animated.material.dispose();
+          disposedMaterials.add(animated.material);
+        }
+        if (!disposedTextures.has(animated.texture)) {
+          animated.texture.dispose();
+          disposedTextures.add(animated.texture);
+        }
+        this.previewMats.delete(animated);
+        this.animatedMats.delete(key);
+      }
   }
 
   /** Advance recovered UV and flipbook timing. Long inactive-tab deltas are capped to avoid a visible jump.
@@ -1058,8 +1176,12 @@ export class PropTextureCache {
         animated.texture.offset.set(animated.u, animated.v);
       }
       const flipEffect = animated.effect.textureFlip;
-      if (flipEffect && animated.flip && (running || animated.flip.life > 0)
-        && stepTextureFlipPlayback(animated.flip, flipEffect, animated.frameTextures.length, step)) {
+      if (
+        flipEffect &&
+        animated.flip &&
+        (running || animated.flip.life > 0) &&
+        stepTextureFlipPlayback(animated.flip, flipEffect, animated.frameTextures.length, step)
+      ) {
         setAnimatedMaterialFrame(animated, animated.flip.frame);
       }
     }

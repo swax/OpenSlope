@@ -1,9 +1,7 @@
 import type { AuthoredLight, PlacedProp, QuadMeshDoc, Screen, V3 } from '../doc/types';
 import { nextLightId, nextScreenId } from '../doc/ids';
 import { AUTHORED_MODEL_LEVEL, findModelByNumber } from '../doc/models';
-import {
-  attachEffectToProp, effectAttachments, nextPlacedPropId, type EffectCircumstance,
-} from '../effects/authoring';
+import { attachEffectToProp, effectAttachments, nextPlacedPropId, type EffectCircumstance } from '../effects/authoring';
 import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { rotateY } from './pose';
 import { nextAssemblyId, wholeAssembliesIn } from './assembly';
@@ -45,10 +43,17 @@ export interface PropClipboard {
 }
 
 /** Where a paste lands: the anchor goes to `pos`, and the set turns `yaw` degrees and scales by `scale` about it. */
-export interface PasteTransform { pos: V3; yaw: number; scale: number }
+export interface PasteTransform {
+  pos: V3;
+  yaw: number;
+  scale: number;
+}
 
 /** One placement of the paste ghost, posed relative to the anchor. */
-export type PasteGhostPlacement = Pick<PlacedProp, 'level' | 'model' | 'group' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale'>;
+export type PasteGhostPlacement = Pick<
+  PlacedProp,
+  'level' | 'model' | 'group' | 'pos' | 'yaw' | 'pitch' | 'roll' | 'scale'
+>;
 
 type PropDoc = Pick<QuadMeshDoc, 'name' | 'props' | 'lights' | 'screens' | 'effects' | 'models'>;
 /** The authored terrain's height under a data-space (x, z), searched down from about `nearY`; null off it. */
@@ -68,19 +73,23 @@ export function clonePlacementTables(doc: QuadMeshDoc): QuadMeshDoc {
 
 /** Snapshot the placements at `indices`, with the free lights `lightIds` selected beside them. Null when none of
  *  the placements can be copied. */
-export function copyPlacements(doc: PropDoc, indices: readonly number[], groundAt?: GroundAt,
-  lightIds: readonly string[] = []): PropClipboard | null {
+export function copyPlacements(
+  doc: PropDoc,
+  indices: readonly number[],
+  groundAt?: GroundAt,
+  lightIds: readonly string[] = [],
+): PropClipboard | null {
   const attachments = doc.effects ? effectAttachments(doc.effects) : [];
   const entries: PropClipboardEntry[] = [];
   for (const index of [...new Set(indices)].sort((a, b) => a - b)) {
     const source = doc.props?.[index];
     if (!source || isEffectTriggerProp(source)) continue;
     const { id: _id, line: _line, ...prop } = structuredClone(source);
-    const attachment = source.id
-      ? attachments.find(item => item.enabled && item.target.id === source.id) : undefined;
+    const attachment = source.id ? attachments.find(item => item.enabled && item.target.id === source.id) : undefined;
     const screens = source.id
-      ? (doc.screens ?? []).filter(screen => screen.prop === source.id)
-        .map(({ id: _screenId, prop: _prop, ...screen }) => structuredClone(screen))
+      ? (doc.screens ?? [])
+          .filter(screen => screen.prop === source.id)
+          .map(({ id: _screenId, prop: _prop, ...screen }) => structuredClone(screen))
       : [];
     entries.push({
       prop,
@@ -103,19 +112,23 @@ export function copyPlacements(doc: PropDoc, indices: readonly number[], groundA
 /** The entries that can land in `doc`: one of the author's own models only on its own mountain, and only while
  *  that model still exists — the same number elsewhere names a different model. */
 function pasteable(doc: PropDoc, clip: PropClipboard): PropClipboardEntry[] {
-  return clip.entries.filter(entry => entry.prop.level !== AUTHORED_MODEL_LEVEL
-    || (clip.mountain === doc.name && !!findModelByNumber(doc as QuadMeshDoc, entry.prop.model)));
+  return clip.entries.filter(
+    entry =>
+      entry.prop.level !== AUTHORED_MODEL_LEVEL ||
+      (clip.mountain === doc.name && !!findModelByNumber(doc as QuadMeshDoc, entry.prop.model)),
+  );
 }
 
 /** A placement's pose after the set is carried by `at`. The turn is composed AHEAD of the placement's own
  *  rotation — yaw is the outermost of its YXZ angles — so adding it to the yaw keeps any tilt intact. */
 function carried(prop: Omit<PlacedProp, 'id' | 'line'>, anchor: V3, at: PasteTransform) {
-  const offset = rotateY([
-    (prop.pos[0] - anchor[0]) * at.scale, (prop.pos[1] - anchor[1]) * at.scale, (prop.pos[2] - anchor[2]) * at.scale,
-  ], at.yaw);
+  const offset = rotateY(
+    [(prop.pos[0] - anchor[0]) * at.scale, (prop.pos[1] - anchor[1]) * at.scale, (prop.pos[2] - anchor[2]) * at.scale],
+    at.yaw,
+  );
   return {
     pos: [at.pos[0] + offset[0], at.pos[1] + offset[1], at.pos[2] + offset[2]] as V3,
-    yaw: ((prop.yaw + at.yaw) % 360 + 360) % 360,
+    yaw: (((prop.yaw + at.yaw) % 360) + 360) % 360,
     scale: prop.scale * at.scale,
   };
 }
@@ -123,8 +136,11 @@ function carried(prop: Omit<PlacedProp, 'id' | 'line'>, anchor: V3, at: PasteTra
 /** What the paste ghost draws: each placement that can land in `doc`, posed relative to the anchor. */
 export function pasteGhost(doc: PropDoc, clip: PropClipboard): PasteGhostPlacement[] {
   return pasteable(doc, clip).map(({ prop }) => ({
-    level: prop.level, model: prop.model, ...(prop.group ? { group: prop.group } : {}),
-    ...(prop.pitch ? { pitch: prop.pitch } : {}), ...(prop.roll ? { roll: prop.roll } : {}),
+    level: prop.level,
+    model: prop.model,
+    ...(prop.group ? { group: prop.group } : {}),
+    ...(prop.pitch ? { pitch: prop.pitch } : {}),
+    ...(prop.roll ? { roll: prop.roll } : {}),
     ...carried(prop, clip.anchor, { pos: [0, 0, 0], yaw: 0, scale: 1 }),
   }));
 }
@@ -134,37 +150,51 @@ export function pasteGhost(doc: PropDoc, clip: PropClipboard): PasteGhostPlaceme
  * many entries could not land here. The effect is shared only on the mountain it came from, where its slot id
  * names the same slot.
  */
-export function pastePlacements(doc: PropDoc, clip: PropClipboard, at?: PasteTransform):
-  { indices: number[]; skipped: number; lights: string[] } {
+export function pastePlacements(
+  doc: PropDoc,
+  clip: PropClipboard,
+  at?: PasteTransform,
+): { indices: number[]; skipped: number; lights: string[] } {
   const props = (doc.props ??= []);
   const sameMountain = clip.mountain === doc.name;
   const entries = pasteable(doc, clip);
   const indices: number[] = [];
   // Each copied group becomes a new one, minted at its first member — so two groups in one paste stay two. A
   // group needs a prop and a second member, and its lights land only with its props.
-  const groupProps = new Map<string, number>(), groupLights = new Map<string, number>();
-  const count = (map: Map<string, number>, id: string | undefined) => { if (id) map.set(id, (map.get(id) ?? 0) + 1); };
+  const groupProps = new Map<string, number>(),
+    groupLights = new Map<string, number>();
+  const count = (map: Map<string, number>, id: string | undefined) => {
+    if (id) map.set(id, (map.get(id) ?? 0) + 1);
+  };
   for (const { prop } of entries) count(groupProps, prop.assembly);
   for (const light of clip.lights ?? []) count(groupLights, light.assembly);
   const pastedGroup = new Map<string, string>();
   const regroup = (item: { assembly?: string }) => {
     const source = item.assembly;
-    const members = source ? groupProps.get(source) ?? 0 : 0;
-    if (!source || !members || members + (groupLights.get(source) ?? 0) < 2) { delete item.assembly; return; }
+    const members = source ? (groupProps.get(source) ?? 0) : 0;
+    if (!source || !members || members + (groupLights.get(source) ?? 0) < 2) {
+      delete item.assembly;
+      return;
+    }
     let group = pastedGroup.get(source);
     if (!group) pastedGroup.set(source, (group = nextAssemblyId(doc)));
     item.assembly = group;
   };
   for (const entry of entries) {
     const id = nextPlacedPropId(props);
-    const prop: PlacedProp = { id, ...structuredClone(entry.prop), ...(at ? carried(entry.prop, clip.anchor, at) : {}) };
+    const prop: PlacedProp = {
+      id,
+      ...structuredClone(entry.prop),
+      ...(at ? carried(entry.prop, clip.anchor, at) : {}),
+    };
     regroup(prop);
     indices.push(props.push(prop) - 1);
     if (entry.effect && sameMountain && doc.effects?.slots.some(slot => slot.id === entry.effect!.slot))
       attachEffectToProp(doc.effects, id, entry.effect.slot, entry.effect.circumstance);
     if (entry.screens.length) {
       const screens = (doc.screens ??= []);
-      for (const screen of entry.screens) screens.push({ id: nextScreenId(screens), prop: id, ...structuredClone(screen) });
+      for (const screen of entry.screens)
+        screens.push({ id: nextScreenId(screens), prop: id, ...structuredClone(screen) });
     }
   }
   const pastedLights: string[] = [];

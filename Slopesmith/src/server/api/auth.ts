@@ -1,34 +1,51 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { redeemAdminCode } from '../accounts/bootstrap';
 import { OWNER, identify, insecureOriginRefusal, type Identity } from '../accounts/guard';
-import {
-  DEFAULT_INVITE_DAYS, listInvites, mintInvite, redeemInvite, revokeInvite,
-} from '../accounts/invites';
+import { DEFAULT_INVITE_DAYS, listInvites, mintInvite, redeemInvite, revokeInvite } from '../accounts/invites';
 import { generatePassword, verifyPassword } from '../accounts/passwords';
 import {
-  clientAddress, holds, isOrdinaryRole, isRole, isSecureOrigin, requiresAccounts, type Role,
+  clientAddress,
+  holds,
+  isOrdinaryRole,
+  isRole,
+  isSecureOrigin,
+  requiresAccounts,
+  type Role,
 } from '../accounts/policy';
+import { LOGIN_LIMIT, REDEEM_LIMIT, clearFailures, recordFailure, throttledFor } from '../accounts/rate-limit';
 import {
-  LOGIN_LIMIT, REDEEM_LIMIT, clearFailures, recordFailure, throttledFor,
-} from '../accounts/rate-limit';
-import {
-  clearSessionCookie, revokeSession, revokeUserSessions, sessionToken, setSessionCookie, startSession,
+  clearSessionCookie,
+  revokeSession,
+  revokeUserSessions,
+  sessionToken,
+  setSessionCookie,
+  startSession,
 } from '../accounts/sessions';
 import { readAccounts } from '../accounts/store';
 import { createAccessToken, listAccessTokens, revokeAccessToken } from '../accounts/tokens';
 import {
-  AccountAdministrationError, equipmentProfile, findUserRecord, listUsers, publicUser, setUserDisabled,
-  setUserAvailability, setUserBio, setUserEquipment, setUserInviteHandle, setUserPassword,
-  setUserProfilePicture, setUserRole, setUserUsername, type PublicUser,
+  AccountAdministrationError,
+  equipmentProfile,
+  findUserRecord,
+  listUsers,
+  publicUser,
+  setUserDisabled,
+  setUserAvailability,
+  setUserBio,
+  setUserEquipment,
+  setUserInviteHandle,
+  setUserPassword,
+  setUserProfilePicture,
+  setUserRole,
+  setUserUsername,
+  type PublicUser,
 } from '../accounts/users';
 import type { ApiRequest } from './request';
 import { createLogger } from '../log';
 import { listProjects } from '../projects';
 import { liveSessions } from '../session/presence';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
-import {
-  effectiveMemberStatus, type ManualAvailability, type MemberStatus,
-} from '../../core/session/member-status';
+import { effectiveMemberStatus, type ManualAvailability, type MemberStatus } from '../../core/session/member-status';
 
 /**
  * Accounts over HTTP (docs/038): enrolment, sign-in, a member's own password — and the roster the Users mode
@@ -55,22 +72,29 @@ const PROFILE_PICTURE_BODY_LIMIT = 384 * 1024;
 const EQUIPMENT_BODY_LIMIT = 3 * 1024 * 1024;
 
 interface AuthBody {
-  username?: unknown; password?: unknown;
-  token?: unknown; code?: unknown; current?: unknown; next?: unknown;
+  username?: unknown;
+  password?: unknown;
+  token?: unknown;
+  code?: unknown;
+  current?: unknown;
+  next?: unknown;
 }
 
-const text = (value: unknown): string => typeof value === 'string' ? value : '';
+const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 
 /** How this server establishes who somebody is, as the sign-in view reads it: `open` is a server serving its
  *  owner, with nothing to sign in to. */
-const shape = (identity: Identity): 'open' | 'required' => identity.kind === 'owner' ? 'open' : 'required';
+const shape = (identity: Identity): 'open' | 'required' => (identity.kind === 'owner' ? 'open' : 'required');
 
 /** What every route here answers when there is nobody to sign in as. */
-const NO_ACCOUNTS = 'This server has no accounts — it serves whoever is running it. Start it with --accounts'
-  + ' to require a sign-in.';
+const NO_ACCOUNTS =
+  'This server has no accounts — it serves whoever is running it. Start it with --accounts' + ' to require a sign-in.';
 
 /** A throttled endpoint answers 429 with how long the wait is, rather than making the caller guess. */
-function throttleRefusal(bucket: string, limit: typeof LOGIN_LIMIT): { status: number; body: Record<string, unknown> } | null {
+function throttleRefusal(
+  bucket: string,
+  limit: typeof LOGIN_LIMIT,
+): { status: number; body: Record<string, unknown> } | null {
   const wait = throttledFor(bucket, limit);
   if (!wait) return null;
   const seconds = Math.ceil(wait / 1000);
@@ -82,24 +106,37 @@ async function grantSession(req: IncomingMessage, res: ServerResponse, userId: s
   setSessionCookie(res, await startSession(userId), isSecureOrigin(req));
 }
 
-async function handleLogin(req: IncomingMessage, res: ServerResponse, body: AuthBody,
-  identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
+async function handleLogin(
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: AuthBody,
+  identity: Identity,
+): Promise<void> {
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
+  }
   const insecure = insecureOriginRefusal(req);
-  if (insecure) { jsonResponse(res, insecure.status, insecure.body); return; }
+  if (insecure) {
+    jsonResponse(res, insecure.status, insecure.body);
+    return;
+  }
 
   const address = clientAddress(req);
   const username = text(body.username).trim().toLowerCase();
   const buckets = [`login:${address}`, `login:user:${username}`];
   for (const bucket of buckets) {
     const throttled = throttleRefusal(bucket, LOGIN_LIMIT);
-    if (throttled) { jsonResponse(res, throttled.status, throttled.body); return; }
+    if (throttled) {
+      jsonResponse(res, throttled.status, throttled.body);
+      return;
+    }
   }
 
   const user = findUserRecord(await readAccounts(), username);
   // The same answer either way: which half was wrong is not something an unauthenticated caller is owed,
   // because it is exactly the answer that turns guessing a password into first enumerating usernames.
-  const ok = !!user && !user.disabledAt && await verifyPassword(text(body.password), user.password);
+  const ok = !!user && !user.disabledAt && (await verifyPassword(text(body.password), user.password));
   if (!ok || !user) {
     for (const bucket of buckets) {
       recordFailure(bucket, LOGIN_LIMIT, `failed sign-in for ${username || '(no username)'} from ${address}`);
@@ -112,20 +149,34 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, body: Auth
   jsonResponse(res, 200, { accounts: 'required', user: publicUser(user) });
 }
 
-async function handleRedeem(req: IncomingMessage, res: ServerResponse, body: AuthBody,
-  identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
+async function handleRedeem(
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: AuthBody,
+  identity: Identity,
+): Promise<void> {
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
+  }
   const insecure = insecureOriginRefusal(req);
-  if (insecure) { jsonResponse(res, insecure.status, insecure.body); return; }
+  if (insecure) {
+    jsonResponse(res, insecure.status, insecure.body);
+    return;
+  }
 
   const address = clientAddress(req);
   const bucket = `redeem:${address}`;
   const throttled = throttleRefusal(bucket, REDEEM_LIMIT);
-  if (throttled) { jsonResponse(res, throttled.status, throttled.body); return; }
+  if (throttled) {
+    jsonResponse(res, throttled.status, throttled.body);
+    return;
+  }
 
   try {
     const user = await redeemInvite(text(body.token).trim(), {
-      username: text(body.username), password: text(body.password),
+      username: text(body.username),
+      password: text(body.password),
     });
     clearFailures(bucket);
     await grantSession(req, res, user.id);
@@ -137,20 +188,34 @@ async function handleRedeem(req: IncomingMessage, res: ServerResponse, body: Aut
 }
 
 /** The one route that does anything while a server is still waiting for its first admin. */
-async function handleBootstrap(req: IncomingMessage, res: ServerResponse, body: AuthBody,
-  identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
+async function handleBootstrap(
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: AuthBody,
+  identity: Identity,
+): Promise<void> {
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
+  }
   const insecure = insecureOriginRefusal(req);
-  if (insecure) { jsonResponse(res, insecure.status, insecure.body); return; }
+  if (insecure) {
+    jsonResponse(res, insecure.status, insecure.body);
+    return;
+  }
 
   const address = clientAddress(req);
   const bucket = `bootstrap:${address}`;
   const throttled = throttleRefusal(bucket, REDEEM_LIMIT);
-  if (throttled) { jsonResponse(res, throttled.status, throttled.body); return; }
+  if (throttled) {
+    jsonResponse(res, throttled.status, throttled.body);
+    return;
+  }
 
   try {
     const user = await redeemAdminCode(text(body.code).trim(), {
-      username: text(body.username), password: text(body.password),
+      username: text(body.username),
+      password: text(body.password),
     });
     clearFailures(bucket);
     await grantSession(req, res, user.id);
@@ -164,19 +229,33 @@ async function handleBootstrap(req: IncomingMessage, res: ServerResponse, body: 
 
 /** A member changing their own password. The current one is required, so a browser left open on someone
  *  else's desk cannot lock them out of their own account. */
-async function handlePassword(req: IncomingMessage, res: ServerResponse, body: AuthBody,
-  identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
+async function handlePassword(
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: AuthBody,
+  identity: Identity,
+): Promise<void> {
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
+  }
   if (identity.kind !== 'member') {
-    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' }); return;
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
   }
   const insecure = insecureOriginRefusal(req);
-  if (insecure) { jsonResponse(res, insecure.status, insecure.body); return; }
+  if (insecure) {
+    jsonResponse(res, insecure.status, insecure.body);
+    return;
+  }
 
   const record = findUserRecord(await readAccounts(), identity.user.username);
-  if (!record || !await verifyPassword(text(body.current), record.password)) {
-    recordFailure(`login:user:${identity.user.username}`, LOGIN_LIMIT,
-      `failed password change for ${identity.user.username} from ${clientAddress(req)}`);
+  if (!record || !(await verifyPassword(text(body.current), record.password))) {
+    recordFailure(
+      `login:user:${identity.user.username}`,
+      LOGIN_LIMIT,
+      `failed password change for ${identity.user.username} from ${clientAddress(req)}`,
+    );
     jsonResponse(res, 403, { error: 'That is not your current password.' });
     return;
   }
@@ -194,56 +273,78 @@ async function handlePassword(req: IncomingMessage, res: ServerResponse, body: A
 /** A signed-in member setting their own public picture. Unlike a password, this changes no credential and
  *  leaves every session alive; the profile event refreshes open member lists. */
 async function handleProfilePicture(req: IncomingMessage, res: ServerResponse, identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
-  if (identity.kind !== 'member') {
-    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' }); return;
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
   }
-  const body = await readJsonBody(req, PROFILE_PICTURE_BODY_LIMIT) as { profilePicture?: unknown };
+  if (identity.kind !== 'member') {
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
+  }
+  const body = (await readJsonBody(req, PROFILE_PICTURE_BODY_LIMIT)) as { profilePicture?: unknown };
   const user = await setUserProfilePicture(identity.user.username, body.profilePicture);
   jsonResponse(res, 200, { accounts: 'required', user });
 }
 
 /** A member owns their public username. Stable relationships continue to use the account UUID underneath. */
 async function handleUsername(req: IncomingMessage, res: ServerResponse, identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
-  if (identity.kind !== 'member') {
-    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' }); return;
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
   }
-  const body = await readJsonBody(req, AUTH_BODY_LIMIT) as { username?: unknown };
+  if (identity.kind !== 'member') {
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
+  }
+  const body = (await readJsonBody(req, AUTH_BODY_LIMIT)) as { username?: unknown };
   const user = await setUserUsername(identity.user.username, body.username);
   jsonResponse(res, 200, { accounts: 'required', user });
 }
 
 /** A member owns the short public text shown in their profile. */
 async function handleBio(req: IncomingMessage, res: ServerResponse, identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
-  if (identity.kind !== 'member') {
-    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' }); return;
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
   }
-  const body = await readJsonBody(req, AUTH_BODY_LIMIT) as { bio?: unknown };
+  if (identity.kind !== 'member') {
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
+  }
+  const body = (await readJsonBody(req, AUTH_BODY_LIMIT)) as { bio?: unknown };
   const user = await setUserBio(identity.user.username, body.bio);
   jsonResponse(res, 200, { accounts: 'required', user });
 }
 
 /** A member's explicit availability follows their account across devices. Automatic idle travels by socket. */
 async function handleAvailability(req: IncomingMessage, res: ServerResponse, identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
-  if (identity.kind !== 'member') {
-    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' }); return;
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
   }
-  const body = await readJsonBody(req, AUTH_BODY_LIMIT) as { availability?: unknown };
+  if (identity.kind !== 'member') {
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
+  }
+  const body = (await readJsonBody(req, AUTH_BODY_LIMIT)) as { availability?: unknown };
   const user = await setUserAvailability(identity.user.username, body.availability);
   jsonResponse(res, 200, { accounts: 'required', user });
 }
 
 /** A signed-in member changing their private design libraries and public selected equipment appearance. */
 async function handleEquipment(req: IncomingMessage, res: ServerResponse, identity: Identity): Promise<void> {
-  if (identity.kind === 'owner') { jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' }); return; }
-  if (identity.kind !== 'member') {
-    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' }); return;
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
   }
-  const body = await readJsonBody(req, EQUIPMENT_BODY_LIMIT) as {
-    snowboard?: unknown; skis?: unknown; edgeColor?: unknown;
+  if (identity.kind !== 'member') {
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
+  }
+  const body = (await readJsonBody(req, EQUIPMENT_BODY_LIMIT)) as {
+    snowboard?: unknown;
+    skis?: unknown;
+    edgeColor?: unknown;
   };
   const changed = await setUserEquipment(identity.user.username, body);
   jsonResponse(res, 200, { accounts: 'required', ...changed });
@@ -266,7 +367,8 @@ function handleSession(res: ServerResponse, identity: Identity): void {
     return;
   }
   jsonResponse(res, 200, {
-    accounts: shape(identity), user: identity.user,
+    accounts: shape(identity),
+    user: identity.user,
     ...(identity.kind === 'member' ? { sessionId: identity.sessionId } : {}),
   });
 }
@@ -284,16 +386,21 @@ function handleSession(res: ServerResponse, identity: Identity): void {
 function keyHolder(res: ServerResponse, identity: Identity): PublicUser | null {
   if (identity.kind === 'owner') {
     jsonResponse(res, 400, {
-      error: 'This server has no accounts, so the Blender add-on needs no key — point it at the server and it'
-        + ' is already you.',
+      error:
+        'This server has no accounts, so the Blender add-on needs no key — point it at the server and it' +
+        ' is already you.',
       accounts: 'open',
     });
     return null;
   }
   if (identity.kind !== 'member') {
-    jsonResponse(res, identity.kind === 'token' ? 403 : 401, identity.kind === 'token'
-      ? { error: 'An access key cannot manage access keys. Sign in to the editor.', token: true }
-      : { error: 'Sign in to use this server.', accounts: 'required' });
+    jsonResponse(
+      res,
+      identity.kind === 'token' ? 403 : 401,
+      identity.kind === 'token'
+        ? { error: 'An access key cannot manage access keys. Sign in to the editor.', token: true }
+        : { error: 'Sign in to use this server.', accounts: 'required' },
+    );
     return null;
   }
   return identity.user;
@@ -332,7 +439,10 @@ interface RosterMember {
   devices: string[];
   /** The authored/reference pairs they have open, which is what a row offers to open. */
   maps: Array<{
-    id: string; name: string; reference?: string; playing?: Array<'authored' | 'reference'>;
+    id: string;
+    name: string;
+    reference?: string;
+    playing?: Array<'authored' | 'reference'>;
     sharingSessionId?: string;
   }>;
 }
@@ -349,28 +459,49 @@ async function buildRoster(me: PublicUser): Promise<Record<string, unknown>> {
   // nothing about it prompts, which is what editing alone looks like here.
   const moderates = holds(me.role, 'moderator');
   const users = requiresAccounts() ? await listUsers() : [OWNER];
-  const handles = moderates && requiresAccounts()
-    ? new Map((await readAccounts()).users.map(user => [user.id, user.inviteHandle]))
-    : new Map<string, string>();
+  const handles =
+    moderates && requiresAccounts()
+      ? new Map((await readAccounts()).users.map(user => [user.id, user.inviteHandle]))
+      : new Map<string, string>();
   const names = new Map((await listProjects()).map(project => [project.id, project.name]));
-  const present = new Map<string, {
-    sessions: number;
-    maps: Map<string, {
-      id: string; name: string; reference?: string; playing?: Array<'authored' | 'reference'>;
-      sharingSessionId?: string;
-    }>;
-    devices: Set<string>;
-    lastSeen: number;
-    idle: boolean[];
-    watching: boolean;
-  }>();
+  const present = new Map<
+    string,
+    {
+      sessions: number;
+      maps: Map<
+        string,
+        {
+          id: string;
+          name: string;
+          reference?: string;
+          playing?: Array<'authored' | 'reference'>;
+          sharingSessionId?: string;
+        }
+      >;
+      devices: Set<string>;
+      lastSeen: number;
+      idle: boolean[];
+      watching: boolean;
+    }
+  >();
   for (const session of liveSessions()) {
-    const found = present.get(session.member.id)
-      ?? { sessions: 0, maps: new Map<string, {
-        id: string; name: string; reference?: string; playing?: Array<'authored' | 'reference'>;
-        sharingSessionId?: string;
-      }>(),
-        devices: new Set<string>(), lastSeen: 0, idle: [], watching: false };
+    const found = present.get(session.member.id) ?? {
+      sessions: 0,
+      maps: new Map<
+        string,
+        {
+          id: string;
+          name: string;
+          reference?: string;
+          playing?: Array<'authored' | 'reference'>;
+          sharingSessionId?: string;
+        }
+      >(),
+      devices: new Set<string>(),
+      lastSeen: 0,
+      idle: [],
+      watching: false,
+    };
     found.sessions++;
     found.lastSeen = Math.max(found.lastSeen, session.lastSeen);
     found.idle.push(session.idle);
@@ -383,37 +514,50 @@ async function buildRoster(me: PublicUser): Promise<Record<string, unknown>> {
       const playing = new Set(existing?.playing ?? []);
       if (session.playing) playing.add(session.playing);
       found.maps.set(key, {
-        id: session.projectId, name: names.get(session.projectId) ?? 'a map',
+        id: session.projectId,
+        name: names.get(session.projectId) ?? 'a map',
         ...(reference ? { reference } : {}),
         ...(playing.size ? { playing: [...playing] } : {}),
         ...(existing?.sharingSessionId || session.screenSharing
-          ? { sharingSessionId: existing?.sharingSessionId ?? session.sessionId } : {}),
+          ? { sharingSessionId: existing?.sharingSessionId ?? session.sessionId }
+          : {}),
       });
     }
     present.set(session.member.id, found);
   }
-  const members: RosterMember[] = users.map(user => {
-    const seen = present.get(user.id);
-    return {
-      id: user.id, username: user.username, bio: user.bio, role: user.role,
-      createdAt: user.createdAt, availability: user.availability,
-      lastSeenAt: seen?.lastSeen ? new Date(seen.lastSeen).toISOString() : user.lastSeenAt,
-      ...(handles.has(user.id) ? { inviteHandle: handles.get(user.id) } : {}),
-      disabled: user.disabled, online: !!seen,
-      status: effectiveMemberStatus(user.availability, seen?.idle ?? []),
-      watching: seen?.watching ?? false, sessions: seen?.sessions ?? 0,
-      ...(user.profilePictureUrl ? { profilePictureUrl: user.profilePictureUrl } : {}),
-      ...(user.snowboardTextureUrl ? { snowboardTextureUrl: user.snowboardTextureUrl } : {}),
-      ...(user.skiTextureUrl ? { skiTextureUrl: user.skiTextureUrl } : {}),
-      ...(user.equipmentEdgeColor ? { equipmentEdgeColor: user.equipmentEdgeColor } : {}),
-      devices: [...seen?.devices ?? []],
-      maps: [...seen?.maps.values() ?? []],
-    };
-  }).sort((a, b) => Number(b.online) - Number(a.online) || a.username.localeCompare(b.username));
+  const members: RosterMember[] = users
+    .map(user => {
+      const seen = present.get(user.id);
+      return {
+        id: user.id,
+        username: user.username,
+        bio: user.bio,
+        role: user.role,
+        createdAt: user.createdAt,
+        availability: user.availability,
+        lastSeenAt: seen?.lastSeen ? new Date(seen.lastSeen).toISOString() : user.lastSeenAt,
+        ...(handles.has(user.id) ? { inviteHandle: handles.get(user.id) } : {}),
+        disabled: user.disabled,
+        online: !!seen,
+        status: effectiveMemberStatus(user.availability, seen?.idle ?? []),
+        watching: seen?.watching ?? false,
+        sessions: seen?.sessions ?? 0,
+        ...(user.profilePictureUrl ? { profilePictureUrl: user.profilePictureUrl } : {}),
+        ...(user.snowboardTextureUrl ? { snowboardTextureUrl: user.snowboardTextureUrl } : {}),
+        ...(user.skiTextureUrl ? { skiTextureUrl: user.skiTextureUrl } : {}),
+        ...(user.equipmentEdgeColor ? { equipmentEdgeColor: user.equipmentEdgeColor } : {}),
+        devices: [...(seen?.devices ?? [])],
+        maps: [...(seen?.maps.values() ?? [])],
+      };
+    })
+    .sort((a, b) => Number(b.online) - Number(a.online) || a.username.localeCompare(b.username));
   const administers = me.role === 'admin';
   return {
     accounts: requiresAccounts() ? 'required' : 'open',
-    me, admin: administers, moderator: moderates, members,
+    me,
+    admin: administers,
+    moderator: moderates,
+    members,
     // What delete-map operates on. Listed only for the admin who could act on it, so other panels show no map
     // administration rather than a list of buttons that would refuse.
     ...(administers ? { maps: [...names].map(([id, name]) => ({ id, name })) } : {}),
@@ -428,13 +572,22 @@ const administrable = (res: ServerResponse): boolean => {
   return false;
 };
 
-async function handleMemberAction(req: IncomingMessage, res: ServerResponse, me: PublicUser,
-  parts: string[]): Promise<void> {
+async function handleMemberAction(
+  req: IncomingMessage,
+  res: ServerResponse,
+  me: PublicUser,
+  parts: string[],
+): Promise<void> {
   if (!administrable(res)) return;
   // Read tolerantly: signing somebody out carries no body at all, and refusing a request for being exactly
   // what it should be is the trap the sign-out route below already learned once.
-  const body = await readJsonBody(req, AUTH_BODY_LIMIT).catch(() => ({})) as
-    { role?: unknown; disabled?: unknown; password?: unknown; handle?: unknown; days?: unknown };
+  const body = (await readJsonBody(req, AUTH_BODY_LIMIT).catch(() => ({}))) as {
+    role?: unknown;
+    disabled?: unknown;
+    password?: unknown;
+    handle?: unknown;
+    days?: unknown;
+  };
 
   if (parts[0] === 'invite') {
     const role = text(body.role) || 'editor';
@@ -447,7 +600,10 @@ async function handleMemberAction(req: IncomingMessage, res: ServerResponse, me:
     // address it belongs to is the browser's rather than the server's — the server only knows what it was
     // asked for, which behind a proxy is not the URL anybody types.
     const minted = await mintInvite({
-      role, handle: text(body.handle), days: Number(body.days ?? DEFAULT_INVITE_DAYS), by: me.username,
+      role,
+      handle: text(body.handle),
+      days: Number(body.days ?? DEFAULT_INVITE_DAYS),
+      by: me.username,
     });
     jsonResponse(res, 201, minted);
     return;
@@ -463,8 +619,9 @@ async function handleMemberAction(req: IncomingMessage, res: ServerResponse, me:
   // CLI, so the two actions that could do it refuse to act on the member performing them.
   if (username.toLowerCase() === me.username && (action === 'role' || action === 'disabled')) {
     jsonResponse(res, 400, {
-      error: 'That would change your own access from inside the editor. Use the CLI if you mean it: '
-        + `slopesmith ${action === 'role' ? 'set-role' : 'disable'} ${me.username} …`,
+      error:
+        'That would change your own access from inside the editor. Use the CLI if you mean it: ' +
+        `slopesmith ${action === 'role' ? 'set-role' : 'disable'} ${me.username} …`,
     });
     return;
   }
@@ -518,12 +675,23 @@ export const memberRoutes: Record<string, ApiHandler> = {
     const method = req.method ?? 'GET';
     try {
       const me = principal(req);
-      if (!me) { jsonResponse(res, 401, { error: 'Sign in to use this server.', accounts: 'required' }); return; }
-      if (method === 'GET' && !parts.length) { jsonResponse(res, 200, await buildRoster(me)); return; }
+      if (!me) {
+        jsonResponse(res, 401, { error: 'Sign in to use this server.', accounts: 'required' });
+        return;
+      }
+      if (method === 'GET' && !parts.length) {
+        jsonResponse(res, 200, await buildRoster(me));
+        return;
+      }
       if (method === 'GET' && parts[1] === 'profile-picture') {
-        const username = decodeURIComponent(parts[0] ?? '').trim().toLowerCase();
+        const username = decodeURIComponent(parts[0] ?? '')
+          .trim()
+          .toLowerCase();
         const picture = findUserRecord(await readAccounts(), username)?.profilePicture;
-        if (!picture) { jsonResponse(res, 404, { error: 'That member has no profile picture.' }); return; }
+        if (!picture) {
+          jsonResponse(res, 404, { error: 'That member has no profile picture.' });
+          return;
+        }
         const bytes = Buffer.from(picture.data, 'base64');
         res.statusCode = 200;
         res.setHeader('content-type', picture.mimeType);
@@ -533,14 +701,18 @@ export const memberRoutes: Record<string, ApiHandler> = {
         res.end(bytes);
         return;
       }
-      if (method === 'GET' && parts[1] === 'equipment-texture'
-        && (parts[2] === 'snowboard' || parts[2] === 'skis')) {
-        const username = decodeURIComponent(parts[0] ?? '').trim().toLowerCase();
+      if (method === 'GET' && parts[1] === 'equipment-texture' && (parts[2] === 'snowboard' || parts[2] === 'skis')) {
+        const username = decodeURIComponent(parts[0] ?? '')
+          .trim()
+          .toLowerCase();
         const equipment = findUserRecord(await readAccounts(), username)?.equipment;
         const library = equipment?.[parts[2]];
         const requestedId = parts[3] ? decodeURIComponent(parts[3]) : library?.selectedId;
         const picture = library?.designs.find(design => design.id === requestedId)?.texture;
-        if (!picture) { jsonResponse(res, 404, { error: `That member has no ${parts[2]} texture.` }); return; }
+        if (!picture) {
+          jsonResponse(res, 404, { error: `That member has no ${parts[2]} texture.` });
+          return;
+        }
         const bytes = Buffer.from(picture.data, 'base64');
         res.statusCode = 200;
         res.setHeader('content-type', picture.mimeType);
@@ -555,11 +727,15 @@ export const memberRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 200, { invites: await listInvites() });
         return;
       }
-      if (method !== 'POST') { jsonResponse(res, 405, { error: 'GET or POST only' }); return; }
+      if (method !== 'POST') {
+        jsonResponse(res, 405, { error: 'GET or POST only' });
+        return;
+      }
       await handleMemberAction(req, res, me, parts);
     } catch (error) {
-      jsonResponse(res, error instanceof AccountAdministrationError ? 403 : 400,
-        { error: String(error instanceof Error ? error.message : error) });
+      jsonResponse(res, error instanceof AccountAdministrationError ? 403 : 400, {
+        error: String(error instanceof Error ? error.message : error),
+      });
     }
   },
 };
@@ -570,7 +746,10 @@ export const authRoutes: Record<string, ApiHandler> = {
     const method = req.method ?? 'GET';
     try {
       const identity = await identify(req);
-      if (method === 'GET' && (path === '/' || path === '/session')) { handleSession(res, identity); return; }
+      if (method === 'GET' && (path === '/' || path === '/session')) {
+        handleSession(res, identity);
+        return;
+      }
       if (method === 'GET' && path === '/keys') {
         const me = keyHolder(res, identity);
         if (me) jsonResponse(res, 200, { tokens: await listAccessTokens(me.id) });
@@ -578,9 +757,13 @@ export const authRoutes: Record<string, ApiHandler> = {
       }
       if (method === 'GET' && path === '/equipment') {
         if (identity.kind !== 'member') {
-          jsonResponse(res, identity.kind === 'owner' ? 400 : 401, identity.kind === 'owner'
-            ? { error: NO_ACCOUNTS, accounts: 'open' }
-            : { error: 'Sign in first.', accounts: 'required' });
+          jsonResponse(
+            res,
+            identity.kind === 'owner' ? 400 : 401,
+            identity.kind === 'owner'
+              ? { error: NO_ACCOUNTS, accounts: 'open' }
+              : { error: 'Sign in first.', accounts: 'required' },
+          );
           return;
         }
         const record = findUserRecord(await readAccounts(), identity.user.username);
@@ -588,20 +771,41 @@ export const authRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 200, { accounts: 'required', equipment: equipmentProfile(record) });
         return;
       }
-      if (method !== 'POST') { jsonResponse(res, 405, { error: 'POST only' }); return; }
+      if (method !== 'POST') {
+        jsonResponse(res, 405, { error: 'POST only' });
+        return;
+      }
       // Read lazily: signing out carries no body at all, and parsing one that was never sent would refuse
       // the request for being exactly what it should be.
       const body = () => readJsonBody(req, AUTH_BODY_LIMIT) as Promise<AuthBody>;
       switch (path) {
-        case '/login': await handleLogin(req, res, await body(), identity); return;
-        case '/redeem': await handleRedeem(req, res, await body(), identity); return;
-        case '/bootstrap': await handleBootstrap(req, res, await body(), identity); return;
-        case '/password': await handlePassword(req, res, await body(), identity); return;
-        case '/username': await handleUsername(req, res, identity); return;
-        case '/bio': await handleBio(req, res, identity); return;
-        case '/availability': await handleAvailability(req, res, identity); return;
-        case '/profile-picture': await handleProfilePicture(req, res, identity); return;
-        case '/equipment': await handleEquipment(req, res, identity); return;
+        case '/login':
+          await handleLogin(req, res, await body(), identity);
+          return;
+        case '/redeem':
+          await handleRedeem(req, res, await body(), identity);
+          return;
+        case '/bootstrap':
+          await handleBootstrap(req, res, await body(), identity);
+          return;
+        case '/password':
+          await handlePassword(req, res, await body(), identity);
+          return;
+        case '/username':
+          await handleUsername(req, res, identity);
+          return;
+        case '/bio':
+          await handleBio(req, res, identity);
+          return;
+        case '/availability':
+          await handleAvailability(req, res, identity);
+          return;
+        case '/profile-picture':
+          await handleProfilePicture(req, res, identity);
+          return;
+        case '/equipment':
+          await handleEquipment(req, res, identity);
+          return;
         case '/logout': {
           await revokeSession(sessionToken(req));
           clearSessionCookie(res);
@@ -610,9 +814,13 @@ export const authRoutes: Record<string, ApiHandler> = {
         }
         case '/logout-everywhere': {
           if (identity.kind !== 'member') {
-            jsonResponse(res, identity.kind === 'owner' ? 400 : 401,
-              identity.kind === 'owner' ? { error: NO_ACCOUNTS, accounts: 'open' }
-                : { error: 'Sign in first.', accounts: 'required' });
+            jsonResponse(
+              res,
+              identity.kind === 'owner' ? 400 : 401,
+              identity.kind === 'owner'
+                ? { error: NO_ACCOUNTS, accounts: 'open' }
+                : { error: 'Sign in first.', accounts: 'required' },
+            );
             return;
           }
           const ended = await revokeUserSessions(identity.user.id);
@@ -624,7 +832,7 @@ export const authRoutes: Record<string, ApiHandler> = {
         case '/keys': {
           const me = keyHolder(res, identity);
           if (!me) return;
-          const { name } = await body() as { name?: string };
+          const { name } = (await body()) as { name?: string };
           const minted = await createAccessToken(me.id, String(name ?? ''));
           // The ONLY time the secret exists outside a digest. The client shows it once and cannot ask again.
           jsonResponse(res, 200, { key: minted.token, token: minted.record });
@@ -633,11 +841,12 @@ export const authRoutes: Record<string, ApiHandler> = {
         case '/keys/revoke': {
           const me = keyHolder(res, identity);
           if (!me) return;
-          const { id } = await body() as { id?: string };
+          const { id } = (await body()) as { id?: string };
           jsonResponse(res, 200, { revoked: await revokeAccessToken(me.id, String(id ?? '')) });
           return;
         }
-        default: jsonResponse(res, 404, { error: `Unknown auth route: ${path}` });
+        default:
+          jsonResponse(res, 404, { error: `Unknown auth route: ${path}` });
       }
     } catch (error) {
       jsonResponse(res, 400, { error: String(error instanceof Error ? error.message : error) });

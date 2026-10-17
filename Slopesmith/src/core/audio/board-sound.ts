@@ -14,10 +14,19 @@ import type { BoardSoundMix } from '../doc/types';
 
 /** The ten surface families, in bank-row order — the index is the `family` in `family·8 + mode`. */
 export const BOARD_AUDIO_GROUPS = [
-  'PACK', 'POWDER', 'LOOSE', 'ICE', 'METAL', 'WOOD', 'RAIL', 'ROCK', 'GLASS', 'CHUTE',
+  'PACK',
+  'POWDER',
+  'LOOSE',
+  'ICE',
+  'METAL',
+  'WOOD',
+  'RAIL',
+  'ROCK',
+  'GLASS',
+  'CHUTE',
 ] as const;
 
-export type BoardAudioGroup = typeof BOARD_AUDIO_GROUPS[number];
+export type BoardAudioGroup = (typeof BOARD_AUDIO_GROUPS)[number];
 
 /** Disc-global sidecar written under Maps/Shared/Audio by `snowknife shared` (or board-sound-index). */
 export interface BoardSoundIndex {
@@ -48,13 +57,18 @@ export const boardAirGlideSlot = (group: number): number => group * 8 + 6;
 
 /** Families sharing one broad material character. This keeps the decoded bank grouping while the response
  *  within each group is OpenSlope-authored rather than a copy of a retail configuration program. */
-const HARD_BLOCK = new Set([0, 3, 4, 7, 9]);   // PACK, ICE, METAL, ROCK, CHUTE
-const SOFT_BLOCK = new Set([1, 2]);            // POWDER, LOOSE
+const HARD_BLOCK = new Set([0, 3, 4, 7, 9]); // PACK, ICE, METAL, ROCK, CHUTE
+const SOFT_BLOCK = new Set([1, 2]); // POWDER, LOOSE
 
 /** One tick of the board-bed performance, everything normalized to 0..1. */
-export interface BoardBedFrame { glideVol: number; glideBend: number; carveVol: number; carveBend: number }
+export interface BoardBedFrame {
+  glideVol: number;
+  glideBend: number;
+  carveVol: number;
+  carveBend: number;
+}
 
-const bound = (value: number, lo: number, hi: number): number => value < lo ? lo : value > hi ? hi : value;
+const bound = (value: number, lo: number, hi: number): number => (value < lo ? lo : value > hi ? hi : value);
 const smooth01 = (value: number): number => {
   const v = bound(value, 0, 1);
   return v * v * (3 - 2 * v);
@@ -80,7 +94,8 @@ export function boardBedFrame(group: number, slip: number, lean: number, speed01
   } else if (SOFT_BLOCK.has(group)) {
     glideVol = motion * (0.35 + 0.65 * (1 - handoff));
     carveVol = motion * handoff * 0.7;
-  } else {                                     // WOOD / RAIL / GLASS: emphasize audible lateral texture
+  } else {
+    // WOOD / RAIL / GLASS: emphasize audible lateral texture
     const texture = 0.3 + 0.7 * skid;
     glideVol = motion * texture * (1 - 0.5 * handoff);
     carveVol = motion * texture * (0.15 + 0.85 * handoff);
@@ -148,8 +163,7 @@ export const DEFAULT_BOARD_SOUND: BoardSoundMix = {
 
 /** Read an authored mix off a saved document, clamping every trim to 0..1. */
 export function normalizeBoardSound(value: unknown): BoardSoundMix {
-  const raw = value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown> : {};
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const trim = (field: keyof BoardSoundMix, fallback: number): number => {
     const v = raw[field];
     return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;

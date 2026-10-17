@@ -1,17 +1,26 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import { canonicalNumber } from '../../core/doc/canonical';
 import {
-  TOPOLOGY_SECTION, digestDocument, divergentSections, textHash, type DocumentDigest,
+  TOPOLOGY_SECTION,
+  digestDocument,
+  divergentSections,
+  textHash,
+  type DocumentDigest,
 } from '../../core/doc/digest';
 import { nameIndex } from '../../core/doc/ids';
 import {
-  applyRegisters, documentRegisters, objectFieldChanges, objectFieldOf, registerGeometry, registerShell,
-  vertexRegister, writeRegister,
-  type RegisterKey, type RegisterValue,
+  applyRegisters,
+  documentRegisters,
+  objectFieldChanges,
+  objectFieldOf,
+  registerGeometry,
+  registerShell,
+  vertexRegister,
+  writeRegister,
+  type RegisterKey,
+  type RegisterValue,
 } from '../../core/doc/registers';
-import {
-  applyTopologyDelta, detachedDocument, topologyDelta, type TopologyDelta,
-} from '../../core/doc/topology-delta';
+import { applyTopologyDelta, detachedDocument, topologyDelta, type TopologyDelta } from '../../core/doc/topology-delta';
 import type { ClaimAnswer, RegisterAssignment, SyncStep, TopologyPush } from './session-channel';
 
 /** A claim's answer as this module reads it: the sequence it carries is the channel's business. */
@@ -142,8 +151,7 @@ export interface RegisterStep {
 }
 
 const clone = <T>(value: T): T =>
-  value === undefined || value === null || typeof value !== 'object' ? value
-    : JSON.parse(JSON.stringify(value)) as T;
+  value === undefined || value === null || typeof value !== 'object' ? value : (JSON.parse(JSON.stringify(value)) as T);
 
 /**
  * Whether two register values are the same value.
@@ -162,7 +170,8 @@ function sameValue(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) && Array.isArray(b)) {
     return a.length === b.length && a.every((item, at) => sameValue(item, b[at]));
   }
-  const one = a as Record<string, unknown>, two = b as Record<string, unknown>;
+  const one = a as Record<string, unknown>,
+    two = b as Record<string, unknown>;
   const keys = Object.keys(one).filter(key => one[key] !== undefined);
   const others = Object.keys(two).filter(key => two[key] !== undefined);
   return keys.length === others.length && keys.every(key => sameValue(one[key], two[key]));
@@ -180,8 +189,13 @@ interface Structure {
 }
 
 const structureOf = (doc: EditDoc): Structure => ({
-  vertexIds: doc.vertexIds, quadIds: doc.quadIds, quads: doc.quads,
-  freeEdges: doc.freeEdges, tJunctions: doc.tJunctions, nextId: doc.nextId, tombstones: doc.tombstones,
+  vertexIds: doc.vertexIds,
+  quadIds: doc.quadIds,
+  quads: doc.quads,
+  freeEdges: doc.freeEdges,
+  tJunctions: doc.tJunctions,
+  nextId: doc.nextId,
+  tombstones: doc.tombstones,
 });
 
 /** What the room held when this replica last agreed with it: a structure and every register's value. Enough to
@@ -191,26 +205,32 @@ interface RoomBase {
   shadow: Map<RegisterKey, RegisterValue>;
 }
 
-const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined,
-  each: (one: T, two: T) => boolean): boolean =>
-  (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((item, at) => each(item, b![at]));
+const sameList = <T>(
+  a: readonly T[] | undefined,
+  b: readonly T[] | undefined,
+  each: (one: T, two: T) => boolean,
+): boolean => (a?.length ?? 0) === (b?.length ?? 0) && (a ?? []).every((item, at) => each(item, b![at]));
 
 /** Whether two structures hold the same MESH: which vertices and quads exist, how the quads are wired, the
  *  free edges between them, and the counter the next id is minted from. This is the whole of what a claim can
  *  be about — everything geometry can be created out of, consumed from, or rewired within. */
 const sameMesh = (a: Structure, b: Structure): boolean =>
-  a.nextId === b.nextId
-  && sameList(a.vertexIds, b.vertexIds, (one, two) => one === two)
-  && sameList(a.quadIds, b.quadIds, (one, two) => one === two)
-  && sameList(a.quads, b.quads, (one, two) => sameList(one, two, (x, y) => x === y))
-  && sameList(a.freeEdges, b.freeEdges, (one, two) => one[0] === two[0] && one[1] === two[1]);
+  a.nextId === b.nextId &&
+  sameList(a.vertexIds, b.vertexIds, (one, two) => one === two) &&
+  sameList(a.quadIds, b.quadIds, (one, two) => one === two) &&
+  sameList(a.quads, b.quads, (one, two) => sameList(one, two, (x, y) => x === y)) &&
+  sameList(a.freeEdges, b.freeEdges, (one, two) => one[0] === two[0] && one[1] === two[1]);
 
 /** Whether the T-node records match. Held apart from the mesh above because they are DERIVED: every replica
  *  re-seats them from the geometry it already holds (`core/mesh/t-junctions.ts`), so a difference here on its
  *  own is bookkeeping rather than an operation anybody has to be told about. */
 const sameTNodes = (a: Structure, b: Structure): boolean =>
-  sameList(a.tJunctions, b.tJunctions, (one, two) =>
-    one.vertex === two.vertex && one.t === two.t && one.edge[0] === two.edge[0] && one.edge[1] === two.edge[1]);
+  sameList(
+    a.tJunctions,
+    b.tJunctions,
+    (one, two) =>
+      one.vertex === two.vertex && one.t === two.t && one.edge[0] === two.edge[0] && one.edge[1] === two.edge[1],
+  );
 
 /**
  * Whether the document still holds the structure this replica last took as the room's.
@@ -223,9 +243,13 @@ const sameTNodes = (a: Structure, b: Structure): boolean =>
  * ever pays for the walk.
  */
 const sameStructure = (a: Structure, b: Structure): boolean =>
-  (a.vertexIds === b.vertexIds && a.quadIds === b.quadIds && a.quads === b.quads
-    && a.freeEdges === b.freeEdges && a.tJunctions === b.tJunctions && a.nextId === b.nextId)
-  || (sameMesh(a, b) && sameTNodes(a, b));
+  (a.vertexIds === b.vertexIds &&
+    a.quadIds === b.quadIds &&
+    a.quads === b.quads &&
+    a.freeEdges === b.freeEdges &&
+    a.tJunctions === b.tJunctions &&
+    a.nextId === b.nextId) ||
+  (sameMesh(a, b) && sameTNodes(a, b));
 
 /**
  * Which ids a topology edit consumes — the set a claim compares against.
@@ -251,7 +275,8 @@ export function topologyClaimIds(before: Structure, after: Structure): string[] 
     });
     return out;
   };
-  const was = shapes(before), now = shapes(after);
+  const was = shapes(before),
+    now = shapes(after);
   const corners = (side: Structure, id: string): void => {
     ids.add(id);
     const at = side.quadIds.indexOf(id);
@@ -397,11 +422,13 @@ export function createRegisterSync(deps: {
       const held = shadow.get(field.object) as Record<string, unknown> | undefined;
       if (!held) return;
       const next = { ...held };
-      if (value === undefined) delete next[field.field]; else next[field.field] = clone(value);
+      if (value === undefined) delete next[field.field];
+      else next[field.field] = clone(value);
       shadow.set(field.object, next);
       return;
     }
-    if (value === undefined) shadow.delete(key); else shadow.set(key, clone(value));
+    if (value === undefined) shadow.delete(key);
+    else shadow.set(key, clone(value));
   }
 
   /** Whether an arriving key replaces something this tab changed: the same register, the object a field of
@@ -430,7 +457,10 @@ export function createRegisterSync(deps: {
    */
   function absorbArriving(changes: readonly RegisterAssignment[], doc = deps.getDoc()): readonly RegisterAssignment[] {
     const pending = pendingWrites();
-    if (!pending.size) { absorb(changes, doc); return changes; }
+    if (!pending.size) {
+      absorb(changes, doc);
+      return changes;
+    }
     const arriving = changes.filter(([key, value]) => {
       if (!inFlightCovers(pending, key)) return true;
       skipped.set(key, value);
@@ -477,7 +507,8 @@ export function createRegisterSync(deps: {
   function absorb(changes: readonly RegisterAssignment[], doc = deps.getDoc()): void {
     for (const [key, value] of changes) {
       const landed = writeRegister(doc, key, value) === 'landed';
-      if (landed || objectFieldOf(key)) remember(key, value); else shadow.delete(key);
+      if (landed || objectFieldOf(key)) remember(key, value);
+      else shadow.delete(key);
     }
   }
 
@@ -491,8 +522,9 @@ export function createRegisterSync(deps: {
     const pending = pendingWrites();
     const settled = (key: RegisterKey): boolean => !inFlightCovers(pending, key);
     const refusedKeys = new Set(refused);
-    const restored = [...skipped].filter(([key]) => settled(key)
-      && (refusedKeys.has(key) || refusedKeys.has(objectFieldOf(key)?.object ?? '')));
+    const restored = [...skipped].filter(
+      ([key]) => settled(key) && (refusedKeys.has(key) || refusedKeys.has(objectFieldOf(key)?.object ?? '')),
+    );
     const answered = new Set([...keys, ...refused]);
     for (const key of [...skipped.keys()]) {
       if (settled(key) && (answered.has(key) || answered.has(objectFieldOf(key)?.object ?? ''))) skipped.delete(key);
@@ -503,7 +535,8 @@ export function createRegisterSync(deps: {
     // held it. It did not; a lost claim rebuilding from that base must not put it back.
     if (claiming) {
       for (const [key, value] of restored) {
-        if (value === undefined) claiming.base.shadow.delete(key); else claiming.base.shadow.set(key, clone(value));
+        if (value === undefined) claiming.base.shadow.delete(key);
+        else claiming.base.shadow.set(key, clone(value));
       }
     }
     digest = null;
@@ -568,23 +601,37 @@ export function createRegisterSync(deps: {
   function rewound(base: RoomBase): EditDoc {
     const s = base.structure;
     const shell = registerShell({
-      ...deps.getDoc(), vertexIds: s.vertexIds, quadIds: s.quadIds, quads: s.quads, freeEdges: s.freeEdges,
-      tJunctions: s.tJunctions, nextId: s.nextId, tombstones: s.tombstones,
+      ...deps.getDoc(),
+      vertexIds: s.vertexIds,
+      quadIds: s.quadIds,
+      quads: s.quads,
+      freeEdges: s.freeEdges,
+      tJunctions: s.tJunctions,
+      nextId: s.nextId,
+      tombstones: s.tombstones,
       vertices: new Array<number>(s.vertexIds.length * 3).fill(0),
     });
-    applyRegisters(shell, [...base.shadow].map(([key, value]) => [key, clone(value)] as const));
+    applyRegisters(
+      shell,
+      [...base.shadow].map(([key, value]) => [key, clone(value)] as const),
+    );
     return shell;
   }
 
   /** One topology step onto a document, producing a new one, with the shadow following what the delta removed
    *  and placed. Null when it does not land — this replica's base is not the one it was written against. */
-  function landDelta(doc: EditDoc, delta: TopologyDelta | undefined, changes: readonly RegisterAssignment[],
-    relayed: boolean): EditDoc | null {
+  function landDelta(
+    doc: EditDoc,
+    delta: TopologyDelta | undefined,
+    changes: readonly RegisterAssignment[],
+    relayed: boolean,
+  ): EditDoc | null {
     const applied = applyTopologyDelta(doc, delta);
     if (!applied.ok) return null;
     for (const key of applied.applied.cleared) shadow.delete(key);
     for (const [key, value] of applied.applied.placed) remember(key, value);
-    if (relayed) absorbArriving(changes, applied.applied.doc); else absorb(changes, applied.applied.doc);
+    if (relayed) absorbArriving(changes, applied.applied.doc);
+    else absorb(changes, applied.applied.doc);
     return applied.applied.doc;
   }
 
@@ -593,7 +640,8 @@ export function createRegisterSync(deps: {
     let held: EditDoc | null = doc;
     for (const step of steps) {
       if (step.delta) held = landDelta(held, step.delta, step.changes, relayed);
-      else if (relayed) absorbArriving(step.changes, held); else absorb(step.changes, held);
+      else if (relayed) absorbArriving(step.changes, held);
+      else absorb(step.changes, held);
       if (!held) return null;
     }
     return held;
@@ -624,7 +672,10 @@ export function createRegisterSync(deps: {
     if (!unclaimed && dirty) tick();
     const from = unclaimed ? rewound({ structure, shadow }) : steps[0].delta ? doc : detachedDocument(doc);
     const landed = landSteps(from, steps, true);
-    if (!landed) { resync(); return; }
+    if (!landed) {
+      resync();
+      return;
+    }
     install(landed);
     if (unclaimed) step = null;
     deps.onApplied?.('topology');
@@ -711,7 +762,8 @@ export function createRegisterSync(deps: {
 
   /** Remember the geometry a key this tab just wrote stands on, so awareness can say what it is working on. */
   function noteEditing(key: RegisterKey): void {
-    const at = clockNow(), named = registerGeometry(key);
+    const at = clockNow(),
+      named = registerGeometry(key);
     for (const id of named.vertices) editingVertices.set(id, at);
     for (const id of named.quads) editingQuads.set(id, at);
   }
@@ -720,7 +772,8 @@ export function createRegisterSync(deps: {
   function stillEditing(held: Map<string, number>, at: number): string[] {
     const live: string[] = [];
     for (const [id, when] of held) {
-      if (at - when <= EDITING_MS) live.push(id); else held.delete(id);
+      if (at - when <= EDITING_MS) live.push(id);
+      else held.delete(id);
     }
     return live;
   }
@@ -738,8 +791,11 @@ export function createRegisterSync(deps: {
     const base: RoomBase = { structure, shadow: new Map(shadow) };
     const { changes } = collect();
     const delta = topologyDelta(structure, doc);
-    const written = new Set(delta.vertices.flatMap(run => typeof run[0] === 'string' ? [vertexRegister(run[0])] : []));
-    const vertexAt = nameIndex(doc.vertexIds), quadAt = nameIndex(doc.quadIds);
+    const written = new Set(
+      delta.vertices.flatMap(run => (typeof run[0] === 'string' ? [vertexRegister(run[0])] : [])),
+    );
+    const vertexAt = nameIndex(doc.vertexIds),
+      quadAt = nameIndex(doc.quadIds);
     const carried = changes.filter(([key, value]) => {
       if (written.has(key)) return false;
       if (value !== undefined) return true;
@@ -825,10 +881,16 @@ export function createRegisterSync(deps: {
         return;
       }
     }
-    if (!dirty) { maybeCheckDrift(); return; }
+    if (!dirty) {
+      maybeCheckDrift();
+      return;
+    }
     dirty = false;
     const { changes, priors } = collect();
-    if (!changes.length) { maybeCheckDrift(); return; }
+    if (!changes.length) {
+      maybeCheckDrift();
+      return;
+    }
     lastChangeAt = clockNow();
     record(changes, priors);
     for (const [key] of changes) {
@@ -855,7 +917,10 @@ export function createRegisterSync(deps: {
     const changes = [...holding].map(([key, value]) => [key, value] as RegisterAssignment);
     release();
     awayAt = 0;
-    if (!changes.length) { report(); return; }
+    if (!changes.length) {
+      report();
+      return;
+    }
     absorb(changes);
     sendAssignments(changes);
     deps.onApplied?.('registers');
@@ -882,9 +947,13 @@ export function createRegisterSync(deps: {
       ticker = null;
     },
     /** The render funnel says the document changed. */
-    noteEdit(): void { dirty = true; },
+    noteEdit(): void {
+      dirty = true;
+    },
     /** Compare and send right now — what a flush before a switch wants, and what a test drives. */
-    flush(): void { tick(); },
+    flush(): void {
+      tick();
+    },
     /** This replica now holds exactly this document and owes the room nothing. */
     adopt(doc: EditDoc): void {
       adopt(doc);
@@ -990,7 +1059,10 @@ export function createRegisterSync(deps: {
     landed(ack: { batch: number; retired?: readonly string[]; refused?: readonly string[] }): void {
       const sent = inFlight.get(ack.batch);
       inFlight.delete(ack.batch);
-      settleSkipped((sent ?? []).map(([key]) => key), [...ack.refused ?? [], ...ack.retired ?? []]);
+      settleSkipped(
+        (sent ?? []).map(([key]) => key),
+        [...(ack.refused ?? []), ...(ack.retired ?? [])],
+      );
       report();
     },
     /** How this tab's topology claim turned out. */
@@ -1002,7 +1074,11 @@ export function createRegisterSync(deps: {
         // The document this claim was made on was replaced meanwhile; the room's says how it turned out.
         if (!result.ok) deps.onTopologyRejected?.();
         resync();
-      } else if (result.ok) settleSkipped(carried.map(([key]) => key), result.refused ?? []);
+      } else if (result.ok)
+        settleSkipped(
+          carried.map(([key]) => key),
+          result.refused ?? [],
+        );
       else {
         skipped.clear();
         lose(result, base, claimed);
@@ -1027,7 +1103,10 @@ export function createRegisterSync(deps: {
      * taken it, so the whole document settles it — asked for after any replay, so it includes the replay.
      */
     caughtUp(missed: {
-      steps?: readonly SyncStep[]; changes?: readonly RegisterAssignment[]; document?: EditDoc; landed?: number;
+      steps?: readonly SyncStep[];
+      changes?: readonly RegisterAssignment[];
+      document?: EditDoc;
+      landed?: number;
     }): void {
       connected = true;
       const steps: readonly SyncStep[] = missed.steps ?? (missed.changes ? [{ changes: [...missed.changes] }] : []);
@@ -1044,7 +1123,9 @@ export function createRegisterSync(deps: {
         // progressive loader again for a mountain that did not change.
         if (adoptChanged(missed.document)) deps.onApplied?.('document');
       } else if (!unsettled) landRoomSteps(steps); // which asks for the document itself if a step fails
-      const settle = () => { if (unsettled && resyncing) resync(); };
+      const settle = () => {
+        if (unsettled && resyncing) resync();
+      };
       const landed = missed.landed ?? 0;
       for (const [key, batch] of heldBatches) {
         if (batch > landed) continue;
@@ -1052,15 +1133,25 @@ export function createRegisterSync(deps: {
         holdingFrom.delete(key);
       }
       heldBatches.clear();
-      if (!holding.size) { awayAt = 0; settle(); report(); return; }
+      if (!holding.size) {
+        awayAt = 0;
+        settle();
+        report();
+        return;
+      }
       const awayMs = awayAt ? clockNow() - awayAt : 0;
-      if (awayMs <= REPLAY_THRESHOLD_MS) { replayHeld(); settle(); return; }
+      if (awayMs <= REPLAY_THRESHOLD_MS) {
+        replayHeld();
+        settle();
+        return;
+      }
       const moved = new Set(steps.flatMap(step => step.changes.map(([key]) => key)));
       deps.onReconcile?.({
         awayMs,
         changes: [...holding].map(([key, value]) => [key, value] as RegisterAssignment),
-        contested: [...holding.keys()]
-          .filter(key => moved.has(key) || !sameValue(holdingFrom.get(key), shadowRead(key))),
+        contested: [...holding.keys()].filter(
+          key => moved.has(key) || !sameValue(holdingFrom.get(key), shadowRead(key)),
+        ),
       });
       settle();
       report();
@@ -1131,7 +1222,9 @@ export function createRegisterSync(deps: {
       deps.onApplied?.('registers');
     },
     /** Forget the step in progress — a project switch, or a document replaced whole. */
-    resetSteps(): void { step = null; },
+    resetSteps(): void {
+      step = null;
+    },
 
     status,
     /** The name the channel gives the room for the count this replica's batches are numbered by. */

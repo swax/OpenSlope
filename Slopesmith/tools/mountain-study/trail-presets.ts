@@ -22,7 +22,10 @@ if (process.argv.includes('--inline')) {
   setTileSource(ref => {
     if (!inlined.has(ref)) {
       const [level, file] = [ref.slice(0, ref.indexOf('/')), ref.slice(ref.indexOf('/') + 1)];
-      inlined.set(ref, `data:image/png;base64,${readFileSync(join(MAPS_DIR, level, 'Textures', file)).toString('base64')}`);
+      inlined.set(
+        ref,
+        `data:image/png;base64,${readFileSync(join(MAPS_DIR, level, 'Textures', file)).toString('base64')}`,
+      );
     }
     return inlined.get(ref)!;
   });
@@ -48,13 +51,21 @@ const html = `<!doctype html>
 row along the path, and its rows through tight right and left turns — each tile as a rider going along the path sees
 it. A faded row is one the set has none of: the trail row is worn there. Two lanes wear each row's left and right
 tiles; three and more the middle between them. Hover a tile for its ref.</p>
-${levels.map(level => `<h2>${esc(level)}</h2>
-<div class="grid">${TRAIL_TILE_SETS.filter(set => set.level === level).map(set => `<div class="card">
+${levels
+  .map(
+    level => `<h2>${esc(level)}</h2>
+<div class="grid">${TRAIL_TILE_SETS.filter(set => set.level === level)
+      .map(
+        set => `<div class="card">
   <div class="name">${esc(trailTileSetId(set))}${set.narrow ? ' <span class="kind">narrow</span>' : ''}</div>
   <div class="lmr">${(set.narrow ? ['left', 'right'] : ['left', 'middle', 'right']).map(lane => `<span>${lane}</span>`).join('')}</div>
   ${setHtml(set)}
   <pre>${esc(setLiteral(set))}</pre>
-</div>`).join('\n')}</div>`).join('\n')}
+</div>`,
+      )
+      .join('\n')}</div>`,
+  )
+  .join('\n')}
 </main></body></html>
 `;
 const sheet = tempFile('trail-presets.html');

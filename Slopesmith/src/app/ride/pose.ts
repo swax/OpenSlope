@@ -1,13 +1,37 @@
 import * as THREE from 'three';
 import {
-  createBoard, DEFAULT_RIDE_GEAR, DEFAULT_SNOWBOARD_STANCE, type BoardModel, type EquipmentAppearance,
-  type RideGear, type SnowboardStance,
+  createBoard,
+  DEFAULT_RIDE_GEAR,
+  DEFAULT_SNOWBOARD_STANCE,
+  type BoardModel,
+  type EquipmentAppearance,
+  type RideGear,
+  type SnowboardStance,
 } from './gear';
 import { createRider, type Rider, type RiderHandTarget } from './rider';
 import {
-  AIR_LEVEL_RATE, BANK_MAX, CONTACT_SEPARATION_SPEED, CROUCH_AIR, CROUCH_BRAKE, CROUCH_FOLD, CROUCH_POP,
-  CROUCH_REACH, D2R, GROUND_ORIENT_GAIN, LAND_REACH_ETA, LAUNCH_LEVEL_SPEED, ORIENT_GRACE, PREALIGN_HORIZON,
-  PREALIGN_LEAD, TILT_RATE, WORLD_UP, clamp, moveTowards, projectOnPlane, rotateTowards, type RideState,
+  AIR_LEVEL_RATE,
+  BANK_MAX,
+  CONTACT_SEPARATION_SPEED,
+  CROUCH_AIR,
+  CROUCH_BRAKE,
+  CROUCH_FOLD,
+  CROUCH_POP,
+  CROUCH_REACH,
+  D2R,
+  GROUND_ORIENT_GAIN,
+  LAND_REACH_ETA,
+  LAUNCH_LEVEL_SPEED,
+  ORIENT_GRACE,
+  PREALIGN_HORIZON,
+  PREALIGN_LEAD,
+  TILT_RATE,
+  WORLD_UP,
+  clamp,
+  moveTowards,
+  projectOnPlane,
+  rotateTowards,
+  type RideState,
 } from './physics';
 import { GRAVITY } from './physics-tuning';
 import type { RideKeys } from './input';
@@ -38,7 +62,8 @@ export const FLIP_PIVOT_RISE = 0.65;
  * anatomical cap; this is only the comfortable visual lead used to read a turn. */
 const HEAD_CARVE_LOOK_AHEAD = 32 * D2R;
 const HEAD_AIR_TURN_LOOK_AHEAD = 10 * D2R;
-const HEAD_CARVE_BLEND_START = 0.04, HEAD_CARVE_BLEND_FULL = 0.35;
+const HEAD_CARVE_BLEND_START = 0.04,
+  HEAD_CARVE_BLEND_FULL = 0.35;
 
 /**
  * Pick the untracked rider's attention direction. A committed grounded edge looks through the turn. As the
@@ -78,11 +103,17 @@ export function riderLookTarget(
   out.normalize();
 
   if (!st.grounded) return out;
-  const carveAmount = clamp((Math.abs(st.lean) - HEAD_CARVE_BLEND_START)
-    / (HEAD_CARVE_BLEND_FULL - HEAD_CARVE_BLEND_START), 0, 1);
+  const carveAmount = clamp(
+    (Math.abs(st.lean) - HEAD_CARVE_BLEND_START) / (HEAD_CARVE_BLEND_FULL - HEAD_CARVE_BLEND_START),
+    0,
+    1,
+  );
   const carveBlend = carveAmount * carveAmount * (3 - 2 * carveAmount);
   if (carveBlend <= 0) return out;
-  scratch.copy(riddenForward).applyAxisAngle(up, Math.sign(st.lean) * HEAD_CARVE_LOOK_AHEAD).normalize();
+  scratch
+    .copy(riddenForward)
+    .applyAxisAngle(up, Math.sign(st.lean) * HEAD_CARVE_LOOK_AHEAD)
+    .normalize();
   return out.lerp(scratch, carveBlend).normalize();
 }
 
@@ -114,8 +145,7 @@ export function advanceBoardOrientation(st: RideState, dt: number): boolean {
   // A real lip departure can still have negative WORLD-Y velocity on a downhill course. Its invariant signal is
   // outward speed along the cached takeoff normal; treating only world-up motion as launch keeps orientation
   // grace glued to the lip and pitches the deck toward the far side during the first airborne frames.
-  const launching = !grounded && (st.vel.y > LAUNCH_LEVEL_SPEED
-    || st.vel.dot(st.contactN) > CONTACT_SEPARATION_SPEED);
+  const launching = !grounded && (st.vel.y > LAUNCH_LEVEL_SPEED || st.vel.dot(st.contactN) > CONTACT_SEPARATION_SPEED);
   const orientGrounded = grounded || (st.airTime <= ORIENT_GRACE && !launching);
   const targetUp = orientGrounded ? st.contactN : st.airUp;
   const target = targetUp.lengthSq() > 1e-6 ? targetUp : WORLD_UP;
@@ -141,20 +171,27 @@ export function createRiderPose(o: RiderPoseOpts) {
   let riderModel = o.riderModel;
   let riderStyle = o.riderStyle;
   let rider: Rider = createRider(riderModel, riderStyle, gear, snowboardStance);
-  const ankleF = new THREE.Vector3(); const ankleR = new THREE.Vector3(); const soleUp = new THREE.Vector3();
+  const ankleF = new THREE.Vector3();
+  const ankleR = new THREE.Vector3();
+  const soleUp = new THREE.Vector3();
   const deckSeat = new THREE.Vector3();
   const deckUpTmp = new THREE.Vector3(); // the flipped deck up handed to the rider; never `st.boardUp` itself
   const flipPivot = new THREE.Vector3();
   const rideForward = new THREE.Vector3(); // the actually leading end, including switch and the visible flip
-  const lookForward = new THREE.Vector3(), lookTurnScratch = new THREE.Vector3();
-  const riddenHeading = new THREE.Vector3(), previousRiddenHeading = new THREE.Vector3();
+  const lookForward = new THREE.Vector3(),
+    lookTurnScratch = new THREE.Vector3();
+  const riddenHeading = new THREE.Vector3(),
+    previousRiddenHeading = new THREE.Vector3();
   const headingCross = new THREE.Vector3();
   let haveRiddenHeading = false;
-  const flatQ = new THREE.Quaternion();  // facing + flip, with no carve roll: the frame a pair of skis takes
+  const flatQ = new THREE.Quaternion(); // facing + flip, with no carve roll: the frame a pair of skis takes
   const rolledQ = new THREE.Quaternion();
-  const bankQ = new THREE.Quaternion(), flipQ = new THREE.Quaternion();
+  const bankQ = new THREE.Quaternion(),
+    flipQ = new THREE.Quaternion();
   // Scratch for `seatBoard`, which runs every frame a loose deck is drawn and must not allocate to do it.
-  const seatUp = new THREE.Vector3(), seatFwd = new THREE.Vector3(), seatRight = new THREE.Vector3();
+  const seatUp = new THREE.Vector3(),
+    seatFwd = new THREE.Vector3(),
+    seatRight = new THREE.Vector3();
   const seatBasis = new THREE.Matrix4();
 
   let firstPerson = false;
@@ -178,7 +215,9 @@ export function createRiderPose(o: RiderPoseOpts) {
   /** Put the freshly built gear and body into the scene. Neither may ever answer a ground pick. */
   function addToScene() {
     for (const g of [boardModel.group, rider.group]) {
-      g.traverse(obj => { obj.raycast = () => {}; });
+      g.traverse(obj => {
+        obj.raycast = () => {};
+      });
       o.scene.add(g);
     }
   }
@@ -196,9 +235,15 @@ export function createRiderPose(o: RiderPoseOpts) {
    * faster display aliases whole-tick jumps into judder. The eased visual state (boardUp, bank, crouch) stays
    * on `st`, already frame-time smooth.
    */
-  function update(st: RideState, dt: number, hold: Pick<RideKeys, 'tuck' | 'brake'>,
-                  rs?: { pos: THREE.Vector3; fwd: THREE.Vector3; vel: THREE.Vector3; flip: number }) {
-    const pos = rs?.pos ?? st.pos, fwd = rs?.fwd ?? st.fwd, vel = rs?.vel ?? st.vel;
+  function update(
+    st: RideState,
+    dt: number,
+    hold: Pick<RideKeys, 'tuck' | 'brake'>,
+    rs?: { pos: THREE.Vector3; fwd: THREE.Vector3; vel: THREE.Vector3; flip: number },
+  ) {
+    const pos = rs?.pos ?? st.pos,
+      fwd = rs?.fwd ?? st.fwd,
+      vel = rs?.vel ?? st.vel;
     const orientGrounded = advanceBoardOrientation(st, dt);
     // `boardUp` is the visible quaternion basis. The old path computed it, then bypassed it on every grounded
     // render by seating the deck against the unsmoothed contact normal — exactly the nose-down snap in the gold
@@ -209,7 +254,8 @@ export function createRiderPose(o: RiderPoseOpts) {
     // against — so a rider can somersault without the model losing track of where the snow is.
     const basisUp = st.boardUp;
     const faceDir = projectOnPlane(fwd, basisUp, new THREE.Vector3());
-    if (faceDir.lengthSq() > 1e-6) faceDir.normalize(); else faceDir.copy(fwd);
+    if (faceDir.lengthSq() > 1e-6) faceDir.normalize();
+    else faceDir.copy(fwd);
     riddenHeading.copy(faceDir).multiplyScalar(st.lead).normalize();
     let airTurnDirection = 0;
     if (!haveRiddenHeading || !st.riderSeated || dt <= 0) {
@@ -238,7 +284,9 @@ export function createRiderPose(o: RiderPoseOpts) {
     // landed 180 slides the deck into its turns and lifts the outside edge, which is a rider falling over.
     const right = new THREE.Vector3().crossVectors(basisUp, faceDir).normalize();
     const lead = st.lead;
-    const seatAt = deckSeat.copy(pos).addScaledVector(st.boardUp, st.lift)
+    const seatAt = deckSeat
+      .copy(pos)
+      .addScaledVector(st.boardUp, st.lift)
       .addScaledVector(right, st.carveSlide * lead);
     flatQ.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, basisUp, faceDir));
     const q = rolledQ.copy(flatQ).premultiply(bankQ.setFromAxisAngle(faceDir, -st.bank * lead * D2R));
@@ -266,8 +314,7 @@ export function createRiderPose(o: RiderPoseOpts) {
     // which in free fall is ≈ 0, so `rider.ts` builds the body square to the deck it is bolted to and the whole
     // rider goes round. It only needs the up it is standing on to be the flipped one — the ankles and `soleUp`
     // below already come through `q`.
-    const deckUp = flipDeg !== 0
-      ? deckUpTmp.copy(basisUp).applyAxisAngle(right, flipDeg * D2R) : basisUp;
+    const deckUp = flipDeg !== 0 ? deckUpTmp.copy(basisUp).applyAxisAngle(right, flipDeg * D2R) : basisUp;
 
     // The crouch is pure animation. It coils with the ollie charge — the duck IS the meter — and, on ground/rail,
     // folds for a tuck or a brake. In the air those holds exclusively rotate the rider; they must not keep applying
@@ -279,31 +326,47 @@ export function createRiderPose(o: RiderPoseOpts) {
     // are not animated at all: they are handed the board's acceleration and left to swing against it.
     st.popTime = Math.max(0, st.popTime - dt);
     const airFold = st.landEta <= LAND_REACH_ETA ? CROUCH_REACH : CROUCH_AIR;
-    const fold = st.popTime > 0 ? -st.popDrive
-      : Math.max(st.charge, st.grounded && hold.tuck ? 1 : 0,
-        st.grounded && hold.brake ? CROUCH_BRAKE : 0, st.grounded ? 0 : airFold);
+    const fold =
+      st.popTime > 0
+        ? -st.popDrive
+        : Math.max(
+            st.charge,
+            st.grounded && hold.tuck ? 1 : 0,
+            st.grounded && hold.brake ? CROUCH_BRAKE : 0,
+            st.grounded ? 0 : airFold,
+          );
     const rate = fold > st.crouch ? CROUCH_FOLD : CROUCH_POP;
     st.crouch = moveTowards(st.crouch, clamp(fold, -1, 1), rate * dt);
 
     rideForward.set(0, 0, 1).applyQuaternion(q).multiplyScalar(lead);
     riderLookTarget(st, vel, rideForward, basisUp, lookForward, lookTurnScratch, airTurnDirection);
     const input = {
-      ankleFront: ankleF, ankleRear: ankleR,
+      ankleFront: ankleF,
+      ankleRear: ankleR,
       // The rider is built in the deck's own frame (ankles, toe/heel, counter-rotation), so the two carve signals
       // cross into it with the lead exactly as the roll above does.
-      deckUp, soleUp: soleUp.copy(WORLD_UP).applyQuaternion(q),
+      deckUp,
+      soleUp: soleUp.copy(WORLD_UP).applyQuaternion(q),
       // Standard mirrors the body across the board: the same physical edge becomes its other anatomical edge.
       // Head gaze does not use that body frame—or the drawn nose. It follows whichever end physics says is
       // leading, so landing a 180 cannot leave the face looking back uphill.
       bank: st.bank * lead * (gear === 'snowboard' && snowboardStance === 'standard' ? -1 : 1),
-      rideForward, lookForward,
-      vel, accel: st.accel,
-      grounded: st.grounded, dt, crouch: st.crouch,
+      rideForward,
+      lookForward,
+      vel,
+      accel: st.accel,
+      grounded: st.grounded,
+      dt,
+      crouch: st.crouch,
       lean: st.lean * lead * (gear === 'snowboard' && snowboardStance === 'standard' ? -1 : 1),
-      handTargets, headTarget,
+      handTargets,
+      headTarget,
     };
     if (st.riderSeated) rider.pose(input);
-    else { rider.reset(input); st.riderSeated = true; }
+    else {
+      rider.reset(input);
+      st.riderSeated = true;
+    }
   }
 
   /**
@@ -317,7 +380,8 @@ export function createRiderPose(o: RiderPoseOpts) {
    */
   function seatBoard(at: THREE.Vector3, deckUp: THREE.Vector3, heading: THREE.Vector3) {
     const basisUp = seatUp.copy(deckUp);
-    if (basisUp.lengthSq() < 1e-6) basisUp.copy(WORLD_UP); else basisUp.normalize();
+    if (basisUp.lengthSq() < 1e-6) basisUp.copy(WORLD_UP);
+    else basisUp.normalize();
     const faceDir = projectOnPlane(heading, basisUp, seatFwd);
     // A heading square to the deck's own up carries no facing at all; take any world axis that does.
     if (faceDir.lengthSq() < 1e-6) projectOnPlane(SEAT_FALLBACK_FWD, basisUp, faceDir);
@@ -355,7 +419,9 @@ export function createRiderPose(o: RiderPoseOpts) {
     riderModel = modelId;
     const previous = rider;
     rider = createRider(riderModel, riderStyle, gear, snowboardStance);
-    rider.group.traverse(obj => { obj.raycast = () => {}; });
+    rider.group.traverse(obj => {
+      obj.raycast = () => {};
+    });
     o.scene.add(rider.group);
     o.scene.remove(previous.group);
     previous.dispose();
@@ -373,7 +439,7 @@ export function createRiderPose(o: RiderPoseOpts) {
     if (next === gear) return;
     gear = next;
     removeFromScene();
-    boardModel.dispose();   // which takes the cloned topsheet with it, so the tint is re-made below
+    boardModel.dispose(); // which takes the cloned topsheet with it, so the tint is re-made below
     rider.dispose();
     tinted = null;
     boardModel = createBoard(gear, snowboardStance, equipmentAppearance);
@@ -418,7 +484,9 @@ export function createRiderPose(o: RiderPoseOpts) {
   }
 
   /** Re-applied after a character swap, because the new body arrives with its head on. */
-  function applyFirstPerson() { rider.setFirstPerson(firstPerson); }
+  function applyFirstPerson() {
+    rider.setFirstPerson(firstPerson);
+  }
 
   /**
    * Where the rider's hands ARE, when something is tracking them (docs/048): two world points, or null for every
@@ -426,7 +494,10 @@ export function createRiderPose(o: RiderPoseOpts) {
    * writes them at a different moment in the frame from the physics that drives everything else here.
    */
   function setHandTargets(a: RiderHandTarget | null, b: RiderHandTarget | null) {
-    if (!a || !b) { handTargets = null; return; }
+    if (!a || !b) {
+      handTargets = null;
+      return;
+    }
     handTargets ??= {
       a: { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() },
       b: { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() },
@@ -446,9 +517,14 @@ export function createRiderPose(o: RiderPoseOpts) {
   /** The headset is the local rider's exact eye-bridge viewpoint. It is stored alongside the asynchronously
    * sampled hands so the next rendered pose consumes one coherent tracked body instead of its authored glance. */
   function setHeadTarget(position: THREE.Vector3 | null, quaternion: THREE.Quaternion | null) {
-    if (!position || !quaternion) { headTarget = null; return; }
+    if (!position || !quaternion) {
+      headTarget = null;
+      return;
+    }
     headTarget ??= {
-      position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), exactPosition: true,
+      position: new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      exactPosition: true,
     };
     headTarget.position.copy(position);
     headTarget.quaternion.copy(quaternion);
@@ -463,19 +539,41 @@ export function createRiderPose(o: RiderPoseOpts) {
 
   // Every handle below is a getter, because a gear swap replaces the objects behind them mid-run.
   return {
-    get board() { return boardModel.group; },
+    get board() {
+      return boardModel.group;
+    },
     /** Current gear outline used by both headset and desktop interaction rays. */
-    get boardGrabBox() { return boardModel.grabBox; },
-    get gear() { return gear; },
-    get snowboardStance() { return snowboardStance; },
-    get ankleFront() { return boardModel.ankleFront; },
-    get ankleRear() { return boardModel.ankleRear; },
-    get rider() { return rider; },
-    update, seatBoard, setVisible, setRiderModel, setRiderStyle, setGear, setSnowboardStance,
+    get boardGrabBox() {
+      return boardModel.grabBox;
+    },
+    get gear() {
+      return gear;
+    },
+    get snowboardStance() {
+      return snowboardStance;
+    },
+    get ankleFront() {
+      return boardModel.ankleFront;
+    },
+    get ankleRear() {
+      return boardModel.ankleRear;
+    },
+    get rider() {
+      return rider;
+    },
+    update,
+    seatBoard,
+    setVisible,
+    setRiderModel,
+    setRiderStyle,
+    setGear,
+    setSnowboardStance,
     highlightBoard: (on: boolean) => boardModel.highlight(on),
     setEquipmentAppearance,
-    setFirstPerson, setHandTargets,
-    setHeadTarget, dispose,
+    setFirstPerson,
+    setHandTargets,
+    setHeadTarget,
+    dispose,
   };
 }
 

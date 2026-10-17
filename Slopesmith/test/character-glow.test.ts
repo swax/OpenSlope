@@ -3,9 +3,7 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { CHARACTER_UV_SCROLL_KEY } from '../src/core/characters/contract';
-import {
-  registerCharacterGlow, resetCharacterGlow, stepCharacterGlow,
-} from '../src/app/ride/character-glow';
+import { registerCharacterGlow, resetCharacterGlow, stepCharacterGlow } from '../src/app/ride/character-glow';
 
 /**
  * The runtime half of a character's animated emissive mask (docs/030).
@@ -63,8 +61,10 @@ resetCharacterGlow();
   registerCharacterGlow(root);
   registerCharacterGlow(root); // a second rider on the same template must not double it either
   stepCharacterGlow(1);
-  assert(Math.abs(shared.offset.y - 0.75) < 1e-9,
-    `a shared mask scrolled to ${shared.offset.y}; two materials must not step it twice`);
+  assert(
+    Math.abs(shared.offset.y - 0.75) < 1e-9,
+    `a shared mask scrolled to ${shared.offset.y}; two materials must not step it twice`,
+  );
 }
 
 // Registering a model again keeps the phase it had, rather than snapping every rider back to the start when

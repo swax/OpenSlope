@@ -1,9 +1,21 @@
 import * as THREE from 'three';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
-import { meshAdjacency, meshCageEdges, quadControlPoints, type EdgeHandle, type MeshAdjacency, type QuadMesh } from '../../../core/mesh/topology';
+import {
+  meshAdjacency,
+  meshCageEdges,
+  quadControlPoints,
+  type EdgeHandle,
+  type MeshAdjacency,
+  type QuadMesh,
+} from '../../../core/mesh/topology';
 import { meshPoleIndices } from '../../../core/mesh/selection';
 import { ekey } from '../../../core/mesh/ops';
-import { controlPointKey, meshControlPoints, type MeshControlPoint, type MeshControlPointId } from '../../../core/mesh/control-points';
+import {
+  controlPointKey,
+  meshControlPoints,
+  type MeshControlPoint,
+  type MeshControlPointId,
+} from '../../../core/mesh/control-points';
 import { lockedEdgeSet } from '../../../core/mesh/locks';
 import { creasedSeams } from '../../../core/mesh/creases';
 import { edgePathFrame, isFreePoint, vertexRollOf } from '../../../core/mesh/path-frame';
@@ -11,9 +23,22 @@ import { controlPointIndex, edgeIndices, quadIndices, type NamedEdge, type QuadN
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import type { ReferenceMesh } from '../../../core/reference/terrain';
 import {
-  CAGE_BOUNDARY_COLOR, CAGE_CREASE_COLOR, CAGE_EDGE_SEG, CAGE_EXTRA3_COLOR, CAGE_EXTRA5_COLOR, CAGE_INTERIOR_COLOR, CAGE_LOCKED_COLOR,
-  CAGE_POINT_COLOR, CAGE_TEAR_COLOR, CTRL_CAGE_COLOR, FREE_POINT_AXIS_COLORS, FREE_POINT_AXIS_MAX_M, FREE_POINT_AXIS_SHARE,
-  HANDLE_DIRS, HANDLE_NUB_PX, SURFACE_POLY_OFFSET,
+  CAGE_BOUNDARY_COLOR,
+  CAGE_CREASE_COLOR,
+  CAGE_EDGE_SEG,
+  CAGE_EXTRA3_COLOR,
+  CAGE_EXTRA5_COLOR,
+  CAGE_INTERIOR_COLOR,
+  CAGE_LOCKED_COLOR,
+  CAGE_POINT_COLOR,
+  CAGE_TEAR_COLOR,
+  CTRL_CAGE_COLOR,
+  FREE_POINT_AXIS_COLORS,
+  FREE_POINT_AXIS_MAX_M,
+  FREE_POINT_AXIS_SHARE,
+  HANDLE_DIRS,
+  HANDLE_NUB_PX,
+  SURFACE_POLY_OFFSET,
 } from '../constants';
 import { addCageLines, addCageLinesBehind, addCagePoints, addCagePointsBehind } from '../shared/overlays';
 import type { Stage } from '../stage';
@@ -24,7 +49,8 @@ import type { Stage } from '../stage';
 function appendEdgeControlPolygon(out: number[], mesh: QuadMesh, eh: EdgeHandle, a: number, b: number) {
   const pa: V3 = [mesh.vertices[a * 3], mesh.vertices[a * 3 + 1], mesh.vertices[a * 3 + 2]];
   const pb: V3 = [mesh.vertices[b * 3], mesh.vertices[b * 3 + 1], mesh.vertices[b * 3 + 2]];
-  const ha = eh(a, b), hb = eh(b, a);
+  const ha = eh(a, b),
+    hb = eh(b, a);
   const ca: V3 = [pa[0] + ha[0], pa[1] + ha[1], pa[2] + ha[2]];
   const cb: V3 = [pb[0] + hb[0], pb[1] + hb[1], pb[2] + hb[2]];
   out.push(...pa, ...ca, ...ca, ...cb, ...cb, ...pb);
@@ -94,13 +120,20 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   const PINNED_CAGE_OPACITY = 0.82;
   const PINNED_CAGE_POINT_PX = 6.5;
   const cageGroup = new THREE.Group();
-  const cageEdgeRanges = new Map<string, { geometry: THREE.BufferGeometry; floatOffset: number; edge: [number, number] }>();
+  const cageEdgeRanges = new Map<
+    string,
+    { geometry: THREE.BufferGeometry; floatOffset: number; edge: [number, number] }
+  >();
   let cageOn = false;
   // Sub-cages are an explicit Edit visibility set rather than a mountain-wide toggle. The selection toolbox
   // pins edge / patch cages into the store; they remain until the empty Edit toolbox clears them.
   // an invisible depth-only copy of the terrain: in cage-only view (shading 'none') it writes depth
   // so cage wires hidden behind the surface can be dimmed, without the surface itself being drawn.
-  const depthMaskMat = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET });
+  const depthMaskMat = new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    side: THREE.DoubleSide,
+    ...SURFACE_POLY_OFFSET,
+  });
   const cageDepthMask = new THREE.Mesh(new THREE.BufferGeometry(), depthMaskMat);
   /** The authored pinned-sub-cage point cloud is derived from this exact list. The same entries
    *  drive click/box picking, so every visible dot is selectable and every selectable point is visible. */
@@ -124,11 +157,11 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   const handleGroup = new THREE.Group();
   const handleNubs: Record<string, THREE.Mesh> = {};
   let handleCorner: V3 | null = null;
-  const refCageGroup = new THREE.Group();             // reference control lattices + net lines
-  const refSubCageGroup = new THREE.Group();          // sticky read-only edge / patch control cages
+  const refCageGroup = new THREE.Group(); // reference control lattices + net lines
+  const refSubCageGroup = new THREE.Group(); // sticky read-only edge / patch control cages
   let refVisibleControlKeys = new Set<string>();
-  let refCageDepthMask: THREE.Mesh | null = null;     // depth-only mask of the reference solid (dims hidden wires in cage-only view)
-  let refCageOcclude = false;                         // occlusion state the ref cage was last built with (rebuild on change)
+  let refCageDepthMask: THREE.Mesh | null = null; // depth-only mask of the reference solid (dims hidden wires in cage-only view)
+  let refCageOcclude = false; // occlusion state the ref cage was last built with (rebuild on change)
 
   // The pinned sets are named; every predicate below works on the live numbering, so each resolves first.
   const pinnedEdges = () => {
@@ -139,24 +172,34 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     const doc = mesh.meshDoc();
     return doc ? quadIndices(doc, mesh.controlCageQuads()) : [];
   };
-  const subCageActive = () => mesh.editMode()
-    && (mesh.controlCageQuads().length > 0 || mesh.controlCageEdges().length > 0);
+  const subCageActive = () =>
+    mesh.editMode() && (mesh.controlCageQuads().length > 0 || mesh.controlCageEdges().length > 0);
   const refPinnedEdges = () => new Set(mesh.refControlCageEdges().map(([a, b]) => ekey(a, b)));
   const refPinnedQuads = () => new Set(mesh.refControlCageQuads());
-  const refSubCageActive = () => mesh.editMode()
-    && (mesh.refControlCageQuads().length > 0 || mesh.refControlCageEdges().length > 0);
+  const refSubCageActive = () =>
+    mesh.editMode() && (mesh.refControlCageQuads().length > 0 || mesh.refControlCageEdges().length > 0);
   const authoredQuadCageVisible = (quad: number) => subCageActive() && pinnedQuads().includes(quad);
   const authoredEdgeCageVisible = (a: number, b: number) => {
     if (!subCageActive()) return false;
     const key = ekey(a, b);
     if (pinnedEdges().has(key)) return true;
     const pv = mesh.preview();
-    return !!pv && pinnedQuads().some(quad => {
-      const q = pv.mesh.quads[quad];
-      if (!q) return false;
-      const [A, B, C, D] = q;
-      return ([[A, B], [B, D], [D, C], [C, A]] as [number, number][]).some(([from, to]) => ekey(from, to) === key);
-    });
+    return (
+      !!pv &&
+      pinnedQuads().some(quad => {
+        const q = pv.mesh.quads[quad];
+        if (!q) return false;
+        const [A, B, C, D] = q;
+        return (
+          [
+            [A, B],
+            [B, D],
+            [D, C],
+            [C, A],
+          ] as [number, number][]
+        ).some(([from, to]) => ekey(from, to) === key);
+      })
+    );
   };
 
   /** Toggle the control-net cage (corner lattice) - shows the bicubic-Bezier net you're shaping. */
@@ -174,8 +217,10 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     cageEdgeRanges.clear();
     authoredCagePointGeometry = null;
     authoredCagePointVertices = [];
-    authoredPole3Geometry = null; authoredPole3Vertices = [];
-    authoredPole5Geometry = null; authoredPole5Vertices = [];
+    authoredPole3Geometry = null;
+    authoredPole3Vertices = [];
+    authoredPole5Geometry = null;
+    authoredPole5Vertices = [];
     authoredSubCagePointGeometry = null;
     authoredSubCageLineGeometry = null;
     authoredSubCageFaintPointGeometry = null;
@@ -219,20 +264,23 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     // reference cage), drawn by meshCageEdges off the doc's directed-edge handles. The net's outer rim (an
     // edge on a single quad) draws warm so the mesh silhouette stands out.
     let interior: number[], boundary: number[];
-    let interiorEdges: [number, number][] = [], boundaryEdges: [number, number][] = [];
+    let interiorEdges: [number, number][] = [],
+      boundaryEdges: [number, number][] = [];
     const eh = mesh.edgeHandle();
     const pv = mesh.preview();
     if (eh && pv) {
       ({ interior, boundary } = meshCageEdges(pv.mesh, eh, adj, CAGE_EDGE_SEG));
       // meshCageEdges emits in this exact adjacency order. Retain each edge's fixed-size float range so a
       // drag can rewrite only dirty curves in-place while every unrelated global edge remains visible.
-      for (let a = 0; a < adj.neighbors.length; a++) for (const b of adj.neighbors[a]) {
-        if (b < a) continue;
-        ((adj.edgeQuads.get(ekey(a, b)) ?? []).length >= 2 ? interiorEdges : boundaryEdges).push([a, b]);
-      }
+      for (let a = 0; a < adj.neighbors.length; a++)
+        for (const b of adj.neighbors[a]) {
+          if (b < a) continue;
+          ((adj.edgeQuads.get(ekey(a, b)) ?? []).length >= 2 ? interiorEdges : boundaryEdges).push([a, b]);
+        }
     } else {
       // fallback (no mesh doc): straight-chord edges from the adjacency
-      interior = []; boundary = [];
+      interior = [];
+      boundary = [];
       const P = (id: number): [number, number, number] => [corners[id * 3], corners[id * 3 + 1], corners[id * 3 + 2]];
       for (let id = 0; id < adj.neighbors.length; id++) {
         for (const nb of adj.neighbors[id]) {
@@ -247,7 +295,8 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     // together so a hidden edge disappears without changing the topology used by selection/range queries.
     const edgeStride = eh && pv ? CAGE_EDGE_SEG * 2 * 3 : 2 * 3;
     const filterEdges = (segments: number[], edges: [number, number][]) => {
-      const keptSegments: number[] = [], keptEdges: [number, number][] = [];
+      const keptSegments: number[] = [],
+        keptEdges: [number, number][] = [];
       edges.forEach((edge, i) => {
         if (mesh.edgeHidden(edge[0], edge[1])) return;
         keptSegments.push(...segments.slice(i * edgeStride, (i + 1) * edgeStride));
@@ -265,8 +314,10 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     // in their own colour, on the same measure as the reference cage, so an unintended kink shows in the wires.
     // Measured on the release rebuild, not per drag frame.
     // A model's flat cage is faceted by design, so every one of its edges is an angle and none is flagged.
-    const creased = eh && pv && !doc?.linearCage
-      ? creasedSeams(pv.mesh, quad => quadControlPoints(pv.mesh, eh, quad, pv.twistOf(quad)), adj) : new Set<string>();
+    const creased =
+      eh && pv && !doc?.linearCage
+        ? creasedSeams(pv.mesh, quad => quadControlPoints(pv.mesh, eh, quad, pv.twistOf(quad)), adj)
+        : new Set<string>();
     const partition = (kept: { segments: number[]; edges: [number, number][] }) => {
       const part = () => ({ segments: [] as number[], edges: [] as [number, number][] });
       const parts = { normal: part(), locked: part(), crease: part() };
@@ -278,19 +329,30 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
       });
       return parts;
     };
-    const interiorParts = partition(keptInterior), boundaryParts = partition(keptBoundary);
-    interior = interiorParts.normal.segments; interiorEdges = interiorParts.normal.edges;
-    boundary = boundaryParts.normal.segments; boundaryEdges = boundaryParts.normal.edges;
+    const interiorParts = partition(keptInterior),
+      boundaryParts = partition(keptBoundary);
+    interior = interiorParts.normal.segments;
+    interiorEdges = interiorParts.normal.edges;
+    boundary = boundaryParts.normal.segments;
+    boundaryEdges = boundaryParts.normal.edges;
     const lockedSegments = [...interiorParts.locked.segments, ...boundaryParts.locked.segments];
     const lockedEdges = [...interiorParts.locked.edges, ...boundaryParts.locked.edges];
     const interiorGeometry = addCageLines(cageGroup, interior, CAGE_INTERIOR_COLOR, 0.75, ghost);
     const boundaryGeometry = addCageLines(cageGroup, boundary, CAGE_BOUNDARY_COLOR, 0.9, ghost);
     const creaseGeometry = addCageLines(cageGroup, interiorParts.crease.segments, CAGE_CREASE_COLOR, 0.75, ghost);
     const lockedGeometry = addCageLines(cageGroup, lockedSegments, CAGE_LOCKED_COLOR, 0.98, ghost);
-    interiorEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: interiorGeometry, floatOffset: i * edgeStride, edge }));
-    boundaryEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: boundaryGeometry, floatOffset: i * edgeStride, edge }));
-    interiorParts.crease.edges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: creaseGeometry, floatOffset: i * edgeStride, edge }));
-    lockedEdges.forEach((edge, i) => cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: lockedGeometry, floatOffset: i * edgeStride, edge }));
+    interiorEdges.forEach((edge, i) =>
+      cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: interiorGeometry, floatOffset: i * edgeStride, edge }),
+    );
+    boundaryEdges.forEach((edge, i) =>
+      cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: boundaryGeometry, floatOffset: i * edgeStride, edge }),
+    );
+    interiorParts.crease.edges.forEach((edge, i) =>
+      cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: creaseGeometry, floatOffset: i * edgeStride, edge }),
+    );
+    lockedEdges.forEach((edge, i) =>
+      cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: lockedGeometry, floatOffset: i * edgeStride, edge }),
+    );
     addCagePoints(cageGroup, pg, CAGE_POINT_COLOR, 3.5, ghost);
     if (doc && eh) addFreePointAxes(doc, corners, adj, eh, ghost);
     // Only explicitly pinned edge / patch cages are batched here. Their full cage gets a normal depth-tested
@@ -313,11 +375,12 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     // Extraordinary poles (interior-seam valence 3 / 5) replace the green corner hue at the same point size —
     // the same blue / purple dots the reference cage draws, so a poled authored net reads identically.
     if (pv) {
-      const visible = (vertices: number[]) => mesh.hiddenPolesActive()
-        ? vertices.filter(vertex => !mesh.vertexHidden(vertex)) : vertices;
+      const visible = (vertices: number[]) =>
+        mesh.hiddenPolesActive() ? vertices.filter(vertex => !mesh.vertexHidden(vertex)) : vertices;
       const cloud = (vertices: number[]) => {
-        const positions = new Float32Array(vertices.flatMap(vertex =>
-          [corners[vertex * 3], corners[vertex * 3 + 1], corners[vertex * 3 + 2]]));
+        const positions = new Float32Array(
+          vertices.flatMap(vertex => [corners[vertex * 3], corners[vertex * 3 + 1], corners[vertex * 3 + 2]]),
+        );
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         return geometry;
@@ -339,51 +402,79 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   /** A point on a path carries a frame — its direction and roll, core/mesh/path-frame.ts — that path extrusion
    *  sweeps a profile in, so every free point shows its local X / Y / Z as short stubs in the gizmo's colours.
    *  Rebuilt with the cage (drag release), not per drag frame; the gizmo shows the live frame meanwhile. */
-  function addFreePointAxes(doc: QuadMeshDoc, corners: ArrayLike<number>, adj: MeshAdjacency, eh: EdgeHandle, ghost: boolean) {
+  function addFreePointAxes(
+    doc: QuadMeshDoc,
+    corners: ArrayLike<number>,
+    adj: MeshAdjacency,
+    eh: EdgeHandle,
+    ghost: boolean,
+  ) {
     const stubs: number[][] = [[], [], []];
     const at = (vertex: number): V3 => [corners[vertex * 3], corners[vertex * 3 + 1], corners[vertex * 3 + 2]];
     for (let vertex = 0; vertex < corners.length / 3; vertex++) {
       if (mesh.vertexHidden(vertex) || !isFreePoint(adj, vertex)) continue;
-      const frame = edgePathFrame(corners, adj, vertex, { handle: eh, roll: vertexRollOf(doc, vertex), ids: doc.vertexIds });
+      const frame = edgePathFrame(corners, adj, vertex, {
+        handle: eh,
+        roll: vertexRollOf(doc, vertex),
+        ids: doc.vertexIds,
+      });
       if (!frame) continue;
       const p = at(vertex);
-      const shortest = Math.min(...adj.neighbors[vertex].map(nb => {
-        const q = at(nb);
-        return Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
-      }));
+      const shortest = Math.min(
+        ...adj.neighbors[vertex].map(nb => {
+          const q = at(nb);
+          return Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+        }),
+      );
       const reach = Math.min(FREE_POINT_AXIS_MAX_M, shortest * FREE_POINT_AXIS_SHARE);
       [frame.x, frame.y, frame.z].forEach((axis, i) =>
-        stubs[i].push(...p, p[0] + axis[0] * reach, p[1] + axis[1] * reach, p[2] + axis[2] * reach));
+        stubs[i].push(...p, p[0] + axis[0] * reach, p[1] + axis[1] * reach, p[2] + axis[2] * reach),
+      );
     }
-    stubs.forEach((segments, i) => { if (segments.length) addCageLines(cageGroup, segments, FREE_POINT_AXIS_COLORS[i], 0.95, ghost); });
+    stubs.forEach((segments, i) => {
+      if (segments.length) addCageLines(cageGroup, segments, FREE_POINT_AXIS_COLORS[i], 0.95, ghost);
+    });
   }
 
   function filteredSubCage<Id>(
-    qmesh: QuadMesh, eh: EdgeHandle, controls: (quad: number) => readonly (readonly number[])[],
-    points: readonly MeshControlPoint<Id>[], visible: ReadonlySet<number>, explicitEdges: ReadonlySet<string>,
+    qmesh: QuadMesh,
+    eh: EdgeHandle,
+    controls: (quad: number) => readonly (readonly number[])[],
+    points: readonly MeshControlPoint<Id>[],
+    visible: ReadonlySet<number>,
+    explicitEdges: ReadonlySet<string>,
     index: (id: MeshControlPointId<Id>) => MeshControlPointId<number> | null,
     hidden?: (id: MeshControlPointId<Id>) => boolean,
     edgeHidden?: (a: number, b: number) => boolean,
   ) {
-    const adj = meshAdjacency(qmesh), visibleEdges = new Set(explicitEdges);
+    const adj = meshAdjacency(qmesh),
+      visibleEdges = new Set(explicitEdges);
     for (const quad of visible) {
       const q = qmesh.quads[quad];
       if (!q) continue;
       const [A, B, C, D] = q;
-      for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as [number, number][]) {
         if (a !== b) visibleEdges.add(ekey(a, b));
       }
     }
-    const brightLines: number[] = [], faintLines: number[] = [];
-    const edgeRanges = new Map<string, number>(), quadRanges = new Map<number, number>();
-    for (let a = 0; a < adj.neighbors.length; a++) for (const b of adj.neighbors[a]) {
-      if (b < a || edgeHidden?.(a, b)) continue;
-      const key = ekey(a, b);
-      if (!visibleEdges.has(key)) continue;
-      edgeRanges.set(key, brightLines.length);
-      appendEdgeControlPolygon(brightLines, qmesh, eh, a, b);
-      appendEdgeControlPolygon(faintLines, qmesh, eh, a, b);
-    }
+    const brightLines: number[] = [],
+      faintLines: number[] = [];
+    const edgeRanges = new Map<string, number>(),
+      quadRanges = new Map<number, number>();
+    for (let a = 0; a < adj.neighbors.length; a++)
+      for (const b of adj.neighbors[a]) {
+        if (b < a || edgeHidden?.(a, b)) continue;
+        const key = ekey(a, b);
+        if (!visibleEdges.has(key)) continue;
+        edgeRanges.set(key, brightLines.length);
+        appendEdgeControlPolygon(brightLines, qmesh, eh, a, b);
+        appendEdgeControlPolygon(faintLines, qmesh, eh, a, b);
+      }
     for (const quad of visible) {
       quadRanges.set(quad, brightLines.length);
       appendPatchInteriorLattice(brightLines, controls(quad));
@@ -391,15 +482,21 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     }
 
     const visibleVertices = new Set<number>();
-    for (let a = 0; a < adj.neighbors.length; a++) for (const b of adj.neighbors[a]) {
-      if (visibleEdges.has(ekey(a, b))) { visibleVertices.add(a); visibleVertices.add(b); }
-    }
+    for (let a = 0; a < adj.neighbors.length; a++)
+      for (const b of adj.neighbors[a]) {
+        if (visibleEdges.has(ekey(a, b))) {
+          visibleVertices.add(a);
+          visibleVertices.add(b);
+        }
+      }
     const shown = (id: MeshControlPointId<number>) => {
       if (id.kind === 'twist') return visible.has(id.quad);
       if (id.kind === 'edge') return visibleEdges.has(ekey(id.from, id.to));
       return visibleVertices.has(id.vertex);
     };
-    const brightPoints: number[] = [], faintPoints: number[] = [], faintCorners: number[] = [];
+    const brightPoints: number[] = [],
+      faintPoints: number[] = [],
+      faintCorners: number[] = [];
     const visibleKeys = new Set<string>();
     for (const point of points) {
       if (hidden?.(point.id)) continue;
@@ -413,20 +510,30 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         faintPoints.push(...point.pos);
       }
     }
-    return { brightLines, faintLines, brightPoints, faintPoints, faintCorners,
-      visibleKeys, edgeRanges, quadRanges };
+    return { brightLines, faintLines, brightPoints, faintPoints, faintCorners, visibleKeys, edgeRanges, quadRanges };
   }
 
   function applyAuthoredVisibility() {
-    const pv = mesh.preview(), doc = mesh.meshDoc();
+    const pv = mesh.preview(),
+      doc = mesh.meshDoc();
     if (!pv || !doc) return;
-    const visible = new Set(mesh.controlCageQuads()
-      .filter(quad => !mesh.controlPointHidden({ kind: 'twist', quad, corner: 0 }))
-      .flatMap(quad => quadIndices(doc, [quad])));
-    const filtered = filteredSubCage(pv.mesh, pv.edgeHandle,
+    const visible = new Set(
+      mesh
+        .controlCageQuads()
+        .filter(quad => !mesh.controlPointHidden({ kind: 'twist', quad, corner: 0 }))
+        .flatMap(quad => quadIndices(doc, [quad])),
+    );
+    const filtered = filteredSubCage(
+      pv.mesh,
+      pv.edgeHandle,
       quad => quadControlPoints(pv.mesh, pv.edgeHandle, quad, pv.twistOf(quad)),
-      authoredControlPoints, visible, pinnedEdges(), id => controlPointIndex(doc, id),
-      id => mesh.controlPointHidden(id), (a, b) => mesh.edgeHidden(a, b));
+      authoredControlPoints,
+      visible,
+      pinnedEdges(),
+      id => controlPointIndex(doc, id),
+      id => mesh.controlPointHidden(id),
+      (a, b) => mesh.edgeHidden(a, b),
+    );
     authoredVisibleControlKeys = filtered.visibleKeys;
     authoredVisibilityReady = true;
     authoredSubCageEdgeRanges.clear();
@@ -441,50 +548,81 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   }
 
   function authoredControlPointVisible<Id>(id: MeshControlPointId<Id>) {
-    return id.kind === 'vertex' || authoredVisibilityReady && authoredVisibleControlKeys.has(controlPointKey(id));
+    return id.kind === 'vertex' || (authoredVisibilityReady && authoredVisibleControlKeys.has(controlPointKey(id)));
   }
 
   function referenceControlPointVisible(id: MeshControlPointId<number>) {
-    return !mesh.refControlPointHidden(id)
-      && (id.kind === 'vertex' || refVisibleControlKeys.has(controlPointKey(id)));
+    return !mesh.refControlPointHidden(id) && (id.kind === 'vertex' || refVisibleControlKeys.has(controlPointKey(id)));
   }
 
   /** Refresh the stable global point list from the already-updated dirty patch cages, then stream its
    * non-corner positions and affected lattice ranges into their shared geometries. */
   function updateAuthoredControlPointCache(quads: Iterable<number>) {
-    const pv = mesh.preview(), doc = mesh.meshDoc();
+    const pv = mesh.preview(),
+      doc = mesh.meshDoc();
     if (!pv || !doc || !authoredControlPoints.length) return;
-    const V = (index: number) => doc.vertexIds[index], Q = (index: number) => doc.quadIds[index];
+    const V = (index: number) => doc.vertexIds[index],
+      Q = (index: number) => doc.quadIds[index];
     const dirty = [...quads];
-    const put = (id: MeshControlPointId, pos: V3) => { const item = authoredControlPointByKey.get(controlPointKey(id)); if (item) item.pos = pos; };
+    const put = (id: MeshControlPointId, pos: V3) => {
+      const item = authoredControlPointByKey.get(controlPointKey(id));
+      if (item) item.pos = pos;
+    };
     for (const quad of dirty) {
       const q = pv.mesh.quads[quad];
       if (!q) continue;
-      const [A, B, C, D] = q, cp = quadControlPoints(pv.mesh, pv.edgeHandle, quad, pv.twistOf(quad));
-      put({ kind: 'vertex', vertex: V(A) }, cp[0]); put({ kind: 'vertex', vertex: V(B) }, cp[3]);
-      put({ kind: 'vertex', vertex: V(C) }, cp[12]); put({ kind: 'vertex', vertex: V(D) }, cp[15]);
-      for (const [k, from, to] of [[1, A, B], [2, B, A], [4, A, C], [7, B, D], [8, C, A], [11, D, B], [13, C, D], [14, D, C]] as [number, number, number][]) {
+      const [A, B, C, D] = q,
+        cp = quadControlPoints(pv.mesh, pv.edgeHandle, quad, pv.twistOf(quad));
+      put({ kind: 'vertex', vertex: V(A) }, cp[0]);
+      put({ kind: 'vertex', vertex: V(B) }, cp[3]);
+      put({ kind: 'vertex', vertex: V(C) }, cp[12]);
+      put({ kind: 'vertex', vertex: V(D) }, cp[15]);
+      for (const [k, from, to] of [
+        [1, A, B],
+        [2, B, A],
+        [4, A, C],
+        [7, B, D],
+        [8, C, A],
+        [11, D, B],
+        [13, C, D],
+        [14, D, C],
+      ] as [number, number, number][]) {
         put({ kind: 'edge', from: V(from), to: V(to) }, cp[k]);
       }
-      for (const [k, corner] of [[5, 0], [6, 1], [9, 2], [10, 3]] as [number, 0 | 1 | 2 | 3][]) put({ kind: 'twist', quad: Q(quad), corner }, cp[k]);
+      for (const [k, corner] of [
+        [5, 0],
+        [6, 1],
+        [9, 2],
+        [10, 3],
+      ] as [number, 0 | 1 | 2 | 3][])
+        put({ kind: 'twist', quad: Q(quad), corner }, cp[k]);
     }
     const attr = authoredSubCagePointGeometry?.getAttribute('position') as THREE.BufferAttribute | undefined;
     if (attr) {
       const arr = attr.array as Float32Array;
       let p = 0;
-      for (const cp of authoredControlPoints) if (cp.id.kind !== 'vertex' && !mesh.controlPointHidden(cp.id)
-        && authoredVisibleControlKeys.has(controlPointKey(cp.id))) {
-        arr[p++] = cp.pos[0]; arr[p++] = cp.pos[1]; arr[p++] = cp.pos[2];
-      }
+      for (const cp of authoredControlPoints)
+        if (
+          cp.id.kind !== 'vertex' &&
+          !mesh.controlPointHidden(cp.id) &&
+          authoredVisibleControlKeys.has(controlPointKey(cp.id))
+        ) {
+          arr[p++] = cp.pos[0];
+          arr[p++] = cp.pos[1];
+          arr[p++] = cp.pos[2];
+        }
       attr.needsUpdate = true;
     }
     const cornerAttr = authoredCagePointGeometry?.getAttribute('position') as THREE.BufferAttribute | undefined;
     if (cornerAttr) {
       const arr = cornerAttr.array as Float32Array;
       let p = 0;
-      for (const cp of authoredControlPoints) if (cp.id.kind === 'vertex' && !mesh.controlPointHidden(cp.id)) {
-        arr[p++] = cp.pos[0]; arr[p++] = cp.pos[1]; arr[p++] = cp.pos[2];
-      }
+      for (const cp of authoredControlPoints)
+        if (cp.id.kind === 'vertex' && !mesh.controlPointHidden(cp.id)) {
+          arr[p++] = cp.pos[0];
+          arr[p++] = cp.pos[1];
+          arr[p++] = cp.pos[2];
+        }
       cornerAttr.needsUpdate = true;
     }
 
@@ -492,7 +630,8 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     // ranges let a drag rewrite only its dependency neighborhood instead of rebuilding the mountain-wide set.
     const lineAttr = authoredSubCageLineGeometry?.getAttribute('position') as THREE.BufferAttribute | undefined;
     if (!lineAttr) return;
-    const lineArray = lineAttr.array as Float32Array, dirtyEdges = new Map<string, [number, number]>();
+    const lineArray = lineAttr.array as Float32Array,
+      dirtyEdges = new Map<string, [number, number]>();
     for (const quad of dirty) {
       const q = pv.mesh.quads[quad];
       if (!q) continue;
@@ -503,7 +642,12 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         lineArray.set(interior, quadOffset);
       }
       const [A, B, C, D] = q;
-      for (const [a, b] of [[A, B], [B, D], [D, C], [C, A]] as [number, number][]) {
+      for (const [a, b] of [
+        [A, B],
+        [B, D],
+        [D, C],
+        [C, A],
+      ] as [number, number][]) {
         if (a === b) continue;
         dirtyEdges.set(ekey(a, b), [a, b]);
       }
@@ -547,10 +691,14 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
 
   /** The retained fixed-size float range of one cage edge's cubic in the global wire buffers (see the
    *  rebuild), so a stable-topology drag rewrites only its dirty curves in place. */
-  function edgeRange(key: string) { return cageEdgeRanges.get(key); }
+  function edgeRange(key: string) {
+    return cageEdgeRanges.get(key);
+  }
 
   /** Point the cage-view depth mask at the (re)built terrain geometry, so its occlusion tracks edits. */
-  function setDepthMaskGeometry(g: THREE.BufferGeometry) { cageDepthMask.geometry = g; }
+  function setDepthMaskGeometry(g: THREE.BufferGeometry) {
+    cageDepthMask.geometry = g;
+  }
 
   /** Retain the tangent-handle positions for compatibility with the corner-selection flow. Floating controls
    * are exposed through explicitly pinned edge/patch cages, so a normal corner stays dot + gizmo only. */
@@ -585,7 +733,9 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
       const cf = new THREE.Vector3(handleCorner[0], handleCorner[1], -handleCorner[2]); // scene-root: negate Z
       for (const dir of HANDLE_DIRS) {
         const m = handleNubs[dir];
-        if (m.visible) { pts.push(cf.clone(), m.position.clone()); }
+        if (m.visible) {
+          pts.push(cf.clone(), m.position.clone());
+        }
       }
     }
     handleLines.geometry.dispose();
@@ -599,11 +749,12 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
 
   /** Dispose + drop the reference's control-point cloud / net lines. */
   function clearRefCage() {
-    for (const group of [refCageGroup, refSubCageGroup]) while (group.children.length) {
-      const child = group.children.pop() as THREE.Points | THREE.LineSegments;
-      child.geometry.dispose();
-      (child.material as THREE.Material).dispose();
-    }
+    for (const group of [refCageGroup, refSubCageGroup])
+      while (group.children.length) {
+        const child = group.children.pop() as THREE.Points | THREE.LineSegments;
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
     refVisibleControlKeys.clear();
   }
 
@@ -620,29 +771,59 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     addCageLines(refCageGroup, data.cornerSegCrease, CAGE_CREASE_COLOR, 0.7, ghost);
     addCagePoints(refCageGroup, pg, CAGE_POINT_COLOR, 3, ghost);
     // Extraordinary poles (interior-seam valence 3 / 5) replace the green hue without changing point size.
-    const cloud = (pts: Float32Array) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pts, 3)); return g; };
-    if (data.cornerPtsExtra3.length) addCagePoints(refCageGroup, cloud(data.cornerPtsExtra3), CAGE_EXTRA3_COLOR, 3, ghost, 12);
-    if (data.cornerPtsExtra5.length) addCagePoints(refCageGroup, cloud(data.cornerPtsExtra5), CAGE_EXTRA5_COLOR, 3, ghost, 12);
+    const cloud = (pts: Float32Array) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+      return g;
+    };
+    if (data.cornerPtsExtra3.length)
+      addCagePoints(refCageGroup, cloud(data.cornerPtsExtra3), CAGE_EXTRA3_COLOR, 3, ghost, 12);
+    if (data.cornerPtsExtra5.length)
+      addCagePoints(refCageGroup, cloud(data.cornerPtsExtra5), CAGE_EXTRA5_COLOR, 3, ghost, 12);
     if (refSubCageActive()) {
-      const visible = new Set([...refPinnedQuads()].filter(quad => !mesh.refControlPointHidden({ kind: 'twist', quad, corner: 0 })));
-      const explicitEdges = new Set([...refPinnedEdges()].filter(key => {
-        const [a, b] = key.split(',').map(Number);
-        return !mesh.refEdgeHidden(a, b);
-      }));
-      const filtered = filteredSubCage(data.mesh, data.edgeHandle, quad => data.patchControls[quad],
-        mesh.referenceControlPoints(), visible, explicitEdges, id => id,
-        id => mesh.refControlPointHidden(id), (a, b) => mesh.refEdgeHidden(a, b));
+      const visible = new Set(
+        [...refPinnedQuads()].filter(quad => !mesh.refControlPointHidden({ kind: 'twist', quad, corner: 0 })),
+      );
+      const explicitEdges = new Set(
+        [...refPinnedEdges()].filter(key => {
+          const [a, b] = key.split(',').map(Number);
+          return !mesh.refEdgeHidden(a, b);
+        }),
+      );
+      const filtered = filteredSubCage(
+        data.mesh,
+        data.edgeHandle,
+        quad => data.patchControls[quad],
+        mesh.referenceControlPoints(),
+        visible,
+        explicitEdges,
+        id => id,
+        id => mesh.refControlPointHidden(id),
+        (a, b) => mesh.refEdgeHidden(a, b),
+      );
       refVisibleControlKeys = filtered.visibleKeys;
       addCageLines(refSubCageGroup, filtered.brightLines, CTRL_CAGE_COLOR, PINNED_CAGE_OPACITY, false, 12);
-      addCagePoints(refSubCageGroup,
-        new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(filtered.brightPoints), 3)),
-        CTRL_CAGE_COLOR, PINNED_CAGE_POINT_PX, false, 12);
+      addCagePoints(
+        refSubCageGroup,
+        new THREE.BufferGeometry().setAttribute(
+          'position',
+          new THREE.BufferAttribute(new Float32Array(filtered.brightPoints), 3),
+        ),
+        CTRL_CAGE_COLOR,
+        PINNED_CAGE_POINT_PX,
+        false,
+        12,
+      );
       addCageLinesBehind(refSubCageGroup, filtered.faintLines, CTRL_CAGE_COLOR, PINNED_CAGE_OPACITY, 12);
-      const faint = new THREE.BufferGeometry().setAttribute('position',
-        new THREE.BufferAttribute(new Float32Array(filtered.faintPoints), 3));
+      const faint = new THREE.BufferGeometry().setAttribute(
+        'position',
+        new THREE.BufferAttribute(new Float32Array(filtered.faintPoints), 3),
+      );
       addCagePointsBehind(refSubCageGroup, faint, CTRL_CAGE_COLOR, PINNED_CAGE_POINT_PX, 12);
-      const corners = new THREE.BufferGeometry().setAttribute('position',
-        new THREE.BufferAttribute(new Float32Array(filtered.faintCorners), 3));
+      const corners = new THREE.BufferGeometry().setAttribute(
+        'position',
+        new THREE.BufferAttribute(new Float32Array(filtered.faintCorners), 3),
+      );
       addCagePointsBehind(refSubCageGroup, corners, CAGE_POINT_COLOR, PINNED_CAGE_POINT_PX, 12);
     }
   }
@@ -655,13 +836,16 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   }
 
   /** Hide the reference cage (the reference is unloaded; the group is rebuilt on the next load). */
-  function hideRefCage() { refCageGroup.visible = false; refSubCageGroup.visible = false; }
+  function hideRefCage() {
+    refCageGroup.visible = false;
+    refSubCageGroup.visible = false;
+  }
 
   /** Stand a depth-only mask of the reference solid in for cage-only view, sharing the reference geometry. */
   function setRefDepthMask(g: THREE.BufferGeometry) {
     refCageDepthMask = new THREE.Mesh(g, depthMaskMat); // invisible depth stand-in for cage-only view
-    refCageDepthMask.renderOrder = -1;                  // establish ground depth before prop depth masks
-    refCageDepthMask.visible = false;                   // applyRefView reveals it in cage-only view
+    refCageDepthMask.renderOrder = -1; // establish ground depth before prop depth masks
+    refCageDepthMask.visible = false; // applyRefView reveals it in cage-only view
     stage.refRoot.add(refCageDepthMask);
   }
 
@@ -675,11 +859,15 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
 
   /** Apply the current view-mode visibilities to the reference cage + its depth mask. */
   function applyRefView() {
-    const data = mesh.refData(), has = !!data;
+    const data = mesh.refData(),
+      has = !!data;
     // the cage's occlusion (and thus its bright/dim ghost split) is baked in at build time, so rebuild it when
     // the shade toggle changes whether a solid surface is there to occlude against
     const occlude = !mesh.wiresOnly();
-    if (has && occlude !== refCageOcclude) { clearRefCage(); buildRefCage(data!); }
+    if (has && occlude !== refCageOcclude) {
+      clearRefCage();
+      buildRefCage(data!);
+    }
     refCageGroup.visible = has && cageOn;
     refSubCageGroup.visible = has && cageOn && refSubCageActive();
     // The mask belongs to the no-solid view rather than the cage toggle: reference prop wires below the
@@ -705,7 +893,10 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   // tangent-handle nubs (magenta) + connector lines, revealed on the selected corner (S4)
   const nubGeo = new THREE.SphereGeometry(1, 12, 8);
   for (const dir of HANDLE_DIRS) {
-    const m = new THREE.Mesh(nubGeo, new THREE.MeshBasicMaterial({ color: 0xff5cc8, depthTest: false, transparent: true, opacity: 0.95 }));
+    const m = new THREE.Mesh(
+      nubGeo,
+      new THREE.MeshBasicMaterial({ color: 0xff5cc8, depthTest: false, transparent: true, opacity: 0.95 }),
+    );
     m.renderOrder = 13;
     m.visible = false;
     m.userData.dir = dir;
@@ -721,16 +912,43 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   stage.scene.add(handleGroup);
 
   return {
-    get cage() { return cageOn; },
-    get subCage() { return subCageActive(); },
-    get referenceSubCage() { return refSubCageActive(); },
-    get authoredControlPoints(): readonly MeshControlPoint[] { return authoredControlPoints; },
-    get authoredControlPointByKey(): ReadonlyMap<string, MeshControlPoint> { return authoredControlPointByKey; },
-    authoredControlPointVisible, referenceControlPointVisible, authoredQuadCageVisible, authoredEdgeCageVisible,
-    setCage, rebuildCage,
-    updateAuthoredControlPointCache, streamCornerDots, showAllWires, edgeRange, setDepthMaskGeometry,
-    showHandles, scaleHandleNubs, rebuildHandleLines, visibleNubs,
-    clearRefCage, buildRefCage, rebuildRefCage, hideRefCage, setRefDepthMask, dropRefDepthMask, applyRefView,
+    get cage() {
+      return cageOn;
+    },
+    get subCage() {
+      return subCageActive();
+    },
+    get referenceSubCage() {
+      return refSubCageActive();
+    },
+    get authoredControlPoints(): readonly MeshControlPoint[] {
+      return authoredControlPoints;
+    },
+    get authoredControlPointByKey(): ReadonlyMap<string, MeshControlPoint> {
+      return authoredControlPointByKey;
+    },
+    authoredControlPointVisible,
+    referenceControlPointVisible,
+    authoredQuadCageVisible,
+    authoredEdgeCageVisible,
+    setCage,
+    rebuildCage,
+    updateAuthoredControlPointCache,
+    streamCornerDots,
+    showAllWires,
+    edgeRange,
+    setDepthMaskGeometry,
+    showHandles,
+    scaleHandleNubs,
+    rebuildHandleLines,
+    visibleNubs,
+    clearRefCage,
+    buildRefCage,
+    rebuildRefCage,
+    hideRefCage,
+    setRefDepthMask,
+    dropRefDepthMask,
+    applyRefView,
   };
 }
 

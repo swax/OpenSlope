@@ -18,9 +18,8 @@ export function configuredUpdateRepository(): string | undefined {
 
 /** Presentation only: do not return a repository URL to every signed-in viewer. A private repository's name
  *  can itself be private, and credentials never belong in version API output. */
-export const updateBranchLabel = (): string => configuredUpdateRepository()
-  ? `configured repository/${DEFAULT_UPDATE_BRANCH}`
-  : `origin/${DEFAULT_UPDATE_BRANCH}`;
+export const updateBranchLabel = (): string =>
+  configuredUpdateRepository() ? `configured repository/${DEFAULT_UPDATE_BRANCH}` : `origin/${DEFAULT_UPDATE_BRANCH}`;
 
 /** Remove HTTP user-info before a repository identifier is shown in the administrator UI. Configuration
  * explicitly forbids credentials in the URL, but a display path should stay safe even when that rule is
@@ -34,7 +33,9 @@ export function displayUpdateRepository(repository: string): string {
       parsed.password = '';
       return parsed.toString();
     }
-  } catch { /* Git also accepts filesystem paths and scp-style SSH remotes. */ }
+  } catch {
+    /* Git also accepts filesystem paths and scp-style SSH remotes. */
+  }
   return value;
 }
 
@@ -76,7 +77,11 @@ async function git(appRoot: string, args: string[]): Promise<string> {
 }
 
 async function optionalGit(appRoot: string, args: string[]): Promise<string> {
-  try { return await git(appRoot, args); } catch { return ''; }
+  try {
+    return await git(appRoot, args);
+  } catch {
+    return '';
+  }
 }
 
 /** The source a developer checkout will use for updates. Production's root-owned source is published through
@@ -102,11 +107,15 @@ async function releaseRevision(appRoot: string): Promise<string> {
   try {
     const stamped = (await readFile(join(appRoot, REVISION_FILE), 'utf8')).trim();
     if (/^[0-9a-f]{40}$/i.test(stamped)) return stamped.toLowerCase();
-  } catch { /* Releases made before the stamp use their immutable directory name below. */ }
+  } catch {
+    /* Releases made before the stamp use their immutable directory name below. */
+  }
   try {
     const installed = basename(await realpath(appRoot));
     return /^[0-9a-f]{40}$/i.test(installed) ? installed.toLowerCase() : '';
-  } catch { return ''; }
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -149,30 +158,34 @@ export async function fetchLatestVersion(
     const hash = output.split(/\s+/)[0]?.toLowerCase() ?? '';
     if (!/^[0-9a-f]{40}$/.test(hash)) throw new Error('The update repository’s main branch returned no revision.');
     return {
-      latest: { hash }, latestBranch: repository?.trim()
+      latest: { hash },
+      latestBranch: repository?.trim()
         ? `configured repository/${DEFAULT_UPDATE_BRANCH}`
         : `origin/${DEFAULT_UPDATE_BRANCH}`,
       relation: hash === currentHash.toLowerCase() ? 'current' : 'unknown',
-      ahead: 0, behind: 0, checkedAt: new Date().toISOString(),
+      ahead: 0,
+      behind: 0,
+      checkedAt: new Date().toISOString(),
     };
   }
 
   const source = repository?.trim() || 'origin';
   await git(appRoot, ['fetch', '--quiet', '--no-tags', '--', source, `refs/heads/${DEFAULT_UPDATE_BRANCH}`]);
   const latest = await revision(appRoot, 'FETCH_HEAD');
-  let ahead = 0, behind = 0;
+  let ahead = 0,
+    behind = 0;
   let relation: VersionRelation = 'unknown';
   try {
     const counts = (await git(appRoot, ['rev-list', '--left-right', '--count', `${currentHash}...${latest.hash}`]))
-      .split(/\s+/).map(Number);
+      .split(/\s+/)
+      .map(Number);
     if (counts.length === 2 && counts.every(Number.isFinite)) {
       [ahead, behind] = counts;
-      relation = ahead === 0 && behind === 0 ? 'current'
-        : ahead === 0 ? 'behind'
-        : behind === 0 ? 'ahead'
-        : 'diverged';
+      relation = ahead === 0 && behind === 0 ? 'current' : ahead === 0 ? 'behind' : behind === 0 ? 'ahead' : 'diverged';
     }
-  } catch { /* A shallow/disconnected checkout can still show both exact commits without claiming ancestry. */ }
+  } catch {
+    /* A shallow/disconnected checkout can still show both exact commits without claiming ancestry. */
+  }
   return {
     latest,
     latestBranch: repository?.trim()

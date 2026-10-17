@@ -18,7 +18,10 @@ export class EffectHostPreview {
   /** One shared renderer means builds must stay ordered; the newest queued request always renders last. */
   private renderQueue: Promise<void> = Promise.resolve();
 
-  constructor(private loadLevel: (level: string) => Promise<LevelProps>, label = 'Effect host model preview') {
+  constructor(
+    private loadLevel: (level: string) => Promise<LevelProps>,
+    label = 'Effect host model preview',
+  ) {
     this.el.className = 'sp-fx-host-preview';
     this.el.setAttribute('aria-label', label);
     this.content.className = 'sp-fx-host-preview-content';
@@ -68,17 +71,23 @@ export class EffectHostPreview {
       return this.el;
     }
 
-    this.renderQueue = this.renderQueue.catch(() => {}).then(async () => {
-      const props = await this.loadLevel(level);
-      if (mine !== this.token) return;
-      const propModel = props.models.find(candidate => candidate.id === model);
-      if (!propModel?.subs.length) { this.showUnavailable(mine); return; }
-      await thumb.prepare(propModel, level, props.materials);
-      if (mine !== this.token) return;
-      thumb.view(THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION);
-      this.el.classList.remove('loading', 'unavailable');
-      this.status.textContent = '';
-    }).catch(() => this.showUnavailable(mine));
+    this.renderQueue = this.renderQueue
+      .catch(() => {})
+      .then(async () => {
+        const props = await this.loadLevel(level);
+        if (mine !== this.token) return;
+        const propModel = props.models.find(candidate => candidate.id === model);
+        if (!propModel?.subs.length) {
+          this.showUnavailable(mine);
+          return;
+        }
+        await thumb.prepare(propModel, level, props.materials);
+        if (mine !== this.token) return;
+        thumb.view(THUMB_DEFAULT_AZIMUTH, THUMB_DEFAULT_ELEVATION);
+        this.el.classList.remove('loading', 'unavailable');
+        this.status.textContent = '';
+      })
+      .catch(() => this.showUnavailable(mine));
     return this.el;
   }
 

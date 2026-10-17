@@ -16,12 +16,7 @@ export const REF_LOAD_OFFSET_X = 2000;
  *  -y/100). Reference props build their instance matrices through this, so they land in the SAME native
  *  editor frame as the reference terrain; refRoot (under worldRoot) then supplies the game-chirality Z flip
  *  for both. Row-major, so it reads like the formula. */
-export const RAW_TO_EDITOR = new THREE.Matrix4().set(
-  -0.01, 0, 0, 0,
-  0, 0, 0.01, 0,
-  0, -0.01, 0, 0,
-  0, 0, 0, 1,
-);
+export const RAW_TO_EDITOR = new THREE.Matrix4().set(-0.01, 0, 0, 0, 0, 0, 0.01, 0, 0, -0.01, 0, 0, 0, 0, 0, 1);
 
 /** A gem Value's model tier — the SAME bucketing the ISO packer uses to pick a shipped gem to clone
  *  (snowknife repack: ≤2 → yellow ×2, ≤4 → orange ×3, else red ×5), so the marker previews the exact
@@ -78,19 +73,22 @@ export const LOOP_RENDER_ORDER = 10;
  *  and the strip's stop markers reuse the cage's rim / pole colours so a cut's ends read at a glance. */
 export const LOOPCUT_LINE_COLOR = 0xffd21a;
 export const LOOPCUT_LINE_WIDTH = 2.5;
-export const LOOPCUT_DOT_PX = 7;   // inserted-vertex dots along the cut
+export const LOOPCUT_DOT_PX = 7; // inserted-vertex dots along the cut
 export const LOOPCUT_STOP_PX = 11; // rim / pole stop markers at the strip's ends
 /** The Edit-mode cell selection SHADES its faces yellow (leaving the cell's edges for a separate edge
  *  selection): every selected cell at the same strength — a plain click shades one, Ctrl / Shift build a set,
  *  a double-click fills a whole face-loop strip. */
 export const EDIT_CELL_FILL_COLOR = 0xffd21a;
-export const EDIT_CELL_FILL_OPACITY = 0.5;       // selected cell(s), one shade for all
+export const EDIT_CELL_FILL_OPACITY = 0.5; // selected cell(s), one shade for all
 /** Selected trail patches shade by the ride predicted over them instead (docs/023 · Predicted speed): a smooth ramp
  *  through these stops, as a fraction of the ride's ordinary speed cap — standing to red, the slow end of a climb
  *  orange, about the cruise speed flat snow settles at yellow, the cap green — and blue wherever the rider is in the
  *  air. A touch stronger than the plain selection, so the hues read over painted tiles. */
 export const TRAIL_SPEED_STOPS: readonly (readonly [number, number])[] = [
-  [0, 0xe8331f], [0.25, 0xff8a1a], [0.5, 0xffd21a], [1, 0x3fd24a],
+  [0, 0xe8331f],
+  [0.25, 0xff8a1a],
+  [0.5, 0xffd21a],
+  [1, 0x3fd24a],
 ];
 export const TRAIL_SPEED_AIR_COLOR = 0x3f8cff;
 export const TRAIL_SPEED_FILL_OPACITY = 0.6;
@@ -117,22 +115,22 @@ export const WELD_FROM_PX = 7; // the FROM-vertex marker dot radius, px (screen-
  *  colour (the cell shade is the same yellow; edge + cell selections are mutually exclusive, so they never clash),
  *  against the pink control CAGE. Drawn always-on-top (above the cage wires) so it stays visible over the surface. */
 export const EDIT_EDGE_SEL_COLOR = 0xffd21a;
-export const EDIT_EDGE_SEL_WIDTH = 2.75;         // a shade wider than the loop-highlight wires (1.75)
-export const EDGE_PICK_PX = 14;                  // generous screen-space edge band; corners still win first
+export const EDIT_EDGE_SEL_WIDTH = 2.75; // a shade wider than the loop-highlight wires (1.75)
+export const EDGE_PICK_PX = 14; // generous screen-space edge band; corners still win first
 /** The selected cell's control-point STUDY overlay (Edit, cage on), two distinct things so the relationship
  *  reads: the patch's own SURFACE as an iso-parameter grid (soft blue) — the two internal iso-curves per axis
  *  (u,v = 1/3, 2/3) that lie ON the terrain — and the CONTROL cage in pink (the same pink as the tangent-handle
  *  nubs a selected corner shows). Only the four corners land on the surface; the twelve handles float off it,
  *  pulling the surface toward them without ever touching — drawn as circles, the prospective pull targets. */
-export const CTRL_NET_COLOR = 0x6e82b0;   // the on-surface iso-grid (the real surface the cell produces) — a soft, low-saturation slate blue, the cool controlled-surface against the warm cage
-export const CTRL_CAGE_COLOR = 0xff5cc8;  // the control CAGE (lattice + handle circles + corner dots): pink, matching the tangent-handle nubs a selected corner shows — the controlling cage against the cool iso-grid
-export const CTRL_NET_LINE_WIDTH = 1.0;   // the iso-grid, fat-line px (thin — a subtle surface grid)
-export const CTRL_NET_PT_PX = 4;          // each on-surface CORNER control-point dot, px
-export const CTRL_HANDLE_PX = 7;          // each floating HANDLE control point, drawn as a circle (a prospective pull target), px
-export const CTRL_NET_SEG = 12;           // straight sub-segments per iso-curve (tessellation smoothness)
+export const CTRL_NET_COLOR = 0x6e82b0; // the on-surface iso-grid (the real surface the cell produces) — a soft, low-saturation slate blue, the cool controlled-surface against the warm cage
+export const CTRL_CAGE_COLOR = 0xff5cc8; // the control CAGE (lattice + handle circles + corner dots): pink, matching the tangent-handle nubs a selected corner shows — the controlling cage against the cool iso-grid
+export const CTRL_NET_LINE_WIDTH = 1.0; // the iso-grid, fat-line px (thin — a subtle surface grid)
+export const CTRL_NET_PT_PX = 4; // each on-surface CORNER control-point dot, px
+export const CTRL_HANDLE_PX = 7; // each floating HANDLE control point, drawn as a circle (a prospective pull target), px
+export const CTRL_NET_SEG = 12; // straight sub-segments per iso-curve (tessellation smoothness)
 export const CTRL_ANCHOR_COLOR = 0xff8c42; // warm pull-lines: each handle -> the surface spot it tugs hardest (its max-Bernstein u,v)
-export const CTRL_SEL_COLOR = 0xffd21a;   // a SELECTED control point — a picked cage handle or the corner marker: the shared selection yellow (matches the edge / cell selection), so a grabbed point pops off the pink cage
-export const CTRL_CORNER_SEL_PX = 6;      // the selected-corner marker dot radius, px (screen-constant, over the gizmo)
+export const CTRL_SEL_COLOR = 0xffd21a; // a SELECTED control point — a picked cage handle or the corner marker: the shared selection yellow (matches the edge / cell selection), so a grabbed point pops off the pink cage
+export const CTRL_CORNER_SEL_PX = 6; // the selected-corner marker dot radius, px (screen-constant, over the gizmo)
 /** Tangent-handle nub radius, px — held constant on screen each frame (a world-scaled ball ballooned
  *  over the gizmo arrows up close, and the arrows are what's usually being pulled). */
 export const HANDLE_NUB_PX = 5;
@@ -178,6 +176,8 @@ export const SIGN_TINT_STRENGTH = 1;
 /** Projection-toggle glyphs, drawn to show the CURRENT projection (swapped on toggle): perspective = three
  *  lines converging to a vanishing point, orthographic = three parallel lines (rays that never converge). */
 export const svgGlyph = (body: string) =>
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
-export const PERSP_ICON = svgGlyph('<path d="M4 6 20 12M4 12H20M4 18 20 12"/>');   // three lines converging to a point
-export const ORTHO_ICON = svgGlyph('<path d="M4 7H20M4 12H20M4 17H20"/>');          // three parallel lines
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  body +
+  '</svg>';
+export const PERSP_ICON = svgGlyph('<path d="M4 6 20 12M4 12H20M4 18 20 12"/>'); // three lines converging to a point
+export const ORTHO_ICON = svgGlyph('<path d="M4 7H20M4 12H20M4 17H20"/>'); // three parallel lines

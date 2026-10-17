@@ -64,11 +64,13 @@ async function gate(hash = ''): Promise<string> {
 /** Establish a session the way the login page does, and keep the cookie the way a browser would. */
 async function signIn(path: string, body: unknown): Promise<{ status: number; user?: { role: string } }> {
   const response = await realFetch(new URL(path, browser.origin), {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   });
   const line = response.headers.getSetCookie().find(cookie => cookie.startsWith('slopesmith_session='));
   if (line) browser.cookie = line.split(';')[0];
-  return { status: response.status, ...(await response.json().catch(() => ({}))) as { user?: { role: string } } };
+  return { status: response.status, ...((await response.json().catch(() => ({}))) as { user?: { role: string } }) };
 }
 
 let service: ApiService | null = null;
@@ -77,13 +79,19 @@ try {
   service = await startApiService({ port: 0, host: '127.0.0.1' });
   browser.origin = `http://127.0.0.1:${service.port}`;
 
-  check(await gate() === 'editor',
-    'a server with no accounts boots straight into the editor — there is nothing to sign in to');
-  check(await gate('#invite=someone-elses-link') === 'editor',
-    'and an invite link pointed at it changes nothing, because it has no accounts to join');
+  check(
+    (await gate()) === 'editor',
+    'a server with no accounts boots straight into the editor — there is nothing to sign in to',
+  );
+  check(
+    (await gate('#invite=someone-elses-link')) === 'editor',
+    'and an invite link pointed at it changes nothing, because it has no accounts to join',
+  );
   const owner = await currentAccount();
-  check(owner.accounts === 'open',
-    'the owner is not a member, so the editor installs no account menu or session refresh');
+  check(
+    owner.accounts === 'open',
+    'the owner is not a member, so the editor installs no account menu or session refresh',
+  );
 
   await service.close();
   service = null;
@@ -95,64 +103,97 @@ try {
   browser.origin = `http://127.0.0.1:${service.port}`;
   const adminCode = service.adminCode ?? '';
 
-  check(await gate() === 'enrol',
-    'a server still waiting for its first admin answers the enrolment form, not a sign-in it cannot honour');
-  check(await gate('#invite=cannot-exist-yet') === 'enrol',
-    'and enrolment outranks an invite link, because there is nobody yet who could have issued one');
+  check(
+    (await gate()) === 'enrol',
+    'a server still waiting for its first admin answers the enrolment form, not a sign-in it cannot honour',
+  );
+  check(
+    (await gate('#invite=cannot-exist-yet')) === 'enrol',
+    'and enrolment outranks an invite link, because there is nobody yet who could have issued one',
+  );
 
   // ---- enrolled, and this browser is nobody ----
-  const enrolled = await signIn('/api/auth/bootstrap',
-    { code: adminCode, username: 'Ada', password: 'first admin password' });
+  const enrolled = await signIn('/api/auth/bootstrap', {
+    code: adminCode,
+    username: 'Ada',
+    password: 'first admin password',
+  });
   check(enrolled.status === 201 && enrolled.user?.role === 'admin', 'the one-time code creates the first admin');
   const adminCookie = browser.cookie;
   check(adminCookie.startsWith('slopesmith_session='), 'and hands this browser a session cookie');
 
   browser.cookie = '';
-  check(await gate() === 'sign-in',
-    'a browser with no session gets the login page — the editor is never fetched for somebody who cannot use it');
-  check(await gate('#invite=link-tok-en') === 'redeem',
-    'arriving on an invite link opens the form that spends it, rather than a sign-in for an account nobody has yet');
+  check(
+    (await gate()) === 'sign-in',
+    'a browser with no session gets the login page — the editor is never fetched for somebody who cannot use it',
+  );
+  check(
+    (await gate('#invite=link-tok-en')) === 'redeem',
+    'arriving on an invite link opens the form that spends it, rather than a sign-in for an account nobody has yet',
+  );
 
   // ---- signed in ----
   browser.cookie = adminCookie;
-  check(await gate() === 'editor', 'a signed-in browser boots the editor');
+  check((await gate()) === 'editor', 'a signed-in browser boots the editor');
   const member = await currentAccount();
-  check('user' in member && member.user.username === 'ada' && member.user.role === 'admin',
-    'carrying the member the server named, so the editor has the chip and the role without asking again');
+  check(
+    'user' in member && member.user.username === 'ada' && member.user.role === 'admin',
+    'carrying the member the server named, so the editor has the chip and the role without asking again',
+  );
   check(await administersServer(), 'an admin sees the server-owned settings');
 
   const invited = await mintInvite({ role: 'viewer', handle: 'discord:grace', by: 'ada' });
   browser.cookie = '';
-  check(await gate(`#invite=${invited.token}`) === 'redeem', 'the minted link opens the redemption form');
-  const joined = await signIn('/api/auth/redeem',
-    { token: invited.token, username: 'Grace', password: 'grace password one' });
+  check((await gate(`#invite=${invited.token}`)) === 'redeem', 'the minted link opens the redemption form');
+  const joined = await signIn('/api/auth/redeem', {
+    token: invited.token,
+    username: 'Grace',
+    password: 'grace password one',
+  });
   check(joined.status === 201 && joined.user?.role === 'viewer', 'redeeming it creates the account it carried');
-  check(await gate() === 'editor' && !(await administersServer()),
-    'who then boots the editor as a viewer, and is not offered the settings that belong to the server');
+  check(
+    (await gate()) === 'editor' && !(await administersServer()),
+    'who then boots the editor as a viewer, and is not offered the settings that belong to the server',
+  );
 
   // A sign-in does not reload any more: the page hands the member it was given straight to the editor, which
   // is one page load instead of two — and it must be THIS browser's member, not a re-probe of the server.
   browser.cookie = '';
   forgetAccount();
   const before = browser.calls;
-  adoptAccount({ id: 'u1', username: 'kaz', bio: '', role: 'editor', disabled: false,
-    createdAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z',
-    availability: 'available' });
+  adoptAccount({
+    id: 'u1',
+    username: 'kaz',
+    bio: '',
+    role: 'editor',
+    disabled: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+    availability: 'available',
+  });
   const adopted = await currentAccount();
-  check('user' in adopted && adopted.user.username === 'kaz' && browser.calls === before,
-    'the account a sign-in returned becomes this browser\'s, with no second request on the wire');
+  check(
+    'user' in adopted && adopted.user.username === 'kaz' && browser.calls === before,
+    "the account a sign-in returned becomes this browser's, with no second request on the wire",
+  );
 
   // ---- the rule that outranks the rest ----
   browser.broken = true;
-  check(await gate() === 'editor',
-    'a probe that fails outright boots the editor: a server that answered nothing must never be read as one '
-    + 'demanding a password, because that is a wall in front of somebody\'s own workspace');
+  check(
+    (await gate()) === 'editor',
+    'a probe that fails outright boots the editor: a server that answered nothing must never be read as one ' +
+      "demanding a password, because that is a wall in front of somebody's own workspace",
+  );
   browser.broken = false;
 
-  check(inviteIn('') === '' && inviteIn('#invite=abc') === 'abc'
-    && inviteIn('#from=mail&invite=a%20b') === 'a b' && inviteIn('#invited=no') === '',
-    'the invite token is read out of the fragment — where a credential belongs, since browsers never send it '
-    + 'to the server and it stays out of access logs');
+  check(
+    inviteIn('') === '' &&
+      inviteIn('#invite=abc') === 'abc' &&
+      inviteIn('#from=mail&invite=a%20b') === 'a b' &&
+      inviteIn('#invited=no') === '',
+    'the invite token is read out of the fragment — where a credential belongs, since browsers never send it ' +
+      'to the server and it stays out of access logs',
+  );
 } finally {
   globalThis.fetch = realFetch;
   await service?.close();
@@ -165,5 +206,7 @@ try {
   rmSync(root, { recursive: true, force: true });
 }
 
-if (failures) { console.error(`${failures} failure(s)`); process.exitCode = 1; }
-else console.log('login-gate: all checks passed');
+if (failures) {
+  console.error(`${failures} failure(s)`);
+  process.exitCode = 1;
+} else console.log('login-gate: all checks passed');

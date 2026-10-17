@@ -10,52 +10,66 @@ import { loadUpdateStatus, requestUpdate, type UpdateStatus } from '../../state/
 import { loadServerRestartStatus, requestServerRestart } from '../../state/restart';
 import { infoBadge } from '../components/info';
 
-const STORAGE_HELP = 'Where this server keeps its files, for everybody connected to it — so these are the '
-  + 'administrator’s to set. The Slopesmith service owns these paths; no absolute path ever enters a mountain '
-  + 'document.';
+const STORAGE_HELP =
+  'Where this server keeps its files, for everybody connected to it — so these are the ' +
+  'administrator’s to set. The Slopesmith service owns these paths; no absolute path ever enters a mountain ' +
+  'document.';
 
-const WORKSPACE_HELP = 'Projects, autosaves, caches and logs. Created if it does not exist yet. Changing it '
-  + 'needs a Slopesmith restart.';
+const WORKSPACE_HELP =
+  'Projects, autosaves, caches and logs. Created if it does not exist yet. Changing it ' +
+  'needs a Slopesmith restart.';
 
-const MAPS_HELP = 'The map library the server reads extracted reference maps from. Must already exist. '
-  + 'Changing it needs a Slopesmith restart.\n\n'
-  + 'Export is separate: the browser writes the map folder itself, into a folder you pick from the Export '
-  + 'dialog. Point that at this same library and your own courses land beside the retail ones.';
+const MAPS_HELP =
+  'The map library the server reads extracted reference maps from. Must already exist. ' +
+  'Changing it needs a Slopesmith restart.\n\n' +
+  'Export is separate: the browser writes the map folder itself, into a folder you pick from the Export ' +
+  'dialog. Point that at this same library and your own courses land beside the retail ones.';
 
-const CAPACITY_HELP = 'How many accounts may be connected at once. An account counts once even when it has '
-  + 'several tabs or devices open. The default is 16; enter any whole number from 1 upward.\n\n'
-  + 'When full, an editor can replace a viewer account; a moderator can replace a viewer or editor; and an '
-  + 'administrator can replace any lower role. Replacement disconnects every tab/device belonging to the '
-  + 'weakest eligible account that connected first. Administrators are never refused and may take the server '
-  + 'temporarily above this limit; other roles need a free seat or a lower-role account to replace.';
+const CAPACITY_HELP =
+  'How many accounts may be connected at once. An account counts once even when it has ' +
+  'several tabs or devices open. The default is 16; enter any whole number from 1 upward.\n\n' +
+  'When full, an editor can replace a viewer account; a moderator can replace a viewer or editor; and an ' +
+  'administrator can replace any lower role. Replacement disconnects every tab/device belonging to the ' +
+  'weakest eligible account that connected first. Administrators are never refused and may take the server ' +
+  'temporarily above this limit; other roles need a free seat or a lower-role account to replace.';
 
-const VOICE_SERVER_HELP = 'Optional server-wide voice chat is carried by a separate LiveKit process. '
-  + 'Slopesmith authenticates each member and issues a short-lived token; the LiveKit API key and secret stay '
-  + 'in the server environment and are never sent to this settings page.\n\n'
-  + 'The self-test joins with a temporary participant and checks signaling, WebRTC, and TURN reachability. It '
-  + 'does not turn on, listen to, or ask permission for your microphone.';
+const VOICE_SERVER_HELP =
+  'Optional server-wide voice chat is carried by a separate LiveKit process. ' +
+  'Slopesmith authenticates each member and issues a short-lived token; the LiveKit API key and secret stay ' +
+  'in the server environment and are never sent to this settings page.\n\n' +
+  'The self-test joins with a temporary participant and checks signaling, WebRTC, and TURN reachability. It ' +
+  'does not turn on, listen to, or ask permission for your microphone.';
 
-const VERSION_HELP = 'The commit loaded when this Slopesmith server started. “Check for updates” fetches the '
-  + 'configured update repository’s main branch and compares its commit history with the running commit. It '
-  + 'only refreshes Git metadata: it does not pull, merge, switch branches, rebuild, restart, or change any '
-  + 'working files. A production host chooses the repository in /etc/slopesmith-update.env; a developer '
-  + 'checkout otherwise uses its Git origin.';
+const VERSION_HELP =
+  'The commit loaded when this Slopesmith server started. “Check for updates” fetches the ' +
+  'configured update repository’s main branch and compares its commit history with the running commit. It ' +
+  'only refreshes Git metadata: it does not pull, merge, switch branches, rebuild, restart, or change any ' +
+  'working files. A production host chooses the repository in /etc/slopesmith-update.env; a developer ' +
+  'checkout otherwise uses its Git origin.';
 
-const UPDATE_HELP = 'Administrators can install the configured update repository’s latest main revision or a '
-  + 'specific full commit from its history. The server builds and tests an immutable release before switching '
-  + 'to it, then restarts Slopesmith. A failed activation switches back automatically. Everyone connected will '
-  + 'be briefly disconnected, so use a maintenance window.';
+const UPDATE_HELP =
+  'Administrators can install the configured update repository’s latest main revision or a ' +
+  'specific full commit from its history. The server builds and tests an immutable release before switching ' +
+  'to it, then restarts Slopesmith. A failed activation switches back automatically. Everyone connected will ' +
+  'be briefly disconnected, so use a maintenance window.';
 
-const RESTART_HELP = 'Stops and starts the shared Slopesmith service without changing its installed version. '
-  + 'Startup re-reads the server storage settings, rescans the maps folder, and reconstructs server caches and '
-  + 'file watchers. Everyone connected will be briefly disconnected, so use a maintenance window.';
+const RESTART_HELP =
+  'Stops and starts the shared Slopesmith service without changing its installed version. ' +
+  'Startup re-reads the server storage settings, rescans the maps folder, and reconstructs server caches and ' +
+  'file watchers. Everyone connected will be briefly disconnected, so use a maintenance window.';
 
 const shortHash = (hash: string): string => hash.slice(0, 10);
 
-const revisionTitle = (revision: AppVersionInfo['current']): string => revision
-  ? [revision.hash, revision.subject, revision.committedAt
-    ? new Date(revision.committedAt).toLocaleString() : undefined].filter(Boolean).join('\n')
-  : '';
+const revisionTitle = (revision: AppVersionInfo['current']): string =>
+  revision
+    ? [
+        revision.hash,
+        revision.subject,
+        revision.committedAt ? new Date(revision.committedAt).toLocaleString() : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '';
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise(resolveSleep => setTimeout(resolveSleep, milliseconds));
@@ -116,8 +130,9 @@ function buildUpdateControls(
     else if (status.state === 'installing') {
       state.textContent = `Building and testing ${shortHash(status.revision ?? '')}… this can take several minutes.`;
     } else if (status.state === 'failed') {
-      state.textContent = `Could not install ${shortHash(status.revision ?? '')}`
-        + (status.exitCode === undefined ? '.' : ` (deploy exited ${status.exitCode}).`);
+      state.textContent =
+        `Could not install ${shortHash(status.revision ?? '')}` +
+        (status.exitCode === undefined ? '.' : ` (deploy exited ${status.exitCode}).`);
     } else if (status.state === 'succeeded') {
       state.textContent = `Installed ${shortHash(status.revision ?? '')}.`;
     } else state.textContent = 'Ready to install a tested immutable release.';
@@ -129,7 +144,8 @@ function buildUpdateControls(
     if (monitoring) return;
     monitoring = true;
     enable(false);
-    for (let attempt = 0; attempt < 1_350; attempt++) { // 45 minutes, matching the systemd unit timeout
+    for (let attempt = 0; attempt < 1_350; attempt++) {
+      // 45 minutes, matching the systemd unit timeout
       await sleep(2_000);
       try {
         const update = await loadUpdateStatus();
@@ -165,7 +181,12 @@ function buildUpdateControls(
 
   const queue = async (target: 'latest' | string) => {
     const named = target === 'latest' ? `the latest ${sourceBranch()} release` : target;
-    if (!confirm(`Install ${named}?\n\nSlopesmith will build and test it, then restart the shared server. Everyone connected will be briefly disconnected.`)) return;
+    if (
+      !confirm(
+        `Install ${named}?\n\nSlopesmith will build and test it, then restart the shared server. Everyone connected will be briefly disconnected.`,
+      )
+    )
+      return;
     enable(false);
     state.classList.remove('warn');
     state.textContent = `Queuing ${target === 'latest' ? sourceBranch() : shortHash(target)}…`;
@@ -180,7 +201,9 @@ function buildUpdateControls(
     }
   };
 
-  latest.onclick = () => { void queue('latest'); };
+  latest.onclick = () => {
+    void queue('latest');
+  };
   install.onclick = () => {
     const revision = commit.value.trim();
     if (!/^[0-9a-f]{40}$/.test(revision)) {
@@ -196,22 +219,27 @@ function buildUpdateControls(
     void queue(revision);
   };
   commit.onkeydown = event => {
-    if (event.key === 'Enter') { event.preventDefault(); install.click(); }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      install.click();
+    }
   };
 
-  void loadUpdateStatus().then(update => {
-    showRepository(update.repository);
-    available = update.available;
-    showStatus(update);
-    enable(available && update.state !== 'queued' && update.state !== 'installing');
-    if (update.revision && (update.state === 'queued' || update.state === 'installing')) {
-      void monitor(update.revision);
-    }
-  }).catch(error => {
-    showRepository();
-    state.textContent = `Update status unavailable: ${error instanceof Error ? error.message : error}`;
-    state.classList.add('warn');
-  });
+  void loadUpdateStatus()
+    .then(update => {
+      showRepository(update.repository);
+      available = update.available;
+      showStatus(update);
+      enable(available && update.state !== 'queued' && update.state !== 'installing');
+      if (update.revision && (update.state === 'queued' || update.state === 'installing')) {
+        void monitor(update.revision);
+      }
+    })
+    .catch(error => {
+      showRepository();
+      state.textContent = `Update status unavailable: ${error instanceof Error ? error.message : error}`;
+      state.classList.add('warn');
+    });
   return box;
 }
 /** A complete service restart, separate from release installation so it remains useful when already current. */
@@ -235,7 +263,8 @@ function buildRestartControls(): HTMLDivElement {
   box.append(head, restart, state);
 
   const monitor = async (previousInstance: string) => {
-    for (let attempt = 0; attempt < 150; attempt++) { // five minutes, far wider than a normal service restart
+    for (let attempt = 0; attempt < 150; attempt++) {
+      // five minutes, far wider than a normal service restart
       await sleep(2_000);
       try {
         const status = await loadServerRestartStatus();
@@ -269,18 +298,20 @@ function buildRestartControls(): HTMLDivElement {
     }
   };
 
-  void loadServerRestartStatus().then(status => {
-    if (status.available && status.instance) {
-      state.textContent = 'Ready to restart the shared service.';
-      restart.disabled = false;
-    } else {
-      state.textContent = status.reason ?? 'This server cannot restart itself.';
+  void loadServerRestartStatus()
+    .then(status => {
+      if (status.available && status.instance) {
+        state.textContent = 'Ready to restart the shared service.';
+        restart.disabled = false;
+      } else {
+        state.textContent = status.reason ?? 'This server cannot restart itself.';
+        state.classList.add('warn');
+      }
+    })
+    .catch(error => {
+      state.textContent = `Restart status unavailable: ${error instanceof Error ? error.message : error}`;
       state.classList.add('warn');
-    }
-  }).catch(error => {
-    state.textContent = `Restart status unavailable: ${error instanceof Error ? error.message : error}`;
-    state.classList.add('warn');
-  });
+    });
   return box;
 }
 
@@ -294,12 +325,21 @@ export function buildVersionSection(): HTMLDivElement {
 
   const grid = document.createElement('div');
   grid.className = 'version-grid';
-  const currentLabel = document.createElement('span'); currentLabel.className = 'label'; currentLabel.textContent = 'Running';
-  const current = document.createElement('code'); current.textContent = 'Reading…';
-  const repositoryLabel = document.createElement('span'); repositoryLabel.className = 'label'; repositoryLabel.textContent = 'Repo';
-  const repository = document.createElement('code'); repository.textContent = 'Reading…';
-  const latestLabel = document.createElement('span'); latestLabel.className = 'label'; latestLabel.textContent = 'Latest';
-  const latest = document.createElement('code'); latest.textContent = 'Not checked';
+  const currentLabel = document.createElement('span');
+  currentLabel.className = 'label';
+  currentLabel.textContent = 'Running';
+  const current = document.createElement('code');
+  current.textContent = 'Reading…';
+  const repositoryLabel = document.createElement('span');
+  repositoryLabel.className = 'label';
+  repositoryLabel.textContent = 'Repo';
+  const repository = document.createElement('code');
+  repository.textContent = 'Reading…';
+  const latestLabel = document.createElement('span');
+  latestLabel.className = 'label';
+  latestLabel.textContent = 'Latest';
+  const latest = document.createElement('code');
+  latest.textContent = 'Not checked';
   grid.append(currentLabel, current, repositoryLabel, repository, latestLabel, latest);
 
   const actions = document.createElement('div');
@@ -360,8 +400,8 @@ export function buildVersionSection(): HTMLDivElement {
       state.textContent = `${info.ahead} local commit${info.ahead === 1 ? '' : 's'} ahead of ${sourceBranch}.${dirty}`;
       state.classList.add('warn');
     } else if (info.relation === 'diverged') {
-      state.textContent = `Local history and ${sourceBranch} have diverged `
-        + `(${info.ahead} ahead, ${info.behind} behind).${dirty}`;
+      state.textContent =
+        `Local history and ${sourceBranch} have diverged ` + `(${info.ahead} ahead, ${info.behind} behind).${dirty}`;
       state.classList.add('warn');
     } else {
       state.textContent = `The commits differ, but this checkout does not contain enough history to compare them.${dirty}`;
@@ -377,9 +417,10 @@ export function buildVersionSection(): HTMLDivElement {
     try {
       render(await checkAppVersion());
       // A production version check also makes the root runner refresh its published source record.
-      void loadUpdateStatus().then(update => showRepository(update.repository)).catch(() => {});
-    }
-    catch (error) {
+      void loadUpdateStatus()
+        .then(update => showRepository(update.repository))
+        .catch(() => {});
+    } catch (error) {
       state.textContent = `Could not check for updates: ${error instanceof Error ? error.message : error}`;
       state.classList.add('warn');
       check.disabled = false;
@@ -388,12 +429,17 @@ export function buildVersionSection(): HTMLDivElement {
   };
 
   sec.append(title, grid, actions);
-  sec.append(buildUpdateControls(() => shown, showRepository), buildRestartControls());
-  void loadAppVersion().then(render).catch(error => {
-    current.textContent = 'Unavailable';
-    state.textContent = `Version information unavailable: ${error instanceof Error ? error.message : error}`;
-    state.classList.add('warn');
-  });
+  sec.append(
+    buildUpdateControls(() => shown, showRepository),
+    buildRestartControls(),
+  );
+  void loadAppVersion()
+    .then(render)
+    .catch(error => {
+      current.textContent = 'Unavailable';
+      state.textContent = `Version information unavailable: ${error instanceof Error ? error.message : error}`;
+      state.classList.add('warn');
+    });
   return sec;
 }
 
@@ -446,20 +492,30 @@ export function buildServerConfigSection(): ServerConfigSection {
   pathsTitle.appendChild(infoBadge(STORAGE_HELP));
   pathsSec.appendChild(pathsTitle);
   const pathInput = (label: string, help: string): HTMLInputElement => {
-    const wrap = document.createElement('div'); wrap.className = 'pathrow';
-    const head = document.createElement('div'); head.className = 'rowhead';
-    const caption = document.createElement('label'); caption.textContent = label;
+    const wrap = document.createElement('div');
+    wrap.className = 'pathrow';
+    const head = document.createElement('div');
+    head.className = 'rowhead';
+    const caption = document.createElement('label');
+    caption.textContent = label;
     head.append(caption, infoBadge(help));
     const field = document.createElement('input');
-    field.type = 'text'; field.placeholder = 'Loading local server configuration…';
-    field.autocomplete = 'off'; field.spellcheck = false; field.disabled = true;
-    wrap.append(head, field); pathsSec.appendChild(wrap);
+    field.type = 'text';
+    field.placeholder = 'Loading local server configuration…';
+    field.autocomplete = 'off';
+    field.spellcheck = false;
+    field.disabled = true;
+    wrap.append(head, field);
+    pathsSec.appendChild(wrap);
     return field;
   };
   const workspaceRoot = pathInput('Workspace folder', WORKSPACE_HELP);
   const mapsRoot = pathInput('Maps folder', MAPS_HELP);
   /** Every editable path, paired with the config field it saves to. */
-  const rows: [PathField, HTMLInputElement][] = [['workspaceRoot', workspaceRoot], ['mapsRoot', mapsRoot]];
+  const rows: [PathField, HTMLInputElement][] = [
+    ['workspaceRoot', workspaceRoot],
+    ['mapsRoot', mapsRoot],
+  ];
   const pathState = document.createElement('div');
   pathState.className = 'state';
   pathState.style.marginTop = '8px';
@@ -479,26 +535,31 @@ export function buildServerConfigSection(): ServerConfigSection {
       ? `Overridden by SLOPESMITH_MAX_PLAYERS (${config.maxPlayers}).`
       : `${config.maxPlayers} concurrent account${config.maxPlayers === 1 ? '' : 's'}; changes apply immediately.`;
     for (const [key, el] of rows) el.disabled = config.overrides[key];
-    const pathOverrideVars = rows.filter(([key]) => config.overrides[key]).map(([key]) =>
-      key === 'workspaceRoot' ? 'SLOPESMITH_WORKSPACE_ROOT' : 'SLOPESMITH_MAPS_ROOT');
+    const pathOverrideVars = rows
+      .filter(([key]) => config.overrides[key])
+      .map(([key]) => (key === 'workspaceRoot' ? 'SLOPESMITH_WORKSPACE_ROOT' : 'SLOPESMITH_MAPS_ROOT'));
     pathState.classList.add('set');
     pathState.textContent = rows.every(([key]) => config.overrides[key])
       ? `Every path is overridden by ${pathOverrideVars.join(', ')}.`
-      : (config.configured ? `Machine-local config: ${config.configFile}`
-                           : `Using defaults — changing and saving a value will create ${config.configFile}`)
-        + (pathOverrideVars.length ? ` — ${pathOverrideVars.join(', ')} owns the rest.` : '');
+      : (config.configured
+          ? `Machine-local config: ${config.configFile}`
+          : `Using defaults — changing and saving a value will create ${config.configFile}`) +
+        (pathOverrideVars.length ? ` — ${pathOverrideVars.join(', ')} owns the rest.` : '');
   };
-  void loadServerWorkspaceConfig().then(({ config }) => showConfig(config)).catch(error => {
-    capacityState.textContent = `Player capacity unavailable: ${error instanceof Error ? error.message : error}`;
-    pathState.textContent = `Local server configuration unavailable: ${error instanceof Error ? error.message : error}`;
-  });
+  void loadServerWorkspaceConfig()
+    .then(({ config }) => showConfig(config))
+    .catch(error => {
+      capacityState.textContent = `Player capacity unavailable: ${error instanceof Error ? error.message : error}`;
+      pathState.textContent = `Local server configuration unavailable: ${error instanceof Error ? error.message : error}`;
+    });
 
   return {
     el: sectionHost,
     // Only changed fields this machine actually owns are sent; environment overrides stay untouched.
     patch: () => {
       const patch = Object.fromEntries(
-        rows.filter(([key, el]) => loaded && !loaded.overrides[key] && el.value.trim() !== loaded[key])
+        rows
+          .filter(([key, el]) => loaded && !loaded.overrides[key] && el.value.trim() !== loaded[key])
           .map(([key, el]) => [key, el.value.trim()]),
       ) as ServerWorkspacePatch;
       if (loaded && !loaded.overrides.maxPlayers) {
@@ -512,8 +573,10 @@ export function buildServerConfigSection(): ServerConfigSection {
     },
     accept: showConfig,
     fail: message => {
-      capacityState.classList.remove('set'); capacityState.textContent = message;
-      pathState.classList.remove('set'); pathState.textContent = message;
+      capacityState.classList.remove('set');
+      capacityState.textContent = message;
+      pathState.classList.remove('set');
+      pathState.textContent = message;
     },
   };
 }
@@ -540,7 +603,11 @@ async function requestVoiceTestCredentials(): Promise<VoiceTestCredentials> {
   });
   const text = await response.text();
   let decoded: unknown;
-  try { decoded = JSON.parse(text); } catch { /* status line below is more useful than malformed response text */ }
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    /* status line below is more useful than malformed response text */
+  }
   if (!response.ok) {
     const message = (decoded as { error?: unknown } | undefined)?.error;
     throw new Error(typeof message === 'string' ? message : `${response.status} ${response.statusText}`.trim());
@@ -582,14 +649,19 @@ export function buildVoiceServerSection(): HTMLDivElement {
     if (kind) state.classList.add(kind);
     state.textContent = message;
   };
-  void fetchJson<{ enabled: boolean }>('/api/voice').then(status => {
-    if (testing) return;
-    show(status.enabled
-      ? 'Voice is configured. Run the self-test to verify its public network paths.'
-      : 'Voice is not configured on this server.', status.enabled ? 'set' : 'warn');
-  }).catch(error => {
-    if (!testing) show(`Voice status unavailable: ${error instanceof Error ? error.message : error}`, 'err');
-  });
+  void fetchJson<{ enabled: boolean }>('/api/voice')
+    .then(status => {
+      if (testing) return;
+      show(
+        status.enabled
+          ? 'Voice is configured. Run the self-test to verify its public network paths.'
+          : 'Voice is not configured on this server.',
+        status.enabled ? 'set' : 'warn',
+      );
+    })
+    .catch(error => {
+      if (!testing) show(`Voice status unavailable: ${error instanceof Error ? error.message : error}`, 'err');
+    });
 
   test.onclick = async () => {
     testing = true;
@@ -605,15 +677,15 @@ export function buildVoiceServerSection(): HTMLDivElement {
       });
 
       show('Testing LiveKit signaling…');
-      const signaling = await checker.checkWebsocket() as VoiceCheckResult;
+      const signaling = (await checker.checkWebsocket()) as VoiceCheckResult;
       if (signaling.status === CheckStatus.FAILED) throw voiceCheckFailure('Voice signaling', signaling);
 
       show('Testing WebRTC and firewall reachability…');
-      const webRtc = await checker.checkWebRTC() as VoiceCheckResult;
+      const webRtc = (await checker.checkWebRTC()) as VoiceCheckResult;
       if (webRtc.status === CheckStatus.FAILED) throw voiceCheckFailure('WebRTC', webRtc);
 
       show('Testing the TURN relay…');
-      const turn = await checker.checkTURN() as VoiceCheckResult;
+      const turn = (await checker.checkTURN()) as VoiceCheckResult;
       if (turn.status === CheckStatus.FAILED) {
         show('Signaling and WebRTC passed, but TURN failed. Check UDP 3478 and the LiveKit firewall rules.', 'warn');
       } else if (turn.status === CheckStatus.SKIPPED) {
@@ -640,16 +712,19 @@ export function buildVoiceServerSection(): HTMLDivElement {
     item.append(...content);
     steps.appendChild(item);
   };
-  const signalUrl = location.protocol === 'https:'
-    ? `wss://${location.host}/api/livekit`
-    : 'wss://your-slopesmith-host/api/livekit';
+  const signalUrl =
+    location.protocol === 'https:' ? `wss://${location.host}/api/livekit` : 'wss://your-slopesmith-host/api/livekit';
   const command = document.createElement('code');
   command.textContent = `sudo bash deploy/install-livekit.sh ${signalUrl} slopesmith-prod`;
   addStep('On the same systemd Linux host, open the Slopesmith release directory and run ', command, '.');
-  addStep('Allow inbound TCP 7881, UDP 3478, and UDP 50000–50199 in both the host and provider/cloud '
-    + 'firewalls. Keep LiveKit TCP 7880 private.');
-  addStep('The installer creates the LiveKit service and private credentials, connects them to the Slopesmith '
-    + 'service, and restarts Slopesmith. Return here and choose Run self-test.');
+  addStep(
+    'Allow inbound TCP 7881, UDP 3478, and UDP 50000–50199 in both the host and provider/cloud ' +
+      'firewalls. Keep LiveKit TCP 7880 private.',
+  );
+  addStep(
+    'The installer creates the LiveKit service and private credentials, connects them to the Slopesmith ' +
+      'service, and restarts Slopesmith. Return here and choose Run self-test.',
+  );
   const urlVariable = document.createElement('code');
   urlVariable.textContent = 'SLOPESMITH_LIVEKIT_URL';
   const keyVariable = document.createElement('code');
@@ -660,10 +735,19 @@ export function buildVoiceServerSection(): HTMLDivElement {
   roomVariable.textContent = 'SLOPESMITH_LIVEKIT_ROOM';
   const upstreamVariable = document.createElement('code');
   upstreamVariable.textContent = 'SLOPESMITH_LIVEKIT_UPSTREAM';
-  addStep('For a non-systemd deployment, configure LiveKit separately, give Slopesmith its matching ',
-    keyVariable, ' and ', secretVariable, ', set ', urlVariable, ' to the public WSS URL, choose a unique ',
-    roomVariable, ' for each Slopesmith deployment, and optionally point ', upstreamVariable,
-    ' at its loopback HTTP listener. Then restart Slopesmith.');
+  addStep(
+    'For a non-systemd deployment, configure LiveKit separately, give Slopesmith its matching ',
+    keyVariable,
+    ' and ',
+    secretVariable,
+    ', set ',
+    urlVariable,
+    ' to the public WSS URL, choose a unique ',
+    roomVariable,
+    ' for each Slopesmith deployment, and optionally point ',
+    upstreamVariable,
+    ' at its loopback HTTP listener. Then restart Slopesmith.',
+  );
   guide.append(summary, steps);
 
   sec.append(title, actions, guide);

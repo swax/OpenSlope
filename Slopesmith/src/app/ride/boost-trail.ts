@@ -93,10 +93,14 @@ export class BoardBoostTrail {
   private lastGear: RideGear | null = null;
 
   constructor() {
-    this.geometry.setAttribute('position',
-      new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute('trailColour',
-      new THREE.BufferAttribute(this.colours, 4).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage),
+    );
+    this.geometry.setAttribute(
+      'trailColour',
+      new THREE.BufferAttribute(this.colours, 4).setUsage(THREE.DynamicDrawUsage),
+    );
     this.geometry.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(this.geometry, trailMaterial());
     this.mesh.name = 'PlayerBoardBoostTrail';
@@ -172,7 +176,7 @@ export class BoardBoostTrail {
     // Slopesmith gear's real outline: 1.86 m snowboard, or the asymmetric 1.104/0.936 m ski extents.
     const tailZ = snowboard ? -0.93 * this.travelSign : this.travelSign > 0 ? -0.936 : 1.104;
     const centreX = snowboard ? 0.174 : 0.105;
-    const halfStreak = snowboard ? 0.030 : 0.043;
+    const halfStreak = snowboard ? 0.03 : 0.043;
     const y = snowboard ? 0.012 : 0.011;
     const xs = [-centreX - halfStreak, -centreX + halfStreak, centreX - halfStreak, centreX + halfStreak];
     for (let i = 0; i < 4; i++) {
@@ -183,7 +187,10 @@ export class BoardBoostTrail {
 
   private rebuild() {
     // The native render pass waits for two cached records. This avoids flashing one isolated quad on engage.
-    if (this.samples.length < 2) { this.geometry.setDrawRange(0, 0); return; }
+    if (this.samples.length < 2) {
+      this.geometry.setDrawRange(0, 0);
+      return;
+    }
     let vertex = 0;
     const denominator = this.samples.length + 1;
     for (let segment = 0; segment < this.samples.length; segment++) {
@@ -191,18 +198,39 @@ export class BoardBoostTrail {
       const newer = segment + 1 < this.samples.length ? this.samples[segment + 1] : this.current;
       const olderAlpha = 0.04 + 0.56 * Math.pow((segment + 1) / denominator, 1.55);
       const newerAlpha = 0.04 + 0.56 * Math.pow((segment + 2) / denominator, 1.55);
-      vertex = this.writeQuad(vertex, older.points[0], older.points[1], newer.points[1], newer.points[0],
-        olderAlpha, newerAlpha);
-      vertex = this.writeQuad(vertex, older.points[2], older.points[3], newer.points[3], newer.points[2],
-        olderAlpha, newerAlpha);
+      vertex = this.writeQuad(
+        vertex,
+        older.points[0],
+        older.points[1],
+        newer.points[1],
+        newer.points[0],
+        olderAlpha,
+        newerAlpha,
+      );
+      vertex = this.writeQuad(
+        vertex,
+        older.points[2],
+        older.points[3],
+        newer.points[3],
+        newer.points[2],
+        olderAlpha,
+        newerAlpha,
+      );
     }
     (this.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.getAttribute('trailColour') as THREE.BufferAttribute).needsUpdate = true;
     this.geometry.setDrawRange(0, vertex);
   }
 
-  private writeQuad(start: number, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3,
-                    olderAlpha: number, newerAlpha: number): number {
+  private writeQuad(
+    start: number,
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    c: THREE.Vector3,
+    d: THREE.Vector3,
+    olderAlpha: number,
+    newerAlpha: number,
+  ): number {
     let vertex = start;
     vertex = this.writeVertex(vertex, a, olderAlpha);
     vertex = this.writeVertex(vertex, b, olderAlpha);
@@ -214,9 +242,14 @@ export class BoardBoostTrail {
   }
 
   private writeVertex(vertex: number, point: THREE.Vector3, alpha: number): number {
-    const pi = vertex * 3, ci = vertex * 4;
-    this.positions[pi] = point.x; this.positions[pi + 1] = point.y; this.positions[pi + 2] = point.z;
-    this.colours[ci] = this.tint.r; this.colours[ci + 1] = this.tint.g; this.colours[ci + 2] = this.tint.b;
+    const pi = vertex * 3,
+      ci = vertex * 4;
+    this.positions[pi] = point.x;
+    this.positions[pi + 1] = point.y;
+    this.positions[pi + 2] = point.z;
+    this.colours[ci] = this.tint.r;
+    this.colours[ci + 1] = this.tint.g;
+    this.colours[ci + 2] = this.tint.b;
     this.colours[ci + 3] = alpha;
     return vertex + 1;
   }

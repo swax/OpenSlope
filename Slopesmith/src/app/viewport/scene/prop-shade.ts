@@ -42,8 +42,8 @@ export function setPropShadeSun(dir: readonly [number, number, number] | null): 
  * Both stay clear of the terrain palette's occupied hues (blue and teal are unused there) and of the
  * back-face magenta that mixes over the top of whichever of them applies.
  */
-export const PROP_SOLID_COLOR = 0x4a85ed;    // solid, no ride surface — an obstacle
-export const PROP_THROUGH_COLOR = 0x2fbca0;  // ride-through: no response, but effects and sounds fire
+export const PROP_SOLID_COLOR = 0x4a85ed; // solid, no ride surface — an obstacle
+export const PROP_THROUGH_COLOR = 0x2fbca0; // ride-through: no response, but effects and sounds fire
 
 export function propContactTint(state: PlacedPropContactState, surface?: number): number {
   if (state === 'none') return PROP_CLAY_COLOR;
@@ -65,39 +65,65 @@ function shadeTint(mesh: THREE.Object3D): number {
 }
 const PROP_OCCLUDED_DIM = 0.08;
 const depthMaskMat = new THREE.MeshBasicMaterial({
-  colorWrite: false, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET,
+  colorWrite: false,
+  side: THREE.DoubleSide,
+  ...SURFACE_POLY_OFFSET,
 });
 const hiddenWireMat = new THREE.MeshBasicMaterial({
-  color: 0x9aa0a8, wireframe: true, transparent: true, opacity: PROP_OCCLUDED_DIM,
-  depthTest: true, depthWrite: false, depthFunc: THREE.GreaterDepth, side: THREE.DoubleSide,
+  color: 0x9aa0a8,
+  wireframe: true,
+  transparent: true,
+  opacity: PROP_OCCLUDED_DIM,
+  depthTest: true,
+  depthWrite: false,
+  depthFunc: THREE.GreaterDepth,
+  side: THREE.DoubleSide,
 });
 const visibleWireMat = new THREE.MeshBasicMaterial({
-  color: 0x9aa0a8, wireframe: true, transparent: true, opacity: 1,
-  depthTest: true, depthWrite: false, side: THREE.DoubleSide,
+  color: 0x9aa0a8,
+  wireframe: true,
+  transparent: true,
+  opacity: 1,
+  depthTest: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
 });
 
 /** A filled-triangle material that keeps only a screen-antialiased barycentric rim. Unlike Three's built-in
  * `wireframe`, it leaves BatchedMesh's triangle draw ranges untouched, so heterogeneous geometry can remain
  * in one multi-draw batch without skewing its edge indices. */
-function barycentricWireMaterial(opacity: number,
-  depthFunc: THREE.DepthModes = THREE.LessEqualDepth): THREE.MeshBasicMaterial {
+function barycentricWireMaterial(
+  opacity: number,
+  depthFunc: THREE.DepthModes = THREE.LessEqualDepth,
+): THREE.MeshBasicMaterial {
   const material = new THREE.MeshBasicMaterial({
-    color: 0x9aa0a8, transparent: true, opacity, depthTest: true, depthWrite: false,
-    depthFunc, side: THREE.DoubleSide,
+    color: 0x9aa0a8,
+    transparent: true,
+    opacity,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc,
+    side: THREE.DoubleSide,
   });
   material.onBeforeCompile = shader => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 propBarycentric;\nvarying vec3 vPropBarycentric;')
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute vec3 propBarycentric;\nvarying vec3 vPropBarycentric;',
+      )
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPropBarycentric = propBarycentric;');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vPropBarycentric;')
-      .replace('#include <opaque_fragment>', `
+      .replace(
+        '#include <opaque_fragment>',
+        `
         vec3 propEdgeAA = smoothstep(vec3(0.0), fwidth(vPropBarycentric) * 1.15, vPropBarycentric);
         float propEdgeCoverage = 1.0 - min(min(propEdgeAA.x, propEdgeAA.y), propEdgeAA.z);
         if (propEdgeCoverage <= 0.01) discard;
         diffuseColor.a *= propEdgeCoverage;
         #include <opaque_fragment>
-      `);
+      `,
+      );
   };
   material.customProgramCacheKey = () => 'prop-barycentric-wire-v1';
   return material;
@@ -147,25 +173,33 @@ function clayVariant(source: THREE.Material, tint: number): THREE.Material {
   // copied `map` would test a solid white alpha and every cutout would fill in as a rectangle. Carry the
   // array across and let the same rewrite bind it — the silhouette is the whole point of keeping a map here.
   const array = materialTextureArray(source);
-  const key = `${array?.uuid ?? map?.uuid ?? 'flat'}|${source.alphaTest}|${source.transparent ? 1 : 0}`
-    + `|${source.alphaHash ? 1 : 0}`
-    + `|${source.depthWrite ? 1 : 0}|${tint}`;
+  const key =
+    `${array?.uuid ?? map?.uuid ?? 'flat'}|${source.alphaTest}|${source.transparent ? 1 : 0}` +
+    `|${source.alphaHash ? 1 : 0}` +
+    `|${source.depthWrite ? 1 : 0}|${tint}`;
   let material = clayMats.get(key);
   if (!material) {
     material = new THREE.MeshLambertMaterial({
-      color: tint, side: THREE.DoubleSide, map,
-      alphaTest: source.alphaTest, alphaHash: source.alphaHash,
-      transparent: source.transparent, depthWrite: source.depthWrite,
+      color: tint,
+      side: THREE.DoubleSide,
+      map,
+      alphaTest: source.alphaTest,
+      alphaHash: source.alphaHash,
+      transparent: source.transparent,
+      depthWrite: source.depthWrite,
     });
     material.onBeforeCompile = shader => {
-      shader.uniforms.uClaySun = claySun;   // shared: one assignment re-reads every clay material
+      shader.uniforms.uClaySun = claySun; // shared: one assignment re-reads every clay material
       // The view-space stored normal. Its own varying rather than Lambert's `vNormal`, because
       // `normal_fragment_begin` would already have applied the double-sided flip that hides which way the
       // face actually points — the flip this reading exists to see past.
       shader.vertexShader = shader.vertexShader
         .replace('void main() {', 'varying vec3 vClayNormal;\nvoid main() {')
         // after defaultnormal_vertex: instancing / batching / skinning folded in, then normalMatrix
-        .replace('#include <defaultnormal_vertex>', '#include <defaultnormal_vertex>\n\tvClayNormal = transformedNormal;');
+        .replace(
+          '#include <defaultnormal_vertex>',
+          '#include <defaultnormal_vertex>\n\tvClayNormal = transformedNormal;',
+        );
       shader.fragmentShader = shader.fragmentShader
         // `viewMatrix` is in Three's standard fragment prefix, so the sun stays a world-space uniform that
         // only the sun panel writes rather than something the render loop has to refresh per camera move.
@@ -178,10 +212,13 @@ function clayVariant(source: THREE.Material, tint: number): THREE.Material {
         // The lit prop materials neutralise it the same way, at `mix(vColor, vec3(1.0), uNativeRecords)`.
         .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb = diffuse;')
         // `max(0, N·L)` is the engine's own clamp; the smoothstep only decides how fast the tint arrives.
-        .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        .replace(
+          '#include <dithering_fragment>',
+          `#include <dithering_fragment>
 	float clayKey = max( 0.0, dot( normalize( vClayNormal ), mat3( viewMatrix ) * uClaySun.xyz ) );
 	float clayDark = uClaySun.w * ( 1.0 - smoothstep( 0.0, 0.5, clayKey ) );
-	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${BACKFACE_TINT_GLSL}, clayDark * ${PROP_DARK_TINT_MIX.toFixed(2)} );`);
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${BACKFACE_TINT_GLSL}, clayDark * ${PROP_DARK_TINT_MIX.toFixed(2)} );`,
+        );
     };
     // The injected source is identical for every variant (both constants compile in), so one key keeps the
     // whole family on one program instead of one per tile.
@@ -227,7 +264,9 @@ function wireframePass(source: THREE.Mesh, material: THREE.Material): THREE.Mesh
   pass.userData = { [WIREFRAME_PASS]: true };
   pass.castShadow = false;
   pass.receiveShadow = false;
-  pass.raycast = () => { /* renderer-only duplicate; the original depth mesh remains the pick target */ };
+  pass.raycast = () => {
+    /* renderer-only duplicate; the original depth mesh remains the pick target */
+  };
   return pass;
 }
 
@@ -264,10 +303,13 @@ function batchedWireframePasses(source: THREE.BatchedMesh): THREE.Mesh[] {
   const slots = source.userData.propSlots as Array<{ geometry?: THREE.BufferGeometry } | undefined> | undefined;
   if (!slots?.length) return [];
   const wireBySource = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
-  for (const slot of slots) if (slot?.geometry && !wireBySource.has(slot.geometry))
-    wireBySource.set(slot.geometry, barycentricGeometry(slot.geometry));
-  const vertices = [...wireBySource.values()].reduce((sum, geometry) =>
-    sum + geometry.getAttribute('position').count, 0);
+  for (const slot of slots)
+    if (slot?.geometry && !wireBySource.has(slot.geometry))
+      wireBySource.set(slot.geometry, barycentricGeometry(slot.geometry));
+  const vertices = [...wireBySource.values()].reduce(
+    (sum, geometry) => sum + geometry.getAttribute('position').count,
+    0,
+  );
   if (!vertices) return [];
 
   const hidden = new THREE.BatchedMesh(slots.length, vertices, vertices * 2, hiddenBatchedWireMat);
@@ -294,14 +336,19 @@ function batchedWireframePasses(source: THREE.BatchedMesh): THREE.Mesh[] {
   visible.material = visibleBatchedWireMat;
   wireBySource.forEach(geometry => geometry.dispose());
 
-  for (const [pass, topology] of [[hidden, 'hidden'], [visible, 'visible']] as const) {
+  for (const [pass, topology] of [
+    [hidden, 'hidden'],
+    [visible, 'visible'],
+  ] as const) {
     resetPassTransform(pass);
     pass.name = `${source.name || 'Prop batch'} ${topology} barycentric wire batch`;
     pass.userData = { [WIREFRAME_PASS]: true, propWireGeometryOwner: pass === hidden };
     pass.frustumCulled = false; // native per-object culling still trims the multi-draw commands
     pass.castShadow = false;
     pass.receiveShadow = false;
-    pass.raycast = () => { /* renderer-only duplicate; the original depth batch remains the pick target */ };
+    pass.raycast = () => {
+      /* renderer-only duplicate; the original depth batch remains the pick target */
+    };
   }
   return [hidden, visible];
 }
@@ -309,15 +356,16 @@ function batchedWireframePasses(source: THREE.BatchedMesh): THREE.Mesh[] {
 function ensureWireframePasses(mesh: THREE.Mesh): THREE.Mesh[] {
   const existing = mesh.userData[WIREFRAME_PASSES] as THREE.Mesh[] | undefined;
   if (existing) return existing;
-  const passes = mesh instanceof THREE.BatchedMesh
-    ? batchedWireframePasses(mesh)
-    : [wireframePass(mesh, hiddenWireMat), wireframePass(mesh, visibleWireMat)];
+  const passes =
+    mesh instanceof THREE.BatchedMesh
+      ? batchedWireframePasses(mesh)
+      : [wireframePass(mesh, hiddenWireMat), wireframePass(mesh, visibleWireMat)];
   for (const pass of passes) {
     const hidden = (pass.material as THREE.Material).depthFunc === THREE.GreaterDepth;
     pass.renderOrder = mesh.renderOrder + (hidden ? 0 : 1);
     mesh.add(pass);
   }
-  return mesh.userData[WIREFRAME_PASSES] = passes;
+  return (mesh.userData[WIREFRAME_PASSES] = passes);
 }
 
 /** Drop the renderer-only passes before a prop tree is discarded. Ordinary geometry/materials are shared;
@@ -350,16 +398,23 @@ export function applyPropShade(root: THREE.Object3D, mode: ShadeMode): void {
     const mesh = object as THREE.Mesh & { isLineSegments2?: boolean };
     if (!mesh.isMesh || mesh.isLineSegments2 || mesh.userData[WIREFRAME_PASS]) return;
     const original = (mesh.userData.texturedMaterial ?? mesh.material) as THREE.Material | THREE.Material[];
-    const passes = mode === 'none' ? ensureWireframePasses(mesh)
-      : mesh.userData[WIREFRAME_PASSES] as THREE.Mesh[] | undefined;
+    const passes =
+      mode === 'none' ? ensureWireframePasses(mesh) : (mesh.userData[WIREFRAME_PASSES] as THREE.Mesh[] | undefined);
     if (passes) for (const pass of passes) pass.visible = mode === 'none';
     const tint = mode === 'surface' ? shadeTint(mesh) : PROP_CLAY_COLOR;
-    const override = mode === 'none' ? depthMaskMat
-      : mode === 'surface' ? (Array.isArray(original)
-        ? original.map(material => clayVariant(material, tint)) : clayVariant(original, tint))
-        : null;
+    const override =
+      mode === 'none'
+        ? depthMaskMat
+        : mode === 'surface'
+          ? Array.isArray(original)
+            ? original.map(material => clayVariant(material, tint))
+            : clayVariant(original, tint)
+          : null;
     if (!override) {
-      if (mesh.userData.texturedMaterial) { mesh.material = original; delete mesh.userData.texturedMaterial; }
+      if (mesh.userData.texturedMaterial) {
+        mesh.material = original;
+        delete mesh.userData.texturedMaterial;
+      }
       return;
     }
     mesh.userData.texturedMaterial ??= mesh.material; // first override stashes the real material

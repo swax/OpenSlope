@@ -1,18 +1,26 @@
 import type { RaceMusicArrangement } from '../../core/doc/types';
 import type { AuthoredEnvironmentBed, EnvironmentAudioBed } from '../../core/audio/environment';
 import {
-  decodeMusicEventTable, decodeMusicLink, decodeMusicRouter, musicNodeSection,
-  type ReferenceMusicGraph, type ReferenceMusicIndex,
+  decodeMusicEventTable,
+  decodeMusicLink,
+  decodeMusicRouter,
+  musicNodeSection,
+  type ReferenceMusicGraph,
+  type ReferenceMusicIndex,
 } from '../../core/reference/music';
 import { MAX_SPEED } from '../ride/physics-tuning';
 import { customMusicUrl } from '../net/asset-paths';
 import { environmentSoundUrl } from '../net/asset-paths';
 import { fetchJson } from '../net/fetch-json';
 import {
-  gameAudioDestination, preloadAudio, resumeSharedAudio, sharedAudioBuffer, sharedAudioContext,
+  gameAudioDestination,
+  preloadAudio,
+  resumeSharedAudio,
+  sharedAudioBuffer,
+  sharedAudioContext,
 } from './runtime';
 
-const INTRO_VOLUME = 0.30;
+const INTRO_VOLUME = 0.3;
 const RACE_VOLUME = 0.42;
 const INTRO_CROSSFADE_SECONDS = 0.25;
 const RACE_FADE_SECONDS = 1.5;
@@ -26,20 +34,19 @@ export const referenceIntroMusicUrl = (level: string, stem: string): string =>
   `/api/reference-intro-music?level=${encodeURIComponent(level)}&stem=${encodeURIComponent(stem)}`;
 
 export const referenceRaceMusicUrl = (level: string, song: string, sample: number): string =>
-  `/api/reference-music-sample?level=${encodeURIComponent(level)}`
-  + `&song=${encodeURIComponent(song)}&sample=${sample}`;
+  `/api/reference-music-sample?level=${encodeURIComponent(level)}` +
+  `&song=${encodeURIComponent(song)}&sample=${sample}`;
 
 export const referenceEnvironmentUrl = (level: string, bed: EnvironmentAudioBed): string =>
-  `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${bed.Slot}`
-  + `&bank=${encodeURIComponent(bed.Bank)}&loop=1`;
+  `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${bed.Slot}` +
+  `&bank=${encodeURIComponent(bed.Bank)}&loop=1`;
 
 export function referenceMusicIndex(level: string): Promise<ReferenceMusicIndex | null> {
   const key = level.trim();
   if (!key) return Promise.resolve(null);
   let pending = referenceIndexCache.get(key);
   if (!pending) {
-    pending = fetchJson<ReferenceMusicIndex>(`/api/reference-music?level=${encodeURIComponent(key)}`)
-      .catch(() => null);
+    pending = fetchJson<ReferenceMusicIndex>(`/api/reference-music?level=${encodeURIComponent(key)}`).catch(() => null);
     referenceIndexCache.set(key, pending);
   }
   return pending;
@@ -50,8 +57,9 @@ export function referenceMusicGraph(level: string, song: string): Promise<Refere
   if (!level.trim() || !song.trim()) return Promise.resolve(null);
   let pending = referenceGraphCache.get(key);
   if (!pending) {
-    pending = fetchJson<ReferenceMusicGraph>(`/api/reference-music?level=${encodeURIComponent(level)}`
-      + `&song=${encodeURIComponent(song)}`).catch(() => null);
+    pending = fetchJson<ReferenceMusicGraph>(
+      `/api/reference-music?level=${encodeURIComponent(level)}` + `&song=${encodeURIComponent(song)}`,
+    ).catch(() => null);
     referenceGraphCache.set(key, pending);
   }
   return pending;
@@ -78,11 +86,10 @@ export function resolveMusicSampleNode(graph: ReferenceMusicGraph, start: number
   return -1;
 }
 
-function resolveMusicEvent(graph: ReferenceMusicGraph, event: number, nodeIndex: number,
-  pathLevel: number): number {
+function resolveMusicEvent(graph: ReferenceMusicGraph, event: number, nodeIndex: number, pathLevel: number): number {
   const section = Math.min(Math.max(0, musicNodeSection(graph.Nodes[nodeIndex])), graph.Sections - 1);
   const table = decodeMusicEventTable(graph.EventTable);
-  const at = ((event * graph.Tracks) * graph.Sections) + section;
+  const at = event * graph.Tracks * graph.Sections + section;
   const routerIndex = table[at];
   if (routerIndex === undefined || routerIndex >= graph.Routers.length) return -1;
   const router = decodeMusicRouter(graph.Routers[routerIndex]);
@@ -91,7 +98,11 @@ function resolveMusicEvent(graph: ReferenceMusicGraph, event: number, nodeIndex:
 }
 
 /** An empty selection means Random. Missing saved songs also fall back to the current course's playlist. */
-export function pickReferenceRideSong(songs: ReferenceMusicIndex['songs'], selection = '', random = Math.random): string | null {
+export function pickReferenceRideSong(
+  songs: ReferenceMusicIndex['songs'],
+  selection = '',
+  random = Math.random,
+): string | null {
   const selected = songs.find(song => song.id === selection);
   return selected?.id ?? songs[Math.floor(random() * songs.length)]?.id ?? null;
 }
@@ -106,21 +117,28 @@ export function preloadReferenceRideMusic(level: string, selection = ''): void {
     if (index.environment) preloadAudio([referenceEnvironmentUrl(level, index.environment)]);
     else preloadAudio(index.intro?.stems.map(stem => referenceIntroMusicUrl(level, stem)) ?? []);
     const selected = index.songs.find(song => song.id === selection);
-    await Promise.all((selected ? [selected] : index.songs).map(async ({ id: song }) => {
-      const graph = await referenceMusicGraph(level, song);
-      if (!graph) return;
-      const first = resolveMusicSampleNode(graph, 0, 80);
-      if (first < 0) return;
-      const second = resolveMusicSampleNode(graph, pickLink(graph, first, 80), 80);
-      preloadAudio([first, second].filter(node => node >= 0)
-        .map(node => referenceRaceMusicUrl(level, song, graph.Nodes[node].Sample)));
-    }));
+    await Promise.all(
+      (selected ? [selected] : index.songs).map(async ({ id: song }) => {
+        const graph = await referenceMusicGraph(level, song);
+        if (!graph) return;
+        const first = resolveMusicSampleNode(graph, 0, 80);
+        if (first < 0) return;
+        const second = resolveMusicSampleNode(graph, pickLink(graph, first, 80), 80);
+        preloadAudio(
+          [first, second]
+            .filter(node => node >= 0)
+            .map(node => referenceRaceMusicUrl(level, song, graph.Nodes[node].Sample)),
+        );
+      }),
+    );
   });
 }
 
 /** Warm an authored master from Test setup; the later mount reuses the decoded page-lifetime buffer. */
-export function preloadAuthoredRideMusic(track: string | null | undefined,
-  environment?: AuthoredEnvironmentBed | null): void {
+export function preloadAuthoredRideMusic(
+  track: string | null | undefined,
+  environment?: AuthoredEnvironmentBed | null,
+): void {
   if (track) preloadAudio([customMusicUrl(track)]);
   if (environment) preloadAudio([environmentSoundUrl(environment.bank, 0, true)]);
 }
@@ -141,8 +159,13 @@ export interface RideMusicFrame {
 }
 
 /** One simple Test-mode state machine: environment off-board, race music on-board. */
-export function rideMusicMixTargets(mounted: boolean, hasRace: boolean, hasEnvironment: boolean): {
-  race: number; environment: number;
+export function rideMusicMixTargets(
+  mounted: boolean,
+  hasRace: boolean,
+  hasEnvironment: boolean,
+): {
+  race: number;
+  environment: number;
 } {
   return {
     race: mounted && hasRace ? 1 : 0,
@@ -200,24 +223,29 @@ export class RideMusicRuntime {
   }
 
   step(dt: number, frame: RideMusicFrame): void {
-    if (!frame.active) { this.stop(); return; }
+    if (!frame.active) {
+      this.stop();
+      return;
+    }
     resumeSharedAudio();
-    const key = frame.target === 'reference'
-      ? `reference:${frame.referenceLevel}:${frame.referenceSong}`
-      : `authored:${frame.authoredTrack ?? ''}:${JSON.stringify(frame.authoredArrangement)}`
-        + `:${JSON.stringify(frame.authoredEnvironment)}`;
+    const key =
+      frame.target === 'reference'
+        ? `reference:${frame.referenceLevel}:${frame.referenceSong}`
+        : `authored:${frame.authoredTrack ?? ''}:${JSON.stringify(frame.authoredArrangement)}` +
+          `:${JSON.stringify(frame.authoredEnvironment)}`;
     if (key !== this.configKey) this.configure(key, frame);
 
     const hasRace = !!this.raceGraph || !!this.customBuffer;
     const targets = rideMusicMixTargets(frame.mounted, hasRace, !!this.environmentVoice);
-    this.raceFade = moveTowards(this.raceFade, targets.race,
-      Math.max(0, dt) / RACE_FADE_SECONDS);
+    this.raceFade = moveTowards(this.raceFade, targets.race, Math.max(0, dt) / RACE_FADE_SECONDS);
     if (this.introMaster) this.introMaster.gain.value = INTRO_VOLUME * (1 - this.raceFade);
     if (this.raceMaster) this.raceMaster.gain.value = RACE_VOLUME * this.raceFade;
-    this.environmentFade = moveTowards(this.environmentFade, targets.environment,
-      Math.max(0, dt) / ENVIRONMENT_FADE_SECONDS);
-    if (this.environmentMaster)
-      this.environmentMaster.gain.value = this.environmentVolume * this.environmentFade;
+    this.environmentFade = moveTowards(
+      this.environmentFade,
+      targets.environment,
+      Math.max(0, dt) / ENVIRONMENT_FADE_SECONDS,
+    );
+    if (this.environmentMaster) this.environmentMaster.gain.value = this.environmentVolume * this.environmentFade;
 
     this.stepIntro();
     if (!hasRace) return;
@@ -285,8 +313,11 @@ export class RideMusicRuntime {
       this.referenceChoice = { key, song: pickReferenceRideSong(index.songs, selection) };
     const song = this.referenceChoice.song;
     const [intro, graph, environment] = await Promise.all([
-      Promise.all((index.environment ? [] : index.intro?.stems ?? [])
-        .map(stem => sharedAudioBuffer(referenceIntroMusicUrl(level, stem)))),
+      Promise.all(
+        (index.environment ? [] : (index.intro?.stems ?? [])).map(stem =>
+          sharedAudioBuffer(referenceIntroMusicUrl(level, stem)),
+        ),
+      ),
       song ? referenceMusicGraph(level, song) : Promise.resolve(null),
       index.environment ? sharedAudioBuffer(referenceEnvironmentUrl(level, index.environment)) : Promise.resolve(null),
     ]);
@@ -371,8 +402,10 @@ export class RideMusicRuntime {
         [this.introBag[i], this.introBag[j]] = [this.introBag[j], this.introBag[i]];
       }
       if (this.introBag.length > 1 && this.introBag[0] === this.introLast)
-        [this.introBag[0], this.introBag[this.introBag.length - 1]] =
-          [this.introBag[this.introBag.length - 1], this.introBag[0]];
+        [this.introBag[0], this.introBag[this.introBag.length - 1]] = [
+          this.introBag[this.introBag.length - 1],
+          this.introBag[0],
+        ];
       this.introBagAt = 0;
     }
     const index = this.introBag[this.introBagAt++];
@@ -391,7 +424,8 @@ export class RideMusicRuntime {
       source.loop = true;
       source.loopStart = Math.min(arrangement?.loopStartSeconds ?? 0, Math.max(0, this.customBuffer.duration - 0.01));
       source.loopEnd = arrangement?.loopEndSeconds
-        ? Math.min(this.customBuffer.duration, arrangement.loopEndSeconds) : this.customBuffer.duration;
+        ? Math.min(this.customBuffer.duration, arrangement.loopEndSeconds)
+        : this.customBuffer.duration;
       if (source.loopEnd <= source.loopStart) source.loopEnd = this.customBuffer.duration;
       source.connect(gain).connect(this.raceMaster);
       source.start(start);
@@ -428,8 +462,8 @@ export class RideMusicRuntime {
       this.raceCurrent = this.raceQueued;
       this.raceQueued = null;
     }
-    if (!this.raceQueued && !this.raceQueuePending
-      && now + RACE_SCHEDULE_AHEAD_SECONDS >= this.raceCurrent.end) this.queueRaceNext();
+    if (!this.raceQueued && !this.raceQueuePending && now + RACE_SCHEDULE_AHEAD_SECONDS >= this.raceCurrent.end)
+      this.queueRaceNext();
   }
 
   private queueRaceNext(): void {
@@ -477,7 +511,11 @@ export class RideMusicRuntime {
   private stopVoices(voices: Array<Voice | null>): void {
     for (const voice of voices) {
       if (!voice) continue;
-      try { voice.source.stop(); } catch { /* a naturally ended or not-yet-started source */ }
+      try {
+        voice.source.stop();
+      } catch {
+        /* a naturally ended or not-yet-started source */
+      }
       voice.source.disconnect();
       voice.gain.disconnect();
     }

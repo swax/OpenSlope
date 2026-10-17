@@ -66,7 +66,9 @@ export async function identify(req: IncomingMessage): Promise<Identity> {
   const principal = await resolveSession(sessionToken(req));
   if (principal) {
     return {
-      kind: 'member', user: principal.user, sessionId: principal.sessionId,
+      kind: 'member',
+      user: principal.user,
+      sessionId: principal.sessionId,
       refreshCookie: principal.refreshCookie,
     };
   }
@@ -83,8 +85,7 @@ export async function identify(req: IncomingMessage): Promise<Identity> {
 export type Need = Role | 'public';
 
 export type Decision =
-  | { allowed: true; identity: Identity }
-  | { allowed: false; status: number; body: Record<string, unknown> };
+  { allowed: true; identity: Identity } | { allowed: false; status: number; body: Record<string, unknown> };
 
 /**
  * Whether this request may proceed, given who it is from.
@@ -99,10 +100,12 @@ export function authorize(identity: Identity, need: Need): Decision {
     // reached as a `public` route, and it is the only one that answers here.
     if (need === 'public') return { allowed: true, identity };
     return {
-      allowed: false, status: 503,
+      allowed: false,
+      status: 503,
       body: {
         error: 'This server has not been enrolled yet — its operator has a one-time admin code in the log.',
-        bootstrap: true, accounts: 'required',
+        bootstrap: true,
+        accounts: 'required',
       },
     };
   }
@@ -116,20 +119,26 @@ export function authorize(identity: Identity, need: Need): Decision {
   // and repointing the workspace. Authoring is recoverable; administration is not.
   if (identity.kind === 'token' && need === 'admin') {
     return {
-      allowed: false, status: 403,
+      allowed: false,
+      status: 403,
       body: {
-        error: 'An access key cannot do that — it authors, it does not administer. Sign in to the editor for'
-          + ' administration.',
-        role: identity.user.role, needs: need, token: true,
+        error:
+          'An access key cannot do that — it authors, it does not administer. Sign in to the editor for' +
+          ' administration.',
+        role: identity.user.role,
+        needs: need,
+        token: true,
       },
     };
   }
   if (!holds(identity.user.role, need)) {
     return {
-      allowed: false, status: 403,
+      allowed: false,
+      status: 403,
       body: {
         error: `That needs the ${need} role; ${identity.user.username} is a ${identity.user.role}.`,
-        role: identity.user.role, needs: need,
+        role: identity.user.role,
+        needs: need,
       },
     };
   }
@@ -150,8 +159,10 @@ export async function authorizeRequest(req: IncomingMessage, need: Need): Promis
     identity = await identify(req);
   } catch (error) {
     if (!requiresAccounts()) {
-      log.error('identifying this request failed on a server with no accounts, so it is being served as its'
-        + ' owner', { error });
+      log.error(
+        'identifying this request failed on a server with no accounts, so it is being served as its' + ' owner',
+        { error },
+      );
       return { allowed: true, identity: ownerIdentity() };
     }
     log.error('identifying this request failed', { error });
@@ -167,8 +178,9 @@ export function insecureOriginRefusal(req: IncomingMessage): { status: number; b
   return {
     status: 403,
     body: {
-      error: 'This server refuses passwords over a plain HTTP connection. Reach it over HTTPS — or, if a '
-        + 'reverse proxy is terminating TLS in front of it, start it with --behind-proxy.',
+      error:
+        'This server refuses passwords over a plain HTTP connection. Reach it over HTTPS — or, if a ' +
+        'reverse proxy is terminating TLS in front of it, start it with --behind-proxy.',
       insecure: true,
     },
   };
@@ -191,7 +203,8 @@ export function authorityRefusal(req: IncomingMessage): { status: number; body: 
   return {
     status: 403,
     body: {
-      error: 'This API does not accept the requested Host. Configure SLOPESMITH_ALLOWED_HOSTS for editor or hosted DNS names.',
+      error:
+        'This API does not accept the requested Host. Configure SLOPESMITH_ALLOWED_HOSTS for editor or hosted DNS names.',
       authority: false,
     },
   };

@@ -1,7 +1,12 @@
 import type { RetopologyJobRequest } from '../../core/mesh/retopology/job-contract';
 import {
-  cancelRetopologyJob, createRetopologyJob, RETOPOLOGY_OFF, retopologyCapabilities, retopologyEnabled,
-  retopologyJobResult, retopologyJobStatus,
+  cancelRetopologyJob,
+  createRetopologyJob,
+  RETOPOLOGY_OFF,
+  retopologyCapabilities,
+  retopologyEnabled,
+  retopologyJobResult,
+  retopologyJobStatus,
 } from '../retopology/jobs';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
 
@@ -19,9 +24,12 @@ export const retopologyRoutes: Record<string, ApiHandler> = {
         jsonResponse(res, 200, retopologyCapabilities());
         return;
       }
-      if (!retopologyEnabled()) { jsonResponse(res, 404, { error: RETOPOLOGY_OFF }); return; }
+      if (!retopologyEnabled()) {
+        jsonResponse(res, 404, { error: RETOPOLOGY_OFF });
+        return;
+      }
       if (req.method === 'POST' && parts[0] === 'jobs' && parts.length === 1) {
-        const body = await readJsonBody(req, 64 * 1024 * 1024) as RetopologyJobRequest;
+        const body = (await readJsonBody(req, 64 * 1024 * 1024)) as RetopologyJobRequest;
         if (!body || typeof body !== 'object' || !body.document) throw new Error('A mountain document is required');
         jsonResponse(res, 202, createRetopologyJob(body.document, body.options, body.selectedQuadIds));
         return;
@@ -30,20 +38,32 @@ export const retopologyRoutes: Record<string, ApiHandler> = {
         const id = parts[1];
         if (req.method === 'GET' && parts.length === 2) {
           const status = retopologyJobStatus(id);
-          if (!status) { jsonResponse(res, 404, { error: 'Retopology job not found or expired' }); return; }
+          if (!status) {
+            jsonResponse(res, 404, { error: 'Retopology job not found or expired' });
+            return;
+          }
           jsonResponse(res, 200, status);
           return;
         }
         if (req.method === 'GET' && parts[2] === 'result' && parts.length === 3) {
           const status = retopologyJobStatus(id);
-          if (!status) { jsonResponse(res, 404, { error: 'Retopology job not found or expired' }); return; }
-          if (status.phase !== 'complete') { jsonResponse(res, 409, { error: 'Retopology result is not ready', status }); return; }
+          if (!status) {
+            jsonResponse(res, 404, { error: 'Retopology job not found or expired' });
+            return;
+          }
+          if (status.phase !== 'complete') {
+            jsonResponse(res, 409, { error: 'Retopology result is not ready', status });
+            return;
+          }
           jsonResponse(res, 200, retopologyJobResult(id));
           return;
         }
         if (req.method === 'DELETE' && parts.length === 2) {
           const status = cancelRetopologyJob(id);
-          if (!status) { jsonResponse(res, 404, { error: 'Retopology job not found or expired' }); return; }
+          if (!status) {
+            jsonResponse(res, 404, { error: 'Retopology job not found or expired' });
+            return;
+          }
           jsonResponse(res, 200, status);
           return;
         }
@@ -52,8 +72,9 @@ export const retopologyRoutes: Record<string, ApiHandler> = {
       res.end('Retopology route not found');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      jsonResponse(res, message.includes('not installed') ? 503 : message.includes('worker is busy') ? 429 : 400,
-        { error: message });
+      jsonResponse(res, message.includes('not installed') ? 503 : message.includes('worker is busy') ? 429 : 400, {
+        error: message,
+      });
     }
   },
 };

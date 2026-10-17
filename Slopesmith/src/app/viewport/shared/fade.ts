@@ -8,7 +8,10 @@ type Unfaded = { opacity: number; transparent: boolean };
  * everywhere it is drawn — callers fade materials their own layer owns.
  */
 export function fadeMaterial(material: THREE.Material, factor: number): void {
-  const own = (material.userData.unfaded ??= { opacity: material.opacity, transparent: material.transparent }) as Unfaded;
+  const own = (material.userData.unfaded ??= {
+    opacity: material.opacity,
+    transparent: material.transparent,
+  }) as Unfaded;
   const transparent = own.transparent || factor < 1;
   if (material.transparent !== transparent) material.needsUpdate = true; // the blend state is part of the program
   material.transparent = transparent;

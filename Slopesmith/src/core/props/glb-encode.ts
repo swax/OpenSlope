@@ -87,10 +87,10 @@ export interface EncodeScene {
   generator?: string;
 }
 
-const GLB_MAGIC = 0x46546c67;         // 'glTF'
+const GLB_MAGIC = 0x46546c67; // 'glTF'
 const GLB_VERSION = 2;
-const GLB_CHUNK_JSON = 0x4e4f534a;    // 'JSON'
-const GLB_CHUNK_BIN = 0x004e4942;     // 'BIN\0'
+const GLB_CHUNK_JSON = 0x4e4f534a; // 'JSON'
+const GLB_CHUNK_BIN = 0x004e4942; // 'BIN\0'
 const MODE_TRIANGLES = 4;
 
 const COMPONENT_FLOAT = 5126;
@@ -137,7 +137,10 @@ class BinaryChunk {
   /** Append bytes as a new bufferView, returning its index. */
   add(bytes: Uint8Array, target?: number): number {
     const pad = align4(this.length) - this.length;
-    if (pad) { this.parts.push(new Uint8Array(pad)); this.length += pad; }
+    if (pad) {
+      this.parts.push(new Uint8Array(pad));
+      this.length += pad;
+    }
     const byteOffset = this.length;
     this.parts.push(bytes);
     this.length += bytes.byteLength;
@@ -150,14 +153,16 @@ class BinaryChunk {
     const total = align4(this.length);
     const out = new Uint8Array(total);
     let at = 0;
-    for (const part of this.parts) { out.set(part, at); at += part.byteLength; }
+    for (const part of this.parts) {
+      out.set(part, at);
+      at += part.byteLength;
+    }
     return out;
   }
 }
 
 /** A typed array's bytes, whatever its element width — the view is over the same memory, not a copy. */
-const rawBytes = (view: ArrayBufferView): Uint8Array =>
-  new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+const rawBytes = (view: ArrayBufferView): Uint8Array => new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
 
 /** Per-component min/max over a de-strided attribute. glTF REQUIRES these on POSITION (a viewer frames the
  *  model from them), and a file missing them is rejected by the reference validator. */
@@ -174,7 +179,10 @@ function bounds(values: Float32Array, components: number): { min: number[]; max:
   // An empty attribute has no extent. Zeros keep the file valid rather than writing Infinity into JSON,
   // where it would serialise as `null` and fail every validator that reads it back.
   for (let c = 0; c < components; c++) {
-    if (!Number.isFinite(min[c])) { min[c] = 0; max[c] = 0; }
+    if (!Number.isFinite(min[c])) {
+      min[c] = 0;
+      max[c] = 0;
+    }
   }
   return { min, max };
 }
@@ -195,8 +203,12 @@ export function encodeGlb(scene: EncodeScene): Uint8Array {
     const bufferView = bin.add(rawBytes(values), TARGET_ARRAY_BUFFER);
     const { min, max } = bounds(values, components);
     accessors.push({
-      bufferView, componentType: COMPONENT_FLOAT, count: values.length / components,
-      type: components === 2 ? 'VEC2' : 'VEC3', min, max,
+      bufferView,
+      componentType: COMPONENT_FLOAT,
+      count: values.length / components,
+      type: components === 2 ? 'VEC2' : 'VEC3',
+      min,
+      max,
     });
     return accessors.length - 1;
   };
@@ -256,8 +268,7 @@ export function encodeGlb(scene: EncodeScene): Uint8Array {
         },
         indices: indexAccessor(primitive.indices),
         mode: MODE_TRIANGLES,
-        ...(primitive.material !== undefined && primitive.material !== null
-          ? { material: primitive.material } : {}),
+        ...(primitive.material !== undefined && primitive.material !== null ? { material: primitive.material } : {}),
       };
     }),
     ...(mesh.extras !== undefined ? { extras: mesh.extras } : {}),

@@ -65,19 +65,19 @@ export interface LoftOptions {
   connectionCurve?: number;
 }
 
-export type RailsResult =
-  | { ok: true; rails: number[][] }
-  | { ok: false; error: string };
+export type RailsResult = { ok: true; rails: number[][] } | { ok: false; error: string };
 
-export type RailResult =
-  | { ok: true; rail: number[] }
-  | { ok: false; error: string };
+export type RailResult = { ok: true; rail: number[] } | { ok: false; error: string };
 
 /** Read one selected edge chain into the ordered vertex run used by the interactive Bridge Builder. */
 export function railFromEdges(edges: readonly (readonly [number, number])[]): RailResult {
   if (!edges.length) return { ok: false, error: 'Select one open edge chain for the next bridge rail.' };
   const rail = orderEdgeChain(edges.map(([a, b]) => [a, b] as [number, number]));
-  if (!rail) return { ok: false, error: 'A bridge rail must be one connected open edge chain — not separate runs, a closed ring, or a branch.' };
+  if (!rail)
+    return {
+      ok: false,
+      error: 'A bridge rail must be one connected open edge chain — not separate runs, a closed ring, or a branch.',
+    };
   return { ok: true, rail };
 }
 
@@ -107,42 +107,59 @@ export function railFromEdges(edges: readonly (readonly [number, number])[]): Ra
  */
 export function railsFromEdges(edges: readonly (readonly [number, number])[]): RailsResult {
   if (!edges.length)
-    return { ok: false, error: 'Select two edge runs to loft between — double-click an edge loop, then shift-double-click a second.' };
+    return {
+      ok: false,
+      error: 'Select two edge runs to loft between — double-click an edge loop, then shift-double-click a second.',
+    };
 
   // Union-find over the edges' vertices: one component per rail. The selections are tiny, so a plain find with
   // one-step compression is ample; the final rail order is fixed by the sort below, not by the union roots.
   const parent = new Map<number, number>();
   const find = (x: number): number => {
     let r = parent.get(x);
-    if (r === undefined) { parent.set(x, x); return x; }
+    if (r === undefined) {
+      parent.set(x, x);
+      return x;
+    }
     while (r !== parent.get(r)) r = parent.get(r)!;
     parent.set(x, r);
     return r;
   };
-  for (const [a, b] of edges) { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); }
+  for (const [a, b] of edges) {
+    const ra = find(a),
+      rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
 
   const groups = new Map<number, [number, number][]>();
   for (const [a, b] of edges) {
-    const r = find(a), g = groups.get(r);
-    if (g) g.push([a, b]); else groups.set(r, [[a, b]]);
+    const r = find(a),
+      g = groups.get(r);
+    if (g) g.push([a, b]);
+    else groups.set(r, [[a, b]]);
   }
   if (groups.size < 2)
-    return { ok: false, error: `A loft spans two or more edge runs; this selection is one run. Add a second edge loop (shift-double-click another loop).` };
+    return {
+      ok: false,
+      error: `A loft spans two or more edge runs; this selection is one run. Add a second edge loop (shift-double-click another loop).`,
+    };
 
   const rails: number[][] = [];
   for (const g of groups.values()) {
     const chain = orderEdgeChain(g);
     if (!chain)
-      return { ok: false, error: 'Each loft rail is a single OPEN edge run — one of the picks is a closed loop or branches. Trim it to a run with two ends.' };
+      return {
+        ok: false,
+        error:
+          'Each loft rail is a single OPEN edge run — one of the picks is a closed loop or branches. Trim it to a run with two ends.',
+      };
     rails.push(chain);
   }
   rails.sort((p, q) => p[0] - q[0]); // cross-section order: by each run's smaller endpoint (deterministic; distinct components ⇒ distinct starts)
   return { ok: true, rails };
 }
 
-export type LoftResult =
-  | { ok: true; doc: QuadMeshDoc; reversed: number[] }
-  | { ok: false; error: string };
+export type LoftResult = { ok: true; doc: QuadMeshDoc; reversed: number[] } | { ok: false; error: string };
 
 /** The four corners of the sorted-id key for a quad — a duplicate is the same corner SET regardless of winding. */
 const quadKey = (c: readonly number[]): string => [...c].sort((a, b) => a - b).join(',');
@@ -153,14 +170,18 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
   if (S < 2) return { ok: false, error: `A loft needs at least two stations per rail; rail 0 has ${S}.` };
   for (let n = 0; n < rails.length; n++) {
     if (rails[n].length !== S)
-      return { ok: false, error: `Rails must share a station count: rail 0 has ${S}, rail ${n} has ${rails[n].length}. Adopt matching runs (or resample) before lofting.` };
+      return {
+        ok: false,
+        error: `Rails must share a station count: rail 0 has ${S}, rail ${n} has ${rails[n].length}. Adopt matching runs (or resample) before lofting.`,
+      };
   }
   const vcount = doc.vertices.length / 3;
-  for (let n = 0; n < rails.length; n++) for (let s = 0; s < S; s++) {
-    const id = rails[n][s];
-    if (!Number.isInteger(id) || id < 0 || id >= vcount)
-      return { ok: false, error: `Rail ${n} names a vertex (${id}) that isn't in the mesh — rejected.` };
-  }
+  for (let n = 0; n < rails.length; n++)
+    for (let s = 0; s < S; s++) {
+      const id = rails[n][s];
+      if (!Number.isInteger(id) || id < 0 || id >= vcount)
+        return { ok: false, error: `Rail ${n} names a vertex (${id}) that isn't in the mesh — rejected.` };
+    }
 
   const pos = (id: number): V3 => readVertex(doc.vertices, id);
 
@@ -171,15 +192,23 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
   const reversed: number[] = [];
   if (!opts?.preserveRailOrder) {
     for (let n = 1; n < rails.length; n++) {
-      const prev = aligned[n - 1], cand = rails[n];
-      const P0 = pos(prev[0]), P1 = pos(prev[S - 1]);
-      const R0 = pos(cand[0]), R1 = pos(cand[S - 1]);
+      const prev = aligned[n - 1],
+        cand = rails[n];
+      const P0 = pos(prev[0]),
+        P1 = pos(prev[S - 1]);
+      const R0 = pos(cand[0]),
+        R1 = pos(cand[S - 1]);
       const keep = len(sub(P0, R0)) + len(sub(P1, R1)); // stations correspond as given
       const flip = len(sub(P0, R1)) + len(sub(P1, R0)); // stations correspond reversed
       if (Math.abs(keep - flip) <= ALIGN_EPS * (keep + flip + 1))
-        return { ok: false, error: `Loft can't orient rail ${n}: its ends are equidistant from rail ${n - 1}'s (a symmetric or closed run). Trim or reorder the run so its ends are distinct.` };
-      if (flip < keep) { aligned.push(cand.slice().reverse()); reversed.push(n); }
-      else aligned.push(cand.slice());
+        return {
+          ok: false,
+          error: `Loft can't orient rail ${n}: its ends are equidistant from rail ${n - 1}'s (a symmetric or closed run). Trim or reorder the run so its ends are distinct.`,
+        };
+      if (flip < keep) {
+        aligned.push(cand.slice().reverse());
+        reversed.push(n);
+      } else aligned.push(cand.slice());
     }
   }
 
@@ -188,16 +217,23 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
   const vertices = doc.vertices.slice();
   const expanded: number[][] = [aligned[0]];
   const target = opts?.targetPatchM;
-  const connectionCurve = Number.isFinite(opts?.connectionCurve) ? Math.max(0, Math.min(2, opts!.connectionCurve!)) : undefined;
+  const connectionCurve = Number.isFinite(opts?.connectionCurve)
+    ? Math.max(0, Math.min(2, opts!.connectionCurve!))
+    : undefined;
   const catmull = (p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 => {
-    const t2 = t * t, t3 = t2 * t;
-    const axis = (i: number) => 0.5 * ((2 * p1[i]) + (-p0[i] + p2[i]) * t
-      + (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * t2
-      + (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * t3);
+    const t2 = t * t,
+      t3 = t2 * t;
+    const axis = (i: number) =>
+      0.5 *
+      (2 * p1[i] +
+        (-p0[i] + p2[i]) * t +
+        (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * t2 +
+        (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * t3);
     return [axis(0), axis(1), axis(2)];
   };
   for (let n = 0; n < aligned.length - 1; n++) {
-    const railA = aligned[n], railB = aligned[n + 1];
+    const railA = aligned[n],
+      railB = aligned[n + 1];
     let segments = 1;
     if (target !== undefined && Number.isFinite(target) && target > 0) {
       let maxGap = 0;
@@ -208,20 +244,27 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
       const t = k / segments;
       const rail: number[] = [];
       for (let s = 0; s < S; s++) {
-        const a = pos(railA[s]), b = pos(railB[s]);
-        const linear: V3 = [
-          a[0] + (b[0] - a[0]) * t,
-          a[1] + (b[1] - a[1]) * t,
-          a[2] + (b[2] - a[2]) * t,
-        ];
-        const smooth = connectionCurve === undefined ? linear : catmull(
-          pos(aligned[Math.max(0, n - 1)][s]), a, b, pos(aligned[Math.min(aligned.length - 1, n + 2)][s]), t,
-        );
-        const p = connectionCurve === undefined ? linear : [
-          linear[0] + (smooth[0] - linear[0]) * connectionCurve,
-          linear[1] + (smooth[1] - linear[1]) * connectionCurve,
-          linear[2] + (smooth[2] - linear[2]) * connectionCurve,
-        ];
+        const a = pos(railA[s]),
+          b = pos(railB[s]);
+        const linear: V3 = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+        const smooth =
+          connectionCurve === undefined
+            ? linear
+            : catmull(
+                pos(aligned[Math.max(0, n - 1)][s]),
+                a,
+                b,
+                pos(aligned[Math.min(aligned.length - 1, n + 2)][s]),
+                t,
+              );
+        const p =
+          connectionCurve === undefined
+            ? linear
+            : [
+                linear[0] + (smooth[0] - linear[0]) * connectionCurve,
+                linear[1] + (smooth[1] - linear[1]) * connectionCurve,
+                linear[2] + (smooth[2] - linear[2]) * connectionCurve,
+              ];
         rail.push(vertices.length / 3);
         vertices.push(p[0], p[1], p[2]);
       }
@@ -236,18 +279,34 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
   const seen = new Set<string>();
   const newQuads: number[][] = [];
   for (let n = 0; n < expanded.length - 1; n++) {
-    const railA = expanded[n], railB = expanded[n + 1];
+    const railA = expanded[n],
+      railB = expanded[n + 1];
     for (let s = 0; s < S - 1; s++) {
-      const A = railA[s], B = railB[s], C = railA[s + 1], D = railB[s + 1];
+      const A = railA[s],
+        B = railB[s],
+        C = railA[s + 1],
+        D = railB[s + 1];
       if (A === B || C === D)
-        return { ok: false, error: `Rails ${n} and ${n + 1} meet at station ${A === B ? s : s + 1} — the lane between them collapses to a triangle. Loft v1 emits quads only; weld or dart the meeting point instead.` };
+        return {
+          ok: false,
+          error: `Rails ${n} and ${n + 1} meet at station ${A === B ? s : s + 1} — the lane between them collapses to a triangle. Loft v1 emits quads only; weld or dart the meeting point instead.`,
+        };
       if (new Set([A, B, C, D]).size !== 4)
-        return { ok: false, error: `Loft would emit a degenerate quad at lane ${n}, station ${s} — a rail doubles back on itself (a corner repeats). Rejected.` };
+        return {
+          ok: false,
+          error: `Loft would emit a degenerate quad at lane ${n}, station ${s} — a rail doubles back on itself (a corner repeats). Rejected.`,
+        };
       const key = quadKey([A, B, C, D]);
       if (existing.has(key))
-        return { ok: false, error: `Loft would re-cover an existing patch at lane ${n}, station ${s} — those four corners already form a quad. Bridge an open rim, don't loft over a stitched seam.` };
+        return {
+          ok: false,
+          error: `Loft would re-cover an existing patch at lane ${n}, station ${s} — those four corners already form a quad. Bridge an open rim, don't loft over a stitched seam.`,
+        };
       if (seen.has(key))
-        return { ok: false, error: `Loft would emit the same quad twice at lane ${n}, station ${s} — the rails cross or double back. Rejected.` };
+        return {
+          ok: false,
+          error: `Loft would emit the same quad twice at lane ${n}, station ${s} — the rails cross or double back. Rejected.`,
+        };
       seen.add(key);
       newQuads.push([A, B, C, D]);
     }
@@ -259,10 +318,16 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
 
   const guard = checkManifold(quads);
   if (!guard.ok)
-    return { ok: false, error: 'Loft would drive an edge onto 3+ quads (overlaying a stitched seam) — bridge an open rim, not a closed one.' };
+    return {
+      ok: false,
+      error:
+        'Loft would drive an edge onto 3+ quads (overlaying a stitched seam) — bridge an open rim, not a closed one.',
+    };
 
   const out: QuadMeshDoc = {
-    ...doc, vertices, quads,
+    ...doc,
+    vertices,
+    quads,
     ...appendMeshIds(doc, (vertices.length - doc.vertices.length) / 3, newQuads.length),
   };
   // A free edge becomes an ordinary surface edge as soon as this bridge uses it. Keep its directed handles,
@@ -270,11 +335,14 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
   if (doc.freeEdges?.length) {
     const covered = new Set<string>();
     for (const [A, B, C, D] of newQuads) {
-      covered.add(ekey(A, B)); covered.add(ekey(A, C));
-      covered.add(ekey(B, D)); covered.add(ekey(C, D));
+      covered.add(ekey(A, B));
+      covered.add(ekey(A, C));
+      covered.add(ekey(B, D));
+      covered.add(ekey(C, D));
     }
     const freeEdges = doc.freeEdges.filter(([a, b]) => !covered.has(ekey(a, b)));
-    if (freeEdges.length) out.freeEdges = freeEdges; else delete out.freeEdges;
+    if (freeEdges.length) out.freeEdges = freeEdges;
+    else delete out.freeEdges;
   }
   if (opts?.surface !== undefined) {
     const quadPaint: Record<number, number> = { ...(doc.quadPaint ?? {}) };
@@ -285,23 +353,27 @@ export function applyLoft(doc: QuadMeshDoc, rails: readonly (readonly number[])[
     const mesh = buildQuadMesh(out.vertices, out.quads, out.freeEdges);
     const automatic = meshEdgeHandles(mesh);
     const edgeHandles: Record<string, V3> = { ...(out.edgeHandles ?? {}) };
-    for (let n = 0; n < expanded.length - 1; n++) for (let s = 0; s < S; s++) {
-      const a = expanded[n][s], b = expanded[n + 1][s];
-      const A = readVertex(out.vertices, a), B = readVertex(out.vertices, b);
-      const chordAB: V3 = [(B[0] - A[0]) / 3, (B[1] - A[1]) / 3, (B[2] - A[2]) / 3];
-      const chordBA: V3 = [-chordAB[0], -chordAB[1], -chordAB[2]];
-      const autoAB = automatic(a, b), autoBA = automatic(b, a);
-      edgeHandles[directedEdgeKey(a, b)] = [
-        chordAB[0] + (autoAB[0] - chordAB[0]) * connectionCurve,
-        chordAB[1] + (autoAB[1] - chordAB[1]) * connectionCurve,
-        chordAB[2] + (autoAB[2] - chordAB[2]) * connectionCurve,
-      ];
-      edgeHandles[directedEdgeKey(b, a)] = [
-        chordBA[0] + (autoBA[0] - chordBA[0]) * connectionCurve,
-        chordBA[1] + (autoBA[1] - chordBA[1]) * connectionCurve,
-        chordBA[2] + (autoBA[2] - chordBA[2]) * connectionCurve,
-      ];
-    }
+    for (let n = 0; n < expanded.length - 1; n++)
+      for (let s = 0; s < S; s++) {
+        const a = expanded[n][s],
+          b = expanded[n + 1][s];
+        const A = readVertex(out.vertices, a),
+          B = readVertex(out.vertices, b);
+        const chordAB: V3 = [(B[0] - A[0]) / 3, (B[1] - A[1]) / 3, (B[2] - A[2]) / 3];
+        const chordBA: V3 = [-chordAB[0], -chordAB[1], -chordAB[2]];
+        const autoAB = automatic(a, b),
+          autoBA = automatic(b, a);
+        edgeHandles[directedEdgeKey(a, b)] = [
+          chordAB[0] + (autoAB[0] - chordAB[0]) * connectionCurve,
+          chordAB[1] + (autoAB[1] - chordAB[1]) * connectionCurve,
+          chordAB[2] + (autoAB[2] - chordAB[2]) * connectionCurve,
+        ];
+        edgeHandles[directedEdgeKey(b, a)] = [
+          chordBA[0] + (autoBA[0] - chordBA[0]) * connectionCurve,
+          chordBA[1] + (autoBA[1] - chordBA[1]) * connectionCurve,
+          chordBA[2] + (autoBA[2] - chordBA[2]) * connectionCurve,
+        ];
+      }
     out.edgeHandles = edgeHandles;
   }
   return { ok: true, doc: out, reversed };

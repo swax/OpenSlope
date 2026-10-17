@@ -8,11 +8,14 @@ export function createXrContext(gl: WebGLRenderingContext | WebGL2RenderingConte
       // Three retains this record from renderer construction. AA is overridden per layer, but compatibility
       // must remain live: makeXRCompatible and context restoration can change it after construction.
       Object.defineProperty(layerAttributes, 'xrCompatible', {
-        configurable: true, enumerable: true, get: () => readAttributes()?.xrCompatible === true,
+        configurable: true,
+        enumerable: true,
+        get: () => readAttributes()?.xrCompatible === true,
       });
       const attributes = layerAttributes;
       Object.defineProperty(gl, 'getContextAttributes', {
-        configurable: true, value: () => readAttributes() ? attributes : null,
+        configurable: true,
+        value: () => (readAttributes() ? attributes : null),
       });
     } catch {
       layerAttributes = null; // an unmodifiable host still works, without the per-session AA override
@@ -22,20 +25,34 @@ export function createXrContext(gl: WebGLRenderingContext | WebGL2RenderingConte
 
   return {
     layerAttributes,
-    get preparing() { return preparation !== null; },
+    get preparing() {
+      return preparation !== null;
+    },
     prepare(restoreTimeoutMs = 10_000): Promise<void> {
       if (preparation) return preparation;
-      preparation = makeCompatible(gl, readAttributes, restoreTimeoutMs).finally(() => { preparation = null; });
+      preparation = makeCompatible(gl, readAttributes, restoreTimeoutMs).finally(() => {
+        preparation = null;
+      });
       return preparation;
     },
   };
 }
 
-async function makeCompatible(gl: WebGLRenderingContext | WebGL2RenderingContext,
-  readAttributes: () => WebGLContextAttributes | null, restoreTimeoutMs: number): Promise<void> {
-  let awaitingRestore = false, sawContextTransition = gl.isContextLost();
-  const onLost = () => { awaitingRestore = true; sawContextTransition = true; };
-  const onRestored = () => { awaitingRestore = false; sawContextTransition = true; };
+async function makeCompatible(
+  gl: WebGLRenderingContext | WebGL2RenderingContext,
+  readAttributes: () => WebGLContextAttributes | null,
+  restoreTimeoutMs: number,
+): Promise<void> {
+  let awaitingRestore = false,
+    sawContextTransition = gl.isContextLost();
+  const onLost = () => {
+    awaitingRestore = true;
+    sawContextTransition = true;
+  };
+  const onRestored = () => {
+    awaitingRestore = false;
+    sawContextTransition = true;
+  };
   gl.canvas.addEventListener('webglcontextlost', onLost);
   gl.canvas.addEventListener('webglcontextrestored', onRestored);
   try {
@@ -46,8 +63,12 @@ async function makeCompatible(gl: WebGLRenderingContext | WebGL2RenderingContext
     } catch (error) {
       // Chrome PCVR can reject before delivering its context-loss event. Retry only this error with actual
       // loss/restoration evidence, and only once, after restoration. Permission/device errors still propagate.
-      if (!(error instanceof Error) || error.name !== 'InvalidStateError'
-        || (!gl.isContextLost() && !sawContextTransition)) throw error;
+      if (
+        !(error instanceof Error) ||
+        error.name !== 'InvalidStateError' ||
+        (!gl.isContextLost() && !sawContextTransition)
+      )
+        throw error;
       if (gl.isContextLost() || awaitingRestore) await waitForRestore(gl, restoreTimeoutMs);
       if (readAttributes()?.xrCompatible !== true) await gl.makeXRCompatible();
     }
@@ -63,7 +84,8 @@ function waitForRestore(gl: WebGLRenderingContext | WebGL2RenderingContext, time
   return new Promise((resolve, reject) => {
     const onRestored = () => {
       gl.canvas.removeEventListener('webglcontextrestored', onRestored);
-      clearTimeout(timer); resolve();
+      clearTimeout(timer);
+      resolve();
     };
     const timer = setTimeout(() => {
       gl.canvas.removeEventListener('webglcontextrestored', onRestored);

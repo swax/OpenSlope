@@ -26,16 +26,18 @@ export interface ServerWorkspaceView {
 
 async function errorFrom(res: Response): Promise<Error> {
   try {
-    const body = await res.json() as { error?: string };
+    const body = (await res.json()) as { error?: string };
     return new Error(body.error || `${res.status} ${res.statusText}`);
-  } catch { return new Error(`${res.status} ${res.statusText}`); }
+  } catch {
+    return new Error(`${res.status} ${res.statusText}`);
+  }
 }
 
 /** Read the machine-local paths. */
 export async function loadServerWorkspaceConfig(): Promise<ServerWorkspaceView> {
   const res = await fetch('/api/config');
   if (!res.ok) throw await errorFrom(res);
-  return await res.json() as ServerWorkspaceView;
+  return (await res.json()) as ServerWorkspaceView;
 }
 
 export async function saveServerWorkspaceConfig(patch: ServerWorkspacePatch): Promise<{
@@ -43,8 +45,10 @@ export async function saveServerWorkspaceConfig(patch: ServerWorkspacePatch): Pr
   restartRequired: boolean;
 }> {
   const res = await fetch('/api/config', {
-    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
   });
   if (!res.ok) throw await errorFrom(res);
-  return await res.json() as { config: ServerWorkspaceConfig; restartRequired: boolean };
+  return (await res.json()) as { config: ServerWorkspaceConfig; restartRequired: boolean };
 }

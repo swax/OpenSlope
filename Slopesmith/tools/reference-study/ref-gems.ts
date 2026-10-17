@@ -28,21 +28,34 @@ import type { V3 } from '../../src/core/doc/types';
  *  second, so gems further apart than this are never on screen together and cannot read as one string. */
 const GAP = 40;
 
-const TIERS: [string, number][] = [['YellowX2', 2], ['OrangeX3', 3], ['RedX5', 5]];
+const TIERS: [string, number][] = [
+  ['YellowX2', 2],
+  ['OrangeX3', 3],
+  ['RedX5', 5],
+];
 
 const args = process.argv.slice(2);
 const levels = args.length ? args.map(a => a.toUpperCase()) : await listLevels();
 
-interface Row { level: string; gems: number; tiers: Map<number, number>; course: number; runs: number[][] }
+interface Row {
+  level: string;
+  gems: number;
+  tiers: Map<number, number>;
+  course: number;
+  runs: number[][];
+}
 const rows: Row[] = [];
 
 for (const level of levels) {
   let names: string[];
   try {
-    const raw = JSON.parse(await readFile(join(mapsRoot(), level, 'Models.json'), 'utf8')) as
-      { Models?: { ModelName?: string }[] };
+    const raw = JSON.parse(await readFile(join(mapsRoot(), level, 'Models.json'), 'utf8')) as {
+      Models?: { ModelName?: string }[];
+    };
     names = (raw.Models ?? []).map(m => m.ModelName ?? '');
-  } catch { continue; }
+  } catch {
+    continue;
+  }
 
   const tierOf = new Map<number, number>();
   names.forEach((name, i) => {
@@ -70,10 +83,14 @@ for (const level of levels) {
   }
   const courseLen = at[at.length - 1] ?? 0;
   const stationOf = (p: V3): number => {
-    let best = 0, bd = Infinity;
+    let best = 0,
+      bd = Infinity;
     for (let i = 0; i < line.length; i++) {
       const d = (line[i][0] - p[0]) ** 2 + (line[i][2] - p[2]) ** 2;
-      if (d < bd) { bd = d; best = at[i]; }
+      if (d < bd) {
+        bd = d;
+        best = at[i];
+      }
     }
     return best;
   };
@@ -82,7 +99,8 @@ for (const level of levels) {
   const runs: number[][] = [];
   for (const s of stations) {
     const last = runs[runs.length - 1];
-    if (!last || s - last[last.length - 1] > GAP) runs.push([s]); else last.push(s);
+    if (!last || s - last[last.length - 1] > GAP) runs.push([s]);
+    else last.push(s);
   }
 
   const tiers = new Map<number, number>();
@@ -104,12 +122,14 @@ for (const r of rows.sort((a, b) => b.gems - a.gems)) {
   for (const run of r.runs) for (let i = 1; i < run.length; i++) inner.push(run[i] - run[i - 1]);
   inner.sort((a, b) => a - b);
   const med = inner.length ? inner[inner.length >> 1] : NaN;
-  console.log(`  ${r.level.padEnd(9)} ${String(r.gems).padStart(5)}   ${t(2)}/${t(3)}/${t(5)}`
-    + `   ${r.course.toFixed(0).padStart(6)} m`
-    + `   ${Number.isFinite(per) ? per.toFixed(1).padStart(6) : '     —'}`
-    + `   ${String(r.runs.length).padStart(4)}`
-    + `   ${sizes.length ? (r.gems / sizes.length).toFixed(1).padStart(6) : '     —'}`
-    + `   ${Number.isFinite(med) ? `${med.toFixed(1)} m median, ${inner[0].toFixed(1)}–${inner[inner.length - 1].toFixed(0)} m` : '—'}`);
+  console.log(
+    `  ${r.level.padEnd(9)} ${String(r.gems).padStart(5)}   ${t(2)}/${t(3)}/${t(5)}` +
+      `   ${r.course.toFixed(0).padStart(6)} m` +
+      `   ${Number.isFinite(per) ? per.toFixed(1).padStart(6) : '     —'}` +
+      `   ${String(r.runs.length).padStart(4)}` +
+      `   ${sizes.length ? (r.gems / sizes.length).toFixed(1).padStart(6) : '     —'}` +
+      `   ${Number.isFinite(med) ? `${med.toFixed(1)} m median, ${inner[0].toFixed(1)}–${inner[inner.length - 1].toFixed(0)} m` : '—'}`,
+  );
 }
 
 console.log(`\n  runs are gems within ${GAP} m of the next along the course; a course that carpets its length`);
@@ -118,8 +138,10 @@ console.log('  shows one huge run, and one that spends them in strings shows man
 const all = rows.flatMap(r => r.runs.map(run => run.length));
 const totalGems = rows.reduce((n, r) => n + r.gems, 0);
 const totalCourse = rows.reduce((n, r) => n + r.course, 0);
-console.log(`\n  across ${rows.length} level(s): ${totalGems} gems over ${totalCourse.toFixed(0)} m — `
-  + `${((totalGems * 100) / Math.max(1, totalCourse)).toFixed(1)} per 100 m of course, `
-  + `in ${all.length} runs of ${(totalGems / Math.max(1, all.length)).toFixed(1)} gems on average`);
+console.log(
+  `\n  across ${rows.length} level(s): ${totalGems} gems over ${totalCourse.toFixed(0)} m — ` +
+    `${((totalGems * 100) / Math.max(1, totalCourse)).toFixed(1)} per 100 m of course, ` +
+    `in ${all.length} runs of ${(totalGems / Math.max(1, all.length)).toFixed(1)} gems on average`,
+);
 const solo = all.filter(n => n === 1).length;
 console.log(`  ${solo} of those runs (${((solo * 100) / Math.max(1, all.length)).toFixed(0)}%) are a single gem`);

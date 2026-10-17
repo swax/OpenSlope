@@ -29,7 +29,10 @@
  * has a dominant grain, but it buys degrees rather than solving it.
  */
 
-export interface SheetPoint { x: number; z: number }
+export interface SheetPoint {
+  x: number;
+  z: number;
+}
 
 export interface SheetOptions {
   /**
@@ -83,7 +86,8 @@ function cellArea(xs: Float64Array, zs: Float64Array, quad: readonly number[]): 
   const ring = [quad[0], quad[1], quad[3], quad[2]];
   let area = 0;
   for (let i = 0; i < 4; i++) {
-    const a = ring[i], b = ring[(i + 1) % 4];
+    const a = ring[i],
+      b = ring[(i + 1) % 4];
     area += xs[a] * zs[b] - xs[b] * zs[a];
   }
   return area / 2;
@@ -98,19 +102,30 @@ export function buildSheet(options: SheetOptions): SheetResult {
 
   const angle = options.angleRad ?? 0;
   const origin = options.origin ?? { x: bounds.minX, z: bounds.minZ };
-  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const cos = Math.cos(angle),
+    sin = Math.sin(angle);
   const worldX = (u: number, v: number) => origin.x + u * cos - v * sin;
   const worldZ = (u: number, v: number) => origin.z + u * sin + v * cos;
   const gridU = (x: number, z: number) => (x - origin.x) * cos + (z - origin.z) * sin;
   const gridV = (x: number, z: number) => -(x - origin.x) * sin + (z - origin.z) * cos;
 
   // ---- which cells ------------------------------------------------------------------------------------------
-  let i0 = Infinity, i1 = -Infinity, j0 = Infinity, j1 = -Infinity;
-  for (const [x, z] of [[bounds.minX, bounds.minZ], [bounds.maxX, bounds.minZ],
-    [bounds.minX, bounds.maxZ], [bounds.maxX, bounds.maxZ]]) {
-    const i = Math.floor(gridU(x, z) / cell), j = Math.floor(gridV(x, z) / cell);
-    i0 = Math.min(i0, i - 1); i1 = Math.max(i1, i + 1);
-    j0 = Math.min(j0, j - 1); j1 = Math.max(j1, j + 1);
+  let i0 = Infinity,
+    i1 = -Infinity,
+    j0 = Infinity,
+    j1 = -Infinity;
+  for (const [x, z] of [
+    [bounds.minX, bounds.minZ],
+    [bounds.maxX, bounds.minZ],
+    [bounds.minX, bounds.maxZ],
+    [bounds.maxX, bounds.maxZ],
+  ]) {
+    const i = Math.floor(gridU(x, z) / cell),
+      j = Math.floor(gridV(x, z) / cell);
+    i0 = Math.min(i0, i - 1);
+    i1 = Math.max(i1, i + 1);
+    j0 = Math.min(j0, j - 1);
+    j1 = Math.max(j1, j + 1);
   }
   const span = j1 - j0 + 1;
   const at = (i: number, j: number) => (i - i0) * span + (j - j0);
@@ -131,15 +146,23 @@ export function buildSheet(options: SheetOptions): SheetResult {
   for (const spine of options.spines ?? []) {
     let last: { i: number; j: number } | null = null;
     for (let s = 0; s + 1 < spine.length; s++) {
-      const a = spine[s], b = spine[s + 1];
+      const a = spine[s],
+        b = spine[s + 1];
       const length = Math.hypot(b.x - a.x, b.z - a.z);
       const steps = Math.max(1, Math.ceil(length / (cell / 3)));
       for (let k = 0; k <= steps; k++) {
-        const t = k / steps, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
-        const i = Math.floor(gridU(x, z) / cell), j = Math.floor(gridV(x, z) / cell);
-        if (!held(i, j)) { last = null; continue; }
+        const t = k / steps,
+          x = a.x + (b.x - a.x) * t,
+          z = a.z + (b.z - a.z) * t;
+        const i = Math.floor(gridU(x, z) / cell),
+          j = Math.floor(gridV(x, z) / cell);
+        if (!held(i, j)) {
+          last = null;
+          continue;
+        }
         if (last && last.i !== i && last.j !== j) {
-          const one = { i, j: last.j }, two = { i: last.i, j };
+          const one = { i, j: last.j },
+            two = { i: last.i, j };
           const pick = depthAt(one.i, one.j) <= depthAt(two.i, two.j) ? one : two;
           if (held(pick.i, pick.j)) cells.add(at(pick.i, pick.j));
         }
@@ -162,12 +185,20 @@ export function buildSheet(options: SheetOptions): SheetResult {
       const queue = [start];
       while (queue.length) {
         const id = queue.pop()!;
-        const i = colOf(id), j = rowOf(id);
-        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const i = colOf(id),
+          j = rowOf(id);
+        for (const [di, dj] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const) {
           if (!held(i + di, j + dj)) continue;
           const next = at(i + di, j + dj);
           if (!from.has(next) || seen.has(next)) continue;
-          seen.add(next); group.add(next); queue.push(next);
+          seen.add(next);
+          group.add(next);
+          queue.push(next);
         }
       }
       if (group.size > best.size) best = group;
@@ -189,34 +220,75 @@ export function buildSheet(options: SheetOptions): SheetResult {
    * wider — and to give up the thinner side only where filling would claim ground the survey never cleared.
    */
   for (let round = 0; round < 32; round++) {
-    const add = new Set<number>(), cut = new Set<number>();
+    const add = new Set<number>(),
+      cut = new Set<number>();
     const corners = new Set<number>();
     for (const id of kept) {
-      const i = colOf(id), j = rowOf(id);
-      for (const [di, dj] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) corners.add(at(i + di, j + dj));
+      const i = colOf(id),
+        j = rowOf(id);
+      for (const [di, dj] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ] as const)
+        corners.add(at(i + di, j + dj));
     }
     for (const corner of corners) {
-      const i = colOf(corner), j = rowOf(corner);
+      const i = colOf(corner),
+        j = rowOf(corner);
       const has = (ci: number, cj: number) => held(ci, cj) && kept.has(at(ci, cj)) && !cut.has(at(ci, cj));
-      const nw = has(i - 1, j - 1), ne = has(i, j - 1), sw = has(i - 1, j), se = has(i, j);
+      const nw = has(i - 1, j - 1),
+        ne = has(i, j - 1),
+        sw = has(i - 1, j),
+        se = has(i, j);
       const count = Number(nw) + Number(ne) + Number(sw) + Number(se);
       if (count !== 2) continue;
-      const diagonal = (nw && se) ? [{ i, j: j - 1 }, { i: i - 1, j }] : (ne && sw) ? [{ i: i - 1, j: j - 1 }, { i, j }] : null;
+      const diagonal =
+        nw && se
+          ? [
+              { i, j: j - 1 },
+              { i: i - 1, j },
+            ]
+          : ne && sw
+            ? [
+                { i: i - 1, j: j - 1 },
+                { i, j },
+              ]
+            : null;
       if (!diagonal) continue;
       const open = diagonal.filter(c => held(c.i, c.j));
       const nearest = open.sort((a, b) => depthAt(a.i, a.j) - depthAt(b.i, b.j))[0];
-      if (nearest && depthAt(nearest.i, nearest.j) < cell) { add.add(at(nearest.i, nearest.j)); continue; }
+      if (nearest && depthAt(nearest.i, nearest.j) < cell) {
+        add.add(at(nearest.i, nearest.j));
+        continue;
+      }
       // Nothing to fill with: keep whichever of the two diagonals is better attached and let the other go.
-      const present = (nw && se) ? [{ i: i - 1, j: j - 1 }, { i, j }] : [{ i, j: j - 1 }, { i: i - 1, j }];
-      const attachment = (c: { i: number; j: number }) => [[1, 0], [-1, 0], [0, 1], [0, -1]]
-        .filter(([di, dj]) => held(c.i + di, c.j + dj) && kept.has(at(c.i + di, c.j + dj))).length;
+      const present =
+        nw && se
+          ? [
+              { i: i - 1, j: j - 1 },
+              { i, j },
+            ]
+          : [
+              { i, j: j - 1 },
+              { i: i - 1, j },
+            ];
+      const attachment = (c: { i: number; j: number }) =>
+        [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ].filter(([di, dj]) => held(c.i + di, c.j + dj) && kept.has(at(c.i + di, c.j + dj))).length;
       const weaker = attachment(present[0]) <= attachment(present[1]) ? present[0] : present[1];
       cut.add(at(weaker.i, weaker.j));
     }
     if (!add.size && !cut.size) break;
     for (const id of add) kept.add(id);
     for (const id of cut) kept.delete(id);
-    filled += add.size; dropped += cut.size;
+    filled += add.size;
+    dropped += cut.size;
     const before = kept.size;
     kept = largestComponent(kept);
     dropped += before - kept.size;
@@ -225,23 +297,31 @@ export function buildSheet(options: SheetOptions): SheetResult {
 
   // ---- the mesh ---------------------------------------------------------------------------------------------
   const vertexAt = new Map<number, number>();
-  const us: number[] = [], vs: number[] = [];
+  const us: number[] = [],
+    vs: number[] = [];
   const vertex = (i: number, j: number): number => {
     const key = at(i, j);
     const known = vertexAt.get(key);
     if (known !== undefined) return known;
     const id = us.length;
-    vertexAt.set(key, id); us.push(i * cell); vs.push(j * cell);
+    vertexAt.set(key, id);
+    us.push(i * cell);
+    vs.push(j * cell);
     return id;
   };
   const quads: [number, number, number, number][] = [];
   for (const id of kept) {
-    const i = colOf(id), j = rowOf(id);
+    const i = colOf(id),
+      j = rowOf(id);
     quads.push([vertex(i, j), vertex(i + 1, j), vertex(i, j + 1), vertex(i + 1, j + 1)]);
   }
 
-  const xs = new Float64Array(us.length), zs = new Float64Array(us.length);
-  for (let v = 0; v < us.length; v++) { xs[v] = worldX(us[v], vs[v]); zs[v] = worldZ(us[v], vs[v]); }
+  const xs = new Float64Array(us.length),
+    zs = new Float64Array(us.length);
+  for (let v = 0; v < us.length; v++) {
+    xs[v] = worldX(us[v], vs[v]);
+    zs[v] = worldZ(us[v], vs[v]);
+  }
   const winding = Math.sign(cellArea(xs, zs, quads[0]));
 
   // ---- the rim ----------------------------------------------------------------------------------------------
@@ -249,22 +329,29 @@ export function buildSheet(options: SheetOptions): SheetResult {
   for (const quad of quads) {
     const ring = [quad[0], quad[1], quad[3], quad[2]];
     for (let i = 0; i < 4; i++) {
-      const a = ring[i], b = ring[(i + 1) % 4];
+      const a = ring[i],
+        b = ring[(i + 1) % 4];
       const key = a < b ? `${a},${b}` : `${b},${a}`;
       const seen = edgeUse.get(key);
-      if (seen) seen.count++; else edgeUse.set(key, { a, b, count: 1 });
+      if (seen) seen.count++;
+      else edgeUse.set(key, { a, b, count: 1 });
     }
   }
   const boundary = new Set<number>();
   const rimNext = new Map<number, number[]>();
   for (const { a, b, count } of edgeUse.values()) {
     if (count !== 1) continue;
-    boundary.add(a); boundary.add(b);
+    boundary.add(a);
+    boundary.add(b);
     (rimNext.get(a) ?? (rimNext.set(a, []), rimNext.get(a)!)).push(b);
     (rimNext.get(b) ?? (rimNext.set(b, []), rimNext.get(b)!)).push(a);
   }
   const forked = [...rimNext.values()].filter(list => list.length !== 2).length;
-  if (forked) return { ok: false, error: `${forked} rim vertices are on more than one loop — the region did not resolve into a surface.` };
+  if (forked)
+    return {
+      ok: false,
+      error: `${forked} rim vertices are on more than one loop — the region did not resolve into a surface.`,
+    };
 
   const loops: number[][] = [];
   const walked = new Set<number>();
@@ -272,19 +359,25 @@ export function buildSheet(options: SheetOptions): SheetResult {
     if (walked.has(start)) continue;
     const loop = [start];
     walked.add(start);
-    let previous = start, current = rimNext.get(start)![0];
+    let previous = start,
+      current = rimNext.get(start)![0];
     while (current !== start) {
-      loop.push(current); walked.add(current);
+      loop.push(current);
+      walked.add(current);
       const pair = rimNext.get(current)!;
       const onward = pair[0] === previous ? pair[1] : pair[0];
-      previous = current; current = onward;
+      previous = current;
+      current = onward;
     }
     loops.push(loop);
   }
 
   // ---- fit the rim to the region, and let the inside follow ---------------------------------------------------
   const neighbours: number[][] = Array.from({ length: us.length }, () => []);
-  for (const { a, b } of edgeUse.values()) { neighbours[a].push(b); neighbours[b].push(a); }
+  for (const { a, b } of edgeUse.values()) {
+    neighbours[a].push(b);
+    neighbours[b].push(a);
+  }
 
   /** One Newton step onto the field's zero set. The step is capped at half a cell so a vertex that starts a
    *  long way out walks in over several rounds instead of shooting past the region and landing in another
@@ -296,34 +389,49 @@ export function buildSheet(options: SheetOptions): SheetResult {
     const gz = (distanceAt(x, z + h) - distanceAt(x, z - h)) / (2 * h);
     const g2 = gx * gx + gz * gz;
     if (!(g2 > 1e-9)) return { x, z };
-    let sx = -(d * gx) / g2, sz = -(d * gz) / g2;
-    const step = Math.hypot(sx, sz), cap = cell * 0.5;
-    if (step > cap) { sx *= cap / step; sz *= cap / step; }
+    let sx = -(d * gx) / g2,
+      sz = -(d * gz) / g2;
+    const step = Math.hypot(sx, sz),
+      cap = cell * 0.5;
+    if (step > cap) {
+      sx *= cap / step;
+      sz *= cap / step;
+    }
     return { x: x + sx, z: z + sz };
   };
 
   const rounds = options.rounds ?? 24;
-  const tryX = new Float64Array(us.length), tryZ = new Float64Array(us.length);
+  const tryX = new Float64Array(us.length),
+    tryZ = new Float64Array(us.length);
   for (let round = 0; round < rounds; round++) {
-    tryX.set(xs); tryZ.set(zs);
+    tryX.set(xs);
+    tryZ.set(zs);
     // The rim first slides along itself, which is what actually takes the staircase out — projection alone
     // would pull each step straight onto the rim and keep the corner.
     for (const loop of loops) {
       for (let i = 0; i < loop.length; i++) {
-        const v = loop[i], before = loop[(i - 1 + loop.length) % loop.length], after = loop[(i + 1) % loop.length];
+        const v = loop[i],
+          before = loop[(i - 1 + loop.length) % loop.length],
+          after = loop[(i + 1) % loop.length];
         tryX[v] = xs[v] + 0.5 * ((xs[before] + xs[after]) / 2 - xs[v]);
         tryZ[v] = zs[v] + 0.5 * ((zs[before] + zs[after]) / 2 - zs[v]);
       }
     }
     for (const v of boundary) {
       const onto = project(tryX[v], tryZ[v]);
-      tryX[v] = onto.x; tryZ[v] = onto.z;
+      tryX[v] = onto.x;
+      tryZ[v] = onto.z;
     }
     for (let v = 0; v < us.length; v++) {
       if (boundary.has(v) || !neighbours[v].length) continue;
-      let mx = 0, mz = 0;
-      for (const n of neighbours[v]) { mx += xs[n]; mz += zs[n]; }
-      mx /= neighbours[v].length; mz /= neighbours[v].length;
+      let mx = 0,
+        mz = 0;
+      for (const n of neighbours[v]) {
+        mx += xs[n];
+        mz += zs[n];
+      }
+      mx /= neighbours[v].length;
+      mz /= neighbours[v].length;
       tryX[v] = xs[v] + 0.35 * (mx - xs[v]);
       tryZ[v] = zs[v] + 0.35 * (mz - zs[v]);
     }
@@ -341,19 +449,26 @@ export function buildSheet(options: SheetOptions): SheetResult {
         tryZ[v] = last ? zs[v] : (tryZ[v] + zs[v]) / 2;
       }
     }
-    xs.set(tryX); zs.set(tryZ);
+    xs.set(tryX);
+    zs.set(tryZ);
   }
 
-  let sum = 0, worst = 0;
+  let sum = 0,
+    worst = 0;
   for (const v of boundary) {
     const off = Math.abs(distanceAt(xs[v], zs[v]));
-    sum += off; worst = Math.max(worst, off);
+    sum += off;
+    worst = Math.max(worst, off);
   }
 
   return {
     ok: true,
     points: Array.from({ length: us.length }, (_, v) => ({ x: xs[v], z: zs[v] })),
-    quads, boundary, loops, filled, dropped,
+    quads,
+    boundary,
+    loops,
+    filled,
+    dropped,
     fit: { meanM: boundary.size ? sum / boundary.size : 0, worstM: worst },
     winding: Math.sign(cellArea(xs, zs, quads[0])),
   };

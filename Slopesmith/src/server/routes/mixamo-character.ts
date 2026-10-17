@@ -2,7 +2,15 @@ import { writeFile } from 'node:fs/promises';
 import { ensureDir, pathExists } from '../fs-async';
 import { join } from 'node:path';
 import {
-  Box3, Bone, Group, LoadingManager, Matrix4, Quaternion, Skeleton, SkinnedMesh, Vector3,
+  Box3,
+  Bone,
+  Group,
+  LoadingManager,
+  Matrix4,
+  Quaternion,
+  Skeleton,
+  SkinnedMesh,
+  Vector3,
   type Material,
 } from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
@@ -10,8 +18,10 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Canvas, Image, ImageData, createCanvas } from '@napi-rs/canvas';
 import { safeDataName, storeUnderFreeName } from './safe-name';
 import {
-  MIXAMO_TO_SLOPESMITH, REQUIRED_CHARACTER_BONES,
-  type CanonicalCharacterBone, type MixamoBone,
+  MIXAMO_TO_SLOPESMITH,
+  REQUIRED_CHARACTER_BONES,
+  type CanonicalCharacterBone,
+  type MixamoBone,
 } from '../../core/characters/contract';
 import { characterLibraryDir } from './characters';
 
@@ -81,7 +91,11 @@ export function mixamoBoneKey(name: string): string {
 }
 
 function characterStem(sourceName: string): string {
-  const words = sourceName.replace(/\.fbx$/i, '').trim().replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const words = sourceName
+    .replace(/\.fbx$/i, '')
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   const safe = safeDataName(words) || 'mixamo-character';
   return /-rigged$/i.test(safe) ? safe : `${safe}-rigged`;
 }
@@ -97,14 +111,20 @@ interface ImageBoundary {
 let activeImageBoundary: ImageBoundary | null = null;
 
 function imageDimensions(bytes: Buffer, mime: string): { width: number; height: number } | null {
-  if (mime === 'image/png' && bytes.length >= 24
-    && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+  if (
+    mime === 'image/png' &&
+    bytes.length >= 24 &&
+    bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  ) {
     return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
   }
   if (mime === 'image/jpeg' && bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
     const frames = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
     for (let at = 2; at + 8 < bytes.length;) {
-      if (bytes[at] !== 0xff) { at++; continue; }
+      if (bytes[at] !== 0xff) {
+        at++;
+        continue;
+      }
       const marker = bytes[at + 1];
       at += 2;
       if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
@@ -118,8 +138,12 @@ function imageDimensions(bytes: Buffer, mime: string): { width: number; height: 
     }
     return null;
   }
-  if (mime === 'image/webp' && bytes.length >= 30
-    && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') {
+  if (
+    mime === 'image/webp' &&
+    bytes.length >= 30 &&
+    bytes.toString('ascii', 0, 4) === 'RIFF' &&
+    bytes.toString('ascii', 8, 12) === 'WEBP'
+  ) {
     const kind = bytes.toString('ascii', 12, 16);
     if (kind === 'VP8X') {
       return {
@@ -129,8 +153,8 @@ function imageDimensions(bytes: Buffer, mime: string): { width: number; height: 
     }
     if (kind === 'VP8L' && bytes[20] === 0x2f) {
       return {
-        width: 1 + ((bytes[21] | bytes[22] << 8) & 0x3fff),
-        height: 1 + ((bytes[22] >> 6 | bytes[23] << 2 | bytes[24] << 10) & 0x3fff),
+        width: 1 + ((bytes[21] | (bytes[22] << 8)) & 0x3fff),
+        height: 1 + (((bytes[22] >> 6) | (bytes[23] << 2) | (bytes[24] << 10)) & 0x3fff),
       };
     }
     if (kind === 'VP8 ') {
@@ -153,21 +177,25 @@ function imageDimensions(bytes: Buffer, mime: string): { width: number; height: 
   if (mime === 'image/tiff' && bytes.length >= 16) {
     const little = bytes.toString('ascii', 0, 2) === 'II';
     if (!little && bytes.toString('ascii', 0, 2) !== 'MM') return null;
-    const u16 = (at: number) => little ? bytes.readUInt16LE(at) : bytes.readUInt16BE(at);
-    const u32 = (at: number) => little ? bytes.readUInt32LE(at) : bytes.readUInt32BE(at);
+    const u16 = (at: number) => (little ? bytes.readUInt16LE(at) : bytes.readUInt16BE(at));
+    const u32 = (at: number) => (little ? bytes.readUInt32LE(at) : bytes.readUInt32BE(at));
     if (u16(2) !== 42) return null;
     const directory = u32(4);
     if (directory + 2 > bytes.length) return null;
     const entries = u16(directory);
     if (entries > 4096) return null;
-    let width = 0, height = 0;
+    let width = 0,
+      height = 0;
     for (let index = 0; index < entries; index++) {
       const at = directory + 2 + index * 12;
       if (at + 12 > bytes.length) break;
-      const tag = u16(at), type = u16(at + 2), count = u32(at + 4);
+      const tag = u16(at),
+        type = u16(at + 2),
+        count = u32(at + 4);
       if ((tag !== 256 && tag !== 257) || count !== 1 || (type !== 3 && type !== 4)) continue;
       const value = type === 3 ? u16(at + 8) : u32(at + 8);
-      if (tag === 256) width = value; else height = value;
+      if (tag === 256) width = value;
+      else height = value;
     }
     return width && height ? { width, height } : null;
   }
@@ -188,8 +216,11 @@ function claimEmbeddedImage(boundary: ImageBoundary, bytes: Buffer, rawMime: str
   boundary.images++;
   boundary.imageBytes += bytes.length;
   boundary.imagePixels += pixels;
-  if (boundary.images > MAX_CHARACTER_IMAGES || boundary.imageBytes > MAX_CHARACTER_TOTAL_IMAGE_BYTES
-    || boundary.imagePixels > MAX_CHARACTER_TOTAL_IMAGE_PIXELS) {
+  if (
+    boundary.images > MAX_CHARACTER_IMAGES ||
+    boundary.imageBytes > MAX_CHARACTER_TOTAL_IMAGE_BYTES ||
+    boundary.imagePixels > MAX_CHARACTER_TOTAL_IMAGE_PIXELS
+  ) {
     throw new Error('embedded FBX images exceed the character import budget');
   }
   return bytes;
@@ -223,7 +254,9 @@ function installNodeImageBridge() {
           try {
             const image = dataImage(value);
             source.set!.call(this, claimEmbeddedImage(boundary, image.bytes, image.mime));
-          } catch (error) { queueMicrotask(() => this.onerror?.(error)); }
+          } catch (error) {
+            queueMicrotask(() => this.onerror?.(error));
+          }
           return;
         }
         if (boundary && typeof value === 'string' && value.startsWith('blob:')) {
@@ -235,7 +268,8 @@ function installNodeImageBridge() {
               queueMicrotask(() => this.onerror?.(new Error('an embedded FBX image exceeds the 16 MB decode limit')));
               return;
             }
-            void blob.arrayBuffer()
+            void blob
+              .arrayBuffer()
               .then(bytes => claimEmbeddedImage(boundary, Buffer.from(bytes), blob.type))
               .then(bytes => source.set!.call(this, bytes))
               .catch(error => this.onerror?.(error))
@@ -251,10 +285,10 @@ function installNodeImageBridge() {
         queueMicrotask(() => this.onerror?.(new Error('external FBX texture references are not allowed')));
       },
     });
-    imagePrototype.addEventListener = function(this: Record<string, unknown>, type: string, listener: unknown) {
+    imagePrototype.addEventListener = function (this: Record<string, unknown>, type: string, listener: unknown) {
       this[`on${type}`] = listener;
     };
-    imagePrototype.removeEventListener = function(this: Record<string, unknown>, type: string, listener: unknown) {
+    imagePrototype.removeEventListener = function (this: Record<string, unknown>, type: string, listener: unknown) {
       if (this[`on${type}`] === listener) this[`on${type}`] = null;
     };
     imagePrototype[marker] = true;
@@ -281,8 +315,8 @@ function installNodeImageBridge() {
 
   globals.window = globalThis;
   globals.document = {
-    createElementNS: (_namespace: string, name: string) => name === 'img' ? new Image() : createCanvas(1, 1),
-    createElement: (name: string) => name === 'canvas' ? createCanvas(1, 1) : new Image(),
+    createElementNS: (_namespace: string, name: string) => (name === 'img' ? new Image() : createCanvas(1, 1)),
+    createElement: (name: string) => (name === 'canvas' ? createCanvas(1, 1) : new Image()),
   };
   globals.HTMLImageElement = Image;
   globals.HTMLCanvasElement = Canvas;
@@ -295,7 +329,10 @@ let conversionQueue: Promise<void> = Promise.resolve();
 
 function serialized<T>(work: () => Promise<T>): Promise<T> {
   const result = conversionQueue.then(work, work);
-  conversionQueue = result.then(() => undefined, () => undefined);
+  conversionQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
   return result;
 }
 
@@ -318,11 +355,16 @@ async function parseFbx(bytes: Buffer, warnings: string[]): Promise<Group> {
   let pending = 0;
   let parsed = false;
   let settle: (() => void) | undefined;
-  const loaded = new Promise<void>(resolve => { settle = resolve; });
+  const loaded = new Promise<void>(resolve => {
+    settle = resolve;
+  });
   const itemStart = manager.itemStart.bind(manager);
   const itemEnd = manager.itemEnd.bind(manager);
   const itemError = manager.itemError.bind(manager);
-  manager.itemStart = url => { pending++; itemStart(url); };
+  manager.itemStart = url => {
+    pending++;
+    itemStart(url);
+  };
   manager.itemEnd = url => {
     itemEnd(url);
     pending--;
@@ -402,7 +444,9 @@ function removeUnreadableTextures(group: Group, warnings: string[]) {
 
 function collectSkinnedMeshes(group: Group): SkinnedMesh[] {
   const meshes: SkinnedMesh[] = [];
-  group.traverse(object => { if (object instanceof SkinnedMesh) meshes.push(object); });
+  group.traverse(object => {
+    if (object instanceof SkinnedMesh) meshes.push(object);
+  });
   return meshes;
 }
 
@@ -416,10 +460,12 @@ function mergeSkeletonCopies(group: Group, meshes: SkinnedMesh[]): Bone[] {
     return mesh.skeleton.bones.reduce((score, bone) => score + (set.has(bone.parent as Bone) ? 1 : 0), 0);
   };
   const mainMesh = meshes.reduce((best, mesh) => {
-    const score = skeletonScore(mesh), bestScore = skeletonScore(best);
+    const score = skeletonScore(mesh),
+      bestScore = skeletonScore(best);
     if (score !== bestScore) return score > bestScore ? mesh : best;
     return (mesh.geometry.getAttribute('position')?.count ?? 0) > (best.geometry.getAttribute('position')?.count ?? 0)
-      ? mesh : best;
+      ? mesh
+      : best;
   });
   const mainBones = mainMesh.skeleton.bones;
   const mainSet = new Set(mainBones);
@@ -433,15 +479,21 @@ function mergeSkeletonCopies(group: Group, meshes: SkinnedMesh[]): Bone[] {
   for (const mesh of meshes) {
     const mapped = mesh.skeleton.bones.map(bone => mainByKey.get(mixamoBoneKey(bone.name).toLowerCase()));
     const missing = mapped.findIndex(bone => !bone);
-    if (missing >= 0) throw new Error(`Mesh ${mesh.name} uses bone ${mesh.skeleton.bones[missing].name} absent from the main skeleton`);
-    mesh.skeleton = new Skeleton(mapped as Bone[], mesh.skeleton.boneInverses.map(inverse => inverse.clone()));
+    if (missing >= 0)
+      throw new Error(`Mesh ${mesh.name} uses bone ${mesh.skeleton.bones[missing].name} absent from the main skeleton`);
+    mesh.skeleton = new Skeleton(
+      mapped as Bone[],
+      mesh.skeleton.boneInverses.map(inverse => inverse.clone()),
+    );
   }
 
   group.updateMatrixWorld(true);
   for (const root of mainBones.filter(bone => !mainSet.has(bone.parent as Bone))) group.attach(root);
 
   const extras: Bone[] = [];
-  group.traverse(object => { if (object instanceof Bone && !mainSet.has(object)) extras.push(object); });
+  group.traverse(object => {
+    if (object instanceof Bone && !mainSet.has(object)) extras.push(object);
+  });
   const extraSet = new Set(extras);
   for (const root of extras.filter(bone => !extraSet.has(bone.parent as Bone))) root.removeFromParent();
   group.updateMatrixWorld(true);
@@ -472,7 +524,8 @@ function bakeCharacterScale(group: Group, meshes: SkinnedMesh[], warnings: strin
 
   const unitScaleFactor = Number(group.userData.unitScaleFactor);
   const metresPerUnit = Number.isFinite(unitScaleFactor) && unitScaleFactor > 0 ? unitScaleFactor / 100 : 0.01;
-  if (!Number.isFinite(unitScaleFactor)) warnings.push('FBX unit metadata was missing; Mixamo centimetres were assumed');
+  if (!Number.isFinite(unitScaleFactor))
+    warnings.push('FBX unit metadata was missing; Mixamo centimetres were assumed');
   const sourceHeightMetres = rawHeight * metresPerUnit;
   const scale = IMPORTED_CHARACTER_HEIGHT_METRES / rawHeight;
 
@@ -532,7 +585,8 @@ function normalizeDrivenBones(group: Group, bones: Bone[], warnings: string[]): 
   const up = new Vector3(0, 1, 0);
   const forward = new Vector3();
   for (const side of ['Left', 'Right']) {
-    const foot = sourceAt(`${side}Foot`), toe = sourceAt(`${side}ToeBase`);
+    const foot = sourceAt(`${side}Foot`),
+      toe = sourceAt(`${side}ToeBase`);
     if (foot && toe) forward.add(toe.clone().sub(foot).setY(0));
   }
   if (forward.lengthSq() < 1e-8) {
@@ -598,11 +652,14 @@ function countTextures(group: Group): number {
 function validatePreparedGroup(group: Group, meshes: SkinnedMesh[], bones: Bone[]) {
   if (meshes.length > MAX_CHARACTER_MESHES) throw new Error(`FBX has more than ${MAX_CHARACTER_MESHES} skinned meshes`);
   if (bones.length > MAX_CHARACTER_BONES) throw new Error(`FBX has more than ${MAX_CHARACTER_BONES} bones`);
-  let vertices = 0, triangles = 0, unweightedVertices = 0;
+  let vertices = 0,
+    triangles = 0,
+    unweightedVertices = 0;
   for (const mesh of meshes) {
     const position = mesh.geometry.getAttribute('position');
     const weights = mesh.geometry.getAttribute('skinWeight');
-    if (!position || !weights || weights.itemSize !== 4) throw new Error(`Mesh ${mesh.name} has no four-slot skin weights`);
+    if (!position || !weights || weights.itemSize !== 4)
+      throw new Error(`Mesh ${mesh.name} has no four-slot skin weights`);
     vertices += position.count;
     triangles += mesh.geometry.index ? mesh.geometry.index.count / 3 : position.count / 3;
     if (vertices > MAX_CHARACTER_VERTICES || triangles > MAX_CHARACTER_TRIANGLES)
@@ -625,7 +682,12 @@ function glbJson(glb: Buffer): { nodes?: { name?: string }[]; meshes?: unknown[]
     throw new Error('Character conversion did not produce a glTF 2.0 binary');
   const jsonLength = glb.readUInt32LE(12);
   if (20 + jsonLength > glb.length) throw new Error('Character GLB has a truncated JSON chunk');
-  return JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
+  return JSON.parse(
+    glb
+      .subarray(20, 20 + jsonLength)
+      .toString('utf8')
+      .trim(),
+  );
 }
 
 async function convertMixamoFbxInner(bytes: Buffer, sourceName: string): Promise<ConvertedMixamoCharacter> {
@@ -637,7 +699,8 @@ async function convertMixamoFbxInner(bytes: Buffer, sourceName: string): Promise
   if (!meshes.length) throw new Error('FBX contains no skinned meshes');
   if (meshes.length > MAX_CHARACTER_MESHES) throw new Error(`FBX has more than ${MAX_CHARACTER_MESHES} skinned meshes`);
   removeUnreadableTextures(group, warnings);
-  if (countTextures(group) > MAX_CHARACTER_IMAGES) throw new Error(`FBX has more than ${MAX_CHARACTER_IMAGES} textures`);
+  if (countTextures(group) > MAX_CHARACTER_IMAGES)
+    throw new Error(`FBX has more than ${MAX_CHARACTER_IMAGES} textures`);
   const bones = mergeSkeletonCopies(group, meshes);
   const sourceHeightMetres = bakeCharacterScale(group, meshes, warnings);
   normalizeDrivenBones(group, bones, warnings);
@@ -662,7 +725,7 @@ async function convertMixamoFbxInner(bytes: Buffer, sourceName: string): Promise
   const json = glbJson(glb);
   const names = new Set((json.nodes ?? []).map(node => node.name));
   const missing = REQUIRED_CHARACTER_BONES.filter(name => !names.has(name));
-  if (missing.length || !(json.meshes?.length) || !(json.skins?.length))
+  if (missing.length || !json.meshes?.length || !json.skins?.length)
     throw new Error(`Converted GLB failed validation${missing.length ? `; missing ${missing.join(', ')}` : ''}`);
 
   const file = `${characterStem(sourceName)}.glb`;

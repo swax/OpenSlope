@@ -45,15 +45,22 @@ function root(identity: Identity | undefined): Record<string, unknown> {
     };
   }
   if (!identity || identity.kind === 'anonymous') {
-    const actions: ApiAction[] = [{
-      rel: 'login', href: '/api/auth/login', method: 'POST', title: 'Sign in (browser sessions)',
-      schema: '/api/schemas/Login', body: { username: '', password: '' },
-    }];
+    const actions: ApiAction[] = [
+      {
+        rel: 'login',
+        href: '/api/auth/login',
+        method: 'POST',
+        title: 'Sign in (browser sessions)',
+        schema: '/api/schemas/Login',
+        body: { username: '', password: '' },
+      },
+    ];
     return {
       service: 'slopesmith',
       identity: summary,
-      hint: 'Programs authenticate with a personal access key on every request: '
-        + '`Authorization: Bearer slop_…`. A signed-in member mints one at POST /api/auth/keys.',
+      hint:
+        'Programs authenticate with a personal access key on every request: ' +
+        '`Authorization: Bearer slop_…`. A signed-in member mints one at POST /api/auth/keys.',
       _links: [
         link('self', '/api'),
         link('explorer', '/api/explorer', 'Browse this API interactively (humans, in a browser)'),
@@ -70,7 +77,11 @@ function root(identity: Identity | undefined): Record<string, unknown> {
     link('guide', '/api/guide', 'How to author a mountain through this API — read this first'),
     link('explorer', '/api/explorer', 'Browse this API interactively (humans, in a browser)'),
     link('schemas', '/api/schemas', 'JSON Schemas the action bodies point at'),
-    link('browser-workflows', '/api/browser', 'Browser view links, screenshot readiness, inspection, rides and exports'),
+    link(
+      'browser-workflows',
+      '/api/browser',
+      'Browser view links, screenshot readiness, inspection, rides and exports',
+    ),
     link('me', '/api/auth/session', 'The signed-in account behind this request'),
     link('version', '/api/version', 'What this server is running'),
   ];
@@ -97,32 +108,65 @@ function referenceBranch(): Record<string, unknown> {
       link('root', '/api'),
       link('levels', '/api/levels', 'Every extracted level in the library, with origins'),
       link('census', '/api/level-census', 'Size and cost of every mountain, for comparison'),
-      link('prop-materials', '/api/props/materials', 'Every level\'s prop material table'),
+      link('prop-materials', '/api/props/materials', "Every level's prop material table"),
       link('board-audio', '/api/board-audio', 'The shared board-ride sound banks'),
     ],
     _linkTemplates: [
-      { rel: 'item', hrefTemplate: '/api/reference/{level}',
-        title: 'One level of the `levels` list, as a branch page: what it is, and every part of it borrowable' },
-      { rel: 'level', hrefTemplate: '/api/level?name={level}',
-        title: 'One level\'s terrain patches, course line, splines, AI paths, sun and world record' },
-      { rel: 'level-textures', hrefTemplate: '/api/textures?level={level}',
-        title: 'The tiles a level ships; bytes at /api/texture?level={level}&name={file}' },
-      { rel: 'level-prop-index', hrefTemplate: '/api/props/index?level={level}',
-        title: 'A level\'s models by name, triangle cost and tiles — the slim index to choose one from' },
-      { rel: 'level-props', hrefTemplate: '/api/props?level={level}',
-        title: 'A level\'s whole prop payload — models by ModelID, for placing as o/prop registers. Large.' },
-      { rel: 'level-effects', hrefTemplate: '/api/effects?level={level}',
-        title: 'A level\'s portable SSF effect graph — the best reference for authoring your own' },
-      { rel: 'level-groups', hrefTemplate: '/api/groups?level={level}',
-        title: 'Mined multi-prop assemblies placeable as one group prop' },
-      { rel: 'level-lightrig', hrefTemplate: '/api/lightrig?level={level}',
-        title: 'A level\'s whole shipped light rig' },
-      { rel: 'level-sky', hrefTemplate: '/api/skypano?level={level}',
-        title: 'A level\'s sky panorama PNG; borrow the whole sky with the g/skybox register' },
-      { rel: 'level-sounds', hrefTemplate: '/api/sound-banks?level={level}',
-        title: 'The sound banks a level ships; slot bytes at /api/effect-sound' },
-      { rel: 'level-music', hrefTemplate: '/api/reference-music?level={level}',
-        title: 'A level\'s interactive race-music graph' },
+      {
+        rel: 'item',
+        hrefTemplate: '/api/reference/{level}',
+        title: 'One level of the `levels` list, as a branch page: what it is, and every part of it borrowable',
+      },
+      {
+        rel: 'level',
+        hrefTemplate: '/api/level?name={level}',
+        title: "One level's terrain patches, course line, splines, AI paths, sun and world record",
+      },
+      {
+        rel: 'level-textures',
+        hrefTemplate: '/api/textures?level={level}',
+        title: 'The tiles a level ships; bytes at /api/texture?level={level}&name={file}',
+      },
+      {
+        rel: 'level-prop-index',
+        hrefTemplate: '/api/props/index?level={level}',
+        title: "A level's models by name, triangle cost and tiles — the slim index to choose one from",
+      },
+      {
+        rel: 'level-props',
+        hrefTemplate: '/api/props?level={level}',
+        title: "A level's whole prop payload — models by ModelID, for placing as o/prop registers. Large.",
+      },
+      {
+        rel: 'level-effects',
+        hrefTemplate: '/api/effects?level={level}',
+        title: "A level's portable SSF effect graph — the best reference for authoring your own",
+      },
+      {
+        rel: 'level-groups',
+        hrefTemplate: '/api/groups?level={level}',
+        title: 'Mined multi-prop assemblies placeable as one group prop',
+      },
+      {
+        rel: 'level-lightrig',
+        hrefTemplate: '/api/lightrig?level={level}',
+        title: "A level's whole shipped light rig",
+      },
+      {
+        rel: 'level-sky',
+        hrefTemplate: '/api/skypano?level={level}',
+        title: "A level's sky panorama PNG; borrow the whole sky with the g/skybox register",
+      },
+      {
+        rel: 'level-sounds',
+        hrefTemplate: '/api/sound-banks?level={level}',
+        title: 'The sound banks a level ships; slot bytes at /api/effect-sound',
+      },
+      {
+        rel: 'level-music',
+        hrefTemplate: '/api/reference-music?level={level}',
+        title: "A level's interactive race-music graph",
+      },
     ],
   };
   return { title: 'Reference: the extracted levels', ...envelope };
@@ -139,7 +183,10 @@ function referenceBranch(): Record<string, unknown> {
  */
 async function levelBranch(level: string): Promise<Record<string, unknown>> {
   const [origin, textures, banks, withProps] = await Promise.all([
-    readLevelOrigin(level), textureFiles(level), listSoundBanks(level), levelsWithProps(),
+    readLevelOrigin(level),
+    textureFiles(level),
+    listSoundBanks(level),
+    levelsWithProps(),
   ]);
   const name = encodeURIComponent(level);
   const envelope: HateoasEnvelope = {
@@ -147,23 +194,39 @@ async function levelBranch(level: string): Promise<Record<string, unknown>> {
       link('self', `/api/reference/${name}`),
       link('collection', '/api/reference'),
       link('root', '/api'),
-      link('level', `/api/level?name=${name}`,
-        'Terrain patches, course line, splines, AI paths, sun and world record'),
-      link('level-textures', `/api/textures?level=${name}`,
-        'The tiles it ships; paint one as the q/<quadId>/tex register "<LEVEL>/<file>.png"'),
-      link('level-prop-index', `/api/props/index?level=${name}`,
-        'Its models by name, triangle cost and tiles — read this before the payload below'),
-      link('level-props', `/api/props?level=${name}`,
-        'The whole prop payload: geometry for every model, by ModelID. Large.'),
-      link('level-effects', `/api/effects?level=${name}`,
-        'Its portable SSF effect graph — the best reference for authoring your own'),
-      link('level-groups', `/api/groups?level=${name}`,
-        'Mined multi-prop assemblies placeable as one group prop'),
+      link('level', `/api/level?name=${name}`, 'Terrain patches, course line, splines, AI paths, sun and world record'),
+      link(
+        'level-textures',
+        `/api/textures?level=${name}`,
+        'The tiles it ships; paint one as the q/<quadId>/tex register "<LEVEL>/<file>.png"',
+      ),
+      link(
+        'level-prop-index',
+        `/api/props/index?level=${name}`,
+        'Its models by name, triangle cost and tiles — read this before the payload below',
+      ),
+      link(
+        'level-props',
+        `/api/props?level=${name}`,
+        'The whole prop payload: geometry for every model, by ModelID. Large.',
+      ),
+      link(
+        'level-effects',
+        `/api/effects?level=${name}`,
+        'Its portable SSF effect graph — the best reference for authoring your own',
+      ),
+      link('level-groups', `/api/groups?level=${name}`, 'Mined multi-prop assemblies placeable as one group prop'),
       link('level-lightrig', `/api/lightrig?level=${name}`, 'Its whole shipped light rig'),
-      link('level-sky', `/api/skypano?level=${name}`,
-        'Its sky panorama PNG; borrow the whole sky with the g/skybox register'),
-      link('level-sounds', `/api/sound-banks?level=${name}`,
-        'The sound banks it ships; slot bytes at /api/effect-sound'),
+      link(
+        'level-sky',
+        `/api/skypano?level=${name}`,
+        'Its sky panorama PNG; borrow the whole sky with the g/skybox register',
+      ),
+      link(
+        'level-sounds',
+        `/api/sound-banks?level=${name}`,
+        'The sound banks it ships; slot bytes at /api/effect-sound',
+      ),
       link('level-music', `/api/reference-music?level=${name}`, 'Its interactive race-music graph'),
     ],
   };
@@ -187,38 +250,55 @@ function avatarsBranch(): Record<string, unknown> {
       link('list', '/api/characters', 'Every rider avatar on this server'),
     ],
     _linkTemplates: [
-      { rel: 'model', hrefTemplate: '/api/character-model?name={file}', title: 'One avatar\'s GLB bytes' },
+      { rel: 'model', hrefTemplate: '/api/character-model?name={file}', title: "One avatar's GLB bytes" },
     ],
-    _actionTemplates: [{
-      rel: 'import', hrefTemplate: '/api/character-import?name={sourceFileName}', method: 'POST',
-      title: 'Import a rigged Mixamo character as a rider avatar',
-      alternateEncoding: {
-        contentType: 'application/octet-stream',
-        description: 'Raw Mixamo FBX bytes as the request body (96 MB cap); the response is a conversion '
-          + 'report naming the stored avatar.',
+    _actionTemplates: [
+      {
+        rel: 'import',
+        hrefTemplate: '/api/character-import?name={sourceFileName}',
+        method: 'POST',
+        title: 'Import a rigged Mixamo character as a rider avatar',
+        alternateEncoding: {
+          contentType: 'application/octet-stream',
+          description:
+            'Raw Mixamo FBX bytes as the request body (96 MB cap); the response is a conversion ' +
+            'report naming the stored avatar.',
+        },
       },
-    }],
+    ],
   };
   return {
     title: 'Avatars: rider characters',
-    note: 'Which avatar a player wears is a per-person choice made in the editor, not map data — a map '
-      + 'never names one. This library is what everyone chooses from.',
+    note:
+      'Which avatar a player wears is a per-person choice made in the editor, not map data — a map ' +
+      'never names one. This library is what everyone chooses from.',
     ...envelope,
   };
 }
 
 export const discoveryRoutes: Record<string, ApiHandler> = {
   '/api/browser': (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     jsonResponse(res, 200, BROWSER_WORKFLOWS);
   },
   // The directory of extracted levels, and — one path down — any one of them: `/api/reference/GARI` is the
   // `item` template of the `levels` list, resolved. A name no folder answers to is a 404 back to the
   // directory, the same recourse the root's catch-all gives.
   '/api/reference': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     const path = (req.url ?? '/').split('?')[0].replace(/^\/+|\/+$/g, '');
-    if (!path) { jsonResponse(res, 200, referenceBranch()); return; }
+    if (!path) {
+      jsonResponse(res, 200, referenceBranch());
+      return;
+    }
     const asked = decodeURIComponent(path);
     const level = (await listLevels()).find(name => name.toLowerCase() === asked.toLowerCase());
     if (!level) {
@@ -232,12 +312,20 @@ export const discoveryRoutes: Record<string, ApiHandler> = {
   },
 
   '/api/avatars': (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     jsonResponse(res, 200, avatarsBranch());
   },
 
   '/api/guide': (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     res.statusCode = 200;
     res.setHeader('content-type', 'text/markdown; charset=utf-8');
     res.end(AUTHORING_GUIDE);
@@ -254,7 +342,11 @@ export const discoveryRoutes: Record<string, ApiHandler> = {
       });
       return;
     }
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     jsonResponse(res, 200, root((req as ApiRequest).identity));
   },
 };

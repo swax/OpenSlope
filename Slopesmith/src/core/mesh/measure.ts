@@ -41,7 +41,8 @@ const triArea = (a: V3, b: V3, c: V3): number => 0.5 * len(cross(sub(b, a), sub(
  * number is the ridable edge on the surface for either.
  */
 export function edgeLength(mesh: QuadMesh, eh: EdgeHandle, a: number, b: number): number {
-  const Pa = vAt(mesh, a), Pb = vAt(mesh, b);
+  const Pa = vAt(mesh, a),
+    Pb = vAt(mesh, b);
   return polylineLength(cubicPolyline(Pa, add(Pa, eh(a, b)), add(Pb, eh(b, a)), Pb, RES));
 }
 
@@ -68,7 +69,9 @@ export interface CellMetrics {
  * its real reach, not the chord. `minY` / `maxY` are exposed so a multi-cell selection aggregates one drop.
  */
 export function cellMetrics(cp: V3[]): CellMetrics {
-  let area = 0, minY = Infinity, maxY = -Infinity;
+  let area = 0,
+    minY = Infinity,
+    maxY = -Infinity;
   // sample the patch on an (RES+1)² grid: triangulated area + height range
   const grid: V3[][] = [];
   for (let iu = 0; iu <= RES; iu++) {
@@ -83,12 +86,16 @@ export function cellMetrics(cp: V3[]): CellMetrics {
   }
   for (let iu = 0; iu < RES; iu++) {
     for (let iv = 0; iv < RES; iv++) {
-      const a = grid[iu][iv], b = grid[iu][iv + 1], c = grid[iu + 1][iv], d = grid[iu + 1][iv + 1];
+      const a = grid[iu][iv],
+        b = grid[iu][iv + 1],
+        c = grid[iu + 1][iv],
+        d = grid[iu + 1][iv + 1];
       area += triArea(a, b, c) + triArea(d, c, b);
     }
   }
   // centre lines: down the spine at v=0.5 (length), across at u=0.5 (width)
-  const uLine: V3[] = [], vLine: V3[] = [];
+  const uLine: V3[] = [],
+    vLine: V3[] = [];
   for (let i = 0; i <= RES; i++) uLine.push(patchPoint(cp, i / RES, 0.5));
   for (let i = 0; i <= RES; i++) vLine.push(patchPoint(cp, 0.5, i / RES));
   return { length: polylineLength(uLine), width: polylineLength(vLine), drop: maxY - minY, area, minY, maxY };
@@ -144,8 +151,12 @@ export type SelectionMeasure = EdgeMeasure | CellMeasure;
  *  angle can compare the two patches either side of each edge. The adjacency is the caller's already-derived one:
  *  a selection read-out must not rebuild the whole mountain's topology. Without it (a caller after length
  *  alone) the angle is null. */
-export function measureEdges(mesh: QuadMesh, eh: EdgeHandle, edges: readonly [number, number][],
-  seamSource?: { adj: MeshAdjacency; controls: PatchControls }): EdgeMeasure | null {
+export function measureEdges(
+  mesh: QuadMesh,
+  eh: EdgeHandle,
+  edges: readonly [number, number][],
+  seamSource?: { adj: MeshAdjacency; controls: PatchControls },
+): EdgeMeasure | null {
   if (!edges.length) return null;
   let total = 0;
   for (const [a, b] of edges) total += edgeLength(mesh, eh, a, b);
@@ -157,8 +168,13 @@ export function measureEdges(mesh: QuadMesh, eh: EdgeHandle, edges: readonly [nu
       if (quads?.length === 2) seams.push({ a, b, quads: [quads[0], quads[1]] });
     }
   }
-  return { kind: 'edge', count: edges.length, total, seams,
-    angle: seamSource ? widestSeamAngle(mesh, seamSource.controls, seams) : null };
+  return {
+    kind: 'edge',
+    count: edges.length,
+    total,
+    seams,
+    angle: seamSource ? widestSeamAngle(mesh, seamSource.controls, seams) : null,
+  };
 }
 
 /**
@@ -169,7 +185,10 @@ export function measureEdges(mesh: QuadMesh, eh: EdgeHandle, edges: readonly [nu
  */
 export function measureCells(cpOf: (cell: number) => V3[], cells: readonly number[]): CellMeasure | null {
   if (!cells.length) return null;
-  let area = 0, minY = Infinity, maxY = -Infinity, single: CellMetrics | null = null;
+  let area = 0,
+    minY = Infinity,
+    maxY = -Infinity,
+    single: CellMetrics | null = null;
   for (const q of cells) {
     const m = cellMetrics(cpOf(q));
     area += m.area;
@@ -178,7 +197,10 @@ export function measureCells(cpOf: (cell: number) => V3[], cells: readonly numbe
     single = m;
   }
   return {
-    kind: 'cell', count: cells.length, area, drop: maxY - minY,
+    kind: 'cell',
+    count: cells.length,
+    area,
+    drop: maxY - minY,
     single: cells.length === 1 ? single : null,
     id: cells.length === 1 ? cells[0] : null,
   };

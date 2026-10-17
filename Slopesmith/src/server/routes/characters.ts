@@ -17,7 +17,7 @@ export async function characterLibraryDir(): Promise<string> {
   const ready = (async () => {
     await ensureDir(root);
     const marker = join(root, '.legacy-migrated-v1.json');
-    if (!await pathExists(marker)) {
+    if (!(await pathExists(marker))) {
       const legacy = join(mapsRoot(), 'Custom', 'Characters');
       const copied: string[] = [];
       for (const file of (await listDir(legacy)).filter(name => GLB.test(name))) {
@@ -33,7 +33,9 @@ export async function characterLibraryDir(): Promise<string> {
     return root;
   })();
   prepared = { root, ready };
-  void ready.catch(() => { if (prepared?.ready === ready) prepared = null; });
+  void ready.catch(() => {
+    if (prepared?.ready === ready) prepared = null;
+  });
   return ready;
 }
 

@@ -10,7 +10,9 @@ export function noteRidePointerType(pointerType: string | null | undefined): voi
   lastPointerType = typeof pointerType === 'string' ? pointerType : '';
 }
 
-export function lastRidePointerWasTouch(): boolean { return lastPointerType === 'touch'; }
+export function lastRidePointerWasTouch(): boolean {
+  return lastPointerType === 'touch';
+}
 
 /** Safe in tests/server-side imports, where neither `window` nor `matchMedia` need exist. */
 export function primaryPointerIsCoarse(): boolean {

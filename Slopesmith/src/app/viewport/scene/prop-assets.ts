@@ -16,11 +16,11 @@ import type { PropSubGeom } from '../types';
  * reference-world prop can share a model), so they live in one injected holder rather than any one layer.
  */
 export function createPropAssets() {
-  const propTex = new PropTextureCache();                             // textures + materials for props (from Textures/)
-  const propGeom = new Map<string, PropSubGeom[]>();                  // "<level>:<model>" -> per-material submeshes
-  const propClips = new Map<string, PropModelClip>();                 // embedded model clip, when the source model has one
-  const groupDefs = new Map<string, GroupDef>();                      // "<level>:<id>" -> mined group def (docs/015)
-  const propLocalBoxes = new Map<string, { min: V3; max: V3 }>();     // "<level>:<model>" -> local bbox (raw cm)
+  const propTex = new PropTextureCache(); // textures + materials for props (from Textures/)
+  const propGeom = new Map<string, PropSubGeom[]>(); // "<level>:<model>" -> per-material submeshes
+  const propClips = new Map<string, PropModelClip>(); // embedded model clip, when the source model has one
+  const groupDefs = new Map<string, GroupDef>(); // "<level>:<id>" -> mined group def (docs/015)
+  const propLocalBoxes = new Map<string, { min: V3; max: V3 }>(); // "<level>:<model>" -> local bbox (raw cm)
   const propPrincipalExtents = new Map<string, { muzzle: V3; axis: V3; length: number }>();
   // Collision resources are cached beside render geometry so any authored/source-derived profile can preview
   // the exact sphere tree it borrowed from a reference instance. Keys include the source level because native
@@ -28,14 +28,32 @@ export function createPropAssets() {
   const nativeInstances = new Map<string, PropInstance>();
   const physicsBodies = new Map<string, Float32Array>();
   const physicsMassProps = new Map<string, PhysicsBodyMassProps>();
-  const propEdgeGeos = new Map<string, LineSegmentsGeometry[]>();     // "<level>:<model>" -> per-submesh edge lines
-  const propWireGeos = new Map<string, LineSegmentsGeometry[]>();     // same, but every rendered triangle edge
+  const propEdgeGeos = new Map<string, LineSegmentsGeometry[]>(); // "<level>:<model>" -> per-submesh edge lines
+  const propWireGeos = new Map<string, LineSegmentsGeometry[]>(); // same, but every rendered triangle edge
   // prop selection is an amber EDGE OUTLINE over the prop's own textures (placed and reference alike) — one
   // shared fat-line material (resolution refreshed on resize) + per-model cached edge geometry (threshold 30°).
-  const propOutlineMat = new LineMaterial({ color: 0xffc24d, linewidth: 2.5, transparent: true, opacity: 0.95,
-    depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const effectOutlineMat = new LineMaterial({ color: 0xb66cff, linewidth: 1.25, transparent: true, opacity: 0.72,
-    depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+  const propOutlineMat = new LineMaterial({
+    color: 0xffc24d,
+    linewidth: 2.5,
+    transparent: true,
+    opacity: 0.95,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+  const effectOutlineMat = new LineMaterial({
+    color: 0xb66cff,
+    linewidth: 1.25,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  });
 
   /** Cache a level's prop-model submesh geometries (keyed "<level>:<model>") so placements can render them
    *  textured. Idempotent — a model already cached is left alone. The host calls this after fetching /api/props. */
@@ -51,8 +69,7 @@ export function createPropAssets() {
         g.setAttribute('position', new THREE.BufferAttribute(s.positions, 3));
         g.setAttribute('uv', new THREE.BufferAttribute(s.uvs, 2));
         g.setIndex(new THREE.BufferAttribute(s.indices, 1));
-        if (s.normals?.length === s.positions.length)
-          g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
+        if (s.normals?.length === s.positions.length) g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
         else g.computeVertexNormals();
         const material = props.materials.get(s.mat);
         // a material's tile may name its own bank ("Custom/lamp.png" — imported props, docs/032); a plain
@@ -80,15 +97,19 @@ export function createPropAssets() {
   }
 
   /** Whether a placement's model geometry is cached (so the host knows to fetch its level first). */
-  function hasPropGeom(level: string, model: number): boolean { return propGeom.has(`${level}:${model}`); }
+  function hasPropGeom(level: string, model: number): boolean {
+    return propGeom.has(`${level}:${model}`);
+  }
 
   /** Drop one model key and everything derived from its geometry. */
   function purgePropKey(key: string) {
     for (const sub of propGeom.get(key) ?? []) sub.geometry.dispose();
     for (const edge of propEdgeGeos.get(key) ?? []) edge.dispose();
-    propGeom.delete(key); propEdgeGeos.delete(key);
+    propGeom.delete(key);
+    propEdgeGeos.delete(key);
     propClips.delete(key);
-    propLocalBoxes.delete(key); propPrincipalExtents.delete(key);
+    propLocalBoxes.delete(key);
+    propPrincipalExtents.delete(key);
   }
 
   const liveSig = new Map<string, string>(); // '<level>:<n>' -> content signature of the registered bake
@@ -100,7 +121,10 @@ export function createPropAssets() {
   function syncLiveModels(props: LevelProps) {
     const seen = new Set(props.models.map(m => `${props.level}:${m.id}`));
     for (const key of [...propGeom.keys()]) {
-      if (key.startsWith(`${props.level}:`) && !seen.has(key)) { purgePropKey(key); liveSig.delete(key); }
+      if (key.startsWith(`${props.level}:`) && !seen.has(key)) {
+        purgePropKey(key);
+        liveSig.delete(key);
+      }
     }
     for (const m of props.models) {
       const key = `${props.level}:${m.id}`;
@@ -108,7 +132,7 @@ export function createPropAssets() {
       for (const s of m.subs) {
         hash = (hash * 31 + s.positions.length * 7 + s.indices.length) >>> 0;
         hash = (hash * 31 + (s.object ?? -1)) >>> 0;
-        for (let i = 0; i < s.positions.length; i++) hash = (hash * 31 + (s.positions[i] * 8 | 0)) >>> 0;
+        for (let i = 0; i < s.positions.length; i++) hash = (hash * 31 + ((s.positions[i] * 8) | 0)) >>> 0;
       }
       // The CLIP is part of the signature too. A re-import that only retimes a spin leaves every vertex
       // where it was, so a geometry-only signature would call the model unchanged and keep serving the
@@ -132,34 +156,37 @@ export function createPropAssets() {
       if (liveSig.get(key) === sig && propGeom.has(key)) continue;
       purgePropKey(key);
       liveSig.set(key, sig);
-      propGeom.set(key, m.subs.map(s => {
-        const g = new THREE.BufferGeometry();
-        g.setAttribute('position', new THREE.BufferAttribute(s.positions, 3));
-        g.setAttribute('uv', new THREE.BufferAttribute(s.uvs, 2));
-        g.setIndex(new THREE.BufferAttribute(s.indices, 1));
-        if (s.normals?.length === s.positions.length)
-          g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
-        else g.computeVertexNormals();
-        // a live model's tile ref is "LEVEL/file.png" — the texture fetches from THAT level's bank, and
-        // its material's frames are bare names in that same bank
-        const material = props.materials.get(s.mat);
-        const tile = resolvePropTex(props.level, material?.tex);
-        return {
-          geometry: g,
-          // which object of the model's clip moves this run — an imported GLB that declared a spin
-          ...(s.object !== undefined ? { object: s.object } : {}),
-          level: tile.level,
-          tex: tile.name,
-          frames: material?.frames ?? [],
-          crowdFrames: props.crowdFrames,
-          blend: material?.blend ?? false,
-          pixelAlpha: material?.pixelAlpha ?? false,
-          alphaMode: material?.alphaMode,
-          prio: material?.prio ?? false,
-          sheet: isSingleFacingSheet(g.getAttribute('normal')?.array),
-          mat: s.mat,
-        };
-      }));
+      propGeom.set(
+        key,
+        m.subs.map(s => {
+          const g = new THREE.BufferGeometry();
+          g.setAttribute('position', new THREE.BufferAttribute(s.positions, 3));
+          g.setAttribute('uv', new THREE.BufferAttribute(s.uvs, 2));
+          g.setIndex(new THREE.BufferAttribute(s.indices, 1));
+          if (s.normals?.length === s.positions.length)
+            g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
+          else g.computeVertexNormals();
+          // a live model's tile ref is "LEVEL/file.png" — the texture fetches from THAT level's bank, and
+          // its material's frames are bare names in that same bank
+          const material = props.materials.get(s.mat);
+          const tile = resolvePropTex(props.level, material?.tex);
+          return {
+            geometry: g,
+            // which object of the model's clip moves this run — an imported GLB that declared a spin
+            ...(s.object !== undefined ? { object: s.object } : {}),
+            level: tile.level,
+            tex: tile.name,
+            frames: material?.frames ?? [],
+            crowdFrames: props.crowdFrames,
+            blend: material?.blend ?? false,
+            pixelAlpha: material?.pixelAlpha ?? false,
+            alphaMode: material?.alphaMode,
+            prio: material?.prio ?? false,
+            sheet: isSingleFacingSheet(g.getAttribute('normal')?.array),
+            mat: s.mat,
+          };
+        }),
+      );
       // Registered here for the same reason registerPropModels does it: the clip is looked up by model key
       // when a placement is built, and a model with geometry but no clip renders perfectly and never moves.
       const clip = m.animation ?? m.rotation;
@@ -219,17 +246,32 @@ export function createPropAssets() {
     for (const sub of subs) {
       const positions = sub.geometry.getAttribute('position');
       for (let i = 0; i < positions.count; i++) {
-        center.x += positions.getX(i); center.y += positions.getY(i); center.z += positions.getZ(i); count++;
+        center.x += positions.getX(i);
+        center.y += positions.getY(i);
+        center.z += positions.getZ(i);
+        count++;
       }
     }
     if (count < 2) return null;
     center.multiplyScalar(1 / count);
-    let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+    let xx = 0,
+      xy = 0,
+      xz = 0,
+      yy = 0,
+      yz = 0,
+      zz = 0;
     for (const sub of subs) {
       const positions = sub.geometry.getAttribute('position');
       for (let i = 0; i < positions.count; i++) {
-        const x = positions.getX(i) - center.x, y = positions.getY(i) - center.y, z = positions.getZ(i) - center.z;
-        xx += x * x; xy += x * y; xz += x * z; yy += y * y; yz += y * z; zz += z * z;
+        const x = positions.getX(i) - center.x,
+          y = positions.getY(i) - center.y,
+          z = positions.getZ(i) - center.z;
+        xx += x * x;
+        xy += x * y;
+        xz += x * z;
+        yy += y * y;
+        yz += y * z;
+        zz += z * z;
       }
     }
     const axis = new THREE.Vector3(1, 1, 1).normalize();
@@ -243,13 +285,17 @@ export function createPropAssets() {
       axis.copy(next.normalize());
     }
     if (axis.z < 0) axis.negate(); // raw-model +Z becomes editor/world up after RAW_TO_EDITOR
-    let minimum = Infinity, maximum = -Infinity;
+    let minimum = Infinity,
+      maximum = -Infinity;
     for (const sub of subs) {
       const positions = sub.geometry.getAttribute('position');
       for (let i = 0; i < positions.count; i++) {
-        const projection = (positions.getX(i) - center.x) * axis.x
-          + (positions.getY(i) - center.y) * axis.y + (positions.getZ(i) - center.z) * axis.z;
-        minimum = Math.min(minimum, projection); maximum = Math.max(maximum, projection);
+        const projection =
+          (positions.getX(i) - center.x) * axis.x +
+          (positions.getY(i) - center.y) * axis.y +
+          (positions.getZ(i) - center.z) * axis.z;
+        minimum = Math.min(minimum, projection);
+        maximum = Math.max(maximum, projection);
       }
     }
     if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return null;
@@ -293,14 +339,37 @@ export function createPropAssets() {
   }
 
   return {
-    get propTex() { return propTex; },
-    get propGeom() { return propGeom; },
-    get propClips() { return propClips; },
-    get groupDefs() { return groupDefs; },
-    get propOutlineMat() { return propOutlineMat; },
-    get effectOutlineMat() { return effectOutlineMat; },
-    registerPropModels, syncLiveModels, hasPropGeom, registerGroupDefs, membersOf, memberLocalMatrix,
-    propLocalBox, propPrincipalExtent, propEdges, propWireEdges, nativeInstance, physicsBody, physicsMass,
+    get propTex() {
+      return propTex;
+    },
+    get propGeom() {
+      return propGeom;
+    },
+    get propClips() {
+      return propClips;
+    },
+    get groupDefs() {
+      return groupDefs;
+    },
+    get propOutlineMat() {
+      return propOutlineMat;
+    },
+    get effectOutlineMat() {
+      return effectOutlineMat;
+    },
+    registerPropModels,
+    syncLiveModels,
+    hasPropGeom,
+    registerGroupDefs,
+    membersOf,
+    memberLocalMatrix,
+    propLocalBox,
+    propPrincipalExtent,
+    propEdges,
+    propWireEdges,
+    nativeInstance,
+    physicsBody,
+    physicsMass,
   };
 }
 

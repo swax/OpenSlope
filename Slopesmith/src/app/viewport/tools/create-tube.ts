@@ -31,7 +31,9 @@ export function createTubeToolLayer(
   for (const object of [...dots, hoverDot, line]) {
     object.visible = false;
     object.renderOrder = 10_000;
-    object.raycast = () => { /* placement guides are never pick targets */ };
+    object.raycast = () => {
+      /* placement guides are never pick targets */
+    };
     stage.worldRoot.add(object);
   }
 
@@ -53,8 +55,12 @@ export function createTubeToolLayer(
       hoverDot.material = hover.vertex !== null ? snapMat : pointMat;
       hoverDot.position.set(hover.pos[0], hover.pos[1], hover.pos[2]);
     }
-    const axis = points.length === 2 ? points.map(point => point.pos)
-      : points.length === 1 && hover ? [points[0].pos, hover.pos] : [];
+    const axis =
+      points.length === 2
+        ? points.map(point => point.pos)
+        : points.length === 1 && hover
+          ? [points[0].pos, hover.pos]
+          : [];
     if (axis.length === 2) {
       line.geometry.dispose();
       line.geometry = new THREE.BufferGeometry().setFromPoints(axis.map(p => new THREE.Vector3(p[0], p[1], p[2])));
@@ -69,7 +75,9 @@ export function createTubeToolLayer(
     points = [];
     hover = null;
     if (!on) {
-      dots.forEach(dot => { dot.visible = false; });
+      dots.forEach(dot => {
+        dot.visible = false;
+      });
       hoverDot.visible = false;
       line.visible = false;
     }
@@ -89,9 +97,15 @@ export function createTubeToolLayer(
     if (!active || points.length >= 2) return;
     const endpoint = placement(axisLocked, onSurface);
     if (!endpoint) return;
-    if (points[0] && Math.hypot(
-      points[0].pos[0] - endpoint.pos[0], points[0].pos[1] - endpoint.pos[1], points[0].pos[2] - endpoint.pos[2],
-    ) < 1e-3) return;
+    if (
+      points[0] &&
+      Math.hypot(
+        points[0].pos[0] - endpoint.pos[0],
+        points[0].pos[1] - endpoint.pos[1],
+        points[0].pos[2] - endpoint.pos[2],
+      ) < 1e-3
+    )
+      return;
     points.push(endpoint);
     hover = null;
     redraw();
@@ -104,13 +118,24 @@ export function createTubeToolLayer(
   }
 
   return {
-    setActive, onHover, onCommit, refresh,
+    setActive,
+    onHover,
+    onCommit,
+    refresh,
     /** Per frame: hold the endpoint and cursor dots at a constant size on screen. */
     scaleMarkers: () => scaleDrawMarkers(stage, [...dots, hoverDot]),
-    setListener(next: (() => void) | null) { listener = next; },
-    get active() { return active; },
-    get points(): readonly V3[] { return points.map(point => point.pos); },
-    get hover(): V3 | null { return hover?.pos ?? null; },
+    setListener(next: (() => void) | null) {
+      listener = next;
+    },
+    get active() {
+      return active;
+    },
+    get points(): readonly V3[] {
+      return points.map(point => point.pos);
+    },
+    get hover(): V3 | null {
+      return hover?.pos ?? null;
+    },
   };
 }
 

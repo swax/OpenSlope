@@ -34,8 +34,7 @@ const indexes = new Map<string, CollisionSoundIndex>();
 export const COURSE_BANK_LEVELS: string[] = [];
 
 function validIndex(value: CollisionSoundIndex | null | undefined): value is CollisionSoundIndex {
-  return !!value && value.Schema === 'openslope-sound-index/v1'
-    && !!value.Banks && !!value.CollisionEvents;
+  return !!value && value.Schema === 'openslope-sound-index/v1' && !!value.Banks && !!value.CollisionEvents;
 }
 
 /** Register one Snowknife-generated map sidecar. Invalid or unsupported documents are ignored. */
@@ -44,8 +43,14 @@ export function registerCollisionSoundIndex(value: CollisionSoundIndex | null | 
   const level = value.Level.trim().toUpperCase();
   if (!level) return false;
   indexes.set(level, value);
-  COURSE_BANK_LEVELS.splice(0, COURSE_BANK_LEVELS.length,
-    ...[...indexes.entries()].filter(([, index]) => !!index.Banks['2']).map(([name]) => name).sort());
+  COURSE_BANK_LEVELS.splice(
+    0,
+    COURSE_BANK_LEVELS.length,
+    ...[...indexes.entries()]
+      .filter(([, index]) => !!index.Banks['2'])
+      .map(([name]) => name)
+      .sort(),
+  );
   return true;
 }
 
@@ -92,7 +97,9 @@ export function effectSoundSource(level: string, slot: number): string | null {
 
 /** Every mapped event id in the locally extracted resolver, ascending. */
 export function collisionSoundEventIds(level?: string): number[] {
-  return Object.keys(indexFor(level)?.CollisionEvents ?? {}).map(Number).sort((a, b) => a - b);
+  return Object.keys(indexFor(level)?.CollisionEvents ?? {})
+    .map(Number)
+    .sort((a, b) => a - b);
 }
 
 /**
@@ -111,8 +118,9 @@ export function collisionSoundEventIds(level?: string): number[] {
 export const CUSTOM_SOUND_EVENT_POOL: readonly number[] = [179, 180, 181, 182, 148, 149, 150, 151];
 
 /** Direct course-bank slots reserved for custom PlaySound clips. This is authoring policy, not extracted data. */
-export const CUSTOM_EFFECT_SOUND_SLOTS: readonly number[] =
-  [98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111];
+export const CUSTOM_EFFECT_SOUND_SLOTS: readonly number[] = [
+  98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
+];
 
 /** Display label for an event. Material nicknames were evidence notes, so they do not ship in code. */
 export function collisionSoundLabel(eventId: number, level?: string): string {

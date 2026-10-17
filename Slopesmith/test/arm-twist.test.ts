@@ -56,8 +56,11 @@ assert(Math.abs(axialTwist(axis, new THREE.Vector3(0, 0, 1), new THREE.Vector3(1
 assert(Math.abs(axialTwist(axis, new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1)) + Math.PI / 2) < 1e-9);
 // Whatever either vector does ALONG the axis is not twist and must not register as any.
 assert(Math.abs(axialTwist(axis, new THREE.Vector3(0, 5, 1), new THREE.Vector3(0, -3, 1))) < 1e-9);
-assert.equal(axialTwist(axis, new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)), 0,
-  'a reference with nothing perpendicular to the axis has no measurable twist');
+assert.equal(
+  axialTwist(axis, new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)),
+  0,
+  'a reference with nothing perpendicular to the axis has no measurable twist',
+);
 
 /* ── The arms, driven ──────────────────────────────────────────────────────────────────────────────── */
 
@@ -65,7 +68,9 @@ const figure = buildAlpineExo();
 figure.updateMatrixWorld(true);
 const driver = createCharacterDriver(figure);
 const bones = new Map<string, THREE.Bone>();
-figure.traverse(object => { if (object instanceof THREE.Bone) bones.set(object.name, object); });
+figure.traverse(object => {
+  if (object instanceof THREE.Bone) bones.set(object.name, object);
+});
 
 const roll = (name: string) =>
   new THREE.Vector3(0, 0, 1).applyQuaternion(bones.get(name)!.getWorldQuaternion(new THREE.Quaternion()));
@@ -73,7 +78,8 @@ const boneAxis = (name: string) =>
   new THREE.Vector3(0, 1, 0).applyQuaternion(bones.get(name)!.getWorldQuaternion(new THREE.Quaternion()));
 const degrees = (radians: number) => (radians * 180) / Math.PI;
 
-let worstElbow = 0, worstWrist = 0;
+let worstElbow = 0,
+  worstWrist = 0;
 for (const style of ridingStyleOptions()) {
   const rider = createRider();
   rider.setStyle(style.id);
@@ -87,18 +93,22 @@ for (const style of ridingStyleOptions()) {
 
     for (const side of ['L', 'R'] as const) {
       const where = `${style.id} ${stance} ${side}`;
-      const elbow = Math.abs(degrees(axialTwist(boneAxis(`LowerArm.${side}`),
-        roll(`UpperArm.${side}`), roll(`LowerArm.${side}`))));
-      const wrist = Math.abs(degrees(axialTwist(boneAxis(`Hand.${side}`),
-        roll(`LowerArm.${side}`), roll(`Hand.${side}`))));
+      const elbow = Math.abs(
+        degrees(axialTwist(boneAxis(`LowerArm.${side}`), roll(`UpperArm.${side}`), roll(`LowerArm.${side}`))),
+      );
+      const wrist = Math.abs(
+        degrees(axialTwist(boneAxis(`Hand.${side}`), roll(`LowerArm.${side}`), roll(`Hand.${side}`))),
+      );
       assert(Number.isFinite(elbow) && Number.isFinite(wrist), `${where}: twist is a number`);
       assert(elbow < JOINT_LIMIT_DEG, `${where}: elbow twists ${elbow.toFixed(0)}°, over ${JOINT_LIMIT_DEG}°`);
       assert(wrist < JOINT_LIMIT_DEG, `${where}: wrist twists ${wrist.toFixed(0)}°, over ${JOINT_LIMIT_DEG}°`);
       // The failure being defended against is not "some twist" but "all of it in one place". A forearm given
       // the hand's whole delta reads 130° at the elbow against 1° at the wrist; sharing keeps them in step.
-      assert(elbow < wrist + 20,
-        `${where}: the elbow carries ${elbow.toFixed(0)}° against the wrist's ${wrist.toFixed(0)}° — `
-        + 'the pronation is being dumped at the elbow rather than shared along the arm');
+      assert(
+        elbow < wrist + 20,
+        `${where}: the elbow carries ${elbow.toFixed(0)}° against the wrist's ${wrist.toFixed(0)}° — ` +
+          'the pronation is being dumped at the elbow rather than shared along the arm',
+      );
       worstElbow = Math.max(worstElbow, elbow);
       worstWrist = Math.max(worstWrist, wrist);
     }

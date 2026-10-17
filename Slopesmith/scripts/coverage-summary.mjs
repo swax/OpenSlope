@@ -20,16 +20,21 @@ if (!existsSync(reportPath)) {
     ['Functions', total.functions],
     ['Branches', total.branches],
   ];
-  const rows = metrics.map(([label, value]) =>
-    `| ${label} | ${value.covered.toLocaleString('en-US')} | ${value.total.toLocaleString('en-US')} | ${value.pct}% |`);
+  const rows = metrics.map(
+    ([label, value]) =>
+      `| ${label} | ${value.covered.toLocaleString('en-US')} | ${value.total.toLocaleString('en-US')} | ${value.pct}% |`,
+  );
   const areaRows = ['app', 'core', 'server'].map(area => {
     const lines = Object.entries(summary)
       .filter(([file]) => file !== 'total' && new RegExp(`[\\\\/]src[\\\\/]${area}[\\\\/]`).test(file))
-      .reduce((sum, [, value]) => ({
-        covered: sum.covered + value.lines.covered,
-        total: sum.total + value.lines.total,
-      }), { covered: 0, total: 0 });
-    const pct = lines.total === 0 ? 100 : Math.floor(lines.covered / lines.total * 10_000) / 100;
+      .reduce(
+        (sum, [, value]) => ({
+          covered: sum.covered + value.lines.covered,
+          total: sum.total + value.lines.total,
+        }),
+        { covered: 0, total: 0 },
+      );
+    const pct = lines.total === 0 ? 100 : Math.floor((lines.covered / lines.total) * 10_000) / 100;
     return `| ${area} | ${lines.covered.toLocaleString('en-US')} | ${lines.total.toLocaleString('en-US')} | ${pct}% |`;
   });
   markdown = [
@@ -50,5 +55,4 @@ if (!existsSync(reportPath)) {
 }
 
 console.log(markdown);
-if (process.env.GITHUB_STEP_SUMMARY)
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`, 'utf8');
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`, 'utf8');

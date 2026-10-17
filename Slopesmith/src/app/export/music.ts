@@ -2,7 +2,11 @@ import type { RaceMusicArrangement } from '../../core/doc/types';
 import { textFile } from '../../core/export/files';
 import type { StagedRaceMusic } from '../../core/export/provider';
 import {
-  encodePcm16Wav, RACE_MUSIC_CHANNELS, RACE_MUSIC_SAMPLE_RATE, STAGED_ARRANGEMENT, STAGED_TRACK,
+  encodePcm16Wav,
+  RACE_MUSIC_CHANNELS,
+  RACE_MUSIC_SAMPLE_RATE,
+  STAGED_ARRANGEMENT,
+  STAGED_TRACK,
 } from '../../core/export/wav';
 import { normalizeRaceMusicArrangement } from '../../core/music/arrangement';
 import { assetBytes } from '../net/asset-bytes';
@@ -17,14 +21,20 @@ import { customMusicUrl } from '../net/asset-paths';
  * play, without anything having to be installed. `encodePcm16Wav` writes the container, the same one a
  * headless export writes.
  */
-export async function stageRaceMusic(selection: string | null | undefined,
+export async function stageRaceMusic(
+  selection: string | null | undefined,
   authoredArrangement: RaceMusicArrangement | undefined,
-  existingTrack: (path: string) => Promise<boolean>): Promise<StagedRaceMusic> {
+  existingTrack: (path: string) => Promise<boolean>,
+): Promise<StagedRaceMusic> {
   if (selection === undefined)
     return { status: 'legacy', files: [], remove: [], existing: await existingTrack(STAGED_TRACK) };
   if (selection === null || !selection.trim()) {
-    return { status: 'cleared', files: [], remove: [STAGED_TRACK, STAGED_ARRANGEMENT],
-      existing: await existingTrack(STAGED_TRACK) };
+    return {
+      status: 'cleared',
+      files: [],
+      remove: [STAGED_TRACK, STAGED_ARRANGEMENT],
+      existing: await existingTrack(STAGED_TRACK),
+    };
   }
 
   const source = await assetBytes(customMusicUrl(selection));

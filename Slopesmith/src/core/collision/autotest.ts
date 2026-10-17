@@ -9,10 +9,20 @@ import type { AuthoredModel, PlacedProp, Rail, V3 } from '../doc/types';
 import { buildMeshFromCourse, straightCourse } from '../doc/mountain';
 import { surfaceHeightAt } from '../mesh/surface-height';
 import {
-  addEffectNodeTemplate, addEffectTemplateToProp, bindEffectFunctionCall, bindEffectSplineToMotionPath,
-  bindInstanceHop, bindRiderTeleport,
-  createEmptyEffectsDocument, effectAttachments, effectCircumstanceLabel, effectNode, nextEffectId,
-  setEffectNodeSoundFile, syncAuthoredMotionPathEffectResources, EFFECT_TEMPLATES,
+  addEffectNodeTemplate,
+  addEffectTemplateToProp,
+  bindEffectFunctionCall,
+  bindEffectSplineToMotionPath,
+  bindInstanceHop,
+  bindRiderTeleport,
+  createEmptyEffectsDocument,
+  effectAttachments,
+  effectCircumstanceLabel,
+  effectNode,
+  nextEffectId,
+  setEffectNodeSoundFile,
+  syncAuthoredMotionPathEffectResources,
+  EFFECT_TEMPLATES,
   type EffectSelection,
 } from '../effects/authoring';
 import { EFFECT_TRIGGER_LEVEL } from '../effects/trigger-volume';
@@ -20,22 +30,55 @@ import { AUTHORED_MODEL_LEVEL } from '../doc/models';
 import { IMPORTED_PROP_LEVEL } from '../props/imported';
 import { addCollisionMarkerNode } from './lab';
 import {
-  AUTO_TEST_CASES, AUTO_TEST_NAME, AUTO_TEST_TARGET, CLIP_PROP_MODEL, COMPANION_OFFSET_M,
-  CRASH_BAG_BASE_OFFSET_M, CRASH_BAG_MODEL, GATE_HEIGHT_M, GATE_WIDTH_M, profile, TRICK_GEM_MODEL,
-  type AutoTestCase, type AutoTestMode, type AutoTestRiderSignal, type AutoTestSignal,
+  AUTO_TEST_CASES,
+  AUTO_TEST_NAME,
+  AUTO_TEST_TARGET,
+  CLIP_PROP_MODEL,
+  COMPANION_OFFSET_M,
+  CRASH_BAG_BASE_OFFSET_M,
+  CRASH_BAG_MODEL,
+  GATE_HEIGHT_M,
+  GATE_WIDTH_M,
+  profile,
+  TRICK_GEM_MODEL,
+  type AutoTestCase,
+  type AutoTestMode,
+  type AutoTestRiderSignal,
+  type AutoTestSignal,
   type AutoTestSurfaceStrip,
 } from './autotest-cases';
 
 export {
-  AUTO_TEST_TARGET, AUTO_TEST_GOLD_NAME, AUTO_TEST_NAME, AUTO_TEST_NAME_B, AUTO_TEST_LAB_NAME,
-  AUTO_TEST_FIELD_NAME, AUTO_TEST_SIGNALS_NAME, AUTO_TEST_RELAY_NAME, AUTO_TEST_CALL_NAME,
-  AUTO_TEST_COLLISION_NAME, AUTO_TEST_COLLISION_CASES, AUTO_TEST_CASES, AUTO_TEST_CASES_B,
-  AUTO_TEST_GOLD_CASES, AUTO_TEST_LAB_CASES, AUTO_TEST_FIELD_CASES, AUTO_TEST_RELAY_CASES,
-  AUTO_TEST_CALL_CASES, AUTO_TEST_SIGNALS_CASES, AUTO_TEST_SIGNAL_STRIPS, AUTO_TEST_FIXTURES,
+  AUTO_TEST_TARGET,
+  AUTO_TEST_GOLD_NAME,
+  AUTO_TEST_NAME,
+  AUTO_TEST_NAME_B,
+  AUTO_TEST_LAB_NAME,
+  AUTO_TEST_FIELD_NAME,
+  AUTO_TEST_SIGNALS_NAME,
+  AUTO_TEST_RELAY_NAME,
+  AUTO_TEST_CALL_NAME,
+  AUTO_TEST_COLLISION_NAME,
+  AUTO_TEST_COLLISION_CASES,
+  AUTO_TEST_CASES,
+  AUTO_TEST_CASES_B,
+  AUTO_TEST_GOLD_CASES,
+  AUTO_TEST_LAB_CASES,
+  AUTO_TEST_FIELD_CASES,
+  AUTO_TEST_RELAY_CASES,
+  AUTO_TEST_CALL_CASES,
+  AUTO_TEST_SIGNALS_CASES,
+  AUTO_TEST_SIGNAL_STRIPS,
+  AUTO_TEST_FIXTURES,
   autoTestFixture,
 } from './autotest-cases';
 export type {
-  AutoTestCase, AutoTestFixture, AutoTestMode, AutoTestRiderSignal, AutoTestSignal, AutoTestSurfaceStrip,
+  AutoTestCase,
+  AutoTestFixture,
+  AutoTestMode,
+  AutoTestRiderSignal,
+  AutoTestSignal,
+  AutoTestSurfaceStrip,
 } from './autotest-cases';
 
 export interface AutoTestPlanEntry {
@@ -101,9 +144,11 @@ export interface AutoTestPlanEntry {
    *  was built. `liveNode` offsets are read relative to the current semantic live-node pointer, and
    *  are re-addressed every tick because the slot changes hands. An `entity` watch is a pointer chain walked
    *  once from the instance itself, so it survives the node being torn down. */
-  watches?: ({ label: string; base: 'liveNode'; offsets: number[] }
+  watches?: (
+    | { label: string; base: 'liveNode'; offsets: number[] }
     | { label: string; base: 'entity'; chain: number[] }
-    | { label: string; base: 'absolute'; addresses: number[] })[];
+    | { label: string; base: 'absolute'; addresses: number[] }
+  )[];
   /** An object the instance cannot reach, found in the heap after the window by the pointer it holds back
    *  to this cell's instance. */
   lateWatch?: { label: string; backPointer: number; offsets: number[]; seconds?: number };
@@ -126,35 +171,50 @@ export interface AutoTestPlanEntry {
  *   +0x2d0 the node's enable word; a disabled node draws nothing.
  */
 const FLIP_NODE_WATCH = {
-  label: 'flipNode', base: 'liveNode' as const, offsets: [0x14, 0x5c, 0x60, 0x64, 0x2d0],
+  label: 'flipNode',
+  base: 'liveNode' as const,
+  offsets: [0x14, 0x5c, 0x60, 0x64, 0x2d0],
 };
 
 /** Instance status flags, read independently of node lifetime. They expose draw-state and bound-node control
  *  transitions that the node itself does not record [Trailmap: 150-control-state, 410-flip-runtime]. */
 const ENTITY_FLAGS_WATCH = {
-  label: 'entityFlags', base: 'entity' as const, chain: [0xe8],
+  label: 'entityFlags',
+  base: 'entity' as const,
+  chain: [0xe8],
 };
 
 /** The instance's world translation, first component. A prop that never moves holds one value all run. */
 const ENTITY_POS_WATCH = {
-  label: 'entityPosX', base: 'entity' as const, chain: [0x30],
+  label: 'entityPosX',
+  base: 'entity' as const,
+  chain: [0x30],
 };
 
 /** Null-owner control for the pad request destinations. A value implicates a null owner; unchanged values leave
  *  a real non-local rider as the remaining outcome [Trailmap: 360-pads-ownership]. */
 const PAD_LOW_MEMORY_WATCH = {
-  label: 'lowMem', base: 'absolute' as const, addresses: [0x134, 0x138, 0x13c],
+  label: 'lowMem',
+  base: 'absolute' as const,
+  addresses: [0x134, 0x138, 0x13c],
 };
 
 /** The live-node slot as an ordinary traced probe. The verdict reports when it first filled; this is what
  *  records when it EMPTIED, so a word like the draw gate can be read against the node's lifetime. */
 const LIVE_NODE_WATCH = {
-  label: 'liveNodeSlot', base: 'entity' as const, chain: [0xe4],
+  label: 'liveNodeSlot',
+  base: 'entity' as const,
+  chain: [0xe4],
 };
 
 /** One instrument strip as the plan records it: the span the paint was laid from, which is therefore the
  *  span the analyzer buckets rider samples by — one set of numbers, used twice. */
-export interface AutoTestPlanStrip { label: string; surface: number; fromM: number; toM: number }
+export interface AutoTestPlanStrip {
+  label: string;
+  surface: number;
+  fromM: number;
+  toM: number;
+}
 
 /** One placed emitter, as the voice probe grades it.
  *
@@ -216,8 +276,14 @@ export interface AutoTestPlan {
 }
 
 /** One full-corridor panel, upright or flat, in editor metres about a bottom-centre anchor. */
-function panelModel(id: string, name: string, upright: boolean, texture: string | null,
-  frames: string[] | null, halfDepth = 4): AuthoredModel {
+function panelModel(
+  id: string,
+  name: string,
+  upright: boolean,
+  texture: string | null,
+  frames: string[] | null,
+  halfDepth = 4,
+): AuthoredModel {
   const half = GATE_WIDTH_M / 2;
   // Stored [O, second axis, first axis, diagonal] is the front-up/front-out winding the tessellation oracle
   // expects; the mode-1 narrowphase is two-sided either way, so this only settles which face is lit.
@@ -225,8 +291,13 @@ function panelModel(id: string, name: string, upright: boolean, texture: string 
     ? [-half, 0, 0, half, 0, 0, -half, GATE_HEIGHT_M, 0, half, GATE_HEIGHT_M, 0]
     : [-half, 0, -halfDepth, half, 0, -halfDepth, -half, 0, halfDepth, half, 0, halfDepth];
   return {
-    id, name, anchor: [0, 0, 0], vertices, quads: [[0, 2, 1, 3]],
-    ...(texture ? { texture } : {}), ...(frames ? { frames } : {}),
+    id,
+    name,
+    anchor: [0, 0, 0],
+    vertices,
+    quads: [[0, 2, 1, 3]],
+    ...(texture ? { texture } : {}),
+    ...(frames ? { frames } : {}),
   } as unknown as AuthoredModel;
 }
 
@@ -270,7 +341,10 @@ export interface AutoTestOptions {
 }
 
 /** Build the auto-test document and the machine-readable plan that describes it. */
-export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<typeof buildMeshFromCourse>; plan: AutoTestPlan } {
+export function autoTestMountain(opts: AutoTestOptions = {}): {
+  doc: ReturnType<typeof buildMeshFromCourse>;
+  plan: AutoTestPlan;
+} {
   const name = opts.name ?? AUTO_TEST_NAME;
   const clipModel = opts.clipModel ?? CLIP_PROP_MODEL;
   const spacing = opts.spacingM ?? 90;
@@ -290,20 +364,31 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
   const course = straightCourse(Math.max(400, runLength * 0.32), 320, 18);
   const effects = createEmptyEffectsDocument(name);
   const models: AuthoredModel[] = [];
-  const doc = buildMeshFromCourse(course, {
-    widthM: 320, roughness: 0, targetPatchM: 20, seed: 1301,
-  }, { name, baseSurface: 1, effects });
+  const doc = buildMeshFromCourse(
+    course,
+    {
+      widthM: 320,
+      roughness: 0,
+      targetPatchM: 20,
+      seed: 1301,
+    },
+    { name, baseSurface: 1, effects },
+  );
   if (!doc) throw new Error('The auto-test slope could not be generated.');
 
   // A uniform approach surface, exactly as the lab does it: lane choice must not change speed or feel, or a
   // cell that failed to dispatch is indistinguishable from one the rider crossed too slowly.
-  if (doc.quadPaint) for (const key of Object.keys(doc.quadPaint)) {
-    const surface = doc.quadPaint[Number(key)];
-    if (surface !== 0 && surface !== 2) doc.quadPaint[Number(key)] = 1;
-  }
+  if (doc.quadPaint)
+    for (const key of Object.keys(doc.quadPaint)) {
+      const surface = doc.quadPaint[Number(key)];
+      if (surface !== 0 && surface !== 2) doc.quadPaint[Number(key)] = 1;
+    }
 
-  const a = course.knots[0].pos, b = course.knots[course.knots.length - 1].pos;
-  const dx = b[0] - a[0], dz = b[2] - a[2], horizontal = Math.hypot(dx, dz) || 1;
+  const a = course.knots[0].pos,
+    b = course.knots[course.knots.length - 1].pos;
+  const dx = b[0] - a[0],
+    dz = b[2] - a[2],
+    horizontal = Math.hypot(dx, dz) || 1;
   const down: V3 = [dx / horizontal, 0, dz / horizontal];
   const side: V3 = [-down[2], 0, down[0]];
 
@@ -315,20 +400,29 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
   const stripSpans: AutoTestPlanStrip[] = [];
   let stripCursor = stripsStartM;
   for (const strip of strips) {
-    stripSpans.push({ label: strip.label, surface: strip.surface,
-      fromM: stripCursor, toM: stripCursor + strip.lengthM });
+    stripSpans.push({
+      label: strip.label,
+      surface: strip.surface,
+      fromM: stripCursor,
+      toM: stripCursor + strip.lengthM,
+    });
     stripCursor += strip.lengthM;
   }
-  if (stripSpans.length) for (let q = 0; q < doc.quads.length; q++) {
-    const current = doc.quadPaint?.[q] ?? doc.baseSurface ?? 1;
-    if (current === 0 || current === 2) continue;
-    const quad = doc.quads[q];
-    let cx = 0, cz = 0;
-    for (const vertex of quad) { cx += doc.vertices[vertex * 3]; cz += doc.vertices[vertex * 3 + 2]; }
-    const along = (cx / quad.length - a[0]) * down[0] + (cz / quad.length - a[2]) * down[2];
-    const span = stripSpans.find(item => along >= item.fromM && along < item.toM);
-    if (span && span.surface !== current) (doc.quadPaint ??= {})[q] = span.surface;
-  }
+  if (stripSpans.length)
+    for (let q = 0; q < doc.quads.length; q++) {
+      const current = doc.quadPaint?.[q] ?? doc.baseSurface ?? 1;
+      if (current === 0 || current === 2) continue;
+      const quad = doc.quads[q];
+      let cx = 0,
+        cz = 0;
+      for (const vertex of quad) {
+        cx += doc.vertices[vertex * 3];
+        cz += doc.vertices[vertex * 3 + 2];
+      }
+      const along = (cx / quad.length - a[0]) * down[0] + (cz / quad.length - a[2]) * down[2];
+      const span = stripSpans.find(item => along >= item.fromM && along < item.toM);
+      if (span && span.surface !== current) (doc.quadPaint ??= {})[q] = span.surface;
+    }
 
   const props: PlacedProp[] = [];
   const entries: AutoTestPlanEntry[] = [];
@@ -346,8 +440,7 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
     const distance = leadIn + spacing * ordinal;
     const x = a[0] + down[0] * distance;
     const z = a[2] + down[2] * distance;
-    const ground = surfaceHeightAt(doc, x, z)
-      ?? a[1] + (b[1] - a[1]) * distance / horizontal;
+    const ground = surfaceHeightAt(doc, x, z) ?? a[1] + ((b[1] - a[1]) * distance) / horizontal;
     const propId = `autotest:${ordinal.toString().padStart(2, '0')}`;
     // The fall line runs -X/-Z, so a panel authored across its own X faces the oncoming rider at 45 degrees
     // of yaw. Its span across the corridor is what matters, and the diagonal only widens it.
@@ -358,34 +451,59 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
 
     if (test.shape === 'bag' || test.shape === 'gem') {
       prop = {
-        id: propId, level: AUTO_TEST_TARGET,
-        model: test.shape === 'gem' ? TRICK_GEM_MODEL : CRASH_BAG_MODEL, name: propName,
+        id: propId,
+        level: AUTO_TEST_TARGET,
+        model: test.shape === 'gem' ? TRICK_GEM_MODEL : CRASH_BAG_MODEL,
+        name: propName,
         pos: [x, ground - (test.shape === 'gem' ? 0 : CRASH_BAG_BASE_OFFSET_M) + (test.liftM ?? 0), z],
-        yaw, scale: test.scale ?? 1,
+        yaw,
+        scale: test.scale ?? 1,
         nativeCollision: structuredClone(test.profile),
       };
     } else if (test.shape === 'clip') {
       prop = {
-        id: propId, level: IMPORTED_PROP_LEVEL, model: test.importedModel ?? clipModel, name: propName,
-        pos: [x, ground + (test.liftM ?? 0), z], yaw, scale: test.scale ?? 1,
+        id: propId,
+        level: IMPORTED_PROP_LEVEL,
+        model: test.importedModel ?? clipModel,
+        name: propName,
+        pos: [x, ground + (test.liftM ?? 0), z],
+        yaw,
+        scale: test.scale ?? 1,
         nativeCollision: structuredClone(test.profile),
       };
     } else if (test.shape === 'volume') {
       const size = test.sizeM ?? [GATE_WIDTH_M, GATE_HEIGHT_M, 8];
       prop = {
-        id: propId, level: EFFECT_TRIGGER_LEVEL, model: 0, name: propName,
-        pos: [x, ground + size[1] / 2, z], yaw, scale: 1,
+        id: propId,
+        level: EFFECT_TRIGGER_LEVEL,
+        model: 0,
+        name: propName,
+        pos: [x, ground + size[1] / 2, z],
+        yaw,
+        scale: 1,
         effectTrigger: { size: [...size] as [number, number, number] },
       };
     } else {
       const modelIndex = models.length;
-      const tiles = test.needsFlipbook ? opts.flipbookTiles ?? null : null;
-      models.push(panelModel(`model:${modelIndex.toString().padStart(4, '0')}`, propName,
-        test.shape === 'gate', tiles?.rest ?? null, tiles ? [tiles.rest, tiles.frame] : null,
-        (test.padDepthM ?? 8) / 2));
+      const tiles = test.needsFlipbook ? (opts.flipbookTiles ?? null) : null;
+      models.push(
+        panelModel(
+          `model:${modelIndex.toString().padStart(4, '0')}`,
+          propName,
+          test.shape === 'gate',
+          tiles?.rest ?? null,
+          tiles ? [tiles.rest, tiles.frame] : null,
+          (test.padDepthM ?? 8) / 2,
+        ),
+      );
       prop = {
-        id: propId, level: AUTHORED_MODEL_LEVEL, model: modelIndex, name: propName,
-        pos: [x, ground + (test.liftM ?? 0), z], yaw, scale: test.scale ?? 1,
+        id: propId,
+        level: AUTHORED_MODEL_LEVEL,
+        model: modelIndex,
+        name: propName,
+        pos: [x, ground + (test.liftM ?? 0), z],
+        yaw,
+        scale: test.scale ?? 1,
         nativeCollision: structuredClone(test.profile),
       };
       if (test.followsSlope) {
@@ -397,7 +515,7 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
         // `pitch` turns the panel about its own X and `roll` about its own Z (composed Ry·Rx·Rz), so each one
         // is read off the terrain gradient along that local axis. Sampled at the panel's own half-extents so
         // the fit is over the span that actually carries the rider, not an infinitesimal slope at the centre.
-        const rad = yaw * Math.PI / 180;
+        const rad = (yaw * Math.PI) / 180;
         // Local +X and +Z after yaw, in world terms.
         const axisX: [number, number] = [Math.cos(rad), -Math.sin(rad)];
         const axisZ: [number, number] = [Math.sin(rad), Math.cos(rad)];
@@ -409,8 +527,8 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
           return hp === null || hm === null ? 0 : hp - hm;
         };
         // Positive local Z rising means the far edge is higher, which is a NEGATIVE pitch under Rx.
-        prop.pitch = -Math.atan2(rise(axisZ, halfD), 2 * halfD) * 180 / Math.PI;
-        prop.roll = Math.atan2(rise(axisX, halfW), 2 * halfW) * 180 / Math.PI;
+        prop.pitch = (-Math.atan2(rise(axisZ, halfD), 2 * halfD) * 180) / Math.PI;
+        prop.roll = (Math.atan2(rise(axisX, halfW), 2 * halfW) * 180) / Math.PI;
       }
     }
 
@@ -428,8 +546,13 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       } else if (test.ambient.event !== undefined) prop.ambientSound = test.ambient.event;
       if (test.ambient.radiusM !== undefined) prop.ambientRadius = test.ambient.radiusM;
       audio.push({
-        id: test.id, propId, propName, distanceM: distance,
-        gated: !!test.ambient.hitGated, expect: test.ambient.expect, event: null,
+        id: test.id,
+        propId,
+        propName,
+        distanceM: distance,
+        gated: !!test.ambient.hitGated,
+        expect: test.ambient.expect,
+        event: null,
         ...(clip ? { clip: clip.file, toneHz: clip.hz } : {}),
       });
       signals.push('sound');
@@ -441,8 +564,13 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       // learns which slot this cell is about, and "its slot comes out UNlooped" is the only claim the cell
       // was ever making.
       audio.push({
-        id: test.id, propId, propName, distanceM: distance,
-        gated: false, expect: 'one-shot', event: null,
+        id: test.id,
+        propId,
+        propName,
+        distanceM: distance,
+        gated: false,
+        expect: 'one-shot',
+        event: null,
         ...(clip ? { clip: clip.file, toneHz: clip.hz } : {}),
       });
       signals.push('sound');
@@ -458,12 +586,16 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       const stageDistance = distance - 12;
       const sx = a[0] + down[0] * stageDistance;
       const sz = a[2] + down[2] * stageDistance;
-      const sground = surfaceHeightAt(doc, sx, sz)
-        ?? a[1] + (b[1] - a[1]) * stageDistance / horizontal;
+      const sground = surfaceHeightAt(doc, sx, sz) ?? a[1] + ((b[1] - a[1]) * stageDistance) / horizontal;
       const stageId = `${propId}:stage`;
       props.push({
-        id: stageId, level: EFFECT_TRIGGER_LEVEL, model: 0, name: `${propName} stage message`,
-        pos: [sx, sground + GATE_HEIGHT_M / 2, sz], yaw, scale: 1,
+        id: stageId,
+        level: EFFECT_TRIGGER_LEVEL,
+        model: 0,
+        name: `${propName} stage message`,
+        pos: [sx, sground + GATE_HEIGHT_M / 2, sz],
+        yaw,
+        scale: 1,
         effectTrigger: { size: [GATE_WIDTH_M, GATE_HEIGHT_M, 8] },
       });
       const stageGraph = addEffectTemplateToProp(effects, stageId, 'collision-trigger');
@@ -475,9 +607,10 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       payload.HudText = `${ordinal + 1}/${cases.length} ${test.stageMessage}`;
       [payload.HudRed, payload.HudGreen, payload.HudBlue] = test.color;
     }
-    const graph = test.recipe === 'ride-over-button'
-      ? addEffectTemplateToProp(effects, propId, 'ride-over-button')
-      : addEffectTemplateToProp(effects, propId, 'collision-trigger');
+    const graph =
+      test.recipe === 'ride-over-button'
+        ? addEffectTemplateToProp(effects, propId, 'ride-over-button')
+        : addEffectTemplateToProp(effects, propId, 'collision-trigger');
     // A companion prop off the fall line, and the MainType-7 node that reaches it bound to a graph that
     // lives there. Shared by two callers now: a hop at the HEAD of a collision chain, and a hop in the
     // TRIGGER column — which is the shape retail's one counter-fired chain uses, and the only shape that is
@@ -488,7 +621,8 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       if (!hopNode || !test.companion) return;
       // Off the fall line by half a corridor, so the rider passes the cell without ever reaching it.
       const offset = COMPANION_OFFSET_M;
-      const cx = x - down[2] * offset, cz = z + down[0] * offset;
+      const cx = x - down[2] * offset,
+        cz = z + down[0] * offset;
       const cground = surfaceHeightAt(doc, cx, cz) ?? ground;
       const companionId = `${propId}:target`;
       const companionName = `AT${ordinal}${test.id}TGT`;
@@ -497,21 +631,38 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
         // default flat panel a clip that plays and a clip that never starts are the same reading, which is
         // the trap the whole clip family walked around [cell `clip-flat-control`].
         props.push({
-          id: companionId, level: IMPORTED_PROP_LEVEL, model: clipModel, name: companionName,
-          pos: [cx, cground + 2, cz], yaw, scale: 1, nativeCollision: structuredClone(profile(1)),
+          id: companionId,
+          level: IMPORTED_PROP_LEVEL,
+          model: clipModel,
+          name: companionName,
+          pos: [cx, cground + 2, cz],
+          yaw,
+          scale: 1,
+          nativeCollision: structuredClone(profile(1)),
         });
       } else if (test.companionShape === 'gem') {
         props.push({
-          id: companionId, level: AUTO_TEST_TARGET, model: TRICK_GEM_MODEL, name: companionName,
-          pos: [cx, cground + 2, cz], yaw, scale: 1, nativeCollision: structuredClone(profile(2)),
+          id: companionId,
+          level: AUTO_TEST_TARGET,
+          model: TRICK_GEM_MODEL,
+          name: companionName,
+          pos: [cx, cground + 2, cz],
+          yaw,
+          scale: 1,
+          nativeCollision: structuredClone(profile(2)),
         });
       } else {
         const companionModel = models.length;
-        models.push(panelModel(`model:${companionModel.toString().padStart(4, '0')}`, companionName,
-          true, null, null));
+        models.push(panelModel(`model:${companionModel.toString().padStart(4, '0')}`, companionName, true, null, null));
         props.push({
-          id: companionId, level: AUTHORED_MODEL_LEVEL, model: companionModel, name: companionName,
-          pos: [cx, cground, cz], yaw, scale: 1, nativeCollision: structuredClone(profile(1)),
+          id: companionId,
+          level: AUTHORED_MODEL_LEVEL,
+          model: companionModel,
+          name: companionName,
+          pos: [cx, cground, cz],
+          yaw,
+          scale: 1,
+          nativeCollision: structuredClone(profile(1)),
         });
       }
       // An UNATTACHED graph: nothing dispatches it by circumstance, and the hop is its only caller. The
@@ -519,30 +670,50 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       // attachment of its own.
       const companionGraph = nextEffectId(effects, 'graph');
       effects.graphs.push({ id: companionGraph, name: `${test.id} target`, nodes: [] });
-      const companionSelection = addEffectNodeTemplate(effects,
-        { ownerKind: 'graph', ownerId: companionGraph }, test.companion);
+      const companionSelection = addEffectNodeTemplate(
+        effects,
+        { ownerKind: 'graph', ownerId: companionGraph },
+        test.companion,
+      );
       const companionNode = companionSelection ? effectNode(effects, companionSelection) : null;
       if (companionNode && test.tuneCompanion) {
         test.tuneCompanion(companionNode.payload as Record<string, unknown>);
       }
       bindInstanceHop(effects, hopNode, companionId, companionGraph);
       entries.push({
-        id: `${test.id}-target`, propId: companionId, propName: companionName, question,
+        id: `${test.id}-target`,
+        propId: companionId,
+        propName: companionName,
+        question,
         ...(test.companionShape === 'clip' ? { imported: true as const } : {}),
-        instanceName: '', location: null, distanceM: distance,
+        instanceName: '',
+        location: null,
+        distanceM: distance,
         // Matches the collision profile each companion branch places: mode 2 for the retail gem, mode 1 for
         // the imported clip model and the default panel.
         mode: test.companionShape === 'gem' ? 2 : 1,
-        signals: ['entity-node'], expect: test.companionExpect ?? test.expect ?? null,
-        expectPaint: false, expectRider: null,
-        expectSlot: null, demonstrated: test.demonstrated ?? null,
+        signals: ['entity-node'],
+        expect: test.companionExpect ?? test.expect ?? null,
+        expectPaint: false,
+        expectRider: null,
+        expectSlot: null,
+        demonstrated: test.demonstrated ?? null,
         // The companion is where the interesting thing happens on a hop that installs a property node, so
         // it takes the payload probe as well as the slot one.
-        watches: [FLIP_NODE_WATCH, ...(test.companionWatch
-          ? [{ label: test.companionWatch.label, base: 'liveNode' as const,
-            offsets: [...test.companionWatch.offsets] }]
-          : [])],
-        contactOptional: true, coveredBy: test.id,
+        watches: [
+          FLIP_NODE_WATCH,
+          ...(test.companionWatch
+            ? [
+                {
+                  label: test.companionWatch.label,
+                  base: 'liveNode' as const,
+                  offsets: [...test.companionWatch.offsets],
+                },
+              ]
+            : []),
+        ],
+        contactOptional: true,
+        coveredBy: test.id,
       });
     };
     // Where a MainType-24 node puts the rider. The same half-corridor offset the hop's companion uses, and
@@ -554,7 +725,10 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       if (!node || (!test.teleportTarget && !test.teleportNext) || node.mainType !== 24) return;
       // One destination per cell, however many nodes aim at it: `bindRiderTeleport` shares the instance row
       // the way the native table does, and a second panel would be a second thing for the rider to land on.
-      if (teleportDestination) { bindRiderTeleport(effects, node, teleportDestination); return; }
+      if (teleportDestination) {
+        bindRiderTeleport(effects, node, teleportDestination);
+        return;
+      }
       const offset = COMPANION_OFFSET_M;
       // The ordinary proof target is deliberately unreachable beside the course. A collision relay is the
       // opposite: clear ground halfway to the next case, on the exact fall line, so a solid bag's correct
@@ -563,10 +737,8 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       // MainType 24 lands the rider exactly 3 m to the target's local side on this 45-degree heading. Put
       // the relay marker 3 m to the OTHER side of centre, so the runtime offset cancels and the rider starts
       // the next approach on the fall line rather than one small crash-bag width beside it.
-      const tx = test.teleportNext
-        ? a[0] + down[0] * (distance + spacing / 2) - side[0] * 3 : x - down[2] * offset;
-      const tz = test.teleportNext
-        ? a[2] + down[2] * (distance + spacing / 2) - side[2] * 3 : z + down[0] * offset;
+      const tx = test.teleportNext ? a[0] + down[0] * (distance + spacing / 2) - side[0] * 3 : x - down[2] * offset;
+      const tz = test.teleportNext ? a[2] + down[2] * (distance + spacing / 2) - side[2] * 3 : z + down[0] * offset;
       const tground = surfaceHeightAt(doc, tx, tz) ?? ground;
       const targetId = `${propId}:dest`;
       const targetName = `AT${ordinal}${test.id}DST`;
@@ -575,8 +747,14 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       // Flat on the ground and chainless: the rider lands about 3 m off it and has to be able to ride away,
       // so the marker must not be something to hit.
       props.push({
-        id: targetId, level: AUTHORED_MODEL_LEVEL, model: targetModel, name: targetName,
-        pos: [tx, tground, tz], yaw, scale: 1, nativeCollision: structuredClone(profile(1)),
+        id: targetId,
+        level: AUTHORED_MODEL_LEVEL,
+        model: targetModel,
+        name: targetName,
+        pos: [tx, tground, tz],
+        yaw,
+        scale: 1,
+        nativeCollision: structuredClone(profile(1)),
       });
       teleportDestination = targetId;
       bindRiderTeleport(effects, node, targetId);
@@ -588,12 +766,14 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       const node = selection ? effectNode(effects, selection) : null;
       if (node && test.tuneLead) test.tuneLead(node.payload as Record<string, unknown>);
       attachTeleportTarget(node);
-      attachCompanion(node,
-        'THE HOP LANDS. This companion has no chain of its own and the rider never came within '
-        + '116 m of it, yet its slot held the target graph\'s node — sub-type 2, the Debounce authored '
-        + 'into that graph and nowhere else — in all three passes. It is the cell that answers the '
-        + 'question: the gate beside it would report dispatch whether the hop resolved or not, and a hop '
-        + 'with a bad index is a silent no-op the engine bounds-checks away.');
+      attachCompanion(
+        node,
+        'THE HOP LANDS. This companion has no chain of its own and the rider never came within ' +
+          "116 m of it, yet its slot held the target graph's node — sub-type 2, the Debounce authored " +
+          'into that graph and nowhere else — in all three passes. It is the cell that answers the ' +
+          'question: the gate beside it would report dispatch whether the hop resolved or not, and a hop ' +
+          'with a bad index is a silent no-op the engine bounds-checks away.',
+      );
     }
     if (test.recipe === 'button-no-debounce') {
       // The shipped recipe's own two working nodes, laid down without the Debounce in front of them. The
@@ -658,14 +838,17 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       for (const id of test.functionNodes) {
         const added = addEffectNodeTemplate(effects, { ownerKind: 'function', ownerId: functionId }, id);
         const placed = added ? effectNode(effects, added) : null;
-        if (placed?.mainType === 7) attachCompanion(placed,
-          'THE CALLED BODY RAN. This companion carries no chain, the rider never approached it, and the only '
-          + 'thing naming it is a MainType-7 node inside a shared FUNCTION — a table the cell\'s own collision '
-          + 'chain reaches solely through the MainType-21 call beside the marker. A node on this slot '
-          + 'therefore means the call resolved its index, the engine spun up a thread on the function, and '
-          + 'that thread ran the body. The catalogue\'s `hop-remote-target` is the control — the same hop '
-          + 'reached directly from a chain — so a sweep where that lands and this does not indicts the call '
-          + 'rather than the hop.');
+        if (placed?.mainType === 7)
+          attachCompanion(
+            placed,
+            'THE CALLED BODY RAN. This companion carries no chain, the rider never approached it, and the only ' +
+              "thing naming it is a MainType-7 node inside a shared FUNCTION — a table the cell's own collision " +
+              'chain reaches solely through the MainType-21 call beside the marker. A node on this slot ' +
+              'therefore means the call resolved its index, the engine spun up a thread on the function, and ' +
+              "that thread ran the body. The catalogue's `hop-remote-target` is the control — the same hop " +
+              'reached directly from a chain — so a sweep where that lands and this does not indicts the call ' +
+              'rather than the hop.',
+          );
       }
     }
     if (test.persistentNode) {
@@ -675,8 +858,10 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       // rather than quietly answered.
       const template = EFFECT_TEMPLATES.find(item => item.id === test.persistentNode);
       if (template?.circumstance !== 'persistent') {
-        throw new Error(`${test.id}: persistentNode wants a persistent template, and `
-          + `${test.persistentNode} is ${template?.circumstance ?? 'unknown'}.`);
+        throw new Error(
+          `${test.id}: persistentNode wants a persistent template, and ` +
+            `${test.persistentNode} is ${template?.circumstance ?? 'unknown'}.`,
+        );
       }
       const selection = addEffectTemplateToProp(effects, propId, test.persistentNode);
       const placed = selection ? effectNode(effects, selection) : null;
@@ -714,30 +899,42 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
           // A hop in this column is the one payload retail's own counter-fired chain uses, and the reason is
           // now measured: it installs on SOMEBODY ELSE. Anything that seizes this instance's slot drops the
           // counter that is at that moment inside its own update running this chain.
-          if (placed?.mainType === 7) attachCompanion(placed,
-            'THE COUNTER-FIRED TRIGGER COLUMN RAN. This companion carries no chain, the rider never '
-            + 'approached it, and the only thing naming it is a MainType-7 node in the trigger column of the '
-            + 'cell beside it — a column nothing outside the effects runtime can reach. A node on this slot '
-            + 'therefore means the counter counted down, fired column 5, and the hop landed. It is also the '
-            + 'only payload that is SAFE there: a flipbook and a breakable kill each hung the engine within '
-            + 'a second, because both install on the counter\'s own instance while it is mid-update.');
+          if (placed?.mainType === 7)
+            attachCompanion(
+              placed,
+              'THE COUNTER-FIRED TRIGGER COLUMN RAN. This companion carries no chain, the rider never ' +
+                'approached it, and the only thing naming it is a MainType-7 node in the trigger column of the ' +
+                'cell beside it — a column nothing outside the effects runtime can reach. A node on this slot ' +
+                'therefore means the counter counted down, fired column 5, and the hop landed. It is also the ' +
+                'only payload that is SAFE there: a flipbook and a breakable kill each hung the engine within ' +
+                "a second, because both install on the counter's own instance while it is mid-update.",
+            );
         }
       }
       for (const circumstance of test.latches ?? []) {
         const latchId = nextEffectId(effects, 'graph');
         effects.graphs.push({
-          id: latchId, name: `${test.id} ${effectCircumstanceLabel(circumstance)} latch`, nodes: [],
+          id: latchId,
+          name: `${test.id} ${effectCircumstanceLabel(circumstance)} latch`,
+          nodes: [],
         });
         slot.circumstances[circumstance] = latchId;
       }
     }
 
     entries.push({
-      id: test.id, question: test.question, propId, propName,
+      id: test.id,
+      question: test.question,
+      propId,
+      propName,
       ...(test.shape === 'clip' ? { imported: true as const } : {}),
-      instanceName: '', location: null,
-      distanceM: distance, mode: test.profile.mode, signals,
-      expect: test.expect ?? null, expectPaint: !!test.expectPaint,
+      instanceName: '',
+      location: null,
+      distanceM: distance,
+      mode: test.profile.mode,
+      signals,
+      expect: test.expect ?? null,
+      expectPaint: !!test.expectPaint,
       expectRider: test.expectRider ?? null,
       expectSlot: test.expectSlot ?? null,
       ...(test.contactOptional ? { contactOptional: true } : {}),
@@ -747,18 +944,24 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
       // the slot" question gets answered for the whole matrix in one pass rather than one cell at a time.
       watches: [
         FLIP_NODE_WATCH,
-        ...(test.nodeWatch ? [{ label: test.nodeWatch.label, base: 'liveNode' as const,
-          offsets: [...test.nodeWatch.offsets] }] : []),
+        ...(test.nodeWatch
+          ? [{ label: test.nodeWatch.label, base: 'liveNode' as const, offsets: [...test.nodeWatch.offsets] }]
+          : []),
         ...(test.watchEntityFlags ? [ENTITY_FLAGS_WATCH] : []),
         ...(test.watchEntityPos ? [ENTITY_POS_WATCH] : []),
         ...(test.watchLiveNode ? [LIVE_NODE_WATCH] : []),
         ...(test.watchLowMemory ? [PAD_LOW_MEMORY_WATCH] : []),
       ],
-      ...(test.lateWatch ? { lateWatch: {
-        label: test.lateWatch.label, backPointer: test.lateWatch.backPointer,
-        offsets: [...test.lateWatch.offsets],
-        ...(test.lateWatch.seconds === undefined ? {} : { seconds: test.lateWatch.seconds }),
-      } } : {}),
+      ...(test.lateWatch
+        ? {
+            lateWatch: {
+              label: test.lateWatch.label,
+              backPointer: test.lateWatch.backPointer,
+              offsets: [...test.lateWatch.offsets],
+              ...(test.lateWatch.seconds === undefined ? {} : { seconds: test.lateWatch.seconds }),
+            },
+          }
+        : {}),
     });
   });
 
@@ -766,14 +969,18 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
   // rider can see rather than off in the void. Motion paths export as native spline data and nothing else —
   // no tube, no posts, no collision — so this adds a route to the level and not a single visible polygon.
   if (motionPathAt !== null) {
-    const px = a[0] + down[0] * motionPathAt, pz = a[2] + down[2] * motionPathAt;
+    const px = a[0] + down[0] * motionPathAt,
+      pz = a[2] + down[2] * motionPathAt;
     const across: V3 = [-down[2], 0, down[0]];
     const path: Rail = {
-      kind: 'motion', id: 'path:0000', name: 'AutoTest mover route', height: 0,
+      kind: 'motion',
+      id: 'path:0000',
+      name: 'AutoTest mover route',
+      height: 0,
       nodes: [-1, -0.34, 0.34, 1].map(t => {
         const nx = px + across[0] * t * 60 + down[0] * t * 20;
         const nz = pz + across[2] * t * 60 + down[2] * t * 20;
-        const fallback = a[1] + (b[1] - a[1]) * motionPathAt! / horizontal;
+        const fallback = a[1] + ((b[1] - a[1]) * motionPathAt!) / horizontal;
         return [nx, (surfaceHeightAt(doc, nx, nz) ?? fallback) + 6, nz] as V3;
       }),
     };
@@ -786,9 +993,18 @@ export function autoTestMountain(opts: AutoTestOptions = {}): { doc: ReturnType<
   doc.props = props;
   doc.effects = effects;
   if (hitGated.length) doc.hitGatedSounds = hitGated;
-  return { doc, plan: { name, target: AUTO_TEST_TARGET, runLengthM: runLength,
-    ...(opts.windowFrames === undefined ? {} : { windowFrames: opts.windowFrames }),
-    ...(opts.hudText || cases.some(test => !!test.stageMessage) ? { hudText: true as const } : {}), mode, entries,
-    ...(stripSpans.length ? { strips: stripSpans } : {}),
-    ...(audio.length ? { audio } : {}) } };
+  return {
+    doc,
+    plan: {
+      name,
+      target: AUTO_TEST_TARGET,
+      runLengthM: runLength,
+      ...(opts.windowFrames === undefined ? {} : { windowFrames: opts.windowFrames }),
+      ...(opts.hudText || cases.some(test => !!test.stageMessage) ? { hudText: true as const } : {}),
+      mode,
+      entries,
+      ...(stripSpans.length ? { strips: stripSpans } : {}),
+      ...(audio.length ? { audio } : {}),
+    },
+  };
 }

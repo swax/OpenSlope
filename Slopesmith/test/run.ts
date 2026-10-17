@@ -58,9 +58,9 @@ const UNKNOWN_MS = 1_500;
  * Everything else builds its own fixtures and runs anywhere; keep it that way, and this list at two.
  */
 const NEEDS_LOCAL_DATA = new Set([
-  'collision-lab.test.ts',   // grades the collision lab against retail AUTOTEST geometry
-  'race-music.test.ts',      // reads a shipped level's extracted music bank
-  'sky.test.ts',             // measures every shipped level's sky ring off its own meshes
+  'collision-lab.test.ts', // grades the collision lab against retail AUTOTEST geometry
+  'race-music.test.ts', // reads a shipped level's extracted music bank
+  'sky.test.ts', // measures every shipped level's sky ring off its own meshes
 ]);
 
 /**
@@ -122,12 +122,18 @@ const EXCLUSIVE_GROUP = new Map([
  * relative operation costs. Isolating these checks retains their deadlines, ratios and complete coverage.
  */
 const RUN_ALONE = new Set([
-  'sessions.test.ts', 'sync.test.ts', 'public-home.test.ts', 'rebuild.test.ts', 'access-tokens.test.ts',
+  'sessions.test.ts',
+  'sync.test.ts',
+  'public-home.test.ts',
+  'rebuild.test.ts',
+  'access-tokens.test.ts',
 ]);
 
 /** A check spawned through the TypeScript loader, without paying for an `npx` resolution to find it. */
-const tsx = (file: string, ...args: string[]): { command: string; args: string[] } =>
-  ({ command: process.execPath, args: ['--import', 'tsx', file, ...args] });
+const tsx = (file: string, ...args: string[]): { command: string; args: string[] } => ({
+  command: process.execPath,
+  args: ['--import', 'tsx', file, ...args],
+});
 
 /**
  * Checks that take arguments, so a bare glob run would execute them without asserting anything. They are
@@ -144,23 +150,40 @@ const WITH_ARGUMENTS: {
   localOnly?: boolean;
 }[] = [
   // Bank/file identifiers remain available offline, but live in one reviewed catalog rather than three copies.
-  { label: 'external-sound banks (generated views)', command: 'python', tier: 'fast',
-    args: ['tools/generate_audio_bank_catalog.py', '--check'] },
+  {
+    label: 'external-sound banks (generated views)',
+    command: 'python',
+    tier: 'fast',
+    args: ['tools/generate_audio_bank_catalog.py', '--check'],
+  },
   // The ride contract is generated from one source and checked against both Slopesmith and Unity views.
-  { label: 'ride-contract (generated views)', command: 'python', tier: 'fast',
-    args: ['tools/generate_ride_contract.py', '--unity', '--check'] },
+  {
+    label: 'ride-contract (generated views)',
+    command: 'python',
+    tier: 'fast',
+    args: ['tools/generate_ride_contract.py', '--unity', '--check'],
+  },
   // jump-trace is a diagnostic first (it prints a trace) and a check second (`assert` turns on the pins).
   // Both jump shapes, faceted and smooth, are contract surface for the ported ride model.
   ...['kicker', 'roller'].flatMap(shape => [
-    { label: `jump-trace ${shape}`, tier: 'fast' as const,
-      ...tsx('tools/ride-study/jump-trace.ts', shape, 'assert', 'quiet') },
-    { label: `jump-trace ${shape} faceted`,
+    {
+      label: `jump-trace ${shape}`,
       tier: 'fast' as const,
-      ...tsx('tools/ride-study/jump-trace.ts', shape, 'faceted', 'assert', 'quiet') },
+      ...tsx('tools/ride-study/jump-trace.ts', shape, 'assert', 'quiet'),
+    },
+    {
+      label: `jump-trace ${shape} faceted`,
+      tier: 'fast' as const,
+      ...tsx('tools/ride-study/jump-trace.ts', shape, 'faceted', 'assert', 'quiet'),
+    },
   ]),
   // Race a retail level's own AI field and assert the run still completes in budget. Needs MEGAPLE extracted.
-  { label: 'ai-course-run MEGAPLE', tier: 'integration', localOnly: true,
-    ...tsx('scripts/ai-course-run.ts', 'MEGAPLE', '360', '--assert') },
+  {
+    label: 'ai-course-run MEGAPLE',
+    tier: 'integration',
+    localOnly: true,
+    ...tsx('scripts/ai-course-run.ts', 'MEGAPLE', '360', '--assert'),
+  },
 ];
 
 const argv = process.argv.slice(2);
@@ -175,18 +198,17 @@ const tier = tierValue as Tier;
 const only = argv[argv.indexOf('--only') + 1];
 const filter = argv.includes('--only') && only && !only.startsWith('--') ? only : null;
 const selectionLabel = filter ? `filter ${JSON.stringify(filter)}` : `${tier} tier`;
-const askedJobs = Number(argv.includes('--jobs')
-  ? argv[argv.indexOf('--jobs') + 1]
-  : process.env.SLOPESMITH_TEST_JOBS);
+const askedJobs = Number(argv.includes('--jobs') ? argv[argv.indexOf('--jobs') + 1] : process.env.SLOPESMITH_TEST_JOBS);
 /**
  * Deliberately well under the core count. The ordinary checks share a bounded pool; timing benchmarks and
  * load-sensitive socket checks hold it alone. Leave headroom for browser processes, worker threads and
  * deadlines rather than assuming one test process consumes one core. `--jobs` can tune throughput for the
  * machine without changing discovery, assertions or the isolation rules.
  */
-const jobs = Number.isFinite(askedJobs) && askedJobs > 0
-  ? Math.max(1, Math.floor(askedJobs))
-  : Math.max(1, Math.min(6, availableParallelism() - 1));
+const jobs =
+  Number.isFinite(askedJobs) && askedJobs > 0
+    ? Math.max(1, Math.floor(askedJobs))
+    : Math.max(1, Math.min(6, availableParallelism() - 1));
 
 const allDiscovered = readdirSync(here)
   .filter(name => name.endsWith('.test.ts'))
@@ -206,26 +228,32 @@ const discovered = allDiscovered
   .filter(name => !filter || name.includes(filter))
   .sort();
 
-const extra = filter ? [] : WITH_ARGUMENTS
-  .filter(one => tier === 'full' || one.tier === tier)
-  .filter(one => local || !one.localOnly);
-const skipped = local ? [] : [
-  ...[...NEEDS_LOCAL_DATA]
-    .filter(name => filter ? name.includes(filter) : inTier(name)),
-  ...(filter ? [] : WITH_ARGUMENTS
-    .filter(one => one.localOnly && (tier === 'full' || one.tier === tier))
-    .map(one => one.label)),
-].sort();
-const tierOmitted = filter || tier === 'full' ? [] : [
-  ...allDiscovered
-    .filter(name => !NEEDS_LOCAL_DATA.has(name) && !inTier(name))
-    .map(name => `test/${name}`),
-  ...WITH_ARGUMENTS
-    .filter(one => !one.localOnly && one.tier !== tier)
-    .map(one => one.label),
-].sort();
+const extra = filter
+  ? []
+  : WITH_ARGUMENTS.filter(one => tier === 'full' || one.tier === tier).filter(one => local || !one.localOnly);
+const skipped = local
+  ? []
+  : [
+      ...[...NEEDS_LOCAL_DATA].filter(name => (filter ? name.includes(filter) : inTier(name))),
+      ...(filter
+        ? []
+        : WITH_ARGUMENTS.filter(one => one.localOnly && (tier === 'full' || one.tier === tier)).map(one => one.label)),
+    ].sort();
+const tierOmitted =
+  filter || tier === 'full'
+    ? []
+    : [
+        ...allDiscovered.filter(name => !NEEDS_LOCAL_DATA.has(name) && !inTier(name)).map(name => `test/${name}`),
+        ...WITH_ARGUMENTS.filter(one => !one.localOnly && one.tier !== tier).map(one => one.label),
+      ].sort();
 
-interface Job { label: string; command: string; args: string[]; exclusiveGroup?: string; runAlone?: boolean }
+interface Job {
+  label: string;
+  command: string;
+  args: string[];
+  exclusiveGroup?: string;
+  runAlone?: boolean;
+}
 const queue: Job[] = [
   ...discovered.map(name => ({
     label: `test/${name}`,
@@ -249,12 +277,20 @@ if (listOnly) {
 
 /** Last run's durations. A miss is not a problem — it only costs a worse starting order this once. */
 let known: Record<string, number> = {};
-try { known = JSON.parse(readFileSync(TIMINGS, 'utf8')); } catch { /* first run on this machine */ }
+try {
+  known = JSON.parse(readFileSync(TIMINGS, 'utf8'));
+} catch {
+  /* first run on this machine */
+}
 
 // Longest-first. With a 74s pole in the set, starting it last would leave the whole gate waiting on it alone.
 queue.sort((a, b) => (known[b.label] ?? UNKNOWN_MS) - (known[a.label] ?? UNKNOWN_MS));
 
-interface Outcome { label: string; ok: boolean; ms: number }
+interface Outcome {
+  label: string;
+  ok: boolean;
+  ms: number;
+}
 const outcomes: Outcome[] = [];
 const started = Date.now();
 let next = 0;
@@ -323,7 +359,9 @@ async function worker(): Promise<void> {
       if (next >= queue.length) return;
       // Only constrained checks are left and another worker holds the needed slot. Idle rather than spinning;
       // this costs at most one poll interval on a queue that is already seconds wide.
-      await new Promise(resolve => { setTimeout(resolve, 25); });
+      await new Promise(resolve => {
+        setTimeout(resolve, 25);
+      });
       continue;
     }
     await runOne(job);
@@ -338,7 +376,9 @@ await Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, worker));
 try {
   mkdirSync(dirname(TIMINGS), { recursive: true });
   writeFileSync(TIMINGS, JSON.stringify(known, null, 2));
-} catch { /* the ordering hint is an optimisation; never fail the gate over it */ }
+} catch {
+  /* the ordering hint is an optimisation; never fail the gate over it */
+}
 
 const failed = outcomes.filter(outcome => !outcome.ok);
 process.stdout.write(`\n${'='.repeat(78)}\n`);
@@ -353,8 +393,10 @@ if (tierOmitted.length) {
 }
 const wall = (Date.now() - started) / 1000;
 const work = outcomes.reduce((sum, outcome) => sum + outcome.ms, 0) / 1000;
-process.stdout.write(`\n  ${outcomes.length - failed.length}/${outcomes.length} passed`
-  + ` in ${wall.toFixed(0)}s (${selectionLabel}; ${jobs} at a time; ${work.toFixed(0)}s of work)\n`);
+process.stdout.write(
+  `\n  ${outcomes.length - failed.length}/${outcomes.length} passed` +
+    ` in ${wall.toFixed(0)}s (${selectionLabel}; ${jobs} at a time; ${work.toFixed(0)}s of work)\n`,
+);
 for (const outcome of failed) process.stdout.write(`  FAILED  ${outcome.label}\n`);
 process.stdout.write('\n');
 process.exit(failed.length ? 1 : 0);

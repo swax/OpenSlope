@@ -29,9 +29,9 @@ const SURFACE = Number(process.argv[2] ?? 5);
 const DRIVE_ON = process.argv.includes('drive');
 const RECOVER = process.argv.includes('recover');
 const H = 1 / 60;
-const SETTLE_TICKS = 90;   // contact settles before the lean goes on
-const HOLD_TICKS = 420;    // 7 s of held lean
-const WINDOW = 90;         // the last 1.5 s is the equilibrium sample
+const SETTLE_TICKS = 90; // contact settles before the lean goes on
+const HOLD_TICKS = 420; // 7 s of held lean
+const WINDOW = 90; // the last 1.5 s is the equilibrium sample
 
 const LEANS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 // 0 = no seed (the cruise drive settles it). The drive is positive-only, so with it ON a seed ABOVE the
@@ -39,7 +39,8 @@ const LEANS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 const SPEEDS = DRIVE_ON ? [0, 22, 26] : [12, 16, 20, 24];
 
 // ---- flat terrain, exact contact -------------------------------------------------------------------
-const HALF = 150, STEP = 5;
+const HALF = 150,
+  STEP = 5;
 const positions: number[] = [];
 const index: number[] = [];
 const N = (HALF * 2) / STEP;
@@ -48,7 +49,10 @@ for (let iz = 0; iz <= N; iz++) {
 }
 for (let iz = 0; iz < N; iz++) {
   for (let ix = 0; ix < N; ix++) {
-    const a = iz * (N + 1) + ix, b = a + 1, c = a + N + 1, d = c + 1;
+    const a = iz * (N + 1) + ix,
+      b = a + 1,
+      c = a + N + 1,
+      d = c + 1;
     index.push(a, c, b, b, c, d); // CCW from +Y — outward normal skyward
   }
 }
@@ -60,23 +64,36 @@ terrain.updateMatrixWorld(true);
 
 const gp = geo.getAttribute('position');
 const gi = geo.getIndex()!.array;
-const ca = new THREE.Vector3(), cb = new THREE.Vector3(), cc = new THREE.Vector3();
-function patchContact(faceIndex: number, bary: THREE.Vector3, outPoint: THREE.Vector3, outNormal: THREE.Vector3): boolean {
+const ca = new THREE.Vector3(),
+  cb = new THREE.Vector3(),
+  cc = new THREE.Vector3();
+function patchContact(
+  faceIndex: number,
+  bary: THREE.Vector3,
+  outPoint: THREE.Vector3,
+  outNormal: THREE.Vector3,
+): boolean {
   const i = faceIndex * 3;
-  ca.fromBufferAttribute(gp, gi[i]); cb.fromBufferAttribute(gp, gi[i + 1]); cc.fromBufferAttribute(gp, gi[i + 2]);
-  outPoint.set(
-    ca.x * bary.x + cb.x * bary.y + cc.x * bary.z,
-    0,
-    ca.z * bary.x + cb.z * bary.y + cc.z * bary.z,
-  );
+  ca.fromBufferAttribute(gp, gi[i]);
+  cb.fromBufferAttribute(gp, gi[i + 1]);
+  cc.fromBufferAttribute(gp, gi[i + 2]);
+  outPoint.set(ca.x * bary.x + cb.x * bary.y + cc.x * bary.z, 0, ca.z * bary.x + cb.z * bary.y + cc.z * bary.z);
   outNormal.set(0, 1, 0);
   return true;
 }
 
 // ---- one held-lean run ------------------------------------------------------------------------------
-const tangent = new THREE.Vector3(), lateral = new THREE.Vector3(), flat = new THREE.Vector3();
+const tangent = new THREE.Vector3(),
+  lateral = new THREE.Vector3(),
+  flat = new THREE.Vector3();
 
-interface Sample { lean: number; slipDeg: number; speed: number; yawDps: number; grounded: boolean }
+interface Sample {
+  lean: number;
+  slipDeg: number;
+  speed: number;
+  yawDps: number;
+  grounded: boolean;
+}
 
 function measure(stickX: number, seedSpeed: number): Sample | null {
   const keys = { left: false, right: false, tuck: false, brake: false, boost: false };
@@ -103,7 +120,10 @@ function measure(stickX: number, seedSpeed: number): Sample | null {
   stick.active = true;
   stick.x = stickX;
 
-  const slips: number[] = [], speeds: number[] = [], leans: number[] = [], yaws: number[] = [];
+  const slips: number[] = [],
+    speeds: number[] = [],
+    leans: number[] = [],
+    yaws: number[] = [];
   let prevHeading = Math.atan2(st.fwd.x, st.fwd.z);
   let leftGround = false;
   for (let t = 0; t < HOLD_TICKS; t++) {
@@ -168,7 +188,7 @@ function recovery(): void {
   });
   model.start();
   const st = model.st;
-  for (let t = 0; t < SETTLE_TICKS + 180; t++) model.step(H);   // carve to equilibrium
+  for (let t = 0; t < SETTLE_TICKS + 180; t++) model.step(H); // carve to equilibrium
 
   const slipOf = () => {
     tangent.copy(st.fwd).projectOnPlane(st.contactN).normalize();
@@ -178,38 +198,54 @@ function recovery(): void {
   };
   const headingOf = () => THREE.MathUtils.radToDeg(Math.atan2(st.fwd.x, st.fwd.z));
   const travelOf = () => THREE.MathUtils.radToDeg(Math.atan2(st.vel.x, st.vel.z));
-  const unwrap = (d: number) => { while (d > 180) d -= 360; while (d < -180) d += 360; return d; };
+  const unwrap = (d: number) => {
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    return d;
+  };
 
-  const slip0 = slipOf(), head0 = headingOf(), trav0 = travelOf();
+  const slip0 = slipOf(),
+    head0 = headingOf(),
+    trav0 = travelOf();
   console.log(`carved to equilibrium: slip ${slip0.toFixed(2)}deg at ${st.vel.length().toFixed(2)} m/s\n`);
   console.log('  input CENTRED at t=0\n');
-  console.log(`${'t (s)'.padStart(7)} ${'slip deg'.padStart(9)} ${'closed %'.padStart(9)} ${'heading moved'.padStart(14)} ${'travel moved'.padStart(13)} ${'speed'.padStart(7)}`);
+  console.log(
+    `${'t (s)'.padStart(7)} ${'slip deg'.padStart(9)} ${'closed %'.padStart(9)} ${'heading moved'.padStart(14)} ${'travel moved'.padStart(13)} ${'speed'.padStart(7)}`,
+  );
 
   stick.x = 0;
   for (let t = 1; t <= 300; t++) {
     model.step(H);
     if (t % 15 !== 0) continue;
     const slip = slipOf();
-    const dHead = unwrap(headingOf() - head0), dTrav = unwrap(travelOf() - trav0);
+    const dHead = unwrap(headingOf() - head0),
+      dTrav = unwrap(travelOf() - trav0);
     const closed = (1 - slip / slip0) * 100;
     console.log(
-      `${(t * H).toFixed(2).padStart(7)} ${slip.toFixed(2).padStart(9)} ${closed.toFixed(1).padStart(9)}`
-      + ` ${dHead.toFixed(2).padStart(14)} ${dTrav.toFixed(2).padStart(13)} ${st.vel.length().toFixed(2).padStart(7)}`,
+      `${(t * H).toFixed(2).padStart(7)} ${slip.toFixed(2).padStart(9)} ${closed.toFixed(1).padStart(9)}` +
+        ` ${dHead.toFixed(2).padStart(14)} ${dTrav.toFixed(2).padStart(13)} ${st.vel.length().toFixed(2).padStart(7)}`,
     );
   }
-  const dHead = unwrap(headingOf() - head0), dTrav = unwrap(travelOf() - trav0);
+  const dHead = unwrap(headingOf() - head0),
+    dTrav = unwrap(travelOf() - trav0);
   const total = Math.abs(dHead) + Math.abs(dTrav);
   console.log(`\nover 5 s with the input centred, the ${Math.abs(slip0 - slipOf()).toFixed(1)}deg of slip closed by:`);
-  console.log(`  heading swinging onto the drift : ${(100 * Math.abs(dHead) / total).toFixed(0)}%  (${dHead.toFixed(1)}deg)  <- does NOT recover the line`);
-  console.log(`  travel bending back under it    : ${(100 * Math.abs(dTrav) / total).toFixed(0)}%  (${dTrav.toFixed(1)}deg)  <- the only closure that does`);
+  console.log(
+    `  heading swinging onto the drift : ${((100 * Math.abs(dHead)) / total).toFixed(0)}%  (${dHead.toFixed(1)}deg)  <- does NOT recover the line`,
+  );
+  console.log(
+    `  travel bending back under it    : ${((100 * Math.abs(dTrav)) / total).toFixed(0)}%  (${dTrav.toFixed(1)}deg)  <- the only closure that does`,
+  );
 }
 
 // ---- sweep ------------------------------------------------------------------------------------------
 const row = SURFACE_ROWS[SURFACE];
 console.log(`=== held-lean slip equilibrium: SurfaceType ${SURFACE} (${row.name}) ===`);
 console.log(`    carve drag ${row.drag}  carve tilt ${row.tilt}deg  A ${row.A}  cruise target ${row.target} m/s`);
-console.log(`    flat ground, cruise drive ${DRIVE_ON ? 'ON (speed settles at the surface target)' : 'OFF (seeded speed holds)'},`
-  + ` ${HOLD_TICKS} ticks held, mean of the last ${WINDOW}\n`);
+console.log(
+  `    flat ground, cruise drive ${DRIVE_ON ? 'ON (speed settles at the surface target)' : 'OFF (seeded speed holds)'},` +
+    ` ${HOLD_TICKS} ticks held, mean of the last ${WINDOW}\n`,
+);
 
 /**
  * The game's turn-lean curve ([Trailmap: 330-carving], the c7 / 0.5·c0 shape) in DEGREES — the angle by which
@@ -224,23 +260,31 @@ function turnLeanDeg(lean: number): number {
 const fitPoints: Array<{ lean: number; slip: number }> = [];
 const turnLeanPoints: Array<{ turnLean: number; slip: number }> = [];
 
-if (RECOVER) { recovery(); process.exit(0); }
+if (RECOVER) {
+  recovery();
+  process.exit(0);
+}
 
 for (const seed of SPEEDS) {
   console.log(seed > 0 ? `-- seeded ${seed} m/s --` : '-- cruise-driven --');
-  console.log(`${'stick'.padStart(7)} ${'lean'.padStart(7)} ${'|slip| deg'.padStart(11)} ${'turnLean'.padStart(9)} ${'ratio'.padStart(6)} ${'speed'.padStart(7)} ${'yaw d/s'.padStart(8)} ${'turn R m'.padStart(9)}  note`);
+  console.log(
+    `${'stick'.padStart(7)} ${'lean'.padStart(7)} ${'|slip| deg'.padStart(11)} ${'turnLean'.padStart(9)} ${'ratio'.padStart(6)} ${'speed'.padStart(7)} ${'yaw d/s'.padStart(8)} ${'turn R m'.padStart(9)}  note`,
+  );
   for (const l of LEANS) {
     const s = measure(l, seed);
-    if (!s) { console.log(`${l.toFixed(2).padStart(7)}      -           -       -        -  no settled ground contact`); continue; }
+    if (!s) {
+      console.log(`${l.toFixed(2).padStart(7)}      -           -       -        -  no settled ground contact`);
+      continue;
+    }
     const note = s.grounded ? '' : 'left the ground during the hold';
     const tl = turnLeanDeg(s.lean);
     console.log(
-      `${l.toFixed(2).padStart(7)} ${s.lean.toFixed(3).padStart(7)} ${Math.abs(s.slipDeg).toFixed(2).padStart(11)}`
-      + ` ${tl.toFixed(2).padStart(9)} ${(Math.abs(s.slipDeg) / tl).toFixed(3).padStart(6)}`
-      + ` ${s.speed.toFixed(2).padStart(7)} ${s.yawDps.toFixed(1).padStart(8)}`
-      // Turn radius is the number that decides whether a line fits inside the course, which slip angle alone
-      // never says: ice can drift hard and still track far too wide to hold a trail.
-      + ` ${(s.speed / Math.abs(THREE.MathUtils.degToRad(s.yawDps))).toFixed(1).padStart(9)}  ${note}`,
+      `${l.toFixed(2).padStart(7)} ${s.lean.toFixed(3).padStart(7)} ${Math.abs(s.slipDeg).toFixed(2).padStart(11)}` +
+        ` ${tl.toFixed(2).padStart(9)} ${(Math.abs(s.slipDeg) / tl).toFixed(3).padStart(6)}` +
+        ` ${s.speed.toFixed(2).padStart(7)} ${s.yawDps.toFixed(1).padStart(8)}` +
+        // Turn radius is the number that decides whether a line fits inside the course, which slip angle alone
+        // never says: ice can drift hard and still track far too wide to hold a trail.
+        ` ${(s.speed / Math.abs(THREE.MathUtils.degToRad(s.yawDps))).toFixed(1).padStart(9)}  ${note}`,
     );
     if (s.grounded && Math.abs(s.lean) > 0.05) turnLeanPoints.push({ turnLean: tl, slip: Math.abs(s.slipDeg) });
     if (s.grounded && Math.abs(s.lean) > 0.05) fitPoints.push({ lean: Math.abs(s.lean), slip: Math.abs(s.slipDeg) });
@@ -251,17 +295,26 @@ for (const seed of SPEEDS) {
 if (fitPoints.length >= 3) {
   const k = fitPoints.reduce((s, p) => s + p.lean * p.slip, 0) / fitPoints.reduce((s, p) => s + p.lean * p.lean, 0);
   const resid = Math.max(...fitPoints.map(p => Math.abs(p.slip - k * p.lean)));
-  console.log(`linear-through-origin fit over ${fitPoints.length} settled points: |slip| = ${k.toFixed(2)}deg * |lean|  (max resid ${resid.toFixed(2)}deg)`);
+  console.log(
+    `linear-through-origin fit over ${fitPoints.length} settled points: |slip| = ${k.toFixed(2)}deg * |lean|  (max resid ${resid.toFixed(2)}deg)`,
+  );
   if (SURFACE === 5) {
-    console.log(`retail ice, same fit over the v4 captures:              |slip| = 31.81deg * |lean|  (max resid 1.57deg)`);
+    console.log(
+      `retail ice, same fit over the v4 captures:              |slip| = 31.81deg * |lean|  (max resid 1.57deg)`,
+    );
     console.log(`  -> port/retail carve ratio ${(k / 31.81).toFixed(2)}x on FLAT ground`);
   }
 }
 
 if (turnLeanPoints.length >= 3) {
-  const k = turnLeanPoints.reduce((s, p) => s + p.turnLean * p.slip, 0)
-    / turnLeanPoints.reduce((s, p) => s + p.turnLean * p.turnLean, 0);
+  const k =
+    turnLeanPoints.reduce((s, p) => s + p.turnLean * p.slip, 0) /
+    turnLeanPoints.reduce((s, p) => s + p.turnLean * p.turnLean, 0);
   const resid = Math.max(...turnLeanPoints.map(p => Math.abs(p.slip - k * p.turnLean)));
-  console.log(`\nagainst the turn-lean curve instead of raw lean:  |slip| = ${k.toFixed(4)} * turnLean(deg)  (max resid ${resid.toFixed(2)}deg)`);
-  console.log(`  a coefficient of 1.0 means the equilibrium slip IS the heading's lead angle - no fitted curve needed.`);
+  console.log(
+    `\nagainst the turn-lean curve instead of raw lean:  |slip| = ${k.toFixed(4)} * turnLean(deg)  (max resid ${resid.toFixed(2)}deg)`,
+  );
+  console.log(
+    `  a coefficient of 1.0 means the equilibrium slip IS the heading's lead angle - no fitted curve needed.`,
+  );
 }

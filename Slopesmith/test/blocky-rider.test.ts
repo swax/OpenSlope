@@ -32,7 +32,7 @@ for (const spec of BONES) {
 }
 
 // Winter's stature fractions on the procedural rider's 1.70 m, which is what `app/ride/rider.ts` solves.
-const RIDER_H = 1.70;
+const RIDER_H = 1.7;
 close(length('UpperLeg.L'), 0.245 * RIDER_H, 'thigh');
 close(length('LowerLeg.L'), 0.246 * RIDER_H, 'shank');
 close(length('UpperArm.L'), 0.186 * RIDER_H, 'upper arm');
@@ -62,16 +62,25 @@ for (const part of PARTS) {
  * if the proportions are ever re-derived. The head's decoration (hat, goggles, mouth) is exempt: it hangs
  * off the head block rather than bridging a joint.
  */
-const ENCLOSING = new Set(['Pelvis', 'Jacket', 'Collar', 'Head',
-  ...['UpperArm', 'LowerArm', 'UpperLeg', 'LowerLeg', 'Mitt', 'Boot']
-    .flatMap(part => [`${part}.L`, `${part}.R`])]);
+const ENCLOSING = new Set([
+  'Pelvis',
+  'Jacket',
+  'Collar',
+  'Head',
+  ...['UpperArm', 'LowerArm', 'UpperLeg', 'LowerLeg', 'Mitt', 'Boot'].flatMap(part => [`${part}.L`, `${part}.R`]),
+]);
 for (const part of PARTS) {
   if (!ENCLOSING.delete(part.name)) continue;
   const spec = bone(part.bone);
-  for (const [end, point] of [['head', spec.head], ['tail', spec.tail]] as const) {
+  for (const [end, point] of [
+    ['head', spec.head],
+    ['tail', spec.tail],
+  ] as const) {
     for (let axis = 0; axis < 3; axis++) {
-      assert(point[axis] >= part.min[axis] - 1e-9 && point[axis] <= part.max[axis] + 1e-9,
-        `${part.name} does not enclose its bone's ${end} on axis ${axis}`);
+      assert(
+        point[axis] >= part.min[axis] - 1e-9 && point[axis] <= part.max[axis] + 1e-9,
+        `${part.name} does not enclose its bone's ${end} on axis ${axis}`,
+      );
     }
   }
 }
@@ -90,15 +99,20 @@ assert.equal(report.images, 0, 'a built-in character carries no images');
 assert.equal(report.animations, 0);
 assert.equal(report.maxInfluencesPerVertex, 1, 'every box is rigidly bound to one bone');
 assert.equal(report.triangles, PARTS.length * 12, 'twelve triangles per box, and no stray geometry');
-assert(report.heightMetres !== null && report.heightMetres > 1.6 && report.heightMetres < 2.1,
-  `standing height is ${report.heightMetres} m`);
+assert(
+  report.heightMetres !== null && report.heightMetres > 1.6 && report.heightMetres < 2.1,
+  `standing height is ${report.heightMetres} m`,
+);
 assert(Math.abs(report.boundsMin?.[1] ?? 1) < 1e-6, 'the skinned figure starts at the ground plane');
 
 /**
  * Read the bytes back the way the browser will, and resolve them the way `app/ride/character-rig.ts` does:
  * authored name first, punctuation-stripped name second, because a glTF loader may drop the `.L`.
  */
-const gltf = await new GLTFLoader().parseAsync(glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer, '');
+const gltf = await new GLTFLoader().parseAsync(
+  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer,
+  '',
+);
 const root = gltf.scene as Group;
 root.updateMatrixWorld(true);
 const loadedBones = new Map<string, Bone>();
@@ -120,14 +134,20 @@ for (const spec of BONES) driven(spec.name);
  * hanging arm has to put both palms toward the body. Feet: the importer's mirrored roll, `Foot.L` local +X
  * sole-up and `Foot.R` local −X (docs/030), with local +Y running out over the toes.
  */
-for (const [name, side, inward] of [['Hand.L', 1, -1], ['Hand.R', -1, 1]] as const) {
+for (const [name, side, inward] of [
+  ['Hand.L', 1, -1],
+  ['Hand.R', -1, 1],
+] as const) {
   const bind = driven(name).getWorldQuaternion(new Quaternion());
   const fingers = new Vector3(0, 1, 0).applyQuaternion(bind);
   const palm = new Vector3(side, 0, 0).applyQuaternion(bind);
   assert(fingers.y < -0.99, `${name} bind fingers hang downward`);
   assert(palm.x * inward > 0.99, `${name} bind palm faces the body`);
 }
-for (const [name, up] of [['Foot.L', 1], ['Foot.R', -1]] as const) {
+for (const [name, up] of [
+  ['Foot.L', 1],
+  ['Foot.R', -1],
+] as const) {
   const bind = driven(name).getWorldQuaternion(new Quaternion());
   assert(new Vector3(0, 1, 0).applyQuaternion(bind).z > 0.99, `${name} bind +Y runs out over the toes`);
   assert(new Vector3(up, 0, 0).applyQuaternion(bind).y > 0.99, `${name} bind roll is sole-up`);
@@ -140,8 +160,10 @@ assert(character, 'the blocky rider is a registered built-in');
 const tracked = await readFile(new URL(`../public/characters/${character.file}`, import.meta.url));
 // Compared as buffers rather than with deepEqual: the failure that matters is "stale", and a 34 kB
 // byte-by-byte diff buries that one-line instruction under the whole model.
-assert(tracked.equals(Buffer.from(glb)),
-  `public/characters/${character.file} is stale (${tracked.byteLength} bytes on disk, ${glb.byteLength} generated); `
-  + 're-run tools/character-models/blocky-rider.ts');
+assert(
+  tracked.equals(Buffer.from(glb)),
+  `public/characters/${character.file} is stale (${tracked.byteLength} bytes on disk, ${glb.byteLength} generated); ` +
+    're-run tools/character-models/blocky-rider.ts',
+);
 
 console.log('BLOCKY RIDER: PASS');

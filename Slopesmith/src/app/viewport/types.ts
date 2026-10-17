@@ -145,11 +145,11 @@ export interface ViewState {
   fov?: number;
   near?: number;
   up?: [number, number, number];
-  pos: [number, number, number];    // active camera world position
+  pos: [number, number, number]; // active camera world position
   target: [number, number, number]; // orbit / look target
-  ortho: boolean;                   // orthographic vs perspective projection
-  zoom: number;                     // orthographic zoom (1 in perspective)
-  orthoHalfH: number;               // orthographic frustum half-height (set when switching to ortho)
+  ortho: boolean; // orthographic vs perspective projection
+  zoom: number; // orthographic zoom (1 in perspective)
+  orthoHalfH: number; // orthographic frustum half-height (set when switching to ortho)
 }
 
 /**
@@ -301,9 +301,10 @@ export interface ViewportCallbacks {
   onSelectKnot(index: number | null): void;
   /** A mesh component or scene object was positively identified under the pointer, but the active view has no
    *  action for it—or its Edit selection family is filtered out. The host acknowledges it without mutation. */
-  onClickTargetUnavailable?(target: 'vertex' | 'line' | 'surface' | 'prop' | 'light' | 'rail' | 'gem'
-    | 'screen' | 'knot',
-    source: 'authored' | 'reference'): void;
+  onClickTargetUnavailable?(
+    target: 'vertex' | 'line' | 'surface' | 'prop' | 'light' | 'rail' | 'gem' | 'screen' | 'knot',
+    source: 'authored' | 'reference',
+  ): void;
   /** Edit mode: an authored prop placement was clicked. Ctrl/Cmd toggles it alongside any selected mesh
    *  families; a plain click keeps the existing select / click-again-to-edit behavior. True = handled. */
   onEditPropPick?(index: number, toggle: boolean): boolean;
@@ -517,8 +518,12 @@ export interface ViewportCallbacks {
   /** `inst` = the picked INSTANCE's decoded contact + audio data — instance data, so it rides the pick
    *  instead of the model identity [Trailmap: 130-collision-data, 420-audio-runtime]. Material-submesh
    *  identity is owned by the separate texture-details / Paint inspection path. */
-  onSelectReferenceProp?(level: string | null, model: number | null, name: string | null,
-    inst?: RefPropPickDetails): void;
+  onSelectReferenceProp?(
+    level: string | null,
+    model: number | null,
+    name: string | null,
+    inst?: RefPropPickDetails,
+  ): void;
   /** Sources overlay: a recovered reference light bulb was clicked. All-null clears the read-only record. */
   onSelectReferenceLight?(level: string | null, light: RigLight | null): void;
   /** Effects mode: resolve a native prop slot by original Instances.json index. Ctrl/Cmd toggles it in the
@@ -534,8 +539,12 @@ export interface ViewportCallbacks {
    *  surface is untextured; `propName` names the model for feedback ('' when unknown); `surface`
    *  carries the submesh's appearance identity for the readout; `uvEdges` its deduped triangle edges in
    *  UV space ((u1,v1,u2,v2)-packed) for the palette's mapping overlay. */
-  onInspectPropTexture?(ref: TexRef | null, propName: string, surface?: RefPropSurfaceDetails | null,
-    uvEdges?: Float32Array | null): void;
+  onInspectPropTexture?(
+    ref: TexRef | null,
+    propName: string,
+    surface?: RefPropSurfaceDetails | null,
+    uvEdges?: Float32Array | null,
+  ): void;
   /** Paint mode, no brush armed: a click landed on this quad (null = clicked off the terrain) — the host
    *  selects it if painted, else clears the selection. */
   onSelectPaintCell?(quad: number | null): void;
@@ -631,9 +640,11 @@ export interface ViewportCallbacks {
   onLoopCut?(quad: number, edge: [number, number], t: number): void;
   /** Edit mode, Create Patch: three or four perimeter-ordered clicks request a triangle or quad. Each corner
    * either reuses an existing vertex or supplies a new terrain/free-space point. False keeps the tool active. */
-  onCreatePatch?(corners:
-    | [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint]
-    | [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint, PlacementEndpoint]): boolean;
+  onCreatePatch?(
+    corners:
+      | [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint]
+      | [PlacementEndpoint, PlacementEndpoint, PlacementEndpoint, PlacementEndpoint],
+  ): boolean;
   /** Edit mode, Paste vertices: the clipboard ghost was placed on the AUTHORED mountain. `translation` is the
    *  clipboard vertex-centroid → terrain-hit delta in data space; the host appends and selects the copy. */
   onPasteVertices?(translation: V3): void;

@@ -1,5 +1,9 @@
 import {
-  FAL_MODELS, FAL_PANORAMA_MODEL, fal3dModel, falEndpointMayGenerate, falInpaintModel,
+  FAL_MODELS,
+  FAL_PANORAMA_MODEL,
+  fal3dModel,
+  falEndpointMayGenerate,
+  falInpaintModel,
 } from '../../core/paint/fal-models';
 
 /**
@@ -26,7 +30,8 @@ const ALLOWED = new Set(FAL_MODELS.filter(m => falEndpointMayGenerate(m.id)).map
 
 /** fal rejects non-multiples of 8 outright on some models and silently rounds on others; clamping here
  *  keeps the stored tile's aspect exactly square and the price exactly what the dialog quoted. */
-const MIN_EDGE = 256, MAX_EDGE = 1536;
+const MIN_EDGE = 256,
+  MAX_EDGE = 1536;
 
 export interface FalTextureRequest {
   model: string;
@@ -47,14 +52,25 @@ export interface FalTextureResult {
 /** A fal error body is either {detail: "..."} or {detail: [{msg, loc}]}; both show up in practice. */
 function falErrorText(status: number, body: string): string {
   let detail: unknown;
-  try { detail = (JSON.parse(body) as { detail?: unknown }).detail; } catch { /* not JSON — use the raw text */ }
-  const text = typeof detail === 'string' ? detail
-    : Array.isArray(detail)
-      ? detail.map(d => (d as { msg?: string }).msg).filter(Boolean).join('; ')
-      : body.slice(0, 300);
+  try {
+    detail = (JSON.parse(body) as { detail?: unknown }).detail;
+  } catch {
+    /* not JSON — use the raw text */
+  }
+  const text =
+    typeof detail === 'string'
+      ? detail
+      : Array.isArray(detail)
+        ? detail
+            .map(d => (d as { msg?: string }).msg)
+            .filter(Boolean)
+            .join('; ')
+        : body.slice(0, 300);
   if (status === 401 || status === 403) {
-    return 'fal.ai rejected the API key (401). Check it in Settings ▸ Integrations — it should be the whole '
-      + '"key id:key secret" pair copied from fal.ai/dashboard/keys.';
+    return (
+      'fal.ai rejected the API key (401). Check it in Settings ▸ Integrations — it should be the whole ' +
+      '"key id:key secret" pair copied from fal.ai/dashboard/keys.'
+    );
   }
   if (status === 402) return 'fal.ai reports no credit on this account. Top up at fal.ai/dashboard/billing.';
   if (status === 429) return 'fal.ai is rate-limiting this key. Wait a moment and generate again.';
@@ -63,13 +79,17 @@ function falErrorText(status: number, body: string): string {
 
 /** What every fal image endpoint answers with, one way or another: most say {images:[...]}, Hunyuan World
  *  says a single {image}. */
-interface FalImagePayload { images?: Array<{ url?: string }>; image?: { url?: string }; seed?: number }
+interface FalImagePayload {
+  images?: Array<{ url?: string }>;
+  image?: { url?: string };
+  seed?: number;
+}
 
 /** Turn a fal response payload into PNG bytes — inlined data URI or CDN download, whichever came back. */
 async function pngFromPayload(payload: FalImagePayload): Promise<FalTextureResult> {
   const url = payload.images?.[0]?.url ?? payload.image?.url;
   if (!url) throw new Error('fal.ai returned no image.');
-  const seed = Number.isFinite(payload.seed) ? payload.seed as number : null;
+  const seed = Number.isFinite(payload.seed) ? (payload.seed as number) : null;
 
   if (url.startsWith('data:')) {
     const comma = url.indexOf(',');
@@ -95,13 +115,14 @@ async function callFalEndpoint(key: string, model: string, body: Record<string, 
       signal: AbortSignal.timeout(180_000),
     });
   } catch (e) {
-    const reason = e instanceof Error && e.name === 'TimeoutError'
-      ? 'fal.ai did not respond within three minutes'
-      : `could not reach fal.ai (${e instanceof Error ? e.message : String(e)})`;
+    const reason =
+      e instanceof Error && e.name === 'TimeoutError'
+        ? 'fal.ai did not respond within three minutes'
+        : `could not reach fal.ai (${e instanceof Error ? e.message : String(e)})`;
     throw new Error(reason, { cause: e });
   }
   if (!res.ok) throw new Error(falErrorText(res.status, await res.text().catch(() => '')));
-  return pngFromPayload(await res.json() as FalImagePayload);
+  return pngFromPayload((await res.json()) as FalImagePayload);
 }
 
 /**
@@ -111,7 +132,12 @@ async function callFalEndpoint(key: string, model: string, body: Record<string, 
  * the queue but not the result shape. `capMs` bounds the whole affair; one flaky status poll is retried, a
  * FAILED job is not.
  */
-async function callFalQueued(key: string, model: string, body: Record<string, unknown>, capMs = 600_000): Promise<unknown> {
+async function callFalQueued(
+  key: string,
+  model: string,
+  body: Record<string, unknown>,
+  capMs = 600_000,
+): Promise<unknown> {
   const auth = { authorization: `Key ${key}` };
   let submit: Response;
   try {
@@ -125,7 +151,7 @@ async function callFalQueued(key: string, model: string, body: Record<string, un
     throw new Error(`could not reach fal.ai (${e instanceof Error ? e.message : String(e)})`, { cause: e });
   }
   if (!submit.ok) throw new Error(falErrorText(submit.status, await submit.text().catch(() => '')));
-  const job = await submit.json() as { request_id?: string; status_url?: string; response_url?: string };
+  const job = (await submit.json()) as { request_id?: string; status_url?: string; response_url?: string };
   if (!job.request_id) throw new Error('fal.ai queue returned no request id.');
   const statusUrl = job.status_url ?? `https://queue.fal.run/${model}/requests/${job.request_id}/status`;
   const responseUrl = job.response_url ?? `https://queue.fal.run/${model}/requests/${job.request_id}`;
@@ -133,16 +159,20 @@ async function callFalQueued(key: string, model: string, body: Record<string, un
   const deadline = Date.now() + capMs;
   for (;;) {
     if (Date.now() > deadline) {
-      throw new Error(`fal.ai is still working after ${Math.round(capMs / 60_000)} minutes — giving up here. `
-        + 'The job may yet complete (and bill) on their side; see fal.ai/dashboard/requests.');
+      throw new Error(
+        `fal.ai is still working after ${Math.round(capMs / 60_000)} minutes — giving up here. ` +
+          'The job may yet complete (and bill) on their side; see fal.ai/dashboard/requests.',
+      );
     }
     await new Promise(r => setTimeout(r, 2500));
     let st: Response;
     try {
       st = await fetch(statusUrl, { headers: auth, signal: AbortSignal.timeout(15_000) });
-    } catch { continue; }   // one dropped poll is not a failed job
+    } catch {
+      continue;
+    } // one dropped poll is not a failed job
     if (!st.ok && st.status !== 202) throw new Error(falErrorText(st.status, await st.text().catch(() => '')));
-    const s = await st.json().catch(() => ({})) as { status?: string };
+    const s = (await st.json().catch(() => ({}))) as { status?: string };
     if (s.status === 'COMPLETED') break;
     if (s.status && s.status !== 'IN_QUEUE' && s.status !== 'IN_PROGRESS') {
       throw new Error(`fal.ai reports the job ${s.status}.`);
@@ -175,7 +205,7 @@ export async function generateFalTexture(key: string, req: FalTextureRequest): P
     prompt,
     image_size: { width: size, height },
     num_images: 1,
-    output_format: 'png',   // the library stores PNG, and a JPEG round-trip would add ringing to a 128² tile
+    output_format: 'png', // the library stores PNG, and a JPEG round-trip would add ringing to a 128² tile
     sync_mode: true,
   };
   if (req.seed != null && Number.isFinite(req.seed)) body.seed = Math.round(req.seed);
@@ -206,7 +236,10 @@ export async function generateFalInpaint(key: string, req: FalInpaintRequest): P
   if (!model || !falEndpointMayGenerate(model.id)) throw new Error(`unsupported inpainting model "${req.model}"`);
   const prompt = (req.prompt ?? '').trim();
   if (!prompt) throw new Error('The prompt is empty.');
-  for (const [label, uri] of [['image', req.image], ['mask', req.mask]] as const) {
+  for (const [label, uri] of [
+    ['image', req.image],
+    ['mask', req.mask],
+  ] as const) {
     if (typeof uri !== 'string' || !uri.startsWith('data:image/png;base64,')) {
       throw new Error(`the ${label} must be a PNG data URI`);
     }
@@ -216,7 +249,7 @@ export async function generateFalInpaint(key: string, req: FalInpaintRequest): P
   const body: Record<string, unknown> = {
     prompt,
     image_url: req.image,
-    [model.maskParam]: req.mask,  // mask_url vs mask_image_url — the one schema split between vendors
+    [model.maskParam]: req.mask, // mask_url vs mask_image_url — the one schema split between vendors
     num_images: 1,
     output_format: 'png',
     sync_mode: true,
@@ -247,13 +280,18 @@ export async function generateFalPanorama(key: string, req: FalPanoramaRequest):
   if (req.image.length > MAX_DATA_URI) throw new Error('the image is too large');
   // minimal body on purpose (the endpoint's schema is prompt + image_url and nothing else), and QUEUED on
   // purpose: Hunyuan World runs for minutes, well past what a held-open fal.run socket tolerates
-  return pngFromPayload(await callFalQueued(key, FAL_PANORAMA_MODEL, { prompt, image_url: req.image }) as FalImagePayload);
+  return pngFromPayload(
+    (await callFalQueued(key, FAL_PANORAMA_MODEL, { prompt, image_url: req.image })) as FalImagePayload,
+  );
 }
 
 // ---- image-to-3D (the Prop Library's Generate prop dialog — docs/032) ----
 
 /** What the 3D endpoints answer: one mesh file, plus (on some of them) the seed. */
-interface FalMeshPayload { model_mesh?: { url?: string }; seed?: number }
+interface FalMeshPayload {
+  model_mesh?: { url?: string };
+  seed?: number;
+}
 
 /** Ceiling on a downloaded GLB. A model inside the 50k-triangle import cap encodes to single-digit
  *  megabytes even with 2k textures; anything past this is not going to import and isn't worth buffering. */
@@ -278,7 +316,7 @@ export interface Fal3dResult {
 async function glbFromPayload(payload: FalMeshPayload): Promise<Fal3dResult> {
   const url = payload.model_mesh?.url;
   if (!url) throw new Error('fal.ai returned no model file.');
-  const seed = Number.isFinite(payload.seed) ? payload.seed as number : null;
+  const seed = Number.isFinite(payload.seed) ? (payload.seed as number) : null;
 
   if (url.startsWith('data:')) {
     const comma = url.indexOf(',');
@@ -322,5 +360,5 @@ export async function generateFal3dMesh(key: string, req: Fal3dRequest): Promise
   };
   const prompt = (req.prompt ?? '').trim();
   if (model.takesPrompt && prompt) body.prompt = prompt;
-  return glbFromPayload(await callFalQueued(key, model.id, body) as FalMeshPayload);
+  return glbFromPayload((await callFalQueued(key, model.id, body)) as FalMeshPayload);
 }

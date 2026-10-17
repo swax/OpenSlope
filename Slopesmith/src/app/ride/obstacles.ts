@@ -3,8 +3,7 @@ import * as THREE from 'three';
 /** Stable authoring identity carried from a prop collider into the Play effects/audio runtime. `member` names the
  *  model of a GROUP placement's member that has behaviour of its own (docs/069) — its own contact and hit sound. */
 export type RideObstacleObject =
-  | { kind: 'reference'; index: number }
-  | { kind: 'authored'; id: string; member?: number };
+  { kind: 'reference'; index: number } | { kind: 'authored'; id: string; member?: number };
 
 /**
  * Whether retiring or restoring `key` covers the collider keyed `sourceKey`. A group member with behaviour of its
@@ -74,7 +73,8 @@ export interface RideObstacleHit {
    *  that the impulse carries no vertical bias and that a struck body's loft comes from spinning over its own
    *  ground contact, so this is what actually throws a crash bag. */
   shove: {
-    linear: THREE.Vector3; angular: THREE.Vector3;
+    linear: THREE.Vector3;
+    angular: THREE.Vector3;
     /** The body's world mass properties, so the scene's moved-body sim can solve its ground contacts with the
      *  same authored tensor and the same inverse mass. Absent when the instance shipped none. */
     body: { invInertia: Float32Array; com: THREE.Vector3; invMass: number } | null;

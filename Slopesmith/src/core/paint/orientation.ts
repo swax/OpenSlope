@@ -9,8 +9,14 @@
  * rotation `(a,b)→(b,1-a)` is a 90° clockwise turn, mirror flips u. Used by the preview + the bake.
  */
 export function orientUV(u: number, v: number, rot: number, mirror: boolean): [number, number] {
-  let a = mirror ? 1 - u : u, b = v;
-  for (let i = 0; i < (((rot % 4) + 4) % 4); i++) { const na = b, nb = 1 - a; a = na; b = nb; }
+  let a = mirror ? 1 - u : u,
+    b = v;
+  for (let i = 0; i < ((rot % 4) + 4) % 4; i++) {
+    const na = b,
+      nb = 1 - a;
+    a = na;
+    b = nb;
+  }
   return [a, b];
 }
 
@@ -25,11 +31,12 @@ export function orientUV(u: number, v: number, rot: number, mirror: boolean): [n
  * cycles into one. Shared rather than re-derived per caller because "which way does → turn it" has to be
  * one answer: two copies that disagree by a sign are invisible in code and obvious on the mountain.
  */
-export function turnD4(o: { rot: number; mirror: boolean }, dir: 1 | -1, flip: boolean):
-{ rot: number; mirror: boolean } {
-  return flip
-    ? { rot: o.rot, mirror: !o.mirror }
-    : { rot: (o.rot + (dir === -1 ? 3 : 1)) % 4, mirror: o.mirror };
+export function turnD4(
+  o: { rot: number; mirror: boolean },
+  dir: 1 | -1,
+  flip: boolean,
+): { rot: number; mirror: boolean } {
+  return flip ? { rot: o.rot, mirror: !o.mirror } : { rot: (o.rot + (dir === -1 ? 3 : 1)) % 4, mirror: o.mirror };
 }
 
 /**
@@ -48,7 +55,7 @@ export function orientCss(rot: number, mirror: boolean): string {
 /** rot (quarter-turns) + mirror as a short label, e.g. "0°", "90° ⇋" — the readout the Palette's rotation
  *  column has always shown, shared so a tile reads the same in every panel that states one. */
 export function orientText(rot: number, mirror: boolean): string {
-  return `${((rot % 4) + 4) % 4 * 90}°${mirror ? ' ⇋' : ''}`;
+  return `${(((rot % 4) + 4) % 4) * 90}°${mirror ? ' ⇋' : ''}`;
 }
 
 /**
@@ -75,12 +82,20 @@ export function orientFromPatchUV(uv: number[][]): { rot: number; mirror: boolea
     const [a, b] = orientUV(u, v, rot, mirror);
     return [a, -b];
   };
-  let best = { rot: 0, mirror: false }, bestScore = -Infinity;
-  for (let rot = 0; rot < 4; rot++) for (const mirror of [false, true]) {
-    const t0 = tAt(0, 0, rot, mirror), tU = tAt(1, 0, rot, mirror), tV = tAt(0, 1, rot, mirror);
-    const dut = norm(tU[0] - t0[0], tU[1] - t0[1]), dvt = norm(tV[0] - t0[0], tV[1] - t0[1]);
-    const score = du[0] * dut[0] + du[1] * dut[1] + dv[0] * dvt[0] + dv[1] * dvt[1];
-    if (score > bestScore) { bestScore = score; best = { rot, mirror }; }
-  }
+  let best = { rot: 0, mirror: false },
+    bestScore = -Infinity;
+  for (let rot = 0; rot < 4; rot++)
+    for (const mirror of [false, true]) {
+      const t0 = tAt(0, 0, rot, mirror),
+        tU = tAt(1, 0, rot, mirror),
+        tV = tAt(0, 1, rot, mirror);
+      const dut = norm(tU[0] - t0[0], tU[1] - t0[1]),
+        dvt = norm(tV[0] - t0[0], tV[1] - t0[1]);
+      const score = du[0] * dut[0] + du[1] * dut[1] + dv[0] * dvt[0] + dv[1] * dvt[1];
+      if (score > bestScore) {
+        bestScore = score;
+        best = { rot, mirror };
+      }
+    }
   return best;
 }

@@ -7,9 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { STICK_FIGURE_CHARACTER_ID, builtinCharacter } from '../src/core/characters/builtins';
 import { REQUIRED_CHARACTER_BONES, normalizedCharacterBoneName } from '../src/core/characters/contract';
 import { shapeVolume } from '../tools/character-models/figure';
-import {
-  BIND, BONES, DIGITS, PALETTE, PARTS, exportStickFigureGlb,
-} from '../tools/character-models/stick-figure';
+import { BIND, BONES, DIGITS, PALETTE, PARTS, exportStickFigureGlb } from '../tools/character-models/stick-figure';
 import { checkCharacterGlb } from '../tools/character-models/check';
 
 /**
@@ -34,7 +32,7 @@ for (const spec of BONES) {
 }
 
 // The runtime rotates these authored segments without resizing them, so their lengths are functional data.
-const RIDER_H = 1.70;
+const RIDER_H = 1.7;
 close(length('UpperLeg.L'), 0.245 * RIDER_H, 'thigh');
 close(length('LowerLeg.L'), 0.246 * RIDER_H, 'shank');
 close(length('UpperArm.L'), 0.186 * RIDER_H, 'upper arm');
@@ -56,13 +54,18 @@ for (const entry of PARTS) {
   assert(!names.has(entry.name), `${entry.name} is declared once`);
   names.add(entry.name);
   bone(entry.bone);
-  assert(shapeVolume(entry.shape) > 1e-10,
-    `${entry.name} is a closed outward solid (volume ${shapeVolume(entry.shape).toExponential(2)})`);
+  assert(
+    shapeVolume(entry.shape) > 1e-10,
+    `${entry.name} is a closed outward solid (volume ${shapeVolume(entry.shape).toExponential(2)})`,
+  );
 }
 
 // This debug character shows every bone, including the connector and digit bones ordinary costumes hide.
 for (const spec of BONES) {
-  assert(PARTS.some(entry => entry.bone === spec.name), `${spec.name} has visible geometry`);
+  assert(
+    PARTS.some(entry => entry.bone === spec.name),
+    `${spec.name} has visible geometry`,
+  );
 }
 
 const materialNames = new Set<string>(PALETTE.map(entry => entry.name));
@@ -71,17 +74,24 @@ for (const entry of PARTS) assert(materialNames.has(entry.material), `${entry.na
 for (const side of ['L', 'R'] as const) {
   const sideMaterial = side === 'L' ? 'Left' : 'Right';
   for (const segment of ['UpperArm', 'LowerArm', 'UpperLeg', 'LowerLeg']) {
-    assert(PARTS.some(entry => entry.name === `${segment}.${side}.Stick` && entry.material === sideMaterial),
-      `${segment}.${side} carries its anatomical side colour`);
-    assert(PARTS.some(entry => entry.name === `${segment}.${side}.FrontRail` && entry.material === 'FrontPalm'),
-      `${segment}.${side} has a cyan front rail`);
-    assert(PARTS.some(entry => entry.name === `${segment}.${side}.RearRail` && entry.material === 'RearBack'),
-      `${segment}.${side} has a magenta rear rail`);
+    assert(
+      PARTS.some(entry => entry.name === `${segment}.${side}.Stick` && entry.material === sideMaterial),
+      `${segment}.${side} carries its anatomical side colour`,
+    );
+    assert(
+      PARTS.some(entry => entry.name === `${segment}.${side}.FrontRail` && entry.material === 'FrontPalm'),
+      `${segment}.${side} has a cyan front rail`,
+    );
+    assert(
+      PARTS.some(entry => entry.name === `${segment}.${side}.RearRail` && entry.material === 'RearBack'),
+      `${segment}.${side} has a magenta rear rail`,
+    );
   }
-  assert(names.has(`Hand.${side}.PalmFace`) && names.has(`Hand.${side}.HandBack`),
-    `${side} hand distinguishes its palm from its back`);
-  assert(names.has(`Foot.${side}.Toe`) && names.has(`Foot.${side}.Heel`),
-    `${side} foot distinguishes toe from heel`);
+  assert(
+    names.has(`Hand.${side}.PalmFace`) && names.has(`Hand.${side}.HandBack`),
+    `${side} hand distinguishes its palm from its back`,
+  );
+  assert(names.has(`Foot.${side}.Toe`) && names.has(`Foot.${side}.Heel`), `${side} foot distinguishes toe from heel`);
 }
 for (const target of ['Head.Face', 'Head.Rear', 'Head.Crown', 'Chest.FrontTarget', 'Chest.RearTarget']) {
   assert(names.has(target), `${target} makes head/torso orientation readable at a distance`);
@@ -89,9 +99,17 @@ for (const target of ['Head.Face', 'Head.Rear', 'Head.Crown', 'Chest.FrontTarget
 
 /* ── Articulated hands ────────────────────────────────────────────────────────────────────────────── */
 
-assert.deepEqual(DIGITS.map(entry => [entry.digit, entry.segments.length]), [
-  ['thumb', 2], ['index', 3], ['middle', 3], ['ring', 3], ['pinky', 3],
-], 'the thumb uses two driven segments and each finger uses three');
+assert.deepEqual(
+  DIGITS.map(entry => [entry.digit, entry.segments.length]),
+  [
+    ['thumb', 2],
+    ['index', 3],
+    ['middle', 3],
+    ['ring', 3],
+    ['pinky', 3],
+  ],
+  'the thumb uses two driven segments and each finger uses three',
+);
 const runtimeDigit = /^(left|right)hand(thumb|index|middle|ring|pinky)([1-4])$/;
 const fingerBones = BONES.filter(spec => runtimeDigit.test(normalizedCharacterBoneName(spec.name)));
 assert.equal(fingerBones.length, 28, 'both hands expose all 28 driven digit bones');
@@ -104,16 +122,24 @@ for (const side of ['Left', 'Right'] as const) {
     }
     assert(names.has(`${side}Hand${digit}${segment - 1}.Tip`), `${side} ${digit} has a fingertip target`);
   }
-  assert(BONES.some(spec => spec.name === `${side}HandMiddle1`), `${side} palm frame has a middle base`);
-  assert(BONES.some(spec => spec.name === `${side}HandThumb1`), `${side} palm frame has a thumb base`);
+  assert(
+    BONES.some(spec => spec.name === `${side}HandMiddle1`),
+    `${side} palm frame has a middle base`,
+  );
+  assert(
+    BONES.some(spec => spec.name === `${side}HandThumb1`),
+    `${side} palm frame has a thumb base`,
+  );
 }
 
 // Ground contact is explicit: both soles, and no other marker, may drift below y = 0.
-const lowest = Math.min(...PARTS.flatMap(entry => {
-  const y: number[] = [];
-  for (let index = 1; index < entry.shape.positions.length; index += 3) y.push(entry.shape.positions[index]);
-  return y;
-}));
+const lowest = Math.min(
+  ...PARTS.flatMap(entry => {
+    const y: number[] = [];
+    for (let index = 1; index < entry.shape.positions.length; index += 3) y.push(entry.shape.positions[index]);
+    return y;
+  }),
+);
 assert(Math.abs(lowest) < 1e-9, `the diagnostic soles sit on y = 0, not ${lowest}`);
 
 /* ── Exported contract and provenance ─────────────────────────────────────────────────────────────── */
@@ -130,28 +156,36 @@ assert.equal(report.maxInfluencesPerVertex, 1, 'every diagnostic solid follows e
 assert.equal(report.materials, PALETTE.length);
 const triangles = PARTS.reduce((sum, entry) => sum + entry.shape.indices.length / 3, 0);
 assert.equal(report.triangles, triangles, 'the GLB contains only the declared diagnostic solids');
-assert(report.heightMetres !== null && report.heightMetres > 1.70 && report.heightMetres < 1.90,
-  `standing height is a canonical rider plus its head marker, not ${report.heightMetres} m`);
+assert(
+  report.heightMetres !== null && report.heightMetres > 1.7 && report.heightMetres < 1.9,
+  `standing height is a canonical rider plus its head marker, not ${report.heightMetres} m`,
+);
 assert(Math.abs(report.boundsMin?.[1] ?? 1) < 1e-6, 'the exported soles begin on the ground plane');
 
 // Loader round-trip the exact bone names the browser driver will resolve.
 const gltf = await new GLTFLoader().parseAsync(
-  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer, '');
+  glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer,
+  '',
+);
 const root = gltf.scene as Group;
 const loaded = new Map<string, Bone>();
 root.traverse(object => {
   if (object instanceof Bone) loaded.set(normalizedCharacterBoneName(object.name), object);
 });
 for (const spec of BONES) {
-  assert(root.getObjectByName(spec.name) instanceof Bone || loaded.has(normalizedCharacterBoneName(spec.name)),
-    `the runtime resolves ${spec.name} after GLTFLoader`);
+  assert(
+    root.getObjectByName(spec.name) instanceof Bone || loaded.has(normalizedCharacterBoneName(spec.name)),
+    `the runtime resolves ${spec.name} after GLTFLoader`,
+  );
 }
 
 const character = builtinCharacter(STICK_FIGURE_CHARACTER_ID);
 assert(character, 'the stick figure is a registered built-in');
 const tracked = await readFile(new URL(`../public/characters/${character.file}`, import.meta.url));
-assert(tracked.equals(Buffer.from(glb)),
-  `public/characters/${character.file} is stale (${tracked.byteLength} bytes on disk, ${glb.byteLength} generated); `
-  + 're-run tools/character-models/stick-figure.ts');
+assert(
+  tracked.equals(Buffer.from(glb)),
+  `public/characters/${character.file} is stale (${tracked.byteLength} bytes on disk, ${glb.byteLength} generated); ` +
+    're-run tools/character-models/stick-figure.ts',
+);
 
 console.log(`STICK FIGURE: PASS (${PARTS.length} solids, ${triangles} triangles, ${glb.byteLength} bytes)`);

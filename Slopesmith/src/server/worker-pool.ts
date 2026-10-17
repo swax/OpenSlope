@@ -93,7 +93,10 @@ const DOCUMENT_POOL_SIZE = WORKER_SIZES.document;
 
 // Source runs through tsx; the production build emits both entry points beside one another.
 const TYPESCRIPT_ENTRY = import.meta.url.endsWith('.ts');
-const WORKER_ENTRY = new URL(TYPESCRIPT_ENTRY ? './workers/reference-worker.ts' : './reference-worker.js', import.meta.url);
+const WORKER_ENTRY = new URL(
+  TYPESCRIPT_ENTRY ? './workers/reference-worker.ts' : './reference-worker.js',
+  import.meta.url,
+);
 const WORKER_EXEC_ARGV = TYPESCRIPT_ENTRY ? ['--import', 'tsx'] : [];
 
 export interface WorkerPoolSnapshot {
@@ -154,8 +157,9 @@ class WorkerPool {
     if (this.started >= this.size) return null;
     this.started++;
     let worker: Worker;
-    try { worker = new Worker(WORKER_ENTRY, { execArgv: WORKER_EXEC_ARGV }); }
-    catch (error) {
+    try {
+      worker = new Worker(WORKER_ENTRY, { execArgv: WORKER_EXEC_ARGV });
+    } catch (error) {
       this.started--;
       throw error;
     }
@@ -193,8 +197,9 @@ class WorkerPool {
     // while work is in flight, and a script whose only pending work is a build exits before the result
     // arrives — the task never settles and the caller's await never returns.
     worker.ref();
-    try { worker.postMessage(job.task); }
-    catch (error) {
+    try {
+      worker.postMessage(job.task);
+    } catch (error) {
       this.busy.delete(worker);
       job.reject(error instanceof Error ? error : new Error(String(error)));
       this.release(worker);
@@ -203,7 +208,10 @@ class WorkerPool {
 
   private release(worker: Worker): void {
     const next = this.queue.shift();
-    if (next) { this.assign(worker, next); return; }
+    if (next) {
+      this.assign(worker, next);
+      return;
+    }
     this.idle.push(worker);
     worker.unref();
   }
@@ -212,8 +220,9 @@ class WorkerPool {
   private drain(): void {
     while (this.queue.length) {
       let worker: Worker | null;
-      try { worker = this.idle.pop() ?? this.spawn(); }
-      catch (error) {
+      try {
+        worker = this.idle.pop() ?? this.spawn();
+      } catch (error) {
         const failure = error instanceof Error ? error : new Error(String(error));
         for (const job of this.queue.splice(0)) job.reject(failure);
         return;

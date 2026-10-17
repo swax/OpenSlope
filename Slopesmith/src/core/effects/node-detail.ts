@@ -1,7 +1,9 @@
 import type { EffectNode } from './document';
 import {
-  EFFECT_TEMPLATES, UNAUTHORABLE_EFFECT_NODES,
-  type EffectTemplate, type EffectTemplateProof,
+  EFFECT_TEMPLATES,
+  UNAUTHORABLE_EFFECT_NODES,
+  type EffectTemplate,
+  type EffectTemplateProof,
 } from './authoring';
 
 /**
@@ -58,8 +60,9 @@ const templatesBySemanticType = (): Map<string, EffectTemplate[]> => {
     for (const node of template.nodes ?? []) {
       if (!node.semanticType) continue;
       const list = out.get(node.semanticType);
-      if (list) { if (!list.includes(template)) list.push(template); }
-      else out.set(node.semanticType, [template]);
+      if (list) {
+        if (!list.includes(template)) list.push(template);
+      } else out.set(node.semanticType, [template]);
     }
   return out;
 };
@@ -73,9 +76,12 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 /** Every numeric leaf of a payload, keyed by its dotted path. Two nodes of one sub-type share a shape, so
  *  comparing leaves is comparing the words that distinguish them. */
 function numericLeaves(value: unknown, prefix = '', out = new Map<string, number>()): Map<string, number> {
-  if (typeof value === 'number') { out.set(prefix, value); return out; }
-  if (isObject(value)) for (const [key, child] of Object.entries(value))
-    numericLeaves(child, prefix ? `${prefix}.${key}` : key, out);
+  if (typeof value === 'number') {
+    out.set(prefix, value);
+    return out;
+  }
+  if (isObject(value))
+    for (const [key, child] of Object.entries(value)) numericLeaves(child, prefix ? `${prefix}.${key}` : key, out);
   return out;
 }
 
@@ -93,17 +99,24 @@ function numericLeaves(value: unknown, prefix = '', out = new Map<string, number
  * recipes — a recipe is declared after the node it embeds, so the plain node wins whenever the payloads are
  * identical (`debounce` over the ride-over button, `anim-object` over `one-shot-clip`).
  */
-function pickTemplate(candidates: readonly EffectTemplate[], semanticType: string,
-  node: Pick<EffectNode, 'payload'>): EffectTemplate {
+function pickTemplate(
+  candidates: readonly EffectTemplate[],
+  semanticType: string,
+  node: Pick<EffectNode, 'payload'>,
+): EffectTemplate {
   if (candidates.length === 1) return candidates[0];
   const leaves = numericLeaves(node.payload);
-  let best = candidates[0], bestScore = -1;
+  let best = candidates[0],
+    bestScore = -1;
   for (const template of candidates) {
     const own = template.nodes?.find(item => item.semanticType === semanticType);
     const templateLeaves = numericLeaves(own?.payload ?? {});
     let score = 0;
     for (const [path, value] of templateLeaves) if (leaves.get(path) === value) score++;
-    if (score > bestScore) { best = template; bestScore = score; }
+    if (score > bestScore) {
+      best = template;
+      bestScore = score;
+    }
   }
   return best;
 }
@@ -119,8 +132,12 @@ const fallbackLabel = (semanticType: string | undefined, mainType: number): stri
   const command = /^node\.control\.command-(-?\d+)$/.exec(semanticType);
   if (command) return `${FALLBACK_LABELS['node.control.command']} ${command[1]}`;
   const numeric = /^(property|emitter|main)\.(-?\d+)$/.exec(semanticType);
-  if (numeric) return numeric[1] === 'main' ? `Main type ${numeric[2]}`
-    : numeric[1] === 'emitter' ? `Emitter sub-type ${numeric[2]}` : `Property sub-type ${numeric[2]}`;
+  if (numeric)
+    return numeric[1] === 'main'
+      ? `Main type ${numeric[2]}`
+      : numeric[1] === 'emitter'
+        ? `Emitter sub-type ${numeric[2]}`
+        : `Property sub-type ${numeric[2]}`;
   return semanticType.replace(/[._-]+/g, ' ');
 };
 

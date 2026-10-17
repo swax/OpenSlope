@@ -6,10 +6,19 @@ import { createParticleAtlasTexture } from './particle-atlas';
 import type { PlacedProp, PropBehaviour } from '../../../core/doc/types';
 import type { EffectGraph, EffectNode, EffectsDocument } from '../../../core/effects/document';
 import {
-  ANIMATED_PROP_AUTO_RESET_SECONDS, BREAKABLE_RESPAWN_SECONDS, MOVABLE_PROP_RESPAWN_SECONDS,
-  effectConditionPasses, effectPlayCommand, pickupPopScale, rollerPreviewImpact, runScheduledEffectGraphs,
-  scheduleEffectGraph, stepSplineMotionDistance, PICKUP_POP_SECONDS,
-  type EffectGraphTask, type EffectPlayCommand,
+  ANIMATED_PROP_AUTO_RESET_SECONDS,
+  BREAKABLE_RESPAWN_SECONDS,
+  MOVABLE_PROP_RESPAWN_SECONDS,
+  effectConditionPasses,
+  effectPlayCommand,
+  pickupPopScale,
+  rollerPreviewImpact,
+  runScheduledEffectGraphs,
+  scheduleEffectGraph,
+  stepSplineMotionDistance,
+  PICKUP_POP_SECONDS,
+  type EffectGraphTask,
+  type EffectPlayCommand,
 } from '../../../core/effects/play-runtime';
 import {
   applyEffectCounterInput,
@@ -20,10 +29,21 @@ import {
   type EffectCounterState,
 } from '../../../core/effects/counter';
 import {
-  animComboFromNode, animDeltaFromNode, animObjectFromNode, materialWorldEffectsFromNode, type AnimObjectEffect,
+  animComboFromNode,
+  animDeltaFromNode,
+  animObjectFromNode,
+  materialWorldEffectsFromNode,
+  type AnimObjectEffect,
 } from '../../../core/effects/world-effects';
 import { resolveCollisionSound, type CollisionSoundBank } from '../../../core/effects/collision-sound';
-import { authoredEffectBindings, createEmptyEffectsDocument, effectGraphHasTimerEmitter, effectNodeSoundFile, emitterWorldPosition, particleEmitterFields } from '../../../core/effects/authoring';
+import {
+  authoredEffectBindings,
+  createEmptyEffectsDocument,
+  effectGraphHasTimerEmitter,
+  effectNodeSoundFile,
+  emitterWorldPosition,
+  particleEmitterFields,
+} from '../../../core/effects/authoring';
 import {
   PARTICLE_SPRITE_NAMES,
   collisionEmitterContactVelocityBase,
@@ -62,29 +82,44 @@ import { obstacleHostKey } from '../../ride/obstacles';
 import type { RideShovedBodySample } from '../../ride/telemetry';
 import type { RaceMode } from '../../../core/doc/race';
 import {
-  sameRideEventTarget, type RideEvent, type RideEventKind, type RideEventTarget,
+  sameRideEventTarget,
+  type RideEvent,
+  type RideEventKind,
+  type RideEventTarget,
 } from '../../../core/session/ride-event';
 import {
-  effectHostIsPresentInMode, effectModeDisabledSplineIds, effectModeFunction, effectModeHiddenInstanceIds,
+  effectHostIsPresentInMode,
+  effectModeDisabledSplineIds,
+  effectModeFunction,
+  effectModeHiddenInstanceIds,
   effectModeNodes,
   nativeInstanceIsShowoffOnly,
 } from '../../../core/effects/mode-functions';
 import type { Stage } from '../stage';
 import { customSoundUrl } from '../../net/asset-paths';
 import {
-  gameAudioDestination, preloadAudio, resumeSharedAudio, sharedAudioBuffer, sharedAudioContext,
+  gameAudioDestination,
+  preloadAudio,
+  resumeSharedAudio,
+  sharedAudioBuffer,
+  sharedAudioContext,
 } from '../../audio/runtime';
 import { ambientSoundUrl, type AmbientSoundSource } from './ambient-sound';
 import {
-  COLLISION_SOUND_DEBOUNCE_SECONDS, createPropSoundLayer, referencePropSoundSources, type PropSoundSource,
+  COLLISION_SOUND_DEBOUNCE_SECONDS,
+  createPropSoundLayer,
+  referencePropSoundSources,
+  type PropSoundSource,
 } from './prop-sound';
 import type { PropInstance } from '../../../core/reference/props';
+import { boostVolumeSpec, crackedSurfaceSpec, numberField, playProximityRadius } from './reference-effects-nodes';
 import {
-  boostVolumeSpec, crackedSurfaceSpec, numberField,
-  playProximityRadius,
-} from './reference-effects-nodes';
-import {
-  applyInvInertia, composeMotion, mulberry32, randomUnitVector, sampleSplinePath, splinePoseMatrices,
+  applyInvInertia,
+  composeMotion,
+  mulberry32,
+  randomUnitVector,
+  sampleSplinePath,
+  splinePoseMatrices,
 } from './reference-effects-motion';
 
 export { boostVolumeSpec, crackedSurfaceSpec, playProximityRadius };
@@ -112,7 +147,10 @@ const AMBIENT_SCAN_SECONDS = 0.15;
 const RIGID_ACTIVITY_DECAY = 0.95;
 // Sleep at 0.4 (v² + ω²): a captured run showed grounded bodies creeping at 0.3-0.5 m/s for seconds with their
 // energy hovering just over the old 0.2 — a body moving under ~0.6 m/s with little spin reads as stopped.
-const RIGID_RESTITUTION = 0.35, RIGID_FRICTION = 0.55, RIGID_CONTACT_SKIN = 0.08, RIGID_SLEEP_ENERGY = 0.4;
+const RIGID_RESTITUTION = 0.35,
+  RIGID_FRICTION = 0.55,
+  RIGID_CONTACT_SKIN = 0.08,
+  RIGID_SLEEP_ENERGY = 0.4;
 /** Depenetration cap, metres per tick at 60 Hz: contacts nudge, they never teleport a body into the camera. */
 const RIGID_MAX_CORRECTION = 0.06;
 /** In-contact scrub per tick: the traced 0.9648 the terrain response applies to velocity and angular alike. */
@@ -134,8 +172,8 @@ export function localRideEffectSubject(subject: RunSubject): number | null | und
 /** Cracked surfaces share a restore deadline with their trigger chain even when it has no explicit kill. */
 type RunCause = 'ordinary' | 'cracked-break';
 export type EffectRuntimeObject = { kind: 'reference'; index: number } | { kind: 'authored'; id: string };
-const runtimeObjectKey = (object: EffectRuntimeObject | RideObstacleObject) => object.kind === 'reference'
-  ? `reference:${object.index}` : `authored:${object.id}`;
+const runtimeObjectKey = (object: EffectRuntimeObject | RideObstacleObject) =>
+  object.kind === 'reference' ? `reference:${object.index}` : `authored:${object.id}`;
 
 interface RuntimeHost {
   key: string;
@@ -201,8 +239,7 @@ export interface EffectsPlayHooks {
   hasBudgetedAnimation?(object: EffectRuntimeObject): boolean;
   startAnimDelta?(object: EffectRuntimeObject, effect: AnimObjectEffect): boolean;
   /** Inspector-only model-clip preview, owned by the prop renderer that has the recovered model curves. */
-  previewAnimObject?(object: EffectRuntimeObject, effect: AnimObjectEffect,
-    autoReturnDelay?: number | null): boolean;
+  previewAnimObject?(object: EffectRuntimeObject, effect: AnimObjectEffect, autoReturnDelay?: number | null): boolean;
   /** Inspector-only material preview: run this object's installed UV scroll / free-running flipbook outside
    *  the Effects toggle. False when the renderer built no such law for it, which keeps Preview honest. */
   previewMaterialEffect?(object: EffectRuntimeObject): boolean;
@@ -256,7 +293,12 @@ interface ContinuousEmitter {
   expiresAt: number;
 }
 
-interface Pulse { mesh: THREE.Mesh; age: number; life: number; source: RunSource }
+interface Pulse {
+  mesh: THREE.Mesh;
+  age: number;
+  life: number;
+  source: RunSource;
+}
 interface ScheduledMeta {
   source: RunSource;
   continuous: boolean;
@@ -270,14 +312,30 @@ interface ScheduledMeta {
   breakableResetAt: number | null;
 }
 type Scheduled = EffectGraphTask<RuntimeHost, ScheduledMeta>;
-interface CollisionEmitterContact { position: THREE.Vector3; normal: THREE.Vector3 }
+interface CollisionEmitterContact {
+  position: THREE.Vector3;
+  normal: THREE.Vector3;
+}
 
-interface InteractionReset { host: RuntimeHost; at: number; kind: 'breakable' | 'movable' }
+interface InteractionReset {
+  host: RuntimeHost;
+  at: number;
+  kind: 'breakable' | 'movable';
+}
 
 interface DynamicBody {
-  key: string; host: RuntimeHost; matrix: THREE.Matrix4; basis: THREE.Matrix4;
-  position: THREE.Vector3; velocity: THREE.Vector3; spinAxis: THREE.Vector3; spin: number;
-  rotation: THREE.Quaternion; age: number; duration: number; hideOnEnd: boolean;
+  key: string;
+  host: RuntimeHost;
+  matrix: THREE.Matrix4;
+  basis: THREE.Matrix4;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  spinAxis: THREE.Vector3;
+  spin: number;
+  rotation: THREE.Quaternion;
+  age: number;
+  duration: number;
+  hideOnEnd: boolean;
   /** Present only on a SHOVED body, which runs the rigid solve below instead of the fixed-spin visual path.
    *  The CENTRE OF MASS is the integrated state — velocity moves it and the body rotates about it; the instance
    *  origin is derived each frame as `com − R·comOffset`, so the mesh tumbles about its own weight rather than
@@ -319,16 +377,35 @@ interface PieceThrow {
 }
 
 interface FlexMotion {
-  key: string; host: RuntimeHost; matrix: THREE.Matrix4; basis: THREE.Matrix4;
-  position: THREE.Vector3; amplitude: number; phase: number; velocity: number;
+  key: string;
+  host: RuntimeHost;
+  matrix: THREE.Matrix4;
+  basis: THREE.Matrix4;
+  position: THREE.Vector3;
+  amplitude: number;
+  phase: number;
+  velocity: number;
   kind: 'flag' | 'fence';
 }
 
 interface SplineMotion {
-  key: string; host: RuntimeHost; basis: THREE.Matrix4;
-  points: THREE.Vector3[]; cumulative: number[]; length: number; distance: number; direction: number;
-  speed: number; endMode: number; orientationMode: number; instanceCount: number; yawOffset: number;
-  stopped: boolean; finished: boolean; source: RunSource; splineLine: THREE.LineSegments | null;
+  key: string;
+  host: RuntimeHost;
+  basis: THREE.Matrix4;
+  points: THREE.Vector3[];
+  cumulative: number[];
+  length: number;
+  distance: number;
+  direction: number;
+  speed: number;
+  endMode: number;
+  orientationMode: number;
+  instanceCount: number;
+  yawOffset: number;
+  stopped: boolean;
+  finished: boolean;
+  source: RunSource;
+  splineLine: THREE.LineSegments | null;
 }
 
 export type SplineMotionCommand = Extract<EffectPlayCommand, { kind: 'spline-motion' }>;
@@ -361,13 +438,22 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   splineInspectGroup.visible = false;
   root.add(splineInspectGroup);
   const splineInspectCurveMat = new THREE.LineBasicMaterial({
-    color: 0xb26cff, transparent: true, opacity: 0.95, depthTest: false,
+    color: 0xb26cff,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
   });
   const splineInspectHandleMat = new THREE.LineBasicMaterial({
-    color: 0x744994, transparent: true, opacity: 0.7, depthTest: false,
+    color: 0x744994,
+    transparent: true,
+    opacity: 0.7,
+    depthTest: false,
   });
   const splineInspectKeyMat = new THREE.PointsMaterial({
-    color: 0xe1bfff, size: 5, sizeAttenuation: false, depthTest: false,
+    color: 0xe1bfff,
+    size: 5,
+    sizeAttenuation: false,
+    depthTest: false,
   });
   const splineInspectPlayheadMat = new THREE.MeshBasicMaterial({ color: 0xffc45a, depthTest: false });
   const splineInspectTangentMat = new THREE.LineBasicMaterial({ color: 0xffc45a, depthTest: false });
@@ -392,11 +478,13 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const soundBuffer = (url: string): Promise<AudioBuffer | null> => sharedAudioBuffer(url);
 
   const effectSoundUrl = (level: string, slot: number, bank: CollisionSoundBank = 'course'): string =>
-    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}`
-      + (bank === 'crowd' ? '&bank=crowd' : '');
+    `/api/effect-sound?level=${encodeURIComponent(level)}&slot=${slot}` + (bank === 'crowd' ? '&bank=crowd' : '');
 
-  function effectSoundBuffer(level: string, slot: number,
-    bank: CollisionSoundBank = 'course'): Promise<AudioBuffer | null> {
+  function effectSoundBuffer(
+    level: string,
+    slot: number,
+    bank: CollisionSoundBank = 'course',
+  ): Promise<AudioBuffer | null> {
     return soundBuffer(effectSoundUrl(level, slot, bank));
   }
 
@@ -433,12 +521,14 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       // listener uses is what makes the two frames agree, whatever that offset currently is.
       editorToRaw: editor => {
         stage.worldRoot.updateWorldMatrix(true, false);
-        const world = new THREE.Vector3(editor[0], editor[1], editor[2])
-          .applyMatrix4(stage.worldRoot.matrixWorld);
+        const world = new THREE.Vector3(editor[0], editor[1], editor[2]).applyMatrix4(stage.worldRoot.matrixWorld);
         const raw = world.applyMatrix4(ambienceRawToWorld().clone().invert());
         return [raw.x, raw.y, raw.z];
       },
-      loadBuffer: url => { resumeEffectsAudio(); return soundBuffer(url); },
+      loadBuffer: url => {
+        resumeEffectsAudio();
+        return soundBuffer(url);
+      },
     },
   });
 
@@ -447,9 +537,23 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    *  the life of the page — invisible, but it accumulates across a long session of collisions. */
   function releaseSound(sound: THREE.PositionalAudio) {
     sound.onEnded = () => {};
-    if (sound.isPlaying) { try { sound.stop(); } catch { /* the context stopped it already */ } }
-    try { sound.disconnect(); } catch { /* never connected: nothing to undo */ }
-    try { sound.gain.disconnect(); } catch { /* already detached */ }
+    if (sound.isPlaying) {
+      try {
+        sound.stop();
+      } catch {
+        /* the context stopped it already */
+      }
+    }
+    try {
+      sound.disconnect();
+    } catch {
+      /* never connected: nothing to undo */
+    }
+    try {
+      sound.gain.disconnect();
+    } catch {
+      /* already detached */
+    }
     sound.removeFromParent();
   }
 
@@ -464,8 +568,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     if (!source || source === 'ambient') propSound.stopAmbient();
   }
 
-  function playBufferOneShot(pending: Promise<AudioBuffer | null>, position: THREE.Vector3,
-    source: RunSource, volume: number) {
+  function playBufferOneShot(
+    pending: Promise<AudioBuffer | null>,
+    position: THREE.Vector3,
+    source: RunSource,
+    volume: number,
+  ) {
     resumeEffectsAudio();
     const generation = soundGenerations[source];
     void pending.then(buffer => {
@@ -478,15 +586,24 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       sound.setRolloffFactor(1);
       sound.setVolume(volume);
       sound.position.copy(position);
-      sound.onEnded = () => { releaseSound(sound); activeSounds.delete(active); };
+      sound.onEnded = () => {
+        releaseSound(sound);
+        activeSounds.delete(active);
+      };
       root.add(sound);
       activeSounds.add(active);
       sound.play();
     });
   }
 
-  function playPositionalOneShot(level: string, bank: CollisionSoundBank, slot: number,
-    position: THREE.Vector3, source: RunSource, volume: number) {
+  function playPositionalOneShot(
+    level: string,
+    bank: CollisionSoundBank,
+    slot: number,
+    position: THREE.Vector3,
+    source: RunSource,
+    volume: number,
+  ) {
     playBufferOneShot(effectSoundBuffer(level, slot, bank), position, source, volume);
   }
 
@@ -502,7 +619,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       for (const node of graph.nodes) {
         if (node.mainType !== 8) continue;
         const file = effectNodeSoundFile(node);
-        if (file) { urls.push(customSoundUrl(file)); continue; }
+        if (file) {
+          urls.push(customSoundUrl(file));
+          continue;
+        }
         const slot = node.payload.SoundPlay;
         if (level && typeof slot === 'number' && Number.isFinite(slot))
           urls.push(effectSoundUrl(level, Math.trunc(slot)));
@@ -515,7 +635,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function preloadPropAudio(sources: Iterable<PropSoundSource>): void {
     const urls: string[] = [];
     for (const source of sources) {
-      if (source.file) { urls.push(customSoundUrl(source.file)); continue; }
+      if (source.file) {
+        urls.push(customSoundUrl(source.file));
+        continue;
+      }
       const resolved = resolveCollisionSound(source.event, source.level);
       if (resolved) urls.push(effectSoundUrl(source.level, resolved.slot, resolved.bank));
     }
@@ -526,7 +649,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    *  clip is previewed from its source file: export only picks the slot it will occupy at repack time. */
   function playEffectSound(host: RuntimeHost, node: EffectNode, source: RunSource) {
     const file = effectNodeSoundFile(node);
-    if (file) { playBufferOneShot(customSoundBuffer(file), host.position(), source, 0.9); return; }
+    if (file) {
+      playBufferOneShot(customSoundBuffer(file), host.position(), source, 0.9);
+      return;
+    }
     const level = host.reference?.data.level;
     const rawSlot = node.payload.SoundPlay;
     if (!level || typeof rawSlot !== 'number' || !Number.isFinite(rawSlot)) return;
@@ -534,13 +660,21 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   const selected = new THREE.Group();
-  const selectedMat = new THREE.MeshBasicMaterial({ color: 0xb66cff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthTest: false });
+  const selectedMat = new THREE.MeshBasicMaterial({
+    color: 0xb66cff,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide,
+    depthTest: false,
+  });
   const selectedRing = new THREE.Mesh(new THREE.RingGeometry(2.8, 3.35, 32), selectedMat);
   selectedRing.rotation.x = -Math.PI / 2;
   const selectedHalo = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.35, 24), selectedMat.clone());
   selectedHalo.rotation.x = -Math.PI / 2;
   selected.add(selectedRing, selectedHalo);
-  selected.traverse(o => { o.raycast = () => {}; });
+  selected.traverse(o => {
+    o.raycast = () => {};
+  });
   selected.visible = false;
   stage.refRoot.add(selected);
 
@@ -551,25 +685,24 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   /** Boost nodes per reference instance, resolved once per data install — the scan walks every graph. */
   let boostArrowCache: { index: number; arrow: BoostArrow }[] | null = null;
 
-  const particleAtlasRows = Math.ceil(PARTICLE_SPRITE_NAMES.length * 2 / PARTICLE_ATLAS_COLUMNS);
+  const particleAtlasRows = Math.ceil((PARTICLE_SPRITE_NAMES.length * 2) / PARTICLE_ATLAS_COLUMNS);
   const particleAtlasCanvas = document.createElement('canvas');
   particleAtlasCanvas.width = PARTICLE_ATLAS_COLUMNS * PARTICLE_ATLAS_CELL;
   particleAtlasCanvas.height = particleAtlasRows * PARTICLE_ATLAS_CELL;
   const particleAtlasContext = particleAtlasCanvas.getContext('2d', { willReadFrequently: true });
   // Every slot starts as a soft white point, so a slow/missing native image remains visible instead of making
   // the whole event disappear. Successfully loaded PARTICLE.SSH sprites replace their own cell in place.
-  if (particleAtlasContext) for (let index = 0; index < PARTICLE_SPRITE_NAMES.length * 2; index++) {
-    const x = (index % PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
-    const y = Math.floor(index / PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
-    const gradient = particleAtlasContext.createRadialGradient(
-      x + 64, y + 64, 4, x + 64, y + 64, 62,
-    );
-    gradient.addColorStop(0, 'rgba(255,255,255,1)');
-    gradient.addColorStop(0.5, 'rgba(255,255,255,0.82)');
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-    particleAtlasContext.fillStyle = gradient;
-    particleAtlasContext.fillRect(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
-  }
+  if (particleAtlasContext)
+    for (let index = 0; index < PARTICLE_SPRITE_NAMES.length * 2; index++) {
+      const x = (index % PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
+      const y = Math.floor(index / PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
+      const gradient = particleAtlasContext.createRadialGradient(x + 64, y + 64, 4, x + 64, y + 64, 62);
+      gradient.addColorStop(0, 'rgba(255,255,255,1)');
+      gradient.addColorStop(0.5, 'rgba(255,255,255,0.82)');
+      gradient.addColorStop(1, 'rgba(255,255,255,0)');
+      particleAtlasContext.fillStyle = gradient;
+      particleAtlasContext.fillRect(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
+    }
   const { texture: particleAtlas, update: updateParticleAtlas } = createParticleAtlasTexture(particleAtlasCanvas);
   particleAtlas.colorSpace = THREE.SRGBColorSpace;
   particleAtlas.flipY = false;
@@ -583,33 +716,55 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const ref = authored ? authoredParticleTextures(authoredDocument)[name] : undefined;
     const index = nativeIndex + (authored ? PARTICLE_SPRITE_NAMES.length : 0);
     const level = data?.level ? `&level=${encodeURIComponent(data.level)}` : '';
-    const spriteUrl = new URL(ref ? textureRefUrl(ref) : resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png${level}`), location.href).href;
+    const spriteUrl = new URL(
+      ref ? textureRefUrl(ref) : resolveAssetUrl(`/api/particle-texture?name=${encodeURIComponent(name)}.png${level}`),
+      location.href,
+    ).href;
     if (requestedParticleSprites.get(index) === spriteUrl || !particleAtlasContext) return index;
     requestedParticleSprites.set(index, spriteUrl);
     const image = new Image();
     image.onload = () => {
-      if (requestedParticleSprites.get(index) !== spriteUrl) { renderLoadingManager.itemEnd(image.src); return; }
+      if (requestedParticleSprites.get(index) !== spriteUrl) {
+        renderLoadingManager.itemEnd(image.src);
+        return;
+      }
       const x = (index % PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
       const y = Math.floor(index / PARTICLE_ATLAS_COLUMNS) * PARTICLE_ATLAS_CELL;
       const scale = Math.min(PARTICLE_ATLAS_CELL / image.width, PARTICLE_ATLAS_CELL / image.height);
-      const width = image.width * scale, height = image.height * scale;
+      const width = image.width * scale,
+        height = image.height * scale;
       particleAtlasContext.clearRect(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
-      particleAtlasContext.drawImage(image, x + (PARTICLE_ATLAS_CELL - width) * 0.5,
-        y + (PARTICLE_ATLAS_CELL - height) * 0.5, width, height);
+      particleAtlasContext.drawImage(
+        image,
+        x + (PARTICLE_ATLAS_CELL - width) * 0.5,
+        y + (PARTICLE_ATLAS_CELL - height) * 0.5,
+        width,
+        height,
+      );
       updateParticleAtlas(x, y, PARTICLE_ATLAS_CELL, PARTICLE_ATLAS_CELL);
       renderLoadingManager.itemEnd(image.src);
     };
     renderLoadingManager.itemStart(spriteUrl);
-    image.onerror = () => { renderLoadingManager.itemError(spriteUrl); renderLoadingManager.itemEnd(spriteUrl); };
+    image.onerror = () => {
+      renderLoadingManager.itemError(spriteUrl);
+      renderLoadingManager.itemEnd(spriteUrl);
+    };
     image.src = spriteUrl;
     return index;
   }
 
-  const particleBatches = createParticleBatches(particleAtlas, PARTICLE_ATLAS_COLUMNS, particleAtlasRows,
-    MAX_PARTICLE_SPRITES);
+  const particleBatches = createParticleBatches(
+    particleAtlas,
+    PARTICLE_ATLAS_COLUMNS,
+    particleAtlasRows,
+    MAX_PARTICLE_SPRITES,
+  );
   const {
-    position: positionBuffer, color: colorBuffer, alpha: alphaBuffer,
-    size: sizeBuffer, sprite: spriteBuffer,
+    position: positionBuffer,
+    color: colorBuffer,
+    alpha: alphaBuffer,
+    size: sizeBuffer,
+    sprite: spriteBuffer,
   } = particleBatches.buffers;
   particleBatches.additiveMesh.name = 'SSF additive particles';
   particleBatches.alphaMesh.name = 'SSF alpha particles';
@@ -681,7 +836,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const counterLog = (message: string): void => {
     try {
       if (localStorage.getItem('slopesmith:counter-debug') !== '1') return;
-    } catch { /* storage can be unavailable in a privacy-restricted frame; tracing stays optional */ }
+    } catch {
+      /* storage can be unavailable in a privacy-restricted frame; tracing stays optional */
+    }
     console.log('[Slopesmith counter]', message);
   };
   /**
@@ -696,7 +853,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const controlLog = (message: string): void => {
     try {
       if (localStorage.getItem('slopesmith:control-debug') !== '1') return;
-    } catch { /* storage can be unavailable in a privacy-restricted frame; tracing stays optional */ }
+    } catch {
+      /* storage can be unavailable in a privacy-restricted frame; tracing stays optional */
+    }
     console.log('[Slopesmith control]', message);
   };
   const raw = new THREE.Matrix4();
@@ -706,21 +865,27 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   const yAxis = new THREE.Vector3(0, 1, 0);
   // Shoved-body solver scratch: this runs per body per frame and must not feed the GC.
   const WORLD_UP_VEC = new THREE.Vector3(0, 1, 0);
-  const rigidQuat = new THREE.Quaternion(), rigidAxis = new THREE.Vector3();
-  const rigidOffset = new THREE.Vector3(), rigidR = new THREE.Vector3();
-  const rigidRxN = new THREE.Vector3(), rigidTmp = new THREE.Vector3(), rigidTmp2 = new THREE.Vector3();
+  const rigidQuat = new THREE.Quaternion(),
+    rigidAxis = new THREE.Vector3();
+  const rigidOffset = new THREE.Vector3(),
+    rigidR = new THREE.Vector3();
+  const rigidRxN = new THREE.Vector3(),
+    rigidTmp = new THREE.Vector3(),
+    rigidTmp2 = new THREE.Vector3();
   const rigidContactV = new THREE.Vector3();
-  const rigidTmp3 = new THREE.Vector3(), rigidTmp4 = new THREE.Vector3();
+  const rigidTmp3 = new THREE.Vector3(),
+    rigidTmp4 = new THREE.Vector3();
   const pos = new THREE.Vector3();
   const quat = new THREE.Quaternion();
   const scale = new THREE.Vector3();
 
   function preloadEmitterSprites(document: EffectsDocument | null | undefined, authored = false) {
     if (!document) return;
-    for (const owner of [...document.graphs, ...document.functions]) for (const node of owner.nodes) {
-      const law = timerEmitterPreviewLaw(node);
-      if (law) ensureParticleSprite(law.spriteIndex, authored);
-    }
+    for (const owner of [...document.graphs, ...document.functions])
+      for (const node of owner.nodes) {
+        const law = timerEmitterPreviewLaw(node);
+        if (law) ensureParticleSprite(law.spriteIndex, authored);
+      }
   }
 
   function instanceMatrix(instance: ReferenceEffectInstance): THREE.Matrix4 {
@@ -735,7 +900,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function instanceLocalPosition(instance: ReferenceEffectInstance, node?: EffectNode): THREE.Vector3 {
     const fields = node ? particleEmitterFields(node) : null;
     const local = new THREE.Vector3(
-      numberField(fields, 'U9', 0), numberField(fields, 'U10', 0), numberField(fields, 'U11', 0),
+      numberField(fields, 'U9', 0),
+      numberField(fields, 'U10', 0),
+      numberField(fields, 'U11', 0),
     );
     return local.applyMatrix4(instanceMatrix(instance));
   }
@@ -745,8 +912,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     return instanceLocalPosition(instance, node).applyMatrix4(stage.refRoot.matrixWorld);
   }
 
-  function referenceHost(referenceData: ReferenceEffectsData,
-    instance: ReferenceEffectInstance): RuntimeHost {
+  function referenceHost(referenceData: ReferenceEffectsData, instance: ReferenceEffectInstance): RuntimeHost {
     return {
       key: `reference:${instance.index}`,
       document: referenceData.document,
@@ -796,8 +962,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       position: node => {
         const point = node ? emitterWorldPosition(node, prop) : prop.pos;
         stage.worldRoot.updateWorldMatrix(true, false);
-        return new THREE.Vector3(point?.[0] ?? prop.pos[0], point?.[1] ?? prop.pos[1], point?.[2] ?? prop.pos[2])
-          .applyMatrix4(stage.worldRoot.matrixWorld);
+        return new THREE.Vector3(
+          point?.[0] ?? prop.pos[0],
+          point?.[1] ?? prop.pos[1],
+          point?.[2] ?? prop.pos[2],
+        ).applyMatrix4(stage.worldRoot.matrixWorld);
       },
       vector: value => {
         stage.worldRoot.updateWorldMatrix(true, false);
@@ -830,8 +999,13 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function authoredHostByInstance(document: EffectsDocument, stableId: string | null | undefined): RuntimeHost | null {
     const instance = stableId ? document.instances.find(candidate => candidate.id === stableId) : null;
     const extension = instance?.extensions?.slopesmith;
-    const placement = typeof extension === 'object' && extension !== null && !Array.isArray(extension)
-      && typeof extension.placement === 'string' ? extension.placement : null;
+    const placement =
+      typeof extension === 'object' &&
+      extension !== null &&
+      !Array.isArray(extension) &&
+      typeof extension.placement === 'string'
+        ? extension.placement
+        : null;
     const prop = placement ? authoredProps.find(candidate => candidate.id === placement) : null;
     return prop ? authoredHost(document, prop) : null;
   }
@@ -844,9 +1018,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const reference = host.reference;
     // Imported instance IDs are zero-padded. Resolve them exactly as mode setup does instead of rebuilding
     // an unpadded ID, which allowed a later interaction reset to resurrect mode-hidden rail models.
-    const hiddenByMode = [...hidden].some(stableId => reference
-      ? referenceInstanceByStableId(reference.data, stableId)?.index === reference.instance.index
-      : authoredHostByInstance(host.document, stableId)?.key === host.key);
+    const hiddenByMode = [...hidden].some(stableId =>
+      reference
+        ? referenceInstanceByStableId(reference.data, stableId)?.index === reference.instance.index
+        : authoredHostByInstance(host.document, stableId)?.key === host.key,
+    );
     let showoffOnly = false;
     if (host.reference) showoffOnly = nativeInstanceIsShowoffOnly(host.reference.instance);
     else if (host.object.kind === 'authored') {
@@ -858,14 +1034,14 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function calledInstance(host: RuntimeHost, node: EffectNode): { host: RuntimeHost; graph: EffectGraph } | null {
     const graph = node.references?.effectGraph
-      ? host.document.graphs.find(item => item.id === node.references!.effectGraph) ?? null : null;
-    if (!graph) return null;
-    const target = host.reference
-      ? referenceInstanceByStableId(host.reference.data, node.references?.instance)
+      ? (host.document.graphs.find(item => item.id === node.references!.effectGraph) ?? null)
       : null;
-    const calledHost = target && host.reference
-      ? referenceHost(host.reference.data, target)
-      : authoredHostByInstance(host.document, node.references?.instance);
+    if (!graph) return null;
+    const target = host.reference ? referenceInstanceByStableId(host.reference.data, node.references?.instance) : null;
+    const calledHost =
+      target && host.reference
+        ? referenceHost(host.reference.data, target)
+        : authoredHostByInstance(host.document, node.references?.instance);
     return calledHost ? { host: calledHost, graph } : null;
   }
 
@@ -891,13 +1067,15 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       if (!prop.id) continue;
       // The host's document only feeds graph lookups the sound path never makes; a lazily created empty one
       // keeps sound-only props working on mountains that have no effects document yet.
-      const hostKey = () => authoredHost(document ??= createEmptyEffectsDocument(''), prop).key;
+      const hostKey = () => authoredHost((document ??= createEmptyEffectsDocument('')), prop).key;
       if (sounds(prop)) sources.set(prop.id, source(hostKey(), prop));
       // A group member with behaviour of its own sounds by it, under its own debounce (docs/069).
       for (const [model, member] of Object.entries(prop.memberBehaviour ?? {}))
         if (sounds(member))
-          sources.set(groupMemberKey(prop.id, Number(model)),
-            source(`${hostKey()}#${model}`, groupMemberProp(prop, Number(model))));
+          sources.set(
+            groupMemberKey(prop.id, Number(model)),
+            source(`${hostKey()}#${model}`, groupMemberProp(prop, Number(model))),
+          );
     }
     preloadPropAudio(sources.values());
     propSound.setAuthoredSources(sources);
@@ -915,8 +1093,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       return result;
     };
     for (const instance of attachedReferenceInstances(data)) {
-      const binding = referenceInstanceBindings(data, instance)
-        .find(item => item.circumstance === 'persistent' && graphCanEmit(item.graph));
+      const binding = referenceInstanceBindings(data, instance).find(
+        item => item.circumstance === 'persistent' && graphCanEmit(item.graph),
+      );
       if (!binding) continue;
       const host = referenceHost(data, instance);
       referencePersistentEmitters.push({ key: `${host.key}:${binding.graph.id}`, host, graph: binding.graph });
@@ -939,8 +1118,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function clearAmbientRuntime() {
-    for (let i = scheduled.length - 1; i >= 0; i--)
-      if (scheduled[i].meta.source === 'ambient') scheduled.splice(i, 1);
+    for (let i = scheduled.length - 1; i >= 0; i--) if (scheduled[i].meta.source === 'ambient') scheduled.splice(i, 1);
     for (let i = particles.length - 1; i >= 0; i--) if (particles[i].source === 'ambient') particles.splice(i, 1);
     for (let i = pulses.length - 1; i >= 0; i--) if (pulses[i].source === 'ambient') disposePulse(i);
     for (const [key, emitter] of continuousEmitters) if (emitter.source === 'ambient') continuousEmitters.delete(key);
@@ -951,8 +1129,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function clearRuntimeSource(source: RunSource) {
-    for (let i = scheduled.length - 1; i >= 0; i--)
-      if (scheduled[i].meta.source === source) scheduled.splice(i, 1);
+    for (let i = scheduled.length - 1; i >= 0; i--) if (scheduled[i].meta.source === source) scheduled.splice(i, 1);
     for (let i = particles.length - 1; i >= 0; i--) if (particles[i].source === source) particles.splice(i, 1);
     for (let i = pulses.length - 1; i >= 0; i--) if (pulses[i].source === source) disposePulse(i);
     for (const [key, emitter] of continuousEmitters) if (emitter.source === source) continuousEmitters.delete(key);
@@ -1030,8 +1207,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function setHostPieceMotions(host: RuntimeHost, motions: readonly EffectPieceMotion[] | null) {
-    if (host.object.kind === 'reference')
-      hooks.setReferenceInstancePieceMotions?.(host.object.index, motions);
+    if (host.object.kind === 'reference') hooks.setReferenceInstancePieceMotions?.(host.object.index, motions);
     else hooks.setAuthoredPropPieceMotions?.(host.object.id, motions);
   }
 
@@ -1039,7 +1215,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     if (!Number.isFinite(at)) return;
     const prior = interactionResets.get(host.key);
     interactionResets.set(host.key, {
-      host, at,
+      host,
+      at,
       kind: prior?.kind === 'breakable' || kind === 'breakable' ? 'breakable' : 'movable',
     });
   }
@@ -1086,11 +1263,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       restoreInteractionHost(reset);
     }
     // A long authored Wait must not wake an already-restored breakable later and make it divergent again.
-    if (expiredBreakableChain) for (let i = scheduled.length - 1; i >= 0; i--) {
-      const deadline = scheduled[i].meta.breakableResetAt;
-      if (scheduled[i].meta.source === 'play' && deadline !== null && deadline <= elapsed)
-        scheduled.splice(i, 1);
-    }
+    if (expiredBreakableChain)
+      for (let i = scheduled.length - 1; i >= 0; i--) {
+        const deadline = scheduled[i].meta.breakableResetAt;
+        if (scheduled[i].meta.source === 'play' && deadline !== null && deadline <= elapsed) scheduled.splice(i, 1);
+      }
   }
 
   function markPreviewSceneHost(host: RuntimeHost, holdSeconds: number) {
@@ -1120,15 +1297,23 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function clearPlayRuntime(resetScene = true) {
     for (const host of stoppedNodes.values()) hooks.setObjectEffectsStopped?.(host.object, false);
-    stoppedNodes.clear(); killedDetached.clear(); railSwitches.clear();
+    stoppedNodes.clear();
+    killedDetached.clear();
+    railSwitches.clear();
     clearRuntimeSource('play');
     // A full scene/data reset also drops ambient or direct-preview movers. Their host transforms are reset by the
     // renderer hook below, but renderer-owned route-line geometry still needs explicit GPU disposal here.
     for (const motion of splineMotions.values()) disposeSplineLine(motion);
-    dynamicBodies.clear(); pieceThrows.clear(); flexMotions.clear(); splineMotions.clear(); interactionResets.clear();
+    dynamicBodies.clear();
+    pieceThrows.clear();
+    flexMotions.clear();
+    splineMotions.clear();
+    interactionResets.clear();
     clearPickupPops();
-    inside.clear(); scanElapsed = 0;
-    collisionGraphNext.clear(); playCounters.clear();
+    inside.clear();
+    scanElapsed = 0;
+    collisionGraphNext.clear();
+    playCounters.clear();
     // Prop audio is permanent within a run but not across one: this is Slopesmith's full audio reset, so a
     // hydrant burst in the last Test starts the next one silent. [Trailmap: 420-interactive-ambient]
     propSound.resetRun();
@@ -1152,7 +1337,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     activePlayTarget = null;
   }
 
-  function endPlay(): void { resetPlayRuntime(); }
+  function endPlay(): void {
+    resetPlayRuntime();
+  }
 
   /**
    * A Test run is STARTING — the same reset, at the other boundary.
@@ -1190,19 +1377,32 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const fn = effectModeFunction(document, mode);
     if (!fn) return;
     const referencedInstance = effectModeNodes(document, mode)
-      .map(node => node.references?.instance).find((id): id is string => !!id);
+      .map(node => node.references?.instance)
+      .find((id): id is string => !!id);
     let host: RuntimeHost | null = null;
     if (target === 'reference' && data) {
       const instance = referenceInstanceByStableId(data, referencedInstance) ?? data.instances[0];
       if (instance) host = referenceHost(data, instance);
     } else {
-      host = authoredHostByInstance(document, referencedInstance)
-        ?? (authoredProps[0] ? authoredHost(document, authoredProps[0]) : null);
+      host =
+        authoredHostByInstance(document, referencedInstance) ??
+        (authoredProps[0] ? authoredHost(document, authoredProps[0]) : null);
     }
     // Mode setup is persistent configuration, even when it calls the same DeadNode graph as a breakable.
     // An explicit null propagates through nested calls so none of its hosts acquire a respawn deadline.
-    if (host) scheduleGraph(host, { id: fn.id, name: fn.name, nodes: fn.nodes }, elapsed, 0,
-      'play', false, null, 'ordinary', null, null);
+    if (host)
+      scheduleGraph(
+        host,
+        { id: fn.id, name: fn.name, nodes: fn.nodes },
+        elapsed,
+        0,
+        'play',
+        false,
+        null,
+        'ordinary',
+        null,
+        null,
+      );
   }
 
   /**
@@ -1269,7 +1469,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function installNode(host: RuntimeHost): void {
     if (!stoppedNodes.delete(host.key)) return;
-    dynamicBodies.delete(host.key); pieceThrows.delete(host.key); flexMotions.delete(host.key);
+    dynamicBodies.delete(host.key);
+    pieceThrows.delete(host.key);
+    flexMotions.delete(host.key);
     playCounters.delete(host.key);
     hooks.setObjectEffectsStopped?.(host.object, false);
     hooks.resetObjectEffects?.(host.object);
@@ -1279,7 +1481,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     stoppedNodes.set(host.key, host);
     hooks.setObjectEffectsStopped?.(host.object, true);
     if (destroy) {
-      dynamicBodies.delete(host.key); pieceThrows.delete(host.key); flexMotions.delete(host.key);
+      dynamicBodies.delete(host.key);
+      pieceThrows.delete(host.key);
+      flexMotions.delete(host.key);
       playCounters.delete(host.key);
     }
     if (!killDetached) return;
@@ -1288,8 +1492,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     if (motion) disposeSplineLine(motion);
     splineMotions.delete(host.key);
     setHostWorldCopies(host, null);
-    for (const [key, emitter] of continuousEmitters)
-      if (emitter.host.key === host.key) continuousEmitters.delete(key);
+    for (const [key, emitter] of continuousEmitters) if (emitter.host.key === host.key) continuousEmitters.delete(key);
   }
 
   /**
@@ -1320,7 +1523,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const resumePlay = activePlayTarget === 'reference' && next !== null;
     hideSplineInspector();
     clearPlayRuntime();
-    activePlayTarget = null; playWasRunning = false;
+    activePlayTarget = null;
+    playWasRunning = false;
     data = next;
     preloadDocumentAudio(next?.document, next?.level);
     selectedInstance = -1;
@@ -1333,7 +1537,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     clearPulses();
     previewLoops.clear();
     stopSounds();
-    previewSceneHosts.clear(); previewSceneResetAt = -1;
+    previewSceneHosts.clear();
+    previewSceneResetAt = -1;
     inside.clear();
     persistentNext.clear();
     preloadEmitterSprites(next?.document);
@@ -1347,7 +1552,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function setAuthoredData(props: readonly PlacedProp[], document: EffectsDocument | null | undefined) {
     const resumePlay = activePlayTarget === 'authored' && document != null;
-    if (activePlayTarget === 'authored') { clearPlayRuntime(); activePlayTarget = null; playWasRunning = false; }
+    if (activePlayTarget === 'authored') {
+      clearPlayRuntime();
+      activePlayTarget = null;
+      playWasRunning = false;
+    }
     authoredProps = props;
     authoredDocument = document ?? null;
     preloadDocumentAudio(authoredDocument);
@@ -1376,7 +1585,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     selectedInstance = index ?? -1;
     const instance = data?.instances.find(x => x.index === selectedInstance);
     refreshBoostArrows();
-    if (!instance) { selected.visible = false; return; }
+    if (!instance) {
+      selected.visible = false;
+      return;
+    }
     selected.position.copy(instanceLocalPosition(instance));
     selected.visible = inspectVisible;
   }
@@ -1407,17 +1619,35 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     return false;
   }
 
-  function scheduleGraph(host: RuntimeHost, graph: EffectGraph, startAt = elapsed, depth = 0,
-    source: RunSource = 'preview', continuous = false, subject: RunSubject = null,
-    cause: RunCause = 'ordinary', rideEvent: RideEvent | null = null,
+  function scheduleGraph(
+    host: RuntimeHost,
+    graph: EffectGraph,
+    startAt = elapsed,
+    depth = 0,
+    source: RunSource = 'preview',
+    continuous = false,
+    subject: RunSubject = null,
+    cause: RunCause = 'ordinary',
+    rideEvent: RideEvent | null = null,
     inheritedBreakableResetAt: number | null | undefined = undefined,
-    collisionContact: CollisionEmitterContact | null = null) {
+    collisionContact: CollisionEmitterContact | null = null,
+  ) {
     if (depth > MAX_GRAPH_DEPTH) return;
-    const breakableResetAt = inheritedBreakableResetAt !== undefined ? inheritedBreakableResetAt
-      : source === 'play' && (cause === 'cracked-break' || graphHasBreakableAction(host, graph))
-        ? startAt + BREAKABLE_RESPAWN_SECONDS : null;
-    scheduleEffectGraph(scheduled, host, graph, startAt, depth,
-      { source, continuous, subject, cause, rideEvent, collisionContact, breakableResetAt });
+    const breakableResetAt =
+      inheritedBreakableResetAt !== undefined
+        ? inheritedBreakableResetAt
+        : source === 'play' && (cause === 'cracked-break' || graphHasBreakableAction(host, graph))
+          ? startAt + BREAKABLE_RESPAWN_SECONDS
+          : null;
+    scheduleEffectGraph(scheduled, host, graph, startAt, depth, {
+      source,
+      continuous,
+      subject,
+      cause,
+      rideEvent,
+      collisionContact,
+      breakableResetAt,
+    });
   }
 
   /** Stable per event/node sample, so a probability condition takes the same branch on every participant. */
@@ -1433,22 +1663,33 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       riderSpeed: event?.riderSpeed ?? riderVelocity.length(),
       ...(event ? { random: () => rideEventRandom(event, node) } : {}),
       humanRider: true,
-      hostIdle: !dynamicBodies.has(host.key) && !pieceThrows.has(host.key)
-        && !flexMotions.has(host.key) && !splineMotions.has(host.key),
+      hostIdle:
+        !dynamicBodies.has(host.key) &&
+        !pieceThrows.has(host.key) &&
+        !flexMotions.has(host.key) &&
+        !splineMotions.has(host.key),
     });
   }
 
-  function executeNode(host: RuntimeHost, node: EffectNode, depth: number, source: RunSource,
-    continuous: boolean, subject: RunSubject = null, cause: RunCause = 'ordinary',
-    rideEvent: RideEvent | null = null, breakableResetAt: number | null = null,
-    collisionContact: CollisionEmitterContact | null = null) {
-    if (source === 'play' && breakableResetAt !== null)
-      armInteractionReset(host, breakableResetAt, 'breakable');
+  function executeNode(
+    host: RuntimeHost,
+    node: EffectNode,
+    depth: number,
+    source: RunSource,
+    continuous: boolean,
+    subject: RunSubject = null,
+    cause: RunCause = 'ordinary',
+    rideEvent: RideEvent | null = null,
+    breakableResetAt: number | null = null,
+    collisionContact: CollisionEmitterContact | null = null,
+  ) {
+    if (source === 'play' && breakableResetAt !== null) armInteractionReset(host, breakableResetAt, 'breakable');
     // Repeated ambient scans are not new constructors after a kill. Explicit graph calls can install again.
     if (continuous && killedDetached.has(host.key)) return;
     if (node.mainType === 2 && particleEmitterFields(node)) {
       killedDetached.delete(host.key);
-      spawnEmitter(host, node, source, continuous, collisionContact); return;
+      spawnEmitter(host, node, source, continuous, collisionContact);
+      return;
     }
     if (node.mainType === 8) {
       if (!continuous && source !== 'ambient') playEffectSound(host, node, source);
@@ -1457,15 +1698,38 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     if (node.mainType === 7) {
       const called = calledInstance(host, node);
       if (called && (subject !== 'remote' || hostIsPresentInPlayMode(called.host, playMode)))
-        scheduleGraph(called.host, called.graph, elapsed, depth + 1, source, continuous,
-          subject, cause, rideEvent, breakableResetAt, collisionContact);
+        scheduleGraph(
+          called.host,
+          called.graph,
+          elapsed,
+          depth + 1,
+          source,
+          continuous,
+          subject,
+          cause,
+          rideEvent,
+          breakableResetAt,
+          collisionContact,
+        );
       else if (source === 'preview') spawnPulse(host.position(), 0x9a6bff, 0.9, source);
       return;
     }
     if ((node.mainType === 21 || node.mainType === 26) && node.references?.function) {
       const fn = host.document.functions.find(x => x.id === node.references!.function);
-      if (fn) scheduleGraph(host, { id: fn.id, name: fn.name, nodes: fn.nodes }, elapsed, depth + 1, source,
-        continuous, subject, cause, rideEvent, breakableResetAt, collisionContact);
+      if (fn)
+        scheduleGraph(
+          host,
+          { id: fn.id, name: fn.name, nodes: fn.nodes },
+          elapsed,
+          depth + 1,
+          source,
+          continuous,
+          subject,
+          cause,
+          rideEvent,
+          breakableResetAt,
+          collisionContact,
+        );
       return;
     }
     if (source === 'play') {
@@ -1486,24 +1750,45 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         const state = playCounters.get(host.key);
         const input = effectCounterMarkInput(node);
         if (!state) {
-          counterLog(`${host.key} ${input === null ? 'decrement' : `input ${input}`} arrived with NO counter `
-            + 'installed — nothing counted, nothing fired');
+          counterLog(
+            `${host.key} ${input === null ? 'decrement' : `input ${input}`} arrived with NO counter ` +
+              'installed — nothing counted, nothing fired',
+          );
         } else {
           const before = state.remaining;
           const fired = applyEffectCounterInput(state, node);
-          counterLog(`${host.key} ${input === null ? 'decrement' : `input ${input}`}`
-            + `${state.remaining === before ? ' ALREADY MARKED (no change)' : ''}`
-            + ` · ${state.remaining} to go · marked [${[...state.marked].sort((a, b) => a - b).join(',')}]`);
+          counterLog(
+            `${host.key} ${input === null ? 'decrement' : `input ${input}`}` +
+              `${state.remaining === before ? ' ALREADY MARKED (no change)' : ''}` +
+              ` · ${state.remaining} to go · marked [${[...state.marked].sort((a, b) => a - b).join(',')}]`,
+          );
           if (fired) {
             // Reaching zero fires the trigger column and retires the counter.
             playCounters.delete(host.key);
-            const trigger = playBindings(host.reference ? 'reference' : 'authored').find(binding =>
-              binding.circumstance === 'trigger' && runtimeObjectKey(binding.host.object) === host.key);
-            counterLog(`${host.key} REACHED ZERO · ${trigger
-              ? `firing trigger column ${trigger.graph.id} (${trigger.graph.nodes.length} nodes)`
-              : 'but this prop has NO trigger effect bound — nothing to fire'}`);
-            if (trigger) scheduleGraph(trigger.host, trigger.graph, elapsed, depth + 1, source, false, subject,
-              cause, rideEvent, breakableResetAt ?? undefined, collisionContact);
+            const trigger = playBindings(host.reference ? 'reference' : 'authored').find(
+              binding => binding.circumstance === 'trigger' && runtimeObjectKey(binding.host.object) === host.key,
+            );
+            counterLog(
+              `${host.key} REACHED ZERO · ${
+                trigger
+                  ? `firing trigger column ${trigger.graph.id} (${trigger.graph.nodes.length} nodes)`
+                  : 'but this prop has NO trigger effect bound — nothing to fire'
+              }`,
+            );
+            if (trigger)
+              scheduleGraph(
+                trigger.host,
+                trigger.graph,
+                elapsed,
+                depth + 1,
+                source,
+                false,
+                subject,
+                cause,
+                rideEvent,
+                breakableResetAt ?? undefined,
+                collisionContact,
+              );
           }
         }
       }
@@ -1526,8 +1811,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       installNode(host);
       // Unity holds an ordinary triggered prop at its far pose for eight seconds, then runs it backward to rest.
       // Break-owned animation is rewound by its enclosing breakable-chain reset.
-      const autoReturnDelay = source === 'play' && breakableResetAt === null
-        ? ANIMATED_PROP_AUTO_RESET_SECONDS : null;
+      const autoReturnDelay = source === 'play' && breakableResetAt === null ? ANIMATED_PROP_AUTO_RESET_SECONDS : null;
       if (!hooks.previewAnimObject?.(host.object, animObject, autoReturnDelay) && source === 'preview')
         spawnPulse(host.position(), 0xb66cff, 0.9, source);
       return;
@@ -1543,57 +1827,96 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       return;
     }
     const playCommand = effectPlayCommand(node);
-    const previewVisual = source === 'preview' && playCommand
-      && (playCommand.kind === 'instance-hide' || playCommand.kind === 'node-stop' || playCommand.kind === 'mesh-throw'
-        || playCommand.kind === 'roller' || playCommand.kind === 'spline-motion');
+    const previewVisual =
+      source === 'preview' &&
+      playCommand &&
+      (playCommand.kind === 'instance-hide' ||
+        playCommand.kind === 'node-stop' ||
+        playCommand.kind === 'mesh-throw' ||
+        playCommand.kind === 'roller' ||
+        playCommand.kind === 'spline-motion');
     // A bound-node command is addressed to whatever material property is installed on the host, and Preview
     // may run one exactly when the scene can put that material back afterwards. Two ways it can: a one-shot
     // flip expires on its own — a megaplex button's red flash — and any other receiver is rested by Stop once
     // Preview owns it, which is what claiming it here arranges. Merqury City's strike sign is the second
     // case: its receiver is a phase-only UV scroll, and the phase this writes is the whole visible effect.
-    const previewControl = source === 'preview' && playCommand?.kind === 'property-control'
-      && (!!hooks.hasPulseProperty?.(host.object) || !!hooks.previewMaterialEffect?.(host.object)
-        || (playCommand.command === 2 && !!hooks.hasBudgetedAnimation?.(host.object))
-        || (playCommand.command === 3 && !!hooks.hasTriggerableCombo?.(host.object)));
+    const previewControl =
+      source === 'preview' &&
+      playCommand?.kind === 'property-control' &&
+      (!!hooks.hasPulseProperty?.(host.object) ||
+        !!hooks.previewMaterialEffect?.(host.object) ||
+        (playCommand.command === 2 && !!hooks.hasBudgetedAnimation?.(host.object)) ||
+        (playCommand.command === 3 && !!hooks.hasTriggerableCombo?.(host.object)));
     if (playCommand && (source === 'play' || previewVisual || previewControl)) {
-      if (previewControl && playCommand.kind === 'property-control' && playCommand.command === 2
-        && hooks.hasBudgetedAnimation?.(host.object)) markPreviewSceneHost(host, Number.POSITIVE_INFINITY);
-      if (previewVisual) markPreviewSceneHost(host,
-        playCommand.kind === 'mesh-throw' ? Math.max(0.6, playCommand.duration + 0.35)
-          : playCommand.kind === 'roller' ? ROLLER_PREVIEW_SECONDS
-            : playCommand.kind === 'spline-motion' ? Number.POSITIVE_INFINITY : 3);
+      if (
+        previewControl &&
+        playCommand.kind === 'property-control' &&
+        playCommand.command === 2 &&
+        hooks.hasBudgetedAnimation?.(host.object)
+      )
+        markPreviewSceneHost(host, Number.POSITIVE_INFINITY);
+      if (previewVisual)
+        markPreviewSceneHost(
+          host,
+          playCommand.kind === 'mesh-throw'
+            ? Math.max(0.6, playCommand.duration + 0.35)
+            : playCommand.kind === 'roller'
+              ? ROLLER_PREVIEW_SECONDS
+              : playCommand.kind === 'spline-motion'
+                ? Number.POSITIVE_INFINITY
+                : 3,
+        );
       executePlayCommand(host, playCommand, source, subject, breakableResetAt);
       return;
     }
     // Rings are editor diagnostics for manual Preview. Play and ambient execution should show only
     // visuals we can actually approximate, rather than exposing effect-node markers in the world.
     if (source !== 'preview') return;
-    const color = node.mainType === 17 ? 0x5bd6ff : node.mainType === 18 ? 0xffc24a
-      : node.mainType === 8 || node.mainType === 16 ? 0xff66be : 0xb66cff;
+    const color =
+      node.mainType === 17
+        ? 0x5bd6ff
+        : node.mainType === 18
+          ? 0xffc24a
+          : node.mainType === 8 || node.mainType === 16
+            ? 0xff66be
+            : 0xb66cff;
     spawnPulse(host.position(), color, 0.9, source);
   }
 
-  function executePlayCommand(host: RuntimeHost, command: EffectPlayCommand, source: RunSource,
-    subject: RunSubject = null, breakableResetAt: number | null = null) {
+  function executePlayCommand(
+    host: RuntimeHost,
+    command: EffectPlayCommand,
+    source: RunSource,
+    subject: RunSubject = null,
+    breakableResetAt: number | null = null,
+  ) {
     const localSubject = localRideEffectSubject(subject);
     switch (command.kind) {
       case 'rider-reset':
-        if (localSubject !== undefined) hooks.applyRideEffect?.({ kind: 'reset' }, localSubject); return;
+        if (localSubject !== undefined) hooks.applyRideEffect?.({ kind: 'reset' }, localSubject);
+        return;
       case 'hud-message':
-        if (localSubject !== undefined) hooks.applyRideEffect?.({ kind: 'hud-message', text: command.text,
-          color: command.color, durationSeconds: command.durationSeconds }, localSubject); return;
+        if (localSubject !== undefined)
+          hooks.applyRideEffect?.(
+            { kind: 'hud-message', text: command.text, color: command.color, durationSeconds: command.durationSeconds },
+            localSubject,
+          );
+        return;
       case 'score-multiplier':
         popPickup(host, source);
-        if (localSubject !== undefined) hooks.applyRideEffect?.({ kind: 'score-multiplier',
-          multiplier: command.multiplier }, localSubject); return;
+        if (localSubject !== undefined)
+          hooks.applyRideEffect?.({ kind: 'score-multiplier', multiplier: command.multiplier }, localSubject);
+        return;
       case 'speed-boost':
         popPickup(host, source);
-        if (localSubject !== undefined) hooks.applyRideEffect?.({ kind: 'speed-boost',
-          amount: command.amount }, localSubject); return;
+        if (localSubject !== undefined)
+          hooks.applyRideEffect?.({ kind: 'speed-boost', amount: command.amount }, localSubject);
+        return;
       case 'trick-boost':
         popPickup(host, source);
-        if (localSubject !== undefined) hooks.applyRideEffect?.({ kind: 'trick-boost',
-          seconds: command.seconds }, localSubject); return;
+        if (localSubject !== undefined)
+          hooks.applyRideEffect?.({ kind: 'trick-boost', seconds: command.seconds }, localSubject);
+        return;
       case 'directional-boost':
         // NOTHING, and that is the whole of how a boost node reaches the rider correctly.
         //
@@ -1616,8 +1939,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       case 'property-control': {
         if (stoppedNodes.has(host.key)) return;
         const taken = hooks.controlProperty?.(host.object, command.command, command.value) ?? false;
-        controlLog(`${host.key} command ${command.command} value ${command.value} (${source})`
-          + ` · ${taken ? 'delivered' : 'NO RECEIVER on this prop — nothing took it'}`);
+        controlLog(
+          `${host.key} command ${command.command} value ${command.value} (${source})` +
+            ` · ${taken ? 'delivered' : 'NO RECEIVER on this prop — nothing took it'}`,
+        );
         return;
       }
       case 'teleport': {
@@ -1626,9 +1951,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         if (!target) return;
         const destination = target.position();
         const heading = destination.clone().sub(host.position()).setY(0);
-        if (heading.lengthSq() < 1e-6) heading.set(0, 0, 1); else heading.normalize();
-        hooks.applyRideEffect?.({ kind: 'teleport',
-          position: destination.add(new THREE.Vector3(0, 0.5, 0)), heading }, localSubject);
+        if (heading.lengthSq() < 1e-6) heading.set(0, 0, 1);
+        else heading.normalize();
+        hooks.applyRideEffect?.(
+          { kind: 'teleport', position: destination.add(new THREE.Vector3(0, 0.5, 0)), heading },
+          localSubject,
+        );
         return;
       }
       case 'instance-hide':
@@ -1636,12 +1964,19 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         setHostVisible(host, false);
         if (source === 'play') hooks.retireRideObject?.(host.object);
         return;
-      case 'node-stop': stopNode(host, command.destroy); return;
+      case 'node-stop':
+        stopNode(host, command.destroy);
+        return;
       case 'rail-toggle': {
         const spline = host.document.splines.find(item => item.id === command.spline);
-        const id = host.object.kind === 'reference' ? spline?.originalIndex
-          : command.spline.startsWith('spline:') ? command.spline.slice('spline:'.length) : undefined;
-        if (id !== undefined) railSwitches.set(`${host.object.kind}:${id}`, { enabled: command.enabled, host: host.key });
+        const id =
+          host.object.kind === 'reference'
+            ? spline?.originalIndex
+            : command.spline.startsWith('spline:')
+              ? command.spline.slice('spline:'.length)
+              : undefined;
+        if (id !== undefined)
+          railSwitches.set(`${host.object.kind}:${id}`, { enabled: command.enabled, host: host.key });
         return;
       }
       case 'roller':
@@ -1650,22 +1985,34 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
           armInteractionReset(host, elapsed + MOVABLE_PROP_RESPAWN_SECONDS, 'movable');
         startRoller(host, command, source);
         return;
-      case 'mesh-throw': installNode(host); startMeshThrow(host, command); return;
-      case 'fence-flex': installNode(host); startFenceFlex(host, command.amount); return;
-      case 'flag-wave': installNode(host); startFlagWave(host, command.amplitude, command.wavelength); return;
-      case 'spline-motion': killedDetached.delete(host.key); startSplineMotion(host, command, source); return;
+      case 'mesh-throw':
+        installNode(host);
+        startMeshThrow(host, command);
+        return;
+      case 'fence-flex':
+        installNode(host);
+        startFenceFlex(host, command.amount);
+        return;
+      case 'flag-wave':
+        installNode(host);
+        startFlagWave(host, command.amplitude, command.wavelength);
+        return;
+      case 'spline-motion':
+        killedDetached.delete(host.key);
+        startSplineMotion(host, command, source);
+        return;
     }
   }
 
   function motionBasis(host: RuntimeHost) {
     const matrix = host.matrix();
     const position = new THREE.Vector3().setFromMatrixPosition(matrix);
-    const basis = matrix.clone(); basis.setPosition(0, 0, 0);
+    const basis = matrix.clone();
+    basis.setPosition(0, 0, 0);
     return { matrix, position, basis };
   }
 
-  function startRoller(host: RuntimeHost, command: Extract<EffectPlayCommand, { kind: 'roller' }>,
-    source: RunSource) {
+  function startRoller(host: RuntimeHost, command: Extract<EffectPlayCommand, { kind: 'roller' }>, source: RunSource) {
     let direction = new THREE.Vector3(...command.direction);
     const authoredDirection = direction.lengthSq() > 1e-8;
     if (authoredDirection) direction = host.vector(direction).normalize();
@@ -1686,7 +2033,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
      */
     const existing = dynamicBodies.get(host.key);
     if (existing) {
-      if ((source === 'preview' || existing.invInertia && existing.angular) && !existing.asleep)
+      if ((source === 'preview' || (existing.invInertia && existing.angular)) && !existing.asleep)
         existing.velocity.addScaledVector(direction, speed);
       return;
     }
@@ -1700,15 +2047,34 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       const velocity = impact.clone().addScaledVector(direction, speed);
       const spinAxis = new THREE.Vector3().crossVectors(yAxis, impact).normalize();
       dynamicBodies.set(host.key, {
-        key: host.key, host, matrix, basis, position, velocity, spinAxis, spin: 6,
-        rotation: new THREE.Quaternion(), age: 0, duration: ROLLER_PREVIEW_SECONDS, hideOnEnd: false,
+        key: host.key,
+        host,
+        matrix,
+        basis,
+        position,
+        velocity,
+        spinAxis,
+        spin: 6,
+        rotation: new THREE.Quaternion(),
+        age: 0,
+        duration: ROLLER_PREVIEW_SECONDS,
+        hideOnEnd: false,
       });
       return;
     }
     dynamicBodies.set(host.key, {
-      key: host.key, host, matrix, basis, position, velocity: direction.multiplyScalar(speed),
-      spinAxis: new THREE.Vector3(0.7, 0.25, 0.5).normalize(), spin: authoredDirection ? 6 : 3,
-      rotation: new THREE.Quaternion(), age: 0, duration: 10, hideOnEnd: false,
+      key: host.key,
+      host,
+      matrix,
+      basis,
+      position,
+      velocity: direction.multiplyScalar(speed),
+      spinAxis: new THREE.Vector3(0.7, 0.25, 0.5).normalize(),
+      spin: authoredDirection ? 6 : 3,
+      rotation: new THREE.Quaternion(),
+      age: 0,
+      duration: 10,
+      hideOnEnd: false,
     });
   }
 
@@ -1720,14 +2086,21 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     else direction.set(0, 1, 0);
     const velocityScale = new THREE.Vector3(...command.velocityScale).multiplyScalar(0.01);
     const velocity = new THREE.Vector3(
-      direction.x * velocityScale.x, direction.y * velocityScale.y, direction.z * velocityScale.z,
+      direction.x * velocityScale.x,
+      direction.y * velocityScale.y,
+      direction.z * velocityScale.z,
     ).multiplyScalar(command.directionScale || 1);
-    if (velocity.lengthSq() < 0.25) velocity.copy(direction).multiplyScalar(7).add(new THREE.Vector3(0, 4, 0));
+    if (velocity.lengthSq() < 0.25)
+      velocity
+        .copy(direction)
+        .multiplyScalar(7)
+        .add(new THREE.Vector3(0, 4, 0));
     if (velocity.length() > 60) velocity.setLength(60);
     setHostVisible(host, true);
-    const pieceIds = host.object.kind === 'reference'
-      ? hooks.referenceInstancePieceIds?.(host.object.index) ?? []
-      : hooks.authoredPropPieceIds?.(host.object.id) ?? [];
+    const pieceIds =
+      host.object.kind === 'reference'
+        ? (hooks.referenceInstancePieceIds?.(host.object.index) ?? [])
+        : (hooks.authoredPropPieceIds?.(host.object.id) ?? []);
     if (pieceIds.length > 1) {
       const seedBase = host.object.kind === 'reference' ? host.object.index + 1 : 1;
       const spread = THREE.MathUtils.clamp(velocity.length() * 0.45, 2.5, 9);
@@ -1737,7 +2110,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         const random = mulberry32(Math.imul(seedBase, 0x9e3779b1) ^ Math.imul(piece + 1, 0x85ebca6b));
         const fan = randomUnitVector(random).multiplyScalar(spread * (0.45 + random() * 0.75));
         fan.y += spread * (0.2 + random() * 0.45);
-        const pieceVelocity = velocity.clone().multiplyScalar(0.72 + random() * 0.55).add(fan);
+        const pieceVelocity = velocity
+          .clone()
+          .multiplyScalar(0.72 + random() * 0.55)
+          .add(fan);
         if (pieceVelocity.length() > 60) pieceVelocity.setLength(60);
         return {
           piece,
@@ -1749,15 +2125,28 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         };
       });
       pieceThrows.set(host.key, {
-        key: host.key, host, pieces, age: 0, duration: Math.max(0.2, command.duration),
+        key: host.key,
+        host,
+        pieces,
+        age: 0,
+        duration: Math.max(0.2, command.duration),
       });
       setHostPieceMotions(host, pieces);
       return;
     }
     dynamicBodies.set(host.key, {
-      key: host.key, host, matrix, basis, position, velocity,
-      spinAxis: new THREE.Vector3(0.35, 0.8, 0.45).normalize(), spin: 5,
-      rotation: new THREE.Quaternion(), age: 0, duration: Math.max(0.2, command.duration), hideOnEnd: true,
+      key: host.key,
+      host,
+      matrix,
+      basis,
+      position,
+      velocity,
+      spinAxis: new THREE.Vector3(0.35, 0.8, 0.45).normalize(),
+      spin: 5,
+      rotation: new THREE.Quaternion(),
+      age: 0,
+      duration: Math.max(0.2, command.duration),
+      hideOnEnd: true,
     });
   }
 
@@ -1789,7 +2178,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function splineSamples(spline: EffectSplinePath): {
-    points: THREE.Vector3[]; cumulative: number[]; length: number; segmentDistances: number[];
+    points: THREE.Vector3[];
+    cumulative: number[];
+    length: number;
+    segmentDistances: number[];
   } | null {
     (spline.space === 'raw' ? stage.refRoot : stage.worldRoot).updateWorldMatrix(true, false);
     const points: THREE.Vector3[] = [];
@@ -1806,7 +2198,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const cumulative = [0];
     for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i - 1] + points[i].distanceTo(points[i - 1]));
     return {
-      points, cumulative, length: cumulative.at(-1) ?? 0,
+      points,
+      cumulative,
+      length: cumulative.at(-1) ?? 0,
       segmentDistances: boundaryIndices.map(index => cumulative[index] ?? 0),
     };
   }
@@ -1843,7 +2237,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       THREE.SRGBColorSpace,
     );
     const material = new THREE.LineBasicMaterial({
-      color, opacity: alpha, transparent: alpha < 1, depthTest: true, depthWrite: alpha >= 1, toneMapped: false,
+      color,
+      opacity: alpha,
+      transparent: alpha < 1,
+      depthTest: true,
+      depthWrite: alpha >= 1,
+      toneMapped: false,
     });
     const line = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points), material);
     line.name = `Spline route line ${command.spline ?? ''}`.trim();
@@ -1861,10 +2260,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function clearSplineInspectorGeometry() {
-    for (const child of [...splineInspectGroup.children]) child.traverse(object => {
-      if (object instanceof THREE.Line || object instanceof THREE.Points || object instanceof THREE.Mesh)
-        object.geometry.dispose();
-    });
+    for (const child of [...splineInspectGroup.children])
+      child.traverse(object => {
+        if (object instanceof THREE.Line || object instanceof THREE.Points || object instanceof THREE.Mesh)
+          object.geometry.dispose();
+      });
     splineInspectGroup.clear();
   }
 
@@ -1894,7 +2294,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const host = referenceHost(data, instance);
     const { basis } = motionBasis(host);
     const curve = new THREE.Line(new THREE.BufferGeometry().setFromPoints(sampled.points), splineInspectCurveMat);
-    curve.frustumCulled = false; curve.renderOrder = 994;
+    curve.frustumCulled = false;
+    curve.renderOrder = 994;
     splineInspectGroup.add(curve);
 
     const handles: THREE.Vector3[] = [];
@@ -1908,21 +2309,28 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       boundaries.push(controls[3]);
     }
     if (handles.length) {
-      const handleLines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(handles), splineInspectHandleMat);
-      handleLines.frustumCulled = false; handleLines.renderOrder = 993;
+      const handleLines = new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(handles),
+        splineInspectHandleMat,
+      );
+      handleLines.frustumCulled = false;
+      handleLines.renderOrder = 993;
       splineInspectGroup.add(handleLines);
     }
     if (boundaries.length) {
       const keys = new THREE.Points(new THREE.BufferGeometry().setFromPoints(boundaries), splineInspectKeyMat);
-      keys.frustumCulled = false; keys.renderOrder = 995;
+      keys.frustumCulled = false;
+      keys.renderOrder = 995;
       splineInspectGroup.add(keys);
     }
     const playhead = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 7), splineInspectPlayheadMat);
     playhead.renderOrder = 997;
-    const tangent = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(), new THREE.Vector3(0, 0, 1),
-    ]), splineInspectTangentMat);
-    tangent.frustumCulled = false; tangent.renderOrder = 996;
+    const tangent = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, 1)]),
+      splineInspectTangentMat,
+    );
+    tangent.frustumCulled = false;
+    tangent.renderOrder = 996;
     splineInspectGroup.add(playhead, tangent);
     const info: ReferenceSplineMotionInfo = {
       splineId: command.spline,
@@ -1933,9 +2341,17 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       segmentDistances: sampled.segmentDistances,
     };
     splineInspector = {
-      key, host, command, info, basis,
-      points: sampled.points, cumulative: sampled.cumulative, length: sampled.length,
-      playhead, tangent, engaged: false,
+      key,
+      host,
+      command,
+      info,
+      basis,
+      points: sampled.points,
+      cumulative: sampled.cumulative,
+      length: sampled.length,
+      playhead,
+      tangent,
+      engaged: false,
     };
     splineInspectGroup.visible = true;
     updateSplineInspectorPose(splineInspector, 0);
@@ -1945,18 +2361,30 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function updateSplineInspectorPose(inspector: SplineInspectorState, distance: number) {
     const direction = inspector.command.speed < 0 ? -1 : 1;
     const { position, travelTangent } = sampleSplinePath(
-      inspector.points, inspector.cumulative, inspector.length, distance, direction);
+      inspector.points,
+      inspector.cumulative,
+      inspector.length,
+      distance,
+      direction,
+    );
     inspector.playhead.position.copy(position);
     const tangentEnd = position.clone().addScaledVector(travelTangent, 6);
     inspector.tangent.geometry.setFromPoints([position, tangentEnd]);
     inspector.tangent.geometry.attributes.position.needsUpdate = true;
   }
 
-  function setSplineInspectorDistance(sourceIndex: number, command: SplineMotionCommand,
-    distance: number | null): boolean {
+  function setSplineInspectorDistance(
+    sourceIndex: number,
+    command: SplineMotionCommand,
+    distance: number | null,
+  ): boolean {
     if (distance === null) {
-      if (!splineInspector || splineInspector.host.object.kind !== 'reference'
-        || splineInspector.host.object.index !== sourceIndex) return false;
+      if (
+        !splineInspector ||
+        splineInspector.host.object.kind !== 'reference' ||
+        splineInspector.host.object.index !== sourceIndex
+      )
+        return false;
       if (splineInspector.engaged) {
         setHostWorldMatrix(splineInspector.host, null);
         setHostWorldCopies(splineInspector.host, null);
@@ -1970,8 +2398,17 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const clamped = THREE.MathUtils.clamp(distance, 0, splineInspector.length);
     const direction = command.speed < 0 ? -1 : 1;
     const matrices = splinePoseMatrices(
-      splineInspector.points, splineInspector.cumulative, splineInspector.length, clamped, direction,
-      command.endMode, command.orientationMode, command.yawOffset, command.instanceCount, splineInspector.basis);
+      splineInspector.points,
+      splineInspector.cumulative,
+      splineInspector.length,
+      clamped,
+      direction,
+      command.endMode,
+      command.orientationMode,
+      command.yawOffset,
+      command.instanceCount,
+      splineInspector.basis,
+    );
     setHostVisible(splineInspector.host, true);
     setHostWorldMatrix(splineInspector.host, matrices[0] ?? null);
     setHostWorldCopies(splineInspector.host, matrices.length > 1 ? matrices.slice(1) : null);
@@ -1996,16 +2433,31 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const direction = command.speed < 0 ? -1 : 1;
     setHostVisible(host, true);
     splineMotions.set(host.key, {
-      key: host.key, host, basis, ...sampled, distance: 0, direction,
-      speed: Math.abs(command.speed), endMode: command.endMode, orientationMode: command.orientationMode,
-      instanceCount: command.instanceCount, yawOffset: command.yawOffset,
-      stopped: false, finished: false, source,
+      key: host.key,
+      host,
+      basis,
+      ...sampled,
+      distance: 0,
+      direction,
+      speed: Math.abs(command.speed),
+      endMode: command.endMode,
+      orientationMode: command.orientationMode,
+      instanceCount: command.instanceCount,
+      yawOffset: command.yawOffset,
+      stopped: false,
+      finished: false,
+      source,
       splineLine: spline ? createSplineLine(spline, command) : null,
     });
   }
 
-  function spawnEmitter(host: RuntimeHost, node: EffectNode, source: RunSource, continuous: boolean,
-    collisionContact: CollisionEmitterContact | null = null) {
+  function spawnEmitter(
+    host: RuntimeHost,
+    node: EffectNode,
+    source: RunSource,
+    continuous: boolean,
+    collisionContact: CollisionEmitterContact | null = null,
+  ) {
     const law = timerEmitterPreviewLaw(node);
     if (!law) return;
     // Sitting on a persistent chain does NOT make an emitter stream: the emission window's SIGN is the
@@ -2017,10 +2469,16 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       const key = `${source}:${host.key}:${node.id}`;
       const prior = continuousEmitters.get(key);
       if (prior) prior.expiresAt = elapsed + AMBIENT_REPEAT_SECONDS + AMBIENT_SCAN_SECONDS * 2;
-      else continuousEmitters.set(key, {
-        key, host, node, law, source, accumulator: 1,
-        expiresAt: elapsed + AMBIENT_REPEAT_SECONDS + AMBIENT_SCAN_SECONDS * 2,
-      });
+      else
+        continuousEmitters.set(key, {
+          key,
+          host,
+          node,
+          law,
+          source,
+          accumulator: 1,
+          expiresAt: elapsed + AMBIENT_REPEAT_SECONDS + AMBIENT_SCAN_SECONDS * 2,
+        });
       return;
     }
     ensureParticleSprite(law.spriteIndex, !host.reference);
@@ -2030,37 +2488,54 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     emitParticles(host, node, law, source, total, false, true, collisionContact);
   }
 
-  function emitParticles(host: RuntimeHost, node: EffectNode, law: TimerEmitterPreviewLaw, source: RunSource,
-    requested: number, persistent: boolean, diagnosticPulse = false,
-    collisionContact: CollisionEmitterContact | null = null): number {
+  function emitParticles(
+    host: RuntimeHost,
+    node: EffectNode,
+    law: TimerEmitterPreviewLaw,
+    source: RunSource,
+    requested: number,
+    persistent: boolean,
+    diagnosticPulse = false,
+    collisionContact: CollisionEmitterContact | null = null,
+  ): number {
     const limit = source === 'ambient' ? AMBIENT_PARTICLE_LIMIT : MAX_PARTICLE_HEADS;
     const count = Math.max(0, Math.min(requested, limit - particles.length));
     if (!count) return 0;
     const fields = particleEmitterFields(node);
-    const zeroOrigin = Math.abs(numberField(fields, 'U9', 0)) < 1e-6
-      && Math.abs(numberField(fields, 'U10', 0)) < 1e-6 && Math.abs(numberField(fields, 'U11', 0)) < 1e-6;
+    const zeroOrigin =
+      Math.abs(numberField(fields, 'U9', 0)) < 1e-6 &&
+      Math.abs(numberField(fields, 'U10', 0)) < 1e-6 &&
+      Math.abs(numberField(fields, 'U11', 0)) < 1e-6;
     const fireworkHost = host.reference && /firework|flashpot|bomb/i.test(host.reference.instance.modelName);
-    const muzzle = !persistent && zeroOrigin && fireworkHost
-      ? hooks.referenceEmitterMuzzle?.(host.reference!.instance.index) ?? null : null;
+    const muzzle =
+      !persistent && zeroOrigin && fireworkHost
+        ? (hooks.referenceEmitterMuzzle?.(host.reference!.instance.index) ?? null)
+        : null;
     // U9-U11 are only a stored seed on SubType-2. Hardware replaces them with this hit's exact point.
     // An isolated editor preview has no hit, so it deliberately uses the prop origin as a stable stand-in.
     const collisionEmitter = node.semanticType === 'particle.collision';
-    const origin = collisionEmitter ? collisionContact?.position.clone() ?? host.position()
-      : muzzle?.position ?? host.position(node);
+    const origin = collisionEmitter
+      ? (collisionContact?.position.clone() ?? host.position())
+      : (muzzle?.position ?? host.position(node));
     const size = timerEmitterPreviewSizeRange(law, host.sizeScale, persistent);
     const spriteIndex = ensureParticleSprite(law.spriteIndex, !host.reference);
     const nativeAim = muzzle ? host.vector(new THREE.Vector3(0, 0, 1)).normalize() : null;
-    const correction = muzzle && nativeAim && nativeAim.lengthSq() > 0.5
-      ? new THREE.Quaternion().setFromUnitVectors(nativeAim, muzzle.direction.clone().normalize()) : null;
+    const correction =
+      muzzle && nativeAim && nativeAim.lengthSq() > 0.5
+        ? new THREE.Quaternion().setFromUnitVectors(nativeAim, muzzle.direction.clone().normalize())
+        : null;
     const worldVector = (value: readonly number[]) => {
       const result = host.vector(new THREE.Vector3(value[0], value[1], value[2]));
       return correction ? result.applyQuaternion(correction) : result;
     };
     const authoredWorldBase = worldVector(law.velocityBase);
     const contactNormal = collisionContact?.normal.clone().normalize() ?? null;
-    const collisionWorldBase = collisionEmitter && contactNormal
-      ? new THREE.Vector3(...collisionEmitterContactVelocityBase(
-        [authoredWorldBase.length(), 0, 0], contactNormal.toArray())) : null;
+    const collisionWorldBase =
+      collisionEmitter && contactNormal
+        ? new THREE.Vector3(
+            ...collisionEmitterContactVelocityBase([authoredWorldBase.length(), 0, 0], contactNormal.toArray()),
+          )
+        : null;
     const acceleration = worldVector(law.gravity);
     const timeScale = Math.abs(law.timeScale) < 1e-6 ? 1 : law.timeScale;
     const linear = acceleration.clone().multiplyScalar(1 / (timeScale * timeScale));
@@ -2101,7 +2576,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function stepContinuousEmitters(dt: number) {
     for (const [key, emitter] of continuousEmitters) {
-      if (elapsed > emitter.expiresAt) { continuousEmitters.delete(key); continue; }
+      if (elapsed > emitter.expiresAt) {
+        continuousEmitters.delete(key);
+        continue;
+      }
       emitter.accumulator += emitter.law.rate * dt;
       const requested = Math.min(24, Math.floor(emitter.accumulator));
       if (!requested) continue;
@@ -2114,7 +2592,13 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function spawnPulse(at: THREE.Vector3, color: number, life = 0.9, source: RunSource = 'preview') {
     if (pulses.length >= MAX_PULSES) return;
-    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
     const mesh = new THREE.Mesh(new THREE.RingGeometry(0.65, 1, 28), material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.copy(at);
@@ -2189,7 +2673,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   /** Start a model-root preview as one transaction. Every graph runs immediately; timer-persistent members
    * remain in the preview loop without displacing their sibling collision/trigger graphs. */
-  function previewGraphs(instanceIndex: number, graphIds: readonly string[], loopGraphIds: readonly string[] = []): boolean {
+  function previewGraphs(
+    instanceIndex: number,
+    graphIds: readonly string[],
+    loopGraphIds: readonly string[] = [],
+  ): boolean {
     const instance = data?.instances.find(x => x.index === instanceIndex);
     if (!instance) return false;
     const graphs = [...new Set(graphIds)].map(graphById).filter((graph): graph is EffectGraph => !!graph);
@@ -2215,11 +2703,16 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function stopPreview(): boolean {
     const hadAnimObjectPreview = hooks.clearAnimObjectPreviews?.() ?? false;
     const hadMaterialPreview = hooks.clearMaterialEffectPreviews?.() ?? false;
-    const wasPlaying = previewLoops.size > 0 || scheduled.some(item => item.meta.source === 'preview')
-      || particles.some(item => item.source === 'preview') || pulses.some(item => item.source === 'preview')
-      || previewSceneHosts.size > 0 || [...activeSounds].some(item => item.source === 'preview')
-      || [...splineMotions.values()].some(item => item.source === 'preview')
-      || hadAnimObjectPreview || hadMaterialPreview;
+    const wasPlaying =
+      previewLoops.size > 0 ||
+      scheduled.some(item => item.meta.source === 'preview') ||
+      particles.some(item => item.source === 'preview') ||
+      pulses.some(item => item.source === 'preview') ||
+      previewSceneHosts.size > 0 ||
+      [...activeSounds].some(item => item.source === 'preview') ||
+      [...splineMotions.values()].some(item => item.source === 'preview') ||
+      hadAnimObjectPreview ||
+      hadMaterialPreview;
     const loopKeys = [...previewLoops.keys()];
     previewLoops.clear();
     clearRuntimeSource('preview');
@@ -2240,7 +2733,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     return state ? { remaining: state.remaining, marked: [...state.marked].sort((a, b) => a - b) } : null;
   }
 
-  interface PlayBinding { key: string; host: RuntimeHost; circumstance: string; graph: EffectGraph }
+  interface PlayBinding {
+    key: string;
+    host: RuntimeHost;
+    circumstance: string;
+    graph: EffectGraph;
+  }
 
   function collisionBindingRepeatSeconds(binding: PlayBinding): number {
     return binding.graph.nodes.some(node => node.semanticType === 'particle.collision')
@@ -2261,9 +2759,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     for (const binding of [...playBindings('reference'), ...playBindings('authored')]) {
       if (binding.circumstance !== 'collision') continue;
       for (const node of binding.graph.nodes) {
-        const spec = boostVolumeSpec(node, binding.host.worldVector, binding.host.vector,
-          binding.host.worldPoint);
-        if (spec) { specs.set(runtimeObjectKey(binding.host.object), spec); break; }
+        const spec = boostVolumeSpec(node, binding.host.worldVector, binding.host.vector, binding.host.worldPoint);
+        if (spec) {
+          specs.set(runtimeObjectKey(binding.host.object), spec);
+          break;
+        }
       }
     }
     return specs;
@@ -2314,8 +2814,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function crackedBreakTarget(key: string): { host: RuntimeHost; graph: EffectGraph | null } | null {
     const host = crackedSurfaceTarget(key);
     if (!host) return null;
-    const trigger = [...playBindings('reference'), ...playBindings('authored')].find(other =>
-      other.circumstance === 'trigger' && runtimeObjectKey(other.host.object) === obstacleHostKey(key));
+    const trigger = [...playBindings('reference'), ...playBindings('authored')].find(
+      other => other.circumstance === 'trigger' && runtimeObjectKey(other.host.object) === obstacleHostKey(key),
+    );
     return { host, graph: trigger?.graph ?? null };
   }
 
@@ -2323,8 +2824,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function applyCrackedBreak(key: string, subject: RunSubject, event: RideEvent | null): boolean {
     const target = crackedBreakTarget(key);
     if (!target) return false;
-    if (target.graph) scheduleGraph(target.host, target.graph, elapsed, 0, 'play', false, subject,
-      'cracked-break', event);
+    if (target.graph)
+      scheduleGraph(target.host, target.graph, elapsed, 0, 'play', false, subject, 'cracked-break', event);
     armInteractionReset(target.host, elapsed + BREAKABLE_RESPAWN_SECONDS, 'breakable');
     setHostVisible(target.host, false);
     hooks.retireRideObject?.(target.host.object);
@@ -2351,12 +2852,13 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     // solver. Run its collision column once through the same debounce, or Test creates the crack pool but omits
     // the marker/side effects the native contact walk constructs on PS2.
     const fired: PlayBinding[] = [];
-    if (cracked) for (const binding of [...playBindings('reference'), ...playBindings('authored')]) {
-      if (binding.circumstance !== 'collision' || runtimeObjectKey(binding.host.object) !== key) continue;
-      if (elapsed < (collisionGraphNext.get(binding.key) ?? 0)) continue;
-      collisionGraphNext.set(binding.key, elapsed + collisionBindingRepeatSeconds(binding));
-      fired.push(binding);
-    }
+    if (cracked)
+      for (const binding of [...playBindings('reference'), ...playBindings('authored')]) {
+        if (binding.circumstance !== 'collision' || runtimeObjectKey(binding.host.object) !== key) continue;
+        if (elapsed < (collisionGraphNext.get(binding.key) ?? 0)) continue;
+        collisionGraphNext.set(binding.key, elapsed + collisionBindingRepeatSeconds(binding));
+        fired.push(binding);
+      }
     runSharedBindings(fired, 'collision', key, subject);
   }
 
@@ -2397,27 +2899,29 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function boostArrows(): { index: number; arrow: BoostArrow }[] {
     if (boostArrowCache) return boostArrowCache;
     const out: { index: number; arrow: BoostArrow }[] = [];
-    if (data) for (const instance of attachedReferenceInstances(data)) {
-      const origin = instanceLocalPosition(instance);
-      const hostBasis = new THREE.Matrix3().setFromMatrix4(instanceMatrix(instance));
-      const hostAxis = (raw: THREE.Vector3) => raw.applyMatrix3(hostBasis);
-      for (const binding of referenceInstanceBindings(data, instance)) {
-        for (const node of binding.graph.nodes) {
-          const spec = boostVolumeSpec(node, rawAxis, hostAxis);
-          if (!spec) continue;
-          for (const arrow of specArrows(spec, origin)) out.push({ index: instance.index, arrow });
+    if (data)
+      for (const instance of attachedReferenceInstances(data)) {
+        const origin = instanceLocalPosition(instance);
+        const hostBasis = new THREE.Matrix3().setFromMatrix4(instanceMatrix(instance));
+        const hostAxis = (raw: THREE.Vector3) => raw.applyMatrix3(hostBasis);
+        for (const binding of referenceInstanceBindings(data, instance)) {
+          for (const node of binding.graph.nodes) {
+            const spec = boostVolumeSpec(node, rawAxis, hostAxis);
+            if (!spec) continue;
+            for (const arrow of specArrows(spec, origin)) out.push({ index: instance.index, arrow });
+          }
         }
       }
-    }
     boostArrowCache = out;
     return out;
   }
 
   /** One arrow per push the node can deliver: the tube-end launch has three, numbered by their stage. */
   function specArrows(spec: BoostVolumeSpec, origin: THREE.Vector3): BoostArrow[] {
-    const arrows: BoostArrow[] = spec.kind === 'tube-end'
-      ? spec.stages.map((stage, index) => ({ origin, dir: stage.dir, speed: stage.speed, barbs: index + 1 }))
-      : [{ origin, dir: spec.dir, speed: spec.target, barbs: 1 }];
+    const arrows: BoostArrow[] =
+      spec.kind === 'tube-end'
+        ? spec.stages.map((stage, index) => ({ origin, dir: stage.dir, speed: stage.speed, barbs: index + 1 }))
+        : [{ origin, dir: spec.dir, speed: spec.target, barbs: 1 }];
     // The tube end authors its inherited base axis as all-zero, and a stage it never launches the same way.
     return arrows.filter(arrow => arrow.dir.lengthSq() > 1e-8);
   }
@@ -2439,7 +2943,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         const host = referenceHost(data!, instance);
         return referenceInstanceBindings(data!, instance).map(binding => ({
           key: `${host.key}:${binding.circumstance}:${binding.graph.id}`,
-          host, circumstance: binding.circumstance, graph: binding.graph,
+          host,
+          circumstance: binding.circumstance,
+          graph: binding.graph,
         }));
       });
     }
@@ -2459,17 +2965,28 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     return null;
   }
 
-  function newRideEvent(kind: RideEventKind, key: string,
-    collisionContact: CollisionEmitterContact | null = null): RideEvent | null {
+  function newRideEvent(
+    kind: RideEventKind,
+    key: string,
+    collisionContact: CollisionEmitterContact | null = null,
+  ): RideEvent | null {
     const target = activeRideEventTarget();
     if (!target || !Number.isSafeInteger(nextRideEventId)) return null;
     const event: RideEvent = {
-      target, mode: playMode, kind, key, id: nextRideEventId,
+      target,
+      mode: playMode,
+      kind,
+      key,
+      id: nextRideEventId,
       riderSpeed: THREE.MathUtils.clamp(riderVelocity.length(), 0, 500),
-      ...(kind === 'collision' && collisionContact ? { contact: {
-        point: collisionContact.position.toArray() as [number, number, number],
-        normal: collisionContact.normal.clone().normalize().toArray() as [number, number, number],
-      } } : {}),
+      ...(kind === 'collision' && collisionContact
+        ? {
+            contact: {
+              point: collisionContact.position.toArray() as [number, number, number],
+              normal: collisionContact.normal.clone().normalize().toArray() as [number, number, number],
+            },
+          }
+        : {}),
     };
     nextRideEventId++;
     return event;
@@ -2477,13 +2994,29 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   /** Start every local graph first, then publish the one interaction that owns them. AI fields still mutate
    * this browser's throwaway world, but only the human rider is an authority for multiplayer crossings. */
-  function runSharedBindings(bindings: readonly PlayBinding[], kind: 'collision' | 'trigger', key: string,
-    subject: number | null, collisionContact: CollisionEmitterContact | null = null): boolean {
+  function runSharedBindings(
+    bindings: readonly PlayBinding[],
+    kind: 'collision' | 'trigger',
+    key: string,
+    subject: number | null,
+    collisionContact: CollisionEmitterContact | null = null,
+  ): boolean {
     if (!bindings.length) return false;
     const event = subject === null ? newRideEvent(kind, key, collisionContact) : null;
     for (const binding of bindings)
-      scheduleGraph(binding.host, binding.graph, elapsed, 0, 'play', false, subject, 'ordinary', event,
-        undefined, collisionContact);
+      scheduleGraph(
+        binding.host,
+        binding.graph,
+        elapsed,
+        0,
+        'play',
+        false,
+        subject,
+        'ordinary',
+        event,
+        undefined,
+        collisionContact,
+      );
     if (event) hooks.onRideEvent?.(event);
     return true;
   }
@@ -2501,29 +3034,49 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     }
     if (event.kind === 'cracked-break') {
       const host = crackedSurfaceTarget(event.key);
-      return !!host && hostIsPresentInPlayMode(host, playMode)
-        && applyCrackedBreak(event.key, 'remote', event);
+      return !!host && hostIsPresentInPlayMode(host, playMode) && applyCrackedBreak(event.key, 'remote', event);
     }
     if (!activePlayTarget) return false;
     if (event.kind === 'collision') {
-      const bindings = playBindings(activePlayTarget).filter(binding => binding.circumstance === 'collision'
-        && runtimeObjectKey(binding.host.object) === event.key
-        && hostIsPresentInPlayMode(binding.host, playMode));
+      const bindings = playBindings(activePlayTarget).filter(
+        binding =>
+          binding.circumstance === 'collision' &&
+          runtimeObjectKey(binding.host.object) === event.key &&
+          hostIsPresentInPlayMode(binding.host, playMode),
+      );
       if (!bindings.length) return false;
-      const collisionContact = event.contact ? {
-        position: new THREE.Vector3(...event.contact.point), normal: new THREE.Vector3(...event.contact.normal),
-      } : null;
+      const collisionContact = event.contact
+        ? {
+            position: new THREE.Vector3(...event.contact.point),
+            normal: new THREE.Vector3(...event.contact.normal),
+          }
+        : null;
       for (const binding of bindings)
-        scheduleGraph(binding.host, binding.graph, elapsed, 0, 'play', false, 'remote', 'ordinary', event,
-          undefined, collisionContact);
+        scheduleGraph(
+          binding.host,
+          binding.graph,
+          elapsed,
+          0,
+          'play',
+          false,
+          'remote',
+          'ordinary',
+          event,
+          undefined,
+          collisionContact,
+        );
       // Collision audio is prop-owned rather than graph-owned. Use the stable host position and the sender's
       // speed as the best available impact intensity; gameplay-only board cues remain suppressed above.
       const host = bindings[0].host;
       propSound.contact(host.object, collisionContact?.position ?? host.position(), event.riderSpeed, elapsed);
       return true;
     }
-    const binding = playBindings(activePlayTarget).find(candidate => candidate.circumstance === 'trigger'
-      && candidate.key === event.key && hostIsPresentInPlayMode(candidate.host, playMode));
+    const binding = playBindings(activePlayTarget).find(
+      candidate =>
+        candidate.circumstance === 'trigger' &&
+        candidate.key === event.key &&
+        hostIsPresentInPlayMode(candidate.host, playMode),
+    );
     if (!binding) return false;
     scheduleGraph(binding.host, binding.graph, elapsed, 0, 'play', false, 'remote', 'ordinary', event);
     return true;
@@ -2569,10 +3122,18 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     if (!rigid) {
       const axis = new THREE.Vector3().crossVectors(shove.linear, yAxis);
       dynamicBodies.set(host.key, {
-        key: host.key, host, matrix, basis, position, velocity: shove.linear.clone(),
+        key: host.key,
+        host,
+        matrix,
+        basis,
+        position,
+        velocity: shove.linear.clone(),
         spinAxis: axis.lengthSq() > 1e-8 ? axis.normalize() : new THREE.Vector3(1, 0, 0),
         spin: THREE.MathUtils.clamp(speed * 0.35, 1.5, 9),
-        rotation: new THREE.Quaternion(), age: 0, duration: 12, hideOnEnd: false,
+        rotation: new THREE.Quaternion(),
+        age: 0,
+        duration: 12,
+        hideOnEnd: false,
       });
       return;
     }
@@ -2589,12 +3150,24 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       : Math.min(radius, 1.2); // no ground read: a conservative stand-in beats a bounding-sphere stilt
 
     dynamicBodies.set(host.key, {
-      key: host.key, host, matrix, basis, position,
-      velocity: shove.linear.clone(), angular: shove.angular.clone(),
-      invInertia: rigid.invInertia, invMass: rigid.invMass, com, comOffset: com.clone().sub(position),
+      key: host.key,
+      host,
+      matrix,
+      basis,
+      position,
+      velocity: shove.linear.clone(),
+      angular: shove.angular.clone(),
+      invInertia: rigid.invInertia,
+      invMass: rigid.invMass,
+      com,
+      comOffset: com.clone().sub(position),
       radius: support,
-      spinAxis: yAxis.clone(), spin: 0,
-      rotation: new THREE.Quaternion(), age: 0, duration: 20, hideOnEnd: false,
+      spinAxis: yAxis.clone(),
+      spin: 0,
+      rotation: new THREE.Quaternion(),
+      age: 0,
+      duration: 20,
+      hideOnEnd: false,
     });
   }
 
@@ -2609,31 +3182,42 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     return prop ? authoredHost(authoredDocument ?? createEmptyEffectsDocument(''), prop) : null;
   }
 
-  function propCollision(object: RideObstacleObject, position: THREE.Vector3, normal: THREE.Vector3,
+  function propCollision(
+    object: RideObstacleObject,
+    position: THREE.Vector3,
+    normal: THREE.Vector3,
     impactSpeed: number,
-    shove: RideObstacleHit['shove'] = null, subject: number | null = null) {
+    shove: RideObstacleHit['shove'] = null,
+    subject: number | null = null,
+  ) {
     const target = object.kind === 'reference' ? 'reference' : 'authored';
     if (activePlayTarget && activePlayTarget !== target) return;
     ensurePlayRuntime(target);
     if (shove) shoveProp(object, shove);
     try {
-      if (localStorage.getItem('slopesmith:collision-debug') === '1') console.debug('[Slopesmith prop contact]', {
-        object, impactSpeed: Number(impactSpeed.toFixed(3)),
-        position: position.toArray().map(value => Number(value.toFixed(3))),
-        normal: normal.toArray().map(value => Number(value.toFixed(3))),
-        playSeconds: Number(elapsed.toFixed(3)),
-        // The shove's whole story in one line: `shove: null` means the ride model never saw a Roller-activated
-        // dynamic body [Trailmap: 370-world-interaction], while `hasBody: false` means it did but the
-        // instance reached Play with no authored mass properties, so it cannot run the rigid solve.
-        shove: shove ? {
-          hasBody: !!shove.body,
-          linear: shove.linear.toArray().map(v => Number(v.toFixed(3))),
-          angular: shove.angular.toArray().map(v => Number(v.toFixed(3))),
-          launchSpeed: Number(shove.linear.length().toFixed(3)),
-          spinRate: Number(shove.angular.length().toFixed(3)),
-        } : null,
-      });
-    } catch { /* storage can be unavailable in a privacy-restricted frame; diagnostics stay optional */ }
+      if (localStorage.getItem('slopesmith:collision-debug') === '1')
+        console.debug('[Slopesmith prop contact]', {
+          object,
+          impactSpeed: Number(impactSpeed.toFixed(3)),
+          position: position.toArray().map(value => Number(value.toFixed(3))),
+          normal: normal.toArray().map(value => Number(value.toFixed(3))),
+          playSeconds: Number(elapsed.toFixed(3)),
+          // The shove's whole story in one line: `shove: null` means the ride model never saw a Roller-activated
+          // dynamic body [Trailmap: 370-world-interaction], while `hasBody: false` means it did but the
+          // instance reached Play with no authored mass properties, so it cannot run the rigid solve.
+          shove: shove
+            ? {
+                hasBody: !!shove.body,
+                linear: shove.linear.toArray().map(v => Number(v.toFixed(3))),
+                angular: shove.angular.toArray().map(v => Number(v.toFixed(3))),
+                launchSpeed: Number(shove.linear.length().toFixed(3)),
+                spinRate: Number(shove.angular.length().toFixed(3)),
+              }
+            : null,
+        });
+    } catch {
+      /* storage can be unavailable in a privacy-restricted frame; diagnostics stay optional */
+    }
     const objectKey = runtimeObjectKey(object);
     const fired: PlayBinding[] = [];
     for (const binding of playBindings(target)) {
@@ -2650,8 +3234,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     propSound.contact(object, position, impactSpeed, elapsed, shove ? 'movable' : undefined);
   }
 
-  function installPersistentGraph(host: RuntimeHost, graph: EffectGraph, depth = 0,
-    source: RunSource = 'play') {
+  function installPersistentGraph(host: RuntimeHost, graph: EffectGraph, depth = 0, source: RunSource = 'play') {
     if (depth > MAX_GRAPH_DEPTH) return;
     for (const node of graph.nodes) {
       // A Counter is a constructor like the rest of this family, and it is the one with no motion to install,
@@ -2668,8 +3251,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       const animDelta = animDeltaFromNode(node);
       if (animDelta && hooks.startAnimDelta?.(host.object, animDelta)) continue;
       const command = effectPlayCommand(node);
-      if (command?.kind === 'flag-wave' || command?.kind === 'spline-motion'
-        || command?.kind === 'property-control') {
+      if (command?.kind === 'flag-wave' || command?.kind === 'spline-motion' || command?.kind === 'property-control') {
         executePlayCommand(host, command, source);
         continue;
       }
@@ -2710,8 +3292,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   function installWorldPersistentMotions() {
     if (!worldEffectsEnabled) return;
-    for (const target of ['reference', 'authored'] as const) for (const binding of playBindings(target))
-      if (binding.circumstance === 'persistent') installAmbientSplineGraph(binding.host, binding.graph);
+    for (const target of ['reference', 'authored'] as const)
+      for (const binding of playBindings(target))
+        if (binding.circumstance === 'persistent') installAmbientSplineGraph(binding.host, binding.graph);
   }
 
   /** Persistent property nodes are constructors/installers in SSX. Install the motion-bearing subset once when
@@ -2722,9 +3305,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       if (binding.circumstance === 'persistent') installPersistentGraph(binding.host, binding.graph);
     // Always one line, so an absent install reads as "this level has no Counter bound" rather than as
     // "the tracer never ran" — the two look identical when the only signal is silence.
-    counterLog(`Play started on ${target}: ${playCounters.size} counter(s) installed`
-      + ` from ${bindings.filter(binding => binding.circumstance === 'persistent').length} persistent effect(s)`
-      + `${playCounters.size ? ` — ${[...playCounters].map(([key, state]) => `${key} needs ${state.remaining}`).join(', ')}` : ''}`);
+    counterLog(
+      `Play started on ${target}: ${playCounters.size} counter(s) installed` +
+        ` from ${bindings.filter(binding => binding.circumstance === 'persistent').length} persistent effect(s)` +
+        `${playCounters.size ? ` — ${[...playCounters].map(([key, state]) => `${key} needs ${state.remaining}`).join(', ')}` : ''}`,
+    );
   }
 
   /** External race code invokes named SSF functions that are not attached to any prop slot. StartCountDown is
@@ -2732,8 +3317,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    * TextureFlip receiver, then selects frames 1..4 through the authored 1.0/0.5/0.5/0.5 second waits. */
   function scheduleReferenceStartCountdown() {
     if (!data) return;
-    const start = data.document.functions.find(fn => fn.name.toLowerCase() === 'startcountdown')
-      ?? data.document.functions.find(fn => fn.name.toLowerCase() === 'countdownstart');
+    const start =
+      data.document.functions.find(fn => fn.name.toLowerCase() === 'startcountdown') ??
+      data.document.functions.find(fn => fn.name.toLowerCase() === 'countdownstart');
     if (!start) return;
 
     const seen = new Set<string>();
@@ -2746,7 +3332,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       }
       for (const node of fn.nodes) {
         const child = node.references?.function
-          ? data!.document.functions.find(candidate => candidate.id === node.references!.function) : null;
+          ? data!.document.functions.find(candidate => candidate.id === node.references!.function)
+          : null;
         if (child) {
           const instance = referencedInstance({ id: child.id, name: child.name, nodes: child.nodes });
           if (instance) return instance;
@@ -2754,11 +3341,16 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       }
       return null;
     };
-    const hostInstance = referencedInstance({ id: start.id, name: start.name, nodes: start.nodes })
-      ?? data.instances[0];
+    const hostInstance =
+      referencedInstance({ id: start.id, name: start.name, nodes: start.nodes }) ?? data.instances[0];
     if (!hostInstance) return;
-    scheduleGraph(referenceHost(data, hostInstance), { id: start.id, name: start.name, nodes: start.nodes },
-      elapsed, 0, 'play');
+    scheduleGraph(
+      referenceHost(data, hostInstance),
+      { id: start.id, name: start.name, nodes: start.nodes },
+      elapsed,
+      0,
+      'play',
+    );
   }
 
   function scanPlayTriggers(riderWorld: THREE.Vector3, target: 'authored' | 'reference') {
@@ -2775,10 +3367,11 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     // approach, and knocking all ten cans afterwards then had nothing left to change.
     const dispatchedHosts = new Set<string>();
     for (const binding of bindings) {
-      const dispatched = binding.circumstance === 'collision'
-        ? binding.graph.nodes.some(node => crackedSurfaceSpec(node))
-        : binding.circumstance === 'persistent'
-          && binding.graph.nodes.some(node => effectCounterInstall(node) !== null);
+      const dispatched =
+        binding.circumstance === 'collision'
+          ? binding.graph.nodes.some(node => crackedSurfaceSpec(node))
+          : binding.circumstance === 'persistent' &&
+            binding.graph.nodes.some(node => effectCounterInstall(node) !== null);
       if (dispatched) dispatchedHosts.add(runtimeObjectKey(binding.host.object));
     }
     for (const binding of bindings) {
@@ -2786,9 +3379,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       if (binding.circumstance === 'persistent') {
         // Camera-near ambient scheduling already owns emitters when the editor Effects toggle is on. With it off,
         // Play still runs only rider-near particle graphs; property installers were handled once above.
-        if (!worldEffectsEnabled && distance <= 120
-          && effectGraphHasTimerEmitter(binding.host.document, binding.graph)
-          && elapsed >= (persistentNext.get(binding.key) ?? 0)) {
+        if (
+          !worldEffectsEnabled &&
+          distance <= 120 &&
+          effectGraphHasTimerEmitter(binding.host.document, binding.graph) &&
+          elapsed >= (persistentNext.get(binding.key) ?? 0)
+        ) {
           scheduleGraph(binding.host, binding.graph, elapsed, 0, 'play', true);
           persistentNext.set(binding.key, elapsed + AMBIENT_REPEAT_SECONDS);
         }
@@ -2821,8 +3417,12 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const maxDistance2 = AMBIENT_MAX_DISTANCE * AMBIENT_MAX_DISTANCE;
     const candidates = [...authoredPersistentEmitters, ...referencePersistentEmitters]
       .map(binding => ({ binding, distance2: binding.host.position().distanceToSquared(cameraWorld) }))
-      .filter(item => !previewLoops.has(item.binding.key) && item.distance2 <= maxDistance2
-        && elapsed >= (persistentNext.get(item.binding.key) ?? 0))
+      .filter(
+        item =>
+          !previewLoops.has(item.binding.key) &&
+          item.distance2 <= maxDistance2 &&
+          elapsed >= (persistentNext.get(item.binding.key) ?? 0),
+      )
       .sort((a, b) => a.distance2 - b.distance2)
       .slice(0, MAX_AMBIENT_EMITTERS);
     for (const { binding } of candidates) {
@@ -2843,7 +3443,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
    * from — the impulse itself carries no vertical bias at all.
    */
   function stepRigidBody(body: DynamicBody, dt: number) {
-    const inv = body.invInertia!, angular = body.angular!;
+    const inv = body.invInertia!,
+      angular = body.angular!;
     const invMass = body.invMass ?? 1;
     // The CENTRE OF MASS is the integrated state: velocity translates it and the rotation turns about it. The
     // instance origin is derived at the end — integrating the origin instead swings the CoM around whatever
@@ -2853,8 +3454,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     com.addScaledVector(body.velocity, dt);
 
     const rate = angular.length();
-    if (rate > 1e-6) body.rotation.premultiply(rigidQuat
-      .setFromAxisAngle(rigidAxis.copy(angular).divideScalar(rate), rate * dt));
+    if (rate > 1e-6)
+      body.rotation.premultiply(rigidQuat.setFromAxisAngle(rigidAxis.copy(angular).divideScalar(rate), rate * dt));
 
     const ground = hooks.groundAt?.(body.host.object, com) ?? null;
     const radius = body.radius ?? 0.5;
@@ -2875,8 +3476,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         if (contactVelocity.y < 0) {
           const rxn = rigidRxN.copy(r).cross(WORLD_UP_VEC);
           const rotational = applyInvInertia(inv, rxn, rigidTmp).cross(r).dot(WORLD_UP_VEC);
-          const impulse = -(1 + RIGID_RESTITUTION) * contactVelocity.y
-            / (invMass + Math.max(0, rotational));
+          const impulse = (-(1 + RIGID_RESTITUTION) * contactVelocity.y) / (invMass + Math.max(0, rotational));
           body.velocity.y += impulse * invMass;
           angular.add(applyInvInertia(inv, rigidTmp.copy(r).cross(rigidTmp2.set(0, impulse, 0)), rigidTmp3));
 
@@ -2887,11 +3487,15 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
             tangent.divideScalar(slide);
             const rxt = rigidRxN.copy(r).cross(tangent);
             const tangentRotational = applyInvInertia(inv, rxt, rigidTmp2).cross(r).dot(tangent);
-            const friction = Math.max(-RIGID_FRICTION * impulse,
-              -slide / (invMass + Math.max(0, tangentRotational)));
+            const friction = Math.max(-RIGID_FRICTION * impulse, -slide / (invMass + Math.max(0, tangentRotational)));
             body.velocity.addScaledVector(tangent, friction * invMass);
-            angular.add(applyInvInertia(inv,
-              rigidTmp2.copy(r).cross(rigidTmp3.copy(tangent).multiplyScalar(friction)), rigidTmp4));
+            angular.add(
+              applyInvInertia(
+                inv,
+                rigidTmp2.copy(r).cross(rigidTmp3.copy(tangent).multiplyScalar(friction)),
+                rigidTmp4,
+              ),
+            );
           }
         }
         // A sphere contact rolls without loss forever; a real bag scrubs against the snow. The RE names the
@@ -2945,11 +3549,15 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       if (ground && body.position.y < ground.y + 0.08 && body.velocity.y < 0) {
         body.position.y = ground.y + 0.08;
         body.velocity.y *= -0.5;
-        body.velocity.x *= 0.82; body.velocity.z *= 0.82; body.spin *= 0.86;
-        if (body.velocity.lengthSq() < 0.15) { body.velocity.set(0, 0, 0); body.spin = 0; }
+        body.velocity.x *= 0.82;
+        body.velocity.z *= 0.82;
+        body.spin *= 0.86;
+        if (body.velocity.lengthSq() < 0.15) {
+          body.velocity.set(0, 0, 0);
+          body.spin = 0;
+        }
       }
-      if (body.spin) body.rotation.premultiply(new THREE.Quaternion()
-        .setFromAxisAngle(body.spinAxis, body.spin * dt));
+      if (body.spin) body.rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(body.spinAxis, body.spin * dt));
       setHostWorldMatrix(body.host, composeMotion(body.matrix, body.basis, body.position, body.rotation));
     }
   }
@@ -2967,8 +3575,7 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       for (const piece of body.pieces) {
         piece.velocity.y -= 9.8 * dt;
         piece.offset.addScaledVector(piece.velocity, dt);
-        piece.rotation.premultiply(new THREE.Quaternion()
-          .setFromAxisAngle(piece.spinAxis, piece.spin * dt));
+        piece.rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(piece.spinAxis, piece.spin * dt));
       }
       setHostPieceMotions(body.host, body.pieces);
     }
@@ -2987,7 +3594,9 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
         motion.phase += motion.velocity * dt;
         angle = THREE.MathUtils.clamp(motion.phase * motion.amplitude, -0.28, 0.28);
         if (Math.abs(motion.phase) < 0.001 && Math.abs(motion.velocity) < 0.001) {
-          setHostWorldMatrix(motion.host, null); flexMotions.delete(motion.key); continue;
+          setHostWorldMatrix(motion.host, null);
+          flexMotions.delete(motion.key);
+          continue;
         }
       }
       const rotation = new THREE.Quaternion().setFromAxisAngle(worldUp, angle);
@@ -2998,8 +3607,14 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   function stepSplineMotions(dt: number) {
     for (const motion of splineMotions.values()) {
       if (!motion.stopped) {
-        const next = stepSplineMotionDistance(motion.distance, motion.direction, motion.speed,
-          dt, motion.length, motion.endMode);
+        const next = stepSplineMotionDistance(
+          motion.distance,
+          motion.direction,
+          motion.speed,
+          dt,
+          motion.length,
+          motion.endMode,
+        );
         motion.distance = next.distance;
         motion.direction = next.direction;
         motion.stopped = next.stopped;
@@ -3013,8 +3628,17 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       // clocks remain live. Reassert ownership every frame just as we already reassert the moving matrices.
       setHostVisible(motion.host, !motion.finished);
       const matrices = splinePoseMatrices(
-        motion.points, motion.cumulative, motion.length, motion.distance, motion.direction,
-        motion.endMode, motion.orientationMode, motion.yawOffset, motion.instanceCount, motion.basis);
+        motion.points,
+        motion.cumulative,
+        motion.length,
+        motion.distance,
+        motion.direction,
+        motion.endMode,
+        motion.orientationMode,
+        motion.yawOffset,
+        motion.instanceCount,
+        motion.basis,
+      );
       setHostWorldMatrix(motion.host, matrices[0] ?? null);
       setHostWorldCopies(motion.host, matrices.length > 1 ? matrices.slice(1) : null);
       if (motion.finished) {
@@ -3025,7 +3649,10 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
   }
 
   function stepSceneMotions(dt: number) {
-    stepDynamicBodies(dt); stepPieceThrows(dt); stepFlexMotions(dt); stepSplineMotions(dt);
+    stepDynamicBodies(dt);
+    stepPieceThrows(dt);
+    stepFlexMotions(dt);
+    stepSplineMotions(dt);
   }
 
   /** Write one sprite into the shared buffers at `cursor`, and say whether it took the slot. */
@@ -3035,16 +3662,21 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     const internalAge = sampleAge * particle.timeScale;
     const curvedAge = Math.min(2.7, internalAge);
     const curve = -0.73 * curvedAge + 0.113 * curvedAge * curvedAge;
-    const at = particle.pos.copy(particle.origin)
-      .addScaledVector(particle.linear, internalAge).addScaledVector(particle.curved, curve);
+    const at = particle.pos
+      .copy(particle.origin)
+      .addScaledVector(particle.linear, internalAge)
+      .addScaledVector(particle.curved, curve);
     const k = cursor * 3;
-    positionBuffer[k] = at.x; positionBuffer[k + 1] = at.y; positionBuffer[k + 2] = at.z;
+    positionBuffer[k] = at.x;
+    positionBuffer[k + 1] = at.y;
+    positionBuffer[k + 2] = at.z;
     const t = Math.max(0, Math.min(1, sampleAge / particle.life));
     const scaled = t * Math.max(0, particle.colors.length - 1);
     const si = Math.min(Math.max(0, particle.colors.length - 1), Math.floor(scaled));
     const sj = Math.min(Math.max(0, particle.colors.length - 1), si + 1);
     const f = scaled - si;
-    const a = particle.colors[si], b = particle.colors[sj];
+    const a = particle.colors[si],
+      b = particle.colors[sj];
     // A darkening layer's colour never reaches the framebuffer on hardware, so the authored RGB is dropped
     // here exactly as the Unity importer drops it and alpha alone carries the plume.
     const keepColor = emitterBlendKeepsColor(particle.blend);
@@ -3079,15 +3711,19 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     particleBatches.setDrawRanges(additiveCount, cursor - additiveCount);
   }
 
-  function step(dt: number, cameraWorld: THREE.Vector3, riderWorld: THREE.Vector3 | null,
-    playTarget: 'authored' | 'reference' | null, riderWorldVelocity?: THREE.Vector3 | null,
-    riderCanTrigger = true) {
+  function step(
+    dt: number,
+    cameraWorld: THREE.Vector3,
+    riderWorld: THREE.Vector3 | null,
+    playTarget: 'authored' | 'reference' | null,
+    riderWorldVelocity?: THREE.Vector3 | null,
+    riderCanTrigger = true,
+  ) {
     dt = Math.max(0, Math.min(dt, 0.1));
     if (audioListener.parent !== stage.camera) stage.camera.add(audioListener);
     elapsed += dt;
     if (previewLoops.size && elapsed >= previewLoopNext) {
-      for (const loop of previewLoops.values())
-        scheduleGraph(loop.host, loop.graph, elapsed, 0, 'preview', true);
+      for (const loop of previewLoops.values()) scheduleGraph(loop.host, loop.graph, elapsed, 0, 'preview', true);
       previewLoopNext = elapsed + AMBIENT_REPEAT_SECONDS;
     }
     ambientScanElapsed += dt;
@@ -3097,14 +3733,19 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     }
     if (playTarget && riderWorld) {
       if (activePlayTarget !== playTarget) {
-        clearPlayRuntime(); activePlayTarget = playTarget; installPlayPersistent(playTarget);
+        clearPlayRuntime();
+        activePlayTarget = playTarget;
+        installPlayPersistent(playTarget);
         if (playTarget === 'reference') scheduleReferenceStartCountdown();
       }
       playWasRunning = true;
       riderVelocity.copy(riderWorldVelocity ?? new THREE.Vector3());
       if (riderCanTrigger) {
         scanElapsed += dt;
-        if (scanElapsed >= TRIGGER_SCAN_SECONDS) { scanElapsed = 0; scanPlayTriggers(riderWorld, playTarget); }
+        if (scanElapsed >= TRIGGER_SCAN_SECONDS) {
+          scanElapsed = 0;
+          scanPlayTriggers(riderWorld, playTarget);
+        }
       } else scanElapsed = 0;
     } else {
       // Only a PLAYER ride is torn down here, and the target is dropped with it rather than on every frame the
@@ -3133,8 +3774,18 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     runScheduledEffectGraphs(scheduled, elapsed, {
       condition: (host, node, meta) => conditionPass(host, node, meta.rideEvent),
       execute: (host, node, depth, meta) =>
-        executeNode(host, node, depth, meta.source, meta.continuous, meta.subject, meta.cause, meta.rideEvent,
-          meta.breakableResetAt, meta.collisionContact),
+        executeNode(
+          host,
+          node,
+          depth,
+          meta.source,
+          meta.continuous,
+          meta.subject,
+          meta.cause,
+          meta.rideEvent,
+          meta.breakableResetAt,
+          meta.collisionContact,
+        ),
     });
     stepContinuousEmitters(dt);
     stepInteractionResets();
@@ -3144,14 +3795,18 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     for (let i = particles.length - 1; i >= 0; i--) {
       const particle = particles[i];
       particle.age += dt;
-      if (particle.age >= particle.life) { particles.splice(i, 1); continue; }
+      if (particle.age >= particle.life) {
+        particles.splice(i, 1);
+        continue;
+      }
     }
     syncParticles();
     for (let i = pulses.length - 1; i >= 0; i--) {
       const pulse = pulses[i];
       pulse.age += dt;
       if (pulse.age >= pulse.life) {
-        disposePulse(i); continue;
+        disposePulse(i);
+        continue;
       }
       const t = pulse.age / pulse.life;
       pulse.mesh.scale.setScalar(1 + t * 7);
@@ -3174,7 +3829,8 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
       if (body.asleep) body.asleepReported = true;
       const ground = hooks.groundAt?.(body.host.object, body.com) ?? null;
       out.push({
-        key: body.key, age: Math.round(body.age * 1000) / 1000,
+        key: body.key,
+        age: Math.round(body.age * 1000) / 1000,
         com: [body.com.x, body.com.y, body.com.z],
         velocity: [body.velocity.x, body.velocity.y, body.velocity.z],
         angular: [body.angular.x, body.angular.y, body.angular.z],
@@ -3188,8 +3844,14 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
 
   return {
     /** Fat lines rasterise in pixels; the viewport's resize() feeds them the live canvas resolution. */
-    get boostArrowMaterials() { return boostArrowLayer.materials; },
-    setData, setAuthoredData, setWorldEffectsEnabled, setInspecting, selectInstance,
+    get boostArrowMaterials() {
+      return boostArrowLayer.materials;
+    },
+    setData,
+    setAuthoredData,
+    setWorldEffectsEnabled,
+    setInspecting,
+    selectInstance,
     /** Impact sources come from the same prop payload as the colliders. Effects data is deliberately not in
      * this path: it can arrive later or be absent while props and their native collision rows remain valid. */
     setReferencePropSounds(level: string, instances: readonly PropInstance[]) {
@@ -3205,17 +3867,34 @@ export function createReferenceEffectsLayer(stage: Stage, hooks: EffectsPlayHook
     },
     /** What the ambient bed is sounding right now, loudest first — Play diagnostics. */
     placedAmbienceVoices: () => propSound.ambientVoices(),
-    preview, previewGraphs, previewAuthored, previewReferenceTimerNode, previewAuthoredTimerNode,
-    stopPreview, isPreviewing, showSplineInspector, setSplineInspectorDistance, hideSplineInspector,
+    preview,
+    previewGraphs,
+    previewAuthored,
+    previewReferenceTimerNode,
+    previewAuthoredTimerNode,
+    stopPreview,
+    isPreviewing,
+    showSplineInspector,
+    setSplineInspectorDistance,
+    hideSplineInspector,
     referencePlayCounter: (instanceIndex: number) => playCounter(`reference:${instanceIndex}`),
     authoredPlayCounter: (propId: string) => playCounter(`authored:${propId}`),
     /** Whether Play owns the runtime right now, so a missing Counter can be reported as "Play is not
      *  running" rather than as "this Counter was never installed". */
     isPlaying: () => activePlayTarget !== null,
-    step, beginPlay, endPlay, applyRideEvent, propCollision, shovedBodySamples, boostVolumeSpecs, resetVolumeKeys,
+    step,
+    beginPlay,
+    endPlay,
+    applyRideEvent,
+    propCollision,
+    shovedBodySamples,
+    boostVolumeSpecs,
+    resetVolumeKeys,
     modeDisabledRails,
     railEnabled,
-    crackedSurfaceSpecs, onCrackedChange, onCrackedBreak,
+    crackedSurfaceSpecs,
+    onCrackedChange,
+    onCrackedBreak,
     raceCountdown: () => referenceRaceCountdown(data),
     instanceWorldPosition(index: number): THREE.Vector3 | null {
       const instance = data?.instances.find(x => x.index === index);

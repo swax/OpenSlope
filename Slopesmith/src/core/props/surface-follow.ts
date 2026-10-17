@@ -41,7 +41,9 @@ export interface SurfaceMember {
 }
 
 /** A rigid unit's drag-start ground level: the mean ground under those of its members that had any. */
-export interface SurfaceUnit { ground: number | null }
+export interface SurfaceUnit {
+  ground: number | null;
+}
 
 export interface SurfaceFollow {
   members: SurfaceMember[];
@@ -50,7 +52,12 @@ export interface SurfaceFollow {
 
 /** What a Surface transform carries: the id its result answers by, its origin (data space), its size (1 for a
  *  point), and the rigid unit it moves with — items sharing a `unit` key take one lift; absent, it is its own. */
-export interface SurfaceItem { index: number; pos: V3; scale?: number; unit?: string }
+export interface SurfaceItem {
+  index: number;
+  pos: V3;
+  scale?: number;
+  unit?: string;
+}
 
 /** Freeze `items` for a Surface transform, measuring the ground under each origin. */
 export function freezeSurfaceFollow(items: readonly SurfaceItem[], height: SurfaceHeight): SurfaceFollow {
@@ -61,8 +68,15 @@ export function freezeSurfaceFollow(items: readonly SurfaceItem[], height: Surfa
     const ground = height(pos[0], pos[2], pos[1]);
     const key = item.unit === undefined ? `item:${i}` : `unit:${item.unit}`;
     let unit = unitOf.get(key);
-    if (unit === undefined) { unit = units.length; units.push({ sum: 0, count: 0 }); unitOf.set(key, unit); }
-    if (ground !== null) { units[unit].sum += ground; units[unit].count++; }
+    if (unit === undefined) {
+      unit = units.length;
+      units.push({ sum: 0, count: 0 });
+      unitOf.set(key, unit);
+    }
+    if (ground !== null) {
+      units[unit].sum += ground;
+      units[unit].count++;
+    }
     return { index: item.index, pos, scale: item.scale ?? 1, ground, last: ground, unit };
   });
   return { members, units: units.map(u => ({ ground: u.count ? u.sum / u.count : null })) };
@@ -70,8 +84,10 @@ export function freezeSurfaceFollow(items: readonly SurfaceItem[], height: Surfa
 
 /** The placements at `indices` (looked up through `prop`) as Surface items, an authored group one rigid unit.
  *  Indices that name no placement are dropped; repeated ones count once. */
-export function placementSurfaceItems(prop: (index: number) => PlacedProp | undefined,
-  indices: readonly number[]): SurfaceItem[] {
+export function placementSurfaceItems(
+  prop: (index: number) => PlacedProp | undefined,
+  indices: readonly number[],
+): SurfaceItem[] {
   return [...new Set(indices)].flatMap(index => {
     const placed = prop(index);
     return placed ? [{ index, pos: placed.pos, scale: placed.scale, unit: placed.assembly }] : [];
@@ -85,7 +101,8 @@ export function placementSurfaceItems(prop: (index: number) => PlacedProp | unde
  * Advances every member's `last` deck.
  */
 function unitLifts(f: SurfaceFollow, at: (m: SurfaceMember) => [number, number], height: SurfaceHeight): number[] {
-  const sum = f.units.map(() => 0), count = f.units.map(() => 0);
+  const sum = f.units.map(() => 0),
+    count = f.units.map(() => 0);
   for (const m of f.members) {
     if (m.ground === null) continue;
     const [x, z] = at(m);
@@ -94,15 +111,19 @@ function unitLifts(f: SurfaceFollow, at: (m: SurfaceMember) => [number, number],
     sum[m.unit] += (m.last ?? m.ground) - m.ground;
     count[m.unit]++;
   }
-  return sum.map((s, u) => count[u] ? s / count[u] : 0);
+  return sum.map((s, u) => (count[u] ? s / count[u] : 0));
 }
 
 /**
  * Move: every placement slides `dx` / `dz` (data space) across the ground, and rides it — its height changes by its
  * unit's lift, keeping the vertical offset it had from the surface. Answers each member's new origin.
  */
-export function slideOverSurface(f: SurfaceFollow, dx: number, dz: number,
-  height: SurfaceHeight): { index: number; pos: V3 }[] {
+export function slideOverSurface(
+  f: SurfaceFollow,
+  dx: number,
+  dz: number,
+  height: SurfaceHeight,
+): { index: number; pos: V3 }[] {
   const lifts = unitLifts(f, m => [m.pos[0] + dx, m.pos[2] + dz], height);
   return f.members.map(m => ({ index: m.index, pos: [m.pos[0] + dx, m.pos[1] + lifts[m.unit], m.pos[2] + dz] }));
 }
@@ -114,16 +135,24 @@ export function slideOverSurface(f: SurfaceFollow, dx: number, dz: number,
  * that stood over no surface at all scales about the pivot as a World scale does. Answers each member's new origin
  * and size.
  */
-export function scaleOverSurface(f: SurfaceFollow, factor: number, pivot: V3,
-  height: SurfaceHeight): { index: number; pos: V3; scale: number }[] {
-  const spread = (m: SurfaceMember): [number, number] =>
-    [pivot[0] + (m.pos[0] - pivot[0]) * factor, pivot[2] + (m.pos[2] - pivot[2]) * factor];
+export function scaleOverSurface(
+  f: SurfaceFollow,
+  factor: number,
+  pivot: V3,
+  height: SurfaceHeight,
+): { index: number; pos: V3; scale: number }[] {
+  const spread = (m: SurfaceMember): [number, number] => [
+    pivot[0] + (m.pos[0] - pivot[0]) * factor,
+    pivot[2] + (m.pos[2] - pivot[2]) * factor,
+  ];
   const lifts = unitLifts(f, spread, height);
   return f.members.map(m => {
     const [x, z] = spread(m);
     const ground = f.units[m.unit].ground;
-    const y = ground === null ? pivot[1] + (m.pos[1] - pivot[1]) * factor
-      : ground + lifts[m.unit] + (m.pos[1] - ground) * factor;
+    const y =
+      ground === null
+        ? pivot[1] + (m.pos[1] - pivot[1]) * factor
+        : ground + lifts[m.unit] + (m.pos[1] - ground) * factor;
     return { index: m.index, pos: [x, y, z], scale: m.scale * factor };
   });
 }

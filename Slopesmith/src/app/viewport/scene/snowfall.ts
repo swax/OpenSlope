@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import {
-  AMOUNT_PORT, BAKE_SEED, MAX_FLAKES, SNOWFLAKE_QUAD_CORNERS, SNOWFLAKE_QUAD_INDICES, bakeSnowFlakes,
-  snowfallAt, type SnowfallSettings,
+  AMOUNT_PORT,
+  BAKE_SEED,
+  MAX_FLAKES,
+  SNOWFLAKE_QUAD_CORNERS,
+  SNOWFLAKE_QUAD_INDICES,
+  bakeSnowFlakes,
+  snowfallAt,
+  type SnowfallSettings,
 } from '../../../core/particles/snowfall';
 import type { Stage } from '../stage';
 
@@ -146,20 +152,22 @@ export function createSnowfallLayer(stage: Stage) {
     fragmentShader: FRAGMENT_SHADER,
     blending: THREE.AdditiveBlending,
     transparent: true,
-    depthTest: true,    // snow behind a ridge is behind it; only the depth WRITE is wrong for a soft sprite
+    depthTest: true, // snow behind a ridge is behind it; only the depth WRITE is wrong for a soft sprite
     depthWrite: false,
     side: THREE.DoubleSide,
-    fog: false,         // the flakes live inside the wrap box; the range gate's haze starts at 300 m
+    fog: false, // the flakes live inside the wrap box; the range gate's haze starts at 300 m
   });
 
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.frustumCulled = false;   // the attributes are flake data; their AABB describes nowhere the field draws
-  mesh.raycast = () => { /* weather is never a pick target */ };
-  mesh.renderOrder = 3000;      // over the world and its transparent props, under the screen-space glare (4000)
+  mesh.frustumCulled = false; // the attributes are flake data; their AABB describes nowhere the field draws
+  mesh.raycast = () => {
+    /* weather is never a pick target */
+  };
+  mesh.renderOrder = 3000; // over the world and its transparent props, under the screen-space glare (4000)
   mesh.visible = false;
-  stage.scene.add(mesh);        // NOT worldRoot: the shader already works in three-world coordinates
+  stage.scene.add(mesh); // NOT worldRoot: the shader already works in three-world coordinates
 
-  let amount = AMOUNT_PORT;   // the Test dial (docs/016), defaulting to the game's own weather
+  let amount = AMOUNT_PORT; // the Test dial (docs/016), defaulting to the game's own weather
   let running = false;
   let elapsed = 0;
 
@@ -176,7 +184,7 @@ export function createSnowfallLayer(stage: Stage) {
     u.alpha.value = s.alpha;
     u.boost.value = s.boost;
     u.softness.value = s.softness;
-    geometry.instanceCount = s.flakes;   // a prefix of a uniform scatter is a uniform scatter: the amount IS the draw
+    geometry.instanceCount = s.flakes; // a prefix of a uniform scatter is a uniform scatter: the amount IS the draw
   }
   apply(snowfallAt(amount));
 
@@ -216,13 +224,22 @@ export function createSnowfallLayer(stage: Stage) {
   }
 
   return {
-    setAmount, sync,
-    get amount() { return amount; },
-    get visible() { return mesh.visible; },
+    setAmount,
+    sync,
+    get amount() {
+      return amount;
+    },
+    get visible() {
+      return mesh.visible;
+    },
     /** How many flakes the current setting actually draws — the profiler's and the checks' honest number. */
-    get flakes() { return geometry.instanceCount; },
+    get flakes() {
+      return geometry.instanceCount;
+    },
     /** The live uniform block, so a check can read the tuning the shader is actually running on. */
-    get uniforms() { return material.uniforms; },
+    get uniforms() {
+      return material.uniforms;
+    },
   };
 }
 

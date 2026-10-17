@@ -98,7 +98,7 @@ export function createRideScorer() {
     return points;
   };
 
-  const currentScore = () => active ? banked + preview() : frozenScore;
+  const currentScore = () => (active ? banked + preview() : frozenScore);
 
   /** BASE style points: no gem, big-air, or flat grab ladder. This is exactly what Unity feeds to the meter. */
   const meterBasePoints = () => {
@@ -205,7 +205,8 @@ export function createRideScorer() {
   /** Consume one completed fixed physics tick. */
   function ingest(tick: RideTelemetryTick) {
     if (!active) return;
-    const opening = tick.opening, closing = tick.closing;
+    const opening = tick.opening,
+      closing = tick.closing;
     const launched = tick.events.some(event => event.type === 'launch');
     const onRail = closing.railIndex >= 0;
     const inAir = !closing.grounded && !onRail;
@@ -228,8 +229,10 @@ export function createRideScorer() {
       // A ground ollie is launched after the ground integrator and performs no air rotation on that tick. Every
       // other transition into air already ran airTick and therefore contributes its measured facing/flip delta.
       if (!(opening.grounded && launched)) addRotation(opening, closing);
-      if (!comboActive) { comboActive = true; airSeconds = 0; }
-      else airSeconds += tick.dt;
+      if (!comboActive) {
+        comboActive = true;
+        airSeconds = 0;
+      } else airSeconds += tick.dt;
       grinding = false;
       grabbing = false;
       grabHeldPrevious = false;
@@ -254,7 +257,10 @@ export function createRideScorer() {
     comboActive = true;
     grinding = false;
     grabbing = hand !== null;
-    if (!hand) { grabHeldPrevious = false; return; }
+    if (!hand) {
+      grabHeldPrevious = false;
+      return;
+    }
     if (!grabHeldPrevious) grabStyle += RIDE_SCORE_GRAB_BEGIN_STYLE;
     grabHeldPrevious = true;
     grabSeconds += dt;
@@ -276,25 +282,52 @@ export function createRideScorer() {
   function snapshot(): RideScoreSnapshot {
     const trickPoints = active ? preview() : Math.max(0, frozenScore - banked);
     return {
-      score: currentScore(), banked, trickPoints,
+      score: currentScore(),
+      banked,
+      trickPoints,
       trickActive: active && comboActive,
       multiplier,
       rotations: (spinDegrees + flipDegrees) / 360,
-      airSeconds, grindSeconds, grabSeconds,
-      grinding, grabbing, grabHand,
-      lastTrickPoints, lastBailed, lastBailReason, resolution,
+      airSeconds,
+      grindSeconds,
+      grabSeconds,
+      grinding,
+      grabbing,
+      grabHand,
+      lastTrickPoints,
+      lastBailed,
+      lastBailReason,
+      resolution,
       boostMeter,
     };
   }
 
   return {
-    start, abandon, finish, bail, ingest, stepOffBoard, applyMultiplier, stepBoost, snapshot,
-    get active() { return active; },
-    get score() { return currentScore(); },
-    get currentMultiplier() { return multiplier; },
-    get boostMeter() { return boostMeter; },
+    start,
+    abandon,
+    finish,
+    bail,
+    ingest,
+    stepOffBoard,
+    applyMultiplier,
+    stepBoost,
+    snapshot,
+    get active() {
+      return active;
+    },
+    get score() {
+      return currentScore();
+    },
+    get currentMultiplier() {
+      return multiplier;
+    },
+    get boostMeter() {
+      return boostMeter;
+    },
     /** A scored run requires charge; outside one, Unity leaves held boost unlimited. */
-    get hasBoost() { return !active || boostMeter > 0; },
+    get hasBoost() {
+      return !active || boostMeter > 0;
+    },
   };
 }
 
@@ -302,7 +335,8 @@ export type RideScorer = ReturnType<typeof createRideScorer>;
 
 /** Unity's `Mathf.RoundToInt`: nearest integer with .5 ties rounded to the even neighbour. */
 function unityRound(value: number): number {
-  const lower = Math.floor(value), fraction = value - lower;
+  const lower = Math.floor(value),
+    fraction = value - lower;
   if (fraction < 0.5) return lower;
   if (fraction > 0.5) return lower + 1;
   return lower % 2 === 0 ? lower : lower + 1;
@@ -311,36 +345,43 @@ function unityRound(value: number): number {
 /** The Unity run HUD exposes the meter as fifteen whole dots, never a partially sliced dot. */
 export function boostMeterSegments(value: number): number {
   const meter = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
-  return Math.min(RIDE_BOOST_METER_SEGMENTS,
-    Math.floor(meter * RIDE_BOOST_METER_SEGMENTS + 0.001));
+  return Math.min(RIDE_BOOST_METER_SEGMENTS, Math.floor(meter * RIDE_BOOST_METER_SEGMENTS + 0.001));
 }
 
 /** Build Unity's itemized live trick or its briefly held resolution; the host decides whether that hold is live. */
 export function rideTrickDisplay(score: RideScoreSnapshot, showResolved: boolean): RideTrickDisplay | null {
   if (score.grinding) {
     return {
-      state: 'live', kind: 'grind', points: score.trickPoints, detail: `grind  ${score.grindSeconds.toFixed(1)}s`,
+      state: 'live',
+      kind: 'grind',
+      points: score.trickPoints,
+      detail: `grind  ${score.grindSeconds.toFixed(1)}s`,
     };
   }
   if (score.grabbing) {
     return {
-      state: 'live', kind: 'grab', points: score.trickPoints,
+      state: 'live',
+      kind: 'grab',
+      points: score.trickPoints,
       detail: `${score.grabHand ?? 'deck'} grab  ${score.grabSeconds.toFixed(1)}s`,
     };
   }
   if (score.trickActive && score.trickPoints > 0) {
     return {
-      state: 'live', kind: 'rotation', points: score.trickPoints,
-      detail: `${score.rotations.toFixed(2)} × ${RIDE_SCORE_SPIN_PER_360.toFixed(2)} × ${score.multiplier}`
-        + ` × ${Math.round(RIDE_SCORE_STYLE_CONSTANT)}`,
+      state: 'live',
+      kind: 'rotation',
+      points: score.trickPoints,
+      detail:
+        `${score.rotations.toFixed(2)} × ${RIDE_SCORE_SPIN_PER_360.toFixed(2)} × ${score.multiplier}` +
+        ` × ${Math.round(RIDE_SCORE_STYLE_CONSTANT)}`,
     };
   }
   if (showResolved && score.lastTrickPoints > 0) {
     return {
-      state: score.lastBailed ? 'bailed' : 'landed', kind: 'result', points: score.lastTrickPoints,
-      detail: score.lastBailed
-        ? score.lastBailReason === 'out-of-bounds' ? 'out of bounds' : 'sloppy landing'
-        : null,
+      state: score.lastBailed ? 'bailed' : 'landed',
+      kind: 'result',
+      points: score.lastTrickPoints,
+      detail: score.lastBailed ? (score.lastBailReason === 'out-of-bounds' ? 'out of bounds' : 'sloppy landing') : null,
     };
   }
   return null;
@@ -353,14 +394,15 @@ function grabTierPoints(seconds: number): number {
 }
 
 function vectorAngleDegrees(a: RideTelemetryVec3, b: RideTelemetryVec3): number {
-  const al = Math.hypot(a[0], a[1], a[2]), bl = Math.hypot(b[0], b[1], b[2]);
+  const al = Math.hypot(a[0], a[1], a[2]),
+    bl = Math.hypot(b[0], b[1], b[2]);
   if (al <= 1e-9 || bl <= 1e-9) return 0;
   const dot = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (al * bl);
-  return Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+  return (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
 }
 
 function landingTiltDegrees(opening: RideTelemetryState, closing: RideTelemetryState): number {
   const deckTilt = vectorAngleDegrees(opening.boardUp, closing.contactNormal);
-  const flip = ((opening.flip + 180) % 360 + 360) % 360 - 180;
+  const flip = ((((opening.flip + 180) % 360) + 360) % 360) - 180;
   return Math.max(deckTilt, Math.abs(flip));
 }

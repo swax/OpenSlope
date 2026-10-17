@@ -34,8 +34,10 @@ export function joinTargets(proxy: PolygonMesh, curves: InterfaceCurve[], cell: 
   const positionByKey = new Map<string, V3>();
   const adjacency = new Map<string, string[]>();
   for (const curve of curves) {
-    const a = curve.samples[0], b = curve.samples[curve.samples.length - 1];
-    const ka = keyOf(a), kb = keyOf(b);
+    const a = curve.samples[0],
+      b = curve.samples[curve.samples.length - 1];
+    const ka = keyOf(a),
+      kb = keyOf(b);
     if (ka === kb) continue;
     positionByKey.set(ka, a);
     positionByKey.set(kb, b);
@@ -45,8 +47,10 @@ export function joinTargets(proxy: PolygonMesh, curves: InterfaceCurve[], cell: 
   for (const [key, list] of adjacency) {
     if (list.length !== 2) {
       const p = positionByKey.get(key)!;
-      throw new Error(`the locked rim is not a set of closed loops: corner at `
-        + `${p[0].toFixed(0)},${p[2].toFixed(0)} joins ${list.length} rim edge(s)`);
+      throw new Error(
+        `the locked rim is not a set of closed loops: corner at ` +
+          `${p[0].toFixed(0)},${p[2].toFixed(0)} joins ${list.length} rim edge(s)`,
+      );
     }
   }
   const targets: JoinTarget[] = [];
@@ -54,7 +58,8 @@ export function joinTargets(proxy: PolygonMesh, curves: InterfaceCurve[], cell: 
   for (const start of adjacency.keys()) {
     if (visited.has(start)) continue;
     const loop: V3[] = [];
-    let previous = '', at = start;
+    let previous = '',
+      at = start;
     for (let guard = 0; guard <= adjacency.size; guard++) {
       loop.push(positionByKey.get(at)!);
       visited.add(at);
@@ -64,8 +69,12 @@ export function joinTargets(proxy: PolygonMesh, curves: InterfaceCurve[], cell: 
       at = next;
       if (at === start) break;
     }
-    let cx = 0, cz = 0;
-    for (const point of loop) { cx += point[0]; cz += point[2]; }
+    let cx = 0,
+      cz = 0;
+    for (const point of loop) {
+      cx += point[0];
+      cz += point[2];
+    }
     targets.push({ positions: loop, locked: true, centroid: [cx / loop.length, cz / loop.length] });
   }
   // classify the proxy's own boundary loops
@@ -74,31 +83,40 @@ export function joinTargets(proxy: PolygonMesh, curves: InterfaceCurve[], cell: 
     const onLocked = positions.every(point => positionByKey.has(keyOf(point)));
     if (onLocked && positions.length) continue;
     const meanTo = (target: JoinTarget): number => {
-      let sum = 0, count = 0;
+      let sum = 0,
+        count = 0;
       const stride = Math.max(1, Math.floor(positions.length / 16));
       for (let i = 0; i < positions.length; i += stride) {
         const p = positions[i];
         let best = Infinity;
         for (let j = 0; j < target.positions.length; j++) {
-          const a = target.positions[j], b = target.positions[(j + 1) % target.positions.length];
-          const abx = b[0] - a[0], abz = b[2] - a[2];
+          const a = target.positions[j],
+            b = target.positions[(j + 1) % target.positions.length];
+          const abx = b[0] - a[0],
+            abz = b[2] - a[2];
           const len2 = abx * abx + abz * abz;
-          const t = len2 > 1e-12
-            ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
+          const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * abx + (p[2] - a[2]) * abz) / len2)) : 0;
           best = Math.min(best, Math.hypot(p[0] - a[0] - t * abx, p[2] - a[2] - t * abz));
         }
-        sum += best; count++;
+        sum += best;
+        count++;
       }
       return count ? sum / count : Infinity;
     };
     const nearest = targets.length ? Math.min(...targets.map(meanTo)) : Infinity;
     if (nearest < 4.5 * cell) {
-      notes.push(`a terrain cut rim (${positions.length}v) stands ${nearest.toFixed(0)} m off a locked rim; `
-        + 'the candidate paves past it to the feature');
+      notes.push(
+        `a terrain cut rim (${positions.length}v) stands ${nearest.toFixed(0)} m off a locked rim; ` +
+          'the candidate paves past it to the feature',
+      );
       continue;
     }
-    let cx = 0, cz = 0;
-    for (const point of positions) { cx += point[0]; cz += point[2]; }
+    let cx = 0,
+      cz = 0;
+    for (const point of positions) {
+      cx += point[0];
+      cz += point[2];
+    }
     targets.push({ positions, locked: false, centroid: [cx / positions.length, cz / positions.length] });
   }
   return targets;
@@ -109,7 +127,9 @@ export function resampleFreeRim(positions: V3[], cell: number, parity: number): 
   const n = positions.length;
   const sharp: number[] = [];
   for (let i = 0; i < n; i++) {
-    const previous = positions[(i - 1 + n) % n], here = positions[i], next = positions[(i + 1) % n];
+    const previous = positions[(i - 1 + n) % n],
+      here = positions[i],
+      next = positions[(i + 1) % n];
     const a = Math.atan2(here[2] - previous[2], here[0] - previous[0]);
     const b = Math.atan2(next[2] - here[2], next[0] - here[0]);
     let turn = Math.abs(b - a) % (2 * Math.PI);
@@ -127,7 +147,8 @@ export function resampleFreeRim(positions: V3[], cell: number, parity: number): 
   }
   const arcs: [number, number][][] = [];
   for (let s = 0; s < sharp.length; s++) {
-    const from = sharp[s], to = sharp[(s + 1) % sharp.length];
+    const from = sharp[s],
+      to = sharp[(s + 1) % sharp.length];
     const points: [number, number][] = [];
     for (let i = from; ; i = (i + 1) % n) {
       points.push([positions[i][0], positions[i][2]]);
@@ -137,8 +158,8 @@ export function resampleFreeRim(positions: V3[], cell: number, parity: number): 
   }
   const counts = arcs.map(points => {
     let length = 0;
-    for (let i = 1; i < points.length; i++) length += Math.hypot(
-      points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+    for (let i = 1; i < points.length; i++)
+      length += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
     return Math.max(1, Math.round(length / cell));
   });
   if (counts.reduce((a, b) => a + b, 0) % 2 !== parity) counts[0]++;
@@ -147,20 +168,24 @@ export function resampleFreeRim(positions: V3[], cell: number, parity: number): 
     // resample the open arc at exactly counts[s] edges (the arc's end vertex is the next arc's start)
     const points = arcs[s];
     const cumulative = [0];
-    for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i - 1]
-      + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+    for (let i = 1; i < points.length; i++)
+      cumulative.push(cumulative[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
     const total = cumulative[cumulative.length - 1];
     for (let k = 0; k < counts[s]; k++) {
       const target = (k * total) / counts[s];
-      let low = 0, high = points.length - 1;
+      let low = 0,
+        high = points.length - 1;
       while (low < high - 1) {
         const mid = (low + high) >> 1;
-        if (cumulative[mid] <= target) low = mid; else high = mid;
+        if (cumulative[mid] <= target) low = mid;
+        else high = mid;
       }
       const span = cumulative[low + 1] - cumulative[low];
       const t = span > 1e-12 ? (target - cumulative[low]) / span : 0;
-      out.push([points[low][0] + (points[low + 1][0] - points[low][0]) * t,
-        points[low][1] + (points[low + 1][1] - points[low][1]) * t]);
+      out.push([
+        points[low][0] + (points[low + 1][0] - points[low][0]) * t,
+        points[low][1] + (points[low + 1][1] - points[low][1]) * t,
+      ]);
     }
   }
   return out;

@@ -3,12 +3,16 @@ import { jsonResponse, type ApiHandler } from './common';
 export const restartRoutes: Record<string, ApiHandler> = {
   '/api/restart': (req, res, controls) => {
     if (req.method === 'GET') {
-      jsonResponse(res, 200, controls?.restart
-        ? { available: true, instance: controls.restart.instance }
-        : {
-            available: false,
-            reason: 'This Slopesmith process is not managed by a restart-capable host.',
-          });
+      jsonResponse(
+        res,
+        200,
+        controls?.restart
+          ? { available: true, instance: controls.restart.instance }
+          : {
+              available: false,
+              reason: 'This Slopesmith process is not managed by a restart-capable host.',
+            },
+      );
       return;
     }
     if (req.method !== 'POST') {

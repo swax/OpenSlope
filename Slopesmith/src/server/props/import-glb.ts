@@ -1,14 +1,26 @@
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, resolve, sep } from 'node:path';
 import {
-  MAX_IMPORT_SPINS, MAX_IMPORT_TRIS, importedEmittersFromExtras, importedMaterialFlipbook,
-  importedMaterialScroll, importedPropName, importedSpinAnimation, importedSpinFromExtras,
-  rawFromGltfDirection, rawFromGltfPoint,
-  type ImportedEmitter, type ImportedPropRecord,
+  MAX_IMPORT_SPINS,
+  MAX_IMPORT_TRIS,
+  importedEmittersFromExtras,
+  importedMaterialFlipbook,
+  importedMaterialScroll,
+  importedPropName,
+  importedSpinAnimation,
+  importedSpinFromExtras,
+  rawFromGltfDirection,
+  rawFromGltfPoint,
+  type ImportedEmitter,
+  type ImportedPropRecord,
 } from '../../core/props/imported';
 import {
-  decodeGlb, matrixPosition, transformDirection, transformPoint,
-  type DecodedGltf, type GltfMaterial,
+  decodeGlb,
+  matrixPosition,
+  transformDirection,
+  transformPoint,
+  type DecodedGltf,
+  type GltfMaterial,
 } from '../../core/props/glb-decode';
 import { CUSTOM_TEX_LEVEL, makeTexRef } from '../../core/paint/textures';
 import type { PropAlphaMode, PropModelAnimation } from '../../core/reference/props';
@@ -127,7 +139,9 @@ function solidColorPng(factor: readonly number[], keepAlpha = false): Buffer {
   const data = new Uint8Array(8 * 8 * 4);
   const [r, g, b] = [srgbByte(factor[0]), srgbByte(factor[1]), srgbByte(factor[2])];
   for (let i = 0; i < 8 * 8; i++) {
-    data[i * 4] = r; data[i * 4 + 1] = g; data[i * 4 + 2] = b;
+    data[i * 4] = r;
+    data[i * 4 + 1] = g;
+    data[i * 4 + 2] = b;
     data[i * 4 + 3] = keepAlpha ? Math.round(Math.max(0, Math.min(1, factor[3] ?? 1)) * 255) : 255;
   }
   return encodePng({ w: 8, h: 8, data });
@@ -136,12 +150,15 @@ function solidColorPng(factor: readonly number[], keepAlpha = false): Buffer {
 /** A material's base-colour image as decoded pixels, or null — embedded bytes first, then whatever the
  *  caller can resolve for a `uri`. A page this decoder cannot read is treated as absent rather than fatal:
  *  the material falls back to its colour, which is what the browser's canvas path does on a decode error. */
-async function materialImage(gltf: DecodedGltf, material: GltfMaterial | null,
-  opts: GlbImportOptions): Promise<Rgba | null> {
+async function materialImage(
+  gltf: DecodedGltf,
+  material: GltfMaterial | null,
+  opts: GlbImportOptions,
+): Promise<Rgba | null> {
   const source = material?.baseColorImage ?? null;
-  const image = source === null ? null : gltf.images[source] ?? null;
+  const image = source === null ? null : (gltf.images[source] ?? null);
   if (!image) return null;
-  const bytes = image.bytes ?? (image.uri ? await opts.readImage?.(image.uri) ?? null : null);
+  const bytes = image.bytes ?? (image.uri ? ((await opts.readImage?.(image.uri)) ?? null) : null);
   if (!bytes) return null;
   try {
     const decoded = decodePng(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
@@ -168,8 +185,7 @@ function materialAlphaMode(material: GltfMaterial | null | undefined): PropAlpha
  * exceeds `MAX_IMPORT_TRIS`. The cap is checked BEFORE any image is encoded and long before anything is
  * staged, so a refused model leaves nothing behind in the texture bank.
  */
-export async function glbPropDraft(bytes: Uint8Array, opts: GlbImportOptions = {}):
-Promise<HeadlessPropDraft> {
+export async function glbPropDraft(bytes: Uint8Array, opts: GlbImportOptions = {}): Promise<HeadlessPropDraft> {
   const gltf = decodeGlb(bytes);
   const drawn = gltf.nodes.filter(node => node.mesh !== null && gltf.meshes[node.mesh]?.primitives.length);
   if (!drawn.length) throw new Error('no meshes in this file');
@@ -210,12 +226,12 @@ Promise<HeadlessPropDraft> {
       const materialKey = part.material === null ? 'none' : `m${part.material}`;
       let mat = materialIndex.get(materialKey);
       if (mat === undefined) {
-        materialIndex.set(materialKey, mat = materials.length);
-        materials.push(part.material === null ? null : gltf.materials[part.material] ?? null);
+        materialIndex.set(materialKey, (mat = materials.length));
+        materials.push(part.material === null ? null : (gltf.materials[part.material] ?? null));
       }
       const key = `${mat}|${spin}`;
       let bucket = byRun.get(key);
-      if (!bucket) byRun.set(key, bucket = { mat, spin, pos: [], uv: [], idx: [] });
+      if (!bucket) byRun.set(key, (bucket = { mat, spin, pos: [], uv: [], idx: [] }));
       // remap this part's vertices into the bucket, deduped per source vertex so shared corners stay shared
       const remap = new Map<number, number>();
       const emit = (source: number): number => {
@@ -224,8 +240,11 @@ Promise<HeadlessPropDraft> {
           mapped = bucket!.pos.length / 3;
           remap.set(source, mapped);
           // node hierarchy → world (editor metres, Y-up), then editor → raw (cm, Z-up, X-mirrored)
-          const [x, y, z] = transformPoint(node.world,
-            [part.positions[source * 3], part.positions[source * 3 + 1], part.positions[source * 3 + 2]]);
+          const [x, y, z] = transformPoint(node.world, [
+            part.positions[source * 3],
+            part.positions[source * 3 + 1],
+            part.positions[source * 3 + 2],
+          ]);
           bucket!.pos.push(-100 * x, -100 * z, 100 * y);
           // glTF UV v runs top-down; prop UVs are raw OBJ vt (bottom-left origin, loaded with flipY)
           bucket!.uv.push(part.uvs ? part.uvs[source * 2] : 0, part.uvs ? 1 - part.uvs[source * 2 + 1] : 0);
@@ -265,17 +284,29 @@ Promise<HeadlessPropDraft> {
   // Seat the model on its own origin: centre it horizontally (raw x/y) so a placement drops it under the
   // cursor rather than wherever the exporter's origin happened to sit. Vertical (raw z) is left alone —
   // `propBaseOffset` reads the lowest vertex to stand the model on the terrain.
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (const sub of subs) {
     for (let i = 0; i < sub.positions.length; i += 3) {
-      minX = Math.min(minX, sub.positions[i]); maxX = Math.max(maxX, sub.positions[i]);
-      minY = Math.min(minY, sub.positions[i + 1]); maxY = Math.max(maxY, sub.positions[i + 1]);
-      minZ = Math.min(minZ, sub.positions[i + 2]); maxZ = Math.max(maxZ, sub.positions[i + 2]);
+      minX = Math.min(minX, sub.positions[i]);
+      maxX = Math.max(maxX, sub.positions[i]);
+      minY = Math.min(minY, sub.positions[i + 1]);
+      maxY = Math.max(maxY, sub.positions[i + 1]);
+      minZ = Math.min(minZ, sub.positions[i + 2]);
+      maxZ = Math.max(maxZ, sub.positions[i + 2]);
     }
   }
-  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const cx = (minX + maxX) / 2,
+    cy = (minY + maxY) / 2;
   for (const sub of subs) {
-    for (let i = 0; i < sub.positions.length; i += 3) { sub.positions[i] -= cx; sub.positions[i + 1] -= cy; }
+    for (let i = 0; i < sub.positions.length; i += 3) {
+      sub.positions[i] -= cx;
+      sub.positions[i + 1] -= cy;
+    }
   }
 
   // Emitters, put through the SAME transform the vertices just took — frame change and re-centring both.
@@ -297,17 +328,19 @@ Promise<HeadlessPropDraft> {
   // that skipped the shift turns the fan about somewhere off in front of the machine. The axis is a
   // DIRECTION — it takes the frame change without the shift, through the node's own world rotation so a
   // declaration stays local to the node that made it.
-  const spun = importedSpinAnimation(spinNodes.map(({ node, spin }) => {
-    const world = gltf.nodes[node].world;
-    const base = {
-      pivot: rawFromGltfPoint(matrixPosition(world), cx, cy),
-      axis: rawFromGltfDirection(transformDirection(world, spin.axis)),
-      parent: parentSpinOrdinal(node),
-    };
-    return spin.revsPerSecond !== undefined
-      ? { ...base, revsPerSecond: spin.revsPerSecond }
-      : { ...base, amplitudeDegrees: spin.amplitudeDegrees, periodSeconds: spin.periodSeconds };
-  }));
+  const spun = importedSpinAnimation(
+    spinNodes.map(({ node, spin }) => {
+      const world = gltf.nodes[node].world;
+      const base = {
+        pivot: rawFromGltfPoint(matrixPosition(world), cx, cy),
+        axis: rawFromGltfDirection(transformDirection(world, spin.axis)),
+        parent: parentSpinOrdinal(node),
+      };
+      return spin.revsPerSecond !== undefined
+        ? { ...base, revsPerSecond: spin.revsPerSecond }
+        : { ...base, amplitudeDegrees: spin.amplitudeDegrees, periodSeconds: spin.periodSeconds };
+    }),
+  );
   if (spun) {
     for (const [i, sub] of subs.entries()) {
       const ordinal = runs[i].spin;
@@ -333,8 +366,11 @@ Promise<HeadlessPropDraft> {
     if (pages[i]) return toBankPng(pages[i]!);
     const factor = material?.baseColorFactor;
     // Plain white is what the neutral clay already approximates — no point spending a bank slot on it.
-    if (!factor || ((factor[0] > 0.98 && factor[1] > 0.98 && factor[2] > 0.98)
-      && (!materialAlphaMode(material) || factor[3] >= 0.999))) return null;
+    if (
+      !factor ||
+      (factor[0] > 0.98 && factor[1] > 0.98 && factor[2] > 0.98 && (!materialAlphaMode(material) || factor[3] >= 0.999))
+    )
+      return null;
     return solidColorPng(factor, !!materialAlphaMode(material));
   });
   const scrolls = materials.map(m => importedMaterialScroll(m?.extras));
@@ -364,20 +400,25 @@ Promise<HeadlessPropDraft> {
  * route of its own (docs/005). Staging goes through `saveSharedCustomTexture` rather than the plain upload
  * so a kit built from one atlas costs one bank slot; see `GlbImportOptions.tileName`.
  */
-export async function stagePropDraft(draft: HeadlessPropDraft, opts: GlbImportOptions = {}):
-Promise<Omit<ImportedPropRecord, 'id'>> {
+export async function stagePropDraft(
+  draft: HeadlessPropDraft,
+  opts: GlbImportOptions = {},
+): Promise<Omit<ImportedPropRecord, 'id'>> {
   const fallback = (opts.fileName ?? draft.name).replace(/\.(glb|gltf)$/i, '');
   // With an explicit kit name, material 0 IS that name — a shared atlas should read as the atlas it is.
   // Later materials take a suffix outside the `_2`, `_3` variant alphabet so a second material can never
   // be mistaken for a collision-dodging copy of the first.
-  const stemFor = (mat: number) => opts.tileName
-    ? (mat === 0 ? opts.tileName : `${opts.tileName}_m${mat}`)
-    : `${fallback}_${mat}`;
+  const stemFor = (mat: number) =>
+    opts.tileName ? (mat === 0 ? opts.tileName : `${opts.tileName}_m${mat}`) : `${fallback}_${mat}`;
 
   const tiles: (string | null)[] = [];
   const frames: (string[] | null)[] = [];
   for (const [mat, png] of draft.textures.entries()) {
-    if (!png) { tiles.push(null); frames.push(null); continue; }
+    if (!png) {
+      tiles.push(null);
+      frames.push(null);
+      continue;
+    }
     const stored = await saveSharedCustomTexture(stemFor(mat), png);
     tiles.push(makeTexRef(CUSTOM_TEX_LEVEL, stored));
     const book = draft.flipbooks[mat];
@@ -385,10 +426,17 @@ Promise<Omit<ImportedPropRecord, 'id'>> {
     // off the stem frame 0 actually GOT rather than the one it asked for, so a strip whose base stepped
     // aside for a taken name does not leave its own frames sitting under the name it did not get.
     const base = stored.replace(/\.png$/i, '');
-    frames.push(book
-      ? await Promise.all(book.slice(1).map(async (frame, index) =>
-        makeTexRef(CUSTOM_TEX_LEVEL, await saveSharedCustomTexture(`${base}_f${index + 1}`, frame))))
-      : null);
+    frames.push(
+      book
+        ? await Promise.all(
+            book
+              .slice(1)
+              .map(async (frame, index) =>
+                makeTexRef(CUSTOM_TEX_LEVEL, await saveSharedCustomTexture(`${base}_f${index + 1}`, frame)),
+              ),
+          )
+        : null,
+    );
   }
 
   return {
@@ -409,8 +457,9 @@ Promise<Omit<ImportedPropRecord, 'id'>> {
       return {
         id: mat,
         tex: base,
-        ...(draft.alphaModes[mat] ? { alphaMode: draft.alphaModes[mat]!,
-          ...(draft.alphaModes[mat] === 'blend' ? { blend: true } : {}) } : {}),
+        ...(draft.alphaModes[mat]
+          ? { alphaMode: draft.alphaModes[mat]!, ...(draft.alphaModes[mat] === 'blend' ? { blend: true } : {}) }
+          : {}),
         ...(draft.scrolls[mat] ? { scroll: draft.scrolls[mat]! } : {}),
         ...(base && rest?.length ? { frames: [base, ...rest] } : {}),
       };
@@ -423,16 +472,20 @@ Promise<Omit<ImportedPropRecord, 'id'>> {
 /** GLB bytes → the record `saveImportedProp` stores, art staged. The caller still chooses whether this is a
  *  new model (`saveImportedProp`, its own number) or new geometry on one already placed
  *  (`replaceImportedProp`, the same number) — that decision belongs to whoever knows the catalogue. */
-export async function importGlbRecord(bytes: Uint8Array, opts: GlbImportOptions = {}):
-Promise<Omit<ImportedPropRecord, 'id'>> {
+export async function importGlbRecord(
+  bytes: Uint8Array,
+  opts: GlbImportOptions = {},
+): Promise<Omit<ImportedPropRecord, 'id'>> {
   return stagePropDraft(await glbPropDraft(bytes, opts), opts);
 }
 
 /** The same, from a file on disk — the entry point a recipe script calls. An image the GLB referenced by
  *  relative URI is read from the model's OWN folder and nowhere else, so a file naming `../../secrets.png`
  *  gets a missing texture rather than a copy of it in the bank. */
-export async function importGlbFile(path: string, opts: GlbImportOptions = {}):
-Promise<Omit<ImportedPropRecord, 'id'>> {
+export async function importGlbFile(
+  path: string,
+  opts: GlbImportOptions = {},
+): Promise<Omit<ImportedPropRecord, 'id'>> {
   const file = resolve(path);
   const folder = dirname(file);
   return importGlbRecord(await readFile(file), {

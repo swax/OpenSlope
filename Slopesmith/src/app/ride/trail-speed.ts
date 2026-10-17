@@ -2,8 +2,16 @@ import type { AuthoredTrail, V3 } from '../../core/doc/types';
 import { pathCuts, pathKnots } from '../../core/mesh/trail-object';
 import { railBezierSegments } from '../../core/rails/rails';
 import {
-  RIDE_AIR_GRAVITY_FALLING, RIDE_AIR_GRAVITY_RISING, RIDE_AIR_HORIZONTAL_DRAG, RIDE_BOOST_CAP_DECAY, RIDE_BOOST_MAX_SPEED,
-  RIDE_CONTACT_REDIRECT, RIDE_CRUISE_DEFICIT_MAX, RIDE_MAX_SPEED, RIDE_RIDER_DRIVE, RIDE_SIMULATION_HZ,
+  RIDE_AIR_GRAVITY_FALLING,
+  RIDE_AIR_GRAVITY_RISING,
+  RIDE_AIR_HORIZONTAL_DRAG,
+  RIDE_BOOST_CAP_DECAY,
+  RIDE_BOOST_MAX_SPEED,
+  RIDE_CONTACT_REDIRECT,
+  RIDE_CRUISE_DEFICIT_MAX,
+  RIDE_MAX_SPEED,
+  RIDE_RIDER_DRIVE,
+  RIDE_SIMULATION_HZ,
   type RideContractSurfaceRow,
 } from './ride-contract.generated';
 import * as RESPONSE from './ride-response.generated';
@@ -43,21 +51,38 @@ export const STALL_SPEED = 0.05;
 
 /** A surface row as the prediction rides it: its world-down load, the soft pull above it, and the grounded redirect
  *  — none on the two powders, whose deep give is a stable spring on its own; the ride exempts them. */
-export interface RideSurface { row: RideContractSurfaceRow; g: number; pull: number; redirect: number }
+export interface RideSurface {
+  row: RideContractSurfaceRow;
+  g: number;
+  pull: number;
+  redirect: number;
+}
 
 export function rideSurface(row: RideContractSurfaceRow): RideSurface {
   return {
-    row, g: row.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE, pull: row.A / RESPONSE.CONTACT_ABOVE_LENGTH_CM,
+    row,
+    g: row.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE,
+    pull: row.A / RESPONSE.CONTACT_ABOVE_LENGTH_CM,
     redirect: row.type === 3 || row.type === 4 ? 0 : RIDE_CONTACT_REDIRECT,
   };
 }
 
 /** The rider on the ground: its speed along the surface and off it, the clearance opened under it, and the shared
  *  speed cap. */
-export interface GroundRider { v: number; vn: number; gap: number; cap: number }
+export interface GroundRider {
+  v: number;
+  vn: number;
+  gap: number;
+  cap: number;
+}
 
 /** The rider in the air: plan position along the travel and height, plan and vertical velocity. */
-export interface Flight { x: number; y: number; vx: number; vy: number }
+export interface Flight {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
 
 /** [Trailmap: 360] The shared cap eases back down on the ground, and holds the speed under it. */
 export function easeCap(r: GroundRider, h = H): void {
@@ -75,7 +100,11 @@ export function groundTick(surface: RideSurface, r: GroundRider, theta: number, 
   if (redirect > 0 && r.vn !== 0) {
     const before = Math.hypot(r.v, r.vn);
     r.vn *= h === H ? 1 - redirect : Math.pow(1 - redirect, h / H);
-    if (r.v > 0) { const keep = before / Math.hypot(r.v, r.vn); r.v *= keep; r.vn *= keep; }
+    if (r.v > 0) {
+      const keep = before / Math.hypot(r.v, r.vn);
+      r.v *= keep;
+      r.vn *= keep;
+    }
   }
   // [Trailmap: 330] along the surface: the row's world-down load, forward resistance, and the cruise drive.
   let a = -g * Math.sin(theta) + forwardResistance(row, r.v, 0, row.budget, 0, 0);
@@ -95,16 +124,22 @@ export function groundTick(surface: RideSurface, r: GroundRider, theta: number, 
  * the pushout takes the normal speed out.
  */
 export function turnSurface(r: GroundRider, turn: number): void {
-  const c = Math.cos(turn), sn = Math.sin(turn), v = r.v * c - r.vn * sn;
+  const c = Math.cos(turn),
+    sn = Math.sin(turn),
+    v = r.v * c - r.vn * sn;
   r.vn = r.vn * c + r.v * sn;
   r.v = v;
-  if (r.gap <= 0) { r.gap = 0; r.vn = Math.max(0, r.vn); }
+  if (r.gap <= 0) {
+    r.gap = 0;
+    r.vn = Math.max(0, r.vn);
+  }
 }
 
 /** The probe past the ground band (docs/016 · Air + lips): the rider at plan `x` over the surface at height `y`,
  *  climbing at `theta`, leaves it with its velocity, and the cap snaps up to the air's. */
 export function takeoff(r: GroundRider, theta: number, x: number, y: number): Flight {
-  const c = Math.cos(theta), sn = Math.sin(theta);
+  const c = Math.cos(theta),
+    sn = Math.sin(theta);
   r.cap = RIDE_BOOST_MAX_SPEED;
   return { x, y: y + r.gap, vx: r.v * c - r.vn * sn, vy: r.v * sn + r.vn * c };
 }
@@ -113,7 +148,10 @@ export function takeoff(r: GroundRider, theta: number, x: number, y: number): Fl
  *  speed tier. */
 export function airTick(f: Flight, h = H): void {
   const sp = Math.hypot(f.vx, f.vy);
-  if (sp > RIDE_BOOST_MAX_SPEED) { f.vx *= RIDE_BOOST_MAX_SPEED / sp; f.vy *= RIDE_BOOST_MAX_SPEED / sp; }
+  if (sp > RIDE_BOOST_MAX_SPEED) {
+    f.vx *= RIDE_BOOST_MAX_SPEED / sp;
+    f.vy *= RIDE_BOOST_MAX_SPEED / sp;
+  }
   f.x += f.vx * h;
   f.y += f.vy * h;
   f.vx -= RIDE_AIR_HORIZONTAL_DRAG * f.vx * h;
@@ -127,10 +165,12 @@ export function airTick(f: Flight, h = H): void {
  * bands. Returns the speed kept along the surface.
  */
 export function touchdown(f: Flight, theta: number, redirect: number): number {
-  const c = Math.cos(theta), sn = Math.sin(theta);
-  const along = f.vx * c + f.vy * sn, off = f.vy * c - f.vx * sn;
+  const c = Math.cos(theta),
+    sn = Math.sin(theta);
+  const along = f.vx * c + f.vy * sn,
+    off = f.vy * c - f.vx * sn;
   const kept = Math.hypot(along, (1 - redirect) * off);
-  return along > 0 && kept > 1e-9 ? along * Math.hypot(f.vx, f.vy) / kept : 0;
+  return along > 0 && kept > 1e-9 ? (along * Math.hypot(f.vx, f.vy)) / kept : 0;
 }
 
 /** One path's centre spline, densely sampled: positions, 3-D and plan arc length, height and climb angle. */
@@ -175,7 +215,9 @@ export interface PathSpeeds {
 }
 
 /** Every path's predicted ride, index-parallel with the trail's paths; null for a path that does not cut. */
-export interface TrailSpeeds { paths: (PathSpeeds | null)[] }
+export interface TrailSpeeds {
+  paths: (PathSpeeds | null)[];
+}
 
 const cubicAt = (b: readonly V3[], t: number, k: number): number => {
   const u = 1 - t;
@@ -189,21 +231,29 @@ const cubicSlope = (b: readonly V3[], t: number, k: number): number => {
 function sampleProfile(knots: readonly V3[], handles: Parameters<typeof railBezierSegments>[1]): Profile {
   const segs = railBezierSegments(knots, handles);
   const steps = segs.map(b => {
-    const hull = Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2])
-      + Math.hypot(b[2][0] - b[1][0], b[2][1] - b[1][1], b[2][2] - b[1][2])
-      + Math.hypot(b[3][0] - b[2][0], b[3][1] - b[2][1], b[3][2] - b[2][2]);
+    const hull =
+      Math.hypot(b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]) +
+      Math.hypot(b[2][0] - b[1][0], b[2][1] - b[1][1], b[2][2] - b[1][2]) +
+      Math.hypot(b[3][0] - b[2][0], b[3][1] - b[2][1], b[3][2] - b[2][2]);
     return Math.max(2, Math.ceil(hull / SAMPLE_M));
   });
   const n = steps.reduce((sum, count) => sum + count, 0) + 1;
-  const pos = new Float64Array(n * 3), s = new Float64Array(n), x = new Float64Array(n), pitch = new Float64Array(n);
+  const pos = new Float64Array(n * 3),
+    s = new Float64Array(n),
+    x = new Float64Array(n),
+    pitch = new Float64Array(n);
   const knotAt: number[] = [];
   let at = 0;
   const put = (b: readonly V3[], t: number) => {
     for (let k = 0; k < 3; k++) pos[at * 3 + k] = cubicAt(b, t, k);
-    const dx = cubicSlope(b, t, 0), dy = cubicSlope(b, t, 1), dz = cubicSlope(b, t, 2);
+    const dx = cubicSlope(b, t, 0),
+      dy = cubicSlope(b, t, 1),
+      dz = cubicSlope(b, t, 2);
     pitch[at] = Math.hypot(dx, dy, dz) > 1e-9 ? Math.atan2(dy, Math.hypot(dx, dz)) : NaN;
     if (at > 0) {
-      const ex = pos[at * 3] - pos[at * 3 - 3], ey = pos[at * 3 + 1] - pos[at * 3 - 2], ez = pos[at * 3 + 2] - pos[at * 3 - 1];
+      const ex = pos[at * 3] - pos[at * 3 - 3],
+        ey = pos[at * 3 + 1] - pos[at * 3 - 2],
+        ez = pos[at * 3 + 2] - pos[at * 3 - 1];
       s[at] = s[at - 1] + Math.hypot(ex, ey, ez);
       x[at] = x[at - 1] + Math.hypot(ex, ez);
     }
@@ -218,8 +268,10 @@ function sampleProfile(knots: readonly V3[], handles: Parameters<typeof railBezi
   // A zero-length handle has no tangent of its own there: take the chord's.
   for (let i = 0; i < n; i++) {
     if (!Number.isNaN(pitch[i])) continue;
-    const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
-    const dy = pos[b * 3 + 1] - pos[a * 3 + 1], plan = x[b] - x[a];
+    const a = Math.max(0, i - 1),
+      b = Math.min(n - 1, i + 1);
+    const dy = pos[b * 3 + 1] - pos[a * 3 + 1],
+      plan = x[b] - x[a];
     pitch[i] = plan > 1e-9 || Math.abs(dy) > 1e-9 ? Math.atan2(dy, plan) : 0;
   }
   return { n, pos, s, x, pitch, knots: knotAt };
@@ -235,19 +287,34 @@ function fraction(along: Float64Array, i: number, q: number): number {
  * Ride one path from `entry`, `inflow(knot)` saying how fast riders merge in at each later knot. The cursor walks
  * the samples forward, stamping each with the rider's speed and whether it is in the air as it passes.
  */
-function ridePath(p: Profile, row: RideContractSurfaceRow, entry: RiderArrival, inflow: (knot: number) => number): PathSpeeds {
+function ridePath(
+  p: Profile,
+  row: RideContractSurfaceRow,
+  entry: RiderArrival,
+  inflow: (knot: number) => number,
+): PathSpeeds {
   const { n } = p;
-  const speed = new Float32Array(n).fill(NaN), air = new Uint8Array(n);
+  const speed = new Float32Array(n).fill(NaN),
+    air = new Uint8Array(n);
   const arrivals: (RiderArrival | null)[] = p.knots.map(() => null);
   const surface = rideSurface(row);
   const y = (i: number) => p.pos[i * 3 + 1];
-  const pitchAt = (i: number, t: number) => i + 1 < n ? p.pitch[i] + (p.pitch[i + 1] - p.pitch[i]) * t : p.pitch[n - 1];
+  const pitchAt = (i: number, t: number) =>
+    i + 1 < n ? p.pitch[i] + (p.pitch[i + 1] - p.pitch[i]) * t : p.pitch[n - 1];
 
-  let i = 0, s = 0;
+  let i = 0,
+    s = 0;
   const r: GroundRider = { v: entry.speed, vn: 0, gap: 0, cap: RIDE_MAX_SPEED };
   let flight: Flight | null = null;
-  if (entry.air) { flight = { x: 0, y: y(0) + entry.air.height, vx: entry.air.vx, vy: entry.air.vy }; r.cap = RIDE_BOOST_MAX_SPEED; }
-  let nextKnot = 1, topSpeed = flight ? 0 : r.v, jumps = 0, airborneM = 0, stalled = false;
+  if (entry.air) {
+    flight = { x: 0, y: y(0) + entry.air.height, vx: entry.air.vx, vy: entry.air.vy };
+    r.cap = RIDE_BOOST_MAX_SPEED;
+  }
+  let nextKnot = 1,
+    topSpeed = flight ? 0 : r.v,
+    jumps = 0,
+    airborneM = 0,
+    stalled = false;
   speed[0] = flight ? Math.hypot(flight.vx, flight.vy) : r.v;
   air[0] = flight ? 1 : 0;
 
@@ -279,18 +346,26 @@ function ridePath(p: Profile, row: RideContractSurfaceRow, entry: RiderArrival, 
       airTick(flight);
       let j = i;
       while (j + 1 < n && p.x[j + 1] <= flight.x) j++;
-      if (j + 1 >= n) { pass(n - 1); break; } // flown off the path's end
+      if (j + 1 >= n) {
+        pass(n - 1);
+        break;
+      } // flown off the path's end
       const t = fraction(p.x, j, flight.x);
-      if (flight.y > y(j) + (y(j + 1) - y(j)) * t) { pass(j); continue; }
+      if (flight.y > y(j) + (y(j + 1) - y(j)) * t) {
+        pass(j);
+        continue;
+      }
       r.v = touchdown(flight, pitchAt(j, t), surface.redirect);
       s = p.s[j] + (p.s[j + 1] - p.s[j]) * t;
       pass(j);
       flight = null;
-      r.gap = 0; r.vn = 0;
+      r.gap = 0;
+      r.vn = 0;
       continue;
     }
     easeCap(r);
-    const t0 = fraction(p.s, i, s), theta = pitchAt(i, t0);
+    const t0 = fraction(p.s, i, s),
+      theta = pitchAt(i, t0);
     // The probe: past the ground band, this tick is an air tick (docs/016 · Air + lips).
     if (r.gap > row.thresh) {
       flight = takeoff(r, theta, p.x[i] + (p.x[i + 1] - p.x[i]) * t0, y(i) + (y(i + 1) - y(i)) * t0);
@@ -304,7 +379,12 @@ function ridePath(p: Profile, row: RideContractSurfaceRow, entry: RiderArrival, 
     while (j + 1 < n && p.s[j + 1] <= s1) j++;
     turnSurface(r, theta - (j + 1 < n ? pitchAt(j, fraction(p.s, j, s1)) : p.pitch[n - 1]));
     s = s1;
-    if (r.v <= STALL_SPEED && a <= 0) { r.v = 0; stalled = true; pass(j); break; }
+    if (r.v <= STALL_SPEED && a <= 0) {
+      r.v = 0;
+      stalled = true;
+      pass(j);
+      break;
+    }
     r.v = Math.min(r.cap, Math.max(0, r.v));
     pass(j);
   }
@@ -316,11 +396,14 @@ function ridePath(p: Profile, row: RideContractSurfaceRow, entry: RiderArrival, 
  * told). Paths are ridden in an order that has a path's feeders done first: those reaching its first point, then
  * those merging into it; a loop is broken at its lowest path, which rides with what has arrived so far.
  */
-export function predictTrailSpeeds(trail: Pick<AuthoredTrail, 'points' | 'paths'>, surfaceOf: (path: number) => number = () => 1):
-TrailSpeeds {
+export function predictTrailSpeeds(
+  trail: Pick<AuthoredTrail, 'points' | 'paths'>,
+  surfaceOf: (path: number) => number = () => 1,
+): TrailSpeeds {
   const { paths } = trail;
   const live = paths.map(pathCuts);
-  const starts = paths.map(() => new Set<number>()), merges = paths.map(() => new Set<number>());
+  const starts = paths.map(() => new Set<number>()),
+    merges = paths.map(() => new Set<number>());
   paths.forEach((path, i) => {
     if (!live[i]) return;
     paths.forEach((other, j) => {
@@ -333,19 +416,25 @@ TrailSpeeds {
   /** What has arrived at each point: by which path, and whether that path ends there. */
   const arrived = new Map<number, { path: number; end: boolean; at: RiderArrival }[]>();
   const done = new Set<number>();
-  const fed = (i: number, feeders: readonly Set<number>[][]) => feeders.every(kind => [...kind[i]].every(j => done.has(j)));
+  const fed = (i: number, feeders: readonly Set<number>[][]) =>
+    feeders.every(kind => [...kind[i]].every(j => done.has(j)));
   const pending = () => paths.map((_, i) => i).filter(i => live[i] && !done.has(i));
   for (let left = pending(); left.length; left = pending()) {
     const i = left.find(k => fed(k, [starts, merges])) ?? left.find(k => fed(k, [starts])) ?? left[0];
     const path = paths[i];
-    const entry = (arrived.get(path.points[0]) ?? []).filter(from => from.path !== i)
-      .reduce<RiderArrival>((best, from) => from.at.speed > best.speed ? from.at : best, { speed: 0, air: null });
-    const inflow = (knot: number) => (arrived.get(path.points[knot]) ?? [])
-      .reduce((best, from) => from.end && from.path !== i && !from.at.air ? Math.max(best, from.at.speed) : best, 0);
+    const entry = (arrived.get(path.points[0]) ?? [])
+      .filter(from => from.path !== i)
+      .reduce<RiderArrival>((best, from) => (from.at.speed > best.speed ? from.at : best), { speed: 0, air: null });
+    const inflow = (knot: number) =>
+      (arrived.get(path.points[knot]) ?? []).reduce(
+        (best, from) => (from.end && from.path !== i && !from.at.air ? Math.max(best, from.at.speed) : best),
+        0,
+      );
     const ride = ridePath(sampleProfile(pathKnots(trail, path), path.handles), surfaceFor(surfaceOf(i)), entry, inflow);
     ride.arrivals.forEach((at, knot) => {
       if (!at || knot === 0) return;
-      const point = path.points[knot], list = arrived.get(point) ?? [];
+      const point = path.points[knot],
+        list = arrived.get(point) ?? [];
       list.push({ path: i, end: knot === path.points.length - 1, at });
       arrived.set(point, list);
     });
@@ -361,20 +450,31 @@ TrailSpeeds {
  */
 export function nearestSample(ride: PathSpeeds, point: V3, near?: number): number {
   const d = (i: number) => {
-    const dx = ride.pos[i * 3] - point[0], dy = ride.pos[i * 3 + 1] - point[1], dz = ride.pos[i * 3 + 2] - point[2];
+    const dx = ride.pos[i * 3] - point[0],
+      dy = ride.pos[i * 3 + 1] - point[1],
+      dz = ride.pos[i * 3 + 2] - point[2];
     return dx * dx + dy * dy + dz * dz;
   };
   if (near === undefined) {
-    let best = 0, bestD = Infinity;
-    for (let i = 0; i < ride.n; i++) { const di = d(i); if (di < bestD) { bestD = di; best = i; } }
+    let best = 0,
+      bestD = Infinity;
+    for (let i = 0; i < ride.n; i++) {
+      const di = d(i);
+      if (di < bestD) {
+        bestD = di;
+        best = i;
+      }
+    }
     return best;
   }
-  let best = Math.min(ride.n - 1, Math.max(0, near)), bestD = d(best);
+  let best = Math.min(ride.n - 1, Math.max(0, near)),
+    bestD = d(best);
   for (const step of [-1, 1]) {
     for (let i = best + step; i >= 0 && i < ride.n; i += step) {
       const di = d(i);
       if (di >= bestD) break;
-      bestD = di; best = i;
+      bestD = di;
+      best = i;
     }
   }
   return best;

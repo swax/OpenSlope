@@ -4,15 +4,16 @@ import { loadSettings, type VideoBridgePrefs } from '../../state/settings';
 import { infoBadge } from '../components/info';
 import { toast } from '../components/toast';
 
-const VIDEO_BRIDGE_HELP = 'An optional viewer-managed Yattee Server turns public video-page URLs into browser-playable '
-  + 'relay streams for the course’s WebGL screens. If Yattee is unavailable, the Jukebox automatically uses '
-  + 'YouTube’s embedded player in its panel instead. Slopesmith talks to Yattee directly from this browser; '
-  + 'its own project server never sees the video request or these credentials.\n\n'
-  + 'A browser on the Yattee computer uses http://127.0.0.1:8085. A standalone Quest, phone, or tablet needs '
-  + 'a separate HTTPS endpoint, such as an ngrok tunnel to that workstation’s port 8085.\n\n'
-  + 'The URL, username, and password are stored in this browser’s localStorage, like the fal.ai key above. '
-  + 'Anyone with access to this browser profile can read them. Use a dedicated local Yattee account rather '
-  + 'than reusing an important password.';
+const VIDEO_BRIDGE_HELP =
+  'An optional viewer-managed Yattee Server turns public video-page URLs into browser-playable ' +
+  'relay streams for the course’s WebGL screens. If Yattee is unavailable, the Jukebox automatically uses ' +
+  'YouTube’s embedded player in its panel instead. Slopesmith talks to Yattee directly from this browser; ' +
+  'its own project server never sees the video request or these credentials.\n\n' +
+  'A browser on the Yattee computer uses http://127.0.0.1:8085. A standalone Quest, phone, or tablet needs ' +
+  'a separate HTTPS endpoint, such as an ngrok tunnel to that workstation’s port 8085.\n\n' +
+  'The URL, username, and password are stored in this browser’s localStorage, like the fal.ai key above. ' +
+  'Anyone with access to this browser profile can read them. Use a dedicated local Yattee account rather ' +
+  'than reusing an important password.';
 
 interface VideoBridgeSection {
   el: HTMLDivElement;
@@ -114,16 +115,26 @@ export function buildVideoBridgeSection(initial: VideoBridgePrefs): VideoBridgeS
   repository.target = '_blank';
   repository.rel = 'noopener noreferrer';
   repository.textContent = 'Install a compatible self-hosted media server';
-  addStep(repository, ' (the linked project is the one these steps were tested against; it is separate software '
-    + 'that Slopesmith neither ships nor runs), then start it by following its own instructions.');
-  addStep('Open Yattee at ', Object.assign(document.createElement('code'), { textContent: initial.serverUrl }),
-    ' and finish its first-run administrator setup.');
-  addStep('For Quest or mobile, expose Yattee port 8085 through its own HTTPS tunnel and use that public '
-    + 'origin above; 127.0.0.1 would point to the headset or phone.');
+  addStep(
+    repository,
+    ' (the linked project is the one these steps were tested against; it is separate software ' +
+      'that Slopesmith neither ships nor runs), then start it by following its own instructions.',
+  );
+  addStep(
+    'Open Yattee at ',
+    Object.assign(document.createElement('code'), { textContent: initial.serverUrl }),
+    ' and finish its first-run administrator setup.',
+  );
+  addStep(
+    'For Quest or mobile, expose Yattee port 8085 through its own HTTPS tunnel and use that public ' +
+      'origin above; 127.0.0.1 would point to the headset or phone.',
+  );
   const origin = document.createElement('code');
   origin.textContent = window.location.origin;
   addStep('In Yattee Admin → Settings → Browser Access, add this exact Slopesmith origin: ', origin, '.');
-  addStep('Enter that Yattee URL and account above, then choose Test connection. Approve the browser’s local-network prompt if it appears.');
+  addStep(
+    'Enter that Yattee URL and account above, then choose Test connection. Approve the browser’s local-network prompt if it appears.',
+  );
   addStep('Save these connection settings. Open Users → Jukebox, turn playback on, then add a YouTube URL.');
   guide.append(summary, steps);
 
@@ -131,18 +142,24 @@ export function buildVideoBridgeSection(initial: VideoBridgePrefs): VideoBridgeS
   return { el: sec, value, fail };
 }
 
-const KEYS_HELP = 'A personal key lets a program reach this server as you — an AI agent speaking the API, '
-  + 'the Blender add-on (blender/slopesmith_bridge.py), or any script. Send it as an Authorization: Bearer '
-  + 'header.\n\n'
-  + 'A key AUTHORS as you and inherits your role at the moment of each request — a change to your role '
-  + 'binds immediately — but it can never do what only an admin can, because it lives as plain text in '
-  + 'whatever config file you paste it into.\n\n'
-  + 'The secret is shown once, here, and never again: the server keeps only a digest of it. Lose it and you '
-  + 'make another. Revoking one takes effect on the very next request.\n\n'
-  + 'A Slopesmith running on your own machine needs no key at all — it already serves you as its owner.';
+const KEYS_HELP =
+  'A personal key lets a program reach this server as you — an AI agent speaking the API, ' +
+  'the Blender add-on (blender/slopesmith_bridge.py), or any script. Send it as an Authorization: Bearer ' +
+  'header.\n\n' +
+  'A key AUTHORS as you and inherits your role at the moment of each request — a change to your role ' +
+  'binds immediately — but it can never do what only an admin can, because it lives as plain text in ' +
+  'whatever config file you paste it into.\n\n' +
+  'The secret is shown once, here, and never again: the server keeps only a digest of it. Lose it and you ' +
+  'make another. Revoking one takes effect on the very next request.\n\n' +
+  'A Slopesmith running on your own machine needs no key at all — it already serves you as its owner.';
 
 /** One key as the list shows it. Mirrors `PublicAccessToken`; the secret is never among these fields. */
-interface StoredKey { id: string; name: string; createdAt: string; lastUsedAt?: string }
+interface StoredKey {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt?: string;
+}
 
 const whenText = (key: StoredKey): string =>
   key.lastUsedAt ? `used ${new Date(key.lastUsedAt).toLocaleDateString()}` : 'never used';
@@ -212,11 +229,16 @@ export function buildKeysSection(): HTMLDivElement {
     copy.textContent = 'Copy';
     copy.onclick = () => {
       field.select();
-      void navigator.clipboard?.writeText(secret)
-        .then(() => { copy.textContent = 'Copied'; })
+      void navigator.clipboard
+        ?.writeText(secret)
+        .then(() => {
+          copy.textContent = 'Copied';
+        })
         // A clipboard the browser refuses is not a failure worth a toast: the field is selected, so Ctrl+C
         // is right there.
-        .catch(() => { copy.textContent = 'Press Ctrl+C'; });
+        .catch(() => {
+          copy.textContent = 'Press Ctrl+C';
+        });
     };
     holder.append(field, copy);
     minted.append(warn, holder);
@@ -267,8 +289,10 @@ export function buildKeysSection(): HTMLDivElement {
   create.onclick = async () => {
     create.disabled = true;
     try {
-      const answer = await postJson<{ key: string }>('/api/auth/keys',
-        JSON.stringify({ name: name.value.trim() || 'Blender' }));
+      const answer = await postJson<{ key: string }>(
+        '/api/auth/keys',
+        JSON.stringify({ name: name.value.trim() || 'Blender' }),
+      );
       name.value = '';
       reveal(answer.key);
       await load();
@@ -285,18 +309,19 @@ export function buildKeysSection(): HTMLDivElement {
     // there: nothing to list, nothing to make, and a sentence saying why is more use than an empty box.
     row.remove();
     list.remove();
-    state.textContent = 'This Slopesmith has no accounts, so nothing needs a key — anything that reaches '
-      + 'the server is already you.';
+    state.textContent =
+      'This Slopesmith has no accounts, so nothing needs a key — anything that reaches ' + 'the server is already you.';
   });
   return sec;
 }
 
-const AGENT_API_HELP = 'The whole authoring surface — maps, registers, uploads, effects, avatars — is a '
-  + 'self-describing REST API (docs/052). GET on the root answers with who the caller is and links to '
-  + 'everything else; each response carries the actions it accepts, so nothing has to be taught up front. '
-  + 'The manual an agent should read first is served at /api/guide.\n\n'
-  + 'On this server an agent authenticates with an access key from the section above; a Slopesmith on your '
-  + 'own machine serves any local program as you, no key needed.';
+const AGENT_API_HELP =
+  'The whole authoring surface — maps, registers, uploads, effects, avatars — is a ' +
+  'self-describing REST API (docs/052). GET on the root answers with who the caller is and links to ' +
+  'everything else; each response carries the actions it accepts, so nothing has to be taught up front. ' +
+  'The manual an agent should read first is served at /api/guide.\n\n' +
+  'On this server an agent authenticates with an access key from the section above; a Slopesmith on your ' +
+  'own machine serves any local program as you, no key needed.';
 
 /**
  * Where to point an agent (docs/052). The root URL is shown absolute — it is the one thing that must leave
@@ -312,8 +337,9 @@ export function buildAgentApiSection(): HTMLDivElement {
 
   const state = document.createElement('div');
   state.className = 'state set';
-  state.textContent = 'Direct an agent at this root with an access key — it can discover every API it '
-    + 'needs from there, one response at a time.';
+  state.textContent =
+    'Direct an agent at this root with an access key — it can discover every API it ' +
+    'needs from there, one response at a time.';
 
   const row = document.createElement('div');
   row.className = 'keyrow';
@@ -329,9 +355,14 @@ export function buildAgentApiSection(): HTMLDivElement {
   copy.textContent = 'Copy';
   copy.onclick = () => {
     field.select();
-    void navigator.clipboard?.writeText(rootUrl)
-      .then(() => { copy.textContent = 'Copied'; })
-      .catch(() => { copy.textContent = 'Press Ctrl+C'; });
+    void navigator.clipboard
+      ?.writeText(rootUrl)
+      .then(() => {
+        copy.textContent = 'Copied';
+      })
+      .catch(() => {
+        copy.textContent = 'Press Ctrl+C';
+      });
   };
   const explore = document.createElement('a');
   explore.className = 'sp-btn';

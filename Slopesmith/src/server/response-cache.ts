@@ -59,7 +59,11 @@ export class ResponseCache {
 
   constructor(private readonly maxBytes = 256 * 1024 * 1024) {}
 
-  clear() { this.entries.clear(); this.sizes.clear(); this.totalBytes = 0; }
+  clear() {
+    this.entries.clear();
+    this.sizes.clear();
+    this.totalBytes = 0;
+  }
 
   stats(): ResponseCacheStats {
     return {
@@ -90,25 +94,53 @@ export class ResponseCache {
   }
 
   async json(req: IncomingMessage, res: ServerResponse, key: string, producer: Producer<unknown>) {
-    return this.respond(req, res, `json:${key}`, 'application/json; charset=utf-8', 'private, no-cache', true,
-      async () => Buffer.from(JSON.stringify(await producer())));
+    return this.respond(
+      req,
+      res,
+      `json:${key}`,
+      'application/json; charset=utf-8',
+      'private, no-cache',
+      true,
+      async () => Buffer.from(JSON.stringify(await producer())),
+    );
   }
 
   /** A producer that has already serialized JSON — notably a worker-built props payload. */
   async jsonBytes(req: IncomingMessage, res: ServerResponse, key: string, producer: Producer<Buffer>) {
-    return this.respond(req, res, `json:${key}`, 'application/json; charset=utf-8', 'private, no-cache', true,
-      producer);
+    return this.respond(
+      req,
+      res,
+      `json:${key}`,
+      'application/json; charset=utf-8',
+      'private, no-cache',
+      true,
+      producer,
+    );
   }
 
-  async bytes(req: IncomingMessage, res: ServerResponse, key: string, contentType: string,
-    cacheControl: ResponseCacheControl, producer: Producer<Buffer>) {
+  async bytes(
+    req: IncomingMessage,
+    res: ServerResponse,
+    key: string,
+    contentType: string,
+    cacheControl: ResponseCacheControl,
+    producer: Producer<Buffer>,
+  ) {
     return this.respond(req, res, `bytes:${key}`, contentType, cacheControl, false, producer);
   }
 
-  private async respond(req: IncomingMessage, res: ServerResponse, key: string, contentType: string,
-    cacheControl: ResponseCacheControl, compress: boolean, producer: Producer<Buffer>) {
+  private async respond(
+    req: IncomingMessage,
+    res: ServerResponse,
+    key: string,
+    contentType: string,
+    cacheControl: ResponseCacheControl,
+    compress: boolean,
+    producer: Producer<Buffer>,
+  ) {
     const hit = this.entries.has(key);
-    if (hit) this.hits++; else this.misses++;
+    if (hit) this.hits++;
+    else this.misses++;
     let pending = this.entries.get(key);
     if (!pending) {
       const created = (async (): Promise<CachedResponse> => {
@@ -123,9 +155,11 @@ export class ResponseCache {
       })();
       pending = created;
       this.entries.set(key, created);
-      void created.then(cached => this.recordSize(key, created, cached)).catch(() => {
-        if (this.entries.get(key) === created) this.entries.delete(key);
-      });
+      void created
+        .then(cached => this.recordSize(key, created, cached))
+        .catch(() => {
+          if (this.entries.get(key) === created) this.entries.delete(key);
+        });
     } else {
       // Map insertion order is the LRU order. Refresh a hit without disturbing its shared promise.
       this.entries.delete(key);
@@ -133,8 +167,10 @@ export class ResponseCache {
     }
     const cached = await pending;
     res.setHeader('etag', cached.etag);
-    res.setHeader('cache-control', typeof cached.cacheControl === 'string'
-      ? cached.cacheControl : cached.cacheControl(req, cached.etag));
+    res.setHeader(
+      'cache-control',
+      typeof cached.cacheControl === 'string' ? cached.cacheControl : cached.cacheControl(req, cached.etag),
+    );
     res.setHeader('x-slopesmith-cache', hit ? 'hit' : 'miss');
     if (compress) res.setHeader('vary', 'Accept-Encoding');
     if (etagMatches(req.headers['if-none-match'], cached.etag)) {
@@ -150,27 +186,36 @@ export class ResponseCache {
     res.setHeader('content-type', cached.contentType);
     res.setHeader('content-length', String(body.length));
     if (encoding) res.setHeader('content-encoding', encoding);
-    if (req.method === 'HEAD') res.end(); else res.end(body);
+    if (req.method === 'HEAD') res.end();
+    else res.end(body);
   }
 
   /** Build only the representation this request can use. Concurrent requests share the same compression. */
-  private encoded(key: string, owner: Promise<CachedResponse>, cached: CachedResponse,
-    encoding: Encoding): Promise<Buffer | null> {
+  private encoded(
+    key: string,
+    owner: Promise<CachedResponse>,
+    cached: CachedResponse,
+    encoding: Encoding,
+  ): Promise<Buffer | null> {
     const finished = encoding === 'br' ? cached.brotli : cached.gzip;
     if (finished !== undefined) return Promise.resolve(finished);
     const running = cached.encodingJobs.get(encoding);
     if (running) return running;
 
-    if (encoding === 'br') this.brotliBuilds++; else this.gzipBuilds++;
-    const created = (encoding === 'br'
-      ? brotliAsync(cached.raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } })
-      : gzipAsync(cached.raw, { level: 4 }))
+    if (encoding === 'br') this.brotliBuilds++;
+    else this.gzipBuilds++;
+    const created = (
+      encoding === 'br'
+        ? brotliAsync(cached.raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } })
+        : gzipAsync(cached.raw, { level: 4 })
+    )
       .catch(error => {
         log.warn(`${encoding} compression failed for ${key}`, { error });
         return null;
       })
       .then(value => {
-        if (encoding === 'br') cached.brotli = value; else cached.gzip = value;
+        if (encoding === 'br') cached.brotli = value;
+        else cached.gzip = value;
         cached.encodingJobs.delete(encoding);
         if (value) this.recordSize(key, owner, cached);
         return value;
@@ -200,7 +245,8 @@ export class ResponseCache {
 }
 
 function preferredEncoding(header: string): Encoding | null {
-  const br = encodingQuality(header, 'br'), gzip = encodingQuality(header, 'gzip');
+  const br = encodingQuality(header, 'br'),
+    gzip = encodingQuality(header, 'gzip');
   if (br > 0 && br >= gzip) return 'br';
   if (gzip > 0) return 'gzip';
   return null;
@@ -211,7 +257,10 @@ function encodingQuality(header: string, encoding: string): number {
   for (const item of header.split(',')) {
     const [rawName, ...params] = item.trim().toLowerCase().split(';');
     const name = rawName.trim();
-    const qText = params.map(value => value.trim()).find(value => value.startsWith('q='))?.slice(2);
+    const qText = params
+      .map(value => value.trim())
+      .find(value => value.startsWith('q='))
+      ?.slice(2);
     const quality = qText == null ? 1 : Math.max(0, Math.min(1, Number(qText) || 0));
     if (name === encoding) return quality;
     if (name === '*') wildcard = quality;

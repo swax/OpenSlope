@@ -1,16 +1,21 @@
 import type { PlacedProp, Rail, V3 } from '../../core/doc/types';
 import { assignHandles, type PathHandleOps } from '../paths/handles';
 import {
-  isBareRail, isMotionPath, nextMotionPathId, nextRailId, railHasTube, railMaterialLabel, railStartsOff,
-  railStyle, sampleRail, withoutPathNode,
+  isBareRail,
+  isMotionPath,
+  nextMotionPathId,
+  nextRailId,
+  railHasTube,
+  railMaterialLabel,
+  railStartsOff,
+  railStyle,
+  sampleRail,
+  withoutPathNode,
   RAIL_STYLE_METAL,
 } from '../../core/rails/rails';
 import type { ParticleVolume } from '../../core/particles/volumes';
 import { mphText } from '../../core/math/units';
-import {
-  cloneParticleVolume,
-  createFogVolume,
-} from '../../core/particles/volumes';
+import { cloneParticleVolume, createFogVolume } from '../../core/particles/volumes';
 import {
   EFFECT_TYPES,
   addEmptyEffect,
@@ -89,31 +94,38 @@ import {
   semanticNumberValue,
   setSemanticNumberValue,
 } from '../../core/effects/semantic-fields';
+import { type EffectGraph, type EffectNode, type EffectsDocument } from '../../core/effects/document';
 import {
-  type EffectGraph,
-  type EffectNode,
-  type EffectsDocument,
-} from '../../core/effects/document';
-import {
-  effectPlayCommand, splineEndModeLabel, splineOrientationModeLabel,
-  stepSplineMotionDistance, type EffectPlayCommand,
+  effectPlayCommand,
+  splineEndModeLabel,
+  splineOrientationModeLabel,
+  stepSplineMotionDistance,
+  type EffectPlayCommand,
 } from '../../core/effects/play-runtime';
 import { PARTICLE_SPRITE_NAMES, emitterBlendLabel, timerEmitterPreviewLaw } from '../../core/effects/emitter-preview';
 import { COURSE_BANK_LEVELS, effectSoundSource } from '../../core/effects/collision-sound';
 import {
-  animObjectFromNode, createAnimObjectPlayback, stepAnimObjectPlayback,
-  type AnimObjectEffect, type AnimObjectPlayback,
+  animObjectFromNode,
+  createAnimObjectPlayback,
+  stepAnimObjectPlayback,
+  type AnimObjectEffect,
+  type AnimObjectPlayback,
 } from '../../core/effects/world-effects';
 import {
-  propModelAnimationChannels, samplePropModelAnimationChannel,
-  type PropModelAnimationChannel, type PropModelClip,
+  propModelAnimationChannels,
+  samplePropModelAnimationChannel,
+  type PropModelAnimationChannel,
+  type PropModelClip,
 } from '../../core/reference/props';
 import { surfaceFor } from '../ride/physics-math';
 import type { Store } from '../state/store';
 import type { Viewport } from '../viewport/viewport';
 import { auditionCustomSound, auditionEffectSound } from '../ui/components/audition';
 import {
-  customSoundFilepath, customSounds, onCustomSoundsChanged, pickCustomSound,
+  customSoundFilepath,
+  customSounds,
+  onCustomSoundsChanged,
+  pickCustomSound,
 } from '../ui/components/custom-sounds';
 import { segmented } from '../ui/components/controls';
 import { toast } from '../ui/components/toast';
@@ -279,7 +291,11 @@ interface ReferenceSplineViewerState {
 const PAIRED_PROP_LIMIT = 6;
 
 const emptyReferenceEffectFocus = (): ReferenceEffectFocus => ({
-  instanceIndices: [], activeInstanceIndex: null, selection: null, markerIndex: null, callerIndex: null,
+  instanceIndices: [],
+  activeInstanceIndex: null,
+  selection: null,
+  markerIndex: null,
+  callerIndex: null,
 });
 
 /**
@@ -329,11 +345,16 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   const sourceTabs = segmented<'mountain' | 'reference'>(
     [
       { value: 'mountain', label: mountainName, title: () => `Edit and inspect effects on ${mountainName()}.` },
-      { value: 'reference', label: 'Reference', title: () => referenceState.status === 'ready'
-        ? `Inspect ${referenceState.data.level} effects and fog volumes (read only).`
-        : referenceState.status === 'loading'
-          ? `Inspect reference effects when ${referenceState.level} finishes loading.`
-          : 'Load a reference level in Scene ▸ Reference to inspect its effects.' },
+      {
+        value: 'reference',
+        label: 'Reference',
+        title: () =>
+          referenceState.status === 'ready'
+            ? `Inspect ${referenceState.data.level} effects and fog volumes (read only).`
+            : referenceState.status === 'loading'
+              ? `Inspect reference effects when ${referenceState.level} finishes loading.`
+              : 'Load a reference level in Scene ▸ Reference to inspect its effects.',
+      },
     ],
     () => source,
     setSource,
@@ -385,7 +406,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     }
     // With no viewer there is nothing to ask, but the reference path is drawn by the viewport rather than
     // by this panel — so it still gets the defensive hide it always had.
-    if (hidePath) { if (viewer) viewer.target.showPath(false); else viewport.showReferenceAnimObjectPath(null); }
+    if (hidePath) {
+      if (viewer) viewer.target.showPath(false);
+      else viewport.showReferenceAnimObjectPath(null);
+    }
     updateClipViewerDom?.();
   }
 
@@ -427,8 +451,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     stopReferenceSplineViewer(true);
   }
 
-  function attachmentBindings(doc: EffectsDocument, attachment: EffectAttachment):
-    { circumstance: EffectCircumstance; graph: EffectGraph }[] {
+  function attachmentBindings(
+    doc: EffectsDocument,
+    attachment: EffectAttachment,
+  ): { circumstance: EffectCircumstance; graph: EffectGraph }[] {
     const slot = doc.slots.find(item => item.id === attachment.slot);
     if (!slot) return [];
     const out: { circumstance: EffectCircumstance; graph: EffectGraph }[] = [];
@@ -441,14 +467,21 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   function authoredUnassignedOwnerIds(doc: EffectsDocument): Set<string> {
-    return unassignedEffectOwnerIds(doc,
-      effectAttachments(doc).filter(item => item.enabled).map(attachment => attachment.slot));
+    return unassignedEffectOwnerIds(
+      doc,
+      effectAttachments(doc)
+        .filter(item => item.enabled)
+        .map(attachment => attachment.slot),
+    );
   }
 
   function referenceUnassignedOwnerIds(data: ReferenceEffectsData): Set<string> {
-    return unassignedEffectOwnerIds(data.document, attachedReferenceInstances(data)
-      .map(instance => referenceSlot(data.document, instance.effectSlotIndex)?.id)
-      .filter((slotId): slotId is string => !!slotId));
+    return unassignedEffectOwnerIds(
+      data.document,
+      attachedReferenceInstances(data)
+        .map(instance => referenceSlot(data.document, instance.effectSlotIndex)?.id)
+        .filter((slotId): slotId is string => !!slotId),
+    );
   }
 
   function ensureDocument(): EffectsDocument {
@@ -456,11 +489,16 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     return store.mdoc.effects;
   }
 
-  function selectionValid(doc: EffectsDocument): boolean { return !!selection && !!effectOwner(doc, selection); }
+  function selectionValid(doc: EffectsDocument): boolean {
+    return !!selection && !!effectOwner(doc, selection);
+  }
 
   function normalizeSelection(doc: EffectsDocument): void {
     if (!selection) return;
-    if (!selectionValid(doc)) { selection = null; return; }
+    if (!selectionValid(doc)) {
+      selection = null;
+      return;
+    }
     const owner = effectOwner(doc, selection);
     if (!owner) return;
     if (selection.nodeId && !owner.nodes.some(x => x.id === selection!.nodeId)) selection.nodeId = owner.nodes[0]?.id;
@@ -468,14 +506,17 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function dirty(rebuild = true): void {
     deps.scheduleRebuild();
-    if (rebuild) render(); else syncGizmo();
+    if (rebuild) render();
+    else syncGizmo();
   }
 
   /** Donor course bank chosen for auditioning direct slots on an authored mountain; null follows the attached
    *  prop's source level. Deliberately transient — the real bank is whatever the repack target ships. */
   let soundAuditionLevel: string | null = null;
   // The uploaded-WAV library is shared with the props inspector; re-render when it lands or grows.
-  onCustomSoundsChanged(() => { if (active) render(); });
+  onCustomSoundsChanged(() => {
+    if (active) render();
+  });
 
   function selectedAttachmentProp(doc: EffectsDocument): PlacedProp | undefined {
     if (!selection || selection.ownerKind !== 'graph') return undefined;
@@ -486,9 +527,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   function authoredGraphDisplayName(doc: EffectsDocument, graphId: string): string | null {
-    const matches = effectAttachments(doc).filter(attachment => attachment.enabled)
-      .flatMap(attachment => attachmentBindings(doc, attachment)
-        .filter(binding => binding.graph.id === graphId).map(binding => ({ attachment, binding })));
+    const matches = effectAttachments(doc)
+      .filter(attachment => attachment.enabled)
+      .flatMap(attachment =>
+        attachmentBindings(doc, attachment)
+          .filter(binding => binding.graph.id === graphId)
+          .map(binding => ({ attachment, binding })),
+      );
     const preferredPropId = selectedAuthoredPropId ?? attachmentPropId;
     const match = matches.find(item => item.attachment.target.id === preferredPropId) ?? matches[0];
     if (!match) return null;
@@ -525,11 +570,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   /** What to call the selected spline in a button or a toast. Only these two ever reach the draw actions. */
-  const splineNoun = (rail: Rail): string => isMotionPath(rail) ? 'motion path' : 'rail spline';
+  const splineNoun = (rail: Rail): string => (isMotionPath(rail) ? 'motion path' : 'rail spline');
 
   function dropSplineSelection(): boolean {
     if (store.selectedRail === null) return false;
-    store.selectedRail = null; store.selectedNode = null; store.railDrawing = false;
+    store.selectedRail = null;
+    store.selectedNode = null;
+    store.railDrawing = false;
     viewport.setRailArmed(false);
     viewport.setRails(store.mdoc.rails ?? [], null, null);
     return true;
@@ -545,12 +592,19 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     lastSelectedSplineId = path.id ?? null;
     viewport.stopReferenceEffectPreview();
     source = 'mountain';
-    selection = null; selectedAuthoredPropIds = []; selectedAuthoredPropId = null; authoredUnassignedOpen = false;
-    referenceFocus = emptyReferenceEffectFocus(); referenceUnassignedOpen = false;
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
+    selection = null;
+    selectedAuthoredPropIds = [];
+    selectedAuthoredPropId = null;
+    authoredUnassignedOpen = false;
+    referenceFocus = emptyReferenceEffectFocus();
+    referenceUnassignedOpen = false;
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
     viewport.selectReferenceEffectInstances([]);
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
-    store.selectedRail = index; store.selectedNode = node;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
+    store.selectedRail = index;
+    store.selectedNode = node;
     render();
     return true;
   }
@@ -563,18 +617,28 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (!active || store.currentMode !== 'effects') return false;
     viewport.stopReferenceEffectPreview();
     dropSplineSelection();
-    selection = null; selectedAuthoredPropIds = []; selectedAuthoredPropId = null; authoredUnassignedOpen = false;
-    referenceFocus = emptyReferenceEffectFocus(); referenceUnassignedOpen = false;
+    selection = null;
+    selectedAuthoredPropIds = [];
+    selectedAuthoredPropId = null;
+    authoredUnassignedOpen = false;
+    referenceFocus = emptyReferenceEffectFocus();
+    referenceUnassignedOpen = false;
     viewport.selectReferenceEffectInstances([]);
     if (sourceKind === 'authored') {
       const volume = (id ? volumes().find(item => item.id === id) : null) ?? volumes()[index];
       if (!volume) return false;
-      source = 'mountain'; selectedAuthoredParticleId = volume.id; selectedReferenceParticleIndex = null;
-      viewport.selectAuthoredParticleVolume(volume.id); viewport.selectReferenceParticleVolume(null);
+      source = 'mountain';
+      selectedAuthoredParticleId = volume.id;
+      selectedReferenceParticleIndex = null;
+      viewport.selectAuthoredParticleVolume(volume.id);
+      viewport.selectReferenceParticleVolume(null);
     } else {
       if (referenceState.status !== 'ready' || !(referenceState.data.particleVolumes ?? [])[index]) return false;
-      source = 'reference'; selectedReferenceParticleIndex = index; selectedAuthoredParticleId = null;
-      viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(index);
+      source = 'reference';
+      selectedReferenceParticleIndex = index;
+      selectedAuthoredParticleId = null;
+      viewport.selectAuthoredParticleVolume(null);
+      viewport.selectReferenceParticleVolume(index);
     }
     render();
     return true;
@@ -609,18 +673,29 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const doc = ensureDocument();
     selection = addEffectTemplateToProp(doc, id, 'collision-trigger');
     source = 'mountain';
-    selectedAuthoredPropIds = [id]; selectedAuthoredPropId = id; attachmentPropId = id;
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null; authoredUnassignedOpen = false;
-    referenceFocus = emptyReferenceEffectFocus(); referenceUnassignedOpen = false;
-    store.selectedProp = list.length - 1; store.multiSel = []; store.gizmoMode = 'move';
+    selectedAuthoredPropIds = [id];
+    selectedAuthoredPropId = id;
+    attachmentPropId = id;
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
+    authoredUnassignedOpen = false;
+    referenceFocus = emptyReferenceEffectFocus();
+    referenceUnassignedOpen = false;
+    store.selectedProp = list.length - 1;
+    store.multiSel = [];
+    store.gizmoMode = 'move';
     viewport.setGizmoMode('move');
     dirty();
-    toast('Trigger added with an empty collision effect — move or resize the purple box, then add its effect nodes.', 'ok');
+    toast(
+      'Trigger added with an empty collision effect — move or resize the purple box, then add its effect nodes.',
+      'ok',
+    );
   }
 
   function removeSelectedEffectTrigger(): boolean {
     if (!selectedAuthoredPropId) return false;
-    const list = props(), index = list.findIndex(prop => prop.id === selectedAuthoredPropId);
+    const list = props(),
+      index = list.findIndex(prop => prop.id === selectedAuthoredPropId);
     const prop = list[index];
     if (index < 0 || !isEffectTriggerProp(prop)) return false;
     if (!confirm(`Delete ${prop.name}?`)) return true;
@@ -641,8 +716,11 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       }
     }
     list.splice(index, 1);
-    selectedAuthoredPropIds = []; selectedAuthoredPropId = null; selection = null;
-    store.selectedProp = null; store.multiSel = [];
+    selectedAuthoredPropIds = [];
+    selectedAuthoredPropId = null;
+    selection = null;
+    store.selectedProp = null;
+    store.multiSel = [];
     dirty();
     return true;
   }
@@ -650,8 +728,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function addMotionPath(): void {
     const paths = (store.mdoc.rails ??= []);
     const ordinal = paths.filter(isMotionPath).length + 1;
-    paths.push({ id: nextMotionPathId(paths), kind: 'motion', name: `Motion path ${ordinal}`,
-      nodes: [], height: 1.5 });
+    paths.push({ id: nextMotionPathId(paths), kind: 'motion', name: `Motion path ${ordinal}`, nodes: [], height: 1.5 });
     beginDrawing(paths.length - 1);
     toast('click the mountain to add motion-path points — Enter / Esc to finish', 'info');
   }
@@ -669,8 +746,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function addRailSpline(): void {
     const rails = (store.mdoc.rails ??= []);
     const ordinal = rails.filter(rail => !isMotionPath(rail)).length + 1;
-    rails.push({ id: nextRailId(rails), kind: 'grind', name: `Rail spline ${ordinal}`, nodes: [],
-      height: 1.5, style: RAIL_STYLE_METAL, bare: true });
+    rails.push({
+      id: nextRailId(rails),
+      kind: 'grind',
+      name: `Rail spline ${ordinal}`,
+      nodes: [],
+      height: 1.5,
+      style: RAIL_STYLE_METAL,
+      bare: true,
+    });
     beginDrawing(rails.length - 1);
     toast('click along the shape you want to grind — Enter / Esc to finish', 'info');
   }
@@ -686,7 +770,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   /** Arm the point-chain gesture on a freshly added spline and select it, so its panel is already open. */
   function beginDrawing(index: number): void {
-    store.selectedRail = index; store.selectedNode = null; store.railDrawing = true;
+    store.selectedRail = index;
+    store.selectedNode = null;
+    store.railDrawing = true;
     viewport.setRailArmed(true);
     selectCourseSpline(index);
     dirty();
@@ -696,10 +782,12 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const selected = selectedDrawableSpline();
     if (!selected) return;
     const noun = splineNoun(selected.rail);
-    store.railDrawing = false; viewport.setRailArmed(false);
+    store.railDrawing = false;
+    viewport.setRailArmed(false);
     if (selected.rail.nodes.length < 2) {
       store.mdoc.rails!.splice(selected.index, 1);
-      store.selectedRail = null; store.selectedNode = null;
+      store.selectedRail = null;
+      store.selectedNode = null;
       toast(`${noun} needs at least two points — discarded`, 'warn');
     } else toast(`${noun} finished`, 'ok');
     dirty();
@@ -707,7 +795,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function resumeDrawnSpline(): void {
     if (!selectedDrawableSpline()) return;
-    store.selectedNode = null; store.railDrawing = true;
+    store.selectedNode = null;
+    store.railDrawing = true;
     viewport.setRailArmed(true);
     dirty();
     toast('click the mountain to add more points — Enter / Esc to finish', 'info');
@@ -717,18 +806,23 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const selected = selectedDrawableSpline();
     if (!selected || !confirm(`Delete ${selected.rail.name || `this ${splineNoun(selected.rail)}`}?`)) return;
     store.mdoc.rails!.splice(selected.index, 1);
-    store.selectedRail = null; store.selectedNode = null; store.railDrawing = false;
+    store.selectedRail = null;
+    store.selectedNode = null;
+    store.railDrawing = false;
     viewport.setRailArmed(false);
     dirty();
   }
 
   function removeSelectedDrawnSplineNode(): void {
-    const selected = selectedDrawableSpline(), node = store.selectedNode;
+    const selected = selectedDrawableSpline(),
+      node = store.selectedNode;
     if (!selected || node === null || !selected.rail.nodes[node]) return;
-    selected.rail.nodes.splice(node, 1); store.selectedNode = null;
+    selected.rail.nodes.splice(node, 1);
+    store.selectedNode = null;
     assignHandles(selected.rail, withoutPathNode(selected.rail.handles, node)); // later nodes keep their own
     if (selected.rail.nodes.length < 2 && !store.railDrawing) {
-      store.mdoc.rails!.splice(selected.index, 1); store.selectedRail = null;
+      store.mdoc.rails!.splice(selected.index, 1);
+      store.selectedRail = null;
       toast(`${splineNoun(selected.rail)} needs at least two points — removed`, 'warn');
     }
     dirty();
@@ -751,7 +845,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function duplicateSelectedParticle(): void {
     if (!selectedAuthoredParticleId) return;
-    const list = volumes(), sourceVolume = list.find(item => item.id === selectedAuthoredParticleId);
+    const list = volumes(),
+      sourceVolume = list.find(item => item.id === selectedAuthoredParticleId);
     if (!sourceVolume) return;
     const copy = cloneParticleVolume(sourceVolume, list);
     copy.pos = [copy.pos[0] + 5, copy.pos[1], copy.pos[2]];
@@ -763,59 +858,114 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function removeSelectedParticle(): void {
     if (!selectedAuthoredParticleId) return;
-    const list = volumes(), index = list.findIndex(item => item.id === selectedAuthoredParticleId);
+    const list = volumes(),
+      index = list.findIndex(item => item.id === selectedAuthoredParticleId);
     if (index < 0) return;
     if (!confirm(`Delete fog volume ${list[index].name}?`)) return;
-    list.splice(index, 1); selectedAuthoredParticleId = null;
+    list.splice(index, 1);
+    selectedAuthoredParticleId = null;
     viewport.selectAuthoredParticleVolume(null);
     dirty();
   }
 
-  function effectTreeActionMenu(doc: EffectsDocument,
-    binding: { circumstance: EffectCircumstance; graph: EffectGraph }): HTMLButtonElement {
+  function effectTreeActionMenu(
+    doc: EffectsDocument,
+    binding: { circumstance: EffectCircumstance; graph: EffectGraph },
+  ): HTMLButtonElement {
     const target: EffectSelection = { ownerKind: 'graph', ownerId: binding.graph.id };
     const index = doc.graphs.indexOf(binding.graph);
     return treeActionMenu('Effect actions', 'effect', [
-      { label: 'Move up', desc: 'Move this effect earlier in the list.', disabled: index <= 0,
-        onClick: () => { selection = target; if (moveEffectOwner(doc, target, -1)) dirty(); } },
-      { label: 'Move down', desc: 'Move this effect later in the list.', disabled: index < 0 || index >= doc.graphs.length - 1,
-        onClick: () => { selection = target; if (moveEffectOwner(doc, target, 1)) dirty(); } },
-      { label: 'Copy effect', desc: 'Duplicate this effect with fresh stable IDs.', onClick: () => {
-        selection = duplicateEffectOwner(doc, target) ?? target;
-        dirty();
-      } },
-      { label: 'Delete effect', desc: 'Delete this effect and clear references to it.', onClick: () => {
-        if (!confirm(`Delete ${effectGraphDisplayName(binding.graph, binding.circumstance)}?`)) return;
-        if (deleteEffectOwner(doc, target)) { selection = null; dirty(); }
-      } },
+      {
+        label: 'Move up',
+        desc: 'Move this effect earlier in the list.',
+        disabled: index <= 0,
+        onClick: () => {
+          selection = target;
+          if (moveEffectOwner(doc, target, -1)) dirty();
+        },
+      },
+      {
+        label: 'Move down',
+        desc: 'Move this effect later in the list.',
+        disabled: index < 0 || index >= doc.graphs.length - 1,
+        onClick: () => {
+          selection = target;
+          if (moveEffectOwner(doc, target, 1)) dirty();
+        },
+      },
+      {
+        label: 'Copy effect',
+        desc: 'Duplicate this effect with fresh stable IDs.',
+        onClick: () => {
+          selection = duplicateEffectOwner(doc, target) ?? target;
+          dirty();
+        },
+      },
+      {
+        label: 'Delete effect',
+        desc: 'Delete this effect and clear references to it.',
+        onClick: () => {
+          if (!confirm(`Delete ${effectGraphDisplayName(binding.graph, binding.circumstance)}?`)) return;
+          if (deleteEffectOwner(doc, target)) {
+            selection = null;
+            dirty();
+          }
+        },
+      },
     ]);
   }
 
-  function nodeTreeActionMenu(doc: EffectsDocument, binding: { graph: EffectGraph },
-    node: EffectNode): HTMLButtonElement {
+  function nodeTreeActionMenu(
+    doc: EffectsDocument,
+    binding: { graph: EffectGraph },
+    node: EffectNode,
+  ): HTMLButtonElement {
     const target: EffectSelection = { ownerKind: 'graph', ownerId: binding.graph.id, nodeId: node.id };
     const index = binding.graph.nodes.indexOf(node);
     return treeActionMenu('Node actions', 'node', [
-      { label: 'Move up', desc: 'Move this node earlier in execution order.', disabled: index <= 0,
-        onClick: () => { selection = target; if (moveEffectNode(doc, target, -1)) dirty(); } },
-      { label: 'Move down', desc: 'Move this node later in execution order.',
+      {
+        label: 'Move up',
+        desc: 'Move this node earlier in execution order.',
+        disabled: index <= 0,
+        onClick: () => {
+          selection = target;
+          if (moveEffectNode(doc, target, -1)) dirty();
+        },
+      },
+      {
+        label: 'Move down',
+        desc: 'Move this node later in execution order.',
         disabled: index < 0 || index >= binding.graph.nodes.length - 1,
-        onClick: () => { selection = target; if (moveEffectNode(doc, target, 1)) dirty(); } },
-      { label: 'Copy node', desc: 'Duplicate this node with a fresh stable ID.', onClick: () => {
-        selection = duplicateEffectNode(doc, target) ?? target;
-        dirty();
-      } },
-      { label: 'Delete node', desc: 'Delete this node from the effect.', onClick: () => {
-        selection = deleteEffectNode(doc, target) ?? target;
-        dirty();
-      } },
+        onClick: () => {
+          selection = target;
+          if (moveEffectNode(doc, target, 1)) dirty();
+        },
+      },
+      {
+        label: 'Copy node',
+        desc: 'Duplicate this node with a fresh stable ID.',
+        onClick: () => {
+          selection = duplicateEffectNode(doc, target) ?? target;
+          dirty();
+        },
+      },
+      {
+        label: 'Delete node',
+        desc: 'Delete this node from the effect.',
+        onClick: () => {
+          selection = deleteEffectNode(doc, target) ?? target;
+          dirty();
+        },
+      },
     ]);
   }
 
   function openUnassigned(which: 'mountain' | 'reference'): void {
     viewport.stopReferenceEffectPreview();
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
     if (which === 'mountain') {
       source = 'mountain';
       authoredUnassignedOpen = true;
@@ -840,8 +990,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function unassignedButton(which: 'mountain' | 'reference', count: number): HTMLElement {
     const actions = el('div', 'sp-fx-actions sp-fx-unassigned-action');
-    actions.appendChild(button(`Unassigned · ${count}`,
-      'Effects that are not on a prop, plus the shared effects any prop can call.', () => openUnassigned(which)));
+    actions.appendChild(
+      button(
+        `Unassigned · ${count}`,
+        'Effects that are not on a prop, plus the shared effects any prop can call.',
+        () => openUnassigned(which),
+      ),
+    );
     return actions;
   }
 
@@ -852,9 +1007,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       return;
     }
     const doc = document();
-    if (source !== 'mountain' || !active || store.currentMode !== 'effects' || !doc || !selection) { viewport.setEffectHandle(null); return; }
+    if (source !== 'mountain' || !active || store.currentMode !== 'effects' || !doc || !selection) {
+      viewport.setEffectHandle(null);
+      return;
+    }
     const node = effectNode(doc, selection);
-    if (!node) { viewport.setEffectHandle(null); return; }
+    if (!node) {
+      viewport.setEffectHandle(null);
+      return;
+    }
     const pos = emitterWorldPosition(node, selectedAttachmentProp(doc));
     viewport.setEffectHandle(pos);
   }
@@ -863,14 +1024,17 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
    *  selected spatial emitter still owns the Effects gizmo, so a rebuild cannot steal the handle mid-drag. */
   function syncTriggerTransform(): void {
     const list = props();
-    const index = selectedAuthoredPropIds.length === 1
-      ? list.findIndex(prop => prop.id === selectedAuthoredPropIds[0] && isEffectTriggerProp(prop)) : -1;
+    const index =
+      selectedAuthoredPropIds.length === 1
+        ? list.findIndex(prop => prop.id === selectedAuthoredPropIds[0] && isEffectTriggerProp(prop))
+        : -1;
     const doc = document();
     const node = doc && selection ? effectNode(doc, selection) : null;
     const spatialNodeSelected = !!(node && emitterWorldPosition(node, index >= 0 ? list[index] : undefined));
     if (source === 'mountain' && active && store.currentMode === 'effects' && index >= 0 && !spatialNodeSelected) {
       if (store.gizmoMode === 'rotate') store.gizmoMode = 'move';
-      store.selectedProp = index; store.multiSel = [];
+      store.selectedProp = index;
+      store.multiSel = [];
       viewport.setPlacedPropSelection(index);
       viewport.setGizmoMode(store.gizmoMode === 'scale' ? 'scale' : 'move');
       return;
@@ -893,13 +1057,17 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const doc = ensureDocument();
     viewport.stopReferenceEffectPreview();
     dropSplineSelection();
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
     source = 'mountain';
     attachmentPropId = prop.id;
     const selected = new Set(selectedAuthoredPropIds);
-    if (!additive) { selected.clear(); selected.add(prop.id); }
-    else if (selected.has(prop.id)) selected.delete(prop.id);
+    if (!additive) {
+      selected.clear();
+      selected.add(prop.id);
+    } else if (selected.has(prop.id)) selected.delete(prop.id);
     else selected.add(prop.id);
     selectedAuthoredPropIds = [...selected];
     if (!selectedAuthoredPropIds.length) {
@@ -925,11 +1093,14 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     viewport.stopReferenceEffectPreview();
     dropSplineSelection();
     source = 'mountain';
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
-    selectedAuthoredPropIds = [target.id]; selectedAuthoredPropId = target.id; attachmentPropId = target.id;
-    selection = { ownerKind: 'graph', ownerId: graph.id,
-      ...(graph.nodes[0] ? { nodeId: graph.nodes[0].id } : {}) };
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
+    selectedAuthoredPropIds = [target.id];
+    selectedAuthoredPropId = target.id;
+    attachmentPropId = target.id;
+    selection = { ownerKind: 'graph', ownerId: graph.id, ...(graph.nodes[0] ? { nodeId: graph.nodes[0].id } : {}) };
     authoredUnassignedOpen = false;
     referenceUnassignedOpen = false;
     referenceFocus = emptyReferenceEffectFocus();
@@ -943,10 +1114,16 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     dirty();
   }
 
-  function addNodePicker(doc: EffectsDocument, owner: EffectSelection,
-    circumstance?: EffectCircumstance): HTMLButtonElement {
-    return templatePicker('+ Add node', 'Choose a node to append to this effect.',
-      EFFECT_NODE_TEMPLATES, template => {
+  function addNodePicker(
+    doc: EffectsDocument,
+    owner: EffectSelection,
+    circumstance?: EffectCircumstance,
+  ): HTMLButtonElement {
+    return templatePicker(
+      '+ Add node',
+      'Choose a node to append to this effect.',
+      EFFECT_NODE_TEMPLATES,
+      template => {
         selection = addEffectNodeTemplate(doc, owner, template.id) ?? owner;
         // The spline the author last CLICKED, not the one selected right now: reaching the prop's Add-node
         // menu means selecting the prop, and that drops the spline selection on the way. Without the memory
@@ -957,8 +1134,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         // Both of these are unusable until bound, so they bind on the way in rather than waiting for the
         // author to discover an empty reference: a toggle to whichever rail is selected, and a lift to an
         // altitude above the prop it was just added to.
-        if (template.id === 'spline-toggle')
-          bindEffectSplineToRail(doc, selection, store.mdoc.rails, selectedRailId);
+        if (template.id === 'spline-toggle') bindEffectSplineToRail(doc, selection, store.mdoc.rails, selectedRailId);
         if (template.id === 'z-boost') {
           const groundY = zBoostTargetForOwner(doc, store.mdoc.props ?? [], owner.ownerId);
           if (groundY !== null) bindZBoostToPlacement(doc, selection, groundY);
@@ -966,40 +1142,51 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         // A call has nothing existing to bind to on an authored mountain, so this MAKES the body it names.
         if (template.id === 'call-function') bindEffectFunctionCall(doc, selection);
         dirty();
-      }, template => nodeTemplateLabelInGraph(template, circumstance));
+      },
+      template => nodeTemplateLabelInGraph(template, circumstance),
+    );
   }
 
   function duplicateOwner(): void {
-    const doc = document(); if (!doc || !selection) return;
+    const doc = document();
+    if (!doc || !selection) return;
     selection = duplicateEffectOwner(doc, selection) ?? selection;
     dirty();
   }
 
   function shiftOwner(delta: -1 | 1): void {
-    const doc = document(); if (!doc || !selection) return;
+    const doc = document();
+    if (!doc || !selection) return;
     if (moveEffectOwner(doc, selection, delta)) dirty();
   }
 
   function removeOwner(): void {
-    const doc = document(); if (!doc || !selection) return;
+    const doc = document();
+    if (!doc || !selection) return;
     if (!confirm(`Delete ${selection.ownerId} and clear references to it?`)) return;
-    if (deleteEffectOwner(doc, selection)) { selection = null; dirty(); }
+    if (deleteEffectOwner(doc, selection)) {
+      selection = null;
+      dirty();
+    }
   }
 
   function duplicateNode(): void {
-    const doc = document(); if (!doc || !selection) return;
+    const doc = document();
+    if (!doc || !selection) return;
     selection = duplicateEffectNode(doc, selection) ?? selection;
     dirty();
   }
 
   function removeNode(): void {
-    const doc = document(); if (!doc || !selection?.nodeId) return;
+    const doc = document();
+    if (!doc || !selection?.nodeId) return;
     selection = deleteEffectNode(doc, selection) ?? selection;
     dirty();
   }
 
   function shiftNode(delta: -1 | 1): void {
-    const doc = document(); if (!doc || !selection) return;
+    const doc = document();
+    if (!doc || !selection) return;
     if (moveEffectNode(doc, selection, delta)) dirty();
   }
 
@@ -1008,8 +1195,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (doc) {
       const issues = validateEffectsAuthoring(doc, props(), store.mdoc.rails ?? []);
       const errors = issues.filter(x => x.severity === 'error').length;
-      s.body.appendChild(el('div', `sp-fx-summary${errors ? ' bad' : ''}`,
-        `${doc.graphs.length} effects · ${doc.functions.length} shared · ${doc.graphs.reduce((n, g) => n + g.nodes.length, 0) + doc.functions.reduce((n, f) => n + f.nodes.length, 0)} nodes · ${issues.length ? `${errors} errors / ${issues.length - errors} warnings` : 'valid'}`));
+      s.body.appendChild(
+        el(
+          'div',
+          `sp-fx-summary${errors ? ' bad' : ''}`,
+          `${doc.graphs.length} effects · ${doc.functions.length} shared · ${doc.graphs.reduce((n, g) => n + g.nodes.length, 0) + doc.functions.reduce((n, f) => n + f.nodes.length, 0)} nodes · ${issues.length ? `${errors} errors / ${issues.length - errors} warnings` : 'valid'}`,
+        ),
+      );
       s.body.appendChild(unassignedButton('mountain', authoredUnassignedOwnerIds(doc).size));
     } else s.body.appendChild(el('div', 'sp-fx-empty', `Effects initialize with ${mountainName()}.`));
     return s.root;
@@ -1021,17 +1213,34 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const paths = rails.filter(isMotionPath);
     const bare = rails.filter(isBareRail);
     const triggers = props().filter(isEffectTriggerProp);
-    const puffs = list.reduce((count, volume) => count
-      + volume.objects.reduce((subtotal, object) => subtotal + object.puffs.length, 0), 0);
+    const puffs = list.reduce(
+      (count, volume) => count + volume.objects.reduce((subtotal, object) => subtotal + object.puffs.length, 0),
+      0,
+    );
     const s = section('World objects');
-    s.body.append(el('div', 'sp-fx-summary', `${triggers.length} triggers · ${list.length} fog volumes · ${puffs} puffs · `
-      + `${paths.length} motion paths · ${bare.length} rail splines`),
-      el('div', 'sp-fx-note', 'Trigger boxes carry collision effects, and motion paths are the invisible routes '
-        + 'moving props travel along. They and fog banks show purple in Effects mode. '
-        + 'Grind rails show red. Add these objects from Props, then use their settings or Effects to configure them.'));
+    s.body.append(
+      el(
+        'div',
+        'sp-fx-summary',
+        `${triggers.length} triggers · ${list.length} fog volumes · ${puffs} puffs · ` +
+          `${paths.length} motion paths · ${bare.length} rail splines`,
+      ),
+      el(
+        'div',
+        'sp-fx-note',
+        'Trigger boxes carry collision effects, and motion paths are the invisible routes ' +
+          'moving props travel along. They and fog banks show purple in Effects mode. ' +
+          'Grind rails show red. Add these objects from Props, then use their settings or Effects to configure them.',
+      ),
+    );
     const actions = el('div', 'sp-fx-actions');
-    actions.appendChild(button('Add objects in Props',
-      'Open pickups, zones, paths, rails, scenery and atmosphere tools.', deps.goToPropTools));
+    actions.appendChild(
+      button(
+        'Add objects in Props',
+        'Open pickups, zones, paths, rails, scenery and atmosphere tools.',
+        deps.goToPropTools,
+      ),
+    );
     s.body.appendChild(actions);
     return s.root;
   }
@@ -1042,19 +1251,47 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const { path } = selected;
     const sampled = sampleRail(path.nodes, 24, path.handles);
     let length = 0;
-    for (let i = 1; i < sampled.length; i++) length += Math.hypot(
-      sampled[i][0] - sampled[i - 1][0], sampled[i][1] - sampled[i - 1][1], sampled[i][2] - sampled[i - 1][2]);
+    for (let i = 1; i < sampled.length; i++)
+      length += Math.hypot(
+        sampled[i][0] - sampled[i - 1][0],
+        sampled[i][1] - sampled[i - 1][1],
+        sampled[i][2] - sampled[i - 1][2],
+      );
     const s = section(`Motion path: ${path.name || path.id || 'unnamed'}`);
     s.body.append(
-      row('Name', input(path.name ?? '', value => { path.name = value.trim() || undefined; dirty(); })),
-      row('Stable ID', input(path.id ?? '', () => {}, { readonly: true })),
-      row('Points', input(String(path.nodes.length), () => {}, { readonly: true })),
-      row('Length', input(`${length.toFixed(1)} m`, () => {}, { readonly: true })),
-      row('Ground offset', numberInput(path.height, value => {
-        const dy = value - path.height; path.height = value;
-        for (const point of path.nodes) point[1] += dy;
-        dirty();
-      }, '0.1'), 'Height added to terrain clicks; changing it moves the complete path vertically.'),
+      row(
+        'Name',
+        input(path.name ?? '', value => {
+          path.name = value.trim() || undefined;
+          dirty();
+        }),
+      ),
+      row(
+        'Stable ID',
+        input(path.id ?? '', () => {}, { readonly: true }),
+      ),
+      row(
+        'Points',
+        input(String(path.nodes.length), () => {}, { readonly: true }),
+      ),
+      row(
+        'Length',
+        input(`${length.toFixed(1)} m`, () => {}, { readonly: true }),
+      ),
+      row(
+        'Ground offset',
+        numberInput(
+          path.height,
+          value => {
+            const dy = value - path.height;
+            path.height = value;
+            for (const point of path.nodes) point[1] += dy;
+            dirty();
+          },
+          '0.1',
+        ),
+        'Height added to terrain clicks; changing it moves the complete path vertically.',
+      ),
       el('div', 'sp-fx-note', 'Invisible in game and cannot be grinded. Spline mover effects travel along it.'),
     );
     s.body.appendChild(splineDrawActions(path));
@@ -1066,21 +1303,43 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function splineDrawActions(rail: Rail): HTMLElement {
     const path = isMotionPath(rail);
     const actions = el('div', 'sp-fx-actions');
-    actions.appendChild(store.railDrawing
-      ? button(path ? '✔ Finish path' : '✔ Finish spline', 'Stop adding points and keep this curve.',
-        finishDrawnSpline)
-      : button('+ Add more points', 'Resume extending this curve with terrain clicks.', resumeDrawnSpline));
+    actions.appendChild(
+      store.railDrawing
+        ? button(
+            path ? '✔ Finish path' : '✔ Finish spline',
+            'Stop adding points and keep this curve.',
+            finishDrawnSpline,
+          )
+        : button('+ Add more points', 'Resume extending this curve with terrain clicks.', resumeDrawnSpline),
+    );
     if (store.selectedNode !== null)
-      actions.appendChild(button('Delete point', 'Delete the selected curve point.',
-        removeSelectedDrawnSplineNode, true));
+      actions.appendChild(
+        button('Delete point', 'Delete the selected curve point.', removeSelectedDrawnSplineNode, true),
+      );
     // A picked point shows the curve's Bézier handles (docs/014); these put dragged ones back.
     const handles = !store.railDrawing && store.selectedNode !== null ? deps.pathHandles.resetState() : null;
-    if (handles?.node) actions.appendChild(button('Reset point handles', 'Put this point back on the automatic smooth curve.',
-      () => { deps.pathHandles.resetNode(); render(); }));
-    if (handles?.path) actions.appendChild(button('Reset all handles', 'Put every point back on the automatic smooth curve.',
-      () => { deps.pathHandles.resetPath(); render(); }));
-    actions.appendChild(button(path ? 'Delete path' : 'Delete spline',
-      'Delete this curve and clear effect references to it.', removeSelectedDrawnSpline, true));
+    if (handles?.node)
+      actions.appendChild(
+        button('Reset point handles', 'Put this point back on the automatic smooth curve.', () => {
+          deps.pathHandles.resetNode();
+          render();
+        }),
+      );
+    if (handles?.path)
+      actions.appendChild(
+        button('Reset all handles', 'Put every point back on the automatic smooth curve.', () => {
+          deps.pathHandles.resetPath();
+          render();
+        }),
+      );
+    actions.appendChild(
+      button(
+        path ? 'Delete path' : 'Delete spline',
+        'Delete this curve and clear effect references to it.',
+        removeSelectedDrawnSpline,
+        true,
+      ),
+    );
     return actions;
   }
 
@@ -1097,18 +1356,26 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     viewport.stopReferenceEffectPreview();
     dropSplineSelection();
     source = 'mountain';
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
-    referenceFocus = emptyReferenceEffectFocus(); referenceUnassignedOpen = false;
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
+    referenceFocus = emptyReferenceEffectFocus();
+    referenceUnassignedOpen = false;
     viewport.selectReferenceEffectInstances([]);
     selection = { ownerKind: use.ownerKind, ownerId: use.ownerId, nodeId: use.nodeId };
-    const host = use.ownerKind === 'graph'
-      ? authoredEffectBindings(doc, props()).find(binding => binding.graph.id === use.ownerId)?.prop : undefined;
+    const host =
+      use.ownerKind === 'graph'
+        ? authoredEffectBindings(doc, props()).find(binding => binding.graph.id === use.ownerId)?.prop
+        : undefined;
     if (host?.id) {
-      selectedAuthoredPropIds = [host.id]; selectedAuthoredPropId = host.id; attachmentPropId = host.id;
+      selectedAuthoredPropIds = [host.id];
+      selectedAuthoredPropId = host.id;
+      attachmentPropId = host.id;
       authoredUnassignedOpen = false;
     } else {
-      selectedAuthoredPropIds = []; selectedAuthoredPropId = null;
+      selectedAuthoredPropIds = [];
+      selectedAuthoredPropId = null;
       authoredUnassignedOpen = true;
     }
     render();
@@ -1137,60 +1404,120 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const surface = surfaceFor(style);
     const sampled = sampleRail(rail.nodes, 24, rail.handles);
     let length = 0;
-    for (let i = 1; i < sampled.length; i++) length += Math.hypot(
-      sampled[i][0] - sampled[i - 1][0], sampled[i][1] - sampled[i - 1][1], sampled[i][2] - sampled[i - 1][2]);
+    for (let i = 1; i < sampled.length; i++)
+      length += Math.hypot(
+        sampled[i][0] - sampled[i - 1][0],
+        sampled[i][1] - sampled[i - 1][1],
+        sampled[i][2] - sampled[i - 1][2],
+      );
     const s = section(`${bare ? 'Rail spline' : 'Rail'}: ${rail.name || rail.id || 'unnamed'}`);
     s.body.append(
-      row('Name', input(rail.name ?? '', value => { rail.name = value.trim() || undefined; dirty(); })),
-      row('Stable ID', input(rail.id ?? '', () => {}, { readonly: true }),
-        'What a Rail on / off node stores, so effects keep following this rail when another one is deleted.'),
-      row('Points', input(String(rail.nodes.length), () => {}, { readonly: true })),
-      row('Length', input(`${length.toFixed(1)} m`, () => {}, { readonly: true })),
+      row(
+        'Name',
+        input(rail.name ?? '', value => {
+          rail.name = value.trim() || undefined;
+          dirty();
+        }),
+      ),
+      row(
+        'Stable ID',
+        input(rail.id ?? '', () => {}, { readonly: true }),
+        'What a Rail on / off node stores, so effects keep following this rail when another one is deleted.',
+      ),
+      row(
+        'Points',
+        input(String(rail.nodes.length), () => {}, { readonly: true }),
+      ),
+      row(
+        'Length',
+        input(`${length.toFixed(1)} m`, () => {}, { readonly: true }),
+      ),
       // These are read-only here because the Tricks tools own the rail itself. Material is the native grind
       // surface, not paint, and Speed is that surface row's cruise-drive target rather than a per-rail override.
-      row('Material', input(railMaterialLabel(style), () => {}, { readonly: true }),
-        `SplineStyle ${style}. This is what the board rides, not just what the pipe looks like.`),
-      row('Speed', input(`${mphText(surface.target)} target`, () => {}, { readonly: true }),
-        `Surface ${surface.type} “${surface.name}”, drag ${surface.drag.toFixed(2)}. This is the cruise target; `
-        + 'gravity can carry the rider faster.'),
-      row('Shape', input(bare ? 'Bare spline' : 'Pipe', () => {}, { readonly: true }),
-        bare ? 'The grind curve has no generated tube of its own.' : 'This rail also builds a visible tube.'),
+      row(
+        'Material',
+        input(railMaterialLabel(style), () => {}, { readonly: true }),
+        `SplineStyle ${style}. This is what the board rides, not just what the pipe looks like.`,
+      ),
+      row(
+        'Speed',
+        input(`${mphText(surface.target)} target`, () => {}, { readonly: true }),
+        `Surface ${surface.type} “${surface.name}”, drag ${surface.drag.toFixed(2)}. This is the cruise target; ` +
+          'gravity can carry the rider faster.',
+      ),
+      row(
+        'Shape',
+        input(bare ? 'Bare spline' : 'Pipe', () => {}, { readonly: true }),
+        bare ? 'The grind curve has no generated tube of its own.' : 'This rail also builds a visible tube.',
+      ),
     );
-    if (bare) s.body.appendChild(row('Ground offset', numberInput(rail.height, value => {
-      const dy = value - rail.height; rail.height = value;
-      for (const point of rail.nodes) point[1] += dy;
-      dirty();
-    }, '0.1'), 'Height added to terrain clicks — raise it to sit the grind on top of whatever the curve '
-      + 'follows. Changing it moves the complete curve vertically.'));
-    s.body.appendChild(checkboxRow('Starts off (an effect switches it on)', railStartsOff(rail),
-      'Ship this rail OUTSIDE the rail network and let a Rail on / off node put it in — retail\'s fallen '
-      + 'trunk, grindable only once the tree has come down. It exports at the non-grind style that does '
-      + `this, so ${bare ? 'the prop this curve follows is untouched and the grind' : 'the tube is drawn and '
-        + 'solid exactly as authored and simply'} cannot be caught yet. `
-      + 'Slopesmith\'s own test ride refuses it too, because no preview here runs the toggle.',
-      value => { rail.startsOff = value || undefined; dirty(); }));
+    if (bare)
+      s.body.appendChild(
+        row(
+          'Ground offset',
+          numberInput(
+            rail.height,
+            value => {
+              const dy = value - rail.height;
+              rail.height = value;
+              for (const point of rail.nodes) point[1] += dy;
+              dirty();
+            },
+            '0.1',
+          ),
+          'Height added to terrain clicks — raise it to sit the grind on top of whatever the curve ' +
+            'follows. Changing it moves the complete curve vertically.',
+        ),
+      );
+    s.body.appendChild(
+      checkboxRow(
+        'Starts off (an effect switches it on)',
+        railStartsOff(rail),
+        "Ship this rail OUTSIDE the rail network and let a Rail on / off node put it in — retail's fallen " +
+          'trunk, grindable only once the tree has come down. It exports at the non-grind style that does ' +
+          `this, so ${
+            bare
+              ? 'the prop this curve follows is untouched and the grind'
+              : 'the tube is drawn and ' + 'solid exactly as authored and simply'
+          } cannot be caught yet. ` +
+          "Slopesmith's own test ride refuses it too, because no preview here runs the toggle.",
+        value => {
+          rail.startsOff = value || undefined;
+          dirty();
+        },
+      ),
+    );
     if (uses.length) {
       const list = el('div', 'sp-fx-list');
       for (const use of uses) {
         const graphName = use.ownerKind === 'graph' ? authoredGraphDisplayName(doc!, use.ownerId) : null;
-        const fn = use.ownerKind === 'function'
-          ? doc?.functions.find(item => item.id === use.ownerId) : null;
+        const fn = use.ownerKind === 'function' ? doc?.functions.find(item => item.id === use.ownerId) : null;
         const item = el('button', 'sp-fx-list-row');
         item.type = 'button';
         item.title = 'Open the effect this node belongs to.';
-        item.onclick = () => { if (doc) openSplineUse(doc, use); };
-        item.append(el('span', 'sp-fx-node-index', '›'),
+        item.onclick = () => {
+          if (doc) openSplineUse(doc, use);
+        };
+        item.append(
+          el('span', 'sp-fx-node-index', '›'),
           el('span', 'sp-fx-list-name', graphName ?? fn?.name ?? use.ownerId),
-          el('span', 'sp-fx-kind', splineUseLabel(use)));
+          el('span', 'sp-fx-kind', splineUseLabel(use)),
+        );
         list.appendChild(item);
       }
       s.body.append(el('div', 'sp-fx-note', `${countLabel(uses.length, 'effect node')} names this rail.`), list);
     } else {
-      s.body.appendChild(el('div', 'sp-fx-note', railStartsOff(rail)
-        ? 'Nothing switches this rail on, so as it stands nobody can ever grind it. Add a Rail on / off node '
-          + 'to the prop that should enable it — the break chain of a tree, or a trigger the rider crosses.'
-        : 'No effect names this rail; it is simply grindable from the moment the level loads. Rail on / off '
-          + 'and Spline mover nodes, added from a prop\'s own effect panel, bind to whichever rail is selected.'));
+      s.body.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          railStartsOff(rail)
+            ? 'Nothing switches this rail on, so as it stands nobody can ever grind it. Add a Rail on / off node ' +
+                'to the prop that should enable it — the break chain of a tree, or a trigger the rider crosses.'
+            : 'No effect names this rail; it is simply grindable from the moment the level loads. Rail on / off ' +
+                "and Spline mover nodes, added from a prop's own effect panel, bind to whichever rail is selected.",
+        ),
+      );
     }
     // The one spline→prop join the data has: a graph that names this curve AND aims a Run-on-another-prop
     // node at a placement has said the two are one rail. Nothing else pairs them, so nothing else offers to.
@@ -1200,27 +1527,50 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       for (const { prop } of paired) {
         const index = props().indexOf(prop);
         if (index < 0) continue;
-        actions.appendChild(button(`▸ Go to ${prop.name}`,
-          `Open ${prop.name} in Props view. The effect that switches this rail also acts on it, which is the `
-          + 'only thing in the data that pairs a curve with a model.', () => goToProp({ propIndex: index })));
+        actions.appendChild(
+          button(
+            `▸ Go to ${prop.name}`,
+            `Open ${prop.name} in Props view. The effect that switches this rail also acts on it, which is the ` +
+              'only thing in the data that pairs a curve with a model.',
+            () => goToProp({ propIndex: index }),
+          ),
+        );
       }
-      if (actions.children.length) s.body.append(el('div', 'sp-fx-note',
-        `${countLabel(paired.length, 'prop')} ${paired.length === 1 ? 'is' : 'are'} acted on by the same `
-        + 'effect that names this rail.'), actions);
+      if (actions.children.length)
+        s.body.append(
+          el(
+            'div',
+            'sp-fx-note',
+            `${countLabel(paired.length, 'prop')} ${paired.length === 1 ? 'is' : 'are'} acted on by the same ` +
+              'effect that names this rail.',
+          ),
+          actions,
+        );
     }
-    s.body.appendChild(el('div', 'sp-fx-note', bare
-      ? 'No tube of its own: this is the grind curve alone, and the shape a rider sees is whatever it was '
-        + 'laid along. Its material and a tube of its own are in the Tricks tools in Props view.'
-      : 'Points, height, material and support posts belong to the Tricks tools in Props view.'));
+    s.body.appendChild(
+      el(
+        'div',
+        'sp-fx-note',
+        bare
+          ? 'No tube of its own: this is the grind curve alone, and the shape a rider sees is whatever it was ' +
+              'laid along. Its material and a tube of its own are in the Tricks tools in Props view.'
+          : 'Points, height, material and support posts belong to the Tricks tools in Props view.',
+      ),
+    );
     // A rail IS its own prop — the tube it bakes is the thing you see — so "go to the Tricks tools" needs to
     // be a button rather than a sentence. Everything above sends the author to Props view; nothing took them.
     const toTricks = el('div', 'sp-fx-actions');
-    toTricks.appendChild(button('▸ Edit in Props view',
-      bare ? 'Open this spline in the Tricks tools, still selected — its material, and the rail pipe checkbox '
-        + 'that gives it a tube.'
-        : 'Open this rail in the Tricks tools, still selected — its points, height, material, solid tube and '
-          + 'support posts.',
-      () => deps.goToRail(selected.index)));
+    toTricks.appendChild(
+      button(
+        '▸ Edit in Props view',
+        bare
+          ? 'Open this spline in the Tricks tools, still selected — its material, and the rail pipe checkbox ' +
+              'that gives it a tube.'
+          : 'Open this rail in the Tricks tools, still selected — its points, height, material, solid tube and ' +
+              'support posts.',
+        () => deps.goToRail(selected.index),
+      ),
+    );
     s.body.appendChild(toTricks);
     if (bare) s.body.appendChild(splineDrawActions(rail));
     return s.root;
@@ -1237,13 +1587,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function referenceRailSplinePanel(data: ReferenceEffectsData, originalIndex: number): HTMLElement | null {
     const uses = referenceSplineEffectUses(data, originalIndex);
     const nativeRow = viewport.referenceSplineRow(originalIndex);
-    const paired = referenceSplinePairedInstances(data, originalIndex,
-      nativeRow ? nativeRow.segments.flat() : null);
+    const paired = referenceSplinePairedInstances(data, originalIndex, nativeRow ? nativeRow.segments.flat() : null);
     const s = section(`${data.level} rail spline #${originalIndex}`);
     s.body.append(
-      row('Native row', input(`Splines.json #${originalIndex}`, () => {}, { readonly: true }),
-        'The stable table index a Rail on / off node stores — what the curve IS on disc.'),
-      row('Named by', input(countLabel(uses.length, 'effect node'), () => {}, { readonly: true })),
+      row(
+        'Native row',
+        input(`Splines.json #${originalIndex}`, () => {}, { readonly: true }),
+        'The stable table index a Rail on / off node stores — what the curve IS on disc.',
+      ),
+      row(
+        'Named by',
+        input(countLabel(uses.length, 'effect node'), () => {}, { readonly: true }),
+      ),
     );
     // The same material + speed properties an authored rail gets, off the shipped row's own SplineStyle. No pipe
     // vocabulary here: on a retail level EVERY curve is bare in Slopesmith's sense, since the tube beside it
@@ -1251,25 +1606,35 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (nativeRow) {
       const surface = surfaceFor(nativeRow.style);
       s.body.append(
-        row('Material', input(railMaterialLabel(nativeRow.style), () => {}, { readonly: true }),
-          `SplineStyle ${nativeRow.style}. This is what the board rides, not what any tube along it looks like.`),
-        row('Speed', input(`${mphText(surface.target)} target`, () => {}, { readonly: true }),
-          `Surface ${surface.type} “${surface.name}”, drag ${surface.drag.toFixed(2)}. This is the cruise target; `
-          + 'gravity can carry the rider faster.'));
+        row(
+          'Material',
+          input(railMaterialLabel(nativeRow.style), () => {}, { readonly: true }),
+          `SplineStyle ${nativeRow.style}. This is what the board rides, not what any tube along it looks like.`,
+        ),
+        row(
+          'Speed',
+          input(`${mphText(surface.target)} target`, () => {}, { readonly: true }),
+          `Surface ${surface.type} “${surface.name}”, drag ${surface.drag.toFixed(2)}. This is the cruise target; ` +
+            'gravity can carry the rider faster.',
+        ),
+      );
     }
     if (uses.length) {
       const list = el('div', 'sp-fx-list');
       for (const use of uses) {
-        const owner = use.ownerKind === 'graph'
-          ? data.document.graphs.find(item => item.id === use.ownerId)
-          : data.document.functions.find(item => item.id === use.ownerId);
+        const owner =
+          use.ownerKind === 'graph'
+            ? data.document.graphs.find(item => item.id === use.ownerId)
+            : data.document.functions.find(item => item.id === use.ownerId);
         const item = el('button', 'sp-fx-list-row');
         item.type = 'button';
         item.title = 'Open the effect this node belongs to.';
         item.onclick = () => openReferenceSplineUse(data, use);
-        item.append(el('span', 'sp-fx-node-index', '›'),
+        item.append(
+          el('span', 'sp-fx-node-index', '›'),
           el('span', 'sp-fx-list-name', owner?.name ?? use.ownerId),
-          el('span', 'sp-fx-kind', referenceNodeDisplayName(data, use.node)));
+          el('span', 'sp-fx-kind', referenceNodeDisplayName(data, use.node)),
+        );
         list.appendChild(item);
       }
       s.body.appendChild(list);
@@ -1280,25 +1645,42 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       // one function, since nothing joins a curve to its model and the level must therefore name all of both.
       // Nearest-first (core ranks them), and only the near end is offered: a hundred buttons would say less.
       for (const { instance } of paired.slice(0, PAIRED_PROP_LIMIT))
-        actions.appendChild(button(`▸ Go to ${instance.name}`,
-          `Select ${instance.name} (#${instance.index}) on the reference map. The effect that switches this `
-          + 'rail also acts on that instance, which is the only thing on disc pairing a curve with a model.',
-          () => {
-            selectedReferenceSplineIndex = null;
-            viewport.selectReferenceRailSpline(null);
-            selectReferencePropEffect(instance.index);
-          }));
-      s.body.append(el('div', 'sp-fx-note', paired.length > PAIRED_PROP_LIMIT
-        ? `The effect naming this rail acts on ${countLabel(paired.length, 'prop')} — a bulk switch over the `
-          + `level's whole rail network, so it cannot say which tube is THIS curve's. The ${PAIRED_PROP_LIMIT} `
-          + 'nearest to the curve are offered.'
-        : `${countLabel(paired.length, 'prop')} ${paired.length === 1 ? 'is' : 'are'} acted on by the same `
-          + 'effect that names this rail — the pair that makes it a rail rather than a curve and a tube.'),
-      actions);
-    } else s.body.appendChild(el('div', 'sp-fx-note', uses.length
-      ? 'No effect here also acts on a prop, so nothing on disc says which model this curve runs along.'
-      : 'No effect names this curve: it is simply grindable from the moment the level loads, and nothing '
-        + 'pairs it with a model — a spline and the tube over it are unrelated records.'));
+        actions.appendChild(
+          button(
+            `▸ Go to ${instance.name}`,
+            `Select ${instance.name} (#${instance.index}) on the reference map. The effect that switches this ` +
+              'rail also acts on that instance, which is the only thing on disc pairing a curve with a model.',
+            () => {
+              selectedReferenceSplineIndex = null;
+              viewport.selectReferenceRailSpline(null);
+              selectReferencePropEffect(instance.index);
+            },
+          ),
+        );
+      s.body.append(
+        el(
+          'div',
+          'sp-fx-note',
+          paired.length > PAIRED_PROP_LIMIT
+            ? `The effect naming this rail acts on ${countLabel(paired.length, 'prop')} — a bulk switch over the ` +
+                `level's whole rail network, so it cannot say which tube is THIS curve's. The ${PAIRED_PROP_LIMIT} ` +
+                'nearest to the curve are offered.'
+            : `${countLabel(paired.length, 'prop')} ${paired.length === 1 ? 'is' : 'are'} acted on by the same ` +
+                'effect that names this rail — the pair that makes it a rail rather than a curve and a tube.',
+        ),
+        actions,
+      );
+    } else
+      s.body.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          uses.length
+            ? 'No effect here also acts on a prop, so nothing on disc says which model this curve runs along.'
+            : 'No effect names this curve: it is simply grindable from the moment the level loads, and nothing ' +
+                'pairs it with a model — a spline and the tube over it are unrelated records.',
+        ),
+      );
     return s.root;
   }
 
@@ -1307,9 +1689,14 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     selectedReferenceSplineIndex = null;
     viewport.selectReferenceRailSpline(null);
     const host = attachedReferenceInstances(data).find(instance =>
-      referenceInstanceBindings(data, instance).some(binding => binding.graph.id === use.ownerId));
+      referenceInstanceBindings(data, instance).some(binding => binding.graph.id === use.ownerId),
+    );
     if (host) selectReferencePropEffect(host.index);
-    else { referenceUnassignedOpen = true; referenceFocus = emptyReferenceEffectFocus(); render(); }
+    else {
+      referenceUnassignedOpen = true;
+      referenceFocus = emptyReferenceEffectFocus();
+      render();
+    }
   }
 
   /** A shipped grind curve was clicked on the reference map (viewport `onSelectReferenceSpline`). */
@@ -1318,47 +1705,110 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     viewport.stopReferenceEffectPreview();
     dropSplineSelection();
     source = 'reference';
-    selection = null; selectedAuthoredPropIds = []; selectedAuthoredPropId = null; authoredUnassignedOpen = false;
-    referenceFocus = emptyReferenceEffectFocus(); referenceUnassignedOpen = false;
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
+    selection = null;
+    selectedAuthoredPropIds = [];
+    selectedAuthoredPropId = null;
+    authoredUnassignedOpen = false;
+    referenceFocus = emptyReferenceEffectFocus();
+    referenceUnassignedOpen = false;
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
     selectedReferenceSplineIndex = originalIndex;
     viewport.selectReferenceRailSpline(originalIndex);
     viewport.selectReferenceEffectInstances([]);
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
     render();
     return true;
   }
 
   function authoredParticlePanel(): HTMLElement | null {
-    const volume = selectedAuthoredParticleId
-      ? volumes().find(item => item.id === selectedAuthoredParticleId) : null;
+    const volume = selectedAuthoredParticleId ? volumes().find(item => item.id === selectedAuthoredParticleId) : null;
     if (!volume) return null;
     const puffCount = volume.objects.reduce((count, object) => count + object.puffs.length, 0);
     const s = section(`Fog: ${volume.name}`);
     s.body.append(
-      row('Name', input(volume.name, value => {
-        const next = value.trim();
-        if (!next) return;
-        if (volumes().some(item => item !== volume && item.name.toLowerCase() === next.toLowerCase())) {
-          toast('Fog names must be unique.', 'err'); return;
-        }
-        volume.name = next; dirty();
-      })),
-      row('ID', input(volume.id, () => {}, { readonly: true })),
-      row('Puffs', input(String(puffCount), () => {}, { readonly: true })),
-      row('X', numberInput(volume.pos[0], value => { volume.pos[0] = value; dirty(); })),
-      row('Y', numberInput(volume.pos[1], value => { volume.pos[1] = value; dirty(); })),
-      row('Z', numberInput(volume.pos[2], value => { volume.pos[2] = value; dirty(); })),
-      row('Scale X', numberInput(volume.scale[0], value => { volume.scale[0] = value; volume.boundsOffsetMin = [NaN, NaN, NaN]; volume.boundsOffsetMax = [NaN, NaN, NaN]; dirty(); })),
-      row('Scale Y', numberInput(volume.scale[1], value => { volume.scale[1] = value; volume.boundsOffsetMin = [NaN, NaN, NaN]; volume.boundsOffsetMax = [NaN, NaN, NaN]; dirty(); })),
-      row('Scale Z', numberInput(volume.scale[2], value => { volume.scale[2] = value; volume.boundsOffsetMin = [NaN, NaN, NaN]; volume.boundsOffsetMax = [NaN, NaN, NaN]; dirty(); })),
-      row('Rotation', input(volume.nativeRotation.join(', '), () => {}, { readonly: true }),
-        'Stored rotation, kept as-is. Editing it here is not supported yet.'),
+      row(
+        'Name',
+        input(volume.name, value => {
+          const next = value.trim();
+          if (!next) return;
+          if (volumes().some(item => item !== volume && item.name.toLowerCase() === next.toLowerCase())) {
+            toast('Fog names must be unique.', 'err');
+            return;
+          }
+          volume.name = next;
+          dirty();
+        }),
+      ),
+      row(
+        'ID',
+        input(volume.id, () => {}, { readonly: true }),
+      ),
+      row(
+        'Puffs',
+        input(String(puffCount), () => {}, { readonly: true }),
+      ),
+      row(
+        'X',
+        numberInput(volume.pos[0], value => {
+          volume.pos[0] = value;
+          dirty();
+        }),
+      ),
+      row(
+        'Y',
+        numberInput(volume.pos[1], value => {
+          volume.pos[1] = value;
+          dirty();
+        }),
+      ),
+      row(
+        'Z',
+        numberInput(volume.pos[2], value => {
+          volume.pos[2] = value;
+          dirty();
+        }),
+      ),
+      row(
+        'Scale X',
+        numberInput(volume.scale[0], value => {
+          volume.scale[0] = value;
+          volume.boundsOffsetMin = [NaN, NaN, NaN];
+          volume.boundsOffsetMax = [NaN, NaN, NaN];
+          dirty();
+        }),
+      ),
+      row(
+        'Scale Y',
+        numberInput(volume.scale[1], value => {
+          volume.scale[1] = value;
+          volume.boundsOffsetMin = [NaN, NaN, NaN];
+          volume.boundsOffsetMax = [NaN, NaN, NaN];
+          dirty();
+        }),
+      ),
+      row(
+        'Scale Z',
+        numberInput(volume.scale[2], value => {
+          volume.scale[2] = value;
+          volume.boundsOffsetMin = [NaN, NaN, NaN];
+          volume.boundsOffsetMax = [NaN, NaN, NaN];
+          dirty();
+        }),
+      ),
+      row(
+        'Rotation',
+        input(volume.nativeRotation.join(', '), () => {}, { readonly: true }),
+        'Stored rotation, kept as-is. Editing it here is not supported yet.',
+      ),
     );
     const actions = el('div', 'sp-fx-actions');
-    actions.append(button('Focus fog', 'Frame this fog volume.', () => focusParticle('authored', volume.id)),
+    actions.append(
+      button('Focus fog', 'Frame this fog volume.', () => focusParticle('authored', volume.id)),
       button('Duplicate', 'Duplicate this fog bank and offset it five metres.', duplicateSelectedParticle),
-      button('Delete', 'Delete this fog volume.', removeSelectedParticle, true));
+      button('Delete', 'Delete this fog volume.', removeSelectedParticle, true),
+    );
     s.body.appendChild(actions);
     return s.root;
   }
@@ -1370,17 +1820,40 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const puffCount = volume.objects.reduce((count, object) => count + object.puffs.length, 0);
     const s = section(`Fog: ${volume.name} · read only`);
     s.body.append(
-      row('Name', input(volume.name, () => {}, { readonly: true })),
-      row('Prop number', input(`#${selectedReferenceParticleIndex}`, () => {}, { readonly: true })),
-      row('Puffs', input(String(puffCount), () => {}, { readonly: true })),
-      row('Position', input(volume.pos.join(', '), () => {}, { readonly: true })),
-      row('Scale', input(volume.scale.join(', '), () => {}, { readonly: true })),
-      row('Rotation', input(volume.nativeRotation.join(', '), () => {}, { readonly: true })),
+      row(
+        'Name',
+        input(volume.name, () => {}, { readonly: true }),
+      ),
+      row(
+        'Prop number',
+        input(`#${selectedReferenceParticleIndex}`, () => {}, { readonly: true }),
+      ),
+      row(
+        'Puffs',
+        input(String(puffCount), () => {}, { readonly: true }),
+      ),
+      row(
+        'Position',
+        input(volume.pos.join(', '), () => {}, { readonly: true }),
+      ),
+      row(
+        'Scale',
+        input(volume.scale.join(', '), () => {}, { readonly: true }),
+      ),
+      row(
+        'Rotation',
+        input(volume.nativeRotation.join(', '), () => {}, { readonly: true }),
+      ),
     );
     const actions = el('div', 'sp-fx-actions');
-    actions.append(button('Focus fog', 'Frame this reference fog volume.', () => focusParticle('reference', selectedReferenceParticleIndex!)),
-      button(`Copy to ${mountainName()}`, `Copy this fog bank onto ${mountainName()} at the same map position.`,
-        () => copyReferenceParticle(selectedReferenceParticleIndex!)));
+    actions.append(
+      button('Focus fog', 'Frame this reference fog volume.', () =>
+        focusParticle('reference', selectedReferenceParticleIndex!),
+      ),
+      button(`Copy to ${mountainName()}`, `Copy this fog bank onto ${mountainName()} at the same map position.`, () =>
+        copyReferenceParticle(selectedReferenceParticleIndex!),
+      ),
+    );
     s.body.appendChild(actions);
     return s.root;
   }
@@ -1389,59 +1862,111 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const s = section(title);
     if (!view.readOnly) {
       const create = el('div', 'sp-fx-create');
-      create.appendChild(templatePicker('+ Add effect', 'Choose when the new effect should run.',
-        EFFECT_TYPES, type => addEffect(type.circumstance)));
+      create.appendChild(
+        templatePicker('+ Add effect', 'Choose when the new effect should run.', EFFECT_TYPES, type =>
+          addEffect(type.circumstance),
+        ),
+      );
       const addFunction = button('+ Function', 'Add an empty named function node-list.', () => {
-        selection = addEffectFunction(doc); dirty();
+        selection = addEffectFunction(doc);
+        dirty();
       });
       s.body.append(create, addFunction);
     }
-    const find = input(view.search, value => { view.setSearch(value.toLowerCase()); render(); });
-    find.placeholder = 'Filter effects…'; find.classList.add('sp-fx-search'); s.body.appendChild(find);
+    const find = input(view.search, value => {
+      view.setSearch(value.toLowerCase());
+      render();
+    });
+    find.placeholder = 'Filter effects…';
+    find.classList.add('sp-fx-search');
+    s.body.appendChild(find);
     const list = el('div', 'sp-fx-list');
     const owners: { kind: EffectOwnerKind; id: string; name?: string; nodes: EffectNode[] }[] = [
       ...doc.graphs.map(x => ({ kind: 'graph' as const, ...x })),
       ...doc.functions.map(x => ({ kind: 'function' as const, ...x })),
     ];
-    for (const owner of owners.filter(x => (!view.visibleOwnerIds || view.visibleOwnerIds.has(x.id))
-      && (!view.search
-        || `${x.id} ${x.name ?? ''} ${view.ownerLabel(x.kind, x.id, x.name || x.id)}`.toLowerCase().includes(view.search)))) {
+    for (const owner of owners.filter(
+      x =>
+        (!view.visibleOwnerIds || view.visibleOwnerIds.has(x.id)) &&
+        (!view.search ||
+          `${x.id} ${x.name ?? ''} ${view.ownerLabel(x.kind, x.id, x.name || x.id)}`
+            .toLowerCase()
+            .includes(view.search)),
+    )) {
       const active = view.selection?.ownerKind === owner.kind && view.selection.ownerId === owner.id;
       const label = view.ownerLabel(owner.kind, owner.id, owner.name || owner.id);
       const item = el('button', `sp-fx-list-row${active ? ' on' : ''}`);
-      item.type = 'button'; item.onclick = () => view.selectOwner(owner.kind, owner.id, owner.nodes[0]?.id);
-      item.append(el('span', 'sp-fx-kind', owner.kind === 'graph' ? 'G' : 'F'),
-        el('span', 'sp-fx-list-name', label), el('span', 'sp-fx-count', String(owner.nodes.length)));
+      item.type = 'button';
+      item.onclick = () => view.selectOwner(owner.kind, owner.id, owner.nodes[0]?.id);
+      item.append(
+        el('span', 'sp-fx-kind', owner.kind === 'graph' ? 'G' : 'F'),
+        el('span', 'sp-fx-list-name', label),
+        el('span', 'sp-fx-count', String(owner.nodes.length)),
+      );
       list.appendChild(item);
     }
     if (!list.childElementCount) list.appendChild(el('div', 'sp-fx-empty', 'No matching effects.'));
-    s.body.appendChild(list); return s.root;
+    s.body.appendChild(list);
+    return s.root;
   }
 
   function selectedOwnerPanel(doc: EffectsDocument, view: EffectsPanelView, showNodeList = true): HTMLElement | null {
     const current = view.selection;
     if (!current) return null;
-    const owner = effectOwner(doc, current); if (!owner) return null;
+    const owner = effectOwner(doc, current);
+    if (!owner) return null;
     const storedName = owner.name ?? owner.id;
     const displayName = view.ownerLabel(current.ownerKind, owner.id, storedName);
-    const graphCircumstances = current.ownerKind === 'graph'
-      ? [...new Set(graphSlots(doc, current.ownerId).map(binding => binding.circumstance))] : [];
+    const graphCircumstances =
+      current.ownerKind === 'graph'
+        ? [...new Set(graphSlots(doc, current.ownerId).map(binding => binding.circumstance))]
+        : [];
     const graphCircumstance = graphCircumstances.length === 1 ? graphCircumstances[0] : undefined;
     const s = section(`Selected ${current.ownerKind === 'function' ? 'function' : 'effect'}: ${displayName}`);
     s.root.classList.add('sp-fx-child-panel');
-    const name = input(owner.name ?? '', value => { owner.name = value; dirty(); }, { readonly: view.readOnly });
+    const name = input(
+      owner.name ?? '',
+      value => {
+        owner.name = value;
+        dirty();
+      },
+      { readonly: view.readOnly },
+    );
     if (displayName !== storedName) {
-      s.body.append(row('Effect name', input(displayName, () => {}, { readonly: true })),
-        row(view.readOnly ? 'Source name' : 'Effect name', name));
+      s.body.append(
+        row(
+          'Effect name',
+          input(displayName, () => {}, { readonly: true }),
+        ),
+        row(view.readOnly ? 'Source name' : 'Effect name', name),
+      );
     } else s.body.append(row('Name', name));
-    s.body.append(row('Stable ID', input(owner.id, () => {}, { readonly: true })));
+    s.body.append(
+      row(
+        'Stable ID',
+        input(owner.id, () => {}, { readonly: true }),
+      ),
+    );
     if (!view.readOnly) {
       if (showNodeList) {
         const ownerActions = el('div', 'sp-fx-actions sp-fx-icon-actions');
-        ownerActions.append(iconButton(ACTION_ICON.up, 'Move earlier', 'Move this effect earlier in the list.', () => shiftOwner(-1)),
+        ownerActions.append(
+          iconButton(ACTION_ICON.up, 'Move earlier', 'Move this effect earlier in the list.', () => shiftOwner(-1)),
           iconButton(ACTION_ICON.down, 'Move later', 'Move this effect later in the list.', () => shiftOwner(1)),
-          iconButton(ACTION_ICON.duplicate, 'Duplicate', 'Duplicate this node-list with fresh stable IDs.', duplicateOwner),
-          iconButton(ACTION_ICON.delete, 'Delete', 'Delete this node-list and clear references to it.', removeOwner, true));
+          iconButton(
+            ACTION_ICON.duplicate,
+            'Duplicate',
+            'Duplicate this node-list with fresh stable IDs.',
+            duplicateOwner,
+          ),
+          iconButton(
+            ACTION_ICON.delete,
+            'Delete',
+            'Delete this node-list and clear references to it.',
+            removeOwner,
+            true,
+          ),
+        );
         s.body.appendChild(ownerActions);
       }
       if (current.ownerKind === 'graph') {
@@ -1462,11 +1987,23 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         }
       }
       if (graphCircumstance && isEffectLatchCircumstance(graphCircumstance))
-        s.body.appendChild(el('div', 'sp-fx-note', `${EFFECT_LATCH_SUMMARY[graphCircumstance]} `
-          + 'Leave this one empty. Nodes here would run instead of the reset, which is untested ground.'));
-      else if (graphCircumstance) s.body.appendChild(el('div', 'sp-fx-note',
-        `Every node here runs when this effect does — ${effectCircumstanceLabel(graphCircumstance)}. `
-        + 'To have something run at a different moment, use + Add effect on the prop.'));
+        s.body.appendChild(
+          el(
+            'div',
+            'sp-fx-note',
+            `${EFFECT_LATCH_SUMMARY[graphCircumstance]} ` +
+              'Leave this one empty. Nodes here would run instead of the reset, which is untested ground.',
+          ),
+        );
+      else if (graphCircumstance)
+        s.body.appendChild(
+          el(
+            'div',
+            'sp-fx-note',
+            `Every node here runs when this effect does — ${effectCircumstanceLabel(graphCircumstance)}. ` +
+              'To have something run at a different moment, use + Add effect on the prop.',
+          ),
+        );
     }
     if (showNodeList) {
       const nodes = el('div', 'sp-fx-node-list');
@@ -1474,11 +2011,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       owner.nodes.forEach((node, index) => {
         const active = node.id === current.nodeId;
         const item = el('button', `sp-fx-node-row${active ? ' on' : ''}`);
-        item.type = 'button'; item.onclick = () => view.selectOwner(current.ownerKind, owner.id, node.id);
-        item.append(el('span', 'sp-fx-node-index', String(index + 1)),
-          el('span', 'sp-fx-node-name', view.nodeLabel?.(node)
-            ?? (graphCircumstance ? nodeDisplayNameInGraph(node, graphCircumstance) : nodeDisplayName(node))),
-          el('span', 'sp-fx-kind', `M${node.mainType}`));
+        item.type = 'button';
+        item.onclick = () => view.selectOwner(current.ownerKind, owner.id, node.id);
+        item.append(
+          el('span', 'sp-fx-node-index', String(index + 1)),
+          el(
+            'span',
+            'sp-fx-node-name',
+            view.nodeLabel?.(node) ??
+              (graphCircumstance ? nodeDisplayNameInGraph(node, graphCircumstance) : nodeDisplayName(node)),
+          ),
+          el('span', 'sp-fx-kind', `M${node.mainType}`),
+        );
         nodes.appendChild(item);
       });
       if (!owner.nodes.length) nodes.appendChild(el('div', 'sp-fx-empty', 'This effect has no nodes yet.'));
@@ -1491,17 +2035,25 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     }
     if (!view.readOnly && showNodeList && current.nodeId) {
       const nodeActions = el('div', 'sp-fx-actions sp-fx-icon-actions');
-      nodeActions.append(iconButton(ACTION_ICON.up, 'Move node earlier', 'Move this node earlier. Nodes run top to bottom.', () => shiftNode(-1)),
-        iconButton(ACTION_ICON.down, 'Move node later', 'Move this node later. Nodes run top to bottom.', () => shiftNode(1)),
+      nodeActions.append(
+        iconButton(ACTION_ICON.up, 'Move node earlier', 'Move this node earlier. Nodes run top to bottom.', () =>
+          shiftNode(-1),
+        ),
+        iconButton(ACTION_ICON.down, 'Move node later', 'Move this node later. Nodes run top to bottom.', () =>
+          shiftNode(1),
+        ),
         iconButton(ACTION_ICON.duplicate, 'Duplicate node', 'Copy this node with a fresh stable ID.', duplicateNode),
-        iconButton(ACTION_ICON.delete, 'Delete node', 'Delete this node.', removeNode, true));
+        iconButton(ACTION_ICON.delete, 'Delete node', 'Delete this node.', removeNode, true),
+      );
       s.body.appendChild(nodeActions);
     }
     return s.root;
   }
 
   function mutateNode(node: EffectNode, action: () => void, rebuild = false): void {
-    action(); dirty(rebuild); if (!rebuild) syncGizmo();
+    action();
+    dirty(rebuild);
+    if (!rebuild) syncGizmo();
   }
 
   /**
@@ -1520,9 +2072,14 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function addNodeDetail(body: HTMLElement, node: EffectNode): void {
     const detail = effectNodeDetail(node);
     if (detail.blocked) {
-      body.appendChild(el('div', 'sp-fx-note warn',
-        `This node cannot be added yet: ${detail.blocked} An existing one still reads and exports correctly, `
-        + 'and Raw shows every field.'));
+      body.appendChild(
+        el(
+          'div',
+          'sp-fx-note warn',
+          `This node cannot be added yet: ${detail.blocked} An existing one still reads and exports correctly, ` +
+            'and Raw shows every field.',
+        ),
+      );
       return;
     }
     if (detail.summary) body.appendChild(el('div', 'sp-fx-note', detail.summary));
@@ -1534,8 +2091,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (detail.detail) more.appendChild(el('div', 'sp-fx-more-body', detail.detail));
     if (detail.validated) {
       const proof = el('div', 'sp-fx-more-body proof', detail.validated.observed);
-      proof.appendChild(el('div', 'sp-fx-provenance',
-        `Auto-test cell ${detail.validated.cell} · ${detail.validated.run}`));
+      proof.appendChild(
+        el('div', 'sp-fx-provenance', `Auto-test cell ${detail.validated.cell} · ${detail.validated.run}`),
+      );
       more.appendChild(proof);
     }
     body.appendChild(more);
@@ -1565,21 +2123,26 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const state = readCounter();
       if (state) {
         const done = count - state.remaining;
-        wrap.textContent = `Counting: ${done} of ${count} in`
-          + `${state.marked.length ? ` · inputs marked ${state.marked.join(', ')}` : ''}`
-          + `${state.remaining === 0 ? ' · finished' : ` · ${countLabel(state.remaining, 'input')} to go`}`;
+        wrap.textContent =
+          `Counting: ${done} of ${count} in` +
+          `${state.marked.length ? ` · inputs marked ${state.marked.join(', ')}` : ''}` +
+          `${state.remaining === 0 ? ' · finished' : ` · ${countLabel(state.remaining, 'input')} to go`}`;
       } else if (!viewport.isEffectPlayRunning()) {
         wrap.textContent = `Not counting — Play is not running. Ride the course to watch this Counter fill.`;
       } else {
         // The counter is spent and retired, or was never installed. Both read as absent, and saying so beats
         // showing a full count that nothing is actually maintaining.
-        wrap.textContent = 'Not counting — no live Counter on this prop: it has either already fired its '
-          + 'Trigger effect and retired, or its persistent effect never installed one.';
+        wrap.textContent =
+          'Not counting — no live Counter on this prop: it has either already fired its ' +
+          'Trigger effect and retired, or its persistent effect never installed one.';
       }
     };
     paint();
     const timer = window.setInterval(() => {
-      if (!wrap.isConnected) { window.clearInterval(timer); return; }
+      if (!wrap.isConnected) {
+        window.clearInterval(timer);
+        return;
+      }
       paint();
     }, 250);
     return wrap;
@@ -1597,17 +2160,36 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const named = spec.options?.find(option => option.value === Math.trunc(value));
       let control: HTMLElement;
       if (readOnly) {
-        control = input(named?.label ?? (spec.options ? `Unnamed value (${Math.trunc(value)})` : String(value)),
-          () => {}, { readonly: true });
+        control = input(
+          named?.label ?? (spec.options ? `Unnamed value (${Math.trunc(value)})` : String(value)),
+          () => {},
+          { readonly: true },
+        );
       } else if (spec.options) {
         const options = spec.options.map(option => ({ value: String(option.value), label: option.label }));
         if (!named) options.push({ value: String(Math.trunc(value)), label: `Unnamed value (${Math.trunc(value)})` });
-        control = select(String(Math.trunc(value)), options, next => mutateNode(node,
-          () => { setSemanticNumberValue(node, spec, Number(next)); }, rebuildDecodedEmitter));
+        control = select(String(Math.trunc(value)), options, next =>
+          mutateNode(
+            node,
+            () => {
+              setSemanticNumberValue(node, spec, Number(next));
+            },
+            rebuildDecodedEmitter,
+          ),
+        );
       } else {
-        control = numberInput(value, next => mutateNode(node, () => { setSemanticNumberValue(node, spec, next); },
-          rebuildDecodedEmitter
-            || (node.mainType === 8 && spec.path.length === 1 && spec.path[0] === 'SoundPlay')), spec.step);
+        control = numberInput(
+          value,
+          next =>
+            mutateNode(
+              node,
+              () => {
+                setSemanticNumberValue(node, spec, next);
+              },
+              rebuildDecodedEmitter || (node.mainType === 8 && spec.path.length === 1 && spec.path[0] === 'SoundPlay'),
+            ),
+          spec.step,
+        );
       }
       body.append(row(spec.label, control, spec.title));
       shown++;
@@ -1619,8 +2201,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     // said what the node is — or why the editor will not add it — repeating "nothing is mapped yet"
     // underneath reads as a contradiction of the paragraph the reader just finished.
     else if (!shown && !effectNodeDetail(node).summary) {
-      body.appendChild(el('div', 'sp-fx-note',
-        'None of this node’s settings have been named yet. Raw shows them all.'));
+      body.appendChild(
+        el('div', 'sp-fx-note', 'None of this node’s settings have been named yet. Raw shows them all.'),
+      );
     }
   }
 
@@ -1638,8 +2221,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       if (setParticleEmitterField(node, key, next)) fields[key] = next;
     };
     const setValue = (key: string, next: number): void => mutateNode(node, () => writeValue(key, next));
-    const scalar = (current: number, change: (next: number) => void, step = 'any', min?: number,
-      max?: number): HTMLInputElement => {
+    const scalar = (
+      current: number,
+      change: (next: number) => void,
+      step = 'any',
+      min?: number,
+      max?: number,
+    ): HTMLInputElement => {
       const control = numberInput(current, change, step);
       if (min !== undefined) control.min = String(min);
       if (max !== undefined) control.max = String(max);
@@ -1649,9 +2237,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const out = el('div', 'sp-fx-emitter-field');
       if (control.classList.contains('sp-fx-emitter-pair') || control.classList.contains('sp-fx-emitter-vector'))
         out.classList.add('wide');
-      if (control.matches('input, select') && !control.hasAttribute('aria-label')) control.setAttribute('aria-label', label);
+      if (control.matches('input, select') && !control.hasAttribute('aria-label'))
+        control.setAttribute('aria-label', label);
       const name = el('span', '', label);
-      if (title) { out.title = title; name.title = title; }
+      if (title) {
+        out.title = title;
+        name.title = title;
+      }
       out.append(name, control);
       return out;
     };
@@ -1674,17 +2266,25 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const rawVector = (first: number): V3 => [value(`U${first}`), value(`U${first + 1}`), value(`U${first + 2}`)];
     const rawDirectionToEditor = (raw: V3): V3 => [-raw[0], raw[2], -raw[1]];
     const editorDirectionToRaw = (editor: V3): V3 => [-editor[0], -editor[2], editor[1]];
-    const setRawVector = (first: number, next: V3): void => mutateNode(node, () => {
-      writeValue(`U${first}`, next[0]); writeValue(`U${first + 1}`, next[1]);
-      writeValue(`U${first + 2}`, next[2]);
-    });
+    const setRawVector = (first: number, next: V3): void =>
+      mutateNode(node, () => {
+        writeValue(`U${first}`, next[0]);
+        writeValue(`U${first + 1}`, next[1]);
+        writeValue(`U${first + 2}`, next[2]);
+      });
     const vector = (current: V3, change: (next: V3) => void, step = 'any'): HTMLElement => {
       const out = el('div', 'sp-fx-emitter-vector');
       (['X', 'Y', 'Z'] as const).forEach((axis, index) => {
         const item = el('label');
-        const control = numberInput(current[index], next => {
-          const updated: V3 = [...current]; updated[index] = next; change(updated);
-        }, step);
+        const control = numberInput(
+          current[index],
+          next => {
+            const updated: V3 = [...current];
+            updated[index] = next;
+            change(updated);
+          },
+          step,
+        );
         control.title = axis;
         item.append(el('small', '', axis), control);
         out.appendChild(item);
@@ -1692,7 +2292,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       return out;
     };
     const range = (centerKey: string, spanKey: string): [number, number] => {
-      const center = value(centerKey), half = Math.max(0, value(spanKey)) * 0.5;
+      const center = value(centerKey),
+        half = Math.max(0, value(spanKey)) * 0.5;
       return [Math.max(0, center - half), Math.max(0, center + half)];
     };
     const setRange = (centerKey: string, spanKey: string, changed: 'min' | 'max', next: number): void => {
@@ -1712,49 +2313,117 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const spriteLabel = PARTICLE_SPRITE_NAMES[law.spriteIndex] ?? `sprite ${law.spriteIndex}`;
     const blendLabel = emitterBlendLabel(law.blendSelector);
     const collisionEmitter = node.semanticType === 'particle.collision';
-    heading.append(el('strong', '', collisionEmitter ? 'Snow collision burst'
-      : circumstance && circumstance !== 'persistent' ? 'Particle burst' : 'Particle emitter'),
-      el('span', '', `${spriteLabel} · ${blendLabel}`));
+    heading.append(
+      el(
+        'strong',
+        '',
+        collisionEmitter
+          ? 'Snow collision burst'
+          : circumstance && circumstance !== 'persistent'
+            ? 'Particle burst'
+            : 'Particle emitter',
+      ),
+      el('span', '', `${spriteLabel} · ${blendLabel}`),
+    );
     card.appendChild(heading);
     const prop = graph ? selectedAttachmentProp(doc) : null;
 
     const emission = group('Emission');
     const continuous = value('U2') < 0;
     emission.fields.append(
-      compactField('Mode', collisionEmitter
-        ? input('Contact burst', () => {}, { readonly: true })
-        : select<'burst' | 'continuous'>(continuous ? 'continuous' : 'burst', [
-          { value: 'burst', label: 'Burst' }, { value: 'continuous', label: 'Continuous' },
-        ], mode => setValue('U2', mode === 'continuous'
-          ? -Math.max(0.05, Math.abs(value('U2')) || 0.3) : Math.max(0.05, Math.abs(value('U2')) || 0.3)))),
-      compactField('Particles', scalar(Math.round(value('U0', 1)), next => setValue('U0', Math.max(1, Math.round(next))), '1', 1)),
-      compactField(continuous ? 'Cycle window' : 'Emission window',
-        scalar(Math.abs(value('U2')), next => setValue('U2', continuous ? -Math.max(0.05, next) : Math.max(0, next)), '0.05', 0)),
-      compactField('Time scale', scalar(value('U3', 1), next => setValue('U3', Math.max(0.01, next)), '0.05', 0.01)),
+      compactField(
+        'Mode',
+        collisionEmitter
+          ? input('Contact burst', () => {}, { readonly: true })
+          : select<'burst' | 'continuous'>(
+              continuous ? 'continuous' : 'burst',
+              [
+                { value: 'burst', label: 'Burst' },
+                { value: 'continuous', label: 'Continuous' },
+              ],
+              mode =>
+                setValue(
+                  'U2',
+                  mode === 'continuous'
+                    ? -Math.max(0.05, Math.abs(value('U2')) || 0.3)
+                    : Math.max(0.05, Math.abs(value('U2')) || 0.3),
+                ),
+            ),
+      ),
+      compactField(
+        'Particles',
+        scalar(Math.round(value('U0', 1)), next => setValue('U0', Math.max(1, Math.round(next))), '1', 1),
+      ),
+      compactField(
+        continuous ? 'Cycle window' : 'Emission window',
+        scalar(
+          Math.abs(value('U2')),
+          next => setValue('U2', continuous ? -Math.max(0.05, next) : Math.max(0, next)),
+          '0.05',
+          0,
+        ),
+      ),
+      compactField(
+        'Time scale',
+        scalar(value('U3', 1), next => setValue('U3', Math.max(0.01, next)), '0.05', 0.01),
+      ),
     );
     card.appendChild(emission.root);
 
     const appearance = group('Appearance & lifetime');
     const spriteIndex = Math.max(0, Math.round(value('U49')));
-    const spriteOptions = PARTICLE_SPRITE_NAMES.map((name, index) => ({ value: String(index), label: `${index}. ${name}` }));
+    const spriteOptions = PARTICLE_SPRITE_NAMES.map((name, index) => ({
+      value: String(index),
+      label: `${index}. ${name}`,
+    }));
     if (spriteIndex >= PARTICLE_SPRITE_NAMES.length)
       spriteOptions.push({ value: String(spriteIndex), label: `${spriteIndex}. Sprite ${spriteIndex}` });
     const blendSelector = Math.max(0, Math.round(value('U50')));
     const blendOptions = [
-      { value: '0', label: 'Additive' }, { value: '1', label: 'Alpha blend' }, { value: '4', label: 'Darkening' },
+      { value: '0', label: 'Additive' },
+      { value: '1', label: 'Alpha blend' },
+      { value: '4', label: 'Darkening' },
     ];
     if (![0, 1, 4].includes(blendSelector))
       blendOptions.push({ value: String(blendSelector), label: emitterBlendLabel(blendSelector) });
-    const size = range('U4', 'U6'), life = range('U5', 'U7');
+    const size = range('U4', 'U6'),
+      life = range('U5', 'U7');
     appearance.fields.append(
-      compactField('Sprite', select(String(spriteIndex), spriteOptions, next => setValue('U49', Number(next)))),
-      compactField('Blend', select(String(blendSelector), blendOptions, next => setValue('U50', Number(next)))),
-      compactField('Size (cm)', pair('Min', scalar(size[0], next => setRange('U4', 'U6', 'min', next), '1', 0),
-        'Max', scalar(size[1], next => setRange('U4', 'U6', 'max', next), '1', 0))),
-      compactField('Lifetime (s)', pair('Min', scalar(life[0], next => setRange('U5', 'U7', 'min', next), '0.05', 0),
-        'Max', scalar(life[1], next => setRange('U5', 'U7', 'max', next), '0.05', 0))),
-      compactField('Trail', pair('Copies', scalar(Math.round(value('U1')), next => setValue('U1', clampNumber(Math.round(next), 0, 10)), '1', 0, 10),
-        'Spacing (s)', scalar(value('U8'), next => setValue('U8', Math.max(0, next)), '0.01', 0))),
+      compactField(
+        'Sprite',
+        select(String(spriteIndex), spriteOptions, next => setValue('U49', Number(next))),
+      ),
+      compactField(
+        'Blend',
+        select(String(blendSelector), blendOptions, next => setValue('U50', Number(next))),
+      ),
+      compactField(
+        'Size (cm)',
+        pair(
+          'Min',
+          scalar(size[0], next => setRange('U4', 'U6', 'min', next), '1', 0),
+          'Max',
+          scalar(size[1], next => setRange('U4', 'U6', 'max', next), '1', 0),
+        ),
+      ),
+      compactField(
+        'Lifetime (s)',
+        pair(
+          'Min',
+          scalar(life[0], next => setRange('U5', 'U7', 'min', next), '0.05', 0),
+          'Max',
+          scalar(life[1], next => setRange('U5', 'U7', 'max', next), '0.05', 0),
+        ),
+      ),
+      compactField(
+        'Trail',
+        pair(
+          'Copies',
+          scalar(Math.round(value('U1')), next => setValue('U1', clampNumber(Math.round(next), 0, 10)), '1', 0, 10),
+          'Spacing (s)',
+          scalar(value('U8'), next => setValue('U8', Math.max(0, next)), '0.01', 0),
+        ),
+      ),
     );
     card.appendChild(appearance.root);
 
@@ -1767,56 +2436,93 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const setNormalSpeed = (next: number): void => {
         const rawVelocity = rawVector(18);
         const length = Math.hypot(...rawVelocity);
-        const direction: V3 = length > 1e-9
-          ? [rawVelocity[0] / length, rawVelocity[1] / length, rawVelocity[2] / length] : [0, 0, 1];
+        const direction: V3 =
+          length > 1e-9 ? [rawVelocity[0] / length, rawVelocity[1] / length, rawVelocity[2] / length] : [0, 0, 1];
         setRawVector(18, [direction[0] * next, direction[1] * next, direction[2] * next]);
       };
       motion.fields.append(
-        compactField('Origin', input('Exact rider contact', () => {}, { readonly: true }),
-          'The game replaces the stored U9–U11 seed with the exact hit point.'),
-        compactField('Normal speed (cm/s)', scalar(speed, next => setNormalSpeed(Math.max(0, next)), '10', 0),
-          'Only this vector’s length survives. A hit replaces its direction with the outward surface normal.'),
-        compactField('Gravity', vector(gravity, next => setRawVector(30, editorDirectionToRaw(next))),
-          'Particle gravity in Slopesmith-local XYZ axes.'),
+        compactField(
+          'Origin',
+          input('Exact rider contact', () => {}, { readonly: true }),
+          'The game replaces the stored U9–U11 seed with the exact hit point.',
+        ),
+        compactField(
+          'Normal speed (cm/s)',
+          scalar(speed, next => setNormalSpeed(Math.max(0, next)), '10', 0),
+          'Only this vector’s length survives. A hit replaces its direction with the outward surface normal.',
+        ),
+        compactField(
+          'Gravity',
+          vector(gravity, next => setRawVector(30, editorDirectionToRaw(next))),
+          'Particle gravity in Slopesmith-local XYZ axes.',
+        ),
       );
-    } else motion.fields.append(
-      compactField('Local origin (m)', vector(origin, next => setRawVector(9, editorEmitterToRaw(next)), '0.1'),
-        'Emitter-local Slopesmith coordinates. The viewport gizmo edits the same position.'),
-      compactField('Velocity', vector(velocity, next => setRawVector(18, editorDirectionToRaw(next))),
-        'Base launch velocity in Slopesmith-local XYZ axes.'),
-      compactField('Gravity', vector(gravity, next => setRawVector(30, editorDirectionToRaw(next))),
-        'Particle gravity in Slopesmith-local XYZ axes.'),
-    );
+    } else
+      motion.fields.append(
+        compactField(
+          'Local origin (m)',
+          vector(origin, next => setRawVector(9, editorEmitterToRaw(next)), '0.1'),
+          'Emitter-local Slopesmith coordinates. The viewport gizmo edits the same position.',
+        ),
+        compactField(
+          'Velocity',
+          vector(velocity, next => setRawVector(18, editorDirectionToRaw(next))),
+          'Base launch velocity in Slopesmith-local XYZ axes.',
+        ),
+        compactField(
+          'Gravity',
+          vector(gravity, next => setRawVector(30, editorDirectionToRaw(next))),
+          'Particle gravity in Slopesmith-local XYZ axes.',
+        ),
+      );
     card.appendChild(motion.root);
-    if (collisionEmitter) card.appendChild(el('div', 'sp-fx-note',
-      'On a real hit the burst starts at that contact and launches outward at Normal speed. The isolated Preview button has no contact frame, so it demonstrates the particle law at the prop origin using the stored seed direction.'));
+    if (collisionEmitter)
+      card.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          'On a real hit the burst starts at that contact and launches outward at Normal speed. The isolated Preview button has no contact frame, so it demonstrates the particle law at the prop origin using the stored seed direction.',
+        ),
+      );
 
     const colors = emitterColorStopsFromNativeArgb(fields);
-    const updateColor = (index: number, next: RgbaColor): void => mutateNode(node, () => {
-      const updated = emitterColorStopsFromNativeArgb(fields);
-      updated[index] = next;
-      for (const [key, value] of Object.entries(nativeArgbFieldsFromRgbaColorStops(updated)))
-        if (typeof value === 'number') writeValue(key, value);
-    });
+    const updateColor = (index: number, next: RgbaColor): void =>
+      mutateNode(node, () => {
+        const updated = emitterColorStopsFromNativeArgb(fields);
+        updated[index] = next;
+        for (const [key, value] of Object.entries(nativeArgbFieldsFromRgbaColorStops(updated)))
+          if (typeof value === 'number') writeValue(key, value);
+      });
     const colorGroup = group('Colour over particle life');
     const gradient = el('div', 'sp-fx-emitter-gradient');
     const gradientFill = el('span');
-    gradientFill.style.background = `linear-gradient(90deg, ${colors.map((stop, index) => {
-      const rgb = stop.slice(0, 3).map(component => Math.round(clampNumber(component, 0, 1) * 255));
-      return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${clampNumber(stop[3], 0, 1)}) ${index / Math.max(1, colors.length - 1) * 100}%`;
-    }).join(', ')})`;
+    gradientFill.style.background = `linear-gradient(90deg, ${colors
+      .map((stop, index) => {
+        const rgb = stop.slice(0, 3).map(component => Math.round(clampNumber(component, 0, 1) * 255));
+        return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${clampNumber(stop[3], 0, 1)}) ${(index / Math.max(1, colors.length - 1)) * 100}%`;
+      })
+      .join(', ')})`;
     gradient.appendChild(gradientFill);
     colorGroup.fields.appendChild(gradient);
     const stops = el('div', 'sp-fx-emitter-color-stops');
     colors.forEach((stop, index) => {
       const stopRow = el('div', 'sp-fx-emitter-color-stop');
-      const picker = input(colorHex(stop), next => {
-        const rgb = colorRgbFromHex(next);
-        if (rgb) updateColor(index, [...rgb, stop[3]] as RgbaColor);
-      }, { type: 'color' });
+      const picker = input(
+        colorHex(stop),
+        next => {
+          const rgb = colorRgbFromHex(next);
+          if (rgb) updateColor(index, [...rgb, stop[3]] as RgbaColor);
+        },
+        { type: 'color' },
+      );
       picker.classList.add('sp-fx-emitter-color-input');
-      const alpha = scalar(stop[3], next => updateColor(index,
-        [stop[0], stop[1], stop[2], clampNumber(next, 0, 1)]), '0.05', 0, 1);
+      const alpha = scalar(
+        stop[3],
+        next => updateColor(index, [stop[0], stop[1], stop[2], clampNumber(next, 0, 1)]),
+        '0.05',
+        0,
+        1,
+      );
       stopRow.append(el('span', '', String(index + 1)), picker, el('small', '', 'Alpha'), alpha);
       stops.appendChild(stopRow);
     });
@@ -1826,9 +2532,14 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const advancedGeometry = el('details', 'sp-fx-disclosure');
     advancedGeometry.appendChild(el('summary', '', 'Advanced particle geometry'));
     const geometryBody = el('div', 'sp-fx-disclosure-body sp-fx-emitter-advanced');
-    const advancedVector = (label: string, first: number, title: string) => geometryBody.appendChild(
-      compactField(label, vector(rawDirectionToEditor(rawVector(first)), next =>
-        setRawVector(first, editorDirectionToRaw(next))), title));
+    const advancedVector = (label: string, first: number, title: string) =>
+      geometryBody.appendChild(
+        compactField(
+          label,
+          vector(rawDirectionToEditor(rawVector(first)), next => setRawVector(first, editorDirectionToRaw(next))),
+          title,
+        ),
+      );
     advancedVector('Spawn axis A', 12, 'First centered spawn-area axis in Slopesmith-local coordinates.');
     advancedVector('Spawn axis B', 15, 'Second centered spawn-area axis in Slopesmith-local coordinates.');
     advancedVector('Velocity variation A', 21, 'First centered half-range velocity axis.');
@@ -1845,12 +2556,19 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     card.appendChild(allProperties);
     if (graph && prop?.id) {
       const preview = el('div', 'sp-fx-emitter-preview-actions');
-      preview.append(button(collisionEmitter ? '▶ Preview burst' : '▶ Preview timer', collisionEmitter
-        ? 'Preview only this snow collision burst on its attached level object.'
-        : 'Preview only this particle timer on its attached level object.', () => {
-        if (!viewport.previewAuthoredTimerNode(prop.id!, node, !collisionEmitter && value('U2') < 0))
-          toast(`This particle ${collisionEmitter ? 'burst' : 'timer'} could not be previewed.`, 'err');
-      }), button('■ Stop', 'Stop the current particle preview.', () => viewport.stopReferenceEffectPreview()));
+      preview.append(
+        button(
+          collisionEmitter ? '▶ Preview burst' : '▶ Preview timer',
+          collisionEmitter
+            ? 'Preview only this snow collision burst on its attached level object.'
+            : 'Preview only this particle timer on its attached level object.',
+          () => {
+            if (!viewport.previewAuthoredTimerNode(prop.id!, node, !collisionEmitter && value('U2') < 0))
+              toast(`This particle ${collisionEmitter ? 'burst' : 'timer'} could not be previewed.`, 'err');
+          },
+        ),
+        button('■ Stop', 'Stop the current particle preview.', () => viewport.stopReferenceEffectPreview()),
+      );
       card.appendChild(preview);
     }
     body.appendChild(card);
@@ -1872,12 +2590,21 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (node.mainType !== 8 || typeof rawSlot !== 'number' || !Number.isFinite(rawSlot)) return;
     const slot = Math.trunc(rawSlot);
     const filepath = effectSoundSource(level, slot);
-    body.appendChild(row('Filepath', input(filepath ?? 'unresolved', () => {}, { readonly: true }), filepath
-      ? 'Resolved WAV source relative to Maps/<level>/Audio/SFX.'
-      : 'No sound was found in this bank at that number.'));
-    if (filepath) body.appendChild(button('▶ play sound', 'Audition this PlaySound node’s course-bank clip.', () => {
-      auditionEffectSound(level, slot);
-    }));
+    body.appendChild(
+      row(
+        'Filepath',
+        input(filepath ?? 'unresolved', () => {}, { readonly: true }),
+        filepath
+          ? 'Resolved WAV source relative to Maps/<level>/Audio/SFX.'
+          : 'No sound was found in this bank at that number.',
+      ),
+    );
+    if (filepath)
+      body.appendChild(
+        button('▶ play sound', 'Audition this PlaySound node’s course-bank clip.', () => {
+          auditionEffectSound(level, slot);
+        }),
+      );
   }
 
   /** PlaySound's authoring surface. An uploaded WAV is the primary control: a bare slot number only means
@@ -1890,13 +2617,21 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const file = effectNodeSoundFile(node);
     const uploaded = customSounds();
     if (uploaded.length || file) {
-      const options = [{ value: '', label: '(none — use a bank sound)' },
+      const options = [
+        { value: '', label: '(none — use a bank sound)' },
         ...uploaded.map(name => ({ value: name, label: name })),
-        ...(file && !uploaded.includes(file) ? [{ value: file, label: `${file} (missing)` }] : [])];
-      body.appendChild(row(`${mountainName()} WAV`, select(file ?? '', options,
-        value => mutateNode(node, () => setEffectNodeSoundFile(node, value || null), true)),
-      'Play one of your own uploaded WAVs instead of a course sound. Export finds it a place in the '
-      + 'level’s sound bank for you.'));
+        ...(file && !uploaded.includes(file) ? [{ value: file, label: `${file} (missing)` }] : []),
+      ];
+      body.appendChild(
+        row(
+          `${mountainName()} WAV`,
+          select(file ?? '', options, value =>
+            mutateNode(node, () => setEffectNodeSoundFile(node, value || null), true),
+          ),
+          'Play one of your own uploaded WAVs instead of a course sound. Export finds it a place in the ' +
+            'level’s sound bank for you.',
+        ),
+      );
     }
     const rawSlot = node.payload.SoundPlay;
     const slot = typeof rawSlot === 'number' && Number.isFinite(rawSlot) ? Math.trunc(rawSlot) : null;
@@ -1906,55 +2641,112 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     // is attached to, which is the bank the author is most likely picking slots out of.
     const own = slot === null ? null : effectSoundSource(level, slot);
     const attached = selectedAttachmentProp(doc)?.level;
-    const donor = own ? level
-      : soundAuditionLevel ?? (attached && COURSE_BANK_LEVELS.includes(attached) ? attached : COURSE_BANK_LEVELS[0]);
-    const bankPath = slot === null ? null : own ?? effectSoundSource(donor, slot);
+    const donor = own
+      ? level
+      : (soundAuditionLevel ?? (attached && COURSE_BANK_LEVELS.includes(attached) ? attached : COURSE_BANK_LEVELS[0]));
+    const bankPath = slot === null ? null : (own ?? effectSoundSource(donor, slot));
     // The donor picker belongs to the slot reading only: with a WAV assigned the slot is export-owned and
     // nothing is auditioned out of a bank.
-    if (!file && slot !== null && !own) body.appendChild(row('Audition bank',
-      select(donor, COURSE_BANK_LEVELS.map(name => ({ value: name, label: name })),
-        value => { soundAuditionLevel = value; render(); }),
-      `${mountainName()} has no native sound bank, so a bank sound only `
-      + 'becomes real once the level is packed — this previews what the chosen course has at that number.'));
-    if (file) body.appendChild(row('Filepath', input(customSoundFilepath(file, mountainName()), () => {}, { readonly: true }),
-      'Your uploaded file. Its place in the sound bank is chosen for you at export, so Sound slot is locked while this is set.'));
-    else if (slot !== null) body.appendChild(row('Filepath', input(bankPath ?? 'unresolved', () => {}, { readonly: true }), bankPath
-      ? 'Resolved WAV source relative to Maps/<level>/Audio/SFX.'
-      : 'No sound was found in this bank at that number.'));
+    if (!file && slot !== null && !own)
+      body.appendChild(
+        row(
+          'Audition bank',
+          select(
+            donor,
+            COURSE_BANK_LEVELS.map(name => ({ value: name, label: name })),
+            value => {
+              soundAuditionLevel = value;
+              render();
+            },
+          ),
+          `${mountainName()} has no native sound bank, so a bank sound only ` +
+            'becomes real once the level is packed — this previews what the chosen course has at that number.',
+        ),
+      );
+    if (file)
+      body.appendChild(
+        row(
+          'Filepath',
+          input(customSoundFilepath(file, mountainName()), () => {}, { readonly: true }),
+          'Your uploaded file. Its place in the sound bank is chosen for you at export, so Sound slot is locked while this is set.',
+        ),
+      );
+    else if (slot !== null)
+      body.appendChild(
+        row(
+          'Filepath',
+          input(bankPath ?? 'unresolved', () => {}, { readonly: true }),
+          bankPath
+            ? 'Resolved WAV source relative to Maps/<level>/Audio/SFX.'
+            : 'No sound was found in this bank at that number.',
+        ),
+      );
     // The block closes with the same three actions in the same order as prop audio — browse, load, play —
     // whichever channel is driving it.
-    body.appendChild(button('🔊 sound library…',
-      'Browse the course sounds and your own uploads, hear each one, and pick what this node plays.', () => {
-        void openSoundLibrary({
-          mountainName: mountainName(),
-          level: donor, slot: slot ?? undefined, file,
-          // Follow the bank the slot was actually heard on — the number alone means a different sound in
-          // every course bank, so keeping the old donor would preview something the author never picked.
-          assign: (chosen, chosenLevel) => mutateNode(node, () => {
-            node.payload.SoundPlay = chosen;
-            setEffectNodeSoundFile(node, null); // a bank slot replaces the custom clip, not both at once
-            // Normalized because the picker's options are the uppercase table keys, as every other
-            // level-to-bank path already assumes.
-            soundAuditionLevel = chosenLevel.trim().toUpperCase();
-          }, true),
-          assignFile: chosen => mutateNode(node, () => setEffectNodeSoundFile(node, chosen), true),
-        });
-      }));
-    body.appendChild(button('⤒ load custom wav…',
-      `Upload a WAV and assign it to this node. Stored with ${mountainName()} (PCM16 mono, ≤10 s).`,
-      () => void loadNodeSound(node)));
-    if (file) body.appendChild(button('▶ play sound', 'Audition this node’s custom WAV.',
-      () => auditionCustomSound(file)));
-    else if (bankPath && slot !== null) body.appendChild(button('▶ play sound',
-      own ? 'Audition this PlaySound node’s course-bank clip.'
-        : `Hear what ${donor} has at number ${slot}. The course you pack onto decides what actually plays.`,
-      () => { auditionEffectSound(donor, slot); }));
+    body.appendChild(
+      button(
+        '🔊 sound library…',
+        'Browse the course sounds and your own uploads, hear each one, and pick what this node plays.',
+        () => {
+          void openSoundLibrary({
+            mountainName: mountainName(),
+            level: donor,
+            slot: slot ?? undefined,
+            file,
+            // Follow the bank the slot was actually heard on — the number alone means a different sound in
+            // every course bank, so keeping the old donor would preview something the author never picked.
+            assign: (chosen, chosenLevel) =>
+              mutateNode(
+                node,
+                () => {
+                  node.payload.SoundPlay = chosen;
+                  setEffectNodeSoundFile(node, null); // a bank slot replaces the custom clip, not both at once
+                  // Normalized because the picker's options are the uppercase table keys, as every other
+                  // level-to-bank path already assumes.
+                  soundAuditionLevel = chosenLevel.trim().toUpperCase();
+                },
+                true,
+              ),
+            assignFile: chosen => mutateNode(node, () => setEffectNodeSoundFile(node, chosen), true),
+          });
+        },
+      ),
+    );
+    body.appendChild(
+      button(
+        '⤒ load custom wav…',
+        `Upload a WAV and assign it to this node. Stored with ${mountainName()} (PCM16 mono, ≤10 s).`,
+        () => void loadNodeSound(node),
+      ),
+    );
+    if (file)
+      body.appendChild(button('▶ play sound', 'Audition this node’s custom WAV.', () => auditionCustomSound(file)));
+    else if (bankPath && slot !== null)
+      body.appendChild(
+        button(
+          '▶ play sound',
+          own
+            ? 'Audition this PlaySound node’s course-bank clip.'
+            : `Hear what ${donor} has at number ${slot}. The course you pack onto decides what actually plays.`,
+          () => {
+            auditionEffectSound(donor, slot);
+          },
+        ),
+      );
   }
 
   function addSemanticFields(body: HTMLElement, doc: EffectsDocument, node: EffectNode): void {
-    body.append(row('Stable ID', input(node.id, () => {}, { readonly: true })),
-      row('Semantic type', input(node.semanticType ?? '', () => {}, { readonly: true }),
-        'What Slopesmith reads this node as. Preview and the controls below follow it; the exported level does not. Change it deliberately, from Raw fields.'));
+    body.append(
+      row(
+        'Stable ID',
+        input(node.id, () => {}, { readonly: true }),
+      ),
+      row(
+        'Semantic type',
+        input(node.semanticType ?? '', () => {}, { readonly: true }),
+        'What Slopesmith reads this node as. Preview and the controls below follow it; the exported level does not. Change it deliberately, from Raw fields.',
+      ),
+    );
     // A custom WAV owns the slot — export allocates it and rewrites SoundPlay — so the raw number stops being
     // an authoring control and is shown read-only rather than as a field whose value is silently replaced.
     const exportOwnedSlot = !!effectNodeSoundFile(node);
@@ -1963,67 +2755,112 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (node.semanticType === 'property.anim-object') {
       const context = authoredClipContext(doc, node);
       if (context) {
-        body.appendChild(el('div', 'sp-fx-note',
-          `Source model clip: ${context.clip.clipFrames} frames. Preview and Test use the model’s embedded curves.`));
+        body.appendChild(
+          el(
+            'div',
+            'sp-fx-note',
+            `Source model clip: ${context.clip.clipFrames} frames. Preview and Test use the model’s embedded curves.`,
+          ),
+        );
         embedSectionBody(body, clipTimelinePanel(ensureClipViewer(context)), 'Model animation');
         authoredClipPanelRendered = true;
       } else {
-        body.appendChild(el('div', 'sp-fx-note warn',
-          'This prop’s model has no animation in it, so Model clip has nothing to play.'));
+        body.appendChild(
+          el('div', 'sp-fx-note warn', 'This prop’s model has no animation in it, so Model clip has nothing to play.'),
+        );
       }
     }
     const routeSplines = doc.splines.filter(resource => resource.id.startsWith('spline:path:'));
     if (node.semanticType === 'spline.animation' && !routeSplines.length)
-      body.appendChild(el('div', 'sp-fx-note warn', 'Add a motion path from the Effects home panel, then return here to choose it as the route.'));
+      body.appendChild(
+        el(
+          'div',
+          'sp-fx-note warn',
+          'Add a motion path from the Effects home panel, then return here to choose it as the route.',
+        ),
+      );
 
     const call = authoredInstanceEffectCall(doc, props(), node);
     if (call) {
-      if (!call.target || !call.graph) body.appendChild(el('div', 'sp-fx-note warn',
-        'This call does not say which prop or which effect it means.'));
+      if (!call.target || !call.graph)
+        body.appendChild(el('div', 'sp-fx-note warn', 'This call does not say which prop or which effect it means.'));
       const effectControl = el('div', 'sp-fx-input-help');
-      effectControl.append(input(call.graphLabel, () => {}, { readonly: true }),
-        helpIcon('A Run node runs this effect on the target prop. The target decides where in the world it happens.',
-          'Run node behavior'));
+      effectControl.append(
+        input(call.graphLabel, () => {}, { readonly: true }),
+        helpIcon(
+          'A Run node runs this effect on the target prop. The target decides where in the world it happens.',
+          'Run node behavior',
+        ),
+      );
       body.append(
-        row('Target prop', input(call.targetLabel, () => {}, { readonly: true }),
-          'The authored prop that receives the call, and whose position the effect runs at.'),
+        row(
+          'Target prop',
+          input(call.targetLabel, () => {}, { readonly: true }),
+          'The authored prop that receives the call, and whose position the effect runs at.',
+        ),
         row('Runs effect', effectControl, 'The effect that runs on the target prop.'),
       );
       if (call.target && call.graph) {
-        const target = call.target, graph = call.graph;
+        const target = call.target,
+          graph = call.graph;
         if (!isEffectTriggerProp(target)) body.appendChild(calledModelPreview.showModel(target.level, target.model));
         const actions = el('div', 'sp-fx-actions');
-        actions.appendChild(navigationButton('Go to effect', MODE_ICON.effects,
-          'Open the called effect on its target prop.', () => openAuthoredGraphOnProp(doc, target, graph)));
+        actions.appendChild(
+          navigationButton('Go to effect', MODE_ICON.effects, 'Open the called effect on its target prop.', () =>
+            openAuthoredGraphOnProp(doc, target, graph),
+          ),
+        );
         body.appendChild(actions);
       }
     }
 
     const refs = node.references ?? (node.references = {});
     const referenceTargets: Record<string, readonly { id: string; name?: string }[]> = {
-      instance: doc.instances, effectGraph: doc.graphs, function: doc.functions,
+      instance: doc.instances,
+      effectGraph: doc.graphs,
+      function: doc.functions,
       spline: node.semanticType === 'spline.animation' ? routeSplines : doc.splines,
     };
     for (const [key, targets] of Object.entries(referenceTargets)) {
       if (!(key in refs)) continue;
-      const options = [{ value: '', label: '(none)' }, ...targets.map(x => ({ value: x.id, label: x.name ? `${x.name} · ${x.id}` : x.id }))];
-      body.append(row(`${key} ref`, select(refs[key] ?? '', options, value => mutateNode(node, () => { refs[key] = value || null; })),
-        `Which ${key} this node points at.`));
+      const options = [
+        { value: '', label: '(none)' },
+        ...targets.map(x => ({ value: x.id, label: x.name ? `${x.name} · ${x.id}` : x.id })),
+      ];
+      body.append(
+        row(
+          `${key} ref`,
+          select(refs[key] ?? '', options, value =>
+            mutateNode(node, () => {
+              refs[key] = value || null;
+            }),
+          ),
+          `Which ${key} this node points at.`,
+        ),
+      );
     }
   }
 
   function inspector(doc: EffectsDocument, view: EffectsPanelView): HTMLElement | null {
     const current = view.selection;
     if (!current) return null;
-    const node = effectNode(doc, current); if (!node) return null;
+    const node = effectNode(doc, current);
+    if (!node) return null;
     const owner = effectOwner(doc, current);
     const nodeIndex = Math.max(0, owner?.nodes.indexOf(node) ?? 0) + 1;
     const s = section(`Selected node: ${nodeIndex}. ${view.nodeLabel?.(node) ?? nodeDisplayName(node)}`);
     s.root.classList.add('sp-fx-child-panel', 'sp-fx-child-panel-2');
-    const tabs = segmented<'semantic' | 'raw'>([
-      { value: 'semantic', label: 'Semantic', title: 'Show the decoded semantic node fields.' },
-      { value: 'raw', label: 'Raw fields', title: 'Show every field on this node, exactly as it is stored.' },
-    ], () => inspectorView, next => { inspectorView = next; render(); });
+    const tabs = segmented<'semantic' | 'raw'>(
+      [
+        { value: 'semantic', label: 'Semantic', title: 'Show the decoded semantic node fields.' },
+        { value: 'raw', label: 'Raw fields', title: 'Show every field on this node, exactly as it is stored.' },
+      ],
+      () => inspectorView,
+      next => {
+        inspectorView = next;
+        render();
+      },
+    );
     tabs.el.classList.add('sp-fx-tabs');
     tabs.el.setAttribute('role', 'tablist');
     [...tabs.el.querySelectorAll('button')].forEach((tab, index) => {
@@ -2037,16 +2874,25 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       if (view.readOnly && view.referenceData) addReferenceSemanticFields(s.body, view.referenceData, node);
       else if (view.readOnly) addKnownSemanticFields(s.body, node, true);
       else addSemanticFields(s.body, doc, node);
-    }
-    else {
-      const textarea = el('textarea', 'sp-fx-raw'); textarea.spellcheck = false; textarea.readOnly = view.readOnly;
-      textarea.value = JSON.stringify(node, null, 2); s.body.appendChild(textarea);
-      if (!view.readOnly) s.body.appendChild(button('Apply raw JSON', 'Replace this node only after the complete Effects document validates.', () => {
-          try {
-            const replacement = replaceEffectNodeRaw(doc, current, textarea.value);
-            current.nodeId = replacement.id; dirty(); toast('Raw node applied.', 'ok');
-          } catch (error) { toast(error instanceof Error ? error.message : String(error), 'err', 6000); }
-        }));
+    } else {
+      const textarea = el('textarea', 'sp-fx-raw');
+      textarea.spellcheck = false;
+      textarea.readOnly = view.readOnly;
+      textarea.value = JSON.stringify(node, null, 2);
+      s.body.appendChild(textarea);
+      if (!view.readOnly)
+        s.body.appendChild(
+          button('Apply raw JSON', 'Replace this node only after the complete Effects document validates.', () => {
+            try {
+              const replacement = replaceEffectNodeRaw(doc, current, textarea.value);
+              current.nodeId = replacement.id;
+              dirty();
+              toast('Raw node applied.', 'ok');
+            } catch (error) {
+              toast(error instanceof Error ? error.message : String(error), 'err', 6000);
+            }
+          }),
+        );
     }
     return s.root;
   }
@@ -2061,10 +2907,17 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const special = specialPropKind(prop, doc);
     if (special || isEffectTriggerProp(prop)) {
       const navigation = el('div', 'sp-fx-actions sp-fx-selection-nav');
-      navigation.appendChild(navigationButton('Prop settings', MODE_ICON.props,
-        'Open the standard prop inspector for this object.', () => goToProp({ propIndex: props().indexOf(prop) })));
-      if (special) navigation.appendChild(navigationButton('Special settings', MODE_ICON.props,
-        'Return to this special prop’s compact settings.', () => deps.goToSpecialProp(prop.id!)));
+      navigation.appendChild(
+        navigationButton('Prop settings', MODE_ICON.props, 'Open the standard prop inspector for this object.', () =>
+          goToProp({ propIndex: props().indexOf(prop) }),
+        ),
+      );
+      if (special)
+        navigation.appendChild(
+          navigationButton('Special settings', MODE_ICON.props, 'Return to this special prop’s compact settings.', () =>
+            deps.goToSpecialProp(prop.id!),
+          ),
+        );
       s.body.appendChild(navigation);
     }
     if (isEffectTriggerProp(prop)) {
@@ -2076,48 +2929,113 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         dirty();
       };
       s.body.append(
-        row('Name', input(prop.name, value => { const next = value.trim(); if (next) { prop.name = next; dirty(); } })),
-        row('Prop number', input(prop.id ?? selectedAuthoredPropId, () => {}, { readonly: true }),
-          'This trigger’s number in the mountain. Effects use it to point at a particular prop, and it is what '
-          + 'attaches and packs this trigger’s collision effect.'),
-        row('X', numberInput(prop.pos[0], value => { prop.pos[0] = value; dirty(); })),
-        row('Y', numberInput(prop.pos[1], value => { prop.pos[1] = value; dirty(); })),
-        row('Z', numberInput(prop.pos[2], value => { prop.pos[2] = value; dirty(); })),
-        row('Width', numberInput(size[0], value => setSize(0, value), '0.5')),
-        row('Height', numberInput(size[1], value => setSize(1, value), '0.5')),
-        row('Depth', numberInput(size[2], value => setSize(2, value), '0.5')),
+        row(
+          'Name',
+          input(prop.name, value => {
+            const next = value.trim();
+            if (next) {
+              prop.name = next;
+              dirty();
+            }
+          }),
+        ),
+        row(
+          'Prop number',
+          input(prop.id ?? selectedAuthoredPropId, () => {}, { readonly: true }),
+          'This trigger’s number in the mountain. Effects use it to point at a particular prop, and it is what ' +
+            'attaches and packs this trigger’s collision effect.',
+        ),
+        row(
+          'X',
+          numberInput(prop.pos[0], value => {
+            prop.pos[0] = value;
+            dirty();
+          }),
+        ),
+        row(
+          'Y',
+          numberInput(prop.pos[1], value => {
+            prop.pos[1] = value;
+            dirty();
+          }),
+        ),
+        row(
+          'Z',
+          numberInput(prop.pos[2], value => {
+            prop.pos[2] = value;
+            dirty();
+          }),
+        ),
+        row(
+          'Width',
+          numberInput(size[0], value => setSize(0, value), '0.5'),
+        ),
+        row(
+          'Height',
+          numberInput(size[1], value => setSize(1, value), '0.5'),
+        ),
+        row(
+          'Depth',
+          numberInput(size[2], value => setSize(2, value), '0.5'),
+        ),
       );
-      const transform = segmented<'move' | 'scale'>([
-        { value: 'move', label: 'Move', title: 'Move the trigger box with the viewport gizmo.' },
-        { value: 'scale', label: 'Resize', title: 'Resize the trigger independently on each axis.' },
-      ], () => store.gizmoMode === 'scale' ? 'scale' : 'move', mode => {
-        store.gizmoMode = mode;
-        selection = selection ? { ownerKind: selection.ownerKind, ownerId: selection.ownerId } : selection;
-        viewport.setPlacedPropSelection(props().indexOf(prop));
-        viewport.setGizmoMode(mode);
-        render();
-      });
-      s.body.append(row('Transform', transform.el), el('div', 'sp-fx-note',
-        special === 'teleport-destination'
-          ? 'Invisible arrival marker. Choose it from a teleport entrance’s destination setting.'
-          : 'The box is invisible in game. Riding through it runs the collision effect below.'));
+      const transform = segmented<'move' | 'scale'>(
+        [
+          { value: 'move', label: 'Move', title: 'Move the trigger box with the viewport gizmo.' },
+          { value: 'scale', label: 'Resize', title: 'Resize the trigger independently on each axis.' },
+        ],
+        () => (store.gizmoMode === 'scale' ? 'scale' : 'move'),
+        mode => {
+          store.gizmoMode = mode;
+          selection = selection ? { ownerKind: selection.ownerKind, ownerId: selection.ownerId } : selection;
+          viewport.setPlacedPropSelection(props().indexOf(prop));
+          viewport.setGizmoMode(mode);
+          render();
+        },
+      );
+      s.body.append(
+        row('Transform', transform.el),
+        el(
+          'div',
+          'sp-fx-note',
+          special === 'teleport-destination'
+            ? 'Invisible arrival marker. Choose it from a teleport entrance’s destination setting.'
+            : 'The box is invisible in game. Riding through it runs the collision effect below.',
+        ),
+      );
       s.body.appendChild(hostPreview.showTrigger());
       const triggerActions = el('div', 'sp-fx-actions');
-      triggerActions.append(button('Focus trigger', 'Frame this trigger volume in the viewport.', () => {
-        const index = props().indexOf(prop);
-        if (index < 0 || !viewport.focusProp(index)) toast('Could not frame this trigger.', 'err');
-      }), button('Delete trigger', 'Delete this trigger box and its effects.', () => {
-        removeSelectedEffectTrigger();
-      }, true));
+      triggerActions.append(
+        button('Focus trigger', 'Frame this trigger volume in the viewport.', () => {
+          const index = props().indexOf(prop);
+          if (index < 0 || !viewport.focusProp(index)) toast('Could not frame this trigger.', 'err');
+        }),
+        button(
+          'Delete trigger',
+          'Delete this trigger box and its effects.',
+          () => {
+            removeSelectedEffectTrigger();
+          },
+          true,
+        ),
+      );
       s.body.appendChild(triggerActions);
     } else {
-      s.body.append(row('Model', input(prop.name, () => {}, { readonly: true }),
-        'The model this prop uses. Select the text to copy it.'),
+      s.body.append(
+        row(
+          'Model',
+          input(prop.name, () => {}, { readonly: true }),
+          'The model this prop uses. Select the text to copy it.',
+        ),
         // The same label the reference host panel gives a native prop's Instances[] row: one prop is picked out
         // of many by its number whichever kind it is, so the two panels ask and answer the same question.
-        row('Prop number', input(prop.id ?? selectedAuthoredPropId, () => {}, { readonly: true }),
-          'This prop’s number in the mountain. Effects use it to point at a particular prop, and it is what '
-          + 'attaches this effect when the mountain is exported and repacked.'));
+        row(
+          'Prop number',
+          input(prop.id ?? selectedAuthoredPropId, () => {}, { readonly: true }),
+          'This prop’s number in the mountain. Effects use it to point at a particular prop, and it is what ' +
+            'attaches this effect when the mountain is exported and repacked.',
+        ),
+      );
     }
     // Prop-first creation: an empty effect lands wired into THIS prop's slot, so no unattached graph exists.
     const addEffect = el('div', 'sp-fx-create sp-fx-effect-add');
@@ -2125,13 +3043,20 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const graphId = slot?.circumstances[type.circumstance];
       return !graphId || !doc.graphs.some(graph => graph.id === graphId);
     });
-    if (availableEffectTypes.length) addEffect.appendChild(templatePicker('+ Add effect',
-      'Choose an empty effect to add directly to this prop.', availableEffectTypes, type => {
-        authoredUnassignedOpen = false;
-        selection = addEmptyEffectToProp(doc, prop.id!, type.circumstance);
-        dirty();
-        toast('Effect added to this prop.', 'ok');
-      }));
+    if (availableEffectTypes.length)
+      addEffect.appendChild(
+        templatePicker(
+          '+ Add effect',
+          'Choose an empty effect to add directly to this prop.',
+          availableEffectTypes,
+          type => {
+            authoredUnassignedOpen = false;
+            selection = addEmptyEffectToProp(doc, prop.id!, type.circumstance);
+            dirty();
+            toast('Effect added to this prop.', 'ok');
+          },
+        ),
+      );
     else {
       const complete = button('+ Add effect', 'This object already has every supported effect type.', () => {});
       complete.disabled = true;
@@ -2144,51 +3069,97 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const wrap = el('div', 'sp-fx-latches');
       wrap.appendChild(el('div', 'sp-fx-subtitle', 'When this effect ends'));
       wrap.append(
-        checkboxRow('Hold the final state (don\'t reset)', !!slot?.circumstances.slot4,
+        checkboxRow(
+          "Hold the final state (don't reset)",
+          !!slot?.circumstances.slot4,
           'Effect end latch: a finished play-once clip keeps its last frame (the iris door stays open) instead of reverting to the rest pose.',
-          value => { if (setPropEffectLatch(doc, prop.id!, 'slot4', value)) dirty(); }),
-        checkboxRow('Keep it when the area unloads', !!slot?.circumstances.slot3,
+          value => {
+            if (setPropEffectLatch(doc, prop.id!, 'slot4', value)) dirty();
+          },
+        ),
+        checkboxRow(
+          'Keep it when the area unloads',
+          !!slot?.circumstances.slot3,
           'Region exit latch: the prop keeps its current state when its world region deactivates instead of reverting to the rest pose.',
-          value => { if (setPropEffectLatch(doc, prop.id!, 'slot3', value)) dirty(); }),
+          value => {
+            if (setPropEffectLatch(doc, prop.id!, 'slot3', value)) dirty();
+          },
+        ),
       );
       if (slot?.circumstances.slot4 && !effectSlotCanSelfEnd(doc, slot))
-        wrap.appendChild(el('div', 'sp-fx-note warn',
-          'Nothing on this prop self-ends yet — this latch only matters once a play-once model clip runs here.'));
+        wrap.appendChild(
+          el(
+            'div',
+            'sp-fx-note warn',
+            'Nothing on this prop self-ends yet — this latch only matters once a play-once model clip runs here.',
+          ),
+        );
       return wrap;
     };
     if (!attachment || !slot) {
-      s.body.appendChild(el('div', 'sp-fx-note', attachment
-        ? 'This prop points at an effect that was deleted. Adding an effect rebuilds the link.'
-        : 'No effect on this prop yet. Pick when one should run and it is wired up for you.'));
+      s.body.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          attachment
+            ? 'This prop points at an effect that was deleted. Adding an effect rebuilds the link.'
+            : 'No effect on this prop yet. Pick when one should run and it is wired up for you.',
+        ),
+      );
       s.body.appendChild(addEffect);
       if (!isEffectTriggerProp(prop)) s.body.appendChild(latchPanel());
       return s.root;
     }
-    s.body.appendChild(row('Effects ID', input(slot.id, () => {}, { readonly: true }),
-      'The ID this prop uses to find its effects. Shown for cross-referencing; nothing to edit here.'));
+    s.body.appendChild(
+      row(
+        'Effects ID',
+        input(slot.id, () => {}, { readonly: true }),
+        'The ID this prop uses to find its effects. Shown for cross-referencing; nothing to edit here.',
+      ),
+    );
     const bindings = attachmentBindings(doc, attachment);
     const actions = el('div', 'sp-fx-actions');
     const propIndex = props().findIndex(item => item.id === selectedAuthoredPropId);
     if (propIndex >= 0 && !isEffectTriggerProp(prop) && !special) {
       s.body.appendChild(hostPreview.showModel(prop.level, prop.model));
       const navigation = el('div', 'sp-fx-actions sp-fx-selection-nav');
-      navigation.append(navigationButton('Go to prop', MODE_ICON.props,
-        'Switch to Props mode with this prop selected.', () => goToProp({ propIndex })), selectionBackButton());
+      navigation.append(
+        navigationButton('Go to prop', MODE_ICON.props, 'Switch to Props mode with this prop selected.', () =>
+          goToProp({ propIndex }),
+        ),
+        selectionBackButton(),
+      );
       s.body.appendChild(navigation);
       s.root.classList.add('sp-fx-has-inline-back');
     }
-    actions.append(button('Detach', 'Unlink this prop from its effects.', () => {
-      if (detachEffectFromProp(doc, prop.id!)) dirty();
-    }, true));
-    s.body.append(actions, effectNodeTree(bindings, selection, (graph, node) => {
-      authoredUnassignedOpen = false;
-      selection = { ownerKind: 'graph', ownerId: graph.id, nodeId: node.id };
-      render();
-    }, nodeDisplayName, binding => addNodePicker(doc,
-      { ownerKind: 'graph', ownerId: binding.graph.id }, binding.circumstance), {
-      effect: binding => effectTreeActionMenu(doc, binding),
-      node: (binding, node) => nodeTreeActionMenu(doc, binding, node),
-    }));
+    actions.append(
+      button(
+        'Detach',
+        'Unlink this prop from its effects.',
+        () => {
+          if (detachEffectFromProp(doc, prop.id!)) dirty();
+        },
+        true,
+      ),
+    );
+    s.body.append(
+      actions,
+      effectNodeTree(
+        bindings,
+        selection,
+        (graph, node) => {
+          authoredUnassignedOpen = false;
+          selection = { ownerKind: 'graph', ownerId: graph.id, nodeId: node.id };
+          render();
+        },
+        nodeDisplayName,
+        binding => addNodePicker(doc, { ownerKind: 'graph', ownerId: binding.graph.id }, binding.circumstance),
+        {
+          effect: binding => effectTreeActionMenu(doc, binding),
+          node: (binding, node) => nodeTreeActionMenu(doc, binding, node),
+        },
+      ),
+    );
     s.body.appendChild(addEffect);
     if (!isEffectTriggerProp(prop)) s.body.appendChild(latchPanel());
     return s.root;
@@ -2197,38 +3168,58 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function authoredSelectionListPanel(doc: EffectsDocument): HTMLElement | null {
     if (selectedAuthoredPropIds.length < 2) return null;
     const selectedIds = new Set(selectedAuthoredPropIds);
-    const selectedProps = props().filter(prop => !!prop.id && selectedIds.has(prop.id))
+    const selectedProps = props()
+      .filter(prop => !!prop.id && selectedIds.has(prop.id))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return effectHostListPanel(selectedProps.map(prop => ({
-      label: prop.name,
-      meta: prop.id!,
-      active: selectedAuthoredPropId === prop.id,
-      title: 'Edit this selected effect host without dropping the multi-selection.',
-      select: () => {
-        selectedAuthoredPropId = prop.id!;
-        attachmentPropId = prop.id!;
-        selection = effectSelectionForProp(doc, prop.id!);
-        render();
-      },
-    })), 'Several props are selected. Click one below to edit its effects; Ctrl/Cmd-click in the viewport to add or remove props.');
+    return effectHostListPanel(
+      selectedProps.map(prop => ({
+        label: prop.name,
+        meta: prop.id!,
+        active: selectedAuthoredPropId === prop.id,
+        title: 'Edit this selected effect host without dropping the multi-selection.',
+        select: () => {
+          selectedAuthoredPropId = prop.id!;
+          attachmentPropId = prop.id!;
+          selection = effectSelectionForProp(doc, prop.id!);
+          render();
+        },
+      })),
+      'Several props are selected. Click one below to edit its effects; Ctrl/Cmd-click in the viewport to add or remove props.',
+    );
   }
 
   function attachmentPanel(doc: EffectsDocument): HTMLElement | null {
     if (!selection || selection.ownerKind !== 'graph') return null;
     const slots = graphSlots(doc, selection.ownerId);
     const slotIds = new Set(slots.map(binding => binding.slot.id));
-    const livePropIds = new Set(props().map(prop => prop.id).filter((id): id is string => !!id));
-    const attached = effectAttachments(doc).some(attachment => attachment.enabled
-      && slotIds.has(attachment.slot) && livePropIds.has(attachment.target.id));
+    const livePropIds = new Set(
+      props()
+        .map(prop => prop.id)
+        .filter((id): id is string => !!id),
+    );
+    const attached = effectAttachments(doc).some(
+      attachment => attachment.enabled && slotIds.has(attachment.slot) && livePropIds.has(attachment.target.id),
+    );
     if (attached) return null;
     const s = section('Share these effects with another prop');
     const levelProps = props();
-    if (!levelProps.length) { s.body.appendChild(el('div', 'sp-fx-empty', 'Place a prop first — effects live on props.')); return s.root; }
+    if (!levelProps.length) {
+      s.body.appendChild(el('div', 'sp-fx-empty', 'Place a prop first — effects live on props.'));
+      return s.root;
+    }
     if (!attachmentPropId || !levelProps.some(p => p.id === attachmentPropId)) attachmentPropId = levelProps[0].id!;
-    const propSelect = select(attachmentPropId, levelProps.map((p, i) => ({ value: p.id!, label: `${i + 1}. ${p.name}` })), value => { attachmentPropId = value; render(); });
+    const propSelect = select(
+      attachmentPropId,
+      levelProps.map((p, i) => ({ value: p.id!, label: `${i + 1}. ${p.name}` })),
+      value => {
+        attachmentPropId = value;
+        render();
+      },
+    );
     s.body.append(row('Level prop', propSelect));
     if (!slots.length) {
-      s.body.append(el('div', 'sp-fx-note', 'This effect is not on a prop yet, so nothing runs it.'),
+      s.body.append(
+        el('div', 'sp-fx-note', 'This effect is not on a prop yet, so nothing runs it.'),
         button('Make it run by itself', 'Put this effect on a prop so it runs by itself.', () => {
           const slotSelection = addEffectTemplate(doc, 'empty');
           const graph = doc.graphs.find(x => x.id === slotSelection.ownerId)!;
@@ -2237,29 +3228,54 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
           slot.name = `Props running ${effectOwner(doc, selection!)?.name ?? selection!.ownerId}`;
           slot.circumstances.persistent = selection!.ownerId;
           dirty();
-        }));
+        }),
+      );
       return s.root;
     }
     let slotId = slots[0].slot.id;
     let circumstance = slots[0].circumstance;
     const current = effectAttachments(doc).find(x => x.target.id === attachmentPropId);
-    if (current && slots.some(x => x.slot.id === current.slot)) { slotId = current.slot; circumstance = current.circumstance; }
-    const slotSelect = select(slotId, slots.map(x => ({ value: x.slot.id, label: x.slot.name ? `${x.slot.name} · ${effectCircumstanceLabel(x.circumstance)}` : `${x.slot.id} · ${effectCircumstanceLabel(x.circumstance)}` })), value => {
-      slotId = value; circumstance = slots.find(x => x.slot.id === value)?.circumstance ?? 'persistent';
-    });
+    if (current && slots.some(x => x.slot.id === current.slot)) {
+      slotId = current.slot;
+      circumstance = current.circumstance;
+    }
+    const slotSelect = select(
+      slotId,
+      slots.map(x => ({
+        value: x.slot.id,
+        label: x.slot.name
+          ? `${x.slot.name} · ${effectCircumstanceLabel(x.circumstance)}`
+          : `${x.slot.id} · ${effectCircumstanceLabel(x.circumstance)}`,
+      })),
+      value => {
+        slotId = value;
+        circumstance = slots.find(x => x.slot.id === value)?.circumstance ?? 'persistent';
+      },
+    );
     const circumstances = [...new Set(slots.filter(x => x.slot.id === slotId).map(x => x.circumstance))];
-    const circumstanceSelect = select<EffectCircumstance>(circumstance,
+    const circumstanceSelect = select<EffectCircumstance>(
+      circumstance,
       circumstances.map(value => ({ value, label: effectCircumstanceLabel(value) })),
-      value => { circumstance = value; });
+      value => {
+        circumstance = value;
+      },
+    );
     s.body.append(row('Effects to share', slotSelect), row('Fires on', circumstanceSelect));
     const actions = el('div', 'sp-fx-actions');
-    actions.append(button(current ? 'Update attachment' : 'Attach effect', 'Point this prop at the selected effects, so both props run the same ones.', () => {
-      attachEffectToProp(doc, attachmentPropId, slotId, circumstance);
-      selectedAuthoredPropIds = [attachmentPropId];
-      selectedAuthoredPropId = attachmentPropId;
-      authoredUnassignedOpen = false;
-      dirty(); toast('Effect attached to level prop.', 'ok');
-    }));
+    actions.append(
+      button(
+        current ? 'Update attachment' : 'Attach effect',
+        'Point this prop at the selected effects, so both props run the same ones.',
+        () => {
+          attachEffectToProp(doc, attachmentPropId, slotId, circumstance);
+          selectedAuthoredPropIds = [attachmentPropId];
+          selectedAuthoredPropId = attachmentPropId;
+          authoredUnassignedOpen = false;
+          dirty();
+          toast('Effect attached to level prop.', 'ok');
+        },
+      ),
+    );
     s.body.appendChild(actions);
     return s.root;
   }
@@ -2267,13 +3283,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function validationPanel(doc: EffectsDocument): HTMLElement {
     const issues = validateEffectsAuthoring(doc, props(), store.mdoc.rails ?? []);
     const s = section(`Validation · ${issues.length || 'clean'}`);
-    if (!issues.length) s.body.appendChild(el('div', 'sp-fx-valid', 'No structural, reference, attachment, or semantic-range issues.'));
+    if (!issues.length)
+      s.body.appendChild(el('div', 'sp-fx-valid', 'No structural, reference, attachment, or semantic-range issues.'));
     else {
       for (const issue of issues.slice(0, 12)) {
         const item = el('div', `sp-fx-issue ${issue.severity}`);
-        item.append(el('strong', '', issue.severity), el('span', '', issue.message), el('code', '', issue.path)); s.body.appendChild(item);
+        item.append(el('strong', '', issue.severity), el('span', '', issue.message), el('code', '', issue.path));
+        s.body.appendChild(item);
       }
-      if (issues.length > 12) s.body.appendChild(el('div', 'sp-fx-note', `${issues.length - 12} more issues; export/check shows the complete set.`));
+      if (issues.length > 12)
+        s.body.appendChild(
+          el('div', 'sp-fx-note', `${issues.length - 12} more issues; export/check shows the complete set.`),
+        );
     }
     return s.root;
   }
@@ -2281,10 +3302,14 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function normalizeReferenceSelection(data: ReferenceEffectsData): void {
     const validIndices = new Set(data.instances.map(instance => instance.index));
     const instanceIndices = referenceFocus.instanceIndices.filter(index => validIndices.has(index));
-    const activeInstanceIndex = referenceFocus.activeInstanceIndex !== null
-      && instanceIndices.includes(referenceFocus.activeInstanceIndex) ? referenceFocus.activeInstanceIndex : null;
-    const activeInstance = activeInstanceIndex === null ? null
-      : data.instances.find(instance => instance.index === activeInstanceIndex) ?? null;
+    const activeInstanceIndex =
+      referenceFocus.activeInstanceIndex !== null && instanceIndices.includes(referenceFocus.activeInstanceIndex)
+        ? referenceFocus.activeInstanceIndex
+        : null;
+    const activeInstance =
+      activeInstanceIndex === null
+        ? null
+        : (data.instances.find(instance => instance.index === activeInstanceIndex) ?? null);
     let current = referenceFocus.selection;
     if (current && !effectOwner(data.document, current)) current = null;
     if (current) {
@@ -2294,14 +3319,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     }
     if (instanceIndices.length && activeInstanceIndex === null) current = null;
     if (!current && activeInstance) current = referenceHostSelection(data, activeInstance);
-    const preferredCaller = referenceFocus.callerIndex !== null && validIndices.has(referenceFocus.callerIndex)
-      ? referenceFocus.callerIndex : null;
+    const preferredCaller =
+      referenceFocus.callerIndex !== null && validIndices.has(referenceFocus.callerIndex)
+        ? referenceFocus.callerIndex
+        : null;
     referenceFocus = {
       instanceIndices,
       activeInstanceIndex,
       selection: current,
-      markerIndex: referenceFocus.markerIndex !== null && validIndices.has(referenceFocus.markerIndex)
-        ? referenceFocus.markerIndex : null,
+      markerIndex:
+        referenceFocus.markerIndex !== null && validIndices.has(referenceFocus.markerIndex)
+          ? referenceFocus.markerIndex
+          : null,
       callerIndex: activeInstance ? referenceCallerIndex(data, activeInstance, current, preferredCaller) : null,
     };
   }
@@ -2309,85 +3338,117 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function referenceHeader(data: ReferenceEffectsData): HTMLElement {
     const s = section(`${data.level} effects · read only`);
     const attached = attachedReferenceInstances(data);
-    const nodes = data.document.graphs.reduce((n, graph) => n + graph.nodes.length, 0)
-      + data.document.functions.reduce((n, fn) => n + fn.nodes.length, 0);
+    const nodes =
+      data.document.graphs.reduce((n, graph) => n + graph.nodes.length, 0) +
+      data.document.functions.reduce((n, fn) => n + fn.nodes.length, 0);
     const issues = validateEffectsAuthoring(data.document);
     const errors = issues.filter(issue => issue.severity === 'error').length;
     const particleCount = data.particleVolumes?.length ?? 0;
-    s.body.appendChild(el('div', `sp-fx-summary${errors ? ' bad' : ''}`,
-      `${data.document.graphs.length} effects · ${data.document.functions.length} shared · ${nodes} nodes · ${attached.length} attached props · ${particleCount} fog volumes · ${issues.length ? `${errors} errors / ${issues.length - errors} warnings` : 'valid'}`));
-    s.body.appendChild(el('div', 'sp-fx-note',
-      'A read-only view of the effects this shipped level was built with.'));
-    s.body.appendChild(el('div', 'sp-fx-note',
-      'Preview plays an effect on the spot. The Effects view toggle runs nearby self-running effects, and Play fires collision effects when you actually ride into the prop.'));
+    s.body.appendChild(
+      el(
+        'div',
+        `sp-fx-summary${errors ? ' bad' : ''}`,
+        `${data.document.graphs.length} effects · ${data.document.functions.length} shared · ${nodes} nodes · ${attached.length} attached props · ${particleCount} fog volumes · ${issues.length ? `${errors} errors / ${issues.length - errors} warnings` : 'valid'}`,
+      ),
+    );
+    s.body.appendChild(el('div', 'sp-fx-note', 'A read-only view of the effects this shipped level was built with.'));
+    s.body.appendChild(
+      el(
+        'div',
+        'sp-fx-note',
+        'Preview plays an effect on the spot. The Effects view toggle runs nearby self-running effects, and Play fires collision effects when you actually ride into the prop.',
+      ),
+    );
     s.body.appendChild(unassignedButton('reference', referenceUnassignedOwnerIds(data).size));
     return s.root;
   }
 
   function mapGuidePanel(): HTMLElement {
     const s = section(`${mountainName()} effects map`);
-    s.body.appendChild(el('div', 'sp-fx-note',
-      'Props with effects, trigger boxes, fog banks, and motion paths are highlighted purple. '
-      + 'Grind rails draw their curves in red. Click an object to configure its effects or settings; '
-      + 'Ctrl/Cmd-click to select several props at once. Use Props to add world objects.'));
+    s.body.appendChild(
+      el(
+        'div',
+        'sp-fx-note',
+        'Props with effects, trigger boxes, fog banks, and motion paths are highlighted purple. ' +
+          'Grind rails draw their curves in red. Click an object to configure its effects or settings; ' +
+          'Ctrl/Cmd-click to select several props at once. Use Props to add world objects.',
+      ),
+    );
     return s.root;
   }
 
-  function referenceSelectionTargetIndex(data: ReferenceEffectsData,
-    current: EffectSelection | null): number | null {
+  function referenceSelectionTargetIndex(data: ReferenceEffectsData, current: EffectSelection | null): number | null {
     if (!current) return null;
     const node = effectNode(data.document, current);
-    return node ? referenceInstanceEffectCall(data, node)?.target?.index ?? null : null;
+    return node ? (referenceInstanceEffectCall(data, node)?.target?.index ?? null) : null;
   }
 
   /** Choose a host's first useful effect. Its own slot wins; a call-only receiver falls back to the first
    * remote effect shown in its caller tree so selecting a prop never leaves the effect panel blank. */
-  function referenceHostSelection(data: ReferenceEffectsData,
-    instance: ReferenceEffectInstance): EffectSelection | null {
+  function referenceHostSelection(
+    data: ReferenceEffectsData,
+    instance: ReferenceEffectInstance,
+  ): EffectSelection | null {
     const bindings = referenceInstanceBindings(data, instance);
-    const binding = bindings.find(item => item.graph.nodes.some(node => !!particleEmitterFields(node)))
-      ?? bindings.find(item => item.graph.nodes.some(node => !!referenceFireworkCall(data, node)))
-      ?? bindings[0];
+    const binding =
+      bindings.find(item => item.graph.nodes.some(node => !!particleEmitterFields(node))) ??
+      bindings.find(item => item.graph.nodes.some(node => !!referenceFireworkCall(data, node))) ??
+      bindings[0];
     if (binding) {
-      const node = binding.graph.nodes.find(item => !!particleEmitterFields(item))
-        ?? binding.graph.nodes.find(item => !!referenceFireworkCall(data, item))
-        ?? binding.graph.nodes[0];
+      const node =
+        binding.graph.nodes.find(item => !!particleEmitterFields(item)) ??
+        binding.graph.nodes.find(item => !!referenceFireworkCall(data, item)) ??
+        binding.graph.nodes[0];
       return { ownerKind: 'graph', ownerId: binding.graph.id, ...(node ? { nodeId: node.id } : {}) };
     }
     for (const caller of referenceIncomingEffectTree(data, instance.index)) {
       const graph = caller.effects.find(effect => !!effect.graph)?.graph;
-      if (graph) return { ownerKind: 'graph', ownerId: graph.id,
-        ...(graph.nodes[0] ? { nodeId: graph.nodes[0].id } : {}) };
+      if (graph)
+        return { ownerKind: 'graph', ownerId: graph.id, ...(graph.nodes[0] ? { nodeId: graph.nodes[0].id } : {}) };
     }
     return referenceEffectSelection(data, instance);
   }
 
   /** Recover the caller branch behind an incoming graph selection. An explicit branch wins; a graph attached
    * directly to the target stays direct unless the user deliberately selected it through a caller branch. */
-  function referenceCallerIndex(data: ReferenceEffectsData, target: ReferenceEffectInstance,
-    current: EffectSelection | null, preferred: number | null = null): number | null {
+  function referenceCallerIndex(
+    data: ReferenceEffectsData,
+    target: ReferenceEffectInstance,
+    current: EffectSelection | null,
+    preferred: number | null = null,
+  ): number | null {
     if (current?.ownerKind !== 'graph') return null;
-    const matches = referenceIncomingEffectTree(data, target.index)
-      .filter(caller => caller.effects.some(effect => effect.graph?.id === current.ownerId));
+    const matches = referenceIncomingEffectTree(data, target.index).filter(caller =>
+      caller.effects.some(effect => effect.graph?.id === current.ownerId),
+    );
     if (preferred !== null && matches.some(caller => caller.instance.index === preferred)) return preferred;
     if (referenceInstanceBindings(data, target).some(binding => binding.graph.id === current.ownerId)) return null;
     return matches[0]?.instance.index ?? null;
   }
 
-  function referenceTargetSelection(data: ReferenceEffectsData, targetIndex: number,
-    sourceIndex: number): EffectSelection | null {
-    const entry = referenceIncomingEffectCalls(data, targetIndex)
-      .find(candidate => candidate.sources.some(source => source.instance.index === sourceIndex));
+  function referenceTargetSelection(
+    data: ReferenceEffectsData,
+    targetIndex: number,
+    sourceIndex: number,
+  ): EffectSelection | null {
+    const entry = referenceIncomingEffectCalls(data, targetIndex).find(candidate =>
+      candidate.sources.some(source => source.instance.index === sourceIndex),
+    );
     return entry ? { ownerKind: entry.ownerKind, ownerId: entry.owner.id, nodeId: entry.node.id } : null;
   }
 
-  function applyReferenceFocus(data: ReferenceEffectsData, instanceIndices: readonly number[],
-    activeInstanceIndex: number | null, nextSelection: EffectSelection | null, markerIndex: number | null,
-    callerIndex: number | null = null): void {
+  function applyReferenceFocus(
+    data: ReferenceEffectsData,
+    instanceIndices: readonly number[],
+    activeInstanceIndex: number | null,
+    nextSelection: EffectSelection | null,
+    markerIndex: number | null,
+    callerIndex: number | null = null,
+  ): void {
     const valid = new Set(data.instances.map(instance => instance.index));
     const unique = [...new Set(instanceIndices)].filter(index => valid.has(index));
-    const activeIndex = activeInstanceIndex !== null && unique.includes(activeInstanceIndex)
-      ? activeInstanceIndex : null;
+    const activeIndex =
+      activeInstanceIndex !== null && unique.includes(activeInstanceIndex) ? activeInstanceIndex : null;
     if (referenceFocus.activeInstanceIndex !== activeIndex) viewport.stopReferenceEffectPreview();
     dropSplineSelection();
     source = 'reference';
@@ -2403,27 +3464,39 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     selection = null;
     selectedAuthoredPropIds = [];
     selectedAuthoredPropId = null;
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
     viewport.selectReferenceEffectInstances(unique, markerIndex);
     render();
   }
 
   /** Open one graph explicitly on the model that receives it. An effect-row click opens its first node by
    * default; empty effects remain graph-only while still exposing the effect-level summary and actions. */
-  function openReferenceGraphOnModel(data: ReferenceEffectsData, targetIndex: number, graph: EffectGraph,
-    node: EffectNode | undefined = graph.nodes[0], callerIndex: number | null = null): void {
+  function openReferenceGraphOnModel(
+    data: ReferenceEffectsData,
+    targetIndex: number,
+    graph: EffectGraph,
+    node: EffectNode | undefined = graph.nodes[0],
+    callerIndex: number | null = null,
+  ): void {
     if (!viewport.isReferenceEffectPreviewing(targetIndex, graph.id)) viewport.stopReferenceEffectPreview();
     const nextSelection: EffectSelection = {
-      ownerKind: 'graph', ownerId: graph.id,
+      ownerKind: 'graph',
+      ownerId: graph.id,
       ...(node?.id ? { nodeId: node.id } : {}),
     };
-    const markerIndex = node ? referenceInstanceEffectCall(data, node)?.target?.index ?? targetIndex : targetIndex;
+    const markerIndex = node ? (referenceInstanceEffectCall(data, node)?.target?.index ?? targetIndex) : targetIndex;
     applyReferenceFocus(data, [targetIndex], targetIndex, nextSelection, markerIndex, callerIndex);
   }
 
-  function toggleReferenceFocus(data: ReferenceEffectsData, candidates: readonly number[], additive: boolean,
-    clickedTargetIndex: number | null): void {
+  function toggleReferenceFocus(
+    data: ReferenceEffectsData,
+    candidates: readonly number[],
+    additive: boolean,
+    clickedTargetIndex: number | null,
+  ): void {
     const current = source === 'reference' ? referenceFocus.instanceIndices : [];
     const selected = new Set(current);
     const allSelected = candidates.length > 0 && candidates.every(index => selected.has(index));
@@ -2436,15 +3509,24 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       for (const index of candidates) selected.add(index);
     }
     const next = [...selected];
-    if (!next.length) { clearSelection(); return; }
+    if (!next.length) {
+      clearSelection();
+      return;
+    }
     const activeIndex = next.length === 1 ? next[0] : null;
-    const activeInstance = activeIndex === null ? null : data.instances.find(instance => instance.index === activeIndex) ?? null;
-    const relationSelection = activeIndex !== null && clickedTargetIndex !== null
-      ? referenceTargetSelection(data, clickedTargetIndex, activeIndex) : null;
+    const activeInstance =
+      activeIndex === null ? null : (data.instances.find(instance => instance.index === activeIndex) ?? null);
+    const relationSelection =
+      activeIndex !== null && clickedTargetIndex !== null
+        ? referenceTargetSelection(data, clickedTargetIndex, activeIndex)
+        : null;
     const nextSelection = relationSelection ?? (activeInstance ? referenceHostSelection(data, activeInstance) : null);
-    const markerIndex = activeIndex !== null
-      ? clickedTargetIndex ?? referenceSelectionTargetIndex(data, nextSelection) ?? activeIndex
-      : additive && allSelected ? null : clickedTargetIndex;
+    const markerIndex =
+      activeIndex !== null
+        ? (clickedTargetIndex ?? referenceSelectionTargetIndex(data, nextSelection) ?? activeIndex)
+        : additive && allSelected
+          ? null
+          : clickedTargetIndex;
     applyReferenceFocus(data, next, activeIndex, nextSelection, markerIndex);
   }
 
@@ -2453,7 +3535,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const data = referenceState.data;
     const instance = data.instances.find(item => item.index === sourceIndex);
     if (!instance) return false;
-    if (!referenceHostSelection(data, instance) && !referenceIncomingEffectCalls(data, instance.index).length) return false;
+    if (!referenceHostSelection(data, instance) && !referenceIncomingEffectCalls(data, instance.index).length)
+      return false;
     toggleReferenceFocus(data, [instance.index], additive, null);
     return true;
   }
@@ -2463,8 +3546,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function selectReferenceCalledEffect(sourceIndex: number): boolean {
     if (!active || store.currentMode !== 'effects' || referenceState.status !== 'ready') return false;
     const data = referenceState.data;
-    const entry = referenceOutgoingEffectCalls(data, sourceIndex)
-      .find(candidate => !!candidate.call.target && !!candidate.call.graph);
+    const entry = referenceOutgoingEffectCalls(data, sourceIndex).find(
+      candidate => !!candidate.call.target && !!candidate.call.graph,
+    );
     if (!entry?.call.target || !entry.call.graph) return false;
     openReferenceGraphOnModel(data, entry.call.target.index, entry.call.graph, entry.call.graph.nodes[0], sourceIndex);
     return true;
@@ -2481,18 +3565,22 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const clip = effect ? viewport.referenceAnimObjectClip(sourceIndex) : null;
     return effect && clip
       ? {
-        key: ['reference', data.level, sourceIndex, current.ownerId, current.nodeId].join(':'),
-        clip,
-        effect,
-        target: {
-          kind: 'reference',
-          title: 'Model animation · read only',
-          seed: sourceIndex + 1,
-          scrub: frame => { viewport.setReferenceAnimObjectScrubFrame(sourceIndex, frame); },
-          showPath: on => { viewport.showReferenceAnimObjectPath(on ? sourceIndex : null); },
-          stopPreview: () => viewport.stopReferenceEffectPreview(),
-        },
-      }
+          key: ['reference', data.level, sourceIndex, current.ownerId, current.nodeId].join(':'),
+          clip,
+          effect,
+          target: {
+            kind: 'reference',
+            title: 'Model animation · read only',
+            seed: sourceIndex + 1,
+            scrub: frame => {
+              viewport.setReferenceAnimObjectScrubFrame(sourceIndex, frame);
+            },
+            showPath: on => {
+              viewport.showReferenceAnimObjectPath(on ? sourceIndex : null);
+            },
+            stopPreview: () => viewport.stopReferenceEffectPreview(),
+          },
+        }
       : null;
   }
 
@@ -2522,7 +3610,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         kind: 'authored',
         title: 'Model animation',
         seed: seed >>> 0,
-        scrub: frame => { viewport.setAuthoredAnimObjectScrubFrame(propId, frame); },
+        scrub: frame => {
+          viewport.setAuthoredAnimObjectScrubFrame(propId, frame);
+        },
         showPath: () => {},
         stopPreview: () => {},
       },
@@ -2563,9 +3653,11 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       : { ...viewer.effect, loopMode: 0 };
     stepAnimObjectPlayback(viewer.playback, playbackEffect, dt);
     applyClipFrame(viewer);
-    const finished = !viewer.loopPreview && (viewer.playback.direction > 0
-      ? viewer.playback.frame >= viewer.playback.endFrame - 1e-6
-      : viewer.playback.frame <= viewer.playback.startFrame + 1e-6);
+    const finished =
+      !viewer.loopPreview &&
+      (viewer.playback.direction > 0
+        ? viewer.playback.frame >= viewer.playback.endFrame - 1e-6
+        : viewer.playback.frame <= viewer.playback.startFrame + 1e-6);
     if (finished) {
       viewer.playing = false;
       viewer.raf = null;
@@ -2580,9 +3672,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       stopClipViewer(false);
       return;
     }
-    const atEnd = viewer.playback.direction > 0
-      ? viewer.playback.frame >= viewer.playback.endFrame - 1e-6
-      : viewer.playback.frame <= viewer.playback.startFrame + 1e-6;
+    const atEnd =
+      viewer.playback.direction > 0
+        ? viewer.playback.frame >= viewer.playback.endFrame - 1e-6
+        : viewer.playback.frame <= viewer.playback.startFrame + 1e-6;
     if (!viewer.loopPreview && atEnd)
       viewer.playback = createAnimObjectPlayback(viewer.effect, viewer.clip.clipFrames, viewer.target.seed);
     viewer.target.stopPreview();
@@ -2605,7 +3698,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function referenceAnimationPanel(data: ReferenceEffectsData): HTMLElement | null {
     const context = referenceClipContext(data);
-    if (!context) { disposeClipViewer(); return null; }
+    if (!context) {
+      disposeClipViewer();
+      return null;
+    }
     return clipTimelinePanel(ensureClipViewer(context));
   }
 
@@ -2618,12 +3714,22 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const cycleFrames = windowFrames * (viewer.effect.loopMode === 2 ? 2 : 1);
     const playbackSeconds = viewer.playback.framesPerSecond > 0 ? cycleFrames / viewer.playback.framesPerSecond : 0;
     s.body.append(
-      el('div', 'sp-fx-summary', `${viewer.clip.clipFrames.toFixed(0)} frames · ${clipSeconds.toFixed(2)} s clip · ${playbackSeconds.toFixed(2)} s at ${viewer.playback.framesPerSecond.toFixed(1)} fps`),
-      el('div', 'sp-fx-note', 'Markers show where the curve changes direction, which is not always where the animator put a keyframe.'),
+      el(
+        'div',
+        'sp-fx-summary',
+        `${viewer.clip.clipFrames.toFixed(0)} frames · ${clipSeconds.toFixed(2)} s clip · ${playbackSeconds.toFixed(2)} s at ${viewer.playback.framesPerSecond.toFixed(1)} fps`,
+      ),
+      el(
+        'div',
+        'sp-fx-note',
+        'Markers show where the curve changes direction, which is not always where the animator put a keyframe.',
+      ),
     );
 
     const actions = el('div', 'sp-fx-actions sp-fx-clip-actions');
-    const play = button('', 'Play or pause this model clip while holding its pose in the viewport.', () => playClip(viewer));
+    const play = button('', 'Play or pause this model clip while holding its pose in the viewport.', () =>
+      playClip(viewer),
+    );
     const restart = button('↺ Restart', 'Return to this prop’s starting frame.', () => restartClip(viewer));
     const loop = button('Loop', 'Keep repeating the clip while previewing.', () => {
       viewer.loopPreview = !viewer.loopPreview;
@@ -2636,7 +3742,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const frameReadout = el('output', 'sp-fx-clip-readout');
     frameReadout.setAttribute('aria-live', 'polite');
     const range = el('input', 'sp-fx-clip-range');
-    range.type = 'range'; range.min = '0'; range.max = String(viewer.clip.clipFrames); range.step = '0.1';
+    range.type = 'range';
+    range.min = '0';
+    range.max = String(viewer.clip.clipFrames);
+    range.step = '0.1';
     range.setAttribute('aria-label', 'Model animation frame');
     range.oninput = () => {
       stopClipViewer(false);
@@ -2645,27 +3754,39 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       applyClipFrame(viewer, true);
     };
     const ruler = el('div', 'sp-fx-clip-ruler');
-    ruler.append(el('span', '', '0'), el('span', '', `${(viewer.clip.clipFrames / 2).toFixed(0)}`),
-      el('span', '', `${viewer.clip.clipFrames.toFixed(0)} frames`));
+    ruler.append(
+      el('span', '', '0'),
+      el('span', '', `${(viewer.clip.clipFrames / 2).toFixed(0)}`),
+      el('span', '', `${viewer.clip.clipFrames.toFixed(0)} frames`),
+    );
     timeline.append(frameReadout, range, ruler);
 
-    const channelViews: { channel: PropModelAnimationChannel; playhead: HTMLElement; fill: HTMLElement; value: HTMLElement }[] = [];
-    const playWindowStartPct = 100 * viewer.playback.startFrame / Math.max(1, viewer.clip.clipFrames);
+    const channelViews: {
+      channel: PropModelAnimationChannel;
+      playhead: HTMLElement;
+      fill: HTMLElement;
+      value: HTMLElement;
+    }[] = [];
+    const playWindowStartPct = (100 * viewer.playback.startFrame) / Math.max(1, viewer.clip.clipFrames);
     for (const channel of channels) {
       const channelRow = el('div', 'sp-fx-clip-channel');
       const label = el('div', 'sp-fx-clip-channel-label');
-      label.append(el('span', '', channel.label), el('small', '', `${channel.segments} cubic${channel.segments === 1 ? '' : 's'}`));
+      label.append(
+        el('span', '', channel.label),
+        el('small', '', `${channel.segments} cubic${channel.segments === 1 ? '' : 's'}`),
+      );
       const track = el('div', 'sp-fx-clip-track');
-      const windowWidth = 100 * windowFrames / Math.max(1, viewer.clip.clipFrames);
+      const windowWidth = (100 * windowFrames) / Math.max(1, viewer.clip.clipFrames);
       const window = el('span', 'sp-fx-clip-window');
-      window.style.left = `${playWindowStartPct}%`; window.style.width = `${windowWidth}%`;
+      window.style.left = `${playWindowStartPct}%`;
+      window.style.width = `${windowWidth}%`;
       const fill = el('span', 'sp-fx-clip-fill');
       fill.style.left = `${playWindowStartPct}%`;
       const playhead = el('span', 'sp-fx-clip-playhead');
       track.append(window, fill);
       for (const frame of channel.boundaryFrames) {
         const marker = el('span', 'sp-fx-clip-key');
-        marker.style.left = `${100 * frame / Math.max(1, viewer.clip.clipFrames)}%`;
+        marker.style.left = `${(100 * frame) / Math.max(1, viewer.clip.clipFrames)}%`;
         marker.title = `Curve boundary · frame ${frame.toFixed(1)}`;
         track.appendChild(marker);
       }
@@ -2677,13 +3798,19 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     }
     // The cyan trajectory is drawn by the reference decor layer, so only that side gets its legend.
     if (viewer.target.kind === 'reference' && channels.some(channel => channel.kind === 'translate'))
-      timeline.appendChild(el('div', 'sp-fx-clip-path-note', 'Cyan: the path it travels · pale dots: curve boundaries · amber: where it is now'));
+      timeline.appendChild(
+        el(
+          'div',
+          'sp-fx-clip-path-note',
+          'Cyan: the path it travels · pale dots: curve boundaries · amber: where it is now',
+        ),
+      );
     s.body.appendChild(timeline);
 
     updateClipViewerDom = () => {
       if (clipViewer !== viewer) return;
       const frame = viewer.playback.frame;
-      const pct = 100 * frame / Math.max(1, viewer.clip.clipFrames);
+      const pct = (100 * frame) / Math.max(1, viewer.clip.clipFrames);
       range.value = String(frame);
       frameReadout.textContent = `Frame ${frame.toFixed(1)} / ${viewer.clip.clipFrames.toFixed(0)} · ${(frame / 30).toFixed(2)} s`;
       play.textContent = viewer.playing ? '⏸ Pause' : '▶ Play';
@@ -2693,7 +3820,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         view.playhead.style.left = `${pct}%`;
         view.fill.style.width = `${Math.max(0, pct - playWindowStartPct)}%`;
         view.value.textContent = formatClipValue(
-          samplePropModelAnimationChannel(viewer.clip, view.channel.id, frame), view.channel);
+          samplePropModelAnimationChannel(viewer.clip, view.channel.id, frame),
+          view.channel,
+        );
       }
     };
     updateClipViewerDom();
@@ -2701,7 +3830,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   function referenceSplineContext(data: ReferenceEffectsData): {
-    key: string; sourceIndex: number; command: ReferenceSplineCommand;
+    key: string;
+    sourceIndex: number;
+    command: ReferenceSplineCommand;
   } | null {
     const sourceIndex = referenceFocus.activeInstanceIndex;
     const current = referenceFocus.selection;
@@ -2715,20 +3846,21 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function applyReferenceSplineDistance(viewer: ReferenceSplineViewerState, stopGraphPreview = false): void {
     if (stopGraphPreview) viewport.stopReferenceEffectPreview();
-    viewer.engaged = viewport.setReferenceSplineMotionDistance(
-      viewer.sourceIndex, viewer.command, viewer.distance);
+    viewer.engaged = viewport.setReferenceSplineMotionDistance(viewer.sourceIndex, viewer.command, viewer.distance);
     updateReferenceSplineViewerDom?.();
   }
 
-  function ensureReferenceSplineViewer(context: NonNullable<ReturnType<typeof referenceSplineContext>>):
-    ReferenceSplineViewerState | null {
+  function ensureReferenceSplineViewer(
+    context: NonNullable<ReturnType<typeof referenceSplineContext>>,
+  ): ReferenceSplineViewerState | null {
     if (referenceSplineViewer?.key === context.key) return referenceSplineViewer;
     disposeReferenceSplineViewer();
     const info = viewport.referenceSplineMotionInfo(context.sourceIndex, context.command);
     if (!info) return null;
     const direction = context.command.speed < 0 ? -1 : 1;
     referenceSplineViewer = {
-      ...context, info,
+      ...context,
+      info,
       distance: 0,
       direction,
       playing: false,
@@ -2746,11 +3878,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (!viewer?.playing) return;
     const dt = Math.min(0.1, Math.max(0, (now - viewer.lastTime) / 1000));
     viewer.lastTime = now;
-    const endMode = viewer.loopPreview
-      ? (viewer.command.endMode === 2 ? 2 : 1)
-      : (viewer.command.endMode === 3 ? 3 : 0);
-    const next = stepSplineMotionDistance(viewer.distance, viewer.direction,
-      viewer.command.speed, dt, viewer.info.length, endMode);
+    const endMode = viewer.loopPreview ? (viewer.command.endMode === 2 ? 2 : 1) : viewer.command.endMode === 3 ? 3 : 0;
+    const next = stepSplineMotionDistance(
+      viewer.distance,
+      viewer.direction,
+      viewer.command.speed,
+      dt,
+      viewer.info.length,
+      endMode,
+    );
     viewer.distance = next.distance;
     viewer.direction = next.direction;
     applyReferenceSplineDistance(viewer);
@@ -2768,9 +3904,7 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       stopReferenceSplineViewer(false);
       return;
     }
-    const atEnd = viewer.direction > 0
-      ? viewer.distance >= viewer.info.length - 1e-6
-      : viewer.distance <= 1e-6;
+    const atEnd = viewer.direction > 0 ? viewer.distance >= viewer.info.length - 1e-6 : viewer.distance <= 1e-6;
     if (!viewer.loopPreview && atEnd) {
       viewer.direction = viewer.command.speed < 0 ? -1 : 1;
       viewer.distance = 0;
@@ -2792,7 +3926,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function referenceSplineAnimationPanel(data: ReferenceEffectsData): HTMLElement | null {
     const context = referenceSplineContext(data);
-    if (!context) { disposeReferenceSplineViewer(); return null; }
+    if (!context) {
+      disposeReferenceSplineViewer();
+      return null;
+    }
     const viewer = ensureReferenceSplineViewer(context);
     if (!viewer) return null;
     const s = section('Spline motion · read only');
@@ -2800,9 +3937,21 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const speed = Math.abs(viewer.command.speed);
     const lapSeconds = speed > 1e-8 ? viewer.info.length / speed : 0;
     s.body.append(
-      el('div', 'sp-fx-summary', `Spline #${String(viewer.info.originalIndex).padStart(4, '0')} · ${viewer.info.segments} cubic${viewer.info.segments === 1 ? '' : 's'} · ${viewer.info.length.toFixed(1)} m${speed > 1e-8 ? ` · ${lapSeconds.toFixed(2)} s one way at ${mphText(speed, 1)}` : ' · stationary'}`),
-      el('div', 'sp-fx-note', 'This is an external world-space route. It moves the complete prop; it is separate from animation stored inside the model.'),
-      el('div', 'sp-fx-spline-meta', `${splineEndModeLabel(viewer.command.endMode)} · ${splineOrientationModeLabel(viewer.command.orientationMode)} · yaw offset ${(viewer.command.yawOffset * 180 / Math.PI).toFixed(1)}° · ${viewer.command.instanceCount} instance${viewer.command.instanceCount === 1 ? '' : 's'}`),
+      el(
+        'div',
+        'sp-fx-summary',
+        `Spline #${String(viewer.info.originalIndex).padStart(4, '0')} · ${viewer.info.segments} cubic${viewer.info.segments === 1 ? '' : 's'} · ${viewer.info.length.toFixed(1)} m${speed > 1e-8 ? ` · ${lapSeconds.toFixed(2)} s one way at ${mphText(speed, 1)}` : ' · stationary'}`,
+      ),
+      el(
+        'div',
+        'sp-fx-note',
+        'This is an external world-space route. It moves the complete prop; it is separate from animation stored inside the model.',
+      ),
+      el(
+        'div',
+        'sp-fx-spline-meta',
+        `${splineEndModeLabel(viewer.command.endMode)} · ${splineOrientationModeLabel(viewer.command.orientationMode)} · yaw offset ${((viewer.command.yawOffset * 180) / Math.PI).toFixed(1)}° · ${viewer.command.instanceCount} instance${viewer.command.instanceCount === 1 ? '' : 's'}`,
+      ),
     );
 
     const actions = el('div', 'sp-fx-actions sp-fx-clip-actions');
@@ -2820,7 +3969,10 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const readout = el('output', 'sp-fx-clip-readout');
     readout.setAttribute('aria-live', 'polite');
     const range = el('input', 'sp-fx-clip-range');
-    range.type = 'range'; range.min = '0'; range.max = String(viewer.info.length); range.step = '0.1';
+    range.type = 'range';
+    range.min = '0';
+    range.max = String(viewer.info.length);
+    range.step = '0.1';
     range.setAttribute('aria-label', 'Spline distance');
     range.oninput = () => {
       stopReferenceSplineViewer(false);
@@ -2829,34 +3981,48 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       applyReferenceSplineDistance(viewer, true);
     };
     const ruler = el('div', 'sp-fx-clip-ruler');
-    ruler.append(el('span', '', '0'), el('span', '', `${(viewer.info.length / 2).toFixed(0)}`),
-      el('span', '', `${viewer.info.length.toFixed(0)} m`));
+    ruler.append(
+      el('span', '', '0'),
+      el('span', '', `${(viewer.info.length / 2).toFixed(0)}`),
+      el('span', '', `${viewer.info.length.toFixed(0)} m`),
+    );
     timeline.append(readout, range, ruler);
 
     const channelRow = el('div', 'sp-fx-clip-channel');
     const label = el('div', 'sp-fx-clip-channel-label');
-    label.append(el('span', '', 'Route'), el('small', '', `${viewer.info.segments} cubic${viewer.info.segments === 1 ? '' : 's'}`));
+    label.append(
+      el('span', '', 'Route'),
+      el('small', '', `${viewer.info.segments} cubic${viewer.info.segments === 1 ? '' : 's'}`),
+    );
     const track = el('div', 'sp-fx-clip-track');
-    const window = el('span', 'sp-fx-clip-window'); window.style.left = '0'; window.style.width = '100%';
+    const window = el('span', 'sp-fx-clip-window');
+    window.style.left = '0';
+    window.style.width = '100%';
     const fill = el('span', 'sp-fx-clip-fill');
     const playhead = el('span', 'sp-fx-clip-playhead');
     track.append(window, fill);
     for (const distance of viewer.info.segmentDistances) {
       const marker = el('span', 'sp-fx-clip-key');
-      marker.style.left = `${100 * distance / Math.max(1e-8, viewer.info.length)}%`;
+      marker.style.left = `${(100 * distance) / Math.max(1e-8, viewer.info.length)}%`;
       marker.title = `Cubic boundary · ${distance.toFixed(1)} m`;
       track.appendChild(marker);
     }
     track.appendChild(playhead);
     const value = el('span', 'sp-fx-clip-value');
     channelRow.append(label, track, value);
-    timeline.append(channelRow,
-      el('div', 'sp-fx-clip-path-note', 'Purple: the route · dark lines: control handles · pale dots: curve boundaries · amber: where it is now'));
+    timeline.append(
+      channelRow,
+      el(
+        'div',
+        'sp-fx-clip-path-note',
+        'Purple: the route · dark lines: control handles · pale dots: curve boundaries · amber: where it is now',
+      ),
+    );
     s.body.appendChild(timeline);
 
     updateReferenceSplineViewerDom = () => {
       if (referenceSplineViewer !== viewer) return;
-      const pct = 100 * viewer.distance / Math.max(1e-8, viewer.info.length);
+      const pct = (100 * viewer.distance) / Math.max(1e-8, viewer.info.length);
       range.value = String(viewer.distance);
       readout.textContent = `Distance ${viewer.distance.toFixed(1)} / ${viewer.info.length.toFixed(1)} m${speed > 1e-8 ? ` · ${(viewer.distance / speed).toFixed(2)} s` : ''}`;
       play.textContent = viewer.playing ? '⏸ Pause' : '▶ Play';
@@ -2889,8 +4055,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const law = timerEmitterPreviewLaw(node);
     if (!law) return false;
     const current = referenceFocus.selection;
-    const graph = current?.ownerKind === 'graph'
-      ? data.document.graphs.find(candidate => candidate.id === current.ownerId) : null;
+    const graph =
+      current?.ownerKind === 'graph' ? data.document.graphs.find(candidate => candidate.id === current.ownerId) : null;
     const firework = graph ? referenceFireworkEffect(graph) : null;
     const layerIndex = firework ? firework.layers.findIndex(layer => layer.node.id === node.id) : -1;
     const fields = particleEmitterFields(node);
@@ -2899,16 +4065,28 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const blend = emitterBlendLabel(law.blendSelector);
     const card = el('div', 'sp-fx-emitter-card');
     const heading = el('div', 'sp-fx-emitter-head');
-    heading.append(el('strong', '', firework && layerIndex >= 0
-      ? `Firework particle layer ${layerIndex + 1} of ${firework.layers.length}`
-      : node.semanticType === 'particle.collision' ? 'Snow collision burst' : 'Particle overview'),
-      el('span', '', `${sprite} · ${blend}`));
+    heading.append(
+      el(
+        'strong',
+        '',
+        firework && layerIndex >= 0
+          ? `Firework particle layer ${layerIndex + 1} of ${firework.layers.length}`
+          : node.semanticType === 'particle.collision'
+            ? 'Snow collision burst'
+            : 'Particle overview',
+      ),
+      el('span', '', `${sprite} · ${blend}`),
+    );
     card.appendChild(heading);
     if (firework) {
       const summary = el('div', 'sp-fx-summary sp-fx-summary-help');
-      summary.append(el('span', '', `${law.count} logical particles · ${shortNumber(law.emissionDuration)} s emission`),
-        helpIcon(`This effect has ${firework.layers.length} particle layer${firework.layers.length === 1 ? '' : 's'} and ${firework.sounds.length} firing sound${firework.sounds.length === 1 ? '' : 's'}. Preview effect on the model runs the complete graph together; this node remains an individually inspectable layer.`,
-          'Firework layer behavior'));
+      summary.append(
+        el('span', '', `${law.count} logical particles · ${shortNumber(law.emissionDuration)} s emission`),
+        helpIcon(
+          `This effect has ${firework.layers.length} particle layer${firework.layers.length === 1 ? '' : 's'} and ${firework.sounds.length} firing sound${firework.sounds.length === 1 ? '' : 's'}. Preview effect on the model runs the complete graph together; this node remains an individually inspectable layer.`,
+          'Firework layer behavior',
+        ),
+      );
       card.appendChild(summary);
     }
     const metrics = el('div', 'sp-fx-emitter-metrics');
@@ -2923,13 +4101,22 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     metric('Particle life', emitterRangeLabel(law.particleLifeCenter, law.particleLifeSpan, 's'));
     metric('Sprite size', emitterRangeLabel(law.sizeCenter, law.sizeSpan, 'cm'));
     metric('Time scale', shortNumber(law.timeScale));
-    metric(node.semanticType === 'particle.collision' ? 'Normal speed' : 'Base velocity',
+    metric(
+      node.semanticType === 'particle.collision' ? 'Normal speed' : 'Base velocity',
       node.semanticType === 'particle.collision'
-        ? `${shortNumber(Math.hypot(...law.velocityBase))} cm/s` : vectorLabel(law.velocityBase));
+        ? `${shortNumber(Math.hypot(...law.velocityBase))} cm/s`
+        : vectorLabel(law.velocityBase),
+    );
     metric('Gravity', vectorLabel(law.gravity));
     card.appendChild(metrics);
-    if (node.semanticType === 'particle.collision') card.appendChild(el('div', 'sp-fx-note',
-      'At runtime the exact hit point replaces the stored origin, and the outward hit normal replaces the base-velocity direction. The authored vector contributes only its length; velocity variation remains authored.'));
+    if (node.semanticType === 'particle.collision')
+      card.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          'At runtime the exact hit point replaces the stored origin, and the outward hit normal replaces the base-velocity direction. The authored vector contributes only its length; velocity variation remains authored.',
+        ),
+      );
 
     const ramp = el('div', 'sp-fx-emitter-ramp');
     ramp.appendChild(el('small', 'sp-fx-emitter-ramp-label', 'RGBA over particle life'));
@@ -2938,8 +4125,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const swatch = el('span', 'sp-fx-emitter-swatch');
       const rgb = stop.slice(0, 3).map(component => Math.round(255 * Math.max(0, Math.min(1, component))));
       swatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-      entry.append(swatch, el('span', '', `${stopIndex + 1}`),
-        el('code', '', `${stop.slice(0, 3).map(component => shortNumber(component)).join(', ')} · α ${shortNumber(stop[3])}`));
+      entry.append(
+        swatch,
+        el('span', '', `${stopIndex + 1}`),
+        el(
+          'code',
+          '',
+          `${stop
+            .slice(0, 3)
+            .map(component => shortNumber(component))
+            .join(', ')} · α ${shortNumber(stop[3])}`,
+        ),
+      );
       ramp.appendChild(entry);
     }
     card.appendChild(ramp);
@@ -2953,12 +4150,19 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const sourceIndex = referenceFocus.activeInstanceIndex;
       const collisionEmitter = node.semanticType === 'particle.collision';
       const preview = el('div', 'sp-fx-emitter-preview-actions');
-      preview.append(button(collisionEmitter ? '▶ Preview burst' : '▶ Preview timer', collisionEmitter
-        ? 'Preview only this snow collision burst on the selected model.'
-        : 'Preview only this particle timer on the selected model.', () => {
-        if (!viewport.previewReferenceTimerNode(sourceIndex, node, !collisionEmitter && law.emissionDuration < 0))
-          toast(`This particle ${collisionEmitter ? 'burst' : 'timer'} could not be previewed.`, 'err');
-      }), button('■ Stop', 'Stop the current particle preview.', () => viewport.stopReferenceEffectPreview()));
+      preview.append(
+        button(
+          collisionEmitter ? '▶ Preview burst' : '▶ Preview timer',
+          collisionEmitter
+            ? 'Preview only this snow collision burst on the selected model.'
+            : 'Preview only this particle timer on the selected model.',
+          () => {
+            if (!viewport.previewReferenceTimerNode(sourceIndex, node, !collisionEmitter && law.emissionDuration < 0))
+              toast(`This particle ${collisionEmitter ? 'burst' : 'timer'} could not be previewed.`, 'err');
+          },
+        ),
+        button('■ Stop', 'Stop the current particle preview.', () => viewport.stopReferenceEffectPreview()),
+      );
       card.appendChild(preview);
     }
     body.appendChild(card);
@@ -2966,31 +4170,46 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   function addReferenceSemanticFields(body: HTMLElement, data: ReferenceEffectsData, node: EffectNode): void {
-    body.append(row('Stable ID', input(node.id, () => {}, { readonly: true })),
-      row('Semantic type', input(node.semanticType ?? '', () => {}, { readonly: true })));
+    body.append(
+      row(
+        'Stable ID',
+        input(node.id, () => {}, { readonly: true }),
+      ),
+      row(
+        'Semantic type',
+        input(node.semanticType ?? '', () => {}, { readonly: true }),
+      ),
+    );
     const call = referenceInstanceEffectCall(data, node);
     if (call) {
-      if (!call.target || !call.graph) body.appendChild(el('div', 'sp-fx-note warn',
-        'This call does not say which prop or which effect it means.'));
+      if (!call.target || !call.graph)
+        body.appendChild(el('div', 'sp-fx-note warn', 'This call does not say which prop or which effect it means.'));
       const effectControl = el('div', 'sp-fx-input-help');
-      effectControl.append(input(call.graphLabel, () => {}, { readonly: true }),
-        helpIcon('A Run node runs this effect on the target prop. The target is what decides where in the world it happens.',
-          'Run node behavior'));
+      effectControl.append(
+        input(call.graphLabel, () => {}, { readonly: true }),
+        helpIcon(
+          'A Run node runs this effect on the target prop. The target is what decides where in the world it happens.',
+          'Run node behavior',
+        ),
+      );
       body.append(
-        row('Target prop', input(call.targetLabel, () => {}, { readonly: true }),
-          'The prop that receives the call, and whose position the effect runs at.'),
-        row('Runs effect', effectControl,
-          'The effect that runs on the target prop.'),
+        row(
+          'Target prop',
+          input(call.targetLabel, () => {}, { readonly: true }),
+          'The prop that receives the call, and whose position the effect runs at.',
+        ),
+        row('Runs effect', effectControl, 'The effect that runs on the target prop.'),
       );
       if (call.target && call.graph) {
         const target = call.target;
         const graph = call.graph;
         body.appendChild(calledModelPreview.showModel(data.level, target.model));
         const actions = el('div', 'sp-fx-actions');
-        actions.appendChild(navigationButton('Go to effect', MODE_ICON.effects,
-          'Open the called effect on its target model.',
-          () => openReferenceGraphOnModel(data, target.index, graph, graph.nodes[0],
-            referenceFocus.activeInstanceIndex)));
+        actions.appendChild(
+          navigationButton('Go to effect', MODE_ICON.effects, 'Open the called effect on its target model.', () =>
+            openReferenceGraphOnModel(data, target.index, graph, graph.nodes[0], referenceFocus.activeInstanceIndex),
+          ),
+        );
         body.appendChild(actions);
       }
     } else if (!addReferenceParticleOverview(body, data, node)) addKnownSemanticFields(body, node, true);
@@ -2998,7 +4217,12 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (node.references && Object.keys(node.references).length) {
       for (const [key, value] of Object.entries(node.references)) {
         if (call && (key === 'instance' || key === 'effectGraph')) continue;
-        body.append(row(`${key} ref`, input(value ?? '(none)', () => {}, { readonly: true })));
+        body.append(
+          row(
+            `${key} ref`,
+            input(value ?? '(none)', () => {}, { readonly: true }),
+          ),
+        );
       }
     }
   }
@@ -3009,23 +4233,32 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       .map(index => data.instances.find(candidate => candidate.index === index))
       .filter((instance): instance is ReferenceEffectInstance => !!instance)
       .sort((a, b) => a.name.localeCompare(b.name));
-    return effectHostListPanel(instances.map(instance => ({
-      label: instance.name,
-      meta: `#${instance.index} · model #${instance.model}`,
-      active: referenceFocus.activeInstanceIndex === instance.index,
-      title: 'Inspect this selected effect host without dropping the multi-selection.',
-      select: () => {
-        const relationSelection = referenceFocus.markerIndex === null ? null
-          : referenceTargetSelection(data, referenceFocus.markerIndex, instance.index);
-        const nextSelection = relationSelection ?? referenceHostSelection(data, instance);
-        referenceFocus = { ...referenceFocus, activeInstanceIndex: instance.index, selection: nextSelection,
-          callerIndex: null,
-          markerIndex: referenceFocus.markerIndex
-            ?? referenceSelectionTargetIndex(data, nextSelection) ?? instance.index };
-        viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, referenceFocus.markerIndex);
-        render();
-      },
-    })), 'Several props are selected. Click one below to inspect its effects; Ctrl/Cmd-click in the viewport to add or remove props.');
+    return effectHostListPanel(
+      instances.map(instance => ({
+        label: instance.name,
+        meta: `#${instance.index} · model #${instance.model}`,
+        active: referenceFocus.activeInstanceIndex === instance.index,
+        title: 'Inspect this selected effect host without dropping the multi-selection.',
+        select: () => {
+          const relationSelection =
+            referenceFocus.markerIndex === null
+              ? null
+              : referenceTargetSelection(data, referenceFocus.markerIndex, instance.index);
+          const nextSelection = relationSelection ?? referenceHostSelection(data, instance);
+          referenceFocus = {
+            ...referenceFocus,
+            activeInstanceIndex: instance.index,
+            selection: nextSelection,
+            callerIndex: null,
+            markerIndex:
+              referenceFocus.markerIndex ?? referenceSelectionTargetIndex(data, nextSelection) ?? instance.index,
+          };
+          viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, referenceFocus.markerIndex);
+          render();
+        },
+      })),
+      'Several props are selected. Click one below to inspect its effects; Ctrl/Cmd-click in the viewport to add or remove props.',
+    );
   }
 
   /**
@@ -3037,45 +4270,56 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
    * `FreerideMode` and `RaceMode` call at mode select. Showing the owning function directly is the honest
    * answer to "why is this highlighted" — and it is the same pairing the rail-spline panel offers in reverse.
    */
-  function appendReferenceUnhostedCalls(tree: HTMLElement, data: ReferenceEffectsData,
-    targetIndex: number): void {
+  function appendReferenceUnhostedCalls(tree: HTMLElement, data: ReferenceEffectsData, targetIndex: number): void {
     const entries = referenceUnhostedIncomingEffectCalls(data, targetIndex);
     if (!entries.length) return;
     const group = el('div', 'sp-fx-tree-group sp-fx-tree-caller-group');
     group.appendChild(el('div', 'sp-fx-tree-caption', 'Acted on by'));
     for (const entry of entries) {
-      const active = referenceFocus.selection?.ownerId === entry.owner.id
-        && referenceFocus.selection?.nodeId === entry.node.id;
+      const active =
+        referenceFocus.selection?.ownerId === entry.owner.id && referenceFocus.selection?.nodeId === entry.node.id;
       const item = el('button', `sp-fx-attachment sp-fx-tree-actor${active ? ' on' : ''}`);
       item.type = 'button';
-      item.title = `Inspect ${entry.owner.name ?? entry.owner.id} · ${referenceNodeDisplayName(data, entry.node)}`
-        + '. Nothing with an effect slot calls it — the engine runs it (mode select, level start), so it has '
-        + 'no caller prop to hang it under.';
+      item.title =
+        `Inspect ${entry.owner.name ?? entry.owner.id} · ${referenceNodeDisplayName(data, entry.node)}` +
+        '. Nothing with an effect slot calls it — the engine runs it (mode select, level start), so it has ' +
+        'no caller prop to hang it under.';
       item.onclick = () => {
         viewport.stopReferenceEffectPreview();
         referenceUnassignedOpen = false;
-        referenceFocus = { ...referenceFocus, callerIndex: null, markerIndex: targetIndex,
-          selection: { ownerKind: entry.ownerKind, ownerId: entry.owner.id, nodeId: entry.node.id } };
+        referenceFocus = {
+          ...referenceFocus,
+          callerIndex: null,
+          markerIndex: targetIndex,
+          selection: { ownerKind: entry.ownerKind, ownerId: entry.owner.id, nodeId: entry.node.id },
+        };
         viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, targetIndex);
         render();
       };
       // The owner's NAME is the answer to "what acts on this" (HideShowOff, HideStartGate, CountDownStart),
       // so it gets the flexible column. The node's own `Run <this prop> → …` label is redundant on the prop
       // it names, so the tag says which kind of effect it is and the full label rides the tooltip.
-      item.append(el('span', 'sp-fx-node-index', '⇢'),
+      item.append(
+        el('span', 'sp-fx-node-index', '⇢'),
         el('span', 'sp-fx-list-name', entry.owner.name ?? entry.owner.id),
-        el('span', 'sp-fx-kind', entry.ownerKind === 'function' ? 'shared' : 'effect'));
+        el('span', 'sp-fx-kind', entry.ownerKind === 'function' ? 'shared' : 'effect'),
+      );
       group.appendChild(item);
     }
-    group.appendChild(el('div', 'sp-fx-note', 'No prop calls these — the engine runs them (mode select, level '
-      + 'start). They are why this prop is highlighted even though it carries no effect of its own.'));
+    group.appendChild(
+      el(
+        'div',
+        'sp-fx-note',
+        'No prop calls these — the engine runs them (mode select, level ' +
+          'start). They are why this prop is highlighted even though it carries no effect of its own.',
+      ),
+    );
     tree.appendChild(group);
   }
 
   /** Append caller -> remote effect branches to the same tree used by direct slot effects. The selected
    * effect's nodes live in its action panel below, keeping this tree focused on relationships. */
-  function appendReferenceIncomingEffectTree(tree: HTMLElement, data: ReferenceEffectsData,
-    targetIndex: number): void {
+  function appendReferenceIncomingEffectTree(tree: HTMLElement, data: ReferenceEffectsData, targetIndex: number): void {
     appendReferenceUnhostedCalls(tree, data, targetIndex);
     for (const caller of referenceIncomingEffectTree(data, targetIndex)) {
       const callerGroup = el('div', 'sp-fx-tree-group sp-fx-tree-caller-group');
@@ -3099,41 +4343,69 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
           openReferenceGraphOnModel(data, targetIndex, firstGraph, firstGraph.nodes[0], caller.instance.index);
           return;
         }
-        applyReferenceFocus(data, [caller.instance.index], caller.instance.index, {
-          ownerKind: firstEntry.ownerKind, ownerId: firstEntry.owner.id, nodeId: firstEntry.node.id,
-        }, targetIndex);
+        applyReferenceFocus(
+          data,
+          [caller.instance.index],
+          caller.instance.index,
+          {
+            ownerKind: firstEntry.ownerKind,
+            ownerId: firstEntry.owner.id,
+            nodeId: firstEntry.node.id,
+          },
+          targetIndex,
+        );
       };
       const effectLabel = soleGraph
         ? `${countLabel(soleGraph.nodes.length, 'node')}${soleEffect!.entries.length > 1 ? ` · ${countLabel(soleEffect!.entries.length, 'call')}` : ''}`
         : countLabel(caller.effects.length, 'effect');
       // "Run by" names the relationship rather than the prop, so a caller row cannot be misread as one of
       // this prop's own effects in the same tree. It is the Run node's sentence from the receiving end.
-      callerRow.append(el('span', 'sp-fx-list-name', `Run by ${caller.instance.name}`),
+      callerRow.append(
+        el('span', 'sp-fx-list-name', `Run by ${caller.instance.name}`),
         el('span', 'sp-fx-node-index', '↗'),
-        el('span', 'sp-fx-kind', `#${caller.instance.index} · ${effectLabel}`));
+        el('span', 'sp-fx-kind', `#${caller.instance.index} · ${effectLabel}`),
+      );
       callerGroup.appendChild(callerRow);
       for (const effect of soleGraph ? [] : caller.effects) {
         const graph = effect.graph;
-        const graphActive = !!graph && referenceFocus.selection?.ownerKind === 'graph'
-          && referenceFocus.selection.ownerId === graph.id
-          && (referenceFocus.callerIndex === null || referenceFocus.callerIndex === caller.instance.index);
-        const effectRow = el('button', `sp-fx-attachment sp-fx-tree-effect sp-fx-tree-called-effect${graphActive ? ' on' : ''}`);
+        const graphActive =
+          !!graph &&
+          referenceFocus.selection?.ownerKind === 'graph' &&
+          referenceFocus.selection.ownerId === graph.id &&
+          (referenceFocus.callerIndex === null || referenceFocus.callerIndex === caller.instance.index);
+        const effectRow = el(
+          'button',
+          `sp-fx-attachment sp-fx-tree-effect sp-fx-tree-called-effect${graphActive ? ' on' : ''}`,
+        );
         effectRow.type = 'button';
         const calls = countLabel(effect.entries.length, 'call');
         if (graph) {
           effectRow.title = `Inspect the effect ${graph.name ?? graph.id} on ${data.instances.find(item => item.index === targetIndex)?.name ?? 'this model'}.`;
-          effectRow.onclick = () => openReferenceGraphOnModel(data, targetIndex, graph,
-            graph.nodes[0], caller.instance.index);
-          effectRow.append(el('span', 'sp-fx-list-name', graph.name ?? graph.id),
-            el('span', 'sp-fx-kind', `${countLabel(graph.nodes.length, 'node')} · ${calls}`));
+          effectRow.onclick = () =>
+            openReferenceGraphOnModel(data, targetIndex, graph, graph.nodes[0], caller.instance.index);
+          effectRow.append(
+            el('span', 'sp-fx-list-name', graph.name ?? graph.id),
+            el('span', 'sp-fx-kind', `${countLabel(graph.nodes.length, 'node')} · ${calls}`),
+          );
         } else {
           const entry = effect.entries[0];
           effectRow.title = 'Inspect the Run node with the unresolved remote effect reference.';
-          effectRow.onclick = () => applyReferenceFocus(data, [caller.instance.index], caller.instance.index, {
-            ownerKind: entry.ownerKind, ownerId: entry.owner.id, nodeId: entry.node.id,
-          }, targetIndex);
-          effectRow.append(el('span', 'sp-fx-list-name', entry.call.graphLabel),
-            el('span', 'sp-fx-kind', `Missing effect · ${calls}`));
+          effectRow.onclick = () =>
+            applyReferenceFocus(
+              data,
+              [caller.instance.index],
+              caller.instance.index,
+              {
+                ownerKind: entry.ownerKind,
+                ownerId: entry.owner.id,
+                nodeId: entry.node.id,
+              },
+              targetIndex,
+            );
+          effectRow.append(
+            el('span', 'sp-fx-list-name', entry.call.graphLabel),
+            el('span', 'sp-fx-kind', `Missing effect · ${calls}`),
+          );
         }
         callerGroup.appendChild(effectRow);
       }
@@ -3142,52 +4414,84 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   }
 
   function referenceEffectHostPanel(data: ReferenceEffectsData): HTMLElement | null {
-    const instance = referenceFocus.activeInstanceIndex === null ? null
-      : data.instances.find(x => x.index === referenceFocus.activeInstanceIndex) ?? null;
+    const instance =
+      referenceFocus.activeInstanceIndex === null
+        ? null
+        : (data.instances.find(x => x.index === referenceFocus.activeInstanceIndex) ?? null);
     if (!instance) return null;
     const hostName = instance.name;
     const s = section(hostName);
     const bindings = referenceInstanceBindings(data, instance);
     const supplementalOutgoing = referenceSupplementalOutgoingEffectCalls(data, instance.index);
-    s.body.append(row('Instance', input(hostName, () => {}, { readonly: true }),
-      'The label attached to this exact Instances.json placement. Select the text to copy it.'),
-      row('Model slot', input(`#${instance.model} · ${instance.modelName}`, () => {}, { readonly: true }),
-        'The raw Models.json slot label. Custom maps can replace the art in this slot without renaming it.'),
-      row('Prop number', input(`#${instance.index}`, () => {}, { readonly: true }),
-        'This prop’s number in the level. Effects use it to point at a particular prop.'));
-    if (referenceSlot(data.document, instance.effectSlotIndex)) s.body.appendChild(
-      row('Effects ID', input(`#${instance.effectSlotIndex}`, () => {}, { readonly: true }),
-        'The ID this prop uses to find its effects. Shown for cross-referencing; nothing to edit here.'));
+    s.body.append(
+      row(
+        'Instance',
+        input(hostName, () => {}, { readonly: true }),
+        'The label attached to this exact Instances.json placement. Select the text to copy it.',
+      ),
+      row(
+        'Model slot',
+        input(`#${instance.model} · ${instance.modelName}`, () => {}, { readonly: true }),
+        'The raw Models.json slot label. Custom maps can replace the art in this slot without renaming it.',
+      ),
+      row(
+        'Prop number',
+        input(`#${instance.index}`, () => {}, { readonly: true }),
+        'This prop’s number in the level. Effects use it to point at a particular prop.',
+      ),
+    );
+    if (referenceSlot(data.document, instance.effectSlotIndex))
+      s.body.appendChild(
+        row(
+          'Effects ID',
+          input(`#${instance.effectSlotIndex}`, () => {}, { readonly: true }),
+          'The ID this prop uses to find its effects. Shown for cross-referencing; nothing to edit here.',
+        ),
+      );
     s.body.appendChild(hostPreview.showModel(data.level, instance.model));
     const actions = el('div', 'sp-fx-actions sp-fx-selection-nav');
-    actions.append(navigationButton('Go to prop', MODE_ICON.props,
-      'Switch to Props mode with this prop selected.', () => goToProp({ sourceIndex: instance.index })),
-      selectionBackButton());
+    actions.append(
+      navigationButton('Go to prop', MODE_ICON.props, 'Switch to Props mode with this prop selected.', () =>
+        goToProp({ sourceIndex: instance.index }),
+      ),
+      selectionBackButton(),
+    );
     s.body.appendChild(actions);
     s.root.classList.add('sp-fx-has-inline-back');
     const relationshipTree = bindings.length
-      ? effectNodeTree(bindings, referenceFocus.selection, (graph, node) => {
-      if (!viewport.isReferenceEffectPreviewing(instance.index, graph.id)) viewport.stopReferenceEffectPreview();
-      referenceUnassignedOpen = false;
-      const selection = { ownerKind: 'graph' as const, ownerId: graph.id, nodeId: node.id };
-      const markerIndex = referenceInstanceEffectCall(data, node)?.target?.index ?? instance.index;
-      referenceFocus = { ...referenceFocus, selection, markerIndex, callerIndex: null };
-      viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
-      render();
-    }, node => referenceNodeDisplayName(data, node), undefined, undefined, graph => {
-      if (!viewport.isReferenceEffectPreviewing(instance.index, graph.id)) viewport.stopReferenceEffectPreview();
-      referenceUnassignedOpen = false;
-      const node = graph.nodes[0];
-      const selection: EffectSelection = { ownerKind: 'graph', ownerId: graph.id,
-        ...(node ? { nodeId: node.id } : {}) };
-      const markerIndex = node
-        ? referenceInstanceEffectCall(data, node)?.target?.index ?? instance.index
-        : instance.index;
-      referenceFocus = { ...referenceFocus,
-        selection, markerIndex, callerIndex: null };
-      viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
-      render();
-    }, false)
+      ? effectNodeTree(
+          bindings,
+          referenceFocus.selection,
+          (graph, node) => {
+            if (!viewport.isReferenceEffectPreviewing(instance.index, graph.id)) viewport.stopReferenceEffectPreview();
+            referenceUnassignedOpen = false;
+            const selection = { ownerKind: 'graph' as const, ownerId: graph.id, nodeId: node.id };
+            const markerIndex = referenceInstanceEffectCall(data, node)?.target?.index ?? instance.index;
+            referenceFocus = { ...referenceFocus, selection, markerIndex, callerIndex: null };
+            viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
+            render();
+          },
+          node => referenceNodeDisplayName(data, node),
+          undefined,
+          undefined,
+          graph => {
+            if (!viewport.isReferenceEffectPreviewing(instance.index, graph.id)) viewport.stopReferenceEffectPreview();
+            referenceUnassignedOpen = false;
+            const node = graph.nodes[0];
+            const selection: EffectSelection = {
+              ownerKind: 'graph',
+              ownerId: graph.id,
+              ...(node ? { nodeId: node.id } : {}),
+            };
+            const markerIndex = node
+              ? (referenceInstanceEffectCall(data, node)?.target?.index ?? instance.index)
+              : instance.index;
+            referenceFocus = { ...referenceFocus, selection, markerIndex, callerIndex: null };
+            viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
+            render();
+          },
+          false,
+        )
       : el('div', 'sp-fx-tree');
     if (supplementalOutgoing.length) {
       const outgoingTree = effectCallTree(supplementalOutgoing, referenceFocus.selection, entry => {
@@ -3196,10 +4500,12 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         // Open the owner on its first node, the way selecting one of this prop's own effects does, so the
         // card below lands with something inspected rather than empty.
         const node = entry.owner.nodes[0];
-        const selection: EffectSelection = { ownerKind: entry.ownerKind, ownerId: entry.owner.id,
-          ...(node ? { nodeId: node.id } : {}) };
-        const markerIndex = (node ? referenceInstanceEffectCall(data, node)?.target?.index : null)
-          ?? instance.index;
+        const selection: EffectSelection = {
+          ownerKind: entry.ownerKind,
+          ownerId: entry.owner.id,
+          ...(node ? { nodeId: node.id } : {}),
+        };
+        const markerIndex = (node ? referenceInstanceEffectCall(data, node)?.target?.index : null) ?? instance.index;
         referenceFocus = { ...referenceFocus, selection, markerIndex, callerIndex: null };
         viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
         render();
@@ -3213,9 +4519,13 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   /** The node list shared by the selected-effect and selected-function cards. Each row opens the inspector
    * below and moves the viewport marker to whatever prop that node acts on, falling back to the host. */
-  function referenceOwnerNodeList(data: ReferenceEffectsData, ownerKind: 'graph' | 'function',
-    owner: { id: string; nodes: readonly EffectNode[] }, instanceIndex: number,
-    selectedNodeId: string | undefined): HTMLElement {
+  function referenceOwnerNodeList(
+    data: ReferenceEffectsData,
+    ownerKind: 'graph' | 'function',
+    owner: { id: string; nodes: readonly EffectNode[] },
+    instanceIndex: number,
+    selectedNodeId: string | undefined,
+  ): HTMLElement {
     const nodes = el('div', 'sp-fx-node-list sp-fx-effect-node-list');
     if (owner.nodes.length) nodes.appendChild(el('div', 'sp-fx-tree-caption', 'Nodes'));
     for (const [index, node] of owner.nodes.entries()) {
@@ -3231,9 +4541,11 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
         render();
       };
-      item.append(el('span', 'sp-fx-node-index', String(index + 1)),
+      item.append(
+        el('span', 'sp-fx-node-index', String(index + 1)),
         el('span', 'sp-fx-node-name', referenceNodeDisplayName(data, node)),
-        el('span', 'sp-fx-kind', `M${node.mainType}`));
+        el('span', 'sp-fx-kind', `M${node.mainType}`),
+      );
       nodes.appendChild(item);
     }
     if (!owner.nodes.length) nodes.appendChild(el('div', 'sp-fx-empty sp-fx-effect-node-empty', 'No nodes'));
@@ -3252,13 +4564,22 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (!instance || !owner) return null;
     // Only while this prop actually reaches it — otherwise a selection left behind by another prop would
     // keep rendering a card for a function the open prop has nothing to do with.
-    if (!referenceSupplementalOutgoingEffectCalls(data, instance.index)
-      .some(entry => entry.ownerKind === 'function' && entry.owner.id === owner.id)) return null;
+    if (
+      !referenceSupplementalOutgoingEffectCalls(data, instance.index).some(
+        entry => entry.ownerKind === 'function' && entry.owner.id === owner.id,
+      )
+    )
+      return null;
     const s = section(`Selected shared effect · ${owner.name || owner.id}`);
     s.root.classList.add('sp-fx-selected-effect', 'sp-fx-child-panel');
-    s.body.append(el('div', 'sp-fx-note',
-      `Reached by a Call shared effect node in ${instance.name}'s own effect, and it runs alongside that effect rather than inside it. It lives on its own instead of on a prop, so it has no circumstance of its own and cannot be previewed on one prop.`),
-      referenceOwnerNodeList(data, 'function', owner, instance.index, selection.nodeId));
+    s.body.append(
+      el(
+        'div',
+        'sp-fx-note',
+        `Reached by a Call shared effect node in ${instance.name}'s own effect, and it runs alongside that effect rather than inside it. It lives on its own instead of on a prop, so it has no circumstance of its own and cannot be previewed on one prop.`,
+      ),
+      referenceOwnerNodeList(data, 'function', owner, instance.index, selection.nodeId),
+    );
     return s.root;
   }
 
@@ -3270,88 +4591,132 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const instance = data.instances.find(candidate => candidate.index === referenceFocus.activeInstanceIndex);
     const graph = data.document.graphs.find(candidate => candidate.id === selection.ownerId);
     if (!instance || !graph) return null;
-    const graphBindings = referenceInstanceBindings(data, instance)
-      .filter(binding => binding.graph.id === graph.id);
-    const incomingEntries = referenceIncomingEffectCalls(data, instance.index)
-      .filter(entry => entry.call.graph?.id === graph.id);
+    const graphBindings = referenceInstanceBindings(data, instance).filter(binding => binding.graph.id === graph.id);
+    const incomingEntries = referenceIncomingEffectCalls(data, instance.index).filter(
+      entry => entry.call.graph?.id === graph.id,
+    );
     const isIncoming = incomingEntries.length > 0;
     if (!graphBindings.length && !isIncoming) return null;
 
     const label = graphBindings.length
       ? effectGraphDisplayName(graph, graphBindings[0].circumstance)
-      : graph.name ?? graph.id;
+      : (graph.name ?? graph.id);
     const s = section(`Selected effect · ${label}`);
     s.root.classList.add('sp-fx-selected-effect', 'sp-fx-child-panel');
     // Directly under the title, because the title is exactly where this is missing: an effect reached from
     // another prop has no circumstance to name, so it shows as a bare graph name with nothing saying what
     // starts it. Same wording as the caller rows in the host tree, and the same reading — from this end.
-    const callers = [...new Map(incomingEntries.flatMap(entry => entry.sources)
-      .map(source => [source.instance.index, source.instance])).values()]
-      .sort((a, b) => a.name.localeCompare(b.name) || a.index - b.index);
+    const callers = [
+      ...new Map(
+        incomingEntries.flatMap(entry => entry.sources).map(source => [source.instance.index, source.instance]),
+      ).values(),
+    ].sort((a, b) => a.name.localeCompare(b.name) || a.index - b.index);
     if (callers.length) {
       // A prop reaches its own remote effects through a shared effect, so it can be its own caller — naming
       // it back at itself reads like a second prop. Four names still fit; truncating at three would spend
       // "and 1 other prop" to save one name.
-      const named = (limit: number) => callers.slice(0, limit)
-        .map(item => `${item.name} #${item.index}`).join(', ');
-      s.body.appendChild(el('div', 'sp-fx-note sp-fx-effect-run-by',
-        callers.length === 1 && callers[0].index === instance.index
-          ? 'Run by this prop\'s own effects.'
-          : `Run by ${callers.length > 4
-            ? `${named(3)} and ${countLabel(callers.length - 3, 'other prop')}` : named(4)}.`));
+      const named = (limit: number) =>
+        callers
+          .slice(0, limit)
+          .map(item => `${item.name} #${item.index}`)
+          .join(', ');
+      s.body.appendChild(
+        el(
+          'div',
+          'sp-fx-note sp-fx-effect-run-by',
+          callers.length === 1 && callers[0].index === instance.index
+            ? "Run by this prop's own effects."
+            : `Run by ${
+                callers.length > 4 ? `${named(3)} and ${countLabel(callers.length - 3, 'other prop')}` : named(4)
+              }.`,
+        ),
+      );
     }
     const latchBinding = graphBindings.find(binding => isEffectLatchCircumstance(binding.circumstance));
-    if (latchBinding && isEffectLatchCircumstance(latchBinding.circumstance)) s.body.appendChild(
-      el('div', 'sp-fx-note', `${EFFECT_LATCH_SUMMARY[latchBinding.circumstance]} ${graph.nodes.length
-        ? 'Nodes here run at that moment, instead of the prop resetting itself.'
-        : 'Left empty on purpose — having anything in this column at all is the whole signal.'}`));
-    const caller = referenceFocus.callerIndex === null ? null
-      : data.instances.find(candidate => candidate.index === referenceFocus.callerIndex) ?? null;
-    const callerEntry = caller ? incomingEntries.find(entry => entry.sources
-      .some(source => source.instance.index === caller.index)) ?? null : null;
+    if (latchBinding && isEffectLatchCircumstance(latchBinding.circumstance))
+      s.body.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          `${EFFECT_LATCH_SUMMARY[latchBinding.circumstance]} ${
+            graph.nodes.length
+              ? 'Nodes here run at that moment, instead of the prop resetting itself.'
+              : 'Left empty on purpose — having anything in this column at all is the whole signal.'
+          }`,
+        ),
+      );
+    const caller =
+      referenceFocus.callerIndex === null
+        ? null
+        : (data.instances.find(candidate => candidate.index === referenceFocus.callerIndex) ?? null);
+    const callerEntry = caller
+      ? (incomingEntries.find(entry => entry.sources.some(source => source.instance.index === caller.index)) ?? null)
+      : null;
     if (caller && callerEntry) {
       s.body.appendChild(callerModelPreview.showModel(data.level, caller.model));
       const callerActions = el('div', 'sp-fx-actions sp-fx-effect-caller-actions');
-      callerActions.appendChild(navigationButton('Go to caller', MODE_ICON.props,
-        `Open ${caller.name} and the Run node that calls this effect.`, () => {
-          applyReferenceFocus(data, [caller.index], caller.index, {
-            ownerKind: callerEntry.ownerKind, ownerId: callerEntry.owner.id, nodeId: callerEntry.node.id,
-          }, instance.index);
-        }));
+      callerActions.appendChild(
+        navigationButton(
+          'Go to caller',
+          MODE_ICON.props,
+          `Open ${caller.name} and the Run node that calls this effect.`,
+          () => {
+            applyReferenceFocus(
+              data,
+              [caller.index],
+              caller.index,
+              {
+                ownerKind: callerEntry.ownerKind,
+                ownerId: callerEntry.owner.id,
+                nodeId: callerEntry.node.id,
+              },
+              instance.index,
+            );
+          },
+        ),
+      );
       s.body.appendChild(callerActions);
     }
     const overview = el('div', 'sp-fx-effect-overview');
-    const loops = graphBindings.some(binding => binding.circumstance === 'persistent')
-      && effectGraphHasTimerEmitter(data.document, graph);
+    const loops =
+      graphBindings.some(binding => binding.circumstance === 'persistent') &&
+      effectGraphHasTimerEmitter(data.document, graph);
     const playing = viewport.isReferenceEffectPreviewing(instance.index, graph.id);
-    overview.appendChild(button(playing ? '■ Stop effect' : loops ? '▶ Play effect' : '▶ Preview effect',
-      playing ? 'Stop this effect preview.'
-        : loops ? 'Loop this persistent effect at the selected prop until stopped.'
-          : 'Preview only this effect at the selected prop.', () => {
-      if (playing) {
-        viewport.stopReferenceEffectPreview();
-        toast('Effect preview stopped.', 'info');
-        render();
-        return;
-      }
-      releaseClipPose();
-      releaseReferenceSplinePose();
-      if (!viewport.previewReferenceEffects(instance.index, [graph.id], loops ? [graph.id] : [])) {
-        toast('This effect could not be previewed on the selected prop.', 'err');
-        return;
-      }
-      toast(`${loops ? 'Playing' : 'Previewing'} ${label}`, 'ok');
-      if (loops) render();
-    }));
-    s.body.append(overview,
-      referenceOwnerNodeList(data, 'graph', graph, instance.index, selection.nodeId));
+    overview.appendChild(
+      button(
+        playing ? '■ Stop effect' : loops ? '▶ Play effect' : '▶ Preview effect',
+        playing
+          ? 'Stop this effect preview.'
+          : loops
+            ? 'Loop this persistent effect at the selected prop until stopped.'
+            : 'Preview only this effect at the selected prop.',
+        () => {
+          if (playing) {
+            viewport.stopReferenceEffectPreview();
+            toast('Effect preview stopped.', 'info');
+            render();
+            return;
+          }
+          releaseClipPose();
+          releaseReferenceSplinePose();
+          if (!viewport.previewReferenceEffects(instance.index, [graph.id], loops ? [graph.id] : [])) {
+            toast('This effect could not be previewed on the selected prop.', 'err');
+            return;
+          }
+          toast(`${loops ? 'Playing' : 'Previewing'} ${label}`, 'ok');
+          if (loops) render();
+        },
+      ),
+    );
+    s.body.append(overview, referenceOwnerNodeList(data, 'graph', graph, instance.index, selection.nodeId));
     return s.root;
   }
 
   function referenceValidationPanel(data: ReferenceEffectsData): HTMLElement {
     const issues = validateEffectsAuthoring(data.document);
     const s = section(`Validation · ${issues.length || 'clean'}`);
-    if (!issues.length) s.body.appendChild(el('div', 'sp-fx-valid', 'No structural, reference, attachment, or semantic-range issues.'));
+    if (!issues.length)
+      s.body.appendChild(el('div', 'sp-fx-valid', 'No structural, reference, attachment, or semantic-range issues.'));
     else {
       for (const issue of issues.slice(0, 12)) {
         const item = el('div', `sp-fx-issue ${issue.severity}`);
@@ -3379,13 +4744,21 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (referenceState.status === 'empty') {
       disposeClipViewer();
       disposeReferenceSplineViewer();
-      root.appendChild(el('div', 'sp-fx-empty sp-fx-ref-state', 'Load a reference mountain in Scene ▸ Reference to inspect its effects.'));
+      root.appendChild(
+        el(
+          'div',
+          'sp-fx-empty sp-fx-ref-state',
+          'Load a reference mountain in Scene ▸ Reference to inspect its effects.',
+        ),
+      );
       return;
     }
     if (referenceState.status === 'idle') {
       disposeClipViewer();
       disposeReferenceSplineViewer();
-      root.appendChild(el('div', 'sp-fx-empty sp-fx-ref-state', `${referenceState.level} effects load when this panel opens.`));
+      root.appendChild(
+        el('div', 'sp-fx-empty sp-fx-ref-state', `${referenceState.level} effects load when this panel opens.`),
+      );
       return;
     }
     if (referenceState.status === 'loading') {
@@ -3397,7 +4770,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (referenceState.status === 'error') {
       disposeClipViewer();
       disposeReferenceSplineViewer();
-      root.appendChild(el('div', 'sp-fx-issue error sp-fx-ref-state', `${referenceState.level}: ${referenceState.message}`));
+      root.appendChild(
+        el('div', 'sp-fx-issue error sp-fx-ref-state', `${referenceState.level}: ${referenceState.message}`),
+      );
       return;
     }
     const data = referenceState.data;
@@ -3405,17 +4780,23 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       disposeClipViewer();
       disposeReferenceSplineViewer();
       const spline = referenceRailSplinePanel(data, selectedReferenceSplineIndex);
-      if (spline) { root.appendChild(spline); root.appendChild(selectionBackPanel()); return; }
+      if (spline) {
+        root.appendChild(spline);
+        root.appendChild(selectionBackPanel());
+        return;
+      }
       selectedReferenceSplineIndex = null; // the level changed under the selection
       viewport.selectReferenceRailSpline(null);
     }
     normalizeReferenceSelection(data);
-    const animation = selectedReferenceParticleIndex === null && !referenceUnassignedOpen
-      ? referenceAnimationPanel(data)
-      : (disposeClipViewer(), null);
-    const splineAnimation = selectedReferenceParticleIndex === null && !referenceUnassignedOpen
-      ? referenceSplineAnimationPanel(data)
-      : (disposeReferenceSplineViewer(), null);
+    const animation =
+      selectedReferenceParticleIndex === null && !referenceUnassignedOpen
+        ? referenceAnimationPanel(data)
+        : (disposeClipViewer(), null);
+    const splineAnimation =
+      selectedReferenceParticleIndex === null && !referenceUnassignedOpen
+        ? referenceSplineAnimationPanel(data)
+        : (disposeReferenceSplineViewer(), null);
     if (selectedReferenceParticleIndex !== null) {
       const particle = referenceParticlePanel(data);
       if (particle) root.appendChild(particle);
@@ -3426,7 +4807,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       readOnly: true,
       selection: referenceFocus.selection,
       search: referenceOwnerSearch,
-      setSearch: value => { referenceOwnerSearch = value; },
+      setSearch: value => {
+        referenceOwnerSearch = value;
+      },
       selectOwner: (kind, ownerId, nodeId) => {
         const selection = { ownerKind: kind, ownerId, ...(nodeId ? { nodeId } : {}) };
         referenceFocus = { ...referenceFocus, selection, callerIndex: null };
@@ -3438,15 +4821,18 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
         viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, markerIndex);
         render();
       },
-      ownerLabel: (kind, ownerId, fallback) => kind === 'graph'
-        ? referenceEffectDisplayName(data, ownerId, referenceFocus.activeInstanceIndex) ?? fallback : fallback,
+      ownerLabel: (kind, ownerId, fallback) =>
+        kind === 'graph'
+          ? (referenceEffectDisplayName(data, ownerId, referenceFocus.activeInstanceIndex) ?? fallback)
+          : fallback,
       nodeLabel: node => referenceNodeDisplayName(data, node),
       referenceData: data,
     };
     if (referenceUnassignedOpen) {
       view.visibleOwnerIds = referenceUnassignedOwnerIds(data);
       root.appendChild(ownerList(data.document, view, 'Unassigned effects & functions'));
-      const owner = selectedOwnerPanel(data.document, view), node = inspector(data.document, view);
+      const owner = selectedOwnerPanel(data.document, view),
+        node = inspector(data.document, view);
       if (owner) root.appendChild(owner);
       if (node) root.appendChild(node);
       root.appendChild(selectionBackPanel());
@@ -3479,17 +4865,27 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
    * its Deselect/Escape affordance to return home before changing source, matching the other scene toolboxes. */
   function hasSelectedEffect(): boolean {
     return source === 'mountain'
-      ? store.selectedRail !== null || !!selectedAuthoredParticleId || authoredUnassignedOpen || !!selection || selectedAuthoredPropIds.length > 0
-      : selectedReferenceParticleIndex !== null || selectedReferenceSplineIndex !== null
-        || referenceUnassignedOpen
-        || referenceFocus.instanceIndices.length > 0 || !!referenceFocus.selection;
+      ? store.selectedRail !== null ||
+          !!selectedAuthoredParticleId ||
+          authoredUnassignedOpen ||
+          !!selection ||
+          selectedAuthoredPropIds.length > 0
+      : selectedReferenceParticleIndex !== null ||
+          selectedReferenceSplineIndex !== null ||
+          referenceUnassignedOpen ||
+          referenceFocus.instanceIndices.length > 0 ||
+          !!referenceFocus.selection;
   }
 
   function render(): void {
     root.replaceChildren();
     if (selectedAuthoredParticleId && !volumes().some(volume => volume.id === selectedAuthoredParticleId))
       selectedAuthoredParticleId = null;
-    const validAuthoredPropIds = new Set(props().map(prop => prop.id).filter((id): id is string => !!id));
+    const validAuthoredPropIds = new Set(
+      props()
+        .map(prop => prop.id)
+        .filter((id): id is string => !!id),
+    );
     selectedAuthoredPropIds = selectedAuthoredPropIds.filter(id => validAuthoredPropIds.has(id));
     if (selectedAuthoredPropId && !selectedAuthoredPropIds.includes(selectedAuthoredPropId)) {
       selectedAuthoredPropId = null;
@@ -3502,9 +4898,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (authoredDoc) syncAuthoredMotionPathEffectResources(authoredDoc, store.mdoc.rails);
     viewport.showEffectMotionPaths(effectsOn);
     viewport.showReferenceEffectInspector(effectsOn);
-    viewport.showAuthoredEffectProps(effectsOn, authoredDoc
-      ? effectAttachments(authoredDoc).filter(attachment => attachment.enabled).map(attachment => attachment.target.id)
-      : [], source === 'mountain' ? selectedAuthoredPropIds : []);
+    viewport.showAuthoredEffectProps(
+      effectsOn,
+      authoredDoc
+        ? effectAttachments(authoredDoc)
+            .filter(attachment => attachment.enabled)
+            .map(attachment => attachment.target.id)
+        : [],
+      source === 'mountain' ? selectedAuthoredPropIds : [],
+    );
     viewport.showEffectRails(effectsOn);
     syncTriggerTransform();
     // A viewer belonging to the OTHER side cannot survive the switch: it would hold its prop's pose frozen
@@ -3512,7 +4914,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     if (clipViewer && clipViewer.target.kind !== (source === 'reference' ? 'reference' : 'authored'))
       disposeClipViewer();
     if (source === 'reference') {
-      viewport.setEffectHandle(null); renderReference(); return;
+      viewport.setEffectHandle(null);
+      renderReference();
+      return;
     }
     // Swept after the inspector below rather than disposed here, so scrubbing survives an ordinary
     // re-render — a viewer torn down and rebuilt would snap its playhead back to the clip's first frame
@@ -3532,22 +4936,29 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       const particle = authoredParticlePanel();
       if (particle) root.appendChild(particle);
       root.appendChild(selectionBackPanel());
-    } else if (source === 'mountain' && doc
-      && (authoredUnassignedOpen || selection || selectedAuthoredPropIds.length)) {
+    } else if (
+      source === 'mountain' &&
+      doc &&
+      (authoredUnassignedOpen || selection || selectedAuthoredPropIds.length)
+    ) {
       normalizeSelection(doc);
       const view: EffectsPanelView = {
         readOnly: false,
         selection,
         search,
-        setSearch: value => { search = value; },
+        setSearch: value => {
+          search = value;
+        },
         selectOwner,
-        ownerLabel: (kind, ownerId, fallback) => kind === 'graph'
-          ? authoredGraphDisplayName(doc, ownerId) ?? fallback : fallback,
+        ownerLabel: (kind, ownerId, fallback) =>
+          kind === 'graph' ? (authoredGraphDisplayName(doc, ownerId) ?? fallback) : fallback,
       };
       if (authoredUnassignedOpen) {
         view.visibleOwnerIds = authoredUnassignedOwnerIds(doc);
         root.appendChild(ownerList(doc, view, 'Unassigned effects & functions'));
-        const owner = selectedOwnerPanel(doc, view), node = inspector(doc, view), attachment = attachmentPanel(doc);
+        const owner = selectedOwnerPanel(doc, view),
+          node = inspector(doc, view),
+          attachment = attachmentPanel(doc);
         if (owner) root.appendChild(owner);
         if (node) root.appendChild(node);
         if (attachment) root.appendChild(attachment);
@@ -3555,7 +4966,9 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       } else if (selection || selectedAuthoredPropIds.length) {
         const list = authoredSelectionListPanel(doc);
         const prop = authoredSelectedPropPanel(doc);
-        const owner = selectedOwnerPanel(doc, view, false), node = inspector(doc, view), attachment = attachmentPanel(doc);
+        const owner = selectedOwnerPanel(doc, view, false),
+          node = inspector(doc, view),
+          attachment = attachmentPanel(doc);
         if (list) root.appendChild(list);
         if (prop) root.appendChild(prop);
         if (owner) root.appendChild(owner);
@@ -3575,12 +4988,15 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   /** Mode lifecycle. Routine toolbox rebuilds call render(); only an actual mode transition enters or exits. */
   function setActive(on: boolean): void {
     if (active === on) return;
-    active = on; root.style.display = on ? '' : 'none';
+    active = on;
+    root.style.display = on ? '' : 'none';
     if (on) {
       if (source === 'reference' && referenceFocus.instanceIndices.length)
         viewport.selectReferenceEffectInstances(referenceFocus.instanceIndices, referenceFocus.markerIndex);
-      if (source === 'reference' && selectedReferenceParticleIndex !== null) viewport.selectReferenceParticleVolume(selectedReferenceParticleIndex);
-      if (source === 'mountain' && selectedAuthoredParticleId) viewport.selectAuthoredParticleVolume(selectedAuthoredParticleId);
+      if (source === 'reference' && selectedReferenceParticleIndex !== null)
+        viewport.selectReferenceParticleVolume(selectedReferenceParticleIndex);
+      if (source === 'mountain' && selectedAuthoredParticleId)
+        viewport.selectAuthoredParticleVolume(selectedAuthoredParticleId);
       render();
     } else {
       disposeClipViewer();
@@ -3588,7 +5004,8 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
       viewport.stopReferenceEffectPreview();
       viewport.showEffectMotionPaths(false);
       viewport.showEffectRails(false);
-      viewport.setEffectHandle(null); viewport.showReferenceEffectInspector(false);
+      viewport.setEffectHandle(null);
+      viewport.showReferenceEffectInspector(false);
       viewport.showAuthoredEffectProps(false, []);
       viewport.setPlacedPropSelection(null);
       viewport.selectReferenceEffectInstances([]);
@@ -3614,11 +5031,16 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
   function moveSelectedEmitter(world: [number, number, number]): void {
     if (source === 'mountain' && selectedAuthoredParticleId) {
       const volume = volumes().find(item => item.id === selectedAuthoredParticleId);
-      if (volume) { volume.pos = world; deps.scheduleRebuild(); }
+      if (volume) {
+        volume.pos = world;
+        deps.scheduleRebuild();
+      }
       return;
     }
-    const doc = document(); if (!doc || !selection) return;
-    const node = effectNode(doc, selection); if (!node) return;
+    const doc = document();
+    if (!doc || !selection) return;
+    const node = effectNode(doc, selection);
+    if (!node) return;
     // Keep TransformControls' live object untouched during its drag. Re-seating it from render() on every
     // objectChange would restart the gesture; the ordinary rebuild funnel still snapshots/persists each write.
     if (setEmitterWorldPosition(node, world, selectedAttachmentProp(doc))) deps.scheduleRebuild();
@@ -3626,45 +5048,88 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
 
   function deleteSelection(): boolean {
     if (source === 'reference') return false;
-    if (selectedDrawableSpline()) { removeSelectedDrawnSpline(); return true; }
+    if (selectedDrawableSpline()) {
+      removeSelectedDrawnSpline();
+      return true;
+    }
     // A rail with a tube is only being INSPECTED here. Deleting one would take a piece of course scenery away
     // from a mode that cannot draw it back, so Delete declines and the Tricks tools keep the action. A bare
     // rail is drawable here, so it went the other way above.
     if (selectedGrindRail()) return false;
-    if (selectedAuthoredParticleId) { removeSelectedParticle(); return true; }
+    if (selectedAuthoredParticleId) {
+      removeSelectedParticle();
+      return true;
+    }
     if (!selection?.nodeId && removeSelectedEffectTrigger()) return true;
-    const doc = document(); if (!doc || !selection) return false;
-    if (selection.nodeId) { removeNode(); return true; }
-    removeOwner(); return true;
+    const doc = document();
+    if (!doc || !selection) return false;
+    if (selection.nodeId) {
+      removeNode();
+      return true;
+    }
+    removeOwner();
+    return true;
   }
 
   function clearSelection(): boolean {
-    if (store.railDrawing && selectedDrawableSpline()) { finishDrawnSpline(); return true; }
-    const hadSelection = !!selection || selectedAuthoredPropIds.length > 0 || authoredUnassignedOpen
-      || !!referenceFocus.selection || referenceFocus.instanceIndices.length > 0 || referenceUnassignedOpen
-      || !!selectedAuthoredParticleId || selectedReferenceParticleIndex !== null || store.selectedRail !== null
-      || selectedReferenceSplineIndex !== null;
+    if (store.railDrawing && selectedDrawableSpline()) {
+      finishDrawnSpline();
+      return true;
+    }
+    const hadSelection =
+      !!selection ||
+      selectedAuthoredPropIds.length > 0 ||
+      authoredUnassignedOpen ||
+      !!referenceFocus.selection ||
+      referenceFocus.instanceIndices.length > 0 ||
+      referenceUnassignedOpen ||
+      !!selectedAuthoredParticleId ||
+      selectedReferenceParticleIndex !== null ||
+      store.selectedRail !== null ||
+      selectedReferenceSplineIndex !== null;
     if (!hadSelection) return false;
     selectedReferenceSplineIndex = null;
     viewport.selectReferenceRailSpline(null);
     dropSplineSelection();
-    selection = null; selectedAuthoredPropIds = []; selectedAuthoredPropId = null;
+    selection = null;
+    selectedAuthoredPropIds = [];
+    selectedAuthoredPropId = null;
     authoredUnassignedOpen = false;
     referenceFocus = emptyReferenceEffectFocus();
     referenceUnassignedOpen = false;
-    selectedAuthoredParticleId = null; selectedReferenceParticleIndex = null;
+    selectedAuthoredParticleId = null;
+    selectedReferenceParticleIndex = null;
     viewport.stopReferenceEffectPreview();
     viewport.selectReferenceEffectInstances([]);
-    viewport.selectAuthoredParticleVolume(null); viewport.selectReferenceParticleVolume(null);
-    render(); return true;
+    viewport.selectAuthoredParticleVolume(null);
+    viewport.selectReferenceParticleVolume(null);
+    render();
+    return true;
   }
 
   root.style.display = 'none';
-  return { el: root, render, setActive, setReferenceState, moveSelectedEmitter, deleteSelection, clearSelection, addScenery,
-    selectAuthoredPropEffect, selectReferencePropEffect, selectReferenceCalledEffect,
-    selectParticleVolume, selectCourseSpline, selectReferenceSpline,
-    get referenceReady() { return referenceState.status === 'ready'; },
-    get selection() { return selection; } };
+  return {
+    el: root,
+    render,
+    setActive,
+    setReferenceState,
+    moveSelectedEmitter,
+    deleteSelection,
+    clearSelection,
+    addScenery,
+    selectAuthoredPropEffect,
+    selectReferencePropEffect,
+    selectReferenceCalledEffect,
+    selectParticleVolume,
+    selectCourseSpline,
+    selectReferenceSpline,
+    get referenceReady() {
+      return referenceState.status === 'ready';
+    },
+    get selection() {
+      return selection;
+    },
+  };
 }
 
 export type EffectsEditor = ReturnType<typeof createEffectsEditor>;

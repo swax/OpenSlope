@@ -23,8 +23,20 @@
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
-  Bone, BufferGeometry, Color, Float32BufferAttribute, Group, Matrix3, Matrix4, MeshStandardMaterial,
-  Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Uint32BufferAttribute, Vector3,
+  Bone,
+  BufferGeometry,
+  Color,
+  Float32BufferAttribute,
+  Group,
+  Matrix3,
+  Matrix4,
+  MeshStandardMaterial,
+  Quaternion,
+  Skeleton,
+  SkinnedMesh,
+  Uint16BufferAttribute,
+  Uint32BufferAttribute,
+  Vector3,
 } from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { CHARACTER_UV_SCROLL_KEY } from '../../src/core/characters/contract';
@@ -38,14 +50,20 @@ export type V3 = readonly [number, number, number];
  * Keep these in step with `app/ride/rider.ts` if that body is ever re-proportioned; the character checks pin
  * them, so a drift shows up as a failed test rather than as boots through the board.
  */
-export const RIDER_H = 1.70;
-export const THIGH = 0.245 * RIDER_H, SHIN = 0.246 * RIDER_H;
-export const UPPER_ARM = 0.186 * RIDER_H, FOREARM = 0.146 * RIDER_H;
-export const PELVIS_RISE = 0.051 * RIDER_H;         // sacral pivot above the femoral heads
-export const LUMBAR = 0.192, THORACIC = 0.242;      // hips → upper back → clavicle root
-export const HIPS_SEGMENT = 0.14;                   // the lower-spine bone the driver aims (docs/030)
-export const SHOULDER_DROP = 0.075, NECK_LEN = 0.075, HEAD_BONE_TO_HELMET = 0.105;
-export const HIP_HALF = 0.11, SHOULDER_HALF = 0.165;
+export const RIDER_H = 1.7;
+export const THIGH = 0.245 * RIDER_H,
+  SHIN = 0.246 * RIDER_H;
+export const UPPER_ARM = 0.186 * RIDER_H,
+  FOREARM = 0.146 * RIDER_H;
+export const PELVIS_RISE = 0.051 * RIDER_H; // sacral pivot above the femoral heads
+export const LUMBAR = 0.192,
+  THORACIC = 0.242; // hips → upper back → clavicle root
+export const HIPS_SEGMENT = 0.14; // the lower-spine bone the driver aims (docs/030)
+export const SHOULDER_DROP = 0.075,
+  NECK_LEN = 0.075,
+  HEAD_BONE_TO_HELMET = 0.105;
+export const HIP_HALF = 0.11,
+  SHOULDER_HALF = 0.165;
 /** Sole to ankle: the one leg number that is ours rather than the solver's. The ride seats the ankle joint
  *  14.4 cm above the board's base (14 mm deck + 18 mm binding pad + boot), so a boot this deep puts the sole
  *  on the binding rather than through the deck or hovering over it. All generated built-ins use it, so they
@@ -85,14 +103,23 @@ export const FORWARD: V3 = [0, 0, 1];
 /** Feet keep the importer's mirrored boot roll: `Foot.L` local +X is sole-up, `Foot.R` local −X is
  *  (docs/030). The runtime retargets a foot through its own bind frame, so this is convention rather than
  *  arithmetic — but a hand-authored rig that disagrees with the imported ones is a trap for the next model. */
-export const FOOT_ROLL_L: V3 = [1, 0, 0], FOOT_ROLL_R: V3 = [-1, 0, 0];
+export const FOOT_ROLL_L: V3 = [1, 0, 0],
+  FOOT_ROLL_R: V3 = [-1, 0, 0];
 
 export interface ArmChain {
-  shoulder: V3; elbow: V3; wrist: V3; fingertip: V3;
+  shoulder: V3;
+  elbow: V3;
+  wrist: V3;
+  fingertip: V3;
   /** Unit head-to-tail direction shared by all three arm bones. */
   direction: V3;
 }
-export interface LegChain { hip: V3; knee: V3; ankle: V3; toe: V3 }
+export interface LegChain {
+  hip: V3;
+  knee: V3;
+  ankle: V3;
+  toe: V3;
+}
 
 /**
  * Where one arm's joints sit in bind. `spreadDegrees` swings the whole chain out from vertical about the
@@ -101,10 +128,12 @@ export interface LegChain { hip: V3; knee: V3; ankle: V3; toe: V3 }
  */
 export function armChain(side: 'L' | 'R', spreadDegrees = 0, handLength = 0.12): ArmChain {
   const x = side === 'L' ? 1 : -1;
-  const angle = spreadDegrees * Math.PI / 180;
+  const angle = (spreadDegrees * Math.PI) / 180;
   const direction: V3 = [x * Math.sin(angle), -Math.cos(angle), 0];
   const step = (from: V3, distance: number): V3 => [
-    from[0] + direction[0] * distance, from[1] + direction[1] * distance, from[2] + direction[2] * distance,
+    from[0] + direction[0] * distance,
+    from[1] + direction[1] * distance,
+    from[2] + direction[2] * distance,
   ];
   const shoulder: V3 = [x * SHOULDER_HALF, SHOULDER_Y, 0];
   const elbow = step(shoulder, UPPER_ARM);
@@ -161,7 +190,11 @@ export interface DigitSpec {
  * names gets a hand that never closes, and nothing anywhere reports why.
  */
 const DIGIT_LABEL: Record<Digit, string> = {
-  thumb: 'Thumb', index: 'Index', middle: 'Middle', ring: 'Ring', pinky: 'Pinky',
+  thumb: 'Thumb',
+  index: 'Index',
+  middle: 'Middle',
+  ring: 'Ring',
+  pinky: 'Pinky',
 };
 
 /** The chain of bones for one hand's digits, in the frame of the hand bone they hang from. */
@@ -220,7 +253,10 @@ export function riderBones(options: RiderSkeletonOptions = {}): BoneSpec[] {
       { name: `UpperLeg.${side}`, parent: `Pelvis.${side}`, head: leg.hip, tail: leg.knee },
       { name: `LowerLeg.${side}`, parent: `UpperLeg.${side}`, head: leg.knee, tail: leg.ankle },
       {
-        name: `Foot.${side}`, parent: `LowerLeg.${side}`, head: leg.ankle, tail: leg.toe,
+        name: `Foot.${side}`,
+        parent: `LowerLeg.${side}`,
+        head: leg.ankle,
+        tail: leg.toe,
         roll: side === 'L' ? FOOT_ROLL_L : FOOT_ROLL_R,
       },
     ];
@@ -249,7 +285,9 @@ export function boneWorldMatrix(spec: BoneSpec): Matrix4 {
   const axisX = new Vector3().crossVectors(axisY, axisZ).normalize();
   axisZ.crossVectors(axisX, axisY).normalize();
   return new Matrix4().compose(
-    head, new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(axisX, axisY, axisZ)), new Vector3(1, 1, 1),
+    head,
+    new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(axisX, axisY, axisZ)),
+    new Vector3(1, 1, 1),
   );
 }
 
@@ -269,7 +307,12 @@ export function boneWorldMatrix(spec: BoneSpec): Matrix4 {
  * a box face — and u runs around the ring. A part maps that square into a texture through `FigurePart.tile`,
  * so the same solid can sample an atlas cell, a repeating strip, or nothing at all.
  */
-export interface ShapeMesh { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }
+export interface ShapeMesh {
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+  indices: number[];
+}
 
 /** The six faces as (normal, u, v) with u × v = normal. */
 const FACES: readonly { normal: V3; u: V3; v: V3 }[] = [
@@ -284,10 +327,18 @@ const FACES: readonly { normal: V3; u: V3; v: V3 }[] = [
 /** An axis-aligned box, given as corners rather than centre and size: what has to be legible in a parts
  *  table is where a solid STOPS relative to the joint it crosses. */
 export function box(min: V3, max: V3): ShapeMesh {
-  const positions: number[] = [], normals: number[] = [], uvs: number[] = [], indices: number[] = [];
+  const positions: number[] = [],
+    normals: number[] = [],
+    uvs: number[] = [],
+    indices: number[] = [];
   for (const face of FACES) {
     const base = positions.length / 3;
-    for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+    for (const [su, sv] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ] as const) {
       for (let axis = 0; axis < 3; axis++) {
         // normal, u and v are an axis-aligned orthonormal set, so exactly one of them decides each axis:
         // its sign picks the low or the high corner.
@@ -312,19 +363,26 @@ const samepoint = (a: V3, b: V3) =>
  * matters because a degenerate triangle is a hole in the closed-solid check, not just wasted geometry.
  */
 function pushFace(mesh: ShapeMesh, corners: readonly V3[], cornerUvs: readonly V2[]) {
-  const ring: V3[] = [], ringUvs: V2[] = [];
+  const ring: V3[] = [],
+    ringUvs: V2[] = [];
   for (let i = 0; i < corners.length; i++) {
     if (ring.length && samepoint(ring[ring.length - 1], corners[i])) continue;
     ring.push(corners[i]);
     ringUvs.push(cornerUvs[i]);
   }
-  while (ring.length > 1 && samepoint(ring[0], ring[ring.length - 1])) { ring.pop(); ringUvs.pop(); }
+  while (ring.length > 1 && samepoint(ring[0], ring[ring.length - 1])) {
+    ring.pop();
+    ringUvs.pop();
+  }
   if (ring.length < 3) return;
   // Newell's method: the area-weighted normal of a polygon, which follows the ring's own winding and stays
   // stable on the near-degenerate rings a taper produces.
-  let nx = 0, ny = 0, nz = 0;
+  let nx = 0,
+    ny = 0,
+    nz = 0;
   for (let i = 0; i < ring.length; i++) {
-    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const a = ring[i],
+      b = ring[(i + 1) % ring.length];
     nx += (a[1] - b[1]) * (a[2] + b[2]);
     ny += (a[2] - b[2]) * (a[0] + b[0]);
     nz += (a[0] - b[0]) * (a[1] + b[1]);
@@ -360,12 +418,22 @@ function loft(rings: readonly V3[][], capStart = true, capEnd = true): ShapeMesh
     pushFace(mesh, [...rings[0]].reverse(), [...uv].reverse());
   }
   for (let level = 0; level + 1 < rings.length; level++) {
-    const low = rings[level], high = rings[level + 1];
-    const vLow = level / levels, vHigh = (level + 1) / levels;
+    const low = rings[level],
+      high = rings[level + 1];
+    const vLow = level / levels,
+      vHigh = (level + 1) / levels;
     for (let i = 0; i < count; i++) {
       const next = (i + 1) % count;
-      pushFace(mesh, [low[i], low[next], high[next], high[i]],
-        [[around(i), vLow], [around(i + 1), vLow], [around(i + 1), vHigh], [around(i), vHigh]]);
+      pushFace(
+        mesh,
+        [low[i], low[next], high[next], high[i]],
+        [
+          [around(i), vLow],
+          [around(i + 1), vLow],
+          [around(i + 1), vHigh],
+          [around(i), vHigh],
+        ],
+      );
     }
   }
   const last = rings[rings.length - 1];
@@ -393,7 +461,7 @@ function capUvs(ring: readonly V3[]): V2[] {
   const order = [0, 1, 2].sort((a, b) => spans[b] - spans[a]);
   // The two widest axes, kept in their natural order so a cap is not mirrored relative to its neighbours.
   const [u, v] = [order[0], order[1]].sort((a, b) => a - b);
-  const fraction = (value: number, axis: number) => spans[axis] > 1e-9 ? (value - min[axis]) / spans[axis] : 0.5;
+  const fraction = (value: number, axis: number) => (spans[axis] > 1e-9 ? (value - min[axis]) / spans[axis] : 0.5);
   return ring.map(corner => [fraction(corner[u], u), fraction(corner[v], v)] as V2);
 }
 
@@ -413,15 +481,28 @@ export function hexahedron(corners: readonly V3[]): ShapeMesh {
  */
 export function chamferProfile(cut = 0.3): V2[] {
   const c = Math.max(0, Math.min(1, cut));
-  if (c <= 0) return [[-1, -1], [-1, 1], [1, 1], [1, -1]];
+  if (c <= 0)
+    return [
+      [-1, -1],
+      [-1, 1],
+      [1, 1],
+      [1, -1],
+    ];
   return [
-    [-1, -1 + c], [-1, 1 - c], [-1 + c, 1], [1 - c, 1], [1, 1 - c], [1, -1 + c], [1 - c, -1], [-1 + c, -1],
+    [-1, -1 + c],
+    [-1, 1 - c],
+    [-1 + c, 1],
+    [1 - c, 1],
+    [1, 1 - c],
+    [1, -1 + c],
+    [1 - c, -1],
+    [-1 + c, -1],
   ];
 }
 
 /** A regular polygon in the same winding — pistons, exhaust stacks, and anything meant to read as round. */
 export function roundProfile(sides: number, phaseDegrees = 0): V2[] {
-  const phase = phaseDegrees * Math.PI / 180;
+  const phase = (phaseDegrees * Math.PI) / 180;
   return Array.from({ length: sides }, (_, i) => {
     const angle = phase + (i / sides) * Math.PI * 2;
     return [Math.cos(angle), -Math.sin(angle)] as V2;
@@ -441,8 +522,11 @@ export interface Level {
 const pair = (value: number | V2): V2 => (typeof value === 'number' ? [value, value] : value);
 
 /** Extrude a profile up the world Y axis through a series of levels. */
-export function extrude(profile: readonly V2[], levels: readonly Level[],
-                        options: { capBottom?: boolean; capTop?: boolean } = {}): ShapeMesh {
+export function extrude(
+  profile: readonly V2[],
+  levels: readonly Level[],
+  options: { capBottom?: boolean; capTop?: boolean } = {},
+): ShapeMesh {
   if (levels.length < 2) throw new Error('an extrusion needs at least two levels');
   const rings = levels.map(level => {
     const [sx, sz] = pair(level.scale);
@@ -466,8 +550,13 @@ export interface Section {
  * limb, and the reason an A-pose costs nothing to author. The cross-section plane is the bone's own local
  * X/Z, so `offset` moves a plate outboard or forward the way the bone will carry it.
  */
-export function limb(head: V3, tail: V3, profile: readonly V2[], sections: readonly Section[],
-                     roll: V3 = FORWARD): ShapeMesh {
+export function limb(
+  head: V3,
+  tail: V3,
+  profile: readonly V2[],
+  sections: readonly Section[],
+  roll: V3 = FORWARD,
+): ShapeMesh {
   const origin = new Vector3(...head);
   const axisY = new Vector3(...tail).sub(origin);
   const length = axisY.length();
@@ -482,7 +571,9 @@ export function limb(head: V3, tail: V3, profile: readonly V2[], sections: reado
     const [sx, sz] = pair(section.scale);
     const [ox, oz] = section.offset ?? [0, 0];
     return (section.profile ?? profile).map(([px, pz]): V3 => {
-      const x = ox + px * sx, z = oz + pz * sz, y = section.t * length;
+      const x = ox + px * sx,
+        z = oz + pz * sz,
+        y = section.t * length;
       return [
         origin.x + axisX.x * x + axisY.x * y + axisZ.x * z,
         origin.y + axisX.y * x + axisY.y * y + axisZ.y * z,
@@ -515,7 +606,8 @@ export function placed(shape: ShapeMesh, placement: Placement): ShapeMesh {
     .multiply(new Matrix4().makeTranslation(-pivot[0], -pivot[1], -pivot[2]));
   const normalMatrix = new Matrix3().getNormalMatrix(matrix);
   const result: ShapeMesh = { positions: [], normals: [], uvs: [...shape.uvs], indices: [...shape.indices] };
-  const point = new Vector3(), normal = new Vector3();
+  const point = new Vector3(),
+    normal = new Vector3();
   for (let i = 0; i < shape.positions.length; i += 3) {
     point.fromArray(shape.positions, i).applyMatrix4(matrix);
     normal.fromArray(shape.normals, i).applyMatrix3(normalMatrix).normalize();
@@ -559,11 +651,14 @@ export function shapeBounds(shape: ShapeMesh): { min: V3; max: V3 } {
 export function shapeVolume(shape: ShapeMesh): number {
   let total = 0;
   for (let i = 0; i < shape.indices.length; i += 3) {
-    const a = shape.indices[i] * 3, b = shape.indices[i + 1] * 3, c = shape.indices[i + 2] * 3;
+    const a = shape.indices[i] * 3,
+      b = shape.indices[i + 1] * 3,
+      c = shape.indices[i + 2] * 3;
     const p = shape.positions;
-    total += p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1])
-      + p[a + 1] * (p[b + 2] * p[c] - p[b] * p[c + 2])
-      + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
+    total +=
+      p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) +
+      p[a + 1] * (p[b + 2] * p[c] - p[b] * p[c + 2]) +
+      p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
   }
   return total / 6;
 }
@@ -656,8 +751,12 @@ export function buildFigure(spec: FigureSpec): Group {
   }
   const boneIndex = new Map(order.map((bone, index) => [bone.name, index]));
 
-  const positions: number[] = [], normals: number[] = [], indices: number[] = [], uvs: number[] = [];
-  const skinIndices: number[] = [], skinWeights: number[] = [];
+  const positions: number[] = [],
+    normals: number[] = [],
+    indices: number[] = [],
+    uvs: number[] = [];
+  const skinIndices: number[] = [],
+    skinWeights: number[] = [];
   const groups: { start: number; count: number; material: number }[] = [];
   const used = new Set<string>();
   const textured = !!spec.textures?.length;
@@ -689,7 +788,9 @@ export function buildFigure(spec: FigureSpec): Group {
   });
   const orphans = spec.parts.filter(part => !used.has(part.name));
   if (orphans.length) {
-    throw new Error(`parts name colours the palette does not have: ${orphans.map(p => `${p.name}/${p.material}`).join(', ')}`);
+    throw new Error(
+      `parts name colours the palette does not have: ${orphans.map(p => `${p.name}/${p.material}`).join(', ')}`,
+    );
   }
 
   const geometry = new BufferGeometry();
@@ -708,8 +809,11 @@ export function buildFigure(spec: FigureSpec): Group {
   // group directly gets the same shading the exported file does.
   const materials = spec.palette.map(entry => {
     const material = new MeshStandardMaterial({
-      name: entry.name, color: new Color(entry.color),
-      metalness: entry.metalness ?? 0, roughness: entry.roughness ?? 0.85, flatShading: true,
+      name: entry.name,
+      color: new Color(entry.color),
+      metalness: entry.metalness ?? 0,
+      roughness: entry.roughness ?? 0.85,
+      flatShading: true,
     });
     if (entry.emissive !== undefined) material.emissive = new Color(entry.emissive);
     if (entry.scroll) material.userData = { [CHARACTER_UV_SCROLL_KEY]: [entry.scroll[0], entry.scroll[1]] };
@@ -737,7 +841,10 @@ function installFileReader() {
     result: ArrayBuffer | null = null;
     onloadend: (() => void) | null = null;
     readAsArrayBuffer(blob: Blob) {
-      void blob.arrayBuffer().then(result => { this.result = result; this.onloadend?.(); });
+      void blob.arrayBuffer().then(result => {
+        this.result = result;
+        this.onloadend?.();
+      });
     }
   };
 }
@@ -771,10 +878,14 @@ export async function runCharacterBuild(defaultOutput: string, glb: () => Promis
   const out = resolve(process.argv[2] ?? defaultOutput);
   const bytes = await glb();
   const report = checkCharacterGlb(bytes, out);
-  console.log(`${report.skinnedMeshes} skinned mesh, ${report.vertices} vertices, ${report.triangles} triangles, `
-    + `${report.bones} bones, ${report.materials} materials`);
-  console.log(`height ${report.heightMetres?.toFixed(3) ?? '?'} m, bounds ${JSON.stringify(report.boundsMin)} → `
-    + `${JSON.stringify(report.boundsMax)}, ${bytes.byteLength} bytes`);
+  console.log(
+    `${report.skinnedMeshes} skinned mesh, ${report.vertices} vertices, ${report.triangles} triangles, ` +
+      `${report.bones} bones, ${report.materials} materials`,
+  );
+  console.log(
+    `height ${report.heightMetres?.toFixed(3) ?? '?'} m, bounds ${JSON.stringify(report.boundsMin)} → ` +
+      `${JSON.stringify(report.boundsMax)}, ${bytes.byteLength} bytes`,
+  );
   for (const warning of report.warnings) console.log(`  warning: ${warning}`);
   for (const error of report.errors) console.log(`  error: ${error}`);
   if (!report.valid) throw new Error('generated character failed the character contract; nothing was written');

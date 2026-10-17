@@ -5,7 +5,10 @@ import type { Quat } from '../../core/props/pose';
 import { CUSTOM_TEX_LEVEL, makeTexRef, resolvePropTex } from '../../core/paint/textures';
 import { textureUrl } from '../net/asset-paths';
 import {
-  analyzeTextureImage, applyTextureAlphaMode, resolvePropAlphaMode, type TextureAlphaAnalysis,
+  analyzeTextureImage,
+  applyTextureAlphaMode,
+  resolvePropAlphaMode,
+  type TextureAlphaAnalysis,
 } from './texture-alpha';
 
 /** One model of an assembly view: the model plus its group-local pose (editor metres / degrees, the
@@ -14,9 +17,13 @@ import {
  *  their own, so an entry may name its own level and material table, `relRot` (an editor-frame quaternion, which
  *  wins over `relYaw`) and `relScale`. */
 export interface ThumbEntry {
-  model: PropModel; relPos?: V3; relYaw?: number;
-  relRot?: Quat; relScale?: number;
-  level?: string; materials?: LevelProps['materials'];
+  model: PropModel;
+  relPos?: V3;
+  relYaw?: number;
+  relRot?: Quat;
+  relScale?: number;
+  level?: string;
+  materials?: LevelProps['materials'];
 }
 
 /**
@@ -30,14 +37,14 @@ export interface ThumbEntry {
  */
 
 /** The canonical 3/4 view — a touch above and off one corner. Library thumbnails render here; the orbit starts here. */
-export const THUMB_DEFAULT_AZIMUTH = Math.PI / 4;              // 45° around vertical
+export const THUMB_DEFAULT_AZIMUTH = Math.PI / 4; // 45° around vertical
 export const THUMB_DEFAULT_ELEVATION = Math.atan2(0.7, Math.SQRT2); // ≈ 26° above the horizon (matches dir 1,0.7,1)
 
 export class ThumbRenderer {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
-  private group = new THREE.Group();       // tilts model-local Z-up into viewer Y-up; holds the model's meshes
+  private group = new THREE.Group(); // tilts model-local Z-up into viewer Y-up; holds the model's meshes
   private neutral = new THREE.MeshLambertMaterial({ color: 0xb8b2a4, emissive: 0x0d0f12, side: THREE.DoubleSide });
   private box = new THREE.Box3();
   private sphere = new THREE.Sphere();
@@ -64,7 +71,9 @@ export class ThumbRenderer {
   }
 
   /** The backing canvas — mount this to show live orbit views (the Prop Tools preview does). */
-  get canvas(): HTMLCanvasElement { return this.renderer.domElement; }
+  get canvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
 
   /** Load a tile texture once (cached; null on failure). */
   private load(level: string, file: string): Promise<THREE.Texture | null> {
@@ -77,12 +86,17 @@ export class ThumbRenderer {
         textureUrl(level, file),
         tex => {
           if (generation !== this.projectGeneration && level.toLowerCase() === CUSTOM_TEX_LEVEL.toLowerCase()) {
-            tex.dispose(); resolve(null); return;
+            tex.dispose();
+            resolve(null);
+            return;
           }
           tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
           tex.colorSpace = THREE.SRGBColorSpace;
-          try { this.alphaCache.set(k, analyzeTextureImage(tex.image)); }
-          catch { this.alphaCache.set(k, { kind: 'unknown', glow: false }); }
+          try {
+            this.alphaCache.set(k, analyzeTextureImage(tex.image));
+          } catch {
+            this.alphaCache.set(k, { kind: 'unknown', glow: false });
+          }
           this.texCache.set(k, tex);
           resolve(tex);
         },
@@ -99,14 +113,17 @@ export class ThumbRenderer {
   invalidateProjectAssets(): void {
     this.projectGeneration++;
     const prefix = `${CUSTOM_TEX_LEVEL}/`.toLowerCase();
-    for (const [key, texture] of this.texCache) if (key.toLowerCase().startsWith(prefix)) {
-      texture?.dispose(); this.texCache.delete(key);
-      this.alphaCache.delete(key);
-    }
-    for (const [key, material] of this.matCache) if (key.toLowerCase().startsWith(prefix)) {
-      if (material !== this.neutral) material.dispose();
-      this.matCache.delete(key);
-    }
+    for (const [key, texture] of this.texCache)
+      if (key.toLowerCase().startsWith(prefix)) {
+        texture?.dispose();
+        this.texCache.delete(key);
+        this.alphaCache.delete(key);
+      }
+    for (const [key, material] of this.matCache)
+      if (key.toLowerCase().startsWith(prefix)) {
+        if (material !== this.neutral) material.dispose();
+        this.matCache.delete(key);
+      }
   }
 
   private material(level: string, file: string | null, source?: PropMaterial): THREE.MeshLambertMaterial {
@@ -115,8 +132,8 @@ export class ThumbRenderer {
     const frames = source?.frames ?? [];
     const mode = resolvePropAlphaMode(
       [...new Set([file, ...frames])].map(name => this.alphaCache.get(makeTexRef(level, name))),
-      { mode: source?.alphaMode, alphaPass: source?.blend, priority: source?.prio,
-        pixelAlpha: source?.pixelAlpha });
+      { mode: source?.alphaMode, alphaPass: source?.blend, priority: source?.prio, pixelAlpha: source?.pixelAlpha },
+    );
     const k = `${texKey}:${mode}`;
     let m = this.matCache.get(k);
     if (!m) {
@@ -142,13 +159,14 @@ export class ThumbRenderer {
     // a tile ref may name its own bank ("Custom/lamp.png" — authored-model tiles, imported-prop art);
     // resolving through the same helper the viewport materials use keeps thumbnails and world in step
     const files = new Map<string, { level: string; name: string }>();
-    for (const e of entries) for (const s of e.model.subs) {
-      const material = (e.materials ?? materials).get(s.mat);
-      const tile = resolvePropTex(e.level ?? level, material?.tex);
-      if (tile.name) files.set(`${tile.level}/${tile.name}`, { level: tile.level, name: tile.name });
-      for (const frame of material?.frames ?? [])
-        files.set(`${tile.level}/${frame}`, { level: tile.level, name: frame });
-    }
+    for (const e of entries)
+      for (const s of e.model.subs) {
+        const material = (e.materials ?? materials).get(s.mat);
+        const tile = resolvePropTex(e.level ?? level, material?.tex);
+        if (tile.name) files.set(`${tile.level}/${tile.name}`, { level: tile.level, name: tile.name });
+        for (const frame of material?.frames ?? [])
+          files.set(`${tile.level}/${frame}`, { level: tile.level, name: frame });
+      }
     await Promise.all([...files.values()].map(f => this.load(f.level, f.name)));
 
     for (const c of this.group.children) c.traverse(o => (o as THREE.Mesh).geometry?.dispose());
@@ -168,8 +186,7 @@ export class ThumbRenderer {
         g.setAttribute('position', new THREE.BufferAttribute(s.positions, 3));
         g.setAttribute('uv', new THREE.BufferAttribute(s.uvs, 2));
         g.setIndex(new THREE.BufferAttribute(s.indices, 1));
-        if (s.normals?.length === s.positions.length)
-          g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
+        if (s.normals?.length === s.positions.length) g.setAttribute('normal', new THREE.BufferAttribute(s.normals, 3));
         else g.computeVertexNormals();
         const material = (e.materials ?? materials).get(s.mat);
         const tile = resolvePropTex(e.level ?? level, material?.tex);
@@ -184,11 +201,14 @@ export class ThumbRenderer {
    *  horizon, both radians). Cheap enough to call every pointer-move for a smooth drag-orbit. */
   view(azimuth: number, elevation: number): void {
     this.box.setFromObject(this.group);
-    if (this.box.isEmpty()) { this.renderer.render(this.scene, this.camera); return; }
+    if (this.box.isEmpty()) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
     this.box.getBoundingSphere(this.sphere);
     const r = Math.max(this.sphere.radius, 1e-3);
     this.center.copy(this.sphere.center);
-    const dist = r / Math.sin((this.camera.fov * Math.PI) / 180 / 2) * 1.15; // 15% margin
+    const dist = (r / Math.sin((this.camera.fov * Math.PI) / 180 / 2)) * 1.15; // 15% margin
     const ch = Math.cos(elevation);
     this.dir.set(ch * Math.sin(azimuth), Math.sin(elevation), ch * Math.cos(azimuth));
     this.camera.position.copy(this.center).addScaledVector(this.dir, dist);

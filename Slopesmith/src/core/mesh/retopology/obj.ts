@@ -18,11 +18,13 @@ export function writeObj(mesh: PolygonMesh, name = 'mesh'): string {
 
 /** Read vertex positions and polygon faces from OBJ. UV/normal indices are accepted and ignored. */
 export function readObj(text: string): PolygonMesh {
-  const vertices: V3[] = [], faces: number[][] = [];
+  const vertices: V3[] = [],
+    faces: number[][] = [];
   for (const [lineIndex, source] of text.split(/\r?\n/).entries()) {
     const line = source.trim();
     if (!line || line.startsWith('#')) continue;
-    const fields = line.split(/\s+/), kind = fields.shift();
+    const fields = line.split(/\s+/),
+      kind = fields.shift();
     if (kind === 'v') {
       const point = fields.slice(0, 3).map(Number);
       if (point.length !== 3 || point.some(value => !Number.isFinite(value))) {
@@ -59,12 +61,15 @@ export function triangulateFaces(mesh: PolygonMesh): [number, number, number][] 
 
 /** Mean polygon-edge length (including shared edges once per incident face), matching QuadWild's scale basis. */
 export function meanFaceEdgeLength(mesh: PolygonMesh): number {
-  let total = 0, count = 0;
-  for (const face of mesh.faces) for (let corner = 0; corner < face.length; corner++) {
-    const a = mesh.vertices[face[corner]], b = mesh.vertices[face[(corner + 1) % face.length]];
-    if (!a || !b) continue;
-    total += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-    count++;
-  }
+  let total = 0,
+    count = 0;
+  for (const face of mesh.faces)
+    for (let corner = 0; corner < face.length; corner++) {
+      const a = mesh.vertices[face[corner]],
+        b = mesh.vertices[face[(corner + 1) % face.length]];
+      if (!a || !b) continue;
+      total += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      count++;
+    }
   return count ? total / count : 0;
 }

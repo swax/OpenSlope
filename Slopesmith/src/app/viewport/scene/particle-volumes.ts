@@ -26,15 +26,24 @@ interface VolumeDraw {
   hit: THREE.Mesh;
 }
 
-interface FogPuffDraw { x: number; y: number; z: number; size: number }
+interface FogPuffDraw {
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+}
 
 /** Standalone PBD fog-bank renderer. These are static puff clusters, not SSF timer emitters: World Effects
  * controls their billboards, while Effects mode independently exposes their purple volume bounds for picking. */
 export function createParticleVolumesLayer(stage: Stage) {
-  const authoredVisuals = new THREE.Group(); authoredVisuals.name = 'Authored ambient particles';
-  const referenceVisuals = new THREE.Group(); referenceVisuals.name = 'Reference ambient particles';
-  const authoredBounds = new THREE.Group(); authoredBounds.name = 'Authored ambient particle bounds';
-  const referenceBounds = new THREE.Group(); referenceBounds.name = 'Reference ambient particle bounds';
+  const authoredVisuals = new THREE.Group();
+  authoredVisuals.name = 'Authored ambient particles';
+  const referenceVisuals = new THREE.Group();
+  referenceVisuals.name = 'Reference ambient particles';
+  const authoredBounds = new THREE.Group();
+  authoredBounds.name = 'Authored ambient particle bounds';
+  const referenceBounds = new THREE.Group();
+  referenceBounds.name = 'Reference ambient particle bounds';
   stage.worldRoot.add(authoredVisuals, authoredBounds);
   stage.refRoot.add(referenceVisuals, referenceBounds);
 
@@ -44,7 +53,8 @@ export function createParticleVolumesLayer(stage: Stage) {
     let texture = textures.get(url);
     if (!texture) {
       texture = new THREE.TextureLoader(renderLoadingManager).load(url, loaded => {
-        loaded.colorSpace = THREE.SRGBColorSpace; loaded.needsUpdate = true;
+        loaded.colorSpace = THREE.SRGBColorSpace;
+        loaded.needsUpdate = true;
       });
       textures.set(url, texture);
     }
@@ -59,36 +69,47 @@ export function createParticleVolumesLayer(stage: Stage) {
   let selectedAuthored: string | null = null;
   let selectedReference: number | null = null;
 
-  const raw = new THREE.Matrix4(), edit = new THREE.Matrix4();
-  const pos = new THREE.Vector3(), q = new THREE.Quaternion(), scale = new THREE.Vector3();
+  const raw = new THREE.Matrix4(),
+    edit = new THREE.Matrix4();
+  const pos = new THREE.Vector3(),
+    q = new THREE.Quaternion(),
+    scale = new THREE.Vector3();
   const fogColor = new THREE.Color(FOG_PUFF_COMPOSITE.color);
 
   function volumeMatrix(volume: ParticleVolume): THREE.Matrix4 {
     const loc = particleRawFromEditor(volume.pos);
-    raw.compose(pos.set(loc[0], loc[1], loc[2]),
-      q.set(...volume.nativeRotation), scale.set(...volume.scale));
+    raw.compose(pos.set(loc[0], loc[1], loc[2]), q.set(...volume.nativeRotation), scale.set(...volume.scale));
     return edit.multiplyMatrices(RAW_TO_EDITOR, raw);
   }
 
-  function build(volume: ParticleVolume, source: 'authored' | 'reference', index: number,
-    puffs: FogPuffDraw[]): VolumeDraw {
+  function build(
+    volume: ParticleVolume,
+    source: 'authored' | 'reference',
+    index: number,
+    puffs: FogPuffDraw[],
+  ): VolumeDraw {
     const matrix = volumeMatrix(volume).clone();
     const box = new THREE.Box3();
     const radiusScale = Math.max(Math.abs(volume.scale[0]), Math.abs(volume.scale[1]), Math.abs(volume.scale[2]));
-    for (const object of volume.objects) for (const puff of object.puffs) {
-      const center = new THREE.Vector3(...puff.position).applyMatrix4(matrix);
-      const puffScale = Math.max(Math.abs(puff.scale[0]), Math.abs(puff.scale[1]), Math.abs(puff.scale[2]));
-      const radius = Math.max(0.01, puff.radius * puffScale * radiusScale / 100);
-      puffs.push({ x: center.x, y: center.y, z: center.z, size: radius * PUFF_DRAW_DIAMETER });
-      box.expandByPoint(center.clone().addScalar(radius));
-      box.expandByPoint(center.clone().addScalar(-radius));
-    }
+    for (const object of volume.objects)
+      for (const puff of object.puffs) {
+        const center = new THREE.Vector3(...puff.position).applyMatrix4(matrix);
+        const puffScale = Math.max(Math.abs(puff.scale[0]), Math.abs(puff.scale[1]), Math.abs(puff.scale[2]));
+        const radius = Math.max(0.01, (puff.radius * puffScale * radiusScale) / 100);
+        puffs.push({ x: center.x, y: center.y, z: center.z, size: radius * PUFF_DRAW_DIAMETER });
+        box.expandByPoint(center.clone().addScalar(radius));
+        box.expandByPoint(center.clone().addScalar(-radius));
+      }
     if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(...volume.pos), new THREE.Vector3(2, 2, 2));
     const size = box.getSize(new THREE.Vector3()).max(new THREE.Vector3(1, 1, 1));
     const center = box.getCenter(new THREE.Vector3());
     const material = new THREE.MeshBasicMaterial({
-      color: 0xb66cff, wireframe: true, transparent: true, opacity: 0.24,
-      depthWrite: false, depthTest: true,
+      color: 0xb66cff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.24,
+      depthWrite: false,
+      depthTest: true,
     });
     const hit = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
     hit.position.copy(center);
@@ -109,17 +130,27 @@ export function createParticleVolumesLayer(stage: Stage) {
 
   /** One instanced billboard draw replaces one Three Sprite draw per puff. Positions already include the native
    * volume transform; the parent group supplies only authored/reference chirality and comparison placement. */
-  function buildBatch(group: THREE.Group, source: 'authored' | 'reference', puffs: readonly FogPuffDraw[],
-    previous: ParticleBatches | null, ref?: string): ParticleBatches | null {
+  function buildBatch(
+    group: THREE.Group,
+    source: 'authored' | 'reference',
+    puffs: readonly FogPuffDraw[],
+    previous: ParticleBatches | null,
+    ref?: string,
+  ): ParticleBatches | null {
     previous?.dispose();
     group.clear();
     if (!puffs.length) return null;
     const batch = createParticleBatches(fogTexture(ref), 1, 1, puffs.length);
     const { position, color, alpha, size, sprite } = batch.buffers;
     for (let i = 0; i < puffs.length; i++) {
-      const puff = puffs[i], k = i * 3;
-      position[k] = puff.x; position[k + 1] = puff.y; position[k + 2] = puff.z;
-      color[k] = fogColor.r; color[k + 1] = fogColor.g; color[k + 2] = fogColor.b;
+      const puff = puffs[i],
+        k = i * 3;
+      position[k] = puff.x;
+      position[k + 1] = puff.y;
+      position[k + 2] = puff.z;
+      color[k] = fogColor.r;
+      color[k + 1] = fogColor.g;
+      color[k + 2] = fogColor.b;
       alpha[i] = FOG_PUFF_COMPOSITE.opacity;
       size[i] = puff.size;
       sprite[i] = 0;
@@ -128,7 +159,8 @@ export function createParticleVolumesLayer(stage: Stage) {
     batch.alphaMesh.name = `${source === 'reference' ? 'Reference' : 'Authored'} ambient particle batch`;
     batch.alphaMesh.userData.particleVolumeVisualSource = source;
     // Bounds must cover instance centres and their view-facing corners, not the shared unit quad at the origin.
-    const bounds = new THREE.Box3(), corner = new THREE.Vector3();
+    const bounds = new THREE.Box3(),
+      corner = new THREE.Vector3();
     for (const puff of puffs) {
       const radius = puff.size / Math.SQRT2;
       bounds.expandByPoint(corner.set(puff.x - radius, puff.y - radius, puff.z - radius));
@@ -141,32 +173,42 @@ export function createParticleVolumesLayer(stage: Stage) {
   }
 
   function setAuthored(volumes: readonly ParticleVolume[]) {
-    disposeBounds(authoredBounds, authoredDraws.values()); authoredDraws.clear();
-    authoredBatches.forEach(batch => batch.dispose()); authoredBatches = []; authoredVisuals.clear();
+    disposeBounds(authoredBounds, authoredDraws.values());
+    authoredDraws.clear();
+    authoredBatches.forEach(batch => batch.dispose());
+    authoredBatches = [];
+    authoredVisuals.clear();
     const groups = new Map<string, FogPuffDraw[]>();
     volumes.forEach((volume, index) => {
       const ref = volume.texture ?? '';
-      const puffs = groups.get(ref) ?? []; groups.set(ref, puffs);
+      const puffs = groups.get(ref) ?? [];
+      groups.set(ref, puffs);
       const draw = build(volume, 'authored', index, puffs);
-      authoredDraws.set(volume.id, draw); authoredBounds.add(draw.hit);
+      authoredDraws.set(volume.id, draw);
+      authoredBounds.add(draw.hit);
     });
     for (const [ref, puffs] of groups) {
-      const group = new THREE.Group(); authoredVisuals.add(group);
+      const group = new THREE.Group();
+      authoredVisuals.add(group);
       const batch = buildBatch(group, 'authored', puffs, null, ref || undefined);
       if (batch) authoredBatches.push(batch);
     }
-    applyVisibility(); applySelection();
+    applyVisibility();
+    applySelection();
   }
 
   function setReference(volumes: readonly ParticleVolume[]) {
-    disposeBounds(referenceBounds, referenceDraws.values()); referenceDraws.clear();
+    disposeBounds(referenceBounds, referenceDraws.values());
+    referenceDraws.clear();
     const puffs: FogPuffDraw[] = [];
     volumes.forEach((volume, index) => {
       const draw = build(volume, 'reference', index, puffs);
-      referenceDraws.set(index, draw); referenceBounds.add(draw.hit);
+      referenceDraws.set(index, draw);
+      referenceBounds.add(draw.hit);
     });
     referenceBatch = buildBatch(referenceVisuals, 'reference', puffs, referenceBatch);
-    applyVisibility(); applySelection();
+    applyVisibility();
+    applySelection();
   }
 
   function applyVisibility() {
@@ -193,10 +235,24 @@ export function createParticleVolumesLayer(stage: Stage) {
     }
   }
 
-  function setInspecting(on: boolean) { inspecting = on; applyVisibility(); }
-  function setWorldEffectsEnabled(on: boolean) { worldEffectsEnabled = on; applyVisibility(); }
-  function selectAuthored(id: string | null) { selectedAuthored = id; if (id !== null) selectedReference = null; applySelection(); }
-  function selectReference(index: number | null) { selectedReference = index; if (index !== null) selectedAuthored = null; applySelection(); }
+  function setInspecting(on: boolean) {
+    inspecting = on;
+    applyVisibility();
+  }
+  function setWorldEffectsEnabled(on: boolean) {
+    worldEffectsEnabled = on;
+    applyVisibility();
+  }
+  function selectAuthored(id: string | null) {
+    selectedAuthored = id;
+    if (id !== null) selectedReference = null;
+    applySelection();
+  }
+  function selectReference(index: number | null) {
+    selectedReference = index;
+    if (index !== null) selectedAuthored = null;
+    applySelection();
+  }
 
   function focus(source: 'authored' | 'reference', key: string | number): THREE.Sphere | null {
     const draw = source === 'authored' ? authoredDraws.get(String(key)) : referenceDraws.get(Number(key));
@@ -207,9 +263,15 @@ export function createParticleVolumesLayer(stage: Stage) {
   }
 
   return {
-    authoredBounds, referenceBounds,
-    setAuthored, setReference, setInspecting, setWorldEffectsEnabled,
-    selectAuthored, selectReference, focus,
+    authoredBounds,
+    referenceBounds,
+    setAuthored,
+    setReference,
+    setInspecting,
+    setWorldEffectsEnabled,
+    selectAuthored,
+    selectReference,
+    focus,
   };
 }
 

@@ -10,21 +10,41 @@ import { redrawCourse } from '../../../core/doc/course';
 import type { CourseDrawHandlers } from '../../viewport/tools/course-draw';
 import { clampKnotWidth, KNOT_WIDTH_LIMITS } from '../../../core/doc/run-shaping';
 import {
-  DEFAULT_LAPS, DEFAULT_SHOWOFF_SECONDS, MAX_CHECKPOINT_BONUS_SECONDS, MAX_LAPS, MAX_SHOWOFF_SECONDS,
-  normalizeCheckpointBonus, normalizeLaps, normalizeShowoffSeconds,
+  DEFAULT_LAPS,
+  DEFAULT_SHOWOFF_SECONDS,
+  MAX_CHECKPOINT_BONUS_SECONDS,
+  MAX_LAPS,
+  MAX_SHOWOFF_SECONDS,
+  normalizeCheckpointBonus,
+  normalizeLaps,
+  normalizeShowoffSeconds,
 } from '../../../core/doc/race';
 import { clearGui, detail, note, tip } from '../components/gui';
 import { tooltip } from '../components/tooltip';
 import { toast } from '../components/toast';
 import {
-  auditionBoardSound, auditionCustomMusic, auditionEnvironmentBed, boardSoundAuditionActive, boardSoundAuditionPlaying,
-  onBoardSoundAuditionChange, stopAudition,
+  auditionBoardSound,
+  auditionCustomMusic,
+  auditionEnvironmentBed,
+  boardSoundAuditionActive,
+  boardSoundAuditionPlaying,
+  onBoardSoundAuditionChange,
+  stopAudition,
 } from '../components/audition';
 import { normalizeRaceMusicArrangement } from '../../../core/music/arrangement';
-import { BOARD_AUDIO_GROUPS, boardAudioGroup, boardGlideSlot, normalizeBoardSound } from '../../../core/audio/board-sound';
+import {
+  BOARD_AUDIO_GROUPS,
+  boardAudioGroup,
+  boardGlideSlot,
+  normalizeBoardSound,
+} from '../../../core/audio/board-sound';
 import { DEFAULT_ENVIRONMENT_BED, normalizeEnvironmentBed } from '../../../core/audio/environment';
 import {
-  leavesSceneSound, sceneBackTarget, sceneBoundsVisibility, sceneFolderVisibility, type SceneSel,
+  leavesSceneSound,
+  sceneBackTarget,
+  sceneBoundsVisibility,
+  sceneFolderVisibility,
+  type SceneSel,
 } from './scene-navigation';
 import { MODE_ICON } from '../components/icons';
 import { fetchJson } from '../../net/fetch-json';
@@ -52,26 +72,27 @@ export type { SceneSel } from './scene-navigation';
 export type ScenePanelDeps = {
   camera: SceneCameraDeps;
   getDoc: () => EditDoc;
-  getSelected: () => number | null;      // the selected knot on the run
+  getSelected: () => number | null; // the selected knot on the run
   setSelected: (i: number | null) => void;
-  getSelectedKnots: () => number[];      // Info marquee selection for bulk course-point deletion
+  getSelectedKnots: () => number[]; // Info marquee selection for bulk course-point deletion
   setSelectedKnots: (indices: number[]) => void;
   scheduleRebuild: () => void;
-  requestCourseSeat: () => void;         // re-land the run on the terrain at the next render (host-owned)
+  requestCourseSeat: () => void; // re-land the run on the terrain at the next render (host-owned)
   surfaceOptions: Record<string, number>; // "<num> <label>" -> surface id, for the base ride-feel dropdown
-  isSceneActive: () => boolean;            // Scene's panel is the active editor mode (not merely retaining state)
-  onSelectionChange: () => void;           // synchronize category-scoped viewport previews
-  showOwnBox: (on: boolean) => void;      // frame the authored mountain on Scene's Reference landing view
-  showRefBox: (on: boolean) => void;      // frame the reference on Scene's Reference landing view
-  hasReference: () => boolean;            // a reference level is loaded (its lighting study exists)
-  getReferenceName: () => string;         // loaded comparison level name; empty before one is chosen
-  getCourseVisible: () => boolean;        // shared authored Course + reference SOP/AIP visibility
+  isSceneActive: () => boolean; // Scene's panel is the active editor mode (not merely retaining state)
+  onSelectionChange: () => void; // synchronize category-scoped viewport previews
+  showOwnBox: (on: boolean) => void; // frame the authored mountain on Scene's Reference landing view
+  showRefBox: (on: boolean) => void; // frame the reference on Scene's Reference landing view
+  hasReference: () => boolean; // a reference level is loaded (its lighting study exists)
+  getReferenceName: () => string; // loaded comparison level name; empty before one is chosen
+  getCourseVisible: () => boolean; // shared authored Course + reference SOP/AIP visibility
   setCourseVisible: (on: boolean) => void;
-  getNormalsVisible: () => boolean;       // pink back-face tint that exposes the surface-normal direction
+  getNormalsVisible: () => boolean; // pink back-face tint that exposes the surface-normal direction
   setNormalsVisible: (on: boolean) => void;
-  getAiPathsVisible: () => boolean;       // shared authored AI lines + reference AIP-network visibility
+  getAiPathsVisible: () => boolean; // shared authored AI lines + reference AIP-network visibility
   setAiPathsVisible: (on: boolean) => void;
-  courseDraw: {                           // Course ▸ reset course: the new run clicked onto the terrain (viewport)
+  courseDraw: {
+    // Course ▸ reset course: the new run clicked onto the terrain (viewport)
     begin: (handlers: CourseDrawHandlers) => void;
     end: () => void;
     active: () => boolean;
@@ -81,10 +102,29 @@ export type ScenePanelDeps = {
 };
 
 export function createScenePanel(deps: ScenePanelDeps) {
-  const { getDoc, getSelected, setSelected, getSelectedKnots, setSelectedKnots,
-    scheduleRebuild, requestCourseSeat, surfaceOptions, isSceneActive, onSelectionChange, showOwnBox, showRefBox,
-    hasReference, getReferenceName, getCourseVisible, setCourseVisible, getNormalsVisible, setNormalsVisible,
-    getAiPathsVisible, setAiPathsVisible, courseDraw } = deps;
+  const {
+    getDoc,
+    getSelected,
+    setSelected,
+    getSelectedKnots,
+    setSelectedKnots,
+    scheduleRebuild,
+    requestCourseSeat,
+    surfaceOptions,
+    isSceneActive,
+    onSelectionChange,
+    showOwnBox,
+    showRefBox,
+    hasReference,
+    getReferenceName,
+    getCourseVisible,
+    setCourseVisible,
+    getNormalsVisible,
+    setNormalsVisible,
+    getAiPathsVisible,
+    setAiPathsVisible,
+    courseDraw,
+  } = deps;
 
   let sceneSel: SceneSel = 'info';
   let sceneCollapsed = false; // the whole Scene content (tree + details) folds away from the SCENE header
@@ -116,33 +156,86 @@ export function createScenePanel(deps: ScenePanelDeps) {
   const cameraFolder = sceneGui.addFolder('Camera');
   cameraFolder.domElement.classList.add('sp-scene-card');
   const cameraPanel = createSceneCamera(cameraFolder.$children, deps.camera);
-  const refFolder = sceneGui.addFolder('Reference');         // landing view: read-only comparison picker
-  const sunFolder = sceneGui.addFolder(mountainName());      // Lighting: authored sun
-  const lightFolder = sceneGui.addFolder(referenceHeader());// Lighting: recovered reference study
-  const godRayFolder = sceneGui.addFolder(mountainName());   // God Rays: authored World.json controls
-  const refGodRayFolder = sceneGui.addFolder(referenceHeader());// God Rays: loaded World.json readout
-  const soundFolder = sceneGui.addFolder(mountainName());    // Sound: authored race music
-  const refSoundFolder = sceneGui.addFolder(referenceHeader());// Sound: shared rider cue + reference PathFinder study
-  const skyPreviewFolder = sceneGui.addFolder('Preview');    // Skybox: shared world + presentation-effect preview
-  const skyFolder = sceneGui.addFolder(mountainName());      // Skybox: authored backdrop
-  const refSkyFolder = sceneGui.addFolder(referenceHeader());// Skybox: loaded level's backdrop
-  const courseFolder = sceneGui.addFolder(mountainName());   // Course: authored run + shared overlays
-  const selFolder = sceneGui.addFolder('Selected knot');     // Course: selected authored course point(s)
-  const refCourseFolder = sceneGui.addFolder(referenceHeader());// Course: recovered line + borrow action
-  for (const folder of [refFolder, sunFolder, lightFolder, godRayFolder, refGodRayFolder, soundFolder,
-    refSoundFolder, skyPreviewFolder, skyFolder, refSkyFolder, courseFolder, selFolder, refCourseFolder])
+  const refFolder = sceneGui.addFolder('Reference'); // landing view: read-only comparison picker
+  const sunFolder = sceneGui.addFolder(mountainName()); // Lighting: authored sun
+  const lightFolder = sceneGui.addFolder(referenceHeader()); // Lighting: recovered reference study
+  const godRayFolder = sceneGui.addFolder(mountainName()); // God Rays: authored World.json controls
+  const refGodRayFolder = sceneGui.addFolder(referenceHeader()); // God Rays: loaded World.json readout
+  const soundFolder = sceneGui.addFolder(mountainName()); // Sound: authored race music
+  const refSoundFolder = sceneGui.addFolder(referenceHeader()); // Sound: shared rider cue + reference PathFinder study
+  const skyPreviewFolder = sceneGui.addFolder('Preview'); // Skybox: shared world + presentation-effect preview
+  const skyFolder = sceneGui.addFolder(mountainName()); // Skybox: authored backdrop
+  const refSkyFolder = sceneGui.addFolder(referenceHeader()); // Skybox: loaded level's backdrop
+  const courseFolder = sceneGui.addFolder(mountainName()); // Course: authored run + shared overlays
+  const selFolder = sceneGui.addFolder('Selected knot'); // Course: selected authored course point(s)
+  const refCourseFolder = sceneGui.addFolder(referenceHeader()); // Course: recovered line + borrow action
+  for (const folder of [
+    refFolder,
+    sunFolder,
+    lightFolder,
+    godRayFolder,
+    refGodRayFolder,
+    soundFolder,
+    refSoundFolder,
+    skyPreviewFolder,
+    skyFolder,
+    refSkyFolder,
+    courseFolder,
+    selFolder,
+    refCourseFolder,
+  ])
     folder.domElement.classList.add('sp-scene-card');
   for (const folder of [refFolder, lightFolder, refGodRayFolder, refSoundFolder, refSkyFolder, refCourseFolder])
     folder.domElement.classList.add('sp-scene-reference');
 
-  const categories: Array<{ value: SceneSel; label: string | (() => string); icon: string; title: string | (() => string) }> = [
-    { value: 'info', label: 'Reference', icon: '◇', title: () => `Choose a read-only mountain to compare with ${mountainName()}.` },
-    { value: 'course', label: 'Course', icon: '⌁', title: () => `${mountainName()} run controls followed by the recovered ${referenceName()} course.` },
-    { value: 'sound', label: 'Sound', icon: '♫', title: () => `${mountainName()} music, rider audio, announcer, and the ${referenceName()} music graph.` },
-    { value: 'lighting', label: 'Lighting', icon: '☀', title: () => `${mountainName()} sun controls followed by the ${referenceName()} lighting study.` },
-    { value: 'skybox', label: 'Skybox', icon: '▣', title: () => `${mountainName()} skybox followed by the ${referenceName()} skybox.` },
-    { value: 'godrays', label: 'God Rays', icon: '✺', title: () => `${mountainName()} god-ray settings followed by ${referenceName()}’s extracted settings.` },
-    { value: 'camera', label: 'Camera', icon: '◉', title: 'Inspect and set the camera, restore your opening view, or save a screenshot.' },
+  const categories: Array<{
+    value: SceneSel;
+    label: string | (() => string);
+    icon: string;
+    title: string | (() => string);
+  }> = [
+    {
+      value: 'info',
+      label: 'Reference',
+      icon: '◇',
+      title: () => `Choose a read-only mountain to compare with ${mountainName()}.`,
+    },
+    {
+      value: 'course',
+      label: 'Course',
+      icon: '⌁',
+      title: () => `${mountainName()} run controls followed by the recovered ${referenceName()} course.`,
+    },
+    {
+      value: 'sound',
+      label: 'Sound',
+      icon: '♫',
+      title: () => `${mountainName()} music, rider audio, announcer, and the ${referenceName()} music graph.`,
+    },
+    {
+      value: 'lighting',
+      label: 'Lighting',
+      icon: '☀',
+      title: () => `${mountainName()} sun controls followed by the ${referenceName()} lighting study.`,
+    },
+    {
+      value: 'skybox',
+      label: 'Skybox',
+      icon: '▣',
+      title: () => `${mountainName()} skybox followed by the ${referenceName()} skybox.`,
+    },
+    {
+      value: 'godrays',
+      label: 'God Rays',
+      icon: '✺',
+      title: () => `${mountainName()} god-ray settings followed by ${referenceName()}’s extracted settings.`,
+    },
+    {
+      value: 'camera',
+      label: 'Camera',
+      icon: '◉',
+      title: 'Inspect and set the camera, restore your opening view, or save a screenshot.',
+    },
   ];
 
   /** Rebuild the collapsible Scene header and its small category launcher. */
@@ -150,10 +243,15 @@ export function createScenePanel(deps: ScenePanelDeps) {
     outliner.replaceChildren();
     const hdr = document.createElement('button');
     hdr.className = 'sp-out-hdr';
-    const caret = document.createElement('span'); caret.className = 'sp-out-caret'; caret.textContent = sceneCollapsed ? '▸' : '▾';
-    const modeIcon = document.createElement('span'); modeIcon.className = 'sp-mode-title-icon';
-    modeIcon.setAttribute('aria-hidden', 'true'); modeIcon.innerHTML = MODE_ICON.info;
-    const lbl = document.createElement('span'); lbl.textContent = 'Scene Mode';
+    const caret = document.createElement('span');
+    caret.className = 'sp-out-caret';
+    caret.textContent = sceneCollapsed ? '▸' : '▾';
+    const modeIcon = document.createElement('span');
+    modeIcon.className = 'sp-mode-title-icon';
+    modeIcon.setAttribute('aria-hidden', 'true');
+    modeIcon.innerHTML = MODE_ICON.info;
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Scene Mode';
     hdr.append(caret, modeIcon, lbl);
     hdr.onclick = () => {
       sceneCollapsed = !sceneCollapsed;
@@ -168,7 +266,9 @@ export function createScenePanel(deps: ScenePanelDeps) {
       const row = document.createElement('button');
       row.className = `sp-out-row${sceneSel === category.value ? ' on' : ''}`;
       row.setAttribute('aria-pressed', String(sceneSel === category.value));
-      const icon = document.createElement('span'); icon.className = 'sp-out-ico'; icon.textContent = category.icon;
+      const icon = document.createElement('span');
+      icon.className = 'sp-out-ico';
+      icon.textContent = category.icon;
       const label = document.createElement('span');
       label.textContent = typeof category.label === 'function' ? category.label() : category.label;
       row.append(icon, label);
@@ -217,7 +317,8 @@ export function createScenePanel(deps: ScenePanelDeps) {
     // the user where to establish that context instead of making the lower half mysteriously disappear.
     if (!hasReference()) {
       const empty = (folder: GUI, text: string) => {
-        if (!folder.controllers.length && !folder.folders.length && folder.$children.childElementCount === 0) note(folder, text);
+        if (!folder.controllers.length && !folder.folders.length && folder.$children.childElementCount === 0)
+          note(folder, text);
       };
       empty(lightFolder, 'Load a mountain in Reference to compare its lighting.');
       empty(refGodRayFolder, 'Load a mountain in Reference to compare its god-ray settings.');
@@ -268,12 +369,20 @@ export function createScenePanel(deps: ScenePanelDeps) {
    *  document on commit; Course controls do too, so untouched folders can keep focus and open subsections. */
   function refreshSceneAfterSync(before: EditDoc) {
     const doc = getDoc();
-    const sound = (d: EditDoc) => canonicalJson([
-      d.name, d.baseSurface, d.raceMusic, d.raceMusicArrangement, d.boardSound, d.environmentBed, d.announcer,
-    ]);
+    const sound = (d: EditDoc) =>
+      canonicalJson([
+        d.name,
+        d.baseSurface,
+        d.raceMusic,
+        d.raceMusicArrangement,
+        d.boardSound,
+        d.environmentBed,
+        d.announcer,
+      ]);
     const course = (d: EditDoc) => canonicalJson([d.name, d.baseSurface, d.laps, d.showoffSeconds]);
     if (before.name !== doc.name)
-      for (const folder of [sunFolder, godRayFolder, soundFolder, skyFolder, courseFolder]) folder.title(mountainName());
+      for (const folder of [sunFolder, godRayFolder, soundFolder, skyFolder, courseFolder])
+        folder.title(mountainName());
     if (sound(before) !== sound(doc)) void buildSoundDetail();
     if (course(before) !== course(doc)) buildCourseDetail();
     refreshSelection(true);
@@ -327,94 +436,168 @@ export function createScenePanel(deps: ScenePanelDeps) {
         : null;
       scheduleRebuild();
     };
-    tip(environment.add(environmentState, 'enabled').name('environment bed').onChange(commitEnvironment),
-      'Use a quiet shared environment loop whenever the rider is off-board.');
-    tip(environment.add(environmentState, 'bank', { 'Wind 1': 'Wind1', 'Wind 2': 'Wind2' })
-      .name('source').onChange(commitEnvironment),
-    'Which shared wind bank the bed plays.',
-    'The selected AUDIO.BIG bank is written explicitly to Audio/Environment.json; neither consumer guesses '
-    + 'from event 116/117.');
-    tip(environment.add(environmentState, 'volume', 0, 1, 0.01).name('volume').onChange(commitEnvironment),
-      'Map-authored gain for the off-board filler.');
-    environment.add({ preview: () => auditionEnvironmentBed('authored-environment', environmentState.bank, 0,
-      environmentState.volume) }, 'preview').name('▶ preview environment');
+    tip(
+      environment.add(environmentState, 'enabled').name('environment bed').onChange(commitEnvironment),
+      'Use a quiet shared environment loop whenever the rider is off-board.',
+    );
+    tip(
+      environment
+        .add(environmentState, 'bank', { 'Wind 1': 'Wind1', 'Wind 2': 'Wind2' })
+        .name('source')
+        .onChange(commitEnvironment),
+      'Which shared wind bank the bed plays.',
+      'The selected AUDIO.BIG bank is written explicitly to Audio/Environment.json; neither consumer guesses ' +
+        'from event 116/117.',
+    );
+    tip(
+      environment.add(environmentState, 'volume', 0, 1, 0.01).name('volume').onChange(commitEnvironment),
+      'Map-authored gain for the off-board filler.',
+    );
+    environment
+      .add(
+        {
+          preview: () =>
+            auditionEnvironmentBed('authored-environment', environmentState.bank, 0, environmentState.volume),
+        },
+        'preview',
+      )
+      .name('▶ preview environment');
     environment.add({ stop: stopAudition }, 'stop').name('■ stop preview');
-    note(environment, 'Fades out as race music fades in when the rider mounts.',
-      'Export stages the selected loop and its Audio/Environment.json declaration.');
+    note(
+      environment,
+      'Fades out as race music fades in when the rider mounts.',
+      'Export stages the selected loop and its Audio/Environment.json declaration.',
+    );
     environment.close();
     const intro = soundFolder.addFolder('Intro / ambient music');
     detail(intro, 'target course stems', 'source');
-    note(intro, 'Owned by the target course chosen at pack time — not authored here.',
-      'Load that course as Reference to inspect and preview its actual stems.');
+    note(
+      intro,
+      'Owned by the target course chosen at pack time — not authored here.',
+      'Load that course as Reference to inspect and preview its actual stems.',
+    );
     intro.close();
     const current = typeof doc.raceMusic === 'string' ? doc.raceMusic : '';
     const options: Record<string, string> = { '(none — target music)': '' };
     for (const track of tracks) options[track] = track;
     if (current && !tracks.includes(current)) options[`⚠ missing — ${current}`] = current;
-    const arrangement = normalizeRaceMusicArrangement(doc.raceMusicArrangement,
-      current ? 'retail-graph' : 'linear-loop');
-    const state = { track: current, mode: arrangement.mode, bpm: arrangement.bpm,
-      loopStart: arrangement.loopStartSeconds, loopEnd: arrangement.loopEndSeconds };
+    const arrangement = normalizeRaceMusicArrangement(
+      doc.raceMusicArrangement,
+      current ? 'retail-graph' : 'linear-loop',
+    );
+    const state = {
+      track: current,
+      mode: arrangement.mode,
+      bpm: arrangement.bpm,
+      loopStart: arrangement.loopStartSeconds,
+      loopEnd: arrangement.loopEndSeconds,
+    };
     const commitArrangement = () => {
-      getDoc().raceMusicArrangement = normalizeRaceMusicArrangement({
-        mode: state.mode, bpm: state.bpm, loopStartSeconds: state.loopStart, loopEndSeconds: state.loopEnd,
-      }, 'linear-loop');
+      getDoc().raceMusicArrangement = normalizeRaceMusicArrangement(
+        {
+          mode: state.mode,
+          bpm: state.bpm,
+          loopStartSeconds: state.loopStart,
+          loopEndSeconds: state.loopEnd,
+        },
+        'linear-loop',
+      );
       scheduleRebuild();
     };
-    tip(soundFolder.add(state, 'track', options).name('race music'),
+    tip(
+      soundFolder.add(state, 'track', options).name('race music'),
       `Choose a source stored with ${mountainName()}; None keeps the target course’s retail music.`,
-      'Export converts it to PCM16 WAV; ISO repack installs it into the selected target course.')
-      .onChange((track: string) => {
-        stopAudition();
-        getDoc().raceMusic = track || null;
-        if (track && !getDoc().raceMusicArrangement) commitArrangement();
-        scheduleRebuild();
-      });
-    tip(soundFolder.add(state, 'mode', {
-      'linear loop (MVP)': 'linear-loop',
-      'retail adaptive graph': 'retail-graph',
-    }).name('arrangement').onChange(() => { commitArrangement(); syncMode(); }),
-    'Linear loop rewires the donor graph into sample order so the source plays continuously. Retail adaptive keeps the original branches and event jumps.');
-    const bpmCtl = tip(soundFolder.add(state, 'bpm', 40, 300, 0.1).name('BPM').onChange(commitArrangement),
-      'Song BPM written to MUSIC.INF — metadata only, not a bar slicer.');
-    const loopStartCtl = tip(soundFolder.add(state, 'loopStart', 0, 3600, 0.1).name('loop start s').onChange(commitArrangement),
-      'The source plays from its beginning once; after reaching loop end it returns to this time.');
-    const loopEndCtl = tip(soundFolder.add(state, 'loopEnd', 0, 3600, 0.1).name('loop end s').onChange(commitArrangement),
-      'Zero means the end of the source file. A positive value must be later than loop start.');
+      'Export converts it to PCM16 WAV; ISO repack installs it into the selected target course.',
+    ).onChange((track: string) => {
+      stopAudition();
+      getDoc().raceMusic = track || null;
+      if (track && !getDoc().raceMusicArrangement) commitArrangement();
+      scheduleRebuild();
+    });
+    tip(
+      soundFolder
+        .add(state, 'mode', {
+          'linear loop (MVP)': 'linear-loop',
+          'retail adaptive graph': 'retail-graph',
+        })
+        .name('arrangement')
+        .onChange(() => {
+          commitArrangement();
+          syncMode();
+        }),
+      'Linear loop rewires the donor graph into sample order so the source plays continuously. Retail adaptive keeps the original branches and event jumps.',
+    );
+    const bpmCtl = tip(
+      soundFolder.add(state, 'bpm', 40, 300, 0.1).name('BPM').onChange(commitArrangement),
+      'Song BPM written to MUSIC.INF — metadata only, not a bar slicer.',
+    );
+    const loopStartCtl = tip(
+      soundFolder.add(state, 'loopStart', 0, 3600, 0.1).name('loop start s').onChange(commitArrangement),
+      'The source plays from its beginning once; after reaching loop end it returns to this time.',
+    );
+    const loopEndCtl = tip(
+      soundFolder.add(state, 'loopEnd', 0, 3600, 0.1).name('loop end s').onChange(commitArrangement),
+      'Zero means the end of the source file. A positive value must be later than loop start.',
+    );
     function syncMode() {
       const linear = state.mode === 'linear-loop';
-      bpmCtl.show(linear); loopStartCtl.show(linear); loopEndCtl.show(linear);
+      bpmCtl.show(linear);
+      loopStartCtl.show(linear);
+      loopEndCtl.show(linear);
     }
     syncMode();
-    soundFolder.add({ add: () => {
-      const picker = document.createElement('input');
-      picker.type = 'file';
-      picker.accept = '.wav,.mp3,.flac,.ogg,.m4a,.aac,audio/*';
-      picker.onchange = () => void (async () => {
-        const file = picker.files?.[0];
-        if (!file) return;
-        try {
-          const saved = await fetchJson<{ name: string }>(
-            `/api/custom-music?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file });
-          getDoc().raceMusic = saved.name;
-          getDoc().raceMusicArrangement ??= normalizeRaceMusicArrangement(undefined, 'linear-loop');
-          scheduleRebuild();
-          toast(`${mountainName()} music "${saved.name}" added.`, 'ok');
-          await buildSoundDetail();
-        } catch (error) {
-          toast(`Music upload failed: ${error instanceof Error ? error.message : error}`, 'err');
-        }
-      })();
-      picker.click();
-    } }, 'add').name('⤒ add track…');
-    note(soundFolder, tracks.length
-      ? 'Linear loop plays the short donor streams in source order; retail adaptive preserves its original jumps.'
-      : `Add a WAV, MP3, FLAC, OGG, M4A, or AAC to ${mountainName()}, then refresh.`);
-    soundFolder.add({ preview: () => {
-      const track = getDoc().raceMusic;
-      if (!track) { toast('Choose a music track first.', 'warn'); return; }
-      auditionCustomMusic(track);
-    } }, 'preview').name('▶ preview source');
+    soundFolder
+      .add(
+        {
+          add: () => {
+            const picker = document.createElement('input');
+            picker.type = 'file';
+            picker.accept = '.wav,.mp3,.flac,.ogg,.m4a,.aac,audio/*';
+            picker.onchange = () =>
+              void (async () => {
+                const file = picker.files?.[0];
+                if (!file) return;
+                try {
+                  const saved = await fetchJson<{ name: string }>(
+                    `/api/custom-music?name=${encodeURIComponent(file.name)}`,
+                    { method: 'POST', body: file },
+                  );
+                  getDoc().raceMusic = saved.name;
+                  getDoc().raceMusicArrangement ??= normalizeRaceMusicArrangement(undefined, 'linear-loop');
+                  scheduleRebuild();
+                  toast(`${mountainName()} music "${saved.name}" added.`, 'ok');
+                  await buildSoundDetail();
+                } catch (error) {
+                  toast(`Music upload failed: ${error instanceof Error ? error.message : error}`, 'err');
+                }
+              })();
+            picker.click();
+          },
+        },
+        'add',
+      )
+      .name('⤒ add track…');
+    note(
+      soundFolder,
+      tracks.length
+        ? 'Linear loop plays the short donor streams in source order; retail adaptive preserves its original jumps.'
+        : `Add a WAV, MP3, FLAC, OGG, M4A, or AAC to ${mountainName()}, then refresh.`,
+    );
+    soundFolder
+      .add(
+        {
+          preview: () => {
+            const track = getDoc().raceMusic;
+            if (!track) {
+              toast('Choose a music track first.', 'warn');
+              return;
+            }
+            auditionCustomMusic(track);
+          },
+        },
+        'preview',
+      )
+      .name('▶ preview source');
     soundFolder.add({ stop: stopAudition }, 'stop').name('■ stop preview');
     soundFolder.add({ refresh: () => void buildSoundDetail() }, 'refresh').name('↻ refresh library');
     renderBoardSoundDetail(soundRequest);
@@ -428,27 +611,42 @@ export function createScenePanel(deps: ScenePanelDeps) {
     const board = soundFolder.addFolder('Board sound');
     const doc = getDoc();
     const mix = normalizeBoardSound(doc.boardSound);
-    const commit = () => { getDoc().boardSound = { ...mix }; scheduleRebuild(); };
-    tip(board.add(mix, 'enabled').name('board sound').onChange(commit),
+    const commit = () => {
+      getDoc().boardSound = { ...mix };
+      scheduleRebuild();
+    };
+    tip(
+      board.add(mix, 'enabled').name('board sound').onChange(commit),
       'Play the glide, carve, grind, and jump sounds while test riding.',
-      'They come from the game’s own shared board bank, so your mountain sounds like the game.');
-    tip(board.add(mix, 'volume', 0, 1, 0.01).name('volume').onChange(commit),
-      'Master level for every board layer.');
-    tip(board.add(mix, 'glide', 0, 1, 0.01).name('glide').onChange(commit),
-      'The slide under the board — opens with speed, and its clip follows the surface.');
-    tip(board.add(mix, 'carve', 0, 1, 0.01).name('carve').onChange(commit),
-      'The edge bite — follows lean and sideways travel.');
-    tip(board.add(mix, 'transients', 0, 1, 0.01).name('transients').onChange(commit),
-      'Ollie pop, landing thud, and the rail grind — the board’s own one-shots.');
+      'They come from the game’s own shared board bank, so your mountain sounds like the game.',
+    );
+    tip(board.add(mix, 'volume', 0, 1, 0.01).name('volume').onChange(commit), 'Master level for every board layer.');
+    tip(
+      board.add(mix, 'glide', 0, 1, 0.01).name('glide').onChange(commit),
+      'The slide under the board — opens with speed, and its clip follows the surface.',
+    );
+    tip(
+      board.add(mix, 'carve', 0, 1, 0.01).name('carve').onChange(commit),
+      'The edge bite — follows lean and sideways travel.',
+    );
+    tip(
+      board.add(mix, 'transients', 0, 1, 0.01).name('transients').onChange(commit),
+      'Ollie pop, landing thud, and the rail grind — the board’s own one-shots.',
+    );
     // The game plays cue sounds from code on the pickup itself, not from a sound in the effect graph.
-    tip(board.add(mix, 'cues', 0, 1, 0.01).name('cues').onChange(commit),
-      'Gem chime, boost and trick pads, and the held-boost roar.');
+    tip(
+      board.add(mix, 'cues', 0, 1, 0.01).name('cues').onChange(commit),
+      'Gem chime, boost and trick pads, and the held-boost roar.',
+    );
     const preview = { surface: doc.baseSurface };
     let surfaceGroups: number[] | null = null;
     let routingLoaded = false;
     const routingNote = note(board, 'Loading surface-audio routing…');
     const updateRoutingNote = () => {
-      if (!routingLoaded) { routingNote.textContent = 'Loading surface-audio routing…'; return; }
+      if (!routingLoaded) {
+        routingNote.textContent = 'Loading surface-audio routing…';
+        return;
+      }
       const group = boardAudioGroup(preview.surface, surfaceGroups);
       const slot = boardGlideSlot(group);
       routingNote.textContent = surfaceGroups
@@ -456,18 +654,31 @@ export function createScenePanel(deps: ScenePanelDeps) {
         : `No BoardSoundIndex.json extracted yet — the selected surface uses the neutral PACK fallback (slot 004).`;
     };
     let syncAuditionControl = () => {};
-    tip(board.add(preview, 'surface', surfaceOptions).name('surface type').onChange(() => {
-      if (boardSoundAuditionActive()) stopAudition();
-      updateRoutingNote();
-      syncAuditionControl();
-    }),
-      'Which surface’s glide loop to preview — audition-only, changes nothing.');
-    const auditionControl = board.add({ audition: () => {
-      if (!routingLoaded) { toast('Surface-audio routing is still loading.', 'warn'); return; }
-      const slot = boardGlideSlot(boardAudioGroup(preview.surface, surfaceGroups));
-      if (boardSoundAuditionPlaying(slot)) stopAudition();
-      else auditionBoardSound(slot);
-    } }, 'audition');
+    tip(
+      board
+        .add(preview, 'surface', surfaceOptions)
+        .name('surface type')
+        .onChange(() => {
+          if (boardSoundAuditionActive()) stopAudition();
+          updateRoutingNote();
+          syncAuditionControl();
+        }),
+      'Which surface’s glide loop to preview — audition-only, changes nothing.',
+    );
+    const auditionControl = board.add(
+      {
+        audition: () => {
+          if (!routingLoaded) {
+            toast('Surface-audio routing is still loading.', 'warn');
+            return;
+          }
+          const slot = boardGlideSlot(boardAudioGroup(preview.surface, surfaceGroups));
+          if (boardSoundAuditionPlaying(slot)) stopAudition();
+          else auditionBoardSound(slot);
+        },
+      },
+      'audition',
+    );
     syncAuditionControl = () => {
       const slot = boardGlideSlot(boardAudioGroup(preview.surface, surfaceGroups));
       auditionControl.name(boardSoundAuditionPlaying(slot) ? '■ stop sound' : '▶ hear surface');
@@ -499,62 +710,106 @@ export function createScenePanel(deps: ScenePanelDeps) {
   function buildCourseDetail() {
     clearGui(courseFolder);
     courseFolder.title(mountainName());
-    if (courseDraw.active()) { buildCourseDrawDetail(); return; }
+    if (courseDraw.active()) {
+      buildCourseDrawDetail();
+      return;
+    }
     const surface = {
-      get baseSurface() { return getDoc().baseSurface; },
-      set baseSurface(value: number) { getDoc().baseSurface = value; },
+      get baseSurface() {
+        return getDoc().baseSurface;
+      },
+      set baseSurface(value: number) {
+        getDoc().baseSurface = value;
+      },
     };
-    tip(courseFolder.add(surface, 'baseSurface', surfaceOptions).name('base ride feel'),
-      'Physics of every cell with no painted tile on it.').onChange(scheduleRebuild);
+    tip(
+      courseFolder.add(surface, 'baseSurface', surfaceOptions).name('base ride feel'),
+      'Physics of every cell with no painted tile on it.',
+    ).onChange(scheduleRebuild);
     // Stored only above the single-pass default, so an ordinary mountain's document says nothing about laps.
     const race = {
       laps: getDoc().laps ?? DEFAULT_LAPS,
       showoff: getDoc().showoffSeconds ?? DEFAULT_SHOWOFF_SECONDS,
     };
-    tip(courseFolder.add(race, 'laps', 1, MAX_LAPS, 1).name('laps')
-      .onChange((laps: number) => { getDoc().laps = normalizeLaps(laps); scheduleRebuild(); }),
+    tip(
+      courseFolder
+        .add(race, 'laps', 1, MAX_LAPS, 1)
+        .name('laps')
+        .onChange((laps: number) => {
+          getDoc().laps = normalizeLaps(laps);
+          scheduleRebuild();
+        }),
       'Passes from the start gate to the finish that make a race.',
-      '1 is the classic single run; above 1 a finish crossing sends you round again on the same clock. '
-      + 'A lap-gated boost volume reads the same countdown — how MEGAPLEX’s finish tube throws a rider back '
-      + 'up the mountain on every lap but the last. Travels to the game through the export.');
-    tip(courseFolder.add(race, 'showoff', 0, MAX_SHOWOFF_SECONDS, 5).name('showoff clock (s)')
-      .onChange((seconds: number) => {
-        getDoc().showoffSeconds = normalizeShowoffSeconds(seconds); scheduleRebuild();
-      }),
+      '1 is the classic single run; above 1 a finish crossing sends you round again on the same clock. ' +
+        'A lap-gated boost volume reads the same countdown — how MEGAPLEX’s finish tube throws a rider back ' +
+        'up the mountain on every lap but the last. Travels to the game through the export.',
+    );
+    tip(
+      courseFolder
+        .add(race, 'showoff', 0, MAX_SHOWOFF_SECONDS, 5)
+        .name('showoff clock (s)')
+        .onChange((seconds: number) => {
+          getDoc().showoffSeconds = normalizeShowoffSeconds(seconds);
+          scheduleRebuild();
+        }),
       'Seconds a showoff run starts with; checkpoints add time. 0 = no clock.',
-      'A trick run is a countdown, not a stopwatch: the game seeds this many seconds and ends the run at '
-      + 'zero. Retail seeds it per course from its executable (Garibaldi 120, most courses 90, Alaska 135), '
-      + 'so an untouched mountain inherits whatever disc slot it is packed onto; set it and your number '
-      + 'travels with the map instead.');
+      'A trick run is a countdown, not a stopwatch: the game seeds this many seconds and ends the run at ' +
+        'zero. Retail seeds it per course from its executable (Garibaldi 120, most courses 90, Alaska 135), ' +
+        'so an untouched mountain inherits whatever disc slot it is packed onto; set it and your number ' +
+        'travels with the map instead.',
+    );
     const view = {
-      get course() { return getCourseVisible(); },
-      set course(on: boolean) { setCourseVisible(on); },
-      get ai() { return getAiPathsVisible(); },
-      set ai(on: boolean) { setAiPathsVisible(on); },
-      get normals() { return getNormalsVisible(); },
-      set normals(on: boolean) { setNormalsVisible(on); },
+      get course() {
+        return getCourseVisible();
+      },
+      set course(on: boolean) {
+        setCourseVisible(on);
+      },
+      get ai() {
+        return getAiPathsVisible();
+      },
+      set ai(on: boolean) {
+        setAiPathsVisible(on);
+      },
+      get normals() {
+        return getNormalsVisible();
+      },
+      set normals(on: boolean) {
+        setNormalsVisible(on);
+      },
     };
-    tip(courseFolder.add(view, 'course').name('show course').listen(),
-      'Show the authored Course guide and the loaded reference mountain’s SOP/AIP path.');
-    tip(courseFolder.add(view, 'ai').name('show AI paths').listen(),
-      'Show the six AI lines your mountain exports (amber) and the loaded reference’s AI network (amber and violet).');
-    tip(courseFolder.add(view, 'normals').name('show normals').listen(),
-      'Show surface-normal direction by tinting each surface’s back, non-ridable side pink.');
+    tip(
+      courseFolder.add(view, 'course').name('show course').listen(),
+      'Show the authored Course guide and the loaded reference mountain’s SOP/AIP path.',
+    );
+    tip(
+      courseFolder.add(view, 'ai').name('show AI paths').listen(),
+      'Show the six AI lines your mountain exports (amber) and the loaded reference’s AI network (amber and violet).',
+    );
+    tip(
+      courseFolder.add(view, 'normals').name('show normals').listen(),
+      'Show surface-normal direction by tinting each surface’s back, non-ridable side pink.',
+    );
     // Seating is automatic: every drawn point is a terrain hit, a dragged knot or flag follows the ground, and
     // a sculpt stroke or Edit drag re-seats the whole line when it ends — the game spawns the field AT the
     // exported gate heights, so a line left floating would start the race that far off the snow.
-    tip(courseFolder.add({ reset: startCourseReset }, 'reset').name('⟲ reset course'),
+    tip(
+      courseFolder.add({ reset: startCourseReset }, 'reset').name('⟲ reset course'),
       'Redraw the run: click the terrain at the start, then each point down to the finish.',
-      'Every point lands on the snow, and the new run starts 30 m wide — the band the AI field weaves within. '
-      + 'Widen a point in Selected knot; drag a START or FINISH flag to stage the race partway along the line, '
-      + 'the way MEGAPLEX’s lap does. To build a groomed path along it, use Edit ▸ Create Trail.');
+      'Every point lands on the snow, and the new run starts 30 m wide — the band the AI field weaves within. ' +
+        'Widen a point in Selected knot; drag a START or FINISH flag to stage the race partway along the line, ' +
+        'the way MEGAPLEX’s lap does. To build a groomed path along it, use Edit ▸ Create Trail.',
+    );
   }
 
   /** The Course panel while a reset is being clicked out: the count so far and the ways out of it. */
   function buildCourseDrawDetail() {
     const count = courseDraw.points().length;
-    note(courseFolder, 'Click the terrain at the start, then each point down to the finish. Click the last '
-      + 'point again or press Enter to finish; Backspace removes a point, Esc cancels.');
+    note(
+      courseFolder,
+      'Click the terrain at the start, then each point down to the finish. Click the last ' +
+        'point again or press Enter to finish; Backspace removes a point, Esc cancels.',
+    );
     detail(courseFolder, count === 0 ? 'none yet' : count === 1 ? '1 — the start' : `${count}`, 'points');
     const finish = courseFolder.add({ finish: finishCourseReset }, 'finish').name('✔ finish course');
     if (count < 2) finish.disable();
@@ -579,7 +834,10 @@ export function createScenePanel(deps: ScenePanelDeps) {
   function finishCourseReset() {
     if (!courseDraw.active()) return;
     const points = courseDraw.points();
-    if (points.length < 2) { toast('Click at least two points — a start and a finish.', 'warn'); return; }
+    if (points.length < 2) {
+      toast('Click at least two points — a start and a finish.', 'warn');
+      return;
+    }
     redrawCourse(coursePath(), points);
     courseDraw.end();
     refreshSelection();
@@ -595,7 +853,9 @@ export function createScenePanel(deps: ScenePanelDeps) {
     buildCourseDetail();
   }
 
-  function undoCourseResetPoint() { courseDraw.removeLast(); }
+  function undoCourseResetPoint() {
+    courseDraw.removeLast();
+  }
 
   /** Rebuild the Selection inspector for the currently selected run knot. */
   function refreshSelection(onlyChanged = false) {
@@ -614,7 +874,10 @@ export function createScenePanel(deps: ScenePanelDeps) {
       selFolder.add({ del: deleteKnot }, 'del').name(`x delete ${many.length} points`);
       return;
     }
-    if (sel === null) { note(selFolder, 'Click a course point to edit it, or drag a box around several.'); return; }
+    if (sel === null) {
+      note(selFolder, 'Click a course point to edit it, or drag a box around several.');
+      return;
+    }
     note(selFolder, 'Drag the selected point with the 3D move gizmo.');
     addKnotControls([sel]);
     selFolder.add({ add: addKnotAfter }, 'add').name('+ add point after');
@@ -635,33 +898,42 @@ export function createScenePanel(deps: ScenePanelDeps) {
     if (!first) return;
     const state = { width: first.width };
     const widthMax = Math.max(600, Math.ceil(state.width / 50) * 50);
-    tip(selFolder.add(state, 'width', KNOT_WIDTH_LIMITS.min, widthMax, KNOT_WIDTH_LIMITS.step).name('floor width (m)')
-      .onChange((value: number) => {
-        for (const i of indices) {
-          const knot: CourseKnot | undefined = coursePath().knots[i];
-          if (knot) knot.width = clampKnotWidth(value);
-        }
-        scheduleRebuild();
-      }),
+    tip(
+      selFolder
+        .add(state, 'width', KNOT_WIDTH_LIMITS.min, widthMax, KNOT_WIDTH_LIMITS.step)
+        .name('floor width (m)')
+        .onChange((value: number) => {
+          for (const i of indices) {
+            const knot: CourseKnot | undefined = coursePath().knots[i];
+            if (knot) knot.width = clampKnotWidth(value);
+          }
+          scheduleRebuild();
+        }),
       'How wide the run is here — the AI field weaves within half of it.',
-      'A new run starts at 30 m; a narrow run keeps opponents on the snow as well as you.');
+      'A new run starts at 30 m; a narrow run keeps opponents on the snow as well as you.',
+    );
     const checkpoint = { bonus: first.checkpointBonus ?? 0 };
-    tip(selFolder.add(checkpoint, 'bonus', 0, MAX_CHECKPOINT_BONUS_SECONDS, 5).name('checkpoint bonus (s)')
-      .onChange((value: number) => {
-        const bonus = normalizeCheckpointBonus(value);
-        for (const i of indices) {
-          const knot = coursePath().knots[i];
-          if (!knot) continue;
-          if (bonus === undefined) delete knot.checkpointBonus;
-          else knot.checkpointBonus = bonus;
-        }
-        scheduleRebuild();
-      }).onFinishChange(() => refreshSelection()),
+    tip(
+      selFolder
+        .add(checkpoint, 'bonus', 0, MAX_CHECKPOINT_BONUS_SECONDS, 5)
+        .name('checkpoint bonus (s)')
+        .onChange((value: number) => {
+          const bonus = normalizeCheckpointBonus(value);
+          for (const i of indices) {
+            const knot = coursePath().knots[i];
+            if (!knot) continue;
+            if (bonus === undefined) delete knot.checkpointBonus;
+            else knot.checkpointBonus = bonus;
+          }
+          scheduleRebuild();
+        })
+        .onFinishChange(() => refreshSelection()),
       'Time awarded when the rider crosses this course-progress station; 0 makes it an ordinary knot.',
-      'This exports as a type-11 event on the AIP/SOP race line and the SOP value is the number of seconds. '
-      + 'It is not a collision volume and is not attached to a checkpoint sign: place or animate a sign beside '
-      + 'the course separately if you want the retail visual. Add a course point first when the checkpoint belongs '
-      + 'between the existing points.');
+      'This exports as a type-11 event on the AIP/SOP race line and the SOP value is the number of seconds. ' +
+        'It is not a collision volume and is not attached to a checkpoint sign: place or animate a sign beside ' +
+        'the course separately if you want the retail visual. Add a course point first when the checkpoint belongs ' +
+        'between the existing points.',
+    );
   }
 
   function addKnotAfter() {
@@ -697,19 +969,34 @@ export function createScenePanel(deps: ScenePanelDeps) {
       .filter(i => i >= 0 && i < line.knots.length)
       .sort((a, b) => a - b)
       .slice(0, limit);
-    if (!targets.length) { toast('A course needs at least two points.', 'warn'); return; }
+    if (!targets.length) {
+      toast('A course needs at least two points.', 'warn');
+      return;
+    }
     for (const i of [...targets].sort((a, b) => b - a)) line.knots.splice(i, 1);
     setSelectedKnots([]);
     setSelected(null);
     refreshSelection();
     scheduleRebuild();
     const kept = requested.length - targets.length;
-    toast(`Deleted ${targets.length} course point${targets.length === 1 ? '' : 's'}${kept ? '; kept two required points' : ''}.`, 'ok');
+    toast(
+      `Deleted ${targets.length} course point${targets.length === 1 ? '' : 's'}${kept ? '; kept two required points' : ''}.`,
+      'ok',
+    );
   }
 
   return {
-    sceneHost, sunFolder, godRayFolder, refGodRayFolder, skyPreviewFolder, skyFolder, refFolder, lightFolder,
-    refSoundFolder, refSkyFolder, refCourseFolder,
+    sceneHost,
+    sunFolder,
+    godRayFolder,
+    refGodRayFolder,
+    skyPreviewFolder,
+    skyFolder,
+    refFolder,
+    lightFolder,
+    refSoundFolder,
+    refSkyFolder,
+    refCourseFolder,
     getSceneSel: () => sceneSel,
     setSceneSel: (s: SceneSel) => {
       cameraPanel.setActive(false);
@@ -718,8 +1005,17 @@ export function createScenePanel(deps: ScenePanelDeps) {
       sceneSel = s;
     }, // host resets state, then rebuilds the panel itself
     setSceneVisible,
-    rebuildScene, refreshSceneAfterSync, rebuildOutliner, selectScene, backToInfo, applySceneSelection, refreshSelection, deleteKnot,
-    finishCourseReset, cancelCourseReset, undoCourseResetPoint,
+    rebuildScene,
+    refreshSceneAfterSync,
+    rebuildOutliner,
+    selectScene,
+    backToInfo,
+    applySceneSelection,
+    refreshSelection,
+    deleteKnot,
+    finishCourseReset,
+    cancelCourseReset,
+    undoCourseResetPoint,
   };
 }
 

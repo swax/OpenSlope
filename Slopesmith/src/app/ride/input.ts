@@ -5,9 +5,21 @@
  * changes. The remaining one-shot actions go straight through callbacks.
  */
 
-export interface RideKeys { left: boolean; right: boolean; tuck: boolean; brake: boolean; boost: boolean }
+export interface RideKeys {
+  left: boolean;
+  right: boolean;
+  tuck: boolean;
+  brake: boolean;
+  boost: boolean;
+}
 export interface WalkKeys {
-  left: boolean; right: boolean; forward: boolean; back: boolean; jump: boolean; crouch: boolean; boost: boolean;
+  left: boolean;
+  right: boolean;
+  forward: boolean;
+  back: boolean;
+  jump: boolean;
+  crouch: boolean;
+  boost: boolean;
 }
 export type RideHoldSource = 'keyboard' | 'touch' | 'gamepad' | 'xr';
 export type WalkHoldField = 'jump' | 'crouch' | 'boost';
@@ -47,7 +59,13 @@ export interface RideInputOpts {
 export function createRideInput(o: RideInputOpts) {
   const keys: RideKeys = { left: false, right: false, tuck: false, brake: false, boost: false };
   const walkKeys: WalkKeys = {
-    left: false, right: false, forward: false, back: false, jump: false, crouch: false, boost: false,
+    left: false,
+    right: false,
+    forward: false,
+    back: false,
+    jump: false,
+    crouch: false,
+    boost: false,
   };
   const holds = new Map<RideHoldSource, RideKeys>();
   const walkHolds = new Map<RideHoldSource, Record<WalkHoldField, boolean>>();
@@ -56,7 +74,10 @@ export function createRideInput(o: RideInputOpts) {
   const blankKeys = (): RideKeys => ({ left: false, right: false, tuck: false, brake: false, boost: false });
   function setHold(source: RideHoldSource, field: keyof RideKeys, down: boolean) {
     let owned = holds.get(source);
-    if (!owned) { owned = blankKeys(); holds.set(source, owned); }
+    if (!owned) {
+      owned = blankKeys();
+      holds.set(source, owned);
+    }
     if (owned[field] === down) return;
     owned[field] = down;
     keys[field] = [...holds.values()].some(state => state[field]);
@@ -64,7 +85,10 @@ export function createRideInput(o: RideInputOpts) {
 
   function setWalkHold(source: RideHoldSource, field: WalkHoldField, down: boolean) {
     let owned = walkHolds.get(source);
-    if (!owned) { owned = { jump: false, crouch: false, boost: false }; walkHolds.set(source, owned); }
+    if (!owned) {
+      owned = { jump: false, crouch: false, boost: false };
+      walkHolds.set(source, owned);
+    }
     if (owned[field] === down) return;
     owned[field] = down;
     walkKeys[field] = [...walkHolds.values()].some(state => state[field]);
@@ -72,7 +96,8 @@ export function createRideInput(o: RideInputOpts) {
 
   function setOllie(source: RideHoldSource, down: boolean) {
     const wasDown = ollieHolds.size > 0;
-    if (down) ollieHolds.add(source); else ollieHolds.delete(source);
+    if (down) ollieHolds.add(source);
+    else ollieHolds.delete(source);
     const isDown = ollieHolds.size > 0;
     if (!wasDown && isDown) o.ollieDown();
     else if (wasDown && !isDown) o.ollieUp();
@@ -106,14 +131,39 @@ export function createRideInput(o: RideInputOpts) {
    * over a text field; filtering that keyup would retain the canvas's old hold forever. */
   function releaseKey(k: string): boolean {
     switch (k) {
-      case 'a': case 'arrowleft': walkKeys.left = false; setHold('keyboard', 'left', false); return true;
-      case 'd': case 'arrowright': walkKeys.right = false; setHold('keyboard', 'right', false); return true;
-      case 'w': case 'arrowup': walkKeys.forward = false; setHold('keyboard', 'tuck', false); return true;
-      case 's': case 'arrowdown': walkKeys.back = false; setHold('keyboard', 'brake', false); return true;
-      case ' ': setWalkHold('keyboard', 'jump', false); setOllie('keyboard', false); return true;
-      case 'control': setWalkHold('keyboard', 'crouch', false); return true;
-      case 'shift': setWalkHold('keyboard', 'boost', false); setHold('keyboard', 'boost', false); return true;
-      default: return false;
+      case 'a':
+      case 'arrowleft':
+        walkKeys.left = false;
+        setHold('keyboard', 'left', false);
+        return true;
+      case 'd':
+      case 'arrowright':
+        walkKeys.right = false;
+        setHold('keyboard', 'right', false);
+        return true;
+      case 'w':
+      case 'arrowup':
+        walkKeys.forward = false;
+        setHold('keyboard', 'tuck', false);
+        return true;
+      case 's':
+      case 'arrowdown':
+        walkKeys.back = false;
+        setHold('keyboard', 'brake', false);
+        return true;
+      case ' ':
+        setWalkHold('keyboard', 'jump', false);
+        setOllie('keyboard', false);
+        return true;
+      case 'control':
+        setWalkHold('keyboard', 'crouch', false);
+        return true;
+      case 'shift':
+        setWalkHold('keyboard', 'boost', false);
+        setHold('keyboard', 'boost', false);
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -143,37 +193,95 @@ export function createRideInput(o: RideInputOpts) {
     }
     if (o.onFoot?.()) {
       switch (k) {
-        case 'a': case 'arrowleft': walkKeys.left = down; break;
-        case 'd': case 'arrowright': walkKeys.right = down; break;
-        case 'w': case 'arrowup': walkKeys.forward = down; break;
-        case 's': case 'arrowdown': walkKeys.back = down; break;
-        case ' ': setWalkHold('keyboard', 'jump', down); break;
-        case 'control': setWalkHold('keyboard', 'crouch', down); break;
-        case 'shift': setWalkHold('keyboard', 'boost', down); break;
-        case 'r': if (down) o.respawn(); break;
-        case 'f8': if (down && !e.repeat) o.telemetryToggle(); break;
-        case 'm': if (down && !e.repeat) o.telemetryMark(); break;
-        case 'escape': if (down) { o.exit(); return; } break;
-        default: return;
+        case 'a':
+        case 'arrowleft':
+          walkKeys.left = down;
+          break;
+        case 'd':
+        case 'arrowright':
+          walkKeys.right = down;
+          break;
+        case 'w':
+        case 'arrowup':
+          walkKeys.forward = down;
+          break;
+        case 's':
+        case 'arrowdown':
+          walkKeys.back = down;
+          break;
+        case ' ':
+          setWalkHold('keyboard', 'jump', down);
+          break;
+        case 'control':
+          setWalkHold('keyboard', 'crouch', down);
+          break;
+        case 'shift':
+          setWalkHold('keyboard', 'boost', down);
+          break;
+        case 'r':
+          if (down) o.respawn();
+          break;
+        case 'f8':
+          if (down && !e.repeat) o.telemetryToggle();
+          break;
+        case 'm':
+          if (down && !e.repeat) o.telemetryMark();
+          break;
+        case 'escape':
+          if (down) {
+            o.exit();
+            return;
+          }
+          break;
+        default:
+          return;
       }
       e.preventDefault();
       e.stopPropagation();
       return;
     }
     switch (k) {
-      case 'a': case 'arrowleft': setHold('keyboard', 'left', down); break;
-      case 'd': case 'arrowright': setHold('keyboard', 'right', down); break;
-      case 'w': case 'arrowup': setHold('keyboard', 'tuck', down); break;
-      case 's': case 'arrowdown': setHold('keyboard', 'brake', down); break;
-      case 'shift': setHold('keyboard', 'boost', down); break;
+      case 'a':
+      case 'arrowleft':
+        setHold('keyboard', 'left', down);
+        break;
+      case 'd':
+      case 'arrowright':
+        setHold('keyboard', 'right', down);
+        break;
+      case 'w':
+      case 'arrowup':
+        setHold('keyboard', 'tuck', down);
+        break;
+      case 's':
+      case 'arrowdown':
+        setHold('keyboard', 'brake', down);
+        break;
+      case 'shift':
+        setHold('keyboard', 'boost', down);
+        break;
       // charged ollie: press = start charging, release = queue the launch. The step's coyote block cancels a
       // charge held into real air, so a mid-air press never banks a jump.
-      case ' ': setOllie('keyboard', down); break;
-      case 'r': if (down) o.respawn(); break;
-      case 'f8': if (down && !e.repeat) o.telemetryToggle(); break;
-      case 'm': if (down && !e.repeat) o.telemetryMark(); break;
-      case 'escape': if (down) { o.exit(); return; } break;
-      default: return;
+      case ' ':
+        setOllie('keyboard', down);
+        break;
+      case 'r':
+        if (down) o.respawn();
+        break;
+      case 'f8':
+        if (down && !e.repeat) o.telemetryToggle();
+        break;
+      case 'm':
+        if (down && !e.repeat) o.telemetryMark();
+        break;
+      case 'escape':
+        if (down) {
+          o.exit();
+          return;
+        }
+        break;
+      default:
+        return;
     }
     e.preventDefault();
     e.stopPropagation();

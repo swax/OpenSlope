@@ -27,15 +27,23 @@ import { check, failures } from './check';
   const root = new THREE.Group();
   const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial());
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial());
-  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), [new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial()]);
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), [
+    new THREE.MeshBasicMaterial(),
+    new THREE.MeshBasicMaterial(),
+  ]);
   root.add(line, sprite, mesh);
   const all = [line.material, sprite.material, ...(mesh.material as THREE.Material[])];
   const authored = all.map(m => m.transparent); // a SpriteMaterial is born transparent; the others are not
   fadeObject(root, 0.5);
-  check(all.every(m => m.opacity === 0.5 && m.transparent), 'fadeObject reaches lines, sprites and multi-material meshes');
+  check(
+    all.every(m => m.opacity === 0.5 && m.transparent),
+    'fadeObject reaches lines, sprites and multi-material meshes',
+  );
   fadeObject(root, 1);
-  check(all.every((m, i) => m.opacity === 1 && m.transparent === authored[i]),
-    'and restores every one of them as it was authored');
+  check(
+    all.every((m, i) => m.opacity === 1 && m.transparent === authored[i]),
+    'and restores every one of them as it was authored',
+  );
 }
 
 if (failures) process.exitCode = 1;

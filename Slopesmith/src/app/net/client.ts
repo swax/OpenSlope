@@ -9,7 +9,9 @@ export const clientId = (() => {
     const minted = fresh();
     sessionStorage.setItem(CLIENT_ID_KEY, minted);
     return minted;
-  } catch { return fresh(); }
+  } catch {
+    return fresh();
+  }
 })();
 
 let activeProjectId = '';

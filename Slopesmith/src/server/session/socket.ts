@@ -95,14 +95,18 @@ export function isWebSocketUpgrade(req: IncomingMessage): boolean {
 
 /** The `Sec-WebSocket-Accept` value for a client's key. */
 const acceptKey = (key: string): string =>
-  createHash('sha1').update(key + WS_GUID).digest('base64');
+  createHash('sha1')
+    .update(key + WS_GUID)
+    .digest('base64');
 
 /** Refuse an upgrade before it becomes a socket, in the plain HTTP the client is still speaking. */
 export function refuseUpgrade(socket: Duplex, status: number, message: string): void {
   const body = JSON.stringify({ error: message });
-  socket.end(`HTTP/1.1 ${status} ${status === 401 ? 'Unauthorized' : status === 403 ? 'Forbidden' : 'Bad Request'}\r\n`
-    + 'connection: close\r\ncontent-type: application/json\r\n'
-    + `content-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+  socket.end(
+    `HTTP/1.1 ${status} ${status === 401 ? 'Unauthorized' : status === 403 ? 'Forbidden' : 'Bad Request'}\r\n` +
+      'connection: close\r\ncontent-type: application/json\r\n' +
+      `content-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+  );
 }
 
 /** One outgoing frame. Server frames are never masked, which is the whole of the server's side of masking. */
@@ -111,8 +115,13 @@ function frame(opcode: number, payload: Buffer, compressed = false): Buffer {
   const header = length < 126 ? Buffer.alloc(2) : length < 65536 ? Buffer.alloc(4) : Buffer.alloc(10);
   header[0] = 0x80 | (compressed ? COMPRESSED : 0) | opcode; // FIN, because nothing here fragments what it sends
   if (length < 126) header[1] = length;
-  else if (length < 65536) { header[1] = 126; header.writeUInt16BE(length, 2); }
-  else { header[1] = 127; header.writeBigUInt64BE(BigInt(length), 2); }
+  else if (length < 65536) {
+    header[1] = 126;
+    header.writeUInt16BE(length, 2);
+  } else {
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(length), 2);
+  }
   return Buffer.concat([header, payload]);
 }
 
@@ -129,7 +138,9 @@ export function prepareWebSocketText(text: string): PreparedText {
   let plain: Buffer | undefined;
   let deflated: Buffer | undefined;
   const prepared: PreparedText = {
-    get plain() { return (plain ??= frame(OPCODE.text, payload)); },
+    get plain() {
+      return (plain ??= frame(OPCODE.text, payload));
+    },
     get deflated() {
       if (deflated) return deflated;
       const packed = payload.length >= DEFLATE_THRESHOLD ? deflatePayload(payload) : null;
@@ -150,7 +161,7 @@ export function prepareWebSocketText(text: string): PreparedText {
  * Malformed or duplicated parameters decline the offer they are in, which is what the RFC asks.
  */
 export function acceptsDeflate(header: string | string[] | undefined): boolean {
-  const offers = (Array.isArray(header) ? header.join(',') : header ?? '').split(',');
+  const offers = (Array.isArray(header) ? header.join(',') : (header ?? '')).split(',');
   return offers.some(offer => {
     const [name, ...params] = offer.split(';').map(part => part.trim());
     if (name.toLowerCase() !== 'permessage-deflate') return false;
@@ -158,7 +169,13 @@ export function acceptsDeflate(header: string | string[] | undefined): boolean {
     return params.filter(Boolean).every(param => {
       const cut = param.indexOf('=');
       const key = (cut < 0 ? param : param.slice(0, cut)).trim().toLowerCase();
-      const value = cut < 0 ? null : param.slice(cut + 1).trim().replace(/^"(.*)"$/, '$1');
+      const value =
+        cut < 0
+          ? null
+          : param
+              .slice(cut + 1)
+              .trim()
+              .replace(/^"(.*)"$/, '$1');
       if (!key || seen.has(key)) return false;
       seen.add(key);
       if (key === 'server_no_context_takeover' || key === 'client_no_context_takeover') return value === null;
@@ -185,10 +202,12 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
     return null;
   }
   const deflate = acceptsDeflate(req.headers['sec-websocket-extensions']);
-  socket.write('HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\n'
-    + `sec-websocket-accept: ${acceptKey(key)}\r\n`
-    + (deflate ? `sec-websocket-extensions: ${DEFLATE_RESPONSE}\r\n` : '')
-    + '\r\n');
+  socket.write(
+    'HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\n' +
+      `sec-websocket-accept: ${acceptKey(key)}\r\n` +
+      (deflate ? `sec-websocket-extensions: ${DEFLATE_RESPONSE}\r\n` : '') +
+      '\r\n',
+  );
   // Presence and lease frames are tiny and latency is the whole point of a channel, so they go out rather
   // than waiting for a full segment.
   (socket as { setNoDelay?: (on: boolean) => void }).setNoDelay?.(true);
@@ -222,7 +241,11 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
     const payload = Buffer.alloc(2 + reason.length);
     payload.writeUInt16BE(code, 0);
     reason.copy(payload, 2);
-    try { socket.write(frame(OPCODE.close, payload)); } catch { /* the socket is going either way */ }
+    try {
+      socket.write(frame(OPCODE.close, payload));
+    } catch {
+      /* the socket is going either way */
+    }
     finish();
   }
 
@@ -235,8 +258,10 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
       // No client context takeover was granted, so the message inflates on its own. The output cap is the same
       // one an uncompressed message meets, which is what stops a few kilobytes inflating into gigabytes.
       try {
-        bytes = inflateRawSync(Buffer.concat([payload, DEFLATE_TAIL]),
-          { finishFlush: zlib.Z_SYNC_FLUSH, maxOutputLength: MAX_MESSAGE_BYTES });
+        bytes = inflateRawSync(Buffer.concat([payload, DEFLATE_TAIL]), {
+          finishFlush: zlib.Z_SYNC_FLUSH,
+          maxOutputLength: MAX_MESSAGE_BYTES,
+        });
       } catch (error) {
         if ((error as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') fail(1009, 'message too large');
         else fail(1007, 'compressed message could not be read');
@@ -263,7 +288,11 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
       fail(1013, 'client is not keeping up');
       return;
     }
-    try { backpressured = !socket.write(prepared); } catch { finish(); }
+    try {
+      backpressured = !socket.write(prepared);
+    } catch {
+      finish();
+    }
   }
 
   function sendPrepared(text: PreparedText, options?: WebSocketSendOptions): void {
@@ -293,7 +322,10 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
       // RSV1 means "compressed" once compression was negotiated, and nothing at all otherwise. It may only
       // stand on the first frame of a data message: never on a control frame or a continuation (RFC 7692 §6.1).
       const compressed = (first & COMPRESSED) !== 0;
-      if (first & (deflate ? 0x30 : 0x70)) { fail(1002, 'reserved bits are set'); return; }
+      if (first & (deflate ? 0x30 : 0x70)) {
+        fail(1002, 'reserved bits are set');
+        return;
+      }
       if (compressed && (opcode === OPCODE.continuation || (opcode & 0x08) !== 0)) {
         fail(1002, 'only the first frame of a data message may be compressed');
         return;
@@ -308,37 +340,72 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
       } else if (length === 127) {
         if (pending.length < 10) return;
         const wide = pending.readBigUInt64BE(2);
-        if (wide > BigInt(MAX_MESSAGE_BYTES)) { fail(1009, 'message too large'); return; }
+        if (wide > BigInt(MAX_MESSAGE_BYTES)) {
+          fail(1009, 'message too large');
+          return;
+        }
         length = Number(wide);
         at = 10;
       }
       // Every frame from a client is masked. An unmasked one is a peer that is not a browser.
-      if (!masked) { fail(1002, 'client frames must be masked'); return; }
-      if (length > MAX_MESSAGE_BYTES) { fail(1009, 'message too large'); return; }
+      if (!masked) {
+        fail(1002, 'client frames must be masked');
+        return;
+      }
+      if (length > MAX_MESSAGE_BYTES) {
+        fail(1009, 'message too large');
+        return;
+      }
       if (pending.length < at + 4 + length) return;
       const mask = pending.subarray(at, at + 4);
       const payload = Buffer.from(pending.subarray(at + 4, at + 4 + length));
       for (let index = 0; index < payload.length; index++) payload[index] ^= mask[index & 3];
       pending = pending.subarray(at + 4 + length);
 
-      if (opcode === OPCODE.close) { fail(1000, 'closing'); return; }
-      if (opcode === OPCODE.ping) { try { socket.write(frame(OPCODE.pong, payload)); } catch { finish(); } continue; }
+      if (opcode === OPCODE.close) {
+        fail(1000, 'closing');
+        return;
+      }
+      if (opcode === OPCODE.ping) {
+        try {
+          socket.write(frame(OPCODE.pong, payload));
+        } catch {
+          finish();
+        }
+        continue;
+      }
       if (opcode === OPCODE.pong) continue;
 
       if (opcode === OPCODE.continuation) {
-        if (!fragmentOpcode) { fail(1002, 'continuation without a start frame'); return; }
+        if (!fragmentOpcode) {
+          fail(1002, 'continuation without a start frame');
+          return;
+        }
         fragmentBytes += payload.length;
-        if (fragmentBytes > MAX_MESSAGE_BYTES) { fail(1009, 'message too large'); return; }
+        if (fragmentBytes > MAX_MESSAGE_BYTES) {
+          fail(1009, 'message too large');
+          return;
+        }
         fragments.push(payload);
         if (!fin) continue;
         const whole = Buffer.concat(fragments);
-        const started = fragmentOpcode, startedCompressed = fragmentCompressed;
-        fragments = []; fragmentOpcode = 0; fragmentCompressed = false; fragmentBytes = 0;
+        const started = fragmentOpcode,
+          startedCompressed = fragmentCompressed;
+        fragments = [];
+        fragmentOpcode = 0;
+        fragmentCompressed = false;
+        fragmentBytes = 0;
         deliver(started, whole, startedCompressed);
         continue;
       }
-      if (opcode !== OPCODE.text && opcode !== OPCODE.binary) { fail(1002, `unknown opcode ${opcode}`); return; }
-      if (fin) { deliver(opcode, payload, compressed); continue; }
+      if (opcode !== OPCODE.text && opcode !== OPCODE.binary) {
+        fail(1002, `unknown opcode ${opcode}`);
+        return;
+      }
+      if (fin) {
+        deliver(opcode, payload, compressed);
+        continue;
+      }
       fragments = [payload];
       fragmentOpcode = opcode;
       fragmentCompressed = compressed;
@@ -349,8 +416,15 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
   socket.on('data', (chunk: Buffer) => {
     if (closed) return;
     pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
-    if (pending.length > MAX_MESSAGE_BYTES * 2) { fail(1009, 'message too large'); return; }
-    try { consume(); } catch { fail(1011, 'frame could not be read'); }
+    if (pending.length > MAX_MESSAGE_BYTES * 2) {
+      fail(1009, 'message too large');
+      return;
+    }
+    try {
+      consume();
+    } catch {
+      fail(1011, 'frame could not be read');
+    }
   });
   socket.on('close', finish);
   socket.on('end', finish);
@@ -361,12 +435,22 @@ export function acceptWebSocket(req: IncomingMessage, socket: Duplex, head: Buff
   if (pending.length) consume();
 
   return {
-    get closed() { return closed; },
-    get compressing() { return deflate; },
+    get closed() {
+      return closed;
+    },
+    get compressing() {
+      return deflate;
+    },
     send: (text, options) => sendPrepared(prepareWebSocketText(text), options),
     sendPrepared,
-    close(code = 1000, reason = ''): void { fail(code, reason); },
-    onMessage(listener) { messageListeners.push(listener); },
-    onClose(listener) { closeListeners.push(listener); },
+    close(code = 1000, reason = ''): void {
+      fail(code, reason);
+    },
+    onMessage(listener) {
+      messageListeners.push(listener);
+    },
+    onClose(listener) {
+      closeListeners.push(listener);
+    },
   };
 }

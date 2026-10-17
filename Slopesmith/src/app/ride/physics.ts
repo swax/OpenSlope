@@ -1,7 +1,14 @@
 import * as THREE from 'three';
 import * as RESPONSE from './ride-response.generated';
-import { bankedNormalResponse, DEFAULT_GROUND_RESPONSE, forwardResistance, headingLead, headingYaw,
-  lateralResistance, type GroundResponseTuning } from './ride-response';
+import {
+  bankedNormalResponse,
+  DEFAULT_GROUND_RESPONSE,
+  forwardResistance,
+  headingLead,
+  headingYaw,
+  lateralResistance,
+  type GroundResponseTuning,
+} from './ride-response';
 import { INTERSECTED, MeshBVH, NOT_INTERSECTED } from 'three-mesh-bvh';
 import { rideTree, type TreeGeometry } from '../viewport/mesh/surface-trees';
 import { RAIL_ENTRY_SCALE, RAIL_GRACE, railWindows, type GrindRails } from './grind';
@@ -16,38 +23,131 @@ import { obstacleKeyCovers } from './obstacles';
 // The tuning table and the stateless contact/vector math live beside this file; both are re-exported below so
 // every symbol this module has always published still resolves through `app/ride/physics`.
 import {
-  AIR_BOOST_ACCEL, AIR_BOOST_CAP_BLEND, AIR_BOOST_TURN_RATE, AIR_H_DRAG, AIR_TRICK_BOOST_SPIN_MUL,
-  AIR_TURN_RATE, BOARD_COLLISION_Y, BOARD_SENSOR_BELOW,
-  BOOST_ACCEL, BOOST_CAP_DECAY, BOOST_LEAN_WINDOW, BOOST_MAX_SPEED, BRAKE_STRENGTH,
-  CARVE_SLIDE_SCALE, CARVE_SLIDE_SLEW, CARVE_SLIDE_SPEED_GATE, CHARGE_RATE, CONTACT_SEPARATION_SPEED,
-  CONTACT_SLEW, CRUISE_DEFICIT_MAX, CRUISE_HEADING_FLOOR, D2R, FLIP_RECOVER_RATE, GRAVITY, GRAVITY_RISING,
+  AIR_BOOST_ACCEL,
+  AIR_BOOST_CAP_BLEND,
+  AIR_BOOST_TURN_RATE,
+  AIR_H_DRAG,
+  AIR_TRICK_BOOST_SPIN_MUL,
+  AIR_TURN_RATE,
+  BOARD_COLLISION_Y,
+  BOARD_SENSOR_BELOW,
+  BOOST_ACCEL,
+  BOOST_CAP_DECAY,
+  BOOST_LEAN_WINDOW,
+  BOOST_MAX_SPEED,
+  BRAKE_STRENGTH,
+  CARVE_SLIDE_SCALE,
+  CARVE_SLIDE_SLEW,
+  CARVE_SLIDE_SPEED_GATE,
+  CHARGE_RATE,
+  CONTACT_SEPARATION_SPEED,
+  CONTACT_SLEW,
+  CRUISE_DEFICIT_MAX,
+  CRUISE_HEADING_FLOOR,
+  D2R,
+  FLIP_RECOVER_RATE,
+  GRAVITY,
+  GRAVITY_RISING,
   GROUND_REDIRECT,
-  HEAD_LEAN_FULL_ANGLE, HEAD_LOOK_DEADZONE, HEAD_STICK_OVERRIDE,
-  ICE_SELF_CENTER_DAMP, ICE_SLIP_RECOVER,
-  iceAssistFor, iceCarveTilt,
-  JUMP_COYOTE_TIME, JUMP_MIN, JUMP_RIDER_CURVE,
-  JUMP_SPEED_FACTOR_MAX, LAND_TILT_FREE, LAND_TILT_MAX, LAND_TILT_SCALE, LAND_YAW_FREE, LAND_YAW_MAX,
-  LAND_YAW_SCALE, LAUNCH_FALLBACK_TANGENT, LAUNCH_TANGENT_MIX, MAX_SPEED, MAX_TICKS, MOVABLE_MIN_IMPACT,
-  NATIVE_DEPENETRATION, NORMAL_SMOOTHING, OLLIE_COOLDOWN, ORIENT_GRACE,
-  POP_MIN, POP_TIME, PREALIGN_HORIZON, PREALIGN_STEP, PROBE_ABOVE,
-  PROBE_BELOW, PROP_BOUNCE_EJECT_FLOOR, PUSHOUT_CAP, RAIL_ATTACH_CLAMP, RAIL_BOOST_ACCEL, RAIL_GRAVITY,
-  RAIL_RELOCK_TIME, RAIL_TANGENT_SLEW, RECOVER_NY, RECOVER_TICKS_MAX,
-  REDIRECT_TANGENT_FLOOR, RIDER_BARRIER_PAD, RIDER_BODY_R, RIDER_DRIVE, RIDER_HEAD_Y,
-  RIDER_MASS_TERM, SHOVE_RESTITUTION, STEER_SIGN, STEER_STRENGTH, SWITCH_LATCH_ANGLE, SWITCH_LATCH_SPEED,
-  TICK_H, WALL_NY, WORLD_UP, XR_GROUND_STICK_VIEW_CARRY,
+  HEAD_LEAN_FULL_ANGLE,
+  HEAD_LOOK_DEADZONE,
+  HEAD_STICK_OVERRIDE,
+  ICE_SELF_CENTER_DAMP,
+  ICE_SLIP_RECOVER,
+  iceAssistFor,
+  iceCarveTilt,
+  JUMP_COYOTE_TIME,
+  JUMP_MIN,
+  JUMP_RIDER_CURVE,
+  JUMP_SPEED_FACTOR_MAX,
+  LAND_TILT_FREE,
+  LAND_TILT_MAX,
+  LAND_TILT_SCALE,
+  LAND_YAW_FREE,
+  LAND_YAW_MAX,
+  LAND_YAW_SCALE,
+  LAUNCH_FALLBACK_TANGENT,
+  LAUNCH_TANGENT_MIX,
+  MAX_SPEED,
+  MAX_TICKS,
+  MOVABLE_MIN_IMPACT,
+  NATIVE_DEPENETRATION,
+  NORMAL_SMOOTHING,
+  OLLIE_COOLDOWN,
+  ORIENT_GRACE,
+  POP_MIN,
+  POP_TIME,
+  PREALIGN_HORIZON,
+  PREALIGN_STEP,
+  PROBE_ABOVE,
+  PROBE_BELOW,
+  PROP_BOUNCE_EJECT_FLOOR,
+  PUSHOUT_CAP,
+  RAIL_ATTACH_CLAMP,
+  RAIL_BOOST_ACCEL,
+  RAIL_GRAVITY,
+  RAIL_RELOCK_TIME,
+  RAIL_TANGENT_SLEW,
+  RECOVER_NY,
+  RECOVER_TICKS_MAX,
+  REDIRECT_TANGENT_FLOOR,
+  RIDER_BARRIER_PAD,
+  RIDER_BODY_R,
+  RIDER_DRIVE,
+  RIDER_HEAD_Y,
+  RIDER_MASS_TERM,
+  SHOVE_RESTITUTION,
+  STEER_SIGN,
+  STEER_STRENGTH,
+  SWITCH_LATCH_ANGLE,
+  SWITCH_LATCH_SPEED,
+  TICK_H,
+  WALL_NY,
+  WORLD_UP,
+  XR_GROUND_STICK_VIEW_CARRY,
 } from './physics-tuning';
 import {
-  contactResponse, groundRestDepth, moveTowards, projectOnPlane, surfaceFor, unionLeafNormal,
+  contactResponse,
+  groundRestDepth,
+  moveTowards,
+  projectOnPlane,
+  surfaceFor,
+  unionLeafNormal,
   type SurfaceRow,
 } from './physics-math';
 export {
-  AIR_LEVEL_RATE, BANK_MAX, CONTACT_SEPARATION_SPEED, CROUCH_AIR, CROUCH_BRAKE, CROUCH_FOLD, CROUCH_POP,
-  CROUCH_REACH, D2R, GROUND_ORIENT_GAIN, GROUND_TANGENTIAL_PULL, LAND_REACH_ETA, LAUNCH_LEVEL_SPEED,
-  ORIENT_GRACE, PREALIGN_HORIZON, PREALIGN_LEAD, RIDER_DRIVE_MIN, RIDER_DRIVE_SPAN, SWITCH_LATCH_ANGLE,
-  SWITCH_LATCH_SPEED, TILT_RATE, WORLD_UP, riderDrive,
+  AIR_LEVEL_RATE,
+  BANK_MAX,
+  CONTACT_SEPARATION_SPEED,
+  CROUCH_AIR,
+  CROUCH_BRAKE,
+  CROUCH_FOLD,
+  CROUCH_POP,
+  CROUCH_REACH,
+  D2R,
+  GROUND_ORIENT_GAIN,
+  GROUND_TANGENTIAL_PULL,
+  LAND_REACH_ETA,
+  LAUNCH_LEVEL_SPEED,
+  ORIENT_GRACE,
+  PREALIGN_HORIZON,
+  PREALIGN_LEAD,
+  RIDER_DRIVE_MIN,
+  RIDER_DRIVE_SPAN,
+  SWITCH_LATCH_ANGLE,
+  SWITCH_LATCH_SPEED,
+  TILT_RATE,
+  WORLD_UP,
+  riderDrive,
 } from './physics-tuning';
 export {
-  SURFACE_ROWS, contactResponse, groundRestDepth, moveTowards, projectOnPlane, rotateTowards, unionLeafNormal,
+  SURFACE_ROWS,
+  contactResponse,
+  groundRestDepth,
+  moveTowards,
+  projectOnPlane,
+  rotateTowards,
+  unionLeafNormal,
 } from './physics-math';
 export type { SurfaceRow } from './physics-math';
 import type {
@@ -113,7 +213,8 @@ const boardPointingRight = new THREE.Vector3();
  * bank is a rotation ABOUT this axis and therefore cannot change it.
  */
 export function boardPointingDirection(
-  st: { fwd: THREE.Vector3; boardUp: THREE.Vector3; flip: number; lead: number }, out: THREE.Vector3,
+  st: { fwd: THREE.Vector3; boardUp: THREE.Vector3; flip: number; lead: number },
+  out: THREE.Vector3,
 ): THREE.Vector3 {
   out.copy(st.fwd).addScaledVector(st.boardUp, -st.fwd.dot(st.boardUp));
   if (out.lengthSq() < 1e-8) out.copy(st.fwd);
@@ -132,7 +233,7 @@ export function boardPointingDirection(
  * rotations are spent and forgotten: three somersaults and a bit land exactly as well as the bit does.
  */
 export function flipResidual(deg: number): number {
-  return ((deg + 180) % 360 + 360) % 360 - 180;
+  return ((((deg + 180) % 360) + 360) % 360) - 180;
 }
 
 /**
@@ -152,7 +253,10 @@ const angleAboutTmp = new THREE.Vector3();
  * `false` = no patch data for this face; the faceted fallback stands.
  */
 export type PatchContact = (
-  faceIndex: number, bary: THREE.Vector3, outPoint: THREE.Vector3, outNormal: THREE.Vector3,
+  faceIndex: number,
+  bary: THREE.Vector3,
+  outPoint: THREE.Vector3,
+  outNormal: THREE.Vector3,
 ) => boolean;
 
 export type { RideObstacleHit, RideObstacleObject, RideObstacleSource } from './obstacles';
@@ -163,11 +267,15 @@ export type { RideObstacleHit, RideObstacleObject, RideObstacleSource } from './
  *  neither number has anything to do with how a reset should let go of them. */
 export const RESET_SPEED = 8.3333;
 /** How far above and below a course point the reset looks for real ground (`resetGroundAt`). */
-const RESET_GROUND_ABOVE = 220, RESET_GROUND_BELOW = 240;
+const RESET_GROUND_ABOVE = 220,
+  RESET_GROUND_BELOW = 240;
 
 /** A contact probe result. `point` is the world contact point; `n` its outward surface normal. */
 interface Probe {
-  found: boolean; point: THREE.Vector3; n: THREE.Vector3; surf: number;
+  found: boolean;
+  point: THREE.Vector3;
+  n: THREE.Vector3;
+  surf: number;
   /** The prop this contact seated on; absent for terrain, which owns no obstacle identity. */
   key?: string;
 }
@@ -267,24 +375,35 @@ export function createRideModel(o: RideModelOpts) {
   // mesh). Queried directly in the terrain's local space with an explicit DoubleSide (all the terrain
   // materials are DoubleSide — the chirality flip needs it), so the hits match THREE.Raycaster exactly.
   let bvh!: MeshBVH;
-  const toLocal = new THREE.Matrix4();  // world → terrain local, for the probe rays
-  const toWorld = new THREE.Matrix4();  // terrain local → world, for the hit points
+  const toLocal = new THREE.Matrix4(); // world → terrain local, for the probe rays
+  const toWorld = new THREE.Matrix4(); // terrain local → world, for the hit points
   const normalMat = new THREE.Matrix3(); // terrain local → world, for the analytic patch normal
   const localRay = new THREE.Ray();
-  const localRayHit = new THREE.Vector3(), localRayBoxHit = new THREE.Vector3();
+  const localRayHit = new THREE.Vector3(),
+    localRayBoxHit = new THREE.Vector3();
   const terrainWorldHit = new THREE.Vector3();
-  const cameraTerrainLocal = new THREE.Vector3(), cameraTerrainWorld = new THREE.Vector3();
+  const cameraTerrainLocal = new THREE.Vector3(),
+    cameraTerrainWorld = new THREE.Vector3();
   const cameraTerrainNearHit = { point: new THREE.Vector3(), distance: 0, faceIndex: 0 };
   // analytic-contact scratch: the hit's triangle + barycentric weights, and Newton's exact ray/patch solve
   let geoPos!: THREE.BufferAttribute | THREE.InterleavedBufferAttribute;
   let geoIndex: ArrayLike<number> | null = null;
-  const triA = new THREE.Vector3(); const triB = new THREE.Vector3(); const triC = new THREE.Vector3();
+  const triA = new THREE.Vector3();
+  const triB = new THREE.Vector3();
+  const triC = new THREE.Vector3();
   const baryTmp = new THREE.Vector3();
-  const patchP = new THREE.Vector3(); const patchN = new THREE.Vector3();
-  const patchSeed = new THREE.Vector3(); const patchDxP = new THREE.Vector3(); const patchDyP = new THREE.Vector3();
-  const patchTmpN = new THREE.Vector3(); const patchResidual = new THREE.Vector3(); const patchStep = new THREE.Vector3();
-  const patchDx = new THREE.Vector3(); const patchDy = new THREE.Vector3();
-  const patchJacobian = new THREE.Matrix3(); const patchInverse = new THREE.Matrix3();
+  const patchP = new THREE.Vector3();
+  const patchN = new THREE.Vector3();
+  const patchSeed = new THREE.Vector3();
+  const patchDxP = new THREE.Vector3();
+  const patchDyP = new THREE.Vector3();
+  const patchTmpN = new THREE.Vector3();
+  const patchResidual = new THREE.Vector3();
+  const patchStep = new THREE.Vector3();
+  const patchDx = new THREE.Vector3();
+  const patchDy = new THREE.Vector3();
+  const patchJacobian = new THREE.Matrix3();
+  const patchInverse = new THREE.Matrix3();
   // Props are flattened into world space once per ride. `indirect` preserves triangle order, so a BVH hit's
   // faceIndex remains a direct lookup into obstacleFaceMeta and therefore back to the exact placement whose
   // sound/effect/contact tuning it carries.
@@ -379,14 +498,19 @@ export function createRideModel(o: RideModelOpts) {
   /** Frame scratch: the union of this frame's moved subtrees, handed to `MeshBVH.refit`. */
   const refitNodes = new Set<number>();
   const obstacleRay = new THREE.Ray();
-  const obstacleRayHit = new THREE.Vector3(), obstacleRayBoxHit = new THREE.Vector3();
+  const obstacleRayHit = new THREE.Vector3(),
+    obstacleRayBoxHit = new THREE.Vector3();
   const obstacleNormal = new THREE.Vector3();
   const cameraObstacleMotion = new THREE.Vector3();
-  const boxWorldBounds = new THREE.Box3(), boxCorner = new THREE.Vector3();
-  const bodySphereFrom = new THREE.Vector3(), bodySphereTo = new THREE.Vector3();
+  const boxWorldBounds = new THREE.Box3(),
+    boxCorner = new THREE.Vector3();
+  const bodySphereFrom = new THREE.Vector3(),
+    bodySphereTo = new THREE.Vector3();
   const boxEnd = new THREE.Vector3();
-  const boxNormal = new THREE.Vector3(), boxPoint = new THREE.Vector3();
-  const boxLocalFrom = new THREE.Vector3(), boxLocalTo = new THREE.Vector3();
+  const boxNormal = new THREE.Vector3(),
+    boxPoint = new THREE.Vector3();
+  const boxLocalFrom = new THREE.Vector3(),
+    boxLocalTo = new THREE.Vector3();
   const boxPush = new THREE.Vector3();
   const obstacleNearHit = { point: new THREE.Vector3(), distance: 0, faceIndex: 0 };
   const obstacleHitNext = new Map<string, number>();
@@ -405,10 +529,11 @@ export function createRideModel(o: RideModelOpts) {
    *  `key` itself always included. */
   function setObstaclesEnabled(key: string, enabled: boolean): Set<string> {
     const covered = new Set([key]);
-    for (const meta of obstacleMetas) if (obstacleKeyCovers(meta.key, key)) {
-      meta.enabled = enabled;
-      covered.add(meta.key);
-    }
+    for (const meta of obstacleMetas)
+      if (obstacleKeyCovers(meta.key, key)) {
+        meta.enabled = enabled;
+        covered.add(meta.key);
+      }
     return covered;
   }
 
@@ -429,48 +554,66 @@ export function createRideModel(o: RideModelOpts) {
     crackedSurfaces?.restore(key);
   }
 
-  const crackedSurfaces: CrackedSurfaceRuntime | null = o.crackedSurfaceRuntime ?? (o.crackedSurfaces?.length
-    ? createCrackedSurfaceRuntime(o.crackedSurfaces, {
-      onCrack: key => o.onCrackedChange?.(key, true),
-      onHeal: key => o.onCrackedChange?.(key, false),
-      onBreak: key => {
-        // THE PANE STOPS BEING THERE, which is the half of the break the caller cannot do. Hiding the host is a
-        // render change and this model never consults visibility, so a hidden pane would still hold the rider up
-        // — and falling through is the whole point of a glass floor giving way. Every collision gate in here
-        // reads the enabled bit, so retiring the broken host removes it from every query without rebuilding the
-        // launch-time BVH. The Trigger graph may subsequently retire a DIFFERENT solid support twin as well.
-        retireObstacle(key);
-        o.onCrackedBreak?.(key);
-      },
-    })
-    : null);
+  const crackedSurfaces: CrackedSurfaceRuntime | null =
+    o.crackedSurfaceRuntime ??
+    (o.crackedSurfaces?.length
+      ? createCrackedSurfaceRuntime(o.crackedSurfaces, {
+          onCrack: key => o.onCrackedChange?.(key, true),
+          onHeal: key => o.onCrackedChange?.(key, false),
+          onBreak: key => {
+            // THE PANE STOPS BEING THERE, which is the half of the break the caller cannot do. Hiding the host is a
+            // render change and this model never consults visibility, so a hidden pane would still hold the rider up
+            // — and falling through is the whole point of a glass floor giving way. Every collision gate in here
+            // reads the enabled bit, so retiring the broken host removes it from every query without rebuilding the
+            // launch-time BVH. The Trigger graph may subsequently retire a DIFFERENT solid support twin as well.
+            retireObstacle(key);
+            o.onCrackedBreak?.(key);
+          },
+        })
+      : null);
 
   /** Feed presence from a locomotion controller that temporarily owns this rider instead of the board.
    *  `height` extends the presence up from the chord — the on-foot walker passes its standing body so a
    *  chest-high pane registers on the torso; the board's own tick keeps the retail point presence. */
-  function stepCrackedSurfaces(from: THREE.Vector3, to: THREE.Vector3, velocity: THREE.Vector3, dt: number,
-    height = 0) {
+  function stepCrackedSurfaces(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    velocity: THREE.Vector3,
+    dt: number,
+    height = 0,
+  ) {
     crackedSurfaces?.step(from, to, velocity, dt, height);
   }
   /** This rider's own latch state over the mountain's shared volumes ([Trailmap: 360-node-apply]) — the engine
    *  keeps its classification and captured launch axis per rider, so an opponent already climbing the tube can
    *  never hand its stage to the board beside it. */
   const boostVolumes: BoostVolumeRuntime | null = o.boostVolumes?.length
-    ? createBoostVolumeRuntime(o.boostVolumes, lapCounter ? {
-      // The lap-gated volume's mouth is a crossing station of its own (laps.ts) — on MEGAPLEX the one every
-      // mid-race pass actually ends at — so entry counts the crossing, announces it, and hands the gate the
-      // value the engine's gate reads: post-decrement ([Trailmap: 360-lapboost-gate, 390-lap-field]).
-      enterLapVolume: () => {
-        if (lapCounter.enterLapVolume()) o.onLap?.(lapCounter.remaining);
-        return lapCounter.remaining;
-      },
-    } : {})
+    ? createBoostVolumeRuntime(
+        o.boostVolumes,
+        lapCounter
+          ? {
+              // The lap-gated volume's mouth is a crossing station of its own (laps.ts) — on MEGAPLEX the one every
+              // mid-race pass actually ends at — so entry counts the crossing, announces it, and hands the gate the
+              // value the engine's gate reads: post-decrement ([Trailmap: 360-lapboost-gate, 390-lap-field]).
+              enterLapVolume: () => {
+                if (lapCounter.enterLapVolume()) o.onLap?.(lapCounter.remaining);
+                return lapCounter.remaining;
+              },
+            }
+          : {},
+      )
     : null;
-  const sphereLocalFrom = new THREE.Vector3(), sphereLocalTo = new THREE.Vector3();
-  const sphereLocalDir = new THREE.Vector3(), sphereLocalHit = new THREE.Vector3();
-  const sphereLocalNormal = new THREE.Vector3(), sphereWorldPoint = new THREE.Vector3();
+  const sphereLocalFrom = new THREE.Vector3(),
+    sphereLocalTo = new THREE.Vector3();
+  const sphereLocalDir = new THREE.Vector3(),
+    sphereLocalHit = new THREE.Vector3();
+  const sphereLocalNormal = new THREE.Vector3(),
+    sphereWorldPoint = new THREE.Vector3();
   const sphereWorldNormal = new THREE.Vector3();
-  interface SphereHitCandidate { u: number; index: number }
+  interface SphereHitCandidate {
+    u: number;
+    index: number;
+  }
   // Reused and grown only to the largest intersected leaf count seen in a ride. The hot cast orders candidates
   // before asking for the expensive union normal, avoiding one full leaf scan for every overlapping sphere.
   const sphereHitCandidatePool: SphereHitCandidate[] = [];
@@ -479,17 +622,26 @@ export function createRideModel(o: RideModelOpts) {
   // iteration vectors and touch maps stable avoids feeding hundreds of short-lived Vector3/Array objects to the
   // browser GC every second even when every BVH query is a cheap miss.
   const shoveZero = new THREE.Vector3();
-  const shoveOffset = new THREE.Vector3(), shoveRxN = new THREE.Vector3();
-  const shoveTmp = new THREE.Vector3(), shoveApplied = new THREE.Vector3();
-  const barrierMovement = new THREE.Vector3(), barrierUp = new THREE.Vector3();
-  const barrierForward = new THREE.Vector3(), barrierRight = new THREE.Vector3();
-  const barrierPosition = new THREE.Vector3(), barrierRemaining = new THREE.Vector3();
-  const barrierDirection = new THREE.Vector3(), barrierFrom = new THREE.Vector3(), barrierTo = new THREE.Vector3();
+  const shoveOffset = new THREE.Vector3(),
+    shoveRxN = new THREE.Vector3();
+  const shoveTmp = new THREE.Vector3(),
+    shoveApplied = new THREE.Vector3();
+  const barrierMovement = new THREE.Vector3(),
+    barrierUp = new THREE.Vector3();
+  const barrierForward = new THREE.Vector3(),
+    barrierRight = new THREE.Vector3();
+  const barrierPosition = new THREE.Vector3(),
+    barrierRemaining = new THREE.Vector3();
+  const barrierDirection = new THREE.Vector3(),
+    barrierFrom = new THREE.Vector3(),
+    barrierTo = new THREE.Vector3();
   /** The body sphere's end point for this iteration, kept off the per-sample ray scratch above. */
   const barrierBodyTo = new THREE.Vector3();
   const barrierSensorMotion = new THREE.Vector3();
   const integrationPrevious = new THREE.Vector3();
-  const probeTmp = new THREE.Vector3(), probeLatTmp = new THREE.Vector3(), probeRideTmp = new THREE.Vector3();
+  const probeTmp = new THREE.Vector3(),
+    probeLatTmp = new THREE.Vector3(),
+    probeRideTmp = new THREE.Vector3();
   const barrierOffsets = Array.from({ length: RIDER_PROBE_SAMPLES }, () => new THREE.Vector3());
   const barrierTouches = new Map<string, ObstacleTouch>();
   const barrierIterationTouches = new Map<string, ObstacleTouch>();
@@ -517,8 +669,8 @@ export function createRideModel(o: RideModelOpts) {
    * slower integrator over the same feed (decay 0.97836, threshold 12.0021) can only ever fire later than this
    * one on a rider this one has not already reset, so it is not fielded.
    */
-  const WEDGE_DECAY = 0.95614;   // per 60 Hz tick
-  const WEDGE_FIRE = 4.4920;     // ≈ five consecutive contact frames of a square-on shove
+  const WEDGE_DECAY = 0.95614; // per 60 Hz tick
+  const WEDGE_FIRE = 4.492; // ≈ five consecutive contact frames of a square-on shove
   let wedge = 0;
 
   /** One frame's contribution, from the normal of a prop contact that actually pushed the rider back. */
@@ -534,18 +686,21 @@ export function createRideModel(o: RideModelOpts) {
    * piece of the mountain, so a mountain with no authored course still has somewhere honest to put a rider back
    * down. Crumbs are dropped on TERRAIN only: a prop can be shoved or retired between the crumb and the reset.
    */
-  const CRUMB_SPACING = 3;       // metres between crumbs; 48 of them is ~140 m of trail
+  const CRUMB_SPACING = 3; // metres between crumbs; 48 of them is ~140 m of trail
   const CRUMB_BACK_DISTANCE = 6; // how far back UP the trail a crumb reset lands — clear of whatever stopped you
   const crumbPos = Array.from({ length: 48 }, () => new THREE.Vector3());
   const crumbFwd = Array.from({ length: 48 }, () => new THREE.Vector3(0, 0, 1));
-  let crumbWrite = 0, crumbFilled = 0;
+  let crumbWrite = 0,
+    crumbFilled = 0;
   /** Past this the nearest course point is not the line the rider left — it is some other part of the mountain
    *  the course happens to fold back past — so the trail is the better answer. */
   const COURSE_RESET_MAX_DIST = 150;
   /** Resets this close together mean the reset TARGET is the trap: the carry-back keeps putting the rider
    *  somewhere that puts them straight back out of play, and only leaving it entirely breaks the loop. */
-  const RESET_STREAK_WINDOW = 4, RESET_STREAK_LIMIT = 3;
-  let lastResetAt = -999, resetStreak = 0;
+  const RESET_STREAK_WINDOW = 4,
+    RESET_STREAK_LIMIT = 3;
+  let lastResetAt = -999,
+    resetStreak = 0;
   // Perf breakdown (docs/016). The physics owns cast accumulation because every query site lives here; the
   // session and viewport fill the other drill-down/broad phases around it. Displayed values are smoothed ms.
   const perf = createRidePerf();
@@ -564,7 +719,7 @@ export function createRideModel(o: RideModelOpts) {
      * reporting a spurious zero.
      */
     accel: new THREE.Vector3(),
-    fwd: new THREE.Vector3(0, 0, 1),      // board heading (unit), yawed about the contact normal
+    fwd: new THREE.Vector3(0, 0, 1), // board heading (unit), yawed about the contact normal
     /**
      * Which end of the deck leads: `+1` the nose (regular), `−1` the tail (switch). The board is symmetric and
      * the air spin can leave it pointing either way, so the *lead* — not the drawn facing — is what the ground
@@ -572,7 +727,7 @@ export function createRideModel(o: RideModelOpts) {
      * end is already leading, and grounded travel that swings past `SWITCH_LATCH_ANGLE` hands the lead over.
      */
     lead: 1 as 1 | -1,
-    boardUp: new THREE.Vector3(0, 1, 0),  // physics up, blends toward the contact normal
+    boardUp: new THREE.Vector3(0, 1, 0), // physics up, blends toward the contact normal
     contactN: new THREE.Vector3(0, 1, 0), // smoothed contact normal
     airUp: new THREE.Vector3(0, 1, 0),
     lean: 0,
@@ -602,9 +757,9 @@ export function createRideModel(o: RideModelOpts) {
      * in air and on rails.
      */
     seatYaw: 0,
-    crouch: 0,          // −1 driving, 0 standing, 1 coiled; drives the rider's legs, nothing physical
-    popTime: 0,         // what is left of the leg drive out of a launch
-    popDrive: 0,        // how hard it drives, in the charge that fed the launch
+    crouch: 0, // −1 driving, 0 standing, 1 coiled; drives the rider's legs, nothing physical
+    popTime: 0, // what is left of the leg drive out of a launch
+    popDrive: 0, // how hard it drives, in the charge that fed the launch
     riderSeated: false, // false until the absorber has been snapped onto a fresh pose (spawn, respawn)
     speedCap: MAX_SPEED,
     grounded: false,
@@ -618,7 +773,8 @@ export function createRideModel(o: RideModelOpts) {
     /** Signed clearance of the deck reference along the contact normal; negative = penetrating. The whole model. */
     error: 0,
     /** The rider's rate-limited copies of the surface's two depth fields ([Trailmap: 310]); they slew in every tick. */
-    sinkBudget: 0, sinkBog: 0,
+    sinkBudget: 0,
+    sinkBog: 0,
     lift: 0, // per-surface render lift of the drawn deck; slews to zero off the ground
     surf: 1,
     /** Key of the prop the deck is seated on this tick, null on terrain or in the air. Read only by the barrier
@@ -629,12 +785,12 @@ export function createRideModel(o: RideModelOpts) {
     /** Index of the rail being ground, −1 riding terrain/air ([Trailmap: 350]: motion state 3). */
     railIdx: -1,
     railTime: 0, // grind duration; the first 0.6 s hold the widest acceptance windows (the attach grace)
-    railYaw: 0,  // signed current deck angle to rail travel (deg, wrapped); steering itself is continuous
+    railYaw: 0, // signed current deck angle to rail travel (deg, wrapped); steering itself is continuous
     // charged ollie (RideableBoard InputUse / LaunchOllie): hold Space to build charge, release to launch
     charging: false,
-    charge: 0,          // 0..1; squared into launch power on release
-    jumpGrace: 0,       // coyote window after leaving the ground
-    ollieCooldown: 0,   // swallows a re-pop right after a launch
+    charge: 0, // 0..1; squared into launch power on release
+    jumpGrace: 0, // coyote window after leaving the ground
+    ollieCooldown: 0, // swallows a re-pop right after a launch
   };
   /**
    * A grounded in-place mount may start on an ordinary solid prop whose native SurfaceType is absent. Walking
@@ -645,14 +801,21 @@ export function createRideModel(o: RideModelOpts) {
    */
   let mountSupportKey: string | null = null;
   const obstacleIsProbeReadable = (meta: ObstacleMeta, allowUntyped = false): boolean =>
-    meta.enabled && meta.solid && meta.dynamicMass <= 0
-      && (meta.surface >= 0 || meta.key === mountSupportKey || allowUntyped);
+    meta.enabled &&
+    meta.solid &&
+    meta.dynamicMass <= 0 &&
+    (meta.surface >= 0 || meta.key === mountSupportKey || allowUntyped);
   // Aimed-air-boost scratch is stable across ticks: this path is live at 60 Hz and must not manufacture four
   // short-lived vectors every time the trigger is held.
-  const airAim = new THREE.Vector3(), airVelocityDir = new THREE.Vector3(), boostEndAxis = new THREE.Vector3();
-  const airAimPerp = new THREE.Vector3(), airTurnAxis = new THREE.Vector3();
+  const airAim = new THREE.Vector3(),
+    airVelocityDir = new THREE.Vector3(),
+    boostEndAxis = new THREE.Vector3();
+  const airAimPerp = new THREE.Vector3(),
+    airTurnAxis = new THREE.Vector3();
 
-  const tickV0 = new THREE.Vector3(); const dv = new THREE.Vector3(); let dvTicks = 0;
+  const tickV0 = new THREE.Vector3();
+  const dv = new THREE.Vector3();
+  let dvTicks = 0;
   let recoverTicks = 0; // consecutive ticks the seam recovery supplied the contact; reset by any ray find
   let railCooldown = 0; // rail re-lock lockout, armed by a jump off a rail
   let releaseQueued = false;
@@ -660,13 +823,18 @@ export function createRideModel(o: RideModelOpts) {
   // Render interpolation: the state at the START of the newest tick, plus the banked fraction toward the next.
   // The visible rider draws at `prev + (current − prev)·(accum/TICK_H)`, so a display outrunning the 60 Hz
   // simulation (a 120 Hz phone) samples smooth motion instead of aliasing whole-tick jumps into judder.
-  const prevPos = new THREE.Vector3(), prevFwd = new THREE.Vector3(0, 0, 1), prevVel = new THREE.Vector3();
+  const prevPos = new THREE.Vector3(),
+    prevFwd = new THREE.Vector3(0, 0, 1),
+    prevVel = new THREE.Vector3();
   let prevFlip = 0;
   // `fwd` is the drawn nose (the pose seats the deck along it); `rideFwd` is the direction that nose is actually
   // travelling in, which is what the chase camera falls back to when there is no speed to read a bearing off.
   const renderOut = {
-    pos: new THREE.Vector3(), fwd: new THREE.Vector3(0, 0, 1), vel: new THREE.Vector3(),
-    rideFwd: new THREE.Vector3(0, 0, 1), flip: 0,
+    pos: new THREE.Vector3(),
+    fwd: new THREE.Vector3(0, 0, 1),
+    vel: new THREE.Vector3(),
+    rideFwd: new THREE.Vector3(0, 0, 1),
+    flip: 0,
   };
   // MainType-17 pads reuse the ordinary boosted cap/thrust path for a bounded window. The editor maps the
   // authored magnitude to seconds at the same 0.5 s/unit hand-off used by the Unity runtime.
@@ -705,7 +873,8 @@ export function createRideModel(o: RideModelOpts) {
     body.normalMatrix.getNormalMatrix(matrix);
     const e = matrix.elements;
     const scales = [Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10])];
-    const maxScale = Math.max(...scales), minScale = Math.min(...scales);
+    const maxScale = Math.max(...scales),
+      minScale = Math.min(...scales);
     body.bound.center.copy(body.localCenter).applyMatrix4(matrix);
     body.bound.radius = body.localRadius * maxScale;
     body.localBodyRadius = minScale > 1e-9 ? RIDER_BODY_R / minScale : RIDER_BODY_R;
@@ -719,15 +888,16 @@ export function createRideModel(o: RideModelOpts) {
     box.linear.setFromMatrix4(matrix);
     const e = matrix.elements;
     const scales = [Math.hypot(e[0], e[1], e[2]), Math.hypot(e[4], e[5], e[6]), Math.hypot(e[8], e[9], e[10])];
-    const maxScale = Math.max(...scales), minScale = Math.min(...scales);
+    const maxScale = Math.max(...scales),
+      minScale = Math.min(...scales);
     box.localRadius = minScale > 1e-9 ? RIDER_BODY_R / minScale : RIDER_BODY_R;
     // A world sphere around the whole oriented box, for the cheap distance reject.
     boxWorldBounds.makeEmpty();
     for (let corner = 0; corner < 8; corner++) {
       boxCorner.set(
-        (corner & 1) ? box.localMax.x : box.localMin.x,
-        (corner & 2) ? box.localMax.y : box.localMin.y,
-        (corner & 4) ? box.localMax.z : box.localMin.z,
+        corner & 1 ? box.localMax.x : box.localMin.x,
+        corner & 2 ? box.localMax.y : box.localMin.y,
+        corner & 4 ? box.localMax.z : box.localMin.z,
       );
       boxWorldBounds.expandByPoint(boxCorner);
     }
@@ -737,8 +907,13 @@ export function createRideModel(o: RideModelOpts) {
   }
 
   function buildObstacleBVH() {
-    obstacleBVH = null; obstaclePos = null; obstacleFaceMeta = []; obstacleMetas = []; obstacleSphereBodies = [];
-    obstacleBoxes = []; liveObstacleMeshes = [];
+    obstacleBVH = null;
+    obstaclePos = null;
+    obstacleFaceMeta = [];
+    obstacleMetas = [];
+    obstacleSphereBodies = [];
+    obstacleBoxes = [];
+    liveObstacleMeshes = [];
     const positions: number[] = [];
     const vertex = new THREE.Vector3();
     for (const source of o.obstacles ?? []) {
@@ -750,7 +925,10 @@ export function createRideModel(o: RideModelOpts) {
       const appliedVersion = source.liveMatrix ? source.poseVersion?.() : undefined;
       const playerBounce = source.playerBounce ?? source.bounce > 0;
       const meta: ObstacleMeta = {
-        key: source.key, object: source.object, enabled: true, solid: source.solid,
+        key: source.key,
+        object: source.object,
+        enabled: true,
+        solid: source.solid,
         bounce: playerBounce ? clamp(Number.isFinite(source.bounce) ? source.bounce : 0, 0, 1) : 0,
         playerBounce,
         surface: Number.isFinite(source.surface) ? Math.trunc(source.surface) : -1,
@@ -766,12 +944,18 @@ export function createRideModel(o: RideModelOpts) {
         if (local && !local.isEmpty()) {
           obstacleMetas.push(meta);
           const box: ObstacleBox = {
-            meta, localMin: local.min.clone(), localMax: local.max.clone(),
-            matrixWorld: new THREE.Matrix4(), toLocal: new THREE.Matrix4(),
-            normalMatrix: new THREE.Matrix3(), linear: new THREE.Matrix3(),
-            localRadius: RIDER_BODY_R, bound: new THREE.Sphere(),
-            ...(source.liveMatrix ? { liveMatrix: source.liveMatrix, poseVersion: source.poseVersion,
-              appliedVersion } : {}),
+            meta,
+            localMin: local.min.clone(),
+            localMax: local.max.clone(),
+            matrixWorld: new THREE.Matrix4(),
+            toLocal: new THREE.Matrix4(),
+            normalMatrix: new THREE.Matrix3(),
+            linear: new THREE.Matrix3(),
+            localRadius: RIDER_BODY_R,
+            bound: new THREE.Sphere(),
+            ...(source.liveMatrix
+              ? { liveMatrix: source.liveMatrix, poseVersion: source.poseVersion, appliedVersion }
+              : {}),
           };
           placeBox(box, sourceMatrix);
           obstacleBoxes.push(box);
@@ -800,16 +984,25 @@ export function createRideModel(o: RideModelOpts) {
             }
             obstacleFaceMeta.push(metaIndex);
           }
-          if (local && source.liveMatrix) liveObstacleMeshes.push({
-            liveMatrix: source.liveMatrix, local, start, applied: sourceMatrix.clone(), nodes: null,
-            poseVersion: source.poseVersion, appliedVersion });
+          if (local && source.liveMatrix)
+            liveObstacleMeshes.push({
+              liveMatrix: source.liveMatrix,
+              local,
+              start,
+              applied: sourceMatrix.clone(),
+              nodes: null,
+              poseVersion: source.poseVersion,
+              appliedVersion,
+            });
         }
       }
       if (source.spheres && source.spheres.length >= 4) {
         if (metaIndex < 0) obstacleMetas.push(meta);
         const localBox = new THREE.Box3();
         for (let i = 0; i + 3 < source.spheres.length; i += 4) {
-          const x = source.spheres[i], y = source.spheres[i + 1], z = source.spheres[i + 2];
+          const x = source.spheres[i],
+            y = source.spheres[i + 1],
+            z = source.spheres[i + 2];
           const r = Math.max(0, source.spheres[i + 3]);
           localBox.expandByPoint(new THREE.Vector3(x - r, y - r, z - r));
           localBox.expandByPoint(new THREE.Vector3(x + r, y + r, z + r));
@@ -817,14 +1010,24 @@ export function createRideModel(o: RideModelOpts) {
         const localCenter = localBox.getCenter(new THREE.Vector3());
         let localRadius = 0;
         for (let i = 0; i + 3 < source.spheres.length; i += 4)
-          localRadius = Math.max(localRadius, localCenter.distanceTo(vertex.fromArray(source.spheres, i))
-            + Math.max(0, source.spheres[i + 3]));
+          localRadius = Math.max(
+            localRadius,
+            localCenter.distanceTo(vertex.fromArray(source.spheres, i)) + Math.max(0, source.spheres[i + 3]),
+          );
         const body: ObstacleSphereBody = {
-          meta, spheres: source.spheres, matrixWorld: new THREE.Matrix4(), toLocal: new THREE.Matrix4(),
-          normalMatrix: new THREE.Matrix3(), bound: new THREE.Sphere(), localCenter, localRadius,
-          localBodyRadius: RIDER_BODY_R, reachedByBody: true,
-          ...(source.liveMatrix ? { liveMatrix: source.liveMatrix, poseVersion: source.poseVersion,
-            appliedVersion } : {}),
+          meta,
+          spheres: source.spheres,
+          matrixWorld: new THREE.Matrix4(),
+          toLocal: new THREE.Matrix4(),
+          normalMatrix: new THREE.Matrix3(),
+          bound: new THREE.Sphere(),
+          localCenter,
+          localRadius,
+          localBodyRadius: RIDER_BODY_R,
+          reachedByBody: true,
+          ...(source.liveMatrix
+            ? { liveMatrix: source.liveMatrix, poseVersion: source.poseVersion, appliedVersion }
+            : {}),
         };
         placeSphereBody(body, sourceMatrix);
         obstacleSphereBodies.push(body);
@@ -852,7 +1055,8 @@ export function createRideModel(o: RideModelOpts) {
     // Triangle → owning live-source ordinal (−1 static); leaf runs resolve through the indirect buffer into this.
     const liveOfTri = new Int32Array(obstacleFaceMeta.length).fill(-1);
     liveObstacleMeshes.forEach((live, at) =>
-      liveOfTri.fill(at, live.start / 3, live.start / 3 + live.local.length / 9));
+      liveOfTri.fill(at, live.start / 3, live.start / 3 + live.local.length / 9),
+    );
     const path: number[] = [0]; // node ids down the current DFS branch; the root is always node 0
     bvh.shapecast({
       intersectsBounds: (_box, _isLeaf, _score, depth, nodeIndex) => {
@@ -903,11 +1107,15 @@ export function createRideModel(o: RideModelOpts) {
       for (let v = 0; v < local.length; v += 3) {
         liveVertex.set(local[v], local[v + 1], local[v + 2]).applyMatrix4(now);
         const out = live.start * 3 + v;
-        target[out] = liveVertex.x; target[out + 1] = liveVertex.y; target[out + 2] = liveVertex.z;
+        target[out] = liveVertex.x;
+        target[out + 1] = liveVertex.y;
+        target[out + 2] = liveVertex.z;
       }
       moved = true;
       // Union the movers' subtree nodes; a run that somehow owns none falls back to the full-tree walk.
-      if (live.nodes) { for (const node of live.nodes) refitNodes.add(node); } else refitAll = true;
+      if (live.nodes) {
+        for (const node of live.nodes) refitNodes.add(node);
+      } else refitAll = true;
     }
     if (moved && obstaclePos && obstacleBVH) {
       obstaclePos.needsUpdate = true;
@@ -964,7 +1172,8 @@ export function createRideModel(o: RideModelOpts) {
     if (h.lengthSq() < 1e-6) h.set(0, 0, 1);
     h.normalize();
     spawnFwd.copy(h);
-    runStart.copy(spawn); runStartFwd.copy(spawnFwd);
+    runStart.copy(spawn);
+    runStartFwd.copy(spawnFwd);
     respawn();
   }
 
@@ -976,26 +1185,53 @@ export function createRideModel(o: RideModelOpts) {
     st.vel.set(0, 0, 0);
     // A teleport is not an acceleration: drop whatever this frame's earlier ticks banked, so the arms are handed
     // a clean zero rather than the velocity the rider died with.
-    st.accel.set(0, 0, 0); dv.set(0, 0, 0); dvTicks = 0;
+    st.accel.set(0, 0, 0);
+    dv.set(0, 0, 0);
+    dvTicks = 0;
     st.fwd.copy(spawnFwd);
     st.lead = 1; // a fresh drop always stands regular; the ride is what puts a rider switch, not the flag
-    st.boardUp.set(0, 1, 0); st.contactN.copy(g.found ? g.n : WORLD_UP); st.airUp.set(0, 1, 0);
-    st.lean = 0; st.bank = 0; st.flip = 0; st.carveSlide = 0; st.slip = 0; st.speedCap = MAX_SPEED;
-    st.airTime = 0; st.predictedAirTime = 0; st.landEta = Infinity; st.forcedAir = false; accum = 0;
-    st.railIdx = -1; st.railTime = 0; st.railYaw = 0; railCooldown = 0;
-    st.grounded = false; st.error = 1.0; st.groundKey = null;
+    st.boardUp.set(0, 1, 0);
+    st.contactN.copy(g.found ? g.n : WORLD_UP);
+    st.airUp.set(0, 1, 0);
+    st.lean = 0;
+    st.bank = 0;
+    st.flip = 0;
+    st.carveSlide = 0;
+    st.slip = 0;
+    st.speedCap = MAX_SPEED;
+    st.airTime = 0;
+    st.predictedAirTime = 0;
+    st.landEta = Infinity;
+    st.forcedAir = false;
+    accum = 0;
+    st.railIdx = -1;
+    st.railTime = 0;
+    st.railYaw = 0;
+    railCooldown = 0;
+    st.grounded = false;
+    st.error = 1.0;
+    st.groundKey = null;
     // Seat the contact fields on the spawn surface rather than slewing them up from zero: a zero budget makes
     // the pushout fire on the very first contact tick and shove the deck straight back out.
     st.surf = g.found ? g.surf : 1;
     const s = surfaceFor(st.surf);
-    st.sinkBudget = s.budget; st.sinkBog = s.bog; st.lift = 0;
-    st.charging = false; st.charge = 0; releaseQueued = false; st.jumpGrace = 0; st.ollieCooldown = 0;
-    st.crouch = 0; st.popTime = 0; st.popDrive = 0;
+    st.sinkBudget = s.budget;
+    st.sinkBog = s.bog;
+    st.lift = 0;
+    st.charging = false;
+    st.charge = 0;
+    releaseQueued = false;
+    st.jumpGrace = 0;
+    st.ollieCooldown = 0;
+    st.crouch = 0;
+    st.popTime = 0;
+    st.popDrive = 0;
     padBoostTimer = 0;
     boostFrom.copy(st.pos); // a teleport is not travel: never sweep the line between where it was and here
     crackFrom.copy(st.pos); // and it must not crack every pane on the line either
     wedge = 0; // the warp is the answer to being wedged; carrying the count over would re-fire immediately
-    crumbFilled = 0; crumbWrite = 0; // and a teleport orphans the trail: it leads back to where the rider ISN'T
+    crumbFilled = 0;
+    crumbWrite = 0; // and a teleport orphans the trail: it leads back to where the rider ISN'T
     obstacleHitNext.clear();
     st.riderSeated = false; // the rider is re-seated on the next pose, never dragged there
     snapRender();
@@ -1008,11 +1244,22 @@ export function createRideModel(o: RideModelOpts) {
     const s = surfaceFor(st.surf);
     const restDepth = groundRestDepth(s, g.n.y);
     st.pos.copy(g.point).addScaledVector(g.n, -restDepth);
-    st.vel.set(0, 0, 0); st.accel.set(0, 0, 0);
-    st.contactN.copy(g.n); st.boardUp.copy(g.n); st.airUp.set(0, 1, 0);
-    st.grounded = true; st.error = -restDepth; st.sinkBudget = s.budget; st.sinkBog = s.bog; st.lift = s.lift;
+    st.vel.set(0, 0, 0);
+    st.accel.set(0, 0, 0);
+    st.contactN.copy(g.n);
+    st.boardUp.copy(g.n);
+    st.airUp.set(0, 1, 0);
+    st.grounded = true;
+    st.error = -restDepth;
+    st.sinkBudget = s.budget;
+    st.sinkBog = s.bog;
+    st.lift = s.lift;
     st.groundKey = g.key ?? null;
-    st.airTime = 0; st.predictedAirTime = 0; st.landEta = Infinity; st.forcedAir = false; accum = 0;
+    st.airTime = 0;
+    st.predictedAirTime = 0;
+    st.landEta = Infinity;
+    st.forcedAir = false;
+    accum = 0;
     st.riderSeated = false;
     snapRender();
     return true;
@@ -1066,7 +1313,9 @@ export function createRideModel(o: RideModelOpts) {
       crackFrom.copy(position);
     }
     st.vel.copy(velocity);
-    st.accel.set(0, 0, 0); dv.set(0, 0, 0); dvTicks = 0;
+    st.accel.set(0, 0, 0);
+    dv.set(0, 0, 0);
+    dvTicks = 0;
     st.grounded = false;
     st.forcedAir = false;
     st.error = 1;
@@ -1082,15 +1331,19 @@ export function createRideModel(o: RideModelOpts) {
   // ---- per-frame step ----
 
   function step(dt: number) {
-    perf.stepT0 = performance.now(); perf.castAccum = 0; // perf breakdown for this frame
+    perf.stepT0 = performance.now();
+    perf.castAccum = 0; // perf breakdown for this frame
 
     rideElapsed += dt;
     refitObstacles(); // the frame's clip/effect poses are already applied; the ticks below ride the current ones
     accum = Math.min(accum + dt, MAX_TICKS * TICK_H); // a hitch runs the ride slow, never teleports it
-    dv.set(0, 0, 0); dvTicks = 0;
+    dv.set(0, 0, 0);
+    dvTicks = 0;
     while (accum >= TICK_H) {
       accum -= TICK_H;
-      prevPos.copy(st.pos); prevFwd.copy(st.fwd); prevVel.copy(st.vel); // the render lerp's trailing edge
+      prevPos.copy(st.pos);
+      prevFwd.copy(st.fwd);
+      prevVel.copy(st.vel); // the render lerp's trailing edge
       prevFlip = st.flip;
       tick(TICK_H);
     }
@@ -1104,7 +1357,8 @@ export function createRideModel(o: RideModelOpts) {
     renderOut.pos.lerpVectors(prevPos, st.pos, a);
     renderOut.vel.lerpVectors(prevVel, st.vel, a);
     renderOut.fwd.lerpVectors(prevFwd, st.fwd, a);
-    if (renderOut.fwd.lengthSq() > 1e-9) renderOut.fwd.normalize(); else renderOut.fwd.copy(st.fwd);
+    if (renderOut.fwd.lengthSq() > 1e-9) renderOut.fwd.normalize();
+    else renderOut.fwd.copy(st.fwd);
     // The lead is discrete: it is stamped on the interpolated facing rather than lerped through zero.
     renderOut.rideFwd.copy(renderOut.fwd).multiplyScalar(st.lead);
     // The flip turns 4.5° a tick, which a display faster than the simulation would otherwise show as steps.
@@ -1113,7 +1367,12 @@ export function createRideModel(o: RideModelOpts) {
   }
 
   /** A teleport must not be interpolated across: seat the render lerp exactly on the new state. */
-  function snapRender() { prevPos.copy(st.pos); prevFwd.copy(st.fwd); prevVel.copy(st.vel); prevFlip = st.flip; }
+  function snapRender() {
+    prevPos.copy(st.pos);
+    prevFwd.copy(st.fwd);
+    prevVel.copy(st.vel);
+    prevFlip = st.flip;
+  }
 
   /**
    * One 60 Hz physics tick.
@@ -1129,7 +1388,10 @@ export function createRideModel(o: RideModelOpts) {
    * is 1.2 m/s². An ollie crosses the band in two ticks.
    */
   function tick(h: number) {
-    if (!o.onTelemetryTick) { tickCore(h); return; }
+    if (!o.onTelemetryTick) {
+      tickCore(h);
+      return;
+    }
     const trace: NonNullable<typeof tickTrace> = { opening: telemetryState(), events: [] };
     tickTrace = trace;
     tickCore(h);
@@ -1137,13 +1399,23 @@ export function createRideModel(o: RideModelOpts) {
     if (trace.opening.grounded && !closing.grounded) trace.events.push({ type: 'takeoff' });
     else if (!trace.opening.grounded && closing.grounded) trace.events.push({ type: 'touchdown' });
     const record: RideTelemetryTick = {
-      kind: 'frame', frame: ++telemetryFrame, dt: h,
+      kind: 'frame',
+      frame: ++telemetryFrame,
+      dt: h,
       input: {
-        steer: steerInput(), left: o.keys.left, right: o.keys.right,
-        tuck: o.keys.tuck, brake: o.keys.brake, boost: o.keys.boost,
+        steer: steerInput(),
+        left: o.keys.left,
+        right: o.keys.right,
+        tuck: o.keys.tuck,
+        brake: o.keys.brake,
+        boost: o.keys.boost,
       },
-      opening: trace.opening, probe: trace.probe, redirect: trace.redirect, acceleration: trace.acceleration,
-      events: trace.events, closing,
+      opening: trace.opening,
+      probe: trace.probe,
+      redirect: trace.redirect,
+      acceleration: trace.acceleration,
+      events: trace.events,
+      closing,
     };
     tickTrace = null; // the observer cannot accidentally attach work to the tick that just closed
     o.onTelemetryTick(record);
@@ -1192,7 +1464,10 @@ export function createRideModel(o: RideModelOpts) {
     // holds: an unseeded sweep runs from the world origin to the rider and overlaps every cracked surface on
     // the mountain, which broke every pane in Megaplex on the first tick of a run. `step` clamps an
     // implausible span too, so a teleport cannot do the same thing later.
-    if (!crackSeeded) { crackFrom.copy(st.pos); crackSeeded = true; }
+    if (!crackSeeded) {
+      crackFrom.copy(st.pos);
+      crackSeeded = true;
+    }
     stepCrackedSurfaces(crackFrom, st.pos, st.vel, h);
     crackFrom.copy(st.pos);
 
@@ -1222,7 +1497,10 @@ export function createRideModel(o: RideModelOpts) {
       // The lateral is the RIDDEN frame's, like the lean that fed the slide — on a switch rider the drawn nose
       // points backwards, and probing off it would slide the sample INTO the turn instead of out of it.
       const latPrev = probeLatTmp.crossVectors(st.contactN, rideForward(st, probeRideTmp));
-      if (latPrev.lengthSq() > 1e-6) { probeBase.addScaledVector(latPrev.normalize(), st.carveSlide); probeSlid = true; }
+      if (latPrev.lengthSq() > 1e-6) {
+        probeBase.addScaledVector(latPrev.normalize(), st.carveSlide);
+        probeSlid = true;
+      }
     }
     let probeSource: RideTelemetryProbe['source'] = o.patchContact ? 'analytic-ray' : 'faceted-ray';
     let p = probe(probeBase, probeAim);
@@ -1233,7 +1511,11 @@ export function createRideModel(o: RideModelOpts) {
     // for the same recovery, Unity docs/021 — PhysX has no closest-point query; MeshBVH does.)
     else if (st.grounded && st.contactN.y < RECOVER_NY && recoverTicks < RECOVER_TICKS_MAX) {
       const r = closestContact(probeBase);
-      if (r) { p = r; recoverTicks++; probeSource = 'recovery'; }
+      if (r) {
+        p = r;
+        recoverTicks++;
+        probeSource = 'recovery';
+      }
     }
     if (!p.found) probeSource = 'none';
     // Signed clearance of the deck reference along the contact normal. Out of the probe's reach = airborne.
@@ -1248,7 +1530,11 @@ export function createRideModel(o: RideModelOpts) {
       let fallback = probe(st.pos, probeAim);
       if (!fallback.found && st.contactN.y < RECOVER_NY && recoverTicks < RECOVER_TICKS_MAX) {
         const recovered = closestContact(st.pos);
-        if (recovered) { fallback = recovered; recoverTicks++; probeSource = 'recovery'; }
+        if (recovered) {
+          fallback = recovered;
+          recoverTicks++;
+          probeSource = 'recovery';
+        }
       }
       if (fallback.found) {
         p = fallback;
@@ -1287,8 +1573,7 @@ export function createRideModel(o: RideModelOpts) {
     // Types 6/10 are the non-riding bounce/wall rows. Their deliberately broad 20 cm contact band must not hold a
     // rider that is already moving OUT of the face: at Snowdream's early lips that accepts the far-side wall for
     // one tick, and redirect rotates 17–20 m/s of separation down it before ordinary ground exit can run.
-    const leavingUnrideable = st.grounded && (p.surf === 6 || p.surf === 10)
-      && normalSpeed > CONTACT_SEPARATION_SPEED;
+    const leavingUnrideable = st.grounded && (p.surf === 6 || p.surf === 10) && normalSpeed > CONTACT_SEPARATION_SPEED;
     const redirectContact = p.found && error <= s.thresh && !leavingUnrideable;
     if (st.grounded && redirectContact && !st.forcedAir && st.surf !== 3 && st.surf !== 4) {
       const rn = p.found ? p.n : st.contactN;
@@ -1303,10 +1588,14 @@ export function createRideModel(o: RideModelOpts) {
       // No travel to rotate into: contract the normal channel (the spring's stabilizer, the half of this term
       // that keeps a stiff bog quiet) but skip the speed conversion, which would only amplify noise.
       if (spd1 > 1e-8 && tangentSpeed > REDIRECT_TANGENT_FLOOR) st.vel.multiplyScalar(spd0 / spd1);
-      if (tickTrace) tickTrace.redirect = {
-        normal: telemetryVec(rn), normalVelocity: vn, speed: spd0,
-        velocityBefore: velocityBefore!, velocityAfter: telemetryVec(st.vel),
-      };
+      if (tickTrace)
+        tickTrace.redirect = {
+          normal: telemetryVec(rn),
+          normalVelocity: vn,
+          speed: spd0,
+          velocityBefore: velocityBefore!,
+          velocityAfter: telemetryVec(st.vel),
+        };
     }
 
     /**
@@ -1320,19 +1609,31 @@ export function createRideModel(o: RideModelOpts) {
     // velocity is strongly SEPARATING is not a touchdown. The gold run admits near-zero numerical separation,
     // hence the small tolerance rather than a brittle sign test.
     const approachingContact = st.grounded || normalSpeed <= CONTACT_SEPARATION_SPEED;
-    const onGround = p.found && !st.forcedAir && approachingContact && !leavingUnrideable
-      && (st.grounded ? error <= s.thresh : error <= 0);
-    if (tickTrace) tickTrace.probe = {
-      source: probeSource, found: p.found, aim: telemetryVec(probeAim), point: telemetryVec(p.point),
-      normal: telemetryVec(p.n), surfaceType: p.surf, error, groundThreshold: s.thresh,
-      normalSpeed, acceptedGround: onGround,
-    };
+    const onGround =
+      p.found &&
+      !st.forcedAir &&
+      approachingContact &&
+      !leavingUnrideable &&
+      (st.grounded ? error <= s.thresh : error <= 0);
+    if (tickTrace)
+      tickTrace.probe = {
+        source: probeSource,
+        found: p.found,
+        aim: telemetryVec(probeAim),
+        point: telemetryVec(p.point),
+        normal: telemetryVec(p.n),
+        surfaceType: p.surf,
+        error,
+        groundThreshold: s.thresh,
+        normalSpeed,
+        acceptedGround: onGround,
+      };
 
     // Out of bounds: standing on a Reset (Surf_0) surface, fell below the floor, or wedged on the level. During
     // a scored run these take the shared carry-back. Free riding deliberately leaves the rider where physics
     // puts them until the manual reset button is used.
-    if (((onGround && p.surf === 0) || st.pos.y < o.oobFloorY || wedge > WEDGE_FIRE)
-      && automaticResetToCourse()) return;
+    if (((onGround && p.surf === 0) || st.pos.y < o.oobFloorY || wedge > WEDGE_FIRE) && automaticResetToCourse())
+      return;
 
     // The trail the carry-back falls back on. Only frames that were genuinely ON the mountain qualify: Surf_0 is
     // the out-of-bounds skirt itself, and a prop contact (`p.key`) is a body that may be gone by the reset.
@@ -1350,7 +1651,11 @@ export function createRideModel(o: RideModelOpts) {
     // pop released during a bump-skip still fires; past it a pending charge is cancelled (no mid-air double-jump).
     if (onGround) st.jumpGrace = JUMP_COYOTE_TIME;
     else if (st.jumpGrace > 0) st.jumpGrace -= h;
-    if (!onGround && st.jumpGrace <= 0) { st.charging = false; releaseQueued = false; st.charge = 0; }
+    if (!onGround && st.jumpGrace <= 0) {
+      st.charging = false;
+      releaseQueued = false;
+      st.charge = 0;
+    }
 
     // Which body the deck is seated on, for the barrier sweep's roof clause later this same tick.
     st.groundKey = onGround ? (p.key ?? null) : null;
@@ -1368,7 +1673,10 @@ export function createRideModel(o: RideModelOpts) {
       // this tick's already-penetrating discovery straight into pushout projects the impact immediately and turns a
       // several-tick landing into one harsh speed loss.
       const responseError = st.grounded ? error : 0;
-      if (!st.grounded) { touchdown(p); st.error = 0; }
+      if (!st.grounded) {
+        touchdown(p);
+        st.error = 0;
+      }
       groundTick(h, s, responseError, accel);
       st.airTime = 0;
       st.predictedAirTime = 0;
@@ -1407,7 +1715,7 @@ export function createRideModel(o: RideModelOpts) {
     // Speed cap ([Trailmap: 360]): a shared cap that only ever bounds speed from above. Boost selects the top tier
     // and the airborne integrator re-arms at that same top tier, so a jump never bleeds carried speed. It snaps up
     // and eases DOWN, so an expiring boost bleeds off smoothly instead of clipping.
-    const capTarget = (boostActive() || !onGround) ? BOOST_MAX_SPEED : MAX_SPEED;
+    const capTarget = boostActive() || !onGround ? BOOST_MAX_SPEED : MAX_SPEED;
     if (capTarget >= st.speedCap) st.speedCap = capTarget;
     else st.speedCap = moveTowards(st.speedCap, capTarget, BOOST_CAP_DECAY * h);
     const spd = st.vel.length();
@@ -1478,8 +1786,10 @@ export function createRideModel(o: RideModelOpts) {
         yaw = Math.acos(clamp(along * st.lead, -1, 1)) / D2R;
       }
     }
-    st.vel.multiplyScalar(band(tilt, LAND_TILT_FREE, LAND_TILT_MAX, LAND_TILT_SCALE)
-                        * band(yaw, LAND_YAW_FREE, LAND_YAW_MAX, LAND_YAW_SCALE));
+    st.vel.multiplyScalar(
+      band(tilt, LAND_TILT_FREE, LAND_TILT_MAX, LAND_TILT_SCALE) *
+        band(yaw, LAND_YAW_FREE, LAND_YAW_MAX, LAND_YAW_SCALE),
+    );
   }
 
   /**
@@ -1502,14 +1812,18 @@ export function createRideModel(o: RideModelOpts) {
     const ride = projectOnPlane(rideForward(st, new THREE.Vector3()), n, new THREE.Vector3()).normalize();
     const side = new THREE.Vector3().crossVectors(n, ride);
     const vn = st.vel.dot(n);
-    const u = st.vel.dot(ride), w = st.vel.dot(side);
+    const u = st.vel.dot(ride),
+      w = st.vel.dot(side);
     const response = contactResponse(s.A, s.P, error, vn, st.sinkBog, st.sinkBudget);
-    const capped = Math.min(response, RESPONSE.BANK_LOAD_CAP_MULTIPLIER * s.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE);
+    const capped = Math.min(response, (RESPONSE.BANK_LOAD_CAP_MULTIPLIER * s.A) / RESPONSE.UNITS_CENTIMETRES_PER_METRE);
     const assist = o.lowGripAssist === true ? iceAssistFor(s.drag) : 0;
     const theta = iceCarveTilt(s.tilt, assist) * D2R * st.lean;
     // [Trailmap: 330-bank-force] Preserve the residual normal response; A also supplies world-down load.
-    accel.copy(n).multiplyScalar(bankedNormalResponse(response, capped, theta))
-      .addScaledVector(side, capped * Math.tan(theta)).addScaledVector(DOWN, s.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE);
+    accel
+      .copy(n)
+      .multiplyScalar(bankedNormalResponse(response, capped, theta))
+      .addScaledVector(side, capped * Math.tan(theta))
+      .addScaledVector(DOWN, s.A / RESPONSE.UNITS_CENTIMETRES_PER_METRE);
     const tuning = responseTuning;
     const boost = boostActive() ? 1 : 0; // The port exposes a binary held/pad boost, not the original meter tiers.
     accel.addScaledVector(ride, forwardResistance(s, u, error, st.sinkBudget, st.charge, boost, tuning));
@@ -1530,7 +1844,8 @@ export function createRideModel(o: RideModelOpts) {
       // Port recovery: a collision can leave drift too slow to latch switch, but fast enough to close the
       // alignment gate for seconds. Fade the standstill fallback out across that range instead of cutting it
       // off at 0.5 m/s. Above the switch threshold the recovered 30–60 degree gate is unchanged.
-      const recovery = o.keys.brake ? 0
+      const recovery = o.keys.brake
+        ? 0
         : clamp01((SWITCH_LATCH_SPEED - travelSpeed) / (SWITCH_LATCH_SPEED - CRUISE_HEADING_FLOOR));
       const driveAlign = Math.max(clamp01((60 - offDeg) / 30), recovery);
       accel.addScaledVector(ride, (o.drive ?? RIDER_DRIVE) * driveAlign * s.mult * deficit);
@@ -1538,8 +1853,7 @@ export function createRideModel(o: RideModelOpts) {
     if (boost) accel.addScaledVector(ride, BOOST_ACCEL * clamp01(1 - Math.abs(st.lean) / BOOST_LEAN_WINDOW));
 
     // The explicit sum of braking and resistance must not drive a stopped board backward.
-    if (o.keys.brake && u * (u + accel.dot(ride) * dt) < 0)
-      accel.addScaledVector(ride, -u / dt - accel.dot(ride));
+    if (o.keys.brake && u * (u + accel.dot(ride) * dt) < 0) accel.addScaledVector(ride, -u / dt - accel.dot(ride));
 
     // [Trailmap: 320-pushout] Apply the acceleration clamp only beyond the penetration budget.
     const excess = n.y >= WALL_NY ? Math.max(st.sinkBudget + error, -PUSHOUT_CAP) : st.sinkBudget + error;
@@ -1554,13 +1868,15 @@ export function createRideModel(o: RideModelOpts) {
 
   /** [Trailmap: 330-yaw] Heading follows the integrated velocity; it never rotates that velocity itself. */
   function groundSteering(dt: number, s: SurfaceRow) {
-    const n = st.contactN, surf = st.surf;
+    const n = st.contactN,
+      surf = st.surf;
     const ride = rideForward(st, new THREE.Vector3());
     const assist = o.lowGripAssist === true ? iceAssistFor(s.drag) : 0;
     // Steering: a stick "lean" yaws the heading toward the VELOCITY (auto-centre), leading it by the lean angle.
     const vmag = st.vel.length();
     const fwdN = projectOnPlane(ride, n, new THREE.Vector3());
-    if (fwdN.lengthSq() > 1e-6) fwdN.normalize(); else fwdN.copy(ride);
+    if (fwdN.lengthSq() > 1e-6) fwdN.normalize();
+    else fwdN.copy(ride);
     const velN = projectOnPlane(st.vel, n, new THREE.Vector3());
     const travelSpeedN = velN.length();
     const velDir = travelSpeedN > 1e-2 ? velN.divideScalar(travelSpeedN) : fwdN.clone();
@@ -1593,8 +1909,7 @@ export function createRideModel(o: RideModelOpts) {
       // Measure from travel so the edge remains engaged until the path has actually reached the gaze.
       const offTravel = angleAbout(velDir, gaze, n);
       if (Math.abs(offTravel) > deadzone) {
-        headSteer = Math.sign(offTravel)
-          * clamp01((Math.abs(offTravel) - deadzone) / (HEAD_LEAN_FULL_ANGLE * D2R));
+        headSteer = Math.sign(offTravel) * clamp01((Math.abs(offTravel) - deadzone) / (HEAD_LEAN_FULL_ANGLE * D2R));
       }
     }
     // The thumb owns the lean whenever it is deflected; a centred stick hands it to the gaze. `headSteer` is
@@ -1603,11 +1918,19 @@ export function createRideModel(o: RideModelOpts) {
     const stickSteer = steerInput();
     const stickActive = stickInputActive(stickSteer);
     const steer = stickActive ? STEER_SIGN * stickSteer : headSteer;
-    const speedRef = responseTuning.mode === 2 ? RESPONSE.LEAN_SPEED_MODE2_MPS
-      : responseTuning.mode === 0 ? RESPONSE.LEAN_SPEED_MODE0_MPS : RESPONSE.LEAN_SPEED_DEFAULT_MPS;
-    const leanTarget = clamp(steer, -RESPONSE.LEAN_INPUT_LIMIT, RESPONSE.LEAN_INPUT_LIMIT) * Math.min(1, vmag / speedRef);
-    let leanRate = clamp(Math.abs(leanTarget - st.lean) * RESPONSE.LEAN_SLEW_GAIN,
-      RESPONSE.LEAN_SLEW_MIN_PER_SECOND, RESPONSE.LEAN_SLEW_MAX_PER_SECOND);
+    const speedRef =
+      responseTuning.mode === 2
+        ? RESPONSE.LEAN_SPEED_MODE2_MPS
+        : responseTuning.mode === 0
+          ? RESPONSE.LEAN_SPEED_MODE0_MPS
+          : RESPONSE.LEAN_SPEED_DEFAULT_MPS;
+    const leanTarget =
+      clamp(steer, -RESPONSE.LEAN_INPUT_LIMIT, RESPONSE.LEAN_INPUT_LIMIT) * Math.min(1, vmag / speedRef);
+    let leanRate = clamp(
+      Math.abs(leanTarget - st.lean) * RESPONSE.LEAN_SLEW_GAIN,
+      RESPONSE.LEAN_SLEW_MIN_PER_SECOND,
+      RESPONSE.LEAN_SLEW_MAX_PER_SECOND,
+    );
     if (surf === 3 || surf === 4) leanRate *= RESPONSE.LEAN_POWDER_SLEW_SCALE; // powder steers into the lean slower
     st.lean = moveTowards(st.lean, leanTarget, leanRate * dt);
     const tuning = responseTuning;
@@ -1615,11 +1938,11 @@ export function createRideModel(o: RideModelOpts) {
     const slipVel = angleAbout(velDir, fwdN, n);
     // The downhill contact direction is independent of the board's lateral force axis.
     const fallLine = n.clone().multiplyScalar(n.y).sub(WORLD_UP);
-    if (fallLine.lengthSq() > RESPONSE.YAW_FLAT_CROSS_LENGTH_SQ) fallLine.normalize(); else fallLine.copy(fwdN);
-    const projection = new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n)
-      / Math.max(vmag, RESPONSE.GUARDS_SPEED_MPS);
-    const rawYaw = headingYaw(st.lean, turnLean, projection, vmag,
-      st.vel.dot(fwdN), st.vel.dot(fallLine), dt);
+    if (fallLine.lengthSq() > RESPONSE.YAW_FLAT_CROSS_LENGTH_SQ) fallLine.normalize();
+    else fallLine.copy(fwdN);
+    const projection =
+      new THREE.Vector3().crossVectors(st.vel, fwdN).dot(n) / Math.max(vmag, RESPONSE.GUARDS_SPEED_MPS);
+    const rawYaw = headingYaw(st.lean, turnLean, projection, vmag, st.vel.dot(fwdN), st.vel.dot(fallLine), dt);
     // Low-grip assist term 1 of 2 ([Trailmap: 330-carving] is untouched; see `iceAssistFor`). Damp the yaw
     // only while it is UN-COMMITTING — the commanded lead has fallen inside the slip the board is already
     // carrying, and on the same side of it, so the closure is walking the heading out onto its own drift.
@@ -1640,8 +1963,7 @@ export function createRideModel(o: RideModelOpts) {
     // a seat that chased the gaze would read as a further gaze offset and spin the wearer.
     if (stickActive) {
       const carry = o.gaze ? XR_GROUND_STICK_VIEW_CARRY : 1;
-      st.seatYaw += headingYaw(st.lean, turnLean, 0, vmag,
-        st.vel.dot(fwdN), st.vel.dot(fallLine), dt) * carry;
+      st.seatYaw += headingYaw(st.lean, turnLean, 0, vmag, st.vel.dot(fwdN), st.vel.dot(fallLine), dt) * carry;
     }
     // The carve yaws the RIDDEN direction; the drawn nose is that direction stamped with the lead, so a switch
     // rider carves exactly as a regular one does and the deck stays pointing the way the air left it.
@@ -1650,7 +1972,6 @@ export function createRideModel(o: RideModelOpts) {
     if (rideDir.lengthSq() < 1e-6) rideDir.copy(fwdN);
     rideDir.normalize();
     st.fwd.copy(rideDir).multiplyScalar(st.lead);
-
   }
 
   /** Rebuild the landing-predictor field retail constructs on motion-state-1 entry. The vertical path follows
@@ -1661,8 +1982,8 @@ export function createRideModel(o: RideModelOpts) {
     const horizon = 8;
     const rise = st.vel.y > 0 ? st.vel.y / GRAVITY_RISING : 0;
     const riseHeight = st.vel.y > 0 ? st.vel.y * rise - 0.5 * GRAVITY_RISING * rise * rise : 0;
-    const horizontalScale = (t: number): number => AIR_H_DRAG > 1e-9
-      ? (1 - Math.exp(-AIR_H_DRAG * t)) / AIR_H_DRAG : t;
+    const horizontalScale = (t: number): number =>
+      AIR_H_DRAG > 1e-9 ? (1 - Math.exp(-AIR_H_DRAG * t)) / AIR_H_DRAG : t;
     const pathPoint = (t: number, out: THREE.Vector3): THREE.Vector3 => {
       const horizontal = horizontalScale(t);
       out.copy(st.pos);
@@ -1746,14 +2067,12 @@ export function createRideModel(o: RideModelOpts) {
     // around the gaze azimuth. The rotation still spins the unflattened `fwd`, preserving that pitch (docs/048).
     // A centred XR stick hands heading to gaze. While any manual left/right source owns the spin, gaze must stand
     // down; following the still-forward head at the same 270°/s otherwise cancels the stick rotation tick-for-tick.
-    if (!(o.stick.active || o.keys.left || o.keys.right))
-      headFollow(st.fwd, st.boardUp, AIR_TURN_RATE * D2R * dt);
+    if (!(o.stick.active || o.keys.left || o.keys.right)) headFollow(st.fwd, st.boardUp, AIR_TURN_RATE * D2R * dt);
     st.airUp.set(0, 1, 0);
     // The flip (docs/016): W over the nose, S over the tail, at the same rate the spin turns — [Trailmap: 340]
     // rotates every axis alike. It is the only thing either key does off the ground: the brake reaches motion
     // solely through `groundTick`, and the tuck was never anything but the rider's legs.
-    st.flip += ((o.keys.tuck ? 1 : 0) - (o.keys.brake ? 1 : 0))
-      * AIR_TURN_RATE * spinBoostMul * dt;
+    st.flip += ((o.keys.tuck ? 1 : 0) - (o.keys.brake ? 1 : 0)) * AIR_TURN_RATE * spinBoostMul * dt;
 
     // [Trailmap: 340] pre-landing alignment, the "while falling" half of the air update: march the ballistic
     // path in bounded chords and take the first terrain crossing as the upcoming landing. Drag is ignored over
@@ -1778,7 +2097,10 @@ export function createRideModel(o: RideModelOpts) {
           // predictor sees it, retain the recovered total so the retail threshold still has the right meaning.
           st.predictedAirTime = Math.max(st.predictedAirTime, st.airTime + st.landEta);
           const p = probe(world, WORLD_UP);
-          if (p.found) { st.airUp.copy(p.n); st.surf = p.surf; }
+          if (p.found) {
+            st.airUp.copy(p.n);
+            st.surf = p.surf;
+          }
           break;
         }
         chordFrom.copy(chordTo);
@@ -1808,22 +2130,30 @@ export function createRideModel(o: RideModelOpts) {
     const travel = st.vel.lengthSq() > 1e-4 ? st.vel : ride;
     const tangent = projectOnPlane(travel, n, new THREE.Vector3());
     const flatTangent = tangent.lengthSq() <= 1e-6;
-    if (flatTangent) tangent.copy(ride); else tangent.normalize();
+    if (flatTangent) tangent.copy(ride);
+    else tangent.normalize();
 
-    const steep = (0.642788 - n.y) / 0.300768;  // (cos50° − n·up) / (cos50° − cos70°); < 0 on ordinary ground
+    const steep = (0.642788 - n.y) / 0.300768; // (cos50° − n·up) / (cos50° − cos70°); < 0 on ordinary ground
     const dir = n.clone();
-    if (steep <= 0 || flatTangent) dir.addScaledVector(tangent, LAUNCH_FALLBACK_TANGENT); // the ordinary case
-    else dir.addScaledVector(tangent, clamp(steep * (tangent.y / 0.342020) * LAUNCH_TANGENT_MIX, 0, 0.9));
-    if (dir.lengthSq() > 1e-6) dir.normalize(); else dir.copy(n);
+    if (steep <= 0 || flatTangent)
+      dir.addScaledVector(tangent, LAUNCH_FALLBACK_TANGENT); // the ordinary case
+    else dir.addScaledVector(tangent, clamp(steep * (tangent.y / 0.34202) * LAUNCH_TANGENT_MIX, 0, 0.9));
+    if (dir.lengthSq() > 1e-6) dir.normalize();
+    else dir.copy(n);
 
     const speedFactor = Math.min(0.88093346 * st.vel.length() + 0.24678448, JUMP_SPEED_FACTOR_MAX);
     const launch = Math.max(JUMP_MIN, st.charge * st.charge * JUMP_RIDER_CURVE * speedFactor);
     const velocityBefore = tickTrace ? telemetryVec(st.vel) : null;
     st.vel.addScaledVector(dir, launch);
-    if (tickTrace) tickTrace.events.push({
-      type: 'launch', charge: st.charge, direction: telemetryVec(dir), impulse: launch,
-      velocityBefore: velocityBefore!, velocityAfter: telemetryVec(st.vel),
-    });
+    if (tickTrace)
+      tickTrace.events.push({
+        type: 'launch',
+        charge: st.charge,
+        direction: telemetryVec(dir),
+        impulse: launch,
+        velocityBefore: velocityBefore!,
+        velocityAfter: telemetryVec(st.vel),
+      });
     st.ollieCooldown = OLLIE_COOLDOWN;
     // Spend the coil. The rider's legs drive out in the charge that fed them, not in the launch speed — the spec's
     // floor means a tap and a full charge leave the lip within 1.7 m/s of each other, so the *speed* would show
@@ -1837,7 +2167,10 @@ export function createRideModel(o: RideModelOpts) {
     // A jump leaves the rail through this same shared launch — there is no rail-specific exit pop
     // ([Trailmap: 350]). `contactN` above was the rail-local vertical, so the pop stands off the rail plane;
     // the lockout keeps the positional entry windows from re-accepting the first ticks of the rising deck.
-    if (st.railIdx >= 0) { st.railIdx = -1; railCooldown = RAIL_RELOCK_TIME; }
+    if (st.railIdx >= 0) {
+      st.railIdx = -1;
+      railCooldown = RAIL_RELOCK_TIME;
+    }
   }
 
   /**
@@ -1900,7 +2233,7 @@ export function createRideModel(o: RideModelOpts) {
     st.sinkBog = moveTowards(st.sinkBog, s.bog, slew);
     st.lift = moveTowards(st.lift, 0, slew); // rail splines own contact height; ground-only visual lift fades out
     st.error = 0;
-    st.contactN.copy(q.up);          // the pose's deck-up and the ollie's launch normal both read this
+    st.contactN.copy(q.up); // the pose's deck-up and the ollie's launch normal both read this
     st.jumpGrace = JUMP_COYOTE_TIME; // the ollie fires the shared jump launch from the rail ([Trailmap: 350])
 
     // Tangent capture: velocity slews toward its projection on the curve tangent at 30/s, KEEPING its
@@ -1966,7 +2299,9 @@ export function createRideModel(o: RideModelOpts) {
     return true;
   }
 
-  function heldBoostActive() { return o.keys.boost && (o.heldBoostAvailable?.() ?? true); }
+  function heldBoostActive() {
+    return o.keys.boost && (o.heldBoostAvailable?.() ?? true);
+  }
 
   /**
    * Choose the end a held boost pushes toward, once, on the tick it begins. Skis are directional and always thrust
@@ -1986,7 +2321,9 @@ export function createRideModel(o: RideModelOpts) {
     boostWasHeld = held;
   }
 
-  function boostActive() { return heldBoostActive() || padBoostTimer > 0; }
+  function boostActive() {
+    return heldBoostActive() || padBoostTimer > 0;
+  }
 
   /** World/failure-driven recovery gate. Manual callers use `resetToCourse` directly and never pass here. */
   function automaticResetToCourse(): boolean {
@@ -2042,20 +2379,32 @@ export function createRideModel(o: RideModelOpts) {
     const gazeDir = o.gaze?.();
     if (!gazeDir || maxStep <= 0) return;
     const gaze = projectOnPlane(gazeDir, planeN, headGaze);
-    if (gaze.lengthSq() < 1e-6) return;         // looking straight along the normal: no yaw to follow
+    if (gaze.lengthSq() < 1e-6) return; // looking straight along the normal: no yaw to follow
     const flat = projectOnPlane(fwd, planeN, headFlat);
-    if (flat.lengthSq() < 1e-6) return;         // ...nor if the heading itself has no in-plane part
+    if (flat.lengthSq() < 1e-6) return; // ...nor if the heading itself has no in-plane part
     const off = angleAbout(flat.normalize(), gaze.normalize(), planeN);
     const reach = Math.abs(off) - HEAD_LOOK_DEADZONE * D2R;
-    if (reach <= 0) return;                     // already pointed where you look → stop turning
+    if (reach <= 0) return; // already pointed where you look → stop turning
     fwd.applyAxisAngle(planeN, Math.sign(off) * Math.min(maxStep, reach)).normalize();
   }
-  const headGaze = new THREE.Vector3(), headFlat = new THREE.Vector3(), groundGaze = new THREE.Vector3();
+  const headGaze = new THREE.Vector3(),
+    headFlat = new THREE.Vector3(),
+    groundGaze = new THREE.Vector3();
 
   /** Ollie press / release, shared by Space and the touch button. A press only takes if the cooldown has run out;
    *  the release queues the launch, which `step` fires (possibly on a coyote frame). */
-  function ollieDown() { if (st.ollieCooldown <= 0 && !st.charging) { st.charging = true; st.charge = 0; } }
-  function ollieUp() { if (st.charging) { st.charging = false; releaseQueued = true; } }
+  function ollieDown() {
+    if (st.ollieCooldown <= 0 && !st.charging) {
+      st.charging = true;
+      st.charge = 0;
+    }
+  }
+  function ollieUp() {
+    if (st.charging) {
+      st.charging = false;
+      releaseQueued = true;
+    }
+  }
 
   // ---- terrain probe ----
 
@@ -2064,7 +2413,10 @@ export function createRideModel(o: RideModelOpts) {
    * its face. Both endpoints are mapped to local first, so the segment length stays exact under whatever scale
    * or chirality mirror the terrain's world matrix carries.
    */
-  function castSeg(from: THREE.Vector3, to: THREE.Vector3): { point: THREE.Vector3; faceIndex: number; normal: THREE.Vector3 } | null {
+  function castSeg(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+  ): { point: THREE.Vector3; faceIndex: number; normal: THREE.Vector3 } | null {
     const t = performance.now();
     const a = from.clone().applyMatrix4(toLocal);
     const b = to.clone().applyMatrix4(toLocal);
@@ -2077,7 +2429,11 @@ export function createRideModel(o: RideModelOpts) {
     if (!hit || hit.faceIndex == null) return null;
     // `normal` is the LOCAL geometric face normal, unflipped — a DoubleSide cast reports the face as authored,
     // so a caller that needs it oriented (toward the segment origin, or up-facing) decides that itself.
-    return { point: hit.point as THREE.Vector3, faceIndex: hit.faceIndex, normal: (hit.face?.normal ?? WORLD_UP).clone() };
+    return {
+      point: hit.point as THREE.Vector3,
+      faceIndex: hit.faceIndex,
+      normal: (hit.face?.normal ?? WORLD_UP).clone(),
+    };
   }
 
   /**
@@ -2086,8 +2442,13 @@ export function createRideModel(o: RideModelOpts) {
    * the camera a spherical post-pass over the visual mesh; distance is checked in world space so mirrored or
    * scaled terrain matrices remain correct.
    */
-  function closestCameraTerrain(point: THREE.Vector3, maxDistance: number): {
-    point: THREE.Vector3; normal: THREE.Vector3; distance: number;
+  function closestCameraTerrain(
+    point: THREE.Vector3,
+    maxDistance: number,
+  ): {
+    point: THREE.Vector3;
+    normal: THREE.Vector3;
+    distance: number;
   } | null {
     const started = performance.now();
     cameraTerrainLocal.copy(point).applyMatrix4(toLocal);
@@ -2128,8 +2489,12 @@ export function createRideModel(o: RideModelOpts) {
     return !!hit || sphereHit || boxHit;
   }
 
-  function resolveBarrierHit(previousPos: THREE.Vector3, nextPos: THREE.Vector3, includeTerrain: boolean,
-    includeObstacles: boolean) {
+  function resolveBarrierHit(
+    previousPos: THREE.Vector3,
+    nextPos: THREE.Vector3,
+    includeTerrain: boolean,
+    includeObstacles: boolean,
+  ) {
     barrierMovement.copy(nextPos).sub(previousPos);
     if (barrierMovement.lengthSq() < 1e-16) return;
     barrierTouches.clear();
@@ -2138,7 +2503,8 @@ export function createRideModel(o: RideModelOpts) {
     const up = barrierUp.copy(st.boardUp.lengthSq() > 1e-6 ? st.boardUp : WORLD_UP).normalize();
     const forward = projectOnPlane(st.fwd, up, barrierForward);
     if (forward.lengthSq() < 1e-6) projectOnPlane(barrierMovement, up, forward);
-    if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1); else forward.normalize();
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, 1);
+    else forward.normalize();
     const right = barrierRight.crossVectors(up, forward).normalize();
     // The sample body is shared with Test mode's collider overlay (`ride/rider-volume.ts`) so what is drawn is
     // what collides.
@@ -2181,9 +2547,16 @@ export function createRideModel(o: RideModelOpts) {
         // does not). Solid geometry still uses all thirteen samples so walls and low roofs retain body collision.
         // The elevated pass-through case a grounded BODY does meet — GARI's smash-through Lcd_ScreenLogo — is
         // the grounded body stab after the solve below, whose fixed reach keeps that same negative intact.
-        const obstacleHit = includeObstacles && sampleIndex >= obstacleFirst
-          ? castObstacleBarrier(barrierFrom, barrierTo, remaining, barrierIterationTouches,
-            sampleIndex < RIDER_DECK_SAMPLES) : null;
+        const obstacleHit =
+          includeObstacles && sampleIndex >= obstacleFirst
+            ? castObstacleBarrier(
+                barrierFrom,
+                barrierTo,
+                remaining,
+                barrierIterationTouches,
+                sampleIndex < RIDER_DECK_SAMPLES,
+              )
+            : null;
         if (obstacleHit && (!earliest || obstacleHit.distance < earliest.distance)) earliest = obstacleHit;
       }
       const touchLimit = earliest?.distance ?? length;
@@ -2195,7 +2568,11 @@ export function createRideModel(o: RideModelOpts) {
         const previous = barrierTouches.get(key);
         if (!previous || touch.impactSpeed > previous.impactSpeed) barrierTouches.set(key, touch);
       }
-      if (!earliest) { position.add(remaining); remaining.set(0, 0, 0); break; }
+      if (!earliest) {
+        position.add(remaining);
+        remaining.set(0, 0, 0);
+        break;
+      }
 
       const padding = Math.min(RIDER_BARRIER_PAD, earliest.distance * 0.5);
       const allowed = Math.max(0, earliest.distance - padding);
@@ -2242,10 +2619,14 @@ export function createRideModel(o: RideModelOpts) {
         // forcedAir once the roof is out of probe range, before the real floor is reached.
         if (!ownGround) st.forcedAir = true;
       }
-      if (tickTrace) recordBarrierEvent({
-        type: 'barrier-resolved', distance: earliest.distance, normal: telemetryVec(earliest.normal),
-        velocityBefore: velocityBefore!, velocityAfter: telemetryVec(st.vel),
-      });
+      if (tickTrace)
+        recordBarrierEvent({
+          type: 'barrier-resolved',
+          distance: earliest.distance,
+          normal: telemetryVec(earliest.normal),
+          velocityBefore: velocityBefore!,
+          velocityAfter: telemetryVec(st.vel),
+        });
     }
     // Bounding-box props resolve AFTER the movement solve, because the engine does not clip a rider against one
     // — it completes the move and pushes back out. Its touches join this tick's report like any other.
@@ -2310,8 +2691,11 @@ export function createRideModel(o: RideModelOpts) {
       // be listening for prop hits. The impulse is physics; the callback only reports it.
       const shove = shoveMovable(touch);
       o.onObstacleHit?.({
-        key: touch.meta.key, object: touch.meta.object,
-        point: touch.point.clone(), normal: touch.normal.clone(), impactSpeed: touch.impactSpeed,
+        key: touch.meta.key,
+        object: touch.meta.object,
+        point: touch.point.clone(),
+        normal: touch.normal.clone(),
+        impactSpeed: touch.impactSpeed,
         shove,
       });
     }
@@ -2323,27 +2707,30 @@ export function createRideModel(o: RideModelOpts) {
    * mirror, and the cm→m scale together. An inertia tensor transforms as `R·I·Rᵀ` under any orthogonal map,
    * reflections included, and carries 1/length² besides, so the matrix's own uniform scale divides out of it.
    */
-  function worldMassProps(source: RideObstacleSource, matrix = source.matrixWorld):
-    { com: THREE.Vector3; invInertia: Float32Array } | null {
+  function worldMassProps(
+    source: RideObstacleSource,
+    matrix = source.matrixWorld,
+  ): { com: THREE.Vector3; invInertia: Float32Array } | null {
     if (!source.body || source.body.invInertia.length < 9) return null;
     const m = matrix.elements;
     const linear = [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]]; // row-major 3x3
-    const det = linear[0] * (linear[4] * linear[8] - linear[5] * linear[7])
-      - linear[1] * (linear[3] * linear[8] - linear[5] * linear[6])
-      + linear[2] * (linear[3] * linear[7] - linear[4] * linear[6]);
+    const det =
+      linear[0] * (linear[4] * linear[8] - linear[5] * linear[7]) -
+      linear[1] * (linear[3] * linear[8] - linear[5] * linear[6]) +
+      linear[2] * (linear[3] * linear[7] - linear[4] * linear[6]);
     const scale = Math.cbrt(Math.abs(det));
     if (!(scale > 1e-12)) return null;
     const r = linear.map(value => value / scale); // orthogonal (possibly improper — a mirror is still valid here)
     const local = source.body.invInertia;
     // world = R · local · Rᵀ, then / scale² for the length units the tensor's inverse carries.
     const invInertia = new Float32Array(9);
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
-      let sum = 0;
-      for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) sum += r[i * 3 + a] * local[a * 3 + b] * r[j * 3 + b];
-      invInertia[i * 3 + j] = sum / (scale * scale);
-    }
-    const com = new THREE.Vector3(source.body.com[0], source.body.com[1], source.body.com[2])
-      .applyMatrix4(matrix);
+    for (let i = 0; i < 3; i++)
+      for (let j = 0; j < 3; j++) {
+        let sum = 0;
+        for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) sum += r[i * 3 + a] * local[a * 3 + b] * r[j * 3 + b];
+        invInertia[i * 3 + j] = sum / (scale * scale);
+      }
+    const com = new THREE.Vector3(source.body.com[0], source.body.com[1], source.body.com[2]).applyMatrix4(matrix);
     return { com, invInertia };
   }
 
@@ -2388,7 +2775,7 @@ export function createRideModel(o: RideModelOpts) {
     }
     const denominator = invMass + RIDER_MASS_TERM + rotational;
     if (!(denominator > 1e-9)) return null;
-    const impulse = SHOVE_RESTITUTION * touch.impactSpeed / denominator;
+    const impulse = (SHOVE_RESTITUTION * touch.impactSpeed) / denominator;
 
     const riderBefore = tickTrace ? telemetryVec(st.vel) : null;
     // `normal` faces against travel, so advancing the rider ALONG it is what removes the into-prop component.
@@ -2396,21 +2783,32 @@ export function createRideModel(o: RideModelOpts) {
 
     // ...and the prop takes the same impulse the other way, along the rider's travel.
     const applied = shoveApplied.copy(n).multiplyScalar(-impulse);
-    const angular = body && offset
-      ? applyInvInertia(body.invInertia, shoveTmp.copy(offset).cross(applied), new THREE.Vector3())
-      : new THREE.Vector3();
+    const angular =
+      body && offset
+        ? applyInvInertia(body.invInertia, shoveTmp.copy(offset).cross(applied), new THREE.Vector3())
+        : new THREE.Vector3();
     const linear = applied.clone().multiplyScalar(invMass);
     // Pushed directly rather than through recordBarrierEvent: that one keeps only the nearest of its kind per
     // tick, and two different props shoved in one tick are two separate events, not a closer read of one.
-    if (tickTrace) tickTrace.events.push({
-      type: 'prop-shove', key: touch.meta.key, hasBody: !!body,
-      closingSpeed: touch.impactSpeed, rotational, impulse, denominator,
-      offset: telemetryVec(offset ?? shoveZero), normal: telemetryVec(n),
-      propLinear: telemetryVec(linear), propAngular: telemetryVec(angular),
-      riderVelocityBefore: riderBefore!, riderVelocityAfter: telemetryVec(st.vel),
-    });
+    if (tickTrace)
+      tickTrace.events.push({
+        type: 'prop-shove',
+        key: touch.meta.key,
+        hasBody: !!body,
+        closingSpeed: touch.impactSpeed,
+        rotational,
+        impulse,
+        denominator,
+        offset: telemetryVec(offset ?? shoveZero),
+        normal: telemetryVec(n),
+        propLinear: telemetryVec(linear),
+        propAngular: telemetryVec(angular),
+        riderVelocityBefore: riderBefore!,
+        riderVelocityAfter: telemetryVec(st.vel),
+      });
     return {
-      linear, angular,
+      linear,
+      angular,
       body: body ? { invInertia: body.invInertia, com: body.com.clone(), invMass } : null,
     };
   }
@@ -2425,21 +2823,27 @@ export function createRideModel(o: RideModelOpts) {
 
   /** Return the first wall/ceiling hit on a body sample. Unlike castSeg this examines all intersections, because
    * a sample near the deck may touch a floor first and still encounter a wall later in the same fast tick. */
-  function castTerrainBarrier(from: THREE.Vector3, to: THREE.Vector3, motion: THREE.Vector3): { distance: number; normal: THREE.Vector3 } | null {
+  function castTerrainBarrier(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    motion: THREE.Vector3,
+  ): { distance: number; normal: THREE.Vector3 } | null {
     const t = performance.now();
     const worldFar = from.distanceTo(to);
-    const a = from.clone().applyMatrix4(toLocal), b = to.clone().applyMatrix4(toLocal);
+    const a = from.clone().applyMatrix4(toLocal),
+      b = to.clone().applyMatrix4(toLocal);
     const far = a.distanceTo(b);
     if (far < 1e-9) return null;
     localRay.origin.copy(a);
     localRay.direction.copy(b).sub(a).divideScalar(far);
     let earliest: { localDistance: number; distance: number; normal: THREE.Vector3 } | null = null;
-    const deferred = tickTrace ? [] as { localDistance: number; distance: number; normal: THREE.Vector3 }[] : null;
+    const deferred = tickTrace ? ([] as { localDistance: number; distance: number; normal: THREE.Vector3 }[]) : null;
     bvh.shapecast({
       boundsTraverseOrder: box => rayBoxEntryDistance(localRay, box, localRayBoxHit),
       intersectsBounds: (_box, _isLeaf, score) =>
         score !== undefined && score <= far && score <= (earliest?.localDistance ?? far)
-          ? INTERSECTED : NOT_INTERSECTED,
+          ? INTERSECTED
+          : NOT_INTERSECTED,
       intersectsTriangle: (triangle, faceIndex) => {
         const hit = localRay.intersectTriangle(triangle.a, triangle.b, triangle.c, false, localRayHit);
         if (!hit) return false;
@@ -2455,8 +2859,7 @@ export function createRideModel(o: RideModelOpts) {
           deferred?.push({ localDistance, distance, normal });
           return false;
         }
-        if (localDistance < (earliest?.localDistance ?? Infinity))
-          earliest = { localDistance, distance, normal };
+        if (localDistance < (earliest?.localDistance ?? Infinity)) earliest = { localDistance, distance, normal };
         return false;
       },
     });
@@ -2468,7 +2871,9 @@ export function createRideModel(o: RideModelOpts) {
       for (const floor of deferred) {
         if (result && floor.localDistance > result.localDistance) break;
         recordBarrierEvent({
-          type: 'floor-crossing-deferred', distance: floor.distance, normal: telemetryVec(floor.normal),
+          type: 'floor-crossing-deferred',
+          distance: floor.distance,
+          normal: telemetryVec(floor.normal),
         });
       }
     }
@@ -2481,8 +2886,11 @@ export function createRideModel(o: RideModelOpts) {
    * both of which are line probes; the RIDER's own box contact is the body sphere in `castBoxObstacleBarrier`,
    * which is a different law ([Trailmap: 370-probe-modes]).
    */
-  function castBoxRay(from: THREE.Vector3, to: THREE.Vector3, accept: (meta: ObstacleMeta) => boolean):
-    { distance: number; point: THREE.Vector3; normal: THREE.Vector3; meta: ObstacleMeta } | null {
+  function castBoxRay(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    accept: (meta: ObstacleMeta) => boolean,
+  ): { distance: number; point: THREE.Vector3; normal: THREE.Vector3; meta: ObstacleMeta } | null {
     if (!obstacleBoxes.length) return null;
     const far = from.distanceTo(to);
     if (far < 1e-9) return null;
@@ -2492,17 +2900,35 @@ export function createRideModel(o: RideModelOpts) {
       // The collider is oriented with its placement, so the segment goes into the box's own frame first.
       boxLocalFrom.copy(from).applyMatrix4(box.toLocal);
       boxLocalTo.copy(to).applyMatrix4(box.toLocal);
-      let near = 0, farT = 1, axis = -1, sign = 0;
+      let near = 0,
+        farT = 1,
+        axis = -1,
+        sign = 0;
       let missed = false;
       for (let k = 0; k < 3 && !missed; k++) {
         const component = k === 0 ? 'x' : k === 1 ? 'y' : 'z';
-        const origin = boxLocalFrom[component], delta = boxLocalTo[component] - boxLocalFrom[component];
-        const lo = box.localMin[component], hi = box.localMax[component];
-        if (Math.abs(delta) < 1e-12) { if (origin < lo || origin > hi) missed = true; continue; }
-        let t0 = (lo - origin) / delta, t1 = (hi - origin) / delta;
+        const origin = boxLocalFrom[component],
+          delta = boxLocalTo[component] - boxLocalFrom[component];
+        const lo = box.localMin[component],
+          hi = box.localMax[component];
+        if (Math.abs(delta) < 1e-12) {
+          if (origin < lo || origin > hi) missed = true;
+          continue;
+        }
+        let t0 = (lo - origin) / delta,
+          t1 = (hi - origin) / delta;
         let entering = -1;
-        if (t0 > t1) { const swap = t0; t0 = t1; t1 = swap; entering = 1; }
-        if (t0 > near) { near = t0; axis = k; sign = entering; }
+        if (t0 > t1) {
+          const swap = t0;
+          t0 = t1;
+          t1 = swap;
+          entering = 1;
+        }
+        if (t0 > near) {
+          near = t0;
+          axis = k;
+          sign = entering;
+        }
         if (t1 < farT) farT = t1;
         if (near > farT) missed = true;
       }
@@ -2513,7 +2939,8 @@ export function createRideModel(o: RideModelOpts) {
       if (axis >= 0) normal.setComponent(axis, sign).applyNormalMatrix(box.normalMatrix).normalize();
       else normal.copy(to).sub(from).normalize().negate(); // started inside: face the probe
       best = {
-        distance, normal,
+        distance,
+        normal,
         point: new THREE.Vector3().copy(to).sub(from).multiplyScalar(near).add(from),
         meta: box.meta,
       };
@@ -2524,10 +2951,17 @@ export function createRideModel(o: RideModelOpts) {
   /** Prop counterpart to the terrain barrier cast. Ride-through geometry reports an exact touch and is skipped;
    * solid geometry becomes the collide-and-slide plane. An upward face with a surface type is likewise reported
    * and skipped here because the ordinary contact probe owns riding on it. */
-  function castMeshObstacleBarrier(from: THREE.Vector3, to: THREE.Vector3, motion: THREE.Vector3,
-    touches: Map<string, ObstacleTouch>, reportSensors = true): {
-      distance: number; normal: THREE.Vector3; meta: ObstacleMeta;
-    } | null {
+  function castMeshObstacleBarrier(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    motion: THREE.Vector3,
+    touches: Map<string, ObstacleTouch>,
+    reportSensors = true,
+  ): {
+    distance: number;
+    normal: THREE.Vector3;
+    meta: ObstacleMeta;
+  } | null {
     if (!obstacleBVH || !obstaclePos) return null;
     const t = performance.now();
     const far = from.distanceTo(to);
@@ -2542,8 +2976,7 @@ export function createRideModel(o: RideModelOpts) {
     obstacleBVH.shapecast({
       boundsTraverseOrder: box => rayBoxEntryDistance(obstacleRay, box, obstacleRayBoxHit),
       intersectsBounds: (_box, _isLeaf, score) =>
-        score !== undefined && score <= far && score <= (earliest?.distance ?? far)
-          ? INTERSECTED : NOT_INTERSECTED,
+        score !== undefined && score <= far && score <= (earliest?.distance ?? far) ? INTERSECTED : NOT_INTERSECTED,
       intersectsTriangle: (triangle, faceIndex) => {
         const meta = obstacleMetas[obstacleFaceMeta[faceIndex]];
         if (!meta?.enabled) return false;
@@ -2561,17 +2994,21 @@ export function createRideModel(o: RideModelOpts) {
         const impactSpeed = Math.max(0, -st.vel.dot(obstacleNormal));
         if (reportSensors || meta.solid) {
           const previous = barrierMeshTouches.get(meta.key);
-          if (!previous || distance < previous.distance) barrierMeshTouches.set(meta.key, {
-            meta, point: hit.clone(), normal: obstacleNormal.clone(), impactSpeed, distance,
-          });
+          if (!previous || distance < previous.distance)
+            barrierMeshTouches.set(meta.key, {
+              meta,
+              point: hit.clone(),
+              normal: obstacleNormal.clone(),
+              impactSpeed,
+              distance,
+            });
         }
         if (!meta.solid || meta.dynamicMass > 0) return false;
         // The contact probe owns a rideable near-horizontal face. Which side was crossed cannot turn its top
         // into a roof, but near-vertical faces retain the two-sided flip above.
-        if (obstacleIsProbeReadable(meta)
-          && (leaving ? Math.abs(obstacleNormal.y) : obstacleNormal.y) > WALL_NY) return false;
-        if (distance < (earliest?.distance ?? Infinity))
-          earliest = { distance, normal: obstacleNormal.clone(), meta };
+        if (obstacleIsProbeReadable(meta) && (leaving ? Math.abs(obstacleNormal.y) : obstacleNormal.y) > WALL_NY)
+          return false;
+        if (distance < (earliest?.distance ?? Infinity)) earliest = { distance, normal: obstacleNormal.clone(), meta };
         return false;
       },
     });
@@ -2590,10 +3027,17 @@ export function createRideModel(o: RideModelOpts) {
   /** Analytic segment-vs-native-sphere-tree contact. The segment is transformed into body-local space, so an
    * affine instance transform (including non-uniform scale) naturally turns the leaves into exact ellipsoids;
    * the segment parameter remains valid in world space and normals return through the inverse transpose. */
-  function castSphereObstacleBarrier(from: THREE.Vector3, to: THREE.Vector3, motion: THREE.Vector3,
-    touches: Map<string, ObstacleTouch>, reportSensors = true): {
-      distance: number; normal: THREE.Vector3; meta: ObstacleMeta;
-    } | null {
+  function castSphereObstacleBarrier(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    motion: THREE.Vector3,
+    touches: Map<string, ObstacleTouch>,
+    reportSensors = true,
+  ): {
+    distance: number;
+    normal: THREE.Vector3;
+    meta: ObstacleMeta;
+  } | null {
     if (!obstacleSphereBodies.length) return null;
     const started = performance.now();
     const far = from.distanceTo(to);
@@ -2610,19 +3054,28 @@ export function createRideModel(o: RideModelOpts) {
       const leaves = body.spheres;
       let candidateCount = 0;
       for (let i = 0; i + 3 < leaves.length; i += 4) {
-        const cx = leaves[i], cy = leaves[i + 1], cz = leaves[i + 2], r = Math.max(0, leaves[i + 3]);
-        const mx = sphereLocalFrom.x - cx, my = sphereLocalFrom.y - cy, mz = sphereLocalFrom.z - cz;
+        const cx = leaves[i],
+          cy = leaves[i + 1],
+          cz = leaves[i + 2],
+          r = Math.max(0, leaves[i + 3]);
+        const mx = sphereLocalFrom.x - cx,
+          my = sphereLocalFrom.y - cy,
+          mz = sphereLocalFrom.z - cz;
         const bb = 2 * (mx * sphereLocalDir.x + my * sphereLocalDir.y + mz * sphereLocalDir.z);
         const cc = mx * mx + my * my + mz * mz - r * r;
         const disc = bb * bb - 4 * aa * cc;
         if (disc < 0) continue;
-        const root = Math.sqrt(disc), inv = 1 / (2 * aa);
-        const enter = (-bb - root) * inv, exit = (-bb + root) * inv;
+        const root = Math.sqrt(disc),
+          inv = 1 / (2 * aa);
+        const enter = (-bb - root) * inv,
+          exit = (-bb + root) * inv;
         const u = enter >= 1e-6 ? enter : exit >= 1e-6 ? exit : -1;
         if (u < 0 || u > 1) continue;
-        const candidate = sphereHitCandidatePool[candidateCount]
-          ?? (sphereHitCandidatePool[candidateCount] = { u: 0, index: 0 });
-        candidate.u = u; candidate.index = i; candidateCount++;
+        const candidate =
+          sphereHitCandidatePool[candidateCount] ?? (sphereHitCandidatePool[candidateCount] = { u: 0, index: 0 });
+        candidate.u = u;
+        candidate.index = i;
+        candidateCount++;
         sphereHitCandidates[candidateCount - 1] = candidate;
       }
       // Geometric order is the useful order: normally the first entry supplies both touch and barrier, so the
@@ -2643,9 +3096,14 @@ export function createRideModel(o: RideModelOpts) {
         const impactSpeed = Math.max(0, -st.vel.dot(sphereWorldNormal));
         if (!foundTouch && (reportSensors || body.meta.solid)) {
           const previous = touches.get(body.meta.key);
-          if (!previous || distance < previous.distance) touches.set(body.meta.key, {
-            meta: body.meta, point: sphereWorldPoint.clone(), normal: sphereWorldNormal.clone(), impactSpeed, distance,
-          });
+          if (!previous || distance < previous.distance)
+            touches.set(body.meta.key, {
+              meta: body.meta,
+              point: sphereWorldPoint.clone(),
+              normal: sphereWorldNormal.clone(),
+              impactSpeed,
+              distance,
+            });
           foundTouch = true;
         }
         // Response eligibility is body-wide. Once its nearest incoming touch is known, a ride-through or Roller
@@ -2662,10 +3120,17 @@ export function createRideModel(o: RideModelOpts) {
     return earliest;
   }
 
-  function castObstacleBarrier(from: THREE.Vector3, to: THREE.Vector3, motion: THREE.Vector3,
-    touches: Map<string, ObstacleTouch>, reportSensors = true): {
-      distance: number; normal: THREE.Vector3; meta: ObstacleMeta;
-    } | null {
+  function castObstacleBarrier(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    motion: THREE.Vector3,
+    touches: Map<string, ObstacleTouch>,
+    reportSensors = true,
+  ): {
+    distance: number;
+    normal: THREE.Vector3;
+    meta: ObstacleMeta;
+  } | null {
     const mesh = castMeshObstacleBarrier(from, to, motion, touches, reportSensors);
     const spheres = castSphereObstacleBarrier(from, to, motion, touches, reportSensors);
     if (!mesh) return spheres;
@@ -2697,11 +3162,18 @@ export function createRideModel(o: RideModelOpts) {
       const aa = sphereLocalDir.lengthSq();
       const leaves = body.spheres;
       for (let i = 0; i + 3 < leaves.length && !body.reachedByBody; i += 4) {
-        const cx = leaves[i], cy = leaves[i + 1], cz = leaves[i + 2];
+        const cx = leaves[i],
+          cy = leaves[i + 1],
+          cz = leaves[i + 2];
         const r = Math.max(0, leaves[i + 3]) + body.localBodyRadius;
-        const mx = sphereLocalFrom.x - cx, my = sphereLocalFrom.y - cy, mz = sphereLocalFrom.z - cz;
+        const mx = sphereLocalFrom.x - cx,
+          my = sphereLocalFrom.y - cy,
+          mz = sphereLocalFrom.z - cz;
         const cc = mx * mx + my * my + mz * mz - r * r;
-        if (cc <= 0) { body.reachedByBody = true; break; } // already overlapping at the start of the move
+        if (cc <= 0) {
+          body.reachedByBody = true;
+          break;
+        } // already overlapping at the start of the move
         if (aa < 1e-16) continue;
         const bb = 2 * (mx * sphereLocalDir.x + my * sphereLocalDir.y + mz * sphereLocalDir.z);
         const disc = bb * bb - 4 * aa * cc;
@@ -2730,8 +3202,12 @@ export function createRideModel(o: RideModelOpts) {
    *
    * Returns this tick's wedge contribution, which only the caller can fold into its own accumulator.
    */
-  function resolveBoxContacts(previousPos: THREE.Vector3, position: THREE.Vector3, up: THREE.Vector3,
-    touches: Map<string, ObstacleTouch>): number {
+  function resolveBoxContacts(
+    previousPos: THREE.Vector3,
+    position: THREE.Vector3,
+    up: THREE.Vector3,
+    touches: Map<string, ObstacleTouch>,
+  ): number {
     if (!obstacleBoxes.length) return 0;
     const started = performance.now();
     boxEnd.copy(position);
@@ -2749,16 +3225,21 @@ export function createRideModel(o: RideModelOpts) {
       boxLocalTo.copy(bodySphereTo).applyMatrix4(box.toLocal);
       const swept = sweptSphereVsNativeBox(box.localMin, box.localMax, boxLocalFrom, boxLocalTo, box.localRadius);
       if (!swept) continue;
-      boxNormal.set(swept.contact.normal.x, swept.contact.normal.y, swept.contact.normal.z)
-        .applyNormalMatrix(box.normalMatrix).normalize();
-      boxPoint.set(swept.contact.point.x, swept.contact.point.y, swept.contact.point.z)
-        .applyMatrix4(box.matrixWorld);
+      boxNormal
+        .set(swept.contact.normal.x, swept.contact.normal.y, swept.contact.normal.z)
+        .applyNormalMatrix(box.normalMatrix)
+        .normalize();
+      boxPoint.set(swept.contact.point.x, swept.contact.point.y, swept.contact.point.z).applyMatrix4(box.matrixWorld);
       const distance = far * swept.u;
       const previous = touches.get(box.meta.key);
-      if (!previous || distance < previous.distance) touches.set(box.meta.key, {
-        meta: box.meta, point: boxPoint.clone(), normal: boxNormal.clone(),
-        impactSpeed: Math.max(0, -st.vel.dot(boxNormal)), distance,
-      });
+      if (!previous || distance < previous.distance)
+        touches.set(box.meta.key, {
+          meta: box.meta,
+          point: boxPoint.clone(),
+          normal: boxNormal.clone(),
+          impactSpeed: Math.max(0, -st.vel.dot(boxNormal)),
+          distance,
+        });
       if (!box.meta.solid || box.meta.dynamicMass > 0) continue;
       // A rideable box's up-face belongs to the contact probe, exactly as it does for a proxy mesh or a body.
       if (obstacleIsProbeReadable(box.meta) && boxNormal.y > WALL_NY) continue;
@@ -2783,8 +3264,10 @@ export function createRideModel(o: RideModelOpts) {
     // The push-out is a DISPLACEMENT in the box's own frame, so it comes back to world through the linear
     // part of the placement rather than through a normal matrix or a single scale factor — those are right for
     // a direction and for a uniform scale respectively, and wrong for the general case.
-    boxPush.set(resolved.normal.x, resolved.normal.y, resolved.normal.z)
-      .multiplyScalar(NATIVE_DEPENETRATION * resolved.depth).applyMatrix3(box.linear);
+    boxPush
+      .set(resolved.normal.x, resolved.normal.y, resolved.normal.z)
+      .multiplyScalar(NATIVE_DEPENETRATION * resolved.depth)
+      .applyMatrix3(box.linear);
     position.add(boxPush);
     boxNormal.copy(boxPush).normalize();
 
@@ -2793,23 +3276,33 @@ export function createRideModel(o: RideModelOpts) {
     let wedge = 0;
     if (into < 0) {
       const bounceDelta = -into * (1 + box.meta.bounce);
-      st.vel.addScaledVector(boxNormal, box.meta.playerBounce
-        ? Math.max(bounceDelta, -into + PROP_BOUNCE_EJECT_FLOOR)
-        : bounceDelta);
+      st.vel.addScaledVector(
+        boxNormal,
+        box.meta.playerBounce ? Math.max(bounceDelta, -into + PROP_BOUNCE_EJECT_FLOOR) : bounceDelta,
+      );
       wedge = wedgeContribution(boxNormal);
     }
-    if (tickTrace) recordBarrierEvent({
-      type: 'barrier-resolved', distance: far * first.u, normal: telemetryVec(boxNormal),
-      velocityBefore: velocityBefore!, velocityAfter: telemetryVec(st.vel),
-    });
+    if (tickTrace)
+      recordBarrierEvent({
+        type: 'barrier-resolved',
+        distance: far * first.u,
+        normal: telemetryVec(boxNormal),
+        velocityBefore: velocityBefore!,
+        velocityAfter: telemetryVec(st.vel),
+      });
     return wedge;
   }
 
   /** Camera counterpart to the terrain segment query. Only solid native collision geometry blocks the view;
    * ride-through foliage remains transparent to the camera just as it is to the rider. Mesh proxies and native
    * sphere trees share one nearest-hit result in WORLD space so the camera can compare it directly with terrain. */
-  function castCameraObstacle(from: THREE.Vector3, to: THREE.Vector3): {
-    point: THREE.Vector3; normal: THREE.Vector3; key: string;
+  function castCameraObstacle(
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+  ): {
+    point: THREE.Vector3;
+    normal: THREE.Vector3;
+    key: string;
   } | null {
     const started = performance.now();
     const far = from.distanceTo(to);
@@ -2826,7 +3319,8 @@ export function createRideModel(o: RideModelOpts) {
         boundsTraverseOrder: box => rayBoxEntryDistance(obstacleRay, box, obstacleRayBoxHit),
         intersectsBounds: (_box, _isLeaf, score) =>
           score !== undefined && score <= far && score <= (meshEarliest?.distance ?? far)
-            ? INTERSECTED : NOT_INTERSECTED,
+            ? INTERSECTED
+            : NOT_INTERSECTED,
         intersectsTriangle: (triangle, faceIndex) => {
           const meta = obstacleMetas[obstacleFaceMeta[faceIndex]];
           // A shoveable body is transparent to the camera for the same reason foliage is: the rider passes clean
@@ -2840,7 +3334,10 @@ export function createRideModel(o: RideModelOpts) {
           if (obstacleNormal.lengthSq() < 1e-12) return false;
           if (obstacleNormal.dot(motion) > 0) obstacleNormal.negate();
           meshEarliest = {
-            point: hit.clone(), normal: obstacleNormal.clone(), key: meta.key, distance,
+            point: hit.clone(),
+            normal: obstacleNormal.clone(),
+            key: meta.key,
+            distance,
           };
           return false;
         },
@@ -2851,8 +3348,8 @@ export function createRideModel(o: RideModelOpts) {
     for (const body of obstacleSphereBodies) {
       // Movable bodies are excluded for the same reasons as the mesh path above — and the crash bags whose
       // ghost colliders were caught shoving the camera are exactly these mode-3 sphere trees.
-      if (!body.meta.enabled || !body.meta.solid || body.meta.dynamicMass > 0
-        || body.bound.distanceToPoint(from) > far) continue;
+      if (!body.meta.enabled || !body.meta.solid || body.meta.dynamicMass > 0 || body.bound.distanceToPoint(from) > far)
+        continue;
       sphereLocalFrom.copy(from).applyMatrix4(body.toLocal);
       sphereLocalTo.copy(to).applyMatrix4(body.toLocal);
       sphereLocalDir.copy(sphereLocalTo).sub(sphereLocalFrom);
@@ -2860,14 +3357,21 @@ export function createRideModel(o: RideModelOpts) {
       if (aa < 1e-16) continue;
       const leaves = body.spheres;
       for (let i = 0; i + 3 < leaves.length; i += 4) {
-        const cx = leaves[i], cy = leaves[i + 1], cz = leaves[i + 2], r = Math.max(0, leaves[i + 3]);
-        const mx = sphereLocalFrom.x - cx, my = sphereLocalFrom.y - cy, mz = sphereLocalFrom.z - cz;
+        const cx = leaves[i],
+          cy = leaves[i + 1],
+          cz = leaves[i + 2],
+          r = Math.max(0, leaves[i + 3]);
+        const mx = sphereLocalFrom.x - cx,
+          my = sphereLocalFrom.y - cy,
+          mz = sphereLocalFrom.z - cz;
         const bb = 2 * (mx * sphereLocalDir.x + my * sphereLocalDir.y + mz * sphereLocalDir.z);
         const cc = mx * mx + my * my + mz * mz - r * r;
         const disc = bb * bb - 4 * aa * cc;
         if (disc < 0) continue;
-        const root = Math.sqrt(disc), inv = 1 / (2 * aa);
-        const enter = (-bb - root) * inv, exit = (-bb + root) * inv;
+        const root = Math.sqrt(disc),
+          inv = 1 / (2 * aa);
+        const enter = (-bb - root) * inv,
+          exit = (-bb + root) * inv;
         const u = enter >= 1e-6 ? enter : exit >= 1e-6 ? exit : -1;
         if (u < 0 || u > 1) continue;
         const distance = far * u;
@@ -2879,12 +3383,13 @@ export function createRideModel(o: RideModelOpts) {
         if (normal.dot(motion) > 0) normal.negate();
         earliest = {
           point: sphereLocalHit.clone().applyMatrix4(body.matrixWorld),
-          normal, key: body.meta.key, distance,
+          normal,
+          key: body.meta.key,
+          distance,
         };
       }
     }
-    const boxHit = castBoxRay(from, to,
-      meta => meta.solid && meta.dynamicMass <= 0);
+    const boxHit = castBoxRay(from, to, meta => meta.solid && meta.dynamicMass <= 0);
     if (boxHit && (!earliest || boxHit.distance < earliest.distance)) {
       if (boxHit.normal.dot(motion) > 0) boxHit.normal.negate();
       earliest = { point: boxHit.point, normal: boxHit.normal, key: boxHit.meta.key, distance: boxHit.distance };
@@ -2903,12 +3408,18 @@ export function createRideModel(o: RideModelOpts) {
    * `leaving` reports that the FACET branch had to flip, i.e. the sample crossed the face along its own outward
    * side and therefore started inside the surface. The caller needs it to keep classifying floors by the side
    * the geometry says is solid; the analytic branch never flips, so it never sets it. */
-  function barrierNormal(faceIndex: number, localPoint: THREE.Vector3, motion: THREE.Vector3):
-    { normal: THREE.Vector3; leaving: boolean } {
+  function barrierNormal(
+    faceIndex: number,
+    localPoint: THREE.Vector3,
+    motion: THREE.Vector3,
+  ): { normal: THREE.Vector3; leaving: boolean } {
     let normal: THREE.Vector3 | null = null;
     let analytic = false;
-    if (o.patchContact && baryOf(faceIndex, localPoint, baryTmp)
-        && o.patchContact(faceIndex, baryTmp, patchP, patchN)) {
+    if (
+      o.patchContact &&
+      baryOf(faceIndex, localPoint, baryTmp) &&
+      o.patchContact(faceIndex, baryTmp, patchP, patchN)
+    ) {
       normal = patchN.clone().applyMatrix3(normalMat).normalize();
       analytic = true;
     }
@@ -2918,8 +3429,7 @@ export function createRideModel(o: RideModelOpts) {
         triA.fromBufferAttribute(geoPos, geoIndex[i]);
         triB.fromBufferAttribute(geoPos, geoIndex[i + 1]);
         triC.fromBufferAttribute(geoPos, geoIndex[i + 2]);
-        normal = triB.clone().sub(triA).cross(triC.clone().sub(triA))
-          .applyMatrix3(normalMat).normalize();
+        normal = triB.clone().sub(triA).cross(triC.clone().sub(triA)).applyMatrix3(normalMat).normalize();
       } else normal = WORLD_UP.clone().negate();
     }
     const leaving = !analytic && normal.dot(motion) > 0;
@@ -2946,7 +3456,11 @@ export function createRideModel(o: RideModelOpts) {
    * affine parameterization; the callback's exact patch normal is retained for the final response basis.
    */
   function refinePatchRay(
-    faceIndex: number, seed: THREE.Vector3, rayOrigin: THREE.Vector3, rayDirection: THREE.Vector3, far: number,
+    faceIndex: number,
+    seed: THREE.Vector3,
+    rayOrigin: THREE.Vector3,
+    rayDirection: THREE.Vector3,
+    far: number,
   ): boolean {
     if (!o.patchContact) return false;
     patchSeed.copy(seed);
@@ -2961,12 +3475,24 @@ export function createRideModel(o: RideModelOpts) {
       if (!o.patchContact(faceIndex, baryTmp, patchDxP, patchTmpN)) return false;
       baryTmp.set(patchSeed.x, patchSeed.y + eps, patchSeed.z - eps);
       if (!o.patchContact(faceIndex, baryTmp, patchDyP, patchTmpN)) return false;
-      patchDx.copy(patchDxP).sub(patchP).multiplyScalar(1 / eps);
-      patchDy.copy(patchDyP).sub(patchP).multiplyScalar(1 / eps);
+      patchDx
+        .copy(patchDxP)
+        .sub(patchP)
+        .multiplyScalar(1 / eps);
+      patchDy
+        .copy(patchDyP)
+        .sub(patchP)
+        .multiplyScalar(1 / eps);
       patchJacobian.set(
-        patchDx.x, patchDy.x, -rayDirection.x,
-        patchDx.y, patchDy.y, -rayDirection.y,
-        patchDx.z, patchDy.z, -rayDirection.z,
+        patchDx.x,
+        patchDy.x,
+        -rayDirection.x,
+        patchDx.y,
+        patchDy.y,
+        -rayDirection.y,
+        patchDx.z,
+        patchDy.z,
+        -rayDirection.z,
       );
       if (Math.abs(patchJacobian.determinant()) < 1e-10) return false;
       patchStep.copy(patchResidual).multiplyScalar(-1).applyMatrix3(patchInverse.copy(patchJacobian).invert());
@@ -2980,8 +3506,13 @@ export function createRideModel(o: RideModelOpts) {
       if (!o.patchContact(faceIndex, patchSeed, patchP, patchN)) return false;
     }
     patchResidual.copy(patchP).sub(rayOrigin).addScaledVector(rayDirection, -rayT);
-    const nearbySeed = patchSeed.x >= -0.5 && patchSeed.y >= -0.5 && patchSeed.z >= -0.5
-      && patchSeed.x <= 1.5 && patchSeed.y <= 1.5 && patchSeed.z <= 1.5;
+    const nearbySeed =
+      patchSeed.x >= -0.5 &&
+      patchSeed.y >= -0.5 &&
+      patchSeed.z >= -0.5 &&
+      patchSeed.x <= 1.5 &&
+      patchSeed.y <= 1.5 &&
+      patchSeed.z <= 1.5;
     return patchResidual.lengthSq() < 1e-6 && rayT >= -1e-4 && rayT <= far + 1e-4 && nearbySeed;
   }
 
@@ -3002,20 +3533,21 @@ export function createRideModel(o: RideModelOpts) {
     if (!hit) return null;
     const surf = o.surfaceOf(hit.faceIndex) ?? 1;
     if (!baryOf(hit.faceIndex, hit.point, baryTmp)) return null; // also loads triA/B/C for the flat plane
-    let point: THREE.Vector3, n: THREE.Vector3, analytic = false;
+    let point: THREE.Vector3,
+      n: THREE.Vector3,
+      analytic = false;
     if (o.patchContact && o.patchContact(hit.faceIndex, baryTmp, patchP, patchN)) {
       point = patchP.applyMatrix4(toWorld).clone();
       n = patchN.applyMatrix3(normalMat).normalize().clone();
       analytic = true;
     } else {
       point = hit.point.applyMatrix4(toWorld).clone();
-      n = triB.clone().sub(triA).cross(triC.clone().sub(triA))
-        .applyMatrix3(normalMat).normalize();
+      n = triB.clone().sub(triA).cross(triC.clone().sub(triA)).applyMatrix3(normalMat).normalize();
     }
-    if (point.distanceToSquared(base) > 16) return null;  // implausibly far — lost the surface, no fake contact
+    if (point.distanceToSquared(base) > 16) return null; // implausibly far — lost the surface, no fake contact
     if (base.clone().sub(point).dot(n) < 0) {
       if (analytic) return null; // the deck is behind the ridable side — no fake contact on a back face
-      n.negate();                // fallback facet: face the deck, like the probe normals
+      n.negate(); // fallback facet: face the deck, like the probe normals
     }
     return { found: true, point, n, surf };
   }
@@ -3059,13 +3591,15 @@ export function createRideModel(o: RideModelOpts) {
   /** Nearest readable prop face along the same contact segment used for terrain. Obstacle-only props keep
    * `surface = -1`, so their upward faces remain bounce/slide barriers except for the one continuous mount
    * support explicitly admitted by `seatAtMount`. */
-  function probeObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3,
-    allowUntyped = false): Probe | null {
+  function probeObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3, allowUntyped = false): Probe | null {
     const n0 = aim.lengthSq() > 1e-6 ? aim : WORLD_UP;
     const from = base.clone().addScaledVector(n0, PROBE_ABOVE);
     let best: Probe | null = null;
-    for (const probe of [probeMeshObstacleSurface(base, aim, allowUntyped),
-      probeSphereObstacleSurface(base, aim, allowUntyped), probeBoxObstacleSurface(base, aim, allowUntyped)]) {
+    for (const probe of [
+      probeMeshObstacleSurface(base, aim, allowUntyped),
+      probeSphereObstacleSurface(base, aim, allowUntyped),
+      probeBoxObstacleSurface(base, aim, allowUntyped),
+    ]) {
       if (!probe) continue;
       if (!best || from.distanceToSquared(probe.point) < from.distanceToSquared(best.point)) best = probe;
     }
@@ -3074,8 +3608,7 @@ export function createRideModel(o: RideModelOpts) {
 
   /** Rideable mode-2 counterpart. A box that carries a real surface type is stood on through the same downward
    * stab the terrain and the other prop shapes use, so its top face becomes ground rather than a wall. */
-  function probeBoxObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3,
-    allowUntyped = false): Probe | null {
+  function probeBoxObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3, allowUntyped = false): Probe | null {
     if (!obstacleBoxes.length) return null;
     const n0 = aim.lengthSq() > 1e-6 ? aim : WORLD_UP;
     const from = base.clone().addScaledVector(n0, PROBE_ABOVE);
@@ -3088,8 +3621,7 @@ export function createRideModel(o: RideModelOpts) {
     return { found: true, point: hit.point, n: hit.normal, surf: hit.meta.surface, key: hit.meta.key };
   }
 
-  function probeMeshObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3,
-    allowUntyped = false): Probe | null {
+  function probeMeshObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3, allowUntyped = false): Probe | null {
     if (!obstacleBVH || !obstaclePos) return null;
     const n0 = aim.lengthSq() > 1e-6 ? aim : WORLD_UP;
     const from = base.clone().addScaledVector(n0, PROBE_ABOVE);
@@ -3129,8 +3661,7 @@ export function createRideModel(o: RideModelOpts) {
 
   /** Rideable mode-3 counterpart to the mesh probe. Most native sphere bodies are obstacle-only, but keeping
    * this path makes a recovered non-negative SurfaceType obey the same contact contract as every other shape. */
-  function probeSphereObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3,
-    allowUntyped = false): Probe | null {
+  function probeSphereObstacleSurface(base: THREE.Vector3, aim: THREE.Vector3, allowUntyped = false): Probe | null {
     if (!obstacleSphereBodies.length) return null;
     const n0 = aim.lengthSq() > 1e-6 ? aim : WORLD_UP;
     const from = base.clone().addScaledVector(n0, PROBE_ABOVE);
@@ -3138,11 +3669,9 @@ export function createRideModel(o: RideModelOpts) {
     const far = from.distanceTo(to);
     if (far < 1e-9) return null;
     const started = performance.now();
-    let best:
-      { u: number; point: THREE.Vector3; normal: THREE.Vector3; surface: number; key: string } | null = null;
+    let best: { u: number; point: THREE.Vector3; normal: THREE.Vector3; surface: number; key: string } | null = null;
     for (const body of obstacleSphereBodies) {
-      if (!obstacleIsProbeReadable(body.meta, allowUntyped)
-        || body.bound.distanceToPoint(from) > far) continue;
+      if (!obstacleIsProbeReadable(body.meta, allowUntyped) || body.bound.distanceToPoint(from) > far) continue;
       sphereLocalFrom.copy(from).applyMatrix4(body.toLocal);
       sphereLocalTo.copy(to).applyMatrix4(body.toLocal);
       sphereLocalDir.copy(sphereLocalTo).sub(sphereLocalFrom);
@@ -3150,14 +3679,21 @@ export function createRideModel(o: RideModelOpts) {
       if (aa < 1e-16) continue;
       const leaves = body.spheres;
       for (let i = 0; i + 3 < leaves.length; i += 4) {
-        const cx = leaves[i], cy = leaves[i + 1], cz = leaves[i + 2], r = Math.max(0, leaves[i + 3]);
-        const mx = sphereLocalFrom.x - cx, my = sphereLocalFrom.y - cy, mz = sphereLocalFrom.z - cz;
+        const cx = leaves[i],
+          cy = leaves[i + 1],
+          cz = leaves[i + 2],
+          r = Math.max(0, leaves[i + 3]);
+        const mx = sphereLocalFrom.x - cx,
+          my = sphereLocalFrom.y - cy,
+          mz = sphereLocalFrom.z - cz;
         const bb = 2 * (mx * sphereLocalDir.x + my * sphereLocalDir.y + mz * sphereLocalDir.z);
         const cc = mx * mx + my * my + mz * mz - r * r;
         const disc = bb * bb - 4 * aa * cc;
         if (disc < 0) continue;
-        const root = Math.sqrt(disc), inv = 1 / (2 * aa);
-        const enter = (-bb - root) * inv, exit = (-bb + root) * inv;
+        const root = Math.sqrt(disc),
+          inv = 1 / (2 * aa);
+        const enter = (-bb - root) * inv,
+          exit = (-bb + root) * inv;
         const u = enter >= 0 ? enter : exit >= 0 ? exit : -1;
         if (u < 0 || u > 1 || (best && u >= best.u)) continue;
         sphereLocalHit.copy(sphereLocalDir).multiplyScalar(u).add(sphereLocalFrom);
@@ -3166,15 +3702,16 @@ export function createRideModel(o: RideModelOpts) {
         sphereWorldNormal.copy(sphereLocalNormal).applyNormalMatrix(body.normalMatrix).normalize();
         if (sphereWorldNormal.dot(n0) <= 1e-6) continue;
         best = {
-          u, point: sphereWorldPoint.copy(sphereLocalHit).applyMatrix4(body.matrixWorld).clone(),
-          normal: sphereWorldNormal.clone(), surface: body.meta.surface, key: body.meta.key,
+          u,
+          point: sphereWorldPoint.copy(sphereLocalHit).applyMatrix4(body.matrixWorld).clone(),
+          normal: sphereWorldNormal.clone(),
+          surface: body.meta.surface,
+          key: body.meta.key,
         };
       }
     }
     perf.castAccum += performance.now() - started;
-    return best
-      ? { found: true, point: best.point, n: best.normal, surf: best.surface, key: best.key }
-      : null;
+    return best ? { found: true, point: best.point, n: best.normal, surf: best.surface, key: best.key } : null;
   }
 
   function probeTerrain(base: THREE.Vector3, aim: THREE.Vector3): Probe {
@@ -3184,7 +3721,8 @@ export function createRideModel(o: RideModelOpts) {
     let h: { point: THREE.Vector3; faceIndex: number } | null = null;
     if (o.patchContact) {
       const t = performance.now();
-      const a = from.clone().applyMatrix4(toLocal), b = to.clone().applyMatrix4(toLocal);
+      const a = from.clone().applyMatrix4(toLocal),
+        b = to.clone().applyMatrix4(toLocal);
       const far = a.distanceTo(b);
       localRay.origin.copy(a);
       localRay.direction.copy(b).sub(a).divideScalar(far);
@@ -3199,8 +3737,7 @@ export function createRideModel(o: RideModelOpts) {
           if (!hit) return false;
           const distance = hit.distanceTo(a);
           if (distance > bestLocalDistance) return false;
-          if (!baryOf(faceIndex, hit, baryTmp)
-              || !o.patchContact!(faceIndex, baryTmp, patchP, patchN)) {
+          if (!baryOf(faceIndex, hit, baryTmp) || !o.patchContact!(faceIndex, baryTmp, patchP, patchN)) {
             bestLocalDistance = distance;
             h = { point: hit.clone(), faceIndex }; // no patch data — faceted read below
             analytic = null;
@@ -3212,7 +3749,10 @@ export function createRideModel(o: RideModelOpts) {
           bestLocalDistance = distance;
           h = null;
           analytic = {
-            found: true, point: patchP.clone().applyMatrix4(toWorld), n, surf: o.surfaceOf(faceIndex) ?? 1,
+            found: true,
+            point: patchP.clone().applyMatrix4(toWorld),
+            n,
+            surf: o.surfaceOf(faceIndex) ?? 1,
           };
           return false;
         },
@@ -3231,7 +3771,9 @@ export function createRideModel(o: RideModelOpts) {
     // Sample the surface either side of the hit along two in-plane axes, measuring each sample's offset ALONG
     // the aim normal — the same central difference the vertical probe used, written so it survives a steep wall.
     const point = h.point.applyMatrix4(toWorld);
-    const t1 = new THREE.Vector3().crossVectors(n0, Math.abs(n0.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : WORLD_UP).normalize();
+    const t1 = new THREE.Vector3()
+      .crossVectors(n0, Math.abs(n0.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : WORLD_UP)
+      .normalize();
     const t2 = new THREE.Vector3().crossVectors(n0, t1).normalize();
     const d = 0.9;
     const along = (t: THREE.Vector3, s: number): number => {
@@ -3239,7 +3781,8 @@ export function createRideModel(o: RideModelOpts) {
       const hit = castSeg(b.clone().addScaledVector(n0, PROBE_ABOVE), b.clone().addScaledVector(n0, -PROBE_ABOVE));
       return hit ? hit.point.applyMatrix4(toWorld).sub(point).dot(n0) : 0;
     };
-    const n = n0.clone()
+    const n = n0
+      .clone()
       .addScaledVector(t1, -(along(t1, 1) - along(t1, -1)) / (2 * d))
       .addScaledVector(t2, -(along(t2, 1) - along(t2, -1)) / (2 * d))
       .normalize();
@@ -3256,7 +3799,8 @@ export function createRideModel(o: RideModelOpts) {
    */
   function warpTo(pos: THREE.Vector3, fwd: THREE.Vector3, speed: number) {
     spawn.copy(pos);
-    const h = fwd.clone(); h.y = 0;
+    const h = fwd.clone();
+    h.y = 0;
     if (h.lengthSq() > 1e-6) spawnFwd.copy(h.normalize());
     respawn(); // re-seats the contact fields on the new surface and zeroes the velocity...
     st.vel.copy(st.fwd).multiplyScalar(speed); // ...which the reset then replaces with its down-course push
@@ -3268,11 +3812,15 @@ export function createRideModel(o: RideModelOpts) {
   function recordCrumb() {
     if (o.carryBack === false) return;
     const len = crumbPos.length;
-    if (crumbFilled > 0
-      && crumbPos[(crumbWrite - 1 + len) % len].distanceToSquared(st.pos) < CRUMB_SPACING * CRUMB_SPACING) return;
+    if (
+      crumbFilled > 0 &&
+      crumbPos[(crumbWrite - 1 + len) % len].distanceToSquared(st.pos) < CRUMB_SPACING * CRUMB_SPACING
+    )
+      return;
     crumbPos[crumbWrite].copy(st.pos);
     const f = crumbFwd[crumbWrite].copy(st.fwd).multiplyScalar(st.lead).setY(0);
-    if (f.lengthSq() > 1e-6) f.normalize(); else f.set(0, 0, 1);
+    if (f.lengthSq() > 1e-6) f.normalize();
+    else f.set(0, 0, 1);
     crumbWrite = (crumbWrite + 1) % len;
     if (crumbFilled < len) crumbFilled++;
   }
@@ -3295,7 +3843,10 @@ export function createRideModel(o: RideModelOpts) {
   function resetToCourse(from: THREE.Vector3 = st.pos) {
     // An AI rider's model does not carry itself back: the field's own reset, armed by this respawn, places it
     // with the pack instead ([Trailmap: 395], `ride/ai.courseReset`).
-    if (o.carryBack === false) { respawn(); return; }
+    if (o.carryBack === false) {
+      respawn();
+      return;
+    }
     resetStreak = rideElapsed - lastResetAt < RESET_STREAK_WINDOW ? resetStreak + 1 : 1;
     lastResetAt = rideElapsed;
     const trapped = resetStreak >= RESET_STREAK_LIMIT;
@@ -3307,18 +3858,26 @@ export function createRideModel(o: RideModelOpts) {
     const course = o.course;
     if (!trapped && course && course.length >= 2) {
       let bestDistance2 = Infinity;
-      const best = new THREE.Vector3(), tangent = new THREE.Vector3();
-      const ab = new THREE.Vector3(), candidate = new THREE.Vector3();
+      const best = new THREE.Vector3(),
+        tangent = new THREE.Vector3();
+      const ab = new THREE.Vector3(),
+        candidate = new THREE.Vector3();
       for (let i = 1; i < course.length; i++) {
-        const a = course[i - 1], b = course[i];
+        const a = course[i - 1],
+          b = course[i];
         ab.copy(b).sub(a);
         const len2 = ab.x * ab.x + ab.z * ab.z; // the segment's ground run; a vertical drop parameterizes nothing
         if (len2 < 1e-8) continue;
         const t = clamp(((from.x - a.x) * ab.x + (from.z - a.z) * ab.z) / len2, 0, 1);
         candidate.copy(a).addScaledVector(ab, t);
-        const dx = candidate.x - from.x, dz = candidate.z - from.z;
+        const dx = candidate.x - from.x,
+          dz = candidate.z - from.z;
         const distance2 = dx * dx + dz * dz;
-        if (distance2 < bestDistance2) { bestDistance2 = distance2; best.copy(candidate); tangent.copy(ab); }
+        if (distance2 < bestDistance2) {
+          bestDistance2 = distance2;
+          best.copy(candidate);
+          tangent.copy(ab);
+        }
       }
       if (bestDistance2 <= COURSE_RESET_MAX_DIST * COURSE_RESET_MAX_DIST) {
         if (tangent.lengthSq() > 1e-12) tangent.normalize();
@@ -3337,15 +3896,17 @@ export function createRideModel(o: RideModelOpts) {
     if (!trapped && crumbFilled > 0) {
       const len = crumbPos.length;
       const back = Math.min(crumbFilled - 1, Math.ceil(CRUMB_BACK_DISTANCE / CRUMB_SPACING));
-      const i = ((crumbWrite - 1 - back) % len + len) % len;
-      const at = crumbPos[i].clone(); at.y += 0.5;
+      const i = (((crumbWrite - 1 - back) % len) + len) % len;
+      const at = crumbPos[i].clone();
+      at.y += 0.5;
       warpTo(at, crumbFwd[i].clone(), RESET_SPEED);
       return;
     }
 
     // 3) Nothing to be put back onto, or the carry-back is itself what keeps resetting the rider.
     resetStreak = 0;
-    spawn.copy(runStart); spawnFwd.copy(runStartFwd);
+    spawn.copy(runStart);
+    spawnFwd.copy(runStartFwd);
     respawn();
   }
 
@@ -3355,8 +3916,8 @@ export function createRideModel(o: RideModelOpts) {
   function resetFacing(tangent: THREE.Vector3, ground: Probe | null): THREE.Vector3 {
     const fall = projectOnPlane(new THREE.Vector3(0, -1, 0), ground?.n ?? WORLD_UP, new THREE.Vector3()).setY(0);
     const face = new THREE.Vector3(tangent.x, 0, tangent.z);
-    if (face.lengthSq() < 0.0625) face.copy(fall);                 // under 0.25 horizontal: unreadable
-    if (face.lengthSq() < 1e-4) face.set(st.fwd.x, 0, st.fwd.z);   // level ground under it too: the rider's own
+    if (face.lengthSq() < 0.0625) face.copy(fall); // under 0.25 horizontal: unreadable
+    if (face.lengthSq() < 1e-4) face.set(st.fwd.x, 0, st.fwd.z); // level ground under it too: the rider's own
     if (face.lengthSq() < 1e-6) return new THREE.Vector3(0, 0, 1); // ...and finally anything at all
     if (fall.lengthSq() > 1e-4 && face.dot(fall) < 0) face.negate();
     return face.normalize();
@@ -3377,7 +3938,8 @@ export function createRideModel(o: RideModelOpts) {
     const started = performance.now();
     localRay.origin.copy(from);
     localRay.direction.copy(to).sub(from).divideScalar(far);
-    const hits = bvh.raycast(localRay, THREE.DoubleSide, 0, far)
+    const hits = bvh
+      .raycast(localRay, THREE.DoubleSide, 0, far)
       .filter(hit => hit.faceIndex != null)
       .sort((x, y) => x.distance - y.distance);
     perf.castAccum += performance.now() - started;
@@ -3390,23 +3952,41 @@ export function createRideModel(o: RideModelOpts) {
 
   function telemetryState(): RideTelemetryState {
     const deckForward = projectOnPlane(st.fwd, st.boardUp, new THREE.Vector3());
-    if (deckForward.lengthSq() > 1e-8) deckForward.normalize(); else deckForward.copy(st.fwd);
-    const pitch = (v: THREE.Vector3) => v.lengthSq() > 1e-8
-      ? Math.atan2(v.y, Math.hypot(v.x, v.z)) / D2R : 0;
+    if (deckForward.lengthSq() > 1e-8) deckForward.normalize();
+    else deckForward.copy(st.fwd);
+    const pitch = (v: THREE.Vector3) => (v.lengthSq() > 1e-8 ? Math.atan2(v.y, Math.hypot(v.x, v.z)) / D2R : 0);
     return {
-      position: telemetryVec(st.pos), velocity: telemetryVec(st.vel), speed: st.vel.length(),
-      forward: telemetryVec(st.fwd), deckForward: telemetryVec(deckForward), lead: st.lead, flip: st.flip,
-      boardUp: telemetryVec(st.boardUp), contactNormal: telemetryVec(st.contactN),
-      trajectoryPitchDeg: pitch(st.vel), boardPitchDeg: pitch(deckForward),
-      grounded: st.grounded, forcedAir: st.forcedAir, railIndex: st.railIdx, airTime: st.airTime,
-      error: st.error, surfaceType: st.surf, speedCap: st.speedCap,
-      lean: st.lean, carveSlide: st.carveSlide,
-      charging: st.charging, jumpCharge: st.charge, jumpGrace: st.jumpGrace, ollieCooldown: st.ollieCooldown,
+      position: telemetryVec(st.pos),
+      velocity: telemetryVec(st.vel),
+      speed: st.vel.length(),
+      forward: telemetryVec(st.fwd),
+      deckForward: telemetryVec(deckForward),
+      lead: st.lead,
+      flip: st.flip,
+      boardUp: telemetryVec(st.boardUp),
+      contactNormal: telemetryVec(st.contactN),
+      trajectoryPitchDeg: pitch(st.vel),
+      boardPitchDeg: pitch(deckForward),
+      grounded: st.grounded,
+      forcedAir: st.forcedAir,
+      railIndex: st.railIdx,
+      airTime: st.airTime,
+      error: st.error,
+      surfaceType: st.surf,
+      speedCap: st.speedCap,
+      lean: st.lean,
+      carveSlide: st.carveSlide,
+      charging: st.charging,
+      jumpCharge: st.charge,
+      jumpGrace: st.jumpGrace,
+      ollieCooldown: st.ollieCooldown,
     };
   }
 
   /** Keep only the nearest observation of each crossing class; the 13 body samples otherwise report duplicates. */
-  function recordBarrierEvent(event: Extract<RideTelemetryEvent, { type: 'barrier-resolved' | 'floor-crossing-deferred' }>) {
+  function recordBarrierEvent(
+    event: Extract<RideTelemetryEvent, { type: 'barrier-resolved' | 'floor-crossing-deferred' }>,
+  ) {
     if (!tickTrace) return;
     const i = tickTrace.events.findIndex(item => item.type === event.type);
     if (i < 0) tickTrace.events.push(event);
@@ -3416,19 +3996,48 @@ export function createRideModel(o: RideModelOpts) {
     }
   }
 
-  return { st, perf, toWorld, start, step, respawn, resetToCourse, seatAtSpawn, seatAtMount, mountAirborne, warpTo,
+  return {
+    st,
+    perf,
+    toWorld,
+    start,
+    step,
+    respawn,
+    resetToCourse,
+    seatAtSpawn,
+    seatAtMount,
+    mountAirborne,
+    warpTo,
     applyPadBoost,
-    retireObstacle, restoreObstacle, stepCrackedSurfaces,
+    retireObstacle,
+    restoreObstacle,
+    stepCrackedSurfaces,
     /** The run's lap countdown, or null on a single-pass course — read by the HUD. */
-    get laps(): LapCounter | null { return lapCounter; },
-    get padBoostSeconds() { return padBoostTimer; }, ollieDown, ollieUp, boostActive, boostThrustActive,
+    get laps(): LapCounter | null {
+      return lapCounter;
+    },
+    get padBoostSeconds() {
+      return padBoostTimer;
+    },
+    ollieDown,
+    ollieUp,
+    boostActive,
+    boostThrustActive,
     /** The deck end a held air boost thrusts toward (`+1` nose, `−1` tail), for the trail's exhaust end. */
-    get boostEnd() { return boostEnd; },
-    castSeg, castCameraObstacle, closestCameraTerrain, renderState };
+    get boostEnd() {
+      return boostEnd;
+    },
+    castSeg,
+    castCameraObstacle,
+    closestCameraTerrain,
+    renderState,
+  };
 }
 
 export type RideModel = ReturnType<typeof createRideModel>;
 export type RideState = RideModel['st'];
 export type { RidePerf } from './perf';
 
-function telemetryVec(v: THREE.Vector3): RideTelemetryVec3 { return [v.x, v.y, v.z]; }
+function telemetryVec(v: THREE.Vector3): RideTelemetryVec3 {
+  return [v.x, v.y, v.z];
+}

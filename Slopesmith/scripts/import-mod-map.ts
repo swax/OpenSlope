@@ -12,9 +12,7 @@
  */
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import {
-  copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile,
-} from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +23,17 @@ import { mapsRoot } from '../src/server/workspace-config';
 import { snowknifeExe } from './snowknife-cli';
 
 const TRICKY_SLOTS = new Set([
-  'GARI', 'MESA', 'ELYSIUM', 'SNOW', 'ALASKA', 'ALOHA', 'MEGAPLE', 'MERQUER', 'PIPE', 'UNTRACK', 'TRICK',
+  'GARI',
+  'MESA',
+  'ELYSIUM',
+  'SNOW',
+  'ALASKA',
+  'ALOHA',
+  'MEGAPLE',
+  'MERQUER',
+  'PIPE',
+  'UNTRACK',
+  'TRICK',
 ]);
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const MAX_ARCHIVE_FILES = 4096;
@@ -103,14 +111,15 @@ function safeZipPath(value: string): { name: string; directory: boolean } {
  * would only enlarge the zip-bomb and parser surface. */
 function zipDirectory(input: Uint8Array): ZipEntry[] {
   if (input.byteLength > MAX_ARCHIVE_BYTES) throw new Error('the mod ZIP is larger than 512 MB');
-  const bytes = input instanceof Buffer
-    ? input
-    : Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  const bytes = input instanceof Buffer ? input : Buffer.from(input.buffer, input.byteOffset, input.byteLength);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let end = -1;
   const earliest = Math.max(0, bytes.length - 65_557);
   for (let at = bytes.length - 22; at >= earliest; at--) {
-    if (view.getUint32(at, true) === 0x06054b50) { end = at; break; }
+    if (view.getUint32(at, true) === 0x06054b50) {
+      end = at;
+      break;
+    }
   }
   if (end < 0) throw new Error('that file is not a ZIP archive');
   const disk = view.getUint16(end + 4, true);
@@ -161,7 +170,10 @@ function zipDirectory(input: Uint8Array): ZipEntry[] {
     expanded += size;
     if (expanded > MAX_ARCHIVE_BYTES) throw new Error('the expanded mod ZIP is larger than 512 MB');
     entries.push({
-      ...path, method, size, crc,
+      ...path,
+      method,
+      size,
+      crc,
       compressed: bytes.subarray(dataAt, dataAt + compressedSize),
     });
     at = next;
@@ -214,8 +226,9 @@ export function inspectLevelModZip(input: Uint8Array, archiveName = 'mod.zip'): 
   if (!TRICKY_SLOTS.has(stem.toUpperCase())) {
     throw new Error(`the loose course stem ${JSON.stringify(stem)} is not a supported Tricky slot`);
   }
-  const siblings = entries.filter(entry => !entry.directory
-    && dirname(entry.name).replace(/\\/g, '/').toLowerCase() === parent.toLowerCase());
+  const siblings = entries.filter(
+    entry => !entry.directory && dirname(entry.name).replace(/\\/g, '/').toLowerCase() === parent.toLowerCase(),
+  );
   const mainNames = REQUIRED_MAIN_EXTENSIONS.map(extension => foldedStem + extension);
   const skyNames = [`${foldedStem}_sky.pbd`, `${foldedStem}_sky.ssh`];
   const lightmaps = [`${foldedStem}_l.ssh`, `${foldedStem.slice(0, -1)}_l.ssh`];
@@ -247,7 +260,8 @@ export function inspectLevelModZip(input: Uint8Array, archiveName = 'mod.zip'): 
 export function suggestedMapName(title: string): string {
   const ascii = title.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
   return safeDataName(ascii.replace(/[’']/g, '').replace(/[^A-Za-z0-9_-]+/g, '_'))
-    .replace(/^_+|_+$/g, '').toUpperCase();
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase();
 }
 
 function requireMapName(value: string): string {
@@ -277,18 +291,20 @@ async function requireDirectory(path: string, label: string): Promise<void> {
 }
 
 async function pathExists(path: string): Promise<boolean> {
-  return !!await stat(path).catch(() => null);
+  return !!(await stat(path).catch(() => null));
 }
 
-const shownArg = (value: string): string => /\s/.test(value) ? JSON.stringify(value) : value;
+const shownArg = (value: string): string => (/\s/.test(value) ? JSON.stringify(value) : value);
 
 /** Live runner used by the CLI. Keeping shell:false and passing an argument vector means ZIP names, map names,
  * and ISO paths are data even when they contain shell metacharacters. */
 export async function runSnowknifeLive(args: readonly string[]): Promise<void> {
   const executable = snowknifeExe();
   if (!executable) {
-    throw new Error('Snowknife is not built; run `dotnet build ../Snowknife/Snowknife/Snowknife.csproj` '
-      + 'or set SLOPESMITH_SNOWKNIFE_EXE');
+    throw new Error(
+      'Snowknife is not built; run `dotnet build ../Snowknife/Snowknife/Snowknife.csproj` ' +
+        'or set SLOPESMITH_SNOWKNIFE_EXE',
+    );
   }
   console.log(`\n$ ${shownArg(executable)} ${args.map(shownArg).join(' ')}`);
   await new Promise<void>((accept, reject) => {
@@ -303,8 +319,10 @@ export async function runSnowknifeLive(args: readonly string[]): Promise<void> {
 
 /** Execute the import. The final folder is a same-volume rename of a validated hidden sibling, so Slopesmith's
  * library watcher cannot observe half an import and a failed command never leaves a folder that looks usable. */
-export async function importModMap(options: ImportModMapOptions,
-  dependencies: ImportModMapDependencies = {}): Promise<ImportedModMap> {
+export async function importModMap(
+  options: ImportModMapOptions,
+  dependencies: ImportModMapDependencies = {},
+): Promise<ImportedModMap> {
   const log = dependencies.log ?? console.log;
   const runSnowknife = dependencies.runSnowknife ?? runSnowknifeLive;
   const zipPath = resolve(options.zipPath);
@@ -352,16 +370,24 @@ export async function importModMap(options: ImportModMapOptions,
     try {
       await runSnowknife(['effects-export', ssfSource, join(work, 'Effects.preflight.json'), '--level', slot]);
     } catch (error) {
-      log(`WARNING: the mod's SSF has invalid references; attempting a safe effects salvage (${error instanceof Error ? error.message : String(error)})`);
+      log(
+        `WARNING: the mod's SSF has invalid references; attempting a safe effects salvage (${error instanceof Error ? error.message : String(error)})`,
+      );
       try {
         await runSnowknife([
-          'effects-export', ssfSource, join(work, 'Effects.preflight.json'), '--level', slot,
+          'effects-export',
+          ssfSource,
+          join(work, 'Effects.preflight.json'),
+          '--level',
+          slot,
           '--salvage-dangling-references',
         ]);
         effectsMode = 'salvage';
       } catch (salvageError) {
         effectsMode = 'omit';
-        log(`WARNING: effects salvage failed; importing terrain/props without Effects.json (${salvageError instanceof Error ? salvageError.message : String(salvageError)})`);
+        log(
+          `WARNING: effects salvage failed; importing terrain/props without Effects.json (${salvageError instanceof Error ? salvageError.message : String(salvageError)})`,
+        );
       }
     }
 
@@ -374,9 +400,7 @@ export async function importModMap(options: ImportModMapOptions,
     // Third-party native files can omit optional text-MAP names for otherwise valid PBD records. Ask
     // Snowknife to synthesize those names only in its unpacked temporary copy so a cosmetic linker gap
     // cannot prevent the terrain and props from becoming a browsable map.
-    const importArgs = [
-      'import', workingIso, slot, staging, '--repair-missing-map-links', '--allow-nonring-sky',
-    ];
+    const importArgs = ['import', workingIso, slot, staging, '--repair-missing-map-links', '--allow-nonring-sky'];
     if (!options.withOverrides) importArgs.push('--no-overrides');
     if (effectsMode === 'salvage') importArgs.push('--salvage-effects');
     else if (effectsMode === 'omit') importArgs.push('--no-effects');
@@ -389,7 +413,11 @@ export async function importModMap(options: ImportModMapOptions,
     await rename(staging, destination);
     published = true;
     return {
-      destination, name, slot, title: inspected.title, members: inspected.members.length,
+      destination,
+      name,
+      slot,
+      title: inspected.title,
+      members: inspected.members.length,
       ...(options.keepWork ? { keptWork: work } : {}),
     };
   } finally {
@@ -467,7 +495,10 @@ Environment:
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   // npm consumes --help itself even after its argument separator; the positional spelling reaches this script.
-  if (args[0] === 'help' || args.includes('--help') || args.includes('-h')) { console.log(USAGE.trim()); return; }
+  if (args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
+    console.log(USAGE.trim());
+    return;
+  }
   const result = await importModMap(parseImportModArgs(args));
   console.log(`\nImported ${result.title} (${result.slot}, ${result.members} native members)`);
   console.log(`Slopesmith reference: ${result.destination}`);

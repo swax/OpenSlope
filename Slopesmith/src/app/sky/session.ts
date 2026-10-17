@@ -8,14 +8,17 @@ import { clearGui, note, skyPreview, tip } from '../ui/components/gui';
 import { segmented, toggleBar } from '../ui/components/controls';
 import { toast } from '../ui/components/toast';
 import { fetchJson } from '../net/fetch-json';
-import {
-  customSkyUrl, referenceSkyUrl, registerReferenceSkyRevisions,
-} from '../net/asset-paths';
+import { customSkyUrl, referenceSkyUrl, registerReferenceSkyRevisions } from '../net/asset-paths';
 import { clientFetch } from '../net/client';
 import { openSkyGenDialog } from './sky-gen';
 import {
-  activeSkyboxWorld, activeSkyWorld, reconcileSkyPreviewTarget, toggleSkyPreviewLayer,
-  type SkyPreviewLayer, type SkyPreviewLayers, type SkyPreviewTarget,
+  activeSkyboxWorld,
+  activeSkyWorld,
+  reconcileSkyPreviewTarget,
+  toggleSkyPreviewLayer,
+  type SkyPreviewLayer,
+  type SkyPreviewLayers,
+  type SkyPreviewTarget,
 } from './preview';
 
 /**
@@ -57,10 +60,11 @@ export type SkyDeps = {
 
 /** The URLs a document's sky resolves to — both panels and the viewport read the sky through these. */
 export function skyUrls(sky: SkyboxDoc): { panorama: string; ground: string } {
-  if (sky.source.kind === 'custom') return {
-    panorama: customSkyUrl(sky.source.name, 'panorama'),
-    ground: customSkyUrl(sky.source.name, 'ground', sky.ring),
-  };
+  if (sky.source.kind === 'custom')
+    return {
+      panorama: customSkyUrl(sky.source.name, 'panorama'),
+      ground: customSkyUrl(sky.source.name, 'ground', sky.ring),
+    };
   return {
     panorama: referenceSkyUrl(sky.source.level, 'panorama'),
     ground: referenceSkyUrl(sky.source.level, 'ground'),
@@ -78,14 +82,23 @@ function skyFileName(sky: SkyboxDoc): string {
 
 export function createSkybox(deps: SkyDeps) {
   const {
-    store, viewport, previewFolder, skyFolder, refSkyFolder, persistDoc, persistUi, log,
-    isPreviewSelected, onVisibleWorldChange, refreshView,
+    store,
+    viewport,
+    previewFolder,
+    skyFolder,
+    refSkyFolder,
+    persistDoc,
+    persistUi,
+    log,
+    isPreviewSelected,
+    onVisibleWorldChange,
+    refreshView,
   } = deps;
 
-  let shippedSkies: string[] = [];  // levels that ship a sky (ELYSIUM / GARI / MERQUER / MESA / SNOW)
-  let customSkies: string[] = [];   // the panoramas the user has loaded, by name
+  let shippedSkies: string[] = []; // levels that ship a sky (ELYSIUM / GARI / MERQUER / MESA / SNOW)
+  let customSkies: string[] = []; // the panoramas the user has loaded, by name
   let rings: Record<string, SkyRing> = {};
-  let cataloged = false;            // the catalogue has been fetched, so a missing sky really is missing
+  let cataloged = false; // the catalogue has been fetched, so a missing sky really is missing
   const NONE = '(none)';
 
   /** The picker's current selection, mirrored onto the doc by applySky. */
@@ -110,7 +123,9 @@ export function createSkybox(deps: SkyDeps) {
       rings = body.rings ?? {};
       registerReferenceSkyRevisions(body.versions ?? {});
       cataloged = true;
-    } catch { /* static build / server down — the panel still shows what the doc carries */ }
+    } catch {
+      /* static build / server down — the panel still shows what the doc carries */
+    }
     syncSkyFromDoc(); // boot order: loadMountain() ran this once already, before the catalogue existed
     // Reference and sky catalogues load independently. If the reference won the race, rebuild its panel now
     // that we can say whether the level actually ships a sky.
@@ -149,7 +164,7 @@ export function createSkybox(deps: SkyDeps) {
   }
 
   function measuredRing(sky: SkyboxDoc): SkyRing | undefined {
-    const level = sky.source.kind === 'level' ? sky.source.level : sky.ring ?? shippedSkies[0];
+    const level = sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? shippedSkies[0]);
     return level ? rings[level] : undefined;
   }
 
@@ -157,15 +172,24 @@ export function createSkybox(deps: SkyDeps) {
    *  explicit comparison target and a running ride locks to the course being ridden. */
   function getActiveSkyWorld(): SkyPreviewTarget | null {
     return activeSkyboxWorld(
-      store.currentMode, isPreviewSelected(), viewport.riding || viewport.xrPresenting,
-      store.playTarget, previewTarget, viewport.nearestMountainWorld, store.skyboxVisible,
+      store.currentMode,
+      isPreviewSelected(),
+      viewport.riding || viewport.xrPresenting,
+      store.playTarget,
+      previewTarget,
+      viewport.nearestMountainWorld,
+      store.skyboxVisible,
     );
   }
 
   function getActiveGodRayWorld(): SkyPreviewTarget | null {
     return activeSkyWorld(
-      store.currentMode, isPreviewSelected(), viewport.riding || viewport.xrPresenting,
-      store.playTarget, previewTarget, previewLayers.godRays,
+      store.currentMode,
+      isPreviewSelected(),
+      viewport.riding || viewport.xrPresenting,
+      store.playTarget,
+      previewTarget,
+      previewLayers.godRays,
     );
   }
 
@@ -192,14 +216,22 @@ export function createSkybox(deps: SkyDeps) {
 
     if (reload || loadedSkyKey !== desired.key) {
       loadedSkyKey = desired.key;
-      const view: SkyView = { ...skyUrls(desired.sky), topColor: desired.sky.topColor,
-        ring: measuredRing(desired.sky) };
-      viewport.setSky(view, desired.authored ? hex => {
-        pick.top = hex;
-        if (store.mdoc.skybox) store.mdoc.skybox.topColor = hex;
-        persistDoc();
-        skyFolder.controllers.forEach(c => c.updateDisplay());
-      } : undefined);
+      const view: SkyView = {
+        ...skyUrls(desired.sky),
+        topColor: desired.sky.topColor,
+        ring: measuredRing(desired.sky),
+      };
+      viewport.setSky(
+        view,
+        desired.authored
+          ? hex => {
+              pick.top = hex;
+              if (store.mdoc.skybox) store.mdoc.skybox.topColor = hex;
+              persistDoc();
+              skyFolder.controllers.forEach(c => c.updateDisplay());
+            }
+          : undefined,
+      );
     } else if (desired.authored) {
       viewport.setSkyTopColor(desired.sky.topColor ?? null);
     }
@@ -218,7 +250,9 @@ export function createSkybox(deps: SkyDeps) {
     refreshView();
   }
 
-  function toggleSkybox() { setSkyboxVisible(!store.skyboxVisible); }
+  function toggleSkybox() {
+    setSkyboxVisible(!store.skyboxVisible);
+  }
 
   /** Rebuild the shared world selector. Availability belongs to the world slot, not to one layer: a mountain
    *  may legitimately carry glare without a skybox, so feature-gating these buttons on sky art made that
@@ -228,15 +262,24 @@ export function createSkybox(deps: SkyDeps) {
     clearGui(previewFolder);
     const referenceAvailable = !!refLevel;
     previewTarget = reconcileSkyPreviewTarget(previewTarget, true, referenceAvailable);
-    const targets = segmented<SkyPreviewTarget>([
-      { value: 'authored', label: 'My mountain', title: 'Preview my mountain’s skybox and sun glare.' },
-      { value: 'reference', label: 'Reference', title: () => refLevel
-        ? `Preview ${refLevel}’s skybox and sun glare.`
-        : 'Load a reference mountain to preview its skybox or sun glare.' },
-    ], () => previewTarget, target => {
-      previewTarget = target;
-      syncSkyVisibility();
-    });
+    const targets = segmented<SkyPreviewTarget>(
+      [
+        { value: 'authored', label: 'My mountain', title: 'Preview my mountain’s skybox and sun glare.' },
+        {
+          value: 'reference',
+          label: 'Reference',
+          title: () =>
+            refLevel
+              ? `Preview ${refLevel}’s skybox and sun glare.`
+              : 'Load a reference mountain to preview its skybox or sun glare.',
+        },
+      ],
+      () => previewTarget,
+      target => {
+        previewTarget = target;
+        syncSkyVisibility();
+      },
+    );
     targets.setEnabled('authored', true);
     targets.setEnabled('reference', referenceAvailable);
     targets.el.setAttribute('role', 'group');
@@ -246,28 +289,37 @@ export function createSkybox(deps: SkyDeps) {
     row.appendChild(targets.el);
     previewFolder.$children.appendChild(row);
 
-    const layers = toggleBar<SkyPreviewLayer>([
-      { value: 'none', label: 'None', title: 'Turn both preview layers off.' },
-      { value: 'skybox', label: 'Skybox', title: 'Toggle the selected mountain’s skybox.' },
-      { value: 'god-rays', label: 'God ray', title: 'Toggle the selected mountain’s sun glare.' },
-    ], layer => layer === 'none'
-      ? !store.skyboxVisible && !previewLayers.godRays
-      : layer === 'skybox' ? store.skyboxVisible : previewLayers.godRays,
-    layer => {
-      previewLayers = toggleSkyPreviewLayer(previewLayers, layer);
-      store.skyboxVisible = previewLayers.skybox;
-      persistUi();
-      syncSkyVisibility();
-      refreshView();
-    });
+    const layers = toggleBar<SkyPreviewLayer>(
+      [
+        { value: 'none', label: 'None', title: 'Turn both preview layers off.' },
+        { value: 'skybox', label: 'Skybox', title: 'Toggle the selected mountain’s skybox.' },
+        { value: 'god-rays', label: 'God ray', title: 'Toggle the selected mountain’s sun glare.' },
+      ],
+      layer =>
+        layer === 'none'
+          ? !store.skyboxVisible && !previewLayers.godRays
+          : layer === 'skybox'
+            ? store.skyboxVisible
+            : previewLayers.godRays,
+      layer => {
+        previewLayers = toggleSkyPreviewLayer(previewLayers, layer);
+        store.skyboxVisible = previewLayers.skybox;
+        persistUi();
+        syncSkyVisibility();
+        refreshView();
+      },
+    );
     layers.el.setAttribute('role', 'group');
     layers.el.setAttribute('aria-label', 'Preview layers');
     const layerRow = document.createElement('div');
     layerRow.className = 'sp-gui-custom sp-sky-preview-layers';
     layerRow.appendChild(layers.el);
     previewFolder.$children.appendChild(layerRow);
-    note(previewFolder, 'Skybox shares the top-bar switch; outside this preview it follows the nearest mountain. '
-      + 'God ray remains independent. A layer with no data for the selected mountain draws nothing; None turns both off.');
+    note(
+      previewFolder,
+      'Skybox shares the top-bar switch; outside this preview it follows the nearest mountain. ' +
+        'God ray remains independent. A layer with no data for the selected mountain draws nothing; None turns both off.',
+    );
     previewFolder.open();
   }
 
@@ -276,48 +328,72 @@ export function createSkybox(deps: SkyDeps) {
     const sky = store.mdoc.skybox;
 
     if (sky) skyPreview(skyFolder, skyUrls(sky).panorama, skyLabel(sky));
-    else note(skyFolder, 'No sky — the mountain draws on the flat background.',
-      'An ISO repack then keeps the target level’s own sky.');
+    else
+      note(
+        skyFolder,
+        'No sky — the mountain draws on the flat background.',
+        'An ISO repack then keeps the target level’s own sky.',
+      );
 
-    tip(skyFolder.add(pick, 'sky', skyOptions()).name('skybox').onChange(applySky),
+    tip(
+      skyFolder.add(pick, 'sky', skyOptions()).name('skybox').onChange(applySky),
       'The backdrop your mountain ships with; ★ entries are panoramas you loaded.',
-      'Compatible extracted skies can be adopted directly. Ring layout comes from each map’s generated metadata.');
+      'Compatible extracted skies can be adopted directly. Ring layout comes from each map’s generated metadata.',
+    );
 
-    tip(skyFolder.add({ load: loadImage }, 'load').name('▲ load image…'),
+    tip(
+      skyFolder.add({ load: loadImage }, 'load').name('▲ load image…'),
       'Use your own panorama (PNG).',
-      'A wide strip is taken as the horizon band; a 2:1 image is treated as a full equirectangular sky and '
-      + 're-projected into it. Anything above the selected ring’s measured top edge is discarded.');
+      'A wide strip is taken as the horizon band; a 2:1 image is treated as a full equirectangular sky and ' +
+        're-projected into it. Anything above the selected ring’s measured top edge is discarded.',
+    );
 
-    tip(skyFolder.add({ gen: generateSky }, 'gen').name('✨ generate…'),
+    tip(
+      skyFolder.add({ gen: generateSky }, 'gen').name('✨ generate…'),
       'Generate a sky with fal.ai from a description.',
-      'A 2:1 equirectangular panorama comes back, stored and applied exactly like a loaded image. Needs a '
-      + 'fal.ai API key (Settings ▸ Integrations) and bills your own fal.ai account; nothing is billed until '
-      + 'Generate is pressed.');
+      'A 2:1 equirectangular panorama comes back, stored and applied exactly like a loaded image. Needs a ' +
+        'fal.ai API key (Settings ▸ Integrations) and bills your own fal.ai account; nothing is billed until ' +
+        'Generate is pressed.',
+    );
 
     if (!sky) return;
 
-    tip(skyFolder.add({ save: () => savePanorama(skyUrls(sky).panorama, `${skyFileName(sky)}-sky.png`) }, 'save').name('⤓ save panorama…'),
+    tip(
+      skyFolder
+        .add({ save: () => savePanorama(skyUrls(sky).panorama, `${skyFileName(sky)}-sky.png`) }, 'save')
+        .name('⤓ save panorama…'),
       'Save this sky’s horizon panorama as a PNG.',
-      'Paint over it — or generate a new one at the size on the preview — and load it straight back; the '
-      + 'panorama is the authoring format, so the round trip is lossless.');
+      'Paint over it — or generate a new one at the size on the preview — and load it straight back; the ' +
+        'panorama is the authoring format, so the round trip is lossless.',
+    );
 
-    tip(skyFolder.addColor(pick, 'top').name('open-top fill').onChange(() => {
-      applySky(false);
-    }), 'The flat colour above the panorama ring.',
-      'Saved with the mountain and exported as Skybox/Sky.json TopColor. Default is the mean of the '
-      + 'panorama’s top row, which meets the rim without a hard seam.');
+    tip(
+      skyFolder
+        .addColor(pick, 'top')
+        .name('open-top fill')
+        .onChange(() => {
+          applySky(false);
+        }),
+      'The flat colour above the panorama ring.',
+      'Saved with the mountain and exported as Skybox/Sky.json TopColor. Default is the mean of the ' +
+        'panorama’s top row, which meets the rim without a hard seam.',
+    );
 
-    tip(skyFolder.add({ reset: resetTop }, 'reset').name('↺ fill from panorama'),
-      'Take the open-top fill back to the mean of the panorama’s top row.');
+    tip(
+      skyFolder.add({ reset: resetTop }, 'reset').name('↺ fill from panorama'),
+      'Take the open-top fill back to the mean of the panorama’s top row.',
+    );
 
     if (sky.source.kind === 'custom') {
       const ring = measuredRing(sky);
       const size = ring ? panoramaSize(SKY_TIERS[pick.tier].upper, ring) : null;
-      tip(skyFolder.add(pick, 'tier', ['standard', 'high']).name('resolution').onChange(applySky),
+      tip(
+        skyFolder.add(pick, 'tier', ['standard', 'high']).name('resolution').onChange(applySky),
         'Texture budget for the selected ring’s pages.',
-        `standard uses ${SKY_TIERS.standard.upper}px upper panels${size ? ` and a ${size.w}×${size.h} working panorama` : ''}; `
-        + 'high doubles wall resolution, but its 32-bit pages cost substantially more VRAM and upload '
-        + 'bandwidth. Untested on hardware.');
+        `standard uses ${SKY_TIERS.standard.upper}px upper panels${size ? ` and a ${size.w}×${size.h} working panorama` : ''}; ` +
+          'high doubles wall resolution, but its 32-bit pages cost substantially more VRAM and upload ' +
+          'bandwidth. Untested on hardware.',
+      );
     }
   }
 
@@ -348,7 +424,7 @@ export function createSkybox(deps: SkyDeps) {
     // swatch IS the document's, so it ships as picked.
     if (!changed) sky.topColor = pick.top;
     store.mdoc.skybox = sky;
-    persistDoc();  // the sky changes outside scheduleRebuild, so it persists itself (as the sun does)
+    persistDoc(); // the sky changes outside scheduleRebuild, so it persists itself (as the sun does)
     if (changed) loadedSkyKey = null;
     if (!hadSky) buildPreviewPanel();
     syncSkyVisibility(reload || changed);
@@ -404,12 +480,15 @@ export function createSkybox(deps: SkyDeps) {
       const name = file.name.replace(/\.[^.]+$/, '');
       try {
         const ring = customSkyRing(store.mdoc.skybox) ?? '';
-        const res = await clientFetch(`/api/skyupload?name=${encodeURIComponent(name)}&ring=${encodeURIComponent(ring)}`, {
-          method: 'POST',
-          headers: { 'content-type': 'image/png' },
-          body: await file.arrayBuffer(),
-        });
-        const body = await res.json() as { name?: string; error?: string };
+        const res = await clientFetch(
+          `/api/skyupload?name=${encodeURIComponent(name)}&ring=${encodeURIComponent(ring)}`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'image/png' },
+            body: await file.arrayBuffer(),
+          },
+        );
+        const body = (await res.json()) as { name?: string; error?: string };
         if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
         adoptSky(body.name!);
         toast(`Sky “${body.name}” loaded.`, 'ok');
@@ -443,7 +522,8 @@ export function createSkybox(deps: SkyDeps) {
     if (sky?.topColor) pick.top = sky.topColor;
     // a doc can name a sky this machine doesn't have (a .slope.json from elsewhere); say so rather than
     // silently showing an empty panel
-    if (cataloged && sky && !skyOptions().includes(pick.sky)) log(`this mountain's sky (${skyLabel(sky)}) isn't in Maps`);
+    if (cataloged && sky && !skyOptions().includes(pick.sky))
+      log(`this mountain's sky (${skyLabel(sky)}) isn't in Maps`);
     buildSkyPanel();
     buildPreviewPanel();
     skyFolder.controllers.forEach(c => c.updateDisplay());
@@ -474,14 +554,18 @@ export function createSkybox(deps: SkyDeps) {
     const panorama = referenceSkyUrl(level, 'panorama');
     skyPreview(refSkyFolder, panorama, `${level} — horizon`);
     skyPreview(refSkyFolder, referenceSkyUrl(level, 'ground'), 'ground below the horizon');
-    tip(refSkyFolder.add({ use: () => useReferenceSky(level) }, 'use').name('⟶ use for my map'),
+    tip(
+      refSkyFolder.add({ use: () => useReferenceSky(level) }, 'use').name('⟶ use for my map'),
       'Ship this level’s sky with your mountain.',
-      'It transfers whole — an ISO repack lifts its texture bank and ring straight out of the original disc, '
-      + 'so it arrives byte-for-byte with nothing re-encoded.');
-    tip(refSkyFolder.add({ save: () => savePanorama(panorama, `${level}-sky.png`) }, 'save').name('⤓ save panorama…'),
+      'It transfers whole — an ISO repack lifts its texture bank and ring straight out of the original disc, ' +
+        'so it arrives byte-for-byte with nothing re-encoded.',
+    );
+    tip(
+      refSkyFolder.add({ save: () => savePanorama(panorama, `${level}-sky.png`) }, 'save').name('⤓ save panorama…'),
       `Save ${level}’s horizon as a PNG — the starting point for a sky of your own.`,
-      `Repaint it (or build a new one at the size on the preview), then “load image…” under Skybox ▸ `
-      + `${store.mdoc.name || 'Mountain'} to ship it instead.`);
+      `Repaint it (or build a new one at the size on the preview), then “load image…” under Skybox ▸ ` +
+        `${store.mdoc.name || 'Mountain'} to ship it instead.`,
+    );
     refSkyFolder.open();
     buildPreviewPanel();
     syncSkyVisibility();
@@ -495,8 +579,14 @@ export function createSkybox(deps: SkyDeps) {
   }
 
   return {
-    initSky, syncSkyFromDoc, setupRefSkyUi, syncSkyVisibility, getActiveSkyWorld, getActiveGodRayWorld,
-    toggleSkybox, setSkyboxVisible,
+    initSky,
+    syncSkyFromDoc,
+    setupRefSkyUi,
+    syncSkyVisibility,
+    getActiveSkyWorld,
+    getActiveGodRayWorld,
+    toggleSkybox,
+    setSkyboxVisible,
   };
 }
 

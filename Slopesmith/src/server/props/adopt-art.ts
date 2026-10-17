@@ -56,8 +56,10 @@ export async function adoptRecordArt(record: Omit<ImportedPropRecord, 'id'>): Pr
     let landed: string | null = null;
     try {
       const bytes = await readReferenceTextureBytes(level, name);
-      landed = makeTexRef(CUSTOM_TEX_LEVEL,
-        await saveSharedCustomTexture(`${level}_${name.replace(/\.png$/i, '')}`, bytes));
+      landed = makeTexRef(
+        CUSTOM_TEX_LEVEL,
+        await saveSharedCustomTexture(`${level}_${name.replace(/\.png$/i, '')}`, bytes),
+      );
       art.staged++;
     } catch {
       art.missing++;

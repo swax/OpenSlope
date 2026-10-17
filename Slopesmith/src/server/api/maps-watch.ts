@@ -27,27 +27,40 @@ function forgetEverything(): void {
 export async function watchMapsRoot(): Promise<() => void> {
   forgetEverything();
   const root = resolve(mapsRoot());
-  if (!await isDirectory(root)) return () => {};
-  const tree = await watchTree(root, filename => {
-    // A change the platform declines to name could be anywhere beneath the root.
-    if (filename === null) { forgetEverything(); return; }
-    const changed = relative(root, resolve(root, filename));
-    if (changed === '') { forgetEverything(); return; }
-    if (/^\.\.(?:[\\/]|$)/.test(changed)) return;
-    const scope = changed.split(/[\\/]/, 1)[0];
-    if (!scope) { forgetEverything(); return; }
-    // Maps/Custom is legacy migration input only. Live authored catalogues are project-owned, so changing
-    // that old folder must not make an editor believe its mountain-local assets changed.
-    if (/^custom$/i.test(scope)) return;
-    clearReferenceAssetRevisions();
-    invalidateReferenceSkyCache(scope);
-    if (/^shared$/i.test(scope)) invalidateSharedLibrary(scope);
-    else invalidateReferenceLevel(scope);
-  }, {
-    // Losing part of the watch costs freshness, never correctness: every response is still ETag-validated.
-    // Say so rather than taking the service down with it.
-    onError: error => log.warn('maps watch incomplete; edits inside the unwatched folders show only after a restart',
-      { error }),
-  });
+  if (!(await isDirectory(root))) return () => {};
+  const tree = await watchTree(
+    root,
+    filename => {
+      // A change the platform declines to name could be anywhere beneath the root.
+      if (filename === null) {
+        forgetEverything();
+        return;
+      }
+      const changed = relative(root, resolve(root, filename));
+      if (changed === '') {
+        forgetEverything();
+        return;
+      }
+      if (/^\.\.(?:[\\/]|$)/.test(changed)) return;
+      const scope = changed.split(/[\\/]/, 1)[0];
+      if (!scope) {
+        forgetEverything();
+        return;
+      }
+      // Maps/Custom is legacy migration input only. Live authored catalogues are project-owned, so changing
+      // that old folder must not make an editor believe its mountain-local assets changed.
+      if (/^custom$/i.test(scope)) return;
+      clearReferenceAssetRevisions();
+      invalidateReferenceSkyCache(scope);
+      if (/^shared$/i.test(scope)) invalidateSharedLibrary(scope);
+      else invalidateReferenceLevel(scope);
+    },
+    {
+      // Losing part of the watch costs freshness, never correctness: every response is still ETag-validated.
+      // Say so rather than taking the service down with it.
+      onError: error =>
+        log.warn('maps watch incomplete; edits inside the unwatched folders show only after a restart', { error }),
+    },
+  );
   return () => tree.close();
 }

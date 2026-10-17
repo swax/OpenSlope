@@ -32,8 +32,11 @@ function audioContextConstructor(): BrowserAudioContextConstructor {
 export function sharedAudioContext(): AudioContext {
   if (!context || context.state === 'closed') {
     const Ctor = audioContextConstructor();
-    try { context = new Ctor({ latencyHint: 'interactive' }); }
-    catch { context = new Ctor(); } // older Safari accepts no options object
+    try {
+      context = new Ctor({ latencyHint: 'interactive' });
+    } catch {
+      context = new Ctor();
+    } // older Safari accepts no options object
     gameMaster = context.createGain();
     gameMaster.gain.value = gameVolume;
     gameMaster.connect(context.destination);
@@ -72,7 +75,9 @@ export function sharedAudioBuffer(url: string): Promise<AudioBuffer | null> {
         const response = await fetch(resolveAssetUrl(url));
         if (!response.ok) return null;
         return await audio.decodeAudioData(await response.arrayBuffer());
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     })();
     buffers.set(url, pending);
   }

@@ -22,9 +22,11 @@ const known = new Set(files);
 function localModule(from: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null;
   const base = resolve(dirname(from), specifier);
-  return [
-    `${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx'),
-  ].map(normalize).find(candidate => known.has(candidate)) ?? null;
+  return (
+    [`${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')]
+      .map(normalize)
+      .find(candidate => known.has(candidate)) ?? null
+  );
 }
 
 /** Static imports and re-exports form the initialization and type-checking graph we keep acyclic. */
@@ -32,8 +34,12 @@ function dependencies(file: string): Set<string> {
   const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
   const out = new Set<string>();
   for (const statement of source.statements) {
-    if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement))
-      || !statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (
+      (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) ||
+      !statement.moduleSpecifier ||
+      !ts.isStringLiteral(statement.moduleSpecifier)
+    )
+      continue;
     const dependency = localModule(file, statement.moduleSpecifier.text);
     if (dependency) out.add(dependency);
   }
@@ -84,8 +90,13 @@ function cyclicComponents(): string[][] {
 const cycles = cyclicComponents();
 if (cycles.length) {
   for (const cycle of cycles) {
-    console.error('FAIL import cycle:', cycle
-      .map(file => relative(root, file).replaceAll('\\', '/')).sort().join(' <-> '));
+    console.error(
+      'FAIL import cycle:',
+      cycle
+        .map(file => relative(root, file).replaceAll('\\', '/'))
+        .sort()
+        .join(' <-> '),
+    );
   }
   process.exitCode = 1;
 } else {

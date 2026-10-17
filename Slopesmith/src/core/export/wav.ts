@@ -37,7 +37,10 @@ export function decodeWav(bytes: Uint8Array): AudioSamples {
   if (bytes.length < 12 || ascii(bytes, 0) !== 'RIFF' || ascii(bytes, 8) !== 'WAVE')
     throw new Error('not a RIFF/WAVE file');
 
-  let format = 0, channelCount = 0, sampleRate = 0, bits = 0;
+  let format = 0,
+    channelCount = 0,
+    sampleRate = 0,
+    bits = 0;
   let data: Uint8Array | null = null;
   for (let at = 12; at + 8 <= bytes.length;) {
     const id = ascii(bytes, at);
@@ -67,11 +70,16 @@ export function decodeWav(bytes: Uint8Array): AudioSamples {
     if (format === 3) return bits === 32 ? view.getFloat32(at, true) : view.getFloat64(at, true);
     switch (bits) {
       // 8-bit PCM is the one unsigned width in the format.
-      case 8: return (bytes[at] - 128) / 128;
-      case 16: return view.getInt16(at, true) / 32768;
-      case 24: return ((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 24) >> 8)) / 8388608;
-      case 32: return view.getInt32(at, true) / 2147483648;
-      default: throw new Error(`unsupported WAV sample width ${bits}-bit`);
+      case 8:
+        return (bytes[at] - 128) / 128;
+      case 16:
+        return view.getInt16(at, true) / 32768;
+      case 24:
+        return (bytes[at] | (bytes[at + 1] << 8) | ((bytes[at + 2] << 24) >> 8)) / 8388608;
+      case 32:
+        return view.getInt32(at, true) / 2147483648;
+      default:
+        throw new Error(`unsupported WAV sample width ${bits}-bit`);
     }
   };
   const base = data.byteOffset - bytes.byteOffset;
@@ -114,18 +122,20 @@ export function encodePcm16Wav(channels: readonly Float32Array[], sampleRate: nu
   const dataBytes = frames * channelCount * 2;
   const out = new Uint8Array(44 + dataBytes);
   const view = new DataView(out.buffer);
-  const tag = (at: number, text: string) => { for (let i = 0; i < 4; i++) out[at + i] = text.charCodeAt(i); };
+  const tag = (at: number, text: string) => {
+    for (let i = 0; i < 4; i++) out[at + i] = text.charCodeAt(i);
+  };
   tag(0, 'RIFF');
   view.setUint32(4, 36 + dataBytes, true);
   tag(8, 'WAVE');
   tag(12, 'fmt ');
-  view.setUint32(16, 16, true);         // PCM fmt chunk size
-  view.setUint16(20, 1, true);          // format: PCM
+  view.setUint32(16, 16, true); // PCM fmt chunk size
+  view.setUint16(20, 1, true); // format: PCM
   view.setUint16(22, channelCount, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * channelCount * 2, true); // byte rate
-  view.setUint16(32, channelCount * 2, true);              // block align
-  view.setUint16(34, 16, true);                            // bits per sample
+  view.setUint16(32, channelCount * 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
   tag(36, 'data');
   view.setUint32(40, dataBytes, true);
   let at = 44;

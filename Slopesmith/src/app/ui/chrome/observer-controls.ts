@@ -30,24 +30,31 @@ export function createObserverControls(deps: ObserverControlsDeps) {
       watchers.setAttribute('aria-live', 'polite');
       watchers.innerHTML = WATCHING_ICON;
       watchers.append(`${shared.watchers} watching`);
-      tooltip(watchers, `${shared.watchers} ${shared.watchers === 1 ? 'person is' : 'people are'} actively watching your shared screen.`);
+      tooltip(
+        watchers,
+        `${shared.watchers} ${shared.watchers === 1 ? 'person is' : 'people are'} actively watching your shared screen.`,
+      );
       el.append(watchers);
     }
     if (!state) return;
     if (state.paused) {
       el.append(
         button('Continue observing', continueObserving, {
-          cls: 'sp-observe-continue', title: `Continue following ${state.username}’s shared screen.`,
+          cls: 'sp-observe-continue',
+          title: `Continue following ${state.username}’s shared screen.`,
         }),
         button('Stop observing', stopObserving, {
-          cls: 'sp-observe-stop', title: `Stop following ${state.username}’s shared screen.`,
+          cls: 'sp-observe-stop',
+          title: `Stop following ${state.username}’s shared screen.`,
         }),
       );
     } else {
-      el.append(button('Pause observing', pauseObserving, {
-        cls: 'sp-observe-pause',
-        title: `Pause ${state.username}’s updates. Your view remains fully controllable.`,
-      }));
+      el.append(
+        button('Pause observing', pauseObserving, {
+          cls: 'sp-observe-pause',
+          title: `Pause ${state.username}’s updates. Your view remains fully controllable.`,
+        }),
+      );
     }
   }
 

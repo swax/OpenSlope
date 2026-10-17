@@ -93,8 +93,10 @@ export const link = (rel: string, href: string, title?: string): ApiLink =>
  * is what it would have been told had it tried. A personal access key holds its account's role but is barred
  * from administration outright (accounts/guard.ts); that refusal is worded here the same way.
  */
-export function gate(identity: Identity | undefined, need: Role):
-  { disabled: true; disabledReason: string } | Record<string, never> {
+export function gate(
+  identity: Identity | undefined,
+  need: Role,
+): { disabled: true; disabledReason: string } | Record<string, never> {
   if (!identity || !('user' in identity)) {
     return { disabled: true, disabledReason: 'Sign in to use this server.' };
   }

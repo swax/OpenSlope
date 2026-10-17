@@ -108,32 +108,44 @@ function entered(page: HTMLElement, user: Member, message: string): void {
   body.append(done);
   // One frame, so the line above is actually on the screen before the editor's own boot takes the main
   // thread. Removing the page immediately would make it a flicker, which is worse than not showing it.
-  requestAnimationFrame(() => void (async () => {
-    await enterEditor();
-    page.remove();
-  })());
+  requestAnimationFrame(
+    () =>
+      void (async () => {
+        await enterEditor();
+        page.remove();
+      })(),
+  );
 }
 
 /** The first admin: the one-time code the server printed to its log, and the account it becomes. */
 function enrolForm(page: HTMLElement): void {
   const { host, body } = card(page, 'Enrol', 'This server has no admin yet');
   const g = new GUI({ container: body, title: 'Enrol this server' });
-  banner(body, 'This server has no admin yet, so it is refusing every request. Whoever started it has a '
-    + 'one-time code in its log — that code and this form create the first account, which manages users, '
-    + 'invites and maps.');
+  banner(
+    body,
+    'This server has no admin yet, so it is refusing every request. Whoever started it has a ' +
+      'one-time code in its log — that code and this form create the first account, which manages users, ' +
+      'invites and maps.',
+  );
   const form = { code: '', username: '', password: '', confirm: '' };
   focusField(named(g.add(form, 'code').name('admin code'), 'off'));
   named(g.add(form, 'username').name('username'), 'username');
   secret(g.add(form, 'password').name('password'), 'new-password');
   secret(g.add(form, 'confirm').name('repeat password'), 'new-password');
   const fail = errorLine(body);
-  const submit = () => void (async () => {
-    if (form.password !== form.confirm) { fail('Those two passwords are different.'); return; }
-    try {
-      const { user } = await postJson<{ user: Member }>('/api/auth/bootstrap', JSON.stringify(form));
-      entered(page, user, `Enrolled as ${user.username} — this server's admin.`);
-    } catch (error) { fail(String(error instanceof Error ? error.message : error)); }
-  })();
+  const submit = () =>
+    void (async () => {
+      if (form.password !== form.confirm) {
+        fail('Those two passwords are different.');
+        return;
+      }
+      try {
+        const { user } = await postJson<{ user: Member }>('/api/auth/bootstrap', JSON.stringify(form));
+        entered(page, user, `Enrolled as ${user.username} — this server's admin.`);
+      } catch (error) {
+        fail(String(error instanceof Error ? error.message : error));
+      }
+    })();
   g.add({ enrol: submit }, 'enrol').name('Create the admin account');
   foot(host, 'The code is printed once, when the server starts. Restart it to be given another.');
   submitOnEnter(host, submit);
@@ -143,24 +155,33 @@ function enrolForm(page: HTMLElement): void {
 function redeemForm(page: HTMLElement, token: string): void {
   const { host, body } = card(page, 'Redeem your invite', 'You have been invited');
   const g = new GUI({ container: body, title: 'Redeem your invite' });
-  banner(body, 'Choose a username and a password. They work from any machine — there is nothing to move '
-    + 'between computers. The invite decides what you may do here, and it can only be redeemed once.');
+  banner(
+    body,
+    'Choose a username and a password. They work from any machine — there is nothing to move ' +
+      'between computers. The invite decides what you may do here, and it can only be redeemed once.',
+  );
   const form = { token, username: '', password: '', confirm: '' };
   named(g.add(form, 'token').name('invite token'), 'off');
   focusField(named(g.add(form, 'username').name('username'), 'username'));
   secret(g.add(form, 'password').name('password'), 'new-password');
   secret(g.add(form, 'confirm').name('repeat password'), 'new-password');
   const fail = errorLine(body);
-  const submit = () => void (async () => {
-    if (form.password !== form.confirm) { fail('Those two passwords are different.'); return; }
-    try {
-      const { user } = await postJson<{ user: Member }>('/api/auth/redeem', JSON.stringify(form));
-      // The link is spent. Clearing it keeps a reload from re-offering a token that can no longer be redeemed,
-      // and keeps it out of the address bar of a browser that is now signed in.
-      history.replaceState(null, '', location.pathname + location.search);
-      entered(page, user, `Welcome, ${user.username} — you are a ${user.role} here.`);
-    } catch (error) { fail(String(error instanceof Error ? error.message : error)); }
-  })();
+  const submit = () =>
+    void (async () => {
+      if (form.password !== form.confirm) {
+        fail('Those two passwords are different.');
+        return;
+      }
+      try {
+        const { user } = await postJson<{ user: Member }>('/api/auth/redeem', JSON.stringify(form));
+        // The link is spent. Clearing it keeps a reload from re-offering a token that can no longer be redeemed,
+        // and keeps it out of the address bar of a browser that is now signed in.
+        history.replaceState(null, '', location.pathname + location.search);
+        entered(page, user, `Welcome, ${user.username} — you are a ${user.role} here.`);
+      } catch (error) {
+        fail(String(error instanceof Error ? error.message : error));
+      }
+    })();
   g.add({ redeem: submit }, 'redeem').name('Create my account');
   g.add({ back: () => signInForm(page) }, 'back').name('I already have an account');
   submitOnEnter(host, submit);
@@ -170,22 +191,31 @@ function redeemForm(page: HTMLElement, token: string): void {
 function signInForm(page: HTMLElement): void {
   const { host, body } = card(page, 'Sign in', 'Member access — sign in to edit');
   const g = new GUI({ container: body, title: 'Sign in' });
-  banner(body, 'Member accounts are invite-only. Sign in with the username and password you chose '
-    + 'when you redeemed your invite.');
+  banner(
+    body,
+    'Member accounts are invite-only. Sign in with the username and password you chose ' +
+      'when you redeemed your invite.',
+  );
   const form = { username: '', password: '' };
   focusField(named(g.add(form, 'username').name('username'), 'username'));
   secret(g.add(form, 'password').name('password'), 'current-password');
   const fail = errorLine(body);
-  const submit = () => void (async () => {
-    try {
-      const { user } = await postJson<{ user: Member }>('/api/auth/login', JSON.stringify(form));
-      entered(page, user, `Signed in as ${user.username} — you are a ${user.role} here.`);
-    } catch (error) { fail(String(error instanceof Error ? error.message : error)); }
-  })();
+  const submit = () =>
+    void (async () => {
+      try {
+        const { user } = await postJson<{ user: Member }>('/api/auth/login', JSON.stringify(form));
+        entered(page, user, `Signed in as ${user.username} — you are a ${user.role} here.`);
+      } catch (error) {
+        fail(String(error instanceof Error ? error.message : error));
+      }
+    })();
   g.add({ signIn: submit }, 'signIn').name('Sign in');
   g.add({ invite: () => redeemForm(page, '') }, 'invite').name('I have an invite link');
-  foot(host, 'Accounts here are created from an invite. Whoever runs this server issues one — and resets a '
-    + 'password nobody can remember.');
+  foot(
+    host,
+    'Accounts here are created from an invite. Whoever runs this server issues one — and resets a ' +
+      'password nobody can remember.',
+  );
   submitOnEnter(host, submit);
 }
 

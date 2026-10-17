@@ -39,7 +39,8 @@ import { rideVerticalIntent } from '../input';
 const BTN = { trigger: 0, squeeze: 1, stick: 3, a: 4, b: 5 };
 
 /** Stick dead zone and the existing centre-softened walk curve shared with pad/touch input. */
-const STICK_DEAD = 0.18, STICK_GAIN = 0.25;
+const STICK_DEAD = 0.18,
+  STICK_GAIN = 0.25;
 /**
  * How far the left stick must go BACK or FORWARD before it also throttles. Higher than the steer dead zone on
  * purpose: one thumb owns both axes here (as it does on the board — `InputMoveHorizontal`/`Vertical` are one
@@ -107,7 +108,8 @@ export function readHand(source: XRInputSource): XrHand | null {
 /** Controller hand pose: squeeze wraps thumb/middle/ring/pinky while the index remains available to point;
  * pulling the trigger closes that last finger. Values are kept analog for hardware that reports partial pulls. */
 export function controllerFingerCurls(hand: XrHand | null | undefined) {
-  const grip = hand?.squeezeValue ?? 0, trigger = hand?.triggerValue ?? 0;
+  const grip = hand?.squeezeValue ?? 0,
+    trigger = hand?.triggerValue ?? 0;
   return { thumb: grip, index: trigger, middle: grip, ring: grip, pinky: grip };
 }
 
@@ -124,11 +126,15 @@ export function readPads(sources: Iterable<XRInputSource>): XrPads {
 
 /** The headset-native counterpart to desktop V. Kept as a held value here; the session host owns its edge so
  * mounting/dismounting while it remains pressed cannot fire it twice. */
-export function viewToggleHeld(pads: XrPads): boolean { return !!pads.right?.stickPressed; }
+export function viewToggleHeld(pads: XrPads): boolean {
+  return !!pads.right?.stickPressed;
+}
 
 /** Quest/WebXR left Y. Kept as a held value so the session host can edge-trigger one visibility change per
  * press instead of flickering the wrist menu every frame the button remains down. */
-export function wristMenuToggleHeld(pads: XrPads): boolean { return !!pads.left?.b; }
+export function wristMenuToggleHeld(pads: XrPads): boolean {
+  return !!pads.left?.b;
+}
 
 /** Dead-zoned and centre-softened, the same curve the pad and touch sticks use. Returns exactly 0 inside. */
 export function shapeAxis(raw: number, dead = STICK_DEAD): number {
@@ -174,7 +180,8 @@ export interface XrRideControls {
 }
 
 export function rideControls(pads: XrPads): XrRideControls {
-  const left = pads.left, right = pads.right;
+  const left = pads.left,
+    right = pads.right;
   const throttle = left ? -left.y : 0; // stick Y is negative forward; make forward positive first
   const verticalIntent = rideVerticalIntent(left?.x ?? 0, throttle, RIDE_THROTTLE_DEAD);
   return {
@@ -225,7 +232,8 @@ export interface XrFootControls {
  * a trigger mode.
  */
 export function footControls(pads: XrPads): XrFootControls {
-  const left = pads.left, right = pads.right;
+  const left = pads.left,
+    right = pads.right;
   return {
     moveX: shapeAxis(left?.x ?? 0),
     moveY: shapeAxis(-(left?.y ?? 0)),
@@ -245,5 +253,5 @@ export function footControls(pads: XrPads): XrFootControls {
 export function smoothTurnRadians(axis: number, dt: number, rateDeg = TURN_RATE_DEG): number {
   if (dt <= 0) return 0;
   const shaped = shapeAxis(axis);
-  return shaped === 0 ? 0 : -shaped * rateDeg * Math.PI / 180 * Math.min(dt, 0.1);
+  return shaped === 0 ? 0 : ((-shaped * rateDeg * Math.PI) / 180) * Math.min(dt, 0.1);
 }

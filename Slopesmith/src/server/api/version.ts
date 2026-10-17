@@ -1,6 +1,10 @@
 import { APP_ROOT } from '../workspace-config';
 import {
-  fetchLatestVersion, inspectCheckout, updateBranchLabel, type CheckoutVersion, type RemoteVersion,
+  fetchLatestVersion,
+  inspectCheckout,
+  updateBranchLabel,
+  type CheckoutVersion,
+  type RemoteVersion,
 } from '../version';
 import { configuredUpdateRoot, resolveLatestRevision } from '../update';
 import { createLogger } from '../log';
@@ -15,7 +19,7 @@ const log = createLogger('version');
 const startupCheckout = inspectCheckout(APP_ROOT);
 let lastRemote: (Partial<RemoteVersion> & { checkError?: string }) | undefined;
 let checkInFlight: Promise<Partial<RemoteVersion> & { checkError?: string }> | undefined;
-const branchLabel = (): string => configuredUpdateRoot() ? 'configured repository/main' : updateBranchLabel();
+const branchLabel = (): string => (configuredUpdateRoot() ? 'configured repository/main' : updateBranchLabel());
 
 /** One shared check prevents several open browsers from launching duplicate fetches at the same moment. */
 async function checkRemote(checkout: CheckoutVersion): Promise<Partial<RemoteVersion> & { checkError?: string }> {
@@ -23,21 +27,27 @@ async function checkRemote(checkout: CheckoutVersion): Promise<Partial<RemoteVer
   if (checkInFlight) return await checkInFlight;
   const check = configuredUpdateRoot()
     ? resolveLatestRevision().then(({ hash, checkedAt }) => ({
-      latest: { hash }, latestBranch: branchLabel(),
-      relation: hash === checkout.current?.hash ? 'current' as const : 'unknown' as const,
-      ahead: 0, behind: 0, checkedAt,
-    }))
+        latest: { hash },
+        latestBranch: branchLabel(),
+        relation: hash === checkout.current?.hash ? ('current' as const) : ('unknown' as const),
+        ahead: 0,
+        behind: 0,
+        checkedAt,
+      }))
     : fetchLatestVersion(APP_ROOT, checkout.current.hash);
   checkInFlight = check
     .catch(error => {
       log.error('update repository check failed', { error });
       return {
-        checkError: 'Could not reach the configured update repository’s main branch. '
-          + 'Check this server’s network access, update configuration, and Git credentials.',
+        checkError:
+          'Could not reach the configured update repository’s main branch. ' +
+          'Check this server’s network access, update configuration, and Git credentials.',
       };
     })
     .then(result => (lastRemote = result))
-    .finally(() => { checkInFlight = undefined; });
+    .finally(() => {
+      checkInFlight = undefined;
+    });
   return await checkInFlight;
 }
 

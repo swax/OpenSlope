@@ -16,7 +16,11 @@ export function reconcileSyncContext(store: Store, before: EditDoc, mesh: EditDo
   store.selectedProp = remap(store.selectedProp, before.props, after.props);
   // The free lights riding in the set keep riding in it, by id, while they still exist (docs/015).
   const setLights = selectedSetLights(store);
-  setSelectedSet(store, store.multiSel.flatMap(index => remap(index, before.props, after.props) ?? []), setLights);
+  setSelectedSet(
+    store,
+    store.multiSel.flatMap(index => remap(index, before.props, after.props) ?? []),
+    setLights,
+  );
   const oldRail = store.selectedRail === null ? undefined : before.rails?.[store.selectedRail];
   store.selectedRail = remap(store.selectedRail, before.rails, after.rails);
   const rail = store.selectedRail === null ? undefined : after.rails?.[store.selectedRail];
@@ -37,21 +41,29 @@ export function reconcileSyncContext(store: Store, before: EditDoc, mesh: EditDo
     store.selectedKnots = [];
   }
 
-  const vertices = new Set(mesh.vertexIds), quads = new Set(mesh.quadIds);
+  const vertices = new Set(mesh.vertexIds),
+    quads = new Set(mesh.quadIds);
   const edges = new Set<string>();
   const edgeKey = ([a, b]: NamedEdge) => JSON.stringify(a < b ? [a, b] : [b, a]);
   const addEdge = (a: number, b: number) => {
     if (a !== b) edges.add(edgeKey([mesh.vertexIds[a], mesh.vertexIds[b]]));
   };
   for (const [a, b, c, d] of mesh.quads) {
-    addEdge(a, b); addEdge(b, d); addEdge(d, c); addEdge(c, a);
+    addEdge(a, b);
+    addEdge(b, d);
+    addEdge(d, c);
+    addEdge(c, a);
   }
   for (const [a, b] of mesh.freeEdges ?? []) addEdge(a, b);
   const liveEdge = (edge: NamedEdge) => edges.has(edgeKey(edge));
-  const livePoint = (point: MeshControlPointId) => point.kind === 'vertex' ? vertices.has(point.vertex)
-    : point.kind === 'edge' ? liveEdge([point.from, point.to]) : quads.has(point.quad);
-  const vertex = (id: string | null) => id !== null && vertices.has(id) ? id : null;
-  const quad = (id: string | null) => id !== null && quads.has(id) ? id : null;
+  const livePoint = (point: MeshControlPointId) =>
+    point.kind === 'vertex'
+      ? vertices.has(point.vertex)
+      : point.kind === 'edge'
+        ? liveEdge([point.from, point.to])
+        : quads.has(point.quad);
+  const vertex = (id: string | null) => (id !== null && vertices.has(id) ? id : null);
+  const quad = (id: string | null) => (id !== null && quads.has(id) ? id : null);
   store.selectedCorner = vertex(store.selectedCorner);
   store.anchorCorner = vertex(store.anchorCorner);
   store.regionSel = store.regionSel.filter(id => vertices.has(id));

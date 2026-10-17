@@ -61,16 +61,24 @@ const MAX_PNG_PIXELS = 8192 * 4096;
  */
 export function decodePng(buf: Buffer): Rgba {
   if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
-  let i = 8, w = 0, h = 0, bitDepth = 0, colorType = 0, interlace = 0;
+  let i = 8,
+    w = 0,
+    h = 0,
+    bitDepth = 0,
+    colorType = 0,
+    interlace = 0;
   const idat: Buffer[] = [];
   while (i + 8 <= buf.length) {
     const len = buf.readUInt32BE(i);
     const type = buf.toString('ascii', i + 4, i + 8);
     const body = buf.subarray(i + 8, i + 8 + len);
     if (type === 'IHDR') {
-      w = body.readUInt32BE(0); h = body.readUInt32BE(4); bitDepth = body[8]; colorType = body[9]; interlace = body[12];
-    }
-    else if (type === 'IDAT') idat.push(body);
+      w = body.readUInt32BE(0);
+      h = body.readUInt32BE(4);
+      bitDepth = body[8];
+      colorType = body[9];
+      interlace = body[12];
+    } else if (type === 'IDAT') idat.push(body);
     else if (type === 'IEND') break;
     i += 12 + len; // length(4) + type(4) + data + crc(4)
   }
@@ -84,29 +92,46 @@ export function decodePng(buf: Buffer): Rgba {
   // rather than zero-filled: either way the header and the data disagree, and that is not a PNG this reads.
   const expected = h * (1 + stride);
   let raw: Buffer;
-  try { raw = inflateSync(Buffer.concat(idat), { maxOutputLength: expected }); }
-  catch { throw new Error('PNG image data does not match its header'); }
+  try {
+    raw = inflateSync(Buffer.concat(idat), { maxOutputLength: expected });
+  } catch {
+    throw new Error('PNG image data does not match its header');
+  }
   if (raw.length !== expected) throw new Error('PNG image data does not match its header');
   const out = new Uint8Array(w * h * 4);
-  const cur = new Uint8Array(stride), prev = new Uint8Array(stride);
+  const cur = new Uint8Array(stride),
+    prev = new Uint8Array(stride);
   let p = 0;
   for (let y = 0; y < h; y++) {
     const filter = raw[p++];
     for (let x = 0; x < stride; x++) {
-      const a = x >= ch ? cur[x - ch] : 0;   // recon(left)
-      const b = prev[x];                     // recon(up)
-      const c = x >= ch ? prev[x - ch] : 0;  // recon(up-left)
+      const a = x >= ch ? cur[x - ch] : 0; // recon(left)
+      const b = prev[x]; // recon(up)
+      const c = x >= ch ? prev[x - ch] : 0; // recon(up-left)
       let v = raw[p++];
       if (filter === 1) v += a;
       else if (filter === 2) v += b;
       else if (filter === 3) v += (a + b) >> 1;
-      else if (filter === 4) { const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c); v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+      else if (filter === 4) {
+        const pa = Math.abs(b - c),
+          pb = Math.abs(a - c),
+          pc = Math.abs(a + b - 2 * c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
       cur[x] = v & 0xff;
     }
     for (let x = 0; x < w; x++) {
-      const s = x * ch, d = (y * w + x) * 4;
-      if (ch >= 3) { out[d] = cur[s]; out[d + 1] = cur[s + 1]; out[d + 2] = cur[s + 2]; out[d + 3] = ch === 4 ? cur[s + 3] : 255; }
-      else { out[d] = out[d + 1] = out[d + 2] = cur[s]; out[d + 3] = ch === 2 ? cur[s + 1] : 255; }
+      const s = x * ch,
+        d = (y * w + x) * 4;
+      if (ch >= 3) {
+        out[d] = cur[s];
+        out[d + 1] = cur[s + 1];
+        out[d + 2] = cur[s + 2];
+        out[d + 3] = ch === 4 ? cur[s + 3] : 255;
+      } else {
+        out[d] = out[d + 1] = out[d + 2] = cur[s];
+        out[d + 3] = ch === 2 ? cur[s + 1] : 255;
+      }
     }
     prev.set(cur);
   }

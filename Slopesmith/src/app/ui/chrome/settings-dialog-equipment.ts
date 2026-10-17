@@ -12,14 +12,15 @@ import { clampCoverCrop, coverCropRect, zoomCoverCrop } from '../components/squa
 import { infoBadge } from '../components/info';
 import { blobDataUrl, encodeCanvas } from './settings-dialog-image';
 
-const EQUIPMENT_HELP = 'Make a named design by loading a separate image beneath every mapped section. Click a '
-  + 'section in the preview to select it, then drag and zoom only that image. Save bakes the sections into one '
-  + 'fixed square texture. Edit reopens those baked strips for renaming, replacement, or reframing; the original '
-  + 'full-size source images outside each saved strip are not retained. '
-  + 'A snowboard has top and bottom sections. Skis have left front, right front, left back and right back strips. '
-  + 'Use the design list to equip an earlier result or stock artwork, and Delete to stage an old design for removal. '
-  + 'The exact procedural silhouette shows which pixels reach the equipment. Sidewalls and end caps use the solid '
-  + 'edge colour below.';
+const EQUIPMENT_HELP =
+  'Make a named design by loading a separate image beneath every mapped section. Click a ' +
+  'section in the preview to select it, then drag and zoom only that image. Save bakes the sections into one ' +
+  'fixed square texture. Edit reopens those baked strips for renaming, replacement, or reframing; the original ' +
+  'full-size source images outside each saved strip are not retained. ' +
+  'A snowboard has top and bottom sections. Skis have left front, right front, left back and right back strips. ' +
+  'Use the design list to equip an earlier result or stock artwork, and Delete to stage an old design for removal. ' +
+  'The exact procedural silhouette shows which pixels reach the equipment. Sidewalls and end caps use the solid ' +
+  'edge colour below.';
 
 export type EquipmentSaveResult = 'saved' | null;
 
@@ -45,16 +46,23 @@ async function loadEquipmentCrop(file: File): Promise<EquipmentCrop> {
   if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
   if (file.size > 16 * 1024 * 1024) throw new Error('Choose an image smaller than 16 MB.');
   let image: ImageBitmap;
-  try { image = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
-  catch { throw new Error('That image could not be opened.'); }
-  if (!image.width || !image.height) { image.close(); throw new Error('That image has no usable pixels.'); }
+  try {
+    image = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    throw new Error('That image could not be opened.');
+  }
+  if (!image.width || !image.height) {
+    image.close();
+    throw new Error('That image has no usable pixels.');
+  }
   const longest = Math.max(image.width, image.height);
   if (longest > 4096) {
     const scale = 4096 / longest;
     try {
       const resized = await createImageBitmap(image, {
         resizeWidth: Math.max(1, Math.round(image.width * scale)),
-        resizeHeight: Math.max(1, Math.round(image.height * scale)), resizeQuality: 'high',
+        resizeHeight: Math.max(1, Math.round(image.height * scale)),
+        resizeQuality: 'high',
       });
       image.close();
       image = resized;
@@ -73,19 +81,26 @@ interface EquipmentDraft {
   editingId?: string;
 }
 
-const equipmentRegionCount = (gear: RideGear): number => gear === 'snowboard' ? 2 : 4;
+const equipmentRegionCount = (gear: RideGear): number => (gear === 'snowboard' ? 2 : 4);
 
 /** Split a baked saved atlas back into its independently editable strips. */
 async function loadSavedEquipmentDraft(gear: RideGear, design: EquipmentDesignSummary): Promise<EquipmentDraft> {
   const response = await fetch(design.textureUrl);
-  if (!response.ok) throw new Error(`The saved ${gear === 'snowboard' ? 'snowboard' : 'ski'} artwork could not be opened.`);
+  if (!response.ok)
+    throw new Error(`The saved ${gear === 'snowboard' ? 'snowboard' : 'ski'} artwork could not be opened.`);
   let image: ImageBitmap;
-  try { image = await createImageBitmap(await response.blob()); }
-  catch { throw new Error('That saved equipment image could not be opened.'); }
+  try {
+    image = await createImageBitmap(await response.blob());
+  } catch {
+    throw new Error('That saved equipment image could not be opened.');
+  }
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = EQUIPMENT_CROP_SIZE;
   const context = canvas.getContext('2d');
-  if (!context) { image.close(); throw new Error('This browser cannot edit saved equipment images.'); }
+  if (!context) {
+    image.close();
+    throw new Error('This browser cannot edit saved equipment images.');
+  }
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -94,10 +109,13 @@ async function loadSavedEquipmentDraft(gear: RideGear, design: EquipmentDesignSu
   const stripWidth = canvas.width / count;
   const crops: EquipmentCrop[] = [];
   try {
-    for (let index = 0; index < count; index++) crops.push({
-      image: await createImageBitmap(canvas, index * stripWidth, 0, stripWidth, canvas.height),
-      zoom: 1, offsetX: 0, offsetY: 0,
-    });
+    for (let index = 0; index < count; index++)
+      crops.push({
+        image: await createImageBitmap(canvas, index * stripWidth, 0, stripWidth, canvas.height),
+        zoom: 1,
+        offsetX: 0,
+        offsetY: 0,
+      });
   } catch {
     for (const crop of crops) crop.image.close();
     throw new Error('That saved equipment image could not be prepared for editing.');
@@ -150,8 +168,9 @@ function equipmentOverlay(gear: RideGear, selectedRegion?: number): SVGSVGElemen
   svg.setAttribute('viewBox', '0 0 1000 1000');
   svg.setAttribute('aria-hidden', 'true');
   const regions = equipmentTextureRegions(gear);
-  const polygonPath = (points: EquipmentTextureRegion['points']) => points
-    .map(([x, y], index) => `${index ? 'L' : 'M'}${(x * 1000).toFixed(1)} ${(y * 1000).toFixed(1)}`).join(' ') + ' Z';
+  const polygonPath = (points: EquipmentTextureRegion['points']) =>
+    points.map(([x, y], index) => `${index ? 'L' : 'M'}${(x * 1000).toFixed(1)} ${(y * 1000).toFixed(1)}`).join(' ') +
+    ' Z';
   const shade = document.createElementNS(SVG_NS, 'path');
   shade.setAttribute('d', `M0 0H1000V1000H0Z ${regions.map(region => polygonPath(region.points)).join(' ')}`);
   shade.setAttribute('fill', 'rgba(5,13,20,.62)');
@@ -167,8 +186,8 @@ function equipmentOverlay(gear: RideGear, selectedRegion?: number): SVGSVGElemen
     outline.setAttribute('vector-effect', 'non-scaling-stroke');
     const label = document.createElementNS(SVG_NS, 'text');
     const centre = region.points.reduce(([x, y], point) => [x + point[0], y + point[1]], [0, 0]);
-    label.setAttribute('x', String(centre[0] * 1000 / region.points.length));
-    label.setAttribute('y', String(centre[1] * 1000 / region.points.length));
+    label.setAttribute('x', String((centre[0] * 1000) / region.points.length));
+    label.setAttribute('y', String((centre[1] * 1000) / region.points.length));
     label.setAttribute('fill', '#f2f8fc');
     label.setAttribute('stroke', 'rgba(0,0,0,.8)');
     label.setAttribute('stroke-width', '5');
@@ -195,9 +214,11 @@ export function buildEquipmentSection(): EquipmentSection {
   const toggle = document.createElement('div');
   toggle.className = 'equipment-switch';
   const boardButton = document.createElement('button');
-  boardButton.type = 'button'; boardButton.textContent = 'Snowboard';
+  boardButton.type = 'button';
+  boardButton.textContent = 'Snowboard';
   const skiButton = document.createElement('button');
-  skiButton.type = 'button'; skiButton.textContent = 'Skis';
+  skiButton.type = 'button';
+  skiButton.textContent = 'Skis';
   toggle.append(boardButton, skiButton);
   const libraryRow = document.createElement('div');
   libraryRow.className = 'equipment-library';
@@ -206,12 +227,19 @@ export function buildEquipmentSection(): EquipmentSection {
   librarySelect.setAttribute('aria-label', 'Saved equipment design');
   librarySelect.disabled = true;
   const makeNew = document.createElement('button');
-  makeNew.type = 'button'; makeNew.className = 'sp-btn'; makeNew.textContent = 'New'; makeNew.disabled = true;
+  makeNew.type = 'button';
+  makeNew.className = 'sp-btn';
+  makeNew.textContent = 'New';
+  makeNew.disabled = true;
   const editDesign = document.createElement('button');
-  editDesign.type = 'button'; editDesign.className = 'sp-btn'; editDesign.textContent = 'Edit';
+  editDesign.type = 'button';
+  editDesign.className = 'sp-btn';
+  editDesign.textContent = 'Edit';
   editDesign.disabled = true;
   const deleteDesign = document.createElement('button');
-  deleteDesign.type = 'button'; deleteDesign.className = 'sp-btn'; deleteDesign.textContent = 'Delete';
+  deleteDesign.type = 'button';
+  deleteDesign.className = 'sp-btn';
+  deleteDesign.textContent = 'Delete';
   deleteDesign.disabled = true;
   libraryRow.append(librarySelect, makeNew, editDesign, deleteDesign);
   const nameRow = document.createElement('label');
@@ -219,14 +247,18 @@ export function buildEquipmentSection(): EquipmentSection {
   nameRow.style.display = 'none';
   nameRow.append(document.createTextNode('Design name'));
   const designName = document.createElement('input');
-  designName.type = 'text'; designName.maxLength = 40; designName.placeholder = 'Name this design';
+  designName.type = 'text';
+  designName.maxLength = 40;
+  designName.placeholder = 'Name this design';
   nameRow.append(designName);
   const preview = document.createElement('div');
   preview.className = 'equipment-preview';
   preview.setAttribute('aria-label', 'Equipment texture mapping preview');
   const storedImage = document.createElement('img');
   storedImage.alt = '';
-  storedImage.onerror = () => { storedImage.style.display = 'none'; };
+  storedImage.onerror = () => {
+    storedImage.style.display = 'none';
+  };
   const cropCanvas = document.createElement('canvas');
   cropCanvas.width = cropCanvas.height = EQUIPMENT_CROP_SIZE;
   let overlay = equipmentOverlay('snowboard');
@@ -235,27 +267,39 @@ export function buildEquipmentSection(): EquipmentSection {
   regionLoads.className = 'equipment-region-loads';
   regionLoads.style.display = 'none';
   const input = document.createElement('input');
-  input.className = 'equipment-file'; input.type = 'file'; input.accept = 'image/*';
+  input.className = 'equipment-file';
+  input.type = 'file';
+  input.accept = 'image/*';
   const zoomRow = document.createElement('div');
   zoomRow.className = 'equipment-zoom';
   zoomRow.style.display = 'none';
   zoomRow.append(document.createTextNode('Zoom'));
   const zoom = document.createElement('input');
-  zoom.type = 'range'; zoom.min = '1'; zoom.max = String(EQUIPMENT_CROP_MAX_ZOOM);
-  zoom.step = '0.01'; zoom.value = '1'; zoom.disabled = true;
+  zoom.type = 'range';
+  zoom.min = '1';
+  zoom.max = String(EQUIPMENT_CROP_MAX_ZOOM);
+  zoom.step = '0.01';
+  zoom.value = '1';
+  zoom.disabled = true;
   const zoomValue = document.createElement('output');
   zoomValue.textContent = '100%';
   const fit = document.createElement('button');
-  fit.type = 'button'; fit.className = 'sp-btn'; fit.textContent = 'Fit'; fit.disabled = true;
+  fit.type = 'button';
+  fit.className = 'sp-btn';
+  fit.textContent = 'Fit';
+  fit.disabled = true;
   zoomRow.append(zoom, zoomValue, fit);
   const colorRow = document.createElement('label');
   colorRow.className = 'edge-color';
   colorRow.append(document.createTextNode('Edge / sidewall colour'));
   const edgeColor = document.createElement('input');
-  edgeColor.type = 'color'; edgeColor.value = '#20242c'; edgeColor.disabled = true;
+  edgeColor.type = 'color';
+  edgeColor.value = '#20242c';
+  edgeColor.disabled = true;
   colorRow.appendChild(edgeColor);
   const state = document.createElement('div');
-  state.className = 'state'; state.textContent = 'Reading your account…';
+  state.className = 'state';
+  state.textContent = 'Reading your account…';
   sec.append(title, toggle, libraryRow, nameRow, preview, regionLoads, zoomRow, colorRow, input, state);
 
   const DRAFT = '__draft__';
@@ -281,15 +325,16 @@ export function buildEquipmentSection(): EquipmentSection {
   let disposeAfterSave = false;
   let dragging: { pointerId: number; gear: RideGear; region: number; x: number; y: number } | null = null;
 
-  const availableDesigns = (gear: RideGear) => gearStates[gear].designs
-    .filter(design => !gearStates[gear].deleted.has(design.id));
+  const availableDesigns = (gear: RideGear) =>
+    gearStates[gear].designs.filter(design => !gearStates[gear].deleted.has(design.id));
   const currentDesign = (gear: RideGear) => {
     const value = gearStates[gear].selected;
     return typeof value === 'string' && value !== DRAFT
-      ? availableDesigns(gear).find(design => design.id === value) : undefined;
+      ? availableDesigns(gear).find(design => design.id === value)
+      : undefined;
   };
-  const selectedCrop = (gear = selected) => gearStates[gear].selected === DRAFT
-    ? gearStates[gear].draft?.crops[selectedRegions[gear]] : undefined;
+  const selectedCrop = (gear = selected) =>
+    gearStates[gear].selected === DRAFT ? gearStates[gear].draft?.crops[selectedRegions[gear]] : undefined;
   const discardDraft = (draft: EquipmentDraft | undefined) => {
     if (!draft) return;
     for (let index = 0; index < draft.crops.length; index++) {
@@ -305,7 +350,8 @@ export function buildEquipmentSection(): EquipmentSection {
     const base = gear === 'snowboard' ? 'My snowboard' : 'My skis';
     const names = new Set(gearStates[gear].designs.map(design => design.name.toLocaleLowerCase()));
     if (!names.has(base.toLocaleLowerCase())) return base;
-    for (let suffix = 2; ; suffix++) if (!names.has(`${base} ${suffix}`.toLocaleLowerCase())) return `${base} ${suffix}`;
+    for (let suffix = 2; ; suffix++)
+      if (!names.has(`${base} ${suffix}`.toLocaleLowerCase())) return `${base} ${suffix}`;
   };
   const startDraft = (gear: RideGear) => {
     const gearState = gearStates[gear];
@@ -314,7 +360,8 @@ export function buildEquipmentSection(): EquipmentSection {
       gearState.draft = undefined;
     }
     gearState.draft ??= {
-      name: freshName(gear), crops: Array.from({ length: equipmentRegionCount(gear) }, () => undefined),
+      name: freshName(gear),
+      crops: Array.from({ length: equipmentRegionCount(gear) }, () => undefined),
     };
     gearState.selected = DRAFT;
     selectedRegions[gear] = 0;
@@ -352,11 +399,13 @@ export function buildEquipmentSection(): EquipmentSection {
     const gearState = gearStates[selected];
     librarySelect.replaceChildren();
     const stock = document.createElement('option');
-    stock.value = ''; stock.textContent = 'Stock equipment';
+    stock.value = '';
+    stock.textContent = 'Stock equipment';
     librarySelect.appendChild(stock);
     for (const design of availableDesigns(selected)) {
       const option = document.createElement('option');
-      option.value = design.id; option.textContent = design.name;
+      option.value = design.id;
+      option.textContent = design.name;
       librarySelect.appendChild(option);
     }
     if (gearState.draft) {
@@ -371,21 +420,24 @@ export function buildEquipmentSection(): EquipmentSection {
     const draft = gearStates[selected].draft;
     const regions = equipmentTextureRegions(selected);
     regionLoads.style.gridTemplateColumns = `repeat(${regions.length}, minmax(0, 1fr))`;
-    regionLoads.replaceChildren(...regions.map((region, index) => {
-      const button = document.createElement('button');
-      button.type = 'button'; button.textContent = 'Load image';
-      button.title = `${draft?.crops[index] ? 'Replace' : 'Load'} ${region.label.toLocaleLowerCase()} image`;
-      button.setAttribute('aria-label', button.title);
-      button.setAttribute('aria-pressed', String(selectedRegions[selected] === index));
-      button.classList.toggle('loaded', !!draft?.crops[index]);
-      button.disabled = !draft || !!preparing || saving || disposed;
-      button.onclick = () => {
-        selectedRegions[selected] = index;
-        render();
-        input.click();
-      };
-      return button;
-    }));
+    regionLoads.replaceChildren(
+      ...regions.map((region, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Load image';
+        button.title = `${draft?.crops[index] ? 'Replace' : 'Load'} ${region.label.toLocaleLowerCase()} image`;
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', String(selectedRegions[selected] === index));
+        button.classList.toggle('loaded', !!draft?.crops[index]);
+        button.disabled = !draft || !!preparing || saving || disposed;
+        button.onclick = () => {
+          selectedRegions[selected] = index;
+          render();
+          input.click();
+        };
+        return button;
+      }),
+    );
   };
   const render = () => {
     boardButton.setAttribute('aria-pressed', String(selected === 'snowboard'));
@@ -414,21 +466,38 @@ export function buildEquipmentSection(): EquipmentSection {
     const label = selected === 'snowboard' ? 'snowboard' : 'ski';
     if (draft) {
       const missing = draft.crops.filter(crop => !crop).length;
-      setState(missing ? `Load ${missing} more ${label} section${missing === 1 ? '' : 's'}, then name and Save the design.`
-        : draft.editingId
-          ? `Editing “${draft.name || 'this design'}”. Select a strip to fine-tune it, then Save your changes.`
-          : `All sections loaded. Select a strip to fine-tune it, then Save “${draft.name || 'this design'}”.`, 'set');
+      setState(
+        missing
+          ? `Load ${missing} more ${label} section${missing === 1 ? '' : 's'}, then name and Save the design.`
+          : draft.editingId
+            ? `Editing “${draft.name || 'this design'}”. Select a strip to fine-tune it, then Save your changes.`
+            : `All sections loaded. Select a strip to fine-tune it, then Save “${draft.name || 'this design'}”.`,
+        'set',
+      );
     } else if (design) {
-      const staged = gearState.deleted.size ? ` ${gearState.deleted.size} deletion${gearState.deleted.size === 1 ? '' : 's'} staged.` : '';
+      const staged = gearState.deleted.size
+        ? ` ${gearState.deleted.size} deletion${gearState.deleted.size === 1 ? '' : 's'} staged.`
+        : '';
       setState(`Previewing saved ${label} design “${design.name}”.${staged}`, gearState.deleted.size ? 'set' : '');
     } else {
-      setState(`Stock ${label} artwork selected.${gearState.deleted.size ? ` ${gearState.deleted.size} deletion staged.` : ''}`,
-        gearState.deleted.size ? 'set' : '');
+      setState(
+        `Stock ${label} artwork selected.${gearState.deleted.size ? ` ${gearState.deleted.size} deletion staged.` : ''}`,
+        gearState.deleted.size ? 'set' : '',
+      );
     }
   };
-  boardButton.onclick = () => { selected = 'snowboard'; render(); };
-  skiButton.onclick = () => { selected = 'skis'; render(); };
-  makeNew.onclick = () => { startDraft(selected); render(); };
+  boardButton.onclick = () => {
+    selected = 'snowboard';
+    render();
+  };
+  skiButton.onclick = () => {
+    selected = 'skis';
+    render();
+  };
+  makeNew.onclick = () => {
+    startDraft(selected);
+    render();
+  };
   editDesign.onclick = () => {
     const gear = selected;
     const gearState = gearStates[gear];
@@ -441,20 +510,26 @@ export function buildEquipmentSection(): EquipmentSection {
     }
     let failed = false;
     setState(`Opening “${design.name}” for editing…`);
-    preparing = loadSavedEquipmentDraft(gear, design).then(draft => {
-      if (disposed) { discardDraft(draft); return; }
-      discardDraft(gearState.draft);
-      gearState.draft = draft;
-      gearState.selected = DRAFT;
-      selectedRegions[gear] = 0;
-    }).catch(error => {
-      failed = true;
-      setState(error instanceof Error ? error.message : String(error), 'warn');
-    }).finally(() => {
-      preparing = null;
-      if (!failed && !disposed) render();
-      else syncControls();
-    });
+    preparing = loadSavedEquipmentDraft(gear, design)
+      .then(draft => {
+        if (disposed) {
+          discardDraft(draft);
+          return;
+        }
+        discardDraft(gearState.draft);
+        gearState.draft = draft;
+        gearState.selected = DRAFT;
+        selectedRegions[gear] = 0;
+      })
+      .catch(error => {
+        failed = true;
+        setState(error instanceof Error ? error.message : String(error), 'warn');
+      })
+      .finally(() => {
+        preparing = null;
+        if (!failed && !disposed) render();
+        else syncControls();
+      });
     syncControls();
     renderRegionLoads();
   };
@@ -487,14 +562,19 @@ export function buildEquipmentSection(): EquipmentSection {
     syncControls();
     setState('Loading image…');
     let failed = false;
-    preparing = loadEquipmentCrop(file).then(crop => {
-      if (disposed) { crop.image.close(); return; }
-      draft.crops[region]?.image.close();
-      draft.crops[region] = crop;
-    }).catch(error => {
-      failed = true;
-      setState(error instanceof Error ? error.message : String(error), 'warn');
-    })
+    preparing = loadEquipmentCrop(file)
+      .then(crop => {
+        if (disposed) {
+          crop.image.close();
+          return;
+        }
+        draft.crops[region]?.image.close();
+        draft.crops[region] = crop;
+      })
+      .catch(error => {
+        failed = true;
+        setState(error instanceof Error ? error.message : String(error), 'warn');
+      })
       .finally(() => {
         preparing = null;
         if (!failed && !disposed) render();
@@ -506,26 +586,34 @@ export function buildEquipmentSection(): EquipmentSection {
   zoom.oninput = () => {
     const crop = selectedCrop();
     if (!crop) return;
-    zoomCoverCrop(crop, Number(zoom.value), EQUIPMENT_CROP_MAX_ZOOM,
-      1 / equipmentRegionCount(selected), 1);
+    zoomCoverCrop(crop, Number(zoom.value), EQUIPMENT_CROP_MAX_ZOOM, 1 / equipmentRegionCount(selected), 1);
     drawDraft();
   };
   fit.onclick = () => {
     const crop = selectedCrop();
     if (!crop) return;
-    crop.zoom = 1; crop.offsetX = 0; crop.offsetY = 0;
+    crop.zoom = 1;
+    crop.offsetX = 0;
+    crop.offsetY = 0;
     drawDraft();
   };
   preview.onpointerdown = event => {
     if (event.button !== 0 || gearStates[selected].selected !== DRAFT) return;
     const bounds = preview.getBoundingClientRect();
     const count = equipmentRegionCount(selected);
-    selectedRegions[selected] = Math.max(0, Math.min(count - 1,
-      Math.floor((event.clientX - bounds.left) / Math.max(1, bounds.width) * count)));
+    selectedRegions[selected] = Math.max(
+      0,
+      Math.min(count - 1, Math.floor(((event.clientX - bounds.left) / Math.max(1, bounds.width)) * count)),
+    );
     render();
     if (!selectedCrop()) return;
-    dragging = { pointerId: event.pointerId, gear: selected, region: selectedRegions[selected],
-      x: event.clientX, y: event.clientY };
+    dragging = {
+      pointerId: event.pointerId,
+      gear: selected,
+      region: selectedRegions[selected],
+      x: event.clientX,
+      y: event.clientY,
+    };
     preview.setPointerCapture(event.pointerId);
     preview.classList.add('dragging');
     event.preventDefault();
@@ -537,7 +625,8 @@ export function buildEquipmentSection(): EquipmentSection {
     const count = equipmentRegionCount(dragging.gear);
     crop.offsetX += (event.clientX - dragging.x) / Math.max(1, preview.clientWidth / count);
     crop.offsetY += (event.clientY - dragging.y) / Math.max(1, preview.clientHeight);
-    dragging.x = event.clientX; dragging.y = event.clientY;
+    dragging.x = event.clientX;
+    dragging.y = event.clientY;
     clampCoverCrop(crop, 1 / count, 1);
     drawDraft(dragging.gear);
   };
@@ -549,42 +638,60 @@ export function buildEquipmentSection(): EquipmentSection {
   };
   preview.onpointerup = stopDragging;
   preview.onpointercancel = stopDragging;
-  preview.addEventListener('wheel', event => {
-    if (gearStates[selected].selected !== DRAFT) return;
-    const bounds = preview.getBoundingClientRect();
-    const count = equipmentRegionCount(selected);
-    const normalizedX = (event.clientX - bounds.left) / Math.max(1, bounds.width);
-    const region = Math.max(0, Math.min(count - 1, Math.floor(normalizedX * count)));
-    if (selectedRegions[selected] !== region) { selectedRegions[selected] = region; render(); }
-    const crop = selectedCrop();
-    if (!crop) return;
-    event.preventDefault();
-    const focusX = normalizedX * count - region;
-    const focusY = (event.clientY - bounds.top) / Math.max(1, bounds.height);
-    zoomCoverCrop(crop, crop.zoom * Math.exp(-event.deltaY * 0.0015),
-      EQUIPMENT_CROP_MAX_ZOOM, 1 / count, 1, focusX, focusY);
-    drawDraft();
-  }, { passive: false });
-  edgeColor.oninput = () => { colorDirty = true; };
+  preview.addEventListener(
+    'wheel',
+    event => {
+      if (gearStates[selected].selected !== DRAFT) return;
+      const bounds = preview.getBoundingClientRect();
+      const count = equipmentRegionCount(selected);
+      const normalizedX = (event.clientX - bounds.left) / Math.max(1, bounds.width);
+      const region = Math.max(0, Math.min(count - 1, Math.floor(normalizedX * count)));
+      if (selectedRegions[selected] !== region) {
+        selectedRegions[selected] = region;
+        render();
+      }
+      const crop = selectedCrop();
+      if (!crop) return;
+      event.preventDefault();
+      const focusX = normalizedX * count - region;
+      const focusY = (event.clientY - bounds.top) / Math.max(1, bounds.height);
+      zoomCoverCrop(
+        crop,
+        crop.zoom * Math.exp(-event.deltaY * 0.0015),
+        EQUIPMENT_CROP_MAX_ZOOM,
+        1 / count,
+        1,
+        focusX,
+        focusY,
+      );
+      drawDraft();
+    },
+    { passive: false },
+  );
+  edgeColor.oninput = () => {
+    colorDirty = true;
+  };
 
-  void currentAccount().then(async account => {
-    if (disposed) return;
-    if (!('user' in account)) {
-      setState('This Slopesmith has no accounts, so it has no shared rider equipment profile.');
-      return;
-    }
-    member = account.user;
-    const answer = await fetchJson<{ equipment: EquipmentProfile }>('/api/auth/equipment');
-    for (const gear of ['snowboard', 'skis'] as const) {
-      const library: EquipmentLibrarySummary = answer.equipment[gear];
-      gearStates[gear].designs = library.designs;
-      gearStates[gear].initialSelectedId = library.selectedId;
-      gearStates[gear].selected = library.selectedId ?? null;
-    }
-    edgeColor.value = answer.equipment.edgeColor;
-    edgeColor.disabled = false;
-    render();
-  }).catch(error => setState(error instanceof Error ? error.message : String(error), 'warn'));
+  void currentAccount()
+    .then(async account => {
+      if (disposed) return;
+      if (!('user' in account)) {
+        setState('This Slopesmith has no accounts, so it has no shared rider equipment profile.');
+        return;
+      }
+      member = account.user;
+      const answer = await fetchJson<{ equipment: EquipmentProfile }>('/api/auth/equipment');
+      for (const gear of ['snowboard', 'skis'] as const) {
+        const library: EquipmentLibrarySummary = answer.equipment[gear];
+        gearStates[gear].designs = library.designs;
+        gearStates[gear].initialSelectedId = library.selectedId;
+        gearStates[gear].selected = library.selectedId ?? null;
+      }
+      edgeColor.value = answer.equipment.edgeColor;
+      edgeColor.disabled = false;
+      render();
+    })
+    .catch(error => setState(error instanceof Error ? error.message : String(error), 'warn'));
 
   return {
     el: sec,
@@ -604,14 +711,18 @@ export function buildEquipmentSection(): EquipmentSection {
         const patchFor = async (gear: RideGear) => {
           const gearState = gearStates[gear];
           const base = { deleteIds: [...gearState.deleted] } as {
-            deleteIds: string[]; selectedId?: string | null;
+            deleteIds: string[];
+            selectedId?: string | null;
             create?: { name: string; texture: string };
             update?: { id: string; name: string; texture: string };
           };
           if (gearState.selected === DRAFT) {
             const draft = gearState.draft!;
             const name = draft.name.trim();
-            if (!name) throw new Error(`Name the ${draft.editingId ? 'edited' : 'new'} ${gear === 'snowboard' ? 'snowboard' : 'ski'} design.`);
+            if (!name)
+              throw new Error(
+                `Name the ${draft.editingId ? 'edited' : 'new'} ${gear === 'snowboard' ? 'snowboard' : 'ski'} design.`,
+              );
             const texture = await prepareEquipmentTexture(gear, draft);
             if (draft.editingId) {
               base.update = { id: draft.editingId, name, texture };
@@ -626,7 +737,9 @@ export function buildEquipmentSection(): EquipmentSection {
         if (changed('skis')) body.skis = await patchFor('skis');
         if (colorDirty) body.edgeColor = edgeColor.value;
         const answer = await postJson<{ user: Member; equipment: EquipmentProfile }>(
-          '/api/auth/equipment', JSON.stringify(body));
+          '/api/auth/equipment',
+          JSON.stringify(body),
+        );
         member = answer.user;
         adoptAccount(answer.user);
         for (const gear of ['snowboard', 'skis'] as const) {
@@ -646,12 +759,18 @@ export function buildEquipmentSection(): EquipmentSection {
           discardDraft(gearStates.snowboard.draft);
           discardDraft(gearStates.skis.draft);
         }
-        if (!disposed) { syncControls(); renderRegionLoads(); }
+        if (!disposed) {
+          syncControls();
+          renderRegionLoads();
+        }
       }
     },
     dispose: () => {
       disposed = true;
-      if (saving) { disposeAfterSave = true; return; }
+      if (saving) {
+        disposeAfterSave = true;
+        return;
+      }
       discardDraft(gearStates.snowboard.draft);
       discardDraft(gearStates.skis.draft);
     },

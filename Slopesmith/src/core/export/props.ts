@@ -6,8 +6,13 @@ import { railHasTube, railTubeTexture, type RailSkins } from '../rails/rails';
 import { effectTriggerWorldSize, isEffectTriggerProp } from '../effects/trigger-volume';
 import { placedPropSolid } from '../props/contact';
 import { placementQuat, rotateByPlacement } from '../props/pose';
-import { propModelAnimationHasIdentityRoot,
-  type LevelProps, type PropModelAnimation, type PropModelAnimationObject, type PropModelRotation } from '../reference/props';
+import {
+  propModelAnimationHasIdentityRoot,
+  type LevelProps,
+  type PropModelAnimation,
+  type PropModelAnimationObject,
+  type PropModelRotation,
+} from '../reference/props';
 import { safeDataName } from './names';
 import type { MaterialCombiner } from './materials';
 
@@ -46,10 +51,15 @@ export type GeometryLookup = (level: string, model: number) => ModelGeometry | n
  *  (core/lighting/sign-lights deriveSignLight). Null when the model carries no static geometry. */
 export function modelGeometryBox(geom: ModelGeometry | null): LocalBox | null {
   if (!geom) return null;
-  const min: V3 = [Infinity, Infinity, Infinity], max: V3 = [-Infinity, -Infinity, -Infinity];
-  for (const s of geom.subs) for (let k = 0; k < s.positions.length; k += 3) for (let j = 0; j < 3; j++) {
-    const v = s.positions[k + j]; if (v < min[j]) min[j] = v; if (v > max[j]) max[j] = v;
-  }
+  const min: V3 = [Infinity, Infinity, Infinity],
+    max: V3 = [-Infinity, -Infinity, -Infinity];
+  for (const s of geom.subs)
+    for (let k = 0; k < s.positions.length; k += 3)
+      for (let j = 0; j < 3; j++) {
+        const v = s.positions[k + j];
+        if (v < min[j]) min[j] = v;
+        if (v > max[j]) max[j] = v;
+      }
   return Number.isFinite(min[0]) ? { min, max } : null;
 }
 
@@ -61,37 +71,85 @@ export type Mat4 = number[];
 
 /** raw SSX cm → editor metres: the map a placed model's verts already ride under `worldRoot`. Emission
  *  undoes it (`toRaw`), so an identity placement bakes the model verbatim. */
-const RAW_TO_EDITOR: Mat4 = [
-  -0.01, 0, 0, 0,
-  0, 0, -0.01, 0,
-  0, 0.01, 0, 0,
-  0, 0, 0, 1,
-];
+const RAW_TO_EDITOR: Mat4 = [-0.01, 0, 0, 0, 0, 0, -0.01, 0, 0, 0.01, 0, 0, 0, 0, 0, 1];
 
-function composeMat4(px: number, py: number, pz: number,
-                     qx: number, qy: number, qz: number, qw: number,
-                     sx: number, sy: number, sz: number): Mat4 {
-  const x2 = qx + qx, y2 = qy + qy, z2 = qz + qz;
-  const xx = qx * x2, xy = qx * y2, xz = qx * z2;
-  const yy = qy * y2, yz = qy * z2, zz = qz * z2;
-  const wx = qw * x2, wy = qw * y2, wz = qw * z2;
+function composeMat4(
+  px: number,
+  py: number,
+  pz: number,
+  qx: number,
+  qy: number,
+  qz: number,
+  qw: number,
+  sx: number,
+  sy: number,
+  sz: number,
+): Mat4 {
+  const x2 = qx + qx,
+    y2 = qy + qy,
+    z2 = qz + qz;
+  const xx = qx * x2,
+    xy = qx * y2,
+    xz = qx * z2;
+  const yy = qy * y2,
+    yz = qy * z2,
+    zz = qz * z2;
+  const wx = qw * x2,
+    wy = qw * y2,
+    wz = qw * z2;
   return [
-    (1 - (yy + zz)) * sx, (xy + wz) * sx, (xz - wy) * sx, 0,
-    (xy - wz) * sy, (1 - (xx + zz)) * sy, (yz + wx) * sy, 0,
-    (xz + wy) * sz, (yz - wx) * sz, (1 - (xx + yy)) * sz, 0,
-    px, py, pz, 1,
+    (1 - (yy + zz)) * sx,
+    (xy + wz) * sx,
+    (xz - wy) * sx,
+    0,
+    (xy - wz) * sy,
+    (1 - (xx + zz)) * sy,
+    (yz + wx) * sy,
+    0,
+    (xz + wy) * sz,
+    (yz - wx) * sz,
+    (1 - (xx + yy)) * sz,
+    0,
+    px,
+    py,
+    pz,
+    1,
   ];
 }
 
 function multiplyMat4(ae: Mat4, be: Mat4): Mat4 {
-  const a11 = ae[0], a12 = ae[4], a13 = ae[8], a14 = ae[12];
-  const a21 = ae[1], a22 = ae[5], a23 = ae[9], a24 = ae[13];
-  const a31 = ae[2], a32 = ae[6], a33 = ae[10], a34 = ae[14];
-  const a41 = ae[3], a42 = ae[7], a43 = ae[11], a44 = ae[15];
-  const b11 = be[0], b12 = be[4], b13 = be[8], b14 = be[12];
-  const b21 = be[1], b22 = be[5], b23 = be[9], b24 = be[13];
-  const b31 = be[2], b32 = be[6], b33 = be[10], b34 = be[14];
-  const b41 = be[3], b42 = be[7], b43 = be[11], b44 = be[15];
+  const a11 = ae[0],
+    a12 = ae[4],
+    a13 = ae[8],
+    a14 = ae[12];
+  const a21 = ae[1],
+    a22 = ae[5],
+    a23 = ae[9],
+    a24 = ae[13];
+  const a31 = ae[2],
+    a32 = ae[6],
+    a33 = ae[10],
+    a34 = ae[14];
+  const a41 = ae[3],
+    a42 = ae[7],
+    a43 = ae[11],
+    a44 = ae[15];
+  const b11 = be[0],
+    b12 = be[4],
+    b13 = be[8],
+    b14 = be[12];
+  const b21 = be[1],
+    b22 = be[5],
+    b23 = be[9],
+    b24 = be[13];
+  const b31 = be[2],
+    b32 = be[6],
+    b33 = be[10],
+    b34 = be[14];
+  const b41 = be[3],
+    b42 = be[7],
+    b43 = be[11],
+    b44 = be[15];
   const te: Mat4 = new Array(16);
   te[0] = a11 * b11 + a12 * b21 + a13 * b31 + a14 * b41;
   te[4] = a11 * b12 + a12 * b22 + a13 * b32 + a14 * b42;
@@ -119,7 +177,8 @@ export function placementMatrix(p: PlacedProp): Mat4 {
   const [qx, qy, qz, qw] = placementQuat(p);
   return multiplyMat4(
     composeMat4(p.pos[0], p.pos[1], p.pos[2], qx, qy, qz, qw, p.scale, p.scale, p.scale),
-    RAW_TO_EDITOR);
+    RAW_TO_EDITOR,
+  );
 }
 
 /**
@@ -139,10 +198,10 @@ export function rawInstanceQuat(p: PlacedProp): number[] {
  *  baked `v` line takes, shared so a clip pivot cannot land in a different frame from the geometry it turns. */
 function posedRawPoint(pose: Mat4, x: number, y: number, z: number): [number, number, number] {
   const w = 1 / (pose[3] * x + pose[7] * y + pose[11] * z + pose[15]);
-  const vx = (pose[0] * x + pose[4] * y + pose[8] * z + pose[12]) * w;   // → data-editor metres
+  const vx = (pose[0] * x + pose[4] * y + pose[8] * z + pose[12]) * w; // → data-editor metres
   const vy = (pose[1] * x + pose[5] * y + pose[9] * z + pose[13]) * w;
   const vz = (pose[2] * x + pose[6] * y + pose[10] * z + pose[14]) * w;
-  return [-100 * vx, -100 * vz, 100 * vy];                               // toRaw: raw cm
+  return [-100 * vx, -100 * vz, 100 * vy]; // toRaw: raw cm
 }
 
 /**
@@ -153,21 +212,28 @@ function posedRawPoint(pose: Mat4, x: number, y: number, z: number): [number, nu
  * material slot comes from (a source level's MaterialID vs. an imported record's tile ref). Keeping the
  * transform and the index bookkeeping in one place means a fix to either cannot land in just one of them.
  */
-function emitPosedSubs<S extends GeomSub>(lines: string[], group: BakedPropGroup,
-                                          subs: readonly S[], pose: Mat4,
-                                          slotOf: (sub: S) => number, scrollIdx: number | null,
-                                          vBase: number, vtBase: number,
-                                          objectOf?: (sub: S) => number | null): { vBase: number; vtBase: number } {
+function emitPosedSubs<S extends GeomSub>(
+  lines: string[],
+  group: BakedPropGroup,
+  subs: readonly S[],
+  pose: Mat4,
+  slotOf: (sub: S) => number,
+  scrollIdx: number | null,
+  vBase: number,
+  vtBase: number,
+  objectOf?: (sub: S) => number | null,
+): { vBase: number; vtBase: number } {
   for (const sub of subs) {
     const slot = slotOf(sub);
-    const scr = slot >= 0 ? scrollIdx : null;   // an untextured submesh has no tile to scroll
+    const scr = slot >= 0 ? scrollIdx : null; // an untextured submesh has no tile to scroll
     // A model whose geometry MOVES splits into more than one native model object, and which object a
     // submesh belongs to is orthogonal to which material it wears — a spinning fan and the housing around
     // it can share one atlas page. So the object rides its own tag rather than being inferred from the
     // material, in the same `usemtl` dialect the scroll variant already uses.
     const obj = objectOf?.(sub) ?? null;
-    const material = `${slot >= 0 ? `mat_${slot}${scr !== null ? `_scr${scr}` : ''}` : 'mat_untextured'}`
-      + (obj !== null ? `_obj${obj}` : '');
+    const material =
+      `${slot >= 0 ? `mat_${slot}${scr !== null ? `_scr${scr}` : ''}` : 'mat_untextured'}` +
+      (obj !== null ? `_obj${obj}` : '');
     lines.push(`usemtl ${material}`);
     const positions: number[] = [];
     for (let k = 0; k < sub.positions.length; k += 3) {
@@ -177,12 +243,20 @@ function emitPosedSubs<S extends GeomSub>(lines: string[], group: BakedPropGroup
     }
     for (let k = 0; k < sub.uvs.length; k += 2) lines.push(`vt ${sub.uvs[k].toFixed(6)} ${sub.uvs[k + 1].toFixed(6)}`);
     for (let k = 0; k < sub.indices.length; k += 3) {
-      const a = sub.indices[k], b = sub.indices[k + 1], c = sub.indices[k + 2];
-      lines.push(`f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`);
+      const a = sub.indices[k],
+        b = sub.indices[k + 1],
+        c = sub.indices[k + 2];
+      lines.push(
+        `f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`,
+      );
     }
     appendBakedSub(group, {
-      material, slot, object: obj ?? 0, positions,
-      uvs: Array.from(sub.uvs), indices: Array.from(sub.indices),
+      material,
+      slot,
+      object: obj ?? 0,
+      positions,
+      uvs: Array.from(sub.uvs),
+      indices: Array.from(sub.indices),
     });
     vBase += sub.positions.length / 3;
     vtBase += sub.uvs.length / 2;
@@ -222,8 +296,9 @@ export interface BakedPropGroup {
 /** Match native's one draw per (material alias, model object). Several source submeshes may share that draw;
  * append their local pools without welding so authored hard edges and UV seams remain intact. */
 export function appendBakedSub(group: BakedPropGroup, sub: BakedPropSubmesh): void {
-  const target = group.subs.find(item => item.material === sub.material && item.slot === sub.slot
-    && item.object === sub.object);
+  const target = group.subs.find(
+    item => item.material === sub.material && item.slot === sub.slot && item.object === sub.object,
+  );
   if (!target) {
     group.subs.push({ ...sub, positions: [...sub.positions], uvs: [...sub.uvs], indices: [...sub.indices] });
     return;
@@ -295,9 +370,15 @@ export type BakedPropClips = Record<string, BakedPropClip>;
 
 /** Unit quaternion (x, y, z, w) from an orthonormal basis given as `m[column][row]`. */
 function quaternionFromColumns(m: number[][]): number[] {
-  const m11 = m[0][0], m12 = m[1][0], m13 = m[2][0];
-  const m21 = m[0][1], m22 = m[1][1], m23 = m[2][1];
-  const m31 = m[0][2], m32 = m[1][2], m33 = m[2][2];
+  const m11 = m[0][0],
+    m12 = m[1][0],
+    m13 = m[2][0];
+  const m21 = m[0][1],
+    m22 = m[1][1],
+    m23 = m[2][1];
+  const m31 = m[0][2],
+    m32 = m[1][2],
+    m33 = m[2][2];
   const trace = m11 + m22 + m33;
   if (trace > 0) {
     const s = 0.5 / Math.sqrt(trace + 1);
@@ -320,8 +401,9 @@ function quaternionFromColumns(m: number[][]): number[] {
  *  the linear part is always an orthogonal basis times one scale — the shape a native rest matrix holds. */
 export function placementSimilarity(pose: Mat4): BakedPropPose {
   const origin = posedRawPoint(pose, 0, 0, 0);
-  const columns = [posedRawPoint(pose, 1, 0, 0), posedRawPoint(pose, 0, 1, 0), posedRawPoint(pose, 0, 0, 1)]
-    .map(tip => [tip[0] - origin[0], tip[1] - origin[1], tip[2] - origin[2]]);
+  const columns = [posedRawPoint(pose, 1, 0, 0), posedRawPoint(pose, 0, 1, 0), posedRawPoint(pose, 0, 0, 1)].map(
+    tip => [tip[0] - origin[0], tip[1] - origin[1], tip[2] - origin[2]],
+  );
   const scale = Math.hypot(...columns[0]);
   const basis = columns.map(column => {
     const length = Math.hypot(...column) || 1;
@@ -338,14 +420,16 @@ export function placementSimilarity(pose: Mat4): BakedPropPose {
  * gets one prepended and every index — parents and submesh tags alike — shifts with it. That keeps one
  * statement true for the packer whatever the clip came from: object 0 holds the geometry that stays put.
  */
-export function bakedPropClip(animation: PropModelAnimation, pose: Mat4):
-{ clip: BakedPropClip; tagOf: (object: number | undefined) => number } | null {
+export function bakedPropClip(
+  animation: PropModelAnimation,
+  pose: Mat4,
+): { clip: BakedPropClip; tagOf: (object: number | undefined) => number } | null {
   if (!animation.objects.length || !(animation.clipFrames > 0)) return null;
   const identityRoot = propModelAnimationHasIdentityRoot(animation);
   const shift = identityRoot ? 0 : 1;
-  const source: PropModelAnimationObject[] = identityRoot ? animation.objects
-    : [{ parent: -1, restPosition: [0, 0, 0], restRotation: [0, 0, 0, 1], restScale: [1, 1, 1] },
-      ...animation.objects];
+  const source: PropModelAnimationObject[] = identityRoot
+    ? animation.objects
+    : [{ parent: -1, restPosition: [0, 0, 0], restRotation: [0, 0, 0, 1], restScale: [1, 1, 1] }, ...animation.objects];
   const objects: BakedPropClipObject[] = source.map((object, index) => {
     const moving = object.channels?.some(curve => !!curve?.length) ?? false;
     return {
@@ -355,16 +439,18 @@ export function bakedPropClip(animation: PropModelAnimation, pose: Mat4):
       restPosition: [...object.restPosition],
       restRotation: [...object.restRotation],
       restScale: [...object.restScale],
-      ...(moving ? {
-        basePosition: [...(object.basePosition ?? object.restPosition)],
-        ...(object.baseEuler ? { baseEuler: [...object.baseEuler] } : {}),
-        channels: object.channels!.map(curve => curve?.length ? curve.map(segment => [...segment]) : null),
-      } : {}),
+      ...(moving
+        ? {
+            basePosition: [...(object.basePosition ?? object.restPosition)],
+            ...(object.baseEuler ? { baseEuler: [...object.baseEuler] } : {}),
+            channels: object.channels!.map(curve => (curve?.length ? curve.map(segment => [...segment]) : null)),
+          }
+        : {}),
     };
   });
   return {
     clip: { clipFrames: animation.clipFrames, pose: placementSimilarity(pose), objects },
-    tagOf: object => object === undefined ? 0 : object + shift,
+    tagOf: object => (object === undefined ? 0 : object + shift),
   };
 }
 
@@ -386,10 +472,14 @@ export function bakedPropClip(animation: PropModelAnimation, pose: Mat4):
  * A scrolled prop's textured submeshes emit the shipped levels' scroll-variant tag (`mat_<id>_scr<k>`), the
  * dialect MaterialBundle already resolves into a per-material scroll speed (docs/008).
  */
-export function bakePlacedProps(props: readonly (PlacedProp & { memberKey?: string })[], geometryOf: GeometryLookup,
-                                combiner: MaterialCombiner, vertexOffset = 0, uvOffset = 0,
-                                scrollIndexOf?: (prop: PlacedProp) => number | null):
-                                { obj: string; bakedGroups: BakedGroups; groups: BakedPropGroup[]; propClips: BakedPropClips } {
+export function bakePlacedProps(
+  props: readonly (PlacedProp & { memberKey?: string })[],
+  geometryOf: GeometryLookup,
+  combiner: MaterialCombiner,
+  vertexOffset = 0,
+  uvOffset = 0,
+  scrollIndexOf?: (prop: PlacedProp) => number | null,
+): { obj: string; bakedGroups: BakedGroups; groups: BakedPropGroup[]; propClips: BakedPropClips } {
   const bakedGroups: BakedGroups = {};
   const groups: BakedPropGroup[] = [];
   const propClips: BakedPropClips = {};
@@ -417,15 +507,36 @@ export function bakePlacedProps(props: readonly (PlacedProp & { memberKey?: stri
       for (const axis of [0, 1, 2] as const) channels[axis] = compact.translation?.[axis] ?? null;
       if (compact.axis !== undefined) channels[3 + compact.axis] = compact.segments ?? null;
     }
-    const animation = mg.animation ?? (compact ? { clipFrames: compact.clipFrames, objects: [{
-      parent: -1, restPosition: [0, 0, 0] as V3, restRotation: [0, 0, 0, 1] as [number, number, number, number],
-      restScale: [1, 1, 1] as V3, baseEuler: [0, 0, 0] as V3, channels,
-    }] } : undefined);
+    const animation =
+      mg.animation ??
+      (compact
+        ? {
+            clipFrames: compact.clipFrames,
+            objects: [
+              {
+                parent: -1,
+                restPosition: [0, 0, 0] as V3,
+                restRotation: [0, 0, 0, 1] as [number, number, number, number],
+                restScale: [1, 1, 1] as V3,
+                baseEuler: [0, 0, 0] as V3,
+                channels,
+              },
+            ],
+          }
+        : undefined);
     const motion = p.specialKind === 'gem' && animation ? bakedPropClip(animation, placementMatrix(p)) : null;
     if (motion && p.id) propClips[p.id] = motion.clip;
-    ({ vBase, vtBase } = emitPosedSubs(lines, group, mg.subs, placementMatrix(p),
-      sub => combiner.resolveSlot(p.level, sub.mat), scrollIndexOf?.(p) ?? null, vBase, vtBase,
-      motion ? sub => motion.tagOf(compact ? 0 : sub.object) : undefined));
+    ({ vBase, vtBase } = emitPosedSubs(
+      lines,
+      group,
+      mg.subs,
+      placementMatrix(p),
+      sub => combiner.resolveSlot(p.level, sub.mat),
+      scrollIndexOf?.(p) ?? null,
+      vBase,
+      vtBase,
+      motion ? sub => motion.tagOf(compact ? 0 : sub.object) : undefined,
+    ));
     if (group.subs.length) groups.push(group);
   });
   if (lines.length <= 1) return { obj: '', bakedGroups, groups, propClips };
@@ -435,8 +546,14 @@ export function bakePlacedProps(props: readonly (PlacedProp & { memberKey?: stri
 /** Bake Effects-authored trigger volumes as centred world-space boxes. Their `EffectTrigger_` group name is
  *  the packer contract: the model supplies the native mode-3 contact bounds, while canonical export keeps its
  *  instance invisible and stamps the attached collision slot through `bakedGroups`. */
-export function bakeEffectTriggerProps(placements: readonly PlacedProp[], vertexOffset = 0): {
-  obj: string; baked: number; bakedGroups: BakedGroups; groups: BakedPropGroup[];
+export function bakeEffectTriggerProps(
+  placements: readonly PlacedProp[],
+  vertexOffset = 0,
+): {
+  obj: string;
+  baked: number;
+  bakedGroups: BakedGroups;
+  groups: BakedPropGroup[];
 } {
   const triggers = placements.filter(isEffectTriggerProp);
   const bakedGroups: BakedGroups = {};
@@ -445,19 +562,33 @@ export function bakeEffectTriggerProps(placements: readonly PlacedProp[], vertex
   const lines = ['# Slopesmith effect trigger volumes'];
   let vBase = vertexOffset;
   const faces = [
-    [0, 2, 1], [0, 3, 2], // -Z
-    [4, 5, 6], [4, 6, 7], // +Z
-    [0, 1, 5], [0, 5, 4], // -Y
-    [3, 7, 6], [3, 6, 2], // +Y
-    [0, 4, 7], [0, 7, 3], // -X
-    [1, 2, 6], [1, 6, 5], // +X
+    [0, 2, 1],
+    [0, 3, 2], // -Z
+    [4, 5, 6],
+    [4, 6, 7], // +Z
+    [0, 1, 5],
+    [0, 5, 4], // -Y
+    [3, 7, 6],
+    [3, 6, 2], // +Y
+    [0, 4, 7],
+    [0, 7, 3], // -X
+    [1, 2, 6],
+    [1, 6, 5], // +X
   ] as const;
   triggers.forEach((prop, index) => {
     const size = effectTriggerWorldSize(prop);
-    const hx = size[0] / 2, hy = size[1] / 2, hz = size[2] / 2;
+    const hx = size[0] / 2,
+      hy = size[1] / 2,
+      hz = size[2] / 2;
     const local: V3[] = [
-      [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
-      [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz],
+      [-hx, -hy, -hz],
+      [hx, -hy, -hz],
+      [hx, hy, -hz],
+      [-hx, hy, -hz],
+      [-hx, -hy, hz],
+      [hx, -hy, hz],
+      [hx, hy, hz],
+      [-hx, hy, hz],
     ];
     const groupName = `EffectTrigger_${index}_${safeDataName(prop.name) || 'Trigger'}`;
     if (prop.id) (bakedGroups[prop.id] ??= []).push(groupName);
@@ -472,9 +603,19 @@ export function bakeEffectTriggerProps(placements: readonly PlacedProp[], vertex
       lines.push(`v ${(-100 * wx).toFixed(3)} ${(-100 * wz).toFixed(3)} ${(100 * wy).toFixed(3)}`);
     }
     for (const [a, b, c] of faces) lines.push(`f ${vBase + a + 1} ${vBase + b + 1} ${vBase + c + 1}`);
-    groups.push({ name: groupName, subs: [{
-      material: 'mat_untextured', slot: -1, object: 0, positions, uvs: [], indices: faces.flat(),
-    }] });
+    groups.push({
+      name: groupName,
+      subs: [
+        {
+          material: 'mat_untextured',
+          slot: -1,
+          object: 0,
+          positions,
+          uvs: [],
+          indices: faces.flat(),
+        },
+      ],
+    });
     vBase += 8;
   });
   return { obj: '\n' + lines.join('\n') + '\n', baked: triggers.length, bakedGroups, groups };
@@ -489,25 +630,34 @@ export function bakeEffectTriggerProps(placements: readonly PlacedProp[], vertex
  * scrolled reference-prop placement. Geometry: editor w = pos + R(scale·(v − anchor)), emitted raw like
  * every other bake; triangles are the same two-per-quad diagonal the viewport instances.
  */
-export function bakeAuthoredModelProps(placements: readonly PlacedProp[], models: readonly AuthoredModel[],
-  vertexOffset: number, uvOffset: number, combiner: MaterialCombiner,
-  scrollIndexOf?: (prop: PlacedProp) => number | null):
-  { obj: string; baked: number; bakedGroups: BakedGroups; groups: BakedPropGroup[]; warnings: string[] } {
+export function bakeAuthoredModelProps(
+  placements: readonly PlacedProp[],
+  models: readonly AuthoredModel[],
+  vertexOffset: number,
+  uvOffset: number,
+  combiner: MaterialCombiner,
+  scrollIndexOf?: (prop: PlacedProp) => number | null,
+): { obj: string; baked: number; bakedGroups: BakedGroups; groups: BakedPropGroup[]; warnings: string[] } {
   const lines: string[] = ['# Slopesmith authored models'];
   const bakedGroups: BakedGroups = {};
   const groups: BakedPropGroup[] = [];
   const warnings: string[] = [];
-  let vBase = vertexOffset, vtBase = uvOffset, baked = 0;
+  let vBase = vertexOffset,
+    vtBase = uvOffset,
+    baked = 0;
   placements.forEach((pp, i) => {
     const model = models.find(m => modelNumber(m.id) === pp.model);
     if (!model?.quads.length) return;
     // Frames go bare because a state list resolves against the bank the tile already named, which is what
     // the combiner queues its copies from.
     const slot = model.texture
-      ? combiner.resolveTileSlot(model.texture,
-        authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)), model.blend === true)
+      ? combiner.resolveTileSlot(
+          model.texture,
+          authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
+          model.blend === true,
+        )
       : -1;
-    const scr = slot >= 0 ? scrollIndexOf?.(pp) ?? null : null;
+    const scr = slot >= 0 ? (scrollIndexOf?.(pp) ?? null) : null;
     // ModelSolid_ opts the placement into a baked collision mesh (the RailSolid_ convention — Snowknife's
     // canonical collision policy keys off the prefix); plain Model_ bakes a ghost.
     const groupName = `${placedPropSolid(pp) ? 'ModelSolid' : 'Model'}_${i}_${safeDataName(model.name) || 'Model'}`;
@@ -516,12 +666,16 @@ export function bakeAuthoredModelProps(placements: readonly PlacedProp[], models
     const material = slot >= 0 ? `mat_${slot}${scr !== null ? `_scr${scr}` : ''}` : 'mat_untextured';
     lines.push(`usemtl ${material}`);
     const group: BakedPropGroup = { name: groupName, subs: [] };
-    const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+    const positions: number[] = [],
+      uvs: number[] = [],
+      indices: number[] = [];
     // Net face normal in raw space, accumulated over the emitted triangles: the PS2 lights props with
     // per-instance directional keys clamped against the mesh normal, so a sheet whose parametric front
     // (∂u×∂v — the ridable side, the side the bake winds toward) faces DOWN renders ambient-only (near
     // black). The double-sided viewport hides that; warn here where the consequence starts.
-    let nnx = 0, nny = 0, nnz = 0;
+    let nnx = 0,
+      nny = 0,
+      nnz = 0;
     const world = (vid: number): [number, number, number] => {
       const local: V3 = [
         (model.vertices[vid * 3] - model.anchor[0]) * pp.scale,
@@ -547,22 +701,33 @@ export function bakeAuthoredModelProps(placements: readonly PlacedProp[], models
       const f = (a: number, b: number, c: number) => {
         const base = positions.length / 3 - corners;
         indices.push(base + a, base + b, base + c);
-        lines.push(`f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`);
+        lines.push(
+          `f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`,
+        );
         const [A, B, C] = [raw[a], raw[b], raw[c]];
         const [ux, uy, uz] = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
         const [wx, wy, wz] = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
-        nnx += uy * wz - uz * wy; nny += uz * wx - ux * wz; nnz += ux * wy - uy * wx;
+        nnx += uy * wz - uz * wy;
+        nny += uz * wx - ux * wz;
+        nnz += ux * wy - uy * wx;
       };
-      if (wedge) f(0, 2, 1); else { f(0, 2, 3); f(0, 3, 1); }
-      vBase += corners; vtBase += corners;
+      if (wedge) f(0, 2, 1);
+      else {
+        f(0, 2, 3);
+        f(0, 3, 1);
+      }
+      vBase += corners;
+      vtBase += corners;
     }
     // The game lights a sheet ONCE from its vertex normals and shows that same shading from either side
     // (no cull, no per-side re-light), so down-facing normals mean ambient-only dark from EVERY view.
     const nlen = Math.hypot(nnx, nny, nnz);
     if (nlen > 0 && nnz < -0.5 * nlen)
-      warnings.push(`model "${model.name}" placement ${groupName} bakes mostly FRONT-DOWN (net normal `
-        + `${(nnz / nlen).toFixed(2)} of straight down) — on PS2 it will render near-black (lit by ambient only). `
-        + `If unintended: edit the model, select its patches, and use flip (ridable side reversed), then re-export.`);
+      warnings.push(
+        `model "${model.name}" placement ${groupName} bakes mostly FRONT-DOWN (net normal ` +
+          `${(nnz / nlen).toFixed(2)} of straight down) — on PS2 it will render near-black (lit by ambient only). ` +
+          `If unintended: edit the model, select its patches, and use flip (ridable side reversed), then re-export.`,
+      );
     appendBakedSub(group, { material, slot, object: 0, positions, uvs, indices });
     groups.push(group);
     baked++;
@@ -593,23 +758,40 @@ export function bakeAuthoredModelProps(placements: readonly PlacedProp[], models
  * rather than reusing `Model_`: both bakes number from 0, so sharing a prefix could collide on group names,
  * and those names are the join the ISO packer compiles effect attachments through (docs/026).
  */
-export function bakeImportedProps(placements: readonly PlacedProp[], catalogue: LevelProps,
-  vertexOffset: number, uvOffset: number, combiner: MaterialCombiner,
-  scrollIndexOf?: (prop: PlacedProp) => number | null):
-  { obj: string; baked: number; tris: number; bakedGroups: BakedGroups; propClips: BakedPropClips;
-    groups: BakedPropGroup[]; warnings: string[] } {
+export function bakeImportedProps(
+  placements: readonly PlacedProp[],
+  catalogue: LevelProps,
+  vertexOffset: number,
+  uvOffset: number,
+  combiner: MaterialCombiner,
+  scrollIndexOf?: (prop: PlacedProp) => number | null,
+): {
+  obj: string;
+  baked: number;
+  tris: number;
+  bakedGroups: BakedGroups;
+  propClips: BakedPropClips;
+  groups: BakedPropGroup[];
+  warnings: string[];
+} {
   const lines: string[] = ['# Slopesmith imported models'];
   const bakedGroups: BakedGroups = {};
   const propClips: BakedPropClips = {};
   const groups: BakedPropGroup[] = [];
   const warnings: string[] = [];
-  let vBase = vertexOffset, vtBase = uvOffset, baked = 0, tris = 0;
+  let vBase = vertexOffset,
+    vtBase = uvOffset,
+    baked = 0,
+    tris = 0;
   const missing = new Set<string>();
   placements.forEach((pp, i) => {
     const model = catalogue.models.find(mo => mo.id === pp.model);
     // The record was deleted from the Custom catalogue while its placements stayed in the document. Name it:
     // a prop the user placed and can still see in the editor would otherwise just not be in the level.
-    if (!model?.subs.length) { missing.add(pp.name || `model ${pp.model}`); return; }
+    if (!model?.subs.length) {
+      missing.add(pp.name || `model ${pp.model}`);
+      return;
+    }
     const groupName = `${placedPropSolid(pp) ? 'ImportSolid' : 'Import'}_${i}_${safeDataName(model.name) || 'Import'}`;
     if (pp.id) (bakedGroups[pp.id] ??= []).push(groupName);
     lines.push(`o ${groupName}`);
@@ -621,21 +803,32 @@ export function bakeImportedProps(placements: readonly PlacedProp[], catalogue: 
     // packed instance's frame — and it applies the same change to the clip that it applies to a vertex.
     const motion = model.animation ? bakedPropClip(model.animation, pose) : null;
     if (motion && pp.id) propClips[pp.id] = motion.clip;
-    ({ vBase, vtBase } = emitPosedSubs(lines, group, model.subs, pose,
+    ({ vBase, vtBase } = emitPosedSubs(
+      lines,
+      group,
+      model.subs,
+      pose,
       sub => {
         const material = catalogue.materials.get(sub.mat);
         return material?.tex
-          ? combiner.resolveTileSlot(material.tex, material.frames, material.blend, material.alphaMode) : -1;
-      }, scrollIndexOf?.(pp) ?? null, vBase, vtBase,
-      motion ? sub => motion.tagOf(sub.object) : undefined));
+          ? combiner.resolveTileSlot(material.tex, material.frames, material.blend, material.alphaMode)
+          : -1;
+      },
+      scrollIndexOf?.(pp) ?? null,
+      vBase,
+      vtBase,
+      motion ? sub => motion.tagOf(sub.object) : undefined,
+    ));
     if (group.subs.length) groups.push(group);
     for (const sub of model.subs) tris += sub.indices.length / 3;
     baked++;
   });
   if (missing.size)
-    warnings.push(`${missing.size} imported model(s) placed in the document are no longer in the Custom `
-      + `catalogue (${[...missing].slice(0, 4).join(', ')}${missing.size > 4 ? ', …' : ''}) — their placements `
-      + 'did not bake. Re-import the GLB under the same name to restore them, or delete the placements.');
+    warnings.push(
+      `${missing.size} imported model(s) placed in the document are no longer in the Custom ` +
+        `catalogue (${[...missing].slice(0, 4).join(', ')}${missing.size > 4 ? ', …' : ''}) — their placements ` +
+        'did not bake. Re-import the GLB under the same name to restore them, or delete the placements.',
+    );
   return { obj: baked ? '\n' + lines.join('\n') + '\n' : '', baked, tris, bakedGroups, propClips, groups, warnings };
 }
 
@@ -656,10 +849,13 @@ export function bakeImportedProps(placements: readonly PlacedProp[], catalogue: 
  * points (core/rails/rail-mesh railSupportPosts — the same posts the viewport previews), always packed solid
  * like the shipped levels' rail supports.
  */
-export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOffset: number,
-                              combiner: MaterialCombiner, skins: RailSkins):
-                              { obj: string; tubes: number; posts: number; groups: BakedPropGroup[];
-                                textures: string[]; untextured: number } {
+export function bakeRailTubes(
+  rails: readonly Rail[],
+  vertexOffset: number,
+  uvOffset: number,
+  combiner: MaterialCombiner,
+  skins: RailSkins,
+): { obj: string; tubes: number; posts: number; groups: BakedPropGroup[]; textures: string[]; untextured: number } {
   const none = { obj: '', tubes: 0, posts: 0, groups: [], textures: [], untextured: 0 };
   if (!rails.some(railHasTube)) return none;
   const lines: string[] = ['# Slopesmith rail tubes'];
@@ -676,23 +872,33 @@ export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOf
     if (!swept) return; // a half-drawn rail ships no tube, mirroring its empty spline
     const texture = railTubeTexture(rail, skins);
     const slot = texture ? combiner.resolveTileSlot(texture) : -1; // the combiner dedupes a tile across rails
-    if (slot >= 0) textures.add(texture!); else untextured++;
+    if (slot >= 0) textures.add(texture!);
+    else untextured++;
     const groupName = `${rail.solid ? 'RailSolid' : 'Rail'}_${i}_${safeDataName(rail.name || 'Rail')}`;
     const material = slot >= 0 ? `mat_${slot}` : 'mat_untextured';
     lines.push(`o ${groupName}`);
     lines.push(`usemtl ${material}`);
     const positions: number[] = [];
     for (let k = 0; k < swept.positions.length; k += 3) {
-      const x = swept.positions[k], y = swept.positions[k + 1], z = swept.positions[k + 2];
+      const x = swept.positions[k],
+        y = swept.positions[k + 1],
+        z = swept.positions[k + 2];
       positions.push(-100 * x, -100 * z, 100 * y);
       lines.push(`v ${(-100 * x).toFixed(3)} ${(-100 * z).toFixed(3)} ${(100 * y).toFixed(3)}`); // toRaw: editor m → raw cm
     }
-    groups.push({ name: groupName, subs: [{ material, slot, object: 0, positions,
-      uvs: Array.from(swept.uvs), indices: Array.from(swept.indices) }] });
-    for (let k = 0; k < swept.uvs.length; k += 2) lines.push(`vt ${swept.uvs[k].toFixed(6)} ${swept.uvs[k + 1].toFixed(6)}`);
+    groups.push({
+      name: groupName,
+      subs: [{ material, slot, object: 0, positions, uvs: Array.from(swept.uvs), indices: Array.from(swept.indices) }],
+    });
+    for (let k = 0; k < swept.uvs.length; k += 2)
+      lines.push(`vt ${swept.uvs[k].toFixed(6)} ${swept.uvs[k + 1].toFixed(6)}`);
     for (let k = 0; k < swept.indices.length; k += 3) {
-      const a = swept.indices[k], b = swept.indices[k + 1], c = swept.indices[k + 2];
-      lines.push(`f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`);
+      const a = swept.indices[k],
+        b = swept.indices[k + 1],
+        c = swept.indices[k + 2];
+      lines.push(
+        `f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`,
+      );
     }
     vBase += swept.positions.length / 3;
     vtBase += swept.uvs.length / 2;
@@ -705,14 +911,23 @@ export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOf
         lines.push('usemtl mat_untextured');
         const positions: number[] = [];
         for (let k = 0; k < sp.positions.length; k += 3) {
-          const x = sp.positions[k], y = sp.positions[k + 1], z = sp.positions[k + 2];
+          const x = sp.positions[k],
+            y = sp.positions[k + 1],
+            z = sp.positions[k + 2];
           positions.push(-100 * x, -100 * z, 100 * y);
           lines.push(`v ${(-100 * x).toFixed(3)} ${(-100 * z).toFixed(3)} ${(100 * y).toFixed(3)}`); // toRaw: editor m → raw cm
         }
-        groups.push({ name: supportName, subs: [{ material: 'mat_untextured', slot: -1, object: 0,
-          positions, uvs: [], indices: Array.from(sp.indices) }] });
-        for (let k = 0; k < sp.indices.length; k += 3) { // untextured: position-only faces, like the staging plates
-          lines.push(`f ${vBase + sp.indices[k] + 1} ${vBase + sp.indices[k + 1] + 1} ${vBase + sp.indices[k + 2] + 1}`);
+        groups.push({
+          name: supportName,
+          subs: [
+            { material: 'mat_untextured', slot: -1, object: 0, positions, uvs: [], indices: Array.from(sp.indices) },
+          ],
+        });
+        for (let k = 0; k < sp.indices.length; k += 3) {
+          // untextured: position-only faces, like the staging plates
+          lines.push(
+            `f ${vBase + sp.indices[k] + 1} ${vBase + sp.indices[k + 1] + 1} ${vBase + sp.indices[k + 2] + 1}`,
+          );
         }
         vBase += sp.positions.length / 3;
         posts += rail.nodes.length;
@@ -731,12 +946,16 @@ export function bakeRailTubes(rails: readonly Rail[], vertexOffset: number, uvOf
  * the native-model half of the Gems.json channel (the ISO packer clones the same shipped models; docs/014).
  * Null when the donor carries no gem models (the importer falls back to its synthesized crystal).
  */
-export function bakeGemModels(tiers: readonly { tier: number; model: number }[], level: string,
-                              geometryOf: GeometryLookup, combiner: MaterialCombiner):
-                              { obj: string; tiers: number[] } | null {
+export function bakeGemModels(
+  tiers: readonly { tier: number; model: number }[],
+  level: string,
+  geometryOf: GeometryLookup,
+  combiner: MaterialCombiner,
+): { obj: string; tiers: number[] } | null {
   if (!tiers.length) return null;
   const lines: string[] = ['# Slopesmith gem tier models (model-local raw verts)'];
-  let vBase = 0, vtBase = 0;
+  let vBase = 0,
+    vtBase = 0;
   const baked: number[] = [];
   for (const { tier, model } of [...tiers].sort((a, b) => a.tier - b.tier)) {
     const mg = geometryOf(level, model);
@@ -746,12 +965,19 @@ export function bakeGemModels(tiers: readonly { tier: number; model: number }[],
       const slot = combiner.resolveSlot(level, sub.mat);
       lines.push(`usemtl ${slot >= 0 ? `mat_${slot}` : 'mat_untextured'}`);
       for (let k = 0; k < sub.positions.length; k += 3) {
-        lines.push(`v ${sub.positions[k].toFixed(3)} ${sub.positions[k + 1].toFixed(3)} ${sub.positions[k + 2].toFixed(3)}`);
+        lines.push(
+          `v ${sub.positions[k].toFixed(3)} ${sub.positions[k + 1].toFixed(3)} ${sub.positions[k + 2].toFixed(3)}`,
+        );
       }
-      for (let k = 0; k < sub.uvs.length; k += 2) lines.push(`vt ${sub.uvs[k].toFixed(6)} ${sub.uvs[k + 1].toFixed(6)}`);
+      for (let k = 0; k < sub.uvs.length; k += 2)
+        lines.push(`vt ${sub.uvs[k].toFixed(6)} ${sub.uvs[k + 1].toFixed(6)}`);
       for (let k = 0; k < sub.indices.length; k += 3) {
-        const a = sub.indices[k], b = sub.indices[k + 1], c = sub.indices[k + 2];
-        lines.push(`f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`);
+        const a = sub.indices[k],
+          b = sub.indices[k + 1],
+          c = sub.indices[k + 2];
+        lines.push(
+          `f ${vBase + a + 1}/${vtBase + a + 1} ${vBase + b + 1}/${vtBase + b + 1} ${vBase + c + 1}/${vtBase + c + 1}`,
+        );
       }
       vBase += sub.positions.length / 3;
       vtBase += sub.uvs.length / 2;

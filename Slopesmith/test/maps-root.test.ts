@@ -24,30 +24,41 @@ try {
   mkdirSync(app, { recursive: true });
   const workspace = join(app, 'workspace');
 
-  check(defaultMapsRootFor(app, workspace) === join(repository, 'Maps'),
-    'checkout: the library is the repository’s own Maps/');
+  check(
+    defaultMapsRootFor(app, workspace) === join(repository, 'Maps'),
+    'checkout: the library is the repository’s own Maps/',
+  );
 
   // The whole point: the answer does not change once something has been extracted into it.
   mkdirSync(join(repository, 'Maps', 'GARI'), { recursive: true });
-  check(defaultMapsRootFor(app, workspace) === join(repository, 'Maps'),
-    'checkout: and it was already that before the folder existed');
+  check(
+    defaultMapsRootFor(app, workspace) === join(repository, 'Maps'),
+    'checkout: and it was already that before the folder existed',
+  );
 
   // A standalone clone has no OpenSlope around it, so it owns a library inside its workspace.
   const solo = join(scratch, 'slopesmith-only');
   mkdirSync(solo, { recursive: true });
   const soloWorkspace = join(solo, 'workspace');
-  check(defaultMapsRootFor(solo, soloWorkspace) === join(soloWorkspace, 'maps'),
-    'standalone: the library lives in the workspace');
+  check(
+    defaultMapsRootFor(solo, soloWorkspace) === join(soloWorkspace, 'maps'),
+    'standalone: the library lives in the workspace',
+  );
 
   // A sibling `Maps` alone is not a checkout — somebody else's folder next door must not become the library.
   const bare = join(scratch, 'elsewhere', 'Slopesmith');
   mkdirSync(join(scratch, 'elsewhere', 'Maps'), { recursive: true });
   mkdirSync(bare, { recursive: true });
-  check(defaultMapsRootFor(bare, join(bare, 'workspace')) === join(bare, 'workspace', 'maps'),
-    'standalone: a sibling Maps/ without the checkout is not adopted');
+  check(
+    defaultMapsRootFor(bare, join(bare, 'workspace')) === join(bare, 'workspace', 'maps'),
+    'standalone: a sibling Maps/ without the checkout is not adopted',
+  );
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
 
-if (failures) { console.error(`${failures} check(s) failed`); process.exit(1); }
+if (failures) {
+  console.error(`${failures} check(s) failed`);
+  process.exit(1);
+}
 console.log('maps-root: all checks passed');

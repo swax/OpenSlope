@@ -28,13 +28,19 @@ import { boostVolumeSpec } from '../src/app/viewport/scene/reference-effects';
 import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
 import { buildReferenceMesh, editorFromRaw, referenceSplineIsGrindRail } from '../src/core/reference/terrain';
 import {
-  attachedReferenceInstances, decodeReferenceEffects, referenceInstanceBindings,
+  attachedReferenceInstances,
+  decodeReferenceEffects,
+  referenceInstanceBindings,
 } from '../src/core/reference/effects';
 import { decodeProps, type PropInstance } from '../src/core/reference/props';
 import { readReferenceEffects } from '../src/server/routes/effects';
 import { modelLocalBox, readLevelProps } from '../src/server/routes/props';
 import {
-  readLevelAiPaths, readLevelCourse, readLevelLaps, readLevelPatches, readLevelSplines,
+  readLevelAiPaths,
+  readLevelCourse,
+  readLevelLaps,
+  readLevelPatches,
+  readLevelSplines,
 } from '../src/server/routes/levels';
 
 // ---- arguments ---------------------------------------------------------------------------------------------
@@ -65,7 +71,10 @@ const fixed = (v: THREE.Vector3, n = 1) => `(${v.x.toFixed(n)}, ${v.y.toFixed(n)
 let failures = 0;
 const check = (ok: unknown, label: string, detail = '') => {
   if (ok) console.log(`ok    ${label}${detail ? ` — ${detail}` : ''}`);
-  else { failures++; console.log(`FAIL  ${label}${detail ? ` — ${detail}` : ''}`); }
+  else {
+    failures++;
+    console.log(`FAIL  ${label}${detail ? ` — ${detail}` : ''}`);
+  }
 };
 
 // ---- the world, assembled the way Play assembles it --------------------------------------------------------
@@ -78,11 +87,18 @@ async function referenceColliders(level: string): Promise<RideObstacleSource[]> 
   const boxGeo = new THREE.BoxGeometry(1, 1, 1); // the shared mode-2 unit box; the pose supplies centre + size
   const localBoxCache = new Map<number, THREE.Box3 | null>();
 
-  const worldOf = (inst: PropInstance) => new THREE.Matrix4().multiplyMatrices(FLIP,
-    new THREE.Matrix4().multiplyMatrices(RAW_TO_EDITOR, new THREE.Matrix4().compose(
-      new THREE.Vector3(...inst.loc),
-      new THREE.Quaternion(inst.rot[0], inst.rot[1], inst.rot[2], inst.rot[3]),
-      new THREE.Vector3(...inst.scale))));
+  const worldOf = (inst: PropInstance) =>
+    new THREE.Matrix4().multiplyMatrices(
+      FLIP,
+      new THREE.Matrix4().multiplyMatrices(
+        RAW_TO_EDITOR,
+        new THREE.Matrix4().compose(
+          new THREE.Vector3(...inst.loc),
+          new THREE.Quaternion(inst.rot[0], inst.rot[1], inst.rot[2], inst.rot[3]),
+          new THREE.Vector3(...inst.scale),
+        ),
+      ),
+    );
 
   const collisionGeometry = (id: string) => {
     const cached = geometryCache.get(id);
@@ -103,7 +119,9 @@ async function referenceColliders(level: string): Promise<RideObstacleSource[]> 
     const movable = Number.isFinite(inst.dynamicMass) && inst.dynamicMass > 0;
     const solid = inst.contact === 'solid';
     const common = {
-      key: `reference:${inst.sourceIndex}`, object: { kind: 'reference' as const, index: inst.sourceIndex }, solid,
+      key: `reference:${inst.sourceIndex}`,
+      object: { kind: 'reference' as const, index: inst.sourceIndex },
+      solid,
       bounce: solid ? (inst.bounce >= 0 ? inst.bounce : 0.5) : 0,
       playerBounce: inst.playerBounce,
       surface: solid ? inst.surface : -1,
@@ -121,28 +139,43 @@ async function referenceColliders(level: string): Promise<RideObstacleSource[]> 
     }
     if (inst.shape === 3 && inst.physicsBody >= 0) {
       const spheres = props.physicsBodies?.get(inst.physicsBody);
-      if (spheres?.length) { out.push({ ...common, spheres, matrixWorld: world.clone() }); continue; }
+      if (spheres?.length) {
+        out.push({ ...common, spheres, matrixWorld: world.clone() });
+        continue;
+      }
     }
     if (inst.shape === 2) {
       // The editor unions the RENDERED instance tree's boxes; offline the model's own geometry box stands in.
       // Identical for the single-mesh props that carry mode 2, and it is the box the boost volumes read.
       if (!localBoxCache.has(inst.model)) {
         const lb = await modelLocalBox(level, inst.model);
-        localBoxCache.set(inst.model, lb ? new THREE.Box3(new THREE.Vector3(...lb.min), new THREE.Vector3(...lb.max)) : null);
+        localBoxCache.set(
+          inst.model,
+          lb ? new THREE.Box3(new THREE.Vector3(...lb.min), new THREE.Vector3(...lb.max)) : null,
+        );
       }
       const local = localBoxCache.get(inst.model);
       if (!local) continue;
       const worldBox = local.clone().applyMatrix4(world);
       if (worldBox.isEmpty()) continue;
-      out.push({ ...common, geometry: boxGeo,
-        matrixWorld: new THREE.Matrix4().compose(worldBox.getCenter(new THREE.Vector3()),
-          new THREE.Quaternion(), worldBox.getSize(new THREE.Vector3())) });
+      out.push({
+        ...common,
+        geometry: boxGeo,
+        matrixWorld: new THREE.Matrix4().compose(
+          worldBox.getCenter(new THREE.Vector3()),
+          new THREE.Quaternion(),
+          worldBox.getSize(new THREE.Vector3()),
+        ),
+      });
       continue;
     }
     unhandled++;
   }
-  if (unhandled) console.log(`note: ${unhandled} non-ghost instances carry a shape this runner has no offline`
-    + ' geometry for (the editor takes those from the rendered instance tree)');
+  if (unhandled)
+    console.log(
+      `note: ${unhandled} non-ghost instances carry a shape this runner has no offline` +
+        ' geometry for (the editor takes those from the rendered instance tree)',
+    );
   return out;
 }
 
@@ -151,8 +184,9 @@ async function referenceColliders(level: string): Promise<RideObstacleSource[]> 
  * its MainType-13 RESET volumes — the boundary an author drew around the run, and what carries a rider that
  * left it back onto the course ([Trailmap: 390-pickups-and-race]).
  */
-async function referenceEffectVolumes(level: string):
-Promise<{ boosts: Map<string, BoostVolumeSpec>; resets: Set<string> }> {
+async function referenceEffectVolumes(
+  level: string,
+): Promise<{ boosts: Map<string, BoostVolumeSpec>; resets: Set<string> }> {
   const payload = await readReferenceEffects(level);
   if (payload.error) {
     console.log(`note: no effects for ${level} (${payload.error})`);
@@ -171,11 +205,17 @@ Promise<{ boosts: Map<string, BoostVolumeSpec>; resets: Set<string> }> {
   // for a point.
   const worldPoint = (raw: THREE.Vector3) => raw.clone().applyMatrix4(worldMatrix);
   for (const instance of attachedReferenceInstances(data)) {
-    const hostMatrix = new THREE.Matrix4().multiplyMatrices(FLIP,
-      new THREE.Matrix4().multiplyMatrices(RAW_TO_EDITOR, new THREE.Matrix4().compose(
-        new THREE.Vector3(...instance.loc),
-        new THREE.Quaternion(instance.rot[0], instance.rot[1], instance.rot[2], instance.rot[3]),
-        new THREE.Vector3(...instance.scale))));
+    const hostMatrix = new THREE.Matrix4().multiplyMatrices(
+      FLIP,
+      new THREE.Matrix4().multiplyMatrices(
+        RAW_TO_EDITOR,
+        new THREE.Matrix4().compose(
+          new THREE.Vector3(...instance.loc),
+          new THREE.Quaternion(instance.rot[0], instance.rot[1], instance.rot[2], instance.rot[3]),
+          new THREE.Vector3(...instance.scale),
+        ),
+      ),
+    );
     const hostBasis = new THREE.Matrix3().setFromMatrix4(hostMatrix);
     const hostLocal = (raw: THREE.Vector3) => raw.clone().applyMatrix3(hostBasis);
     for (const binding of referenceInstanceBindings(data, instance)) {
@@ -185,7 +225,10 @@ Promise<{ boosts: Map<string, BoostVolumeSpec>; resets: Set<string> }> {
       }
       for (const node of binding.graph.nodes) {
         const spec = boostVolumeSpec(node, world, hostLocal, worldPoint);
-        if (spec) { specs.set(`reference:${instance.index}`, spec); break; }
+        if (spec) {
+          specs.set(`reference:${instance.index}`, spec);
+          break;
+        }
       }
     }
   }
@@ -205,28 +248,39 @@ async function loadWorld(level: string) {
   terrain.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(terrain);
 
-  const rawPaths = await readLevelAiPaths(level) ?? [];
+  const rawPaths = (await readLevelAiPaths(level)) ?? [];
   const paths: AiPathDef[] = rawPaths.map(p => ({
-    rating: p.rating, respawnable: p.respawnable, markers: p.markers,
+    rating: p.rating,
+    respawnable: p.respawnable,
+    markers: p.markers,
     points: p.points.map(toWorld),
   }));
-  const gates = rawPaths.map((p, i) => (p.start ? i : -1)).filter(i => i >= 0).slice(0, 6);
+  const gates = rawPaths
+    .map((p, i) => (p.start ? i : -1))
+    .filter(i => i >= 0)
+    .slice(0, 6);
   const courseFile = await readLevelCourse(level);
   const obstacles = await referenceColliders(level);
   const effects = await referenceEffectVolumes(level);
   const boostVolumes = buildBoostVolumes(obstacles, effects.boosts);
 
   return {
-    terrain, box, rd, paths, rails: await grindRails(level),
+    terrain,
+    box,
+    rd,
+    paths,
+    rails: await grindRails(level),
     starts: gates.length ? gates : paths.slice(0, 6).map((_p, i) => i),
     course: (courseFile?.points ?? []).map(toWorld),
-    finish: courseFile?.finish && courseFile.finishFwd
-      ? { pos: toWorld(courseFile.finish), fwd: toWorld(courseFile.finishFwd).normalize() }
-      : null,
+    finish:
+      courseFile?.finish && courseFile.finishFwd
+        ? { pos: toWorld(courseFile.finish), fwd: toWorld(courseFile.finishFwd).normalize() }
+        : null,
     laps: await readLevelLaps(level),
-    obstacles, boostVolumes, resetVolumes: effects.resets,
-    surfaceOf: (faceIndex: number): number | null =>
-      rd.patchSurf[Math.floor(faceIndex / rd.facesPerPatch)] ?? null,
+    obstacles,
+    boostVolumes,
+    resetVolumes: effects.resets,
+    surfaceOf: (faceIndex: number): number | null => rd.patchSurf[Math.floor(faceIndex / rd.facesPerPatch)] ?? null,
     patchContact: referencePatchContact(rd) ?? undefined,
     oobFloorY: box.min.y - 100,
   };
@@ -257,8 +311,10 @@ async function grindRails(level: string): Promise<{ net: GrindRails; count: numb
       seat: 0,
       segments: spline.segments
         .filter(seg => seg.length === 4)
-        .map(seg => seg.map(p => toWorld(editorFromRaw(p))) as
-          [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3]),
+        .map(
+          seg =>
+            seg.map(p => toWorld(editorFromRaw(p))) as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3],
+        ),
     }))
     .filter(rail => rail.segments.length > 0);
   return railsIn.length ? { net: createGrindRails(railsIn), count: railsIn.length } : null;
@@ -268,27 +324,39 @@ async function grindRails(level: string): Promise<{ net: GrindRails; count: numb
 
 const built = Date.now();
 const world = await loadWorld(LEVEL);
-console.log(`${LEVEL}: ${world.rd.patchCount} patches, ${world.paths.length} AI paths `
-  + `(${world.starts.length} gates), ${world.obstacles.length} colliders, `
-  + `${world.boostVolumes.length} boost volumes, ${world.resetVolumes.size} reset volumes, `
-  + `${world.rails ? `${world.rails.count} grind rails` : NO_RAILS ? 'grind network OFF' : 'no grind rails'}, `
-  + `${world.laps} lap(s), `
-  + `course ${world.course.length} pts — loaded in ${((Date.now() - built) / 1000).toFixed(1)} s`);
+console.log(
+  `${LEVEL}: ${world.rd.patchCount} patches, ${world.paths.length} AI paths ` +
+    `(${world.starts.length} gates), ${world.obstacles.length} colliders, ` +
+    `${world.boostVolumes.length} boost volumes, ${world.resetVolumes.size} reset volumes, ` +
+    `${world.rails ? `${world.rails.count} grind rails` : NO_RAILS ? 'grind network OFF' : 'no grind rails'}, ` +
+    `${world.laps} lap(s), ` +
+    `course ${world.course.length} pts — loaded in ${((Date.now() - built) / 1000).toFixed(1)} s`,
+);
 if (world.boostVolumes.length) {
   const byKind = new Map<string, number>();
   for (const v of world.boostVolumes) byKind.set(v.spec.kind, (byKind.get(v.spec.kind) ?? 0) + 1);
   console.log(`  volumes: ${[...byKind].map(([k, n]) => `${n}×${k}`).join(', ')}`);
 }
-console.log(`  finish line ${world.finish ? fixed(world.finish.pos) : 'none (falls back to the course tail)'}; `
-  + `course tail ${world.course.length ? fixed(world.course[world.course.length - 1]) : 'n/a'}`);
+console.log(
+  `  finish line ${world.finish ? fixed(world.finish.pos) : 'none (falls back to the course tail)'}; ` +
+    `course tail ${world.course.length ? fixed(world.course[world.course.length - 1]) : 'n/a'}`,
+);
 
 const field = createAiRiders({
-  paths: world.paths, starts: world.starts.slice(0, RIDERS), course: world.course,
-  terrain: world.terrain, scene: new THREE.Group(),
-  surfaceOf: world.surfaceOf, patchContact: world.patchContact, oobFloorY: world.oobFloorY,
-  obstacles: world.obstacles, boostVolumes: world.boostVolumes, resetVolumes: world.resetVolumes,
+  paths: world.paths,
+  starts: world.starts.slice(0, RIDERS),
+  course: world.course,
+  terrain: world.terrain,
+  scene: new THREE.Group(),
+  surfaceOf: world.surfaceOf,
+  patchContact: world.patchContact,
+  oobFloorY: world.oobFloorY,
+  obstacles: world.obstacles,
+  boostVolumes: world.boostVolumes,
+  resetVolumes: world.resetVolumes,
   rails: world.rails?.net,
-  finish: world.finish, laps: world.laps,
+  finish: world.finish,
+  laps: world.laps,
   maxRiders: RIDERS,
   onLap: (slot, remaining) => console.log(`  [lap]  rider ${slot} crossed the finish — ${remaining} pass(es) left`),
 });
@@ -299,7 +367,8 @@ const seen = Array.from({ length: field.count }, () => ({
   pathsVisited: new Set<number>(),
   volumeTicks: new Map<string, number>(),
   firstVolumeAt: new Map<string, number>(),
-  maxY: -Infinity, minY: Infinity,
+  maxY: -Infinity,
+  minY: Infinity,
   travelled: 0,
   resets: 0,
   laps: 1,
@@ -310,12 +379,15 @@ const volumeLabel = (v: BoostVolume) => `${v.spec.kind}:${v.key}`;
 
 /** World AABBs of the prop colliders, for `--watch`: a rider that has stopped moving with a solid box around
  *  its ears is wedged on the level, which is a different fault from one that has simply lost its line. */
-const colliderBoxes = WATCH >= 0 ? world.obstacles.flatMap(source => {
-  if (!source.geometry) return [];
-  source.geometry.computeBoundingBox();
-  const box = source.geometry.boundingBox?.clone().applyMatrix4(source.matrixWorld);
-  return box ? [{ key: source.key, solid: source.solid, box }] : [];
-}) : [];
+const colliderBoxes =
+  WATCH >= 0
+    ? world.obstacles.flatMap(source => {
+        if (!source.geometry) return [];
+        source.geometry.computeBoundingBox();
+        const box = source.geometry.boundingBox?.clone().applyMatrix4(source.matrixWorld);
+        return box ? [{ key: source.key, solid: source.solid, box }] : [];
+      })
+    : [];
 
 const start = field.probe();
 for (let i = 0; i < start.length; i++) seen[i].last.copy(start[i].pos);
@@ -326,7 +398,8 @@ for (let t = 0; t < SECONDS; t += H) {
   field.step(H);
   const probe = field.probe();
   for (let i = 0; i < probe.length; i++) {
-    const r = probe[i], s = seen[i];
+    const r = probe[i],
+      s = seen[i];
     s.pathsVisited.add(r.path);
     s.travelled += r.pos.distanceTo(s.last);
     s.last.copy(r.pos);
@@ -350,21 +423,28 @@ for (let t = 0; t < SECONDS; t += H) {
   }
   if (TRACE && t >= traceNext) {
     traceNext = t + 5;
-    console.log(`  t=${t.toFixed(0).padStart(4)}s ` + probe.map((r, i) =>
-      `#${i} p${r.path} y${r.pos.y.toFixed(0)} v${r.speed.toFixed(0)} lap${r.lap} ${r.state}`).join('  '));
+    console.log(
+      `  t=${t.toFixed(0).padStart(4)}s ` +
+        probe
+          .map((r, i) => `#${i} p${r.path} y${r.pos.y.toFixed(0)} v${r.speed.toFixed(0)} lap${r.lap} ${r.state}`)
+          .join('  '),
+    );
   }
   // `--watch N [from] [ticks]`: one rider, every tick, with the volumes actually containing it. This is what
   // tells a stall apart from a bounce — a rider pinned on geometry reads `grounded` with the lift still acting.
   if (WATCH >= 0 && WATCH < probe.length && t >= WATCH_FROM && watched++ < WATCH_TICKS) {
     const r = probe[WATCH];
     const inside = world.boostVolumes.filter(v => v.box.containsPoint(r.pos)).map(volumeLabel);
-    const near = colliderBoxes.filter(c => c.box.distanceToPoint(r.pos) < 1.5)
+    const near = colliderBoxes
+      .filter(c => c.box.distanceToPoint(r.pos) < 1.5)
       .map(c => `${c.key}${c.solid ? '' : '~'}`);
-    console.log(`  t=${t.toFixed(2)} #${WATCH} ${fixed(r.pos, 2)} vy=${r.velY.toFixed(2)} `
-      + `|v|=${r.speed.toFixed(2)} ${r.grounded ? 'GROUND' : 'air'} air=${r.airTime.toFixed(2)} `
-      + `p${r.path}@${((100 * r.arc) / r.total).toFixed(0)}% perp=${r.perp.toFixed(1)} `
-      + `stick=${r.stick.toFixed(2)} ${r.state}${inside.length ? ` in[${inside.join(' ')}]` : ''}`
-      + `${near.length ? ` near[${near.join(' ')}]` : ''}`);
+    console.log(
+      `  t=${t.toFixed(2)} #${WATCH} ${fixed(r.pos, 2)} vy=${r.velY.toFixed(2)} ` +
+        `|v|=${r.speed.toFixed(2)} ${r.grounded ? 'GROUND' : 'air'} air=${r.airTime.toFixed(2)} ` +
+        `p${r.path}@${((100 * r.arc) / r.total).toFixed(0)}% perp=${r.perp.toFixed(1)} ` +
+        `stick=${r.stick.toFixed(2)} ${r.state}${inside.length ? ` in[${inside.join(' ')}]` : ''}` +
+        `${near.length ? ` near[${near.join(' ')}]` : ''}`,
+    );
   }
 }
 console.log(`…stepped ${(SECONDS / H).toFixed(0)} ticks in ${((Date.now() - ran) / 1000).toFixed(1)} s wall clock`);
@@ -373,11 +453,14 @@ console.log(`…stepped ${(SECONDS / H).toFixed(0)} ticks in ${((Date.now() - ra
 const final = field.probe();
 console.log('');
 for (let i = 0; i < final.length; i++) {
-  const r = final[i], s = seen[i];
-  console.log(`rider ${i}: lap ${r.lap}/${world.laps}${r.finished ? ' FINISHED' : ''}, `
-    + `${s.travelled.toFixed(0)} m ridden, y ${s.minY.toFixed(0)}…${s.maxY.toFixed(0)}, `
-    + `${s.pathsVisited.size} paths, ${s.resets} resets, now ${fixed(r.pos)} on path ${r.path} `
-    + `(${((100 * r.arc) / r.total).toFixed(0)}% of it) at ${r.speed.toFixed(1)} m/s`);
+  const r = final[i],
+    s = seen[i];
+  console.log(
+    `rider ${i}: lap ${r.lap}/${world.laps}${r.finished ? ' FINISHED' : ''}, ` +
+      `${s.travelled.toFixed(0)} m ridden, y ${s.minY.toFixed(0)}…${s.maxY.toFixed(0)}, ` +
+      `${s.pathsVisited.size} paths, ${s.resets} resets, now ${fixed(r.pos)} on path ${r.path} ` +
+      `(${((100 * r.arc) / r.total).toFixed(0)}% of it) at ${r.speed.toFixed(1)} m/s`,
+  );
   const volumes = [...s.volumeTicks].sort((a, b) => b[1] - a[1]);
   if (volumes.length) console.log(`         boost volumes: ${volumes.map(([k, n]) => `${k}×${n}t`).join(', ')}`);
   else console.log('         boost volumes: none entered');
@@ -390,19 +473,23 @@ const bestLap = Math.max(...final.map(r => r.lap));
 
 if (ASSERT) {
   console.log('');
-  check(world.boostVolumes.length > 0, 'the level resolves boost volumes at all',
-    `${world.boostVolumes.length} built`);
+  check(world.boostVolumes.length > 0, 'the level resolves boost volumes at all', `${world.boostVolumes.length} built`);
   if (lapGated.length) {
-    check(enteredLapGate > 0, 'a rider reaches the lap-gated volume',
-      `${enteredLapGate}/${final.length} riders entered it`);
+    check(
+      enteredLapGate > 0,
+      'a rider reaches the lap-gated volume',
+      `${enteredLapGate}/${final.length} riders entered it`,
+    );
     check(bestLap > 1, 'the field starts a second lap', `best lap reached: ${bestLap} of ${world.laps}`);
   }
   if (world.laps > 1) {
-    check(finishedAll > 0, `a rider completes all ${world.laps} laps`,
-      `${finishedAll}/${final.length} finished`);
+    check(finishedAll > 0, `a rider completes all ${world.laps} laps`, `${finishedAll}/${final.length} finished`);
   }
-  check(final.every(r => r.speed > 0.5 || r.finished), 'nobody is stationary at the end',
-    final.map(r => r.speed.toFixed(1)).join(' / '));
+  check(
+    final.every(r => r.speed > 0.5 || r.finished),
+    'nobody is stationary at the end',
+    final.map(r => r.speed.toFixed(1)).join(' / '),
+  );
   console.log(failures ? `\nAI COURSE RUN: ${failures} FAILED` : '\nAI COURSE RUN: PASS');
 }
 process.exit(ASSERT && failures ? 1 : 0);

@@ -30,7 +30,11 @@ import { pathExists } from '../src/server/fs-async';
 import { listLevels, readLevelOrigin } from '../src/server/routes/levels';
 import { forgetWorkspaceConfig, mapsRoot } from '../src/server/workspace-config';
 import {
-  MAP_ORIGIN_FILE, MAP_ORIGIN_SCHEMA, UNIDENTIFIED_FOLDER_REASON, normalizeMapOrigin, retailExtractOrigin,
+  MAP_ORIGIN_FILE,
+  MAP_ORIGIN_SCHEMA,
+  UNIDENTIFIED_FOLDER_REASON,
+  normalizeMapOrigin,
+  retailExtractOrigin,
   type MapOriginRecord,
 } from '../src/core/export/origin';
 
@@ -67,9 +71,8 @@ const EXTRACT_MARKERS = ['SSFLogic.json', 'ConfigTricky.ssx'];
  * form — they prove an extraction happened without naming it, and there the folder name is the best available
  * slot, which is exactly the assumption every other part of the pipeline already makes about a map folder.
  */
-async function extractionEvidence(dir: string, level: string):
-Promise<{ course: string; how: string } | null> {
-  const world = await readJson(join(dir, 'World.json')) as { Course?: unknown } | null;
+async function extractionEvidence(dir: string, level: string): Promise<{ course: string; how: string } | null> {
+  const world = (await readJson(join(dir, 'World.json'))) as { Course?: unknown } | null;
   if (typeof world?.Course === 'string' && world.Course.trim()) {
     return { course: world.Course.trim(), how: 'World.json' };
   }
@@ -102,21 +105,29 @@ async function planRoot(root: string): Promise<Planned[]> {
     }
     const proof = await extractionEvidence(dir, level);
     planned.push({
-      level, existing,
+      level,
+      existing,
       evidence: proof?.how ?? 'nothing identifying',
-      record: proof ? retailExtractOrigin(proof.course) : {
-        Schema: MAP_ORIGIN_SCHEMA, Origin: 'retail', RetailData: true,
-        Reasons: [UNIDENTIFIED_FOLDER_REASON],
-      },
+      record: proof
+        ? retailExtractOrigin(proof.course)
+        : {
+            Schema: MAP_ORIGIN_SCHEMA,
+            Origin: 'retail',
+            RetailData: true,
+            Reasons: [UNIDENTIFIED_FOLDER_REASON],
+          },
     });
   }
   return planned;
 }
 
 async function readJson(path: string): Promise<unknown> {
-  if (!await pathExists(path)) return null;
-  try { return JSON.parse(await readFile(path, 'utf8')); }
-  catch { return null; }
+  if (!(await pathExists(path))) return null;
+  try {
+    return JSON.parse(await readFile(path, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 /** One line per folder: what it was found to be, what settled it, and what is happening to it. */
@@ -135,7 +146,7 @@ let kept = 0;
 let retail = 0;
 const unidentified: string[] = [];
 for (const root of roots) {
-  if (!await pathExists(root)) {
+  if (!(await pathExists(root))) {
     console.log(`\n${root}\n  (no such folder — skipped)`);
     continue;
   }
@@ -151,10 +162,12 @@ for (const root of roots) {
     console.log(describe(item));
     if (item.record.RetailData) retail++;
     if (item.record.Reasons.includes(UNIDENTIFIED_FOLDER_REASON)) unidentified.push(`${root} → ${item.level}`);
-    if (item.existing && !FORCE) { kept++; continue; }
+    if (item.existing && !FORCE) {
+      kept++;
+      continue;
+    }
     if (!DRY) {
-      await writeFile(join(root, item.level, MAP_ORIGIN_FILE),
-        JSON.stringify(item.record, null, 2) + '\n', 'utf8');
+      await writeFile(join(root, item.level, MAP_ORIGIN_FILE), JSON.stringify(item.record, null, 2) + '\n', 'utf8');
     }
     written++;
   }
@@ -163,9 +176,11 @@ for (const root of roots) {
 console.log(`\n${DRY ? 'would write' : 'wrote'} ${written}, kept ${kept} existing record(s).`);
 console.log(`${retail} folder(s) carry retail data.`);
 if (unidentified.length) {
-  console.log(`\n${unidentified.length} folder(s) offered nothing to identify them — no export manifest and no`
-    + ' trace of a BIG unpack. They are recorded as retail-because-unknown rather than as extracts, which is'
-    + ' what they already read as. Re-export one to replace the record with its real answer:');
+  console.log(
+    `\n${unidentified.length} folder(s) offered nothing to identify them — no export manifest and no` +
+      ' trace of a BIG unpack. They are recorded as retail-because-unknown rather than as extracts, which is' +
+      ' what they already read as. Re-export one to replace the record with its real answer:',
+  );
   for (const entry of unidentified) console.log(`  ${entry}`);
 }
 if (DRY) console.log('\n(dry run — nothing was written; re-run without --dry-run to apply)');

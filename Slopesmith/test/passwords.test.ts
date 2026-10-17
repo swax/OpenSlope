@@ -6,8 +6,10 @@ import { assertUsablePassword, hashPassword, verifyPassword } from '../src/serve
 
 const valid = 'a'.repeat(MIN_PASSWORD_LENGTH);
 
-assert.throws(() => assertUsablePassword('a'.repeat(MIN_PASSWORD_LENGTH - 1)),
-  new RegExp(`at least ${MIN_PASSWORD_LENGTH} characters`));
+assert.throws(
+  () => assertUsablePassword('a'.repeat(MIN_PASSWORD_LENGTH - 1)),
+  new RegExp(`at least ${MIN_PASSWORD_LENGTH} characters`),
+);
 assert.doesNotThrow(() => assertUsablePassword(valid));
 
 const stored = await hashPassword(valid);

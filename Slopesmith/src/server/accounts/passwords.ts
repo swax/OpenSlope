@@ -13,7 +13,11 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../core/accounts/pa
  * everyone out of the record they already have.
  */
 
-interface ScryptCost { N: number; r: number; p: number }
+interface ScryptCost {
+  N: number;
+  r: number;
+  p: number;
+}
 
 /**
  * 2^15 rounds at r=8, p=1 — about 32 MB and a tenth of a second per attempt on an ordinary desktop.
@@ -40,8 +44,9 @@ export function assertUsablePassword(password: unknown): asserts password is str
 function derive(password: string, salt: Buffer, cost: ScryptCost): Promise<Buffer> {
   return new Promise((ok, fail) => {
     // NFKC so a password typed on a keyboard that composes accents differently still matches the one enrolled.
-    scrypt(password.normalize('NFKC'), salt, KEY_LENGTH, { ...cost, maxmem: maxmem(cost) },
-      (error, key) => error ? fail(error) : ok(key));
+    scrypt(password.normalize('NFKC'), salt, KEY_LENGTH, { ...cost, maxmem: maxmem(cost) }, (error, key) =>
+      error ? fail(error) : ok(key),
+    );
   });
 }
 
@@ -71,7 +76,9 @@ export async function verifyPassword(password: string, stored: string | undefine
   if (expected.length !== KEY_LENGTH) return false;
   try {
     return timingSafeEqual(await derive(password, Buffer.from(salt, 'base64'), cost), expected);
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 /** A password the CLI hands out on a reset: 16 urlsafe characters, which nobody is expected to remember past

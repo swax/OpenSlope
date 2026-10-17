@@ -15,8 +15,13 @@ export { safeDataName as safeMapName } from '../core/export/names';
 export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const result: R[] = new Array(items.length);
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(items.length, limit) }, async () => {
-    while (next < items.length) { const index = next++; result[index] = await fn(items[index]); }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(items.length, limit) }, async () => {
+      while (next < items.length) {
+        const index = next++;
+        result[index] = await fn(items[index]);
+      }
+    }),
+  );
   return result;
 }

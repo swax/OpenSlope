@@ -8,17 +8,18 @@ const RESOLVED_NOTICE_ID = `\0${VIRTUAL_NOTICE_ID}`;
 const POLICY_LINE = /^\s*npm-(runtime-browser|runtime-server|development-only):\s+(\S+)\s+—\s+(.+?)\s*$/;
 const LEGAL_FILE = /^(?:licen[cs]e|notice|copying)(?:\..*)?$/i;
 
-const posix = (value) => value.replaceAll('\\', '/');
-const sorted = (values) => [...values].sort((a, b) => a.localeCompare(b));
+const posix = value => value.replaceAll('\\', '/');
+const sorted = values => [...values].sort((a, b) => a.localeCompare(b));
 
 function packageNameFromSpecifier(specifier) {
-  if (!specifier || specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('node:')) return null;
+  if (!specifier || specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('node:'))
+    return null;
   const parts = specifier.split('/');
   return parts[0].startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
 function setDifference(left, right) {
-  return sorted([...left].filter((item) => !right.has(item)));
+  return sorted([...left].filter(item => !right.has(item)));
 }
 
 function assertSameSet(label, actual, expected) {
@@ -28,7 +29,9 @@ function assertSameSet(label, actual, expected) {
   const details = [
     missing.length ? `missing: ${missing.join(', ')}` : '',
     extra.length ? `unexpected: ${extra.join(', ')}` : '',
-  ].filter(Boolean).join('; ');
+  ]
+    .filter(Boolean)
+    .join('; ');
   throw new Error(`${label} does not match (${details})`);
 }
 
@@ -51,18 +54,19 @@ export async function readDependencyPolicy(appRoot) {
 
   const runtime = new Set(Object.keys(manifest.dependencies ?? {}));
   const development = new Set(Object.keys(manifest.devDependencies ?? {}));
-  const classifiedRuntime = new Set([
-    ...categories['runtime-browser'].keys(),
-    ...categories['runtime-server'].keys(),
-  ]);
+  const classifiedRuntime = new Set([...categories['runtime-browser'].keys(), ...categories['runtime-server'].keys()]);
   assertSameSet('NOTICE runtime dependency classification', classifiedRuntime, runtime);
-  assertSameSet('NOTICE development-only dependency classification',
-    new Set(categories['development-only'].keys()), development);
+  assertSameSet(
+    'NOTICE development-only dependency classification',
+    new Set(categories['development-only'].keys()),
+    development,
+  );
   const categoryOverlap = setDifference(
     new Set(categories['development-only'].keys()),
-    new Set([...runtime, ...development].filter((name) => development.has(name) && !runtime.has(name))),
+    new Set([...runtime, ...development].filter(name => development.has(name) && !runtime.has(name))),
   );
-  if (categoryOverlap.length) throw new Error(`NOTICE classifies runtime packages as development-only: ${categoryOverlap.join(', ')}`);
+  if (categoryOverlap.length)
+    throw new Error(`NOTICE classifies runtime packages as development-only: ${categoryOverlap.join(', ')}`);
 
   return {
     manifest,
@@ -82,13 +86,17 @@ export function packageRootFromModuleId(moduleId) {
   const prefix = clean.slice(0, at + marker.length);
   const parts = clean.slice(at + marker.length).split('/');
   const count = parts[0]?.startsWith('@') ? 2 : 1;
-  if (parts.length < count || parts.slice(0, count).some((part) => !part)) return null;
+  if (parts.length < count || parts.slice(0, count).some(part => !part)) return null;
   return normalize(prefix + parts.slice(0, count).join('/'));
 }
 
 async function exists(path) {
-  try { await access(path); return true; }
-  catch { return false; }
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function installedRecord(packageRoot, appRoot) {
@@ -96,15 +104,16 @@ async function installedRecord(packageRoot, appRoot) {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   if (!manifest.name || !manifest.version) throw new Error(`installed package lacks name/version: ${manifestPath}`);
   const legalFiles = (await readdir(packageRoot, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && LEGAL_FILE.test(entry.name))
-    .map((entry) => entry.name)
+    .filter(entry => entry.isFile() && LEGAL_FILE.test(entry.name))
+    .map(entry => entry.name)
     .sort((a, b) => a.localeCompare(b));
   return {
     root: packageRoot,
     path: posix(relative(appRoot, packageRoot)),
     name: manifest.name,
     version: manifest.version,
-    license: typeof manifest.license === 'string' ? manifest.license : JSON.stringify(manifest.license ?? 'not declared'),
+    license:
+      typeof manifest.license === 'string' ? manifest.license : JSON.stringify(manifest.license ?? 'not declared'),
     manifest,
     legalFiles,
   };
@@ -112,7 +121,7 @@ async function installedRecord(packageRoot, appRoot) {
 
 export async function recordsFromModuleIds(moduleIds, appRoot) {
   const roots = new Set([...moduleIds].map(packageRootFromModuleId).filter(Boolean));
-  const records = await Promise.all([...roots].map((root) => installedRecord(root, appRoot)));
+  const records = await Promise.all([...roots].map(root => installedRecord(root, appRoot)));
   return records.sort((a, b) => a.path.localeCompare(b.path));
 }
 
@@ -134,8 +143,10 @@ async function recordsFromInventory(appRoot, inventory) {
     }
     const record = await installedRecord(packageRoot, appRoot);
     if (record.path !== expected.path || record.name !== expected.name || record.version !== expected.version) {
-      throw new Error(`installed package drift for ${expected.path}: expected ${expected.name}@${expected.version}, `
-        + `found ${record.name}@${record.version}`);
+      throw new Error(
+        `installed package drift for ${expected.path}: expected ${expected.name}@${expected.version}, ` +
+          `found ${record.name}@${record.version}`,
+      );
     }
     records.push(record);
   }
@@ -150,8 +161,8 @@ function inventoryMismatch(actual, expected) {
   const actualKeys = inventoryKeys(actual);
   const expectedKeys = inventoryKeys(expected);
   return {
-    missing: expected.filter((record) => !actualKeys.has(`${record.path}\0${record.name}\0${record.version}`)),
-    extra: actual.filter((record) => !expectedKeys.has(`${record.path}\0${record.name}\0${record.version}`)),
+    missing: expected.filter(record => !actualKeys.has(`${record.path}\0${record.name}\0${record.version}`)),
+    extra: actual.filter(record => !expectedKeys.has(`${record.path}\0${record.name}\0${record.version}`)),
   };
 }
 
@@ -164,14 +175,22 @@ export async function renderInstalledNotices(records, heading) {
     'The browser build also fails when its direct bundled set drifts from the checked inventory.',
     '',
     'PACKAGES',
-    ...records.map((record) => `- ${record.name}@${record.version} (${record.license})`),
+    ...records.map(record => `- ${record.name}@${record.version} (${record.license})`),
   ];
   for (const record of records) {
-    lines.push('', '='.repeat(80), `${record.name}@${record.version}`, `Installed path: ${record.path}`,
-      `Declared license: ${record.license}`);
+    lines.push(
+      '',
+      '='.repeat(80),
+      `${record.name}@${record.version}`,
+      `Installed path: ${record.path}`,
+      `Declared license: ${record.license}`,
+    );
     if (!record.legalFiles.length) {
-      lines.push('', '[No root LICENSE, NOTICE, or COPYING file is present in this installed package. '
-        + 'Its package.json license metadata is recorded above.]');
+      lines.push(
+        '',
+        '[No root LICENSE, NOTICE, or COPYING file is present in this installed package. ' +
+          'Its package.json license metadata is recorded above.]',
+      );
     }
     for (const filename of record.legalFiles) {
       const body = (await readFile(join(record.root, filename), 'utf8')).trimEnd();
@@ -250,27 +269,36 @@ export function dependencyNoticesPlugin(appRoot) {
   const refreshingInventory = updateInventory || printInventory;
 
   const loadInputs = async () => {
-    if (!loaded) loaded = (async () => {
-      policy = await readDependencyPolicy(appRoot);
-      try {
-        const inventory = JSON.parse(await readFile(inventoryPath, 'utf8'));
-        expectedRecords = await recordsFromInventory(appRoot, inventory);
-      } catch (error) {
-        if (!refreshingInventory) throw error;
-        expectedRecords = [];
-      }
-      const closure = await installedDependencyClosure(appRoot,
-        expectedRecords.map((record) => record.name));
-      report = await renderInstalledNotices(closure,
-        'Slopesmith browser bundle and installed runtime closure — third-party licenses and notices');
-    })();
+    if (!loaded)
+      loaded = (async () => {
+        policy = await readDependencyPolicy(appRoot);
+        try {
+          const inventory = JSON.parse(await readFile(inventoryPath, 'utf8'));
+          expectedRecords = await recordsFromInventory(appRoot, inventory);
+        } catch (error) {
+          if (!refreshingInventory) throw error;
+          expectedRecords = [];
+        }
+        const closure = await installedDependencyClosure(
+          appRoot,
+          expectedRecords.map(record => record.name),
+        );
+        report = await renderInstalledNotices(
+          closure,
+          'Slopesmith browser bundle and installed runtime closure — third-party licenses and notices',
+        );
+      })();
     await loaded;
   };
 
   return {
     name: 'slopesmith-dependency-notices',
-    async buildStart() { await loadInputs(); },
-    resolveId(id) { return id === VIRTUAL_NOTICE_ID ? RESOLVED_NOTICE_ID : null; },
+    async buildStart() {
+      await loadInputs();
+    },
+    resolveId(id) {
+      return id === VIRTUAL_NOTICE_ID ? RESOLVED_NOTICE_ID : null;
+    },
     async load(id) {
       if (id !== RESOLVED_NOTICE_ID) return null;
       await loadInputs();
@@ -279,8 +307,11 @@ export function dependencyNoticesPlugin(appRoot) {
     async generateBundle() {
       await loadInputs();
       const actualRecords = await recordsFromModuleIds(this.getModuleIds(), appRoot);
-      const actualDirect = new Set(actualRecords.map((record) => record.name)
-        .filter((name) => Object.hasOwn(policy.manifest.dependencies ?? {}, name)));
+      const actualDirect = new Set(
+        actualRecords
+          .map(record => record.name)
+          .filter(name => Object.hasOwn(policy.manifest.dependencies ?? {}, name)),
+      );
       assertSameSet('NOTICE browser-bundled dependencies', actualDirect, policy.browser);
 
       const nextInventory = inventoryDocument(actualRecords);
@@ -293,12 +324,16 @@ export function dependencyNoticesPlugin(appRoot) {
 
       const mismatch = inventoryMismatch(actualRecords, expectedRecords);
       if (mismatch.missing.length || mismatch.extra.length) {
-        const describe = (record) => `${record.name}@${record.version} (${record.path})`;
+        const describe = record => `${record.name}@${record.version} (${record.path})`;
         const details = [
           mismatch.missing.length ? `no longer bundled: ${mismatch.missing.map(describe).join(', ')}` : '',
           mismatch.extra.length ? `newly bundled: ${mismatch.extra.map(describe).join(', ')}` : '',
-        ].filter(Boolean).join('; ');
-        this.error(`browser dependency notice inventory drift (${details}). Run npm run notices:inventory, review it, then rebuild.`);
+        ]
+          .filter(Boolean)
+          .join('; ');
+        this.error(
+          `browser dependency notice inventory drift (${details}). Run npm run notices:inventory, review it, then rebuild.`,
+        );
       }
       this.emitFile({ type: 'asset', fileName: BROWSER_NOTICE_ASSET, source: report });
     },

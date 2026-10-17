@@ -1,24 +1,48 @@
 import { responseCache } from '../response-cache';
 import { readAnnouncerIndex, readAnnouncerSound } from '../routes/announcer';
 import {
-  boardSoundSource, listSoundBankLevels, listSoundBanks, readBoardSoundBytes, readBoardSoundIndex,
-  readCourseEffectSoundBytes, readEnvironmentSoundBytes, readSoundIndex,
+  boardSoundSource,
+  listSoundBankLevels,
+  listSoundBanks,
+  readBoardSoundBytes,
+  readBoardSoundIndex,
+  readCourseEffectSoundBytes,
+  readEnvironmentSoundBytes,
+  readSoundIndex,
   readNamedEffectSoundBytes,
 } from '../routes/audio';
 import { allMountainStats, levelCensus } from '../routes/census';
 import { readReferenceEffects } from '../routes/effects';
 import {
-  listLevelOrigins, readLevelAiPaths, readLevelBillboards, readLevelCourse, readLevelLaps, readLevelLightRig,
-  readLevelLights, readLevelWorld, readLevelPatches, readLevelShowoffSeconds, readLevelSplines, readLightmapPng,
+  listLevelOrigins,
+  readLevelAiPaths,
+  readLevelBillboards,
+  readLevelCourse,
+  readLevelLaps,
+  readLevelLightRig,
+  readLevelLights,
+  readLevelWorld,
+  readLevelPatches,
+  readLevelShowoffSeconds,
+  readLevelSplines,
+  readLightmapPng,
 } from '../routes/levels';
 import {
-  readReferenceIntroMusicBytes, readReferenceMusicGraph, readReferenceMusicIndex, readReferenceMusicSampleBytes,
+  readReferenceIntroMusicBytes,
+  readReferenceMusicGraph,
+  readReferenceMusicIndex,
+  readReferenceMusicSampleBytes,
 } from '../routes/reference-music';
 import { referenceTextureRevisions, textureFiles } from '../routes/textures';
 import { listCustomSounds, readCustomSoundBytes, saveCustomSound } from '../routes/sounds';
 import {
-  CUSTOM_ASSET_CACHE_CONTROL, invalidateCensus, invalidateProjectLibrary, readBody, RequestBodyTooLargeError,
-  UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, type ApiHandler,
+  CUSTOM_ASSET_CACHE_CONTROL,
+  invalidateCensus,
+  invalidateProjectLibrary,
+  readBody,
+  RequestBodyTooLargeError,
+  UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+  type ApiHandler,
 } from './common';
 import { projectAssetCacheKey } from '../project-assets';
 
@@ -61,9 +85,11 @@ export const levelRoutes: Record<string, ApiHandler> = {
       // Both entries, not just the one asked for: see `invalidateCensus`. Done before the producer runs, so a
       // request already sharing the old promise is the one being replaced rather than the one replacing it.
       if (refresh) invalidateCensus();
-      await responseCache.json(req, res, level ? `level-census:${level}` : 'level-census', async () => level
-        ? await levelCensus(level, refresh) ?? { error: `no map folder named "${level}"` }
-        : { mountains: await allMountainStats(refresh) });
+      await responseCache.json(req, res, level ? `level-census:${level}` : 'level-census', async () =>
+        level
+          ? ((await levelCensus(level, refresh)) ?? { error: `no map folder named "${level}"` })
+          : { mountains: await allMountainStats(refresh) },
+      );
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -80,16 +106,34 @@ export const levelRoutes: Record<string, ApiHandler> = {
         const patchesPending = readLevelPatches(name);
         const revisionsPending = Promise.all([patchesPending, textureFiles(name)]).then(([{ patches }, files]) =>
           referenceTextureRevisions(name, [
-            ...files, ...patches.flatMap(patch => patch.TexturePath ? [patch.TexturePath] : []),
-          ]));
-        const [patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards,
-          textureRevisions] = await Promise.all([
-          patchesPending, readLevelCourse(name), readLevelLights(name),
-          readLevelSplines(name), readLevelAiPaths(name), readLevelLaps(name), readLevelShowoffSeconds(name),
-          readLevelWorld(name), readLevelBillboards(name), revisionsPending,
-        ]);
+            ...files,
+            ...patches.flatMap(patch => (patch.TexturePath ? [patch.TexturePath] : [])),
+          ]),
+        );
+        const [patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards, textureRevisions] =
+          await Promise.all([
+            patchesPending,
+            readLevelCourse(name),
+            readLevelLights(name),
+            readLevelSplines(name),
+            readLevelAiPaths(name),
+            readLevelLaps(name),
+            readLevelShowoffSeconds(name),
+            readLevelWorld(name),
+            readLevelBillboards(name),
+            revisionsPending,
+          ]);
         return {
-          ...patches, course, light, splines, aiPaths, laps, showoffSeconds, world, billboards, textureRevisions,
+          ...patches,
+          course,
+          light,
+          splines,
+          aiPaths,
+          laps,
+          showoffSeconds,
+          world,
+          billboards,
+          textureRevisions,
         };
       });
     } catch (e) {
@@ -114,13 +158,18 @@ export const levelRoutes: Record<string, ApiHandler> = {
   // GET /api/reference-music?level=<LEVEL> -> playlist summaries; add &song=<ID> for the complete
   // PathFinder graph used by Reference ▸ Sound study and its annotated node diagram.
   '/api/reference-music': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     try {
       const query = new URL(req.url ?? '', 'http://localhost').searchParams;
       const level = query.get('level') ?? '';
       const song = query.get('song');
-      await responseCache.json(req, res, song ? `reference-music:${level}:${song}` : `reference-music:${level}`,
-        () => song ? readReferenceMusicGraph(level, song) : readReferenceMusicIndex(level));
+      await responseCache.json(req, res, song ? `reference-music:${level}:${song}` : `reference-music:${level}`, () =>
+        song ? readReferenceMusicGraph(level, song) : readReferenceMusicIndex(level),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.setHeader('content-type', 'application/json');
@@ -130,14 +179,24 @@ export const levelRoutes: Record<string, ApiHandler> = {
 
   // GET /api/reference-music-sample?level=<LEVEL>&song=<ID>&sample=<one-based MPF id> -> decoded WAV.
   '/api/reference-music-sample': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     try {
       const query = new URL(req.url ?? '', 'http://localhost').searchParams;
       const level = query.get('level') ?? '';
       const song = query.get('song') ?? '';
       const sample = Number(query.get('sample') ?? '0');
-      await responseCache.bytes(req, res, `reference-music-sample:${level}:${song}:${sample}`, 'audio/wav',
-        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readReferenceMusicSampleBytes(level, song, sample));
+      await responseCache.bytes(
+        req,
+        res,
+        `reference-music-sample:${level}:${song}:${sample}`,
+        'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () => readReferenceMusicSampleBytes(level, song, sample),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -146,13 +205,23 @@ export const levelRoutes: Record<string, ApiHandler> = {
 
   // GET /api/reference-intro-music?level=<LEVEL>&stem=<native filename> -> one selected-tier intro WAV.
   '/api/reference-intro-music': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     try {
       const query = new URL(req.url ?? '', 'http://localhost').searchParams;
       const level = query.get('level') ?? '';
       const stem = query.get('stem') ?? '';
-      await responseCache.bytes(req, res, `reference-intro-music:${level}:${stem}`, 'audio/wav',
-        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readReferenceIntroMusicBytes(level, stem));
+      await responseCache.bytes(
+        req,
+        res,
+        `reference-intro-music:${level}:${stem}`,
+        'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () => readReferenceIntroMusicBytes(level, stem),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -169,10 +238,17 @@ export const levelRoutes: Record<string, ApiHandler> = {
       const slot = Number(q.get('slot') ?? '-1');
       const bank = q.get('bank')?.trim() ?? '';
       const loop = q.get('loop') === '1';
-      await responseCache.bytes(req, res, `effect-sound:${level}:${slot}:${bank}:${loop ? 'loop' : 'full'}`,
-        'audio/wav', UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => bank && bank.toLowerCase() !== 'course'
-          ? readNamedEffectSoundBytes(level, slot, bank, loop)
-          : readCourseEffectSoundBytes(level, slot, 'course', loop));
+      await responseCache.bytes(
+        req,
+        res,
+        `effect-sound:${level}:${slot}:${bank}:${loop ? 'loop' : 'full'}`,
+        'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () =>
+          bank && bank.toLowerCase() !== 'course'
+            ? readNamedEffectSoundBytes(level, slot, bank, loop)
+            : readCourseEffectSoundBytes(level, slot, 'course', loop),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -187,8 +263,14 @@ export const levelRoutes: Record<string, ApiHandler> = {
       const bank = q.get('bank')?.trim() ?? '';
       const slot = Number(q.get('slot') ?? '-1');
       const loop = q.get('loop') === '1';
-      await responseCache.bytes(req, res, `environment-sound:${bank}:${slot}:${loop ? 'loop' : 'full'}`,
-        'audio/wav', UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readEnvironmentSoundBytes(bank, slot, loop));
+      await responseCache.bytes(
+        req,
+        res,
+        `environment-sound:${bank}:${slot}:${loop ? 'loop' : 'full'}`,
+        'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () => readEnvironmentSoundBytes(bank, slot, loop),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -201,9 +283,11 @@ export const levelRoutes: Record<string, ApiHandler> = {
   '/api/sound-banks': async (req, res) => {
     try {
       const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level')?.trim() ?? '';
-      await responseCache.json(req, res, `sound-banks:${level}`, async () => level
-        ? { level, banks: await listSoundBanks(level), soundIndex: await readSoundIndex(level) }
-        : { levels: await listSoundBankLevels() });
+      await responseCache.json(req, res, `sound-banks:${level}`, async () =>
+        level
+          ? { level, banks: await listSoundBanks(level), soundIndex: await readSoundIndex(level) }
+          : { levels: await listSoundBankLevels() },
+      );
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -219,10 +303,17 @@ export const levelRoutes: Record<string, ApiHandler> = {
   },
   '/api/announcer-sound': async (req, res) => {
     const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-    const event = q.get('event') ?? '', file = q.get('file') ?? '';
+    const event = q.get('event') ?? '',
+      file = q.get('file') ?? '';
     try {
-      await responseCache.bytes(req, res, `announcer-sound:${event}:${file}`, 'audio/wav',
-        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readAnnouncerSound(event, file));
+      await responseCache.bytes(
+        req,
+        res,
+        `announcer-sound:${event}:${file}`,
+        'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () => readAnnouncerSound(event, file),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(e instanceof Error ? e.message : String(e));
@@ -248,8 +339,14 @@ export const levelRoutes: Record<string, ApiHandler> = {
       const bank = q.get('bank')?.trim() || 'zboard';
       const slot = Number(q.get('slot') ?? '-1');
       const loop = q.get('loop') === '1';
-      await responseCache.bytes(req, res, `board-sound:${bank}:${slot}:${loop}`, 'audio/wav',
-        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readBoardSoundBytes(bank, slot, loop));
+      await responseCache.bytes(
+        req,
+        res,
+        `board-sound:${bank}:${slot}:${loop}`,
+        'audio/wav',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () => readBoardSoundBytes(bank, slot, loop),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -262,8 +359,9 @@ export const levelRoutes: Record<string, ApiHandler> = {
   // name it landed under, which is `<stem>_2.wav` and up when the stem was taken (docs/038).
   '/api/custom-sounds': async (req, res) => {
     try {
-      await responseCache.json(req, res, projectAssetCacheKey('custom-sounds'),
-        async () => ({ sounds: await listCustomSounds() }));
+      await responseCache.json(req, res, projectAssetCacheKey('custom-sounds'), async () => ({
+        sounds: await listCustomSounds(),
+      }));
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -275,9 +373,14 @@ export const levelRoutes: Record<string, ApiHandler> = {
     try {
       const name = new URL(req.url ?? '', 'http://localhost').searchParams.get('name') ?? '';
       // a stored sound's name is its identity — an upload is never written over one, so its bytes cache
-      await responseCache.bytes(req, res, projectAssetCacheKey(`custom-sound:${name}`),
-        'audio/wav', CUSTOM_ASSET_CACHE_CONTROL,
-        () => readCustomSoundBytes(name));
+      await responseCache.bytes(
+        req,
+        res,
+        projectAssetCacheKey(`custom-sound:${name}`),
+        'audio/wav',
+        CUSTOM_ASSET_CACHE_CONTROL,
+        () => readCustomSoundBytes(name),
+      );
     } catch (e) {
       res.statusCode = 404;
       res.end(String(e instanceof Error ? e.message : e));
@@ -285,7 +388,11 @@ export const levelRoutes: Record<string, ApiHandler> = {
   },
 
   '/api/sound-upload': async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
       const name = await saveCustomSound(q.get('name') ?? 'sound', await readBody(req, SOUND_UPLOAD_LIMIT));
@@ -305,8 +412,12 @@ export const levelRoutes: Record<string, ApiHandler> = {
   '/api/lightrig': async (req, res) => {
     try {
       const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level') ?? '';
-      await responseCache.json(req, res, `lightrig:${level}`,
-        async () => await readLevelLightRig(level) ?? { level, lights: [], error: 'no Lights.json' });
+      await responseCache.json(
+        req,
+        res,
+        `lightrig:${level}`,
+        async () => (await readLevelLightRig(level)) ?? { level, lights: [], error: 'no Lights.json' },
+      );
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -320,9 +431,16 @@ export const levelRoutes: Record<string, ApiHandler> = {
   '/api/lightmap': async (req, res) => {
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-      const level = q.get('level') ?? '', id = Number(q.get('id') ?? '0');
-      await responseCache.bytes(req, res, `lightmap:${level}:${id}`, 'image/png',
-        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL, () => readLightmapPng(level, id));
+      const level = q.get('level') ?? '',
+        id = Number(q.get('id') ?? '0');
+      await responseCache.bytes(
+        req,
+        res,
+        `lightmap:${level}:${id}`,
+        'image/png',
+        UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
+        () => readLightmapPng(level, id),
+      );
     } catch (e) {
       const message = String(e instanceof Error ? e.message : e);
       // Only a known absent map is terminal on the client. Import/read/server failures stay retryable.

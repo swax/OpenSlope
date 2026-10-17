@@ -40,23 +40,30 @@ export interface PaintMeshAccess {
 export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
   // the pink tile-orientation F overlay (top-bar toggle, independent of the cage): one group per side,
   // plus the green frame-F groups shown only while the control cage is ALSO on
-  const fGroup = new THREE.Group();         // authored painted cells (worldRoot coords)
-  const refFGroup = new THREE.Group();      // reference patches (refRoot coords)
-  const frameFGroup = new THREE.Group();    // authored green frame Fs (visible = cage on)
+  const fGroup = new THREE.Group(); // authored painted cells (worldRoot coords)
+  const refFGroup = new THREE.Group(); // reference patches (refRoot coords)
+  const frameFGroup = new THREE.Group(); // authored green frame Fs (visible = cage on)
   const refFrameFGroup = new THREE.Group(); // reference green frame Fs (visible = ref cage shown)
   let tileFOn = false;
   // Paint placement mode: the armed brush's tile + orientation, draped over the hovered cell as a translucent
   // ghost showing exactly what a click paints. ← / → turn it a quarter (the host re-arms it). Null = select
   // mode: a click selects the painted cell under the cursor instead (amber outline, see setSelectedPaintCell).
   let paintArm: { ref: TexRef; rot: number; mirror: boolean } | null = null;
-  let paintGhost: THREE.Mesh | null = null;                // the hovered cell's surface, re-UV'd to the brush
-  const paintGhostMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.75, depthWrite: false,
-    side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  let paintGhostCell = -1;                                 // cell the ghost geometry was last built for
-  let paintSelCell: number | null = null;       // selected painted cell = quad id (select mode)
-  let paintMultiSel: number[] = [];              // multi-selection of painted cells = quad ids (host-owned set)
-  const paintSelGroup = new THREE.Group();       // its amber outline, rebuilt with the terrain
-  const refPatchSelGroup = new THREE.Group();    // outline around the selected reference patch (paint select)
+  let paintGhost: THREE.Mesh | null = null; // the hovered cell's surface, re-UV'd to the brush
+  const paintGhostMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0.75,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+  let paintGhostCell = -1; // cell the ghost geometry was last built for
+  let paintSelCell: number | null = null; // selected painted cell = quad id (select mode)
+  let paintMultiSel: number[] = []; // multi-selection of painted cells = quad ids (host-owned set)
+  const paintSelGroup = new THREE.Group(); // its amber outline, rebuilt with the terrain
+  const refPatchSelGroup = new THREE.Group(); // outline around the selected reference patch (paint select)
   let refPatchSel: number | null = null;
 
   /**
@@ -67,7 +74,10 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
    */
   function setPaintBrush(b: { ref: TexRef; rot: number; mirror: boolean } | null) {
     paintArm = b ? { ref: b.ref, rot: b.rot, mirror: b.mirror } : null;
-    if (!b) { if (paintGhost) paintGhost.visible = false; return; }
+    if (!b) {
+      if (paintGhost) paintGhost.visible = false;
+      return;
+    }
     const showing = paintGhost?.visible ? paintGhostCell : -1;
     paintGhostCell = -1; // the cached drape carries the old tile / orientation
     if (showing >= 0) drapePaintGhost(showing);
@@ -78,7 +88,10 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
   function updatePaintGhost(midStroke = false) {
     if (!paintArm) return;
     const c = cellAtPointer(midStroke);
-    if (c === null) { if (paintGhost) paintGhost.visible = false; return; }
+    if (c === null) {
+      if (paintGhost) paintGhost.visible = false;
+      return;
+    }
     drapePaintGhost(c);
   }
 
@@ -86,11 +99,14 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
    *  re-UV'd to the brush's D4 orientation — the preview builder's exact math — and textured with the brush
    *  tile, translucent. A still-loading tile shows as a flat amber drape until it arrives. */
   function drapePaintGhost(index: number) {
-    const pv = mesh.preview(), arm = paintArm;
+    const pv = mesh.preview(),
+      arm = paintArm;
     if (!pv || !arm || index < 0 || index >= pv.cellTex.length) return;
     if (!paintGhost) {
       paintGhost = new THREE.Mesh(new THREE.BufferGeometry(), paintGhostMat);
-      paintGhost.raycast = () => { /* the ghost is never a pick target */ };
+      paintGhost.raycast = () => {
+        /* the ghost is never a pick target */
+      };
       paintGhost.renderOrder = 11;
       stage.worldRoot.add(paintGhost);
     }
@@ -101,7 +117,8 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
       paintGhostMat.needsUpdate = true;
     }
     if (index !== paintGhostCell) {
-      const res = Math.round(Math.sqrt(pv.facesPerCell / 2)), side = res + 1;
+      const res = Math.round(Math.sqrt(pv.facesPerCell / 2)),
+        side = res + 1;
       const base = index * side * side;
       const uvs = new Float32Array(side * side * 2);
       for (let iu = 0; iu < side; iu++) {
@@ -115,7 +132,10 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
       const indices: number[] = [];
       for (let iu = 0; iu < res; iu++) {
         for (let iv = 0; iv < res; iv++) {
-          const a = iu * side + iv, b = a + 1, c = a + side, d = c + 1;
+          const a = iu * side + iv,
+            b = a + 1,
+            c = a + side,
+            d = c + 1;
           indices.push(a, d, c, a, b, d); // the terrain's winding (double-sided anyway)
         }
       }
@@ -136,7 +156,9 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
   }
 
   /** Drop the ghost's cached cell geometry (the terrain rebuilt underneath it); the next hover re-drapes. */
-  function invalidateGhostCell() { paintGhostCell = -1; }
+  function invalidateGhostCell() {
+    paintGhostCell = -1;
+  }
 
   /** Select the painted cell (quad id) shown with the amber outline (paint select mode), or clear with null. */
   function setSelectedPaintCell(quad: number | null) {
@@ -161,10 +183,12 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
    *  the placement offset. Same fat-line style as the authored cell outline. */
   function rebuildRefPatchSel() {
     clearGlyphGroup(refPatchSelGroup);
-    const data = mesh.refData(), j = refPatchSel;
+    const data = mesh.refData(),
+      j = refPatchSel;
     if (j === null || !data || j < 0 || j >= data.patchTex.length) return;
     const res = Math.max(1, Math.round(Math.sqrt(data.facesPerPatch / 2)));
-    const side = res + 1, base = j * side * side;
+    const side = res + 1,
+      base = j * side * side;
     const P = (iu: number, iv: number): [number, number, number] => {
       const p = (base + iu * side + iv) * 3;
       return [data.positions[p], data.positions[p + 1], data.positions[p + 2]];
@@ -181,7 +205,10 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
    *  wins) and tell the host. A reference patch selects read-only (its tile + recovered D4 in the readout);
    *  an untextured patch clears, like an unpainted authored cell. */
   function paintSelectAtPointer(shift = false) {
-    const terrain = mesh.terrain(), reference = mesh.reference(), refData = mesh.refData(), pv = mesh.preview();
+    const terrain = mesh.terrain(),
+      reference = mesh.reference(),
+      refData = mesh.refData(),
+      pv = mesh.preview();
     const targets: THREE.Object3D[] = reference ? [terrain, reference] : [terrain];
     const hit = stage.ray.intersectObjects(targets, false)[0];
     if (hit && reference && hit.object === reference && refData && hit.faceIndex != null) {
@@ -191,8 +218,13 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
       if (name) {
         const uv = rd.patchUV[patch];
         const o = uv ? orientFromPatchUV(uv) : { rot: 0, mirror: false };
-        stage.cb.onSelectRefPatch?.(patch, makeTexRef(mesh.refLevel(), name), o.rot, o.mirror,
-          rd.patchSurf[patch] ?? null);
+        stage.cb.onSelectRefPatch?.(
+          patch,
+          makeTexRef(mesh.refLevel(), name),
+          o.rot,
+          o.mirror,
+          rd.patchSurf[patch] ?? null,
+        );
         return;
       }
     } else if (hit && hit.object === terrain && pv && hit.faceIndex != null) {
@@ -212,7 +244,8 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
   /** Append slot `ci`'s border on the tessellated lattice (it hugs the curved surface) to `arr` as fat-line
    *  segment endpoints — shared by the paint and Edit cell selections. */
   function appendCellOutline(pv: PreviewData, ci: number, arr: number[]) {
-    const res = Math.round(Math.sqrt(pv.facesPerCell / 2)), side = res + 1;
+    const res = Math.round(Math.sqrt(pv.facesPerCell / 2)),
+      side = res + 1;
     if (ci < 0 || ci >= pv.positions.length / 3 / (side * side)) return;
     const base = ci * side * side;
     const P = (iu: number, iv: number): [number, number, number] => {
@@ -253,9 +286,25 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
   }
 
   /** Add one F-overlay line set as FAT lines at the current canvas resolution (see overlays.glyphLines). */
-  function addGlyphLines(group: THREE.Group, arr: number[] | Float32Array, color: number, opacity: number,
-    width = F_LINE_WIDTH, renderOrder = 12, depthTest = true) {
-    glyphLines(group, arr, color, opacity, [stage.container.clientWidth || 1, stage.container.clientHeight || 1], width, renderOrder, depthTest);
+  function addGlyphLines(
+    group: THREE.Group,
+    arr: number[] | Float32Array,
+    color: number,
+    opacity: number,
+    width = F_LINE_WIDTH,
+    renderOrder = 12,
+    depthTest = true,
+  ) {
+    glyphLines(
+      group,
+      arr,
+      color,
+      opacity,
+      [stage.container.clientWidth || 1, stage.container.clientHeight || 1],
+      width,
+      renderOrder,
+      depthTest,
+    );
   }
 
   /** Toggle the pink tile-orientation F overlay on the 3D terrain (authored painted cells + reference
@@ -276,25 +325,40 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
     clearGlyphGroup(frameFGroup);
     const pv = mesh.preview();
     if (!tileFOn || !pv) return;
-    const res = Math.round(Math.sqrt(pv.facesPerCell / 2)), side = res + 1;
-    const artGlyphs: number[] = [], frameGlyphs: number[] = [];
+    const res = Math.round(Math.sqrt(pv.facesPerCell / 2)),
+      side = res + 1;
+    const artGlyphs: number[] = [],
+      frameGlyphs: number[] = [];
     for (let ci = 0; ci < pv.cellTex.length; ci++) {
       if (mesh.quadHidden(ci)) continue;
       const base = ci * side * side;
       const P = (iu: number, iv: number, k: number) => pv.positions[(base + iu * side + iv) * 3 + k];
       const evalW = (u: number, v: number): [number, number, number] => {
-        const fu = Math.min(u, 0.999999) * res, fv = Math.min(v, 0.999999) * res;
-        const iu = Math.floor(fu), iv = Math.floor(fv), au = fu - iu, av = fv - iv;
-        return [0, 1, 2].map(k =>
-          P(iu, iv, k) * (1 - au) * (1 - av) + P(iu, iv + 1, k) * (1 - au) * av
-          + P(iu + 1, iv, k) * au * (1 - av) + P(iu + 1, iv + 1, k) * au * av) as [number, number, number];
+        const fu = Math.min(u, 0.999999) * res,
+          fv = Math.min(v, 0.999999) * res;
+        const iu = Math.floor(fu),
+          iv = Math.floor(fv),
+          au = fu - iu,
+          av = fv - iv;
+        return [0, 1, 2].map(
+          k =>
+            P(iu, iv, k) * (1 - au) * (1 - av) +
+            P(iu, iv + 1, k) * (1 - au) * av +
+            P(iu + 1, iv, k) * au * (1 - av) +
+            P(iu + 1, iv + 1, k) * au * av,
+        ) as [number, number, number];
       };
       const lift: [number, number, number] = [0, 0, 0]; // coincident with the surface; the material's depth bias carries it toward the camera
       appendFrameGlyph(frameGlyphs, evalW, lift);
       if (!pv.cellTex[ci]) continue;
       const o = pv.cellOrient[ci];
-      const t = (u: number, v: number): [number, number] => { const [a, b] = orientUV(u, v, o?.rot ?? 0, o?.mirror ?? false); return [a, -b]; };
-      const tA = t(0, 0), tU = t(1, 0), tV = t(0, 1);
+      const t = (u: number, v: number): [number, number] => {
+        const [a, b] = orientUV(u, v, o?.rot ?? 0, o?.mirror ?? false);
+        return [a, -b];
+      };
+      const tA = t(0, 0),
+        tU = t(1, 0),
+        tV = t(0, 1);
       appendUvGlyph(artGlyphs, tA, [tU[0] - tA[0], tU[1] - tA[1]], [tV[0] - tA[0], tV[1] - tA[1]], evalW, lift);
     }
     if (artGlyphs.length) addGlyphLines(fGroup, artGlyphs, UV_GLYPH_COLOR, 0.95);
@@ -316,29 +380,42 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
     // evaluate on the tessellated surface (like the authored side): the res-4 lattice hugs a convex patch's
     // curve, where the flat corner bilinear would sink below it and let the surface hide the glyph.
     const res = Math.max(1, Math.round(Math.sqrt(data.facesPerPatch / 2)));
-    const side = res + 1, per = side * side;
-    const artGlyphs: number[] = [], frameGlyphs: number[] = [];
+    const side = res + 1,
+      per = side * side;
+    const artGlyphs: number[] = [],
+      frameGlyphs: number[] = [];
     for (let j = 0; j < data.patchCorners.length; j++) {
       const wc = data.patchCorners[j];
       if (!wc || wc.length < 4) continue;
       const base = j * per;
       const P = (iu: number, iv: number, k: number) => data.positions[(base + iu * side + iv) * 3 + k];
       const evalW = (u: number, v: number): [number, number, number] => {
-        const fu = Math.min(u, 0.999999) * res, fv = Math.min(v, 0.999999) * res;
-        const iu = Math.floor(fu), iv = Math.floor(fv), au = fu - iu, av = fv - iv;
-        return [0, 1, 2].map(k =>
-          P(iu, iv, k) * (1 - au) * (1 - av) + P(iu, iv + 1, k) * (1 - au) * av
-          + P(iu + 1, iv, k) * au * (1 - av) + P(iu + 1, iv + 1, k) * au * av) as [number, number, number];
+        const fu = Math.min(u, 0.999999) * res,
+          fv = Math.min(v, 0.999999) * res;
+        const iu = Math.floor(fu),
+          iv = Math.floor(fv),
+          au = fu - iu,
+          av = fv - iv;
+        return [0, 1, 2].map(
+          k =>
+            P(iu, iv, k) * (1 - au) * (1 - av) +
+            P(iu, iv + 1, k) * (1 - au) * av +
+            P(iu + 1, iv, k) * au * (1 - av) +
+            P(iu + 1, iv + 1, k) * au * av,
+        ) as [number, number, number];
       };
       const lift: [number, number, number] = [0, 0, 0]; // coincident with the surface; the material's depth bias carries it toward the camera
       appendFrameGlyph(frameGlyphs, evalW, lift);
       const uv = data.patchUV[j];
       if (!data.patchTex[j] || !uv) continue;
-      appendUvGlyph(artGlyphs,
+      appendUvGlyph(
+        artGlyphs,
         [uv[0][0], uv[0][1]],
         [uv[2][0] - uv[0][0], uv[2][1] - uv[0][1]],
         [uv[1][0] - uv[0][0], uv[1][1] - uv[0][1]],
-        evalW, lift);
+        evalW,
+        lift,
+      );
     }
     if (artGlyphs.length) addGlyphLines(refFGroup, artGlyphs, UV_GLYPH_COLOR, 0.95);
     if (frameGlyphs.length) addGlyphLines(refFrameFGroup, frameGlyphs, FRAME_GLYPH_COLOR, 0.85);
@@ -346,33 +423,52 @@ export function createPaintLayer(stage: Stage, mesh: PaintMeshAccess) {
   }
 
   /** Green frame Fs (built only while the F overlay is on) ride the cage toggle. */
-  function applyCageView() { frameFGroup.visible = mesh.cageOn(); }
+  function applyCageView() {
+    frameFGroup.visible = mesh.cageOn();
+  }
 
   /** Green frame Fs on the reference ride the reference cage's visibility (a reference loaded + cage on). */
-  function applyRefView() { refFrameFGroup.visible = !!mesh.refData() && mesh.cageOn(); }
+  function applyRefView() {
+    refFrameFGroup.visible = !!mesh.refData() && mesh.cageOn();
+  }
 
-  stage.refRoot.add(refFGroup);       // tile-F overlay rides the reference's own frame
-  refFrameFGroup.visible = false;     // green frame Fs follow the reference cage's visibility
+  stage.refRoot.add(refFGroup); // tile-F overlay rides the reference's own frame
+  refFrameFGroup.visible = false; // green frame Fs follow the reference cage's visibility
   stage.refRoot.add(refFrameFGroup);
   stage.refRoot.add(refPatchSelGroup);
-  stage.worldRoot.add(fGroup);        // authored tile-F overlay, data coords like the cage
-  frameFGroup.visible = false;        // green frame Fs follow the cage toggle
+  stage.worldRoot.add(fGroup); // authored tile-F overlay, data coords like the cage
+  frameFGroup.visible = false; // green frame Fs follow the cage toggle
   stage.worldRoot.add(frameFGroup);
   stage.worldRoot.add(paintSelGroup); // selected-cell outline (paint select mode), data coords like the F overlay
 
   return {
     /** The armed brush's tile + D4 orientation, or null = paint select mode. */
-    get paintArm() { return paintArm; },
+    get paintArm() {
+      return paintArm;
+    },
     /** The translucent brush drape over the hovered cell (created on the first drape). */
-    get paintGhost() { return paintGhost; },
+    get paintGhost() {
+      return paintGhost;
+    },
     /** The authored tile-F overlay group (a live reference ride hides it with the other authored objects). */
     fGroup,
     /** The fat-line overlay groups; the shell's resize() feeds their materials the live canvas resolution. */
     fatLineGroups: [fGroup, refFGroup, frameFGroup, refFrameFGroup, paintSelGroup, refPatchSelGroup] as const,
-    setPaintBrush, updatePaintGhost, redrapeGhost, invalidateGhostCell,
-    setSelectedPaintCell, setSelectedPaintCells, setSelectedRefPatch,
-    rebuildPaintSel, paintSelectAtPointer, cellAtPointer,
-    setTileF, rebuildAuthoredF, rebuildRefF, applyCageView, applyRefView,
+    setPaintBrush,
+    updatePaintGhost,
+    redrapeGhost,
+    invalidateGhostCell,
+    setSelectedPaintCell,
+    setSelectedPaintCells,
+    setSelectedRefPatch,
+    rebuildPaintSel,
+    paintSelectAtPointer,
+    cellAtPointer,
+    setTileF,
+    rebuildAuthoredF,
+    rebuildRefF,
+    applyCageView,
+    applyRefView,
   };
 }
 

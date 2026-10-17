@@ -1,47 +1,92 @@
 import * as THREE from 'three';
 import {
-  createBoard, DEFAULT_RIDE_GEAR, DEFAULT_SNOWBOARD_STANCE, type BoardModel, type EquipmentAppearance,
-  type RideGear, type SnowboardStance,
+  createBoard,
+  DEFAULT_RIDE_GEAR,
+  DEFAULT_SNOWBOARD_STANCE,
+  type BoardModel,
+  type EquipmentAppearance,
+  type RideGear,
+  type SnowboardStance,
 } from '../gear';
 import { createRider, type RiderHandTarget } from '../rider';
 import type { CharacterHandCurl } from '../character-rig';
 import type { RideState } from '../physics';
 import {
-  createXrHud, XR_WATCH_POSITION, XR_WATCH_TILT, type XrHudAction, type XrHudCalibration, type XrHudPerf,
+  createXrHud,
+  XR_WATCH_POSITION,
+  XR_WATCH_TILT,
+  type XrHudAction,
+  type XrHudCalibration,
+  type XrHudPerf,
 } from './hud';
 import { createXrEditPalette, type XrEditPalette } from './edit-palette';
 import type { XrPaletteSeat } from './palette-seat';
 import { createXrWorldPointer, type XrWorldPointer, type XrWorldPointerDeps } from './world-pointer';
 import {
-  solveOneHandGrab, solveTwoHandGrab, turnRigAbout, type OneHandGrab, type RigPose, type TwoHandGrab,
+  solveOneHandGrab,
+  solveTwoHandGrab,
+  turnRigAbout,
+  type OneHandGrab,
+  type RigPose,
+  type TwoHandGrab,
 } from './world-grab';
 import { beginHandGrab, handGrabPoint, handTranslateTarget, type GizmoAxis, type HandGrab } from './hand-drag';
 import { installScaledRigCullFix } from './scaled-camera';
 import {
-  createRidePerf, estimatedRidePacingMs, measuredRideCpuMs, recordRideFrameTimings, unmeasuredRideFrameMs,
-  type RideFrameTimingSample, type RidePerf,
+  createRidePerf,
+  estimatedRidePacingMs,
+  measuredRideCpuMs,
+  recordRideFrameTimings,
+  unmeasuredRideFrameMs,
+  type RideFrameTimingSample,
+  type RidePerf,
 } from '../perf';
 import {
-  controllerFingerCurls, footControls, grabControls, readPads, rideControls, shapeAxis, smoothTurnRadians,
-  viewToggleHeld, wristMenuToggleHeld,
-  type XrPads, type XrRideControls,
+  controllerFingerCurls,
+  footControls,
+  grabControls,
+  readPads,
+  rideControls,
+  shapeAxis,
+  smoothTurnRadians,
+  viewToggleHeld,
+  wristMenuToggleHeld,
+  type XrPads,
+  type XrRideControls,
 } from './input';
 import { trackedFingerCurls, type TrackedHand } from './hand-curl';
 import { createWalker, downwardGroundQuery, type WalkGround, type Walker } from './walk';
 import { createBoardCoast } from '../board-coast';
 import {
-  createBoardGrab, deckGrabDistance, deckRayDistance, handBehindHead, handGripPoint, nearestDeckPoint,
-  type BoardThrow, type GrabHand,
+  createBoardGrab,
+  deckGrabDistance,
+  deckRayDistance,
+  handBehindHead,
+  handGripPoint,
+  nearestDeckPoint,
+  type BoardThrow,
+  type GrabHand,
 } from '../board-grab';
 import { GRAB_REACH, HAND_TRANSFER_REACH, MOUNT_AIM_RANGE } from '../physics-tuning';
 import {
-  maskXrLayersForThree, xrLayerKind, xrNativeRenderScale,
-  type XrEyeBufferMeasurement, type XrLayerMode,
+  maskXrLayersForThree,
+  xrLayerKind,
+  xrNativeRenderScale,
+  type XrEyeBufferMeasurement,
+  type XrLayerMode,
 } from './config';
 import {
-  calibrationMatchesOrigin, captureXrBodyCalibration, captureXrHandCalibration, clearXrBodyCalibration,
-  fallbackFloorOffset, FALLBACK_STANDING_EYE_HEIGHT, loadXrBodyCalibration, saveXrBodyCalibration,
-  type XrBodyCalibration, type XrHandsCalibration, type XrTrackedHandSource,
+  calibrationMatchesOrigin,
+  captureXrBodyCalibration,
+  captureXrHandCalibration,
+  clearXrBodyCalibration,
+  fallbackFloorOffset,
+  FALLBACK_STANDING_EYE_HEIGHT,
+  loadXrBodyCalibration,
+  saveXrBodyCalibration,
+  type XrBodyCalibration,
+  type XrHandsCalibration,
+  type XrTrackedHandSource,
 } from './calibration';
 import type { LocalPlayerPose, PlayerTransform } from '../../../core/session/player-pose';
 import type { RideRunStatus } from '../run-status';
@@ -98,7 +143,8 @@ export const MIN_TRACKED_ROOM_MOVE = 0.002;
  * Parked in the rider's frame it holds still relative to the body and travels with the board, so it behaves
  * like a dashboard: you look down, read it, and look back up.
  */
-const READOUT_DISTANCE = 1.2, READOUT_DROP = 0.55;
+const READOUT_DISTANCE = 1.2,
+  READOUT_DROP = 0.55;
 /** How often the profiler line reaches the console, where whoever is debugging can actually copy it. */
 const PERF_LOG_MS = 2000;
 /** Frames to let a session settle before its fastest one is trusted as the display's cadence. */
@@ -220,8 +266,7 @@ export interface XrPlayDeps {
    * expensive ride/collision initialization out of the first mount while preserving an on-foot start. */
   prepareRide?(gaze: () => THREE.Vector3 | null): XrBoardRide | null;
   /** Put the rider on the board. Null when the ride could not start; the rig then stays on foot. */
-  startRide(spawn: THREE.Vector3, heading: THREE.Vector3,
-    gaze: () => THREE.Vector3 | null): XrBoardRide | null;
+  startRide(spawn: THREE.Vector3, heading: THREE.Vector3, gaze: () => THREE.Vector3 | null): XrBoardRide | null;
   /** Take them off it again. */
   stopRide(): void;
   /** Put any opponent field back on its gates and hold it for the next fresh mount. */
@@ -246,7 +291,11 @@ export interface XrPlayDeps {
 export async function xrSupported(): Promise<boolean> {
   const xr = navigator.xr;
   if (!xr?.isSessionSupported) return false;
-  try { return await xr.isSessionSupported('immersive-vr'); } catch { return false; }
+  try {
+    return await xr.isSessionSupported('immersive-vr');
+  } catch {
+    return false;
+  }
 }
 
 export function createXrPlay(deps: XrPlayDeps) {
@@ -275,8 +324,11 @@ export function createXrPlay(deps: XrPlayDeps) {
   /** Edit flight: the rig's own pose while EDIT is open, in place of the walker's. */
   const editPose: RigPose = { x: 0, y: 0, z: 0, yaw: 0, scale: 1 };
   /** The published avatar's body while EDIT is open (`editPlayerPose`), and the last sample, for its velocity. */
-  const editBody = new THREE.Vector3(), editBodyLast = new THREE.Vector3(), editBodyVelocity = new THREE.Vector3();
-  const editBodyFacing = new THREE.Vector3(), editBodyQuat = new THREE.Quaternion();
+  const editBody = new THREE.Vector3(),
+    editBodyLast = new THREE.Vector3(),
+    editBodyVelocity = new THREE.Vector3();
+  const editBodyFacing = new THREE.Vector3(),
+    editBodyQuat = new THREE.Quaternion();
   let editBodyAt = 0;
   let editGrab: TwoHandGrab | null = null;
   /** One grip held alone: the map dragged with that hand. */
@@ -289,16 +341,26 @@ export function createXrPlay(deps: XrPlayDeps) {
   let worldCursorShown = false;
   /** The move gizmo's translate while the trigger holds it: the hand drives it in depth too (hand-drag.ts). */
   let handGrab: HandGrab | null = null;
-  const handGrabAt = new THREE.Vector3(), handDelta = new THREE.Vector3(), handTarget = new THREE.Vector3();
-  const handAnchor = new THREE.Vector3(), handLast = new THREE.Vector3(), handFrame = new THREE.Quaternion();
-  const grabA = new THREE.Vector3(), grabB = new THREE.Vector3(), flyRight = new THREE.Vector3();
-  const landFrom = new THREE.Vector3(), landTo = new THREE.Vector3();
+  const handGrabAt = new THREE.Vector3(),
+    handDelta = new THREE.Vector3(),
+    handTarget = new THREE.Vector3();
+  const handAnchor = new THREE.Vector3(),
+    handLast = new THREE.Vector3(),
+    handFrame = new THREE.Quaternion();
+  const grabA = new THREE.Vector3(),
+    grabB = new THREE.Vector3(),
+    flyRight = new THREE.Vector3();
+  const landFrom = new THREE.Vector3(),
+    landTo = new THREE.Vector3();
   let cameraFarHome = deps.camera.far;
   /** Undoes the scaled-rig cull correction installed for the session (scaled-camera.ts). */
   let restoreCullFix: (() => void) | null = null;
   // The body during edit flight, posed in the rig's frame (updateEditAvatar).
-  const rigInverse = new THREE.Matrix4(), rigTurnInverse = new THREE.Quaternion();
-  const editFeet = new THREE.Vector3(), editFacing = new THREE.Vector3(), editStill = new THREE.Vector3();
+  const rigInverse = new THREE.Matrix4(),
+    rigTurnInverse = new THREE.Quaternion();
+  const editFeet = new THREE.Vector3(),
+    editFacing = new THREE.Vector3(),
+    editStill = new THREE.Vector3();
   const editHandA: RiderHandTarget = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
   const editHandB: RiderHandTarget = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
   /** Left Y hides the complete wrist watch until the next Y edge. Starts visible on every headset session. */
@@ -307,7 +369,9 @@ export function createXrPlay(deps: XrPlayDeps) {
   let session: XRSession | null = null;
   /** Mixed reality (docs/068): whether this runtime offers `immersive-ar` at all, whether the session presenting
    *  is one, and whether a swap between the two is under way (`setMixedReality`). */
-  let arSupported = false, mixedReality = false, swapping = false;
+  let arSupported = false,
+    mixedReality = false,
+    swapping = false;
   let cameraHome: THREE.Object3D | null = null;
   let cameraNearHome: number | null = null;
   let ride: XrBoardRide | null = null;
@@ -358,34 +422,49 @@ export function createXrPlay(deps: XrPlayDeps) {
 
   // ---- the parked board, and the rider on foot ----
   const parked: BoardModel = createBoard(
-    deps.gear ?? DEFAULT_RIDE_GEAR, deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE, deps.equipmentAppearance,
+    deps.gear ?? DEFAULT_RIDE_GEAR,
+    deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
+    deps.equipmentAppearance,
   );
   const parkedFacing = new THREE.Vector3(0, 0, 1);
   parked.group.visible = false;
-  parked.group.traverse(object => { object.raycast = () => {}; });
+  parked.group.traverse(object => {
+    object.raycast = () => {};
+  });
   const footRider = createRider(
-    deps.riderModel, deps.riderStyle, deps.gear ?? DEFAULT_RIDE_GEAR,
+    deps.riderModel,
+    deps.riderStyle,
+    deps.gear ?? DEFAULT_RIDE_GEAR,
     deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
   );
   footRider.setFirstPerson(true);
   footRider.group.visible = false;
-  footRider.group.traverse(object => { object.raycast = () => {}; });
-  let footRiderPlaced = false, footFrameDt = 0, footWalkPhase = 0, footWalkWeight = 0;
+  footRider.group.traverse(object => {
+    object.raycast = () => {};
+  });
+  let footRiderPlaced = false,
+    footFrameDt = 0,
+    footWalkPhase = 0,
+    footWalkWeight = 0;
   const footGround = downwardGroundQuery(deps.groundCast);
   const walker: Walker = createWalker({
     ground: footGround,
     resolveMove: deps.resolveWalkMove,
     oobFloorY: deps.oobFloorY,
-    onFell: () => { if (scoredRunActive()) resetOnFoot(); },
+    onFell: () => {
+      if (scoredRunActive()) resetOnFoot();
+    },
   });
   /** Where the deck is whenever nobody is on it: sliding away from a dismount, or lying at its post. */
   const boardCoast = createBoardCoast({
-    ground: footGround, oobFloorY: deps.oobFloorY,
+    ground: footGround,
+    oobFloorY: deps.oobFloorY,
     // A bail over a cliff sends the deck over it too, and there is only one board in this session. Back to the
     // gate post it goes, which is the one place a rider on foot can always reach.
     onLost: () => parkBoardAt(deps.spawn, rigFwd),
   });
-  const coastRight = new THREE.Vector3(), coastBasis = new THREE.Matrix4();
+  const coastRight = new THREE.Vector3(),
+    coastBasis = new THREE.Matrix4();
   /**
    * The board IN A HAND (`board-grab.ts`) — the third thing that can own the deck, beside the ride and the
    * coast, and never at the same time as either. The grip picks it up off the snow, passes it between hands,
@@ -395,7 +474,8 @@ export function createXrPlay(deps: XrPlayDeps) {
   /** Off-board only: the same seven-pose retail trail, attached to the physical deck being used as a jetpack. */
   const heldBoardBoostTrail = new BoardBoostTrail();
   const thrown: BoardThrow = { velocity: new THREE.Vector3(), spin: new THREE.Vector3() };
-  const grabbedUp = new THREE.Vector3(), grabbedFwd = new THREE.Vector3();
+  const grabbedUp = new THREE.Vector3(),
+    grabbedFwd = new THREE.Vector3();
   /** Whether `handA` / `handB` carry a real pose. They are written at the END of a frame, so a grab decided in
    *  `beginFrame` reads the previous frame's wrists — millimetres at arm speed, and the alternative is
    *  resolving them against a rig that has not been seated for this frame yet. */
@@ -410,12 +490,16 @@ export function createXrPlay(deps: XrPlayDeps) {
   const heldGrab = { left: false, right: false };
   let seatYawRead = 0;
 
-  const scratch = new THREE.Vector3(), scratchB = new THREE.Vector3();
+  const scratch = new THREE.Vector3(),
+    scratchB = new THREE.Vector3();
   const handA: RiderHandTarget = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
   const handB: RiderHandTarget = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
-  const calibrationGripA = new THREE.Vector3(), calibrationGripB = new THREE.Vector3();
-  const footAnkleA = new THREE.Vector3(), footAnkleB = new THREE.Vector3();
-  const footFacing = new THREE.Vector3(), footAcceleration = new THREE.Vector3();
+  const calibrationGripA = new THREE.Vector3(),
+    calibrationGripB = new THREE.Vector3();
+  const footAnkleA = new THREE.Vector3(),
+    footAnkleB = new THREE.Vector3();
+  const footFacing = new THREE.Vector3(),
+    footAcceleration = new THREE.Vector3();
   const watchRaycaster = new THREE.Raycaster();
   watchRaycaster.far = 1.5;
   /** The pointing ray a trigger mounts along. */
@@ -423,7 +507,8 @@ export function createXrPlay(deps: XrPlayDeps) {
   const boardBoostRay = new THREE.Ray();
   const watchPointer = createWatchPointer();
   const boardActionGuides = {
-    left: createBoardActionGuide('left'), right: createBoardActionGuide('right'),
+    left: createBoardActionGuide('left'),
+    right: createBoardActionGuide('right'),
   };
   const boardActionRay = new THREE.Ray();
   const boardActionStarts = { left: new THREE.Vector3(), right: new THREE.Vector3() };
@@ -440,14 +525,17 @@ export function createXrPlay(deps: XrPlayDeps) {
   const footPerf: RidePerf = createRidePerf();
   /** The last second's slowest frame, and when that window started. An average buries the hitch that actually
    *  breaks presence — one 60 ms frame in a second of good ones is felt, and reads as 68 fps. */
-  let worstMs = 0, worstSince = 0, worstShown = 0;
+  let worstMs = 0,
+    worstSince = 0,
+    worstShown = 0;
   /**
    * The fastest frame the session has ever turned in. When the runtime will not say what the display rate is,
    * this is the honest estimate of it: a frame cannot complete faster than the display's own cadence, so the
    * quickest one seen is the budget (the first frames are skipped — a session's opening frames are long while
    * the scene warms, and one of them would peg this far too high).
    */
-  let bestMs = Infinity, framesSeen = 0;
+  let bestMs = Infinity,
+    framesSeen = 0;
   /** Next console dump (see `logPerf`). */
   let nextLog = 0;
 
@@ -484,13 +572,19 @@ export function createXrPlay(deps: XrPlayDeps) {
     // Avoid one frame at the rig origin before a wrist space has supplied its first tracked transform.
     hud.object.visible = false;
 
-    if (!await present(requested)) { teardownScene(); return false; }
+    if (!(await present(requested))) {
+      teardownScene();
+      return false;
+    }
     // Asked only now the headset is up: an await before the request would have spent the click's activation.
-    void navigator.xr.isSessionSupported('immersive-ar').then(supported => {
-      if (!session || supported === arSupported) return;
-      arSupported = supported;
-      deps.onMixedRealityChange?.(mixedReality);
-    }).catch(() => {});
+    void navigator.xr
+      .isSessionSupported('immersive-ar')
+      .then(supported => {
+        if (!session || supported === arSupported) return;
+        arSupported = supported;
+        deps.onMixedRealityChange?.(mixedReality);
+      })
+      .catch(() => {});
     thirdPerson = false;
     applyViewMode();
     window.addEventListener('keydown', onViewKey, true);
@@ -596,15 +690,18 @@ export function createXrPlay(deps: XrPlayDeps) {
       current.end().catch(() => {});
       await ended;
       const next = await requestXr(on ? 'immersive-ar' : 'immersive-vr');
-      if (next && await present(next)) landed = true;
+      if (next && (await present(next))) landed = true;
       else {
         const back = await requestXr(mixedReality ? 'immersive-ar' : 'immersive-vr');
-        if (back && await present(back)) landed = false;
+        if (back && (await present(back))) landed = false;
       }
     } finally {
       swapping = false;
     }
-    if (landed === null) { leaveXr(); return false; }
+    if (landed === null) {
+      leaveXr();
+      return false;
+    }
     if (landed) mixedReality = on;
     deps.onMixedRealityChange?.(mixedReality);
     hud.invalidate(); // the watch's MIXED REALITY button reads the new state
@@ -612,7 +709,9 @@ export function createXrPlay(deps: XrPlayDeps) {
   }
 
   /** Mixed reality can be switched on: the headset's runtime offers passthrough (`immersive-ar`). */
-  function mixedRealityAvailable(): boolean { return arSupported && (!!session || swapping); }
+  function mixedRealityAvailable(): boolean {
+    return arSupported && (!!session || swapping);
+  }
 
   /**
    * Ask the runtime for its FASTEST supported rate.
@@ -631,13 +730,19 @@ export function createXrPlay(deps: XrPlayDeps) {
     let best = 0;
     for (const rate of rates) if (rate > best) best = rate;
     if (best <= (target.frameRate ?? 0)) return;
-    try { await target.updateTargetFrameRate(best); } catch { /* the runtime kept its own rate */ }
+    try {
+      await target.updateTargetFrameRate(best);
+    } catch {
+      /* the runtime kept its own rate */
+    }
   }
 
   /** Leave VR. The `end` event does the teardown, whichever side asked for it. Safe to call twice: Esc at the
    *  desk reaches both the mounted board's own exit and the editor's Escape ladder, and a session already on its
    *  way out rejects a second `end`. */
-  function exit() { session?.end().catch(() => {}); }
+  function exit() {
+    session?.end().catch(() => {});
+  }
 
   function onSessionEnd() {
     session?.removeEventListener('end', onSessionEnd);
@@ -651,7 +756,10 @@ export function createXrPlay(deps: XrPlayDeps) {
 
   /** Out of the headset for good: put everything away and hand the editor back. */
   function leaveXr() {
-    if (ride) { ride = null; deps.stopRide(); }
+    if (ride) {
+      ride = null;
+      deps.stopRide();
+    }
     offBoardRun = null;
     boardGrab.clear(); // whatever was in a hand is not in a hand any more; there is no hand
     wristsTracked = false;
@@ -685,7 +793,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     rig.removeFromParent();
     if (deps.camera.parent !== viewRig) return; // never taken, or already handed back
     deps.camera.removeFromParent();
-    cameraHome?.add(deps.camera);           // usually nothing: the editor camera lives outside the scene graph
+    cameraHome?.add(deps.camera); // usually nothing: the editor camera lives outside the scene graph
     // The rig carried the camera's world placement; hand it back at identity so the restored editor view — which
     // writes world position and quaternion directly — is not silently offset by a stale parent transform.
     deps.camera.position.set(0, 0, 0);
@@ -707,7 +815,10 @@ export function createXrPlay(deps: XrPlayDeps) {
   }
 
   function dispose() {
-    if (session) { exit(); return; }
+    if (session) {
+      exit();
+      return;
+    }
     hud.dispose();
     profiler.dispose();
     palette?.dispose();
@@ -773,7 +884,10 @@ export function createXrPlay(deps: XrPlayDeps) {
     // EDIT gives the stick clicks to the editor's history (docs/068): left undoes, right redoes. The view toggle
     // the right click otherwise owns waits for the palette to close.
     const editing = editOpen && !ride;
-    if (pressView) { if (editing) deps.redo?.(); else toggleView(); }
+    if (pressView) {
+      if (editing) deps.redo?.();
+      else toggleView();
+    }
     if (pressLeftStick && editing) deps.undo?.();
     if (pressMenu) {
       watchVisible = !watchVisible;
@@ -786,7 +900,10 @@ export function createXrPlay(deps: XrPlayDeps) {
     }
 
     const watchAction = pressRightTrigger ? watchTriggeredAction() : null;
-    if (watchAction === 'exit') { exit(); return; }
+    if (watchAction === 'exit') {
+      exit();
+      return;
+    }
     if (watchAction === 'stats') setStatsEnabled(!statsEnabled);
     if (watchAction === 'view') toggleView();
     if (watchAction === 'controls') {
@@ -802,7 +919,10 @@ export function createXrPlay(deps: XrPlayDeps) {
     }
     if (watchAction === 'calibrate') startCalibration(performance.now());
     if (watchAction === 'edit') setEditOpen(!editOpen);
-    if (watchAction === 'place' && palette) { palette.setPlacing(!palette.placing); hud.invalidate(); }
+    if (watchAction === 'place' && palette) {
+      palette.setPlacing(!palette.placing);
+      hud.invalidate();
+    }
     // The main thread puts the skybox away once the headset lands in passthrough (`onMixedRealityChange`).
     if (watchAction === 'mixed') void setMixedReality(!mixedReality);
     // EDIT is the whole frame while it is open: flight instead of the walker, the right hand as the editor's mouse.
@@ -824,8 +944,14 @@ export function createXrPlay(deps: XrPlayDeps) {
       const controls = rideControls(pads);
       if (watchAction) controls.ollie = false;
       ride.setXrControls(controls);
-      if (pressX && controls.courseRespawn) { ride.resetToCourse(); return; }
-      if (!watchAction && pressTrigger) { dismount(); return; }
+      if (pressX && controls.courseRespawn) {
+        ride.resetToCourse();
+        return;
+      }
+      if (!watchAction && pressTrigger) {
+        dismount();
+        return;
+      }
       // The grip, WHILE RIDING: snatch the deck out from under you. Air only — on the snow it would rip the
       // board out of a carve every time a hand strayed, and this wants to be a trick, not a hazard.
       if (pressGrab.left && takeFromFeet('left')) return;
@@ -843,7 +969,9 @@ export function createXrPlay(deps: XrPlayDeps) {
     const turn = smoothTurnRadians(controls.turn, dt);
     if (turn) rigFwd.applyAxisAngle(WORLD_UP, turn).normalize();
     walker.step(dt, {
-      moveX: controls.moveX, moveY: controls.moveY, forward: headFwd,
+      moveX: controls.moveX,
+      moveY: controls.moveY,
+      forward: headFwd,
       jump: pressA,
       jumpHeld: controls.jump,
       // Off-board boost never spends the retained run meter. A held deck replaces the controller ray with its
@@ -859,8 +987,9 @@ export function createXrPlay(deps: XrPlayDeps) {
     // Otherwise a closing hand takes a deck it can reach — including out of the other hand — and opening the
     // holding hand throws it exactly as hard as it was being swung.
     for (const hand of GRAB_HANDS) {
-      if (pressGrab[hand]) { if (!summonToHand(hand)) takeInHand(hand); }
-      else if (releaseGrab[hand] && boardGrab.hand === hand) releaseBoard();
+      if (pressGrab[hand]) {
+        if (!summonToHand(hand)) takeInHand(hand);
+      } else if (releaseGrab[hand] && boardGrab.hand === hand) releaseBoard();
     }
     // The trigger RIDES. Holding the deck, that means putting it back under your feet — which in the air is the
     // catch that lands the trick. Empty-handed it means the board you are POINTING at, still ground-gated so an
@@ -891,7 +1020,8 @@ export function createXrPlay(deps: XrPlayDeps) {
       // along the board's up. The head's X/Z at mount is the station anchor; later room-scale displacement is
       // therefore carried 1:1 without an initial jump caused by where the runtime's play-space origin happened
       // to be.
-      rig.position.copy(view.pos)
+      rig.position
+        .copy(view.pos)
         .addScaledVector(ride.state.boardUp, ride.state.lift)
         .addScaledVector(WORLD_UP, DECK_STAND + eyeLift);
       setRigYaw();
@@ -960,12 +1090,19 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (action === 'calibrate' && editOpen) return false;
     if (action === 'mixed') return mixedRealityAvailable() && !swapping;
     if (action === 'place') return editOpen;
-    return action === 'restart' || action === 'stats' || action === 'view' || action === 'controls'
-      || action === 'exit'
-      || (!ride && !calibrationRun);
+    return (
+      action === 'restart' ||
+      action === 'stats' ||
+      action === 'view' ||
+      action === 'controls' ||
+      action === 'exit' ||
+      (!ride && !calibrationRun)
+    );
   }
 
-  function watchTriggeredAction(): XrHudAction | null { return watchActionHit()?.action ?? null; }
+  function watchTriggeredAction(): XrHudAction | null {
+    return watchActionHit()?.action ?? null;
+  }
 
   /** Attach/detach every diagnostic cost as one live switch, and remember the choice for the next session. */
   function setStatsEnabled(enabled: boolean) {
@@ -984,7 +1121,8 @@ export function createXrPlay(deps: XrPlayDeps) {
     const target = watchActionHit();
     const scale = rig.scale.x;
     if (target) watchPointer.show(watchRaycaster.ray.origin, target.hit.point, scale);
-    else if (palettePoint && hands.presentationAimRay('right', editRay)) watchPointer.show(editRay.origin, palettePoint, scale);
+    else if (palettePoint && hands.presentationAimRay('right', editRay))
+      watchPointer.show(editRay.origin, palettePoint, scale);
     else watchPointer.hide();
     if (worldCursorShown) {
       // A constant apparent size: a dot ~0.35° across wherever on the mountain the hand is pointing.
@@ -1016,7 +1154,9 @@ export function createXrPlay(deps: XrPlayDeps) {
   /** Take the rig off the walker where it stands: same place, same heading, life size. */
   function beginEditFlight() {
     rig.updateMatrixWorld(true);
-    editPose.x = rig.position.x; editPose.y = rig.position.y; editPose.z = rig.position.z;
+    editPose.x = rig.position.x;
+    editPose.y = rig.position.y;
+    editPose.z = rig.position.z;
     editPose.yaw = viewerYaw(rigFwd);
     editPose.scale = 1;
     editGrab = null;
@@ -1045,7 +1185,8 @@ export function createXrPlay(deps: XrPlayDeps) {
       const ground = deps.groundCast(landFrom, landTo);
       // Found ground: stand on it. None (off the edge of the mountain): drop from here and let the walker fall.
       if (ground) walker.placeAt(scratch.set(headWorld.x, ground.y, headWorld.z));
-      else walker.placeAt(scratch.set(headWorld.x, headWorld.y - FALLBACK_EYE_HEIGHT, headWorld.z), scratchB.set(0, 0, 0));
+      else
+        walker.placeAt(scratch.set(headWorld.x, headWorld.y - FALLBACK_EYE_HEIGHT, headWorld.z), scratchB.set(0, 0, 0));
       // A landing is a placement, not a walk: the foot-contact sweep (glass that cracks underfoot) starts here.
       footContactFrom.copy(walker.position());
     }
@@ -1092,16 +1233,26 @@ export function createXrPlay(deps: XrPlayDeps) {
       return to;
     };
     const input = {
-      ankleFront: footAnkleA, ankleRear: footAnkleB,
-      deckUp: WORLD_UP, soleUp: WORLD_UP, bank: 0,
-      vel: editStill.set(0, 0, 0), accel: editStill, grounded: true, dt: footFrameDt,
-      crouch: 0, lean: 0,
+      ankleFront: footAnkleA,
+      ankleRear: footAnkleB,
+      deckUp: WORLD_UP,
+      soleUp: WORLD_UP,
+      bank: 0,
+      vel: editStill.set(0, 0, 0),
+      accel: editStill,
+      grounded: true,
+      dt: footFrameDt,
+      crouch: 0,
+      lean: 0,
       locomotion: { phase: 0, weight: 0, facing: editFacing, flying: false },
       handTargets: handsTracked ? { a: toRig(handA, editHandA), b: toRig(handB, editHandB) } : null,
       headTarget: { position: headLocal, quaternion: headLocalQuat, exactPosition: true },
     };
     if (footRiderPlaced) footRider.pose(input);
-    else { footRider.reset(input); footRiderPlaced = true; }
+    else {
+      footRider.reset(input);
+      footRiderPlaced = true;
+    }
     group.position.copy(rig.position);
     group.quaternion.copy(rig.quaternion);
     group.scale.copy(rig.scale);
@@ -1116,7 +1267,8 @@ export function createXrPlay(deps: XrPlayDeps) {
    * the mountain; each button stays with whichever of those took its press until it is released.
    */
   function stepEdit(pads: XrPads, dt: number, pressTrigger: boolean, pressA: boolean) {
-    const trigger = !!pads.right?.trigger, a = !!pads.right?.a;
+    const trigger = !!pads.right?.trigger,
+      a = !!pads.right?.a;
     // Left Y hides the watch and palette to clear the view; the hand keeps working on the mountain regardless.
     const aimed = hands.presentationAimRay('right', editRay);
     const onWatch = aimed && !!watchActionHit();
@@ -1125,12 +1277,22 @@ export function createXrPlay(deps: XrPlayDeps) {
     const target: EditTarget = onWatch ? 'watch' : overPalette ? 'palette' : 'world';
     if (pressTrigger) editOwner.left = target;
     if (pressA) editOwner.right = target;
-    const panel = palette?.update(paletteAim, editOwner.left === 'palette' && trigger,
-      editOwner.right === 'palette' && a, overPalette ? pads.right?.y ?? 0 : 0, dt);
+    const panel = palette?.update(
+      paletteAim,
+      editOwner.left === 'palette' && trigger,
+      editOwner.right === 'palette' && a,
+      overPalette ? (pads.right?.y ?? 0) : 0,
+      dt,
+    );
     palettePoint = panel?.point ?? null;
     const worldAim = aimed && !onWatch && (!overPalette || !!worldPointer?.pressed);
-    worldPointer?.update(worldAim ? editRay : null, editOwner.left === 'world' && trigger,
-      editOwner.right === 'world' && a, WORLD_POINTER_FAR * editPose.scale, !!handGrab);
+    worldPointer?.update(
+      worldAim ? editRay : null,
+      editOwner.left === 'world' && trigger,
+      editOwner.right === 'world' && a,
+      WORLD_POINTER_FAR * editPose.scale,
+      !!handGrab,
+    );
     stepHandGrab(aimed);
     // While the hand holds a translate, the dot marks the point it holds, out along the laser.
     worldCursorShown = !!handGrab || (!!worldPointer?.onCanvas && !overPalette && !onWatch);
@@ -1176,13 +1338,19 @@ export function createXrPlay(deps: XrPlayDeps) {
    * release still reaches the gizmo as a pointerup, so the drag ends and commits as a mouse drag does.
    */
   function stepHandGrab(aimed: boolean) {
-    const drag = editOwner.left === 'world' ? deps.editor?.translateDrag?.() ?? null : null;
-    if (!drag) { handGrab = null; return; }
+    const drag = editOwner.left === 'world' ? (deps.editor?.translateDrag?.() ?? null) : null;
+    if (!drag) {
+      handGrab = null;
+      return;
+    }
     if (!aimed) return; // a controller that lost tracking leaves the held thing where it is
     if (!handGrab) {
       drag.anchor.updateWorldMatrix(true, false);
-      handGrab = beginHandGrab(editRay, drag.anchor.getWorldPosition(handAnchor),
-        drag.anchor.getWorldQuaternion(handFrame));
+      handGrab = beginHandGrab(
+        editRay,
+        drag.anchor.getWorldPosition(handAnchor),
+        drag.anchor.getWorldQuaternion(handFrame),
+      );
       handGrabPoint(handGrab, editRay, editPose.scale, handGrabAt);
       handTarget.copy(handGrab.anchor);
       return;
@@ -1214,17 +1382,14 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (!calibrationRun || now - calibrationRun.startedAt < 3000) return;
     calibrationRun = null;
     const gripsTracked = handsTracked && hands.worldTrackerPositions(calibrationGripA, calibrationGripB);
-    const captured = gripsTracked
-      ? captureXrBodyCalibration(headLocal.y, calibrationGripA, calibrationGripB)
-      : null;
+    const captured = gripsTracked ? captureXrBodyCalibration(headLocal.y, calibrationGripA, calibrationGripB) : null;
     if (!captured) {
       calibrationNotice = { phase: 'error', until: now + 4000, message: 'EXTEND BOTH HANDS' };
       return;
     }
     const sources = hands.trackingSources();
-    const capturedHands = sources && captureXrHandCalibration(
-      handA.quaternion, handB.quaternion, headFwd, sources.left, sources.right,
-    );
+    const capturedHands =
+      sources && captureXrHandCalibration(handA.quaternion, handB.quaternion, headFwd, sources.left, sources.right);
     if (!capturedHands) {
       calibrationNotice = { phase: 'error', until: now + 4000, message: 'LOOK FORWARD' };
       return;
@@ -1235,9 +1400,11 @@ export function createXrPlay(deps: XrPlayDeps) {
     eyeLift = captured.floorOffset;
     eyeCalibrated = true;
     calibrationNotice = { phase: 'saved', until: now + 4000 };
-    console.info(`[xr calibration] body ${captured.standingHeight.toFixed(2)}m`
-      + ` · eyes ${captured.eyeHeight.toFixed(2)}m · grips ${captured.gripSpan.toFixed(2)}m`
-      + ` · rawY ${captured.rawStandingEyeY.toFixed(2)}m · floor ${captured.floorOffset.toFixed(2)}m`);
+    console.info(
+      `[xr calibration] body ${captured.standingHeight.toFixed(2)}m` +
+        ` · eyes ${captured.eyeHeight.toFixed(2)}m · grips ${captured.gripSpan.toFixed(2)}m` +
+        ` · rawY ${captured.rawStandingEyeY.toFixed(2)}m · floor ${captured.floorOffset.toFixed(2)}m`,
+    );
   }
 
   function calibrationHud(now: number): XrHudCalibration {
@@ -1272,18 +1439,31 @@ export function createXrPlay(deps: XrPlayDeps) {
     headsetBodyFacing(headQuat, footFacing.lengthSq() > 1e-8 ? footFacing : rigFwd, scratchB);
     footFacing.copy(scratchB);
     const input = {
-      ankleFront: footAnkleA, ankleRear: footAnkleB,
-      deckUp: WORLD_UP, soleUp: WORLD_UP, bank: 0,
-      vel: velocity, accel: footAcceleration, grounded: walker.isGrounded(), dt: footFrameDt,
-      crouch: 0, lean: 0,
+      ankleFront: footAnkleA,
+      ankleRear: footAnkleB,
+      deckUp: WORLD_UP,
+      soleUp: WORLD_UP,
+      bank: 0,
+      vel: velocity,
+      accel: footAcceleration,
+      grounded: walker.isGrounded(),
+      dt: footFrameDt,
+      crouch: 0,
+      lean: 0,
       locomotion: {
-        phase: footWalkPhase, weight: footWalkWeight, facing: footFacing, flying: walker.isFlying(),
+        phase: footWalkPhase,
+        weight: footWalkWeight,
+        facing: footFacing,
+        flying: walker.isFlying(),
       },
       handTargets: handsTracked ? { a: handA, b: handB } : null,
       headTarget: { position: headWorld, quaternion: headQuat, exactPosition: true },
     };
     if (footRiderPlaced) footRider.pose(input);
-    else { footRider.reset(input); footRiderPlaced = true; }
+    else {
+      footRider.reset(input);
+      footRiderPlaced = true;
+    }
     footRider.group.visible = true;
   }
 
@@ -1331,7 +1511,9 @@ export function createXrPlay(deps: XrPlayDeps) {
    */
   function placeReadout(object: THREE.Object3D) {
     object.position.set(
-      headLocal.x, headLocal.y - READOUT_DROP, headLocal.z - READOUT_DISTANCE, // rig −Z is the seat's forward
+      headLocal.x,
+      headLocal.y - READOUT_DROP,
+      headLocal.z - READOUT_DISTANCE, // rig −Z is the seat's forward
     );
     object.lookAt(scratch.copy(headLocal).applyMatrix4(viewRig.matrixWorld));
   }
@@ -1378,11 +1560,17 @@ export function createXrPlay(deps: XrPlayDeps) {
         } else {
           // A runtime can repair/change its origin between launches. A stale 15-foot correction must not put a
           // newly-correct local-floor session underground, so reject it and fall back until the next T-pose.
-          if (calibration) { clearXrBodyCalibration(); calibration = null; }
+          if (calibration) {
+            clearXrBodyCalibration();
+            calibration = null;
+          }
           eyeLift = fallbackFloorOffset(headLocal.y);
-          if (Math.abs(eyeLift) > 1e-4) console.warn(`[xr calibration] implausible raw eye Y `
-            + `${headLocal.y.toFixed(2)}m; applying temporary ${eyeLift.toFixed(2)}m floor correction. `
-            + 'Use the wrist T-POSE button to calibrate.');
+          if (Math.abs(eyeLift) > 1e-4)
+            console.warn(
+              `[xr calibration] implausible raw eye Y ` +
+                `${headLocal.y.toFixed(2)}m; applying temporary ${eyeLift.toFixed(2)}m floor correction. ` +
+                'Use the wrist T-POSE button to calibrate.',
+            );
         }
       }
     }
@@ -1400,7 +1588,9 @@ export function createXrPlay(deps: XrPlayDeps) {
 
   /** Raw headset look direction for the mounted board's head steering. The tracked avatar head consumes the
    * same quaternion independently, while its chest and shoulders face the board heading produced from this. */
-  function gaze(): THREE.Vector3 | null { return session ? headFwd : null; }
+  function gaze(): THREE.Vector3 | null {
+    return session ? headFwd : null;
+  }
 
   /** Empty-handed off-board boost retains the right-controller ray. A deck in either hand supersedes this. */
   function controllerBoostAim(): THREE.Vector3 | null {
@@ -1426,24 +1616,33 @@ export function createXrPlay(deps: XrPlayDeps) {
     // A viewer faces local −Z; the avatar/board convention faces local +Z. The half-turn converts between them
     // so an on-foot remote body faces the same direction as its tracked head instead of walking backwards.
     const bodyQ = rig.quaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(WORLD_UP, Math.PI));
-    const base: LocalPlayerPose = ride ? ride.playerPose() : {
-      mode: 'walk', vr: true, gear: deps.gear ?? DEFAULT_RIDE_GEAR,
-      stance: deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
-      body: transform(walker.position(), bodyQ), velocity: vector(walker.velocity()),
-      equipment: {
-        state: boardGrab.held ? 'held' : 'loose',
-        transform: transform(parked.group.position, parked.group.quaternion),
-        velocity: vector(boardGrab.held ? boardGrab.velocity : boardCoast.vel),
-        epoch: boardCoast.epoch,
-      },
-      animation: {
-        grounded: walker.isGrounded(), crouch: 0, lean: 0, bank: 0,
-        ...(walker.isFlying() ? { flying: true } : {}),
-      },
-    };
+    const base: LocalPlayerPose = ride
+      ? ride.playerPose()
+      : {
+          mode: 'walk',
+          vr: true,
+          gear: deps.gear ?? DEFAULT_RIDE_GEAR,
+          stance: deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
+          body: transform(walker.position(), bodyQ),
+          velocity: vector(walker.velocity()),
+          equipment: {
+            state: boardGrab.held ? 'held' : 'loose',
+            transform: transform(parked.group.position, parked.group.quaternion),
+            velocity: vector(boardGrab.held ? boardGrab.velocity : boardCoast.vel),
+            epoch: boardCoast.epoch,
+          },
+          animation: {
+            grounded: walker.isGrounded(),
+            crouch: 0,
+            lean: 0,
+            bank: 0,
+            ...(walker.isFlying() ? { flying: true } : {}),
+          },
+        };
     const tracked = hands.worldTransforms(calibration?.hands);
     return {
-      ...base, vr: true,
+      ...base,
+      vr: true,
       ...(ride && base.equipment ? { equipment: { ...base.equipment, epoch: boardCoast.epoch } } : {}),
       head: transform(headWorld, headQuat),
       ...(tracked[0] || tracked[1] ? { hands: tracked } : {}),
@@ -1465,17 +1664,24 @@ export function createXrPlay(deps: XrPlayDeps) {
     editBodyLast.copy(editBody);
     editBodyAt = now;
     editBodyFacing.set(0, 0, -1).applyQuaternion(headQuat).setY(0);
-    if (editBodyFacing.lengthSq() < 1e-8) editBodyFacing.set(0, 0, -1); else editBodyFacing.normalize();
+    if (editBodyFacing.lengthSq() < 1e-8) editBodyFacing.set(0, 0, -1);
+    else editBodyFacing.normalize();
     // The avatar faces its own +Z.
     editBodyQuat.setFromAxisAngle(WORLD_UP, Math.atan2(editBodyFacing.x, editBodyFacing.z));
     const scale = editPose.scale;
-    const lifeSize = hands.worldTransforms(calibration?.hands).map(hand => hand && {
-      p: hand.p.map((value, axis) => headWorld.getComponent(axis) + (value - headWorld.getComponent(axis)) / scale),
-      q: hand.q,
-    } as PlayerTransform) as [PlayerTransform | null, PlayerTransform | null];
+    const lifeSize = hands.worldTransforms(calibration?.hands).map(
+      hand =>
+        hand &&
+        ({
+          p: hand.p.map((value, axis) => headWorld.getComponent(axis) + (value - headWorld.getComponent(axis)) / scale),
+          q: hand.q,
+        } as PlayerTransform),
+    ) as [PlayerTransform | null, PlayerTransform | null];
     return {
-      mode: 'edit', vr: true,
-      body: transform(editBody, editBodyQuat), velocity: vector(editBodyVelocity),
+      mode: 'edit',
+      vr: true,
+      body: transform(editBody, editBodyQuat),
+      velocity: vector(editBodyVelocity),
       head: transform(headWorld, headQuat),
       ...(lifeSize[0] || lifeSize[1] ? { hands: lifeSize } : {}),
     };
@@ -1516,7 +1722,10 @@ export function createXrPlay(deps: XrPlayDeps) {
     ride = started;
     retainedRide = started;
     offBoardRun = null;
-    if (runArmed) { started.startRun(); runArmed = false; }
+    if (runArmed) {
+      started.startRun();
+      runArmed = false;
+    }
     ride.setFirstPerson(!thirdPerson);
     footRider.group.visible = false;
     seatYawRead = started.state.seatYaw;
@@ -1578,8 +1787,7 @@ export function createXrPlay(deps: XrPlayDeps) {
   function reachToDeck(hand: GrabHand): number {
     const at = wrist(hand);
     if (!at) return Infinity;
-    return deckGrabDistance(parked.grabBox, parked.group.position, parked.group.quaternion,
-      at.position, at.quaternion);
+    return deckGrabDistance(parked.grabBox, parked.group.position, parked.group.quaternion, at.position, at.quaternion);
   }
 
   /**
@@ -1598,8 +1806,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     // A pass hands it over without a throw: the old hand is no longer the holding hand, so its own release
     // edge lands on nothing.
     boardCoast.stop();
-    boardGrab.grab(hand, at.position, at.quaternion,
-      parked.group.position, parked.group.quaternion, parked.grabBox);
+    boardGrab.grab(hand, at.position, at.quaternion, parked.group.position, parked.group.quaternion, parked.grabBox);
     parked.group.visible = true;
     parked.highlight(false); // it is in your hand; there is nothing left to point at
     return true;
@@ -1620,8 +1827,15 @@ export function createXrPlay(deps: XrPlayDeps) {
     const grip = wrist(hand);
     if (!grip || !handBehindHead(headWorld, headQuat, grip.position)) return false;
     boardCoast.stop();
-    boardGrab.grab(hand, grip.position, grip.quaternion,
-      parked.group.position, parked.group.quaternion, parked.grabBox, true);
+    boardGrab.grab(
+      hand,
+      grip.position,
+      grip.quaternion,
+      parked.group.position,
+      parked.group.quaternion,
+      parked.grabBox,
+      true,
+    );
     parked.highlight(false);
     return true;
   }
@@ -1658,8 +1872,14 @@ export function createXrPlay(deps: XrPlayDeps) {
     // The feet land under the physically displaced head, at the height and speed the board was carrying.
     scratch.copy(headWorld).setY(at.y);
     walker.placeAt(scratch, carry);
-    boardGrab.grab(hand, grip.position, grip.quaternion,
-      parked.group.position, parked.group.quaternion, parked.grabBox);
+    boardGrab.grab(
+      hand,
+      grip.position,
+      grip.quaternion,
+      parked.group.position,
+      parked.group.quaternion,
+      parked.grabBox,
+    );
     parked.group.visible = true;
     return true;
   }
@@ -1702,7 +1922,10 @@ export function createXrPlay(deps: XrPlayDeps) {
     ride = started;
     retainedRide = started;
     offBoardRun = null;
-    if (runArmed) { started.startRun(); runArmed = false; }
+    if (runArmed) {
+      started.startRun();
+      runArmed = false;
+    }
     ride.setFirstPerson(!thirdPerson);
     if (carry) ride.resumeAirborne(carry);
     footRider.group.visible = false;
@@ -1719,33 +1942,43 @@ export function createXrPlay(deps: XrPlayDeps) {
    * rather than trailing the previous one's down the mountain.
    */
   function updateHeldBoard() {
-    if (ride) { heldBoardBoostTrail.clear(); return; }
+    if (ride) {
+      heldBoardBoostTrail.clear();
+      return;
+    }
     const hand = boardGrab.hand;
     if (hand) {
       const at = wrist(hand);
       if (at) {
-        boardGrab.follow(at.position, at.quaternion, footFrameDt,
-          parked.group.position, parked.group.quaternion);
+        boardGrab.follow(at.position, at.quaternion, footFrameDt, parked.group.position, parked.group.quaternion);
         // The heading a mount would step onto, kept live: put the deck down from a hand held sideways and the
         // ride starts pointing where the deck was actually pointing.
         parkedFacing.set(0, 0, 1).applyQuaternion(parked.group.quaternion).setY(0);
-        if (parkedFacing.lengthSq() < 1e-6) parkedFacing.set(0, 0, 1); else parkedFacing.normalize();
+        if (parkedFacing.lengthSq() < 1e-6) parkedFacing.set(0, 0, 1);
+        else parkedFacing.normalize();
       } // tracking dropped mid-carry: both deck and its last valid jet direction hold instead of jumping to zero
     } else parked.highlight(deckActionable());
-    heldBoardBoostTrail.update({
-      position: parked.group.position, quaternion: parked.group.quaternion, velocity: walker.velocity(),
-      thrustDirection: heldBoardBoostDirection.set(0, 0, 1)
-        .applyQuaternion(parked.group.quaternion).normalize(),
-      active: boardGrab.held && walker.isFlightBoosting(), energy: 1, pad: false,
-      gear: deps.gear ?? DEFAULT_RIDE_GEAR,
-    }, footFrameDt);
+    heldBoardBoostTrail.update(
+      {
+        position: parked.group.position,
+        quaternion: parked.group.quaternion,
+        velocity: walker.velocity(),
+        thrustDirection: heldBoardBoostDirection.set(0, 0, 1).applyQuaternion(parked.group.quaternion).normalize(),
+        active: boardGrab.held && walker.isFlightBoosting(),
+        energy: 1,
+        pad: false,
+        gear: deps.gear ?? DEFAULT_RIDE_GEAR,
+      },
+      footFrameDt,
+    );
   }
 
   /** Left X recalls the one session board to the snow ahead without moving or turning the walker. */
   function spawnBoardAhead() {
     scratchB.copy(headFwd).setY(0);
     if (scratchB.lengthSq() < 1e-6) scratchB.copy(rigFwd).setY(0);
-    if (scratchB.lengthSq() < 1e-6) scratchB.set(0, 0, 1); else scratchB.normalize();
+    if (scratchB.lengthSq() < 1e-6) scratchB.set(0, 0, 1);
+    else scratchB.normalize();
     scratch.copy(walker.position()).addScaledVector(scratchB, BOARD_SPAWN_AHEAD);
     // Ground queries cast down from the supplied height; start above nearby uphill terrain rather than at feet.
     scratch.y += FALLBACK_EYE_HEIGHT;
@@ -1766,7 +1999,8 @@ export function createXrPlay(deps: XrPlayDeps) {
     runArmed = true;
     pendingTrackedRoomMove.set(0, 0, 0);
     rigFwd.set(deps.heading.x, 0, deps.heading.z);
-    if (rigFwd.lengthSq() < 1e-6) rigFwd.set(0, 0, 1); else rigFwd.normalize();
+    if (rigFwd.lengthSq() < 1e-6) rigFwd.set(0, 0, 1);
+    else rigFwd.normalize();
     parkBoardAt(deps.spawn, rigFwd);
     resetOnFoot();
     deps.restartField?.();
@@ -1815,7 +2049,8 @@ export function createXrPlay(deps: XrPlayDeps) {
     coastRight.crossVectors(up, facing).normalize();
     parked.group.quaternion.setFromRotationMatrix(coastBasis.makeBasis(coastRight, up, facing));
     parkedFacing.copy(facing).setY(0);
-    if (parkedFacing.lengthSq() < 1e-6) parkedFacing.set(0, 0, 1); else parkedFacing.normalize();
+    if (parkedFacing.lengthSq() < 1e-6) parkedFacing.set(0, 0, 1);
+    else parkedFacing.normalize();
     parked.group.visible = true;
   }
 
@@ -1841,7 +2076,11 @@ export function createXrPlay(deps: XrPlayDeps) {
     }
     if (!statsEnabled) return;
     recordRideFrameTimings(footPerf, sample);
-    if (now - worstSince >= 1000) { worstShown = worstMs; worstMs = 0; worstSince = now; }
+    if (now - worstSince >= 1000) {
+      worstShown = worstMs;
+      worstMs = 0;
+      worstSince = now;
+    }
     worstMs = Math.max(worstMs, sample.frameMs);
     if (++framesSeen > RATE_WARMUP_FRAMES && sample.frameMs > 1) bestMs = Math.min(bestMs, sample.frameMs);
   }
@@ -1850,9 +2089,12 @@ export function createXrPlay(deps: XrPlayDeps) {
    *  only the sub-camera viewport is authoritative; the layer dimensions are a first-frame fallback. */
   function eyeBufferMeasurement(): XrEyeBufferMeasurement {
     const xr = deps.renderer.xr;
-    const layer = xr.getBaseLayer() as (XRWebGLLayer & {
-      textureWidth?: number; textureHeight?: number;
-    }) | null;
+    const layer = xr.getBaseLayer() as
+      | (XRWebGLLayer & {
+          textureWidth?: number;
+          textureHeight?: number;
+        })
+      | null;
     const cameras = xr.getCamera().cameras;
     const views = cameras.length || 1;
     const viewport = cameras[0]?.viewport;
@@ -1873,10 +2115,15 @@ export function createXrPlay(deps: XrPlayDeps) {
    *  routinely requests well over twice the monitor's pixels, per eye. */
   function hudPerf(): XrHudPerf {
     const xr = deps.renderer.xr;
-    const layer = xr.getBaseLayer() as (XRWebGLLayer & {
-      textureWidth?: number; textureHeight?: number; ignoreDepthValues?: boolean;
-      fixedFoveation?: number | null; antialias?: boolean;
-    }) | null;
+    const layer = xr.getBaseLayer() as
+      | (XRWebGLLayer & {
+          textureWidth?: number;
+          textureHeight?: number;
+          ignoreDepthValues?: boolean;
+          fixedFoveation?: number | null;
+          antialias?: boolean;
+        })
+      | null;
     const layerKind = xrLayerKind(layer);
     /**
      * One eye's pixels, taken from the sub-camera's own VIEWPORT rather than from the layer.
@@ -1897,15 +2144,23 @@ export function createXrPlay(deps: XrPlayDeps) {
     const gl = deps.renderer.getContext();
     const attributes = gl.getContextAttributes();
     const contextAntialias = attributes?.antialias === true;
-    const layerAntialias = layerKind === 'webgl' && typeof layer?.antialias === 'boolean'
-      ? layer.antialias
-      // Three r170 gives its projection target four samples exactly when the context requested AA.
-      : layerKind === 'projection' ? antialiasApplied : null;
+    const layerAntialias =
+      layerKind === 'webgl' && typeof layer?.antialias === 'boolean'
+        ? layer.antialias
+        : // Three r170 gives its projection target four samples exactly when the context requested AA.
+          layerKind === 'projection'
+          ? antialiasApplied
+          : null;
     // Three r170 creates only WebGL2 contexts, although its public return type still carries the old WebGL1 arm.
     const maxSamples = Number(gl.getParameter((gl as WebGL2RenderingContext).MAX_SAMPLES));
-    const samples = layerKind === 'projection'
-      ? (antialiasApplied ? Math.min(4, Number.isFinite(maxSamples) ? maxSamples : 4) : 0)
-      : layerAntialias === false ? 0 : null; // XRWebGLLayer owns the count when its boolean says AA is on
+    const samples =
+      layerKind === 'projection'
+        ? antialiasApplied
+          ? Math.min(4, Number.isFinite(maxSamples) ? maxSamples : 4)
+          : 0
+        : layerAntialias === false
+          ? 0
+          : null; // XRWebGLLayer owns the count when its boolean says AA is on
     return {
       perf: ride?.perf ?? footPerf,
       worstMs: worstShown,
@@ -1952,44 +2207,51 @@ export function createXrPlay(deps: XrPlayDeps) {
     nextLog = now + PERF_LOG_MS;
     const p = stats.perf;
     const one = (value: number) => value.toFixed(1);
-    const gpu = p.gpuTimerState === 'unsupported' ? 'n/a'
-      : p.gpuTimerState === 'disjoint' ? 'reset'
-        : p.gpuMs === null ? 'pending' : one(p.gpuMs);
+    const gpu =
+      p.gpuTimerState === 'unsupported'
+        ? 'n/a'
+        : p.gpuTimerState === 'disjoint'
+          ? 'reset'
+          : p.gpuMs === null
+            ? 'pending'
+            : one(p.gpuMs);
     const pacing = estimatedRidePacingMs(p);
     const outsideCpu = unmeasuredRideFrameMs(p);
-    console.info(`[xr perf] ${Math.round(p.fps)} fps · frame ${one(p.frameMs)} of ${one(stats.budgetMs)}`
-      + ` · ${Math.round(stats.displayHz)}Hz${stats.rateKnown ? '' : '(est)'} · best ${one(stats.bestMs)}`
-      + ` · worst ${one(stats.worstMs)} · CPU ${one(measuredRideCpuMs(p))} · GPU ${gpu}`
-      + ` · non-CPU ${one(outsideCpu)}`
-      + (pacing === null ? ` · pacing≤ ${one(outsideCpu)}` : ` · pacing~ ${one(pacing)}`)
-      + ` · XR ${one(p.xrBeginMs)}+${one(p.xrEndMs)}`
-      + ` · walk ${one(p.walkCollisionMs)}ms/${p.walkGroundCasts}g/${p.walkSweeps}s/${p.walkTriangleTests}t/${p.walkLiveRefits}r`
-      + ` · ride ${one(p.rideMs)} (phys ${one(p.physicsMs)} cast ${one(p.castMs)} AI ${one(p.aiMs)})`
-      + ` · scene ${one(p.sceneMs)} world ${one(p.worldMs)} FX ${one(p.effectsMs)}`
-      + ` render ${one(p.renderMs)}(${one(p.renderPrepMs)}p+${one(p.renderSubmitMs)}s)`
-      + ` post ${one(p.postFrameMs)}`
-      + ` · draw ${p.drawCalls} · ${p.renderTriangles} tris · ${p.programs} prog`
-      + ` · list ${p.renderOpaqueItems}o/${p.renderTransparentItems}a/${p.renderTransmissiveItems}x`
-      + ` trans(ref ${p.renderTransparentRefBatches}b+${p.renderTransparentRefIsolated}i`
-      + `/auth ${p.renderTransparentAuthoredProps}/other ${p.renderTransparentOther}`
-      + `${p.renderTransparentOtherSources ? `:${p.renderTransparentOtherSources}` : ''})`
-      + ` · eye ${stats.eyeWidth}x${stats.eyeHeight} x${stats.views}`
-      + ` = ${((stats.eyeWidth * stats.eyeHeight * stats.views) / 1e6).toFixed(1)} Mpix`
-      + ` · layer requested ${stats.layerRequested} -> ${stats.layerKind}`
-      + `${stats.layerRequested === 'webgl' ? (stats.layerOverrideApplied ? ' (forced)' : ' (FORCE FAILED)') : ''}`
-      + ` · depth ${stats.depthIgnored === null ? 'unknown' : stats.depthIgnored ? 'ignored' : 'used'}`
-      + ` · AA context ${stats.contextAntialias ? 'on' : 'off'}`
-      + ` layer ${stats.layerAntialias === null ? 'unknown' : stats.layerAntialias ? 'on' : 'off'}`
-      + ` samples ${stats.samples ?? 'runtime'}`
-      + ` · power ${stats.powerPreference} · GPU ${stats.gpu}`
-      + ` · foveation ${stats.foveation === null ? 'n/a' : stats.foveation.toFixed(2)}`
-      + ` · scale ${appliedRenderScale}${appliedRenderScale === deps.renderScale ? '' : ` (requested ${deps.renderScale})`}`
-      + ` · viewY ${stats.rawHeadY.toFixed(2)} -> ${stats.correctedHeadY.toFixed(2)}`
-      + ` · floor ${stats.floorOffset.toFixed(2)}`
-      + ` · body ${stats.standingHeight === null ? 'uncalibrated' : stats.standingHeight.toFixed(2) + 'm'}`
-      + ` · near ${stats.nearClip.toFixed(2)}m`
-      + ` · hands ${stats.handTracking}`
-      + `${ride ? '' : ' · on foot'}`);
+    console.info(
+      `[xr perf] ${Math.round(p.fps)} fps · frame ${one(p.frameMs)} of ${one(stats.budgetMs)}` +
+        ` · ${Math.round(stats.displayHz)}Hz${stats.rateKnown ? '' : '(est)'} · best ${one(stats.bestMs)}` +
+        ` · worst ${one(stats.worstMs)} · CPU ${one(measuredRideCpuMs(p))} · GPU ${gpu}` +
+        ` · non-CPU ${one(outsideCpu)}` +
+        (pacing === null ? ` · pacing≤ ${one(outsideCpu)}` : ` · pacing~ ${one(pacing)}`) +
+        ` · XR ${one(p.xrBeginMs)}+${one(p.xrEndMs)}` +
+        ` · walk ${one(p.walkCollisionMs)}ms/${p.walkGroundCasts}g/${p.walkSweeps}s/${p.walkTriangleTests}t/${p.walkLiveRefits}r` +
+        ` · ride ${one(p.rideMs)} (phys ${one(p.physicsMs)} cast ${one(p.castMs)} AI ${one(p.aiMs)})` +
+        ` · scene ${one(p.sceneMs)} world ${one(p.worldMs)} FX ${one(p.effectsMs)}` +
+        ` render ${one(p.renderMs)}(${one(p.renderPrepMs)}p+${one(p.renderSubmitMs)}s)` +
+        ` post ${one(p.postFrameMs)}` +
+        ` · draw ${p.drawCalls} · ${p.renderTriangles} tris · ${p.programs} prog` +
+        ` · list ${p.renderOpaqueItems}o/${p.renderTransparentItems}a/${p.renderTransmissiveItems}x` +
+        ` trans(ref ${p.renderTransparentRefBatches}b+${p.renderTransparentRefIsolated}i` +
+        `/auth ${p.renderTransparentAuthoredProps}/other ${p.renderTransparentOther}` +
+        `${p.renderTransparentOtherSources ? `:${p.renderTransparentOtherSources}` : ''})` +
+        ` · eye ${stats.eyeWidth}x${stats.eyeHeight} x${stats.views}` +
+        ` = ${((stats.eyeWidth * stats.eyeHeight * stats.views) / 1e6).toFixed(1)} Mpix` +
+        ` · layer requested ${stats.layerRequested} -> ${stats.layerKind}` +
+        `${stats.layerRequested === 'webgl' ? (stats.layerOverrideApplied ? ' (forced)' : ' (FORCE FAILED)') : ''}` +
+        ` · depth ${stats.depthIgnored === null ? 'unknown' : stats.depthIgnored ? 'ignored' : 'used'}` +
+        ` · AA context ${stats.contextAntialias ? 'on' : 'off'}` +
+        ` layer ${stats.layerAntialias === null ? 'unknown' : stats.layerAntialias ? 'on' : 'off'}` +
+        ` samples ${stats.samples ?? 'runtime'}` +
+        ` · power ${stats.powerPreference} · GPU ${stats.gpu}` +
+        ` · foveation ${stats.foveation === null ? 'n/a' : stats.foveation.toFixed(2)}` +
+        ` · scale ${appliedRenderScale}${appliedRenderScale === deps.renderScale ? '' : ` (requested ${deps.renderScale})`}` +
+        ` · viewY ${stats.rawHeadY.toFixed(2)} -> ${stats.correctedHeadY.toFixed(2)}` +
+        ` · floor ${stats.floorOffset.toFixed(2)}` +
+        ` · body ${stats.standingHeight === null ? 'uncalibrated' : stats.standingHeight.toFixed(2) + 'm'}` +
+        ` · near ${stats.nearClip.toFixed(2)}m` +
+        ` · hands ${stats.handTracking}` +
+        `${ride ? '' : ' · on foot'}`,
+    );
   }
 
   function paintHud(now: number) {
@@ -1999,23 +2261,56 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (ride) {
       const st = ride.state;
       const state = {
-        speed: st.vel.length(), grounded: st.grounded, lead: st.lead,
-        grinding: st.railIdx >= 0, boosting: ride.boostActive(), charge: st.charging ? st.charge : 0,
+        speed: st.vel.length(),
+        grounded: st.grounded,
+        lead: st.lead,
+        grinding: st.railIdx >= 0,
+        boosting: ride.boostActive(),
+        charge: st.charging ? st.charge : 0,
       };
-      hud.draw(now, state, null, calibrationHud(now), statsEnabled, thirdPerson, run,
-        controlsOpen, 'ride', false, null);
+      hud.draw(
+        now,
+        state,
+        null,
+        calibrationHud(now),
+        statsEnabled,
+        thirdPerson,
+        run,
+        controlsOpen,
+        'ride',
+        false,
+        null,
+      );
       if (statsEnabled) profiler.draw(now, state, stats);
       return;
     }
     setHudHint(footHint());
-    hud.draw(now, null, null, calibrationHud(now), statsEnabled, thirdPerson, run,
-      controlsOpen, editOpen ? 'edit' : 'foot', !!boardGrab.held, editOpen ? {
-        mixedReality, mixedRealityAvailable: mixedRealityAvailable(), placing: !!palette?.placing,
-      } : null);
+    hud.draw(
+      now,
+      null,
+      null,
+      calibrationHud(now),
+      statsEnabled,
+      thirdPerson,
+      run,
+      controlsOpen,
+      editOpen ? 'edit' : 'foot',
+      !!boardGrab.held,
+      editOpen
+        ? {
+            mixedReality,
+            mixedRealityAvailable: mixedRealityAvailable(),
+            placing: !!palette?.placing,
+          }
+        : null,
+    );
     if (statsEnabled) profiler.draw(now, null, stats);
   }
 
-  function setHudHint(text: string) { hud.setHint(text); profiler.setHint(text); }
+  function setHudHint(text: string) {
+    hud.setHint(text);
+    profiler.setHint(text);
+  }
 
   /**
    * What the hands can do RIGHT NOW, on foot. Recomputed every frame rather than latched at each transition,
@@ -2026,7 +2321,8 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (editOpen) return 'L-stick fly · R-stick ↕ rise · grip drag · 2 grips zoom/turn';
     if (calibrationRun) return 'Hold still · arms straight out';
     if (boardGrab.held) return 'Trigger ride it · grip let go · other grip pass';
-    const reachable = deckInHandReach(), aimed = aimedAtDeck();
+    const reachable = deckInHandReach(),
+      aimed = aimedAtDeck();
     if (reachable && aimed) return 'Grip to pick it up · trigger to get on';
     if (reachable) return 'Grip to pick up the board';
     if (aimed) return 'Trigger to get on the board';
@@ -2056,14 +2352,10 @@ export function createXrPlay(deps: XrPlayDeps) {
   function boardActionTargetFor(hand: GrabHand, target: THREE.Vector3): boolean {
     let actionable = false;
     if (walker.isGrounded() && hands.aimRay(hand, boardActionRay)) {
-      const distance = deckRayDistance(
-        parked.grabBox, parked.group.position, parked.group.quaternion, boardActionRay,
-      );
+      const distance = deckRayDistance(parked.grabBox, parked.group.position, parked.group.quaternion, boardActionRay);
       if (distance !== null && distance <= MOUNT_AIM_RANGE) {
         boardActionRay.at(distance, target);
-        nearestDeckPoint(
-          parked.grabBox, parked.group.position, parked.group.quaternion, target, target,
-        );
+        nearestDeckPoint(parked.grabBox, parked.group.position, parked.group.quaternion, target, target);
         actionable = true;
       }
     }
@@ -2071,9 +2363,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     const at = wrist(hand);
     if (!at || reachToDeck(hand) > GRAB_REACH) return false;
     handGripPoint(at.position, at.quaternion, boardActionGrip);
-    nearestDeckPoint(
-      parked.grabBox, parked.group.position, parked.group.quaternion, boardActionGrip, target,
-    );
+    nearestDeckPoint(parked.grabBox, parked.group.position, parked.group.quaternion, boardActionGrip, target);
     return true;
   }
 
@@ -2084,8 +2374,9 @@ export function createXrPlay(deps: XrPlayDeps) {
     }
     const canShow = { left: false, right: false };
     for (const hand of GRAB_HANDS) {
-      canShow[hand] = boardActionTargetFor(hand, boardActionTargets[hand])
-        && hands.presentationControllerPosition(hand, boardActionStarts[hand]);
+      canShow[hand] =
+        boardActionTargetFor(hand, boardActionTargets[hand]) &&
+        hands.presentationControllerPosition(hand, boardActionStarts[hand]);
     }
     const preferred = preferredBoardActionHand(canShow.left, canShow.right);
     for (const hand of GRAB_HANDS) {
@@ -2097,16 +2388,35 @@ export function createXrPlay(deps: XrPlayDeps) {
   return {
     /** A headset session is up — or being swapped for its mixed-reality twin, which the host must not mistake
      *  for leaving VR. */
-    get presenting() { return !!session || swapping; },
+    get presenting() {
+      return !!session || swapping;
+    },
     /** EDIT is open (docs/068): the player is a free-flying editor rather than a rider on the mountain. */
-    get editing() { return (!!session || swapping) && editOpen; },
-    get riding() { return !!ride; },
-    get diagnosticsEnabled() { return statsEnabled; },
+    get editing() {
+      return (!!session || swapping) && editOpen;
+    },
+    get riding() {
+      return !!ride;
+    },
+    get diagnosticsEnabled() {
+      return statsEnabled;
+    },
     /** The effects world follows the local participant, not the optional board beneath them. These references
      * remain valid only until the next frame and are consumed synchronously by the viewport. */
-    get activePosition() { return ride ? ride.state.pos : walker.position(); },
-    get activeVelocity() { return ride ? ride.state.vel : walker.velocity(); },
-    enter, exit, dispose, beginFrame, endFrame, recordFramePerf, gaze, playerPose,
+    get activePosition() {
+      return ride ? ride.state.pos : walker.position();
+    },
+    get activeVelocity() {
+      return ride ? ride.state.vel : walker.velocity();
+    },
+    enter,
+    exit,
+    dispose,
+    beginFrame,
+    endFrame,
+    recordFramePerf,
+    gaze,
+    playerPose,
     setEquipmentAppearance(appearance?: EquipmentAppearance) {
       deps.equipmentAppearance = appearance;
       parked.setAppearance(appearance);
@@ -2131,7 +2441,8 @@ function webGlRendererLabel(gl: WebGLRenderingContext | WebGL2RenderingContext):
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 /** Third-person is a camera-only boom in the rider's level frame. Local +Z is behind a viewer who faces −Z;
  * local +Y lifts the headset view above the complete avatar rather than leaving it level with the avatar head. */
-export const XR_THIRD_PERSON_DISTANCE = 2, XR_THIRD_PERSON_HEIGHT = 1;
+export const XR_THIRD_PERSON_DISTANCE = 2,
+  XR_THIRD_PERSON_HEIGHT = 1;
 export function xrViewOffset(thirdPerson: boolean, out = new THREE.Vector3()): THREE.Vector3 {
   return out.set(0, thirdPerson ? XR_THIRD_PERSON_HEIGHT : 0, thirdPerson ? XR_THIRD_PERSON_DISTANCE : 0);
 }
@@ -2139,7 +2450,9 @@ export function xrViewOffset(thirdPerson: boolean, out = new THREE.Vector3()): T
 /** Move a tracker matrix from the camera/presentation root onto the avatar/body root. Third person uses this to
  * draw the controller beside the displaced headset while feeding the same physical pose to the unshifted body. */
 export function rebaseXrPresentationMatrix(
-  trackedWorld: THREE.Matrix4, presentationWorld: THREE.Matrix4, bodyWorld: THREE.Matrix4,
+  trackedWorld: THREE.Matrix4,
+  presentationWorld: THREE.Matrix4,
+  bodyWorld: THREE.Matrix4,
   out = new THREE.Matrix4(),
 ): THREE.Matrix4 {
   return out.copy(presentationWorld).invert().multiply(trackedWorld).premultiply(bodyWorld);
@@ -2165,8 +2478,12 @@ const _headsetFacing = new THREE.Vector3();
  * Convert one headset X/Z displacement from the runtime's local-floor space into world space. False means the
  * jump was too large to be human between adjacent XR frames and should be treated as a recenter/tracking reset.
  */
-export function trackedRoomDelta(previous: THREE.Vector3, current: THREE.Vector3,
-  rigRotation: THREE.Quaternion, out: THREE.Vector3): boolean {
+export function trackedRoomDelta(
+  previous: THREE.Vector3,
+  current: THREE.Vector3,
+  rigRotation: THREE.Quaternion,
+  out: THREE.Vector3,
+): boolean {
   out.set(current.x - previous.x, 0, current.z - previous.z);
   if (out.lengthSq() > MAX_TRACKED_ROOM_STEP * MAX_TRACKED_ROOM_STEP) {
     out.set(0, 0, 0);
@@ -2178,36 +2495,50 @@ export function trackedRoomDelta(previous: THREE.Vector3, current: THREE.Vector3
 
 /** Add one accepted world-space tracking delta and report when it is large enough to justify collision work.
  * The caller consumes and clears `pending` on true, preserving slow real movement without reacting to jitter. */
-export function trackedRoomMoveReady(pending: THREE.Vector3, delta: THREE.Vector3,
-  threshold = MIN_TRACKED_ROOM_MOVE): boolean {
+export function trackedRoomMoveReady(
+  pending: THREE.Vector3,
+  delta: THREE.Vector3,
+  threshold = MIN_TRACKED_ROOM_MOVE,
+): boolean {
   pending.add(delta);
   return pending.lengthSq() >= threshold * threshold;
 }
 
 /** Flatten physical HMD gaze into a body heading. Looking vertically retains the previous heading because yaw
  * is undefined there; every ordinary real-world turn immediately rotates the body under the viewer. */
-export function headsetBodyFacing(headRotation: THREE.Quaternion, fallback: THREE.Vector3,
-                                  out = new THREE.Vector3()): THREE.Vector3 {
+export function headsetBodyFacing(
+  headRotation: THREE.Quaternion,
+  fallback: THREE.Vector3,
+  out = new THREE.Vector3(),
+): THREE.Vector3 {
   _headsetFacing.copy(VIEW_FORWARD).applyQuaternion(headRotation).setY(0);
   if (_headsetFacing.lengthSq() >= 1e-8) out.copy(_headsetFacing);
   else out.copy(fallback).setY(0);
-  if (out.lengthSq() < 1e-8) out.set(0, 0, 1); else out.normalize();
+  if (out.lengthSq() < 1e-8) out.set(0, 0, 1);
+  else out.normalize();
   return out;
 }
 
-const _xrFinger = new THREE.Vector3(), _xrPalm = new THREE.Vector3(), _xrAcross = new THREE.Vector3();
+const _xrFinger = new THREE.Vector3(),
+  _xrPalm = new THREE.Vector3(),
+  _xrAcross = new THREE.Vector3();
 const _xrHandBasis = new THREE.Matrix4();
 
 /** Convert device-specific WebXR pose axes into the rider's one wrist convention: local +Y toward the fingers,
  * local +Z out of the palm. Optical wrist axes come from the Hand Input spec; controller grips use the inward
  * palm side of the held grip. Either source then drives the same avatar-hand retargeter. */
-export function canonicalXrHandRotation(raw: THREE.Quaternion, handedness: 'left' | 'right',
-                                        source: 'hand' | 'grip', out = new THREE.Quaternion()): THREE.Quaternion {
+export function canonicalXrHandRotation(
+  raw: THREE.Quaternion,
+  handedness: 'left' | 'right',
+  source: 'hand' | 'grip',
+  out = new THREE.Quaternion(),
+): THREE.Quaternion {
   _xrFinger.set(0, 0, -1).applyQuaternion(raw).normalize();
   if (source === 'hand') _xrPalm.set(0, -1, 0).applyQuaternion(raw);
   else _xrPalm.set(handedness === 'left' ? 1 : -1, 0, 0).applyQuaternion(raw);
   _xrPalm.addScaledVector(_xrFinger, -_xrPalm.dot(_xrFinger));
-  if (_xrPalm.lengthSq() < 1e-8) _xrPalm.set(0, 1, 0); else _xrPalm.normalize();
+  if (_xrPalm.lengthSq() < 1e-8) _xrPalm.set(0, 1, 0);
+  else _xrPalm.normalize();
   _xrAcross.crossVectors(_xrFinger, _xrPalm).normalize();
   _xrPalm.crossVectors(_xrAcross, _xrFinger).normalize();
   return out.setFromRotationMatrix(_xrHandBasis.makeBasis(_xrAcross, _xrFinger, _xrPalm));
@@ -2237,7 +2568,11 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     // reconnects. Record the source on the slot's own connection event so wrist ownership can never drift away
     // from the pose that Three is actually writing into this controller/grip/hand trio.
     const slot = {
-      controller, grip, hand, visual, laser,
+      controller,
+      grip,
+      hand,
+      visual,
+      laser,
       source: null as XRInputSource | null,
       handedness: 'none' as XRHandedness,
     };
@@ -2259,9 +2594,11 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
   let laserOn = false;
   const rawHandRotation = new THREE.Quaternion();
   const savedHandOffset = new THREE.Quaternion();
-  const bodyPoseMatrix = new THREE.Matrix4(), bodyPoseScale = new THREE.Vector3();
+  const bodyPoseMatrix = new THREE.Matrix4(),
+    bodyPoseScale = new THREE.Vector3();
   const networkTargets = [0, 1].map((): RiderHandTarget => ({
-    position: new THREE.Vector3(), quaternion: new THREE.Quaternion(),
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
   }));
   const node = (index: number): THREE.Object3D | null => {
     const { grip, hand } = tracked[index];
@@ -2283,12 +2620,15 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     object.updateWorldMatrix(true, false);
     rig.updateWorldMatrix(true, false);
     viewRig.updateWorldMatrix(true, false);
-    rebaseXrPresentationMatrix(
-      object.matrixWorld, viewRig.matrixWorld, rig.matrixWorld, bodyPoseMatrix,
-    ).decompose(position, rotation, bodyPoseScale);
+    rebaseXrPresentationMatrix(object.matrixWorld, viewRig.matrixWorld, rig.matrixWorld, bodyPoseMatrix).decompose(
+      position,
+      rotation,
+      bodyPoseScale,
+    );
   };
   const writeTarget = (index: number, handedness: 'left' | 'right', out: RiderHandTarget): boolean => {
-    const object = node(index), source = sourceAt(index);
+    const object = node(index),
+      source = sourceAt(index);
     if (!object || !source) return false;
     bodyPose(object, out.position, rawHandRotation);
     canonicalXrHandRotation(rawHandRotation, handedness, source, out.quaternion);
@@ -2296,9 +2636,14 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     out.handedness = handedness;
     return true;
   };
-  const applySaved = (target: RiderHandTarget, handedness: 'left' | 'right', index: number,
-                      calibration: XrHandsCalibration | undefined) => {
-    const saved = calibration?.[handedness], source = sourceAt(index);
+  const applySaved = (
+    target: RiderHandTarget,
+    handedness: 'left' | 'right',
+    index: number,
+    calibration: XrHandsCalibration | undefined,
+  ) => {
+    const saved = calibration?.[handedness],
+      source = sourceAt(index);
     if (!saved || saved.source !== source) return;
     savedHandOffset.set(...saved.offset);
     target.quaternion.multiply(savedHandOffset).normalize();
@@ -2307,8 +2652,8 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     updateControllers(pads: XrPads, riding: boolean, editing: boolean) {
       for (let index = 0; index < tracked.length; index++) {
         const slot = tracked[index];
-        const handedness = slot.handedness === 'left' || slot.handedness === 'right'
-          ? slot.handedness : index === 0 ? 'left' : 'right';
+        const handedness =
+          slot.handedness === 'left' || slot.handedness === 'right' ? slot.handedness : index === 0 ? 'left' : 'right';
         slot.visual.setHandedness(handedness);
         slot.visual.setBoardAction(riding);
         slot.visual.setEditAction(editing);
@@ -2360,7 +2705,10 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
      * freedom pose for free; the local quarter-turn makes the plane's face the top of the wrist like a watch. */
     placeWatch(object: THREE.Object3D): boolean {
       const wrist = node(indexFor('left', 0));
-      if (!wrist) { object.visible = false; return false; }
+      if (!wrist) {
+        object.visible = false;
+        return false;
+      }
       if (object.parent !== wrist) wrist.add(object);
       object.position.set(...XR_WATCH_POSITION);
       object.rotation.set(XR_WATCH_TILT, 0, 0);
@@ -2371,7 +2719,10 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
      * palette's own: by default the watch's top-left corner, or wherever its placement bar has moved it. */
     placePalette(object: THREE.Object3D, seat: Readonly<XrPaletteSeat>): boolean {
       const wrist = node(indexFor('left', 0));
-      if (!wrist) { object.visible = false; return false; }
+      if (!wrist) {
+        object.visible = false;
+        return false;
+      }
       if (object.parent !== wrist) wrist.add(object);
       object.position.set(seat.x, seat.y, seat.z);
       object.rotation.set(seat.tilt, 0, 0);
@@ -2380,14 +2731,15 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
     },
     /** Both canonical WORLD wrist poses this frame. The body needs both for stable shoulder assignment. */
     worldTargets(a: RiderHandTarget, b: RiderHandTarget): boolean {
-      return writeTarget(indexFor('left', 0), 'left', a)
-        && writeTarget(indexFor('right', 1), 'right', b);
+      return writeTarget(indexFor('left', 0), 'left', a) && writeTarget(indexFor('right', 1), 'right', b);
     },
     /** Body-space tracker centres keep calibration independent of the presentation-only third-person boom. */
     worldTrackerPositions(a: THREE.Vector3, b: THREE.Vector3): boolean {
-      const left = node(indexFor('left', 0)), right = node(indexFor('right', 1));
+      const left = node(indexFor('left', 0)),
+        right = node(indexFor('right', 1));
       if (!left || !right) return false;
-      bodyPose(left, a, rawHandRotation); bodyPose(right, b, rawHandRotation);
+      bodyPose(left, a, rawHandRotation);
+      bodyPose(right, b, rawHandRotation);
       return true;
     },
     /** Apply the T-pose's device-specific palm corrections after a raw sample has had a chance to be captured. */
@@ -2406,7 +2758,8 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
       return trackedFingerCurls(tracked[index].hand as unknown as TrackedHand);
     },
     trackingSources(): { left: XrTrackedHandSource; right: XrTrackedHandSource } | null {
-      const left = sourceAt(indexFor('left', 0)), right = sourceAt(indexFor('right', 1));
+      const left = sourceAt(indexFor('left', 0)),
+        right = sourceAt(indexFor('right', 1));
       return left && right ? { left, right } : null;
     },
     /** Short profiler answer to whether this frame uses optical wrists, controller grips, or has lost a side. */
@@ -2435,7 +2788,9 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
         visual.dispose();
         laser.geometry.dispose();
         (laser.material as THREE.Material).dispose();
-        controller.removeFromParent(); grip.removeFromParent(); hand.removeFromParent();
+        controller.removeFromParent();
+        grip.removeFromParent();
+        hand.removeFromParent();
       }
     },
   };
@@ -2467,7 +2822,7 @@ function createHands(renderer: THREE.WebGLRenderer, rig: THREE.Group, viewRig: T
 /** Deck plane tilt off +Y, forward toward -Z. Measured: the deck normal is (0, 0.849, -0.529). */
 const DECK_TILT = -0.5568;
 /** Disc centre in grip space, and its radius. */
-const DECK_AT = new THREE.Vector3(-0.0008, 0.0060, -0.0552);
+const DECK_AT = new THREE.Vector3(-0.0008, 0.006, -0.0552);
 const DECK_RADIUS = 0.0332;
 
 /**
@@ -2478,17 +2833,17 @@ const DECK_RADIUS = 0.0332;
 const SHELL_RINGS: readonly { z: number; x: number; y: number; w: number; h: number }[] = [
   { z: -0.0782, x: -0.0018, y: -0.0172, w: 0.0122, h: 0.0022 },
   { z: -0.0724, x: -0.0008, y: -0.0188, w: 0.0232, h: 0.0032 },
-  { z: -0.0660, x: -0.0014, y: -0.0185, w: 0.0300, h: 0.0068 },
-  { z: -0.0540, x: -0.0016, y: -0.0200, w: 0.0330, h: 0.0155 },
-  { z: -0.0420, x: -0.0022, y: -0.0120, w: 0.0315, h: 0.0150 },
-  { z: -0.0300, x: -0.0018, y: -0.0035, w: 0.0250, h: 0.0140 },
-  { z: -0.0240, x: +0.0000, y: +0.0022, w: 0.0210, h: 0.0198 },
-  { z: -0.0130, x: -0.0010, y: +0.0013, w: 0.0190, h: 0.0207 },
-  { z: +0.0015, x: +0.0000, y: +0.0000, w: 0.0153, h: 0.0212 },
-  { z: +0.0165, x: -0.0034, y: -0.0015, w: 0.0142, h: 0.0200 },
-  { z: +0.0315, x: -0.0058, y: -0.0016, w: 0.0124, h: 0.0170 },
-  { z: +0.0420, x: -0.0071, y: -0.0019, w: 0.0075, h: 0.0100 },
-  { z: +0.0465, x: -0.0075, y: -0.0020, w: 0.0026, h: 0.0036 },
+  { z: -0.066, x: -0.0014, y: -0.0185, w: 0.03, h: 0.0068 },
+  { z: -0.054, x: -0.0016, y: -0.02, w: 0.033, h: 0.0155 },
+  { z: -0.042, x: -0.0022, y: -0.012, w: 0.0315, h: 0.015 },
+  { z: -0.03, x: -0.0018, y: -0.0035, w: 0.025, h: 0.014 },
+  { z: -0.024, x: +0.0, y: +0.0022, w: 0.021, h: 0.0198 },
+  { z: -0.013, x: -0.001, y: +0.0013, w: 0.019, h: 0.0207 },
+  { z: +0.0015, x: +0.0, y: +0.0, w: 0.0153, h: 0.0212 },
+  { z: +0.0165, x: -0.0034, y: -0.0015, w: 0.0142, h: 0.02 },
+  { z: +0.0315, x: -0.0058, y: -0.0016, w: 0.0124, h: 0.017 },
+  { z: +0.042, x: -0.0071, y: -0.0019, w: 0.0075, h: 0.01 },
+  { z: +0.0465, x: -0.0075, y: -0.002, w: 0.0026, h: 0.0036 },
 ];
 const SHELL_SIDES = 10;
 
@@ -2500,10 +2855,15 @@ const SHELL_SIDES = 10;
  * edges, so one sweep either pokes through the plate or leaves it a disc floating over a gap when seen side-on.
  */
 const PLATE_PROFILE: readonly [number, number][] = [
-  [0.0000, 0.0026], [0.0210, 0.0020], [0.0305, -0.0008], [DECK_RADIUS, -0.0050],
+  [0.0, 0.0026],
+  [0.021, 0.002],
+  [0.0305, -0.0008],
+  [DECK_RADIUS, -0.005],
 ];
 const COLLAR_PROFILE: readonly [number, number][] = [
-  [DECK_RADIUS, -0.0050], [0.0322, -0.0128], [0.0286, -0.0196],
+  [DECK_RADIUS, -0.005],
+  [0.0322, -0.0128],
+  [0.0286, -0.0196],
 ];
 const DECK_SEGMENTS = 18;
 
@@ -2513,9 +2873,9 @@ const DECK_SEGMENTS = 18;
  * own control bones, so the A/B/stick triangle and the system button's corner are the hardware's spacing.
  */
 const CONTROLS = {
-  stick: { u: +0.0141, v: +0.0049, r: 0.0060, n: +0.0080 },
+  stick: { u: +0.0141, v: +0.0049, r: 0.006, n: +0.008 },
   a: { u: -0.0019, v: -0.0081, r: 0.0058, n: +0.0031 },
-  b: { u: -0.0079, v: +0.0071, r: 0.0058, n: +0.0030 },
+  b: { u: -0.0079, v: +0.0071, r: 0.0058, n: +0.003 },
   system: { u: +0.0131, v: -0.0147, r: 0.0042, n: +0.0022 },
 } as const;
 
@@ -2529,7 +2889,8 @@ const GRIP_HINGE = new THREE.Vector3(-0.0026, -0.0219, -0.0507);
  * them would only add a seam to hide.
  */
 function lowPolyShell(rings: readonly { z: number; x: number; y: number; w: number; h: number }[], sides: number) {
-  const position: number[] = [], index: number[] = [];
+  const position: number[] = [],
+    index: number[] = [];
   for (const ring of rings) {
     for (let s = 0; s < sides; s++) {
       const a = (s / sides) * Math.PI * 2;
@@ -2539,14 +2900,17 @@ function lowPolyShell(rings: readonly { z: number; x: number; y: number; w: numb
   for (let r = 0; r + 1 < rings.length; r++) {
     for (let s = 0; s < sides; s++) {
       const s1 = (s + 1) % sides;
-      const a = r * sides + s, b = r * sides + s1, c = (r + 1) * sides + s, d = (r + 1) * sides + s1;
+      const a = r * sides + s,
+        b = r * sides + s1,
+        c = (r + 1) * sides + s,
+        d = (r + 1) * sides + s1;
       index.push(a, c, b, b, c, d);
     }
   }
   const last = (rings.length - 1) * sides;
   for (let s = 1; s + 1 < sides; s++) {
-    index.push(0, s + 1, s);                       // front cap, wound to face -Z
-    index.push(last, last + s, last + s + 1);      // butt cap
+    index.push(0, s + 1, s); // front cap, wound to face -Z
+    index.push(last, last + s, last + s + 1); // butt cap
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
@@ -2597,13 +2961,15 @@ export function createVirtualController() {
   deck.rotation.x = DECK_TILT;
   mirror.add(deck);
   const lathe = (profile: readonly [number, number][]) =>
-    new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), DECK_SEGMENTS);
+    new THREE.LatheGeometry(
+      profile.map(([r, y]) => new THREE.Vector2(r, y)),
+      DECK_SEGMENTS,
+    );
   part(lathe(PLATE_PROFILE), deckMaterial, 'face', deck);
   part(lathe(COLLAR_PROFILE), shellMaterial, 'collar', deck);
 
   /** Deck-local placement: +X is across the plate, -Z is forward along it, +Y stands off its surface. */
-  const onDeck = (mesh: THREE.Object3D, at: { u: number; v: number }, y: number) =>
-    mesh.position.set(at.u, y, -at.v);
+  const onDeck = (mesh: THREE.Object3D, at: { u: number; v: number }, y: number) => mesh.position.set(at.u, y, -at.v);
 
   const buttonGeometry = new THREE.CylinderGeometry(CONTROLS.a.r, CONTROLS.a.r * 0.94, 0.0042, 10);
   const button = part(buttonGeometry, activeMaterial, 'button', deck);
@@ -2611,8 +2977,10 @@ export function createVirtualController() {
   const buttonUpper = part(buttonGeometry.clone(), activeUpperMaterial, 'button-upper', deck);
   onDeck(buttonUpper, CONTROLS.b, CONTROLS.b.n - 0.0021);
   const systemButton = part(
-    new THREE.CylinderGeometry(CONTROLS.system.r, CONTROLS.system.r * 0.94, 0.0034, 8), capMaterial,
-    'button-system', deck,
+    new THREE.CylinderGeometry(CONTROLS.system.r, CONTROLS.system.r * 0.94, 0.0034, 8),
+    capMaterial,
+    'button-system',
+    deck,
   );
   onDeck(systemButton, CONTROLS.system, CONTROLS.system.n - 0.0017);
 
@@ -2620,11 +2988,11 @@ export function createVirtualController() {
   // telemetry rather than decoration — useful when a stick is drifting and the rider cannot see their own hand.
   const stickPivot = new THREE.Group();
   stickPivot.name = 'xr-controller.stick-pivot';
-  onDeck(stickPivot, CONTROLS.stick, -0.0060);
+  onDeck(stickPivot, CONTROLS.stick, -0.006);
   deck.add(stickPivot);
   const well = part(new THREE.CylinderGeometry(0.0088, 0.0082, 0.0028, 10), deckMaterial, 'stick-well', deck);
   onDeck(well, CONTROLS.stick, 0.0016);
-  const stick = part(new THREE.CylinderGeometry(0.0060, 0.0042, 0.0104, 10), stickMaterial, 'stick', stickPivot);
+  const stick = part(new THREE.CylinderGeometry(0.006, 0.0042, 0.0104, 10), stickMaterial, 'stick', stickPivot);
   stick.position.y = 0.0088;
 
   const trigger = part(new THREE.BoxGeometry(0.0168, 0.0072, 0.0104), shellMaterial, 'trigger', mirror);
@@ -2643,20 +3011,38 @@ export function createVirtualController() {
   // through it, and lower it enough that the printed outer face clears the hand/body silhouette. Tucked 2.5 mm
   // closer to the handle than the first measurement: in the headset the paddle read as standing off its own
   // controller toward the other hand.
-  const gripPadRestX = GRIP_HINGE.x - 0.0240;
-  const gripPad = part(new THREE.BoxGeometry(0.0044, 0.0150, 0.0250), shellMaterial, 'grip-pad', mirror);
-  gripPad.position.set(gripPadRestX, GRIP_HINGE.y + 0.0040, GRIP_HINGE.z + 0.0175);
-  gripPad.rotation.set(0.10, 0.16, 0.0);
+  const gripPadRestX = GRIP_HINGE.x - 0.024;
+  const gripPad = part(new THREE.BoxGeometry(0.0044, 0.015, 0.025), shellMaterial, 'grip-pad', mirror);
+  gripPad.position.set(gripPadRestX, GRIP_HINGE.y + 0.004, GRIP_HINGE.z + 0.0175);
+  gripPad.rotation.set(0.1, 0.16, 0.0);
 
   // Bound face buttons carry glyphs and light: A jumps, B boosts, left X recovers, and left Y toggles the watch.
   // The complete state-aware action map is on the wrist's CONTROLS page.
   const glyphMaterial = new THREE.LineBasicMaterial({ color: 0xf4fbff, depthTest: true, depthWrite: false });
   const glyphSegments: Record<'A' | 'B' | 'X' | 'Y', number[][]> = {
-    A: [[-0.5, -0.5, 0, 0.5], [0, 0.5, 0.5, -0.5], [-0.28, -0.05, 0.28, -0.05]],
-    B: [[-0.4, -0.5, -0.4, 0.5], [-0.4, 0.5, 0.22, 0.5], [0.22, 0.5, 0.42, 0.25],
-      [0.42, 0.25, -0.4, 0], [-0.4, 0, 0.25, 0], [0.25, 0, 0.43, -0.25], [0.43, -0.25, -0.4, -0.5]],
-    X: [[-0.45, -0.5, 0.45, 0.5], [-0.45, 0.5, 0.45, -0.5]],
-    Y: [[-0.45, 0.5, 0, 0], [0.45, 0.5, 0, 0], [0, 0, 0, -0.5]],
+    A: [
+      [-0.5, -0.5, 0, 0.5],
+      [0, 0.5, 0.5, -0.5],
+      [-0.28, -0.05, 0.28, -0.05],
+    ],
+    B: [
+      [-0.4, -0.5, -0.4, 0.5],
+      [-0.4, 0.5, 0.22, 0.5],
+      [0.22, 0.5, 0.42, 0.25],
+      [0.42, 0.25, -0.4, 0],
+      [-0.4, 0, 0.25, 0],
+      [0.25, 0, 0.43, -0.25],
+      [0.43, -0.25, -0.4, -0.5],
+    ],
+    X: [
+      [-0.45, -0.5, 0.45, 0.5],
+      [-0.45, 0.5, 0.45, -0.5],
+    ],
+    Y: [
+      [-0.45, 0.5, 0, 0],
+      [0.45, 0.5, 0, 0],
+      [0, 0, 0, -0.5],
+    ],
   };
   const glyph = (letter: 'A' | 'B' | 'X' | 'Y', at: THREE.Vector3) => {
     const vertices: number[] = [];
@@ -2675,8 +3061,10 @@ export function createVirtualController() {
     return lines;
   };
   const labels = {
-    A: glyph('A', button.position), B: glyph('B', buttonUpper.position),
-    X: glyph('X', button.position), Y: glyph('Y', buttonUpper.position),
+    A: glyph('A', button.position),
+    B: glyph('B', buttonUpper.position),
+    X: glyph('X', button.position),
+    Y: glyph('Y', buttonUpper.position),
   };
   // The controller is viewed with its forward (-Z) edge at the top. The original marks used +Z as glyph-up,
   // which made both letters read upside down in the hand; flip only their vertical axis, preserving left/right.
@@ -2685,57 +3073,194 @@ export function createVirtualController() {
 
   type SurfaceStroke = readonly [number, number, number, number];
   const surfaceFont: Readonly<Record<string, readonly SurfaceStroke[]>> = {
-    A: [[0, 1, 0.5, 0], [0.5, 0, 1, 1], [0.2, 0.58, 0.8, 0.58]],
-    B: [[0, 0, 0, 1], [0, 0, 0.68, 0], [0.68, 0, 0.92, 0.18], [0.92, 0.18, 0.68, 0.48],
-      [0.68, 0.48, 0, 0.48], [0.68, 0.48, 0.96, 0.7], [0.96, 0.7, 0.68, 1], [0.68, 1, 0, 1]],
-    C: [[1, 0.18, 0.78, 0], [0.78, 0, 0.18, 0], [0.18, 0, 0, 0.2], [0, 0.2, 0, 0.8],
-      [0, 0.8, 0.18, 1], [0.18, 1, 0.78, 1], [0.78, 1, 1, 0.82]],
-    D: [[0, 0, 0, 1], [0, 0, 0.66, 0], [0.66, 0, 1, 0.28], [1, 0.28, 1, 0.72],
-      [1, 0.72, 0.66, 1], [0.66, 1, 0, 1]],
-    E: [[1, 0, 0, 0], [0, 0, 0, 1], [0, 0.5, 0.78, 0.5], [0, 1, 1, 1]],
-    F: [[1, 0, 0, 0], [0, 0, 0, 1], [0, 0.5, 0.78, 0.5]],
-    G: [[1, 0.18, 0.78, 0], [0.78, 0, 0.18, 0], [0.18, 0, 0, 0.2], [0, 0.2, 0, 0.8],
-      [0, 0.8, 0.18, 1], [0.18, 1, 0.78, 1], [0.78, 1, 1, 0.8], [1, 0.8, 1, 0.56],
-      [1, 0.56, 0.54, 0.56]],
-    I: [[0, 0, 1, 0], [0.5, 0, 0.5, 1], [0, 1, 1, 1]],
-    J: [[0, 0, 1, 0], [0.72, 0, 0.72, 0.78], [0.72, 0.78, 0.5, 1], [0.5, 1, 0.12, 0.82]],
-    K: [[0, 0, 0, 1], [1, 0, 0, 0.6], [0.3, 0.42, 1, 1]],
-    L: [[0, 0, 0, 1], [0, 1, 1, 1]],
-    M: [[0, 1, 0, 0], [0, 0, 0.5, 0.55], [0.5, 0.55, 1, 0], [1, 0, 1, 1]],
-    N: [[0, 1, 0, 0], [0, 0, 1, 1], [1, 1, 1, 0]],
-    O: [[0.18, 0, 0.82, 0], [0.82, 0, 1, 0.2], [1, 0.2, 1, 0.8], [1, 0.8, 0.82, 1],
-      [0.82, 1, 0.18, 1], [0.18, 1, 0, 0.8], [0, 0.8, 0, 0.2], [0, 0.2, 0.18, 0]],
-    P: [[0, 1, 0, 0], [0, 0, 0.72, 0], [0.72, 0, 1, 0.22], [1, 0.22, 0.72, 0.5],
-      [0.72, 0.5, 0, 0.5]],
-    Q: [[0.18, 0, 0.82, 0], [0.82, 0, 1, 0.2], [1, 0.2, 1, 0.8], [1, 0.8, 0.82, 1],
-      [0.82, 1, 0.18, 1], [0.18, 1, 0, 0.8], [0, 0.8, 0, 0.2], [0, 0.2, 0.18, 0],
-      [0.58, 0.62, 1.08, 1.08]],
-    R: [[0, 1, 0, 0], [0, 0, 0.72, 0], [0.72, 0, 1, 0.22], [1, 0.22, 0.72, 0.5],
-      [0.72, 0.5, 0, 0.5], [0.5, 0.5, 1, 1]],
-    S: [[0.92, 0.12, 0.7, 0], [0.7, 0, 0.18, 0], [0.18, 0, 0, 0.22], [0, 0.22, 0.18, 0.48],
-      [0.18, 0.48, 0.78, 0.52], [0.78, 0.52, 1, 0.78], [1, 0.78, 0.82, 1], [0.82, 1, 0.18, 1],
-      [0.18, 1, 0, 0.88]],
-    T: [[0, 0, 1, 0], [0.5, 0, 0.5, 1]],
-    U: [[0, 0, 0, 0.78], [0, 0.78, 0.22, 1], [0.22, 1, 0.78, 1], [0.78, 1, 1, 0.78], [1, 0.78, 1, 0]],
-    V: [[0, 0, 0.5, 1], [0.5, 1, 1, 0]],
-    W:[[0, 0, 0.18, 1], [0.18, 1, 0.5, 0.55], [0.5, 0.55, 0.82, 1], [0.82, 1, 1, 0]],
-    Y: [[0, 0, 0.5, 0.5], [1, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 1]],
+    A: [
+      [0, 1, 0.5, 0],
+      [0.5, 0, 1, 1],
+      [0.2, 0.58, 0.8, 0.58],
+    ],
+    B: [
+      [0, 0, 0, 1],
+      [0, 0, 0.68, 0],
+      [0.68, 0, 0.92, 0.18],
+      [0.92, 0.18, 0.68, 0.48],
+      [0.68, 0.48, 0, 0.48],
+      [0.68, 0.48, 0.96, 0.7],
+      [0.96, 0.7, 0.68, 1],
+      [0.68, 1, 0, 1],
+    ],
+    C: [
+      [1, 0.18, 0.78, 0],
+      [0.78, 0, 0.18, 0],
+      [0.18, 0, 0, 0.2],
+      [0, 0.2, 0, 0.8],
+      [0, 0.8, 0.18, 1],
+      [0.18, 1, 0.78, 1],
+      [0.78, 1, 1, 0.82],
+    ],
+    D: [
+      [0, 0, 0, 1],
+      [0, 0, 0.66, 0],
+      [0.66, 0, 1, 0.28],
+      [1, 0.28, 1, 0.72],
+      [1, 0.72, 0.66, 1],
+      [0.66, 1, 0, 1],
+    ],
+    E: [
+      [1, 0, 0, 0],
+      [0, 0, 0, 1],
+      [0, 0.5, 0.78, 0.5],
+      [0, 1, 1, 1],
+    ],
+    F: [
+      [1, 0, 0, 0],
+      [0, 0, 0, 1],
+      [0, 0.5, 0.78, 0.5],
+    ],
+    G: [
+      [1, 0.18, 0.78, 0],
+      [0.78, 0, 0.18, 0],
+      [0.18, 0, 0, 0.2],
+      [0, 0.2, 0, 0.8],
+      [0, 0.8, 0.18, 1],
+      [0.18, 1, 0.78, 1],
+      [0.78, 1, 1, 0.8],
+      [1, 0.8, 1, 0.56],
+      [1, 0.56, 0.54, 0.56],
+    ],
+    I: [
+      [0, 0, 1, 0],
+      [0.5, 0, 0.5, 1],
+      [0, 1, 1, 1],
+    ],
+    J: [
+      [0, 0, 1, 0],
+      [0.72, 0, 0.72, 0.78],
+      [0.72, 0.78, 0.5, 1],
+      [0.5, 1, 0.12, 0.82],
+    ],
+    K: [
+      [0, 0, 0, 1],
+      [1, 0, 0, 0.6],
+      [0.3, 0.42, 1, 1],
+    ],
+    L: [
+      [0, 0, 0, 1],
+      [0, 1, 1, 1],
+    ],
+    M: [
+      [0, 1, 0, 0],
+      [0, 0, 0.5, 0.55],
+      [0.5, 0.55, 1, 0],
+      [1, 0, 1, 1],
+    ],
+    N: [
+      [0, 1, 0, 0],
+      [0, 0, 1, 1],
+      [1, 1, 1, 0],
+    ],
+    O: [
+      [0.18, 0, 0.82, 0],
+      [0.82, 0, 1, 0.2],
+      [1, 0.2, 1, 0.8],
+      [1, 0.8, 0.82, 1],
+      [0.82, 1, 0.18, 1],
+      [0.18, 1, 0, 0.8],
+      [0, 0.8, 0, 0.2],
+      [0, 0.2, 0.18, 0],
+    ],
+    P: [
+      [0, 1, 0, 0],
+      [0, 0, 0.72, 0],
+      [0.72, 0, 1, 0.22],
+      [1, 0.22, 0.72, 0.5],
+      [0.72, 0.5, 0, 0.5],
+    ],
+    Q: [
+      [0.18, 0, 0.82, 0],
+      [0.82, 0, 1, 0.2],
+      [1, 0.2, 1, 0.8],
+      [1, 0.8, 0.82, 1],
+      [0.82, 1, 0.18, 1],
+      [0.18, 1, 0, 0.8],
+      [0, 0.8, 0, 0.2],
+      [0, 0.2, 0.18, 0],
+      [0.58, 0.62, 1.08, 1.08],
+    ],
+    R: [
+      [0, 1, 0, 0],
+      [0, 0, 0.72, 0],
+      [0.72, 0, 1, 0.22],
+      [1, 0.22, 0.72, 0.5],
+      [0.72, 0.5, 0, 0.5],
+      [0.5, 0.5, 1, 1],
+    ],
+    S: [
+      [0.92, 0.12, 0.7, 0],
+      [0.7, 0, 0.18, 0],
+      [0.18, 0, 0, 0.22],
+      [0, 0.22, 0.18, 0.48],
+      [0.18, 0.48, 0.78, 0.52],
+      [0.78, 0.52, 1, 0.78],
+      [1, 0.78, 0.82, 1],
+      [0.82, 1, 0.18, 1],
+      [0.18, 1, 0, 0.88],
+    ],
+    T: [
+      [0, 0, 1, 0],
+      [0.5, 0, 0.5, 1],
+    ],
+    U: [
+      [0, 0, 0, 0.78],
+      [0, 0.78, 0.22, 1],
+      [0.22, 1, 0.78, 1],
+      [0.78, 1, 1, 0.78],
+      [1, 0.78, 1, 0],
+    ],
+    V: [
+      [0, 0, 0.5, 1],
+      [0.5, 1, 1, 0],
+    ],
+    W: [
+      [0, 0, 0.18, 1],
+      [0.18, 1, 0.5, 0.55],
+      [0.5, 0.55, 0.82, 1],
+      [0.82, 1, 1, 0],
+    ],
+    Y: [
+      [0, 0, 0.5, 0.5],
+      [1, 0, 0.5, 0.5],
+      [0.5, 0.5, 0.5, 1],
+    ],
     '/': [[0, 1, 1, 0]],
   };
   const actionMaterial = new THREE.LineBasicMaterial({
-    color: 0xc9dfef, transparent: true, opacity: 0.9, depthTest: true, depthWrite: false,
+    color: 0xc9dfef,
+    transparent: true,
+    opacity: 0.9,
+    depthTest: true,
+    depthWrite: false,
   });
   // Trigger and grip are white shell parts, so their printing needs dark ink rather than the pale deck ink.
   const controlActionMaterial = new THREE.LineBasicMaterial({
-    color: 0x123842, depthTest: true, depthWrite: false,
+    color: 0x123842,
+    depthTest: true,
+    depthWrite: false,
   });
   /** Tiny single-stroke lettering laid directly on a control surface. It follows the tracked controller and
    * never billboards toward the viewer, so it reads as printing on the hardware rather than a floating callout. */
   type SurfaceLayout = 'deck' | 'trigger' | 'grip';
-  const surfaceText = (text: string, x: number, z: number, height = 0.0024,
-                       parent: THREE.Object3D = deck, y = 0.0031, layout: SurfaceLayout = 'deck',
-                       ink: THREE.LineBasicMaterial = actionMaterial) => {
-    const width = height * 0.62, gap = height * 0.22;
+  const surfaceText = (
+    text: string,
+    x: number,
+    z: number,
+    height = 0.0024,
+    parent: THREE.Object3D = deck,
+    y = 0.0031,
+    layout: SurfaceLayout = 'deck',
+    ink: THREE.LineBasicMaterial = actionMaterial,
+  ) => {
+    const width = height * 0.62,
+      gap = height * 0.22;
     const total = text.length * width + Math.max(0, text.length - 1) * gap;
     const vertices: number[] = [];
     let cursor = -total / 2;
@@ -2743,11 +3268,15 @@ export function createVirtualController() {
       // A letter the font lacks would print as a silent gap in the word; fail where the label is made instead.
       if (letter !== ' ' && !surfaceFont[letter]) throw new Error(`controller surface font has no '${letter}'`);
       for (const [x1, y1, x2, y2] of surfaceFont[letter] ?? []) {
-        const u1 = cursor + x1 * width, u2 = cursor + x2 * width;
-        const v1 = (y1 - 0.5) * height, v2 = (y2 - 0.5) * height;
-        if (layout === 'trigger') vertices.push(u1, -v1, 0, u2, -v2, 0); // exposed forward XY face
-        else if (layout === 'grip') vertices.push(0, -v1, u1, 0, -v2, u2); // exposed outer YZ face
-        else vertices.push(u1, 0, v1, u2, 0, v2);                         // top deck XZ face
+        const u1 = cursor + x1 * width,
+          u2 = cursor + x2 * width;
+        const v1 = (y1 - 0.5) * height,
+          v2 = (y2 - 0.5) * height;
+        if (layout === 'trigger')
+          vertices.push(u1, -v1, 0, u2, -v2, 0); // exposed forward XY face
+        else if (layout === 'grip')
+          vertices.push(0, -v1, u1, 0, -v2, u2); // exposed outer YZ face
+        else vertices.push(u1, 0, v1, u2, 0, v2); // top deck XZ face
       }
       cursor += width + gap;
     }
@@ -2767,14 +3296,14 @@ export function createVirtualController() {
   // exactly when the rider looks down to check what the button does. The stick legend names what the stick does
   // in the current state on each hand — riding, only the left stick does anything.
   const actionLabels = {
-    jump: surfaceText('JUMP', -0.0210, +0.0085),
-    boost: surfaceText('BOOST', -0.0210, -0.0070),
-    steer: surfaceText('STEER', CONTROLS.stick.u, -0.0180),
-    move: surfaceText('MOVE', CONTROLS.stick.u, -0.0180),
-    look: surfaceText('LOOK', CONTROLS.stick.u, -0.0180),
-    reset: surfaceText('RESET', -0.0210, +0.0085),
-    spawn: surfaceText('SPAWN', -0.0210, +0.0085),
-    menu: surfaceText('MENU', -0.0210, -0.0070),
+    jump: surfaceText('JUMP', -0.021, +0.0085),
+    boost: surfaceText('BOOST', -0.021, -0.007),
+    steer: surfaceText('STEER', CONTROLS.stick.u, -0.018),
+    move: surfaceText('MOVE', CONTROLS.stick.u, -0.018),
+    look: surfaceText('LOOK', CONTROLS.stick.u, -0.018),
+    reset: surfaceText('RESET', -0.021, +0.0085),
+    spawn: surfaceText('SPAWN', -0.021, +0.0085),
+    menu: surfaceText('MENU', -0.021, -0.007),
     // A 0.1 mm stand-off keeps depth testing honest without z-fighting the button surface.
     equip: surfaceText('EQUIP', 0, -0.0053, 0.0025, trigger, 0, 'trigger', controlActionMaterial),
     unequip: surfaceText('UNEQUIP', 0, -0.0053, 0.0024, trigger, 0, 'trigger', controlActionMaterial),
@@ -2782,18 +3311,30 @@ export function createVirtualController() {
     // EDIT (docs/068): the right hand is the editor's mouse, the sticks fly, and both grips handle the world.
     // R CLICK sits 2 mm further in than JUMP so its extra length stays on the flat of the plate.
     click: surfaceText('CLICK', 0, -0.0053, 0.0025, trigger, 0, 'trigger', controlActionMaterial),
-    rightClick: surfaceText('R CLICK', -0.0190, +0.0085),
-    fly: surfaceText('FLY', CONTROLS.stick.u, -0.0180),
-    turnRise: surfaceText('TURN/RISE', CONTROLS.stick.u, -0.0180, 0.0020),
+    rightClick: surfaceText('R CLICK', -0.019, +0.0085),
+    fly: surfaceText('FLY', CONTROLS.stick.u, -0.018),
+    turnRise: surfaceText('TURN/RISE', CONTROLS.stick.u, -0.018, 0.002),
     grabWorld: surfaceText('GRAB WORLD', -0.0023, 0, 0.0024, gripPad, 0, 'grip', controlActionMaterial),
     // The stick CLICKS are the editor's history, so the word is printed on the cap that is pressed: it tilts and
     // sinks with the physical stick.
     undo: surfaceText('UNDO', 0, 0, 0.0016, stick, 0.0054),
     redo: surfaceText('REDO', 0, 0, 0.0016, stick, 0.0054),
   };
-  const deckActions = [actionLabels.jump, actionLabels.boost, actionLabels.steer, actionLabels.move,
-    actionLabels.look, actionLabels.reset, actionLabels.spawn, actionLabels.menu, actionLabels.rightClick,
-    actionLabels.fly, actionLabels.turnRise, actionLabels.undo, actionLabels.redo];
+  const deckActions = [
+    actionLabels.jump,
+    actionLabels.boost,
+    actionLabels.steer,
+    actionLabels.move,
+    actionLabels.look,
+    actionLabels.reset,
+    actionLabels.spawn,
+    actionLabels.menu,
+    actionLabels.rightClick,
+    actionLabels.fly,
+    actionLabels.turnRise,
+    actionLabels.undo,
+    actionLabels.redo,
+  ];
   const triggerActions = [actionLabels.equip, actionLabels.unequip, actionLabels.click];
   const gripActions = [actionLabels.grabBoard, actionLabels.grabWorld];
   // This text is seen from the trigger's exposed -Z face, so its reading direction is opposite the deck labels.
@@ -2805,8 +3346,10 @@ export function createVirtualController() {
   /** Print only what each control does in the current state. Editing wins over riding: it is an on-foot mode,
    *  and mounting turns it off. */
   const showActions = () => {
-    const right = rightHanded, left = !rightHanded;
-    const ride = boardRiding && !editing, foot = !boardRiding && !editing;
+    const right = rightHanded,
+      left = !rightHanded;
+    const ride = boardRiding && !editing,
+      foot = !boardRiding && !editing;
     // Right A/B jump and boost; editing, A is the right mouse button and B does nothing.
     actionLabels.jump.visible = actionLabels.boost.visible = right && !editing;
     actionLabels.rightClick.visible = right && editing;
@@ -2865,7 +3408,8 @@ export function createVirtualController() {
       showActions();
     },
     setInput(hand: XrPads['left']) {
-      const triggerValue = hand?.triggerValue ?? 0, squeeze = hand?.squeezeValue ?? 0;
+      const triggerValue = hand?.triggerValue ?? 0,
+        squeeze = hand?.squeezeValue ?? 0;
       const lower = !!hand?.a;
       const upper = !!hand?.b;
       // Negative: the tab hangs BELOW its hinge, so a positive roll about +X would throw it forward, away
@@ -2910,14 +3454,20 @@ function createWatchPointer() {
   const position = new THREE.BufferAttribute(positions, 3);
   geometry.setAttribute('position', position);
   const material = new THREE.LineBasicMaterial({
-    color: 0x74d7ff, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false,
+    color: 0x74d7ff,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false,
   });
   const line = new THREE.Line(geometry, material);
   line.frustumCulled = false;
   line.renderOrder = 40;
   const dotGeometry = new THREE.SphereGeometry(0.012, 10, 6);
   const dotMaterial = new THREE.MeshBasicMaterial({
-    color: 0xd8f5ff, depthTest: false, depthWrite: false,
+    color: 0xd8f5ff,
+    depthTest: false,
+    depthWrite: false,
   });
   const dot = new THREE.Mesh(dotGeometry, dotMaterial);
   dot.renderOrder = 41;
@@ -2929,17 +3479,26 @@ function createWatchPointer() {
     object,
     /** `scale` is the player's size (edit flight grows the watch and palette), so the dot keeps its look. */
     show(from: THREE.Vector3, to: THREE.Vector3, scale = 1) {
-      positions[0] = from.x; positions[1] = from.y; positions[2] = from.z;
-      positions[3] = to.x; positions[4] = to.y; positions[5] = to.z;
+      positions[0] = from.x;
+      positions[1] = from.y;
+      positions[2] = from.z;
+      positions[3] = to.x;
+      positions[4] = to.y;
+      positions[5] = to.z;
       position.needsUpdate = true;
       dot.position.copy(to);
       dot.scale.setScalar(scale);
       object.visible = true;
     },
-    hide() { object.visible = false; },
+    hide() {
+      object.visible = false;
+    },
     dispose() {
       object.removeFromParent();
-      geometry.dispose(); material.dispose(); dotGeometry.dispose(); dotMaterial.dispose();
+      geometry.dispose();
+      material.dispose();
+      dotGeometry.dispose();
+      dotMaterial.dispose();
     },
   };
 }
@@ -2949,7 +3508,13 @@ function createWatchPointer() {
 function createWorldCursor(): THREE.Mesh {
   const cursor = new THREE.Mesh(
     new THREE.SphereGeometry(1, 12, 8),
-    new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false }),
+    new THREE.MeshBasicMaterial({
+      color: 0xeaf6ff,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      depthWrite: false,
+    }),
   );
   cursor.name = 'xr-world-cursor';
   cursor.renderOrder = 42;
@@ -2962,15 +3527,30 @@ function createWorldCursor(): THREE.Mesh {
 /** The right hand's short edit laser (docs/068): a translucent stub along the aim ray, in the controller's own
  * space so it follows the hand for free and grows with the player. Short on purpose — the cursor dot, not a beam
  * across the view, marks what it is pointing at. */
-const EDIT_LASER_LENGTH = 0.3, EDIT_LASER_RADIUS = 0.0018;
+const EDIT_LASER_LENGTH = 0.3,
+  EDIT_LASER_RADIUS = 0.0018;
 function createEditLaser(): THREE.Mesh {
-  const geometry = new THREE.CylinderGeometry(EDIT_LASER_RADIUS * 0.4, EDIT_LASER_RADIUS, EDIT_LASER_LENGTH, 8, 1, true);
+  const geometry = new THREE.CylinderGeometry(
+    EDIT_LASER_RADIUS * 0.4,
+    EDIT_LASER_RADIUS,
+    EDIT_LASER_LENGTH,
+    8,
+    1,
+    true,
+  );
   // A cylinder runs along +Y; lay it along the aim space's −Z, starting at the controller.
   geometry.rotateX(-Math.PI / 2);
   geometry.translate(0, 0, -EDIT_LASER_LENGTH / 2);
-  const laser = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-    color: 0x8fd7ff, transparent: true, opacity: 0.35, depthWrite: false, toneMapped: false,
-  }));
+  const laser = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+      color: 0x8fd7ff,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+      toneMapped: false,
+    }),
+  );
   laser.name = 'xr-edit-laser';
   laser.renderOrder = 39;
   laser.raycast = () => {};
@@ -3009,8 +3589,12 @@ export function createBoardActionGuide(hand: GrabHand = 'right') {
         gl_FragColor = vec4(colour, opacity);
       }
     `,
-    transparent: true, opacity: 0.5, depthTest: false, depthWrite: false,
-    side: THREE.DoubleSide, toneMapped: false,
+    transparent: true,
+    opacity: 0.5,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
   });
   const object = new THREE.Mesh(geometry, material);
   object.name = `xr-board-action-guide-${hand}`;
@@ -3018,14 +3602,18 @@ export function createBoardActionGuide(hand: GrabHand = 'right') {
   object.frustumCulled = false;
   object.renderOrder = 39;
   object.raycast = () => {};
-  const direction = new THREE.Vector3(), start = new THREE.Vector3();
+  const direction = new THREE.Vector3(),
+    start = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
   return {
     object,
     show(from: THREE.Vector3, to: THREE.Vector3) {
       direction.subVectors(to, from);
       const totalLength = direction.length();
-      if (totalLength <= 0.11) { object.visible = false; return; }
+      if (totalLength <= 0.11) {
+        object.visible = false;
+        return;
+      }
       direction.multiplyScalar(1 / totalLength);
       start.copy(from).addScaledVector(direction, 0.09);
       const visibleLength = totalLength - 0.09;
@@ -3035,11 +3623,19 @@ export function createBoardActionGuide(hand: GrabHand = 'right') {
       material.uniforms.lineLength.value = visibleLength;
       object.visible = true;
     },
-    hide() { object.visible = false; },
-    dispose() { object.removeFromParent(); geometry.dispose(); material.dispose(); },
+    hide() {
+      object.visible = false;
+    },
+    dispose() {
+      object.removeFromParent();
+      geometry.dispose();
+      material.dispose();
+    },
   };
 }
 
 const vector = (v: THREE.Vector3): [number, number, number] => [v.x, v.y, v.z];
-const transform = (p: THREE.Vector3, q: THREE.Quaternion): PlayerTransform =>
-  ({ p: vector(p), q: [q.x, q.y, q.z, q.w] });
+const transform = (p: THREE.Vector3, q: THREE.Quaternion): PlayerTransform => ({
+  p: vector(p),
+  q: [q.x, q.y, q.z, q.w],
+});

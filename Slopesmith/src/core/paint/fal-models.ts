@@ -30,8 +30,7 @@ export const FAL_TERMS_REVIEWED_AT = '2026-08-16';
 
 const commercialTerms = (path: string, statusLabel = 'Commercial use through fal.ai'): FalModelTerms => {
   const modelPage = `https://fal.ai/models/${path}`;
-  return { status: 'commercial-use', statusLabel, modelPage, licenseUrl: modelPage,
-    reviewedAt: FAL_TERMS_REVIEWED_AT };
+  return { status: 'commercial-use', statusLabel, modelPage, licenseUrl: modelPage, reviewedAt: FAL_TERMS_REVIEWED_AT };
 };
 
 /** Provider documents archived by URL and review date in every saved generation record. */
@@ -43,9 +42,10 @@ export const FAL_PROVIDER_TERMS = {
   reviewedAt: FAL_TERMS_REVIEWED_AT,
 } as const;
 
-export const FAL_OUTPUT_NOTICE = 'By generating, you confirm rights to every input and compliance with '
-  + 'applicable model, territorial, and acceptable-use restrictions. Do not assume the linked terms transfer '
-  + 'additional output rights or mean an output is exclusive, original, non-infringing, or otherwise cleared.';
+export const FAL_OUTPUT_NOTICE =
+  'By generating, you confirm rights to every input and compliance with ' +
+  'applicable model, territorial, and acceptable-use restrictions. Do not assume the linked terms transfer ' +
+  'additional output rights or mean an output is exclusive, original, non-infringing, or otherwise cleared.';
 
 export interface FalModel {
   /** fal endpoint id — the path POSTed to https://fal.run/<id>. */
@@ -179,8 +179,9 @@ export const FAL_3D_MODELS: readonly Fal3dModel[] = [
     terms: commercialTerms('fal-ai/trellis'),
     imageParam: 'image_url',
     takesPrompt: false,
-    note: 'Cheap enough to just try again. Simplifies its own mesh hard, so it lands well inside the '
-      + '50k-triangle import cap; textures can come out a little soft.',
+    note:
+      'Cheap enough to just try again. Simplifies its own mesh hard, so it lands well inside the ' +
+      '50k-triangle import cap; textures can come out a little soft.',
   },
   {
     id: 'fal-ai/hyper3d/rodin',
@@ -196,8 +197,9 @@ export const FAL_3D_MODELS: readonly Fal3dModel[] = [
       { id: 'extra-low', label: 'Extra low — lightest mesh', body: { quality: 'extra-low', tier: 'Regular' } },
       { id: 'sketch', label: 'Sketch — fast rough tier', body: { tier: 'Sketch' } },
     ],
-    note: '20× the price for production-grade geometry and texturing. Reads the prompt as well as the '
-      + 'image. Runs a few minutes.',
+    note:
+      '20× the price for production-grade geometry and texturing. Reads the prompt as well as the ' +
+      'image. Runs a few minutes.',
   },
 ] as const;
 
@@ -211,9 +213,7 @@ export function fal3dModel(id: string): Fal3dModel | undefined {
 export function falEndpoint(id: string): { id: string; label: string; terms: FalModelTerms } | undefined {
   const model = falModel(id) ?? falInpaintModel(id) ?? fal3dModel(id);
   if (model) return model;
-  return id === FAL_PANORAMA_MODEL
-    ? { id, label: 'Hunyuan World', terms: FAL_PANORAMA_TERMS }
-    : undefined;
+  return id === FAL_PANORAMA_MODEL ? { id, label: 'Hunyuan World', terms: FAL_PANORAMA_TERMS } : undefined;
 }
 
 /** Research-only or unreviewed endpoints must not become billable merely because an id reached a proxy. */
@@ -245,8 +245,10 @@ export const FAL_GENERATION_HEADER = 'x-slopesmith-generation';
 
 /** Snapshot the exact endpoints and legal references that produced an asset. The timestamp belongs to the
  * successful generation, not the later Save click, and repeated endpoints (a repair pass) are archived once. */
-export function createFalGenerationProvenance(modelIds: readonly string[],
-  generatedAt = new Date().toISOString()): FalGenerationProvenance {
+export function createFalGenerationProvenance(
+  modelIds: readonly string[],
+  generatedAt = new Date().toISOString(),
+): FalGenerationProvenance {
   if (!Number.isFinite(Date.parse(generatedAt))) throw new Error('generation date is invalid');
   const models = [...new Set(modelIds)].map(id => {
     const endpoint = falEndpoint(id);
@@ -268,13 +270,30 @@ export function createFalGenerationProvenance(modelIds: readonly string[],
  * wording and URLs are rebuilt from this reviewed catalogue so a client cannot archive invented terms. */
 export function parseFalGenerationProvenance(value: unknown): FalGenerationProvenance | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const raw = value as { schema?: unknown; provider?: unknown; generatedAt?: unknown;
-    models?: Array<{ id?: unknown }> };
-  if (raw.schema !== 1 || raw.provider !== 'fal.ai' || typeof raw.generatedAt !== 'string'
-    || !Array.isArray(raw.models) || raw.models.length < 1 || raw.models.length > 4
-    || !raw.models.every(model => !!model && typeof model.id === 'string')) return undefined;
-  try { return createFalGenerationProvenance(raw.models.map(model => model.id as string), raw.generatedAt); }
-  catch { return undefined; }
+  const raw = value as {
+    schema?: unknown;
+    provider?: unknown;
+    generatedAt?: unknown;
+    models?: Array<{ id?: unknown }>;
+  };
+  if (
+    raw.schema !== 1 ||
+    raw.provider !== 'fal.ai' ||
+    typeof raw.generatedAt !== 'string' ||
+    !Array.isArray(raw.models) ||
+    raw.models.length < 1 ||
+    raw.models.length > 4 ||
+    !raw.models.every(model => !!model && typeof model.id === 'string')
+  )
+    return undefined;
+  try {
+    return createFalGenerationProvenance(
+      raw.models.map(model => model.id as string),
+      raw.generatedAt,
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 /** Resolve a detail level for a model: the named one, else the model's default (its first entry), else

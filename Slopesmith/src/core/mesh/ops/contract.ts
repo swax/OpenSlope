@@ -1,8 +1,12 @@
 import type { EdgeEmbeddedTJunction, QuadMeshDoc, V3 } from '../../doc/types';
 import { meshId, retireMeshIds, type MeshIds } from '../../doc/ids';
 import {
-  buildQuadMesh, docEdgeHandles, meshAdjacency,
-  type QuadMesh, type EdgeHandle, type MeshAdjacency,
+  buildQuadMesh,
+  docEdgeHandles,
+  meshAdjacency,
+  type QuadMesh,
+  type EdgeHandle,
+  type MeshAdjacency,
 } from '../topology';
 import { directedEdgeKey, liveQuadEdges, readVertex, undirectedEdgeKey } from '../primitives';
 
@@ -54,9 +58,13 @@ export function checkManifold(quads: number[][]): { ok: boolean; error?: string 
   const count = new Map<string, number>();
   for (const c of quads) {
     if (!isValidCell(c)) return { ok: false, error: 'Surgery would collapse a cell to a degenerate — rejected.' };
-    for (const [a, b] of quadEdges(c)) { const k = ekey(a, b); count.set(k, (count.get(k) ?? 0) + 1); }
+    for (const [a, b] of quadEdges(c)) {
+      const k = ekey(a, b);
+      count.set(k, (count.get(k) ?? 0) + 1);
+    }
   }
-  for (const n of count.values()) if (n > 2) return { ok: false, error: 'Surgery would make an edge shared by 3+ quads (non-manifold) — rejected.' };
+  for (const n of count.values())
+    if (n > 2) return { ok: false, error: 'Surgery would make an edge shared by 3+ quads (non-manifold) — rejected.' };
   return { ok: true };
 }
 
@@ -102,7 +110,11 @@ export function createQuadSurfaceMaps(doc: QuadMeshDoc, copy = false): QuadSurfa
     quadTex: doc.quadTex ? (copy ? { ...doc.quadTex } : {}) : undefined,
     quadOrient: doc.quadOrient ? (copy ? { ...doc.quadOrient } : {}) : undefined,
     quadLocked: doc.quadLocked ? (copy ? { ...doc.quadLocked } : {}) : undefined,
-    quadLabels: doc.quadLabels ? (copy ? Object.fromEntries(Object.entries(doc.quadLabels).map(([key, labels]) => [key, [...labels]])) : {}) : undefined,
+    quadLabels: doc.quadLabels
+      ? copy
+        ? Object.fromEntries(Object.entries(doc.quadLabels).map(([key, labels]) => [key, [...labels]]))
+        : {}
+      : undefined,
   };
 }
 
@@ -159,10 +171,13 @@ export function locateVertex(identity: RewriteIdentity, raw: number): number | u
  * arrived with, and anything the op created is minted from `nextId` — vertices first, then quads, in index
  * order, so the same rewrite always mints the same ids.
  */
-export function remapIds(raw: MeshRewrite):
-  ({ vertices: number[]; quads: number[][] } & RewriteIdentity & MeshIds & MeshMaps) {
+export function remapIds(
+  raw: MeshRewrite,
+): { vertices: number[]; quads: number[][] } & RewriteIdentity & MeshIds & MeshMaps {
   const survivors: { old: number; corners: number[] }[] = [];
-  raw.quads.forEach((c, i) => { if (c) survivors.push({ old: i, corners: c }); });
+  raw.quads.forEach((c, i) => {
+    if (c) survivors.push({ old: i, corners: c });
+  });
   let nextId = raw.nextId ?? 0;
   const idAt = (source: readonly (string | null)[] | undefined, index: number) => source?.[index] ?? meshId(nextId++);
 
@@ -171,12 +186,16 @@ export function remapIds(raw: MeshRewrite):
   const used = new Set<number>();
   for (const s of survivors) for (const v of s.corners) used.add(v);
   for (const [a, b] of raw.freeEdges ?? []) {
-    if (a !== b && a >= 0 && b >= 0 && a < raw.vertices.length / 3 && b < raw.vertices.length / 3) { used.add(a); used.add(b); }
+    if (a !== b && a >= 0 && b >= 0 && a < raw.vertices.length / 3 && b < raw.vertices.length / 3) {
+      used.add(a);
+      used.add(b);
+    }
   }
   for (const vertex of raw.keepVertices ?? [])
     if (Number.isInteger(vertex) && vertex >= 0 && vertex < raw.vertices.length / 3) used.add(vertex);
   const oldToNewV = new Map<number, number>();
-  const vertices: number[] = [], vertexIds: string[] = [];
+  const vertices: number[] = [],
+    vertexIds: string[] = [];
   const vcount = raw.vertices.length / 3;
   const rawVertexIds: (string | undefined)[] = new Array(vcount);
   const vertexMap = new Map<string, number>();
@@ -192,21 +211,36 @@ export function remapIds(raw: MeshRewrite):
   }
 
   const oldToNewQ = new Map<number, number>();
-  const quads: number[][] = survivors.map((s, ni) => { oldToNewQ.set(s.old, ni); return s.corners.map(v => oldToNewV.get(v)!); });
+  const quads: number[][] = survivors.map((s, ni) => {
+    oldToNewQ.set(s.old, ni);
+    return s.corners.map(v => oldToNewV.get(v)!);
+  });
   const quadIds: string[] = survivors.map(s => idAt(raw.quadIds, s.old));
   const freeEdges: [number, number][] = [];
   const seenFreeEdges = new Set<string>();
   for (const [a, b] of raw.freeEdges ?? []) {
-    const na = oldToNewV.get(a), nb = oldToNewV.get(b);
+    const na = oldToNewV.get(a),
+      nb = oldToNewV.get(b);
     if (na === undefined || nb === undefined || na === nb) continue;
-    const edge: [number, number] = na < nb ? [na, nb] : [nb, na], key = `${edge[0]},${edge[1]}`;
-    if (!seenFreeEdges.has(key)) { seenFreeEdges.add(key); freeEdges.push(edge); }
+    const edge: [number, number] = na < nb ? [na, nb] : [nb, na],
+      key = `${edge[0]},${edge[1]}`;
+    if (!seenFreeEdges.has(key)) {
+      seenFreeEdges.add(key);
+      freeEdges.push(edge);
+    }
   }
 
   const remapQuadMap = <T>(m?: Record<number, T>): Record<number, T> | undefined => {
     if (!m) return undefined;
-    const out: Record<number, T> = {}; let any = false;
-    for (const k in m) { const nq = oldToNewQ.get(+k); if (nq !== undefined) { out[nq] = m[k]; any = true; } }
+    const out: Record<number, T> = {};
+    let any = false;
+    for (const k in m) {
+      const nq = oldToNewQ.get(+k);
+      if (nq !== undefined) {
+        out[nq] = m[k];
+        any = true;
+      }
+    }
     return any ? out : undefined;
   };
   // Creases are carried by the EDGES that own them, not by taking their keys apart: walk the rewrite's own
@@ -219,11 +253,19 @@ export function remapIds(raw: MeshRewrite):
     const carry = (from: number, to: number) => {
       const offset = raw.edgeHandles![directedEdgeKey(from, to)];
       if (offset === undefined) return;
-      const nf = oldToNewV.get(from), nt = oldToNewV.get(to);
+      const nf = oldToNewV.get(from),
+        nt = oldToNewV.get(to);
       if (nf !== undefined && nt !== undefined) kept[directedEdgeKey(nf, nt)] = offset;
     };
-    for (const s of survivors) for (const [a, b] of quadEdges(s.corners)) { carry(a, b); carry(b, a); }
-    for (const [a, b] of raw.freeEdges ?? []) { carry(a, b); carry(b, a); }
+    for (const s of survivors)
+      for (const [a, b] of quadEdges(s.corners)) {
+        carry(a, b);
+        carry(b, a);
+      }
+    for (const [a, b] of raw.freeEdges ?? []) {
+      carry(a, b);
+      carry(b, a);
+    }
     if (Object.keys(kept).length) edgeHandles = kept;
   }
   const liveEdges = new Set<string>();
@@ -236,25 +278,56 @@ export function remapIds(raw: MeshRewrite):
     for (const key in raw.edgeLocked) {
       if (raw.edgeLocked[key] !== true) continue;
       const cut = key.indexOf(',');
-      const a = oldToNewV.get(Number(key.slice(0, cut))), b = oldToNewV.get(Number(key.slice(cut + 1)));
-      if (cut > 0 && a !== undefined && b !== undefined && a !== b && liveEdges.has(ekey(a, b))) kept[ekey(a, b)] = true;
+      const a = oldToNewV.get(Number(key.slice(0, cut))),
+        b = oldToNewV.get(Number(key.slice(cut + 1)));
+      if (cut > 0 && a !== undefined && b !== undefined && a !== b && liveEdges.has(ekey(a, b)))
+        kept[ekey(a, b)] = true;
     }
     if (Object.keys(kept).length) edgeLocked = kept;
   }
-  const tJunctions: EdgeEmbeddedTJunction[] = [], seenTJunctions = new Set<string>();
+  const tJunctions: EdgeEmbeddedTJunction[] = [],
+    seenTJunctions = new Set<string>();
   for (const node of raw.tJunctions ?? []) {
-    const vertex = oldToNewV.get(node.vertex), a = oldToNewV.get(node.edge[0]), b = oldToNewV.get(node.edge[1]);
-    if (vertex === undefined || a === undefined || b === undefined || vertex === a || vertex === b || a === b
-      || !Number.isFinite(node.t) || node.t <= 1e-3 || node.t >= 1 - 1e-3) continue;
-    const edgeKey = `${Math.min(a, b)},${Math.max(a, b)}`, key = `${vertex}:${edgeKey}`;
+    const vertex = oldToNewV.get(node.vertex),
+      a = oldToNewV.get(node.edge[0]),
+      b = oldToNewV.get(node.edge[1]);
+    if (
+      vertex === undefined ||
+      a === undefined ||
+      b === undefined ||
+      vertex === a ||
+      vertex === b ||
+      a === b ||
+      !Number.isFinite(node.t) ||
+      node.t <= 1e-3 ||
+      node.t >= 1 - 1e-3
+    )
+      continue;
+    const edgeKey = `${Math.min(a, b)},${Math.max(a, b)}`,
+      key = `${vertex}:${edgeKey}`;
     if (!liveEdges.has(edgeKey) || seenTJunctions.has(key)) continue;
-    seenTJunctions.add(key); tJunctions.push({ vertex, edge: [a, b], t: node.t });
+    seenTJunctions.add(key);
+    tJunctions.push({ vertex, edge: [a, b], t: node.t });
   }
-  return { vertices, quads, vertexIds, quadIds, nextId, rawVertexIds, vertexMap,
-    freeEdges: freeEdges.length ? freeEdges : undefined, tJunctions, edgeHandles, edgeLocked,
-    quadPaint: remapQuadMap(raw.quadPaint), quadTex: remapQuadMap(raw.quadTex),
-    quadOrient: remapQuadMap(raw.quadOrient), quadLocked: remapQuadMap(raw.quadLocked),
-    quadTwist: remapQuadMap(raw.quadTwist), quadLabels: remapQuadMap(raw.quadLabels) };
+  return {
+    vertices,
+    quads,
+    vertexIds,
+    quadIds,
+    nextId,
+    rawVertexIds,
+    vertexMap,
+    freeEdges: freeEdges.length ? freeEdges : undefined,
+    tJunctions,
+    edgeHandles,
+    edgeLocked,
+    quadPaint: remapQuadMap(raw.quadPaint),
+    quadTex: remapQuadMap(raw.quadTex),
+    quadOrient: remapQuadMap(raw.quadOrient),
+    quadLocked: remapQuadMap(raw.quadLocked),
+    quadTwist: remapQuadMap(raw.quadTwist),
+    quadLabels: remapQuadMap(raw.quadLabels),
+  };
 }
 
 /**
@@ -273,8 +346,14 @@ export function finishMeshRewrite(base: QuadMeshDoc, raw: MeshRewrite): { doc: Q
     quadIds: raw.quadIds ?? base.quadIds,
     nextId: raw.nextId ?? base.nextId,
   });
-  const doc: QuadMeshDoc = { ...base, vertices: compact.vertices, quads: compact.quads,
-    vertexIds: compact.vertexIds, quadIds: compact.quadIds, nextId: compact.nextId };
+  const doc: QuadMeshDoc = {
+    ...base,
+    vertices: compact.vertices,
+    quads: compact.quads,
+    vertexIds: compact.vertexIds,
+    quadIds: compact.quadIds,
+    nextId: compact.nextId,
+  };
   assignFreeEdges(doc, compact.freeEdges);
   assignTJunctions(doc, compact.tJunctions);
   assignMap(doc, 'edgeHandles', compact.edgeHandles);
@@ -286,17 +365,25 @@ export function finishMeshRewrite(base: QuadMeshDoc, raw: MeshRewrite): { doc: Q
   assignMap(doc, 'quadTwist', compact.quadTwist);
   assignMap(doc, 'quadLabels', compact.quadLabels);
   const survived = new Set([...compact.vertexIds, ...compact.quadIds]);
-  retireMeshIds(doc, [...base.vertexIds, ...base.quadIds].filter(id => !survived.has(id)));
+  retireMeshIds(
+    doc,
+    [...base.vertexIds, ...base.quadIds].filter(id => !survived.has(id)),
+  );
   return { doc, rawVertexIds: compact.rawVertexIds, vertexMap: compact.vertexMap };
 }
 
 /** Set or delete an optional doc map after a rewrite (undefined ⇒ the map is now empty, so drop the key). */
-export function assignMap<K extends 'edgeHandles' | 'edgeLocked' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels'>(doc: QuadMeshDoc, key: K, value: QuadMeshDoc[K] | undefined) {
-  if (value) doc[key] = value; else delete doc[key];
+export function assignMap<
+  K extends
+    'edgeHandles' | 'edgeLocked' | 'quadPaint' | 'quadTex' | 'quadOrient' | 'quadLocked' | 'quadTwist' | 'quadLabels',
+>(doc: QuadMeshDoc, key: K, value: QuadMeshDoc[K] | undefined) {
+  if (value) doc[key] = value;
+  else delete doc[key];
 }
 
 export function assignFreeEdges(doc: QuadMeshDoc, edges: [number, number][] | undefined) {
-  if (edges?.length) doc.freeEdges = edges; else delete doc.freeEdges;
+  if (edges?.length) doc.freeEdges = edges;
+  else delete doc.freeEdges;
 }
 
 export function assignTJunctions(doc: QuadMeshDoc, nodes: EdgeEmbeddedTJunction[] | undefined) {

@@ -4,15 +4,21 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
-  ANNOUNCER_EVENT_IDS, AnnouncerRideEvents, normalizeAnnouncer, type AnnouncerIndex,
+  ANNOUNCER_EVENT_IDS,
+  AnnouncerRideEvents,
+  normalizeAnnouncer,
+  type AnnouncerIndex,
 } from '../src/core/audio/announcer';
 import { blankMountain, migrateMountain } from '../src/core/doc/mountain';
 import { createStore } from '../src/app/state/store';
 import { readAnnouncerIndex, readAnnouncerSound } from '../src/server/routes/announcer';
 import { RideAnnouncerRuntime } from '../src/app/audio/announcer';
 
-const settings = normalizeAnnouncer({ volume: 4, cooldownSeconds: -3,
-  events: { go: { chance: 0, file: '../unsafe.wav' }, land: { chance: NaN, file: 'hello.wav' } } });
+const settings = normalizeAnnouncer({
+  volume: 4,
+  cooldownSeconds: -3,
+  events: { go: { chance: 0, file: '../unsafe.wav' }, land: { chance: NaN, file: 'hello.wav' } },
+});
 assert.equal(settings.volume, 1);
 assert.equal(settings.cooldownSeconds, 0);
 assert.deepEqual(settings.events.go, { chance: 0 });
@@ -21,7 +27,10 @@ const doc = blankMountain('ANNOUNCER_TEST');
 doc.announcer = settings;
 assert.deepEqual(migrateMountain(JSON.parse(JSON.stringify(doc))).announcer, settings);
 assert.equal(createStore({ mdoc: doc, storedUi: {}, currentMode: 'play' }).playAnnouncerOn, true);
-assert.equal(createStore({ mdoc: doc, storedUi: { playAnnouncer: false }, currentMode: 'play' }).playAnnouncerOn, false);
+assert.equal(
+  createStore({ mdoc: doc, storedUi: { playAnnouncer: false }, currentMode: 'play' }).playAnnouncerOn,
+  false,
+);
 
 const detector = new AnnouncerRideEvents();
 const ground = { grounded: true, airTime: 0, speed01: 0.3, boosting: false };
@@ -58,7 +67,9 @@ try {
   await assert.rejects(readAnnouncerSound('go', '../000.wav'));
   await assert.rejects(readAnnouncerSound('land', '000.wav'));
 } finally {
-  assert.ok(resolve(fixture).startsWith(resolve(tmpdir()) + '\\') || resolve(fixture).startsWith(resolve(tmpdir()) + '/'));
+  assert.ok(
+    resolve(fixture).startsWith(resolve(tmpdir()) + '\\') || resolve(fixture).startsWith(resolve(tmpdir()) + '/'),
+  );
   rmSync(fixture, { recursive: true, force: true });
 }
 
@@ -70,16 +81,26 @@ class FakeSource {
   stopped = false;
   connect() {}
   disconnect() {}
-  start() { started.push(this); }
-  stop() { this.stopped = true; }
+  start() {
+    started.push(this);
+  }
+  stop() {
+    this.stopped = true;
+  }
 }
 class FakeContext {
   currentTime = 0;
   state = 'running';
   destination = {};
-  createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
-  createBufferSource() { return new FakeSource(); }
-  async decodeAudioData(data: ArrayBuffer) { return { duration: 2, tag: Buffer.from(data).toString() }; }
+  createGain() {
+    return { gain: { value: 1 }, connect() {}, disconnect() {} };
+  }
+  createBufferSource() {
+    return new FakeSource();
+  }
+  async decodeAudioData(data: ArrayBuffer) {
+    return { duration: 2, tag: Buffer.from(data).toString() };
+  }
 }
 const originalFetch = globalThis.fetch;
 const originalRandom = Math.random;
@@ -91,7 +112,10 @@ const index = Object.fromEntries(ANNOUNCER_EVENT_IDS.map(id => [id, ['000.wav', 
 globalThis.fetch = async input => {
   const url = String(input);
   if (url === '/api/announcer-audio') return Response.json(index);
-  if (url.includes('delayed.wav')) await new Promise<void>(resolve => { release = resolve; });
+  if (url.includes('delayed.wav'))
+    await new Promise<void>(resolve => {
+      release = resolve;
+    });
   return new Response(url);
 };
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -99,44 +123,56 @@ try {
   const runtime = new RideAnnouncerRuntime();
   const mix = normalizeAnnouncer(undefined);
   runtime.configure(mix, true);
-  runtime.fire('go'); await flush();
+  runtime.fire('go');
+  await flush();
   assert.equal(started.length, 1);
-  runtime.fire('land'); await flush();
+  runtime.fire('land');
+  await flush();
   assert.equal(started.length, 1, 'ordinary call cannot overlap or cut a playing line');
-  runtime.fire('knockdown'); await flush();
+  runtime.fire('knockdown');
+  await flush();
   assert.equal(started.length, 2);
   assert.equal(started[0].stopped, true, 'wipeout interrupts');
   started[1].onended?.();
-  runtime.fire('land'); await flush();
+  runtime.fire('land');
+  await flush();
   assert.equal(started.length, 2, 'cooldown continues after the voice ends');
-  runtime.fire('go'); await flush();
+  runtime.fire('go');
+  await flush();
   assert.equal(started.length, 3);
   assert.notEqual(started[0].buffer?.tag, started[2].buffer?.tag, 'no consecutive bank variant repeats');
   runtime.configure(mix, false);
   assert.equal(started[2].stopped, true, 'mute cuts the live voice immediately');
-  runtime.fire('go'); await flush();
+  runtime.fire('go');
+  await flush();
   assert.equal(started.length, 3);
   runtime.configure(mix, true);
   await flush();
   assert.equal(started.length, 3, 'unmuting does not fabricate a start');
   mix.events.go.file = 'delayed.wav';
-  runtime.fire('go'); await flush();
+  runtime.fire('go');
+  await flush();
   assert.ok(release);
   runtime.configure(mix, false);
-  release(); await flush();
+  release();
+  await flush();
   assert.equal(started.length, 3, 'late decode cannot speak after mute');
   runtime.configure(mix, true);
-  runtime.fire('go'); await flush();
+  runtime.fire('go');
+  await flush();
   assert.match(started[3].buffer?.tag ?? '', /custom-sound.*delayed\.wav/);
   runtime.reset();
   assert.equal(started[3].stopped, true, 'exit/reset stops custom voices too');
   mix.events.go.chance = 0;
   runtime.configure(mix, true);
-  runtime.fire('go'); await flush();
+  runtime.fire('go');
+  await flush();
   assert.equal(started.length, 4, 'zero chance disables even priority calls');
 } finally {
   globalThis.fetch = originalFetch;
   Math.random = originalRandom;
   globalThis.AudioContext = originalContext;
 }
-console.log('Announcer: settings, persistence, events, bank reads, interruptions, cooldowns and mute cancellation passed.');
+console.log(
+  'Announcer: settings, persistence, events, bank reads, interruptions, cooldowns and mute cancellation passed.',
+);

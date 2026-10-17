@@ -10,12 +10,16 @@ import { maskXrLayersForThree, xrLayerKind } from '../src/app/ride/xr/config';
 class Session extends EventTarget {
   renderState: Record<string, unknown> = { layers: [] };
   failReferenceSpace = false;
-  updateRenderState(state: object) { Object.assign(this.renderState, state); }
+  updateRenderState(state: object) {
+    Object.assign(this.renderState, state);
+  }
   async requestReferenceSpace() {
     if (this.failReferenceSpace) throw new Error('reference space refused');
     return {};
   }
-  requestAnimationFrame() { return 1; }
+  requestAnimationFrame() {
+    return 1;
+  }
 }
 
 class WebGLLayer {
@@ -30,7 +34,9 @@ class Binding {
   constructor(session: Session) {
     assert.ok(session instanceof Session, 'the binding receives the real session');
   }
-  createProjectionLayer() { return { textureWidth: 2048, textureHeight: 1024 }; }
+  createProjectionLayer() {
+    return { textureWidth: 2048, textureHeight: 1024 };
+  }
 }
 
 const gl = {
@@ -40,14 +46,17 @@ const gl = {
 } as unknown as WebGL2RenderingContext;
 
 function manager() {
-  return new WebXRManager({
-    getRenderTarget: () => null,
-    getPixelRatio: () => 1,
-    getSize: (size: Vector2) => size.set(800, 600),
-    setPixelRatio: () => {},
-    setSize: () => {},
-    outputColorSpace: SRGBColorSpace,
-  } as unknown as WebGLRenderer, gl);
+  return new WebXRManager(
+    {
+      getRenderTarget: () => null,
+      getPixelRatio: () => 1,
+      getSize: (size: Vector2) => size.set(800, 600),
+      setPixelRatio: () => {},
+      setSize: () => {},
+      outputColorSpace: SRGBColorSpace,
+    } as unknown as WebGLRenderer,
+    gl,
+  );
 }
 
 const globals = ['XRWebGLBinding', 'XRWebGLLayer'] as const;
@@ -61,26 +70,38 @@ try {
   Object.defineProperty(staleSession.renderState, 'layers', { value: undefined, writable: true });
   const staleManager = manager();
   await staleManager.setSession(staleSession as unknown as XRSession);
-  assert.equal(xrLayerKind(staleManager.getBaseLayer()), 'projection',
-    'reproduce the bug: hiding renderState.layers no longer forces WebGL in the installed Three');
+  assert.equal(
+    xrLayerKind(staleManager.getBaseLayer()),
+    'projection',
+    'reproduce the bug: hiding renderState.layers no longer forces WebGL in the installed Three',
+  );
 
   const forcedManager = manager();
   const restore = maskXrLayersForThree();
   assert.ok(restore);
   try {
     await forcedManager.setSession(new Session() as unknown as XRSession);
-    assert.equal(xrLayerKind(forcedManager.getBaseLayer()), 'webgl',
-      'the override makes the installed Three construct XRWebGLLayer');
+    assert.equal(
+      xrLayerKind(forcedManager.getBaseLayer()),
+      'webgl',
+      'the override makes the installed Three construct XRWebGLLayer',
+    );
   } finally {
     restore();
   }
-  assert.deepEqual(Object.getOwnPropertyDescriptor(Binding.prototype, 'createProjectionLayer'), descriptor,
-    'successful setup restores the native method and its exact descriptor');
+  assert.deepEqual(
+    Object.getOwnPropertyDescriptor(Binding.prototype, 'createProjectionLayer'),
+    descriptor,
+    'successful setup restores the native method and its exact descriptor',
+  );
 
   const projectionManager = manager();
   await projectionManager.setSession(new Session() as unknown as XRSession);
-  assert.equal(xrLayerKind(projectionManager.getBaseLayer()), 'projection',
-    'a subsequent projection session retains its normal capabilities');
+  assert.equal(
+    xrLayerKind(projectionManager.getBaseLayer()),
+    'projection',
+    'a subsequent projection session retains its normal capabilities',
+  );
 
   const failedManager = manager();
   const failedSession = new Session();
@@ -92,8 +113,11 @@ try {
   } finally {
     restoreFailed();
   }
-  assert.deepEqual(Object.getOwnPropertyDescriptor(Binding.prototype, 'createProjectionLayer'), descriptor,
-    'failed asynchronous setup also restores the native method');
+  assert.deepEqual(
+    Object.getOwnPropertyDescriptor(Binding.prototype, 'createProjectionLayer'),
+    descriptor,
+    'failed asynchronous setup also restores the native method',
+  );
 
   const locked = Object.freeze({ createProjectionLayer() {} });
   assert.equal(maskXrLayersForThree(locked), null, 'an unforgeable capability declines the override safely');

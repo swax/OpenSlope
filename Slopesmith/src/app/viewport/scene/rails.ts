@@ -7,8 +7,16 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import type { Rail, V3 } from '../../../core/doc/types';
 import { parseTexRef } from '../../../core/paint/textures';
 import {
-  isMotionPath, railHasTube, railStartsOff, railStyle, railTubeTexture, RAIL_STYLE_ICE, RAIL_STYLE_METAL,
-  RAIL_STYLE_WOOD, sampleRail, type RailSkins,
+  isMotionPath,
+  railHasTube,
+  railStartsOff,
+  railStyle,
+  railTubeTexture,
+  RAIL_STYLE_ICE,
+  RAIL_STYLE_METAL,
+  RAIL_STYLE_WOOD,
+  sampleRail,
+  type RailSkins,
 } from '../../../core/rails/rails';
 import { railSupportPosts, sweepRail, RAIL_TUBE_RADIUS } from '../../../core/rails/rail-mesh';
 import type { PropAssets } from './prop-assets';
@@ -67,17 +75,17 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   let rails: Rail[] = [];
   let selectedRail: number | null = null;
   let selectedNode: number | null = null;
-  let railArmed = false;                     // the Rails tool is drawing: a props-mode ground click adds a node
+  let railArmed = false; // the Rails tool is drawing: a props-mode ground click adds a node
 
-  let visible = true;                        // the Tricks view filter (coordinated with the gems by the shell)
-  let motionPathsVisible = false;            // Effects-only guide layer; never controlled by Tricks
-  let effectRailsVisible = false;            // Effects mode: show every grind rail's curve, not just its tube
-  let shade: ShadeMode = 'textured';         // the tube + posts follow the shade view, like the props they bake with
+  let visible = true; // the Tricks view filter (coordinated with the gems by the shell)
+  let motionPathsVisible = false; // Effects-only guide layer; never controlled by Tricks
+  let effectRailsVisible = false; // Effects mode: show every grind rail's curve, not just its tube
+  let shade: ShadeMode = 'textured'; // the tube + posts follow the shade view, like the props they bake with
   const railMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected rail node
   const railMatMetal = new THREE.MeshLambertMaterial({ color: 0x93a9c4, emissive: 0x1a2330 });
   const railMatWood = new THREE.MeshLambertMaterial({ color: 0xb0824e, emissive: 0x2a1c0e });
   const railMatPost = new THREE.MeshLambertMaterial({ color: 0x9b9b9b, emissive: 0x1e1e1e }); // untextured grey, like the baked posts
-  let skins: RailSkins = {};                 // each material's default tube texture (setSkins)
+  let skins: RailSkins = {}; // each material's default tube texture (setSkins)
   const skinMats = new Map<string, THREE.MeshLambertMaterial>(); // one tube material per texture ref worn
   const railNodeMat = new THREE.MeshBasicMaterial({ color: 0xffcf6b });
   // Two kinds of spline guide, in two colours because they are two RELATIONSHIPS rather than two shapes.
@@ -85,8 +93,13 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   // motion path, which IS its purple line and exists for no other reason. Red/yellow/blue is a grindable curve:
   // belongs to the course, and Effects only switches it on and off. Reading a mountain, the difference
   // answers "can I delete this from here?" before you click anything.
-  const motionPathMat = new THREE.LineBasicMaterial({ color: 0xb66cff, transparent: true, opacity: 0.95,
-    depthTest: false, depthWrite: false });
+  const motionPathMat = new THREE.LineBasicMaterial({
+    color: 0xb66cff,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false,
+  });
   const motionPathNodeMat = new THREE.MeshBasicMaterial({ color: 0xb66cff, depthTest: false });
   // FAT lines, unlike the purple: a grind curve is often the only thing marking a rail (a bare one has no
   // tube at all) and it has to stay findable across a mountain rather than dissolve into the terrain at
@@ -96,33 +109,54 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   // terrain reads as clutter rather than as information, so a rail behind a ridge sits behind the ridge.
   // Dashed = the curve is not in the rail network as it stands. Selection keeps the surface hue but draws
   // brighter and wider, so colour continues to mean material while dashes continue to mean candidacy.
-  const makeGuideMaterial = (style: number, selected: boolean, off: boolean) => new LineMaterial({
-    color: railGuidePalette(style)[selected ? 'selected' : 'normal'],
-    linewidth: selected ? RAIL_GUIDE_SEL_WIDTH : RAIL_GUIDE_WIDTH,
-    transparent: true, opacity: selected ? 1 : 0.95,
-    depthWrite: false, side: THREE.DoubleSide, ...RAIL_GUIDE_DEPTH_BIAS,
-    ...(off ? { dashed: true, dashSize: 1.2, gapSize: 0.9 } : {}),
-  });
-  const effectRailMaterials = new Map([RAIL_STYLE_METAL, RAIL_STYLE_WOOD, RAIL_STYLE_ICE].map(style => [style, {
-    on: makeGuideMaterial(style, false, false),
-    off: makeGuideMaterial(style, false, true),
-    selected: makeGuideMaterial(style, true, false),
-    selectedOff: makeGuideMaterial(style, true, true),
-    node: new THREE.MeshBasicMaterial({ color: railGuidePalette(style).normal, depthTest: false }),
-  }] as const));
-  const effectRailPalette = (style: number) => effectRailMaterials.get(style) ?? effectRailMaterials.get(RAIL_STYLE_METAL)!;
+  const makeGuideMaterial = (style: number, selected: boolean, off: boolean) =>
+    new LineMaterial({
+      color: railGuidePalette(style)[selected ? 'selected' : 'normal'],
+      linewidth: selected ? RAIL_GUIDE_SEL_WIDTH : RAIL_GUIDE_WIDTH,
+      transparent: true,
+      opacity: selected ? 1 : 0.95,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      ...RAIL_GUIDE_DEPTH_BIAS,
+      ...(off ? { dashed: true, dashSize: 1.2, gapSize: 0.9 } : {}),
+    });
+  const effectRailMaterials = new Map(
+    [RAIL_STYLE_METAL, RAIL_STYLE_WOOD, RAIL_STYLE_ICE].map(
+      style =>
+        [
+          style,
+          {
+            on: makeGuideMaterial(style, false, false),
+            off: makeGuideMaterial(style, false, true),
+            selected: makeGuideMaterial(style, true, false),
+            selectedOff: makeGuideMaterial(style, true, true),
+            node: new THREE.MeshBasicMaterial({ color: railGuidePalette(style).normal, depthTest: false }),
+          },
+        ] as const,
+    ),
+  );
+  const effectRailPalette = (style: number) =>
+    effectRailMaterials.get(style) ?? effectRailMaterials.get(RAIL_STYLE_METAL)!;
   const railNodeSelMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
   /** Arm / disarm rail drawing: while armed, a props-mode click on the terrain appends a node to the rail. */
-  function setArmed(on: boolean) { railArmed = on; }
+  function setArmed(on: boolean) {
+    railArmed = on;
+  }
 
   /** Tricks view filter: show / hide the rails (coordinated with the gems by the shell's showTricks). It
    *  governs the surface-coloured guide curves too, Effects mode or not — a rail is a rail, and the filter is the
    *  author's own "hide the rails" control, so it would be strange for one mode to overrule it. */
-  function setVisible(on: boolean) { visible = on; grindGroup.visible = on; }
+  function setVisible(on: boolean) {
+    visible = on;
+    grindGroup.visible = on;
+  }
 
   /** Effects mode owns invisible motion-path visibility independently of the Tricks grind-rail filter. */
-  function setMotionPathsVisible(on: boolean) { motionPathsVisible = on; motionPathGroup.visible = on; }
+  function setMotionPathsVisible(on: boolean) {
+    motionPathsVisible = on;
+    motionPathGroup.visible = on;
+  }
 
   /**
    * Effects mode: draw every grind rail's centreline, not only its tube (docs/026).
@@ -152,7 +186,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     // Collect first: `applyPropShade` hangs the wireframe passes off each mesh, and a live traverse would
     // then walk into the children it is in the middle of creating.
     const shaded: THREE.Object3D[] = [];
-    grindGroup.traverse(o => { if (o.userData[RAIL_SHADED]) shaded.push(o); });
+    grindGroup.traverse(o => {
+      if (o.userData[RAIL_SHADED]) shaded.push(o);
+    });
     for (const mesh of shaded) applyPropShade(mesh, shade);
   }
 
@@ -186,7 +222,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     const line = new LineSegments2(new LineSegmentsGeometry().fromEdgesGeometry(edges), assets.propOutlineMat);
     edges.dispose();
     line.renderOrder = 91;
-    line.raycast = () => { /* clicks resolve on the tube / posts, never their outline */ };
+    line.raycast = () => {
+      /* clicks resolve on the tube / posts, never their outline */
+    };
     g.add(line);
   }
 
@@ -205,8 +243,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     motionPathGroup.visible = motionPathsVisible;
     for (let i = 0; i < rails.length; i++) {
       const rail = rails[i];
-      (isMotionPath(rail) ? motionPathGroup : grindGroup)
-        .add(buildRailObject(rail, i, i === selRail ? selNode : null, i === selRail));
+      (isMotionPath(rail) ? motionPathGroup : grindGroup).add(
+        buildRailObject(rail, i, i === selRail ? selNode : null, i === selRail),
+      );
     }
     if (selRail !== null && selNode !== null && rails[selRail]?.nodes[selNode]) {
       if (!(stage.gizmoKind === 'railnode' && stage.gizmo.dragging)) {
@@ -229,7 +268,9 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   }
 
   /** The default texture per material, as last registered — what an unpicked tube wears. */
-  function getSkins(): RailSkins { return skins; }
+  function getSkins(): RailSkins {
+    return skins;
+  }
 
   /** The tube material for one texture ref, built on first use. Refs name immutable bytes (docs/038), so a
    *  material never goes stale and is kept for the session like the prop layer's own. */
@@ -289,15 +330,17 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
       if (motionPath) {
         line = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(sampled.map(p => new THREE.Vector3(p[0], p[1], p[2]))),
-          motionPathMat);
+          motionPathMat,
+        );
       } else {
         const geo = new LineGeometry();
         const guideLift = tube ? RAIL_PIPE_GUIDE_LIFT : 0;
         geo.setPositions(sampled.flatMap(p => [p[0], p[1] + guideLift, p[2]]));
         const palette = effectRailPalette(railStyle(rail));
-        const fat = new Line2(geo, showNodes
-          ? (startsOff ? palette.selectedOff : palette.selected)
-          : (startsOff ? palette.off : palette.on));
+        const fat = new Line2(
+          geo,
+          showNodes ? (startsOff ? palette.selectedOff : palette.selected) : startsOff ? palette.off : palette.on,
+        );
         fat.computeLineDistances(); // dashes are measured along the curve, not the segment list
         line = fat;
       }
@@ -313,8 +356,10 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
       geo.setIndex(swept.indices);
       geo.computeVertexNormals();
       const texture = railTubeTexture(rail, skins);
-      const tube = new THREE.Mesh(geo, texture ? skinMaterial(texture)
-        : railStyle(rail) === RAIL_STYLE_WOOD ? railMatWood : railMatMetal);
+      const tube = new THREE.Mesh(
+        geo,
+        texture ? skinMaterial(texture) : railStyle(rail) === RAIL_STYLE_WOOD ? railMatWood : railMatMetal,
+      );
       tube.userData.railIndex = index; // a raycast hit resolves the rail straight off the tube (nearest node picked)
       shadeRailGeometry(tube, rail.solid === true);
       g.add(tube);
@@ -338,8 +383,16 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
     if (showNodes) {
       for (let n = 0; n < rail.nodes.length; n++) {
         const p = rail.nodes[n];
-        const bulb = new THREE.Mesh(RAIL_NODE_GEO, n === selNode ? railNodeSelMat
-          : motionPath ? motionPathNodeMat : effectsPalette ? effectRailPalette(railStyle(rail)).node : railNodeMat);
+        const bulb = new THREE.Mesh(
+          RAIL_NODE_GEO,
+          n === selNode
+            ? railNodeSelMat
+            : motionPath
+              ? motionPathNodeMat
+              : effectsPalette
+                ? effectRailPalette(railStyle(rail)).node
+                : railNodeMat,
+        );
         bulb.scale.setScalar(n === selNode ? 1.7 : 1);
         bulb.position.set(p[0], p[1], p[2]);
         if (motionPath || effectsPalette) bulb.renderOrder = 91;
@@ -355,8 +408,11 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   function disposeRailObject(o: THREE.Object3D) {
     disposePropShade(o); // drop the shade view's renderer-only wire passes before their source geometry goes
     o.traverse(n => {
-      if ((n instanceof THREE.Mesh || n instanceof THREE.Line)
-        && (n.geometry as THREE.BufferGeometry) !== RAIL_NODE_GEO) n.geometry.dispose();
+      if (
+        (n instanceof THREE.Mesh || n instanceof THREE.Line) &&
+        (n.geometry as THREE.BufferGeometry) !== RAIL_NODE_GEO
+      )
+        n.geometry.dispose();
     });
   }
 
@@ -370,10 +426,14 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   /** The node of rail `r` nearest a data-space point — so clicking a rail's tube grabs the closest node. */
   function nearestNodeOnRail(r: number, p: V3): number {
     const nodes = rails[r]?.nodes ?? [];
-    let best = 0, bestD = Infinity;
+    let best = 0,
+      bestD = Infinity;
     for (let i = 0; i < nodes.length; i++) {
       const d = (nodes[i][0] - p[0]) ** 2 + (nodes[i][1] - p[1]) ** 2 + (nodes[i][2] - p[2]) ** 2;
-      if (d < bestD) { bestD = d; best = i; }
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
     }
     return best;
   }
@@ -392,18 +452,42 @@ export function createRailsLayer(stage: Stage, assets: PropAssets) {
   stage.scene.add(railMoveHandle); // scene-root anchor, Z negated by hand like the other nodes
 
   return {
-    get railGroup() { return railGroup; },
-    get rails() { return rails; },
-    get selectedRail() { return selectedRail; },
-    get selectedNode() { return selectedNode; },
-    get railArmed() { return railArmed; },
+    get railGroup() {
+      return railGroup;
+    },
+    get rails() {
+      return rails;
+    },
+    get selectedRail() {
+      return selectedRail;
+    },
+    get selectedNode() {
+      return selectedNode;
+    },
+    get railArmed() {
+      return railArmed;
+    },
     /** The grind guides rasterise in pixels, so the shell's resize() feeds them the live canvas resolution. */
     get guideMaterials() {
-      return [...effectRailMaterials.values()].flatMap(materials =>
-        [materials.on, materials.off, materials.selected, materials.selectedOff]);
+      return [...effectRailMaterials.values()].flatMap(materials => [
+        materials.on,
+        materials.off,
+        materials.selected,
+        materials.selectedOff,
+      ]);
     },
-    setArmed, setVisible, setMotionPathsVisible, setEffectRails, setShadeMode, setRails, setSkins, getSkins,
-    seatNode, seatRail, nearestNodeOnRail, clearSelection,
+    setArmed,
+    setVisible,
+    setMotionPathsVisible,
+    setEffectRails,
+    setShadeMode,
+    setRails,
+    setSkins,
+    getSkins,
+    seatNode,
+    seatRail,
+    nearestNodeOnRail,
+    clearSelection,
   };
 }
 

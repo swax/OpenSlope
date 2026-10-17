@@ -7,8 +7,13 @@ import type { RaceMusicArrangement } from '../../core/doc/types';
 import { textFile } from '../../core/export/files';
 import type { StagedRaceMusic } from '../../core/export/provider';
 import {
-  decodeWav, encodePcm16Wav, resampleAudio, RACE_MUSIC_CHANNELS, RACE_MUSIC_SAMPLE_RATE,
-  STAGED_ARRANGEMENT, STAGED_TRACK,
+  decodeWav,
+  encodePcm16Wav,
+  resampleAudio,
+  RACE_MUSIC_CHANNELS,
+  RACE_MUSIC_SAMPLE_RATE,
+  STAGED_ARRANGEMENT,
+  STAGED_TRACK,
 } from '../../core/export/wav';
 import { normalizeRaceMusicArrangement } from '../../core/music/arrangement';
 
@@ -31,7 +36,7 @@ async function musicFile(name: string): Promise<string> {
   if (!name || basename(name) !== name || !MUSIC_EXTENSIONS.has(ext))
     throw new Error(`invalid custom music filename ${name || '(empty)'}`);
   const file = join(customMusicDir(), name);
-  if (!await isFile(file)) throw new Error(`no custom music ${name}`);
+  if (!(await isFile(file))) throw new Error(`no custom music ${name}`);
   return file;
 }
 
@@ -82,8 +87,11 @@ export async function readCustomMusicBytes(name: string): Promise<Buffer> {
  * container can hold and nothing pretends to be a codec library. A browser hands anything it can play to
  * WebAudio instead, so an mp3 track is staged there; here it is refused by name rather than silently dropped.
  */
-export async function stageRaceMusic(selection: string | null | undefined, levelDir: string,
-  authoredArrangement?: RaceMusicArrangement): Promise<StagedRaceMusic> {
+export async function stageRaceMusic(
+  selection: string | null | undefined,
+  levelDir: string,
+  authoredArrangement?: RaceMusicArrangement,
+): Promise<StagedRaceMusic> {
   const existing = await pathExists(join(levelDir, 'Music', 'track.wav'));
   if (selection === undefined) return { status: 'legacy', files: [], remove: [], existing };
   if (selection === null || !selection.trim())
@@ -93,10 +101,14 @@ export async function stageRaceMusic(selection: string | null | undefined, level
   const bytes = await readBytesOrNull(source);
   if (!bytes) throw new Error(`no custom music ${selection}`);
   if (extname(selection).toLowerCase() !== '.wav')
-    throw new Error(`${selection} is compressed — a headless export stages uncompressed WAV sources; `
-      + 'export from the editor to stage this one.');
+    throw new Error(
+      `${selection} is compressed — a headless export stages uncompressed WAV sources; ` +
+        'export from the editor to stage this one.',
+    );
   const track = encodePcm16Wav(
-    resampleAudio(decodeWav(bytes), RACE_MUSIC_SAMPLE_RATE, RACE_MUSIC_CHANNELS), RACE_MUSIC_SAMPLE_RATE);
+    resampleAudio(decodeWav(bytes), RACE_MUSIC_SAMPLE_RATE, RACE_MUSIC_CHANNELS),
+    RACE_MUSIC_SAMPLE_RATE,
+  );
   const arrangement = normalizeRaceMusicArrangement(authoredArrangement);
   return {
     status: 'staged',

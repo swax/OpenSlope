@@ -17,10 +17,32 @@ const SNOW = SURFACE_ROWS[1];
 
 function floorAt(y = 0, extent = 400): THREE.Mesh {
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    -extent, y, -extent, -extent, y, extent, extent, y, -extent,
-    extent, y, -extent, -extent, y, extent, extent, y, extent,
-  ], 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [
+        -extent,
+        y,
+        -extent,
+        -extent,
+        y,
+        extent,
+        extent,
+        y,
+        -extent,
+        extent,
+        y,
+        -extent,
+        -extent,
+        y,
+        extent,
+        extent,
+        y,
+        extent,
+      ],
+      3,
+    ),
+  );
   const mesh = new THREE.Mesh(geometry);
   mesh.updateMatrixWorld(true);
   return mesh;
@@ -29,8 +51,15 @@ function floorAt(y = 0, extent = 400): THREE.Mesh {
 /** A rider seated at rest on the level floor, facing +Z. `drive: 0` isolates the contact from the cruise term. */
 function seated(drive?: number, surface = 1) {
   const model = createRideModel({
-    spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(0, 0, 1), terrain: floorAt(),
-    surfaceOf: () => surface, oobFloorY: -100, keys, stick, drive, onRespawn: () => {},
+    spawn: new THREE.Vector3(0, 1, 0),
+    heading: new THREE.Vector3(0, 0, 1),
+    terrain: floorAt(),
+    surfaceOf: () => surface,
+    oobFloorY: -100,
+    keys,
+    stick,
+    drive,
+    onRespawn: () => {},
   });
   model.start();
   model.st.pos.set(0, -groundRestDepth(SURFACE_ROWS[surface]), 0);
@@ -52,11 +81,12 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
   model.st.vel.set(0, 10, 12);
   model.st.forcedAir = true;
   model.step(1 / 60);
-  assert.ok(!model.st.grounded && model.st.predictedAirTime > 1.5,
-    `a strong launch predicts its >1.5 s landing arc (got ${model.st.predictedAirTime.toFixed(3)} s)`);
+  assert.ok(
+    !model.st.grounded && model.st.predictedAirTime > 1.5,
+    `a strong launch predicts its >1.5 s landing arc (got ${model.st.predictedAirTime.toFixed(3)} s)`,
+  );
   for (let i = 0; i < 240 && !model.st.grounded; i++) model.step(1 / 60);
-  assert.ok(model.st.grounded && model.st.predictedAirTime === 0,
-    'touchdown clears the big-air flight prediction');
+  assert.ok(model.st.grounded && model.st.predictedAirTime === 0, 'touchdown clears the big-air flight prediction');
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -83,10 +113,14 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
     worstBackwards = Math.min(worstBackwards, travel(model));
   }
   assert.ok(model.st.grounded, 'the drop lands and stays down');
-  assert.ok(planar(model) < 0.05,
-    `a level standstill stays at rest instead of pumping contact buzz into travel (got ${planar(model).toFixed(4)} m/s)`);
-  assert.ok(worstBackwards > -0.05,
-    `the seed is never amplified into backwards travel (worst ${worstBackwards.toFixed(4)} m/s)`);
+  assert.ok(
+    planar(model) < 0.05,
+    `a level standstill stays at rest instead of pumping contact buzz into travel (got ${planar(model).toFixed(4)} m/s)`,
+  );
+  assert.ok(
+    worstBackwards > -0.05,
+    `the seed is never amplified into backwards travel (worst ${worstBackwards.toFixed(4)} m/s)`,
+  );
   assert.ok(model.st.grounded, 'the deck stays seated while the redirect declines to restore');
 }
 
@@ -94,8 +128,15 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
 // from the redirect entirely, so this only confirms the floor did not disturb them.
 {
   const model = createRideModel({
-    spawn: new THREE.Vector3(0, 1, 0), heading: new THREE.Vector3(0, 0, 1), terrain: floorAt(),
-    surfaceOf: () => 3, oobFloorY: -100, keys, stick, drive: 0, onRespawn: () => {},
+    spawn: new THREE.Vector3(0, 1, 0),
+    heading: new THREE.Vector3(0, 0, 1),
+    terrain: floorAt(),
+    surfaceOf: () => 3,
+    oobFloorY: -100,
+    keys,
+    stick,
+    drive: 0,
+    onRespawn: () => {},
   });
   model.start();
   model.st.pos.set(0, -groundRestDepth(SURFACE_ROWS[3]), 0);
@@ -116,17 +157,23 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
   model.st.pos.set(0, 4, -30);
   model.st.vel.set(0, 0, 12);
   model.st.grounded = false;
-  let arrivingPlanar = 0, peakAfterLanding = 0, groundedTicks = 0;
+  let arrivingPlanar = 0,
+    peakAfterLanding = 0,
+    groundedTicks = 0;
   for (let i = 0; i < 240; i++) {
     if (!model.st.grounded) arrivingPlanar = planar(model);
     model.step(1 / 60);
     if (model.st.grounded && ++groundedTicks <= 30) peakAfterLanding = Math.max(peakAfterLanding, planar(model));
   }
   assert.ok(model.st.grounded, 'the drop lands');
-  assert.ok(peakAfterLanding > arrivingPlanar + 1,
-    `contact redirects impact into forward travel (${arrivingPlanar.toFixed(2)} -> ${peakAfterLanding.toFixed(2)} m/s)`);
-  assert.ok(travel(model) > 0 && planar(model) < peakAfterLanding,
-    'the rider carries forward travel, then the recovered resistance slows the unpowered coast');
+  assert.ok(
+    peakAfterLanding > arrivingPlanar + 1,
+    `contact redirects impact into forward travel (${arrivingPlanar.toFixed(2)} -> ${peakAfterLanding.toFixed(2)} m/s)`,
+  );
+  assert.ok(
+    travel(model) > 0 && planar(model) < peakAfterLanding,
+    'the rider carries forward travel, then the recovered resistance slows the unpowered coast',
+  );
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -138,30 +185,37 @@ const planar = (m: ReturnType<typeof seated>) => Math.hypot(m.st.vel.x, m.st.vel
   for (let i = 0; i < 300; i++) model.step(1 / 60);
   assert.ok(travel(model) > 0, 'a standstill on level snow drives FORWARD, along the board heading');
   const speed = planar(model);
-  const balance = RIDER_DRIVE * SNOW.mult * (SNOW.target - speed)
-    + forwardResistance(SNOW, speed, model.st.error, model.st.sinkBudget, 0, 0);
-  assert.ok(speed < SNOW.target && Math.abs(balance) < 0.01,
-    `cruise and resistance settle in balance below the target (net ${balance.toFixed(4)} m/s²)`);
+  const balance =
+    RIDER_DRIVE * SNOW.mult * (SNOW.target - speed) +
+    forwardResistance(SNOW, speed, model.st.error, model.st.sinkBudget, 0, 0);
+  assert.ok(
+    speed < SNOW.target && Math.abs(balance) < 0.01,
+    `cruise and resistance settle in balance below the target (net ${balance.toFixed(4)} m/s²)`,
+  );
 }
 
 // A collision can leave a slow skid above the standstill fallback but below the switch latch. Previously
 // cruise stayed off until drag reduced it below 0.5 m/s: 5–7 seconds from a 1 m/s skid on snow, longer on ice.
 // Recovery should work without steering or boost, on either edge and with either end of the board leading.
-for (const surface of [1, 5, 9]) for (const speed of [0.51, 1, 1.9]) {
-  for (const angle of [-90, 90, 180]) for (const lead of [1, -1] as const) {
-    const model = seated(undefined, surface);
-    model.st.lead = lead;
-    model.st.fwd.set(0, 0, lead); // the ridden direction is +Z for both regular and switch
-    const radians = angle * Math.PI / 180;
-    model.st.vel.set(speed * Math.sin(radians), 0, speed * Math.cos(radians));
-    for (let i = 0; i < 120; i++) model.step(1 / 60);
-    const label = `surface ${surface}, ${speed} m/s, ${angle} degrees, lead ${lead}`;
-    const forward = travel(model) * lead;
-    assert.ok(forward > Math.min(5, SURFACE_ROWS[surface].target * 0.65),
-      `a slow skid rides forward again within 2 s (${label}: ${forward.toFixed(2)} m/s)`);
-    assert.equal(model.st.lead, lead, `recovery preserves the ridden end (${label})`);
+for (const surface of [1, 5, 9])
+  for (const speed of [0.51, 1, 1.9]) {
+    for (const angle of [-90, 90, 180])
+      for (const lead of [1, -1] as const) {
+        const model = seated(undefined, surface);
+        model.st.lead = lead;
+        model.st.fwd.set(0, 0, lead); // the ridden direction is +Z for both regular and switch
+        const radians = (angle * Math.PI) / 180;
+        model.st.vel.set(speed * Math.sin(radians), 0, speed * Math.cos(radians));
+        for (let i = 0; i < 120; i++) model.step(1 / 60);
+        const label = `surface ${surface}, ${speed} m/s, ${angle} degrees, lead ${lead}`;
+        const forward = travel(model) * lead;
+        assert.ok(
+          forward > Math.min(5, SURFACE_ROWS[surface].target * 0.65),
+          `a slow skid rides forward again within 2 s (${label}: ${forward.toFixed(2)} m/s)`,
+        );
+        assert.equal(model.st.lead, lead, `recovery preserves the ridden end (${label})`);
+      }
   }
-}
 
 // Holding brake must not add recovery thrust to a slow sideways slide.
 {
@@ -181,8 +235,10 @@ for (const initialSpeed of [2.1, 8]) {
   model.st.vel.set(initialSpeed, 0, 0); // across a +Z heading: square sideways, 90° off both ends
   const before = model.st.vel.length();
   model.step(1 / 60);
-  assert.ok(model.st.vel.length() <= before + 1e-6,
-    'a rider 90° across their travel gets no drive, so the sideways skid does not accelerate');
+  assert.ok(
+    model.st.vel.length() <= before + 1e-6,
+    'a rider 90° across their travel gets no drive, so the sideways skid does not accelerate',
+  );
 }
 
 // ...and the other half: 180° across the travel is RIDING SWITCH (docs/016), not a dead skid. The lead latches
@@ -198,8 +254,9 @@ for (const initialSpeed of [2.1, 8]) {
   assert.equal(model.st.lead, -1, 'and it stays switch — nothing rights the lead on its own');
   assert.ok(model.st.fwd.z > 0.9, 'the drawn nose still points the way it was left');
   const speed = -model.st.vel.z;
-  const balance = RIDER_DRIVE * SNOW.mult * (SNOW.target - speed)
-    + forwardResistance(SNOW, speed, model.st.error, model.st.sinkBudget, 0, 0);
+  const balance =
+    RIDER_DRIVE * SNOW.mult * (SNOW.target - speed) +
+    forwardResistance(SNOW, speed, model.st.error, model.st.sinkBudget, 0, 0);
   assert.ok(speed > 0 && Math.abs(balance) < 0.01, 'switch travel reaches the same drive/resistance equilibrium');
 }
 
@@ -211,7 +268,8 @@ for (const initialSpeed of [2.1, 8]) {
   const model = seated(0);
   model.st.vel.set(0, 0, 8);
   keys.brake = true;
-  let worstBackwards = 0, fastest = 0;
+  let worstBackwards = 0,
+    fastest = 0;
   for (let i = 0; i < 300; i++) {
     model.step(1 / 60);
     worstBackwards = Math.min(worstBackwards, travel(model));

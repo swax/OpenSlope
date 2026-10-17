@@ -56,8 +56,11 @@ export interface ToggleBar {
 
 /** A connected group of independent pressed buttons. Unlike `segmented`, several values may be on at once;
  * the caller owns any policy such as keeping at least one value enabled. */
-export function toggleBar<T extends string>(options: SegOption<T>[], active: (value: T) => boolean,
-  toggle: (value: T) => void): ToggleBar {
+export function toggleBar<T extends string>(
+  options: SegOption<T>[],
+  active: (value: T) => boolean,
+  toggle: (value: T) => void,
+): ToggleBar {
   const el = document.createElement('div');
   el.className = 'sp-seg';
   const btns = new Map<T, HTMLButtonElement>();
@@ -75,7 +78,10 @@ export function toggleBar<T extends string>(options: SegOption<T>[], active: (va
     const button = document.createElement('button');
     button.textContent = typeof option.label === 'function' ? option.label() : option.label;
     tooltip(button, option.title ?? option.label);
-    button.onclick = () => { toggle(option.value); refresh(); };
+    button.onclick = () => {
+      toggle(option.value);
+      refresh();
+    };
     btns.set(option.value, button);
     el.appendChild(button);
   }
@@ -84,7 +90,11 @@ export function toggleBar<T extends string>(options: SegOption<T>[], active: (va
 }
 
 /** A mutually-exclusive button group bound to a get/set pair (e.g. editor or mode). */
-export function segmented<T extends string>(options: SegOption<T>[], get: () => T | null, set: (v: T) => void): Segmented<T> {
+export function segmented<T extends string>(
+  options: SegOption<T>[],
+  get: () => T | null,
+  set: (v: T) => void,
+): Segmented<T> {
   const el = document.createElement('div');
   el.className = 'sp-seg';
   const btns = new Map<T, HTMLButtonElement>();
@@ -93,7 +103,8 @@ export function segmented<T extends string>(options: SegOption<T>[], get: () => 
     for (const [v, b] of btns) {
       const option = options.find(candidate => candidate.value === v)!;
       const optionLabel = typeof option.label === 'function' ? option.label() : option.label;
-      if (option.icon) b.setAttribute('aria-label', optionLabel); else writeSegLabel(b, optionLabel, option.shortcut);
+      if (option.icon) b.setAttribute('aria-label', optionLabel);
+      else writeSegLabel(b, optionLabel, option.shortcut);
       const active = v === cur;
       b.classList.toggle('on', active);
       b.setAttribute('aria-pressed', String(active));
@@ -101,12 +112,20 @@ export function segmented<T extends string>(options: SegOption<T>[], get: () => 
   };
   for (const o of options) {
     const b = document.createElement('button');
-    const optionLabel = () => typeof o.label === 'function' ? o.label() : o.label;
-    if (o.icon) { b.innerHTML = o.icon; b.classList.add('sp-seg-icon'); b.setAttribute('aria-label', optionLabel()); }
-    else writeSegLabel(b, optionLabel(), o.shortcut);
+    const optionLabel = () => (typeof o.label === 'function' ? o.label() : o.label);
+    if (o.icon) {
+      b.innerHTML = o.icon;
+      b.classList.add('sp-seg-icon');
+      b.setAttribute('aria-label', optionLabel());
+    } else writeSegLabel(b, optionLabel(), o.shortcut);
     if (o.shortcut) b.setAttribute('aria-keyshortcuts', o.shortcut.keys);
     tooltip(b, o.title ?? o.label);
-    b.onclick = () => { if (!b.disabled) { set(o.value); refresh(); } };
+    b.onclick = () => {
+      if (!b.disabled) {
+        set(o.value);
+        refresh();
+      }
+    };
     btns.set(o.value, b);
     el.appendChild(b);
   }
@@ -116,7 +135,10 @@ export function segmented<T extends string>(options: SegOption<T>[], get: () => 
     refresh,
     setEnabled(value, on) {
       const b = btns.get(value);
-      if (b) { b.disabled = !on; b.classList.toggle('disabled', !on); }
+      if (b) {
+        b.disabled = !on;
+        b.classList.toggle('disabled', !on);
+      }
     },
   };
 }
@@ -148,16 +170,32 @@ export function iconBar(items: IconButton[]): IconBar {
   const el = document.createElement('div');
   el.className = 'sp-seg';
   const refreshers: (() => void)[] = [];
-  const refresh = () => { for (const r of refreshers) r(); };
+  const refresh = () => {
+    for (const r of refreshers) r();
+  };
   for (const it of items) {
     const b = document.createElement('button');
     b.className = 'sp-seg-icon';
     b.innerHTML = it.icon;
     b.setAttribute('aria-label', it.label);
     tooltip(b, it.title ?? it.label);
-    b.onclick = () => { it.onClick(); refresh(); };
-    if (it.active) { const a = it.active; refreshers.push(() => b.classList.toggle('on', a())); }
-    if (it.enabled) { const en = it.enabled; refreshers.push(() => { const ok = en(); b.disabled = !ok; b.classList.toggle('disabled', !ok); }); }    el.appendChild(b);
+    b.onclick = () => {
+      it.onClick();
+      refresh();
+    };
+    if (it.active) {
+      const a = it.active;
+      refreshers.push(() => b.classList.toggle('on', a()));
+    }
+    if (it.enabled) {
+      const en = it.enabled;
+      refreshers.push(() => {
+        const ok = en();
+        b.disabled = !ok;
+        b.classList.toggle('disabled', !ok);
+      });
+    }
+    el.appendChild(b);
   }
   refresh();
   return { el, refresh };
@@ -235,11 +273,16 @@ let menuSeq = 0;
 
 /** Close whichever menu or panel is open. */
 export function closeMenu() {
-  if (openPop) { openPop.remove(); openPop = null; }
+  if (openPop) {
+    openPop.remove();
+    openPop = null;
+  }
 }
 // any click/Escape outside the popup or trigger closes it (triggers/items stopPropagation)
 document.addEventListener('click', closeMenu);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeMenu();
+});
 
 /** The popup itself: rows of label + optional description, sharing one close path with everything above. */
 function buildPop(items: MenuItem[], owner?: string): HTMLElement {
@@ -273,7 +316,12 @@ function buildPop(items: MenuItem[], owner?: string): HTMLElement {
     // `detail` carries the concise, visible answer; `desc` remains the home for longer caveats and evidence
     // that would otherwise turn a scan-friendly menu into a wall of prose.
     if (it.desc) tooltip(row, it.desc);
-    row.onclick = ev => { ev.stopPropagation(); if (it.disabled) return; closeMenu(); it.onClick?.(); };
+    row.onclick = ev => {
+      ev.stopPropagation();
+      if (it.disabled) return;
+      closeMenu();
+      it.onClick?.();
+    };
     pop.appendChild(row);
   }
   return pop;
@@ -315,7 +363,12 @@ export function menu(triggerLabel: string, items: MenuItem[] | (() => MenuItem[]
     placePop(pop, r.left, r.bottom + 4);
     openPop = pop;
   };
-  return { el: btn, setLabel: t => { text.textContent = t; } };
+  return {
+    el: btn,
+    setLabel: t => {
+      text.textContent = t;
+    },
+  };
 }
 
 /**

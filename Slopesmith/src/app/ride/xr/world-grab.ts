@@ -20,16 +20,26 @@
 
 export interface RigPose {
   /** World position of the rig origin (the tracking-space floor origin). */
-  x: number; y: number; z: number;
+  x: number;
+  y: number;
+  z: number;
   /** Rotation about world up, radians (three's convention: positive turns −Z toward −X). */
   yaw: number;
   /** Player size: 1 is life size, 10 a giant for whom the mountain is a tenth of the size. */
   scale: number;
 }
 
-export interface Vec3 { x: number; y: number; z: number }
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
-export interface TwoHandGrab { pose: RigPose; a: Vec3; b: Vec3 }
+export interface TwoHandGrab {
+  pose: RigPose;
+  a: Vec3;
+  b: Vec3;
+}
 
 /** Size limits: an ant's view of a rail to a sky-high look at a whole level. */
 export const XR_EDIT_MIN_SCALE = 0.05;
@@ -43,12 +53,15 @@ const MIN_SPREAD = 0.02;
 
 /** Rotate (x, z) about world up by `yaw`, three.js's sense. */
 function yawed(x: number, z: number, yaw: number): [number, number] {
-  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const c = Math.cos(yaw),
+    s = Math.sin(yaw);
   return [x * c + z * s, -x * s + z * c];
 }
 
 /** The heading of a horizontal vector, in the angle `yawed` adds to. */
-function heading(x: number, z: number): number { return Math.atan2(x, z); }
+function heading(x: number, z: number): number {
+  return Math.atan2(x, z);
+}
 
 /** Where a rig-local point sits in the world under `pose`. */
 export function rigToWorld(pose: RigPose, p: Vec3): Vec3 {
@@ -61,24 +74,35 @@ export function solveTwoHandGrab(grab: TwoHandGrab, a: Vec3, b: Vec3): RigPose {
   const { pose: start } = grab;
   const spread0 = Math.hypot(grab.b.x - grab.a.x, grab.b.y - grab.a.y, grab.b.z - grab.a.z);
   const spread = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-  const scale = spread0 < MIN_SPREAD || spread < MIN_SPREAD ? start.scale
-    : Math.min(XR_EDIT_MAX_SCALE, Math.max(XR_EDIT_MIN_SCALE,
-      start.scale * Math.pow(spread0 / spread, XR_EDIT_ZOOM_EXPONENT)));
+  const scale =
+    spread0 < MIN_SPREAD || spread < MIN_SPREAD
+      ? start.scale
+      : Math.min(
+          XR_EDIT_MAX_SCALE,
+          Math.max(XR_EDIT_MIN_SCALE, start.scale * Math.pow(spread0 / spread, XR_EDIT_ZOOM_EXPONENT)),
+        );
   const span0 = Math.hypot(grab.b.x - grab.a.x, grab.b.z - grab.a.z);
   const span = Math.hypot(b.x - a.x, b.z - a.z);
   // The map keeps the heading the hands gave it: world heading of (b − a) is yaw + its rig-local heading.
-  const yaw = span0 < MIN_TURN_SPAN || span < MIN_TURN_SPAN ? start.yaw
-    : start.yaw + heading(grab.b.x - grab.a.x, grab.b.z - grab.a.z) - heading(b.x - a.x, b.z - a.z);
+  const yaw =
+    span0 < MIN_TURN_SPAN || span < MIN_TURN_SPAN
+      ? start.yaw
+      : start.yaw + heading(grab.b.x - grab.a.x, grab.b.z - grab.a.z) - heading(b.x - a.x, b.z - a.z);
   // The world point between the hands at the grab stays between them.
   const anchor = rigToWorld(start, {
-    x: (grab.a.x + grab.b.x) / 2, y: (grab.a.y + grab.b.y) / 2, z: (grab.a.z + grab.b.z) / 2,
+    x: (grab.a.x + grab.b.x) / 2,
+    y: (grab.a.y + grab.b.y) / 2,
+    z: (grab.a.z + grab.b.z) / 2,
   });
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
   const [mx, mz] = yawed(mid.x * scale, mid.z * scale, yaw);
   return { x: anchor.x - mx, y: anchor.y - mid.y * scale, z: anchor.z - mz, yaw, scale };
 }
 
-export interface OneHandGrab { pose: RigPose; hand: Vec3 }
+export interface OneHandGrab {
+  pose: RigPose;
+  hand: Vec3;
+}
 
 /** One grip held: the world point in the hand stays in it, so the map is dragged along with the hand — across,
  *  and up and down — at the size and heading it already had. Solved from the grab's start, like the pair. */

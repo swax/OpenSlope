@@ -24,8 +24,7 @@ function chunk(type: string, body: Uint8Array): Uint8Array {
 }
 
 async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
-  const compressed = new Blob([bytes as BlobPart]).stream()
-    .pipeThrough(new CompressionStream('deflate'));
+  const compressed = new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('deflate'));
   return new Uint8Array(await new Response(compressed).arrayBuffer());
 }
 
@@ -36,8 +35,8 @@ export async function encodePng(img: Rgba): Promise<Uint8Array> {
   const header = new DataView(ihdr.buffer);
   header.setUint32(0, w);
   header.setUint32(4, h);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 6;  // colour type RGBA
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // colour type RGBA
   // compression / filter / interlace = 0
 
   const stride = w * 4;
@@ -55,7 +54,10 @@ export async function encodePng(img: Rgba): Promise<Uint8Array> {
   ];
   const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
   let at = 0;
-  for (const part of parts) { out.set(part, at); at += part.length; }
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
   return out;
 }
 
@@ -75,5 +77,7 @@ export async function decodePng(bytes: Uint8Array): Promise<Rgba> {
     context.drawImage(bitmap, 0, 0);
     const image = context.getImageData(0, 0, bitmap.width, bitmap.height);
     return { w: image.width, h: image.height, data: new Uint8Array(image.data.buffer) };
-  } finally { bitmap.close(); }
+  } finally {
+    bitmap.close();
+  }
 }

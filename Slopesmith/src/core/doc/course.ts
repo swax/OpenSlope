@@ -59,10 +59,14 @@ function endFrame(pos: V3, fwd: V3, width: number): CourseEndFrame {
  */
 function anchorStation(course: CoursePath, pos: V3): number {
   const samples = sampleSpine(course.knots);
-  let best = Infinity, station = 0;
+  let best = Infinity,
+    station = 0;
   for (const s of samples) {
     const d = (s.pos[0] - pos[0]) ** 2 + (s.pos[1] - pos[1]) ** 2 + (s.pos[2] - pos[2]) ** 2;
-    if (d < best) { best = d; station = s.s; }
+    if (d < best) {
+      best = d;
+      station = s.s;
+    }
   }
   return station;
 }
@@ -90,7 +94,8 @@ function stationFrame(course: CoursePath, pos: V3, station: number): CourseEndFr
  *  before the race even starts. */
 export function startFrame(course: CoursePath): CourseEndFrame {
   if (course.start) return stationFrame(course, course.start.pos, startStation(course));
-  const a = course.knots[0].pos, b = course.knots[1].pos;
+  const a = course.knots[0].pos,
+    b = course.knots[1].pos;
   const chord = sub(b, a);
   // A coincident/vertical first pair has no overhead direction; retain the sampled fallback for malformed
   // legacy data rather than producing a zero side vector. Ordinary authored courses take the exact chord.
@@ -124,8 +129,7 @@ export function startGateLines(course: CoursePath): V3[][] {
   const step = sampleStep(totalLength(sampleSpine(course.knots)));
   // Which sample the flag stands on — 0 on a run nobody has moved. Kept one short of the end so a flag
   // dropped at the very bottom still has a sample to lead into.
-  const k0 = course.start
-    ? Math.min(centers.length - 2, Math.max(0, Math.round(startStation(course) / step))) : 0;
+  const k0 = course.start ? Math.min(centers.length - 2, Math.max(0, Math.round(startStation(course) / step))) : 0;
   const n = Math.min(GATE_LINE_POINTS, centers.length - 1 - k0);
   const lines: V3[][] = [];
   for (let g = 0; g < GATE_COUNT; g++) {
@@ -175,7 +179,10 @@ const RATING_STEPS = [0, 25, 50, 80, 100];
 export function aiLineRatings(course: CoursePath, seed: number, wander = true): number[] {
   const ratings: number[] = [];
   for (let g = 0; g < GATE_COUNT; g++) {
-    if (!wander) { ratings.push(DEFAULT_LINE_RATING); continue; }
+    if (!wander) {
+      ratings.push(DEFAULT_LINE_RATING);
+      continue;
+    }
     const amp = 0.35 + 0.55 * hash01(seed, g, 0); // the same roll aiPathLines shapes the line with
     const t = Math.min(1, Math.max(0, (amp - 0.35) / 0.55));
     ratings.push(RATING_STEPS[Math.round(t * (RATING_STEPS.length - 1))]);
@@ -206,15 +213,15 @@ export function aiPathLines(course: CoursePath, seed: number, wander = true): V3
   const total = totalLength(samples);
   const step = sampleStep(total);
   const { width } = startFrame(course);
-  const s0 = startStation(course);   // an opponent rides from the grid, not from the head of the line
+  const s0 = startStation(course); // an opponent rides from the grid, not from the head of the line
   const pitch = Math.min(GATE_SPACING, Math.max(0.3, (width - 1) / (GATE_COUNT - 1)));
   const lines: V3[][] = [];
   for (let g = 0; g < GATE_COUNT; g++) {
     const gateOffset = (g - (GATE_COUNT - 1) / 2) * pitch;
-    const amp = 0.35 + 0.55 * hash01(seed, g, 0);                    // how far into the floor this rider swings
-    const l1 = 220 + 320 * hash01(seed, g, 1);                        // long carve wavelength, metres
+    const amp = 0.35 + 0.55 * hash01(seed, g, 0); // how far into the floor this rider swings
+    const l1 = 220 + 320 * hash01(seed, g, 1); // long carve wavelength, metres
     const p1 = hash01(seed, g, 2) * Math.PI * 2;
-    const l2 = 60 + 110 * hash01(seed, g, 3);                         // short weave wavelength, metres
+    const l2 = 60 + 110 * hash01(seed, g, 3); // short weave wavelength, metres
     const p2 = hash01(seed, g, 4) * Math.PI * 2;
     const line: V3[] = [];
     let k = 0;
@@ -223,7 +230,9 @@ export function aiPathLines(course: CoursePath, seed: number, wander = true): V3
       const { side } = frameAt(smp.fwd);
       const bound = Math.max(0, paramsAt(course.knots, smp.k).width / 2 - 1.5); // shoulder margin inside the floor edge
       const wanderOffset = wander
-        ? bound * amp * (0.7 * Math.sin((2 * Math.PI * smp.s) / l1 + p1) + 0.3 * Math.sin((2 * Math.PI * smp.s) / l2 + p2))
+        ? bound *
+          amp *
+          (0.7 * Math.sin((2 * Math.PI * smp.s) / l1 + p1) + 0.3 * Math.sin((2 * Math.PI * smp.s) / l2 + p2))
         : 0;
       const fade = Math.max(0, 1 - k / GATE_FADE_POINTS);
       line.push(add(smp.pos, mul(side, gateOffset * fade + wanderOffset * (1 - fade))));
@@ -257,8 +266,10 @@ export type GroundSampler = (points: readonly (readonly [number, number, number]
  * viewport's cached surface tree instead: building every patch's control points costs a dense mountain a tenth
  * of a second or more, which a sculpt stroke cannot pay each time it lifts.
  */
-export function seatRunOnTerrain(doc: QuadMeshDoc, ground: GroundSampler =
-  points => surfaceSamplesAt(doc, points).map(sample => sample?.height ?? null)): number {
+export function seatRunOnTerrain(
+  doc: QuadMeshDoc,
+  ground: GroundSampler = points => surfaceSamplesAt(doc, points).map(sample => sample?.height ?? null),
+): number {
   const course = doc.course;
   const points = [...course.knots, ...(course.start ? [course.start] : []), ...(course.finish ? [course.finish] : [])];
   const heights = ground(points.map(p => [p.pos[0], p.pos[2], p.pos[1]] as const));

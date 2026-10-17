@@ -55,7 +55,8 @@ export function lightToWorkingSpace(display: Float32Array): Float32Array {
   for (let i = 0; i < display.length; i++) {
     const c = display[i];
     if (c > 0 && c < 1) {
-      const t = c * LUT_STEPS, k = t | 0;
+      const t = c * LUT_STEPS,
+        k = t | 0;
       out[i] = LUT[k] + (LUT[k + 1] - LUT[k]) * (t - k);
     } else {
       // The rails and anything outside the table's domain go through the exact curve. Light buffers are

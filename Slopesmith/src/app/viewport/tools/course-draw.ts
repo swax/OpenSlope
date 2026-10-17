@@ -46,7 +46,9 @@ export function createCourseDrawLayer(stage: Stage, terrain: () => THREE.Mesh) {
   for (const object of [dots, hoverDot, line]) {
     object.visible = false;
     object.renderOrder = 10_000;
-    object.raycast = () => { /* placement guides are never pick targets */ };
+    object.raycast = () => {
+      /* placement guides are never pick targets */
+    };
     stage.worldRoot.add(object);
   }
 
@@ -62,7 +64,9 @@ export function createCourseDrawLayer(stage: Stage, terrain: () => THREE.Mesh) {
       const dot = new THREE.Mesh(DOT_GEO, pointMat);
       dot.renderOrder = 10_000;
       dot.scale.setScalar(DOT_RADIUS);
-      dot.raycast = () => { /* placement guides are never pick targets */ };
+      dot.raycast = () => {
+        /* placement guides are never pick targets */
+      };
       pointDots.push(dot);
       dots.add(dot);
     }
@@ -78,7 +82,8 @@ export function createCourseDrawLayer(stage: Stage, terrain: () => THREE.Mesh) {
     if (active && guide.length >= 2) {
       line.geometry.dispose();
       line.geometry = new THREE.BufferGeometry().setFromPoints(
-        sampleSpine(guide.map(pos => ({ pos }))).map(s => new THREE.Vector3(s.pos[0], s.pos[1], s.pos[2])));
+        sampleSpine(guide.map(pos => ({ pos }))).map(s => new THREE.Vector3(s.pos[0], s.pos[1], s.pos[2])),
+      );
       line.visible = true;
     } else line.visible = false;
   }
@@ -113,8 +118,8 @@ export function createCourseDrawLayer(stage: Stage, terrain: () => THREE.Mesh) {
     if (!last) return false;
     const rect = stage.renderer.domElement.getBoundingClientRect();
     const ndc = dataToScene(last).project(stage.camera);
-    const x = rect.left + (ndc.x + 1) / 2 * rect.width;
-    const y = rect.top + (1 - ndc.y) / 2 * rect.height;
+    const x = rect.left + ((ndc.x + 1) / 2) * rect.width;
+    const y = rect.top + ((1 - ndc.y) / 2) * rect.height;
     return Math.hypot(x - at.clientX, y - at.clientY) <= FINISH_CLICK_PX;
   }
 
@@ -124,7 +129,10 @@ export function createCourseDrawLayer(stage: Stage, terrain: () => THREE.Mesh) {
     if (!active) return;
     lastClickAt = performance.now();
     if (at) stage.castAt(at);
-    if (at && points.length >= 2 && onNewestPoint(at)) { handlers?.finish(); return; }
+    if (at && points.length >= 2 && onNewestPoint(at)) {
+      handlers?.finish();
+      return;
+    }
     const point = surfacePoint();
     if (!point) return;
     const previous = points.at(-1);
@@ -143,12 +151,20 @@ export function createCourseDrawLayer(stage: Stage, terrain: () => THREE.Mesh) {
   }
 
   return {
-    begin, end, onHover, onCommit, removeLast,
+    begin,
+    end,
+    onHover,
+    onCommit,
+    removeLast,
     /** Whether a double-click belongs to the course — while drawing, or the one whose second press finished
      *  it — rather than to Info's focus-the-camera gesture. */
     ownsDoubleClick: () => active || performance.now() - lastClickAt < 600,
-    get active() { return active; },
-    get points(): readonly V3[] { return points; },
+    get active() {
+      return active;
+    },
+    get points(): readonly V3[] {
+      return points;
+    },
   };
 }
 

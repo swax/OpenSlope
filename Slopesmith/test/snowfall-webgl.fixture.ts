@@ -42,14 +42,18 @@ async function run(): Promise<void> {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
   renderer.setSize(SIZE, SIZE, false);
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-  renderer.setClearColor(0x000000, 1);   // black, so every lit sample IS the flakes
+  renderer.setClearColor(0x000000, 1); // black, so every lit sample IS the flakes
   renderer.debug.checkShaderErrors = true;
   renderer.debug.onShaderError = (gl, program, vertex, fragment) => {
-    throw new Error([
-      gl.getProgramInfoLog(program),
-      `VERTEX: ${gl.getShaderInfoLog(vertex)}`,
-      `FRAGMENT: ${gl.getShaderInfoLog(fragment)}`,
-    ].filter(Boolean).join('\n'));
+    throw new Error(
+      [
+        gl.getProgramInfoLog(program),
+        `VERTEX: ${gl.getShaderInfoLog(vertex)}`,
+        `FRAGMENT: ${gl.getShaderInfoLog(fragment)}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
   };
 
   const scene = new THREE.Scene();
@@ -63,7 +67,7 @@ async function run(): Promise<void> {
   function draw(eye: THREE.Vector3, dt: number, active = true): Uint8Array {
     layer.sync(eye, dt, active);
     camera.position.copy(eye);
-    camera.rotation.set(0, 0, 0);       // one fixed heading everywhere, so only the eye moves
+    camera.rotation.set(0, 0, 0); // one fixed heading everywhere, so only the eye moves
     camera.updateMatrixWorld(true);
     renderer.render(scene, camera);
     const pixels = new Uint8Array(SIZE * SIZE * 4);
@@ -108,8 +112,8 @@ async function run(): Promise<void> {
   // frame from here is drawn at dt = 0, so they differ only in where the eye is.
   draw(origin, 1 / 60);
   const farEyes = [
-    new THREE.Vector3(240, -1300, 900),        // a long way down a course
-    new THREE.Vector3(-4000, 900, 12000),      // ...and off the end of a big reference level
+    new THREE.Vector3(240, -1300, 900), // a long way down a course
+    new THREE.Vector3(-4000, 900, 12000), // ...and off the end of a big reference level
     new THREE.Vector3(100000, -50000, 100000), // a teleport no course reaches, wrapped in one step
   ];
   const farLight = farEyes.map(eye => light(draw(eye, 0)));
@@ -124,8 +128,10 @@ async function run(): Promise<void> {
   const stepped = draw(new THREE.Vector3(3, 0, 0), 0);
   const parallaxDiff = difference(here, stepped);
   if (parallaxDiff < light(here) * 0.5) {
-    failures.push(`moving the eye 3 m barely changed the frame (${parallaxDiff} against ${light(here)} of `
-      + 'light) — the flakes are being towed along by the camera, not ridden through');
+    failures.push(
+      `moving the eye 3 m barely changed the frame (${parallaxDiff} against ${light(here)} of ` +
+        'light) — the flakes are being towed along by the camera, not ridden through',
+    );
   }
 
   // THE RECYCLE. Move the eye by exactly one wrap box instead. The toroidal fold is periodic in the box, so
@@ -135,8 +141,10 @@ async function run(): Promise<void> {
   const period = draw(new THREE.Vector3(box[0], box[1], box[2]), 0);
   const periodDiff = difference(here, period);
   if (periodDiff > light(here) * 0.02) {
-    failures.push(`a whole-box move changed the frame (${periodDiff} against ${light(here)} of light) — `
-      + 'the field is not periodic in its own wrap box');
+    failures.push(
+      `a whole-box move changed the frame (${periodDiff} against ${light(here)} of light) — ` +
+        'the field is not periodic in its own wrap box',
+    );
   }
 
   // THE DIAL, measured rather than asserted. The mean channel byte over the whole frame is how white the view
@@ -151,17 +159,23 @@ async function run(): Promise<void> {
   }
   const meanAt = (amount: number) => brightnessByAmount[amount].mean;
   if (meanAt(AMOUNT_PORT) > 8) {
-    failures.push(`the port stop washes the view to ${meanAt(AMOUNT_PORT).toFixed(1)}/255 — that is not the `
-      + 'faint additive grain the engine draws');
+    failures.push(
+      `the port stop washes the view to ${meanAt(AMOUNT_PORT).toFixed(1)}/255 — that is not the ` +
+        'faint additive grain the engine draws',
+    );
   }
   if (meanAt(AMOUNT_MAX) < 90) {
-    failures.push(`the top of the dial only reaches ${meanAt(AMOUNT_MAX).toFixed(1)}/255 of white — `
-      + `${snowfallAt(AMOUNT_MAX).flakes} flakes is not yet a whiteout`);
+    failures.push(
+      `the top of the dial only reaches ${meanAt(AMOUNT_MAX).toFixed(1)}/255 of white — ` +
+        `${snowfallAt(AMOUNT_MAX).flakes} flakes is not yet a whiteout`,
+    );
   }
   for (let amount = 1; amount <= AMOUNT_MAX; amount++) {
     if (meanAt(amount) <= meanAt(amount - 1)) {
-      failures.push(`dialling ${amount - 1} -> ${amount} did not make it snow more `
-        + `(${meanAt(amount - 1).toFixed(1)} -> ${meanAt(amount).toFixed(1)})`);
+      failures.push(
+        `dialling ${amount - 1} -> ${amount} did not make it snow more ` +
+          `(${meanAt(amount - 1).toFixed(1)} -> ${meanAt(amount).toFixed(1)})`,
+      );
     }
   }
 
@@ -169,11 +183,19 @@ async function run(): Promise<void> {
     ok: !failures.length,
     error: failures.join('; ') || undefined,
     renderer: gl.getParameter(gl.RENDERER) as string,
-    idleLight, ridingLight, clearedLight, farLight, parallaxDiff, periodDiff, brightnessByAmount,
+    idleLight,
+    ridingLight,
+    clearedLight,
+    farLight,
+    parallaxDiff,
+    periodDiff,
+    brightnessByAmount,
   });
 }
 
-run().catch((error: unknown) => publish({
-  ok: false,
-  error: error instanceof Error ? (error.stack ?? error.message) : String(error),
-}));
+run().catch((error: unknown) =>
+  publish({
+    ok: false,
+    error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+  }),
+);

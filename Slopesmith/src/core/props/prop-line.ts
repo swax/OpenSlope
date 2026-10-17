@@ -30,8 +30,10 @@ import { rotateByPlacement, rotateY, tiltFields, type PropRotation } from './pos
 /** A model's extent in its own editor-local frame (metres at scale 1, before any turn): the horizontal box,
  *  and the height of its lowest point above its origin (what hand placement calls the base offset). */
 export interface LineFootprint {
-  minX: number; maxX: number;
-  minZ: number; maxZ: number;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
   minY: number;
 }
 
@@ -61,8 +63,10 @@ const R2D = 180 / Math.PI;
  */
 export function footprintOfRawBox(box: LocalBox): LineFootprint {
   return {
-    minX: -box.max[0] / 100, maxX: -box.min[0] / 100,
-    minZ: -box.max[1] / 100, maxZ: -box.min[1] / 100,
+    minX: -box.max[0] / 100,
+    maxX: -box.min[0] / 100,
+    minZ: -box.max[1] / 100,
+    maxZ: -box.min[1] / 100,
     minY: box.min[2] / 100,
   };
 }
@@ -71,32 +75,39 @@ export function footprintOfRawBox(box: LocalBox): LineFootprint {
  * The footprint of a GROUP (docs/015): its members' footprints, each carried by its own offset and turn in the
  * group's frame, boxed together. The lowest point is the lowest member's, as a group's hand drop seats it.
  */
-export function groupFootprint(members: readonly { footprint: LineFootprint; relPos: V3; relYaw: number }[]):
-  LineFootprint | null {
+export function groupFootprint(
+  members: readonly { footprint: LineFootprint; relPos: V3; relYaw: number }[],
+): LineFootprint | null {
   let out: LineFootprint | null = null;
   for (const { footprint: f, relPos, relYaw } of members) {
-    for (const x of [f.minX, f.maxX]) for (const z of [f.minZ, f.maxZ]) {
-      const [cx, , cz] = rotateY([x, 0, z], relYaw);
-      const px = cx + relPos[0], pz = cz + relPos[2];
-      out ??= { minX: px, maxX: px, minZ: pz, maxZ: pz, minY: f.minY + relPos[1] };
-      out.minX = Math.min(out.minX, px); out.maxX = Math.max(out.maxX, px);
-      out.minZ = Math.min(out.minZ, pz); out.maxZ = Math.max(out.maxZ, pz);
-    }
+    for (const x of [f.minX, f.maxX])
+      for (const z of [f.minZ, f.maxZ]) {
+        const [cx, , cz] = rotateY([x, 0, z], relYaw);
+        const px = cx + relPos[0],
+          pz = cz + relPos[2];
+        out ??= { minX: px, maxX: px, minZ: pz, maxZ: pz, minY: f.minY + relPos[1] };
+        out.minX = Math.min(out.minX, px);
+        out.maxX = Math.max(out.maxX, px);
+        out.minZ = Math.min(out.minZ, pz);
+        out.maxZ = Math.max(out.maxZ, pz);
+      }
     if (out) out.minY = Math.min(out.minY, f.minY + relPos[1]);
   }
   return out;
 }
 
 /** Which of the model's horizontal axes is its long side — the one laid along the line at turn 0. */
-const longAxis = (f: LineFootprint): 'x' | 'z' => f.maxX - f.minX >= f.maxZ - f.minZ ? 'x' : 'z';
+const longAxis = (f: LineFootprint): 'x' | 'z' => (f.maxX - f.minX >= f.maxZ - f.minZ ? 'x' : 'z');
 
 /**
  * How far the model reaches along the line at the line's turn and scale: its box projected onto the path.
  * At turn 0 that is the long side; a quarter turn puts the short side along the line instead.
  */
 export function lineModelLength(line: Pick<PropLine, 'turn' | 'scale'>, f: LineFootprint): number {
-  const lx = f.maxX - f.minX, lz = f.maxZ - f.minZ;
-  const long = Math.max(lx, lz), short = Math.min(lx, lz);
+  const lx = f.maxX - f.minX,
+    lz = f.maxZ - f.minZ;
+  const long = Math.max(lx, lz),
+    short = Math.min(lx, lz);
   const t = (line.turn ?? 0) * D2R;
   return (Math.abs(Math.cos(t)) * long + Math.abs(Math.sin(t)) * short) * line.scale;
 }
@@ -115,7 +126,7 @@ export type Metric = 'plan' | 'space';
 
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 /** Distance in plan (XZ) for upright members, whose length is horizontal; in space for raked ones. */
-const measure = (d: V3, metric: Metric) => metric === 'plan' ? Math.hypot(d[0], d[2]) : Math.hypot(d[0], d[1], d[2]);
+const measure = (d: V3, metric: Metric) => (metric === 'plan' ? Math.hypot(d[0], d[2]) : Math.hypot(d[0], d[1], d[2]));
 
 interface Walk {
   joints: V3[];
@@ -127,12 +138,18 @@ interface Walk {
 function walk(points: readonly V3[], step: number, metric: Metric, limit: number): Walk {
   const joints: V3[] = [points[0]];
   let joint = points[0];
-  let seg = 0, from = 0; // where the current joint sits: segment index + parameter along it
+  let seg = 0,
+    from = 0; // where the current joint sits: segment index + parameter along it
   while (joints.length <= limit) {
     let next: { at: V3; seg: number; t: number } | null = null;
     for (let i = seg; i < points.length - 1 && !next; i++) {
-      const p = points[i], v = sub(points[i + 1], p), w = sub(p, joint);
-      if (metric === 'plan') { v[1] = 0; w[1] = 0; }
+      const p = points[i],
+        v = sub(points[i + 1], p),
+        w = sub(p, joint);
+      if (metric === 'plan') {
+        v[1] = 0;
+        w[1] = 0;
+      }
       // |w + t·v| = step; the forward crossing is the larger root (the joint is inside the circle at `from`)
       const a = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
       if (a < 1e-12) continue;
@@ -143,13 +160,16 @@ function walk(points: readonly V3[], step: number, metric: Metric, limit: number
       const t = (-b + Math.sqrt(disc)) / (2 * a);
       const start = i === seg ? from : 0;
       if (t >= start - 1e-9 && t <= 1 + 1e-9) {
-        const q = points[i + 1], tt = Math.min(1, Math.max(start, t));
+        const q = points[i + 1],
+          tt = Math.min(1, Math.max(start, t));
         next = { at: [p[0] + (q[0] - p[0]) * tt, p[1] + (q[1] - p[1]) * tt, p[2] + (q[2] - p[2]) * tt], seg: i, t: tt };
       }
     }
     if (!next) break;
     joints.push(next.at);
-    joint = next.at; seg = next.seg; from = next.t;
+    joint = next.at;
+    seg = next.seg;
+    from = next.t;
   }
   const leftover = measure(sub(points[points.length - 1], joint), metric) / step;
   return { joints, progress: joints.length - 1 + leftover };
@@ -165,13 +185,15 @@ function fittedJoints(points: readonly V3[], nominal: number, metric: Metric): {
   const count = Math.min(LINE_MAX_MEMBERS, Math.max(1, Math.round(first.progress)));
   const off = (step: number) => walk(points, step, metric, count + 1).progress - count;
   // Bracket around the straight-line estimate, widening until the progress straddles the count.
-  const estimate = nominal * first.progress / count;
-  let lo = estimate * 0.8, hi = estimate * 1.25;
+  const estimate = (nominal * first.progress) / count;
+  let lo = estimate * 0.8,
+    hi = estimate * 1.25;
   for (let i = 0; i < 40 && off(lo) < 0; i++) lo *= 0.8;
   for (let i = 0; i < 40 && off(hi) > 0; i++) hi *= 1.25;
   for (let i = 0; i < 48; i++) {
     const mid = (lo + hi) / 2;
-    if (off(mid) > 0) lo = mid; else hi = mid;
+    if (off(mid) > 0) lo = mid;
+    else hi = mid;
   }
   const step = (lo + hi) / 2;
   const joints = walk(points, step, metric, count).joints.slice(0, count + 1);
@@ -201,7 +223,7 @@ function rakeTilt(yaw: number, step: V3): { pitch?: number; roll?: number } {
 
 /** Place the model's bottom-centre on `target`: the origin sits wherever that puts it under this rotation. */
 function seated(target: V3, f: LineFootprint, scale: number, rotation: PropRotation): V3 {
-  const bottom: V3 = [(f.minX + f.maxX) / 2 * scale, f.minY * scale, (f.minZ + f.maxZ) / 2 * scale];
+  const bottom: V3 = [((f.minX + f.maxX) / 2) * scale, f.minY * scale, ((f.minZ + f.maxZ) / 2) * scale];
   const [ox, oy, oz] = rotateByPlacement(bottom, rotation);
   return [target[0] - ox, target[1] - oy, target[2] - oz];
 }
@@ -212,8 +234,12 @@ function seated(target: V3, f: LineFootprint, scale: number, rotation: PropRotat
  * last joint on the last node. Null for a line under two nodes, or one whose points all coincide. Sheets lay
  * their spans between the same joints (docs/071).
  */
-export function lineJoints(nodes: readonly V3[], nominal: number, metric: Metric = 'plan', handles?: PathHandleList):
-  { joints: V3[]; step: number } | null {
+export function lineJoints(
+  nodes: readonly V3[],
+  nominal: number,
+  metric: Metric = 'plan',
+  handles?: PathHandleList,
+): { joints: V3[]; step: number } | null {
   if (nodes.length < 2) return null;
   const points = sampleRail(nodes, 24, handles);
   const total = measure(sub(points[points.length - 1], points[0]), metric);
@@ -236,14 +262,16 @@ export function layoutPropLine(line: PropLine, f: LineFootprint, ground: LineGro
   const turn = line.turn ?? 0;
   // Butted panels grow or shrink with the fitted step so they still meet; spaced members keep their size.
   const butted = span && !(typeof line.spacing === 'number' && line.spacing > 0) && lineModelLength(line, f) > 0.05;
-  const scale = butted ? line.scale * step / nominal : line.scale;
+  const scale = butted ? (line.scale * step) / nominal : line.scale;
   const poses: LinePose[] = [];
 
   if (span) {
     const heights = joints.map(groundAt);
     for (let k = 0; k < joints.length - 1; k++) {
-      const a = joints[k], b = joints[k + 1];
-      const dx = b[0] - a[0], dz = b[2] - a[2];
+      const a = joints[k],
+        b = joints[k + 1];
+      const dx = b[0] - a[0],
+        dz = b[2] - a[2];
       if (Math.hypot(dx, dz) < 1e-9) continue;
       const yaw = alignedYaw(f, dx, dz, turn);
       const mid: V3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
@@ -255,8 +283,10 @@ export function layoutPropLine(line: PropLine, f: LineFootprint, ground: LineGro
   }
 
   for (let k = 0; k < joints.length; k++) {
-    const before = joints[Math.max(0, k - 1)], after = joints[Math.min(joints.length - 1, k + 1)];
-    const dx = after[0] - before[0], dz = after[2] - before[2];
+    const before = joints[Math.max(0, k - 1)],
+      after = joints[Math.min(joints.length - 1, k + 1)];
+    const dx = after[0] - before[0],
+      dz = after[2] - before[2];
     const yaw = alignedYaw(f, dx, dz, turn);
     const at = joints[k];
     poses.push({ pos: seated([at[0], groundAt(at), at[2]], f, scale, { yaw }), yaw, scale });
@@ -290,8 +320,11 @@ export function lineMembers(line: PropLine & { id: string }, poses: readonly Lin
  * keeps its slot, new ones go in after the line's last surviving member (or at the end), and the rest are
  * spliced out. Returns the ids that left and the ids that arrived, for the attachments that follow them.
  */
-export function replaceLineMembers(props: PlacedProp[], lineId: string, members: readonly PlacedProp[]):
-  { removed: string[]; added: string[] } {
+export function replaceLineMembers(
+  props: PlacedProp[],
+  lineId: string,
+  members: readonly PlacedProp[],
+): { removed: string[]; added: string[] } {
   const incoming = new Map(members.map(member => [member.id!, member]));
   const kept = new Set<string>();
   const removed: string[] = [];
@@ -299,12 +332,19 @@ export function replaceLineMembers(props: PlacedProp[], lineId: string, members:
   props.forEach((prop, index) => {
     if (prop.line !== lineId) return;
     const next = prop.id ? incoming.get(prop.id) : undefined;
-    if (next && !kept.has(next.id!)) { props[index] = next; kept.add(next.id!); }
-    else { drop.push(index); if (prop.id) removed.push(prop.id); }
+    if (next && !kept.has(next.id!)) {
+      props[index] = next;
+      kept.add(next.id!);
+    } else {
+      drop.push(index);
+      if (prop.id) removed.push(prop.id);
+    }
   });
   for (let i = drop.length - 1; i >= 0; i--) props.splice(drop[i], 1);
   let last = -1;
-  props.forEach((prop, index) => { if (prop.line === lineId) last = index; });
+  props.forEach((prop, index) => {
+    if (prop.line === lineId) last = index;
+  });
   const added = members.filter(member => !kept.has(member.id!));
   props.splice(last < 0 ? props.length : last + 1, 0, ...added);
   return { removed, added: added.map(member => member.id!) };
@@ -333,7 +373,7 @@ export function ensurePropLineIds(lines: PropLine[] | undefined): void {
   for (const line of lines) {
     if (typeof line.id === 'string' && line.id && !used.has(line.id)) used.add(line.id);
     else {
-      line.id = nextPropLineId([...used].map(id => ({ id } as PropLine)));
+      line.id = nextPropLineId([...used].map(id => ({ id }) as PropLine));
       used.add(line.id);
     }
   }

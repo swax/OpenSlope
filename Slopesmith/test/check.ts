@@ -25,7 +25,10 @@ export let failures = 0;
 export function check(condition: unknown, label: string, detail = ''): void {
   const line = detail ? `${label} — ${detail}` : label;
   if (condition) console.log(`ok   ${line}`);
-  else { failures++; console.error(`FAIL ${line}`); }
+  else {
+    failures++;
+    console.error(`FAIL ${line}`);
+  }
 }
 
 /** Count a failure found outside a `check` — typically an error caught around a block of them. */

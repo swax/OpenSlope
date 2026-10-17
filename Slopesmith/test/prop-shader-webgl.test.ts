@@ -75,8 +75,9 @@ try {
     logLevel: 'silent',
   });
   const script = readFileSync(bundle);
-  const lollipopGlb = readFileSync(fileURLToPath(new URL(
-    '../tools/prop-recipes/props/WrappedLollipopRed.glb', import.meta.url)));
+  const lollipopGlb = readFileSync(
+    fileURLToPath(new URL('../tools/prop-recipes/props/WrappedLollipopRed.glb', import.meta.url)),
+  );
   const lollipopAtlas = embeddedPng(lollipopGlb);
   server.on('request', (request, response) => {
     if (request.url === '/fixture.js') {
@@ -107,29 +108,34 @@ try {
   });
   const page = await browser.newPage();
   const consoleErrors: string[] = [];
-  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  page.on('console', message => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
   page.on('pageerror', error => consoleErrors.push(error.stack ?? error.message));
   await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: 'load' });
   await page.waitForFunction(() => !!document.documentElement.dataset.propShaderSmoke, null, { timeout: 15_000 });
-  const result = await page.evaluate(() =>
-    (globalThis as typeof globalThis & { __propShaderSmoke?: ShaderSmokeResult }).__propShaderSmoke);
+  const result = await page.evaluate(
+    () => (globalThis as typeof globalThis & { __propShaderSmoke?: ShaderSmokeResult }).__propShaderSmoke,
+  );
   assert(result, 'Browser fixture did not publish a result');
   assert(result.ok, result.error ?? 'WebGL shader fixture failed');
   assert.deepEqual(consoleErrors, [], `Browser emitted shader errors:\n${consoleErrors.join('\n')}`);
-  console.log(`PROP SHADER WEBGL TEST PASSED (${result.programs} programs, ${result.renderer}; `
-    + `custom ${result.customPixel?.join('/')}, native ${result.nativePixel?.join('/')}, `
-    + `batched native ${result.batchedNativePixel?.join('/')}, `
-    + `baked half/true/over/none/batched/faded ${result.bakedPixels?.map(pixel => pixel.join('/')).join(' ')}, `
-    + `surface clay lit ${result.clayLitPixel?.join('/')} dark ${result.clayDarkPixel?.join('/')} `
-    + `no-sun ${result.clayNoSunPixel?.join('/')}, `
-    + `instanced front ${result.clayInstancedFrontPixel?.join('/')} back ${result.clayInstancedBackPixel?.join('/')}, `
-    + `contact tint ${result.clayContactPixel?.join('/')}, `
-    + `sun tint ${result.sunTintPixel?.join('/')}, `
-    + `cutout coverage ${result.cutoutCoverage?.toFixed(3)}, `
-    + `partial alpha ${result.partialAlphaPixel?.join('/')}, `
-    + `lollipop atlas ${result.lollipopAtlasPixel?.join('/')}, `
-    + `flip intact/cracked/other ${result.flipIntactPixel?.join('/')}/${result.flipCrackedPixel?.join('/')}`
-    + `/${result.flipOtherPixel?.join('/')})`);
+  console.log(
+    `PROP SHADER WEBGL TEST PASSED (${result.programs} programs, ${result.renderer}; ` +
+      `custom ${result.customPixel?.join('/')}, native ${result.nativePixel?.join('/')}, ` +
+      `batched native ${result.batchedNativePixel?.join('/')}, ` +
+      `baked half/true/over/none/batched/faded ${result.bakedPixels?.map(pixel => pixel.join('/')).join(' ')}, ` +
+      `surface clay lit ${result.clayLitPixel?.join('/')} dark ${result.clayDarkPixel?.join('/')} ` +
+      `no-sun ${result.clayNoSunPixel?.join('/')}, ` +
+      `instanced front ${result.clayInstancedFrontPixel?.join('/')} back ${result.clayInstancedBackPixel?.join('/')}, ` +
+      `contact tint ${result.clayContactPixel?.join('/')}, ` +
+      `sun tint ${result.sunTintPixel?.join('/')}, ` +
+      `cutout coverage ${result.cutoutCoverage?.toFixed(3)}, ` +
+      `partial alpha ${result.partialAlphaPixel?.join('/')}, ` +
+      `lollipop atlas ${result.lollipopAtlasPixel?.join('/')}, ` +
+      `flip intact/cracked/other ${result.flipIntactPixel?.join('/')}/${result.flipCrackedPixel?.join('/')}` +
+      `/${result.flipOtherPixel?.join('/')})`,
+  );
 } finally {
   await browser?.close();
   await new Promise<void>(resolve => server.close(() => resolve()));

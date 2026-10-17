@@ -12,8 +12,13 @@ const { createRideInput, touchRidePosture } = await import('../src/app/ride/inpu
 
 const buttons = Array.from({ length: 16 }, () => ({ pressed: false, touched: false, value: 0 }));
 const pad = {
-  axes: [0, 0, 0, 0], buttons, connected: true, id: 'Test Standard Gamepad', index: 0,
-  mapping: 'standard', timestamp: 0,
+  axes: [0, 0, 0, 0],
+  buttons,
+  connected: true,
+  id: 'Test Standard Gamepad',
+  index: 0,
+  mapping: 'standard',
+  timestamp: 0,
 } as unknown as Gamepad;
 let pads: (Gamepad | null)[] = [pad];
 Object.defineProperty(globalThis, 'navigator', {
@@ -21,38 +26,79 @@ Object.defineProperty(globalThis, 'navigator', {
   value: { getGamepads: () => pads },
 });
 
-let ollieDown = 0, ollieUp = 0, boardToggles = 0, respawns = 0, pauseToggles = 0, exits = 0;
+let ollieDown = 0,
+  ollieUp = 0,
+  boardToggles = 0,
+  respawns = 0,
+  pauseToggles = 0,
+  exits = 0;
 const zoomFactors: number[] = [];
-let padOnFoot = false, padPaused = false;
+let padOnFoot = false,
+  padPaused = false;
 const actions = {
-  ollieDown: () => { ollieDown++; }, ollieUp: () => { ollieUp++; },
+  ollieDown: () => {
+    ollieDown++;
+  },
+  ollieUp: () => {
+    ollieUp++;
+  },
   onFoot: () => padOnFoot,
-  toggleBoard: () => { padOnFoot = !padOnFoot; boardToggles++; },
-  respawn: () => { respawns++; }, telemetryToggle: () => {}, telemetryMark: () => {}, exit: () => { exits++; },
+  toggleBoard: () => {
+    padOnFoot = !padOnFoot;
+    boardToggles++;
+  },
+  respawn: () => {
+    respawns++;
+  },
+  telemetryToggle: () => {},
+  telemetryMark: () => {},
+  exit: () => {
+    exits++;
+  },
 };
 const input = createRideInput(actions);
 const stick = { active: false, x: 0, airX: 0, y: 0, id: -1 };
 const lookStick = { active: false, x: 0, y: 0, id: -1 };
 const gamepad = createRideGamepad({
-  respawn: actions.respawn, telemetryToggle: actions.telemetryToggle,
+  respawn: actions.respawn,
+  telemetryToggle: actions.telemetryToggle,
   telemetryMark: actions.telemetryMark,
-  onFoot: actions.onFoot, toggleBoard: actions.toggleBoard,
-  setHold: input.setHold, setWalkHold: input.setWalkHold,
-  setOllie: input.setOllie, releaseSource: input.releaseSource, stick, lookStick,
-  togglePause: () => { padPaused = !padPaused; pauseToggles++; },
+  onFoot: actions.onFoot,
+  toggleBoard: actions.toggleBoard,
+  setHold: input.setHold,
+  setWalkHold: input.setWalkHold,
+  setOllie: input.setOllie,
+  releaseSource: input.releaseSource,
+  stick,
+  lookStick,
+  togglePause: () => {
+    padPaused = !padPaused;
+    pauseToggles++;
+  },
   zoom: factor => zoomFactors.push(factor),
 });
 
-assert.deepEqual(touchRidePosture(-1), { tuck: true, brake: false },
-  'pushing the mobile stick forward tucks / accelerates');
-assert.deepEqual(touchRidePosture(1), { tuck: false, brake: true },
-  'pulling the mobile stick back brakes');
-assert.deepEqual(touchRidePosture(0), { tuck: false, brake: false },
-  'centring the mobile stick releases both riding postures');
-assert.deepEqual(touchRidePosture(-0.41, 0.8), { tuck: false, brake: false },
-  'a mostly-horizontal mobile spin does not also become a flip');
-assert.deepEqual(touchRidePosture(-0.8, 0.41), { tuck: true, brake: false },
-  'a vertical-dominant mobile diagonal can still combine a spin with a forward flip');
+assert.deepEqual(
+  touchRidePosture(-1),
+  { tuck: true, brake: false },
+  'pushing the mobile stick forward tucks / accelerates',
+);
+assert.deepEqual(touchRidePosture(1), { tuck: false, brake: true }, 'pulling the mobile stick back brakes');
+assert.deepEqual(
+  touchRidePosture(0),
+  { tuck: false, brake: false },
+  'centring the mobile stick releases both riding postures',
+);
+assert.deepEqual(
+  touchRidePosture(-0.41, 0.8),
+  { tuck: false, brake: false },
+  'a mostly-horizontal mobile spin does not also become a flip',
+);
+assert.deepEqual(
+  touchRidePosture(-0.8, 0.41),
+  { tuck: true, brake: false },
+  'a vertical-dominant mobile diagonal can still combine a spin with a forward flip',
+);
 
 // B / East is the respawn face. Camera switching is a separate manual HUD button, not a physical face mapping.
 buttons[1].pressed = true;
@@ -94,10 +140,11 @@ assert.equal(input.keys.boost, false, 'dismounting clears held gamepad board con
 assert.equal(input.walkKeys.boost, true, 'the same held X becomes full-speed flight boost on foot');
 (pad.axes as number[]).splice(0, 4, 0.8, -0.6, 0.5, -0.4);
 const walkingMirror = gamepad.poll();
-assert.ok(stick.active && stick.x > 0 && stick.y > 0,
-  'on foot the left stick becomes two-axis strafe/forward movement');
-assert.ok(lookStick.active && lookStick.x > 0 && lookStick.y < 0,
-  'on foot the right stick becomes two-axis look');
+assert.ok(
+  stick.active && stick.x > 0 && stick.y > 0,
+  'on foot the left stick becomes two-axis strafe/forward movement',
+);
+assert.ok(lookStick.active && lookStick.x > 0 && lookStick.y < 0, 'on foot the right stick becomes two-axis look');
 assert.deepEqual(
   [walkingMirror?.moveX, walkingMirror?.moveY, walkingMirror?.lookX, walkingMirror?.lookY],
   [0.8, 0.6, 0.5, -0.4],
@@ -126,8 +173,10 @@ buttons[3].pressed = true;
 gamepad.poll();
 assert.equal(padOnFoot, false, 'a second Y press gets back on the board');
 assert.equal(stick.y, 0, 'remounting returns the left stick to one-axis board steering');
-assert.ok(lookStick.active && lookStick.x > 0 && lookStick.y < 0,
-  'the right stick continues to own camera look after remounting');
+assert.ok(
+  lookStick.active && lookStick.x > 0 && lookStick.y < 0,
+  'the right stick continues to own camera look after remounting',
+);
 assert.equal(boardToggles, 2);
 buttons[3].pressed = false;
 buttons[2].pressed = false;
@@ -162,8 +211,11 @@ gamepad.poll();
 assert.equal(input.keys.tuck, false, 'centring the vertical controls releases their riding hold');
 (pad.axes as number[]).splice(0, 2, 0.8, -0.41);
 gamepad.poll();
-assert.equal(input.keys.tuck, false,
-  'incidental Y above the throttle threshold does not flip during a mostly-horizontal air spin');
+assert.equal(
+  input.keys.tuck,
+  false,
+  'incidental Y above the throttle threshold does not flip during a mostly-horizontal air spin',
+);
 assert.ok(stick.airX > 0, 'the horizontal sample still reaches the air-spin axis');
 (pad.axes as number[]).splice(0, 2, 0.7, -0.7);
 gamepad.poll();
@@ -172,8 +224,10 @@ assert.equal(input.keys.tuck, true, 'a deliberate diagonal retains simultaneous 
 gamepad.poll();
 (pad.axes as number[])[0] = 0.5;
 gamepad.poll();
-assert.ok(stick.airX > stick.x,
-  'partial mounted stick X keeps a linear air-spin axis beside the softened ground-carve axis');
+assert.ok(
+  stick.airX > stick.x,
+  'partial mounted stick X keeps a linear air-spin axis beside the softened ground-carve axis',
+);
 (pad.axes as number[])[0] = 0;
 gamepad.poll();
 
@@ -214,7 +268,7 @@ buttons[0].pressed = true;
 gamepad.poll();
 pads = [null];
 gamepad.poll();
-assert.equal(ollieUp, 1, 'pad disconnect does not release another source\'s ollie hold');
+assert.equal(ollieUp, 1, "pad disconnect does not release another source's ollie hold");
 input.setOllie('keyboard', false);
 assert.equal(ollieUp, 2);
 
@@ -223,12 +277,19 @@ assert.equal(ollieUp, 2);
 {
   const fakeWindow = new EventTarget();
   Object.defineProperty(globalThis, 'window', { configurable: true, value: fakeWindow });
-  let onFoot = false, toggles = 0, viewToggles = 0;
+  let onFoot = false,
+    toggles = 0,
+    viewToggles = 0;
   const walking = createRideInput({
     ...actions,
     onFoot: () => onFoot,
-    toggleBoard: () => { onFoot = !onFoot; toggles++; },
-    toggleThirdPerson: () => { viewToggles++; },
+    toggleBoard: () => {
+      onFoot = !onFoot;
+      toggles++;
+    },
+    toggleThirdPerson: () => {
+      viewToggles++;
+    },
   });
   const key = (type: 'keydown' | 'keyup', value: string, repeat = false) => {
     const event = new Event(type, { cancelable: true });

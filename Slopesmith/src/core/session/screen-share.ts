@@ -81,8 +81,9 @@ export function sanitizeSharedScreenState(value: unknown): SharedScreenState | n
   const view = input.view as Record<string, unknown>;
   const options = input.options as Record<string, unknown>;
   const cursor = input.cursor == null ? null : vector(input.cursor);
-  const pos = vector(view.pos), target = vector(view.target);
-  const up = view.up == null ? [0, 1, 0] as [number, number, number] : vector(view.up);
+  const pos = vector(view.pos),
+    target = vector(view.target);
+  const up = view.up == null ? ([0, 1, 0] as [number, number, number]) : vector(view.up);
   const zoom = finite(view.zoom, 0.0001, 100_000);
   const orthoHalfH = finite(view.orthoHalfH, 0.001, 10_000_000);
   const fov = finite(view.fov ?? 55, 1, 179);
@@ -93,16 +94,36 @@ export function sanitizeSharedScreenState(value: unknown): SharedScreenState | n
   // ...and frames from before the speed shading existed, its default-off state.
   const speed = options.speed ?? false;
   const booleanKeys = [
-    'cage', 'viewGrid', 'orientation', 'courseGuide', 'normals', 'aiPaths', 'props', 'tricks',
-    'effects', 'sources', 'propLights', 'sun',
+    'cage',
+    'viewGrid',
+    'orientation',
+    'courseGuide',
+    'normals',
+    'aiPaths',
+    'props',
+    'tricks',
+    'effects',
+    'sources',
+    'propLights',
+    'sun',
   ] as const;
-  if ((input.cursor != null && !cursor) || !pos || !target || !up
-    || Math.hypot(up[0], up[1], up[2]) < 1e-6
-    || zoom === null || orthoHalfH === null || fov === null || near === null
-    || typeof view.ortho !== 'boolean'
-    || (shadeMode !== 'textured' && shadeMode !== 'surface' && shadeMode !== 'none')
-    || booleanKeys.some(key => typeof options[key] !== 'boolean') || typeof skybox !== 'boolean'
-    || typeof speed !== 'boolean') return null;
+  if (
+    (input.cursor != null && !cursor) ||
+    !pos ||
+    !target ||
+    !up ||
+    Math.hypot(up[0], up[1], up[2]) < 1e-6 ||
+    zoom === null ||
+    orthoHalfH === null ||
+    fov === null ||
+    near === null ||
+    typeof view.ortho !== 'boolean' ||
+    (shadeMode !== 'textured' && shadeMode !== 'surface' && shadeMode !== 'none') ||
+    booleanKeys.some(key => typeof options[key] !== 'boolean') ||
+    typeof skybox !== 'boolean' ||
+    typeof speed !== 'boolean'
+  )
+    return null;
   return {
     cursor,
     view: { pos, target, up, ortho: view.ortho, zoom, orthoHalfH, fov, near },

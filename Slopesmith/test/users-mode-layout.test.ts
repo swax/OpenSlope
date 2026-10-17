@@ -18,44 +18,80 @@ const jukebox = render.indexOf('buildJukebox()', offline);
 const management = render.indexOf('buildManagement()', jukebox);
 const mapPermissions = render.indexOf('buildMapPermissions()', management);
 
-assert.ok(online >= 0 && offline > online,
-  'online and offline members have separate folders, in that order');
-assert.ok(offlineClose > offline && offlineClose < jukebox,
-  'the offline-members folder starts collapsed');
-assert.ok(jukebox > offline && management > jukebox && mapPermissions > management,
-  'map permissions render last, after member, Jukebox, and management panels');
-assert.doesNotMatch(render, /appendSection\('Offline'/,
-  'offline accounts are no longer mixed into the online roster folder');
-assert.doesNotMatch(render, /member\$\{roster\.members\.length === 1[\s\S]*connected/,
-  'the Online and Offline folder counts replace the redundant roster summary');
-assert.doesNotMatch(render, /detail\(gui, `\$\{roster\.me\.username\} · \$\{roster\.me\.role\}`, 'you'\)/,
-  'the roster folders replace the redundant signed-in-user summary row');
-assert.match(render, /\.name\('Your status'\)/,
-  'signed-in members get an immediate manual status selector above the roster');
-assert.match(source, /status-idle[\s\S]*status-away[\s\S]*status-dnd/,
-  'Idle, Away, and Do Not Disturb each receive a distinct dot style');
-assert.match(source, /aria-label', `\$\{member\.username\}: \$\{STATUS_LABELS\[status\]\}`/,
-  'the status dot names its state accessibly instead of relying on color alone');
+assert.ok(online >= 0 && offline > online, 'online and offline members have separate folders, in that order');
+assert.ok(offlineClose > offline && offlineClose < jukebox, 'the offline-members folder starts collapsed');
+assert.ok(
+  jukebox > offline && management > jukebox && mapPermissions > management,
+  'map permissions render last, after member, Jukebox, and management panels',
+);
+assert.doesNotMatch(
+  render,
+  /appendSection\('Offline'/,
+  'offline accounts are no longer mixed into the online roster folder',
+);
+assert.doesNotMatch(
+  render,
+  /member\$\{roster\.members\.length === 1[\s\S]*connected/,
+  'the Online and Offline folder counts replace the redundant roster summary',
+);
+assert.doesNotMatch(
+  render,
+  /detail\(gui, `\$\{roster\.me\.username\} · \$\{roster\.me\.role\}`, 'you'\)/,
+  'the roster folders replace the redundant signed-in-user summary row',
+);
+assert.match(
+  render,
+  /\.name\('Your status'\)/,
+  'signed-in members get an immediate manual status selector above the roster',
+);
+assert.match(
+  source,
+  /status-idle[\s\S]*status-away[\s\S]*status-dnd/,
+  'Idle, Away, and Do Not Disturb each receive a distinct dot style',
+);
+assert.match(
+  source,
+  /aria-label', `\$\{member\.username\}: \$\{STATUS_LABELS\[status\]\}`/,
+  'the status dot names its state accessibly instead of relying on color alone',
+);
 
-assert.match(source,
+assert.match(
+  source,
   /gui\.addFolder\(`Jukebox · \$\{playbackEnabled \? 'On' : 'Off'\}`\)/,
-  'the Jukebox heading summarizes whether local playback is on or off');
-assert.match(source, /sp-jukebox-info[\s\S]*showJukeboxMessageInfo/,
-  'a Jukebox status can expose its bridge diagnosis through a clickable info control');
-assert.match(source, /info\.setAttribute\('aria-label', jukeboxInfo\.title\)/,
-  'the Jukebox info control carries the diagnostic title as its accessible name');
-assert.match(mainSource, /video bridge not set up[\s\S]*video bridge failed[\s\S]*course screens off/,
-  'YouTube playback says whether the bridge is unconfigured or failed and that course screens are off');
-assert.match(mainSource, /actionLabel: 'Open bridge settings'[\s\S]*openSettingsDialog\('integrations'\)/,
-  'the fallback diagnosis links directly to the relevant Settings tab');
+  'the Jukebox heading summarizes whether local playback is on or off',
+);
+assert.match(
+  source,
+  /sp-jukebox-info[\s\S]*showJukeboxMessageInfo/,
+  'a Jukebox status can expose its bridge diagnosis through a clickable info control',
+);
+assert.match(
+  source,
+  /info\.setAttribute\('aria-label', jukeboxInfo\.title\)/,
+  'the Jukebox info control carries the diagnostic title as its accessible name',
+);
+assert.match(
+  mainSource,
+  /video bridge not set up[\s\S]*video bridge failed[\s\S]*course screens off/,
+  'YouTube playback says whether the bridge is unconfigured or failed and that course screens are off',
+);
+assert.match(
+  mainSource,
+  /actionLabel: 'Open bridge settings'[\s\S]*openSettingsDialog\('integrations'\)/,
+  'the fallback diagnosis links directly to the relevant Settings tab',
+);
 const jukeboxStart = source.indexOf('function buildJukebox(): void');
 const jukeboxEnd = source.indexOf('function buildManagement(): void', jukeboxStart);
-assert.match(source, /let jukeboxOpen = false/,
-  'the Jukebox starts collapsed');
-assert.match(source.slice(jukeboxStart, jukeboxEnd), /folder\.open\(jukeboxOpen\)/,
-  'the Jukebox preserves its local expanded state during roster refreshes');
-assert.match(source,
+assert.match(source, /let jukeboxOpen = false/, 'the Jukebox starts collapsed');
+assert.match(
+  source.slice(jukeboxStart, jukeboxEnd),
+  /folder\.open\(jukeboxOpen\)/,
+  'the Jukebox preserves its local expanded state during roster refreshes',
+);
+assert.match(
+  source,
   /gui\.addFolder\(`Map permissions · \$\{policy\.restricted \? 'Restricted' : 'Open'\}`\);\s*folder\.open\(mapPermissionsOpen\)/,
-  'the bottom map-permissions heading summarizes its open or restricted policy and keeps its expansion');
+  'the bottom map-permissions heading summarizes its open or restricted policy and keeps its expansion',
+);
 
 console.log('USERS MODE LAYOUT: PASS');

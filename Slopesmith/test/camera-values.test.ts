@@ -5,8 +5,14 @@ import { isValidView } from '../src/app/state/storage';
 import type { ViewState } from '../src/app/viewport/types';
 
 const view: ViewState = {
-  pos: [100, 270, -80], target: [184, 187, 25], up: [0, 1, 0],
-  ortho: false, fov: 55, near: 0.5, zoom: 1, orthoHalfH: 100,
+  pos: [100, 270, -80],
+  target: [184, 187, 25],
+  up: [0, 1, 0],
+  ortho: false,
+  fov: 55,
+  near: 0.5,
+  zoom: 1,
+  orthoHalfH: 100,
 };
 const origin: [number, number, number] = [90, 310, -30];
 const relative = cameraValues(view, origin);
@@ -28,7 +34,7 @@ assert.equal(ortho.orthoHalfH, 120);
 assert.equal(ortho.zoom, 1);
 assert.equal(cameraValues({ ...ortho, zoom: 3 }, origin).height, 80);
 // Switching projection uses the perspective's visible height at the target, preserving scale there.
-const expectedHeight = 2 * Math.hypot(84, -83, 105) * Math.tan(55 * Math.PI / 360);
+const expectedHeight = 2 * Math.hypot(84, -83, 105) * Math.tan((55 * Math.PI) / 360);
 assert.ok(Math.abs(relative.height - expectedHeight) < 1e-10);
 
 for (const value of [NaN, Infinity, -Infinity]) {
@@ -39,8 +45,10 @@ assert.throws(() => cameraView({ ...relative, height: 0 }, origin, view), /heigh
 assert.throws(() => cameraView({ ...relative, fov: 180 }, origin, view), /Field of view/);
 assert.throws(() => cameraView({ ...relative, fov: 0 }, origin, view), /Field of view/);
 assert.ok(isValidView(view));
-assert.ok(isValidView({ pos: [1, 2, 3], target: [0, 0, 0], ortho: false, zoom: 1, orthoHalfH: 100 }),
-  'views saved before lens controls still load');
+assert.ok(
+  isValidView({ pos: [1, 2, 3], target: [0, 0, 0], ortho: false, zoom: 1, orthoHalfH: 100 }),
+  'views saved before lens controls still load',
+);
 assert.ok(!isValidView({ ...view, fov: NaN }));
 assert.ok(!isValidView({ ...view, up: [0, 0, 0] }));
 assert.ok(!isValidView({ ...view, near: 0 }));

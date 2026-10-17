@@ -43,7 +43,10 @@ import { createNetWatcher, patchDependency, patchVertexSpans } from '../src/core
 import { applyLoopCut, planLoopCut } from '../src/core/mesh/ops/loop-cut';
 import { applyMeshDelete } from '../src/core/mesh/ops/delete';
 import {
-  buildMountainPreview, previewMismatch, refreshPreviewPatches, PATCH_VERTS,
+  buildMountainPreview,
+  previewMismatch,
+  refreshPreviewPatches,
+  PATCH_VERTS,
 } from '../src/core/mesh/tessellation';
 import { buildQuadMesh, extraordinaryPoles, meshAdjacency } from '../src/core/mesh/topology';
 import { createTerrainLayer } from '../src/app/viewport/mesh/terrain';
@@ -68,9 +71,11 @@ function barrel(): QuadMeshDoc {
   const points: number[][] = [];
   const push = (p: number[]) => (points.push(p), points.length - 1);
   const top = push([0, 40, 0]);
-  const upper: number[] = [], lower: number[] = [];
+  const upper: number[] = [],
+    lower: number[] = [];
   for (let j = 0; j < 10; j++) {
-    const angle = (j / 10) * Math.PI * 2, radius = j % 2 === 0 ? 25 : 20;
+    const angle = (j / 10) * Math.PI * 2,
+      radius = j % 2 === 0 ? 25 : 20;
     upper.push(push([Math.cos(angle) * radius, 20, Math.sin(angle) * radius]));
     lower.push(push([Math.cos(angle) * radius, -20, Math.sin(angle) * radius]));
   }
@@ -82,9 +87,15 @@ function barrel(): QuadMeshDoc {
   }
   for (let j = 0; j < 10; j++) quads.push([upper[j], upper[(j + 1) % 10], lower[j], lower[(j + 1) % 10]]);
   return {
-    kind: 'quadmesh', version: 1, name: 'barrel', spacing: 10, baseSurface: 0,
+    kind: 'quadmesh',
+    version: 1,
+    name: 'barrel',
+    spacing: 10,
+    baseSurface: 0,
     course: { knots: [], blend: 0, surface: 0 },
-    vertices: points.flat(), quads, ...seedMeshIds(1, points.length, quads.length),
+    vertices: points.flat(),
+    quads,
+    ...seedMeshIds(1, points.length, quads.length),
   } as unknown as QuadMeshDoc;
 }
 
@@ -100,8 +111,11 @@ function holed(): QuadMeshDoc {
  *  suite reports are about a mountain somebody made rather than a template. */
 function realMountain(): QuadMeshDoc {
   const path = 'workspace/projects/COLLISION_LAB-de0415cc/mountain.slope.json';
-  try { return migrateMountain(JSON.parse(readFileSync(path, 'utf8'))); }
-  catch { return migrateMountain(collisionLabMountain()); }
+  try {
+    return migrateMountain(JSON.parse(readFileSync(path, 'utf8')));
+  } catch {
+    return migrateMountain(collisionLabMountain());
+  }
 }
 
 // ---- 1. the dependency radius, against brute force ---------------------------------------------------------
@@ -113,9 +127,10 @@ function realMountain(): QuadMeshDoc {
  * means no pool at all — the probes run inline, which is what a small CI box wants anyway.
  */
 const askedWorkers = Number(process.env.SLOPESMITH_TEST_WORKERS);
-const RADIUS_WORKERS = Number.isFinite(askedWorkers) && askedWorkers > 0
-  ? Math.floor(askedWorkers)
-  : Math.max(1, Math.min(6, Math.floor(availableParallelism() / 4)));
+const RADIUS_WORKERS =
+  Number.isFinite(askedWorkers) && askedWorkers > 0
+    ? Math.floor(askedWorkers)
+    : Math.max(1, Math.min(6, Math.floor(availableParallelism() / 4)));
 const RADIUS_WORKER = new URL('./rebuild-radius.worker.ts', import.meta.url);
 
 const workers: Worker[] = [];
@@ -137,21 +152,31 @@ function acquire(): Promise<Worker> {
 /** Probe one slice of corners on a pooled worker. Workers are held open ACROSS fixtures, so the loader and
  *  three.js are paid for once at the first shard rather than again for every fixture. */
 function shardTally(shard: RadiusShard): Promise<RadiusTally> {
-  return acquire().then(worker => new Promise<RadiusTally>((resolve, reject) => {
-    const done = () => { worker.off('message', onMessage); worker.off('error', onError); };
-    const onMessage = (tally: RadiusTally) => {
-      done();
-      const next = waiting.shift();
-      if (next) next(worker); else idle.push(worker);
-      resolve(tally);
-    };
-    // A worker that throws is not a check that failed, it is a check that never ran — so it is raised rather
-    // than tallied, and the worker is dropped instead of handed back to the pool.
-    const onError = (error: Error) => { done(); reject(error); };
-    worker.on('message', onMessage);
-    worker.on('error', onError);
-    worker.postMessage(shard);
-  }));
+  return acquire().then(
+    worker =>
+      new Promise<RadiusTally>((resolve, reject) => {
+        const done = () => {
+          worker.off('message', onMessage);
+          worker.off('error', onError);
+        };
+        const onMessage = (tally: RadiusTally) => {
+          done();
+          const next = waiting.shift();
+          if (next) next(worker);
+          else idle.push(worker);
+          resolve(tally);
+        };
+        // A worker that throws is not a check that failed, it is a check that never ran — so it is raised rather
+        // than tallied, and the worker is dropped instead of handed back to the pool.
+        const onError = (error: Error) => {
+          done();
+          reject(error);
+        };
+        worker.on('message', onMessage);
+        worker.on('error', onError);
+        worker.postMessage(shard);
+      }),
+  );
 }
 
 /** The corners split into one contiguous slice per worker; empty slices are dropped so small fixtures do not
@@ -164,35 +189,58 @@ function slices(sample: number[]): number[][] {
 }
 
 async function radiusHolds(label: string, doc: QuadMeshDoc, sample: number[]): Promise<void> {
-  const tallies = RADIUS_WORKERS === 1
-    ? [radiusTally(doc, sample)]
-    : await Promise.all(slices(sample).map(part => shardTally({ doc, sample: part })));
+  const tallies =
+    RADIUS_WORKERS === 1
+      ? [radiusTally(doc, sample)]
+      : await Promise.all(slices(sample).map(part => shardTally({ doc, sample: part })));
   const missed = tallies.reduce((sum, one) => sum + one.missed, 0);
   const claimed = tallies.reduce((sum, one) => sum + one.claimed, 0);
   const over = tallies.reduce((sum, one) => sum + one.over, 0);
-  check(missed === 0,
-    `${label}: every patch a moved corner changes is named (${sample.length} corners, ${missed} missed)`);
-  check(over <= sample.length,
-    `${label}: and barely more — ${(claimed / sample.length).toFixed(1)} patches claimed per corner, ${over} over ${sample.length} corners`);
+  check(
+    missed === 0,
+    `${label}: every patch a moved corner changes is named (${sample.length} corners, ${missed} missed)`,
+  );
+  check(
+    over <= sample.length,
+    `${label}: and barely more — ${(claimed / sample.length).toFixed(1)} patches claimed per corner, ${over} over ${sample.length} corners`,
+  );
 }
 
 {
   const seed = defaultMountain();
-  await radiusHolds('seed template', seed, Array.from({ length: seed.vertices.length / 3 }, (_, i) => i));
+  await radiusHolds(
+    'seed template',
+    seed,
+    Array.from({ length: seed.vertices.length / 3 }, (_, i) => i),
+  );
 
   const hole = holed();
-  await radiusHolds('net with a hole', hole, Array.from({ length: hole.vertices.length / 3 }, (_, i) => i));
+  await radiusHolds(
+    'net with a hole',
+    hole,
+    Array.from({ length: hole.vertices.length / 3 }, (_, i) => i),
+  );
 
   const closed = barrel();
   const poles = extraordinaryPoles(meshAdjacency(buildQuadMesh(closed.vertices, closed.quads, closed.freeEdges)));
   const adjacency = meshAdjacency(buildQuadMesh(closed.vertices, closed.quads, closed.freeEdges));
-  check([...poles].some(p => adjacency.neighbors[p].length === 5),
-    'barrel fixture: the caps really are valence-five extraordinary poles, so the fan case is under test');
-  await radiusHolds('all-pole barrel', closed, Array.from({ length: closed.vertices.length / 3 }, (_, i) => i));
+  check(
+    [...poles].some(p => adjacency.neighbors[p].length === 5),
+    'barrel fixture: the caps really are valence-five extraordinary poles, so the fan case is under test',
+  );
+  await radiusHolds(
+    'all-pole barrel',
+    closed,
+    Array.from({ length: closed.vertices.length / 3 }, (_, i) => i),
+  );
 
   const real = realMountain();
   const corners = real.vertices.length / 3;
-  await radiusHolds('authored mountain', real, Array.from({ length: 40 }, (_, i) => Math.floor(i * corners / 40)));
+  await radiusHolds(
+    'authored mountain',
+    real,
+    Array.from({ length: 40 }, (_, i) => Math.floor((i * corners) / 40)),
+  );
 
   // Nothing below this point probes corners, and the timings further down want the machine to themselves.
   await Promise.all(workers.splice(0).map(worker => worker.terminate()));
@@ -202,11 +250,14 @@ async function radiusHolds(label: string, doc: QuadMeshDoc, sample: number[]): P
   const dependency = patchDependency(preview.mesh, preview.adjacency);
   const [a, b] = [seed.quads[0][0], seed.quads[0][1]];
   const creased = dependency.ofEdges([[a, b]]);
-  const incident = new Set(seed.quads.map((quad, q) => quad.includes(a) && quad.includes(b) ? q : -1).filter(q => q >= 0));
-  check(creased.size === incident.size && [...creased].every(q => incident.has(q)),
-    'a crease moves exactly the patches incident to its edge, and no neighbour of them');
-  check(dependency.of({ quads: [17] }).size === 1,
-    'a face attribute moves one patch: its own');
+  const incident = new Set(
+    seed.quads.map((quad, q) => (quad.includes(a) && quad.includes(b) ? q : -1)).filter(q => q >= 0),
+  );
+  check(
+    creased.size === incident.size && [...creased].every(q => incident.has(q)),
+    'a crease moves exactly the patches incident to its edge, and no neighbour of them',
+  );
+  check(dependency.of({ quads: [17] }).size === 1, 'a face attribute moves one patch: its own');
 }
 
 // ---- 2. incremental == full, for every kind of edit ---------------------------------------------------------
@@ -229,9 +280,11 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   const dirty = patchDependency(preview.mesh, preview.adjacency).of(change);
   refreshPreviewPatches(doc, preview, dirty);
   const mismatch = previewMismatch(doc, preview);
-  check(mismatch === null,
-    `${label}: ${dirty.size} of ${preview.mesh.quadCount} patches updated, identical to a full rebuild`
-    + (mismatch ? ` — ${mismatch}` : ''));
+  check(
+    mismatch === null,
+    `${label}: ${dirty.size} of ${preview.mesh.quadCount} patches updated, identical to a full rebuild` +
+      (mismatch ? ` — ${mismatch}` : ''),
+  );
 }
 
 {
@@ -255,23 +308,41 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     meshSetHandle(doc, a, b, [2.5, 1.5, -0.5]);
   });
 
-  equivalent('an uncrease (the override removed)', (() => {
-    const doc = clone(mountain);
-    meshSetHandle(doc, doc.quads[40][0], doc.quads[40][1], [2.5, 1.5, -0.5]);
-    return doc;
-  })(), doc => { delete doc.edgeHandles![`${doc.quads[40][0]}>${doc.quads[40][1]}`]; });
+  equivalent(
+    'an uncrease (the override removed)',
+    (() => {
+      const doc = clone(mountain);
+      meshSetHandle(doc, doc.quads[40][0], doc.quads[40][1], [2.5, 1.5, -0.5]);
+      return doc;
+    })(),
+    doc => {
+      delete doc.edgeHandles![`${doc.quads[40][0]}>${doc.quads[40][1]}`];
+    },
+  );
 
-  equivalent('a paint (quad surface type)', clone(mountain), doc => { (doc.quadPaint ??= {})[64] = 3; });
-  equivalent('a tile (quad tex)', clone(mountain), doc => { (doc.quadTex ??= {})[64] = 'TEST/REBUILD.png'; });
+  equivalent('a paint (quad surface type)', clone(mountain), doc => {
+    (doc.quadPaint ??= {})[64] = 3;
+  });
+  equivalent('a tile (quad tex)', clone(mountain), doc => {
+    (doc.quadTex ??= {})[64] = 'TEST/REBUILD.png';
+  });
   equivalent('a tile orientation (quad orient)', clone(mountain), doc => {
     (doc.quadOrient ??= {})[64] = { rot: 3, mirror: true };
   });
-  equivalent('an interior sculpt (quad twist)', clone(mountain), doc => { meshSetTwist(doc, 64, 2, [1.5, -2, 0.75]); });
-  equivalent('a cleared tile', (() => {
-    const doc = clone(mountain);
-    (doc.quadTex ??= {})[64] = 'TEST/REBUILD.png';
-    return doc;
-  })(), doc => { delete doc.quadTex![64]; });
+  equivalent('an interior sculpt (quad twist)', clone(mountain), doc => {
+    meshSetTwist(doc, 64, 2, [1.5, -2, 0.75]);
+  });
+  equivalent(
+    'a cleared tile',
+    (() => {
+      const doc = clone(mountain);
+      (doc.quadTex ??= {})[64] = 'TEST/REBUILD.png';
+      return doc;
+    })(),
+    doc => {
+      delete doc.quadTex![64];
+    },
+  );
 
   // The poled and closed nets take the same trip, because the pole fan is where the radius could be wrong.
   equivalent('a vertex move beside a hole', holed(), doc => {
@@ -285,7 +356,10 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     setVertex(closed, v, [at[0] + 2.5, at[1] + 1.5, at[2] - 3.5]);
     const dirty = patchDependency(preview.mesh, preview.adjacency).ofVertices([v]);
     refreshPreviewPatches(closed, preview, dirty);
-    if (previewMismatch(closed, preview) !== null) { check(false, `all-pole barrel: corner ${v} left a stale patch`); break; }
+    if (previewMismatch(closed, preview) !== null) {
+      check(false, `all-pole barrel: corner ${v} left a stale patch`);
+      break;
+    }
     if (v === 21) check(true, 'all-pole barrel: every one of its 22 corners updates identically to a full rebuild');
   }
 }
@@ -299,7 +373,9 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   const prop = doc.props?.[0];
   check(!!prop, 'the authored mountain carries a prop to move');
   if (prop) {
-    applyRegisters(doc, [[objectRegister('prop', prop.id!), { ...prop, pos: [prop.pos[0] + 12, prop.pos[1], prop.pos[2]] }]]);
+    applyRegisters(doc, [
+      [objectRegister('prop', prop.id!), { ...prop, pos: [prop.pos[0] + 12, prop.pos[1], prop.pos[2]] }],
+    ]);
     check(watcher.note(doc).kind === 'none', 'moving a prop is not a terrain change: no patch is re-tessellated');
   }
   doc.course = { ...doc.course, blend: (doc.course.blend ?? 0) + 0.1 };
@@ -322,8 +398,10 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   check(cut.ok, 'the loop cut applies');
   if (cut.ok) {
     const change = watcher.note(cut.doc);
-    check(change.kind === 'whole' && change.renumbered,
-      `a loop cut asks for a full rebuild and reports the numbering moved (${change.reason})`);
+    check(
+      change.kind === 'whole' && change.renumbered,
+      `a loop cut asks for a full rebuild and reports the numbering moved (${change.reason})`,
+    );
   }
 
   const deleted = applyMeshDelete(defaultMountain(), { quads: [12] });
@@ -341,8 +419,10 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   globals.note(settled);
   settled.baseSurface = 4;
   const change = globals.note(settled);
-  check(change.kind === 'whole' && !change.renumbered,
-    'changing the base surface rebuilds the whole quilt, but nothing addressed by index moved');
+  check(
+    change.kind === 'whole' && !change.renumbered,
+    'changing the base surface rebuilds the whole quilt, but nothing addressed by index moved',
+  );
 }
 
 // ---- 5. the watcher: whoever moved it, and a burst as one union ----------------------------------------------
@@ -354,24 +434,33 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
 
   // Exactly what a remote participant's coalescing tick sends: absolute assignments, applied to this replica.
   const ids = [doc.vertexIds[100], doc.vertexIds[500], doc.vertexIds[900]];
-  applyRegisters(doc, ids.map((id, at) => [vertexRegister(id), [at * 10, at * 3, at * 7] as V3]));
+  applyRegisters(
+    doc,
+    ids.map((id, at) => [vertexRegister(id), [at * 10, at * 3, at * 7] as V3]),
+  );
   applyRegisters(doc, [[quadRegister(doc.quadIds[300], 'paint'), 2]]);
   const burst = watcher.note(doc);
-  check(burst.kind === 'patches' && burst.vertices.join(',') === '100,500,900' && burst.quads.join(',') === '300',
-    'three remote vertex assignments and a paint between two frames answer as ONE change naming all four');
+  check(
+    burst.kind === 'patches' && burst.vertices.join(',') === '100,500,900' && burst.quads.join(',') === '300',
+    'three remote vertex assignments and a paint between two frames answer as ONE change naming all four',
+  );
 
   const preview = buildMountainPreview(doc);
   const dependency = patchDependency(preview.mesh, preview.adjacency);
   const union = dependency.of(burst);
   const separately = new Set([...burst.vertices.flatMap(v => [...dependency.ofVertices([v])]), ...burst.quads]);
-  check(union.size === separately.size && [...union].every(q => separately.has(q)),
-    'and the union of their radii is exactly what rebuilding each of them separately would have touched');
+  check(
+    union.size === separately.size && [...union].every(q => separately.has(q)),
+    'and the union of their radii is exactly what rebuilding each of them separately would have touched',
+  );
 
   // An undo re-assertion is an ordinary write, so the watcher sees it the same way a fresh edit is seen.
   applyRegisters(doc, [[vertexRegister(ids[0]), [1, 2, 3] as V3]]);
   const undone = watcher.note(doc);
-  check(undone.kind === 'patches' && undone.vertices.join(',') === '100',
-    'an undo re-asserting a prior value is just another change, named the same way');
+  check(
+    undone.kind === 'patches' && undone.vertices.join(',') === '100',
+    'an undo re-asserting a prior value is just another change, named the same way',
+  );
 
   // A value re-assigned to what it already held is not a change at all.
   applyRegisters(doc, [[vertexRegister(ids[0]), [1, 2, 3] as V3]]);
@@ -383,17 +472,24 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   const at = getVertex(replaced, 100);
   setVertex(replaced, 100, [at[0] + 5, at[1], at[2]]);
   const swapped = watcher.note(replaced);
-  check(swapped.kind === 'patches' && swapped.vertices.join(',') === '100',
-    'a whole-document replace that left the topology alone updates the one corner that moved');
+  check(
+    swapped.kind === 'patches' && swapped.vertices.join(',') === '100',
+    'a whole-document replace that left the topology alone updates the one corner that moved',
+  );
 }
 
 // ---- 6. patch vertex spans: what a per-vertex relight is re-run over ------------------------------------------
 
 {
   const spans = patchVertexSpans([3, 1, 2, 9], PATCH_VERTS);
-  check(spans.length === 2 && spans[0][0] === PATCH_VERTS && spans[0][1] === 4 * PATCH_VERTS
-    && spans[1][0] === 9 * PATCH_VERTS && spans[1][1] === 10 * PATCH_VERTS,
-  'consecutive patches merge into one contiguous quilt span, so a relight walks runs rather than patches');
+  check(
+    spans.length === 2 &&
+      spans[0][0] === PATCH_VERTS &&
+      spans[0][1] === 4 * PATCH_VERTS &&
+      spans[1][0] === 9 * PATCH_VERTS &&
+      spans[1][1] === 10 * PATCH_VERTS,
+    'consecutive patches merge into one contiguous quilt span, so a relight walks runs rather than patches',
+  );
   check(patchVertexSpans([], PATCH_VERTS).length === 0, 'and no patches are no span');
 }
 
@@ -407,7 +503,9 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     for (let i = 0; i < n; i++) run();
     return (performance.now() - started) / n;
   };
-  const full = timed(3, () => { buildMountainPreview(doc); });
+  const full = timed(3, () => {
+    buildMountainPreview(doc);
+  });
   const preview = buildMountainPreview(doc);
   const dependency = patchDependency(preview.mesh, preview.adjacency);
   const watcher = createNetWatcher();
@@ -434,8 +532,14 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   console.log(`    full re-tessellation                ${full.toFixed(1)} ms`);
   console.log(`    incremental, one vertex move        ${single.toFixed(2)} ms  (${(full / single).toFixed(0)}x)`);
   console.log(`    incremental, a burst of 25          ${burst.toFixed(2)} ms  (${(full / burst).toFixed(0)}x)\n`);
-  check(single < full / 10, `one vertex move costs less than a tenth of a full rebuild (${(full / single).toFixed(0)}x faster)`);
-  check(burst < full, `a burst of 25 assignments in one frame still beats one full rebuild (${(full / burst).toFixed(0)}x faster)`);
+  check(
+    single < full / 10,
+    `one vertex move costs less than a tenth of a full rebuild (${(full / single).toFixed(0)}x faster)`,
+  );
+  check(
+    burst < full,
+    `a burst of 25 assignments in one frame still beats one full rebuild (${(full / burst).toFixed(0)}x faster)`,
+  );
 }
 
 // ---- 8. the pick tree follows the patches that moved ----------------------------------------------------
@@ -461,8 +565,12 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   // The terrain layer, headless: nothing here renders, and a shade mode of 'none' keeps the tile materials
   // (the only part that wants a live GL context) out of it.
   const stage = { worldRoot: new THREE.Group(), terrainMesh: null } as unknown as Stage;
-  const layer = createTerrainLayer(stage, {} as TileMaterials,
-    { shading: () => 'none', rigData: () => null, rigVisible: () => false }, { onGeometryRebuilt() {} });
+  const layer = createTerrainLayer(
+    stage,
+    {} as TileMaterials,
+    { shading: () => 'none', rigData: () => null, rigVisible: () => false },
+    { onGeometryRebuilt() {} },
+  );
   layer.applyPreview(preview);
   const geometry = layer.terrain.geometry as TreeGeometry;
 
@@ -474,8 +582,8 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     return new MeshBVH(twin, { indirect: true });
   };
 
-  const cached = pickTree(geometry)!;   // the tree a hover over the terrain builds and leaves warm
-  const unrefit = looseTree();          // the same tree, as it would stand without the refit below
+  const cached = pickTree(geometry)!; // the tree a hover over the terrain builds and leaves warm
+  const unrefit = looseTree(); // the same tree, as it would stand without the refit below
   check(!!cached, 'the terrain geometry carries a pointer-pick tree once something has picked against it');
 
   const corner = Math.floor(doc.vertices.length / 6);
@@ -494,23 +602,33 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
   layer.updatePatches(dirty, patchVertexSpans(dirty, PATCH_VERTS), { geometry: true, materials: false });
 
   // Between the old surface and the new one, aimed up: only the raised terrain is there to be hit.
-  const up = new THREE.Ray(new THREE.Vector3(seated[0], wasAt!.point.y + RAISE / 2, seated[2]), new THREE.Vector3(0, 1, 0));
+  const up = new THREE.Ray(
+    new THREE.Vector3(seated[0], wasAt!.point.y + RAISE / 2, seated[2]),
+    new THREE.Vector3(0, 1, 0),
+  );
   const hit = cached.raycastFirst(up, THREE.DoubleSide);
   check(!!hit, `the pick lands on the raised surface (a corner lifted ${RAISE} units over ${dirty.size} patches)`);
-  check(!!hit && hit.point.y > up.origin.y,
-    'and on the new surface rather than the old one, which is below the ray entirely');
+  check(
+    !!hit && hit.point.y > up.origin.y,
+    'and on the new surface rather than the old one, which is below the ray entirely',
+  );
 
   const rebuilt = looseTree().raycastFirst(up, THREE.DoubleSide);
-  check(!!hit && !!rebuilt && hit.faceIndex === rebuilt.faceIndex
-    && hit.point.distanceTo(rebuilt.point) < 1e-6,
-  'the refit tree reports the same triangle and the same point a freshly built one does');
-  check(unrefit.raycastFirst(up, THREE.DoubleSide) === null,
-    'while a tree left standing over the vacated positions misses it entirely — the regression this guards');
+  check(
+    !!hit && !!rebuilt && hit.faceIndex === rebuilt.faceIndex && hit.point.distanceTo(rebuilt.point) < 1e-6,
+    'the refit tree reports the same triangle and the same point a freshly built one does',
+  );
+  check(
+    unrefit.raycastFirst(up, THREE.DoubleSide) === null,
+    'while a tree left standing over the vacated positions misses it entirely — the regression this guards',
+  );
 
   // The down-cast has to agree too: a refit that only grew boxes would still pass the miss test above.
   const nowAt = cached.raycastFirst(down, THREE.DoubleSide);
-  check(!!nowAt && Math.abs(nowAt.point.y - (wasAt!.point.y + RAISE)) < 1e-3,
-    `and a cast from above lands ${RAISE} units higher, where the corner now is`);
+  check(
+    !!nowAt && Math.abs(nowAt.point.y - (wasAt!.point.y + RAISE)) < 1e-3,
+    `and a cast from above lands ${RAISE} units higher, where the corner now is`,
+  );
 
   // What keeping it true costs, against the re-emit it rides on. Best of three batches: the claim below is
   // a ratio between two measurements taken seconds apart, and a single batch can lose to a GC pause or to
@@ -535,9 +653,13 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     refreshPreviewPatches(doc, preview, moved);
     return moved;
   };
-  const spare = createTerrainLayer(stage, {} as TileMaterials,
-    { shading: () => 'none', rigData: () => null, rigVisible: () => false }, { onGeometryRebuilt() {} },
-    { pickTarget: false });
+  const spare = createTerrainLayer(
+    stage,
+    {} as TileMaterials,
+    { shading: () => 'none', rigData: () => null, rigVisible: () => false },
+    { onGeometryRebuilt() {} },
+    { pickTarget: false },
+  );
   spare.applyPreview(preview);
   const untreed = timed(100, () => {
     const moved = nudge();
@@ -548,9 +670,13 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     layer.updatePatches(moved, patchVertexSpans(moved, PATCH_VERTS), { geometry: true, materials: false });
   });
   console.log(`\n    incremental update, no pick tree     ${untreed.toFixed(3)} ms`);
-  console.log(`    ... with the pick tree kept true    ${treed.toFixed(3)} ms  (+${(treed - untreed).toFixed(3)} ms)\n`);
-  check(treed - untreed < untreed,
-    `keeping the tree true costs less than the update it rides on (+${(treed - untreed).toFixed(2)} ms)`);
+  console.log(
+    `    ... with the pick tree kept true    ${treed.toFixed(3)} ms  (+${(treed - untreed).toFixed(3)} ms)\n`,
+  );
+  check(
+    treed - untreed < untreed,
+    `keeping the tree true costs less than the update it rides on (+${(treed - untreed).toFixed(2)} ms)`,
+  );
 }
 
 console.log(failures ? '\nREBUILD: FAIL' : '\nREBUILD: PASS');

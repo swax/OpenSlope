@@ -4,12 +4,13 @@ import { MAX_AI_RIDERS, MAX_VR_RENDER_SCALE, MIN_VR_RENDER_SCALE } from '../../s
 import { DRAW_DISTANCE_METRES, type DrawDistance } from '../../viewport/scene/range-cull';
 import { AMOUNT_MAX, AMOUNT_PORT } from '../../../core/particles/snowfall';
 import {
-  DEFAULT_RIDER_MODEL_ID, ensureRiderModelCatalog, refreshRiderModelCatalog,
-  riderModelCatalogSettled, riderModelOptions,
+  DEFAULT_RIDER_MODEL_ID,
+  ensureRiderModelCatalog,
+  refreshRiderModelCatalog,
+  riderModelCatalogSettled,
+  riderModelOptions,
 } from '../../ride/rider-models';
-import {
-  rideGearOptions, snowboardStanceOptions, type RideGear, type SnowboardStance,
-} from '../../ride/gear';
+import { rideGearOptions, snowboardStanceOptions, type RideGear, type SnowboardStance } from '../../ride/gear';
 import { ridingStyleOptions } from '../../ride/stances';
 import { xrSupported } from '../../ride/xr/session';
 import { XR_RENDER_SCALE_STEP, xrEyeBufferNote, xrScaleMayBeCapped } from '../../ride/xr/config';
@@ -29,7 +30,10 @@ let xrAsking = false;
 function resolveXrAvailable(then: () => void) {
   if (xrAsking) return;
   xrAsking = true;
-  void xrSupported().then(supported => { xrAvailable = supported; then(); });
+  void xrSupported().then(supported => {
+    xrAvailable = supported;
+    then();
+  });
 }
 
 /**
@@ -75,9 +79,14 @@ export function buildPlayTools(ctx: ToolsContext) {
   const targetButtons = segmented<'authored' | 'reference'>(
     [
       { value: 'authored', label: mountainName, title: `Ride ${mountainName}, the mountain you’re building.` },
-      { value: 'reference', label: 'Reference', title: () => canRef
-        ? `Ride the loaded reference world — ${referenceName}.`
-        : 'Load a reference level in Scene ▸ Reference to ride it.' },
+      {
+        value: 'reference',
+        label: 'Reference',
+        title: () =>
+          canRef
+            ? `Ride the loaded reference world — ${referenceName}.`
+            : 'Load a reference level in Scene ▸ Reference to ride it.',
+      },
     ],
     () => store.playTarget,
     target => play.enterPlaySetup(target),
@@ -95,19 +104,23 @@ export function buildPlayTools(ctx: ToolsContext) {
   // reverses it; the same selection also previews the level's RaceMode / ShowoffMode / FreerideMode effects.
   const modeButtons = segmented<RaceMode>(
     [
-      { value: 'freeride', label: 'Free ride',
-        title: 'No event: no clock, nothing to run out. The default.' },
+      { value: 'freeride', label: 'Free ride', title: 'No event: no clock, nothing to run out. The default.' },
       { value: 'race', label: 'Race', title: 'Run the clock up from zero, the way a race times a descent.' },
-      { value: 'showoff', label: 'Showoff', title: () =>
-        `Count the clock down from the showoff seconds${store.playTarget === 'reference'
-          ? '' : ` (Scene ▸ ${mountainName})`}; the run ends at zero.` },
+      {
+        value: 'showoff',
+        label: 'Showoff',
+        title: () =>
+          `Count the clock down from the showoff seconds${
+            store.playTarget === 'reference' ? '' : ` (Scene ▸ ${mountainName})`
+          }; the run ends at zero.`,
+      },
     ],
     () => store.playRaceMode,
     mode => {
       store.playRaceMode = mode;
       viewport.raceMode = mode;
       persistUi();
-      rebuildTools();   // the title above reads the live target, and a rebuild drops keyboard focus for the ride
+      rebuildTools(); // the title above reads the live target, and a rebuild drops keyboard focus for the ride
     },
   );
   // A run latches its clock, rail set and effect world at launch. Mode changes are live in Test setup, but not
@@ -133,16 +146,17 @@ export function buildPlayTools(ctx: ToolsContext) {
     rideGearOptions().map(option => ({
       value: option.id,
       label: option.label,
-      title: option.id === 'skis'
-        ? 'Ride skis. Identical physics to the snowboard — only the look differs.'
-        : 'Ride a snowboard.',
+      title:
+        option.id === 'skis'
+          ? 'Ride skis. Identical physics to the snowboard — only the look differs.'
+          : 'Ride a snowboard.',
     })),
     () => store.playRideGear,
     gear => {
       store.playRideGear = gear;
       viewport.rideGear = gear;
       persistUi();
-      rebuildTools();   // the row reads the live selection, and a rebuild drops keyboard focus for the ride
+      rebuildTools(); // the row reads the live selection, and a rebuild drops keyboard focus for the ride
     },
   );
   gearButtons.el.setAttribute('role', 'group');
@@ -158,10 +172,12 @@ export function buildPlayTools(ctx: ToolsContext) {
   if (store.playRideGear === 'snowboard') {
     const stanceButtons = segmented<SnowboardStance>(
       snowboardStanceOptions().map(option => ({
-        value: option.id, label: option.label,
-        title: option.id === 'standard'
-          ? 'Left foot forward — the body faces right.'
-          : 'Right foot forward — the body faces left.',
+        value: option.id,
+        label: option.label,
+        title:
+          option.id === 'standard'
+            ? 'Left foot forward — the body faces right.'
+            : 'Right foot forward — the body faces left.',
       })),
       () => store.playSnowboardStance,
       stance => {
@@ -184,69 +200,104 @@ export function buildPlayTools(ctx: ToolsContext) {
   if (play.launching) {
     const label = play.launching === 'play' ? 'Preparing reference ride…' : 'Preparing reference AI…';
     note(gui, `${label} Effects are loading; leaving Play cancels the launch.`);
-    gui.add({ waiting: () => {} }, 'waiting').name('… Loading effects').disable();
-  }
-  else if (viewport.riding) {
+    gui
+      .add({ waiting: () => {} }, 'waiting')
+      .name('… Loading effects')
+      .disable();
+  } else if (viewport.riding) {
     const pauseLabel = viewport.ridePaused ? '▶ Resume (P)' : '⏸ Pause (P)';
-    gui.add({ pause: () => { viewport.toggleRidePause(); rebuildTools(); } }, 'pause').name(pauseLabel);
+    gui
+      .add(
+        {
+          pause: () => {
+            viewport.toggleRidePause();
+            rebuildTools();
+          },
+        },
+        'pause',
+      )
+      .name(pauseLabel);
     gui.add({ stop: () => play.exitRide() }, 'stop').name('■ Stop');
     // The full control map rides the help sheet at the bottom of the screen; the note keeps only the
     // controls that unstick someone (a captured cursor, the person toggle, pause).
-    note(gui, 'Esc releases the cursor · V first/third person · P pause',
-      'First person captures the cursor: Esc releases it and an empty viewport click recaptures it. '
-      + 'In third person, hold RMB away from a highlighted target to look. E gets off/recalls the board; '
-      + 'on foot, WASD walks, Ctrl crouches, LMB rides a highlighted board and RMB grabs it.');
-  }
-  else if (viewport.watching) gui.add({ stop: () => play.stopWatch() }, 'stop').name('■ Stop watching (Esc)');
+    note(
+      gui,
+      'Esc releases the cursor · V first/third person · P pause',
+      'First person captures the cursor: Esc releases it and an empty viewport click recaptures it. ' +
+        'In third person, hold RMB away from a highlighted target to look. E gets off/recalls the board; ' +
+        'on foot, WASD walks, Ctrl crouches, LMB rides a highlighted board and RMB grabs it.',
+    );
+  } else if (viewport.watching) gui.add({ stop: () => play.stopWatch() }, 'stop').name('■ Stop watching (Esc)');
   else if (viewport.xrPlaying) {
-    note(gui, 'In VR — left Y shows/hides the wrist menu. Trigger mounts/dismounts; right-stick click or desk V toggles first/third person.');
+    note(
+      gui,
+      'In VR — left Y shows/hides the wrist menu. Trigger mounts/dismounts; right-stick click or desk V toggles first/third person.',
+    );
     gui.add({ stop: () => play.stopVr() }, 'stop').name('■ Leave VR (Esc)');
-  }
-  else {
+  } else {
     const playLabel = `▶ Play ${store.playTarget === 'reference' ? referenceName : mountainName}`;
     // The headset check is one async call per panel build, and the panel rebuilds often, so the answer is cached
     // for the tab (it cannot change without a page reload). The launch row stays put while that answer lands;
     // disabled grey is the visible answer on a machine with no immersive runtime.
-    if (xrAvailable === undefined) void resolveXrAvailable(() => { if (store.currentMode === 'play') rebuildTools(); });
+    if (xrAvailable === undefined)
+      void resolveXrAvailable(() => {
+        if (store.currentMode === 'play') rebuildTools();
+      });
     const coarsePointer = primaryPointerIsCoarse();
     const addScreenLaunch = (headsetPanel = false) => {
       // Quest Touch controllers are XR input sources, not navigator gamepads. The explicit false prevents a
       // controller ray that happens to report a touch-like event from enabling the direct-multitouch diagram.
-      const launch = gui.add({ play: () => play.startPlay(!headsetPanel) }, 'play')
+      const launch = gui
+        .add({ play: () => play.startPlay(!headsetPanel) }, 'play')
         .name(headsetPanel ? '▶ Play on screen' : playLabel);
       if (headsetPanel) {
-        tip(launch, 'Ride in the browser panel with a Bluetooth gamepad or physical keyboard.',
-          'Quest Touch controllers are available only inside Play in VR. Flat Play keeps its Stop controls visible '
-          + 'and does not show the phone thumb controls.');
+        tip(
+          launch,
+          'Ride in the browser panel with a Bluetooth gamepad or physical keyboard.',
+          'Quest Touch controllers are available only inside Play in VR. Flat Play keeps its Stop controls visible ' +
+            'and does not show the phone thumb controls.',
+        );
       } else {
         // The key-by-key control map lives on the help sheet at the bottom of the screen while riding.
-        tip(launch, 'Drop the board at the start and ride it yourself.',
-          'Controls are on the help sheet at the bottom of the screen. First person captures the cursor — Esc '
-          + 'releases it. Starting a ride clears any AI riders you dropped by hand.');
+        tip(
+          launch,
+          'Drop the board at the start and ride it yourself.',
+          'Controls are on the help sheet at the bottom of the screen. First person captures the cursor — Esc ' +
+            'releases it. Starting a ride clears any AI riders you dropped by hand.',
+        );
       }
     };
     const addVrLaunch = () => {
       const launch = gui.add({ vr: () => void play.startVr() }, 'vr').name('🥽 Play in VR');
       if (xrAvailable !== true) launch.disable();
       if (xrAvailable === true) {
-        tip(launch, 'Put the headset on and ride, arriving on foot beside the board.',
-          'Left stick walks, right stick turns, and either trigger mounts/dismounts. Riding: left stick carves and '
-          + 'tucks; right A jumps and right B boosts. Left X respawns along the course, left Y shows/hides the '
-          + 'wrist menu, and right-stick click toggles first/third person. Esc or the headset menu ends the session.');
+        tip(
+          launch,
+          'Put the headset on and ride, arriving on foot beside the board.',
+          'Left stick walks, right stick turns, and either trigger mounts/dismounts. Riding: left stick carves and ' +
+            'tucks; right A jumps and right B boosts. Left X respawns along the course, left Y shows/hides the ' +
+            'wrist menu, and right-stick click toggles first/third person. Esc or the headset menu ends the session.',
+        );
       } else {
-        tip(launch, xrAvailable === false
-          ? 'VR is unavailable in this tab — connect a WebXR headset runtime and reload.'
-          : 'Checking this browser for an immersive WebXR headset runtime…');
+        tip(
+          launch,
+          xrAvailable === false
+            ? 'VR is unavailable in this tab — connect a WebXR headset runtime and reload.'
+            : 'Checking this browser for an immersive WebXR headset runtime…',
+        );
       }
     };
     if (coarsePointer && xrAvailable === undefined) {
       // Do not leave a brief ordinary-Play trap clickable while the one headset capability query is in flight.
-      gui.add({ checking: () => {} }, 'checking').name('… Checking headset').disable();
+      gui
+        .add({ checking: () => {} }, 'checking')
+        .name('… Checking headset')
+        .disable();
     } else if (preferImmersivePlay(xrAvailable, coarsePointer)) {
-      addVrLaunch();       // standalone/headset browser: native controller path is the primary action
+      addVrLaunch(); // standalone/headset browser: native controller path is the primary action
       addScreenLaunch(true);
     } else {
-      addScreenLaunch();   // desktop/phone: preserve the ordinary flat-Play-first flow
+      addScreenLaunch(); // desktop/phone: preserve the ordinary flat-Play-first flow
       addVrLaunch();
     }
     const watch = gui.add({ watch: () => play.startWatch() }, 'watch').name('👁 Watch the AI');
@@ -254,15 +305,21 @@ export function buildPlayTools(ctx: ToolsContext) {
     if (store.playAiMax === 0) {
       tip(watch, 'AI riders are set to zero — raise Options ▸ AI riders to enable the watch field.');
     } else {
-      tip(watch, 'Watch the AI field work the course; the camera stays yours.',
-        'No start point needed — riders field on their own AI paths. Orbit, pan, and zoom as usual.');
+      tip(
+        watch,
+        'Watch the AI field work the course; the camera stays yours.',
+        'No start point needed — riders field on their own AI paths. Orbit, pan, and zoom as usual.',
+      );
     }
     const out = viewport.aiRiderCount;
-    note(gui, store.playAiMax === 0
-      ? 'AI riders are off — raise Options ▸ AI riders to enable slope drops and Watch'
-      : out
-      ? `${out} AI rider${out > 1 ? 's' : ''} out — click the slope to drop another`
-      : 'click the slope to drop an AI rider and watch it go');
+    note(
+      gui,
+      store.playAiMax === 0
+        ? 'AI riders are off — raise Options ▸ AI riders to enable slope drops and Watch'
+        : out
+          ? `${out} AI rider${out > 1 ? 's' : ''} out — click the slope to drop another`
+          : 'click the slope to drop an AI rider and watch it go',
+    );
   }
 
   // The start point is the rarer job of the two things a slope click could mean, so it is armed deliberately —
@@ -273,15 +330,29 @@ export function buildPlayTools(ctx: ToolsContext) {
     ? ` Current start: X ${spawn[0].toFixed(1)}, Y ${spawn[1].toFixed(1)}, Z ${spawn[2].toFixed(1)}.`
     : '';
   // The default start is a slot on the reference level's own start row, or a few metres down the run.
-  tip(position.add({ reset: () => { const d = play.defaultPlaySpawn(); if (d) play.setPlaySpawn(d.pos, true); } }, 'reset').name('⟲ Reset start'),
-    `Put the start back where the course begins.${startCoords}`);
+  tip(
+    position
+      .add(
+        {
+          reset: () => {
+            const d = play.defaultPlaySpawn();
+            if (d) play.setPlaySpawn(d.pos, true);
+          },
+        },
+        'reset',
+      )
+      .name('⟲ Reset start'),
+    `Put the start back where the course begins.${startCoords}`,
+  );
   if (store.placingStart) {
     note(position, 'click the slope, or a prop standing on it, to place the start');
     position.add({ cancel: () => play.cancelStartPlacement() }, 'cancel').name('✕ Cancel (Esc)');
   } else {
-    tip(position.add({ set: () => play.armStartPlacement() }, 'set').name('⊕ Set custom start'),
+    tip(
+      position.add({ set: () => play.armStartPlacement() }, 'set').name('⊕ Set custom start'),
       'Arm one click to move the start — terrain, or a prop standing on it.',
-      'A run can start on a roof or a ramp. After that one click, slope clicks go back to dropping AI riders.');
+      'A run can start on a roof or a ramp. After that one click, slope clicks go back to dropping AI riders.',
+    );
   }
 
   // Multiplayer poses are live scene state, not project data. Keep this chooser inside Position and omit it
@@ -295,9 +366,7 @@ export function buildPlayTools(ctx: ToolsContext) {
     for (const player of activePlayers) {
       const ordinal = (seen.get(player.username) ?? 0) + 1;
       seen.set(player.username, ordinal);
-      const label = (totals.get(player.username) ?? 0) > 1
-        ? `${player.username} (${ordinal})`
-        : player.username;
+      const label = (totals.get(player.username) ?? 0) > 1 ? `${player.username} (${ordinal})` : player.username;
       playerOptions[label] = player.sessionId;
     }
     const choice = { player: '' };
@@ -311,19 +380,23 @@ export function buildPlayTools(ctx: ToolsContext) {
       if (!moved) toast('That player is no longer available.', 'info');
     });
     if (viewport.xrPlaying) goTo.disable();
-    tip(goTo,
+    tip(
+      goTo,
       viewport.xrPlaying
         ? 'Leave VR before moving to another player.'
         : viewport.riding
           ? 'Teleport about 3 m behind this player and keep riding.'
-          : 'Move the camera to a wide view ahead of this player, looking back toward them and the mountain.');
+          : 'Move the camera to a wide view ahead of this player, looking back toward them and the mountain.',
+    );
   }
 
   const avatar = editSection('play-avatar', 'Avatar', true);
   // The disk catalog is deliberately async: entering Play never waits on filesystem IO. Rebuild once when the
   // list arrives, then the ordinary lil-gui dropdown owns the persisted selection.
   if (!riderModelCatalogSettled()) {
-    void ensureRiderModelCatalog().then(() => { if (store.currentMode === 'play') rebuildTools(); });
+    void ensureRiderModelCatalog().then(() => {
+      if (store.currentMode === 'play') rebuildTools();
+    });
     avatar.add({ rider: 'Loading…' }, 'rider').name('Rider model').disable();
   } else {
     const models = riderModelOptions();
@@ -338,38 +411,52 @@ export function buildPlayTools(ctx: ToolsContext) {
       viewport.riderModel = store.playRiderModel;
       persistUi();
     }
-    tip(avatar.add({ model: store.playRiderModel }, 'model', byLabel).name('Rider model')
-      .onChange((model: string) => {
-        store.playRiderModel = model;
-        viewport.riderModel = model;
-        persistUi();
-        if (store.currentMode === 'play') rebuildTools();
-      }),
-    'The character every rider uses; changing it swaps live riders at once.');
+    tip(
+      avatar
+        .add({ model: store.playRiderModel }, 'model', byLabel)
+        .name('Rider model')
+        .onChange((model: string) => {
+          store.playRiderModel = model;
+          viewport.riderModel = model;
+          persistUi();
+          if (store.currentMode === 'play') rebuildTools();
+        }),
+      'The character every rider uses; changing it swaps live riders at once.',
+    );
   }
   // The stance catalogue is built in, so unlike the character list it needs no disk round-trip and is always
   // offered — the procedural body and an imported character are both posed by it.
   const styles: Record<string, string> = {};
   for (const style of ridingStyleOptions()) styles[style.label] = style.id;
-  tip(avatar.add({ style: store.playRiderStyle }, 'style', styles).name('Riding style')
-    .onChange((style: string) => {
-      store.playRiderStyle = style;
-      viewport.riderStyle = style;
-      persistUi();
-      releaseKeyboard();
-    }),
-  'How the rider stands and carves.',
-  'Hip height, incline and angulation into a carve, counter-rotation, and hand carriage. Changing it '
-  + 'restances live riders mid-run without interrupting the ride.');
+  tip(
+    avatar
+      .add({ style: store.playRiderStyle }, 'style', styles)
+      .name('Riding style')
+      .onChange((style: string) => {
+        store.playRiderStyle = style;
+        viewport.riderStyle = style;
+        persistUi();
+        releaseKeyboard();
+      }),
+    'How the rider stands and carves.',
+    'Hip height, incline and angulation into a carve, counter-rotation, and hand carriage. Changing it ' +
+      'restances live riders mid-run without interrupting the ride.',
+  );
   const importMixamo = () => {
-    if (characterImporting) { toast('A character import is already running.', 'warn'); return; }
+    if (characterImporting) {
+      toast('A character import is already running.', 'warn');
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.fbx,application/octet-stream';
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      if (!/\.fbx$/i.test(file.name)) { toast('Choose a Mixamo .fbx file.', 'err'); return; }
+      if (!/\.fbx$/i.test(file.name)) {
+        toast('Choose a Mixamo .fbx file.', 'err');
+        return;
+      }
       characterImporting = true;
       toast(`Importing ${file.name}…`, 'info', 6000);
       try {
@@ -378,22 +465,31 @@ export function buildPlayTools(ctx: ToolsContext) {
           headers: { 'content-type': 'application/octet-stream' },
           body: file,
         });
-        const result = await response.json() as {
-          file?: string; meshes?: number; bones?: number; heightMetres?: number;
-          warnings?: string[]; error?: string;
+        const result = (await response.json()) as {
+          file?: string;
+          meshes?: number;
+          bones?: number;
+          heightMetres?: number;
+          warnings?: string[];
+          error?: string;
         };
         if (!response.ok || !result.file) throw new Error(result.error ?? `HTTP ${response.status}`);
         // `file` is the GLB the import landed in — an import whose name is taken stores beside it as
         // <name>_2.glb (docs/038), so the rider selected below is the one that was just added
         const models = await refreshRiderModelCatalog();
-        if (!models.some(model => model.id === result.file)) throw new Error('saved GLB did not appear in the character catalog');
+        if (!models.some(model => model.id === result.file))
+          throw new Error('saved GLB did not appear in the character catalog');
         store.playRiderModel = result.file;
         viewport.riderModel = result.file;
         persistUi();
         const warning = result.warnings?.[0];
-        toast(`Imported ${file.name} — ${result.meshes ?? 0} mesh${result.meshes === 1 ? '' : 'es'}, `
-          + `${result.bones ?? 0} bones${result.heightMetres ? ` · ${result.heightMetres.toFixed(2)} m` : ''}`
-          + `${warning ? ` · warning: ${warning}` : ''}`, warning ? 'warn' : 'ok', 7000);
+        toast(
+          `Imported ${file.name} — ${result.meshes ?? 0} mesh${result.meshes === 1 ? '' : 'es'}, ` +
+            `${result.bones ?? 0} bones${result.heightMetres ? ` · ${result.heightMetres.toFixed(2)} m` : ''}` +
+            `${warning ? ` · warning: ${warning}` : ''}`,
+          warning ? 'warn' : 'ok',
+          7000,
+        );
         if (store.currentMode === 'play') rebuildTools();
       } catch (error) {
         toast(`Character import failed: ${error instanceof Error ? error.message : error}`, 'err', 8000);
@@ -403,10 +499,12 @@ export function buildPlayTools(ctx: ToolsContext) {
     };
     input.click();
   };
-  tip(avatar.add({ importMixamo }, 'importMixamo').name('▲ Import Mixamo FBX…'),
+  tip(
+    avatar.add({ importMixamo }, 'importMixamo').name('▲ Import Mixamo FBX…'),
     'Upload a Mixamo FBX to the server-wide rider library.',
-    'The server maps its skeleton, embeds its textures, and converts it to GLB — Blender is not used. '
-    + 'Compatible .glb files can also be added under workspace/library/characters.');
+    'The server maps its skeleton, embeds its textures, and converts it to GLB — Blender is not used. ' +
+      'Compatible .glb files can also be added under workspace/library/characters.',
+  );
 
   // WebXR fixes its framebuffer and layer path at session start. Keep those XR-only settings — plus the
   // profiler's remembered initial state — above ordinary ride Options, and hide them once a session is underway.
@@ -420,50 +518,92 @@ export function buildPlayTools(ctx: ToolsContext) {
       resolutionNote.textContent = xrEyeBufferNote(store.playVrEyeBuffer, scale);
       resolutionNote.classList.toggle('sp-vr-resolution-capped', xrScaleMayBeCapped(store.playVrEyeBuffer, scale));
     };
-    tip(vrOptions.add({ scale: store.playVrRenderScale }, 'scale',
-      MIN_VR_RENDER_SCALE, MAX_VR_RENDER_SCALE, XR_RENDER_SCALE_STEP).name('VR render scale')
-      .onChange((v: number) => {
-        store.playVrRenderScale = v;
-        updateResolutionNote(v);
-      })
-      .onFinishChange(() => { persistUi(); rebuildTools(); }),
-    'Eye-buffer resolution for the next VR session (0.5×–3×).',
-    'Pixel count goes as the square — 0.7 is half the fill cost. Lowering it is the first thing to try when '
-    + 'measured GPU time is eating your frame. Applied at session start; browsers may cap extreme requests.');
+    tip(
+      vrOptions
+        .add(
+          { scale: store.playVrRenderScale },
+          'scale',
+          MIN_VR_RENDER_SCALE,
+          MAX_VR_RENDER_SCALE,
+          XR_RENDER_SCALE_STEP,
+        )
+        .name('VR render scale')
+        .onChange((v: number) => {
+          store.playVrRenderScale = v;
+          updateResolutionNote(v);
+        })
+        .onFinishChange(() => {
+          persistUi();
+          rebuildTools();
+        }),
+      'Eye-buffer resolution for the next VR session (0.5×–3×).',
+      'Pixel count goes as the square — 0.7 is half the fill cost. Lowering it is the first thing to try when ' +
+        'measured GPU time is eating your frame. Applied at session start; browsers may cap extreme requests.',
+    );
     const resolutionNote = note(vrOptions, xrEyeBufferNote(store.playVrEyeBuffer, store.playVrRenderScale));
     updateResolutionNote(store.playVrRenderScale);
-    tip(vrOptions.add(store, 'playVrLayerMode', {
-      'WebGL layer (forced)': 'webgl',
-      'Projection layer': 'projection',
-    }).name('VR layer path').onFinishChange(() => { persistUi(); rebuildTools(); }),
-    'Render path for the next VR session.',
-    'WebGL forces Three onto XRWebGLLayer; Projection keeps its XRProjectionLayer path. Tuning ▸ MSAA controls '
-    + 'antialiasing on either. The wrist panel reports requested → effective, so a runtime refusal is visible.');
-    tip(vrOptions.add(store, 'playVrStatsOn').name('VR performance stats')
-      .onFinishChange(() => { persistUi(); rebuildTools(); }),
-    'Start the next VR session with the performance readout on.',
-    'The wrist menu can switch it live and remembers that state here. Off keeps the compact speed readout but '
-    + 'skips the diagnostic canvas upload and GPU timer queries.');
+    tip(
+      vrOptions
+        .add(store, 'playVrLayerMode', {
+          'WebGL layer (forced)': 'webgl',
+          'Projection layer': 'projection',
+        })
+        .name('VR layer path')
+        .onFinishChange(() => {
+          persistUi();
+          rebuildTools();
+        }),
+      'Render path for the next VR session.',
+      'WebGL forces Three onto XRWebGLLayer; Projection keeps its XRProjectionLayer path. Tuning ▸ MSAA controls ' +
+        'antialiasing on either. The wrist panel reports requested → effective, so a runtime refusal is visible.',
+    );
+    tip(
+      vrOptions
+        .add(store, 'playVrStatsOn')
+        .name('VR performance stats')
+        .onFinishChange(() => {
+          persistUi();
+          rebuildTools();
+        }),
+      'Start the next VR session with the performance readout on.',
+      'The wrist menu can switch it live and remembers that state here. Off keeps the compact speed readout but ' +
+        'skips the diagnostic canvas upload and GPU timer queries.',
+    );
   }
 
   // Everything below changes how a test is presented or instrumented rather than launching one. Keep those
   // secondary controls together, so the everyday target → gear → Play path stays short.
   const options = editSection('play-options', 'Options', true);
   const gameVolume = { percent: Math.round(store.playGameVolume * 100) };
-  tip(options.add(gameVolume, 'percent', 0, 100, 1).name('Game volume')
-    .onChange((percent: number) => {
-      if (percent > 0) resumeSharedAudio();
-      store.playGameVolume = percent / 100;
-      viewport.setRideGameVolume(store.playGameVolume);
-    })
-    .onFinishChange(() => { persistUi(); releaseKeyboard(); }),
-  'Master level for all gameplay sound; zero mutes the game. Scene Sound previews stay audible.');
-  tip(options.add({ music: store.playMusicOn }, 'music').name('Music')
-    .onChange((v: boolean) => {
-      if (v) resumeSharedAudio();
-      store.playMusicOn = v; viewport.setRideMusic(v); persistUi(); releaseKeyboard(); rebuildTools();
-    }),
-  'Play the map’s environment bed off-board and its race track mounted. Applies live.');
+  tip(
+    options
+      .add(gameVolume, 'percent', 0, 100, 1)
+      .name('Game volume')
+      .onChange((percent: number) => {
+        if (percent > 0) resumeSharedAudio();
+        store.playGameVolume = percent / 100;
+        viewport.setRideGameVolume(store.playGameVolume);
+      })
+      .onFinishChange(() => {
+        persistUi();
+        releaseKeyboard();
+      }),
+    'Master level for all gameplay sound; zero mutes the game. Scene Sound previews stay audible.',
+  );
+  tip(
+    options
+      .add({ music: store.playMusicOn }, 'music')
+      .name('Music')
+      .onChange((v: boolean) => {
+        if (v) resumeSharedAudio();
+        store.playMusicOn = v;
+        viewport.setRideMusic(v);
+        persistUi();
+        releaseKeyboard();
+        rebuildTools();
+      }),
+    'Play the map’s environment bed off-board and its race track mounted. Applies live.',
+  );
   if (store.playMusicOn && store.playTarget === 'reference') {
     const level = getRefLevel();
     const choice = { song: store.playMusicSongs[level] ?? '' };
@@ -481,73 +621,119 @@ export function buildPlayTools(ctx: ToolsContext) {
       if (!songs.some(song => song.id === choice.song)) choice.song = '';
       const labels: Record<string, string> = { Random: '' };
       for (const song of songs) labels[song.title in labels ? `${song.title} (${song.id})` : song.title] = song.id;
-      songPicker.options(labels).enable().onChange((song: string) => {
-        resumeSharedAudio();
-        store.playMusicSongs[level] = song;
-        viewport.setRideMusicSongs(store.playMusicSongs);
-        preloadReferenceRideMusic(level, song);
-        persistUi();
-        releaseKeyboard();
-      });
+      songPicker
+        .options(labels)
+        .enable()
+        .onChange((song: string) => {
+          resumeSharedAudio();
+          store.playMusicSongs[level] = song;
+          viewport.setRideMusicSongs(store.playMusicSongs);
+          preloadReferenceRideMusic(level, song);
+          persistUi();
+          releaseKeyboard();
+        });
     });
   }
-  tip(options.add({ announcer: store.playAnnouncerOn }, 'announcer').name('Announcer')
-    .onChange((v: boolean) => {
-      if (v) resumeSharedAudio();
-      store.playAnnouncerOn = v; viewport.setRideAnnouncer(v); persistUi(); releaseKeyboard();
-    }),
-  'Hear the MC call starts, big air, landings, wipeouts, boost, slow riding, and clean runs. Applies live.');
+  tip(
+    options
+      .add({ announcer: store.playAnnouncerOn }, 'announcer')
+      .name('Announcer')
+      .onChange((v: boolean) => {
+        if (v) resumeSharedAudio();
+        store.playAnnouncerOn = v;
+        viewport.setRideAnnouncer(v);
+        persistUi();
+        releaseKeyboard();
+      }),
+    'Hear the MC call starts, big air, landings, wipeouts, boost, slow riding, and clean runs. Applies live.',
+  );
   // One count owns both the old enable switch and cap. Zero is a real live cap: it retires the current field and
   // prevents slope-click drops; raising it again enables the next field without a second contradictory control.
   const aiRiders = { count: store.playAiMax };
-  tip(options.add(aiRiders, 'count', 0, MAX_AI_RIDERS, 1).name('AI riders')
-    .onChange((v: number) => {
-      store.playAiMax = Math.max(0, Math.min(MAX_AI_RIDERS, Math.round(v)));
-      viewport.aiRiderMax = store.playAiMax;
-    })
-    .onFinishChange(() => { persistUi(); rebuildTools(); }),
+  tip(
+    options
+      .add(aiRiders, 'count', 0, MAX_AI_RIDERS, 1)
+      .name('AI riders')
+      .onChange((v: number) => {
+        store.playAiMax = Math.max(0, Math.min(MAX_AI_RIDERS, Math.round(v)));
+        viewport.aiRiderMax = store.playAiMax;
+      })
+      .onFinishChange(() => {
+        persistUi();
+        rebuildTools();
+      }),
     'How many AI riders may be out at once; zero turns them off.',
-    'Lowering a live field retires its oldest riders immediately. Slope clicks past the cap recycle the '
-    + 'longest-out rider instead of piling up boards the frame rate has to carry.');
+    'Lowering a live field retires its oldest riders immediately. Slope clicks past the cap recycle the ' +
+      'longest-out rider instead of piling up boards the frame rate has to carry.',
+  );
 
   // The weather dial (docs/050). Defaults to the game's own snowfall rather than to clear: the engine decides
   // its own with a per-course weather roll the level data does not carry, so there is nothing to read off a
   // mountain — and a snowboarding course is the case the effect was built for. Applied live as the slider
   // moves, so the weather can be dialled while riding through it; persisted on release, like AI riders.
-  tip(options.add({ snow: store.playSnowAmount }, 'snow', 0, AMOUNT_MAX, 1).name('Snow')
-    .onChange((v: number) => { store.playSnowAmount = v; viewport.setRideSnow(v); })
-    .onFinishChange(() => { persistUi(); releaseKeyboard(); }),
-  `Snowfall on a ride — 0 clear, ${AMOUNT_PORT} the game's own (default), ${AMOUNT_MAX} a blizzard.`,
-  `Below ${AMOUNT_PORT} the fall thins the way the engine's own parameter thinned it; above it the weather `
-  + 'changes — more, larger flakes driven nearly sideways. Flakes are world-fixed, so you ride through them '
-  + 'with full parallax. One draw call, so only the top of the dial costs a run anything. Riding only — the '
-  + 'editor view stays clear.');
+  tip(
+    options
+      .add({ snow: store.playSnowAmount }, 'snow', 0, AMOUNT_MAX, 1)
+      .name('Snow')
+      .onChange((v: number) => {
+        store.playSnowAmount = v;
+        viewport.setRideSnow(v);
+      })
+      .onFinishChange(() => {
+        persistUi();
+        releaseKeyboard();
+      }),
+    `Snowfall on a ride — 0 clear, ${AMOUNT_PORT} the game's own (default), ${AMOUNT_MAX} a blizzard.`,
+    `Below ${AMOUNT_PORT} the fall thins the way the engine's own parameter thinned it; above it the weather ` +
+      'changes — more, larger flakes driven nearly sideways. Flakes are world-fixed, so you ride through them ' +
+      'with full parallax. One draw call, so only the top of the dial costs a run anything. Riding only — the ' +
+      'editor view stays clear.',
+  );
 
-  tip(options.add({ countdown: store.playCountdownOn }, 'countdown').name('Race countdown')
-    .onChange((v: boolean) => { store.playCountdownOn = v; persistUi(); releaseKeyboard(); }),
+  tip(
+    options
+      .add({ countdown: store.playCountdownOn }, 'countdown')
+      .name('Race countdown')
+      .onChange((v: boolean) => {
+        store.playCountdownOn = v;
+        persistUi();
+        releaseKeyboard();
+      }),
     'Run the reference course’s READY · 3 · 2 · 1 · GO on the next Play.',
-    'Leave off for immediate test runs. Authored mountains and references without a proven countdown always '
-    + 'start immediately.');
+    'Leave off for immediate test runs. Authored mountains and references without a proven countdown always ' +
+      'start immediately.',
+  );
 
   // Last by design: these are performance/diagnostic levers rather than the content of the next run.
   const tuning = editSection('play-tuning', 'Tuning', true);
-  tip(tuning.add({ antialias: store.playSmoothCutoutsOn }, 'antialias').name('MSAA + smooth cutouts')
-    .onChange((v: boolean) => {
-      store.playSmoothCutoutsOn = v;
-      persistUi();
-      // The default framebuffer's sample count is immutable. The same preference is also passed to the next
-      // WebXR layer, so one switch owns editor, browser Play, and headset rendering.
-      location.reload();
-    }),
+  tip(
+    tuning
+      .add({ antialias: store.playSmoothCutoutsOn }, 'antialias')
+      .name('MSAA + smooth cutouts')
+      .onChange((v: boolean) => {
+        store.playSmoothCutoutsOn = v;
+        persistUi();
+        // The default framebuffer's sample count is immutable. The same preference is also passed to the next
+        // WebXR layer, so one switch owns editor, browser Play, and headset rendering.
+        location.reload();
+      }),
     'Antialias geometry and cutout edges. Changing this reloads Slopesmith.',
-    'MSAA for ordinary geometry, Unity-style alpha-to-coverage for depth-writing cutouts — in the editor, '
-    + 'browser Play, and the next VR session. Off uses the faster grainy alpha hash. The reload is because '
-    + 'WebGL fixes the framebuffer’s sample count at startup.');
-  tip(tuning.add({ boardFx: store.playBoardFxOn }, 'boardFx').name('Board FX')
-    .onChange((v: boolean) => {
-      store.playBoardFxOn = v; viewport.setRideBoardFx(v); persistUi(); releaseKeyboard();
-    }),
-    'Draw your board’s wake, spray, and landing puffs. Your ride only — AI riders never get these.');
+    'MSAA for ordinary geometry, Unity-style alpha-to-coverage for depth-writing cutouts — in the editor, ' +
+      'browser Play, and the next VR session. Off uses the faster grainy alpha hash. The reload is because ' +
+      'WebGL fixes the framebuffer’s sample count at startup.',
+  );
+  tip(
+    tuning
+      .add({ boardFx: store.playBoardFxOn }, 'boardFx')
+      .name('Board FX')
+      .onChange((v: boolean) => {
+        store.playBoardFxOn = v;
+        viewport.setRideBoardFx(v);
+        persistUi();
+        releaseKeyboard();
+      }),
+    'Draw your board’s wake, spray, and landing puffs. Your ride only — AI riders never get these.',
+  );
 
   // How far the ride draws. A labelled choice rather than a segmented row because "Near / Medium / Far" says
   // nothing on its own — the metres are the setting. Applied live for direct frame-time comparisons.
@@ -556,36 +742,61 @@ export function buildPlayTools(ctx: ToolsContext) {
     [`Medium · ${DRAW_DISTANCE_METRES.medium} m`]: 'medium',
     [`Far · ${DRAW_DISTANCE_METRES.far} m`]: 'far',
   };
-  tip(tuning.add({ distance: store.playDrawDistance }, 'distance', distanceLabels).name('Draw distance')
-    .onChange((tier: DrawDistance) => {
-      store.playDrawDistance = tier;
-      viewport.setRideDrawDistance(tier);
-      persistUi();
-      releaseKeyboard();
-    }),
-  'How far a ride draws; applied live, riding only.',
-  'The haze closes in from 300 m so the bound reads as weather rather than a cut. Medium (the default) is the '
-  + 'range the VRChat world uses on Quest and costs a typical desktop ride nothing. Far is for a view a longer '
-  + 'draw actually reaches, Near for a course that still stutters.');
-  tip(tuning.add({ paths: store.playAiPathsOn }, 'paths').name('Show AI paths')
-    .onChange((v: boolean) => {
-      store.playAiPathsOn = v; viewport.playAiPathsGuide = v; persistUi(); releaseKeyboard();
-    }),
-    'Draw the AI lines while in Play — riders against their lines tells a bad line from a bad rider.');
-  tip(tuning.add({ colliders: store.playCollidersOn }, 'colliders').name('Show colliders')
-    .onChange((v: boolean) => {
-      store.playCollidersOn = v; viewport.setRideColliders(v); persistUi(); releaseKeyboard();
-    }),
+  tip(
+    tuning
+      .add({ distance: store.playDrawDistance }, 'distance', distanceLabels)
+      .name('Draw distance')
+      .onChange((tier: DrawDistance) => {
+        store.playDrawDistance = tier;
+        viewport.setRideDrawDistance(tier);
+        persistUi();
+        releaseKeyboard();
+      }),
+    'How far a ride draws; applied live, riding only.',
+    'The haze closes in from 300 m so the bound reads as weather rather than a cut. Medium (the default) is the ' +
+      'range the VRChat world uses on Quest and costs a typical desktop ride nothing. Far is for a view a longer ' +
+      'draw actually reaches, Near for a course that still stutters.',
+  );
+  tip(
+    tuning
+      .add({ paths: store.playAiPathsOn }, 'paths')
+      .name('Show AI paths')
+      .onChange((v: boolean) => {
+        store.playAiPathsOn = v;
+        viewport.playAiPathsGuide = v;
+        persistUi();
+        releaseKeyboard();
+      }),
+    'Draw the AI lines while in Play — riders against their lines tells a bad line from a bad rider.',
+  );
+  tip(
+    tuning
+      .add({ colliders: store.playCollidersOn }, 'colliders')
+      .name('Show colliders')
+      .onChange((v: boolean) => {
+        store.playCollidersOn = v;
+        viewport.setRideColliders(v);
+        persistUi();
+        releaseKeyboard();
+      }),
     // Why this overlay answers "why did that hit / why didn't it": a bounding box is the box around a prop's
     // MODEL, so a tilted flat panel gets a slab of collidable air metres thick where the art has no thickness
     // at all, and authored courses thread grind lines through the result ([Trailmap: 370]).
     'Draw what the ride collides with, and what it collides as.',
-    'Blue/violet: nearby props’ native collision shapes (proxy mesh, bounding box, leaf spheres) — violet ones '
-    + 'report a contact but never change your motion. Orange: the board footprint and body sample marks; red: '
-    + 'the body sphere, the only part of you a bounding box can touch. Applies live and follows you.');
-  tip(tuning.add({ telemetry: store.playTelemetryOn }, 'telemetry').name('Collect telemetry')
-    .onChange((v: boolean) => { store.playTelemetryOn = v; persistUi(); releaseKeyboard(); }),
+    'Blue/violet: nearby props’ native collision shapes (proxy mesh, bounding box, leaf spheres) — violet ones ' +
+      'report a contact but never change your motion. Orange: the board footprint and body sample marks; red: ' +
+      'the body sphere, the only part of you a bounding box can touch. Applies live and follows you.',
+  );
+  tip(
+    tuning
+      .add({ telemetry: store.playTelemetryOn }, 'telemetry')
+      .name('Collect telemetry')
+      .onChange((v: boolean) => {
+        store.playTelemetryOn = v;
+        persistUi();
+        releaseKeyboard();
+      }),
     'Record every physics tick next Play; the trace downloads when the ride stops.',
-    'Leave off for ordinary rides — M still captures a marked problem with three seconds of pre-roll.');
-
+    'Leave off for ordinary rides — M still captures a marked problem with three seconds of pre-roll.',
+  );
 }

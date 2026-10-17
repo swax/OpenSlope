@@ -46,11 +46,44 @@ export interface TimerEmitterPreviewLaw {
  * Retail-derived identifier facts, carried as interoperability data; the RETAIL-DERIVED FACTS section
  * of Slopesmith/NOTICE states the scope. */
 export const PARTICLE_SPRITE_NAMES = [
-  'part', 'snfl', 'clod', 'spry', 'halo', 'brk1', 'brk2', 'brk3',
-  'ndl1', 'ndl2', 'swd1', 'swd2', 'swp1', 'swp2', 'cnf1', 'cnf2',
-  'blb1', 'blb2', 'str1', 'str2', 'str3', 'nois', 'strk', 'tral',
-  'ex06', 'ex07', 'ex08', 'ex09', 'lens', 'blnk', 'mip1', 'mip1',
-  'mip2', 'beam', 'fog0', 'spec', 'envr', 'exlm',
+  'part',
+  'snfl',
+  'clod',
+  'spry',
+  'halo',
+  'brk1',
+  'brk2',
+  'brk3',
+  'ndl1',
+  'ndl2',
+  'swd1',
+  'swd2',
+  'swp1',
+  'swp2',
+  'cnf1',
+  'cnf2',
+  'blb1',
+  'blb2',
+  'str1',
+  'str2',
+  'str3',
+  'nois',
+  'strk',
+  'tral',
+  'ex06',
+  'ex07',
+  'ex08',
+  'ex09',
+  'lens',
+  'blnk',
+  'mip1',
+  'mip1',
+  'mip2',
+  'beam',
+  'fog0',
+  'spec',
+  'envr',
+  'exlm',
 ] as const;
 
 const finite = (fields: Record<string, JsonValue>, key: string, fallback = 0): number => {
@@ -85,8 +118,13 @@ export const emitterBlendKeepsColor = (blend: EmitterBlendMode): boolean => blen
  * other value keeps its number rather than claiming a behaviour the data has not shown. */
 export function emitterBlendLabel(blendSelector: number): string {
   const selector = Math.max(0, Math.round(Number.isFinite(blendSelector) ? blendSelector : 0));
-  return selector === 0 ? 'Additive' : selector === 1 ? 'Alpha blend'
-    : selector === 4 ? 'Darkening' : `Unnamed mode ${selector}`;
+  return selector === 0
+    ? 'Additive'
+    : selector === 1
+      ? 'Alpha blend'
+      : selector === 4
+        ? 'Darkening'
+        : `Unnamed mode ${selector}`;
 }
 
 /** Decode timer- or collision-emitter fields into the renderer-neutral law evaluated by VU program P6. Raw
@@ -95,8 +133,7 @@ export function timerEmitterPreviewLaw(node: EffectNode): TimerEmitterPreviewLaw
   const fields = particleEmitterFields(node);
   if (!fields) return null;
   const count = Math.max(1, Math.round(finite(fields, 'U0', 12)));
-  const vector = (i: number): V3 =>
-    [finite(fields, `U${i}`), finite(fields, `U${i + 1}`), finite(fields, `U${i + 2}`)];
+  const vector = (i: number): V3 => [finite(fields, `U${i}`), finite(fields, `U${i + 1}`), finite(fields, `U${i + 2}`)];
   const particleLifeCenter = finite(fields, 'U5');
   const particleLifeSpan = Math.max(0, finite(fields, 'U7'));
   const occupancyWindow = Math.max(0.05, particleLifeCenter + particleLifeSpan * 0.5);
@@ -125,8 +162,7 @@ export function timerEmitterPreviewLaw(node: EffectNode): TimerEmitterPreviewLaw
 /** P6 gives each particle a life in U5 +/- U7/2. U2 is the window over which the U0 particles start and is not
  * added to their individual lifetime; its SIGN selects the mode — negative streams without end, non-negative
  * releases the count once over those seconds ([Trailmap: 180-particles-data]). */
-export function timerEmitterPreviewLifetime(law: TimerEmitterPreviewLaw, persistent: boolean,
-  random01 = 0.5): number {
+export function timerEmitterPreviewLifetime(law: TimerEmitterPreviewLaw, persistent: boolean, random01 = 0.5): number {
   if (persistent && law.particleLifeCenter <= 0 && law.particleLifeSpan <= 0)
     return PERSISTENT_EMITTER_SENTINEL_LIFE * (0.8 + Math.max(0, Math.min(1, random01)) * 0.4);
   const random = Math.max(0, Math.min(1, random01));
@@ -134,33 +170,46 @@ export function timerEmitterPreviewLifetime(law: TimerEmitterPreviewLaw, persist
   return Math.max(0.05, Math.min(10, duration));
 }
 
-export interface TimerEmitterParticleSample { spawnOffset: V3; velocity: V3 }
+export interface TimerEmitterParticleSample {
+  spawnOffset: V3;
+  velocity: V3;
+}
 
 /** MainType-2/SubType-2 does not preserve the authored base-velocity direction. Its constructor takes only
  * the vector's length, then points that speed along the live outward contact normal. The three variation
  * axes are applied later and remain authored, so callers replace only `velocityBase` with this result. */
-export function collisionEmitterContactVelocityBase(authoredBase: readonly number[],
-  contactNormal: readonly number[]): V3 {
+export function collisionEmitterContactVelocityBase(
+  authoredBase: readonly number[],
+  contactNormal: readonly number[],
+): V3 {
   const speed = Math.hypot(authoredBase[0] ?? 0, authoredBase[1] ?? 0, authoredBase[2] ?? 0);
   const length = Math.hypot(contactNormal[0] ?? 0, contactNormal[1] ?? 0, contactNormal[2] ?? 0);
   if (length < 1e-9 || speed < 1e-9) return [0, 0, 0];
-  return [contactNormal[0] / length * speed, contactNormal[1] / length * speed,
-    contactNormal[2] / length * speed];
+  return [
+    (contactNormal[0] / length) * speed,
+    (contactNormal[1] / length) * speed,
+    (contactNormal[2] / length) * speed,
+  ];
 }
 
 /** Reproduce the constructor's two centered spawn axes and base-plus-three-axis velocity box. The VU RNG emits
  * [1,2); the constructor subtracts 1.5 of each axis up front, which is exactly a [-0.5,+0.5] coefficient here. */
-export function timerEmitterPreviewSample(law: TimerEmitterPreviewLaw,
-  random: () => number = Math.random): TimerEmitterParticleSample {
+export function timerEmitterPreviewSample(
+  law: TimerEmitterPreviewLaw,
+  random: () => number = Math.random,
+): TimerEmitterParticleSample {
   const centered = () => Math.max(0, Math.min(1, random())) - 0.5;
-  const sa = centered(), sb = centered();
-  const va = centered(), vb = centered(), vc = centered();
+  const sa = centered(),
+    sb = centered();
+  const va = centered(),
+    vb = centered(),
+    vc = centered();
   const spawnOffset: V3 = [0, 0, 0];
   const velocity: V3 = [...law.velocityBase];
   for (let component = 0; component < 3; component++) {
     spawnOffset[component] = law.spawnAxes[0][component] * sa + law.spawnAxes[1][component] * sb;
-    velocity[component] += law.velocityAxes[0][component] * va
-      + law.velocityAxes[1][component] * vb + law.velocityAxes[2][component] * vc;
+    velocity[component] +=
+      law.velocityAxes[0][component] * va + law.velocityAxes[1][component] * vb + law.velocityAxes[2][component] * vc;
   }
   return { spawnOffset, velocity };
 }
@@ -169,13 +218,12 @@ export function timerEmitterPreviewSample(law: TimerEmitterPreviewLaw,
  * itself advances by U3, so U3 cancels and the authored-world delay is i*U2/U0 seconds. */
 export function timerEmitterPreviewStartDelay(law: TimerEmitterPreviewLaw, index: number): number {
   if (law.emissionDuration <= 0) return 0;
-  return law.emissionDuration * Math.max(0, index) / Math.max(1, law.count);
+  return (law.emissionDuration * Math.max(0, index)) / Math.max(1, law.count);
 }
 
 /** P6's shared parametric trajectory, before the owning instance transforms it. The constructor stores gravity
  * divided by U3^2 and velocity divided by U3; P6 evaluates the same -0.73t+0.113t^2 curve for every effect. */
-export function timerEmitterPreviewTrajectoryOffset(law: TimerEmitterPreviewLaw, velocity: V3,
-  ageSeconds: number): V3 {
+export function timerEmitterPreviewTrajectoryOffset(law: TimerEmitterPreviewLaw, velocity: V3, ageSeconds: number): V3 {
   const timeScale = Math.abs(law.timeScale) < 1e-6 ? 1 : law.timeScale;
   const age = Math.max(0, ageSeconds) * timeScale;
   const curvedAge = Math.min(2.7, age);
@@ -190,13 +238,18 @@ export function timerEmitterPreviewTrajectoryOffset(law: TimerEmitterPreviewLaw,
 
 /** World-space sprite-width range for the CPU preview. A continuous plume is already readable through repeated
  * emission; a one-shot event needs a small visibility boost so short-lived sparks survive perspective scaling. */
-export function timerEmitterPreviewSizeRange(law: TimerEmitterPreviewLaw, hostSizeScale = 1,
-  continuous = false): { min: number; max: number } {
+export function timerEmitterPreviewSizeRange(
+  law: TimerEmitterPreviewLaw,
+  hostSizeScale = 1,
+  continuous = false,
+): { min: number; max: number } {
   const visibilityScale = continuous ? 1 : EVENT_EMITTER_SIZE_SCALE;
-  const min = Math.max(0.03, (law.sizeCenter - law.sizeSpan * 0.5) * NATIVE_SIZE_TO_METRES * hostSizeScale)
-    * visibilityScale;
-  const max = Math.max(min, (law.sizeCenter + law.sizeSpan * 0.5) * NATIVE_SIZE_TO_METRES * hostSizeScale
-    * visibilityScale);
+  const min =
+    Math.max(0.03, (law.sizeCenter - law.sizeSpan * 0.5) * NATIVE_SIZE_TO_METRES * hostSizeScale) * visibilityScale;
+  const max = Math.max(
+    min,
+    (law.sizeCenter + law.sizeSpan * 0.5) * NATIVE_SIZE_TO_METRES * hostSizeScale * visibilityScale,
+  );
   return { min, max };
 }
 

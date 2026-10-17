@@ -28,7 +28,9 @@ try {
   };
 
   let settled = 0;
-  const tiles = createTileMaterials(() => { settled++; });
+  const tiles = createTileMaterials(() => {
+    settled++;
+  });
   const ref = makeTexRef('MESA', '0059.png');
 
   assert.equal(tiles.ensure(ref), null);
@@ -48,8 +50,11 @@ try {
   assert.equal(tiles.ensure(ref), loaded, 'the successful retry becomes the live cached page');
 
   tiles.invalidateProjectAssets();
-  assert.equal(tiles.ensure(ref), loaded,
-    'a later project switch keeps successfully decoded workspace-owned retail pages warm');
+  assert.equal(
+    tiles.ensure(ref),
+    loaded,
+    'a later project switch keeps successfully decoded workspace-owned retail pages warm',
+  );
   assert.equal(calls.length, 2, 'a successful retail page is not downloaded again on project switch');
 } finally {
   THREE.TextureLoader.prototype.load = originalLoad;

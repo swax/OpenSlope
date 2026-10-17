@@ -20,19 +20,25 @@ export function writeVertex(vertices: number[], id: number, point: V3): void {
 export const directedEdgeKey = (from: number, to: number): string => `${from}>${to}`;
 
 /** Undirected edge key, independent of endpoint order. */
-export const undirectedEdgeKey = (a: number, b: number): string => a < b ? `${a},${b}` : `${b},${a}`;
+export const undirectedEdgeKey = (a: number, b: number): string => (a < b ? `${a},${b}` : `${b},${a}`);
 
 /** Canonical ascending endpoint order for an undirected edge. */
-export const canonicalEdge = (a: number, b: number): MeshEdge => a < b ? [a, b] : [b, a];
+export const canonicalEdge = (a: number, b: number): MeshEdge => (a < b ? [a, b] : [b, a]);
 
 /** Quad vertices in boundary traversal order rather than row-major control-net order. */
-export const quadPerimeter = (corners: readonly number[]): [number, number, number, number] =>
-  [corners[0], corners[1], corners[3], corners[2]];
+export const quadPerimeter = (corners: readonly number[]): [number, number, number, number] => [
+  corners[0],
+  corners[1],
+  corners[3],
+  corners[2],
+];
 
 /** All four boundary sides in traversal order, including a wedge's collapsed private side. */
 export const quadPerimeterEdges = (corners: readonly number[]): MeshEdge[] => [
-  [corners[0], corners[1]], [corners[1], corners[3]],
-  [corners[3], corners[2]], [corners[2], corners[0]],
+  [corners[0], corners[1]],
+  [corners[1], corners[3]],
+  [corners[3], corners[2]],
+  [corners[2], corners[0]],
 ];
 
 /** Non-collapsed boundary sides. Suitable for shared-edge maps and manifold counts. */

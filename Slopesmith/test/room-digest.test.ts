@@ -9,7 +9,14 @@ import { applyMeshDelete } from '../src/core/mesh/ops/delete';
 import { topologyDelta } from '../src/core/doc/topology-delta';
 import { configureCheckpoints, createProject, saveProject } from '../src/server/projects';
 import {
-  assign, claimTopology, configureRooms, forgetRooms, joinRoom, roomDigest, stepsSince, takeSnapshot,
+  assign,
+  claimTopology,
+  configureRooms,
+  forgetRooms,
+  joinRoom,
+  roomDigest,
+  stepsSince,
+  takeSnapshot,
 } from '../src/server/session/room';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { check, failures } from './check';
@@ -49,14 +56,24 @@ try {
 
   // Many batches across several sections, nobody asking in between.
   for (let step = 0; step < 50; step++) {
-    assign(room, [[corner, [step, step, step]], [far, [step, -step, step]]], 'Ada');
+    assign(
+      room,
+      [
+        [corner, [step, step, step]],
+        [far, [step, -step, step]],
+      ],
+      'Ada',
+    );
     assign(room, [[face, step % 4]], 'Bob');
   }
   const prop = room.doc.props![0];
   assign(room, [[objectRegister('prop', prop.id!), { ...prop, pos: [9, 9, 9] }]], 'Bob');
   assign(room, [[globalRegister('aiSeed'), 1234]], 'Ada');
-  check(room.stale.size === 5, 'repeated writes to one register are one stale entry, not one per batch',
-    String(room.stale.size));
+  check(
+    room.stale.size === 5,
+    'repeated writes to one register are one stale entry, not one per batch',
+    String(room.stale.size),
+  );
   matches('a hundred batches over vertices, faces, a prop and a global, asked about once');
   check(room.stale.size === 0, 'asking settles what was outstanding');
   matches('asking twice with nothing landed between is the same answer');
@@ -64,7 +81,14 @@ try {
   // Removing a whole object, and clearing a sparse channel, both empty what a section held.
   const doomed = room.doc.props![1];
   const props = room.doc.props!.length;
-  assign(room, [[objectRegister('prop', doomed.id!), undefined], [face, undefined]], 'Bob');
+  assign(
+    room,
+    [
+      [objectRegister('prop', doomed.id!), undefined],
+      [face, undefined],
+    ],
+    'Bob',
+  );
   check(room.doc.props!.length === props - 1, 'the delete landed');
   matches('deleting an object and clearing a face');
 
@@ -81,17 +105,25 @@ try {
   check(deleted.ok, 'a topology edit could be made locally');
   if (deleted.ok) {
     // Written against the base the claimant held, which predates the edit that landed meanwhile.
-    const claimed = claimTopology(room,
-      { ids: [base.quadIds[1]], at: before, delta: topologyDelta(base, deleted.doc), changes: [] });
+    const claimed = claimTopology(room, {
+      ids: [base.quadIds[1]],
+      at: before,
+      delta: topologyDelta(base, deleted.doc),
+      changes: [],
+    });
     check(claimed.ok, 'and its claim was taken');
     check(room.digest === null && room.stale.size === 0, 'a claim lets the old digest go rather than patching it');
     matches('after a topology claim landed on what arrived under it');
-    check(canonicalJson(readRegister(room.doc, far)) === canonicalJson([7, 7, 7]),
-      'the edit that landed under the claim is still there: the delta went onto the room document, not over it');
+    check(
+      canonicalJson(readRegister(room.doc, far)) === canonicalJson([7, 7, 7]),
+      'the edit that landed under the claim is still there: the delta went onto the room document, not over it',
+    );
     // The log keeps the claim, so a tab that was away across it is handed the delta rather than the mountain.
     const steps = stepsSince(room, before);
-    check(!!steps && steps.some(step => step.delta) && steps.some(step => step.changes.some(([key]) => key === far)),
-      'the log survives a topology claim: catching up across it is the steps, delta included');
+    check(
+      !!steps && steps.some(step => step.delta) && steps.some(step => step.changes.some(([key]) => key === far)),
+      'the log survives a topology claim: catching up across it is the steps, delta included',
+    );
     // An edit after the claim patches the freshly computed digest again.
     assign(room, [[vertexRegister(room.doc.vertexIds[2]), [5, 6, 7]]], 'Bob');
     matches('an edit landed on the new structure');
@@ -104,8 +136,11 @@ try {
   roomDigest(room);
   assign(room, [[globalRegister('name'), 'TAKEN']], 'Ada');
   await takeSnapshot(room);
-  check(room.doc.name !== 'TAKEN', 'the snapshot stored a name other than the one asked for, and the room took it',
-    room.doc.name);
+  check(
+    room.doc.name !== 'TAKEN',
+    'the snapshot stored a name other than the one asked for, and the room took it',
+    room.doc.name,
+  );
   matches('after the snapshot renamed the room’s document');
 
   // A document written from outside the room replaces the mountain: no log entry can describe that, so catching

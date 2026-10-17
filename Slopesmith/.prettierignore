@@ -1,0 +1,21 @@
+# Generated contracts are reproduced by tools/generate_*.py.
+**/*.generated.ts
+
+# Build output and local user data, including ignored folders nested under tools/.
+node_modules/
+dist/
+dist-server/
+coverage/
+.coverage-tmp/
+workspace/
+.slopesmith/
+.claude/
+Maps/
+courses/
+demos/
+**/temp/
+**/build/
+
+# Vendored browser importer and upstream patch context are not authored sources.
+public/
+tools/retopology/quadwild-patches/

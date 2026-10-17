@@ -11,11 +11,14 @@ export type { CellSpeedTint, TrailShape, TrailTransform };
 
 /** Rendering/input surface used by the edit workflow. */
 export interface EditViewportPort {
-  previewMeshEdit(doc: Store['mdoc'], change: {
-    vertices?: readonly number[];
-    edges?: readonly [number, number][];
-    quads?: readonly number[];
-  }): boolean;
+  previewMeshEdit(
+    doc: Store['mdoc'],
+    change: {
+      vertices?: readonly number[];
+      edges?: readonly [number, number][];
+      quads?: readonly number[];
+    },
+  ): boolean;
   clearCornerSelection(): void;
   setControlPointSelection(ids: readonly MeshControlPointId[]): void;
   /** Whether the cage currently shows this handle / interior (a pinned control cage, not hidden). Optional on

@@ -23,9 +23,16 @@ const facing = new THREE.Vector3(0, 0, 1);
 const board = (over: Partial<RiderInput> = {}): RiderInput => ({
   ankleFront: new THREE.Vector3(0, 0, 0.27),
   ankleRear: new THREE.Vector3(0, 0, -0.27),
-  deckUp: new THREE.Vector3(0, 1, 0), soleUp: new THREE.Vector3(0, 1, 0),
-  bank: 0, vel: new THREE.Vector3(), accel: new THREE.Vector3(),
-  grounded: true, dt: 1 / 60, crouch: 0, lean: 0, ...over,
+  deckUp: new THREE.Vector3(0, 1, 0),
+  soleUp: new THREE.Vector3(0, 1, 0),
+  bank: 0,
+  vel: new THREE.Vector3(),
+  accel: new THREE.Vector3(),
+  grounded: true,
+  dt: 1 / 60,
+  crouch: 0,
+  lean: 0,
+  ...over,
 });
 const onFoot = (phase: number, weight: number, speed = 0): RiderInput => ({
   ...board(),
@@ -64,9 +71,11 @@ for (const style of ridingStyleOptions()) {
     settle(rider, board(over));
     for (const { what, palm } of palms(rider)) {
       const vertical = palm.dot(WORLD_UP);
-      assert(vertical < -0.15,
-        `${style.id} ${stance} ${what}: the palm faces ${vertical > 0 ? 'UP' : 'sideways'} `
-        + `(up ${vertical.toFixed(2)}) — a carried hand rests palm-down`);
+      assert(
+        vertical < -0.15,
+        `${style.id} ${stance} ${what}: the palm faces ${vertical > 0 ? 'UP' : 'sideways'} ` +
+          `(up ${vertical.toFixed(2)}) — a carried hand rests palm-down`,
+      );
       assert(Math.abs(palm.length() - 1) < 1e-6, `${style.id} ${stance} ${what}: the palm normal is a unit`);
     }
   }
@@ -95,9 +104,11 @@ for (const { what, palm, hand, midline } of palms(walker)) {
   const inward = new THREE.Vector3().subVectors(midline, hand);
   inward.addScaledVector(WORLD_UP, -inward.dot(WORLD_UP));
   assert(inward.lengthSq() > 1e-6, `${what} hand hangs off the midline`);
-  assert(palm.dot(inward.normalize()) > 0.2,
-    `on foot standing ${what}: a hanging palm faces the body, not away from it `
-    + `(inward ${palm.dot(inward).toFixed(2)})`);
+  assert(
+    palm.dot(inward.normalize()) > 0.2,
+    `on foot standing ${what}: a hanging palm faces the body, not away from it ` +
+      `(inward ${palm.dot(inward).toFixed(2)})`,
+  );
 }
 walker.dispose();
 
@@ -110,8 +121,10 @@ walker.dispose();
   const target = () => ({ position: new THREE.Vector3(0.3, 1.1, 0.2), quaternion: quaternion.clone() });
   settle(rider, board({ handTargets: { a: target(), b: target() } }));
   for (const { what, palm } of palms(rider)) {
-    assert(palm.dot(WORLD_UP) > 0.9,
-      `${what}: a tracked wrist keeps its own palm direction (up ${palm.dot(WORLD_UP).toFixed(2)})`);
+    assert(
+      palm.dot(WORLD_UP) > 0.9,
+      `${what}: a tracked wrist keeps its own palm direction (up ${palm.dot(WORLD_UP).toFixed(2)})`,
+    );
   }
   rider.dispose();
 }

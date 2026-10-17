@@ -6,7 +6,7 @@ export const NATIVE_COLLISION_MODE = {
   physicsBodySpheres: 3,
 } as const;
 
-export type NativeCollisionMode = typeof NATIVE_COLLISION_MODE[keyof typeof NATIVE_COLLISION_MODE];
+export type NativeCollisionMode = (typeof NATIVE_COLLISION_MODE)[keyof typeof NATIVE_COLLISION_MODE];
 export type NativeContactState = 'none' | 'through' | 'solid';
 
 export interface NativeCollisionState {
@@ -31,10 +31,14 @@ export interface NativeCollisionState {
  */
 export function nativeContactState(state: NativeCollisionState): NativeContactState {
   if (!state.playerCollision) return 'none';
-  const hasShape = state.mode === NATIVE_COLLISION_MODE.triangleProxy ? state.hasTriangleProxy
-    : state.mode === NATIVE_COLLISION_MODE.boundingBox
-      ? true
-      : state.mode === NATIVE_COLLISION_MODE.physicsBodySpheres ? state.hasPhysicsBody : false;
+  const hasShape =
+    state.mode === NATIVE_COLLISION_MODE.triangleProxy
+      ? state.hasTriangleProxy
+      : state.mode === NATIVE_COLLISION_MODE.boundingBox
+        ? true
+        : state.mode === NATIVE_COLLISION_MODE.physicsBodySpheres
+          ? state.hasPhysicsBody
+          : false;
   if (!hasShape) return 'none';
   if (state.responseMass === 0) return 'through';
   return state.playerBounce ? 'solid' : 'through';

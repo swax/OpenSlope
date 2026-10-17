@@ -8,5 +8,8 @@ export function toast(msg: string, kind: 'ok' | 'warn' | 'err' | 'info' = 'info'
   toastEl.textContent = msg;
   toastEl.className = 'show' + (kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : kind === 'warn' ? ' warn' : '');
   clearTimeout(toastTimer);
-  if (ms) toastTimer = window.setTimeout(() => { toastEl.className = ''; }, ms);
+  if (ms)
+    toastTimer = window.setTimeout(() => {
+      toastEl.className = '';
+    }, ms);
 }

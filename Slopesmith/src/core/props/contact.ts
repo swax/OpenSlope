@@ -39,21 +39,34 @@ export interface SourceCollisionFacts {
 }
 
 /** Copy a concrete extracted instance without collapsing its independently authored fields. */
-export function collisionProfileFromSourceInstance(level: string, source: SourceCollisionFacts): NativeCollisionProfile {
-  const mode = Number.isInteger(source.shape) && source.shape! >= 0 && source.shape! <= 3
-    ? source.shape as 0 | 1 | 2 | 3 : NATIVE_COLLISION_MODE.none;
+export function collisionProfileFromSourceInstance(
+  level: string,
+  source: SourceCollisionFacts,
+): NativeCollisionProfile {
+  const mode =
+    Number.isInteger(source.shape) && source.shape! >= 0 && source.shape! <= 3
+      ? (source.shape as 0 | 1 | 2 | 3)
+      : NATIVE_COLLISION_MODE.none;
   const responseClass = source.contact === 'solid' || source.contact === 'movable';
   return {
     mode,
     playerCollision: source.playerCollision ?? source.contact !== 'ghost',
-    responseMass: typeof source.responseMass === 'number' && source.responseMass >= 0
-      ? source.responseMass : responseClass ? 1e30 : 0,
+    responseMass:
+      typeof source.responseMass === 'number' && source.responseMass >= 0
+        ? source.responseMass
+        : responseClass
+          ? 1e30
+          : 0,
     playerBounce: source.playerBounce ?? responseClass,
-    bounceAmount: typeof source.bounce === 'number' && source.bounce >= 0
-      ? source.bounce : responseClass ? 0.5 : 0,
+    bounceAmount: typeof source.bounce === 'number' && source.bounce >= 0 ? source.bounce : responseClass ? 0.5 : 0,
     ...(typeof source.physicsBody === 'number' && source.physicsBody >= 0
-      ? { physicsSource: { level, body: Math.trunc(source.physicsBody),
-          ...(source.sourceIndex !== undefined ? { instance: source.sourceIndex } : {}) } }
+      ? {
+          physicsSource: {
+            level,
+            body: Math.trunc(source.physicsBody),
+            ...(source.sourceIndex !== undefined ? { instance: source.sourceIndex } : {}),
+          },
+        }
       : {}),
   };
 }
@@ -80,8 +93,8 @@ export function inferredPlacedPropCollision(
   collisionEffect = false,
   hitSound = false,
 ): NativeCollisionProfile {
-  const solid = !prop.effectTrigger
-    && (typeof prop.solid === 'boolean' ? prop.solid : defaultPlacedPropSolid(prop.level));
+  const solid =
+    !prop.effectTrigger && (typeof prop.solid === 'boolean' ? prop.solid : defaultPlacedPropSolid(prop.level));
   const contactOnly = !solid && (!!prop.effectTrigger || collisionEffect || hitSound);
   return {
     mode: solid || contactOnly ? NATIVE_COLLISION_MODE.triangleProxy : NATIVE_COLLISION_MODE.none,
@@ -114,12 +127,16 @@ export function placedPropSolid(
  */
 export function placedPropContactState(
   prop: Pick<PlacedProp, 'level' | 'solid' | 'effectTrigger' | 'bounce' | 'nativeCollision'>,
-  collisionEffect: boolean, hitSound: boolean): PlacedPropContactState {
+  collisionEffect: boolean,
+  hitSound: boolean,
+): PlacedPropContactState {
   return collisionProfileContactState(placedPropCollisionProfile(prop, collisionEffect, hitSound));
 }
 
 export function placedPropContactLabel(state: PlacedPropContactState): string {
-  return state === 'solid' ? 'solid — rider responds; attached effects and sounds can fire'
-    : state === 'through' ? 'ride-through — attached effects and sounds can fire'
+  return state === 'solid'
+    ? 'solid — rider responds; attached effects and sounds can fire'
+    : state === 'through'
+      ? 'ride-through — attached effects and sounds can fire'
       : 'no contact — decorative only';
 }

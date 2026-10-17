@@ -1,4 +1,13 @@
-import { DEFAULT_FAL_3D_MODEL, DEFAULT_FAL_INPAINT_MODEL, DEFAULT_FAL_MODEL, GEN_SIZES, STORE_SIZES, fal3dDetail, fal3dModel, falInpaintModel } from '../../core/paint/fal-models';
+import {
+  DEFAULT_FAL_3D_MODEL,
+  DEFAULT_FAL_INPAINT_MODEL,
+  DEFAULT_FAL_MODEL,
+  GEN_SIZES,
+  STORE_SIZES,
+  fal3dDetail,
+  fal3dModel,
+  falInpaintModel,
+} from '../../core/paint/fal-models';
 import { DEFAULT_VIDEO_BRIDGE_SERVER, normalizeVideoBridgeServer } from '../net/video-bridge';
 import type { VideoBridgePrefs } from '../net/video-bridge-contract';
 
@@ -63,7 +72,15 @@ export interface EditorSettings {
 
 const DEFAULTS: EditorSettings = {
   falKey: '',
-  texGen: { model: DEFAULT_FAL_MODEL, inpaintModel: DEFAULT_FAL_INPAINT_MODEL, genSize: 512, storeSize: 128, seamless: true, vwrapPass: true, transVertical: false },
+  texGen: {
+    model: DEFAULT_FAL_MODEL,
+    inpaintModel: DEFAULT_FAL_INPAINT_MODEL,
+    genSize: 512,
+    storeSize: 128,
+    seamless: true,
+    vwrapPass: true,
+    transVertical: false,
+  },
   skyGen: { model: DEFAULT_FAL_MODEL, pano: false },
   propGen: { imageModel: DEFAULT_FAL_MODEL, meshModel: DEFAULT_FAL_3D_MODEL, meshDetail: '', sizeM: 3 },
   videoBridge: { enabled: false, serverUrl: DEFAULT_VIDEO_BRIDGE_SERVER, username: '', password: '' },
@@ -94,7 +111,9 @@ export function loadSettings(): EditorSettings {
     let serverUrl = DEFAULTS.videoBridge.serverUrl;
     try {
       if (typeof videoBridge.serverUrl === 'string') serverUrl = normalizeVideoBridgeServer(videoBridge.serverUrl);
-    } catch { /* malformed or retired stored value falls back without breaking editor boot */ }
+    } catch {
+      /* malformed or retired stored value falls back without breaking editor boot */
+    }
     return {
       falKey: typeof stored.falKey === 'string' ? stored.falKey : '',
       texGen: {
@@ -105,7 +124,9 @@ export function loadSettings(): EditorSettings {
         // a stored size from an older build may no longer be offered — fall back rather than render a
         // <select> with no matching option, which would silently generate at the wrong size
         genSize: (GEN_SIZES as readonly number[]).includes(texGen.genSize) ? texGen.genSize : DEFAULTS.texGen.genSize,
-        storeSize: (STORE_SIZES as readonly number[]).includes(texGen.storeSize) ? texGen.storeSize : DEFAULTS.texGen.storeSize,
+        storeSize: (STORE_SIZES as readonly number[]).includes(texGen.storeSize)
+          ? texGen.storeSize
+          : DEFAULTS.texGen.storeSize,
         seamless: texGen.seamless !== false,
         vwrapPass: texGen.vwrapPass !== false,
         transVertical: texGen.transVertical === true,
@@ -120,8 +141,10 @@ export function loadSettings(): EditorSettings {
         meshModel,
         // resolved against that model's own detail menu; '' when it offers none
         meshDetail: fal3dDetail(meshModel, propGen.meshDetail)?.id ?? '',
-        sizeM: Number.isFinite(propGen.sizeM) && propGen.sizeM >= 0.1 && propGen.sizeM <= 100
-          ? propGen.sizeM : DEFAULTS.propGen.sizeM,
+        sizeM:
+          Number.isFinite(propGen.sizeM) && propGen.sizeM >= 0.1 && propGen.sizeM <= 100
+            ? propGen.sizeM
+            : DEFAULTS.propGen.sizeM,
       },
       videoBridge: {
         enabled: typeof videoBridge.enabled === 'boolean' ? videoBridge.enabled : DEFAULTS.videoBridge.enabled,
@@ -138,10 +161,16 @@ export function loadSettings(): EditorSettings {
 /** Merge a patch into the stored settings and write it back. */
 export function saveSettings(patch: Partial<EditorSettings>): EditorSettings {
   const next = { ...loadSettings(), ...patch };
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* storage full / disabled */ }
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    /* storage full / disabled */
+  }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SETTINGS_CHANGED_EVENT, { detail: next }));
   return next;
 }
 
 /** The fal.ai key, or '' when none is set — the Generate flow's gate. */
-export function falKey(): string { return loadSettings().falKey.trim(); }
+export function falKey(): string {
+  return loadSettings().falKey.trim();
+}

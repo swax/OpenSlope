@@ -54,12 +54,19 @@ export * from './authoring-catalogue';
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const collectionIds = (document: EffectsDocument): Set<string> => new Set([
-  ...document.slots.map(x => x.id), ...document.graphs.map(x => x.id), ...document.functions.map(x => x.id),
-  ...document.objectProperties.map(x => x.id), ...document.instances.map(x => x.id),
-  ...document.physics.map(x => x.id), ...document.collisionModels.map(x => x.id), ...document.splines.map(x => x.id),
-  ...document.graphs.flatMap(x => x.nodes.map(n => n.id)), ...document.functions.flatMap(x => x.nodes.map(n => n.id)),
-]);
+const collectionIds = (document: EffectsDocument): Set<string> =>
+  new Set([
+    ...document.slots.map(x => x.id),
+    ...document.graphs.map(x => x.id),
+    ...document.functions.map(x => x.id),
+    ...document.objectProperties.map(x => x.id),
+    ...document.instances.map(x => x.id),
+    ...document.physics.map(x => x.id),
+    ...document.collisionModels.map(x => x.id),
+    ...document.splines.map(x => x.id),
+    ...document.graphs.flatMap(x => x.nodes.map(n => n.id)),
+    ...document.functions.flatMap(x => x.nodes.map(n => n.id)),
+  ]);
 
 /** Deterministic stable id allocation makes authored diffs and tests readable. */
 export function nextEffectId(document: EffectsDocument, prefix: string): string {
@@ -81,23 +88,33 @@ export function nextPlacedPropId(props: readonly PlacedProp[], prefix = 'prop'):
 /** Upgrade old slope documents in place: attachments need identity that survives array reorder/delete. */
 export function ensurePlacedPropIds(props: PlacedProp[] | undefined): void {
   if (!props) return;
-  const used = new Set<string>(), needsId: PlacedProp[] = [];
+  const used = new Set<string>(),
+    needsId: PlacedProp[] = [];
   for (const prop of props) {
     if (typeof prop.id === 'string' && prop.id && !used.has(prop.id)) used.add(prop.id);
     else needsId.push(prop);
   }
   for (const prop of needsId) {
-    prop.id = nextPlacedPropId([...used].map(id => ({ id } as PlacedProp)));
+    prop.id = nextPlacedPropId([...used].map(id => ({ id }) as PlacedProp));
     used.add(prop.id);
   }
 }
 
 export function createEmptyEffectsDocument(level: string): EffectsDocument {
   return {
-    $schema: 'openslope-effects-v1.schema.json', kind: 'openslope-effects', version: 1,
+    $schema: 'openslope-effects-v1.schema.json',
+    kind: 'openslope-effects',
+    version: 1,
     target: { game: 'ssx-tricky', platform: 'ps2', region: 'pal', level: level || 'UNTITLED' },
     header: { U1: 1966592, U2: 1053952, U3: 0.006 },
-    slots: [], graphs: [], functions: [], objectProperties: [], instances: [], physics: [], collisionModels: [], splines: [],
+    slots: [],
+    graphs: [],
+    functions: [],
+    objectProperties: [],
+    instances: [],
+    physics: [],
+    collisionModels: [],
+    splines: [],
     extensions: {},
   };
 }
@@ -110,7 +127,7 @@ const isAuthoredSplineResource = (id: string): boolean =>
 
 /** Portable effect-resource id for any course spline Slopesmith manages — a motion path or a grind rail.
  *  The rail's own id prefix (`path:` / `rail:`) is what keeps the two kinds apart in the resource table. */
-export const authoredSplineId = (rail: Rail): string | null => rail.id ? `spline:${rail.id}` : null;
+export const authoredSplineId = (rail: Rail): string | null => (rail.id ? `spline:${rail.id}` : null);
 
 /** Portable effect-resource id for an authored motion path, and null for a grind rail. Callers that mean
  *  "a route a mover can follow" want this; callers that mean "any spline" want `authoredSplineId`. */
@@ -151,18 +168,19 @@ export function syncAuthoredSplineEffectResources(document: EffectsDocument, rai
     };
   });
   const live = new Set(managed.map(resource => resource.id));
-  const stale = new Set(document.splines
-    .filter(resource => isAuthoredSplineResource(resource.id) && !live.has(resource.id))
-    .map(resource => resource.id));
-  document.splines = [
-    ...document.splines.filter(resource => !isAuthoredSplineResource(resource.id)),
-    ...managed,
-  ];
+  const stale = new Set(
+    document.splines
+      .filter(resource => isAuthoredSplineResource(resource.id) && !live.has(resource.id))
+      .map(resource => resource.id),
+  );
+  document.splines = [...document.splines.filter(resource => !isAuthoredSplineResource(resource.id)), ...managed];
   for (const owner of [...document.graphs, ...document.functions])
     for (const node of owner.nodes) {
       const spline = node.references?.spline;
-      if (spline && (stale.has(spline)
-        || (node.semanticType === 'spline.animation' && !isAuthoredMotionPathResource(spline))))
+      if (
+        spline &&
+        (stale.has(spline) || (node.semanticType === 'spline.animation' && !isAuthoredMotionPathResource(spline)))
+      )
         node.references!.spline = null;
     }
 }
@@ -171,14 +189,19 @@ export function syncAuthoredSplineEffectResources(document: EffectsDocument, rai
 export const syncAuthoredMotionPathEffectResources = syncAuthoredSplineEffectResources;
 
 /** Bind a newly added spline-mover node to a preferred complete motion path, falling back to the first path. */
-export function bindEffectSplineToMotionPath(document: EffectsDocument, selection: EffectSelection,
-  rails: Rail[] | undefined, preferredPathId?: string | null): boolean {
+export function bindEffectSplineToMotionPath(
+  document: EffectsDocument,
+  selection: EffectSelection,
+  rails: Rail[] | undefined,
+  preferredPathId?: string | null,
+): boolean {
   syncAuthoredSplineEffectResources(document, rails);
   const node = effectNode(document, selection);
   if (node?.semanticType !== 'spline.animation') return false;
   const routes = document.splines.filter(resource => isAuthoredMotionPathResource(resource.id));
   const preferred = preferredPathId
-    ? routes.find(resource => authoredMotionPathIdFromSpline(resource.id) === preferredPathId) : null;
+    ? routes.find(resource => authoredMotionPathIdFromSpline(resource.id) === preferredPathId)
+    : null;
   const target = preferred ?? routes[0];
   (node.references ??= {}).spline = target?.id ?? null;
   return !!target;
@@ -191,16 +214,20 @@ export function bindEffectSplineToMotionPath(document: EffectsDocument, selectio
  * motion path would switch a mover's route in and out of the rail network, which is legal and is never what
  * an author reaching for "rail on / off" meant.
  */
-export function bindEffectSplineToRail(document: EffectsDocument, selection: EffectSelection,
-  rails: Rail[] | undefined, preferredRailId?: string | null): boolean {
+export function bindEffectSplineToRail(
+  document: EffectsDocument,
+  selection: EffectSelection,
+  rails: Rail[] | undefined,
+  preferredRailId?: string | null,
+): boolean {
   syncAuthoredSplineEffectResources(document, rails);
   const node = effectNode(document, selection);
   if (node?.semanticType !== 'spline.toggle') return false;
-  const grindIds = new Set((rails ?? [])
-    .filter(rail => !isMotionPath(rail) && rail.id).map(rail => `spline:${rail.id}`));
+  const grindIds = new Set(
+    (rails ?? []).filter(rail => !isMotionPath(rail) && rail.id).map(rail => `spline:${rail.id}`),
+  );
   const grinds = document.splines.filter(resource => grindIds.has(resource.id));
-  const preferred = preferredRailId
-    ? grinds.find(resource => resource.id === `spline:${preferredRailId}`) : null;
+  const preferred = preferredRailId ? grinds.find(resource => resource.id === `spline:${preferredRailId}`) : null;
   const target = preferred ?? grinds[0];
   (node.references ??= {}).spline = target?.id ?? null;
   return !!target;
@@ -241,7 +268,10 @@ export function splineEffectUses(document: EffectsDocument, splineId: string | n
       for (const node of owner.nodes) {
         if (node.references?.spline !== splineId) continue;
         out.push({
-          ownerKind, ownerId: owner.id, nodeId: node.id, semanticType: node.semanticType ?? `MainType ${node.mainType}`,
+          ownerKind,
+          ownerId: owner.id,
+          nodeId: node.id,
+          semanticType: node.semanticType ?? `MainType ${node.mainType}`,
           ...(node.semanticType === 'spline.toggle' ? { switchesOn: splineToggleSwitchesOn(node) } : {}),
         });
       }
@@ -272,8 +302,11 @@ export interface SplinePairedProp {
  * level claims those two objects belong together, and pairing them by proximity would be the editor
  * inventing a fact and presenting it in the same button as a real one.
  */
-export function splinePairedProps(document: EffectsDocument, props: readonly PlacedProp[],
-  splineId: string | null | undefined): SplinePairedProp[] {
+export function splinePairedProps(
+  document: EffectsDocument,
+  props: readonly PlacedProp[],
+  splineId: string | null | undefined,
+): SplinePairedProp[] {
   const out: SplinePairedProp[] = [];
   const seen = new Set<string>();
   for (const use of splineEffectUses(document, splineId)) {
@@ -301,14 +334,20 @@ export const LIFT_DEFAULT_HEIGHT_M = 30;
 /** The altitude a lift added to this graph should carry riders to, or null when the graph is not on a prop
  *  yet. Resolved through the same slot walk the editor uses everywhere else, so a node added to a latch
  *  column or a bare graph reports honestly rather than defaulting to the origin. */
-export function zBoostTargetForOwner(document: EffectsDocument, props: readonly PlacedProp[],
-  ownerId: string): number | null {
+export function zBoostTargetForOwner(
+  document: EffectsDocument,
+  props: readonly PlacedProp[],
+  ownerId: string,
+): number | null {
   const binding = authoredEffectBindings(document, props).find(item => item.graph.id === ownerId);
   return binding ? binding.prop.pos[1] : null;
 }
 
-export function bindZBoostToPlacement(document: EffectsDocument, selection: EffectSelection,
-  placementY: number): boolean {
+export function bindZBoostToPlacement(
+  document: EffectsDocument,
+  selection: EffectSelection,
+  placementY: number,
+): boolean {
   const node = effectNode(document, selection);
   if (node?.semanticType !== 'property.z-boost') return false;
   const sub = (node.payload as { type0?: { type0Sub18?: Record<string, number> } })?.type0?.type0Sub18;
@@ -330,12 +369,14 @@ export function bindZBoostToPlacement(document: EffectsDocument, selection: Effe
  *
  * Returns the id of the function the node now names.
  */
-export function bindEffectFunctionCall(document: EffectsDocument, selection: EffectSelection,
-  preferredFunctionId?: string | null): string | null {
+export function bindEffectFunctionCall(
+  document: EffectsDocument,
+  selection: EffectSelection,
+  preferredFunctionId?: string | null,
+): string | null {
   const node = effectNode(document, selection);
   if (node?.semanticType !== 'function.call') return null;
-  const preferred = preferredFunctionId
-    ? document.functions.find(fn => fn.id === preferredFunctionId) : null;
+  const preferred = preferredFunctionId ? document.functions.find(fn => fn.id === preferredFunctionId) : null;
   let target = preferred ?? null;
   if (!target) {
     const id = nextEffectId(document, 'function');
@@ -346,19 +387,28 @@ export function bindEffectFunctionCall(document: EffectsDocument, selection: Eff
   return target.id;
 }
 
-export function effectOwner(document: EffectsDocument, selection: EffectSelection): EffectGraph | EffectFunction | null {
+export function effectOwner(
+  document: EffectsDocument,
+  selection: EffectSelection,
+): EffectGraph | EffectFunction | null {
   return selection.ownerKind === 'graph'
-    ? document.graphs.find(x => x.id === selection.ownerId) ?? null
-    : document.functions.find(x => x.id === selection.ownerId) ?? null;
+    ? (document.graphs.find(x => x.id === selection.ownerId) ?? null)
+    : (document.functions.find(x => x.id === selection.ownerId) ?? null);
 }
 
 export function effectNode(document: EffectsDocument, selection: EffectSelection): EffectNode | null {
   const owner = effectOwner(document, selection);
-  return owner && selection.nodeId ? owner.nodes.find(x => x.id === selection.nodeId) ?? null : null;
+  return owner && selection.nodeId ? (owner.nodes.find(x => x.id === selection.nodeId) ?? null) : null;
 }
 
 const emptyEffectCircumstances = (): EffectSlot['circumstances'] => ({
-  persistent: null, collision: null, slot3: null, slot4: null, trigger: null, slot6: null, slot7: null,
+  persistent: null,
+  collision: null,
+  slot3: null,
+  slot4: null,
+  trigger: null,
+  slot6: null,
+  slot7: null,
 });
 
 /** Populate a template's latch columns on the host slot, each as a fresh empty sentinel graph. */
@@ -372,8 +422,7 @@ function applyTemplateLatches(document: EffectsDocument, slot: EffectSlot, templ
 }
 
 /** Create an empty graph and slot for one user-facing native effect circumstance. */
-export function addEmptyEffect(document: EffectsDocument,
-  circumstance: AuthoredEffectCircumstance): EffectSelection {
+export function addEmptyEffect(document: EffectsDocument, circumstance: AuthoredEffectCircumstance): EffectSelection {
   const type = EFFECT_TYPES.find(item => item.circumstance === circumstance) ?? EFFECT_TYPES[0];
   const graphId = nextEffectId(document, 'graph');
   document.graphs.push({ id: graphId, name: type.label, nodes: [] });
@@ -397,13 +446,16 @@ export function addEmptyEffect(document: EffectsDocument,
  * Returns false when the prop already carries an attachment, which is what makes this safe to call on every
  * placement: a prop somebody has since edited is left exactly as they left it.
  */
-export function attachModelEffectsToProp(document: EffectsDocument, propId: string,
+export function attachModelEffectsToProp(
+  document: EffectsDocument,
+  propId: string,
   declared: {
     emitters?: readonly { fields: Record<string, number> }[];
     scrolls?: readonly { mat: number; effect: UvScrollEffect }[];
     /** The model carries an object-hierarchy clip (an imported GLB that declared a spin). */
     clip?: boolean;
-  }): boolean {
+  },
+): boolean {
   const emitters = declared.emitters ?? [];
   const scrolls = declared.scrolls ?? [];
   if (!emitters.length && !scrolls.length && !declared.clip) return false;
@@ -428,8 +480,7 @@ export function attachModelEffectsToProp(document: EffectsDocument, propId: stri
     // The looping Model clip template verbatim, so a declared spin and a hand-added one are the same node:
     // the geometry is already in the document, and this is only the player that runs it. U1/U2 are the clip
     // WINDOW in frames and negative means "the whole clip" — the value 40 of retail's 43 anim nodes carry.
-    push(0, { type0: { SubType: 256,
-      type0Sub256: { U0: 1, U1: -1, U2: -1, U3: 30, U4: 0, U5: 1, U6: 0, U7: 3 } } });
+    push(0, { type0: { SubType: 256, type0Sub256: { U0: 1, U1: -1, U2: -1, U3: 30, U4: 0, U5: 1, U6: 0, U7: 3 } } });
   }
   for (const emitter of emitters) {
     push(2, { type2: { SubType: 0, type2Sub0: { ...emitter.fields } } });
@@ -438,10 +489,23 @@ export function attachModelEffectsToProp(document: EffectsDocument, propId: stri
     // An ordinary retail-shaped UVScroll node, so it decodes with the existing reader and exports as a
     // native one. Which material it drives is a Slopesmith concern and rides in `extensions`, leaving the
     // payload byte-shaped like the record it came from.
-    push(0, { type0: { SubType: 10, UVScroll: {
-      U0: scroll.effect.mode, U1: scroll.effect.uPerTick, U2: scroll.effect.vPerTick,
-      U3: scroll.effect.activeDuration, U4: scroll.effect.pauseDuration, U5: scroll.effect.lifetime,
-    } } }, { slopesmith: { material: scroll.mat } });
+    push(
+      0,
+      {
+        type0: {
+          SubType: 10,
+          UVScroll: {
+            U0: scroll.effect.mode,
+            U1: scroll.effect.uPerTick,
+            U2: scroll.effect.vPerTick,
+            U3: scroll.effect.activeDuration,
+            U4: scroll.effect.pauseDuration,
+            U5: scroll.effect.lifetime,
+          },
+        },
+      },
+      { slopesmith: { material: scroll.mat } },
+    );
   }
   document.graphs.push({ id: graphId, name: 'Model effects', nodes });
   const slotId = nextEffectId(document, 'slot');
@@ -458,28 +522,43 @@ export function attachModelEffectsToProp(document: EffectsDocument, propId: stri
  * share one slot — 22 GARI crash bags, one Roller — so retuning the effect in the Effects editor retunes every prop
  * that carries it. Returns false when the prop already carries an effect, which leaves one attached by hand alone.
  */
-export function attachEffectTemplateToProp(document: EffectsDocument, propId: string,
-  template: PropEffectTemplate, name: string): boolean {
+export function attachEffectTemplateToProp(
+  document: EffectsDocument,
+  propId: string,
+  template: PropEffectTemplate,
+  name: string,
+): boolean {
   if (effectAttachments(document).some(item => item.target.id === propId)) return false;
   const columns = DEFAULT_EFFECT_CIRCUMSTANCES.filter(column => template.circumstances[column]?.length);
   if (!columns.length) return false;
   const graphIds = new Set(document.graphs.map(graph => graph.id));
   let slot = document.slots.find(item => {
     const ext = object(item.extensions?.slopesmith) ? item.extensions.slopesmith : null;
-    return ext?.effectDefault === template.key
-      && columns.every(column => !!item.circumstances[column] && graphIds.has(item.circumstances[column]!));
+    return (
+      ext?.effectDefault === template.key &&
+      columns.every(column => !!item.circumstances[column] && graphIds.has(item.circumstances[column]!))
+    );
   });
   if (!slot) {
     const circumstances = emptyEffectCircumstances();
     for (const column of columns) {
       const graphId = nextEffectId(document, 'graph');
-      document.graphs.push({ id: graphId, name: `${name} · ${effectCircumstanceLabel(column)}`,
-        nodes: template.circumstances[column]!.map((node, index) =>
-          ({ ...structuredClone(node), id: `${graphId}/node:${index.toString().padStart(4, '0')}` })) });
+      document.graphs.push({
+        id: graphId,
+        name: `${name} · ${effectCircumstanceLabel(column)}`,
+        nodes: template.circumstances[column]!.map((node, index) => ({
+          ...structuredClone(node),
+          id: `${graphId}/node:${index.toString().padStart(4, '0')}`,
+        })),
+      });
       circumstances[column] = graphId;
     }
-    slot = { id: nextEffectId(document, 'slot'), name: `${name} effect`, circumstances,
-      extensions: { slopesmith: { effectDefault: template.key } } };
+    slot = {
+      id: nextEffectId(document, 'slot'),
+      name: `${name} effect`,
+      circumstances,
+      extensions: { slopesmith: { effectDefault: template.key } },
+    };
     document.slots.push(slot);
   }
   attachEffectToProp(document, propId, slot.id, columns.includes('collision') ? 'collision' : columns[0]);
@@ -488,8 +567,10 @@ export function attachEffectTemplateToProp(document: EffectsDocument, propId: st
 
 /** A template's chain as concrete nodes in a fresh graph. Ids number from zero because the graph is new. */
 function templateNodes(template: EffectTemplate, graphId: string): EffectNode[] {
-  return (template.nodes ?? []).map((node, index) =>
-    ({ ...structuredClone(node), id: `${graphId}/node:${index.toString().padStart(4, '0')}` }));
+  return (template.nodes ?? []).map((node, index) => ({
+    ...structuredClone(node),
+    id: `${graphId}/node:${index.toString().padStart(4, '0')}`,
+  }));
 }
 
 export function addEffectTemplate(document: EffectsDocument, templateId: EffectTemplateId): EffectSelection {
@@ -521,8 +602,11 @@ function nextNodeId(document: EffectsDocument, owner: EffectGraph | EffectFuncti
   }
 }
 
-export function addEffectNodeTemplate(document: EffectsDocument, selection: EffectSelection,
-  templateId: EffectNodeTemplateId): EffectSelection | null {
+export function addEffectNodeTemplate(
+  document: EffectsDocument,
+  selection: EffectSelection,
+  templateId: EffectNodeTemplateId,
+): EffectSelection | null {
   const owner = effectOwner(document, selection);
   const template = EFFECT_TEMPLATES.find(x => x.id === templateId);
   if (!owner || !template?.nodes?.length) return null;
@@ -541,7 +625,8 @@ export function addEffectNodeTemplate(document: EffectsDocument, selection: Effe
 
 export function moveEffectOwner(document: EffectsDocument, selection: EffectSelection, delta: -1 | 1): boolean {
   const list = selection.ownerKind === 'graph' ? document.graphs : document.functions;
-  const at = list.findIndex(x => x.id === selection.ownerId), to = at + delta;
+  const at = list.findIndex(x => x.id === selection.ownerId),
+    to = at + delta;
   if (at < 0 || to < 0 || to >= list.length) return false;
   const mutable = list as (EffectGraph | EffectFunction)[];
   [mutable[at], mutable[to]] = [mutable[to], mutable[at]];
@@ -585,7 +670,8 @@ export function deleteEffectOwner(document: EffectsDocument, selection: EffectSe
 }
 
 export function duplicateEffectNode(document: EffectsDocument, selection: EffectSelection): EffectSelection | null {
-  const owner = effectOwner(document, selection), source = effectNode(document, selection);
+  const owner = effectOwner(document, selection),
+    source = effectNode(document, selection);
   if (!owner || !source) return null;
   const copy = structuredClone(source);
   copy.id = nextNodeId(document, owner);
@@ -595,7 +681,8 @@ export function duplicateEffectNode(document: EffectsDocument, selection: Effect
 }
 
 export function deleteEffectNode(document: EffectsDocument, selection: EffectSelection): EffectSelection | null {
-  const owner = effectOwner(document, selection), node = effectNode(document, selection);
+  const owner = effectOwner(document, selection),
+    node = effectNode(document, selection);
   if (!owner || !node) return null;
   const at = owner.nodes.indexOf(node);
   owner.nodes.splice(at, 1);
@@ -604,9 +691,11 @@ export function deleteEffectNode(document: EffectsDocument, selection: EffectSel
 }
 
 export function moveEffectNode(document: EffectsDocument, selection: EffectSelection, delta: -1 | 1): boolean {
-  const owner = effectOwner(document, selection), node = effectNode(document, selection);
+  const owner = effectOwner(document, selection),
+    node = effectNode(document, selection);
   if (!owner || !node) return false;
-  const at = owner.nodes.indexOf(node), to = at + delta;
+  const at = owner.nodes.indexOf(node),
+    to = at + delta;
   if (to < 0 || to >= owner.nodes.length) return false;
   [owner.nodes[at], owner.nodes[to]] = [owner.nodes[to], owner.nodes[at]];
   return true;
@@ -614,10 +703,15 @@ export function moveEffectNode(document: EffectsDocument, selection: EffectSelec
 
 /** Replace the selected node from its exact portable JSON, proving the whole document still validates first. */
 export function replaceEffectNodeRaw(document: EffectsDocument, selection: EffectSelection, json: string): EffectNode {
-  const owner = effectOwner(document, selection), current = effectNode(document, selection);
+  const owner = effectOwner(document, selection),
+    current = effectNode(document, selection);
   if (!owner || !current) throw new Error('Select a node first.');
   let value: unknown;
-  try { value = JSON.parse(json); } catch (error) { throw new Error(`Invalid node JSON: ${error instanceof Error ? error.message : String(error)}`, { cause: error }); }
+  try {
+    value = JSON.parse(json);
+  } catch (error) {
+    throw new Error(`Invalid node JSON: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
   if (!object(value)) throw new Error('Node JSON must be an object.');
   const replacement = value as unknown as EffectNode;
   if (!replacement.id) replacement.id = current.id;
@@ -642,14 +736,23 @@ function slopesmithExtension(document: EffectsDocument, create: boolean): Record
 }
 
 const isCircumstance = (value: unknown): value is EffectCircumstance =>
-  typeof value === 'string' && ['persistent', 'collision', 'slot3', 'slot4', 'trigger', 'slot6', 'slot7'].includes(value);
+  typeof value === 'string' &&
+  ['persistent', 'collision', 'slot3', 'slot4', 'trigger', 'slot6', 'slot7'].includes(value);
 
 export function effectAttachments(document: EffectsDocument): EffectAttachment[] {
   const raw = slopesmithExtension(document, false)?.attachments;
   if (!Array.isArray(raw)) return [];
-  return raw.filter(item => object(item)
-    && typeof item.id === 'string' && object(item.target) && item.target.kind === 'prop'
-    && typeof item.target.id === 'string' && typeof item.slot === 'string' && isCircumstance(item.circumstance))
+  return raw
+    .filter(
+      item =>
+        object(item) &&
+        typeof item.id === 'string' &&
+        object(item.target) &&
+        item.target.kind === 'prop' &&
+        typeof item.target.id === 'string' &&
+        typeof item.slot === 'string' &&
+        isCircumstance(item.circumstance),
+    )
     .map(item => item as unknown as EffectAttachment);
 }
 
@@ -662,8 +765,10 @@ export interface AuthoredEffectBinding {
 
 /** Resolve every graph carried by an authored prop's slot. `attachment.circumstance` is only the editor's
  * preferred graph/focus; the native instance owns the whole slot and therefore every populated circumstance. */
-export function authoredEffectBindings(document: EffectsDocument,
-  props: readonly PlacedProp[]): AuthoredEffectBinding[] {
+export function authoredEffectBindings(
+  document: EffectsDocument,
+  props: readonly PlacedProp[],
+): AuthoredEffectBinding[] {
   const propById = new Map(props.filter(prop => !!prop.id).map(prop => [prop.id!, prop]));
   const graphById = new Map(document.graphs.map(graph => [graph.id, graph]));
   const out: AuthoredEffectBinding[] = [];
@@ -697,8 +802,10 @@ export function rollerNodeMass(node: Pick<EffectNode, 'semanticType' | 'payload'
  * in Test [Trailmap: 130-collision-data, 370-world-interaction]. A Roller in a placement's own collision graph
  * activates that placement; a remote call in it whose called graph carries one activates the call's target.
  */
-export function authoredRollerMasses(document: EffectsDocument | null | undefined,
-  props: readonly PlacedProp[]): Map<string, number> {
+export function authoredRollerMasses(
+  document: EffectsDocument | null | undefined,
+  props: readonly PlacedProp[],
+): Map<string, number> {
   const out = new Map<string, number>();
   if (!document) return out;
   const graphMass = (graph: EffectGraph | null): number | null => {
@@ -722,8 +829,11 @@ export function authoredRollerMasses(document: EffectsDocument | null | undefine
 }
 
 /** Whether a prop's enabled attachment resolves a real graph in the requested native slot circumstance. */
-export function authoredPropHasEffectCircumstance(document: EffectsDocument | null | undefined,
-  propId: string | null | undefined, circumstance: EffectCircumstance): boolean {
+export function authoredPropHasEffectCircumstance(
+  document: EffectsDocument | null | undefined,
+  propId: string | null | undefined,
+  circumstance: EffectCircumstance,
+): boolean {
   if (!document || !propId) return false;
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : null;
@@ -732,8 +842,11 @@ export function authoredPropHasEffectCircumstance(document: EffectsDocument | nu
 }
 
 /** Resolve always-on material effects attached to an authored prop through the editor's stable-ID slot join. */
-export function authoredPropMaterialEffects(document: EffectsDocument | null | undefined,
-  propId: string | null | undefined, mat?: number): MaterialWorldEffects | null {
+export function authoredPropMaterialEffects(
+  document: EffectsDocument | null | undefined,
+  propId: string | null | undefined,
+  mat?: number,
+): MaterialWorldEffects | null {
   if (!document || !propId) return null;
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   if (!attachment) return null;
@@ -747,8 +860,15 @@ export function authoredPropMaterialEffects(document: EffectsDocument | null | u
 }
 
 /** Every circumstance an attached slot can run a graph from, in the order the renderer resolves them. */
-const MATERIAL_CIRCUMSTANCE_ORDER: readonly EffectCircumstance[] =
-  ['persistent', 'collision', 'slot3', 'slot4', 'trigger', 'slot6', 'slot7'];
+const MATERIAL_CIRCUMSTANCE_ORDER: readonly EffectCircumstance[] = [
+  'persistent',
+  'collision',
+  'slot3',
+  'slot4',
+  'trigger',
+  'slot6',
+  'slot7',
+];
 
 /**
  * The material property an authored prop's graphs install, whichever circumstance installs it.
@@ -758,8 +878,10 @@ const MATERIAL_CIRCUMSTANCE_ORDER: readonly EffectCircumstance[] =
  * installs its flip on contact — and the renderer needs to know before the first control message arrives, so
  * the prop can be given a material of its own to pulse.
  */
-export function authoredPropMaterialControl(document: EffectsDocument | null | undefined,
-  propId: string | null | undefined): MaterialControl | null {
+export function authoredPropMaterialControl(
+  document: EffectsDocument | null | undefined,
+  propId: string | null | undefined,
+): MaterialControl | null {
   if (!document || !propId) return null;
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : null;
@@ -772,10 +894,12 @@ export function authoredPropMaterialControl(document: EffectsDocument | null | u
     seen.add(graph.id);
     installedControl ??= materialControlFromGraph(graph);
     for (const node of graph.nodes) {
-      hasControl ||= node.mainType === 3 || node.mainType === 9
-        || !!node.semanticType?.startsWith('property.node-') || node.semanticType === 'property.breakable-kill';
-      if (node.references?.function)
-        inspect(document.functions.find(fn => fn.id === node.references!.function));
+      hasControl ||=
+        node.mainType === 3 ||
+        node.mainType === 9 ||
+        !!node.semanticType?.startsWith('property.node-') ||
+        node.semanticType === 'property.breakable-kill';
+      if (node.references?.function) inspect(document.functions.find(fn => fn.id === node.references!.function));
     }
   };
   for (const circumstance of MATERIAL_CIRCUMSTANCE_ORDER) {
@@ -788,21 +912,29 @@ export function authoredPropMaterialControl(document: EffectsDocument | null | u
   }
   // A switch can stop another prop's receiver. Give that target its own material even when its own slot
   // contains only the always-running constructor, or stopping it also freezes unrelated placements.
-  const targets = new Set(document.instances.filter(instance => {
-    const extension = instance.extensions?.slopesmith;
-    return extension && typeof extension === 'object' && !Array.isArray(extension)
-      && extension.placement === propId;
-  }).map(instance => instance.id));
-  for (const owner of [...document.graphs, ...document.functions]) for (const node of owner.nodes) {
-    if (node.mainType !== 7 || !targets.has(node.references?.instance ?? '')) continue;
-    inspect(document.graphs.find(graph => graph.id === node.references?.effectGraph));
-  }
+  const targets = new Set(
+    document.instances
+      .filter(instance => {
+        const extension = instance.extensions?.slopesmith;
+        return (
+          extension && typeof extension === 'object' && !Array.isArray(extension) && extension.placement === propId
+        );
+      })
+      .map(instance => instance.id),
+  );
+  for (const owner of [...document.graphs, ...document.functions])
+    for (const node of owner.nodes) {
+      if (node.mainType !== 7 || !targets.has(node.references?.instance ?? '')) continue;
+      inspect(document.graphs.find(graph => graph.id === node.references?.effectGraph));
+    }
   return hasControl && installedControl ? installedControl : crackedControl;
 }
 
 /** Compatibility helper for callers interested only in the recovered UV scroll. */
-export function authoredPropUvScroll(document: EffectsDocument | null | undefined,
-  propId: string | null | undefined): UvScrollEffect | null {
+export function authoredPropUvScroll(
+  document: EffectsDocument | null | undefined,
+  propId: string | null | undefined,
+): UvScrollEffect | null {
   return authoredPropMaterialEffects(document, propId)?.uvScroll ?? null;
 }
 
@@ -816,8 +948,10 @@ export function authoredPropUvScroll(document: EffectsDocument | null | undefine
  * Read off the graph's own node rather than through `authoredPropMaterialEffects`, which also synthesizes a
  * flip for a crowd box — the crowd plays the shared cd bank on the per-cell CrowdBox schedule, not this rate.
  */
-export function authoredPropTextureFlip(document: EffectsDocument | null | undefined,
-  propId: string | null | undefined): TextureFlipEffect | null {
+export function authoredPropTextureFlip(
+  document: EffectsDocument | null | undefined,
+  propId: string | null | undefined,
+): TextureFlipEffect | null {
   if (!document || !propId) return null;
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : null;
@@ -828,8 +962,10 @@ export function authoredPropTextureFlip(document: EffectsDocument | null | undef
 
 /** The Effect-end latch test for an authored prop's attached slot: a finished play-once clip holds its last
  * frame instead of reverting to the rest pose [Trailmap: 150-logic §slot-columns]. */
-export function authoredPropHoldsAtEnd(document: EffectsDocument | null | undefined,
-  propId: string | null | undefined): boolean {
+export function authoredPropHoldsAtEnd(
+  document: EffectsDocument | null | undefined,
+  propId: string | null | undefined,
+): boolean {
   if (!document || !propId) return false;
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   return effectSlotHoldsAtEnd(attachment ? document.slots.find(item => item.id === attachment.slot) : null);
@@ -863,13 +999,21 @@ export function effectSelectionForProp(document: EffectsDocument, propId: string
   return { ownerKind: 'graph', ownerId: graph.id, ...(node ? { nodeId: node.id } : {}) };
 }
 
-export function attachEffectToProp(document: EffectsDocument, propId: string, slot: string,
-  circumstance: EffectCircumstance): EffectAttachment {
+export function attachEffectToProp(
+  document: EffectsDocument,
+  propId: string,
+  slot: string,
+  circumstance: EffectCircumstance,
+): EffectAttachment {
   const ext = slopesmithExtension(document, true)!;
   const attachments = effectAttachments(document);
   const prior = attachments.find(x => x.target.id === propId);
   const attachment: EffectAttachment = prior ?? {
-    id: nextAttachmentId(attachments), target: { kind: 'prop', id: propId }, slot, circumstance, enabled: true,
+    id: nextAttachmentId(attachments),
+    target: { kind: 'prop', id: propId },
+    slot,
+    circumstance,
+    enabled: true,
   };
   attachment.slot = slot;
   attachment.circumstance = circumstance;
@@ -898,8 +1042,11 @@ export function detachEffectFromProp(document: EffectsDocument, propId: string):
 }
 
 /** Add an empty effect to a prop's native slot, creating and attaching the slot when necessary. */
-export function addEmptyEffectToProp(document: EffectsDocument, propId: string,
-  circumstance: AuthoredEffectCircumstance): EffectSelection {
+export function addEmptyEffectToProp(
+  document: EffectsDocument,
+  propId: string,
+  circumstance: AuthoredEffectCircumstance,
+): EffectSelection {
   const type = EFFECT_TYPES.find(item => item.circumstance === circumstance) ?? EFFECT_TYPES[0];
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : undefined;
@@ -911,8 +1058,12 @@ export function addEmptyEffectToProp(document: EffectsDocument, propId: string,
   }
   const existingGraphId = slot.circumstances[type.circumstance];
   const existingGraph = existingGraphId ? document.graphs.find(item => item.id === existingGraphId) : null;
-  if (existingGraph) return { ownerKind: 'graph', ownerId: existingGraph.id,
-    ...(existingGraph.nodes[0] ? { nodeId: existingGraph.nodes[0].id } : {}) };
+  if (existingGraph)
+    return {
+      ownerKind: 'graph',
+      ownerId: existingGraph.id,
+      ...(existingGraph.nodes[0] ? { nodeId: existingGraph.nodes[0].id } : {}),
+    };
   const graphId = nextEffectId(document, 'graph');
   document.graphs.push({ id: graphId, name: type.label, nodes: [] });
   slot.circumstances[type.circumstance] = graphId;
@@ -926,8 +1077,12 @@ export function addEmptyEffectToProp(document: EffectsDocument, propId: string,
  * graph when it stayed empty and nothing else references it. A prop with no slot yet gets a bare slot whose
  * only populated column is the latch — exactly the Elysium door's authored form.
  */
-export function setPropEffectLatch(document: EffectsDocument, propId: string,
-  circumstance: EffectLatchCircumstance, enabled: boolean): boolean {
+export function setPropEffectLatch(
+  document: EffectsDocument,
+  propId: string,
+  circumstance: EffectLatchCircumstance,
+  enabled: boolean,
+): boolean {
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   let slot = attachment ? document.slots.find(item => item.id === attachment.slot) : undefined;
   if (!enabled) {
@@ -935,11 +1090,12 @@ export function setPropEffectLatch(document: EffectsDocument, propId: string,
     if (!slot || !graphId) return false;
     slot.circumstances[circumstance] = null;
     const graph = document.graphs.find(item => item.id === graphId);
-    const referenced = document.slots.some(item => Object.values(item.circumstances).includes(graphId))
-      || [...document.graphs, ...document.functions].some(owner =>
-        owner.nodes.some(node => node.references?.effectGraph === graphId));
-    if (graph && graph.nodes.length === 0 && !referenced)
-      document.graphs.splice(document.graphs.indexOf(graph), 1);
+    const referenced =
+      document.slots.some(item => Object.values(item.circumstances).includes(graphId)) ||
+      [...document.graphs, ...document.functions].some(owner =>
+        owner.nodes.some(node => node.references?.effectGraph === graphId),
+      );
+    if (graph && graph.nodes.length === 0 && !referenced) document.graphs.splice(document.graphs.indexOf(graph), 1);
     return true;
   }
   if (slot?.circumstances[circumstance]) return false;
@@ -963,8 +1119,11 @@ export function setPropEffectLatch(document: EffectsDocument, propId: string,
  * on ONE slot). Circumstance already running a graph → the template node appends to that graph, extending
  * its execution chain the way native trigger chains grow.
  */
-export function addEffectTemplateToProp(document: EffectsDocument, propId: string,
-  templateId: EffectTemplateId): EffectSelection {
+export function addEffectTemplateToProp(
+  document: EffectsDocument,
+  propId: string,
+  templateId: EffectTemplateId,
+): EffectSelection {
   const template = EFFECT_TEMPLATES.find(x => x.id === templateId) ?? EFFECT_TEMPLATES[0];
   const attachment = effectAttachments(document).find(item => item.enabled && item.target.id === propId);
   const slot = attachment ? document.slots.find(item => item.id === attachment.slot) : undefined;
@@ -1001,11 +1160,16 @@ export function addEffectTemplateToProp(document: EffectsDocument, propId: strin
  * The instance row is shared: two hops at the same target reuse one row, which is the shape the native table
  * has anyway (one row per instance, however many nodes name it).
  */
-export function bindInstanceHop(document: EffectsDocument, node: EffectNode,
-  placementId: string, targetGraphId: string): void {
+export function bindInstanceHop(
+  document: EffectsDocument,
+  node: EffectNode,
+  placementId: string,
+  targetGraphId: string,
+): void {
   if (node.mainType !== 7) throw new Error(`bindInstanceHop expects a MainType-7 node, got ${node.mainType}`);
-  const existing = document.instances.find(item =>
-    (item.extensions?.slopesmith as { placement?: string } | undefined)?.placement === placementId);
+  const existing = document.instances.find(
+    item => (item.extensions?.slopesmith as { placement?: string } | undefined)?.placement === placementId,
+  );
   const binding = existing ?? {
     id: nextEffectId(document, 'instance'),
     property: null,
@@ -1026,21 +1190,26 @@ export interface AuthoredInstanceEffectCall {
   graphLabel: string;
 }
 
-export function authoredInstanceEffectCall(document: EffectsDocument, props: readonly PlacedProp[],
-  node: EffectNode): AuthoredInstanceEffectCall | null {
+export function authoredInstanceEffectCall(
+  document: EffectsDocument,
+  props: readonly PlacedProp[],
+  node: EffectNode,
+): AuthoredInstanceEffectCall | null {
   if (node.mainType !== 7 || (!node.references?.instance && !node.references?.effectGraph)) return null;
   const instance = node.references?.instance
-    ? document.instances.find(item => item.id === node.references!.instance) ?? null : null;
+    ? (document.instances.find(item => item.id === node.references!.instance) ?? null)
+    : null;
   const slopesmith = object(instance?.extensions?.slopesmith) ? instance.extensions.slopesmith : null;
   const placementId = slopesmith && typeof slopesmith.placement === 'string' ? slopesmith.placement : null;
-  const target = placementId ? props.find(prop => prop.id === placementId) ?? null : null;
+  const target = placementId ? (props.find(prop => prop.id === placementId) ?? null) : null;
   const graph = node.references?.effectGraph
-    ? document.graphs.find(item => item.id === node.references!.effectGraph) ?? null : null;
+    ? (document.graphs.find(item => item.id === node.references!.effectGraph) ?? null)
+    : null;
   return {
     target,
     graph,
-    targetLabel: target ? `${target.name} · ${target.id}` : placementId ?? node.references?.instance ?? '(none)',
-    graphLabel: graph ? `${graph.name ?? graph.id} · ${graph.id}` : node.references?.effectGraph ?? '(none)',
+    targetLabel: target ? `${target.name} · ${target.id}` : (placementId ?? node.references?.instance ?? '(none)'),
+    graphLabel: graph ? `${graph.name ?? graph.id} · ${graph.id}` : (node.references?.effectGraph ?? '(none)'),
   };
 }
 
@@ -1056,8 +1225,9 @@ export function authoredInstanceEffectCall(document: EffectsDocument, props: rea
  */
 export function bindRiderTeleport(document: EffectsDocument, node: EffectNode, placementId: string): void {
   if (node.mainType !== 24) throw new Error(`bindRiderTeleport expects a MainType-24 node, got ${node.mainType}`);
-  const existing = document.instances.find(item =>
-    (item.extensions?.slopesmith as { placement?: string } | undefined)?.placement === placementId);
+  const existing = document.instances.find(
+    item => (item.extensions?.slopesmith as { placement?: string } | undefined)?.placement === placementId,
+  );
   const binding = existing ?? {
     id: nextEffectId(document, 'instance'),
     property: null,
@@ -1067,7 +1237,10 @@ export function bindRiderTeleport(document: EffectsDocument, node: EffectNode, p
   node.references = { ...node.references, instance: binding.id };
 }
 
-export function graphSlots(document: EffectsDocument, graphId: string): { slot: EffectSlot; circumstance: EffectCircumstance }[] {
+export function graphSlots(
+  document: EffectsDocument,
+  graphId: string,
+): { slot: EffectSlot; circumstance: EffectCircumstance }[] {
   const out: { slot: EffectSlot; circumstance: EffectCircumstance }[] = [];
   for (const slot of document.slots)
     for (const circumstance of Object.keys(slot.circumstances) as EffectCircumstance[])
@@ -1078,7 +1251,7 @@ export function graphSlots(document: EffectsDocument, graphId: string): { slot: 
 export function timerEmitterFields(node: EffectNode): Record<string, JsonValue> | null {
   if (node.mainType !== 2 || !object(node.payload.type2)) return null;
   const type2 = node.payload.type2;
-  return type2.SubType === 0 && object(type2.type2Sub0) ? type2.type2Sub0 as Record<string, JsonValue> : null;
+  return type2.SubType === 0 && object(type2.type2Sub0) ? (type2.type2Sub0 as Record<string, JsonValue>) : null;
 }
 
 const EMITTER_WORD = new DataView(new ArrayBuffer(4));
@@ -1133,8 +1306,7 @@ export function setParticleEmitterField(node: EffectNode, key: string, value: nu
   const match = /^U(\d+)$/.exec(key);
   const index = match ? Number(match[1]) : -1;
   if (index < 0 || index > 50 || typeof type2.type2Sub2[key] !== 'number') return false;
-  type2.type2Sub2[key] = index < 2 || index > 48
-    ? Math.trunc(value) : rawEmitterWordFromFloat(value);
+  type2.type2Sub2[key] = index < 2 || index > 48 ? Math.trunc(value) : rawEmitterWordFromFloat(value);
   return true;
 }
 
@@ -1142,8 +1314,7 @@ export function setParticleEmitterField(node: EffectNode, key: string, value: nu
  * The editor uses this conservative structural check to keep the ambient Effects runtime focused on actual
  * particle graphs: persistent material and AnimObject graphs continue through their dedicated renderers, and
  * cyclic or unusually deep call graphs fail closed instead of growing the frame scheduler without bound. */
-export function effectGraphHasTimerEmitter(document: EffectsDocument, graph: EffectGraph,
-  maxDepth = 6): boolean {
+export function effectGraphHasTimerEmitter(document: EffectsDocument, graph: EffectGraph, maxDepth = 6): boolean {
   const owners = new Map<string, { id: string; nodes: EffectNode[] }>([
     ...document.graphs.map(owner => [owner.id, owner] as const),
     ...document.functions.map(owner => [owner.id, owner] as const),
@@ -1173,14 +1344,16 @@ export function emitterLocalRaw(node: EffectNode): V3 | null {
   const fields = particleEmitterFields(node);
   if (!fields) return null;
   const values = [fields.U9, fields.U10, fields.U11];
-  return values.every(x => typeof x === 'number' && Number.isFinite(x)) ? values as V3 : null;
+  return values.every(x => typeof x === 'number' && Number.isFinite(x)) ? (values as V3) : null;
 }
 
 export function setEmitterLocalRaw(node: EffectNode, raw: V3): boolean {
   if (node.semanticType === 'particle.collision') return false;
-  return setParticleEmitterField(node, 'U9', raw[0])
-    && setParticleEmitterField(node, 'U10', raw[1])
-    && setParticleEmitterField(node, 'U11', raw[2]);
+  return (
+    setParticleEmitterField(node, 'U9', raw[0]) &&
+    setParticleEmitterField(node, 'U10', raw[1]) &&
+    setParticleEmitterField(node, 'U11', raw[2])
+  );
 }
 
 export function emitterWorldPosition(node: EffectNode, prop?: PlacedProp): V3 | null {
@@ -1198,8 +1371,12 @@ export function emitterWorldPosition(node: EffectNode, prop?: PlacedProp): V3 | 
  * rotation + scale — one pass per graph keeps each emitter seated on the same model feature for every
  * placement at once (their poses all composed with the same inverse).
  */
-export function transformModelEmitterFrames(document: EffectsDocument, propIds: Iterable<string>,
-  rotation: PropRotation, scale: number): void {
+export function transformModelEmitterFrames(
+  document: EffectsDocument,
+  propIds: Iterable<string>,
+  rotation: PropRotation,
+  scale: number,
+): void {
   if (rotation.yaw === 0 && !isTilted(rotation) && scale === 1) return;
   const ids = new Set(propIds);
   const done = new Set<string>();
@@ -1222,9 +1399,7 @@ export function transformModelEmitterFrames(document: EffectsDocument, propIds: 
 }
 
 export function setEmitterWorldPosition(node: EffectNode, world: V3, prop?: PlacedProp): boolean {
-  let local: V3 = prop
-    ? [world[0] - prop.pos[0], world[1] - prop.pos[1], world[2] - prop.pos[2]]
-    : [...world];
+  let local: V3 = prop ? [world[0] - prop.pos[0], world[1] - prop.pos[1], world[2] - prop.pos[2]] : [...world];
   if (prop) {
     local = unrotateByPlacement(local, prop);
     const scale = Math.abs(prop.scale) > 1e-9 ? prop.scale : 1;
@@ -1235,8 +1410,7 @@ export function setEmitterWorldPosition(node: EffectNode, world: V3, prop?: Plac
 
 /** The three nodes that end whatever the bound prop is running. Grouped because their placement rules are
  *  identical and one of those rules is a measured console freeze. */
-const LIFETIME_COMMAND_TYPES = new Set(['property.node-destroy', 'property.node-pause',
-  'property.node-tombstone']);
+const LIFETIME_COMMAND_TYPES = new Set(['property.node-destroy', 'property.node-pause', 'property.node-tombstone']);
 
 /**
  * Nodes that lay down without the one thing they point at, and what happens if they ship that way.
@@ -1248,31 +1422,62 @@ const LIFETIME_COMMAND_TYPES = new Set(['property.node-destroy', 'property.node-
  * arrive on the prop that has the problem, at the moment it has it.
  */
 const REQUIRED_NODE_REFERENCES: readonly {
-  semanticType: string; key: string; message: string;
+  semanticType: string;
+  key: string;
+  message: string;
 }[] = [
-  { semanticType: 'instance.state', key: 'instance',
-    message: 'Run on another prop has no target prop, so it does nothing. Choose one under Target prop' },
-  { semanticType: 'instance.state', key: 'effectGraph',
-    message: 'Run on another prop has no effect to run, so it does nothing. Choose one under Effect to run' },
-  { semanticType: 'rider.teleport', key: 'instance',
-    message: 'Teleport rider has no destination. The level will not export until one is chosen, because a '
-      + 'teleport with a guessed destination would drop the rider anywhere on the mountain' },
-  { semanticType: 'spline.toggle', key: 'spline',
-    message: 'Rail on / off has no rail. The level will not export until one is chosen' },
-  { semanticType: 'function.call', key: 'function',
-    message: 'Call shared effect has no shared effect to call. The level will not export until one is chosen' },
+  {
+    semanticType: 'instance.state',
+    key: 'instance',
+    message: 'Run on another prop has no target prop, so it does nothing. Choose one under Target prop',
+  },
+  {
+    semanticType: 'instance.state',
+    key: 'effectGraph',
+    message: 'Run on another prop has no effect to run, so it does nothing. Choose one under Effect to run',
+  },
+  {
+    semanticType: 'rider.teleport',
+    key: 'instance',
+    message:
+      'Teleport rider has no destination. The level will not export until one is chosen, because a ' +
+      'teleport with a guessed destination would drop the rider anywhere on the mountain',
+  },
+  {
+    semanticType: 'spline.toggle',
+    key: 'spline',
+    message: 'Rail on / off has no rail. The level will not export until one is chosen',
+  },
+  {
+    semanticType: 'function.call',
+    key: 'function',
+    message: 'Call shared effect has no shared effect to call. The level will not export until one is chosen',
+  },
 ];
 
-export function validateEffectsAuthoring(document: EffectsDocument, props: readonly PlacedProp[] = [],
-  rails: readonly Rail[] = []): EffectAuthoringIssue[] {
-  const out: EffectAuthoringIssue[] = validateEffectsDocument(document)
-    .map(issue => ({ ...issue, severity: 'error' as const }));
+export function validateEffectsAuthoring(
+  document: EffectsDocument,
+  props: readonly PlacedProp[] = [],
+  rails: readonly Rail[] = [],
+): EffectAuthoringIssue[] {
+  const out: EffectAuthoringIssue[] = validateEffectsDocument(document).map(issue => ({
+    ...issue,
+    severity: 'error' as const,
+  }));
   const propIds = new Set(props.map(p => p.id).filter((id): id is string => !!id));
   for (const [i, attachment] of effectAttachments(document).entries()) {
-    if (!propIds.has(attachment.target.id)) out.push({ severity: 'error', path: `$.extensions.slopesmith.attachments[${i}].target.id`,
-      message: `references missing level prop '${attachment.target.id}'` });
-    if (!document.slots.some(x => x.id === attachment.slot)) out.push({ severity: 'error', path: `$.extensions.slopesmith.attachments[${i}].slot`,
-      message: `references missing slot '${attachment.slot}'` });
+    if (!propIds.has(attachment.target.id))
+      out.push({
+        severity: 'error',
+        path: `$.extensions.slopesmith.attachments[${i}].target.id`,
+        message: `references missing level prop '${attachment.target.id}'`,
+      });
+    if (!document.slots.some(x => x.id === attachment.slot))
+      out.push({
+        severity: 'error',
+        path: `$.extensions.slopesmith.attachments[${i}].slot`,
+        message: `references missing slot '${attachment.slot}'`,
+      });
   }
   for (const binding of authoredEffectBindings(document, props)) {
     if (binding.circumstance !== 'collision') continue;
@@ -1281,11 +1486,17 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     if (native) {
       const unavailable = !native.playerCollision
         ? 'PlayerCollision is off'
-        : native.mode === 0 ? 'collision mode 0 has no contact shape'
-          : native.mode === 3 && !native.physicsSource ? 'collision mode 3 has no sphere-tree donor'
+        : native.mode === 0
+          ? 'collision mode 0 has no contact shape'
+          : native.mode === 3 && !native.physicsSource
+            ? 'collision mode 3 has no sphere-tree donor'
             : null;
-      if (unavailable) out.push({ severity: 'warning', path: `${path}.nativeCollision`,
-        message: `collision effect cannot fire under the specified collision state: ${unavailable}` });
+      if (unavailable)
+        out.push({
+          severity: 'warning',
+          path: `${path}.nativeCollision`,
+          message: `collision effect cannot fire under the specified collision state: ${unavailable}`,
+        });
     }
     // Measured: on a Garibaldi-slot course the node builds and holds the slot in every pass while the rider
     // is never lifted, and the run reads `laps_remaining` 0 throughout — the counter is seeded from the
@@ -1293,15 +1504,24 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     // directional boost in an identical box with identical tuning launched the rider every pass, so this is
     // the gate and not a broken node.
     if (binding.graph.nodes.some(node => node.semanticType === 'property.lap-boost'))
-      out.push({ severity: 'warning', path: `${path}.effects`,
-        message: 'Lap-gated lift only lifts riders who still have a lap to go, and the lap count comes from the course rather than from this node — only the Megaplex course slot has one. Anywhere else it builds normally and lifts nobody. Use a Directional boost unless this level packs into that slot' });
+      out.push({
+        severity: 'warning',
+        path: `${path}.effects`,
+        message:
+          'Lap-gated lift only lifts riders who still have a lap to go, and the lap count comes from the course rather than from this node — only the Megaplex course slot has one. Anywhere else it builds normally and lifts nobody. Use a Directional boost unless this level packs into that slot',
+      });
     const roller = binding.graph.nodes.some(node => node.semanticType === 'property.roller');
-    if (roller && !native?.physicsSource) out.push({ severity: 'warning', path: `${path}.effects`,
-      // Measured, not assumed: on PS2 the node builds and its constructor rewrites the instance's body bits,
-      // and the instance's translation then holds one value for the entire run. A built roller and a working
-      // one are indistinguishable from the effect slot, which is why this warns rather than trusting that the
-      // node appeared (Trailmap/tools/autotest, cell `prop-roller`).
-      message: 'This Roller moves in preview and in Unity, but the prop has no physics body for the PS2 build, so in game it will not budge. Give it a collision profile with a physics source' });
+    if (roller && !native?.physicsSource)
+      out.push({
+        severity: 'warning',
+        path: `${path}.effects`,
+        // Measured, not assumed: on PS2 the node builds and its constructor rewrites the instance's body bits,
+        // and the instance's translation then holds one value for the entire run. A built roller and a working
+        // one are indistinguishable from the effect slot, which is why this warns rather than trusting that the
+        // node appeared (Trailmap/tools/autotest, cell `prop-roller`).
+        message:
+          'This Roller moves in preview and in Unity, but the prop has no physics body for the PS2 build, so in game it will not budge. Give it a collision profile with a physics source',
+      });
   }
   // The latch columns and the dead columns [Trailmap: 150-logic §slot-columns]: slot3/slot4 populated-ness
   // suppresses the engine's default state revert (a non-empty chain then runs INSTEAD of the revert — no
@@ -1313,18 +1533,34 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     const graphById = new Map(document.graphs.map(graph => [graph.id, graph]));
     for (const circumstance of EFFECT_LATCH_CIRCUMSTANCES)
       if (slot.circumstances[circumstance] && !effectSlotLatchIsEmptyGraph(document, slot, circumstance))
-        out.push({ severity: 'warning', path: `${path}.${circumstance}`,
-          message: `nodes in ${effectCircumstanceLabel(circumstance)} run INSTEAD of the prop resetting itself. The original game always leaves this one empty, so anything here is untested ground` });
+        out.push({
+          severity: 'warning',
+          path: `${path}.${circumstance}`,
+          message: `nodes in ${effectCircumstanceLabel(circumstance)} run INSTEAD of the prop resetting itself. The original game always leaves this one empty, so anything here is untested ground`,
+        });
     if (slot.circumstances.slot4) {
-      if (!effectSlotCanSelfEnd(document, slot)) out.push({ severity: 'warning', path: `${path}.slot4`,
-        message: 'nothing on this prop can finish on its own — loops never end, and a budgeted clip never reaches its end — so the Effect end setting is never used' });
+      if (!effectSlotCanSelfEnd(document, slot))
+        out.push({
+          severity: 'warning',
+          path: `${path}.slot4`,
+          message:
+            'nothing on this prop can finish on its own — loops never end, and a budgeted clip never reaches its end — so the Effect end setting is never used',
+        });
       const noLiveNodeGate = Object.values(slot.circumstances).some(graphId => {
         const graph = graphId ? graphById.get(graphId) : null;
-        return !!graph?.nodes.some(node => node.semanticType === 'condition.no-live-node'
-          || (node.mainType === 5 && object(node.payload.type5) && node.payload.type5.U0 === 3));
+        return !!graph?.nodes.some(
+          node =>
+            node.semanticType === 'condition.no-live-node' ||
+            (node.mainType === 5 && object(node.payload.type5) && node.payload.type5.U0 === 3),
+        );
       });
-      if (noLiveNodeGate) out.push({ severity: 'warning', path: `${path}.slot4`,
-        message: 'Effect end keeps the finished node alive, so this prop\'s Only if: prop is idle test can never pass again' });
+      if (noLiveNodeGate)
+        out.push({
+          severity: 'warning',
+          path: `${path}.slot4`,
+          message:
+            "Effect end keeps the finished node alive, so this prop's Only if: prop is idle test can never pass again",
+        });
     }
     // The two-stage break is TWO chains on one slot and either half alone is inert
     // [Trailmap: 150-logic §deferred-trigger]. A Cracked surface breaks nothing itself: when its strength
@@ -1335,13 +1571,21 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     // Only this direction is checkable. The complement — a trigger column with no installer — cannot be
     // decided from the slot, because a Counter can be installed on the instance by a hop from somebody
     // else's chain, and warning on that would fire on the one shape retail actually ships.
-    if (Object.values(slot.circumstances).some(graphId => {
-      const graph = graphId ? graphById.get(graphId) : null;
-      return !!graph?.nodes.some(node => node.semanticType === 'property.cracked');
-    }) && !slot.circumstances.trigger) out.push({ severity: 'warning', path: `${path}.trigger`,
-      message: 'a Cracked surface does not break anything itself — it runs this prop\'s Trigger effect when '
-        + 'its strength runs out, and the break belongs there. With no Trigger effect the prop cracks and '
-        + 'then stands there for the rest of the level' });
+    if (
+      Object.values(slot.circumstances).some(graphId => {
+        const graph = graphId ? graphById.get(graphId) : null;
+        return !!graph?.nodes.some(node => node.semanticType === 'property.cracked');
+      }) &&
+      !slot.circumstances.trigger
+    )
+      out.push({
+        severity: 'warning',
+        path: `${path}.trigger`,
+        message:
+          "a Cracked surface does not break anything itself — it runs this prop's Trigger effect when " +
+          'its strength runs out, and the break belongs there. With no Trigger effect the prop cracks and ' +
+          'then stands there for the rest of the level',
+      });
     // What may go in a Trigger effect depends on which of its two possible senders fires it, and the two
     // pull in opposite directions [Trailmap: 150-logic §deferred-trigger]. A COUNTER fires its column from
     // inside its own update and is still live while that column runs, so a node that installs on this same
@@ -1353,62 +1597,106 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     // property nodes is the shape retail ships, and warning on it would be wrong.
     const triggerGraph = slot.circumstances.trigger ? graphById.get(slot.circumstances.trigger) : null;
     if (triggerGraph) {
-      const onSlot = (semanticType: string): boolean => Object.values(slot.circumstances).some(graphId => {
-        const graph = graphId ? graphById.get(graphId) : null;
-        return !!graph?.nodes.some(node => node.semanticType === semanticType);
-      });
+      const onSlot = (semanticType: string): boolean =>
+        Object.values(slot.circumstances).some(graphId => {
+          const graph = graphId ? graphById.get(graphId) : null;
+          return !!graph?.nodes.some(node => node.semanticType === semanticType);
+        });
       const counterFired = onSlot('property.counter');
       const crackFired = onSlot('property.cracked');
       if (counterFired && !crackFired) {
         const suicidal = triggerGraph.nodes.some(node => LIFETIME_COMMAND_TYPES.has(node.semanticType ?? ''));
-        if (suicidal) out.push({ severity: 'error', path: `${path}.trigger`,
-          message: 'this Trigger effect is fired by a Counter on the same prop, and it stops whatever that '
-            + 'prop is running — which at that moment is the Counter itself, mid-update. Measured on PS2 as a '
-            + 'console freeze. Move the stop onto another prop and reach it with Run on another prop' });
-        const installs = triggerGraph.nodes.filter(node => node.mainType === 0
-          && !LIFETIME_COMMAND_TYPES.has(node.semanticType ?? ''));
-        if (installs.length) out.push({ severity: 'warning', path: `${path}.trigger`,
-          message: 'a Counter fires this Trigger effect while it is still running, so a node that installs on '
-            + 'this same prop displaces it mid-update. Behind a Counter, use Run on another prop and let the '
-            + 'other prop\'s effect do the work' });
+        if (suicidal)
+          out.push({
+            severity: 'error',
+            path: `${path}.trigger`,
+            message:
+              'this Trigger effect is fired by a Counter on the same prop, and it stops whatever that ' +
+              'prop is running — which at that moment is the Counter itself, mid-update. Measured on PS2 as a ' +
+              'console freeze. Move the stop onto another prop and reach it with Run on another prop',
+          });
+        const installs = triggerGraph.nodes.filter(
+          node => node.mainType === 0 && !LIFETIME_COMMAND_TYPES.has(node.semanticType ?? ''),
+        );
+        if (installs.length)
+          out.push({
+            severity: 'warning',
+            path: `${path}.trigger`,
+            message:
+              'a Counter fires this Trigger effect while it is still running, so a node that installs on ' +
+              'this same prop displaces it mid-update. Behind a Counter, use Run on another prop and let the ' +
+              "other prop's effect do the work",
+          });
       }
     }
     for (const circumstance of ['slot6', 'slot7'] as const)
-      if (slot.circumstances[circumstance]) out.push({ severity: 'warning', path: `${path}.${circumstance}`,
-        message: `nothing in the game ever reads ${effectCircumstanceLabel(circumstance)}, so this effect can never run` });
-  });
-  for (const [ownerKind, owners] of [['graphs', document.graphs], ['functions', document.functions]] as const) {
-    owners.forEach((owner, oi) => owner.nodes.forEach((node, ni) => {
-      const path = `$.${ownerKind}[${oi}].nodes[${ni}]`;
-      if (node.semanticType === 'property.roller') {
-        if (rollerNodeMass(node) === null) out.push({
-          severity: 'warning', path: `${path}.payload.type0.type0Sub0.U0`,
-          message: 'Roller mass must be a number greater than zero. As it stands, preview and the exported bundle both skip this Roller',
+      if (slot.circumstances[circumstance])
+        out.push({
+          severity: 'warning',
+          path: `${path}.${circumstance}`,
+          message: `nothing in the game ever reads ${effectCircumstanceLabel(circumstance)}, so this effect can never run`,
         });
-      }
-      for (const required of REQUIRED_NODE_REFERENCES) {
-        if (node.semanticType !== required.semanticType) continue;
-        if (node.references?.[required.key as keyof typeof node.references] == null)
-          out.push({ severity: 'error', path: `${path}.references.${required.key}`, message: required.message });
-      }
-      // Ridden on hardware in Showoff, alone, at half a metre: the effect dispatches and the rider's
-      // multiplier never leaves 1.0, while boost pads on the same course in the same passes write their
-      // fields normally (Trailmap/tools/autotest, cell `gem-multiplier`). Authoring it is not an error — the
-      // record may yet be completed — but shipping a scoring pickup that has never been seen to score is
-      // something an author should be told once, on the prop, rather than discovering in a play test.
-      if (node.semanticType === 'score.multiplier') out.push({ severity: 'warning', path,
-        message: 'Score multiplier has not yet been seen to work on hardware: the effect runs and the rider\'s '
-          + 'multiplier never moves. It also only scores in Showoff modes — in Race or Freeride it does '
-          + 'nothing at all. Do not build a scoring route around it yet' });
-      const emitter = particleEmitterFields(node);
-      if (emitter) {
-        const emitterPayload = node.semanticType === 'particle.collision' ? 'type2Sub2' : 'type2Sub0';
-        const numeric = (key: string) => typeof emitter[key] === 'number' ? emitter[key] as number : NaN;
-        if (numeric('U0') < 0) out.push({ severity: 'warning', path: `${path}.payload.type2.${emitterPayload}.U0`, message: 'particle count is negative' });
-        if (numeric('U1') < 0 || numeric('U1') > 10) out.push({ severity: 'warning', path: `${path}.payload.type2.${emitterPayload}.U1`, message: 'trail-copy count is outside the usual 0–10 range' });
-        if (numeric('U49') < 0) out.push({ severity: 'warning', path: `${path}.payload.type2.${emitterPayload}.U49`, message: 'sprite index is negative' });
-      }
-    }));
+  });
+  for (const [ownerKind, owners] of [
+    ['graphs', document.graphs],
+    ['functions', document.functions],
+  ] as const) {
+    owners.forEach((owner, oi) =>
+      owner.nodes.forEach((node, ni) => {
+        const path = `$.${ownerKind}[${oi}].nodes[${ni}]`;
+        if (node.semanticType === 'property.roller') {
+          if (rollerNodeMass(node) === null)
+            out.push({
+              severity: 'warning',
+              path: `${path}.payload.type0.type0Sub0.U0`,
+              message:
+                'Roller mass must be a number greater than zero. As it stands, preview and the exported bundle both skip this Roller',
+            });
+        }
+        for (const required of REQUIRED_NODE_REFERENCES) {
+          if (node.semanticType !== required.semanticType) continue;
+          if (node.references?.[required.key as keyof typeof node.references] == null)
+            out.push({ severity: 'error', path: `${path}.references.${required.key}`, message: required.message });
+        }
+        // Ridden on hardware in Showoff, alone, at half a metre: the effect dispatches and the rider's
+        // multiplier never leaves 1.0, while boost pads on the same course in the same passes write their
+        // fields normally (Trailmap/tools/autotest, cell `gem-multiplier`). Authoring it is not an error — the
+        // record may yet be completed — but shipping a scoring pickup that has never been seen to score is
+        // something an author should be told once, on the prop, rather than discovering in a play test.
+        if (node.semanticType === 'score.multiplier')
+          out.push({
+            severity: 'warning',
+            path,
+            message:
+              "Score multiplier has not yet been seen to work on hardware: the effect runs and the rider's " +
+              'multiplier never moves. It also only scores in Showoff modes — in Race or Freeride it does ' +
+              'nothing at all. Do not build a scoring route around it yet',
+          });
+        const emitter = particleEmitterFields(node);
+        if (emitter) {
+          const emitterPayload = node.semanticType === 'particle.collision' ? 'type2Sub2' : 'type2Sub0';
+          const numeric = (key: string) => (typeof emitter[key] === 'number' ? (emitter[key] as number) : NaN);
+          if (numeric('U0') < 0)
+            out.push({
+              severity: 'warning',
+              path: `${path}.payload.type2.${emitterPayload}.U0`,
+              message: 'particle count is negative',
+            });
+          if (numeric('U1') < 0 || numeric('U1') > 10)
+            out.push({
+              severity: 'warning',
+              path: `${path}.payload.type2.${emitterPayload}.U1`,
+              message: 'trail-copy count is outside the usual 0–10 range',
+            });
+          if (numeric('U49') < 0)
+            out.push({
+              severity: 'warning',
+              path: `${path}.payload.type2.${emitterPayload}.U49`,
+              message: 'sprite index is negative',
+            });
+        }
+      }),
+    );
   }
   // A rail toggle and the rail it names are authored in two different toolboxes, and the pairing between them
   // is silent in both directions: the node ships and dispatches either way, and the rail looks identical on
@@ -1421,13 +1709,23 @@ export function validateEffectsAuthoring(document: EffectsDocument, props: reado
     const path = `$level.rails[${rail.id}]`;
     const name = rail.name?.trim() || rail.id;
     const toggles = splineEffectUses(document, splineId).filter(use => use.semanticType === 'spline.toggle');
-    if (railStartsOff(rail) && !toggles.some(use => use.switchesOn)) out.push({ severity: 'warning', path,
-      message: `rail '${name}' is set to start off, so it ships outside the rail network, and no effect ever `
-        + 'switches it on — nobody can grind it. Add a Rail on / off node set to on, or untick "starts off"' });
-    if (!railStartsOff(rail) && toggles.some(use => use.switchesOn)) out.push({ severity: 'warning', path,
-      message: `a Rail on / off node switches rail '${name}' ON, but it is already grindable from the moment `
-        + 'the level loads, so the node changes nothing. Tick "starts off" on the rail to make the switch mean '
-        + 'something' });
+    if (railStartsOff(rail) && !toggles.some(use => use.switchesOn))
+      out.push({
+        severity: 'warning',
+        path,
+        message:
+          `rail '${name}' is set to start off, so it ships outside the rail network, and no effect ever ` +
+          'switches it on — nobody can grind it. Add a Rail on / off node set to on, or untick "starts off"',
+      });
+    if (!railStartsOff(rail) && toggles.some(use => use.switchesOn))
+      out.push({
+        severity: 'warning',
+        path,
+        message:
+          `a Rail on / off node switches rail '${name}' ON, but it is already grindable from the moment ` +
+          'the level loads, so the node changes nothing. Tick "starts off" on the rail to make the switch mean ' +
+          'something',
+      });
   }
   return out;
 }

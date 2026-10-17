@@ -97,11 +97,15 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
       if (sourceUv) this.uvAttr.setXY(vertexStart + i, sourceUv.getX(i), sourceUv.getY(i));
       if (sourceSlice) this.sliceAttr.setX(vertexStart + i, sourceSlice.getX(i));
       if (sourceLightIndex) this.lightIndexAttr.setX(vertexStart + i, sourceLightIndex.getX(i));
-      if (sourceStoredNormal) this.storedNormalAttr.setXYZ(vertexStart + i,
-        sourceStoredNormal.getX(i), sourceStoredNormal.getY(i), sourceStoredNormal.getZ(i));
+      if (sourceStoredNormal)
+        this.storedNormalAttr.setXYZ(
+          vertexStart + i,
+          sourceStoredNormal.getX(i),
+          sourceStoredNormal.getY(i),
+          sourceStoredNormal.getZ(i),
+        );
     }
-    for (let i = 0; i < sourceIndex.count; i++)
-      this.indexAttr.setX(indexStart + i, vertexStart + sourceIndex.getX(i));
+    for (let i = 0; i < sourceIndex.count; i++) this.indexAttr.setX(indexStart + i, vertexStart + sourceIndex.getX(i));
     const id = this.ranges.length;
     this.ranges.push({
       geometry,
@@ -152,8 +156,7 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
   setColorAt(instanceId: number, value: THREE.Color): void {
     const range = this.ranges[instanceId];
     if (!range) return;
-    for (let i = 0; i < range.vertexCount; i++)
-      this.colorAttr.setXYZ(range.vertexStart + i, value.r, value.g, value.b);
+    for (let i = 0; i < range.vertexCount; i++) this.colorAttr.setXYZ(range.vertexStart + i, value.r, value.g, value.b);
     this.colorAttr.needsUpdate = true;
   }
 
@@ -201,7 +204,8 @@ export class MergedStaticPropMesh extends THREE.Mesh<THREE.BufferGeometry, THREE
 
   private instanceAtFace(faceIndex: number): number {
     const indexOffset = faceIndex * 3;
-    let low = 0, high = this.ranges.length - 1;
+    let low = 0,
+      high = this.ranges.length - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
       const range = this.ranges[mid];
@@ -239,15 +243,16 @@ export interface ReferencePropSlot {
 }
 
 export function isReferencePropMesh(object: THREE.Object3D): object is ReferencePropMesh {
-  return (object as THREE.InstancedMesh).isInstancedMesh === true
-    || (object as THREE.BatchedMesh).isBatchedMesh === true
-    || (object as MergedStaticPropMesh).isMergedStaticPropMesh === true;
+  return (
+    (object as THREE.InstancedMesh).isInstancedMesh === true ||
+    (object as THREE.BatchedMesh).isBatchedMesh === true ||
+    (object as MergedStaticPropMesh).isMergedStaticPropMesh === true
+  );
 }
 
 /** Normalize Three's InstancedMesh.instanceId / BatchedMesh.batchId split. */
 export function referencePropInstanceId(hit: THREE.Intersection): number | null {
-  if ((hit.object as THREE.BatchedMesh).isBatchedMesh
-    || (hit.object as MergedStaticPropMesh).isMergedStaticPropMesh)
+  if ((hit.object as THREE.BatchedMesh).isBatchedMesh || (hit.object as MergedStaticPropMesh).isMergedStaticPropMesh)
     return Number.isInteger(hit.batchId) ? hit.batchId! : null;
   return Number.isInteger(hit.instanceId) ? hit.instanceId! : null;
 }
@@ -262,12 +267,16 @@ export function referencePropSlot(mesh: ReferencePropMesh, instanceId: number): 
   const model = mesh.userData.propModel;
   if (!inst || typeof level !== 'string' || !Number.isInteger(model)) return null;
   return {
-    inst, level, model: model as number, name: mesh.name,
+    inst,
+    level,
+    model: model as number,
+    name: mesh.name,
     bucket: typeof mesh.userData.propBucket === 'string' ? mesh.userData.propBucket : '',
-    object: Number.isInteger(mesh.userData.propObject) ? mesh.userData.propObject as number : null,
+    object: Number.isInteger(mesh.userData.propObject) ? (mesh.userData.propObject as number) : null,
     tex: typeof mesh.userData.propTex === 'string' ? mesh.userData.propTex : null,
     surface: (mesh.userData.propSurface as RefPropSurfaceDetails | undefined) ?? null,
-    geometry: mesh.geometry, faceStart: 0,
+    geometry: mesh.geometry,
+    faceStart: 0,
   };
 }
 
@@ -284,7 +293,7 @@ export function referencePropGeometry(object: THREE.Object3D, instanceId: number
 
 export function referencePropHitGeometry(hit: THREE.Intersection): THREE.BufferGeometry | null {
   const id = referencePropInstanceId(hit);
-  return id === null ? (hit.object as THREE.Mesh).geometry ?? null : referencePropGeometry(hit.object, id);
+  return id === null ? ((hit.object as THREE.Mesh).geometry ?? null) : referencePropGeometry(hit.object, id);
 }
 
 /** Convert BatchedMesh's combined-buffer face index back to the source submesh's local triangle index. */

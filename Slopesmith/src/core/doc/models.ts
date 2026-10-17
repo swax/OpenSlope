@@ -3,8 +3,15 @@ import { seedMeshIds } from './ids';
 import { orientUV } from '../paint/orientation';
 import type { LevelProps } from '../reference/props';
 import {
-  applyQuat, conjugateQuat, isTilted, multiplyQuat, placementQuat, propRotationFromQuat, rotateByPlacement,
-  writePropRotation, type PropRotation,
+  applyQuat,
+  conjugateQuat,
+  isTilted,
+  multiplyQuat,
+  placementQuat,
+  propRotationFromQuat,
+  rotateByPlacement,
+  writePropRotation,
+  type PropRotation,
 } from '../props/pose';
 
 /**
@@ -27,15 +34,18 @@ export function nextModelId(models: readonly AuthoredModel[]): string {
 export function createAuthoredModel(mdoc: QuadMeshDoc, name: string): AuthoredModel {
   const models = (mdoc.models ??= []);
   const model: AuthoredModel = {
-    id: nextModelId(models), name: name || 'Model',
-    anchor: [0, 0, 0], vertices: [], quads: [],
+    id: nextModelId(models),
+    name: name || 'Model',
+    anchor: [0, 0, 0],
+    vertices: [],
+    quads: [],
   };
   models.push(model);
   return model;
 }
 
 export function findModel(mdoc: QuadMeshDoc, id: string | null | undefined): AuthoredModel | null {
-  return id ? mdoc.models?.find(model => model.id === id) ?? null : null;
+  return id ? (mdoc.models?.find(model => model.id === id) ?? null) : null;
 }
 
 /**
@@ -48,9 +58,14 @@ export function findModel(mdoc: QuadMeshDoc, id: string | null | undefined): Aut
  */
 export function modelEditDocFor(mdoc: QuadMeshDoc, model: AuthoredModel): QuadMeshDoc {
   return {
-    version: 5, kind: 'mountain', name: model.name,
-    spacing: mdoc.spacing, course: mdoc.course, baseSurface: mdoc.baseSurface,
-    vertices: model.vertices, quads: model.quads,
+    version: 5,
+    kind: 'mountain',
+    name: model.name,
+    spacing: mdoc.spacing,
+    course: mdoc.course,
+    baseSurface: mdoc.baseSurface,
+    vertices: model.vertices,
+    quads: model.quads,
     ...seedMeshIds(0, model.vertices.length / 3, model.quads.length),
     ...(model.freeEdges ? { freeEdges: model.freeEdges } : {}),
     ...(model.tJunctions ? { tJunctions: model.tJunctions } : {}),
@@ -61,7 +76,8 @@ export function modelEditDocFor(mdoc: QuadMeshDoc, model: AuthoredModel): QuadMe
     // with — including the tile-orientation F overlay, which reads the same per-quad channel the terrain does
     ...(model.texture ? { quadTex: Object.fromEntries(model.quads.map((_, q) => [q, model.texture!])) } : {}),
     ...(model.texture && model.orient
-      ? { quadOrient: Object.fromEntries(model.quads.map((_, q) => [q, { ...model.orient! }])) } : {}),
+      ? { quadOrient: Object.fromEntries(model.quads.map((_, q) => [q, { ...model.orient! }])) }
+      : {}),
     linearCage: true,
   };
 }
@@ -78,20 +94,34 @@ export function modelEditDocFor(mdoc: QuadMeshDoc, model: AuthoredModel): QuadMe
  * ISO was built. A wedge's collapsed third corner takes the tile's top CENTRE, so its two edges stay
  * symmetric about the tile whichever way the tile is turned.
  */
-const CORNER_UV: readonly [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
-export function tiledPropUV(corner: number, wedge: boolean,
-  orient?: { rot: number; mirror: boolean }): [number, number] {
+const CORNER_UV: readonly [number, number][] = [
+  [0, 0],
+  [1, 0],
+  [0, 1],
+  [1, 1],
+];
+export function tiledPropUV(
+  corner: number,
+  wedge: boolean,
+  orient?: { rot: number; mirror: boolean },
+): [number, number] {
   const [u, v] = wedge && corner === 2 ? [0.5, 1] : CORNER_UV[corner];
   return orient ? orientUV(u, v, orient.rot, orient.mirror) : [u, v];
 }
 
 /** The base-centre of a mesh: bbox centre at min-Y — the natural placement origin for a prop. */
 function baseCentre(vertices: readonly number[]): V3 {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (let i = 0; i < vertices.length; i += 3) {
-    minX = Math.min(minX, vertices[i]); maxX = Math.max(maxX, vertices[i]);
+    minX = Math.min(minX, vertices[i]);
+    maxX = Math.max(maxX, vertices[i]);
     minY = Math.min(minY, vertices[i + 1]);
-    minZ = Math.min(minZ, vertices[i + 2]); maxZ = Math.max(maxZ, vertices[i + 2]);
+    minZ = Math.min(minZ, vertices[i + 2]);
+    maxZ = Math.max(maxZ, vertices[i + 2]);
   }
   return [(minX + maxX) / 2, minY, (minZ + maxZ) / 2];
 }
@@ -106,10 +136,14 @@ export function commitModelEditDoc(model: AuthoredModel, doc: QuadMeshDoc): void
   const hadGeometry = model.vertices.length > 0;
   model.vertices = doc.vertices;
   model.quads = doc.quads;
-  if (doc.freeEdges?.length) model.freeEdges = doc.freeEdges; else delete model.freeEdges;
-  if (doc.tJunctions?.length) model.tJunctions = doc.tJunctions; else delete model.tJunctions;
-  if (doc.quadLocked && Object.keys(doc.quadLocked).length) model.quadLocked = doc.quadLocked; else delete model.quadLocked;
-  if (doc.edgeLocked && Object.keys(doc.edgeLocked).length) model.edgeLocked = doc.edgeLocked; else delete model.edgeLocked;
+  if (doc.freeEdges?.length) model.freeEdges = doc.freeEdges;
+  else delete model.freeEdges;
+  if (doc.tJunctions?.length) model.tJunctions = doc.tJunctions;
+  else delete model.tJunctions;
+  if (doc.quadLocked && Object.keys(doc.quadLocked).length) model.quadLocked = doc.quadLocked;
+  else delete model.quadLocked;
+  if (doc.edgeLocked && Object.keys(doc.edgeLocked).length) model.edgeLocked = doc.edgeLocked;
+  else delete model.edgeLocked;
   // quadTex / quadOrient are DERIVED from model.texture + model.orient at materialize time (and curvature
   // channels are never stored) — none write back, so the model record stays the lean polygon + one-tile form.
   if (!hadGeometry && model.vertices.length) model.anchor = baseCentre(model.vertices);
@@ -123,7 +157,8 @@ export function commitModelEditDoc(model: AuthoredModel, doc: QuadMeshDoc): void
  * carry: a model wears one uniform tile — assign one after (a Custom tile can carry the prop's own art).
  */
 export function reviseModelFromProp(
-  mdoc: QuadMeshDoc, name: string,
+  mdoc: QuadMeshDoc,
+  name: string,
   subs: readonly { positions: Float32Array; indices: ArrayLike<number> }[],
   pose: { pos: V3; yaw: number; pitch?: number; roll?: number; scale: number },
 ): AuthoredModel {
@@ -134,7 +169,9 @@ export function reviseModelFromProp(
   const idOf = new Map<string, number>(); // welds per-corner duplicates back to shared ids, across submeshes
   for (const sub of subs) {
     const vertexAt = (corner: number): number => {
-      const rx = sub.positions[corner * 3], ry = sub.positions[corner * 3 + 1], rz = sub.positions[corner * 3 + 2];
+      const rx = sub.positions[corner * 3],
+        ry = sub.positions[corner * 3 + 1],
+        rz = sub.positions[corner * 3 + 2];
       const key = `${rx},${ry},${rz}`;
       const known = idOf.get(key);
       if (known !== undefined) return known;
@@ -148,7 +185,9 @@ export function reviseModelFromProp(
     };
     for (let t = 0; t + 2 < sub.indices.length; t += 3) {
       // authoredModelLevelProps emits wedge [A,B,C] as the raw triangle (A, C, B); invert that here
-      const A = vertexAt(sub.indices[t]), C = vertexAt(sub.indices[t + 1]), B = vertexAt(sub.indices[t + 2]);
+      const A = vertexAt(sub.indices[t]),
+        C = vertexAt(sub.indices[t + 1]),
+        B = vertexAt(sub.indices[t + 2]);
       if (A === B || B === C || C === A) continue; // a weld collapsed the source triangle
       quads.push([A, B, C, C]);
     }
@@ -169,18 +208,31 @@ export function reviseModelFromProp(
  * rotation/scale (the caller re-frames attached emitter offsets with it), or null when the placement already
  * IS the home pose.
  */
-export function rebaseModelToPlacement(mdoc: QuadMeshDoc, model: AuthoredModel, placement: PlacedProp):
-{ rotation: PropRotation; scale: number } | null {
+export function rebaseModelToPlacement(
+  mdoc: QuadMeshDoc,
+  model: AuthoredModel,
+  placement: PlacedProp,
+): { rotation: PropRotation; scale: number } | null {
   if (placement.level !== AUTHORED_MODEL_LEVEL || modelIdFromNumber(placement.model) !== model.id) return null;
   const { scale } = placement;
-  if (placement.yaw === 0 && !isTilted(placement) && scale === 1 && placement.pos[0] === model.anchor[0]
-    && placement.pos[1] === model.anchor[1] && placement.pos[2] === model.anchor[2]) return null;
+  if (
+    placement.yaw === 0 &&
+    !isTilted(placement) &&
+    scale === 1 &&
+    placement.pos[0] === model.anchor[0] &&
+    placement.pos[1] === model.anchor[1] &&
+    placement.pos[2] === model.anchor[2]
+  )
+    return null;
   const rotation: PropRotation = { yaw: placement.yaw, pitch: placement.pitch, roll: placement.roll };
   const absorbed = placementQuat(rotation);
   const [ax, ay, az] = model.anchor;
   for (let i = 0; i < model.vertices.length; i += 3) {
-    const local: V3 = [scale * (model.vertices[i] - ax), scale * (model.vertices[i + 1] - ay),
-      scale * (model.vertices[i + 2] - az)];
+    const local: V3 = [
+      scale * (model.vertices[i] - ax),
+      scale * (model.vertices[i + 1] - ay),
+      scale * (model.vertices[i + 2] - az),
+    ];
     const r = applyQuat(local, absorbed);
     model.vertices[i] = placement.pos[0] + r[0];
     model.vertices[i + 1] = placement.pos[1] + r[1];
@@ -261,11 +313,13 @@ export function authoredModelLevelProps(mdoc: QuadMeshDoc): LevelProps {
   const models = (mdoc.models ?? []).map(model => {
     const [ax, ay, az] = model.anchor;
     const raw = (i: number): [number, number, number] => [
-      -100 * (model.vertices[i * 3] - ax),                    // raw = (-100·x, -100·z, 100·y) of local metres
+      -100 * (model.vertices[i * 3] - ax), // raw = (-100·x, -100·z, 100·y) of local metres
       -100 * (model.vertices[i * 3 + 2] - az),
       100 * (model.vertices[i * 3 + 1] - ay),
     ];
-    const positions: number[] = [], uvs: number[] = [], tris: number[] = [];
+    const positions: number[] = [],
+      uvs: number[] = [],
+      tris: number[] = [];
     for (const quad of model.quads) {
       const base = positions.length / 3;
       const wedge = quad[2] === quad[3];
@@ -274,31 +328,36 @@ export function authoredModelLevelProps(mdoc: QuadMeshDoc): LevelProps {
         positions.push(...raw(quad[s]));
         uvs.push(...tiledPropUV(s, wedge, model.orient));
       }
-      if (wedge) tris.push(base, base + 2, base + 1);         // reversed vs editor CCW — the raw mirror flips it back
+      if (wedge)
+        tris.push(base, base + 2, base + 1); // reversed vs editor CCW — the raw mirror flips it back
       else tris.push(base, base + 2, base + 3, base, base + 3, base + 1);
     }
     return {
-      id: modelNumber(model.id), name: model.name,
+      id: modelNumber(model.id),
+      name: model.name,
       ...(model.defaults ? { defaults: model.defaults } : {}), // docs/069: the author's saved defaults
-      ...(model.line ? { line: model.line } : {}),               // docs/071: a sheet's piece, not a library entry
-      subs: [{
-        mat: model.texture ? modelNumber(model.id) : -1,     // per-model material slot carrying its tile ref
-        positions: new Float32Array(positions),
-        uvs: new Float32Array(uvs),
-        indices: new Uint32Array(tris),
-      }],
+      ...(model.line ? { line: model.line } : {}), // docs/071: a sheet's piece, not a library entry
+      subs: [
+        {
+          mat: model.texture ? modelNumber(model.id) : -1, // per-model material slot carrying its tile ref
+          positions: new Float32Array(positions),
+          uvs: new Float32Array(uvs),
+          indices: new Uint32Array(tris),
+        },
+      ],
     };
   });
   const materials = new Map<number, { tex: string | null; frames: string[]; blend?: boolean; pixelAlpha?: boolean }>();
   for (const model of mdoc.models ?? []) {
     // The tile rides whole as a cross-level ref; its FRAMES go bare, because a frame list resolves against
     // whichever bank the tile already named — the same convention an imported prop's payload uses.
-    if (model.texture) materials.set(modelNumber(model.id), {
-      tex: model.texture,
-      frames: authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
-      ...(model.blend ? { blend: true } : {}),
-      pixelAlpha: true,
-    });
+    if (model.texture)
+      materials.set(modelNumber(model.id), {
+        tex: model.texture,
+        frames: authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
+        ...(model.blend ? { blend: true } : {}),
+        pixelAlpha: true,
+      });
   }
   return { level: AUTHORED_MODEL_LEVEL, models, instances: [], materials, crowdFrames: [] };
 }

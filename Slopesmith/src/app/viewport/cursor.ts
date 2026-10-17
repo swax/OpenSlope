@@ -1,6 +1,10 @@
 import type { Mode } from './types';
 import {
-  BULB_ICON_BODY, GEM_ICON_BODY, PAINT_ICON_BODY, PROP_BOX_ICON_BODY, RAIL_ICON_BODY,
+  BULB_ICON_BODY,
+  GEM_ICON_BODY,
+  PAINT_ICON_BODY,
+  PROP_BOX_ICON_BODY,
+  RAIL_ICON_BODY,
 } from '../ui/components/icons';
 
 // Exact Paint-mode glyph. The bristle tip is the hotspot, so the brush sits above the terrain point that

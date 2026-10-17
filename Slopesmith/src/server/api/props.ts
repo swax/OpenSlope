@@ -1,11 +1,22 @@
 import { readLevelGroups } from '../routes/groups';
 import {
-  cloneImportedProp, deleteImportedProp, importedPropsPayload, renameImportedProp, replaceImportedProp,
-  saveImportedProp, updateImportedPropDefaults, updateImportedPropMaterials,
-  readImportedProp, deformImportedProp,
+  cloneImportedProp,
+  deleteImportedProp,
+  importedPropsPayload,
+  renameImportedProp,
+  replaceImportedProp,
+  saveImportedProp,
+  updateImportedPropDefaults,
+  updateImportedPropMaterials,
+  readImportedProp,
+  deformImportedProp,
 } from '../routes/imported-props';
 import {
-  levelsWithProps, nativeArtSource, readLevelProps, readLevelPropsJsonWithCacheInfo, readMaterialTables,
+  levelsWithProps,
+  nativeArtSource,
+  readLevelProps,
+  readLevelPropsJsonWithCacheInfo,
+  readMaterialTables,
   readPhysicsBodySpheres,
 } from '../routes/props';
 import { adoptRecordArt } from '../props/adopt-art';
@@ -18,9 +29,16 @@ const PROP_IMPORT_LIMIT = 96 * 1024 * 1024;
 /** Managing a stored model shares one shape with managing a stored tile: the arguments ride in the query
  *  string, a replacement record rides in the body, and a success invalidates the Custom library so every
  *  connected editor refetches the catalogue. Refusals are 400 with an `{error}` the client shows verbatim. */
-const manageProp = (run: (id: number, q: URLSearchParams, body: () => Promise<unknown>) => Promise<Record<string, unknown>>):
-  ApiHandler => async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+const manageProp =
+  (
+    run: (id: number, q: URLSearchParams, body: () => Promise<unknown>) => Promise<Record<string, unknown>>,
+  ): ApiHandler =>
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     res.setHeader('content-type', 'application/json');
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
@@ -36,7 +54,12 @@ const manageProp = (run: (id: number, q: URLSearchParams, body: () => Promise<un
   };
 
 /** One model as the index names it: what to place, what it costs, and what it wears. */
-interface PropIndexModel { id: number; name: string; tris: number; pages: string[] }
+interface PropIndexModel {
+  id: number;
+  name: string;
+  tris: number;
+  pages: string[];
+}
 
 /**
  * A level's models without their geometry — the read that answers "what can I place from GARI?" (docs/052).
@@ -72,22 +95,30 @@ async function levelPropIndex(level: string): Promise<{ level: string; models: P
  *  supplies the rail skin and gem crystals. */
 export const propRoutes: Record<string, ApiHandler> = {
   '/api/custom-prop-record': async (req, res) => {
-    if (req.method !== 'GET') { res.statusCode = 405; res.end('GET only'); return; }
+    if (req.method !== 'GET') {
+      res.statusCode = 405;
+      res.end('GET only');
+      return;
+    }
     res.setHeader('content-type', 'application/json');
     res.setHeader('cache-control', 'private, no-store');
     try {
       const id = Number(new URL(req.url ?? '', 'http://localhost').searchParams.get('id') ?? -1);
       if (!Number.isInteger(id) || id < 0) throw new Error('Choose a prop to deform.');
       res.end(JSON.stringify(await readImportedProp(id)));
-    } catch (e) { res.statusCode = 400; res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) })); }
+    } catch (e) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+    }
   },
   '/api/custom-prop-deform': manageProp(async (id, _q, body) => deformImportedProp(id, await body())),
   '/api/props': async (req, res) => {
     try {
       const url = new URL(req.url ?? '', 'http://localhost');
       if (url.pathname === '/materials') {
-        await responseCache.json(req, res, 'prop-materials',
-          async () => ({ tables: Object.fromEntries(await readMaterialTables()) }));
+        await responseCache.json(req, res, 'prop-materials', async () => ({
+          tables: Object.fromEntries(await readMaterialTables()),
+        }));
         return;
       }
       if (url.pathname === '/native-art') {
@@ -140,10 +171,14 @@ export const propRoutes: Record<string, ApiHandler> = {
   // generate over. It is opt-in rather than automatic because the GLB import path stages its own art and
   // would only pay for a pass that finds nothing.
   '/api/custom-prop-import': async (req, res) => {
-    if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      res.end('POST only');
+      return;
+    }
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-      const record = await readJsonBody(req, PROP_IMPORT_LIMIT) as Parameters<typeof saveImportedProp>[1];
+      const record = (await readJsonBody(req, PROP_IMPORT_LIMIT)) as Parameters<typeof saveImportedProp>[1];
       const art = q.get('adopt') ? await adoptRecordArt(record) : null;
       const { record: saved } = await saveImportedProp(q.get('name') ?? 'prop', record);
       invalidateProjectLibrary();
@@ -165,17 +200,16 @@ export const propRoutes: Record<string, ApiHandler> = {
   '/api/custom-prop-clone': manageProp((id, q) => cloneImportedProp(id, q.get('to') ?? '')),
 
   '/api/custom-prop-replace': manageProp(async (id, _q, body) =>
-    replaceImportedProp(id, await body() as Parameters<typeof replaceImportedProp>[1])),
+    replaceImportedProp(id, (await body()) as Parameters<typeof replaceImportedProp>[1]),
+  ),
 
   // Retexturing an already-placed model, so it takes the narrow patch rather than the whole-record replace:
   // the body carries material rows only and can never arrive with a different mesh (docs/032).
-  '/api/custom-prop-materials': manageProp(async (id, _q, body) =>
-    updateImportedPropMaterials(id, await body())),
+  '/api/custom-prop-materials': manageProp(async (id, _q, body) => updateImportedPropMaterials(id, await body())),
 
   // A model's DEFAULTS (docs/069): what every new placement of it starts with. Behaviour fields only, sanitized
   // server-side; a body of null clears them.
-  '/api/custom-prop-defaults': manageProp(async (id, _q, body) =>
-    updateImportedPropDefaults(id, await body())),
+  '/api/custom-prop-defaults': manageProp(async (id, _q, body) => updateImportedPropDefaults(id, await body())),
 
   '/api/custom-prop-delete': manageProp(async id => ({ deleted: await deleteImportedProp(id) })),
 
@@ -185,9 +219,11 @@ export const propRoutes: Record<string, ApiHandler> = {
   '/api/physics-body': async (req, res) => {
     try {
       const q = new URL(req.url ?? '', 'http://localhost').searchParams;
-      const level = q.get('level') ?? '', idx = Number(q.get('idx') ?? '-1');
-      await responseCache.json(req, res, `physics-body:${level}:${idx}`,
-        async () => ({ spheres: await readPhysicsBodySpheres(level, idx) }));
+      const level = q.get('level') ?? '',
+        idx = Number(q.get('idx') ?? '-1');
+      await responseCache.json(req, res, `physics-body:${level}:${idx}`, async () => ({
+        spheres: await readPhysicsBodySpheres(level, idx),
+      }));
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');

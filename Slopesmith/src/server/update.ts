@@ -33,23 +33,25 @@ export async function readUpdateRepository(root = configuredUpdateRoot()): Promi
   try {
     const repository = (await readFile(join(root, 'repository'), 'utf8')).trim();
     return repository && !/[\r\n\0]/.test(repository) ? repository : undefined;
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException | null)?.code === 'ENOENT';
 
-const wait = (milliseconds: number): Promise<void> =>
-  new Promise(resolveWait => setTimeout(resolveWait, milliseconds));
+const wait = (milliseconds: number): Promise<void> => new Promise(resolveWait => setTimeout(resolveWait, milliseconds));
 
 const safeStatus = (value: unknown): Omit<UpdateStatus, 'available'> => {
   if (!value || typeof value !== 'object') return {};
   const candidate = value as Record<string, unknown>;
   const state = ['queued', 'installing', 'succeeded', 'failed'].includes(String(candidate.state))
-    ? candidate.state as UpdateState : undefined;
+    ? (candidate.state as UpdateState)
+    : undefined;
   const revision = validUpdateRevision(candidate.revision) ? candidate.revision : undefined;
   const startedAt = typeof candidate.startedAt === 'string' ? candidate.startedAt : undefined;
   const finishedAt = typeof candidate.finishedAt === 'string' ? candidate.finishedAt : undefined;
-  const exitCode = Number.isInteger(candidate.exitCode) ? candidate.exitCode as number : undefined;
+  const exitCode = Number.isInteger(candidate.exitCode) ? (candidate.exitCode as number) : undefined;
   return { state, revision, startedAt, finishedAt, exitCode };
 };
 
@@ -57,8 +59,11 @@ const safeStatus = (value: unknown): Omit<UpdateStatus, 'available'> => {
 export async function readUpdateStatus(root = configuredUpdateRoot()): Promise<UpdateStatus> {
   if (!root) return { available: false, reason: 'Automatic updates are not installed on this server.' };
   const inbox = join(root, 'inbox');
-  try { await access(inbox, constants.W_OK); }
-  catch { return { available: false, reason: 'The automatic-update inbox is unavailable.' }; }
+  try {
+    await access(inbox, constants.W_OK);
+  } catch {
+    return { available: false, reason: 'The automatic-update inbox is unavailable.' };
+  }
 
   // A newly queued request outranks the previous run's retained status until the runner claims it.
   try {
@@ -89,8 +94,9 @@ export async function queueUpdate(revision: string, root = configuredUpdateRoot(
   const temporary = join(inbox, `.request-${process.pid}-${randomUUID()}.tmp`);
   try {
     await writeFile(temporary, `${revision}\n`, { flag: 'wx', mode: 0o640 });
-    try { await link(temporary, request); }
-    catch (error) {
+    try {
+      await link(temporary, request);
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new UpdateAlreadyQueuedError('Another update is already queued.');
       }
@@ -101,14 +107,19 @@ export async function queueUpdate(revision: string, root = configuredUpdateRoot(
   }
 }
 
-interface LatestRevisionRecord { hash: string; checkedAt: string }
+interface LatestRevisionRecord {
+  hash: string;
+  checkedAt: string;
+}
 
 async function readLatestRevision(root: string): Promise<LatestRevisionRecord | undefined> {
   try {
     const value = JSON.parse(await readFile(join(root, 'latest.json'), 'utf8')) as Record<string, unknown>;
     if (!validUpdateRevision(value.hash) || typeof value.checkedAt !== 'string') return undefined;
     return { hash: value.hash, checkedAt: value.checkedAt };
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -123,8 +134,9 @@ export async function resolveLatestRevision(root = configuredUpdateRoot()): Prom
   const temporary = join(inbox, `.version-check-${process.pid}-${randomUUID()}.tmp`);
   try {
     await writeFile(temporary, 'check\n', { flag: 'wx', mode: 0o640 });
-    try { await link(temporary, request); }
-    catch (error) {
+    try {
+      await link(temporary, request);
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       // Another browser already asked. Share the fixed root-side lookup it has in flight.
     }

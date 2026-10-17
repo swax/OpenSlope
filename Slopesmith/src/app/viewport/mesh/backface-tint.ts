@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /** The warning colour a back face tints toward — a saturated magenta nothing else in the viewport wears.
  *  Shared with the Surface view's prop clay (scene/prop-shade.ts) and the legend swatch, so the one hue
  *  that means "you are looking at this from behind its normal" cannot drift between the two surfaces. */
-export const BACKFACE_TINT_RGB: readonly [number, number, number] = [0.92, 0.20, 0.74];
+export const BACKFACE_TINT_RGB: readonly [number, number, number] = [0.92, 0.2, 0.74];
 export const BACKFACE_TINT_GLSL = `vec3(${BACKFACE_TINT_RGB.join(', ')})`;
 export const BACKFACE_TINT_CSS = `rgb(${BACKFACE_TINT_RGB.map(c => Math.round(c * 255)).join(',')})`;
 /** Mix over TERRAIN, whose tile art has to stay readable underneath. */

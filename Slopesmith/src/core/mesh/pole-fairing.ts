@@ -32,16 +32,26 @@ const ROUNDS = 6;
 const SMALL = 1e-3;
 
 const bern = (t: number) => [(1 - t) ** 3, 3 * t * (1 - t) ** 2, 3 * t * t * (1 - t), t ** 3];
-const bernD = (t: number) => [-3 * (1 - t) ** 2, 3 * (1 - t) ** 2 - 6 * t * (1 - t), 6 * t * (1 - t) - 3 * t * t, 3 * t * t];
+const bernD = (t: number) => [
+  -3 * (1 - t) ** 2,
+  3 * (1 - t) ** 2 - 6 * t * (1 - t),
+  6 * t * (1 - t) - 3 * t * t,
+  3 * t * t,
+];
 
 /** ∂S/∂u or ∂S/∂v of a row-major bicubic patch (rows run along u) at (u, v). */
 function partial(cp: readonly V3[], u: number, v: number, by: 'u' | 'v'): V3 {
-  const bu = by === 'u' ? bernD(u) : bern(u), bv = by === 'v' ? bernD(v) : bern(v);
+  const bu = by === 'u' ? bernD(u) : bern(u),
+    bv = by === 'v' ? bernD(v) : bern(v);
   const out: V3 = [0, 0, 0];
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
-    const w = bu[i] * bv[j], p = cp[i * 4 + j];
-    out[0] += w * p[0]; out[1] += w * p[1]; out[2] += w * p[2];
-  }
+  for (let i = 0; i < 4; i++)
+    for (let j = 0; j < 4; j++) {
+      const w = bu[i] * bv[j],
+        p = cp[i * 4 + j];
+      out[0] += w * p[0];
+      out[1] += w * p[1];
+      out[2] += w * p[2];
+    }
   return out;
 }
 
@@ -52,7 +62,8 @@ function solve(a: number[][], b: number[]): number[] | null {
     let pivot = col;
     for (let row = col + 1; row < n; row++) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row;
     if (Math.abs(a[pivot][col]) < 1e-12) return null;
-    [a[col], a[pivot]] = [a[pivot], a[col]]; [b[col], b[pivot]] = [b[pivot], b[col]];
+    [a[col], a[pivot]] = [a[pivot], a[col]];
+    [b[col], b[pivot]] = [b[pivot], b[col]];
     for (let row = col + 1; row < n; row++) {
       const f = a[row][col] / a[col][col];
       if (!f) continue;
@@ -86,61 +97,82 @@ function isPole(adj: ReturnType<typeof meshAdjacency>, id: number): boolean {
  *  offsets into `quadTwist`. Locked patches and wedges keep theirs and only shape the target. Run it after the
  *  corner handles are smoothed: it fits the interiors to whatever the corners now are. Returns, per pole it
  *  changed, the fan's widest seam angle before and after. */
-export function fairPoleSeams(doc: QuadMeshDoc, ids: readonly number[]): { vertex: number; before: number; after: number }[] {
-  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges), adj = meshAdjacency(mesh);
+export function fairPoleSeams(
+  doc: QuadMeshDoc,
+  ids: readonly number[],
+): { vertex: number; before: number; after: number }[] {
+  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges),
+    adj = meshAdjacency(mesh);
   const edgeHandle = meshEdgeHandles(mesh, doc.edgeHandles);
   const faired: { vertex: number; before: number; after: number }[] = [];
   for (const pole of new Set(ids)) {
     if (!isPole(adj, pole)) continue;
-    const seams = (adj.neighbors[pole] ?? []).map(nb => ({ nb, quads: adj.edgeQuads.get(undirectedEdgeKey(pole, nb))! }));
+    const seams = (adj.neighbors[pole] ?? []).map(nb => ({
+      nb,
+      quads: adj.edgeQuads.get(undirectedEdgeKey(pole, nb))!,
+    }));
     const fan = [...new Set(seams.flatMap(seam => seam.quads))];
     const free = fan.filter(quad => !quadIsLocked(doc, quad) && new Set(doc.quads[quad]).size === 4);
     if (!free.length) continue;
     const slotOf = (quad: number) => doc.quads[quad].indexOf(pole);
-    const twistOf = (quad: number): V3[] => (doc.quadTwist?.[quad] ?? [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
-      .map(v => [...v] as V3);
+    const twistOf = (quad: number): V3[] =>
+      (
+        doc.quadTwist?.[quad] ?? [
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+        ]
+      ).map(v => [...v] as V3);
     const twist = new Map<number, V3[]>(fan.map(quad => [quad, twistOf(quad)]));
     const controls = (quad: number) => quadControlPoints(mesh, edgeHandle, quad, twist.get(quad));
-    const worst = () => Math.max(...seams.map(({ nb, quads }) =>
-      seamCreaseDegrees(mesh, controls, pole, nb, [quads[0], quads[1]])));
+    const worst = () =>
+      Math.max(...seams.map(({ nb, quads }) => seamCreaseDegrees(mesh, controls, pole, nb, [quads[0], quads[1]])));
     const before = worst();
     // Smooth discards whatever was sculpted at the pole corner and fits it fresh; the other corners keep theirs.
     for (const quad of free) twist.get(quad)![slotOf(quad)] = [0, 0, 0];
 
-    const index = new Map(free.map((quad, i) => [quad, i])), n = free.length * 3;
+    const index = new Map(free.map((quad, i) => [quad, i])),
+      n = free.length * 3;
     for (let round = 0; round < ROUNDS; round++) {
-      const ata = Array.from({ length: n }, () => new Array<number>(n).fill(0)), atb = new Array<number>(n).fill(0);
-      let weight = 0, rows = 0;
+      const ata = Array.from({ length: n }, () => new Array<number>(n).fill(0)),
+        atb = new Array<number>(n).fill(0);
+      let weight = 0,
+        rows = 0;
       const cps = new Map(fan.map(quad => [quad, controls(quad)]));
-      for (const { nb, quads } of seams) for (const t of FIT_SAMPLES) {
-        const at = quads.map(quad => seamParam(mesh, quad, pole, nb, t));
-        if (!at[0] || !at[1]) continue;
-        const normals = quads.map((quad, i) => patchNormal(cps.get(quad)! as V3[], at[i]![0], at[i]![1]));
-        const target = norm(add(normals[0], mul(normals[1], dot(normals[0], normals[1]) < 0 ? -1 : 1)));
-        if (len(target) < 0.5) continue;
-        quads.forEach((quad, side) => {
-          const k = index.get(quad);
-          if (k === undefined) return;
-          const [u, v] = at[side]!;
-          // The seam runs along v where u is fixed (rows A-B, C-D) and along u where v is: the cross-boundary
-          // derivative is the other partial, and the pole-corner control point enters it with this weight.
-          const across: 'u' | 'v' = u === 0 || u === 1 ? 'u' : 'v';
-          const cp = INTERIOR_CP[slotOf(quad)], ci = Math.floor(cp / 4), cj = cp % 4;
-          const c = across === 'u' ? bernD(u)[ci] * bern(v)[cj] : bern(u)[ci] * bernD(v)[cj];
-          const cross = partial(cps.get(quad)!, u, v, across);
-          // Row: c·(target · w_new) = c·(target · w_now) − cross · target, so the new cross derivative ⟂ target.
-          const w = twist.get(quad)![slotOf(quad)];
-          const rhs = c * dot(target, w) - dot(cross, target);
-          const row = target.map(x => c * x);
-          for (let p = 0; p < 3; p++) {
-            atb[k * 3 + p] += row[p] * rhs;
-            for (let q = 0; q < 3; q++) ata[k * 3 + p][k * 3 + q] += row[p] * row[q];
-          }
-          weight += c * c; rows++;
-        });
-      }
+      for (const { nb, quads } of seams)
+        for (const t of FIT_SAMPLES) {
+          const at = quads.map(quad => seamParam(mesh, quad, pole, nb, t));
+          if (!at[0] || !at[1]) continue;
+          const normals = quads.map((quad, i) => patchNormal(cps.get(quad)! as V3[], at[i]![0], at[i]![1]));
+          const target = norm(add(normals[0], mul(normals[1], dot(normals[0], normals[1]) < 0 ? -1 : 1)));
+          if (len(target) < 0.5) continue;
+          quads.forEach((quad, side) => {
+            const k = index.get(quad);
+            if (k === undefined) return;
+            const [u, v] = at[side]!;
+            // The seam runs along v where u is fixed (rows A-B, C-D) and along u where v is: the cross-boundary
+            // derivative is the other partial, and the pole-corner control point enters it with this weight.
+            const across: 'u' | 'v' = u === 0 || u === 1 ? 'u' : 'v';
+            const cp = INTERIOR_CP[slotOf(quad)],
+              ci = Math.floor(cp / 4),
+              cj = cp % 4;
+            const c = across === 'u' ? bernD(u)[ci] * bern(v)[cj] : bern(u)[ci] * bernD(v)[cj];
+            const cross = partial(cps.get(quad)!, u, v, across);
+            // Row: c·(target · w_new) = c·(target · w_now) − cross · target, so the new cross derivative ⟂ target.
+            const w = twist.get(quad)![slotOf(quad)];
+            const rhs = c * dot(target, w) - dot(cross, target);
+            const row = target.map(x => c * x);
+            for (let p = 0; p < 3; p++) {
+              atb[k * 3 + p] += row[p] * rhs;
+              for (let q = 0; q < 3; q++) ata[k * 3 + p][k * 3 + q] += row[p] * row[q];
+            }
+            weight += c * c;
+            rows++;
+          });
+        }
       if (!rows) break;
-      const penalty = SMALL * weight / rows;
+      const penalty = (SMALL * weight) / rows;
       for (let p = 0; p < n; p++) ata[p][p] += penalty;
       const x = solve(ata, atb);
       if (!x) break;
@@ -155,7 +187,8 @@ export function fairPoleSeams(doc: QuadMeshDoc, ids: readonly number[]): { verte
     for (const quad of free) {
       const tuple = twist.get(quad)! as [V3, V3, V3, V3];
       const map = (doc.quadTwist ??= {});
-      if (tuple.every(v => len(v) < 1e-9)) delete map[quad]; else map[quad] = tuple;
+      if (tuple.every(v => len(v) < 1e-9)) delete map[quad];
+      else map[quad] = tuple;
     }
     if (doc.quadTwist && !Object.keys(doc.quadTwist).length) doc.quadTwist = undefined;
     faired.push({ vertex: pole, before, after });

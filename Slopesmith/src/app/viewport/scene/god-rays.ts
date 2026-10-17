@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import {
-  DEFAULT_GODRAY_COURSE, GODRAY_LAW, GODRAY_SPOKES, buildGodRayRim, godRayPresentation, type GodRayCourse,
+  DEFAULT_GODRAY_COURSE,
+  GODRAY_LAW,
+  GODRAY_SPOKES,
+  buildGodRayRim,
+  godRayPresentation,
+  type GodRayCourse,
 } from '../../../core/lighting/god-rays';
 import { rideTree, type TreeGeometry } from '../mesh/surface-trees';
 import type { Stage } from '../stage';
@@ -97,9 +102,12 @@ function createXrFanGeometry(): THREE.BufferGeometry {
     const b = GODRAY_SPOKES[(i + 1) % GODRAY_SPOKES.length];
     const ar = (a.deg * Math.PI) / 180;
     const br = (b.deg * Math.PI) / 180;
-    positions.set([0, 0, 0], v * 3); amps[v++] = a.amp;
-    positions.set([Math.cos(ar), Math.sin(ar), 1], v * 3); amps[v++] = a.amp;
-    positions.set([Math.cos(br), Math.sin(br), 1], v * 3); amps[v++] = a.amp;
+    positions.set([0, 0, 0], v * 3);
+    amps[v++] = a.amp;
+    positions.set([Math.cos(ar), Math.sin(ar), 1], v * 3);
+    amps[v++] = a.amp;
+    positions.set([Math.cos(br), Math.sin(br), 1], v * 3);
+    amps[v++] = a.amp;
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -182,7 +190,7 @@ export function createGodRayLayer(stage: Stage) {
   for (const mesh of [desktopMesh, xrMesh, sunMesh]) {
     mesh.frustumCulled = false; // every vertex is camera-relative or already clip space
     mesh.visible = false;
-    stage.scene.add(mesh);      // scene root: none of these coordinates belong under the chirality mirror
+    stage.scene.add(mesh); // scene root: none of these coordinates belong under the chirality mirror
   }
   sunMesh.renderOrder = 3999;
   desktopMesh.renderOrder = xrMesh.renderOrder = 4000;
@@ -211,7 +219,9 @@ export function createGodRayLayer(stage: Stage) {
   const upAxis = new THREE.Vector3();
 
   /** Terrain the sight lines test against. Meshes may come and go, so this is a getter, not a list. */
-  function setOccluders(fn: (() => (THREE.Mesh | null)[]) | null) { occluders = fn; }
+  function setOccluders(fn: (() => (THREE.Mesh | null)[]) | null) {
+    occluders = fn;
+  }
 
   /** True when nothing stands between the eye and the sky along `dir`. */
   function clear(dir: THREE.Vector3): boolean {
@@ -316,12 +326,18 @@ export function createGodRayLayer(stage: Stage) {
 
   /** Rebuild/select the presentation for this frame's current camera. Call after XR has seated its rig. */
   function sync() {
-    if (!enabled || !course) { hide(); return; }
+    if (!enabled || !course) {
+      hide();
+      return;
+    }
     const xr = stage.renderer.xr.isPresenting;
     resolveView(xr);
 
     // Projecting a source behind the eye mirrors it onto the screen; hide all three presentation meshes instead.
-    if (viewForward.dot(sunDir) <= 0) { hide(); return; }
+    if (viewForward.dot(sunDir) <= 0) {
+      hide();
+      return;
+    }
 
     const target = clearFraction(viewEye);
     visibility += Math.max(-GODRAY_LAW.fadePerFrame, Math.min(GODRAY_LAW.fadePerFrame, target - visibility));
@@ -353,9 +369,21 @@ export function createGodRayLayer(stage: Stage) {
       const a = rim[i];
       const b = rim[(i + 1) % rim.length];
       // Flat wedges retain the hard angular steps that make neighbouring bands read as beams.
-      pos[v * 3] = scratch.x; pos[v * 3 + 1] = scratch.y; pos[v * 3 + 2] = 0; amp[v] = a.amp; v++;
-      pos[v * 3] = a.x; pos[v * 3 + 1] = a.y; pos[v * 3 + 2] = 1; amp[v] = a.amp; v++;
-      pos[v * 3] = b.x; pos[v * 3 + 1] = b.y; pos[v * 3 + 2] = 1; amp[v] = a.amp; v++;
+      pos[v * 3] = scratch.x;
+      pos[v * 3 + 1] = scratch.y;
+      pos[v * 3 + 2] = 0;
+      amp[v] = a.amp;
+      v++;
+      pos[v * 3] = a.x;
+      pos[v * 3 + 1] = a.y;
+      pos[v * 3 + 2] = 1;
+      amp[v] = a.amp;
+      v++;
+      pos[v * 3] = b.x;
+      pos[v * 3 + 1] = b.y;
+      pos[v * 3 + 2] = 1;
+      amp[v] = a.amp;
+      v++;
     }
     positions.needsUpdate = true;
     amps.needsUpdate = true;
@@ -364,9 +392,17 @@ export function createGodRayLayer(stage: Stage) {
   }
 
   return {
-    setCourse, setEnabled, setSunDirection, setOccluders, sync,
-    get active() { return !!course; },
-    get visibility() { return visibility; },
+    setCourse,
+    setEnabled,
+    setSunDirection,
+    setOccluders,
+    sync,
+    get active() {
+      return !!course;
+    },
+    get visibility() {
+      return visibility;
+    },
   };
 }
 

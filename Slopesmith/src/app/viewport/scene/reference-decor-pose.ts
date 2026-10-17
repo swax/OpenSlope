@@ -25,14 +25,15 @@ interface ComboPoseCache {
 }
 const comboPoseCache = new WeakMap<PropModelAnimation, ComboPoseCache>();
 
-function hierarchyLocalMatrix(animation: PropModelAnimation, objectIndex: number,
-  frame: number | null): THREE.Matrix4 {
+function hierarchyLocalMatrix(animation: PropModelAnimation, objectIndex: number, frame: number | null): THREE.Matrix4 {
   const object = animation.objects[objectIndex];
   if (!object) return new THREE.Matrix4();
   if (frame === null || !object.channels?.some(curve => !!curve?.length)) {
     return new THREE.Matrix4().compose(
-      new THREE.Vector3(...object.restPosition), new THREE.Quaternion(...object.restRotation),
-      new THREE.Vector3(...object.restScale));
+      new THREE.Vector3(...object.restPosition),
+      new THREE.Quaternion(...object.restRotation),
+      new THREE.Vector3(...object.restScale),
+    );
   }
   // An animated object's ROTATION comes from its channels alone: a component with no curve is ZERO, not
   // its base value and not its rest value [Trailmap: 120-objects]. Translation still starts from the base.
@@ -45,14 +46,23 @@ function hierarchyLocalMatrix(animation: PropModelAnimation, objectIndex: number
     if (rotation?.length) eulerDegrees.setComponent(axis, samplePropModelCurve(rotation, frame));
   }
   const euler = new THREE.Euler(
-    THREE.MathUtils.degToRad(eulerDegrees.x), THREE.MathUtils.degToRad(eulerDegrees.y),
-    THREE.MathUtils.degToRad(eulerDegrees.z), 'ZYX');
-  return new THREE.Matrix4().compose(position, new THREE.Quaternion().setFromEuler(euler),
-    new THREE.Vector3(...object.restScale));
+    THREE.MathUtils.degToRad(eulerDegrees.x),
+    THREE.MathUtils.degToRad(eulerDegrees.y),
+    THREE.MathUtils.degToRad(eulerDegrees.z),
+    'ZYX',
+  );
+  return new THREE.Matrix4().compose(
+    position,
+    new THREE.Quaternion().setFromEuler(euler),
+    new THREE.Vector3(...object.restScale),
+  );
 }
 
-function hierarchyWorldMatrices(animation: PropModelAnimation, frame: number | null,
-  basis?: readonly THREE.Matrix4[]): THREE.Matrix4[] {
+function hierarchyWorldMatrices(
+  animation: PropModelAnimation,
+  frame: number | null,
+  basis?: readonly THREE.Matrix4[],
+): THREE.Matrix4[] {
   const world: (THREE.Matrix4 | undefined)[] = new Array(animation.objects.length);
   const visiting = new Set<number>();
   const resolve = (index: number): THREE.Matrix4 => {
@@ -68,8 +78,10 @@ function hierarchyWorldMatrices(animation: PropModelAnimation, frame: number | n
     if (visiting.has(index)) return local;
     visiting.add(index);
     const parent = animation.objects[index]?.parent ?? -1;
-    const result = parent >= 0 && parent < animation.objects.length && parent !== index
-      ? resolve(parent).clone().multiply(local) : local;
+    const result =
+      parent >= 0 && parent < animation.objects.length && parent !== index
+        ? resolve(parent).clone().multiply(local)
+        : local;
     visiting.delete(index);
     world[index] = result;
     return result;
@@ -104,14 +116,14 @@ export function hierarchyPose(animation: PropModelAnimation, frame: number): Hie
  * clock. The result is the ordinary animated-world x inverse-rest delta of `snapshot x comboPose`, so a
  * caller applies it exactly as it applies `hierarchyPose`'s.
  */
-export function hierarchyComboPose(animation: PropModelAnimation, frame: number,
-  basisFrame: number): THREE.Matrix4[] {
+export function hierarchyComboPose(animation: PropModelAnimation, frame: number, basisFrame: number): THREE.Matrix4[] {
   const cached = comboPoseCache.get(animation);
   if (cached && cached.frame === frame && cached.basis === basisFrame) return cached.deltas;
   const { restInverse } = hierarchyPose(animation, basisFrame);
   const basis = hierarchyLocalMatrices(animation, basisFrame);
-  const deltas = hierarchyWorldMatrices(animation, frame, basis)
-    .map((matrix, index) => matrix.clone().multiply(restInverse[index]));
+  const deltas = hierarchyWorldMatrices(animation, frame, basis).map((matrix, index) =>
+    matrix.clone().multiply(restInverse[index]),
+  );
   comboPoseCache.set(animation, { frame, basis: basisFrame, deltas });
   return deltas;
 }
@@ -123,7 +135,8 @@ export function hierarchyLocalMatrices(animation: PropModelAnimation, frame: num
 }
 
 export function hiddenMatrix(matrix: THREE.Matrix4): THREE.Matrix4 {
-  const out = matrix.clone(), e = out.elements;
+  const out = matrix.clone(),
+    e = out.elements;
   e[0] = e[1] = e[2] = e[4] = e[5] = e[6] = e[8] = e[9] = e[10] = 0;
   return out;
 }

@@ -11,8 +11,11 @@ import type { BoostVolumeSpec } from '../../ride/boost-volumes';
  * circumstances and CollisonSound rows are exact-contact events [Trailmap: 370, 420]. A trigger column with
  * an explicit dispatcher is an OUTPUT rather than a rider volume: Cracked is the retail example, firing its
  * own slot's trigger only when the strength pool runs out. */
-export function playProximityRadius(circumstance: string, objectRadius: number,
-  explicitlyDispatched = false): number | null {
+export function playProximityRadius(
+  circumstance: string,
+  objectRadius: number,
+  explicitlyDispatched = false,
+): number | null {
   return circumstance === 'trigger' && !explicitlyDispatched ? Math.max(14, objectRadius + 1) : null;
 }
 
@@ -48,13 +51,15 @@ export function crackedSurfaceSpec(node: EffectNode): { lifetimeSeconds: number;
   return { lifetimeSeconds: finiteOr(cracked.U0), strength: finiteOr(cracked.U1) };
 }
 
-export function boostVolumeSpec(node: EffectNode, world: (raw: THREE.Vector3) => THREE.Vector3,
+export function boostVolumeSpec(
+  node: EffectNode,
+  world: (raw: THREE.Vector3) => THREE.Vector3,
   hostLocal: (raw: THREE.Vector3) => THREE.Vector3,
-  worldPoint?: (raw: THREE.Vector3) => THREE.Vector3): BoostVolumeSpec | null {
+  worldPoint?: (raw: THREE.Vector3) => THREE.Vector3,
+): BoostVolumeSpec | null {
   const type0 = isObject(node.payload.type0) ? node.payload.type0 : null;
   if (!type0) return null;
-  const axis = (x: unknown, y: unknown, z: unknown) =>
-    world(new THREE.Vector3(finiteOr(x), finiteOr(y), finiteOr(z)));
+  const axis = (x: unknown, y: unknown, z: unknown) => world(new THREE.Vector3(finiteOr(x), finiteOr(y), finiteOr(z)));
   /**
    * The vertical lift's target altitude, which is the ONE field in this family that names a POSITION rather
    * than a direction or a magnitude — and so the one that has to travel through the full transform instead of
@@ -69,9 +74,7 @@ export function boostVolumeSpec(node: EffectNode, world: (raw: THREE.Vector3) =>
    * So the caller supplies a point map when it has one, and the bare scale is the fallback for a caller with
    * no frame to speak of (the arrow overlay, which draws in the reference's own space).
    */
-  const toEditorY = (rawZ: number) => (worldPoint
-    ? worldPoint(new THREE.Vector3(0, 0, rawZ)).y
-    : rawZ / 100);
+  const toEditorY = (rawZ: number) => (worldPoint ? worldPoint(new THREE.Vector3(0, 0, rawZ)).y : rawZ / 100);
   /** A LENGTH, not a point: the snap tolerance is a gap, so it takes the scale and nothing else. */
   const toEditorLength = (raw: number) => raw / 100;
   const boostMode = (payload: Record<string, unknown> | null) => ({
@@ -85,25 +88,33 @@ export function boostVolumeSpec(node: EffectNode, world: (raw: THREE.Vector3) =>
       const dir = isObject(b?.BoostDir) ? b!.BoostDir : null;
       if (!b || !dir) return null;
       return {
-        kind: 'directional', dir: axis(dir.X, dir.Y, dir.Z).normalize(),
-        target: finiteOr(b.BoostAmount), rate: finiteOr(b.U2), ...boostMode(b),
+        kind: 'directional',
+        dir: axis(dir.X, dir.Y, dir.Z).normalize(),
+        target: finiteOr(b.BoostAmount),
+        rate: finiteOr(b.U2),
+        ...boostMode(b),
       };
     }
     case 'property.z-boost': {
       const z = isObject(type0.type0Sub18) ? type0.type0Sub18 : null;
       if (!z) return null;
       return {
-        kind: 'vertical-lift', dir: axis(z.U2, z.U3, z.U4).normalize(),
-        target: finiteOr(z.U1), rate: finiteOr(z.U0),
-        targetY: toEditorY(finiteOr(z.U5)), snapTolerance: toEditorLength(finiteOr(z.U6)),
+        kind: 'vertical-lift',
+        dir: axis(z.U2, z.U3, z.U4).normalize(),
+        target: finiteOr(z.U1),
+        rate: finiteOr(z.U0),
+        targetY: toEditorY(finiteOr(z.U5)),
+        snapTolerance: toEditorLength(finiteOr(z.U6)),
       };
     }
     case 'property.lap-boost': {
       const l = isObject(type0.type0Sub15) ? type0.type0Sub15 : null;
       if (!l) return null;
       return {
-        kind: 'lap-gated', dir: axis(l.U2, l.U3, l.U4).normalize(),
-        target: finiteOr(l.U1), rate: finiteOr(l.U0),
+        kind: 'lap-gated',
+        dir: axis(l.U2, l.U3, l.U4).normalize(),
+        target: finiteOr(l.U1),
+        rate: finiteOr(l.U0),
         // hostLocal, not world: the stage axis is the one field in the family the engine DOES turn by the
         // host, running its instance matrix over (1,0,0) ([Trailmap: 360-lapboost-stage]).
         axis: hostLocal(new THREE.Vector3(1, 0, 0)).normalize(),
@@ -117,7 +128,9 @@ export function boostVolumeSpec(node: EffectNode, world: (raw: THREE.Vector3) =>
       if (!t) return null;
       return {
         // Its update is sub-7's, so it carries sub-7's mode and window at sub-7's payload offsets.
-        kind: 'tube-end', rate: finiteOr(t.U2), mode: Math.trunc(finiteOr(t.U0)),
+        kind: 'tube-end',
+        rate: finiteOr(t.U2),
+        mode: Math.trunc(finiteOr(t.U0)),
         seconds: Math.max(0, finiteOr(t.U1)),
         stages: [
           { dir: axis(t.U7, t.U8, t.U9).normalize(), speed: finiteOr(t.U16) },
@@ -126,6 +139,7 @@ export function boostVolumeSpec(node: EffectNode, world: (raw: THREE.Vector3) =>
         ],
       };
     }
-    default: return null;
+    default:
+      return null;
   }
 }

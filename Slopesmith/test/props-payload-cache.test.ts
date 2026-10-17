@@ -8,7 +8,8 @@ import { readPersistentPropsJson, readPersistentPropsPayload } from '../src/serv
 import { check, failures } from './check';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-props-cache-'));
-const source = join(root, 'SOURCE'), cache = join(root, 'cache');
+const source = join(root, 'SOURCE'),
+  cache = join(root, 'cache');
 mkdirSync(join(source, 'Meshes'), { recursive: true });
 mkdirSync(join(source, 'Collision'), { recursive: true });
 writeFileSync(join(source, 'Models.json'), '{"Models":[]}');
@@ -19,68 +20,107 @@ writeFileSync(join(source, 'Collision', 'body.obj'), 'v 0 0 0\n');
 
 let builds = 0;
 const build = async (): Promise<PropsPayload> => ({
-  level: 'SOURCE', models: [], materials: [], instances: [{
-    i: builds++, m: 0, p: [0, 0, 0], q: [0, 0, 0, 1], s: [1, 1, 1], n: 'test', v: true,
-    pc: false, pb: false, c: 0,
-  }],
+  level: 'SOURCE',
+  models: [],
+  materials: [],
+  instances: [
+    {
+      i: builds++,
+      m: 0,
+      p: [0, 0, 0],
+      q: [0, 0, 0, 1],
+      s: [1, 1, 1],
+      n: 'test',
+      v: true,
+      pc: false,
+      pb: false,
+      c: 0,
+    },
+  ],
 });
 
 try {
   const first = await readPersistentPropsPayload('SOURCE', source, build, cache);
   const second = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(first.cache === 'miss' && second.cache === 'hit' && builds === 1,
-    'a generated prop payload survives beyond the producing call');
+  check(
+    first.cache === 'miss' && second.cache === 'hit' && builds === 1,
+    'a generated prop payload survives beyond the producing call',
+  );
   check(second.payload.instances[0]?.i === 0, 'a persistent hit restores the serialized payload');
 
   let jsonBuilds = 0;
   const jsonCache = join(root, 'json-cache');
   const serialized = () => {
     jsonBuilds++;
-    return Promise.resolve(new TextEncoder().encode(JSON.stringify({
-      level: 'SOURCE', models: [], materials: [], instances: [], marker: 'worker bytes',
-    })));
+    return Promise.resolve(
+      new TextEncoder().encode(
+        JSON.stringify({
+          level: 'SOURCE',
+          models: [],
+          materials: [],
+          instances: [],
+          marker: 'worker bytes',
+        }),
+      ),
+    );
   };
   const jsonFirst = await readPersistentPropsJson('SOURCE', source, serialized, jsonCache);
   const jsonSecond = await readPersistentPropsJson('SOURCE', source, serialized, jsonCache);
-  check(jsonFirst.cache === 'miss' && jsonSecond.cache === 'hit' && jsonBuilds === 1
-    && JSON.parse(jsonSecond.json.toString()).marker === 'worker bytes',
-  'pre-serialized worker bytes persist and return without another build');
+  check(
+    jsonFirst.cache === 'miss' &&
+      jsonSecond.cache === 'hit' &&
+      jsonBuilds === 1 &&
+      JSON.parse(jsonSecond.json.toString()).marker === 'worker bytes',
+    'pre-serialized worker bytes persist and return without another build',
+  );
 
   writeFileSync(join(source, 'Instances.json'), '{"Instances":[{"ModelID":0}]}');
   const manifestChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(manifestChanged.cache === 'miss' && builds === 2 && manifestChanged.fingerprint !== first.fingerprint,
-    'an in-place manifest edit invalidates the fingerprint');
+  check(
+    manifestChanged.cache === 'miss' && builds === 2 && manifestChanged.fingerprint !== first.fingerprint,
+    'an in-place manifest edit invalidates the fingerprint',
+  );
 
   writeFileSync(join(source, 'TextureAlpha.overrides.json'), '{"glass.png":"cutout"}');
   const alphaChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(alphaChanged.cache === 'miss' && builds === 3
-    && alphaChanged.fingerprint !== manifestChanged.fingerprint,
-  'an alpha-sidecar edit invalidates the prop payload that carries its explicit material modes');
+  check(
+    alphaChanged.cache === 'miss' && builds === 3 && alphaChanged.fingerprint !== manifestChanged.fingerprint,
+    'an alpha-sidecar edit invalidates the prop payload that carries its explicit material modes',
+  );
 
   writeFileSync(join(source, 'Meshes', 'mesh.obj'), 'v 1 0 0\n');
   const meshChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(meshChanged.cache === 'miss' && builds === 4 && meshChanged.fingerprint !== alphaChanged.fingerprint,
-    'an in-place mesh edit invalidates the fingerprint');
+  check(
+    meshChanged.cache === 'miss' && builds === 4 && meshChanged.fingerprint !== alphaChanged.fingerprint,
+    'an in-place mesh edit invalidates the fingerprint',
+  );
 
   const cacheFile = join(cache, 'SOURCE', `${meshChanged.fingerprint}.json`);
   writeFileSync(cacheFile, '{truncated');
   const recovered = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(recovered.cache === 'miss' && builds === 5
-    && JSON.parse(readFileSync(cacheFile, 'utf8')).level === 'SOURCE',
-  'a truncated persistent entry is rebuilt atomically');
+  check(
+    recovered.cache === 'miss' && builds === 5 && JSON.parse(readFileSync(cacheFile, 'utf8')).level === 'SOURCE',
+    'a truncated persistent entry is rebuilt atomically',
+  );
   writeFileSync(join(source, 'Physics.json'), '{"PhysicsHeaders":[]}');
   const physicsChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(physicsChanged.cache === 'miss' && builds === 6 && physicsChanged.fingerprint !== recovered.fingerprint,
-    'a native physics-sidecar edit invalidates cached collision geometry and mass properties');
+  check(
+    physicsChanged.cache === 'miss' && builds === 6 && physicsChanged.fingerprint !== recovered.fingerprint,
+    'a native physics-sidecar edit invalidates cached collision geometry and mass properties',
+  );
   writeFileSync(join(source, 'Crowd.json'), JSON.stringify({ Schema: 'openslope-crowd/v1', Frames: [] }));
   const crowdChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(crowdChanged.cache === 'miss' && builds === 7 && crowdChanged.fingerprint !== physicsChanged.fingerprint,
-    'a crowd profile edit invalidates the ordered crowd frame list');
+  check(
+    crowdChanged.cache === 'miss' && builds === 7 && crowdChanged.fingerprint !== physicsChanged.fingerprint,
+    'a crowd profile edit invalidates the ordered crowd frame list',
+  );
   mkdirSync(join(source, 'Textures'));
   writeFileSync(join(source, 'Textures/crowd-cd00.png'), 'authored frame');
   const crowdFileChanged = await readPersistentPropsPayload('SOURCE', source, build, cache);
-  check(crowdFileChanged.cache === 'miss' && builds === 8 && crowdFileChanged.fingerprint !== crowdChanged.fingerprint,
-    'native crowd filenames invalidate the fallback frame discovery cache');
+  check(
+    crowdFileChanged.cache === 'miss' && builds === 8 && crowdFileChanged.fingerprint !== crowdChanged.fingerprint,
+    'native crowd filenames invalidate the fallback frame discovery cache',
+  );
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

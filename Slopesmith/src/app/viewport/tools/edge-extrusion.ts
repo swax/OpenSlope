@@ -1,6 +1,17 @@
 import * as THREE from 'three';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
-import { applyPlannedEdgeExtrusion, edgeChainExtrusionPlacement, pathEdgeExtrusionPlacement, edgeExtrusionPlacementPreviewDoc, edgeExtrusionSegmentCount, planEdgeExtrusion, planPatchExtrusion, tangentEdgeExtrusionPlacement, type EdgeExtrusionPlacement, type EdgeExtrusionPlan } from '../../../core/mesh/ops';
+import {
+  applyPlannedEdgeExtrusion,
+  edgeChainExtrusionPlacement,
+  pathEdgeExtrusionPlacement,
+  edgeExtrusionPlacementPreviewDoc,
+  edgeExtrusionSegmentCount,
+  planEdgeExtrusion,
+  planPatchExtrusion,
+  tangentEdgeExtrusionPlacement,
+  type EdgeExtrusionPlacement,
+  type EdgeExtrusionPlan,
+} from '../../../core/mesh/ops';
 import { sampleRail } from '../../../core/rails/rails';
 import { buildQuadMesh, meshAdjacency, meshCageEdges, meshFromDoc } from '../../../core/mesh/topology';
 import { meshEdgeSegments } from '../../../core/mesh/selection';
@@ -9,8 +20,15 @@ import { BRIDGE_RAIL_COLORS, EDIT_EDGE_SEL_WIDTH, LOFT_PREVIEW_FILL_COLOR, LOOP_
 import { addCageLines, clearGlyphGroup, glyphLines } from '../shared/overlays';
 import type { Stage } from '../stage';
 import {
-  edgeIndices, quadIndex, quadIndices, quadName, vertexIndex, vertexNames,
-  type NamedEdge, type QuadName, type VertexName,
+  edgeIndices,
+  quadIndex,
+  quadIndices,
+  quadName,
+  vertexIndex,
+  vertexNames,
+  type NamedEdge,
+  type QuadName,
+  type VertexName,
 } from '../../state/mesh-names';
 import { dataToScene, sceneToData } from '../coordinates';
 
@@ -29,10 +47,12 @@ export type EdgeExtrusionDeps = {
 /** Source faces represented by the local extrusion ghost. Hiding only these faces lets a downward extrusion
  * remain readable without making unchanged terrain disappear (boundary/free-edge extrusions hide nothing). */
 export function edgeExtrusionOccludingSourceQuads(plan: EdgeExtrusionPlan): number[] {
-  return [...new Set([
-    ...(plan.topQuads ?? []).map(top => top.sourceQuad),
-    ...(plan.sideQuads ?? []).map(side => side.sourceQuad),
-  ])].sort((a, b) => a - b);
+  return [
+    ...new Set([
+      ...(plan.topQuads ?? []).map(top => top.sourceQuad),
+      ...(plan.sideQuads ?? []).map(side => side.sourceQuad),
+    ]),
+  ].sort((a, b) => a - b);
 }
 
 /** Boundary/free-edge extrusion workflow. Owns the frozen topology plan, optional drag plane, pointer capture, snapping,
@@ -42,10 +62,10 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   let mode: 'pull' | 'path' = 'pull';
   let pathId = '';
   let reversePath = false;
-  let turnOverride: boolean | null = null;   // mesh-edge path: turn with it, run parallel, or (null) the path decides
-  let pathTurns = false;                     // what the current mesh-edge placement actually did
+  let turnOverride: boolean | null = null; // mesh-edge path: turn with it, run parallel, or (null) the path decides
+  let pathTurns = false; // what the current mesh-edge placement actually did
   let pathError = '';
-  let pathWarning = '';   // the path is fine to commit, but its sweep folds somewhere (EdgeExtrusionPathResult.warning)
+  let pathWarning = ''; // the path is fine to commit, but its sweep folds somewhere (EdgeExtrusionPathResult.warning)
   let pathSegments = 0;
   let segmentLengthOverride: number | null = null;
   let drag: {
@@ -95,7 +115,9 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   const cage = new THREE.Group();
   fill.renderOrder = 9;
   fill.visible = false;
-  fill.raycast = () => { /* action preview, never a pick target */ };
+  fill.raycast = () => {
+    /* action preview, never a pick target */
+  };
   group.add(fill, cage);
   group.visible = false;
   stage.worldRoot.add(group);
@@ -111,9 +133,19 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     sourceHighlight.visible = false;
     if (!staged || mode !== 'path' || !source || !planIntact(source, staged.plan, staged.names)) return;
     const { mesh, edgeHandle } = meshFromDoc(source);
-    glyphLines(sourceHighlight, meshEdgeSegments(mesh, edgeHandle, edgeIndices(source, staged.edges)), BRIDGE_RAIL_COLORS[0], 1,
-      [stage.container.clientWidth || 1, stage.container.clientHeight || 1], EDIT_EDGE_SEL_WIDTH + 0.5, LOOP_RENDER_ORDER + 2, false);
-    sourceHighlight.children.forEach(child => { child.raycast = () => {}; });
+    glyphLines(
+      sourceHighlight,
+      meshEdgeSegments(mesh, edgeHandle, edgeIndices(source, staged.edges)),
+      BRIDGE_RAIL_COLORS[0],
+      1,
+      [stage.container.clientWidth || 1, stage.container.clientHeight || 1],
+      EDIT_EDGE_SEL_WIDTH + 0.5,
+      LOOP_RENDER_ORDER + 2,
+      false,
+    );
+    sourceHighlight.children.forEach(child => {
+      child.raycast = () => {};
+    });
     sourceHighlight.visible = true;
   }
 
@@ -124,17 +156,28 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
    * geometry that has moved and applying it would extrude the wrong corners (docs/039).
    */
   const planIntact = (source: QuadMeshDoc, plan: EdgeExtrusionPlan, names: readonly VertexName[]): boolean =>
-    plan.vertices.length === names.length
-    && plan.vertices.every((index, at) => vertexIndex(source, names[at]) === index);
+    plan.vertices.length === names.length &&
+    plan.vertices.every((index, at) => vertexIndex(source, names[at]) === index);
 
-  function planSelection(): { source: QuadMeshDoc; edges: NamedEdge[]; plan: EdgeExtrusionPlan; names: VertexName[]; center: THREE.Vector3 } | null {
-    const source = deps.meshDoc(), selected = deps.selectedEdges(), selectedQuads = deps.selectedQuads();
+  function planSelection(): {
+    source: QuadMeshDoc;
+    edges: NamedEdge[];
+    plan: EdgeExtrusionPlan;
+    names: VertexName[];
+    center: THREE.Vector3;
+  } | null {
+    const source = deps.meshDoc(),
+      selected = deps.selectedEdges(),
+      selectedQuads = deps.selectedQuads();
     if (!source || (!selected.length && !selectedQuads.length)) return null;
     const side = sideHint === null ? null : quadIndex(source, sideHint);
     const planned = selected.length
       ? planEdgeExtrusion(source, edgeIndices(source, selected), side)
       : planPatchExtrusion(source, quadIndices(source, selectedQuads));
-    if (!planned.ok) { stage.cb.onExtrudeEdgesInvalid?.(planned.error); return null; }
+    if (!planned.ok) {
+      stage.cb.onExtrudeEdgesInvalid?.(planned.error);
+      return null;
+    }
     if (segmentLengthOverride !== null) planned.plan.segmentLength = segmentLengthOverride;
 
     const members = planned.plan.vertices;
@@ -155,7 +198,8 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     const ready = planSelection();
     if (!ready) return true;
     const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-      stage.camera.getWorldDirection(new THREE.Vector3()), ready.center,
+      stage.camera.getWorldDirection(new THREE.Vector3()),
+      ready.center,
     );
     const start = stage.ray.ray.intersectPlane(plane, new THREE.Vector3());
     if (!start) return false;
@@ -183,26 +227,35 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (mode === 'path') {
       const source = deps.meshDoc();
       if (!source) return null;
-      const selected = deps.selectedEdges(), edges = edgeIndices(source, selected);
+      const selected = deps.selectedEdges(),
+        edges = edgeIndices(source, selected);
       const rail = pathId ? source.rails?.find(rail => rail.id === pathId) : null;
       const points = rail ? sampleRail(rail.nodes, 12, rail.handles) : [];
       if (reversePath) points.reverse();
       const result = pathId
-        ? rail ? pathEdgeExtrusionPlacement(source, staged.plan, points)
+        ? rail
+          ? pathEdgeExtrusionPlacement(source, staged.plan, points)
           : { ok: false as const, error: 'That path is no longer available. Choose another path.' }
         : selected.length !== edges.length
           ? { ok: false as const, error: 'The selected edge path has changed. Select its edges again.' }
-          : edgeChainExtrusionPlacement(source, staged.plan, edges, turnOverride === null ? {} : { turn: turnOverride });
+          : edgeChainExtrusionPlacement(
+              source,
+              staged.plan,
+              edges,
+              turnOverride === null ? {} : { turn: turnOverride },
+            );
       pathError = result.ok ? '' : result.error;
       pathTurns = result.ok && result.turns;
-      pathWarning = result.ok ? result.warning ?? '' : '';
+      pathWarning = result.ok ? (result.warning ?? '') : '';
       return result.ok ? result.placement : null;
     }
     anchor.updateMatrixWorld(true);
-    const vertices: Record<number, V3> = {}, handles: Record<string, V3> = {};
+    const vertices: Record<number, V3> = {},
+      handles: Record<string, V3> = {};
     // The initial fan handle uses a local X axis rotated onto the average continuation direction. Its resting
     // quaternion is display orientation, not an authored rotation, so remove it before transforming geometry.
-    const q = anchor.quaternion.clone().multiply(staged.frame.clone().invert()).normalize(), scale = anchor.scale;
+    const q = anchor.quaternion.clone().multiply(staged.frame.clone().invert()).normalize(),
+      scale = anchor.scale;
     for (const vertex of staged.plan.vertices) {
       const base = staged.base.vertices[vertex];
       const local = dataToScene(base).sub(staged.center);
@@ -295,7 +348,8 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     const saved = staged;
     staged = next;
     anchor.position.copy(next.center);
-    anchor.quaternion.copy(next.frame); anchor.scale.setScalar(1);
+    anchor.quaternion.copy(next.frame);
+    anchor.scale.setScalar(1);
     rebuild();
     staged = saved;
   }
@@ -320,19 +374,35 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   }
 
   function makeStage(edges: NamedEdge[], plan: EdgeExtrusionPlan, names: VertexName[], delta: V3) {
-    const source = deps.meshDoc(), origin = sourceCenter(plan);
+    const source = deps.meshDoc(),
+      origin = sourceCenter(plan);
     if (!source || !origin || !planIntact(source, plan, names)) return null;
     const distance = Math.hypot(delta[0], delta[1], delta[2]);
     const base = tangentEdgeExtrusionPlacement(source, plan, delta);
     const center = placementCenter(plan, base);
-    const moveAxis = center.clone().sub(origin).multiplyScalar(1 / Math.max(distance, 1e-8));
+    const moveAxis = center
+      .clone()
+      .sub(origin)
+      .multiplyScalar(1 / Math.max(distance, 1e-8));
     // A surface continuation has one meaningful fan distance. A free edge has no tangent field, so it keeps
     // the ordinary rigid Move gizmo and can be positioned in any direction.
     const tangentMove = distance > 1e-8 && moveAxis.lengthSq() > 1e-8 && plan.edges.every(edge => !!edge.continuation);
     const frame = tangentMove
       ? new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), moveAxis.clone().normalize())
       : new THREE.Quaternion();
-    return { edges, plan, names, center, sourceCenter: origin, moveAxis, distance, tangentMove, fanMode: tangentMove, frame, base };
+    return {
+      edges,
+      plan,
+      names,
+      center,
+      sourceCenter: origin,
+      moveAxis,
+      distance,
+      tangentMove,
+      fanMode: tangentMove,
+      frame,
+      base,
+    };
   }
 
   function stagePlacement(edges: NamedEdge[], plan: EdgeExtrusionPlan, names: VertexName[], delta: V3) {
@@ -340,7 +410,8 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (!next) return;
     staged = next;
     anchor.position.copy(next.center);
-    anchor.quaternion.copy(next.frame); anchor.scale.setScalar(1);
+    anchor.quaternion.copy(next.frame);
+    anchor.scale.setScalar(1);
     anchor.visible = true;
     rebuild();
     stage.attachGizmo(anchor, 'edgeextrusion', -1);
@@ -351,9 +422,16 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
    * own frozen tangent so fan-in/fan-out survives. Choosing a transform tool exits this constrained state. */
   function onGizmoChange() {
     if (!staged || mode === 'path') return;
-    if (!staged.fanMode || !staged.tangentMove) { rebuild(); return; }
+    if (!staged.fanMode || !staged.tangentMove) {
+      rebuild();
+      return;
+    }
     const axisLen2 = staged.moveAxis.lengthSq();
-    if (axisLen2 < 1e-8) { staged.tangentMove = false; rebuild(); return; }
+    if (axisLen2 < 1e-8) {
+      staged.tangentMove = false;
+      rebuild();
+      return;
+    }
     let distance = anchor.position.clone().sub(staged.sourceCenter).dot(staged.moveAxis) / axisLen2;
     const snap = deps.snap();
     if (snap.enabled) distance = Math.round(distance / snap.step) * snap.step;
@@ -417,11 +495,20 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     if (!staged) return;
     const sourceEdges = restoreSource && mode === 'path' ? staged.edges : null;
     staged = null;
-    mode = 'pull'; pathId = ''; reversePath = false; turnOverride = null; pathError = ''; pathWarning = ''; pathSegments = 0;
+    mode = 'pull';
+    pathId = '';
+    reversePath = false;
+    turnOverride = null;
+    pathError = '';
+    pathWarning = '';
+    pathSegments = 0;
     anchor.visible = false;
-    anchor.position.set(0, 0, 0); anchor.quaternion.identity(); anchor.scale.setScalar(1);
+    anchor.position.set(0, 0, 0);
+    anchor.quaternion.identity();
+    anchor.scale.setScalar(1);
     group.visible = false;
-    fill.geometry.dispose(); fill.geometry = new THREE.BufferGeometry();
+    fill.geometry.dispose();
+    fill.geometry = new THREE.BufferGeometry();
     clearGlyphGroup(cage);
     clearGlyphGroup(sourceHighlight);
     sourceHighlight.visible = false;
@@ -441,15 +528,20 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
       return;
     }
     const placed = placement();
-    if (!placed) { stage.cb.onExtrudeEdgesInvalid?.(pathError || 'Choose a path before committing the extrusion.'); return; }
+    if (!placed) {
+      stage.cb.onExtrudeEdgesInvalid?.(pathError || 'Choose a path before committing the extrusion.');
+      return;
+    }
     if (placed && stage.cb.onCommitExtrudeEdges?.(staged.plan, placed) !== false) clearStage();
   }
 
   function segmentCount(): number {
     if (mode === 'path') return pathSegments;
-    const source = deps.meshDoc(), placed = placement();
+    const source = deps.meshDoc(),
+      placed = placement();
     return staged && source && placed && planIntact(source, staged.plan, staged.names)
-      ? edgeExtrusionSegmentCount(source, staged.plan, placed) : 1;
+      ? edgeExtrusionSegmentCount(source, staged.plan, placed)
+      : 1;
   }
 
   /** Flip an interior-edge extrusion to the opposite incident strip and restart its constrained placement. */
@@ -457,12 +549,18 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     const source = deps.meshDoc();
     if (!staged?.plan.sideQuads?.length || !source || !staged.edges.length) return false;
     if (!planIntact(source, staged.plan, staged.names)) return false;
-    const first = staged.plan.edges[0], incident = meshAdjacency(buildQuadMesh(source.vertices, source.quads, source.freeEdges))
-      .edgeQuads.get(first.from < first.to ? `${first.from},${first.to}` : `${first.to},${first.from}`) ?? [];
+    const first = staged.plan.edges[0],
+      incident =
+        meshAdjacency(buildQuadMesh(source.vertices, source.quads, source.freeEdges)).edgeQuads.get(
+          first.from < first.to ? `${first.from},${first.to}` : `${first.to},${first.from}`,
+        ) ?? [];
     const opposite = incident.find(quad => quad !== first.sideQuad);
     if (opposite === undefined) return false;
     const planned = planEdgeExtrusion(source, edgeIndices(source, staged.edges), opposite);
-    if (!planned.ok) { stage.cb.onExtrudeEdgesInvalid?.(planned.error); return false; }
+    if (!planned.ok) {
+      stage.cb.onExtrudeEdgesInvalid?.(planned.error);
+      return false;
+    }
     planned.plan.segmentLength = staged.plan.segmentLength;
     sideHint = quadName(source, opposite);
     const names = vertexNames(source, planned.plan.vertices);
@@ -472,7 +570,7 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
   }
 
   function setMode(value: 'pull' | 'path') {
-    if (!staged || value === mode || value === 'path' && staged.plan.kind !== 'edge') return;
+    if (!staged || value === mode || (value === 'path' && staged.plan.kind !== 'edge')) return;
     mode = value;
     pathError = '';
     pathWarning = '';
@@ -506,31 +604,74 @@ export function createEdgeExtrusionLayer(stage: Stage, deps: EdgeExtrusionDeps) 
     flipSide,
     setMode,
     setSegmentLength,
-    setPath(value: string) { pathId = value; reversePath = false; rebuild(); },
-    setReversePath(value: boolean) { reversePath = value; rebuild(); },
-    setTurnWithPath(value: boolean) { turnOverride = value; rebuild(); },
-    refreshPath() { if (staged && mode === 'path') rebuild(); },
+    setPath(value: string) {
+      pathId = value;
+      reversePath = false;
+      rebuild();
+    },
+    setReversePath(value: boolean) {
+      reversePath = value;
+      rebuild();
+    },
+    setTurnWithPath(value: boolean) {
+      turnOverride = value;
+      rebuild();
+    },
+    refreshPath() {
+      if (staged && mode === 'path') rebuild();
+    },
     setSideHint(quad: number | null) {
       const source = deps.meshDoc();
       sideHint = quad === null || !source ? null : quadName(source, quad);
     },
     commitStage,
-    cancel() { if (drag) finish(null, false); else clearStage(true); },
-    get active() { return !!drag || !!staged; },
-    get dragging() { return !!drag; },
-    get staged() { return !!staged; },
-    get fanMode() { return mode === 'pull' && !!staged?.fanMode; },
-    get sideFlippable() { return mode === 'pull' && !!staged?.plan.sideQuads?.length; },
-    get segments() { return segmentCount(); },
-    get mode() { return mode; },
-    get pathAvailable() { return staged?.plan.kind === 'edge'; },
-    get segmentLength() { return staged?.plan.segmentLength ?? segmentLengthOverride ?? 10; },
-    get path() { return pathId; },
-    get reversePath() { return reversePath; },
+    cancel() {
+      if (drag) finish(null, false);
+      else clearStage(true);
+    },
+    get active() {
+      return !!drag || !!staged;
+    },
+    get dragging() {
+      return !!drag;
+    },
+    get staged() {
+      return !!staged;
+    },
+    get fanMode() {
+      return mode === 'pull' && !!staged?.fanMode;
+    },
+    get sideFlippable() {
+      return mode === 'pull' && !!staged?.plan.sideQuads?.length;
+    },
+    get segments() {
+      return segmentCount();
+    },
+    get mode() {
+      return mode;
+    },
+    get pathAvailable() {
+      return staged?.plan.kind === 'edge';
+    },
+    get segmentLength() {
+      return staged?.plan.segmentLength ?? segmentLengthOverride ?? 10;
+    },
+    get path() {
+      return pathId;
+    },
+    get reversePath() {
+      return reversePath;
+    },
     /** Whether a mesh-edge path extrusion turns the run with the path (else carries it parallel). */
-    get turnWithPath() { return pathTurns; },
-    get error() { return pathError; },
-    get warning() { return pathError ? '' : pathWarning; },
+    get turnWithPath() {
+      return pathTurns;
+    },
+    get error() {
+      return pathError;
+    },
+    get warning() {
+      return pathError ? '' : pathWarning;
+    },
   };
 }
 

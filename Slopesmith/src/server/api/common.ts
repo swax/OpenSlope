@@ -3,7 +3,9 @@ import { announceLibraryChanged } from '../library-events';
 import { responseCache, type ResponseCacheControl } from '../response-cache';
 import { currentProjectAssetScope } from '../project-assets';
 import {
-  FAL_GENERATION_HEADER, parseFalGenerationProvenance, type FalGenerationProvenance,
+  FAL_GENERATION_HEADER,
+  parseFalGenerationProvenance,
+  type FalGenerationProvenance,
 } from '../../core/paint/fal-models';
 
 /** Process-lifecycle actions supplied by the service host. Tests and unsupervised hosts deliberately omit
@@ -19,9 +21,7 @@ export interface ApiControls {
 
 /** One route's handler. Route modules export a record of these keyed by mount path; `app.ts` picks the first
  * mount the request path sits under and hands the handler the remainder of the URL in `req.url`. */
-export type ApiHandler = (
-  req: IncomingMessage, res: ServerResponse, controls?: ApiControls,
-) => void | Promise<void>;
+export type ApiHandler = (req: IncomingMessage, res: ServerResponse, controls?: ApiControls) => void | Promise<void>;
 
 /** What immutable authenticated asset byte routes send. A stored name is immutable, and a deleted one is
  * retired rather than handed to the next upload (docs/038), so the member's own browser can keep it without
@@ -39,7 +39,8 @@ export function referenceAssetCacheControl(expectedRevision?: string) {
   return ((req, etag) => {
     const requested = new URL(req.url ?? '/', 'http://localhost').searchParams.get('v');
     return requested === (expectedRevision ?? etag.slice(1, -1))
-      ? CUSTOM_ASSET_CACHE_CONTROL : UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL;
+      ? CUSTOM_ASSET_CACHE_CONTROL
+      : UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL;
   }) satisfies ResponseCacheControl;
 }
 
@@ -98,8 +99,11 @@ export function readFalGenerationHeader(req: IncomingMessage): FalGenerationProv
   if (header === undefined) return undefined;
   if (Array.isArray(header) || header.length > 16_000) throw new Error('generation provenance header is invalid');
   let value: unknown;
-  try { value = JSON.parse(header); }
-  catch { throw new Error('generation provenance header is invalid'); }
+  try {
+    value = JSON.parse(header);
+  } catch {
+    throw new Error('generation provenance header is invalid');
+  }
   const generation = parseFalGenerationProvenance(value);
   if (!generation) throw new Error('generation provenance header is invalid');
   return generation;
@@ -112,10 +116,14 @@ export function jsonResponse(res: ServerResponse, status: number, value: unknown
 }
 
 const REFERENCE_CATALOG_CACHE_KEYS = new Set([
-  'json:levels', 'json:texture-levels', 'json:prop-levels', 'json:skybox',
+  'json:levels',
+  'json:texture-levels',
+  'json:prop-levels',
+  'json:skybox',
   // Library-wide answers an export composes against: every level's material table, and which level supplies
   // the native rail/gem art. Both change when any one level does.
-  'json:prop-materials', 'json:prop-native-art',
+  'json:prop-materials',
+  'json:prop-native-art',
   // The comparison table prices every mountain in one answer, so any one of them changing restates it.
   'json:level-census',
 ]);
@@ -138,23 +146,38 @@ export function invalidateCensus(): void {
 export function invalidateReferenceLevel(level: string): void {
   const name = level.toLowerCase();
   const exact = new Set([
-    `json:level:${name}`, `json:level-census:${name}`, `json:effects:${name}`, `json:reference-music:${name}`,
-    `json:lightrig:${name}`, `json:textures:${name}`, `json:props:${name}`, `json:groups:${name}`,
-    `bytes:skypano:level:${name}`, `bytes:skyground:level:${name}`,
+    `json:level:${name}`,
+    `json:level-census:${name}`,
+    `json:effects:${name}`,
+    `json:reference-music:${name}`,
+    `json:lightrig:${name}`,
+    `json:textures:${name}`,
+    `json:props:${name}`,
+    `json:groups:${name}`,
+    `bytes:skypano:level:${name}`,
+    `bytes:skyground:level:${name}`,
   ]);
   const prefixes = [
-    `json:reference-music:${name}:`, `bytes:reference-music-sample:${name}:`,
+    `json:reference-music:${name}:`,
+    `bytes:reference-music-sample:${name}:`,
     `bytes:reference-intro-music:${name}:`,
-    `bytes:effect-sound:${name}:`, `bytes:lightmap:${name}:`, `bytes:texture:${name}:`,
-    `bytes:particle-texture:${name}:`, `json:physics-body:${name}:`, `bytes:sky-page:${name}:`,
+    `bytes:effect-sound:${name}:`,
+    `bytes:lightmap:${name}:`,
+    `bytes:texture:${name}:`,
+    `bytes:particle-texture:${name}:`,
+    `json:physics-body:${name}:`,
+    `bytes:sky-page:${name}:`,
     // Every cached ring, whatever was asked for: an unqualified request resolves to the first level shipping
     // a sky, so a level appearing or leaving can change the answer to a question that never named it.
     'json:sky-ring:',
   ];
   responseCache.invalidate(key => {
     const candidate = key.toLowerCase();
-    return REFERENCE_CATALOG_CACHE_KEYS.has(candidate) || exact.has(candidate)
-      || prefixes.some(prefix => candidate.startsWith(prefix));
+    return (
+      REFERENCE_CATALOG_CACHE_KEYS.has(candidate) ||
+      exact.has(candidate) ||
+      prefixes.some(prefix => candidate.startsWith(prefix))
+    );
   });
 }
 
@@ -181,9 +204,7 @@ const RESPONSE_KIND = /^(?:json|bytes):/;
 /** Server-wide libraries (currently rider avatars) still should not evict cached retail mountains. */
 export function invalidateSharedLibrary(scope: string): void {
   const sharedSky = scope.toLowerCase() === 'shared';
-  const exact = sharedSky
-    ? new Set(['json:skybox', 'json:announcer-audio'])
-    : new Set(['json:characters']);
+  const exact = sharedSky ? new Set(['json:skybox', 'json:announcer-audio']) : new Set(['json:characters']);
   const prefixes = sharedSky
     ? ['bytes:skypano:custom:', 'bytes:skyground:custom:', 'bytes:announcer-sound:']
     : ['bytes:character-model:'];

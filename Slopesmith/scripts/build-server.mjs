@@ -43,12 +43,22 @@ assertPolicyCategory('NOTICE server-external dependencies', external, policy.ser
 const thirdPartyDir = resolve(outdir, 'ThirdPartyNotices');
 await mkdir(thirdPartyDir, { recursive: true });
 const closure = await installedDependencyClosure(appRoot, external);
-const notices = await renderInstalledNotices(closure,
-  'Slopesmith server deployment — installed external runtime licenses and notices');
+const notices = await renderInstalledNotices(
+  closure,
+  'Slopesmith server deployment — installed external runtime licenses and notices',
+);
 await writeFile(resolve(thirdPartyDir, 'npm-server-externals.txt'), notices, 'utf8');
-await writeFile(resolve(outdir, 'dependency-manifest.json'), `${JSON.stringify({
-  version: 1,
-  build: 'esbuild packages=external',
-  externalPackages: [...external].sort(),
-  installedRuntimeClosure: closure.map(({ path, name, version }) => ({ path, name, version })),
-}, null, 2)}\n`, 'utf8');
+await writeFile(
+  resolve(outdir, 'dependency-manifest.json'),
+  `${JSON.stringify(
+    {
+      version: 1,
+      build: 'esbuild packages=external',
+      externalPackages: [...external].sort(),
+      installedRuntimeClosure: closure.map(({ path, name, version }) => ({ path, name, version })),
+    },
+    null,
+    2,
+  )}\n`,
+  'utf8',
+);

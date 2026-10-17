@@ -39,8 +39,14 @@ function sourceIconTexture(kind: SourceMarkerKind, selected = false): THREE.Data
       for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++)
         if ((x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2) pixel(x, y, color);
   };
-  const line = (x0: number, y0: number, x1: number, y1: number, width: number,
-    color: readonly [number, number, number, number]) => {
+  const line = (
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    width: number,
+    color: readonly [number, number, number, number],
+  ) => {
     const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
@@ -56,25 +62,39 @@ function sourceIconTexture(kind: SourceMarkerKind, selected = false): THREE.Data
     const outlineWidth = selected ? 2.7 : 1.25;
     const fillWidth = selected ? 0.65 : 0.8;
     // rays, glass bulb, neck and screw base
-    for (const [x0, y0, x1, y1] of [[16, 1, 16, 5], [5, 7, 8, 10], [27, 7, 24, 10],
-      [3, 17, 7, 17], [29, 17, 25, 17]] as const) {
-      line(x0, y0, x1, y1, outlineWidth, dark); line(x0, y0, x1, y1, fillWidth, fill);
+    for (const [x0, y0, x1, y1] of [
+      [16, 1, 16, 5],
+      [5, 7, 8, 10],
+      [27, 7, 24, 10],
+      [3, 17, 7, 17],
+      [29, 17, 25, 17],
+    ] as const) {
+      line(x0, y0, x1, y1, outlineWidth, dark);
+      line(x0, y0, x1, y1, fillWidth, fill);
     }
     disc(16, 15, selected ? 10.5 : 9, dark);
     disc(16, 15, selected ? 7.3 : 7.8, fill);
     // flatten the lower bulb into a short neck before the base
     for (let y = 20; y <= 24; y++) for (let x = 11; x <= 21; x++) pixel(x, y, dark);
     for (let y = 20; y <= (selected ? 21 : 22); y++) for (let x = 13; x <= 19; x++) pixel(x, y, fill);
-    line(11, 25, 21, 25, selected ? 2.3 : 1.2, dark); line(12, 25, 20, 25, 0.45, fill);
-    line(12, 28, 20, 28, selected ? 2.3 : 1.2, dark); line(13, 28, 19, 28, 0.45, fill);
+    line(11, 25, 21, 25, selected ? 2.3 : 1.2, dark);
+    line(12, 25, 20, 25, 0.45, fill);
+    line(12, 28, 20, 28, selected ? 2.3 : 1.2, dark);
+    line(13, 28, 19, 28, 0.45, fill);
 
     // A side-on theatre lamp occupies the second atlas tile. Its flared can, front lens, yoke and short
     // light rays read differently from the omni-directional bulb even when hundreds of markers are visible.
     const ox = ICON_SIZE;
-    const spotLine = (x0: number, y0: number, x1: number, y1: number, width: number,
-      color: readonly [number, number, number, number]) => line(ox + x0, y0, ox + x1, y1, width, color);
-    const spotDisc = (x: number, y: number, radius: number,
-      color: readonly [number, number, number, number]) => disc(ox + x, y, radius, color);
+    const spotLine = (
+      x0: number,
+      y0: number,
+      x1: number,
+      y1: number,
+      width: number,
+      color: readonly [number, number, number, number],
+    ) => line(ox + x0, y0, ox + x1, y1, width, color);
+    const spotDisc = (x: number, y: number, radius: number, color: readonly [number, number, number, number]) =>
+      disc(ox + x, y, radius, color);
     // lamp housing: dark outer can with a smaller colour-multiplied face
     for (let y = 7; y <= 25; y++) {
       const left = y < 11 ? 8 - Math.floor((y - 7) / 2) : y > 21 ? 6 + Math.floor((y - 21) / 2) : 5;
@@ -96,7 +116,11 @@ function sourceIconTexture(kind: SourceMarkerKind, selected = false): THREE.Data
     spotLine(21, 23, 19, 28, selected ? 2.2 : 1.15, dark);
     spotLine(10, 29, 20, 29, selected ? 2.4 : 1.3, dark);
     // three short beams coming off the lens
-    for (const [x0, y0, x1, y1] of [[27, 11, 30, 9], [27, 16, 31, 16], [27, 21, 30, 23]] as const) {
+    for (const [x0, y0, x1, y1] of [
+      [27, 11, 30, 9],
+      [27, 16, 31, 16],
+      [27, 21, 30, 23],
+    ] as const) {
       spotLine(x0, y0, x1, y1, selected ? 2 : 1.05, dark);
       spotDisc(x1, y1, selected ? 0.35 : 0.55, fill);
     }
@@ -107,11 +131,15 @@ function sourceIconTexture(kind: SourceMarkerKind, selected = false): THREE.Data
     const outlineWidth = selected ? 2.4 : 1.3;
     const fillWidth = selected ? 0.9 : 0.6;
     const edges = [
-      [16, 3, 27, 9], [16, 3, 5, 9],     // top-face far edges
-      [5, 9, 16, 15], [27, 9, 16, 15],   // top-face near edges
-      [5, 9, 5, 22], [27, 9, 27, 22],    // outer verticals
-      [16, 15, 16, 28],                  // centre vertical
-      [5, 22, 16, 28], [27, 22, 16, 28], // bottom edges
+      [16, 3, 27, 9],
+      [16, 3, 5, 9], // top-face far edges
+      [5, 9, 16, 15],
+      [27, 9, 16, 15], // top-face near edges
+      [5, 9, 5, 22],
+      [27, 9, 27, 22], // outer verticals
+      [16, 15, 16, 28], // centre vertical
+      [5, 22, 16, 28],
+      [27, 22, 16, 28], // bottom edges
     ] as const;
     for (const [x0, y0, x1, y1] of edges) line(x0, y0, x1, y1, outlineWidth, dark);
     for (const [x0, y0, x1, y1] of edges) line(x0, y0, x1, y1, fillWidth, amber);
@@ -144,11 +172,14 @@ function sourceIconTexture(kind: SourceMarkerKind, selected = false): THREE.Data
       if (y >= 9 && y <= 23) for (let x = Math.min(18, left + 2); x <= 17; x++) pixel(x, y, cyan);
     }
     // two broadcast arcs
-    for (const radius of [7, 11]) for (let deg = -55; deg <= 55; deg += 3) {
-      const a = deg * Math.PI / 180;
-      const x = Math.round(17 + Math.cos(a) * radius), y = Math.round(16 + Math.sin(a) * radius);
-      disc(x, y, 1.7, dark); disc(x, y, 0.65, cyan);
-    }
+    for (const radius of [7, 11])
+      for (let deg = -55; deg <= 55; deg += 3) {
+        const a = (deg * Math.PI) / 180;
+        const x = Math.round(17 + Math.cos(a) * radius),
+          y = Math.round(16 + Math.sin(a) * radius);
+        disc(x, y, 1.7, dark);
+        disc(x, y, 0.65, cyan);
+      }
   }
 
   const texture = new THREE.DataTexture(data, ICON_ATLAS_WIDTH, ICON_SIZE, THREE.RGBAFormat);
@@ -161,29 +192,49 @@ function sourceIconTexture(kind: SourceMarkerKind, selected = false): THREE.Data
 }
 
 /** Keep the source family in one Points draw call while choosing one horizontal atlas tile per marker. */
-function sourceMarkerMaterial(texture: THREE.Texture, vertexColors: boolean, depthTest: boolean,
-  opacity: number, alphaTest: number): THREE.PointsMaterial {
+function sourceMarkerMaterial(
+  texture: THREE.Texture,
+  vertexColors: boolean,
+  depthTest: boolean,
+  opacity: number,
+  alphaTest: number,
+): THREE.PointsMaterial {
   const material = new THREE.PointsMaterial({
-    map: texture, size: MARKER_PX, sizeAttenuation: false, opacity,
-    vertexColors, transparent: true, alphaTest, depthTest, depthWrite: false,
+    map: texture,
+    size: MARKER_PX,
+    sizeAttenuation: false,
+    opacity,
+    vertexColors,
+    transparent: true,
+    alphaTest,
+    depthTest,
+    depthWrite: false,
   });
   material.onBeforeCompile = shader => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
+      .replace(
+        '#include <common>',
+        `#include <common>
 attribute float sourceIcon;
 attribute vec3 sourceAimTarget;
 varying float vSourceIcon;
-varying vec2 vSourceDirection;`)
+varying vec2 vSourceDirection;`,
+      )
       .replace('void main() {', 'void main() {\n\tvSourceIcon = sourceIcon;')
-      .replace('#include <project_vertex>', `#include <project_vertex>
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
   vec4 sourceTargetView = modelViewMatrix * vec4(sourceAimTarget, 1.0);
   vec4 sourceTargetClip = projectionMatrix * sourceTargetView;
   vec2 sourceProjectedDirection = sourceTargetClip.xy / sourceTargetClip.w - gl_Position.xy / gl_Position.w;
   vSourceDirection = length(sourceProjectedDirection) > 0.00001
-    ? normalize(vec2(sourceProjectedDirection.x, -sourceProjectedDirection.y)) : vec2(1.0, 0.0);`);
+    ? normalize(vec2(sourceProjectedDirection.x, -sourceProjectedDirection.y)) : vec2(1.0, 0.0);`,
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vSourceIcon;\nvarying vec2 vSourceDirection;')
-      .replace('#include <map_particle_fragment>', `
+      .replace(
+        '#include <map_particle_fragment>',
+        `
 #ifdef USE_MAP
   vec2 sourcePointCoord = gl_PointCoord;
   if (vSourceIcon > 0.5) {
@@ -199,7 +250,8 @@ varying vec2 vSourceDirection;`)
     ((1.0 - sourcePointCoord.y) * ${ICON_SIZE - 1}.0 + 0.5) / ${ICON_SIZE}.0
   );
   diffuseColor *= texture2D(map, sourceUv);
-#endif`);
+#endif`,
+      );
   };
   material.customProgramCacheKey = () => 'source-marker-directional-atlas-v2';
   return material;
@@ -207,12 +259,22 @@ varying vec2 vSourceDirection;`)
 
 /** One draw-call icon cloud. Its custom raycast matches the icon's constant screen size instead of using
  * THREE.Points' fixed world-unit threshold, so distant sources remain as easy to click as nearby ones. */
-export function sourceMarkerPoints(stage: Stage, kind: SourceMarkerKind, origin: SourceMarkerOrigin,
-  positions: readonly THREE.Vector3[], options: SourceMarkerOptions = {}): THREE.Points {
+export function sourceMarkerPoints(
+  stage: Stage,
+  kind: SourceMarkerKind,
+  origin: SourceMarkerOrigin,
+  positions: readonly THREE.Vector3[],
+  options: SourceMarkerOptions = {},
+): THREE.Points {
   const geometry = new THREE.BufferGeometry().setFromPoints([...positions]);
   const vertexColors = kind === 'light';
-  geometry.setAttribute('sourceIcon', new THREE.Float32BufferAttribute(positions.map((_, index) =>
-    kind === 'light' && options.icons?.[index] === 'spotlight' ? 1 : 0), 1));
+  geometry.setAttribute(
+    'sourceIcon',
+    new THREE.Float32BufferAttribute(
+      positions.map((_, index) => (kind === 'light' && options.icons?.[index] === 'spotlight' ? 1 : 0)),
+      1,
+    ),
+  );
   const aimTargetValues: number[] = [];
   for (let index = 0; index < positions.length; index++) {
     const target = options.aimTargets?.[index] ?? positions[index].clone().add(new THREE.Vector3(1, 0, 0));
@@ -261,11 +323,12 @@ export function sourceMarkerPoints(stage: Stage, kind: SourceMarkerKind, origin:
   points.userData.sourceOrigin = origin;
   points.raycast = (raycaster, intersections) => {
     const attribute = geometry.getAttribute('position');
-    const world = new THREE.Vector3(), onRay = new THREE.Vector3();
+    const world = new THREE.Vector3(),
+      onRay = new THREE.Vector3();
     for (let index = 0; index < attribute.count; index++) {
       world.fromBufferAttribute(attribute, index).applyMatrix4(points.matrixWorld);
-      const worldPerPixel = typeof (stage as Partial<Stage>).worldPerPixel === 'function'
-        ? stage.worldPerPixel(world) : 0.1;
+      const worldPerPixel =
+        typeof (stage as Partial<Stage>).worldPerPixel === 'function' ? stage.worldPerPixel(world) : 0.1;
       const distanceToRay = raycaster.ray.distanceToPoint(world);
       if (distanceToRay > worldPerPixel * MARKER_PX * 0.58) continue;
       raycaster.ray.closestPointToPoint(world, onRay);
@@ -285,19 +348,45 @@ export function setSourceMarkerSelected(points: THREE.Points | null, index: numb
   const selected = points.userData.sourceSelectionGeometry as THREE.BufferGeometry | undefined;
   if (!selected) return;
   const positions = points.geometry.getAttribute('position');
-  const indices = (index === null ? [] : typeof index === 'number' ? [index] : index)
-    .filter(i => i >= 0 && i < positions.count);
+  const indices = (index === null ? [] : typeof index === 'number' ? [index] : index).filter(
+    i => i >= 0 && i < positions.count,
+  );
   const icons = points.geometry.getAttribute('sourceIcon');
   const target = points.geometry.getAttribute('sourceAimTarget');
   const colors = points.geometry.getAttribute('color');
-  selected.setAttribute('position', new THREE.Float32BufferAttribute(
-    indices.flatMap(i => [positions.getX(i), positions.getY(i), positions.getZ(i)]), 3));
-  selected.setAttribute('sourceIcon', new THREE.Float32BufferAttribute(indices.map(i => icons?.getX(i) ?? 0), 1));
-  selected.setAttribute('sourceAimTarget', new THREE.Float32BufferAttribute(indices.flatMap(i => [
-    target?.getX(i) ?? positions.getX(i) + 1, target?.getY(i) ?? positions.getY(i), target?.getZ(i) ?? positions.getZ(i),
-  ]), 3));
-  if (colors) selected.setAttribute('color', new THREE.Float32BufferAttribute(
-    indices.flatMap(i => [colors.getX(i), colors.getY(i), colors.getZ(i)]), 3));
+  selected.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      indices.flatMap(i => [positions.getX(i), positions.getY(i), positions.getZ(i)]),
+      3,
+    ),
+  );
+  selected.setAttribute(
+    'sourceIcon',
+    new THREE.Float32BufferAttribute(
+      indices.map(i => icons?.getX(i) ?? 0),
+      1,
+    ),
+  );
+  selected.setAttribute(
+    'sourceAimTarget',
+    new THREE.Float32BufferAttribute(
+      indices.flatMap(i => [
+        target?.getX(i) ?? positions.getX(i) + 1,
+        target?.getY(i) ?? positions.getY(i),
+        target?.getZ(i) ?? positions.getZ(i),
+      ]),
+      3,
+    ),
+  );
+  if (colors)
+    selected.setAttribute(
+      'color',
+      new THREE.Float32BufferAttribute(
+        indices.flatMap(i => [colors.getX(i), colors.getY(i), colors.getZ(i)]),
+        3,
+      ),
+    );
   else if (!indices.length && points.material instanceof THREE.PointsMaterial && points.material.vertexColors)
     selected.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
   selected.computeBoundingSphere();

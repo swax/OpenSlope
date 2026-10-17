@@ -14,7 +14,9 @@ export function referenceAssetRevision(key: string, read: () => Promise<Buffer>)
   if (!pending) {
     pending = read().then(contentRevision);
     revisions.set(key, pending);
-    void pending.catch(() => { if (revisions.get(key) === pending) revisions.delete(key); });
+    void pending.catch(() => {
+      if (revisions.get(key) === pending) revisions.delete(key);
+    });
   }
   return pending;
 }

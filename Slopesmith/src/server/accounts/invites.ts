@@ -1,11 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isRole, type Role } from './policy';
-import {
-  mintToken, readAccounts, tokenHash, updateAccounts, type AccountsFile, type InviteRecord,
-} from './store';
-import {
-  claimUsername, draftUser, normalizeInviteHandle, publicUser, type NewUser, type PublicUser,
-} from './users';
+import { mintToken, readAccounts, tokenHash, updateAccounts, type AccountsFile, type InviteRecord } from './store';
+import { claimUsername, draftUser, normalizeInviteHandle, publicUser, type NewUser, type PublicUser } from './users';
 
 /**
  * Invite links: the only way in.
@@ -47,11 +43,16 @@ function inviteState(invite: InviteRecord, now: number): PublicInvite['state'] {
 function publicInvite(invite: InviteRecord, now = Date.now()): PublicInvite {
   const state = inviteState(invite, now);
   return {
-    id: invite.id, role: invite.role, handle: invite.handle,
-    createdBy: invite.createdBy, createdAt: invite.createdAt, expiresAt: invite.expiresAt,
+    id: invite.id,
+    role: invite.role,
+    handle: invite.handle,
+    createdBy: invite.createdBy,
+    createdAt: invite.createdAt,
+    expiresAt: invite.expiresAt,
     ...(invite.redeemed ? { redeemedBy: invite.redeemed.username } : {}),
     ...(invite.revokedAt ? { revokedAt: invite.revokedAt } : {}),
-    live: state === 'live', state,
+    live: state === 'live',
+    state,
   };
 }
 
@@ -69,15 +70,22 @@ export async function mintInvite(input: MintInvite): Promise<{ invite: PublicInv
   if (!isRole(input.role)) throw new Error(`Unknown role: ${String(input.role)}`);
   const handle = normalizeInviteHandle(input.handle);
   const days = Number(input.days ?? DEFAULT_INVITE_DAYS);
-  if (!Number.isFinite(days) || days <= 0 || days > 365) throw new Error('An invite expires between now and a year out');
+  if (!Number.isFinite(days) || days <= 0 || days > 365)
+    throw new Error('An invite expires between now and a year out');
   const token = mintToken();
   const now = Date.now();
   const invite: InviteRecord = {
-    id: randomUUID(), tokenHash: tokenHash(token), role: input.role, handle,
-    createdBy: input.by?.trim() || 'cli', createdAt: new Date(now).toISOString(),
+    id: randomUUID(),
+    tokenHash: tokenHash(token),
+    role: input.role,
+    handle,
+    createdBy: input.by?.trim() || 'cli',
+    createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + days * 24 * 60 * 60_000).toISOString(),
   };
-  await updateAccounts(draft => { draft.invites.push(invite); });
+  await updateAccounts(draft => {
+    draft.invites.push(invite);
+  });
   return { invite: publicInvite(invite, now), token };
 }
 
@@ -118,8 +126,10 @@ function findInvite(accounts: AccountsFile, token: string): InviteRecord | undef
  * the redemption is recorded — happens inside one locked read-modify-write, so two people redeeming the same
  * link at once cannot both get it.
  */
-export async function redeemInvite(token: string,
-  account: Omit<NewUser, 'role' | 'inviteHandle'>): Promise<PublicUser> {
+export async function redeemInvite(
+  token: string,
+  account: Omit<NewUser, 'role' | 'inviteHandle'>,
+): Promise<PublicUser> {
   const accounts = await readAccounts();
   const found = findInvite(accounts, token);
   // Refused before any work is done, so a wrong token costs a digest rather than a scrypt derivation.

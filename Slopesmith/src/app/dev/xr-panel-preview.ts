@@ -15,7 +15,12 @@ import { XR_EDIT_MIRRORS, type XrEditMirrorId } from '../ride/xr/edit-palette';
 
 const STATUS_MS = 500;
 
-interface View { wrap: HTMLDivElement; canvas: HTMLCanvasElement; ring: HTMLDivElement; rect: Rect | null }
+interface View {
+  wrap: HTMLDivElement;
+  canvas: HTMLCanvasElement;
+  ring: HTMLDivElement;
+  rect: Rect | null;
+}
 
 export function installXrPanelPreview(): { dispose(): void } {
   const pointer = createDomPointer();
@@ -25,9 +30,19 @@ export function installXrPanelPreview(): { dispose(): void } {
   host.id = 'xr-panel-preview';
   host.setAttribute('aria-label', 'VR edit palette preview');
   Object.assign(host.style, {
-    position: 'fixed', left: '10px', top: 'calc(var(--bar-h) + 10px)', zIndex: '40', maxHeight: 'calc(100% - var(--bar-h) - 20px)',
-    overflow: 'auto', padding: '8px', background: 'rgba(8,12,18,0.92)', border: '1px solid #3a5a78', borderRadius: '8px',
-    color: '#cfe0ee', font: '12px/1.4 system-ui, sans-serif', boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
+    position: 'fixed',
+    left: '10px',
+    top: 'calc(var(--bar-h) + 10px)',
+    zIndex: '40',
+    maxHeight: 'calc(100% - var(--bar-h) - 20px)',
+    overflow: 'auto',
+    padding: '8px',
+    background: 'rgba(8,12,18,0.92)',
+    border: '1px solid #3a5a78',
+    borderRadius: '8px',
+    color: '#cfe0ee',
+    font: '12px/1.4 system-ui, sans-serif',
+    boxShadow: '0 4px 18px rgba(0,0,0,0.5)',
   } satisfies Partial<CSSStyleDeclaration>);
   const header = document.createElement('div');
   Object.assign(header.style, { display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' });
@@ -40,20 +55,33 @@ export function installXrPanelPreview(): { dispose(): void } {
   close.style.marginLeft = 'auto';
   header.append(title, close);
   const status = document.createElement('div');
-  Object.assign(status.style, { font: '11px/1.4 ui-monospace, Consolas, monospace', color: '#9fb6cc', marginBottom: '6px',
-    whiteSpace: 'pre-wrap', maxWidth: '640px' });
+  Object.assign(status.style, {
+    font: '11px/1.4 ui-monospace, Consolas, monospace',
+    color: '#9fb6cc',
+    marginBottom: '6px',
+    whiteSpace: 'pre-wrap',
+    maxWidth: '640px',
+  });
   // In the headset's reading order: File/undo, Mode, View, then toolbox, keys and libraries in one row. The headset
   // lays these out around the watch (edit-palette.ts `layoutAroundWatch`) and stands a closed library's tab
   // upright; here there is no watch, and a tab stays as drawn.
   const rows = Array.from({ length: 4 }, () => document.createElement('div'));
-  for (const row of rows) Object.assign(row.style, { display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '8px' });
+  for (const row of rows)
+    Object.assign(row.style, { display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '8px' });
   host.append(header, status, ...rows);
 
   const views = new Map<string, View>();
   const viewKey = (id: XrEditMirrorId, key: string | null) => `${id}:${key ?? ''}`;
   const placement: Record<string, HTMLDivElement> = {
-    'bar:file': rows[0], 'bar:mode': rows[1], 'bar:view': rows[2], 'tools:': rows[3], 'legend:legend': rows[3],
-    'texlib:': rows[3], 'proplib:': rows[3], 'texlib-tab:': rows[3], 'proplib-tab:': rows[3],
+    'bar:file': rows[0],
+    'bar:mode': rows[1],
+    'bar:view': rows[2],
+    'tools:': rows[3],
+    'legend:legend': rows[3],
+    'texlib:': rows[3],
+    'proplib:': rows[3],
+    'texlib-tab:': rows[3],
+    'proplib-tab:': rows[3],
   };
   for (const [key, row] of Object.entries(placement)) {
     const wrap = document.createElement('div');
@@ -61,8 +89,13 @@ export function installXrPanelPreview(): { dispose(): void } {
     const canvas = document.createElement('canvas');
     canvas.style.display = 'block';
     const ring = document.createElement('div');
-    Object.assign(ring.style, { position: 'absolute', pointerEvents: 'none', display: 'none',
-      background: 'rgba(143,215,255,0.22)', outline: '1px solid #8fd7ff' });
+    Object.assign(ring.style, {
+      position: 'absolute',
+      pointerEvents: 'none',
+      display: 'none',
+      background: 'rgba(143,215,255,0.22)',
+      outline: '1px solid #8fd7ff',
+    });
     wrap.append(canvas, ring);
     row.append(wrap);
     views.set(key, { wrap, canvas, ring, rect: null });
@@ -70,11 +103,15 @@ export function installXrPanelPreview(): { dispose(): void } {
 
   /** Where on the page a point over a preview canvas corresponds to, unclamped so a captured drag can overshoot. */
   function targetFor(id: XrEditMirrorId, key: string | null, event: MouseEvent) {
-    const slot = slots.find(s => s.id === id)!, view = views.get(viewKey(id, key))!;
-    const region = slot.mirror.region, root = slot.mirror.root, part = view.rect;
+    const slot = slots.find(s => s.id === id)!,
+      view = views.get(viewKey(id, key))!;
+    const region = slot.mirror.region,
+      root = slot.mirror.root,
+      part = view.rect;
     if (!region || !root || !part) return null;
     const bounds = view.canvas.getBoundingClientRect();
-    const fx = (event.clientX - bounds.left) / bounds.width, fy = (event.clientY - bounds.top) / bounds.height;
+    const fx = (event.clientX - bounds.left) / bounds.width,
+      fy = (event.clientY - bounds.top) / bounds.height;
     const [u0, v0, u1, v1] = partUvRect(region, part);
     const at = slot.mirror.toClient(u0 + fx * (u1 - u0), v1 - fy * (v1 - v0));
     return at ? { root, x: at.x, y: at.y } : null;
@@ -85,42 +122,81 @@ export function installXrPanelPreview(): { dispose(): void } {
     const partKey = part || null;
     const canvas = view.canvas;
     // Left and right buttons stand in for the trigger and A; `buttons` carries both on every event.
-    const forward = (event: PointerEvent) => pointer.update(targetFor(id, partKey, event),
-      (event.buttons & 1) !== 0, (event.buttons & 2) !== 0);
+    const forward = (event: PointerEvent) =>
+      pointer.update(targetFor(id, partKey, event), (event.buttons & 1) !== 0, (event.buttons & 2) !== 0);
     canvas.addEventListener('pointerdown', event => {
-      try { canvas.setPointerCapture(event.pointerId); } catch { /* a synthetic pointer: no capture to take */ }
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch {
+        /* a synthetic pointer: no capture to take */
+      }
       forward(event);
     });
     canvas.addEventListener('pointermove', forward);
     canvas.addEventListener('pointerup', forward);
     canvas.addEventListener('contextmenu', event => event.preventDefault());
-    canvas.addEventListener('pointerleave', () => { if (!pointer.dragging) pointer.update(null, false); });
-    canvas.addEventListener('wheel', event => {
-      event.preventDefault();
-      pointer.scroll(targetFor(id, partKey, event), event.deltaY);
-    }, { passive: false });
+    canvas.addEventListener('pointerleave', () => {
+      if (!pointer.dragging) pointer.update(null, false);
+    });
+    canvas.addEventListener(
+      'wheel',
+      event => {
+        event.preventDefault();
+        pointer.scroll(targetFor(id, partKey, event), event.deltaY);
+      },
+      { passive: false },
+    );
   }
   // Keep the preview's real input to itself (see the header): nothing here should reach the editor or lil-gui.
-  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'click',
-    'dblclick', 'wheel', 'contextmenu']) {
+  for (const type of [
+    'pointerdown',
+    'pointermove',
+    'pointerup',
+    'mousedown',
+    'mousemove',
+    'mouseup',
+    'click',
+    'dblclick',
+    'wheel',
+    'contextmenu',
+  ]) {
     host.addEventListener(type, event => event.stopPropagation());
   }
 
   function redraw(slot: { id: XrEditMirrorId; mirror: DomMirror }) {
-    const { mirror } = slot, region = mirror.region;
+    const { mirror } = slot,
+      region = mirror.region;
     for (const [key, view] of views) {
       if (!key.startsWith(`${slot.id}:`)) continue;
       const part = region ? mirror.parts.find(p => viewKey(slot.id, p.key) === key) : undefined;
       view.rect = part?.rect ?? null;
-      if (!region || !part) { view.wrap.style.display = 'none'; continue; }
-      const scaleX = mirror.canvas.width / region.width, scaleY = mirror.canvas.height / region.height;
-      const w = Math.round(part.rect.width * scaleX), h = Math.round(part.rect.height * scaleY);
-      if (view.canvas.width !== w || view.canvas.height !== h) { view.canvas.width = w; view.canvas.height = h; }
+      if (!region || !part) {
+        view.wrap.style.display = 'none';
+        continue;
+      }
+      const scaleX = mirror.canvas.width / region.width,
+        scaleY = mirror.canvas.height / region.height;
+      const w = Math.round(part.rect.width * scaleX),
+        h = Math.round(part.rect.height * scaleY);
+      if (view.canvas.width !== w || view.canvas.height !== h) {
+        view.canvas.width = w;
+        view.canvas.height = h;
+      }
       view.canvas.style.width = `${part.rect.width}px`;
       view.canvas.style.height = `${part.rect.height}px`;
       const ctx = view.canvas.getContext('2d')!;
       ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(mirror.canvas, (part.rect.x - region.x) * scaleX, (part.rect.y - region.y) * scaleY, w, h, 0, 0, w, h);
+      ctx.drawImage(
+        mirror.canvas,
+        (part.rect.x - region.x) * scaleX,
+        (part.rect.y - region.y) * scaleY,
+        w,
+        h,
+        0,
+        0,
+        w,
+        h,
+      );
       view.wrap.style.display = '';
     }
   }
@@ -131,9 +207,14 @@ export function installXrPanelPreview(): { dispose(): void } {
     for (const view of views.values()) {
       const p = view.rect;
       const hit = r && p && r.right > p.x && r.left < p.x + p.width && r.bottom > p.y && r.top < p.y + p.height;
-      if (!hit || !r || !p) { view.ring.style.display = 'none'; continue; }
+      if (!hit || !r || !p) {
+        view.ring.style.display = 'none';
+        continue;
+      }
       Object.assign(view.ring.style, {
-        display: '', left: `${Math.max(0, r.left - p.x)}px`, top: `${Math.max(0, r.top - p.y)}px`,
+        display: '',
+        left: `${Math.max(0, r.left - p.x)}px`,
+        top: `${Math.max(0, r.top - p.y)}px`,
         width: `${Math.min(r.right, p.x + p.width) - Math.max(r.left, p.x)}px`,
         height: `${Math.min(r.bottom, p.y + p.height) - Math.max(r.top, p.y)}px`,
         background: pointer.pressed ? 'rgba(255,210,74,0.25)' : 'rgba(143,215,255,0.22)',
@@ -141,13 +222,19 @@ export function installXrPanelPreview(): { dispose(): void } {
     }
   }
 
-  const ms = (value: number) => value < 10 ? value.toFixed(1) : String(Math.round(value));
-  let nextStatus = 0, cursor = 0, frame = 0, live = true;
+  const ms = (value: number) => (value < 10 ? value.toFixed(1) : String(Math.round(value)));
+  let nextStatus = 0,
+    cursor = 0,
+    frame = 0,
+    live = true;
   function loop(now: number) {
     if (!live) return;
     for (let i = 0; i < slots.length; i++) {
       const index = (cursor + i) % slots.length;
-      if (slots[index].mirror.tick(now, true)) { cursor = (index + 1) % slots.length; break; }
+      if (slots[index].mirror.tick(now, true)) {
+        cursor = (index + 1) % slots.length;
+        break;
+      }
     }
     for (const slot of slots) {
       if (slot.mirror.version === slot.version) continue;
@@ -157,11 +244,15 @@ export function installXrPanelPreview(): { dispose(): void } {
     updateRing();
     if (now >= nextStatus) {
       nextStatus = now + STATUS_MS;
-      status.textContent = slots.map(({ id, mirror: { stats: s } }) =>
-        `${id.padEnd(6)} sync ${ms(s.syncMs).padStart(4)} · decode ${ms(s.decodeMs).padStart(4)} · draw ${ms(s.drawMs).padStart(4)} ms`
-        + ` · ${String(Math.round(s.bytes / 1024)).padStart(4)} KB · ${s.nodes} nodes · ${s.cssRules} rules`
-        + ` · ${s.repaints}/${s.unchanged}${s.error ? ` · ${s.error}` : ''}`).join('\n')
-        + (pointer.notice ? `\n${pointer.notice}` : '');
+      status.textContent =
+        slots
+          .map(
+            ({ id, mirror: { stats: s } }) =>
+              `${id.padEnd(6)} sync ${ms(s.syncMs).padStart(4)} · decode ${ms(s.decodeMs).padStart(4)} · draw ${ms(s.drawMs).padStart(4)} ms` +
+              ` · ${String(Math.round(s.bytes / 1024)).padStart(4)} KB · ${s.nodes} nodes · ${s.cssRules} rules` +
+              ` · ${s.repaints}/${s.unchanged}${s.error ? ` · ${s.error}` : ''}`,
+          )
+          .join('\n') + (pointer.notice ? `\n${pointer.notice}` : '');
     }
     frame = requestAnimationFrame(loop);
   }

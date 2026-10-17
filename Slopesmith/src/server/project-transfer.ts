@@ -14,15 +14,23 @@ import { saveCustomSky } from './routes/skybox';
 import { saveCustomSound } from './routes/sounds';
 import { saveCustomTexture } from './routes/textures';
 import {
-  initializeNativeProjectAssets, migrateLegacyProjectAssets, projectAssetPath, withProjectAssets,
+  initializeNativeProjectAssets,
+  migrateLegacyProjectAssets,
+  projectAssetPath,
+  withProjectAssets,
 } from './project-assets';
 import {
-  PROJECT_BUNDLE_SCHEMA, type BundleAsset, type BundleAssetKind, type ProjectBundle,
+  PROJECT_BUNDLE_SCHEMA,
+  type BundleAsset,
+  type BundleAssetKind,
+  type ProjectBundle,
 } from '../core/project/transfer';
 
 export {
   PROJECT_BUNDLE_SCHEMA,
-  type BundleAsset, type BundleAssetKind, type ProjectBundle,
+  type BundleAsset,
+  type BundleAssetKind,
+  type ProjectBundle,
 } from '../core/project/transfer';
 
 /**
@@ -47,15 +55,18 @@ function assetFile(kind: BundleAssetKind, name: string): string | null {
   const stem = safeDataName(name.replace(/\.[^.]+$/, ''));
   if (!stem) return null;
   switch (kind) {
-    case 'texture': return projectAssetPath('textures', `${stem}.png`);
-    case 'sound': return projectAssetPath('sounds', `${stem}.wav`);
-    case 'sky': return projectAssetPath('skies', `${stem}.png`);
+    case 'texture':
+      return projectAssetPath('textures', `${stem}.png`);
+    case 'sound':
+      return projectAssetPath('sounds', `${stem}.wav`);
+    case 'sky':
+      return projectAssetPath('skies', `${stem}.png`);
     // Music keeps whatever extension the author's source had, so the name is used as it stands — reduced
     // only to "one file in that folder", which is the whole of what makes it safe to join.
     case 'music':
-      return name && !/[\\/]/.test(name) && !name.split('.').includes('..')
-        ? projectAssetPath('music', name) : null;
-    case 'prop': return null;
+      return name && !/[\\/]/.test(name) && !name.split('.').includes('..') ? projectAssetPath('music', name) : null;
+    case 'prop':
+      return null;
   }
 }
 
@@ -71,13 +82,22 @@ async function readAsset(kind: BundleAssetKind, name: string, model?: number): P
 }
 
 /** Store one arriving asset under a name that is free here, and answer what it landed as. */
-async function writeAsset(kind: BundleAssetKind, name: string, bytes: Buffer,
-  textures: Map<string, string>, sounds: Map<string, string>): Promise<{ name: string; model?: number }> {
+async function writeAsset(
+  kind: BundleAssetKind,
+  name: string,
+  bytes: Buffer,
+  textures: Map<string, string>,
+  sounds: Map<string, string>,
+): Promise<{ name: string; model?: number }> {
   switch (kind) {
-    case 'texture': return { name: await saveCustomTexture(name, bytes) };
-    case 'sound': return { name: await saveCustomSound(name, bytes) };
-    case 'music': return { name: await saveCustomMusic(name, bytes) };
-    case 'sky': return { name: await saveCustomSky(name, bytes) };
+    case 'texture':
+      return { name: await saveCustomTexture(name, bytes) };
+    case 'sound':
+      return { name: await saveCustomSound(name, bytes) };
+    case 'music':
+      return { name: await saveCustomMusic(name, bytes) };
+    case 'sky':
+      return { name: await saveCustomSky(name, bytes) };
     case 'prop': {
       const record = JSON.parse(bytes.toString('utf8')) as ImportedPropRecord;
       // The record's own material refs are retargeted onto the tiles this server stored a moment ago, before
@@ -98,8 +118,11 @@ async function writeAsset(kind: BundleAssetKind, name: string, bytes: Buffer,
         };
       });
       // Its saved defaults (docs/069) may name WAVs, which landed before any prop and may have been renamed.
-      const { record: saved } = await saveImportedProp(name, { ...record, materials,
-        ...(record.defaults ? { defaults: retargetSounds(record.defaults, sounds) } : {}) });
+      const { record: saved } = await saveImportedProp(name, {
+        ...record,
+        materials,
+        ...(record.defaults ? { defaults: retargetSounds(record.defaults, sounds) } : {}),
+      });
       return { name, model: saved.id };
     }
   }
@@ -178,7 +201,12 @@ async function referencedAssets(document: EditDoc): Promise<Array<Omit<BundleAss
  * because a particular revision is not wearing them yet. */
 async function localLibraryAssets(): Promise<Array<Omit<BundleAsset, 'hash' | 'size'>>> {
   const wanted: Array<Omit<BundleAsset, 'hash' | 'size'>> = [];
-  const addFiles = async (folder: string, kind: BundleAssetKind, accept: RegExp, name: (file: string) => string = file => file) => {
+  const addFiles = async (
+    folder: string,
+    kind: BundleAssetKind,
+    accept: RegExp,
+    name: (file: string) => string = file => file,
+  ) => {
     for (const file of await listDir(projectAssetPath(folder))) {
       if (accept.test(file)) wanted.push({ kind, name: name(file) });
     }
@@ -211,8 +239,9 @@ async function localLibraryAssets(): Promise<Array<Omit<BundleAsset, 'hash' | 's
  */
 export async function bundleAssets(document: EditDoc): Promise<{ assets: BundleAsset[]; missing: string[] }> {
   const keyed = new Map<string, Omit<BundleAsset, 'hash' | 'size'>>();
-  for (const entry of [...await localLibraryAssets(), ...await referencedAssets(document)]) {
-    const identity = entry.kind === 'prop' ? `${entry.kind}:${entry.model}` : `${entry.kind}:${entry.name.toLowerCase()}`;
+  for (const entry of [...(await localLibraryAssets()), ...(await referencedAssets(document))]) {
+    const identity =
+      entry.kind === 'prop' ? `${entry.kind}:${entry.model}` : `${entry.kind}:${entry.name.toLowerCase()}`;
     keyed.set(identity, entry);
   }
   const wanted = [...keyed.values()];
@@ -221,7 +250,10 @@ export async function bundleAssets(document: EditDoc): Promise<{ assets: BundleA
   const missing: string[] = [];
   wanted.forEach((entry, at) => {
     const found = bytes[at];
-    if (!found) { missing.push(`${entry.kind} ${entry.name}`); return; }
+    if (!found) {
+      missing.push(`${entry.kind} ${entry.name}`);
+      return;
+    }
     assets.push({ ...entry, hash: sha256(found), size: found.length });
   });
   return { assets, missing };
@@ -229,9 +261,15 @@ export async function bundleAssets(document: EditDoc): Promise<{ assets: BundleA
 
 /** Any editable mountain revision as a transferable bundle. Current projects and history checkpoints use this
  *  same public archive shape; only the document and revision metadata differ. */
-export async function downloadDocument(document: EditDoc, meta: {
-  name: string; revision: number; takenAt?: string;
-}, withBytes = false): Promise<ProjectBundle> {
+export async function downloadDocument(
+  document: EditDoc,
+  meta: {
+    name: string;
+    revision: number;
+    takenAt?: string;
+  },
+  withBytes = false,
+): Promise<ProjectBundle> {
   const { assets, missing } = await bundleAssets(document);
   const bundle: ProjectBundle = {
     kind: 'slopesmith-project',
@@ -246,7 +284,9 @@ export async function downloadDocument(document: EditDoc, meta: {
   if (!withBytes) return bundle;
   const blobs: Record<string, string> = {};
   const bytes = await mapLimit(assets, READ_CONCURRENCY, asset => readAsset(asset.kind, asset.name, asset.model));
-  assets.forEach((asset, at) => { if (bytes[at]) blobs[asset.hash] = bytes[at]!.toString('base64'); });
+  assets.forEach((asset, at) => {
+    if (bytes[at]) blobs[asset.hash] = bytes[at]!.toString('base64');
+  });
   return { ...bundle, blobs };
 }
 
@@ -255,15 +295,23 @@ export async function downloadDocument(document: EditDoc, meta: {
 export async function downloadProject(id: string, withBytes = false): Promise<ProjectBundle> {
   const snapshot = await openProject(id);
   await migrateLegacyProjectAssets(snapshot);
-  return withProjectAssets(snapshot, () => downloadDocument(snapshot.document, {
-    name: snapshot.project.name, revision: snapshot.project.revision,
-  }, withBytes));
+  return withProjectAssets(snapshot, () =>
+    downloadDocument(
+      snapshot.document,
+      {
+        name: snapshot.project.name,
+        revision: snapshot.project.revision,
+      },
+      withBytes,
+    ),
+  );
 }
 
 /** Compatibility response for the two-stage transfer protocol. Project-local ownership means the fresh
  * destination needs every declared asset; there is intentionally no global authored bank to reuse. */
-export async function missingAssets(assets: readonly BundleAsset[]):
-  Promise<{ missing: BundleAsset[]; have: Record<string, { kind: BundleAssetKind; name: string; model?: number }> }> {
+export async function missingAssets(
+  assets: readonly BundleAsset[],
+): Promise<{ missing: BundleAsset[]; have: Record<string, { kind: BundleAssetKind; name: string; model?: number }> }> {
   // Every import creates an empty project-owned asset root. There is deliberately no server-global authored
   // bank to negotiate against, so a portable transfer must bring every dependency it declares.
   return { missing: [...assets], have: {} };
@@ -272,22 +320,30 @@ export async function missingAssets(assets: readonly BundleAsset[]):
 /** Move a document off the names it arrived under and onto the names its assets landed under here. */
 /** A behaviour with its renamed WAVs followed — its own fields and a group's per-member ones (docs/069). */
 function retargetSounds<T extends PropBehaviour>(behaviour: T, sounds: Map<string, string>): T {
-  const moved = (file: string | undefined) => file ? sounds.get(file.toLowerCase()) : undefined;
+  const moved = (file: string | undefined) => (file ? sounds.get(file.toLowerCase()) : undefined);
   const out = { ...behaviour };
-  const hit = moved(out.collisionSoundFile), loop = moved(out.ambientSoundFile);
+  const hit = moved(out.collisionSoundFile),
+    loop = moved(out.ambientSoundFile);
   if (hit) out.collisionSoundFile = hit;
   if (loop) out.ambientSoundFile = loop;
   if (out.memberBehaviour) {
-    out.memberBehaviour = Object.fromEntries(Object.entries(out.memberBehaviour)
-      .map(([model, member]) => [model, retargetSounds(member, sounds)]));
+    out.memberBehaviour = Object.fromEntries(
+      Object.entries(out.memberBehaviour).map(([model, member]) => [model, retargetSounds(member, sounds)]),
+    );
   }
   return out;
 }
 
-function retargetDocument(document: EditDoc, moves: {
-  textures: Map<string, string>; sounds: Map<string, string>; music: Map<string, string>;
-  skies: Map<string, string>; models: Map<number, number>;
-}): EditDoc {
+function retargetDocument(
+  document: EditDoc,
+  moves: {
+    textures: Map<string, string>;
+    sounds: Map<string, string>;
+    music: Map<string, string>;
+    skies: Map<string, string>;
+    models: Map<number, number>;
+  },
+): EditDoc {
   const tile = (ref: string | undefined | null): string | undefined => {
     if (!ref) return ref ?? undefined;
     const name = customTextureRef(ref);
@@ -300,23 +356,32 @@ function retargetDocument(document: EditDoc, moves: {
     next.quadTex = Object.fromEntries(Object.entries(next.quadTex).map(([quad, ref]) => [quad, tile(ref)!]));
   }
   if (next.models) {
-    next.models = next.models.map(model => ({ ...model, texture: tile(model.texture),
-      ...(model.defaults ? { defaults: resound(model.defaults) } : {}) }));
+    next.models = next.models.map(model => ({
+      ...model,
+      texture: tile(model.texture),
+      ...(model.defaults ? { defaults: resound(model.defaults) } : {}),
+    }));
   }
   if (next.props) {
     next.props = next.props.map(prop => ({
       ...resound(prop),
       ...(prop.level === IMPORTED_PROP_LEVEL && moves.models.has(prop.model)
-        ? { model: moves.models.get(prop.model)! } : {}),
+        ? { model: moves.models.get(prop.model)! }
+        : {}),
     }));
   }
   // …and a prop line's template the same way, or its next re-layout would put the old names back (docs/070).
   if (next.propLines) {
-    next.propLines = next.propLines.map(line => ({ ...line, template: {
-      ...resound(line.template),
-      ...(line.template.level === IMPORTED_PROP_LEVEL && moves.models.has(line.template.model)
-        ? { model: moves.models.get(line.template.model)! } : {}),
-    }, ...(line.sheet ? { sheet: { ...line.sheet, texture: tile(line.sheet.texture) } } : {}) }));
+    next.propLines = next.propLines.map(line => ({
+      ...line,
+      template: {
+        ...resound(line.template),
+        ...(line.template.level === IMPORTED_PROP_LEVEL && moves.models.has(line.template.model)
+          ? { model: moves.models.get(line.template.model)! }
+          : {}),
+      },
+      ...(line.sheet ? { sheet: { ...line.sheet, texture: tile(line.sheet.texture) } } : {}),
+    }));
   }
   if (next.raceMusic && moves.music.has(next.raceMusic.toLowerCase())) {
     next.raceMusic = moves.music.get(next.raceMusic.toLowerCase())!;
@@ -344,8 +409,12 @@ export interface UploadResult {
  * actually got; models land next, so placements can be moved onto the numbers they were assigned; the
  * document is retargeted onto all of it before revision 1 is finalized.
  */
-export async function uploadProject(bundle: ProjectBundle, clientId?: string,
-  requestedName?: string, ownerId = 'owner'): Promise<UploadResult> {
+export async function uploadProject(
+  bundle: ProjectBundle,
+  clientId?: string,
+  requestedName?: string,
+  ownerId = 'owner',
+): Promise<UploadResult> {
   const assets = Array.isArray(bundle.assets) ? bundle.assets : [];
   const blobs = bundle.blobs ?? {};
   const supplied = new Map<BundleAsset, Buffer>();
@@ -354,7 +423,10 @@ export async function uploadProject(bundle: ProjectBundle, clientId?: string,
   // matching the existing import contract, but bytes that claim another content hash are never installed.
   for (const asset of assets) {
     const packed = blobs[asset.hash];
-    if (!packed) { absent.push(`${asset.kind} ${asset.name}`); continue; }
+    if (!packed) {
+      absent.push(`${asset.kind} ${asset.name}`);
+      continue;
+    }
     const bytes = Buffer.from(packed, 'base64');
     if (sha256(bytes) !== asset.hash) throw new Error(`${asset.kind} ${asset.name} did not match its hash`);
     if (asset.kind === 'prop') JSON.parse(bytes.toString('utf8'));
@@ -362,8 +434,7 @@ export async function uploadProject(bundle: ProjectBundle, clientId?: string,
   }
   // Keep the half-built project out of the calling tab until its assets and retargeted document are both in
   // place. It is a native project-owned library, not a legacy map, so seal migration before activation too.
-  const sourceDocument = requestedName === undefined
-    ? bundle.document : { ...bundle.document, name: requestedName };
+  const sourceDocument = requestedName === undefined ? bundle.document : { ...bundle.document, name: requestedName };
   const created = await createProject(sourceDocument, clientId, false, ownerId);
   await initializeNativeProjectAssets(created);
 
@@ -407,8 +478,12 @@ export async function uploadProject(bundle: ProjectBundle, clientId?: string,
 
 /** Same-server copy without a browser round trip: read the source project's local bytes and install them into
  * the fresh destination project through the exact same import path as a portable archive. */
-export async function duplicateProject(id: string, clientId?: string,
-  requestedName?: string, ownerId = 'owner'): Promise<UploadResult> {
+export async function duplicateProject(
+  id: string,
+  clientId?: string,
+  requestedName?: string,
+  ownerId = 'owner',
+): Promise<UploadResult> {
   return uploadProject(await downloadProject(id, true), clientId, requestedName, ownerId);
 }
 

@@ -1,6 +1,5 @@
 /** Clamp a scalar to the inclusive [lo, hi] interval. */
-export const clamp = (value: number, lo: number, hi: number): number =>
-  value < lo ? lo : value > hi ? hi : value;
+export const clamp = (value: number, lo: number, hi: number): number => (value < lo ? lo : value > hi ? hi : value);
 
 /** Clamp a scalar to the inclusive unit interval. */
 export const clamp01 = (value: number): number => clamp(value, 0, 1);

@@ -42,22 +42,33 @@ export interface ScreenDraw extends ReferenceScreenPickDetails {
 }
 
 export function createScreensLayer(stage: Stage) {
-  const authored = new THREE.Group(); authored.name = 'Screens';
-  const reference = new THREE.Group(); reference.name = 'Reference screens';
+  const authored = new THREE.Group();
+  authored.name = 'Screens';
+  const reference = new THREE.Group();
+  reference.name = 'Reference screens';
   stage.worldRoot.add(authored);
   stage.refRoot.add(reference);
 
   const panelGeo = new THREE.PlaneGeometry(1, 1);
   const testPatternMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, map: createScreenTestPatternTexture(), side: THREE.DoubleSide,
-    transparent: false, opacity: 1, depthWrite: true, toneMapped: false, ...SCREEN_DEPTH_BIAS,
+    color: 0xffffff,
+    map: createScreenTestPatternTexture(),
+    side: THREE.DoubleSide,
+    transparent: false,
+    opacity: 1,
+    depthWrite: true,
+    toneMapped: false,
+    ...SCREEN_DEPTH_BIAS,
   });
   const videoMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, side: THREE.DoubleSide, toneMapped: false, ...SCREEN_DEPTH_BIAS,
+    color: 0xffffff,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    ...SCREEN_DEPTH_BIAS,
   });
   const moveHandle = new THREE.Object3D();
   moveHandle.visible = false;
-  stage.scene.add(moveHandle);   // scene-root gizmo anchor, Z negated by hand like the other families
+  stage.scene.add(moveHandle); // scene-root gizmo anchor, Z negated by hand like the other families
 
   let screens: Screen[] = [];
   let props: readonly PlacedProp[] | undefined;
@@ -70,25 +81,30 @@ export function createScreensLayer(stage: Stage) {
   // a frame of panels on a course whose author asked for none.
   let sourcesVisible = false;
   let videoTexture: THREE.Texture | null = null;
-  const noRaycast = () => { /* playback-only panels do not steal authoring clicks */ };
+  const noRaycast = () => {
+    /* playback-only panels do not steal authoring clicks */
+  };
 
   /** Where the selected screen sits right now, or -1 — resolved fresh, since a selection names a screen
    *  rather than the slot it happens to occupy (docs/039). */
-  const selectedIndex = (): number =>
-    selected === null ? -1 : screens.findIndex(screen => screen.id === selected);
+  const selectedIndex = (): number => (selected === null ? -1 : screens.findIndex(screen => screen.id === selected));
 
   /** One screen: the panel and its border, built in data coords from the resolved rectangle, so an attached
    *  screen lands wherever its board currently stands. The name is deliberately not drawn — a course carries
    *  dozens of these, and a field of floating labels buries the boards they are meant to annotate; the marker
    *  cloud says WHERE and the inspector says WHICH. */
-  function build(draw: ScreenDraw, edgeColor: number, source: ScenePickSource,
-                 pickIndex: number): THREE.Object3D {
+  function build(draw: ScreenDraw, edgeColor: number, source: ScenePickSource, pickIndex: number): THREE.Object3D {
     const { pose } = draw;
     const group = new THREE.Group();
     group.position.set(pose.center[0], pose.center[1], pose.center[2]);
     // The stored rectangle IS the frame: +X right, +Y up, +Z out of the screen.
-    group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(
-      new THREE.Vector3(...pose.right), new THREE.Vector3(...pose.up), new THREE.Vector3(...pose.normal)));
+    group.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(...pose.right),
+        new THREE.Vector3(...pose.up),
+        new THREE.Vector3(...pose.normal),
+      ),
+    );
 
     const panel = new THREE.Mesh(panelGeo, testPatternMat);
     panel.scale.set(pose.width, pose.height, 1);
@@ -99,24 +115,38 @@ export function createScreensLayer(stage: Stage) {
     group.add(panel);
 
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 0.9 });
-    const hw = pose.width / 2, hh = pose.height / 2;
-    const edges = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-hw, -hh, 0), new THREE.Vector3(hw, -hh, 0),
-      new THREE.Vector3(hw, hh, 0), new THREE.Vector3(-hw, hh, 0),
-    ]), edgeMat);
+    const hw = pose.width / 2,
+      hh = pose.height / 2;
+    const edges = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-hw, -hh, 0),
+        new THREE.Vector3(hw, -hh, 0),
+        new THREE.Vector3(hw, hh, 0),
+        new THREE.Vector3(-hw, hh, 0),
+      ]),
+      edgeMat,
+    );
     edges.userData.screenEdge = true;
     edges.userData.screenEdgeColor = edgeColor;
     edges.userData.screenInspection = true;
-    edges.raycast = () => { /* thin lines are a poor pick target; the panel answers */ };
+    edges.raycast = () => {
+      /* thin lines are a poor pick target; the panel answers */
+    };
     group.add(edges);
 
     // A stub out of the front face: which way the screen looks is the thing most easily got wrong, and it is
     // invisible on a flat panel seen head-on.
-    const nose = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, Math.min(hw, hh) * 0.5),
-    ]), edgeMat);
+    const nose = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, Math.min(hw, hh) * 0.5),
+      ]),
+      edgeMat,
+    );
     nose.userData.screenInspection = true;
-    nose.raycast = () => { /* not a pick target */ };
+    nose.raycast = () => {
+      /* not a pick target */
+    };
     group.add(nose);
     group.userData.screenSource = source;
     group.userData.screenIndex = pickIndex;
@@ -137,14 +167,17 @@ export function createScreensLayer(stage: Stage) {
     const materials = new Set<THREE.Material>();
     group.traverse(object => {
       if (object instanceof THREE.Points && object.userData.sourceSelectionGeometry) clouds.push(object);
-      else if (object instanceof THREE.Line) lines.push(object);   // LineLoop extends Line
+      else if (object instanceof THREE.Line) lines.push(object); // LineLoop extends Line
     });
     for (const line of lines) {
       line.geometry.dispose();
       for (const material of Array.isArray(line.material) ? line.material : [line.material]) materials.add(material);
     }
     for (const material of materials) material.dispose();
-    for (const cloud of clouds) { cloud.geometry.dispose(); disposeSourceMarkerPoints(cloud); }
+    for (const cloud of clouds) {
+      cloud.geometry.dispose();
+      disposeSourceMarkerPoints(cloud);
+    }
     group.clear();
   }
 
@@ -153,11 +186,19 @@ export function createScreensLayer(stage: Stage) {
    * bulbs and speakers use. A board 400 m down the run is a few pixels of panel and would be missed; the
    * marker is what makes it findable, and clicking one selects that screen exactly as clicking its panel does.
    */
-  function markers(poses: readonly ScreenPose[], source: ScenePickSource,
-                   selectedAt: number | null): THREE.Points | null {
+  function markers(
+    poses: readonly ScreenPose[],
+    source: ScenePickSource,
+    selectedAt: number | null,
+  ): THREE.Points | null {
     if (!poses.length) return null;
-    const points = sourceMarkerPoints(stage, 'screen', source,
-      poses.map(pose => new THREE.Vector3(...pose.center)), { selectedIndex: selectedAt });
+    const points = sourceMarkerPoints(
+      stage,
+      'screen',
+      source,
+      poses.map(pose => new THREE.Vector3(...pose.center)),
+      { selectedIndex: selectedAt },
+    );
     // A screen is an editable object of its own, not a derived source readout, so it keeps its own pick
     // identity — the same distinction a free light draws against the sign-light bulbs beside it.
     delete points.userData.sourceKind;
@@ -174,12 +215,11 @@ export function createScreensLayer(stage: Stage) {
     const syncGroup = (group: THREE.Group, source: ScenePickSource, selectedAt: number | null) => {
       for (const child of group.children) {
         if (!(child instanceof THREE.Group)) continue;
-        const isSelected = child.userData.screenSource === source
-          && child.userData.screenIndex === selectedAt;
+        const isSelected = child.userData.screenSource === source && child.userData.screenIndex === selectedAt;
         child.traverse(object => {
           if (object.userData.screenEdge === true && object instanceof THREE.Line) {
             const material = object.material as THREE.LineBasicMaterial;
-            material.color.setHex(isSelected ? EDGE_SELECTED : object.userData.screenEdgeColor as number);
+            material.color.setHex(isSelected ? EDGE_SELECTED : (object.userData.screenEdgeColor as number));
           }
         });
       }
@@ -203,7 +243,8 @@ export function createScreensLayer(stage: Stage) {
           // or not. With Sources off, active playback owns the picture and idle panels are hidden by the gate.
           object.material = sourcesVisible ? testPatternMat : videoTexture ? videoMat : testPatternMat;
           object.raycast = presentation.pickable
-            ? object.userData.screenPickRaycast as THREE.Mesh['raycast'] : noRaycast;
+            ? (object.userData.screenPickRaycast as THREE.Mesh['raycast'])
+            : noRaycast;
         } else if (object.userData.screenInspection === true) {
           object.visible = presentation.inspectionVisible;
         }
@@ -222,8 +263,11 @@ export function createScreensLayer(stage: Stage) {
   }
 
   /** Rebuild the authored screens from the document and keep the selected one's gizmo in sync. */
-  function setScreens(next: readonly Screen[], placements: readonly PlacedProp[] | undefined,
-                      selectedId: string | null) {
+  function setScreens(
+    next: readonly Screen[],
+    placements: readonly PlacedProp[] | undefined,
+    selectedId: string | null,
+  ) {
     clear(authored);
     screens = [...next];
     props = placements;
@@ -232,8 +276,14 @@ export function createScreensLayer(stage: Stage) {
     const at = selectedIndex();
     const poses = screens.map(screen => screenPose(screen, screenProp(screen, props)));
     poses.forEach((pose, index) => {
-      authored.add(build({ pose, level: '', name: screens[index].name ?? '',
-        width: pose.width, height: pose.height }, EDGE_COLOR, 'authored', index));
+      authored.add(
+        build(
+          { pose, level: '', name: screens[index].name ?? '', width: pose.width, height: pose.height },
+          EDGE_COLOR,
+          'authored',
+          index,
+        ),
+      );
     });
     authoredMarkers = markers(poses, 'authored', at < 0 ? null : at);
     if (authoredMarkers) authored.add(authoredMarkers);
@@ -258,7 +308,11 @@ export function createScreensLayer(stage: Stage) {
     selectedReference = null;
     for (let index = 0; index < draws.length; index++)
       reference.add(build(draws[index], REFERENCE_EDGE, 'reference', index));
-    referenceMarkers = markers(draws.map(draw => draw.pose), 'reference', null);
+    referenceMarkers = markers(
+      draws.map(draw => draw.pose),
+      'reference',
+      null,
+    );
     if (referenceMarkers) reference.add(referenceMarkers);
     syncSelectionAppearance();
     syncPresentation();
@@ -328,18 +382,34 @@ export function createScreensLayer(stage: Stage) {
   const handlePosition = (): V3 => [moveHandle.position.x, moveHandle.position.y, -moveHandle.position.z];
 
   return {
-    get group() { return authored; },
-    get referenceGroup() { return reference; },
-    get screens() { return screens; },
-    get selectedScreen() { return selected; },
+    get group() {
+      return authored;
+    },
+    get referenceGroup() {
+      return reference;
+    },
+    get screens() {
+      return screens;
+    },
+    get selectedScreen() {
+      return selected;
+    },
     /** The selected screen is fitted to a board prop, stored in its frame — it moves with the board, not the ground. */
     get selectedAttached() {
       const screen = screens[selectedIndex()];
       return !!screen && !!screenProp(screen, props);
     },
-    get selectedReferenceScreen() { return selectedReference; },
-    setScreens, setReference, setVisible, setVideoTexture, seatScreen, seatReferenceScreen,
-    clearSelection, handlePosition,
+    get selectedReferenceScreen() {
+      return selectedReference;
+    },
+    setScreens,
+    setReference,
+    setVisible,
+    setVideoTexture,
+    seatScreen,
+    seatReferenceScreen,
+    clearSelection,
+    handlePosition,
   };
 }
 

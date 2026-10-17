@@ -1,4 +1,12 @@
-import type { AuthoredTrail, PathHandles, TrailCutShape, TrailKnotSettings, TrailPath, TrailSettings, V3 } from './types';
+import type {
+  AuthoredTrail,
+  PathHandles,
+  TrailCutShape,
+  TrailKnotSettings,
+  TrailPath,
+  TrailSettings,
+  V3,
+} from './types';
 import { trailSettingsTiles } from '../mesh/trail-textures';
 
 /**
@@ -12,7 +20,11 @@ import { trailSettingsTiles } from '../mesh/trail-textures';
  * junctions, so the names it owns divide up exactly as before and its next cut lands on the same patches.
  */
 
-interface LegacyBranch { knot: number; knots: V3[]; to?: number }
+interface LegacyBranch {
+  knot: number;
+  knots: V3[];
+  to?: number;
+}
 
 interface LegacyTrail {
   id: string;
@@ -28,7 +40,10 @@ interface LegacyTrail {
 }
 
 const isLegacy = (trail: unknown): trail is LegacyTrail =>
-  !!trail && typeof trail === 'object' && Array.isArray((trail as LegacyTrail).knots) && !Array.isArray((trail as AuthoredTrail).paths);
+  !!trail &&
+  typeof trail === 'object' &&
+  Array.isArray((trail as LegacyTrail).knots) &&
+  !Array.isArray((trail as AuthoredTrail).paths);
 
 /** The old trail's branches as its last cut saw them: the first leaving each knot, in knot order, each rejoining a
  *  knot no other branch ends on — a branch with neither knots nor a rejoin is none. */
@@ -36,13 +51,15 @@ function legacyBranches(trail: LegacyTrail): LegacyBranch[] {
   const n = trail.knots.length;
   const onTrail = (knot: number | undefined): knot is number => Number.isInteger(knot) && knot! >= 0 && knot! < n;
   const leaving = new Map<number, LegacyBranch>();
-  for (const branch of trail.branches ?? []) if (onTrail(branch.knot) && !leaving.has(branch.knot)) leaving.set(branch.knot, branch);
+  for (const branch of trail.branches ?? [])
+    if (onTrail(branch.knot) && !leaving.has(branch.knot)) leaving.set(branch.knot, branch);
   const used = new Set(leaving.keys());
   const out: LegacyBranch[] = [];
   for (const branch of [...leaving.values()].sort((a, b) => a.knot - b.knot)) {
     const rejoins = onTrail(branch.to) && branch.to !== branch.knot && !used.has(branch.to);
     if (rejoins) used.add(branch.to!);
-    if (branch.knots.length || rejoins) out.push({ knot: branch.knot, knots: branch.knots, ...(rejoins ? { to: branch.to } : {}) });
+    if (branch.knots.length || rejoins)
+      out.push({ knot: branch.knot, knots: branch.knots, ...(rejoins ? { to: branch.to } : {}) });
   }
   return out;
 }
@@ -57,28 +74,35 @@ export function migrateLegacyTrail(old: LegacyTrail): AuthoredTrail {
   const branches = legacyBranches(old);
   for (const branch of branches) {
     const own = branch.knots.map(knot => points.push(copy(knot)) - 1);
-    paths.push({ points: [branch.knot, ...own, ...(branch.to !== undefined ? [branch.to] : [])], settings: { ...old.settings } });
+    paths.push({
+      points: [branch.knot, ...own, ...(branch.to !== undefined ? [branch.to] : [])],
+      settings: { ...old.settings },
+    });
   }
   const trail: AuthoredTrail = { id: old.id, points, paths, vertices: [...old.vertices], quads: [...old.quads] };
   if (old.name !== undefined) trail.name = old.name;
-  if (old.knotSettings?.some(Boolean)) trail.pointSettings = old.knotSettings.slice(0, old.knots.length).map(entry => entry ?? null);
+  if (old.knotSettings?.some(Boolean))
+    trail.pointSettings = old.knotSettings.slice(0, old.knots.length).map(entry => entry ?? null);
   if (old.network?.junctions) {
     // The old cut's runs: the trail split at every middle knot a branch ends on, then each branch, in order —
     // and its junctions in the order those runs first reached them, which is how it wrote their names.
-    const ends = [...new Set(branches.flatMap(branch => branch.to === undefined ? [branch.knot] : [branch.knot, branch.to]))].sort((a, b) => a - b);
+    const ends = [
+      ...new Set(branches.flatMap(branch => (branch.to === undefined ? [branch.knot] : [branch.knot, branch.to]))),
+    ].sort((a, b) => a - b);
     const last = old.knots.length - 1;
     const cuts = [0, ...ends.filter(knot => knot > 0 && knot < last), last];
-    const node = (knot: number | undefined) => knot !== undefined && ends.includes(knot) ? knot : undefined;
+    const node = (knot: number | undefined) => (knot !== undefined && ends.includes(knot) ? knot : undefined);
     const runs: [number | undefined, number | undefined][] = [];
     for (let i = 0; i + 1 < cuts.length; i++) runs.push([node(cuts[i]), node(cuts[i + 1])]);
     for (const branch of branches) runs.push([branch.knot, branch.to]);
     const seen: number[] = [];
-    for (const [from, to] of runs) for (const at of [from, to]) if (at !== undefined && !seen.includes(at)) seen.push(at);
+    for (const [from, to] of runs)
+      for (const at of [from, to]) if (at !== undefined && !seen.includes(at)) seen.push(at);
     // A knot in the trail's middle meets three arms; one of its ends, two.
     const shape: TrailCutShape = {
       runSpans: [...old.network.runSpans],
       runPaths: [...cuts.slice(1).map(() => 0), ...branches.map((_, b) => b + 1)],
-      junctionArms: seen.map(knot => knot > 0 && knot < last ? 3 : 2),
+      junctionArms: seen.map(knot => (knot > 0 && knot < last ? 3 : 2)),
     };
     trail.network = shape;
   }
@@ -91,14 +115,31 @@ export function migrateLegacyTrail(old: LegacyTrail): AuthoredTrail {
 function withSettings(trail: AuthoredTrail): AuthoredTrail {
   let changed = false;
   const paths = trail.paths.map(path => {
-    const { mesaTextures: _a, textures: _b, turnTiles: _c, leftTurnTiles: _d, rightTurnTiles: _e, capTiles: _f, ...settings } =
-      path.settings as TrailSettings & {
-        mesaTextures?: boolean; textures?: unknown; turnTiles?: string | null; leftTurnTiles?: string | null;
-        rightTurnTiles?: string | null; capTiles?: string | null;
-      };
-    const next: TrailSettings = { ...settings, lanes: settings.lanes ?? 2, caps: settings.caps ?? 'none', ...trailSettingsTiles(path.settings) };
-    const same = Object.keys(next).length === Object.keys(path.settings).length
-      && (Object.keys(next) as (keyof TrailSettings)[]).every(key => next[key] === path.settings[key]);
+    const {
+      mesaTextures: _a,
+      textures: _b,
+      turnTiles: _c,
+      leftTurnTiles: _d,
+      rightTurnTiles: _e,
+      capTiles: _f,
+      ...settings
+    } = path.settings as TrailSettings & {
+      mesaTextures?: boolean;
+      textures?: unknown;
+      turnTiles?: string | null;
+      leftTurnTiles?: string | null;
+      rightTurnTiles?: string | null;
+      capTiles?: string | null;
+    };
+    const next: TrailSettings = {
+      ...settings,
+      lanes: settings.lanes ?? 2,
+      caps: settings.caps ?? 'none',
+      ...trailSettingsTiles(path.settings),
+    };
+    const same =
+      Object.keys(next).length === Object.keys(path.settings).length &&
+      (Object.keys(next) as (keyof TrailSettings)[]).every(key => next[key] === path.settings[key]);
     if (same) return path;
     changed = true;
     return { ...path, settings: next };
@@ -109,5 +150,5 @@ function withSettings(trail: AuthoredTrail): AuthoredTrail {
 /** Bring every trail of a loaded document up to the network form, and every path to its tile sets and lanes; one
  *  already in it passes through. */
 export function normalizeTrails(trails: unknown[] | undefined): AuthoredTrail[] | undefined {
-  return trails?.map(trail => withSettings(isLegacy(trail) ? migrateLegacyTrail(trail) : trail as AuthoredTrail));
+  return trails?.map(trail => withSettings(isLegacy(trail) ? migrateLegacyTrail(trail) : (trail as AuthoredTrail)));
 }

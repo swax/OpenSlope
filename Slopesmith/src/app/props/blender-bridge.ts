@@ -58,8 +58,7 @@ export type AppliedPush =
 
 /** The GLB of one model — the file for a tool that is not the addon. Served with a `content-disposition`, so
  *  following it in a new tab downloads rather than navigating away from an editor with unsaved work. */
-export const blenderGlbUrl = (kind: PortalKind, id: number): string =>
-  `/api/blender/mesh.glb?kind=${kind}&id=${id}`;
+export const blenderGlbUrl = (kind: PortalKind, id: number): string => `/api/blender/mesh.glb?kind=${kind}&id=${id}`;
 
 /** Ask the browser to save a model's GLB. An anchor rather than `window.open`: a popup blocker treats the
  *  second as a popup, and a download that silently does not happen is the worst of the three outcomes. */
@@ -80,9 +79,7 @@ export function downloadBlenderGlb(kind: PortalKind, id: number, name: string): 
  * model is gone (deleted while the artist was in Blender), which is not an error: the push is acknowledged
  * either way, because leaving it in the inbox would replay it on every subsequent library change forever.
  */
-export async function drainBlenderPushes(
-  write: (push: PendingBlenderPush) => boolean,
-): Promise<AppliedPush[]> {
+export async function drainBlenderPushes(write: (push: PendingBlenderPush) => boolean): Promise<AppliedPush[]> {
   let pushes: PendingBlenderPush[];
   try {
     pushes = (await fetchJson<{ pushes?: PendingBlenderPush[] }>('/api/blender/pending')).pushes ?? [];
@@ -100,13 +97,20 @@ export async function drainBlenderPushes(
     } else if (push.kind === 'model' && Array.isArray(push.cage?.quads)) {
       if (write(push)) {
         applied.push({
-          kind: 'model', name: push.name, quads: push.cage.quads.length,
-          fanned: push.cage.fanned ?? 0, dropped: push.cage.dropped ?? 0, retextured: !!push.texture,
+          kind: 'model',
+          name: push.name,
+          quads: push.cage.quads.length,
+          fanned: push.cage.fanned ?? 0,
+          dropped: push.cage.dropped ?? 0,
+          retextured: !!push.texture,
         });
       }
     } else continue;
-    try { await postJson(`/api/blender/ack?token=${encodeURIComponent(push.token)}`); }
-    catch { /* the next drain will find it again, which is the safe way round */ }
+    try {
+      await postJson(`/api/blender/ack?token=${encodeURIComponent(push.token)}`);
+    } catch {
+      /* the next drain will find it again, which is the safe way round */
+    }
   }
   return applied;
 }
@@ -130,12 +134,13 @@ const guideCss = `
 `;
 
 /** What the guide says this prop will do on the round trip — the one thing that differs by kind. */
-const roundTripNote = (kind: PortalKind): string => kind === 'model'
-  ? 'This is a tiled prop, so it arrives as real QUADS and comes back as quads. Its UVs are computed from '
-    + 'the quad corners — Blender gets a copy of that mapping so the tile is paintable, but it is never read '
-    + 'back, so reshaping the cage costs you nothing.'
-  : 'This is a textured prop, so it arrives as triangles with its UV layout and one Blender material per '
-    + 'slot, each wearing its actual tile. Geometry and UVs both round-trip.';
+const roundTripNote = (kind: PortalKind): string =>
+  kind === 'model'
+    ? 'This is a tiled prop, so it arrives as real QUADS and comes back as quads. Its UVs are computed from ' +
+      'the quad corners — Blender gets a copy of that mapping so the tile is paintable, but it is never read ' +
+      'back, so reshaping the cage costs you nothing.'
+    : 'This is a textured prop, so it arrives as triangles with its UV layout and one Blender material per ' +
+      'slot, each wearing its actual tile. Geometry and UVs both round-trip.';
 
 /**
  * How to take this prop to Blender and back — shown from every entry point, so the answer is the same
@@ -155,8 +160,9 @@ export function openBlenderGuide(prop: { kind: PortalKind; id: number; name: str
   title.textContent = `Edit ${prop.name} in Blender`;
   const sub = document.createElement('p');
   sub.className = 'sub';
-  sub.textContent = 'Pull it into Blender, edit it, push it back — it lands on this same prop, so every '
-    + 'placement of it follows and its effects stay attached.';
+  sub.textContent =
+    'Pull it into Blender, edit it, push it back — it lands on this same prop, so every ' +
+    'placement of it follows and its effects stay attached.';
 
   const steps = document.createElement('ol');
   for (const [text, code] of [
@@ -188,15 +194,20 @@ export function openBlenderGuide(prop: { kind: PortalKind; id: number; name: str
   const paint = document.createElement('p');
   paint.className = 'kind';
   paint.innerHTML = '<b>Painting on it.</b> ';
-  paint.append(document.createTextNode('Texture Paint works on the tile a slot wears, and a tile you edit '
-    + 'comes home with the mesh. One of your own Custom tiles is replaced, and everything wearing it '
-    + 'follows; a reference level’s tile is forked into your Custom bank instead, so the original is never '
-    + 'touched. A tile you did not edit is never re-uploaded.'));
+  paint.append(
+    document.createTextNode(
+      'Texture Paint works on the tile a slot wears, and a tile you edit ' +
+        'comes home with the mesh. One of your own Custom tiles is replaced, and everything wearing it ' +
+        'follows; a reference level’s tile is forked into your Custom bank instead, so the original is never ' +
+        'touched. A tile you did not edit is never re-uploaded.',
+    ),
+  );
 
   const alt = document.createElement('p');
   alt.className = 'alt';
-  alt.textContent = 'Would rather not install it? Download a self-contained GLB instead — 1 unit = 1 metre, '
-    + 'Y-up, textures embedded. It carries the same stamp, so the add-on can still push it back later.';
+  alt.textContent =
+    'Would rather not install it? Download a self-contained GLB instead — 1 unit = 1 metre, ' +
+    'Y-up, textures embedded. It carries the same stamp, so the add-on can still push it back later.';
 
   const actions = document.createElement('div');
   actions.className = 'sp-modal-actions';
@@ -204,7 +215,10 @@ export function openBlenderGuide(prop: { kind: PortalKind; id: number; name: str
   download.type = 'button';
   download.className = 'sp-btn';
   download.textContent = 'Download GLB';
-  download.onclick = () => { downloadBlenderGlb(prop.kind, prop.id, prop.name); close(); };
+  download.onclick = () => {
+    downloadBlenderGlb(prop.kind, prop.id, prop.name);
+    close();
+  };
   const done = document.createElement('button');
   done.type = 'button';
   done.className = 'sp-btn accent';
@@ -224,16 +238,20 @@ export function describeApplied(applied: readonly AppliedPush[]): string {
   // A push that brought art back but no cage — a textured prop, whose geometry the server wrote itself —
   // reaches the editor as ref moves alone, so that is the whole sentence.
   if (!cages.length) {
-    return `Blender repainted ${tiles} tile${tiles === 1 ? '' : 's'}`
-      + ` — everything wearing ${tiles === 1 ? 'it' : 'them'} followed.`;
+    return (
+      `Blender repainted ${tiles} tile${tiles === 1 ? '' : 's'}` +
+      ` — everything wearing ${tiles === 1 ? 'it' : 'them'} followed.`
+    );
   }
   const names = cages.map(one => one.name).join(', ');
   const fanned = cages.reduce((n, one) => n + one.fanned, 0);
   const dropped = cages.reduce((n, one) => n + one.dropped, 0);
   const quads = cages.reduce((n, one) => n + one.quads, 0);
   const painted = tiles + cages.filter(one => one.retextured).length;
-  return `Blender updated ${names} — ${quads.toLocaleString()} quad${quads === 1 ? '' : 's'}.`
-    + (fanned ? ` ${fanned} n-gon${fanned === 1 ? '' : 's'} split.` : '')
-    + (dropped ? ` ${dropped} degenerate face${dropped === 1 ? '' : 's'} dropped.` : '')
-    + (painted ? ` ${painted} tile${painted === 1 ? '' : 's'} repainted.` : '');
+  return (
+    `Blender updated ${names} — ${quads.toLocaleString()} quad${quads === 1 ? '' : 's'}.` +
+    (fanned ? ` ${fanned} n-gon${fanned === 1 ? '' : 's'} split.` : '') +
+    (dropped ? ` ${dropped} degenerate face${dropped === 1 ? '' : 's'} dropped.` : '') +
+    (painted ? ` ${painted} tile${painted === 1 ? '' : 's'} repainted.` : '')
+  );
 }

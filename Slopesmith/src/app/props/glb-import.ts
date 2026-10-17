@@ -1,9 +1,19 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MAX_IMPORT_SPINS, MAX_IMPORT_TRIS, importedEmittersFromExtras, importedMaterialFlipbook,
-  importedMaterialScroll, importedPropName, importedSpinAnimation, importedSpinFromExtras,
-  rawFromGltfDirection, rawFromGltfPoint,
-  type ImportedEmitter, type ImportedPropRecord } from '../../core/props/imported';
+import {
+  MAX_IMPORT_SPINS,
+  MAX_IMPORT_TRIS,
+  importedEmittersFromExtras,
+  importedMaterialFlipbook,
+  importedMaterialScroll,
+  importedPropName,
+  importedSpinAnimation,
+  importedSpinFromExtras,
+  rawFromGltfDirection,
+  rawFromGltfPoint,
+  type ImportedEmitter,
+  type ImportedPropRecord,
+} from '../../core/props/imported';
 import type { PropAlphaMode, PropModelAnimation } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 
@@ -98,8 +108,11 @@ function bytesToB64(view: ArrayBufferView): string {
  *  ("Custom/<name>.png", or null where the material had no art worth a bank slot). `frameTiles` carries the
  *  refs of a flipbook material's frames 1..N-1; frame 0 is the material's own tile, so the stored state list
  *  is that tile followed by them. */
-export function draftToRecord(draft: ImportedPropDraft, tiles: (string | null)[],
-  frameTiles: (string[] | null)[] = []): Omit<ImportedPropRecord, 'id'> {
+export function draftToRecord(
+  draft: ImportedPropDraft,
+  tiles: (string | null)[],
+  frameTiles: (string[] | null)[] = [],
+): Omit<ImportedPropRecord, 'id'> {
   return {
     name: draft.name,
     tris: draft.tris,
@@ -118,8 +131,9 @@ export function draftToRecord(draft: ImportedPropDraft, tiles: (string | null)[]
       return {
         id: i,
         tex: base,
-        ...(draft.alphaModes[i] ? { alphaMode: draft.alphaModes[i]!,
-          ...(draft.alphaModes[i] === 'blend' ? { blend: true } : {}) } : {}),
+        ...(draft.alphaModes[i]
+          ? { alphaMode: draft.alphaModes[i]!, ...(draft.alphaModes[i] === 'blend' ? { blend: true } : {}) }
+          : {}),
         ...(draft.scrolls[i] ? { scroll: draft.scrolls[i]! } : {}),
         ...(base && rest?.length ? { frames: [base, ...rest] } : {}),
       };
@@ -150,8 +164,13 @@ async function imageToPng(image: CanvasImageSource, max: number, alphaFactor = 1
 
 /** Cut one frame out of a vertical filmstrip page and encode it as its own PNG. Band `index` of `count`,
  *  counted from the top, which is the reading order a painted strip is laid out in. */
-async function imageBandToPng(image: CanvasImageSource, index: number, count: number,
-  max: number, alphaFactor = 1): Promise<Blob | null> {
+async function imageBandToPng(
+  image: CanvasImageSource,
+  index: number,
+  count: number,
+  max: number,
+  alphaFactor = 1,
+): Promise<Blob | null> {
   const w = (image as HTMLImageElement).naturalWidth || (image as ImageBitmap).width;
   const h = (image as HTMLImageElement).naturalHeight || (image as ImageBitmap).height;
   if (!w || !h || count < 1) return null;
@@ -161,8 +180,7 @@ async function imageBandToPng(image: CanvasImageSource, index: number, count: nu
   canvas.width = Math.max(1, Math.round(w * scale));
   canvas.height = Math.max(1, Math.round(band * scale));
   const context = canvas.getContext('2d')!;
-  context.drawImage(image, 0, band * index, w, band,
-    0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, band * index, w, band, 0, 0, canvas.width, canvas.height);
   if (alphaFactor < 1) {
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
     for (let i = 3; i < pixels.data.length; i += 4) pixels.data[i] = Math.round(pixels.data[i] * alphaFactor);
@@ -177,8 +195,8 @@ async function solidColorPng(color: THREE.Color, alpha = 1): Promise<Blob | null
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 8;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = `rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, `
-    + `${Math.round(color.b * 255)}, ${alpha})`;
+  ctx.fillStyle =
+    `rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ` + `${Math.round(color.b * 255)}, ${alpha})`;
   ctx.fillRect(0, 0, 8, 8);
   return new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
 }
@@ -191,7 +209,11 @@ async function materialTexture(material: THREE.Material): Promise<Blob | null> {
   const alpha = alphaMode ? Math.max(0, Math.min(1, standard.opacity)) : 1;
   const image = standard.map?.image as CanvasImageSource | undefined;
   if (image) {
-    try { return await imageToPng(image, MAX_IMPORT_TEX, alpha); } catch { /* fall through to the colour */ }
+    try {
+      return await imageToPng(image, MAX_IMPORT_TEX, alpha);
+    } catch {
+      /* fall through to the colour */
+    }
   }
   const color = standard.color;
   if (!color) return null;
@@ -213,11 +235,13 @@ async function materialFlipbook(material: THREE.Material | null): Promise<Blob[]
   const count = material ? importedMaterialFlipbook(material.userData) : null;
   const image = (material as THREE.MeshStandardMaterial | null)?.map?.image as CanvasImageSource | undefined;
   if (!count || !image) return null;
-  const alpha = materialAlphaMode(material) ? Math.max(0, Math.min(1,
-    (material as THREE.MeshStandardMaterial).opacity)) : 1;
+  const alpha = materialAlphaMode(material)
+    ? Math.max(0, Math.min(1, (material as THREE.MeshStandardMaterial).opacity))
+    : 1;
   try {
-    const frames = await Promise.all(Array.from({ length: count },
-      (_, index) => imageBandToPng(image, index, count, MAX_IMPORT_TEX, alpha)));
+    const frames = await Promise.all(
+      Array.from({ length: count }, (_, index) => imageBandToPng(image, index, count, MAX_IMPORT_TEX, alpha)),
+    );
     return frames.every((frame): frame is Blob => !!frame) ? frames : null;
   } catch {
     return null;
@@ -303,12 +327,12 @@ export async function glbToPropDraft(file: File): Promise<ImportedPropDraft> {
       const materialKey = part.material?.uuid ?? 'none';
       let mat = materialIndex.get(materialKey);
       if (mat === undefined) {
-        materialIndex.set(materialKey, mat = materials.length);
+        materialIndex.set(materialKey, (mat = materials.length));
         materials.push(part.material);
       }
       const key = `${mat}|${spin}`;
       let bucket = byRun.get(key);
-      if (!bucket) byRun.set(key, bucket = { mat, spin, pos: [], uv: [], idx: [] });
+      if (!bucket) byRun.set(key, (bucket = { mat, spin, pos: [], uv: [], idx: [] }));
       // remap this part's vertices into the bucket, deduped per source vertex so shared corners stay shared
       const remap = new Map<number, number>();
       const emit = (source: number): number => {
@@ -350,17 +374,29 @@ export async function glbToPropDraft(file: File): Promise<ImportedPropDraft> {
   // Seat the model on its own origin: centre it horizontally (raw x/y) so a click drops it under the cursor
   // rather than wherever the exporter's origin happened to sit. Vertical (raw z) is left alone — propBaseOffset
   // reads the lowest vertex to stand the model on the terrain.
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (const sub of subs) {
     for (let i = 0; i < sub.positions.length; i += 3) {
-      minX = Math.min(minX, sub.positions[i]); maxX = Math.max(maxX, sub.positions[i]);
-      minY = Math.min(minY, sub.positions[i + 1]); maxY = Math.max(maxY, sub.positions[i + 1]);
-      minZ = Math.min(minZ, sub.positions[i + 2]); maxZ = Math.max(maxZ, sub.positions[i + 2]);
+      minX = Math.min(minX, sub.positions[i]);
+      maxX = Math.max(maxX, sub.positions[i]);
+      minY = Math.min(minY, sub.positions[i + 1]);
+      maxY = Math.max(maxY, sub.positions[i + 1]);
+      minZ = Math.min(minZ, sub.positions[i + 2]);
+      maxZ = Math.max(maxZ, sub.positions[i + 2]);
     }
   }
-  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const cx = (minX + maxX) / 2,
+    cy = (minY + maxY) / 2;
   for (const sub of subs) {
-    for (let i = 0; i < sub.positions.length; i += 3) { sub.positions[i] -= cx; sub.positions[i + 1] -= cy; }
+    for (let i = 0; i < sub.positions.length; i += 3) {
+      sub.positions[i] -= cx;
+      sub.positions[i + 1] -= cy;
+    }
   }
 
   // Emitters, put through the SAME transform the vertices just took — frame change and re-centring
@@ -383,20 +419,21 @@ export async function glbToPropDraft(file: File): Promise<ImportedPropDraft> {
   // point that skipped the shift turns the fan about somewhere off in front of the machine. The axis is a
   // direction — it takes the frame change without the shift, through the node's own world rotation so a
   // declaration stays local to the node that made it.
-  const spun = importedSpinAnimation(spinNodes.map(({ node, spin }) => {
-    node.updateWorldMatrix(true, false);
-    vertex.setFromMatrixPosition(node.matrixWorld);
-    const axis = new THREE.Vector3(spin.axis[0], spin.axis[1], spin.axis[2])
-      .transformDirection(node.matrixWorld);
-    const base = {
-      pivot: rawFromGltfPoint([vertex.x, vertex.y, vertex.z], cx, cy),
-      axis: rawFromGltfDirection([axis.x, axis.y, axis.z]),
-      parent: parentSpinOrdinal(node),
-    };
-    return spin.revsPerSecond !== undefined
-      ? { ...base, revsPerSecond: spin.revsPerSecond }
-      : { ...base, amplitudeDegrees: spin.amplitudeDegrees, periodSeconds: spin.periodSeconds };
-  }));
+  const spun = importedSpinAnimation(
+    spinNodes.map(({ node, spin }) => {
+      node.updateWorldMatrix(true, false);
+      vertex.setFromMatrixPosition(node.matrixWorld);
+      const axis = new THREE.Vector3(spin.axis[0], spin.axis[1], spin.axis[2]).transformDirection(node.matrixWorld);
+      const base = {
+        pivot: rawFromGltfPoint([vertex.x, vertex.y, vertex.z], cx, cy),
+        axis: rawFromGltfDirection([axis.x, axis.y, axis.z]),
+        parent: parentSpinOrdinal(node),
+      };
+      return spin.revsPerSecond !== undefined
+        ? { ...base, revsPerSecond: spin.revsPerSecond }
+        : { ...base, amplitudeDegrees: spin.amplitudeDegrees, periodSeconds: spin.periodSeconds };
+    }),
+  );
   if (spun) {
     for (const [i, sub] of subs.entries()) {
       const ordinal = runs[i].spin;
@@ -407,8 +444,9 @@ export async function glbToPropDraft(file: File): Promise<ImportedPropDraft> {
   const flipbooks = await Promise.all(materials.map(m => materialFlipbook(m ?? null)));
   // A flipbook material's own page is the whole filmstrip, so its base tile is frame 0 rather than the
   // uncut image — otherwise the prop would render every frame at once, stacked.
-  const textures = await Promise.all(materials.map(async (m, i) =>
-    flipbooks[i]?.[0] ?? (m ? materialTexture(m) : null)));
+  const textures = await Promise.all(
+    materials.map(async (m, i) => flipbooks[i]?.[0] ?? (m ? materialTexture(m) : null)),
+  );
   const scrolls = materials.map(m => importedMaterialScroll(m?.userData));
   const alphaModes = materials.map(materialAlphaMode);
   const verts = subs.reduce((n, s) => n + s.positions.length / 3, 0);
