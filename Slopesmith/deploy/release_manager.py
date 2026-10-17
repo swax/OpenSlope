@@ -551,6 +551,7 @@ def install_updater(layout, source):
         os.chown(path, 0, grp.getgrnam("slopesmith").gr_gid if path != layout.state else 0)
     lib = layout.root / "usr/local/lib/slopesmith"
     lib.mkdir(parents=True, exist_ok=True)
+    lib.chmod(0o755)
     for name in ("release_manager.py", "run-api"):
         shutil.copyfile(source / name, lib / name)
         (lib / name).chmod(0o755 if name == "run-api" else 0o644)
@@ -611,6 +612,8 @@ def install(layout, args):
         run(["useradd", "--system", "--user-group", "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", "slopesmith"])
         identity = pwd.getpwnam("slopesmith")
     layout.releases.mkdir(parents=True, exist_ok=True)
+    layout.releases.chmod(0o755)
+    layout.current.parent.chmod(0o755)
     settings = layout.etc / "slopesmith"
     settings.mkdir(parents=True, exist_ok=True)
     settings.chmod(0o750)
@@ -621,6 +624,9 @@ def install(layout, args):
     config["publicKey"] = str(key)
     config.pop("platform")
     atomic_json(layout.config, config, mode=0o600)
+    storage = layout.root / "srv/slopesmith"
+    storage.mkdir(parents=True, exist_ok=True)
+    storage.chmod(0o755)
     for name in ("workspace", "maps"):
         path = layout.root / "srv/slopesmith" / name
         path.mkdir(parents=True, exist_ok=True)

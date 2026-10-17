@@ -271,7 +271,14 @@ class ReleaseTests(unittest.TestCase):
              patch.object(release, "trusted_file"), patch("pwd.getpwnam", return_value=identity), \
              patch("grp.getgrnam", return_value=types.SimpleNamespace(gr_gid=os.getgid())), \
              patch.object(release.os, "chown"), patch.object(release, "run", side_effect=lambda cmd, **kw: calls.append(cmd)):
-            release.install(layout, args)
+            mask = os.umask(0o077)
+            try:
+                release.install(layout, args)
+            finally:
+                os.umask(mask)
+            for path in (layout.releases, layout.current.parent, layout.root / "srv/slopesmith",
+                         layout.root / "usr/local/lib/slopesmith"):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o755)
             secret = (layout.etc / "slopesmith-multiplayer.env").read_text()
             project = layout.root / "srv/slopesmith/workspace/important-project"
             project.write_text("keep me")
