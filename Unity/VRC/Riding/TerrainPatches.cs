@@ -46,16 +46,16 @@ namespace OpenSlope.VrcPlugin
         public int[] PatchAdj;
 
         // ---- Refine results (read by the board after calling Refine) --------------------------------------
-        [HideInInspector] public bool    RFound;   // the triangle mapped to a patch and we evaluated the surface
+        [HideInInspector] public bool RFound;   // the triangle mapped to a patch and we evaluated the surface
         [HideInInspector] public Vector3 RPoint;   // exact contact point on the true bicubic surface (world)
         [HideInInspector] public Vector3 RNormal;  // exact unit surface normal there (world), signed toward the probe
-        [HideInInspector] public float   RRayResidual; // final perpendicular distance from patch point to probe ray (m)
+        [HideInInspector] public float RRayResidual; // final perpendicular distance from patch point to probe ray (m)
 
         // Warm-start context from the last Refine, reused only by the bounded seam-recovery march. RHasPatch is false
         // whenever Refine hits a prop, an unmapped triangle, or a degenerate normal.
-        [HideInInspector] public bool    RHasPatch;
-        [HideInInspector] public int     RPatch;       // contact patch index (x16 = its control-point base in _cpW)
-        [HideInInspector] public float   RU, RV;       // contact (u,v) within RPatch
+        [HideInInspector] public bool RHasPatch;
+        [HideInInspector] public int RPatch;       // contact patch index (x16 = its control-point base in _cpW)
+        [HideInInspector] public float RU, RV;       // contact (u,v) within RPatch
 
         private Vector3[] _cpW;     // ControlPoints transformed to world (done once in Start; the level is static)
         private bool _ready, _failed;
@@ -195,10 +195,10 @@ namespace OpenSlope.VrcPlugin
                 for (int x = 0; x < 2; x++)
                 {
                     int edge; float s, t;
-                    if      (u < 0f) { edge = 0; s = -u;      t = v; }
-                    else if (u > 1f) { edge = 1; s = u - 1f;  t = v; }
-                    else if (v < 0f) { edge = 2; s = -v;      t = u; }
-                    else if (v > 1f) { edge = 3; s = v - 1f;  t = u; }
+                    if (u < 0f) { edge = 0; s = -u; t = v; }
+                    else if (u > 1f) { edge = 1; s = u - 1f; t = v; }
+                    else if (v < 0f) { edge = 2; s = -v; t = u; }
+                    else if (v > 1f) { edge = 3; s = v - 1f; t = u; }
                     else break;
                     int ai = patch * 4 + edge;
                     int adj = (PatchAdj != null && ai >= 0 && ai < PatchAdj.Length) ? PatchAdj[ai] : -1;
@@ -211,10 +211,10 @@ namespace OpenSlope.VrcPlugin
                     if (s > 1f) s = 1f;                                  // don't overshoot past the neighbour too
                     int ne = (adj >> 16) & 3;
                     if (((adj >> 18) & 1) == 1) t = 1f - t;              // the shared curve runs opposite over there
-                    if      (ne == 0) { u = s;      v = t; }             // enter across the neighbour's u=0 edge...
+                    if (ne == 0) { u = s; v = t; }             // enter across the neighbour's u=0 edge...
                     else if (ne == 1) { u = 1f - s; v = t; }
-                    else if (ne == 2) { v = s;      u = t; }
-                    else              { v = 1f - s; u = t; }
+                    else if (ne == 2) { v = s; u = t; }
+                    else { v = 1f - s; u = t; }
                     patch = adj & 0xFFFF;
                 }
             }

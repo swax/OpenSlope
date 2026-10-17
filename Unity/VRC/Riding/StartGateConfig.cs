@@ -45,7 +45,7 @@ namespace OpenSlope.VrcPlugin
         [Tooltip("How far behind each board (uphill) the player spawns, in metres.")]
         public float spawnBehind = 1.5f;
 
-    #if UNITY_EDITOR
+#if UNITY_EDITOR
         // Editor preview (stripped on upload): a green board-deck box at each SpawnAnchor (centred where the board's root
         // lands, so it matches the actual board), with a red downhill nub; and a magenta marker for each player spawn.
         void OnDrawGizmos()
@@ -58,7 +58,7 @@ namespace OpenSlope.VrcPlugin
                 Gizmos.matrix = Matrix4x4.TRS(anchor.position, anchor.rotation, Vector3.one);
                 Vector3 sz = new Vector3(0.32f, 0.10f, 1.55f);                                       // board deck footprint
                 Gizmos.color = new Color(0.20f, 1f, 0.20f, 0.45f); Gizmos.DrawCube(Vector3.zero, sz);     // translucent body
-                Gizmos.color = new Color(0.10f, 1f, 0.10f, 1f);    Gizmos.DrawWireCube(Vector3.zero, sz); // outline
+                Gizmos.color = new Color(0.10f, 1f, 0.10f, 1f); Gizmos.DrawWireCube(Vector3.zero, sz); // outline
                 Gizmos.color = new Color(1f, 0.20f, 0.10f, 1f);                                      // front (downhill) nub
                 Gizmos.DrawLine(new Vector3(0f, 0f, 0.78f), new Vector3(0f, 0.45f, 0.78f));
             }
@@ -73,6 +73,6 @@ namespace OpenSlope.VrcPlugin
                 }
             Gizmos.matrix = Matrix4x4.identity;
         }
-    #endif
+#endif
     }
 }

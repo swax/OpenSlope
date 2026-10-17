@@ -33,8 +33,8 @@ namespace OpenSlope.VrcPlugin
             right = right.normalized;
             Vector3 rUp = Vector3.Cross(right, t).normalized;
             _rlAlong = Mathf.Abs(Vector3.Dot(d, t));
-            _rlLat   = Mathf.Abs(Vector3.Dot(d, right));
-            _rlVert  = Mathf.Abs(Vector3.Dot(d, rUp));
+            _rlLat = Mathf.Abs(Vector3.Dot(d, right));
+            _rlVert = Mathf.Abs(Vector3.Dot(d, rUp));
         }
 
         // One geometry-aware lock-on probe at a sample point: find the nearest rail, require our travel is already roughly
@@ -199,9 +199,9 @@ namespace OpenSlope.VrcPlugin
             // end, where RAtEnd/RAtStart already handle the drop-off); lateral/vertical are unchanged.
             RailLocalOffset(transform.position - _railPoint, tan);
             bool grace = _grindTime < railGraceTime;
-            float latBox   = grace ? (railDeckReach + railLatTolerance) : railLatTolerance; // grace covers a deck-end catch's centre offset
-            float vertBox  = grace ? (railVertTolerance + 0.2f)         : railVertTolerance;
-            float alongBox = grace ? (railAlongTolerance * 2f)          : railAlongTolerance;
+            float latBox = grace ? (railDeckReach + railLatTolerance) : railLatTolerance; // grace covers a deck-end catch's centre offset
+            float vertBox = grace ? (railVertTolerance + 0.2f) : railVertTolerance;
+            float alongBox = grace ? (railAlongTolerance * 2f) : railAlongTolerance;
             if (_rlLat > latBox || _rlVert > vertBox || _rlAlong > alongBox) { ExitGrind(); return; } // strayed off the line
 
             // Along-rail speed model on the carried MAGNITUDE (magnitude-preserving: a sloppy/sideways catch keeps its

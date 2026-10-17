@@ -65,16 +65,16 @@ namespace OpenSlope.VrcPlugin
 
         private VRCPlayerApi _player;
         private float _timer;
-        private int   _lastResolveTick = -1; // last seen board.RunResolveTick - a change means a trick just resolved
+        private int _lastResolveTick = -1; // last seen board.RunResolveTick - a change means a trick just resolved
         private float _resultTime = -999f;   // when that resolution happened (drives the result hold window)
-        private int   _lastTimeBonusTick = -1;
+        private int _lastTimeBonusTick = -1;
         private float _timeBonusAt = -999f;
 
-        private Transform  _attachedDeck;    // the deck the panel is currently parented to (null = home / not riding)
-        private Vector3    _homePos;         // the panel's local pose under THIS object, restored when it detaches back home
+        private Transform _attachedDeck;    // the deck the panel is currently parented to (null = home / not riding)
+        private Vector3 _homePos;         // the panel's local pose under THIS object, restored when it detaches back home
         private Quaternion _homeRot;
-        private Vector3    _homeScale;
-        private bool       _homeCaptured;
+        private Vector3 _homeScale;
+        private bool _homeCaptured;
 
         void Start()
         {
@@ -151,7 +151,7 @@ namespace OpenSlope.VrcPlugin
                 // flips that, flipText spins the text 180 deg in-plane, tiltDegrees leans it back toward you.
                 Vector3 pos = deck.position + deck.up * height + deck.forward * forwardOffset;
                 Vector3 faceDir = faceUp ? -deck.up : deck.up;
-                Vector3 textUp  = flipText ? -deck.forward : deck.forward;
+                Vector3 textUp = flipText ? -deck.forward : deck.forward;
                 Quaternion rot = Quaternion.AngleAxis(-tiltDegrees, deck.right) * Quaternion.LookRotation(faceDir, textUp);
                 panel.transform.SetPositionAndRotation(pos, rot);
                 panel.transform.SetParent(deck, true);   // worldPositionStays: keep pose + world scale; track the deck for free

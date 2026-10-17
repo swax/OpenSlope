@@ -24,17 +24,17 @@ namespace OpenSlope.VrcPlugin
     // docs/vrchat/013-udon-components.md for the why.
     public static class SurfaceAudioSetup
     {
-        const string RootName   = Map.RootName;                // "OpenSlope_Map"
-        const string ChildName  = "SurfaceAudio";
+        const string RootName = Map.RootName;                // "OpenSlope_Map"
+        const string ChildName = "SurfaceAudio";
         const string SharedAudio = MapLayout.SharedFolder + "/Audio";   // zboard is a SHARED bank (decoded by `snowknife shared`), not per-level
 
         // First-guess step clips from zboard.bnk (short carves, ~0.3-0.5 s). These are NOT verified to match
         // the surface - the bank is just numbered sounds - so retune by ear: change the index, or reassign the
         // clip on the SurfaceDetector in the inspector. snow/ice are the common surfaces.
-        const string Snow    = "SFX/zboard/034.wav";
-        const string Ice     = "SFX/zboard/050.wav";
-        const string Rock    = "SFX/zboard/065.wav";
-        const string Metal   = "SFX/zboard/080.wav";
+        const string Snow = "SFX/zboard/034.wav";
+        const string Ice = "SFX/zboard/050.wav";
+        const string Rock = "SFX/zboard/065.wav";
+        const string Metal = "SFX/zboard/080.wav";
         const string Default = "SFX/zboard/074.wav";
 
         // Sits in the OpenSlope/Setup submenu next to Music Director (see the priority scheme in LevelImporter).
@@ -80,10 +80,10 @@ namespace OpenSlope.VrcPlugin
             var terrainCol = rootGo.transform.Find(Map.CollisionName);   // OpenSlope_Map/Collision (re-exposed at the top)
             if (terrainCol != null) proxy.collisionRoot = terrainCol;       // else the detector auto-finds it at runtime
             proxy.footstepSource = src;
-            proxy.snowStep    = LoadClip(Snow);
-            proxy.iceStep     = LoadClip(Ice);
-            proxy.rockStep    = LoadClip(Rock);
-            proxy.metalStep   = LoadClip(Metal);
+            proxy.snowStep = LoadClip(Snow);
+            proxy.iceStep = LoadClip(Ice);
+            proxy.rockStep = LoadClip(Rock);
+            proxy.metalStep = LoadClip(Metal);
             proxy.defaultStep = LoadClip(Default);
             UdonSharpEditorUtility.CopyProxyToUdon(proxy);
 

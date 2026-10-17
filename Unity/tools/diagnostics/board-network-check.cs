@@ -30,7 +30,8 @@ public class EditorCommand
             return "Remote created; rerun after ClientSim initializes it on the next frame.";
         }
         var checks = new List<string>();
-        Action<bool, string> check = (ok, label) => {
+        Action<bool, string> check = (ok, label) =>
+        {
             if (!ok) throw new Exception("FAILED: " + label);
             checks.Add(label);
         };

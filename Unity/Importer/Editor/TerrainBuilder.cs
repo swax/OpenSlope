@@ -157,7 +157,7 @@ namespace OpenSlope.Importer
             string png = Abs(_cfg.LevelFolder + "/gltf/LightmapAtlas.png");
             if (!File.Exists(png)) return null;
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false, linear: true)
-                { name = "OpenSlope_LightmapAtlas", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            { name = "OpenSlope_LightmapAtlas", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
             if (!tex.LoadImage(File.ReadAllBytes(png))) { Object.DestroyImmediate(tex); return null; }
             tex.Apply(false, false);
             AssetDatabase.DeleteAsset(_cfg.LightmapAtlasPath);

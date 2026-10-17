@@ -213,7 +213,7 @@ namespace OpenSlope.BasisPlugin
             Vector3 horiz = new Vector3(mode.Vel.x, 0f, mode.Vel.z);
             float hs = horiz.magnitude;
             if (hs > maxHorizontalSpeed) { float k = maxHorizontalSpeed / hs; mode.Vel.x = horiz.x * k; mode.Vel.z = horiz.z * k; }
-            if (mode.Vel.y >  maxVerticalSpeed) mode.Vel.y =  maxVerticalSpeed;
+            if (mode.Vel.y > maxVerticalSpeed) mode.Vel.y = maxVerticalSpeed;
             if (mode.Vel.y < -maxVerticalSpeed) mode.Vel.y = -maxVerticalSpeed;
 
             ctx.Flags = cc.Move(mode.Vel * dt);

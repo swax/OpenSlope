@@ -33,8 +33,8 @@ namespace OpenSlope.Importer
         }
 
         public bool IsCutout(string texFile) => Detect(texFile) == AlphaMode.Cutout;
-        public bool IsBlend(string texFile)  => Detect(texFile) == AlphaMode.Blend;
-        public bool IsGlow(string texFile)   => Detect(texFile) == AlphaMode.Glow;
+        public bool IsBlend(string texFile) => Detect(texFile) == AlphaMode.Blend;
+        public bool IsGlow(string texFile) => Detect(texFile) == AlphaMode.Glow;
 
         // Blend pages whose every submesh is a single-facing sheet (river surfaces, banners) rather than a closed
         // shell. snowknife measures this off the model normals when it builds the manifest (TextureBundle); the

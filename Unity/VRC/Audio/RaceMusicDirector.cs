@@ -229,7 +229,7 @@ namespace OpenSlope.VrcPlugin
             if (target > 127f) target = 127f;
 
             float tau = target > _intensity ? riseSmoothing : fallSmoothing;
-            _intensity = Mathf.Lerp(_intensity, target, dt / Mathf.Max(0.05f, tau) );
+            _intensity = Mathf.Lerp(_intensity, target, dt / Mathf.Max(0.05f, tau));
             if (_intensity < 0f) _intensity = 0f;
             if (_intensity > 127f) _intensity = 127f;
         }

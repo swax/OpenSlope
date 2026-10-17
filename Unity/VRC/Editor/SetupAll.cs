@@ -114,32 +114,32 @@ namespace OpenSlope.VrcPlugin
         public static bool EnsureAssets()
         {
             bool created = false;
-            UdonTools.EnsureProgramAsset(typeof(MusicDirector),   out bool c1); created |= c1;  // Music Director
-            UdonTools.EnsureProgramAsset(typeof(PlayerFlight),    out bool c2); created |= c2;  // Player Flight
-            UdonTools.EnsureProgramAsset(typeof(BoardSpawner),    out bool c3); created |= c3;  // Start Gate
-            UdonTools.EnsureProgramAsset(typeof(RideableBoard),   out bool c4); created |= c4;  // Start Gate boards
+            UdonTools.EnsureProgramAsset(typeof(MusicDirector), out bool c1); created |= c1;  // Music Director
+            UdonTools.EnsureProgramAsset(typeof(PlayerFlight), out bool c2); created |= c2;  // Player Flight
+            UdonTools.EnsureProgramAsset(typeof(BoardSpawner), out bool c3); created |= c3;  // Start Gate
+            UdonTools.EnsureProgramAsset(typeof(RideableBoard), out bool c4); created |= c4;  // Start Gate boards
             UdonTools.EnsureProgramAsset(typeof(RaceMusicDirector), out bool c5); created |= c5; // Race Audio
-            UdonTools.EnsureProgramAsset(typeof(AnnouncerU),      out bool c6); created |= c6;  // Race Audio (announcer)
+            UdonTools.EnsureProgramAsset(typeof(AnnouncerU), out bool c6); created |= c6;  // Race Audio (announcer)
             UdonTools.EnsureProgramAsset(typeof(VideoBillboards), out bool c7); created |= c7;  // Video Billboards (the AVPro renderer)
-            UdonTools.EnsureProgramAsset(typeof(UrlBox),          out bool c8); created |= c8;  // Jukebox (Add-button URL field Interact)
+            UdonTools.EnsureProgramAsset(typeof(UrlBox), out bool c8); created |= c8;  // Jukebox (Add-button URL field Interact)
             UdonTools.EnsureProgramAsset(typeof(BoardVoiceChannel), out bool c9); created |= c9; // Board Voice Channel
-            UdonTools.EnsureProgramAsset(typeof(SettingsBoard),   out bool c12); created |= c12; // Settings Board (ride mode / sound / world)
-            UdonTools.EnsureProgramAsset(typeof(SettingsToggle),  out bool c13); created |= c13; // Settings Board (per-row Interact toggle)
+            UdonTools.EnsureProgramAsset(typeof(SettingsBoard), out bool c12); created |= c12; // Settings Board (ride mode / sound / world)
+            UdonTools.EnsureProgramAsset(typeof(SettingsToggle), out bool c13); created |= c13; // Settings Board (per-row Interact toggle)
             UdonTools.EnsureProgramAsset(typeof(SettingsModeButton), out bool c13b); created |= c13b; // Settings Board (ride-mode picker button)
             UdonTools.EnsureProgramAsset(typeof(ModeVisibility), out bool c13c); created |= c13c; // authored race/show-off/freeride prop presence
-            UdonTools.EnsureProgramAsset(typeof(PlayersBoard),    out bool c14); created |= c14; // Players Board
-            UdonTools.EnsureProgramAsset(typeof(PlayersButton),   out bool c15); created |= c15; // Players Board (per-element Interact button)
-            UdonTools.EnsureProgramAsset(typeof(Jukebox),      out bool c16); created |= c16; // Jukebox (shared video queue brain)
-            UdonTools.EnsureProgramAsset(typeof(JukeboxButton),     out bool c17); created |= c17; // Jukebox (per-element Interact button)
-            UdonTools.EnsureProgramAsset(typeof(SnowfallU),       out bool c18); created |= c18; // Snowfall (built on every map so the Settings Board toggle is available - see RunSteps)
-            UdonTools.EnsureProgramAsset(typeof(InfoBoard),       out bool c19); created |= c19; // Info Board (instance owner + control cheat-sheet)
-            UdonTools.EnsureProgramAsset(typeof(DiagnosticsBoard),  out bool c20); created |= c20; // Tuning Board (diagnostics + perf)
+            UdonTools.EnsureProgramAsset(typeof(PlayersBoard), out bool c14); created |= c14; // Players Board
+            UdonTools.EnsureProgramAsset(typeof(PlayersButton), out bool c15); created |= c15; // Players Board (per-element Interact button)
+            UdonTools.EnsureProgramAsset(typeof(Jukebox), out bool c16); created |= c16; // Jukebox (shared video queue brain)
+            UdonTools.EnsureProgramAsset(typeof(JukeboxButton), out bool c17); created |= c17; // Jukebox (per-element Interact button)
+            UdonTools.EnsureProgramAsset(typeof(SnowfallU), out bool c18); created |= c18; // Snowfall (built on every map so the Settings Board toggle is available - see RunSteps)
+            UdonTools.EnsureProgramAsset(typeof(InfoBoard), out bool c19); created |= c19; // Info Board (instance owner + control cheat-sheet)
+            UdonTools.EnsureProgramAsset(typeof(DiagnosticsBoard), out bool c20); created |= c20; // Tuning Board (diagnostics + perf)
             UdonTools.EnsureProgramAsset(typeof(DiagnosticsToggle), out bool c21); created |= c21; // Tuning Board (per-row Interact toggle)
-            UdonTools.EnsureProgramAsset(typeof(DebugHud),        out bool c21b); created |= c21b; // Tuning Board (head-following FPS/debug HUD)
-            UdonTools.EnsureProgramAsset(typeof(Leaderboard),     out bool c22); created |= c22; // Leaderboard (top scores + times)
-            UdonTools.EnsureProgramAsset(typeof(FinishLine),      out bool c23); created |= c23; // Leaderboard (finish-line record trigger)
-            UdonTools.EnsureProgramAsset(typeof(RunHud),          out bool c24); created |= c24; // Run HUD (nose time/points/breakdown readout)
-            UdonTools.EnsureProgramAsset(typeof(Teleport),        out bool c25); created |= c25; // Teleports (MainType-24 portal warp)
+            UdonTools.EnsureProgramAsset(typeof(DebugHud), out bool c21b); created |= c21b; // Tuning Board (head-following FPS/debug HUD)
+            UdonTools.EnsureProgramAsset(typeof(Leaderboard), out bool c22); created |= c22; // Leaderboard (top scores + times)
+            UdonTools.EnsureProgramAsset(typeof(FinishLine), out bool c23); created |= c23; // Leaderboard (finish-line record trigger)
+            UdonTools.EnsureProgramAsset(typeof(RunHud), out bool c24); created |= c24; // Run HUD (nose time/points/breakdown readout)
+            UdonTools.EnsureProgramAsset(typeof(Teleport), out bool c25); created |= c25; // Teleports (MainType-24 portal warp)
             UdonTools.EnsureProgramAsset(typeof(AnimatedPropManager), out bool c26); created |= c26; // Consolidate Animated Props
             return created;
         }

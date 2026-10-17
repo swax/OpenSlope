@@ -85,48 +85,48 @@ namespace OpenSlope.VrcPlugin
 
         // ---- the synced (owner-written) state -----------------------------------------------------------------------
         [UdonSynced] private VRCUrl[] queueUrls;
-        [UdonSynced] private int[]    queueOwners;   // playerId of whoever queued each item
+        [UdonSynced] private int[] queueOwners;   // playerId of whoever queued each item
         [UdonSynced] private string[] queueNames;    // their display name (for the row label)
-        [UdonSynced] private VRCUrl   nowUrl;
-        [UdonSynced] private int      nowOwner = -1;
-        [UdonSynced] private string   nowName = "";
-        [UdonSynced] private double   nowStart;      // server seconds at the current video's t=0 (the shared playhead anchor)
-        [UdonSynced] private int      nowVersion;    // bumped to force a (re)load; a pure scrub moves nowStart only
-        [UdonSynced] private bool     playing;
+        [UdonSynced] private VRCUrl nowUrl;
+        [UdonSynced] private int nowOwner = -1;
+        [UdonSynced] private string nowName = "";
+        [UdonSynced] private double nowStart;      // server seconds at the current video's t=0 (the shared playhead anchor)
+        [UdonSynced] private int nowVersion;    // bumped to force a (re)load; a pure scrub moves nowStart only
+        [UdonSynced] private bool playing;
         // Lock mode, cycled by a moderator (LOCK_* below): a gradient from fully open to moderators-only. Defaults to 0 =
         // unlocked (also dodges the new-field-default gotcha - an un-repushed instance reads 0 = open).
-        [UdonSynced] private int      lockMode;
+        [UdonSynced] private int lockMode;
 
         // ---- local state --------------------------------------------------------------------------------------------
         private VRCPlayerApi _local;
-        private int    _page;
-        private bool   _seeking;          // the user is dragging the scrub bar (suspend the per-frame fill so we don't fight them)
-        private bool   _uiUpdating;       // we're writing seekSlider.value ourselves (so OnSeekChanged ignores it)
-        private bool   _localEnabled = true;   // this client's screens on/off (local perf control; doesn't touch synced state)
-        private int    _appliedVersion = -1;   // the nowVersion we last (re)loaded into the renderer
+        private int _page;
+        private bool _seeking;          // the user is dragging the scrub bar (suspend the per-frame fill so we don't fight them)
+        private bool _uiUpdating;       // we're writing seekSlider.value ourselves (so OnSeekChanged ignores it)
+        private bool _localEnabled = true;   // this client's screens on/off (local perf control; doesn't touch synced state)
+        private int _appliedVersion = -1;   // the nowVersion we last (re)loaded into the renderer
         private string _appliedUrl = "";       // the url string we last loaded (guard against redundant reloads)
         private double _appliedStart;          // the nowStart we last applied (detect a pure scrub)
-        private float  _pendingSeek;           // seconds to seek to once the freshly-loaded stream reports ready
-        private float  _nextDrift;             // next time (server seconds) we're allowed to drift-correct
+        private float _pendingSeek;           // seconds to seek to once the freshly-loaded stream reports ready
+        private float _nextDrift;             // next time (server seconds) we're allowed to drift-correct
 
         // The three lock modes (synced as `lockMode`), most open -> most restricted:
-        private const int LOCK_OPEN  = 0;   // unlocked: anyone adds, anyone seeks/skips
+        private const int LOCK_OPEN = 0;   // unlocked: anyone adds, anyone seeks/skips
         private const int LOCK_QUEUE = 1;   // queue unlocked: anyone adds to the queue, but only the current video's queuer/moderator seeks/skips
-        private const int LOCK_FULL  = 2;   // locked: moderators only - regular users can't add, seek, or skip
+        private const int LOCK_FULL = 2;   // locked: moderators only - regular users can't add, seek, or skip
 
         // A smooth server clock (anchor once, advance by local time, ease out drift) so the shared playhead is steady -
         // mirrors RideableBoard.ServerNow. Sampling Networking.GetServerTimeInSeconds raw jitters frame to frame.
         private double _clock;
-        private bool   _clockSet;
-        private int    _clockFrame;
+        private bool _clockSet;
+        private int _clockFrame;
 
         void Start()
         {
             _local = Networking.LocalPlayer;
-            if (queueUrls == null)   queueUrls = new VRCUrl[0];
+            if (queueUrls == null) queueUrls = new VRCUrl[0];
             if (queueOwners == null) queueOwners = new int[0];
-            if (queueNames == null)  queueNames = new string[0];
-            if (nowUrl == null)      nowUrl = VRCUrl.Empty;
+            if (queueNames == null) queueNames = new string[0];
+            if (nowUrl == null) nowUrl = VRCUrl.Empty;
             // The owner-at-spawn (first in / master) has nothing to load yet; a non-owner gets the real state via the
             // OnDeserialization that manual sync delivers right after Start. Either way, paint the UI from what we have.
             LoadCurrent();
@@ -257,7 +257,7 @@ namespace OpenSlope.VrcPlugin
 
         // EventTrigger PointerDown/PointerUp on the scrub bar mark the start/end of a user drag, so the per-frame fill in
         // Update steps aside while the user is scrubbing and we commit the seek once, on release (not on every drag frame).
-        public void OnSeekGrab()    { if (CanSeek()) _seeking = true; }
+        public void OnSeekGrab() { if (CanSeek()) _seeking = true; }
         public void OnSeekRelease()
         {
             if (!_seeking) return;
@@ -405,7 +405,7 @@ namespace OpenSlope.VrcPlugin
             }
 
             VRCUrl[] nu = new VRCUrl[n + 1];
-            int[]    no = new int[n + 1];
+            int[] no = new int[n + 1];
             string[] nm = new string[n + 1];
             for (int i = 0; i < insertAt; i++) { nu[i] = queueUrls[i]; no[i] = queueOwners[i]; nm[i] = queueNames[i]; }
             nu[insertAt] = u; no[insertAt] = ownerId; nm[insertAt] = name;
@@ -426,7 +426,7 @@ namespace OpenSlope.VrcPlugin
             int n = queueUrls.Length;
             if (idx < 0 || idx >= n) return;
             VRCUrl[] nu = new VRCUrl[n - 1];
-            int[]    no = new int[n - 1];
+            int[] no = new int[n - 1];
             string[] nm = new string[n - 1];
             int k = 0;
             for (int i = 0; i < n; i++)
@@ -479,9 +479,9 @@ namespace OpenSlope.VrcPlugin
             if (screensLabel != null) screensLabel.text = _localEnabled ? "Screens: ON (for me)" : "Screens: OFF (for me)";
             if (lockLabel != null)
             {
-                if (lockMode == LOCK_QUEUE)     lockLabel.text = "🔐 Queue unlocked";   // add freely; queuer/owner controls playback
+                if (lockMode == LOCK_QUEUE) lockLabel.text = "🔐 Queue unlocked";   // add freely; queuer/owner controls playback
                 else if (lockMode == LOCK_FULL) lockLabel.text = "🔒 Locked";            // moderators only
-                else                            lockLabel.text = "🔓 Unlocked";          // anyone adds + controls
+                else lockLabel.text = "🔓 Unlocked";          // anyone adds + controls
             }
         }
 

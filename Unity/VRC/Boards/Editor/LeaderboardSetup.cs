@@ -30,7 +30,7 @@ namespace OpenSlope.VrcPlugin
     // same call). Idempotent: deletes + rebuilds both objects each run.
     public static class LeaderboardSetup
     {
-        const string BoardName  = "Leaderboard";   // OpenSlope_Map/Leaderboard
+        const string BoardName = "Leaderboard";   // OpenSlope_Map/Leaderboard
         const string FinishName = "FinishLine";    // OpenSlope_Map/FinishLine
         const string PoleMatPath = Map.AssetsFolder + "/LeaderboardPole.mat";
 
@@ -40,7 +40,7 @@ namespace OpenSlope.VrcPlugin
         // at all ([Trailmap: 390]) - a rider who flies over the crossbar has still crossed. The box's uphill face lies
         // ON the DTF=0 plane, so it fires the moment the rider crosses - the depth just stops a fast rider tunnelling it.
         const float GateMargin = 2f;    // world m of slack around the arch (width, and below its base)
-        const float GateThick  = 8f;    // world m downhill of the plane
+        const float GateThick = 8f;    // world m downhill of the plane
         // World m of catch ABOVE the arch's crossbar. An arch-height box misses any rider who crosses the plane
         // airborne, and MEGAPLE makes that the common case: its finish-shaft mouth reaches ~11 m above the crossbar
         // and the run drops riders into the funnel from above, so a crossbar-height gate never fires, no lap ever
@@ -49,25 +49,25 @@ namespace OpenSlope.VrcPlugin
         const float GateHeadroom = 30f;
 
         // Fallback finish box (world m) for a level with no baked DTF - generous so a fast rider can't tunnel it.
-        const float FinishWidth  = 80f;   // across the fall line
+        const float FinishWidth = 80f;   // across the fall line
         const float FinishHeight = 40f;   // tall
-        const float FinishThick  = 8f;    // along travel
+        const float FinishThick = 8f;    // along travel
 
         // Display board offset from the DTF=0 point, in the finish frame (world m); it faces back up the hill. Hand-picked
         // in the scene and read back: the run-out flat just past the line, a nudge right of the fall line. Both offsets are
         // HORIZONTAL - the height is then seated on the snow (see below), because a run-out that keeps dropping past the
         // line would otherwise leave the board hanging in the air (GARI drops ~4 m over these 27.5 m).
-        const float BoardSide   = 2f;     // to the rider's right of the fall line
-        const float BoardAhead  = 27.5f;  // past the line, into the run-out (before Mdl_StageArea_Finish, ~34 m on MERQUER)
+        const float BoardSide = 2f;     // to the rider's right of the fall line
+        const float BoardAhead = 27.5f;  // past the line, into the run-out (before Mdl_StageArea_Finish, ~34 m on MERQUER)
 
         // Canvas-space (px) layout for the two-column panel.
-        const int   Rows       = Leaderboard.Capacity;  // 10 per column
-        const float CanvasW    = 1400f;
-        const float TitleH     = 120f;
-        const float ColTitleH  = 64f;
-        const float RowH       = 58f;
-        const float Pad        = 30f;
-        const float ColGap     = 50f;
+        const int Rows = Leaderboard.Capacity;  // 10 per column
+        const float CanvasW = 1400f;
+        const float TitleH = 120f;
+        const float ColTitleH = 64f;
+        const float RowH = 58f;
+        const float Pad = 30f;
+        const float ColGap = 50f;
         const float PanelScale = 0.0019f;   // 1400 px * 0.0019 ~= 2.66 m wide (a big scoreboard)
         const float PanelBottomY = 1.6f;    // world m: bottom edge of the panel above the board origin
 
@@ -137,9 +137,9 @@ namespace OpenSlope.VrcPlugin
                 // plane itself. Vertical span covers the arch (its posts sink below the snow) up past its crossbar by the
                 // headroom - the crossing is height-agnostic, so an airborne rider must sweep the gate too (see GateHeadroom).
                 float bottom = Mathf.Min(arch.min.y, finishPos.y) - GateMargin;
-                float top    = arch.max.y + GateHeadroom;
-                Vector3 e    = arch.extents;
-                float width  = 2f * (Mathf.Abs(e.x * right.x) + Mathf.Abs(e.z * right.z)) + GateMargin;
+                float top = arch.max.y + GateHeadroom;
+                Vector3 e = arch.extents;
+                float width = 2f * (Mathf.Abs(e.x * right.x) + Mathf.Abs(e.z * right.z)) + GateMargin;
 
                 Vector3 c = new Vector3(arch.center.x, (bottom + top) * 0.5f, arch.center.z);
                 c -= downhill * Vector3.Dot(c - finishPos, downhill);   // onto the DTF=0 plane (downhill is flat, so y is untouched)
@@ -167,7 +167,8 @@ namespace OpenSlope.VrcPlugin
             // so re-importing a map with a different count is all it takes to race it correctly.
             int laps = BundleManifestReader.ReadLaps(ImportConfig.Current().LevelFolder);
             float showoffSeconds = BundleManifestReader.ReadShowoffSeconds(ImportConfig.Current().LevelFolder);
-            UdonTools.AddConfigured<FinishLine>(finGo, u => {
+            UdonTools.AddConfigured<FinishLine>(finGo, u =>
+            {
                 u.leaderboard = lb; u.Cooldown = 3f; u.Laps = laps; u.ShowoffSeconds = showoffSeconds;
             });
 
@@ -336,7 +337,7 @@ namespace OpenSlope.VrcPlugin
             float colTop = -(TitleH);   // y offset from canvas top for the column titles
 
             scoreRows = BuildColumn(crt, font, leftX, colW, colTop, "TOP SCORES", new Color(1f, 0.84f, 0.30f));
-            timeRows  = BuildColumn(crt, font, rightX, colW, colTop, "BEST TIMES", new Color(0.55f, 0.85f, 1f));
+            timeRows = BuildColumn(crt, font, rightX, colW, colTop, "BEST TIMES", new Color(0.55f, 0.85f, 1f));
         }
 
         // One column: a coloured title then `Rows` left-aligned rich-text rows the board fills. Returns the row Texts.

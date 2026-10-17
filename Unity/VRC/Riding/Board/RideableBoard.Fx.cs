@@ -38,7 +38,7 @@ namespace OpenSlope.VrcPlugin
         {
             _fxOn = false;
             if (surfaceSpray != null) { surfaceSpray.Stop(); surfaceSpray.Clear(); }
-            if (cloud        != null) { cloud.Stop();        cloud.Clear(); }
+            if (cloud != null) { cloud.Stop(); cloud.Clear(); }
             if (_gritOn) { _gritOn = false; if (sparks != null) { sparks.Stop(); sparks.Clear(); } } // rails stop it via StopGrindFx
             _surfBurst = 0f; _surfCarry = 0f; _cloudCarry = 0f;
         }
@@ -53,9 +53,9 @@ namespace OpenSlope.VrcPlugin
         void UpdateSpray(bool onGround, float dt)
         {
             if (!snowParticles || !_fxOn) return;
-            float speed  = _vel.magnitude;
-            float lean   = Mathf.Abs(_lean);                                             // raw game-scale lean (max 0.905)
-            bool  powder = IsPowderSurface(_pSurf);
+            float speed = _vel.magnitude;
+            float lean = Mathf.Abs(_lean);                                             // raw game-scale lean (max 0.905)
+            bool powder = IsPowderSurface(_pSurf);
             Vector3 n = _contactN.sqrMagnitude > 1e-6f ? _contactN : Vector3.up;
             Vector3 basePt = transform.position - _fwd * sprayBackOffset + n * 0.05f;    // deck contact area (back offset defaults 0)
             Vector3 travel = _vel - n * Vector3.Dot(_vel, n);                            // velocity in the contact plane
@@ -87,7 +87,7 @@ namespace OpenSlope.VrcPlugin
             // life (s), size range (m), additive alpha, material index. Surfaces the game authors at emit_rate 0 (slow
             // powder 4, glidy 8, rock/metal/ramp, props -1) throw nothing.
             float rate, life, sMin, sMax, alpha; int mat;
-            if      (_pSurf == 1) { rate = 0.075f; life = 0.60f; sMin = 0.136f; sMax = 0.243f; alpha = 0.401f; mat = 0; } // standard snow: blb1 chunks
+            if (_pSurf == 1) { rate = 0.075f; life = 0.60f; sMin = 0.136f; sMax = 0.243f; alpha = 0.401f; mat = 0; } // standard snow: blb1 chunks
             else if (_pSurf == 2) { rate = 0.159f; life = 0.86f; sMin = 0.302f; sMax = 0.452f; alpha = 0.407f; mat = 1; } // off-track: swp2 puffs
             else if (_pSurf == 3) { rate = 0.505f; life = 1.57f; sMin = 0.356f; sMax = 0.582f; alpha = 0.231f; mat = 2; } // powder: str3 twinkles
             else if (_pSurf == 5) { rate = 0.200f; life = 0.24f; sMin = 0.030f; sMax = 0.070f; alpha = 0.508f; mat = 3; } // ice: cnf2 shards - tiny specks (live-measured ~0.04-0.05 m on ice; the solid cnf2 fills its quad, so the drawn speck IS the quad - the table's 0.10-0.27 renders far smaller on ice, unlike snow blb1)
@@ -114,7 +114,7 @@ namespace OpenSlope.VrcPlugin
             SetSurfMaterial(mat);
             float aScale = surfAlphaScale > 0.001f ? surfAlphaScale : 1f;
             float bright = sprayBrightness > 0.001f ? sprayBrightness : 1f;       // global additive-brightness (scales emit RGB, can exceed 1)
-            float backT  = surfBackTilt  > 0.001f ? surfBackTilt  : 0.72f;
+            float backT = surfBackTilt > 0.001f ? surfBackTilt : 0.72f;
             // Throw: clamp(|lean|*1.1*speed, 1.5..4.5) * 1.5 m/s along (normal - backTilt*travel + sideTilt*carve-edge).
             float throwMag = Mathf.Clamp(lean * 1.1f * speed, 1.5f, 4.5f) * 1.5f;
             Vector3 edge = side * (Mathf.Clamp(_lean / 0.905f, -1f, 1f) * surfSideTilt); // toward the leaned/digging edge
@@ -188,16 +188,16 @@ namespace OpenSlope.VrcPlugin
             {
                 float perPuff = powderSpeedPerPuff > 1f ? powderSpeedPerPuff : 12.7f;
                 perFrame = Mathf.Clamp(speed / perPuff, 1f, cap) * f60(dt);      // sys5: count ~ speed, lean-independent
-                size  = cloudPowderSize > 0.01f ? cloudPowderSize : 0.45f;       // live-measured ~0.45 m drawn on powder
+                size = cloudPowderSize > 0.01f ? cloudPowderSize : 0.45f;       // live-measured ~0.45 m drawn on powder
                 alpha = powderPuffAlpha;
-                vel   = _vel - travelDir * powderDrift;                          // ANCHORS to the board (board vel less a creep)
+                vel = _vel - travelDir * powderDrift;                          // ANCHORS to the board (board vel less a creep)
             }
             else if ((IsSnowSurface(_pSurf) || _pSurf == 2) && lean > cloudVeilGate) // NOT ice: sys2's veil gate is ~0 on ice, so ice throws only the fan's cnf2 specks
             {
                 perFrame = (cloudVeilRate > 0.01f ? cloudVeilRate : 2f) * f60(dt); // sys1/sys2 veil while carving on snow/off-track
-                size  = cloudVeilSize > 0.01f ? cloudVeilSize : 1.2f;
+                size = cloudVeilSize > 0.01f ? cloudVeilSize : 1.2f;
                 alpha = lean * cloudVeilAlpha;                                   // peak |lean|*0.2, like the game
-                vel   = Vector3.zero;                                            // frozen: accumulate along the path
+                vel = Vector3.zero;                                            // frozen: accumulate along the path
             }
             else { _cloudCarry = 0f; return; }
 
@@ -208,8 +208,8 @@ namespace OpenSlope.VrcPlugin
             if (emit > cap) emit = cap;                                          // particle-budget guard on a frame hitch
             cloud.transform.position = basePt;                                   // the box shape scatters the puffs around here
             float bright = sprayBrightness > 0.001f ? sprayBrightness : 1f;      // global additive-brightness (scales emit RGB, can exceed 1)
-            _cloudEmit.velocity  = vel;
-            _cloudEmit.startSize  = size;
+            _cloudEmit.velocity = vel;
+            _cloudEmit.startSize = size;
             _cloudEmit.startColor = new Color(bright, bright, bright, alpha);
             cloud.Emit(_cloudEmit, emit);                                        // ONE extern; shape scatters, size curve billows over life
         }
@@ -237,7 +237,7 @@ namespace OpenSlope.VrcPlugin
         // doesn't run) - so there is zero duplicated FX logic. Called from Update's remote branch, AFTER NetFollow poses us.
         void RemoteFxUpdate()
         {
-            bool wantWake  = trailEnabled  && wakeMeshFilter != null;
+            bool wantWake = trailEnabled && wakeMeshFilter != null;
             bool wantSpray = snowParticles && (surfaceSpray != null || cloud != null);
             if (!wantWake && !wantSpray) return;
 
@@ -254,9 +254,9 @@ namespace OpenSlope.VrcPlugin
             if (lp == null) return;
             // Defensive defaults: a newly added field reads 0 on an un-repushed board, so
             // floor each range/interval to a sane value -> remote FX works on the existing boards without a re-push.
-            float fxRange   = remoteFxRange       > 0.01f  ? remoteFxRange       : 45f;
-            float wakeRange = remoteWakeRange      > 0.01f ? remoteWakeRange     : 45f;
-            float probeI    = remoteProbeInterval > 0.001f ? remoteProbeInterval : 0.1f;
+            float fxRange = remoteFxRange > 0.01f ? remoteFxRange : 45f;
+            float wakeRange = remoteWakeRange > 0.01f ? remoteWakeRange : 45f;
+            float probeI = remoteProbeInterval > 0.001f ? remoteProbeInterval : 0.1f;
 
             Vector3 pos = transform.position;
             float d2 = (pos - lp.GetPosition()).sqrMagnitude;

@@ -41,16 +41,16 @@ namespace OpenSlope.VrcPlugin
         // Reset patches (the race path DQs separately, reading _pSurf directly), so its CONTACT must ride like
         // ordinary ground rather than slewing the deck a metre under and off the probe's reach.
         int SurfRow(int t) { return (t >= 1 && t < 20) ? t : 15; }
-        float SurfA(int t)      { return _rideSurfA[SurfRow(t)]; }
-        float SurfP(int t)      { return _rideSurfP[SurfRow(t)]; }
-        float SurfBog(int t)    { return _rideSurfBog[SurfRow(t)]; }
+        float SurfA(int t) { return _rideSurfA[SurfRow(t)]; }
+        float SurfP(int t) { return _rideSurfP[SurfRow(t)]; }
+        float SurfBog(int t) { return _rideSurfBog[SurfRow(t)]; }
         float SurfBudget(int t) { return _rideSurfBudget[SurfRow(t)]; }
         float SurfThresh(int t) { return _rideSurfThresh[SurfRow(t)]; }
-        float SurfLift(int t)   { return _rideSurfLift[SurfRow(t)]; }
-        float SurfDrag(int t)   { return _rideSurfDrag[SurfRow(t)]; }
+        float SurfLift(int t) { return _rideSurfLift[SurfRow(t)]; }
+        float SurfDrag(int t) { return _rideSurfDrag[SurfRow(t)]; }
         float SurfTarget(int t) { return _rideSurfTarget[SurfRow(t)]; }
-        float SurfMult(int t)   { return _rideSurfMult[SurfRow(t)]; }
-        float SurfTilt(int t)   { return _rideSurfTilt[SurfRow(t)]; }
+        float SurfMult(int t) { return _rideSurfMult[SurfRow(t)]; }
+        float SurfTilt(int t) { return _rideSurfTilt[SurfRow(t)]; }
 
         // Optional port assistance, disabled by default. Tuning predates the recovered response laws;
         // it is not a set of original-game parameters. Keep Slopesmith's ICE_* tuning in sync.

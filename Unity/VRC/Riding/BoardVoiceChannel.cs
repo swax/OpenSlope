@@ -97,8 +97,8 @@ namespace OpenSlope.VrcPlugin
         void Start()
         {
             _prevMembers = new int[128];
-            _curMembers  = new int[128];
-            _riderIds    = new int[128];
+            _curMembers = new int[128];
+            _riderIds = new int[128];
             _prevCount = 0;
         }
 

@@ -147,8 +147,8 @@ namespace OpenSlope.VrcPlugin
         }
 
         public float CurrentTime() { return _ready && player != null ? player.GetTime() : 0f; }
-        public float Duration()    { return _ready && player != null ? player.GetDuration() : 0f; }
-        public bool  IsPlaying()   { return _ready && player != null && player.IsPlaying; }
+        public float Duration() { return _ready && player != null ? player.GetDuration() : 0f; }
+        public bool IsPlaying() { return _ready && player != null && player.IsPlaying; }
 
         // Jump the local decode to t seconds (the jukebox's shared-playhead sync + the scrub bar both seek through here).
         // Dropped before the stream is ready: the jukebox seeks onto the shared playhead in OnRendererVideoReady anyway.

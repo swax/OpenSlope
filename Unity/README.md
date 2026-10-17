@@ -85,6 +85,27 @@ positions without reinterpreting retail formats. Platform wiring then realizes n
 VRChat or Basis behaviors. See the [documentation index](docs/README.md) and Snowknife's
 [bundle pipeline](../Snowknife/docs/034-bundle-pipeline.md).
 
+## Formatting
+
+[`Unity/.editorconfig`](.editorconfig) defines C# whitespace formatting: four spaces, Allman braces,
+preserved single-line blocks, and CRLF line endings matching `.gitattributes`. Run from the repository root:
+
+```text
+npm run format:unity        # apply formatting
+npm run format:unity:check  # check without writing; exits nonzero on differences
+```
+
+Like Snowknife, this uses the SDK's built-in [`dotnet format whitespace`](https://learn.microsoft.com/dotnet/core/tools/dotnet-format#whitespace)
+and the .NET SDK selected by [`global.json`](../global.json). No Unity editor, VRChat/Basis SDK,
+package restore, or build is needed. The formatting-only [workspace](tools/Unity.Formatting.csproj)
+enables `UNITY_EDITOR` and reload diagnostics, with separate Unity 2022 and Unity 6 passes so conditional
+editor code is included.
+
+The commands cover C# in `Importer/`, `VRC/`, `Basis/`, and `tools/diagnostics/`. Generated C#,
+`bin/` and `obj/`, staged maps, local Unity projects, and shaders are outside their scope.
+Formatting preserves the existing block-scoped namespaces and changes whitespace only. As with the
+native and Snowknife formatters, these are explicit local commands rather than an additional CI gate.
+
 ## Keeping project copies in sync
 
 This folder is the source of truth. Do not edit only the copy inside a Unity project. To update a

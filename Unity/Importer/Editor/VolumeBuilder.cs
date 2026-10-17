@@ -160,7 +160,7 @@ namespace OpenSlope.Importer
             }
             double det = xx * zz - xz * xz;
             if (System.Math.Abs(det) < 1e-6) return false;               // degenerate spread (a line / a point)
-            a  = (float)((xy * zz - zy * xz) / det);
+            a = (float)((xy * zz - zy * xz) / det);
             bb = (float)((zy * xx - xy * xz) / det);
             mean = new Vector3((float)mx, (float)my, (float)mz);
 
@@ -252,21 +252,21 @@ namespace OpenSlope.Importer
                 box.isTrigger = true;
 
                 var mk = go.AddComponent<BoostVolumeMarker>();
-                mk.Kind     = KindIndex(v.Kind);
+                mk.Kind = KindIndex(v.Kind);
                 mk.LocalDir = Dir(v.Dir);
-                mk.Target   = v.Amount * _cfg.BoostVolumeSpeedScale;
-                mk.Rate     = v.Rate * _cfg.BoostVolumeRateScale;
-                mk.Mode     = v.Mode;      // NOT scaled by anything: a lifetime rule, not a tuning knob
-                mk.Seconds  = v.Seconds;
+                mk.Target = v.Amount * _cfg.BoostVolumeSpeedScale;
+                mk.Rate = v.Rate * _cfg.BoostVolumeRateScale;
+                mk.Mode = v.Mode;      // NOT scaled by anything: a lifetime rule, not a tuning knob
+                mk.Seconds = v.Seconds;
                 mk.BroadphaseMargin = _cfg.BoostVolumeInflate * unit * 0.5f;   // per FACE, in world metres
 
                 // A RISE above this volume's own centre, not an absolute world Y - both points run through the same
                 // Level transform, so the difference survives the recenter that follows the build (LevelImporter).
                 mk.TargetAltitudeRise = root.TransformPoint(new Vector3(0f, 0f, v.TargetZ)).y
                                       - root.TransformPoint(v.Center).y;
-                mk.SnapTolerance      = v.SnapTolerance * unit;
+                mk.SnapTolerance = v.SnapTolerance * unit;
 
-                mk.LocalStageAxis   = v.Axis.sqrMagnitude > 1e-6f ? v.Axis.normalized : Vector3.right;
+                mk.LocalStageAxis = v.Axis.sqrMagnitude > 1e-6f ? v.Axis.normalized : Vector3.right;
                 mk.StageFloorOffset = v.StageFloorOffset * unit;
 
                 // A tube-end volume always bakes three stages; anything else leaves the list empty and these stay at
@@ -295,9 +295,9 @@ namespace OpenSlope.Importer
             switch (kind)
             {
                 case "vertical-lift": return 1;
-                case "lap-gated":     return 2;
-                case "tube-end":      return 3;
-                default:              return 0;
+                case "lap-gated": return 2;
+                case "tube-end": return 3;
+                default: return 0;
             }
         }
 

@@ -18,21 +18,21 @@ namespace OpenSlope.VrcPlugin
     {
         // The neutral layout constants live in the importer's MapLayout (so the importer names its output without
         // depending on VRC); re-export them here so the VRC setup steps + runtime keep using Map.* unchanged.
-        public const string RootName      = MapLayout.RootName;
+        public const string RootName = MapLayout.RootName;
         public const string CollisionName = MapLayout.CollisionName;
         public const string LocationsName = MapLayout.LocationsName;
-        public const string PlayerSpawn   = MapLayout.PlayerSpawn;
-        public const string GateSpawn     = MapLayout.GateSpawn;
-        public const string PlayerFlight  = MapLayout.PlayerFlight;
-        public const string StartGate     = MapLayout.StartGate;
+        public const string PlayerSpawn = MapLayout.PlayerSpawn;
+        public const string GateSpawn = MapLayout.GateSpawn;
+        public const string PlayerFlight = MapLayout.PlayerFlight;
+        public const string StartGate = MapLayout.StartGate;
         public const string StartGateModel = MapLayout.StartGateModel;
-        public const string Rails         = MapLayout.Rails;
-        public const string CoursePath    = MapLayout.CoursePath;
-        public const string Foliage       = MapLayout.Foliage;
+        public const string Rails = MapLayout.Rails;
+        public const string CoursePath = MapLayout.CoursePath;
+        public const string Foliage = MapLayout.Foliage;
 
         // Where the VRChat layer's own generated assets land (pole materials, the baked HUD art). A sibling of
         // the synced VRC/ sources under the same root, so one project folder holds the whole OpenSlope install.
-        public const string AssetsFolder  = MapLayout.AssetsRoot + "/VRC";
+        public const string AssetsFolder = MapLayout.AssetsRoot + "/VRC";
         public const string GeneratedFolder = AssetsFolder + "/Generated";
 
         // Find the OpenSlope_Map root, optionally creating it at the origin (identity) if absent.
@@ -450,8 +450,8 @@ namespace OpenSlope.VrcPlugin
         // roughly 2x gravity, so at VRChat's default 1x the same impulse launches about twice as high and floaty. 4.77 is
         // sqrt(2 * 9.81 * 1.16) - the impulse reaching a ~1.16 m apex under default gravity. Hang time runs a touch longer
         // than it would under doubled gravity, but jump HEIGHT is the part that matters here, and it matches.
-        public const float RunSpeed    = 8.13f;          // ~2x VRChat's stock run: crosses a mountain without feeling like a sprint
-        public const float WalkSpeed   = RunSpeed / 2f;  // half run - gentler low-stick / keyboard precision pace (4.065 m/s)
+        public const float RunSpeed = 8.13f;          // ~2x VRChat's stock run: crosses a mountain without feeling like a sprint
+        public const float WalkSpeed = RunSpeed / 2f;  // half run - gentler low-stick / keyboard precision pace (4.065 m/s)
         public const float StrafeSpeed = WalkSpeed;      // = walk (half run): sideways matches the gentler walk pace
         public const float JumpImpulse = 4.77f;          // sqrt(2 * 9.81 * 1.16): a ~1.16 m apex under VRChat-default gravity
 
@@ -466,8 +466,8 @@ namespace OpenSlope.VrcPlugin
             var ws = FindWorldSettings();
             if (ws == null) { WarnIfWorldSettingsMissing(); return false; }
 
-            SetUdonFloat(ws, "walkSpeed",   WalkSpeed);
-            SetUdonFloat(ws, "runSpeed",    RunSpeed);
+            SetUdonFloat(ws, "walkSpeed", WalkSpeed);
+            SetUdonFloat(ws, "runSpeed", RunSpeed);
             SetUdonFloat(ws, "strafeSpeed", StrafeSpeed);
             SetUdonFloat(ws, "jumpImpulse", JumpImpulse);
             EditorUtility.SetDirty(ws);

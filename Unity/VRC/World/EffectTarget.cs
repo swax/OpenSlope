@@ -53,10 +53,10 @@ namespace OpenSlope.VrcPlugin
                 }
                 _moving = new bool[movers.Length];
                 for (int i = 0; i < movers.Length; i++) if (movers[i] != null)
-                {
-                    _moving[i] = movers[i].gameObject.activeSelf;
-                    movers[i].gameObject.SetActive(false);
-                }
+                    {
+                        _moving[i] = movers[i].gameObject.activeSelf;
+                        movers[i].gameObject.SetActive(false);
+                    }
                 _detachedStopped = true;
             }
         }

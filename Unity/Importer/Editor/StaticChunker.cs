@@ -69,7 +69,7 @@ namespace OpenSlope.Importer
             // ---- read every vertex stream once (UV2..7 are the exact three-key prop light record) ----
             var verts = new List<Vector3>(); src.GetVertices(verts);
             var norms = new List<Vector3>(); src.GetNormals(norms);
-            var tans  = new List<Vector4>(); src.GetTangents(tans);
+            var tans = new List<Vector4>(); src.GetTangents(tans);
             var uv0 = new List<Vector3>(); src.GetUVs(0, uv0);
             var uv1 = new List<Vector2>(); src.GetUVs(1, uv1);
             var uv2 = new List<Vector3>(); src.GetUVs(2, uv2);

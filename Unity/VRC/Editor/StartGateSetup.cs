@@ -42,9 +42,9 @@ namespace OpenSlope.VrcPlugin
     public static class StartGateSetup
     {
         const string GateRoot = Map.StartGate;          // OpenSlope_Map/StartGate
-        const string MatPath  = Map.AssetsFolder + "/StartGatePost.mat";
+        const string MatPath = Map.AssetsFolder + "/StartGatePost.mat";
 
-        const float Spacing    = 2.5f;  // metres between posts - FALLBACK row only (no gate model)
+        const float Spacing = 2.5f;  // metres between posts - FALLBACK row only (no gate model)
 
         // The post row centres on GateSpawn - the level's own start marker, where riders actually start. On levels where the
         // start-gate MODEL sits ON the start point it centres on the model instead for a tighter fit; but where
@@ -70,18 +70,18 @@ namespace OpenSlope.VrcPlugin
         // adds. Idle-sleep (RideableBoard.sleepWhenParked) only removes a board's OWN per-frame Update cost, not that
         // per-registration tax. 32 comfortably covers a busy instance (6 gate posts dispensing + riders + boards cycling
         // back); raise it only if you genuinely expect more simultaneous riders than that.
-        const int   BoardCap   = 32;
+        const int BoardCap = 32;
 
         [MenuItem("OpenSlope/Setup/Start Gate Boards", false, 130)]
         public static void Spawn()
         {
             // Two-step bootstrap for the Udon program assets (manager, mailbox, post, board). If we just created any, stop
             // and ask for a second run so UdonSharp can finalize them before we attach components.
-            bool firstMgr     = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardManager)) == null;
-            bool firstReq     = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardRequest)) == null;
+            bool firstMgr = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardManager)) == null;
+            bool firstReq = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardRequest)) == null;
             bool firstSpawner = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardSpawner)) == null;
-            bool firstBoard   = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(RideableBoard)) == null;
-            bool firstSummon  = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardSummon)) == null;
+            bool firstBoard = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(RideableBoard)) == null;
+            bool firstSummon = UdonSharpProgramAsset.GetProgramAssetForClass(typeof(BoardSummon)) == null;
             EnsureProgram(typeof(BoardManager), "/BoardManager.cs");
             EnsureProgram(typeof(BoardRequest), "/BoardRequest.cs");
             EnsureProgram(typeof(BoardSpawner), "/BoardSpawner.cs");
@@ -161,7 +161,7 @@ namespace OpenSlope.VrcPlugin
             // before destroying it, so the user's Inspector edits (post count, offsets, pole look) survive the rebuild - the
             // component dies with the object, so capture its values into plain locals first.
             var oldGate = mapRoot.Find(GateRoot);
-            var oldCfg  = oldGate != null ? oldGate.GetComponent<StartGateConfig>() : null;
+            var oldCfg = oldGate != null ? oldGate.GetComponent<StartGateConfig>() : null;
             bool hadCfg = oldCfg != null;
             int sCount = 0; float sSpacing = 0f, sSpawnBehind = 0f; bool sSpawnBehindBoards = true;
             Vector3 sPoleScale = default, sPoleOffset = default, sBoardOffset = default;
@@ -189,7 +189,7 @@ namespace OpenSlope.VrcPlugin
             var poolGo = new GameObject("BoardPool");
             poolGo.transform.SetParent(gate.transform, false); // identity under the gate (boards must not sit under a scaled parent)
 
-            var boardGos     = new GameObject[BoardCap];
+            var boardGos = new GameObject[BoardCap];
             var boardProxies = new RideableBoard[BoardCap];
             for (int j = 0; j < BoardCap; j++)
             {

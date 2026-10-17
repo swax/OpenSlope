@@ -145,7 +145,7 @@ namespace OpenSlope.BasisPlugin
             cap.radius = 0.28f;
             cap.height = 1.7f;
             cap.center = new Vector3(0f, 0.92f, 0f); // pelvis: the engine poses its body sphere here, and the
-                                                   // capsule is already the same 1.70 m tall, so this aligns the two
+                                                     // capsule is already the same 1.70 m tall, so this aligns the two
 
             // Grind FX: the spark ParticleSystem + scrape AudioSource the rail grinding drives.
             BuildGrindFx(go, board);
@@ -269,8 +269,8 @@ namespace OpenSlope.BasisPlugin
             MapLayout.SharedFolder + "/chars/ski_SkisA_H.obj",
             MapLayout.SharedFolder + "/chars/ski_SkisP_H.obj",
         };
-        const string SkiTexFolder  = MapLayout.SharedFolder + "/chars/SkiTextures";
-        const string SkiMatFolder  = MapLayout.SharedFolder + "/chars/SkiMaterials";
+        const string SkiTexFolder = MapLayout.SharedFolder + "/chars/SkiTextures";
+        const string SkiMatFolder = MapLayout.SharedFolder + "/chars/SkiMaterials";
         const string SkiMeshFolder = MapLayout.SharedFolder + "/chars/SkiMeshes";        // split left/right ski half-meshes (shared)
         const string DeckShader = "OpenSlope/UnlitDoubleSided";   // URP unlit double-sided (skins are baked-lit)
         const float BoardModelScale = 0.01f;                // m per SSX unit (= ImportConfig.WorldScale) - game-true size
@@ -350,12 +350,12 @@ namespace OpenSlope.BasisPlugin
             R.SetColumn(3, new Vector4(0, 0, 0, 1));
 
             float zMid = (mesh.bounds.min.z + mesh.bounds.max.z) * 0.5f; // gap between the two skis
-            Mesh leftMesh  = GetOrCreateSkiHalf(modelPath, mesh, zMid, true);
+            Mesh leftMesh = GetOrCreateSkiHalf(modelPath, mesh, zMid, true);
             Mesh rightMesh = GetOrCreateSkiHalf(modelPath, mesh, zMid, false);
             if (leftMesh == null || rightMesh == null || leftMesh.vertexCount == 0 || rightMesh.vertexCount == 0) return false;
 
             Vector3 pairCenterRide = R.MultiplyPoint3x4(mesh.bounds.center);
-            BuildOneSki(frame.transform, "SkiBank_L", leftMesh,  R, pairCenterRide, deckMat);
+            BuildOneSki(frame.transform, "SkiBank_L", leftMesh, R, pairCenterRide, deckMat);
             BuildOneSki(frame.transform, "SkiBank_R", rightMesh, R, pairCenterRide, deckMat);
             return true;
         }
@@ -410,7 +410,7 @@ namespace OpenSlope.BasisPlugin
             Vector3[] sn = src.normals;
             int[] st = src.triangles;
             bool hasUv = su != null && su.Length == sv.Length;
-            bool hasN  = sn != null && sn.Length == sv.Length;
+            bool hasN = sn != null && sn.Length == sv.Length;
 
             var nv = new List<Vector3>();
             var nu = new List<Vector2>();
@@ -468,13 +468,13 @@ namespace OpenSlope.BasisPlugin
             foreach (var o in objs)
             {
                 if (mesh == null && o is Mesh me) mesh = me;
-                if (mat  == null && o is Material ma) mat = ma;
+                if (mat == null && o is Material ma) mat = ma;
             }
             return mesh;
         }
 
         static Material PickRandomBoardSkin() => PickRandomSkin(BoardSkinIds(), BoardTexFolder, BoardMatFolder);
-        static Material PickRandomSkiSkin()   => PickRandomSkin(SkiSkinIds(),   SkiTexFolder,   SkiMatFolder);
+        static Material PickRandomSkiSkin() => PickRandomSkin(SkiSkinIds(), SkiTexFolder, SkiMatFolder);
 
         static Material PickRandomSkin(string[] skins, string texFolder, string matFolder)
         {
@@ -483,7 +483,7 @@ namespace OpenSlope.BasisPlugin
         }
 
         static string[] BoardSkinIds() => _boardSkins ??= EnumerateSkinIds(BoardTexFolder, SkinExclude);
-        static string[] SkiSkinIds()   => _skiSkins   ??= EnumerateSkinIds(SkiTexFolder, null);
+        static string[] SkiSkinIds() => _skiSkins ??= EnumerateSkinIds(SkiTexFolder, null);
 
         static string[] EnumerateSkinIds(string texFolder, HashSet<string> exclude)
         {
@@ -537,7 +537,7 @@ namespace OpenSlope.BasisPlugin
         {
             if (AssetDatabase.IsValidFolder(assetFolder)) return;
             string parent = System.IO.Path.GetDirectoryName(assetFolder).Replace('\\', '/');
-            string leaf   = System.IO.Path.GetFileName(assetFolder);
+            string leaf = System.IO.Path.GetFileName(assetFolder);
             if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, leaf);
         }

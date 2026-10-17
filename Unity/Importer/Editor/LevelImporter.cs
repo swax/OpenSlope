@@ -145,31 +145,31 @@ namespace OpenSlope.Importer
             }
 
             // Wire up the services (Materials loads its JSON tables in its constructor).
-            var alpha     = new AlphaClassifier(_cfg);
+            var alpha = new AlphaClassifier(_cfg);
             var materials = new MaterialFactory(_cfg, sh, alpha);
-            var lighting  = new InstanceLighting(_cfg);
+            var lighting = new InstanceLighting(_cfg);
             var collision = new CollisionBuilder(_cfg);
-            var terrain   = new TerrainBuilder(_cfg, materials);
-            var props     = new PropBuilder(_cfg, materials, collision);
+            var terrain = new TerrainBuilder(_cfg, materials);
+            var props = new PropBuilder(_cfg, materials, collision);
             var particles = new ParticleBuilder(_cfg, _cfg.ResolveParticleShader());
-            var triggers  = new TriggerBuilder(_cfg);
-            var emitters  = new EmitterBuilder(_cfg);
-            var ambient   = new AmbientEmitterBuilder(_cfg);
+            var triggers = new TriggerBuilder(_cfg);
+            var emitters = new EmitterBuilder(_cfg);
+            var ambient = new AmbientEmitterBuilder(_cfg);
             var lampGlows = new LightGlowBuilder(_cfg);
             var boostPads = new BoostPadBuilder(_cfg);
-            var volumes   = new VolumeBuilder(_cfg);
-            var movers    = new SplineMoverBuilder(_cfg);
+            var volumes = new VolumeBuilder(_cfg);
+            var movers = new SplineMoverBuilder(_cfg);
             var teleports = new TeleportBuilder(_cfg);
             var hudMessages = new HudMessageBuilder(_cfg);
-            var rails     = new RailBuilder(_cfg);
+            var rails = new RailBuilder(_cfg);
             var railGates = new RailGateBuilder(_cfg);
-            var course    = new CoursePathBuilder(_cfg);
-            var gems      = new GemBuilder(_cfg, materials);
-            var screens   = new BillboardScreenBuilder(_cfg);
-            var audio     = new AudioBuilder(_cfg, collision);
-            var probes    = new ProbeBuilder(_cfg, lighting);
-            var skybox    = new SkyboxBaker(_cfg, sh);
-            var preview   = new PreviewRenderer(_cfg);
+            var course = new CoursePathBuilder(_cfg);
+            var gems = new GemBuilder(_cfg, materials);
+            var screens = new BillboardScreenBuilder(_cfg);
+            var audio = new AudioBuilder(_cfg, collision);
+            var probes = new ProbeBuilder(_cfg, lighting);
+            var skybox = new SkyboxBaker(_cfg, sh);
+            var preview = new PreviewRenderer(_cfg);
 
             var old = GameObject.Find(_cfg.RootName);
             if (old != null) Object.DestroyImmediate(old);
@@ -297,13 +297,13 @@ namespace OpenSlope.Importer
                 flipGO.transform.SetParent(level.transform, false);
                 var fmk = flipGO.AddComponent<FlipbookMarker>();
                 {
-                    fmk.Renderers   = flipAccum.Renderers.ToArray();
-                    fmk.Slots       = flipAccum.Slots.ToArray();
-                    fmk.Fps         = flipAccum.Fps.ToArray();
+                    fmk.Renderers = flipAccum.Renderers.ToArray();
+                    fmk.Slots = flipAccum.Slots.ToArray();
+                    fmk.Fps = flipAccum.Fps.ToArray();
                     fmk.FrameCounts = flipAccum.FrameCounts.ToArray();
-                    fmk.Frames      = flipAccum.Frames.ToArray();
-                    fmk.DwellBase   = flipAccum.DwellBase.ToArray();
-                    fmk.DwellFlash  = flipAccum.DwellFlash.ToArray();
+                    fmk.Frames = flipAccum.Frames.ToArray();
+                    fmk.DwellBase = flipAccum.DwellBase.ToArray();
+                    fmk.DwellFlash = flipAccum.DwellFlash.ToArray();
                 }
             }
 
@@ -430,9 +430,9 @@ namespace OpenSlope.Importer
         void ExposeLibraryAnchors(Transform root, Transform level)
         {
             Reparent(level, root, "TerrainCollision", MapLayout.CollisionName);
-            Reparent(level, root, "Rails",        MapLayout.Rails);
-            Reparent(level, root, "CoursePath",   MapLayout.CoursePath);
-            Reparent(level, root, "PropsFoliage",     MapLayout.Foliage);
+            Reparent(level, root, "Rails", MapLayout.Rails);
+            Reparent(level, root, "CoursePath", MapLayout.CoursePath);
+            Reparent(level, root, "PropsFoliage", MapLayout.Foliage);
             // The screen catalog lives OUTSIDE Level for the same reason the collision does: everything under
             // Level belongs to the optimization passes (static chunking, texture-array packing), and a video
             // screen is neither static world geometry nor an atlas participant.
@@ -465,7 +465,7 @@ namespace OpenSlope.Importer
                                    maxSeatDrop);
             Quaternion rot = Quaternion.LookRotation(dh, Vector3.up);
             Transform player = MakeLocation(root, MapLayout.PlayerSpawn); player.SetPositionAndRotation(worldStart, rot);
-            Transform gate   = MakeLocation(root, MapLayout.GateSpawn);   gate.SetPositionAndRotation(worldStart, rot);
+            Transform gate = MakeLocation(root, MapLayout.GateSpawn); gate.SetPositionAndRotation(worldStart, rot);
             // The platform wiring pass points the scene descriptor at PlayerSpawn (VRChat-specific).
         }
 
@@ -577,7 +577,7 @@ namespace OpenSlope.Importer
         // number every time, because it is the authored offset of the grid behind the arch. So the gate is the anchor
         // and the marker is the fallback for the levels that have no gate, which is every authored/test map (they carry
         // the marker and no gate at all).
-        const string StartGateKey   = "Mdl_StartGate";
+        const string StartGateKey = "Mdl_StartGate";
         const string StartMarkerKey = "Mdl_StageArea_Start";
 
         static bool TryStartAnchorSpawn(Transform level, BundleManifestReader reader, string key,

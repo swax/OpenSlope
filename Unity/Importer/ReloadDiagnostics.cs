@@ -24,11 +24,11 @@ namespace OpenSlope.Importer
 
         static ReloadDiagnostics()
         {
-            CompilationPipeline.compilationStarted         += _ => _compileTriggered = true;
+            CompilationPipeline.compilationStarted += _ => _compileTriggered = true;
             CompilationPipeline.assemblyCompilationStarted += p =>
                 Debug.Log($"[ReloadDiag] compiling {Path.GetFileName(p)} @ {DateTime.Now:HH:mm:ss.fff}");
             AssemblyReloadEvents.beforeAssemblyReload += OnBefore;
-            AssemblyReloadEvents.afterAssemblyReload  += OnAfter;
+            AssemblyReloadEvents.afterAssemblyReload += OnAfter;
         }
 
         static void OnBefore()

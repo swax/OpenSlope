@@ -38,7 +38,7 @@ namespace OpenSlope.Importer
         {
             bool mobile = Mobile(target);
             string from = mobile ? "/TexArrays/PC/" : "/TexArrays/Mobile/";
-            string to   = mobile ? "/TexArrays/Mobile/" : "/TexArrays/PC/";
+            string to = mobile ? "/TexArrays/Mobile/" : "/TexArrays/PC/";
             int swapped = 0;
 
             foreach (var g in AssetDatabase.FindAssets("t:Material"))

@@ -66,11 +66,11 @@ namespace OpenSlope.Importer
                 if (chime != null) withChime++;
 
                 var mk = go.AddComponent<TeleportMarker>();
-                mk.destination     = anchor.transform;
-                mk.UpOffset        = _cfg.TeleportUpOffset;
-                mk.Cooldown        = _cfg.TeleportCooldown;
-                mk.chime           = chime;
-                mk.chimeVolume     = _cfg.TeleportChimeVolume;
+                mk.destination = anchor.transform;
+                mk.UpOffset = _cfg.TeleportUpOffset;
+                mk.Cooldown = _cfg.TeleportCooldown;
+                mk.chime = chime;
+                mk.chimeVolume = _cfg.TeleportChimeVolume;
                 mk.EffectSlotIndex = tp.Slot;
                 made++;
             }

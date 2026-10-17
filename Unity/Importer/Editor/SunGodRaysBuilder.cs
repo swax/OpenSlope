@@ -205,7 +205,8 @@ namespace OpenSlope.Importer
                 SpriteIntensity = 0.45f,
                 DistanceM = 240f,   // project-authored fallback; the shader clamps it under the far plane anyway
                 RadiusM = 72f,
-                Az = float.NaN, El = float.NaN,   // no authored celestial angles -> follow the level's own sun
+                Az = float.NaN,
+                El = float.NaN,   // no authored celestial angles -> follow the level's own sun
             };
         }
 
@@ -301,9 +302,9 @@ namespace OpenSlope.Importer
 
             int q = fanVerts;
             verts[q + 0] = new Vector3(-1f, -1f, 1f);
-            verts[q + 1] = new Vector3( 1f, -1f, 1f);
-            verts[q + 2] = new Vector3( 1f,  1f, 1f);
-            verts[q + 3] = new Vector3(-1f,  1f, 1f);
+            verts[q + 1] = new Vector3(1f, -1f, 1f);
+            verts[q + 2] = new Vector3(1f, 1f, 1f);
+            verts[q + 3] = new Vector3(-1f, 1f, 1f);
             cols[q + 0] = cols[q + 1] = cols[q + 2] = cols[q + 3] = Color.white;
             uvs[q + 0] = new Vector2(0.5f, 0.5f);
             uvs[q + 1] = new Vector2(1.0f, 0.5f);

@@ -43,7 +43,8 @@ namespace OpenSlope.Importer
             [JsonProperty("Scroll")] float[] _scroll;            // [u,v] scroll speed (already scaled + V-negated) or null
             [JsonIgnore] public Vector2? Scroll => _scroll != null && _scroll.Length >= 2 ? new Vector2(_scroll[0], _scroll[1]) : (Vector2?)null;
             [JsonProperty("ScrollCycle")] float[] _scrollCycle;  // [mode,activeSeconds,pauseSeconds,lifetimeSeconds]; required with Scroll
-            [JsonIgnore] public Vector4? ScrollCycle => _scrollCycle != null && _scrollCycle.Length >= 4
+            [JsonIgnore]
+            public Vector4? ScrollCycle => _scrollCycle != null && _scrollCycle.Length >= 4
                 ? new Vector4(_scrollCycle[0], _scrollCycle[1], _scrollCycle[2], _scrollCycle[3]) : (Vector4?)null;
         }
 
@@ -82,7 +83,8 @@ namespace OpenSlope.Importer
             // bundle written before this was understood carries neither, and these defaults reproduce its old
             // axis-aligned behaviour exactly.
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             public Vector3 LocalCenter = Vector3.zero;
             public Vector3 Size;
@@ -103,7 +105,8 @@ namespace OpenSlope.Importer
             public int PhysicsIndex = -1;
             public Vector3 Center;
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             [JsonProperty("CollisonSound")] public int Sound = -1;
             public string SoundClip;
@@ -138,7 +141,8 @@ namespace OpenSlope.Importer
             // copy's mesh-space rotation (localRotation); the importer pushes Ambient/Key per-instance via a MaterialPropertyBlock.
             [JsonProperty("Rotation")] float[] _rotation;
             [JsonIgnore] public bool Instanced => _rotation != null && _rotation.Length >= 4;
-            [JsonIgnore] public Quaternion Rotation => Instanced
+            [JsonIgnore]
+            public Quaternion Rotation => Instanced
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             public Color Ambient = Color.white, Light = Color.white; // Light is the explicit non-directional fallback
             public Color Key1 = Color.black, Key2 = Color.black, Key3 = Color.black;
@@ -178,7 +182,8 @@ namespace OpenSlope.Importer
             public string Key;           // match key (e.g. "Mdl_StartGate")
             public Vector3 Center;       // mesh-space instance pivot (under the level root)
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
         }
 
@@ -243,7 +248,8 @@ namespace OpenSlope.Importer
             public bool Visible;
             public Vector3 Center;
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             public int SurfaceType = -1;
             [JsonProperty("CollisonSound")] public int Sound = -1;
@@ -280,7 +286,8 @@ namespace OpenSlope.Importer
             public Vector3 Center;       // unscaled mesh space (placed under the level root, like the prop pivots)
             public Vector3 Size;
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             // The volume instance's own CollisonSound ADL event id (crossing a volume is a collision event, so
             // retail plays it alongside the chain - the megaplex buttons' musical pings). -1 = authored-silent.
@@ -296,7 +303,8 @@ namespace OpenSlope.Importer
             public Vector3 RestPos;      // mesh-space model units
             public Vector3 RestEuler;    // degrees
             [JsonProperty("RestRotation")] float[] _restRotation;
-            [JsonIgnore] public Quaternion RestRotation => _restRotation != null && _restRotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion RestRotation => _restRotation != null && _restRotation.Length >= 4
                 ? new Quaternion(_restRotation[0], _restRotation[1], _restRotation[2], _restRotation[3])
                 : Quaternion.Euler(RestEuler);
             public Vector3 RestScale = Vector3.one; // static object scale (not an animated channel)
@@ -400,7 +408,8 @@ namespace OpenSlope.Importer
             [JsonIgnore] public bool Darkens => BlendMode == 4;
 
             // The maximum of a convex velocity envelope lies at one of its eight corners.
-            [JsonIgnore] public float MaximumVelocity
+            [JsonIgnore]
+            public float MaximumVelocity
             {
                 get
                 {
@@ -467,7 +476,8 @@ namespace OpenSlope.Importer
             public string Name;
             public Vector3 Center;
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             public Vector3 Size;
             // A VISIBLE host with its own collision proxy carries the reset on that collision, exactly as an
@@ -510,7 +520,8 @@ namespace OpenSlope.Importer
             // The template's authored rotation, baked into its diverted mesh. The engine builds the moving prop's matrix
             // from the spline alone and never reads it, so the mover behaviour un-bakes it (SplineMoverBuilder).
             [JsonProperty("Rotation")] float[] _rotation;
-            [JsonIgnore] public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
+            [JsonIgnore]
+            public Quaternion Rotation => _rotation != null && _rotation.Length >= 4
                 ? new Quaternion(_rotation[0], _rotation[1], _rotation[2], _rotation[3]) : Quaternion.identity;
             public float YawOffset;   // radians; (YawOffset + pi/2) - the tangent angle = the model's yaw. Picks the lead axis
             public int OrientMode;    // 0 = yaw+pitch, 1 = yaw/level, 2 = fixed yaw+pitch, 3 = fixed
@@ -518,7 +529,8 @@ namespace OpenSlope.Importer
             // The engine draws the spline itself as a line when Cable is set - a chairlift's running cable.
             public bool Cable;
             [JsonProperty("CableColor")] float[] _cable;
-            [JsonIgnore] public Color CableRgba => _cable != null && _cable.Length >= 4
+            [JsonIgnore]
+            public Color CableRgba => _cable != null && _cable.Length >= 4
                 ? new Color(_cable[0], _cable[1], _cable[2], _cable[3]) : Color.black;
         }
 
@@ -786,8 +798,8 @@ namespace OpenSlope.Importer
                 var sun = manifest["Sun"];
                 if (sun == null || sun.Type == JTokenType.Null) return false;
                 if (sun["Direction"] is JArray d && d.Count >= 3) direction = new Vector3((float)d[0], (float)d[1], (float)d[2]).normalized;
-                if (sun["Colour"]    is JArray c && c.Count >= 3) colour    = new Color((float)c[0], (float)c[1], (float)c[2]);
-                if (sun["Ambient"]   is JArray a && a.Count >= 3) ambient   = new Color((float)a[0], (float)a[1], (float)a[2]);
+                if (sun["Colour"] is JArray c && c.Count >= 3) colour = new Color((float)c[0], (float)c[1], (float)c[2]);
+                if (sun["Ambient"] is JArray a && a.Count >= 3) ambient = new Color((float)a[0], (float)a[1], (float)a[2]);
                 return true;
             }
             catch { return false; }

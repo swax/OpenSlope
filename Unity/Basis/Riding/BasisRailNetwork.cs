@@ -63,14 +63,14 @@ namespace OpenSlope.BasisPlugin
         public bool ShowoffStartsDisabled;
 
         // ---- Query results (read by the board AFTER calling Query / QueryRail) ------------------------------
-        [HideInInspector] public bool    RFound;    // a rail was found within range
-        [HideInInspector] public int     RRail;     // index of the found/queried rail
+        [HideInInspector] public bool RFound;    // a rail was found within range
+        [HideInInspector] public int RRail;     // index of the found/queried rail
         [HideInInspector] public Vector3 RPoint;    // closest point ON the rail (world)
         [HideInInspector] public Vector3 RTangent;  // unit rail direction at that point (world; sign is the segment's a->b)
-        [HideInInspector] public float   RDist;     // distance from the query pos to RPoint (world m)
-        [HideInInspector] public int     RSurface;  // source SplineStyle for RRail; 13 when an older bundle has no styles
-        [HideInInspector] public bool    RAtStart;  // QueryRail: closest point is clamped to the rail's FIRST vertex
-        [HideInInspector] public bool    RAtEnd;    // QueryRail: closest point is clamped to the rail's LAST vertex
+        [HideInInspector] public float RDist;     // distance from the query pos to RPoint (world m)
+        [HideInInspector] public int RSurface;  // source SplineStyle for RRail; 13 when an older bundle has no styles
+        [HideInInspector] public bool RAtStart;  // QueryRail: closest point is clamped to the rail's FIRST vertex
+        [HideInInspector] public bool RAtEnd;    // QueryRail: closest point is clamped to the rail's LAST vertex
 
         // ---- course PROGRESS (distance-to-finish), baked ONLY on the CoursePath network (null on the rails net) ----------
         // Per-point distance-to-finish in metres (parallel to LocalPoints), baked by CourseProgressBuilder. Kept for parity
@@ -91,45 +91,45 @@ namespace OpenSlope.BasisPlugin
         public Vector3 FinishArchCenter;
         [Tooltip("Finish-arch AABB size, local space (course path only). Zero = no arch in the bundle.")]
         public Vector3 FinishArchSize;
-        [HideInInspector] public bool    PFound;        // QueryProgress: a course point was within range
-        [HideInInspector] public float   PDistToFinish; // metres to the finish at the rider's projected point
-        [HideInInspector] public float   PProgress01;   // 0 at the start .. 1 at the finish
+        [HideInInspector] public bool PFound;        // QueryProgress: a course point was within range
+        [HideInInspector] public float PDistToFinish; // metres to the finish at the rider's projected point
+        [HideInInspector] public float PProgress01;   // 0 at the start .. 1 at the finish
 
         // World-space bake (done once in Start; the level is static).
         private Vector3[] _world;     // LocalPoints transformed to world
         private Vector3[] _segWorld;  // SegControlPoints transformed to world (null if no cubic)
-        private bool      _hasCubic;  // cubic data present + consistent
-        private bool[]    _railValid; // per-rail: false if its [start,count] range is degenerate
-        private bool[]    _railEnabled; // per-rail: false = runtime-gated OFF (MainType-25)
-        private bool[]    _railModeEnabled; // independent HideShowOff gate
-        private int       _railN;     // rail count
-        private bool      _ready;
+        private bool _hasCubic;  // cubic data present + consistent
+        private bool[] _railValid; // per-rail: false if its [start,count] range is degenerate
+        private bool[] _railEnabled; // per-rail: false = runtime-gated OFF (MainType-25)
+        private bool[] _railModeEnabled; // independent HideShowOff gate
+        private int _railN;     // rail count
+        private bool _ready;
 
         // Scratch outputs of the shared closest-point-on-rail helper (avoids out-params).
         private Vector3 _cPoint;
         private Vector3 _cTangent;
-        private float   _cDist;
-        private bool    _cAtStart;
-        private bool    _cAtEnd;
-        private int     _cChord;      // rail-local index of the winning chord (for the cubic refine)
+        private float _cDist;
+        private bool _cAtStart;
+        private bool _cAtEnd;
+        private int _cChord;      // rail-local index of the winning chord (for the cubic refine)
 
         // ---- segment SPATIAL GRID (the lock-on broad-phase) ------------------------------------------------------
         // Every segment ("chord") is binned into a uniform XZ grid by its AABB, so Query/AnyRailNear test only the handful
         // of chords in the cells near the query point instead of all rails x their segments every frame. CSR layout (no
         // per-query allocation); a visit stamp dedups chords spanning several cells.
         private const float GridCell = 12f;   // base cell size (m); auto-grown if the level span would exceed _gridMaxDim
-        private const int   _gridMaxDim = 256;
-        private int   _gnx, _gnz;             // grid dimensions
+        private const int _gridMaxDim = 256;
+        private int _gnx, _gnz;             // grid dimensions
         private float _gminX, _gminZ, _gcell; // grid origin (world XZ) + effective cell size
-        private bool  _gridReady;
+        private bool _gridReady;
         private int[] _cellStart;             // CSR: per-cell start index into _cellItems (length _gnx*_gnz + 1)
         private int[] _cellItems;             // CSR: global chord indices, grouped by cell
         private int[] _chordP0;               // per global chord: _world index of its first point (second = +1)
         private int[] _chordRail;             // per global chord: owning rail index
         private int[] _chordLocal;            // per global chord: rail-local chord index (for the cubic refine)
         private int[] _visit;                 // per global chord: last query stamp that touched it (dedup across cells)
-        private int   _visitTok;              // monotonic query stamp
-        private int   _chordN;
+        private int _visitTok;              // monotonic query stamp
+        private int _chordN;
 
         void Start()
         {
@@ -294,32 +294,32 @@ namespace OpenSlope.BasisPlugin
                 int cz0 = CellZ(pos.z - maxDist), cz1 = CellZ(pos.z + maxDist);
                 _visitTok++;
                 for (int cz = cz0; cz <= cz1; cz++)
-                for (int cx = cx0; cx <= cx1; cx++)
-                {
-                    int cell = cz * _gnx + cx;
-                    int end = _cellStart[cell + 1];
-                    for (int k = _cellStart[cell]; k < end; k++)
+                    for (int cx = cx0; cx <= cx1; cx++)
                     {
-                        int q = _cellItems[k];
-                        if (_visit[q] == _visitTok) continue;
-                        _visit[q] = _visitTok;
-                        if (_railEnabled != null && (!_railEnabled[_chordRail[q]] || !_railModeEnabled[_chordRail[q]])) continue;
-                        int ia = _chordP0[q];
-                        Vector3 a = _world[ia], b = _world[ia + 1], ab = b - a;
-                        float len2 = ab.sqrMagnitude;
-                        float t = len2 > 1e-10f ? Vector3.Dot(pos - a, ab) / len2 : 0f;
-                        if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
-                        Vector3 cp = a + ab * t;
-                        float d = (pos - cp).magnitude;
-                        if (d < best)
+                        int cell = cz * _gnx + cx;
+                        int end = _cellStart[cell + 1];
+                        for (int k = _cellStart[cell]; k < end; k++)
                         {
-                            best = d; RFound = true; RRail = _chordRail[q];
-                            RSurface = SurfaceForRail(RRail);
-                            RPoint = cp; RTangent = len2 > 1e-10f ? ab / Mathf.Sqrt(len2) : Vector3.forward; RDist = d;
-                            _cChord = _chordLocal[q];
+                            int q = _cellItems[k];
+                            if (_visit[q] == _visitTok) continue;
+                            _visit[q] = _visitTok;
+                            if (_railEnabled != null && (!_railEnabled[_chordRail[q]] || !_railModeEnabled[_chordRail[q]])) continue;
+                            int ia = _chordP0[q];
+                            Vector3 a = _world[ia], b = _world[ia + 1], ab = b - a;
+                            float len2 = ab.sqrMagnitude;
+                            float t = len2 > 1e-10f ? Vector3.Dot(pos - a, ab) / len2 : 0f;
+                            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+                            Vector3 cp = a + ab * t;
+                            float d = (pos - cp).magnitude;
+                            if (d < best)
+                            {
+                                best = d; RFound = true; RRail = _chordRail[q];
+                                RSurface = SurfaceForRail(RRail);
+                                RPoint = cp; RTangent = len2 > 1e-10f ? ab / Mathf.Sqrt(len2) : Vector3.forward; RDist = d;
+                                _cChord = _chordLocal[q];
+                            }
                         }
                     }
-                }
                 return;
             }
         }
@@ -336,24 +336,24 @@ namespace OpenSlope.BasisPlugin
                 _visitTok++;
                 float reach2 = reach * reach;
                 for (int cz = cz0; cz <= cz1; cz++)
-                for (int cx = cx0; cx <= cx1; cx++)
-                {
-                    int cell = cz * _gnx + cx;
-                    int end = _cellStart[cell + 1];
-                    for (int k = _cellStart[cell]; k < end; k++)
+                    for (int cx = cx0; cx <= cx1; cx++)
                     {
-                        int q = _cellItems[k];
-                        if (_visit[q] == _visitTok) continue;
-                        _visit[q] = _visitTok;
-                        if (_railEnabled != null && (!_railEnabled[_chordRail[q]] || !_railModeEnabled[_chordRail[q]])) continue;
-                        int ia = _chordP0[q];
-                        Vector3 a = _world[ia], b = _world[ia + 1], ab = b - a;
-                        float len2 = ab.sqrMagnitude;
-                        float t = len2 > 1e-10f ? Vector3.Dot(pos - a, ab) / len2 : 0f;
-                        if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
-                        if ((pos - (a + ab * t)).sqrMagnitude <= reach2) return true;
+                        int cell = cz * _gnx + cx;
+                        int end = _cellStart[cell + 1];
+                        for (int k = _cellStart[cell]; k < end; k++)
+                        {
+                            int q = _cellItems[k];
+                            if (_visit[q] == _visitTok) continue;
+                            _visit[q] = _visitTok;
+                            if (_railEnabled != null && (!_railEnabled[_chordRail[q]] || !_railModeEnabled[_chordRail[q]])) continue;
+                            int ia = _chordP0[q];
+                            Vector3 a = _world[ia], b = _world[ia + 1], ab = b - a;
+                            float len2 = ab.sqrMagnitude;
+                            float t = len2 > 1e-10f ? Vector3.Dot(pos - a, ab) / len2 : 0f;
+                            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+                            if ((pos - (a + ab * t)).sqrMagnitude <= reach2) return true;
+                        }
                     }
-                }
                 return false;
             }
             return false;
@@ -482,7 +482,7 @@ namespace OpenSlope.BasisPlugin
             for (int it = 0; it < 16; it++)
             {
                 if (f1 < f2) { b = x2; x2 = x1; f2 = f1; x1 = b - gr * (b - a); f1 = CubicSqDist(p0, p1, p2, p3, x1, pos); }
-                else         { a = x1; x1 = x2; f1 = f2; x2 = a + gr * (b - a); f2 = CubicSqDist(p0, p1, p2, p3, x2, pos); }
+                else { a = x1; x1 = x2; f1 = f2; x2 = a + gr * (b - a); f2 = CubicSqDist(p0, p1, p2, p3, x2, pos); }
                 if (b - a < 1e-4f) break;
             }
             float tBest = 0.5f * (a + b);

@@ -26,7 +26,7 @@ namespace OpenSlope.VrcPlugin
     // down fresh, individually-ticking per-prop behaviours. See docs/038-animated-props.md and AnimatedPropManager.
     public static class ConsolidateAnimatedProps
     {
-        const string HostName  = "OpenSlope_AnimatedProps";   // OpenSlope_Map/Level/OpenSlope_AnimatedProps - dies with the map, as it must
+        const string HostName = "OpenSlope_AnimatedProps";   // OpenSlope_Map/Level/OpenSlope_AnimatedProps - dies with the map, as it must
         const string LevelName = "Level";
 
         [MenuItem("OpenSlope/Optimize/Consolidate Animated Props", false, 501)]

@@ -24,10 +24,10 @@ namespace OpenSlope.Importer
     // "OpenSlope/Tools/Reimport Map Audio" re-stamps clips already in the project (the postprocessor only fires on import).
     public class AudioImportSettings : AssetPostprocessor
     {
-        public const float Quality      = 0.5f;   // Unity Vorbis quality 0..1; ~the q4 sweep point (~83 kbps stereo)
-        public const bool  MonoSfx      = true;   // force positional SFX/speech to mono (free under VRChat spatialization)
-        public const bool  MonoMusic    = false;  // keep music stereo (2D director beds); set true to mono music too
-        public const uint  MusicMaxRate = 32000;  // cap MUSIC sample rate (race-song chunks decode at 44.1 kHz); 0 = preserve
+        public const float Quality = 0.5f;   // Unity Vorbis quality 0..1; ~the q4 sweep point (~83 kbps stereo)
+        public const bool MonoSfx = true;   // force positional SFX/speech to mono (free under VRChat spatialization)
+        public const bool MonoMusic = false;  // keep music stereo (2D director beds); set true to mono music too
+        public const uint MusicMaxRate = 32000;  // cap MUSIC sample rate (race-song chunks decode at 44.1 kHz); 0 = preserve
 
         void OnPreprocessAudio()
         {

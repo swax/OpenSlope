@@ -183,8 +183,8 @@ namespace OpenSlope.VrcPlugin
         [HideInInspector] public float dbgCharge;    // ollie charge 0..1 while a jump is being charged (0 = not charging)
         [HideInInspector] public float dbgUpdateMs;  // measured wall-time of THIS board's ridden Update() (ms, smoothed) - diagnostic:
                                                      // if frame ms spikes near props but this stays flat, the cost is OUTSIDE our Udon (PhysX / VRChat)
-        // Per-section breakdown of the ridden Update (ms, smoothed) - to find WHICH part spikes. Individual floats (not an
-        // array) so a new-field null backing can't NRE-halt the board. See DbgLap checkpoints in Update.
+                                                     // Per-section breakdown of the ridden Update (ms, smoothed) - to find WHICH part spikes. Individual floats (not an
+                                                     // array) so a new-field null backing can't NRE-halt the board. See DbgLap checkpoints in Update.
         [HideInInspector] public float dbgSecProbe;   // out-of-bounds + boost audio (the pre-tick per-frame work)
         [HideInInspector] public float dbgSecRail;    // rail-grind detection
         [HideInInspector] public float dbgSecInteg;   // the fixed-tick loop: probe + contact + steering + integration + obstacle resolve
@@ -855,14 +855,14 @@ namespace OpenSlope.VrcPlugin
         // _impactMinSpeed (silent below) to _impactMaxSpeed (full); debounced per prop.
         private float _impactMinSpeed = 2f;
         private float _impactMaxSpeed = 16f;
-        private float _impactVolume   = 1f;
+        private float _impactVolume = 1f;
         private float _impactDebounce = 0.6f; // min seconds before the SAME prop re-triggers (game uses ~0.83s)
         private Collider _lastImpactCol;
         private float _lastImpactTime;
         // Foliage swish-through sound tuning (tree leaves -> 050, bushy -> 051; see CheckFoliageSwish + docs/009).
         private float _swishMinSpeed = 3f;
         private float _swishMaxSpeed = 22f;
-        private float _swishVolume   = 0.9f;
+        private float _swishVolume = 0.9f;
         private float _swishDebounce = 0.5f;  // min seconds between swishes (one per leaf cloud you pass through)
         private float _lastSwishTime;
         private Transform _foliageRoot;       // OpenSlope_Map/PropsFoliage; auto-found in Start (null = no swish-through foliage)
@@ -990,7 +990,7 @@ namespace OpenSlope.VrcPlugin
         private ParticleSystem.EmitParams _cloudEmit; // reused per-emit overrides (velocity/size/colour) for the cloud (position comes from its box shape)
         private ParticleSystem.EmitParams _surfEmit;  // separate params for the surface spray (it also overrides size + lifetime; keep those off the shared struct)
         private ParticleSystemRenderer _surfSprayRend; // surface-spray renderer (material swapped per surface class)
-        private int   _surfMatIdx = -1; // surfSprayMats index currently bound (-1 = none; avoids redundant material sets)
+        private int _surfMatIdx = -1; // surfSprayMats index currently bound (-1 = none; avoids redundant material sets)
         private float _surfBurst;      // surface-spray landing burst: decaying motion-scalar seed (game 70 -> x0.9467/tick -> ~10 floor)
         private float _surfCarry;      // surface-spray fractional-emit carry (stochastic floor, like the game's +rand[0,1))
         private float _cloudCarry;     // cloud fractional-emit carry (carve veil + powder cloud share the one system)
@@ -1150,7 +1150,7 @@ namespace OpenSlope.VrcPlugin
         {
             if (_riding && !AutoTestControl) _steer = value;
         }
-        public override void InputMoveVertical(float value, UdonInputEventArgs args)   { if (_riding && !AutoTestControl) _throttle = value; } // accel/brake (both)
+        public override void InputMoveVertical(float value, UdonInputEventArgs args) { if (_riding && !AutoTestControl) _throttle = value; } // accel/brake (both)
 
         // Headset-tested stick shaping: square magnitude in every state. Small deflections get more precision, while hard
         // left/right remains exactly ±1 and therefore reaches 100% of the ground, air, or rail state's turn rate.
@@ -1179,7 +1179,7 @@ namespace OpenSlope.VrcPlugin
         }
         // Jump is our explicit dismount in EVERY state (the station's built-in exit is disabled so steer input can't
         // eject you) - on a rail it frees you off the board entirely; the ollie (InputUse) is what hops you OFF the rail.
-        public override void InputJump(bool value, UdonInputEventArgs args)            { if (_riding && !AutoTestControl && value) Dismount(); }
+        public override void InputJump(bool value, UdonInputEventArgs args) { if (_riding && !AutoTestControl && value) Dismount(); }
 
         // The charged launch [Trailmap: 340-jump-air-landing] - an impulse ADDED to the carried velocity, never
         // replacing it, built in the contact frame off the CACHED contact normal (so a release on a coyote tick still

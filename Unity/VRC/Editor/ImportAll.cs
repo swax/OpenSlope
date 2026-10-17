@@ -26,7 +26,7 @@ namespace OpenSlope.VrcPlugin
         public static void ImportMapDialog()
         {
             string projRoot = Path.GetDirectoryName(Application.dataPath).Replace('\\', '/');   // parent of Assets
-            string lastRel  = EditorPrefs.GetString(ImportConfig.LastFolderPrefKey, ImportConfig.DefaultLevelFolder);
+            string lastRel = EditorPrefs.GetString(ImportConfig.LastFolderPrefKey, ImportConfig.DefaultLevelFolder);
             string startAbs = Directory.Exists(Path.Combine(projRoot, lastRel)) ? Path.Combine(projRoot, lastRel)
                                                                                 : Path.Combine(projRoot, "Assets");
 

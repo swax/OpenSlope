@@ -38,17 +38,17 @@ namespace OpenSlope.VrcPlugin
         // each holds the OTHER metric from that same run (the time of the best-score run / the score of the best-time run),
         // shown alongside. Each player appears at most once per list. ----
         [UdonSynced] private string[] sNames;   // top scores: player names
-        [UdonSynced] private int[]    sScores;  // top scores: the score (sort key, desc)
-        [UdonSynced] private int[]    sTimes;   // top scores: that run's time (centiseconds, for display)
+        [UdonSynced] private int[] sScores;  // top scores: the score (sort key, desc)
+        [UdonSynced] private int[] sTimes;   // top scores: that run's time (centiseconds, for display)
 
         [UdonSynced] private string[] tNames;   // best times: player names
-        [UdonSynced] private int[]    tTimes;   // best times: the time in centiseconds (sort key, asc)
-        [UdonSynced] private int[]    tScores;  // best times: that run's score (for display)
+        [UdonSynced] private int[] tTimes;   // best times: the time in centiseconds (sort key, asc)
+        [UdonSynced] private int[] tScores;  // best times: that run's score (for display)
 
         // Scratch outputs of InsertSorted (Udon has no out-params / tuples; the helper writes here, the caller copies out).
         private string[] _outN;
-        private int[]    _outP;
-        private int[]    _outS;
+        private int[] _outP;
+        private int[] _outS;
 
         void Start()
         {
@@ -131,8 +131,8 @@ namespace OpenSlope.VrcPlugin
         {
             int n = names.Length;
             string[] nN = new string[n + 1];
-            int[]    nP = new int[n + 1];
-            int[]    nS = new int[n + 1];
+            int[] nP = new int[n + 1];
+            int[] nS = new int[n + 1];
 
             // copy everything except the player's old entry
             int m = 0;

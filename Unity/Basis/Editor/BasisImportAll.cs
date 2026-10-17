@@ -34,7 +34,7 @@ namespace OpenSlope.BasisPlugin
         public static void ImportMapDialog()
         {
             string projRoot = Path.GetDirectoryName(Application.dataPath).Replace('\\', '/');
-            string lastRel  = EditorPrefs.GetString(ImportConfig.LastFolderPrefKey, ImportConfig.DefaultLevelFolder);
+            string lastRel = EditorPrefs.GetString(ImportConfig.LastFolderPrefKey, ImportConfig.DefaultLevelFolder);
             string startAbs = Directory.Exists(Path.Combine(projRoot, lastRel)) ? Path.Combine(projRoot, lastRel)
                                                                                 : Path.Combine(projRoot, "Assets");
 
@@ -81,12 +81,12 @@ namespace OpenSlope.BasisPlugin
             // light probes stay off - a VRChat-shade feature. (Gems / rails / reset zones / teleports / boost pads all
             // ride the default builders + emit flags, so there are no extra build flags to flip here - the wiring pass
             // is what turns their markers into behaviours.)
-            cfg.BuildParticles       = true;    // fog billboards (OpenSlope/Particle URP)
-            cfg.BuildEmitters        = true;    // continuous snow cannons / flares (URP particle mats + OpenSlope/FlareHalo)
+            cfg.BuildParticles = true;    // fog billboards (OpenSlope/Particle URP)
+            cfg.BuildEmitters = true;    // continuous snow cannons / flares (URP particle mats + OpenSlope/FlareHalo)
             cfg.BuildAmbientEmitters = true;    // collision dust/spark/fire bursts (BasisAmbientEmitter)
-            cfg.EmitTriggers         = true;    // fireworks (BasisFirework) + firing sounds
-            cfg.BuildAudio           = true;    // crowd + ambient beds (stock AudioSource; Steam Audio spatializes)
-            cfg.BuildProbes          = false;   // avatar light probes are a VRChat-shade feature
+            cfg.EmitTriggers = true;    // fireworks (BasisFirework) + firing sounds
+            cfg.BuildAudio = true;    // crowd + ambient beds (stock AudioSource; Steam Audio spatializes)
+            cfg.BuildProbes = false;   // avatar light probes are a VRChat-shade feature
 
             // Drop any interim hand-built root (named after the level folder's leaf), so the scene keeps only the
             // importer's OpenSlope_Map. No-op once imports run through here from a clean scene.

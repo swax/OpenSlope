@@ -66,7 +66,7 @@ namespace OpenSlope.VrcPlugin
         // matching RideableBoard's wall-impact curve - promote to public if per-prop knobs are ever wanted.
         private AudioSource _impact;          // null if this prop's CollisonSound had no known clip -> silent
         private float _impactMaxSpeed = 16f;  // closing speed (m/s) at/above which the clip is full volume
-        private float _impactVolume   = 1f;   // overall scale on the one-shot
+        private float _impactVolume = 1f;   // overall scale on the one-shot
 
         void Start()
         {

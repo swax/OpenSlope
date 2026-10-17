@@ -32,26 +32,26 @@ namespace OpenSlope.VrcPlugin
     // every target. Same two-step Udon bootstrap as the sibling setups. See docs/vrchat/013-udon-components.md.
     public static class SettingsBoardSetup
     {
-        const string ObjName     = "SettingsBoard";   // OpenSlope_Map/GateBench/SettingsBoard
-        const string LegacyName  = "SoundBoard";      // what this board was called before it grew the mode + world sections
+        const string ObjName = "SettingsBoard";   // OpenSlope_Map/GateBench/SettingsBoard
+        const string LegacyName = "SoundBoard";      // what this board was called before it grew the mode + world sections
         const string PoleMatPath = Map.AssetsFolder + "/SettingsBoardPole.mat";
 
-        const int   Slot        = 1;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
-        const int   SlotCount   = 5;
-        const float PostBehind  = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
-        const float PostHeight  = 1.4f;
-        const float PostDiam    = 0.10f;
+        const int Slot = 1;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
+        const int SlotCount = 5;
+        const float PostBehind = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
+        const float PostHeight = 1.4f;
+        const float PostDiam = 0.10f;
         const float PanelBottom = 1.05f;
-        const float PanelClear  = 0.18f;
+        const float PanelClear = 0.18f;
 
-        const float CanvasW   = 700f;   // ~1.11 m wide at PanelScale (matches the sibling boards)
-        const float TitleH    = 96f;
-        const float RowH      = 74f;
-        const float SectH     = 46f;
-        const float ModeRowH  = 92f;    // the mode picker's chip row (taller than a checkbox row - it holds 3 buttons)
-        const float ModeBtnH  = 64f;
+        const float CanvasW = 700f;   // ~1.11 m wide at PanelScale (matches the sibling boards)
+        const float TitleH = 96f;
+        const float RowH = 74f;
+        const float SectH = 46f;
+        const float ModeRowH = 92f;    // the mode picker's chip row (taller than a checkbox row - it holds 3 buttons)
+        const float ModeBtnH = 64f;
         const float ModeBtnGap = 10f;
-        const float Pad       = 24f;
+        const float Pad = 24f;
         const float PanelScale = 0.00158f;
 
         // The mode picker, in board order. Index IS SettingsBoard.ModeRace / ModeTrick / ModeFreeRide.
@@ -82,13 +82,13 @@ namespace OpenSlope.VrcPlugin
             Map.ClearBenchBoard(LegacyName);      // a scene built before the rename still carries the old SoundBoard object
 
             // Resolve the systems present in this map. Absent ones stay null -> no row built for them.
-            var musicU    = Object.FindObjectOfType<MusicDirector>(true);
-            var raceU     = Object.FindObjectOfType<RaceMusicDirector>(true);
-            var mcU       = Object.FindObjectOfType<AnnouncerU>(true);
-            AudioSource[] crowd   = ResolveCrowdSources();
-            var voiceU    = Object.FindObjectOfType<BoardVoiceChannel>(true); // the board (rider) voice channel
-            var snowU     = Object.FindObjectOfType<SnowfallU>(true);         // the falling-snow master switch
-            var mgr       = Object.FindObjectOfType<BoardManager>(true);      // the pooled boards the ride mode is pushed to
+            var musicU = Object.FindObjectOfType<MusicDirector>(true);
+            var raceU = Object.FindObjectOfType<RaceMusicDirector>(true);
+            var mcU = Object.FindObjectOfType<AnnouncerU>(true);
+            AudioSource[] crowd = ResolveCrowdSources();
+            var voiceU = Object.FindObjectOfType<BoardVoiceChannel>(true); // the board (rider) voice channel
+            var snowU = Object.FindObjectOfType<SnowfallU>(true);         // the falling-snow master switch
+            var mgr = Object.FindObjectOfType<BoardManager>(true);      // the pooled boards the ride mode is pushed to
             bool haveBoards = mgr != null && mgr.boards != null && mgr.boards.Length > 0;
             var modeObjects = new List<GameObject>();
             var modeMasks = new List<int>();
@@ -109,9 +109,9 @@ namespace OpenSlope.VrcPlugin
 
             var udon = board.GetComponent<SettingsBoard>() ?? board.AddUdonSharpComponent<SettingsBoard>();
             udon.mode = SettingsBoard.ModeTrick;
-            if (musicU != null) udon.music     = musicU;
-            if (raceU != null)  udon.raceMusic = raceU;
-            if (mcU != null)    udon.announcer = mcU;
+            if (musicU != null) udon.music = musicU;
+            if (raceU != null) udon.raceMusic = raceU;
+            if (mcU != null) udon.announcer = mcU;
             if (crowd.Length > 0)
             {
                 udon.crowdSources = crowd;
@@ -120,8 +120,8 @@ namespace OpenSlope.VrcPlugin
                 udon.crowdVolumes = vols;
             }
             if (voiceU != null) udon.voiceChannel = voiceU;
-            if (snowU != null)  udon.snow         = snowU;
-            if (haveBoards)     udon.manager      = mgr;
+            if (snowU != null) udon.snow = snowU;
+            if (haveBoards) udon.manager = mgr;
             udon.modeObjects = modeObjects.ToArray();
             udon.modeMasks = modeMasks.ToArray();
             udon.railNetwork = grindRails;
@@ -149,11 +149,11 @@ namespace OpenSlope.VrcPlugin
             {
                 BuildSection(panel, y, "Sound", font);
                 y -= SectH;
-                if (musicU != null)     { BuildRow(panel, y, "Background music",     font, toggles); togDefs.Add(x => udon.musicToggle      = x); y -= RowH; }
-                if (raceU != null)      { BuildRow(panel, y, "Race music",           font, toggles); togDefs.Add(x => udon.raceMusicToggle  = x); y -= RowH; }
-                if (mcU != null)        { BuildRow(panel, y, "Announcer (MC)",       font, toggles); togDefs.Add(x => udon.announcerToggle  = x); y -= RowH; }
-                if (crowd.Length > 0)   { BuildRow(panel, y, "Crowd noise",          font, toggles); togDefs.Add(x => udon.crowdToggle      = x); y -= RowH; }
-                if (voiceU != null)     { BuildRow(panel, y, "Global rider chat",    font, toggles); togDefs.Add(x => udon.riderVoiceToggle = x); y -= RowH; }
+                if (musicU != null) { BuildRow(panel, y, "Background music", font, toggles); togDefs.Add(x => udon.musicToggle = x); y -= RowH; }
+                if (raceU != null) { BuildRow(panel, y, "Race music", font, toggles); togDefs.Add(x => udon.raceMusicToggle = x); y -= RowH; }
+                if (mcU != null) { BuildRow(panel, y, "Announcer (MC)", font, toggles); togDefs.Add(x => udon.announcerToggle = x); y -= RowH; }
+                if (crowd.Length > 0) { BuildRow(panel, y, "Crowd noise", font, toggles); togDefs.Add(x => udon.crowdToggle = x); y -= RowH; }
+                if (voiceU != null) { BuildRow(panel, y, "Global rider chat", font, toggles); togDefs.Add(x => udon.riderVoiceToggle = x); y -= RowH; }
             }
 
             // WORLD - the cosmetic effects a visitor might not want.

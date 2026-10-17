@@ -56,9 +56,9 @@ namespace OpenSlope.Importer
             {
                 int count = eff.Centres.Count;
                 var verts = new List<Vector3>(count * 4);
-                var uvs   = new List<Vector2>(count * 4);
-                var offs  = new List<Vector2>(count * 4);   // per-corner billboard offset (world units), -> UV1
-                var tris  = new List<int>(count * 6);
+                var uvs = new List<Vector2>(count * 4);
+                var offs = new List<Vector2>(count * 4);   // per-corner billboard offset (world units), -> UV1
+                var tris = new List<int>(count * 6);
 
                 float maxSSX = 1f;
                 for (int i = 0; i < count; i++)
@@ -121,8 +121,13 @@ namespace OpenSlope.Importer
             var outList = new List<Effect>();
             foreach (var e in bundle.Particles)
             {
-                var eff = new Effect { Name = e.Name, Sprite = string.IsNullOrEmpty(e.Sprite) ? _cfg.ParticleSprite : e.Sprite,
-                                       Centres = new List<Vector3>(e.Puffs.Length), RadiiSSX = new List<float>(e.Puffs.Length) };
+                var eff = new Effect
+                {
+                    Name = e.Name,
+                    Sprite = string.IsNullOrEmpty(e.Sprite) ? _cfg.ParticleSprite : e.Sprite,
+                    Centres = new List<Vector3>(e.Puffs.Length),
+                    RadiiSSX = new List<float>(e.Puffs.Length)
+                };
                 foreach (var p in e.Puffs) { eff.Centres.Add(p.Center); eff.RadiiSSX.Add(p.Radius * _cfg.ParticleSizeScale); }
                 if (eff.Centres.Count > 0) outList.Add(eff);
             }
@@ -137,7 +142,7 @@ namespace OpenSlope.Importer
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(_cfg.LevelFolder + "/Textures/Particles/" + sprite);
             if (tex != null) mat.mainTexture = tex;
             else Debug.LogWarning("OpenSlope: particle sprite not found " + sprite + " - run `snowknife import` to decode PARTICLE.SSH into Textures/Particles/.");
-            if (mat.HasProperty("_Tint"))  mat.SetColor("_Tint", _cfg.ParticleTint);
+            if (mat.HasProperty("_Tint")) mat.SetColor("_Tint", _cfg.ParticleTint);
             if (mat.HasProperty("_Alpha")) mat.SetFloat("_Alpha", _cfg.ParticleAlpha);
             AssetDatabase.CreateAsset(mat, _cfg.MatFolder + "/" + matName + ".mat");
             cache[sprite] = mat;

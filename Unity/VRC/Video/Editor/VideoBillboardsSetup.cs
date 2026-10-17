@@ -44,11 +44,11 @@ namespace OpenSlope.VrcPlugin
     // run again) mirrors PlayerFlightSetup / StartGateSetup. See docs/vrchat/013-udon-components.md.
     public static class VideoBillboardsSetup
     {
-        const string ObjName     = "VideoBillboards";
-        const string DriverName  = "_Driver";
+        const string ObjName = "VideoBillboards";
+        const string DriverName = "_Driver";
         const string ScreensName = "Screens";
         const string CatalogName = MapLayout.Billboards;   // the import's screen catalog root that Setup All consumes
-        const string MatPath     = Map.AssetsFolder + "/VideoScreen.mat";
+        const string MatPath = Map.AssetsFolder + "/VideoScreen.mat";
 
         [MenuItem("OpenSlope/Setup/Video Billboards", false, 151)]
         public static void Setup()
@@ -253,7 +253,7 @@ namespace OpenSlope.VrcPlugin
                 if (r != null && !kept.Contains(r)) { kept.Add(r); added++; }
 
             if (culler != null) { culler.renderers = kept.ToArray(); UdonTools.Push(culler); }
-            else                { marker.renderers = kept.ToArray(); EditorUtility.SetDirty(marker); }
+            else { marker.renderers = kept.ToArray(); EditorUtility.SetDirty(marker); }
             return added;
         }
 

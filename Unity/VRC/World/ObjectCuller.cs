@@ -34,14 +34,14 @@ namespace OpenSlope.VrcPlugin
                  "tighter bound; PC can see much further. Dial either UP if props pop in too close, DOWN for more headroom. " +
                  "The Diagnostics Board's 'Cull distant geometry' row swaps the tight range for the wider one.")]
         public float rangeQuest = 600f;   // Android (Quest) build
-        public float rangePC    = 1200f;  // Standalone (PC) build - bounds the mountain-top fall-line view + compact-city prop draw
+        public float rangePC = 1200f;  // Standalone (PC) build - bounds the mountain-top fall-line view + compact-city prop draw
         [System.NonSerialized] public float range;   // the active range, set per platform in Start (read every frame)
 
         [Tooltip("WIDER cull range (m) the 'off' toggle state uses. The culler stays ACTIVE and just widens - 'off' still " +
                  "BOUNDS the draw, it isn't unbounded. Quest off widens to the PC on-range (1200) - Quest can't afford " +
                  "truly-unbounded draw - while PC off widens to 3000 (past the farthest prop, so nothing culls = full draw).")]
         public float rangeQuestOff = 1200f;   // Quest 'off' = the PC on-range (a perf-safe 'see more' tier)
-        public float rangePCOff    = 3000f;   // PC 'off' = full draw (beyond every prop)
+        public float rangePCOff = 3000f;   // PC 'off' = full draw (beyond every prop)
 
         [Tooltip("Drive RenderSettings distance fog END from the ACTIVE cull range (docs/unity/006): distant props are " +
                  "fully hazed EXACTLY where they cull (no pop-out), and the haze widens with the range when you loosen the " +
@@ -136,12 +136,12 @@ namespace OpenSlope.VrcPlugin
             // OFF ranges fall back to sane values if a pre-two-tier culler serialized them as 0 (new fields default to 0,
             // not the initializer, until the level is re-imported): Quest OFF is the PC on-range by design, PC OFF is full draw.
             float qOff = rangeQuestOff > 0f ? rangeQuestOff : rangePC;
-            float pOff = rangePCOff   > 0f ? rangePCOff   : 3000f;
-    #if UNITY_ANDROID
+            float pOff = rangePCOff > 0f ? rangePCOff : 3000f;
+#if UNITY_ANDROID
             _rangeOn = rangeQuest; _rangeOff = qOff;
-    #else
-            _rangeOn = rangePC;    _rangeOff = pOff;
-    #endif
+#else
+            _rangeOn = rangePC; _rangeOff = pOff;
+#endif
             range = tight ? _rangeOn : _rangeOff;
             ApplyFog();
             _have = false; _frame = 0; _cursor = -1;   // re-evaluate the visible set against the new range on the next tick

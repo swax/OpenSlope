@@ -26,26 +26,26 @@ namespace OpenSlope.VrcPlugin
     // call). See docs/vrchat/013-udon-components.md.
     public static class PlayersBoardSetup
     {
-        const string ObjName     = "PlayersBoard";   // OpenSlope_Map/GateBench/PlayersBoard
+        const string ObjName = "PlayersBoard";   // OpenSlope_Map/GateBench/PlayersBoard
         const string PoleMatPath = Map.AssetsFolder + "/PlayersBoardPole.mat";
 
-        const int   VisibleRows = 8;      // page size: how many player rows are shown at once (paged with Prev/Next)
+        const int VisibleRows = 8;      // page size: how many player rows are shown at once (paged with Prev/Next)
 
-        const int   Slot        = 2;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
-        const int   SlotCount   = 5;
-        const float PostBehind  = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
-        const float PostHeight  = 1.4f;   // m, the support pole height
-        const float PostDiam    = 0.10f;  // m
+        const int Slot = 2;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
+        const int SlotCount = 5;
+        const float PostBehind = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
+        const float PostHeight = 1.4f;   // m, the support pole height
+        const float PostDiam = 0.10f;  // m
         const float PanelBottom = 1.05f;  // m, height of the panel's BOTTOM edge on the pole (rows stack upward from here)
-        const float PanelClear  = 0.18f;  // push the panel toward the player so the pole doesn't poke through it
+        const float PanelClear = 0.18f;  // push the panel toward the player so the pole doesn't poke through it
 
         // Canvas-space (pixels) layout; localScale below maps the panel width to ~1.11 m in world (matches the sibling boards).
         const float CanvasW = 700f;
-        const float TitleH  = 96f;
-        const float RowH    = 74f;   // a player row / the hide checkbox / a nav button
-        const float SectH   = 46f;   // the "Warp to player" sub-header
-        const float PageH   = 50f;   // the page / count readout line
-        const float Pad     = 24f;
+        const float TitleH = 96f;
+        const float RowH = 74f;   // a player row / the hide checkbox / a nav button
+        const float SectH = 46f;   // the "Warp to player" sub-header
+        const float PageH = 50f;   // the page / count readout line
+        const float Pad = 24f;
         const float PanelScale = 0.00158f;   // 700 px * 0.00158 ~= 1.11 m wide
 
         [MenuItem("OpenSlope/Setup/Players Board", false, 170)]

@@ -34,32 +34,32 @@ namespace OpenSlope.VrcPlugin
     // the sibling setups (a freshly created U# program asset can't be attached in the same call). See docs/vrchat/013.
     public static class JukeboxSetup
     {
-        const string ObjName     = "Jukebox";   // OpenSlope_Map/GateBench/Jukebox
+        const string ObjName = "Jukebox";   // OpenSlope_Map/GateBench/Jukebox
         const string PoleMatPath = Map.AssetsFolder + "/JukeboxPole.mat";
 
-        const int   VisibleRows = 6;      // page size: queue rows shown at once (paged with Prev/Next)
+        const int VisibleRows = 6;      // page size: queue rows shown at once (paged with Prev/Next)
 
-        const int   Slot        = 3;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
-        const int   SlotCount   = 5;
-        const float PostBehind  = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
-        const float PostHeight  = 1.4f;
-        const float PostDiam    = 0.10f;
+        const int Slot = 3;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
+        const int SlotCount = 5;
+        const float PostBehind = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
+        const float PostHeight = 1.4f;
+        const float PostDiam = 0.10f;
         const float PanelBottom = 1.05f;
-        const float PanelClear  = 0.18f;
+        const float PanelClear = 0.18f;
 
         // Canvas-space (pixels); localScale maps the width to ~1.14 m in world (a touch wider than the sibling boards - URLs).
         const float CanvasW = 720f;
-        const float TitleH  = 96f;
-        const float NowH    = 104f;   // the now-playing line (title + queued-by)
-        const float SeekH   = 40f;    // the scrub bar
-        const float TimeH   = 34f;    // the m:ss / m:ss readout
-        const float CtrlH   = 74f;    // the [Add video | Skip] row
-        const float SectH   = 46f;    // the "QUEUE" sub-header
-        const float RowH    = 70f;    // a queue row
-        const float PageH   = 50f;    // the page / count readout
-        const float NavH    = 74f;    // the [Prev | Next] row
-        const float BotH    = 74f;    // the [Screens | Lock] row
-        const float Pad     = 24f;
+        const float TitleH = 96f;
+        const float NowH = 104f;   // the now-playing line (title + queued-by)
+        const float SeekH = 40f;    // the scrub bar
+        const float TimeH = 34f;    // the m:ss / m:ss readout
+        const float CtrlH = 74f;    // the [Add video | Skip] row
+        const float SectH = 46f;    // the "QUEUE" sub-header
+        const float RowH = 70f;    // a queue row
+        const float PageH = 50f;    // the page / count readout
+        const float NavH = 74f;    // the [Prev | Next] row
+        const float BotH = 74f;    // the [Screens | Lock] row
+        const float Pad = 24f;
         const float PanelScale = 0.00158f;
 
         [MenuItem("OpenSlope/Setup/Jukebox", false, 153)]

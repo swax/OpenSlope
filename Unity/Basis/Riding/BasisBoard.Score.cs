@@ -37,36 +37,36 @@ namespace OpenSlope.BasisPlugin
         public bool logTricks = true;
 
         // ---- read surface for a future HUD / leaderboard ----
-        [HideInInspector] public bool  RunActive;
+        [HideInInspector] public bool RunActive;
         // Laps left COUNTING the one under way, the way the engine counts them: seeded to the course's pass count,
         // decremented once per finish crossing, 0 only once the crossing that ends the race has counted
         // ([Trailmap: 390-lap-rate, 360-lapboost-gate]). -1 means no lap race is running, which is nonzero and so
         // reads as "laps left" - the finish tube lifts every time. That is the standing state here until a finish
         // trigger exists to count it down; the lap-gated boost volume tests it for nonzero, and its mouth counts the
         // crossing on a course whose tube sits up-course of its finish plane (see the VRChat twin).
-        [HideInInspector] public int   LapsRemaining = -1;
+        [HideInInspector] public int LapsRemaining = -1;
         // When a lap last counted, so two crossing stations in sequence can't both count the same pass.
         [HideInInspector] public float LastLapCountTime = -999f;
-        [HideInInspector] public int   RunScore;          // banked total + the live in-progress trick preview
-        [HideInInspector] public int   RunGemMult = 1;    // active gem multiplier (1/2/3/5)
+        [HideInInspector] public int RunScore;          // banked total + the live in-progress trick preview
+        [HideInInspector] public int RunGemMult = 1;    // active gem multiplier (1/2/3/5)
         [HideInInspector] public float RunStyleRots;      // in-progress rotations (spins+flips)/360
-        [HideInInspector] public int   RunLastTrickPts = -1; // last resolved trick's points (-1 = none this run; on a wipe = the lost value)
-        [HideInInspector] public bool  RunLastBailed;     // the last resolved trick was wiped (bad landing / OOB)
-        [HideInInspector] public bool  RunTrickActive;    // airborne / grinding in a trick right now -> the HUD shows the LIVE accumulating score
-        [HideInInspector] public bool  RunGrinding;       // on a rail right now
+        [HideInInspector] public int RunLastTrickPts = -1; // last resolved trick's points (-1 = none this run; on a wipe = the lost value)
+        [HideInInspector] public bool RunLastBailed;     // the last resolved trick was wiped (bad landing / OOB)
+        [HideInInspector] public bool RunTrickActive;    // airborne / grinding in a trick right now -> the HUD shows the LIVE accumulating score
+        [HideInInspector] public bool RunGrinding;       // on a rail right now
         [HideInInspector] public float RunGrindTime;      // seconds on the current grind
 
         // ---- run state ----
-        bool  _runActive;
-        int   _runScore;
-        bool  _scoreAir;          // airborne inside a trick (our own latch, independent of _airTime)
-        bool  _scoreBadLanding;   // the touchdown this trick resolves on was a bad landing (set by the ride loop) -> wipe
+        bool _runActive;
+        int _runScore;
+        bool _scoreAir;          // airborne inside a trick (our own latch, independent of _airTime)
+        bool _scoreBadLanding;   // the touchdown this trick resolves on was a bad landing (set by the ride loop) -> wipe
         float _scoreSpinDeg;      // degrees of yaw spin accrued this air/grind
         float _scoreFlipDeg;      // degrees of somersault flip accrued this air
         float _scoreAirTime;      // seconds in this air (own counter)
         float _scoreGrindStyle;   // style accrued on the rail this trick
         float _scoreGrindTime;    // seconds on the rail this trick
-        int   _gemMult = 1;       // active gem multiplier, MAX-not-stack, consumed by the next banked trick
+        int _gemMult = 1;       // active gem multiplier, MAX-not-stack, consumed by the next banked trick
 
         // Mounting starts a fresh run. From HandleMount.
         void ScoreMountHook()

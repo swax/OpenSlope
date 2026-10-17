@@ -232,17 +232,17 @@ namespace OpenSlope.Importer
             // Write the 2:1 equirect into DataDir - this PNG IS the asset. Then drive the importer to turn it into
             // a compressed, mipmapped cubemap (no separate ~24 MB code-baked .cubemap).
             string pngAsset = DataDir + "/" + name + ".png";
-            string matPath  = DataDir + "/" + name + ".mat";
+            string matPath = DataDir + "/" + name + ".mat";
             File.WriteAllBytes(ProjectPathToAbs(pngAsset), eq.EncodeToPNG());
             AssetDatabase.ImportAsset(pngAsset, ImportAssetOptions.ForceSynchronousImport);
 
             var imp = (TextureImporter)AssetImporter.GetAtPath(pngAsset);
-            imp.textureShape       = TextureImporterShape.TextureCube;
-            imp.generateCubemap    = TextureImporterGenerateCubemap.Cylindrical;  // lat-long equirect -> cube faces
-            imp.sRGBTexture        = true;
-            imp.mipmapEnabled      = true;
-            imp.wrapMode           = TextureWrapMode.Repeat;                       // longitude wraps seamlessly
-            imp.maxTextureSize     = FaceSize;                                     // cap face size (1024, the bake size)
+            imp.textureShape = TextureImporterShape.TextureCube;
+            imp.generateCubemap = TextureImporterGenerateCubemap.Cylindrical;  // lat-long equirect -> cube faces
+            imp.sRGBTexture = true;
+            imp.mipmapEnabled = true;
+            imp.wrapMode = TextureWrapMode.Repeat;                       // longitude wraps seamlessly
+            imp.maxTextureSize = FaceSize;                                     // cap face size (1024, the bake size)
             imp.textureCompression = TextureImporterCompression.Compressed;        // per-platform DXT/BC/ASTC
             imp.SaveAndReimport();
 

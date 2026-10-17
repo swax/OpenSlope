@@ -21,23 +21,23 @@ namespace OpenSlope.VrcPlugin
     // program asset can't be attached in the same call). See docs/vrchat/013-udon-components.md.
     public static class InfoBoardSetup
     {
-        const string ObjName     = "InfoBoard";   // OpenSlope_Map/GateBench/InfoBoard
+        const string ObjName = "InfoBoard";   // OpenSlope_Map/GateBench/InfoBoard
         const string PoleMatPath = Map.AssetsFolder + "/InfoBoardPole.mat";
 
-        const int   Slot        = 0;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
-        const int   SlotCount   = 5;
-        const float PostBehind  = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
-        const float PostHeight  = 1.4f;
-        const float PostDiam    = 0.10f;
+        const int Slot = 0;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
+        const int SlotCount = 5;
+        const float PostBehind = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
+        const float PostHeight = 1.4f;
+        const float PostDiam = 0.10f;
         const float PanelBottom = 1.05f;
-        const float PanelClear  = 0.18f;
+        const float PanelClear = 0.18f;
 
         const float CanvasW = 700f;   // ~1.11 m wide at PanelScale (matches the sibling boards)
-        const float TitleH  = 96f;
-        const float OwnerH  = 58f;    // the live instance-owner line
-        const float SectH   = 46f;    // a "DESKTOP" / "VR" sub-header
-        const float LineH   = 33.5f;  // one cheat-sheet row at fontSize 25 / lineSpacing 1.1, with slack
-        const float Pad     = 24f;
+        const float TitleH = 96f;
+        const float OwnerH = 58f;    // the live instance-owner line
+        const float SectH = 46f;    // a "DESKTOP" / "VR" sub-header
+        const float LineH = 33.5f;  // one cheat-sheet row at fontSize 25 / lineSpacing 1.1, with slack
+        const float Pad = 24f;
         const float PanelScale = 0.00158f;
 
         // The board controls, baked as text (the rideable board's real input map - see RideableBoard). Keep each row
@@ -112,7 +112,7 @@ namespace OpenSlope.VrcPlugin
             // Truncate, and the canvas is the shared Map.BenchPanelHeight, so a hand-tuned constant here silently
             // crops the rows you just added; ContentHeight() is what keeps Map's "sized to the tallest board" honest.
             float desktopH = BlockHeight(DesktopControls);
-            float vrH      = BlockHeight(VrControls);
+            float vrH = BlockHeight(VrControls);
 
             BuildSection(panel, y, "Desktop", font); y -= SectH;
             BuildTextBlock(panel, y, desktopH, DesktopControls, font); y -= desktopH;

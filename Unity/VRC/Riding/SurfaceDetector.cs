@@ -211,16 +211,16 @@ namespace OpenSlope.VrcPlugin
 
         AudioClip ClipFor(int t)
         {
-            if (IsSnow(t))  return snowStep  != null ? snowStep  : defaultStep;
-            if (IsIce(t))   return iceStep   != null ? iceStep   : defaultStep;
+            if (IsSnow(t)) return snowStep != null ? snowStep : defaultStep;
+            if (IsIce(t)) return iceStep != null ? iceStep : defaultStep;
             if (IsMetal(t)) return metalStep != null ? metalStep : defaultStep;
-            if (IsRock(t))  return rockStep  != null ? rockStep  : defaultStep;
+            if (IsRock(t)) return rockStep != null ? rockStep : defaultStep;
             return defaultStep;
         }
 
-        bool IsSnow(int t)  { return t == 1 || t == 3 || t == 4 || t == 8 || t == 16; }
-        bool IsIce(int t)   { return t == 5 || t == 7 || t == 11; }
+        bool IsSnow(int t) { return t == 1 || t == 3 || t == 4 || t == 8 || t == 16; }
+        bool IsIce(int t) { return t == 5 || t == 7 || t == 11; }
         bool IsMetal(int t) { return t == 10 || t == 13 || t == 14 || t == 18; }
-        bool IsRock(int t)  { return t == 9 || t == 2; }
+        bool IsRock(int t) { return t == 9 || t == 2; }
     }
 }

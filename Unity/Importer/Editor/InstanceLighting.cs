@@ -16,7 +16,8 @@ namespace OpenSlope.Importer
     {
         // Subset of the library's InstanceJson - just the fields we light from. Newtonsoft fills by name and
         // ignores the rest. Indexed by position, which matches Props.obj's "o inst{N}_..." group names.
-        [Serializable] public class Instance
+        [Serializable]
+        public class Instance
         {
             public float[] Location;
             // SSX's per-instance render flag. The game draws an instance only when this is set; the ones it
@@ -37,24 +38,24 @@ namespace OpenSlope.Importer
             // Movement is selected separately by a collision Roller
             // effect in the bundle and its mass arrives as Divert.DynamicMass. JsonProperty preserves the raw disc name.
             public string InstanceName;
-            public int    CollsionMode        = NativeCollision.TriangleProxy;
+            public int CollsionMode = NativeCollision.TriangleProxy;
             [JsonProperty("U0")] public float ResponseMass = 1e30f;
-            public bool   PlayerBounce        = true;
-            public float  PlayerBounceAmmount = 0.5f;
-            public int    EffectSlotIndex     = -1;
-            public int    PhysicsIndex        = -1;
+            public bool PlayerBounce = true;
+            public float PlayerBounceAmmount = 0.5f;
+            public int EffectSlotIndex = -1;
+            public int PhysicsIndex = -1;
             // Does the player collide with this prop at all (SSX's PlayerCollision flag), and the name(s) of its
             // collision PROXY model(s). A collidable prop with an EMPTY CollsionModelPaths has no proxy mesh - the
             // game collides it via computed bounds, and CollisionBuilder.ImportComputedBoundsColliders gives it a
             // bounds BoxCollider (signs/billboards/jumbotrons). Default: not collidable, so a missing field never
             // invents a solid wall.
-            public bool     PlayerCollision    = false;
+            public bool PlayerCollision = false;
             public string[] CollsionModelPaths;
             // Per-instance collision SOUND. CollisonSound is a global ADL sound-EVENT id (the game remaps it to a
             // course-bank slot (resolved by Snowknife into the bundle's explicit SoundClip; docs/009); IncludeSound flags that the
             // instance carried an ADL sound row. CollisionBuilder reads CollisonSound to give each computed-bounds
             // prop an impact AudioSource. Default: no sound (-1) so a missing field stays silent.
-            public bool     IncludeSound       = false;
+            public bool IncludeSound = false;
             public SoundSet Sounds;
         }
         [Serializable] public class SoundSet { public int CollisonSound = -1; }
@@ -102,9 +103,9 @@ namespace OpenSlope.Importer
             if (it == null) { ambient = Color.white; key = Color.black; return; }
             float norm = Mathf.Max(1e-3f, _cfg.PropLightNorm);
             Vector3 amb = Vec3(it.AmbentLightColour) / norm;
-            Vector3 k   = (Vec3(it.LightColour1) + Vec3(it.LightColour2) + Vec3(it.LightColour3)) / norm;
+            Vector3 k = (Vec3(it.LightColour1) + Vec3(it.LightColour2) + Vec3(it.LightColour3)) / norm;
             ambient = new Color(Mathf.Clamp01(amb.x), Mathf.Clamp01(amb.y), Mathf.Clamp01(amb.z), 1f);
-            key     = new Color(Mathf.Clamp01(k.x),   Mathf.Clamp01(k.y),   Mathf.Clamp01(k.z),   1f);
+            key = new Color(Mathf.Clamp01(k.x), Mathf.Clamp01(k.y), Mathf.Clamp01(k.z), 1f);
         }
 
         static Vector3 Vec3(float[] a) => (a != null && a.Length >= 3) ? new Vector3(a[0], a[1], a[2]) : Vector3.zero;

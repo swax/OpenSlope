@@ -50,11 +50,11 @@ namespace OpenSlope.BasisPlugin
         // Point every present plate at Apply, so any flip re-asserts the whole board.
         void WirePlates()
         {
-            if (cullToggle != null)      cullToggle.Changed      = Apply;
-            if (emittersToggle != null)  emittersToggle.Changed  = Apply;
-            if (gemSpinToggle != null)   gemSpinToggle.Changed   = Apply;
+            if (cullToggle != null) cullToggle.Changed = Apply;
+            if (emittersToggle != null) emittersToggle.Changed = Apply;
+            if (gemSpinToggle != null) gemSpinToggle.Changed = Apply;
             if (fireworksToggle != null) fireworksToggle.Changed = Apply;
-            if (boardFxToggle != null)   boardFxToggle.Changed   = Apply;
+            if (boardFxToggle != null) boardFxToggle.Changed = Apply;
         }
 
         // Per-platform STARTING plate state. Compiled per build (a Basis Android/Quest build defines UNITY_ANDROID), so each
@@ -62,10 +62,10 @@ namespace OpenSlope.BasisPlugin
         // cosmetics OFF; distance cull ON both platforms. The player can re-check anything. Only the OFF plates are touched.
         void ApplyPlatformDefaults()
         {
-    #if UNITY_ANDROID
+#if UNITY_ANDROID
             if (emittersToggle != null) emittersToggle.IsOn = false;
             if (boardFxToggle != null)  boardFxToggle.IsOn  = false;
-    #endif
+#endif
             // cull defaults ON both platforms (range is per-platform); gems/fireworks keep their all-ON state.
         }
 

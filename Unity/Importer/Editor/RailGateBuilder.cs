@@ -57,10 +57,10 @@ namespace OpenSlope.Importer
 
                 var mk = go.AddComponent<RailGateMarker>();
                 mk.railNetworkObject = netObj;
-                mk.rails             = g.Rails;
+                mk.rails = g.Rails;
                 mk.delays = g.Delays ?? new float[0];
                 mk.railEnabled = g.Enabled ?? new bool[0];
-                mk.Cooldown          = _cfg.RailGateCooldown;
+                mk.Cooldown = _cfg.RailGateCooldown;
                 // A tree and its grind rail share one transient sequence/reset. Independent animation reset
                 // timers leave a grindable rail floating after the tree has returned to its upright pose.
                 float lastDelay = 0f;

@@ -32,24 +32,24 @@ namespace OpenSlope.VrcPlugin
     // same call). Local + per-client (sync None).
     public static class DiagnosticsBoardSetup
     {
-        const string ObjName     = "DiagnosticsBoard";   // OpenSlope_Map/GateBench/DiagnosticsBoard (titled TUNING in-world)
-        const string LegacyName  = "RideTuneBoard";      // what this board was called before it grew the perf section
+        const string ObjName = "DiagnosticsBoard";   // OpenSlope_Map/GateBench/DiagnosticsBoard (titled TUNING in-world)
+        const string LegacyName = "RideTuneBoard";      // what this board was called before it grew the perf section
         const string RetiredPerfName = "PerfBoard";      // the retired Performance Board - cleared off the bench here (this board is its heir)
         const string PoleMatPath = Map.AssetsFolder + "/DiagBoardPole.mat";
 
-        const int   Slot        = 4;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
-        const int   SlotCount   = 5;
-        const float PostBehind  = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
-        const float PostHeight  = 1.4f;
-        const float PostDiam    = 0.10f;
+        const int Slot = 4;      // bench order: 0 Info · 1 Settings · 2 Players · 3 Jukebox · 4 Diagnostics (Map.BenchSlot)
+        const int SlotCount = 5;
+        const float PostBehind = 6.0f;   // metres uphill (behind) the matching snowboard at the gate
+        const float PostHeight = 1.4f;
+        const float PostDiam = 0.10f;
         const float PanelBottom = 1.05f;
-        const float PanelClear  = 0.18f;
+        const float PanelClear = 0.18f;
 
         const float CanvasW = 700f;   // ~1.11 m wide at PanelScale (matches the sibling boards)
-        const float TitleH  = 96f;
-        const float RowH    = 74f;
-        const float SectH   = 46f;
-        const float Pad     = 24f;
+        const float TitleH = 96f;
+        const float RowH = 74f;
+        const float SectH = 46f;
+        const float Pad = 24f;
         const float PanelScale = 0.00158f;
 
         [MenuItem("OpenSlope/Setup/Diagnostics Board", false, 192)]
@@ -89,7 +89,7 @@ namespace OpenSlope.VrcPlugin
             if (emitterRoot != null)
             {
                 Transform cannons = emitterRoot.Find("Cannons"); if (cannons != null) particles.Add(cannons.gameObject);
-                Transform flares  = emitterRoot.Find("Flares");  if (flares  != null) particles.Add(flares.gameObject);
+                Transform flares = emitterRoot.Find("Flares"); if (flares != null) particles.Add(flares.gameObject);
             }
             Transform ambientEmitters = FindDeep(root, "AmbientEmitters");
             if (ambientEmitters != null) particles.Add(ambientEmitters.gameObject);
@@ -136,14 +136,14 @@ namespace OpenSlope.VrcPlugin
             // The longest label on any bench board - it fits the 588 px label column at fontSize 32 with room to spare,
             // but the Text overflows rather than wrapping, so lengthen it further only after re-measuring.
             if (particles.Count > 0)
-                                udon.particlesToggle = Row(panel, ref y, "Particles (fireworks, flares, etc.)", true, font, toggles);
+                udon.particlesToggle = Row(panel, ref y, "Particles (fireworks, flares, etc.)", true, font, toggles);
             if (fogRenderers.Length > 0)
-                                udon.fogToggle       = Row(panel, ref y, "Fog banks",              true, font, toggles);
-            if (culler != null) udon.cullToggle      = Row(panel, ref y, "Cull distant geometry",  true, font, toggles);
+                udon.fogToggle = Row(panel, ref y, "Fog banks", true, font, toggles);
+            if (culler != null) udon.cullToggle = Row(panel, ref y, "Cull distant geometry", true, font, toggles);
             if (haveBoards)
             {
                 udon.remoteFxToggle = Row(panel, ref y, "Other riders' FX", true, font, toggles);
-                udon.myFxToggle     = Row(panel, ref y, "My board FX",      true, font, toggles);
+                udon.myFxToggle = Row(panel, ref y, "My board FX", true, font, toggles);
             }
 
             // Push the proxy fields into the backing UdonBehaviour, THEN wire each toggle's onValueChanged to it.

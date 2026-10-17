@@ -40,7 +40,7 @@ namespace OpenSlope.VrcPlugin
 
         // External on/off for the Settings Board's snow row (param-less = an Udon-safe cross-behaviour call).
         public void SnowOff() { enableSnow = false; Apply(); }
-        public void SnowOn()  { enableSnow = true;  Apply(); }
+        public void SnowOn() { enableSnow = true; Apply(); }
 
         void Apply()
         {

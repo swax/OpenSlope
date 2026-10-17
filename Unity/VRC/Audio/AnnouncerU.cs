@@ -64,13 +64,13 @@ namespace OpenSlope.VrcPlugin
             if (muted && source != null && source.isPlaying) source.Stop();
         }
 
-        public void OnGo()        { _lastGo        = Say(goClips, _lastGo, 1.1f, true); }
-        public void OnBigAir()    { if (Roll(bigAirChance))    _lastBigAir    = Say(bigAirClips, _lastBigAir, 1f, false); }
-        public void OnLand()      { if (Roll(landChance))      _lastLand      = Say(landClips, _lastLand, 1f, false); }
+        public void OnGo() { _lastGo = Say(goClips, _lastGo, 1.1f, true); }
+        public void OnBigAir() { if (Roll(bigAirChance)) _lastBigAir = Say(bigAirClips, _lastBigAir, 1f, false); }
+        public void OnLand() { if (Roll(landChance)) _lastLand = Say(landClips, _lastLand, 1f, false); }
         public void OnKnockdown() { if (Roll(knockdownChance)) _lastKnockdown = Say(knockdownClips, _lastKnockdown, 1f, true); }
-        public void OnSlow()      { if (Roll(slowChance))      _lastSlow      = Say(slowClips, _lastSlow, 1f, false); }
-        public void OnBoost()     { if (Roll(boostChance))     _lastBoost     = Say(boostClips, _lastBoost, 1f, false); }
-        public void OnSweet()     { if (Roll(sweetChance))     _lastSweet     = Say(sweetClips, _lastSweet, 1f, false); }
+        public void OnSlow() { if (Roll(slowChance)) _lastSlow = Say(slowClips, _lastSlow, 1f, false); }
+        public void OnBoost() { if (Roll(boostChance)) _lastBoost = Say(boostClips, _lastBoost, 1f, false); }
+        public void OnSweet() { if (Roll(sweetChance)) _lastSweet = Say(sweetClips, _lastSweet, 1f, false); }
 
         bool Roll(float chance) => Random.value < chance;
 

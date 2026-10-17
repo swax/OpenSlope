@@ -72,7 +72,7 @@ namespace OpenSlope.BasisPlugin
         Vector3 _homePos;                     // resting pose - a hydrant lid (Pop) re-arms here
         Quaternion _homeRot;
         const float ImpactMaxSpeed = 16f;     // closing speed (m/s) at/above which the impact clip is full volume
-        const float ImpactVolume   = 1f;      // overall scale on the one-shot
+        const float ImpactVolume = 1f;      // overall scale on the one-shot
 
         void Start()
         {
@@ -235,20 +235,20 @@ namespace OpenSlope.BasisPlugin
         // the current name to avoid the deprecation. Mirrors PropBuilder's linearDamping guard.
         static void SetLinearVelocity(Rigidbody rb, Vector3 v)
         {
-    #if UNITY_6000_0_OR_NEWER
+#if UNITY_6000_0_OR_NEWER
             rb.linearVelocity = v;
-    #else
+#else
             rb.velocity = v;
-    #endif
+#endif
         }
 
         static Vector3 LinearVelocity(Rigidbody rb)
         {
-    #if UNITY_6000_0_OR_NEWER
+#if UNITY_6000_0_OR_NEWER
             return rb.linearVelocity;
-    #else
+#else
             return rb.velocity;
-    #endif
+#endif
         }
     }
 }

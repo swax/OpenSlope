@@ -133,17 +133,26 @@ namespace OpenSlope.Importer
             if (!bundle.Exists || !bundle.HasFireworks) return;
 
             foreach (var launcher in bundle.FwLaunchers)
-                launchers.Add(new LauncherData {
-                    Index = launcher.Index, Muzzle = launcher.Muzzle, Layers = launcher.Layers, Sound = launcher.Sound,
+                launchers.Add(new LauncherData
+                {
+                    Index = launcher.Index,
+                    Muzzle = launcher.Muzzle,
+                    Layers = launcher.Layers,
+                    Sound = launcher.Sound,
                 });
             foreach (var trigger in bundle.FwTriggers)
             {
                 int[] mapped = _cfg.FireworkUseRealMapping && trigger.Launchers != null
                     ? trigger.Launchers : new int[0];
                 if (mapped.Length > 0) hasRealMap = true;
-                triggers.Add(new TriggerData {
-                    Index = trigger.Index, Name = trigger.Name, Slot = trigger.Slot,
-                    Center = trigger.Center, Size = trigger.Size, Launchers = mapped,
+                triggers.Add(new TriggerData
+                {
+                    Index = trigger.Index,
+                    Name = trigger.Name,
+                    Slot = trigger.Slot,
+                    Center = trigger.Center,
+                    Size = trigger.Size,
+                    Launchers = mapped,
                 });
             }
         }

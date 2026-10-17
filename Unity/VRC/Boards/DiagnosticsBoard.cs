@@ -100,10 +100,10 @@ namespace OpenSlope.VrcPlugin
         // so the order doesn't matter.
         void ApplyPlatformDefaults()
         {
-    #if UNITY_ANDROID
+#if UNITY_ANDROID
             if (myFxToggle     != null) myFxToggle.isOn     = false;
             if (remoteFxToggle != null) remoteFxToggle.isOn = false;
-    #endif
+#endif
         }
 
         // Re-read every checkbox and re-assert the whole board. Wired to each row's Interact (via DiagnosticsToggle)

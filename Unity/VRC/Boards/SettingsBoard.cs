@@ -40,8 +40,8 @@ namespace OpenSlope.VrcPlugin
     public class SettingsBoard : UdonSharpBehaviour
     {
         // ---- ride mode ------------------------------------------------------------------------------------------
-        public const int ModeRace     = 0;   // timed run, recorded on the leaderboard's BEST TIMES list
-        public const int ModeTrick    = 1;   // scored run, recorded on the leaderboard's TOP SCORES list
+        public const int ModeRace = 0;   // timed run, recorded on the leaderboard's BEST TIMES list
+        public const int ModeTrick = 1;   // scored run, recorded on the leaderboard's TOP SCORES list
         public const int ModeFreeRide = 2;   // no timed run at all: no clock, no record, boost unlimited
 
         [Header("Ride mode (0 Race / 1 Trick / 2 Free ride) - pushed onto every pooled board as runMode")]
@@ -93,9 +93,9 @@ namespace OpenSlope.VrcPlugin
         // order-independent. Cheap: it only runs on a click.
         public void Apply()
         {
-            if (music != null)        music.uiMuted        = !On(musicToggle);
-            if (raceMusic != null)    raceMusic.uiMuted    = !On(raceMusicToggle);
-            if (announcer != null)    announcer.muted      = !On(announcerToggle);
+            if (music != null) music.uiMuted = !On(musicToggle);
+            if (raceMusic != null) raceMusic.uiMuted = !On(raceMusicToggle);
+            if (announcer != null) announcer.muted = !On(announcerToggle);
             if (voiceChannel != null) voiceChannel.uiMuted = !On(riderVoiceToggle);   // un-checked -> proximity voice even while riding
             ApplyCrowd();
             // Snow uses SnowfallU's own master switch (not SetActive): the field is fully shader-driven and the switch

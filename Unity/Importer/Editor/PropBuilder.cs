@@ -60,38 +60,50 @@ namespace OpenSlope.Importer
             public Vector3 Direction1, Direction2, Direction3; // Unity-world TOWARD-light directions
         }
 
-        class SpinnerInst { public int Index; public int ModeMask = 2; public string Model; public Mesh Mesh; public Material[] Mats; public Vector3 Center;
-                            // GPU-instanced (a shared model mesh): its localRotation + exact per-instance light payload.
-                            public bool Instanced; public Quaternion Rotation = Quaternion.identity; public PropLightData Lighting;
-                            // The gem's own authored collect burst (2 MainType-2 layers, per-instance origins). Null on a
-                            // bundle baked before gems carried layers - AttachGemPickup then falls back to BuildGemSparkle.
-                            public List<BundleManifestReader.EmitterLayer> Layers; }
-        class PhysicsInst { public int Index; public int ModeMask = 7; public string Model; public Mesh Mesh; public Material[] Mats; public Vector3 Center; public float Mass; public float Bounce; public int CollisonSound; public string SoundClip;
-                            // GPU-instanced (a shared model mesh): its localRotation + exact per-instance light payload.
-                            public bool Instanced; public Quaternion Rotation = Quaternion.identity; public PropLightData Lighting;
-                            // The breakable cluster this knock body ALSO throws on the hit (docs/036 - a garbage can's trash). Null = plain body.
-                            public string SpillCluster; }
+        class SpinnerInst
+        {
+            public int Index; public int ModeMask = 2; public string Model; public Mesh Mesh; public Material[] Mats; public Vector3 Center;
+            // GPU-instanced (a shared model mesh): its localRotation + exact per-instance light payload.
+            public bool Instanced; public Quaternion Rotation = Quaternion.identity; public PropLightData Lighting;
+            // The gem's own authored collect burst (2 MainType-2 layers, per-instance origins). Null on a
+            // bundle baked before gems carried layers - AttachGemPickup then falls back to BuildGemSparkle.
+            public List<BundleManifestReader.EmitterLayer> Layers;
+        }
+        class PhysicsInst
+        {
+            public int Index; public int ModeMask = 7; public string Model; public Mesh Mesh; public Material[] Mats; public Vector3 Center; public float Mass; public float Bounce; public int CollisonSound; public string SoundClip;
+            // GPU-instanced (a shared model mesh): its localRotation + exact per-instance light payload.
+            public bool Instanced; public Quaternion Rotation = Quaternion.identity; public PropLightData Lighting;
+            // The breakable cluster this knock body ALSO throws on the hit (docs/036 - a garbage can's trash). Null = plain body.
+            public string SpillCluster;
+        }
         // Breakable LCD jumbotron logo (docs/028): the intact lit screen, its pre-modelled broken twin, and the
         // scanline overlay are each their own node + record, toggled by the breakable behaviour on the break.
         // Smash is the megaplex glass panes' fourth member (docs/036 §Cracked glass): an invisible pass-through volume
         // beneath the pane whose own chain breaks the same glass. It renders nothing - only its BOUNDS matter, folded
         // into the cluster's trigger so a rider reaching the glass from underneath still breaks it.
         enum LogoRole { None, Intact, Broken, Scanline, Piece, Smash }
-        class BreakInst { public int Index; public int ModeMask = 7; public string Model; public Mesh Mesh; public Material[] Mats; public string[] Slots; public Vector3 Center; public LogoRole Role; public string ClusterKey; public int CollisonSound; public string SoundClip; public float[] Throw; public float[] BurstColor;
-                          // Role="intact" roll-aways (docs/036 - the globe): the sequenced break's wait + raw-slot crash.
-                          public float BreakDelay; public int BreakSound = -1;
-                          // Role="intact" fragile surfaces (docs/036 §Cracked glass): the impact pool, the crack's own
-                          // lifetime, and the glancing-hit crack's raw slot. CrackStrength 0 = an ordinary instant break.
-                          public float CrackStrength; public float CrackLifetime; public int CrackSound = -1;
-                          // Role="intact" only: the prop's OWN authored pop emitters (a balloon animal's 2 layers off its
-                          // DeadNodeMode-4 collision header). Null = pre-layers bundle; BurstColor then drives the fallback.
-                          public List<BundleManifestReader.EmitterLayer> Layers; }
+        class BreakInst
+        {
+            public int Index; public int ModeMask = 7; public string Model; public Mesh Mesh; public Material[] Mats; public string[] Slots; public Vector3 Center; public LogoRole Role; public string ClusterKey; public int CollisonSound; public string SoundClip; public float[] Throw; public float[] BurstColor;
+            // Role="intact" roll-aways (docs/036 - the globe): the sequenced break's wait + raw-slot crash.
+            public float BreakDelay; public int BreakSound = -1;
+            // Role="intact" fragile surfaces (docs/036 §Cracked glass): the impact pool, the crack's own
+            // lifetime, and the glancing-hit crack's raw slot. CrackStrength 0 = an ordinary instant break.
+            public float CrackStrength; public float CrackLifetime; public int CrackSound = -1;
+            // Role="intact" only: the prop's OWN authored pop emitters (a balloon animal's 2 layers off its
+            // DeadNodeMode-4 collision header). Null = pre-layers bundle; BurstColor then drives the fallback.
+            public List<BundleManifestReader.EmitterLayer> Layers;
+        }
 
         // A ride-over button (docs/008): its own renderer, the volumes whose crossing pulses its material, and the
         // replayed pulse. Slots names the submeshes so the build can find which one carries the state frames.
-        class ButtonInst { public int Index; public int ModeMask = 7; public string Model; public Mesh Mesh; public Material[] Mats; public string[] Slots;
-                           public Vector3 Center; public List<BundleManifestReader.AnimTriggerBox> Triggers;
-                           public List<int> PulseFrames; public List<float> PulseHolds; }
+        class ButtonInst
+        {
+            public int Index; public int ModeMask = 7; public string Model; public Mesh Mesh; public Material[] Mats; public string[] Slots;
+            public Vector3 Center; public List<BundleManifestReader.AnimTriggerBox> Triggers;
+            public List<int> PulseFrames; public List<float> PulseHolds;
+        }
 
         public void Build(Transform parent, FlipbookAccum flip)
         {
@@ -229,123 +241,173 @@ namespace OpenSlope.Importer
                 switch (rec.Kind)
                 {
                     case "spinner":
-                    {
-                        Mesh gm; Material[] mats;
-                        if (rec.Instanced)
                         {
-                            // Shared model mesh + instanced exact-light material; the spinner manager reapplies each
-                            // ambient/three-key/three-direction record at runtime.
-                            if (!sharedPhys.TryGetValue(rec.Node, out var sh))
+                            Mesh gm; Material[] mats;
+                            if (rec.Instanced)
                             {
-                                var built = MeshFromDivert(dnode, rec, lighting, directional: true, mesh, $"Spin_{rec.Node}", instanced: true);
-                                sh = (built.mesh, built.mats); sharedPhys[rec.Node] = sh;
+                                // Shared model mesh + instanced exact-light material; the spinner manager reapplies each
+                                // ambient/three-key/three-direction record at runtime.
+                                if (!sharedPhys.TryGetValue(rec.Node, out var sh))
+                                {
+                                    var built = MeshFromDivert(dnode, rec, lighting, directional: true, mesh, $"Spin_{rec.Node}", instanced: true);
+                                    sh = (built.mesh, built.mats); sharedPhys[rec.Node] = sh;
+                                }
+                                gm = sh.mesh; mats = sh.mats;
                             }
-                            gm = sh.mesh; mats = sh.mats;
+                            else
+                            {
+                                var (m, ms, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Spin_{rec.Index}");
+                                gm = m; mats = ms;
+                            }
+                            // Spinner diverts are the native multiplier-gem set. Force the engine-side Showoff mask here
+                            // too so older bundles (whose optional ModeMask defaults to 7) import with the corrected rule.
+                            spinners.Add(new SpinnerInst
+                            {
+                                Index = rec.Index,
+                                ModeMask = 2,
+                                Model = rec.Model,
+                                Mesh = gm,
+                                Mats = mats,
+                                Center = rec.Center,
+                                Instanced = rec.Instanced,
+                                Rotation = rec.Rotation,
+                                Lighting = LightData(rec),
+                                Layers = rec.Layers
+                            });
+                            break;
                         }
-                        else
-                        {
-                            var (m, ms, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Spin_{rec.Index}");
-                            gm = m; mats = ms;
-                        }
-                        // Spinner diverts are the native multiplier-gem set. Force the engine-side Showoff mask here
-                        // too so older bundles (whose optional ModeMask defaults to 7) import with the corrected rule.
-                        spinners.Add(new SpinnerInst { Index = rec.Index, ModeMask = 2, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center,
-                                                       Instanced = rec.Instanced, Rotation = rec.Rotation, Lighting = LightData(rec),
-                                                       Layers = rec.Layers });
-                        break;
-                    }
                     case "physics":
-                    {
-                        Mesh gm; Material[] mats;
-                        if (rec.Instanced)
                         {
-                            // Shared model mesh: build once without constant light streams; every copy
-                            // reuses it and lights itself via the MaterialPropertyBlock set in BuildPhysics. Directional is
-                            // forced on - the shared mesh has no baked colour, so MPB + _DIRLIGHT_INST is the only lit path.
-                            if (!sharedPhys.TryGetValue(rec.Node, out var sh))
+                            Mesh gm; Material[] mats;
+                            if (rec.Instanced)
                             {
-                                var built = MeshFromDivert(dnode, rec, lighting, directional: true, mesh, $"Phys_{rec.Node}", instanced: true);
-                                sh = (built.mesh, built.mats); sharedPhys[rec.Node] = sh;
+                                // Shared model mesh: build once without constant light streams; every copy
+                                // reuses it and lights itself via the MaterialPropertyBlock set in BuildPhysics. Directional is
+                                // forced on - the shared mesh has no baked colour, so MPB + _DIRLIGHT_INST is the only lit path.
+                                if (!sharedPhys.TryGetValue(rec.Node, out var sh))
+                                {
+                                    var built = MeshFromDivert(dnode, rec, lighting, directional: true, mesh, $"Phys_{rec.Node}", instanced: true);
+                                    sh = (built.mesh, built.mats); sharedPhys[rec.Node] = sh;
+                                }
+                                gm = sh.mesh; mats = sh.mats;
                             }
-                            gm = sh.mesh; mats = sh.mats;
+                            else
+                            {
+                                var (m, ms, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Phys_{rec.Index}");
+                                gm = m; mats = ms;
+                            }
+                            physicsProps.Add(new PhysicsInst
+                            {
+                                Index = rec.Index,
+                                ModeMask = rec.ModeMask,
+                                Model = rec.Model,
+                                Mesh = gm,
+                                Mats = mats,
+                                Center = rec.Center,
+                                Mass = MassFor(rec.DynamicMass),
+                                Bounce = BounceFor(rec.Bounce),
+                                CollisonSound = rec.Sound,
+                                SoundClip = rec.SoundClip,
+                                Instanced = rec.Instanced,
+                                Rotation = rec.Rotation,
+                                Lighting = LightData(rec),
+                                SpillCluster = rec.SpillCluster
+                            });
+                            break;
                         }
-                        else
-                        {
-                            var (m, ms, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Phys_{rec.Index}");
-                            gm = m; mats = ms;
-                        }
-                        physicsProps.Add(new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center,
-                                                           Mass = MassFor(rec.DynamicMass), Bounce = BounceFor(rec.Bounce), CollisonSound = rec.Sound, SoundClip = rec.SoundClip,
-                                                           Instanced = rec.Instanced, Rotation = rec.Rotation, Lighting = LightData(rec),
-                                                           SpillCluster = rec.SpillCluster });
-                        break;
-                    }
                     case "breakable":
-                    {
-                        // Exact directional lighting for the intact swap and its thrown pieces. The former remains still;
-                        // the latter tumbles beneath the fixed per-instance light directions just like physics props.
-                        var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, directional: true, mesh, rec.Role == "piece" ? rec.Node : $"Logo_{rec.Index}");
-                        breakables.Add(new BreakInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Slots = slots, Center = rec.Center,
-                                                       Role = ParseRole(rec.Role), ClusterKey = rec.ClusterKey, CollisonSound = rec.Sound, SoundClip = rec.SoundClip, Throw = rec.Throw, BurstColor = rec.BurstColor,
-                                                       BreakDelay = rec.BreakDelay, BreakSound = rec.BreakSound,
-                                                       CrackStrength = rec.CrackStrength, CrackLifetime = rec.CrackLifetime, CrackSound = rec.CrackSound,
-                                                       Layers = rec.Layers });
-                        break;
-                    }
-                    case "effect":
-                    {
-                        var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Effect_{rec.Index}");
-                        var effectRoot = parent.Find("EffectProps");
-                        if (effectRoot == null) { var holder = new GameObject("EffectProps"); holder.transform.SetParent(parent, false); effectRoot = holder.transform; }
-                        var effect = new GameObject($"Effect_{rec.Index}_{rec.Model}");
-                        effect.transform.SetParent(effectRoot, false);
-                        effect.transform.localPosition = rec.Center;
-                        effect.AddComponent<MeshFilter>().sharedMesh = gm;
-                        var renderer = effect.AddComponent<MeshRenderer>(); renderer.sharedMaterials = mats;
-                        MarkMode(effect, rec.ModeMask);
-                        EffectLifecycleBuilder.Tag(effect, rec.Index);
-                        for (int slot = 0; slot < slots.Length; slot++)
                         {
-                            _materials.Resolve(slots[slot], out _, out List<string> frames, out _, out float fps, out Vector2? dwell);
-                            if (frames != null) flip?.Add(renderer, slot, _materials.LoadFrames(frames), fps, dwell);
+                            // Exact directional lighting for the intact swap and its thrown pieces. The former remains still;
+                            // the latter tumbles beneath the fixed per-instance light directions just like physics props.
+                            var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, directional: true, mesh, rec.Role == "piece" ? rec.Node : $"Logo_{rec.Index}");
+                            breakables.Add(new BreakInst
+                            {
+                                Index = rec.Index,
+                                ModeMask = rec.ModeMask,
+                                Model = rec.Model,
+                                Mesh = gm,
+                                Mats = mats,
+                                Slots = slots,
+                                Center = rec.Center,
+                                Role = ParseRole(rec.Role),
+                                ClusterKey = rec.ClusterKey,
+                                CollisonSound = rec.Sound,
+                                SoundClip = rec.SoundClip,
+                                Throw = rec.Throw,
+                                BurstColor = rec.BurstColor,
+                                BreakDelay = rec.BreakDelay,
+                                BreakSound = rec.BreakSound,
+                                CrackStrength = rec.CrackStrength,
+                                CrackLifetime = rec.CrackLifetime,
+                                CrackSound = rec.CrackSound,
+                                Layers = rec.Layers
+                            });
+                            break;
                         }
-                        break;
-                    }
+                    case "effect":
+                        {
+                            var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Effect_{rec.Index}");
+                            var effectRoot = parent.Find("EffectProps");
+                            if (effectRoot == null) { var holder = new GameObject("EffectProps"); holder.transform.SetParent(parent, false); effectRoot = holder.transform; }
+                            var effect = new GameObject($"Effect_{rec.Index}_{rec.Model}");
+                            effect.transform.SetParent(effectRoot, false);
+                            effect.transform.localPosition = rec.Center;
+                            effect.AddComponent<MeshFilter>().sharedMesh = gm;
+                            var renderer = effect.AddComponent<MeshRenderer>(); renderer.sharedMaterials = mats;
+                            MarkMode(effect, rec.ModeMask);
+                            EffectLifecycleBuilder.Tag(effect, rec.Index);
+                            for (int slot = 0; slot < slots.Length; slot++)
+                            {
+                                _materials.Resolve(slots[slot], out _, out List<string> frames, out _, out float fps, out Vector2? dwell);
+                                if (frames != null) flip?.Add(renderer, slot, _materials.LoadFrames(frames), fps, dwell);
+                            }
+                            break;
+                        }
                     case "mover":
-                    {
-                        var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Mover_{rec.Index}");
-                        movers.Add(new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center });
-                        break;
-                    }
+                        {
+                            var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Mover_{rec.Index}");
+                            movers.Add(new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center });
+                            break;
+                        }
                     case "boostpad":
-                    {
-                        // The speed/trick arrow decal, pulled out of the merged mesh so the pad can pop + regrow on a
-                        // cross (docs/040). Flat lighting like the other decals; its UV scroll rides the material, so
-                        // the arrow keeps scrolling exactly as it did inside the merge.
-                        var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Pad_{rec.Index}");
-                        boostPads.Add(new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center });
-                        break;
-                    }
+                        {
+                            // The speed/trick arrow decal, pulled out of the merged mesh so the pad can pop + regrow on a
+                            // cross (docs/040). Flat lighting like the other decals; its UV scroll rides the material, so
+                            // the arrow keeps scrolling exactly as it did inside the merge.
+                            var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Pad_{rec.Index}");
+                            boostPads.Add(new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center });
+                            break;
+                        }
                     case "softflag":
                     case "softfence":
-                    {
-                        var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Soft_{rec.Index}");
-                        var si = new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center };
-                        if (rec.Kind == "softflag") softFlags.Add(si); else softFences.Add(si);
-                        break;
-                    }
+                        {
+                            var (gm, mats, _) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Soft_{rec.Index}");
+                            var si = new PhysicsInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Center = rec.Center };
+                            if (rec.Kind == "softflag") softFlags.Add(si); else softFences.Add(si);
+                            break;
+                        }
                     case "button":
-                    {
-                        // A ride-over button (docs/008), pulled out of the merged mesh so it can flash ALONE - retail
-                        // gives its flip node a private material override table, so only the button you crossed changes.
-                        // Flat lighting like the other decals; Slots carries the slot names so the build below can find
-                        // which submesh holds the state frames.
-                        var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Button_{rec.Index}");
-                        buttons.Add(new ButtonInst { Index = rec.Index, ModeMask = rec.ModeMask, Model = rec.Model, Mesh = gm, Mats = mats, Slots = slots,
-                                                     Center = rec.Center, Triggers = rec.Triggers,
-                                                     PulseFrames = rec.PulseFrames, PulseHolds = rec.PulseHolds });
-                        break;
-                    }
+                        {
+                            // A ride-over button (docs/008), pulled out of the merged mesh so it can flash ALONE - retail
+                            // gives its flip node a private material override table, so only the button you crossed changes.
+                            // Flat lighting like the other decals; Slots carries the slot names so the build below can find
+                            // which submesh holds the state frames.
+                            var (gm, mats, slots) = MeshFromDivert(dnode, rec, lighting, _cfg.PropDirLight, mesh, $"Button_{rec.Index}");
+                            buttons.Add(new ButtonInst
+                            {
+                                Index = rec.Index,
+                                ModeMask = rec.ModeMask,
+                                Model = rec.Model,
+                                Mesh = gm,
+                                Mats = mats,
+                                Slots = slots,
+                                Center = rec.Center,
+                                Triggers = rec.Triggers,
+                                PulseFrames = rec.PulseFrames,
+                                PulseHolds = rec.PulseHolds
+                            });
+                            break;
+                        }
                 }
             }
 
@@ -527,8 +589,16 @@ namespace OpenSlope.Importer
             Vector3 d1 = MeshDirectionToWorld(rec.Direction1);
             Vector3 d2 = MeshDirectionToWorld(rec.Direction2);
             Vector3 d3 = MeshDirectionToWorld(rec.Direction3);
-            return new PropLightData { Ambient = rec.Ambient, Key1 = rec.Key1, Key2 = rec.Key2, Key3 = rec.Key3,
-                                       Direction1 = d1, Direction2 = d2, Direction3 = d3 };
+            return new PropLightData
+            {
+                Ambient = rec.Ambient,
+                Key1 = rec.Key1,
+                Key2 = rec.Key2,
+                Key3 = rec.Key3,
+                Direction1 = d1,
+                Direction2 = d2,
+                Direction3 = d3
+            };
         }
 
         PropLightData LightData(BundleManifestReader.AnimProp rec)
@@ -536,8 +606,16 @@ namespace OpenSlope.Importer
             Vector3 d1 = MeshDirectionToWorld(rec.Direction1);
             Vector3 d2 = MeshDirectionToWorld(rec.Direction2);
             Vector3 d3 = MeshDirectionToWorld(rec.Direction3);
-            return new PropLightData { Ambient = rec.Ambient, Key1 = rec.Key1, Key2 = rec.Key2, Key3 = rec.Key3,
-                                       Direction1 = d1, Direction2 = d2, Direction3 = d3 };
+            return new PropLightData
+            {
+                Ambient = rec.Ambient,
+                Key1 = rec.Key1,
+                Key2 = rec.Key2,
+                Key3 = rec.Key3,
+                Direction1 = d1,
+                Direction2 = d2,
+                Direction3 = d3
+            };
         }
 
         static void SetLightingStreams(Mesh mesh, int count, PropLightData light)
@@ -721,9 +799,9 @@ namespace OpenSlope.Importer
                 ? _collision.AttachOneShotClip(sgo, clip, _cfg.GemPickupMinDistance, _cfg.GemPickupMaxDistance) : null;
 
             var gemMk = sgo.AddComponent<GemMarker>();
-            gemMk.Multiplier   = mult;
-            gemMk.pickupSound  = src;
-            gemMk.sparkle      = sparkle;
+            gemMk.Multiplier = mult;
+            gemMk.pickupSound = src;
+            gemMk.sparkle = sparkle;
             gemMk.minRideSpeed = _cfg.GemMinRideSpeed;
             gemMk.pickupVolume = 1f;
             // popHoldDelay / growBackDuration take the behaviour defaults; on a hit the gem pops (instant), holds, then regrows (docs/vrchat/043).
@@ -901,13 +979,13 @@ namespace OpenSlope.Importer
 
                 var rb = pgo.AddComponent<Rigidbody>();
                 rb.mass = pp.Mass;
-    #if UNITY_6000_0_OR_NEWER
+#if UNITY_6000_0_OR_NEWER
                 rb.linearDamping = _cfg.PhysicsLinearDrag;
                 rb.angularDamping = _cfg.PhysicsAngularDrag;
-    #else
+#else
                 rb.drag = _cfg.PhysicsLinearDrag;
                 rb.angularDrag = _cfg.PhysicsAngularDrag;
-    #endif
+#endif
                 rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative; // small props vs terrain
                 // Anchored at rest until the Udon hit-handler flips it dynamic - a plain dynamic body just slides
                 // down the slope on spawn and players can't push it anyway (docs/016).
@@ -917,22 +995,22 @@ namespace OpenSlope.Importer
                 // body (kinematic, set above) until the local player skis through it, then flips it dynamic and flings it
                 // (docs/016). The anchor-at-start intent lives in Rigidbody.isKinematic above; the behaviour reads that itself.
                 var physMk = pgo.AddComponent<PhysicsPropMarker>();
-                physMk.MinPlayerSpeed  = _cfg.PhysicsMinPlayerSpeed;
-                physMk.VelInherit      = _cfg.PhysicsKnockVelInherit;
-                physMk.UpBias          = _cfg.PhysicsKnockUpBias;
-                physMk.ReAnchor        = _cfg.PhysicsReAnchor;
-                physMk.SettleSpeed     = _cfg.PhysicsSettleSpeed;
-                physMk.SettleTime      = _cfg.PhysicsSettleTime;
+                physMk.MinPlayerSpeed = _cfg.PhysicsMinPlayerSpeed;
+                physMk.VelInherit = _cfg.PhysicsKnockVelInherit;
+                physMk.UpBias = _cfg.PhysicsKnockUpBias;
+                physMk.ReAnchor = _cfg.PhysicsReAnchor;
+                physMk.SettleSpeed = _cfg.PhysicsSettleSpeed;
+                physMk.SettleTime = _cfg.PhysicsSettleTime;
                 // GPU-instanced shared-mesh prop: the per-instance SSX light the behaviour re-applies at runtime (the
                 // edit-time MaterialPropertyBlock below is only for the editor preview - it's not serialized into play/build).
-                physMk.Instanced       = pp.Instanced;
-                physMk.InstAmbient     = pp.Lighting.Ambient;
-                physMk.InstKey1        = pp.Lighting.Key1;
-                physMk.InstKey2        = pp.Lighting.Key2;
-                physMk.InstKey3        = pp.Lighting.Key3;
-                physMk.InstDir1        = pp.Lighting.Direction1;
-                physMk.InstDir2        = pp.Lighting.Direction2;
-                physMk.InstDir3        = pp.Lighting.Direction3;
+                physMk.Instanced = pp.Instanced;
+                physMk.InstAmbient = pp.Lighting.Ambient;
+                physMk.InstKey1 = pp.Lighting.Key1;
+                physMk.InstKey2 = pp.Lighting.Key2;
+                physMk.InstKey3 = pp.Lighting.Key3;
+                physMk.InstDir1 = pp.Lighting.Direction1;
+                physMk.InstDir2 = pp.Lighting.Direction2;
+                physMk.InstDir3 = pp.Lighting.Direction3;
                 // SPILL (docs/036): this body's collision chain also throws a hidden contents twin (a garbage can's
                 // trash, a mail box's letters). Park the marker under its cluster key - BuildBreakableLogos runs after
                 // us and points it at the cluster GameObject once that exists, so the knock fires the throw.
@@ -1276,7 +1354,7 @@ namespace OpenSlope.Importer
                     }
 
                     var go = new GameObject(bk.Role + (bk.Role == LogoRole.Piece ? pieceIdx.ToString() : "") + "_" + bk.Index + "_" + bk.Model);
-                EffectLifecycleBuilder.Tag(go, bk.Index, detached: false);
+                    EffectLifecycleBuilder.Tag(go, bk.Index, detached: false);
                     go.transform.SetParent(cgo.transform, false);     // bk.Center is 0 -> meshes carry absolute root-local coords, aligned at localPos 0
                     MarkMode(go, bk.ModeMask);
                     go.transform.localPosition = bk.Center;            // ...except pieces, recentred on their own centroid so they can tumble
@@ -1473,36 +1551,36 @@ namespace OpenSlope.Importer
                 {
                     brkMk.crackStrength = intactBk.CrackStrength;
                     brkMk.crackLifetime = intactBk.CrackLifetime;
-                    brkMk.crackSound    = crackSrc;
+                    brkMk.crackSound = crackSrc;
                     brkMk.crackRenderer = crackRenderer;
-                    brkMk.crackSlot     = crackSlot;
-                    brkMk.crackFrames   = crackFrames;
-                    brkMk.crackNormal   = PlaneNormal(intactBk.Mesh);
+                    brkMk.crackSlot = crackSlot;
+                    brkMk.crackFrames = crackFrames;
+                    brkMk.crackNormal = PlaneNormal(intactBk.Mesh);
                     cracked++;
                 }
                 brkMk.intactRenderers = hideOnBreak.ToArray();
                 brkMk.brokenRenderers = showOnBreak.ToArray();
-                brkMk.breakSound      = breakSrc;
-                brkMk.debris          = debris;
-                brkMk.respawn         = _cfg.BreakLogoRespawn;
-                brkMk.respawnDelay    = _cfg.BreakLogoRespawnDelay;
-                brkMk.minRideSpeed    = _cfg.BreakLogoMinRideSpeed;
-                brkMk.breakVolume     = 1f;
+                brkMk.breakSound = breakSrc;
+                brkMk.debris = debris;
+                brkMk.respawn = _cfg.BreakLogoRespawn;
+                brkMk.respawnDelay = _cfg.BreakLogoRespawnDelay;
+                brkMk.minRideSpeed = _cfg.BreakLogoMinRideSpeed;
+                brkMk.breakVolume = 1f;
                 // The star-burst breakables (balloons) grow back from nothing on respawn, like the trick gems; the
                 // shard breakables (logos/fences) pop back instantly. Keyed on the burst colour, so it's data-derived.
                 brkMk.growBackOnRestore = burstColor != null && _cfg.BalloonGrowBack;
-                brkMk.growBackDuration  = _cfg.BalloonGrowBackDuration;
-                brkMk.breakDelay      = rollBreakDelay;
-                brkMk.endSound        = endSrc;
-                brkMk.rollAnimObject  = rollGo;
+                brkMk.growBackDuration = _cfg.BalloonGrowBackDuration;
+                brkMk.breakDelay = rollBreakDelay;
+                brkMk.endSound = endSrc;
+                brkMk.rollAnimObject = rollGo;
                 brkMk.pieceTransforms = pieceT;
-                brkMk.pieceRenderers  = pieceR;
+                brkMk.pieceRenderers = pieceR;
                 if (throwParams != null && throwParams.Length >= 10)
                 {
                     // The SSF Sub20 mesh-throw params (docs/036): U2 duration, U3-5 authored dir (0 = impact dir),
                     // U6-8 per-axis velocity (SSX cm/s), U9 direction scale. Mesh axes (X-neg) - negate X like verts.
                     brkMk.throwDuration = Mathf.Max(0.25f, throwParams[2]);
-                    brkMk.throwDir      = new Vector3(-throwParams[3], throwParams[4], throwParams[5]);
+                    brkMk.throwDir = new Vector3(-throwParams[3], throwParams[4], throwParams[5]);
                     brkMk.throwVelScale = new Vector3(throwParams[6], throwParams[7], throwParams[8]);
                     brkMk.throwDirScale = throwParams[9];
                 }
@@ -2104,12 +2182,12 @@ namespace OpenSlope.Importer
         {
             switch (role)
             {
-                case "intact":   return LogoRole.Intact;
-                case "broken":   return LogoRole.Broken;
+                case "intact": return LogoRole.Intact;
+                case "broken": return LogoRole.Broken;
                 case "scanline": return LogoRole.Scanline;
-                case "piece":    return LogoRole.Piece;
-                case "smash":    return LogoRole.Smash;
-                default:         return LogoRole.None;
+                case "piece": return LogoRole.Piece;
+                case "smash": return LogoRole.Smash;
+                default: return LogoRole.None;
             }
         }
 

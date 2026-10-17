@@ -27,7 +27,7 @@ namespace OpenSlope.VrcPlugin
     public static class MapExport
     {
         const string RootName = Map.RootName;   // "OpenSlope_Map" (visual geometry under its Level child; Collision/Rails at the top)
-        const string PrefKey  = "OpenSlope_MapExport_Dir";
+        const string PrefKey = "OpenSlope_MapExport_Dir";
 
         // --- Tunables ---------------------------------------------------------------------------------------
         const float MetersPerPixel = 2f;    // 1 = finer (4x the rays/pixels), 2 = good guide resolution
@@ -361,14 +361,22 @@ namespace OpenSlope.VrcPlugin
         {
             switch (id)
             {
-                case 0: return new Color32(220, 40, 40, 255);   case 1: return new Color32(240, 240, 248, 255);
-                case 2: return new Color32(210, 205, 200, 255); case 3: return new Color32(188, 210, 236, 255);
-                case 4: return new Color32(150, 190, 205, 255); case 5: return new Color32(85, 200, 238, 255);
-                case 6: return new Color32(200, 80, 200, 255);  case 7: return new Color32(120, 180, 230, 255);
-                case 8: return new Color32(220, 230, 245, 255); case 9: return new Color32(120, 95, 78, 255);
-                case 10: return new Color32(70, 70, 80, 255);   case 11: return new Color32(140, 210, 235, 255);
-                case 12: return new Color32(175, 200, 210, 255);case 13: return new Color32(150, 140, 120, 255);
-                case 14: return new Color32(255, 220, 60, 255); case 16: return new Color32(225, 205, 150, 255);
+                case 0: return new Color32(220, 40, 40, 255);
+                case 1: return new Color32(240, 240, 248, 255);
+                case 2: return new Color32(210, 205, 200, 255);
+                case 3: return new Color32(188, 210, 236, 255);
+                case 4: return new Color32(150, 190, 205, 255);
+                case 5: return new Color32(85, 200, 238, 255);
+                case 6: return new Color32(200, 80, 200, 255);
+                case 7: return new Color32(120, 180, 230, 255);
+                case 8: return new Color32(220, 230, 245, 255);
+                case 9: return new Color32(120, 95, 78, 255);
+                case 10: return new Color32(70, 70, 80, 255);
+                case 11: return new Color32(140, 210, 235, 255);
+                case 12: return new Color32(175, 200, 210, 255);
+                case 13: return new Color32(150, 140, 120, 255);
+                case 14: return new Color32(255, 220, 60, 255);
+                case 16: return new Color32(225, 205, 150, 255);
                 case 18: return new Color32(248, 150, 28, 255);
                 default: return new Color32(255, 0, 255, 255);
             }
@@ -377,12 +385,24 @@ namespace OpenSlope.VrcPlugin
         {
             switch (id)
             {
-                case 0: return "reset / out of bounds"; case 1: return "standard snow"; case 2: return "standard off track";
-                case 3: return "powdered snow"; case 4: return "slow powdered snow"; case 5: return "ice";
-                case 6: return "bounce / unskiable"; case 7: return "ice / water no trail"; case 8: return "glidy snow particles";
-                case 9: return "rock / off-track"; case 10: return "wall"; case 11: return "ice crunch no trail";
-                case 12: return "no sound small wake"; case 13: return "off-track metal"; case 14: return "speed / grinding";
-                case 16: return "sand"; case 17: return "no collision"; case 18: return "show-off ramp / metal";
+                case 0: return "reset / out of bounds";
+                case 1: return "standard snow";
+                case 2: return "standard off track";
+                case 3: return "powdered snow";
+                case 4: return "slow powdered snow";
+                case 5: return "ice";
+                case 6: return "bounce / unskiable";
+                case 7: return "ice / water no trail";
+                case 8: return "glidy snow particles";
+                case 9: return "rock / off-track";
+                case 10: return "wall";
+                case 11: return "ice crunch no trail";
+                case 12: return "no sound small wake";
+                case 13: return "off-track metal";
+                case 14: return "speed / grinding";
+                case 16: return "sand";
+                case 17: return "no collision";
+                case 18: return "show-off ramp / metal";
                 default: return "unknown";
             }
         }

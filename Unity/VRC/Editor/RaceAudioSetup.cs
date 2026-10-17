@@ -28,9 +28,9 @@ namespace OpenSlope.VrcPlugin
     // Same two-step program-asset bootstrap as the other setups (docs/vrchat/013). Re-run after re-import.
     public static class RaceAudioSetup
     {
-        const string RootName  = Map.RootName;   // "OpenSlope_Map"
+        const string RootName = Map.RootName;   // "OpenSlope_Map"
         const string ChildName = "RaceAudio";
-        const string SpeechMc  = MapLayout.SharedFolder + "/speech/mc";
+        const string SpeechMc = MapLayout.SharedFolder + "/speech/mc";
 
         const float MusicVolume = 0.42f;
         const float VoiceVolume = 0.85f;
@@ -99,13 +99,13 @@ namespace OpenSlope.VrcPlugin
             var mc = mcGo.AddUdonSharpComponent<AnnouncerU>();
             mc.source = voiceSrc;
             mc.volume = VoiceVolume;
-            mc.goClips        = LoadBank("Go");
-            mc.bigAirClips    = LoadBank("Big_Air");
-            mc.landClips      = LoadBank("Land");
+            mc.goClips = LoadBank("Go");
+            mc.bigAirClips = LoadBank("Big_Air");
+            mc.landClips = LoadBank("Land");
             mc.knockdownClips = LoadBank("Knockdown");
-            mc.slowClips      = LoadBank("Slow");
-            mc.boostClips     = LoadBank("Boost_Icon");
-            mc.sweetClips     = LoadBank("Sweet");
+            mc.slowClips = LoadBank("Slow");
+            mc.boostClips = LoadBank("Boost_Icon");
+            mc.sweetClips = LoadBank("Sweet");
             UdonSharpEditorUtility.CopyProxyToUdon(mc);
 
             // ---- wire every board (they push ride state + fire the events) ----

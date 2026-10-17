@@ -155,7 +155,7 @@ namespace OpenSlope.VrcPlugin
             if (!_tracksOk) return;
 
             AudioSource active = _activeIsA ? sourceA : sourceB;
-            AudioSource other  = _activeIsA ? sourceB : sourceA;
+            AudioSource other = _activeIsA ? sourceB : sourceA;
             float v = volume * Mathf.Clamp01(duck) * Mathf.Clamp01(videoDuck) * (uiMuted ? 0f : 1f);   // live duck: race director / video / the board's mute can pull us down mid-bar
 
             if (_crossfading)
@@ -164,7 +164,7 @@ namespace OpenSlope.VrcPlugin
                 _fadeT += dt;
                 float t = Mathf.Clamp01(_fadeT / c);
                 active.volume = v * (1f - t);
-                other.volume  = v * t;
+                other.volume = v * t;
                 if (t >= 1f)
                 {
                     active.Stop();

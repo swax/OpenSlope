@@ -21,15 +21,15 @@ namespace OpenSlope.VrcPlugin
     // attaches). See docs/vrchat/013-udon-components.md.
     public static class SnowfallSetup
     {
-        const string ChildName  = "Snowfall";                                     // OpenSlope_Map/Snowfall
-        const string MatPath    = Map.AssetsFolder + "/Materials/Snowfield.mat";
-        const string MeshPath   = Map.AssetsFolder + "/Materials/Snowfield.asset";  // the baked flake-quad mesh
+        const string ChildName = "Snowfall";                                     // OpenSlope_Map/Snowfall
+        const string MatPath = Map.AssetsFolder + "/Materials/Snowfield.mat";
+        const string MeshPath = Map.AssetsFolder + "/Materials/Snowfield.asset";  // the baked flake-quad mesh
         const string OldMatPath = Map.AssetsFolder + "/Materials/Snowflake.mat";    // the ParticleSystem-era material (retired)
 
         const int FlakeCount = 600;    // flake quads in the wrapped box around the camera
-        const int BakeSeed   = 4419;   // fixed seed: every re-run bakes the identical field
+        const int BakeSeed = 4419;   // fixed seed: every re-run bakes the identical field
 
-        const float MarginFrac    = 1.25f;   // the field's never-cull box = the course's renderable bounds x this
+        const float MarginFrac = 1.25f;   // the field's never-cull box = the course's renderable bounds x this
         const float MinBoundsSize = 200f;    // ...floored here, so a tiny or renderer-less course still gets a real box
 
         [MenuItem("OpenSlope/Setup/Snowfall", false, 190)]
@@ -138,10 +138,10 @@ namespace OpenSlope.VrcPlugin
         static Mesh GetSnowfieldMesh(Vector3 boundsSize)
         {
             var rng = new System.Random(BakeSeed);
-            var verts   = new Vector3[FlakeCount * 4];
+            var verts = new Vector3[FlakeCount * 4];
             var corners = new Vector2[FlakeCount * 4];
-            var rnds    = new System.Collections.Generic.List<Vector4>(FlakeCount * 4);
-            var tris    = new int[FlakeCount * 6];
+            var rnds = new System.Collections.Generic.List<Vector4>(FlakeCount * 4);
+            var tris = new int[FlakeCount * 6];
             for (int i = 0; i < FlakeCount; i++)
             {
                 var basePos = new Vector3((float)rng.NextDouble(), (float)rng.NextDouble(), (float)rng.NextDouble());
@@ -149,10 +149,10 @@ namespace OpenSlope.VrcPlugin
                                       (float)rng.NextDouble(), (float)rng.NextDouble());
                 int v = i * 4;
                 verts[v] = verts[v + 1] = verts[v + 2] = verts[v + 3] = basePos;
-                corners[v]     = new Vector2(-0.5f, -0.5f);
-                corners[v + 1] = new Vector2( 0.5f, -0.5f);
-                corners[v + 2] = new Vector2( 0.5f,  0.5f);
-                corners[v + 3] = new Vector2(-0.5f,  0.5f);
+                corners[v] = new Vector2(-0.5f, -0.5f);
+                corners[v + 1] = new Vector2(0.5f, -0.5f);
+                corners[v + 2] = new Vector2(0.5f, 0.5f);
+                corners[v + 3] = new Vector2(-0.5f, 0.5f);
                 for (int k = 0; k < 4; k++) rnds.Add(rnd);
                 int t = i * 6;
                 tris[t] = v; tris[t + 1] = v + 2; tris[t + 2] = v + 1;

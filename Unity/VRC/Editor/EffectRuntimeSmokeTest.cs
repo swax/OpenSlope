@@ -105,7 +105,9 @@ namespace OpenSlope.VrcPlugin
                 reader.EffectTargets.Add(new BundleManifestReader.EffectTarget { Index = 9000, Name = "pot" });
                 reader.EffectTriggers.Add(new BundleManifestReader.EffectTrigger
                 {
-                    Index = 9001, Name = "switch", Size = Vector3.one,
+                    Index = 9001,
+                    Name = "switch",
+                    Size = Vector3.one,
                     Actions = new List<BundleManifestReader.EffectAction> { new BundleManifestReader.EffectAction { Target = 9000, Mode = 3, Delay = .05f } }
                 });
                 go.name = Map.RootName;

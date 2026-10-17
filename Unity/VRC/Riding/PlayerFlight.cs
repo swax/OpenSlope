@@ -182,7 +182,7 @@ namespace OpenSlope.VrcPlugin
             v.x = horiz.x;
             v.z = horiz.z;
 
-            if (v.y >  maxVerticalSpeed) v.y =  maxVerticalSpeed;
+            if (v.y > maxVerticalSpeed) v.y = maxVerticalSpeed;
             if (v.y < -maxVerticalSpeed) v.y = -maxVerticalSpeed;
 
             _player.SetVelocity(v);

@@ -103,14 +103,14 @@ namespace OpenSlope.VrcPlugin
 
         // ---- cross-UdonBehaviour read surface (the finish line reads these; leave alone) ----
         [HideInInspector] public bool RunActive;     // a run is in progress (mounted - or mid-air off the board in a trick - not yet finished/ended)
-        [HideInInspector] public int  RunMode;       // the runMode this run STARTED in (frozen at mount, so switching the
-                                                     // Settings Board mid-run doesn't rewrite the run you're on) - the
-                                                     // finish line reads it to pick the leaderboard list
-        [HideInInspector] public int  RunScore;      // current run score = banked total + the live in-progress trick preview
-        [HideInInspector] public int  RunTimeCs;     // current run time in CENTISECONDS (frozen at the finish value once ended)
-        [HideInInspector] public int  RunClockCs;    // HUD clock: elapsed in Race, remaining in Trick/showoff
-        [HideInInspector] public int  RunLastTimeBonusCs; // most recent type-11 award, for the HUD cue
-        [HideInInspector] public int  RunTimeBonusTick;   // increments on each checkpoint award
+        [HideInInspector] public int RunMode;       // the runMode this run STARTED in (frozen at mount, so switching the
+                                                    // Settings Board mid-run doesn't rewrite the run you're on) - the
+                                                    // finish line reads it to pick the leaderboard list
+        [HideInInspector] public int RunScore;      // current run score = banked total + the live in-progress trick preview
+        [HideInInspector] public int RunTimeCs;     // current run time in CENTISECONDS (frozen at the finish value once ended)
+        [HideInInspector] public int RunClockCs;    // HUD clock: elapsed in Race, remaining in Trick/showoff
+        [HideInInspector] public int RunLastTimeBonusCs; // most recent type-11 award, for the HUD cue
+        [HideInInspector] public int RunTimeBonusTick;   // increments on each checkpoint award
         // Laps left COUNTING the one under way, the way the engine counts them: seeded to the course's pass count,
         // decremented once per crossing, 0 only once the crossing that ends the race has counted
         // ([Trailmap: 390-lap-rate, 360-lapboost-gate]). On MEGAPLEX's four it reads 3 after the first crossing -
@@ -121,54 +121,54 @@ namespace OpenSlope.VrcPlugin
         // LastLapCountTime so a course carrying both in sequence counts one crossing once. -1 means no lap race is
         // running (free-riding, or no finish line), which is nonzero and so reads as "laps left" - the finish tube
         // lifts a free-rider every time. The run HUD shows it as "N laps left".
-        [HideInInspector] public int  LapsRemaining = -1;
+        [HideInInspector] public int LapsRemaining = -1;
         // When a lap last counted (CountLapAtFinish), so the two crossing stations above can't both count the same
         // pass. -999 = never this run.
         [HideInInspector] public float LastLapCountTime = -999f;
         [HideInInspector] public float RunStyleRots; // in-progress trick rotation count (spins+flips)/360 - the nose HUD's w x x x y x z 'w'
-        [HideInInspector] public int   RunGemMult;   // active gem multiplier (1/2/3/5) - the nose HUD's 'y'
-        [HideInInspector] public bool  RunTrickActive;     // airborne in a trick right now -> the HUD shows the LIVE accumulating score + equation
-        [HideInInspector] public int   RunTrickPts;        // the in-progress trick's current worth (accumulating score line)
-        [HideInInspector] public int   RunLastTrickPts = -1; // last RESOLVED trick's points (-1 = none this run yet); on a bail = the LOST value
-        [HideInInspector] public bool  RunLastBailed;      // the last resolved trick was WIPED by a bail -> the HUD shows its (lost) score in red
-        [HideInInspector] public int   RunLastBailReason; // why the last trick was disqualified: 1 = sloppy landing, 2 = out of bounds
-        [HideInInspector] public int   RunResolveTick;   // ++ each time a trick RESOLVES (bank or bail) -> the HUD starts its 3 s result window
+        [HideInInspector] public int RunGemMult;   // active gem multiplier (1/2/3/5) - the nose HUD's 'y'
+        [HideInInspector] public bool RunTrickActive;     // airborne in a trick right now -> the HUD shows the LIVE accumulating score + equation
+        [HideInInspector] public int RunTrickPts;        // the in-progress trick's current worth (accumulating score line)
+        [HideInInspector] public int RunLastTrickPts = -1; // last RESOLVED trick's points (-1 = none this run yet); on a bail = the LOST value
+        [HideInInspector] public bool RunLastBailed;      // the last resolved trick was WIPED by a bail -> the HUD shows its (lost) score in red
+        [HideInInspector] public int RunLastBailReason; // why the last trick was disqualified: 1 = sloppy landing, 2 = out of bounds
+        [HideInInspector] public int RunResolveTick;   // ++ each time a trick RESOLVES (bank or bail) -> the HUD starts its 3 s result window
         [HideInInspector] public float RunLastImpact;      // last real landing's into-surface impact (m/s) - HUD landing debug
         [HideInInspector] public float RunLastAlignErr;    // last real landing's deck-vs-surface angle (deg) - HUD landing debug
-        [HideInInspector] public bool  RunGrinding;        // on a rail right now (scoring continuously) -> HUD shows a grind line
+        [HideInInspector] public bool RunGrinding;        // on a rail right now (scoring continuously) -> HUD shows a grind line
         [HideInInspector] public float RunGrindTime;       // seconds on the current grind -> HUD
-        [HideInInspector] public bool  RunGrabbing;        // deck held in a hand mid-air right now (the grab-hold trick) -> HUD shows a grab line
+        [HideInInspector] public bool RunGrabbing;        // deck held in a hand mid-air right now (the grab-hold trick) -> HUD shows a grab line
         [HideInInspector] public float RunGrabTime;        // seconds the deck has been held this trick -> HUD
-        [HideInInspector] public bool  RunGrabRight;       // the grab's hand: true = right, false = left -> HUD label
+        [HideInInspector] public bool RunGrabRight;       // the grab's hand: true = right, false = left -> HUD label
         [HideInInspector] public float RunBoostMeter;      // current boost meter 0..1 (the run HUD's BOOST bar)
 
         // ---- run state ----
-        private bool  _runActive;     // mirrors RunActive (the private driver)
+        private bool _runActive;     // mirrors RunActive (the private driver)
         private float _runStartTime;  // Time.time at mount
-        private int   _showoffSeedCs;
-        private int   _runBonusCs;
-        private int   _runScore;      // banked run total (the live preview is added on top for RunScore)
-        private bool  _scoreAirExit;  // the station exit in progress is a deliberate AIRBORNE one (jump-off / deck grab
-                                      // mid-air) - set by ScoreFlagAirExit just before ExitStation, consumed by
-                                      // ScoreDismountHook to keep the run alive through the trick
+        private int _showoffSeedCs;
+        private int _runBonusCs;
+        private int _runScore;      // banked run total (the live preview is added on top for RunScore)
+        private bool _scoreAirExit;  // the station exit in progress is a deliberate AIRBORNE one (jump-off / deck grab
+                                     // mid-air) - set by ScoreFlagAirExit just before ExitStation, consumed by
+                                     // ScoreDismountHook to keep the run alive through the trick
         private float _scoreOffGrace; // settle window (s) after an airborne exit before the player-grounded end-check may
                                       // fire - VRChat is still re-establishing the player's own locomotion on the exit
                                       // frame (same reason ApplyExitVelocity waits a frame), so a same-frame grounded
                                       // read must not kill the run we just kept
 
         // ---- in-progress (current air) trick, wiped on land/bail ----
-        private bool  _scoreAir;      // currently airborne inside a trick (our own air-state latch, independent of _airTime)
-        private bool  _scoreBadLanding; // the touchdown this trick is resolving on was a BAD landing (set by the ride loop) -> wipe, no points
+        private bool _scoreAir;      // currently airborne inside a trick (our own air-state latch, independent of _airTime)
+        private bool _scoreBadLanding; // the touchdown this trick is resolving on was a BAD landing (set by the ride loop) -> wipe, no points
         private float _scoreGrindStyle; // style accrued on the rail this trick (added to the rotation style; reset on land/bail)
         private float _scoreGrindTime;  // seconds on the rail this trick -> the flat grind hold-tier
         private float _scoreGrabTime;   // seconds the deck was HELD IN A HAND this trick -> the flat tier ladder (score only)
         private float _scoreGrabStyle;  // style accrued by the held grab (rate x 0.045/s + the begin bump) -> points AND boost meter
-        private bool  _scoreGrabRight;  // which hand held it (true = right) - the HUD's left/right grab label
-        private bool  _scoreGrabHeldPrev; // deck was in hand last off-board frame - edge-detects a fresh grab segment (the begin bump)
+        private bool _scoreGrabRight;  // which hand held it (true = right) - the HUD's left/right grab label
+        private bool _scoreGrabHeldPrev; // deck was in hand last off-board frame - edge-detects a fresh grab segment (the begin bump)
         private float _scoreSpinDeg;  // degrees of yaw spin accrued this air (stick-X + VR head-look)
         private float _scoreFlipDeg;  // degrees of somersault flip accrued this air (stick-Y)
         private float _scoreAirTime;  // seconds in this air (our own counter; the board's _airTime is reset elsewhere)
-        private int   _gemMult = 1;   // active gem multiplier (1/2/3/5), MAX-not-stack, consumed by the next banked trick
+        private int _gemMult = 1;   // active gem multiplier (1/2/3/5), MAX-not-stack, consumed by the next banked trick
         private float _boostMeter;    // 0..1 boost energy; banked tricks fill it, holding boost drains it
 
         // Mount: start a timed, recordable run ONLY when you got on a FRESH board at its start gate (fromGate) AND the

@@ -90,8 +90,8 @@ namespace OpenSlope.BasisPlugin
             right = right.normalized;
             Vector3 rUp = Vector3.Cross(right, t).normalized;
             _rlAlong = Mathf.Abs(Vector3.Dot(d, t));
-            _rlLat   = Mathf.Abs(Vector3.Dot(d, right));
-            _rlVert  = Mathf.Abs(Vector3.Dot(d, rUp));
+            _rlLat = Mathf.Abs(Vector3.Dot(d, right));
+            _rlVert = Mathf.Abs(Vector3.Dot(d, rUp));
         }
 
         // One lock-on probe at a sample point: nearest rail, require travel is already roughly ALONG it (railAlign), accept
@@ -215,9 +215,9 @@ namespace OpenSlope.BasisPlugin
             // looked-ahead point. During the grace the lateral/along windows widen so a sloppy catch settles, then tighten.
             RailLocalOffset(transform.position - _railPoint, tan);
             bool grace = _grindTime < railGraceTime;
-            float latBox   = grace ? (railDeckReach + railLatTolerance) : railLatTolerance;
-            float vertBox  = grace ? (railVertTolerance + 0.2f)         : railVertTolerance;
-            float alongBox = grace ? (railAlongTolerance * 2f)          : railAlongTolerance;
+            float latBox = grace ? (railDeckReach + railLatTolerance) : railLatTolerance;
+            float vertBox = grace ? (railVertTolerance + 0.2f) : railVertTolerance;
+            float alongBox = grace ? (railAlongTolerance * 2f) : railAlongTolerance;
             if (_rlLat > latBox || _rlVert > vertBox || _rlAlong > alongBox) { ExitGrind(); return; }
 
             // Along-rail speed model on the carried MAGNITUDE (magnitude-preserving). Boost is a forward thrust along the

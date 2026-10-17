@@ -86,10 +86,10 @@ namespace OpenSlope.VrcPlugin
         private bool _summonHeld;      // ...and it's the SUMMON hold, so WE drive the transform onto the hand (no force-pickup API exists)
         private bool _summonRightHand; // which hand summoned it
         private Quaternion _summonGripRot = Quaternion.identity; // the deck's rotation RELATIVE TO THE HAND, captured at
-                                       // the grab (BeginSummonHold): the hold keeps the orientation the board had - it
-                                       // translates to the hand and then rides the wrist - never snapping to a canned
-                                       // carry pose. Grabbed off your feet mid-trick, the deck arrives still oriented
-                                       // exactly as it flew.
+                                                                 // the grab (BeginSummonHold): the hold keeps the orientation the board had - it
+                                                                 // translates to the hand and then rides the wrist - never snapping to a canned
+                                                                 // carry pose. Grabbed off your feet mid-trick, the deck arrives still oriented
+                                                                 // exactly as it flew.
         private float _summonEase;     // 0..1 ease-in of the snap-to-hand on the first frames of a summon
         private Vector3 _heldVel;      // hand velocity measured off the transform delta while held - the throw we hand to the coast on release
         private Vector3 _heldPrevPos;  // last frame's held position, for that delta

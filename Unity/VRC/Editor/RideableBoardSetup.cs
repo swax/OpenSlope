@@ -27,7 +27,7 @@ namespace OpenSlope.VrcPlugin
     public static class RideableBoardSetup
     {
         const string PivotName = "Heading";
-        const string DeckName  = "Deck";
+        const string DeckName = "Deck";
 
         // The visible deck is the game's own snowboard model + skin, extracted by `snowknife board` (docs/018): the three
         // real deck SHAPES, plus the per-rider 'bord' skins. Each spawn picks a RANDOM deck shape and a RANDOM rider's
@@ -41,12 +41,12 @@ namespace OpenSlope.VrcPlugin
         };
         const string BoardTexFolder = MapLayout.SharedFolder + "/chars/BoardTextures";  // <id>.png decoded from TEXPS2.BIG
         const string BoardMatFolder = MapLayout.SharedFolder + "/chars/BoardMaterials"; // one generated .mat per skin we pick
-        const string BoardShader    = "OpenSlope/BoardProbeLit";                    // probe-lit deck: darkens in shade with the rider (docs/unity/010)
+        const string BoardShader = "OpenSlope/BoardProbeLit";                    // probe-lit deck: darkens in shade with the rider (docs/unity/010)
         // The board model is exported in raw SSX units (cm, 100 u = 1 m). Scale each deck by that same world scale as all
         // other geometry, so it keeps its TRUE in-game size (the decks are genuinely different shapes/sizes, not LODs).
         // The decks are bigger than the fixed BoardColliderSize gaze/ray box - intentional (size is cosmetic; the physics
         // works in absolute world metres and ignores deck scale).
-        const float  BoardModelScale = 0.01f; // m per SSX unit (= ImportConfig.WorldScale)
+        const float BoardModelScale = 0.01f; // m per SSX unit (= ImportConfig.WorldScale)
         static readonly Vector3 BoardColliderSize = new Vector3(0.30f, 0.12f, 1.60f); // ~footprint, forward = +Z
         // VRChat's Pickup layer (13). The one layer property that matters here: Pickup does NOT collide with the Player
         // layers, and Default DOES - so a board on Default shoves the player whose capsule it overlaps. See BuildBoardAt.
@@ -87,9 +87,9 @@ namespace OpenSlope.VrcPlugin
         const string MatFolder = Map.GeneratedFolder;
         const string SnowMatPath = MatFolder + "/ssx_snow_particle.mat"; // shared soft-white material for the snow FX
         static Material _snowMat;                                          // cached so all boards share one snow material
-        const string SnowSprite  = MapLayout.SharedFolder + "/Textures/Particles/clod.png"; // the game's soft snow-burst 'clod' (docs/unity/014)
+        const string SnowSprite = MapLayout.SharedFolder + "/Textures/Particles/clod.png"; // the game's soft snow-burst 'clod' (docs/unity/014)
         const string WakeMatPath = MatFolder + "/ssx_board_wake_mesh.mat"; // shared material for the carved-snow wake ribbon
-        const string WakeShader  = "OpenSlope/WakeRibbon";                       // unlit vertex-colour alpha shader the wake mesh draws with
+        const string WakeShader = "OpenSlope/WakeRibbon";                       // unlit vertex-colour alpha shader the wake mesh draws with
         static Material _wakeMat;                                          // cached so all boards share one wake material
         const string SparkMatPath = MatFolder + "/ssx_rail_spark.mat";    // shared additive material for the grind sparks
         const string SparkSprite = MapLayout.SharedFolder + "/Textures/Particles/str3.png"; // the game's 4-point twinkle for grind sparks (docs/unity/014)
@@ -105,7 +105,7 @@ namespace OpenSlope.VrcPlugin
         static readonly string[] CarveWavs = { "003", "011", "027", "059", "075", "043", "035", "067", "019" }; // group*8+3
         // Traced primary-rider BOARD-family transients: +2 on air entry, +1 on landing/contact.
         const string OllieWav = "002";
-        const string LandWav  = "001";
+        const string LandWav = "001";
         // Grind scrape loop: the zboard RAIL group's glide loop (group 6 -> slot 052), the continuous metal slide
         // (docs/026). First-guess - swap to 051 (the RAIL carve/edge loop) by ear.
         const string GrindWav = "052";
@@ -153,7 +153,7 @@ namespace OpenSlope.VrcPlugin
             cap.radius = 0.30f;
             cap.height = 1.70f;
             cap.center = new Vector3(0f, 0.92f, 0f); // pelvis: the engine poses its body sphere here, and the
-                                                   // capsule is already the same 1.70 m tall, so this aligns the two // base at the deck, reaching ~1.7 m up where the standing rider is
+                                                     // capsule is already the same 1.70 m tall, so this aligns the two // base at the deck, reaching ~1.7 m up where the standing rider is
             var prb = probe.AddComponent<Rigidbody>();
             prb.isKinematic = true;                  // PhysX never integrates it; we move it by carrying the board
             prb.useGravity = false;
@@ -249,7 +249,7 @@ namespace OpenSlope.VrcPlugin
             // dispenses the first few (one per post), so an independent random roll could (and did) put a run of all-skis at
             // the front and make the gate monotype. Even distribution guarantees any contiguous prefix is a mix. The deck
             // MODEL + SKIN stay fully random below, so variety is preserved - only the TYPE is de-clumped.
-            bool skisOk   = AnyAssetExists(SkiModels);
+            bool skisOk = AnyAssetExists(SkiModels);
             bool boardsOk = AnyAssetExists(BoardModels);
             bool wantSki = Mathf.FloorToInt((poolIndex + 1) * SkiSpawnChance) > Mathf.FloorToInt(poolIndex * SkiSpawnChance);
             bool useSki = skisOk && (!boardsOk || wantSki);
@@ -333,13 +333,13 @@ namespace OpenSlope.VrcPlugin
 
             // Split the combined mesh at the WIDTH (model Z) midpoint - the gap between the two skis.
             float zMid = (mesh.bounds.min.z + mesh.bounds.max.z) * 0.5f;
-            Mesh leftMesh  = GetOrCreateSkiHalf(modelPath, mesh, zMid, true);
+            Mesh leftMesh = GetOrCreateSkiHalf(modelPath, mesh, zMid, true);
             Mesh rightMesh = GetOrCreateSkiHalf(modelPath, mesh, zMid, false);
             if (leftMesh == null || rightMesh == null || leftMesh.vertexCount == 0 || rightMesh.vertexCount == 0)
                 return false;
 
             Vector3 pairCenterRide = R.MultiplyPoint3x4(mesh.bounds.center); // pair centre in ride space (recentre to origin)
-            BuildOneSki(frame.transform, "SkiBank_L", leftMesh,  R, pairCenterRide, deckMat);
+            BuildOneSki(frame.transform, "SkiBank_L", leftMesh, R, pairCenterRide, deckMat);
             BuildOneSki(frame.transform, "SkiBank_R", rightMesh, R, pairCenterRide, deckMat);
 
             float s = BoardModelScale;
@@ -401,7 +401,7 @@ namespace OpenSlope.VrcPlugin
             Vector3[] sn = src.normals;
             int[] st = src.triangles;
             bool hasUv = su != null && su.Length == sv.Length;
-            bool hasN  = sn != null && sn.Length == sv.Length;
+            bool hasN = sn != null && sn.Length == sv.Length;
 
             var nv = new List<Vector3>();
             var nu = new List<Vector2>();
@@ -460,7 +460,7 @@ namespace OpenSlope.VrcPlugin
             foreach (var o in objs)
             {
                 if (mesh == null && o is Mesh me) mesh = me;
-                if (mat  == null && o is Material ma) mat = ma;
+                if (mat == null && o is Material ma) mat = ma;
             }
             return mesh;
         }
@@ -469,7 +469,7 @@ namespace OpenSlope.VrcPlugin
         // default material). Boards draw from the rider 'bord' pool, skis from the brand 'skis' pool; both build + cache
         // the .mat the first time each skin is picked.
         static Material PickRandomBoardSkin() => PickRandomSkin(BoardSkinIds(), BoardTexFolder, BoardMatFolder);
-        static Material PickRandomSkiSkin()   => PickRandomSkin(SkiSkinIds(),   SkiTexFolder,   SkiMatFolder);
+        static Material PickRandomSkiSkin() => PickRandomSkin(SkiSkinIds(), SkiTexFolder, SkiMatFolder);
 
         static Material PickRandomSkin(string[] skins, string texFolder, string matFolder)
         {
@@ -480,7 +480,7 @@ namespace OpenSlope.VrcPlugin
         // The pool of skin ids = every <id>.png under the bank folder (minus any excluded specials), enumerated from the
         // asset database and cached for the session. Boards exclude the two non-rider specials; skis exclude nothing.
         static string[] BoardSkinIds() => _boardSkins ??= EnumerateSkinIds(BoardTexFolder, SkinExclude);
-        static string[] SkiSkinIds()   => _skiSkins   ??= EnumerateSkinIds(SkiTexFolder, null);
+        static string[] SkiSkinIds() => _skiSkins ??= EnumerateSkinIds(SkiTexFolder, null);
 
         static string[] EnumerateSkinIds(string texFolder, System.Collections.Generic.HashSet<string> exclude)
         {
@@ -538,7 +538,7 @@ namespace OpenSlope.VrcPlugin
         {
             if (AssetDatabase.IsValidFolder(assetFolder)) return;
             string parent = System.IO.Path.GetDirectoryName(assetFolder).Replace('\\', '/');
-            string leaf   = System.IO.Path.GetFileName(assetFolder);
+            string leaf = System.IO.Path.GetFileName(assetFolder);
             if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, leaf);
         }
@@ -560,7 +560,7 @@ namespace OpenSlope.VrcPlugin
             var grind = NewBoardSource(audioGo, "Grind"); ConfigLoopSource(grind); // RAIL grind scrape loop (docs/026)
             var boost = NewBoardSource(audioGo, "Boost"); ConfigLoopSource(boost); // held-boost sound (volume-enveloped loop, zbxsfx 120/121/122)
             var bigAir = NewBoardSource(audioGo, "BigAirWind"); ConfigLoopSource(bigAir); // focused-rider MAIN/032
-            var evt   = NewBoardSource(audioGo, "Event");
+            var evt = NewBoardSource(audioGo, "Event");
             evt.playOnAwake = false; evt.loop = false; evt.spatialBlend = 0f; evt.dopplerLevel = 0f;
             ConfigSpatial2D(evt); // the one-shot is 2D too - tag it so VRChat keeps it flat (no spatialize, no warning)
 
@@ -570,12 +570,12 @@ namespace OpenSlope.VrcPlugin
             proxy.grindSource = grind;
             proxy.boostSource = boost;
             proxy.bigAirWindSource = bigAir;
-            proxy.glideClips  = LoadClips(GlideWavs);
-            proxy.carveClips  = LoadClips(CarveWavs);
-            proxy.ollieClip   = LoadBoardClip(OllieWav);
-            proxy.landClip    = LoadBoardClip(LandWav);
-            proxy.grindClip   = LoadBoardClip(GrindWav);
-            proxy.boostClips  = LoadMainClips(BoostWavs); // boost-engage whoosh, MAIN bank (zbxsfx) 120/121/122
+            proxy.glideClips = LoadClips(GlideWavs);
+            proxy.carveClips = LoadClips(CarveWavs);
+            proxy.ollieClip = LoadBoardClip(OllieWav);
+            proxy.landClip = LoadBoardClip(LandWav);
+            proxy.grindClip = LoadBoardClip(GrindWav);
+            proxy.boostClips = LoadMainClips(BoostWavs); // boost-engage whoosh, MAIN bank (zbxsfx) 120/121/122
             proxy.bigAirWindClip = LoadMainLoopClip(BigAirWindWav, "big-air wind");
         }
 
@@ -666,7 +666,7 @@ namespace OpenSlope.VrcPlugin
             // hand-Emit()'d from ride state (RideableBoard.Fx.cs). The surface spray THROWS its sprites with a real velocity
             // and swaps material per surface class (blb1/swp2/str3/cnf2); the cloud is one soft 'ex06' puff system (box-scattered
             // so it batch-Emits) standing in for the sys1/sys2 carve veil AND the sys5 powder cloud.
-            proxy.surfaceSpray  = BuildSurfaceSpray(fxGo);  // 40-slot ring - the per-surface carve fan (the main spray)
+            proxy.surfaceSpray = BuildSurfaceSpray(fxGo);  // 40-slot ring - the per-surface carve fan (the main spray)
             proxy.surfSprayRenderer = proxy.surfaceSpray.GetComponent<ParticleSystemRenderer>();
             // Per-surface spray sprite = the surface record's spray asset index resolved against the runtime sprite
             // name-table order ([Trailmap: 380-carve-effects] - the ONE index space the board spray raw-indexes).
@@ -842,7 +842,7 @@ namespace OpenSlope.VrcPlugin
         {
             if (_sprayMats.TryGetValue(spriteId, out var cached) && cached != null) return cached;
             string spritePath = MapLayout.SharedFolder + "/Textures/Particles/" + spriteId + ".png";
-            string matPath    = MatFolder + "/ssx_spray_" + spriteId + ".mat";
+            string matPath = MatFolder + "/ssx_spray_" + spriteId + ".mat";
             var existing = AssetDatabase.LoadAssetAtPath<Material>(matPath);
             if (existing != null) { existing = HealParticleTex(existing, spritePath); _sprayMats[spriteId] = existing; return existing; }
 

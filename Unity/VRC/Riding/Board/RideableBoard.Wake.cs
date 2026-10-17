@@ -68,12 +68,12 @@ namespace OpenSlope.VrcPlugin
             if (_wkVerts == null || _wkVerts.Length != vCount)
             {
                 _wkVerts = new Vector3[vCount];
-                _wkCols  = new Color[vCount];
-                _wkTris  = new int[WK_MAX * (WK_CROSS - 1) * 6];   // WK_MAX strips (ring rows + the transient front row)
-                _wkCtr   = new Vector3[WK_MAX];
+                _wkCols = new Color[vCount];
+                _wkTris = new int[WK_MAX * (WK_CROSS - 1) * 6];   // WK_MAX strips (ring rows + the transient front row)
+                _wkCtr = new Vector3[WK_MAX];
                 _wkSideV = new Vector3[WK_MAX];
                 _wkHalfW = new float[WK_MAX];
-                _wkAgeT  = new float[WK_MAX];
+                _wkAgeT = new float[WK_MAX];
                 _wkDepth = new float[WK_MAX];
                 // Project-authored fallback horizontal sun azimuth, matching the editor's default. We dot this with
                 // the across-track axis for the light/dark split; normalizing lets the split reach +-1 when riding
@@ -198,7 +198,7 @@ namespace OpenSlope.VrcPlugin
                 // world-absolute physics). 1 when unmounted / authored size.
                 float hl = trailWidthMax * 0.5f * _riderScale;         // board half-LENGTH
                 float hw = trailWidthMin * 0.5f * _riderScale;         // board half-WIDTH
-                float fx = Vector3.Dot(f, side),      fy = Vector3.Dot(f, tdir);      // board fwd  in (across-motion, along-motion)
+                float fx = Vector3.Dot(f, side), fy = Vector3.Dot(f, tdir);      // board fwd  in (across-motion, along-motion)
                 float sx = Vector3.Dot(sBoard, side), sy = Vector3.Dot(sBoard, tdir); // board side in (across-motion, along-motion)
                 float half = hl * Mathf.Abs(fx) + hw * Mathf.Abs(sx); // swept half-width onto the across-motion axis (variable)
                 // Per-surface groove WIDTH (per-surface wake width [Trailmap: 380-carve-effects]): packed snow is the thin baseline, powder plows
@@ -376,8 +376,8 @@ namespace OpenSlope.VrcPlugin
                     int a = i * WK_CROSS, b = (i + 1) * WK_CROSS;
                     for (int k = 0; k < WK_CROSS - 1; k++)
                     {
-                        _wkTris[t++] = a + k;     _wkTris[t++] = a + k + 1; _wkTris[t++] = b + k;
-                        _wkTris[t++] = b + k;     _wkTris[t++] = a + k + 1; _wkTris[t++] = b + k + 1;
+                        _wkTris[t++] = a + k; _wkTris[t++] = a + k + 1; _wkTris[t++] = b + k;
+                        _wkTris[t++] = b + k; _wkTris[t++] = a + k + 1; _wkTris[t++] = b + k + 1;
                     }
                 }
                 while (t < _wkTris.Length) _wkTris[t++] = 0; // degenerate (collapsed) triangles for the unused span

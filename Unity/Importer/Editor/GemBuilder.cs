@@ -174,8 +174,8 @@ namespace OpenSlope.Importer
             AudioSource chime = clip != null ? AttachChime(go, clip) : null;
 
             var mk = go.AddComponent<GemMarker>();
-            mk.Multiplier   = value;
-            mk.pickupSound  = chime;
+            mk.Multiplier = value;
+            mk.pickupSound = chime;
             mk.minRideSpeed = _cfg.GemMinRideSpeed;
             mk.pickupVolume = 1f;
         }
@@ -218,7 +218,7 @@ namespace OpenSlope.Importer
         static Mesh BuildOctahedron(float r)
         {
             Vector3[] p = { new(0, r, 0), new(0, -r, 0), new(r, 0, 0), new(-r, 0, 0), new(0, 0, r), new(0, 0, -r) };
-            int[,] faces = { {0,2,4},{0,4,3},{0,3,5},{0,5,2},{1,4,2},{1,3,4},{1,5,3},{1,2,5} };
+            int[,] faces = { { 0, 2, 4 }, { 0, 4, 3 }, { 0, 3, 5 }, { 0, 5, 2 }, { 1, 4, 2 }, { 1, 3, 4 }, { 1, 5, 3 }, { 1, 2, 5 } };
             var verts = new List<Vector3>(); var tris = new List<int>(); var norms = new List<Vector3>();
             for (int f = 0; f < 8; f++)
             {

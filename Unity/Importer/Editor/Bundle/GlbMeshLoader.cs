@@ -25,11 +25,11 @@ namespace OpenSlope.Importer
         {
             public string Material = "__untextured";
             public Vector3[] Positions = Array.Empty<Vector3>();
-            public Vector3[] Normals   = Array.Empty<Vector3>();
+            public Vector3[] Normals = Array.Empty<Vector3>();
             public Vector2[] Uv0;
             public Vector2[] Uv1;
-            public Color[]   Colors;
-            public int[]     Indices = Array.Empty<int>();
+            public Color[] Colors;
+            public int[] Indices = Array.Empty<int>();
         }
         public sealed class Node
         {
@@ -42,10 +42,10 @@ namespace OpenSlope.Importer
             byte[] bytes = File.ReadAllBytes(glbPath);
             ParseGlb(bytes, out JObject gltf, out byte[] bin);
 
-            var accessors   = (JArray)gltf["accessors"];
+            var accessors = (JArray)gltf["accessors"];
             var bufferViews = (JArray)gltf["bufferViews"];
-            var materials   = gltf["materials"] as JArray;
-            var meshes      = (JArray)gltf["meshes"];
+            var materials = gltf["materials"] as JArray;
+            var meshes = (JArray)gltf["meshes"];
 
             var nodes = new List<Node>();
             foreach (var m in meshes)
@@ -72,7 +72,7 @@ namespace OpenSlope.Importer
                     // straight through). Render meshes are drawn double-sided with their own loaded normals, so the
                     // winding is invisible to them; this only matters for the position/winding-defined collision meshes.
                     for (int i = 0; i + 2 < p.Indices.Length; i += 3)
-                        { int t = p.Indices[i + 1]; p.Indices[i + 1] = p.Indices[i + 2]; p.Indices[i + 2] = t; }
+                    { int t = p.Indices[i + 1]; p.Indices[i + 1] = p.Indices[i + 2]; p.Indices[i + 2] = t; }
 
                     node.Prims.Add(p);
                 }

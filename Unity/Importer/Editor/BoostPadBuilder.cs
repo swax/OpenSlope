@@ -99,17 +99,17 @@ namespace OpenSlope.Importer
                 if (visual != null) withPop++;
 
                 var mk = go.AddComponent<BoostPadMarker>();
-                mk.Trick            = pad.Trick;
-                mk.BoostSeconds     = seconds;
-                mk.Cooldown         = _cfg.BoostPadCooldown;
-                mk.MinRideSpeed     = _cfg.BoostPadMinRideSpeed;
-                mk.sparkle          = sparkle;
-                mk.chime            = chime;
-                mk.chimeVolume      = 1f;
-                mk.EffectSlotIndex  = pad.Slot;
-                mk.padVisual         = visual;
-                mk.popHoldDelay      = _cfg.BoostPadPopHoldDelay;
-                mk.growBackDuration  = _cfg.BoostPadGrowBack;
+                mk.Trick = pad.Trick;
+                mk.BoostSeconds = seconds;
+                mk.Cooldown = _cfg.BoostPadCooldown;
+                mk.MinRideSpeed = _cfg.BoostPadMinRideSpeed;
+                mk.sparkle = sparkle;
+                mk.chime = chime;
+                mk.chimeVolume = 1f;
+                mk.EffectSlotIndex = pad.Slot;
+                mk.padVisual = visual;
+                mk.popHoldDelay = _cfg.BoostPadPopHoldDelay;
+                mk.growBackDuration = _cfg.BoostPadGrowBack;
 
                 if (pad.Trick) trick++; else speed++;
             }

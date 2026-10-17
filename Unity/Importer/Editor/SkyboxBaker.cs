@@ -99,7 +99,7 @@ namespace OpenSlope.Importer
             // TOP edge of the band (zenith) and the fog colour from the BOTTOM edge (horizon haze). Once
             // FillSentinel runs the holes are recoloured, so the horizon sample must be taken here first.
             Color fill = _cfg.AutoSkyFill ? DeriveSkyFill(cubemap, _cfg.SkyFillColor) : _cfg.SkyFillColor;
-            Color fog  = (_cfg.Fog && _cfg.FogColorAuto) ? DeriveHorizonColor(cubemap, _cfg.FogColor) : _cfg.FogColor;
+            Color fog = (_cfg.Fog && _cfg.FogColorAuto) ? DeriveHorizonColor(cubemap, _cfg.FogColor) : _cfg.FogColor;
 
             // Recolour the open top/bottom to match the sky at the cylinder's top edge so the cap blends in.
             FillSentinel(cubemap, fill);

@@ -23,7 +23,7 @@ namespace OpenSlope.VrcPlugin
 
         void Start() { RefreshOwner(); }
         public override void OnPlayerJoined(VRCPlayerApi player) { RefreshOwner(); }
-        public override void OnPlayerLeft(VRCPlayerApi player)   { RefreshOwner(); }
+        public override void OnPlayerLeft(VRCPlayerApi player) { RefreshOwner(); }
 
         // Name the instance owner (whoever opened the instance) from VRChat's player list. If no owner is present (they
         // left, or an instance type that has none), fall back to the current master so the line still names who's in
@@ -42,7 +42,7 @@ namespace OpenSlope.VrcPlugin
                 VRCPlayerApi p = all[i];
                 if (!Utilities.IsValid(p)) continue;
                 if (p.isInstanceOwner) owner = p.displayName;
-                if (p.isMaster)        master = p.displayName;
+                if (p.isMaster) master = p.displayName;
             }
 
             string who = owner != null ? owner : (master != null ? master + "  (master)" : "—");

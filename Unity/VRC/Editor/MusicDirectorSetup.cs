@@ -22,14 +22,14 @@ namespace OpenSlope.VrcPlugin
     // importer's helper) - see docs/vrchat/013-udon-components.md.
     public static class MusicDirectorSetup
     {
-        const string RootName    = Map.RootName;                // "OpenSlope_Map"
-        const string ChildName   = "MusicDirector";
+        const string RootName = Map.RootName;                // "OpenSlope_Map"
+        const string ChildName = "MusicDirector";
         // The fallback stems are derived per-level from <levelAudio>/Music (C by preference, then A, then B), so
         // a map without Environment.json still works without a hardcoded song name. The last loaded level folder
         // supplies both candidates; an EnvironmentBed always takes runtime precedence.
-        const float Volume    = 0.30f;   // C runs ~7 dB hotter than the chill A set; trimmed so it doesn't blast
+        const float Volume = 0.30f;   // C runs ~7 dB hotter than the chill A set; trimmed so it doesn't blast
         const float Crossfade = 0.25f;
-        const bool  Shuffle   = true;
+        const bool Shuffle = true;
 
         // Grouped with Surface Audio in the OpenSlope/Setup submenu (see the priority scheme in LevelImporter).
         // Greyed out until the level exists.

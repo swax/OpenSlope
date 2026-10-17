@@ -66,11 +66,11 @@ namespace OpenSlope.BasisPlugin
             // their target null (the board's Apply skips them), so the plate is harmless.
             float y = 0.26f;
             const float step = 0.17f;
-            perf.cullToggle      = BuildRow(root.transform, ref y, step, "Cull distant props", true);
-            perf.emittersToggle  = BuildRow(root.transform, ref y, step, "Snow cannons / flares", true);
-            perf.gemSpinToggle   = BuildRow(root.transform, ref y, step, "Gem spin", true);
+            perf.cullToggle = BuildRow(root.transform, ref y, step, "Cull distant props", true);
+            perf.emittersToggle = BuildRow(root.transform, ref y, step, "Snow cannons / flares", true);
+            perf.gemSpinToggle = BuildRow(root.transform, ref y, step, "Gem spin", true);
             perf.fireworksToggle = BuildRow(root.transform, ref y, step, "Fireworks", true);
-            perf.boardFxToggle   = BuildRow(root.transform, ref y, step, "My board sparks", true);
+            perf.boardFxToggle = BuildRow(root.transform, ref y, step, "My board sparks", true);
 
             // Wire the plates to the level's systems (found in the loaded scene).
             perf.culler = Object.FindFirstObjectByType<BasisObjectCuller>(FindObjectsInactive.Include);
