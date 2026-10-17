@@ -486,7 +486,8 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
     const bool sky = files.contains(stem + "_SKY.PBD") || files.contains(stem + "_SKY.SSH");
     if (sky) {
         notify("Converting camera-centred sky panorama");
-        const auto& geometry = member(files, stem + "_SKY.PBD");
+        const auto geometry_name = stem + "_SKY.PBD";
+        const auto& geometry = member(files, geometry_name);
         pbd_header(Bytes{geometry});
         const auto art = import_detail::decode_ssh(member(files, stem + "_SKY.SSH"), false, cancelled);
         std::filesystem::create_directories(output / "Skybox/Textures");
@@ -556,7 +557,7 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
                 profile["EmitterSprites"] = Json::array();
                 for (const auto& sprite : particle_sprite_names())
                     profile["EmitterSprites"].push_back(bank.contains(sprite) ? bank[sprite] : Json(""));
-                for (const auto [sprite, slot] :
+                for (const auto& [sprite, slot] :
                      {std::pair{"part", "Puff"}, std::pair{"tral", "Wake"}, std::pair{"spry", "Sheet"}})
                     if (bank.contains(sprite))
                         profile[slot] = bank[sprite];

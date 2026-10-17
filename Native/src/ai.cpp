@@ -113,7 +113,7 @@ std::optional<AiProjection> AiNetwork::choose(Vec3 position, double mood, std::o
             candidates.emplace_back(box_distance(lines_[i].bounds, position), i);
     std::stable_sort(candidates.begin(), candidates.end());
     std::vector<std::pair<double, AiProjection>> nearest;
-    for (const auto [lower_bound, path] : candidates) {
+    for (const auto& [lower_bound, path] : candidates) {
         if (nearest.size() == 6 && lower_bound * lower_bound > nearest.back().first)
             break;
         const auto& points = paths_.ai[path].points;

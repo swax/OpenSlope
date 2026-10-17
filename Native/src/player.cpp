@@ -1648,7 +1648,9 @@ bool Player::move_world(const Rider& before, Vec3 destination, bool landing_allo
         const auto offset_delta = offset - start_offset;
         const auto guard_delta = rider_.position - start.position + offset_delta;
         const auto guard_start = start.position + start_offset, guard_end = rider_.position + offset;
-        auto guard = rail ? std::optional<TerrainHit>{} : terrain_.sweep(guard_start, guard_end, .2);
+        std::optional<TerrainHit> guard;
+        if (!rail)
+            guard = terrain_.sweep(guard_start, guard_end, .2);
         if (guard && rider_.grounded && dot(guard->normal, rider_.normal) < -.5) {
             const auto centre = guard_start + guard_delta * guard->t;
             const auto support_hit = terrain_.intersect(centre + rider_.normal * 2, centre - rider_.normal, true);

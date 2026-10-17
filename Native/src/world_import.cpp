@@ -123,8 +123,9 @@ struct Initializer {
                 const auto imm = std::uint16_t(w);
                 const auto si = std::int64_t(std::bit_cast<std::int16_t>(imm));
                 const auto a = regs[rs].number(), b = regs[rt].number();
-                const auto address =
-                    a ? std::optional<std::uint32_t>(std::uint32_t(*a + std::uint64_t(si))) : std::nullopt;
+                std::optional<std::uint32_t> address;
+                if (a)
+                    address = std::uint32_t(*a + std::uint64_t(si));
                 const bool control = op == 4 || op == 5 || op == 6 || op == 7 || (op == 0 && fn == 8);
                 if (delay && control)
                     throw Reject{};

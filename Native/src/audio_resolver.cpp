@@ -146,8 +146,9 @@ struct Probe {
                 const auto imm = std::uint16_t(w);
                 const auto si = std::int64_t(std::bit_cast<std::int16_t>(imm));
                 const auto a = regs[rs], b = regs[rt];
-                const auto address =
-                    a ? std::optional<std::uint32_t>(std::uint32_t(*a + std::uint64_t(si))) : std::nullopt;
+                std::optional<std::uint32_t> address;
+                if (a)
+                    address = std::uint32_t(*a + std::uint64_t(si));
                 const bool control = op == 1 || op == 2 || op == 3 || op == 4 || op == 5 || op == 6 || op == 7 ||
                                      op == 20 || op == 21 || (op == 0 && (fn == 8 || fn == 9));
                 if (delay && control)
