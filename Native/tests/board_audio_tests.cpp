@@ -192,6 +192,32 @@ void library_cache() {
         AudioScene scene(root);
         check(scene.stats().prewarmed == 2, "older per-course common banks fill missing shared slots");
     }
+    {
+        const auto blocked = base / "Unreadable";
+        std::filesystem::create_directory(blocked);
+        std::ofstream(blocked / "Patches.json") << "{}";
+
+        struct RestorePermissions {
+            std::filesystem::path folder;
+            std::filesystem::perms permissions;
+
+            ~RestorePermissions() {
+                std::error_code error;
+                std::filesystem::permissions(folder, permissions, error);
+            }
+        } restore{blocked, std::filesystem::status(blocked).permissions()};
+
+        std::error_code error;
+        std::filesystem::permissions(blocked, std::filesystem::perms::none, error);
+        std::error_code access_error;
+        if (!error)
+            static_cast<void>(std::filesystem::is_regular_file(blocked / "Patches.json", access_error));
+        if (access_error == std::errc::permission_denied) {
+            AudioScene scene(root);
+            check(scene.stats().prewarmed == 2, "unreadable siblings cannot hide shared or readable course audio");
+        } else
+            std::cout << "SKIP: unreadable sibling check requires enforced directory permissions\n";
+    }
     std::filesystem::create_directories(root / "Audio");
     std::ofstream(root / "Audio/SoundIndex.json") << Json{{"Schema", "openslope-sound-index/v1"},
                                                           {"Banks", {{"1", "private-board"}}},

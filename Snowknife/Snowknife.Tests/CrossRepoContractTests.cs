@@ -168,10 +168,9 @@ public class CrossRepoContractTests
         // named on both sides, because it is the only one of the two that authored/test maps carry.
         Contains("Snowknife/Snowknife/Bundle/PropsBundle.cs", "\"Mdl_StartGate\"");
         Contains("Snowknife/Snowknife/Bundle/PropsBundle.cs", "\"Mdl_StageArea_Start\"");
-        Contains("Unity/Importer/Editor/LevelImporter.cs",
-            "StartGateKey   = \"Mdl_StartGate\"");
-        Contains("Unity/Importer/Editor/LevelImporter.cs",
-            "StartMarkerKey = \"Mdl_StageArea_Start\"");
+        string importer = Source("Unity/Importer/Editor/LevelImporter.cs");
+        Assert.Matches(@"\bconst\s+string\s+StartGateKey\s*=\s*""Mdl_StartGate""\s*;", importer);
+        Assert.Matches(@"\bconst\s+string\s+StartMarkerKey\s*=\s*""Mdl_StageArea_Start""\s*;", importer);
     }
 
     [Fact]

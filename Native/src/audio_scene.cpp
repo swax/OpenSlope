@@ -482,8 +482,12 @@ struct AudioScene::Data {
                     courses.clear();
                     break;
                 }
-                if (!valid_map_name(entry.path().filename().string()) || !entry.is_directory() ||
-                    entry.path() == root || entry.path().filename() == "Shared")
+                // Optional siblings can include unrelated, unreadable directories.
+                // Probe their map marker before resolving and validating asset paths.
+                std::error_code error;
+                if (!valid_map_name(entry.path().filename().string()) || !entry.is_directory(error) ||
+                    entry.path() == root || entry.path().filename() == "Shared" ||
+                    !std::filesystem::is_regular_file(entry.path() / "Patches.json", error))
                     continue;
                 const auto course = asset(library, entry.path().filename().string());
                 if (!std::filesystem::is_regular_file(asset(course, "Patches.json")))
