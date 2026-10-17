@@ -209,7 +209,15 @@ const input: RiderInput = {
   crouch: 0,
   lean: 0,
 };
-rider.reset(input);
+// Initialize the calm-glance timer deterministically. An immediate random glance during reset would move
+// the baseline before this fixture measures the first frame of the authored turn.
+const savedRandom = Math.random;
+try {
+  Math.random = () => 0.5;
+  rider.reset(input);
+} finally {
+  Math.random = savedRandom;
+}
 
 // The target changes immediately, but the head does not: it rotates over several frames and arrives naturally.
 input.lookForward = throughTurn;
