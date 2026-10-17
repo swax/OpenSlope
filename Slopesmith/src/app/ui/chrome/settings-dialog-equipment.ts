@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 import {
   adoptAccount,
   currentAccount,
@@ -85,7 +86,7 @@ const equipmentRegionCount = (gear: RideGear): number => (gear === 'snowboard' ?
 
 /** Split a baked saved atlas back into its independently editable strips. */
 async function loadSavedEquipmentDraft(gear: RideGear, design: EquipmentDesignSummary): Promise<EquipmentDraft> {
-  const response = await fetch(design.textureUrl);
+  const response = await clientFetch(design.textureUrl);
   if (!response.ok)
     throw new Error(`The saved ${gear === 'snowboard' ? 'snowboard' : 'ski'} artwork could not be opened.`);
   let image: ImageBitmap;

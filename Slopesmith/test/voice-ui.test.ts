@@ -84,10 +84,10 @@ assert.match(
   /chat\.setSpeakers\(voice\.members\(\)\.filter\(member => member\.speaking\)\)/,
   'LiveKit active-speaker changes feed the chat HUD',
 );
-assert.match(
+assert.doesNotMatch(
   main,
-  /chat\.setDocked\(!!target\)/,
-  'starting a Test ride keeps chat docked and available beside the mountain',
+  /chat\.setDocked|sp-ride-chat/,
+  'starting a Test ride keeps the editor chat and tools layout',
 );
 assert.match(chat, /speaker\.username} is speaking in voice/, 'the chat HUD labels each active voice speaker by name');
 

@@ -18,6 +18,13 @@ export function publicCourseUrl(course: PublicCourse, origin = location.origin):
   return url.href;
 }
 
+/** Authored maps open for editing; ISO maps occupy only the editor's reference slot. */
+export function courseEditorUrl(course: PublicCourse, origin = location.origin): string {
+  const url = new URL(mapPath('editor', course.kind === 'project' ? course.name : ''), origin);
+  if (course.kind === 'reference') url.searchParams.set('reference', course.id);
+  return url.href;
+}
+
 export function isoManagementUrl(course?: PublicCourse, origin = location.origin): string {
   const url = new URL(ISOS_PATH, origin);
   if (course) url.searchParams.set(course.kind === 'project' ? 'map' : 'reference', course.kind === 'project' ? course.name : course.id);

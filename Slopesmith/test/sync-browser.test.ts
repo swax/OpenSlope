@@ -105,6 +105,10 @@ try {
     { timeout: 60_000 },
   );
   assert.equal(await page.locator('vite-error-overlay').count(), 0);
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');
+  await page.locator('#save-status').click();
+  assert.match(await page.locator('.sp-save-details').innerText(), /saved on/);
+  await page.keyboard.press('Escape');
   assert((await page.locator('body').innerText()).includes('Edit'));
   console.log('Browser loaded: editor controls render, no Vite overlay.');
 

@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 /**
  * DOM mirror (docs/068): the editor's own chrome, rasterized so a WebXR session can wear it on the wrist.
  *
@@ -337,7 +338,7 @@ function assetUrl(raw: string, base: string): string | null {
     if (assets.size >= MAX_ASSETS) return null;
   }
   assets.set(key, null);
-  void fetch(key, { credentials: 'same-origin' })
+  void clientFetch(key, { credentials: 'same-origin' })
     .then(response => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
     .then(
       blob =>

@@ -3,16 +3,22 @@ import type { PublicCourse } from '../../core/session/public-courses';
 import { referenceRoom } from '../../core/session/public-courses';
 import { isDiscCourse } from '../../core/reference/disc-courses';
 import { currentAccount } from '../net/account';
+import { localEditorUrl, mapPath } from '../navigation';
+import { deleteLocalProject, listLocalProjects } from '../state/local-projects';
+import type { ClientProject } from '../state/project-sync';
 import { clientId } from '../net/client';
 import { createSessionChannel, type PresenceEntry, type SessionMember } from '../net/session-channel';
 import { createChatBox } from '../ui/chrome/chat-box';
+import { confirmAction } from '../ui/components/prompts';
+import { canSaveMountainFolder } from '../mountain/folder';
+import { openLocalMountainFolder } from '../mountain/open-folder';
 import type { PeerMarks } from '../viewport/scene/peers';
 import { cachedIsoCourses, needsCollisionSoundUpdate } from './iso-cache';
 import { publicCourseGroups } from './course-list';
 import { element, publicJson } from './dom';
 import { publicHeader } from './header';
 import { isoRequirements, isoStatusBadges } from './iso-status';
-import { isoManagementUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
+import { courseEditorUrl, isoManagementUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
 import type { PublicPlayer } from './player';
 import { mapHeading, publicGlyph } from './presentation';
 import { publicMapControls } from './map-controls';
@@ -34,8 +40,12 @@ export async function showPublicHome(): Promise<void> {
   let room: string | null = null;
   let preparing = false;
   let published: PublicCourse[] = [];
+  let serverProjects: ClientProject[] = [];
+  let serverMapsLoaded = false;
+  let serverMapsError = '';
   const cardMessages = new Map<string, string>();
   const cached = await cachedIsoCourses().catch(() => [] as string[]);
+  let savedProjects: ClientProject[] = [];
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
@@ -48,6 +58,24 @@ export async function showPublicHome(): Promise<void> {
   const serverGrid = element('div', 'public-courses'); serverGrid.setAttribute('aria-label', 'Public server maps');
   const serverEmpty = element('p', 'public-empty', 'No public maps yet.');
   serverSection.append(serverTitle, serverGrid, serverEmpty);
+  const privateSection = element('section', 'public-private-maps'); privateSection.setAttribute('aria-label', 'Private server maps');
+  const privateTitle = element('h2', 'public-course-title', 'Private server maps');
+  const privateGrid = element('div', 'public-courses'); privateGrid.setAttribute('aria-label', 'Private server maps');
+  const privateEmpty = element('p', 'public-empty', 'Loading server maps…'); privateEmpty.setAttribute('role', 'status');
+  privateSection.append(privateTitle, privateGrid, privateEmpty);
+  const savedSection = element('section', 'public-saved-maps'); savedSection.setAttribute('aria-label', 'Local maps');
+  const savedTitle = element('h2', 'public-course-title', 'Local maps');
+  const savedNote = element('p', 'public-local-note', 'Saved in this browser.');
+  savedNote.setAttribute('role', 'status');
+  const savedGrid = element('div', 'public-courses'); savedGrid.setAttribute('aria-label', 'Local maps');
+  savedSection.append(savedTitle, savedNote, savedGrid);
+  if (canSaveMountainFolder()) {
+    const openFolder = element('button', 'public-open-folder', 'Open mountain folder…'); openFolder.type = 'button';
+    openFolder.addEventListener('click', () => {
+      void openLocalMountainFolder().catch(error => { savedNote.textContent = error instanceof Error ? error.message : String(error); });
+    });
+    savedTitle.append(openFolder);
+  }
   const localSection = element('section', 'public-local-maps'); localSection.setAttribute('aria-label', 'Loaded ISO maps');
   const localTitle = element('h2', 'public-course-title', 'From your ISO');
   const localGrid = element('div', 'public-courses'); localGrid.setAttribute('aria-label', 'Loaded ISO maps');
@@ -72,7 +100,7 @@ export async function showPublicHome(): Promise<void> {
   function showPlayerError(error: unknown) {
     mapControls.error(error instanceof Error ? error.message : String(error));
   }
-  main.append(title, serverSection, localSection, requirements, status, actions);
+  main.append(title, ...(member && !linked ? [privateSection] : []), serverSection, savedSection, localSection, requirements, status, actions);
   document.body.append(header, main, mapControls.el);
 
   function showRequirements() {
@@ -101,12 +129,51 @@ export async function showPublicHome(): Promise<void> {
   });
   function renderCourses() {
     const groups = publicCourseGroups(published, cached);
+    const publicIds = new Set(published.filter(course => course.kind === 'project').map(course => course.id));
+    const privateProjects = serverProjects.filter(project => !publicIds.has(project.id));
     for (const [heading, label, count] of [[serverTitle, 'Public maps', groups.server.length],
+      [privateTitle, 'Private server maps', privateProjects.length],
+      [savedTitle, 'Local maps', savedProjects.length],
       [localTitle, 'From your ISO', groups.local.length]] as const) {
       const total = element('span', 'public-section-count', String(count)); total.setAttribute('aria-hidden', 'true');
-      heading.replaceChildren(document.createTextNode(label), total);
+      const folderButton = heading.querySelector('.public-open-folder');
+      heading.replaceChildren(document.createTextNode(label), total, ...(folderButton ? [folderButton] : []));
     }
     serverGrid.replaceChildren(); localGrid.replaceChildren();
+    privateGrid.replaceChildren();
+    privateEmpty.hidden = !!privateProjects.length;
+    privateEmpty.textContent = serverMapsError || (serverMapsLoaded ? 'No private server maps.' : 'Loading server maps…');
+    for (const project of privateProjects) {
+      const displayName = project.name.replace(/[_-]/g, ' ');
+      const card = element('article', 'public-course public-map-tile'); card.setAttribute('aria-label', displayName);
+      card.dataset.kind = 'private';
+      const metadata = element('p', 'public-map-meta');
+      metadata.append(element('span', 'public-private-badge', 'Private'), element('span', '', 'Saved on server'));
+      const controls = element('div', 'public-card-actions');
+      const edit = element('a', 'public-primary', 'Edit');
+      edit.href = `${mapPath('editor', project.name)}?${new URLSearchParams({ project: project.id })}`;
+      edit.setAttribute('aria-label', `Edit ${displayName}`); edit.prepend(publicGlyph('editor'));
+      controls.append(edit); card.append(mapHeading(displayName, 'mountain'), metadata, controls); privateGrid.append(card);
+    }
+    const newMap = element('article', 'public-map-tile public-new-map'); newMap.setAttribute('aria-label', 'New map');
+    newMap.append(mapHeading('New map', 'new'), element('span', 'public-local-note', 'Create on this device'));
+    const createControls = element('div', 'public-card-actions');
+    const create = element('a', 'public-primary', 'Create'); create.href = localEditorUrl('', 'new');
+    create.setAttribute('aria-label', 'New map'); create.prepend(publicGlyph('new'));
+    createControls.append(create); newMap.append(createControls);
+    savedGrid.replaceChildren(newMap);
+    for (const project of savedProjects) {
+      const card = element('article', 'public-course public-map-tile'); card.setAttribute('aria-label', project.name);
+      card.dataset.kind = 'local';
+      card.append(mapHeading(project.name, 'mountain'));
+      const controls = element('div', 'public-card-actions');
+      const edit = element('a', 'public-primary', 'Edit'); edit.href = localEditorUrl(project.name, project.id);
+      edit.setAttribute('aria-label', `Edit ${project.name}`); edit.prepend(publicGlyph('editor'));
+      const remove = element('button', 'public-delete', 'Delete'); remove.type = 'button';
+      remove.setAttribute('aria-label', `Delete ${project.name}`);
+      remove.addEventListener('click', () => { void deleteSavedMap(project, remove); });
+      controls.append(edit, remove); card.append(controls); savedGrid.append(card);
+    }
     serverEmpty.hidden = !!groups.server.length; localEmpty.hidden = !!groups.local.length;
     for (const [courses, grid] of [
       [groups.server, serverGrid], [groups.local, localGrid],
@@ -135,6 +202,11 @@ export async function showPublicHome(): Promise<void> {
           void load();
         });
         controls.append(open);
+        const edit = element('a', '', course.kind === 'project' ? 'Edit' : 'Inspect');
+        edit.href = courseEditorUrl(course);
+        edit.setAttribute('aria-label', `${course.kind === 'project' ? 'Edit' : 'Inspect'} ${displayName}`);
+        edit.prepend(publicGlyph(course.kind === 'project' ? 'editor' : 'view'));
+        controls.append(edit);
         if (missing || message) {
           const manageIso = element('a', '', 'Load ISO maps'); manageIso.href = isoManagementUrl(course);
           manageIso.prepend(publicGlyph('load'));
@@ -145,7 +217,41 @@ export async function showPublicHome(): Promise<void> {
       }
     }
   }
+  async function deleteSavedMap(project: ClientProject, button: HTMLButtonElement) {
+    button.disabled = true;
+    try {
+      if (!await confirmAction({
+        title: `Delete ${project.name}?`,
+        body: 'This deletes the browser copy and its custom assets. Folder copies and downloaded backups are kept.',
+        confirmLabel: 'Delete', danger: true,
+      })) return;
+      await deleteLocalProject(project.id);
+      await refreshLocalMaps();
+      savedGrid.querySelector<HTMLElement>('a')?.focus();
+    } catch (error) {
+      savedNote.textContent = `Could not delete ${project.name}: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      button.disabled = false;
+      if (button.isConnected) button.focus();
+    }
+  }
   renderCourses();
+  async function refreshLocalMaps() {
+    try {
+      savedProjects = await listLocalProjects();
+      savedNote.textContent = 'Saved on this device.';
+      renderCourses();
+    } catch {
+      savedNote.textContent = 'Browser storage is unavailable. Allow site storage to save local maps.';
+    }
+  }
+  await refreshLocalMaps();
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    // A returned member catalogue must re-check sign-in and reflect server edits/publication changes.
+    if (member && !linked) location.reload();
+    else void refreshLocalMaps();
+  });
 
   const chat = createChatBox({ docked: true, say: text => session.say(text), me: () => me,
     suspended: () => !joined || !chatVisible || !player });
@@ -286,7 +392,15 @@ export async function showPublicHome(): Promise<void> {
   }
   stop.addEventListener('click', () => player?.stop());
   try {
-    const data = await publicJson<{ courses: PublicCourse[]; guest: SessionMember | null }>('/api/public/courses');
+    const [data, projects] = await Promise.all([
+      publicJson<{ courses: PublicCourse[]; guest: SessionMember | null }>('/api/public/courses'),
+      member && !linked ? publicJson<{ projects: ClientProject[] }>('/api/projects').catch(error => {
+        serverMapsError = `Could not load server maps: ${error instanceof Error ? error.message : String(error)}`;
+        return null;
+      }) : null,
+    ]);
+    serverProjects = projects?.projects ?? [];
+    serverMapsLoaded = true;
     if (data.guest && !member) name.value = data.guest.username.replace(/ \(guest\)$/, '');
     published = data.courses;
     if (linked) selected = resolvePublicCourse(linked, published, cached);
@@ -300,7 +414,7 @@ export async function showPublicHome(): Promise<void> {
       document.title = `${selected.name} · Slopesmith`;
       title.classList.remove('public-visually-hidden');
       title.textContent = selected.name.replace(/[_-]/g, ' ');
-      serverSection.hidden = localSection.hidden = true;
+      privateSection.hidden = serverSection.hidden = savedSection.hidden = localSection.hidden = true;
       status.textContent = 'Loading map…';
     } else status.textContent = '';
     if (linked && selected) await load();

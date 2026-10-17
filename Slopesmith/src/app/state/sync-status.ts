@@ -1,15 +1,19 @@
 import type { Reconciliation, SyncStatus } from '../net/register-sync';
 import type { ProjectSaveState } from './project-sync';
-import { SAVE_ICON } from '../ui/components/icons';
+import { svg } from '../ui/components/icons';
 import { tooltip } from '../ui/components/tooltip';
+import { closeMenu, panelMenu } from '../ui/components/controls';
+import { isLocalWorkspace } from '../net/workspace';
+import { canSaveMountainFolder, MOUNTAIN_FOLDER_FILE } from '../mountain/folder';
+import type { FolderSaveStatus } from './folder-autosave';
 
 /**
- * One save icon in the top bar, plus a panel only when reconnecting needs words or a decision (docs/039).
+ * One save button in the top bar. Its glyph names the destination; clicking shows location and backup actions.
  *
  * Acknowledgement is a real thing an author needs — a change is *local*, *in flight* or *landed* — and it is
  * deliberately NOT drawn on the mesh. Decorating geometry with its own delivery state turns an editor into a
  * dashboard: it puts a second colour language on top of selection and paint, and it says something about
- * every element when the only interesting fact is whether the document is safe. A steady disk means saved; it
+ * every element when the only interesting fact is whether the document is safe. A steady check means saved; it
  * pulses while whole-document autosave or shared-register delivery is active, turns amber while reconnecting,
  * and turns red when a save has failed. Per-element indication earns its place in exactly one case, and it is
  * not this one — it is somebody else overriding a register you touched, which the viewport flashes in their
@@ -25,13 +29,50 @@ export function createSyncStatus(deps: {
   /** Leave the room's values where they are. */
   discard: () => void;
   host?: HTMLElement;
+  folder?: () => FolderSaveStatus;
+  updatedAt?: () => string | undefined;
+  exportMountain?: () => void;
+  saveToFolder?: () => void;
+  openFolder?: () => void;
+  resumeFolder?: () => void;
+  stopFolder?: () => void;
 }) {
-  const indicator = document.createElement('span');
+  const indicator = document.createElement('button');
+  indicator.type = 'button';
   indicator.id = 'save-status';
   indicator.className = 'sp-save-status';
-  indicator.innerHTML = SAVE_ICON;
-  indicator.setAttribute('role', 'status');
   indicator.setAttribute('aria-live', 'polite');
+  indicator.setAttribute('aria-haspopup', 'true');
+  const details = document.createElement('div');
+  details.className = 'sp-save-details';
+  details.setAttribute('role', 'region');
+  details.setAttribute('aria-label', 'Save location');
+  const heading = document.createElement('h3');
+  const locationLine = document.createElement('p');
+  const savedLine = document.createElement('p');
+  const statusLine = document.createElement('p');
+  statusLine.setAttribute('aria-live', 'polite');
+  const detailActions = document.createElement('div');
+  details.append(heading, locationLine, savedLine, statusLine, detailActions);
+  const detailAction = (label: string, run?: () => void) => {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'sp-btn';
+    action.textContent = label;
+    action.hidden = !run;
+    action.addEventListener('click', () => {
+      closeMenu();
+      run?.();
+    });
+    detailActions.append(action);
+    return action;
+  };
+  detailAction('Export mountain…', deps.exportMountain);
+  const folderAction = detailAction('Save to folder…', deps.saveToFolder);
+  const resumeAction = detailAction('Resume folder autosave', deps.resumeFolder);
+  const openAction = detailAction('Open mountain folder…', deps.openFolder);
+  const stopAction = detailAction('Stop folder autosave', deps.stopFolder);
+  panelMenu(indicator, details);
 
   const notice = document.createElement('div');
   notice.id = 'sync-status';
@@ -107,6 +148,57 @@ export function createSyncStatus(deps: {
     } else if (projectState === 'saved') {
       message = projectDetail || 'All changes saved';
     }
+    const local = isLocalWorkspace();
+    const folder = deps.folder?.() ?? { state: 'none' };
+    const connected = local && folder.state !== 'none';
+    const destination = local ? (connected ? 'folder' : 'browser') : 'server';
+    if (state === 'saved') {
+      if (connected && folder.state === 'saving') {
+        state = 'saving';
+        message = 'Saved in this browser. Saving to folder…';
+      } else if (connected && folder.state === 'permission') {
+        state = 'reconnecting';
+        message = 'Saved in this browser. Folder autosave needs permission.';
+      } else if (connected && folder.state === 'error') {
+        state = 'error';
+        message = 'Saved in this browser. Folder autosave failed.';
+      } else
+        message = local
+          ? connected
+            ? 'Saved to folder and this browser'
+            : 'Saved in this browser'
+          : 'Saved to server';
+    } else
+      message = `${destination === 'server' ? 'Server' : destination === 'folder' ? 'Folder' : 'Browser'} · ${message}`;
+    indicator.dataset.destination = destination;
+    const shape =
+      destination === 'browser'
+        ? '<rect x="3" y="3" width="18" height="17" rx="2"/><path d="M3 8h18M6 5.5h.01M9 5.5h.01"/>'
+        : destination === 'folder'
+          ? '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>'
+          : '<path d="M6 18a4 4 0 0 1-1-7.9A7 7 0 0 1 18.5 8a5 5 0 0 1-.5 10H6Z"/>';
+    indicator.innerHTML = svg(
+      shape +
+        (state === 'saved'
+          ? '<circle cx="18" cy="18" r="5" fill="#10161c" stroke="none"/><path d="m15 18 2 2 4-4"/>'
+          : ''),
+    );
+    heading.textContent =
+      destination === 'server' ? 'Saving to server' : connected ? 'Saving to folder' : 'Saving in this browser';
+    locationLine.textContent = local
+      ? connected
+        ? `${folder.folder}/${MOUNTAIN_FOLDER_FILE} — editable mountain autosave. This copy survives clearing browser data.`
+        : 'This browser only. Clearing site data removes these maps. Save to folder or export a mountain backup to keep a copy.'
+      : `Your mountain is saved on ${location.host}.`;
+    const savedAt = connected ? folder.savedAt : deps.updatedAt?.();
+    savedLine.textContent = savedAt ? `Last saved: ${new Date(savedAt).toLocaleString()}` : 'No completed save yet';
+    statusLine.textContent = connected && folder.detail ? folder.detail : message;
+    folderAction.hidden = !local || !deps.saveToFolder || !canSaveMountainFolder();
+    folderAction.textContent = connected ? 'Change save folder…' : 'Save to folder…';
+    openAction.hidden = !deps.openFolder || !canSaveMountainFolder();
+    resumeAction.hidden =
+      !connected || !deps.resumeFolder || (folder.state !== 'permission' && folder.state !== 'error');
+    stopAction.hidden = !connected || !deps.stopFolder;
     indicator.dataset.state = state;
     indicatorMessage = message;
     indicator.setAttribute('aria-label', message);
@@ -135,7 +227,8 @@ export function createSyncStatus(deps: {
 
   return {
     indicator,
-    /** Whole-document autosave and project operations (create/import/restore) share the same disk icon. */
+    refresh: repaintIndicator,
+    /** Whole-document autosave and project operations (create/import/restore) share the same save button. */
     project(state: ProjectSaveState, detail = ''): void {
       projectState = state;
       projectDetail = detail;

@@ -52,7 +52,9 @@ export function textureRefUrl(ref: TexRef): string {
 
 export function customSkyUrl(name: string, part: 'panorama' | 'ground', ring = ''): string {
   const target = `/api/${part === 'panorama' ? 'skypano' : 'skyground'}?sky=${encodeURIComponent(name)}`;
-  return clientAssetUrl(part === 'ground' && ring ? `${target}&ring=${encodeURIComponent(ring)}` : target);
+  return assetResolver(
+    clientAssetUrl(part === 'ground' && ring ? `${target}&ring=${encodeURIComponent(ring)}` : target),
+  );
 }
 
 export function particleTextureUrl(name: string, level: string): string {
@@ -61,11 +63,11 @@ export function particleTextureUrl(name: string, level: string): string {
 
 export function referenceSkyUrl(level: string, part: 'panorama' | 'ground'): string {
   const target = `/api/${part === 'panorama' ? 'skypano' : 'skyground'}?level=${encodeURIComponent(level)}`;
-  return withRevision(target, referenceSkyRevisions.get(levelKey(level))?.[part]);
+  return assetResolver(withRevision(target, referenceSkyRevisions.get(levelKey(level))?.[part]));
 }
 
 export function customSoundUrl(name: string): string {
-  return clientAssetUrl(`/api/custom-sound?name=${encodeURIComponent(name)}`);
+  return assetResolver(clientAssetUrl(`/api/custom-sound?name=${encodeURIComponent(name)}`));
 }
 
 /** One slot of a level's course / crowd bank, or of a named fixed global environment bank. */
@@ -84,11 +86,11 @@ export function environmentSoundUrl(bank: string, slot: number, loop = true): st
 
 /** One page of a level's shipped sky bank, addressed by its generated ring slot. */
 export function skyPageUrl(level: string, index: number, revision?: string): string {
-  return withRevision(`/api/skybox/page?level=${encodeURIComponent(level)}&index=${index}`, revision);
+  return assetResolver(withRevision(`/api/skybox/page?level=${encodeURIComponent(level)}&index=${index}`, revision));
 }
 
 export function customMusicUrl(name: string): string {
-  return clientAssetUrl(`/api/custom-music-file?name=${encodeURIComponent(name)}`);
+  return assetResolver(clientAssetUrl(`/api/custom-music-file?name=${encodeURIComponent(name)}`));
 }
 
 export function characterModelUrl(modelId: string): string {

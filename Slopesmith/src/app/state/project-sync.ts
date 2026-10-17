@@ -2,6 +2,7 @@ import type { EditDoc } from '../../core/doc/doc-edit';
 import type { ChangeSummary } from '../../core/doc/compare';
 import type { ProjectBundle } from '../../core/project/transfer';
 import { clientFetch, setClientProjectId } from '../net/client';
+import { isLocalWorkspace } from '../net/workspace';
 
 export { clientId } from '../net/client';
 
@@ -229,7 +230,13 @@ export function createProjectSync(deps: {
    *  different mountain than the address asked for. */
   let missingMap = '';
 
-  const state = (next: ProjectSaveState, detail?: string) => deps.onState?.(next, detail);
+  const state = (next: ProjectSaveState, detail?: string) =>
+    deps.onState?.(
+      next,
+      isLocalWorkspace() && next === 'saved'
+        ? 'Saved in this browser. Save to folder or export a mountain backup to keep a file copy.'
+        : detail,
+    );
 
   async function requestSnapshot(url: string, init?: RequestInit): Promise<ProjectSnapshot> {
     const res = await projectFetch(url, init);

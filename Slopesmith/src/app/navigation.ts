@@ -5,7 +5,7 @@ export const EDITOR_PATH = '/editor';
 
 export type AppPage = 'maps' | 'isos' | 'play' | 'editor';
 
-/** Public browsing and authenticated editing have separate routes. */
+/** Browsing, riding and editing have separate routes. */
 export function pageInPath(pathname: string): AppPage | null {
   const page = /^\/(maps|isos)\/?$/i.exec(pathname)?.[1] ?? /^\/(play|editor)(?:\/[^/]+)?\/?$/i.exec(pathname)?.[1];
   return page ? (page.toLowerCase() as AppPage) : null;
@@ -14,6 +14,11 @@ export function pageInPath(pathname: string): AppPage | null {
 export function mapPath(page: 'play' | 'editor', name: string): string {
   const base = page === 'play' ? PLAY_PATH : EDITOR_PATH;
   return name.trim() ? `${base}/${encodeURIComponent(name.trim())}` : base;
+}
+
+/** Browser copies keep their identity through renames and never resolve to a server project with the same name. */
+export function localEditorUrl(name: string, id: string): string {
+  return `${mapPath('editor', name)}?${new URLSearchParams({ local: id })}`;
 }
 
 /** Decode exactly one name segment; malformed or nested paths never name a map. */

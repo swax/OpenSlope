@@ -3,6 +3,7 @@ import { element } from './dom';
 
 const GLYPHS = {
   mountain: MODE_ICON.info,
+  new: svg('<path d="M12 5v14M5 12h14"/>'),
   disc: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="m15 5 4 4M5 15l4 4"/>'),
   play: svg('<path d="m9 5 10 7-10 7Z" fill="currentColor" stroke="none"/>'),
   stop: svg('<rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/>'),
@@ -25,7 +26,7 @@ export function publicGlyph(kind: keyof typeof GLYPHS) {
   return icon;
 }
 
-export function mapHeading(name: string, kind: 'mountain' | 'disc') {
+export function mapHeading(name: string, kind: 'mountain' | 'disc' | 'new') {
   const heading = element('div', 'public-map-heading');
   const symbol = element('span', `public-map-symbol public-map-symbol-${kind}`); symbol.append(publicGlyph(kind));
   heading.append(symbol, element('h3', '', name));

@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 import { note, tip } from '../components/gui';
 import { segmented } from '../components/controls';
 import { MAX_AI_RIDERS, MAX_VR_RENDER_SCALE, MIN_VR_RENDER_SCALE } from '../../state/store';
@@ -460,7 +461,7 @@ export function buildPlayTools(ctx: ToolsContext) {
       characterImporting = true;
       toast(`Importing ${file.name}…`, 'info', 6000);
       try {
-        const response = await fetch(`/api/character-import?name=${encodeURIComponent(file.name)}`, {
+        const response = await clientFetch(`/api/character-import?name=${encodeURIComponent(file.name)}`, {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
           body: file,

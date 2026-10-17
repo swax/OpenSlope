@@ -30,7 +30,7 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
     const label = account.accounts === 'open' ? 'Editor' : 'Sign in';
     const signIn = element('a', 'public-sign-in'); signIn.setAttribute('aria-label', label); signIn.title = label;
     signIn.append(publicGlyph(account.accounts === 'open' ? 'editor' : 'account'), element('span', 'public-sign-in-label', label));
-    signIn.href = EDITOR_PATH;
+    signIn.href = account.accounts === 'open' ? EDITOR_PATH : `${EDITOR_PATH}?signin=1`;
     header.append(signIn);
   }
   return {

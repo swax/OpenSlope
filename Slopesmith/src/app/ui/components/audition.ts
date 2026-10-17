@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 import { resolveCollisionSound } from '../../../core/effects/collision-sound';
 import { resolveExternalSound } from '../../../core/effects/external-sound';
 import { customMusicUrl, customSoundUrl } from '../../net/asset-paths';
@@ -107,7 +108,7 @@ function startBufferLoopAudition(key: string, url: string, volume: number): void
       const context = new AudioContext();
       auditionContext = context;
       await context.resume();
-      const response = await fetch(url);
+      const response = await clientFetch(url);
       if (!response.ok) throw new Error(response.statusText || `sound ${response.status}`);
       const buffer = await context.decodeAudioData(await response.arrayBuffer());
       // Stopped, or superseded by another audition, while this was decoding.
@@ -300,7 +301,7 @@ export async function auditionReferenceMusicWalk(
     await context.resume();
     const buffers = await Promise.all(
       steps.map(async step => {
-        const response = await fetch(
+        const response = await clientFetch(
           `/api/reference-music-sample?level=${encodeURIComponent(level)}` +
             `&song=${encodeURIComponent(song)}&sample=${step.sample}`,
         );

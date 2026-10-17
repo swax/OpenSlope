@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'vite';
-import { chromium, type Browser, type Page } from 'playwright-core';
+import { chromium, type Browser, type Locator, type Page } from 'playwright-core';
 import { chromiumExecutable } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
@@ -69,6 +69,18 @@ async function joinChat(page: Page, nickname = 'Ada') {
   await setup.getByRole('button').click();
   await page.locator('.public-chat-status').filter({ hasText: 'Connected as' }).waitFor();
 }
+function primaryStyle(control: Locator) {
+  return control.evaluate(el => {
+    const style = getComputedStyle(el);
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      font: style.font,
+      padding: style.padding,
+      border: style.borderRadius,
+    };
+  });
+}
 try {
   const bootstrap = await call('/api/auth/bootstrap', 'POST', {
     code: api.adminCode,
@@ -80,6 +92,7 @@ try {
   const mountain = defaultMountain();
   mountain.name = 'PUBLIC_RUN';
   const created = await checked('/api/projects', 'POST', { document: mountain });
+  writeFileSync(join(created.project.folder, 'assets', 'skies', 'fixture-sky.png'), tile);
   const privateMap = await checked('/api/projects', 'POST', { name: 'PRIVATE_RUN', document: mountain });
   const id = created.project.id;
   assert.equal(
@@ -244,6 +257,90 @@ try {
     'direct editor routes open the requested mountain',
   );
   assert.equal(new URL(editor.url()).searchParams.get('agent'), '1', 'editor URL updates preserve query options');
+  await editor.getByRole('button', { name: 'File menu', exact: true }).click();
+  assert.equal(
+    await editor.getByRole('button', { name: /Public (courses|reference maps)…/ }).count(),
+    0,
+    'reference-map publication is hidden from the File menu',
+  );
+  await editor.keyboard.press('Escape');
+  await editor.getByRole('button', { name: 'File menu', exact: true }).focus();
+  await editor.evaluate(async () => {
+    const moduleUrl = '/src/app/ui/chrome/public-courses-dialog.ts';
+    const { openPublicReferenceMapsDialog } = await import(/* @vite-ignore */ moduleUrl);
+    await openPublicReferenceMapsDialog();
+  });
+  const publication = editor.getByRole('dialog', { name: 'Public reference maps', exact: true });
+  const publishReference = publication.getByRole('switch', { name: 'Share ORIGINAL publicly', exact: true });
+  await publishReference.waitFor();
+  assert(await publishReference.isChecked());
+  assert.equal(await publication.getByRole('region', { name: 'Current mountain', exact: true }).count(), 0);
+  assert.equal(
+    await publication.getByRole('switch', { name: 'Share PUBLIC_RUN publicly', exact: true }).count(),
+    0,
+    'authored-map sharing stays in Users',
+  );
+  assert(
+    await publication.evaluate(el => getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)'),
+    'sharing controls have an opaque panel background',
+  );
+  assert.equal(
+    await publication.getByRole('region', { name: 'Reference maps', exact: true }).getByRole('switch').count(),
+    2,
+  );
+  await editor.screenshot({ path: join(root, 'public-courses-desktop.png') });
+  await publishReference.focus();
+  await editor.keyboard.press('Space');
+  await publication.getByRole('status').filter({ hasText: 'ORIGINAL is private.' }).waitFor();
+  assert.equal(
+    (await checked('/api/public/courses', 'GET', undefined, '')).courses.some(
+      (course: any) => course.id === 'ORIGINAL',
+    ),
+    false,
+  );
+  await publishReference.check();
+  await publication.getByRole('status').filter({ hasText: 'ORIGINAL is public.' }).waitFor();
+  const failedPublication = '**/api/publication?kind=reference*';
+  await editor.route(failedPublication, route =>
+    route.fulfill({ status: 503, json: { error: 'Sharing is temporarily unavailable.' } }),
+  );
+  await publishReference.uncheck();
+  await publication.getByRole('status').filter({ hasText: 'Sharing is temporarily unavailable.' }).waitFor();
+  assert(await publishReference.isChecked(), 'failed sharing changes restore the saved switch state');
+  await editor.unroute(failedPublication);
+  await publishReference.uncheck();
+  await publication.getByRole('status').filter({ hasText: 'ORIGINAL is private.' }).waitFor();
+  await publishReference.check();
+  await publication.getByRole('status').filter({ hasText: 'ORIGINAL is public.' }).waitFor();
+  await editor.setViewportSize({ width: 375, height: 700 });
+  assert(
+    await publication.evaluate(
+      el => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().right <= innerWidth,
+    ),
+    'sharing fits a phone without horizontal scrolling',
+  );
+  await editor.screenshot({ path: join(root, 'public-courses-mobile.png') });
+  await editor.setViewportSize({ width: 375, height: 420 });
+  assert(
+    await publication.getByRole('button', { name: 'Done', exact: true }).evaluate(el => {
+      const rect = el.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= innerHeight;
+    }),
+    'Done stays reachable while the map list scrolls',
+  );
+  await publication.getByRole('button', { name: 'Done', exact: true }).focus();
+  await editor.keyboard.press('Tab');
+  assert(
+    await publication.getByRole('button', { name: 'Close', exact: true }).evaluate(el => el === document.activeElement),
+    'keyboard focus stays inside the sharing dialog',
+  );
+  await editor.keyboard.press('Escape');
+  await publication.waitFor({ state: 'hidden' });
+  assert(
+    await editor.getByRole('button', { name: 'File menu', exact: true }).evaluate(el => el === document.activeElement),
+    'closing restores focus to File',
+  );
+  await editor.setViewportSize({ width: 1440, height: 1000 });
   await editor.getByRole('button', { name: 'Users', exact: true }).click();
   const jukebox = editor.locator('#dock-right .lil-title').filter({ hasText: /^Jukebox/ });
   await jukebox.waitFor();
@@ -305,11 +402,55 @@ try {
   assert.equal(await manualLink.inputValue(), publicLink, 'clipboard failures offer the same link for manual copying');
   assert(await manualLink.evaluate((field: HTMLInputElement) => field.readOnly));
   await editor.getByRole('button', { name: 'Done', exact: true }).click();
+  await editor.getByRole('button', { name: 'Test', exact: true }).click();
+  await editor
+    .locator('#dock-right')
+    .getByRole('button', { name: /Play PUBLIC_RUN/ })
+    .click();
+  const stopTest = editor.locator('#dock-right').getByRole('button', { name: '■ Stop', exact: true });
+  await stopTest.waitFor();
+  assert(await editor.locator('#dock-right').isVisible(), 'Test tools remain visible during an editor ride');
+  assert.equal(await editor.locator('.sp-chat-docked').count(), 0, 'editor rides keep the editor chat overlay');
+  assert.equal(await editor.locator('.sp-chat').evaluate(el => getComputedStyle(el).left), '10px');
+  await editor.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await editor.keyboard.press('Enter');
+  const testChat = editor.getByRole('textbox', { name: 'Chat message', exact: true });
+  await testChat.waitFor();
+  assert(await testChat.evaluate(el => el === document.activeElement), 'Enter focuses editor chat during a ride');
+  assert(await stopTest.isVisible(), 'opening editor chat keeps the Test controls visible');
+  await editor.screenshot({ path: join(root, 'editor-test-chat.png') });
+  await testChat.fill('Chat from the editor Test ride');
+  await testChat.press('Enter');
+  await editor.getByText('Chat from the editor Test ride', { exact: true }).waitFor();
+  assert(await testChat.isHidden(), 'sending returns the keyboard to the ride');
+  await editor.keyboard.press('Enter');
+  await testChat.waitFor();
+  await testChat.press('Escape');
+  assert(await testChat.isHidden());
+  assert(await stopTest.isVisible(), 'closing chat leaves the editor ride running');
+  await stopTest.click();
+  await editor
+    .locator('#dock-right')
+    .getByRole('button', { name: /Play PUBLIC_RUN/ })
+    .waitFor();
   const editorLogo = await editor.locator('#dock-top .sp-brand img').getAttribute('src');
   await editor.getByRole('button', { name: 'File menu', exact: true }).click();
   await editor.getByRole('button', { name: 'Exit editor', exact: true }).click();
   await editor.getByRole('heading', { name: 'Maps', level: 1 }).waitFor();
   assert.equal(new URL(editor.url()).pathname, '/maps', 'File → Exit editor returns to the canonical homepage');
+  const privateMaps = editor.getByRole('region', { name: 'Private server maps', exact: true });
+  await privateMaps.getByRole('heading', { name: 'PRIVATE RUN', exact: true }).waitFor();
+  assert.equal(
+    await privateMaps.getByRole('article').count(),
+    1,
+    'published mountains are not duplicated in private server maps',
+  );
+  assert(await privateMaps.getByText('Private', { exact: true }).isVisible());
+  assert(await privateMaps.getByText('Saved on server', { exact: true }).isVisible());
+  const privateEdit = privateMaps.getByRole('link', { name: 'Edit PRIVATE RUN', exact: true });
+  const privateEditorUrl = new URL((await privateEdit.getAttribute('href'))!, origin);
+  assert.equal(privateEditorUrl.pathname, '/editor/PRIVATE_RUN');
+  assert.equal(privateEditorUrl.searchParams.get('project'), privateMap.project.id);
   assert.equal(
     await editor.locator('.public-brand .sp-brand img').getAttribute('src'),
     editorLogo,
@@ -358,12 +499,38 @@ try {
   const accountSettings = editor.getByRole('dialog', { name: 'Settings', exact: true });
   await accountSettings.waitFor({ timeout: 90_000 });
   await accountSettings.getByRole('button', { name: 'Close', exact: true }).click();
+  await editor.goto(`${origin}/maps`);
+  await privateEdit.waitFor();
+  await editor.setViewportSize({ width: 375, height: 700 });
+  assert(await privateEdit.isVisible());
+  assert(await editor.evaluate(() => document.body.scrollWidth <= innerWidth), 'private server map tiles fit a phone');
+  await editor.screenshot({ path: join(root, 'private-server-maps-mobile.png'), fullPage: true });
+  await privateMaps.getByRole('article', { name: 'PRIVATE RUN', exact: true }).click({ position: { x: 12, y: 12 } });
+  await editor.waitForFunction(
+    () =>
+      document.title === 'PRIVATE_RUN - Slopesmith' &&
+      ['saved', 'shared', 'following'].includes(document.documentElement.dataset.projectSave ?? ''),
+    undefined,
+    { timeout: 90_000 },
+  );
+  await editor.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  assert.equal(
+    new URL(editor.url()).searchParams.has('local'),
+    false,
+    'a private tile opens the existing server mountain',
+  );
+  assert.equal(await editor.locator('#save-status').getAttribute('data-destination'), 'server');
+  assert.equal(
+    (await call(`/api/public/project?id=${privateMap.project.id}`)).status,
+    404,
+    'opening a private map never publishes it',
+  );
   await editorContext.close();
 
   const signInContext = await browser.newContext();
   const signIn = await signInContext.newPage();
   failurePage = signIn;
-  await signIn.goto(`${origin}/editor/PUBLIC_RUN`);
+  await signIn.goto(`${origin}/editor/PUBLIC_RUN?signin=1`);
   await signIn.locator('.sp-login-card').waitFor();
   assert.equal(
     new URL(signIn.url()).pathname,
@@ -386,6 +553,13 @@ try {
   const linkContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const linked = await linkContext.newPage();
   failurePage = linked;
+  // Exercise a real custom panorama without changing the catalogue fixture's ISO requirements.
+  await linked.route('**/api/public/project?*', async route => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    snapshot.document.skybox = { source: { kind: 'custom', name: 'fixture-sky' }, on: true };
+    await route.fulfill({ response, json: snapshot });
+  });
   let linkSockets = 0,
     linkGuestRequests = 0;
   linked.on('websocket', socket => {
@@ -456,6 +630,12 @@ try {
   });
   await choices.getByRole('button', { name: 'View map', exact: true }).click();
   await mouseControls.waitFor();
+  await linked.waitForFunction(() => (window as any).startTestViewport.sky.loaded);
+  const skyVisible = () =>
+    linked.evaluate(
+      () => (window as any).startTestViewport.scene.children.find((node: any) => node.renderOrder === -1000).visible,
+    );
+  assert.equal(await skyVisible(), false, 'the loaded sky stays hidden while viewing a public map');
   assert(
     await linked.evaluate(() => {
       const viewport = (window as any).startTestViewport;
@@ -553,6 +733,7 @@ try {
   await linked.setViewportSize({ width: 1440, height: 1000 });
   await linked.getByRole('button', { name: 'Play', exact: true }).click();
   await linked.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
+  assert.equal(await skyVisible(), true, 'desktop play shows the course sky');
   const checkExitCorner = async () => {
     assert(await exitPlay.locator('.public-stop-label').isVisible(), 'Exit keeps its text label on every screen size');
     const button = await exitPlay.boundingBox(),
@@ -671,6 +852,7 @@ try {
   await linked.screenshot({ path: join(root, 'public-link-riding.png') });
   await linked.getByRole('button', { name: 'Exit play', exact: true }).click();
   await choices.waitFor();
+  assert.equal(await skyVisible(), false, 'leaving a ride hides the sky again');
   assert(await resetStart.isVisible(), 'a custom start can still be reset after stopping');
   assert(await mouseControls.isHidden(), 'stopping returns to the launch choices without a stale legend');
   assert(await rideControls.isHidden(), 'stopping clears the ride legend');
@@ -688,10 +870,12 @@ try {
   })()`);
   await choices.getByRole('button', { name: 'Play in VR', exact: true }).click();
   await exitPlay.waitFor();
+  assert.equal(await skyVisible(), true, 'the sky also appears during VR play');
   await checkExitCorner();
   assert(await choices.isHidden(), 'VR keeps Exit available even before mounting the board');
   await exitPlay.click();
   await choices.waitFor();
+  assert.equal(await skyVisible(), false, 'leaving VR restores the map preview without its sky');
   assert(await exitPlay.isHidden(), 'Exit ends the VR session and returns to map preview');
   await linked.getByRole('link', { name: 'Maps', exact: true }).click();
   await linked.getByRole('button', { name: 'Open PUBLIC RUN', exact: true }).waitFor();
@@ -733,6 +917,7 @@ try {
   const guestContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const guest = await guestContext.newPage();
   failurePage = guest;
+  let guestProjectRequests = 0;
   const errors: string[] = [],
     retailRequests: string[] = [],
     received: any[] = [],
@@ -740,6 +925,7 @@ try {
   guest.on('pageerror', error => errors.push(error.message));
   guest.on('request', request => {
     const url = new URL(request.url());
+    if (url.pathname.startsWith('/api/projects')) guestProjectRequests++;
     if (
       [
         '/api/level',
@@ -781,6 +967,25 @@ try {
   await guest.getByRole('button', { name: /PUBLIC RUN/ }).waitFor();
   const publicCard = guest.getByRole('article', { name: 'PUBLIC RUN', exact: true });
   assert(await publicCard.getByRole('button', { name: 'Open PUBLIC RUN', exact: true }).isEnabled());
+  await guest.mouse.move(1, 1);
+  const mapPrimaryStyle = await primaryStyle(publicCard.locator('.public-primary'));
+  await publicCard.hover({ position: { x: 12, y: 12 } });
+  assert(
+    await publicCard.locator('.public-primary').evaluate(el => el.matches(':hover')),
+    'hovering a tile highlights its actual primary button',
+  );
+  await publicCard.getByRole('link', { name: 'Edit PUBLIC RUN', exact: true }).hover();
+  assert.equal(
+    await publicCard.locator('.public-primary').evaluate(el => el.matches(':hover')),
+    false,
+    'secondary actions retain their own hover target',
+  );
+  assert(
+    await guest
+      .locator('.public-map-tile')
+      .evaluateAll(tiles => tiles.every(tile => tile.querySelectorAll('.public-primary').length === 1)),
+    'every map tile identifies exactly one primary action',
+  );
   assert.equal(
     await publicCard.getByRole('link', { name: 'Load ISO maps', exact: true }).count(),
     0,
@@ -788,6 +993,8 @@ try {
   );
   const missingReference = guest.getByRole('article', { name: 'FIXTURE', exact: true });
   assert(await missingReference.getByRole('button', { name: 'Open FIXTURE', exact: true }).isDisabled());
+  await missingReference.click({ position: { x: 12, y: 12 } });
+  assert.equal(new URL(guest.url()).pathname, '/maps', 'a disabled primary action also disables the tile background');
   const referenceIsoUrl = new URL(
     (await missingReference.getByRole('link', { name: 'Load ISO maps', exact: true }).getAttribute('href'))!,
   );
@@ -803,6 +1010,9 @@ try {
   assert(await guest.getByRole('heading', { name: 'From your ISO', exact: true }).isVisible());
   assert.equal(await guest.locator('#public-iso').count(), 0, 'ISO management lives on its own page');
   assert.equal(await guest.getByRole('button', { name: /PRIVATE RUN/ }).count(), 0);
+  assert.equal(await guest.getByRole('region', { name: 'Private server maps', exact: true }).count(), 0);
+  assert.equal(await guest.getByRole('link', { name: 'Edit PRIVATE RUN', exact: true }).count(), 0);
+  assert.equal(guestProjectRequests, 0, 'guest catalogues never request the authenticated server project list');
   await guest.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     (await guest.locator('.public-header').boundingBox())?.height,
@@ -835,7 +1045,7 @@ try {
   await guest.screenshot({ path: join(root, 'login-home-link.png') });
   await guest.getByRole('link', { name: '← Back to homepage', exact: true }).click();
   await guest.getByRole('heading', { name: 'Maps', level: 1, exact: true }).waitFor();
-  await guest.getByRole('button', { name: 'Open PUBLIC RUN', exact: true }).click();
+  await publicCard.click({ position: { x: 12, y: 12 } });
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
@@ -1154,7 +1364,15 @@ try {
   );
   assert.equal((await call('/api/level?name=GARI')).status, 401, 'local ISO rooms grant no access to server map files');
   await guest.screenshot({ path: join(root, 'iso-manager.png') });
-  await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await guest.mouse.move(1, 1);
+  assert.deepEqual(
+    await primaryStyle(managerGari.locator('.public-primary')),
+    mapPrimaryStyle,
+    'ISO and Maps tiles use the same primary button style',
+  );
+  await managerGari.hover({ position: { x: 12, y: 12 } });
+  assert(await managerGari.locator('.public-primary').evaluate(el => el.matches(':hover')));
+  await managerGari.click({ position: { x: 12, y: 12 } });
   await managerGari.locator('.public-iso-badge.loaded').waitFor();
   await guest.getByText('1 loaded', { exact: true }).waitFor();
   await guest.getByRole('link', { name: 'Maps', exact: true }).click();
@@ -1179,7 +1397,7 @@ try {
   );
   await guest.locator('#load-status').waitFor({ state: 'hidden' });
   await guest.screenshot({ path: join(root, 'separate-map-lists.png'), fullPage: true });
-  await localCard.getByRole('button', { name: 'Open Garibaldi', exact: true }).click();
+  await localCard.click({ position: { x: 12, y: 12 } });
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await joinChat(guest);
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
@@ -1284,7 +1502,7 @@ try {
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
 
   await guest.goto(`${origin}/isos`);
-  await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+  await guest.locator('.public-iso-map[data-course="GARI"]').click({ position: { x: 12, y: 12 } });
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   await guest.getByRole('link', { name: 'Maps', exact: true }).click();
   assert.equal(
@@ -1489,7 +1707,7 @@ try {
   assert(await guest.locator('#public-iso').isDisabled(), 'the selected ISO stays stable until queued imports finish');
   assert.deepEqual(await tileGeometry(), beforeLoading, 'queued cards keep their original position and dimensions');
   await guest.screenshot({ path: join(root, 'queued-map-imports.png') });
-  await guest.getByRole('button', { name: 'Cancel loading Snowdream', exact: true }).click();
+  await queuedSnow.click({ position: { x: 12, y: 12 } });
   assert.equal(await queuedSnow.getAttribute('data-state'), 'missing');
   assert.equal(
     await queuedGari.getAttribute('data-state'),

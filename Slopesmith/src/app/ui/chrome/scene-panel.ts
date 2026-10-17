@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 import GUI from 'lil-gui';
 import { renderAnnouncerPanel } from './announcer-panel';
 import { announcerIndex } from '../../audio/announcer';
@@ -686,7 +687,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     unsubscribeBoardAudition = onBoardSoundAuditionChange(syncAuditionControl);
     syncAuditionControl();
     // The bank and its routing both come off disk, so describe only what this machine actually extracted.
-    void fetch('/api/board-audio')
+    void clientFetch('/api/board-audio')
       .then(response => response.json() as Promise<{ board?: string | null; surfaceGroups?: number[] | null }>)
       .then(body => {
         if (request !== soundRequest) return;

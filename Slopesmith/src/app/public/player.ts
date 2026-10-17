@@ -77,6 +77,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
   store.playCountdownOn = false;
   viewport.setRideSnow(0.25);
   const target = course.kind === 'reference' ? 'reference' : 'authored';
+  let localSky: Awaited<ReturnType<typeof installLocalSky>>;
   if (course.kind === 'reference') {
     const level = course.id;
     if (course.retailData) {
@@ -100,7 +101,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
       await viewport.setReferencePropsProgressive(props, yieldFrame);
       const effects = await readReferenceEffects(local.source, level).catch(() => null);
       if (effects) viewport.setReferenceEffects(decodeReferenceEffects(effects));
-      await installLocalSky(viewport, local.source, level, local.fileUrl);
+      localSky = await installLocalSky(viewport, local.source, level, local.fileUrl);
     } else {
       const data = await json<Awaited<ReturnType<typeof levels.readLevelPatches>> & {
         course: Awaited<ReturnType<typeof levels.readLevelCourse>>;
@@ -158,17 +159,20 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     viewport.setParticleVolumes(document.particleVolumes ?? []);
     viewport.setScreens(document.screens ?? [], document.props, null);
     if (document.skybox?.source.kind === 'level') {
-      await installLocalSky(viewport, local.source, document.skybox.source.level, local.fileUrl);
+      localSky = await installLocalSky(viewport, local.source, document.skybox.source.level, local.fileUrl);
     } else if (document.skybox?.source.kind === 'custom') {
       const name = document.skybox.source.name;
       viewport.setSky({ panorama: customSkyUrl(name, 'panorama'), ground: customSkyUrl(name, 'ground'), topColor: document.skybox.topColor });
-      viewport.showSky(true);
     }
     viewport.focusMountain(document);
   }
   const play = createPlay({
     store, viewport, persistUi: noop, rebuildTools: noop, updateCmdSheet: noop,
-    syncSkyVisibility: noop, ensureReferenceEffects: async () => {},
+    syncSkyVisibility: () => {
+      const playing = viewport.riding || viewport.xrPlaying;
+      viewport.showSky(playing);
+      localSky?.setVisible(playing);
+    }, ensureReferenceEffects: async () => {},
     onPlayingChanged: playing => { session.setPlaying(playing); onPlaying(!!playing); updateRideControls(); },
   });
   play.enterPlaySetup(target);

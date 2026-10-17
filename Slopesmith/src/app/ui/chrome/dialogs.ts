@@ -34,6 +34,7 @@ import {
 } from '../../state/project-sync';
 import type { ProjectBundle } from '../../../core/project/transfer';
 import { clientFetch } from '../../net/client';
+import { isLocalWorkspace } from '../../net/workspace';
 
 /**
  * The editor's modal dialogs + file actions (docs/011): loft a New mountain, borrow a reference level's course
@@ -619,9 +620,10 @@ export function createDialogs(deps: DialogDeps) {
     }
     const sure = await confirmAction({
       title: `Delete ${current.name}?`,
-      body:
-        `Every revision, checkpoint, and mountain-local asset in ${current.name} will be deleted for ` +
-        'everybody on this server. Its name is retired rather than freed.',
+      body: isLocalWorkspace()
+        ? `The browser copy of ${current.name} and its custom assets will be deleted. Folder copies and downloaded backups are kept.`
+        : `Every revision, checkpoint, and mountain-local asset in ${current.name} will be deleted for ` +
+          'everybody on this server. Its name is retired rather than freed.',
       confirmLabel: 'Delete mountain',
       danger: true,
     });
@@ -1172,6 +1174,11 @@ export function createDialogs(deps: DialogDeps) {
     const { host, close } = modal();
     host.classList.add('sp-export-modal');
     const gTop = new GUI({ container: host, title: `Export map — ${d.name}` });
+    banner(
+      host,
+      'Export map writes the files Snowknife uses to repack this course into your ISO. To back up your editable work, use Export mountain or Save to folder.',
+      'info',
+    );
     tip(
       gTop.add(state, 'lighting').name('bake lighting'),
       'Bake the authored sun into terrain lightmaps + Lights.json.',

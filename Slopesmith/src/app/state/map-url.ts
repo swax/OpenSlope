@@ -14,6 +14,10 @@ export function mapNameInUrl(): string {
 export function showMapInUrl(name: string, projectId?: string): void {
   const path = mapPath('editor', name);
   const search = new URLSearchParams(location.search);
+  if (projectId?.startsWith('local-')) {
+    search.set('local', projectId);
+    search.delete('project');
+  } else if (!name) search.delete('local');
   // Camera capture links also pin the project identity so their view/revision cannot apply to another map.
   if (projectId && search.has('project')) search.set('project', projectId);
   const query = search.size ? `?${search}` : '';

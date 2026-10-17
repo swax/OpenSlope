@@ -45,12 +45,12 @@ body.public-chat-visible { --lodge-width: 290px; }
 .public-map-tab > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .public-home { position: relative; z-index: 20; min-height: calc(100vh - var(--public-header)); margin-right: var(--lodge-width);
   padding: 20px 24px 32px; box-sizing: border-box; background: linear-gradient(#101c27, #0c151e 440px); }
-.sp-page-background .public-home { background: none; }
+.sp-page-background .public-home { max-width: 1200px; margin: 0 auto; background: none; }
 .sp-page-background #viewport { display: none; }
 .public-home h1 { margin: 0 0 20px; max-width: 720px; font-size: 24px; line-height: 1.2; letter-spacing: -.02em; }
 .public-visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px !important;
   overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.public-home button, .public-actions button, .public-stop, .public-map-choices button, .public-reset-start, .public-iso-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+.public-home button, .public-home .public-primary, .public-actions button, .public-stop, .public-map-choices button, .public-reset-start, .public-iso-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   cursor: pointer; border: 1px solid #3a4e5d; border-radius: 7px; min-height: 34px; box-sizing: border-box;
   background: #233543; color: #e3edf4; padding: 7px 12px; font: 600 12px/1.4 system-ui;
   transition: background .15s, border-color .15s, box-shadow .15s; }
@@ -81,11 +81,22 @@ body.public-chat-visible { --lodge-width: 290px; }
 .public-iso-feedback { grid-column: 1 / -1; display: grid; grid-template-rows: 4px 28px; gap: 6px; min-width: 0; }
 .public-iso-map .public-iso-load-status { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   margin: 0; color: #9db6c5; font-size: 11px; line-height: 14px; overflow: hidden; overflow-wrap: anywhere; }
-.public-map-tile { display: flex; flex-direction: column; gap: 12px; min-width: 0; box-sizing: border-box;
+.public-map-tile { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 12px; min-width: 0; box-sizing: border-box;
   min-height: 100px; padding: 16px; border: 1px solid #2b404f; border-radius: 11px;
   background: linear-gradient(145deg, #192b39, #15232f); box-shadow: 0 3px 12px #00000015, inset 0 1px #ffffff04;
   transition: border-color .15s, box-shadow .15s; }
 .public-map-tile:focus-within { border-color: #57798f; box-shadow: 0 0 0 1px #57798f44, 0 3px 12px #00000015; }
+/* Stretch the actual primary control over its tile, retaining native link/button and disabled behavior. */
+.public-map-tile .public-primary::after { content: ''; position: absolute; inset: 0; border-radius: 11px; cursor: pointer; }
+.public-map-tile .public-primary:disabled::after { cursor: default; }
+.public-map-tile .public-primary:focus-visible::after { outline: 2px solid #f4b65e; outline-offset: 3px; }
+.public-map-tile :is(a, button):not(.public-primary) { position: relative; z-index: 1; }
+.public-map-tile:has(.public-primary:hover:not(:disabled)) { border-color: #b59569; }
+.public-new-map { color: inherit; text-decoration: none; border-style: dashed; }
+.public-new-map:hover { border-color: #b59569; }
+.public-local-note { margin: 0 0 12px; color: #91a9b9; font: 12px/1.5 system-ui; }
+.public-new-map .public-local-note { margin: 0; }
+.public-course-title .public-open-folder { margin-left: auto; min-height: 28px; padding: 4px 8px; font-size: 11px; }
 .public-map-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .public-map-symbol { display: inline-flex; flex: 0 0 34px; width: 34px; height: 34px; align-items: center; justify-content: center;
   border: 1px solid #8a765b36; border-radius: 9px; background: #8a765b14; color: #e4bb82; }
@@ -102,7 +113,6 @@ body.public-chat-visible { --lodge-width: 290px; }
 .public-iso-map-actions button { width: 100%; }
 body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-iso-page #viewport { display: none; }
-.public-iso-page .public-home { max-width: 1200px; margin: 0 auto; background: none; }
 .public-chat-join { display: flex; flex-direction: column; justify-content: center; gap: 12px; flex: 1; }
 .public-chat-join > p:first-child { margin: 0 0 4px; color: #9eb5c5; line-height: 1.6; font-size: 13px; }
 .public-chat-join input { width: 100%; height: 38px; box-sizing: border-box; border: 1px solid #344b5b; border-radius: 7px;
@@ -119,19 +129,23 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-iso .public-iso-status { display: block; height: 32px; margin: 10px 0 0; color: #9db6c5;
   font-size: 12px; line-height: 16px; overflow: auto; overflow-wrap: anywhere; }
 .public-home .public-clear { padding: 3px 5px; background: none; border-color: transparent; color: #91a9b9; font-size: 11px; }
-.public-course-title { display: flex; align-items: center; gap: 9px; margin: 24px 0 12px; color: #dbe7ef;
+.public-course-title { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 24px 0 12px; color: #dbe7ef;
   font-size: 13px; font-weight: 600; letter-spacing: .01em; }
 .public-section-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px;
   padding: 0 5px; box-sizing: border-box; border: 1px solid #354b5b; border-radius: 6px; color: #92aabc; font: 500 10px system-ui; }
 .public-courses { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
 .public-home .public-course { text-align: left; }
-.public-course h3 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.3; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.public-map-tile h3 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.3; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.public-map-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; color: #91a9b9; font: 11px/1.5 system-ui; }
+.public-private-badge { padding: 2px 7px; border: 1px solid #826c4d66; border-radius: 5px; color: #d5bd98; background: #59452b33; }
 .public-requirements { color: #94adbf; font-size: 11px; font-weight: 400; line-height: 1.5; }
 .public-card-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 12px;
   border-top: 1px solid #91b1c314; }
 .public-card-actions a { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; box-sizing: border-box;
   padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; color: #a8c2d4; font: 600 11px system-ui; text-decoration: none; }
 .public-card-actions a:hover { background: #91b1c30c; border-color: #3b566a; color: #d9eaf4; }
+.public-card-actions .public-delete { padding: 7px 10px; color: #e8a6a6; background: transparent; border-color: transparent; font-size: 11px; }
+.public-card-actions .public-delete:hover:not(:disabled) { background: #62313c33; border-color: #94546266; }
 .public-card-actions > .public-primary { min-width: 76px; }
 .public-card-status { color: #ffc1c1; font-size: 12px; line-height: 1.5; margin: 0; }
 .public-status { color: #b9ceda; line-height: 1.5; font-size: 13px; margin: 24px 0 15px; }
@@ -154,7 +168,7 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   width: 340px; max-width: calc(100vw - 24px); box-sizing: border-box; margin: 0; background: #101e2af5;
   box-shadow: 0 12px 32px #0006; backdrop-filter: blur(10px); }
 .public-home .public-primary, .public-actions .public-primary, .public-map-choices .public-primary { color: #242321; background: #eebc7b; border-color: #efc68d; box-shadow: inset 0 1px #fff4; }
-.public-home .public-primary:hover:not(:disabled), .public-actions .public-primary:hover:not(:disabled), .public-map-choices .public-primary:hover:not(:disabled) { background: #f6ca92; border-color: #f8d5a7; }
+.public-home .public-primary:hover:not(:disabled), .public-actions .public-primary:hover:not(:disabled), .public-map-choices .public-primary:hover:not(:disabled) { color: #242321; background: #f6ca92; border-color: #f8d5a7; }
 .public-home .public-primary:disabled { color: #7d93a3; background: #233442; border-color: #3b5060; box-shadow: none; opacity: 1; }
 .public-play .sp-chat.sp-chat-docked { left: auto; right: 0; top: var(--public-header); bottom: 0; width: var(--lodge-width); padding: 18px 16px; box-sizing: border-box;
   gap: 12px; background: #101c27; border-left: 1px solid #283d4d; pointer-events: auto; }

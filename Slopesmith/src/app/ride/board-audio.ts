@@ -1,3 +1,4 @@
+import { clientFetch } from '../net/client';
 import {
   BIG_AIR_WIND_SLOT,
   BOARD_AUDIO_GROUPS,
@@ -225,7 +226,7 @@ export class BoardAudio {
     this.boostGain.connect(this.cueGain);
     resumeSharedAudio();
     if (!surfaceGroups) {
-      void fetch(resolveAssetUrl('/api/board-audio'))
+      void clientFetch(resolveAssetUrl('/api/board-audio'))
         .then(response =>
           response.ok
             ? (response.json() as Promise<{ surfaceGroups?: number[] | null }>)

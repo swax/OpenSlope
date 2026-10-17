@@ -1,3 +1,5 @@
+import { workspaceFetch } from './workspace';
+
 /** Stable identity for this browser tab. It scopes both project revisions and project-owned asset requests. */
 const CLIENT_ID_KEY = 'slopesmith.clientId';
 
@@ -15,6 +17,7 @@ export const clientId = (() => {
 })();
 
 let activeProjectId = '';
+export const clientProjectId = (): string => activeProjectId;
 
 /** Project sync calls this before rendering a snapshot, making immutable asset URLs project-specific too. */
 export function setClientProjectId(id: string | null | undefined): void {
@@ -25,7 +28,7 @@ export function setClientProjectId(id: string | null | undefined): void {
 export function clientFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   headers.set('x-slopesmith-client', clientId);
-  return fetch(input, { ...init, headers });
+  return workspaceFetch(input, { ...init, headers });
 }
 
 /**

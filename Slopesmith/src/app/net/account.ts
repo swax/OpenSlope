@@ -2,8 +2,8 @@
  * Who this browser is on the server it talks to (docs/038).
  *
  * This is the boot gate's entire input. `src/app/boot.ts` asks it BEFORE the editor module exists, so a
- * server that requires accounts and does not recognise this browser answers a login page rather than an
- * editor booting behind a dialog with every one of its requests being refused.
+ * server that requires accounts can distinguish a member's server workspace from a visitor's local editor
+ * before either starts. Explicit sign-in, invitation and enrolment links still get account forms.
  *
  * It lives apart from the sign-in UI it used to sit inside so that asking costs one fetch and nothing else —
  * no lil-gui, no project sync, no viewport. That is the whole point of asking first: at the moment this runs,

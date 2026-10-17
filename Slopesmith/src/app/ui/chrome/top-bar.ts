@@ -4,7 +4,8 @@ import { MODE_ICON, HIST_ICON, MENU_ICON, MORE_ICON, USERS_ICON, VIEW_ICON } fro
 import { barFold, fitBar } from './bar-fit';
 import type { Mode, ShadeMode, Viewport } from '../../viewport/viewport';
 import type { HistoryEntry } from '../../state/history';
-import { openPublicCoursesDialog } from './public-courses-dialog';
+import { isLocalWorkspace } from '../../net/workspace';
+import { canSaveMountainFolder } from '../../mountain/folder';
 
 /**
  * The top dock (#dock-top): the three clusters of the editor's chrome — the Slopesmith brand, File and
@@ -79,6 +80,8 @@ export type TopBarDeps = {
   deleteMountain: () => void;
   exportMountain: () => void;
   importMountain: () => void;
+  saveToFolder?: () => void;
+  openMountainFolder?: () => void;
   exportDialog: () => void;
   settingsDialog: () => void;
   exitEditor: () => void;
@@ -412,17 +415,19 @@ export function createTopBar(deps: TopBarDeps) {
           desc: 'Account, browser-local, application, and server settings.',
           onClick: settingsDialog,
         },
-        {
-          label: 'Public courses…',
-          desc: 'Choose which courses visitors can ride from the homepage.',
-          onClick: () => {
-            void openPublicCoursesDialog(deps.getProjectId?.() ?? null, mountainName(), canManageMountain());
-          },
-        },
-
+        ...(deps.openMountainFolder && canSaveMountainFolder()
+          ? [
+              {
+                label: 'Open mountain folder…',
+                desc: 'Open an editable folder copy in the local editor and resume folder autosave.',
+                onClick: deps.openMountainFolder,
+              },
+            ]
+          : []),
         {
           group: currentMountain,
           label: 'History…',
+          disabled: isLocalWorkspace(),
           desc: 'Preview, restore or fork one of this mountain’s saved checkpoints.',
           onClick: historyDialog,
         },
@@ -459,7 +464,9 @@ export function createTopBar(deps: TopBarDeps) {
           group: currentMountain,
           label: 'Duplicate mountain…',
           desc: mayCreate
-            ? 'Create a fast independent copy of this mountain on the same server.'
+            ? isLocalWorkspace()
+              ? 'Create an independent copy on this device.'
+              : 'Create a fast independent copy of this mountain on the same server.'
             : 'Duplicating a mountain requires the editor role.',
           disabled: !mayCreate,
           onClick: duplicateMountain,
@@ -470,10 +477,23 @@ export function createTopBar(deps: TopBarDeps) {
           desc: 'Download an editable mountain ZIP with its mountain-local assets.',
           onClick: exportMountain,
         },
+        ...(isLocalWorkspace() && deps.saveToFolder
+          ? [
+              {
+                group: currentMountain,
+                label: 'Save to folder…',
+                desc: canSaveMountainFolder()
+                  ? 'Keep an editable mountain copy in a folder, updated automatically as you work.'
+                  : 'Folder autosave is unavailable in this browser. Export mountain for a ZIP backup.',
+                disabled: !canSaveMountainFolder(),
+                onClick: deps.saveToFolder,
+              },
+            ]
+          : []),
         {
           group: currentMountain,
           label: 'Export map…',
-          desc: 'See what this mountain ships, then write its portable map folder.',
+          desc: 'Write the map files Snowknife uses to repack this course into your ISO.',
           onClick: exportDialog,
         },
         {
@@ -507,6 +527,7 @@ export function createTopBar(deps: TopBarDeps) {
   };
   const modeGroup = xrEdit('mode', group(modeSeg.el));
   const usersGroup = group(usersBar.el);
+  if (isLocalWorkspace()) usersGroup.style.display = 'none';
   const overlaysGroup = xrEdit('view', group(viewOverlays.el));
   const shadeGroup = xrEdit('view', group(viewShade.el));
   const showGroup = xrEdit('view', group(viewShow.el));

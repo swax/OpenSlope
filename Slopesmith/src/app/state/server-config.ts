@@ -1,3 +1,4 @@
+import { clientFetch } from '../net/client';
 /** The machine-local paths, as the local server reports them. Field names match the bootstrap record. */
 export interface ServerWorkspaceConfig {
   workspaceRoot: string;
@@ -35,7 +36,7 @@ async function errorFrom(res: Response): Promise<Error> {
 
 /** Read the machine-local paths. */
 export async function loadServerWorkspaceConfig(): Promise<ServerWorkspaceView> {
-  const res = await fetch('/api/config');
+  const res = await clientFetch('/api/config');
   if (!res.ok) throw await errorFrom(res);
   return (await res.json()) as ServerWorkspaceView;
 }
@@ -44,7 +45,7 @@ export async function saveServerWorkspaceConfig(patch: ServerWorkspacePatch): Pr
   config: ServerWorkspaceConfig;
   restartRequired: boolean;
 }> {
-  const res = await fetch('/api/config', {
+  const res = await clientFetch('/api/config', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(patch),

@@ -1,9 +1,10 @@
 import { EDITOR_PATH, pageInPath } from './navigation';
+import { currentAccount } from './net/account';
 
 /**
  * Load the editor and let it boot, which is the last thing either way into the app does.
  *
- * `boot.ts` calls this for a browser the server already accepts; the login page calls it the moment a
+ * `boot.ts` calls this after choosing a server or local workspace; the login page calls it the moment a
  * password is accepted, in place of the reload that used to be needed there. The import is what actually
  * fetches the editor — several megabytes of it — so it is deliberately the only place that does, and the one
  * place that says something when those bytes never arrive.
@@ -48,6 +49,15 @@ export async function enterEditor(): Promise<void> {
   }
   splash()?.classList.add('show');
   try {
+    const account = await currentAccount();
+    if (
+      (account.accounts === 'required' && !('user' in account)) ||
+      new URLSearchParams(location.search).has('reference') ||
+      new URLSearchParams(location.search).has('local')
+    ) {
+      const { prepareEditorWorkspace } = await import('./public/local-editor');
+      await prepareEditorWorkspace(account);
+    }
     await import('./main');
   } catch (error) {
     failed(error);

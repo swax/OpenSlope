@@ -1,3 +1,4 @@
+import { clientFetch } from '../net/client';
 import { AudioContext as ThreeAudioContext } from 'three';
 import { resolveAssetUrl } from '../net/asset-paths';
 
@@ -72,7 +73,7 @@ export function sharedAudioBuffer(url: string): Promise<AudioBuffer | null> {
     const audio = sharedAudioContext();
     pending = (async () => {
       try {
-        const response = await fetch(resolveAssetUrl(url));
+        const response = await clientFetch(resolveAssetUrl(url));
         if (!response.ok) return null;
         return await audio.decodeAudioData(await response.arrayBuffer());
       } catch {

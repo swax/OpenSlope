@@ -1,10 +1,11 @@
+import { clientFetch } from './client';
 import type { PublicCourseKind } from '../../core/session/public-courses';
 
 export { publicProjectUrl } from '../public/links';
 
-/** The same publication switch is shared by Map permissions and the public course catalogue dialog. */
+/** Publication API shared by Map permissions and reference map listing controls. */
 export async function coursePublication(kind: PublicCourseKind, id: string, published?: boolean): Promise<boolean> {
-  const response = await fetch(
+  const response = await clientFetch(
     `/api/publication?kind=${kind}&id=${encodeURIComponent(id)}`,
     published === undefined
       ? undefined

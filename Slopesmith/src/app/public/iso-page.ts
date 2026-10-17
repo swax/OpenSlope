@@ -59,7 +59,7 @@ export async function showIsoPage(): Promise<void> {
     const heading = mapHeading(discCourseName(slot), 'disc');
     const badge = element('span', 'public-iso-badge');
     const controls = element('div', 'public-iso-map-actions');
-    const button = element('button', ''); button.type = 'button';
+    const button = element('button', 'public-primary'); button.type = 'button';
     button.onclick = () => {
       const phase = loads.state(slot)?.phase;
       if (phase === 'queued' || phase === 'loading') loads.cancel(slot);

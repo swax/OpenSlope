@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 import { migrateMountain } from '../../../core/doc/mountain';
 import {
   DEFAULT_RETOPOLOGY_OPTIONS,
@@ -69,7 +70,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
     if (capabilities || loadingCapabilities) return;
     loadingCapabilities = true;
     try {
-      const response = await fetch('/api/retopology/capabilities', { cache: 'no-store' });
+      const response = await clientFetch('/api/retopology/capabilities', { cache: 'no-store' });
       if (!response.ok) throw new Error(await responseError(response));
       capabilities = (await response.json()) as RetopologyCapabilities;
       const requestedScope = options.scope;
@@ -117,7 +118,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
   async function poll(id: string): Promise<void> {
     if (status?.id !== id || terminal(status.phase)) return;
     try {
-      const response = await fetch(`/api/retopology/jobs/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      const response = await clientFetch(`/api/retopology/jobs/${encodeURIComponent(id)}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(await responseError(response));
       status = (await response.json()) as RetopologyJobStatus;
       refresh();
@@ -157,7 +158,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
     };
     refresh();
     try {
-      const response = await fetch('/api/retopology/jobs', {
+      const response = await clientFetch('/api/retopology/jobs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -186,7 +187,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
     const id = status.id;
     clearTimeout(pollTimer);
     try {
-      const response = await fetch(`/api/retopology/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const response = await clientFetch(`/api/retopology/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!response.ok) throw new Error(await responseError(response));
       status = (await response.json()) as RetopologyJobStatus;
     } catch (error) {
@@ -208,7 +209,7 @@ export function createRetopologyTools(ctx: ToolsContext) {
     applying = true;
     refresh();
     try {
-      const response = await fetch(`/api/retopology/jobs/${encodeURIComponent(status.id)}/result`, {
+      const response = await clientFetch(`/api/retopology/jobs/${encodeURIComponent(status.id)}/result`, {
         cache: 'no-store',
       });
       if (!response.ok) throw new Error(await responseError(response));

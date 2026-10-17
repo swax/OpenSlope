@@ -1,3 +1,4 @@
+import { clientFetch } from '../net/client';
 /**
  * Sound Library: a browser over the extracted SFX banks, opened from a Play sound node in the Effects panel.
  *
@@ -354,7 +355,7 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
     slots.replaceChildren();
     note.textContent = 'Loading…';
     try {
-      const response = await fetch(`/api/sound-banks?level=${encodeURIComponent(level)}`);
+      const response = await clientFetch(`/api/sound-banks?level=${encodeURIComponent(level)}`);
       const body = (await response.json()) as { banks?: SoundBank[]; soundIndex?: CollisionSoundIndex };
       banks = body.banks ?? [];
       registerCollisionSoundIndex(body.soundIndex);
@@ -383,7 +384,7 @@ export async function openSoundLibrary(opts: SoundLibraryOptions = {}): Promise<
 
   let levels: string[] = [];
   const [, uploads] = await Promise.all([
-    fetch('/api/sound-banks')
+    clientFetch('/api/sound-banks')
       .then(r => r.json())
       .then((body: { levels?: string[] }) => {
         levels = body.levels ?? [];

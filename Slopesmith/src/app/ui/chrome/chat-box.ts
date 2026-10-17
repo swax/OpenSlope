@@ -74,10 +74,7 @@ body.os-riding .sp-chat-line { pointer-events: none; cursor: default; }
 .sp-chat.sp-chat-docked .sp-chat-entry { display: flex; }
 .sp-chat.sp-chat-docked input { font-size: 16px; }
 .sp-chat.sp-chat-docked .sp-chat-line { pointer-events: auto; }
-body.sp-ride-chat #viewport { right: 300px; }
-body.sp-ride-chat #dock-right { display: none; }
 @media (max-width: 640px) {
-  body.sp-ride-chat #viewport { right: 0; bottom: 190px; }
   .sp-chat.sp-chat-docked { top: auto; height: 190px; width: 100%; }
   .sp-chat.sp-chat-docked h2, .sp-chat.sp-chat-docked .sp-chat-note { display: none; }
 }
@@ -96,7 +93,6 @@ export interface ChatBox {
   replay(lines: ChatLine[]): void;
   /** Replace the server-voice members currently speaking beside the passive chat feed. */
   setSpeakers(speakers: readonly ChatSpeaker[]): void;
-  setDocked(on: boolean): void;
   /** Take the keyboard. `prefill` is what a `/`-shortcut opens with. */
   open(prefill?: string): void;
   close(): void;
@@ -162,7 +158,7 @@ export function createChatBox(deps: {
 
   const lines: ChatLine[] = [];
   const rows = new Map<number, HTMLElement>();
-  let docked = !!deps.docked;
+  const docked = !!deps.docked;
   let open = docked;
   let holding = false;
   let fade = 0;
@@ -331,15 +327,6 @@ export function createChatBox(deps: {
       paint();
     },
     setSpeakers,
-    setDocked(on): void {
-      docked = on;
-      open = on;
-      el.classList.toggle('sp-chat-docked', on);
-      el.classList.toggle('open', on);
-      el.style.bottom = '';
-      anchor();
-      paint();
-    },
     open(prefill = ''): void {
       if (deps.suspended?.()) return;
       open = true;
@@ -356,7 +343,7 @@ export function createChatBox(deps: {
     'keydown',
     event => {
       if (
-        !docked ||
+        (!docked && !document.body.classList.contains('os-riding')) ||
         deps.suspended?.() ||
         event.key !== 'Enter' ||
         (event.target as HTMLElement | null)?.closest?.('input, textarea, select, button, a, [contenteditable="true"]')

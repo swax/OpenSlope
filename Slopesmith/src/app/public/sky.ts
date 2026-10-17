@@ -3,9 +3,9 @@ import type { MapDataSource } from '../../shared/map-data';
 import { readModelGeometries } from '../../shared/map-props';
 import type { Viewport } from '../viewport/viewport';
 
-/** Native exports the backdrop as ordinary models. Draw those local meshes around the camera. */
+/** Native exports the backdrop as ordinary models. Prepare it hidden until the ride begins. */
 export async function installLocalSky(viewport: Viewport, source: MapDataSource, course: string,
-  fileUrl: (path: string) => string): Promise<void> {
+  fileUrl: (path: string) => string): Promise<{ setVisible(on: boolean): void } | undefined> {
   const prefix = `${course}/Skybox/`;
   const models = await source.readJsonOr<{ Models?: unknown[] }>(`${prefix}Models.json`, {});
   if (!models.Models?.length) return;
@@ -18,6 +18,7 @@ export async function installLocalSky(viewport: Viewport, source: MapDataSource,
   const geometries = await readModelGeometries(skySource, skyLevel, new Set(models.Models.map((_, index) => index)));
   const materials = await source.readJsonOr<{ Materials?: { TexturePath?: string }[] }>(`${prefix}Materials.json`, {});
   const group = new THREE.Group(), loader = new THREE.TextureLoader();
+  group.visible = false;
   let top = -Infinity;
   for (const model of geometries.values()) for (const sub of model.subs)
     for (let i = 2; i < sub.positions.length; i += 3) top = Math.max(top, sub.positions[i]);
@@ -56,12 +57,19 @@ export async function installLocalSky(viewport: Viewport, source: MapDataSource,
       for (let c = 0; c < 3; c++) total[c] += pixels[i + c] * alpha;
     }
   }
-  if (weight > 0) viewport.scene.background = new THREE.Color().setRGB(
-    total[0] / weight / 255, total[1] / weight / 255, total[2] / weight / 255, THREE.SRGBColorSpace);
+  const previewBackground = viewport.scene.background;
+  const skyBackground = weight > 0 ? new THREE.Color().setRGB(
+    total[0] / weight / 255, total[1] / weight / 255, total[2] / weight / 255, THREE.SRGBColorSpace) : previewBackground;
   viewport.scene.add(group);
   const old = viewport.scene.onBeforeRender;
   viewport.scene.onBeforeRender = function (...args) {
     old.apply(this, args);
     args[2].getWorldPosition(group.position); group.updateMatrixWorld(true);
+  };
+  return {
+    setVisible(on) {
+      group.visible = on;
+      viewport.scene.background = on ? skyBackground : previewBackground;
+    },
   };
 }

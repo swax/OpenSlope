@@ -1,3 +1,4 @@
+import { clientFetch } from '../../net/client';
 import { fetchJson } from '../../net/fetch-json';
 import {
   loadServerWorkspaceConfig,
@@ -165,7 +166,7 @@ function buildUpdateControls(
         // A successfully installed older release may not have the status route yet. Its authenticated session
         // endpoint proves the service is back; a reload then hands control to that release's own browser app.
         if (/404/.test(String(error))) {
-          const session = await fetch('/api/auth/session', { cache: 'no-store' }).catch(() => null);
+          const session = await clientFetch('/api/auth/session', { cache: 'no-store' }).catch(() => null);
           if (session && (session.ok || session.status === 401)) {
             location.reload();
             return;
@@ -596,7 +597,7 @@ interface VoiceCheckResult {
  * replace an already-connected Users voice session for the administrator running it. */
 async function requestVoiceTestCredentials(): Promise<VoiceTestCredentials> {
   const testClient = `voice-test-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
-  const response = await fetch('/api/voice', {
+  const response = await clientFetch('/api/voice', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-slopesmith-client': testClient },
     body: '{}',

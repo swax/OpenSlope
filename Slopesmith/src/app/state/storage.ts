@@ -12,6 +12,8 @@ import type {
 import type { DrawDistance } from '../viewport/scene/range-cull';
 import type { XrEyeBufferMeasurement, XrLayerMode } from '../ride/xr/config';
 import type { RideGear, SnowboardStance } from '../ride/gear';
+import { isLocalWorkspace } from '../net/workspace';
+import { clientProjectId } from '../net/client';
 
 /**
  * localStorage persistence for the editor session: the storage keys, the typed shapes saved under them, the
@@ -20,10 +22,11 @@ import type { RideGear, SnowboardStance } from '../ride/gear';
  * wrapped so a full / disabled store degrades to "not saved" rather than throwing.
  */
 
-export const MOUNTAIN_KEY = 'slopesmith-mountain-v1';
-export const VIEW_KEY = 'slopesmith-view-v1'; // camera framing, restored on reload so a refresh keeps the current view
-export const REF_KEY = 'slopesmith-ref-v1'; // the loaded reference level (+ its placement offset), re-loaded on reload
-export const UI_KEY = 'slopesmith-ui-v1'; // editor mode + view toggles (shading, cage, XYZ grid), restored on reload
+const prefix = isLocalWorkspace() ? 'slopesmith-local' : 'slopesmith';
+export const MOUNTAIN_KEY = `${prefix}-mountain-v1`;
+export const VIEW_KEY = `${prefix}-view-v1`; // camera framing, restored on reload so a refresh keeps the current view
+export const REF_KEY = `${prefix}-ref-v1`; // the loaded reference level (+ its placement offset), re-loaded on reload
+export const UI_KEY = `${prefix}-ui-v1`; // editor mode + view toggles (shading, cage, XYZ grid), restored on reload
 export const PINS_KEY = 'slopesmith-mountain-pins-v1'; // mountains pinned to the top of the stats comparison
 
 export interface StoredUi {
@@ -137,6 +140,8 @@ export function createPersistence(deps: {
   function persistDoc() {
     try {
       localStorage.setItem(MOUNTAIN_KEY, JSON.stringify(deps.getDoc()));
+      if (isLocalWorkspace() && clientProjectId())
+        localStorage.setItem(`slopesmith.localRecovery:${clientProjectId()}`, JSON.stringify(deps.getDoc()));
     } catch {
       /* storage full / disabled */
     }

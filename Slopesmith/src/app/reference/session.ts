@@ -1,3 +1,4 @@
+import { clientFetch } from '../net/client';
 import GUI, { Controller } from 'lil-gui';
 import { DEFAULT_SUN, type QuadMeshDoc, type SunLight, type V3 } from '../../core/doc/types';
 import { DEFAULT_LAPS, DEFAULT_SHOWOFF_SECONDS, normalizeLaps, normalizeShowoffSeconds } from '../../core/doc/race';
@@ -711,7 +712,7 @@ export function createReference(deps: ReferenceDeps) {
     const maps: LightmapSet = new Map();
     await Promise.all(
       [...ids].map(async id => {
-        const resp = await fetch(`/api/lightmap?level=${encodeURIComponent(level)}&id=${id}`);
+        const resp = await clientFetch(`/api/lightmap?level=${encodeURIComponent(level)}&id=${id}`);
         if (resp.status === 404) return; // a genuinely absent extracted map leaves those patches neutral
         if (!resp.ok) throw new Error(`lightmap ${id}: ${resp.status} ${resp.statusText}`.trim());
         const bmp = await createImageBitmap(await resp.blob(), {

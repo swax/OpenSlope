@@ -106,20 +106,48 @@ frame Three.js is allowed to sample, which YouTube's iframe does not provide; th
 ### Public homepage and guest riding
 
 **Users → Map permissions → share publicly** publishes the current editable mountain for guest riding.
-The same switch is available in **File → Public courses…**. Its owner or a
-moderator can change publication; moderators can also publish reference maps. Everything starts private.
+Its owner or a moderator can change publication. The separate **Public reference maps** dialog manages
+reference-map listings; its menu entry is currently hidden. Everything starts private.
 **Copy public link**, beside the sharing checkbox, opens that mountain directly in the guest player using
 its name, for example `/play/MyMountain`.
 Shared maps load immediately for visitors and members. No rider name or sign-in
 is required. Private or deleted links show an unavailable message. The sign-in page includes **Back to homepage**.
 The map catalogue is `/maps`, ISO management is `/isos`, and the editor uses `/editor/<mapname>`.
-Opening an editor link while signed out asks for credentials and then opens that mountain.
+Signed-in members also see **Private server maps** on `/maps`. Those tiles open the existing server mountain
+in the editor; public mountains stay in **Public maps** without duplicate tiles. Guests receive only the public
+catalogue, and private mountains remain unavailable through public play links.
+Each authored map has **Edit**; ISO maps have **Inspect**, which opens the map as a read-only reference beside
+an empty editing workspace. Signed-in authors keep the server editor. Signed-out visitors edit locally:
+the published mountain is copied into browser storage, and references come from this device's loaded ISO maps.
+Editing, creating, importing, duplicating, and exporting mountains stay on the device. No server project is
+created or saved and no collaboration session connects. **Export mountain…** downloads an editable ZIP with
+the custom assets; **Import mountain…** restores one locally. Browser storage is separate from signed-in
+recovery and can be cleared by the browser. **Save to folder…** keeps `mountain.slopesmith.zip` in a folder you
+choose and updates it automatically after browser saves, including custom assets. The save icon distinguishes
+browser, folder, and server saves; click it for the location, last save time, and backup actions. Folder autosave
+requires a browser with the directory picker (such as desktop Chrome or Edge). If folder permission expires,
+choose **Resume folder autosave** from the save icon. The folder copy survives clearing site data; use
+**Open mountain folder…** in the editor or on `/maps` to reopen it. Other browsers can use Export/Import mountain
+for file backups. **Export map…** writes the map files Snowknife uses to repack the course into your ISO.
+The **Home** icon saves
+pending edits and returns to `/maps`. Its **Local maps** section lists browser-saved mountains, including
+imports, and **New map** starts a new local mountain. Guest edits of public maps create numbered copies such
+as `MyMountain_REV_1` and `MyMountain_REV_2`; reopening a local tile resumes that copy. **File → Rename mountain…**
+renames it without changing its identity or the public source. Local tiles have **Delete**, with a confirmation
+before removing that browser copy and its custom assets. Deleting a browser copy keeps folder copies and downloads.
+Local tiles stay local even for signed-in
+members; local copies are never uploaded automatically. Signed-in members keep their account menu in the local
+editor, including profile, settings, sign-out and Exit editor. Only signed-out local editors use the Home-only
+control. Sign in from the Maps header to use the server editor.
 Its header uses the editor's logo and signed-in account menu. **File → Exit editor** and
 **Account menu → Exit editor** save pending changes and return home without signing out.
 GitHub, Discord and About live at the right of the ISO, Maps and player toolbar. About describes using your
 own assets and links to the source and server setup guide; narrow player headers keep those links inside About.
-Each map card has **Open**, plus **Load ISO maps** when assets are missing. Choose
-**Open** on a card to open that mountain. **Play**, **Play in VR**, and **View map** appear over the map preview.
+Public and ISO map cards have **Open**, plus **Load ISO maps** when assets are missing. Choose
+the card or its highlighted **Open** button to open that mountain. Saved-map tiles open **Edit**, and the new-map
+tile opens **Create**. On `/isos`, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
+Primary buttons share the same highlighted style; secondary actions keep their own targets.
+**Play**, **Play in VR**, and **View map** appear over the map preview.
 Click the map to choose a local start point; **Reset start** restores its default. **View map** shows the mouse
 movement legend for start placement, orbit, pan, and zoom. Hold **Alt + WASD** to move the camera.
 There is no separate map selection panel.
@@ -133,6 +161,8 @@ Public play hides editor bounds and fullscreen controls, with the score just bel
 alongside **Maps**, which returns to the catalogue. ISO availability and its load link live in the **Assets** menu.
 The lower-left ride legend follows board/on-foot and first/third-person changes; on narrow screens
 it folds into an expandable **Ride controls** tab.
+Editor Test rides keep the normal bottom-left editor chat and the Test tools panel. Press **Enter** during a
+ride to chat; sending a message or pressing **Escape** returns the keyboard to the ride.
 
 Retail courses require the visitor's own SSX Tricky PS2 ISO. Authored mountains that borrow game assets
 are labelled **ISO optional** and remain playable without it: missing game textures render as plain

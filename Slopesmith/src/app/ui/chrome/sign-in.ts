@@ -1,7 +1,11 @@
-import { button, group, menu, type MenuItem } from '../components/controls';
+import { clientFetch } from '../../net/client';
+import { button, group, iconBar, menu, type MenuItem } from '../components/controls';
+import { svg } from '../components/icons';
 import { tooltip } from '../components/tooltip';
 import { postJson } from '../../net/fetch-json';
 import { currentAccount, onAccountChanged, type Member } from '../../net/account';
+import { isLocalWorkspace } from '../../net/workspace';
+import { MAPS_PATH, pageInPath } from '../../navigation';
 
 /**
  * The account, from inside the editor (docs/038).
@@ -29,7 +33,9 @@ async function signOut(url: string): Promise<void> {
   } catch {
     /* the cookie is going either way; the reload settles it */
   }
-  location.reload();
+  const destination = new URL(location.href);
+  if (pageInPath(destination.pathname) === 'editor') destination.searchParams.set('signin', '1');
+  location.assign(destination);
 }
 
 /**
@@ -86,13 +92,25 @@ export interface AccountMenuDeps {
  * Called once from `app/main.ts`. It reads the answer the boot gate already has, so it costs no request at
  * all — and on a server with no accounts, where that answer is "owner", it returns having done nothing.
  *
- * The states this used to handle — nobody, and a server waiting to be enrolled — cannot arrive here any more:
- * the gate does not start the editor for them. The one way to reach this module without a member is a probe
- * that failed and was read as "no accounts" (net/account.ts), which is the fail-open rule working as
- * designed, and which this treats exactly as it treats an owner.
+ * Signed-out browser workspaces get Home. A signed-in member keeps their account menu in every workspace.
  */
 export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
   const account = await currentAccount();
+  if (isLocalWorkspace() && !('user' in account)) {
+    const home = group(
+      iconBar([
+        {
+          icon: svg('<path d="m3 10 9-7 9 7v11H3Z"/><path d="M9 21v-8h6v8"/>'),
+          label: 'Home',
+          title: 'Save pending changes and return to Maps.',
+          onClick: deps.editorAction?.onClick ?? (() => location.assign(MAPS_PATH)),
+        },
+      ]).el,
+    );
+    home.classList.add('sp-home-control');
+    document.getElementById('dock-top')?.append(home);
+    return;
+  }
   if (!('user' in account)) {
     const bar = document.getElementById('dock-top');
     // File ▸ Settings… reaches the same dialog, so a narrow bar drops this button (`sp-fit-account`).
@@ -107,12 +125,14 @@ export async function installAccounts(deps: AccountMenuDeps): Promise<void> {
       );
     return;
   }
-  document.getElementById('dock-top')?.append(group(createAccountMenu(account.user, deps)));
+  const accountControl = group(createAccountMenu(account.user, deps));
+  accountControl.classList.add('sp-account-control');
+  document.getElementById('dock-top')?.append(accountControl);
   // An open editor may otherwise cross the browser cookie's Max-Age using only WebSocket traffic, which
   // cannot renew a cookie. One ordinary authenticated request keeps an actively used login sliding — and a
   // session that ended anyway reloads into the login page rather than sitting in an editor being refused.
   const refresh = setInterval(() => {
-    void fetch('/api/auth/session', { cache: 'no-store', headers: { accept: 'application/json' } })
+    void clientFetch('/api/auth/session', { cache: 'no-store', headers: { accept: 'application/json' } })
       .then(response => {
         if (response.status === 401) location.reload();
       })

@@ -243,6 +243,7 @@ try {
     document: mountain,
     assets: [{ kind: 'texture', name: 'snow.png', hash: tileHash, size: tile.length }],
     blobs: { [tileHash]: Buffer.from(tile).toString('base64') },
+    isoAliases: { SourceLevel: 'GARI' },
   };
   const portable = createMountainArchive(bundle);
   const checkpoint = createMountainArchive(bundle, { filenameStem: mountain.name, checkpoint: true });
@@ -257,6 +258,7 @@ try {
       roundMountain.takenAt === bundle.takenAt,
     'mountain ZIP: the editable document and revision round-trip',
   );
+  check(roundMountain.isoAliases?.SourceLevel === 'GARI', 'mountain ZIP: ISO reference aliases survive a backup');
   check(
     roundMountain.assets.length === 1 &&
       roundMountain.assets[0].name === 'snow.png' &&

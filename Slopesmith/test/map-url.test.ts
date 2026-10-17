@@ -1,6 +1,6 @@
 // tier: fast
 import assert from 'node:assert/strict';
-import { editorAccountUrl, mapNameAtPath, mapPath, pageInPath } from '../src/app/navigation';
+import { editorAccountUrl, localEditorUrl, mapNameAtPath, mapPath, pageInPath } from '../src/app/navigation';
 import { mapNameInUrl, showMapInUrl } from '../src/app/state/map-url';
 
 for (const [pathname, page] of [
@@ -26,6 +26,8 @@ for (const pathname of ['/play/My_Run', '/editor/%', '/editor/a%2Fb', '/editor/a
 }
 assert.equal(editorAccountUrl('profile'), '/editor?account=profile');
 assert.equal(editorAccountUrl('settings'), '/editor?account=settings');
+assert.equal(localEditorUrl('LOCAL_RUN', 'local-123'), '/editor/LOCAL_RUN?local=local-123');
+assert.equal(localEditorUrl('', 'new'), '/editor?local=new');
 
 // A rename or map switch must keep editor options and fragments without adding a navigation entry.
 const locationDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'location');
@@ -57,6 +59,19 @@ try {
   showMapInUrl('');
   assert.equal(current.pathname, '/editor', 'no durable map leaves the editor at its base route');
   assert.equal(mapNameInUrl(), '');
+  current = new URL('https://slopesmith.example/editor/RUN?project=server-id&reference=GARI#camera');
+  showMapInUrl('RUN_REV_1', 'local-first');
+  assert.equal(current.href, 'https://slopesmith.example/editor/RUN_REV_1?reference=GARI&local=local-first#camera');
+  showMapInUrl('RENAMED', 'local-first');
+  assert.equal(current.searchParams.get('local'), 'local-first', 'renaming keeps the browser copy identity');
+  showMapInUrl('OTHER', 'local-second');
+  assert.equal(
+    current.searchParams.get('local'),
+    'local-second',
+    'opening or importing another copy updates its identity',
+  );
+  showMapInUrl('');
+  assert.equal(current.searchParams.has('local'), false, 'a deleted local map leaves no stale identity');
   current = new URL('https://slopesmith.example/play/RUN');
   assert.equal(mapNameInUrl(), '', 'a public player route never selects a project for editor boot');
 } finally {

@@ -1,3 +1,4 @@
+import { clientFetch } from '../net/client';
 import { BUILTIN_CHARACTERS, DEFAULT_CHARACTER_MODEL_ID } from '../../core/characters/builtins';
 
 export const PROCEDURAL_RIDER_MODEL_ID = 'procedural';
@@ -28,7 +29,7 @@ export function riderModelCatalogSettled(): boolean {
 
 /** Fetch the flat server-wide character catalogue once. Every built-in choice survives an API failure. */
 export function ensureRiderModelCatalog(): Promise<readonly RiderModelOption[]> {
-  catalogRequest ??= fetch('/api/characters', { cache: 'no-store' })
+  catalogRequest ??= clientFetch('/api/characters', { cache: 'no-store' })
     .then(async response => {
       if (!response.ok) throw new Error(`character catalog returned ${response.status}`);
       const payload = (await response.json()) as { characters?: unknown };

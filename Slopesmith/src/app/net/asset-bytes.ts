@@ -1,3 +1,4 @@
+import { clientFetch } from './client';
 import { beginRequestDiagnostic } from './diagnostics';
 
 /**
@@ -35,7 +36,7 @@ export function assetBytes(url: string): Promise<Uint8Array> {
 async function fetchBytes(url: string): Promise<Uint8Array> {
   const trace = beginRequestDiagnostic(url);
   try {
-    const response = await fetch(url);
+    const response = await clientFetch(url);
     trace.headers(response);
     if (!response.ok) {
       const message = (await response.text().catch(() => '')).trim();

@@ -7,6 +7,7 @@ import {
   isoManagementUrl,
   publicCourseRequest,
   resolvePublicCourse,
+  courseEditorUrl,
 } from '../src/app/public/links';
 import { MAPS_PATH, ISOS_PATH } from '../src/app/navigation';
 import type { PublicCourse } from '../src/core/session/public-courses';
@@ -92,6 +93,9 @@ assert.equal(
 assert.equal(new URL(isoManagementUrl(undefined, origin)).pathname, ISOS_PATH);
 assert.equal(new URL(isoManagementUrl(named, origin)).pathname, ISOS_PATH);
 assert.equal(new URL(publicCourseUrl(reference, origin)).pathname, '/play/Published%20Garibaldi');
+assert.equal(courseEditorUrl(named, origin), `${origin}/editor/My_Mountain`);
+assert.equal(courseEditorUrl(reference, origin), `${origin}/editor?reference=RENAMED_GARI`);
+assert.equal(courseEditorUrl({ ...named, name: 'A map' }, origin), `${origin}/editor/A%20map`);
 assert.equal(
   resolvePublicCourse(publicCourseRequest(new URL(publicCourseUrl(reference, origin))), [reference], [])?.id,
   reference.id,

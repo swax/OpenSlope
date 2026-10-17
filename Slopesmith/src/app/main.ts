@@ -2,6 +2,7 @@ import type { CoursePath, PlacedProp } from '../core/doc/types';
 import { SURFACE_TYPES } from '../core/doc/types';
 import {
   defaultMountain,
+  blankMountain,
   migrateMountain,
   type BrushOp,
   type BrushFalloff,
@@ -95,13 +96,26 @@ import {
   clientId as editorClientId,
   deviceLabel as editorDeviceLabel,
   type ProjectSaveState,
+  type ClientProject,
 } from './state/project-sync';
 import { createSessionChannel, membersOn, type PresenceEntry } from './net/session-channel';
 import { currentAccount, onAccountChanged, type Member } from './net/account';
+import { isLocalWorkspace } from './net/workspace';
 import { MAPS_PATH } from './navigation';
 import { createRegisterSync } from './net/register-sync';
 import { createAwareness } from './net/awareness';
 import { createSyncStatus } from './state/sync-status';
+import {
+  connectMountainFolder,
+  disconnectMountainFolder,
+  flushMountainFolders,
+  hasPendingMountainFolderSaves,
+  mountainFolderStatus,
+  onMountainFolderStatus,
+  resumeMountainFolder,
+} from './state/folder-autosave';
+import { pickMountainFolder } from './mountain/folder';
+import { openLocalMountainFolder } from './mountain/open-folder';
 import { loadSettings, saveSettings } from './state/settings';
 import { confirmUnloadWithUnsavedWork, holdUnsavedWork } from './state/unsaved-work';
 import type { PeerMarks } from './viewport/scene/peers';
@@ -130,8 +144,9 @@ const storedMountain = loadStored<unknown>(MOUNTAIN_KEY);
 const MODES: Mode[] = MODE_SHORTCUTS.map(item => item.mode);
 const SHADES: ShadeMode[] = ['textured', 'surface', 'none'];
 const storedUi = loadStored<Partial<StoredUi>>(UI_KEY) ?? {};
-const bootMode: Mode =
-  (storedUi.mode as Mode) === 'play'
+const bootMode: Mode = new URLSearchParams(location.search).has('reference')
+  ? 'info'
+  : (storedUi.mode as Mode) === 'play'
     ? 'edit' // never boot straight into a live ride setup
     : MODES.includes(storedUi.mode as Mode)
       ? (storedUi.mode as Mode)
@@ -840,16 +855,35 @@ const persistence = createPersistence({
 });
 const { persistDoc, persistView, persistUi, persistRef } = persistence;
 
-// The editable document is a responsive browser replica of one revisioned project on the local Slopesmith
-// service. localStorage remains a last-ditch recovery copy; successful server saves are the durable authority.
+// One save indicator combines the project's browser/server save with its optional independent folder copy.
+let saveProject: ClientProject | null = null;
 const syncChip = createSyncStatus({
   replay: () => registerSync.replayHeld(),
   discard: () => registerSync.discardHeld(),
+  folder: () => mountainFolderStatus(saveProject?.id ?? ''),
+  updatedAt: () => saveProject?.updatedAt,
+  exportMountain: () => exportMountain(),
+  saveToFolder: () => {
+    void saveToFolder();
+  },
+  openFolder: () => {
+    void openMountainFolder();
+  },
+  resumeFolder: () => {
+    void resumeFolder();
+  },
+  stopFolder: () => {
+    void stopFolder();
+  },
+});
+onMountainFolderStatus(id => {
+  if (id === saveProject?.id) syncChip.refresh();
 });
 let lastProjectStateMessage = '';
 const projectSync = createProjectSync({
   getDoc: () => store.mdoc,
   onState: (state: ProjectSaveState, detail = '') => {
+    saveProject = projectSync.current();
     syncChip.project(state, detail);
     document.documentElement.dataset.projectSave = state;
     if (
@@ -1257,8 +1291,8 @@ const {
     await projectSync.create(d);
     joinMap(d);
   },
-  canCreateMountains: () => session.mayCreateMountains(),
-  canManageMountain: () => session.mayManageMountain(projectSync.current()),
+  canCreateMountains: () => isLocalWorkspace() || session.mayCreateMountains(),
+  canManageMountain: () => isLocalWorkspace() || session.mayManageMountain(projectSync.current()),
   listProjects: () => projectSync.list(),
   openProject: async id => {
     const doc = await projectSync.open(id);
@@ -2227,20 +2261,61 @@ const play = createPlay({
   updateCmdSheet,
   syncSkyVisibility,
   ensureReferenceEffects,
-  onPlayingChanged: target => {
-    session.setPlaying(target);
-    chat.setDocked(!!target);
-    document.body.classList.toggle('sp-ride-chat', !!target);
-    window.dispatchEvent(new Event('resize'));
-  },
+  onPlayingChanged: target => session.setPlaying(target),
 });
 
 // ================= top dock: context + view + file =================
+async function saveToFolder(): Promise<void> {
+  try {
+    const handle = await pickMountainFolder();
+    if (!handle) return;
+    await projectSync.prepareToLeave();
+    await flushMountainFolders();
+    const project = projectSync.current();
+    if (!isLocalWorkspace() || !project) throw new Error('Open a local mountain before saving to a folder.');
+    await connectMountainFolder(project.id, handle, await projectSync.exportMountain());
+    toast(`Folder autosave enabled in ${handle.name}.`, 'ok');
+  } catch (error) {
+    toast(error instanceof Error ? error.message : String(error), 'err', 8000);
+  }
+}
+
+async function openMountainFolder(): Promise<void> {
+  try {
+    await openLocalMountainFolder(async () => {
+      await projectSync.prepareToLeave();
+      await flushMountainFolders();
+    });
+  } catch (error) {
+    toast(error instanceof Error ? error.message : String(error), 'err', 8000);
+  }
+}
+
+async function resumeFolder(): Promise<void> {
+  try {
+    if (saveProject) await resumeMountainFolder(saveProject.id);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : String(error), 'err', 8000);
+  }
+}
+
+async function stopFolder(): Promise<void> {
+  try {
+    await projectSync.prepareToLeave();
+    await flushMountainFolders();
+    if (saveProject) await disconnectMountainFolder(saveProject.id);
+    toast('Folder autosave stopped. The folder copy is kept.', 'ok');
+  } catch (error) {
+    toast(error instanceof Error ? error.message : String(error), 'err', 8000);
+  }
+}
+
 async function exitEditor(): Promise<void> {
   try {
     persistView();
     persistUi();
     await projectSync.prepareToLeave();
+    await flushMountainFolders();
     location.assign(MAPS_PATH);
   } catch (error) {
     toast(error instanceof Error ? error.message : String(error), 'err');
@@ -2298,8 +2373,8 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     getSpeedShadeOn: () => store.speedShadeOn,
     focusActive,
     newMountainDialog,
-    canCreateMountains: () => session.mayCreateMountains(),
-    canManageMountain: () => session.mayManageMountain(projectSync.current()),
+    canCreateMountains: () => isLocalWorkspace() || session.mayCreateMountains(),
+    canManageMountain: () => isLocalWorkspace() || session.mayManageMountain(projectSync.current()),
     openProjectDialog,
     historyDialog,
     renameMountain,
@@ -2311,6 +2386,12 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     deleteMountain,
     exportMountain,
     importMountain,
+    saveToFolder: () => {
+      void saveToFolder();
+    },
+    openMountainFolder: () => {
+      void openMountainFolder();
+    },
     exportDialog,
     settingsDialog: openSettingsDialog,
     exitEditor: () => {
@@ -3245,14 +3326,17 @@ const browserViews = createBrowserViews({
 // Boot waits for the progressive terrain build before restoring dependent services and the saved camera. This
 // also prevents a stored reference mountain from competing with the authored mountain for the status surface.
 async function boot() {
+  const inspect = new URLSearchParams(location.search).get('reference');
   // Existing users arrive with their last localStorage mountain. If no disk project exists, initialize() makes
   // that exact recovery document the first project; otherwise the URL's map, and failing that the active disk
   // project, wins.
-  const opened = await projectSync.initialize(
-    store.mdoc,
-    mapNameInUrl(),
-    new URLSearchParams(location.search).get('project') ?? '',
-  );
+  const opened = await (inspect && !mapNameInUrl() && !isLocalWorkspace()
+    ? blankMountain()
+    : projectSync.initialize(
+        store.mdoc,
+        mapNameInUrl(),
+        new URLSearchParams(location.search).get(isLocalWorkspace() ? 'local' : 'project') ?? '',
+      ));
   // A map the server opened at a room sequence is the room's document, installed as received (docs/039). Browser
   // recovery, and a map created from it, have not been through the server's normalisation.
   store.mdoc = projectSync.sequence() === undefined ? migrateMountain(opened) : opened;
@@ -3274,7 +3358,9 @@ async function boot() {
     );
   }
   if (projectSync.needsProjectChoice()) openProjectDialog(true);
-  const referenceReady = initReference({ restore: !browserViews.hasRequest() });
+  const referenceReady = initReference({ restore: !inspect && !browserViews.hasRequest() }).then(async () => {
+    if (inspect) await reference.openReference(inspect);
+  });
   initSunLight();
   const skyReady = initSky(); // capture waits for the catalogue and its scene loads
   library.init();
@@ -3301,7 +3387,7 @@ async function boot() {
   await Promise.all([referenceReady, skyReady]);
   // loadMountain() frames from scratch; only boot overrides that with the view the user left off at.
   const storedView = loadStored<ViewState>(VIEW_KEY);
-  if (isValidView(storedView)) viewport.applyView(storedView);
+  if (!inspect && isValidView(storedView)) viewport.applyView(storedView);
   // The terrain now exists, so restored sun/reference lighting can safely target its live materials.
   requestAnimationFrame(() => {
     applySunLight();
@@ -3665,7 +3751,7 @@ const observerControls = createObserverControls({
   stopObserving: () => stopObservingScreen(),
 });
 refreshObserverControls = () => observerControls.refresh();
-session.start();
+if (!isLocalWorkspace()) session.start();
 viewport.onJukeboxVideoEnded(() => {
   const current = jukeboxState.current;
   if (current) session.jukeboxVideoEnded(current.id, jukeboxState.mediaVersion);
@@ -3682,7 +3768,7 @@ setInterval(() => {
     viewport.seekJukeboxVideo(expected);
   }
 }, 2_000);
-registerSync.start();
+if (!isLocalWorkspace()) registerSync.start();
 /** Only the people on this map, and only while their marks are fresh — a peer who has gone leaves nothing
  *  drawn on the terrain. */
 let warnedOtherOwnSessionOn: string | null = null;
@@ -3795,7 +3881,7 @@ const awareness = createAwareness({
   },
   send: aware => session.aware(aware),
 });
-awareness.start();
+if (!isLocalWorkspace()) awareness.start();
 /** A shared screen is a local re-render, not video: publish the camera + display switches at awareness cadence. */
 setInterval(() => {
   if (!session.screenSharing()) return;
@@ -3861,14 +3947,18 @@ window.addEventListener('pagehide', () => registerSync.flush());
 window.addEventListener('pagehide', persistView);
 window.addEventListener('beforeunload', persistView);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') persistView();
+  if (document.visibilityState === 'hidden') {
+    persistView();
+    void projectSync.flush(true).then(() => flushMountainFolders());
+  }
 });
 window.addEventListener('pagehide', () => {
-  void projectSync.flush(true);
+  void projectSync.flush(true).then(() => flushMountainFolders());
 });
 window.addEventListener('beforeunload', () => {
-  void projectSync.flush(true);
+  void projectSync.flush(true).then(() => flushMountainFolders());
 });
+holdUnsavedWork(() => (hasPendingMountainFolderSaves() ? 'folder autosave in progress' : null));
 // Drafts held outside the document are not in any of those flushes: ask before a reload or close drops them.
 holdUnsavedWork(() => propDeform.unsaved);
 holdUnsavedWork(() =>

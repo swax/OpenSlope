@@ -15,7 +15,7 @@ const css = `
 .sp-ask { width: 380px; box-sizing: border-box; padding: 12px 14px 10px; color: #d7e3f0;
   background: #0c141d; border: 1px solid #2c3e50; border-radius: 7px;
   font: 12px/1.45 system-ui, sans-serif; box-shadow: 0 12px 40px #0009; }
-.sp-ask h3 { margin: 0 0 6px; color: #cfe3f5; font: 600 13px system-ui, sans-serif; }
+.sp-ask h3 { margin: 0 0 6px; color: #cfe3f5; font: 600 13px system-ui, sans-serif; overflow-wrap: anywhere; }
 .sp-ask label { display: block; margin: 8px 0 3px; color: #9fb3c8; font-size: 11px; font-weight: 600; }
 .sp-ask input { width: 100%; box-sizing: border-box; background: #0e1822; color: #d7e3f0;
   border: 1px solid #2c3e50; border-radius: 4px; padding: 6px 8px; font: 12px/1.3 system-ui, sans-serif; }
@@ -145,6 +145,9 @@ export interface ConfirmOptions {
 /** Ask a yes/no. Resolves true only on the confirm button — every dismissal path is false. */
 export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
   const { host, done, settle } = promptShell<boolean>(false);
+  host.setAttribute('role', 'alertdialog');
+  host.setAttribute('aria-modal', 'true');
+  host.setAttribute('aria-label', opts.title);
 
   const title = document.createElement('h3');
   title.textContent = opts.title;

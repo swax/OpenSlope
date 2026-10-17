@@ -158,8 +158,11 @@ async function run() {
     return canvas.toDataURL();
   };
   const scene = new THREE.Scene();
+  const previewBackground = new THREE.Color('#123456');
+  scene.background = previewBackground;
   scene.fog = new THREE.Fog('#ffff00', 0, 1); // The sky must not inherit the course's distance fog.
-  await installLocalSky({ scene } as Viewport, source, 'FIXTURE', textureUrl);
+  const sky = await installLocalSky({ scene } as Viewport, source, 'FIXTURE', textureUrl);
+  check(sky, 'The local sky fixture must load');
   const renderer = new THREE.WebGLRenderer();
   renderer.setSize(256, 128);
   renderer.toneMapping = THREE.NoToneMapping;
@@ -169,6 +172,14 @@ async function run() {
   renderer.setRenderTarget(target);
   renderer.render(scene, camera);
   const pixels = new Uint8Array(256 * 128 * 4);
+  renderer.readRenderTargetPixels(target, 0, 0, 256, 128, pixels);
+  const previewPixel = Array.from(pixels.slice((64 * 256 + 128) * 4, (64 * 256 + 128) * 4 + 3));
+  check(
+    previewPixel.every((channel, i) => Math.abs(channel - [0x12, 0x34, 0x56][i]) <= 2),
+    `A loaded ISO sky stays hidden in map preview: ${previewPixel}`,
+  );
+  sky.setVisible(true);
+  renderer.render(scene, camera);
   renderer.readRenderTargetPixels(target, 0, 0, 256, 128, pixels);
   const seam = Array.from({ length: 8 }, (_, i) =>
     Array.from(pixels.slice((64 * 256 + 124 + i) * 4, (64 * 256 + 124 + i) * 4 + 3)),
@@ -185,6 +196,16 @@ async function run() {
     zenith.every(channel => Math.abs(channel - 128) <= 2),
     `Open sky must match the upper tile edge: ${zenith}`,
   );
+  sky.setVisible(false);
+  renderer.render(scene, camera);
+  renderer.readRenderTargetPixels(target, 0, 0, 256, 128, pixels);
+  const stoppedPixel = Array.from(pixels.slice((64 * 256 + 128) * 4, (64 * 256 + 128) * 4 + 3));
+  check(
+    scene.background === previewBackground &&
+      stoppedPixel.every((channel, i) => Math.abs(channel - previewPixel[i]) <= 2),
+    `Stopping restores the preview background instead of leaving the ISO zenith: ${stoppedPixel}`,
+  );
+  sky.setVisible(true);
   camera.lookAt(0, 0, -1);
   // Prove the same framebuffer measurement catches the previous edge wrapping.
   scene.traverse(object => {

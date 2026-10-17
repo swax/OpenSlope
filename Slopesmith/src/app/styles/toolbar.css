@@ -35,6 +35,14 @@
 .sp-group[hidden] {
   display: none;
 }
+.sp-home-control,
+.sp-account-control {
+  position: sticky;
+  right: 0;
+  flex-shrink: 0;
+  background: #0c141d;
+  box-shadow: -8px 0 8px #0c141d;
+}
 /* Narrow bar (bar-fit.ts): the Mode / View captions go first, then the wordmark, then the accountless Settings
    button, which File ▸ Settings… repeats. The account menu's own trade is with the menus (menus.css). */
 #dock-top.sp-fit-captions .sp-group:has(> .sp-label),
@@ -410,8 +418,7 @@
 .sp-seg button.on .sp-seg-key {
   opacity: 0.8;
 }
-/* Passive autosave state beside Undo. One stable disk: motion means work is moving, amber means the
-   connection is catching up, and red is reserved for a save that needs attention. */
+/* Save destination beside Undo; click for its location and backup actions. */
 .sp-save-status {
   position: relative;
   display: inline-flex;
@@ -420,6 +427,43 @@
   padding: 5px 3px;
   color: #7891a5;
   box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  min-width: 28px;
+}
+.sp-save-status:hover,
+.sp-save-status:focus-visible {
+  background: #233344;
+  outline: 1px solid #4b677d;
+}
+.sp-save-details {
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px;
+  color: #c3d5e3;
+  font:
+    12px/1.5 system-ui,
+    sans-serif;
+}
+.sp-save-details h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.sp-save-details p {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.sp-save-details > div {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 12px;
+}
+.sp-save-details button[hidden] {
+  display: none;
 }
 .sp-save-status svg {
   display: block;

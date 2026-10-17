@@ -26,6 +26,8 @@ export interface ProjectBundle {
   missing?: string[];
   /** Asset bytes encoded for the JSON transfer endpoint, keyed by sha256. */
   blobs?: Record<string, string>;
+  /** Original level names mapped to this device's canonical ISO slots. */
+  isoAliases?: Record<string, string>;
 }
 
 /**
@@ -48,4 +50,5 @@ export interface MountainArchiveManifest {
   document: string;
   assets: MountainArchiveAsset[];
   missing?: string[];
+  isoAliases?: Record<string, string>;
 }

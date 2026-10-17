@@ -103,6 +103,7 @@ export function createMountainArchive(
     document: 'mountain.slope.json',
     assets,
     ...(bundle.missing?.length ? { missing: bundle.missing } : {}),
+    ...(bundle.isoAliases ? { isoAliases: bundle.isoAliases } : {}),
   };
   const entries: ExportFile[] = [
     { path: MOUNTAIN_ARCHIVE_MANIFEST, bytes: textEncoder.encode(`${JSON.stringify(manifest, null, 2)}\n`) },
@@ -291,6 +292,15 @@ export async function readMountainArchive(file: Blob): Promise<ProjectBundle> {
     document,
     assets: assets.map(({ file: _file, ...asset }) => asset),
     blobs,
+    ...(manifest.isoAliases && typeof manifest.isoAliases === 'object' && !Array.isArray(manifest.isoAliases)
+      ? {
+          isoAliases: Object.fromEntries(
+            Object.entries(manifest.isoAliases).filter(
+              (entry): entry is [string, string] => typeof entry[1] === 'string',
+            ),
+          ),
+        }
+      : {}),
     ...(Array.isArray(manifest.missing)
       ? { missing: manifest.missing.filter((entry): entry is string => typeof entry === 'string') }
       : {}),

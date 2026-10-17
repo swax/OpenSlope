@@ -4,14 +4,14 @@ import { MAPS_PATH, pageInPath } from './navigation';
 
 /**
  * Ask who this browser is before loading the editor. Visitors get the public course homepage; members get
- * the editor. /maps, /isos and /play/<name> are public for everyone; /editor/<name> requires member access.
+ * the editor. /maps, /isos and /play/<name> are public for everyone; /editor uses a browser workspace for
+ * signed-out visitors and server projects for members. Explicit sign-in links retain the login form.
  * Invitations and first-run enrolment retain their account forms (docs/038).
  *
  * The gate is here, in a module of its own, because of what `main.ts` is: importing it IS booting the editor.
  * It builds the store, constructs the viewport and starts reading libraries while it is being evaluated, so
- * there is no way to load it speculatively and decide afterwards. Asking first, and importing it only for a
- * browser the server accepts, is what makes a login page possible at all — and it means somebody who cannot
- * use this server never downloads several megabytes of editor to be refused by it.
+ * there is no way to load it speculatively and decide afterwards. Asking first lets us configure a local
+ * workspace before the editor can start any project or library requests.
  *
  * The cost is one round trip before the editor's bytes are requested, and it is paid on every load, including
  * by the owner of a loopback server who will never see a login page. `/api/auth/session` is a small
@@ -24,7 +24,8 @@ import { MAPS_PATH, pageInPath } from './navigation';
  * has been chosen, so it never starts project sync or editor autosave.
  */
 async function boot(): Promise<void> {
-  const gate = gateFor(await currentAccount(), location.hash);
+  const account = await currentAccount();
+  const gate = gateFor(account, location.hash);
   const url = new URL(location.href);
   const page = pageInPath(url.pathname);
   if (page === 'isos') {
@@ -42,7 +43,13 @@ async function boot(): Promise<void> {
     await showPublicHome();
     return;
   }
-  if (gate.show === 'editor') {
+  if (
+    gate.show === 'editor' ||
+    (page === 'editor' &&
+      gate.show === 'sign-in' &&
+      !url.searchParams.has('signin') &&
+      !url.searchParams.has('account'))
+  ) {
     await enterEditor();
     return;
   }
