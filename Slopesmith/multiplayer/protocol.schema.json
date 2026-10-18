@@ -466,6 +466,22 @@
     "oneOf": [
       {
         "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "t": {
+            "const": "site-roster",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
           "protocol": {
             "format": "uint8",
             "maximum": 255,
@@ -661,6 +677,13 @@
         ],
         "type": "string"
       },
+      "MapSource": {
+        "enum": [
+          "iso",
+          "server"
+        ],
+        "type": "string"
+      },
       "MemberRole": {
         "enum": [
           "admin",
@@ -718,6 +741,18 @@
       },
       "PlayMember": {
         "properties": {
+          "anonymous": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "chatId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "equipmentEdgeColor": {
             "type": [
               "string",
@@ -1232,10 +1267,130 @@
             "type": "object"
           }
         ]
+      },
+      "SiteCourse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "playUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "roomId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MapSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SiteMember": {
+        "properties": {
+          "maps": {
+            "items": {
+              "$ref": "#/$defs/SiteCourse"
+            },
+            "type": "array"
+          },
+          "member": {
+            "$ref": "#/$defs/PlayMember"
+          }
+        },
+        "required": [
+          "member",
+          "maps"
+        ],
+        "type": "object"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "oneOf": [
+      {
+        "properties": {
+          "courses": {
+            "additionalProperties": {
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "online": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "t": {
+            "const": "site-activity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "online",
+          "courses"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "courses": {
+            "additionalProperties": {
+              "format": "uint32",
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/$defs/SiteMember"
+            },
+            "type": "array"
+          },
+          "online": {
+            "format": "uint32",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "t": {
+            "const": "site-presence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "online",
+          "courses",
+          "members"
+        ],
+        "type": "object"
+      },
       {
         "properties": {
           "color": {
@@ -1463,6 +1618,13 @@
   },
   "TicketClaims": {
     "$defs": {
+      "MapSource": {
+        "enum": [
+          "iso",
+          "server"
+        ],
+        "type": "string"
+      },
       "MemberRole": {
         "enum": [
           "admin",
@@ -1474,6 +1636,18 @@
       },
       "PlayMember": {
         "properties": {
+          "anonymous": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "chatId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "equipmentEdgeColor": {
             "type": [
               "string",
@@ -1506,6 +1680,43 @@
           "id",
           "username",
           "role"
+        ],
+        "type": "object"
+      },
+      "SiteCourse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "playUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "roomId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MapSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ],
         "type": "object"
       }
@@ -1557,6 +1768,22 @@
       },
       "sessionId": {
         "type": "string"
+      },
+      "siteCourse": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/SiteCourse"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "sitePresence": {
+        "type": [
+          "boolean",
+          "null"
+        ]
       }
     },
     "required": [
@@ -1577,8 +1804,23 @@
     "type": "object"
   },
   "TicketRequest": {
+    "$defs": {
+      "MapSource": {
+        "enum": [
+          "iso",
+          "server"
+        ],
+        "type": "string"
+      }
+    },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "properties": {
+      "chatEnabled": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
       "clientId": {
         "type": "string"
       },
@@ -1589,6 +1831,22 @@
         "type": "string"
       },
       "editorSessionId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "mapSource": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/MapSource"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "playRoomId": {
         "type": [
           "string",
           "null"
@@ -1605,6 +1863,12 @@
       },
       "roomId": {
         "type": "string"
+      },
+      "sitePresence": {
+        "type": [
+          "boolean",
+          "null"
+        ]
       }
     },
     "required": [

@@ -188,10 +188,12 @@ try {
   first.send({ t: 'ride-event', event });
   await second.expect(m => m.t === 'ride-event');
   first.send({ t: 'chat', text: '<b>hello</b>' });
-  assert.equal((await second.expect(m => m.t === 'chat')).line.text, '&lt;b&gt;hello&lt;/b&gt;');
+  first.send({ t: 'ping', at: Date.now() });
+  await first.expect(m => m.t === 'pong');
+  assert(!second.seen.some(m => m.t === 'chat'), 'Rust cannot bypass server-wide chat moderation');
   assert.equal(second.seen.filter(m => m.t === 'ride-event').length, 1, 'one-shots are deduplicated');
   assert(!editor.seen.some(m => m.t === 'ride-event'), 'play interactions never enter the editor socket');
-  assert(!other.seen.some(m => m.t === 'chat'), 'chat stays within the friends room');
+  assert(!other.seen.some(m => m.t === 'chat'), 'movement rooms do not relay chat');
   const reused = await playSocket(`ws://${relay.address}/api/play/session`, { origin: api.url });
   sockets.push(reused);
   reused.send({ t: 'hello', protocol: 1, ticket: ticket.ticket });
@@ -259,6 +261,18 @@ try {
   await vite.listen();
   browser = await chromium.launch({ executablePath: chromiumExecutable(), headless: true });
   const page = await browser.newPage();
+  let publicRelayWelcomes = 0;
+  page.on('websocket', socket => {
+    if (new URL(socket.url()).pathname !== '/api/play/session') return;
+    socket.on('framereceived', frame => {
+      try {
+        const message = JSON.parse(String(frame.payload));
+        if (message.t === 'welcome' && message.roomId !== 'site') publicRelayWelcomes++;
+      } catch {
+        /* binary/non-JSON frame */
+      }
+    });
+  });
   page.on('pageerror', error => console.log(`browser error: ${error.message}`));
   page.on('response', response => {
     if (response.url().includes('/api/play/') && response.status() >= 400)
@@ -268,6 +282,9 @@ try {
   await page.goto(vite.resolvedUrls!.local[0]);
   await page.evaluate(
     async ({ courseId }) => {
+      const presenceModulePath = '/src/app/net/site-presence.ts';
+      const { ensureVisitor } = await import(presenceModulePath);
+      await ensureVisitor();
       await fetch('/api/public/guest', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -292,7 +309,9 @@ try {
     { courseId },
   );
   await page.waitForFunction(() => (window as any).playFrames.length > 0, undefined, { timeout: 10_000 });
-  assert.equal(liveSessions().length, 1, 'the public browser never opens an editor WebSocket');
+  assert.equal(liveSessions().length, 2, 'public riders open a restricted community socket alongside the editor');
+  await page.evaluate(() => (window as any).channel.say('Hello from public play'));
+  await editor.expect(m => m.t === 'chat' && m.line.text === 'Hello from public play');
   const editorContext = await browser.newContext();
   await editorContext.addCookies([
     { name: 'slopesmith_session', value: admin.slice(admin.indexOf('=') + 1), url: vite.resolvedUrls!.local[0] },
@@ -368,7 +387,14 @@ try {
   const originalAddress = relay.address;
   await stop(relay.child);
   relay = await startRelay(originalAddress);
-  await page.waitForFunction(() => (window as any).playFrames.length >= 2, undefined, { timeout: 15_000 });
+  const reconnectDeadline = Date.now() + 15_000;
+  while (publicRelayWelcomes < 2 && Date.now() < reconnectDeadline) await new Promise(done => setTimeout(done, 50));
+  assert(publicRelayWelcomes >= 2, 'public movement reconnects while its community socket stays open');
+  assert.equal(
+    await page.evaluate(() => (window as any).playFrames.length),
+    1,
+    'relay reconnects preserve chat and presence',
+  );
   await editorPage.evaluate(() => (window as any).editorChannel.assign([['g/aiSeed', 3333]], 100));
   await editorPage.waitForFunction(() => (window as any).editorAck?.batch === 100);
   await checked(`/api/publication?kind=project&id=${courseId}`, { published: false }, admin, 'PUT');

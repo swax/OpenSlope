@@ -24,6 +24,7 @@ import { versionRoutes } from './api/version';
 import { workspaceRoutes } from './api/workspace';
 import { publicCourseRoutes } from './api/public-courses';
 import { playRoutes } from './api/play';
+import { chatRoutes } from './api/chat';
 import { publicAssetRequest } from './public-courses';
 import type { ApiRequest } from './api/request';
 import { createLogger } from './log';
@@ -40,6 +41,7 @@ const routes: Array<[mount: string, handle: ApiHandler]> = [
   memberRoutes,
   publicCourseRoutes,
   playRoutes,
+  chatRoutes,
   workspaceRoutes,
   characterRoutes,
   musicRoutes,
@@ -204,6 +206,7 @@ const SIGN_IN: ReadonlySet<string> = new Set(['/bootstrap', '/redeem', '/login']
  */
 const ROUTE_ACCESS: Record<string, Access> = {
   '/api/play': () => 'public',
+  '/api/chat': at('moderator'),
   '/api/public': () => 'public',
   '/api/publication': rw('viewer', 'editor'),
   // The HATEOAS front door (docs/052). Public on purpose: an agent arriving with nothing but this server's

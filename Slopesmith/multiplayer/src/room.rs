@@ -1,7 +1,7 @@
 //! One actor per play room. Reliable messages have bounded queues; poses use replaceable full snapshots.
 use crate::{protocol::*, validation};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -30,7 +30,6 @@ pub struct Participant {
     pub cancel: CancellationToken,
     pose: Option<PlayerPose>,
     last_event: Option<u32>,
-    last_chat: Instant,
 }
 impl Participant {
     pub fn new(
@@ -46,7 +45,6 @@ impl Participant {
             cancel,
             pose: None,
             last_event: None,
-            last_chat: Instant::now() - Duration::from_secs(2),
         }
     }
     fn peer(&self) -> PlayPeer {
@@ -141,18 +139,8 @@ fn presence(course: &str, peers: &HashMap<String, Participant>) {
         None,
     );
 }
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
 async fn run(key: RoomKey, mut commands: mpsc::Receiver<Command>, capacity: usize) {
     let mut peers = HashMap::<String, Participant>::new();
-    let mut history = VecDeque::new();
-    let mut chat_id = 0u32;
     let mut dirty = false;
     let mut empty_since = Instant::now();
     let mut tick = tokio::time::interval(Duration::from_millis(80));
@@ -169,7 +157,7 @@ async fn run(key: RoomKey, mut commands: mpsc::Receiver<Command>, capacity: usiz
                     let id = peer.claims.session_id.clone();
                     peer.reliable(text(&PlayServerMessage::Welcome { protocol: PROTOCOL_VERSION, session_id: id.clone(),
                         member: peer.claims.member.clone(), color: peer.claims.color.clone(), server_time: now(), course_id: key.0.clone(), room_id: key.1.clone(), publish_ms: 80 }));
-                    peer.reliable(text(&PlayServerMessage::ChatHistory { lines: history.iter().cloned().collect() }));
+                    peer.reliable(text(&PlayServerMessage::ChatHistory { lines: Vec::new() }));
                     peers.insert(id, peer); presence(&key.0, &peers); dirty = true;
                     let _ = answer.send(true);
                 }
@@ -209,14 +197,7 @@ async fn run(key: RoomKey, mut commands: mpsc::Receiver<Command>, capacity: usiz
                                 broadcast(&peers, &PlayServerMessage::RideEvent { course_id: key.0.clone(), from_session_id: id.clone(), server_at: now(), event }, Some(&id));
                             }
                         }
-                        PlayClientMessage::Chat { text: body } => {
-                            let body = body.trim();
-                            if body.is_empty() || body.len() > 2000 || body.chars().any(|c| c.is_control() && c != '\n') || peer.last_chat.elapsed() < Duration::from_millis(750) { continue; }
-                            peer.last_chat = Instant::now(); chat_id = chat_id.wrapping_add(1);
-                            let line = PlayChatLine { id: chat_id, at: now(), session_id: id.clone(), member: peer.claims.member.clone(), text: escape(body) };
-                            history.push_back(line.clone()); if history.len() > 50 { history.pop_front(); }
-                            broadcast(&peers, &PlayServerMessage::Chat { line }, None);
-                        }
+                        PlayClientMessage::Chat { .. } => {} // Community chat is handled and moderated by Node.
                         PlayClientMessage::Ping { at } if at.is_finite() => peer.reliable(text(&PlayServerMessage::Pong { echo: at, server_time: now() })),
                         _ => {}
                     }

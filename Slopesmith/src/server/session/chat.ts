@@ -1,5 +1,6 @@
 import type { Role } from '../accounts/policy';
 import { createLogger } from '../log';
+import { chatBanned } from '../accounts/chat-identity';
 
 /**
  * The server-wide room (docs/038): what members say to each other, and the system events that ride the same
@@ -28,6 +29,7 @@ export interface ChatWho {
   userId: string;
   username: string;
   role: Role;
+  chatId?: string;
 }
 
 /**
@@ -233,6 +235,7 @@ export async function submitChat(
   now = Date.now(),
 ): Promise<ChatLine | null> {
   const text = clean(raw);
+  if (await chatBanned(from.chatId)) return null;
   if (!text) return null;
   if (text.length > chatPolicy.maxLength) {
     return notice(from, `That is longer than ${chatPolicy.maxLength} characters — say it in two.`);
@@ -253,7 +256,7 @@ export async function submitChat(
       const last = lastPrivate.get(from.userId);
       if (!last) return notice(from, 'Nobody has sent you a private line yet, so there is nobody to reply to.');
       // Resolved again rather than trusted: a role or username may have moved since they wrote.
-      const to = (await directory.find(last.username)) ?? last;
+      const to = (await directory.find(last.userId)) ?? last;
       return sendPrivate(from, to, command.text, now);
     }
     case 'incomplete':

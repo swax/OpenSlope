@@ -43,6 +43,7 @@ import {
 import type { ApiRequest } from './request';
 import { createLogger } from '../log';
 import { listProjects } from '../projects';
+import { siteSnapshot } from '../play';
 import { liveSessions } from '../session/presence';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
 import { effectiveMemberStatus, type ManualAvailability, type MemberStatus } from '../../core/session/member-status';
@@ -419,6 +420,7 @@ interface RosterMember {
   username: string;
   bio: string;
   role: Role;
+  chatId?: string;
   createdAt: string;
   lastSeenAt: string;
   availability: ManualAvailability;
@@ -441,6 +443,8 @@ interface RosterMember {
   maps: Array<{
     id: string;
     name: string;
+    source?: 'iso' | 'server';
+    roomId?: string;
     reference?: string;
     playing?: Array<'authored' | 'reference'>;
     sharingSessionId?: string;
@@ -484,7 +488,11 @@ async function buildRoster(me: PublicUser): Promise<Record<string, unknown>> {
       watching: boolean;
     }
   >();
-  for (const session of liveSessions()) {
+  const site = await siteSnapshot().catch(() => null);
+  const visitors = new Map((site?.members ?? []).map(entry => [entry.member.id, entry]));
+  const connections = liveSessions();
+  const chatIdentities = new Map(connections.map(session => [session.member.id, session.member.chatId]));
+  for (const session of connections) {
     const found = present.get(session.member.id) ?? {
       sessions: 0,
       maps: new Map<
@@ -525,29 +533,66 @@ async function buildRoster(me: PublicUser): Promise<Record<string, unknown>> {
     }
     present.set(session.member.id, found);
   }
-  const members: RosterMember[] = users
+  const guestUsers: PublicUser[] = [
+    ...new Map(
+      connections
+        .filter(session => session.member.id.startsWith('guest:'))
+        .map(session => [
+          session.member.id,
+          {
+            ...session.member,
+            bio: '',
+            createdAt: '',
+            lastSeenAt: '',
+            availability: 'available' as const,
+            disabled: false,
+          },
+        ]),
+    ).values(),
+  ];
+  const guestMap = new Map(guestUsers.map(user => [user.id, user]));
+  for (const visitor of visitors.values())
+    if (visitor.member.id.startsWith('guest:'))
+      guestMap.set(visitor.member.id, {
+        ...visitor.member,
+        bio: '',
+        createdAt: '',
+        lastSeenAt: '',
+        availability: 'available',
+        disabled: false,
+      });
+  const allUsers = [...users, ...guestMap.values()];
+  const members: RosterMember[] = allUsers
     .map(user => {
       const seen = present.get(user.id);
+      const visitor = visitors.get(user.id);
+      const openMaps = new Map([...(seen?.maps.values() ?? [])].map(map => [map.id, map]));
+      const siteIds = new Set(visitor?.maps.map(map => map.id));
+      const maps = new Map([...openMaps].filter(([id]) => !siteIds.has(id)));
+      for (const map of visitor?.maps ?? [])
+        maps.set(JSON.stringify([map.id, map.source, map.roomId]), { ...openMaps.get(map.id), ...map });
       return {
         id: user.id,
         username: user.username,
         bio: user.bio,
         role: user.role,
+        chatId: visitor?.member.chatId ?? chatIdentities.get(user.id),
+        ...(visitor?.member.anonymous ? { anonymous: true } : {}),
         createdAt: user.createdAt,
         availability: user.availability,
         lastSeenAt: seen?.lastSeen ? new Date(seen.lastSeen).toISOString() : user.lastSeenAt,
         ...(handles.has(user.id) ? { inviteHandle: handles.get(user.id) } : {}),
         disabled: user.disabled,
-        online: !!seen,
-        status: effectiveMemberStatus(user.availability, seen?.idle ?? []),
+        online: !!seen || !!visitor,
+        status: effectiveMemberStatus(user.availability, seen?.idle ?? (visitor ? [false] : [])),
         watching: seen?.watching ?? false,
-        sessions: seen?.sessions ?? 0,
+        sessions: seen?.sessions ?? (visitor ? 1 : 0),
         ...(user.profilePictureUrl ? { profilePictureUrl: user.profilePictureUrl } : {}),
         ...(user.snowboardTextureUrl ? { snowboardTextureUrl: user.snowboardTextureUrl } : {}),
         ...(user.skiTextureUrl ? { skiTextureUrl: user.skiTextureUrl } : {}),
         ...(user.equipmentEdgeColor ? { equipmentEdgeColor: user.equipmentEdgeColor } : {}),
         devices: [...(seen?.devices ?? [])],
-        maps: [...(seen?.maps.values() ?? [])],
+        maps: [...maps.values()],
       };
     })
     .sort((a, b) => Number(b.online) - Number(a.online) || a.username.localeCompare(b.username));

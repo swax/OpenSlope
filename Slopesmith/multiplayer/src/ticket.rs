@@ -18,7 +18,13 @@ pub fn verify(ticket: &str, secret: &[u8], origin: &str, now: f64) -> Option<Tic
         || claims.origin != origin
         || !claims.expires_at.is_finite()
         || claims.expires_at <= now
-        || claims.expires_at > now + 65_000.
+        || claims.expires_at
+            > now
+                + if claims.site_presence == Some(true) {
+                    305_000.
+                } else {
+                    65_000.
+                }
         || claims.session_id.is_empty()
         || claims.course_id.is_empty()
         || claims.course_id.len() > 160

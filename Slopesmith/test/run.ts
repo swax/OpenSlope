@@ -125,6 +125,8 @@ const EXCLUSIVE_GROUP = new Map([
  */
 const RUN_ALONE = new Set([
   'multiplayer.test.ts',
+  'site-presence.test.ts',
+  'chat-community.test.ts',
   'sessions.test.ts',
   'sync.test.ts',
   'public-home.test.ts',

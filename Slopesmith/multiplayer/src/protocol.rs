@@ -138,6 +138,12 @@ pub struct PlayMember {
     pub role: MemberRole,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub chat_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub anonymous: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub snowboard_texture_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -150,6 +156,12 @@ pub struct PlayMember {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketClaims {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub site_presence: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub site_course: Option<SiteCourse>,
     pub protocol: u8,
     pub nonce: String,
     pub expires_at: f64,
@@ -178,6 +190,18 @@ pub struct PlayConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TicketRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub site_presence: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub chat_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub map_source: Option<MapSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub play_room_id: Option<String>,
     pub course_id: String,
     pub room_id: String,
     pub client_id: String,
@@ -225,9 +249,42 @@ pub struct PlayChatLine {
     pub text: String,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, TS,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum MapSource {
+    Iso,
+    Server,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteCourse {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub source: Option<MapSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub room_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub play_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteMember {
+    pub member: PlayMember,
+    pub maps: Vec<SiteCourse>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(tag = "t", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum PlayClientMessage {
+    SiteRoster { enabled: bool },
     Hello { protocol: u8, ticket: String },
     Renew { ticket: String },
     Pose { player: Option<Box<PlayerPose>> },
@@ -239,6 +296,15 @@ pub enum PlayClientMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(tag = "t", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum PlayServerMessage {
+    SiteActivity {
+        online: u32,
+        courses: std::collections::BTreeMap<String, u32>,
+    },
+    SitePresence {
+        online: u32,
+        courses: std::collections::BTreeMap<String, u32>,
+        members: Vec<SiteMember>,
+    },
     Welcome {
         protocol: u8,
         session_id: String,

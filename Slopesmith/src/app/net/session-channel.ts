@@ -7,8 +7,10 @@ import type { ClientProject } from '../state/project-sync';
 import type { SharedScreenFrame, SharedScreenState } from '../../core/session/screen-share';
 import { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
 import { referenceRoom } from '../../core/session/public-courses';
+import { ensureVisitor, setSiteCourse, setSiteChat, setSitePlayRoom, startSitePresence } from './site-presence';
 import { createPlayChannel } from './play-channel';
-import type { PlayConfig, PlayPeer, PlayChatLine } from '../../core/session/play-protocol.generated';
+import type { ChatMember } from '../../core/session/chat-member';
+import type { PlayConfig, PlayPeer } from '../../core/session/play-protocol.generated';
 
 export { CORE_VERSION, DOCUMENT_VERSION } from '../../core/session/protocol';
 
@@ -36,6 +38,8 @@ const MAX_RIDE_EVENT_AGE_MS = 10_000;
 export type MemberRole = 'admin' | 'moderator' | 'editor' | 'viewer';
 
 export interface SessionMember {
+  anonymous?: boolean;
+  chatId?: string;
   id: string;
   username: string;
   role: MemberRole;
@@ -127,6 +131,7 @@ export interface SessionWelcome {
 
 /** A member as a chat line names them. */
 export interface ChatWho {
+  chatId?: string;
   userId: string;
   username: string;
   role: MemberRole;
@@ -224,6 +229,7 @@ const CAPACITY_CLOSE_CODE = 4003;
 export function createSessionChannel(deps: {
   /** Public riding omits editor-only subscriptions from its handshake. */
   publicPlay?: boolean;
+  chatInitiallyEnabled?: boolean;
   /** This tab's id — the same one every project request carries, so the server can tell a tab's own writes
    *  from somebody else's. */
   clientId: string;
@@ -236,6 +242,7 @@ export function createSessionChannel(deps: {
   url?: () => string;
   onWelcome?: (welcome: SessionWelcome) => void;
   onPresence?: (maps: Record<string, PresenceEntry[]>) => void;
+  onChatRoster?: (members: ChatMember[]) => void;
   /** The room on this map is open, and this is where it is. */
   onJoined?: (view: JoinedView) => void;
   /** Somebody else's registers, absolute. */
@@ -346,8 +353,11 @@ export function createSessionChannel(deps: {
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let trackingActivity = false;
   let relayConfig: PlayConfig | null = null;
+  let chatEnabled = !deps.publicPlay || deps.chatInitiallyEnabled !== false;
+  let relaySessionId: string | null = null;
   let friendRoomOverride: string | null = null;
   let publicStarting = false;
+  let publicConfigured = false;
   let startGeneration = 0;
   let relayPresence: Record<string, PresenceEntry[]> = {};
   const editorAwareness = new Map<string, PeerAwareness>();
@@ -367,9 +377,11 @@ export function createSessionChannel(deps: {
   /** Where the socket connects. The replica is added to whichever address is used, so a caller that supplies its
    *  own still says whose batches it carries. */
   const address = (): string => {
-    const base = url();
-    if (!deps.replica) return base;
-    return `${base}${base.includes('?') ? '&' : '?'}replica=${encodeURIComponent(deps.replica)}`;
+    const raw = url();
+    const base = deps.publicPlay && relayConfig?.enabled ? `${raw}${raw.includes('?') ? '&' : '?'}community=1` : raw;
+    const connection = deps.publicPlay && !chatEnabled ? `${base}${base.includes('?') ? '&' : '?'}anonymous=1` : base;
+    if (!deps.replica) return connection;
+    return `${connection}${connection.includes('?') ? '&' : '?'}replica=${encodeURIComponent(deps.replica)}`;
   };
 
   const baseUrl = () => {
@@ -385,11 +397,11 @@ export function createSessionChannel(deps: {
     const relayed = new Set(
       Object.values(relayPresence)
         .flat()
-        .map(peer => peer.sessionId),
+        .map(peer => `${peer.userId}:${peer.clientId}`),
     );
     const combined: Record<string, PresenceEntry[]> = {};
     for (const [key, rows] of Object.entries(presenceMaps))
-      combined[key] = rows.filter(row => !relayed.has(row.sessionId));
+      combined[key] = rows.filter(row => !relayed.has(`${row.userId}:${row.clientId}`));
     for (const [key, rows] of Object.entries(relayPresence)) (combined[key] ??= []).push(...rows);
     const present = new Set(
       Object.values(combined)
@@ -417,27 +429,21 @@ export function createSessionChannel(deps: {
     ...(peer.member.skiTextureUrl ? { skiTextureUrl: peer.member.skiTextureUrl } : {}),
     ...(peer.member.equipmentEdgeColor ? { equipmentEdgeColor: peer.member.equipmentEdgeColor } : {}),
   });
-  const chatLine = (line: PlayChatLine): ChatLine => ({
-    id: line.id,
-    at: line.at,
-    kind: 'room',
-    text: line.text,
-    from: { userId: line.member.id, username: line.member.username, role: line.member.role },
-  });
   const play = createPlayChannel({
     clientId: deps.clientId,
     deviceLabel: deps.deviceLabel ?? 'device',
     publicPlay: !!deps.publicPlay,
+    chatEnabled: () => chatEnabled,
     baseUrl,
     onStatus(status) {
       if (status === 'closed') {
+        setSitePlayRoom(null);
         relayPresence = {};
         for (const [id, peer] of relayAwareness)
           deps.onAware?.({ ...peer, aware: editorAwareness.get(id)?.aware ?? emptyAware() });
         relayAwareness.clear();
         reportPresence();
       }
-      if (deps.publicPlay) deps.onStatus?.(status);
     },
     onAccessChanged: reason => {
       if (deps.publicPlay) deps.onAccessChanged?.(reason);
@@ -446,15 +452,18 @@ export function createSessionChannel(deps: {
     onMessage(message) {
       switch (message.t) {
         case 'welcome':
-          if (deps.publicPlay)
+          if (!deps.publicPlay) setSiteCourse(message.courseId);
+          setSitePlayRoom({ courseId: message.courseId, roomId: message.roomId });
+          relaySessionId = message.sessionId;
+          if (deps.publicPlay && (!chatEnabled || !socket))
             handle({
               t: 'welcome',
               sessionId: message.sessionId,
               clientId: deps.clientId,
               member: message.member,
+              projectId: message.courseId,
               color: message.color,
               serverTime: message.serverTime,
-              projectId: message.courseId,
               accounts: 'open',
               versions: { doc: DOCUMENT_VERSION, core: CORE_VERSION },
             });
@@ -485,7 +494,7 @@ export function createSessionChannel(deps: {
             relayAwareness.delete(id);
           }
           for (const entry of message.peers) {
-            if (entry.sessionId === welcome?.sessionId) continue;
+            if (entry.sessionId === (relaySessionId ?? welcome?.sessionId)) continue;
             const peer = play.peer(entry.sessionId);
             if (!peer) continue;
             const editing = editorAwareness.get(entry.sessionId);
@@ -508,11 +517,9 @@ export function createSessionChannel(deps: {
             serverAt: message.serverAt,
           });
           break;
+        // Chat is server-wide on the community channel, never scoped to a movement room.
         case 'chat':
-          if (deps.publicPlay) deps.onChat?.(chatLine(message.line));
-          break;
         case 'chat-history':
-          if (deps.publicPlay) deps.onChatHistory?.(message.lines.map(chatLine));
           break;
         case 'error':
           console.warn('[play]', message.message);
@@ -554,9 +561,7 @@ export function createSessionChannel(deps: {
         return poseSent;
       }
       if (deps.publicPlay) {
-        if (command.t === 'chat') return play.send({ t: 'chat', text: command.text ?? '' });
         if (command.t === 'watch' || command.t === 'reference' || command.t === 'playing') syncPlayRoom();
-        return true;
       }
     }
     if (socket?.readyState !== WebSocket.OPEN) return false;
@@ -665,6 +670,9 @@ export function createSessionChannel(deps: {
         }
         return;
       }
+      case 'chat-roster':
+        deps.onChatRoster?.(message.members as ChatMember[]);
+        return;
       case 'presence':
         presenceMaps = (message.maps ?? {}) as Record<string, PresenceEntry[]>;
         reportPresence();
@@ -944,14 +952,14 @@ export function createSessionChannel(deps: {
       socket = null;
       welcome = null;
       lastEditorAwareness = '';
-      if (relayConfig?.enabled) play.close();
+      if (relayConfig?.enabled && !deps.publicPlay) play.close();
       catchingUp = null;
       if (beat) {
         clearInterval(beat);
         beat = null;
       }
       deps.onStatus?.('closed');
-      if (event.code === 4001 || event.code === 4002) {
+      if (event.code === 4001 || event.code === 4002 || event.code === 4004) {
         wanted = false;
         deps.onAccessChanged?.(
           event.reason || (event.code === 4002 ? 'Your access changed.' : 'This login session ended.'),
@@ -993,6 +1001,10 @@ export function createSessionChannel(deps: {
         if (!response.ok) throw new Error('Play configuration is unavailable.');
         return (await response.json()) as PlayConfig;
       })
+      .then(async config => {
+        await ensureVisitor();
+        return config;
+      })
       .catch(() => undefined)
       .then(config => {
         if (!wanted || version !== startGeneration) return;
@@ -1000,10 +1012,14 @@ export function createSessionChannel(deps: {
           publicStarting = false;
           reconnectTimer = setTimeout(startPublic, backoff);
           backoff = Math.min(RECONNECT_MAX_MS, backoff * 2);
-        } else if (config?.enabled) {
-          relayConfig = config;
-          syncPlayRoom();
-        } else connect();
+        } else {
+          publicConfigured = true;
+          if (config?.enabled) {
+            relayConfig = config;
+            syncPlayRoom();
+            if (chatEnabled) connect();
+          } else connect();
+        }
       });
   }
 
@@ -1011,6 +1027,7 @@ export function createSessionChannel(deps: {
     /** Open the channel. Safe to call twice. */
     start(): void {
       wanted = true;
+      if (typeof window !== 'undefined') void startSitePresence();
       closedByUs = false;
       startActivityTracking();
       if (deps.publicPlay) {
@@ -1026,6 +1043,7 @@ export function createSessionChannel(deps: {
     watch(projectId: string | null, from?: number, counted?: string): void {
       if (watching === projectId) return;
       watching = projectId;
+      if (!deps.publicPlay && typeof window !== 'undefined') setSiteCourse(projectId);
       lastEditorAwareness = '';
       syncPlayRoom();
       at = from ?? 0;
@@ -1152,6 +1170,24 @@ export function createSessionChannel(deps: {
     jukeboxVideoEnded(id: string, mediaVersion: number): boolean {
       return post({ t: 'jukebox-ended', id, mediaVersion });
     },
+    setChatEnabled(enabled: boolean): void {
+      chatEnabled = enabled;
+      setSiteChat(enabled);
+      if (!deps.publicPlay) return;
+      if (!publicConfigured && publicStarting) return;
+      const old = socket;
+      socket = null;
+      old?.close();
+      if (beat) {
+        clearInterval(beat);
+        beat = null;
+      }
+      if (relayConfig?.enabled) {
+        play.refreshIdentity();
+        if (enabled && wanted) connect();
+      } else if (wanted) connect();
+    },
+    chatOpen: (): boolean => chatEnabled && socket?.readyState === WebSocket.OPEN,
     close(): void {
       wanted = false;
       startGeneration++;
@@ -1192,7 +1228,8 @@ export function createSessionChannel(deps: {
     member: (): SessionMember | null => welcome?.member ?? null,
     /** This participant's own colour, the one everybody else draws them in. */
     color: (): string => welcome?.color ?? '#f2a33c',
-    sessionId: (): string | null => welcome?.sessionId ?? null,
+    sessionId: (): string | null =>
+      deps.publicPlay && relayConfig?.enabled ? relaySessionId : (welcome?.sessionId ?? null),
   };
 }
 

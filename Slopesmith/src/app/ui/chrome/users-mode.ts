@@ -22,6 +22,9 @@ import {
 } from '../../../core/session/jukebox';
 import type { VoiceChat, VoiceMemberState } from './voice-chat';
 import type { ManualAvailability, MemberStatus } from '../../../core/session/member-status';
+import { chatName, chatMapRoomLabel, isGuest, shortChatId } from '../../../core/session/chat-member';
+import { siteMapContext } from '../../net/site-presence';
+import { chatActions, chatMuted, onChatMutesChanged, roleMarker } from './chat-identity';
 import { MIN_PASSWORD_LENGTH } from '../../../core/accounts/password-policy';
 
 /**
@@ -111,6 +114,8 @@ const CSS = `
   color: #e6f0fa; background: transparent !important; border: 0 !important; border-radius: 0 !important;
   box-shadow: none !important; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
 .sp-users-name:hover, .sp-users-name:focus-visible { color: #9ed6fa; text-decoration: underline; outline: 0; }
+.sp-users-guest-hash { flex: 0 0 auto; color: #a4bdce; white-space: nowrap;
+  font: 10px ui-monospace, Consolas, monospace; }
 .sp-users-owner { flex: 0 0 auto; padding: 1px 4px; color: #ffd78c; background: #4a3518;
   border: 1px solid #785725; border-radius: 3px; font-size: 8.5px; font-weight: 800; letter-spacing: .06em;
   text-transform: uppercase; }
@@ -245,6 +250,8 @@ const CSS = `
 
 /** One member as the roster route reports them: the account, plus what presence knows right now. */
 interface RosterMember {
+  anonymous?: boolean;
+  chatId?: string;
   id: string;
   username: string;
   bio: string;
@@ -264,6 +271,8 @@ interface RosterMember {
   maps: Array<{
     id: string;
     name: string;
+    source?: 'iso' | 'server';
+    roomId?: string;
     reference?: string;
     playing?: Array<'authored' | 'reference'>;
     /** Exact opt-in browser tab behind this map/reference pair. */
@@ -499,6 +508,7 @@ export function createUsersMode(deps: {
   };
 
   const mayManage = (member: RosterMember): boolean =>
+    !isGuest(member) &&
     !!roster &&
     roster.accounts === 'required' &&
     roster.me.id !== member.id &&
@@ -538,6 +548,16 @@ export function createUsersMode(deps: {
   }
 
   function showMemberProfile(member: RosterMember): void {
+    if (isGuest(member)) {
+      const { host } = modal();
+      host.classList.add('sp-user-profile');
+      const title = document.createElement('h2');
+      title.textContent = chatName(member);
+      const description = document.createElement('p');
+      description.textContent = `Guest · Network #${shortChatId(member.chatId ?? '')}. Guests are temporary and appear only while connected. Riders sharing an IP share this chat identity.`;
+      host.append(roleMarker(member), title, description);
+      return;
+    }
     const { host, close } = modal();
     host.classList.add('sp-user-profile');
     const head = document.createElement('div');
@@ -818,9 +838,18 @@ export function createUsersMode(deps: {
     const name = document.createElement('button');
     name.type = 'button';
     name.className = 'sp-users-name';
-    name.textContent = member.username;
+    name.textContent = isGuest(member) ? member.username.replace(/ \(guest\)$/, '') : member.username;
+    name.setAttribute('aria-label', chatName(member));
     name.onclick = () => showMemberProfile(member);
-    nameLine.appendChild(name);
+    nameLine.append(roleMarker(member), name);
+    if (isGuest(member) && member.chatId) {
+      const hash = document.createElement('span');
+      hash.className = 'sp-users-guest-hash';
+      hash.textContent = `#${shortChatId(member.chatId)}`;
+      tooltip(hash, 'Network identity. Name changes keep this hash; shared IPs share it.');
+      nameLine.append(hash);
+    }
+    if (chatMuted(member.chatId)) nameLine.append(' · muted');
     if (deps.currentProject()?.ownerId === member.id) {
       const owner = document.createElement('span');
       owner.className = 'sp-users-owner';
@@ -864,9 +893,12 @@ export function createUsersMode(deps: {
         open.textContent = map.name;
         tooltip(open, `Open ${map.name}.`);
         open.onclick = () => {
-          void deps.openProject(map.id);
+          if (map.id.startsWith('@reference:')) deps.openReference(map.id.slice(11));
+          else void deps.openProject(map.id);
         };
         sub.append(open);
+        const room = { ...map, ...siteMapContext(map) };
+        sub.append(` (${map.source === 'iso' ? 'ISO' : 'Server map'} · ${chatMapRoomLabel(room)})`);
         if (map.reference) {
           sub.append(' / ');
           if (map.playing?.includes('reference')) sub.append(playingIcon(map.reference));
@@ -905,10 +937,10 @@ export function createUsersMode(deps: {
     more.type = 'button';
     more.className = 'sp-users-more';
     more.textContent = '⋮';
-    more.setAttribute('aria-label', `Options for ${member.username}`);
+    more.setAttribute('aria-label', `Options for ${chatName(member)}`);
     more.setAttribute('aria-haspopup', 'menu');
     tooltip(more, `Options for ${member.username}.`);
-    more.onclick = event => {
+    more.onclick = async event => {
       event.stopPropagation();
       const items: MenuItem[] = [
         {
@@ -919,11 +951,15 @@ export function createUsersMode(deps: {
       ];
       if (connected && member.id !== roster?.me.id)
         items.push(
-          {
-            label: 'Message',
-            desc: `Send ${member.username} a private message.`,
-            onClick: () => deps.openChat(`/msg ${member.username} `),
-          },
+          ...(!member.anonymous
+            ? [
+                {
+                  label: 'Message',
+                  desc: `Send ${member.username} a private message.`,
+                  onClick: () => deps.openChat(`/msg ${JSON.stringify(chatName(member))} `),
+                },
+              ]
+            : []),
           {
             label: 'Go to player',
             desc: `Open ${member.username}'s map and move in front of their live avatar.`,
@@ -932,7 +968,9 @@ export function createUsersMode(deps: {
             },
           },
         );
+      items.push(...(await chatActions(member, roster?.me ?? null)));
       const rect = more.getBoundingClientRect();
+      if (!more.isConnected) return;
       contextMenu(items, { x: rect.left, y: rect.bottom + 3 });
     };
     actions.appendChild(more);
@@ -1529,11 +1567,19 @@ export function createUsersMode(deps: {
     };
     const connectedMembers = members.filter(member => member.online || voiceMembers.has(member.id));
     for (const section of roleSections) {
-      const inRole = connectedMembers.filter(member => member.role === section.role);
+      const inRole = connectedMembers.filter(member => !isGuest(member) && member.role === section.role);
       if (!inRole.length) continue;
       appendSection(section.label, inRole);
     }
-    const offlineMembers = members.filter(member => !member.online && !voiceMembers.has(member.id));
+    appendSection(
+      'Guests',
+      connectedMembers.filter(member => isGuest(member) && !member.anonymous),
+    );
+    appendSection(
+      'Anonymous',
+      connectedMembers.filter(member => member.anonymous),
+    );
+    const offlineMembers = members.filter(member => !isGuest(member) && !member.online && !voiceMembers.has(member.id));
     if (offlineMembers.length) {
       const offline = gui.addFolder(`Offline ${offlineMembers.length}`);
       offline.close();
@@ -1587,6 +1633,9 @@ export function createUsersMode(deps: {
       });
   }
 
+  onChatMutesChanged(() => {
+    if (active && roster) render();
+  });
   deps.voice.subscribe(() => {
     if (active && roster) render();
   });

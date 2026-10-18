@@ -291,8 +291,9 @@ The right dock is already mode-owned (`ui/chrome/tools-panel.ts` swaps its conte
 Scene), so the user list simply takes the dock while the mode is active.
 
 The list shows every member of the server, not only the connected ones. Connected members are grouped under
-Admin, Moderator, Editor, and Viewer headings in that order, followed by one Offline section for everyone
-who is disconnected. Each row shows the username and effective status: Online (green), automatically Idle
+Admin, Moderator, Editor, Viewer, Guest, and Anonymous headings in that order, followed by one Offline section for
+disconnected accounts. Guests exist only in live presence and disappear when their last socket closes;
+they are never saved as accounts or listed offline. Each row shows the username and effective status: Online (green), automatically Idle
 after five minutes without browser input (yellow), manually Away (orange), manually Do Not Disturb (red), or
 Offline (gray). Available/Away/Do Not Disturb is an account preference selected at the top of Users; Away and
 Do Not Disturb stay set until changed. Idle is ephemeral per browser tab, and a member becomes Idle only when
@@ -330,6 +331,67 @@ binds bare single keys for modes and tools, so a chat box that is typed into wit
 sentence into a burst of mode switches. A **Text chat** launcher above voice in Users opens and focuses this
 same lower-left box; it is a second way into the room, not a second chat surface. Escape closes it and returns
 the keys to the viewport.
+
+Every site visitor maintains a low-rate Rust site-presence connection, including visitors to Maps and
+ISOs. Visitors without an account appear as `guest<number> #<hash>`, with a stable number from 1–99 and a
+four-character network hash. A signed, ephemeral guest cookie retains their identity when they choose
+a chat nickname. Rust broadcasts unique online/per-map counts; full roster updates
+are sent while a user list is open.
+An identity with several tabs counts once globally and once on each map it has open. An editor map or a
+`/play` map counts as open before riding or joining chat; returning to Maps/ISOs leaves the map while
+remaining online. Maps/ISOs/Play show the live total in the upper right, and `/maps` cards show map totals
+across friend rooms. Unknown/disconnected counts display a dash instead of a false zero. Browser-only maps
+are not advertised as server courses.
+
+Clicking the online count opens a shared right-hand Users/Chat panel on Maps, ISO and Play. Before joining,
+only Users is available, with a nickname/join form. Joining reveals Chat and its Leave chat button. Closing
+the panel keeps membership; leaving returns to the form so a guest can change their nickname before rejoining.
+Chat membership survives navigation between public pages in the same browser tab. The header also retains
+a link to the last public map; loaded ISO cards link directly to Open and Inspect.
+Each roster map carries an ISO/server source and, once its movement connection is confirmed, a play-room ID.
+The list marks Same play room only when both course ID and room ID match this tab; another room on the same
+course is labeled Different play room. Map links retain the source and invite room. ISO links explicitly
+retain `source=iso` so reloading cannot silently select a server reference with the same course ID.
+Several sources or rooms can appear for one visitor without increasing the unique per-course count.
+
+The site roster shows anonymous visitors and their open map links without requiring chat. The editor's
+Users list merges that roster with its existing map/device information and retains offline accounts but
+never offline anonymous visitors. Public rosters/counts omit private map IDs, names, and links. The
+Node ticket issuer supplies map names and play URLs; clients cannot inject roster metadata. Rust's
+loopback `/site` snapshot endpoint requires the shared service secret. Site presence has its own bounded,
+replaceable snapshots and does not carry editor operations or movement poses.
+
+Public `/play` uses the same server-wide chat in the shared lodge drawer. Chat is optional: leaving it
+preserves anonymous multiplayer, map membership, and position updates. Closing the drawer keeps chat joined. The
+restricted `/api/public/session?community=1` connection to Node carries chat and infrequent presence
+changes. Poses and ride interactions travel through Rust movement rooms; the community connection neither
+accepts nor receives that traffic. Friend rooms partition movement, while chat reaches connected members
+and named guests across courses and rooms. Anonymous visitors must choose a name before sending chat.
+Public riders do not receive editor system events or private map metadata, but do receive their own
+command/rate-limit notices.
+
+Names carry trail markers: hollow green circle for guests, filled green circle for viewers, blue square
+for editors, outlined black diamond for moderators, and double diamond for admins. Guest names also show
+a four-character network hash. The full identity is an HMAC-SHA256 of the address selected by the existing
+trusted-proxy policy, keyed by a random secret in `workspace/accounts/chat-policy.json`. Keep this file
+through upgrades and backups: it holds the secret and durable chat shadow bans, and is never served to
+clients. Neither the policy nor public chat/roster data stores the original address. Names and guest
+cookies can change without changing the network hash; shared public IPs share it, and IP changes change it.
+This is a network identifier, not proof that two riders are the same person.
+
+User menus in the editor and lodge offer chat mute/unmute. Mutes use the full network hash and are saved
+in this browser, so they hide history and new messages from every alias on that network, including rider
+speech bubbles. Muted identities remain removable in the chat Users tab even after leaving. Moderators
+and admins can shadow-ban/unban a network through the same menu; `/api/chat/moderation` requires a
+signed-in moderator or admin. The server drops room messages and private-message commands from banned
+networks before delivery or retention, with no sender echo. Moderators cannot ban connected staff;
+admins cannot ban connected admins, and nobody can ban their own connected network. The private shadow-ban
+list remains manageable from the Users tab after guests disconnect. Rust ignores its legacy chat command
+so a modified client cannot bypass this server-wide moderation path.
+
+In public Play, **Go to player** in a user's menu visits their live avatar on the current map. Desktop riders
+join three metres behind them; map previews move to a wide view ahead of them. The action is available only
+while their avatar is present and the local player is outside VR.
 
 The room is global, and two slash commands cover the rest: `/msg <user> <text>` sends a private line and
 `/r <text>` replies to whoever messaged you last. Private messages are drawn distinctly from room traffic so

@@ -193,6 +193,13 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
       play.setPlaySpawn(spawn.pos); onStartChanged(false);
     },
     peers(peers: PeerMarks[]) { viewport.setPeers(peers, session.serverNow()); },
+    canGoToPlayer(userId: string) {
+      return !viewport.xrPlaying && viewport.activeMapPlayers().some(player => player.userId === userId);
+    },
+    goToPlayer(userId: string) {
+      const player = viewport.activeMapPlayers().find(player => player.userId === userId);
+      return !!player && viewport.goToMapPlayer(player.sessionId);
+    },
     rideEvent: viewport.applyRideEvent.bind(viewport),
     dispose() { clearInterval(publish); local.dispose(); },
   };

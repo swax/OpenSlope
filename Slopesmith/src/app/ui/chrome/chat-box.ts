@@ -1,5 +1,23 @@
 import { installStyles } from '../components/styles';
 import type { ChatLine, SessionMember } from '../../net/session-channel';
+import { chatName, chatMapRoomLabel, shortChatId, type ChatMember } from '../../../core/session/chat-member';
+import type { MenuItem } from '../components/controls';
+import { toast } from '../components/toast';
+import {
+  bannedChatIds,
+  shadowBanChat,
+  chatActions,
+  chatMuted,
+  mutedChatIds,
+  muteChat,
+  onChatMutesChanged,
+  roleMarker,
+} from './chat-identity';
+
+// Keep the formatting helpers importable without a DOM; menu listeners belong to the browser.
+const contextMenu = async (items: MenuItem[], at: { x: number; y: number }) =>
+  (await import('../components/controls')).contextMenu(items, at);
+let nextChatBox = 0;
 
 /**
  * The room, bottom-left over the viewport (docs/038).
@@ -74,6 +92,27 @@ body.os-riding .sp-chat-line { pointer-events: none; cursor: default; }
 .sp-chat.sp-chat-docked .sp-chat-entry { display: flex; }
 .sp-chat.sp-chat-docked input { font-size: 16px; }
 .sp-chat.sp-chat-docked .sp-chat-line { pointer-events: auto; }
+.sp-chat-tabs { display: none; gap: 6px; }
+.sp-chat.open .sp-chat-tabs { display: flex; }
+.sp-chat-tabs button, .sp-chat-users button { color: #dbe7f2; background: #172f41; border: 1px solid #365568;
+  border-radius: 4px; padding: 5px 8px; cursor: pointer; font: inherit; }
+.sp-chat-tabs button[aria-selected="true"] { background: #285270; border-color: #7ebde6; }
+.sp-chat-users { flex: 1; min-height: 0; overflow: auto; padding: 5px; background: #0d1a25; border-radius: 5px; }
+.sp-chat-user { display: flex; align-items: center; gap: 5px; padding: 7px 0; border-bottom: 1px solid #243a4a; }
+.sp-chat-user-identity { flex: 1; min-width: 0; }
+.sp-chat-user-maps { color: #8ea9bc; font-size: 11px; overflow-wrap: anywhere; }
+.sp-chat-user-map { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 6px; margin-top: 3px; }
+.sp-chat-map-source { padding: 0 4px; border: 1px solid #365568; border-radius: 3px; color: #adc6d8;
+  font-size: 10px; white-space: nowrap; }
+.sp-chat-map-room { color: #8ea9bc; font-size: 10px; }
+.sp-chat-map-room.same { color: #8fe0b0; font-weight: 600; }
+.sp-chat-user-maps a { color: #8cc9ef; text-decoration: none; }
+.sp-chat-user-maps a:hover { text-decoration: underline; }
+.sp-chat-user-name { flex: 1; overflow-wrap: anywhere; }
+.sp-chat-user.muted { opacity: .65; }
+.sp-chat-users summary { cursor: pointer; padding: 8px 0; }
+.sp-chat-users p { color: #9eb4c4; }
+.sp-chat [hidden] { display: none !important; }
 @media (max-width: 640px) {
   .sp-chat.sp-chat-docked { top: auto; height: 190px; width: 100%; }
   .sp-chat.sp-chat-docked h2, .sp-chat.sp-chat-docked .sp-chat-note { display: none; }
@@ -93,6 +132,9 @@ export interface ChatBox {
   replay(lines: ChatLine[]): void;
   /** Replace the server-voice members currently speaking beside the passive chat feed. */
   setSpeakers(speakers: readonly ChatSpeaker[]): void;
+  setUsers(users: readonly ChatMember[], online?: number): void;
+  setChatEnabled(enabled: boolean): void;
+  selectTab(tab: 'chat' | 'users'): void;
   /** Take the keyboard. `prefill` is what a `/`-shortcut opens with. */
   open(prefill?: string): void;
   close(): void;
@@ -121,6 +163,8 @@ export function createChatBox(deps: {
   suspended?: () => boolean;
   /** A persistent right-hand room for public riding. */
   docked?: boolean;
+  /** Actions supplied by the current map, alongside chat mute and moderation controls. */
+  userActions?: (member: ChatMember) => MenuItem[];
 }): ChatBox {
   installStyles('chat-box', CSS);
 
@@ -135,6 +179,34 @@ export function createChatBox(deps: {
   speakerList.setAttribute('aria-live', 'polite');
   const log = document.createElement('div');
   log.className = 'sp-chat-log';
+  const panelId = `sp-chat-${++nextChatBox}`;
+  log.id = `${panelId}-messages`;
+  log.setAttribute('role', 'tabpanel');
+  log.setAttribute('aria-labelledby', `${panelId}-chat-tab`);
+  const tabs = document.createElement('div');
+  tabs.className = 'sp-chat-tabs';
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Lodge panel');
+  const chatTab = document.createElement('button');
+  chatTab.type = 'button';
+  chatTab.textContent = 'Chat';
+  chatTab.setAttribute('role', 'tab');
+  chatTab.id = `${panelId}-chat-tab`;
+  chatTab.setAttribute('aria-controls', log.id);
+  const usersTab = document.createElement('button');
+  usersTab.type = 'button';
+  usersTab.textContent = 'Users';
+  usersTab.setAttribute('role', 'tab');
+  usersTab.id = `${panelId}-users-tab`;
+  usersTab.setAttribute('aria-controls', `${panelId}-users`);
+  tabs.append(chatTab, usersTab);
+  const userList = document.createElement('div');
+  userList.className = 'sp-chat-users';
+  userList.id = `${panelId}-users`;
+  userList.hidden = true;
+  userList.setAttribute('role', 'tabpanel');
+  userList.setAttribute('aria-label', 'Connected users');
+  userList.setAttribute('aria-labelledby', usersTab.id);
   const entry = document.createElement('div');
   entry.className = 'sp-chat-entry';
   const input = document.createElement('input');
@@ -153,7 +225,7 @@ export function createChatBox(deps: {
     'not from whoever runs this server — it relays and retains them. Esc closes.';
   if (deps.docked)
     note.textContent = 'Enter to chat while riding. Esc returns to the mountain. /msg and /r work here too.';
-  el.append(speakerList, log, entry, note);
+  el.append(speakerList, tabs, log, userList, entry, note);
   document.body.appendChild(el);
 
   const lines: ChatLine[] = [];
@@ -162,6 +234,152 @@ export function createChatBox(deps: {
   let open = docked;
   let holding = false;
   let fade = 0;
+  let users: readonly ChatMember[] = [];
+  let onlineCount = 0;
+  let usersShown = false;
+  let chatEnabled = true;
+  let rosterVersion = 0;
+
+  function selectTab(showUsers: boolean): void {
+    showUsers ||= !chatEnabled;
+    usersShown = showUsers;
+    el.dispatchEvent(new CustomEvent('chat-tab-change', { detail: showUsers, bubbles: true }));
+    log.hidden = showUsers;
+    userList.hidden = !showUsers;
+    entry.hidden = showUsers;
+    chatTab.setAttribute('aria-selected', String(!showUsers));
+    usersTab.setAttribute('aria-selected', String(showUsers));
+    chatTab.tabIndex = showUsers ? -1 : 0;
+    usersTab.tabIndex = showUsers ? 0 : -1;
+    if (showUsers) {
+      input.blur();
+      void paintUsers();
+    }
+  }
+  chatTab.onclick = () => selectTab(false);
+  usersTab.onclick = () => selectTab(true);
+  tabs.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const showUsers = !chatEnabled || event.key === 'End' || (event.key !== 'Home' && !usersShown);
+    selectTab(showUsers);
+    (showUsers ? usersTab : chatTab).focus();
+  });
+  selectTab(false);
+
+  async function actionsFor(member: ChatMember): Promise<MenuItem[]> {
+    if (member.id === deps.me()?.id) return [];
+    const items = await chatActions(member, deps.me());
+    return [...(deps.userActions?.(member) ?? []), ...items];
+  }
+
+  async function paintUsers(): Promise<void> {
+    const version = ++rosterVersion;
+    userList.replaceChildren();
+    const sharesRoom = (member: ChatMember) => !!member.maps?.some(map => map.sameRoom);
+    for (const member of [...users].sort(
+      (a, b) => Number(sharesRoom(b)) - Number(sharesRoom(a)) || a.username.localeCompare(b.username),
+    )) {
+      const row = document.createElement('div');
+      row.className = 'sp-chat-user';
+      row.classList.toggle('muted', chatMuted(member.chatId));
+      const name = document.createElement('span');
+      name.className = 'sp-chat-user-name';
+      name.textContent = chatName(member);
+      const identity = document.createElement('div');
+      identity.className = 'sp-chat-user-identity';
+      identity.append(name);
+      const maps = document.createElement('div');
+      maps.className = 'sp-chat-user-maps';
+      for (const map of member.maps ?? []) {
+        const line = document.createElement('div');
+        line.className = 'sp-chat-user-map';
+        if (map.playUrl) {
+          const link = document.createElement('a');
+          link.textContent = map.name;
+          link.href = map.playUrl;
+          line.append(link);
+        } else line.append(map.name);
+        const source = document.createElement('span');
+        source.className = 'sp-chat-map-source';
+        source.textContent = map.source === 'iso' ? 'ISO' : 'Server map';
+        const room = document.createElement('span');
+        room.className = `sp-chat-map-room${map.sameRoom ? ' same' : ''}`;
+        room.textContent = chatMapRoomLabel(map);
+        line.append(source, room);
+        maps.append(line);
+      }
+      if (!member.maps?.length) maps.textContent = 'Browsing';
+      identity.append(maps);
+      row.append(roleMarker(member), identity);
+      if (member.id !== deps.me()?.id) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.textContent = '⋮';
+        more.setAttribute('aria-label', `Options for ${chatName(member)}`);
+        more.onclick = async () => {
+          const items = await actionsFor(member);
+          const rect = more.getBoundingClientRect();
+          if (items.length && more.isConnected) contextMenu(items, { x: rect.left, y: rect.bottom });
+        };
+        row.append(more);
+      }
+      userList.append(row);
+    }
+    if (!users.length) {
+      const empty = document.createElement('p');
+      empty.textContent = onlineCount ? 'Loading players…' : 'No players online.';
+      userList.append(empty);
+    }
+    const saved = (label: string, entries: [string, string][], remove: (hash: string) => Promise<void> | void) => {
+      if (!entries.length) return;
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = `${label} (${entries.length})`;
+      details.append(summary);
+      for (const [hash, label] of entries) {
+        const row = document.createElement('div');
+        row.className = 'sp-chat-user';
+        const name = document.createElement('span');
+        name.className = 'sp-chat-user-name';
+        name.textContent = label;
+        const undo = document.createElement('button');
+        undo.type = 'button';
+        undo.textContent = 'Remove';
+        undo.setAttribute('aria-label', `Remove ${label}`);
+        undo.onclick = () => {
+          void Promise.resolve(remove(hash))
+            .then(() => paintUsers())
+            .catch(error => toast(String(error.message ?? error), 'err'));
+        };
+        row.append(name, undo);
+        details.append(row);
+      }
+      userList.append(details);
+    };
+    saved(
+      'Muted in this browser',
+      Object.entries(mutedChatIds()).map(([hash, name]) => [hash, `${name} · #${shortChatId(hash)}`]),
+      hash => muteChat(hash, '', false),
+    );
+    if (deps.me()?.role === 'moderator' || deps.me()?.role === 'admin') {
+      try {
+        const hashes = await bannedChatIds();
+        if (version !== rosterVersion) return;
+        saved(
+          'Chat shadow bans',
+          hashes.map(hash => [hash, `#${shortChatId(hash)}`]),
+          hash => shadowBanChat(hash, false),
+        );
+      } catch (error) {
+        if (version !== rosterVersion) return;
+        const notice = document.createElement('p');
+        notice.textContent = error instanceof Error ? error.message : String(error);
+        userList.append(notice);
+      }
+    }
+  }
 
   // The bottom-left corner already carries the command sheet, so the box sits above whatever that strip is
   // currently as tall as rather than over it.
@@ -176,9 +394,10 @@ export function createChatBox(deps: {
 
   function nameOf(line: ChatLine): string {
     const mine = deps.me()?.id;
-    if (line.kind !== 'private') return line.from?.username ?? '';
-    const to = line.to?.userId === mine ? 'you' : (line.to?.username ?? '');
-    const from = line.from?.userId === mine ? 'you' : (line.from?.username ?? '');
+    const display = (who: NonNullable<ChatLine['from']>) => chatName({ ...who, id: who.userId });
+    if (line.kind !== 'private') return line.from ? display(line.from) : '';
+    const to = line.to?.userId === mine ? 'you' : line.to ? display(line.to) : '';
+    const from = line.from?.userId === mine ? 'you' : line.from ? display(line.from) : '';
     return `${from} → ${to}`;
   }
 
@@ -198,6 +417,16 @@ export function createChatBox(deps: {
     const who = document.createElement('span');
     who.className = 'sp-chat-who';
     who.textContent = `${nameOf(line)}: `;
+    if (line.from) {
+      const member = { ...line.from, id: line.from.userId };
+      who.prepend(roleMarker(member));
+      who.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        void actionsFor(member).then(items => {
+          if (items.length) contextMenu(items, { x: event.clientX, y: event.clientY });
+        });
+      });
+    }
     const body = document.createElement('span');
     body.textContent = plainChatText(line.text);
     row.append(who, body);
@@ -207,7 +436,8 @@ export function createChatBox(deps: {
   /** Which rows are shown: everything while the box is open, only what was said recently while it is not. */
   function paint(): void {
     const now = Date.now();
-    const shown = new Map((open ? lines : lines.slice(-RECENT_LINES)).map(line => [line.id, line]));
+    const unmuted = lines.filter(line => !chatMuted(line.from?.chatId));
+    const shown = new Map((open ? unmuted : unmuted.slice(-RECENT_LINES)).map(line => [line.id, line]));
     for (const line of shown.values()) {
       if (rows.has(line.id)) continue;
       const row = rowFor(line);
@@ -327,9 +557,22 @@ export function createChatBox(deps: {
       paint();
     },
     setSpeakers,
+    setChatEnabled(enabled) {
+      chatEnabled = enabled;
+      chatTab.hidden = !enabled;
+      if (!enabled) selectTab(true);
+    },
+    selectTab: tab => selectTab(tab === 'users'),
+    setUsers(members, online = members.length): void {
+      users = members;
+      onlineCount = online;
+      usersTab.textContent = `Users (${online})`;
+      if (usersShown) void paintUsers();
+    },
     open(prefill = ''): void {
       if (deps.suspended?.()) return;
       open = true;
+      selectTab(false);
       el.classList.add('open');
       if (prefill) input.value = prefill;
       paint();
@@ -339,6 +582,10 @@ export function createChatBox(deps: {
     close,
     focused: (): boolean => holding,
   };
+  onChatMutesChanged(() => {
+    paint();
+    if (usersShown) void paintUsers();
+  });
   window.addEventListener(
     'keydown',
     event => {

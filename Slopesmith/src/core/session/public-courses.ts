@@ -3,6 +3,8 @@ export interface PublicCourse {
   id: string;
   kind: PublicCourseKind;
   name: string;
+  /** Which catalogue entry was opened; ISO and server references can share a course ID. */
+  source?: 'iso' | 'server';
   retailData: boolean;
   /** Local ISO slots supplying game assets. Optional for authored mountains; required for retail terrain. */
   isoCourses: string[];

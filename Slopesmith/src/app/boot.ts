@@ -1,6 +1,7 @@
 import { currentAccount, gateFor } from './net/account';
 import { enterEditor } from './enter-editor';
 import { MAPS_PATH, pageInPath } from './navigation';
+import { startSitePresence } from './net/site-presence';
 
 /**
  * Ask who this browser is before loading the editor. Visitors get the public course homepage; members get
@@ -25,6 +26,7 @@ import { MAPS_PATH, pageInPath } from './navigation';
  */
 async function boot(): Promise<void> {
   const account = await currentAccount();
+  void startSitePresence();
   const gate = gateFor(account, location.hash);
   const url = new URL(location.href);
   const page = pageInPath(url.pathname);

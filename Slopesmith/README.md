@@ -83,6 +83,10 @@ npm run run:local-server
 npm run run:local-server:ngrok
 ```
 
+`run:local-server` builds and starts Rust multiplayer alongside the account-enabled Node API and Vite,
+configuring their shared secret and relay routing automatically. Rust 1.99+ is required. The same ngrok
+tunnel carries multiplayer WebSockets; no second multiplayer tunnel is needed.
+
 Open `SLOPESMITH_LOCAL_SERVER_NGROK_URL` on the remote device. This launcher requires Slopesmith accounts and
 trusts ngrok's forwarded HTTPS metadata; do not expose the ordinary unauthenticated `npm run dev` process.
 Name only endpoints you control in `SLOPESMITH_ALLOWED_HOSTS` and stop the tunnel when the session is over.
@@ -146,21 +150,26 @@ own assets and links to the source and server setup guide; narrow player headers
 Public and ISO map cards have **Open**, plus **Load ISO maps** when assets are missing. Choose
 the card or its highlighted **Open** button to open that mountain. Saved-map tiles open **Edit**, and the new-map
 tile opens **Create**. On `/isos`, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
+Loaded ISO maps also offer **Open** for public Play and **Inspect** for the editor's reference view.
 Primary buttons share the same highlighted style; secondary actions keep their own targets.
-**Play**, **Play in VR**, and **View map** appear over the map preview.
+**Play**, **Play in VR**, **View map**, and **Inspect map** appear over the map preview.
 Click the map to choose a local start point; **Reset start** restores its default. **View map** shows the mouse
 movement legend for start placement, orbit, pan, and zoom. Hold **Alt + WASD** to move the camera.
 There is no separate map selection panel.
-Chat appears only in the player. Riding stays local until you enter a nickname and choose **Join chat**
-(members choose **Join as** their account name). Account names are reserved and cannot be chosen as guest nicknames.
-Joining connects chat and multiplayer without restarting the ride.
+Click the online-user count in the header to slide out the shared **Users** and **Chat** panel on Maps, ISO,
+or Play. Before joining, it shows the user list and nickname form. Choose **Join chat** (members choose
+**Join as** their account name) to reveal the Chat tab. Account names are reserved. Closing the panel keeps
+chat joined across public-page navigation. **Leave chat** returns to Users and lets guests edit their nickname
+before rejoining. Anonymous multiplayer continues independently of chat.
+The user list labels each map **ISO** or **Server map** and marks people in the **Same play room**.
+People on your map in another room show **Different play room**; map links preserve that room and map source.
 
 For an isolated Rust multiplayer service, run `npm run dev:multiplayer` with Rust 1.99+ installed.
 Guests use separate play connections and can invite friends into a room without occupying editor seats.
 See [the multiplayer setup guide](multiplayer/README.md) for contracts, tests, deployment, and current limits.
-**Leave chat** disconnects and gives the mountain the full viewport; **Show chat** offers joining again.
-Enter focuses connected chat and Escape returns control to the mountain. The compact player header keeps
-the selected map-name tab and chat controls together, with a labeled **Exit** button at the far right while playing.
+Enter focuses connected chat while the panel is open; Escape closes the panel and returns control to the mountain.
+The header remembers the last public map so it can be reopened from Maps or ISO, with a labeled **Exit**
+button at the far right while playing.
 Public play hides editor bounds and fullscreen controls, with the score just below the header. **ISO** stays available
 alongside **Maps**, which returns to the catalogue. ISO availability and its load link live in the **Assets** menu.
 The lower-left ride legend follows board/on-foot and first/third-person changes; on narrow screens
@@ -184,6 +193,7 @@ link retains that map's name, lists its requirements, and offers **Load required
 You can load several maps: each tile shows its progress or **Queued** state, and imports run one at a time.
 Tiles reserve space for progress and messages, and update in place so loading never reshuffles the grid.
 Cancel a loading or queued map from its tile; other queued maps continue.
+Leaving `/isos` during a scan or load asks for confirmation because it cancels the active load and queued maps.
 Selecting an ISO scans it without loading every map. **Clear** removes loaded ISO maps;
 browser storage may also evict them. Your ISO and extracted retail files are never uploaded.
 

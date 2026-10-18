@@ -4,7 +4,10 @@ import { randomBytes } from 'node:crypto';
 import { constants, inflateRawSync } from 'node:zlib';
 
 /** Independent wire client: exercises real upgrades, compressed frames, and masked client messages. */
-export async function playSocket(url: string, options: { origin: string; cookie?: string; compressed?: boolean }) {
+export async function playSocket(
+  url: string,
+  options: { origin: string; cookie?: string; compressed?: boolean; headers?: Record<string, string> },
+) {
   return new Promise<{
     seen: any[];
     compressed: boolean;
@@ -20,6 +23,7 @@ export async function playSocket(url: string, options: { origin: string; cookie?
         'sec-websocket-version': '13',
         'sec-websocket-key': randomBytes(16).toString('base64'),
         origin: options.origin,
+        ...options.headers,
         ...(options.cookie ? { cookie: options.cookie } : {}),
         ...(options.compressed ? { 'sec-websocket-extensions': 'permessage-deflate; client_max_window_bits' } : {}),
       },

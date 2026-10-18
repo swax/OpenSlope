@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isSecureOrigin } from './policy';
+import { chatIdentity } from './chat-identity';
 import type { SessionMember } from '../session/presence';
 import { readAccounts } from './store';
 
@@ -14,6 +15,40 @@ const signingKey = () =>
     ? createHmac('sha256', process.env.SLOPESMITH_MULTIPLAYER_SECRET).update('slopesmith-guest-cookie-v1').digest()
     : secret;
 const sign = (payload: string) => createHmac('sha256', signingKey()).update(payload).digest('base64url');
+
+export function anonymousMember(member: SessionMember): SessionMember {
+  const number = Number.parseInt(createHmac('sha256', signingKey()).update(member.id).digest('hex').slice(0, 8), 16);
+  return { ...member, username: `guest${(number % 99) + 1}`, anonymous: true };
+}
+
+function guestCookie(req: IncomingMessage, res: ServerResponse, member: SessionMember): void {
+  const payload = Buffer.from(
+    JSON.stringify({
+      id: member.id,
+      name: member.username,
+      anonymous: member.anonymous === true,
+      expires: Date.now() + LIFETIME * 1000,
+    }),
+  ).toString('base64url');
+  res.setHeader(
+    'set-cookie',
+    `${COOKIE}=${payload}.${sign(payload)}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${LIFETIME}` +
+      (isSecureOrigin(req) ? '; Secure' : ''),
+  );
+}
+
+export async function createVisitor(req: IncomingMessage, res: ServerResponse): Promise<SessionMember> {
+  const existing = await guestMember(req);
+  if (existing) return existing;
+  const member = anonymousMember({
+    id: `guest:${randomUUID()}`,
+    username: '',
+    role: 'viewer',
+    chatId: await chatIdentity(req),
+  });
+  guestCookie(req, res, member);
+  return member;
+}
 
 const belongsToAccount = async (name: string): Promise<boolean> =>
   (await readAccounts()).users.some(user => user.username === name.normalize('NFKC').trim().toLowerCase());
@@ -35,10 +70,18 @@ export async function guestMember(req: IncomingMessage): Promise<SessionMember |
       id: string;
       name: string;
       expires: number;
+      anonymous?: boolean;
     };
     if (value.expires < Date.now() || !value.id.startsWith('guest:') || typeof value.name !== 'string') return null;
-    if (await belongsToAccount(value.name.replace(/ \(guest\)$/, ''))) return null;
-    return { id: value.id, username: value.name, role: 'viewer' };
+    if (!value.anonymous && (await belongsToAccount(value.name.replace(/ \(guest\)$/, '')))) return null;
+    const member: SessionMember = {
+      id: value.id,
+      username: value.name,
+      role: 'viewer',
+      chatId: await chatIdentity(req),
+      ...(value.anonymous ? { anonymous: true } : {}),
+    };
+    return member.anonymous ? anonymousMember(member) : member;
   } catch {
     return null;
   }
@@ -56,13 +99,7 @@ export async function createGuest(req: IncomingMessage, res: ServerResponse, nam
     throw new Error('That name belongs to an account. Sign in or choose another name.');
   const id = (await guestMember(req))?.id ?? `guest:${randomUUID()}`;
   const username = `${clean} (guest)`;
-  const payload = Buffer.from(JSON.stringify({ id, name: username, expires: Date.now() + LIFETIME * 1000 })).toString(
-    'base64url',
-  );
-  res.setHeader(
-    'set-cookie',
-    `${COOKIE}=${payload}.${sign(payload)}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${LIFETIME}` +
-      (isSecureOrigin(req) ? '; Secure' : ''),
-  );
-  return { id, username, role: 'viewer' };
+  const member: SessionMember = { id, username, role: 'viewer', chatId: await chatIdentity(req) };
+  guestCookie(req, res, member);
+  return member;
 }

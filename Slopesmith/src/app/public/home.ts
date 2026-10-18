@@ -6,9 +6,8 @@ import { currentAccount } from '../net/account';
 import { localEditorUrl, mapPath } from '../navigation';
 import { deleteLocalProject, listLocalProjects } from '../state/local-projects';
 import type { ClientProject } from '../state/project-sync';
-import { clientId } from '../net/client';
-import { createSessionChannel, type PresenceEntry, type SessionMember } from '../net/session-channel';
-import { createChatBox } from '../ui/chrome/chat-box';
+import type { PresenceEntry, SessionMember } from '../net/session-channel';
+import { toast } from '../ui/components/toast';
 import { confirmAction } from '../ui/components/prompts';
 import { canSaveMountainFolder } from '../mountain/folder';
 import { openLocalMountainFolder } from '../mountain/open-folder';
@@ -21,7 +20,10 @@ import { isoRequirements, isoStatusBadges } from './iso-status';
 import { courseEditorUrl, isoManagementUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
 import type { PublicPlayer } from './player';
 import { mapHeading, publicGlyph } from './presentation';
+import { setSiteCourse } from '../net/site-presence';
 import { publicMapControls } from './map-controls';
+import type { ChatActivity } from '../../core/session/chat-activity';
+import { activityCounter, watchChatActivity } from './chat-activity';
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
@@ -29,10 +31,6 @@ export async function showPublicHome(): Promise<void> {
   const account = await currentAccount();
   const member: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open'
     ? { id: 'owner', username: 'owner', role: 'admin' } : null;
-  let me: SessionMember | null = null;
-  let joined = false;
-  let chatVisible = false;
-  let joinAttempt = 0;
   let player: PublicPlayer | null = null;
   let selected: PublicCourse | null = null;
   const linked = publicCourseRequest(new URL(location.href));
@@ -56,7 +54,25 @@ export async function showPublicHome(): Promise<void> {
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
-  const { header, iso: manage, setMap } = publicHeader('maps', account);
+  const { header, iso: manage, setMap, community } = publicHeader('maps', account);
+  const session = community.session;
+  if (friendRoom) session.setPlayRoom(friendRoom);
+  let activity: ChatActivity | null = null;
+  const mapCounters = new Map<string, ReturnType<typeof activityCounter>[]>();
+  const countOnMap = (id: string): number | null => activity ? activity.courses[id] ?? 0 : null;
+  watchChatActivity(next => {
+    activity = next;
+    for (const [id, counters] of mapCounters) for (const counter of counters) counter.set(countOnMap(id));
+  });
+  function courseHeading(name: string, kind: 'mountain' | 'disc', id: string) {
+    const heading = mapHeading(name, kind);
+    const counter = activityCounter('map');
+    counter.set(countOnMap(id));
+    const counters = mapCounters.get(id) ?? [];
+    counters.push(counter); mapCounters.set(id, counters);
+    heading.append(counter.el);
+    return heading;
+  }
   document.title = 'Maps · Slopesmith';
   const main = element('main', 'public-home');
   const title = element('h1', 'public-visually-hidden', 'Maps');
@@ -90,24 +106,21 @@ export async function showPublicHome(): Promise<void> {
   localSection.append(localTitle, localGrid, localEmpty);
   const requirements = element('details', 'public-requirements-host'); requirements.hidden = true;
   const status = element('p', 'public-status', 'Loading public maps…'); status.setAttribute('role', 'status');
-  const actions = element('div', 'public-actions'); actions.hidden = true;
   const stop = element('button', 'public-stop', ''); stop.type = 'button'; stop.hidden = true;
   stop.setAttribute('aria-label', 'Exit play'); stop.title = 'Exit play';
   stop.append(publicGlyph('stop'), element('span', 'public-stop-label', 'Exit'));
   header.append(stop);
-  const toggleChat = element('button', 'public-chat-toggle'); toggleChat.type = 'button';
-  toggleChat.setAttribute('aria-controls', 'public-chat');
-  actions.append(toggleChat);
   const mapControls = publicMapControls({
     play: () => { void player?.play().catch(showPlayerError); },
     vr: () => { void player?.vr().catch(showPlayerError); },
     view: () => player?.view(),
+    inspect: () => { if (selected) location.href = courseEditorUrl(selected); },
     resetStart: () => player?.resetStart(),
   });
   function showPlayerError(error: unknown) {
     mapControls.error(error instanceof Error ? error.message : String(error));
   }
-  main.append(title, ...(member && !linked ? [privateSection] : []), serverSection, savedSection, localSection, requirements, status, actions);
+  main.append(title, ...(member && !linked ? [privateSection] : []), serverSection, savedSection, localSection, requirements, status);
   document.body.append(header, main, mapControls.el);
 
   function showRequirements() {
@@ -135,6 +148,7 @@ export async function showPublicHome(): Promise<void> {
     if (event.key === 'Escape') { event.stopPropagation(); requirements.open = false; requirements.querySelector('summary')?.focus(); }
   });
   function renderCourses() {
+    mapCounters.clear();
     const groups = publicCourseGroups(published, cached);
     const publicIds = new Set(published.filter(course => course.kind === 'project').map(course => course.id));
     const privateProjects = serverProjects.filter(project => !publicIds.has(project.id));
@@ -160,7 +174,7 @@ export async function showPublicHome(): Promise<void> {
       const edit = element('a', 'public-primary', 'Edit');
       edit.href = `${mapPath('editor', project.name)}?${new URLSearchParams({ project: project.id })}`;
       edit.setAttribute('aria-label', `Edit ${displayName}`); edit.prepend(publicGlyph('editor'));
-      controls.append(edit); card.append(mapHeading(displayName, 'mountain'), metadata, controls); privateGrid.append(card);
+      controls.append(edit); card.append(courseHeading(displayName, 'mountain', project.id), metadata, controls); privateGrid.append(card);
     }
     const newMap = element('article', 'public-map-tile public-new-map'); newMap.setAttribute('aria-label', 'New map');
     newMap.append(mapHeading('New map', 'new'), element('span', 'public-local-note', 'Create on this device'));
@@ -190,7 +204,8 @@ export async function showPublicHome(): Promise<void> {
         const displayName = course.name.replace(/[_-]/g, ' ');
         const card = element('article', 'public-course public-map-tile'); card.setAttribute('aria-label', displayName);
         card.dataset.kind = course.kind;
-        card.append(mapHeading(displayName, course.kind === 'project' ? 'mountain' : 'disc'));
+        card.append(courseHeading(displayName, course.kind === 'project' ? 'mountain' : 'disc',
+          course.kind === 'reference' ? referenceRoom(course.id) : course.id));
         if (missing) card.append(element('span', 'public-requirements',
           course.kind === 'project' ? 'ISO optional' : 'ISO needed'));
         if (course.isoCourses.length) card.append(isoStatusBadges(course.isoCourses, cached));
@@ -260,26 +275,14 @@ export async function showPublicHome(): Promise<void> {
     else void refreshLocalMaps();
   });
 
-  const chat = createChatBox({ docked: true, say: text => session.say(text), me: () => me,
-    suspended: () => !joined || !chatVisible || !player });
-  chat.el.id = 'public-chat'; chat.el.hidden = true;
-  const chatEntry = chat.el.querySelector<HTMLElement>('.sp-chat-entry')!;
-  const chatLog = chat.el.querySelector<HTMLElement>('.sp-chat-log')!;
-  const chatInput = chatEntry.querySelector('input')!;
-  chatInput.enterKeyHint = 'send';
-  chatInput.placeholder = 'Say something…'; chatInput.disabled = true;
-  const chatStatus = element('p', 'public-chat-status');
-  chat.el.insertBefore(chatStatus, chat.el.children[1]);
-  const identity = element('form', 'public-chat-join');
-  const invite = element('p', '', 'Play locally, or join chat and other riders.');
-  const nameLabel = element('label', '');
-  nameLabel.append(element('span', 'public-visually-hidden', 'Your rider name'));
-  const name = element('input', ''); name.name = 'name'; name.maxLength = 24; name.required = true;
-  name.setAttribute('autocomplete', 'nickname'); name.placeholder = 'Rider name'; nameLabel.append(name);
-  nameLabel.hidden = !!member; name.disabled = !!member;
-  const join = element('button', 'public-iso-button', member ? `Join as ${member.username}` : 'Join chat'); join.type = 'submit';
-  const who = element('p', 'public-who'); who.setAttribute('role', 'status');
-  identity.append(invite, nameLabel, join, who);
+  function refreshPeers() {
+    if (!selected || !player) return;
+    const entries = selected.kind === 'project' ? presence[selected.id] ?? []
+      : Object.values(presence).flat().filter(entry => entry.referenceLevel?.toUpperCase() === selected!.id.toUpperCase()
+        && entry.playing === 'reference');
+    const here = new Set(entries.map(entry => entry.sessionId));
+    player.peers([...peers.values()].filter(peer => here.has(peer.sessionId) && peer.sessionId !== session.sessionId()));
+  }
   const inviteFriends = element('button', 'public-iso-button', 'Invite friends');
   inviteFriends.hidden = true;
   inviteFriends.type = 'button';
@@ -291,85 +294,34 @@ export async function showPublicHome(): Promise<void> {
     session.setPlayRoom(friendRoom);
     const copied = navigator.clipboard?.writeText(link) ?? Promise.reject(new Error('Clipboard unavailable'));
     void copied.then(() => { inviteFriends.textContent = 'Link copied'; })
-      .catch(() => { chatStatus.textContent = 'Share the link in your address bar to invite friends.'; });
+      .catch(() => { status.textContent = 'Share the link in your address bar to invite friends.'; });
   });
-  chat.el.append(inviteFriends);
-  chat.el.insertBefore(identity, chatLog);
-  chatEntry.hidden = chatLog.hidden = true;
-  function showChat(visible: boolean) {
-    chatVisible = visible;
-    chat.el.hidden = !visible;
-    document.body.classList.toggle('public-chat-visible', visible);
-    const label = visible ? 'Leave chat' : 'Show chat';
-    toggleChat.replaceChildren(publicGlyph(visible ? 'leaveChat' : 'chat'), element('span', 'public-chat-toggle-label', label));
-    toggleChat.setAttribute('aria-label', label); toggleChat.title = label;
-    toggleChat.setAttribute('aria-expanded', String(visible));
-    window.dispatchEvent(new Event('resize'));
-  }
-  function leaveChat() {
-    joinAttempt++;
-    joined = false; me = null;
-    session.close(); chat.close(); chat.replay([]);
-    presence = {}; peers.clear(); refreshPeers();
-    chatInput.value = ''; chatInput.disabled = true;
-    chatEntry.hidden = chatLog.hidden = true; identity.hidden = false;
-    chatStatus.textContent = ''; who.textContent = ''; join.disabled = false;
-  }
-  toggleChat.addEventListener('click', () => {
-    if (chatVisible) leaveChat();
-    showChat(!chatVisible);
-  });
-  function refreshPeers() {
-    if (!selected || !player) return;
-    const entries = selected.kind === 'project' ? presence[selected.id] ?? []
-      : Object.values(presence).flat().filter(entry => entry.referenceLevel?.toUpperCase() === selected!.id.toUpperCase()
-        && entry.playing === 'reference');
-    const here = new Set(entries.map(entry => entry.sessionId));
-    player.peers([...peers.values()].filter(peer => here.has(peer.sessionId) && peer.sessionId !== session.sessionId()));
-  }
-  const session = createSessionChannel({
-    clientId, deviceLabel: 'public rider', publicPlay: true,
-    url: () => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/public/session?client=${encodeURIComponent(clientId)}`,
-    onWelcome(welcome) {
-      if (!joined) return;
-      inviteFriends.hidden = !session.usesPlayRelay();
-      me = welcome.member; session.watch(room);
-      chatInput.disabled = false;
-      chatStatus.textContent = `Connected as ${me.username}`;
+  community.actions.append(inviteFriends);
+  community.setHooks({
+    userActions: member => player?.canGoToPlayer(member.id) ? [{
+      label: 'Go to player',
+      desc: `Move to ${member.username}'s live position on this map.`,
+      onClick: () => {
+        if (!player?.goToPlayer(member.id)) toast('That player is no longer available.', 'info');
+      },
+    }] : [],
+    onWelcome() { inviteFriends.hidden = !session.usesPlayRelay(); },
+    onPresence(maps) { presence = maps; refreshPeers(); },
+    onAware(peer) { peers.set(peer.sessionId, { ...peer, ...peer.aware }); refreshPeers(); },
+    onRideEvent: event => { player?.rideEvent(event); },
+    onStatus(state) {
+      if (state !== 'open' && !session.usesPlayRelay()) { presence = {}; peers.clear(); refreshPeers(); }
     },
-    onPresence(maps) { if (joined) { presence = maps; refreshPeers(); } },
-    onAware(peer) { if (joined) { peers.set(peer.sessionId, { ...peer, ...peer.aware }); refreshPeers(); } },
-    onChat: line => { if (joined) chat.push(line); }, onChatHistory: lines => { if (joined) chat.replay(lines); },
-    onRideEvent: event => { if (joined) player?.rideEvent(event); },
-    onCapacityRefused: message => { chatStatus.textContent = message; },
-    onStatus: state => {
-      if (!joined) return;
-      chatInput.disabled = true;
-      chatStatus.dataset.state = state; chatStatus.textContent = 'Connecting…';
-      if (state !== 'open') { presence = {}; peers.clear(); refreshPeers(); }
-    },
-    onAccessChanged: reason => { leaveChat(); who.textContent = reason; },
-  });
-  identity.addEventListener('submit', event => {
-    if (!player || !chatVisible || joined) { event.preventDefault(); return; }
-    event.preventDefault(); join.disabled = true;
-    const attempt = ++joinAttempt;
-    const identityRequest = member ? Promise.resolve({ member })
-      : publicJson<{ member: SessionMember }>('/api/public/guest', { name: name.value });
-    void identityRequest.then(result => {
-      if (attempt !== joinAttempt || !chatVisible) return;
-      me = result.member; joined = true;
-      identity.hidden = true; chatEntry.hidden = chatLog.hidden = false;
-      session.start();
-    }).catch(error => {
-      if (attempt === joinAttempt) who.textContent = error instanceof Error ? error.message : String(error);
-    }).finally(() => { if (attempt === joinAttempt) join.disabled = false; });
+    onAccessChanged(reason) { session.watch(null); setSiteCourse(null); status.textContent = reason; },
   });
   async function load() {
     if (!selected || preparing) return;
     const course = selected;
     const missing = course.isoCourses.some(slot => !cached.includes(slot));
     if (course.kind === 'reference' && missing) { location.href = isoManagementUrl(course); return; }
+    const knownCourse = published.some(entry => entry.kind === course.kind && entry.id === course.id);
+    room = course.kind === 'project' ? course.id : knownCourse || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
+    setSiteCourse(room, course.source ?? 'server'); session.watch(room); session.start();
     preparing = true; renderCourses();
     try {
       if (course.kind === 'reference' && await needsCollisionSoundUpdate(course.isoCourses)) {
@@ -385,9 +337,8 @@ export async function showPublicHome(): Promise<void> {
       history.replaceState(history.state, '', playUrl(course));
       document.title = `${course.name} · Slopesmith`;
       main.classList.add('public-in-world');
-      header.insertBefore(status, header.children[2]);
-      header.insertBefore(actions, header.children[3]);
-      header.insertBefore(requirements, actions);
+      header.insertBefore(requirements, header.children[2]);
+      header.insertBefore(status, stop);
       const { preparePublicPlayer } = await import('./player');
       player = await preparePublicPlayer(course, document.getElementById('viewport')!, session, {
         progress: text => { status.textContent = text; },
@@ -398,10 +349,9 @@ export async function showPublicHome(): Promise<void> {
       const known = published.some(entry => entry.kind === course.kind && entry.id === course.id);
       room = course.kind === 'project' ? course.id : known || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
       session.watch(room);
-      actions.hidden = false; mapControls.setPlaying(false);
+      inviteFriends.hidden = !session.usesPlayRelay(); mapControls.setPlaying(false);
       status.textContent = '';
       document.body.classList.add('public-ready');
-      showChat(true);
       refreshPeers();
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error);
@@ -423,7 +373,6 @@ export async function showPublicHome(): Promise<void> {
     ]);
     serverProjects = projects?.projects ?? [];
     serverMapsLoaded = true;
-    if (data.guest && !member) name.value = data.guest.username.replace(/ \(guest\)$/, '');
     published = data.courses;
     if (linked) selected = resolvePublicCourse(linked, published, cached);
     renderCourses();

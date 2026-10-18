@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { guestMember } from '../accounts/guests';
+import { anonymousMember, guestMember } from '../accounts/guests';
+import { chatIdentity } from '../accounts/chat-identity';
+import { liveChatMembers } from '../api/chat';
+import { chatName, type ChatMember } from '../../core/session/chat-member';
 import { onPublicCoursesChanged, publicRoomAllowed, publicRoomKnown } from '../public-courses';
 import { referenceInRoom, referenceRoom } from '../../core/session/public-courses';
 import type { IncomingMessage, Server } from 'node:http';
@@ -205,6 +208,7 @@ export type ServerMessage =
       versions: { doc: number; core: string };
       play?: PlayConfig;
     }
+  | { t: 'chat-roster'; members: ChatMember[] }
   | { t: 'presence'; maps: Record<string, PresenceEntry[]> }
   /** One participant joined, left or moved. Absolute upserts make repeated or coalesced delivery harmless. */
   | { t: 'presence-delta'; change: PresenceChange }
@@ -317,6 +321,7 @@ function memberOf(identity: Identity): SessionMember | null {
 
 /** The same member, as a chat line names them. */
 const whoOf = (member: SessionMember): ChatWho => ({
+  ...(member.chatId ? { chatId: member.chatId } : {}),
   userId: member.id,
   username: member.username,
   role: member.role,
@@ -327,6 +332,7 @@ const whoOf = (member: SessionMember): ChatWho => ({
 const send = (sessionId: string, message: ServerMessage): void => sessionById(sessionId)?.send(message);
 
 const PUBLIC_MESSAGES = new Set([
+  'chat-roster',
   'welcome',
   'joined',
   'room-policy',
@@ -342,6 +348,7 @@ const PUBLIC_MESSAGES = new Set([
 ]);
 function publicMessage(message: ServerMessage): ServerMessage | null {
   if (!PUBLIC_MESSAGES.has(message.t)) return null;
+  if (playConfig().enabled && ['awareness-batch', 'ride-event', 'room-policy'].includes(message.t)) return null;
   if ('projectId' in message && typeof message.projectId === 'string' && !publicRoomKnown(message.projectId))
     return null;
   if (message.t === 'awareness-batch' && referenceInRoom(message.projectId) === null)
@@ -351,7 +358,6 @@ function publicMessage(message: ServerMessage): ServerMessage | null {
         .filter(peer => sessionById(peer.sessionId)?.playing !== 'reference')
         .map(peer => ({ ...peer, aware: { ...peer.aware, vertices: [], quads: [], dragging: [], cursor: null } })),
     };
-  if (message.t === 'chat' && message.line.kind === 'system') return null;
   if (message.t === 'chat-history') return { ...message, lines: message.lines.filter(line => line.kind !== 'system') };
   if (message.t === 'presence')
     return {
@@ -638,11 +644,16 @@ const directory: ChatDirectory = {
   async find(name: string): Promise<ChatWho | null> {
     const wanted = name.trim().toLowerCase();
     if (!wanted) return null;
-    const here = liveSessions().find(session => session.member.username.toLowerCase() === wanted);
+    const here = liveSessions().find(
+      session =>
+        session.member.id === wanted ||
+        chatName(session.member).toLowerCase() === wanted ||
+        session.member.username.toLowerCase() === wanted,
+    );
     if (here) return whoOf(here.member);
     if (!requiresAccounts()) return null;
     const users = await listUsers();
-    const found = users.find(user => user.username === wanted);
+    const found = users.find(user => user.id === wanted || user.username === wanted);
     if (!found || found.disabled) return null;
     return { userId: found.id, username: found.username, role: found.role };
   },
@@ -1030,6 +1041,8 @@ function handleMessage(
     return;
   }
 
+  // With a relay configured, the public Node socket carries community traffic only.
+  if (currentSession.publicPlay && playConfig().enabled && ['aware', 'ride-event'].includes(parsed?.t)) return;
   switch (parsed?.t) {
     case 'ping':
       send(sessionId, { t: 'pong', echo: Number.isFinite(parsed.at) ? parsed.at : undefined, serverTime: Date.now() });
@@ -1102,6 +1115,10 @@ function handleMessage(
       onRideEvent(parsed);
       return;
     case 'chat':
+      if (currentSession.member.anonymous) {
+        send(sessionId, { t: 'error', message: 'Choose a chat name before sending messages.' });
+        return;
+      }
       // Whatever a client sends is a line from whoever sent it. There is no shape of message here that
       // produces a system line, which is what makes one a fact rather than a claim.
       void submitChat(whoOf(sessionById(sessionId)!.member), parsed.text, directory).catch(error => {
@@ -1200,6 +1217,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
         session.member.equipmentEdgeColor = user.equipmentEdgeColor;
       }
     sendMany(liveSessions(), { t: 'profile-changed', userId: user.id });
+    sendMany(liveSessions(), { t: 'chat-roster', members: liveChatMembers() }, { coalesceKey: 'chat-roster' });
   });
 
   const stopWatchingStatus = onMemberStatusChanged(userId => {
@@ -1260,6 +1278,8 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   });
 
   const stopWatchingPresence = onPresenceChanged(change => {
+    if (change.kind !== 'update')
+      sendMany(liveSessions(), { t: 'chat-roster', members: liveChatMembers() }, { coalesceKey: 'chat-roster' });
     // HTTP activity refreshes this stamp while a session is in use; closing presence captures time spent in a
     // WebSocket-only editing session too. The accounts queue makes duplicate close paths harmless.
     if (change.kind === 'close' && requiresAccounts() && !change.userId.startsWith('guest:')) {
@@ -1311,7 +1331,11 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   const stopWatchingChat = onChatLine(({ line, audience }) => {
     const message: ServerMessage = { t: 'chat', line };
     sendMany(
-      liveSessions().filter(session => audience === 'everyone' || audience.includes(session.member.id)),
+      liveSessions().filter(
+        session =>
+          (audience === 'everyone' || audience.includes(session.member.id)) &&
+          (!session.publicPlay || line.kind !== 'system' || audience !== 'everyone'),
+      ),
       message,
     );
   });
@@ -1337,7 +1361,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
   async function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const publicPlay = url.pathname.replace(/\/+$/, '') === '/api/public/session';
-    if (publicPlay && playConfig().enabled) {
+    if (publicPlay && playConfig().enabled && url.searchParams.get('community') !== '1') {
       refuseUpgrade(socket, 403, 'Multiplayer uses /api/play/session. Refresh this page.');
       return;
     }
@@ -1367,7 +1391,12 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
       refuseUpgrade(socket, decision.status, String(decision.body.error ?? 'Refused.'));
       return;
     }
-    const member = memberOf(decision.identity) ?? (publicPlay ? await guestMember(req) : null);
+    const found = memberOf(decision.identity) ?? (publicPlay ? await guestMember(req) : null);
+    const identified =
+      found && publicPlay && url.searchParams.get('anonymous') === '1' && found.id.startsWith('guest:')
+        ? anonymousMember(found)
+        : found;
+    const member = identified ? { ...identified, chatId: await chatIdentity(req) } : null;
     if (!member) {
       refuseUpgrade(socket, 401, 'Sign in to use this server.');
       return;
@@ -1539,6 +1568,7 @@ export function attachSessionChannel(server: Server): () => Promise<void> {
     }
     // Deltas begin after this point. The joiner receives the one complete table it needs to seed them; existing
     // sessions received this participant's `open` delta above.
+    live.send({ t: 'chat-roster', members: liveChatMembers() } satisfies ServerMessage);
     live.send({ t: 'presence', maps: presenceTable() } satisfies ServerMessage);
     live.send({ t: 'jukebox-state', state: jukebox.snapshot() } satisfies ServerMessage);
     sessionReady = true;

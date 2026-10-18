@@ -20,7 +20,7 @@
     "multiplayer:unit": "node scripts/multiplayer.mjs unit",
     "multiplayer:bench": "node scripts/multiplayer.mjs bench",
     "dev": "node --env-file-if-exists=.env --import tsx scripts/dev.ts --port 0",
-    "run:local-server": "node --env-file-if-exists=.env --import tsx scripts/dev.ts --accounts --behind-proxy",
+    "run:local-server": "node --env-file-if-exists=.env --import tsx scripts/dev-multiplayer.ts --accounts --behind-proxy",
     "run:local-server:ngrok": "tsx scripts/run-ngrok.ts local-server",
     "run:video-bridge:ngrok": "tsx scripts/run-ngrok.ts video-bridge",
     "serve": "tsx src/server/main.ts",

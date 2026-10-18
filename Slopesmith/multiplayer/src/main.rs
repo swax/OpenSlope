@@ -26,17 +26,18 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 #[derive(Clone)]
 struct State {
     hub: Hub,
+    site: slopesmith_multiplayer::site::Site,
     secret: Arc<Vec<u8>>,
     slots: Arc<Semaphore>,
     stop: CancellationToken,
     nonces: Arc<Mutex<HashMap<String, f64>>>,
 }
-fn response(status: StatusCode, body: &'static str) -> Response<Body> {
+fn response(status: StatusCode, body: impl Into<Bytes>) -> Response<Body> {
     Response::builder()
         .status(status)
         .header("content-type", "application/json")
         .header("cache-control", "no-store")
-        .body(Full::from(body))
+        .body(Full::new(body.into()))
         .unwrap()
 }
 fn number(name: &str, default: usize, max: usize) -> Result<usize, Error> {
@@ -62,6 +63,7 @@ async fn main() -> Result<(), Error> {
         .parse()?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     let state = State {
+        site: Default::default(),
         hub: Hub::new(number("SLOPESMITH_MULTIPLAYER_ROOM_PLAYERS", 32, 512)?),
         secret: Arc::new(secret.into_bytes()),
         slots: Arc::new(Semaphore::new(number(
@@ -112,7 +114,9 @@ async fn handle(req: Request<Incoming>, state: State) -> Result<Response<Body>, 
     if req.uri().path() == "/health" && req.method() == hyper::Method::GET {
         return Ok(response(StatusCode::OK, "{\"ok\":true,\"protocol\":1}"));
     }
-    if req.uri().path() == "/control" && req.method() == hyper::Method::POST {
+    if (req.uri().path() == "/control" && req.method() == hyper::Method::POST)
+        || (req.uri().path() == "/site" && req.method() == hyper::Method::GET)
+    {
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
         // Compare a keyed digest rather than a secret-dependent string equality.
@@ -129,10 +133,20 @@ async fn handle(req: Request<Incoming>, state: State) -> Result<Response<Body>, 
         if b.verify_slice(&a.finalize().into_bytes()).is_err() {
             return Ok(response(StatusCode::FORBIDDEN, "{\"error\":\"forbidden\"}"));
         }
+        if req.uri().path() == "/site" {
+            return Ok(response(
+                StatusCode::OK,
+                state
+                    .site
+                    .snapshot(req.uri().query() != Some("public=1"))
+                    .to_string(),
+            ));
+        }
         let body = Limited::new(req.into_body(), 4096).collect().await;
         if let Ok(body) = body
             && let Ok(message) = serde_json::from_slice::<PlayControlMessage>(&body.to_bytes())
         {
+            state.site.control(&message);
             state.hub.control(message).await;
             return Ok(response(StatusCode::OK, "{\"ok\":true}"));
         }
@@ -297,6 +311,82 @@ async fn connection(
         cancel.cancel();
         let _ = writer.await;
         reader.abort();
+        return Ok(());
+    }
+    if claims.site_presence == Some(true) {
+        let id = claims.session_id.clone();
+        let mut updates = state.site.subscribe();
+        if !state
+            .site
+            .join(claims.clone(), outgoing.clone(), cancel.clone())
+        {
+            let _ = outgoing
+                .send(Outbound::Close(
+                    4001,
+                    "This site session is already connected.",
+                ))
+                .await;
+            let _ = writer.await;
+            reader.abort();
+            return Ok(());
+        }
+        let _ = outgoing
+            .send(room::text(&PlayServerMessage::Welcome {
+                protocol: PROTOCOL_VERSION,
+                session_id: id.clone(),
+                member: claims.member.clone(),
+                color: claims.color.clone(),
+                server_time: room::now(),
+                course_id: claims.course_id.clone(),
+                room_id: claims.room_id.clone(),
+                publish_ms: 1000,
+            }))
+            .await;
+        let mut roster = false;
+        let _ = latest.send(Some(updates.borrow().message(!claims.public_play, roster)));
+        let mut sweep = tokio::time::interval(Duration::from_secs(1));
+        let mut active = Instant::now();
+        let mut tokens = 20f64;
+        let mut bucket_at = Instant::now();
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => break,
+                result = updates.changed() => {
+                    if result.is_err() { break; }
+                    let snapshot = updates.borrow_and_update();
+                    let _ = latest.send(Some(snapshot.message(!claims.public_play, roster)));
+                }
+                _ = sweep.tick() => {
+                    if room::now() >= claims.expires_at || active.elapsed() > Duration::from_secs(150) { break; }
+                }
+                message = messages.recv() => {
+                    let elapsed = bucket_at.elapsed().as_secs_f64(); bucket_at = Instant::now();
+                    tokens = (tokens + elapsed * 5.).min(20.);
+                    if tokens < 1. { break; } tokens -= 1.; active = Instant::now();
+                    match message {
+                        Some(PlayClientMessage::SiteRoster { enabled }) => {
+                            roster = enabled;
+                            let _ = latest.send(Some(updates.borrow().message(!claims.public_play, roster)));
+                        }
+                        Some(PlayClientMessage::Ping { at }) if at.is_finite() => {
+                            let _ = outgoing.send(room::text(&PlayServerMessage::Pong { echo: at, server_time: room::now() })).await;
+                        }
+                        Some(PlayClientMessage::Renew { ticket: encoded }) => {
+                            let Some(fresh) = ticket::verify(&encoded, &state.secret, &origin, room::now()) else { break; };
+                            if fresh.site_presence != Some(true) || fresh.session_id != claims.session_id || fresh.member.id != claims.member.id || fresh.public_play != claims.public_play || fresh.account_session_id != claims.account_session_id { break; }
+                            claims = fresh;
+                            state.site.renew(claims.clone());
+                        }
+                        _ => break,
+                    }
+                }
+            }
+        }
+        state.site.leave(&id);
+        reader.abort();
+        drop(outgoing);
+        drop(latest);
+        let _ = writer.await;
         return Ok(());
     }
     let id = claims.session_id.clone();

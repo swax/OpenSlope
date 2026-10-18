@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://slopesmith.com"><img width="160" height="160" alt="The Slopesmith mark: an anvil set into a mountain" src="Slopesmith/media/slopesmith_anvil_icon_source.png"></a>
+  <a href="https://slopesmith.net"><img width="160" height="160" alt="The Slopesmith mark: an anvil set into a mountain" src="Slopesmith/media/slopesmith_anvil_icon_source.png"></a>
 </p>
 
 <h1 align="center">OpenSlope</h1>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://slopesmith.com"><img alt="Website: slopesmith.com" src="https://img.shields.io/badge/website-slopesmith.com-0b7a99"></a>
+  <a href="https://slopesmith.net"><img alt="Website: slopesmith.net" src="https://img.shields.io/badge/website-slopesmith.net-0b7a99"></a>
   <a href="https://github.com/swax/OpenSlope/actions/workflows/verify.yml"><img alt="Verify workflow status" src="https://img.shields.io/github/actions/workflow/status/swax/OpenSlope/verify.yml?branch=main&label=verify"></a>
   <img alt="Play on: Quest (WebXR), desktop, mobile" src="https://img.shields.io/badge/play%20on-Quest%20(WebXR)%20%C2%B7%20desktop%20%C2%B7%20mobile-blue">
   <img alt="Node.js 24" src="https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white">
@@ -52,7 +52,7 @@
 At the center of OpenSlope is [Slopesmith](Slopesmith/README.md), a collaborative, self-hosted browser
 editor and riding space. Shape a mountain together, test-ride it, and see one another live with optional
 voice chat. It runs on desktop and mobile browsers and directly on a standalone Quest through WebXR—no
-native client or PC streaming required. The [Slopesmith handbook at slopesmith.com](https://slopesmith.com)
+native client or PC streaming required. The [Slopesmith handbook at slopesmith.net](https://slopesmith.net)
 has illustrated guides to the editor, shaping terrain, and taking a test ride.
 
 OpenSlope also includes the interoperability tools and research needed to move courses between runtimes.
@@ -147,9 +147,9 @@ a mountain, use the mode switcher to edit it, and enter **Test** to ride. **Expo
 portable `Maps/<NAME>/` form and includes a `Repack.md` with the next commands for that export.
 
 > [!TIP]
-> Prefer a guided first session? On slopesmith.com,
-> [Getting started](https://slopesmith.com/guides/getting-started/) walks through running the editor and
-> riding your first line, and the [editor tour](https://slopesmith.com/guides/editor-tour/) shows where
+> Prefer a guided first session? On slopesmith.net,
+> [Getting started](https://slopesmith.net/guides/getting-started/) walks through running the editor and
+> riding your first line, and the [editor tour](https://slopesmith.net/guides/editor-tour/) shows where
 > each tool lives.
 
 > [!WARNING]
@@ -229,7 +229,7 @@ environment setup, reverse-engineering hygiene, coding conventions, and pull-req
 The full repository gate is `npm run verify` after installing the prerequisites listed there. Useful
 indexes and background include:
 
-- [Slopesmith handbook](https://slopesmith.com): illustrated guides to building and riding a course
+- [Slopesmith handbook](https://slopesmith.net): illustrated guides to building and riding a course
 - [Slopesmith authoring and design docs](Slopesmith/docs/README.md)
 - [Snowknife extraction and bundle docs](Snowknife/docs/README.md)
 - [Shared interoperability contracts](Contracts/README.md)

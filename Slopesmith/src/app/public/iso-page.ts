@@ -7,8 +7,9 @@ import { element, publicJson } from './dom';
 import { publicHeader } from './header';
 import { isoStatusBadges } from './iso-status';
 import { createIsoLoadQueue } from './iso-load-queue';
-import { publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
+import { courseEditorUrl, publicCourseRequest, publicCourseUrl, resolvePublicCourse } from './links';
 import { mapHeading, publicGlyph } from './presentation';
+import { confirmAction } from '../ui/components/prompts';
 
 /** Disc files and extraction stay on this device; this page needs no member or guest session. */
 export async function showIsoPage(): Promise<void> {
@@ -20,6 +21,9 @@ export async function showIsoPage(): Promise<void> {
   let discovered: string[] = [];
   let file: File | null = null;
   let busy = false;
+  let scanning = false;
+  let confirmingLeave = false;
+  let leaving = false;
   let abort: AbortController | null = null;
   let target: PublicCourse | null = null;
   const { header } = publicHeader('iso', account);
@@ -54,29 +58,69 @@ export async function showIsoPage(): Promise<void> {
     finally { cached = await cachedIsoCourses().catch(() => cached); }
   }, render);
 
+  const loadingIso = () => scanning || loads.busy;
+  function confirmUnload(event: BeforeUnloadEvent) {
+    if (leaving || !loadingIso()) return;
+    event.preventDefault();
+    event.returnValue = ''; // Browsers supply their own wording for refresh, Back and tab-close warnings.
+  }
+  function confirmNavigation(event: MouseEvent) {
+    if (leaving || !loadingIso() || event.defaultPrevented || event.button !== 0
+      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+    if (!link || link.hasAttribute('download') || link.getAttribute('href')?.startsWith('#')
+      || (link.target && link.target.toLowerCase() !== '_self')) return;
+    const destination = new URL(link.href);
+    if (!['http:', 'https:'].includes(destination.protocol)) return;
+    if (destination.origin === location.origin && destination.pathname === location.pathname
+      && destination.search === location.search && destination.hash) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (confirmingLeave) return;
+    confirmingLeave = true;
+    void confirmAction({
+      title: 'Leave while ISO is loading?',
+      body: 'Leaving this page will cancel the active ISO load and any queued maps.',
+      confirmLabel: 'Leave page', danger: true,
+    }).then(confirmed => {
+      if (!confirmed) return;
+      leaving = true;
+      window.removeEventListener('beforeunload', confirmUnload);
+      location.assign(destination.href);
+    }).finally(() => { confirmingLeave = false; });
+  }
+  document.addEventListener('click', confirmNavigation, true);
+
   function createCard(slot: string) {
     const row = element('li', 'public-iso-map public-map-tile'); row.dataset.course = slot;
     const heading = mapHeading(discCourseName(slot), 'disc');
     const badge = element('span', 'public-iso-badge');
     const controls = element('div', 'public-iso-map-actions');
     const button = element('button', 'public-primary'); button.type = 'button';
+    const course: PublicCourse = { kind: 'reference', id: slot, name: discCourseName(slot), source: 'iso', retailData: true, isoCourses: [slot] };
+    const open = element('a', 'public-iso-open', 'Open'); open.href = publicCourseUrl(course);
+    open.setAttribute('aria-label', `Open ${discCourseName(slot)}`); open.prepend(publicGlyph('play'));
+    const inspect = element('a', 'public-iso-inspect', 'Inspect'); inspect.href = courseEditorUrl(course);
+    inspect.setAttribute('aria-label', `Inspect ${discCourseName(slot)}`); inspect.prepend(publicGlyph('view'));
     button.onclick = () => {
       const phase = loads.state(slot)?.phase;
       if (phase === 'queued' || phase === 'loading') loads.cancel(slot);
       else if (cached.includes(slot)) void operate(async () => unloadIsoCourse(slot), () => '', false);
       else loadMaps([slot]);
     };
-    controls.append(button);
+    controls.append(button, open, inspect);
     const feedback = element('div', 'public-iso-feedback');
     const progress = element('progress', 'public-iso-progress');
     progress.setAttribute('aria-label', `Loading ${discCourseName(slot)}`);
     const message = element('p', 'public-iso-load-status'); message.setAttribute('role', 'status');
     feedback.append(progress, message);
     row.append(heading, badge, controls, feedback);
-    return { row, badge, button, message };
+    return { row, badge, button, message, open, inspect };
   }
 
   function render() {
+    if (!leaving && loadingIso()) window.addEventListener('beforeunload', confirmUnload);
+    else window.removeEventListener('beforeunload', confirmUnload);
     count.textContent = `${cached.length} loaded`;
     input.disabled = clear.disabled = busy || loads.busy;
     clear.style.visibility = cached.length ? 'visible' : 'hidden';
@@ -102,8 +146,9 @@ export async function showIsoPage(): Promise<void> {
     for (const [index, slot] of maps.entries()) {
       let card = cards.get(slot);
       if (!card) { card = createCard(slot); cards.set(slot, card); }
-      const { row, badge, button, message } = card;
+      const { row, badge, button, message, open, inspect } = card;
       const loaded = cached.includes(slot);
+      open.hidden = inspect.hidden = !loaded;
       const state = loads.state(slot);
       const pending = state?.phase === 'queued' || state?.phase === 'loading';
       const phase = state?.phase ?? (loaded ? 'loaded' : 'missing');
@@ -126,12 +171,12 @@ export async function showIsoPage(): Promise<void> {
 
   async function operate(run: (signal: AbortSignal) => Promise<void>, success: () => string, cancellable = true) {
     if (busy || loads.busy) return;
-    busy = true; abort = new AbortController(); cancel.hidden = !cancellable; render();
+    busy = true; scanning = cancellable; abort = new AbortController(); cancel.hidden = !cancellable; render();
     try { await run(abort.signal); status.textContent = success(); }
     catch (error) { status.textContent = error instanceof Error ? error.message : String(error); }
     finally {
       cached = await cachedIsoCourses().catch(() => cached);
-      busy = false; abort = null; cancel.hidden = true; render();
+      busy = false; scanning = false; abort = null; cancel.hidden = true; render();
     }
   }
   function loadMaps(slots: string[]) {
@@ -152,7 +197,14 @@ export async function showIsoPage(): Promise<void> {
   loadRequired.onclick = () => { loadMaps((target?.isoCourses ?? []).filter(slot => !cached.includes(slot) && discovered.includes(slot))); };
   clear.onclick = () => { void operate(clearIsoCache, () => '', false); };
   cancel.onclick = () => abort?.abort();
-  window.addEventListener('pagehide', () => { abort?.abort(); loads.dispose(); }, { once: true });
+  window.addEventListener('pagehide', () => {
+    window.removeEventListener('beforeunload', confirmUnload);
+    document.removeEventListener('click', confirmNavigation, true);
+    abort?.abort(); loads.dispose();
+  }, { once: true });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) location.reload(); // A history-restored page must recreate its cancelled load queue.
+  });
   render();
   try {
     const request = publicCourseRequest(new URL(location.href));

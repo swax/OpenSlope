@@ -18,7 +18,7 @@ export const playRoutes: Record<string, ApiHandler> = {
           jsonResponse(res, 400, { error: 'Invalid play admission request.' });
           return;
         }
-        jsonResponse(res, 200, await issuePlayTicket(req as ApiRequest, body));
+        jsonResponse(res, 200, await issuePlayTicket(req as ApiRequest, body, res));
         return;
       }
       jsonResponse(res, 404, { error: 'Unknown play route.' });

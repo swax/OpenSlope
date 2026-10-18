@@ -61,8 +61,24 @@ async function checked(path: string, method = 'GET', body?: unknown, cookie = ad
   assert(response.ok, `${path}: ${response.status} ${await response.clone().text()}`);
   return response.json();
 }
+async function openCommunity(page: Page) {
+  const toggle = page.getByRole('button', { name: 'Online users', exact: true });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await page.locator('.public-community-panel').waitFor();
+  await page.waitForFunction(() => Math.abs(document.querySelector('.public-community-panel')!.getBoundingClientRect().right - innerWidth) < 1);
+}
+async function closeCommunity(page: Page) {
+  if ((await page.getByRole('button', { name: 'Online users', exact: true }).getAttribute('aria-expanded')) === 'true')
+    await page.getByRole('link', { name: 'Hide', exact: true }).click();
+}
 async function joinChat(page: Page, nickname = 'Ada') {
+  await openCommunity(page);
   const setup = page.locator('.public-chat-join');
+  if (await setup.isHidden()) {
+    await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+    await page.locator('.public-chat-status').filter({ hasText: 'Connected as' }).waitFor();
+    return;
+  }
   await setup.waitFor();
   const name = setup.getByLabel('Your rider name');
   if (await name.isVisible()) await name.fill(nickname);
@@ -600,7 +616,7 @@ try {
     40,
     'the player uses a lower profile header',
   );
-  assert(await linked.locator('.public-header .public-actions').isVisible(), 'chat controls stay in the header');
+  assert(await linked.getByRole('button', { name: 'Online users', exact: true }).isVisible(), 'online users opens the shared panel');
   assert.equal(
     await linked.locator('.public-header').getByRole('button', { name: 'Play', exact: true }).count(),
     0,
@@ -805,9 +821,9 @@ try {
   await rideControls.getByRole('heading', { name: /third person/ }).waitFor();
   await linked.keyboard.press('e');
   await rideControls.getByRole('heading', { name: /riding/ }).waitFor();
-  assert.equal(linkSockets, 0, 'local riding opens no multiplayer or chat socket');
-  assert.equal(linkGuestRequests, 0, 'local riding creates no guest identity');
-  assert(!(await linkContext.cookies()).some(cookie => cookie.name === 'slopesmith_guest'));
+  assert(linkSockets > 0, 'opening a public map connects anonymous multiplayer before joining chat');
+  assert.equal(linkGuestRequests, 0, 'anonymous riding does not choose a chat nickname');
+  assert((await linkContext.cookies()).some(cookie => cookie.name === 'slopesmith_guest'), 'anonymous riding has an ephemeral visitor cookie');
   await linked.evaluate(() => (document.activeElement as HTMLElement)?.blur());
   await linked.keyboard.press('Enter');
   assert(
@@ -825,7 +841,7 @@ try {
     await linked.evaluate(() => document.body.scrollWidth <= innerWidth),
     'compact player controls fit narrow phones',
   );
-  assert(await linked.getByRole('button', { name: 'Leave chat', exact: true }).isVisible());
+  assert(await linked.getByRole('button', { name: 'Online users', exact: true }).isVisible());
   assert(await mapTab.isVisible(), 'the selected map tab stays visible in the mobile header');
   await checkExitCorner();
   assert.equal(await linked.locator('[data-fs]').count(), 0, 'mobile public rides also omit fullscreen');
@@ -901,7 +917,7 @@ try {
     'a direct link reveals no private map',
   );
   assert.equal(await linked.getByRole('button', { name: 'Load course', includeHidden: true }).count(), 0);
-  assert(await linked.locator('.public-actions').isHidden(), 'unavailable maps do not show player controls');
+  assert(await linked.getByRole('button', { name: 'Exit play', exact: true }).isHidden(), 'unavailable maps do not show player controls');
   await linked.setViewportSize({ width: 390, height: 844 });
   await linked.route(/\/api\/public\/project\?/, route => route.fulfill({ status: 503, body: '{}' }));
   await linked.goto(publicLink);
@@ -1027,7 +1043,7 @@ try {
   assert(await guest.locator('.sp-chat-docked').isHidden(), 'the map browser has no chat panel');
   assert(await guest.getByLabel('Your rider name').isHidden(), 'browsing does not ask for a nickname');
   assert.equal(await guest.locator('.public-home').evaluate(el => getComputedStyle(el).marginRight), '0px');
-  assert.equal(sent.length, 0, 'browsing starts no multiplayer session');
+  assert(!sent.some(message => message.t === 'aware' && message.aware.player), 'browsing does not publish a player pose');
   await guest.setViewportSize({ width: 320, height: 700 });
   assert(
     await guest.evaluate(() => document.body.scrollWidth <= innerWidth),
@@ -1049,18 +1065,19 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
-  assert.equal(sent.length, 0, 'a visitor starts riding locally before choosing a nickname');
+  assert(sent.some(message => message.t === 'aware' && message.aware.player), 'anonymous riders publish positions before choosing a chat nickname');
   await guest.setViewportSize({ width: 390, height: 844 });
+  await openCommunity(guest);
   const mobileChat = await guest.locator('.sp-chat-docked').boundingBox();
   assert(
-    mobileChat && mobileChat.height === 210 && mobileChat.width === 390,
-    'player chat docks below the course on mobile',
+    mobileChat && mobileChat.height > 700 && mobileChat.width <= 390 && Math.abs(mobileChat.x + mobileChat.width - 390) < 1,
+    'the user/chat drawer stays on the right on mobile',
   );
   await guest.setViewportSize({ width: 1440, height: 1000 });
   await guest.getByLabel('Your rider name').fill('AdMiN');
   await guest.locator('.public-chat-join').getByRole('button').click();
   await guest.getByText('That name belongs to an account. Sign in or choose another name.', { exact: true }).waitFor();
-  assert.equal(sent.length, 0, 'reserved account names leave the guest riding locally');
+  assert(!sent.some(message => message.t === 'chat'), 'reserved account names do not enable chat');
   await joinChat(guest);
   assert(
     await guest.getByRole('button', { name: 'Exit play', exact: true }).isVisible(),
@@ -1106,7 +1123,9 @@ try {
 
   await guest.goto(origin);
   await guest.getByRole('heading', { name: 'Maps', level: 1, exact: true }).waitFor();
-  assert(await guest.locator('.sp-chat-docked').isHidden(), 'returning guests do not connect chat while browsing');
+  await openCommunity(guest);
+  await guest.locator('.public-chat-status').filter({ hasText: 'Connected as' }).waitFor();
+  await closeCommunity(guest);
   const borrowedCard = guest.getByRole('article', { name: 'BORROWED RUN', exact: true });
   assert.match(await borrowedCard.innerText(), /ISO optional/);
   assert(
@@ -1164,8 +1183,8 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
   assert(
-    await guest.locator('.public-chat-join').isVisible(),
-    'an existing guest cookie still requires opting into multiplayer',
+    await guest.getByRole('button', { name: 'Online users', exact: true }).isVisible(),
+    'public pages retain the shared community control',
   );
   await joinChat(guest);
   const memberContext = await browser.newContext();
@@ -1196,6 +1215,43 @@ try {
     ),
     'member rider poses reach the guest on the same mountain',
   );
+  await guest.evaluate(async () => {
+    const moduleUrl = '/src/app/viewport/viewport.ts';
+    const { Viewport } = await import(/* @vite-ignore */ moduleUrl);
+    const goTo = Viewport.prototype.goToMapPlayer;
+    Viewport.prototype.goToMapPlayer = function (this: any, sessionId: string) {
+      const target = this.remotePlayers.navigationTarget(sessionId);
+      const riding = this.riding;
+      const moved = goTo.call(this, sessionId);
+      (window as any).playerNavigation = {
+        moved,
+        riding,
+        expected: (riding ? target.join : target.eye).toArray(),
+        actual: riding ? this.playerPose('stick-figure.glb', Date.now()).body.p : this.camera.position.toArray(),
+      };
+      (window as any).navigationViewport = this;
+      return moved;
+    };
+  });
+  async function goToMember() {
+    await guest.getByRole('tab', { name: /^Users \(/ }).click();
+    await guest.getByRole('button', { name: 'Options for admin', exact: true }).click();
+    await guest.getByRole('button', { name: 'Go to player', exact: true }).click();
+    const navigation = await guest.evaluate(() => (window as any).playerNavigation);
+    assert.equal(navigation.moved, true, 'the public user menu reaches a live player');
+    assert(
+      Math.hypot(navigation.actual[0] - navigation.expected[0], navigation.actual[2] - navigation.expected[2]) < 0.1,
+      'the public menu uses the same rider/camera destination as the editor',
+    );
+    await guest.getByRole('tab', { name: 'Chat', exact: true }).click();
+    return navigation;
+  }
+  assert.equal((await goToMember()).riding, true, 'Go to player teleports without ending the ride');
+  assert(await guest.getByRole('button', { name: 'Exit play', exact: true }).isVisible());
+  await guest.getByRole('button', { name: 'Exit play', exact: true }).click();
+  assert.equal((await goToMember()).riding, false, 'Go to player also moves the map preview camera');
+  await guest.getByRole('button', { name: 'Play', exact: true }).click();
+  await guest.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
   await guest.keyboard.press('Enter');
   await guest.getByRole('textbox', { name: 'Chat message' }).fill('Chat while riding');
   await guest.getByRole('textbox', { name: 'Chat message' }).press('Enter');
@@ -1205,7 +1261,7 @@ try {
   assert(chatBox && chatBox.y > 800, 'chat input stays docked at the bottom of the right rail');
   await guest.screenshot({ path: join(root, 'guest-riding.png') });
   await guest.getByRole('button', { name: 'Leave chat', exact: true }).click();
-  assert(await guest.locator('.sp-chat-docked').isHidden());
+  assert(await guest.getByLabel('Your rider name').isVisible(), 'leaving chat returns to nickname entry');
   assert(
     await guest.getByRole('button', { name: 'Exit play', exact: true }).isVisible(),
     'turning chat off keeps the ride running',
@@ -1217,7 +1273,7 @@ try {
   );
   const framesAfterHide = sent.length;
   await new Promise(resolve => setTimeout(resolve, 350));
-  assert.equal(sent.length, framesAfterHide, 'chat off stops publishing multiplayer poses');
+  assert(sent.length > framesAfterHide, 'leaving chat keeps anonymous multiplayer positions publishing');
   await member.getByRole('textbox', { name: 'Chat message' }).fill('Only connected riders see this');
   await member.getByRole('textbox', { name: 'Chat message' }).press('Enter');
   assert.equal(
@@ -1225,9 +1281,8 @@ try {
     0,
     'chat off disconnects the feed',
   );
-  await guest.getByRole('button', { name: 'Show chat', exact: true }).click();
   assert(await guest.locator('.public-chat-join').isVisible(), 'showing chat offers an explicit rejoin');
-  assert.equal(sent.length, framesAfterHide, 'showing the join form does not reconnect automatically');
+  assert(!sent.slice(framesAfterHide).some(message => message.t === 'chat'), 'showing the join form leaves outgoing chat disabled');
   await joinChat(guest);
   await guest.getByText('Only connected riders see this', { exact: true }).waitFor();
   assert(
@@ -1235,6 +1290,17 @@ try {
     'rejoining restores the current multiplayer world without restarting',
   );
   await memberContext.close();
+  await guest.waitForFunction(
+    () => !(window as any).navigationViewport.activeMapPlayers().some((p: any) => p.username === 'admin'),
+  );
+  await guest.locator('.sp-chat-who').filter({ hasText: 'admin:' }).first().click({ button: 'right' });
+  await guest.getByRole('button', { name: 'Mute chat', exact: true }).waitFor();
+  assert.equal(
+    await guest.getByRole('button', { name: 'Go to player', exact: true }).count(),
+    0,
+    'a departed player cannot be visited through an old chat message',
+  );
+  await guest.keyboard.press('Escape');
 
   async function assertReferencePeers(level: string) {
     const context = await browser!.newContext();
@@ -1344,6 +1410,7 @@ try {
   await guest.goto(origin);
   assert.equal(await guest.getByRole('button', { name: /Garibaldi/ }).count(), 0);
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
+  await closeCommunity(guest);
   await guest.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
   await guest.setViewportSize({ width: 800, height: 1000 });
@@ -1457,6 +1524,7 @@ try {
     .filter({ hasText: 'Choose your ISO once more to restore collision sounds' })
     .waitFor();
   await repairCard.getByRole('link', { name: 'Load ISO maps', exact: true }).click();
+  await closeCommunity(guest);
   await guest.locator('#public-iso').setInputFiles(soundRepairFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   assert.deepEqual(
@@ -1502,6 +1570,7 @@ try {
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
 
   await guest.goto(`${origin}/isos`);
+  await closeCommunity(guest);
   await guest.locator('.public-iso-map[data-course="GARI"]').click({ position: { x: 12, y: 12 } });
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   await guest.getByRole('link', { name: 'Maps', exact: true }).click();
@@ -1513,6 +1582,7 @@ try {
     0,
   );
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
+  await closeCommunity(guest);
   await guest.locator('#public-iso').setInputFiles(localFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
@@ -1546,6 +1616,7 @@ try {
   assert.match(await deps.locator('[data-course="GARI"]').innerText(), /Garibaldi.*Not loaded/);
   assert.match(await deps.locator('[data-course="FIXTURE"]').innerText(), /Not loaded/);
   await deps.getByRole('link', { name: 'Load ISO maps', exact: true }).click();
+  await closeCommunity(guest);
   assert.equal(new URL(guest.url()).pathname, '/isos');
   assert.equal(
     new URL(guest.url()).searchParams.get('map'),
@@ -1663,6 +1734,7 @@ try {
     { windowsHide: true },
   );
   await guest.goto(`${origin}/isos`);
+  await closeCommunity(guest);
   await guest.getByRole('button', { name: 'Clear local assets', exact: true }).click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   await guest.locator('#public-iso').setInputFiles(queueFixture);
@@ -1707,6 +1779,22 @@ try {
   assert(await guest.locator('#public-iso').isDisabled(), 'the selected ISO stays stable until queued imports finish');
   assert.deepEqual(await tileGeometry(), beforeLoading, 'queued cards keep their original position and dimensions');
   await guest.screenshot({ path: join(root, 'queued-map-imports.png') });
+  await guest.getByRole('link', { name: 'Maps', exact: true }).click();
+  const leaveIso = guest.getByRole('alertdialog', { name: 'Leave while ISO is loading?', exact: true });
+  await leaveIso.waitFor();
+  assert.match(await leaveIso.innerText(), /cancel the active ISO load and any queued maps/);
+  await leaveIso.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(new URL(guest.url()).pathname, '/isos', 'dismissing the warning stays on ISO management');
+  assert.equal(await queuedGari.getAttribute('data-state'), 'loading', 'staying keeps the current import running');
+  assert.equal(await queuedSnow.getAttribute('data-state'), 'queued', 'staying preserves queued maps');
+  const unloadWarning = guest.waitForEvent('dialog');
+  await guest.evaluate(() => {
+    setTimeout(() => location.reload(), 0);
+  });
+  const unloadDialog = await unloadWarning;
+  assert.equal(unloadDialog.type(), 'beforeunload', 'refresh also warns during an ISO import');
+  await unloadDialog.dismiss();
+  assert.equal(await queuedGari.getAttribute('data-state'), 'loading', 'cancelling refresh preserves the active import');
   await queuedSnow.click({ position: { x: 12, y: 12 } });
   assert.equal(await queuedSnow.getAttribute('data-state'), 'missing');
   assert.equal(
@@ -1736,11 +1824,80 @@ try {
     0,
     'completed maps replace progress with their loaded state',
   );
+  await guest.getByRole('link', { name: 'Maps', exact: true }).click();
+  await guest.getByRole('heading', { name: 'Maps', level: 1, exact: true }).waitFor();
+  assert.equal(await leaveIso.count(), 0, 'completed imports do not block navigation');
+  await guest.goto(`${origin}/isos`);
+  await closeCommunity(guest);
+  await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+  await guest.getByText('1 loaded', { exact: true }).waitFor();
+  await guest.locator('#public-iso').setInputFiles(queueFixture);
+  await guest.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();
+  await guest.evaluate(`(() => {
+    Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: () => new Promise(() => {}) });
+  })()`);
+  await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await guest.getByRole('link', { name: 'Maps', exact: true }).click();
+  await leaveIso.getByRole('button', { name: 'Leave page', exact: true }).click();
+  await guest.getByRole('heading', { name: 'Maps', level: 1, exact: true }).waitFor();
+  assert.equal(new URL(guest.url()).pathname, '/maps', 'confirming leaves without a second browser prompt');
+  await guest.goBack();
+  await guest.getByText('1 loaded', { exact: true }).waitFor();
+  assert(
+    await guest.getByRole('button', { name: 'Unload Snowdream', exact: true }).isVisible(),
+    'leaving an active import preserves previously completed maps',
+  );
+  assert.equal(
+    await guest.locator('.public-iso-map[data-state="loading"], .public-iso-map[data-state="queued"]').count(),
+    0,
+    'leaving cancels active and queued ISO imports',
+  );
+  const snow = guest.locator('.public-iso-map[data-course="SNOW"]');
+  assert.match(
+    (await snow.getByRole('link', { name: 'Inspect Snowdream', exact: true }).getAttribute('href'))!,
+    /\/editor\?reference=SNOW$/,
+  );
+  await snow.getByRole('link', { name: 'Open Snowdream', exact: true }).click();
+  await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  assert.equal(new URL(guest.url()).pathname, '/play/Snowdream', 'ISO Open goes directly to the loaded map');
+  await guest.getByRole('link', { name: 'Maps', exact: true }).click();
+  const lastMap = guest.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Snowdream', exact: true });
+  await lastMap.waitFor();
+  assert.equal(await lastMap.getAttribute('aria-current'), null, 'the saved map does not replace the selected Maps tab');
+  await lastMap.click();
+  await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  assert.equal(new URL(guest.url()).searchParams.get('reference'), 'SNOW', 'the header reopens the last ISO map');
+  await guest.getByRole('link', { name: 'ISO', exact: true }).click();
+  await joinChat(guest);
+  await guest.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await guest.getByRole('button', { name: 'Leave chat', exact: true }).click();
+  assert.equal(await guest.getByRole('tab', { name: 'Chat', exact: true }).count(), 0, 'only Users is available before joining');
+  await joinChat(guest, 'RenamedRider');
+  await guest.getByRole('textbox', { name: 'Chat message' }).fill('Renamed from ISO');
+  await guest.getByRole('textbox', { name: 'Chat message' }).press('Enter');
+  await guest.getByText('Renamed from ISO', { exact: true }).waitFor();
+  assert.match(await guest.getByText('Renamed from ISO', { exact: true }).locator('..').innerText(), /RenamedRider #/);
+  await closeCommunity(guest);
+  await guest.getByRole('link', { name: 'Maps', exact: true }).click();
+  await openCommunity(guest);
+  await guest.locator('.public-chat-status').filter({ hasText: 'Connected as RenamedRider' }).waitFor();
+  assert(await guest.getByRole('button', { name: 'Leave chat', exact: true }).isVisible(),
+    'closing the drawer and changing public pages preserves membership');
+  await guest.getByRole('tab', { name: /^Users/ }).click();
+  for (const width of [320, 390, 768, 1280]) {
+    await guest.setViewportSize({ width, height: 900 });
+    const panel = await guest.locator('.public-community-panel').boundingBox();
+    assert(panel && panel.x >= 0 && Math.abs(panel.x + panel.width - width) < 1 && panel.height > 800,
+      'the shared drawer fits on the right at every screen size');
+    assert(await guest.evaluate(() => document.body.scrollWidth <= innerWidth), 'the public header fits narrow screens');
+  }
+  await guest.screenshot({ path: join(root, 'shared-community-users.png') });
+  await closeCommunity(guest);
   assert.deepEqual(retailRequests, []);
   assert.deepEqual(errors, []);
 
   console.log(
-    `PUBLIC HOME PASS: publishing, named links, compact player, local riding, opt-in chat/multiplayer, chat off/rejoin, mobile load errors, ISO management and queued imports. Screenshots: ${root}`,
+    `PUBLIC HOME PASS: publishing, named links, compact player, anonymous multiplayer, opt-in chat, chat off/rejoin, mobile load errors, ISO management and queued imports. Screenshots: ${root}`,
   );
 } catch (error) {
   await failurePage?.screenshot({ path: join(root, 'failure.png') });

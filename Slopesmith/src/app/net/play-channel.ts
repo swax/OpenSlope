@@ -14,6 +14,9 @@ export interface PlayChannelOptions {
   clientId: string;
   deviceLabel: string;
   publicPlay: boolean;
+  sitePresence?: boolean;
+  chatEnabled?: () => boolean;
+  siteContext?: () => Pick<TicketRequest, 'mapSource' | 'playRoomId'>;
   baseUrl: () => string;
   onMessage: (message: PlayServerMessage) => void;
   onStatus: (status: 'connecting' | 'open' | 'closed') => void;
@@ -42,6 +45,7 @@ export function createPlayChannel(options: PlayChannelOptions) {
     clockReady = false;
   const peers = new Map<string, PlayPeer>();
   const lastEvents = new Map<string, number>();
+  let identityVersion = 0;
 
   function clear() {
     generation++;
@@ -81,6 +85,9 @@ export function createPlayChannel(options: PlayChannelOptions) {
       clientId: options.clientId,
       deviceLabel: options.deviceLabel,
       publicPlay: options.publicPlay,
+      ...(options.sitePresence ? { sitePresence: true } : {}),
+      ...(options.chatEnabled ? { chatEnabled: options.chatEnabled() } : {}),
+      ...options.siteContext?.(),
       ...(editorSessionId ? { editorSessionId } : {}),
       ...(ticket ? { previousTicket: ticket.ticket } : {}),
     };
@@ -155,15 +162,21 @@ export function createPlayChannel(options: PlayChannelOptions) {
   async function renew(version: number) {
     if (renewing || !ready) return;
     renewing = true;
+    const requestedCourse = courseId;
+    const requestedIdentity = identityVersion;
     try {
       const fresh = await getTicket();
       if (generation !== version || !ready) return;
+      if (requestedCourse !== courseId || requestedIdentity !== identityVersion) return;
       ticket = fresh;
       send({ t: 'renew', ticket: fresh.ticket });
     } catch {
       // The relay enforces expiry. A transient API outage must not close the editor socket.
     } finally {
-      if (generation === version) renewing = false;
+      if (generation === version) {
+        renewing = false;
+        if (requestedCourse !== courseId || requestedIdentity !== identityVersion) void renew(version);
+      }
     }
   }
   async function connect() {
@@ -230,6 +243,13 @@ export function createPlayChannel(options: PlayChannelOptions) {
     },
     watch(course: string | null, friendRoom = 'lodge', editorId?: string) {
       if (courseId === course && roomId === friendRoom && editorSessionId === editorId) return;
+      if (options.sitePresence && ready && course) {
+        courseId = course;
+        roomId = friendRoom;
+        editorSessionId = editorId;
+        void renew(generation);
+        return;
+      }
       clear();
       courseId = course;
       roomId = friendRoom;
@@ -241,6 +261,17 @@ export function createPlayChannel(options: PlayChannelOptions) {
       wanted = false;
       clear();
       options.onStatus('closed');
+    },
+    refreshIdentity() {
+      identityVersion++;
+      if (!wanted) return;
+      if (ready) {
+        void renew(generation);
+        return;
+      }
+      clear();
+      options.onStatus('closed');
+      void connect();
     },
     pose(player: PlayerPose | null) {
       return send({ t: 'pose', player });

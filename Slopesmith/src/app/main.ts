@@ -72,6 +72,8 @@ import { createScenePanel } from './ui/chrome/scene-panel';
 import { createBrowserViews } from './ui/browser-views';
 import { REF_LOAD_OFFSET_X } from './viewport/constants';
 import { installAccounts } from './ui/chrome/sign-in';
+import { siteMembers, watchSitePresence } from './net/site-presence';
+import { chatMuted } from './ui/chrome/chat-identity';
 import { createChatBox, plainChatText } from './ui/chrome/chat-box';
 import { createVoiceChat } from './ui/chrome/voice-chat';
 import { createUsersMode } from './ui/chrome/users-mode';
@@ -3592,11 +3594,12 @@ const session = createSessionChannel({
     usersMode.refresh();
     refreshPeers();
   },
+  onChatRoster: members => { if (!session.usesPlayRelay()) chat.setUsers(members); usersMode.refresh(); },
   onProfileChanged: () => usersMode.refresh(),
   onStatusChanged: () => usersMode.refresh(),
   onChat: line => {
     chat.push(line);
-    if (line.kind !== 'system' && line.from) {
+    if (line.kind !== 'system' && line.from && !chatMuted(line.from.chatId)) {
       viewport.showPlayerChat(line.from.userId, plainChatText(line.text));
     }
   },
@@ -3751,6 +3754,7 @@ const observerControls = createObserverControls({
   stopObserving: () => stopObservingScreen(),
 });
 refreshObserverControls = () => observerControls.refresh();
+watchSitePresence(snapshot => { if (snapshot) { chat.setUsers(siteMembers(snapshot), snapshot.online); usersMode.refresh(); } });
 if (!isLocalWorkspace()) session.start();
 viewport.onJukeboxVideoEnded(() => {
   const current = jukeboxState.current;
@@ -3899,7 +3903,8 @@ function joinMap(document: EditDoc = store.mdoc): void {
   const opened = projectSync.sequence();
   peerMarks.clear();
   refreshPeers();
-  session.watch(current?.id ?? null, opened?.at, opened?.room);
+  // Browser-only projects have no server room; their visitors still keep site presence in the lobby.
+  session.watch(isLocalWorkspace() ? null : current?.id ?? null, opened?.at, opened?.room);
   awareness.reset(); // the server drops what a tab said about the map it left
   // Project creation/opening calls this before the dialog installs the document into store.mdoc. Rebase the
   // register replica from the document being joined, not from the project that happens to still be rendered.

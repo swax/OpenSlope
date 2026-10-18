@@ -31,6 +31,8 @@ export interface SessionMember {
   id: string;
   username: string;
   role: Role;
+  chatId?: string;
+  anonymous?: boolean;
   snowboardTextureUrl?: string;
   skiTextureUrl?: string;
   equipmentEdgeColor?: string;

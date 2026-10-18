@@ -44,6 +44,7 @@ assert.deepEqual(
     kind: 'reference',
     id: 'SNOW',
     name: 'Snowdream',
+    source: 'iso',
     retailData: true,
     isoCourses: ['SNOW'],
   },
@@ -96,6 +97,32 @@ assert.equal(new URL(publicCourseUrl(reference, origin)).pathname, '/play/Publis
 assert.equal(courseEditorUrl(named, origin), `${origin}/editor/My_Mountain`);
 assert.equal(courseEditorUrl(reference, origin), `${origin}/editor?reference=RENAMED_GARI`);
 assert.equal(courseEditorUrl({ ...named, name: 'A map' }, origin), `${origin}/editor/A%20map`);
+const localGari = groups.local.find(course => course.id === 'GARI')!;
+const serverGari = { ...reference, id: 'GARI', name: 'Garibaldi' };
+const isoUrl = publicCourseUrl(localGari, origin);
+assert.equal(new URL(isoUrl).searchParams.get('source'), 'iso');
+assert.equal(
+  resolvePublicCourse(publicCourseRequest(new URL(isoUrl)), [serverGari], ['GARI'])?.source,
+  'iso',
+  'an ISO link keeps its source when a server reference has the same course ID',
+);
+assert.equal(
+  resolvePublicCourse(publicCourseRequest(new URL(publicCourseUrl(serverGari, origin))), [serverGari], ['GARI']),
+  serverGari,
+  'a server reference link retains the server catalogue entry',
+);
+assert.equal(new URL(isoManagementUrl(localGari, origin)).searchParams.get('source'), 'iso');
+assert.equal(
+  resolvePublicCourse({ kind: 'reference', name: 'RENAMED_GARI', source: 'iso' }, [reference], []),
+  null,
+  'an unknown uncached slot cannot resolve to the server reference through an ISO link',
+);
+assert.equal(
+  resolvePublicCourse({ kind: 'reference', name: 'RENAMED_GARI', source: 'iso' }, [reference], ['RENAMED_GARI'])
+    ?.source,
+  'iso',
+  'an imported ISO slot outside the built-in name list survives reload without selecting its server reference',
+);
 assert.equal(
   resolvePublicCourse(publicCourseRequest(new URL(publicCourseUrl(reference, origin))), [reference], [])?.id,
   reference.id,

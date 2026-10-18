@@ -1,5 +1,7 @@
-import { createGuest, guestMember } from '../accounts/guests';
-import { isPublished, publicCourses, setPublished } from '../public-courses';
+import { createGuest, createVisitor, guestMember } from '../accounts/guests';
+import { isPublished, publicCourses, publicRoomAllowed, setPublished } from '../public-courses';
+import { siteSnapshot } from '../play';
+import { chatActivity } from '../session/chat-activity';
 import { openProject } from '../projects';
 import { jsonResponse, readJsonBody, type ApiHandler } from './common';
 import type { ApiRequest } from './request';
@@ -11,6 +13,26 @@ export const publicCourseRoutes: Record<string, ApiHandler> = {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const path = url.pathname.replace(/\/+$/, '') || '/';
     try {
+      if (path === '/visitor' && req.method === 'POST') {
+        const identity = (req as ApiRequest).identity;
+        jsonResponse(res, 200, {
+          member:
+            identity?.kind === 'member' || identity?.kind === 'owner' ? identity.user : await createVisitor(req, res),
+        });
+        return;
+      }
+      if (path === '/activity' && req.method === 'GET') {
+        const identity = (req as ApiRequest).identity;
+        const member = identity?.kind === 'member' || identity?.kind === 'owner';
+        if (!member) await publicRoomAllowed(''); // refresh the public-course policy without loading map assets
+        const snapshot = await siteSnapshot(member);
+        jsonResponse(
+          res,
+          200,
+          snapshot ? { online: snapshot.online, courses: snapshot.courses } : chatActivity(member),
+        );
+        return;
+      }
       if (path === '/courses' && req.method === 'GET') {
         const [courses, guest] = await Promise.all([publicCourses(), guestMember(req)]);
         jsonResponse(res, 200, { courses, guest });
