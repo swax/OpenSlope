@@ -1,5 +1,0 @@
-#pragma once
-
-namespace openslope::bundled {
-inline constexpr unsigned char music_playback[] = { @MUSIC_PLAYBACK_BYTES@ };
-}

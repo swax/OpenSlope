@@ -1,4 +1,0 @@
-#pragma once
-namespace openslope::bundled {
-inline constexpr unsigned char celestial_spokes[] = { @CELESTIAL_SPOKE_BYTES@ };
-}

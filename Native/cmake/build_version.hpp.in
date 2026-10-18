@@ -1,5 +1,0 @@
-#pragma once
-#include <string_view>
-namespace openslope {
-inline constexpr std::string_view build_version = "@PROJECT_VERSION@";
-}

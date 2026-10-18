@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-release=$(readlink -f /opt/slopesmith/current)
-case "$release" in /opt/slopesmith/releases/*) ;; *) exit 65 ;; esac
-export SLOPESMITH_APP_ROOT="$release"
-runtime="$release/runtime/bin/node"
-# An operator may roll back the first packaged deployment to an existing source-built release.
-if [[ ! -x "$runtime" && ! -e "$release/release.json" ]]; then runtime=/opt/node24/bin/node; fi
-exec "$runtime" --enable-source-maps "$release/dist-server/main.js" serve --accounts --behind-proxy

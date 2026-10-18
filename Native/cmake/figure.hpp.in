@@ -1,4 +1,0 @@
-#pragma once
-namespace openslope::bundled {
-inline constexpr unsigned char stick_figure[] = { @FIGURE_BYTES@ };
-}

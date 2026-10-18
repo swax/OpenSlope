@@ -1,4 +1,0 @@
-#pragma once
-namespace openslope::bundled {
-inline constexpr unsigned char particle_sprites[] = { @PARTICLE_SPRITE_BYTES@ };
-}

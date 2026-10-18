@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'usage: sudo deploy-slopesmith <full source commit of a published signed release>' >&2
-  exit 64
-fi
-exec /usr/bin/python3 -I /usr/local/lib/slopesmith/release_manager.py deploy "$1"

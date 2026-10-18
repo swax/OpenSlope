@@ -1,7 +1,0 @@
-{
-  "schema": "openslope-music-playback/v1",
-  "description": "Original OpenSlope playback mix verified through the public Slopesmith music API and custom-music behavior documentation.",
-  "raceGain": 0.42,
-  "introGain": 0.3,
-  "fadeSeconds": 1.5
-}

@@ -1,4 +1,0 @@
-#pragma once
-namespace openslope::bundled {
-inline constexpr unsigned char world_layout[] = { @WORLD_LAYOUT_BYTES@ };
-}

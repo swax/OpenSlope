@@ -1,4 +1,0 @@
-[submodule "SSX-Library"]
-	path = Snowknife/SSX-Library
-	url = https://github.com/swax/SSX-Library
-	branch = main

@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-exec /usr/bin/python3 -I /usr/local/lib/slopesmith/release_manager.py run-queued

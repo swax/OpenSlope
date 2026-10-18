@@ -1,8 +1,0 @@
-# repo-hygiene: allow[config-listing] -- authored systemd resource accounting group
-[Unit]
-Description=Slopesmith application resource budget
-
-[Slice]
-CPUAccounting=true
-MemoryAccounting=true
-TasksAccounting=true
