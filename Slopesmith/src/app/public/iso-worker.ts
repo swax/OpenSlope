@@ -1,4 +1,4 @@
-import { cacheTransaction, isoCourseCacheVersion, openIsoCache, supportsCollisionSoundUpdate, updateCachedCollisionSounds, type DiscCollisionSounds } from './iso-cache';
+import { cacheTransaction, isoCourseCacheVersion, openIsoCache, supportsCollisionSoundUpdate, unloadIsoCourse, updateCachedCollisionSounds, type DiscCollisionSounds } from './iso-cache';
 
 interface Importer {
   isoFile: File;
@@ -20,7 +20,7 @@ self.onmessage = async (event: MessageEvent<{ file: File; courses: string[]; ope
   try {
     const { file, courses, operation } = event.data;
     // This static runtime is built from Native/src/browser_import.cpp; disc bytes stay inside this worker.
-    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=10`, self.location.origin).href;
+    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=11`, self.location.origin).href;
     const runtimeUrl = assetUrl('openslope_browser_import.js');
     const runtime = await import(/* @vite-ignore */ runtimeUrl) as { default: (options: { locateFile: (name: string) => string }) => Promise<Importer> };
     const module = await runtime.default({ locateFile: assetUrl });
@@ -45,7 +45,7 @@ self.onmessage = async (event: MessageEvent<{ file: File; courses: string[]; ope
     for (const course of courses) {
       const result = JSON.parse(module.ccall('browser_extract', 'string', ['string'], [course])) as { error?: string };
       if (result.error) throw new Error(result.error);
-      await cacheTransaction(db, 'courses', 'readwrite', store => store.delete(course));
+      await unloadIsoCourse(course);
       let files = 0;
       const saveDirectory = async (directory: string): Promise<void> => {
         for (const name of module.FS.readdir(directory).filter(name => name !== '.' && name !== '..')) {

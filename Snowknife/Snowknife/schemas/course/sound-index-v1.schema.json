@@ -5,24 +5,42 @@
   "description": "Sound bank names and collision-event routes recovered locally from one disc by Snowknife.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["Schema", "Level", "SourceExecutable", "Banks", "CollisionEvents"],
+  "required": ["Schema", "Level", "Banks", "CollisionEvents"],
   "properties": {
     "Schema": { "const": "openslope-sound-index/v1" },
     "Level": { "type": "string", "minLength": 1 },
     "SourceExecutable": { "type": "string", "minLength": 1 },
+    "ResolverState": { "const": "Deferred" },
+    "BoardBankSource": { "const": "MAIN" },
+    "NamedBanks": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "SwapBanks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "Banks": {
       "type": "object",
-      "required": ["2"],
       "propertyNames": { "pattern": "^[0-9]+$" },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
     "CollisionEvents": {
       "type": "object",
-      "minProperties": 1,
       "propertyNames": { "pattern": "^[0-9]+$" },
       "additionalProperties": { "$ref": "#/$defs/event" }
     }
   },
+  "allOf": [{
+    "if": { "required": ["ResolverState"], "properties": { "ResolverState": { "const": "Deferred" } } },
+    "else": {
+      "required": ["SourceExecutable"],
+      "properties": {
+        "Banks": { "required": ["2"] },
+        "CollisionEvents": { "minProperties": 1 }
+      }
+    }
+  }],
   "$defs": {
     "event": {
       "type": "object",

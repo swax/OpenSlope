@@ -131,7 +131,7 @@ async function run() {
       fresh.size === 1 && (await fresh.get('patches.json')!.text()) === 'fresh extraction',
       'Reloading an unloaded course has fresh files with no stale audio left over',
     );
-    for (const course of ['SSX3_A', 'SSXOT_WR2_DAY']) {
+    for (const course of ['SSX_ALOHA', 'SSX3_A', 'SSXOT_WR2_DAY']) {
       await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: 1, files: 1 }));
       check(!(await cachedIsoCourses()).includes(course), 'Corrupted streamed imports must request a reload');
       await cacheTransaction(db, 'courses', 'readwrite', store =>

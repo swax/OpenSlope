@@ -318,6 +318,12 @@ Transform identity_transform() {
     return m;
 }
 
+int prop_alpha_mode(const PropPart& part, bool fractional_alpha) {
+    if (part.alpha_mode >= 0)
+        return part.alpha_mode;
+    return (part.flags & ((1u << 18) | (1u << 17))) ? (fractional_alpha ? 2 : 1) : 0;
+}
+
 Transform multiply(const Transform& a, const Transform& b) {
     Transform m{};
     for (unsigned c = 0; c < 4; ++c)
@@ -599,6 +605,17 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
                 if (!part.texture.empty())
                     safe(part.texture);
                 part.flags = mat.value("UnknownInt18", 0u);
+                if (mat.contains("AlphaMode")) {
+                    const auto mode = mat.at("AlphaMode").get<std::string>();
+                    if (mode == "opaque")
+                        part.alpha_mode = 0;
+                    else if (mode == "cutout")
+                        part.alpha_mode = 1;
+                    else if (mode == "blend" || mode == "glow")
+                        part.alpha_mode = 2;
+                    else
+                        throw std::runtime_error("Invalid prop alpha mode");
+                }
                 part.material = std::size_t(material);
                 if (material >= 0)
                     part.frames = frames.at(material);

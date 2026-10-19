@@ -1,5 +1,6 @@
-#include "import_internal.hpp"
+#include "executable_internal.hpp"
 #include "openslope/collision.hpp"
+#include "openslope/particles.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/props.hpp"
 #include "openslope/rails.hpp"
@@ -77,7 +78,146 @@ Json paths(Bytes b, std::size_t& p, unsigned count, bool race, const ImportCance
     return rows;
 }
 
-Json effects(Bytes b, const std::string& course, const Json& instances, const ImportCancel& cancel) {
+std::size_t particles(const DiscInput& disc, const std::filesystem::path& output, const ImportCancel& cancel) {
+    const auto entries = disc_directory(disc, "DATA");
+    if (std::none_of(entries.begin(), entries.end(), [](const auto& e) { return e.directory && e.name == "TEXTURES"; }))
+        return 0;
+    const auto textures = disc_directory(disc, "DATA/TEXTURES");
+    if (std::none_of(textures.begin(), textures.end(), [](const auto& e) { return e.name == "PARTICLE.SSH"; }))
+        return 0;
+    const auto boot = executable_detail::boot_executable(disc, cancel);
+    if (!boot)
+        return 0;
+    const auto& executable = boot->bytes;
+    Bytes elf{executable};
+    elf.range(0, 16);
+    if (elf.text(0, 4) != std::string("\x7f"
+                                      "ELF",
+                                      4) ||
+        elf.le(4, 1) != 1 || elf.le(5, 1) != 1)
+        throw std::runtime_error("Invalid original SSX particle registration executable");
+    const auto sprites = decode_ssh(disc_file(disc, "DATA/TEXTURES/PARTICLE.SSH"), false, cancel, true);
+    Json bank = Json::object(), registration;
+    for (const auto& sprite : sprites)
+        bank[sprite.name] = "Particles/" + sprite.name + ".png";
+    // Independently measured NTSC-U registration: 34 twelve-byte records,
+    // four-character image tag, runtime cache word, and mip selector. This
+    // order differs from SSH image order and intentionally repeats mip1.
+    for (std::size_t p = 0; p + 34 * 12 <= executable.size(); p += 4) {
+        if ((p & 65535) == 0)
+            check_cancel(cancel);
+        if (elf.text(p, 4) != "part" || elf.text(p + 12, 4) != "snfl" || elf.text(p + 24, 4) != "clod")
+            continue;
+        Json candidate = Json::array();
+        for (unsigned i = 0; i < 34; ++i) {
+            const auto name = elf.text(p + i * 12, 4);
+            if (!bank.contains(name) || elf.le(p + i * 12 + 4) != 0 || elf.le(p + i * 12 + 8) > 2)
+                break;
+            candidate.push_back(bank.at(name));
+        }
+        if (candidate.size() != 34)
+            continue;
+        if (!registration.is_null())
+            throw std::runtime_error("Ambiguous original SSX particle registration");
+        registration = std::move(candidate);
+    }
+    if (registration.is_null())
+        return 0;
+    std::filesystem::create_directories(output / "Textures/Particles");
+    for (const auto& sprite : sprites) {
+        check_cancel(cancel);
+        write_png(output / "Textures" / bank.at(sprite.name).get<std::string>(), sprite);
+    }
+    Json profile = {{"Schema", "openslope-riding-effects/v1"}, {"Enabled", true},
+                    {"Profile", "ssx-riding-effects/v1"},      {"SpriteBank", bank},
+                    {"EmitterSprites", registration},          {"SourceExecutable", boot->name}};
+    for (const auto& [tag, slot] : {std::pair{"part", "Puff"}, std::pair{"tral", "Wake"}, std::pair{"spry", "Sheet"}})
+        if (bank.contains(tag))
+            profile[slot] = bank.at(tag);
+    write(output / "RidingEffects.json", profile);
+    return registration.size();
+}
+
+// Original SSX frames have a packed u16 opcode/u16 size header. Payloads
+// below were measured from original disc records; canonical opcodes belong
+// to the shared effects contract, not to the original executable.
+Json effect_node(Bytes b, const std::string& graph, unsigned index,
+                 const std::map<unsigned, std::pair<std::size_t, unsigned>>& cells, unsigned chains,
+                 std::size_t particle_sprites) {
+    const auto main = b.le(0, 2);
+    const auto size = b.data.size();
+    Json payload = Json::object(), refs = Json::object();
+    unsigned canonical = main;
+    const auto fields = [&](std::size_t at, const std::string& layout) {
+        Json values = Json::object();
+        for (std::size_t i = 0; i < layout.size(); ++i)
+            values["U" + std::to_string(i)] = layout[i] == 'f' ? Json(b.number(at + i * 4)) : Json(b.le(at + i * 4));
+        return values;
+    };
+    if (main == 0 && size >= 8) {
+        const auto sub = b.le(4);
+        Json property = {{"SubType", sub}};
+        if (sub == 10 && size == 32)
+            property["UVScroll"] = fields(8, "ifffff");
+        else if (sub == 11 && size == 24)
+            property["TextureFlip"] = {
+                {"U0", b.le(8)}, {"Direction", b.le(12)}, {"Speed", b.number(16)}, {"Length", b.number(20)}, {"U4", 0}};
+        else if (sub == 2 && size == 12)
+            property["Debounce"] = b.number(8);
+        else if (sub == 5 && size == 12)
+            property["DeadNodeMode"] = b.le(8);
+        else if (sub == 12 && size == 16)
+            property["Fence"] = {{"U0", b.le(8)}, {"FlexAmmount", b.number(12)}};
+        else if (sub == 13 && size == 24)
+            property["type0Sub13"] = fields(8, "ifff");
+        else
+            return nullptr;
+        payload["type0"] = property;
+    } else if (main == 1 && size == 212 && b.le(4) == 0 && particle_sprites) {
+        const auto values = fields(8, "ii" + std::string(47, 'f') + "ii");
+        std::array<double, 51> law{};
+        for (unsigned i = 0; i < law.size(); ++i)
+            law[i] = values.at("U" + std::to_string(i)).get<double>();
+        const auto decoded = ParticleLaw::decode(law);
+        if (decoded.texture >= particle_sprites)
+            throw std::runtime_error("SSX emitter references a missing sprite");
+        canonical = 2;
+        payload["type2"] = {{"SubType", 0}, {"type2Sub0", values}};
+    } else if (main == 3 && size == 8) {
+        canonical = 4;
+        payload["WaitTime"] = b.number(4);
+    } else if ((main == 2 || main == 8) && size == 12) {
+        canonical = main == 2 ? 3 : 9;
+        payload[main == 2 ? "type3" : "type9"] = fields(4, "if");
+    } else if (main == 4 && size == 16) {
+        canonical = 5;
+        payload["type5"] = fields(4, "ifi");
+    } else if (main == 6 && size == 16) {
+        const auto cell = cells.find(b.le(4));
+        if (cell == cells.end() || b.le(8) >= cell->second.second || b.le(12) >= chains)
+            throw std::runtime_error("SSX effect references a missing cell instance or graph");
+        const auto instance = cell->second.first + b.le(8);
+        const auto effect = b.le(12);
+        canonical = 7;
+        payload["Instance"] = {{"InstanceIndex", instance}, {"EffectIndex", effect}};
+        refs = {{"instance", "instance:" + std::to_string(instance)},
+                {"effectGraph", "graph:" + std::to_string(effect)}};
+    } else if (main == 7 && size == 8) {
+        canonical = 8;
+        payload["SoundPlay"] = b.le(4);
+    } else
+        return nullptr;
+    return {{"id", graph + "/node:" + std::to_string(index)},
+            {"originalIndex", index},
+            {"mainType", canonical},
+            {"payload", payload},
+            {"references", refs},
+            {"extensions", {{"ssxMainType", main}}}};
+}
+
+Json effects(Bytes b, const std::string& course, const Json& instances,
+             const std::map<unsigned, std::pair<std::size_t, unsigned>>& cells, std::size_t particle_sprites,
+             const ImportCancel& cancel) {
     b.range(0, 40);
     const auto slots = b.le(8), chains = b.le(32), table = b.le(36);
     if (slots > 8192 || chains > 8192)
@@ -101,7 +241,8 @@ Json effects(Bytes b, const std::string& course, const Json& instances, const Im
         if (count > 10000 || (total += count) > 100000)
             throw std::runtime_error("SSX effects node count exceeds its limit");
         auto p = base + b.le(table + i * 8 + 4);
-        Json nodes = Json::array();
+        Json nodes = Json::array(), decoded = Json::array();
+        bool supported = true;
         for (unsigned j = 0; j < count; ++j) {
             const auto type = b.le(p, 2), size = b.le(p + 2, 2);
             if (size < 4 || size % 4)
@@ -111,14 +252,22 @@ Json effects(Bytes b, const std::string& course, const Json& instances, const Im
             for (unsigned k = 0; k < size; k += 4)
                 words.push_back(b.le(p + k));
             nodes.push_back({{"originalIndex", j}, {"mainType", type}, {"nativeWords", words}});
+            auto node =
+                effect_node(Bytes{b.data.subspan(p, size)}, identity("graph", i), j, cells, chains, particle_sprites);
+            if (node.is_null())
+                supported = false;
+            else
+                decoded.push_back(std::move(node));
             p += size;
         }
-        // [Trailmap: 500-nodes] Packed frames are known; payload semantics
-        // are not established. Preserve them without executing Tricky opcodes.
-        doc["graphs"].push_back({{"id", identity("graph", i)},
-                                 {"originalIndex", i},
-                                 {"nodes", Json::array()},
-                                 {"extensions", {{"ssxUnresolvedNodes", nodes}}}});
+        // Keep complete original frames, including supported nodes. Unknown
+        // semantics block the entire chain rather than dropping a condition or
+        // lifecycle command and executing a misleading partial effect.
+        doc["graphs"].push_back(
+            {{"id", identity("graph", i)},
+             {"originalIndex", i},
+             {"nodes", supported ? decoded : Json::array()},
+             {"extensions", {{"ssxNativeNodes", nodes}, {"ssxUnresolvedNodes", supported ? Json::array() : nodes}}}});
     }
     constexpr std::array<const char*, 7> columns{"persistent", "collision", "slot3", "slot4",
                                                  "trigger",    "slot6",     "slot7"};
@@ -224,6 +373,7 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
     };
 
     std::vector<Segment> segments;
+    std::map<unsigned, std::pair<std::size_t, unsigned>> cell_instances;
     Json lights = Json::array();
     const auto grid = std::size_t(index.le(40)) * index.le(44), cell_table = 72 + std::size_t(index.le(48)) * 8;
     for (std::size_t cell = 0; cell < grid; ++cell) {
@@ -235,6 +385,7 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
         Bytes b{world.data.subspan(offset, size)};
         b.range(0, 48 + 16 * 48);
         const auto instances = b.le(36, 2), count = b.le(38, 2), light_count = b.le(40, 2), segment_count = b.le(42, 2);
+        cell_instances[unsigned(cell)] = {placements.size() / 272, instances};
         std::size_t p = (48 + 16 * 48 + std::size_t(b.le(44, 2)) * 4 + 15) & ~std::size_t(15);
         append(placements, b, p, std::size_t(instances) * 272);
         p += std::size_t(instances) * 272;
@@ -307,9 +458,12 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
         throw std::runtime_error("SSX path length disagrees with its records");
     write(output / "AIP.json", {{"StartPosList", starts}, {"AIPaths", ai}, {"RaceLines", race}});
     notify("Preserving SSX effect graphs");
+    const auto particle_sprites = particles(disc, output, cancel);
     std::ifstream instance_file(output / "Instances.json");
     const auto instance_doc = Json::parse(instance_file);
-    write(output / "Effects.json", effects(Bytes{file(".WFX")}, course, instance_doc.at("Instances"), cancel));
+    const auto logic =
+        effects(Bytes{file(".WFX")}, course, instance_doc.at("Instances"), cell_instances, particle_sprites, cancel);
+    write(output / "Effects.json", logic);
     notify("Converting SSX splines");
     Json splines = Json::array();
     for (unsigned i = 0; i < index.le(60); ++i)
@@ -363,9 +517,26 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
     Json outputs = {"Patches.json",   "Textures",     "Lightmaps",    "Models.json", "Materials.json",
                     "Instances.json", "Meshes",       "Lights.json",  "Collision",   "Physics.json",
                     "AIP.json",       "Effects.json", "Splines.json", "Origin.json", "Source"};
-    Json deferred = {"effects-node-semantics", "animated-models", "rail-candidacy", "world",
-                     "audio-assets",           "audio-runtime"};
+    Json deferred = {
+        "effects-node-semantics", "animated-models", "rail-candidacy", "world", "audio-spatial-and-collision-routing",
+        "race-music-graphs"};
     Json warnings = Json::array();
+    notify("Converting original SSX sound banks");
+    const auto audio = write_ssx_audio(disc, output, course, progress, cancel);
+    if (audio) {
+        outputs.push_back("Audio");
+    } else
+        deferred.push_back("audio-assets");
+    if (particle_sprites)
+        outputs.push_back("RidingEffects.json");
+    else
+        deferred.push_back("particle-registration");
+    std::size_t active_graphs = 0, active_nodes = 0, unresolved_graphs = 0;
+    for (const auto& graph : logic.at("graphs")) {
+        active_nodes += graph.at("nodes").size();
+        active_graphs += !graph.at("nodes").empty();
+        unresolved_graphs += !graph.at("extensions").at("ssxUnresolvedNodes").empty();
+    }
     if (repaired_lighting)
         warnings.push_back(
             "Non-finite source instance lighting replaced with neutral lighting; original data retained in Source.");
@@ -409,13 +580,16 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
         if (!stream)
             throw std::runtime_error("Cannot save SSX source sidecar");
     }
-    write(output / "Import.json", {{"Schema", "openslope-native-import/v1"},
-                                   {"Game", "ssx"},
-                                   {"Course", course},
-                                   {"Complete", false},
-                                   {"Outputs", outputs},
-                                   {"Deferred", deferred},
-                                   {"Warnings", warnings}});
+    write(output / "Import.json",
+          {{"Schema", "openslope-native-import/v1"},
+           {"Game", "ssx"},
+           {"Course", course},
+           {"Complete", false},
+           {"Outputs", outputs},
+           {"Effects",
+            {{"ActiveGraphs", active_graphs}, {"ActiveNodes", active_nodes}, {"DeferredGraphs", unresolved_graphs}}},
+           {"Deferred", deferred},
+           {"Warnings", warnings}});
     static_cast<void>(disc);
     notify("Validating SSX map");
     static_cast<void>(Terrain::load(output));

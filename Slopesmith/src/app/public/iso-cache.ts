@@ -1,5 +1,5 @@
 export const ISO_CACHE_VERSION = 1;
-export const isoCourseCacheVersion = (course: string): number => /^(SSX3_|SSXOT_)/i.test(course) ? 2 : ISO_CACHE_VERSION;
+export const isoCourseCacheVersion = (course: string): number => /^(SSX_|SSX3_|SSXOT_)/i.test(course) ? 2 : ISO_CACHE_VERSION;
 interface CachedFile { key: string; course: string; path: string; blob: Blob }
 interface CachedCourse { course: string; version: number; files: number }
 export interface DiscCollisionSounds {

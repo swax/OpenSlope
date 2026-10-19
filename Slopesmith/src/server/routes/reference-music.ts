@@ -72,6 +72,15 @@ async function introMusic(root: string): Promise<ReferenceIntroMusic | null> {
   return null;
 }
 
+async function introRoot(level: string): Promise<string | null> {
+  const audio = join(mapsRoot(), safeSegment(level, 'reference level'), 'Audio');
+  for (const folder of ['Intro', 'Music']) {
+    const root = join(audio, folder);
+    if ((await isDirectory(root)) && (await introMusic(root))) return root;
+  }
+  return null;
+}
+
 function safeWavName(value: string): string {
   if (!/^[A-Za-z0-9_-]+\.wav$/i.test(value)) throw new Error(`invalid extracted music sample ${value}`);
   return value;
@@ -106,13 +115,13 @@ export async function readReferenceMusicSampleBytes(level: string, song: string,
 /** Read one top-level intro stem named by the index. Re-resolving the chosen tier makes the byte route a
  * closed capability: a caller cannot use a merely path-safe WAV name to read unrelated files in Audio/Music. */
 export async function readReferenceIntroMusicBytes(level: string, stem: string): Promise<Buffer> {
-  const resolved = await musicRoot(level);
-  const intro = await introMusic(resolved.root);
+  const root = await introRoot(level);
+  const intro = root ? await introMusic(root) : null;
   if (!intro || !intro.stems.includes(stem)) throw new Error(`invalid intro-music stem ${stem || '(empty)'}`);
-  const bytes = await readBytesOrNull(join(resolved.root, stem));
-  if (!bytes) throw new Error(`missing intro-music stem ${resolved.level}/${stem}`);
+  const bytes = await readBytesOrNull(join(root!, stem));
+  if (!bytes) throw new Error(`missing intro-music stem ${level}/${stem}`);
   if (bytes.length < 44 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE')
-    throw new Error(`invalid WAV intro-music stem ${resolved.level}/${stem}`);
+    throw new Error(`invalid WAV intro-music stem ${level}/${stem}`);
   return bytes;
 }
 
@@ -120,12 +129,13 @@ export async function readReferenceMusicIndex(level: string): Promise<ReferenceM
   const safeLevel = safeSegment(level, 'reference level');
   const root = join(mapsRoot(), safeLevel, 'Audio', 'Music');
   const hasMusic = await isDirectory(root);
+  const intro = await introRoot(safeLevel);
   const ids = hasMusic ? await songIds(root) : [];
   const graphs = await mapLimit(ids, READ_CONCURRENCY, id => readReferenceMusicGraph(safeLevel, id));
   return {
     level: safeLevel,
     environment: (await readEnvironmentAudio(safeLevel))?.Bed ?? null,
-    intro: hasMusic ? await introMusic(root) : null,
+    intro: intro ? await introMusic(intro) : null,
     songs: ids.map((id, index) => summarizeReferenceMusic(id, graphs[index])),
   };
 }

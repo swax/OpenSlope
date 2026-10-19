@@ -373,6 +373,105 @@ bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output
     return true;
 }
 
+bool write_ssx_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
+                     const ImportProgress& progress, const ImportCancel& cancelled) {
+    const auto data = disc_directory(disc, "DATA");
+    if (std::none_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "CONFIG"; }))
+        return false;
+    const auto entries = disc_directory(disc, "DATA/CONFIG");
+    const auto present = [&](const char* name) {
+        return std::any_of(entries.begin(), entries.end(),
+                           [&](const auto& e) { return !e.directory && upper(e.name) == name; });
+    };
+    if (!present("BANKS.INF"))
+        return false;
+    Writer w{disc, output / "Audio", progress, cancelled, 0, {}, Json::array()};
+    std::filesystem::create_directories(w.root / "SFX");
+    std::map<std::string, Sections> configs;
+    for (const auto* name : {"BANKS.INF", "SNOW.INF", "MUSIC.INF", "MUSICMAP.INF", "INTROMUS.INF"})
+        if (present(name)) {
+            w.check();
+            const auto raw = disc_file(disc, std::string("DATA/CONFIG/") + name);
+            w.reserve(raw.size());
+            std::ofstream file(w.root / name, std::ios::binary);
+            file.write(reinterpret_cast<const char*>(raw.data()), std::streamsize(raw.size()));
+            if (!file)
+                throw std::runtime_error("Cannot preserve original SSX audio configuration");
+            if (std::string_view(name) != "SNOW.INF")
+                configs[name] = config(raw);
+        }
+    auto alias = course.starts_with("SSX_") ? course.substr(4) : course;
+    if (alias == "SNOW")
+        alias = "SNOWDREAM";
+    if (alias == "UNTRACK")
+        alias = "UNTRACKED";
+    if (alias == "WARMUP")
+        alias = "WARM";
+    const auto section = section_for(configs.at("BANKS.INF"), alias);
+    Library library(disc, "DATA/AUDIO/AUDIO.BIG");
+    Json index = {{"Schema", "openslope-sound-index/v1"},
+                  {"Level", course},
+                  {"Banks", Json::object()},
+                  {"NamedBanks", Json::object()},
+                  {"SwapBanks", Json::array()},
+                  {"CollisionEvents", Json::object()},
+                  {"ResolverState", "Deferred"}};
+    for (const auto& [key, group] : {std::pair{"MAIN", "0"}, std::pair{"BANK", "2"}, std::pair{"CROWD", "3"}}) {
+        const auto file = one(configs.at("BANKS.INF"), section, key);
+        if (file.empty())
+            continue;
+        const auto bank = w.bank(library, file, w.root / "SFX");
+        index["Banks"][group] = bank;
+        index["NamedBanks"][key] = bank;
+    }
+    // Original SSX stores the eight-slot surface families in MAIN, unlike
+    // Tricky's separate BOARD bank. Alias the shared runtime's board role.
+    if (index["Banks"].contains("0")) {
+        index["Banks"]["1"] = index["Banks"].at("0");
+        index["BoardBankSource"] = "MAIN";
+    }
+    for (const auto& file : values(configs.at("BANKS.INF"), section, "SWAP"))
+        index["SwapBanks"].push_back(w.bank(library, file, w.root / "SFX"));
+    const auto board = disc_board_groups(disc, cancelled);
+    if (board)
+        json_file(w.root / "BoardSoundIndex.json", {{"Schema", "openslope-board-sound-index/v1"},
+                                                    {"SourceExecutable", board->executable},
+                                                    {"SurfaceGroups", board->surfaces}});
+    json_file(w.root / "SoundIndex.json", index);
+    Json deferred = {"executable-event-resolver", "spatial-sound-bindings", "music", "intro-transition-parity"};
+    if (!board)
+        deferred.push_back("executable-board-surface-index");
+    if (configs.contains("INTROMUS.INF")) {
+        const auto intro_alias = alias == "MESA" ? "MESABLANCA" : alias;
+        const auto selected = section_for(configs.at("INTROMUS.INF"), intro_alias, true);
+        if (!selected.empty()) {
+            const auto file = one(configs.at("INTROMUS.INF"), selected, "SONG");
+            if (!file.empty()) {
+                Library intro(disc, "DATA/AUDIO/" + filename(file));
+                std::filesystem::create_directories(w.root / "Intro");
+                Json stems = Json::array();
+                for (const auto& entry : intro.entries) {
+                    w.notify("Decoding SSX intro " + entry.name);
+                    const auto name = filename(entry.name);
+                    const auto stream = decode_audio_stream(intro.read(entry.name));
+                    w.wave(w.root / "Intro" / (name + ".wav"), stream.clip);
+                    stems.push_back({{"Source", entry.name},
+                                     {"Clip", name + ".wav"},
+                                     {"Rate", stream.clip.rate},
+                                     {"Frames", stream.clip.frames()}});
+                }
+                json_file(w.root / "Intro/stems.json", stems);
+            }
+        }
+    }
+    json_file(w.root / "Import.json", {{"Schema", "openslope-native-audio-import/v1"},
+                                       {"BanksConfigSection", section},
+                                       {"AccountedBytes", w.bytes},
+                                       {"Warnings", w.warnings},
+                                       {"Deferred", deferred}});
+    return true;
+}
+
 bool write_ontour_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
                         const ImportProgress& progress, const ImportCancel& cancelled) {
     const auto data = disc_directory(disc, "DATA");

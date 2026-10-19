@@ -23,12 +23,15 @@ struct PropPart {
     std::uint32_t first{}, count{};
     std::string texture;
     std::uint32_t flags{};
+    int alpha_mode = -1; // -1: native flags; 0: opaque; 1: cutout; 2: blend.
     std::size_t object = 0;
     Bounds bounds;
     std::vector<std::string> frames;
     std::size_t material = 0;
     std::uint32_t wave_first = 0, wave_count = 0;
 };
+
+int prop_alpha_mode(const PropPart& part, bool fractional_alpha);
 
 struct PropModel {
     std::vector<std::size_t> parts;

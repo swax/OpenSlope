@@ -250,11 +250,15 @@ bool write_ssx_props(std::span<const std::uint8_t> index, std::span<const std::u
     Json materials = Json::array(), models = Json::array(), instances = Json::array();
     for (unsigned i = 0; i < material_count; ++i) {
         const auto p = materials_start + i * 12;
+        const auto appearance = wdx.le(p);
         const auto texture = wdx.signed16(p + 4), book = wdx.signed16(p + 6);
         if (texture < -1 || (texture >= 0 && std::size_t(texture) >= textures.size()) || book < -1 ||
             (book >= 0 && unsigned(book) >= books))
             throw std::runtime_error("SSX material references missing art");
         Json frames = Json::array();
+        std::vector<std::size_t> pages;
+        if (texture >= 0)
+            pages.push_back(std::size_t(texture));
         if (book >= 0) {
             const auto at = book_start + std::size_t(book) * 20;
             const auto n = wdx.le(at);
@@ -265,13 +269,36 @@ bool write_ssx_props(std::span<const std::uint8_t> index, std::span<const std::u
                 if (id >= textures.size())
                     throw std::runtime_error("SSX flipbook references missing art");
                 frames.push_back(textures[id].name + ".png");
+                pages.push_back(id);
             }
         }
+        // Measured original SSX appearance bit 0 enables texture alpha. Its
+        // low-byte flags are not the portable/native Tricky appearance word.
+        // Classify only alpha-enabled pages; retain opaque black RGB as art.
+        std::string alpha = "opaque";
+        if (appearance & 1)
+            for (const auto page : pages) {
+                const auto& rgba = textures[page].rgba;
+                const auto total = rgba.size() / 4;
+                std::size_t clear = 0, solid = 0;
+                for (std::size_t pixel = 3; pixel < rgba.size(); pixel += 4) {
+                    clear += rgba[pixel] < 8;
+                    solid += rgba[pixel] >= 250;
+                }
+                if (total && clear * 1000 >= total * 3 && solid) {
+                    alpha = "cutout";
+                    break;
+                }
+                if ((total - clear - solid) * 5 >= total && total)
+                    alpha = "blend";
+            }
         materials.push_back(
             {{"MaterialName", "Material " + std::to_string(i)},
              {"TexturePath", texture < 0 ? Json(nullptr) : Json(textures[std::size_t(texture)].name + ".png")},
              {"TextureFlipbook", frames},
-             {"UnknownInt18", 0}});
+             {"SSXRenderFlags", appearance},
+             {"AlphaMode", alpha},
+             {"UnknownInt18", (appearance & 1) ? (1u << 18) : 0u}});
     }
     std::filesystem::create_directory(output / "Meshes");
     std::size_t mesh_id = 0;

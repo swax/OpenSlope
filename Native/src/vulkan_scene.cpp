@@ -454,7 +454,7 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
             return PropFrame{descriptor(found == names.end() ? 2 : found->second, 1),
                              // Priority overlays also carry pixel alpha (scanlines, for example).
                              // [Slopesmith public texture-array tests: priority partial alpha]
-                             (part.flags & ((1u << 18) | (1u << 17))) ? (fractional[name] ? 2 : 1) : 0};
+                             prop_alpha_mode(part, fractional[name])};
         };
         const auto base = bind(part.texture);
         PropDraw draw{part.first + prop_first, part.count, base.set, base.alpha, {}};

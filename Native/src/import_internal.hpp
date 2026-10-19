@@ -66,6 +66,8 @@ std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std:
                             const ImportCancel& cancel);
 bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
                       const ImportProgress& progress, const ImportCancel& cancel);
+bool write_ssx_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
+                     const ImportProgress& progress, const ImportCancel& cancel);
 bool write_ontour_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
                         const ImportProgress& progress, const ImportCancel& cancel);
 

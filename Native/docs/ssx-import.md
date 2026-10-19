@@ -28,29 +28,60 @@ The exported map contains:
 - `Patches.json`, diffuse PNGs and lightmap PNGs.
 - `Models.json`, `Meshes/*.obj`, `Materials.json` and `Instances.json`, including
   placement transforms, visibility, material flipbooks and instance lighting.
+- Original material appearance words in `SSXRenderFlags`, translated alpha flags,
+  and explicit `AlphaMode` policies shared by Slopesmith and the native renderer.
+  Alpha-enabled sheets use their existing PNG alpha; black RGB is never a key.
+  Crowd sheets, trees and fences cut out; partial-alpha pages blend.
 - `Collision/*.obj` and `Physics.json`, with placement collision bindings.
 - `Lights.json`, `AIP.json` with all eight start slots, and `Splines.json`.
 - `Skybox/` using the same mesh and material contracts as other maps.
-- `Effects.json` with effect slots, graph identities, instance bindings and pool
-  references. Original packed nodes live in each graph's
-  `extensions.ssxUnresolvedNodes`; they are preserved without executing them as
-  Tricky nodes. SSX effect payload semantics remain unresolved.
+- `Effects.json` with converted UV scroll, four-frame crowd/material flipbooks,
+  wait/control/gate commands, cell-local instance calls, sound commands, particle
+  emitters and compatible fence/flag properties. The original packed frames live
+  in `extensions.ssxNativeNodes`. A graph containing an unsupported command stays
+  disabled as a whole and retains its frames in `extensions.ssxUnresolvedNodes`.
+  No unknown original opcode is executed as a shared runtime opcode.
+- `Textures/Particles/` and `RidingEffects.json`, including puff/wake/spray art and
+  emitter sprites in the original executable's 34-entry registration order. The
+  original NTSC-U registration table is read and validated against the image tags;
+  it is distinct from SSH directory order and includes repeated mip entries.
+- `Audio/SFX/` with main, course, crowd and configured swap banks, loop WAVs,
+  configuration sources, `SoundIndex.json` and the recovered board surface index.
+  Original SSX's MAIN bank supplies the board role. Swap banks are assets, not an
+  automatically played ambient list. Intro streams are decoded into `Audio/Intro/`
+  and are available to native and Slopesmith playback independently of race music.
 - Retail provenance in `Origin.json`, capability/deferred information in
   `Import.json`, and lossless local archive members in `Source/`.
 
-`Import.json` deliberately reports `Complete: false`. Effect playback, animated
-model behavior, automatic rail candidacy, executable-derived world settings and
-audio are not implemented for SSX. The spline curves and effect source records
-are retained for those later stages. A non-finite source instance lighting block
+`Import.json` deliberately reports `Complete: false`, with counts of active nodes
+and deferred graphs. Remaining work includes unsupported effect commands, model
+animation, automatic rail candidacy, executable-derived world settings, spatial
+and collision sound routing, and original `PFDx` version-1 race music graphs.
+Those graphs differ from the existing `xDFP` version-3 reader; unsupported race
+music does not prevent useful sound assets or intro stems from being imported.
+The spline curves and effect source records are retained for later stages. A
+non-finite source instance lighting block
 uses neutral lighting and adds an explicit import warning; geometry and transform
 numbers still fail validation. No retail content is committed or packaged.
 
 Validation covers synthetic plain/raw sector parity, portable outputs, bad
 versions/counts/references, non-finite lighting, atomic failure and existing-map
 protection. Desktop library tests exercise BIN discovery and installation. All
-nine courses on the supplied NTSC-U disc were exported and loaded through the
-native map readers. This does not establish effect playback or headset fidelity.
+nine courses on the supplied NTSC-U disc were exported and exercised through the
+native scene assembler and effect runtime. Synthetic regressions cover alpha
+policy, flipbook playback, cross-instance particles, sprite registration order,
+sound roles, invalid references and atomic failure through ISO and raw BIN input.
+The browser worker test covers the same outputs, board/intro Blob routes, loop
+selection and replacement of stale cached files. This does not establish exact
+retail timing or headset fidelity. The adapter and probes were independently
+authored from disc measurements and the existing portable contracts.
+
+Previously cached SSX maps request a reload in `/isos` so the new materials,
+effects and sound assets are extracted. Tricky and other games keep their cache
+versions. Native imports continue to protect existing map folders; export into a
+new destination when comparing a fresh import with an older map.
 
 ```text
 python Native/tests/ssx_import_test.py <openslope_import executable>
+python Native/tests/ssx_fidelity_test.py <openslope_import executable> <openslope_ssx_fidelity_tests executable>
 ```
