@@ -26,17 +26,20 @@ const rows = await parallelMap(runs, 8, async workflowRun => {
     `repos/${repository.nameWithOwner}/actions/runs/${workflowRun.id}/jobs?per_page=100`,
   ]);
   const jobs = response.jobs ?? [];
-  const usage = jobs.reduce((total, job) => {
-    if (!job.started_at || !job.completed_at) return total;
-    const seconds = Math.max(0, (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000);
-    const multiplier = runnerMultiplier(job.labels ?? []);
-    total.actualSeconds += seconds;
-    if (multiplier > 0) {
-      total.roundedHostedMinutes += Math.ceil(seconds / 60);
-      total.estimatedIncludedMinutes += Math.ceil(seconds / 60) * multiplier;
-    }
-    return total;
-  }, { actualSeconds: 0, roundedHostedMinutes: 0, estimatedIncludedMinutes: 0 });
+  const usage = jobs.reduce(
+    (total, job) => {
+      if (!job.started_at || !job.completed_at) return total;
+      const seconds = Math.max(0, (Date.parse(job.completed_at) - Date.parse(job.started_at)) / 1000);
+      const multiplier = runnerMultiplier(job.labels ?? []);
+      total.actualSeconds += seconds;
+      if (multiplier > 0) {
+        total.roundedHostedMinutes += Math.ceil(seconds / 60);
+        total.estimatedIncludedMinutes += Math.ceil(seconds / 60) * multiplier;
+      }
+      return total;
+    },
+    { actualSeconds: 0, roundedHostedMinutes: 0, estimatedIncludedMinutes: 0 },
+  );
 
   return {
     run_id: workflowRun.id,
@@ -74,17 +77,24 @@ const included = rows.reduce((sum, row) => sum + row.estimated_included_minutes,
 console.log(`Wrote ${rows.length} runs to ${runsPath}`);
 console.log(`Wrote ${byCommit.length} commits to ${commitsPath}`);
 console.log(`Totals: ${actual.toFixed(1)} actual job minutes; about ${included} included-plan minutes.`);
-console.log('Included-plan minutes are estimates: GitHub rounds each hosted job up, then applies the runner multiplier.');
+console.log(
+  'Included-plan minutes are estimates: GitHub rounds each hosted job up, then applies the runner multiplier.',
+);
 
 async function workflowRuns(nameWithOwner, range) {
   const found = [];
   for (let page = 1; ; page++) {
     const response = await ghJson([
-      'api', '-X', 'GET',
+      'api',
+      '-X',
+      'GET',
       `repos/${nameWithOwner}/actions/runs`,
-      '-f', `created=${range}`,
-      '-f', 'per_page=100',
-      '-f', `page=${page}`,
+      '-f',
+      `created=${range}`,
+      '-f',
+      'per_page=100',
+      '-f',
+      `page=${page}`,
     ]);
     found.push(...response.workflow_runs);
     if (response.workflow_runs.length < 100) return found;
@@ -136,7 +146,8 @@ function aggregateCommits(runRows) {
       run_urls: [],
     };
     commit.first_started_at = commit.first_started_at < row.started_at ? commit.first_started_at : row.started_at;
-    commit.last_completed_at = commit.last_completed_at > row.completed_at ? commit.last_completed_at : row.completed_at;
+    commit.last_completed_at =
+      commit.last_completed_at > row.completed_at ? commit.last_completed_at : row.completed_at;
     commit.runs++;
     commit.jobs += row.jobs;
     commit.actual_job_minutes += Number(row.actual_job_minutes);
@@ -158,19 +169,22 @@ function aggregateCommits(runRows) {
 async function parallelMap(items, concurrency, callback) {
   const output = new Array(items.length);
   let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor++;
-      output[index] = await callback(items[index], index);
-    }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        output[index] = await callback(items[index], index);
+      }
+    }),
+  );
   return output;
 }
 
 function writeCsv(path, records) {
   const columns = records.length > 0 ? Object.keys(records[0]) : [];
-  const lines = [columns, ...records.map(record => columns.map(column => record[column]))]
-    .map(values => values.map(csvCell).join(','));
+  const lines = [columns, ...records.map(record => columns.map(column => record[column]))].map(values =>
+    values.map(csvCell).join(','),
+  );
   writeFileSync(path, `${lines.join('\n')}\n`, 'utf8');
 }
 

@@ -264,12 +264,13 @@ npm run format:slopesmith:check  # check without writing; exits nonzero on diffe
 
 Inside `Slopesmith/`, the equivalent commands are `npm run format` and `npm run format:check`.
 They cover hand-written TypeScript, JavaScript, CSS, and HTML in `src/`, `test/`, `scripts/`, `tools/`,
-and the top-level configuration and entry point. Generated contracts, vendored code, upstream patches,
+and the top-level configuration and entry point, plus Rust sources in `multiplayer/` through `cargo fmt`.
+Rust formatting requires Cargo with the rustfmt component (`rustup component add rustfmt`) and uses
+rustfmt's default rules. Generated contracts, vendored code, upstream patches,
 build output, and local map/workspace data are excluded by [`.prettierignore`](.prettierignore).
 Line endings match [`.gitattributes`](../.gitattributes): LF for scripts and CRLF for CSS.
-Embedded languages in template strings are left intact. As with the native, Snowknife, and Unity
-formatters, these are explicit local commands rather than an additional CI gate; ESLint remains a
-separate correctness check.
+Embedded languages in template strings are left intact. Prettier runs as an explicit local command;
+CI also checks Rust formatting with `cargo fmt --check`. ESLint and Clippy remain separate correctness checks.
 
 ## Editing workflow
 

@@ -117,7 +117,7 @@ Authored path-container fixtures cover byte offsets, both datasets, displacement
 expansion, reversed event stations and failed-import cleanup. No retail fixture
 is required or packaged.
 
-`tools/native-compare-paths.py` compares generated files only. Seeds, start indices,
+`tools/native/native-compare-paths.py` compares generated files only. Seeds, start indices,
 attributes, DTF and event stations must recover identical float32 values. Expanded
 displacements permit 0.01 raw cm (0.1 mm), reflecting independent double products
 versus a reference's rounded float products. GARI's 151 paths, 4,277 displacement

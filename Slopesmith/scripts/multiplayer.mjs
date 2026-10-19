@@ -17,7 +17,9 @@ export function run(command, args, options = {}) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const mode = process.argv[2] ?? 'test';
   const manifest = ['--manifest-path', 'multiplayer/Cargo.toml'];
-  if (mode === 'build') {
+  if (mode === 'format' || mode === 'format:check') {
+    await run(cargo, ['fmt', ...manifest, ...(mode === 'format:check' ? ['--check'] : [])]);
+  } else if (mode === 'build') {
     await run(cargo, ['build', ...manifest, '--release', '--locked']);
     await run(process.execPath, ['scripts/cargo-notices.mjs']);
   } else if (mode === 'serve') await run(cargo, ['run', ...manifest, '--locked', '--bin', 'slopesmith-multiplayer']);

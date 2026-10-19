@@ -4,6 +4,7 @@
 The manifest reproduction check additionally uses the optional local Trailmap patch
 generators and a user-supplied disc. It reports an explicit skip when those are absent.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,8 +19,11 @@ CHECKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("Manifest-reproduction checker tests", "tools/hygiene/test_verify_manifests.py", ()),
     ("Shipped patch manifests carry no displaced instruction", "tools/hygiene/patch_hygiene.py", ("check",)),
     ("Repository hygiene baseline", "tools/hygiene/repo_hygiene.py", ("check",)),
-    ("Local patch manifests reproduce when the research generators and a disc are present",
-     "tools/hygiene/verify_manifests.py", ()),
+    (
+        "Local patch manifests reproduce when the research generators and a disc are present",
+        "tools/hygiene/verify_manifests.py",
+        (),
+    ),
 )
 
 

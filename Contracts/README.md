@@ -26,7 +26,7 @@ The local emulator harness can regenerate its audio view with the audio generato
 Optionally check the particle registration identifiers against a user-supplied image:
 
 ```text
-python tools/check-particle-contract.py <user-supplied-iso>
+python tools/contracts/check-particle-contract.py <user-supplied-iso>
 ```
 
 This compares short functional identifiers and preserves duplicate registration slots;

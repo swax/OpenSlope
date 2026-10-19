@@ -78,11 +78,17 @@ try {
     sockets: string[] = [],
     errors: string[] = [];
   page.on('request', request => {
-    if (new URL(request.url()).pathname.startsWith('/api/'))
-      requests.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    const path = new URL(request.url()).pathname;
+    // Site presence is independent of browser storage; it never reads or writes this mountain.
+    if (request.method() === 'GET' && path === '/api/play/config') return;
+    if (request.method() === 'POST' && path === '/api/public/visitor') return;
+    if (path.startsWith('/api/')) requests.push(`${request.method()} ${path}`);
   });
   page.on('websocket', socket => {
-    if (new URL(socket.url()).pathname.startsWith('/api/')) sockets.push(socket.url());
+    const url = new URL(socket.url());
+    // Without a Rust relay, the Maps page uses Node's anonymous public presence channel.
+    if (url.pathname === '/api/public/session' && url.searchParams.get('anonymous') === '1') return;
+    if (url.pathname.startsWith('/api/')) sockets.push(socket.url());
   });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/maps`);
@@ -121,7 +127,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   assert(
     requests.every(request => request.startsWith('GET ')),
-    'guest startup sends no server mutation',
+    `guest startup sends no map mutation: ${requests}`,
   );
   assert(
     requests.every(request => /GET \/api\/(auth\/session|public\/courses|public\/project|texture)$/.test(request)),
@@ -177,8 +183,8 @@ try {
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await page.waitForFunction(() => document.title === 'IMPORTED_LOCAL - Slopesmith');
   await ready(page);
-  assert.equal(requests.length, bootstrapReads, 'editing, saving, export and import issue no API requests');
-  assert.deepEqual(sockets, [], 'guest editing opens no server session');
+  assert.equal(requests.length, bootstrapReads, 'editing, saving, export and import issue no map-data API requests');
+  assert.deepEqual(sockets, [], 'guest editing opens no editor or named chat session');
   assert.deepEqual(errors, []);
   const server = (await (await call(`/api/public/project?id=${id}`)).json()) as any;
   assert.equal(server.document.name, 'PUBLIC_RUN', 'the public source is unchanged');
@@ -280,7 +286,7 @@ try {
   }, secondCopyId);
   assert.equal(staleSave.status, 404, 'a stale editor cannot restore a deleted local map');
   assert.equal(staleSave.recovery, null);
-  assert.equal(requests.length, beforeDelete, 'local deletion sends no API requests');
+  assert.equal(requests.length, beforeDelete, 'local deletion sends no map-data API requests');
   await page.reload();
   await localMaps.getByRole('link', { name: 'Edit MOUNTAIN02', exact: true }).waitFor();
   assert.equal(await localMaps.getByRole('link', { name: 'Edit PUBLIC_RUN_REV_2', exact: true }).count(), 0);
@@ -396,7 +402,7 @@ try {
     .getByRole('button', { name: 'Delete', exact: true })
     .click();
   await memberDelete.waitFor({ state: 'hidden' });
-  assert.equal(requests.length, memberDeleteRequests, 'signed-in local deletion sends no API requests');
+  assert.equal(requests.length, memberDeleteRequests, 'signed-in local deletion sends no map-data API requests');
   assert.equal(
     ((await (await call('/api/projects')).json()) as any).projects.length,
     1,

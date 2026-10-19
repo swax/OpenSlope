@@ -138,6 +138,8 @@ try {
   const mutations: string[] = [],
     errors: string[] = [];
   page.on('request', request => {
+    // Anonymous site presence is allowed; all other server mutations remain forbidden.
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/public/visitor') return;
     if (new URL(request.url()).pathname.startsWith('/api/') && request.method() !== 'GET')
       mutations.push(request.url());
   });
@@ -271,7 +273,7 @@ try {
     () => document.querySelector<HTMLElement>('#save-status')?.dataset.destination === 'browser',
   );
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
-  assert.deepEqual(mutations, [], 'the entire folder workspace performs no server mutation');
+  assert.deepEqual(mutations, [], 'the entire folder workspace performs no server map mutation');
   assert.deepEqual(errors, []);
   console.log(
     `FOLDER WORKSPACE PASS: autosave/assets, permission resume, atomic failure, reload, project isolation, storage recovery and external-change protection. Artifacts: ${root}`,

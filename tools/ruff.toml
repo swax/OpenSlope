@@ -1,0 +1,6 @@
+required-version = "==0.14.14"
+target-version = "py310"
+line-length = 120
+
+[format] # repo-hygiene: allow[config-listing] -- First-party Ruff settings authored for this repository.
+line-ending = "lf"

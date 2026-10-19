@@ -1,4 +1,5 @@
 """Compare generated static-prop contracts, never decoder implementation sources."""
+
 import json
 import argparse
 import struct
@@ -46,8 +47,10 @@ def compare_mesh(a, b, tolerance):
         matched = False
         for rotation in range(3):
             candidate = reference[rotation:] + reference[:rotation]
-            if all(close(p, q, tolerance) and close(uv, uv_ref, 1e-6) and close(n, n_ref, 1e-6)
-                   for (p, uv, n), (q, uv_ref, n_ref) in zip(triangle, candidate)):
+            if all(
+                close(p, q, tolerance) and close(uv, uv_ref, 1e-6) and close(n, n_ref, 1e-6)
+                for (p, uv, n), (q, uv_ref, n_ref) in zip(triangle, candidate)
+            ):
                 worst = max(worst, max(abs(x - y) for c, d in zip(triangle, candidate) for x, y in zip(c[0], d[0])))
                 matched = True
                 break
@@ -60,7 +63,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("native", type=Path)
     parser.add_argument("reference", type=Path)
-    parser.add_argument("--point-tolerance-cm", type=float, default=.001)
+    parser.add_argument("--point-tolerance-cm", type=float, default=0.001)
     args = parser.parse_args()
     if not 0 < args.point_tolerance_cm <= 1:
         parser.error("point tolerance must be positive and no greater than one raw centimetre")
@@ -80,12 +83,20 @@ def main():
         assert same_float32([a["AnimTime"]], [b["AnimTime"]])
         for obj, obj_ref in zip(a["ModelObjects"], b["ModelObjects"]):
             assert obj["ParentID"] == obj_ref["ParentID"]
-            assert obj["IncludeMatrix"] == obj_ref["IncludeMatrix"] and obj["IncludeAnimation"] == obj_ref["IncludeAnimation"]
+            assert (
+                obj["IncludeMatrix"] == obj_ref["IncludeMatrix"]
+                and obj["IncludeAnimation"] == obj_ref["IncludeAnimation"]
+            )
             if obj["IncludeMatrix"]:
                 assert same_float32(obj["Position"], obj_ref["Position"])
                 assert close(obj["Scale"], obj_ref["Scale"], 1e-5)
-                assert min(sum((x - y) ** 2 for x, y in zip(obj["Rotation"], obj_ref["Rotation"])),
-                           sum((x + y) ** 2 for x, y in zip(obj["Rotation"], obj_ref["Rotation"]))) < 1e-8
+                assert (
+                    min(
+                        sum((x - y) ** 2 for x, y in zip(obj["Rotation"], obj_ref["Rotation"])),
+                        sum((x + y) ** 2 for x, y in zip(obj["Rotation"], obj_ref["Rotation"])),
+                    )
+                    < 1e-8
+                )
             if obj["IncludeAnimation"]:
                 first, second = obj["Animation"], obj_ref["Animation"]
                 assert first["AnimationAction"] == second["AnimationAction"]
@@ -95,23 +106,49 @@ def main():
                     rows, rows_ref = entry["AnimationMaths"], entry_ref["AnimationMaths"]
                     assert len(rows) == len(rows_ref)
                     for row, row_ref in zip(rows, rows_ref):
-                        assert same_float32([row[f"Value{i}"] for i in range(1, 7)], [row_ref[f"Value{i}"] for i in range(1, 7)])
+                        assert same_float32(
+                            [row[f"Value{i}"] for i in range(1, 7)], [row_ref[f"Value{i}"] for i in range(1, 7)]
+                        )
             assert len(obj["MeshData"]) == len(obj_ref["MeshData"])
             for part, part_ref in zip(obj["MeshData"], obj_ref["MeshData"]):
                 assert part["MaterialID"] == part_ref["MaterialID"]
-                triangles_count, error = compare_mesh(native / "Meshes" / part["MeshPath"], reference / "Meshes" / part_ref["MeshPath"], args.point_tolerance_cm)
-                count += 1; faces += triangles_count; worst = max(worst, error)
+                triangles_count, error = compare_mesh(
+                    native / "Meshes" / part["MeshPath"],
+                    reference / "Meshes" / part_ref["MeshPath"],
+                    args.point_tolerance_cm,
+                )
+                count += 1
+                faces += triangles_count
+                worst = max(worst, error)
     for a, b in zip(instances, instance_ref):
         assert a["InstanceName"] == b["InstanceName"] and a["ModelID"] == b["ModelID"] and a["Visable"] == b["Visable"]
         assert same_float32(a["Location"], b["Location"]), f"{a['InstanceName']}: source location differs"
         assert close(a["Scale"], b["Scale"], 1e-5), f"{a['InstanceName']}: decomposed scale differs"
         # Quaternions q and -q encode the same rotation.
-        assert min(sum((x - y) ** 2 for x, y in zip(a["Rotation"], b["Rotation"])), sum((x + y) ** 2 for x, y in zip(a["Rotation"], b["Rotation"]))) < 1e-8
-        for key in ("LightVector1", "LightVector2", "LightVector3", "LightColour1", "LightColour2", "LightColour3", "AmbentLightColour"):
+        assert (
+            min(
+                sum((x - y) ** 2 for x, y in zip(a["Rotation"], b["Rotation"])),
+                sum((x + y) ** 2 for x, y in zip(a["Rotation"], b["Rotation"])),
+            )
+            < 1e-8
+        )
+        for key in (
+            "LightVector1",
+            "LightVector2",
+            "LightVector3",
+            "LightColour1",
+            "LightColour2",
+            "LightColour3",
+            "AmbentLightColour",
+        ):
             assert same_float32(a[key], b[key]), f"{a['InstanceName']}: {key} differs at float32 precision"
-    print(f"PASS: {len(models)} models, {len(instances)} placements, {len(materials)} materials, {count} meshes, {faces} ordered triangles; max position delta {worst:.6f} raw cm")
+    print(
+        f"PASS: {len(models)} models, {len(instances)} placements, {len(materials)} materials, {count} meshes, {faces} ordered triangles; max position delta {worst:.6f} raw cm"
+    )
     print(f"Declared position tolerance: {args.point_tolerance_cm} raw cm.")
-    print("Source locations/lighting/animation: exact recovered float32; scale tolerance 1e-5; quaternion squared delta < 1e-8; UV/normal tolerance 1e-6.")
+    print(
+        "Source locations/lighting/animation: exact recovered float32; scale tolerance 1e-5; quaternion squared delta < 1e-8; UV/normal tolerance 1e-6."
+    )
     print("Material names and deferred behavior fields are outside this static rendering comparison.")
 
 

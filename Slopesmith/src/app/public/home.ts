@@ -337,13 +337,17 @@ export async function showPublicHome(): Promise<void> {
     if (!course.localProjectId && !course.private && !offline) { session.watch(room); session.start(); }
     preparing = true; renderCourses();
     try {
+      showRequirements();
       if (course.kind === 'reference' && await needsCollisionSoundUpdate(course.isoCourses)) {
         const message = 'Choose your ISO once more to restore collision sounds.';
         cardMessages.set(`${course.kind}:${course.id}`, message);
-        if (linked) status.textContent = message;
+        if (linked) {
+          const repair = element('a', '', 'Load ISO maps');
+          repair.href = isoManagementUrl(course);
+          status.replaceChildren(document.createTextNode(`${message} `), repair);
+        }
         return;
       }
-      showRequirements();
       mapControls.setMapType(course.kind);
       document.body.classList.remove('sp-page-background');
       document.body.classList.add('public-preparing');

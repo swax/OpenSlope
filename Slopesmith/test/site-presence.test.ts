@@ -163,17 +163,23 @@ try {
     .getByRole('article', { name: 'PUBLIC PEAK', exact: true })
     .locator('.public-map-online[data-count="0"]')
     .waitFor({ state: 'attached' });
-  assert(await first.getByRole('article', { name: 'PUBLIC PEAK', exact: true })
-    .locator('.public-map-online').isHidden(), 'empty map counters stay hidden');
+  assert(
+    await first.getByRole('article', { name: 'PUBLIC PEAK', exact: true }).locator('.public-map-online').isHidden(),
+    'empty map counters stay hidden',
+  );
   assert(
     frames.get(first)!.some(message => message.t === 'site-activity' && message.online === 1),
     'browsing receives small count updates without subscribing to the full roster',
   );
-  const snapshot = (await (
-    await fetch(`http://${address}/site`, {
-      headers: { authorization: `Bearer ${process.env.SLOPESMITH_MULTIPLAYER_SECRET}` },
-    })
-  ).json()) as any;
+  const snapshotResponse = await fetch(`http://${address}/site`, {
+    headers: { authorization: `Bearer ${process.env.SLOPESMITH_MULTIPLAYER_SECRET}` },
+  });
+  assert.equal(
+    snapshotResponse.headers.get('connection'),
+    'close',
+    'bounded relay HTTP connections must not be reused by pooled clients',
+  );
+  const snapshot = (await snapshotResponse.json()) as any;
   assert(snapshot.members[0].member.anonymous);
   assert.match(snapshot.members[0].member.username, /^guest[1-9]\d?$/);
   const firstId = snapshot.members[0].member.id;

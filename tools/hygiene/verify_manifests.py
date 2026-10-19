@@ -59,7 +59,7 @@ def boot_executable(iso: Path) -> tuple[str, bytes] | None:
         pvd = handle.read(SECTOR)
         if pvd[1:6] != b"CD001":
             return None
-        root = pvd[156:156 + 34]
+        root = pvd[156 : 156 + 34]
         lba, length = struct.unpack_from("<I", root, 2)[0], struct.unpack_from("<I", root, 10)[0]
         handle.seek(lba * SECTOR)
         directory = handle.read(length)
@@ -70,10 +70,12 @@ def boot_executable(iso: Path) -> tuple[str, bytes] | None:
             if record_length == 0:
                 position = (position // SECTOR + 1) * SECTOR
                 continue
-            extent, size = (struct.unpack_from("<I", directory, position + 2)[0],
-                            struct.unpack_from("<I", directory, position + 10)[0])
+            extent, size = (
+                struct.unpack_from("<I", directory, position + 2)[0],
+                struct.unpack_from("<I", directory, position + 10)[0],
+            )
             name_length = directory[position + 32]
-            name = directory[position + 33:position + 33 + name_length].decode("ascii", "replace")
+            name = directory[position + 33 : position + 33 + name_length].decode("ascii", "replace")
             name = name.split(";")[0]
             if name.startswith(("SLES", "SLUS", "SLPS")):
                 handle.seek(extent * SECTOR)
@@ -97,19 +99,29 @@ def regenerate(elf: Path, work: Path, required: set[str]) -> tuple[dict[str, Pat
     for script, name in GENERATORS.items():
         out = work / f"{name}.json"
         result = subprocess.run(
-            [sys.executable, str(HERE / script), "--elf", str(elf),
-             "--out", str(work / f"{name}.elf"), "--emit-patch", str(out)],
-            capture_output=True, text=True)
+            [
+                sys.executable,
+                str(HERE / script),
+                "--elf",
+                str(elf),
+                "--out",
+                str(work / f"{name}.elf"),
+                "--emit-patch",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
         if result.returncode == 0 and out.exists():
             emitted[name] = out
         elif name in required:
             detail = (result.stderr or result.stdout).strip().splitlines()
             errors.append(
                 f"    missed   {script} did not produce a manifest, but one is tracked for this "
-                f"build\n" + "\n".join(f"               {line}" for line in detail[-4:]))
+                f"build\n" + "\n".join(f"               {line}" for line in detail[-4:])
+            )
         else:
-            print(f"    n/a      {name}: this generator does not support this build, "
-                  "and no manifest for it is tracked")
+            print(f"    n/a      {name}: this generator does not support this build, and no manifest for it is tracked")
     return emitted, errors
 
 
@@ -127,27 +139,27 @@ def compare(name: str, target: str, emitted: Path) -> bool:
     fresh, old = json.loads(fresh_text), json.loads(tracked_text)
     if fresh.get("regions") != old.get("regions"):
         differing = [r["fileOffset"] for r, o in zip(fresh["regions"], old["regions"]) if r != o]
-        print(f"    MISMATCH {tracked.name}: regions differ"
-              + (f" at file offset(s) {', '.join(hex(o) for o in differing)}" if differing else ""))
+        print(
+            f"    MISMATCH {tracked.name}: regions differ"
+            + (f" at file offset(s) {', '.join(hex(o) for o in differing)}" if differing else "")
+        )
     else:
         changed = sorted(k for k in set(fresh) | set(old) if fresh.get(k) != old.get(k))
-        print(f"    STALE    {tracked.name}: regions match but {', '.join(changed)} differs "
-              "- regenerate and commit it")
+        print(f"    STALE    {tracked.name}: regions match but {', '.join(changed)} differs - regenerate and commit it")
     return False
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--discs", type=Path, default=REPO / "discs",
-                        help="directory of ISO images (default: discs/)")
-    parser.add_argument("--elf", type=Path, action="append", default=[],
-                        help="check an already-extracted boot executable instead")
+    parser.add_argument("--discs", type=Path, default=REPO / "discs", help="directory of ISO images (default: discs/)")
+    parser.add_argument(
+        "--elf", type=Path, action="append", default=[], help="check an already-extracted boot executable instead"
+    )
     args = parser.parse_args(argv[1:])
 
     missing = [script for script in GENERATORS if not (HERE / script).is_file()]
     if missing:
-        print("verify_manifests: SKIPPED - local Trailmap patch generators are unavailable: "
-              + ", ".join(missing))
+        print("verify_manifests: SKIPPED - local Trailmap patch generators are unavailable: " + ", ".join(missing))
         return 1 if args.elf else 0
 
     sources: list[tuple[str, bytes]] = []
@@ -162,18 +174,22 @@ def main(argv: list[str]) -> int:
             sources.append(found)
 
     if not sources:
-        print("verify_manifests: SKIPPED - no disc image under "
-              f"{args.discs.relative_to(REPO) if args.discs.is_relative_to(REPO) else args.discs}"
-              " and no --elf given.")
-        print("  The structural half of this guarantee still ran (specs/patch_hygiene.py); the "
-              "word-level half needs a copy of the game you own.")
+        print(
+            "verify_manifests: SKIPPED - no disc image under "
+            f"{args.discs.relative_to(REPO) if args.discs.is_relative_to(REPO) else args.discs}"
+            " and no --elf given."
+        )
+        print(
+            "  The structural half of this guarantee still ran (specs/patch_hygiene.py); the "
+            "word-level half needs a copy of the game you own."
+        )
         return 0
 
     tracked = {p.name for p in MANIFESTS.glob("*.json")}
     verified: set[str] = set()
-    attempted: set[str] = set()   # manifests a detected build was supposed to reproduce
-    hard_failures = 0             # tracking/generator drift: wrong no matter which copy ran
-    soft_sources = 0              # sources that did not reproduce everything (a modified copy looks like this)
+    attempted: set[str] = set()  # manifests a detected build was supposed to reproduce
+    hard_failures = 0  # tracking/generator drift: wrong no matter which copy ran
+    soft_sources = 0  # sources that did not reproduce everything (a modified copy looks like this)
 
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
@@ -190,11 +206,13 @@ def main(argv: list[str]) -> int:
             # manifest from the comparison, and the run would then report it as "no disc" and
             # exit 0 -- the whole failure this check exists to prevent, reachable by editing a
             # dict. A tracked manifest no generator claims is an error below.
-            required = {p.name[:-len(f".{target}.json")] for p in MANIFESTS.glob(f"*.{target}.json")}
+            required = {p.name[: -len(f".{target}.json")] for p in MANIFESTS.glob(f"*.{target}.json")}
             unclaimed = required - set(GENERATORS.values())
             for name in sorted(unclaimed):
-                print(f"    FAILED   {name}.{target}.json is tracked but no generator in GENERATORS "
-                      "produces it; it cannot be verified")
+                print(
+                    f"    FAILED   {name}.{target}.json is tracked but no generator in GENERATORS "
+                    "produces it; it cannot be verified"
+                )
                 hard_failures += 1
             required -= unclaimed
             attempted |= {f"{name}.{target}.json" for name in required}
@@ -223,8 +241,10 @@ def main(argv: list[str]) -> int:
                     hard_failures += 1
                     continue
                 if fresh_target != target:
-                    print(f"    MISMATCH {name}.{target}.json: the generator emitted a manifest for "
-                          f"{fresh_target!r}, not this build")
+                    print(
+                        f"    MISMATCH {name}.{target}.json: the generator emitted a manifest for "
+                        f"{fresh_target!r}, not this build"
+                    )
                     source_clean = False
                 elif compare(name, target, path):
                     verified.add(f"{name}.{target}.json")
@@ -244,11 +264,15 @@ def main(argv: list[str]) -> int:
     if no_disc:
         print("  not reached (no disc for these builds): " + ", ".join(no_disc))
     if broken:
-        print("  FAILED to reproduce (a copy of these builds WAS present, and none of them "
-              "reproduced these): " + ", ".join(broken))
+        print(
+            "  FAILED to reproduce (a copy of these builds WAS present, and none of them "
+            "reproduced these): " + ", ".join(broken)
+        )
     elif soft_sources and not hard_failures:
-        print(f"  note: {soft_sources} source(s) did not reproduce every manifest -- expected for "
-              "patched or repacked copies, and harmless because every tracked manifest verified")
+        print(
+            f"  note: {soft_sources} source(s) did not reproduce every manifest -- expected for "
+            "patched or repacked copies, and harmless because every tracked manifest verified"
+        )
     if hard_failures or broken:
         print(f"\nverify_manifests: {hard_failures + len(broken)} problem(s)", file=sys.stderr)
         return 1

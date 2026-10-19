@@ -194,9 +194,7 @@ RECORD_OFFSET = re.compile(r"\brecord\s*(?:->|\+)\s*0x[0-9A-Fa-f]{1,4}\b", re.IG
 GENERIC_OFFSET = re.compile(r"\+0x[0-9A-Fa-f]{1,4}\b", re.IGNORECASE)
 NATIVE_CLASS = re.compile(r"\bc[A-Z][A-Za-z0-9_]{3,}\b")
 NATIVE_METADATA = re.compile(r"\b(?:vtable|RTTI)\b", re.IGNORECASE)
-DIRTY_KEY = re.compile(
-    r"\b(?:db:[A-Za-z0-9_-]+|map:\s*\"|spec:[0-9]{3}-[A-Za-z0-9_-]+)"
-)
+DIRTY_KEY = re.compile(r"\b(?:db:[A-Za-z0-9_-]+|map:\s*\"|spec:[0-9]{3}-[A-Za-z0-9_-]+)")
 DIRTY_PATH = re.compile(
     r"(?:analysis\.sqlite|(?:Trailmap[/\\])?research[/\\]elf-map\.md|"
     r"Trailmap[/\\](?:research|extracted)[/\\])",
@@ -525,10 +523,7 @@ def _matches_for_line(line: str, zone: str) -> Iterator[tuple[str, str]]:
             re.IGNORECASE,
         )
         source_literal_looks_operational = zone != "source" or comment_or_prose or address_context
-        if (
-            match.group(0).startswith("@")
-            or (0x00100000 <= value <= 0x003FFFFF and source_literal_looks_operational)
-        ):
+        if match.group(0).startswith("@") or (0x00100000 <= value <= 0x003FFFFF and source_literal_looks_operational):
             yield "runtime-address", match.group(0)
 
     pattern_rules = (
@@ -643,7 +638,7 @@ def _scan_config_listings(path: str, lines: list[str], zone: str) -> list[Findin
             bool(CONFIG_ASSIGNMENT.fullmatch(payload)) and _is_comment_or_prose(lines[index], zone)
             for index, payload in run
         )
-        context = "\n".join(lines[max(0, start - 3):min(len(lines), end + 4)])
+        context = "\n".join(lines[max(0, start - 3) : min(len(lines), end + 4)])
         hinted = path_is_config or bool(CONFIG_FORMAT_HINT.search(context))
 
         # A section plus an assignment is a recognizable config block. A compact
@@ -712,16 +707,18 @@ def _scan_generated_claims(path: str, lines: list[str], tracked: set[str]) -> li
         # preceding line when wrapping left the claim itself pathless.
         claim = USER_COPY_CLAIM.search(line)
         assert claim is not None
-        before_claim = line[:claim.start()]
+        before_claim = line[: claim.start()]
         current_has_subject_path = bool(FILE_TOKEN.search(before_claim))
-        context = before_claim if current_has_subject_path else " ".join(
-            part.strip() for part in lines[max(0, index - 1):index + 1]
+        context = (
+            before_claim
+            if current_has_subject_path
+            else " ".join(part.strip() for part in lines[max(0, index - 1) : index + 1])
         )
         if not current_has_subject_path:
             # A same-line path after the claim is only its subject in an explicit
             # `generated from ...: path` form; ordinary links after the sentence
             # describe tooling or evidence rather than the generated artifact.
-            suffix = line[claim.end():]
+            suffix = line[claim.end() :]
             context = suffix if re.match(r"\s*:\s*", suffix) else lines[index - 1] if index else ""
         for match in FILE_TOKEN.finditer(context):
             token = match.group(1) or match.group(2)
@@ -746,9 +743,7 @@ def _scan_review_structures(path: str, text: str, tracked: set[str]) -> list[Fin
                 continue
             allowance = _allowance(line)
             if allowance is None or (allowance[0] != "*" and allowance[0] not in RULES):
-                invalid_allowances.append(
-                    _finding(path, line_no, line, "invalid-allow", "repo-hygiene: allow")
-                )
+                invalid_allowances.append(_finding(path, line_no, line, "invalid-allow", "repo-hygiene: allow"))
     return [
         *invalid_allowances,
         *_scan_config_listings(path, lines, zone),
@@ -823,8 +818,7 @@ def _scan_dependency_notice_policy(files: dict[str, str]) -> list[Finding]:
         return []
     if package_path not in files or notice_path not in files:
         missing = package_path if package_path not in files else notice_path
-        return [_finding(notice_path, 1, f"cannot compare without {missing}",
-                         "dependency-notice-manifest", missing)]
+        return [_finding(notice_path, 1, f"cannot compare without {missing}", "dependency-notice-manifest", missing)]
     try:
         manifest = json.loads(files[package_path])
     except json.JSONDecodeError as exc:
@@ -843,8 +837,7 @@ def _scan_dependency_notice_policy(files: dict[str, str]) -> list[Finding]:
             continue
         category, name, _license = match.groups()
         if name in categories[category]:
-            findings.append(_finding(notice_path, line_number, line,
-                                     "dependency-notice-manifest", f"duplicate {name}"))
+            findings.append(_finding(notice_path, line_number, line, "dependency-notice-manifest", f"duplicate {name}"))
         categories[category][name] = line_number
 
     runtime = set(manifest.get("dependencies", {}))
@@ -853,24 +846,47 @@ def _scan_dependency_notice_policy(files: dict[str, str]) -> list[Finding]:
     classified_development = set(categories["development-only"])
 
     for name in sorted(runtime - classified_runtime):
-        findings.append(_finding(notice_path, 1, "runtime dependency is unclassified",
-                                 "dependency-notice-manifest", name))
+        findings.append(
+            _finding(notice_path, 1, "runtime dependency is unclassified", "dependency-notice-manifest", name)
+        )
     for name in sorted(classified_runtime - runtime):
         category = "runtime-browser" if name in categories["runtime-browser"] else "runtime-server"
         line_number = categories[category][name]
-        findings.append(_finding(notice_path, line_number, notice_lines[line_number - 1],
-                                 "dependency-notice-manifest", f"stale runtime {name}"))
+        findings.append(
+            _finding(
+                notice_path,
+                line_number,
+                notice_lines[line_number - 1],
+                "dependency-notice-manifest",
+                f"stale runtime {name}",
+            )
+        )
     for name in sorted(development - classified_development):
-        findings.append(_finding(notice_path, 1, "development dependency is unclassified",
-                                 "dependency-notice-manifest", name))
+        findings.append(
+            _finding(notice_path, 1, "development dependency is unclassified", "dependency-notice-manifest", name)
+        )
     for name in sorted(classified_development - development):
         line_number = categories["development-only"][name]
-        findings.append(_finding(notice_path, line_number, notice_lines[line_number - 1],
-                                 "dependency-notice-manifest", f"stale development {name}"))
+        findings.append(
+            _finding(
+                notice_path,
+                line_number,
+                notice_lines[line_number - 1],
+                "dependency-notice-manifest",
+                f"stale development {name}",
+            )
+        )
     for name in sorted(classified_development & runtime):
         line_number = categories["development-only"][name]
-        findings.append(_finding(notice_path, line_number, notice_lines[line_number - 1],
-                                 "dependency-notice-manifest", f"runtime marked development-only {name}"))
+        findings.append(
+            _finding(
+                notice_path,
+                line_number,
+                notice_lines[line_number - 1],
+                "dependency-notice-manifest",
+                f"runtime marked development-only {name}",
+            )
+        )
     return findings
 
 
@@ -958,11 +974,13 @@ def scan_repo(root: Path = ROOT, paths: Iterable[str] | None = None) -> list[Fin
         if "\0" in text:
             continue
         files[path] = text
-    return _attach_ids([
-        *scan_contents(files, all_paths),
-        *scan_binaries(all_paths),
-        *scan_unclassified(all_paths),
-    ])
+    return _attach_ids(
+        [
+            *scan_contents(files, all_paths),
+            *scan_binaries(all_paths),
+            *scan_unclassified(all_paths),
+        ]
+    )
 
 
 def baseline_document(findings: Iterable[Finding]) -> dict:
@@ -970,8 +988,7 @@ def baseline_document(findings: Iterable[Finding]) -> dict:
         "version": 1,
         "policy": "Known debt only; new findings and stale entries fail check.",
         "findings": {
-            finding.id: f"{finding.path} [{finding.rule}]"
-            for finding in sorted(findings, key=lambda f: f.id)
+            finding.id: f"{finding.path} [{finding.rule}]" for finding in sorted(findings, key=lambda f: f.id)
         },
     }
 
@@ -997,10 +1014,7 @@ def _summary(findings: Iterable[Finding]) -> str:
 
 
 def _print_finding(finding: Finding, prefix: str = "") -> None:
-    print(
-        f"{prefix}{finding.severity.upper()}: {finding.path}:{finding.line}: "
-        f"[{finding.rule}] {finding.match!r}"
-    )
+    print(f"{prefix}{finding.severity.upper()}: {finding.path}:{finding.line}: [{finding.rule}] {finding.match!r}")
     if finding.text:
         print(f"  {finding.text}")
     print(f"  Fix: {finding.remediation}.")
@@ -1040,10 +1054,7 @@ def cmd_check(findings: list[Finding], baseline_path: Path = BASELINE_PATH) -> i
         print("  Review the full report, then shrink the baseline with `npm run hygiene:baseline`.")
 
     if new_ids or stale_ids:
-        print(
-            f"\nFAIL: {len(new_ids)} new finding(s), {len(stale_ids)} resolved "
-            "baseline entry/entries."
-        )
+        print(f"\nFAIL: {len(new_ids)} new finding(s), {len(stale_ids)} resolved baseline entry/entries.")
         return 1
 
     print(f"PASS: baseline matches {len(findings)} known finding(s); no new leaks.")

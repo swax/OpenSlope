@@ -17,7 +17,7 @@ The recovered table's 200 known motion fields agree with the rounded ride
 contract; its 140 typed effect fields match the committed spray profile exactly.
 
 The inspection command is `openslope_import surface-spray <user-supplied.iso>`.
-`python tools/check-surface-spray-contract.py <user-supplied.iso>` reproduces the
+`python tools/contracts/check-surface-spray-contract.py <user-supplied.iso>` reproduces the
 comparison without modifying the input. Relocated original synthetic programs
 cover both register comparisons needed by initialization, every row, duplicates,
 ambiguity, unknown bytes, typed limits and immediate/mid-analysis cancellation.

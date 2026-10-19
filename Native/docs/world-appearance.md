@@ -76,7 +76,7 @@ full fog attenuation of additive clouds/sheets and alpha wakes. Run:
 
 ```powershell
 python Native/tests/appearance_test.py temp/native/Release/openslope_appearance_tests.exe temp/native/Release/openslope_render_tests.exe
-python tools/native-compare-sky.py <native-course> <existing-course>
+python tools/native/native-compare-sky.py <native-course> <existing-course>
 ```
 
 The output comparator ignores provenance comments and neutral labels; it checks

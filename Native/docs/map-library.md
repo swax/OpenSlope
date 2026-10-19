@@ -111,17 +111,17 @@ raw lightmaps, provenance, corrupt/truncated inputs, failed-import cleanup and e
 Native unit checks cover all RefPack forms and overlap, bounds, cancellation and custom-map discovery.
 
 For a local disc, use `openslope_import` to extract into a separate Maps root, then run
-`python tools/native-compare-maps.py <native-course> <reference-course>`. The comparator checks
+`python tools/native/native-compare-maps.py <native-course> <reference-course>`. The comparator checks
 patch metadata at float32 precision, controls within 0.01 raw cm (0.1 mm), exact decoded RGBA
 texture/lightmap pixels and provenance. PNG compression and JSON number spelling may differ.
 The independent double basis transform and the application alpha policy can differ from a reference
 exporter; any tolerance change or named texture exception must be explicit. The provenance notes
 record the current local GARI comparison. Defaults do not permit texture mismatches.
-Run `python tools/native-compare-props.py <native-course> <reference-course>` for the static-prop
+Run `python tools/native/native-compare-props.py <native-course> <reference-course>` for the static-prop
 contracts and expanded mesh triangles. The tool checks hierarchy, placements, visibility, flags,
 lighting and animation records, with explicit geometry tolerances. Deferred behavior/material
 fields and neutral material labels are excluded; it reads generated files only.
-Run `python tools/native-compare-paths.py <native-course> <reference-course>` for AIP/SOP output.
+Run `python tools/native/native-compare-paths.py <native-course> <reference-course>` for AIP/SOP output.
 Seeds, slots, attributes, DTF and event stations compare at recovered float32 precision; expanded
 displacements permit 0.01 raw cm. Reversed authored event intervals are preserved, not normalized.
 No reference output or retail fixture is tracked or packaged.
@@ -130,7 +130,7 @@ The Android APK and its JNI exports are build-checked. Document picker behavior,
 VR transitions, interruption, and controller behavior require a connected headset. A desktop
 extraction comparison does not establish that the headset UI or storage provider works.
 
-Run `python tools/native-compare-rails.py <native-course> <reference-course>` for
+Run `python tools/native/native-compare-rails.py <native-course> <reference-course>` for
 spline contracts, exact retained source geometry and declared float32 control bounds.
 Fresh-root imports add rails; existing course folders are still protected.
 

@@ -21,10 +21,16 @@ class RepoHygieneTests(unittest.TestCase):
         return repo_hygiene.scan_contents(files)
 
     def test_native_sources_and_build_inputs_are_scanned(self):
-        for path in ("Native/src/player.cpp", "Native/include/math.hpp", "Native/cmake/player.cmake",
-                     "Native/cmake/contract.hpp.in", "Native/shaders/terrain.vert",
-                     "Native/shaders/terrain.frag", "Native/android/app/build.gradle",
-                     "Native/android/app/src/main/java/LauncherActivity.java"):
+        for path in (
+            "Native/src/player.cpp",
+            "Native/include/math.hpp",
+            "Native/cmake/player.cmake",
+            "Native/cmake/contract.hpp.in",
+            "Native/shaders/terrain.vert",
+            "Native/shaders/terrain.frag",
+            "Native/android/app/build.gradle",
+            "Native/android/app/src/main/java/LauncherActivity.java",
+        ):
             self.assertEqual("source", repo_hygiene.classify(path), path)
         findings = self.scan({"Native/src/player.cpp": "// sub_00123456\n"})
         self.assertEqual(["native-symbol"], [finding.rule for finding in findings])
@@ -34,8 +40,11 @@ class RepoHygieneTests(unittest.TestCase):
             self.assertEqual("source", repo_hygiene.classify(path), path)
 
     def test_deployment_units_and_launcher_are_scanned(self):
-        for path in ("Slopesmith/deploy/slopesmith.slice", "Slopesmith/deploy/slopesmith.target",
-                     "Slopesmith/deploy/run-api"):
+        for path in (
+            "Slopesmith/deploy/slopesmith.slice",
+            "Slopesmith/deploy/slopesmith.target",
+            "Slopesmith/deploy/run-api",
+        ):
             self.assertEqual("source", repo_hygiene.classify(path), path)
         findings = self.scan({"Slopesmith/multiplayer/src/main.rs": "// sub_00123456\n"})
         self.assertEqual(["native-symbol"], [finding.rule for finding in findings])
@@ -50,9 +59,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual([], findings)
 
     def test_review_exceptions_are_validated_even_in_dirty_zones(self):
-        findings = self.scan(
-            {"Trailmap/research/note.md": "repo-hygiene: allow[not-a-rule] -- typo\n"}
-        )
+        findings = self.scan({"Trailmap/research/note.md": "repo-hygiene: allow[not-a-rule] -- typo\n"})
         self.assertEqual(["invalid-allow"], [finding.rule for finding in findings])
 
     def test_clean_source_reports_runtime_evidence_but_not_format_offsets(self):
@@ -112,29 +119,19 @@ class RepoHygieneTests(unittest.TestCase):
     def test_json_payload_is_not_treated_as_a_source_comment(self):
         findings = self.scan(
             {
-                "Slopesmith/fixtures/demo/props/mesh.json": json.dumps(
-                    {"encodedMesh": "AAAA//cNativeLookingPayload"}
-                ),
-                "Slopesmith/fixtures/demo/metadata.json": json.dumps(
-                    {"sourceExecutable": "SLES_505.45"}
-                ),
+                "Slopesmith/fixtures/demo/props/mesh.json": json.dumps({"encodedMesh": "AAAA//cNativeLookingPayload"}),
+                "Slopesmith/fixtures/demo/metadata.json": json.dumps({"sourceExecutable": "SLES_505.45"}),
             }
         )
         self.assertEqual(["boot-elf"], [finding.rule for finding in findings])
 
     def test_boot_elf_names_are_flagged_in_hyphenated_disc_serial_form(self):
-        findings = self.scan(
-            {"Slopesmith/docs/demo.md": "Tested against SLES-50545 and SLUS-20326.\n"}
-        )
+        findings = self.scan({"Slopesmith/docs/demo.md": "Tested against SLES-50545 and SLUS-20326.\n"})
         self.assertEqual(["boot-elf", "boot-elf"], [f.rule for f in findings])
 
     def test_an_interchange_target_executable_field_is_allowed_payload(self):
         findings = self.scan(
-            {
-                "Slopesmith/fixtures/effects-demo.json": json.dumps(
-                    {"target": {"executable": "SLES-50545"}}, indent=2
-                )
-            }
+            {"Slopesmith/fixtures/effects-demo.json": json.dumps({"target": {"executable": "SLES-50545"}}, indent=2)}
         )
         self.assertEqual([], findings)
 
@@ -144,9 +141,7 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual(before[0].id, after[0].id)
 
     def test_shaders_are_scanned_like_any_other_clean_consumer(self):
-        findings = self.scan(
-            {"Unity/VRC/Shaders/demo.shader": "// core colour at WorldConf +0x04\n"}
-        )
+        findings = self.scan({"Unity/VRC/Shaders/demo.shader": "// core colour at WorldConf +0x04\n"})
         self.assertEqual(["runtime-offset"], [finding.rule for finding in findings])
 
     def test_files_that_must_name_dirty_artifacts_govern_themselves(self):
@@ -162,19 +157,13 @@ class RepoHygieneTests(unittest.TestCase):
     def test_probable_config_listings_need_review_but_numeric_tables_do_not(self):
         findings = self.scan(
             {
-                "Slopesmith/docs/config.md": (
-                    "MUSIC.INF excerpt:\n"
-                    "[RIDER]\n"
-                    "LOOPDATA = \"retail-loop.bnk\"\n"
-                ),
+                "Slopesmith/docs/config.md": ('MUSIC.INF excerpt:\n[RIDER]\nLOOPDATA = "retail-loop.bnk"\n'),
                 "Slopesmith/src/constants.ts": (
-                    "const VALUES = [\n  [401, 99],\n  [361, 190],\n];\n"
-                    "const LIMIT = 127;\n"
+                    "const VALUES = [\n  [401, 99],\n  [361, 190],\n];\nconst LIMIT = 127;\n"
                 ),
                 "Unity/docs/field.md": "The format calls its field `LOOPDATA`; no value is reproduced.\n",
                 "Unity/docs/equations.md": (
-                    "The effect.txt reconstruction is:\n"
-                    "ac = min(a, 2.7)\ncurve = -0.73 * ac\nposition = spawn\n"
+                    "The effect.txt reconstruction is:\nac = min(a, 2.7)\ncurve = -0.73 * ac\nposition = spawn\n"
                 ),
             }
         )
@@ -183,14 +172,11 @@ class RepoHygieneTests(unittest.TestCase):
     def test_compact_config_quote_needs_a_format_hint_and_allows_review_exception(self):
         findings = self.scan(
             {
-                "Slopesmith/docs/quoted.md": (
-                    "The MUSIC.INF row is:\n"
-                    "> [RIDER] LOOPDATA = \"retail-loop.bnk\"\n"
-                ),
+                "Slopesmith/docs/quoted.md": ('The MUSIC.INF row is:\n> [RIDER] LOOPDATA = "retail-loop.bnk"\n'),
                 "Unity/docs/authored.md": (
                     "Authored tool fixture:\n"
                     "<!-- repo-hygiene: allow[config-listing] -- project-authored parser example -->\n"
-                    "[LOCAL]\nMODE = \"test\"\n"
+                    '[LOCAL]\nMODE = "test"\n'
                 ),
                 "Snowknife/docs/identifier.md": "`[RIDER] LOOPDATA` names two fields, not a copied row.\n",
             }
@@ -200,17 +186,14 @@ class RepoHygieneTests(unittest.TestCase):
     def test_inf_and_cfg_files_are_scanned_as_text(self):
         for path in ("Snowknife/fixtures/example.inf", "Unity/fixtures/example.cfg"):
             self.assertNotEqual("unclassified", repo_hygiene.classify(path))
-        findings = self.scan(
-            {"Snowknife/fixtures/example.inf": "[LOCAL]\nMODE = \"authored\"\n"}
-        )
+        findings = self.scan({"Snowknife/fixtures/example.inf": '[LOCAL]\nMODE = "authored"\n'})
         self.assertEqual(["config-listing"], [finding.rule for finding in findings])
 
     def test_multi_line_disassembly_needs_review_but_isolated_instruction_does_not(self):
         findings = self.scan(
             {
                 "Slopesmith/docs/listing.md": (
-                    "00123450: 27bdffe0 addiu sp, sp, -32\n"
-                    "00123454: afbf0018 sw ra, 24(sp)\n"
+                    "00123450: 27bdffe0 addiu sp, sp, -32\n00123454: afbf0018 sw ra, 24(sp)\n"
                 ),
                 "Unity/docs/authored.md": (
                     "<!-- repo-hygiene: allow[disassembly-listing] -- project-authored replacement -->\n"
@@ -238,10 +221,12 @@ class RepoHygieneTests(unittest.TestCase):
         )
 
     def test_dependency_notice_categories_match_package_json_both_directions(self):
-        package = json.dumps({
-            "dependencies": {"browser": "1", "shared": "1", "server": "1"},
-            "devDependencies": {"builder": "1"},
-        })
+        package = json.dumps(
+            {
+                "dependencies": {"browser": "1", "shared": "1", "server": "1"},
+                "devDependencies": {"builder": "1"},
+            }
+        )
         good_notice = (
             "    npm-runtime-browser: browser — MIT\n"
             "    npm-runtime-browser: shared — MIT\n"
@@ -249,23 +234,36 @@ class RepoHygieneTests(unittest.TestCase):
             "    npm-runtime-server: shared — MIT\n"
             "    npm-development-only: builder — MIT\n"
         )
-        self.assertEqual([], self.scan({
-            "Slopesmith/package.json": package,
-            "Slopesmith/NOTICE": good_notice,
-        }))
+        self.assertEqual(
+            [],
+            self.scan(
+                {
+                    "Slopesmith/package.json": package,
+                    "Slopesmith/NOTICE": good_notice,
+                }
+            ),
+        )
 
         bad_notice = (
             "    npm-runtime-browser: browser — MIT\n"
             "    npm-runtime-server: stale — MIT\n"
             "    npm-development-only: shared — MIT\n"
         )
-        findings = self.scan({
-            "Slopesmith/package.json": package,
-            "Slopesmith/NOTICE": bad_notice,
-        })
+        findings = self.scan(
+            {
+                "Slopesmith/package.json": package,
+                "Slopesmith/NOTICE": bad_notice,
+            }
+        )
         self.assertEqual(
-            {"shared", "server", "stale runtime stale", "builder", "stale development shared",
-             "runtime marked development-only shared"},
+            {
+                "shared",
+                "server",
+                "stale runtime stale",
+                "builder",
+                "stale development shared",
+                "runtime marked development-only shared",
+            },
             {finding.match for finding in findings if finding.rule == "dependency-notice-manifest"},
         )
 
@@ -280,8 +278,11 @@ class RepoHygieneTests(unittest.TestCase):
                 ["media/kept.png", "media/undeclared.glb", "media/undeclared.webp", "README.md"], manifest
             )
         self.assertEqual(
-            {("media/undeclared.glb", "binary-provenance"), ("media/undeclared.webp", "binary-provenance"),
-             ("media/gone.png", "binary-provenance-stale")},
+            {
+                ("media/undeclared.glb", "binary-provenance"),
+                ("media/undeclared.webp", "binary-provenance"),
+                ("media/gone.png", "binary-provenance-stale"),
+            },
             {(finding.path, finding.rule) for finding in findings},
         )
 
@@ -305,8 +306,16 @@ class RepoHygieneTests(unittest.TestCase):
         self.assertEqual("binary", repo_hygiene.classify("Trailmap/research/shot.png"))
 
     def test_git_metadata_and_submodules_do_not_trip_the_type_gate(self):
-        for path in (".gitattributes", ".gitmodules", ".gitignore", "Snowknife/SSX-Library", "Slopesmith/.nvmrc",
-                     "Native/.clang-format", ".git-blame-ignore-revs", "Slopesmith/.prettierignore"):
+        for path in (
+            ".gitattributes",
+            ".gitmodules",
+            ".gitignore",
+            "Snowknife/SSX-Library",
+            "Slopesmith/.nvmrc",
+            "Native/.clang-format",
+            ".git-blame-ignore-revs",
+            "Slopesmith/.prettierignore",
+        ):
             self.assertNotEqual("unclassified", repo_hygiene.classify(path), path)
         self.assertEqual([], repo_hygiene.scan_unclassified([".gitattributes", "Snowknife/SSX-Library"]))
 

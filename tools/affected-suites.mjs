@@ -19,9 +19,21 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 
 /** A path is in when any listed prefix or exact name matches it. */
 const SNOWKNIFE = {
-  prefixes: ['Snowknife/Snowknife/', 'Snowknife/Snowknife.Tests/', 'Snowknife/tools/', 'Contracts/', '.github/workflows/'],
-  exact: ['Snowknife/SSX-Library', '.gitmodules', 'package.json', 'package-lock.json',
-    'tools/snowknife-tests.mjs', 'tools/affected-suites.mjs'],
+  prefixes: [
+    'Snowknife/Snowknife/',
+    'Snowknife/Snowknife.Tests/',
+    'Snowknife/tools/',
+    'Contracts/',
+    '.github/workflows/',
+  ],
+  exact: [
+    'Snowknife/SSX-Library',
+    '.gitmodules',
+    'package.json',
+    'package-lock.json',
+    'tools/snowknife-tests.mjs',
+    'tools/affected-suites.mjs',
+  ],
 };
 const SLOPESMITH = {
   prefixes: ['Slopesmith/', 'Contracts/', '.github/workflows/'],
@@ -33,8 +45,7 @@ const SLOPESMITH_PROSE = {
   exact: ['Slopesmith/README.md', 'Slopesmith/LICENSE', 'Slopesmith/NOTICE'],
 };
 
-const matches = (path, rule) =>
-  rule.prefixes.some(prefix => path.startsWith(prefix)) || rule.exact.includes(path);
+const matches = (path, rule) => rule.prefixes.some(prefix => path.startsWith(prefix)) || rule.exact.includes(path);
 
 /** @param {string[]} changed repository-relative paths with forward slashes, as `git diff --name-only` prints them */
 export function affectedSuites(changed) {
@@ -48,8 +59,11 @@ export const EVERY_SUITE = Object.freeze({ snowknife: true, slopesmith: true });
 
 /** The paths `git diff --name-only <diffArgs>` reports. Throws when git cannot resolve the commits. */
 export function changedPaths(diffArgs) {
-  const result = spawnSync('git', ['diff', '--name-only', '-z', ...diffArgs],
-    { cwd: root, encoding: 'utf8', windowsHide: true });
+  const result = spawnSync('git', ['diff', '--name-only', '-z', ...diffArgs], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
   if (result.status !== 0) throw new Error(`git diff ${diffArgs.join(' ')} failed:\n${result.stderr}`);
   return result.stdout.split('\0').filter(Boolean);
 }

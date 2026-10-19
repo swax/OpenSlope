@@ -77,7 +77,8 @@ def check_manifest(path: Path) -> list[str]:
                 if got != BREAK:
                     problems.append(
                         f"{where}: graft window byte {i} publishes 0x{got:08x}, not `break` -- "
-                        "a displaced instruction may have been written into the manifest")
+                        "a displaced instruction may have been written into the manifest"
+                    )
 
         for i, word in words(blob):
             if word == BREAK and i not in covered:
@@ -102,11 +103,7 @@ def main(argv: list[str]) -> int:
         for problem in problems:
             print(f"{path.name}: {problem}", file=sys.stderr)
 
-    grafted = sum(
-        len(r.get("graft", []))
-        for p in manifests
-        for r in json.loads(p.read_text()).get("regions", [])
-    )
+    grafted = sum(len(r.get("graft", [])) for p in manifests for r in json.loads(p.read_text()).get("regions", []))
     if total:
         print(f"\npatch_hygiene: {total} problem(s) across {len(manifests)} manifest(s)", file=sys.stderr)
         return 1

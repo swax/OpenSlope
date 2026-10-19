@@ -76,7 +76,7 @@ geometry, alongside the existing
 269-frame charged-jump/spin/landing replay. Quest APK, test APK, lint and signature
 checks run without a headset; instrumentation execution still requires a device.
 
-`tools/native-compare-collision.py` compares generated instance joins at float32
+`tools/native/native-compare-collision.py` compares generated instance joins at float32
 precision, expanded collision corners within 0.001 raw cm, face normals within
 1e-6, all physics payloads/encoded masks and local bounds directly against source
 PBD records. It reads comparison data only, never another decoder implementation.

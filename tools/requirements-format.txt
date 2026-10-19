@@ -1,0 +1,2 @@
+# Optional development dependency; publication checks use only the standard library.
+ruff==0.14.14

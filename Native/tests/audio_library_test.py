@@ -34,7 +34,7 @@ def main():
         assert abs(frequency(data,.2,.6)-550)<5,'Existing course bank or its surface routing was not found'
         # Actual public API export, including canonical prop geometry and custom WAVs.
         exported=base/'Exported';repository=Path(__file__).resolve().parents[2]
-        p=subprocess.run(['node','--import','tsx',str(repository/'tools/authored-audio-export-fixture.mts'),str(exported)],cwd=repository/'Slopesmith',capture_output=True,text=True,timeout=60)
+        p=subprocess.run(['node','--import','tsx',str(repository/'tools/native/authored-audio-export-fixture.mts'),str(exported)],cwd=repository/'Slopesmith',capture_output=True,text=True,timeout=60)
         assert p.returncode==0,p.stdout+p.stderr
         shutil.copy2(root/'Patches.json',exported/'Patches.json')
         canonical=json.loads((exported/'Instances.json').read_text());write(exported/'Instances.json',dict(Instances=[]))

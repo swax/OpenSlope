@@ -37,7 +37,7 @@ def main():
     repository = Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix='openslope-audio-settings-') as temporary:
         base = Path(temporary); root = base / 'A'; second = base / 'B'; flat = base / 'Flat'
-        call(['node', '--import', 'tsx', repository / 'tools/authored-audio-export-fixture.mts', root], repository / 'Slopesmith')
+        call(['node', '--import', 'tsx', repository / 'tools/native/authored-audio-export-fixture.mts', root], repository / 'Slopesmith')
         fixture(flat, mass=0, draw=False)
         shutil.copy2(flat / 'Patches.json', root / 'Patches.json')
         # Keep the helper floor outside the live map library.

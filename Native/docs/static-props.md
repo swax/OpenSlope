@@ -122,7 +122,7 @@ cutouts, translucency, HDR lighting and rotated placements on UNORM/sRGB targets
 The authored Android fixture includes shared models, visibility and mesh copying;
 the test APK builds, but its instrumentation requires a connected device.
 
-`tools/native-compare-props.py` reads generated files only. It checks counts, names,
+`tools/native/native-compare-props.py` reads generated files only. It checks counts, names,
 visibility, material flags/texture references, hierarchy, transforms and animation
 records; source locations, lighting and animation scalars must recover identical float32 bytes.
 Expanded ordered triangles must preserve winding, UVs and normals. Position

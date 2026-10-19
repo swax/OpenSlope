@@ -56,40 +56,33 @@ GRAFT = [{"at": 8, "fromFileOffset": 0x40, "length": 4}]
 
 
 def run() -> int:
-    check(problems_for([region([0x11111111, 0x22222222, BREAK], GRAFT)]) == [],
-          "a well-formed grafted region passes")
+    check(problems_for([region([0x11111111, 0x22222222, BREAK], GRAFT)]) == [], "a well-formed grafted region passes")
 
-    check(problems_for([region([0x11111111, 0x22222222])]) == [],
-          "a region with no graft and no break passes")
+    check(problems_for([region([0x11111111, 0x22222222])]) == [], "a region with no graft and no break passes")
 
     # The regression this whole check exists for: a displaced retail instruction written into
     # the window instead of a copy directive.
-    found = problems_for([region([0x11111111, 0x22222222, 0x24020001], GRAFT)])   # any word but `break`
-    check(any("not `break`" in p for p in found),
-          "a real instruction inside a graft window is caught")
+    found = problems_for([region([0x11111111, 0x22222222, 0x24020001], GRAFT)])  # any word but `break`
+    check(any("not `break`" in p for p in found), "a real instruction inside a graft window is caught")
 
     # Half a change: the placeholder is there but nothing declares it, so apply never fills it.
     found = problems_for([region([0x11111111, 0x22222222, BREAK])])
-    check(any("outside every graft window" in p for p in found),
-          "a break with no graft covering it is caught")
+    check(any("outside every graft window" in p for p in found), "a break with no graft covering it is caught")
 
     found = problems_for([region([0x11111111, BREAK], [{"at": 4, "fromFileOffset": 0x40, "length": 8}])])
-    check(any("outside its" in p for p in found),
-          "a graft window running past the payload is caught")
+    check(any("outside its" in p for p in found), "a graft window running past the payload is caught")
 
     found = problems_for([region([0x11111111, 0x22222222, BREAK], GRAFT)], version=2)
-    check(any("does not define" in p for p in found),
-          "a graft in formatVersion 2 is caught")
+    check(any("does not define" in p for p in found), "a graft in formatVersion 2 is caught")
 
     found = problems_for([region([0x11111111, 0x22222222, BREAK], GRAFT)], version=9)
-    check(any("outside the supported" in p for p in found),
-          "an unknown formatVersion is caught")
+    check(any("outside the supported" in p for p in found), "an unknown formatVersion is caught")
 
     # Inside the payload, so it gets past the bounds check and reaches the alignment one.
-    found = problems_for([region([0x11111111, BREAK, 0x33333333, 0x44444444],
-                                 [{"at": 6, "fromFileOffset": 0x40, "length": 4}])])
-    check(any("not instruction-aligned" in p for p in found),
-          "an unaligned graft window is caught")
+    found = problems_for(
+        [region([0x11111111, BREAK, 0x33333333, 0x44444444], [{"at": 6, "fromFileOffset": 0x40, "length": 4}])]
+    )
+    check(any("not instruction-aligned" in p for p in found), "an unaligned graft window is caught")
 
     print()
     if FAILURES:

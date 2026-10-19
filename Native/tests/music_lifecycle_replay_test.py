@@ -46,7 +46,7 @@ def main():
         flat = base / 'flat'
         fixture(flat, mass=0)
         root = base / 'Exported'
-        result = subprocess.run(['node', '--import', 'tsx', str(repository / 'tools/authored-audio-export-fixture.mts'),
+        result = subprocess.run(['node', '--import', 'tsx', str(repository / 'tools/native/authored-audio-export-fixture.mts'),
                                  str(root), '--music'], cwd=repository / 'Slopesmith',
                                 capture_output=True, text=True, timeout=60)
         assert result.returncode == 0, result.stdout + result.stderr

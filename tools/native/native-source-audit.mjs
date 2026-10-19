@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = fileURLToPath(new URL('..', import.meta.url));
+const root = fileURLToPath(new URL('../..', import.meta.url));
 const forbidden = [
   /ssx[\s_-]*library/i,
   /snowknife/i,
@@ -25,7 +25,11 @@ export function auditNativeSources(files) {
 export function checkNativeSourceBoundary() {
   // Git's ignore rules exclude SDKs, generated headers, build trees and APKs.
   // Include new source files before they have been staged as well as tracked files.
-  const result = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'Native/'], { cwd: root, encoding: 'utf8', windowsHide: true });
+  const result = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'Native/'], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
   if (result.error || result.status !== 0) throw result.error ?? new Error(result.stderr);
   const paths = [...new Set(result.stdout.split('\0').filter(path => path && existsSync(resolve(root, path))))];
   const files = Object.fromEntries(paths.map(path => [path, readFileSync(resolve(root, path), 'utf8')]));

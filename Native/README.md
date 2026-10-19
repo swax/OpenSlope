@@ -317,9 +317,9 @@ for ARM64 Android; current measurements and device verification limits are recor
 ```powershell
 ./temp/native-core/Release/openslope_import.exe list "discs/SSX Tricky (USA).iso"
 ./temp/native-core/Release/openslope_import.exe extract "discs/SSX Tricky (USA).iso" GARI temp/native-import/Maps
-python tools/native-compare-maps.py temp/native-import/Maps/GARI Maps/GARI --point-tolerance-cm 0.1 --allow-texture-difference 0083.png --allow-texture-difference 0108.png
-python tools/native-compare-props.py temp/native-import/Maps/GARI Maps/GARI
-python tools/native-compare-paths.py temp/native-import/Maps/GARI Maps/GARI
+python tools/native/native-compare-maps.py temp/native-import/Maps/GARI Maps/GARI --point-tolerance-cm 0.1 --allow-texture-difference 0083.png --allow-texture-difference 0108.png
+python tools/native/native-compare-props.py temp/native-import/Maps/GARI Maps/GARI
+python tools/native/native-compare-paths.py temp/native-import/Maps/GARI Maps/GARI
 ```
 
 The comparison checks the implemented canonical stages against an existing reference map,

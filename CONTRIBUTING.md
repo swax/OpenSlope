@@ -88,6 +88,9 @@ git submodule update --init
 npm ci --prefix Slopesmith
 ```
 
+The [repository tools guide](tools/README.md) describes the shared scripts, their
+folder layout, and the `npm run format:tools` / `npm run format:tools:check` commands.
+
 Before submitting a change, run the complete gate from the repository root:
 
 ```text

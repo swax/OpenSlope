@@ -100,7 +100,11 @@ async fn main() -> Result<(), Error> {
                 let state = state.clone();
                 tokio::spawn(async move {
                     let service = service_fn(move |request| handle(request, state.clone()));
-                    let connection = hyper::server::conn::http1::Builder::new().serve_connection(TokioIo::new(stream), service).with_upgrades();
+                    // A bounded HTTP connection must not stay reusable in the Node client's pool.
+                    let connection = hyper::server::conn::http1::Builder::new()
+                        .keep_alive(false)
+                        .serve_connection(TokioIo::new(stream), service)
+                        .with_upgrades();
                     let _ = tokio::time::timeout(Duration::from_secs(10), connection).await;
                     drop(slot);
                 });

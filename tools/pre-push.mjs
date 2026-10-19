@@ -34,12 +34,14 @@ if (!suites) process.exit(0);
 const steps = [
   ['Repository hygiene gate', `"${pythonCommand()}" tools/hygiene.py`],
   ...(suites.snowknife ? [['Snowknife fast suite', 'node tools/snowknife-tests.mjs']] : []),
-  ...(suites.slopesmith ? [
-    ['Rust multiplayer unit tests and generated contracts', 'npm --prefix Slopesmith run multiplayer:unit'],
-    ['Slopesmith type-check', 'npm --prefix Slopesmith run typecheck'],
-    ['Slopesmith lint', 'npm --prefix Slopesmith run lint'],
-    ['Slopesmith fast tier', 'npm --prefix Slopesmith run test:fast'],
-  ] : []),
+  ...(suites.slopesmith
+    ? [
+        ['Rust multiplayer unit tests and generated contracts', 'npm --prefix Slopesmith run multiplayer:unit'],
+        ['Slopesmith type-check', 'npm --prefix Slopesmith run typecheck'],
+        ['Slopesmith lint', 'npm --prefix Slopesmith run lint'],
+        ['Slopesmith fast tier', 'npm --prefix Slopesmith run test:fast'],
+      ]
+    : []),
 ];
 
 if (suites.slopesmith && !existsSync(join(root, 'Slopesmith', 'node_modules'))) {
@@ -48,15 +50,19 @@ if (suites.slopesmith && !existsSync(join(root, 'Slopesmith', 'node_modules'))) 
   process.exit(1);
 }
 
-console.log(`pre-push: ${steps.map(([label]) => label).join(', ')}`
-  + ` (snowknife=${suites.snowknife}, slopesmith=${suites.slopesmith})`);
+console.log(
+  `pre-push: ${steps.map(([label]) => label).join(', ')}` +
+    ` (snowknife=${suites.snowknife}, slopesmith=${suites.slopesmith})`,
+);
 const started = Date.now();
 for (const [label, command] of steps) {
   console.log(`\n=== ${label} ===`);
   // A fixed command string through the shell: npm is `npm.cmd` on Windows, and spawn refuses .cmd without one.
   const result = spawnSync(command, { cwd: root, stdio: 'inherit', shell: true, windowsHide: true });
   if (result.status !== 0) {
-    console.error(`\npre-push: ${label} failed${result.error ? ` (${result.error.message})` : ''}; nothing was pushed.`);
+    console.error(
+      `\npre-push: ${label} failed${result.error ? ` (${result.error.message})` : ''}; nothing was pushed.`,
+    );
     console.error('          Fix it, or skip once with OPENSLOPE_SKIP_PREPUSH=1 git push (or git push --no-verify).');
     process.exit(result.status ?? 1);
   }
@@ -70,27 +76,37 @@ console.log(`\npre-push: PASS (${((Date.now() - started) / 1000).toFixed(0)}s)`)
  */
 function selectSuites() {
   const at = process.argv.indexOf('--range');
-  const pairs = at >= 0
-    ? [[process.argv[at + 1], process.argv[at + 2]]]
-    : readStdin().split('\n').map(line => line.trim().split(/\s+/)).filter(([, local]) => local)
-      .filter(([, local]) => !/^0+$/.test(local))   // deleting a remote ref pushes no commits
-      .map(([, local, , remote]) => [remote, local]);
+  const pairs =
+    at >= 0
+      ? [[process.argv[at + 1], process.argv[at + 2]]]
+      : readStdin()
+          .split('\n')
+          .map(line => line.trim().split(/\s+/))
+          .filter(([, local]) => local)
+          .filter(([, local]) => !/^0+$/.test(local)) // deleting a remote ref pushes no commits
+          .map(([, local, , remote]) => [remote, local]);
   if (pairs.length === 0) return null;
 
   try {
     const changed = new Set();
     for (const [base, head] of pairs) {
-      if (!base || /^0+$/.test(base)) return EVERY_SUITE;   // a new remote ref: no base to diff against
+      if (!base || /^0+$/.test(base)) return EVERY_SUITE; // a new remote ref: no base to diff against
       for (const path of changedPaths([base, head])) changed.add(path);
     }
     return affectedSuites([...changed]);
   } catch (error) {
     // Typically the remote's tip is not fetched locally. The safe reading of "unknown" is "everything".
-    console.log(`pre-push: could not diff against the remote (${String(error.message).split('\n')[0]}); running every suite.`);
+    console.log(
+      `pre-push: could not diff against the remote (${String(error.message).split('\n')[0]}); running every suite.`,
+    );
     return EVERY_SUITE;
   }
 }
 
 function readStdin() {
-  try { return readFileSync(0, 'utf8'); } catch { return ''; }
+  try {
+    return readFileSync(0, 'utf8');
+  } catch {
+    return '';
+  }
 }

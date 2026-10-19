@@ -23,22 +23,31 @@ let coverageReportFailure = null;
 // report" is whatever a previous run happened to leave behind.
 if (existsSync(resultsDir)) rmSync(resultsDir, { recursive: true, force: true });
 
-const result = spawnSync('dotnet', [
-  'test', 'Snowknife/Snowknife.Tests/Snowknife.Tests.csproj',
-  '-c', 'Debug',
-  '-m:1',
-  ...(!full ? ['--filter', 'Category!=EndToEnd'] : []),
-  '--logger', 'console;verbosity=normal',
-  '--logger', 'trx;LogFileName=snowknife.trx',
-  '--collect:XPlat Code Coverage',
-  '--results-directory', 'TestResults',
-], {
-  cwd: root,
-  env: process.env,
-  stdio: 'inherit',
-  timeout: full ? 30 * 60_000 : 5 * 60_000,
-  windowsHide: true,
-});
+const result = spawnSync(
+  'dotnet',
+  [
+    'test',
+    'Snowknife/Snowknife.Tests/Snowknife.Tests.csproj',
+    '-c',
+    'Debug',
+    '-m:1',
+    ...(!full ? ['--filter', 'Category!=EndToEnd'] : []),
+    '--logger',
+    'console;verbosity=normal',
+    '--logger',
+    'trx;LogFileName=snowknife.trx',
+    '--collect:XPlat Code Coverage',
+    '--results-directory',
+    'TestResults',
+  ],
+  {
+    cwd: root,
+    env: process.env,
+    stdio: 'inherit',
+    timeout: full ? 30 * 60_000 : 5 * 60_000,
+    windowsHide: true,
+  },
+);
 
 report();
 
@@ -56,8 +65,7 @@ process.exit(result.status ?? 1);
 function report() {
   const markdown = [`## Snowknife tests${full ? '' : ' (fast tier)'}`, '', ...tally(), '', ...coverage()].join('\n');
   console.log(`\n${markdown}`);
-  if (process.env.GITHUB_STEP_SUMMARY)
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n\n`, 'utf8');
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n\n`, 'utf8');
 }
 
 /** Outcome counts and, when tests skipped, the reasons they gave. */
@@ -130,7 +138,7 @@ function coverage() {
 
   for (const [, filename, body] of snowknife.matchAll(/<class\b[^>]*filename="([^"]+)"([\s\S]*?)<\/class>/g)) {
     let seen = files.get(filename);
-    if (!seen) files.set(filename, seen = new Map());
+    if (!seen) files.set(filename, (seen = new Map()));
     for (const [, line, hits] of body.matchAll(/<line number="(\d+)" hits="(\d+)"/g))
       seen.set(Number(line), (seen.get(Number(line)) ?? false) || Number(hits) > 0);
   }
@@ -149,16 +157,21 @@ function coverage() {
     for (const hit of lines.values()) {
       bucket.total++;
       total++;
-      if (hit) { bucket.covered++; covered++; }
+      if (hit) {
+        bucket.covered++;
+        covered++;
+      }
     }
     folders.set(folder, bucket);
   }
 
-  const pct = ({ covered: c, total: t }) => (t === 0 ? '-' : `${(c / t * 100).toFixed(1)}%`);
+  const pct = ({ covered: c, total: t }) => (t === 0 ? '-' : `${((c / t) * 100).toFixed(1)}%`);
   const rows = [...folders]
     .sort((a, b) => b[1].total - a[1].total)
-    .map(([folder, bucket]) =>
-      `| ${folder} | ${bucket.covered.toLocaleString('en-US')} | ${bucket.total.toLocaleString('en-US')} | ${pct(bucket)} |`);
+    .map(
+      ([folder, bucket]) =>
+        `| ${folder} | ${bucket.covered.toLocaleString('en-US')} | ${bucket.total.toLocaleString('en-US')} | ${pct(bucket)} |`,
+    );
 
   return [
     `### Line coverage${full ? '' : ' — fast tier only'}`,
@@ -170,18 +183,20 @@ function coverage() {
     '',
     full
       ? '_Both tiers. Scope: the `snowknife` assembly; the SSX-Library submodule is measured separately and excluded here._'
-      : '_This coverage is informational; CI does not enforce a minimum. The disc-backed category is explicitly '
-        + 'filtered from this run. The full tier '
-        + '(`npm run verify:full`) reaches considerably higher. Scope: the `snowknife` assembly; the '
-        + 'SSX-Library submodule is measured separately and excluded here._',
+      : '_This coverage is informational; CI does not enforce a minimum. The disc-backed category is explicitly ' +
+        'filtered from this run. The full tier ' +
+        '(`npm run verify:full`) reaches considerably higher. Scope: the `snowknife` assembly; the ' +
+        'SSX-Library submodule is measured separately and excluded here._',
   ];
 }
 
 function newestCoberturaReport() {
   if (!existsSync(resultsDir)) return null;
-  return readdirSync(resultsDir, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => join(resultsDir, entry.name, 'coverage.cobertura.xml'))
-    .filter(existsSync)
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null;
+  return (
+    readdirSync(resultsDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => join(resultsDir, entry.name, 'coverage.cobertura.xml'))
+      .filter(existsSync)
+      .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null
+  );
 }

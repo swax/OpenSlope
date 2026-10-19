@@ -6,8 +6,12 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error('Run this gate through `npm run verify` so npm_execpath is available.');
 
-const npmStep = (label, script) =>
-  [label, process.execPath, [npmCli, '--prefix', 'Slopesmith', 'run', script], 15 * 60_000];
+const npmStep = (label, script) => [
+  label,
+  process.execPath,
+  [npmCli, '--prefix', 'Slopesmith', 'run', script],
+  15 * 60_000,
+];
 
 // The gate has to mean the same thing everywhere, so by default it runs what a checkout with no retail disc
 // can run - which is what CI has. `--full` adds Snowknife's disc-backed tier for anyone who does have one.
@@ -16,19 +20,19 @@ const slopesmithOnly = process.argv.includes('--slopesmith');
 if (full && slopesmithOnly) throw new Error('`--full` and `--slopesmith` cannot be combined.');
 
 const snowknifeSteps = [
-  [`Snowknife tests${full ? ' (both tiers)' : ''}`, process.execPath,
-    ['tools/snowknife-tests.mjs', ...(full ? ['--full'] : [])], full ? 30 * 60_000 : 5 * 60_000],
+  [
+    `Snowknife tests${full ? ' (both tiers)' : ''}`,
+    process.execPath,
+    ['tools/snowknife-tests.mjs', ...(full ? ['--full'] : [])],
+    full ? 30 * 60_000 : 5 * 60_000,
+  ],
 ];
 // One step, because tools/hygiene.py owns the list of checks (the disc-backed manifest reproduction
 // check included; it self-skips without a disc) and prints its own per-check headings. Keeping a
 // second copy of any check here is what let `npm run verify` fall a scanner behind `npm run hygiene`
 // once already, and let the release path miss the manifest check.
-const hygieneSteps = [
-  ['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000],
-];
-const nativeSteps = [
-  ['Native C++ conformance', process.execPath, ['tools/native-tests.mjs'], 15 * 60_000],
-];
+const hygieneSteps = [['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000]];
+const nativeSteps = [['Native C++ conformance', process.execPath, ['tools/native-tests.mjs'], 15 * 60_000]];
 const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
