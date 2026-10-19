@@ -52,6 +52,7 @@ export async function enterEditor(): Promise<void> {
     const account = await currentAccount();
     if (
       (account.accounts === 'required' && !('user' in account)) ||
+      (account.accounts === 'open' && account.offline) ||
       new URLSearchParams(location.search).has('reference') ||
       new URLSearchParams(location.search).has('local')
     ) {

@@ -152,7 +152,8 @@ the card or its highlighted **Open** button to open that mountain. Saved-map til
 tile opens **Create**. On `/isos`, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
 Loaded ISO maps also offer **Open** for public Play and **Inspect** for the editor's reference view.
 Primary buttons share the same highlighted style; secondary actions keep their own targets.
-**Play**, **Play in VR**, **View map**, and **Inspect map** appear over the map preview.
+**Play**, **Play in VR**, **View map**, and **Edit map** (authored mountains) or **Inspect map** (references)
+appear over the map preview.
 Click the map to choose a local start point; **Reset start** restores its default. **View map** shows the mouse
 movement legend for start placement, orbit, pan, and zoom. Hold **Alt + WASD** to move the camera.
 There is no separate map selection panel.
@@ -185,10 +186,34 @@ the extracted maps in IndexedDB. The homepage has separate **Public maps** and *
 sections. Only maps already loaded on this device appear in the latter, including maps the server
 has never imported or published.
 
+### Offline use in Chrome
+
+Open the production site once while connected, click the info icon, and wait for **Ready for offline use**
+in its panel. Offline preparation, update and error messages appear there too. You can then reopen
+the same site (or Chrome's installed app) without internet. **Maps** lists this browser's local mountains
+and loaded ISO maps; local mountains have **Play** for solo play and **Edit** for authoring. Direct local
+editor/player links work offline too, including after closing Chrome. ISO scanning and extraction also work
+offline after the app has finished preparing.
+
+For a mountain saved on the server, use **File → Save offline copy…** while connected. This opens an
+independent browser copy with its custom assets; subsequent edits stay on this device. Load any desired ISO
+donor maps on this device too. Existing local mountains, imported mountain ZIPs, and folder copies need no
+server. Use **Save to folder** or **Export mountain** to keep a file backup; browser storage remains tied to
+this Chrome profile and site address and can be removed through Chrome's site-data settings.
+
+Production builds generate a versioned service worker with all app chunks, built-in riders and importer
+WASM. It caches static files only; account responses, server project APIs and retail files are never added
+to that cache. Project and ISO data stay in their existing IndexedDB databases. The site must use HTTPS
+(localhost also works); the development server deliberately does not register a worker. Updates prepare
+in the background and wait until all Slopesmith tabs close, preserving active editing sessions. Multiplayer,
+chat and server tools require a connection. Live player status reconnects automatically when the connection
+returns. Reopen to switch back to a server workspace.
+
 The **ISO** and **Maps** tabs at the top switch between ISO management and the map browser. Both pages use
 compact map tiles. Under **ISO**, choose a disc to discover its maps, then use **Load**
-or **Unload** beside each map. Shared map pages show the required donor maps with green **Loaded** and red
-**Not loaded** badges, derived from their prop, texture and other game-asset references. Their ISO management
+or **Unload** beside each map. Multiple ISO requirements share a **Requirements fulfilled** or
+**Requirements unfulfilled** badge; hover to see each donor map's loaded state. Requirements are derived
+from prop, texture and other game-asset references. Their ISO management
 link retains that map's name, lists its requirements, and offers **Load required maps** and a return link.
 You can load several maps: each tile shows its progress or **Queued** state, and imports run one at a time.
 Tiles reserve space for progress and messages, and update in place so loading never reshuffles the grid.

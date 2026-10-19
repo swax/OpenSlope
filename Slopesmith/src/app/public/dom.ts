@@ -3,7 +3,7 @@ export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className
 }
 
 export async function publicJson<T>(url: string, body?: unknown): Promise<T> {
-  const response = await fetch(url, body === undefined ? undefined : {
+  const response = await fetch(url, body === undefined ? { signal: AbortSignal.timeout(5000) } : {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await response.json() as T & { error?: string };

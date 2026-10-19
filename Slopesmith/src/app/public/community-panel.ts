@@ -24,7 +24,8 @@ function remember(key: string, value: boolean) {
 
 /** One public chat/session per page. Closing the drawer preserves membership; leaving chat ends it. */
 export function publicCommunityPanel(account: Account, trigger: HTMLButtonElement) {
-  const member: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open'
+  const offline = account.accounts === 'open' && account.offline;
+  const member: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open' && !offline
     ? { id: 'owner', username: 'owner', role: 'admin' } : null;
   let me = member;
   let hooks: PublicCommunityHooks = {};
@@ -144,6 +145,7 @@ export function publicCommunityPanel(account: Account, trigger: HTMLButtonElemen
   leave.onclick = leaveChat;
   identity.addEventListener('submit', event => {
     event.preventDefault();
+    if (offline) { who.textContent = 'Chat requires an internet connection. Reconnect and reopen to join.'; return; }
     if (joined || joining) return;
     joining = true; who.textContent = ''; render();
     const request = ++attempt;
@@ -158,9 +160,10 @@ export function publicCommunityPanel(account: Account, trigger: HTMLButtonElemen
   const restore = remembered(JOINED);
   chat.setChatEnabled(false);
   render(); show(visible);
-  session.watch(null); session.start();
+  session.watch(null);
+  if (!offline) session.start();
   if (member) { if (restore) enterChat(member); }
-  else {
+  else if (!offline) {
     const request = attempt;
     void ensureVisitor().then(person => {
       if (request !== attempt) return;
@@ -172,7 +175,7 @@ export function publicCommunityPanel(account: Account, trigger: HTMLButtonElemen
   }
   window.addEventListener('pagehide', () => { session.close(); setSiteRoster(false); });
   window.addEventListener('pageshow', event => {
-    if (event.persisted) { session.start(); setSiteRoster(visible && usersShown); }
+    if (event.persisted && !offline) { session.start(); setSiteRoster(visible && usersShown); }
   });
   return {
     session, actions, show,

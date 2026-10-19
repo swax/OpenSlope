@@ -15,14 +15,17 @@ let playRoom: { courseId: string; roomId: string } | null = null;
 let chatEnabled = false;
 let rosterEnabled = false;
 let retry: ReturnType<typeof setTimeout> | null = null;
+let startVersion = 0;
+const browserOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 const publish = (next: SitePresence | null) => {
+  if (browserOffline()) next = null;
   state = next;
   for (const listener of listeners) listener(state);
 };
 
 export function ensureVisitor(): Promise<ChatMember> {
   if (!visitor)
-    visitor = fetch('/api/public/visitor', { method: 'POST' })
+    visitor = fetch('/api/public/visitor', { method: 'POST', signal: AbortSignal.timeout(5000) })
       .then(async response => {
         if (!response.ok) throw new Error('Visitor identity is unavailable.');
         return ((await response.json()) as { member: ChatMember }).member;
@@ -61,19 +64,31 @@ const channel = createPlayChannel({
 });
 
 export function startSitePresence(): Promise<void> {
+  if (browserOffline()) {
+    publish(null);
+    return Promise.resolve();
+  }
   if (starting) return starting;
+  const version = ++startVersion;
   starting = (async () => {
     const response = await fetch('/api/play/config', { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error('Site presence is unavailable.');
-    config = (await response.json()) as PlayConfig;
-    if (!config.enabled) return;
+    const next = (await response.json()) as PlayConfig;
+    if (version !== startVersion) return;
+    config = next;
+    if (!config.enabled) {
+      publish(null);
+      return;
+    }
     await ensureVisitor();
+    if (version !== startVersion) return;
     channel.watch(course ?? '@site', 'site');
     channel.start(config);
   })().catch(() => {
+    if (version !== startVersion) return;
     publish(null);
     starting = null;
-    if (!retry)
+    if (!browserOffline() && !retry)
       retry = setTimeout(() => {
         retry = null;
         void startSitePresence();
@@ -125,12 +140,22 @@ export function setSiteRoster(enabled: boolean): void {
   channel.send({ t: 'site-roster', enabled });
 }
 if (typeof window !== 'undefined') {
+  const disconnect = () => {
+    startVersion++;
+    starting = null;
+    if (retry) clearTimeout(retry);
+    retry = null;
+    channel.close();
+  };
+  window.addEventListener('offline', disconnect);
+  window.addEventListener('online', () => {
+    void startSitePresence();
+  });
   document.addEventListener('chat-tab-change', event => setSiteRoster((event as CustomEvent<boolean>).detail));
   window.addEventListener('pagehide', () => {
-    channel.close();
-    publish(null);
+    disconnect();
   });
   window.addEventListener('pageshow', event => {
-    if (event.persisted && config?.enabled) channel.start(config);
+    if (event.persisted) void startSitePresence();
   });
 }

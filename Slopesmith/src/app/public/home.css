@@ -22,6 +22,7 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-map-online { margin-left: auto; font-size: 11px; padding-left: 4px; }
 .public-map-heading > h3 { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .public-online > .public-online-label { display: none; } }
+.public-online.unavailable > .public-online-label { display: inline; }
 .public-icon { display: inline-flex; flex: 0 0 auto; width: 15px; height: 15px; align-items: center; justify-content: center; }
 .public-icon svg { display: block; width: 100%; height: 100%; stroke-width: 1.6; }
 .public-sign-in, .public-nav { color: #b5ccd9; text-decoration: none; font-size: 13px; }
@@ -41,6 +42,9 @@ body.public-chat-visible { --lodge-width: 0px; }
   background: #101e2af5; box-shadow: 0 12px 32px #0006; backdrop-filter: blur(10px); }
 .public-about-panel h2 { margin: 0 0 10px; color: #e8f1f7; font: 650 14px/1.4 system-ui; }
 .public-about-panel p { margin: 0 0 12px; color: #adc3d2; font: 12px/1.6 system-ui; }
+.public-about-panel .offline-status { padding-top: 12px; border-top: 1px solid #365064; }
+.public-about-panel .offline-status[data-state=ready] { color: #8bd1af; }
+.public-about-panel .offline-status[data-state=error] { color: #e8a6a6; }
 .public-about-links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .public-about-links a { color: #efc68d; font: 600 12px/1.5 system-ui; text-underline-offset: 3px; }
 .public-navigation { display: flex; align-self: stretch; align-items: stretch; gap: 18px; }
@@ -80,6 +84,8 @@ body.public-chat-visible { --lodge-width: 0px; }
   border-radius: 50%; background: currentColor; }
 .public-iso-badge.loaded { color: #8bd1af; background: #1c3b302b; border-color: #3e776050; }
 .public-iso-badge.missing { color: #e8a6a6; background: #62313c22; border-color: #94546250; }
+.public-iso-summary { cursor: help; }
+.public-map-tile .public-iso-summary { position: relative; z-index: 1; }
 .public-iso-badge.queued { color: #a9c0d6; background: #26445e33; border-color: #506d8666; }
 .public-iso-badge.loading { color: #efc58b; background: #68502f33; border-color: #ab845066; }
 .public-iso-badge.error { color: #e8a6a6; background: #62313c33; border-color: #94546277; }
@@ -94,12 +100,12 @@ body.public-chat-visible { --lodge-width: 0px; }
   background: linear-gradient(145deg, #192b39, #15232f); box-shadow: 0 3px 12px #00000015, inset 0 1px #ffffff04;
   transition: border-color .15s, box-shadow .15s; }
 .public-map-tile:focus-within { border-color: #57798f; box-shadow: 0 0 0 1px #57798f44, 0 3px 12px #00000015; }
-/* Stretch the actual primary control over its tile, retaining native link/button and disabled behavior. */
-.public-map-tile .public-primary::after { content: ''; position: absolute; inset: 0; border-radius: 11px; cursor: pointer; }
+/* Stretch Play (or Create on the new-map tile), retaining native link/button and disabled behavior. */
+.public-map-tile :is(.public-primary, .public-tile-link)::after { content: ''; position: absolute; inset: 0; border-radius: 11px; cursor: pointer; }
 .public-map-tile .public-primary:disabled::after { cursor: default; }
-.public-map-tile .public-primary:focus-visible::after { outline: 2px solid #f4b65e; outline-offset: 3px; }
-.public-map-tile :is(a, button):not(.public-primary) { position: relative; z-index: 1; }
-.public-map-tile:has(.public-primary:hover:not(:disabled)) { border-color: #b59569; }
+.public-map-tile :is(.public-primary, .public-tile-link):focus-visible::after { outline: 2px solid #f4b65e; outline-offset: 3px; }
+.public-map-tile :is(a, button):not(.public-primary, .public-tile-link) { position: relative; z-index: 1; }
+.public-map-tile:has(:is(.public-primary, .public-tile-link):hover:not(:disabled)) { border-color: #b59569; }
 .public-new-map { color: inherit; text-decoration: none; border-style: dashed; }
 .public-new-map:hover { border-color: #b59569; }
 .public-local-note { margin: 0 0 12px; color: #91a9b9; font: 12px/1.5 system-ui; }

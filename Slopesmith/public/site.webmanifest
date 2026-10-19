@@ -3,6 +3,8 @@
   "short_name": "Slopesmith",
   "description": "Author and test-ride SSX-style snowboard courses in your browser with OpenSlope.",
   "start_url": "/",
+  "id": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#16202c",
   "theme_color": "#0c141d",

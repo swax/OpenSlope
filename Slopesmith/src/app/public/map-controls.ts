@@ -1,6 +1,7 @@
 import { element } from './dom';
 import { publicGlyph } from './presentation';
 import type { RideControlHelp } from '../ride/control-help';
+import type { PublicCourseKind } from '../../core/session/public-courses';
 
 /** Keep launch choices on the mountain, with movement help only after choosing to look around. */
 export function publicMapControls(deps: { play: () => void; vr: () => void; view: () => void; inspect: () => void; resetStart: () => void }) {
@@ -50,6 +51,10 @@ export function publicMapControls(deps: { play: () => void; vr: () => void; view
   choices.append(play, vr, view, inspect); launch.append(reset, choices, error); el.append(legend, launch, rideLegend);
   return {
     el,
+    setMapType(kind: PublicCourseKind) {
+      inspect.replaceChildren(publicGlyph(kind === 'project' ? 'editor' : 'view'),
+        document.createTextNode(kind === 'project' ? 'Edit map' : 'Inspect map'));
+    },
     setPlaying(active: boolean) {
       playing = active;
       el.hidden = false; choices.hidden = playing; reset.hidden = playing || !customStart;

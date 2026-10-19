@@ -2,6 +2,7 @@ import { currentAccount, gateFor } from './net/account';
 import { enterEditor } from './enter-editor';
 import { MAPS_PATH, pageInPath } from './navigation';
 import { startSitePresence } from './net/site-presence';
+import { prepareOffline } from './offline';
 
 /**
  * Ask who this browser is before loading the editor. Visitors get the public course homepage; members get
@@ -25,8 +26,10 @@ import { startSitePresence } from './net/site-presence';
  * has been chosen, so it never starts project sync or editor autosave.
  */
 async function boot(): Promise<void> {
+  void prepareOffline();
   const account = await currentAccount();
-  void startSitePresence();
+  const offline = account.accounts === 'open' && account.offline;
+  if (!offline) void startSitePresence();
   const gate = gateFor(account, location.hash);
   const url = new URL(location.href);
   const page = pageInPath(url.pathname);
@@ -35,7 +38,7 @@ async function boot(): Promise<void> {
     await showIsoPage();
     return;
   }
-  const guestHome = url.pathname === '/' && gate.show === 'sign-in';
+  const guestHome = url.pathname === '/' && (gate.show === 'sign-in' || offline);
   if (page === 'maps' || page === 'play' || guestHome || (!page && url.pathname !== '/')) {
     if (page !== 'play') {
       url.pathname = MAPS_PATH;

@@ -1,6 +1,7 @@
 import { PROJECT_LINKS, SERVER_SETUP_URL } from '../project-links';
 import { element } from './dom';
 import { publicGlyph } from './presentation';
+import { offlineStatus } from '../offline';
 
 /** Source/community destinations and a short explanation of what this server provides. */
 export function publicProjectMenu() {
@@ -27,7 +28,7 @@ export function publicProjectMenu() {
   const destinations = element('div', 'public-about-links');
   for (const { label, href } of PROJECT_LINKS) destinations.append(external(label, href));
   destinations.append(external('Server setup', SERVER_SETUP_URL));
-  panel.append(destinations); about.append(summary, panel); links.append(about);
+  panel.append(offlineStatus(), destinations); about.append(summary, panel); links.append(about);
   about.addEventListener('toggle', () => summary.setAttribute('aria-expanded', String(about.open)));
   document.addEventListener('pointerdown', event => {
     if (!about.contains(event.target as Node)) about.open = false;

@@ -33,7 +33,11 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
   users.setAttribute('aria-label', 'Online users'); users.title = 'Online users and chat';
   users.append(online.el); header.append(users);
   const community = publicCommunityPanel(account, users);
-  watchChatActivity(activity => online.set(activity?.online ?? null));
+  watchChatActivity(activity => {
+    online.set(activity?.online ?? null);
+    users.setAttribute('aria-label', activity ? 'Online users' : 'Offline — users and chat');
+    users.title = activity ? 'Online users and chat' : online.el.title;
+  });
   if ('user' in account) {
     header.append(createAccountMenu(account.user, {
       openMyProfile: () => { location.href = editorAccountUrl('profile'); },

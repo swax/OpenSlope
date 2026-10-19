@@ -49,7 +49,7 @@ export interface EquipmentProfile {
 /** What the server says about this browser: it is the owner of a server with no accounts, it is a signed-in
  *  member, it is nobody, or the server is still waiting to be enrolled. */
 export type Account =
-  | { accounts: 'open' }
+  | { accounts: 'open'; offline?: true }
   | { accounts: 'required'; bootstrap: true }
   | { accounts: 'required'; user: Member }
   | { accounts: 'required' };
@@ -63,21 +63,26 @@ interface SessionBody {
 /**
  * Ask who this browser is.
  *
- * Anything other than a server that positively says it requires accounts is read as one that does not,
- * including a failed request and a build served with no API behind it. That asymmetry is deliberate, and it
- * matters more now than it did as a dialog: reading a broken probe as "no accounts" costs an editor whose
- * requests are refused and say so, while reading it as "accounts" would put a login PAGE in front of somebody
- * else's own workspace — a wall with nothing behind it, on a server that never asked for one.
+ * An unreachable server selects the browser workspace, without restoring a cached identity or granting
+ * server permissions. A reachable server still decides whether accounts are required. Bound the probe so
+ * a stalled connection cannot prevent somebody from opening their saved local work.
  */
 async function probeAccount(): Promise<Account> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return { accounts: 'open', offline: true };
   try {
-    const response = await fetch('/api/auth/session', { headers: { accept: 'application/json' } });
-    const body = (await response.json().catch(() => ({}))) as SessionBody;
-    if (body.accounts !== 'required') return { accounts: 'open' };
-    if (response.ok && body.user) return { accounts: 'required', user: body.user };
-    return body.bootstrap ? { accounts: 'required', bootstrap: true } : { accounts: 'required' };
+    const response = await fetch('/api/auth/session', {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(4000),
+    });
+    const body = (await response.json()) as SessionBody;
+    // First-run enrolment deliberately answers 503. Its explicit account policy still outranks fallback.
+    if (body.accounts === 'required') {
+      if (response.ok && body.user) return { accounts: 'required', user: body.user };
+      return body.bootstrap ? { accounts: 'required', bootstrap: true } : { accounts: 'required' };
+    }
+    return response.ok && body.accounts === 'open' ? { accounts: 'open' } : { accounts: 'open', offline: true };
   } catch {
-    return { accounts: 'open' };
+    return { accounts: 'open', offline: true };
   }
 }
 
@@ -124,7 +129,7 @@ export function forgetAccount(): void {
  */
 export async function administersServer(): Promise<boolean> {
   const account = await currentAccount();
-  return account.accounts === 'open' || ('user' in account && account.user.role === 'admin');
+  return (account.accounts === 'open' && !account.offline) || ('user' in account && account.user.role === 'admin');
 }
 
 /** The invite token carried in a URL fragment, if the person arrived by link. A fragment rather than a query

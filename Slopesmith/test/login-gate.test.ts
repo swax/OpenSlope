@@ -185,6 +185,11 @@ try {
       "demanding a password, because that is a wall in front of somebody's own workspace",
   );
   browser.broken = false;
+  const disconnected = await currentAccount();
+  check(
+    disconnected.accounts === 'open' && disconnected.offline === true && !(await administersServer()),
+    'a failed probe selects local editing without granting server owner permissions',
+  );
 
   check(
     inviteIn('') === '' &&

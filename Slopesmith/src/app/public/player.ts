@@ -25,6 +25,8 @@ import { installLocalSky } from './sky';
 import { cachedIsoCourses } from './iso-cache';
 import { publicMountainDocument, publicPropPayload } from './course-assets';
 import type { V3 } from '../../core/doc/types';
+import { readLocalProject } from '../state/local-projects';
+import { bundleAssets, bundleProps } from './bundle-assets';
 
 const yieldFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 async function json<T>(url: string): Promise<T> {
@@ -39,14 +41,24 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     onRideControls: (help: RideControlHelp | null) => void; onStartChanged: (custom: boolean) => void }) {
   const { progress, onPlaying, onRideControls, onStartChanged } = ui;
   progress('Preparing the mountain…');
-  const aliases = { ...course.isoAliases,
+  const bundle = course.localProjectId ? await readLocalProject(course.localProjectId) : null;
+  if (course.localProjectId && !bundle) throw new Error('This mountain is no longer saved on this device.');
+  const privateSnapshot = course.private
+    ? await json<{ document: EditDoc }>(`/api/projects/${encodeURIComponent(course.id)}`) : null;
+  const privateLevels = course.private ? await json<{ maps?: { name: string; course?: string }[] }>('/api/levels') : null;
+  const custom = bundle && bundleAssets(bundle);
+  const aliases = { ...course.isoAliases, ...bundle?.isoAliases,
+    ...Object.fromEntries((privateLevels?.maps ?? []).filter(map => map.course).map(map => [map.name, map.course!])),
     ...(course.kind === 'reference' && course.isoCourses[0] ? { [course.id]: course.isoCourses[0] } : {}) };
   const cached = await cachedIsoCourses().catch(() => [] as string[]);
-  const availableCourses = course.isoCourses.filter(slot => cached.includes(slot));
+  const availableCourses = bundle || course.private ? cached : course.isoCourses.filter(slot => cached.includes(slot));
   const availableLevels = [...availableCourses, ...Object.keys(aliases).filter(level => availableCourses.includes(aliases[level]))];
   const local = await localMapData(availableCourses, aliases);
-  setAssetUrlResolver(local.resolveAsset);
-  setClientProjectId(course.kind === 'project' ? course.id : null);
+  setAssetUrlResolver(path => {
+    const resolved = custom?.resolve(path) ?? path;
+    return resolved !== path ? resolved : local.resolveAsset(path);
+  });
+  setClientProjectId(course.kind === 'project' && !bundle ? course.id : null);
   const store = createStore({ mdoc: defaultMountain(), currentMode: 'play', storedUi: {} });
   const noop = () => {};
   let updateRideControls = noop;
@@ -126,7 +138,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     viewport.showReferenceTricks(true);
     session.reference(level);
   } else {
-    const snapshot = await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`);
+    const snapshot = bundle ?? privateSnapshot ?? await json<{ document: EditDoc }>(`/api/public/project?id=${encodeURIComponent(course.id)}`);
     const document = publicMountainDocument(snapshot.document, availableLevels);
     store.mdoc = document;
     await viewport.setMountainProgressive(document, null, [], noop, yieldFrame);
@@ -141,7 +153,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     };
     for (const level of donors) await installDonor(level);
     if (document.props?.some(prop => prop.level === IMPORTED_PROP_LEVEL)) {
-      const props = await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`);
+      const props = bundle ? bundleProps(bundle) : await json<PropsPayload>(`/api/custom-props?project=${encodeURIComponent(course.id)}`);
       viewport.syncLiveModels(decodeProps(publicPropPayload(props, availableLevels)));
     }
     if (availableCourses.length) {
@@ -201,7 +213,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
       return !!player && viewport.goToMapPlayer(player.sessionId);
     },
     rideEvent: viewport.applyRideEvent.bind(viewport),
-    dispose() { clearInterval(publish); local.dispose(); },
+    dispose() { clearInterval(publish); local.dispose(); custom?.dispose(); },
   };
 }
 export type PublicPlayer = Awaited<ReturnType<typeof preparePublicPlayer>>;

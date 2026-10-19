@@ -95,9 +95,24 @@ assert.equal(new URL(isoManagementUrl(undefined, origin)).pathname, ISOS_PATH);
 assert.equal(new URL(isoManagementUrl(named, origin)).pathname, ISOS_PATH);
 assert.equal(new URL(publicCourseUrl(reference, origin)).pathname, '/play/Published%20Garibaldi');
 assert.equal(courseEditorUrl(named, origin), `${origin}/editor/My_Mountain`);
+assert.equal(courseEditorUrl({ ...named, private: true }, origin), `${origin}/editor/My_Mountain?project=custom`);
 assert.equal(courseEditorUrl(reference, origin), `${origin}/editor?reference=RENAMED_GARI`);
 assert.equal(courseEditorUrl({ ...named, name: 'A map' }, origin), `${origin}/editor/A%20map`);
 const localGari = groups.local.find(course => course.id === 'GARI')!;
+const saved = { ...named, id: 'local-fixture', localProjectId: 'local-fixture' };
+const savedRequest = publicCourseRequest(new URL(publicCourseUrl(saved, origin)));
+assert.equal(savedRequest?.localProjectId, saved.id);
+assert.equal(
+  resolvePublicCourse(savedRequest, [named], [], [saved]),
+  saved,
+  'a saved player link opens the browser copy even when a server map has the same name',
+);
+assert.equal(
+  resolvePublicCourse(savedRequest, [named], []),
+  null,
+  'a deleted local copy never falls through to a server map',
+);
+assert.equal(new URL(courseEditorUrl(saved, origin)).searchParams.get('local'), saved.id);
 const serverGari = { ...reference, id: 'GARI', name: 'Garibaldi' };
 const isoUrl = publicCourseUrl(localGari, origin);
 assert.equal(new URL(isoUrl).searchParams.get('source'), 'iso');

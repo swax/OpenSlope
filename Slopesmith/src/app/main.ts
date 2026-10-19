@@ -103,7 +103,7 @@ import {
 import { createSessionChannel, membersOn, type PresenceEntry } from './net/session-channel';
 import { currentAccount, onAccountChanged, type Member } from './net/account';
 import { isLocalWorkspace } from './net/workspace';
-import { MAPS_PATH } from './navigation';
+import { MAPS_PATH, localEditorUrl } from './navigation';
 import { createRegisterSync } from './net/register-sync';
 import { createAwareness } from './net/awareness';
 import { createSyncStatus } from './state/sync-status';
@@ -2267,6 +2267,30 @@ const play = createPlay({
 });
 
 // ================= top dock: context + view + file =================
+async function saveOfflineCopy(): Promise<void> {
+  try {
+    const bundle = await projectSync.exportMountain();
+    if (bundle.missing?.length)
+      throw new Error('Some custom assets are missing. Restore them before saving a complete offline copy.');
+    // Server library folders can be renamed while the local ISO keeps its canonical slot names.
+    const { maps } = await fetchJson<{ maps?: { name: string; course?: string }[] }>('/api/levels');
+    bundle.isoAliases = {
+      ...Object.fromEntries((maps ?? []).filter(map => map.course).map(map => [map.name, map.course!])),
+      ...bundle.isoAliases,
+    };
+    const { openLocalProjects } = await import('./state/local-projects');
+    const projects = await openLocalProjects();
+    try {
+      const { project } = await projects.restore(bundle);
+      location.assign(localEditorUrl(project.name, project.id));
+    } finally {
+      projects.close();
+    }
+  } catch (error) {
+    toast(error instanceof Error ? error.message : String(error), 'err', 8000);
+  }
+}
+
 async function saveToFolder(): Promise<void> {
   try {
     const handle = await pickMountainFolder();
@@ -2388,6 +2412,9 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     deleteMountain,
     exportMountain,
     importMountain,
+    saveOfflineCopy: () => {
+      void saveOfflineCopy();
+    },
     saveToFolder: () => {
       void saveToFolder();
     },
@@ -3594,7 +3621,10 @@ const session = createSessionChannel({
     usersMode.refresh();
     refreshPeers();
   },
-  onChatRoster: members => { if (!session.usesPlayRelay()) chat.setUsers(members); usersMode.refresh(); },
+  onChatRoster: members => {
+    if (!session.usesPlayRelay()) chat.setUsers(members);
+    usersMode.refresh();
+  },
   onProfileChanged: () => usersMode.refresh(),
   onStatusChanged: () => usersMode.refresh(),
   onChat: line => {
@@ -3754,7 +3784,12 @@ const observerControls = createObserverControls({
   stopObserving: () => stopObservingScreen(),
 });
 refreshObserverControls = () => observerControls.refresh();
-watchSitePresence(snapshot => { if (snapshot) { chat.setUsers(siteMembers(snapshot), snapshot.online); usersMode.refresh(); } });
+watchSitePresence(snapshot => {
+  if (snapshot) {
+    chat.setUsers(siteMembers(snapshot), snapshot.online);
+    usersMode.refresh();
+  }
+});
 if (!isLocalWorkspace()) session.start();
 viewport.onJukeboxVideoEnded(() => {
   const current = jukeboxState.current;
@@ -3904,7 +3939,7 @@ function joinMap(document: EditDoc = store.mdoc): void {
   peerMarks.clear();
   refreshPeers();
   // Browser-only projects have no server room; their visitors still keep site presence in the lobby.
-  session.watch(isLocalWorkspace() ? null : current?.id ?? null, opened?.at, opened?.room);
+  session.watch(isLocalWorkspace() ? null : (current?.id ?? null), opened?.at, opened?.room);
   awareness.reset(); // the server drops what a tab said about the map it left
   // Project creation/opening calls this before the dialog installs the document into store.mdoc. Rebase the
   // register replica from the document being joined, not from the project that happens to still be rendered.

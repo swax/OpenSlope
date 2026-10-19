@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { dependencyNoticesPlugin } from './tools/dependency-notices.mjs';
+import { offlinePlugin } from './tools/offline.mjs';
 
 /** Where the `/api/*` service listens. `src/server/main.ts` reads the same variable, so moving the port moves
  * both halves of `npm run dev` together. */
@@ -81,7 +82,7 @@ export default defineConfig(({ mode }) => {
     .filter(Boolean);
 
   return {
-    plugins: [requestLogEndpoint(), dependencyNoticesPlugin(process.cwd())],
+    plugins: [requestLogEndpoint(), dependencyNoticesPlugin(process.cwd()), offlinePlugin()],
     // Loopback only: the API this proxies to is unauthenticated, so reaching the editor from a phone on the
     // same Wi-Fi is a deliberate act — `npm run dev -- --host` binds the LAN address on both halves and then
     // http://<desktop-ip>:5179 works (the terminal prints the Network: URL on start).

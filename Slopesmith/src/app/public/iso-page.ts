@@ -96,10 +96,10 @@ export async function showIsoPage(): Promise<void> {
     const heading = mapHeading(discCourseName(slot), 'disc');
     const badge = element('span', 'public-iso-badge');
     const controls = element('div', 'public-iso-map-actions');
-    const button = element('button', 'public-primary'); button.type = 'button';
+    const button = element('button', ''); button.type = 'button';
     const course: PublicCourse = { kind: 'reference', id: slot, name: discCourseName(slot), source: 'iso', retailData: true, isoCourses: [slot] };
-    const open = element('a', 'public-iso-open', 'Open'); open.href = publicCourseUrl(course);
-    open.setAttribute('aria-label', `Open ${discCourseName(slot)}`); open.prepend(publicGlyph('play'));
+    const open = element('a', 'public-iso-open public-primary', 'Play'); open.href = publicCourseUrl(course);
+    open.setAttribute('aria-label', `Play ${discCourseName(slot)}`); open.prepend(publicGlyph('play'));
     const inspect = element('a', 'public-iso-inspect', 'Inspect'); inspect.href = courseEditorUrl(course);
     inspect.setAttribute('aria-label', `Inspect ${discCourseName(slot)}`); inspect.prepend(publicGlyph('view'));
     button.onclick = () => {
@@ -209,8 +209,10 @@ export async function showIsoPage(): Promise<void> {
   try {
     const request = publicCourseRequest(new URL(location.href));
     if (request) {
-      const data = await publicJson<{ courses: PublicCourse[] }>('/api/public/courses');
-      target = resolvePublicCourse(request, data.courses, cached);
+      const localTarget = resolvePublicCourse(request, [], cached);
+      const data = request.source === 'iso' || !navigator.onLine ? { courses: [] }
+        : await publicJson<{ courses: PublicCourse[] }>('/api/public/courses').catch(() => ({ courses: [] }));
+      target = resolvePublicCourse(request, data.courses, cached) ?? localTarget;
       if (target) {
         back.textContent = `← ${target.name.replace(/[_-]/g, ' ')}`;
         back.href = publicCourseUrl(target); back.hidden = false;

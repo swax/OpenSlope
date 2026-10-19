@@ -3,6 +3,10 @@ export interface PublicCourse {
   id: string;
   kind: PublicCourseKind;
   name: string;
+  /** A browser-only mountain. Never use its identity in a server room or API request. */
+  localProjectId?: string;
+  /** An authenticated server map, read through the workspace API and played solo. */
+  private?: true;
   /** Which catalogue entry was opened; ISO and server references can share a course ID. */
   source?: 'iso' | 'server';
   retailData: boolean;

@@ -3,7 +3,7 @@ import type { PublicCourse } from '../../core/session/public-courses';
 import { referenceRoom } from '../../core/session/public-courses';
 import { isDiscCourse } from '../../core/reference/disc-courses';
 import { currentAccount } from '../net/account';
-import { localEditorUrl, mapPath } from '../navigation';
+import { localEditorUrl } from '../navigation';
 import { deleteLocalProject, listLocalProjects } from '../state/local-projects';
 import type { ClientProject } from '../state/project-sync';
 import type { PresenceEntry, SessionMember } from '../net/session-channel';
@@ -29,7 +29,8 @@ export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
   document.getElementById('load-status')?.classList.remove('show');
   const account = await currentAccount();
-  const member: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open'
+  const offline = account.accounts === 'open' && account.offline;
+  const member: SessionMember | null = 'user' in account ? account.user : account.accounts === 'open' && !offline
     ? { id: 'owner', username: 'owner', role: 'admin' } : null;
   let player: PublicPlayer | null = null;
   let selected: PublicCourse | null = null;
@@ -51,6 +52,12 @@ export async function showPublicHome(): Promise<void> {
   const cardMessages = new Map<string, string>();
   const cached = await cachedIsoCourses().catch(() => [] as string[]);
   let savedProjects: ClientProject[] = [];
+  const localCourses = (): PublicCourse[] => savedProjects.map(project => ({
+    id: project.id, localProjectId: project.id, kind: 'project', name: project.name, retailData: false, isoCourses: [],
+  }));
+  const privateCourse = (project: ClientProject): PublicCourse => ({
+    id: project.id, kind: 'project', name: project.name, private: true, retailData: false, isoCourses: [],
+  });
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
@@ -80,6 +87,7 @@ export async function showPublicHome(): Promise<void> {
   const serverTitle = element('h2', 'public-course-title', 'Public maps');
   const serverGrid = element('div', 'public-courses'); serverGrid.setAttribute('aria-label', 'Public server maps');
   const serverEmpty = element('p', 'public-empty', 'No public maps yet.');
+  if (offline) serverEmpty.textContent = 'Offline. Use your local maps and loaded ISO maps.';
   serverSection.append(serverTitle, serverGrid, serverEmpty);
   const privateSection = element('section', 'public-private-maps'); privateSection.setAttribute('aria-label', 'Private server maps');
   const privateTitle = element('h2', 'public-course-title', 'Private server maps');
@@ -171,15 +179,17 @@ export async function showPublicHome(): Promise<void> {
       const metadata = element('p', 'public-map-meta');
       metadata.append(element('span', 'public-private-badge', 'Private'), element('span', '', 'Saved on server'));
       const controls = element('div', 'public-card-actions');
-      const edit = element('a', 'public-primary', 'Edit');
-      edit.href = `${mapPath('editor', project.name)}?${new URLSearchParams({ project: project.id })}`;
+      const play = element('a', 'public-primary', 'Play'); play.href = playUrl(privateCourse(project));
+      play.setAttribute('aria-label', `Play ${displayName}`); play.prepend(publicGlyph('play'));
+      const edit = element('a', '', 'Edit');
+      edit.href = courseEditorUrl(privateCourse(project));
       edit.setAttribute('aria-label', `Edit ${displayName}`); edit.prepend(publicGlyph('editor'));
-      controls.append(edit); card.append(courseHeading(displayName, 'mountain', project.id), metadata, controls); privateGrid.append(card);
+      controls.append(play, edit); card.append(courseHeading(displayName, 'mountain', project.id), metadata, controls); privateGrid.append(card);
     }
     const newMap = element('article', 'public-map-tile public-new-map'); newMap.setAttribute('aria-label', 'New map');
     newMap.append(mapHeading('New map', 'new'), element('span', 'public-local-note', 'Create on this device'));
     const createControls = element('div', 'public-card-actions');
-    const create = element('a', 'public-primary', 'Create'); create.href = localEditorUrl('', 'new');
+    const create = element('a', 'public-tile-link', 'Create'); create.href = localEditorUrl('', 'new');
     create.setAttribute('aria-label', 'New map'); create.prepend(publicGlyph('new'));
     createControls.append(create); newMap.append(createControls);
     savedGrid.replaceChildren(newMap);
@@ -188,12 +198,15 @@ export async function showPublicHome(): Promise<void> {
       card.dataset.kind = 'local';
       card.append(mapHeading(project.name, 'mountain'));
       const controls = element('div', 'public-card-actions');
-      const edit = element('a', 'public-primary', 'Edit'); edit.href = localEditorUrl(project.name, project.id);
+      const edit = element('a', '', 'Edit'); edit.href = localEditorUrl(project.name, project.id);
+      const open = element('a', 'public-primary', 'Play');
+      open.href = publicCourseUrl(localCourses().find(course => course.id === project.id)!);
+      open.setAttribute('aria-label', `Play ${project.name}`); open.prepend(publicGlyph('play'));
       edit.setAttribute('aria-label', `Edit ${project.name}`); edit.prepend(publicGlyph('editor'));
       const remove = element('button', 'public-delete', 'Delete'); remove.type = 'button';
       remove.setAttribute('aria-label', `Delete ${project.name}`);
       remove.addEventListener('click', () => { void deleteSavedMap(project, remove); });
-      controls.append(edit, remove); card.append(controls); savedGrid.append(card);
+      controls.append(open, edit, remove); card.append(controls); savedGrid.append(card);
     }
     serverEmpty.hidden = !!groups.server.length; localEmpty.hidden = !!groups.local.length;
     for (const [courses, grid] of [
@@ -214,14 +227,13 @@ export async function showPublicHome(): Promise<void> {
           const feedback = element('p', 'public-card-status', message); feedback.setAttribute('role', 'status'); card.append(feedback);
         }
         const controls = element('div', 'public-card-actions');
-        const open = element('button', 'public-primary', 'Open'); open.type = 'button';
-        open.prepend(publicGlyph('view'));
-        open.setAttribute('aria-label', `Open ${displayName}`);
+        const open = element('button', 'public-primary', 'Play'); open.type = 'button';
+        open.prepend(publicGlyph('play'));
+        open.setAttribute('aria-label', `Play ${displayName}`);
         open.disabled = preparing || (course.kind === 'reference' && missing);
         open.addEventListener('click', () => {
           if (preparing) return;
-          selected = course;
-          void load();
+          location.href = playUrl(course);
         });
         controls.append(open);
         const edit = element('a', '', course.kind === 'project' ? 'Edit' : 'Inspect');
@@ -320,8 +332,9 @@ export async function showPublicHome(): Promise<void> {
     const missing = course.isoCourses.some(slot => !cached.includes(slot));
     if (course.kind === 'reference' && missing) { location.href = isoManagementUrl(course); return; }
     const knownCourse = published.some(entry => entry.kind === course.kind && entry.id === course.id);
-    room = course.kind === 'project' ? course.id : knownCourse || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
-    setSiteCourse(room, course.source ?? 'server'); session.watch(room); session.start();
+    room = course.localProjectId || course.private ? null : course.kind === 'project' ? course.id : knownCourse || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
+    if (!offline) setSiteCourse(room, course.source ?? 'server');
+    if (!course.localProjectId && !course.private && !offline) { session.watch(room); session.start(); }
     preparing = true; renderCourses();
     try {
       if (course.kind === 'reference' && await needsCollisionSoundUpdate(course.isoCourses)) {
@@ -331,6 +344,7 @@ export async function showPublicHome(): Promise<void> {
         return;
       }
       showRequirements();
+      mapControls.setMapType(course.kind);
       document.body.classList.remove('sp-page-background');
       document.body.classList.add('public-preparing');
       setMap(course.name.replace(/[_-]/g, ' '), playUrl(course));
@@ -347,8 +361,8 @@ export async function showPublicHome(): Promise<void> {
         onStartChanged: custom => mapControls.setCustomStart(custom),
       });
       const known = published.some(entry => entry.kind === course.kind && entry.id === course.id);
-      room = course.kind === 'project' ? course.id : known || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
-      session.watch(room);
+      room = course.localProjectId || course.private ? null : course.kind === 'project' ? course.id : known || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
+      if (!course.localProjectId && !course.private && !offline) session.watch(room);
       inviteFriends.hidden = !session.usesPlayRelay(); mapControls.setPlaying(false);
       status.textContent = '';
       document.body.classList.add('public-ready');
@@ -364,9 +378,19 @@ export async function showPublicHome(): Promise<void> {
   }
   stop.addEventListener('click', () => player?.stop());
   try {
+    // Local links resolve before any server request, including when a connection hangs rather than rejects.
+    selected = linked?.localProjectId || linked?.source === 'iso' || offline
+      ? resolvePublicCourse(linked, [], cached, localCourses()) : null;
+    if (linked && selected) {
+      document.title = `${selected.name} · Slopesmith`;
+      privateSection.hidden = serverSection.hidden = savedSection.hidden = localSection.hidden = true;
+      await load();
+      return;
+    }
     const [data, projects] = await Promise.all([
-      publicJson<{ courses: PublicCourse[]; guest: SessionMember | null }>('/api/public/courses'),
-      member && !linked ? publicJson<{ projects: ClientProject[] }>('/api/projects').catch(error => {
+      offline ? { courses: [] } : publicJson<{ courses: PublicCourse[]; guest: SessionMember | null }>('/api/public/courses')
+        .catch(() => { serverEmpty.textContent = 'Server unavailable. Use your local maps and loaded ISO maps.'; return { courses: [] }; }),
+      member && (!linked || (linked.kind === 'project' && !linked.localProjectId)) ? publicJson<{ projects: ClientProject[] }>('/api/projects').catch(error => {
         serverMapsError = `Could not load server maps: ${error instanceof Error ? error.message : String(error)}`;
         return null;
       }) : null,
@@ -374,7 +398,7 @@ export async function showPublicHome(): Promise<void> {
     serverProjects = projects?.projects ?? [];
     serverMapsLoaded = true;
     published = data.courses;
-    if (linked) selected = resolvePublicCourse(linked, published, cached);
+    if (linked) selected = resolvePublicCourse(linked, [...published, ...serverProjects.map(privateCourse)], cached, localCourses());
     renderCourses();
     if (linked) showRequirements();
     if (linked && !selected) {

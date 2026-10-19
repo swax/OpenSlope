@@ -199,6 +199,11 @@ try {
   assert.equal(await localMaps.locator('[data-kind=local]').count(), 2);
   await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
   await localMaps.getByRole('article', { name: 'LOCAL_RUN', exact: true }).click({ position: { x: 12, y: 12 } });
+  await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/play/LOCAL_RUN', 'the saved map tile defaults to Play');
+  assert.equal(new URL(page.url()).searchParams.get('local'), firstCopyId);
+  await page.goto(`${origin}/maps`);
+  await localMaps.getByRole('link', { name: 'Edit LOCAL_RUN', exact: true }).click();
   await ready(page);
   assert.equal(new URL(page.url()).searchParams.get('local'), firstCopyId);
   assert.equal(await page.title(), 'LOCAL_RUN - Slopesmith');

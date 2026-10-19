@@ -19,12 +19,15 @@ export function activityCounter(kind: 'server' | 'map') {
     const next = value === null ? 'unknown' : String(value);
     if (el.dataset.count === next) return;
     el.dataset.count = next;
+    el.hidden = kind === 'map' && (value === null || value === 0);
     count.textContent = value === null ? '—' : String(value);
+    count.hidden = kind === 'server' && value === null;
+    if (kind === 'server') label.textContent = value === null ? 'Offline' : 'online';
     if (kind === 'map') label.textContent = value === 1 ? 'player' : 'players';
     el.classList.toggle('unavailable', value === null);
-    el.setAttribute('aria-label', value === null ? 'Player activity unavailable'
+    el.setAttribute('aria-label', value === null ? kind === 'server' ? 'Offline' : 'Player activity unavailable'
       : `${value} ${value === 1 ? 'player' : 'players'} ${kind === 'server' ? 'online on the site' : 'online on this map'}`);
-    el.title = value === null ? 'Player activity is temporarily unavailable.'
+    el.title = value === null ? kind === 'server' ? 'Disconnected from live users and chat. Local maps and loaded ISO maps are still available.' : 'Player activity is temporarily unavailable.'
       : kind === 'server' ? 'Everyone connected to the site, including anonymous visitors. Each identity counts once across tabs.'
         : 'Players with this map open in the editor or Play, across all friend rooms. Each account or guest counts once.';
   };

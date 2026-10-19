@@ -101,6 +101,7 @@ export async function openLocalProjects() {
   ) {
     const row = makeRow(document, bundle, source, isoAliases);
     await store(row);
+    void navigator.storage?.persist?.().catch(() => false);
     return activate(row);
   }
   async function createNew() {
@@ -138,6 +139,7 @@ export async function openLocalProjects() {
       tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Browser storage is full or unavailable.'));
     });
     projects.set(row.project.id, row);
+    void navigator.storage?.persist?.().catch(() => false);
     return activate(row);
   }
   async function seed(document: EditDoc, bundle?: ProjectBundle, source?: string, isoAliases?: Record<string, string>) {
@@ -303,6 +305,7 @@ export async function openLocalProjects() {
     list: () => [...projects.values()].map(row => row.project).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     activeProject: () => active?.project,
     current: () => active?.bundle,
+    bundle: (id: string) => projects.get(id)?.bundle,
     isoAliases: () => active?.isoAliases ?? {},
     close: () => db.close(),
   };
@@ -313,6 +316,16 @@ export async function listLocalProjects(): Promise<ClientProject[]> {
   const projects = await openLocalProjects();
   try {
     return projects.list();
+  } finally {
+    projects.close();
+  }
+}
+
+/** Solo playback reads a snapshot without activating a workspace or starting autosave. */
+export async function readLocalProject(id: string): Promise<ProjectBundle | null> {
+  const projects = await openLocalProjects();
+  try {
+    return structuredClone(projects.bundle(id) ?? null);
   } finally {
     projects.close();
   }

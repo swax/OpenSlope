@@ -61,14 +61,15 @@ async function checked(path: string, method = 'GET', body?: unknown, cookie = ad
   assert(response.ok, `${path}: ${response.status} ${await response.clone().text()}`);
   return response.json();
 }
+const usersButtonName = /^(?:Online users|Offline — users and chat)$/;
 async function openCommunity(page: Page) {
-  const toggle = page.getByRole('button', { name: 'Online users', exact: true });
+  const toggle = page.getByRole('button', { name: usersButtonName });
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await page.locator('.public-community-panel').waitFor();
   await page.waitForFunction(() => Math.abs(document.querySelector('.public-community-panel')!.getBoundingClientRect().right - innerWidth) < 1);
 }
 async function closeCommunity(page: Page) {
-  if ((await page.getByRole('button', { name: 'Online users', exact: true }).getAttribute('aria-expanded')) === 'true')
+  if ((await page.getByRole('button', { name: usersButtonName }).getAttribute('aria-expanded')) === 'true')
     await page.getByRole('link', { name: 'Hide', exact: true }).click();
 }
 async function joinChat(page: Page, nickname = 'Ada') {
@@ -467,6 +468,8 @@ try {
   const privateEditorUrl = new URL((await privateEdit.getAttribute('href'))!, origin);
   assert.equal(privateEditorUrl.pathname, '/editor/PRIVATE_RUN');
   assert.equal(privateEditorUrl.searchParams.get('project'), privateMap.project.id);
+  assert.equal(new URL((await privateMaps.getByRole('link', { name: 'Play PRIVATE RUN', exact: true }).getAttribute('href'))!).pathname, '/play/PRIVATE_RUN');
+  assert.equal(await privateEdit.evaluate(el => el.classList.contains('public-primary')), false);
   assert.equal(
     await editor.locator('.public-brand .sp-brand img').getAttribute('src'),
     editorLogo,
@@ -522,6 +525,12 @@ try {
   assert(await editor.evaluate(() => document.body.scrollWidth <= innerWidth), 'private server map tiles fit a phone');
   await editor.screenshot({ path: join(root, 'private-server-maps-mobile.png'), fullPage: true });
   await privateMaps.getByRole('article', { name: 'PRIVATE RUN', exact: true }).click({ position: { x: 12, y: 12 } });
+  await editor.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  assert.equal(new URL(editor.url()).pathname, '/play/PRIVATE_RUN', 'the private tile defaults to Play');
+  await editor.getByRole('button', { name: 'Play', exact: true }).click();
+  await editor.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
+  await editor.goto(`${origin}/maps`);
+  await privateEdit.click();
   await editor.waitForFunction(
     () =>
       document.title === 'PRIVATE_RUN - Slopesmith' &&
@@ -595,7 +604,7 @@ try {
     0,
     'a fresh public link never asks for member credentials',
   );
-  assert.equal(await linked.locator('.public-card-actions button[aria-label="Open PUBLIC RUN"]').count(), 1);
+  assert.equal(await linked.locator('.public-card-actions button[aria-label="Play PUBLIC RUN"]').count(), 1);
   assert.equal(
     await linked.getByRole('heading', { name: 'Choose your next run', exact: true }).count(),
     0,
@@ -616,7 +625,7 @@ try {
     40,
     'the player uses a lower profile header',
   );
-  assert(await linked.getByRole('button', { name: 'Online users', exact: true }).isVisible(), 'online users opens the shared panel');
+  assert(await linked.getByRole('button', { name: usersButtonName }).isVisible(), 'the connection indicator opens the shared panel');
   assert.equal(
     await linked.locator('.public-header').getByRole('button', { name: 'Play', exact: true }).count(),
     0,
@@ -802,6 +811,7 @@ try {
   );
   await linked.getByRole('button', { name: 'About Slopesmith', exact: true }).click();
   await linked.getByRole('region', { name: 'About Slopesmith', exact: true }).waitFor();
+  assert.equal(await linked.locator('[data-offline-status]').innerText(), 'Offline access is disabled in development');
   await linked.getByRole('button', { name: 'About Slopesmith', exact: true }).press('Escape');
   assert(
     await linked.getByRole('button', { name: 'Exit play', exact: true }).isVisible(),
@@ -841,7 +851,7 @@ try {
     await linked.evaluate(() => document.body.scrollWidth <= innerWidth),
     'compact player controls fit narrow phones',
   );
-  assert(await linked.getByRole('button', { name: 'Online users', exact: true }).isVisible());
+  assert(await linked.getByRole('button', { name: usersButtonName }).isVisible());
   assert(await mapTab.isVisible(), 'the selected map tab stays visible in the mobile header');
   await checkExitCorner();
   assert.equal(await linked.locator('[data-fs]').count(), 0, 'mobile public rides also omit fullscreen');
@@ -894,7 +904,7 @@ try {
   assert.equal(await skyVisible(), false, 'leaving VR restores the map preview without its sky');
   assert(await exitPlay.isHidden(), 'Exit ends the VR session and returns to map preview');
   await linked.getByRole('link', { name: 'Maps', exact: true }).click();
-  await linked.getByRole('button', { name: 'Open PUBLIC RUN', exact: true }).waitFor();
+  await linked.getByRole('button', { name: 'Play PUBLIC RUN', exact: true }).waitFor();
   assert.equal(new URL(linked.url()).pathname, '/maps', 'Maps returns from the selected map tab to the catalogue');
   await linked.goto(publicLink);
   await linked.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
@@ -982,7 +992,7 @@ try {
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), null);
   await guest.getByRole('button', { name: /PUBLIC RUN/ }).waitFor();
   const publicCard = guest.getByRole('article', { name: 'PUBLIC RUN', exact: true });
-  assert(await publicCard.getByRole('button', { name: 'Open PUBLIC RUN', exact: true }).isEnabled());
+  assert(await publicCard.getByRole('button', { name: 'Play PUBLIC RUN', exact: true }).isEnabled());
   await guest.mouse.move(1, 1);
   const mapPrimaryStyle = await primaryStyle(publicCard.locator('.public-primary'));
   await publicCard.hover({ position: { x: 12, y: 12 } });
@@ -998,7 +1008,7 @@ try {
   );
   assert(
     await guest
-      .locator('.public-map-tile')
+      .locator('.public-map-tile:not(.public-new-map)')
       .evaluateAll(tiles => tiles.every(tile => tile.querySelectorAll('.public-primary').length === 1)),
     'every map tile identifies exactly one primary action',
   );
@@ -1008,7 +1018,7 @@ try {
     'maps with no missing assets only show their Play action',
   );
   const missingReference = guest.getByRole('article', { name: 'FIXTURE', exact: true });
-  assert(await missingReference.getByRole('button', { name: 'Open FIXTURE', exact: true }).isDisabled());
+  assert(await missingReference.getByRole('button', { name: 'Play FIXTURE', exact: true }).isDisabled());
   await missingReference.click({ position: { x: 12, y: 12 } });
   assert.equal(new URL(guest.url()).pathname, '/maps', 'a disabled primary action also disables the tile background');
   const referenceIsoUrl = new URL(
@@ -1129,17 +1139,21 @@ try {
   const borrowedCard = guest.getByRole('article', { name: 'BORROWED RUN', exact: true });
   assert.match(await borrowedCard.innerText(), /ISO optional/);
   assert(
-    await borrowedCard.getByRole('button', { name: 'Open BORROWED RUN', exact: true }).isEnabled(),
+    await borrowedCard.getByRole('button', { name: 'Play BORROWED RUN', exact: true }).isEnabled(),
     'authored maps can be played while optional ISO assets are missing',
   );
-  assert.match(await borrowedCard.locator('[data-course="GARI"]').innerText(), /Garibaldi.*Not loaded/);
-  assert.match((await borrowedCard.locator('[data-course="FIXTURE"]').getAttribute('class')) ?? '', /missing/);
+  assert.equal(await borrowedCard.locator('.public-iso-badge').count(), 1);
+  const borrowedRequirements = borrowedCard.locator('.public-iso-summary.missing');
+  assert.equal(await borrowedRequirements.innerText(), 'Requirements unfulfilled (2)');
+  await borrowedRequirements.hover();
+  assert.match(await guest.locator('.sp-tip.show').innerText(), /Garibaldi.*Not loaded/);
+  assert.match(await guest.locator('.sp-tip.show').innerText(), /FIXTURE.*Not loaded/);
   assert.equal(
     new URL((await borrowedCard.getByRole('link', { name: 'Load ISO maps', exact: true }).getAttribute('href'))!)
       .pathname,
     '/isos',
   );
-  await borrowedCard.getByRole('button', { name: 'Open BORROWED RUN', exact: true }).click();
+  await borrowedCard.getByRole('button', { name: 'Play BORROWED RUN', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(new URL(guest.url()).pathname, '/play/BORROWED_RUN', 'opening a map card enters its named player route');
   assert.equal(
@@ -1183,7 +1197,7 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
   assert(
-    await guest.getByRole('button', { name: 'Online users', exact: true }).isVisible(),
+    await guest.getByRole('button', { name: usersButtonName }).isVisible(),
     'public pages retain the shared community control',
   );
   await joinChat(guest);
@@ -1431,21 +1445,21 @@ try {
   );
   assert.equal((await call('/api/level?name=GARI')).status, 401, 'local ISO rooms grant no access to server map files');
   await guest.screenshot({ path: join(root, 'iso-manager.png') });
+  await managerGari.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await managerGari.locator('.public-iso-badge.loaded').waitFor();
   await guest.mouse.move(1, 1);
   assert.deepEqual(
-    await primaryStyle(managerGari.locator('.public-primary')),
+    await primaryStyle(managerGari.getByRole('link', { name: 'Play Garibaldi', exact: true })),
     mapPrimaryStyle,
-    'ISO and Maps tiles use the same primary button style',
+    'ISO and Maps tiles use the same primary Play style',
   );
   await managerGari.hover({ position: { x: 12, y: 12 } });
   assert(await managerGari.locator('.public-primary').evaluate(el => el.matches(':hover')));
-  await managerGari.click({ position: { x: 12, y: 12 } });
-  await managerGari.locator('.public-iso-badge.loaded').waitFor();
   await guest.getByText('1 loaded', { exact: true }).waitFor();
   await guest.getByRole('link', { name: 'Maps', exact: true }).click();
   const localCard = guest.locator('.public-local-maps').getByRole('article', { name: 'Garibaldi', exact: true });
   await localCard.waitFor();
-  assert(await localCard.getByRole('button', { name: 'Open Garibaldi', exact: true }).isEnabled());
+  assert(await localCard.getByRole('button', { name: 'Play Garibaldi', exact: true }).isEnabled());
   assert.equal(
     await localCard.getByRole('link', { name: 'Load ISO maps', exact: true }).count(),
     0,
@@ -1608,13 +1622,15 @@ try {
   await guest.waitForFunction(() => !(document.querySelector('#public-iso') as HTMLInputElement).disabled);
   assert.equal(await guest.locator('.public-iso-map').count(), 0, 'an invalid ISO creates no stale rows');
 
-  // A named shared link shows each donor's state and carries its requirements into the ISO manager.
+  // A named shared link summarizes requirements and shows each donor on hover.
   await guest.goto(`${origin}/play/BORROWED_RUN`);
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await guest.locator('.public-header .public-assets-summary').click();
   const deps = guest.getByRole('region', { name: 'Required ISO maps', exact: true });
-  assert.match(await deps.locator('[data-course="GARI"]').innerText(), /Garibaldi.*Not loaded/);
-  assert.match(await deps.locator('[data-course="FIXTURE"]').innerText(), /Not loaded/);
+  assert.equal(await deps.locator('.public-iso-badge').count(), 1);
+  await deps.locator('.public-iso-summary').hover();
+  assert.match(await guest.locator('.sp-tip.show').innerText(), /Garibaldi.*Not loaded/);
+  assert.match(await guest.locator('.sp-tip.show').innerText(), /FIXTURE.*Not loaded/);
   await deps.getByRole('link', { name: 'Load ISO maps', exact: true }).click();
   await closeCommunity(guest);
   assert.equal(new URL(guest.url()).pathname, '/isos');
@@ -1646,8 +1662,10 @@ try {
     'the ISO manager returns to the named player route',
   );
   await guest.locator('.public-header .public-assets-summary').click();
-  assert.match((await deps.locator('[data-course="FIXTURE"]').getAttribute('class')) ?? '', /loaded/);
-  assert.match((await deps.locator('[data-course="GARI"]').getAttribute('class')) ?? '', /missing/);
+  assert.equal(await deps.locator('.public-iso-summary.missing').innerText(), 'Requirements unfulfilled (1)');
+  await deps.locator('.public-iso-summary').hover();
+  assert.match(await guest.locator('.sp-tip.show').innerText(), /FIXTURE · Loaded/);
+  assert.match(await guest.locator('.sp-tip.show').innerText(), /Garibaldi.*Not loaded/);
   await guest.screenshot({ path: join(root, 'map-dependency-badges.png') });
 
   await guest.goto(origin);
@@ -1857,9 +1875,9 @@ try {
     (await snow.getByRole('link', { name: 'Inspect Snowdream', exact: true }).getAttribute('href'))!,
     /\/editor\?reference=SNOW$/,
   );
-  await snow.getByRole('link', { name: 'Open Snowdream', exact: true }).click();
+  await snow.getByRole('link', { name: 'Play Snowdream', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
-  assert.equal(new URL(guest.url()).pathname, '/play/Snowdream', 'ISO Open goes directly to the loaded map');
+  assert.equal(new URL(guest.url()).pathname, '/play/Snowdream', 'ISO Play goes directly to the loaded map');
   await guest.getByRole('link', { name: 'Maps', exact: true }).click();
   const lastMap = guest.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Snowdream', exact: true });
   await lastMap.waitFor();

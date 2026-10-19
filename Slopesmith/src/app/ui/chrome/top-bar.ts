@@ -81,6 +81,7 @@ export type TopBarDeps = {
   exportMountain: () => void;
   importMountain: () => void;
   saveToFolder?: () => void;
+  saveOfflineCopy?: () => void;
   openMountainFolder?: () => void;
   exportDialog: () => void;
   settingsDialog: () => void;
@@ -477,6 +478,16 @@ export function createTopBar(deps: TopBarDeps) {
           desc: 'Download an editable mountain ZIP with its mountain-local assets.',
           onClick: exportMountain,
         },
+        ...(!isLocalWorkspace() && deps.saveOfflineCopy
+          ? [
+              {
+                group: currentMountain,
+                label: 'Save offline copy…',
+                desc: 'Copy this mountain and its custom assets to this device, then edit the independent local copy.',
+                onClick: deps.saveOfflineCopy,
+              },
+            ]
+          : []),
         ...(isLocalWorkspace() && deps.saveToFolder
           ? [
               {

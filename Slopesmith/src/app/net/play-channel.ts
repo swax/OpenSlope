@@ -38,6 +38,8 @@ export function createPlayChannel(options: PlayChannelOptions) {
   let ticket: TicketResponse | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let welcomeTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastServerMessageAt = 0;
   let admission: AbortController | null = null;
   let backoff = 1000,
     renewing = false;
@@ -58,6 +60,8 @@ export function createPlayChannel(options: PlayChannelOptions) {
     retry = null;
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = null;
+    if (welcomeTimeout) clearTimeout(welcomeTimeout);
+    welcomeTimeout = null;
     const old = socket;
     socket = null;
     old?.close();
@@ -117,6 +121,8 @@ export function createPlayChannel(options: PlayChannelOptions) {
           return;
         }
         ready = true;
+        if (welcomeTimeout) clearTimeout(welcomeTimeout);
+        welcomeTimeout = null;
         backoff = 1000;
         offset = message.serverTime - Date.now();
         clockReady = true;
@@ -192,11 +198,20 @@ export function createPlayChannel(options: PlayChannelOptions) {
       address.protocol = address.protocol === 'https:' ? 'wss:' : 'ws:';
       const opened = new WebSocket(address.href);
       socket = opened;
+      const reconnect = () => {
+        if (generation !== version || socket !== opened) return;
+        clear();
+        options.onStatus('closed');
+        schedule();
+      };
+      // A socket can stall during opening or remain OPEN after its network route has disappeared.
+      welcomeTimeout = setTimeout(reconnect, 10_000);
       opened.onopen = () => {
         if (generation !== version) {
           opened.close();
           return;
         }
+        lastServerMessageAt = Date.now();
         opened.send(
           JSON.stringify({
             t: 'hello',
@@ -205,6 +220,10 @@ export function createPlayChannel(options: PlayChannelOptions) {
           } satisfies PlayClientMessage),
         );
         heartbeat = setInterval(() => {
+          if (Date.now() - lastServerMessageAt >= 60_000) {
+            reconnect();
+            return;
+          }
           send({ t: 'ping', at: Date.now() });
           void renew(version);
         }, 20_000);
@@ -213,18 +232,16 @@ export function createPlayChannel(options: PlayChannelOptions) {
         if (generation !== version || socket !== opened) return;
         try {
           const message: unknown = JSON.parse(String(event.data));
-          if (validatePlayServerMessage(message)) handle(message);
+          if (validatePlayServerMessage(message)) {
+            lastServerMessageAt = Date.now();
+            handle(message);
+          }
         } catch {
           /* Invalid server frame. */
         }
       };
       opened.onerror = () => {};
-      opened.onclose = () => {
-        if (generation !== version || socket !== opened) return;
-        clear();
-        options.onStatus('closed');
-        schedule();
-      };
+      opened.onclose = reconnect;
     } catch (error) {
       if (generation !== version) return;
       options.onStatus('closed');

@@ -162,7 +162,9 @@ try {
   await first
     .getByRole('article', { name: 'PUBLIC PEAK', exact: true })
     .locator('.public-map-online[data-count="0"]')
-    .waitFor();
+    .waitFor({ state: 'attached' });
+  assert(await first.getByRole('article', { name: 'PUBLIC PEAK', exact: true })
+    .locator('.public-map-online').isHidden(), 'empty map counters stay hidden');
   assert(
     frames.get(first)!.some(message => message.t === 'site-activity' && message.online === 1),
     'browsing receives small count updates without subscribing to the full roster',
@@ -190,7 +192,7 @@ try {
   await second.goto(`${origin}isos`);
   await first.locator('.public-online[data-count="2"]').waitFor();
   assert.equal((await data('/api/public/activity')).courses[publicMap.id] ?? 0, 0);
-  await first.getByRole('button', { name: 'Open PUBLIC PEAK', exact: true }).click();
+  await first.getByRole('button', { name: 'Play PUBLIC PEAK', exact: true }).click();
   await until(
     async () => (await data('/api/public/activity')).courses[publicMap.id] === 1,
     'opening Play counts the map before chatting or riding',

@@ -6,7 +6,6 @@ import { blankMountain, migrateMountain } from '../../core/doc/mountain';
 import { computePreflight } from '../../core/export/preflight';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
 import { recordFromReferenceProp } from '../../core/props/adopt';
-import type { ImportedPropRecord } from '../../core/props/imported';
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { ProjectBundle, BundleAssetKind } from '../../core/project/transfer';
 import type { PublicCourse } from '../../core/session/public-courses';
@@ -16,13 +15,13 @@ import { localMapData } from './local-map-data';
 import * as levels from '../../shared/map-levels';
 import { buildLevelPropsUncached, nativeArtSource, readMaterialTables } from '../../shared/map-props';
 import { readReferenceEffects } from '../../shared/map-effects';
+import { bundleAssets, bundleProps } from './bundle-assets';
 
 const packed = (bytes: Uint8Array): string => {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
 };
-const unpacked = (value: string): Uint8Array => Uint8Array.from(atob(value), char => char.charCodeAt(0));
 
 /** Copy only the published document and its original assets. All subsequent editor requests stay local. */
 async function publicBundle(course: PublicCourse): Promise<ProjectBundle> {
@@ -97,7 +96,8 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
   const url = new URL(location.href),
     reference = url.searchParams.get('reference'),
     localRequest = url.searchParams.get('local');
-  const localOnly = !!localRequest || (account.accounts === 'required' && !('user' in account));
+  const offline = account.accounts === 'open' && account.offline;
+  const localOnly = !!localRequest || offline || (account.accounts === 'required' && !('user' in account));
   if (!localOnly && !reference) return;
   const cached = await cachedIsoCourses();
   const projects = localOnly ? await openLocalProjects() : null;
@@ -107,16 +107,20 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     else if (localRequest) {
       if (!projects.open(localRequest)) throw new Error('This local mountain is no longer saved on this device.');
     } else if (name) {
-      const response = await fetch('/api/public/courses');
-      if (!response.ok) throw new Error('The public map catalogue could not be loaded.');
-      const { courses } = (await response.json()) as { courses: PublicCourse[] };
-      const course = courses.find(
-        course => course.kind === 'project' && course.name.toLowerCase() === name.toLowerCase(),
-      );
-      if (course) {
-        const bundle = await publicBundle(course);
-        await projects.copyPublic(bundle, course.id, course.isoAliases);
-      } else if (!projects.openNamed(name)) throw new Error('This mountain is private or no longer available.');
+      if (offline) {
+        if (!projects.openNamed(name)) throw new Error('This mountain is not saved on this device. Open Maps to choose a local mountain.');
+      } else {
+        const response = await fetch('/api/public/courses');
+        if (!response.ok) throw new Error('The public map catalogue could not be loaded.');
+        const { courses } = (await response.json()) as { courses: PublicCourse[] };
+        const course = courses.find(
+          course => course.kind === 'project' && course.name.toLowerCase() === name.toLowerCase(),
+        );
+        if (course) {
+          const bundle = await publicBundle(course);
+          await projects.copyPublic(bundle, course.id, course.isoAliases);
+        } else if (!projects.openNamed(name)) throw new Error('This mountain is private or no longer available.');
+      }
     } else if (reference) await projects.seed(blankMountain(), undefined, `reference:${reference}`);
     // A project id in an authenticated/capture URL must never bind the guest workspace to a server project.
     url.searchParams.delete('project');
@@ -139,41 +143,14 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     aliases = next;
     aliasKey = JSON.stringify(next);
   }
-  const blobUrls = new Map<string, string>();
-  const asset = (kind: BundleAssetKind, name: string) =>
-    projects?.current()?.assets.find(asset => asset.kind === kind && asset.name === name);
-  function assetUrl(kind: BundleAssetKind, name: string): string {
-    const found = asset(kind, name),
-      data = found && projects?.current()?.blobs?.[found.hash];
-    if (!found || !data) return 'data:application/octet-stream;base64,';
-    const key = found.hash;
-    let value = blobUrls.get(key);
-    if (!value) {
-      value = URL.createObjectURL(
-        new Blob([new Uint8Array(unpacked(data))], {
-          type:
-            kind === 'texture' || kind === 'sky'
-              ? 'image/png'
-              : kind === 'sound'
-                ? 'audio/wav'
-                : 'application/octet-stream',
-        }),
-      );
-      blobUrls.set(key, value);
-    }
-    return value;
-  }
+  const custom = bundleAssets(() => projects?.current());
+  window.addEventListener('pagehide', event => { if (!event.persisted) custom.dispose(); });
   const resolve = (path: string): string => {
-    const url = new URL(path, location.origin),
-      q = url.searchParams;
+    const url = new URL(path, location.origin);
     if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return path;
     if (localOnly) {
-      if (url.pathname === '/api/texture' && q.get('level')?.toLowerCase() === 'custom')
-        return assetUrl('texture', q.get('name') ?? '');
-      if (url.pathname === '/api/custom-sound') return assetUrl('sound', q.get('name') ?? '');
-      if (url.pathname === '/api/custom-music-file') return assetUrl('music', q.get('name') ?? '');
-      if (['/api/skypano', '/api/skyground'].includes(url.pathname) && q.has('sky'))
-        return assetUrl('sky', q.get('sky') ?? '');
+      const resolved = custom.resolve(path);
+      if (resolved !== path) return resolved;
     }
     const resolved = local.resolveAsset(path);
     if (resolved !== path) return resolved;
@@ -272,16 +249,8 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
       return json({ tables: Object.fromEntries(await readMaterialTables(local.source)) });
     if (localOnly && path === '/api/props') return json({ levels: cached });
     if (localOnly && path === '/api/custom-props') {
-      const payload: PropsPayload = { level: '@import', models: [], materials: [], instances: [] };
-      for (const asset of projects?.current()?.assets.filter(asset => asset.kind === 'prop') ?? []) {
-        const bytes = projects?.current()?.blobs?.[asset.hash];
-        if (!bytes) continue;
-        const record = JSON.parse(new TextDecoder().decode(unpacked(bytes))) as ImportedPropRecord;
-        const base = payload.materials.length;
-        payload.materials.push(...record.materials.map(material => ({ ...material, id: base + material.id })));
-        payload.models.push({ ...record, subs: record.subs.map(sub => ({ ...sub, mat: base + sub.mat })) });
-      }
-      return json(payload);
+      const bundle = projects?.current();
+      return json(bundle ? bundleProps(bundle) : { level: '@import', models: [], materials: [], instances: [] });
     }
     if (localOnly && path === '/api/custom-sounds')
       return json({
