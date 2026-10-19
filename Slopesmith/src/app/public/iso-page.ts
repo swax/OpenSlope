@@ -33,10 +33,10 @@ export async function showIsoPage(): Promise<void> {
   const dependencies = element('section', 'public-iso-requirements'); dependencies.hidden = true;
   dependencies.setAttribute('aria-label', 'Required ISO maps');
   const iso = element('section', 'public-iso');
-  const input = element('input', ''); input.type = 'file'; input.accept = '.iso'; input.id = 'public-iso';
+  const input = element('input', ''); input.type = 'file'; input.accept = '.iso,.bin'; input.id = 'public-iso';
   const label = element('label', 'public-iso-button', 'Choose ISO'); label.htmlFor = input.id;
   label.prepend(publicGlyph('disc'));
-  label.title = 'SSX Tricky PS2 ISO · Files stay on this device';
+  label.title = 'SSX or SSX Tricky PS2 · Choose an ISO or the BIN from a BIN/CUE disc · Files stay on this device';
   const count = element('span', 'public-cache');
   const clear = element('button', 'public-clear', 'Clear'); clear.type = 'button'; clear.setAttribute('aria-label', 'Clear local assets');
   const loadRequired = element('button', 'public-primary', 'Load required maps'); loadRequired.type = 'button'; loadRequired.hidden = true;

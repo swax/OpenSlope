@@ -50,6 +50,9 @@ assert.deepEqual(
   },
 );
 assert.equal(publicCourseGroups([], ['GARI']).local[0].name, 'Garibaldi', 'loaded slots need no server publication');
+assert.equal(publicCourseGroups([], ['SSX_SNOW']).local[0].name, 'Snowdream (SSX)');
+assert.equal(publicCourseGroups([], ['SNOW', 'SSX_SNOW']).local.length, 2, 'original and Tricky courses coexist');
+assert(isDiscCourse('ssx_snow'), 'original SSX slots can be opened locally without a server publication');
 assert.deepEqual(
   requiredIsoState(['GARI', 'SNOW', 'gari'], ['gari']),
   [

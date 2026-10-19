@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 from import_test import big, both, course_members, iso, record
+from ssx_import_test import members as ssx_members, raw_disc
 
 
 def multi_iso(names):
@@ -28,17 +29,20 @@ def main():
     executable = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix="openslope-library-") as temporary:
         root = Path(temporary)
-        for scenario in ("import", "cancel", "invalid", "unsupported", "existing", "queue"):
+        for scenario in ("import", "cancel", "invalid", "unsupported", "existing", "queue", "ssx"):
             folder = root / (scenario + " app with spaces")
             folder.mkdir()
             members = course_members()
+            if scenario == "ssx":
+                members = ssx_members()
             if scenario == "unsupported":
                 members["fixture.pbd"] = bytes(4) + members["fixture.pbd"][4:]
             data = b"invalid image" if scenario == "invalid" else iso(big(members))
             if scenario == "queue":
                 data = multi_iso(["FIXTURE", "SECOND", "THIRD", "FOURTH"])
                 (folder / 'broken.img').write_bytes(b'bad image')
-            (folder / "First.ISO").write_bytes(data)
+            (folder / ("First.BIN" if scenario == "ssx" else "First.ISO")).write_bytes(raw_disc(data) if scenario == "ssx" else data)
+            (folder / "ignore.cue").write_text('Choose the BIN file')
             (folder / "second.iso").write_bytes(data)
             (folder / "ignore.iso").mkdir()
             (folder / "ignore.iso" / "nested.iso").write_bytes(data)
@@ -57,7 +61,7 @@ def main():
             assert result.returncode == 0, result.stdout + result.stderr
             assert all(hashlib.sha256((folder / name).read_bytes()).digest() == digest for name, digest in hashes.items())
         assert not (root / "Maps").exists(), "Import used the process working directory instead of its application folder"
-    print("PASS: six desktop ISO/library scenarios, serial import queue, retry/cancellation, exact publication, existing-map protection and unchanged source images")
+    print("PASS: seven desktop ISO/BIN library scenarios, serial import queue, retry/cancellation, publication and source protection")
 
 
 if __name__ == "__main__":

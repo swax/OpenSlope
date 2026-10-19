@@ -90,24 +90,25 @@ Json body(Bytes b, std::size_t& p) {
 } // namespace
 
 void write_collision(const std::vector<std::uint8_t>& source, const std::filesystem::path& output,
-                     const ImportCancel& cancel) {
+                     const ImportCancel& cancel, bool original) {
     // [Trailmap: 230-pools, 230-proxy, 230-body, 230-props, 230-joins]
     // Pool entry byte-size is layout metadata; payload count determines traversal.
     Bytes b{source};
-    b.range(0, 76);
-    if (b.le(4, 2) != 0x1500)
+    b.range(0, original ? 40 : 76);
+    if (!original && b.le(4, 2) != 0x1500)
         throw std::runtime_error("Invalid collision behavior tag");
-    const auto proxy_count = b.le(28), body_count = b.le(20);
+    const auto proxy_count = b.le(original ? 24 : 28), body_count = b.le(original ? 16 : 20);
+    const auto proxy_table = b.le(original ? 28 : 32), body_table = b.le(original ? 20 : 24);
     if (proxy_count > 4000 || body_count > 4000)
         throw std::runtime_error("Collision pool count exceeds its limit");
-    b.range(b.le(32), std::size_t(proxy_count) * 12);
-    b.range(b.le(24), std::size_t(body_count) * 12);
+    b.range(proxy_table, std::size_t(proxy_count) * 12);
+    b.range(body_table, std::size_t(body_count) * 12);
     std::filesystem::create_directory(output / "Collision");
     std::vector<std::vector<std::string>> names;
     std::size_t id = 0;
     for (unsigned i = 0; i < proxy_count; ++i) {
         check_cancel(cancel);
-        const auto entry = b.le(32) + i * 12, count = b.le(entry + 8);
+        const auto entry = proxy_table + i * 12, count = b.le(entry + 8);
         std::size_t p = b.le(entry);
         if (count > 256)
             throw std::runtime_error("Too many collision subobjects");
@@ -123,7 +124,7 @@ void write_collision(const std::vector<std::uint8_t>& source, const std::filesys
     Json bodies = Json::array();
     for (unsigned i = 0; i < body_count; ++i) {
         check_cancel(cancel);
-        const auto entry = b.le(24) + i * 12, count = b.le(entry + 8);
+        const auto entry = body_table + i * 12, count = b.le(entry + 8);
         std::size_t p = b.le(entry);
         if (count > 256)
             throw std::runtime_error("Too many physics subobjects");
@@ -136,6 +137,21 @@ void write_collision(const std::vector<std::uint8_t>& source, const std::filesys
     }
     auto doc = read(output / "Instances.json");
     auto& instances = doc.at("Instances");
+    if (original) {
+        for (auto& row : instances) {
+            const auto mode = row.at("CollsionMode").get<int>(), shape = row.at("CollisionProxyIndex").get<int>();
+            const auto physics = row.at("PhysicsIndex").get<int>();
+            if (mode < 0 || mode > 3 || shape < -1 || physics < -1 ||
+                (mode == 1 && shape >= 0 && std::size_t(shape) >= names.size()) ||
+                (mode == 3 && physics >= 0 && std::size_t(physics) >= bodies.size()))
+                throw std::runtime_error("Invalid SSX collision reference");
+            if (mode == 1 && shape >= 0)
+                row["CollsionModelPaths"] = names[std::size_t(shape)];
+        }
+        write(output / "Instances.json", doc);
+        write(output / "Physics.json", {{"Schema", "openslope-physics/v1"}, {"PhysicsHeaders", bodies}});
+        return;
+    }
     if (instances.size() != b.le(60))
         throw std::runtime_error("Collision instance join count differs");
     b.range(b.le(64), instances.size() * 4);

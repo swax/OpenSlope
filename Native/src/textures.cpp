@@ -74,7 +74,7 @@ void chunk(std::ofstream& file, const char* type, std::span<const std::uint8_t> 
 // [Trailmap: 210-directory, 210-chunk, 210-types, 210-palette, 210-swizzle,
 // 210-alpha, 210-color] All reads are bounded by directory/chunk extents.
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap, const ImportCancel& cancelled,
-                              bool particle) {
+                              bool particle, bool original) {
     Bytes bank{data};
     bank.range(0, 16);
     if (bank.text(0, 4) != "SHPS" || bank.le(4) != data.size())
@@ -91,6 +91,10 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> data, bool lightmap,
         auto name = bank.text(16 + i * 8, 4);
         while (!name.empty() && (name.back() == '\0' || name.back() == ' '))
             name.pop_back();
+        if (original) {
+            name = std::to_string(i);
+            name.insert(0, 4 - std::min<std::size_t>(4, name.size()), '0');
+        }
         if (!valid_map_name(name) || !names.insert(name).second)
             throw std::runtime_error("Unsafe or duplicate texture name");
         const auto start = bank.le(20 + i * 8);

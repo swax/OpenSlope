@@ -20,19 +20,21 @@ self.onmessage = async (event: MessageEvent<{ file: File; courses: string[]; ope
   try {
     const { file, courses, operation } = event.data;
     // This static runtime is built from Native/src/browser_import.cpp; disc bytes stay inside this worker.
-    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=3`, self.location.origin).href;
+    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=4`, self.location.origin).href;
     const runtimeUrl = assetUrl('openslope_browser_import.js');
     const runtime = await import(/* @vite-ignore */ runtimeUrl) as { default: (options: { locateFile: (name: string) => string }) => Promise<Importer> };
     const module = await runtime.default({ locateFile: assetUrl });
     module.isoFile = file;
     const available = JSON.parse(module.ccall('browser_courses', 'string', [], [])) as { courses?: string[]; error?: string };
     if (available.error) throw new Error(available.error);
-    if (!available.courses?.length) throw new Error('No supported SSX Tricky PS2 courses were found.');
+    if (!available.courses?.length) throw new Error('No supported SSX or SSX Tricky PS2 courses were found.');
     if (operation === 'scan') {
-      const sounds = JSON.parse(module.ccall('browser_collision_sounds', 'string', [], [])) as DiscCollisionSounds & { error?: string };
-      if (sounds.error) throw new Error(sounds.error);
-      db = await openIsoCache();
-      await updateCachedCollisionSounds(db, available.courses, sounds);
+      if (available.courses.some(course => !course.startsWith('SSX_'))) {
+        const sounds = JSON.parse(module.ccall('browser_collision_sounds', 'string', [], [])) as DiscCollisionSounds & { error?: string };
+        if (sounds.error) throw new Error(sounds.error);
+        db = await openIsoCache();
+        await updateCachedCollisionSounds(db, available.courses, sounds);
+      }
       self.postMessage({ type: 'done', courses: available.courses });
       return;
     }

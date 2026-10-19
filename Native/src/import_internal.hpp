@@ -52,16 +52,26 @@ struct Image {
     std::vector<std::uint8_t> rgba;
 };
 
+void ssx_header(std::span<const std::uint8_t> index);
+void write_ssx_course(const DiscInput& disc, const std::map<std::string, std::vector<std::uint8_t>>& files,
+                      const std::string& course, const std::filesystem::path& output, const ImportProgress& progress,
+                      const ImportCancel& cancel);
+bool write_ssx_props(std::span<const std::uint8_t> index, std::span<const std::uint8_t> models,
+                     std::span<const std::uint8_t> instances, const std::vector<Image>& textures,
+                     const std::filesystem::path& output, const ImportCancel& cancel);
+std::string patch_document(std::span<const std::uint8_t> records, const std::vector<std::string>& names,
+                           const std::vector<Image>& images, bool original = false);
+
 void write_crowd(std::span<const std::uint8_t> source, const std::filesystem::path& root,
                  const ImportCancel& cancel = {});
 std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes, bool lightmap, const ImportCancel& cancelled,
-                              bool particle = false);
+                              bool particle = false, bool original = false);
 void write_png(const std::filesystem::path& path, const Image& image);
 std::string light_document(std::span<const std::uint8_t> geometry);
 void write_paths(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,
                  const ImportCancel& cancelled);
 void write_collision(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,
-                     const ImportCancel& cancelled);
+                     const ImportCancel& cancelled, bool original = false);
 std::string logic_document(std::span<const std::uint8_t> bytes, const std::string& course,
                            const ImportCancel& cancelled = {});
 void write_logic(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output, const std::string& course,

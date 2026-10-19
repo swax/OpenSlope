@@ -10,7 +10,9 @@ remain in the in-game menu. See [release notes](releases/0.79.0.md).
 Build 0.78 opens the desktop library at startup and lists ISO files beside the
 EXE. Queue course extractions, follow progress in each row, then choose Play
 when ready. Wheel scrolling and a draggable scrollbar replace desktop paging.
-The native reader supports SSX Tricky PS2; SSX 3 import is not implemented.
+The native reader supports SSX and SSX Tricky PS2, including the original
+game's raw `.bin` disc images. SSX 3 import is not implemented.
+See [SSX import and current limits](docs/ssx-import.md).
 See [desktop ISO setup](docs/desktop-iso-0.78.md).
 
 Build 0.76 adds desktop A/D strafing, left-drag look/turn and E to spawn and
@@ -50,8 +52,8 @@ The Linux host still needs target build/device validation. Full gameplay parity 
 tracked in the matrix below.
 
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
-The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
-ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
+The Quest app starts with a Maps library: choose a populated folder, or select a local SSX or SSX Tricky PS2
+disc image to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
 The importer currently converts terrain, textures, lightmaps, static prop geometry/placements,
 AIP/SOP course paths, collision proxies/physics bodies, configured sound/music assets and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
@@ -111,7 +113,7 @@ F/V switches first/chase camera, C looks down, and E dismounts or spawns and mou
 LMB drag looks around while riding and turns the character on foot; RMB carries/throws the board.
 P/Escape opens the pause menu; Escape first releases a held mouse drag.
 The wheel changes camera distance. The pause menu includes a map library and ride settings.
-Without `--map`, the desktop starts in the library. Place `.iso` files beside
+Without `--map`, the desktop starts in the library. Place `.iso` or `.bin` files beside
 the EXE and choose **ISO Sources**, then **Extract <course>** to queue a course.
 Progress stays in its row, which becomes **Play <course>** when ready.
 Completed courses live in `Maps/<name>` beside the EXE; playing is a separate click.
@@ -291,7 +293,7 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
    **Use app Maps folder** selects `/sdcard/Android/data/org.openslope.nativeplayer/files/Maps/`.
 2. Existing `Maps/<name>/Patches.json` courses appear as **Play <name>** buttons. Custom maps work
    immediately without selecting an ISO. Use **Refresh courses** after adding files outside the app.
-3. **Import SSX Tricky ISO** opens the system file picker, discovers supported courses, and lets
+3. **Import from ISO** opens the system file picker, discovers supported SSX/SSX Tricky courses, and lets
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
    To refresh an old import, choose **Unload** beside that course and confirm, then import it again.

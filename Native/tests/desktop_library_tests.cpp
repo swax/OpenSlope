@@ -27,20 +27,23 @@ int main(int argc, char** argv) {
         const std::string scenario = argv[1];
         const DesktopLibrary library(argv[2]);
         const auto images = library.images();
-        check(images.size() == 2 && images[0].filename() == "First.ISO" && images[1].filename() == "second.iso",
-              "Sources must be sorted, nonrecursive, case-insensitive ISO files beside the application");
+        const bool ssx = scenario == "ssx";
+        const std::string course = ssx ? "SSX_FIXTURE" : "FIXTURE";
+        check(images.size() == 2 && images[0].filename() == (ssx ? "First.BIN" : "First.ISO") &&
+                  images[1].filename() == "second.iso",
+              "Sources must be sorted, nonrecursive, case-insensitive ISO/BIN files beside the application");
         check(library.maps_root() == std::filesystem::absolute(argv[2]) / "Maps",
               "Maps root must follow executable folder, not working directory");
-        if (scenario == "import") {
+        if (scenario == "import" || ssx) {
             const auto courses = library.courses(images[0]);
-            check(courses.size() == 1 && courses[0].name == "FIXTURE",
+            check(courses.size() == 1 && courses[0].name == course,
                   "Real format discovery must supply the selectable course");
             const auto map = library.install(images[0], courses[0].name);
-            check(map == library.maps_root() / "FIXTURE" && Terrain::load(map).patches().size() == 1,
+            check(map == library.maps_root() / course && Terrain::load(map).patches().size() == 1,
                   "Published import must load as a standard map");
             check(library.maps().size() == 1, "Completed import must appear in the installed library");
             std::ofstream(map / "keep-local.txt") << "local edits";
-            check(library.install(library.folder() / "missing.iso", "FIXTURE") == map,
+            check(library.install(library.folder() / "missing.iso", course) == map,
                   "Installed maps must be reused without opening a disc");
             check(std::filesystem::exists(map / "keep-local.txt"), "Reusing an import must preserve local files");
             no_staging(library);

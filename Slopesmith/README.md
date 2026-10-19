@@ -178,7 +178,10 @@ it folds into an expandable **Ride controls** tab.
 Editor Test rides keep the normal bottom-left editor chat and the Test tools panel. Press **Enter** during a
 ride to chat; sending a message or pressing **Escape** returns the keyboard to the ride.
 
-Retail courses require the visitor's own SSX Tricky PS2 ISO. Authored mountains that borrow game assets
+Retail courses require the visitor's own SSX or SSX Tricky PS2 disc. On `/isos`, select an ISO or the
+original SSX disc's BIN file; the CUE is not needed. Original courses have separate names such as
+**Snowdream (SSX)**, so both games can be loaded together. See the [SSX importer limits](../Native/docs/ssx-import.md).
+Authored mountains that borrow game assets
 are labelled **ISO optional** and remain playable without it: missing game textures render as plain
 surfaces and missing props are omitted. Custom textures and models remain available. Supplying an ISO
 restores its assets locally. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves

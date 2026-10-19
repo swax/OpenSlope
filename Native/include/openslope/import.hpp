@@ -23,6 +23,9 @@ struct DiscCourse {
 using ImportProgress = std::function<void(const std::string&)>;
 using ImportCancel = std::function<bool()>;
 DiscInput open_disc(const std::filesystem::path& path);
+// Presents ISO9660 logical sectors for either a plain ISO or a Mode 2 Form 1 BIN.
+// The view seeks the original input; it never copies the complete image.
+DiscInput logical_disc(const DiscInput& input);
 
 struct DiscEntry {
     std::string name;

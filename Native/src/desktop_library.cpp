@@ -28,7 +28,8 @@ DesktopLibrary::DesktopLibrary(std::filesystem::path folder) : folder_(std::file
 std::vector<std::filesystem::path> DesktopLibrary::images() const {
     std::vector<std::filesystem::path> result;
     for (const auto& entry : std::filesystem::directory_iterator(folder_)) {
-        if (entry.is_symlink() || !entry.is_regular_file() || lower(entry.path().extension().string()) != ".iso")
+        const auto extension = lower(entry.path().extension().string());
+        if (entry.is_symlink() || !entry.is_regular_file() || (extension != ".iso" && extension != ".bin"))
             continue;
         result.push_back(entry.path());
     }
