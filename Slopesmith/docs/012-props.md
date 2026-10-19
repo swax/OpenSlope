@@ -272,11 +272,13 @@ the knot state is already empty, rather than scheduling a full `renderDoc` merel
 
 **Multi-select** (select mode): a **left-drag** rubber-bands a box — the press is deferred, so a still
 click still selects on release while a drag past the tap threshold draws the marquee — and every placed
-prop whose origin projects inside becomes one selection set. **Shift+left-drag** adds the boxed props to
-the current selection, including a single selected prop. **Ctrl/Cmd+click** adds one prop to the selection or drops it,
+prop or visible authored light whose origin projects inside becomes one selection set. **Shift+left-drag** adds the boxed items to
+the current selection, including a single selected prop or light. **Ctrl/Cmd+left-drag** removes boxed items.
+**Ctrl/Cmd+click** adds one prop or light to the selection or drops it,
 as in Edit and Effects mode. A group's member adds or drops the whole group, one prop left on its own becomes an
 ordinary selection again, and a Ctrl+click that misses keeps the set. Ctrl+click on a free light adds it to the
-set too — listed, outlined and moved with the props, and tied in by **⊞ group** ([015](015-groups.md#authored-groups)). Overlapping props stay selected, and an empty
+set too — listed, outlined and moved with the props, and tied in by **⊞ group** ([015](015-groups.md#authored-groups)). A set may contain only lights;
+its shared gizmo moves, rotates or scales all of them, including spotlight aim and light reach. Overlapping props stay selected, and an empty
 Shift-drag changes nothing. A plain drag replaces the set. Each member shows the amber outline, and
 the one gizmo parks at the set's **centroid**; dragging it moves every member by the same data-space
 delta (the viewport reports deltas via `onMoveProps`, the host applies them to its `multiSel` indices).
@@ -296,11 +298,12 @@ toolbox. A mixed mesh-and-prop selection first offers its usual type chooser; ch
 Edit panel. Contact, materials, member settings and group actions live in Props mode.
 A free light clicks the same way while **Sources** shows the bulbs (and the Prop pick filter is on): Edit selects it
 under its move gizmo with **open in Props mode** for its full settings, and a group's light selects its group.
-**Ctrl/Cmd+click** adds a light to the selected props, or drops it, as in Props mode — the Edit panel counts it
-("1 prop + 1 light selected"), the gizmo carries it, and Props opens the set ready to **⊞ group**. A shift or
-ctrl box keeps the set's lights; a plain click elsewhere, a plain box and Esc let a light go.
+**Ctrl/Cmd+click** and drag rectangles include lights alongside props or mesh components. The **Props / lights**
+pick filter controls both placement types. Shift boxes add lights, Ctrl/Cmd boxes remove them, and a plain box
+replaces the selection. Light-only sets share the placement gizmo; mixed mesh/light selections share Move and Rotate.
+The Edit panel counts the selected lights, and **open in Props mode** retains the whole set. Esc clears the selection.
 
-**Copy / paste** (Props or Edit mode): **Ctrl+C** copies the selected prop or box-selected set, **Ctrl+X** cuts it,
+**Copy / paste** (Props or Edit mode): **Ctrl+C** copies the selected prop, free light, or box-selected set, **Ctrl+X** cuts it,
 and **Ctrl+V** holds the copies on the cursor the way a Library pick is held — a translucent ghost of the whole
 set riding the terrain, **Alt+wheel** or **← / →** turning it and **Shift+wheel** resizing it. A **click**
 drops it and selects what landed under the move gizmo; **Esc** puts it down with nothing placed. One click

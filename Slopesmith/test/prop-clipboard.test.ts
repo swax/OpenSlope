@@ -1,14 +1,14 @@
 // tier: fast
 
 import * as THREE from 'three';
-import type { PlacedProp, QuadMeshDoc, Screen, V3 } from '../src/core/doc/types';
+import type { AuthoredLight, PlacedProp, QuadMeshDoc, Screen, V3 } from '../src/core/doc/types';
 import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { placementQuat } from '../src/core/props/pose';
 import { AUTHORED_MODEL_LEVEL } from '../src/core/doc/models';
 import { attachEffectToProp, createEmptyEffectsDocument, effectAttachments } from '../src/core/effects/authoring';
 import { EFFECT_TRIGGER_LEVEL } from '../src/core/effects/trigger-volume';
 import { copyPlacements, pasteGhost, pastePlacements } from '../src/core/props/clipboard';
-import { createStore } from '../src/app/state/store';
+import { createStore, selectedSetLights, setSelectedSet } from '../src/app/state/store';
 import { vertexName } from '../src/app/state/mesh-names';
 import type { EditViewportPort } from '../src/app/edit/viewport-port';
 import type { PropArm } from '../src/app/viewport/scene/props';
@@ -37,7 +37,7 @@ const { createPropClipboard } = await import('../src/app/props/clipboard');
 const { createMeshClipboardSession } = await import('../src/app/edit/clipboard');
 const { installShortcuts } = await import('../src/app/shortcuts');
 
-type Doc = Pick<QuadMeshDoc, 'name' | 'props' | 'screens' | 'effects' | 'models'>;
+type Doc = Pick<QuadMeshDoc, 'name' | 'props' | 'lights' | 'screens' | 'effects' | 'models'>;
 const prop = (id: string, extra: Partial<PlacedProp> = {}): PlacedProp => ({
   id,
   level: 'GARI',
@@ -49,6 +49,18 @@ const prop = (id: string, extra: Partial<PlacedProp> = {}): PlacedProp => ({
   ...extra,
 });
 const near = (a: readonly number[], b: readonly number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+const light = (id: string): AuthoredLight => ({
+  id,
+  name: 'Blue spotlight',
+  kind: 'spot',
+  pos: [5, 8, 7],
+  dir: [1, 0, 0],
+  color: '#4488ff',
+  intensity: 2.5,
+  reach: 30,
+  cone: 25,
+  glint: 32,
+});
 
 function sourceDoc(): Doc {
   const effects = createEmptyEffectsDocument('SOURCE');
@@ -137,6 +149,78 @@ function sourceDoc(): Doc {
   );
 }
 
+// A light selected on its own is a complete clipboard selection, even without a props table.
+{
+  const doc: Doc = { name: 'LIGHTS', lights: [light('light:0000')] };
+  const clip = copyPlacements(doc, [], () => 2, ['light:0000']);
+  check(!!clip, 'a standalone light copies without any selected props');
+  if (clip) {
+    check(clip.entries.length === 0 && clip.lights?.length === 1, 'the clipboard contains only the selected light');
+    check(near(clip.anchor, [5, 2, 7]), 'a light is carried above the ground beneath its origin');
+    const pasted = pastePlacements(doc, clip, { pos: [20, 3, 40], yaw: 90, scale: 2 });
+    const copy = doc.lights![1];
+    check(pasted.indices.length === 0 && pasted.lights[0] === copy.id, 'a light-only paste returns its new light id');
+    check(
+      copy.id !== doc.lights![0].id && near(copy.pos, [20, 15, 40]),
+      'a light pastes with a fresh id at the carried pose',
+    );
+    check(
+      near(copy.dir!, [0, 0, -1]) && copy.reach === 60,
+      'turning and resizing also carries its direction and reach',
+    );
+    check(
+      copy.name === 'Blue spotlight' &&
+        copy.color === '#4488ff' &&
+        copy.intensity === 2.5 &&
+        copy.cone === 25 &&
+        copy.glint === 32,
+      'the pasted light keeps its name, colour, brightness, cone, and glint',
+    );
+    copy.pos[0] = 100;
+    copy.dir![0] = 1;
+    check(
+      doc.lights![0].pos[0] === 5 &&
+        doc.lights![0].dir![2] === 0 &&
+        clip.lights![0].pos[0] === 5 &&
+        clip.lights![0].dir![2] === 0,
+      'pasting never edits the source or clipboard',
+    );
+    check(copyPlacements(doc, [], undefined, ['missing']) === null, 'a stale light selection copies nothing');
+    const grouped = copyPlacements(
+      { ...doc, lights: [{ ...light('light:0000'), assembly: 'group:0000' }] },
+      [],
+      undefined,
+      ['light:0000'],
+    )!;
+    const other: Doc = { name: 'OTHER' };
+    pastePlacements(other, grouped);
+    check(
+      !other.lights![0].assembly && other.lights![0].name === 'Blue spotlight',
+      'a light copied by itself pastes ungrouped across mountains',
+    );
+    const point: AuthoredLight = {
+      id: 'light:0000',
+      kind: 'point',
+      pos: [1, 4, 3],
+      color: '#ffaa44',
+      intensity: 1,
+      reach: 20,
+    };
+    const pointDoc: Doc = { name: 'POINT', lights: [point] };
+    pastePlacements(
+      pointDoc,
+      copyPlacements(pointDoc, [], () => 0, [point.id!])!,
+      { pos: [10, 0, 20], yaw: 90, scale: 1 },
+    );
+    check(
+      pointDoc.lights![1].kind === 'point' &&
+        pointDoc.lights![1].dir === undefined &&
+        pointDoc.lights![1].cone === undefined,
+      'a default point light also copies without acquiring spotlight fields',
+    );
+  }
+}
+
 // ================= core: where a carried set lands =================
 {
   // Two props a metre either side of the anchor along +X; one tilted, one at double size.
@@ -222,12 +306,15 @@ function sourceDoc(): Doc {
       deselectPropOrLight: () => {
         store.selectedProp = null;
         store.multiSel = [];
+        store.selectedLight = null;
       },
       deleteSelectedProp: () => {
         doc.props!.splice(store.selectedProp!, 1);
         store.selectedProp = null;
       },
       deleteMultiSelProps: () => {
+        const ids = new Set(selectedSetLights(store));
+        store.mdoc.lights = store.mdoc.lights?.filter(light => !ids.has(light.id!));
         for (const i of [...store.multiSel].sort((x, y) => y - x)) doc.props!.splice(i, 1);
         store.multiSel = [];
       },
@@ -237,6 +324,10 @@ function sourceDoc(): Doc {
         return null as never;
       },
       ensureGroupDefs: async () => [],
+    },
+    deleteSelectedLight: () => {
+      store.mdoc.lights = store.mdoc.lights?.filter(light => light.id !== store.selectedLight);
+      store.selectedLight = null;
     },
     resetGizmoMode: () => calls.push('move-gizmo'),
     scheduleRebuild: () => {},
@@ -480,6 +571,74 @@ function sourceDoc(): Doc {
   store.currentMode = 'props'; // a mode change while the geometry promise is pending cancels that request
   await pending;
   check(!session.placing(), 'switching modes during loading does not unexpectedly arm a paste');
+
+  // The reported failure: Ctrl+C / V on one authored light used to fall through both clipboard handlers.
+  store.regionSel = [];
+  store.controlSel = [];
+  store.multiSel = [];
+  store.selectedProp = null;
+  store.mdoc.lights = [light('light:0000')];
+  store.selectedLight = 'light:0000';
+  check(
+    press('c') && session.count() === 1 && store.clipboardKind === 'props',
+    'Ctrl+C handles a standalone light and replaces the previous clipboard',
+  );
+  if (session.count() === 1) {
+    const before = store.mdoc.lights.length;
+    const loads = calls.filter(call => call === 'load').length;
+    check(press('v'), 'Ctrl+V handles the copied standalone light');
+    await finishLoading();
+    check(
+      session.placing() &&
+        view.arm?.paste?.length === 0 &&
+        view.arm.pasteLights?.length === 1 &&
+        calls.filter(call => call === 'load').length === loads &&
+        store.mdoc.lights.length === before,
+      'a light paste previews before it inserts anything, without loading a model',
+    );
+    session.cancel();
+    check(!session.placing() && store.mdoc.lights.length === before, 'cancelling a light paste inserts nothing');
+    press('v');
+    await finishLoading();
+    session.place([20, 0, 40], 0, 1);
+    check(
+      store.mdoc.lights.length === before + 1 && store.selectedLight === store.mdoc.lights.at(-1)!.id,
+      'clicking pastes the light and selects the new copy',
+    );
+    check(near(store.mdoc.lights.at(-1)!.pos, [20, 8, 40]), 'the pasted light keeps its clearance above the ground');
+    check(session.summary() === 'Blue spotlight', 'the clipboard describes its light instead of reporting zero props');
+    check(
+      press('x') && store.mdoc.lights.length === before && store.selectedLight === null,
+      'Ctrl+X cuts the selected light',
+    );
+    store.currentMode = 'edit';
+    check(press('v'), 'a cut light remains pasteable from Edit mode');
+    await finishLoading();
+    check(
+      String(store.currentMode) === 'props' && session.placing(),
+      'pasting a light from Edit enters Props placement',
+    );
+    session.place([30, 0, 50], 0, 1);
+    check(
+      store.mdoc.lights.length === before + 1 && near(store.mdoc.lights.at(-1)!.pos, [30, 8, 50]),
+      'a cut light can be placed again',
+    );
+    store.selectedLight = null;
+    setSelectedSet(
+      store,
+      [],
+      store.mdoc.lights.map(light => light.id!),
+    );
+    check(press('c') && session.count() === 2, 'Ctrl+C captures every light in a light-only set');
+    press('v');
+    await finishLoading();
+    session.place([0, 0, 0], 0, 1);
+    check(
+      store.mdoc.lights.length === 4 && selectedSetLights(store).length === 2,
+      'pasting a light-only set retains the whole new selection',
+    );
+    check(press('x') && store.mdoc.lights.length === 2, 'Ctrl+X cuts every selected light without requiring a prop');
+  }
 }
 
 if (failures) process.exitCode = 1;

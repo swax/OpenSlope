@@ -532,7 +532,11 @@ export function createPointerRouter(
       marquee,
       marqueeVertexHint,
       props,
-      layers.props.selectedProp !== null || layers.props.multiSelProps.length > 0,
+      layers.props.selectedProp !== null ||
+        layers.props.multiSelProps.length > 0 ||
+        layers.lights.selectedLight != null ||
+        (layers.lights.selectedSetLights?.length ?? 0) > 0,
+      sel.editPickKinds.prop ? lightsInMarquee() : [],
     );
     marqueeVertexHint = null;
   }
@@ -557,6 +561,25 @@ export function createPointerRouter(
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) out.push(i);
     }
     return out;
+  }
+
+  /** Visible authored light origins inside the same drag rectangle as placed props. */
+  function lightsInMarquee(): string[] {
+    if (!marquee || !layers.lights.freeLightGroup.visible) return [];
+    const r = stage.container.getBoundingClientRect();
+    const left = parseFloat(stage.marqueeEl.style.left),
+      top = parseFloat(stage.marqueeEl.style.top);
+    const right = left + parseFloat(stage.marqueeEl.style.width),
+      bottom = top + parseFloat(stage.marqueeEl.style.height);
+    const v = new THREE.Vector3();
+    return (layers.lights.freeLights ?? []).flatMap(light => {
+      if (!light.id) return [];
+      v.set(light.pos[0], light.pos[1], -light.pos[2]).project(stage.camera);
+      if (v.z < -1 || v.z > 1) return [];
+      const x = (v.x * 0.5 + 0.5) * r.width,
+        y = (-v.y * 0.5 + 0.5) * r.height;
+      return x >= left && x <= right && y >= top && y <= bottom ? [light.id] : [];
+    });
   }
 
   /** Course indices whose visible knot handles project inside the Info-mode marquee. */
@@ -1933,7 +1956,7 @@ export function createPointerRouter(
       if (Math.hypot(e.clientX - propClickPending.x, e.clientY - propClickPending.y) > 4) {
         const r = stage.container.getBoundingClientRect();
         marqueeKind = 'props';
-        marqueeSelectionMode = propClickPending.shift ? 'add' : 'replace';
+        marqueeSelectionMode = propClickPending.ctrl ? 'remove' : propClickPending.shift ? 'add' : 'replace';
         marquee = { x0: propClickPending.x - r.left, y0: propClickPending.y - r.top };
         propClickPending = null;
         stage.marqueeEl.style.display = 'block';
@@ -2151,6 +2174,8 @@ export function createPointerRouter(
       const kind = marqueeKind;
       const additive = e.shiftKey || marqueeSelectionMode === 'add';
       const propIndices = kind === 'props' ? propsInMarquee() : [];
+      const lightIds = kind === 'props' ? lightsInMarquee() : [];
+      const remove = e.ctrlKey || e.metaKey || marqueeSelectionMode === 'remove';
       const knotIndices = kind === 'knots' ? knotsInMarquee() : [];
       if (kind === 'edit') {
         const liveMode = e.ctrlKey || e.metaKey ? 'remove' : e.shiftKey ? 'add' : marqueeSelectionMode;
@@ -2159,7 +2184,7 @@ export function createPointerRouter(
       hideMarquee();
       stage.controls.enabled = true;
       (e.target as Element).releasePointerCapture?.(e.pointerId);
-      if (kind === 'props') stage.cb.onSelectProps?.(propIndices, additive);
+      if (kind === 'props') stage.cb.onSelectProps?.(propIndices, additive, lightIds, remove);
       else if (kind === 'knots') {
         host.clearRefSelection();
         stage.cb.onSelectKnots?.(knotIndices, additive);

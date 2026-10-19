@@ -40,7 +40,7 @@ import {
 import { mapNameInUrl, showMapInUrl } from './state/map-url';
 import { createHistory } from './state/history';
 import { createRebuilder } from './state/rebuild';
-import { createStore, selectedSetLights, setSelectedSet } from './state/store';
+import { createStore, hasSelectedSet, selectedSetLights, setSelectedSet } from './state/store';
 import { reconcileSyncContext } from './state/sync-context';
 import { quadIndex, quadIndices, quadName } from './state/mesh-names';
 import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
@@ -359,9 +359,10 @@ viewportCallbacks.onEditLightPick = (id, toggle = false) => {
 // session — the click-on / click-off flow.
 viewportCallbacks.onEditClickAway = () => {
   if (modalEditToolActive()) return;
-  if (store.selectedProp !== null || store.multiSel.length) {
+  if (store.selectedProp !== null || hasSelectedSet(store) || store.selectedLight !== null) {
     store.selectedProp = null;
     store.multiSel = [];
+    store.selectedLight = null;
     rebuildTools();
     scheduleRebuild();
     return;
@@ -1500,6 +1501,7 @@ const propClipboard = createPropClipboard({
   setMode,
   viewport,
   propOps,
+  deleteSelectedLight,
   resetGizmoMode: edit.resetGizmoMode,
   scheduleRebuild,
   rebuildTools: () => rebuildTools(),
@@ -2232,7 +2234,7 @@ const { rebuildTools, updatePaintUi, updateCmdSheet } = createToolsPanel({
     // Leaving Edit detaches its gizmo. Restore the same placements under the Props transform handle — or the same
     // light under its own, which the light layer seats on the rebuild.
     store.selectedProp = selected;
-    setSelectedSet(store, many, many.length ? setLights : []);
+    setSelectedSet(store, many, setLights);
     store.selectedLight = indices.length ? null : light;
     viewport.setPlacedPropSelection(selected, many);
     if (store.selectedLight !== null || setLights.length) scheduleRebuild();

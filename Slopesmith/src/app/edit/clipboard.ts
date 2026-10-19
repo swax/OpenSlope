@@ -11,7 +11,7 @@ import {
 import type { MeshControlPointId } from '../../core/mesh/control-points';
 import { clonePlacementTables, copyPlacements, pastePlacements, type PropClipboard } from '../../core/props/clipboard';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
-import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
+import { hasSelectedSet, selectedPlacementLights, selectedSetLights, setSelectedSet, type Store } from '../state/store';
 import {
   edgeIndices,
   namedEdges,
@@ -140,6 +140,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
         : store.selectedProp !== null
           ? [store.selectedProp]
           : [];
+    const lights = store.modelEditId ? [] : selectedPlacementLights(store);
     clipboardSelection = null;
     if (!referenceSelected) {
       const doc = mdoc();
@@ -162,11 +163,16 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
         points,
         edges,
         patches,
-        mixed: Number(points.length > 0) + Number(edges.length > 0) + Number(patches) + Number(props.length > 0) > 1,
+        mixed:
+          Number(points.length > 0) +
+            Number(edges.length > 0) +
+            Number(patches) +
+            Number(props.length + lights.length > 0) >
+          1,
       };
     }
     clipboardSkippedProps = props.filter(index => isEffectTriggerProp(store.mdoc.props?.[index])).length;
-    clipboardProps = props.length ? copyPlacements(store.mdoc, props, undefined, selectedSetLights(store)) : null;
+    clipboardProps = props.length || lights.length ? copyPlacements(store.mdoc, props, undefined, lights) : null;
     if (clipboardProps) {
       // The mesh ghost supplies the shared placement delta. Keep prop origins in that same frame.
       const count = clip.vertices.length / 3;
@@ -185,13 +191,21 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     return `${vertices} ${vertices === 1 ? 'vertex' : 'vertices'}${edges ? ` · ${edges} ${edges === 1 ? 'edge' : 'edges'}` : ''}${patches ? ` · ${patches} ${patches === 1 ? 'patch' : 'patches'}` : ''}`;
   }
 
+  const placementSummary = (props: number, lights: number) =>
+    [
+      props ? `${props} ${props === 1 ? 'prop' : 'props'}` : '',
+      lights ? `${lights} ${lights === 1 ? 'light' : 'lights'}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
   function copySelectedVertices() {
     const captured = captureSelectedVertices();
     if (!captured) return;
     const summary =
       clipboardSummary(captured.clip) +
       (clipboardProps
-        ? ` · ${clipboardProps.entries.length} ${clipboardProps.entries.length === 1 ? 'prop' : 'props'}`
+        ? ` · ${placementSummary(clipboardProps.entries.length, clipboardProps.lights?.length ?? 0)}`
         : '') +
       (clipboardSkippedProps
         ? ` · ${clipboardSkippedProps} trigger ${clipboardSkippedProps === 1 ? 'volume' : 'volumes'} skipped`
@@ -224,10 +238,10 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     if (!captured) return;
     // A trigger volume belongs to Effects and was deliberately omitted by copyPlacements.
     // Leave it in the document when cutting a mixed selection as well.
-    if (store.multiSel.length) {
+    if (hasSelectedSet(store)) {
       const lights = selectedSetLights(store);
       const copyable = store.multiSel.filter(index => !isEffectTriggerProp(store.mdoc.props?.[index]));
-      setSelectedSet(store, copyable, copyable.length ? lights : []);
+      setSelectedSet(store, copyable, lights);
     } else if (store.selectedProp !== null && isEffectTriggerProp(store.mdoc.props?.[store.selectedProp])) {
       store.selectedProp = null;
     }
@@ -259,13 +273,18 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     pasteArmed = true;
     view().setPasteTool(
       clipboard,
-      store.clipboardKind === 'mixed' ? clipboardProps?.entries.map(entry => entry.prop.pos) : undefined,
+      store.clipboardKind === 'mixed' && clipboardProps
+        ? [
+            ...clipboardProps.entries.map(entry => entry.prop.pos),
+            ...(clipboardProps.lights ?? []).map(light => light.pos),
+          ]
+        : undefined,
     );
     rebuildTools();
     updateCmdSheet();
     toast(
       clipboardProps && store.clipboardKind === 'mixed'
-        ? `paste ready — click to place geometry and ${clipboardProps.entries.length} ${clipboardProps.entries.length === 1 ? 'prop' : 'props'} · Esc cancels`
+        ? `paste ready — click to place geometry and ${placementSummary(clipboardProps.entries.length, clipboardProps.lights?.length ?? 0)} · Esc cancels`
         : 'paste ready — click terrain or empty space to place it · Esc cancels',
       'info',
     );
@@ -327,13 +346,14 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
     store.anchorCell = store.cellSel[0] ?? null;
     store.selectedCorner = null;
     store.anchorCorner = selectedPoints[0] ?? null;
-    if (placed?.indices.length) {
+    if (placed && (placed.indices.length || placed.lights.length)) {
       store.selectedProp = null;
+      store.selectedLight = null;
       setSelectedSet(store, placed.indices, placed.lights);
     }
     scheduleRebuild();
     requestAnimationFrame(() => {
-      if ((mixed || placed?.indices.length) && refreshMixedSelection) refreshMixedSelection();
+      if ((mixed || placed?.indices.length || placed?.lights.length) && refreshMixedSelection) refreshMixedSelection();
       else if (edgeOnly) {
         view().refreshEditEdges();
         seatMoveGizmo();
@@ -352,7 +372,7 @@ export function createMeshClipboardSession(deps: MeshClipboardDeps) {
       edges = pasted.freeEdges.length,
       patches = pasted.quads.length;
     toast(
-      `pasted ${points} ${points === 1 ? 'vertex' : 'vertices'}${edges ? ` · ${edges} ${edges === 1 ? 'edge' : 'edges'}` : ''}${patches ? ` · ${patches} ${patches === 1 ? 'patch' : 'patches'}` : ''}${placed?.indices.length ? ` · ${placed.indices.length} ${placed.indices.length === 1 ? 'prop' : 'props'}` : ''}${placed?.skipped ? ` · ${placed.skipped} incompatible props skipped` : ''}`,
+      `pasted ${points} ${points === 1 ? 'vertex' : 'vertices'}${edges ? ` · ${edges} ${edges === 1 ? 'edge' : 'edges'}` : ''}${patches ? ` · ${patches} ${patches === 1 ? 'patch' : 'patches'}` : ''}${placed && (placed.indices.length || placed.lights.length) ? ` · ${placementSummary(placed.indices.length, placed.lights.length)}` : ''}${placed?.skipped ? ` · ${placed.skipped} incompatible props skipped` : ''}`,
       placed?.skipped ? 'warn' : 'ok',
     );
   }

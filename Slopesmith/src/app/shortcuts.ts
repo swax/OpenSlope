@@ -1,5 +1,5 @@
 import { quadVerts } from '../core/doc/doc-edit';
-import type { Store } from './state/store';
+import { hasSelectedSet, type Store } from './state/store';
 import { quadIndices, vertexNames } from './state/mesh-names';
 import type { EditSession } from './edit/session';
 import type { PropOps } from './props/operations';
@@ -671,7 +671,7 @@ export function installShortcuts(deps: ShortcutDeps) {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (store.currentMode === 'effects') {
         if (effects.deleteSelection()) e.preventDefault();
-      } else if (store.currentMode === 'props' && store.multiSel.length) propOps.deleteMultiSelProps();
+      } else if (store.currentMode === 'props' && hasSelectedSet(store)) propOps.deleteMultiSelProps();
       else if (store.currentMode === 'props' && (store.railDrawing || store.selectedRail !== null)) {
         if (store.selectedNode !== null) trickTools.deleteSelectedRailNode();
         else trickTools.deleteSelectedRail();
@@ -690,14 +690,15 @@ export function installShortcuts(deps: ShortcutDeps) {
           store.regionSel.length ||
           store.edgeSel.length ||
           store.cellSel.length ||
-          (mixedEditSelection() && (store.selectedProp !== null || store.multiSel.length)))
+          (mixedEditSelection() &&
+            (store.selectedProp !== null || hasSelectedSet(store) || store.selectedLight !== null)))
       ) {
         e.preventDefault();
         deleteSelectedMesh();
       }
       // Edit selects placements and free lights too (its click picks them as Props mode does); Delete removes them
       // the same way. Mixed Edit selections are handled above as one geometry/placement action.
-      else if (store.currentMode === 'edit' && store.multiSel.length && !mixedEditSelection()) {
+      else if (store.currentMode === 'edit' && hasSelectedSet(store) && !mixedEditSelection()) {
         e.preventDefault();
         propOps.deleteMultiSelProps();
       } else if (store.currentMode === 'edit' && store.selectedProp !== null && !mixedEditSelection()) {
@@ -792,7 +793,7 @@ export function installShortcuts(deps: ShortcutDeps) {
           !!store.selectedEdgeCrossing ||
           !!store.selectedCoincidentVertices ||
           store.selectedProp !== null ||
-          store.multiSel.length > 0 ||
+          hasSelectedSet(store) ||
           store.selectedLight !== null ||
           store.refControlSel.length > 0 ||
           store.refEdgeSel.length > 0 ||
@@ -833,7 +834,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       if (
         store.currentMode === 'props' &&
         (store.selectedProp !== null ||
-          store.multiSel.length > 0 ||
+          hasSelectedSet(store) ||
           store.selectedRefProp !== null ||
           store.selectedLight !== null ||
           store.selectedRefLight !== null ||

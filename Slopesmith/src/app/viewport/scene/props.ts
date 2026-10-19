@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
-import type { PlacedProp, V3 } from '../../../core/doc/types';
+import type { AuthoredLight, PlacedProp, V3 } from '../../../core/doc/types';
 import type { EffectsDocument } from '../../../core/effects/document';
 import {
   authoredPropHasEffectCircumstance,
@@ -45,6 +45,8 @@ import { propRigGlow } from '../../../core/reference/lights';
 import { EFFECT_PROP_OVERLAY_RENDER_ORDER, PROP_RIG_MAX_BOOST } from '../constants';
 import { placementQuat } from '../../../core/props/pose';
 import type { PasteGhostPlacement } from '../../../core/props/clipboard';
+import { authoredRig, freeLightToPlaced } from '../../../core/lighting/sign-lights';
+import { addLightGizmo } from '../gizmo/geometry';
 import type { PropAssets } from './prop-assets';
 import type { LightsLayer } from './lights';
 import type { Stage } from '../stage';
@@ -65,13 +67,14 @@ import { createCollisionOverlay, UNITY_COLLISION_OVERLAY_COLOR } from './collisi
 import type { EffectPieceMotion } from './reference-effects';
 
 /** What placement mode holds: one model (or group), or — with `paste` — a copied SET posed about the anchor
- *  the cursor carries (core/props/clipboard.ts), whose level / model name its first placement. */
+ *  the cursor carries (core/props/clipboard.ts). A clipboard containing only lights has no model to load. */
 export type PropArm = {
   level: string;
   model: number;
   baseOffset: number;
   group?: string;
   paste?: readonly PasteGhostPlacement[];
+  pasteLights?: readonly Omit<AuthoredLight, 'id'>[];
 };
 type AnimatedPropMesh = { mesh: THREE.Mesh; object: number | null };
 interface AnimatedPropTrack {
@@ -185,6 +188,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   let yawManual = false; // turned by hand: keep the yaw across drops (no re-roll)
 
   let propGhostMats: THREE.Material[] = []; // translucent material clones, disposed on rebuild
+  let propGhostGeos: THREE.BufferGeometry[] = []; // owned light-preview buffers, disposed on rebuild
   const propMoveHandle = new THREE.Object3D(); // scene-root gizmo anchor for the selected prop
   let signTintMats: THREE.Material[] = []; // per-rebuild billboard-tint material clones, disposed on rebuild
   // Where a prop reads the light on the ground beneath it; null = sun preview off, props on the studio rig.
@@ -229,6 +233,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       !!arm &&
       (!propArm ||
         propArm.paste !== arm.paste ||
+        propArm.pasteLights !== arm.pasteLights ||
         propArm.level !== arm.level ||
         propArm.model !== arm.model ||
         propArm.group !== arm.group);
@@ -260,6 +265,28 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
         placed.matrixAutoUpdate = false;
         placed.matrix.copy(placementPose(placement));
         if (addGhostModel(placed, placement.level, placement.model, placement.group)) g.add(placed);
+      }
+      const positions: number[] = [],
+        colors: number[] = [];
+      const rig = authoredRig((propArm.pasteLights ?? []).map(freeLightToPlaced));
+      for (const light of rig.lights) addLightGizmo(positions, colors, light, new THREE.Color());
+      if (positions.length) {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        const material = new THREE.LineBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+        });
+        const lines = new THREE.LineSegments(geometry, material);
+        lines.raycast = () => {
+          /* preview never intercepts placement */
+        };
+        propGhostGeos.push(geometry);
+        propGhostMats.push(material);
+        g.add(lines);
       }
     } else addGhostModel(g, propArm.level, propArm.model, propArm.group);
     if (!g.children.length) return;
@@ -329,6 +356,8 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
     }
     for (const m of propGhostMats) m.dispose();
     propGhostMats = [];
+    for (const geometry of propGhostGeos) geometry.dispose();
+    propGhostGeos = [];
     propGhostHit = null;
   }
 
@@ -842,10 +871,15 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   /** Change only prop-selection state and decoration. Selection is editor state, not a document mutation, so
    *  it must not enter renderDoc (which rebuilds terrain, every prop, lighting, persistence, and undo state). */
-  function setSelection(selIdx: number | null, multiSel: number[] = []) {
+  function setSelection(
+    selIdx: number | null,
+    multiSel: number[] = [],
+    selectedLights: readonly AuthoredLight[] = lights.selectedSetLights ?? [],
+  ) {
     clearSelectionVisuals();
     selectedProp = selIdx !== null && selIdx >= 0 && selIdx < lastPlacedProps.length ? selIdx : null;
     multiSelProps = [...new Set(multiSel.filter(i => i >= 0 && i < lastPlacedProps.length && i !== selectedProp))];
+    lights.setPropSelection?.(lastPlacedProps, [...(selectedProp === null ? [] : [selectedProp]), ...multiSelProps]);
     for (const i of multiSelProps) decorateSelection(i, false);
     // A selected prop line's members wear the selection outline too — the line is what the click selected —
     // but carry no gizmo of their own: the line moves them by its nodes (docs/070).
@@ -860,12 +894,12 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       showAuthoredSoundRange(lastPlacedProps[selectedProp]);
       rebuildSelectedCollisionOverlay();
     }
-    if (multiSelProps.length) {
+    if (multiSelProps.length || selectedLights.length > 0) {
       // Don't yank the handle mid-drag — the gizmo owns its position until the document render catches up.
       // A mixed Edit marquee owns a different shared centroid even between render frames; keep its prop
       // outlines current without letting the ordinary Props-family anchor replace it.
       if (stage.gizmoKind !== 'editmixed' && !(stage.gizmoKind === 'props' && stage.gizmo.dragging)) {
-        placeMultiHandle();
+        placeMultiHandle(selectedLights);
         propMoveHandle.visible = true;
         if (stage.gizmoKind !== 'props') stage.attachGizmo(propMoveHandle, 'props', -1);
         else stage.reframeGizmo(); // the handle moved under a seated gizmo: a Surface frame re-reads its slope
@@ -1151,14 +1185,16 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
   /** Seat the scene-root gizmo handle at the multi-selection's centroid (data positions, Z negated onto the
    *  flip) and reset the delta baseline the next gizmo drag measures from. */
-  function placeMultiHandle() {
-    const sel = multiSelProps;
+  function placeMultiHandle(selectedLights: readonly AuthoredLight[]) {
+    const sel = [
+      ...multiSelProps.flatMap(index => (lastPlacedProps[index] ? [lastPlacedProps[index].pos] : [])),
+      ...selectedLights.map(light => light.pos),
+    ];
     if (!sel.length) return;
     let x = 0,
       y = 0,
       z = 0;
-    for (const i of sel) {
-      const p = lastPlacedProps[i].pos;
+    for (const p of sel) {
       x += p[0];
       y += p[1];
       z += p[2];
@@ -1181,7 +1217,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   /** Seat the translate gizmo on placed prop `i` and tell the host (which outlines it). The shell has
    *  cleared the other scene-object selections. */
   function seatProp(i: number) {
-    setSelection(i);
+    setSelection(i, [], []);
     stage.cb.onSelectProp?.(i);
   }
 
@@ -1196,7 +1232,7 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
   function clearSelection() {
     if (selectedProp === null && !multiSelProps.length && stage.gizmoKind !== 'prop' && stage.gizmoKind !== 'props')
       return;
-    setSelection(null);
+    setSelection(null, [], []);
   }
 
   /** Identify flash: box placed prop `index` in white for a moment, so a click in the multi-selection list

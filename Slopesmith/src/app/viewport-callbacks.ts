@@ -41,12 +41,13 @@ import {
   carryAssemblyLights,
   lightAssemblyOf,
   placementPoses,
+  placementSelection,
   unpackGroupPlacement,
-  withWholeAssemblies,
 } from '../core/props/assembly';
-import { selectedSetLights, setSelectedSet } from './state/store';
+import { hasSelectedSet, selectedSetLights, selectedPlacementLights, setSelectedSet } from './state/store';
 import { newFreeLight } from '../core/lighting/sign-lights';
 import { screenProp } from '../core/props/screen';
+import type { LightTransformUpdate } from './viewport/types';
 import type { RideEvent } from '../core/session/ride-event';
 
 const subV3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -182,6 +183,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
    *  the two fields only it has; a point carries neither, so nothing writes a cone onto a light with no cone. */
   /** Select placed prop `i` on its own, or nothing with null. */
   function selectOneProp(i: number | null) {
+    const hadLights = selectedPlacementLights(store).length > 0;
     resetGizmoMode();
     store.selectedProp = i;
     store.multiSel = []; // a single pick (or an empty-space click) replaces any box selection
@@ -195,6 +197,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       clearReferenceLight();
     }
     if (store.currentMode === 'props') rebuildTools();
+    if (hadLights) scheduleRebuild();
   }
 
   /** Select free light `id` on its own. */
@@ -213,7 +216,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
   /** The selection as a set: its props and the free lights beside them. A single selected prop or light counts as
    *  a set of one, so a Ctrl+click grows it (docs/015 · Authored groups). */
   function currentSet(): { props: number[]; lights: string[] } {
-    if (store.multiSel.length) return { props: [...store.multiSel], lights: selectedSetLights(store) };
+    if (hasSelectedSet(store)) return { props: [...store.multiSel], lights: selectedSetLights(store) };
     return {
       props: store.selectedProp === null ? [] : [store.selectedProp],
       lights: store.selectedLight === null ? [] : [store.selectedLight],
@@ -221,20 +224,23 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
   }
 
   /** Make `props` and `lights` the selection. A group goes in whole. One prop on its own is an ordinary selection
-   *  with its own panel; a set is held by its props' gizmo, so with no prop left the light clicked last
-   *  (`lastLight`) stays selected on its own. */
-  function selectSet(props: readonly number[], lights: readonly string[], lastLight?: string) {
-    const whole = withWholeAssemblies(store.mdoc, props);
-    if (!whole.length) {
-      const keep = lastLight && lights.includes(lastLight) ? lastLight : lights[0];
-      if (keep) selectOneLight(keep);
+   *  with its own panel; two or more lights share the same placement-set gizmo. */
+  function selectSet(props: readonly number[], lights: readonly string[], keepPropSet = false) {
+    const hadLights = selectedPlacementLights(store).length > 0;
+    const selection = placementSelection(store.mdoc, props, lights);
+    const whole = selection.props;
+    lights = selection.lights;
+    if (!whole.length && lights.length < 2) {
+      if (lights[0]) selectOneLight(lights[0]);
       else {
+        store.selectedLight = null;
         viewport().setPlacedPropSelection(null, []);
         selectOneProp(null);
+        if (hadLights) scheduleRebuild();
       }
       return;
     }
-    if (whole.length === 1 && !lights.length && !assemblyOf(store.mdoc, whole[0])) {
+    if (!keepPropSet && whole.length === 1 && !lights.length && !assemblyOf(store.mdoc, whole[0])) {
       viewport().setPlacedPropSelection(whole[0], []);
       selectOneProp(whole[0]);
       return;
@@ -250,32 +256,25 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     clearReferenceLight();
     setSelectedSet(store, whole, lights);
     viewport().setPlacedPropSelection(null, whole);
-    if (lights.length) scheduleRebuild(); // the lights layer outlines the set's lights
+    if (hadLights || lights.length) scheduleRebuild(); // refresh light outlines and the shared placement anchor
     if (store.currentMode === 'props') rebuildTools();
   }
 
   /** Select placed props `indices` as one set — or add them to the set, its lights kept — under its centre gizmo.
    *  A group selects whole, however much of it a box or a click caught (docs/015 · Authored groups). */
-  function selectProps(indices: readonly number[], additive = false) {
-    if (additive && !indices.length) return;
+  function selectProps(indices: readonly number[], additive = false, lightIds: readonly string[] = [], remove = false) {
+    if ((additive || remove) && !indices.length && !lightIds.length) return;
     const current = currentSet();
-    const lights = additive ? current.lights : [];
-    resetGizmoMode();
-    const props = withWholeAssemblies(store.mdoc, [...(additive ? current.props : []), ...indices]);
-    store.selectedProp = null;
-    if (props.length) {
-      store.selectedLight = null;
-      store.selectedRail = null;
-      store.selectedNode = null;
-      store.selectedGem = null;
-      clearScreenState();
-      clearLineState();
-      clearReferenceLight();
-    }
-    setSelectedSet(store, props, props.length ? lights : []);
-    viewport().setPlacedPropSelection(null, store.multiSel);
-    if (lights.length) scheduleRebuild();
-    if (store.currentMode === 'props') rebuildTools();
+    const incoming = placementSelection(store.mdoc, indices, lightIds);
+    selectSet(
+      remove
+        ? current.props.filter(index => !incoming.props.includes(index))
+        : [...(additive ? current.props : []), ...incoming.props],
+      remove
+        ? current.lights.filter(id => !incoming.lights.includes(id))
+        : [...(additive ? current.lights : []), ...incoming.lights],
+      true,
+    );
   }
 
   /** Ctrl/Cmd+click on placed prop `i`: add it to the set, or drop it — a group goes in or out whole. */
@@ -283,6 +282,17 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
     const { props, lights } = currentSet();
     const members = assemblyOf(store.mdoc, i) ?? [i];
     selectSet(props.includes(i) ? props.filter(index => !members.includes(index)) : [...props, ...members], lights);
+  }
+
+  function applySelectedLightUpdates(updates: readonly LightTransformUpdate[] = []) {
+    const selected = new Set(selectedPlacementLights(store));
+    for (const update of updates) {
+      const light = store.mdoc.lights?.find(light => light.id === update.id);
+      if (!light || !selected.has(update.id)) continue;
+      light.pos = update.pos;
+      if (update.dir) light.dir = update.dir;
+      if (update.reach !== undefined) light.reach = update.reach;
+    }
   }
 
   return {
@@ -578,7 +588,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       }
       const { props, lights } = currentSet();
       if (!props.length && !lights.length) return false; // nothing to add it to: an ordinary click selects it
-      selectSet(props, lights.includes(id) ? lights.filter(light => light !== id) : [...lights, id], id);
+      selectSet(props, lights.includes(id) ? lights.filter(light => light !== id) : [...lights, id]);
       return true;
     },
     onMoveProp(i: number, pos: V3) {
@@ -604,71 +614,73 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
       if (p?.effectTrigger) p.effectTrigger.size = size;
       scheduleRebuild();
     },
-    onSelectProps(indices, additive = false) {
-      selectProps(indices, additive);
+    onSelectProps(indices, additive = false, lights = [], remove = false) {
+      selectProps(indices, additive, lights, remove);
     },
     // Each of these carries the set's own lights, and those of any group it holds whole (docs/015).
     onMoveProps(delta: V3) {
       // the multi-selection's centre gizmo moved: carry every member along
-      if (!store.mdoc.props) return;
-      const before = placementPoses(store.mdoc.props, store.multiSel);
+      const before = placementPoses(store.mdoc.props ?? [], store.multiSel);
       for (const i of store.multiSel) {
-        const p = store.mdoc.props[i];
+        const p = store.mdoc.props?.[i];
         if (p) {
           p.pos[0] += delta[0];
           p.pos[1] += delta[1];
           p.pos[2] += delta[2];
         }
       }
-      carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
+      carryAssemblyLights(store.mdoc, before);
+      const ids = new Set(selectedSetLights(store));
+      for (const light of store.mdoc.lights ?? [])
+        if (light.id && ids.has(light.id)) light.pos = light.pos.map((value, axis) => value + delta[axis]) as V3;
       scheduleRebuild();
     },
-    onSlideProps(updates) {
+    onSlideProps(updates, lights) {
       // a Surface-frame drag: every member lands at its own height over the ground it reached
-      if (!store.mdoc.props) return;
       const before = placementPoses(
-        store.mdoc.props,
+        store.mdoc.props ?? [],
         updates.map(u => u.index),
       );
       for (const u of updates) {
-        const p = store.mdoc.props[u.index];
+        const p = store.mdoc.props?.[u.index];
         if (p) p.pos = u.pos;
       }
-      carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
+      carryAssemblyLights(store.mdoc, before, lights ? [] : selectedSetLights(store));
+      applySelectedLightUpdates(lights);
       scheduleRebuild();
     },
-    onRotateProps(updates) {
+    onRotateProps(updates, lights) {
       // rigid turn around the set's centre: both origins and authored rotations follow
-      if (!store.mdoc.props) return;
       const before = placementPoses(
-        store.mdoc.props,
+        store.mdoc.props ?? [],
         updates.map(u => u.index),
       );
       for (const u of updates) {
-        const p = store.mdoc.props[u.index];
+        const p = store.mdoc.props?.[u.index];
         if (p) {
           p.pos = u.pos;
           writePropRotation(p, u);
         }
       }
-      carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
+      carryAssemblyLights(store.mdoc, before, lights ? [] : selectedSetLights(store));
+      applySelectedLightUpdates(lights);
       scheduleRebuild();
     },
-    onScaleProps(updates) {
+    onScaleProps(updates, lights) {
       // scale the set about its centre: both placement origins and member sizes follow
-      if (!store.mdoc.props) return;
       const before = placementPoses(
-        store.mdoc.props,
+        store.mdoc.props ?? [],
         updates.map(u => u.index),
       );
       for (const u of updates) {
-        const p = store.mdoc.props[u.index];
+        const p = store.mdoc.props?.[u.index];
         if (p) {
           p.pos = u.pos;
           p.scale = u.scale;
         }
       }
-      carryAssemblyLights(store.mdoc, before, selectedSetLights(store));
+      carryAssemblyLights(store.mdoc, before, lights ? [] : selectedSetLights(store));
+      applySelectedLightUpdates(lights);
       scheduleRebuild();
     },
     onPickReferenceProp(level: string, model: number, name: string, sourceIndex?: number) {

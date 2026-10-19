@@ -294,7 +294,7 @@ export type Store = {
   armedProp: ArmedProp | null; // prop (or group def, docs/015) picked from the library, ready to place
   selectedProp: number | null; // index into mdoc.props of the selected placed prop
   multiSel: number[]; // box-selected placed props (doc indices) — moved / deleted as a set
-  /** Free lights Ctrl+clicked into the multi-selection (docs/015 · Authored groups), recorded against the very
+  /** Free lights in the multi-selection, including a set containing only lights, recorded against the very
    *  `multiSel` array they were added to: whatever replaces that selection lets them go. Read through
    *  `selectedSetLights`. */
   multiSelLights: { of: readonly number[]; ids: string[] } | null;
@@ -347,7 +347,23 @@ export function selectedSetLights(store: Pick<Store, 'multiSel' | 'multiSelLight
   const held = store.multiSelLights;
   if (!held || held.of !== store.multiSel) return [];
   const lights = store.mdoc.lights ?? [];
-  return held.ids.filter(id => lights.some(light => light.id === id));
+  return [...new Set(held.ids)].filter(id => lights.some(light => light.id === id));
+}
+
+/** Whether the shared placement set contains props, lights, or both. */
+export function hasSelectedSet(store: Pick<Store, 'multiSel' | 'multiSelLights' | 'mdoc'>): boolean {
+  return store.multiSel.length > 0 || selectedSetLights(store).length > 0;
+}
+
+/** Every explicitly selected light, whether selected alone or in the shared placement set. */
+export function selectedPlacementLights(
+  store: Pick<Store, 'multiSel' | 'multiSelLights' | 'mdoc' | 'selectedLight'>,
+): string[] {
+  const ids = selectedSetLights(store);
+  if (ids.length || store.multiSel.length) return ids;
+  return store.selectedLight && store.mdoc.lights?.some(light => light.id === store.selectedLight)
+    ? [store.selectedLight]
+    : [];
 }
 
 /** Make `props` and `lights` the multi-selection. */

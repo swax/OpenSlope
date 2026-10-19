@@ -1,5 +1,5 @@
 import { editMesh } from '../../edit/mesh-target';
-import { selectedSetLights } from '../../state/store';
+import { hasSelectedSet, selectedSetLights } from '../../state/store';
 import { screenProp } from '../../../core/props/screen';
 import GUI from 'lil-gui';
 import { segmented, toggleBar, label } from '../components/controls';
@@ -236,7 +236,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
         : viewport.edgeExtrusionStaged && viewport.edgeExtrusionMode === 'path'
           ? false
           : store.currentMode === 'props'
-            ? store.selectedProp !== null || store.multiSel.length > 0
+            ? store.selectedProp !== null || hasSelectedSet(store)
             : editPropsSelected() ||
               viewport.edgeExtrusionStaged ||
               (store.currentMode === 'edit' &&
@@ -265,7 +265,14 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
         count: store.cellSel.length + store.refCellSel.length,
         readOnly: !store.cellSel.length && store.refCellSel.length > 0,
       },
-      { kind: 'prop', count: store.multiSel.length || (store.selectedProp !== null ? 1 : 0), readOnly: false },
+      {
+        kind: 'prop',
+        count:
+          (store.multiSel.length || (store.selectedProp !== null ? 1 : 0)) +
+          selectedSetLights(store).length +
+          (store.selectedLight !== null ? 1 : 0),
+        readOnly: false,
+      },
     ];
   };
   const mixedEditSelection = () => editSelectionCounts().filter(selection => selection.count > 0).length > 1;
@@ -273,7 +280,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     store.currentMode === 'edit' &&
     !store.modelEditId &&
     !mixedEditSelection() &&
-    (store.selectedProp !== null || store.multiSel.length > 0);
+    (store.selectedProp !== null || hasSelectedSet(store));
   const editLightSelected = () =>
     store.currentMode === 'edit' &&
     !store.modelEditId &&
@@ -289,7 +296,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     if (store.currentMode !== 'props' && store.currentMode !== 'effects') return false;
     if (
       store.selectedProp !== null ||
-      store.multiSel.length > 0 ||
+      hasSelectedSet(store) ||
       store.selectedLight !== null ||
       store.selectedGem !== null
     )
@@ -361,8 +368,9 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       },
       {
         value: 'prop',
-        label: 'Prop',
-        title: 'Allow clicks and box selection to select placed props. Off, clicks pass through to the mesh beneath.',
+        label: 'Props / lights',
+        title:
+          'Allow clicks and box selection to select placed props and authored lights. Off, clicks pass through to the mesh beneath.',
       },
     ],
     kind => store.editPickKinds[kind],
@@ -407,7 +415,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       store.currentMode === 'props' &&
       store.selectedProp === null &&
       store.selectedRefProp === null &&
-      store.multiSel.length === 0 &&
+      !hasSelectedSet(store) &&
       store.selectedLight === null &&
       store.selectedRefLight === null &&
       store.selectedRail === null &&
@@ -475,7 +483,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       store.edgeSel.length ||
       store.cellSel.length ||
       store.selectedProp !== null ||
-      store.multiSel.length
+      hasSelectedSet(store) ||
+      store.selectedLight !== null
     ) {
       const locked = edit.meshLockReason('delete');
       const button = tip(
@@ -490,7 +499,10 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       point: ['point', 'points'],
       edge: ['edge', 'edges'],
       patch: ['patch', 'patches'],
-      prop: ['prop', 'props'],
+      prop:
+        selectedSetLights(store).length || store.selectedLight !== null
+          ? ['placement', 'placements']
+          : ['prop', 'props'],
     };
     for (const item of selected) {
       const label = noun[item.kind][item.count === 1 ? 0 : 1];
@@ -508,7 +520,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
 
   /** Edit owns placement transforms and labels; Props owns the full prop/group inspector. */
   function buildEditPropTools() {
-    const indices = store.multiSel.length ? store.multiSel : [store.selectedProp!];
+    const indices = store.multiSel.length ? store.multiSel : store.selectedProp !== null ? [store.selectedProp] : [];
     const props = indices.map(index => store.mdoc.props?.[index]).filter(prop => !!prop);
     const lights = selectedSetLights(store).length;
     const section = editSection('prop-selected', 'Selection');
@@ -516,7 +528,12 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       section,
       props.length === 1 && !lights
         ? deps.shortPropName(props[0].name)
-        : `${props.length} prop${props.length === 1 ? '' : 's'}${lights ? ` + ${lights} light${lights === 1 ? '' : 's'}` : ''} selected`,
+        : [
+            props.length ? `${props.length} prop${props.length === 1 ? '' : 's'}` : '',
+            lights ? `${lights} light${lights === 1 ? '' : 's'}` : '',
+          ]
+            .filter(Boolean)
+            .join(' + ') + ' selected',
     );
     detail(section, 'Use the gizmo to move, rotate or scale the selection.');
     tip(
@@ -724,12 +741,11 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       );
     } else if (deps.propClipboard.canPaste()) {
       const clipboard = editSection('clipboard', 'Clipboard', false);
-      const count = deps.propClipboard.count();
       tip(
         clipboard
           .add({ paste: () => void deps.propClipboard.paste() }, 'paste')
-          .name(`paste ${count} prop${count === 1 ? '' : 's'} (Ctrl+V)`),
-        'Hold the copied props on the cursor in Props mode, then click to place them.',
+          .name(`paste ${deps.propClipboard.summary()} (Ctrl+V)`),
+        'Hold the copied props and lights on the cursor in Props mode, then click to place them.',
       );
     }
     if (edit.hiddenMeshCount() || edit.controlCageCount()) {

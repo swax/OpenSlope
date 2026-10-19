@@ -648,7 +648,48 @@ check(pickedPlacedProp === 7, 'Props middle-click selects the model and arms pro
     'a click off the terrain does not stamp the last valid preview position',
   );
 
+  // A clipboard containing only a light still needs a visible, movable preview and the same click contract.
+  pointerRayX = 300;
+  held.setArmed({
+    level: '',
+    model: 0,
+    baseOffset: 0,
+    paste: [],
+    pasteLights: [
+      { kind: 'spot', pos: [0, 8, 0], dir: [1, 0, 0], color: '#4488ff', intensity: 2.5, reach: 30, cone: 25 },
+    ],
+  });
+  dom.dispatch('pointermove', {});
+  check(
+    held.propGhost?.visible && held.propGhost.children[0] instanceof THREE.LineSegments,
+    'a light-only clipboard draws its wire rig above the terrain without prop geometry',
+  );
+  dom.dispatch('wheel', { deltaY: -1, altKey: true });
+  dom.dispatch('wheel', { deltaY: -1, shiftKey: true });
+  const lightPreview = held.propGhost!.matrix.clone();
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(
+    drops.length === 4 &&
+      drops[3].yaw === 15 &&
+      drops[3].scale === 1.1 &&
+      held.placementPose(drops[3]).equals(lightPreview),
+    'a light clipboard click uses the preview pose, turn and scale',
+  );
+  const lightRig = held.propGhost!.children[0] as THREE.LineSegments<THREE.BufferGeometry, THREE.Material>;
+  let disposedGeometry = false,
+    disposedMaterial = false;
+  lightRig.geometry.addEventListener('dispose', () => {
+    disposedGeometry = true;
+  });
+  lightRig.material.addEventListener('dispose', () => {
+    disposedMaterial = true;
+  });
   held.setArmed(null);
+  check(
+    disposedGeometry && disposedMaterial && !held.propGhost,
+    'putting down the light preview disposes its owned buffers and material',
+  );
   layers.props = props;
   stage.cb.onPlaceProp = originalPlace;
   pointerRayX = 0;

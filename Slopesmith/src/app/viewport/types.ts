@@ -49,6 +49,14 @@ export interface MixedEditRotationUpdate {
   corners: RigidCornerUpdate;
   controlPoints: MeshControlPointTarget[];
   props: PropRotationUpdate[];
+  lights?: LightTransformUpdate[];
+}
+
+export interface LightTransformUpdate {
+  id: string;
+  pos: V3;
+  dir?: V3;
+  reach?: number;
 }
 
 /** One placed prop's absolute pose after a rotate drag: its rigidly-carried origin plus the full authored
@@ -203,6 +211,7 @@ export type EditMarqueeSelection = {
   edges: [number, number][];
   patches: number[];
   props: number[];
+  lights?: string[];
 };
 
 /** The result of sampling a clicked surface: the resolved texture plus where it came from. */
@@ -487,17 +496,17 @@ export interface ViewportCallbacks {
   /** Props select mode: a box-select drag finished — the doc indices of every placed prop whose origin
    *  projected inside the rectangle. Shift adds to the existing selection, including an existing single pick;
    *  an empty additive drag leaves the selection unchanged. */
-  onSelectProps?(indices: number[], additive?: boolean): void;
+  onSelectProps?(indices: number[], additive?: boolean, lights?: string[], remove?: boolean): void;
   /** Props mode: the multi-selection's centre gizmo was dragged — move EVERY selected prop by this
    *  data-space delta (the host owns the index set). */
   onMoveProps?(delta: V3): void;
   /** Props mode: a Surface-frame drag carried the multi-selection over the terrain — each member's new origin, every
    *  one at its own height over the ground (core/props/surface-follow). */
-  onSlideProps?(updates: { index: number; pos: V3 }[]): void;
+  onSlideProps?(updates: { index: number; pos: V3 }[], lights?: LightTransformUpdate[]): void;
   /** Props mode: rotate a multi-selection rigidly about its centroid, including each member's own rotation. */
-  onRotateProps?(updates: PropRotationUpdate[]): void;
+  onRotateProps?(updates: PropRotationUpdate[], lights?: LightTransformUpdate[]): void;
   /** Props mode: uniformly scale a multi-selection about its centroid, including each member's size. */
-  onScaleProps?(updates: { index: number; pos: V3; scale: number }[]): void;
+  onScaleProps?(updates: { index: number; pos: V3; scale: number }[], lights?: LightTransformUpdate[]): void;
   /** Props mode: a middle-click copied a reference-world prop — arm that exact instance's model and inferred
    *  collision profile. `sourceIndex` preserves native sphere-body donors and independent contact gates. */
   onPickReferenceProp?(level: string, model: number, name: string, sourceIndex?: number): void;

@@ -30,7 +30,14 @@ import { decodeProps, type LevelProps, type PropsPayload } from '../../core/refe
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../../core/lighting/sign-lights';
 import { authoredGroupLights, type GroupDef, type GroupsPayload } from '../../core/reference/groups';
-import { selectedSetLights, setSelectedSet, type ArmedProp, type HeldEffect, type Store } from '../state/store';
+import {
+  hasSelectedSet,
+  selectedSetLights,
+  setSelectedSet,
+  type ArmedProp,
+  type HeldEffect,
+  type Store,
+} from '../state/store';
 import type { Mode, Viewport } from '../viewport/viewport';
 import type { PropLibrary } from './library';
 import type { PropPreview } from './preview';
@@ -791,7 +798,7 @@ export function createPropOps(deps: PropOpsDeps) {
     replacement = null;
     const selected =
       store.selectedProp !== null ||
-      store.multiSel.length > 0 ||
+      hasSelectedSet(store) ||
       store.selectedRefProp !== null ||
       store.selectedLight !== null ||
       store.selectedRefLight !== null ||
@@ -837,30 +844,30 @@ export function createPropOps(deps: PropOpsDeps) {
    *  remaining doc indices stay valid while the set drains. */
   function deleteMultiSelProps() {
     replacement = null;
-    if (!store.multiSel.length || !store.mdoc.props) return;
+    if (!hasSelectedSet(store)) return;
+    const props = store.mdoc.props ?? [];
     const groups = new Set(store.multiSel.map(i => store.mdoc.props?.[i]?.assembly).filter((id): id is string => !!id));
     // The free lights selected beside the props go with them (docs/015 · Authored groups).
     const lights = new Set(selectedSetLights(store));
     if (lights.size) store.mdoc.lights = (store.mdoc.lights ?? []).filter(light => !light.id || !lights.has(light.id));
     for (const i of [...store.multiSel].sort((a, b) => b - a)) {
-      const id = store.mdoc.props[i]?.id;
+      const id = props[i]?.id;
       if (id && store.mdoc.effects) detachEffectFromProp(store.mdoc.effects, id);
       dropScreensForProp(store.mdoc, id);
-      store.mdoc.props.splice(i, 1);
+      props.splice(i, 1);
     }
     dropOrphanedAssemblyLights(store.mdoc, groups); // a deleted group takes its lights (docs/015)
-    store.multiSel = [];
+    setSelectedSet(store, [], []);
     scheduleRebuild();
     rebuildTools();
   }
 
-  /** Drop ONE prop from the box selection (the list row's ✕) — the prop itself stays placed. The set's lights
-   *  stay with it while it still has a prop to hold them; with none left, the first stays selected on its own. */
+  /** Drop one prop from the selection without deleting it. Any remaining lights stay selected together. */
   function removeFromMultiSel(index: number) {
     const lights = selectedSetLights(store);
     const props = store.multiSel.filter(i => i !== index);
-    if (!props.length && lights.length) {
-      store.multiSel = [];
+    if (!props.length && lights.length === 1) {
+      setSelectedSet(store, [], []);
       store.selectedLight = lights[0];
     } else setSelectedSet(store, props, lights);
     scheduleRebuild(); // its outline drops; the group gizmo re-seats on the smaller set's centroid
@@ -869,11 +876,9 @@ export function createPropOps(deps: PropOpsDeps) {
 
   /** Drop one free light from the selected set (its list row's ✕) — the light itself stays. */
   function removeLightFromMultiSel(id: string) {
-    setSelectedSet(
-      store,
-      [...store.multiSel],
-      selectedSetLights(store).filter(light => light !== id),
-    );
+    const lights = selectedSetLights(store).filter(light => light !== id);
+    setSelectedSet(store, [...store.multiSel], !store.multiSel.length && lights.length === 1 ? [] : lights);
+    if (!store.multiSel.length && lights.length === 1) store.selectedLight = lights[0];
     scheduleRebuild(); // its outline drops
     rebuildTools();
   }

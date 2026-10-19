@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
 import type { AuthoredLight, PlacedProp } from '../src/core/doc/types';
 import { createStore, selectedSetLights, setSelectedSet } from '../src/app/state/store';
+import { EFFECT_TRIGGER_LEVEL } from '../src/core/effects/trigger-volume';
 
 Object.defineProperty(globalThis, 'document', {
   configurable: true,
@@ -24,6 +25,7 @@ Object.defineProperty(globalThis, 'window', {
   value: { setTimeout: () => 0, setInterval: () => 0 },
 });
 const { createPropOps } = await import('../src/app/props/operations');
+const { createPropClipboard } = await import('../src/app/props/clipboard');
 const store = createStore({ mdoc: migrateMountain(defaultMountain()), currentMode: 'props', storedUi: {} });
 const ops = createPropOps({
   store,
@@ -149,6 +151,37 @@ function reset() {
     ['light:0001'],
     'deleting the set deletes the light selected in it',
   );
+}
+
+// Cutting a prop/light set must retain its light selection until the delete operation reads it.
+{
+  reset();
+  setSelectedSet(store, [0], ['light:0000']);
+  const clipboard = createPropClipboard({
+    store,
+    edit: { mixedEditSelection: () => false },
+    viewport: { groundHeightAt: () => 0 },
+    propOps: ops,
+    deleteSelectedLight() {
+      store.mdoc.lights = store.mdoc.lights!.filter(light => light.id !== store.selectedLight);
+      store.selectedLight = null;
+    },
+    updateCmdSheet() {},
+  } as unknown as Parameters<typeof createPropClipboard>[0]);
+  clipboard.cut();
+  assert.equal(clipboard.count(), 2, 'the prop and selected light are copied together');
+  assert(!store.mdoc.props!.some(prop => prop.id === 'prop:0000'), 'the copied prop is cut');
+  assert(!store.mdoc.lights!.some(light => light.id === 'light:0000'), 'the copied free light is cut with it');
+  reset();
+  store.mdoc.props![0] = { ...prop('prop:0000'), level: EFFECT_TRIGGER_LEVEL, effectTrigger: { size: [2, 2, 2] } };
+  setSelectedSet(store, [0], ['light:0000']);
+  clipboard.cut();
+  assert.equal(clipboard.count(), 1, 'only the light is copied from a trigger/light selection');
+  assert(
+    store.mdoc.props!.some(prop => prop.id === 'prop:0000'),
+    'the uncopyable Effects trigger stays',
+  );
+  assert(!store.mdoc.lights!.some(light => light.id === 'light:0000'), 'the copied light is still cut');
 }
 
 console.log('group-light-join: ok');

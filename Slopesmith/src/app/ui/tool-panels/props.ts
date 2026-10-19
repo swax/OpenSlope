@@ -28,7 +28,7 @@ import type {
   Screen,
   V3,
 } from '../../../core/doc/types';
-import { selectedSetLights, setSelectedSet, type ArmedProp } from '../../state/store';
+import { hasSelectedSet, selectedSetLights, setSelectedSet, type ArmedProp } from '../../state/store';
 import {
   applyBehaviour,
   baselineBehaviour,
@@ -2154,7 +2154,7 @@ export function createPropTools(ctx: ToolsContext) {
       );
       return;
     }
-    if (store.multiSel.length) {
+    if (hasSelectedSet(store)) {
       buildMultiPropTools();
       return;
     }
@@ -2731,7 +2731,7 @@ export function createPropTools(ctx: ToolsContext) {
     if (store.armedProp) buildHeldPropTools(store.armedProp);
     else if (propClipboard.placing()) {
       // open: it IS the panel while the paste is held, not a detail of one
-      const placement = editSection('props-paste-placement', `Paste · ${plural(propClipboard.count())}`);
+      const placement = editSection('props-paste-placement', `Paste · ${propClipboard.summary()}`);
       detail(placement, 'move over the terrain · click to place');
       tip(
         placement.add({ cancel: propClipboard.cancel }, 'cancel').name('cancel paste (Esc)'),
@@ -2742,8 +2742,8 @@ export function createPropTools(ctx: ToolsContext) {
       tip(
         clipboard
           .add({ paste: () => void propClipboard.paste() }, 'paste')
-          .name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
-        'Hold the copied props on the cursor, then click to place them.',
+          .name(`paste ${propClipboard.summary()} (Ctrl+V)`),
+        'Hold the copied props and lights on the cursor, then click to place them.',
       );
     }
   }
@@ -3115,13 +3115,14 @@ export function createPropTools(ctx: ToolsContext) {
       store.multiSel.map(i => ({ index: i, label: shortPropName(store.mdoc.props?.[i]?.name ?? `prop ${i}`) })),
       setLights.map(light => ({ id: light.id!, label: lightLabel(light), color: light.color })),
     );
-    tip(
-      gui.add({ group: groupSelection }, 'group').name(`⊞ group ${count}`),
-      'Tie the selection into a group that selects, moves, turns and sizes as one.',
-      'Each member keeps its own level, settings, effects and screens — the group only holds them together. ' +
-        'Clicking any member selects the whole group; its panel opens each member on its own. Ctrl+click a light ' +
-        'to bring it into the selection first.',
-    );
+    if (store.multiSel.length)
+      tip(
+        gui.add({ group: groupSelection }, 'group').name(`⊞ group ${count}`),
+        'Tie the selection into a group that selects, moves, turns and sizes as one.',
+        'Each member keeps its own level, settings, effects and screens — the group only holds them together. ' +
+          'Clicking any member selects the whole group; its panel opens each member on its own. Ctrl+click a light ' +
+          'to bring it into the selection first.',
+      );
     // Shared by Props mode and an Edit marquee narrowed to props.
     if (
       store.multiSel.some(i => {
@@ -3147,9 +3148,7 @@ export function createPropTools(ctx: ToolsContext) {
     }
     if (propClipboard.canPaste())
       tip(
-        gui
-          .add({ paste: () => void propClipboard.paste() }, 'paste')
-          .name(`paste ${plural(propClipboard.count())} (Ctrl+V)`),
+        gui.add({ paste: () => void propClipboard.paste() }, 'paste').name(`paste ${propClipboard.summary()} (Ctrl+V)`),
         'Hold the copied props on the cursor in Props mode, then click to place them.',
       );
     gui.add({ del: () => deleteMultiSelProps() }, 'del').name(`✕ delete ${count}`);
@@ -3219,6 +3218,11 @@ export function createPropTools(ctx: ToolsContext) {
     addAssemblyLightRows(light); // a group's light opens with the way back to its group (docs/015)
     const section = editSection('props-authored-light', `${mountainName} light`);
     addAuthoredLightDetails(section, light, lightIndex, mountainName, scheduleRebuild, rebuildTools);
+    if (propClipboard.canCopy()) {
+      gui.add({ copy: propClipboard.copy }, 'copy').name('⧉ copy light (Ctrl+C)');
+      gui.add({ cut: propClipboard.cut }, 'cut').name('✂ cut light (Ctrl+X)');
+    }
+    if (propClipboard.canPaste()) gui.add({ paste: () => void propClipboard.paste() }, 'paste').name('paste (Ctrl+V)');
     gui.add({ del: () => deleteSelectedLight() }, 'del').name('✕ delete light');
     addDeselect();
   }

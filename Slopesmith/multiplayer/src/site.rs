@@ -35,78 +35,6 @@ pub struct Site {
     updates: watch::Sender<Snapshots>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn claims(user: &str, session: &str, map: Option<(&str, bool)>) -> TicketClaims {
-        serde_json::from_value(serde_json::json!({
-            "protocol":1,"nonce":session,"expiresAt":1000,"sessionId":session,"clientId":session,"deviceLabel":"test",
-            "member":{"id":user,"username":user,"role":"viewer","anonymous":true,"chatId":"same-network"},
-            "color":"#fff","courseId":map.map(|m|m.0).unwrap_or("@site"),"roomId":"site","publicPlay":true,
-            "sitePresence":true,"origin":"http://localhost",
-            "siteCourse":map.map(|(id,public)|serde_json::json!({"id":id,"name":id,"playUrl":if public {Some(format!("/play/{id}"))} else {None}}))
-        })).unwrap()
-    }
-    fn add(site: &Site, user: &str, session: &str, map: Option<(&str, bool)>) {
-        let (sender, _) = mpsc::channel(8);
-        site.join(claims(user, session, map), sender, CancellationToken::new());
-    }
-    #[test]
-    fn counts_people_and_open_maps_independently_of_chat_and_poses() {
-        let site = Site::default();
-        add(&site, "guest:a", "tab-a", Some(("mountain", true)));
-        add(&site, "guest:a", "tab-b", Some(("mountain", true)));
-        add(&site, "guest:b", "tab-c", None);
-        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
-        assert_eq!(value["online"], 2);
-        assert_eq!(value["courses"]["mountain"], 1);
-        site.leave("tab-a");
-        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
-        assert_eq!(value["courses"]["mountain"], 1);
-        site.leave("tab-b");
-        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
-        assert_eq!(value["online"], 1);
-        assert!(value["courses"].as_object().unwrap().is_empty());
-    }
-    #[test]
-    fn private_map_metadata_is_not_published_to_anonymous_visitors() {
-        let site = Site::default();
-        add(&site, "member", "tab", Some(("private-mountain", false)));
-        assert!(!site.snapshot(false).contains("private-mountain"));
-        assert!(site.snapshot(true).contains("private-mountain"));
-        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
-        assert_eq!(value["online"], 1);
-    }
-    #[test]
-    fn preserves_map_sources_and_rooms_without_counting_one_person_twice() {
-        let site = Site::default();
-        for (session, source, room) in [
-            ("iso", MapSource::Iso, "lodge"),
-            ("server", MapSource::Server, "lodge"),
-            ("invite", MapSource::Iso, "friends"),
-        ] {
-            let mut ticket = claims("guest:a", session, Some(("@reference:GARI", true)));
-            let map = ticket.site_course.as_mut().unwrap();
-            map.source = Some(source);
-            map.room_id = Some(room.into());
-            let (sender, _) = mpsc::channel(8);
-            site.join(ticket, sender, CancellationToken::new());
-        }
-        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
-        assert_eq!(value["online"], 1);
-        assert_eq!(value["courses"]["@reference:GARI"], 1);
-        let maps = value["members"][0]["maps"].as_array().unwrap();
-        assert_eq!(maps.len(), 3);
-        assert!(
-            maps.iter()
-                .any(|map| map["source"] == "iso" && map["roomId"] == "friends")
-        );
-        assert!(
-            maps.iter()
-                .any(|map| map["source"] == "server" && map["roomId"] == "lodge")
-        );
-    }
-}
 impl Default for Site {
     fn default() -> Self {
         let empty: Arc<str> = serde_json::to_string(&PlayServerMessage::SitePresence {
@@ -224,13 +152,13 @@ impl Site {
                 if user.0.anonymous == Some(true) && claims.member.anonymous != Some(true) {
                     user.0 = claims.member.clone();
                 }
-                if let Some(course) = &claims.site_course {
-                    if private || course.play_url.is_some() {
-                        user.1.insert(
-                            (course.id.clone(), course.source, course.room_id.clone()),
-                            course.clone(),
-                        );
-                    }
+                if let Some(course) = &claims.site_course
+                    && (private || course.play_url.is_some())
+                {
+                    user.1.insert(
+                        (course.id.clone(), course.source, course.room_id.clone()),
+                        course.clone(),
+                    );
                 }
             }
             let mut courses = BTreeMap::<String, u32>::new();
@@ -278,5 +206,78 @@ impl Site {
             public_counts,
             member_counts,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn claims(user: &str, session: &str, map: Option<(&str, bool)>) -> TicketClaims {
+        serde_json::from_value(serde_json::json!({
+            "protocol":1,"nonce":session,"expiresAt":1000,"sessionId":session,"clientId":session,"deviceLabel":"test",
+            "member":{"id":user,"username":user,"role":"viewer","anonymous":true,"chatId":"same-network"},
+            "color":"#fff","courseId":map.map(|m|m.0).unwrap_or("@site"),"roomId":"site","publicPlay":true,
+            "sitePresence":true,"origin":"http://localhost",
+            "siteCourse":map.map(|(id,public)|serde_json::json!({"id":id,"name":id,"playUrl":if public {Some(format!("/play/{id}"))} else {None}}))
+        })).unwrap()
+    }
+    fn add(site: &Site, user: &str, session: &str, map: Option<(&str, bool)>) {
+        let (sender, _) = mpsc::channel(8);
+        site.join(claims(user, session, map), sender, CancellationToken::new());
+    }
+    #[test]
+    fn counts_people_and_open_maps_independently_of_chat_and_poses() {
+        let site = Site::default();
+        add(&site, "guest:a", "tab-a", Some(("mountain", true)));
+        add(&site, "guest:a", "tab-b", Some(("mountain", true)));
+        add(&site, "guest:b", "tab-c", None);
+        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
+        assert_eq!(value["online"], 2);
+        assert_eq!(value["courses"]["mountain"], 1);
+        site.leave("tab-a");
+        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
+        assert_eq!(value["courses"]["mountain"], 1);
+        site.leave("tab-b");
+        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
+        assert_eq!(value["online"], 1);
+        assert!(value["courses"].as_object().unwrap().is_empty());
+    }
+    #[test]
+    fn private_map_metadata_is_not_published_to_anonymous_visitors() {
+        let site = Site::default();
+        add(&site, "member", "tab", Some(("private-mountain", false)));
+        assert!(!site.snapshot(false).contains("private-mountain"));
+        assert!(site.snapshot(true).contains("private-mountain"));
+        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
+        assert_eq!(value["online"], 1);
+    }
+    #[test]
+    fn preserves_map_sources_and_rooms_without_counting_one_person_twice() {
+        let site = Site::default();
+        for (session, source, room) in [
+            ("iso", MapSource::Iso, "lodge"),
+            ("server", MapSource::Server, "lodge"),
+            ("invite", MapSource::Iso, "friends"),
+        ] {
+            let mut ticket = claims("guest:a", session, Some(("@reference:GARI", true)));
+            let map = ticket.site_course.as_mut().unwrap();
+            map.source = Some(source);
+            map.room_id = Some(room.into());
+            let (sender, _) = mpsc::channel(8);
+            site.join(ticket, sender, CancellationToken::new());
+        }
+        let value: serde_json::Value = serde_json::from_str(&site.snapshot(false)).unwrap();
+        assert_eq!(value["online"], 1);
+        assert_eq!(value["courses"]["@reference:GARI"], 1);
+        let maps = value["members"][0]["maps"].as_array().unwrap();
+        assert_eq!(maps.len(), 3);
+        assert!(
+            maps.iter()
+                .any(|map| map["source"] == "iso" && map["roomId"] == "friends")
+        );
+        assert!(
+            maps.iter()
+                .any(|map| map["source"] == "server" && map["roomId"] == "lodge")
+        );
     }
 }

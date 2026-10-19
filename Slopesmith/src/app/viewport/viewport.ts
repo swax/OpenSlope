@@ -1427,6 +1427,7 @@ export class Viewport {
         selectedCageHandle: () => this.selection.selectedCageHandle,
         selectedProp: () => this.props.selectedProp,
         multiSelProps: () => this.props.multiSelProps,
+        selectedLights: () => this.lights.selectedSetLights,
         selectedScreenAttached: () => this.screens.selectedAttached,
         placedProp: index => this.props.lastPlacedProps[index],
         extrusionStaged: () => this.edgeExtrusion.staged,
@@ -2031,9 +2032,12 @@ export class Viewport {
     if (kind === 'props') {
       const placed = this.props.lastPlacedProps,
         single = this.props.selectedProp;
-      return [...(single === null ? [] : [single]), ...this.props.multiSelProps].flatMap(i =>
-        placed[i] ? [placed[i].pos] : [],
-      );
+      return [
+        ...[...(single === null ? [] : [single]), ...this.props.multiSelProps].flatMap(i =>
+          placed[i] ? [placed[i].pos] : [],
+        ),
+        ...this.lights.selectedSetLights.map(light => light.pos),
+      ];
     }
     return DROP_LINE_KINDS.has(kind) ? [[obj.position.x, obj.position.y, -obj.position.z]] : [];
   }
@@ -3491,7 +3495,7 @@ export class Viewport {
       this.cb.onMoveAnchor?.(this.gizmoAnchor, [p[0], ground, p[2]]);
     } else if (this.gizmoKind === 'prop' && this.props.selectedProp !== null)
       this.cb.onMoveProp?.(this.props.selectedProp, p);
-    else if (this.gizmoKind === 'props' && this.props.multiSelProps.length) {
+    else if (this.gizmoKind === 'props' && (this.props.multiSelProps.length || this.lights.selectedSetLights.length)) {
       // the centre handle drives the whole set: report how far it moved since the last report (data space)
       const d: V3 = [
         p[0] - this.props.multiHandleLast.x,
@@ -4595,7 +4599,9 @@ export class Viewport {
     return this.lights.lightPlacing;
   }
   setFreeLights(lights: AuthoredLight[], selectedId: string | null, setIds: readonly string[] = []) {
+    const hadLightSet = this.lights.selectedSetLights.length > 0;
     this.lights.setFreeLights(lights, selectedId, setIds);
+    if (hadLightSet || setIds.length) this.props.setSelection(this.props.selectedProp, this.props.multiSelProps);
   }
 
   // ---- prop lines (docs/070): the path + node handles in PropLinesLayer; the members are placed props ----

@@ -1352,11 +1352,16 @@ export function createSelectionLayer(
     hint: 'authored' | 'reference' | null,
     props: number[],
     authoredPropSelectionActive: boolean,
+    lights: string[] = [],
   ) {
     const authored = authoredEditSelectionInMarquee(marquee);
     const reference = referenceEditSelectionInMarquee(marquee);
     const authoredHas =
-      authored.points.length > 0 || authored.edges.length > 0 || authored.patches.length > 0 || props.length > 0;
+      authored.points.length > 0 ||
+      authored.edges.length > 0 ||
+      authored.patches.length > 0 ||
+      props.length > 0 ||
+      lights.length > 0;
     const referenceHas = reference.points.length > 0 || reference.edges.length > 0 || reference.patches.length > 0;
     const modifying = mode !== 'replace';
     if (modifying && !authoredHas && !referenceHas) return;
@@ -1394,6 +1399,7 @@ export function createSelectionLayer(
       edges: authored.edges,
       patches: authored.patches,
       props,
+      lights,
     };
     stage.cb.onSelectEditMarquee?.(selection, mode);
   }

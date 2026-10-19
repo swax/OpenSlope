@@ -27,6 +27,7 @@ store.mdoc.props = [-5, 0, 5].map((x, index) => ({
   scale: 1,
 }));
 const rendered = { single: null as number | null, many: [] as number[] };
+let documentRebuilds = 0;
 const callbacks = createViewportCallbacks({
   store,
   edit: { viewportCallbacks: {}, resetGizmoMode() {} },
@@ -40,7 +41,9 @@ const callbacks = createViewportCallbacks({
   rebuildTools() {},
   updateCmdSheet() {},
   refreshSelection() {},
-  scheduleRebuild() {},
+  scheduleRebuild() {
+    documentRebuilds++;
+  },
   selectScene() {},
 } as unknown as Parameters<typeof createViewportCallbacks>[0]);
 const handlers = new Map<string, ((event: PointerEvent) => void)[]>();
@@ -80,7 +83,13 @@ const layers = {
     multiSelProps: [],
   },
   propLines: { lines: [] },
-  lights: { lightArmed: false },
+  lights: {
+    lightArmed: false,
+    freeLightGroup: new THREE.Group(),
+    get freeLights() {
+      return store.mdoc.lights ?? [];
+    },
+  },
   rails: { railArmed: false },
   gems: { gemArmed: false, gemLine: null },
   rideCtl: { riding: false },
@@ -117,7 +126,7 @@ createPointerRouter(
   { selectReference() {}, clearRefSelection() {} },
 );
 
-function drag(x0: number, x1: number, shiftDown = false, shiftUp = shiftDown) {
+function drag(x0: number, x1: number, shiftDown = false, shiftUp = shiftDown, ctrlDown = false, ctrlUp = ctrlDown) {
   for (const [type, clientX, clientY, shiftKey] of [
     ['pointerdown', x0, 250, shiftDown],
     ['pointermove', x1, 350, shiftDown],
@@ -131,7 +140,7 @@ function drag(x0: number, x1: number, shiftDown = false, shiftUp = shiftDown) {
       clientX,
       clientY,
       shiftKey,
-      ctrlKey: false,
+      ctrlKey: type === 'pointerup' ? ctrlUp : ctrlDown,
       metaKey: false,
       altKey: false,
       target: dom,
@@ -257,4 +266,79 @@ assert.deepEqual(
   store.selectedLight = null;
   store.mdoc.lights = [];
 }
-console.log('Marquee selection: props, course points and Edit modifier routing passed.');
+// Lights can form their own set through either a drag rectangle or individual Ctrl/Cmd clicks.
+{
+  const before = documentRebuilds;
+  callbacks.onSelectProps!([0, 1]);
+  assert.equal(
+    documentRebuilds,
+    before,
+    'ordinary prop selection still updates decorations without rebuilding the document',
+  );
+  store.currentMode = 'props';
+  store.selectedProp = null;
+  store.selectedLight = null;
+  store.multiSel = [];
+  store.mdoc.lights = [-5, 0, 5].map((x, index) => ({
+    id: `light:${index}`,
+    kind: 'point',
+    pos: [x, 0, 0] as V3,
+    color: '#ffffff',
+    intensity: 1,
+    reach: 10,
+  }));
+  store.mdoc.lights.push({ ...store.mdoc.lights[0], id: 'behind-camera', pos: [0, 0, -200] });
+  layers.props.placedPropGroup.visible = false;
+  drag(150, 450);
+  assert.deepEqual(
+    selectedSetLights(store),
+    ['light:0', 'light:1'],
+    'a plain rectangle selects multiple lights with no props',
+  );
+  drag(350, 650, true);
+  assert.deepEqual(
+    selectedSetLights(store),
+    ['light:0', 'light:1', 'light:2'],
+    'Shift-drag adds visible lights without duplicates',
+  );
+  drag(350, 450, false, false, true, false);
+  assert.deepEqual(
+    selectedSetLights(store),
+    ['light:0', 'light:2'],
+    'Ctrl-drag removes lights even if Ctrl is released first',
+  );
+  drag(700, 780, true);
+  assert.deepEqual(selectedSetLights(store), ['light:0', 'light:2'], 'an empty Shift-drag retains a light-only set');
+  layers.lights.freeLightGroup.visible = false;
+  drag(150, 650);
+  assert.deepEqual(selectedSetLights(store), [], 'hidden source markers do not enter a replacement rectangle');
+  layers.lights.freeLightGroup.visible = true;
+  store.selectedLight = 'light:0';
+  callbacks.onToggleLight!('light:1');
+  assert.deepEqual(selectedSetLights(store), ['light:0', 'light:1'], 'Ctrl-click adds a second standalone light');
+  callbacks.onToggleLight!('light:2');
+  callbacks.onToggleLight!('light:1');
+  assert.deepEqual(
+    selectedSetLights(store),
+    ['light:0', 'light:2'],
+    'Ctrl-click toggles one light without losing its peers',
+  );
+  callbacks.onToggleLight!('light:0');
+  assert.equal(store.selectedLight, 'light:2', 'the final light gets its ordinary inspector');
+  callbacks.onToggleLight!('light:2');
+  assert.equal(store.selectedLight, null, 'toggling the last selected light clears the selection');
+  layers.props.placedPropGroup.visible = true;
+  drag(150, 450);
+  assert.deepEqual(store.multiSel, [0, 1], 'one rectangle selects props and lights together');
+  assert.deepEqual(selectedSetLights(store), ['light:0', 'light:1']);
+  store.mdoc.props![2].assembly = 'group:marquee';
+  store.mdoc.lights[0].assembly = 'group:marquee';
+  callbacks.onSelectProps!([], false, ['light:0']);
+  assert.deepEqual(store.multiSel, [2], 'boxing a grouped light selects its group through the prop');
+  assert.deepEqual(
+    selectedSetLights(store),
+    [],
+    'a grouped light is not carried a second time as an independent light',
+  );
+}
+console.log('Marquee selection: props, lights, course points and Edit modifier routing passed.');

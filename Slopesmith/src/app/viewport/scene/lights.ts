@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import type { AuthoredLight, V3 } from '../../../core/doc/types';
+import type { AuthoredLight, PlacedProp, V3 } from '../../../core/doc/types';
+import { wholeAssembliesIn } from '../../../core/props/assembly';
 import { authoredRig, freeLightToPlaced, type PlacedLight } from '../../../core/lighting/sign-lights';
 import { propRigGlow, type LightRig } from '../../../core/reference/lights';
 import { PROP_RIG_MAX_BOOST, SIGN_TINT_STRENGTH } from '../constants';
 import { addLightGizmo, lightAimTarget } from '../gizmo/geometry';
 import type { Stage } from '../stage';
-import { disposeSourceMarkerPoints, setSourceMarkerSelected, sourceMarkerPoints } from './source-markers';
+import { disposeSourceMarkerPoints, sourceMarkerPoints } from './source-markers';
 
 /**
  * Authored local lights (docs/013): the derived billboard SIGN lights + the hand-placed FREE lights, as one
@@ -16,7 +17,7 @@ import { disposeSourceMarkerPoints, setSourceMarkerSelected, sourceMarkerPoints 
  * re-folds the terrain glow. Free-light selection follows the same shell-orchestrated pattern as rails / gems.
  */
 export function createLightsLayer(stage: Stage) {
-  const authoredLightsGroup = new THREE.Group(); // derived sign/group source bulbs + one selected rig
+  const authoredLightsGroup = new THREE.Group(); // derived sign/group source bulbs + selected wire rigs
   const authoredDetailGroup = new THREE.Group();
   let authoredLightMarkers: THREE.Points | null = null;
   let authoredSourceIndices: number[] = [];
@@ -25,6 +26,8 @@ export function createLightsLayer(stage: Stage) {
   let authoredRigData: LightRig | null = null;
   let authoredLightsVisible = false; // effective Local lights: terrain glow + billboard tint
   let authoredRigVisible = false; // Sources pill (legacy name): bulbs + selected rig
+  let selectedProps = new Set<number>();
+  let selectedAssemblies = new Set<string>();
 
   const freeLightGroup = new THREE.Group();
   const freeLightDetailGroup = new THREE.Group();
@@ -59,7 +62,7 @@ export function createLightsLayer(stage: Stage) {
     relight(false);
   }
 
-  /** The persisted Sources toggle exposes compact source bulbs. Only the selected source expands into
+  /** The persisted Sources toggle exposes compact source bulbs. Selected sources expand into
    * its full cone/sphere rig; hidden free lights remain unpickable. */
   function showAuthoredLightRig(on: boolean) {
     authoredRigVisible = on;
@@ -82,11 +85,12 @@ export function createLightsLayer(stage: Stage) {
     group.visible = false;
   }
 
-  function detailFor(light: PlacedLight, group: THREE.Group) {
+  function detailFor(lights: PlacedLight[], group: THREE.Group) {
     clearDetail(group);
     const positions: number[] = [],
       colors: number[] = [];
-    addLightGizmo(positions, colors, authoredRig([light]).lights[0], new THREE.Color());
+    const color = new THREE.Color();
+    for (const light of authoredRig(lights).lights) addLightGizmo(positions, colors, light, color);
     if (!positions.length) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -102,7 +106,7 @@ export function createLightsLayer(stage: Stage) {
     group.visible = true;
   }
 
-  /** Build one batched bulb cloud for derived sign/group sources; the chosen source alone gets full rig lines. */
+  /** Build batched bulbs and wireframes for selected sources and the selected props' derived lights. */
   function buildAuthoredGizmos() {
     if (authoredLightMarkers) authoredLightsGroup.remove(authoredLightMarkers);
     disposeSourceMarkerPoints(authoredLightMarkers);
@@ -110,6 +114,15 @@ export function createLightsLayer(stage: Stage) {
       .map((light, index) => ({ light, index }))
       .filter(({ light }) => light.ofProp !== undefined || light.ofGroup !== undefined)
       .map(({ index }) => index);
+    if (selectedRigSource !== null && authoredSourceIndices[selectedRigSource] === undefined) selectedRigSource = null;
+    const selected = authoredSourceIndices.flatMap((index, marker) => {
+      const light = authoredLights[index];
+      return marker === selectedRigSource ||
+        (light.ofProp !== undefined && selectedProps.has(light.ofProp)) ||
+        (light.ofGroup !== undefined && selectedProps.has(light.ofGroup))
+        ? [marker]
+        : [];
+    });
     authoredLightMarkers = authoredSourceIndices.length
       ? sourceMarkerPoints(
           stage,
@@ -120,17 +133,15 @@ export function createLightsLayer(stage: Stage) {
             colors: authoredSourceIndices.map(index => authoredLights[index].colorHex),
             icons: authoredSourceIndices.map(index => (authoredLights[index].kind === 'spot' ? 'spotlight' : 'bulb')),
             aimTargets: authoredSourceIndices.map(index => lightAimTarget(authoredLights[index])),
-            selectedIndex: selectedRigSource,
+            selectedIndex: selected,
           },
         )
       : null;
     if (authoredLightMarkers) authoredLightsGroup.add(authoredLightMarkers);
-    if (selectedRigSource !== null && authoredSourceIndices[selectedRigSource] !== undefined)
-      detailFor(authoredLights[authoredSourceIndices[selectedRigSource]], authoredDetailGroup);
-    else {
-      selectedRigSource = null;
-      clearDetail(authoredDetailGroup);
-    }
+    detailFor(
+      selected.map(marker => authoredLights[authoredSourceIndices[marker]]),
+      authoredDetailGroup,
+    );
     authoredLightsGroup.visible = authoredRigVisible && authoredSourceIndices.length > 0;
   }
 
@@ -157,14 +168,34 @@ export function createLightsLayer(stage: Stage) {
   /** Where the selected light sits in the list right now, or -1. The selection names a light rather than the
    *  slot it happens to occupy, so it is resolved fresh on every rebuild: deleting a light below it moves its
    *  index and leaves the selection exactly where it was (docs/039). */
-  /** The lights riding in a multi-selection of props, by id. */
+  /** Lights explicitly included in the placement selection, by id. */
   let setLights = new Set<string>();
   const selectedIndex = (): number =>
     selectedLight === null ? -1 : freeLights.findIndex(light => light.id === selectedLight);
 
-  /** Rebuild the free-light bulb cloud from the doc and keep the selected light's one expanded rig + move
-   * handle in sync. Parallels setPlacedProps without drawing every cone at once. `setIds` are the lights riding in
-   * a multi-selection of props (docs/015): outlined as selected, but moved by the set's gizmo, not one of their own. */
+  /** Selection decoration only: group-owned lights expand without joining the independently transformed set. */
+  function setPropSelection(props: PlacedProp[], indices: readonly number[]) {
+    const nextProps = new Set(indices.filter(index => !!props[index]));
+    const nextAssemblies = new Set(wholeAssembliesIn({ props }, [...nextProps]));
+    if (
+      nextProps.size === selectedProps.size &&
+      [...nextProps].every(index => selectedProps.has(index)) &&
+      nextAssemblies.size === selectedAssemblies.size &&
+      [...nextAssemblies].every(id => selectedAssemblies.has(id))
+    )
+      return;
+    selectedProps = nextProps;
+    selectedAssemblies = nextAssemblies;
+    buildAuthoredGizmos();
+    buildFreeLightGizmos();
+  }
+
+  const lightIsSelected = (light: AuthoredLight) =>
+    (light.id !== undefined && (light.id === selectedLight || setLights.has(light.id))) ||
+    (light.assembly !== undefined && selectedAssemblies.has(light.assembly));
+
+  /** Rebuild selected bulbs and wireframes. Only a single light gets its own move handle; selected sets keep
+   * their shared gizmo, and group-owned lights stay attached to their group's props. */
   function setFreeLights(newLights: AuthoredLight[], selectedId: string | null, setIds: readonly string[] = []) {
     freeLights = newLights;
     selectedLight = selectedId;
@@ -184,7 +215,6 @@ export function createLightsLayer(stage: Stage) {
   }
 
   function buildFreeLightGizmos() {
-    const selIdx = selectedIndex();
     if (freeLightMarkers) freeLightGroup.remove(freeLightMarkers);
     disposeSourceMarkerPoints(freeLightMarkers);
     freeLightMarkers = freeLights.length
@@ -197,9 +227,7 @@ export function createLightsLayer(stage: Stage) {
             colors: freeLights.map(light => light.color),
             icons: freeLights.map(light => (light.kind === 'spot' ? 'spotlight' : 'bulb')),
             aimTargets: freeLights.map((light, index) => lightAimTarget(freeLightToPlaced(light, index))),
-            selectedIndex: freeLights.flatMap((light, index) =>
-              index === selIdx || (light.id !== undefined && setLights.has(light.id)) ? [index] : [],
-            ),
+            selectedIndex: freeLights.flatMap((light, index) => (lightIsSelected(light) ? [index] : [])),
           },
         )
       : null;
@@ -211,8 +239,10 @@ export function createLightsLayer(stage: Stage) {
       freeLightGroup.add(freeLightMarkers);
     }
     // The index is still what names a light to a human: `Light 3` is the third in the list, wherever it moved.
-    if (selIdx >= 0) detailFor(freeLightToPlaced(freeLights[selIdx], selIdx), freeLightDetailGroup);
-    else clearDetail(freeLightDetailGroup);
+    detailFor(
+      freeLights.flatMap((light, index) => (lightIsSelected(light) ? [freeLightToPlaced(light, index)] : [])),
+      freeLightDetailGroup,
+    );
     freeLightGroup.visible = authoredRigVisible && freeLights.length > 0;
   }
 
@@ -253,15 +283,14 @@ export function createLightsLayer(stage: Stage) {
     const light = authoredIndex === undefined ? undefined : authoredLights[authoredIndex];
     if (!light) return false;
     selectedRigSource = index;
-    setSourceMarkerSelected(authoredLightMarkers, index);
-    detailFor(light, authoredDetailGroup);
+    buildAuthoredGizmos();
     return true;
   }
 
   function clearRigSource() {
+    if (selectedRigSource === null) return;
     selectedRigSource = null;
-    setSourceMarkerSelected(authoredLightMarkers, null);
-    clearDetail(authoredDetailGroup);
+    buildAuthoredGizmos();
   }
 
   authoredDetailGroup.visible = false;
@@ -297,6 +326,9 @@ export function createLightsLayer(stage: Stage) {
     get freeLights() {
       return freeLights;
     },
+    get selectedSetLights() {
+      return freeLights.filter(light => light.id && setLights.has(light.id));
+    },
     get selectedLight() {
       return selectedLight;
     },
@@ -320,6 +352,7 @@ export function createLightsLayer(stage: Stage) {
     signTint,
     setArmed,
     setFreeLights,
+    setPropSelection,
     seatLight,
     clearSelection,
     selectRigSource,

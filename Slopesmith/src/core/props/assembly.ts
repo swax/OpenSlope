@@ -65,6 +65,18 @@ export function withWholeAssemblies(doc: AssemblyDoc, indices: readonly number[]
   return [...out].sort((a, b) => a - b);
 }
 
+/** Resolve a placement selection: touching a grouped light selects its whole group; free lights keep their ids. */
+export function placementSelection(doc: AssemblyDoc, props: readonly number[], lights: readonly string[]) {
+  const grouped = lights.flatMap(id => lightAssemblyOf(doc, id) ?? []);
+  return {
+    props: withWholeAssemblies(
+      doc,
+      [...props, ...grouped].filter(index => !!doc.props?.[index]),
+    ),
+    lights: [...new Set(lights)].filter(id => doc.lights?.some(light => light.id === id) && !lightAssemblyOf(doc, id)),
+  };
+}
+
 /** The group `indices` are exactly — every prop of one group and nothing else — or null. */
 export function wholeAssembly(doc: AssemblyDoc, indices: readonly number[]): string | null {
   const id = doc.props?.[indices[0]]?.assembly;

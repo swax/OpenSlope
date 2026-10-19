@@ -105,7 +105,7 @@ const flushFrames = () => {
   for (const fn of queued) fn();
 };
 
-const { createStore } = await import('../src/app/state/store');
+const { createStore, selectedSetLights } = await import('../src/app/state/store');
 const { createEditSession } = await import('../src/app/edit/session');
 const { commitEditMesh } = await import('../src/app/edit/mesh-target');
 
@@ -1634,6 +1634,90 @@ for (const reverse of [false, true]) {
   check(
     store.mdoc !== before && store.mdoc.quads.length === before.quads.length - 1,
     'lock: an unlocked point still deletes',
+  );
+}
+
+// Lights participate in Edit selection without requiring props, including mixed mesh clipboard/deletion.
+{
+  const { store, session, viewport } = editor();
+  store.mdoc.props = [];
+  store.mdoc.lights = [0, 1, 2].map(index => ({
+    id: `light:${index}`,
+    kind: 'point',
+    pos: [index * 10, 4, 0] as V3,
+    color: '#ffffff',
+    intensity: 1,
+    reach: 20,
+  }));
+  session.toggleEditLight('light:0');
+  session.toggleEditLight('light:1');
+  check(selectedSetLights(store).join() === 'light:0,light:1', 'Edit Ctrl-click can build a light-only selection');
+  check(
+    session.transformSelectionActive() && session.rotatableSelection(),
+    'a light-only set enables the Edit transform tools',
+  );
+  session.viewportCallbacks.onSelectEditMarquee?.(
+    { points: [], edges: [], patches: [], props: [], lights: ['light:1', 'light:2'] },
+    'add',
+  );
+  check(selectedSetLights(store).join() === 'light:0,light:1,light:2', 'Edit Shift-box adds lights exactly once');
+  session.viewportCallbacks.onSelectEditMarquee?.(
+    { points: [], edges: [], patches: [], props: [], lights: ['light:1'] },
+    'remove',
+  );
+  check(selectedSetLights(store).join() === 'light:0,light:2', 'Edit Ctrl-box removes lights from a light-only set');
+  session.viewportCallbacks.onSelectEditMarquee?.(
+    {
+      points: [{ kind: 'vertex', vertex: vertexName(store.mdoc, 0)! }],
+      edges: [],
+      patches: [],
+      props: [],
+      lights: ['light:0', 'light:1'],
+    },
+    'replace',
+  );
+  check(session.mixedEditSelection(), 'mesh and lights share the mixed selection tools even without props');
+  session.viewportCallbacks.onMoveMixedEditSelection?.([1, 2, 3]);
+  check(
+    near(store.mdoc.lights[0].pos, [1, 6, 3]) &&
+      near(store.mdoc.lights[1].pos, [11, 6, 3]) &&
+      near(store.mdoc.lights[2].pos, [20, 4, 0]),
+    'the shared Edit move carries selected lights exactly once',
+  );
+  let previewOrigins: readonly V3[] = [];
+  viewport.setPasteTool = (_clip, origins = []) => {
+    previewOrigins = origins;
+  };
+  session.copySelectedVertices();
+  check(store.clipboardKind === 'mixed', 'mesh and lights are captured in one clipboard');
+  session.pasteSelectedVertices();
+  check(previewOrigins.length === 2, 'the mixed clipboard preview shows both light origins');
+  const before = store.mdoc;
+  session.viewportCallbacks.onPasteVertices?.([10, 0, 20]);
+  flushFrames();
+  check(
+    store.mdoc.lights!.length === 5 && selectedSetLights(store).length === 2 && before.lights!.length === 3,
+    'mixed paste creates and selects both lights without changing the undo document',
+  );
+  check(
+    near(store.mdoc.lights![3].pos, [11, 6, 23]) && near(store.mdoc.lights![4].pos, [21, 6, 23]),
+    'pasted lights follow the same translation as the copied mesh',
+  );
+  const pasted = store.mdoc;
+  session.deleteSelectedMesh();
+  check(
+    store.mdoc.lights!.length === 3 && pasted.lights!.length === 5,
+    'mixed Delete removes its lights and preserves the prior history state',
+  );
+  session.viewportCallbacks.onSelectEditMarquee?.(
+    { points: [], edges: [], patches: [], props: [], lights: ['light:0', 'light:1'] },
+    'replace',
+  );
+  const lightOnly = store.mdoc;
+  session.deleteSelectedMesh();
+  check(
+    store.mdoc.lights!.length === 1 && lightOnly.lights!.length === 3,
+    'Edit can delete a light-only marquee without a mesh selection',
   );
 }
 

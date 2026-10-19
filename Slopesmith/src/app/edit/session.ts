@@ -6,7 +6,7 @@ import {
   carryAssemblyLights,
   lightAssemblyOf,
   placementPoses,
-  withWholeAssemblies,
+  placementSelection,
 } from '../../core/props/assembly';
 import {
   meshCreaseVertices,
@@ -89,7 +89,7 @@ import {
   setQuadsLocked,
   type LockSelection,
 } from '../../core/mesh/locks';
-import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
+import { hasSelectedSet, selectedPlacementLights, setSelectedSet, type Store } from '../state/store';
 import { detachEffectFromProp } from '../../core/effects/authoring';
 import { dropOrphanedAssemblyLights } from '../../core/props/assembly';
 import { clonePlacementTables } from '../../core/props/clipboard';
@@ -249,7 +249,7 @@ export function createEditSession(deps: EditSessionDeps) {
       Number(pointCount > 0) +
       Number(store.edgeSel.length > 0 || store.refEdgeSel.length > 0) +
       Number(store.cellSel.length > 0 || store.refCellSel.length > 0) +
-      Number(store.selectedProp !== null || store.multiSel.length > 0)
+      Number(store.selectedProp !== null || hasSelectedSet(store) || store.selectedLight !== null)
     );
   }
 
@@ -568,15 +568,16 @@ export function createEditSession(deps: EditSessionDeps) {
   function transformSelectionActive(): boolean {
     if (view().edgeExtrusionStaged) return true;
     if (store.surgeryTool === 'grid') return view().createGridWholeSelected;
-    if (store.currentMode === 'props') return store.selectedProp !== null || store.multiSel.length > 0;
+    if (store.currentMode === 'props') return store.selectedProp !== null || hasSelectedSet(store);
     if (store.currentMode !== 'edit' || store.bridgeRails !== null || !cageActive()) return false;
     if (mixedEditSelection())
       return (
         mixedEditMoveVertices().length > 0 ||
         mixedEditFloatingPoints().length > 0 ||
-        selectedEditPropIndices().length > 0
+        selectedEditPropIndices().length > 0 ||
+        selectedEditLights().length > 0
       );
-    if (!store.modelEditId && selectedEditPropIndices().length) return true;
+    if (!store.modelEditId && (selectedEditPropIndices().length || hasSelectedSet(store))) return true;
     return (
       store.selectedCorner !== null ||
       store.controlSel.length > 0 ||
@@ -817,6 +818,10 @@ export function createEditSession(deps: EditSessionDeps) {
       const prop = store.mdoc.props?.[index];
       if (prop) positions.push(prop.pos);
     }
+    for (const id of selectedEditLights()) {
+      const light = store.mdoc.lights?.find(light => light.id === id);
+      if (light) positions.push(light.pos);
+    }
     return positions;
   }
 
@@ -841,11 +846,16 @@ export function createEditSession(deps: EditSessionDeps) {
   function rotatableSelection(): boolean {
     if (view().edgeExtrusionStaged) return true;
     if (store.surgeryTool === 'grid') return view().createGridWholeSelected;
-    if (store.currentMode === 'props') return store.selectedProp !== null || store.multiSel.length > 0;
+    if (store.currentMode === 'props') return store.selectedProp !== null || hasSelectedSet(store);
     if (store.bridgeRails !== null) return false;
     if (mixedEditSelection())
       return store.currentMode === 'edit' && cageActive() && mixedEditAnchorPositions().length > 1;
-    if (store.currentMode === 'edit' && !store.modelEditId && selectedEditPropIndices().length) return true;
+    if (
+      store.currentMode === 'edit' &&
+      !store.modelEditId &&
+      (selectedEditPropIndices().length || hasSelectedSet(store))
+    )
+      return true;
     if (store.controlSel.length)
       return store.currentMode === 'edit' && cageActive() && movableControlPoints(store.controlSel).length > 1;
     return (
@@ -1319,7 +1329,7 @@ export function createEditSession(deps: EditSessionDeps) {
   /** Edit-mode placement selection (a placed prop's box + move gizmo) yields to any mesh pick — one
    *  selection at a time owns the toolbox and the gizmo. */
   function dropPlacementSelection() {
-    if (store.selectedProp === null && !store.multiSel.length && store.selectedLight === null) return;
+    if (store.selectedProp === null && !hasSelectedSet(store) && store.selectedLight === null) return;
     store.selectedProp = null;
     store.multiSel = [];
     store.selectedLight = null; // a free light selected in Edit is a placement selection too
@@ -1345,6 +1355,11 @@ export function createEditSession(deps: EditSessionDeps) {
    * more families share a Move / Rotate centroid while the toolbox remains a count-based type chooser. */
   function renderEditMarqueeSelection() {
     const doc = mdoc();
+    const props = selectedEditPropIndices(),
+      lights = selectedEditLights();
+    store.selectedProp = null;
+    store.selectedLight = null;
+    setSelectedSet(store, props, lights);
     view().clearCornerSelection();
     store.selectedCorner = null;
 
@@ -1363,6 +1378,7 @@ export function createEditSession(deps: EditSessionDeps) {
     view().refreshEditEdges();
     view().refreshEditCells();
     view().setPlacedPropSelection(null, store.multiSel);
+    if (lights.length) scheduleRebuild();
 
     const kinds = selectedEditKindCount();
     if (kinds > 1) {
@@ -1395,22 +1411,22 @@ export function createEditSession(deps: EditSessionDeps) {
         ? [store.selectedProp]
         : [];
     // Shift and Ctrl boxes add to or take from the set, keeping its lights; a plain box starts over.
-    const currentLights = mode === 'replace' ? [] : selectedEditLights();
+    const currentLights = selectedEditLights();
     // A group goes in or out whole, however much of it the box caught (docs/015 · Authored groups).
     const incomingProps = store.modelEditId
-      ? []
-      : withWholeAssemblies(
-          store.mdoc,
-          selection.props.filter(index => index >= 0 && index < (store.mdoc.props?.length ?? 0)),
-        );
+      ? { props: [], lights: [] }
+      : placementSelection(store.mdoc, selection.props, selection.lights ?? []);
 
     const points = mergeMarqueeSet(currentPoints, incomingPoints, controlPointKey, mode);
     store.edgeSel = mergeMarqueeSet(store.edgeSel, incomingEdges, nameKey, mode);
     store.cellSel = mergeMarqueeSet(store.cellSel, incomingPatches, name => name, mode).sort();
-    const mergedProps = mergeMarqueeSet(currentProps, incomingProps, index => `${index}`, mode).sort((a, b) => a - b);
-    setSelectedSet(store, mergedProps, mergedProps.length ? currentLights : []);
+    const mergedProps = mergeMarqueeSet(currentProps, incomingProps.props, index => `${index}`, mode).sort(
+      (a, b) => a - b,
+    );
+    const mergedLights = mergeMarqueeSet(currentLights, incomingProps.lights, id => id, mode);
+    setSelectedSet(store, mergedProps, mergedLights);
     store.selectedProp = null;
-    store.selectedLight = null; // a box selects mesh and props; a light it does not keep in the set lets go
+    store.selectedLight = null; // the rectangle's lights are held by the shared placement set
     store.selectedCorner = null;
     store.controlSel = points;
     store.regionSel = points.flatMap(point => (point.kind === 'vertex' ? [point.vertex] : [])).sort();
@@ -1423,6 +1439,7 @@ export function createEditSession(deps: EditSessionDeps) {
     store.selectedCoincidentVertices = null;
     resetGizmoMode();
     renderEditMarqueeSelection();
+    if (currentLights.length || mergedLights.length) scheduleRebuild();
     refreshEditSelectionUi();
   }
 
@@ -1438,30 +1455,25 @@ export function createEditSession(deps: EditSessionDeps) {
     selectEditSet([...props], selectedEditLights());
   }
 
-  /** The free lights the Edit selection holds: those riding in its set of props, or the one light selected alone. */
+  /** The explicitly selected lights, including sets with no props and single light picks. */
   function selectedEditLights(): string[] {
-    return store.multiSel.length ? selectedSetLights(store) : store.selectedLight === null ? [] : [store.selectedLight];
+    return selectedPlacementLights(store);
   }
 
-  /** Make `props` (with the free lights beside them) the Edit placement selection, keeping every mesh family. A
-   *  set is held by its props' gizmo, so with no prop left a light stays selected on its own. */
-  function selectEditSet(props: number[], lights: readonly string[], lastLight?: string) {
+  /** Make props and lights the Edit placement selection while retaining every mesh family. */
+  function selectEditSet(props: number[], lights: readonly string[]) {
+    const hadLights = selectedEditLights().length > 0;
     const sorted = [...new Set(props)].sort((a, b) => a - b);
     store.selectedProp = null;
     store.selectedLight = null;
-    if (!sorted.length && lights.length) {
-      store.multiSel = [];
-      store.selectedLight = lastLight && lights.includes(lastLight) ? lastLight : lights[0];
-    } else setSelectedSet(store, sorted, lights);
+    setSelectedSet(store, sorted, lights);
     resetGizmoMode();
     renderEditMarqueeSelection();
     refreshEditSelectionUi();
-    if (lights.length) scheduleRebuild(); // the lights layer outlines the set's lights
+    if (hadLights || lights.length) scheduleRebuild(); // refresh the outlines even when the last light leaves
   }
 
-  /** Ctrl/Cmd+click on a free light: add it to the selected props, or drop it — a group's light adds or drops its
-   *  whole group (docs/015 · Authored groups). False when there are no props to add it to, so the click selects
-   *  the light on its own. */
+  /** Ctrl/Cmd+click toggles a light alongside any selected mesh, props or lights. A grouped light toggles its whole group. */
   function toggleEditLight(id: string): boolean {
     if (store.currentMode !== 'edit') return false;
     const group = lightAssemblyOf(store.mdoc, id);
@@ -1470,9 +1482,8 @@ export function createEditSession(deps: EditSessionDeps) {
       return true;
     }
     const props = selectedEditPropIndices();
-    if (!props.length) return false;
     const lights = selectedEditLights();
-    selectEditSet(props, lights.includes(id) ? lights.filter(light => light !== id) : [...lights, id], id);
+    selectEditSet(props, lights.includes(id) ? lights.filter(light => light !== id) : [...lights, id]);
     return true;
   }
 
@@ -1503,8 +1514,11 @@ export function createEditSession(deps: EditSessionDeps) {
       store.cellLoopSeed = null;
     }
     if (kind !== 'prop') {
+      const hadLights = selectedEditLights().length > 0;
       store.selectedProp = null;
       store.multiSel = [];
+      store.selectedLight = null;
+      if (hadLights) scheduleRebuild();
     }
     resetGizmoMode();
     renderEditMarqueeSelection();
@@ -2317,8 +2331,9 @@ export function createEditSession(deps: EditSessionDeps) {
   function deleteSelectedMesh() {
     if (store.currentMode !== 'edit' || !cageActive()) return;
     const selectedProps = store.modelEditId ? [] : selectedEditPropIndices();
+    const selectedLights = store.modelEditId ? [] : selectedEditLights();
     const hasMesh = selectedAuthoredVertexIds().length > 0 || store.edgeSel.length > 0 || store.cellSel.length > 0;
-    if (!hasMesh && !selectedProps.length) return;
+    if (!hasMesh && !selectedProps.length && !selectedLights.length) return;
     const locked = meshLockReason('delete');
     if (locked) {
       toast(locked, 'err');
@@ -2328,19 +2343,19 @@ export function createEditSession(deps: EditSessionDeps) {
     const selectedFreeEdges = selectedFreeEdgeCount();
     // Placement cleanup mutates props, screens, lights, and effect attachments. Work on an isolated
     // document so the old state stays intact for history and for a failed mesh operation.
-    const source = selectedProps.length ? clonePlacementTables(mdoc()) : mdoc();
+    const source = selectedProps.length || selectedLights.length ? clonePlacementTables(mdoc()) : mdoc();
     const result = hasMesh ? applyMeshDelete(source, selectedMeshDeleteInput()) : null;
     if (result && !result.ok) {
       toast(result.error, 'err');
       return;
     }
     const doc = result?.doc ?? source;
+    const lightIds = new Set(selectedLights);
+    if (lightIds.size) doc.lights = (doc.lights ?? []).filter(light => !light.id || !lightIds.has(light.id));
     if (selectedProps.length && doc.props) {
       const groups = new Set(
         selectedProps.map(index => doc.props?.[index]?.assembly).filter((id): id is string => !!id),
       );
-      const lights = new Set(selectedSetLights(store));
-      if (lights.size) doc.lights = (doc.lights ?? []).filter(light => !light.id || !lights.has(light.id));
       for (const index of [...selectedProps].sort((a, b) => b - a)) {
         const id = doc.props[index]?.id;
         if (id && doc.effects) detachEffectFromProp(doc.effects, id);
@@ -2363,6 +2378,8 @@ export function createEditSession(deps: EditSessionDeps) {
     if (result?.quads) parts.push(`${result.quads} ${result.quads === 1 ? 'patch' : 'patches'}`);
     if (selectedProps.length)
       parts.push(`deleted ${selectedProps.length} ${selectedProps.length === 1 ? 'prop' : 'props'}`);
+    if (selectedLights.length)
+      parts.push(`deleted ${selectedLights.length} ${selectedLights.length === 1 ? 'light' : 'lights'}`);
     const cleanup = Math.max(0, (result?.vertices ?? 0) - selectedPoints);
     if (cleanup)
       parts.push(`${cleanup} ${selectedPoints ? 'other ' : ''}unused ${cleanup === 1 ? 'vertex' : 'vertices'}`);
@@ -2663,7 +2680,13 @@ export function createEditSession(deps: EditSessionDeps) {
         prop.pos[2] += delta[2];
         propsMoved = true;
       }
-      carryAssemblyLights(store.mdoc, propsBefore, selectedSetLights(store)); // a group's lights go where its props go (docs/015)
+      carryAssemblyLights(store.mdoc, propsBefore);
+      const ids = new Set(selectedEditLights());
+      for (const light of store.mdoc.lights ?? [])
+        if (light.id && ids.has(light.id)) {
+          light.pos = light.pos.map((value, axis) => value + delta[axis]) as V3;
+          propsMoved = true;
+        }
       if (propsMoved) scheduleRebuild();
     },
     onRotateMixedEditSelection(update) {
@@ -2707,7 +2730,15 @@ export function createEditSession(deps: EditSessionDeps) {
         writePropRotation(prop, item);
         propsRotated = true;
       }
-      carryAssemblyLights(store.mdoc, propsBefore, selectedSetLights(store)); // a group's lights turn with its props (docs/015)
+      carryAssemblyLights(store.mdoc, propsBefore, update.lights ? [] : selectedEditLights());
+      const lightIds = new Set(selectedEditLights());
+      for (const item of update.lights ?? []) {
+        const light = store.mdoc.lights?.find(light => light.id === item.id);
+        if (!light || !lightIds.has(item.id)) continue;
+        light.pos = item.pos;
+        if (item.dir) light.dir = item.dir;
+        propsRotated = true;
+      }
       if (propsRotated) scheduleRebuild();
     },
     onRotateControlPoints(targets) {

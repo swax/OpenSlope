@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { MeshBVH } from 'three-mesh-bvh';
-import type { PlacedProp, QuadMeshDoc, V3 } from '../../../core/doc/types';
+import type { AuthoredLight, PlacedProp, QuadMeshDoc, V3 } from '../../../core/doc/types';
 import {
   buildQuadMesh,
   meshAdjacency,
@@ -102,6 +102,7 @@ export interface TransformSelectionAccess {
   selectedCageHandle(): { vertex: number } | null;
   selectedProp(): number | null;
   multiSelProps(): readonly number[];
+  selectedLights?(): readonly AuthoredLight[];
   /** The selected screen is fitted to a board prop — stored in the board's frame, so it never rides the ground. */
   selectedScreenAttached(): boolean;
   placedProp(index: number): PlacedProp | undefined;
@@ -186,6 +187,21 @@ export function createTransformLayer(
   };
   type FrozenControlPoint = { id: MeshControlPointId; pos: THREE.Vector3 };
   type FrozenProp = { index: number; pos: THREE.Vector3; rot: THREE.Quaternion };
+  type FrozenLight = { id: string; pos: THREE.Vector3; dir?: THREE.Vector3; reach: number };
+  const selectedLights = () => sel.selectedLights?.() ?? [];
+  const freezeLights = (): FrozenLight[] =>
+    selectedLights().flatMap(light =>
+      light.id
+        ? [
+            {
+              id: light.id,
+              pos: dataToScene(light.pos),
+              reach: light.reach,
+              ...(light.dir ? { dir: dataToScene(light.dir) } : {}),
+            },
+          ]
+        : [],
+    );
   // Rotation always evaluates the drag-start snapshot, so repeated objectChange events never accumulate drift.
   // Scene-root positions carry the editor's Z flip; converting back to authored data negates Z once at the edge.
   let rotationDrag:
@@ -201,6 +217,7 @@ export function createTransformLayer(
         anchor: THREE.Quaternion;
         pivot: THREE.Vector3;
         members: FrozenProp[];
+        lights: FrozenLight[];
       }
     | {
         kind: 'editmixed';
@@ -209,6 +226,7 @@ export function createTransformLayer(
         corners: FrozenCorners | null;
         controlPoints: FrozenControlPoint[];
         props: FrozenProp[];
+        lights: FrozenLight[];
       }
     | null = null;
   // Scale mirrors rotation's frozen-snapshot contract, but reads the anchor's live scale instead of quaternion.
@@ -229,6 +247,8 @@ export function createTransformLayer(
         members: { index: number; pos: THREE.Vector3; scale: number; triggerSize?: V3 }[];
         /** Surface frame: the members as they stood over the ground, which the scale pivots on. */
         surface: SurfaceFollow | null;
+        lights: FrozenLight[];
+        lightSurface: SurfaceFollow | null;
       }
     | null = null;
   let slideBVH: MeshBVH | null = null; // frozen surface for slide re-projection, built at corner drag-start
@@ -255,7 +275,13 @@ export function createTransformLayer(
   // Surface-frame slide (arrow or tangent pad on a prop / props gizmo, or a Props-mode point's): the members frozen
   // over the ground they stood on, the gizmo anchor's data-space position at drag-start that the drag's offset is
   // measured from, and whether it is a point — re-seated in place for its own report (slidePoint) — or placements.
-  let propSlide: { follow: SurfaceFollow; anchor0: V3; point: boolean } | null = null;
+  let propSlide: {
+    follow: SurfaceFollow;
+    lightFollow: SurfaceFollow;
+    lights: FrozenLight[];
+    anchor0: V3;
+    point: boolean;
+  } | null = null;
   const groundHeight: SurfaceHeight = (x, z, nearY) => mesh.groundAt(x, z, nearY)?.y ?? null;
 
   /** World / Local / Surface pill (docs/006): Local and Surface use the slope frame; Surface additionally
@@ -329,11 +355,11 @@ export function createTransformLayer(
     if (stage.gizmoKind === 'controlpoints') return sel.controlPointSel().length > 1;
     if (stage.gizmoKind === 'editmixed') {
       const props = sel.multiSelProps().length + (sel.selectedProp() === null ? 0 : 1);
-      return sel.cornerGroupIdx().length + sel.controlPointSel().length + props > 1;
+      return sel.cornerGroupIdx().length + sel.controlPointSel().length + props + selectedLights().length > 1;
     }
     return (
       (stage.gizmoKind === 'prop' && sel.selectedProp() !== null) ||
-      (stage.gizmoKind === 'props' && sel.multiSelProps().length > 0)
+      (stage.gizmoKind === 'props' && (sel.multiSelProps().length > 0 || selectedLights().length > 0))
     );
   }
 
@@ -347,7 +373,7 @@ export function createTransformLayer(
     if (stage.gizmoKind === 'controlpoints') return sel.controlPointSel().length > 1;
     return (
       (stage.gizmoKind === 'prop' && sel.selectedProp() !== null) ||
-      (stage.gizmoKind === 'props' && sel.multiSelProps().length > 0)
+      (stage.gizmoKind === 'props' && (sel.multiSelProps().length > 0 || selectedLights().length > 0))
     );
   }
 
@@ -574,10 +600,11 @@ export function createTransformLayer(
     if (stage.gizmoKind === 'editmixed') {
       const selectedProp = sel.selectedProp();
       const props = freezeProps([...sel.multiSelProps(), ...(selectedProp === null ? [] : [selectedProp])]);
+      const lights = freezeLights();
       const corners = freezeCorners(true),
         controlPoints = freezeControlPoints();
-      if (corners || controlPoints.length || props.length)
-        rotationDrag = { kind: 'editmixed', anchor, pivot, corners, controlPoints, props };
+      if (corners || controlPoints.length || props.length || lights.length)
+        rotationDrag = { kind: 'editmixed', anchor, pivot, corners, controlPoints, props, lights };
       return;
     }
     const frozen = freezeCorners();
@@ -594,7 +621,8 @@ export function createTransformLayer(
     const selectedProp = sel.selectedProp();
     const indices = stage.gizmoKind === 'prop' ? (selectedProp === null ? [] : [selectedProp]) : sel.multiSelProps();
     const members = freezeProps(indices);
-    if (members.length) rotationDrag = { kind: stage.gizmoKind, anchor, pivot, members };
+    const lights = freezeLights();
+    if (members.length || lights.length) rotationDrag = { kind: stage.gizmoKind, anchor, pivot, members, lights };
   }
 
   /** Apply the current anchor quaternion to the frozen member snapshot and emit authored absolute values. */
@@ -655,6 +683,11 @@ export function createTransformLayer(
         const p = rotated(member.pos);
         return { index: member.index, pos: sceneToData(p), ...authoredRotation(member.rot) };
       });
+    const lightUpdates = drag.lights.map(light => ({
+      id: light.id,
+      pos: sceneToData(rotated(light.pos)),
+      ...(light.dir ? { dir: rotatedVector(light.dir) } : {}),
+    }));
     if (drag.kind === 'editmixed') {
       const controlPoints = drag.controlPoints.map(member => {
         const p = rotated(member.pos);
@@ -664,6 +697,7 @@ export function createTransformLayer(
         corners: drag.corners ? cornerUpdate(drag.corners) : { vertices: [], edgeHandles: [], quadTwist: [] },
         controlPoints,
         props: propUpdates(drag.props),
+        lights: lightUpdates,
       });
       host.controlPointsMoved(controlPoints);
       return;
@@ -672,7 +706,7 @@ export function createTransformLayer(
     if (drag.kind === 'prop') {
       const u = updates[0];
       if (u) stage.cb.onRotateProp?.(u.index, { yaw: u.yaw, pitch: u.pitch, roll: u.roll });
-    } else stage.cb.onRotateProps?.(updates);
+    } else stage.cb.onRotateProps?.(updates, lightUpdates);
   }
 
   /** Finish a rotation and return the invisible anchor to its canonical frame for the next gesture. */
@@ -728,7 +762,19 @@ export function createTransformLayer(
     const surface = propSurfaceActive()
       ? freezeSurfaceFollow(placementSurfaceItems(sel.placedProp, indices), groundHeight)
       : null;
-    if (members.length) scaleDrag = { kind: stage.gizmoKind, anchor, startScale, pivot, members, surface };
+    const lights = freezeLights();
+    const lightSurface = propSurfaceActive()
+      ? freezeSurfaceFollow(
+          lights.map((light, index) => ({
+            index,
+            pos: sceneToData(light.pos),
+            scale: light.reach,
+          })),
+          groundHeight,
+        )
+      : null;
+    if (members.length || lights.length)
+      scaleDrag = { kind: stage.gizmoKind, anchor, startScale, pivot, members, surface, lights, lightSurface };
   }
 
   /** Apply the live scale relative to the frozen drag-start snapshot and emit authored absolute values. */
@@ -768,7 +814,20 @@ export function createTransformLayer(
       if (drag.kind === 'prop') {
         const u = updates[0];
         if (u) stage.cb.onScaleProp?.(u.index, u.pos, u.scale);
-      } else stage.cb.onScaleProps?.(updates);
+      } else {
+        const lightUpdates = drag.lightSurface
+          ? scaleOverSurface(drag.lightSurface, factor, sceneToData(drag.pivot), groundHeight).map(update => ({
+              id: drag.lights[update.index].id,
+              pos: update.pos,
+              reach: update.scale,
+            }))
+          : drag.lights.map(light => ({
+              id: light.id,
+              pos: sceneToData(scaled(light.pos)),
+              reach: light.reach * factor,
+            }));
+        stage.cb.onScaleProps?.(updates, lightUpdates);
+      }
       return;
     }
     // TransformControls scale is local to the anchor. Move into that frame, apply the per-axis factors, then
@@ -870,7 +929,13 @@ export function createTransformLayer(
       point ? [{ index: -1, pos: anchor0 }] : placementSurfaceItems(sel.placedProp, gizmoPropIndices()),
       groundHeight,
     );
-    if (follow.members.length) propSlide = { follow, anchor0, point };
+    const lights = point ? [] : freezeLights();
+    const lightFollow = freezeSurfaceFollow(
+      lights.map((light, index) => ({ index, pos: sceneToData(light.pos) })),
+      groundHeight,
+    );
+    if (follow.members.length || lightFollow.members.length)
+      propSlide = { follow, lightFollow, lights, anchor0, point };
   }
 
   /**
@@ -884,14 +949,21 @@ export function createTransformLayer(
     if (!s || s.point) return false;
     const p = sceneToData(obj.position);
     const updates = slideOverSurface(s.follow, p[0] - s.anchor0[0], p[2] - s.anchor0[2], groundHeight);
-    if (!updates.length) return true;
-    const lift = updates.reduce((sum, u, i) => sum + u.pos[1] - s.follow.members[i].pos[1], 0) / updates.length;
+    const lightUpdates = slideOverSurface(s.lightFollow, p[0] - s.anchor0[0], p[2] - s.anchor0[2], groundHeight);
+    if (!updates.length && !lightUpdates.length) return true;
+    const lift =
+      (updates.reduce((sum, u, i) => sum + u.pos[1] - s.follow.members[i].pos[1], 0) +
+        lightUpdates.reduce((sum, u, i) => sum + u.pos[1] - s.lightFollow.members[i].pos[1], 0)) /
+      (updates.length + lightUpdates.length);
     const at: V3 = [p[0], s.anchor0[1] + lift, p[2]];
     setScenePositionFromData(obj.position, at);
     if (stage.gizmoKind === 'prop') stage.cb.onMoveProp?.(updates[0].index, updates[0].pos);
     else {
       anchors.propsHandleLast.set(at[0], at[1], at[2]); // a later World report measures its delta from here
-      stage.cb.onSlideProps?.(updates);
+      stage.cb.onSlideProps?.(
+        updates,
+        lightUpdates.map(update => ({ id: s.lights[update.index].id, pos: update.pos })),
+      );
     }
     return true;
   }

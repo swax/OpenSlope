@@ -1,7 +1,13 @@
 import type { V3 } from '../../core/doc/types';
-import { copyPlacements, pasteGhost, pastePlacements, type PropClipboard } from '../../core/props/clipboard';
+import {
+  copyPlacements,
+  pasteGhost,
+  pasteLightGhost,
+  pastePlacements,
+  type PropClipboard,
+} from '../../core/props/clipboard';
 import { isEffectTriggerProp } from '../../core/effects/trigger-volume';
-import { selectedSetLights, setSelectedSet, type Store } from '../state/store';
+import { hasSelectedSet, selectedPlacementLights, selectedSetLights, setSelectedSet, type Store } from '../state/store';
 import type { EditSession } from '../edit/session';
 import type { Viewport } from '../viewport/viewport';
 import type { Mode } from '../viewport/types';
@@ -9,7 +15,7 @@ import type { PropOps } from './operations';
 import { toast } from '../ui/components/toast';
 
 /**
- * Prop copy / cut / paste (docs/012): Ctrl+C / X / V over the selected placement or the box-selected set in
+ * Prop/light copy / cut / paste (docs/012): Ctrl+C / X / V over a selected placement, light or box-selected set in
  * Props or Edit mode. Pasting enters Props mode for the same placement workflow as a Library pick.
  * A paste is held like a prop from the Library: its ghost rides the terrain under the cursor — turned with
  * Alt+wheel or ← / →, resized with Shift+wheel — until a click drops it, selected under the move gizmo, or Esc
@@ -32,6 +38,7 @@ export type PropClipboardDeps = {
     | 'ensurePropLevel'
     | 'ensureGroupDefs'
   >;
+  deleteSelectedLight: () => void;
   /** Pasted props arrive under the move gizmo, whatever tool the last selection left it on. */
   resetGizmoMode: () => void;
   scheduleRebuild: () => void;
@@ -40,8 +47,18 @@ export type PropClipboardDeps = {
 };
 
 export function createPropClipboard(deps: PropClipboardDeps) {
-  const { store, edit, setMode, viewport, propOps, resetGizmoMode, scheduleRebuild, rebuildTools, updateCmdSheet } =
-    deps;
+  const {
+    store,
+    edit,
+    setMode,
+    viewport,
+    propOps,
+    deleteSelectedLight,
+    resetGizmoMode,
+    scheduleRebuild,
+    rebuildTools,
+    updateCmdSheet,
+  } = deps;
   let clipboard: PropClipboard | null = null;
   /** The clipboard on the cursor, while its ghost is out. */
   let placingClip: PropClipboard | null = null;
@@ -50,10 +67,23 @@ export function createPropClipboard(deps: PropClipboardDeps) {
   /** The placements a copy would take: the box selection, else the one selected placement. */
   const selection = (): number[] =>
     store.multiSel.length ? store.multiSel : store.selectedProp !== null ? [store.selectedProp] : [];
+  const lightSelection = (): string[] => selectedPlacementLights(store);
   /** What a toast names: the prop itself for one, a count for a set. */
   const label = (names: readonly string[]) =>
     names.length === 1 ? propOps.shortPropName(names[0]) : plural(names.length);
-  const clipLabel = (clip: PropClipboard) => label(clip.entries.map(entry => entry.prop.name));
+  const selectionLabel = (names: readonly string[], lights: readonly { name?: string }[]) => {
+    const props = names.length ? label(names) : '';
+    const lightLabel =
+      lights.length === 1 && !props
+        ? (lights[0].name ?? '1 light')
+        : `${lights.length} light${lights.length === 1 ? '' : 's'}`;
+    return [props, lights.length ? lightLabel : ''].filter(Boolean).join(' + ');
+  };
+  const clipLabel = (clip: PropClipboard) =>
+    selectionLabel(
+      clip.entries.map(entry => entry.prop.name),
+      clip.lights ?? [],
+    );
 
   function available(): boolean {
     return (
@@ -62,7 +92,11 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     );
   }
   function canCopy(): boolean {
-    return available() && selection().length > 0 && (store.currentMode !== 'edit' || !edit.mixedEditSelection());
+    return (
+      available() &&
+      (selection().length > 0 || lightSelection().length > 0) &&
+      (store.currentMode !== 'edit' || !edit.mixedEditSelection())
+    );
   }
   /** Not while another tool owns the click: a rail or prop line being drawn, a held gem. */
   function canPaste(): boolean {
@@ -76,8 +110,9 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     );
   }
   function count(): number {
-    return clipboard?.entries.length ?? 0;
+    return (clipboard?.entries.length ?? 0) + (clipboard?.lights?.length ?? 0);
   }
+  const summary = () => (clipboard ? clipLabel(clipboard) : plural(0));
   /** Whether the paste ghost is out. Anything else that takes the cursor — a prop from the Library, a rail,
    *  leaving Props — puts the paste down with it, so this asks the viewport rather than trusting itself. */
   function placing(): boolean {
@@ -91,7 +126,7 @@ export function createPropClipboard(deps: PropClipboardDeps) {
       store.mdoc,
       selection(),
       (x, z, nearY) => viewport.groundHeightAt(x, z, nearY),
-      selectedSetLights(store),
+      lightSelection(),
     );
     if (!clip) {
       toast('nothing copied — Effects trigger volumes are copied in Effects mode', 'warn');
@@ -113,10 +148,15 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     const clip = capture();
     if (!clip) return;
     // Only what was copied goes: a trigger volume in the set stays, since the clipboard could not take it.
-    if (store.multiSel.length) {
-      store.multiSel = store.multiSel.filter(i => !isEffectTriggerProp(store.mdoc.props?.[i]));
+    if (hasSelectedSet(store)) {
+      setSelectedSet(
+        store,
+        store.multiSel.filter(i => !isEffectTriggerProp(store.mdoc.props?.[i])),
+        selectedSetLights(store),
+      );
       propOps.deleteMultiSelProps();
-    } else propOps.deleteSelectedProp();
+    } else if (store.selectedLight !== null) deleteSelectedLight();
+    else propOps.deleteSelectedProp();
     toast(`cut ${clipLabel(clip)} · Ctrl+V to paste`, 'ok');
     updateCmdSheet();
   }
@@ -128,7 +168,8 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     const mode = store.currentMode,
       mountain = store.mdoc.name;
     const ghost = pasteGhost(store.mdoc, clip);
-    if (!ghost.length) {
+    const ghostLights = pasteLightGhost(clip);
+    if (!ghost.length && !ghostLights.length) {
       toast('nothing to paste — the copied props are models from another mountain', 'warn');
       return;
     }
@@ -150,7 +191,13 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     store.selectedRail = null;
     store.selectedNode = null;
     store.selectedGem = null;
-    viewport.setPropArmed({ level: ghost[0].level, model: ghost[0].model, baseOffset: 0, paste: ghost });
+    viewport.setPropArmed({
+      level: ghost[0]?.level ?? '',
+      model: ghost[0]?.model ?? 0,
+      baseOffset: 0,
+      paste: ghost,
+      pasteLights: ghostLights,
+    });
     placingClip = clip;
     rebuildTools();
     updateCmdSheet();
@@ -177,18 +224,22 @@ export function createPropClipboard(deps: PropClipboardDeps) {
     resetGizmoMode();
     // A light that landed in a group is selected with its group; the rest ride in the set beside the props.
     const free = lights.filter(id => !store.mdoc.lights?.find(light => light.id === id)?.assembly);
-    const set = indices.length > 1 || (indices.length === 1 && free.length);
+    const set = indices.length + free.length > 1;
     store.selectedProp = set ? null : (indices[0] ?? null);
+    store.selectedLight = !set && !indices.length ? (free[0] ?? null) : null;
     setSelectedSet(store, set ? indices : [], set ? free : []);
     scheduleRebuild();
     rebuildTools();
     updateCmdSheet();
-    const pasted = label(indices.map(index => store.mdoc.props![index].name));
+    const pasted = selectionLabel(
+      indices.map(index => store.mdoc.props![index].name),
+      clip.lights ?? [],
+    );
     const missing = skipped ? ` · ${plural(skipped)} skipped — their models belong to another mountain` : '';
     toast(`pasted ${pasted}${missing}`, skipped ? 'warn' : 'ok');
   }
 
-  return { canCopy, canPaste, count, placing, copy, cut, paste, cancel, place };
+  return { canCopy, canPaste, count, summary, placing, copy, cut, paste, cancel, place };
 }
 
 export type PropClipboardSession = ReturnType<typeof createPropClipboard>;

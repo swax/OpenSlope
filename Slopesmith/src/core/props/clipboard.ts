@@ -37,7 +37,7 @@ export interface PropClipboard {
   /** The point the set is carried by (data space): its origins' centroid, at the ground beneath it. */
   anchor: V3;
   entries: PropClipboardEntry[];
-  /** The lights of every group the copy took whole, and those selected beside the props, minus their identity —
+  /** The lights of every group the copy took whole, and independently selected lights, minus their identity —
    *  a lamp's halo comes with the lamp. */
   lights?: Omit<AuthoredLight, 'id'>[];
 }
@@ -71,8 +71,7 @@ export function clonePlacementTables(doc: QuadMeshDoc): QuadMeshDoc {
   };
 }
 
-/** Snapshot the placements at `indices`, with the free lights `lightIds` selected beside them. Null when none of
- *  the placements can be copied. */
+/** Snapshot the placements at `indices` and the selected lights `lightIds`. Null when neither can be copied. */
 export function copyPlacements(
   doc: PropDoc,
   indices: readonly number[],
@@ -97,15 +96,17 @@ export function copyPlacements(
       screens,
     });
   }
-  if (!entries.length) return null;
-  const mean = (axis: number) => entries.reduce((sum, entry) => sum + entry.prop.pos[axis], 0) / entries.length;
-  const [x, y, z] = [mean(0), mean(1), mean(2)];
-  // Off the terrain (or with no terrain to ask), the lowest origin stands in for the ground.
-  const ground = groundAt?.(x, z, y) ?? Math.min(...entries.map(entry => entry.prop.pos[1]));
   const groups = new Set(wholeAssembliesIn(doc, indices));
   const lights = (doc.lights ?? [])
     .filter(light => (light.assembly && groups.has(light.assembly)) || (light.id && lightIds.includes(light.id)))
     .map(({ id: _id, ...light }) => structuredClone(light));
+  if (!entries.length && !lights.length) return null;
+  // A prop set keeps its existing anchor; with only lights selected, their origins supply it instead.
+  const origins = entries.length ? entries.map(entry => entry.prop.pos) : lights.map(light => light.pos);
+  const mean = (axis: number) => origins.reduce((sum, pos) => sum + pos[axis], 0) / origins.length;
+  const [x, y, z] = [mean(0), mean(1), mean(2)];
+  // Off the terrain (or with no terrain to ask), the lowest origin stands in for the ground.
+  const ground = groundAt?.(x, z, y) ?? Math.min(...origins.map(pos => pos[1]));
   return { mountain: doc.name, anchor: [x, ground, z], entries, ...(lights.length ? { lights } : {}) };
 }
 
@@ -142,6 +143,23 @@ export function pasteGhost(doc: PropDoc, clip: PropClipboard): PasteGhostPlaceme
     ...(prop.pitch ? { pitch: prop.pitch } : {}),
     ...(prop.roll ? { roll: prop.roll } : {}),
     ...carried(prop, clip.anchor, { pos: [0, 0, 0], yaw: 0, scale: 1 }),
+  }));
+}
+
+function carriedLight(light: Omit<AuthoredLight, 'id'>, anchor: V3, at: PasteTransform) {
+  const offset = rotateY([0, 1, 2].map(k => (light.pos[k] - anchor[k]) * at.scale) as V3, at.yaw);
+  return {
+    pos: [at.pos[0] + offset[0], at.pos[1] + offset[1], at.pos[2] + offset[2]] as V3,
+    ...(light.dir ? { dir: rotateY(light.dir, at.yaw) } : {}),
+    reach: light.reach * at.scale,
+  };
+}
+
+/** The copied lights in the same anchor-relative frame as the prop ghost. */
+export function pasteLightGhost(clip: PropClipboard): Omit<AuthoredLight, 'id'>[] {
+  return (clip.lights ?? []).map(light => ({
+    ...structuredClone(light),
+    ...carriedLight(light, clip.anchor, { pos: [0, 0, 0], yaw: 0, scale: 1 }),
   }));
 }
 
@@ -200,13 +218,11 @@ export function pastePlacements(
   const pastedLights: string[] = [];
   for (const source of clip.lights ?? []) {
     const lights = (doc.lights ??= []);
-    const light: AuthoredLight = { id: nextLightId(lights), ...structuredClone(source) };
-    if (at) {
-      const offset = rotateY([0, 1, 2].map(k => (source.pos[k] - clip.anchor[k]) * at.scale) as V3, at.yaw);
-      light.pos = [at.pos[0] + offset[0], at.pos[1] + offset[1], at.pos[2] + offset[2]];
-      if (light.dir) light.dir = rotateY(light.dir, at.yaw);
-      light.reach *= at.scale;
-    }
+    const light: AuthoredLight = {
+      id: nextLightId(lights),
+      ...structuredClone(source),
+      ...(at ? carriedLight(source, clip.anchor, at) : {}),
+    };
     regroup(light);
     lights.push(light);
     pastedLights.push(light.id!);

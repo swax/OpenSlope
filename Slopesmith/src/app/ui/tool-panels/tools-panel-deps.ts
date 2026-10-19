@@ -276,7 +276,7 @@ export type ToolsPanelDeps = {
   /** Copy / cut / paste of selected placements in Props or Edit mode (docs/012). */
   propClipboard: Pick<
     PropClipboardSession,
-    'canCopy' | 'canPaste' | 'count' | 'placing' | 'copy' | 'cut' | 'paste' | 'cancel'
+    'canCopy' | 'canPaste' | 'count' | 'summary' | 'placing' | 'copy' | 'cut' | 'paste' | 'cancel'
   >;
   deleteSelectedLight: () => void;
   deleteSelectedScreen: () => void;

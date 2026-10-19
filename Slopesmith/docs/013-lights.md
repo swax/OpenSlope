@@ -195,6 +195,18 @@ A free light can also draw the game's runtime **glint** — the halo/core/twinkl
 course flare carries. Its size class is one control on the light and one field on the exported record; see
 [047 — Light Glints](047-light-glints.md).
 
+Select a free light and use **Ctrl+C / Ctrl+X**, then **Ctrl+V** to preview a copy on the cursor. Click the terrain
+to place it or **Esc** to cancel. The copy keeps its name and lighting settings; Alt+wheel or ← / → turns its
+aim, and Shift+wheel scales its height above the terrain and reach. Its inspector also offers copy, cut and paste.
+
+With Sources visible, drag a selection rectangle around several lights, or use Ctrl/Cmd+click to toggle them
+individually. Shift-drag adds lights and Ctrl/Cmd-drag removes them. Lights can be selected together without any
+props, or alongside props and Edit-mode mesh components. Their selected markers stay highlighted and their wire
+spheres or cones remain visible. Selecting a whole authored group also expands its lights; selecting a packed group
+placement expands its derived lights. The wireframes follow the selection and clear when it is deselected. The shared
+gizmo moves the set; rotating also turns spotlight aim, and scaling changes spacing and reach. Copy, cut, paste,
+Delete and Esc apply to the whole selection.
+
 A free light resolves to the same `PlacedLight` the sign lights use (`signlights.freeLightToPlaced`), so it
 joins the one authored rig: it pools its colour on the terrain (baked into the lightmap) and exports to
 `Lights.json` as a **Type-2 point** or **Type-1 spot** next to the sun, ambient and sign lights. So a course
