@@ -128,11 +128,12 @@ your machine first:
 npm run hooks:install
 ```
 
-It runs the hygiene gate plus whichever fast suites the pushed commits touch, the same selection CI makes
-(both read `tools/affected-suites.mjs`), in about a minute, and refuses the push on a failure. That keeps
-`main` green for everything a local run can catch; CI's Linux runner still has the last word on anything
-platform-specific. `OPENSLOPE_SKIP_PREPUSH=1 git push` (or `git push --no-verify`) skips it once.
-`npm run verify` remains the full gate.
+Every pushed tip runs the repository hygiene gate and Native source audit in a temporary local clone.
+Uncommitted fixes cannot hide a failure in the commit being pushed. The hook then runs whichever fast
+suites the changes touch, using the same selection as CI (`tools/affected-suites.mjs`), and refuses the
+push on any failure. The old `OPENSLOPE_SKIP_PREPUSH` environment variable no longer skips checks.
+CI's Linux runner still has the last word on platform-specific behavior. `npm run verify` remains the
+full gate and should pass on the final tree before committing.
 
 If server-side enforcement becomes useful, the `Protect main` repository ruleset can require a pull request
 and both stable `Verify` results: `Required hygiene gate (zero findings)` and `Required verification gate`.

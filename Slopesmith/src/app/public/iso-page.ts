@@ -23,6 +23,7 @@ export async function showIsoPage(): Promise<void> {
   let busy = false;
   let scanning = false;
   let confirmingLeave = false;
+  let confirmingClear = false;
   let leaving = false;
   let abort: AbortController | null = null;
   let target: PublicCourse | null = null;
@@ -38,12 +39,21 @@ export async function showIsoPage(): Promise<void> {
   label.prepend(publicGlyph('disc'));
   label.title = 'SSX, SSX Tricky, SSX 3 or SSX On Tour PS2 · Choose an ISO or the BIN from a BIN/CUE disc · Files stay on this device';
   const count = element('span', 'public-cache');
-  const clear = element('button', 'public-clear', 'Clear'); clear.type = 'button'; clear.setAttribute('aria-label', 'Clear local assets');
+  const clear = element('button', 'public-clear', 'Clear all'); clear.type = 'button'; clear.setAttribute('aria-label', 'Clear all ISO maps');
   const loadRequired = element('button', 'public-primary', 'Load required maps'); loadRequired.type = 'button'; loadRequired.hidden = true;
   const cancel = element('button', '', 'Cancel scan'); cancel.type = 'button'; cancel.hidden = true;
   const actions = element('div', 'public-iso-actions'); actions.append(label, input, count, loadRequired, clear, cancel);
   const status = element('p', 'public-iso-status'); status.setAttribute('role', 'status');
-  iso.append(actions, status);
+  const support = element('section', 'public-iso-support'); support.setAttribute('aria-label', 'PS2 game support');
+  support.append(element('h2', '', 'PS2 game support'));
+  const supportList = element('dl', '');
+  for (const [game, level] of [['SSX Tricky', 'Full support'], ['SSX', 'Partial support'], ['SSX 3', 'Preliminary support'], ['SSX On Tour', 'Preliminary support']]) {
+    const item = element('div', '');
+    item.append(element('dt', '', game), element('dd', '', level));
+    supportList.append(item);
+  }
+  support.append(supportList, element('p', '', 'SSX support is still incomplete. SSX 3 and On Tour are early imports with missing features and possible map issues. ISO and BIN files stay on this device.'));
+  iso.append(actions, support, status);
   const heading = element('h2', 'public-visually-hidden', 'ISO maps');
   const rows = element('ul', 'public-iso-map-list'); rows.setAttribute('aria-label', 'Manage ISO maps');
   const empty = element('p', 'public-empty', 'No maps loaded.');
@@ -195,7 +205,22 @@ export async function showIsoPage(): Promise<void> {
     }, () => `${selectedFile.name} · ${discovered.length} map${discovered.length === 1 ? '' : 's'} found`);
   };
   loadRequired.onclick = () => { loadMaps((target?.isoCourses ?? []).filter(slot => !cached.includes(slot) && discovered.includes(slot))); };
-  clear.onclick = () => { void operate(clearIsoCache, () => '', false); };
+  clear.onclick = async () => {
+    if (busy || loads.busy || confirmingClear || !cached.length) return;
+    confirmingClear = true;
+    try {
+      const confirmed = await confirmAction({
+        title: 'Unload all ISO maps?',
+        body: 'This removes every loaded ISO map from this browser and clears the selected disc. Choose your disc images again to reload maps. Your original ISO and BIN files are kept.',
+        confirmLabel: 'Unload all maps', danger: true,
+      });
+      if (!confirmed) return;
+      await operate(async () => {
+        await clearIsoCache();
+        file = null; discovered = []; input.value = '';
+      }, () => 'All ISO maps unloaded.', false);
+    } finally { confirmingClear = false; }
+  };
   cancel.onclick = () => abort?.abort();
   window.addEventListener('pagehide', () => {
     window.removeEventListener('beforeunload', confirmUnload);

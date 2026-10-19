@@ -65,6 +65,9 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Pre-push guard tests
+        run: node --test tools/pre-push.test.mjs
+
       - name: Repository hygiene gate
         run: python tools/hygiene.py
 

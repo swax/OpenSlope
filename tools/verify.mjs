@@ -31,7 +31,10 @@ const snowknifeSteps = [
 // check included; it self-skips without a disc) and prints its own per-check headings. Keeping a
 // second copy of any check here is what let `npm run verify` fall a scanner behind `npm run hygiene`
 // once already, and let the release path miss the manifest check.
-const hygieneSteps = [['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000]];
+const hygieneSteps = [
+  ['Pre-push guard tests', process.execPath, ['--test', 'tools/pre-push.test.mjs'], 3 * 60_000],
+  ['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000],
+];
 const nativeSteps = [['Native C++ conformance', process.execPath, ['tools/native-tests.mjs'], 15 * 60_000]];
 const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),

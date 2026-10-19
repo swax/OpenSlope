@@ -16,8 +16,8 @@
     <string name="empty_body">Import courses from a game ISO, or choose a Maps folder containing custom or previously imported courses.</string>
     <string name="add_courses">Add courses</string>
     <string name="hide_add_courses">Hide add courses</string>
-    <string name="add_courses_hint">An ISO adds courses to your library. Existing maps are kept.</string>
-    <string name="import_iso">Import from ISO</string>
+    <string name="add_courses_hint">Choose one or more ISO or BIN files. Existing maps are kept.</string>
+    <string name="import_iso">Import from ISOs</string>
     <string name="choose_maps">Choose Maps folder</string>
     <string name="app_maps_source">Using the app’s Maps folder</string>
     <string name="selected_maps_source">Using your selected Maps folder</string>
@@ -51,9 +51,10 @@
     <string name="reading_maps">Finding your courses…</string>
     <string name="folder_picker_missing">The system folder picker is unavailable. You can use the app’s Maps folder instead.</string>
     <string name="iso_picker_missing">The system file picker is unavailable on this headset.</string>
-    <string name="reading_iso">Finding courses on the ISO…</string>
+    <string name="reading_iso">Finding courses on selected discs…</string>
+    <string name="import_cancelled">Import cancelled.</string>
     <string name="import_title">Choose courses to import</string>
-    <string name="import_scope">Select one or more courses. Terrain, scenery, effects and audio are imported together. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
+    <string name="import_scope">Select courses from your chosen discs. SSX Tricky has full support; SSX has partial support; SSX 3 and On Tour are preliminary. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
     <string name="import_action">Import</string>
     <string name="import_selected">Import (%1$d)</string>
     <string name="select_all">Select all</string>

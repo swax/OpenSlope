@@ -1,6 +1,6 @@
 # Desktop ISO setup, build 0.78
 
-Put `.iso` files beside the desktop EXE and launch it. With no explicit `--map`,
+Put one or more `.iso` or `.bin` files beside the desktop EXE and launch it. With no explicit `--map`,
 the library opens first. It shows installed/custom maps, or ISO sources when
 there are no installed maps. **ISO Sources** switches to the source list.
 Choose an ISO, then **Extract <course>** on any courses you want. They queue and
@@ -10,11 +10,12 @@ is a separate click; extraction never starts a course. The existing independent
 native importer writes the shared `Maps/<name>` format beside the EXE. No command line, PowerShell
 script, external converter process or duplicate ISO copy is required.
 
-Source discovery is nonrecursive, accepts case-insensitive `.iso` extensions and
+Source discovery is nonrecursive, accepts case-insensitive `.iso` and `.bin` extensions and
 uses the running executable's directory. It does not infer support from the
-filename. The present format reader accepts SSX Tricky PS2, as documented by
-the clean Trailmap 200/210/220 format contracts. The shared reader also supports
-SSX (including raw BIN images) and SSX 3 PS2 events/peaks. See
+filename. PS2 import support is full for SSX Tricky, partial for SSX, and
+preliminary for SSX 3 and SSX On Tour. Keep images for multiple games together
+and switch between them under **ISO Sources** to queue courses from each disc.
+The shared reader accepts SSX (including raw BIN images) and SSX 3 events/peaks. See
 [SSX import](ssx-import.md) and [SSX 3 import and limits](ssx3-import.md).
 On Tour PS2 day/night tracks also use this flow; see [On Tour import](ontour-import.md).
 

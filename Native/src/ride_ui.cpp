@@ -325,7 +325,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.text(loading            ? load_name
                : graphics_options ? (immersive ? "SNOWFALL / DISPLAY STATS" : "SCENE QUALITY / WEATHER")
                : library
-                   ? (iso_library ? (iso_source.empty() ? "SUPPORT: SSX TRICKY (PS2)" : iso_source.filename().string())
+                   ? (iso_library ? (iso_source.empty() ? "SSX / TRICKY / SSX 3 / ON TOUR (PS2)" : iso_source.filename().string())
                                   : "INSTALLED / CUSTOM MAPS")
                : audio_options ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
                                                  : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
@@ -349,9 +349,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             if (!library_error.empty() && iso_library && iso_courses.empty()) {
                 c.text("THIS COURSE SOURCE COULD NOT BE OPENED", .06, .34, .0037, ink);
                 c.text(library_error, .06, .43, .0032, muted);
-                c.text("SUPPORTED: SSX TRICKY (PS2)", .06, .52, .0037, muted);
+                c.text("PS2: SSX / TRICKY / SSX 3 / ON TOUR", .06, .52, .0037, muted);
             } else if (iso_library && iso_source.empty() && iso_paths.empty()) {
-                c.text("PUT .ISO FILES BESIDE THE EXE", .06, .37, .004, ink);
+                c.text("PUT .ISO / .BIN FILES BESIDE THE EXE", .06, .37, .004, ink);
                 c.text("THEN CHOOSE REFRESH", .06, .45, .0037, muted);
                 c.text("OR ADD CUSTOM COURSES TO MAPS", .06, .54, .0037, muted);
             } else if (!iso_library && map_paths.empty() && !immersive) {

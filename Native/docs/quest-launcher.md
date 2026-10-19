@@ -12,11 +12,19 @@ details expand in place. Android Back closes an open section before closing
 the panel. Close OpenSlope is also an explicit action.
 
 An empty library immediately explains both supported entry paths: Import from
-ISO, or Choose Maps folder for existing/custom maps. Both actions fit the
+ISOs, or Choose Maps folder for existing/custom maps. Both actions fit the
 default 1024 by 640 dp viewport. Importing continues to populate the selected
 Maps folder, preserving existing courses. Its course chooser starts with no
 selection, shows an import count, supports select-all/clear, and has Back.
 The old terrain-only import notice is replaced with the current scope.
+
+The system file picker accepts multiple ISO/BIN files at once. Their courses
+appear in one chooser with the source filename beside each course. Each chosen
+course imports from its own disc, sequentially, without copying entire images.
+Duplicate course slots use the first selected disc; existing maps are kept.
+An unreadable disc is reported without hiding courses from other selected discs.
+Cancel stops the batch and keeps completed maps. PS2 support is full for Tricky,
+partial for SSX, and preliminary for SSX 3 and On Tour.
 
 The default view hides raw folder identifiers and graphics options. Existing
 render-scale, smoothing, head-steering and run-mode preferences retain their

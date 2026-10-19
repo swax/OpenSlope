@@ -141,6 +141,12 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-who:empty, .public-status:empty, .public-iso-status:empty, .public-chat-status:empty { display: none; }
 .public-iso { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #2a3c4a; border-radius: 10px; background: #142330; }
 .public-iso-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.public-iso-support { margin-top: 18px; color: #b2c9d5; font-size: 13px; line-height: 1.5; }
+.public-iso-support h2 { margin: 0 0 8px; color: #d3e4ef; font-size: 14px; }
+.public-iso-support dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 16px; margin: 0; }
+.public-iso-support dt { color: #d3e4ef; font-weight: 600; }
+.public-iso-support dd { margin: 2px 0 0; }
+.public-iso-support p { margin: 12px 0 0; }
 .public-iso input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .public-iso:focus-within .public-iso-button { outline: 2px solid #f4b65e; }
 .public-cache { color: #91b2b4; font-size: 11px; padding: 4px 8px; border-radius: 5px; background: #8bb8bc0c; }

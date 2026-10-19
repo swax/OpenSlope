@@ -77,6 +77,14 @@ final class LauncherUiChecks {
         Bundle result = new Bundle(); LauncherActivity activity = null; File temporary = null; int code = Activity.RESULT_OK;
         try {
             Context context = test.getTargetContext();
+            Uri firstDisc = Uri.parse("content://fixture/first.iso"), secondDisc = Uri.parse("content://fixture/second.bin");
+            require(LauncherActivity.selectedIsoUris(new Intent().setData(firstDisc)).equals(Arrays.asList(firstDisc)), "Single-disc picker results remain supported");
+            ClipData clips = ClipData.newRawUri("Discs", firstDisc); clips.addItem(new ClipData.Item(secondDisc)); clips.addItem(new ClipData.Item(firstDisc));
+            Intent multiple = new Intent(); multiple.setClipData(clips);
+            require(LauncherActivity.selectedIsoUris(multiple).equals(Arrays.asList(firstDisc, secondDisc)), "ClipData-only results retain every disc once and preserve selection order");
+            multiple.setData(secondDisc);
+            require(LauncherActivity.selectedIsoUris(multiple).equals(Arrays.asList(firstDisc, secondDisc)), "Picker data and ClipData cannot duplicate a source");
+            require(LauncherActivity.selectedIsoUris(new Intent()).isEmpty(), "Empty picker results have no sources");
             temporary = new File(context.getCacheDir(), "launcher-fixture-" + UUID.randomUUID()); require(temporary.mkdir(), "Private library fixture created");
             File pictures = new File(context.getCacheDir(), "launcher-ui-checks"); require(pictures.isDirectory() || pictures.mkdir(), "Panel capture folder ready");
             Intent intent = new Intent(context, LauncherActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("show_library", true).putExtra("map_error", "Course could not open. Choose another course or try again.");
@@ -137,8 +145,11 @@ final class LauncherUiChecks {
             main(() -> {
                 ui.status("", false); ui.root.scrollTo(0, 0);
                 try { snapshot(ui.root, pictures, "courses");
-                    AlertDialog dialog = (AlertDialog) invoke(launched, "showImportChoices", new Class<?>[]{Uri.class, List.class}, Uri.EMPTY, Arrays.asList("ALASKA", "GARI"));
+                    List<LauncherActivity.IsoCourse> choices = Arrays.asList(new LauncherActivity.IsoCourse(firstDisc, "ALASKA", "first.iso"), new LauncherActivity.IsoCourse(secondDisc, "SSX_SNOW", "second.bin"));
+                    AlertDialog dialog = (AlertDialog) invoke(launched, "showImportChoices", new Class<?>[]{List.class, String.class}, choices, "broken.iso: Could not read this disc.");
                     choice[0] = dialog;
+                    require(dialog.getListView().getAdapter().getItem(0).toString().equals("ALASKA · first.iso") && dialog.getListView().getAdapter().getItem(1).toString().equals("SSX_SNOW · second.bin"), "Combined choices identify the source disc for each course");
+                    require(choices.get(0).uri.equals(firstDisc) && choices.get(1).uri.equals(secondDisc), "Course selections retain their own source URI");
                     require(!dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled(), "Import requires an explicit course selection");
                     dialog.findViewById(R.id.launcher_select_all).performClick(); require(dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("2"), "Select all updates import count");
                     dialog.findViewById(R.id.launcher_select_all).performClick(); require(!dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled(), "Clear selection prevents an empty import");

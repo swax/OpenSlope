@@ -46,6 +46,7 @@ Python's standard library.
 
 ```text
 npm run verify:native
+node --test tools/pre-push.test.mjs
 node --test tools/native/native-source-audit.test.mjs
 python tools/native/native-compare-maps.py <native-course> <reference-course>
 python tools/native/native-compare-props.py <native-course> <reference-course>

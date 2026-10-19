@@ -1453,6 +1453,11 @@ try {
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
   await closeCommunity(guest);
   await guest.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
+  const gameSupport = guest.getByRole('region', { name: 'PS2 game support', exact: true });
+  assert.match(await gameSupport.innerText(), /SSX Tricky\s+Full support/);
+  assert.match(await gameSupport.innerText(), /SSX\s+Partial support/);
+  assert.match(await gameSupport.innerText(), /SSX 3\s+Preliminary support/);
+  assert.match(await gameSupport.innerText(), /SSX On Tour\s+Preliminary support/);
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
   await guest.setViewportSize({ width: 800, height: 1000 });
   assert.equal(
@@ -1640,8 +1645,18 @@ try {
     }),
     'reloading extracts fresh files without stale sidecars',
   );
-  await guest.getByRole('button', { name: 'Clear local assets', exact: true }).click();
+  await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  const clearAllDialog = guest.getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true });
+  await clearAllDialog.waitFor();
+  assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'opening confirmation keeps loaded maps');
+  await clearAllDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'cancelling Clear all keeps loaded maps');
+  assert(await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isVisible());
+  await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  await clearAllDialog.getByRole('button', { name: 'Unload all maps', exact: true }).click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
+  assert.equal(await guest.locator('.public-iso-map').count(), 0, 'Clear all also forgets the selected disc');
+  assert.equal(await guest.locator('#public-iso').inputValue(), '');
   await guest
     .locator('#public-iso')
     .setInputFiles({ name: 'invalid.iso', mimeType: 'application/octet-stream', buffer: Buffer.from('not a disc') });
@@ -1783,7 +1798,11 @@ try {
   );
   await guest.goto(`${origin}/isos`);
   await closeCommunity(guest);
-  await guest.getByRole('button', { name: 'Clear local assets', exact: true }).click();
+  await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  await guest
+    .getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true })
+    .getByRole('button', { name: 'Unload all maps', exact: true })
+    .click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   await guest.locator('#public-iso').setInputFiles(queueFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();

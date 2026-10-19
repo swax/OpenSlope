@@ -39,11 +39,11 @@ def main():
                 members["fixture.pbd"] = bytes(4) + members["fixture.pbd"][4:]
             data = b"invalid image" if scenario == "invalid" else iso(big(members))
             if scenario == "queue":
-                data = multi_iso(["FIXTURE", "SECOND", "THIRD", "FOURTH"])
+                data = multi_iso(["FIXTURE", "THIRD", "FOURTH"])
                 (folder / 'broken.img').write_bytes(b'bad image')
             (folder / ("First.BIN" if scenario == "ssx" else "First.ISO")).write_bytes(raw_disc(data) if scenario == "ssx" else data)
             (folder / "ignore.cue").write_text('Choose the BIN file')
-            (folder / "second.iso").write_bytes(data)
+            (folder / "second.iso").write_bytes(multi_iso(["SECOND"]) if scenario == "queue" else data)
             (folder / "ignore.iso").mkdir()
             (folder / "ignore.iso" / "nested.iso").write_bytes(data)
             (folder / "ignore.txt").write_bytes(data)
