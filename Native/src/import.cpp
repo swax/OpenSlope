@@ -365,6 +365,13 @@ std::vector<DiscCourse> disc_courses(const DiscInput& image, const ImportCancel&
     const auto data = iso.children(iso.find("DATA"));
     if (std::any_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "WORLDS"; })) {
         const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb");
+        if (Bytes{database}.le(0) == 0x21004e00) {
+            const auto ids = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
+                       names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
+            return import_detail::ontour_courses(database, ids, names,
+                                                 disc_archive_directory(disc, "DATA/WORLDS/BAM.BIG"),
+                                                 iso.find("DATA/WORLDS/BAM.BIG").size);
+        }
         return import_detail::ssx3_courses(database, iso.find("DATA/WORLDS/BAM.BIG").size);
     }
     std::vector<DiscCourse> result;
@@ -408,7 +415,7 @@ std::vector<DiscCourse> disc_courses(const DiscInput& image, const ImportCancel&
         }
     }
     if (result.empty())
-        throw std::runtime_error("No supported SSX, SSX Tricky or SSX 3 PS2 maps were found");
+        throw std::runtime_error("No supported SSX, SSX Tricky, SSX 3 or SSX On Tour PS2 maps were found");
     std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
     return result;
 }
@@ -480,19 +487,27 @@ void extract_course(const DiscInput& source_image, const std::string& course, co
     };
     notify("Reading " + stem + " archive");
     Iso iso(disc);
-    if (stem.starts_with("SSX3_")) {
+    if (stem.starts_with("SSX3_") || stem.starts_with("SSXOT_")) {
         const auto entries = archive_index(disc, iso.find("DATA/WORLDS/BAM.BIG"));
         const auto it = std::find_if(entries.begin(), entries.end(),
                                      [](const auto& e) { return upper(e.name) == "DATA/WORLDS/BAM.SSB"; });
         if (it == entries.end())
-            throw std::runtime_error("SSX 3 world stream is missing");
+            throw std::runtime_error("Mountain world stream is missing");
         DiscInput stream{it->size, [disc, offset = it->offset](std::uint64_t p, std::span<std::uint8_t> bytes) {
                              disc.read_at(offset + p, bytes);
                          }};
         const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb"),
                    identifiers = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
                    names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
-        import_detail::write_ssx3_course(disc, stream, database, identifiers, names, stem, output, progress, cancelled);
+        if (stem.starts_with("SSXOT_")) {
+            const auto courses = import_detail::ontour_courses(database, identifiers, names,
+                                                               disc_archive_directory(disc, "DATA/WORLDS/BAM.BIG"),
+                                                               iso.find("DATA/WORLDS/BAM.BIG").size);
+            if (std::none_of(courses.begin(), courses.end(), [&](const auto& item) { return item.name == stem; }))
+                throw std::runtime_error("Unknown On Tour track or time of day");
+        }
+        import_detail::write_mountain_course(disc, stream, database, identifiers, names, stem, output, progress,
+                                             cancelled);
         cleanup.complete = true;
         return;
     }

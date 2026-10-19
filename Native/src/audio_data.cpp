@@ -63,7 +63,7 @@ void interleave(PcmClip& clip, const std::array<std::vector<std::int16_t>, 2>& c
 }
 } // namespace
 
-AudioBank decode_audio_bank(std::span<const std::uint8_t> source, bool omit_speech) {
+AudioBank decode_audio_bank(std::span<const std::uint8_t> source, bool omit_speech, bool defer_unsupported) {
     // [Trailmap: 260-bnk, 260-bnk-sound, 260-bnk-data] Entry offsets are
     // self-relative; channel offsets are absolute within this bank.
     Bytes b{source};
@@ -93,8 +93,14 @@ AudioBank decode_audio_bank(std::span<const std::uint8_t> source, bool omit_spee
             throw std::runtime_error("Sound bank sample count exceeds its limit");
         decoded_samples += std::size_t(samples) * clip.channels;
         const auto codec = fields.contains(0xa0) ? fields.at(0xa0) : 5;
-        if (omit_speech && codec == 4)
+        if (omit_speech && codec == 4) {
+            result.omitted_speech = true;
             continue;
+        }
+        if (defer_unsupported && codec != 5 && codec != 9 && codec != 10) {
+            result.deferred_codecs.emplace_back(i, codec);
+            continue;
+        }
         std::array<std::vector<std::int16_t>, 2> channels;
         for (unsigned c = 0; c < clip.channels; ++c) {
             const auto key = c ? 0x89u : 0x88u;
@@ -152,7 +158,11 @@ void write_audio_bank(const std::filesystem::path& output, const AudioBank& bank
         }
     }
     std::ofstream file(output / "bank.json");
-    file << nlohmann::json({{"Schema", "openslope-audio-bank/v1"}, {"Slots", rows}}).dump() << '\n';
+    nlohmann::json deferred = nlohmann::json::array();
+    for (const auto& [slot, codec] : bank.deferred_codecs)
+        deferred.push_back({{"Slot", slot}, {"Codec", codec}, {"Reason", "unsupported-codec"}});
+    file << nlohmann::json({{"Schema", "openslope-audio-bank/v1"}, {"Slots", rows}, {"DeferredSlots", deferred}}).dump()
+         << '\n';
     if (!file)
         throw std::runtime_error("Cannot write audio bank metadata");
 }

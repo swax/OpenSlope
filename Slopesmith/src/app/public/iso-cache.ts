@@ -1,4 +1,5 @@
 export const ISO_CACHE_VERSION = 1;
+export const isoCourseCacheVersion = (course: string): number => /^(SSX3_|SSXOT_)/i.test(course) ? 2 : ISO_CACHE_VERSION;
 interface CachedFile { key: string; course: string; path: string; blob: Blob }
 interface CachedCourse { course: string; version: number; files: number }
 export interface DiscCollisionSounds {
@@ -19,10 +20,13 @@ function cachedSoundFile(db: IDBDatabase, course: string): Promise<CachedFile | 
     request.onerror = () => reject(request.error);
   });
 }
+/** Only Tricky's executable collision routing can currently repair older caches. */
+export const supportsCollisionSoundUpdate = (course: string): boolean => !/^(SSX_|SSX3_|SSXOT_)/i.test(course);
+
 export async function needsCollisionSoundUpdate(courses: string[]): Promise<boolean> {
   const db = await openIsoCache();
   try {
-    for (const course of courses) {
+    for (const course of courses.filter(supportsCollisionSoundUpdate)) {
       const row = await cachedSoundFile(db, course);
       if (row && (JSON.parse(await row.blob.text()) as CachedSoundIndex).ResolverState === 'Deferred') return true;
     }
@@ -32,7 +36,7 @@ export async function needsCollisionSoundUpdate(courses: string[]): Promise<bool
 /** Older caches already contain the WAVs. Repair only their missing event lookup from the selected ISO. */
 export async function updateCachedCollisionSounds(db: IDBDatabase, courses: string[], sounds: DiscCollisionSounds): Promise<void> {
   if (!sounds.SourceExecutable) return;
-  for (const course of courses) {
+  for (const course of courses.filter(supportsCollisionSoundUpdate)) {
     const row = await cachedSoundFile(db, course);
     if (!row) continue;
     const index = JSON.parse(await row.blob.text()) as CachedSoundIndex;
@@ -80,7 +84,7 @@ function getAll<T>(db: IDBDatabase, store: string): Promise<T[]> {
 }
 export async function cachedIsoCourses(): Promise<string[]> {
   const db = await openIsoCache();
-  try { return (await getAll<CachedCourse>(db, 'courses')).filter(row => row.version === ISO_CACHE_VERSION).map(row => row.course); }
+  try { return (await getAll<CachedCourse>(db, 'courses')).filter(row => row.version === isoCourseCacheVersion(row.course)).map(row => row.course); }
   finally { db.close(); }
 }
 export async function readCachedCourse(course: string): Promise<Map<string, Blob>> {

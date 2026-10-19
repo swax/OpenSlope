@@ -54,15 +54,20 @@ struct Image {
 };
 
 std::vector<DiscCourse> ssx3_courses(std::span<const std::uint8_t> database, std::uint64_t bytes);
-void write_ssx3_course(const DiscInput& disc, const DiscInput& stream, std::span<const std::uint8_t> database,
-                       std::span<const std::uint8_t> identifiers, std::span<const std::uint8_t> names,
-                       const std::string& course, const std::filesystem::path& output, const ImportProgress& progress,
-                       const ImportCancel& cancel);
+std::vector<DiscCourse> ontour_courses(std::span<const std::uint8_t> database, std::span<const std::uint8_t> ids,
+                                       std::span<const std::uint8_t> strings, const std::vector<DiscEntry>& members,
+                                       std::uint64_t bytes);
+void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::span<const std::uint8_t> database,
+                           std::span<const std::uint8_t> identifiers, std::span<const std::uint8_t> names,
+                           const std::string& course, const std::filesystem::path& output,
+                           const ImportProgress& progress, const ImportCancel& cancel);
 nlohmann::json import_pose(Bytes data, std::size_t offset, double scale = 1);
 std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
                             const ImportCancel& cancel);
-bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const ImportProgress& progress,
-                      const ImportCancel& cancel);
+bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
+                      const ImportProgress& progress, const ImportCancel& cancel);
+bool write_ontour_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
+                        const ImportProgress& progress, const ImportCancel& cancel);
 
 void ssx_header(std::span<const std::uint8_t> index);
 void write_ssx_course(const DiscInput& disc, const std::map<std::string, std::vector<std::uint8_t>>& files,

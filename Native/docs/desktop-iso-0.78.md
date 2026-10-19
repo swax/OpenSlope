@@ -16,6 +16,7 @@ filename. The present format reader accepts SSX Tricky PS2, as documented by
 the clean Trailmap 200/210/220 format contracts. The shared reader also supports
 SSX (including raw BIN images) and SSX 3 PS2 events/peaks. See
 [SSX import](ssx-import.md) and [SSX 3 import and limits](ssx3-import.md).
+On Tour PS2 day/night tracks also use this flow; see [On Tour import](ontour-import.md).
 
 Imported maps remain normal course folders. They are usable after the ISO is
 moved or removed; existing folders and local edits are preserved. Source files

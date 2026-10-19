@@ -34,7 +34,13 @@ const indexes = new Map<string, CollisionSoundIndex>();
 export const COURSE_BANK_LEVELS: string[] = [];
 
 function validIndex(value: CollisionSoundIndex | null | undefined): value is CollisionSoundIndex {
-  return !!value && value.Schema === 'openslope-sound-index/v1' && !!value.Banks && !!value.CollisionEvents;
+  return (
+    !!value &&
+    value.Schema === 'openslope-sound-index/v1' &&
+    typeof value.Level === 'string' &&
+    !!value.Banks &&
+    !!value.CollisionEvents
+  );
 }
 
 /** Register one Snowknife-generated map sidecar. Invalid or unsupported documents are ignored. */

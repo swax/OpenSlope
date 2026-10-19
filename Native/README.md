@@ -14,6 +14,9 @@ The native reader supports SSX and SSX Tricky PS2, including the original
 game's raw `.bin` disc images. SSX 3 PS2 import now exports events and peaks
 through the same reader used by Slopesmith's `/isos` worker.
 See [SSX 3 import and remaining limits](docs/ssx3-import.md).
+SSX On Tour PS2 uses the same importer with individual day/night track selections;
+see [On Tour import and remaining limits](docs/ontour-import.md). Whole-mountain
+imports are unavailable.
 See [SSX import and current limits](docs/ssx-import.md).
 See [desktop ISO setup](docs/desktop-iso-0.78.md).
 

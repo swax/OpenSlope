@@ -134,10 +134,12 @@ std::size_t mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, con
         data.range(strip, std::size_t(strips) * 2);
         const auto uv = unpack(data, align16(strip + std::size_t(strips) * 2), 0x65, vertices);
         data.range(uv, std::size_t(vertices) * 4);
-        const auto normals = unpack(data, align16(uv + std::size_t(vertices) * 4), 0x69, vertices);
-        data.range(normals, std::size_t(vertices) * 6);
-        const auto positions = unpack(data, align16(normals + std::size_t(vertices) * 6), 0x69, vertices);
-        data.range(positions, std::size_t(vertices) * 6);
+        const auto first = unpack(data, align16(uv + std::size_t(vertices) * 4), 0x69, vertices);
+        data.range(first, std::size_t(vertices) * 6);
+        const auto second = unpack(data, align16(first + std::size_t(vertices) * 6), 0x69, vertices);
+        data.range(second, std::size_t(vertices) * 6);
+        // Streamed worlds transfer positions before normals; Tricky does the reverse.
+        const auto positions = streamed ? first : second, normals = streamed ? second : first;
         const auto base = points.size();
         for (std::size_t v = 0; v < vertices; ++v)
             points.push_back({{data.signed16(positions + v * 6) * extent.x / 32768,
@@ -160,7 +162,7 @@ std::size_t mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, con
         }
         if (begin != vertices)
             throw std::runtime_error("Strip table disagrees with vertex count");
-        cursor = align16(positions + std::size_t(vertices) * 6) + (streamed ? 0 : 16);
+        cursor = align16(second + std::size_t(vertices) * 6) + (streamed ? 0 : 16);
         if (points.size() > 4000000 || triangles.size() > 8000000)
             throw std::runtime_error("Imported object mesh exceeds its limits");
     }

@@ -7,6 +7,7 @@ import {
   openIsoCache,
   readCachedCourse,
   unloadIsoCourse,
+  isoCourseCacheVersion,
   updateCachedCollisionSounds,
   ISO_CACHE_VERSION,
 } from '../src/app/public/iso-cache';
@@ -46,8 +47,22 @@ async function run() {
     await cacheTransaction(db, 'courses', 'readwrite', store =>
       store.put({ course: 'FIXTURE', version: ISO_CACHE_VERSION, files: 2 }),
     );
+    const deferredCourses = ['SSX_SNOW', 'SSX3_A', 'SSXOT_WR2_DAY'];
+    await cacheTransaction(db, 'files', 'readwrite', store => {
+      for (const course of deferredCourses)
+        store.put({
+          key: `${course}/audio/soundindex.json`,
+          course,
+          path: 'Audio/SoundIndex.json',
+          blob: new Blob([JSON.stringify({ ...index, Level: course })]),
+        });
+    });
+    for (const course of deferredCourses) {
+      check(!(await needsCollisionSoundUpdate([course])), `${course} cannot be repaired by reselecting its ISO`);
+    }
     check(await needsCollisionSoundUpdate(['FIXTURE']), 'Old cache must request its missing resolver');
-    await updateCachedCollisionSounds(db, ['FIXTURE', 'UNCACHED'], {
+    check(await needsCollisionSoundUpdate([...deferredCourses, 'FIXTURE']), 'Mixed caches must still repair Tricky');
+    await updateCachedCollisionSounds(db, ['FIXTURE', 'UNCACHED', ...deferredCourses], {
       SourceExecutable: 'authored.elf',
       CollisionEvents: {
         2: { Group: 2, Slot: 7 },
@@ -55,6 +70,13 @@ async function run() {
         4: { Group: 5, Slot: 8 },
       },
     });
+    for (const course of deferredCourses) {
+      const deferred = (await readCachedCourse(course)).get('audio/soundindex.json')!;
+      check(
+        (await deferred.text()) === JSON.stringify({ ...index, Level: course }),
+        'Repair must preserve deferred titles',
+      );
+    }
     check(!(await needsCollisionSoundUpdate(['FIXTURE'])), 'Lookup repair must make the cache playable again');
     const files = await readCachedCourse('FIXTURE');
     check(
@@ -109,6 +131,15 @@ async function run() {
       fresh.size === 1 && (await fresh.get('patches.json')!.text()) === 'fresh extraction',
       'Reloading an unloaded course has fresh files with no stale audio left over',
     );
+    for (const course of ['SSX3_A', 'SSXOT_WR2_DAY']) {
+      await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: 1, files: 1 }));
+      check(!(await cachedIsoCourses()).includes(course), 'Corrupted streamed imports must request a reload');
+      await cacheTransaction(db, 'courses', 'readwrite', store =>
+        store.put({ course, version: isoCourseCacheVersion(course), files: 1 }),
+      );
+      check((await cachedIsoCourses()).includes(course), 'Repaired streamed imports must stay loaded');
+    }
+    check((await cachedIsoCourses()).includes('FIXTURE'), 'The streamed format upgrade must preserve Tricky caches');
   } finally {
     db.close();
   }

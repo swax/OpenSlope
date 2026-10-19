@@ -34,6 +34,7 @@ def texture(light=False):
 
 def model():
     mesh = bytearray(packet())
+    mesh[224:248], mesh[272:296] = mesh[272:296], mesh[224:248]
     struct.pack_into('<H', mesh, 80, 4)  # SSX 3 strip counts are direct vertex counts.
     b = bytearray(144)
     struct.pack_into('<5I', b, 0, 1, 1, 48, 40, 1)
@@ -45,6 +46,24 @@ def model():
     struct.pack_into('<II', b, 112, 0x30000000 | (len(mesh) // 16), 32)
     struct.pack_into('<I', b, 128, 0x60000000)
     return bytes(b) + bytes(mesh)
+
+
+def patterned_texture(kind):
+    # Sequential storage bytes and a numbered palette expose pixel ordering;
+    # uniform-colour fixtures cannot distinguish a swizzled image from linear.
+    width = 32 if kind == 1 else 16
+    pixels = width * width // (2 if kind == 1 else 1)
+    header = bytearray(128)
+    header[0] = kind
+    header[1:4] = (128 + pixels).to_bytes(3, 'little')
+    struct.pack_into('<HH', header, 4, width, width)
+    palette = bytearray(128 + (16 if kind == 1 else 256) * 4)
+    palette[0] = 33
+    struct.pack_into('<H', palette, 4, 16 if kind == 1 else 256)
+    for index in range(16 if kind == 1 else 256):
+        slot = index if kind == 1 else (index & 0xe7) | ((index & 8) << 1) | ((index & 16) >> 1)
+        palette[128 + slot * 4:132 + slot * 4] = bytes([index, 0, 0, 128])
+    return bytes(header) + bytes(range(256)) * (pixels // 256) + bytes(palette)
 
 
 def placement(rid, x):
@@ -203,6 +222,33 @@ def main():
         assert instances[0]['CollsionModelPaths'] == instances[1]['CollsionModelPaths'] == ['1_0.obj']
         assert all(row['PlayerCollision'] for row in instances)
         assert (out / 'Meshes/1_0_0.obj').read_text().count('\nf ') == 2
+        assert '\nv -100 0 -100\n' in (out / 'Meshes/1_0_0.obj').read_text()
+        assert '\nvn 0.999969482 0 0\n' in (out / 'Meshes/1_0_0.obj').read_text()
+        for kind, expected in [(1, [0, 4, 8, 12, 0, 4, 8, 12, 1, 5, 9, 13, 1, 5, 9, 13]),
+                               (2, [0, 4, 8, 12, 16, 20, 24, 28, 2, 6, 10, 14, 18, 22, 26, 30])]:
+            patterned = members(lambda rows: [(k, rid, patterned_texture(kind) if k == 9 else payload)
+                                               for k, rid, payload in rows])
+            pattern_iso = root / ('pattern-' + str(kind) + '.iso')
+            pattern_iso.write_bytes(disc(patterned))
+            destination = root / ('pattern-' + str(kind))
+            run(executable, 'extract', pattern_iso, 'SSX3_A', destination)
+            decoded = png_pixels(destination / 'SSX3_A/Textures/0000_o.png')
+            assert list(decoded[:64:4]) == expected, (kind, list(decoded[:64:4]))
+        for state, mode in [(3, 'cutout'), (7, 'blend'), (65, 'glow')]:
+            def material_state(rows):
+                result = []
+                for k, rid, payload in rows:
+                    if k == 0:
+                        payload = bytearray(payload)
+                        struct.pack_into('<HH', payload, 12, 1, state)
+                    result.append((k, rid, bytes(payload)))
+                return result
+            mode_iso = root / (mode + '.iso')
+            mode_iso.write_bytes(disc(members(material_state)))
+            destination = root / mode
+            run(executable, 'extract', mode_iso, 'SSX3_A', destination)
+            material, = json.loads((destination / 'SSX3_A/Materials.json').read_text())['Materials']
+            assert material['AlphaMode'] == mode and material['TexturePath'] == '0000.png'
         paths = json.loads((out / 'AIP.json').read_text())
         assert paths['StartPosList'] == [0] and len(paths['RaceLines']) == 1
         assert paths['AIPaths'][0]['U3'] == 50 and paths['AIPaths'][0]['SourceRatingWord'] == 100000
@@ -223,7 +269,8 @@ def main():
         audio_source.write_bytes(disc(files, audio=True))
         run(executable, 'extract', audio_source, 'SSX3_A', root / 'audio')
         audio_out = root / 'audio/SSX3_A/Audio'
-        assert json.loads((audio_out / 'SoundIndex.json').read_text())['NamedBanks']['MAIN'] == 'sound'
+        sound_index = json.loads((audio_out / 'SoundIndex.json').read_text())
+        assert sound_index['Level'] == 'SSX3_A' and sound_index['NamedBanks']['MAIN'] == 'sound'
         with wave.open(str(audio_out / 'SFX/sound/000.wav')) as decoded:
             assert decoded.getframerate() == 8000 and decoded.getnframes() == 3
         assert json.loads((audio_out / 'SFX/speech/bank.json').read_text())['Slots'] == [None, None]

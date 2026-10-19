@@ -320,8 +320,8 @@ struct Writer {
 };
 } // namespace
 
-bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const ImportProgress& progress,
-                      const ImportCancel& cancelled) {
+bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
+                      const ImportProgress& progress, const ImportCancel& cancelled) {
     // [Trailmap: 510-snow, 510-unchanged, 260-banksinf, 260-bnk]
     const auto data = disc_directory(disc, "DATA");
     if (std::none_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "CONFIG"; }))
@@ -333,6 +333,7 @@ bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output
     const auto section = section_for(assigned, "WORLD");
     Library library(disc, "DATA/AUDIO/AUDIO.BIG");
     Json index = {{"Schema", "openslope-sound-index/v1"},
+                  {"Level", course},
                   {"Banks", Json::object()},
                   {"NamedBanks", Json::object()},
                   {"CollisionEvents", Json::object()},
@@ -370,6 +371,77 @@ bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output
                                        {"AccountedBytes", w.bytes},
                                        {"Deferred", {"sound-trigger-bindings", "board-surface-selector", "music"}}});
     return true;
+}
+
+bool write_ontour_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
+                        const ImportProgress& progress, const ImportCancel& cancelled) {
+    const auto data = disc_directory(disc, "DATA");
+    if (std::none_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "AUDIO"; }))
+        return false;
+    Writer w{disc, output / "Audio", progress, cancelled, 0, {}, Json::array()};
+    std::filesystem::create_directories(w.root / "SFX");
+    Json index = {{"Schema", "openslope-sound-index/v1"},
+                  {"Level", course},
+                  {"Banks", Json::object()},
+                  {"NamedBanks", Json::object()},
+                  {"CollisionEvents", Json::object()},
+                  {"ResolverState", "Deferred"}};
+    Json sources = Json::array();
+    std::ofstream bundle(output / "Source/AudioBanks.bin", std::ios::binary);
+    std::uint64_t offset = 0;
+    for (const auto& entry : disc_archive_directory(disc, "DATA/AUDIO/AUDIO.BIG")) {
+        w.check();
+        auto path = entry.name;
+        std::replace(path.begin(), path.end(), '\\', '/');
+        auto name = upper(std::filesystem::path(path).stem().string());
+        if (!upper(path).ends_with(".ABK") ||
+            !(name.starts_with("EMTR_") || name.starts_with("EMTR-") || name.starts_with("SCRPT_") ||
+              name.starts_with("CROWD_") || name.starts_with("BRD_") || name.starts_with("SKI_") ||
+              name == "SKI&BRD_COMMON" || name == "COLLISIONS_COMMON" || name == "BOOST"))
+            continue;
+        const auto source = disc_archive_file(disc, "DATA/AUDIO/AUDIO.BIG", entry.name);
+        const Bytes b{source};
+        b.range(0, 60);
+        // The ABKC wrapper owns an independent BNKl extent. Its event-routing
+        // metadata stays in Source until those bindings are understood.
+        const auto bank_offset = b.le(24), bank_size = b.le(36);
+        if (b.text(0, 4) != "ABKC" || b.le(20) != source.size() || b.le(32) != bank_offset)
+            throw std::runtime_error("Invalid On Tour audio wrapper");
+        b.range(bank_offset, bank_size);
+        const auto bank = decode_audio_bank(b.data.subspan(bank_offset, bank_size), true, true);
+        std::replace(name.begin(), name.end(), '&', '_');
+        if (!valid_map_name(name))
+            throw std::runtime_error("Unsafe On Tour bank name");
+        for (const auto& slot : bank.slots)
+            if (slot) {
+                w.reserve(44 + slot->samples.size() * 2);
+                if (slot->loop_end)
+                    w.reserve(44 + (slot->loop_end - slot->loop_start) * slot->channels * 2);
+            }
+        w.notify("Decoding environmental sound bank " + name);
+        write_audio_bank(w.root / "SFX" / name, bank, [&] { w.check(); });
+        index["NamedBanks"][name] = name;
+        if (bank.omitted_speech) {
+            sources.push_back({{"Member", entry.name}, {"Bank", name}, {"Omitted", "contains-speech"}});
+            continue;
+        }
+        w.reserve(source.size());
+        bundle.write(reinterpret_cast<const char*>(source.data()), std::streamsize(source.size()));
+        if (!bundle)
+            throw std::runtime_error("Cannot preserve On Tour audio wrapper");
+        sources.push_back({{"Member", entry.name}, {"Bank", name}, {"Offset", offset}, {"Bytes", source.size()}});
+        offset += source.size();
+    }
+    bundle.close();
+    if (!bundle)
+        throw std::runtime_error("Cannot finish On Tour audio source bundle");
+    json_file(output / "Source/AudioBanks.json", sources);
+    json_file(w.root / "SoundIndex.json", index);
+    json_file(w.root / "Import.json",
+              {{"Schema", "openslope-native-audio-import/v1"},
+               {"AccountedBytes", w.bytes},
+               {"Deferred", {"sound-trigger-bindings", "board-surface-selector", "unsupported-codecs", "music"}}});
+    return !sources.empty();
 }
 
 bool write_course_audio(const DiscInput& disc, const std::string& course,

@@ -1,4 +1,4 @@
-import { cacheTransaction, ISO_CACHE_VERSION, openIsoCache, updateCachedCollisionSounds, type DiscCollisionSounds } from './iso-cache';
+import { cacheTransaction, isoCourseCacheVersion, openIsoCache, supportsCollisionSoundUpdate, updateCachedCollisionSounds, type DiscCollisionSounds } from './iso-cache';
 
 interface Importer {
   isoFile: File;
@@ -20,16 +20,16 @@ self.onmessage = async (event: MessageEvent<{ file: File; courses: string[]; ope
   try {
     const { file, courses, operation } = event.data;
     // This static runtime is built from Native/src/browser_import.cpp; disc bytes stay inside this worker.
-    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=5`, self.location.origin).href;
+    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=10`, self.location.origin).href;
     const runtimeUrl = assetUrl('openslope_browser_import.js');
     const runtime = await import(/* @vite-ignore */ runtimeUrl) as { default: (options: { locateFile: (name: string) => string }) => Promise<Importer> };
     const module = await runtime.default({ locateFile: assetUrl });
     module.isoFile = file;
     const available = JSON.parse(module.ccall('browser_courses', 'string', [], [])) as { courses?: string[]; error?: string };
     if (available.error) throw new Error(available.error);
-    if (!available.courses?.length) throw new Error('No supported SSX, SSX Tricky or SSX 3 PS2 maps were found.');
+    if (!available.courses?.length) throw new Error('No supported SSX, SSX Tricky, SSX 3 or SSX On Tour PS2 maps were found.');
     if (operation === 'scan') {
-      if (available.courses.some(course => !course.startsWith('SSX_') && !course.startsWith('SSX3_'))) {
+      if (available.courses.some(supportsCollisionSoundUpdate)) {
         const sounds = JSON.parse(module.ccall('browser_collision_sounds', 'string', [], [])) as DiscCollisionSounds & { error?: string };
         if (sounds.error) throw new Error(sounds.error);
         db = await openIsoCache();
@@ -64,7 +64,7 @@ self.onmessage = async (event: MessageEvent<{ file: File; courses: string[]; ope
       };
       self.postMessage({ type: 'progress', message: `Saving ${course} in this browser…` });
       await saveDirectory('/course');
-      await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: ISO_CACHE_VERSION, files }));
+      await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: isoCourseCacheVersion(course), files }));
     }
     self.postMessage({ type: 'done' });
   } catch (error) { self.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) }); }

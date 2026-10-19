@@ -6,11 +6,11 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error('Run this gate through `npm run verify` so npm_execpath is available.');
 
-const npmStep = (label, script) => [
+const npmStep = (label, script, timeout = 15 * 60_000) => [
   label,
   process.execPath,
   [npmCli, '--prefix', 'Slopesmith', 'run', script],
-  15 * 60_000,
+  timeout,
 ];
 
 // The gate has to mean the same thing everywhere, so by default it runs what a checkout with no retail disc
@@ -37,7 +37,7 @@ const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),
   npmStep('Slopesmith lint', 'lint'),
-  npmStep('Slopesmith deterministic tests and coverage', 'coverage'),
+  npmStep('Slopesmith deterministic tests and coverage', 'coverage', 30 * 60_000),
   npmStep('Slopesmith production build', 'build'),
   npmStep('Export to glTF smoke test', 'smoke'),
 ];

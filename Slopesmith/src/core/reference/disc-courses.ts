@@ -73,13 +73,41 @@ const SSX3_SECTIONS = new Set([
   'PEAK2',
   'PEAK3',
 ]);
+const ON_TOUR_DAY = new Set([
+  'ER1',
+  'ER2',
+  'ER3',
+  'ER4',
+  'NP2',
+  'NP3',
+  'NPP',
+  'VB1',
+  'VB2',
+  'VB4',
+  'VH1',
+  'WR1',
+  'WR2',
+  'WR3',
+  'WR4',
+]);
+const ON_TOUR_NIGHT = new Set(['ER3', 'ER4', 'NP3', 'VB1', 'VB4', 'VH1', 'WR1', 'WR2', 'WR3', 'WR4']);
+const onTourSlot = (slot: string): RegExpMatchArray | null => {
+  const match = slot.match(/^SSXOT_([A-Z0-9]{3})_(DAY|NIGHT)$/);
+  return match && (match[2] === 'DAY' ? ON_TOUR_DAY : ON_TOUR_NIGHT).has(match[1]) ? match : null;
+};
 export const isDiscCourse = (course: string): boolean => {
   const slot = course.toUpperCase();
-  return Object.hasOwn(DISC_COURSES, slot) || (slot.startsWith('SSX3_') && SSX3_SECTIONS.has(slot.slice(5)));
+  return (
+    Object.hasOwn(DISC_COURSES, slot) ||
+    (slot.startsWith('SSX3_') && SSX3_SECTIONS.has(slot.slice(5))) ||
+    !!onTourSlot(slot)
+  );
 };
 export const discCourseName = (course: string): string => {
   const slot = course.toUpperCase();
   if (DISC_COURSES[slot]) return DISC_COURSES[slot];
+  const tour = onTourSlot(slot);
+  if (tour) return `${tour[1]} · ${tour[2] === 'DAY' ? 'Day' : 'Night'} (SSX On Tour)`;
   if (!slot.startsWith('SSX3_') || !SSX3_SECTIONS.has(slot.slice(5))) return course;
   const section = slot.slice(5);
   return section.startsWith('PEAK') ? `Peak ${section.slice(4)} (SSX 3)` : `${section.replaceAll('_', ' → ')} (SSX 3)`;

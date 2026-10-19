@@ -37,6 +37,13 @@ const otherRegion: CollisionSoundIndex = {
 
 clearCollisionSoundIndexes();
 assert.equal(resolveCollisionSound(700), null, 'no retail resolver is compiled into Slopesmith');
+for (const Level of [undefined, null, 42, ' ']) {
+  assert.equal(
+    registerCollisionSoundIndex({ ...fixture, Level } as unknown as CollisionSoundIndex),
+    false,
+    'An incomplete legacy sound index must not crash map loading or register routes',
+  );
+}
 assert.equal(registerCollisionSoundIndex(fixture), true);
 assert.equal(registerCollisionSoundIndex(otherRegion), true);
 assert.deepEqual(COURSE_BANK_LEVELS, ['DONOR', 'DONOR2']);

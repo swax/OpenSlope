@@ -36,7 +36,7 @@ export async function showIsoPage(): Promise<void> {
   const input = element('input', ''); input.type = 'file'; input.accept = '.iso,.bin'; input.id = 'public-iso';
   const label = element('label', 'public-iso-button', 'Choose ISO'); label.htmlFor = input.id;
   label.prepend(publicGlyph('disc'));
-  label.title = 'SSX, SSX Tricky or SSX 3 PS2 · Choose an ISO or the BIN from a BIN/CUE disc · Files stay on this device';
+  label.title = 'SSX, SSX Tricky, SSX 3 or SSX On Tour PS2 · Choose an ISO or the BIN from a BIN/CUE disc · Files stay on this device';
   const count = element('span', 'public-cache');
   const clear = element('button', 'public-clear', 'Clear'); clear.type = 'button'; clear.setAttribute('aria-label', 'Clear local assets');
   const loadRequired = element('button', 'public-primary', 'Load required maps'); loadRequired.type = 'button'; loadRequired.hidden = true;

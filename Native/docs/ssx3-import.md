@@ -71,6 +71,12 @@ WAV export, speech omission, malformed extents/references, existing-map protecti
 and failure cleanup. A browser test runs the checked-in WebAssembly through the
 actual `/isos` worker and checks its IndexedDB files and completion marker.
 
+Streamed diffuse pages are converted from their GS upload order before palette
+lookup. Model positions precede normals in these streams, unlike Tricky. The
+material render-state field controls cutout, blend and glow modes. Browser cache
+revision 2 requires a one-time reload of earlier SSX 3 and On Tour conversions;
+SSX and Tricky caches retain their existing revision.
+
 ```text
 python Native/tests/ssx3_import_test.py <openslope_import executable>
 npm --prefix Slopesmith run test:full -- --only ssx3
