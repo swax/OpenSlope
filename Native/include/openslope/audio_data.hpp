@@ -8,7 +8,7 @@ struct AudioBank {
     std::vector<std::optional<PcmClip>> slots;
 };
 
-AudioBank decode_audio_bank(std::span<const std::uint8_t> source);
+AudioBank decode_audio_bank(std::span<const std::uint8_t> source, bool omit_speech = false);
 void write_audio_bank(const std::filesystem::path& output, const AudioBank& bank,
                       const std::function<void()>& checkpoint = {});
 

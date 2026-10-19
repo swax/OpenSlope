@@ -5,7 +5,8 @@ extractions with progress in each row. A completed row becomes Play; extraction
 does not start the game. Lists scroll with the wheel or scrollbar. Its Maps root
 follows the EXE rather than the launcher's working directory. Custom maps work
 without discs. See [desktop setup](desktop-iso-0.78.md).
-The native reader currently supports SSX Tricky PS2; SSX 3 import is not implemented.
+The native reader supports SSX, SSX Tricky and SSX 3 PS2. See
+[SSX 3 selections, exports and limits](ssx3-import.md).
 
 The library root is an ordinary Maps folder. Its immediate subdirectories are courses; a
 `Patches.json` in a course directory makes it available to select. This is the existing OpenSlope
@@ -56,9 +57,10 @@ that supply nonseekable streams are rejected with a message to select a local co
 
 ## Import contract
 
-The current reader accepts the PS2 SSX Tricky PBD version, primary ISO9660, C0FB/BIGF/BIG4 archives
-and the specified RefPack streams. It discovers course archives under `DATA/MODELS`; the front
-end is excluded. Unsupported titles/platforms and corrupt data report errors before publication.
+The current reader accepts primary ISO9660, C0FB/BIGF/BIG4 archives and the specified
+RefPack streams. It discovers SSX/Tricky course archives under `DATA/MODELS` and
+SSX 3 streamed mountain selections under `DATA/WORLDS`; the front end is excluded.
+Unsupported titles/platforms and corrupt data report errors before publication.
 The user selects any subset of courses. Existing names, including custom courses, are skipped.
 
 Each course row has an **Unload** action. Its confirmation states that the course's source files and

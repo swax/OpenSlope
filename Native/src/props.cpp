@@ -72,7 +72,7 @@ Tables tables(const std::filesystem::path& root, bool model_only = false) {
     Tables t{json_file(asset(root, "Models.json")).at("Models"),
              model_only ? Json::array() : json_file(asset(root, "Instances.json")).at("Instances"),
              json_file(asset(root, "Materials.json")).at("Materials")};
-    if (!t.models.is_array() || t.models.size() > 4000 || !t.instances.is_array() || t.instances.size() > 100000 ||
+    if (!t.models.is_array() || t.models.size() > 16384 || !t.instances.is_array() || t.instances.size() > 100000 ||
         !t.materials.is_array() || t.materials.size() > 65535)
         throw std::runtime_error("Invalid prop table counts");
     return t;
@@ -456,7 +456,7 @@ std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::pa
         return result;
     const auto doc = json_file(asset(root, "Models.json"));
     const auto& models = doc.at("Models");
-    if (!models.is_array() || models.size() > 4000)
+    if (!models.is_array() || models.size() > 16384)
         throw std::runtime_error("Invalid collision model count");
     for (std::size_t id = 0; id < models.size(); ++id) {
         const auto& model = models[id];
@@ -762,7 +762,7 @@ PropClips PropClips::load(const std::filesystem::path& root) {
         return PropClips{};
     const auto doc = json_file(asset(root, "Models.json"));
     const auto& models = doc.at("Models");
-    if (!models.is_array() || models.size() > 4000)
+    if (!models.is_array() || models.size() > 16384)
         throw std::runtime_error("Invalid prop clip model count");
     std::vector<PropClip> clips;
     for (const auto& row : models) {

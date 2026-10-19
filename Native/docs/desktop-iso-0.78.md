@@ -13,9 +13,9 @@ script, external converter process or duplicate ISO copy is required.
 Source discovery is nonrecursive, accepts case-insensitive `.iso` extensions and
 uses the running executable's directory. It does not infer support from the
 filename. The present format reader accepts SSX Tricky PS2, as documented by
-the clean Trailmap 200/210/220 format contracts. SSX 3 and other titles/platforms
-do not have a native importer. Their support would require an independently
-implemented reader and validation against the shared map contract.
+the clean Trailmap 200/210/220 format contracts. The shared reader also supports
+SSX (including raw BIN images) and SSX 3 PS2 events/peaks. See
+[SSX import](ssx-import.md) and [SSX 3 import and limits](ssx3-import.md).
 
 Imported maps remain normal course folders. They are usable after the ISO is
 moved or removed; existing folders and local edits are preserved. Source files

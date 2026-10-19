@@ -63,7 +63,7 @@ void interleave(PcmClip& clip, const std::array<std::vector<std::int16_t>, 2>& c
 }
 } // namespace
 
-AudioBank decode_audio_bank(std::span<const std::uint8_t> source) {
+AudioBank decode_audio_bank(std::span<const std::uint8_t> source, bool omit_speech) {
     // [Trailmap: 260-bnk, 260-bnk-sound, 260-bnk-data] Entry offsets are
     // self-relative; channel offsets are absolute within this bank.
     Bytes b{source};
@@ -93,6 +93,8 @@ AudioBank decode_audio_bank(std::span<const std::uint8_t> source) {
             throw std::runtime_error("Sound bank sample count exceeds its limit");
         decoded_samples += std::size_t(samples) * clip.channels;
         const auto codec = fields.contains(0xa0) ? fields.at(0xa0) : 5;
+        if (omit_speech && codec == 4)
+            continue;
         std::array<std::vector<std::int16_t>, 2> channels;
         for (unsigned c = 0; c < clip.channels; ++c) {
             const auto key = c ? 0x89u : 0x88u;

@@ -103,8 +103,8 @@ std::size_t unpack(Bytes data, std::size_t start, unsigned kind, unsigned count)
     throw std::runtime_error("Unsupported or invalid mesh array transfer");
 }
 
-void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const ImportCancel& cancel,
-          bool original = false) {
+std::size_t mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const ImportCancel& cancel,
+                 bool original = false, bool streamed = false) {
     struct Point {
         Vec3 p, n;
         std::array<double, 2> uv;
@@ -115,13 +115,19 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
     std::size_t cursor = 0;
     while (cursor + 64 <= data.data.size()) {
         if (data.le(cursor + 31, 1) != 0x6c) {
-            if (!original)
+            if (!original && !streamed)
                 break;
             cursor += 16;
             continue;
         }
         check_cancel(cancel);
         const auto strips = data.le(cursor + 48), vertices = data.le(cursor + 56);
+        // Streamed draws also carry non-geometry transfer payloads. A geometry
+        // header declares both small array counts before the bounded VIF walk.
+        if (streamed && (!strips || strips > 256 || !vertices || vertices > 256)) {
+            cursor += 16;
+            continue;
+        }
         if (!strips || strips > 256 || !vertices || vertices > 256)
             throw std::runtime_error("Invalid mesh chunk counts");
         const auto strip = unpack(data, cursor + 64, 0x66, strips);
@@ -142,10 +148,10 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
                               {data.signed16(uv + v * 4) / 4096., 1 - data.signed16(uv + v * 4 + 2) / 4096.}});
         std::size_t begin = 0;
         for (std::size_t s = 0; s < strips; ++s) {
-            const auto encoded = data.le(strip + s * 2, 1);
-            if (data.le(strip + s * 2 + 1, 1) || encoded % 3 || encoded / 3 < 3 || begin + encoded / 3 > vertices)
+            const auto encoded = data.le(strip + s * 2, 2);
+            const auto count = streamed ? encoded : encoded / 3;
+            if ((!streamed && encoded % 3) || count < 3 || begin + count > vertices)
                 throw std::runtime_error("Invalid triangle strip");
-            const auto count = encoded / 3;
             for (std::size_t t = 2; t < count; ++t) {
                 const auto a = base + begin + t - 2, b = base + begin + t - 1, c = base + begin + t;
                 triangles.push_back(t % 2 ? std::array<std::size_t, 3>{b, a, c} : std::array<std::size_t, 3>{a, b, c});
@@ -154,7 +160,7 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
         }
         if (begin != vertices)
             throw std::runtime_error("Strip table disagrees with vertex count");
-        cursor = align16(positions + std::size_t(vertices) * 6) + 16;
+        cursor = align16(positions + std::size_t(vertices) * 6) + (streamed ? 0 : 16);
         if (points.size() > 4000000 || triangles.size() > 8000000)
             throw std::runtime_error("Imported object mesh exceeds its limits");
     }
@@ -176,6 +182,7 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
     }
     if (!file)
         throw std::runtime_error("Cannot write portable mesh");
+    return points.size();
 }
 
 Json animation(Bytes b, std::size_t p) {
@@ -213,6 +220,19 @@ Json animation(Bytes b, std::size_t p) {
     return a;
 }
 } // namespace
+
+Json import_pose(Bytes data, std::size_t offset, double scale) {
+    auto m = matrix(data, offset);
+    for (unsigned c = 0; c < 3; ++c)
+        for (unsigned r = 0; r < 3; ++r)
+            m[c * 4 + r] *= scale;
+    return pose(m);
+}
+
+std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
+                            const ImportCancel& cancel) {
+    return mesh(data, {x ? x : 1, y ? y : 1, z ? z : 1}, path, cancel, false, true);
+}
 
 bool write_ssx_props(std::span<const std::uint8_t> index, std::span<const std::uint8_t> source,
                      std::span<const std::uint8_t> placements, const std::vector<Image>& textures,

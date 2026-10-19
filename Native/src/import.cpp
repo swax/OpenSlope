@@ -55,7 +55,10 @@ std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent) {
     std::vector<Extent> result;
     std::set<std::string> names;
     std::size_t entries = 0;
-    for (std::size_t p = start; p < end;) {
+    const auto declared_count = compact ? 0u : h.be(8);
+    if (!compact && declared_count > 65535)
+        throw std::runtime_error("Invalid archive index count");
+    for (std::size_t p = start; compact ? p < end : entries < declared_count;) {
         if (++entries > 65535 || end - p < 2 * width + 1)
             throw std::runtime_error("Invalid archive index count");
         const auto offset = b.be(p, width), size = b.be(p + width, width);
@@ -358,6 +361,12 @@ std::string import_detail::patch_document(std::span<const std::uint8_t> records,
 std::vector<DiscCourse> disc_courses(const DiscInput& image, const ImportCancel& cancelled) {
     const auto disc = logical_disc(image);
     Iso iso(disc);
+    import_detail::check_cancel(cancelled);
+    const auto data = iso.children(iso.find("DATA"));
+    if (std::any_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "WORLDS"; })) {
+        const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb");
+        return import_detail::ssx3_courses(database, iso.find("DATA/WORLDS/BAM.BIG").size);
+    }
     std::vector<DiscCourse> result;
     for (const auto& entry : iso.children(iso.find("DATA/MODELS"))) {
         import_detail::check_cancel(cancelled);
@@ -399,7 +408,7 @@ std::vector<DiscCourse> disc_courses(const DiscInput& image, const ImportCancel&
         }
     }
     if (result.empty())
-        throw std::runtime_error("No supported SSX or SSX Tricky PS2 courses were found");
+        throw std::runtime_error("No supported SSX, SSX Tricky or SSX 3 PS2 maps were found");
     std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
     return result;
 }
@@ -471,6 +480,22 @@ void extract_course(const DiscInput& source_image, const std::string& course, co
     };
     notify("Reading " + stem + " archive");
     Iso iso(disc);
+    if (stem.starts_with("SSX3_")) {
+        const auto entries = archive_index(disc, iso.find("DATA/WORLDS/BAM.BIG"));
+        const auto it = std::find_if(entries.begin(), entries.end(),
+                                     [](const auto& e) { return upper(e.name) == "DATA/WORLDS/BAM.SSB"; });
+        if (it == entries.end())
+            throw std::runtime_error("SSX 3 world stream is missing");
+        DiscInput stream{it->size, [disc, offset = it->offset](std::uint64_t p, std::span<std::uint8_t> bytes) {
+                             disc.read_at(offset + p, bytes);
+                         }};
+        const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb"),
+                   identifiers = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
+                   names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
+        import_detail::write_ssx3_course(disc, stream, database, identifiers, names, stem, output, progress, cancelled);
+        cleanup.complete = true;
+        return;
+    }
     const bool original = stem.starts_with("SSX_");
     const auto files = archive(disc, iso.find("DATA/MODELS/" + (original ? stem.substr(4) : stem) + ".BIG"), cancelled);
     if (original) {

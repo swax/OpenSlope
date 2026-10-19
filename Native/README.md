@@ -11,7 +11,9 @@ Build 0.78 opens the desktop library at startup and lists ISO files beside the
 EXE. Queue course extractions, follow progress in each row, then choose Play
 when ready. Wheel scrolling and a draggable scrollbar replace desktop paging.
 The native reader supports SSX and SSX Tricky PS2, including the original
-game's raw `.bin` disc images. SSX 3 import is not implemented.
+game's raw `.bin` disc images. SSX 3 PS2 import now exports events and peaks
+through the same reader used by Slopesmith's `/isos` worker.
+See [SSX 3 import and remaining limits](docs/ssx3-import.md).
 See [SSX import and current limits](docs/ssx-import.md).
 See [desktop ISO setup](docs/desktop-iso-0.78.md).
 
