@@ -183,7 +183,9 @@ original SSX disc's BIN file; the CUE is not needed. Original courses have separ
 **Snowdream (SSX)**, so both games can be loaded together. See the [SSX importer limits](../Native/docs/ssx-import.md).
 Authored mountains that borrow game assets
 are labelled **ISO optional** and remain playable without it: missing game textures render as plain
-surfaces and missing props are omitted. Custom textures and models remain available. Supplying an ISO
+surfaces and missing props are omitted. Custom textures, models and uploaded skies remain available, and a
+mountain whose only borrowing is the ring an uploaded sky is cut against for export carries no ISO label at
+all ([025](docs/025-skybox.md#export-contract)). Supplying an ISO
 restores its assets locally. The existing Native importer runs as WebAssembly in a browser worker, reads the ISO locally, and saves
 the extracted maps in IndexedDB. The homepage has separate **Public maps** and **From your ISO**
 sections. Only maps already loaded on this device appear in the latter, including maps the server

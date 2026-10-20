@@ -8,11 +8,14 @@
  * closes — `glb-decode.ts` reads the container, `import-glb.ts` reproduces the browser importer's
  * conversion, and the art lands in an isolated mountain texture bank.
  *
- * The load-bearing check here is the WINDING one. The raw frame is a mirror of the editor's, a prop's
- * normals come from its stored winding alone, and a face wound the wrong way still draws — ambient-only
- * dark, from every view, in the editor and on the disc. So this asserts what `check.py` asserts of the
- * recipe (`_lib._raw_volume6`) and what every retail prop measures: a closed prop's STORED geometry encloses
- * a positive raw volume. Everything else here could be wrong and visible; this one is wrong and plausible.
+ * Two checks here are load-bearing, because both fail plausibly. The WINDING one: a prop's normals come
+ * from its stored winding alone, and a face wound the wrong way still draws — ambient-only dark, from every
+ * view, in the editor and on the disc. So this asserts what `check.py` asserts of the recipe
+ * (`_lib._raw_volume6`) and what every retail prop measures: a closed prop's STORED geometry encloses a
+ * positive raw volume. And the CHIRALITY one, which volume cannot see — a model and its mirror image
+ * enclose the same volume: an asymmetric "F" is pushed through the transforms the viewport really applies
+ * and must read the right way round from its front. The importer once failed exactly that, and every
+ * imported sign read backwards while lighting perfectly.
  *
  * Run: tsx test/glb-import.test.ts
  *
@@ -37,7 +40,60 @@ const { listImportedProps, saveImportedProp } = await import('../src/server/rout
 const { decodePng } = await import('../src/server/routes/png');
 const { CUSTOM_TEX_LEVEL } = await import('../src/core/paint/textures');
 const { MAX_IMPORT_TRIS } = await import('../src/core/props/imported');
+const THREE = await import('three');
+const { RAW_TO_EDITOR } = await import('../src/app/viewport/constants');
+const { dataToScene } = await import('../src/app/viewport/coordinates');
 type Record_ = Awaited<ReturnType<typeof importGlbFile>>;
+
+/**
+ * A 4 m letter "F" as glTF authors it: standing on y = 0 in the XY plane, spine on the LEFT (−X) and arms
+ * reaching right (+X) as read from glTF's front (+Z), 0.4 m thick, every face wound outward. Its front face
+ * is its own primitive on material 1, so a reader can tell the front from the back — an F seen from behind
+ * IS its mirror image, so without that the test could not tell a mirrored import from a turned one.
+ */
+function letterF(): Uint8Array {
+  type P = [number, number, number];
+  const runs = [
+    { pos: [] as number[], idx: [] as number[] },
+    { pos: [] as number[], idx: [] as number[] },
+  ];
+  const quad = (run: number, ...corners: P[]) => {
+    const into = runs[run];
+    const base = into.pos.length / 3;
+    for (const c of corners) into.pos.push(...c);
+    into.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const box = (x0: number, x1: number, y0: number, y1: number) => {
+    const [z0, z1] = [-0.2, 0.2];
+    [x0, x1, y0, y1] = [x0 * 4, x1 * 4, y0 * 4, y1 * 4];
+    quad(1, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]); // +Z, the front
+    quad(0, [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]);
+    quad(0, [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]);
+    quad(0, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]);
+    quad(0, [x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]);
+    quad(0, [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]);
+  };
+  box(0, 0.2, 0, 1);
+  box(0.2, 0.7, 0.8, 1);
+  box(0.2, 0.5, 0.45, 0.6);
+  return encodeGlb({
+    nodes: [{ name: 'F', mesh: 0 }],
+    meshes: [
+      {
+        name: 'F',
+        primitives: runs.map((run, material) => ({
+          positions: new Float32Array(run.pos),
+          indices: new Uint32Array(run.idx),
+          material,
+        })),
+      },
+    ],
+    materials: [
+      { name: 'body', baseColorFactor: [0.5, 0.5, 0.5, 1] },
+      { name: 'front', baseColorFactor: [0.9, 0.05, 0.05, 1] },
+    ],
+  });
+}
 
 const PROPS = join(import.meta.dirname, '..', 'tools', 'prop-recipes', 'props');
 const glb = (name: string) => readFileSync(join(PROPS, `${name}.glb`));
@@ -65,7 +121,7 @@ function geometry(record: Record_): { positions: Float32Array; indices: Uint32Ar
 
 /** Six times the enclosed volume of the STORED geometry, by `_lib._raw_volume6`'s own method: the signed
  *  determinant of each triangle's three corners, summed. Positive is the orientation every retail prop
- *  stores at, and the orientation the importer's `a, c, b` reversal is there to produce. */
+ *  stores at, and the one an outward-wound glTF keeps through the importer's rotation into raw. */
 function rawVolume6(record: Record_): number {
   let total = 0;
   for (const { positions, indices } of geometry(record)) {
@@ -240,6 +296,59 @@ try {
     );
     check(stagedTiles().includes('PatrolHut_0.png'), 'and the file is really on disk');
     check(!hut.animation && !hut.emitters, 'a static prop declares no clip and no emitters');
+  }
+
+  // ---- the letter F: which way round a model stands ------------------------------------------------
+  // Through the transforms the viewport really applies to a prop — RAW_TO_EDITOR (prop-assets.ts), then the
+  // world root's game-chirality Z mirror (`dataToScene`) — and read the way a person reads a sign: standing
+  // in front of it, upright. Positive volume is asserted too, but it is the read that catches a mirror.
+  {
+    const draft = await glbPropDraft(letterF(), { name: 'F' });
+    const toData = (sub: (typeof draft.subs)[number]) => {
+      const out: InstanceType<typeof THREE.Vector3>[] = [];
+      for (let i = 0; i < sub.positions.length; i += 3) {
+        out.push(
+          new THREE.Vector3(sub.positions[i], sub.positions[i + 1], sub.positions[i + 2]).applyMatrix4(RAW_TO_EDITOR),
+        );
+      }
+      return out;
+    };
+    const mean = (points: InstanceType<typeof THREE.Vector3>[]) =>
+      points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
+    const frontData = draft.subs.filter(s => s.mat === 1).flatMap(toData);
+    const allData = draft.subs.flatMap(toData);
+    const toScene = (p: InstanceType<typeof THREE.Vector3>) => dataToScene([p.x, p.y, p.z]);
+    const front = frontData.map(toScene),
+      all = allData.map(toScene);
+
+    const facing = mean(front).sub(mean(all)).setY(0).normalize(); // out through the front face
+    const right = facing
+      .clone()
+      .negate()
+      .cross(new THREE.Vector3(0, 1, 0)); // a viewer facing it: look × up
+    const top = Math.max(...all.map(p => p.y));
+    const spine = mean(all.filter(p => p.y < top * 0.4)).dot(right);
+    const arms = mean(all.filter(p => p.y > top * 0.85)).dot(right);
+    check(
+      arms - spine > 0.5,
+      `read from its front, the F's arms reach to the viewer's RIGHT of its spine, as in the file ` +
+        `(${(arms - spine).toFixed(2)} m; negative is the mirror image a sign reads backwards in)`,
+    );
+    check(
+      mean(frontData).z > mean(allData).z,
+      "and the model's glTF front (+Z) lands on data +Z — the facing every import has had, so a re-imported " +
+        'symmetric prop stands exactly where its placements already point',
+    );
+    let volume6 = 0;
+    for (const sub of draft.subs) {
+      const at = (v: number) => [sub.positions[v * 3], sub.positions[v * 3 + 1], sub.positions[v * 3 + 2]];
+      for (let t = 0; t + 2 < sub.indices.length; t += 3) {
+        const [p, q, r] = [at(sub.indices[t]), at(sub.indices[t + 1]), at(sub.indices[t + 2])];
+        volume6 +=
+          p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0]);
+      }
+    }
+    check(volume6 > 0, `and it still encloses a POSITIVE raw volume (${(volume6 / 6e6).toFixed(3)} m³)`);
   }
 
   // ---- one kit, one page --------------------------------------------------------------------------

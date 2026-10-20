@@ -151,30 +151,61 @@ built the GLB, their reviewed commercial-use status/pages, and the generation ti
 the extracted material textures' `.generation.json` sidecars. Regenerating a concept does not mislabel an
 older built GLB—the provenance is captured when Build succeeds—and neither prompts nor API keys are stored.
 
-## The frame change is a mirror, so the winding reverses with it
+## Which way round a model stands
 
-glTF is Y-up metres and so is the editor, so conversion is only: flatten the node hierarchy into world
-space, then apply the inverse of the raw→editor map every prop stores its vertices in —
-`editorFromRaw(x,y,z) = (−x/100, z/100, −y/100)`, so `rawFromEditor(x,y,z) = (−100x, −100z, 100y)`
-(`viewport/constants.ts`).
+Conversion is only a change of frame: flatten the node hierarchy into glTF world space, then rotate into
+the raw frame every prop stores its vertices in —
 
-That map is **orientation-reversing**, so each triangle emits as `a, c, b`. Rendering applies the mirror
-again on the way out, so an imported model *stands* in the editor exactly as it does in a glTF viewer — but
-position round-tripping is not the property that matters. What matters is the **stored** winding, because it
+    raw = (100x, −100z, 100y)        rawFromGltfPoint (core/props/imported.ts)
+
+glTF is Y-up metres and so is the editor's data space, but they are **not the same frame**, and the
+difference is a reflection. Raw reaches the screen through two mirrors: `editorFromRaw(x,y,z) = (−x/100,
+z/100, −y/100)` into data space, then the scene root's `scale.z = −1` that shows the game's chirality
+(`stage.ts`). Two mirrors make a rotation, so the viewport shows raw with exactly the handedness raw has. The
+first importer instead treated glTF as data space — the inverse of `editorFromRaw`, `(−100x, −100z, 100y)` —
+and that frame is shown through one mirror, so **every import displayed as its own mirror image**. Shapes hid
+it; text did not: a billboard whose lettering read correctly in Blender read backwards head-on in the editor.
+
+Of the two single-axis fixes, negating glTF's X (rather than its Z) is the one taken, because it keeps the
+facing every import already had: a model's glTF front (+Z) still lands on data +Z. A symmetric prop
+re-imported through the fixed map is the same solid it was, so its placements keep pointing the way they
+were turned. Measured against a glTF viewer's own framing the model is turned 180° about vertical — a yaw,
+which placement turns freely — and in Blender's Z-up terms the map is the identity: raw = 100 × Blender.
+
+### The stored winding follows the map
+
+What matters about a frame change is not only where positions land but the **stored** winding, because it
 is the only thing a prop's normals come from: `computeVertexNormals` runs over the raw buffer
 (`prop-assets.ts`), and the hardware lights each face as `ambient + Σ max(0, N·L)·key` against that normal,
 shown identically from both sides (docs/028).
 
-So mirroring positions while leaving indices alone points every face **into** the model. Nothing looks
-missing — prop meshes are double-sided, so the geometry still draws — it just draws ambient-only dark from
-every view, in the editor's PS2 shading preview and on the ISO alike, with the selection's facing arrows
-pointing inward to say so.
+The map above is a rotation, so each triangle emits in file order, `a, b, c`. A mirroring map would have to
+reverse each triangle — positions mirrored with indices left alone point every face **into** the model.
+Nothing looks missing — prop meshes are double-sided, so the geometry still draws — it just draws
+ambient-only dark from every view, in the editor's PS2 shading preview and on the ISO alike, with the
+selection's facing arrows pointing inward to say so. `authoredModelLevelProps` is such a map (data→raw is
+the mirror above) and reverses for exactly that reason ("reversed vs editor CCW — the raw mirror flips it
+back", `models.ts`); the first importer was one too and reversed accordingly, which is why its geometry lit
+correctly while standing mirrored.
 
-The reversal is not special pleading for imports. `authoredModelLevelProps` reverses for the identical
-reason ("reversed vs editor CCW — the raw mirror flips it back", `models.ts`), and retail agrees: measured
-over shipped props — GARI's boulder set, SNOW's snow blower and its pipe runs — **every one encloses a
-positive signed volume in raw space**, the orientation this reversal reproduces. A prop whose raw volume
-comes out negative is inside-out, which is a cheap thing to check when a new import reads dark.
+Retail agrees with the outcome: measured over shipped props — GARI's boulder set, SNOW's snow blower and its
+pipe runs — **every one encloses a positive signed volume in raw space**, as an outward-wound glTF does after
+a rotation. A prop whose raw volume comes out negative is inside-out, which is a cheap thing to check when a
+new import reads dark. Volume cannot see chirality, though — a model and its mirror image enclose the same
+volume — so `test/glb-import.test.ts` also imports an asymmetric "F" and checks it reads the right way round
+on screen.
+
+### Records imported before the fix
+
+A stored record is raw geometry and is drawn as stored, so nothing already imported changes: records made
+by the mirroring importer keep looking exactly as they did — mirrored relative to their source GLB. Art that
+was pre-mirrored to read correctly under the old importer (GARI_FRESH's text pages were) reads correctly
+**as stored**, and must be un-mirrored before it is imported again. Re-importing or **Replace geometry**
+from an unchanged GLB flips an asymmetric model left-to-right, which is the fix; a symmetric one is
+unchanged. A declared spin turns the opposite way from before once re-imported (a mirror reverses the sense
+of a rotation; the map no longer mirrors), and an emitter's direction fields, written in raw by the file
+itself, have to come from a recipe built with the corrected `_raw_vec` (`tools/prop-recipes/_lib.py`) —
+the committed SnowGun and SnowcapScrambler carry the corrected payloads.
 
 The other flip is UV V, and it is unrelated: glTF's V runs top-down, prop UVs are raw OBJ `vt`
 (bottom-left origin, loaded with `flipY`), so `v_prop = 1 − v_gltf`.

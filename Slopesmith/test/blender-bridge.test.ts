@@ -6,12 +6,15 @@
  * Two claims carry this feature, and both of them fail PLAUSIBLY — the model still draws, so a broken one
  * survives a look at the viewport:
  *
- *  1. **Orientation.** Portal space is the editor's (metres, Y-up); the stored prop frame is raw SSX (cm,
- *     Z-up, X-mirrored). A mirror reverses winding, and a prop's normals come from its stored winding alone,
- *     so a face that survived the trip pointing the wrong way is ambient-only dark from every view rather
- *     than missing (docs/032). The invariant asserted here is the one `check.py` and `glb-import.test.ts`
- *     assert of an import — a closed model encloses a POSITIVE signed volume — checked on BOTH sides of the
- *     frame change, because the mirror and the index reversal cancel and either one alone would not.
+ *  1. **Orientation.** Portal space is glTF's (metres, Y-up), the frame a GLB imports from; the stored prop
+ *     frame is raw SSX (cm, Z-up); the editor's data space is a mirror of both, so an authored cage goes out
+ *     with X negated and its loops reversed. A mirror reverses winding, and a prop's normals come from its
+ *     stored winding alone, so a face that survived the trip pointing the wrong way is ambient-only dark from
+ *     every view rather than missing (docs/032). The invariant asserted here is the one `check.py` and
+ *     `glb-import.test.ts` assert of an import — a closed model encloses a POSITIVE signed volume — checked
+ *     on BOTH sides of every frame change. Volume cannot see a mirror image, though, so handedness is checked
+ *     separately: what reaches Blender is the model the viewport draws, or the GLB it came from — not its
+ *     reflection — and a push pulled under the old frame (portal v1) still lands where it was.
  *  2. **Losslessness.** A cage that goes out to Blender and comes straight back must be the same cage: same
  *     corners, same quads, same corner ORDER (which is what the derived per-quad tile UVs are read off).
  *     A round trip that silently rotates a quad's corners repaints the model.
@@ -35,7 +38,8 @@ import {
 import { decodeGlb } from '../src/core/props/glb-decode';
 import { encodeGlb } from '../src/core/props/glb-encode';
 import type { AuthoredModel, QuadMeshDoc } from '../src/core/doc/types';
-import type { ImportedPropRecord } from '../src/core/props/imported';
+import { rawFromGltfPoint, type ImportedPropRecord } from '../src/core/props/imported';
+import { dataToScene } from '../src/app/viewport/coordinates';
 import { check, failures } from './check';
 
 const PROJECT = 'test-mountain-uuid';
@@ -329,6 +333,167 @@ function* portalTriangles(mesh: PortalMesh) {
     primitive.uvs !== null && [...primitive.uvs!].every(v => v === 0 || v === 1),
     'a cage’s derived UVs are the full 0–1 tile on every quad (docs/028 — scroll-safe, no inset)',
   );
+
+  // The table is indexed by loop POSITION and the loop is mirrored, so check the thing that matters: which
+  // CORNER wears which tile position. A stored [A, B, C, D] wears A(0,0) B(1,0) C(0,1) D(1,1) in prop UVs —
+  // glTF (u, 1 − v) — and a table out of step with the loop would hand the corners a transposed tile.
+  const tileOf = [
+    [0, 1],
+    [1, 1],
+    [0, 0],
+    [1, 0],
+  ];
+  let corner = 0,
+    misplaced = 0;
+  for (const quad of model.quads) {
+    // portalGlb emits each face's corners in its loop order, one run of four per quad
+    for (const _ of quad) {
+      const position = at(corner);
+      const uv = [primitive.uvs![corner * 2], primitive.uvs![corner * 2 + 1]];
+      const slot = quad.findIndex(
+        vertex =>
+          Math.abs(portal.verts[vertex * 3] - position[0]) < 1e-9 &&
+          Math.abs(portal.verts[vertex * 3 + 1] - position[1]) < 1e-9 &&
+          Math.abs(portal.verts[vertex * 3 + 2] - position[2]) < 1e-9,
+      );
+      if (slot < 0 || uv[0] !== tileOf[slot][0] || uv[1] !== tileOf[slot][1]) misplaced++;
+      corner++;
+    }
+  }
+  check(misplaced === 0, `and every corner wears its own tile position (${misplaced} misplaced of ${corner})`);
+}
+
+// ---- 5a. an authored cage reaches Blender the way round the viewport draws it -----------------------------
+// Every volume above is +1 m³ either way round, so handedness is read off a tetrahedron's orientation — the
+// sign of (b − a) · ((c − a) × (d − a)), which a reflection flips and a rotation keeps — in the frame the
+// viewport draws (data space through the world root's Z mirror, `dataToScene`) and in portal space.
+{
+  const orientation = (p: number[][]) => {
+    const [a, b, c, d] = p;
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
+      v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]],
+      w = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+    return u[0] * (v[1] * w[2] - v[2] * w[1]) - u[1] * (v[0] * w[2] - v[2] * w[0]) + u[2] * (v[0] * w[1] - v[1] * w[0]);
+  };
+  const model = cube([10, 2, -3]);
+  const portal = authoredModelPortal(model, PROJECT);
+  const corners = [0, 1, 2, 4];
+  const drawn = corners.map(i => {
+    const s = dataToScene([model.vertices[i * 3], model.vertices[i * 3 + 1], model.vertices[i * 3 + 2]]);
+    return [s.x, s.y, s.z];
+  });
+  const sent = corners.map(i => portal.verts.slice(i * 3, i * 3 + 3));
+  check(
+    Math.sign(orientation(drawn)) === Math.sign(orientation(sent)),
+    'an authored cage reaches Blender the way round the viewport draws it — not as its mirror image',
+  );
+}
+
+// ---- 5b. an imported prop reaches Blender as the GLB it came from, not its mirror image -----------------
+// Every volume above is +1 m³ either way round, so this compares coordinates. A lopsided tetrahedron goes
+// through the importer's own vertex map into raw, then back out: it must come back as the file it was —
+// same corners, same winding — or Blender would show the artist the reflection of the GLB they imported.
+{
+  const gltf = [
+    [0, 0, 0],
+    [1, 0, 0],
+    [0, 2, 0],
+    [0, 0, 3],
+  ] as [number, number, number][];
+  const faces = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]; // wound outward in the file
+  const raw = gltf.flatMap(p => rawFromGltfPoint(p, 0, 0));
+  const b64 = (view: ArrayBufferView) =>
+    Buffer.from(view.buffer as ArrayBuffer, view.byteOffset, view.byteLength).toString('base64');
+  const record: ImportedPropRecord = {
+    id: 9,
+    name: 'Shard',
+    tris: 4,
+    subs: [
+      {
+        mat: 0,
+        pos: b64(new Float32Array(raw)),
+        uv: b64(new Float32Array(8)),
+        idx: b64(new Uint32Array(faces)), // the importer stores triangles in file order
+      },
+    ],
+    materials: [{ id: 0, tex: null }],
+  };
+  const pulled = importedPropPortal(record, PROJECT);
+  check(
+    gltf.every((p, i) => p.every((v, a) => Math.abs(pulled.verts[i * 3 + a] - v) < 1e-6)),
+    'an imported prop pulled out to portal space lands on the very coordinates its GLB held',
+  );
+  check(
+    pulled.faces.every((face, f) => face.join() === faces.slice(f * 3, f * 3 + 3).join()) &&
+      volume(portalTriangles(pulled)) > 0,
+    'with the winding it was authored in, still enclosing a positive volume',
+  );
+}
+
+// ---- 5c. a model pulled at portal v1 still lands where it was -------------------------------------------
+// v1 handed out the mirror image (data space for a cage, the old mirroring map for an import). An artist who
+// pulled before the change and pushes after it carries a v1 stamp, and the push must land as edited — not
+// mirrored across the model's own anchor.
+{
+  check(PORTAL_VERSION === 2, 'the frame change is a version bump, so the add-on can tell the two apart');
+
+  const model = cube([10, 2, -3]);
+  const [ax, ay, az] = model.anchor;
+  const v1Cage = {
+    stamp: { v: 1, kind: 'model', id: 3, name: 'Test cube', project: PROJECT, unit: 'm' },
+    anchor: model.anchor,
+    verts: model.vertices.map((v, i) => v - [ax, ay, az][i % 3]),
+    faces: model.quads.map(quad =>
+      quad[2] === quad[3] ? [quad[0], quad[1], quad[2]] : [quad[0], quad[1], quad[3], quad[2]],
+    ),
+    materials: [],
+    cage: true,
+  };
+  const landed = cageFromPortal(readPortalMesh(v1Cage), model.anchor);
+  check(
+    landed.vertices.every((v, i) => Math.abs(v - model.vertices[i]) < 1e-12) &&
+      landed.quads.every((quad, q) => quad.join() === model.quads[q].join()),
+    'a v1 cage push comes back as the same corners and the same quads, corner order included',
+  );
+
+  // An imported record pulled through v1's map: (−x, z, −y) / 100, each triangle reversed.
+  const level = authoredModelLevelProps({ models: [cube([0, 0, 0])] } as unknown as QuadMeshDoc);
+  const sub = level.models[0].subs[0];
+  const verts: number[] = [];
+  for (let i = 0; i < sub.positions.length; i += 3) {
+    verts.push(-sub.positions[i] / 100, sub.positions[i + 2] / 100, -sub.positions[i + 1] / 100);
+  }
+  const faces: number[][] = [];
+  for (let t = 0; t + 2 < sub.indices.length; t += 3)
+    faces.push([sub.indices[t], sub.indices[t + 2], sub.indices[t + 1]]);
+  const geometry = importedGeometryFromPortal(
+    readPortalMesh({
+      stamp: { v: 1, kind: 'import', id: 7, name: 'Crate', project: PROJECT, unit: 'm' },
+      verts,
+      faces,
+      materials: [{ id: 0, name: 'crate', tex: null }],
+      cage: false,
+    }),
+    1,
+  );
+  const bytes = Buffer.from(geometry.subs[0].pos, 'base64');
+  const pushed = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+  const key = (p: ArrayLike<number>, i: number) => [0, 1, 2].map(a => Math.round(p[i + a] * 1000)).join();
+  const before = new Set<string>(),
+    after = new Set<string>();
+  for (let i = 0; i < sub.positions.length; i += 3) before.add(key(sub.positions, i));
+  for (let i = 0; i < pushed.length; i += 3) after.add(key(pushed, i));
+  const idxBytes = Buffer.from(geometry.subs[0].idx, 'base64');
+  const pushedIdx = new Uint32Array(idxBytes.buffer, idxBytes.byteOffset, idxBytes.byteLength / 4);
+  const rawBack: [number[], number[], number[]][] = [];
+  const rawAt = (corner: number) => [pushed[corner * 3], pushed[corner * 3 + 1], pushed[corner * 3 + 2]];
+  for (let t = 0; t + 2 < pushedIdx.length; t += 3) {
+    rawBack.push([rawAt(pushedIdx[t]), rawAt(pushedIdx[t + 1]), rawAt(pushedIdx[t + 2])]);
+  }
+  check(
+    before.size === after.size && [...before].every(p => after.has(p)) && volume(rawBack) > 0,
+    'and a v1 imported-prop push lands on the raw corners it was pulled from, still wound outward',
+  );
 }
 
 // ---- 6. what comes back from Blender is not trusted ------------------------------------------------------
@@ -369,7 +534,7 @@ function* portalTriangles(mesh: PortalMesh) {
       stamp: { v: PORTAL_VERSION, kind: 'model', id: 1, name: 'x', project: PROJECT, unit: 'm' },
       verts: [0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0],
       faces: [
-        [0, 1, 3, 2],
+        [0, 2, 3, 1], // the stored quad [0, 1, 2, 3] as the portal winds it: A → C → D → B
         [0, 1, 900],
         [0, 1, 2, 3, 4],
       ],

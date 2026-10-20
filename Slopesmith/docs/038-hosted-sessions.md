@@ -225,6 +225,12 @@ GARI*, *authored in Slopesmith · no retail data*, *authored in Slopesmith · bo
 the honest fallbacks for an unclassified legacy export and an unidentified folder. Nothing about rendering or
 export reads it; it is there so the person looking at a reference knows what they are looking at.
 
+A published mountain's ISO badge answers a narrower question — which courses the player must read from a disc
+to draw it — so it is not this record. `projectIsoCourses` lists the explicit level refs, falls back to GARI
+for retail art with no level of its own (rails, gems, shared sound banks), and leaves out the ring a custom sky
+is cut against, which only an export copies ([025](025-skybox.md#export-contract)). A mountain can therefore be
+`RetailData` once exported and still play with no ISO.
+
 ### Names never overwrite
 
 Uploading anything whose name is already taken — a texture, a sound, a sky, an imported prop, a map — stores

@@ -145,10 +145,12 @@ class Obj(dict):
         self.name, self.data, self.matrix_world = name, mesh, matrix
 
 
-STAMP = {"v": 1, "kind": "model", "id": 3, "name": "Test cube", "project": "p", "unit": "m"}
-# The same cube the TypeScript suite measures, in PORTAL space.
-PORTAL_VERTS = [0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1]
-PORTAL_FACES = [[0, 1, 3, 2], [4, 6, 7, 5], [2, 3, 7, 6], [0, 4, 5, 1], [1, 5, 7, 3], [0, 2, 6, 4]]
+STAMP = {"v": 2, "kind": "model", "id": 3, "name": "Test cube", "project": "p", "unit": "m"}
+# The same cube the TypeScript suite measures, in PORTAL space (v2: X negated, each loop A, C, D, B).
+PORTAL_VERTS = [0, 0, 0, -1, 0, 0, 0, 0, 1, -1, 0, 1, 0, 1, 0, -1, 1, 0, 0, 1, 1, -1, 1, 1]
+PORTAL_FACES = [[0, 2, 3, 1], [4, 5, 7, 6], [2, 6, 7, 3], [0, 1, 5, 4], [1, 3, 7, 5], [0, 4, 6, 2]]
+# Its first stored quad is [A, B, C, D] = [0, 1, 2, 3]; these are the tile corners each must wear.
+FIRST_QUAD_TILE = {0: (0.0, 0.0), 1: (1.0, 0.0), 2: (0.0, 1.0), 3: (1.0, 1.0)}
 blender_verts = [to_b(*PORTAL_VERTS[i:i + 3]) for i in range(0, len(PORTAL_VERTS), 3)]
 
 
@@ -261,6 +263,23 @@ made = cage_mesh.uv_layers.made[0]
 check(made.name == bridge.CAGE_UV_LAYER, "a cage's derived UV layer says in its name that it is not pushed")
 check([tuple(made.data[i].uv) for i in range(4)] == list(bridge.CAGE_QUAD_UV),
       "every quad spans the full 0-1 tile with no inset (docs/028 — so a UV scroll flows unbroken)")
+
+
+def first_quad_tile(mesh, layer):
+    """Vertex -> tile corner on the first polygon, so what is checked is which CORNER wears which UV."""
+    return {mesh.loops[i].vertex_index: tuple(layer.data[i].uv) for i in mesh.polygons[0].loop_indices}
+
+
+check(first_quad_tile(cage_mesh, made) == FIRST_QUAD_TILE,
+      "and each corner wears its own tile position — A(0,0) B(1,0) C(0,1) D(1,1) — on the mirrored loop")
+old_mesh = Mesh(blender_verts, [[0, 1, 3, 2]])     # a v1 payload's loop, A, B, D, C
+bridge._build_cage_uvs(old_mesh, 1)
+check(first_quad_tile(old_mesh, old_mesh.uv_layers.made[0]) == FIRST_QUAD_TILE,
+      "a model pulled at v1 keeps the v1 table, so its tile is not transposed either")
+wedge_mesh = Mesh(blender_verts, [[0, 2, 1]])      # the stored wedge [A, B, C, C] as v2 sends it: A, C, B
+bridge._build_cage_uvs(wedge_mesh)
+check(first_quad_tile(wedge_mesh, wedge_mesh.uv_layers.made[0]) == {0: (0.0, 0.0), 1: (1.0, 0.0), 2: (0.5, 1.0)},
+      "and a wedge's third corner takes the tile's top centre")
 check("uvs" not in bridge._portal_from_object(stamped(cage_mesh)),
       "and it is still never read back: the document derives it again at bake time")
 

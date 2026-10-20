@@ -66,9 +66,12 @@ export function projectIsoCourses(doc: EditDoc, assetTextures: readonly string[]
       { level: ref.split('/')[0], name: ref.split('/').slice(1).join('/') },
     ]),
   );
-  // Rails/gems, shared sound banks and custom sky rings need one donor even without an explicit level ref.
-  const provenance = classifyExportProvenance(doc, textures);
-  if (provenance.retailDerived && !levels.size) levels.add('GARI');
+  // Rails/gems and shared sound banks need one donor even without an explicit level ref. A custom sky's ring
+  // does not: the player draws the uploaded panorama on its own, and only an export cuts it against a disc's
+  // measured ring (docs/025), so `retail-sky-ring` stays an export reason without becoming a play requirement.
+  const { reasons } = classifyExportProvenance(doc, textures);
+  const needsDonor = reasons.some(reason => reason.startsWith('retail-') && reason !== 'retail-sky-ring');
+  if (needsDonor && !levels.size) levels.add('GARI');
   return [...levels].sort();
 }
 

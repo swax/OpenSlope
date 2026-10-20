@@ -37,6 +37,9 @@ fn response(status: StatusCode, body: impl Into<Bytes>) -> Response<Body> {
         .status(status)
         .header("content-type", "application/json")
         .header("cache-control", "no-store")
+        // Ordinary HTTP responses must not leave a pooled socket past the connection deadline.
+        // WebSocket upgrades bypass this helper and must retain only Connection: Upgrade.
+        .header("connection", "close")
         .body(Full::new(body.into()))
         .unwrap()
 }
@@ -100,9 +103,7 @@ async fn main() -> Result<(), Error> {
                 let state = state.clone();
                 tokio::spawn(async move {
                     let service = service_fn(move |request| handle(request, state.clone()));
-                    // A bounded HTTP connection must not stay reusable in the Node client's pool.
                     let connection = hyper::server::conn::http1::Builder::new()
-                        .keep_alive(false)
                         .serve_connection(TokioIo::new(stream), service)
                         .with_upgrades();
                     let _ = tokio::time::timeout(Duration::from_secs(10), connection).await;

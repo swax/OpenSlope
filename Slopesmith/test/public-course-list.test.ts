@@ -16,6 +16,7 @@ import { publicMountainDocument, publicPropPayload } from '../src/app/public/cou
 import { defaultMountain } from '../src/core/doc/mountain';
 import { createAuthoredModel } from '../src/core/doc/models';
 import { projectIsoCourses } from '../src/server/public-courses';
+import { classifyExportProvenance } from '../src/core/export/manifest';
 
 const reference: PublicCourse = {
   id: 'RENAMED_GARI',
@@ -241,4 +242,31 @@ assert.deepEqual(
   ['GARI'],
   'borrowed textures inside imported prop materials also declare their ISO donor',
 );
+const customSky = defaultMountain();
+const dawn = { on: true, source: { kind: 'custom', name: 'dawn' }, topColor: '#ffffff' } as const;
+customSky.skybox = { ...dawn, ring: 'GARI' };
+assert.deepEqual(
+  projectIsoCourses(customSky),
+  [],
+  'an uploaded sky plays from its own panorama, so its export ring is not an ISO requirement',
+);
+assert.deepEqual(
+  classifyExportProvenance(customSky, {}).reasons,
+  ['retail-sky-ring', 'user-sky'],
+  'the export still declares the retail ring it copies the custom sky onto',
+);
+assert.deepEqual(
+  projectIsoCourses({ ...customSky, skybox: dawn }),
+  [],
+  'a custom sky that names no ring is no different',
+);
+customSky.gems = [{ pos: [0, 0, 0] }];
+assert.deepEqual(
+  projectIsoCourses(customSky),
+  ['GARI'],
+  'a feature the player draws from disc art still needs a donor',
+);
+const levelSky = defaultMountain();
+levelSky.skybox = { on: true, source: { kind: 'level', level: 'SNOW' }, topColor: '#ffffff' };
+assert.deepEqual(projectIsoCourses(levelSky), ['SNOW'], 'a level sky lists the course it borrows');
 console.log('PUBLIC COURSE LIST PASS: named links, separate map groups, donor status and partial ISO assets.');

@@ -64,6 +64,16 @@ against the target's measured ring; its ground page is derived from the lower
 panorama edge. A mountain with no selected sky writes no `Skybox` directory, so
 repack leaves the target unchanged.
 
+Both kinds copy an extracted level's ring meshes verbatim, so the export's
+provenance (`classifyExportProvenance`) records `retail-sky` for a donor sky and
+`retail-sky-ring` for a custom one — including a custom sky that names no
+`ring`, since the export then takes the first level that ships one. That is a
+statement about the exported bytes, not about playing the map. The public
+player draws a custom sky from its uploaded panorama on the viewport's own ring
+and needs no disc for it, so `projectIsoCourses` (the Maps card's ISO badge and
+the player's donor list) skips `retail-sky-ring`. A donor sky still lists its
+level there: the player installs it from that course's extracted pages.
+
 ## ISO repack
 
 `RepackService.InjectSkybox` handles two implementation paths:

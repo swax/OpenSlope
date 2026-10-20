@@ -221,11 +221,16 @@ draws **ambient-only dark from every view**. See `Slopesmith/docs/028-authored-m
 
 Two guards run before any export, and `check.py` runs both plus one more:
 
-- **Raw-space enclosed volume must be positive.** This models the importer exactly — mirror the
-  positions to raw cm *and reverse each triangle* (`glb-import.ts`) — so it is a claim about what gets
-  **stored**, not about what Blender shows. Checking in glTF space instead passes while the stored data
-  is upside-down. Every shipped prop measured (GARI's boulders, SNOW's snow blower) encloses positive
-  raw volume; an outward-wound 1 m³ cube reads `+1,000,000 cm³`.
+- **Raw-space enclosed volume must be positive.** This models the importer exactly — a Blender vertex
+  lands in raw at 100× its own coordinates and every triangle keeps its order (`glb-import.ts`) — so it
+  is a claim about what gets **stored**. Every shipped prop measured (GARI's boulders, SNOW's snow
+  blower) encloses positive raw volume; an outward-wound 1 m³ cube reads `+1,000,000 cm³`.
+
+**What you see in Blender is what the editor shows.** Raw is Blender's own frame scaled ×100, and the
+editor draws raw unmirrored, so text on a sign reads the same way in both — paint it the right way round.
+(The importer used to mirror every model; assets built against that were painted backwards to compensate
+and must be un-mirrored before they are imported again. Slopesmith docs/032, "Which way round a model
+stands".) A model's Blender front (−Y) lands on the editor's data +Z.
 - **Per-face expected facing.** Every primitive records which way each face it emits is supposed to
   look, and the mesh normal must agree. This is the authority for open geometry, which the volume test
   cannot judge.
@@ -315,8 +320,10 @@ Two things bite:
 - **Symmetry eats the rotation.** Anything N-fold symmetric about its axis repeats every 360/N degrees,
   so it appears to turn N times its actual rate. An eight-wedge fan disc at 0.75 rev/s already flickers
   six times a second. Pick the rate by how it reads, not by what the real machine does.
-- **The direction is not worth deriving.** The raw frame is mirrored, so the sign that comes out on
-  screen depends on a frame change two steps away. Look at it and negate `revs_per_second` if it is wrong.
+- **The direction is not worth deriving.** The import is a rotation, so it keeps the sense of the turn,
+  but which way a positive rate comes out on screen is the native clip's convention. Look at it and negate
+  `revs_per_second` if it is wrong. (A prop imported before the importer stopped mirroring turns the
+  other way once re-imported.)
 
 **Judging the rate without leaving Blender.** `finish()` also gives each rotating child real AXIS_ANGLE
 keyframes with a CYCLES modifier — linear for a spin and eased through the apexes for a swing — so pressing

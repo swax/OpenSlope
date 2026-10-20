@@ -36,13 +36,14 @@ Space
 Slopesmith speaks glTF's convention on the wire: metres, Y-up, right-handed. Blender is Z-up. The conversion
 is a proper rotation (`(x, y, z) -> (x, -z, y)`), so it preserves winding and no index has to be reversed —
 which is worth stating because the OTHER frame change in this pipeline, editor to raw SSX space, is a MIRROR
-and does reverse it (docs/032). The server owns that one. This file owns only Y-up <-> Z-up.
+and does reverse it (docs/032). The server owns that one, and hands out every model the way round the editor
+draws it: once turned Z-up here, Blender holds raw SSX / 100. This file owns only Y-up <-> Z-up.
 """
 
 bl_info = {
     "name": "Slopesmith Bridge",
     "author": "OpenSlope",
-    "version": (1, 1, 0),
+    "version": (1, 2, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar (N) > Slopesmith",
     "description": "Pull a Slopesmith prop into Blender, edit its mesh and its tiles, push it back.",
@@ -72,7 +73,13 @@ from bpy.types import AddonPreferences, Operator, Panel, PropertyGroup, UIList
 # what it must, and refusing every geometry pull over a texture feature nobody used would be exactly wrong.
 # The one case it leaves — a new add-on pushing tiles at an old service — is caught after the fact, by
 # noticing the answer reports none taken.
-PORTAL_VERSION = 1
+#
+# v2 changed the FRAME (docs/046): v1 handed out the editor's data space, which Blender shows as the mirror
+# image of the viewport. v2 mirrors it back, so every polygon loop arrives wound the other way, and a cage's
+# derived UVs — assigned here by loop POSITION — need the table that matches. That table is picked by the
+# version on the PULLED stamp, and a push echoes the stamp it was pulled with, so the service knows which
+# frame the geometry is in and turns a v1 push itself.
+PORTAL_VERSION = 2
 
 # Object custom properties. `OpenSlope_slopesmith` is also what the GLB export path writes into glTF `extras`, so a
 # model that came in through File -> Import glTF carries the same stamp and can be pushed from here too.
@@ -448,25 +455,30 @@ def _material_for(spec, base, problems=None):
     return material
 
 
-#: Where a quad cage's corners sit on its tile, in Blender's bottom-up V. The portal emits each quad as the
-#: loop A, B, D, C with tile corners A(0,0) B(1,0) C(0,1) D(1,1) — the full 0-1 tile with no inset, so a UV
-#: scroll flows unbroken across quads (docs/028). A wedge's third corner takes the tile's top centre, the
-#: same place `authoredModelLevelProps` puts it.
-CAGE_QUAD_UV = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
-CAGE_WEDGE_UV = ((0.0, 0.0), (1.0, 0.0), (0.5, 1.0))
+#: Where a quad cage's corners sit on its tile, in Blender's bottom-up V, by loop POSITION. Tile corners are
+#: A(0,0) B(1,0) C(0,1) D(1,1) — the full 0-1 tile with no inset, so a UV scroll flows unbroken across quads
+#: (docs/028) — and a wedge's third corner takes the tile's top centre, the same place
+#: `authoredModelLevelProps` puts it. The portal (v2) sends each quad as the loop A, C, D, B and each wedge as
+#: A, C, B: the stored order mirrored, because the cage itself is.
+CAGE_QUAD_UV = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
+CAGE_WEDGE_UV = ((0.0, 0.0), (0.5, 1.0), (1.0, 0.0))
+#: The same corners for a v1 payload, whose loops ran A, B, D, C and A, B, C.
+CAGE_QUAD_UV_V1 = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+CAGE_WEDGE_UV_V1 = ((0.0, 0.0), (1.0, 0.0), (0.5, 1.0))
 
 
-def _build_cage_uvs(mesh):
+def _build_cage_uvs(mesh, version=PORTAL_VERSION):
     """Give a cage the mapping Slopesmith will derive for it anyway.
 
     It is not sent back — the document computes it from the corner positions at bake time, and a layer
     round-tripping alongside would be a second, divergent source of truth. It exists so the model WEARS its
     tile in the viewport and so Texture Paint has a surface to work on, which is most of what makes editing
-    a tiled prop's art here possible at all.
+    a tiled prop's art here possible at all. `version` is the pulled stamp's: it says which way the loops run.
     """
+    quad, wedge = (CAGE_QUAD_UV, CAGE_WEDGE_UV) if version >= 2 else (CAGE_QUAD_UV_V1, CAGE_WEDGE_UV_V1)
     layer = mesh.uv_layers.new(name=CAGE_UV_LAYER)
     for polygon in mesh.polygons:
-        corners = CAGE_QUAD_UV if len(polygon.loop_indices) >= 4 else CAGE_WEDGE_UV
+        corners = quad if len(polygon.loop_indices) >= 4 else wedge
         for corner, loop_index in enumerate(polygon.loop_indices):
             layer.data[loop_index].uv = corners[min(corner, len(corners) - 1)]
 
@@ -508,7 +520,7 @@ def _build_object(context, portal):
             if at + 1 < len(uvs):
                 layer.data[loop.index].uv = (uvs[at], 1.0 - uvs[at + 1])
     elif portal.get("cage"):
-        _build_cage_uvs(mesh)
+        _build_cage_uvs(mesh, int(stamp.get("v", PORTAL_VERSION)))
 
     obj = bpy.data.objects.new(stamp["name"], mesh)
     obj[STAMP_KEY] = json.dumps(stamp)

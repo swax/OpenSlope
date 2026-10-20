@@ -239,13 +239,14 @@ export async function glbPropDraft(bytes: Uint8Array, opts: GlbImportOptions = {
         if (mapped === undefined) {
           mapped = bucket!.pos.length / 3;
           remap.set(source, mapped);
-          // node hierarchy → world (editor metres, Y-up), then editor → raw (cm, Z-up, X-mirrored)
+          // node hierarchy → glTF world (metres, Y-up), then the proper rotation into raw (cm, Z-up) that
+          // `rawFromGltfPoint` documents — NOT the editor→raw mirror, which would show the model mirrored
           const [x, y, z] = transformPoint(node.world, [
             part.positions[source * 3],
             part.positions[source * 3 + 1],
             part.positions[source * 3 + 2],
           ]);
-          bucket!.pos.push(-100 * x, -100 * z, 100 * y);
+          bucket!.pos.push(100 * x, -100 * z, 100 * y);
           // glTF UV v runs top-down; prop UVs are raw OBJ vt (bottom-left origin, loaded with flipY)
           bucket!.uv.push(part.uvs ? part.uvs[source * 2] : 0, part.uvs ? 1 - part.uvs[source * 2 + 1] : 0);
         }
@@ -256,13 +257,14 @@ export async function glbPropDraft(bytes: Uint8Array, opts: GlbImportOptions = {
         const a = part.indices ? part.indices[i] : i;
         const b = part.indices ? part.indices[i + 1] : i + 1;
         const c = part.indices ? part.indices[i + 2] : i + 2;
-        // Reversed — `a, c, b`. The raw frame is a MIRROR of the editor's, and a prop's normals come from
-        // its stored winding alone (`computeVertexNormals` over the raw buffer), so mirroring the positions
-        // without reversing the indices points every face INTO the model. It still draws, because prop
-        // meshes are double-sided, and it draws ambient-only dark from every view — in the editor, in the
-        // thumbnails and on the disc. Every retail prop measured encloses a POSITIVE raw volume, which is
-        // the orientation this reversal reproduces; `check.py` asserts it, and so does this importer's test.
-        bucket.idx.push(emit(a), emit(c), emit(b));
+        // In file order. The frame change is a rotation, so a face wound counter-clockwise outward in the
+        // file stays wound outward in raw — and a prop's normals come from its stored winding alone
+        // (`computeVertexNormals` over the raw buffer). Get this wrong and every face points INTO the model:
+        // it still draws, because prop meshes are double-sided, but ambient-only dark from every view — in
+        // the editor, in the thumbnails and on the disc. Every retail prop measured encloses a POSITIVE raw
+        // volume, which is the orientation a well-formed glTF arrives at; `check.py` asserts it, and so does
+        // this importer's test.
+        bucket.idx.push(emit(a), emit(b), emit(c));
         tris++;
       }
     }
