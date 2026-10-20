@@ -198,7 +198,6 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
   }, 100);
   return {
     play: () => play.startPlay(), vr: () => play.startVr(), stop: () => { if (viewport.xrPlaying) play.stopVr(); else play.exitRide(); },
-    view: () => viewport.showRideSpawn(null),
     resetStart() {
       const spawn = play.defaultPlaySpawn();
       if (!spawn) return;

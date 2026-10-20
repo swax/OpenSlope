@@ -479,9 +479,13 @@ export function createReference(deps: ReferenceDeps) {
 
   async function initReference({ restore = true }: { restore?: boolean } = {}) {
     let opts: string[] = ['(dev server only)'];
+    let localLevels = new Set<string>();
     try {
-      const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[] }>('/api/levels');
+      const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[]; localLevels?: string[] }>(
+        '/api/levels',
+      );
       mapOrigins = new Map((answer.maps ?? []).map(map => [map.name, map]));
+      localLevels = new Set(answer.localLevels ?? []);
       const levels = answer.levels;
       if (levels && levels.length) opts = ['(none)', ...levels]; // a neutral "nothing loaded" entry to sit on / clear back to
     } catch {
@@ -496,8 +500,14 @@ export function createReference(deps: ReferenceDeps) {
     referenceNote = note(refFolder, '');
     refreshMountainName();
     // Picking a level loads it immediately (no load button); the neutral "(none)" entry clears it.
+    const choices = Object.fromEntries(
+      opts.map(level => [
+        level.startsWith('(') ? level : `${level} — ${localLevels.has(level) ? 'Local ISO' : 'Server'}`,
+        level,
+      ]),
+    );
     const combo = refFolder
-      .add(refState, 'level', opts)
+      .add(refState, 'level', choices)
       .name('mountain')
       .onChange((name: string) => {
         if (name && !name.startsWith('(')) void loadReference();

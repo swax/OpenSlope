@@ -8,6 +8,7 @@ import {
   publicCourseRequest,
   resolvePublicCourse,
   courseEditorUrl,
+  editorUrlForPublicMap,
 } from '../src/app/public/links';
 import { MAPS_PATH, ISOS_PATH } from '../src/app/navigation';
 import type { PublicCourse } from '../src/core/session/public-courses';
@@ -102,6 +103,11 @@ assert.equal(courseEditorUrl(named, origin), `${origin}/editor/My_Mountain`);
 assert.equal(courseEditorUrl({ ...named, private: true }, origin), `${origin}/editor/My_Mountain?project=custom`);
 assert.equal(courseEditorUrl(reference, origin), `${origin}/editor?reference=RENAMED_GARI`);
 assert.equal(courseEditorUrl({ ...named, name: 'A map' }, origin), `${origin}/editor/A%20map`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/maps`)), `${origin}/editor`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/isos`)), `${origin}/editor`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/play/My_Mountain?room=friends`)), `${origin}/editor/My_Mountain`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/isos?map=My_Mountain`)), `${origin}/editor/My_Mountain`);
+assert.equal(editorUrlForPublicMap(new URL(publicCourseUrl(reference, origin))), courseEditorUrl(reference, origin));
 const localGari = groups.local.find(course => course.id === 'GARI')!;
 const saved = { ...named, id: 'local-fixture', localProjectId: 'local-fixture' };
 const savedRequest = publicCourseRequest(new URL(publicCourseUrl(saved, origin)));
@@ -117,6 +123,7 @@ assert.equal(
   'a deleted local copy never falls through to a server map',
 );
 assert.equal(new URL(courseEditorUrl(saved, origin)).searchParams.get('local'), saved.id);
+assert.equal(editorUrlForPublicMap(new URL(publicCourseUrl(saved, origin))), courseEditorUrl(saved, origin));
 const serverGari = { ...reference, id: 'GARI', name: 'Garibaldi' };
 const isoUrl = publicCourseUrl(localGari, origin);
 assert.equal(new URL(isoUrl).searchParams.get('source'), 'iso');

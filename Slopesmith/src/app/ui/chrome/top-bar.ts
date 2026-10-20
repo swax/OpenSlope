@@ -85,7 +85,7 @@ export type TopBarDeps = {
   openMountainFolder?: () => void;
   exportDialog: () => void;
   settingsDialog: () => void;
-  exitEditor: () => void;
+  exitEditor: (destination?: string) => void;
 };
 
 export function createTopBar(deps: TopBarDeps) {
@@ -151,7 +151,24 @@ export function createTopBar(deps: TopBarDeps) {
   const bar = document.getElementById('dock-top')!;
   // The bar opens with the app identity — mark + wordmark — and File beside it. The open mountain's name is
   // not repeated here: the URL carries it, and the browser tab title below follows it.
-  const brandEl = brand('Slopesmith');
+  const brandEl = document.createElement('a');
+  brandEl.className = 'sp-brand-link';
+  brandEl.href = '/';
+  brandEl.setAttribute('aria-label', 'Slopesmith');
+  brandEl.append(brand('Slopesmith'));
+  brandEl.addEventListener('click', event => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    event.preventDefault();
+    exitEditor('/');
+  });
   const mountainName = () => getMountainName().trim() || 'Mountain';
   const referenceName = () => getReferenceName().trim() || 'Reference';
   const refreshMountainTitle = () => {
@@ -400,7 +417,7 @@ export function createTopBar(deps: TopBarDeps) {
         },
         {
           label: 'Open mountain…',
-          desc: 'Open another mountain from this Slopesmith workspace.',
+          desc: 'Open a mountain saved in this browser or on the server.',
           onClick: openProjectDialog,
         },
         {

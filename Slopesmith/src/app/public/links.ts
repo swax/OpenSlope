@@ -32,6 +32,15 @@ export function courseEditorUrl(course: PublicCourse, origin = location.origin):
   return url.href;
 }
 
+/** Reopen a remembered play link without carrying multiplayer or ISO-manager options into the editor. */
+export function editorUrlForPublicMap(url: URL): string {
+  const request = publicCourseRequest(url);
+  const editor = new URL(mapPath('editor', request?.kind === 'project' ? request.name : ''), url.origin);
+  if (request?.kind === 'reference') editor.searchParams.set('reference', request.name);
+  if (request?.localProjectId) editor.searchParams.set('local', request.localProjectId);
+  return editor.href;
+}
+
 export function isoManagementUrl(course?: PublicCourse, origin = location.origin): string {
   const url = new URL(ISOS_PATH, origin);
   if (course) url.searchParams.set(course.kind === 'project' ? 'map' : 'reference', course.kind === 'project' ? course.name : course.id);

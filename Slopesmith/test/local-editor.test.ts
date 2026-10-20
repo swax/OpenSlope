@@ -15,6 +15,28 @@ import { readMountainArchive, createMountainArchive } from '../src/app/mountain/
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-local-editor-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
 process.env.SLOPESMITH_MAPS_ROOT = join(root, 'Maps');
+const serverReference = join(root, 'Maps', 'SERVER_REFERENCE');
+mkdirSync(join(serverReference, 'Textures'), { recursive: true });
+writeFileSync(
+  join(serverReference, 'Patches.json'),
+  JSON.stringify({
+    Patches: [
+      {
+        SurfaceType: 1,
+        TexturePath: '0000.png',
+        Points: Array.from({ length: 16 }, (_, i) => [
+          (i % 4) * 1000,
+          Math.floor(i / 4) * 1000,
+          -Math.floor(i / 4) * 300,
+        ]),
+      },
+    ],
+  }),
+);
+writeFileSync(
+  join(serverReference, 'Textures', '0000.png'),
+  encodePng({ w: 1, h: 1, data: new Uint8Array([255, 255, 255, 255]) }),
+);
 forgetWorkspaceConfig();
 forgetAccounts();
 const api = await startApiService({ host: '127.0.0.1', port: 0, accounts: true });
@@ -35,14 +57,31 @@ async function call(path: string, method = 'GET', body?: unknown) {
   return response;
 }
 const ready = async (page: Page) => {
-  await page.waitForFunction(() => document.documentElement.dataset.projectSave === 'saved', undefined, {
-    timeout: 90_000,
-  });
+  await page.waitForFunction(
+    () => ['saved', 'shared', 'following'].includes(document.documentElement.dataset.projectSave ?? ''),
+    undefined,
+    { timeout: 90_000 },
+  );
   await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
 };
 async function fileAction(page: Page, label: string) {
   await page.getByRole('button', { name: 'File menu', exact: true }).click();
   await page.getByRole('button', { name: label, exact: true }).click();
+}
+async function chooseReference(page: Page, level: string) {
+  await page.getByRole('button', { name: 'Scene', exact: true }).click();
+  const picker = page
+    .locator('#dock-right select')
+    .filter({ has: page.locator('option').filter({ hasText: /^GARI — Local ISO$/ }) })
+    .first();
+  await picker.selectOption({ label: '(none)' });
+  await picker.selectOption({ label: `${level} — ${level === 'GARI' ? 'Local ISO' : 'Server'}` });
+  await page.waitForFunction(async expected => {
+    const storageUrl = '/src/app/state/storage.ts';
+    const { REF_KEY } = await import(/* @vite-ignore */ storageUrl);
+    return JSON.parse(localStorage.getItem(REF_KEY) ?? 'null')?.level === expected;
+  }, level);
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
 }
 try {
   const enrolled = await call('/api/auth/bootstrap', 'POST', {
@@ -69,6 +108,20 @@ try {
     headless: true,
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
+  const starterContext = await browser.newContext();
+  const starter = await starterContext.newPage();
+  await starter.goto(origin);
+  await starter.getByRole('navigation', { name: 'Primary' }).waitFor();
+  assert.equal(new URL(starter.url()).pathname, '/maps', 'signed-out root visits open the map catalogue');
+  await starter.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Editor', exact: true }).click();
+  await ready(starter);
+  assert.equal(
+    await starter.title(),
+    'MOUNTAIN01 - Slopesmith',
+    'Editor opens the default course when no map is current',
+  );
+  assert(new URL(starter.url()).searchParams.get('local')?.startsWith('local-'));
+  await starterContext.close();
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   page = await context.newPage();
   await page.addInitScript(() => {
@@ -77,8 +130,15 @@ try {
   const requests: string[] = [],
     sockets: string[] = [],
     errors: string[] = [];
+  const referenceReads: string[] = [];
   page.on('request', request => {
-    const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (
+      /^\/api\/(level|props|texture|lightmap|effects|lightrig|reference-music)$/.test(path) &&
+      (url.searchParams.get('level') ?? url.searchParams.get('name')) === 'GARI'
+    )
+      referenceReads.push(request.url());
     // Site presence is independent of browser storage; it never reads or writes this mountain.
     if (request.method() === 'GET' && path === '/api/play/config') return;
     if (request.method() === 'POST' && path === '/api/public/visitor') return;
@@ -98,6 +158,8 @@ try {
   await edit.click();
   await ready(page);
   await page.getByRole('button', { name: 'Home', exact: true }).waitFor();
+  const editorBrand = page.locator('#dock-top').getByRole('link', { name: 'Slopesmith', exact: true });
+  assert.equal(await editorBrand.getAttribute('href'), '/', 'the editor logo and label link to the root');
   assert.equal(await page.getByText('Local workspace', { exact: true }).count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).count(), 0);
   assert.equal(await page.title(), 'PUBLIC_RUN_REV_1 - Slopesmith');
@@ -119,6 +181,7 @@ try {
     'local editing fits the page on a narrow phone',
   );
   assert(await page.getByRole('button', { name: 'Home', exact: true }).isVisible());
+  assert(await editorBrand.isVisible(), 'the editor logo remains a link on narrow screens');
   await page.waitForFunction(() => {
     const home = document.querySelector('[aria-label="Home"]')?.getBoundingClientRect();
     return home && home.left >= 0 && home.right <= innerWidth;
@@ -183,6 +246,34 @@ try {
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await page.waitForFunction(() => document.title === 'IMPORTED_LOCAL - Slopesmith');
   await ready(page);
+  const importedCopyId = new URL(page.url()).searchParams.get('local');
+  assert(importedCopyId);
+  for (const [projectId, name] of [
+    [firstCopyId!, 'LOCAL_RUN'],
+    [importedCopyId, 'IMPORTED_LOCAL'],
+  ]) {
+    await fileAction(page, 'Open mountain…');
+    const openMountain = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
+    assert.equal(
+      await openMountain.locator('.sp-modal-note').innerText(),
+      'Local mountains — saved in this browser on this device.',
+    );
+    const option = await openMountain
+      .locator('option')
+      .filter({ hasText: `${name} —` })
+      .textContent();
+    assert(option);
+    await openMountain.locator('select').selectOption({ label: option });
+    if (projectId === firstCopyId) await page.screenshot({ path: join(root, 'open-local-mountain.png') });
+    await openMountain.getByRole('button', { name: 'Open', exact: true }).click();
+    await page.waitForFunction(expected => document.title === `${expected} - Slopesmith`, name);
+    await ready(page);
+    assert.equal(
+      new URL(page.url()).searchParams.get('local'),
+      projectId,
+      'Open mountain follows the selected local map',
+    );
+  }
   assert.equal(requests.length, bootstrapReads, 'editing, saving, export and import issue no map-data API requests');
   assert.deepEqual(sockets, [], 'guest editing opens no editor or named chat session');
   assert.deepEqual(errors, []);
@@ -198,7 +289,7 @@ try {
   assert.equal(await page.title(), 'IMPORTED_LOCAL - Slopesmith', 'reload restores the browser project');
   const importedUrl = page.url();
 
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await editorBrand.click();
   await page.waitForURL(`${origin}/maps`);
   const localMaps = page.locator('.public-saved-maps');
   await localMaps.getByRole('link', { name: 'Edit LOCAL_RUN', exact: true }).waitFor();
@@ -208,8 +299,15 @@ try {
   await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
   assert.equal(new URL(page.url()).pathname, '/play/LOCAL_RUN', 'the saved map tile defaults to Play');
   assert.equal(new URL(page.url()).searchParams.get('local'), firstCopyId);
+  const editorTab = page
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Editor', exact: true });
+  assert.equal(new URL((await editorTab.getAttribute('href'))!).searchParams.get('local'), firstCopyId);
+  await page.getByRole('link', { name: 'ISO', exact: true }).click();
+  await editorTab.waitFor();
+  assert.equal(new URL((await editorTab.getAttribute('href'))!).searchParams.get('local'), firstCopyId);
   await page.goto(`${origin}/maps`);
-  await localMaps.getByRole('link', { name: 'Edit LOCAL_RUN', exact: true }).click();
+  await editorTab.click();
   await ready(page);
   assert.equal(new URL(page.url()).searchParams.get('local'), firstCopyId);
   assert.equal(await page.title(), 'LOCAL_RUN - Slopesmith');
@@ -329,14 +427,14 @@ try {
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
   await page
     .locator('#dock-right select')
-    .filter({ has: page.locator('option').filter({ hasText: /^GARI$/ }) })
+    .filter({ has: page.locator('option').filter({ hasText: /^GARI — Local ISO$/ }) })
     .waitFor();
   const referenceSelect = page
     .locator('#dock-right select')
-    .filter({ has: page.locator('option').filter({ hasText: /^GARI$/ }) })
+    .filter({ has: page.locator('option').filter({ hasText: /^GARI — Local ISO$/ }) })
     .first();
-  assert.equal(await referenceSelect.locator('option:checked').textContent(), 'GARI');
-  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), ['(none)', 'GARI']);
+  assert.equal(await referenceSelect.locator('option:checked').textContent(), 'GARI — Local ISO');
+  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), ['(none)', 'GARI — Local ISO']);
   const referenceDownload = page.waitForEvent('download');
   await fileAction(page, 'Export mountain…');
   const referenceBundle = await readMountainArchive(
@@ -345,18 +443,29 @@ try {
   assert.equal(referenceBundle.document.quads.length, 0, 'Inspect leaves an empty authored workspace');
   await page.screenshot({ path: join(root, 'local-inspect.png') });
   assert.deepEqual(errors, []);
-  await page.goto(`${importedUrl}&reference=GARI`);
+  await page.goto(importedUrl);
   await ready(page);
+  await chooseReference(page, 'GARI');
   assert.equal(
     await page.title(),
     'IMPORTED_LOCAL - Slopesmith',
-    'a named local mountain can reopen beside the selected reference',
+    'a named local mountain can select a loaded ISO from Scene without an Inspect link',
   );
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
   await context.addCookies([{ name: 'slopesmith_session', value: cookie.split('=')[1], url: origin }]);
   await page.goto(`${origin}/maps`);
   await localMaps.getByRole('link', { name: 'Edit IMPORTED_LOCAL', exact: true }).click();
   await ready(page);
   assert.equal(await page.title(), 'IMPORTED_LOCAL - Slopesmith');
+  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), [
+    '(none)',
+    'SERVER_REFERENCE — Server',
+    'GARI — Local ISO',
+  ]);
+  await chooseReference(page, 'SERVER_REFERENCE');
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
+  assert.equal(new URL(page.url()).searchParams.get('local'), importedCopyId);
+  await chooseReference(page, 'GARI');
   const accountMenu = page.getByRole('button', { name: 'Account menu', exact: true });
   await accountMenu.waitFor();
   assert.match(await accountMenu.innerText(), /admin/);
@@ -402,25 +511,117 @@ try {
     .getByRole('button', { name: 'Delete', exact: true })
     .click();
   await memberDelete.waitFor({ state: 'hidden' });
-  assert.equal(requests.length, memberDeleteRequests, 'signed-in local deletion sends no map-data API requests');
+  assert.equal(
+    requests.length,
+    memberDeleteRequests,
+    `signed-in local deletion sends no map-data API requests: ${requests.slice(memberDeleteRequests).join(', ')}`,
+  );
   assert.equal(
     ((await (await call('/api/projects')).json()) as any).projects.length,
     1,
     'a signed-in member opening a local tile still writes only to browser storage',
   );
   await page.goto(`${origin}/editor?reference=GARI`);
-  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
   await page.getByRole('button', { name: 'Scene', exact: true }).click();
+  await referenceSelect
+    .locator('option:checked')
+    .filter({ hasText: /^GARI — Local ISO$/ })
+    .waitFor({ state: 'attached' });
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
+  assert.equal(await page.locator('#save-status').getAttribute('data-state'), 'idle');
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'none');
+  await page.locator('#save-status').click();
+  const referenceSaveDetails = page.getByRole('region', { name: 'Save location' });
+  assert.match(await referenceSaveDetails.innerText(), /Viewing reference mountain/);
+  assert.doesNotMatch(
+    await referenceSaveDetails.innerText(),
+    /Saving to server|Opening mountain|No completed save yet/,
+  );
+  await page.keyboard.press('Escape');
+  await page.goto(`${origin}/editor/PUBLIC_RUN?project=${id}`);
+  await ready(page);
+  await page.getByRole('button', { name: 'Scene', exact: true }).click();
+  assert.deepEqual(await referenceSelect.locator('option').allTextContents(), [
+    '(none)',
+    'SERVER_REFERENCE — Server',
+    'GARI — Local ISO',
+  ]);
+  await chooseReference(page, 'SERVER_REFERENCE');
+  const serverTexture = await page.evaluate(async () => {
+    const moduleUrl = '/src/app/net/asset-paths.ts';
+    const { textureUrl } = await import(/* @vite-ignore */ moduleUrl);
+    return textureUrl('SERVER_REFERENCE', '0000.png');
+  });
+  assert(serverTexture.startsWith('/api/texture?'), 'ISO references do not intercept server reference textures');
+  await chooseReference(page, 'GARI');
   assert.equal(
     await referenceSelect.locator('option:checked').textContent(),
-    'GARI',
-    'members can inspect device-local ISO maps without a server extraction',
+    'GARI — Local ISO',
+    'members can choose device-local ISO references while editing a server mountain',
   );
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');
+  assert.equal(await page.title(), 'PUBLIC_RUN - Slopesmith');
+  assert.deepEqual(referenceReads, [], 'reference terrain and art from a loaded ISO never request server map bytes');
+  await page.screenshot({ path: join(root, 'server-editor-local-iso-reference.png') });
   assert.equal(await page.getByText('Local workspace', { exact: true }).count(), 0);
+  await fileAction(page, 'Open mountain…');
+  const serverMountains = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
+  assert.equal(
+    await serverMountains.locator('.sp-modal-note').innerText(),
+    `Server mountains — saved on ${new URL(origin).host}.`,
+  );
+  const localOption = await serverMountains
+    .locator('option')
+    .filter({ hasText: 'IMPORTED_LOCAL — Local —' })
+    .textContent();
+  assert(localOption, 'the server editor lists browser mountains for signed-in members');
+  await serverMountains.locator('select').selectOption({ label: localOption });
+  assert.equal(
+    await serverMountains.locator('.sp-modal-note').innerText(),
+    'Local mountains — saved in this browser on this device.',
+    'the location follows the selected mountain',
+  );
+  await page.screenshot({ path: join(root, 'open-server-mountain.png') });
+  await serverMountains.getByRole('button', { name: 'Open', exact: true }).click();
+  await page.waitForURL(url => url.searchParams.get('local') === importedCopyId);
+  await ready(page);
+  assert.equal(new URL(page.url()).searchParams.get('local'), importedCopyId);
+  assert.equal(await page.title(), 'IMPORTED_LOCAL - Slopesmith');
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
+  await fileAction(page, 'Open mountain…');
+  const localMountains = page.locator('.sp-modal').filter({ hasText: 'Open mountain' });
+  const serverOption = await localMountains
+    .locator('option')
+    .filter({ hasText: 'PUBLIC_RUN — Server —' })
+    .textContent();
+  assert(serverOption, 'the signed-in local editor also lists server mountains');
+  await localMountains.locator('select').selectOption({ label: serverOption });
+  assert.equal(
+    await localMountains.locator('.sp-modal-note').innerText(),
+    `Server mountains — saved on ${new URL(origin).host}.`,
+  );
+  await localMountains.getByRole('button', { name: 'Open', exact: true }).click();
+  await page.waitForURL(url => url.searchParams.get('project') === id && !url.searchParams.has('local'));
+  await ready(page);
+  assert.equal(new URL(page.url()).searchParams.get('project'), id);
+  assert.equal(new URL(page.url()).searchParams.has('local'), false);
+  assert.equal(await page.title(), 'PUBLIC_RUN - Slopesmith');
+  assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');
+  await editorBrand.click();
+  await page.waitForURL(`${origin}/maps`);
+  await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/maps', 'the signed-in editor logo resolves the root to Maps');
+  await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
+  const rootCatalogue = page.waitForResponse(response => new URL(response.url()).pathname === '/api/public/courses');
+  await page.locator('.public-brand').click();
+  await rootCatalogue;
+  await page.waitForURL(`${origin}/maps`);
+  await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/maps', 'the signed-in public logo resolves the root to Maps');
   assert.equal(
     ((await (await call('/api/projects')).json()) as any).projects.length,
     1,
-    'member inspection leaves the authored workspace empty without creating a server project',
+    'switching between browser and server mountains does not create a server project',
   );
   await page.goto(importedUrl);
   await ready(page);
@@ -433,11 +634,12 @@ try {
   assert.deepEqual(errors, []);
   await context.close();
   console.log(
-    `LOCAL EDITOR PASS: revision copies, local catalogue/new/rename/reopen/delete, delete confirmation/cancel, import/export, ISO inspection, signed-in local account menu/profile/settings/logout and no server map writes. Screenshots: ${root}`,
+    `LOCAL EDITOR PASS: revision copies, local catalogue/new/rename/reopen/delete, delete confirmation/cancel, import/export, ISO inspection, signed-in local/server switching, logo routing, local account menu/profile/settings/logout and no server map writes. Screenshots: ${root}`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(root, 'failure.png') });
   console.error('Local editor artifacts:', root);
+  console.error(await page?.locator('#toast, #log-text').allTextContents());
   console.error(
     await page
       ?.locator('#load-status')

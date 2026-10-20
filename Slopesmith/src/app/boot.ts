@@ -5,8 +5,8 @@ import { startSitePresence } from './net/site-presence';
 import { prepareOffline } from './offline';
 
 /**
- * Ask who this browser is before loading the editor. Visitors get the public course homepage; members get
- * the editor. /maps, /isos and /play/<name> are public for everyone; /editor uses a browser workspace for
+ * Ask who this browser is before loading the editor. The root opens the map catalogue for everyone.
+ * /maps, /isos and /play/<name> are public for everyone; /editor uses a browser workspace for
  * signed-out visitors and server projects for members. Explicit sign-in links retain the login form.
  * Invitations and first-run enrolment retain their account forms (docs/038).
  *
@@ -38,8 +38,8 @@ async function boot(): Promise<void> {
     await showIsoPage();
     return;
   }
-  const guestHome = url.pathname === '/' && (gate.show === 'sign-in' || offline);
-  if (page === 'maps' || page === 'play' || guestHome || (!page && url.pathname !== '/')) {
+  const rootHome = url.pathname === '/' && gate.show !== 'enrol' && gate.show !== 'redeem';
+  if (page === 'maps' || page === 'play' || rootHome || (!page && url.pathname !== '/')) {
     if (page !== 'play') {
       url.pathname = MAPS_PATH;
       history.replaceState(history.state, '', url);
