@@ -115,7 +115,9 @@ try {
   await launch(false);
   await page!.goto(`${origin}/maps`);
   await page!.waitForFunction(
-    () => !!navigator.serviceWorker.controller && document.querySelector<HTMLElement>('[data-offline-status]')?.dataset.state === 'ready',
+    () =>
+      !!navigator.serviceWorker.controller &&
+      document.querySelector<HTMLElement>('[data-offline-status]')?.dataset.state === 'ready',
   );
   const offlineStatus = page!.locator('.public-about-panel [data-offline-status]');
   assert.equal(await page!.locator('#offline-status').count(), 0, 'offline setup creates no bottom overlay');
@@ -199,8 +201,17 @@ try {
   await page!.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor();
   const isoCard = page!.locator('.public-iso-map[data-course="GARI"]');
   assert.equal(await isoCard.locator('.public-primary').count(), 1);
-  assert(await isoCard.getByRole('link', { name: 'Play Garibaldi', exact: true }).evaluate(el => el.classList.contains('public-primary')));
-  assert.equal(await isoCard.getByRole('button', { name: 'Unload Garibaldi', exact: true }).evaluate(el => el.classList.contains('public-primary')), false);
+  assert(
+    await isoCard
+      .getByRole('link', { name: 'Play Garibaldi', exact: true })
+      .evaluate(el => el.classList.contains('public-primary')),
+  );
+  assert.equal(
+    await isoCard
+      .getByRole('button', { name: 'Unload Garibaldi', exact: true })
+      .evaluate(el => el.classList.contains('public-primary')),
+    false,
+  );
   const isoUrl = await page!.getByRole('link', { name: 'Play Garibaldi', exact: true }).getAttribute('href');
   await page!.goto(isoUrl!);
   await page!.getByRole('button', { name: 'Play', exact: true }).waitFor();
@@ -242,7 +253,12 @@ try {
   await page!.getByRole('button', { name: 'Play Garibaldi', exact: true }).waitFor();
   const savedCard = page!.getByRole('article', { name: 'OFFLINE_SAVED', exact: true });
   assert.equal(await savedCard.locator('.public-primary').count(), 1);
-  assert.equal(await savedCard.getByRole('link', { name: 'Edit OFFLINE_SAVED', exact: true }).evaluate(el => el.classList.contains('public-primary')), false);
+  assert.equal(
+    await savedCard
+      .getByRole('link', { name: 'Edit OFFLINE_SAVED', exact: true })
+      .evaluate(el => el.classList.contains('public-primary')),
+    false,
+  );
   await savedCard.click({ position: { x: 12, y: 12 } });
   await page!.getByRole('button', { name: 'Play', exact: true }).waitFor();
   assert.equal(new URL(page!.url()).pathname, '/play/OFFLINE_SAVED');
@@ -273,21 +289,39 @@ try {
   await editorReady();
   failPrecache = false;
 
-  // A new release installs beside an open editor, without taking it over or clearing its saved maps.
+  // A complete release becomes available to new visits while existing editors keep their own assets.
   await context!.setOffline(false);
+  const sibling = await context!.newPage();
+  await sibling.goto(`${origin}/maps`);
+  await sibling.getByRole('link', { name: 'Play OFFLINE_SAVED', exact: true }).waitFor();
+  const originalIndex = readFileSync(join(dist, 'index.html'), 'utf8');
   const worker = originalWorker.replace(/slopesmith-app-([a-f0-9]+)/g, 'slopesmith-app-update-$1');
+  writeFileSync(
+    join(dist, 'index.html'),
+    originalIndex.replace(/slopesmith-app-([a-f0-9]+)/g, 'slopesmith-app-update-$1'),
+  );
   writeFileSync(join(dist, 'sw.js'), worker);
   await page!.evaluate(async () => {
     await (await navigator.serviceWorker.getRegistration())!.update();
   });
-  await page!.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting);
+  const updateNotice = page!.getByRole('region', { name: 'App update', exact: true });
+  await updateNotice.waitFor();
+  assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith', 'installing an update does not interrupt the editor');
   assert.equal(
     await page!.evaluate(async () => (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length),
     2,
   );
-  await context!.close();
-  await launch(false);
-  await page!.goto(`${origin}/maps`);
+  await updateNotice.getByRole('button', { name: 'Reload to update', exact: true }).click();
+  await editorReady();
+  await page!.getByRole('region', { name: 'App update', exact: true }).waitFor({ state: 'hidden' });
+  assert.equal(await page!.title(), 'OFFLINE_SAVED - Slopesmith');
+  assert(
+    await sibling.getByRole('link', { name: 'Play OFFLINE_SAVED', exact: true }).isVisible(),
+    'another tab keeps running',
+  );
+  await sibling.close();
+  await page!.reload();
+  await editorReady();
   await page!.waitForFunction(
     async () => (await caches.keys()).filter(key => key.startsWith('slopesmith-app-')).length === 1,
   );
@@ -295,7 +329,7 @@ try {
   await page!.goto(savedEditorUrl);
   await editorReady();
   console.log(
-    `OFFLINE BROWSER PASS: cold Chrome reopen, local maps/art, ISO maps/importer, solo riding and deferred updates. Artifacts: ${root}`,
+    `OFFLINE BROWSER PASS: cold Chrome reopen, local maps/art, ISO maps/importer, solo riding and safe single-tab updates. Artifacts: ${root}`,
   );
 } catch (error) {
   console.error(

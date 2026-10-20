@@ -210,7 +210,10 @@ Production builds generate a versioned service worker with all app chunks, built
 WASM. It caches static files only; account responses, server project APIs and retail files are never added
 to that cache. Project and ISO data stay in their existing IndexedDB databases. The site must use HTTPS
 (localhost also works); the development server deliberately does not register a worker. Updates prepare
-in the background and wait until all Slopesmith tabs close, preserving active editing sessions. Multiplayer,
+in the background. Once a complete release is ready, new visits and refreshes use it. Open tabs keep their
+existing assets and show **Reload to update**; this saves the current mountain and folder copy before
+reloading that tab. Finish open dialogs and unfinished drafts, and finish or cancel ISO loads, first.
+Other tabs keep running, and saved mountains and ISO data stay on the device. Multiplayer,
 chat and server tools require a connection. Live player status reconnects automatically when the connection
 returns. Reopen to switch back to a server workspace.
 

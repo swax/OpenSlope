@@ -11,6 +11,7 @@ import { courseEditorUrl, publicCourseRequest, publicCourseUrl, resolvePublicCou
 import { mapHeading, publicGlyph } from './presentation';
 import { confirmAction } from '../ui/components/prompts';
 import { EDITOR_PATH } from '../navigation';
+import { beforeAppUpdate } from '../offline';
 import { ISO_GAMES, clearSavedIsoDiscs, isoGameForCourse, saveIsoDisc, savedIsoDiscs, type IsoGame, type SavedIsoDisc } from './iso-discs';
 
 const SELECTED_GAME = 'slopesmith.isoGame';
@@ -88,6 +89,9 @@ export async function showIsoPage(): Promise<void> {
   }, render);
 
   const loadingIso = () => scanning || loads.busy;
+  beforeAppUpdate(() => {
+    if (busy || loadingIso()) throw new Error('Wait for ISO loading to finish, or cancel it, before reloading.');
+  });
   function selectGame(game: IsoGame) {
     selectedGame = game;
     try { sessionStorage.setItem(SELECTED_GAME, game); } catch { /* optional */ }

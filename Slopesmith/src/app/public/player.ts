@@ -1,4 +1,5 @@
 import type { PublicCourse } from '../../core/session/public-courses';
+import { beforeAppUpdate } from '../offline';
 import { defaultMountain } from '../../core/doc/mountain';
 import { authoredModelLevelProps } from '../../core/doc/models';
 import { decodeProps, type PropsPayload } from '../../core/reference/props';
@@ -196,6 +197,9 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
   const publish = window.setInterval(() => {
     if (session.isOpen()) session.aware({ player: viewport.playerPose(avatar, session.serverNow()), vertices: [], quads: [], dragging: [] });
   }, 100);
+  const stopUpdateGuard = beforeAppUpdate(() => {
+    if (viewport.riding || viewport.xrPlaying) throw new Error('Exit play before reloading to update.');
+  });
   return {
     play: () => play.startPlay(), vr: () => play.startVr(), stop: () => { if (viewport.xrPlaying) play.stopVr(); else play.exitRide(); },
     resetStart() {
@@ -212,7 +216,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
       return !!player && viewport.goToMapPlayer(player.sessionId);
     },
     rideEvent: viewport.applyRideEvent.bind(viewport),
-    dispose() { clearInterval(publish); local.dispose(); custom?.dispose(); },
+    dispose() { stopUpdateGuard(); clearInterval(publish); local.dispose(); custom?.dispose(); },
   };
 }
 export type PublicPlayer = Awaited<ReturnType<typeof preparePublicPlayer>>;

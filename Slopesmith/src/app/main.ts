@@ -121,6 +121,7 @@ import { pickMountainFolder } from './mountain/folder';
 import { openLocalMountainFolder } from './mountain/open-folder';
 import { loadSettings, saveSettings } from './state/settings';
 import { confirmUnloadWithUnsavedWork, holdUnsavedWork } from './state/unsaved-work';
+import { beforeAppUpdate } from './offline';
 import type { PeerMarks } from './viewport/scene/peers';
 import { referenceRoom } from '../core/session/public-courses';
 import { translatePlayerPose } from '../core/session/pose-space';
@@ -2361,6 +2362,14 @@ async function navigateFromEditor(destination: string): Promise<void> {
   await flushMountainFolders();
   location.assign(destination);
 }
+
+beforeAppUpdate(async () => {
+  if (viewport.riding || viewport.xrPlaying) throw new Error('Exit play before reloading to update.');
+  persistView();
+  persistUi();
+  await projectSync.prepareToLeave();
+  await flushMountainFolders();
+});
 
 async function exitEditor(destination = MAPS_PATH): Promise<void> {
   try {
