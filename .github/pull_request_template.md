@@ -9,6 +9,7 @@ Opening this pull request offers the change under the license of the component i
 
 ## Verification
 
-- [ ] I ran `npm run verify`, or I explain below which checks could not be run and why.
+- [ ] I list the checks run and their results below, following the [validation policy](../CONTRIBUTING.md#routine-development).
+- [ ] For release preparation or broad changes across components or shared contracts, I ran `npm run verify` or explain below what remains unverified.
 
 <!-- Describe the change, its provenance, and any third-party inputs here. -->

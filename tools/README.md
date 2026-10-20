@@ -20,6 +20,36 @@ top level only when it is used across the repository. When moving tools, update
 relative imports, repository-root discovery, tests, documentation, and workflow
 path filters together.
 
+## Everyday validation
+
+A Git-only sync needs checks of the resulting history and preserved local work.
+Before committing, inspect the staged patch and check its whitespace. Reuse
+successful checks that still cover the current changes; run focused checks when
+validation is missing or relevant inputs have changed.
+
+These commands run from the repository root:
+
+```text
+git diff --cached --check
+npm --prefix Slopesmith test -- --only glb-import
+npm --prefix Slopesmith test -- --only blender-bridge
+npm --prefix Slopesmith test -- --only public-course-list
+npm --prefix Slopesmith run typecheck
+npm --prefix Slopesmith run lint
+```
+
+The named tests are examples: choose the checks for the behavior being edited.
+`--only` reaches matching checks in either tier, including integration tests.
+For wider Slopesmith changes, `npm --prefix Slopesmith test` runs its fast tier
+without coverage or the full browser suite. Use Native or Snowknife checks when
+those components or their shared contracts are affected.
+
+`npm run verify` retains the complete repository gate for release preparation,
+broad changes across components or shared contracts, and explicit full-validation
+requests. The existing pre-push hook and CI still run their mandatory checks;
+the nightly workflow runs the complete Slopesmith suite with coverage. A
+documentation-only change does not require a compiler or browser run.
+
 ## Formatting
 
 Install Slopesmith's locked dependencies and the pinned Python formatter once.
