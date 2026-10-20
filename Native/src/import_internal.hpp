@@ -64,6 +64,19 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
 nlohmann::json import_pose(Bytes data, std::size_t offset, double scale = 1);
 std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
                             const ImportCancel& cancel);
+nlohmann::json streamed_material_setup(Bytes program, bool tour);
+std::pair<bool, bool> streamed_prop_admission(const std::string& name, bool debug);
+bool ontour_boundary_helper(const std::string& name);
+bool ontour_course_helper(const std::string& name);
+bool ontour_course_root(const std::filesystem::path& root);
+unsigned prepare_ontour_helpers(nlohmann::json& instances, const nlohmann::json& models);
+unsigned repair_ontour_helper_instances(const std::filesystem::path& root, nlohmann::json& instances);
+void retire_streamed_reset_bindings(nlohmann::json& effects);
+nlohmann::json streamed_playtest_props(nlohmann::json& instances, nlohmann::json& effects,
+                                       const ImportCancel& cancel = {});
+unsigned streamed_playtest_lights(nlohmann::json& document);
+nlohmann::json write_streamed_riding_audio(const std::filesystem::path& map, bool tour, const ImportCancel& cancel);
+nlohmann::json write_streamed_ambient_audio(const std::filesystem::path& map, bool tour, const ImportCancel& cancel);
 bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
                       const ImportProgress& progress, const ImportCancel& cancel);
 bool write_ssx_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,

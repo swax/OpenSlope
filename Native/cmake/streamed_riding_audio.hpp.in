@@ -1,0 +1,4 @@
+#pragma once
+namespace openslope::bundled {
+inline constexpr unsigned char streamed_riding_audio[] = { @STREAMED_RIDING_AUDIO_BYTES@ };
+}

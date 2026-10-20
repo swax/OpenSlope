@@ -1003,6 +1003,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       countdown,
       telemetry,
       boardSound: deps.getBoardSound(),
+      boardSoundLevel: reference ? deps.getRefLevel() : undefined,
       onAnnouncerEvent: event => announcer.fire(event),
       onAnnouncerTick: tick =>
         announcer.step(tick.dt, {

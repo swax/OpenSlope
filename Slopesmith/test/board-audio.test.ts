@@ -13,7 +13,12 @@ import { check, failures } from './check';
 // ---- a fake Web Audio graph + bank route ----------------------------------------------------------
 
 /** Every started source, in order, tagged with the bank URL its buffer came from. */
-const started: { url: string; loop: boolean; node: FakeSource }[] = [];
+const started: {
+  url: string;
+  loop: boolean;
+  node: FakeSource;
+  envelope: { kind: string; value: number; time: number }[];
+}[] = [];
 const bufferUrls = new Map<object, string>();
 const fetchCounts = new Map<string, number>();
 let contextCount = 0;
@@ -22,11 +27,14 @@ let contextLatencyHint: AudioContextLatencyCategory | number | undefined;
 
 class FakeParam {
   value = 0;
-  linearRampToValueAtTime(value: number) {
+  events: { kind: string; value: number; time: number }[] = [];
+  linearRampToValueAtTime(value: number, time = 0) {
+    this.events.push({ kind: 'ramp', value, time });
     this.value = value;
     return this;
   }
-  setValueAtTime(value: number) {
+  setValueAtTime(value: number, time = 0) {
+    this.events.push({ kind: 'set', value, time });
     this.value = value;
     return this;
   }
@@ -65,8 +73,18 @@ class FakeSource extends FakeNode {
   playbackRate = new FakeParam();
   onended: (() => void) | null = null;
   stopped = false;
+  destination?: FakeNode;
+  connect(destination?: FakeNode) {
+    this.destination = destination;
+    return this;
+  }
   start() {
-    started.push({ url: bufferUrls.get(this.buffer!) ?? '?', loop: this.loop, node: this });
+    started.push({
+      url: bufferUrls.get(this.buffer!) ?? '?',
+      loop: this.loop,
+      node: this,
+      envelope: this.destination instanceof FakeGain ? this.destination.gain.events.slice(0, 2) : [],
+    });
   }
   stop() {
     this.stopped = true;
@@ -331,6 +349,19 @@ check(
   started.every(s => s.node.stopped || !s.loop),
   'disposing the bed stops every loop it started',
 );
+check(
+  started
+    .filter(s => s.loop)
+    .every(
+      s =>
+        s.envelope[0]?.kind === 'set' &&
+        s.envelope[0].value === 0 &&
+        s.envelope[1]?.kind === 'ramp' &&
+        s.envelope[1].value === 1 &&
+        s.envelope[1].time > s.envelope[0].time,
+    ),
+  'new and swapped loops fade in from zero, including delayed and held-boost sources',
+);
 const nextRun = createBoardAudio(DEFAULT_BOARD_SOUND, testSurfaceGroups)!;
 await settle();
 check(
@@ -342,6 +373,19 @@ check(
   'Stop → Play reuses decoded buffers instead of fetching them again',
 );
 nextRun.dispose();
+
+const selectedRun = createBoardAudio(DEFAULT_BOARD_SOUND, testSurfaceGroups, 'SSXOT_ER1_DAY')!;
+const firstSelected = started.length;
+await ride(selectedRun, rideState({ vel: new THREE.Vector3(0, 0, 12) }), 0.1);
+check(
+  started.slice(firstSelected).some(source => source.url.includes('slot=4&loop=1&level=SSXOT_ER1_DAY')),
+  'a reference ride requests its own map-local common board bank',
+);
+check(
+  started.slice(firstSelected).every(source => source.url.includes('level=SSXOT_ER1_DAY')),
+  'reference playback never reuses another course URL from the shared decoded cache',
+);
+selectedRun.dispose();
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall board-audio checks passed');
 process.exit(failures ? 1 : 0);

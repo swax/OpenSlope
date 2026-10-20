@@ -1276,7 +1276,10 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
     if (root.empty() || !std::filesystem::exists(root / "Instances.json"))
         return result;
     auto& d = *result.data_;
-    const auto instances = read(root, "Instances.json");
+    auto instances = read(root, "Instances.json");
+    const bool ontour = import_detail::ontour_course_root(root);
+    if (ontour)
+        import_detail::repair_ontour_helper_instances(root, instances.at("Instances"));
     const auto& rows = instances.at("Instances");
     if (!rows.is_array() || rows.size() > 100000)
         throw std::runtime_error("Invalid world instance count");
@@ -1313,6 +1316,9 @@ WorldLogic WorldLogic::load(const std::filesystem::path& root) {
             }
         }
     }
+    // [Trailmap: 521-native] Old imports guessed reset boxes from helper names.
+    // Ignore only that reserved binding; authored reset graphs keep their behavior.
+    import_detail::retire_streamed_reset_bindings(doc);
     std::size_t node_count = 0;
     for (const auto& name : {"graphs", "functions"}) {
         const auto& array = doc.at(name);

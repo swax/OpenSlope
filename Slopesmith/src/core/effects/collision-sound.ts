@@ -25,6 +25,7 @@ export interface CollisionSoundIndex {
   Level: string;
   SourceExecutable?: string;
   Banks: Record<string, string>;
+  NamedBanks?: Record<string, string>;
   CollisionEvents: Record<string, CollisionSoundIndexEvent>;
 }
 

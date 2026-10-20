@@ -388,6 +388,7 @@ struct PropsExport {
     std::map<std::uint32_t, std::size_t> vertices;
     std::set<unsigned> opaque, alpha;
     std::set<std::uint32_t> debug_models;
+    std::set<std::uint32_t> solid_instances;
 };
 
 // [Trailmap: 513-models, 513-scale, 513-vertex-light, 512-render-state]
@@ -410,12 +411,26 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
         const auto texture = b.le(0, 2), state = b.le(14, 2);
         const bool alpha = (state & (2 | 4 | 64)) != 0;
         (alpha ? out.alpha : out.opaque).insert(texture);
+        // [Trailmap: 516-material-frames] Animated materials append their
+        // ordered page list. The list alone does not imply a running clock.
+        Json frames = Json::array();
+        if (b.le(16) != 0xffffffffu) {
+            const auto count = b.le(20);
+            require(count && count <= 4096, "invalid material frame count");
+            b.range(24, std::size_t(count) * 4);
+            for (unsigned i = 0; i < count; ++i) {
+                const auto frame = b.le(24 + i * 4);
+                require(frame < 4096, "invalid material frame page");
+                (alpha ? out.alpha : out.opaque).insert(frame);
+                frames.push_back(number(frame) + (alpha ? ".png" : "_o.png"));
+            }
+        }
         if (texture == (tour ? 36u : 17u))
             debug_materials.insert(key.second);
         material_ids[key.second] = unsigned(out.materials.size());
         out.materials.push_back({{"MaterialName", "Material " + std::to_string(key.second)},
                                  {"TexturePath", number(texture) + (alpha ? ".png" : "_o.png")},
-                                 {"TextureFlipbook", Json::array()},
+                                 {"TextureFlipbook", frames},
                                  {"UnknownInt18", alpha ? 0x40000 : 0},
                                  {"AlphaMode", state & 64  ? "glow"
                                                : state & 4 ? "blend"
@@ -498,12 +513,15 @@ PropsExport props(const Records& records, const std::map<Key, std::string>& name
         require(out.model_ids.contains(model), "placement references missing model");
         auto row = import_pose(b, 16, b.number(tour ? 124 : 132));
         const auto label = name(3, key.second), folded = lower(label);
-        const bool hidden =
-            out.debug_models.contains(model) || contains(folded, {"trigger", "volume", "loadbox", "unloadbox"});
+        auto [visible, solid] = streamed_prop_admission(folded, out.debug_models.contains(model));
+        if (tour && (ontour_course_helper(label) || ontour_course_helper(name(2, model))))
+            visible = solid = false;
         row["InstanceName"] = label;
         row["SourceResource"] = key.second;
         row["ModelID"] = out.model_ids.at(model);
-        row["Visable"] = !hidden;
+        row["Visable"] = visible;
+        if (solid)
+            out.solid_instances.insert(key.second);
         row["PlayerCollision"] = false;
         row["CollsionMode"] = 0;
         row["PhysicsIndex"] = -1;
@@ -529,7 +547,7 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
         placements.emplace(std::pair{props.instances[i].at("SourceResource").get<unsigned>() & 255,
                                      props.instances[i].at("InstanceName").get<std::string>()},
                            i);
-    std::map<unsigned, Json> bindings;
+    std::map<Key, Json> bindings;
     std::filesystem::create_directory(output / "Collision");
     for (const auto& [key, bytes] : records) {
         if (key.first != 12 || bytes.empty())
@@ -539,7 +557,8 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
         const auto marker = name.find("_CollideModel_");
         const auto owner = std::pair{key.second & 255, name.substr(0, marker)};
         require(tour || (marker != std::string::npos && placements.contains(owner)), "collision owner is missing");
-        const auto model = tour ? key.second : props.instances[placements.at(owner)].at("ModelID").get<unsigned>();
+        const Key binding = {tour ? 0u : sector(key.second, false),
+                             tour ? key.second : props.instances[placements.at(owner)].at("ModelID").get<unsigned>()};
         Bytes b{bytes};
         b.range(0, 16);
         if (b.le(0, 2) == 3) {
@@ -575,28 +594,175 @@ void collision(const Records& records, const std::map<Key, std::string>& names, 
             files.push_back(file);
             p = normals + std::size_t(faces) * 16;
         }
-        if (bindings.contains(model))
-            warnings.push_back("Multiple collision variants for model " + std::to_string(model) +
-                               "; first triangle proxy selected.");
+        if (bindings.contains(binding))
+            warnings.push_back("Multiple collision variants for model " + std::to_string(binding.second) +
+                               " in section " + std::to_string(binding.first) + "; first triangle proxy selected.");
         else
-            bindings[model] = files;
+            bindings[binding] = files;
     }
     for (auto& row : props.instances) {
         const Bytes original{get(records, 3, row.at("SourceResource").get<unsigned>())};
         if (tour && original.le(148) != 1)
             continue;
-        const auto model = tour ? original.le(156) : row.at("ModelID").get<unsigned>();
-        if (!bindings.contains(model))
+        const auto resource = row.at("SourceResource").get<unsigned>();
+        const Key binding = {tour ? 0u : sector(resource, false),
+                             tour ? original.le(156) : row.at("ModelID").get<unsigned>()};
+        if (!bindings.contains(binding))
             continue;
-        const auto name = lower(row.at("InstanceName").get<std::string>());
-        // Undecoded triggers retain geometry without becoming solid walls.
-        const bool solid =
-            row.at("Visable").get<bool>() || (contains(name, {"fence", "collision", "impassable"}) &&
-                                              !contains(name, {"reset", "volume", "trigger", "load", "start", "end"}));
-        row["CollsionModelPaths"] = bindings.at(model);
+        row["CollsionModelPaths"] = bindings.at(binding);
         row["CollsionMode"] = 1;
-        row["PlayerCollision"] = solid;
+        row["PlayerCollision"] = props.solid_instances.contains(resource);
     }
+}
+
+Json material_effects(const Records& records, PropsExport& props, const std::string& course, const ImportCancel& cancel,
+                      bool tour) {
+    Json effects = {
+        {"$schema", "openslope-effects-v1.schema.json"},
+        {"kind", "openslope-effects"},
+        {"version", 1},
+        {"header", {{"U1", 0}, {"U2", 0}, {"U3", 0}}},
+        {"target",
+         {{"game", tour ? "ssx-on-tour" : "ssx-3"}, {"platform", "ps2"}, {"region", "unknown"}, {"level", course}}}};
+    for (const auto* key :
+         {"slots", "graphs", "functions", "objectProperties", "instances", "physics", "collisionModels", "splines"})
+        effects[key] = Json::array();
+    // [Trailmap: 516-setup-bindings] Resolve source identities before assigning
+    // shared slot indices. No source bytecode is executed by either runtime.
+    const auto setup = [&](unsigned resource) -> std::uint32_t {
+        // SSX 3's property-to-setup relation is not established. Its material
+        // frame lists are independent of these On Tour placement bindings.
+        if (!tour)
+            return 0xffffffffu;
+        const Bytes instance{get(records, 3, resource)};
+        const auto slot = instance.le(152);
+        const auto found = records.find({21, slot});
+        if (slot == 0xffffffffu || found == records.end())
+            return 0xffffffffu;
+        Bytes b{found->second};
+        require(b.data.size() == 28, "invalid streamed effect slot extent");
+        return b.le(4);
+    };
+    const auto program = [&](unsigned resource) -> Bytes {
+        const auto found = records.find({22, resource});
+        return found == records.end() ? Bytes{} : Bytes{found->second};
+    };
+    std::map<unsigned, int> translated;
+    unsigned instances = 0, deferred = 0;
+    for (auto& instance : props.instances) {
+        check_cancel(cancel);
+        if (!instance.at("Visable").get<bool>())
+            continue;
+        const auto source = setup(instance.at("SourceResource").get<unsigned>());
+        if (source == 0xffffffffu)
+            continue;
+        auto [entry, fresh] = translated.try_emplace(source, -1);
+        if (fresh) {
+            auto nodes = streamed_material_setup(program(source), tour);
+            if (!nodes.is_null()) {
+                require(effects["slots"].size() < 4096, "too many translated material setups");
+                const auto id = "streamed-material:" + std::to_string(source);
+                for (std::size_t i = 0; i < nodes.size(); ++i)
+                    nodes[i]["id"] = id + ":" + std::to_string(i);
+                entry->second = int(effects["slots"].size());
+                effects["graphs"].push_back({{"id", id}, {"nodes", nodes}});
+                effects["slots"].push_back({{"id", id + ":slot"},
+                                            {"originalIndex", entry->second},
+                                            {"circumstances",
+                                             {{"persistent", id},
+                                              {"collision", nullptr},
+                                              {"slot3", nullptr},
+                                              {"slot4", nullptr},
+                                              {"trigger", nullptr},
+                                              {"slot6", nullptr},
+                                              {"slot7", nullptr}}}});
+            } else {
+                ++deferred;
+            }
+        }
+        if (entry->second >= 0) {
+            instance["EffectSlotIndex"] = entry->second;
+            ++instances;
+        }
+    }
+    effects["extensions"]["streamedMaterialSetups"] = {{"TranslatedPrograms", effects["graphs"].size()},
+                                                       {"TranslatedInstances", instances},
+                                                       {"DeferredPrograms", deferred},
+                                                       {"BindingState", tour ? "Supported" : "Deferred"}};
+    return effects;
+}
+
+Json sound_bindings(const Records& records, const PropsExport& props, const std::filesystem::path& output,
+                    const ImportCancel& cancel, bool tour) {
+    // [Trailmap: 517-attachments] Preserve the different event namespace without
+    // feeding unresolved identities into another title's sound resolver.
+    Json bindings = Json::array();
+    std::map<unsigned, std::size_t> placements;
+    for (std::size_t i = 0; i < props.instances.size(); ++i)
+        placements.emplace(props.instances[i].at("SourceResource").get<unsigned>(), i);
+    std::size_t external = 0, collisions = 0, attached = 0;
+    for (const auto& [key, raw] : records) {
+        if (key.first != 13 || raw.empty())
+            continue;
+        Bytes b{raw};
+        b.range(0, 16);
+        const auto count = b.le(12), stride = tour ? 32u : 24u;
+        require(!b.le(0, 1) && count <= 100000 - bindings.size(), "invalid streamed sound attachment header");
+        require(!count || b.number(8) == (tour ? 4.f : 1.24f), "unsupported streamed sound attachment version");
+        const auto table_end = 16 + std::size_t(count) * stride;
+        b.range(16, std::size_t(count) * stride);
+        std::map<unsigned, Json> shared;
+        for (unsigned i = 0; i < count; ++i) {
+            check_cancel(cancel);
+            const auto row = 16 + i * stride, source = b.le(row + 12), offset = b.le(row + (tour ? 24 : 16));
+            auto [entry, fresh] = shared.try_emplace(offset);
+            if (fresh) {
+                require(offset >= table_end, "streamed sound record overlaps table");
+                b.range(offset, 8);
+                const auto hits = b.le(offset), emitters = b.le(offset + 4);
+                require(hits <= 256 && emitters <= 256, "streamed sound record exceeds limit");
+                std::size_t p = std::size_t(offset) + 8;
+                b.range(p, std::size_t(hits) * 4);
+                Json events = Json::array(), sounds = Json::array();
+                for (unsigned j = 0; j < hits; ++j, p += 4)
+                    events.push_back(static_cast<std::int32_t>(b.le(p)));
+                for (unsigned j = 0; j < emitters; ++j) {
+                    const auto type = b.le(p);
+                    require(type <= 3, "unsupported streamed sound emitter type");
+                    const auto size = type == 0 ? 28u : type == 3 ? 24u : 48u;
+                    b.range(p, size);
+                    Json sound = {{"U0", type}, {"SoundIndex", static_cast<std::int32_t>(b.le(p + 4))}};
+                    for (unsigned k = 2; k < size / 4; ++k)
+                        sound["U" + std::to_string(k)] = b.number(p + k * 4);
+                    sounds.push_back(sound);
+                    p += size;
+                }
+                entry->second = {{"CollisionEvents", events}, {"ExternalSounds", sounds}};
+            }
+            auto value = entry->second;
+            collisions += value.at("CollisionEvents").size();
+            external += value.at("ExternalSounds").size();
+            require(collisions + external <= 1000000, "streamed sound attachment total exceeds limit");
+            value["SourceSection"] = key.second;
+            value["SourceRow"] = i;
+            value["SourceHash"] = {b.le(row), b.le(row + 4)};
+            value["SourceResource"] = source;
+            const auto placement = placements.find(source);
+            value["InstanceIndex"] = placement == placements.end() ? Json(nullptr) : Json(placement->second);
+            attached += placement != placements.end();
+            bindings.push_back(value);
+        }
+    }
+    Json summary = {{"Rows", bindings.size()},
+                    {"AttachedInstances", attached},
+                    {"CollisionEvents", collisions},
+                    {"ExternalEmitters", external},
+                    {"ResolverState", "Deferred"}};
+    save(output / "SoundBindings.json", {{"Schema", "openslope-streamed-sound-bindings/v1"},
+                                         {"Game", tour ? "ssx-on-tour" : "ssx-3"},
+                                         {"ResolverState", "Deferred"},
+                                         {"Bindings", bindings}});
+    return summary;
 }
 
 Json path_rows(Bytes b, std::size_t& p, unsigned count, bool race, const ImportCancel& cancel) {
@@ -775,18 +941,21 @@ void lights_and_fog(const Records& records, const std::set<unsigned>& sections, 
                               {"LowestXYZ", vector(b, 68)},
                               {"HighestXYZ", vector(b, 80)},
                               {"InnerConeCosine", b.number(92)},
-                              {"OuterConeCosine", b.number(96)}});
+                              {"OuterConeCosine", b.number(96)},
+                              {"UnknownFloat2", b.number(96)}});
         } else if (key.first == 7) {
             b.range(0, 80);
             lights.push_back({{"LightName", "Halo " + std::to_string(key.second)},
                               {"Type", 2},
                               {"SpriteRes", b.le(12)},
-                              {"UnknownFloat1", 0},
+                              {"UnknownFloat1", 1},
                               {"Colour", vector(b, tour ? 20 : 16)},
                               {"Direction", {0, 0, 0}},
                               {"Position", vector(b, tour ? 32 : 28)},
-                              {"LowestXYZ", vector(b, tour ? 44 : 40)},
-                              {"HighestXYZ", vector(b, tour ? 56 : 52)}});
+                              // Halos are sprites, not diffuse point lights. Their
+                              // source bounds cull the sprite; they are not light reach.
+                              {"LowestXYZ", vector(b, tour ? 32 : 28)},
+                              {"HighestXYZ", vector(b, tour ? 32 : 28)}});
         } else if (key.first == 4) {
             const auto count = b.le(4), table = b.le(8);
             require(count <= 256, "invalid fog object count");
@@ -1086,6 +1255,11 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     notify("Converting mountain props and baked vertex lighting");
     auto world_props = props(records, labels, selected, output, warnings, cancel, tour);
     collision(records, labels, world_props, output, warnings, cancel, tour);
+    auto effects = material_effects(records, world_props, course, cancel, tour);
+    auto playtest = streamed_playtest_props(world_props.instances, effects, cancel);
+    playtest["CourseHelpersPrepared"] = tour ? prepare_ontour_helpers(world_props.instances, world_props.models) : 0;
+    save(output / "PlaytestImport.json", playtest);
+    const auto sounds = sound_bindings(records, world_props, output, cancel, tour);
     save(output / "Models.json", {{"Models", world_props.models}});
     save(output / "Materials.json", {{"Materials", world_props.materials}});
     save(output / "Instances.json", {{"Instances", world_props.instances}});
@@ -1234,7 +1408,8 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
             DiscInput sky_stream{sky_bytes.size(), [&](std::uint64_t p, std::span<std::uint8_t> bytes) {
                                      std::copy_n(sky_bytes.begin() + std::ptrdiff_t(p), bytes.size(), bytes.begin());
                                  }};
-            const auto sky_records = read_world(sky_stream, {1}, progress, cancel, true);
+            // [Trailmap: 528] The selected archive owns its mask; a day fallback must remain day.
+            const auto sky_records = read_world(sky_stream, {1}, progress, cancel, true, prefix.back() == 'n');
             const auto sky_labels = resource_names(Bytes{sky_ids}, Bytes{sky_names}, true, true);
             std::filesystem::create_directories(output / "Skybox/Textures");
             const auto sky_props = props(sky_records, sky_labels, {1}, output / "Skybox", warnings, cancel, true);
@@ -1255,16 +1430,6 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
             sky.insert(1);
         }
     }
-    Json effects = {
-        {"$schema", "openslope-effects-v1.schema.json"},
-        {"kind", "openslope-effects"},
-        {"version", 1},
-        {"header", {{"U1", 0}, {"U2", 0}, {"U3", 0}}},
-        {"target",
-         {{"game", tour ? "ssx-on-tour" : "ssx-3"}, {"platform", "ps2"}, {"region", "unknown"}, {"level", course}}}};
-    for (const auto* key :
-         {"slots", "graphs", "functions", "objectProperties", "instances", "physics", "collisionModels", "splines"})
-        effects[key] = Json::array();
     save(output / "Effects.json", effects);
     notify("Decoding local sound banks and preserving source records");
     std::filesystem::create_directory(output / "Source");
@@ -1299,6 +1464,8 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     save(output / "Source/Resources.json", source_index);
     const auto audio = tour ? write_ontour_audio(disc, output, course, progress, cancel)
                             : write_ssx3_audio(disc, output, course, progress, cancel);
+    if (audio)
+        write_streamed_ambient_audio(output, tour, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
                                   {"Origin", "retail"},
                                   {"RetailData", true},
@@ -1319,6 +1486,8 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
                     "ParticleModels.json",
                     "ParticleInstances.json",
                     "Effects.json",
+                    "PlaytestImport.json",
+                    "SoundBindings.json",
                     "Audio",
                     "Source",
                     "Origin.json"};
@@ -1333,11 +1502,15 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
           {"TimeOfDay", tour ? (night ? "night" : "day") : "source"},
           {"Warnings", warnings},
           {"AudioAssets", audio},
+          {"MaterialEffects", effects.at("extensions").at("streamedMaterialSetups")},
+          {"PlaytestApproximations", playtest},
+          {"SoundBindings", sounds},
           {"Outputs", outputs},
           {"Deferred",
            {"compiled-world-scripts", "sound-trigger-bindings", "sphere-tree-collision", "model-animation",
-            "secondary-texture-pass", "surface-response-parity", "peak-race-connectors", "music-and-board-audio",
-            "native-baked-vertex-lighting", "local-light-cone-playback", "path-rating-and-event-semantics"}}});
+            "material-animation", "secondary-texture-pass", "surface-response-parity", "peak-race-connectors",
+            "music-and-board-audio", "native-baked-vertex-lighting", "local-light-cone-playback",
+            "path-rating-and-event-semantics"}}});
     notify("Validating shared map contracts");
     static_cast<void>(Terrain::load(output));
     static_cast<void>(Props::load(output));

@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 from import_test import le, png_pixels, refpack, run
-from ssx3_import_test import disc, fog_fixture, model as ssx3_model, proxy
+from ssx3_import_test import HELPER_CASES, check_lights, check_materials, check_sounds, disc, fog_fixture, light_fixture, material_program, model as ssx3_model, proxy, sound_attachments
 from audio_container_test import bank, literal_bank
 from audio_import_test import archive, disc as audio_disc
 
@@ -70,12 +70,13 @@ def race_path():
     return b'Biii' + le(1) + bytes(b) + bytes([0, 0, 127, 0]) + struct.pack('<4f', 1, 0, -.1, 100) + le(0)
 
 
-def names():
+def names(instance_names=None):
     ids = bytearray(le(0) + le(0) + le(8))
     strings = bytearray(ids)
     for array, rows in enumerate([
         [(2, 'patch_wr1_unused'), (3, 'patch_er1_synthetic')],
-        [(3, 'mdl_er1_rock'), (4, 'mdl_er1_prop_without_terrain'), (600, 'mdl_er1_unstreamed_mission')],
+        [(3, instance_names[0] if instance_names else 'mdl_er1_rock'),
+         (4, instance_names[1] if instance_names else 'mdl_er1_prop_without_terrain'), (600, 'mdl_er1_unstreamed_mission')],
         [(0, 'mdl_er1_model')], [(0, 'common_patches_snow er1')],
         [], [], [], [],
     ]):
@@ -86,7 +87,7 @@ def names():
     return bytes(ids), bytes(strings)
 
 
-def members(edit=None):
+def members(edit=None, instance_names=None):
     # Use an existing independently authored surface fixture for its coefficients.
     import ssx3_import_test
     captured = []
@@ -133,14 +134,28 @@ def members(edit=None):
         struct.pack_into('<6f', database, 328 + i * 108, *bounds)
     database[760:767] = b'er1_sl1'
     struct.pack_into('<3f', database, 776, 1000, 2000, 3000)
-    ids, strings = names()
+    ids, strings = names(instance_names)
     return {'data/worlds/bam.sdb': bytes(database), 'data/worlds/bam.phm': ids,
             'data/worlds/bam.psm': strings, 'data/worlds/bam.ssb': stream,
             'data/worlds/er1d.tp': race_path(), 'data/worlds/er1n.tp': race_path(),
             'data/worlds/alld.tp': race_path()}
 
 
-def full_disc():
+def material_animation(rows, conditional=False):
+    result = []
+    for kind, rid, payload, mask in rows:
+        if kind == 0:
+            payload = bytearray(payload); struct.pack_into('<I', payload, 16, 0)
+            payload = bytes(payload) + struct.pack('<3I', 2, 0, 1)
+        if kind == 22:
+            payload = material_program(tour=True, conditional=conditional)
+            # Keep the fixture's split-record exercise independent of script size.
+            payload += bytes(42000 - len(payload))
+        result.append((kind, rid, payload, mask))
+    return result + [(9, 65536, texture(), 3), (21, 0, struct.pack('<7I', 0xffffffff, 0, *([0xffffffff] * 5)), 3)]
+
+
+def full_disc(fidelity=False, night_sky=False):
     def wrapper(payload):
         b = bytearray(80)
         b[:4] = b'ABKC'
@@ -162,13 +177,28 @@ def full_disc():
     instance = bytearray(placement()); struct.pack_into('<I', instance, 120, 1)
     sky = b''.join([resource(0, 0, struct.pack('<3h3H2HI', 0, -1, -1, 0, 0, 0, 1, 1, 0xffffffff)),
                     resource(2, 1, model()), resource(3, 1, bytes(instance)), resource(9, 0, texture())])
+    sky_files = {'data/worlds/erskyd.phm': bytes(ids), 'data/worlds/erskyd.psm': bytes(strings),
+                 'data/worlds/erskyd.ssb': compressed(sky)}
+    if night_sky:
+        night = b''.join([resource(0, 0, struct.pack('<3h3H2HI', 0, -1, -1, 0, 0, 0, 1, 1, 0xffffffff), 2),
+                          resource(2, 1, model(), 2), resource(3, 1, bytes(instance), 2),
+                          resource(9, 0, texture(night=True), 2)])
+        sky_files.update({'data/worlds/erskyn.phm': bytes(ids), 'data/worlds/erskyn.psm': bytes(strings),
+                          'data/worlds/erskyn.ssb': compressed(night)})
+    sounds = {'data/audio/emtr_test.abk': wrapper(literal_bank()),
+              'data/audio/emtr_deferred.abk': wrapper(bytes(unsupported)),
+              'data/audio/emtr_speech.abk': wrapper(bytes(speech))}
+    if fidelity:
+        from riding_audio_import_test import encoded_bank
+        for name in ['brd_pack', 'brd_pow', 'brd_ice', 'ski&brd_common', 'boost']:
+            sounds[f'data/audio/{name}.abk'] = wrapper(encoded_bank())
     return bytes(audio_disc({
-        'DATA/WORLDS/BAM.BIG': archive(members()),
-        'DATA/WORLDS/SKYBOX.BIG': archive({'data/worlds/erskyd.phm': bytes(ids), 'data/worlds/erskyd.psm': bytes(strings),
-                                         'data/worlds/erskyd.ssb': compressed(sky)}),
-        'DATA/AUDIO/AUDIO.BIG': archive({'data/audio/emtr_test.abk': wrapper(literal_bank()),
-                                        'data/audio/emtr_deferred.abk': wrapper(bytes(unsupported)),
-                                        'data/audio/emtr_speech.abk': wrapper(bytes(speech))}),
+        'DATA/WORLDS/BAM.BIG': archive(members(
+            (lambda rows: material_animation(rows) + [(6, 3, light_fixture(), 3), (7, 3, light_fixture(halo=True, tour=True), 3),
+                                                    (13, 3, sound_attachments(tour=True), 3)]) if fidelity else None,
+            ('mdl_er4_trg_fw_finish_final_9999', 'mdl_er1_ordinary') if fidelity else None)),
+        'DATA/WORLDS/SKYBOX.BIG': archive(sky_files),
+        'DATA/AUDIO/AUDIO.BIG': archive(sounds),
     }))
 
 
@@ -226,18 +256,74 @@ def main():
                     rid = 36 << 16
                 result.append((kind, rid, bytes(payload), mask))
             return result
-        helpers = members(helper_page)
-        helpers['data/worlds/bam.psm'] = helpers['data/worlds/bam.psm'].replace(b'mdl_er1_prop_1000', b'mdl_er1_fence_100')
+        helpers = members(helper_page, ('mdl_er1_rock', 'mdl_er1_fence_100'))
         helper_iso = root / 'helpers.iso'
         helper_iso.write_bytes(disc(helpers))
         run(executable, 'extract', helper_iso, 'SSXOT_ER1_DAY', root / 'helpers')
         hidden = json.loads((root / 'helpers/SSXOT_ER1_DAY/Instances.json').read_text())['Instances']
         assert all(not i['Visable'] and i['CollsionModelPaths'] for i in hidden)
         assert all(i['PlayerCollision'] == ('fence' in i['InstanceName']) for i in hidden)
+        assert any(i['PlayerCollision'] for i in hidden)
+        for label, visible, solid in HELPER_CASES:
+            helper_iso = root / (label + '.iso')
+            helper_iso.write_bytes(disc(members(instance_names=('mdl_er1_' + label, 'mdl_er1_ordinary'))))
+            destination = root / label
+            run(executable, 'extract', helper_iso, 'SSXOT_ER1_DAY', destination)
+            helper, ordinary = json.loads((destination / 'SSXOT_ER1_DAY/Instances.json').read_text())['Instances']
+            blocking = helper['PlayerCollision'] and helper.get('PlayerBounce', True) and helper.get('U0', 1) != 0
+            assert (helper['Visable'], blocking) == (visible, solid), label
+            assert helper['CollsionModelPaths'] == ordinary['CollsionModelPaths'] == ['0_0.obj']
+            assert ordinary['Visable'] and ordinary['PlayerCollision']
+        for label, disabled in [('mdl_er4_impassableleft_17', True), ('MDL_WR1_IMPASSABLERIGHT_1009', True),
+                                ('mdl_er4_trg_fw_archlights_4_1001', True), ('mdl_er4_trg_fw_finish_1000', True),
+                                ('mdl_er4_trg_fw_finish_final_9999', True), ('mdl_er4_trg_fw_start_1000', True),
+                                ('mdl_er4_trg_fw_finish_sign', False), ('mdl_er4_trg_fw_archlights_4_', False),
+                                ('mdl_er4_impassableleft_sign', False)]:
+            boundary_iso = root / 'boundary.iso'
+            boundary_iso.write_bytes(disc(members(instance_names=(label, 'mdl_er1_ordinary'))))
+            target = root / ('boundary-' + label)
+            run(executable, 'extract', boundary_iso, 'SSXOT_ER1_DAY', target)
+            helper, ordinary = json.loads((target / 'SSXOT_ER1_DAY/Instances.json').read_text())['Instances']
+            assert helper['Visable'] is not disabled and helper['PlayerCollision']
+            if disabled:
+                assert helper['U0'] == 0 and helper['PlayerBounce'] is False and helper['SurfaceType'] == -1
+            assert helper['CollsionModelPaths'] == ['0_0.obj'] and helper['EffectSlotIndex'] == -1
+            assert ordinary['Visable'] and ordinary['PlayerCollision']
+        light_files = members(lambda rows: rows + [(6, 3, light_fixture(), 3), (7, 3, light_fixture(halo=True, tour=True), 3)])
+        light_iso = root / 'lights.iso'; light_iso.write_bytes(disc(light_files))
+        run(executable, 'extract', light_iso, 'SSXOT_ER1_DAY', root / 'lights')
+        check_lights(root / 'lights/SSXOT_ER1_DAY', count=3)
+        for conditional in [False, True]:
+            label = 'conditional-material' if conditional else 'moving-material'
+            moving = root / (label + '.iso')
+            moving.write_bytes(disc(members(lambda rows: material_animation(rows, conditional))))
+            run(executable, 'extract', moving, 'SSXOT_ER1_DAY', root / label)
+            check_materials(root / label / 'SSXOT_ER1_DAY', active=not conditional)
+        sounds_iso = root / 'sounds.iso'
+        sounds_iso.write_bytes(disc(members(lambda rows: rows + [(13, 3, sound_attachments(tour=True), 3)])))
+        run(executable, 'extract', sounds_iso, 'SSXOT_ER1_DAY', root / 'sounds')
+        check_sounds(root / 'sounds/SSXOT_ER1_DAY')
+        for label, edit in [
+            ('short-effect-slot', lambda rows: [(k, rid, data[:24] if k == 21 else data, mask)
+                                                for k, rid, data, mask in material_animation(rows)]),
+            ('sound-offset', lambda rows: rows + [(13, 3, sound_attachments(tour=True)[:112], 3)]),
+            ('program-extent', lambda rows: [(k, rid, data[:4] + le(17) + data[8:] if k == 22 else data, mask)
+                                              for k, rid, data, mask in material_animation(rows)]),
+        ]:
+            bad = root / (label + '.iso'); bad.write_bytes(disc(members(edit)))
+            destination = root / label
+            run(executable, 'extract', bad, 'SSXOT_ER1_DAY', destination, succeeds=False)
+            assert not list(destination.iterdir()), 'partial map survived failed fidelity conversion'
         audio_source = root / 'sky-and-audio.iso'; audio_source.write_bytes(full_disc())
         run(executable, 'extract', audio_source, 'SSXOT_ER1_NIGHT', root / 'full')
         full = root / 'full/SSXOT_ER1_NIGHT'
         assert (full / 'Skybox/Models.json').exists() and (full / 'Skybox/Textures/0000_o.png').exists()
+        assert len(json.loads((full / 'Skybox/Models.json').read_text())['Models']) == 1, 'Day fallback retains day-mask sky records'
+        night_source = root / 'night-sky.iso'; night_source.write_bytes(full_disc(night_sky=True))
+        run(executable, 'extract', night_source, 'SSXOT_ER1_NIGHT', root / 'night-sky')
+        night = root / 'night-sky/SSXOT_ER1_NIGHT/Skybox'
+        assert len(json.loads((night / 'Models.json').read_text())['Models']) == 1, 'Night-only sky records must not use the day filter'
+        assert (night / 'Textures/0000_o.png').read_bytes() != (full / 'Skybox/Textures/0000_o.png').read_bytes()
         assert (full / 'Audio/SFX/EMTR_TEST/000.wav').exists()
         assert json.loads((full / 'Audio/SoundIndex.json').read_text())['Level'] == 'SSXOT_ER1_NIGHT'
         deferred = json.loads((full / 'Audio/SFX/EMTR_DEFERRED/bank.json').read_text())
@@ -267,6 +353,6 @@ def main():
 
 if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == '--fixture':
-        Path(sys.argv[2]).write_bytes(full_disc())
+        Path(sys.argv[2]).write_bytes(full_disc(fidelity=True, night_sky=True))
     else:
         main()

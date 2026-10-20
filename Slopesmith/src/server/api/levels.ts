@@ -321,11 +321,21 @@ export const levelRoutes: Record<string, ApiHandler> = {
   },
   '/api/board-audio': async (req, res) => {
     try {
-      await responseCache.json(req, res, 'board-audio', async () => ({
-        board: (await boardSoundSource('zboard'))?.level ?? null,
-        boost: (await boardSoundSource('zbxsfx'))?.level ?? null,
-        surfaceGroups: (await readBoardSoundIndex())?.SurfaceGroups ?? null,
-      }));
+      const level = new URL(req.url ?? '', 'http://localhost').searchParams.get('level') || undefined;
+      await responseCache.json(req, res, `board-audio:${level ?? ''}`, async () => {
+        const [board, boost, index] = await Promise.all([
+          boardSoundSource('zboard', level),
+          boardSoundSource('zbxsfx', level),
+          readBoardSoundIndex(level),
+        ]);
+        return {
+          board: board?.level ?? null,
+          boost: boost?.level ?? null,
+          boardBank: board?.bank ?? null,
+          boostBank: boost?.bank ?? null,
+          surfaceGroups: index?.SurfaceGroups ?? null,
+        };
+      });
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('content-type', 'application/json');
@@ -339,13 +349,14 @@ export const levelRoutes: Record<string, ApiHandler> = {
       const bank = q.get('bank')?.trim() || 'zboard';
       const slot = Number(q.get('slot') ?? '-1');
       const loop = q.get('loop') === '1';
+      const level = q.get('level') || undefined;
       await responseCache.bytes(
         req,
         res,
-        `board-sound:${bank}:${slot}:${loop}`,
+        `board-sound:${level ?? ''}:${bank}:${slot}:${loop}`,
         'audio/wav',
         UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
-        () => readBoardSoundBytes(bank, slot, loop),
+        () => readBoardSoundBytes(bank, slot, loop, level),
       );
     } catch (e) {
       res.statusCode = 404;

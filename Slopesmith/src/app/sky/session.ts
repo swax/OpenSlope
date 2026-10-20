@@ -3,6 +3,7 @@ import type { SkyboxDoc } from '../../core/doc/types';
 import { SKY_TIERS, panoramaSize, ringTopEquirectV, type SkyRing } from '../../core/sky/ring';
 import type { Viewport } from '../viewport/viewport';
 import type { SkyView } from '../viewport/scene/sky';
+import type { NativeSkyPayload } from '../../shared/map-sky';
 import type { Store } from '../state/store';
 import { clearGui, note, skyPreview, tip } from '../ui/components/gui';
 import { segmented, toggleBar } from '../ui/components/controls';
@@ -96,6 +97,8 @@ export function createSkybox(deps: SkyDeps) {
   } = deps;
 
   let shippedSkies: string[] = []; // levels that ship a sky (ELYSIUM / GARI / MERQUER / MESA / SNOW)
+  let nativeSkies = new Set<string>();
+  let skyLoadGeneration = 0;
   let customSkies: string[] = []; // the panoramas the user has loaded, by name
   let rings: Record<string, SkyRing> = {};
   let cataloged = false; // the catalogue has been fetched, so a missing sky really is missing
@@ -114,11 +117,13 @@ export function createSkybox(deps: SkyDeps) {
     try {
       const body = await fetchJson<{
         levels?: string[];
+        nativeLevels?: string[];
         skies?: string[];
         rings?: Record<string, SkyRing>;
         versions?: Record<string, { panorama?: string; ground?: string }>;
       }>('/api/skybox');
-      shippedSkies = body.levels ?? [];
+      shippedSkies = [...new Set([...(body.levels ?? []), ...(body.nativeLevels ?? [])])];
+      nativeSkies = new Set((body.nativeLevels ?? []).map(level => level.toLowerCase()));
       customSkies = body.skies ?? [];
       rings = body.rings ?? {};
       registerReferenceSkyRevisions(body.versions ?? {});
@@ -158,9 +163,9 @@ export function createSkybox(deps: SkyDeps) {
    *  it ships one, else the first level in the catalogue that does. Undefined only before the catalogue has
    *  loaded, and the export then picks the first shipped ring itself. */
   function customSkyRing(current: SkyboxDoc | undefined): string | undefined {
-    if (current?.ring && shippedSkies.includes(current.ring)) return current.ring;
-    if (refLevel && refHasSky) return refLevel;
-    return shippedSkies[0];
+    if (current?.ring && rings[current.ring]) return current.ring;
+    if (refLevel && rings[refLevel]) return refLevel;
+    return shippedSkies.find(level => !!rings[level]);
   }
 
   function measuredRing(sky: SkyboxDoc): SkyRing | undefined {
@@ -216,6 +221,21 @@ export function createSkybox(deps: SkyDeps) {
 
     if (reload || loadedSkyKey !== desired.key) {
       loadedSkyKey = desired.key;
+      const generation = ++skyLoadGeneration;
+      if (desired.sky.source.kind === 'level' && nativeSkies.has(desired.sky.source.level.toLowerCase())) {
+        viewport.setSky(null);
+        void fetchJson<NativeSkyPayload>(`/api/skybox/native?level=${encodeURIComponent(desired.sky.source.level)}`)
+          .then(native => {
+            if (generation !== skyLoadGeneration) return;
+            viewport.setSky({ native, topColor: desired.sky.topColor });
+            viewport.showSky(desiredSky()?.key === desired.key);
+          })
+          .catch(error => {
+            if (generation === skyLoadGeneration) log(`Sky load failed: ${String(error)}`);
+          });
+        onVisibleWorldChange();
+        return;
+      }
       const view: SkyView = {
         ...skyUrls(desired.sky),
         topColor: desired.sky.topColor,
@@ -357,6 +377,13 @@ export function createSkybox(deps: SkyDeps) {
     );
 
     if (!sky) return;
+    if (sky.source.kind === 'level' && nativeSkies.has(sky.source.level.toLowerCase())) {
+      note(
+        skyFolder,
+        'Using this course’s original sky mesh and textures. Panorama image editing applies to panorama skies.',
+      );
+      return;
+    }
 
     tip(
       skyFolder
@@ -539,7 +566,7 @@ export function createSkybox(deps: SkyDeps) {
   function setupRefSkyUi(level: string | null) {
     clearGui(refSkyFolder);
     refLevel = level;
-    refHasSky = !!level && shippedSkies.includes(level);
+    refHasSky = !!level && shippedSkies.some(name => name.toLowerCase() === level.toLowerCase());
     if (!level) {
       buildPreviewPanel();
       syncSkyVisibility();
@@ -547,6 +574,14 @@ export function createSkybox(deps: SkyDeps) {
     }
     if (!refHasSky) {
       note(refSkyFolder, 'This level ships no skybox.');
+      buildPreviewPanel();
+      syncSkyVisibility();
+      return;
+    }
+    if (nativeSkies.has(level.toLowerCase())) {
+      note(refSkyFolder, 'Original course sky mesh and textures.');
+      refSkyFolder.add({ use: () => useReferenceSky(level) }, 'use').name('⟶ use for my map');
+      refSkyFolder.open();
       buildPreviewPanel();
       syncSkyVisibility();
       return;

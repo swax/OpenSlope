@@ -31,11 +31,15 @@ The shared map output includes:
   authored names, object rest transforms, separate uniform instance scale,
   render-state alpha modes, and per-placement `VertexLighting`/mesh stream bases.
 - `Collision/` and instance bindings shared by every placement of a model in
-  its section. Helper volumes retain proxies without becoming solid walls.
+  its section. Helper names supplement the debug-page classification, including
+  reset planes, emitters and load markers. Scripted volumes retain proxies
+  without becoming solid walls; permanent fence proxies remain solid.
 - `AIP.json` with the complete selected AI network and starts matched by
   position; `Splines.json` with approximate name-selected grind rails enabled.
 - `Lights.json` with local lights and separate halos, `ParticleModels.json` and
   `ParticleInstances.json` for fog banks, and the selected `Skybox/` dome.
+  Spotlights publish the shared cone field the browser consumes. Halos retain
+  native sparkle brightness and have no diffuse-light influence.
 - Seven configured shared environmental/equipment sound banks under `Audio/SFX/`,
   decoded WAVs and loop slices, bank manifests, `SNOW.INF`, `BANKS.INF`, and a
   sound index. Speech slots and per-location speech banks are omitted.
@@ -49,12 +53,22 @@ The shared map output includes:
 
 `Import.json` reports `Complete: false`. SSX 3 has compiled world scripts rather
 than Tricky's effect graphs; `Effects.json` identifies `ssx-3` and contains empty
-graph tables. Scripts and sound-trigger records are preserved without executing
-them as Tricky logic. Sound assets are exported, but event/spatial bindings and
-the board surface selector remain unresolved. Music, animated models, sphere-tree
-collision, secondary texture passes, and exact SSX 3 riding behavior remain
-deferred. Multiple triangle-proxy variants select the first and emit a warning.
-[Trailmap: 510-logic, 510-adl, 513-sphere-trees, 511-secondary]
+graph tables. Scripts are preserved without executing them as Tricky logic.
+Ordered material frame lists and all referenced pages are exported; their clocks
+and source-script bindings remain deferred. `SoundBindings.json` preserves the
+structured sound attachments, collision-event lists and external emitter tails
+with source identities and optional portable instance indices. Sound assets are
+exported, but event-to-bank routing, activation and the board surface selector
+remain unresolved. Music, animated models, sphere-tree collision, material
+animation playback, secondary texture passes and exact SSX 3 riding behavior
+remain deferred. Multiple triangle-proxy variants select the first and emit a warning.
+[Trailmap: 510-logic, 510-adl, 513-sphere-trees, 511-secondary,
+516-material-frames, 517-attachments]
+
+Riding sounds now have a practical common-format adapter: decoded snow/hard
+loops, landing/approximate jump transients, wind and boost feed the existing
+players through derived banks. Exact original routing remains deferred; see
+[common riding audio](common-riding-audio.md) for the approximation and backfill.
 
 Slopesmith consumes the exported per-placement vertex colours. Native builds
 currently use neutral prop lighting and their existing light/glint renderer;
@@ -74,8 +88,15 @@ actual `/isos` worker and checks its IndexedDB files and completion marker.
 Streamed diffuse pages are converted from their GS upload order before palette
 lookup. Model positions precede normals in these streams, unlike Tricky. The
 material render-state field controls cutout, blend and glow modes. Browser cache
-revision 2 requires a one-time reload of earlier SSX 3 and On Tour conversions;
-SSX and Tricky caches retain their existing revision.
+revision 6 requires a one-time reload of earlier SSX 3 and On Tour conversions
+for the helper, collision, lighting, material and sound-record fixes. SSX and Tricky
+caches retain their existing revision. The browser also reads the cone field from
+older streamed exports. Existing native map folders can use `polish-streamed-map`
+for helper/lighting approximations and inferred reset-box retirement with backups; all conversion
+changes require a fresh import into a new destination.
+
+See [the fidelity audit](streamed-world-fidelity.md) for the remaining geometry,
+audio, animation and effect gaps and their implementation priorities.
 
 ```text
 python Native/tests/ssx3_import_test.py <openslope_import executable>

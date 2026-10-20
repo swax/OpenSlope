@@ -95,10 +95,13 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     const level = q.get('level') || courses[0] || '';
     const data = (value: unknown) => `data:application/json,${encodeURIComponent(JSON.stringify(value))}`;
     if (url.pathname === '/api/board-audio') {
-      const boardLevel = courses.find(course => soundIndexes.get(course.toLowerCase())?.Banks['1']);
-      const boostLevel = courses.find(course => soundIndexes.get(course.toLowerCase())?.Banks['0']);
+      const selected = q.has('level') ? [level] : courses;
+      const boardLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['1']);
+      const boostLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['0']);
       return data({ board: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
         boost: boostLevel ? soundIndexes.get(boostLevel.toLowerCase())!.Banks['0'] : null,
+        boardBank: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
+        boostBank: boostLevel ? soundIndexes.get(boostLevel.toLowerCase())!.Banks['0'] : null,
         surfaceGroups: boardLevel ? boardGroups.get(boardLevel.toLowerCase()) ?? null : null });
     }
     if (url.pathname === '/api/announcer-audio') return data({});
@@ -134,9 +137,16 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     // Missing optional disc channels remain local too; a guest never falls back to server retail bytes.
     if (url.pathname === '/api/board-sound' || url.pathname === '/api/environment-sound') {
       const bank = q.get('bank')?.toLowerCase(), slot = (q.get('slot') ?? '0').padStart(3, '0');
-      for (const course of courses) {
+      const selected = url.pathname === '/api/board-sound' && q.has('level') ? [level] : courses;
+      for (const course of selected) {
         const index = soundIndexes.get(course.toLowerCase());
         const actualBank = bank === BOARD_BANK ? index?.Banks['1'] ?? bank : bank === BOOST_BANK ? index?.Banks['0'] ?? bank : bank;
+        const original = index?.NamedBanks?.BOARD;
+        if (slot === '052' && q.get('loop') === '1' && actualBank?.toLowerCase() === 'openslope_board' &&
+          original && /^[a-z0-9_-]+$/i.test(original)) {
+          const sustain = `${course}/Audio/SFX/${original}/035.loop.wav`;
+          if (blob(sustain)) return fileUrl(sustain);
+        }
         const path = `${course}/Audio/SFX/${actualBank}/${slot}.wav`;
         const loop = `${course}/Audio/SFX/${actualBank}/${slot}.loop.wav`;
         if (q.get('loop') === '1' && blob(loop)) return fileUrl(loop);

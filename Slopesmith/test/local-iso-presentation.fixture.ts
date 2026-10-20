@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { installLocalSky } from '../src/app/public/sky';
+import { createSky } from '../src/app/viewport/scene/sky';
+import type { Stage } from '../src/app/viewport/stage';
 import {
   cacheTransaction,
   cachedIsoCourses,
@@ -192,8 +194,15 @@ async function run() {
   const previewBackground = new THREE.Color('#123456');
   scene.background = previewBackground;
   scene.fog = new THREE.Fog('#ffff00', 0, 1); // The sky must not inherit the course's distance fog.
-  const sky = await installLocalSky({ scene } as Viewport, source, 'FIXTURE', textureUrl);
+  const backdrop = createSky({ scene } as Stage);
+  const viewport = { scene, setSky: backdrop.setSky, showSky: backdrop.setVisible } as Viewport;
+  const sky = await installLocalSky(viewport, source, 'FIXTURE', textureUrl);
   check(sky, 'The local sky fixture must load');
+  const deadline = performance.now() + 5000;
+  while (!backdrop.loaded) {
+    check(performance.now() < deadline, 'The shared sky renderer must finish loading');
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
   const renderer = new THREE.WebGLRenderer();
   renderer.setSize(256, 128);
   renderer.toneMapping = THREE.NoToneMapping;
@@ -242,8 +251,9 @@ async function run() {
   scene.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
     const material = object.material as THREE.MeshBasicMaterial;
-    material.map!.wrapS = material.map!.wrapT = THREE.RepeatWrapping;
-    material.map!.needsUpdate = true;
+    if (!material.map) return;
+    material.map.wrapS = material.map.wrapT = THREE.RepeatWrapping;
+    material.map.needsUpdate = true;
   });
   renderer.render(scene, camera);
   renderer.readRenderTargetPixels(target, 0, 0, 256, 128, pixels);

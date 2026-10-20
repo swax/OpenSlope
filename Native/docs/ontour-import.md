@@ -51,15 +51,27 @@ The common map output includes:
 [Trailmap: 520-patch, 520-instance, 520-paths, 520-other-records, 260-bnk]
 
 `Import.json` reports `Complete: false`. Compiled scripts, effect instances and
-script bindings are preserved without executing them. `Effects.json` identifies
-`ssx-on-tour` and contains empty graph tables. Path events remain `SourceEvents`
-until their meanings are established. Mission behavior, animated models/materials,
+script bindings are preserved. Complete unconditional constant UV setups now
+translate through each visible placement's persistent slot to shared material
+effects in `Effects.json`; branches, unknown calls and unsupported targets/modes
+defer the entire program. The general compiled-script VM remains deferred.
+Ordered flipbook frame lists and images are exported without inventing clocks or
+cycling state-selected signs. `SoundBindings.json` preserves source collision
+events and external emitter records; their event-to-bank routes and activation
+remain deferred. [Trailmap: 516-literal-setup, 516-setup-bindings, 517-attachments]
+Path events remain `SourceEvents` until their meanings are established.
+Mission behavior, animated models, other material animation modes,
 secondary terrain textures, exact surface labels, sphere-tree collision, complex
 collision admission, sound-trigger routing, some sound codecs, board-surface
 selection and music playback remain deferred. Source terrain currently uses
 neutral snow contact behavior. Native prop vertex-colour rendering and local
 spot-cone playback have the same limitations as the SSX3 importer.
 [Trailmap: 520-scripts, 520-paths, 520-other-records, 520-instance]
+
+Decoded board/common/boost audio now also feeds a practical common riding-bank
+adapter. Jump/landing choices and hard-surface fallbacks are explicitly approximate;
+the ordinary players perform their existing riding controls. See
+[common riding audio](common-riding-audio.md) for details and existing-map backfill.
 
 Implementation inputs are the format specifications, existing independent Native
 helpers and direct measurements of the user-supplied disc. No external converter
@@ -68,8 +80,35 @@ only independently authored data; retail content stays outside source control.
 
 The shared streamed decoder converts GS pixel order and reads position and normal
 streams in their authored order. Material state controls foliage cutouts and
-blending. Red helper-page models remain hidden while collision bindings are
-retained. Browser cache revision 2 requires reloading older converted maps once.
+blending. Red helper-page models and named helper volumes remain hidden while
+collision bindings are retained. Reset, trigger and load markers do not become
+solid walls; permanent fence proxies retain collision. Halo sprites retain native
+brightness without adding diffuse point lighting. Browser cache revision 7
+requires reloading older SSX 3 and On Tour conversions once. On Tour night courses
+use revision 8 to refresh the previously empty sky export. Existing native map
+folders can use `polish-streamed-map` for helper/lighting approximations and
+inferred reset-box retirement with backups; all conversion changes require a fresh import.
+
+Day and night sky archives use their own resource admission masks. A selected night
+archive admits night records; a missing night archive's day fallback admits day
+records. The editor and browser Play share the original sky-mesh renderer, without
+requiring a measured panorama ring. Existing nonempty sky folders work on reload;
+older empty night skies need one fresh ISO import. Adopted mesh skies copy their
+original Models/Materials/Meshes/Textures into the common map export. [Trailmap: 528]
+
+The On Tour `mdl_<track>_impassableleft/right` boundary helpers and complete
+`trg_fw_archlights/start/finish/finish_final` trigger families stay hidden and
+nonblocking. Existing shapes act as pass-through effect sensors; unresolved
+source scripts remain deferred. All these hosts are selectable as editor-only
+wireframes in Reference Effects and icons in Sources, including hosts with no
+translated effect graph. Common-map
+readers also apply this narrow policy to existing cached references on reload;
+this fix needs no ISO reimport. Ordinary fences and authored collision profiles
+remain unchanged. The v4 playtest repair can persist it while retaining earlier
+backups. See [the fidelity audit](streamed-world-fidelity.md).
+
+See [the fidelity audit](streamed-world-fidelity.md) for the remaining geometry,
+audio, animation and effect gaps and their implementation priorities.
 
 ```text
 python Native/tests/ontour_import_test.py <openslope_import executable>

@@ -3,6 +3,7 @@ import type { LevelProps, PropInstance } from '../reference/props';
 import { collisionProfileFromSourceInstance, defaultPlacedPropCollision, placedPropCollisionProfile } from './contact';
 import { ownGeometry } from './kind';
 import { PROP_FULL_BRIGHT_RECORD } from '../lighting/prop-lights';
+import { isOnTourCourseHelper } from './course-helpers';
 
 /**
  * Prop defaults (docs/069): what a MODEL hands every new placement of it — how it collides, what riding on it
@@ -360,6 +361,14 @@ export function resolvePropDefaults(level: string, model: number, props: LevelPr
       ? { behaviour: stampBehaviour(level, saved), source: 'saved', savable: true }
       : { behaviour: baselineBehaviour(level), source: 'baseline', savable: true };
   }
+  if (isOnTourCourseHelper(level, props?.models.find(entry => entry.id === model)?.name))
+    return {
+      behaviour: {
+        nativeCollision: { mode: 0, playerCollision: false, responseMass: 0, playerBounce: false, bounceAmount: 0 },
+      },
+      source: 'baseline',
+      savable: false,
+    };
   const derived = props ? derivedFor(level, props).get(model) : undefined;
   if (!derived) return { behaviour: baselineBehaviour(level), source: 'baseline', savable: false };
   return {

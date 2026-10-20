@@ -4,6 +4,8 @@ import type { Rgba } from '../../../core/paint/ground-textures';
 import { AUTHORING_SKY_GEOMETRY, skyBackdrop, type SkyMeshData, type SkyRing } from '../../../core/sky/ring';
 import { deriveTopColor } from '../../../core/sky/slice';
 import type { Stage } from '../stage';
+import type { NativeSkyPayload } from '../../../shared/map-sky';
+import { createNativeSkyBackdrop } from './native-sky';
 
 /**
  * The backdrop: SSX's sky, drawn the way the game draws it — an open-topped cylinder centred on the CAMERA,
@@ -32,16 +34,18 @@ const geom = (m: SkyMeshData) => {
   return g;
 };
 
-export interface SkyView {
-  /** The horizon panorama (the stitched wall). */
-  panorama: string;
-  /** The ground disc below the rim. */
-  ground: string;
-  /** Fill for the open top, hex; absent => derived from the panorama's top row. */
-  topColor?: string;
-  /** Measured profile of the extracted ring this panorama was composed against. */
-  ring?: SkyRing;
-}
+export type SkyView =
+  | {
+      /** The horizon panorama (the stitched wall). */
+      panorama: string;
+      /** The ground disc below the rim. */
+      ground: string;
+      /** Fill for the open top, hex; absent => derived from the panorama's top row. */
+      topColor?: string;
+      /** Measured profile of the extracted ring this panorama was composed against. */
+      ring?: SkyRing;
+    }
+  | { native: NativeSkyPayload; topColor?: string };
 
 /** Convert between authored sRGB bytes/hex and Three's linear working colour exactly once. */
 export function skyColorFromHex(hex: string): THREE.Color {
@@ -87,9 +91,22 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
   // caller hides it (for example, when leaving Info). The load callback must honour that later request rather
   // than making the sky pop back on when the image finally arrives.
   let visible = false;
+  let native: Awaited<ReturnType<typeof createNativeSkyBackdrop>> | null = null;
+  let nativeColor: THREE.Color | null = null;
+  let savedBackground = stage.scene.background;
+  let appliedBackground: THREE.Color | null = null;
 
   const syncVisibility = () => {
-    group.visible = visible && !!wallMat.map;
+    group.visible = visible && !native && !!wallMat.map;
+    if (native) native.group.visible = visible;
+    if (native && visible && nativeColor) {
+      if (!appliedBackground) savedBackground = stage.scene.background;
+      appliedBackground = nativeColor;
+      stage.scene.background = nativeColor;
+    } else if (appliedBackground) {
+      if (stage.scene.background === appliedBackground) stage.scene.background = savedBackground;
+      appliedBackground = null;
+    }
   };
 
   const dispose = (m: THREE.MeshBasicMaterial) => {
@@ -116,6 +133,7 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
    * Null until a panorama is loaded; the caller then picks its own neutral.
    */
   function horizonColor(): THREE.Color | null {
+    if (native?.group.visible) return nativeColor?.clone() ?? null;
     // A decoded but hidden panorama is not the active backdrop. Without this guard, riding a world with no
     // sky inherits whichever world's panorama happened to be previewed most recently.
     if (!group.visible) return null;
@@ -140,11 +158,38 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
    */
   function setSky(view: SkyView | null, onTopDerived?: (hex: string) => void) {
     const mine = ++token;
+    native?.dispose();
+    native = null;
+    nativeColor = null;
+    syncVisibility();
     if (!view) {
       group.visible = false;
       dispose(wallMat);
       dispose(groundMat);
       onHorizonColorChange();
+      return;
+    }
+
+    if ('native' in view) {
+      dispose(wallMat);
+      dispose(groundMat);
+      group.visible = false;
+      void createNativeSkyBackdrop(view.native, loader)
+        .then(backdrop => {
+          if (mine !== token) {
+            backdrop.dispose();
+            return;
+          }
+          native = backdrop;
+          nativeColor = view.topColor ? skyColorFromHex(view.topColor) : backdrop.topColor;
+          stage.scene.add(backdrop.group);
+          syncVisibility();
+          if (!view.topColor) onTopDerived?.(skyColorToHex(backdrop.topColor));
+          onHorizonColorChange();
+        })
+        .catch(() => {
+          if (mine === token) onHorizonColorChange();
+        });
       return;
     }
 
@@ -196,21 +241,27 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
 
   /** Re-colour the open-top fill without reloading the sky (the panel's colour picker drags through here). */
   function setTopColor(hex: string | null) {
+    if (native) {
+      nativeColor = hex ? skyColorFromHex(hex) : native.topColor;
+      syncVisibility();
+      return;
+    }
     if (hex) topMat.color = skyColorFromHex(hex);
     else if (wallMat.map?.image) topMat.color = topColorFrom(wallMat.map.image as HTMLImageElement);
   }
 
   function setVisible(on: boolean) {
-    const wasVisible = group.visible;
+    const wasVisible = group.visible || !!native?.group.visible;
     visible = on;
     syncVisibility();
-    if (group.visible !== wasVisible) onHorizonColorChange();
+    if ((group.visible || !!native?.group.visible) !== wasVisible) onHorizonColorChange();
   }
 
   /** Centre the backdrop on the EYE — this is what makes it infinitely far away. Called every frame.
    *  World, not local: in a VR ride the camera hangs off the headset rig and its own position is head-relative. */
   function follow(eye: THREE.Vector3) {
     group.position.copy(eye);
+    native?.group.position.copy(eye);
   }
 
   return {
@@ -220,7 +271,7 @@ export function createSky(stage: Stage, onHorizonColorChange: () => void = () =>
     follow,
     horizonColor,
     get loaded() {
-      return !!wallMat.map;
+      return !!native || !!wallMat.map;
     },
   };
 }

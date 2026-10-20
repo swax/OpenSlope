@@ -45,4 +45,10 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
 std::vector<std::uint8_t> decode_refpack(std::span<const std::uint8_t> input);
 bool valid_map_name(const std::string& name);
 std::vector<std::string> available_maps(const std::filesystem::path& root);
+// Add the common riding banks to an existing streamed-title map's decoded Audio.
+// Original banks and a backup of SoundIndex.json are preserved.
+std::string adapt_riding_audio(const std::filesystem::path& map, const ImportCancel& cancelled = {});
+std::string adapt_course_ambience(const std::filesystem::path& map, const ImportCancel& cancelled = {});
+// Approximate helper/lighting repair; retires inferred reset boxes and keeps PlaytestBackup-v2.
+std::string polish_streamed_map(const std::filesystem::path& map, const ImportCancel& cancelled = {});
 } // namespace openslope

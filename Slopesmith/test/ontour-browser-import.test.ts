@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
 import { chromiumExecutable } from './browser-test-support';
+import type { MapDataSource } from '../src/shared/map-data';
+import { readReferenceEffects } from '../src/shared/map-effects';
+import { decodeReferenceEffects, referenceUvScroll } from '../src/core/reference/effects';
+import { editorUvScrollDelta } from '../src/core/effects/world-effects';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const work = mkdtempSync(join(tmpdir(), 'slopesmith-ontour-'));
@@ -31,6 +35,15 @@ try {
     logLevel: 'silent',
   });
   const cache = join(work, 'cache.js');
+  const adapter = join(work, 'local-data.js');
+  await build({
+    entryPoints: [join(root, 'Slopesmith/src/app/public/local-map-data.ts')],
+    outfile: adapter,
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    logLevel: 'silent',
+  });
   await build({
     entryPoints: [join(root, 'Slopesmith/src/app/public/iso-cache.ts')],
     outfile: cache,
@@ -41,9 +54,9 @@ try {
   });
   server.on('request', (request, response) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
-    if (path === '/worker.js' || path === '/cache.js') {
+    if (path === '/worker.js' || path === '/cache.js' || path === '/local-data.js') {
       response.setHeader('content-type', 'text/javascript');
-      response.end(readFileSync(path === '/worker.js' ? worker : cache));
+      response.end(readFileSync(path === '/worker.js' ? worker : path === '/cache.js' ? cache : adapter));
     } else if (/^\/iso-importer\/openslope_browser_import\.(js|wasm)$/.test(path)) {
       response.setHeader('content-type', path.endsWith('.js') ? 'text/javascript' : 'application/wasm');
       response.end(readFileSync(join(root, 'Slopesmith/public', path)));
@@ -95,9 +108,15 @@ try {
     const patches = await read('Patches.json');
     const instances = await read('Instances.json');
     const effects = await read('Effects.json');
+    const materials = await read('Materials.json');
+    const soundBindings = await read('SoundBindings.json');
+    const lights = (await read('Lights.json')).Lights;
+    const spot = lights.find((light: { UnknownFloat2?: number }) => light.UnknownFloat2 === 0.75);
+    const halo = lights.find((light: { LightName: string }) => light.LightName.startsWith('Halo '));
     const deferred = await read('Audio/SFX/EMTR_DEFERRED/bank.json');
     const sky = await read('Skybox/Models.json');
     const soundIndex = await read('Audio/SoundIndex.json');
+    const riding = await read('Audio/RidingImport.json');
     const courseRequest = db.transaction('courses').objectStore('courses').get('SSXOT_ER1_NIGHT');
     const course = await new Promise<{ files: number }>(resolve => {
       courseRequest.onsuccess = () => resolve(courseRequest.result);
@@ -105,12 +124,50 @@ try {
     db.close();
     const moduleUrl = '/cache.js';
     const { needsCollisionSoundUpdate, cachedIsoCourses } = await import(/* @vite-ignore */ moduleUrl);
+    const adapterUrl = '/local-data.js';
+    const { localMapData } = await import(adapterUrl);
+    const local = await localMapData(['SSXOT_ER1_NIGHT']);
+    const bankInfo = await (await fetch(local.resolveAsset('/api/board-audio?level=SSXOT_ER1_NIGHT'))).json();
+    const wave = await (
+      await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=4&loop=1&level=SSXOT_ER1_NIGHT'))
+    ).arrayBuffer();
+    const missing = await (
+      await fetch(local.resolveAsset('/api/board-sound?bank=zboard&slot=4&level=MISSING'))
+    ).arrayBuffer();
+    local.dispose();
     return {
       courses: scan.courses,
+      ridingBanks: [bankInfo.boardBank, bankInfo.boostBank],
       patches: patches.Patches.length,
       instances: instances.Instances.length,
       texture: patches.Patches[0].TexturePath,
       game: effects.target.game,
+      movingSlot: instances.Instances[1].EffectSlotIndex,
+      helperSlot: instances.Instances[0].EffectSlotIndex,
+      resetMain: effects.graphs.find((graph: { id: string }) => graph.id === 'openslope-playtest:reset')?.nodes[0]
+        ?.mainType,
+      scroll: effects.graphs[0]?.nodes[0]?.payload.type0.UVScroll,
+      frames: materials.Materials[0].TextureFlipbook,
+      effectDocument: effects,
+      instanceDocument: instances,
+      soundsDeferred: soundBindings.ResolverState,
+      soundRows: soundBindings.Bindings.length,
+      riding: riding.Fidelity,
+      boardWave: new TextDecoder().decode(wave.slice(0, 4)),
+      boardFrames: (wave.byteLength - 44) / 2,
+      missingSoundBytes: missing.byteLength,
+      helperVisible: instances.Instances[0].Visable,
+      helperContact: instances.Instances[0].PlayerCollision,
+      helperSolid:
+        instances.Instances[0].PlayerCollision &&
+        instances.Instances[0].PlayerBounce !== false &&
+        instances.Instances[0].U0 !== 0,
+      helperProxy: instances.Instances[0].CollsionModelPaths,
+      cone: spot?.UnknownFloat2,
+      haloBrightness: halo?.UnknownFloat1,
+      haloHasNoReach:
+        JSON.stringify(halo?.LowestXYZ) === JSON.stringify(halo?.Position) &&
+        JSON.stringify(halo?.HighestXYZ) === JSON.stringify(halo?.Position),
       files: course.files,
       deferredCodec: deferred.DeferredSlots[0].Codec,
       skyModels: sky.Models.length,
@@ -127,6 +184,53 @@ try {
   assert.equal(result.instances, 2);
   assert.equal(result.texture, '0000_o.png');
   assert.equal(result.game, 'ssx-on-tour');
+  assert.equal(result.movingSlot, 0);
+  assert.equal(result.helperSlot, -1);
+  assert.equal(result.resetMain, undefined);
+  assert(Math.abs(result.scroll.U1 - 0.01) < 1e-7 && Math.abs(result.scroll.U2 + 0.02) < 1e-7);
+  assert.deepEqual(result.frames, ['0000_o.png', '0001_o.png']);
+  assert.equal(result.soundsDeferred, 'Deferred');
+  assert.equal(result.soundRows, 3);
+  assert.equal(result.riding, 'Approximate');
+  assert.deepEqual(result.ridingBanks, ['openslope_board', 'openslope_rider']);
+  assert.equal(result.boardWave, 'RIFF');
+  assert.equal(result.boardFrames, 44);
+  assert.equal(result.missingSoundBytes, 0, 'An explicit missing course must not borrow audio');
+  const io: MapDataSource = {
+    root: 'maps',
+    async readJsonOr<T>(path: string, fallback: T): Promise<T> {
+      if (path.endsWith('/Effects.json')) return result.effectDocument as T;
+      if (path.endsWith('/Instances.json')) return result.instanceDocument as T;
+      return fallback;
+    },
+    async readTextOrNull() {
+      return null;
+    },
+    async readBytesOrNull() {
+      return null;
+    },
+    async listDir() {
+      return [];
+    },
+    async listEntries() {
+      return [];
+    },
+    async pathExists() {
+      return true;
+    },
+  };
+  const playback = decodeReferenceEffects(await readReferenceEffects(io, 'SSXOT_ER1_NIGHT'));
+  const scroll = referenceUvScroll(playback, 1);
+  assert(scroll, 'Imported instance -> persistent slot -> normalized graph must reach material playback');
+  const [u, v] = editorUvScrollDelta(scroll, 30);
+  assert(Math.abs(u - 0.3) < 1e-7 && Math.abs(v - 0.6) < 1e-7, 'Half a second preserves U and converts V axes');
+  assert.equal(referenceUvScroll(playback, 0), null, 'Hidden helper does not acquire a UV modifier');
+  assert.equal(result.helperVisible, false);
+  assert.equal(result.helperSolid, false);
+  assert.equal(result.helperContact, true, 'A hidden helper retains its original pass-through contact shape');
+  assert.deepEqual(result.helperProxy, ['0_0.obj']);
+  assert.equal(result.cone, 0.75);
+  assert(result.haloBrightness > 0 && result.haloHasNoReach);
   assert(result.files > 15);
   assert.equal(result.deferredCodec, 23);
   assert.equal(result.skyModels, 1);

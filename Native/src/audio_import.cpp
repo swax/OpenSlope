@@ -344,15 +344,17 @@ bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output
         if (file.empty())
             continue;
         const auto name = trim(std::filesystem::path(filename(library.member(file))).stem().string());
-        w.notify("Decoding shared sound bank " + name);
-        const auto bank = decode_audio_bank(library.read(file), true);
-        for (const auto& slot : bank.slots)
-            if (slot) {
-                w.reserve(44 + slot->samples.size() * 2);
-                if (slot->loop_end)
-                    w.reserve(44 + (slot->loop_end - slot->loop_start) * slot->channels * 2);
-            }
-        write_audio_bank(w.root / "SFX" / name, bank, [&] { w.check(); });
+        if (w.banks.insert(upper(name)).second) {
+            w.notify("Decoding shared sound bank " + name);
+            const auto bank = decode_audio_bank(library.read(file), true);
+            for (const auto& slot : bank.slots)
+                if (slot) {
+                    w.reserve(44 + slot->samples.size() * 2);
+                    if (slot->loop_end)
+                        w.reserve(44 + (slot->loop_end - slot->loop_start) * slot->channels * 2);
+                }
+            write_audio_bank(w.root / "SFX" / name, bank, [&] { w.check(); });
+        }
         index["NamedBanks"][key] = name;
         if (std::string_view(key) == "MAIN")
             index["Banks"]["0"] = name;
@@ -366,7 +368,25 @@ bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output
         if (!file)
             throw std::runtime_error("Cannot save SSX 3 audio configuration");
     }
+    // [Trailmap: 523] Decode only the optional standing-ambience families used
+    // by the authored adapter; their names do not establish original event routes.
+    for (const auto* name : {"FlagWind_loop", "PartyLodge", "Culdron", "Waterfall1"}) {
+        const auto member = std::find_if(library.entries.begin(), library.entries.end(), [&](const auto& entry) {
+            return upper(filename(entry.name)) == upper(std::string(name) + ".bnk");
+        });
+        if (member == library.entries.end())
+            continue;
+        const auto decoded = decode_audio_bank(library.read(member->name), true, true);
+        for (const auto& slot : decoded.slots)
+            if (slot)
+                w.reserve(88 + slot->samples.size() * 4);
+        write_audio_bank(w.root / "SFX" / name, decoded, [&] { w.check(); });
+        index["NamedBanks"][name] = name;
+    }
     json_file(w.root / "SoundIndex.json", index);
+    const auto riding = write_streamed_riding_audio(output, false, cancelled);
+    if (!riding.is_null())
+        w.reserve(riding.at("AccountedBytes"));
     json_file(w.root / "Import.json", {{"Schema", "openslope-native-audio-import/v1"},
                                        {"AccountedBytes", w.bytes},
                                        {"Deferred", {"sound-trigger-bindings", "board-surface-selector", "music"}}});
@@ -536,6 +556,9 @@ bool write_ontour_audio(const DiscInput& disc, const std::filesystem::path& outp
         throw std::runtime_error("Cannot finish On Tour audio source bundle");
     json_file(output / "Source/AudioBanks.json", sources);
     json_file(w.root / "SoundIndex.json", index);
+    const auto riding = write_streamed_riding_audio(output, true, cancelled);
+    if (!riding.is_null())
+        w.reserve(riding.at("AccountedBytes"));
     json_file(w.root / "Import.json",
               {{"Schema", "openslope-native-audio-import/v1"},
                {"AccountedBytes", w.bytes},

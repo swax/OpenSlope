@@ -22,7 +22,12 @@
  * Run: tsx test/ambient-sound.test.ts
  */
 import * as THREE from 'three';
-import { createAmbientSoundLayer, type AmbientSoundSource } from '../src/app/viewport/scene/ambient-sound';
+import {
+  ambientSoundUrl,
+  createAmbientSoundLayer,
+  type AmbientSoundSource,
+} from '../src/app/viewport/scene/ambient-sound';
+import { externalSoundField, isInteractiveEmitter } from '../src/core/effects/external-sound';
 import type { ExternalSoundEmitter } from '../src/core/effects/external-sound';
 import { check, failures } from './check';
 
@@ -96,6 +101,24 @@ const point = (radius: number): ExternalSoundEmitter => ({
   offset: [0, 0, 0],
   params: [radius, 2],
 });
+
+const explicit: ExternalSoundEmitter = { ...point(8000), sound: 57, route: { bank: 'openslope_ambient', slot: 3 } };
+check(!isInteractiveEmitter(explicit), 'explicit common ambience bypasses a different title’s hit gate');
+check(
+  externalSoundField([{ key: 'lift', emitter: explicit, center: [0, 0, 0], armed: false }], [0, 0, 0]).length === 1,
+  'explicit route is audible on proximity before contact',
+);
+const routed: AmbientSoundSource = { key: 'lift', owner: 'ref:1', emitter: explicit, center: [0, 0, 0] };
+check(
+  ambientSoundUrl('SSXOT_ER1_DAY', routed) ===
+    '/api/effect-sound?level=SSXOT_ER1_DAY&bank=openslope_ambient&slot=3&loop=1',
+  'named route reaches its course-local loop',
+);
+check(
+  ambientSoundUrl('SSXOT_ER1_DAY', { ...routed, emitter: { ...explicit, route: { bank: '../escape', slot: 3 } } }) ===
+    null,
+  'malformed explicit routes stay silent without legacy event fallback',
+);
 
 /**
  * The two frames, standing in for the viewport's. Raw is centimetres; editor is metres under a root that

@@ -4,6 +4,20 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+The common riding-bank adapter follows clean 518 and the existing shared Maps
+bank contract. Its explicitly approximate sample choices are OpenSlope authoring
+policy requested by the user, not recovered executable event rows. PCM/manifest
+staging, rollback and portable role selection are independently authored. See
+common-riding-audio.md for source retention, tests and practical playback limits.
+
+Streamed material frames, literal setup translation and structured sound bindings
+follow clean 516/517 contracts from independent local format investigation.
+The bounded constant decoder, On Tour persistent-slot join and attachment reader
+are independently authored. Source programs are never executed; unsupported
+control flow and unresolved SSX 3 setup/audio routes stay deferred. No retail
+addresses, event-routing tables or media are compiled into the importer. See
+streamed-world-fidelity.md for measured support and remaining playback gaps.
+
 Build 0.45 independently recovers board-family routes from the scalar selector
 described by clean 190/420. Provider/normalizer dataflow, checked dispatch,
 constant returns and bounded interpretation use standard ELF/MIPS semantics;
@@ -240,3 +254,39 @@ projection and rigid frames. Continuous desktop rail turning is an explicit
 presentation choice beyond the earlier selector cap. Screen UI uses Native's
 existing font geometry and a standard identity clip transform. No external
 runtime or format decoder supplies these fixes. See playtest-safety.md.
+
+Streamed playtest polish is independently authored from application policies
+519/521 and existing common Maps contact/lighting contracts. Packed-colour
+averaging and staged JSON repair use ordinary arithmetic and filesystem
+operations. Policy 521 retires the earlier inferred reset boxes after the user
+reported a loop on SSX3_EBA3; names do not establish script activation. Authored
+reset graphs are preserved. Placement tints do not claim native per-vertex lighting.
+
+Adapted riding conditioning is independently authored from presentation policy
+522 and measured PCM levels in local imports. DC subtraction, RMS/peak ceilings
+and raised-cosine endpoint corrections use standard arithmetic. The shared
+profile is first-party tuning, not recovered game gain expressions. Raw media
+and the source bank routing remain unchanged.
+
+Streamed course ambience and revised riding pitch are independently authored
+from policy 523, original ISO configuration/bank metadata and source-owned emitter
+placements. Owner-name voting is an explicit application approximation, not a
+recovered event table. Named common-map routes, staged publication and source
+preservation use ordinary JSON/filesystem operations. No external decoder or
+runtime supplies this adapter. See common-course-ambience.md for remaining gaps.
+
+On Tour helper preparation is independently authored from application policies
+524/525 and direct inspection of locally owned source placement/mesh/program data.
+Complete-name matching and zero-response contact flags supply an explicit playtest
+fallback, not recovered controller activation. Editor wireframes, read repair,
+default-profile selection and reversible publication use existing common Maps
+interfaces. Source geometry, common effect bindings and original programs remain
+available for later controller work.
+
+Streamed sky admission and preview are independently authored from policy 528,
+the existing first-party Maps sky/model contracts and direct measurements of the
+user-owned On Tour ISO. The selected archive's day/night resource mask supplies
+admission; generic model reading and camera-centered backdrop rendering supply
+editor/Play presentation. Synthetic night-only records test the mask independently
+of retail media. Original textures/geometry stay outside source control; copied
+exports retain their bytes. No external converter or renderer supplies this fix.

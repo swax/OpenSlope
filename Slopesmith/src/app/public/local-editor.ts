@@ -15,6 +15,7 @@ import { localMapData } from './local-map-data';
 import * as levels from '../../shared/map-levels';
 import { buildLevelPropsUncached, nativeArtSource, readMaterialTables } from '../../shared/map-props';
 import { readReferenceEffects } from '../../shared/map-effects';
+import { levelsWithNativeSky, readNativeSky, nativeSkyFiles } from '../../shared/map-sky';
 import { bundleAssets, bundleProps } from './bundle-assets';
 
 const packed = (bytes: Uint8Array): string => {
@@ -199,6 +200,21 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
         return json(computePreflight((JSON.parse(String(init?.body)) as { doc: EditDoc }).doc));
       return null;
     }
+    if (path === '/api/skybox/native' && knownLevel(level)) {
+      if (q.get('files') === '1') return json({ files: (await nativeSkyFiles(local.source, level)).map(file => ({ path: file.path, bytes: packed(file.bytes) })) });
+      const sky = await readNativeSky(local.source, level, local.fileUrl);
+      return sky ? json(sky) : json({ error: `No sky mesh for ${level}` }, { status: 404 });
+    }
+    if (path === '/api/skybox') {
+      const nativeLevels = (await levelsWithNativeSky(local.source)).map(level =>
+        [...cached, ...Object.keys(aliases)].find(name => name.toLowerCase() === level.toLowerCase()) ?? level);
+      const skies = projects?.current()?.assets.filter(asset => asset.kind === 'sky').map(asset => asset.name) ?? [];
+      if (localOnly) return json({ levels: [], nativeLevels, skies });
+      const response = await fetch(url, init);
+      if (!response.ok) return response;
+      const server = await response.json() as { nativeLevels?: string[] };
+      return json({ ...server, nativeLevels: [...new Set([...(server.nativeLevels ?? []), ...nativeLevels])] });
+    }
     if (path === '/api/levels') {
       const maps = (await levels.listLevelOrigins(local.source)).map(map => ({
         ...map,
@@ -261,15 +277,6 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
             .map(asset => asset.name) ?? [],
       });
     if (localOnly && path === '/api/characters') return json({ characters: [] });
-    if (localOnly && path === '/api/skybox')
-      return json({
-        levels: [],
-        skies:
-          projects
-            ?.current()
-            ?.assets.filter(asset => asset.kind === 'sky')
-            .map(asset => asset.name) ?? [],
-      });
     if (localOnly && path === '/api/groups') return json({ groups: [] });
     const resolved = resolve(url.href);
     return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:application/json')

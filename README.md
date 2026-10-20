@@ -33,20 +33,6 @@
 
 ---
 
-## Contents
-
-- **Overview:** [What is OpenSlope?](#what-is-openslope) · [See it in action](#see-it-in-action)
-- **Features:** [Create and collaborate](#create-and-collaborate) ·
-  [Play on the hardware you have](#play-on-the-hardware-you-have) ·
-  [Compatibility without being a port](#compatibility-without-being-a-port) · [Highlights](#highlights)
-- **Get started:** [Try Slopesmith locally](#try-slopesmith-locally) ·
-  [Run a private server](#run-a-private-server) · [Choose a starting point](#choose-a-starting-point)
-- **Architecture:** [How the pieces fit](#how-the-pieces-fit) · [Project boundaries](#project-boundaries)
-- **Project:** [Documentation and contributing](#documentation-and-contributing) · [Credits](#credits) ·
-  [License](#license)
-
----
-
 ## What is OpenSlope?
 
 At the center of OpenSlope is [Slopesmith](Slopesmith/README.md), a collaborative, self-hosted browser

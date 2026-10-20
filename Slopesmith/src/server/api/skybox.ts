@@ -1,6 +1,9 @@
 import { responseCache } from '../response-cache';
 import {
   levelsWithSkybox,
+  levelsWithMeshSky,
+  readNativeLevelSky,
+  readNativeLevelSkyFiles,
   listCustomSkies,
   readCustomGroundPng,
   readCustomSkyPng,
@@ -29,7 +32,7 @@ import { projectAssetCacheKey } from '../project-assets';
 
 const SKY_UPLOAD_LIMIT = 64 * 1024 * 1024;
 
-/** GET /api/skybox -> {levels:[...], skies:[...]} (levels that ship a sky, plus the user's own panoramas),
+/** GET /api/skybox -> {levels:[...], nativeLevels:[...], skies:[...]} (measured rings, original meshes and custom panoramas),
  *  GET /api/skypano?level=<LEVEL> | ?sky=<NAME> -> that sky's horizon panorama PNG (its measured wall panels
  *  stitched at their real azimuth spans), GET /api/skyground?level=<LEVEL> -> its ground disc,
  *  POST /api/skyupload?name=<NAME> -> store an image as a panorama (re-projected into the ring band); the
@@ -39,14 +42,31 @@ const SKY_UPLOAD_LIMIT = 64 * 1024 * 1024;
  *  Two sub-paths serve an export composed in the browser, which needs the ring itself rather than the
  *  stitched preview: GET /api/skybox/ring?level=<PREFERRED> -> the ring level actually resolved, its
  *  `Skybox/` shell (Models.json, Materials.json, Meshes/*, Ring.json) base64'd, and its complete measured ring;
- *  GET /api/skybox/page?level=<LEVEL>&index=<slot> -> one shipped page, verbatim. */
+ *  GET /api/skybox/page?level=<LEVEL>&index=<slot> -> one shipped page, verbatim;
+ *  GET /api/skybox/native?level=<LEVEL>[&files=1] -> original dome geometry/textures, or its export files. */
 export const skyboxRoutes: Record<string, ApiHandler> = {
   '/api/skybox': async (req, res) => {
     const url = new URL(req.url ?? '', 'http://localhost');
     // A ring or a page that cannot be found is a missing asset, the same 404 the byte routes below answer
     // with; the catalogue is a read of the whole library, so its failure is the server's.
-    if (url.pathname === '/ring' || url.pathname === '/page') {
+    if (url.pathname === '/ring' || url.pathname === '/page' || url.pathname === '/native') {
       try {
+        if (url.pathname === '/native') {
+          const level = url.searchParams.get('level') ?? '';
+          const value =
+            url.searchParams.get('files') === '1'
+              ? {
+                  files: (await readNativeLevelSkyFiles(level)).map(file => ({
+                    path: file.path,
+                    bytes: Buffer.from(file.bytes).toString('base64'),
+                  })),
+                }
+              : await readNativeLevelSky(level);
+          if (!value) throw new Error(`No sky mesh for ${level}`);
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(value));
+          return;
+        }
         if (url.pathname === '/page') {
           const level = url.searchParams.get('level') ?? '';
           const index = Number(url.searchParams.get('index') ?? '-1');
@@ -104,7 +124,7 @@ export const skyboxRoutes: Record<string, ApiHandler> = {
             },
           ]),
         );
-        return { levels, skies: await listCustomSkies(), rings, versions };
+        return { levels, nativeLevels: await levelsWithMeshSky(), skies: await listCustomSkies(), rings, versions };
       });
     } catch (e) {
       res.statusCode = 500;

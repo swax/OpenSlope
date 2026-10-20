@@ -109,6 +109,56 @@ void field(const std::filesystem::path& root, const Player& player) {
     check(rejected, "Ambient budget cannot consume the complete shared mixer");
 }
 
+void explicit_route(const std::filesystem::path& root, const Player& player) {
+    auto row = emitter("adapted", 1, 57);
+    auto& source = row["Sounds"]["ExternalSounds"][0];
+    source["SoundBank"] = "tone";
+    source["SoundSlot"] = 0;
+    source["Activation"] = "Proximity";
+    rows(root, Json::array({row}));
+    AudioScene audio(root);
+    audio.music_enabled(false);
+    audio.listener({});
+    tick(audio, player);
+    check(audio.ambient_voices().size() == 1, "Explicit common route bypasses unrelated legacy event hit gate");
+    std::vector<float> pcm(9600);
+    audio.mixer().render(pcm);
+    check(magnitude(pcm, 440) > magnitude(pcm, 880) * 20, "Named route reaches the real mixer");
+    source["SoundBank"] = "../escape";
+    rows(root, Json::array({row}));
+    AudioScene malformed(root);
+    malformed.music_enabled(false);
+    malformed.listener({});
+    tick(malformed, player);
+    check(malformed.ambient_voices().empty(), "Invalid explicit route stays silent without event fallback");
+}
+
+void legacy_rail(const std::filesystem::path& root, const Player& player) {
+    std::ifstream input(root / "Audio/SoundIndex.json");
+    auto index = Json::parse(input);
+    index["Banks"]["1"] = "openslope_board";
+    index["NamedBanks"]["BOARD"] = "metal";
+    write(root / "Audio/SoundIndex.json", index);
+    std::filesystem::create_directories(root / "Audio/SFX/openslope_board");
+    std::filesystem::create_directories(root / "Audio/SFX/metal");
+    tone(root / "Audio/SFX/openslope_board/052.wav", 440);
+    tone(root / "Audio/SFX/metal/035.wav", 880);
+    tone(root / "Audio/SFX/metal/035.loop.wav", 880);
+    auto row = emitter("rail-probe", 1, 57);
+    auto& sound = row["Sounds"]["ExternalSounds"][0];
+    sound["SoundBank"] = "openslope_board";
+    sound["SoundSlot"] = 52;
+    sound["Activation"] = "Proximity";
+    rows(root, Json::array({row}));
+    AudioScene audio(root);
+    audio.music_enabled(false);
+    tick(audio, player);
+    std::vector<float> pcm(9600);
+    audio.mixer().render(pcm);
+    check(magnitude(pcm, 880) > magnitude(pcm, 440) * 20,
+          "Existing adapted rail slots load their map's sustained metal source, not the short clank");
+}
+
 void ties(const std::filesystem::path& root, const Player& player) {
     for (bool reverse : {false, true}) {
         const auto a = emitter("a", 10), z = emitter("z", 10, 106);
@@ -289,11 +339,13 @@ int main() {
         Player player(Terrain::demo());
         player.start_on_foot();
         field(root, player);
+        explicit_route(root, player);
         ties(root, player);
         one_entry(root, player);
         shapes(root, player);
         hit_gate(root);
         dense(root, player);
+        legacy_rail(root, player);
         std::cout << "PASS: " << checks << " ambient field, identity, budget, entry and real PCM checks\n";
         return 0;
     } catch (const std::exception& e) {

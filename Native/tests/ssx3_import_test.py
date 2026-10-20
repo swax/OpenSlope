@@ -127,18 +127,148 @@ def fog_fixture():
     return bytes(b), bytes(instance)
 
 
-def names():
+def names(instance_rows=None, collision_rows=None):
     ids = bytearray(le(0) + le(0) + le(5))
     strings = bytearray(ids)
     for tag, rows in [(0, [(1, 'Synthetic patch')]),
-                      (1, [(1, 'Synthetic rock'), (257, 'Rock copy')]),
+                      (1, instance_rows if instance_rows is not None else [(1, 'Synthetic rock'), (257, 'Rock copy')]),
                       (2, [(1, 'Synthetic model')]), (8, [(1, 'Synthetic metal rail')]),
-                      (11, [(1, 'Synthetic rock_CollideModel_ProgMesh')])]:
+                      (11, collision_rows if collision_rows is not None else [(1, 'Synthetic rock_CollideModel_ProgMesh')])]:
         payload = b''.join(le(0) + le(0) + le(rid) + le(0) for rid, _ in rows)
         ids += bytes([tag]) + len(payload).to_bytes(3, 'little') + le(len(rows)) + payload
         text = b''.join(name.encode() + b'\0' for _, name in rows)
         strings += bytes([tag]) + len(text).to_bytes(3, 'little') + le(len(rows)) + text
     return bytes(ids), bytes(strings)
+
+
+def light_fixture(halo=False, tour=False):
+    b = bytearray(80 if halo else 112)
+    if halo:
+        struct.pack_into('<I', b, 12, 32)
+        struct.pack_into('<3f', b, 20 if tour else 16, 1, .5, .25)
+        struct.pack_into('<3f', b, 32 if tour else 28, 1000, 2000, 3000)
+        struct.pack_into('<6f', b, 44 if tour else 40, 900, 1900, 2900, 1100, 2100, 3100)
+    else:
+        struct.pack_into('<If', b, 16, 1, 1)
+        struct.pack_into('<f3f', b, 28, 1, 1, .5, .25)
+        struct.pack_into('<3f', b, 44, 0, 0, -1)
+        struct.pack_into('<9f', b, 56, 1000, 2000, 3000, 900, 1900, 2900, 1100, 2100, 3100)
+        struct.pack_into('<2f', b, 92, .9, .75)
+    return bytes(b)
+
+
+HELPER_CASES = [
+    ('reset_plane', False, False), ('shimmertrig', False, False),
+    ('seqEmit', False, False), ('race_Load_0', False, False), ('race_Unload', False, False),
+    ('teleport', False, False), ('ridestate', False, False), ('occluder', False, False),
+    ('portal', False, False), ('invis', False, False), ('NIS_fence_coll_plane', False, False),
+    ('fenceCollision', False, True), ('fence_proxy', False, True), ('fence_coll_plane', False, True),
+    ('fenceCollision_start', False, False), ('fenceCollision_end', False, False),
+    ('reset_collision', False, False), ('trigger_proxy', False, False),
+    ('startright', True, True), ('noCollision_rockwall', True, True),
+    ('noCollide_rockwall', True, True), ('wood_fence', True, True),
+]
+
+
+def material_program(tour=False, conditional=False):
+    # Original literal bytecode: reset, U=.01, V=-.02, install, return.
+    code = [0x00000221, 0x00000426, struct.unpack('<I', struct.pack('<f', .01))[0],
+            0x00000217, struct.unpack('<I', struct.pack('<f', .02))[0], 0x00020223, 0x00020520,
+            0x02130221 if tour else 0x02150221]
+    if conditional:
+        code.append(0x00000202)
+    code.append(0x0000ff2a)
+    end = 16 + len(code) * 4
+    return struct.pack('<4I', 0x004e554c, end, end, end) + struct.pack('<' + 'I' * len(code), *code)
+
+
+def material_section(conditional=False):
+    program = material_program(conditional=conditional)
+    b = bytearray(120)
+    struct.pack_into('<I', b, 4, 0x3800)
+    struct.pack_into('<2I', b, 24, 1, 92)
+    struct.pack_into('<6I', b, 92, 0xffffffff, 1, *([0xffffffff] * 4))
+    struct.pack_into('<2I', b, 56, 1, 116)
+    struct.pack_into('<I', b, 116, 120)
+    b += program
+    data = len(b)
+    b += struct.pack('<7I', 0, 0, 0xffffffff, 1, 0, 0, 0)
+    mapping = len(b); b += bytes(4)  # Both placements share one property.
+    table = len(b); b += bytes(4)
+    struct.pack_into('<5I', b, 64, data, 2, mapping, 1, table)
+    return bytes(b)
+
+
+def material_animation(rows, conditional=False):
+    result = []
+    for kind, rid, payload in rows:
+        if kind == 0:
+            payload = bytearray(payload); struct.pack_into('<I', payload, 16, 0)
+            payload = bytes(payload) + struct.pack('<3I', 2, 0, 1)
+        if kind == 16:
+            payload = material_section(conditional)
+        result.append((kind, rid, payload))
+    return result + [(9, 511, texture())]
+
+
+def check_materials(out, active=True, instances=2):
+    material, = json.loads((out / 'Materials.json').read_text())['Materials']
+    assert material['TextureFlipbook'] == ['0000_o.png', '0001_o.png']
+    assert (out / 'Textures/0001_o.png').is_file()
+    effects = json.loads((out / 'Effects.json').read_text())
+    assert len(effects['graphs']) == (1 if active else 0)
+    slots = [row['EffectSlotIndex'] for row in json.loads((out / 'Instances.json').read_text())['Instances']]
+    assert sum(slot >= 0 for slot in slots) == (instances if active else 0)
+    if active:
+        scroll = effects['graphs'][0]['nodes'][0]['payload']['type0']['UVScroll']
+        assert abs(scroll['U1'] - .01) < 1e-7 and abs(scroll['U2'] + .02) < 1e-7
+        assert effects['slots'][0]['circumstances']['persistent'] == effects['graphs'][0]['id']
+
+
+def sound_attachments(tour=False):
+    stride = 32 if tour else 24
+    b = bytearray(16 + stride * 3)
+    b[1:8] = bytes([0xcc] * 7)  # Serialized padding is not a pointer/flag.
+    struct.pack_into('<fI', b, 8, 4 if tour else 1.24, 3)
+    at = len(b)
+    for i, resource in enumerate([3 if tour else 1, 4 if tour else 257, 0xffffffff]):
+        p = 16 + stride * i
+        struct.pack_into('<4I', b, p, i, 0xffffffff, 0xcccccccc, resource)
+        struct.pack_into('<I', b, p + (24 if tour else 16), at)
+    b += struct.pack('<4I', 2, 4, 16, 17)
+    for kind, size in [(0, 28), (1, 48), (2, 48), (3, 24)]:
+        b += struct.pack('<Ii', kind, 90 + kind)
+        b += struct.pack('<' + 'f' * (size // 4 - 2), *range(2, size // 4))
+    return bytes(b)
+
+
+def check_sounds(out):
+    document = json.loads((out / 'SoundBindings.json').read_text())
+    assert document['ResolverState'] == 'Deferred'
+    assert document['Game'] == ('ssx-on-tour' if out.name.startswith('SSXOT_') else 'ssx-3')
+    assert 'SoundBindings.json' in json.loads((out / 'Import.json').read_text())['Outputs']
+    a, b, unbound = document['Bindings']
+    assert a['CollisionEvents'] == b['CollisionEvents'] == [16, 17]
+    assert a['SourceHash'] == [0, 0xffffffff]
+    assert a['InstanceIndex'] == 0 and b['InstanceIndex'] == 1 and unbound['InstanceIndex'] is None
+    assert len(a['ExternalSounds']) == 4
+    for kind, words in [(0, 7), (1, 12), (2, 12), (3, 6)]:
+        emitter = a['ExternalSounds'][kind]
+        assert emitter == {'U0': kind, 'SoundIndex': 90 + kind,
+                           **{'U' + str(k): k for k in range(2, words)}}
+    assert all(not row.get('IncludeSound', False) for row in json.loads((out / 'Instances.json').read_text())['Instances']), \
+        'Unresolved streamed IDs must not reach another game\'s runtime resolver'
+
+
+def check_lights(out, count=2):
+    lights = json.loads((out / 'Lights.json').read_text())['Lights']
+    assert len(lights) == count
+    spot = next(row for row in lights if row.get('OuterConeCosine') == .75)
+    halo, = [row for row in lights if row['LightName'].startswith('Halo ')]
+    assert spot['UnknownFloat2'] == spot['OuterConeCosine'] == .75
+    assert abs(spot['InnerConeCosine'] - .9) < 1e-6
+    assert halo['SpriteRes'] == 32 and halo['UnknownFloat1'] > 0
+    assert halo['LowestXYZ'] == halo['HighestXYZ'] == halo['Position']
 
 
 def members(edit=None):
@@ -173,7 +303,7 @@ def members(edit=None):
             'data/worlds/bam.phm': ids, 'data/worlds/bam.psm': strings}
 
 
-def disc(files, audio=False):
+def disc(files, audio=False, riding=False):
     end = 16 + sum(8 + len(name) + 1 for name in files) + 6
     archive = bytearray(b'BIGF' + le(0) + struct.pack('>II', len(files), end))
     offset = end
@@ -188,11 +318,17 @@ def disc(files, audio=False):
         speech = bytearray(bank())
         marker = speech.index(bytes([0xa0, 4]))
         struct.pack_into('>I', speech, marker + 2, 4)
+        config = b'[WORLD]\nMAIN = sound.bnk\nMOUNTAIN = speech.bnk\n'
+        sounds = {'data/audio/sound.bnk': bank(), 'data/audio/speech.bnk': bytes(speech)}
+        if riding:
+            from riding_audio_import_test import encoded_bank
+            config = b'[WORLD]\nMAIN = ride.bnk\nSPUBOARD = ride.bnk\nLAND = ride.bnk\n'
+            sounds = {'data/audio/ride.bnk': encoded_bank()}
         return bytes(audio_disc({
             'DATA/WORLDS/BAM.BIG': bytes(archive),
-            'DATA/CONFIG/BANKS.INF': b'[WORLD]\nMAIN = sound.bnk\nMOUNTAIN = speech.bnk\n',
+            'DATA/CONFIG/BANKS.INF': config,
             'DATA/CONFIG/SNOW.INF': b'# synthetic ride audio configuration\n',
-            'DATA/AUDIO/AUDIO.BIG': sound_archive({'data/audio/sound.bnk': bank(), 'data/audio/speech.bnk': bytes(speech)}),
+            'DATA/AUDIO/AUDIO.BIG': sound_archive(sounds),
         }))
     result = bytearray(iso(bytes(archive)))
     for sector, name, child, size, directory in [(25, 'WORLDS', 26, 2048, True), (26, 'BAM.BIG;1', 28, len(archive), False)]:
@@ -224,6 +360,48 @@ def main():
         assert (out / 'Meshes/1_0_0.obj').read_text().count('\nf ') == 2
         assert '\nv -100 0 -100\n' in (out / 'Meshes/1_0_0.obj').read_text()
         assert '\nvn 0.999969482 0 0\n' in (out / 'Meshes/1_0_0.obj').read_text()
+        for label, visible, solid in HELPER_CASES:
+            helper_files = members()
+            helper_files['data/worlds/bam.phm'], helper_files['data/worlds/bam.psm'] = names(
+                [(1, 'mdl_A_' + label), (257, 'Rock copy')], [(1, 'mdl_A_' + label + '_CollideModel_ProgMesh')])
+            helper_iso = root / (label + '.iso'); helper_iso.write_bytes(disc(helper_files))
+            destination = root / label
+            run(executable, 'extract', helper_iso, 'SSX3_A', destination)
+            helper, ordinary = json.loads((destination / 'SSX3_A/Instances.json').read_text())['Instances']
+            blocking = helper['PlayerCollision'] and helper.get('PlayerBounce', True) and helper.get('U0', 1) != 0
+            assert (helper['Visable'], blocking) == (visible, solid), label
+            if label == 'reset_plane':
+                assert not helper['PlayerCollision'] and helper['EffectSlotIndex'] == -1
+                assert json.loads((destination / 'SSX3_A/PlaytestImport.json').read_text())['ResetZonesAdded'] == 0
+            assert helper['CollsionModelPaths'] == ordinary['CollsionModelPaths'] == ['1_0.obj']
+            assert ordinary['Visable'] and ordinary['PlayerCollision']
+        section_files = members(lambda rows: rows + [(3, 2, placement(2, 3000)), (12, 2, proxy())])
+        database = bytearray(section_files['data/worlds/bam.sdb']); database[80 + 2 * 88] = ord('B')
+        section_files['data/worlds/bam.sdb'] = bytes(database)
+        section_files['data/worlds/bam.phm'], section_files['data/worlds/bam.psm'] = names(
+            [(1, 'Synthetic rock'), (257, 'Rock copy'), (2, 'Other section rock')],
+            [(1, 'Synthetic rock_CollideModel_ProgMesh'), (2, 'Other section rock_CollideModel_ProgMesh')])
+        section_iso = root / 'sections.iso'; section_iso.write_bytes(disc(section_files))
+        run(executable, 'extract', section_iso, 'SSX3_PEAK1', root / 'sections')
+        section_out = root / 'sections/SSX3_PEAK1'
+        by_resource = {i['SourceResource']: i for i in json.loads((section_out / 'Instances.json').read_text())['Instances']}
+        assert by_resource[1]['CollsionModelPaths'] == by_resource[257]['CollsionModelPaths'] == ['1_0.obj']
+        assert by_resource[2]['CollsionModelPaths'] == ['2_0.obj']
+        assert not json.loads((section_out / 'Import.json').read_text())['Warnings']
+        light_iso = root / 'lights.iso'
+        light_iso.write_bytes(disc(members(lambda rows: rows + [(6, 1, light_fixture()), (7, 1, light_fixture(halo=True))])))
+        run(executable, 'extract', light_iso, 'SSX3_A', root / 'lights')
+        check_lights(root / 'lights/SSX3_A')
+        for conditional in [False, True]:
+            label = 'conditional-material' if conditional else 'moving-material'
+            moving = root / (label + '.iso')
+            moving.write_bytes(disc(members(lambda rows: material_animation(rows, conditional))))
+            run(executable, 'extract', moving, 'SSX3_A', root / label)
+            check_materials(root / label / 'SSX3_A', active=False)
+        sounds_iso = root / 'sounds.iso'
+        sounds_iso.write_bytes(disc(members(lambda rows: rows + [(13, 1, sound_attachments())])))
+        run(executable, 'extract', sounds_iso, 'SSX3_A', root / 'sounds')
+        check_sounds(root / 'sounds/SSX3_A')
         for kind, expected in [(1, [0, 4, 8, 12, 0, 4, 8, 12, 1, 5, 9, 13, 1, 5, 9, 13]),
                                (2, [0, 4, 8, 12, 16, 20, 24, 28, 2, 6, 10, 14, 18, 22, 26, 30])]:
             patterned = members(lambda rows: [(k, rid, patterned_texture(kind) if k == 9 else payload)
@@ -307,6 +485,10 @@ def main():
             ('collision-reference', lambda rows: altered(rows, 12, 36, bytes([255]))),
             ('palette-extent', lambda rows: [(k, rid, data[:300] if k == 9 else data) for k, rid, data in rows]),
             ('duplicate-resource', lambda rows: rows + [(9, 255, b'conflicting texture')]),
+            ('sound-offset', lambda rows: rows + [(13, 1, sound_attachments()[:88])]),
+            ('sound-type', lambda rows: rows + [(13, 1, sound_attachments()[:104] + le(4) + sound_attachments()[108:])]),
+            ('frame-count', lambda rows: [(k, rid, data[:20] + le(5000) if k == 0 else data)
+                                           for k, rid, data in material_animation(rows)]),
         ]:
             invalid = root / (label + '.iso')
             invalid.write_bytes(disc(members(edit)))
@@ -319,6 +501,10 @@ def main():
 
 if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == '--fixture':
-        Path(sys.argv[2]).write_bytes(disc(members()))
+        files = members(lambda rows: material_animation(rows) + [(6, 1, light_fixture()), (7, 1, light_fixture(halo=True)),
+                                                                (13, 1, sound_attachments())])
+        files['data/worlds/bam.phm'], files['data/worlds/bam.psm'] = names(
+            [(1, 'Synthetic reset_plane'), (257, 'Rock copy')], [(1, 'Synthetic reset_plane_CollideModel_ProgMesh')])
+        Path(sys.argv[2]).write_bytes(disc(files, audio=True, riding=True))
     else:
         main()

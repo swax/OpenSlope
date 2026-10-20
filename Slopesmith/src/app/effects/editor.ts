@@ -3535,7 +3535,11 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const data = referenceState.data;
     const instance = data.instances.find(item => item.index === sourceIndex);
     if (!instance) return false;
-    if (!referenceHostSelection(data, instance) && !referenceIncomingEffectCalls(data, instance.index).length)
+    if (
+      !instance.editorHelper &&
+      !referenceHostSelection(data, instance) &&
+      !referenceIncomingEffectCalls(data, instance.index).length
+    )
       return false;
     toggleReferenceFocus(data, [instance.index], additive, null);
     return true;
@@ -4423,6 +4427,23 @@ export function createEffectsEditor(deps: EffectsEditorDeps) {
     const s = section(hostName);
     const bindings = referenceInstanceBindings(data, instance);
     const supplementalOutgoing = referenceSupplementalOutgoingEffectCalls(data, instance.index);
+    if (instance.editorHelper) {
+      s.body.appendChild(
+        el(
+          'div',
+          'sp-fx-note',
+          'Course helper: invisible in Play. Existing collision shapes detect contact without blocking the rider.',
+        ),
+      );
+      if (!bindings.length && !referenceIncomingEffectCalls(data, instance.index).length)
+        s.body.appendChild(
+          el(
+            'div',
+            'sp-fx-note',
+            'No playable effects have been imported for this helper yet. Its original scripts are preserved.',
+          ),
+        );
+    }
     s.body.append(
       row(
         'Instance',

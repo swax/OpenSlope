@@ -5,6 +5,7 @@
 #include "openslope/import.hpp"
 #include "openslope/music.hpp"
 #include "openslope/music_stream.hpp"
+#include "riding_audio_condition.hpp"
 #include <cctype>
 #include <fstream>
 #include <iostream>
@@ -164,6 +165,7 @@ struct AudioScene::Data {
     std::uint64_t age = 0;
     std::set<std::string> failed;
     std::map<unsigned, std::string> banks;
+    std::filesystem::path rail_source;
     std::map<int, std::string> events;
     std::map<unsigned, std::string> course_clips;
     std::map<std::string, std::filesystem::path> sources;
@@ -195,6 +197,7 @@ struct AudioScene::Data {
         std::uint64_t voice{};
         bool inside = false;
         bool selected = false;
+        bool proximity = false;
         double gain = 0;
     };
 
@@ -253,6 +256,18 @@ struct AudioScene::Data {
             }
         }
         discover_banks();
+        if (banks.contains(1) && folded(banks.at(1)) == "openslope_board" &&
+            std::filesystem::exists(root / "Audio/SoundIndex.json")) {
+            const auto index = read(root / "Audio/SoundIndex.json");
+            if (index.contains("NamedBanks")) {
+                const auto original = index.at("NamedBanks").value("BOARD", "");
+                if (valid_map_name(original)) {
+                    const auto folder = named_child(root / "Audio/SFX", original);
+                    if (std::filesystem::exists(folder / "035.loop.wav"))
+                        rail_source = folder / "035.wav";
+                }
+            }
+        }
         std::filesystem::path board_path;
         for (const auto& folder : audio_roots) {
             const auto path = asset(folder, "Audio/BoardSoundIndex.json");
@@ -315,7 +330,14 @@ struct AudioScene::Data {
                         e.key = row.value("InstanceName", std::to_string(i)) + "/" + std::to_string(record);
                         e.type = source.at("U0");
                         e.event = source.at("SoundIndex");
-                        if (source.contains("SoundClip") && !source.at("SoundClip").is_null())
+                        if (source.contains("SoundBank")) {
+                            const auto bank = source.at("SoundBank").get<std::string>();
+                            const auto slot = source.value("SoundSlot", 1000u);
+                            if (!valid_map_name(bank) || slot > 999 || source.value("Activation", "") != "Proximity")
+                                continue;
+                            e.clip = "Audio/SFX/" + bank + "/" + slot_name(slot) + ".wav";
+                            e.proximity = true;
+                        } else if (source.contains("SoundClip") && !source.at("SoundClip").is_null())
                             e.clip = authored_clip(source.at("SoundClip"));
                         e.offset = axes({source.at("U2"), source.at("U3"), source.at("U4")}) / 100.;
                         e.radius = source.at("U5").get<double>() / 100.;
@@ -550,7 +572,9 @@ struct AudioScene::Data {
             state_lock->unlock();
         try {
             const auto source = sources.find(name);
-            const auto path = source == sources.end() ? asset(root, requested) : source->second;
+            const auto path = name == "audio/sfx/openslope_board/052.wav" && !rail_source.empty() ? rail_source
+                              : source == sources.end() ? asset(root, requested)
+                                                        : source->second;
             if (std::filesystem::exists(path)) {
                 value = std::make_shared<PcmClip>(PcmClip::load(path));
                 if (resident) {
@@ -566,6 +590,13 @@ struct AudioScene::Data {
                         value->loop_end = value->loop_start + region.frames();
                     }
                 }
+                // [Trailmap: 522-cache] Match raw loop samples first, then soften only adapted riding banks.
+                const auto requested_path = std::filesystem::path(name);
+                const auto stem = requested_path.stem().string();
+                if (stem.size() == 3 &&
+                    std::all_of(stem.begin(), stem.end(), [](char c) { return c >= '0' && c <= '9'; }))
+                    condition_riding_audio(*value, requested_path.parent_path().filename().string(),
+                                           unsigned(std::stoul(stem)));
             }
         } catch (const std::exception& e) {
             error = e.what();
@@ -1016,7 +1047,7 @@ void AudioScene::tick(const Player& player, const Rider& before) {
         auto& e = d.emitters[index];
         e.selected = false;
         const auto& s = d.sounds[e.instance];
-        const bool hit_gate = e.event == 16 || e.event == 28 || e.event == 57;
+        const bool hit_gate = !e.proximity && (e.event == 16 || e.event == 28 || e.event == 57);
         const auto source = s.position + e.offset, delta = d.listener.position - source;
         const auto distance = length(delta);
         double normalized_distance = distance / e.radius, gain = 0;
@@ -1160,6 +1191,9 @@ void AudioScene::tick(const Player& player, const Rider& before) {
         VoiceParams params;
         params.gain = layer.gain * gain;
         params.pitch = layer.pitch;
+        if (bank == 1 && d.banks.contains(1) && folded(d.banks.at(1)) == "openslope_board")
+            params.pitch = adapted_riding_pitch(number == 52,
+                                                number == 52 ? board_audio_speed(input.speed) : (layer.pitch - 1) / .5);
         params.loop = true;
         params.sustain_only = true;
         params.ramp_seconds = dt;

@@ -1,4 +1,5 @@
 #include "openslope/props.hpp"
+#include "import_internal.hpp"
 #include "openslope/crowd.hpp"
 #include "openslope/import.hpp"
 #include "openslope/material_animation.hpp"
@@ -75,6 +76,8 @@ Tables tables(const std::filesystem::path& root, bool model_only = false) {
     if (!t.models.is_array() || t.models.size() > 16384 || !t.instances.is_array() || t.instances.size() > 100000 ||
         !t.materials.is_array() || t.materials.size() > 65535)
         throw std::runtime_error("Invalid prop table counts");
+    if (!model_only && import_detail::ontour_course_root(root))
+        import_detail::prepare_ontour_helpers(t.instances, t.models);
     return t;
 }
 

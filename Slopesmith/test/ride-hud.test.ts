@@ -207,8 +207,8 @@ assert.match(
 );
 assert.match(
   session,
-  /automaticRespawnAvailable: \(\) => this\.runActive/,
-  'world-driven recovery is enabled only while a timed/scored run is active',
+  /automaticRespawnAvailable: \(\) => this\.canControl/,
+  'world-driven recovery is enabled during controllable free riding as well as scored runs',
 );
 assert.match(
   session,
@@ -222,13 +222,13 @@ assert.match(
 );
 assert.match(
   session,
-  /onFell: \(\) => \{\s*if \(this\.runActive\) this\.resetWalker\(\);\s*\}/,
-  'desktop off-board falls also auto-recover only while scoring is active',
+  /onFell: \(\) => \{\s*if \(this\.started && !this\.pausedFlag && !this\.countingDown\) this\.resetWalker\(\);\s*\}/,
+  'desktop off-board falls recover during free playtesting outside pause and countdown',
 );
 assert.match(
   session,
-  /case 'reset':\s*if \(this\.runActive\) this\.model\.resetToCourse\(\);\s*break/,
-  'authored object/volume reset actions obey the same active-score boundary',
+  /case 'reset':\s*if \(this\.canControl\) this\.model\.resetToCourse\(\);\s*break/,
+  'authored object/volume resets obey the same riding-control boundary',
 );
 assert.match(
   session,

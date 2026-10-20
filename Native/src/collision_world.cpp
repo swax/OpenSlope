@@ -1,3 +1,4 @@
+#include "import_internal.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/import.hpp"
 #include "openslope/model_animation.hpp"
@@ -720,7 +721,8 @@ CollisionWorld CollisionWorld::load(const std::filesystem::path& root) {
     CollisionWorld world;
     if (root.empty() || !std::filesystem::exists(root / "Instances.json"))
         return world;
-    const auto doc = read(asset(root, "Instances.json"));
+    auto doc = read(asset(root, "Instances.json"));
+    import_detail::repair_ontour_helper_instances(root, doc.at("Instances"));
     const auto& rows = doc.at("Instances");
     if (!rows.is_array() || rows.size() > 100000)
         throw std::runtime_error("Invalid collision instance count");

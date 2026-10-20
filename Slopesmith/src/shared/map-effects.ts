@@ -9,6 +9,7 @@ import type { V3 } from '../core/doc/types';
 import { type ReferenceEffectInstance, type ReferenceEffectsPayload } from '../core/reference/effects';
 import { particleVolumesFromNative } from '../core/particles/volumes';
 import { NATIVE_COLLISION_MODE, nativeContactState, type NativeCollisionMode } from '../core/collision/native';
+import { isOnTourCourseHelper, prepareOnTourCourseHelpers } from '../core/props/course-helpers';
 
 interface RawInstance {
   InstanceName?: string;
@@ -68,6 +69,12 @@ export async function readMapEffectsDocument(io: MapDataSource, directory: strin
     !Array.isArray(document.functions)
   )
     return null;
+  // Retire the old streamed-import approximation on read, including existing browser ISO caches.
+  // Diagonal reset planes were expanded into boxes that can overlap valid riding/recovery terrain.
+  // Keep slot order and authored reset graphs intact; no ISO reimport or draft rewrite is needed.
+  for (const slot of document.slots)
+    if (slot.id === 'openslope-playtest:reset:slot' && slot.circumstances.collision === 'openslope-playtest:reset')
+      slot.circumstances.collision = null;
   for (const owner of [...document.graphs, ...document.functions])
     for (const node of owner.nodes ?? []) {
       if (node.semanticType !== undefined) continue;
@@ -95,8 +102,13 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
   ]);
   if (rawDocument === null) throw new Error(`${safe} has no Effects.json; re-extract or re-export the level`);
   if (!rawInstancesFile) throw new Error(`no Instances.json for ${safe}; re-extract or re-export the level`);
-  const rawInstances = rawInstancesFile.Instances ?? [];
   const rawModels = (await io.readJsonOr<{ Models?: RawModel[] }>(join(dir, 'Models.json'), {})).Models ?? [];
+  const helperSource = rawDocument.target?.game === 'ssx-on-tour' ? 'ssx-on-tour' : safe;
+  const rawInstances = prepareOnTourCourseHelpers(
+    helperSource,
+    rawInstancesFile.Instances ?? [],
+    id => rawModels[id]?.ModelName,
+  );
   const instances: ReferenceEffectInstance[] = rawInstances.map((raw, index) => ({
     index,
     name: String(raw.InstanceName ?? `Instance ${index}`),
@@ -113,6 +125,9 @@ export async function readReferenceEffects(io: MapDataSource, level: string): Pr
     effectSlotIndex: Number.isInteger(raw.EffectSlotIndex) ? Number(raw.EffectSlotIndex) : -1,
     ltgState: Number.isInteger(raw.LTGState) ? Number(raw.LTGState) : 0,
     visible: raw.Visable !== false,
+    ...(isOnTourCourseHelper(helperSource, raw.InstanceName, rawModels[Number(raw.ModelID ?? -1)]?.ModelName)
+      ? { editorHelper: true }
+      : {}),
     // The ADL collision-sound EVENT id (not a bank slot - core/effects/collision-sound.ts resolves it).
     // -1 = the instance ships no sound record; authored-silent ids (e.g. 0) are carried as-is.
     collisionSound:

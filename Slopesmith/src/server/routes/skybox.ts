@@ -9,6 +9,7 @@ import {
   pathExists,
   readBytesOrNull,
   readJsonOr,
+  readTextOrNull,
   READ_CONCURRENCY,
 } from '../fs-async';
 import { decodePng, encodePng } from './png';
@@ -28,12 +29,26 @@ import { composeSkybox, type SkyboxPageSource } from '../../core/export/skybox';
 import { safeDataName, storeUnderFreeName } from './safe-name';
 import { projectAssetCacheKey, projectAssetPath } from '../project-assets';
 import { referenceAssetRevision } from '../reference-asset-revisions';
+import { levelsWithNativeSky, readNativeSky, nativeSkyFiles } from '../../shared/map-sky';
+
+const skySource = () => ({
+  root: mapsRoot(),
+  listEntries,
+  listDir,
+  pathExists,
+  readBytesOrNull,
+  readJsonOr,
+  readTextOrNull,
+});
+export const levelsWithMeshSky = () => levelsWithNativeSky(skySource());
+export const readNativeLevelSky = (level: string) => readNativeSky(skySource(), level);
+export const readNativeLevelSkyFiles = (level: string) => nativeSkyFiles(skySource(), level);
 
 /**
  * Serve skyboxes to the editor: the shipped ones a level was extracted with (Maps/<L>/Skybox/), and the
- * panoramas the author loads into the current mountain. Both reach the client as ONE stitched panorama PNG —
- * the horizon band unrolled — which is what the Skybox panel previews and what the viewport wraps round its
- * backdrop cylinder. The measured page split only re-appears at export.
+ * panoramas the author loads into the current mountain. Measured rings reach the client as a stitched
+ * panorama; original streamed domes retain their model geometry and textures. The measured page split
+ * only re-appears at export.
  *
  * A custom sky is normalised to a band panorama the moment it is loaded, so everything downstream (preview,
  * viewport, export, repack) reads one predictable image regardless of what was dropped on it.
@@ -299,6 +314,23 @@ export function readSkyPageRevision(level: string, index: number): Promise<strin
 /** The authored sky as an extracted level's `Skybox/` (docs/025), read off the map library. What the folder
  *  contains is `composeSkybox`; this finds the ring and the bytes it cuts. */
 export async function skyboxFiles(sky: SkyboxDoc): Promise<{ files: ExportFile[]; log: string[] }> {
+  if (
+    sky.source.kind === 'level' &&
+    !(await pathExists(join(mapsRoot(), safeDataName(sky.source.level), 'Skybox', 'Ring.json')))
+  ) {
+    const files = await readNativeLevelSkyFiles(sky.source.level);
+    files.push({
+      path: 'Skybox/Sky.json',
+      bytes: new TextEncoder().encode(
+        JSON.stringify({
+          Source: 'level',
+          Level: sky.source.level,
+          TopColor: sky.topColor,
+        }),
+      ),
+    });
+    return { files, log: [`Copied ${sky.source.level}'s original sky mesh and textures.`] };
+  }
   const ringLevel = await resolveSkyRingLevel(sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? ''));
   const [ringFiles, ring] = await Promise.all([readSkyRingFiles(ringLevel), readSkyRing(ringLevel)]);
   const pages: SkyboxPageSource =
