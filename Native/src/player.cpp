@@ -1937,9 +1937,13 @@ Vec3 Player::render_up() const {
                     -contract_.value("steering", "bankMaxDeg") * pi / 180 * rider_.lean * rider_.lead);
     if (interpolate_board_) {
         up = previous_board_up_ * (1 - clock_.alpha()) + up * clock_.alpha();
-        up = project(up, render_forward());
     }
-    return normalized(up);
+    // Keep a rigid frame when the carried tilt aligns with the heading, or
+    // opposing interpolated up vectors cancel. A global up fallback can itself
+    // be parallel to the nose on steep terrain.
+    const auto nose = render_forward(),
+               side = normalized(cross(nose, up), normalized(cross(nose, {0, 1, 0}), {1, 0, 0}));
+    return normalized(cross(side, nose));
 }
 
 Vec3 Player::camera_forward() const {

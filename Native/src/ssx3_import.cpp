@@ -1146,9 +1146,11 @@ void tour_paths(const Records& records, Bytes database, const std::string& track
         require(b.le(p) == 1 && b.le(p + 4) == 0 && b.le(p + 8) == 4, "invalid On Tour race path properties");
         const auto points = b.le(p + 16), events = b.le(p + 20);
         require(points <= 100000 && events <= 100000, "On Tour race path exceeds limits");
+        const auto distance_to_finish = b.number(p + 12);
+        require(distance_to_finish >= 0 || distance_to_finish == -1, "invalid On Tour race distance");
         Json row = {{"Name", "Race Line " + std::to_string(i)},
                     {"PathPos", vector(b, p + 24)},
-                    {"DistanceToFinish", std::max(0.f, b.number(p + 12))},
+                    {"DistanceToFinish", distance_to_finish},
                     {"PathPoints", Json::array()},
                     {"PathEvents", Json::array()},
                     {"SourceEvents", Json::array()}};
@@ -1166,7 +1168,10 @@ void tour_paths(const Records& records, Bytes database, const std::string& track
                                            {"EventValue", b.le(p + 4)},
                                            {"EventStart", b.number(p + 8)},
                                            {"EventEnd", b.number(p + 12)}});
-        race.push_back(std::move(row));
+        // -1 marks an unscored route, not a finish at station zero. Its exact
+        // source record remains in the preserved .tp sidecar.
+        if (distance_to_finish >= 0)
+            race.push_back(std::move(row));
     }
     require(p == sidecar.size(), "On Tour race path extent mismatch");
     std::filesystem::create_directories(output / "Source");

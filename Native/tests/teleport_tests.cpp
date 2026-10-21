@@ -222,8 +222,7 @@ void run_state(const std::filesystem::path& root) {
     Player player(Terrain::load(root));
     player.configure_run(RunMode::Showoff);
     player.warp({-50, 0, 0}, {1, 0, 0});
-    for (unsigned i = 0; i < 181; ++i)
-        player.tick({});
+    player.tick({});
     auto& scoring = player.scoring();
     scoring.step(dt, ScoreMotion::Air);
     for (unsigned i = 0; i < 80; ++i)
@@ -238,7 +237,7 @@ void run_state(const std::filesystem::path& root) {
           "instant transport across finish does not end the run");
     check(player.course_run().status().checkpoints == 0, "teleport cannot collect a skipped checkpoint");
     near(player.course_run().status().clock, clock - dt,
-         "transport preserves the active countdown and consumes only normal tick time");
+         "transport preserves the active event clock and consumes only normal tick time");
     check(scoring.status().banked == points, "banked score survives authored teleport");
     near(scoring.status().meter, meter, "automatic transport adds no manual-reset energy penalty");
     std::filesystem::remove(root / "AIP.json");

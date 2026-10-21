@@ -3,9 +3,10 @@
 The shared player now offers Freeride, Race and Showoff. The Quest library's
 Event selector remembers the choice; desktop accepts `--mode freeride|race|showoff`.
 Freeride remains the application default and displays no event clock or result.
-Timed runs wait while the VR player is on foot, then hold the mounted board for
-a three-second countdown. Race counts up; Showoff counts down, with checkpoint
-time awards. Pause/focus loss freezes simulation and its clock together.
+Timed runs wait while the VR player is on foot. From build 0.86, both Race and
+Showoff start movement, scoring and their clocks on the first riding tick, with
+no start countdown. Race counts up; Showoff counts down, with checkpoint time
+awards. Pause/focus loss freezes simulation and its clock together.
 
 Desktop shows the clock, phase, checkpoint count and lap in the window title.
 VR shows a depth-tested clock/status panel above the left controller, with
@@ -50,9 +51,9 @@ clock/state and text presentation are independently authored.
   without a separate lap station count the finish plane itself, ending on the
   last pass. The tube's scripted lift/gate is a separate outstanding world feature.
 
-The three-second countdown, 150 metre finish half-width and 30 metre vertical
-clearance are explicit application tuning. Width/height tests reject far-wide
-and overhead crossings. Result presentation holds the board while keeping the
+The 150 metre finish half-width and 30 metre vertical clearance are explicit
+application tuning. Width/height tests reject far-wide and overhead crossings.
+Result presentation holds the board while keeping the
 world and tracked self-view available; it is not the original celebration,
 podium or results animation. On-foot movement remains possible and an already
 running clock continues while walking.

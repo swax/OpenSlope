@@ -1026,7 +1026,7 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 const auto tracked = state.tracking(frame.predictedDisplayTime, head, body, body_rotation);
                 state.walk_forward = normalized(project(tracked.forward, {0, 1, 0}), player.camera_forward());
                 state.room_offset = finite(tracked.head) ? project(tracked.head - body, {0, 1, 0}) : Vec3{};
-                const auto pose = avatar_pose(player, &tracked);
+                auto pose = avatar_pose(player, &tracked);
                 const auto mode = pose.tracked_body ? (pose.tracked_legs ? 2 : 1) : 0;
                 if (mode != state.pose_mode) {
                     state.pose_mode = mode;
@@ -1037,11 +1037,13 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 const auto camera_offset = state.presentation.camera_offset(player.camera_forward());
                 std::vector<Vertex> avatar_mesh, hud;
                 state.ui.visible = interactive && state.presentation.controls;
+                pose.controller_models &= state.ui.visible;
                 if (interactive) {
                     const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, state.ui.visible,
                                                              tracked.head + camera_offset, camera_offset);
                     avatar_mesh.assign(body_mesh.begin(), body_mesh.end());
-                    equipment_outline(avatar_mesh, player);
+                    if (state.ui.visible)
+                        equipment_outline(avatar_mesh, player);
                     state.ui.frame(RideUi::wrist(tracked.controllers[0], tracked.head + camera_offset, camera_offset));
                     state.ui.append(hud, player, true, dt > 0 ? 1 / dt : 0);
                     auto pointer = state.equipment.rays[1];
@@ -1154,16 +1156,23 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         if (rendered && now - sample_started >= std::chrono::seconds(5)) {
             const auto n = double(sample_frames), fps = n / std::chrono::duration<double>(now - sample_started).count(),
                        hz = frame.predictedDisplayPeriod > 0 ? 1e9 / double(frame.predictedDisplayPeriod) : 0.;
-            char message[768];
+            char message[1024];
             std::snprintf(message, sizeof(message),
                           "XR frames: %.1f fps / %.1f Hz; focused %d; total %.2f ms; wait-frame %.2f; simulation %.2f; "
                           "tracking/avatar %.2f; image-wait %.2f; render-submit %.2f; resource-wait %.2f; end-frame "
-                          "%.2f; GPU previous %.2f ms; eye %ux%u MSAA %u; props %u; route copies %u",
+                          "%.2f; GPU previous %.2f ms; eye %ux%u MSAA %u; props %u; route copies %u; "
+                          "terrain %u/%u patches; indices %llu/%llu; terrain draws %u; cull last %.2f ms; "
+                          "range %.0f m; course %s",
                           fps, hz, int(state.focused), total_time / n, frame_wait / n, simulation / n, pose_time / n,
                           image_wait_time / n, render_time / n, resource_wait / n, end_time / n,
                           gpu_samples ? gpu_time / gpu_samples : -1., state.eyes[0].width, state.eyes[0].height,
                           state.eyes[0].renderer->samples(), state.eyes[0].renderer->stats().visible_props,
-                          state.eyes[0].renderer->stats().route_copies);
+                          state.eyes[0].renderer->stats().route_copies, state.eyes[0].renderer->stats().visible_terrain,
+                          state.eyes[0].renderer->stats().terrain_patches,
+                          static_cast<unsigned long long>(state.eyes[0].renderer->stats().terrain_indices),
+                          static_cast<unsigned long long>(state.eyes[0].renderer->stats().terrain_total_indices),
+                          state.eyes[0].renderer->stats().terrain_draws, state.eyes[0].renderer->stats().cull_ms,
+                          terrain_draw_distance, state.course_id.c_str());
             tracking_log(message);
             reset_sample(now);
         }

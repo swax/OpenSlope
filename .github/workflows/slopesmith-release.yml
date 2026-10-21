@@ -140,6 +140,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view slopesmith-channel >/dev/null 2>&1 || gh release create slopesmith-channel --title 'Slopesmith release channel' --notes 'Signed, prebuilt Slopesmith Linux releases. Versioned assets are immutable; latest metadata selects the current release.'
+          # Keep the repository's Latest release available for Native downloads.
+          gh release view slopesmith-channel >/dev/null 2>&1 || gh release create slopesmith-channel --latest=false --title 'Slopesmith release channel' --notes 'Signed, prebuilt Slopesmith Linux releases. Versioned assets are immutable; latest metadata selects the current release.'
+          gh release edit slopesmith-channel --latest=false
           gh release upload slopesmith-channel release-files/slopesmith-*
           gh release upload slopesmith-channel release-files/latest-* --clobber

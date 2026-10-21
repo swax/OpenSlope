@@ -221,6 +221,56 @@ Json animation(Bytes b, std::size_t p) {
     }
     return a;
 }
+
+Json ssx_animation(Bytes b, std::size_t base) {
+    // Independently measured SSX object-relative animation: rest matrix,
+    // packed channel mask/count and 8-byte channel rows with padded 32-byte keys.
+    // Its curves use frames and radians; the portable curves use seconds/degrees.
+    b.range(base, 80);
+    const auto packed = b.le(base + 64), mask = packed & 65535, count = packed >> 16;
+    if (mask > 63 || count > 6 || std::popcount(mask) != int(count))
+        throw std::runtime_error("Invalid SSX model animation channels");
+    Json a = {{"U1", b.number(base + 48)},
+              {"U2", b.number(base + 52)},
+              {"U3", b.number(base + 56)},
+              {"U4", 0},
+              {"U5", 0},
+              {"U6", 0},
+              {"AnimationAction", mask},
+              {"AnimationEntries", Json::array()}};
+    const auto table = base + b.le(base + 68);
+    b.range(table, std::size_t(count) * 8);
+    unsigned entry = 0;
+    for (unsigned channel = 0; channel < 6; ++channel) {
+        if (!(mask & (1u << channel)))
+            continue;
+        const auto row = table + entry++ * 8;
+        const auto n = b.le(row);
+        const auto data = base + b.le(row + 4);
+        if (n > 100000)
+            throw std::runtime_error("Invalid SSX model animation segment count");
+        b.range(data, std::size_t(n) * 32);
+        Json curves = Json::array();
+        for (unsigned s = 0; s < n; ++s) {
+            Json curve;
+            for (unsigned v = 0; v < 6; ++v) {
+                double value = b.number(data + s * 32 + v * 4);
+                if (v < 4) {
+                    value *= std::pow(30., 3 - v);
+                    if (channel >= 3)
+                        value *= 180 / pi;
+                } else
+                    value /= 30;
+                curve["Value" + std::to_string(v + 1)] = value;
+            }
+            if (curve["Value5"].get<double>() > curve["Value6"].get<double>())
+                throw std::runtime_error("Invalid SSX model animation window");
+            curves.push_back(std::move(curve));
+        }
+        a["AnimationEntries"].push_back({{"AnimationMaths", curves}});
+    }
+    return a;
+}
 } // namespace
 
 Json import_pose(Bytes data, std::size_t offset, double scale) {
@@ -332,15 +382,28 @@ bool write_ssx_props(std::span<const std::uint8_t> index, std::span<const std::u
             const auto v = [&](std::size_t p) {
                 return Json::array({model.number(p), model.number(p + 4), model.number(p + 8)});
             };
-            rows.push_back({{"ObjectName", "Object " + std::to_string(j)},
-                            {"ParentID", -1},
-                            {"IncludeMatrix", false},
-                            {"IncludeAnimation", false},
-                            {"Flags", model.le(at + 32)},
-                            {"CollisionBounds", {{"Min", v(at)}, {"Max", v(at + 12)}}},
-                            {"MeshData", Json::array({{{"MeshPath", name}, {"MaterialID", material}}})}});
+            Json object = {{"ObjectName", "Object " + std::to_string(j)},
+                           {"ParentID", -1},
+                           {"IncludeMatrix", false},
+                           {"IncludeAnimation", false},
+                           {"Flags", model.le(at + 32)},
+                           {"CollisionBounds", {{"Min", v(at)}, {"Max", v(at + 12)}}},
+                           {"MeshData", Json::array({{{"MeshPath", name}, {"MaterialID", material}}})}};
+            const auto animated = model.le(at + 28);
+            if (animated && animated != 0xdeadbeef) {
+                const auto base = std::size_t(at) + animated;
+                const auto rest = pose(matrix(model, base));
+                object["Position"] = rest.at("Location");
+                object["Rotation"] = rest.at("Rotation");
+                object["Scale"] = rest.at("Scale");
+                object["TransformMatrix"] = rest.at("TransformMatrix");
+                object["IncludeMatrix"] = object["IncludeAnimation"] = true;
+                object["Animation"] = ssx_animation(model, base);
+            }
+            rows.push_back(std::move(object));
         }
-        models.push_back({{"ModelName", "Model " + std::to_string(i)}, {"AnimTime", 0}, {"ModelObjects", rows}});
+        models.push_back(
+            {{"ModelName", "Model " + std::to_string(i)}, {"AnimTime", model.number(12)}, {"ModelObjects", rows}});
     }
     if (placements.size() % 272 || placements.size() / 272 > 100000)
         throw std::runtime_error("Invalid SSX placement array");

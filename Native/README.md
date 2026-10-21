@@ -3,6 +3,21 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.86 removes both Race and Showoff start countdowns. Riding, scoring and
+the event clock start on the first mounted tick. See [build notes](releases/0.86.0.md).
+The equipment-frame fixes and SSX gem importer remain included;
+older SSX maps need re-importing to receive gem animation and pickup metadata.
+
+Build 0.82 makes Quest Y hide the full wrist HUD and controller models together.
+Press Y again to restore them. See [build notes](releases/0.82.0.md).
+
+Build 0.81 adds a 600 metre terrain draw range and matching fog on desktop and
+Quest. Existing courses work without re-importing. See [build notes](releases/0.81.0.md).
+
+Build 0.80 fixes original SSX riding-sprite loading, excludes unscored On Tour
+paths from race progress/finish calculations, and admits one state of paired
+On Tour event terrain for rendering and collision. See [build notes](releases/0.80.0.md).
+
 Build 0.79 hides the opponent menu and removes control hints from the desktop
 window title. The Windows package has shorter setup instructions; full controls
 remain in the in-game menu. See [release notes](releases/0.79.0.md).
@@ -439,7 +454,7 @@ and supported Quest runtimes can supply upper-body/full-body joints. See
 [avatar presentation](docs/avatar.md) for API support, fallbacks and validation.
 
 Timed events are available through `--mode race|showoff` or the Quest library's
-Event selector. Mount to start the countdown; Race counts up and Showoff counts
+Event selector. Mount to start riding and the clock immediately; Race counts up and Showoff counts
 down with checkpoint time awards. T restarts on desktop; Y toggles the Quest controls display. The desktop title and left VR
 controller panel show clock/state. See [course runs](docs/course-runs.md) for
 the course metric, finish/lap rules, authored settings and remaining race systems.

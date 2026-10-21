@@ -435,6 +435,7 @@ void Player::tick_loose_board() {
         if (const auto safe_floor = walk_ground(rider_.position + Vec3{0, 2, 0}, rider_.position - Vec3{0, 10, 0})) {
             b.position = b.previous = safe_floor->point;
             b.up = safe_floor->normal;
+            b.forward = normalized(project(b.forward, b.up), normalized(cross(b.up, {1, 0, 0}), {0, 0, -1}));
         } else
             b.position = b.previous = rider_.position;
         b.velocity = {};

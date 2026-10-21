@@ -15,5 +15,6 @@ struct World {
     bool explicit_sky = false, explicit_fog_colour = false;
     static World load(const std::filesystem::path& root);
     void fit_colours(const Appearance& appearance);
+    std::array<float, 2> draw_fog(float range) const;
 };
 } // namespace openslope

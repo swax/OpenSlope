@@ -80,8 +80,9 @@ std::vector<std::string> scene_images(const std::filesystem::path& root, std::sp
 std::vector<MeshBatch> terrain_batches(const Terrain& terrain) {
     std::vector<MeshBatch> batches;
     for (const auto& patch : terrain.patches())
-        batches.push_back(
-            {0, 0, patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1});
+        if (patch.active)
+            batches.push_back(
+                {0, 0, patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1});
     for (const auto& name : prop_files(terrain.map_root()))
         if (name.starts_with("Textures/"))
             batches.push_back({0, 0, name.substr(9), -1});

@@ -64,10 +64,13 @@ def path():
     return bytes(b) + bytes([0, 0, 127, 0]) + struct.pack('<4f', 1, 0, -.1, 100) + le(0) + struct.pack('<IIff', 300, 1, 0, 0)
 
 
-def race_path():
-    b = bytearray(60)
-    struct.pack_into('<3IfII3f', b, 0, 1, 0, 4, 1000, 1, 0, 1000, 2000, 3000)
-    return b'Biii' + le(1) + bytes(b) + bytes([0, 0, 127, 0]) + struct.pack('<4f', 1, 0, -.1, 100) + le(0)
+def race_path(distances=(1000,)):
+    rows = []
+    for distance in distances:
+        b = bytearray(60)
+        struct.pack_into('<3IfII3f', b, 0, 1, 0, 4, distance, 1, 0, 1000, 2000, 3000)
+        rows.append(bytes(b) + bytes([0, 0, 127, 0]) + struct.pack('<4f', 1, 0, -.1, 100) + le(0))
+    return b'Biii' + le(len(rows)) + b''.join(rows)
 
 
 def names(instance_names=None):
@@ -244,6 +247,23 @@ def main():
             run(executable, 'extract', source, course, root / 'Maps', succeeds=False)
         for course in ['SSXOT_ALL', 'SSXOT_ALL_DAY', 'SSXOT_ER1', 'SSXOT_ER2_DAY', 'SSXOT_ER1_DUSK']:
             run(executable, 'extract', source, course, root / 'invalid', succeeds=False)
+        for label, distances in [('mixed-race', (-1, 1000, 0)), ('unscored-race', (-1, -1))]:
+            paths = members()
+            paths['data/worlds/er1d.tp'] = race_path(distances)
+            race_iso = root / (label + '.iso')
+            race_iso.write_bytes(disc(paths))
+            run(executable, 'extract', race_iso, 'SSXOT_ER1_DAY', root / label)
+            out = root / label / 'SSXOT_ER1_DAY'
+            races = json.loads((out / 'AIP.json').read_text())['RaceLines']
+            assert [(row['Name'], row['DistanceToFinish']) for row in races] == [
+                (f'Race Line {i}', value) for i, value in enumerate(distances) if value >= 0]
+            assert (out / 'Source/er1d.tp').read_bytes() == paths['data/worlds/er1d.tp']
+        invalid_paths = members()
+        invalid_paths['data/worlds/er1d.tp'] = race_path((-2,))
+        invalid_iso = root / 'invalid-race-distance.iso'
+        invalid_iso.write_bytes(disc(invalid_paths))
+        run(executable, 'extract', invalid_iso, 'SSXOT_ER1_DAY', root / 'invalid-race-distance', succeeds=False)
+        assert not list((root / 'invalid-race-distance').iterdir())
         def helper_page(rows):
             result = []
             for kind, rid, payload, mask in rows:

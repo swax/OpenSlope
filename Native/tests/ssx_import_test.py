@@ -55,6 +55,45 @@ def members():
             'world.wfx': bytes(effects), 'world.aip': path, 'world.ssh': ssh(), 'worldl.ssh': ssh(True)}
 
 
+def gem_members(tier=2):
+    files = members()
+    original = files['world.wdr']
+    # Move the object away from its usual offset: animation offsets are object-relative.
+    object_at = 80
+    model = bytearray(160) + original[128:]
+    model[:48] = original[:48]
+    model[object_at:object_at + 80] = original[48:128]
+    struct.pack_into('<I', model, 36, object_at)
+    model += bytes(-len(model) % 16)
+    packet_at = len(model)
+    block = bytearray(48 + 96 + 96)
+    struct.pack_into('<16f', block, 48, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+    struct.pack_into('<II', block, 48 + 64, (2 << 16) | (1 << 0) | (1 << 4), 80)
+    # Two tightly packed count/offset rows, then separately padded curve keys.
+    struct.pack_into('<4I', block, 48 + 80, 1, 96, 2, 128)
+    struct.pack_into('<6f', block, 48 + 96, 0, 0, .25, 0, 0, 60)
+    # A half-turn over 60 source frames, in radians per frame.
+    struct.pack_into('<6f', block, 48 + 128, 0, 0, 0, 0, 0, 1)
+    struct.pack_into('<6f', block, 48 + 160, 0, 0, math.pi / 60, 0, 1, 60)
+    model += block
+    struct.pack_into('<If', model, 8, len(model), 60)
+    struct.pack_into('<I', model, object_at + 28, packet_at + 48 - object_at)
+    files['world.wdr'] = bytes(model)
+    index = bytearray(files['world.wdx'])
+    struct.pack_into('<I', index, 76, len(model))
+    files['world.wdx'] = bytes(index)
+    cell = bytearray(files['world.wdf'])
+    struct.pack_into('<H', cell, 48 + 16 * 48 + 234, 33)
+    struct.pack_into('<h', cell, 48 + 16 * 48 + 240, 2)
+    files['world.wdf'] = bytes(cell)
+    play = struct.pack('<HHII5fI', 0, 36, 256, (3 << 16) | 1, -1, -1, 1, 0, -1, 0)
+    pickup = struct.pack('<HHfHHII', 13, 8, tier, 0, 12, 5, 2)
+    header = struct.pack('<ff8I', 1.01, .0003, 1, 40, 0, 68, 0, 68, 2, 68)
+    slots = struct.pack('<7i', 0, 1, -1, -1, -1, -1, -1)
+    files['world.wfx'] = header + slots + struct.pack('<4I', 1, 0, 2, len(play)) + play + pickup
+    return files
+
+
 def main():
     executable = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix='openslope-ssx-') as temporary:

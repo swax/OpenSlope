@@ -37,9 +37,11 @@ def main():
             (root / 'Slopesmith.json').write_text(json.dumps(
                 dict(schema=1, kind='slopesmith-export', showoffSeconds=seconds)))
             sequence = root / (name + '.json')
+            # Start the event mounted before an equipment grab can put the rider on foot.
+            replay_steps = ([{'Ticks': 1}] if name.startswith('grab') else []) + steps
             sequence.write_text(json.dumps(dict(Schema='openslope-replay/v1',
                 Placement=dict(Position=[0, 20, 0], Forward=[0, 0, -1], Velocity=[0, 0, -12]),
-                Steps=[{'Ticks': 180}] + steps)))
+                Steps=replay_steps)))
             output = root / (name + '.ppm')
             result = subprocess.run([executable, '--map', str(root), '--mode', 'showoff',
                 '--capture', str(output), '--replay', str(sequence), '--no-audio',
@@ -62,7 +64,7 @@ def main():
             image = output.read_bytes().split(b'\n', 3)
             assert image[:3] == [b'P6', b'1280 720', b'255'] and len(image[3]) == 1280*720*3
             assert len(set(image[3])) > 20, 'Rendered score replay has no scene'
-            frames += sum(step['Ticks'] for step in steps) + 180
+            frames += sum(step['Ticks'] for step in replay_steps)
     print(f'PASS: {frames} production Vulkan frames cover banking, grab/remount/release, loss without knockdowns, '
           'meter and frozen results with continued riding')
 

@@ -2,6 +2,7 @@
 #include <cctype>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
@@ -168,8 +169,11 @@ CourseRun::CourseRun(CoursePaths paths, CoursePaths finish_paths, RunSettings se
         double span = 0;
         for (std::size_t i = 1; i < last->points.size(); ++i)
             span += horizontal(last->points[i] - last->points[i - 1]);
-        if (span > 1e-6 && last->distance_to_finish <= span + 1e-6)
-            finish_ = horizontal_pose(*last, last->distance_to_finish);
+        // Authored lengths and displacement steps are float32. Their decoded
+        // sums can put the endpoint a few micrometres beyond the final segment.
+        const auto tolerance = 8 * std::numeric_limits<float>::epsilon() * std::max(1., span);
+        if (span > 1e-6 && last->distance_to_finish <= span + tolerance)
+            finish_ = horizontal_pose(*last, std::min(last->distance_to_finish, span));
     }
     restart();
 }
@@ -218,7 +222,7 @@ bool CourseRun::begin_tick(double seconds, bool mounted) {
         throw std::invalid_argument("Invalid run tick");
     status_.checkpoint_notice = std::max(0., status_.checkpoint_notice - seconds);
     if (status_.phase == RunPhase::Ready && mounted) {
-        status_.phase = RunPhase::Countdown;
+        status_.phase = settings_.countdown_seconds > 0 ? RunPhase::Countdown : RunPhase::Running;
         status_.countdown = settings_.countdown_seconds;
     }
     if (status_.phase == RunPhase::Countdown) {

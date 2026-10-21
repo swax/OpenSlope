@@ -53,10 +53,26 @@ The exported map contains:
 - Retail provenance in `Origin.json`, capability/deferred information in
   `Import.json`, and lossless local archive members in `Source/`.
 
+Build 0.83 also translates original SSX's compact real-time animation setup and
+score-multiplier commands. Rigid model curves convert their frame/radian domain
+to the portable second/degree domain. Pickup-bearing placements receive a
+`Gem x2/x3/x5` label and explicit Showoff state; model labels identify their tier
+while preserving source names and all indices. The classifier uses converted
+reward effects, not fixed model IDs or visual resemblance. Decorative copies
+without pickup effects keep their ordinary mode presence.
+
+The supplied Pipedream course imports 59 multiplier pickups: 28 x2, 20 x3 and
+11 x5. Model 1 / Instance 691 is an x2 pickup. Native runtime checks exercise
+its spin, collection, duplicate-contact suppression, restart and Showoff gate;
+the decorative Model 1 / Instance 91 keeps its ordinary visibility. Browser
+checks also verify the imported animation and pickup commands reach Slopesmith's
+reference runtime.
+
 `Import.json` deliberately reports `Complete: false`, with counts of active nodes
 and deferred graphs. Remaining work includes unsupported effect commands, model
-animation, automatic rail candidacy, executable-derived world settings, spatial
-and collision sound routing, and original `PFDx` version-1 race music graphs.
+animation property kinds 257/258, automatic rail candidacy, executable-derived
+world settings, spatial and collision sound routing, and original `PFDx`
+version-1 race music graphs.
 Those graphs differ from the existing `xDFP` version-3 reader; unsupported race
 music does not prevent useful sound assets or intro stems from being imported.
 The spline curves and effect source records are retained for later stages. A
@@ -77,8 +93,8 @@ retail timing or headset fidelity. The adapter and probes were independently
 authored from disc measurements and the existing portable contracts.
 
 Previously cached SSX maps request a reload in `/isos` so the new materials,
-effects and sound assets are extracted. Tricky and other games keep their cache
-versions. Native imports continue to protect existing map folders; export into a
+effects, gem animations and sound assets are extracted. Tricky and other games
+keep their cache versions. Native imports continue to protect existing map folders; export into a
 new destination when comparing a fresh import with an older map.
 
 ```text

@@ -289,27 +289,11 @@ UiFrame RideUi::wrist(const ControllerPose& c, Vec3, Vec3 offset) {
 }
 
 void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, double fps) const {
-    if (!frame_.valid)
+    if (!frame_.valid || (wrist && !visible))
         return;
     const Canvas c{out, frame_};
     const auto speed = std::to_string(int(length(p.rider().velocity) * 3.6));
     const auto& run = p.course_run().status();
-    if (wrist && !visible) {
-        c.rect(0, 0, 1, .17, panel);
-        c.rect(0, 0, .012, .17, accent);
-        c.text(speed + " KM/H  " +
-                   (p.carrying_board() ? "IN HAND"
-                    : p.on_foot()      ? "ON FOOT"
-                                       : "RIDING"),
-               .04, .035, .006, accent);
-        c.text("Y MENU  /  A JUMP  /  B BOOST", .04, .11, .0036, muted);
-        if (stats)
-            c.text("FPS " + std::to_string(int(fps)), .04, .20, .004, muted);
-        if (const auto* field = p.ai_field())
-            c.text("PLACE " + std::to_string(field->place() + 1) + " / " + std::to_string(field->size() + 1), .04, .27,
-                   .004, accent);
-        return;
-    }
     if (visible) {
         c.rect(0, 0, 1, 1, panel);
         c.rect(0, 0, 1, .012, accent);
@@ -324,15 +308,15 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                .06, .13, .008);
         c.text(loading            ? load_name
                : graphics_options ? (immersive ? "SNOWFALL / DISPLAY STATS" : "SCENE QUALITY / WEATHER")
-               : library
-                   ? (iso_library ? (iso_source.empty() ? "SSX / TRICKY / SSX 3 / ON TOUR (PS2)" : iso_source.filename().string())
-                                  : "INSTALLED / CUSTOM MAPS")
-               : audio_options ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
-                                                 : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
-                               : speed + " KM/H  /  " +
-                                     (p.carrying_board() ? "CARRYING"
-                                      : p.on_foot()      ? "ON FOOT"
-                                                         : "RIDING"),
+               : library          ? (iso_library ? (iso_source.empty() ? "SSX / TRICKY / SSX 3 / ON TOUR (PS2)"
+                                                                       : iso_source.filename().string())
+                                                 : "INSTALLED / CUSTOM MAPS")
+               : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
+                                                    : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
+                                  : speed + " KM/H  /  " +
+                                        (p.carrying_board() ? "CARRYING"
+                                         : p.on_foot()      ? "ON FOOT"
+                                                            : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
         if (!audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);

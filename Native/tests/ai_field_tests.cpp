@@ -275,12 +275,18 @@ void lifecycle(const std::filesystem::path& root) {
     fixture(root);
     Player player(Terrain::load(root));
     player.configure_run(RunMode::Race);
+    player.start_on_foot();
     player.ai_riders(2);
     const auto gate = player.ai_field()->rider(0).rider().position;
     for (unsigned i = 0; i < 179; ++i)
         player.tick({});
     near(length(player.ai_field()->rider(0).rider().position - gate), 0,
-         "Opponents wait at the gate through the local countdown");
+         "Opponents wait at the gate while the local rider is on foot before the first mount");
+    check(player.interact_board(), "The local rider mounts to start the field");
+    player.tick({});
+    check(player.course_run().status().phase == RunPhase::Running &&
+              player.ai_field()->rider(0).course_run().status().phase == RunPhase::Running,
+          "The local rider and opponents start without a countdown");
     for (unsigned i = 0; i < 240; ++i)
         player.tick({});
     check(player.ai_field()->rider(0).rider().position.z < gate.z - 2,
@@ -603,7 +609,7 @@ void laps(const std::filesystem::path& root) {
     Player player(Terrain::load(root));
     player.configure_run(RunMode::Race);
     player.ai_riders(2);
-    for (unsigned i = 0; i < 182; ++i)
+    for (unsigned i = 0; i < 2; ++i)
         player.tick({});
     seat(player.ai_field()->rider(0), 0, 20, 0);
     for (unsigned i = 0; i < 4; ++i)

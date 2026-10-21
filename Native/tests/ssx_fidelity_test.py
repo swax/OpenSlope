@@ -5,7 +5,7 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
-from ssx_import_test import members, raw_disc
+from ssx_import_test import members, raw_disc, gem_members
 from import_test import big, ssh, run
 from audio_import_test import archive, disc
 from audio_container_test import bank, stream
@@ -68,10 +68,44 @@ def main():
     if sys.argv[1] == '--fixture':
         Path(sys.argv[2]).write_bytes(disc(fixture()))
         return
+    if sys.argv[1] == '--gem-fixture':
+        Path(sys.argv[2]).write_bytes(disc({'DATA/MODELS/FIXTURE.BIG': big(gem_members(), compact=False)}))
+        return
     cli = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix='openslope-ssx-fidelity-') as temporary:
         root = Path(temporary)
         authored = disc(fixture())
+        for tier in (2, 3, 5):
+            files = gem_members(tier)
+            image = disc({'DATA/MODELS/FIXTURE.BIG': big(files, compact=False)})
+            for extension, data in [('iso', image), ('bin', raw_disc(image))]:
+                source = root / f'gem-{tier}.{extension}'
+                source.write_bytes(data)
+                run(cli, 'extract', source, 'SSX_FIXTURE', root / f'gem-{tier}-{extension}')
+                output = root / f'gem-{tier}-{extension}/SSX_FIXTURE'
+                model = json.loads((output / 'Models.json').read_text())['Models'][0]
+                assert model['ModelName'] == f'SSX_Gem_Multiplierx{tier} (Model 0)'
+                assert model['SourceModelName'] == 'Model 0' and model['AnimTime'] == 60
+                obj = model['ModelObjects'][0]
+                assert obj['IncludeAnimation'] and obj['Animation']['AnimationAction'] == 17
+                channels = obj['Animation']['AnimationEntries']
+                assert len(channels) == 2
+                translation = channels[0]['AnimationMaths'][0]
+                assert translation['Value3'] == 7.5 and translation['Value6'] == 2
+                curves = channels[1]['AnimationMaths']
+                assert len(curves) == 2
+                curve = curves[1]
+                assert abs(curve['Value3'] - 90) < .001 and curve['Value6'] == 2
+                row = json.loads((output / 'Instances.json').read_text())['Instances'][0]
+                assert row['InstanceName'] == f'Gem x{tier} (Instance 0)' and row['LTGState'] == 2
+                assert row['SourceInstanceName'] == 'Instance 0' and row['ModelID'] == 0
+                effects = json.loads((output / 'Effects.json').read_text())
+                assert effects['graphs'][1]['nodes'][0]['payload']['MultiplierScore'] == tier
+                law = effects['graphs'][0]['nodes'][0]['payload']['type0']['type0Sub256']
+                assert law['U0'] == 1 and law['U7'] == 3 and law['U3'] == 30
+                assert (output / 'Source/WORLD.WDR').read_bytes() == files['world.wdr']
+                if len(sys.argv) > 2:
+                    run(Path(sys.argv[2]).resolve(), output, '--gem', 0, tier)
         for extension, data in [('iso', authored), ('bin', raw_disc(authored))]:
             source = root / ('fixture.' + extension)
             source.write_bytes(data)
@@ -125,7 +159,7 @@ def main():
         source.write_bytes(disc(assets))
         run(cli, 'extract', source, 'SSX_FIXTURE', root / 'failed', succeeds=False)
         assert not list((root / 'failed').iterdir())
-    print('PASS: original SSX alpha, flipbook/effect playback, particle registration, audio, raw BIN parity and atomic failure')
+    print('PASS: original SSX gem animation/collection/labels, alpha, flipbooks, particles, audio, raw BIN parity and atomic failure')
 
 
 if __name__ == '__main__':

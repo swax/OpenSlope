@@ -10,8 +10,8 @@ from rail_import_test import members as rail_members
 from import_test import big
 from world_import_fixture import boot_files
 from board_groups_fixture import boot_program
-from ssx_import_test import members as ssx_members, raw_disc
-from import_test import iso
+from ssx_import_test import raw_disc
+from ssx_fidelity_test import fixture as ssx_fixture
 
 destination = Path(sys.argv[1])
 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -38,4 +38,4 @@ data['DATA/CONFIG/BANKS.INF']+=b'[GARI]\nMAIN="tone.bnk"\nBOARD="tone.bnk"\nBANK
 data['DATA/CONFIG/MUSICMAP.INF']+=b'[GARI]\n'
 data['DATA/CONFIG/SNOW.INF']=b'[PACK]\n[GLIDE]\nLOAD BOARD\nASSIGNVOL\n'
 destination.write_bytes(disc(data))
-destination.with_name('ssx-fixture.bin').write_bytes(raw_disc(iso(big(ssx_members()))))
+destination.with_name('ssx-fixture.bin').write_bytes(raw_disc(disc(ssx_fixture())))

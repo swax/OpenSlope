@@ -53,16 +53,20 @@ def main():
             functions=[],slots=[dict(id='slot',originalIndex=0,circumstances=dict(collision='pickup'))],
             instances=[],objectProperties=[],splines=[])
         for name, mode, ticks, visible, multiplier in [
-            ('before','showoff',180,1,1),('collected','showoff',181,0,2),
-            ('freeride','freeride',1,0,1),('race','race',181,0,1),
-            ('reset','showoff',229,0,1),
+            ('before','showoff',1,1,1),('collected','showoff',1,0,2),
+            ('freeride','freeride',1,0,1),('race','race',1,0,1),
+            ('reset','showoff',49,0,1),
         ]:
             if name=='reset':
                 doc['graphs'][0]['nodes']=[node(13,dict(type13=0))]
             (root/'Effects.json').write_text(json.dumps(doc))
             sequence=root/(name+'.json')
+            # Enter reset volumes from outside; spawning inside deliberately latches them off.
+            placement = dict(Position=[-8 if name in ('before','reset') else -3,-.005,0],Forward=[1,0,0])
+            if name=='reset':
+                placement['Velocity']=[300,0,0]
             sequence.write_text(json.dumps(dict(Schema='openslope-replay/v1',
-                Placement=dict(Position=[-3,-.005,0],Forward=[1,0,0]),Steps=[dict(Ticks=ticks)])))
+                Placement=placement,Steps=[dict(Ticks=ticks)])))
             output=root/(name+'.ppm')
             arguments=[executable,'--map',str(root),'--mode',mode,'--first-person',
                 '--replay',str(sequence),'--capture',str(output),'--no-audio']

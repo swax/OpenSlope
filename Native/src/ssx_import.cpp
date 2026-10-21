@@ -170,7 +170,19 @@ Json effect_node(Bytes b, const std::string& graph, unsigned index,
             property["Fence"] = {{"U0", b.le(8)}, {"FlexAmmount", b.number(12)}};
         else if (sub == 13 && size == 24)
             property["type0Sub13"] = fields(8, "ifff");
-        else
+        else if (sub == 256 && size == 36) {
+            const auto packed = b.le(8), loop = packed & 65535, reverse = packed >> 16;
+            if (loop > 2 || (reverse != 3 && reverse != 4))
+                return nullptr;
+            property["type0Sub256"] = {{"U0", loop},
+                                       {"U1", b.number(12)},
+                                       {"U2", b.number(16)},
+                                       {"U3", b.number(20) * 30.},
+                                       {"U4", b.number(24) * 30.},
+                                       {"U5", b.number(28)},
+                                       {"U6", b.le(32)},
+                                       {"U7", reverse}};
+        } else
             return nullptr;
         payload["type0"] = property;
     } else if (main == 1 && size == 212 && b.le(4) == 0 && particle_sprites) {
@@ -205,6 +217,12 @@ Json effect_node(Bytes b, const std::string& graph, unsigned index,
     } else if (main == 7 && size == 8) {
         canonical = 8;
         payload["SoundPlay"] = b.le(4);
+    } else if (main == 13 && size == 8) {
+        const auto tier = b.number(4);
+        if (tier != 2 && tier != 3 && tier != 5)
+            return nullptr;
+        canonical = 14;
+        payload["MultiplierScore"] = tier;
     } else
         return nullptr;
     return {{"id", graph + "/node:" + std::to_string(index)},
@@ -310,6 +328,48 @@ Json effects(Bytes b, const std::string& course, const Json& instances,
                  {"data", {{"ByteSize", b.le(offset + i * 12 + 4)}, {"Count", b.le(offset + i * 12 + 8)}}}});
     }
     return doc;
+}
+
+std::size_t label_gems(Json& instances, Json& models, Json& logic) {
+    std::map<std::string, unsigned> rewards;
+    for (const auto& graph : logic.at("graphs")) {
+        std::set<unsigned> tiers;
+        for (const auto& node : graph.at("nodes"))
+            if (node.at("mainType") == 14)
+                tiers.insert(node.at("payload").at("MultiplierScore").get<unsigned>());
+        if (tiers.size() == 1)
+            rewards[graph.at("id").get<std::string>()] = *tiers.begin();
+    }
+    std::map<int, unsigned> slots;
+    for (const auto& slot : logic.at("slots")) {
+        const auto& collision = slot.at("circumstances").at("collision");
+        if (!collision.is_null() && rewards.contains(collision.get<std::string>()))
+            slots[slot.at("originalIndex").get<int>()] = rewards.at(collision.get<std::string>());
+    }
+    std::map<std::size_t, std::set<unsigned>> model_tiers;
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < instances.size(); ++i) {
+        auto& row = instances[i];
+        const auto slot = row.at("EffectSlotIndex").get<int>();
+        if (!slots.contains(slot))
+            continue;
+        const auto tier = slots.at(slot);
+        row["SourceInstanceName"] = row.at("InstanceName");
+        row["InstanceName"] = "Gem x" + std::to_string(tier) + " (Instance " + std::to_string(i) + ")";
+        row["LTGState"] = 2;
+        model_tiers[row.at("ModelID").get<std::size_t>()].insert(tier);
+        logic["objectProperties"][i]["data"] = row;
+        ++count;
+    }
+    for (const auto& [id, tiers] : model_tiers) {
+        auto& row = models.at(id);
+        row["SourceModelName"] = row.at("ModelName");
+        // Keep the SSX prefix: only reward-bearing placements get Showoff state,
+        // not decorative copies of the same mesh with no pickup effect.
+        const auto tier = tiers.size() == 1 ? "x" + std::to_string(*tiers.begin()) : "";
+        row["ModelName"] = "SSX_Gem_Multiplier" + tier + " (Model " + std::to_string(id) + ")";
+    }
+    return count;
 }
 } // namespace
 
@@ -460,9 +520,16 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
     notify("Preserving SSX effect graphs");
     const auto particle_sprites = particles(disc, output, cancel);
     std::ifstream instance_file(output / "Instances.json");
-    const auto instance_doc = Json::parse(instance_file);
-    const auto logic =
+    auto instance_doc = Json::parse(instance_file);
+    auto logic =
         effects(Bytes{file(".WFX")}, course, instance_doc.at("Instances"), cell_instances, particle_sprites, cancel);
+    std::ifstream model_file(output / "Models.json");
+    auto model_doc = Json::parse(model_file);
+    const auto gem_count = label_gems(instance_doc.at("Instances"), model_doc.at("Models"), logic);
+    instance_file.close();
+    model_file.close();
+    write(output / "Instances.json", instance_doc);
+    write(output / "Models.json", model_doc);
     write(output / "Effects.json", logic);
     notify("Converting SSX splines");
     Json splines = Json::array();
@@ -517,9 +584,12 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
     Json outputs = {"Patches.json",   "Textures",     "Lightmaps",    "Models.json", "Materials.json",
                     "Instances.json", "Meshes",       "Lights.json",  "Collision",   "Physics.json",
                     "AIP.json",       "Effects.json", "Splines.json", "Origin.json", "Source"};
-    Json deferred = {
-        "effects-node-semantics", "animated-models", "rail-candidacy", "world", "audio-spatial-and-collision-routing",
-        "race-music-graphs"};
+    Json deferred = {"effects-node-semantics",
+                     "animation-properties-257-258",
+                     "rail-candidacy",
+                     "world",
+                     "audio-spatial-and-collision-routing",
+                     "race-music-graphs"};
     Json warnings = Json::array();
     notify("Converting original SSX sound banks");
     const auto audio = write_ssx_audio(disc, output, course, progress, cancel);
@@ -580,16 +650,18 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
         if (!stream)
             throw std::runtime_error("Cannot save SSX source sidecar");
     }
-    write(output / "Import.json",
-          {{"Schema", "openslope-native-import/v1"},
-           {"Game", "ssx"},
-           {"Course", course},
-           {"Complete", false},
-           {"Outputs", outputs},
-           {"Effects",
-            {{"ActiveGraphs", active_graphs}, {"ActiveNodes", active_nodes}, {"DeferredGraphs", unresolved_graphs}}},
-           {"Deferred", deferred},
-           {"Warnings", warnings}});
+    write(output / "Import.json", {{"Schema", "openslope-native-import/v1"},
+                                   {"Game", "ssx"},
+                                   {"Course", course},
+                                   {"Complete", false},
+                                   {"Outputs", outputs},
+                                   {"Effects",
+                                    {{"ActiveGraphs", active_graphs},
+                                     {"ActiveNodes", active_nodes},
+                                     {"DeferredGraphs", unresolved_graphs},
+                                     {"MultiplierPickups", gem_count}}},
+                                   {"Deferred", deferred},
+                                   {"Warnings", warnings}});
     static_cast<void>(disc);
     notify("Validating SSX map");
     static_cast<void>(Terrain::load(output));

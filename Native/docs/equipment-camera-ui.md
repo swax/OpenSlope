@@ -80,7 +80,10 @@ Quest Y toggles a left-wrist panel, initially shown. Aim the right controller an
 pull its trigger to select resume/hide, restart, view, controls, sound, stats,
 recall, recenter, head steering or exit. A captured menu press stays consumed
 until release, even after leaving/hiding the panel, so it cannot also ride a board.
-Hidden menus retain a compact speed/control watch. Third-person panels, pointer
+From build 0.82, hiding the menu also hides the compact speed/status watch,
+stats, controller models and labels, menu pointer and board selection outline.
+Press Y again to restore the presentation. Tracked avatar hands/body and all
+riding/board inputs remain active while it is hidden. Third-person panels, pointer
 and controller models follow the presented eyes while the body stays unshifted.
 Controls have a dedicated page. Build 0.53 also shows contextual controller
 labels while the wrist menu is visible. Its panel follows the controller beyond
