@@ -56,6 +56,7 @@ function prepare(source: LocalPlayerPose): LocalPlayerPose {
     vr: source.vr,
     ...(source.gear ? { gear: source.gear } : {}),
     ...(source.stance ? { stance: source.stance } : {}),
+    ...(source.stockBoard ? { stockBoard: source.stockBoard } : {}),
     body: transform(source.body),
     velocity: vector(source.velocity, VELOCITY_STEP),
     ...(source.animation

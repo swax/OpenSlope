@@ -39,6 +39,17 @@ void main() {
             if(transform.options.z==2){if(base.a<=1.0/255.0)discard;alpha=base.a;}
         }else if(base.a<=1.0/255.0)discard;
         displayColour=base.rgb;
+        if(transform.options.x==14) {
+            if(lightmapTile.w<0.5)displayColour=transform.presentation.yzw;
+            else {
+                vec2 halfTexel=0.5/vec2(textureSize(diffuseImage,0));
+                float panel=lightmapTile.x;
+                vec2 inkUV=vec2(textureUV.x,(textureUV.y-0.5)*1.1+0.5);
+                vec2 uv=clamp(inkUV,vec2(panel+halfTexel.x,halfTexel.y),vec2(panel+0.5-halfTexel.x,1.0-halfTexel.y));
+                displayColour=texture(diffuseImage,uv).rgb;
+            }
+            if(transform.options.z!=0)displayColour*=vertexColour;
+        }
         if(transform.options.x==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
         if(transform.options.x==5)alpha=base.a*effectAlpha;
         if(transform.options.x==6){displayColour=base.rgb*vertexColour;alpha=base.a*effectAlpha;}
@@ -61,7 +72,7 @@ void main() {
             displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
     }
-    if(transform.options.x!=7&&transform.options.x<10&&transform.eyeEnd.w>transform.fogColourStart.w){
+    if(transform.options.x!=7&&(transform.options.x<10||transform.options.x==14)&&transform.eyeEnd.w>transform.fogColourStart.w){
         float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
         if(transform.options.x==4&&transform.options.w!=0)alpha*=1.0-fog;
         else if(transform.options.x==4||transform.options.x==6||transform.options.x==9)displayColour*=1.0-fog;

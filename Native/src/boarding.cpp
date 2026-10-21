@@ -135,6 +135,7 @@ bool Player::recall_board(Vec3 facing) {
         throw std::invalid_argument("Invalid board recall heading");
     if (!on_foot_ || reset_pending() || recovering())
         return false;
+    board_design_ = random_stock_board(board_design_);
     const auto forward = normalized(project(facing, {0, 1, 0}), camera_forward());
     auto position = rider_.position + forward;
     Vec3 up{0, 1, 0};

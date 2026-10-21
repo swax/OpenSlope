@@ -80,7 +80,7 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(`${vite.resolvedUrls!.local[0]}?map=EDIT_PROP_TOOLS&agent=1`);
+  await page.goto(`${vite.resolvedUrls!.local[0]}editor/EDIT_PROP_TOOLS?agent=1`);
   await page.waitForFunction(
     () =>
       !!(window as unknown as Observation).slopesmith &&
@@ -98,6 +98,10 @@ try {
   async function enterEdit() {
     await page!.getByRole('button', { name: 'Edit', exact: true }).first().click();
     await page!.keyboard.press('Escape');
+    // Selection changes reach the gizmo's invisible pickers on the next draw.
+    await page!.evaluate(
+      () => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+    );
   }
   async function checkCompact() {
     await button('open in Props mode').waitFor({ state: 'visible' });

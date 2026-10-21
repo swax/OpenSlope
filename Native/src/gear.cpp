@@ -2,6 +2,7 @@
 #include "controller.hpp"
 #include "snowboard.hpp"
 #include <bit>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <span>
 #include <stdexcept>
@@ -52,7 +53,30 @@ Mesh read_art(std::span<const unsigned char> bytes) {
 } // namespace
 
 const Mesh& snowboard_mesh() {
-    static const Mesh model = read_art(bundled::snowboard);
+    static const Mesh model = [] {
+        auto result = read_art(bundled::snowboard);
+        double half_length = 0;
+        std::map<float, double> widths;
+        for (const auto& v : result.vertices) {
+            widths[v.z] = std::max(widths[v.z], std::abs(double(v.x)));
+            half_length = std::max(half_length, std::abs(double(v.z)));
+        }
+        for (std::size_t at = 0; at < result.vertices.size(); at += 3) {
+            // Sidewalls/caps retain their solid edge ink.
+            const auto ny = result.vertices[at].ny;
+            const bool face = std::abs(ny) > .5;
+            const bool top = ny > 0;
+            for (unsigned k = 0; k < 3; ++k) {
+                auto& v = result.vertices[at + k];
+                const auto half_width = widths.at(v.z);
+                v.s = float((top ? .25 : .75) + (half_width > 0 ? (top ? 1 : -1) * v.x / (4 * half_width) : 0));
+                v.t = float(.5 + v.z / (2 * half_length));
+                v.lx = top ? 0.f : .5f;
+                v.lh = face ? 1.f : 0.f;
+            }
+        }
+        return result;
+    }();
     return model;
 }
 

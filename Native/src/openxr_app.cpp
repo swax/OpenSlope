@@ -1051,8 +1051,11 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                     pointer.origin += body + camera_offset;
                     state.ui.append_pointer(hud, pointer);
                 }
-                const auto opponents =
-                    append_opponents(player, state.avatar, avatar_mesh, tracked.head + camera_offset);
+                std::vector<unsigned> opponent_designs;
+                const auto opponents = append_opponents(player, state.avatar, avatar_mesh, tracked.head + camera_offset,
+                                                        &opponent_designs);
+                for (auto& eye : state.eyes)
+                    eye.renderer->board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
                 const FieldEffects effects(player, tracked.head + camera_offset);
                 CelestialView glare_view;
                 glare_view.stereo = true;

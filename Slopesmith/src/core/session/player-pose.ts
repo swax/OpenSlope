@@ -1,4 +1,5 @@
 import { builtinCharacter } from '../characters/builtins';
+import { isStockBoardId } from '../equipment/stock-boards';
 import type {
   PlayerPose,
   PlayerEquipmentPose,
@@ -189,6 +190,7 @@ export function sanitizePlayerPose(value: unknown, serverNow = Date.now()): Play
     velocity,
     ...(raw.gear === 'skis' || raw.gear === 'snowboard' ? { gear: raw.gear } : {}),
     ...(raw.stance === 'standard' || raw.stance === 'goofy' ? { stance: raw.stance } : {}),
+    ...(isStockBoardId(raw.stockBoard) ? { stockBoard: raw.stockBoard } : {}),
     ...(animation ? { animation } : {}),
     ...(gesture ? { gesture } : {}),
     ...(gestures?.length ? { gestures } : {}),

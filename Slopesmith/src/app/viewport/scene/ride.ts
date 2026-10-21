@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../../core/equipment/stock-boards';
 import type { BoardSoundMix, RaceMusicArrangement, Rail, V3 } from '../../../core/doc/types';
 import {
   editorFromRaw,
@@ -188,6 +189,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   let rideGear: RideGear = DEFAULT_RIDE_GEAR; // snowboard or skis, for the player and the whole AI field
   let snowboardStance: SnowboardStance = DEFAULT_SNOWBOARD_STANCE; // snowboard foot order, retained on skis
   let equipmentAppearance: EquipmentAppearance | undefined; // signed-in local rider only; AI keeps stock gear
+  const stockBoard = new StockBoardSelection();
   // Local-player wake/spray only. AI riders are built by mountAiField and never receive a BoardFx instance.
   let boardFxEnabled = true;
   let watching = false; // ...or racing alone, with no board and the editor's own camera (spectate)
@@ -1017,6 +1019,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       gear: rideGear,
       snowboardStance,
       equipmentAppearance,
+      stockBoard,
       boardFx: boardFxEnabled,
       boardFxGround,
       view,
@@ -1155,6 +1158,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       gear: rideGear,
       snowboardStance,
       equipmentAppearance,
+      stockBoard,
       // Build the session-owned board during the headset's opening transition, then stand it down. Its visible
       // loose-board counterpart remains the XR session's parked deck; this retained TestRide is only the warm
       // physics/pose/audio runtime that the first mount will re-seat and reveal.

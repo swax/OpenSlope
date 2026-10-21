@@ -107,6 +107,12 @@ RgbaImage read_png(const std::filesystem::path& path) {
     file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
     if (!file)
         throw std::runtime_error("Cannot read PNG: " + path.filename().string());
+    return read_png(bytes);
+}
+
+RgbaImage read_png(std::span<const unsigned char> bytes) {
+    if (bytes.size() < 33 || bytes.size() > image_limit)
+        throw std::runtime_error("PNG data exceeds the supported size");
     lodepng::State state;
     RgbaImage image;
     auto error = lodepng_inspect(&image.width, &image.height, &state, bytes.data(), bytes.size());
@@ -116,9 +122,9 @@ RgbaImage read_png(const std::filesystem::path& path) {
         std::uint64_t(image.width) * image.height * 4 > image_limit)
         throw std::runtime_error("PNG dimensions exceed the supported size");
     state.decoder.zlibsettings.max_output_size = (std::size_t(image.width) * 8 + 1) * image.height * 2 + 4096;
-    error = lodepng::decode(image.pixels, image.width, image.height, state, bytes);
+    error = lodepng::decode(image.pixels, image.width, image.height, state, bytes.data(), bytes.size());
     if (error)
-        throw std::runtime_error("Cannot decode " + path.filename().string() + ": " + lodepng_error_text(error));
+        throw std::runtime_error(std::string("Cannot decode PNG: ") + lodepng_error_text(error));
     if (image.pixels.size() != std::size_t(image.width) * image.height * 4)
         throw std::runtime_error("PNG decoder returned an invalid RGBA buffer");
     return image;

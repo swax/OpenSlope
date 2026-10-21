@@ -126,6 +126,74 @@ int main(int argc, char** argv) {
         };
         render("desktop", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
         {
+            VulkanRenderer boards(context);
+            boards.use_scene(scene);
+            boards.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
+            std::vector<std::uint64_t> fingerprints;
+            const auto deck = board_transform({0, 3, 0}, {0, 0, -1}, {0, 1, 0});
+            for (unsigned design = 0; design < stock_board_count; ++design) {
+                boards.board_art(design);
+                for (const double side : {1., -1.}) {
+                    const Vec3 eye{0, 3 + side * 1.3, 0};
+                    const auto camera = projection(-.85, .85, -.85, .85) * view(eye, {0, -side, 0}, {0, 0, -1});
+                    boards.render(0, camera, deck, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye);
+                    const auto file = root / ("board-" + std::string(stock_board_info(design).id) +
+                                              (side > 0 ? "-top.ppm" : "-base.ppm"));
+                    boards.capture(0, file);
+                    const auto pixels = ::pixels(file);
+                    std::uint64_t fingerprint = 1469598103934665603ull;
+                    for (const auto channel : pixels)
+                        fingerprint = (fingerprint ^ channel) * 1099511628211ull;
+                    check(std::find(fingerprints.begin(), fingerprints.end(), fingerprint) == fingerprints.end(),
+                          "all stock top/base designs reach actual Vulkan pixels");
+                    fingerprints.push_back(fingerprint);
+                }
+            }
+            const auto board_light = [&](const char* name, const SceneLighting& light, Vec3 up,
+                                         Vec3 position = Vec3{0, 3, 0}, bool opponent = false) {
+                boards.board_art(2, {}, &light);
+                const auto eye = position + up * 1.3;
+                const auto clip = projection(-.85, .85, -.85, .85) * view(eye, -up, {0, 0, -1});
+                const auto frame = board_transform(position, {0, 0, -1}, up);
+                if (opponent) {
+                    const std::array<Matrix, 1> others{frame};
+                    boards.render(0, clip, board_transform({100, 3, 0}, {0, 0, -1}, {0, 1, 0}),
+                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, {}, 0, {}, {}, 1, {},
+                                  {}, {}, {}, {}, {}, false, {}, nullptr, others);
+                } else
+                    boards.render(0, clip, frame, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye);
+                const auto file = root / (std::string(name) + ".ppm");
+                boards.capture(0, file);
+                const auto pixels = ::pixels(file);
+                Vec3 sum;
+                for (unsigned y = 440; y < 584; ++y)
+                    for (unsigned x = 490; x < 534; ++x) {
+                        const auto at = (y * 1024 + x) * 3;
+                        sum += Vec3{double(pixels[at]), double(pixels[at + 1]), double(pixels[at + 2])};
+                    }
+                return sum;
+            };
+            SceneLighting white({LightProbe{{}, {1, 1, 1}}}), shade({LightProbe{{}, {.2, .2, .2}}});
+            const auto full = board_light("board-full-light", white, {0, 1, 0});
+            const auto dim = board_light("board-shaded", shade, {0, 1, 0});
+            check(length(dim / .2 - full) < length(full) * .025,
+                  "board art receives the avatar's display-domain ambient light");
+            LightProbe key{{}, {.1, .2, .3}};
+            key.keys[0] = {{0, 1, 0}, {.7, 0, 0}};
+            SceneLighting directional({key});
+            const auto facing = board_light("board-facing-key", directional, {0, 1, 0});
+            const auto rolled = board_light("board-rolled", directional, {-1, 0, 0});
+            check(facing.x > full.x * .75 && rolled.x < full.x * .15,
+                  "held/rolled board normals follow world orientation");
+            check(std::abs(facing.y / full.y - .2) < .025 && std::abs(facing.z / full.z - .3) < .025,
+                  "board receives coloured course ambient independently of its topsheet colour");
+            SceneLighting spatial({LightProbe{{0, 3, 0}, {1, 1, 1}}, LightProbe{{30, 3, 0}, {.2, .2, .2}}});
+            const auto moved = board_light("board-loose-shade", spatial, {0, 1, 0}, {30, 3, 0});
+            const auto opponent = board_light("board-opponent-shade", spatial, {0, 1, 0}, {30, 3, 0}, true);
+            check(length(moved / .2 - full) < length(full) * .04, "loose board samples lighting at its own location");
+            check(length(opponent - moved) < length(full) * .01, "opponent board has its own scene-light sample");
+        }
+        {
             // Compare colour transfer without gamma-vs-linear MSAA edge resolves.
             a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
             b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 1);

@@ -14,6 +14,7 @@ macro_rules! string_enum {
 string_enum!(PlayerMode { Edit => "edit", Walk => "walk", Ride => "ride" });
 string_enum!(PlayerGear { Snowboard => "snowboard", Skis => "skis" });
 string_enum!(PlayerSnowboardStance { Standard => "standard", Goofy => "goofy" });
+string_enum!(StockBoardId { Contour => "contour", Sunset => "sunset", Timberline => "timberline", NightShift => "night-shift" });
 string_enum!(PlayerEquipmentState { Mounted => "mounted", Loose => "loose", Held => "held" });
 string_enum!(Hand { Left => "left", Right => "right" });
 string_enum!(PointKind { Point => "point" });
@@ -80,6 +81,9 @@ pub struct PlayerPose {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub stance: Option<PlayerSnowboardStance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stock_board: Option<StockBoardId>,
     pub body: PlayerTransform,
     pub velocity: PlayerVec3,
     #[serde(default, skip_serializing_if = "Option::is_none")]

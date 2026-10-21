@@ -122,6 +122,8 @@ bool Player::tick_equipment(const EquipmentInput& raw) {
         if (!summon && !(input.tracked ? reach : ray) && !airborne)
             continue;
         const auto position = rider_.position, velocity = rider_.velocity;
+        if (summon && on_foot_ && !carry_.held())
+            board_design_ = random_stock_board(board_design_);
         if (airborne) {
             const auto serial = placement_serial_;
             dismount_board(true);

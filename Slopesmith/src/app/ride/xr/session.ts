@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../../core/equipment/stock-boards';
 import {
   createBoard,
   DEFAULT_RIDE_GEAR,
@@ -262,6 +263,7 @@ export interface XrPlayDeps {
   gear?: RideGear;
   snowboardStance?: SnowboardStance;
   equipmentAppearance?: EquipmentAppearance;
+  stockBoard?: StockBoardSelection;
   /** Build and park the session's board once XR is established, before the rider can reach it. This keeps the
    * expensive ride/collision initialization out of the first mount while preserving an on-foot start. */
   prepareRide?(gaze: () => THREE.Vector3 | null): XrBoardRide | null;
@@ -425,6 +427,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     deps.gear ?? DEFAULT_RIDE_GEAR,
     deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
     deps.equipmentAppearance,
+    (deps.stockBoard ??= new StockBoardSelection()),
   );
   const parkedFacing = new THREE.Vector3(0, 0, 1);
   parked.group.visible = false;
@@ -1623,6 +1626,7 @@ export function createXrPlay(deps: XrPlayDeps) {
           vr: true,
           gear: deps.gear ?? DEFAULT_RIDE_GEAR,
           stance: deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
+          stockBoard: deps.stockBoard!.design.id,
           body: transform(walker.position(), bodyQ),
           velocity: vector(walker.velocity()),
           equipment: {
@@ -1826,6 +1830,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (ride || boardGrab.held || !parked.group.visible) return false;
     const grip = wrist(hand);
     if (!grip || !handBehindHead(headWorld, headQuat, grip.position)) return false;
+    deps.stockBoard?.renew();
     boardCoast.stop();
     boardGrab.grab(
       hand,
@@ -1975,6 +1980,7 @@ export function createXrPlay(deps: XrPlayDeps) {
 
   /** Left X recalls the one session board to the snow ahead without moving or turning the walker. */
   function spawnBoardAhead() {
+    deps.stockBoard?.renew();
     scratchB.copy(headFwd).setY(0);
     if (scratchB.lengthSq() < 1e-6) scratchB.copy(rigFwd).setY(0);
     if (scratchB.lengthSq() < 1e-6) scratchB.set(0, 0, 1);
@@ -1992,6 +1998,7 @@ export function createXrPlay(deps: XrPlayDeps) {
    * ride's configured Race/Showoff/free mode.
    */
   function restartAtGate() {
+    deps.stockBoard?.renew();
     (ride ?? offBoardRun ?? retainedRide)?.abandonRun();
     if (ride) deps.stopRide();
     ride = null;

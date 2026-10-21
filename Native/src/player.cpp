@@ -310,6 +310,7 @@ void Player::configure_run(RunMode mode) {
 }
 
 void Player::restart_run() {
+    board_design_ = random_stock_board(board_design_);
     weather_time_ = 0;
     run_.restart();
     ++run_serial_;

@@ -7,6 +7,17 @@ and exponential-response identities. No other component's runtime implementation
 
 ## Carry and throw
 
+The four shared stock designs (Contour, Sunset Rally, Timberline and Night Shift)
+are embedded into native builds. Game startup, a full course restart, explicit board recall or an
+on-foot behind-the-head pull choose a random design, avoiding immediate repeats.
+Respawns, mounting, catching and ordinary grabs keep the current
+board's artwork. Each opponent owns its own choice. The top/base atlas convention
+and source-art provenance are in [stock board art](../../Slopesmith/docs/stock-board-art.md).
+
+Boards use the avatar's course-lighting field, including ambient tint and
+directional keys, sampled at each board's position. The topsheet, base and edges
+respond to their world-space normals while mounted, held or loose.
+
 On desktop, hold RMB while pointing at the loose board to carry it and release
 RMB to throw. E spawns and mounts at the player's feet or dismounts while riding.
 It preserves airborne momentum. Left-drag captures relative mouse movement to

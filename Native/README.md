@@ -3,6 +3,10 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.87 adds four stock board designs, with a fresh choice on course restart
+or a new-board pull. Avatars and boards respond to course lighting in normal
+lighting mode. See [build notes](releases/0.87.0.md).
+
 Build 0.86 removes both Race and Showoff start countdowns. Riding, scoring and
 the event clock start on the first mounted tick. See [build notes](releases/0.86.0.md).
 The equipment-frame fixes and SSX gem importer remain included;

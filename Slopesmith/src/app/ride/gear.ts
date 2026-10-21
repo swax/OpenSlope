@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { prepareRiderLighting } from './rider-lighting';
+import { StockBoardSelection, stockBoardUrl } from '../../core/equipment/stock-boards';
 import type { PlayerGear, PlayerSnowboardStance } from '../../core/session/player-pose';
 
 /**
@@ -266,7 +268,8 @@ function ring(z: number, half: number, y: number, thick: number): Ring {
  *
  * Three draw groups come out: 0 is the base, 1 the topsheet, and 2 the untextured sidewalls/end caps. UVs on
  * the first two are normalized across the gear's full plan bounds; per-material texture transforms below put
- * that plan into the board's two halves or the skis' four strips.
+ * that plan into the board's two halves or the skis' four strips. A second UV set follows each ring's
+ * actual width so stock art reaches the rails without clipping its lettering along the sidecut.
  */
 function sweptDeck(rings: readonly Ring[], maxHalf: number): THREE.BufferGeometry {
   const base: number[] = [],
@@ -275,7 +278,7 @@ function sweptDeck(rings: readonly Ring[], maxHalf: number): THREE.BufferGeometr
   const zMin = rings[0][0].z,
     zMax = rings[rings.length - 1][0].z;
   const quad = (out: number[], a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => {
-    out.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, a.x, a.y, a.z, c.x, c.y, c.z, d.x, d.y, d.z);
+    out.push(a.x, a.y, a.z, c.x, c.y, c.z, b.x, b.y, b.z, a.x, a.y, a.z, d.x, d.y, d.z, c.x, c.y, c.z);
   };
   for (let i = 0; i < rings.length - 1; i++) {
     const [al, ar] = rings[i],
@@ -289,18 +292,30 @@ function sweptDeck(rings: readonly Ring[], maxHalf: number): THREE.BufferGeometr
     quad(edge, abr, bbr, btr, atr); // toe wall
     quad(edge, abl, atl, btl, bbl); // heel wall
   }
-  for (const cap of [rings[0], rings[rings.length - 1]]) quad(edge, cap[0], cap[1], cap[2], cap[3]);
+  const tail = rings[0],
+    nose = rings[rings.length - 1];
+  quad(edge, tail[0], tail[1], tail[2], tail[3]);
+  quad(edge, nose[0], nose[3], nose[2], nose[1]);
 
   const geo = new THREE.BufferGeometry();
   const positions = base.concat(top, edge);
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  const uv: number[] = [];
+  const uv: number[] = [],
+    stockUv: number[] = [];
+  const widths = new Map(rings.map(ring => [ring[0].z, Math.max(Math.abs(ring[0].x), Math.abs(ring[1].x))]));
   for (let at = 0; at < positions.length; at += 3) {
     if (at < base.length + top.length) {
-      uv.push(0.5 + positions[at] / (2 * maxHalf), (positions[at + 2] - zMin) / (zMax - zMin));
-    } else uv.push(0, 0);
+      const v = (positions[at + 2] - zMin) / (zMax - zMin);
+      uv.push(0.5 + positions[at] / (2 * maxHalf), v);
+      const half = widths.get(positions[at + 2])!;
+      stockUv.push(half > 0 ? 0.5 + positions[at] / (2 * half) : 0.5, v);
+    } else {
+      uv.push(0, 0);
+      stockUv.push(0, 0);
+    }
   }
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('uv1', new THREE.Float32BufferAttribute(stockUv, 2));
   geo.addGroup(0, base.length / 3, 0);
   geo.addGroup(base.length / 3, top.length / 3, 1);
   geo.addGroup((base.length + top.length) / 3, edge.length / 3, 2);
@@ -387,8 +402,10 @@ function createGearSkin(
   slots: readonly TextureSlot[],
   edge: THREE.MeshLambertMaterial,
   defaultEdge: number,
+  stockBoard: StockBoardSelection | null = null,
 ) {
   let generation = 0;
+  let currentAppearance: EquipmentAppearance = {};
   const clearMaps = () => {
     const maps = new Set<THREE.Texture>();
     for (const slot of slots) {
@@ -400,13 +417,17 @@ function createGearSkin(
     maps.forEach(map => map.dispose());
   };
   const setAppearance = (appearance: EquipmentAppearance = {}) => {
+    currentAppearance = appearance;
     const thisGeneration = ++generation;
     clearMaps();
     edge.color.set(
-      appearance.edgeColor && /^#[0-9a-f]{6}$/i.test(appearance.edgeColor) ? appearance.edgeColor : defaultEdge,
+      appearance.edgeColor && /^#[0-9a-f]{6}$/i.test(appearance.edgeColor)
+        ? appearance.edgeColor
+        : (stockBoard?.design.edge ?? defaultEdge),
     );
-    const url = gear === 'snowboard' ? appearance.snowboardTextureUrl : appearance.skiTextureUrl;
-    if (!url) return;
+    const customUrl = gear === 'snowboard' ? appearance.snowboardTextureUrl : appearance.skiTextureUrl;
+    const url = customUrl ?? (stockBoard ? stockBoardUrl(stockBoard.design.id) : undefined);
+    if (!url || typeof document === 'undefined') return;
     new THREE.TextureLoader().load(url, source => {
       if (thisGeneration !== generation) {
         source.dispose();
@@ -416,8 +437,15 @@ function createGearSkin(
       source.wrapS = source.wrapT = THREE.ClampToEdgeWrapping;
       slots.forEach((slot, index) => {
         const texture = index === 0 ? source : source.clone();
-        texture.offset.set(slot.offset, 0);
-        texture.repeat.set(slot.width, 1);
+        // Stock art is nose-up when viewed from each outward face. The top's
+        // legacy plan UV runs across that view; account UVs stay compatible.
+        const mirror = !!stockBoard && !customUrl && index === 1;
+        const inset = stockBoard && !customUrl ? 0.5 / source.image.width : 0;
+        texture.channel = stockBoard && !customUrl ? 1 : 0;
+        // Keep lettering clear of the narrow curved tips; clamp the outer ink.
+        const lengthScale = stockBoard && !customUrl ? 1.1 : 1;
+        texture.offset.set(slot.offset + (mirror ? slot.width - inset : inset), (1 - lengthScale) / 2);
+        texture.repeat.set((mirror ? -1 : 1) * (slot.width - inset * 2), lengthScale);
         texture.needsUpdate = true;
         slot.material.map = texture;
         slot.material.color.setHex(0xffffff);
@@ -425,9 +453,11 @@ function createGearSkin(
       });
     });
   };
+  const unsubscribe = stockBoard?.subscribe(() => setAppearance(currentAppearance));
   return {
     setAppearance,
     dispose: () => {
+      unsubscribe?.();
       generation++;
       clearMaps();
       for (const slot of slots) slot.material.dispose();
@@ -440,11 +470,16 @@ export function createBoard(
   gear: RideGear = DEFAULT_RIDE_GEAR,
   stance: SnowboardStance = DEFAULT_SNOWBOARD_STANCE,
   appearance?: EquipmentAppearance,
+  stockBoard: StockBoardSelection | null = new StockBoardSelection(),
 ): BoardModel {
-  return gear === 'skis' ? createSkis(appearance) : createSnowboard(stance, appearance);
+  return gear === 'skis' ? createSkis(appearance) : createSnowboard(stance, appearance, stockBoard);
 }
 
-function createSnowboard(stance: SnowboardStance, appearance?: EquipmentAppearance): BoardModel {
+function createSnowboard(
+  stance: SnowboardStance,
+  appearance: EquipmentAppearance | undefined,
+  stockBoard: StockBoardSelection | null,
+): BoardModel {
   const group = new THREE.Group();
   const mats = [
     new THREE.MeshLambertMaterial({ color: 0xe4ecf4, side: THREE.DoubleSide }), // base
@@ -459,9 +494,11 @@ function createSnowboard(stance: SnowboardStance, appearance?: EquipmentAppearan
     ],
     mats[2],
     0x18d0e0,
+    stockBoard,
   );
   skin.setAppearance(appearance);
   group.add(new THREE.Mesh(deckGeometry(), mats));
+  prepareRiderLighting(group, group);
   // Standard/goofy changes which anatomical foot owns each invisible stance seat. Foot yaw is applied by the
   // rider/character rig; the gear model contains only the deck so neither avatar feet nor topsheet art is hidden.
   const frontZ = stance === 'standard' ? -STANCE_HALF : STANCE_HALF;
@@ -525,6 +562,7 @@ function createSkis(appearance?: EquipmentAppearance): BoardModel {
     group.add(pivot);
     return pivot;
   });
+  prepareRiderLighting(group, group);
 
   // `ankleFront` is the rider's anatomical LEFT and `ankleRear` their right: front/rear means nose/tail on a
   // board and left/right whenever the feet are side by side, which is the convention `rider.ts` already walks

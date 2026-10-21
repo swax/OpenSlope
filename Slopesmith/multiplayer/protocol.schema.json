@@ -256,6 +256,16 @@
               }
             ]
           },
+          "stockBoard": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StockBoardId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "teleport": {
             "format": "uint32",
             "maximum": 4294967295,
@@ -460,6 +470,15 @@
             "type": "object"
           }
         ]
+      },
+      "StockBoardId": {
+        "enum": [
+          "contour",
+          "sunset",
+          "timberline",
+          "night-shift"
+        ],
+        "type": "string"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1063,6 +1082,16 @@
               }
             ]
           },
+          "stockBoard": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StockBoardId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "teleport": {
             "format": "uint32",
             "maximum": 4294967295,
@@ -1322,6 +1351,15 @@
           "maps"
         ],
         "type": "object"
+      },
+      "StockBoardId": {
+        "enum": [
+          "contour",
+          "sunset",
+          "timberline",
+          "night-shift"
+        ],
+        "type": "string"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",

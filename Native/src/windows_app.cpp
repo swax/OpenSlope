@@ -201,7 +201,9 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         const auto body = avatar.mesh(desktop_avatar_pose(player, chase, first_person, look_down), first_person, false,
                                       chase.pose().eye, {}, &player.avatar_lighting());
         std::vector<Vertex> presented(body.begin(), body.end());
-        const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye);
+        std::vector<unsigned> opponent_designs;
+        const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye, &opponent_designs);
+        renderer.board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
         const FieldEffects effects(player, chase.pose().eye);
         equipment_outline(presented, player);
         std::vector<Vertex> hud;
@@ -567,7 +569,9 @@ struct Window {
         const auto body_mesh = avatar.mesh(desktop_avatar_pose(player, camera, first_person, look_down), first_person,
                                            false, camera.pose().eye, {}, &player.avatar_lighting());
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
-        const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye);
+        std::vector<unsigned> opponent_designs;
+        const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye, &opponent_designs);
+        renderer.board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
         const FieldEffects effects(player, camera.pose().eye);
         equipment_outline(presented, player);
         std::vector<Vertex> hud;

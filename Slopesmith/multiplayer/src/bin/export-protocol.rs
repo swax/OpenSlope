@@ -14,6 +14,7 @@ fn main() {
         PlayerMode,
         PlayerGear,
         PlayerSnowboardStance,
+        StockBoardId,
         PlayerEquipmentState,
         Hand,
         PointKind,
