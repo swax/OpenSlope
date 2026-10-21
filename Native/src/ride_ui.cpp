@@ -162,13 +162,13 @@ std::vector<UiButton> RideUi::buttons() const {
         {.06, .66, .42, .095, immersive ? "RECALL BOARD" : "MODE / NEW RUN",
          immersive ? UiAction::Recall : UiAction::Mode},
         {.52, .66, .42, .095, immersive ? "RECENTER VIEW" : "MAP LIBRARY",
-         immersive ? UiAction::Calibrate : UiAction::Maps},
-        {.06, .78, .42, .095, immersive ? (head_steer ? "HEAD STEER: ON" : "HEAD STEER: OFF") : "RECALL BOARD",
-         immersive ? UiAction::HeadSteer : UiAction::Recall},
-        {.52, .78, .42, .095, immersive && map_picker ? "MAP LIBRARY" : "EXIT",
-         immersive && map_picker ? UiAction::Maps : UiAction::Exit}};
+         immersive ? UiAction::Calibrate : UiAction::Maps}};
     if (immersive && map_picker)
-        list.push_back({.06, .895, .88, .065, "EXIT APP", UiAction::Exit});
+        list.push_back({.06, .78, .42, .095, "MAP LIBRARY", UiAction::Maps});
+    else if (!immersive)
+        list.push_back({.06, .78, .42, .095, "RECALL BOARD", UiAction::Recall});
+    list.push_back({immersive && !map_picker ? .06 : .52, .78, immersive && !map_picker ? .88 : .42, .095,
+                    immersive ? "EXIT APP" : "EXIT", UiAction::Exit});
     return list;
 }
 
@@ -314,9 +314,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
                                                     : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
                                   : speed + " KM/H  /  " +
-                                        (p.carrying_board() ? "CARRYING"
-                                         : p.on_foot()      ? "ON FOOT"
-                                                            : "RIDING"),
+                                     (p.carrying_board() ? "CARRYING"
+                                      : p.on_foot()      ? "ON FOOT"
+                                                         : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
         if (!audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
@@ -353,19 +353,19 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             c.text("ZERO FOR A SOLO MOUNTAIN", .06, .68, .0038, muted);
         }
         if (controls && !library && !audio_options && !graphics_options && !rider_options && !loading) {
+            const auto right_stick = p.on_foot() ? "RIGHT STICK   TURN / CLICK VIEW" : "RIGHT CLICK   1ST / 3RD VIEW";
             const std::array<std::string, 10> rows =
-                wrist
-                    ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",      "B   AIM BOOST / BOARD THRUST",
-                                                  "LEFT STICK   WALK / FLY / STEER", "RIGHT STICK   TURN / CLICK VIEW",
-                                                  "TRIGGER   POINT TO RIDE",         "GRIP   PICK UP / PASS / THROW",
-                                                  "GRIP BEHIND HEAD   SUMMON",       "AIR GRIP   TAKE BOARD OFF",
-                                                  "HELD TRIGGER   RE-EQUIP",         "Y   SHOW / HIDE WRIST"}
-                    : std::array<std::string, 10>{
-                          "W S WALK / A D STRAFE OR CARVE",    "SPACE   JUMP / DOUBLE JUMP FLY",
-                          "SHIFT   BOOST / HELD BOARD THRUST", "LMB DRAG   LOOK / TURN ON FOOT",
-                          "RMB ON BOARD   CARRY / THROW",      "E   SPAWN AND RIDE / STEP OFF",
-                          "CTRL   CROUCH / FLY DOWN",          "WHEEL   ZOOM   G   NEARBY BOARD",
-                          "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
+                wrist ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",     "B   AIM BOOST / BOARD THRUST",
+                                                    "LEFT STICK   WALK / FLY / TURN", right_stick,
+                                                    "TRIGGER   POINT TO RIDE",        "GRIP   PICK UP / PASS / THROW",
+                                                    "GRIP BEHIND HEAD   SUMMON",      "AIR GRIP   TAKE BOARD OFF",
+                                                    "HELD TRIGGER   RE-EQUIP",        "Y   SHOW / HIDE WRIST"}
+                      : std::array<std::string, 10>{
+                            "W S WALK / A D STRAFE OR CARVE",    "SPACE   JUMP / DOUBLE JUMP FLY",
+                            "SHIFT   BOOST / HELD BOARD THRUST", "LMB DRAG   LOOK / TURN ON FOOT",
+                            "RMB ON BOARD   CARRY / THROW",      "E   SPAWN AND RIDE / STEP OFF",
+                            "CTRL   CROUCH / FLY DOWN",          "WHEEL   ZOOM   G   NEARBY BOARD",
+                            "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
             for (unsigned i = 0; i < rows.size(); ++i)
                 c.text(rows[i], .06, .31 + i * .048, .0037, i == 4 || i == 5 ? accent : ink);
         }

@@ -126,6 +126,37 @@ int main(int argc, char** argv) {
         };
         render("desktop", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
         {
+            auto calibrated = tracking;
+            const auto neutral = avatar_pose(player, &tracking);
+            calibrated.body_active = calibrated.full_body = calibrated.seated = true;
+            calibrated.confidence = .9;
+            calibrated.valid.fill(true);
+            calibrated.joints = neutral.joints;
+            calibrated.joints[unsigned(AvatarJoint::Hips)] += Vec3{0, .4, .3};
+            for (unsigned i = unsigned(AvatarJoint::LeftHip); i < avatar_joint_count; ++i)
+                calibrated.joints[i] += Vec3{0, .6, .4};
+            render("seated-height", avatar_pose(player, &calibrated), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+            calibrated.seated = false;
+            calibrated.floor_offset = .15;
+            calibrated.joints = neutral.joints;
+            for (const auto j :
+                 {AvatarJoint::LeftAnkle, AvatarJoint::LeftToe, AvatarJoint::RightAnkle, AvatarJoint::RightToe})
+                calibrated.joints[unsigned(j)].y -= calibrated.floor_offset;
+            render("standing-height", avatar_pose(player, &calibrated), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2},
+                   false);
+            calibrated.head.y -= .4;
+            for (unsigned i = 0; i < unsigned(AvatarJoint::LeftHip); ++i)
+                calibrated.joints[i].y -= .4;
+            for (const auto j : {AvatarJoint::LeftHip, AvatarJoint::RightHip})
+                calibrated.joints[unsigned(j)].y -= .4;
+            for (const auto j : {AvatarJoint::LeftKnee, AvatarJoint::RightKnee})
+                calibrated.joints[unsigned(j)] += Vec3{0, -.2, .2};
+            for (auto& hand : calibrated.controllers)
+                hand.position.y -= .4;
+            render("standing-crouch", avatar_pose(player, &calibrated), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2},
+                   false);
+        }
+        {
             VulkanRenderer boards(context);
             boards.use_scene(scene);
             boards.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
@@ -496,7 +527,7 @@ int main(int argc, char** argv) {
         VrPresentation presentation;
         VrButtons camera_button;
         camera_button.camera = true;
-        presentation.step(0, camera_button);
+        presentation.step(0, camera_button, false);
         const auto offset = presentation.camera_offset({0, 0, -1});
         const auto third =
             render("vr-third-person", upright, false, tracking.head + offset, {0, -.7, -1}, true, offset);

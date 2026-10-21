@@ -759,7 +759,6 @@ int main(int argc, char** argv) {
         player->ai_riders(ai_count);
         if (xr) {
             XrPlatform platform;
-            platform.head_steering = head_steering;
             platform.audio_preferences = preferences_path;
             platform.graphics_preferences = graphics_path;
             return run_openxr(*player, platform, seconds);

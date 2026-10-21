@@ -26,6 +26,93 @@ void finite_mesh(std::span<const Vertex> mesh) {
     }
 }
 
+void calibrated_body(Avatar& avatar) {
+    Player player(Terrain::demo());
+    player.start_on_foot();
+    const auto root = player.render_position();
+    VrHeightCalibration height;
+    height.update(1.05, true);
+    const auto point = [&](Vec3 raw) { return root + raw - Vec3{0, height.origin_y(), 0}; };
+    AvatarTracking tracking;
+    tracking.seated = height.seated();
+    tracking.head = point({0, 1.05, 0});
+    for (unsigned side = 0; side < 2; ++side) {
+        auto& hand = tracking.controllers[side];
+        hand.valid = true;
+        hand.position = point({side ? .25 : -.25, .8, -.25});
+    }
+    const auto procedural = avatar_pose(player, &tracking);
+    tracking.body_active = tracking.full_body = true;
+    tracking.confidence = .9;
+    tracking.valid.fill(true);
+    tracking.joints = procedural.joints;
+    tracking.joints[unsigned(J::Hips)] += Vec3{0, .35, .2};
+    for (unsigned i = unsigned(J::LeftHip); i < avatar_joint_count; ++i)
+        tracking.joints[i] += Vec3{0, .6, .4};
+    tracking.joints[unsigned(J::LeftElbow)] += Vec3{0, .03, .04};
+    auto pose = avatar_pose(player, &tracking);
+    check(pose.tracked_body && !pose.tracked_legs, "Seated mode retains upper-body tracking but rejects runtime legs");
+    close(pose.eye(), root + Vec3{0, 1.65, 0}, "Seated body and view share calibrated eye height");
+    close(pose.joint(J::Hips), procedural.joint(J::Hips), "Seated pelvis uses the standing procedural placement");
+    for (unsigned i = unsigned(J::LeftHip); i < avatar_joint_count; ++i)
+        close(pose.joints[i], procedural.joints[i], "Seated legs ignore runtime inferred leg positions");
+    close(pose.joint(J::LeftElbow), tracking.joints[unsigned(J::LeftElbow)], "Seated upper body remains tracked");
+    close(pose.joint(J::LeftWrist), tracking.controllers[0].position, "Calibrated seated left hand stays aligned");
+    close(pose.joint(J::RightWrist), tracking.controllers[1].position, "Calibrated seated right hand stays aligned");
+    finite_mesh(avatar.mesh(pose, true, false, tracking.head));
+
+    height.request();
+    height.update(1.8, true);
+    height.update_floor(0);
+    tracking.seated = height.seated();
+    tracking.floor_offset = height.floor_offset();
+    tracking.head = point({0, 1.8, 0});
+    tracking.joints = procedural.joints;
+    // Floor-relative runtime ankles are lowered by the shared eye-height offset.
+    for (const auto j : {J::LeftAnkle, J::LeftToe, J::RightAnkle, J::RightToe})
+        tracking.joints[unsigned(j)].y -= height.origin_y();
+    const auto standing = avatar_pose(player, &tracking);
+    check(standing.tracked_legs, "Standing mode consumes runtime leg tracking");
+    close(standing.joint(J::LeftAnkle), procedural.joint(J::LeftAnkle),
+          "Standing tracked feet retain the virtual floor");
+    const Vec3 crouch{0, -.4, 0};
+    tracking.head += crouch;
+    for (unsigned i = 0; i < unsigned(J::LeftHip); ++i)
+        tracking.joints[i] += crouch;
+    for (const auto j : {J::LeftHip, J::RightHip})
+        tracking.joints[unsigned(j)] += crouch;
+    tracking.joints[unsigned(J::LeftKnee)] += Vec3{0, -.2, .2};
+    tracking.joints[unsigned(J::RightKnee)] += Vec3{0, -.2, .2};
+    for (auto& hand : tracking.controllers)
+        hand.position += crouch;
+    pose = avatar_pose(player, &tracking);
+    check(pose.tracked_legs, "Standing crouch keeps runtime leg tracking");
+    close(pose.eye(), standing.eye() + crouch, "Standing crouch lowers the view and body together");
+    close(pose.joint(J::Hips), standing.joint(J::Hips) + crouch, "Standing crouch lowers the tracked pelvis");
+    close(pose.joint(J::LeftHip), standing.joint(J::LeftHip) + crouch, "Standing crouch lowers the tracked hip joint");
+    close(pose.joint(J::LeftKnee), tracking.joints[unsigned(J::LeftKnee)] + Vec3{0, height.origin_y() * .5, 0},
+          "Standing crouch retains the tracked knee bend with floor correction");
+    close(pose.joint(J::LeftAnkle), standing.joint(J::LeftAnkle), "Crouching keeps grounded feet in place");
+    close(pose.joint(J::LeftWrist), tracking.controllers[0].position, "Standing crouch preserves hand alignment");
+    finite_mesh(avatar.mesh(pose, true, false, tracking.head));
+
+    height.request();
+    height.update(4.65, true);
+    height.update_floor(3);
+    tracking.seated = height.seated();
+    tracking.floor_offset = height.floor_offset();
+    tracking.head = point({0, 4.65, 0});
+    for (unsigned i = 0; i < avatar_joint_count; ++i)
+        tracking.joints[i] = point(procedural.joints[i] - root + Vec3{0, 3, 0});
+    for (unsigned side = 0; side < 2; ++side)
+        tracking.controllers[side].position = point({side ? .25 : -.25, 4.3, -.25});
+    pose = avatar_pose(player, &tracking);
+    check(pose.tracked_legs, "A shifted runtime origin can retain coherent standing leg tracking");
+    close(pose.eye(), root + Vec3{0, 1.65, 0}, "An overly high origin lowers the body and view to standing height");
+    close(pose.joint(J::LeftAnkle), procedural.joint(J::LeftAnkle), "Lowering a bad origin cannot leave feet floating");
+    close(pose.joint(J::LeftWrist), tracking.controllers[0].position, "Lowering a bad origin keeps the hand aligned");
+}
+
 void scene_lighting(Avatar& avatar, const AvatarPose& pose) {
     LightProbe bright{{0, 0, 0}, {.8, .7, .6}}, dark{{10, 0, 0}, {.08, .07, .06}};
     SceneLighting field({bright, dark});
@@ -220,6 +307,7 @@ int main() {
     try {
         Player player(Terrain::demo());
         Avatar avatar;
+        calibrated_body(avatar);
         flip_pivot(avatar);
         check(avatar.source_vertices() == 8744, "unchanged figure vertices");
         check(avatar.source_triangles() == 4816, "unchanged figure triangles");

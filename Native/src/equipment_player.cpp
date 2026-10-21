@@ -1,6 +1,14 @@
 #include "openslope/player.hpp"
 
 namespace openslope {
+void Player::rebase_tracking(Vec3 offset) {
+    reset_room_contacts();
+    if (carry_.held()) {
+        holding_hand_.position += offset;
+        carry_.rebase(offset);
+    }
+}
+
 EquipmentInput Player::equipment_frame(EquipmentInput input) const {
     if (input.relative) {
         for (auto& h : input.hands)

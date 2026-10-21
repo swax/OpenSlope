@@ -45,6 +45,9 @@ struct AvatarTracking {
     std::array<ControllerPose, 2> controllers{};
     bool body_active = false, full_body = false;
     float confidence = 0;
+    bool seated = false;
+    // Restore the physical floor for tracked feet after normalizing eye height.
+    double floor_offset = 0;
 };
 
 struct AvatarPose {

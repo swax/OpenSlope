@@ -14,14 +14,15 @@ panel, continuous-control impacts and interpolated VR board rotation. See
 
 | Quest input | On foot | Mounted |
 |---|---|---|
-| Left stick | Head-relative walk/strafe | Steer; vertically dominant Y sets posture/flip |
+| Left stick | Head-relative walk/strafe | X turns the player; vertically dominant Y sets posture/flip |
+| Head | Walk direction | Always-on gaze steering |
 | Right A | Jump; second airborne press enters flight | Hold/release charged jump |
 | Right B | Aimed full-speed airborne/held-board thrust | Held boost |
 | Either index trigger | Point to ride; re-equip held board | Dismount |
 | Either grip | Pick up/pass/throw; behind-head draw | Airborne board take-off |
 | Left X | Recall equipment ahead; keep player in place | Nearby-course reset |
 | Left Y | Show/hide controls and status panels | Same |
-| Right stick X | Smooth view turn, 120 degrees/s at full throw | Same |
+| Right stick X | Smooth view turn, 120 degrees/s at full throw | Unused |
 | Right-stick click | First/third-person toggle | Same |
 | Left-stick click | Unused | Existing explicit rail exit |
 
@@ -30,16 +31,27 @@ boost; both trigger-value components feed the one board action through OpenXR's
 boolean conversion/aggregation. A held board action cannot repeatedly mount and
 dismount. X changes intent by locomotion state. Recall places only the loose
 board ahead, probes for a supporting floor, and snaps its interpolation history.
-It does not move the rider, restart the event, spend boost or reset the camera.
+It does not move the rider, restart the event or spend boost. A fresh X press
+also recalibrates standing eye height to 1.65 m, on foot or mounted.
 A held X does not drag the equipment along with a moving walker.
+
+Startup, X, run restart and **Recenter View** sample the current headset posture
+for height calibration. Mounting, dismounting and teleports keep the saved height
+offset. Calibrate below 1.4 m above the physical floor to use seated procedural
+legs; standing calibration allows runtime leg tracking, including crouching.
+The posture mode stays fixed until reset/recenter. See [avatar tracking](avatar.md)
+for floor correction and the local-space fallback.
 
 Y replaces the old gate-restart binding. Build 0.35 now toggles an interactive wrist
 menu; its controls are a separate page. See equipment-camera-ui.md.
 Right-stick camera toggles between first person and a two-metre-back/one-metre-up
 view. The rendered controllers and status follow the displaced eyes; the body,
 wrist IK, collision and actual room movement stay in the underlying player frame.
-Right-stick turn changes the upright presentation yaw, independent of board yaw.
-Steering modes and the existing head/stick carve rules remain selectable.
+Right-stick turn changes the upright presentation yaw only on foot. While riding,
+left-stick X turns the player at up to 120 degrees/s, rotating the view, body and
+hands together. The board follows the resulting gaze on snow, in air and on rails.
+Head steering stays active during stick turns. There is no launcher or wrist-menu
+steering selector. The right stick does not turn the mounted player.
 Desktop E now toggles boarding, matching Slopesmith; G remains an alias, Q exits
 a rail, and T remains full run restart. The simple-controller fallback retains
 its limited Select/Menu bindings rather than advertising Touch buttons.

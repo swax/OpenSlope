@@ -68,8 +68,8 @@ assert.equal(
 );
 assert.equal(
   xrHudActionAt(false, new THREE.Vector2(378 / 512, 1 - 134 / 486)),
-  'calibrate',
-  'T-pose spans the row vacated by the retired wrist flight button',
+  'recenter',
+  'height recenter sits beside T-pose without requiring a body/hand measurement',
 );
 assert.equal(
   xrHudActionAt(false, new THREE.Vector2(134 / 512, 1 - 198 / 486)),

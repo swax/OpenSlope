@@ -27,7 +27,6 @@ public final class GameActivity extends NativeActivity {
     public double getRenderScale(){return getIntent().getDoubleExtra("render_scale",1.5);}
     public double getTargetRefreshRate(){return getIntent().getDoubleExtra("target_refresh_rate",120.0);}
     public int getMsaa(){return getIntent().getIntExtra("msaa",4);}
-    public boolean getHeadSteering(){return getIntent().getBooleanExtra("head_steering",false);}
     public void reportError(String message) { error = message; runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()); }
     @Override public void finish() {
         if (returning) return;

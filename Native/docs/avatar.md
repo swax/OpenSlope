@@ -71,15 +71,38 @@ do not declare it; its registered structure IDs are checked against Khronos.
 Every render frame starts with a fresh pose. Active body samples with confidence
 above 0.05 and finite, position-valid joints within 2.5 metres of the head replace
 individual fallback joints, except the head, whose HMD pose has priority.
-Position-valid inferred leg joints are accepted
+In standing mode, position-valid inferred leg joints are accepted
 without requiring a tracked bit. Inactive, missing and outlier joints fall back
 individually; stale joints are not held. Controller grips remain the hand anchors.
 Procedural torso up remains world vertical while the user looks down. Room
 movement carries fallback feet beneath the body. Body,
 controllers and both eyes share one floor/reference transform and room offset.
 Initial horizontal centre/heading are aligned to the board; placement changes
-and timed reference-space changes recalculate that anchor. Local space uses a
-1.65 metre initial eye-height fallback; stage space uses the runtime floor.
+and timed reference-space changes recalculate that anchor.
+
+Both stage and local spaces calibrate the current headset sample to a 1.65 metre
+standing eye height, raising or lowering the view as needed. This matches the
+[WebXR height policy](../../Slopesmith/docs/016-ride.md).
+Manual X reset (including its on-foot board-recall action),
+run restart, wrist **Recenter View** and system reference-space recentering
+resample this height. Mounting, dismounting, teleports and automatic recovery
+preserve the vertical offset. Physical leaning and crouching remain relative to
+the most recent calibration. Cameras, controller grips/aim rays, body joints and
+held-board sampling share the correction; calibration cannot add throw velocity.
+
+Calibration selects seated mode below 1.4 metres above the physical stage floor,
+or when only local space is available and physical posture is unknown. Seated
+mode ignores runtime pelvis and leg joints, including generated legs, and uses
+procedural legs with feet at the virtual player/board. Upper-body tracking and
+controller hands remain active. Standing mode establishes its floor from the
+first valid neutral ankle pair after height calibration, so even a shifted
+runtime floor cannot leave feet floating. It corrects ankles/toes back to the
+virtual floor, blending the correction through the knees. If that ankle pair
+reveals a shifted floor, posture uses the calibrated eye-to-floor distance.
+The hips remain aligned with the torso. The selected mode stays fixed
+until another calibration, so standing crouches retain tracked pelvis/knee motion
+and lower the view. Reset/recenter in the intended neutral posture; the mode
+threshold is an application heuristic rather than a measurement of stature.
 
 Tracking drives presentation only. It does not replace the virtual rider's
 physics/collision profile or feed headset motion into trick controls. VR keeps

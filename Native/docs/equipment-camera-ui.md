@@ -89,7 +89,8 @@ does not support the current event falls back to Freeride.
 
 Quest Y toggles a left-wrist panel, initially shown. Aim the right controller and
 pull its trigger to select resume/hide, restart, view, controls, sound, stats,
-recall, recenter, head steering or exit. A captured menu press stays consumed
+recall, recenter or exit. Head steering is always enabled; left-stick X turns the
+player while riding. A captured menu press stays consumed
 until release, even after leaving/hiding the panel, so it cannot also ride a board.
 From build 0.82, hiding the menu also hides the compact speed/status watch,
 stats, controller models and labels, menu pointer and board selection outline.

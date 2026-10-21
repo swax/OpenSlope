@@ -54,6 +54,9 @@ public:
               std::optional<Vec3> contact = {}, bool ease = false);
     void follow(const EquipmentHand& at, double seconds);
 
+    // A tracking-origin change moves the sample history without adding velocity.
+    void rebase(Vec3 offset) { pose_.position += offset; }
+
     EquipmentPose preview(const EquipmentHand& at) const { return !hand_ || approach_ > 0 ? pose_ : attached(at); }
 
     EquipmentThrow release(bool throw_motion = true);

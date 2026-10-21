@@ -173,6 +173,37 @@ void math() {
     check(length(carry.release().velocity) == 0, "Summon discontinuity is never a throw");
 }
 
+void tracking_rebase() {
+    Player player(floor());
+    player.warp({}, {0, 0, -1});
+    player.start_on_foot();
+    auto input = hand_input(player);
+    input.equipment.hands[1].position = input.equipment.head + Vec3{0, .05, .3};
+    input.equipment.grip[1] = true;
+    for (unsigned tick = 0; tick < 4; ++tick)
+        player.tick(input);
+    check(player.carrying_board(), "Tracking rebase fixture holds a summoned board");
+    const auto before = player.holding_hand();
+    const auto board = player.render_board_position();
+    const auto position = player.rider().position;
+    const Vec3 offset{0, .6, 0};
+    player.rebase_tracking(offset);
+    close(player.holding_hand().position, before.position + offset, "Recalibration moves the held hand immediately");
+    close(player.render_board_position(), board + offset, "Held board and hand receive the same calibration offset");
+    close(player.rider().position, position, "Height calibration cannot move the physics player");
+    input.equipment.head += offset;
+    for (auto& hand : input.equipment.hands)
+        hand.position += offset;
+    player.tick(input);
+    input.equipment.grip[1] = false;
+    player.tick(input);
+    check(!player.carrying_board(), "Release after recalibration still drops the board");
+    const auto velocity = player.board_velocity();
+    check(std::abs(velocity.x) < .01 && velocity.y <= 0 && velocity.y > -.4 && std::abs(velocity.z) < .01,
+          "Release after recalibration has only the ordinary first-tick gravity");
+    check(length(player.board_spin()) < .01, "Recalibration does not become board spin");
+}
+
 void board_art_lifecycle() {
     Player player(floor());
     const auto original = player.board_design();
@@ -460,18 +491,22 @@ void camera_ui() {
     VrPresentation presentation;
     VrButtons menu;
     menu.menu = true;
-    presentation.step(0, menu);
+    presentation.step(0, menu, true);
     wrist.visible = presentation.controls;
     wrist.stats = true;
     std::vector<Vertex> hidden;
     wrist.append(hidden, p, true, 90);
     wrist.append_pointer(hidden, {{0, 0, 1}, {0, 0, -1}, true});
     check(hidden.empty(), "Y hides the complete wrist UI, speed summary, stats and pointer");
-    presentation.step(0, {});
-    presentation.step(0, menu);
+    presentation.step(0, {}, true);
+    presentation.step(0, menu, true);
     wrist.visible = presentation.controls;
     wrist.append(hidden, p, true, 90);
     check(hidden.size() > 1000, "A second Y press restores the wrist interface");
+    const auto menu_buttons = wrist.buttons();
+    check(std::none_of(menu_buttons.begin(), menu_buttons.end(),
+                       [](const auto& b) { return b.text.find("HEAD STEER") != std::string::npos; }),
+          "Always-on head steering has no wrist-menu toggle");
     for (const auto action : {UiAction::Maps, UiAction::Exit}) {
         const auto buttons = wrist.buttons();
         const auto button =
@@ -541,6 +576,7 @@ void camera_ui() {
 int main() {
     try {
         math();
+        tracking_rebase();
         board_art_lifecycle();
         lifecycle();
         loose_board_recovery();

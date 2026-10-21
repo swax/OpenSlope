@@ -12,7 +12,6 @@ struct XrPlatform {
     double render_scale = 1.5;
     double target_refresh_rate = 120;
     unsigned msaa = 4;
-    bool head_steering = false;
     std::function<bool()> is_resumed{};
     std::function<XrExitDestination()> exit_request{};
     std::function<void(XrExitDestination)> on_exit{};

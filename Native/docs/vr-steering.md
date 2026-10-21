@@ -1,17 +1,17 @@
 # Quest riding steering
 
-Before opening a course, choose **Riding steering** in the Quest library:
+Native OpenXR always uses head steering. The Quest launcher and wrist menu have
+no steering-mode selector, and old saved choices cannot turn head steering off.
+Windows uses `--xr`; older `--head-steering` launch arguments remain accepted.
+Linux/device validation remains outstanding.
 
-- **Stick only** is the default. Head movement looks around independently.
-- **Head + stick override** uses gaze while the left stick is centred. A
-  deflected stick owns steering until it returns to centre.
-
-On Windows OpenXR, add `--xr --head-steering`; the Linux OpenXR host accepts
-`--head-steering`. Linux/device validation remains outstanding.
-
-Both modes retain head-relative on-foot walking. Riding stick X has a 0.18
-physical dead zone. Ground carve uses squared normalized throw; air spin uses
-linear normalized throw. Incidental stick Y retains the existing dominant-axis
+While riding, left-stick X rotates the player at up to 120 degrees/s using a 0.18
+physical dead zone and linear normalized throw. This is a fallback for limited
+physical head turning: the view, body, hands and pointing rays rotate together,
+and the board follows the combined physical head direction and stick yaw. The
+stick does not take steering authority away from the head or turn the deck
+independently. On foot, the left stick walks and the right stick turns.
+Incidental stick Y retains the existing dominant-axis
 gate so horizontal steering does not also add an accidental flip.
 
 On snow, project gaze and travel onto the contact plane. The first 5 degrees is
@@ -21,17 +21,16 @@ is the reference, with the ridden forward axis as the near-stationary fallback.
 This gives equivalent head/stick inputs the same speed and curve, including
 banked surfaces and switch stance. Looking vertically supplies no yaw.
 
-In air, head mode aims the deck toward the horizontal look bearing at the
-normal air turn rate and stops inside the dead zone. A deflected stick owns
-the spin. From build 0.41, rails use the shared 270 degrees/s air rate for head
-follow and manual spin. Only manual spin gets the 1.6 trick-boost multiplier;
-head follow stops at its gaze target without turning the seat.
+In air, gaze aims the deck toward the horizontal look bearing at the normal air
+turn rate and stops inside the dead zone. Rails use the shared 270 degrees/s air
+rate for head follow. Stick turning changes the gaze target in either state;
+head follow stops at that target without turning the seat a second time.
 VR has a free rail pose; desktop retains the existing
 recovered ±80-degree pose and its state/force authority.
 
-Head-derived turns never rotate the upright headset seat. Manual steering
-carries 25% of the already-clamped ground heading change and full air/rail
-turn into it. Rendered head, hands/body and eyes share that upright transform.
+Head-derived board turns never rotate the upright headset seat. Stick yaw is
+applied directly to the shared tracking frame, independently of the board's
+heading change. Rendered head, hands/body and eyes share that upright transform.
 An anchor records heading, physical headset yaw and the current carry; course
 placement or reference-space changes establish a new anchor. This avoids the
 gaze/camera feedback loop caused by carrying the view with a head-driven carve.
@@ -42,9 +41,9 @@ continues to govern rider forces, motion/control, contact and scene depth; the
 original game has no headset control specification. No decoder implementation
 is involved.
 
-26,732 portable checks compare head and stick trajectories over three surfaces,
-both stances, two slopes and three steering amounts, including reversal/release.
-They also verify fixed-gaze arrival/relaxation, drift/dead zones, manual ownership, view carry, air aim/stop and
-rail aim/spin. The ARM64 APK builds and installs as 0.22.0. Worn-headset feel,
-tracking loss/recenter and new-mode frame/comfort behavior still need user testing;
-the previous 0.21.0 72 Hz measurements are not evidence for those new controls.
+Portable checks cover head-carve trajectories over three surfaces, both stances,
+two slopes and three steering amounts, including reversal/release. Quest checks
+exercise stick-driven player rotation and gaze follow on snow, in air and on
+rails, on-foot controls, seated/standing height preservation, rotated avatar wrists
+and torso alignment, and removal of the wrist steering toggle. Worn-headset feel
+and comfort still need user testing.

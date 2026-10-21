@@ -9,6 +9,7 @@ import {
   captureXrBodyCalibration,
   captureXrHandCalibration,
   fallbackFloorOffset,
+  XrHeightCalibration,
 } from '../src/app/ride/xr/calibration';
 
 const body = bodyHeightFromGripSpan(1.5);
@@ -30,12 +31,53 @@ assert(
 assert(calibrationMatchesOrigin(captured, 4.0), 'a later seated pose retains the standing calibration');
 assert(!calibrationMatchesOrigin(captured, 1.7), 'a replaced runtime origin rejects the stale correction');
 
-assert.equal(fallbackFloorOffset(1.7), 0, 'a plausible local-floor height is trusted before calibration');
+assert(Math.abs(1.7 + fallbackFloorOffset(1.7) - 1.65) < 1e-9, 'ordinary standing height also normalizes to 1.65 m');
 assert(
-  Math.abs(4.6 + fallbackFloorOffset(4.6) - 1.6) < 1e-9,
+  Math.abs(4.6 + fallbackFloorOffset(4.6) - 1.65) < 1e-9,
   'an implausibly high origin is immediately brought to the standing fallback',
 );
-assert(Math.abs(0.2 + fallbackFloorOffset(0.2) - 1.6) < 1e-9, 'a head-origin runtime receives the same safe fallback');
+assert(Math.abs(0.2 + fallbackFloorOffset(0.2) - 1.65) < 1e-9, 'a head-origin runtime receives the same safe fallback');
+
+// Native and WebXR follow the same policy, with opposite signs for origin vs rig lift.
+for (const rawY of [0.2, 1.05, 1.65, 1.9, 4.6]) {
+  const height = new XrHeightCalibration();
+  assert(height.update(rawY));
+  assert(Math.abs(rawY + height.floorOffset - 1.65) < 1e-9, 'calibration lifts or lowers eyes to exactly 1.65 m');
+  assert.equal(height.seated, rawY < 1.4, 'posture is chosen only at calibration');
+  const offset = height.floorOffset;
+  assert(!height.update(rawY - 0.4), 'a physical crouch must not recalibrate height');
+  assert.equal(height.floorOffset, offset);
+  assert.equal(height.seated, rawY < 1.4, 'a standing crouch cannot switch posture mode');
+  for (const placement of [new THREE.Vector3(), new THREE.Vector3(8, 15, -20), new THREE.Vector3(-200, 80, 90)]) {
+    const rig = new THREE.Group();
+    rig.position.copy(placement).y += offset;
+    rig.rotateY(0.8);
+    rig.updateMatrixWorld(true);
+    const rawHead = new THREE.Vector3(0, rawY, 0),
+      rawHand = new THREE.Vector3(0.25, rawY - 0.4, -0.3);
+    const head = rawHead.clone().applyMatrix4(rig.matrixWorld),
+      hand = rawHand.clone().applyMatrix4(rig.matrixWorld);
+    assert(Math.abs(head.y - placement.y - 1.65) < 1e-9, 'mount/dismount/teleport placement retains eye height');
+    assert(
+      Math.abs(hand.distanceTo(head) - rawHand.distanceTo(rawHead)) < 1e-9,
+      'hands and view share one rigid correction',
+    );
+    assert(!height.update(rawY + 0.5), 'world placement cannot redefine neutral height');
+    assert.equal(height.floorOffset, offset);
+  }
+}
+const height = new XrHeightCalibration();
+height.update(1.05);
+assert(!height.update(1.8) && height.seated, 'standing up keeps the seated offset until reset/recenter');
+height.request();
+assert(height.update(1.8) && !height.seated, 'reset reevaluates sitting-to-standing mode');
+assert(Math.abs(1.8 + height.floorOffset - 1.65) < 1e-9);
+height.request();
+assert(height.update(4.6), 'recenter accepts a very high runtime origin');
+assert(Math.abs(4.6 + height.floorOffset - 1.65) < 1e-9, 'recenter lowers an excessive eye height');
+height.request();
+assert(!height.update(Number.NaN) && !height.update(Infinity), 'lost tracking leaves calibration pending');
+assert(height.update(1.05) && height.seated, 'a valid seated sample completes the pending correction');
 
 // A T-pose supplies more than height: fingers are outward and both palms face body-forward. This calibrates
 // controller-specific grip axes once, while retaining separate offsets for optical hands and controller grips.

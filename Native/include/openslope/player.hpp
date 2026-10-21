@@ -118,6 +118,8 @@ public:
 
     void reset_room_contacts() { foot_room_serial_ = ~std::uint64_t(0); }
 
+    void rebase_tracking(Vec3 offset);
+
     bool recover_course(bool manual = false);
 
     bool reset_pending() const { return recovery_target_.has_value(); }
