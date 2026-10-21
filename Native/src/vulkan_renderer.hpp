@@ -2,6 +2,7 @@
 #include "openslope/appearance.hpp"
 #include "openslope/boost_trail.hpp"
 #include "openslope/gear.hpp"
+#include "openslope/lighting.hpp"
 #include "openslope/particles.hpp"
 #include "openslope/props.hpp"
 #include "openslope/riding_effects.hpp"
@@ -158,6 +159,8 @@ public:
 
     void deferred(bool enabled) { deferred_ = enabled; }
 
+    void lighting(bool enabled) { enhanced_lighting_ = enabled; }
+
     void finish();
 
     void board_art(unsigned design, std::span<const unsigned> opponents = {}, const SceneLighting* lighting = nullptr) {
@@ -223,6 +226,8 @@ private:
     unsigned timestamp_bits_{};
     bool deferred_ = false, pending_ = false;
     Buffer poses_;
+    Buffer lighting_;
+    bool enhanced_lighting_ = false;
     std::size_t pose_capacity_ = 0;
     VkDescriptorSetLayout pose_layout_{};
     VkDescriptorPool pose_pool_{};

@@ -16,9 +16,11 @@ layout(location=5) out vec3 worldPosition;
 layout(location=6) out vec3 propNormal;
 layout(location=7) flat out mat3 propDirections;
 layout(location=10) flat out mat3 propColours;
+layout(location=13) out vec3 worldNormal;
 layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; vec4 presentation; } transform;
 void main() {
     worldPosition=position;
+    worldNormal=modelNormal;
     vertexColour=colour;
     propNormal=vec3(0);
     propDirections=mat3(0);
@@ -39,6 +41,7 @@ void main() {
         Pose pose=poses[gl_InstanceIndex];vec3 local=position;
         if(lightUV.y>.5&&pose.uv.z!=0){float k=pose.uv.w>=2?1-lightUV.x:lightUV.x;local.x+=pose.uv.z*k*sin(6.283185307179586*(k-fract(pose.uv.w)));}
         worldPosition=(pose.matrix*vec4(local,1.0)).xyz;
+        worldNormal=transpose(inverse(mat3(pose.matrix)))*modelNormal;
         vertexColour=pose.ambient.rgb;
         propNormal=modelNormal;
         for(int i=0;i<3;++i){propDirections[i]=pose.direction[i].xyz;propColours[i]=pose.colour[i].rgb;}

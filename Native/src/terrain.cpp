@@ -682,7 +682,8 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
                                   : ice ? .82f
                                         : .96f),
                          light, float(uv[0]), float(uv[1]), float(lm[0]), float(lm[1]), float(p.lightmap_rect[0]),
-                         float(p.lightmap_rect[1]), float(p.lightmap_rect[2]), float(p.lightmap_rect[3])});
+                         float(p.lightmap_rect[1]), float(p.lightmap_rect[2]), float(p.lightmap_rect[3]),
+                         float(normal.x), float(normal.y), float(normal.z)});
                     const auto& vertex = mesh.vertices.back();
                     render_bounds.add({vertex.x, vertex.y, vertex.z});
                 }

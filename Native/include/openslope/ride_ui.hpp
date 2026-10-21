@@ -23,6 +23,7 @@ enum class UiAction {
     Graphics,
     RenderScale,
     Antialiasing,
+    Lighting,
     SnowDown,
     SnowUp,
     GraphicsReset,
@@ -74,6 +75,7 @@ public:
     bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
     bool graphics_options = false, rider_options = false, loading = false;
     unsigned render_scale = 150, antialiasing = 4;
+    bool enhanced_lighting = false;
     double snow_amount = 3, load_progress = 0;
     std::string graphics_readout, load_name, load_stage;
     double master_volume = 1;

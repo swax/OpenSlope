@@ -155,10 +155,12 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     image.create(1280, 720);
     VulkanRenderer renderer(context);
     renderer.cull_terrain(terrain_culling);
+    renderer.lighting(graphics.enhanced_lighting);
     renderer.upload(player.terrain().mesh(), player.logic().flag_models(), player.logic().faceted_models());
     renderer.targets(std::span(&image.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1280, 720, graphics.msaa,
                      graphics.render_scale);
     std::cout << "MSAA samples: " << renderer.samples() << '\n';
+    std::cout << "Lighting: " << (graphics.enhanced_lighting ? "Enhanced" : "Original") << '\n';
     std::unique_ptr<AudioScene> audio;
     PcmClip recorded;
     recorded.channels = 2;
@@ -580,6 +582,7 @@ struct Window {
         glare_view.visibility =
             glare_visibility.step(player.terrain(), renderer.glare(), camera.pose().eye, std::clamp(seconds, 0., 1.));
         player.world_view(camera.pose().eye);
+        renderer.lighting(graphics.enhanced_lighting);
         renderer.render(image, camera_for(player, double(width) / height, first_person, look_down, &camera),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, available, finished, camera.pose().eye, effects.sprites(),
@@ -611,7 +614,7 @@ int main(int argc, char** argv) {
              terrain_culling = true, first_person_option = false, look_down_option = false, on_foot_option = false;
         double seconds = 0;
         GraphicsPreferences overrides;
-        bool scale_set = false, snow_set = false, ui_graphics_option = false;
+        bool scale_set = false, snow_set = false, lighting_set = false, ui_graphics_option = false;
         unsigned ai_count = 0;
         RunMode run_option = RunMode::Freeride;
         bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_audio_option = false,
@@ -647,7 +650,13 @@ int main(int argc, char** argv) {
                 preferences_path = argv[++i];
             else if (option == "--graphics-preferences" && i + 1 < argc)
                 graphics_path = argv[++i];
-            else if (option == "--ui-graphics") {
+            else if (option == "--lighting" && i + 1 < argc) {
+                const std::string value = argv[++i];
+                if (value != "original" && value != "enhanced")
+                    throw std::runtime_error("Lighting must be original or enhanced");
+                overrides.enhanced_lighting = value == "enhanced";
+                lighting_set = true;
+            } else if (option == "--ui-graphics") {
                 ui_menu_option = ui_graphics_option = true;
             } else if (option == "--render-scale" && i + 1 < argc) {
                 const std::string value = argv[++i];
@@ -706,7 +715,8 @@ int main(int argc, char** argv) {
                        "[--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture "
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
                        "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
-                       "<file>] [--ui-graphics] [--no-terrain-culling] [--audio-preferences <file>] "
+                       "<file>] [--lighting original|enhanced] [--ui-graphics] [--no-terrain-culling] "
+                       "[--audio-preferences <file>] "
                        "[--ui-audio] [--ai-riders 0..16]\nDesktop: "
                        "A/D strafe on foot or steer/spin riding, W/S walk or tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
@@ -719,8 +729,8 @@ int main(int argc, char** argv) {
         }
         if (!std::isfinite(seconds) || seconds < 0 || seconds > 3600)
             throw std::runtime_error("Duration must be between 0 and 3600 seconds");
-        if (xr && (msaa_set || scale_set || snow_set || !terrain_culling))
-            throw std::runtime_error("MSAA/culling options currently apply to desktop window/capture mode");
+        if (xr && (msaa_set || scale_set || snow_set || lighting_set || !terrain_culling))
+            throw std::runtime_error("Graphics/culling options currently apply to desktop window/capture mode");
         if (head_steering && !xr)
             throw std::runtime_error("Head steering requires --xr");
         if (audio_smoke) {
@@ -753,6 +763,8 @@ int main(int argc, char** argv) {
             graphics.render_scale = overrides.render_scale;
         if (snow_set)
             graphics.snow = overrides.snow;
+        if (lighting_set)
+            graphics.enhanced_lighting = overrides.enhanced_lighting;
         auto player = std::make_unique<Player>(map.empty() ? Terrain::demo() : Terrain::load(map));
         if (run_option != RunMode::Freeride)
             player->configure_run(run_option);
@@ -838,13 +850,13 @@ int main(int argc, char** argv) {
         LibraryTask library_task;
         auto load_stage = std::make_shared<std::atomic<unsigned>>(0);
         unsigned loading_frames = 0;
-        const std::array<UiAction, 22> ui_script{
-            UiAction::Controls,      UiAction::Controls,     UiAction::View,       UiAction::Sound,
-            UiAction::VolumeDown,    UiAction::Music,        UiAction::MasterMute, UiAction::MasterMute,
-            UiAction::Songs,         UiAction::SelectSong,   UiAction::Sound,      UiAction::Graphics,
-            UiAction::RenderScale,   UiAction::Antialiasing, UiAction::SnowDown,   UiAction::SnowUp,
-            UiAction::GraphicsReset, UiAction::Stats,        UiAction::Graphics,   UiAction::Mode,
-            UiAction::Maps,          UiAction::LoadMap};
+        const std::array<UiAction, 24> ui_script{
+            UiAction::Controls,    UiAction::Controls,     UiAction::View,          UiAction::Sound,
+            UiAction::VolumeDown,  UiAction::Music,        UiAction::MasterMute,    UiAction::MasterMute,
+            UiAction::Songs,       UiAction::SelectSong,   UiAction::Sound,         UiAction::Graphics,
+            UiAction::RenderScale, UiAction::Antialiasing, UiAction::Lighting,      UiAction::Lighting,
+            UiAction::SnowDown,    UiAction::SnowUp,       UiAction::GraphicsReset, UiAction::Stats,
+            UiAction::Graphics,    UiAction::Mode,         UiAction::Maps,          UiAction::LoadMap};
         std::size_t ui_step = 0;
         RunMode ui_expected_mode = RunMode::Freeride;
         unsigned ui_frame = 0;

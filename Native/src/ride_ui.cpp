@@ -49,15 +49,17 @@ std::vector<UiButton> RideUi::buttons() const {
         return importing ? std::vector<UiButton>{{.06, .85, .88, .085, "CANCEL", UiAction::CancelImport}}
                          : std::vector<UiButton>{};
     if (graphics_options) {
-        const auto y = immersive ? .36 : .55;
+        const auto y = immersive ? .36 : .60;
         std::vector<UiButton> list;
         if (!immersive) {
             list.push_back(
-                {.06, .31, .88, .085, "RENDER SCALE: " + std::to_string(render_scale) + "%", UiAction::RenderScale});
+                {.06, .29, .88, .075, "RENDER SCALE: " + std::to_string(render_scale) + "%", UiAction::RenderScale});
             list.push_back(
-                {.06, .43, .88, .085,
+                {.06, .39, .88, .075,
                  antialiasing == 1 ? "ANTI-ALIASING: OFF" : "ANTI-ALIASING: " + std::to_string(antialiasing) + "X MSAA",
                  UiAction::Antialiasing});
+            list.push_back({.06, .49, .88, .075, enhanced_lighting ? "LIGHTING: ENHANCED" : "LIGHTING: ORIGINAL",
+                            UiAction::Lighting});
         }
         list.push_back({.06, y, .18, .085, "-", UiAction::SnowDown});
         list.push_back(
@@ -345,7 +347,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         }
         if (graphics_options) {
             c.text(!graphics_readout.empty() && !immersive ? graphics_readout : "0 CLEAR / 3 AMBIENT / 10 BLIZZARD",
-                   .06, .79, .0027, muted);
+                   .06, .81, .0027, muted);
         }
         if (rider_options && !loading) {
             const auto count = p.ai_field() ? p.ai_field()->size() : 0;

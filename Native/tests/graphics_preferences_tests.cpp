@@ -1,4 +1,5 @@
 #include "openslope/graphics_preferences.hpp"
+#include "openslope/lighting.hpp"
 #include "openslope/ride_ui.hpp"
 #include <chrono>
 #include <fstream>
@@ -17,15 +18,36 @@ void check(bool condition, const char* message) {
 }
 
 void run(const std::filesystem::path& root) {
+    World world;
+    world.sky_colour = {.8f, .8f, 1};
+    const auto day = enhanced_lighting(world, {});
+    world.sky_colour = {.01f, .02f, .04f};
+    const auto night = enhanced_lighting(world, {});
+    check(day.settings[1] == 1 && night.settings[1] == 0 && day.sun_colour[0] > night.sun_colour[0],
+          "Sky brightness selects warm daylight and cool night fill");
+    for (unsigned i = 0; i < 20; ++i)
+        world.glints.push_back({{double(i), 0, 0}, {1, .5, .25}, 32, 1});
+    world.glints.push_back({{1000, 0, 0}, {1, 1, 1}, 32, 1});
+    const auto lamps = enhanced_lighting(world, {});
+    check(lamps.settings[2] == 16 && lamps.lamps[0].position_radius[0] == 0 && lamps.lamps[15].position_radius[0] == 15,
+          "Lighting selects at most sixteen nearest lamps and excludes distant sources");
     const auto file = root / "User/graphics.json";
     auto prefs = GraphicsPreferences::load(file);
     check(prefs.render_scale == 150 && prefs.msaa == 4 && prefs.snow == 3,
           "First launch uses 150%, 4x and ambient snow");
+    check(!prefs.enhanced_lighting, "First launch preserves Original lighting");
     prefs = {200, 8, 7.5};
     check(prefs.save(file), "Preferences can create their parent directory");
     prefs = GraphicsPreferences::load(file);
     check(prefs.render_scale == 200 && prefs.msaa == 8 && prefs.snow == 7.5, "All settings survive reload");
     const auto write = [&](const nlohmann::json& value) { std::ofstream(file) << value; };
+    prefs.enhanced_lighting = true;
+    check(prefs.save(file) && GraphicsPreferences::load(file).enhanced_lighting,
+          "Enhanced lighting survives preference reload");
+    for (const auto value : {nlohmann::json("unknown"), nlohmann::json(1), nlohmann::json(nullptr)}) {
+        write({{"schema", "openslope-graphics-preferences/v1"}, {"lighting", value}});
+        check(!GraphicsPreferences::load(file).enhanced_lighting, "Unknown lighting values preserve Original");
+    }
     write({{"schema", "openslope-graphics-preferences/v1"}, {"renderScale", -1}, {"msaa", "8"}, {"snow", 99}});
     prefs = GraphicsPreferences::load(file);
     check(prefs.render_scale == 150 && prefs.msaa == 4 && prefs.snow == 10,
@@ -81,6 +103,9 @@ void run(const std::filesystem::path& root) {
     check(!click(UiAction::Graphics) && ui.graphics_options, "Main menu opens Graphics without writing preferences");
     check(click(UiAction::RenderScale) && prefs.render_scale == 200, "Scale advances through supported percentages");
     check(click(UiAction::Antialiasing) && prefs.msaa == 8, "AA advances through supported sample counts");
+    check(click(UiAction::Lighting) && prefs.enhanced_lighting && ui.enhanced_lighting,
+          "Desktop toggle enables Enhanced lighting");
+    check(click(UiAction::Lighting) && !prefs.enhanced_lighting, "Desktop toggle restores Original lighting");
     for (unsigned i = 0; i < 12; ++i)
         click(UiAction::SnowDown);
     check(prefs.snow == 0 && ui.snow_amount == 0, "The weather dial stops at clear");
@@ -91,15 +116,19 @@ void run(const std::filesystem::path& root) {
           "Defaults restore all desktop settings");
     ui.immersive = true;
     const auto buttons = ui.buttons();
-    check(std::none_of(
-              buttons.begin(), buttons.end(),
-              [](const auto& b) { return b.action == UiAction::RenderScale || b.action == UiAction::Antialiasing; }),
+    check(std::none_of(buttons.begin(), buttons.end(),
+                       [](const auto& b) {
+                           return b.action == UiAction::RenderScale || b.action == UiAction::Antialiasing ||
+                                  b.action == UiAction::Lighting;
+                       }),
           "Wrist menu leaves render quality to the Quest launcher");
     prefs.render_scale = 200;
+    prefs.enhanced_lighting = true;
+    check(!prefs.handle({UiAction::Lighting}, ui) && prefs.enhanced_lighting, "VR cannot edit desktop lighting");
     check(!prefs.handle({UiAction::RenderScale}, ui) && prefs.render_scale == 200,
           "VR cannot accidentally edit desktop scale");
     click(UiAction::SnowUp);
-    check(click(UiAction::GraphicsReset) && prefs.snow == 3 && prefs.render_scale == 200,
+    check(click(UiAction::GraphicsReset) && prefs.snow == 3 && prefs.render_scale == 200 && prefs.enhanced_lighting,
           "VR weather defaults preserve desktop settings");
     ui.loading = true;
     check(ui.buttons().empty(), "Loading screens cannot dispatch another map or menu action");

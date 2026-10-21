@@ -266,6 +266,30 @@ int main(int argc, char** argv) {
                 const auto camera = std::string(name) == "handedness" || std::string(name) == "props_depth_precision"
                                         ? projection(-1, 1, -1, 1) * view({0, 0, 0}, {0, 0, -1})
                                         : orthographic;
+                if (std::string(name) == "lighting" || std::string(name) == "props_light_normals") {
+                    const auto original = capture(first, root / "lighting-original.ppm", camera);
+                    first.lighting(true);
+                    const auto enhanced = capture(first, root / "lighting-enhanced.ppm", camera);
+                    if (original == enhanced)
+                        throw std::runtime_error("Enhanced lighting does not change terrain/prop pixels");
+                    const auto untouched = capture(second, root / "lighting-other-view.ppm", camera);
+                    second.lighting(true);
+                    const auto encoded = capture(second, root / "lighting-enhanced-srgb.ppm", camera);
+                    if (untouched == encoded)
+                        throw std::runtime_error("Enhanced lighting does not work on an sRGB target");
+                    // Multisample edges resolve in the attachment's colour domain.
+                    // Compare the shading itself without partial pixel coverage.
+                    if (samples == 1)
+                        for (std::size_t i = 0; i < encoded.size(); ++i)
+                            if (std::abs(int(enhanced[i]) - int(encoded[i])) > 2)
+                                throw std::runtime_error("Enhanced lighting colour differs between UNORM and sRGB");
+                    first.lighting(false);
+                    second.lighting(false);
+                    if (capture(first, root / "lighting-restored.ppm", camera) != original ||
+                        capture(second, root / "lighting-other-restored.ppm", camera) != untouched)
+                        throw std::runtime_error("Lighting toggle cannot restore Original pixels exactly");
+                    checks += 4;
+                }
                 if (std::string(name).ends_with("_fog")) {
                     for (auto* renderer : {&first, &second}) {
                         const auto plain = capture(*renderer, root / "effects-fog-plain.ppm", camera);

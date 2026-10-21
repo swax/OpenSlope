@@ -8,10 +8,44 @@ layout(location=5) in vec3 worldPosition;
 layout(location=6) in vec3 propNormal;
 layout(location=7) flat in mat3 propDirections;
 layout(location=10) flat in mat3 propColours;
+layout(location=13) in vec3 worldNormal;
+struct Lamp {vec4 positionRadius;vec4 colour;};
+layout(std140,set=1,binding=1) uniform Lighting {
+    vec4 sunDirection;vec4 sunColour;vec4 ambient;vec4 settings;Lamp lamps[16];
+} light;
 layout(set=0,binding=0) uniform sampler2D diffuseImage;
 layout(set=0,binding=1) uniform sampler2D lightmapImage;
 layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; vec4 presentation; } transform;
 layout(location=0) out vec4 colour;
+vec3 linearColour(vec3 c) {
+    return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),greaterThan(c,vec3(0.04045)));
+}
+vec3 displayColourOf(vec3 c) {
+    return mix(c*12.92,1.055*pow(max(c,vec3(0)),vec3(1.0/2.4))-0.055,greaterThan(c,vec3(0.0031308)));
+}
+vec3 litSurface(vec3 base) {
+    vec3 n=worldNormal;
+    if(dot(n,n)<0.00001)n=cross(dFdx(worldPosition),dFdy(worldPosition));
+    if(dot(n,n)<0.00001)return base;
+    n=normalize(n);
+    vec3 v=transform.eyeEnd.xyz-worldPosition;
+    v=dot(v,v)>0.00001?normalize(v):n;
+    vec3 albedo=linearColour(base);
+    vec3 energy=light.ambient.rgb*mix(0.8,1.0,n.y*0.5+0.5);
+    float diffuse=max(0.0,dot(n,light.sunDirection.xyz));
+    energy+=light.sunColour.rgb*diffuse;
+    vec3 h=v+light.sunDirection.xyz;
+    float highlight=dot(h,h)>0.00001?pow(max(dot(n,normalize(h)),0.0),48.0):0.0;
+    vec3 result=albedo*energy+light.sunColour.rgb*highlight*0.12;
+    for(int i=0;i<int(light.settings.z);++i){
+        vec3 delta=light.lamps[i].positionRadius.xyz-worldPosition;
+        float distance=length(delta);
+        float attenuation=pow(max(0.0,1.0-distance/light.lamps[i].positionRadius.w),2.0);
+        vec3 direction=delta/max(distance,0.001);
+        result+=albedo*light.lamps[i].colour.rgb*max(dot(n,direction),0.0)*attenuation*1.4;
+    }
+    return displayColourOf(result);
+}
 void main() {
     vec3 displayColour=vertexColour;
     float alpha=1.0;
@@ -72,6 +106,8 @@ void main() {
             displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
     }
+    if(light.settings.x>0.5&&transform.options.x>=1&&transform.options.x<=3)
+        displayColour=litSurface(displayColour);
     if(transform.options.x!=7&&(transform.options.x<10||transform.options.x==14)&&transform.eyeEnd.w>transform.fogColourStart.w){
         float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
         if(transform.options.x==4&&transform.options.w!=0)alpha*=1.0-fog;

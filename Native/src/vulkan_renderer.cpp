@@ -222,18 +222,21 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     // Eye-local placements allow both views to remain queued on the same GPU.
     pose_capacity_ = scene_->pose_capacity_;
     poses_ = create_buffer(pose_capacity_ * sizeof(PropPose), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, nullptr);
-    const VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT,
-                                               nullptr};
+    lighting_ = create_buffer(sizeof(LightingUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, nullptr);
+    const std::array<VkDescriptorSetLayoutBinding, 2> bindings{
+        {{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
+         {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}}};
     VkDescriptorSetLayoutCreateInfo pose_layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    pose_layout.bindingCount = 1;
-    pose_layout.pBindings = &binding;
+    pose_layout.bindingCount = unsigned(bindings.size());
+    pose_layout.pBindings = bindings.data();
     vk_check(vkCreateDescriptorSetLayout(context_.device, &pose_layout, nullptr, &pose_layout_),
              "Create eye placement layout");
-    const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1};
+    const std::array<VkDescriptorPoolSize, 2> sizes{
+        {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}}};
     VkDescriptorPoolCreateInfo pose_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pose_pool.maxSets = 1;
-    pose_pool.poolSizeCount = 1;
-    pose_pool.pPoolSizes = &size;
+    pose_pool.poolSizeCount = unsigned(sizes.size());
+    pose_pool.pPoolSizes = sizes.data();
     vk_check(vkCreateDescriptorPool(context_.device, &pose_pool, nullptr, &pose_pool_), "Create eye placement pool");
     VkDescriptorSetAllocateInfo pose_allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     pose_allocate.descriptorPool = pose_pool_;
@@ -247,6 +250,11 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     write.pBufferInfo = &data;
+    vkUpdateDescriptorSets(context_.device, 1, &write, 0, nullptr);
+    const VkDescriptorBufferInfo light_data{lighting_.buffer, 0, sizeof(LightingUniform)};
+    write.dstBinding = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    write.pBufferInfo = &light_data;
     vkUpdateDescriptorSets(context_.device, 1, &write, 0, nullptr);
     VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pool.queueFamilyIndex = context_.family;
@@ -292,6 +300,7 @@ VulkanRenderer::~VulkanRenderer() {
     if (pose_layout_)
         vkDestroyDescriptorSetLayout(context_.device, pose_layout_, nullptr);
     destroy_buffer(poses_);
+    destroy_buffer(lighting_);
     destroy_buffer(line_vertices_);
     destroy_buffer(visible_indices_);
     destroy_buffer(sprite_vertices_);
@@ -998,6 +1007,12 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     const auto started = std::chrono::steady_clock::now();
     finish();
     reserve_poses(required_poses);
+    auto lighting = enhanced_lighting_ ? enhanced_lighting(scene_->world_, eye) : LightingUniform{};
+    lighting.settings[0] = enhanced_lighting_ ? 1.f : 0.f;
+    void* light_data;
+    vk_check(vkMapMemory(context_.device, lighting_.memory, 0, sizeof(lighting), 0, &light_data), "Map lighting");
+    std::memcpy(light_data, &lighting, sizeof(lighting));
+    vkUnmapMemory(context_.device, lighting_.memory);
     if (weather.flakes && !snow_vertices_.buffer) {
         const auto flakes = snow_flakes();
         snow_vertices_ =
