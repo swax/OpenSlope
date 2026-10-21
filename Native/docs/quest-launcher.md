@@ -27,8 +27,9 @@ Cancel stops the batch and keeps completed maps. PS2 support is full for Tricky,
 partial for SSX, and preliminary for SSX 3 and On Tour.
 
 The default view hides raw folder identifiers and graphics options. Existing
-render-scale, smoothing, head-steering and run-mode preferences retain their
-keys and values. Opening the panel does not write default values over missing
+render-scale, smoothing and run-mode preferences retain their keys and values.
+Riding always uses head steering with left-stick player turning; the former
+steering preference is ignored and has no selector. Opening the panel does not write default values over missing
 preferences. An unavailable folder removes stale Play buttons, explains how
 to recover, exposes folder details/refresh and prevents importing into that
 unavailable destination. A course-launch error survives the initial resume

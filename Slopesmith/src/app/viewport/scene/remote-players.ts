@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../../core/equipment/stock-boards';
 import type { PlayerMode, PlayerPose, PlayerTransform } from '../../../core/session/player-pose';
 import { RemotePlayerMotion } from '../../net/remote-player-motion';
 import { OnFootFacing } from '../../ride/on-foot-facing';
@@ -101,6 +102,7 @@ const localTransform = (): SmoothedLocalTransform => ({
 });
 
 class RemoteAvatar {
+  private readonly stockBoard = new StockBoardSelection();
   readonly userId: string;
   private rider: Rider;
   private avatarId: string;
@@ -173,7 +175,8 @@ class RemoteAvatar {
     this.stance = this.latest.stance ?? DEFAULT_SNOWBOARD_STANCE;
     const appearance = equipmentOf(peer);
     this.appearanceKey = equipmentKey(appearance);
-    this.board = createBoard(this.gear, this.stance, appearance);
+    if (this.latest.stockBoard) this.stockBoard.set(this.latest.stockBoard);
+    this.board = createBoard(this.gear, this.stance, appearance, this.stockBoard);
     this.rider = createRider(this.avatarId, undefined, this.gear, this.stance);
     this.label = makeLabel(peer.username, peer.color);
     this.addBody();
@@ -229,6 +232,7 @@ class RemoteAvatar {
     if (!frame || !this.motion.push(frame, sampleAt)) return;
     if (frame.mode !== this.latest.mode) this.onFootFacing.clear();
     this.latest = frame;
+    if (frame.stockBoard) this.stockBoard.set(frame.stockBoard);
     this.pointActive.left = this.pointActive.right = false;
     const points = frame.gestures ?? (frame.gesture ? [frame.gesture] : []);
     for (const point of points) {
@@ -252,7 +256,7 @@ class RemoteAvatar {
       this.stance = stance;
       this.removeBody();
       this.rider = createRider(this.avatarId, undefined, gear, stance);
-      if (rebuildGear) this.board = createBoard(gear, stance, appearance);
+      if (rebuildGear) this.board = createBoard(gear, stance, appearance, this.stockBoard);
       this.addBody();
       previousRider.dispose();
       if (rebuildGear) previousBoard.dispose();

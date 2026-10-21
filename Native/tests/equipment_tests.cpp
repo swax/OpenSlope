@@ -1,5 +1,7 @@
+#include "openslope/appearance.hpp"
 #include "openslope/ride_ui.hpp"
 #include <iostream>
+#include <map>
 #include <stdexcept>
 
 namespace {
@@ -171,10 +173,106 @@ void math() {
     check(length(carry.release().velocity) == 0, "Summon discontinuity is never a throw");
 }
 
+void tracking_rebase() {
+    Player player(floor());
+    player.warp({}, {0, 0, -1});
+    player.start_on_foot();
+    auto input = hand_input(player);
+    input.equipment.hands[1].position = input.equipment.head + Vec3{0, .05, .3};
+    input.equipment.grip[1] = true;
+    for (unsigned tick = 0; tick < 4; ++tick)
+        player.tick(input);
+    check(player.carrying_board(), "Tracking rebase fixture holds a summoned board");
+    const auto before = player.holding_hand();
+    const auto board = player.render_board_position();
+    const auto position = player.rider().position;
+    const Vec3 offset{0, .6, 0};
+    player.rebase_tracking(offset);
+    close(player.holding_hand().position, before.position + offset, "Recalibration moves the held hand immediately");
+    close(player.render_board_position(), board + offset, "Held board and hand receive the same calibration offset");
+    close(player.rider().position, position, "Height calibration cannot move the physics player");
+    input.equipment.head += offset;
+    for (auto& hand : input.equipment.hands)
+        hand.position += offset;
+    player.tick(input);
+    input.equipment.grip[1] = false;
+    player.tick(input);
+    check(!player.carrying_board(), "Release after recalibration still drops the board");
+    const auto velocity = player.board_velocity();
+    check(std::abs(velocity.x) < .01 && velocity.y <= 0 && velocity.y > -.4 && std::abs(velocity.z) < .01,
+          "Release after recalibration has only the ordinary first-tick gravity");
+    check(length(player.board_spin()) < .01, "Recalibration does not become board spin");
+}
+
+void board_art_lifecycle() {
+    Player player(floor());
+    const auto original = player.board_design();
+    check(original < stock_board_count, "new game selects a stock board design");
+    player.reset();
+    check(player.board_design() == original, "respawn preserves the board artwork");
+    check(!player.recall_board(), "mounted recall cannot create a board");
+    check(player.board_design() == original, "rejected creation retains design");
+    player.start_on_foot();
+    check(player.board_design() == original, "dismount/park keeps the same board");
+    check(player.recall_board(), "explicit board creation succeeds on foot");
+    const auto replacement = player.board_design();
+    check(replacement != original && replacement < stock_board_count, "new board rerolls without immediate repeat");
+    check(player.interact_board(), "mount replacement board");
+    check(player.board_design() == replacement, "mount keeps replacement design");
+    player.reset(true);
+    check(player.board_design() == replacement, "manual respawn keeps replacement design");
+    player.restart_run();
+    const auto restarted = player.board_design();
+    check(restarted != replacement, "course restart selects another random board");
+    player.reset();
+    check(player.board_design() == restarted, "respawn after a restart keeps the newly selected board");
+    RideInput restart;
+    restart.run_restart = true;
+    player.tick(restart);
+    const auto keyboard_restart = player.board_design();
+    check(keyboard_restart != restarted, "restart input selects a new board");
+    player.tick(restart);
+    check(player.board_design() == keyboard_restart, "holding restart does not continually replace the board");
+    player.start_on_foot();
+    for (unsigned draw = 0; draw < 3; ++draw) {
+        const auto previous = player.board_design();
+        auto pull = hand_input(player);
+        pull.equipment.hands[1].position = player.rider().position + Vec3{0, 1.7, .3};
+        pull.equipment.grip[1] = true;
+        player.tick(pull);
+        check(player.carrying_board() && player.board_design() != previous,
+              "each new behind-the-head pull selects a different board");
+        player.release_inputs();
+    }
+    for (unsigned i = 0; i < stock_board_count; ++i) {
+        const auto pixels = stock_board_image(i);
+        check(pixels.width == pixels.height && pixels.width % 2 == 0, "embedded board atlas has equal top/base panels");
+        check(pixels.pixels.size() == std::size_t(pixels.width) * pixels.height * 4,
+              "embedded board image decodes fully");
+        check(!stock_board_info(i).id.empty(), "embedded artwork has a stable identity");
+    }
+    const auto& mesh = snowboard_mesh();
+    std::map<float, std::pair<float, float>> heights;
+    for (const auto& v : mesh.vertices) {
+        auto& row = heights.try_emplace(v.z, v.y, v.y).first->second;
+        row.first = std::min(row.first, v.y);
+        row.second = std::max(row.second, v.y);
+    }
+    for (const auto& v : mesh.vertices)
+        if (v.lh > .5f) {
+            check(v.s >= 0 && v.s <= 1 && v.t >= 0 && v.t <= 1, "native surface UV stays in the board atlas");
+            const auto row = heights.at(v.z);
+            const bool upper_surface = v.y > (row.first + row.second) / 2;
+            check(v.lx == (upper_surface ? 0.f : .5f), "upper surface uses topsheet panel, lower surface uses base");
+            check(upper_surface ? v.ny > .5f : v.ny < -.5f, "deck normals point outwards for directional scene light");
+        }
+}
+
 void lifecycle() {
     Player p(floor());
     p.warp({0, 0, 0}, {0, 0, -1});
     p.start_on_foot();
+    const auto original_design = p.board_design();
     auto input = hand_input(p);
     input.equipment.grip[1] = true;
     p.tick(input);
@@ -200,11 +298,14 @@ void lifecycle() {
     input.equipment.trigger[1] = true;
     p.tick(input);
     check(p.on_foot(), "Fresh trigger edge dismounts");
+    check(p.board_design() == original_design, "pickup, transfer, mount and dismount keep the physical board art");
     input = hand_input(p);
     input.equipment.hands[1].position = p.rider().position + Vec3{0, 1.7, .3};
     input.equipment.grip[1] = true;
     p.tick(input);
     check(p.carrying_board(), "Over-shoulder gesture summons the loose board");
+    const auto summoned_design = p.board_design();
+    check(summoned_design != original_design, "on-foot over-shoulder pull creates another stock design");
     p.release_inputs();
     check(!p.carrying_board() && length(p.board_velocity()) == 0 && !p.board_thrown(),
           "Focus loss drops safely without synthesizing a throw");
@@ -214,6 +315,7 @@ void lifecycle() {
     input.equipment.grip[1] = true;
     p.tick(input);
     check(p.on_foot() && p.carrying_board(), "Air grip removes mounted deck");
+    check(p.board_design() == summoned_design, "air trick grab retains the board design");
     check(std::abs(p.rider().velocity.x - 2) < 1e-7 && std::abs(p.rider().velocity.z + 40) < 1e-7,
           "Air pickup preserves horizontal rider arc");
     const auto velocity = p.rider().velocity;
@@ -242,6 +344,7 @@ void lifecycle() {
         p.tick(input);
     check(!p.board_thrown() && finite(p.render_board_position()),
           "First floor contact ends thrown flight and settles safely");
+    check(p.board_design() == summoned_design, "throwing and landing keep the board design");
 }
 
 void loose_board_recovery() {
@@ -388,18 +491,22 @@ void camera_ui() {
     VrPresentation presentation;
     VrButtons menu;
     menu.menu = true;
-    presentation.step(0, menu);
+    presentation.step(0, menu, true);
     wrist.visible = presentation.controls;
     wrist.stats = true;
     std::vector<Vertex> hidden;
     wrist.append(hidden, p, true, 90);
     wrist.append_pointer(hidden, {{0, 0, 1}, {0, 0, -1}, true});
     check(hidden.empty(), "Y hides the complete wrist UI, speed summary, stats and pointer");
-    presentation.step(0, {});
-    presentation.step(0, menu);
+    presentation.step(0, {}, true);
+    presentation.step(0, menu, true);
     wrist.visible = presentation.controls;
     wrist.append(hidden, p, true, 90);
     check(hidden.size() > 1000, "A second Y press restores the wrist interface");
+    const auto menu_buttons = wrist.buttons();
+    check(std::none_of(menu_buttons.begin(), menu_buttons.end(),
+                       [](const auto& b) { return b.text.find("HEAD STEER") != std::string::npos; }),
+          "Always-on head steering has no wrist-menu toggle");
     for (const auto action : {UiAction::Maps, UiAction::Exit}) {
         const auto buttons = wrist.buttons();
         const auto button =
@@ -469,6 +576,8 @@ void camera_ui() {
 int main() {
     try {
         math();
+        tracking_rebase();
+        board_art_lifecycle();
         lifecycle();
         loose_board_recovery();
         mounted_board_frames();

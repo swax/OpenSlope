@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../core/equipment/stock-boards';
 import {
   createRideModel,
   rideForward,
@@ -159,6 +160,7 @@ export interface RideStartOpts {
   snowboardStance?: SnowboardStance;
   /** This signed-in rider's account-owned board/ski presentation. */
   equipmentAppearance?: EquipmentAppearance;
+  stockBoard?: StockBoardSelection;
   /** Draw the local board's carved wake and contact particles. Set explicitly by Test mode; AI riders never
    *  construct TestRide and therefore never receive this renderer. */
   boardFx?: boolean;
@@ -295,11 +297,15 @@ export class TestRide {
 
   constructor(opts: RideStartOpts) {
     this.o = opts;
+    this.o.stockBoard ??= new StockBoardSelection();
   }
 
   // ---- lifecycle ----
 
   start() {
+    // Desktop Stop/Play starts a fresh course run. XR mounts reuse the board
+    // selected by its session's restart or behind-the-head pull.
+    if (!this.inVr) this.o.stockBoard!.renew();
     this.telemetry = new RideTelemetryCapture({ label: this.o.label });
     this.pose = createRiderPose({
       scene: this.o.scene,
@@ -308,6 +314,7 @@ export class TestRide {
       gear: this.o.gear,
       snowboardStance: this.o.snowboardStance,
       equipmentAppearance: this.o.equipmentAppearance,
+      stockBoard: this.o.stockBoard,
     });
     if (this.o.boardFx) this.boardFx = new BoardFx(this.o.scene, this.o.boardFxGround);
     if (this.inVr) this.pose.setFirstPerson(true);
@@ -908,6 +915,7 @@ export class TestRide {
         vr: false,
         gear: this.pose.gear,
         stance: this.pose.snowboardStance,
+        stockBoard: this.o.stockBoard!.design.id,
         body: playerTransform(this.walker.position(), bodyQ),
         velocity: playerVec(this.walker.velocity()),
         equipment: {
@@ -935,6 +943,7 @@ export class TestRide {
       vr: false,
       gear: this.pose.gear,
       stance: this.pose.snowboardStance,
+      stockBoard: this.o.stockBoard!.design.id,
       body: board,
       velocity,
       equipment: {
@@ -1009,6 +1018,8 @@ export class TestRide {
 
   private mountBoard(atHighlightedBoard = false) {
     if (!this.onFootFlag || !this.walker) return;
+    if (!atHighlightedBoard && this.pose.board.position.distanceTo(this.walker.position()) > 1.6)
+      this.o.stockBoard?.renew();
     const continuingFirstPerson = !this.walkThirdPerson;
     this.desktopBoardGrab.clear();
     this.pose.highlightBoard(false);

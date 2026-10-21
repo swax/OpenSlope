@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { OnFootFacing } from '../src/app/ride/on-foot-facing';
 import { createRider, type RiderInput } from '../src/app/ride/rider';
+import { XrHeightCalibration } from '../src/app/ride/xr/calibration';
 
 const rider = createRider();
 const facing = new THREE.Vector3(0, 0, 1);
@@ -214,6 +215,47 @@ assert(
 );
 
 const trackedPosition = new THREE.Vector3(1, 2, 3);
+// The same 1.65 m pose must reach the actual rider IK after either a seated lift or a high-origin lowering.
+for (const rawY of [1.05, 4.6]) {
+  const height = new XrHeightCalibration();
+  height.update(rawY);
+  const eye = new THREE.Vector3(0, rawY + height.floorOffset, 0);
+  const a = new THREE.Vector3(-0.25, rawY - 0.35 + height.floorOffset, 0.3);
+  const b = new THREE.Vector3(0.25, rawY - 0.35 + height.floorOffset, 0.3);
+  const tracked: RiderInput = {
+    ...input(0, 0),
+    headTarget: {
+      position: eye,
+      quaternion: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI),
+      exactPosition: true,
+    },
+    handTargets: {
+      a: { position: a, quaternion: new THREE.Quaternion() },
+      b: { position: b, quaternion: new THREE.Quaternion() },
+    },
+  };
+  rider.reset(tracked);
+  const ankle = limbEnd('shin-front');
+  const hipY = node('hip-front').position.y;
+  const actualEye = () =>
+    node('eye-left')
+      .getWorldPosition(new THREE.Vector3())
+      .add(node('eye-right').getWorldPosition(new THREE.Vector3()))
+      .multiplyScalar(0.5);
+  assert(actualEye().distanceTo(eye) < 1e-6, 'normalized XR eye height reaches the visible avatar');
+  const handAligned = () =>
+    Math.min(node('hand-front').position.distanceTo(a), node('hand-front').position.distanceTo(b)) < 1e-6;
+  assert(handAligned(), 'height correction preserves the actual rider hand target');
+  assert(!height.update(rawY - 0.4), 'physical crouching keeps the neutral height calibration');
+  eye.y -= 0.4;
+  a.y -= 0.4;
+  b.y -= 0.4;
+  rider.pose(tracked);
+  assert(actualEye().distanceTo(eye) < 1e-6, 'physical XR crouching lowers the avatar eyes');
+  assert(node('hip-front').position.y < hipY - 0.2, 'physical XR crouching lowers the hips');
+  assert(limbEnd('shin-front').distanceTo(ankle) < 1e-6, 'physical XR crouching keeps procedural feet grounded');
+  assert(handAligned(), 'crouching keeps the avatar hand aligned');
+}
 rider.pose({
   ...input(0, 0),
   headTarget: {

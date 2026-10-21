@@ -3,6 +3,10 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.87 adds four stock board designs, with a fresh choice on course restart
+or a new-board pull. Avatars and boards respond to course lighting in normal
+lighting mode. See [build notes](releases/0.87.0.md).
+
 Build 0.86 removes both Race and Showoff start countdowns. Riding, scoring and
 the event clock start on the first mounted tick. See [build notes](releases/0.86.0.md).
 The equipment-frame fixes and SSX gem importer remain included;
@@ -165,9 +169,9 @@ and hand skin follows full wrist orientation. See [quest-controls.md](docs/quest
 for the earlier mapping and [equipment, camera and UI](docs/equipment-camera-ui.md)
 for current controls, independent implementation, validation and remaining physical checks.
 
-Quest's **Riding steering** selector offers Stick only or Head + stick override.
-Head mode uses look-to-carve with a neutral zone; the stick takes priority when
-deflected. See [VR steering](docs/vr-steering.md) for controls, view carry and
+Quest always uses head steering with left-stick player turning as a fallback.
+The stick rotates the player, tracked hands and view together; the board follows
+the resulting gaze. See [VR steering](docs/vr-steering.md) for controls, tracking and
 remaining headset validation. Timed runs now bank spin/flip and rail tricks and
 spend/refill boost; see [trick scoring](docs/trick-scoring.md) for exact scope.
 Manual reset and the existing active-run recovery triggers now prefer a nearby

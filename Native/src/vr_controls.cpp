@@ -28,6 +28,28 @@ double VrFrameClock::step(double display_seconds, bool interactive) {
     return dt;
 }
 
+bool VrHeightCalibration::update(double head_y, bool floor_space) {
+    if (!pending_ || !std::isfinite(head_y))
+        return false;
+    origin_y_ = head_y - standing_height;
+    // Without a physical floor there is no reliable posture measurement.
+    // Latch the mode here so a standing player's later crouch keeps leg tracking.
+    seated_ = !floor_space || head_y < 1.4;
+    floor_pending_ = !seated_;
+    floor_offset_ = 0;
+    pending_ = false;
+    return true;
+}
+
+bool VrHeightCalibration::update_floor(double floor_y) {
+    if (pending_ || !floor_pending_ || !std::isfinite(floor_y))
+        return false;
+    floor_offset_ = origin_y_ - floor_y;
+    seated_ = origin_y_ + standing_height - floor_y < 1.4;
+    floor_pending_ = false;
+    return true;
+}
+
 std::span<const VrBinding> touch_bindings() {
     static constexpr std::array<VrBinding, 31> bindings{
         {{VrBindingAction::Steer, "/user/hand/left/input/thumbstick"},
@@ -75,10 +97,8 @@ VrIntent vr_intent(const VrButtons& b, bool walking) {
         if (!std::isfinite(x) || std::abs(x) > 1)
             throw std::invalid_argument("Invalid controller axis");
     VrIntent result;
-    result.steer = walking ? -b.x : -vr_axis(b.x, true);
-    result.spin = -vr_axis(b.x, false);
+    result.steer = walking ? -b.x : 0;
     result.posture = walking ? b.y : std::abs(b.y) > .1 && std::abs(b.y) >= std::abs(b.x) ? b.y : 0;
-    result.stick = std::abs(b.x) > .18;
     result.boost = b.boost;
     result.jump = b.jump;
     result.board = b.board;
@@ -87,7 +107,7 @@ VrIntent vr_intent(const VrButtons& b, bool walking) {
     return result;
 }
 
-void VrPresentation::step(double seconds, const VrButtons& b) {
+void VrPresentation::step(double seconds, const VrButtons& b, bool walking) {
     if (!std::isfinite(seconds) || seconds < 0 || seconds > 1)
         throw std::invalid_argument("Invalid controller presentation step");
     static_cast<void>(vr_intent(b, false));
@@ -97,7 +117,8 @@ void VrPresentation::step(double seconds, const VrButtons& b) {
         third_person = !third_person;
     menu_held_ = b.menu;
     camera_held_ = b.camera;
-    yaw -= vr_axis(b.look, false) * 120 * pi / 180 * seconds;
+    // Riding turns the whole tracking frame with the left stick; gaze still owns the board.
+    yaw -= vr_axis(walking ? b.look : b.x, false) * 120 * pi / 180 * seconds;
 }
 
 Vec3 VrPresentation::camera_offset(Vec3 facing) const {

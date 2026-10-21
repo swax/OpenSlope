@@ -4,6 +4,7 @@
 #include "openslope/import.hpp"
 #include "openslope/material_animation.hpp"
 #include "openslope/model_animation.hpp"
+#include "openslope/scene_lighting.hpp"
 #include "prop_internal.hpp"
 #include <bit>
 #include <fstream>
@@ -456,6 +457,51 @@ std::vector<Transform> prop_detail::placements(const Json& rows) {
     for (const auto& row : rows)
         result.push_back(map_transform(row_pose(row)));
     return result;
+}
+
+SceneLighting SceneLighting::load(const std::filesystem::path& root) {
+    if (root.empty() || !std::filesystem::is_regular_file(root / "Instances.json"))
+        return {};
+    const auto doc = json_file(asset(root, "Instances.json"));
+    const auto& rows = doc.at("Instances");
+    const auto placements = prop_detail::placements(rows);
+    std::vector<LightProbe> probes;
+    std::set<std::tuple<long long, long long, long long>> seen;
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const auto& row = rows[i];
+        if (!row.contains("AmbentLightColour"))
+            continue;
+        const auto& matrix = placements[i];
+        LightProbe probe;
+        probe.position = {matrix[12], matrix[13], matrix[14]};
+        probe.ambient = vector3(row.at("AmbentLightColour")) / 256.;
+        bool has_key = false;
+        for (unsigned k = 0; k < 3; ++k) {
+            const auto colour = "LightColour" + std::to_string(k + 1),
+                       direction = "LightVector" + std::to_string(k + 1);
+            if (!row.contains(colour) || !row.contains(direction))
+                continue;
+            const auto c = vector3(row.at(colour)) / 256., raw = vector3(row.at(direction));
+            const auto local = axes(raw);
+            const auto a = normalized(Vec3{matrix[0], matrix[1], matrix[2]}),
+                       b = normalized(Vec3{matrix[4], matrix[5], matrix[6]}),
+                       d = normalized(Vec3{matrix[8], matrix[9], matrix[10]});
+            const auto world = a * local.x + b * local.y + d * local.z;
+            if (length(world) > 1e-6 && length(c) > 1e-6) {
+                probe.keys[k] = {normalized(world), c};
+                has_key = true;
+            }
+        }
+        // Self-lit signs and bulbs describe their own material, not the air.
+        // Genuine black records remain useful shadow probes.
+        if (!has_key && probe.ambient.x >= 1 && probe.ambient.y >= 1 && probe.ambient.z >= 1)
+            continue;
+        const auto cell =
+            std::tuple{std::llround(probe.position.x), std::llround(probe.position.y), std::llround(probe.position.z)};
+        if (seen.insert(cell).second)
+            probes.push_back(probe);
+    }
+    return SceneLighting(std::move(probes));
 }
 
 std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root,

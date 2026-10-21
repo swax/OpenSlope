@@ -301,6 +301,7 @@ VulkanRenderer::~VulkanRenderer() {
     destroy_buffer(glint_vertices_);
     destroy_buffer(wake_vertices_);
     destroy_buffer(avatar_vertices_);
+    destroy_buffer(board_vertices_);
     destroy_buffer(sheet_vertices_);
     destroy_buffer(boost_vertices_);
     destroy_buffer(snow_vertices_);
@@ -1195,6 +1196,40 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         stats_.wake_segments = unsigned(wake.size() / 6);
     }
     constexpr std::size_t maximum_avatar_vertices = 120000 + 16 * 30000;
+    board_mesh_.clear();
+    if (board_lighting_) {
+        const auto& gear = snowboard_mesh();
+        const auto append = [&](const Matrix& frame, unsigned design) {
+            const auto& m = frame.values;
+            const auto light = board_lighting_->sample({m[12], m[13], m[14]});
+            for (const auto index : gear.indices) {
+                auto v = gear.vertices[index];
+                const auto illumination =
+                    light.evaluate({m[0] * v.nx + m[4] * v.ny + m[8] * v.nz, m[1] * v.nx + m[5] * v.ny + m[9] * v.nz,
+                                    m[2] * v.nx + m[6] * v.ny + m[10] * v.nz});
+                const bool stock = design < stock_board_count;
+                v.r = float(illumination.x) * (stock ? 1.f : v.r);
+                v.g = float(illumination.y) * (stock ? 1.f : v.g);
+                v.b = float(illumination.z) * (stock ? 1.f : v.b);
+                board_mesh_.push_back(v);
+            }
+        };
+        append(board, board_design_);
+        for (std::size_t i = 0; i < opponents.size(); ++i)
+            append(opponents[i], i < opponent_designs_.size() ? opponent_designs_[i] : board_design_);
+        if (board_mesh_.size() > board_capacity_) {
+            destroy_buffer(board_vertices_);
+            board_capacity_ = board_mesh_.size();
+            board_vertices_ =
+                create_buffer(board_capacity_ * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, nullptr);
+        }
+        void* mapped;
+        vk_check(
+            vkMapMemory(context_.device, board_vertices_.memory, 0, board_mesh_.size() * sizeof(Vertex), 0, &mapped),
+            "Map scene-lit boards");
+        std::memcpy(mapped, board_mesh_.data(), board_mesh_.size() * sizeof(Vertex));
+        vkUnmapMemory(context_.device, board_vertices_.memory);
+    }
     if (avatar.size() > maximum_avatar_vertices || avatar.size() % 3)
         throw std::runtime_error("Avatar submission exceeds bounds");
     for (const auto& v : avatar)
@@ -1499,21 +1534,48 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     for (unsigned c = 0; c < 3; ++c)
         push.eye_end[c] = float(dot(relative, {board.values[c * 4], board.values[c * 4 + 1], board.values[c * 4 + 2]}));
     push.mvp = camera * board;
-    push.options[0] = 0;
-    vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0, nullptr);
+    const auto bind_board = [&](unsigned design) {
+        const bool stock = design < stock_board_count;
+        push.options[0] = stock ? 14 : 0;
+        push.options[2] = board_lighting_ ? 1 : 0;
+        const auto set = stock ? scene_->stock_board_sets_[design] : scene_->board_set_;
+        if (stock) {
+            const auto colour = stock_board_info(design).edge;
+            push.presentation[1] = float((colour >> 16) & 255) / 255;
+            push.presentation[2] = float((colour >> 8) & 255) / 255;
+            push.presentation[3] = float(colour & 255) / 255;
+        }
+        vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &set, 0, nullptr);
+    };
+    bind_board(board_design_);
+    if (board_lighting_)
+        vkCmdBindVertexBuffers(command_, 0, 1, &board_vertices_.buffer, &offset);
+    const auto draw_board = [&](unsigned index) {
+        if (board_lighting_)
+            vkCmdDraw(command_, scene_->board_count_, 1, index * scene_->board_count_, 0);
+        else
+            vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
+    };
     vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
-    vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
+    draw_board(0);
     stats_.opponent_boards = unsigned(opponents.size());
+    unsigned opponent_index = 0;
     for (const auto& opponent : opponents) {
         const auto relative_eye = eye - Vec3{opponent.values[12], opponent.values[13], opponent.values[14]};
         for (unsigned c = 0; c < 3; ++c)
             push.eye_end[c] = float(
                 dot(relative_eye, {opponent.values[c * 4], opponent.values[c * 4 + 1], opponent.values[c * 4 + 2]}));
         push.mvp = camera * opponent;
+        bind_board(opponent_index < opponent_designs_.size() ? opponent_designs_[opponent_index] : board_design_);
+        ++opponent_index;
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
-        vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
+        draw_board(opponent_index);
     }
     push.eye_end = world_eye;
+    if (board_lighting_)
+        vkCmdBindVertexBuffers(command_, 0, 1, &scene_->vertices_.buffer, &offset);
+    push.presentation[1] = push.presentation[2] = push.presentation[3] = 0;
+    vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0, nullptr);
     push.mvp = camera;
     push.options[0] = 0;
     if (!avatar.empty()) {

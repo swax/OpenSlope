@@ -52,8 +52,8 @@ struct VrButtons {
 };
 
 struct VrIntent {
-    double steer = 0, posture = 0, spin = 0;
-    bool boost = false, jump = false, board = false, reset = false, recall = false, stick = false;
+    double steer = 0, posture = 0;
+    bool boost = false, jump = false, board = false, reset = false, recall = false;
 };
 
 VrIntent vr_intent(const VrButtons& buttons, bool walking);
@@ -87,11 +87,34 @@ private:
     double previous_ = 0;
 };
 
+// Height is calibrated independently of room position/yaw and player placement.
+class VrHeightCalibration {
+public:
+    static constexpr double standing_height = 1.65;
+
+    void request() { pending_ = true; }
+
+    bool update(double head_y, bool floor_space);
+    bool update_floor(double floor_y);
+
+    double origin_y() const { return origin_y_; }
+
+    double floor_offset() const { return floor_offset_; }
+
+    bool floor_calibrated() const { return !floor_pending_; }
+
+    bool seated() const { return seated_; }
+
+private:
+    bool pending_ = true, seated_ = true, floor_pending_ = true;
+    double origin_y_ = 0, floor_offset_ = 0;
+};
+
 class VrPresentation {
 public:
     bool controls = true, third_person = false;
     double yaw = 0;
-    void step(double seconds, const VrButtons& buttons);
+    void step(double seconds, const VrButtons& buttons, bool walking);
 
     void release() { menu_held_ = camera_held_ = false; }
 

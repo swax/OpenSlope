@@ -1,5 +1,6 @@
 #pragma once
 #include "player.hpp"
+#include "scene_lighting.hpp"
 #include <span>
 #include <string_view>
 
@@ -44,6 +45,9 @@ struct AvatarTracking {
     std::array<ControllerPose, 2> controllers{};
     bool body_active = false, full_body = false;
     float confidence = 0;
+    bool seated = false;
+    // Restore the physical floor for tracked feet after normalizing eye height.
+    double floor_offset = 0;
 };
 
 struct AvatarPose {
@@ -73,7 +77,7 @@ class Avatar {
 public:
     Avatar();
     std::span<const Vertex> mesh(const AvatarPose& pose, bool first_person = false, bool labels = true, Vec3 eye = {},
-                                 Vec3 controller_offset = {});
+                                 Vec3 controller_offset = {}, const SceneLighting* lighting = nullptr);
 
     std::size_t source_vertices() const { return vertices_.size(); }
 

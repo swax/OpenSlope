@@ -11,12 +11,11 @@ int main(int argc, char** argv) {
             if (option == "--mode" && i + 1 < argc)
                 mode = openslope::run_mode(argv[++i]);
             else if (option == "--head-steering")
-                platform.head_steering = true;
+                continue; // Accepted for older launch scripts; head steering is always enabled.
             else if (map.empty() && !option.starts_with("--"))
                 map = option;
             else
-                throw std::runtime_error(
-                    "openslope_player [map folder] [--mode freeride|race|showoff] [--head-steering]");
+                throw std::runtime_error("openslope_player [map folder] [--mode freeride|race|showoff]");
         }
         openslope::Player player(map.empty() ? openslope::Terrain::demo() : openslope::Terrain::load(map));
         if (mode != openslope::RunMode::Freeride)

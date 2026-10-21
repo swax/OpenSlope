@@ -98,7 +98,9 @@ void first_mount(const std::filesystem::path& root) {
         mount();
         near(player.course_run().status().clock, mode == RunMode::Showoff ? clock - 2. / 60 : 2. / 60,
              "The event clock counts both riding ticks without a start delay");
+        const auto previous_board = player.board_design();
         player.restart_run();
+        check(player.board_design() != previous_board, "race/showoff restart selects a fresh board design");
         check(player.on_foot() && player.course_run().status().phase == RunPhase::Ready,
               "Restart still waits for the next mount");
         mount();

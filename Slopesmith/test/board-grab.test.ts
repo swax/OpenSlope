@@ -36,6 +36,25 @@ const skis = createBoard('skis');
 const BOX = snowboard.grabBox;
 const FLAT = new THREE.Quaternion();
 
+// Recalibration translates the whole tracking frame and its history, rather than making a throw.
+{
+  const grab = createBoardGrab();
+  const wrist = new THREE.Vector3(0.2, 1.2, -0.3);
+  const position = new THREE.Vector3(),
+    rotation = new THREE.Quaternion();
+  grab.grab('right', wrist, FLAT, new THREE.Vector3(), FLAT, BOX, true);
+  grab.follow(wrist, FLAT, 1 / 72, position, rotation);
+  const before = position.clone();
+  const correction = new THREE.Vector3(0, -2.95, 0);
+  grab.rebase(correction);
+  wrist.add(correction);
+  grab.follow(wrist, FLAT, 1 / 72, position, rotation);
+  assert(position.distanceTo(before.add(correction)) < 1e-9, 'the held board follows the recalibrated wrist');
+  const released = grab.release();
+  assert(released.velocity.length() < 1e-9, 'lowering a high tracking origin does not inject throw velocity');
+  assert(released.spin.length() < 1e-9, 'height recalibration does not inject spin');
+}
+
 /** A hand at a world point with its canonical frame level: `+Y` toward the fingers. */
 function hand(x: number, y: number, z: number, rotation = FLAT) {
   return { position: new THREE.Vector3(x, y, z), quaternion: rotation.clone() };

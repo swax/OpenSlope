@@ -25,7 +25,7 @@ public final class LauncherActivity extends Activity {
     private Button chooseFolder, useLocal, importIso, refresh, cancel;
     private MapLibrary library;
     private Spinner runMode;
-    private Spinner renderScale,targetRefreshRate,antialiasing,steeringMode;
+    private Spinner renderScale,targetRefreshRate,antialiasing;
     private String libraryNotice;
     private boolean noticeError;
     private long lastProgress;
@@ -42,11 +42,11 @@ public final class LauncherActivity extends Activity {
         }
         screen = new LauncherUi(this); setContentView(screen.root);
         location = screen.location; status = screen.status; courses = screen.courses;
-        runMode = screen.runMode; renderScale = screen.renderScale; targetRefreshRate = screen.targetRefreshRate; antialiasing = screen.antialiasing; steeringMode = screen.steeringMode;
+        runMode = screen.runMode; renderScale = screen.renderScale; targetRefreshRate = screen.targetRefreshRate; antialiasing = screen.antialiasing;
         chooseFolder = screen.chooseFolder; useLocal = screen.useLocal; importIso = screen.importIso; refresh = screen.refresh; cancel = screen.cancel;
         String savedMode=getPreferences(0).getString("run_mode","freeride");runMode.setSelection(savedMode.equals("race")?1:savedMode.equals("showoff")?2:0);
         runMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){String mode=new String[]{"freeride","race","showoff"}[position];if(!mode.equals(getPreferences(0).getString("run_mode","freeride")))getPreferences(0).edit().putString("run_mode",mode).apply();screen.modeHint.setText(new int[]{R.string.mode_freeride_hint,R.string.mode_race_hint,R.string.mode_showoff_hint}[position]);}});
-        choice(renderScale,"render_scale",2); choice(targetRefreshRate,"target_refresh_rate",3); choice(antialiasing,"antialiasing",2); choice(steeringMode,"steering_mode",0);
+        choice(renderScale,"render_scale",2); choice(targetRefreshRate,"target_refresh_rate",3); choice(antialiasing,"antialiasing",2);
         chooseFolder.setOnClickListener(v -> pickMaps());
         useLocal.setOnClickListener(v -> { getPreferences(0).edit().remove("maps_tree").apply(); loadLibrary(); refreshMaps(null); });
         importIso.setOnClickListener(v -> pickIso()); refresh.setOnClickListener(v -> refreshMaps(null));
@@ -243,12 +243,11 @@ public final class LauncherActivity extends Activity {
         final String mode=new String[]{"freeride","race","showoff"}[runMode.getSelectedItemPosition()];
         final double scale=1+renderScale.getSelectedItemPosition()*.25;final int samples=1<<antialiasing.getSelectedItemPosition();
         final double refreshRate=new double[]{72,80,90,120}[targetRefreshRate.getSelectedItemPosition()];
-        final boolean headSteering=steeringMode.getSelectedItemPosition()==1;
         state(true); setStatus(getString(R.string.loading_course, map.name)); final MapLibrary selected = library;
         worker.execute(() -> {
             File prepared = null;
             try { prepared = selected.prepare(map, getCacheDir(), this::checkCancelled); nativeValidate(prepared.getAbsolutePath()); checkCancelled(); final File path = prepared;
-                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus(getString(R.string.loading_cancelled)); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_name", map.name); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode);intent.putExtra("render_scale",scale);intent.putExtra("target_refresh_rate",refreshRate);intent.putExtra("msaa",samples);intent.putExtra("head_steering",headSteering); startActivity(intent); finishAndRemoveTask(); });
+                ui(() -> { if (cancelled) { if (selected.tree != null) MapLibrary.deleteLocal(path); state(false); setStatus(getString(R.string.loading_cancelled)); return; } state(false); Intent intent = new Intent(this, GameActivity.class); intent.setAction(Intent.ACTION_MAIN); intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); intent.addCategory("com.oculus.intent.category.VR"); intent.addCategory("org.khronos.openxr.intent.category.IMMERSIVE_HMD"); intent.putExtra("map_path", path.getAbsolutePath()); intent.putExtra("map_name", map.name); intent.putExtra("map_cache", selected.tree != null);intent.putExtra("run_mode",mode);intent.putExtra("render_scale",scale);intent.putExtra("target_refresh_rate",refreshRate);intent.putExtra("msaa",samples); startActivity(intent); finishAndRemoveTask(); });
             } catch (Exception e) { if (prepared != null && selected.tree != null) MapLibrary.deleteLocal(prepared); ui(() -> { state(false); failure(e); }); }
         });
     }

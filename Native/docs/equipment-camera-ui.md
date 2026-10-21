@@ -7,6 +7,17 @@ and exponential-response identities. No other component's runtime implementation
 
 ## Carry and throw
 
+The four shared stock designs (Contour, Sunset Rally, Timberline and Night Shift)
+are embedded into native builds. Game startup, a full course restart, explicit board recall or an
+on-foot behind-the-head pull choose a random design, avoiding immediate repeats.
+Respawns, mounting, catching and ordinary grabs keep the current
+board's artwork. Each opponent owns its own choice. The top/base atlas convention
+and source-art provenance are in [stock board art](../../Slopesmith/docs/stock-board-art.md).
+
+Boards use the avatar's course-lighting field, including ambient tint and
+directional keys, sampled at each board's position. The topsheet, base and edges
+respond to their world-space normals while mounted, held or loose.
+
 On desktop, hold RMB while pointing at the loose board to carry it and release
 RMB to throw. E spawns and mounts at the player's feet or dismounts while riding.
 It preserves airborne momentum. Left-drag captures relative mouse movement to
@@ -78,7 +89,8 @@ does not support the current event falls back to Freeride.
 
 Quest Y toggles a left-wrist panel, initially shown. Aim the right controller and
 pull its trigger to select resume/hide, restart, view, controls, sound, stats,
-recall, recenter, head steering or exit. A captured menu press stays consumed
+recall, recenter or exit. Head steering is always enabled; left-stick X turns the
+player while riding. A captured menu press stays consumed
 until release, even after leaving/hiding the panel, so it cannot also ride a board.
 From build 0.82, hiding the menu also hides the compact speed/status watch,
 stats, controller models and labels, menu pointer and board selection outline.

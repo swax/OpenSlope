@@ -28,7 +28,6 @@ enum class UiAction {
     GraphicsReset,
     Calibrate,
     Recall,
-    HeadSteer,
     Maps,
     LoadMap,
     Previous,
@@ -70,8 +69,8 @@ struct UiResult {
 
 class RideUi {
 public:
-    bool visible = false, controls = false, stats = false, sound_muted = false, third_person = true, head_steer = false,
-         immersive = false, library = false, map_picker = false;
+    bool visible = false, controls = false, stats = false, sound_muted = false, third_person = true, immersive = false,
+         library = false, map_picker = false;
     bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
     bool graphics_options = false, rider_options = false, loading = false;
     unsigned render_scale = 150, antialiasing = 4;

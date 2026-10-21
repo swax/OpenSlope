@@ -175,7 +175,7 @@ preserves the source geometry and images. Synthetic checks cover a night-only sk
 day fallback, actual WebGL rendering through the local editor API, camera movement,
 late texture completion, toggling, Play and both server/browser byte-preserving
 exports. A fresh owned-disc ER4 night extraction confirms one sky model and nine
-night texture pages. [Trailmap: 528]
+night texture pages. [Trailmap: 546]
 
 The browser's original sky renderer keeps opaque, cutout, blended and glow tiles
 ahead of all world geometry. Alpha tiles use explicit GPU blending in the early
@@ -183,7 +183,7 @@ background queue; the ordinary transparent queue would paint them over opaque
 terrain and riders with depth testing disabled. Sky group priority also precedes
 world group priorities. Actual WebGL regressions cover foreground/farther geometry,
 translucent props, camera movement and preserved sky alpha composition. This fixes
-existing imports on reload without a cache revision or ISO reimport. [Trailmap: 529]
+existing imports on reload without a cache revision or ISO reimport. [Trailmap: 547]
 
 The [common riding adapter](common-riding-audio.md) deliberately supplies usable
 audio before exact original routing is recovered. Its own manifest labels the

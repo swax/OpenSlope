@@ -12,6 +12,14 @@ using J = AvatarJoint;
 
 constexpr unsigned id(J j) { return unsigned(j); }
 
+bool tracked_joint(const AvatarTracking& tracking, J joint) {
+    const auto i = id(joint);
+    // Runtime legs (including inferred legs) and a seated pelvis must not lift
+    // the standing avatar's feet. Upper-body and controller tracking still apply.
+    return !(tracking.seated && (joint == J::Hips || i >= id(J::LeftHip))) && tracking.valid[i] &&
+           finite(tracking.joints[i]) && length(tracking.joints[i] - tracking.head) < 2.5;
+}
+
 Vec3 knee(Vec3 hip, Vec3 ankle, Vec3 bend, double upper, double lower) {
     const auto delta = ankle - hip;
     const auto d = std::clamp(length(delta), std::abs(upper - lower) + .001, upper + lower - .001);
@@ -124,10 +132,11 @@ void controller(std::vector<Vertex>& out, const ControllerPose& grip, unsigned s
                 label(out, on_foot ? "A JUMP" : "A HOLD / RELEASE JUMP", anchor, eye, .100);
                 label(out, on_foot ? "B BOOST / RUN" : "B BOOST", anchor, eye, .075);
                 label(out, on_foot ? "TRIGGER MOUNT" : "TRIGGER DISMOUNT", anchor, eye, .050);
-                label(out, "STICK TURN", anchor, eye, .025);
+                if (on_foot)
+                    label(out, "STICK TURN", anchor, eye, .025);
                 label(out, "CLICK 1ST / 3RD", anchor, eye, 0);
             } else {
-                label(out, on_foot ? "STICK WALK" : "STICK STEER / POSTURE", anchor, eye, .100);
+                label(out, on_foot ? "STICK WALK" : "STICK TURN / POSTURE", anchor, eye, .100);
                 label(out, on_foot ? "X RECALL BOARD" : "X COURSE RESET", anchor, eye, .075);
                 label(out, on_foot ? "TRIGGER MOUNT" : "TRIGGER DISMOUNT", anchor, eye, .050);
                 label(out, "Y CONTROLS", anchor, eye, .025);
@@ -317,9 +326,13 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, con
                 p.joint(J::Neck) + r * (side ? .165 : -.165) - p.up * .075;
         if (tracking->body_active && std::isfinite(tracking->confidence) && tracking->confidence > .05f) {
             for (unsigned i = 0; i < avatar_joint_count; ++i)
-                if (i != id(J::Head) && tracking->valid[i] && finite(tracking->joints[i]) &&
-                    length(tracking->joints[i] - h) < 2.5) {
+                if (i != id(J::Head) && tracked_joint(*tracking, J(i))) {
                     p.joints[i] = tracking->joints[i];
+                    if (i >= id(J::LeftHip)) {
+                        const auto leg_joint = (i - id(J::LeftHip)) % 4;
+                        const auto floor_weight = leg_joint == 0 ? 0. : leg_joint == 1 ? .5 : 1.;
+                        p.joints[i].y += tracking->floor_offset * floor_weight;
+                    }
                     p.tracked_body = true;
                 }
         }
@@ -354,10 +367,7 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, con
                 wrist = r ? J::RightWrist : J::LeftWrist, hip = r ? J::RightHip : J::LeftHip,
                 k = r ? J::RightKnee : J::LeftKnee, ankle = r ? J::RightAnkle : J::LeftAnkle,
                 toe = r ? J::RightToe : J::LeftToe;
-        const auto tracked = [&](J j) {
-            return p.tracked_body && tracking->valid[id(j)] && finite(tracking->joints[id(j)]) &&
-                   length(tracking->joints[id(j)] - tracking->head) < 2.5;
-        };
+        const auto tracked = [&](J j) { return p.tracked_body && tracked_joint(*tracking, j); };
         if (!tracked(shoulder))
             p.joints[id(shoulder)] = p.joint(J::Neck) + shoulder_right * (sign * .165) - p.up * .075;
         if (!tracked(wrist))
@@ -408,7 +418,7 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, con
                                 rotate(p.forward, p.up, p.on_foot || tracking ? 0 : (r ? -3. : 15.) * pi / 180) * .13 -
                                 (tracking || p.on_foot ? p.up : deck_up) * .068;
     }
-    p.tracked_legs = p.tracked_body && tracking->full_body;
+    p.tracked_legs = p.tracked_body && tracking->full_body && !tracking->seated;
     if (p.tracked_legs)
         for (unsigned i = id(J::LeftHip); i < avatar_joint_count; ++i)
             p.tracked_legs = p.tracked_legs && tracking->valid[i] && finite(tracking->joints[i]) &&
@@ -557,7 +567,7 @@ Avatar::Avatar() {
 }
 
 std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, bool labels, Vec3 eye,
-                                     Vec3 controller_offset) {
+                                     Vec3 controller_offset, const SceneLighting* scene_lighting) {
     const auto right = normalized(cross(p.forward, p.up));
     const auto basis = [&](Vec3 v) { return right * v.x + p.up * v.y + p.forward * v.z; };
 
@@ -625,7 +635,9 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     }
     std::vector<Vec3> posed;
     posed.reserve(vertices_.size());
-    std::vector<double> lighting;
+    const auto illumination =
+        scene_lighting ? scene_lighting->sample(p.joint(AvatarJoint::Hips)) : SceneLight::fallback();
+    std::vector<Vec3> lighting;
     lighting.reserve(vertices_.size());
     for (const auto& v : vertices_) {
         const auto& t = transforms[v.bone];
@@ -635,7 +647,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             relative += axis * (dot(relative, axis) * (t.scale - 1));
         posed.push_back(t.target + t.map(relative));
         const auto normal = normalized(t.map(basis(v.normal)));
-        lighting.push_back(.60 + .40 * std::max(0., dot(normal, normalized(Vec3{-.3, .8, -.5}))));
+        lighting.push_back(illumination.evaluate(normal));
     }
     mesh_.clear();
     for (std::size_t i = 0; i < corners_.size(); i += 3) {
@@ -648,8 +660,9 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             for (unsigned k = 0; k < 3; ++k) {
                 const auto& c = corners_[i + k];
                 auto colour = c.colour;
-                for (auto& value : colour)
-                    value *= float(lighting[c.vertex]);
+                colour[0] *= float(lighting[c.vertex].x);
+                colour[1] *= float(lighting[c.vertex].y);
+                colour[2] *= float(lighting[c.vertex].z);
                 mesh_.push_back(vertex(posed[c.vertex], colour));
             }
     }

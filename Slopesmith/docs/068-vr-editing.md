@@ -83,8 +83,9 @@ in metres. Anything that adds a world size in view space then grows with the pla
   course markers and peer labels, still grow with the player.
 
 EDIT can be turned on only on foot, and mounting the board turns it off. Carrying the board when it is turned on
-drops the board. T-POSE is unavailable while EDIT is on: a calibration measures a life-size body standing on the
-floor. RESTART and 3RD PERSON come back when EDIT is turned off.
+drops the board. T-POSE and RECENTER are unavailable while EDIT is on: height
+calibration measures a life-size body on its floor. Runtime requests to recalibrate
+height wait until EDIT ends. RESTART and 3RD PERSON come back when EDIT is turned off.
 
 **Both mountains, all of them.** A headset session puts away the mountain it is not riding, as a desktop ride
 does. While EDIT is open that mountain comes back, as the desktop editor shows both, and closing EDIT puts it away

@@ -422,6 +422,24 @@ way to editing buttons (docs/068). **Left Y shows or hides the complete wrist me
 locomotion state; the menu starts visible on each headset session. Fixed foveation is requested at **1 (full)**
 when every XR layer is created rather than occupying a controller button.
 
+WebXR and Native use a **1.65 m neutral eye height**. Startup, a fresh left-X press,
+RESTART, the wrist **RECENTER** button, and a runtime reference-space reset sample
+the current headset pose and lift or lower it to that height. A seated 1.05 m
+pose gets +0.60 m; a bad 4.60 m origin gets -2.95 m. The offset then stays fixed
+through mounting, dismounting, teleports and ordinary physical crouching. Reset
+or recenter in the intended neutral posture after switching between sitting and
+standing. Posture detection uses 1.4 m at calibration, rather than changing mode
+when a standing player crouches.
+
+The correction belongs to the complete rig: eyes, hand/controller targets and
+the avatar share it, and a held board's throw history moves with the rig. WebXR
+uses head/hand tracking with procedural legs; tracked head movement still bends
+the standing avatar's knees. Native can additionally accept standing leg
+tracking; seated mode ignores runtime/generated pelvis and legs. Saved T-pose
+body measurements and wrist rotations remain available, but their old floor
+offset does not override the session's 1.65 m height. T-POSE can still refresh
+those measurements and also requests a height recalibration on completion.
+
 **V** at the desk, **right-stick click**, and the wrist menu's **3RD PERSON ON/OFF** button toggle first/third
 person in either WebXR state. The third-person boom moves the rendered eyes **2 m behind and 1 m above** the
 complete character; controller previews, the pointer, wrist menu, and performance panel move with that presented

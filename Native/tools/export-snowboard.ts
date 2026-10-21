@@ -4,7 +4,7 @@ import { createBoard } from '../../Slopesmith/src/app/ride/gear';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const board = createBoard('snowboard');
+const board = createBoard('snowboard', 'goofy', undefined, null);
 board.group.updateMatrixWorld(true);
 const data: number[] = [];
 const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];

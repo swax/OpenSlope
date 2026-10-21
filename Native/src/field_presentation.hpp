@@ -5,7 +5,7 @@
 
 namespace openslope {
 inline std::vector<Matrix> append_opponents(const Player& player, Avatar& avatar, std::vector<Vertex>& figures,
-                                            Vec3 eye) {
+                                            Vec3 eye, std::vector<unsigned>* designs = nullptr) {
     std::vector<Matrix> boards;
     if (const auto* field = player.ai_field()) {
         boards.reserve(field->size());
@@ -13,9 +13,11 @@ inline std::vector<Matrix> append_opponents(const Player& player, Avatar& avatar
             const auto& actor = field->rider(i);
             if (length(actor.render_position() - eye) > 400)
                 continue;
-            const auto body = avatar.mesh(avatar_pose(actor), false, false, eye);
+            const auto body = avatar.mesh(avatar_pose(actor), false, false, eye, {}, &actor.avatar_lighting());
             figures.insert(figures.end(), body.begin(), body.end());
             boards.push_back(board_transform(actor.render_board_position(), actor.render_forward(), actor.render_up()));
+            if (designs)
+                designs->push_back(actor.board_design());
         }
     }
     return boards;

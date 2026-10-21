@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { prepareRiderLighting } from './rider-lighting';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { characterModelUrl } from '../net/asset-paths';
@@ -185,7 +186,7 @@ function loadTemplate(modelId: string): Promise<THREE.Group> | null {
   const url = characterModelUrl(modelId);
   let request = templatePromises.get(url);
   if (!request) {
-    // Registered on the TEMPLATE, once, before anything clones it: clones share their materials, so this is
+    // Registered on the TEMPLATE, once, before anything clones it: lighting copies materials but shares maps, so this is
     // also the only place the scroll can be picked up without doing it again per rider.
     request = new GLTFLoader().loadAsync(url).then(gltf => {
       registerCharacterGlow(gltf.scene);
@@ -769,6 +770,7 @@ export function attachCharacterRig(
   let driver: DrivenCharacterRig | null = null;
   let latestPose: CharacterPose | null = null;
   let firstPerson = false;
+  let disposeLighting: (() => void) | null = null;
   owner.userData.riderVisual = 'procedural';
 
   loadTemplate(modelId)
@@ -795,6 +797,7 @@ export function attachCharacterRig(
       }
       model = clone;
       driver = nextDriver;
+      disposeLighting = prepareRiderLighting(clone, owner, true);
       driver.setFirstPerson(firstPerson); // a VR ride may have asked for this while the GLB was still in flight
       if (latestPose) driver.pose(latestPose);
       procedural.visible = false;
@@ -820,6 +823,7 @@ export function attachCharacterRig(
     },
     dispose: () => {
       alive = false;
+      disposeLighting?.();
       if (model) owner.remove(model);
       model = null;
       driver = null;

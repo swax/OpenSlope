@@ -96,7 +96,7 @@ try {
   wav.writeUInt32LE(pcmBytes, 40);
   await page.route('**/api/board-audio', route => route.fulfill({ json: { board: 'zboard', surfaceGroups: [] } }));
   await page.route('**/api/board-sound?*', route => route.fulfill({ contentType: 'audio/wav', body: wav }));
-  await page.goto(`${vite.resolvedUrls!.local[0]}?map=SYNC_BROWSER&agent=1`);
+  await page.goto(`${vite.resolvedUrls!.local[0]}editor/SYNC_BROWSER?agent=1`);
   await page.waitForFunction(
     () =>
       !!(window as unknown as Observation).slopesmith &&
@@ -313,7 +313,7 @@ try {
   if (failurePage) {
     await failurePage.screenshot({ path: join(root, 'failure.png') });
     console.error(`Browser failure screenshot: ${join(root, 'failure.png')}`);
-    console.error(await failurePage.locator('.sp-scene-gui').innerText());
+    console.error(await failurePage.locator('.sp-scene-gui').allTextContents());
   }
   throw error;
 } finally {

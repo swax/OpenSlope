@@ -228,18 +228,11 @@ extern "C" void android_main(android_app* app) {
             __android_log_print(ANDROID_LOG_INFO, "OpenSlopeNative", "Run mode configured: %s; initial clock %s",
                                 openslope::run_name(mode),
                                 openslope::run_clock(player.course_run().status().clock).c_str());
-            const auto steering_type = environment->GetObjectClass(app->activity->clazz);
-            const auto head_getter = environment->GetMethodID(steering_type, "getHeadSteering", "()Z");
-            if (!head_getter)
-                throw std::runtime_error("VR steering host is missing");
-            const auto head_steering = environment->CallBooleanMethod(app->activity->clazz, head_getter);
-            environment->DeleteLocalRef(steering_type);
             openslope::XrPlatform platform{app->activity->vm, app->activity->clazz,
                                            [&] { return process_events(app); }};
             platform.render_scale = scale;
             platform.target_refresh_rate = refresh;
             platform.msaa = unsigned(samples);
-            platform.head_steering = head_steering;
             platform.audio_preferences =
                 std::filesystem::path(app->activity->internalDataPath) / "audio-preferences.json";
             const auto game_type = environment->GetObjectClass(app->activity->clazz);

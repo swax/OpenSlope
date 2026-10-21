@@ -37,7 +37,34 @@ const GRIP_TO_FINGERTIP = 0.12;
 const CROWN_ABOVE_EYES = 0.12;
 /** A seated pose may legitimately be well below the standing capture; a larger change is a new XR origin. */
 const MAX_SAME_ORIGIN_DELTA = 1.5;
-export const FALLBACK_STANDING_EYE_HEIGHT = 1.6;
+export const FALLBACK_STANDING_EYE_HEIGHT = 1.65;
+
+/** Session height is independent of saved T-pose measurements and world placement. */
+export class XrHeightCalibration {
+  private pending = true;
+  private offset = 0;
+  private sitting = true;
+
+  get floorOffset(): number {
+    return this.offset;
+  }
+
+  get seated(): boolean {
+    return this.sitting;
+  }
+
+  request(): void {
+    this.pending = true;
+  }
+
+  update(rawHeadY: number): boolean {
+    if (!this.pending || !Number.isFinite(rawHeadY)) return false;
+    this.offset = fallbackFloorOffset(rawHeadY);
+    this.sitting = rawHeadY < 1.4;
+    this.pending = false;
+    return true;
+  }
+}
 
 /** Infer body height from a T-pose without trusting the runtime's floor origin. */
 export function bodyHeightFromGripSpan(gripSpan: number): { standingHeight: number; eyeHeight: number } | null {
@@ -79,11 +106,10 @@ export function calibrationMatchesOrigin(calibration: XrBodyCalibration, rawHead
   return Number.isFinite(rawHeadY) && Math.abs(rawHeadY - calibration.rawStandingEyeY) <= MAX_SAME_ORIGIN_DELTA;
 }
 
-/** Safe first-frame behavior before explicit calibration: preserve plausible local-floor heights, otherwise
- * put the eyes at a normal standing height instead of accepting a head-origin or fifteen-foot floor. */
+/** Normalize the current neutral pose in either direction, including a shifted runtime floor. */
 export function fallbackFloorOffset(rawHeadY: number): number {
   if (!Number.isFinite(rawHeadY)) return 0;
-  return rawHeadY >= 0.9 && rawHeadY <= 2.5 ? 0 : FALLBACK_STANDING_EYE_HEIGHT - rawHeadY;
+  return FALLBACK_STANDING_EYE_HEIGHT - rawHeadY;
 }
 
 const _up = new THREE.Vector3(0, 1, 0),

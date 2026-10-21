@@ -31,17 +31,15 @@
     <string name="hide_ride_settings">Hide ride settings</string>
     <string name="vr_resolution">VR resolution</string>
     <string name="edge_smoothing">Edge smoothing</string>
-    <string name="riding_steering">Riding steering</string>
     <string name="resolution_hint">150% resolution and 120 Hz are the defaults. Lower settings can improve performance. The headset uses a supported refresh rate.</string>
     <string name="target_refresh_rate">Target frame rate</string>
     <string-array name="refresh_rates"><item>72 fps</item><item>80 fps</item><item>90 fps</item><item>120 fps · default</item></string-array>
-    <string name="steering_hint">Stick steering is always available. Head steering also lets you turn by looking.</string>
     <string name="first_run_help">First run &amp; controls</string>
     <string name="hide_first_run_help">Hide first run &amp; controls</string>
     <string name="enter_vr_title">Heading into VR</string>
     <string name="enter_vr_help">Choose Play to enter the course. You start on foot, ready to explore. No ISO is needed for courses already in your Maps folder.</string>
     <string name="controls_title">Touch controller basics</string>
-    <string name="controls_help">Trigger: get on or off your board.\nA: jump. B: boost.\nLeft stick: move or steer.\nY or the left Menu button: wrist menu, settings, map library and exit.\nThe right Meta button opens the system menu.</string>
+    <string name="controls_help">Trigger: get on or off your board.\nA: jump. B: boost.\nHead: steer while riding.\nLeft stick: move on foot; turn while riding.\nRight stick: turn on foot; click to switch view.\nY or the left Menu button: wrist menu, settings, map library and exit.\nThe right Meta button opens the system menu.</string>
     <string name="close_app">Close OpenSlope</string>
     <string name="section_expanded">%1$s, expanded</string>
     <string name="section_collapsed">%1$s, collapsed</string>
@@ -71,5 +69,4 @@
     <string-array name="ride_modes"><item>Freeride</item><item>Race</item><item>Showoff</item></string-array>
     <string-array name="vr_resolutions"><item>100%</item><item>125%</item><item>150% · default</item></string-array>
     <string-array name="smoothing_options"><item>Off</item><item>2x</item><item>4x · recommended</item></string-array>
-    <string-array name="steering_options"><item>Stick steering</item><item>Head + stick steering</item></string-array>
 </resources>
