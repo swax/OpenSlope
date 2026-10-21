@@ -27,6 +27,23 @@ vec3 linearColour(vec3 c) {
 vec3 displayColourOf(vec3 c) {
     return mix(c*12.92,1.055*pow(max(c,vec3(0)),vec3(1.0/2.4))-0.055,greaterThan(c,vec3(0.0031308)));
 }
+vec3 presentHdr() {
+    vec3 base=texture(diffuseImage,textureUV).rgb;
+    vec2 size=vec2(textureSize(diffuseImage,0));
+    vec2 stepUV=max(1.0,size.y/240.0)/size;
+    const float weights[3]=float[](1.0,0.60653066,0.13533528);
+    vec3 bloom=vec3(0);
+    float weightSum=0.0;
+    for(int y=-2;y<=2;++y)for(int x=-2;x<=2;++x){
+        float weight=weights[abs(x)]*weights[abs(y)];
+        bloom+=max(texture(diffuseImage,textureUV+vec2(x,y)*stepUV).rgb-vec3(0.9),vec3(0))*weight;
+        weightSum+=weight;
+    }
+    vec3 c=max(base+bloom*(0.16/weightSum),vec3(0));
+    // Filmic shoulder retains bright-light detail in the display output.
+    vec3 mapped=clamp((c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14),0.0,1.0);
+    return transform.options.y!=0?mapped:displayColourOf(mapped);
+}
 float lightVisibility(vec3 n,vec3 direction,float distance) {
 #ifdef RAY_QUERY
     if(light.settings.w>0.5&&distance>0.03){
@@ -66,6 +83,7 @@ vec3 litSurface(vec3 base) {
     return displayColourOf(result);
 }
 void main() {
+    if(transform.options.x==13){colour=vec4(presentHdr(),1);return;}
     vec3 displayColour=vertexColour;
     float alpha=1.0;
     if(transform.options.x==8||transform.options.x==9||transform.options.x==10)alpha=effectAlpha;

@@ -127,6 +127,66 @@ std::vector<SprayVertex> spray_sheet(double z, float alpha = .5f) {
     return result;
 }
 
+void hdr_tests(VulkanContext& context, const std::filesystem::path& root) {
+    Mesh mesh;
+    const auto quad = [&](float left, float top, float right, float bottom, float z, float value) {
+        const auto first = std::uint32_t(mesh.vertices.size());
+        for (const auto xy : {std::array<float, 2>{left, top}, {right, top}, {right, bottom}, {left, bottom}})
+            mesh.vertices.push_back({xy[0], xy[1], z, value, value, value});
+        for (const auto index : {0u, 1u, 2u, 0u, 2u, 3u})
+            mesh.indices.push_back(first + index);
+    };
+    quad(-1, -1, 1, 1, .4f, 0);
+    quad(-.03f, -.2f, .03f, .2f, .6f, 2);
+    quad(-.85f, .55f, -.55f, .85f, .6f, 1.2f);
+    quad(.55f, .55f, .85f, .85f, .6f, 2);
+    mesh.batches = {{0, std::uint32_t(mesh.indices.size()), "", -1}};
+    auto scene = std::make_shared<VulkanScene>(context);
+    scene->upload(mesh);
+    for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB})
+        for (const auto samples : {1u, 4u})
+            for (const auto scale : {100u, 150u}) {
+                Target target{context};
+                target.create(format);
+                VulkanRenderer renderer(context);
+                renderer.use_scene(scene);
+                renderer.ray_shadows(false);
+                renderer.targets(std::span(&target.image, 1), format, 128, 128, samples, scale);
+                const auto original = capture(renderer, root / "hdr-original.ppm", Matrix::identity());
+                renderer.lighting(true);
+                if (!renderer.hdr()) {
+                    std::cout << "HDR tests skipped: this GPU cannot filter an HDR colour target\n";
+                    continue;
+                }
+                const auto enhanced = capture(renderer, root / "hdr-enhanced.ppm", Matrix::identity());
+                constexpr auto halo = (64 * 128 + 66) * 3, far = (64 * 128 + 80) * 3;
+                constexpr auto low = (108 * 128 + 19) * 3, high = (108 * 128 + 108) * 3;
+                if (original[halo] != 0 || enhanced[halo] < 10 || enhanced[far] != 0)
+                    throw std::runtime_error("HDR bloom does not spread a bounded glow beyond a bright source");
+                if (original[low] != 255 || original[high] != 255 || enhanced[high] <= enhanced[low] + 3)
+                    throw std::runtime_error("HDR tone mapping loses the difference between bright intensities");
+                std::vector<Vertex> hud;
+                for (const auto xy : {std::array<float, 2>{-.9f, -.9f},
+                                      {-.6f, -.9f},
+                                      {-.6f, -.6f},
+                                      {-.9f, -.9f},
+                                      {-.6f, -.6f},
+                                      {-.9f, -.6f}})
+                    hud.push_back({xy[0], xy[1], 0, 2, 2, 2});
+                auto board = Matrix::identity();
+                board.values[12] = 10;
+                renderer.render(0, Matrix::identity(), board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, {}, {}, {},
+                                {}, {}, 0, {}, {}, 1, {}, {}, {}, {}, {}, hud, true);
+                const auto overlay = read_capture(renderer, root / "hdr-hud.ppm");
+                if (overlay[(16 * 128 + 16) * 3] != 255 || overlay[(16 * 128 + 28) * 3] != 0)
+                    throw std::runtime_error("HDR tone mapping or bloom changes the native-resolution HUD");
+                renderer.lighting(false);
+                if (renderer.hdr() || capture(renderer, root / "hdr-restored.ppm", Matrix::identity()) != original)
+                    throw std::runtime_error("Disabling HDR cannot restore Original pixels exactly");
+                checks += 4;
+            }
+}
+
 void ray_shadow_tests(VulkanContext& context, const std::filesystem::path& root) {
     if (!context.ray_query) {
         std::cout << "Ray shadow pixel tests skipped: this GPU has no ray-query support\n";
@@ -318,6 +378,7 @@ int main(int argc, char** argv) {
         const auto root = std::filesystem::path(argv[1]);
         VulkanContext context;
         context.create(false);
+        hdr_tests(context, root);
         ray_shadow_tests(context, root);
         terrain_range_tests(context, root);
         for (const auto samples : {1u, 4u})

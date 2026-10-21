@@ -223,6 +223,49 @@ int main(int argc, char** argv) {
             const auto opponent = board_light("board-opponent-shade", spatial, {0, 1, 0}, {30, 3, 0}, true);
             check(length(moved / .2 - full) < length(full) * .04, "loose board samples lighting at its own location");
             check(length(opponent - moved) < length(full) * .01, "opponent board has its own scene-light sample");
+            const auto original_shade = ::pixels(root / "board-shaded.ppm");
+            for (const bool traced : {false, true}) {
+                boards.ray_shadows(traced);
+                boards.lighting(true);
+                const auto enhanced_full = board_light("board-enhanced-full", white, {0, 1, 0});
+                const auto enhanced_dim = board_light("board-enhanced-shade", shade, {0, 1, 0});
+                const auto enhanced_facing = board_light("board-enhanced-key", directional, {0, 1, 0});
+                const auto enhanced_rolled = board_light("board-enhanced-rolled", directional, {-1, 0, 0});
+                check(length(enhanced_dim) < length(enhanced_full) * .65,
+                      "enhanced presentation preserves board ambient shading");
+                check(enhanced_facing.x > enhanced_rolled.x * 3 && enhanced_facing.y < enhanced_full.y * .5 &&
+                          enhanced_facing.z < enhanced_full.z * .7,
+                      "enhanced presentation preserves board directional light and course tint");
+                const auto enhanced_moved = board_light("board-enhanced-loose", spatial, {0, 1, 0}, {30, 3, 0});
+                const auto enhanced_opponent =
+                    board_light("board-enhanced-opponent", spatial, {0, 1, 0}, {30, 3, 0}, true);
+                check(length(enhanced_moved - enhanced_dim) < length(enhanced_full) * .04 &&
+                          length(enhanced_opponent - enhanced_moved) < length(enhanced_full) * .01,
+                      "enhanced loose and opponent boards retain their own lighting samples");
+                if (traced && context.ray_query)
+                    check(boards.ray_shadows_active(), "scene-lit board also renders with the ray-query pipeline");
+                boards.lighting(false);
+                board_light("board-restored-shade", shade, {0, 1, 0});
+                check(::pixels(root / "board-restored-shade.ppm") == original_shade,
+                      "switching back to Original restores scene-lit board pixels exactly");
+            }
+            auto fog_assets = SceneAssets::prepare(player.terrain().mesh());
+            fog_assets.world.fog_start = .1f;
+            fog_assets.world.fog_end = .5f;
+            fog_assets.world.fog_colour = {.2f, .3f, .4f};
+            VulkanRenderer fogged(context);
+            fogged.upload(std::move(fog_assets));
+            fogged.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+            fogged.board_art(2, {}, &white);
+            const Vec3 fog_eye{0, 4.3, 0};
+            const auto fog_camera = projection(-.85, .85, -.85, .85) * view(fog_eye, {0, -1, 0}, {0, 0, -1});
+            fogged.render(0, fog_camera, deck, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, fog_eye);
+            fogged.capture(0, root / "board-fog.ppm");
+            const auto fog_pixels = ::pixels(root / "board-fog.ppm");
+            const auto centre = (512 * 1024 + 512) * 3;
+            check(std::abs(int(fog_pixels[centre]) - 51) <= 1 && std::abs(int(fog_pixels[centre + 1]) - 77) <= 1 &&
+                      std::abs(int(fog_pixels[centre + 2]) - 102) <= 1,
+                  "stock board art retains distance fog with scene lighting");
         }
         {
             // Compare colour transfer without gamma-vs-linear MSAA edge resolves.
@@ -255,6 +298,37 @@ int main(int argc, char** argv) {
             check(changed > 500, "scene lighting actually changes visible avatar pixels in the original pipeline");
             check(green > changed / 2, "course probe colour reaches the visible body");
             check(differences < 100, "scene-lit avatar agrees across UNORM and sRGB targets");
+            a.lighting(true);
+            b.lighting(true);
+            const auto enhanced_unlit = avatar.mesh(avatar_pose(player), false, false);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, enhanced_unlit);
+            a.capture(0, root / "scene-enhanced-baseline.ppm");
+            const auto enhanced_body = avatar.mesh(avatar_pose(player), false, false, {}, {}, &lighting);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, enhanced_body);
+            a.capture(0, root / "scene-enhanced-avatar.ppm");
+            b.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, enhanced_body);
+            b.capture(0, root / "scene-enhanced-avatar-srgb.ppm");
+            const auto enhanced_base = pixels(root / "scene-enhanced-baseline.ppm"),
+                       enhanced_lit = pixels(root / "scene-enhanced-avatar.ppm"),
+                       enhanced_srgb = pixels(root / "scene-enhanced-avatar-srgb.ppm");
+            changed = green = differences = 0;
+            for (std::size_t i = 0; i < enhanced_lit.size(); i += 3) {
+                if (enhanced_base[i] != enhanced_lit[i] || enhanced_base[i + 1] != enhanced_lit[i + 1] ||
+                    enhanced_base[i + 2] != enhanced_lit[i + 2]) {
+                    ++changed;
+                    green += enhanced_lit[i + 1] > enhanced_lit[i] * 2 && enhanced_lit[i + 1] > enhanced_lit[i + 2] * 2;
+                }
+                for (unsigned c = 0; c < 3; ++c)
+                    differences += std::abs(int(enhanced_lit[i + c]) - int(enhanced_srgb[i + c])) > 2;
+            }
+            check(changed > 500 && green > changed / 2, "enhanced presentation retains avatar course-light tint");
+            check(differences < 100, "enhanced scene-lit avatar agrees across UNORM and sRGB targets");
+            a.lighting(false);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, enhanced_body);
+            a.capture(0, root / "scene-restored-avatar.ppm");
+            check(pixels(root / "scene-restored-avatar.ppm") == lit,
+                  "switching back to Original restores scene-lit avatar pixels exactly");
+            b.lighting(false);
             a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
             b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 4);
         }

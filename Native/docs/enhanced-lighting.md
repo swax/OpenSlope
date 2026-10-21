@@ -15,7 +15,22 @@ to 4–64 metres; intensity is bounded to four. Maps without point lights can us
 their existing lamp glints. These radii and intensities are enhancement heuristics.
 Imported terrain lightmaps and prop lighting
 remain the base colour, preserving authored shading and course readability.
-Sky art, particles, the rider and HUD retain their existing presentation.
+Sky art, particles and the rider participate in scene presentation. The desktop
+HUD remains at native resolution and is drawn after tone mapping and bloom.
+
+Avatars and mounted, held or loose boards retain their course-probe ambient tint
+and directional lighting in both modes. Enhanced tone mapping and bloom apply to
+those shaded colours. Switching back to Original restores their standard colour
+response, including the board's distance fog.
+
+Enhanced uses a 16-bit floating-point colour target when the GPU supports colour
+attachment, sampling and linear filtering for that format. A filmic display
+curve preserves differences between bright sources, and a restrained spatial
+bloom spreads their glow. This also applies at 100% render scale. Switching back
+to Original recreates the original targets; render scale and MSAA choices remain
+in effect. Devices without the HDR format retain the enhanced lighting pass.
+Floating-point colour and the extra presentation target increase attachment
+memory. Capture logs report whether HDR and bloom are active.
 
 For repeatable local comparisons, use the same course, replay, render scale,
 MSAA, snowfall and camera with each lighting mode:
@@ -58,8 +73,8 @@ the OpenXR path. Android builds consume both generated shader headers from the
 host build; the ray shader is only instantiated on an enabled desktop device.
 
 Shadows currently use one visibility ray per contributing light, with a small
-surface bias and a 600-metre sun-ray range. Soft shadow filtering, reflections,
-bounced lighting and HDR bloom are not implemented in this stage. Sky-based
+surface bias and a 600-metre sun-ray range. Soft shadow filtering, reflections
+and bounced lighting are not implemented. Sky-based
 daylight and light strength need visual tuning across courses. The imported
 lightmaps can contain baked shadows; traced shadows affect the added direct
 light rather than darkening the entire imported image a second time.
@@ -87,3 +102,14 @@ instances, 35.5 MiB of mesh acceleration and 1.51 ms average GPU time; Snowdream
 reports 4,709 instances, 23.5 MiB and 1.62 ms. These short local samples are not
 full-course or cross-device performance guarantees. Their logs and rendered
 comparisons live in the ignored `temp/lighting-comparison/` directory.
+
+Stage-three validation: 14,692 actual Vulkan assertions pass, including HDR
+highlight separation, bounded bloom, HUD exclusion and exact restoration of
+Original at 100%/150% scale, 1x/4x MSAA and UNORM/sRGB output. Live desktop
+mode-switch/map-load/rollback integration passes. The two Original captures
+remain byte-identical to stage one. Both 180-frame course replays complete with
+HDR, bloom and tracing active at 1920×1080/4x, averaging 1.77 ms of GPU time in
+these local samples. Matched 1280×720/4x comparison images and the replay logs are
+kept under `temp/lighting-comparison/`. C++ formatting, the Native source-boundary
+audit and whitespace checks pass. Full-course, cross-device and validation-layer
+coverage remain outside this local verification.

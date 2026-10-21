@@ -161,6 +161,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                      graphics.render_scale);
     std::cout << "MSAA samples: " << renderer.samples() << '\n';
     std::cout << "Lighting: " << (graphics.enhanced_lighting ? "Enhanced" : "Original") << '\n';
+    std::cout << "HDR and bloom: " << (renderer.hdr() ? "active" : "off") << '\n';
     std::unique_ptr<AudioScene> audio;
     PcmClip recorded;
     recorded.channels = 2;

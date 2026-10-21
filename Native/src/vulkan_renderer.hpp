@@ -164,7 +164,9 @@ public:
 
     void deferred(bool enabled) { deferred_ = enabled; }
 
-    void lighting(bool enabled) { enhanced_lighting_ = enabled; }
+    void lighting(bool enabled);
+
+    bool hdr() const { return hdr_; }
 
     void ray_shadows(bool enabled) { ray_shadows_ = enabled; }
 
@@ -218,6 +220,8 @@ private:
     const SceneLighting* board_lighting_ = nullptr;
     std::uint32_t width_{}, height_{}, render_width_{}, render_height_{};
     VkFormat format_{}, scene_format_{};
+    unsigned requested_samples_ = 1, requested_scale_ = 100;
+    bool hdr_ = false;
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
     VkCommandPool pool_{};
     VkCommandBuffer command_{};

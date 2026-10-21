@@ -479,6 +479,19 @@ void VulkanRenderer::clear_targets() {
     pass_ = {};
 }
 
+void VulkanRenderer::lighting(bool enabled) {
+    if (enabled == enhanced_lighting_)
+        return;
+    finish();
+    enhanced_lighting_ = enabled;
+    if (!targets_.empty()) {
+        std::vector<VkImage> images;
+        for (const auto& target : targets_)
+            images.push_back(target.colour);
+        targets(images, format_, width_, height_, requested_samples_, requested_scale_);
+    }
+}
+
 void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, std::uint32_t width,
                              std::uint32_t height, unsigned requested_samples, unsigned render_scale) {
     if (!scene_)
@@ -492,18 +505,32 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     render_width_ = extent[0];
     render_height_ = extent[1];
     format_ = format;
+    requested_samples_ = requested_samples;
+    requested_scale_ = render_scale;
+    VkFormatProperties hdr_support;
+    vkGetPhysicalDeviceFormatProperties(context_.physical, VK_FORMAT_R16G16B16A16_SFLOAT, &hdr_support);
+    constexpr auto hdr_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+                                  VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    hdr_ = enhanced_lighting_ && (hdr_support.optimalTilingFeatures & hdr_features) == hdr_features;
+    const bool offscreen = render_scale != 100 || hdr_;
     scene_format_ = render_scale == 100 ? format
                                         : (format == VK_FORMAT_B8G8R8A8_SRGB   ? VK_FORMAT_B8G8R8A8_UNORM
                                            : format == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM
                                                                                : format);
+    if (hdr_)
+        scene_format_ = VK_FORMAT_R16G16B16A16_SFLOAT;
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(context_.physical, &properties);
-    VkImageFormatProperties colour_support{}, depth_support{};
+    VkImageFormatProperties colour_support{}, depth_support{}, output_support{};
     const auto scene_usage =
-        VkImageUsageFlags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (render_scale == 100 ? 0 : VK_IMAGE_USAGE_SAMPLED_BIT));
+        VkImageUsageFlags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (offscreen ? VK_IMAGE_USAGE_SAMPLED_BIT : 0));
     vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical, scene_format_, VK_IMAGE_TYPE_2D,
                                                       VK_IMAGE_TILING_OPTIMAL, scene_usage, 0, &colour_support),
              "Query colour sample counts");
+    vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical, format_, VK_IMAGE_TYPE_2D,
+                                                      VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, 0,
+                                                      &output_support),
+             "Query presentation sample counts");
     vk_check(vkGetPhysicalDeviceImageFormatProperties(context_.physical, VK_FORMAT_D32_SFLOAT, VK_IMAGE_TYPE_2D,
                                                       VK_IMAGE_TILING_OPTIMAL,
                                                       VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 0, &depth_support),
@@ -514,7 +541,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         render_height_ > std::min({colour_support.maxExtent.height, depth_support.maxExtent.height,
                                    properties.limits.maxFramebufferHeight}))
         throw std::runtime_error("Invalid render target dimensions/count");
-    if (render_scale != 100) {
+    if (offscreen) {
         VkFormatProperties support;
         vkGetPhysicalDeviceFormatProperties(context_.physical, scene_format_, &support);
         if (!(support.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
@@ -522,7 +549,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     }
     const auto supported = properties.limits.framebufferColorSampleCounts &
                            properties.limits.framebufferDepthSampleCounts & colour_support.sampleCounts &
-                           depth_support.sampleCounts;
+                           depth_support.sampleCounts & output_support.sampleCounts;
     samples_ = VK_SAMPLE_COUNT_1_BIT;
     for (const auto count : {8u, 4u, 2u, 1u})
         if (count <= requested_samples && (supported & count)) {
@@ -714,7 +741,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     depth_state.depthTestEnable = VK_TRUE;
     vk_check(vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &wrist_pipeline_),
              "Create depth-tested controller panel pipeline");
-    if (render_scale != 100) {
+    if (offscreen) {
         auto attachment = resolve;
         attachment.format = format_;
         attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -824,7 +851,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         view_info.format = format;
         view_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vk_check(vkCreateImageView(context_.device, &view_info, nullptr, &target.colour_view), "Create colour view");
-        if (render_scale != 100) {
+        if (offscreen) {
             VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
             info.imageType = VK_IMAGE_TYPE_2D;
             info.format = scene_format_;
@@ -1634,10 +1661,11 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         ray_world_->record(command_);
     const auto opaque_pipeline = ray_active ? ray_pipeline_ : pipeline_;
     const bool srgb = scene_format_ == VK_FORMAT_R8G8B8A8_SRGB || scene_format_ == VK_FORMAT_B8G8R8A8_SRGB;
+    const bool linear = srgb || hdr_;
     std::array<VkClearValue, 2> clear{};
     for (unsigned c = 0; c < 3; ++c) {
         const auto v = scene_->world_.sky_colour[c] * visibility;
-        clear[0].color.float32[c] = srgb ? (v <= .04045f ? v / 12.92f : std::pow((v + .055f) / 1.055f, 2.4f)) : v;
+        clear[0].color.float32[c] = linear ? (v <= .04045f ? v / 12.92f : std::pow((v + .055f) / 1.055f, 2.4f)) : v;
     }
     clear[0].color.float32[3] = 1;
     clear[1].depthStencil = {0, 0};
@@ -1661,7 +1689,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     vkCmdBindIndexBuffer(command_, scene_->indices_.buffer, 0, VK_INDEX_TYPE_UINT32);
     const auto fog = scene_->world_.draw_fog(float(terrain_draw_distance));
     DrawPush push{camera,
-                  {0, srgb ? 1 : 0, 0, 0},
+                  {0, linear ? 1 : 0, 0, 0},
                   {scene_->world_.fog_colour[0], scene_->world_.fog_colour[1], scene_->world_.fog_colour[2], fog[0]},
                   {float(eye.x), float(eye.y), float(eye.z), fog[1]}};
     push.presentation[0] = visibility;
@@ -1851,7 +1879,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
             {float(weather.box.x), float(weather.box.y), float(weather.box.z), float(weather.lift)},
             {float(weather.fall_min), float(weather.fall_max), float(weather.drift),
              float(weather.alpha * weather.brightness * visibility)},
-            {float(weather.near_start), float(weather.near_end), float(weather.edge_fade), srgb ? 1.f : 0.f}};
+            {float(weather.near_start), float(weather.near_end), float(weather.edge_fade), linear ? 1.f : 0.f}};
         vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, snow_pipeline_);
         vkCmdBindVertexBuffers(command_, 0, 1, &snow_vertices_.buffer, &offset);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(data), &data);
@@ -1927,8 +1955,9 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdBindVertexBuffers(command_, 0, 1, &presentation_vertices_.buffer, &offset);
         vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &target.presentation_set, 0,
                                 nullptr);
-        DrawPush output{Matrix::identity(),
-                        {1, (format_ == VK_FORMAT_R8G8B8A8_SRGB || format_ == VK_FORMAT_B8G8R8A8_SRGB) ? 1 : 0, 0, 0}};
+        DrawPush output{
+            Matrix::identity(),
+            {hdr_ ? 13 : 1, (format_ == VK_FORMAT_R8G8B8A8_SRGB || format_ == VK_FORMAT_B8G8R8A8_SRGB) ? 1 : 0, 0, 0}};
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(output), &output);
         vkCmdDraw(command_, 6, 1, 0, 0);
         if (screen_hud && !hud.empty()) {
