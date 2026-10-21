@@ -3,12 +3,14 @@
 #include "snow_frag.hpp"
 #include "snow_vert.hpp"
 #include "terrain_frag.hpp"
+#include "terrain_rt_frag.hpp"
 #include "terrain_vert.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -47,11 +49,14 @@ VulkanContext::~VulkanContext() {
         vkDestroyInstance(instance, nullptr);
 }
 
-void VulkanContext::create(bool window) {
+void VulkanContext::create(bool window, bool request_ray_query) {
     vk_check(volkInitialize(), "Load Vulkan driver");
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.pApplicationName = "OpenSlope Native";
-    app.apiVersion = VK_API_VERSION_1_1;
+    std::uint32_t loader_version = VK_API_VERSION_1_1;
+    if (vkEnumerateInstanceVersion)
+        vk_check(vkEnumerateInstanceVersion(&loader_version), "Query Vulkan version");
+    app.apiVersion = std::min(loader_version, VK_API_VERSION_1_2);
     std::vector<const char*> extensions;
 #ifdef _WIN32
     if (window)
@@ -101,11 +106,52 @@ void VulkanContext::create(bool window) {
     device_info.pEnabledFeatures = &features;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
-    const char* swapchain = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-    if (window) {
-        device_info.enabledExtensionCount = 1;
-        device_info.ppEnabledExtensionNames = &swapchain;
+    std::vector<const char*> device_extensions;
+    if (window)
+        device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    VkPhysicalDeviceProperties device_properties;
+    vkGetPhysicalDeviceProperties(physical, &device_properties);
+    VkPhysicalDeviceRayQueryFeaturesKHR ray{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+    VkPhysicalDeviceBufferDeviceAddressFeatures address{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES};
+    if (request_ray_query && app.apiVersion >= VK_API_VERSION_1_2 &&
+        device_properties.apiVersion >= VK_API_VERSION_1_2) {
+        std::uint32_t count = 0;
+        vk_check(vkEnumerateDeviceExtensionProperties(physical, nullptr, &count, nullptr), "Count device extensions");
+        std::vector<VkExtensionProperties> supported(count);
+        vk_check(vkEnumerateDeviceExtensionProperties(physical, nullptr, &count, supported.data()),
+                 "Read device extensions");
+        const auto has = [&](const char* name) {
+            return std::any_of(supported.begin(), supported.end(),
+                               [&](const auto& extension) { return std::strcmp(extension.extensionName, name) == 0; });
+        };
+        if (has(VK_KHR_RAY_QUERY_EXTENSION_NAME) && has(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
+            has(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME)) {
+            VkPhysicalDeviceFeatures2 available{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+            available.pNext = &ray;
+            ray.pNext = &acceleration;
+            acceleration.pNext = &address;
+            vkGetPhysicalDeviceFeatures2(physical, &available);
+            ray_query = ray.rayQuery && acceleration.accelerationStructure && address.bufferDeviceAddress;
+            if (ray_query) {
+                // Enable only the features used by the shadow path.
+                ray = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
+                acceleration = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+                address = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES};
+                ray.rayQuery = acceleration.accelerationStructure = address.bufferDeviceAddress = VK_TRUE;
+                ray.pNext = &acceleration;
+                acceleration.pNext = &address;
+                device_info.pNext = &ray;
+                device_extensions.insert(device_extensions.end(),
+                                         {VK_KHR_RAY_QUERY_EXTENSION_NAME, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+                                          VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME});
+            }
+        }
     }
+    device_info.enabledExtensionCount = unsigned(device_extensions.size());
+    device_info.ppEnabledExtensionNames = device_extensions.data();
     vk_check(vkCreateDevice(physical, &device_info, nullptr, &device), "Create Vulkan device");
     volkLoadDevice(device);
     vkGetDeviceQueue(device, family, 0, &queue);
@@ -256,6 +302,24 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     write.pBufferInfo = &light_data;
     vkUpdateDescriptorSets(context_.device, 1, &write, 0, nullptr);
+    if (context_.ray_query) {
+        const VkDescriptorSetLayoutBinding ray_binding{0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1,
+                                                       VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+        VkDescriptorSetLayoutCreateInfo ray_layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        ray_layout.bindingCount = 1;
+        ray_layout.pBindings = &ray_binding;
+        vk_check(vkCreateDescriptorSetLayout(context_.device, &ray_layout, nullptr, &ray_layout_), "Create ray layout");
+        const VkDescriptorPoolSize ray_size{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1};
+        VkDescriptorPoolCreateInfo ray_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        ray_pool.maxSets = ray_pool.poolSizeCount = 1;
+        ray_pool.pPoolSizes = &ray_size;
+        vk_check(vkCreateDescriptorPool(context_.device, &ray_pool, nullptr, &ray_pool_), "Create ray descriptor pool");
+        VkDescriptorSetAllocateInfo ray_allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        ray_allocate.descriptorPool = ray_pool_;
+        ray_allocate.descriptorSetCount = 1;
+        ray_allocate.pSetLayouts = &ray_layout_;
+        vk_check(vkAllocateDescriptorSets(context_.device, &ray_allocate, &ray_set_), "Allocate ray descriptor");
+    }
     VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pool.queueFamilyIndex = context_.family;
     pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -299,6 +363,10 @@ VulkanRenderer::~VulkanRenderer() {
         vkDestroyDescriptorPool(context_.device, pose_pool_, nullptr);
     if (pose_layout_)
         vkDestroyDescriptorSetLayout(context_.device, pose_layout_, nullptr);
+    if (ray_pool_)
+        vkDestroyDescriptorPool(context_.device, ray_pool_, nullptr);
+    if (ray_layout_)
+        vkDestroyDescriptorSetLayout(context_.device, ray_layout_, nullptr);
     destroy_buffer(poses_);
     destroy_buffer(lighting_);
     destroy_buffer(line_vertices_);
@@ -372,6 +440,11 @@ void VulkanRenderer::clear_targets() {
         vkDestroyPipeline(context_.device, pipeline_, nullptr);
     if (blend_pipeline_)
         vkDestroyPipeline(context_.device, blend_pipeline_, nullptr);
+    if (ray_pipeline_)
+        vkDestroyPipeline(context_.device, ray_pipeline_, nullptr);
+    if (ray_blend_pipeline_)
+        vkDestroyPipeline(context_.device, ray_blend_pipeline_, nullptr);
+    ray_pipeline_ = ray_blend_pipeline_ = {};
     if (layout_)
         vkDestroyPipelineLayout(context_.device, layout_, nullptr);
     if (sprite_pipeline_)
@@ -502,11 +575,11 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     pass.pDependencies = &dependency;
     vk_check(vkCreateRenderPass(context_.device, &pass, nullptr, &pass_), "Create terrain render pass");
     VkPushConstantRange push{draw_stages, 0, sizeof(DrawPush)};
-    const std::array<VkDescriptorSetLayout, 2> sets{scene_->descriptors_, pose_layout_};
+    const std::array<VkDescriptorSetLayout, 3> sets{scene_->descriptors_, pose_layout_, ray_layout_};
     VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     layout.pushConstantRangeCount = 1;
     layout.pPushConstantRanges = &push;
-    layout.setLayoutCount = 2;
+    layout.setLayoutCount = context_.ray_query ? 3 : 2;
     layout.pSetLayouts = sets.data();
     vk_check(vkCreatePipelineLayout(context_.device, &layout, nullptr, &layout_), "Create pipeline layout");
     const auto shader = [&](const auto& words) {
@@ -518,6 +591,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         return result;
     };
     const auto vertex = shader(terrain_vert), fragment = shader(terrain_frag);
+    const auto ray_fragment = context_.ray_query ? shader(terrain_rt_frag) : VkShaderModule{};
     std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
     stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -578,6 +652,12 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     pipeline.layout = layout_;
     pipeline.renderPass = pass_;
     const auto pipeline_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &pipeline_);
+    VkResult ray_result = VK_SUCCESS, ray_blend_result = VK_SUCCESS;
+    if (ray_fragment) {
+        stages[1].module = ray_fragment;
+        ray_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &ray_pipeline_);
+        stages[1].module = fragment;
+    }
     VkResult blend_result = pipeline_result;
     if (pipeline_result == VK_SUCCESS) {
         blend.blendEnable = VK_TRUE;
@@ -589,6 +669,12 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
         blend.alphaBlendOp = VK_BLEND_OP_ADD;
         depth_state.depthWriteEnable = VK_FALSE;
         blend_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &blend_pipeline_);
+        if (ray_fragment) {
+            stages[1].module = ray_fragment;
+            ray_blend_result =
+                vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &ray_blend_pipeline_);
+            stages[1].module = fragment;
+        }
     }
     VkResult sprite_result = blend_result;
     if (blend_result == VK_SUCCESS) {
@@ -717,6 +803,12 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     vk_check(snow_result, "Create instanced snowfall pipeline");
     vkDestroyShaderModule(context_.device, vertex, nullptr);
     vkDestroyShaderModule(context_.device, fragment, nullptr);
+    if (ray_fragment)
+        vkDestroyShaderModule(context_.device, ray_fragment, nullptr);
+    if (ray_result != VK_SUCCESS || ray_blend_result != VK_SUCCESS) {
+        ray_failed_ = true;
+        std::cerr << "Ray shadow pipelines unavailable; using enhanced lighting without traced shadows\n";
+    }
     vk_check(pipeline_result, "Create terrain pipeline");
     vk_check(blend_result, "Create prop blend pipeline");
     vk_check(sprite_result, "Create additive sprite pipeline");
@@ -1007,12 +1099,25 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     const auto started = std::chrono::steady_clock::now();
     finish();
     reserve_poses(required_poses);
+    bool ray_active = ray_shadows_active();
+    if (ray_active) {
+        try {
+            if (!scene_->ray_geometry_)
+                scene_->ray_geometry_ =
+                    std::make_shared<RayGeometry>(context_, scene_->vertices_.buffer, scene_->indices_.buffer,
+                                                  scene_->vertex_count_, scene_->ray_meshes_);
+            if (ray_geometry_ != scene_->ray_geometry_) {
+                ray_world_ = std::make_unique<RayWorld>(context_, scene_->ray_geometry_);
+                ray_geometry_ = scene_->ray_geometry_;
+            }
+        } catch (const std::exception& e) {
+            ray_failed_ = true;
+            ray_active = false;
+            std::cerr << "Ray shadows unavailable: " << e.what() << "; using enhanced lighting\n";
+        }
+    }
     auto lighting = enhanced_lighting_ ? enhanced_lighting(scene_->world_, eye) : LightingUniform{};
     lighting.settings[0] = enhanced_lighting_ ? 1.f : 0.f;
-    void* light_data;
-    vk_check(vkMapMemory(context_.device, lighting_.memory, 0, sizeof(lighting), 0, &light_data), "Map lighting");
-    std::memcpy(light_data, &lighting, sizeof(lighting));
-    vkUnmapMemory(context_.device, lighting_.memory);
     if (weather.flakes && !snow_vertices_.buffer) {
         const auto flakes = snow_flakes();
         snow_vertices_ =
@@ -1350,6 +1455,14 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     };
 
     std::vector<VisibleDraw> prop_draws;
+    std::vector<RayInstance> ray_instances;
+    if (ray_active) {
+        ray_instances.push_back({0, Matrix::identity().values});
+        const auto board_mesh = scene_->props_.parts.size() + 1;
+        ray_instances.push_back({board_mesh, board.values});
+        for (const auto& opponent : opponents)
+            ray_instances.push_back({board_mesh, opponent.values});
+    }
     std::vector<PropPose> poses;
     std::map<std::tuple<bool, std::size_t, unsigned, bool>, std::vector<PropPose>> groups;
 
@@ -1372,7 +1485,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         const auto* motion = moving.empty() ? nullptr : moving[i];
         const auto* state = frames.empty() ? nullptr : frames[i];
         const bool flag = state && state->wave.has_value() && state->wave->amplitude != 0;
-        if (!motion && !route && !flag && !prop_visible(instance.bounds, camera.values, eye))
+        const auto static_visible = prop_visible(instance.bounds, camera.values, eye);
+        if (!motion && !route && !flag && !static_visible && !ray_active)
             continue;
         const auto copies = route ? route->current.size() : 1;
         for (std::size_t copy = 0; copy < copies; ++copy) {
@@ -1397,6 +1511,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                     // an image-flipping texture upload, this offset follows it.
                     pose.uv = {float(state->uv[0]), float(state->uv[1]), 0, 0};
                 Vec3 centre{pose.matrix[12], pose.matrix[13], pose.matrix[14]};
+                bool part_visible = flag || static_visible;
                 if (motion || route || wave) {
                     auto delta = identity_transform();
                     if (motion) {
@@ -1410,10 +1525,13 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                     if (wave)
                         pose = flag_pose(pose, *state->wave);
                     const auto bounds = flag_bounds(scene_->props_.parts[part].bounds, pose);
-                    if (!prop_visible(bounds, camera.values, eye))
-                        continue;
+                    part_visible = prop_visible(bounds, camera.values, eye);
                     centre = bounds.center();
                 }
+                if (ray_active && material.alpha == 0 && !wave)
+                    ray_instances.push_back({part + 1, pose.matrix});
+                if (!part_visible)
+                    continue;
                 submitted = true;
                 if (wave)
                     stats_.flag_sections += 8;
@@ -1480,6 +1598,31 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkUnmapMemory(context_.device, poses_.memory);
     }
     stats_.prop_draws = unsigned(prop_draws.size());
+    if (ray_active) {
+        try {
+            ray_world_->update(ray_instances);
+            const auto acceleration = ray_world_->handle();
+            VkWriteDescriptorSetAccelerationStructureKHR data{
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
+            data.accelerationStructureCount = 1;
+            data.pAccelerationStructures = &acceleration;
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            write.pNext = &data;
+            write.dstSet = ray_set_;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+            vkUpdateDescriptorSets(context_.device, 1, &write, 0, nullptr);
+        } catch (const std::exception& e) {
+            ray_failed_ = true;
+            ray_active = false;
+            std::cerr << "Ray instances unavailable: " << e.what() << "; using enhanced lighting\n";
+        }
+    }
+    lighting.settings[3] = ray_active ? 1.f : 0.f;
+    void* light_data;
+    vk_check(vkMapMemory(context_.device, lighting_.memory, 0, sizeof(lighting), 0, &light_data), "Map lighting");
+    std::memcpy(light_data, &lighting, sizeof(lighting));
+    vkUnmapMemory(context_.device, lighting_.memory);
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_check(vkBeginCommandBuffer(command_, &begin), "Begin draw command");
@@ -1487,6 +1630,9 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdResetQueryPool(command_, timing_, 0, 2);
         vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing_, 0);
     }
+    if (ray_active)
+        ray_world_->record(command_);
+    const auto opaque_pipeline = ray_active ? ray_pipeline_ : pipeline_;
     const bool srgb = scene_format_ == VK_FORMAT_R8G8B8A8_SRGB || scene_format_ == VK_FORMAT_B8G8R8A8_SRGB;
     std::array<VkClearValue, 2> clear{};
     for (unsigned c = 0; c < 3; ++c) {
@@ -1502,8 +1648,10 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     pass.clearValueCount = 2;
     pass.pClearValues = clear.data();
     vkCmdBeginRenderPass(command_, &pass, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+    vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, opaque_pipeline);
     vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 1, 1, &pose_set_, 0, nullptr);
+    if (ray_active)
+        vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 2, 1, &ray_set_, 0, nullptr);
     const VkViewport viewport{0, 0, float(render_width_), float(render_height_), 0, 1};
     const VkRect2D scissor{{0, 0}, {render_width_, render_height_}};
     vkCmdSetViewport(command_, 0, 1, &viewport);
@@ -1532,7 +1680,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
             vkCmdDrawIndexed(command_, draw.count, 1, draw.first, 0, 0);
         }
         push.mvp = camera;
-        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, opaque_pipeline);
     }
     if (compact && !packed_indices_.empty())
         vkCmdBindIndexBuffer(command_, visible_indices_.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -1605,7 +1753,8 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         const auto& draw = scene_->prop_draws_[visible.part];
         const auto material = material_for(visible.part, visible.frame);
         if (material.alpha == 2 && !blending) {
-            vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, blend_pipeline_);
+            vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              ray_active ? ray_blend_pipeline_ : blend_pipeline_);
             blending = true;
         }
         push.options[2] = material.alpha;

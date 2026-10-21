@@ -148,9 +148,9 @@ struct Image {
 int capture(Player& player, const std::filesystem::path& output, double seconds, const std::filesystem::path& replay,
             const std::filesystem::path& audio_output, const GraphicsPreferences& graphics, bool terrain_culling,
             bool first_person, bool look_down, bool menu = false, bool controls = false, bool audio_menu = false,
-            const AudioPreferences& preferences = {}, bool graphics_menu = false) {
+            const AudioPreferences& preferences = {}, bool graphics_menu = false, bool ray_tracing = true) {
     VulkanContext context;
-    context.create(false);
+    context.create(false, ray_tracing);
     Image image(context);
     image.create(1280, 720);
     VulkanRenderer renderer(context);
@@ -251,6 +251,9 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                   << " ms; render wall " << wall / frames << " ms; GPU " << gpu / frames << " ms\n";
     }
     const auto stats = renderer.stats();
+    std::cout << "Ray shadows: " << (renderer.ray_shadows_active() ? "active" : "off / raster lighting")
+              << "; caster instances " << renderer.ray_instances() << "; mesh acceleration "
+              << renderer.ray_bytes() / 1048576. << " MiB\n";
     if (const auto* field = player.ai_field())
         std::cout << "AI field: " << field->size() << " opponents; " << stats.opponent_boards
                   << " visible boards; place " << field->place() + 1 << '/' << field->size() + 1 << '\n';
@@ -614,7 +617,7 @@ int main(int argc, char** argv) {
              terrain_culling = true, first_person_option = false, look_down_option = false, on_foot_option = false;
         double seconds = 0;
         GraphicsPreferences overrides;
-        bool scale_set = false, snow_set = false, lighting_set = false, ui_graphics_option = false;
+        bool scale_set = false, snow_set = false, lighting_set = false, ui_graphics_option = false, ray_tracing = true;
         unsigned ai_count = 0;
         RunMode run_option = RunMode::Freeride;
         bool head_steering = false, ui_menu_option = false, ui_controls_option = false, ui_audio_option = false,
@@ -650,6 +653,8 @@ int main(int argc, char** argv) {
                 preferences_path = argv[++i];
             else if (option == "--graphics-preferences" && i + 1 < argc)
                 graphics_path = argv[++i];
+            else if (option == "--no-ray-tracing")
+                ray_tracing = false;
             else if (option == "--lighting" && i + 1 < argc) {
                 const std::string value = argv[++i];
                 if (value != "original" && value != "enhanced")
@@ -715,7 +720,8 @@ int main(int argc, char** argv) {
                        "[--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture "
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
                        "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
-                       "<file>] [--lighting original|enhanced] [--ui-graphics] [--no-terrain-culling] "
+                       "<file>] [--lighting original|enhanced] [--no-ray-tracing] [--ui-graphics] "
+                       "[--no-terrain-culling] "
                        "[--audio-preferences <file>] "
                        "[--ui-audio] [--ai-riders 0..16]\nDesktop: "
                        "A/D strafe on foot or steer/spin riding, W/S walk or tuck/brake/flip, Space "
@@ -729,7 +735,7 @@ int main(int argc, char** argv) {
         }
         if (!std::isfinite(seconds) || seconds < 0 || seconds > 3600)
             throw std::runtime_error("Duration must be between 0 and 3600 seconds");
-        if (xr && (msaa_set || scale_set || snow_set || lighting_set || !terrain_culling))
+        if (xr && (msaa_set || scale_set || snow_set || lighting_set || !ray_tracing || !terrain_culling))
             throw std::runtime_error("Graphics/culling options currently apply to desktop window/capture mode");
         if (head_steering && !xr)
             throw std::runtime_error("Head steering requires --xr");
@@ -782,11 +788,11 @@ int main(int argc, char** argv) {
         if (!output.empty())
             return capture(*player, output, seconds, replay, audio_output, graphics, terrain_culling,
                            first_person_option, look_down_option, ui_menu_option, ui_controls_option, ui_audio_option,
-                           preferences, ui_graphics_option);
+                           preferences, ui_graphics_option, ray_tracing);
         if (smoke_window && seconds == 0)
             seconds = 3;
         VulkanContext context;
-        context.create(true);
+        context.create(true, ray_tracing);
         Window window(context);
         window.renderer.cull_terrain(terrain_culling);
         window.graphics = graphics;

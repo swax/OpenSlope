@@ -1,4 +1,8 @@
-#version 450
+#version 460
+#ifdef RAY_QUERY
+#extension GL_EXT_ray_query : require
+layout(set=2,binding=0) uniform accelerationStructureEXT shadowWorld;
+#endif
 layout(location=0) in vec3 vertexColour;
 layout(location=1) in vec2 textureUV;
 layout(location=2) in vec2 lightmapUV;
@@ -23,6 +27,18 @@ vec3 linearColour(vec3 c) {
 vec3 displayColourOf(vec3 c) {
     return mix(c*12.92,1.055*pow(max(c,vec3(0)),vec3(1.0/2.4))-0.055,greaterThan(c,vec3(0.0031308)));
 }
+float lightVisibility(vec3 n,vec3 direction,float distance) {
+#ifdef RAY_QUERY
+    if(light.settings.w>0.5&&distance>0.03){
+        rayQueryEXT query;
+        rayQueryInitializeEXT(query,shadowWorld,gl_RayFlagsTerminateOnFirstHitEXT|gl_RayFlagsOpaqueEXT,
+                              255,worldPosition+n*0.015,0.002,direction,max(0.003,distance-0.02));
+        while(rayQueryProceedEXT(query)){}
+        return rayQueryGetIntersectionTypeEXT(query,true)==gl_RayQueryCommittedIntersectionNoneEXT?1.0:0.0;
+    }
+#endif
+    return 1.0;
+}
 vec3 litSurface(vec3 base) {
     vec3 n=worldNormal;
     if(dot(n,n)<0.00001)n=cross(dFdx(worldPosition),dFdy(worldPosition));
@@ -33,16 +49,19 @@ vec3 litSurface(vec3 base) {
     vec3 albedo=linearColour(base);
     vec3 energy=light.ambient.rgb*mix(0.8,1.0,n.y*0.5+0.5);
     float diffuse=max(0.0,dot(n,light.sunDirection.xyz));
-    energy+=light.sunColour.rgb*diffuse;
+    float sunlight=diffuse>0.0&&light.settings.y>0.0?lightVisibility(n,light.sunDirection.xyz,600.0):1.0;
+    energy+=light.sunColour.rgb*diffuse*sunlight;
     vec3 h=v+light.sunDirection.xyz;
     float highlight=dot(h,h)>0.00001?pow(max(dot(n,normalize(h)),0.0),48.0):0.0;
-    vec3 result=albedo*energy+light.sunColour.rgb*highlight*0.12;
+    vec3 result=albedo*energy+light.sunColour.rgb*highlight*0.12*sunlight;
     for(int i=0;i<int(light.settings.z);++i){
         vec3 delta=light.lamps[i].positionRadius.xyz-worldPosition;
         float distance=length(delta);
         float attenuation=pow(max(0.0,1.0-distance/light.lamps[i].positionRadius.w),2.0);
         vec3 direction=delta/max(distance,0.001);
-        result+=albedo*light.lamps[i].colour.rgb*max(dot(n,direction),0.0)*attenuation*1.4;
+        float facing=max(dot(n,direction),0.0);
+        float visible=attenuation*facing>0.0?lightVisibility(n,direction,distance):1.0;
+        result+=albedo*light.lamps[i].colour.rgb*facing*attenuation*1.4*visible;
     }
     return displayColourOf(result);
 }

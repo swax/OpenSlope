@@ -127,6 +127,140 @@ std::vector<SprayVertex> spray_sheet(double z, float alpha = .5f) {
     return result;
 }
 
+void ray_shadow_tests(VulkanContext& context, const std::filesystem::path& root) {
+    if (!context.ray_query) {
+        std::cout << "Ray shadow pixel tests skipped: this GPU has no ray-query support\n";
+        return;
+    }
+    const auto assets = [&](bool night, bool cutout = false) {
+        const auto vertex = [](float x, float y, float z) {
+            Vertex v{x, y, z, 1, 1, 1};
+            v.ny = 1;
+            return v;
+        };
+        Mesh mesh;
+        mesh.map_root = root / "lighting";
+        mesh.vertices = {vertex(-2, 0, -2), vertex(2, 0, -2), vertex(2, 0, 2), vertex(-2, 0, 2)};
+        mesh.indices = {0, 1, 2, 0, 2, 3};
+        mesh.batches = {{0, 6, "base.png", -1}};
+        auto result = SceneAssets::prepare(mesh);
+        result.world.sky_colour = night ? std::array<float, 3>{.01f, .02f, .03f} : std::array<float, 3>{.8f, .8f, 1};
+        result.world.glare.azimuth = result.world.glare.elevation = 0;
+        if (night)
+            result.world.glints = {{{8, 2, 0}, {1, .6, .3}, 32, 4}};
+        auto& props = result.props;
+        props.geometry.vertices = {vertex(-.5f, 1, -.5f), vertex(.5f, 1, -.5f), vertex(.5f, 1, .5f),
+                                   vertex(-.5f, 1, .5f)};
+        props.geometry.indices = {0, 1, 2, 0, 2, 3};
+        PropPart part;
+        part.count = 6;
+        part.texture = "base.png";
+        part.alpha_mode = cutout ? 1 : 0;
+        part.bounds.add({-.5, 1, -.5});
+        part.bounds.add({.5, 1, .5});
+        props.parts.push_back(part);
+        props.models.push_back({{0}, part.bounds});
+        PropInstance instance;
+        instance.pose.matrix = Matrix::identity().values;
+        instance.pose.matrix[12] = 4;
+        instance.pose.ambient = {1, 1, 1, 1};
+        instance.bounds.add({3.5, 1, -.5});
+        instance.bounds.add({4.5, 1, .5});
+        props.instances.push_back(instance);
+        return result;
+    };
+    Matrix camera;
+    camera.values[0] = camera.values[9] = .5f;
+    camera.values[6] = .1f;
+    camera.values[14] = .5f;
+    camera.values[15] = 1;
+    const Vec3 eye{0, 10, 0};
+    constexpr std::size_t center = (64 * 128 + 64) * 3;
+    const auto same_center = [&](const auto& a, const auto& b) {
+        for (unsigned c = 0; c < 3; ++c)
+            if (std::abs(int(a[center + c]) - int(b[center + c])) > 1)
+                return false;
+        return true;
+    };
+    for (const auto night : {false, true}) {
+        auto scene = std::make_shared<VulkanScene>(context);
+        scene->upload(assets(night));
+        Target target{context}, other{context};
+        target.create(VK_FORMAT_R8G8B8A8_UNORM);
+        other.create(VK_FORMAT_R8G8B8A8_UNORM);
+        VulkanRenderer renderer(context), second(context);
+        renderer.use_scene(scene);
+        second.use_scene(scene);
+        renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
+        second.targets(std::span(&other.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
+        renderer.lighting(true);
+        second.lighting(true);
+        renderer.ray_shadows(false);
+        const auto unblocked = capture(renderer, root / "ray-unblocked.ppm", camera, {}, {}, {}, eye);
+        renderer.ray_shadows(true);
+        const auto shadowed = capture(renderer, root / "ray-shadowed.ppm", camera, {}, {}, {}, eye);
+        if (!renderer.ray_shadows_active() || renderer.ray_instances() != 3 || renderer.stats().visible_props != 0 ||
+            int(unblocked[center]) - int(shadowed[center]) < 8)
+            throw std::runtime_error("An offscreen opaque caster does not shadow the sun/lamp light");
+        ++checks;
+        const std::array<std::uint8_t, 1> hidden{0};
+        const auto hidden_shadow = capture(renderer, root / "ray-hidden.ppm", camera, {}, {}, {}, eye, 0, hidden);
+        if (!same_center(unblocked, hidden_shadow) || renderer.ray_instances() != 2)
+            throw std::runtime_error("A hidden prop retains its ray shadow");
+        ++checks;
+        auto identity = identity_transform(), away = identity;
+        away[14] = 3;
+        const PropMotion motion{0, {identity}, {away}};
+        const auto moved =
+            capture(renderer, root / "ray-moved.ppm", camera, {}, {}, {}, eye, 0, {}, std::span(&motion, 1));
+        if (!same_center(unblocked, moved))
+            throw std::runtime_error("An animated prop leaves a shadow at its old position");
+        ++checks;
+        const PropRouteMotion route{0, {away}, {away}, {}};
+        const auto routed =
+            capture(renderer, root / "ray-route.ppm", camera, {}, {}, {}, eye, 0, {}, {}, 1, std::span(&route, 1));
+        if (!same_center(unblocked, routed))
+            throw std::runtime_error("A spline mover leaves a shadow at its old position");
+        ++checks;
+        auto board = Matrix::identity();
+        board.values[12] = 10;
+        renderer.deferred(true);
+        second.deferred(true);
+        renderer.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye);
+        second.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, {}, 0, hidden);
+        if (!same_center(shadowed, read_capture(renderer, root / "ray-queued-first.ppm")) ||
+            !same_center(unblocked, read_capture(second, root / "ray-queued-second.ppm")))
+            throw std::runtime_error("Queued renderers overwrite one another's ray instances");
+        ++checks;
+        renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128, 4);
+        if (!same_center(shadowed, capture(renderer, root / "ray-recreated.ppm", camera, {}, {}, {}, eye)))
+            throw std::runtime_error("Ray shadows do not survive target recreation and MSAA");
+        ++checks;
+        {
+            VulkanContext fallback;
+            fallback.create(false, false);
+            Target fallback_target{fallback};
+            fallback_target.create(VK_FORMAT_R8G8B8A8_UNORM);
+            VulkanRenderer basic(fallback);
+            basic.upload(assets(night));
+            basic.targets(std::span(&fallback_target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
+            basic.lighting(true);
+            if (fallback.ray_query || basic.ray_shadows_active() ||
+                !same_center(unblocked, capture(basic, root / "ray-fallback.ppm", camera, {}, {}, {}, eye)))
+                throw std::runtime_error("A device without enabled ray-query features cannot render enhanced lighting");
+        }
+        // Volk's global dispatch follows the most recently loaded logical device.
+        volkLoadDevice(context.device);
+        ++checks;
+        renderer.upload(assets(night, true));
+        if (!same_center(unblocked, capture(renderer, root / "ray-cutout.ppm", camera, {}, {}, {}, eye)) ||
+            renderer.ray_instances() != 2)
+            throw std::runtime_error("Cutout geometry casts a solid shadow or scene replacement retains old casters");
+        ++checks;
+    }
+    std::cout << "PASS: sun/lamp ray shadows, offscreen/hidden/moving casters, queued views and fallback\n";
+}
+
 void terrain_range_tests(VulkanContext& context, const std::filesystem::path& root) {
     std::vector<Patch> patches;
     for (unsigned i = 0; i < 6; ++i) {
@@ -184,6 +318,7 @@ int main(int argc, char** argv) {
         const auto root = std::filesystem::path(argv[1]);
         VulkanContext context;
         context.create(false);
+        ray_shadow_tests(context, root);
         terrain_range_tests(context, root);
         for (const auto samples : {1u, 4u})
             for (const auto name : {"handedness",

@@ -14,23 +14,26 @@ LightingUniform enhanced_lighting(const World& world, Vec3 eye) {
     result.sun_colour = {.65f * day, .56f * day, .43f * day, 0};
     result.ambient = {.62f - day * .05f, .67f - day * .04f, .81f - day * .07f, 0};
     result.settings = {1, day, 0, 0};
-    std::vector<const LampGlint*> nearby;
-    for (const auto& lamp : world.glints)
-        if (lamp.brightness > 0 && length(lamp.position - eye) < 160)
-            nearby.push_back(&lamp);
-    std::stable_sort(nearby.begin(), nearby.end(), [&](const auto* a, const auto* b) {
-        return length(a->position - eye) < length(b->position - eye);
-    });
+    std::vector<std::pair<double, LightingUniform::Lamp>> nearby;
+    const auto append = [&](Vec3 position, Vec3 colour, double radius, double intensity) {
+        const auto distance = length(position - eye);
+        if (intensity <= 0 || distance >= 160)
+            return;
+        LightingUniform::Lamp lamp;
+        lamp.position_radius = {float(position.x), float(position.y), float(position.z), float(radius)};
+        lamp.colour = {float(colour.x * intensity), float(colour.y * intensity), float(colour.z * intensity), 0};
+        nearby.emplace_back(distance, lamp);
+    };
+    for (const auto& lamp : world.point_lights)
+        append(lamp.position, lamp.colour, lamp.radius, lamp.intensity);
+    if (world.point_lights.empty())
+        for (const auto& lamp : world.glints)
+            append(lamp.position, lamp.hue, std::clamp(8. + lamp.size * .35, 10., 32.), lamp.brightness);
+    std::stable_sort(nearby.begin(), nearby.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     const auto count = std::min(nearby.size(), result.lamps.size());
     result.settings[2] = float(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        const auto& lamp = *nearby[i];
-        auto& output = result.lamps[i];
-        const auto radius = std::clamp(8.f + float(lamp.size) * .35f, 10.f, 32.f);
-        output.position_radius = {float(lamp.position.x), float(lamp.position.y), float(lamp.position.z), radius};
-        output.colour = {float(lamp.hue.x * lamp.brightness), float(lamp.hue.y * lamp.brightness),
-                         float(lamp.hue.z * lamp.brightness), 0};
-    }
+    for (std::size_t i = 0; i < count; ++i)
+        result.lamps[i] = nearby[i].second;
     return result;
 }
 } // namespace openslope

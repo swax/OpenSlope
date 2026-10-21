@@ -10,6 +10,7 @@ struct World {
     Props sky;
     Glare glare;
     std::vector<LampGlint> glints;
+    std::vector<PointLight> point_lights;
     std::array<float, 3> sky_colour{.065f, .11f, .18f}, fog_colour{};
     float fog_start{}, fog_end{};
     bool explicit_sky = false, explicit_fog_colour = false;

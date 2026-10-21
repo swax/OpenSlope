@@ -76,7 +76,7 @@ Vertex vertex(std::array<double, 4> p, std::array<float, 3> rgb, double intensit
 }
 } // namespace
 
-std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root) {
+std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root, std::vector<PointLight>* illumination) {
     using Json = nlohmann::json;
     Json doc;
     const auto read = [&](const std::filesystem::path& file, std::uintmax_t maximum) {
@@ -110,7 +110,8 @@ std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root) {
     std::vector<LampGlint> result;
     for (const auto& row : rows) {
         const auto mask = row.value("SpriteRes", 0) & 0x70;
-        if (!mask)
+        const bool point = illumination && row.value("Type", -1) == 2;
+        if (!mask && !point)
             continue;
         const auto vector = [&](const char* key) {
             const auto& v = row.at(key);
@@ -129,7 +130,19 @@ std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root) {
         if (!std::isfinite(brightness) || brightness < 0 || brightness > 100)
             throw std::runtime_error("Invalid course light brightness");
         const auto size = mask == 16 || mask == 32 || mask == 64 ? unsigned(mask) : 0u;
-        result.push_back({{p.x / 100, p.z / 100, -p.y / 100}, colour / length(colour), size, brightness});
+        const Vec3 position{p.x / 100, p.z / 100, -p.y / 100};
+        if (mask)
+            result.push_back({position, colour / length(colour), size, brightness});
+        if (point) {
+            double radius = 16;
+            if (row.contains("LowestXYZ") && row.contains("HighestXYZ")) {
+                const auto extent = vector("HighestXYZ") - vector("LowestXYZ");
+                radius =
+                    std::clamp(std::max({std::abs(extent.x), std::abs(extent.y), std::abs(extent.z)}) * .005, 4., 64.);
+            }
+            const auto hue = colour / std::max({colour.x, colour.y, colour.z});
+            illumination->push_back({position, hue, radius, std::min(brightness, 4.)});
+        }
     }
     return result;
 }

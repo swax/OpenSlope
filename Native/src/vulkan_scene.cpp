@@ -37,10 +37,19 @@ VulkanScene::Buffer VulkanScene::buffer(VkDeviceSize size, VkBufferUsageFlags us
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         info.size = size;
         info.usage = usage;
+        const bool ray_input =
+            context_.ray_query && (usage & (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT));
+        if (ray_input)
+            info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                          VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
         vk_check(vkCreateBuffer(context_.device, &info, nullptr, &result.buffer), "Create scene buffer");
         VkMemoryRequirements requirements;
         vkGetBufferMemoryRequirements(context_.device, result.buffer, &requirements);
         VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        VkMemoryAllocateFlagsInfo address{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO};
+        address.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        if (ray_input)
+            allocation.pNext = &address;
         allocation.allocationSize = requirements.size;
         allocation.memoryTypeIndex =
             memory_type(context_, requirements.memoryTypeBits,
@@ -450,6 +459,7 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
     if (progress)
         progress(.92, "UPLOADING GEOMETRY");
     auto mesh = std::move(assets.mesh);
+    ray_meshes_.push_back({0, std::uint32_t(mesh.indices.size())});
     const auto prop_first = std::uint32_t(mesh.indices.size()), prop_vertex = std::uint32_t(mesh.vertices.size());
     mesh.vertices.insert(mesh.vertices.end(), props_.geometry.vertices.begin(), props_.geometry.vertices.end());
     for (const auto i : props_.geometry.indices)
@@ -466,6 +476,7 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
         const auto base = bind(part.texture);
         PropDraw draw{part.first + prop_first, part.count, base.set, base.alpha, {}};
         draw.wave_first = part.wave_first + prop_first;
+        ray_meshes_.push_back({draw.first, draw.alpha == 0 && !part.wave_count ? draw.count : 0});
         draw.wave_count = part.wave_count;
         for (const auto& frame : part.frames)
             draw.frames.push_back(bind(frame));
@@ -490,11 +501,13 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
     for (const auto index : gear.indices)
         mesh.indices.push_back(offset + index);
     board_count_ = std::uint32_t(gear.indices.size());
+    ray_meshes_.push_back({board_first_, board_count_});
     board_set_ = descriptor(0, 1);
     for (unsigned i = 0; i < stock_board_count; ++i)
         stock_board_sets_[i] = descriptor(names.at("@board-" + std::to_string(i)), 1, true);
     if (world_.glare.enabled)
         corona_set_ = descriptor(names.at("@celestial-corona"), 1, true);
+    vertex_count_ = std::uint32_t(mesh.vertices.size());
     vertices_ = buffer(mesh.vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vertices.data());
     indices_ =
         buffer(mesh.indices.size() * sizeof(std::uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.indices.data());

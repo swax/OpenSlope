@@ -2,6 +2,11 @@
 #include "terrain.hpp"
 
 namespace openslope {
+struct PointLight {
+    Vec3 position, colour;
+    double radius = 16, intensity = 1;
+};
+
 struct LampGlint {
     Vec3 position, hue;
     unsigned size = 0;
@@ -16,7 +21,8 @@ struct LampView {
 LampView stereo_lamp_view(const std::array<float, 16>& left, const std::array<float, 16>& right, Vec3 left_eye,
                           Vec3 right_eye);
 
-std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root);
+std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root,
+                                        std::vector<PointLight>* illumination = nullptr);
 std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std::array<float, 16>& clip, Vec3 eye,
                                     unsigned width, unsigned height, double range = 600,
                                     const LampView* shared = nullptr);

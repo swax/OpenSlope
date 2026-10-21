@@ -13,6 +13,7 @@
 #include "openslope/visibility.hpp"
 #include "openslope/world.hpp"
 #include "openslope/world_properties.hpp"
+#include "ray_tracing.hpp"
 #include "render_math.hpp"
 #include <filesystem>
 #include <functional>
@@ -44,10 +45,11 @@ struct VulkanContext {
     VkQueue queue{};
     std::uint32_t family{};
     float texture_anisotropy = 1;
+    bool ray_query = false;
     VulkanContext() = default;
     VulkanContext(const VulkanContext&) = delete;
     ~VulkanContext();
-    void create(bool window);
+    void create(bool window, bool request_ray_query = true);
     VkPhysicalDeviceFeatures texture_features();
 };
 
@@ -86,6 +88,9 @@ private:
     std::vector<Image> images_;
     std::vector<Draw> draws_;
     std::vector<TerrainRange> terrain_ranges_;
+    std::vector<RayMesh> ray_meshes_;
+    std::uint32_t vertex_count_{};
+    std::shared_ptr<RayGeometry> ray_geometry_;
     std::vector<std::uint32_t> terrain_indices_;
     VisibilityTree terrain_visibility_;
     std::uint64_t terrain_total_indices_{};
@@ -161,6 +166,14 @@ public:
 
     void lighting(bool enabled) { enhanced_lighting_ = enabled; }
 
+    void ray_shadows(bool enabled) { ray_shadows_ = enabled; }
+
+    bool ray_shadows_active() const { return enhanced_lighting_ && ray_shadows_ && context_.ray_query && !ray_failed_; }
+
+    unsigned ray_instances() const { return ray_world_ ? ray_world_->instances() : 0; }
+
+    std::uint64_t ray_bytes() const { return ray_geometry_ ? ray_geometry_->bytes() : 0; }
+
     void finish();
 
     void board_art(unsigned design, std::span<const unsigned> opponents = {}, const SceneLighting* lighting = nullptr) {
@@ -228,6 +241,13 @@ private:
     Buffer poses_;
     Buffer lighting_;
     bool enhanced_lighting_ = false;
+    bool ray_shadows_ = true, ray_failed_ = false;
+    std::shared_ptr<RayGeometry> ray_geometry_;
+    std::unique_ptr<RayWorld> ray_world_;
+    VkDescriptorSetLayout ray_layout_{};
+    VkDescriptorPool ray_pool_{};
+    VkDescriptorSet ray_set_{};
+    VkPipeline ray_pipeline_{}, ray_blend_pipeline_{};
     std::size_t pose_capacity_ = 0;
     VkDescriptorSetLayout pose_layout_{};
     VkDescriptorPool pose_pool_{};

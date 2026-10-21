@@ -45,7 +45,7 @@ World World::load(const std::filesystem::path& root) {
     World result;
     if (root.empty())
         return result;
-    result.glints = load_lamp_glints(root);
+    result.glints = load_lamp_glints(root, &result.point_lights);
     skybox_files(root);
     result.sky = Props::load(root / "Skybox", true);
     if (!result.sky.parts.empty()) {

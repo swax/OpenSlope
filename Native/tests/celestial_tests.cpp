@@ -113,6 +113,25 @@ void lamps(const std::filesystem::path& root) {
     check(lights.size() == 4 && lights[3].size == 0, "The small-class gate retains a pixel-only unclassified mask");
     close(lights[0].position.z, -10, 1e-9, "Light positions use native metre axes");
     close(lights[0].hue.x, 1, 1e-9, "Illumination magnitude divides out of glint hue");
+    rows.push_back({{"Type", 2},
+                    {"SpriteRes", 0},
+                    {"Colour", {2, 1, .5}},
+                    {"Position", {100, 200, 300}},
+                    {"LowestXYZ", {-1900, -1800, -1700}},
+                    {"HighestXYZ", {2100, 2200, 2300}},
+                    {"UnknownFloat1", 9}});
+    rows.push_back({{"Type", 1}, {"SpriteRes", 0}, {"Colour", {1, 1, 1}}, {"Position", {0, 0, 0}}});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    std::vector<PointLight> illumination;
+    const auto unchanged_glints = load_lamp_glints(root, &illumination);
+    check(unchanged_glints.size() == lights.size() && illumination.size() == 1,
+          "Point illumination includes lights without sprites and preserves existing glints");
+    close(illumination[0].position.x, 1, 1e-9, "Point lights convert centimetres to metres");
+    close(illumination[0].position.y, 3, 1e-9, "Point lights convert the vertical axis");
+    close(illumination[0].position.z, -2, 1e-9, "Point lights convert the forward axis");
+    close(illumination[0].radius, 20, 1e-9, "Point-light bounds supply the enhancement radius");
+    close(illumination[0].colour.y, .5, 1e-9, "Point-light colour preserves hue");
+    close(illumination[0].intensity, 4, 1e-9, "Enhancement intensity has a finite bound");
     const auto matrix = (projection(-1, 1, -1, 1) * view({}, {0, 0, -1})).values;
     const auto mesh = lamp_glint_mesh(lights, matrix, {}, 128, 128);
     check(mesh.size() == 120, "Each lamp has halo, crossed square stars, fixed core and same-hue aura");
