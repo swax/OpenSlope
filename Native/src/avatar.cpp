@@ -557,7 +557,7 @@ Avatar::Avatar() {
 }
 
 std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, bool labels, Vec3 eye,
-                                     Vec3 controller_offset) {
+                                     Vec3 controller_offset, const SceneLighting* scene_lighting) {
     const auto right = normalized(cross(p.forward, p.up));
     const auto basis = [&](Vec3 v) { return right * v.x + p.up * v.y + p.forward * v.z; };
 
@@ -625,7 +625,9 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     }
     std::vector<Vec3> posed;
     posed.reserve(vertices_.size());
-    std::vector<double> lighting;
+    const auto illumination =
+        scene_lighting ? scene_lighting->sample(p.joint(AvatarJoint::Hips)) : SceneLight::fallback();
+    std::vector<Vec3> lighting;
     lighting.reserve(vertices_.size());
     for (const auto& v : vertices_) {
         const auto& t = transforms[v.bone];
@@ -635,7 +637,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             relative += axis * (dot(relative, axis) * (t.scale - 1));
         posed.push_back(t.target + t.map(relative));
         const auto normal = normalized(t.map(basis(v.normal)));
-        lighting.push_back(.60 + .40 * std::max(0., dot(normal, normalized(Vec3{-.3, .8, -.5}))));
+        lighting.push_back(illumination.evaluate(normal));
     }
     mesh_.clear();
     for (std::size_t i = 0; i < corners_.size(); i += 3) {
@@ -648,8 +650,9 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             for (unsigned k = 0; k < 3; ++k) {
                 const auto& c = corners_[i + k];
                 auto colour = c.colour;
-                for (auto& value : colour)
-                    value *= float(lighting[c.vertex]);
+                colour[0] *= float(lighting[c.vertex].x);
+                colour[1] *= float(lighting[c.vertex].y);
+                colour[2] *= float(lighting[c.vertex].z);
                 mesh_.push_back(vertex(posed[c.vertex], colour));
             }
     }

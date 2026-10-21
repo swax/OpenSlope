@@ -22,6 +22,7 @@
 #include <stdexcept>
 
 namespace openslope {
+class SceneLighting;
 class AiField;
 
 struct RideInput {
@@ -145,6 +146,8 @@ public:
     const Rider& rider() const { return rider_; }
 
     const Terrain& terrain() const { return terrain_; }
+
+    const SceneLighting& avatar_lighting() const;
 
     const RideContract& contract() const { return contract_; }
 

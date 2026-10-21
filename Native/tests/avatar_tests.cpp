@@ -1,4 +1,7 @@
 #include "openslope/avatar.hpp"
+#include <algorithm>
+#include <chrono>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -21,6 +24,78 @@ void finite_mesh(std::span<const Vertex> mesh) {
         check(finite({v.x, v.y, v.z}), "finite skin position");
         check(v.r >= 0 && v.r <= 1 && v.g >= 0 && v.g <= 1 && v.b >= 0 && v.b <= 1, "bounded skin colour");
     }
+}
+
+void scene_lighting(Avatar& avatar, const AvatarPose& pose) {
+    LightProbe bright{{0, 0, 0}, {.8, .7, .6}}, dark{{10, 0, 0}, {.08, .07, .06}};
+    SceneLighting field({bright, dark});
+    const auto left = field.sample({0, 0, 0}).evaluate({0, 1, 0});
+    const auto right = field.sample({10, 0, 0}).evaluate({0, 1, 0});
+    check(left.x > right.x * 8, "body probes vary with course position");
+    close(field.sample({5, 0, 0}).evaluate({0, 1, 0}), {.44, .385, .33}, "probe interpolation blends colour");
+    check(length(field.sample({4.999, 0, 0}).ambient - field.sample({5.001, 0, 0}).ambient) < .001,
+          "no nearest-probe step at midpoint");
+    LightProbe roof{{0, 20, 0}, {1, 0, 0}};
+    SceneLighting layers({bright, roof});
+    check(layers.sample({0, 0, 0}).ambient.x < layers.sample({0, 20, 0}).ambient.x,
+          "full 3D sampling separates stacked ground");
+    std::vector<LightProbe> many;
+    for (unsigned i = 0; i < 257; ++i)
+        many.push_back({{double(i * 17 % 67), double(i * 11 % 43), double(i * 23 % 71)}, {i / 257., .2, .1}});
+    SceneLighting indexed(many);
+    for (unsigned i = 0; i < 40; ++i) {
+        const Vec3 point{i * 2.37, i * .71, i * 1.21};
+        std::vector<std::pair<double, double>> distances;
+        for (const auto& probe : many) {
+            const auto delta = point - probe.position;
+            distances.emplace_back(dot(delta, delta), probe.ambient.x);
+        }
+        std::sort(distances.begin(), distances.end());
+        double total = 0, expected = 0;
+        for (unsigned k = 0; k < 4; ++k) {
+            const auto weight = 1 / (1 + distances[k].first);
+            total += weight;
+            expected += weight * distances[k].second;
+        }
+        check(std::abs(indexed.sample(point).ambient.x - expected / total) < 1e-9,
+              "indexed sampling agrees with independent full-scan oracle");
+    }
+    SceneLighting only_dark({LightProbe{{}, {.1, .1, .1}}});
+    const auto original = avatar.mesh(pose, false, false);
+    double original_energy = 0;
+    for (const auto& v : original)
+        original_energy += v.r + v.g + v.b;
+    const auto shaded = avatar.mesh(pose, false, false, {}, {}, &only_dark);
+    double shaded_energy = 0;
+    for (const auto& v : shaded)
+        shaded_energy += v.r + v.g + v.b;
+    check(shaded_energy < original_energy * .2, "ordinary avatar mesh receives scene shade");
+    finite_mesh(shaded);
+
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("openslope-avatar-light-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directory(root);
+    {
+        std::ofstream file(root / "Instances.json");
+        file << R"({"Instances":[
+          {"Location":[0,0,0],"Rotation":[0,0,0.7071067811865475,0.7071067811865475],
+           "Scale":[2,3,4],"AmbentLightColour":[25.6,51.2,76.8],
+           "LightColour1":[128,0,0],"LightVector1":[1,0,0]},
+          {"Location":[0,0,0],"AmbentLightColour":[256,256,256]},
+          {"Location":[100,0,0],"AmbentLightColour":[0,0,0]},
+          {"Location":[200,0,0]}
+        ]})";
+    }
+    const auto imported = SceneLighting::load(root);
+    check(imported.size() == 2, "exclude self-lit/missing records; retain genuinely dark probes");
+    const auto sample = imported.sample({0, 0, 0});
+    check(sample.evaluate({0, 0, -1}).x > sample.evaluate({1, 0, 0}).x + .3,
+          "donor placement rotation converts local keys to world without scaling intensity");
+    const auto midnight = imported.sample({1, 0, 0});
+    check(midnight.ambient.x < sample.ambient.x, "centimetre placement conversion reaches sampler");
+    std::filesystem::remove(root / "Instances.json");
+    std::filesystem::remove(root);
 }
 
 void flip_pivot(Avatar& avatar) {
@@ -149,6 +224,7 @@ int main() {
         check(avatar.source_vertices() == 8744, "unchanged figure vertices");
         check(avatar.source_triangles() == 4816, "unchanged figure triangles");
         const auto pose = avatar_pose(player);
+        scene_lighting(avatar, pose);
         const auto full = avatar.mesh(pose);
         check(full.size() == 14448, "all authored triangles submitted");
         finite_mesh(full);

@@ -1,5 +1,6 @@
 #pragma once
 #include "player.hpp"
+#include "scene_lighting.hpp"
 #include <span>
 #include <string_view>
 
@@ -73,7 +74,7 @@ class Avatar {
 public:
     Avatar();
     std::span<const Vertex> mesh(const AvatarPose& pose, bool first_person = false, bool labels = true, Vec3 eye = {},
-                                 Vec3 controller_offset = {});
+                                 Vec3 controller_offset = {}, const SceneLighting* lighting = nullptr);
 
     std::size_t source_vertices() const { return vertices_.size(); }
 

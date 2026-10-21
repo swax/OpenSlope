@@ -1039,8 +1039,9 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                 state.ui.visible = interactive && state.presentation.controls;
                 pose.controller_models &= state.ui.visible;
                 if (interactive) {
-                    const auto body_mesh = state.avatar.mesh(pose, !state.presentation.third_person, state.ui.visible,
-                                                             tracked.head + camera_offset, camera_offset);
+                    const auto body_mesh =
+                        state.avatar.mesh(pose, !state.presentation.third_person, state.ui.visible,
+                                          tracked.head + camera_offset, camera_offset, &player.avatar_lighting());
                     avatar_mesh.assign(body_mesh.begin(), body_mesh.end());
                     if (state.ui.visible)
                         equipment_outline(avatar_mesh, player);

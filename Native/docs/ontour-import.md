@@ -94,7 +94,7 @@ archive admits night records; a missing night archive's day fallback admits day
 records. The editor and browser Play share the original sky-mesh renderer, without
 requiring a measured panorama ring. Existing nonempty sky folders work on reload;
 older empty night skies need one fresh ISO import. Adopted mesh skies copy their
-original Models/Materials/Meshes/Textures into the common map export. [Trailmap: 528]
+original Models/Materials/Meshes/Textures into the common map export. [Trailmap: 546]
 
 The On Tour `mdl_<track>_impassableleft/right` boundary helpers and complete
 `trg_fw_archlights/start/finish/finish_final` trigger families stay hidden and

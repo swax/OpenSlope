@@ -13,7 +13,7 @@ inline std::vector<Matrix> append_opponents(const Player& player, Avatar& avatar
             const auto& actor = field->rider(i);
             if (length(actor.render_position() - eye) > 400)
                 continue;
-            const auto body = avatar.mesh(avatar_pose(actor), false, false, eye);
+            const auto body = avatar.mesh(avatar_pose(actor), false, false, eye, {}, &actor.avatar_lighting());
             figures.insert(figures.end(), body.begin(), body.end());
             boards.push_back(board_transform(actor.render_board_position(), actor.render_forward(), actor.render_up()));
         }

@@ -125,6 +125,40 @@ int main(int argc, char** argv) {
             return p;
         };
         render("desktop", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+        {
+            // Compare colour transfer without gamma-vs-linear MSAA edge resolves.
+            a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+            b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 1);
+            const Vec3 eye{2.8, 2.1, 3.2};
+            const auto camera = projection(-.85, .85, -.85, .85) * view(eye, {-2.8, -1, -3.2});
+            const auto board =
+                board_transform(player.render_board_position(), player.render_forward(), player.render_up());
+            const auto unlit = avatar.mesh(avatar_pose(player), false, false);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, unlit);
+            a.capture(0, root / "scene-light-baseline.ppm");
+            SceneLighting lighting({LightProbe{{}, {.1, .6, .1}}});
+            const auto body = avatar.mesh(avatar_pose(player), false, false, {}, {}, &lighting);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+            a.capture(0, root / "scene-lit-avatar.ppm");
+            b.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+            b.capture(0, root / "scene-lit-avatar-srgb.ppm");
+            const auto original = pixels(root / "scene-light-baseline.ppm"),
+                       lit = pixels(root / "scene-lit-avatar.ppm"), srgb = pixels(root / "scene-lit-avatar-srgb.ppm");
+            unsigned changed = 0, green = 0, differences = 0;
+            for (std::size_t i = 0; i < lit.size(); i += 3) {
+                if (original[i] != lit[i] || original[i + 1] != lit[i + 1] || original[i + 2] != lit[i + 2]) {
+                    ++changed;
+                    green += lit[i + 1] > lit[i] * 2 && lit[i + 1] > lit[i + 2] * 2;
+                }
+                for (unsigned c = 0; c < 3; ++c)
+                    differences += std::abs(int(lit[i + c]) - int(srgb[i + c])) > 2;
+            }
+            check(changed > 500, "scene lighting actually changes visible avatar pixels in the original pipeline");
+            check(green > changed / 2, "course probe colour reaches the visible body");
+            check(differences < 100, "scene-lit avatar agrees across UNORM and sRGB targets");
+            a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
+            b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 4);
+        }
         for (const auto lead : {-1, 1}) {
             player.warp({0, 10, 0}, {0, 0, -1});
             auto& rider = const_cast<Rider&>(player.rider());

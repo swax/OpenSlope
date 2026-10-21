@@ -10,7 +10,7 @@ import { CHARACTER_UV_SCROLL_KEY } from '../../core/characters/contract';
  * which is the difference between a feature and a special case.
  *
  * ONE step per frame, not one per rider. Rider models are loaded once and cloned — and `SkeletonUtils.clone`
- * shares materials, so every player, AI rider and remote avatar wearing a given character is looking at the
+ * initially shares materials; rider lighting clones those materials but retains maps, so every avatar uses the
  * same Texture object. Advancing it here rather than inside `pose()` keeps a field of twenty riders at the
  * same cost as one, and keeps them in phase with each other, which is what "the same suit" should look like.
  */

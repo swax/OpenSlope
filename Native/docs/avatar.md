@@ -19,6 +19,24 @@ First-person views omit head/neck geometry so the camera cannot be enclosed by
 the player's own head. F/V toggles desktop first person; hold C to look down.
 `--first-person` and `--look-down` also work in captures and desktop launchers.
 
+## Course lighting
+
+Desktop and OpenXR bodies, including AI riders, receive course lighting in the
+ordinary rendering mode. A shared spatial index blends the four nearest authored
+instance lighting records in full 3D at the avatar's hips. Each record contributes
+ambient colour and up to three directional keys; placement rotation converts the
+model-local keys to world space before the animated skin normals evaluate them.
+Colours retain the prop path's display-domain modulation and 256 normalization.
+Self-lit signs/bulbs and missing lighting payloads do not seed the field; genuinely
+dark records do. Maps without usable records retain the previous simple fill/key.
+
+This is a probe interpolation approximation, comparable to Unity's avatar probe
+path. Trailmap specifies the lighting records and their use for nearby dynamic
+objects, but does not establish the original rider's exact probe selection.
+The static terrain/prop lighting is unchanged, and this does not add new realtime
+shadow rays. Controllers, labels and equipment outlines keep their existing
+presentation. [Trailmap: 160-instance, 160-instance-frame, 400-lighting]
+
 OpenXR reads both grip-pose actions at predicted display time. Build 0.53 embeds
 the first-party 652-triangle Quest Touch Plus model baked through the public
 Slopesmith art API, with independent Native input/posing and retained attribution.

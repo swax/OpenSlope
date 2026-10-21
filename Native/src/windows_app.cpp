@@ -199,7 +199,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         chase.step(player, player.contract().tick_seconds());
         ui.frame(RideUi::desktop(chase.pose(), 1280. / 720, ui.visible));
         const auto body = avatar.mesh(desktop_avatar_pose(player, chase, first_person, look_down), first_person, false,
-                                      chase.pose().eye);
+                                      chase.pose().eye, {}, &player.avatar_lighting());
         std::vector<Vertex> presented(body.begin(), body.end());
         const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye);
         const FieldEffects effects(player, chase.pose().eye);
@@ -565,7 +565,7 @@ struct Window {
         ui.frame(RideUi::desktop(camera.pose(), double(width) / height, ui.visible));
         ui.third_person = !first_person;
         const auto body_mesh = avatar.mesh(desktop_avatar_pose(player, camera, first_person, look_down), first_person,
-                                           false, camera.pose().eye);
+                                           false, camera.pose().eye, {}, &player.avatar_lighting());
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
         const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye);
         const FieldEffects effects(player, camera.pose().eye);
