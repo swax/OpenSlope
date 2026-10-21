@@ -1,12 +1,16 @@
 #include "openslope/board_carry.hpp"
 #include <stdexcept>
+#include <string>
 
 namespace openslope {
 namespace {
 void check(const EquipmentPose& p) {
     if (!finite(p.position) || !finite(p.forward) || !finite(p.up) || std::abs(length(p.forward) - 1) > 1e-4 ||
         std::abs(length(p.up) - 1) > 1e-4 || std::abs(dot(normalized(p.forward), normalized(p.up))) > 1e-4)
-        throw std::invalid_argument("Invalid equipment frame");
+        throw std::invalid_argument("Invalid equipment frame: position finite " + std::to_string(finite(p.position)) +
+                                    "; forward length " + std::to_string(length(p.forward)) + "; up length " +
+                                    std::to_string(length(p.up)) + "; alignment " +
+                                    std::to_string(dot(normalized(p.forward), normalized(p.up))));
 }
 
 void check(const EquipmentHand& h) {

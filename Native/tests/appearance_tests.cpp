@@ -28,6 +28,16 @@ int main(int argc, char** argv) {
     try {
         require(argc == 2, "Supply authored PNG fixtures");
         const auto root = std::filesystem::path(argv[1]);
+        const auto nested = Appearance::load(Terrain::load(root / "nested_riding"));
+        require(nested.images.size() == 2 && nested.images.contains("Textures/Particles/part.png") &&
+                    nested.missing.empty(),
+                "Nested puff, wake and spray textures load through the common scene manifest");
+        for (unsigned i = 0; i < 6; ++i)
+            rejects(
+                [&] {
+                    static_cast<void>(referenced_images(Terrain::load(root / ("unsafe_riding_" + std::to_string(i)))));
+                },
+                "Riding sprite paths still reject traversal, roots, drive names and backslashes");
         const std::vector<std::uint8_t> rgba{255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 64};
         for (const auto name : {"rgba.png", "palette.png", "interlaced.png"}) {
             const auto image = read_png(root / name);
@@ -88,6 +98,14 @@ int main(int argc, char** argv) {
         const auto fog = World::load(root / "fog");
         require(fog.fog_start == 0 && fog.fog_end == 1 && std::abs(fog.fog_colour[0] - 200.f / 255) < 1e-6,
                 "Authored fog stores metre distances and byte-domain colour");
+        require(world.draw_fog(600) == std::array<float, 2>{300, 600},
+                "Distant default sky fog caps to the terrain draw distance");
+        require(authored.draw_fog(600) == std::array<float, 2>{300, 600},
+                "Distance culling supplies fog even when the authored sky disables it");
+        require(fog.draw_fog(600) == std::array<float, 2>{0, 1}, "Preserve authored fog ending before the range gate");
+        require(World{}.draw_fog(600) == std::array<float, 2>{300, 600},
+                "Maps without sky art also haze the terrain boundary");
+        rejects([&] { static_cast<void>(world.draw_fog(0)); }, "Reject invalid fog draw distances");
         for (const auto name :
              {"sky_incomplete", "sky_unsafe", "fog_bad_range", "world_bad_colour", "world_bad_schema"})
             rejects([&] { static_cast<void>(World::load(root / name)); },

@@ -364,4 +364,5 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   .public-header .sp-account-menu .sp-account-initial { display: inline; }
 }
 @media (max-width: 480px) { .public-header .public-external-link { display: none; } }
+@media (max-width: 420px) { .public-header .public-navigation { gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { .public-play .public-community-panel { transition: none !important; } }

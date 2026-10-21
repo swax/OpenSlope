@@ -19,6 +19,7 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
   const iso = element('a', 'public-nav', 'ISO'); iso.href = isoManagementUrl();
   const maps = element('a', 'public-nav', 'Maps'); maps.href = MAPS_PATH;
   const editor = element('a', 'public-nav', 'Editor');
+  const help = element('a', 'public-nav', 'Help'); help.href = 'https://slopesmith.net/guides/getting-started/';
   const map = element('a', 'public-nav public-map-tab'); map.hidden = true;
   const mapLabel = element('span', ''); map.append(mapLabel);
   let lastMap = lastPublicMap();
@@ -30,7 +31,7 @@ export function publicHeader(active: 'iso' | 'maps', account: Account) {
     map.setAttribute('aria-label', lastMap.name); map.hidden = false;
   }
   (active === 'iso' ? iso : maps).setAttribute('aria-current', 'page');
-  nav.append(iso, maps, map, editor);
+  nav.append(iso, maps, map, editor, help);
   header.append(identity, nav, publicProjectMenu());
   const online = activityCounter('server');
   const users = element('button', 'public-users-toggle'); users.type = 'button';

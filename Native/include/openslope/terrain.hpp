@@ -22,6 +22,7 @@ struct Patch {
     std::string name, texture;
     int surface = 1, lightmap = 0;
     bool trick_only = false;
+    bool active = true;
     Vec3 evaluate(double u, double v) const;
     std::array<Vec3, 2> tangents(double u, double v) const;
     Vec3 normal(double u, double v) const;

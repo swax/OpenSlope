@@ -33,9 +33,8 @@ Terrain floor() {
 
 void begin(Player& p) {
     p.configure_run(RunMode::Showoff);
-    for (unsigned i = 0; i < 181; ++i)
-        p.tick({});
-    check(p.scoring().status().active, "GO starts the scorer after countdown");
+    p.tick({});
+    check(p.scoring().status().active, "The first riding tick starts the scorer without a countdown");
 }
 
 void arithmetic() {
@@ -183,11 +182,13 @@ void arithmetic() {
 void production() {
     Player player(floor(), {.knockdowns = true});
     player.configure_run(RunMode::Showoff);
+    player.start_on_foot();
     for (unsigned i = 0; i < 170; ++i)
         player.tick({});
-    check(!player.scoring().status().active, "countdown cannot earn score");
-    for (unsigned i = 0; i < 11; ++i)
-        player.tick({});
+    check(!player.scoring().status().active, "Waiting on foot cannot earn score before the first mount");
+    check(player.interact_board(), "The staged Showoff rider mounts the board");
+    player.tick({});
+    check(player.scoring().status().active, "Mounting starts Showoff scoring immediately");
     player.warp({0, 20, 0}, {0, 0, -1}, {0, 0, -12});
     for (unsigned i = 0; i < 80; ++i)
         player.tick({0, false, false, false, 1});

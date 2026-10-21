@@ -324,6 +324,23 @@ void visibility_tests() {
     std::size_t tested = 0;
     tree.query(clip, ids, tested);
     require(ids.empty() && tested == 1, "Reject a distant subtree without per-patch work");
+    const ViewRange range({}, 600);
+    require(range.classify({{-.1, -.1, -100}, {.1, .1, -99}}) == 1, "Nearby bounds are fully in range");
+    require(range.classify({{-.1, -.1, -601}, {.1, .1, -600}}) == 0, "Keep the exact 600 metre boundary");
+    require(range.classify({{-.1, -.1, -900}, {.1, .1, -590}}) == 0,
+            "Keep a large patch by its nearest edge rather than its distant centre");
+    require(range.classify({{-1000, -1000, -1000}, {1000, 1000, 1000}}) == 0, "Keep bounds enclosing the camera range");
+    require(range.classify({{450, 450, 0}, {460, 460, 1}}) == -1,
+            "Distance gate is spherical, including off-axis bounds");
+    tree.query(range, ids, tested);
+    require(!ids.empty() && ids.size() < boxes.size(), "Range-only queries reject distant geometry");
+    const auto broad = projection(-10, 10, -10, 10) * view({}, {1, 0, 0});
+    tree.query(Frustum(broad.values), ids, tested, &range);
+    require(!ids.empty() && ids.size() < boxes.size(),
+            "A fully frustum-contained subtree still applies its range gate");
+    const ViewRange distant({-2000, 0, 0}, 600);
+    tree.query(distant, ids, tested);
+    require(ids.empty() && tested == 1, "Range gate rejects a complete distant subtree");
     std::mt19937 random(419);
     std::uniform_real_distribution<double> position(-20, 20), extent(.01, 3);
     boxes.clear();
@@ -343,6 +360,23 @@ void visibility_tests() {
                 expected.push_back(i);
         tree.query(Frustum(camera.values), ids, tested);
         require(ids == expected, "Hierarchy agrees with independent eight-corner clip oracle and preserves order");
+        expected.clear();
+        for (std::size_t i = 0; i < boxes.size(); ++i)
+            if (prop_visible(boxes[i], camera.values, eye, 10))
+                expected.push_back(i);
+        const ViewRange nearby(eye, 10);
+        tree.query(Frustum(camera.values), ids, tested, &nearby);
+        require(ids == expected, "Combined range/frustum gathering agrees with independent distance/clip oracle");
+    }
+    for (const auto distance :
+         {0., -1., std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+        bool invalid = false;
+        try {
+            static_cast<void>(ViewRange({}, distance));
+        } catch (const std::invalid_argument&) {
+            invalid = true;
+        }
+        require(invalid, "Reject invalid camera draw distances");
     }
     bool rejected = false;
     try {
@@ -412,6 +446,82 @@ void map_tests() {
         rejected = true;
     }
     require(rejected, "Reject incomplete control grid");
+}
+
+void event_terrain_tests() {
+    using Json = nlohmann::json;
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("openslope-event-terrain-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+
+    struct Cleanup {
+        std::filesystem::path path;
+
+        ~Cleanup() {
+            std::error_code ec;
+            std::filesystem::remove_all(path, ec);
+        }
+    } cleanup{root};
+
+    const auto folder = root / "SSXOT_ER4_DAY";
+    std::filesystem::create_directories(folder);
+    const auto row = [](const char* name, double y, double x = 0) {
+        Json points = Json::array();
+        for (auto p : plane(y).points)
+            points.push_back({(p.x + x) * 100, -p.z * 100, p.y * 100});
+        return Json{{"PatchName", name},
+                    {"Points", points},
+                    {"SurfaceType", 1},
+                    {"TrickOnlyPatch", false},
+                    {"TexturePath", ""},
+                    {"LightmapID", -1},
+                    {"LightMapPoint", {0, 0, 0, 0}},
+                    {"UVPoints", {{0, 0}, {1, 0}, {0, 1}, {1, 1}}}};
+    };
+    auto off = row("patch_er4_off_eventstart_1001", 2);
+    off["TexturePath"] = "inactive-only.png";
+    const auto ordinary = row("patch_er4_snow", 0, 20), on = row("PATCH_ER4_ON_EVENTSTART_1001", 0);
+    const auto write = [&](const std::filesystem::path& directory, Json rows) {
+        std::filesystem::create_directories(directory);
+        std::ofstream(directory / "Patches.json") << Json{{"Patches", rows}};
+    };
+    write(folder, {off, ordinary, on});
+    const auto terrain = Terrain::load(folder);
+    require(terrain.patches().size() == 3 && !terrain.patches()[0].active && terrain.patches()[2].active,
+            "On Tour event admission retains source order and indices");
+    require(terrain.mesh().terrain_ranges.size() == 2 && terrain.mesh().indices.size() == 2 * 8 * 8 * 6,
+            "Only the selected event surface enters the GPU mesh");
+    const auto ray = terrain.intersect({5, 3, -5}, {5, -3, -5});
+    require(ray && ray->patch == 2 && std::abs(ray->point.y) < 1e-7,
+            "Ray contact uses enabled terrain and its original patch index");
+    const auto sphere = terrain.sweep({5, 3, -5}, {5, -3, -5}, .2);
+    require(sphere && sphere->patch == 2, "Swept contact cannot hit inactive event terrain");
+    const std::array<ProbeSphere, 1> a{{{{5, 3, -5}, .2}}}, b{{{{5, -3, -5}, .2}}};
+    const auto contacts = terrain.body_contacts(a, b);
+    require(!contacts.empty() &&
+                std::all_of(contacts.begin(), contacts.end(), [](const auto& hit) { return hit.patch == 2; }),
+            "Compound contacts cannot hit inactive event terrain");
+    near(terrain.bounds().max.y, 0, 1e-7, "Inactive terrain cannot expand world bounds");
+    near(terrain.spawn().first.y, 0, 1e-7, "Fallback spawn ignores inactive terrain");
+    require(referenced_images(terrain).empty(), "Inactive terrain art is excluded from the asset manifest");
+    write(root / "custom", {off, ordinary, on});
+    require(Terrain::load(root / "custom").mesh().terrain_ranges.size() == 3,
+            "Similarly named custom terrain is unchanged");
+    const auto cached = root / "play-cache";
+    write(cached, {off, ordinary, on});
+    std::ofstream(cached / "Origin.json") << Json{{"Course", "SSXOT_ER4_DAY"}};
+    require(Terrain::load(cached).mesh().terrain_ranges.size() == 2,
+            "Quest SAF cache keeps event admission through origin metadata");
+    write(folder, {off, ordinary, on, on});
+    require(Terrain::load(folder).mesh().terrain_ranges.size() == 4, "Ambiguous event counterparts are preserved");
+    auto disabled = on;
+    disabled["Visable"] = false;
+    write(folder, {off, ordinary, disabled});
+    const auto fallback = Terrain::load(folder);
+    require(fallback.patches()[0].active && !fallback.patches()[2].active && fallback.mesh().terrain_ranges.size() == 2,
+            "An explicitly disabled counterpart cannot suppress the remaining event surface");
+    write(folder, {off, ordinary});
+    require(Terrain::load(folder).mesh().terrain_ranges.size() == 2, "Unpaired event surfaces remain active");
 }
 
 void response_tests(const char* fixture) {
@@ -576,6 +686,7 @@ int main(int argc, char** argv) {
         terrain_tests();
         visibility_tests();
         map_tests();
+        event_terrain_tests();
         response_tests(argv[1]);
         clock_tests();
         import_tests();

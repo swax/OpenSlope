@@ -35,6 +35,18 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    folder = course(root, 'nested_riding', 'base.png')
+    (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
+    (folder / 'Textures/Particles').mkdir()
+    (folder / 'Textures/Particles/part.png').write_bytes(rgba(1, 1, [255, 255, 255, 128]))
+    (folder / 'RidingEffects.json').write_text(json.dumps(dict(
+        Schema='openslope-riding-effects/v1', Puff='Particles/part.png',
+        Wake='Particles/part.png', Sheet='Particles/part.png', EmitterSprites=[])))
+    for index, name in enumerate(['', '../escape.png', 'Particles/../escape.png', '/escape.png',
+                                 'C:/escape.png', 'Particles\\escape.png']):
+        folder = course(root, f'unsafe_riding_{index}', '')
+        (folder / 'RidingEffects.json').write_text(json.dumps(dict(
+            Schema='openslope-riding-effects/v1', Puff=name)))
     for name in ('world_particles', 'world_particles_fog'):
         folder = course(root, name, 'base.png')
         (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))

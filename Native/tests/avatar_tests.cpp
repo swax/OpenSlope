@@ -174,6 +174,12 @@ int main() {
         const auto no_labels = avatar.mesh(fallback, true, false, tracking.head).size(),
                    labels = avatar.mesh(fallback, true, true, tracking.head).size();
         check(labels > no_labels + 3000, "controller help has visible geometry");
+        auto hidden_controllers = fallback;
+        hidden_controllers.controller_models = false;
+        const auto body_only = avatar.mesh(hidden_controllers, true, false, tracking.head).size();
+        check(body_only > 0 && body_only < no_labels, "Hiding controller models retains the posed body and hands");
+        close(hidden_controllers.joint(J::LeftWrist), fallback.joint(J::LeftWrist),
+              "Hiding controller geometry preserves tracked hand placement");
         finite_mesh(avatar.mesh(fallback, true, true, tracking.head));
         close(player.rider().position, before, "presentation cannot move physics");
         const auto open_hand = avatar_pose(player, &tracking);

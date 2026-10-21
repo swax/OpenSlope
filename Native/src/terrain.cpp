@@ -1,15 +1,64 @@
 #include "openslope/terrain.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/paths.hpp"
+#include <cctype>
 #include <fstream>
 #include <map>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <numeric>
+#include <regex>
 #include <stdexcept>
 
 namespace openslope {
 namespace {
+std::string lower(std::string name) {
+    for (auto& c : name)
+        c = char(std::tolower(static_cast<unsigned char>(c)));
+    return name;
+}
+
+bool on_tour_course(const std::filesystem::path& root) {
+    if (lower(root.filename().string()).starts_with("ssxot_"))
+        return true;
+    for (const auto name : {"Origin.json", "Import.json"}) {
+        const auto path = root / name;
+        if (!std::filesystem::exists(path))
+            continue;
+        if (std::filesystem::file_size(path) > 1024 * 1024)
+            throw std::runtime_error("Terrain origin metadata exceeds its limit");
+        std::ifstream file(path);
+        const auto origin = nlohmann::json::parse(file);
+        if (lower(origin.value("Course", "")).starts_with("ssxot_") || origin.value("Game", "") == "ssx-on-tour")
+            return true;
+    }
+    return false;
+}
+
+void admit_event_terrain(std::vector<Patch>& patches, const std::filesystem::path& root) {
+    // [Trailmap: 527] Keep source indices, but admit only the enabled member of
+    // uniquely paired On Tour event terrain for both drawing and contact.
+    static const std::regex off_event(R"(^patch_[a-z]{2}[0-9]_off_event(start|finish)_[0-9]+$)");
+    std::map<std::string, std::vector<std::size_t>> names;
+    bool has_event = false;
+    for (std::size_t i = 0; i < patches.size(); ++i) {
+        const auto name = lower(patches[i].name);
+        has_event |= std::regex_match(name, off_event);
+        names[name].push_back(i);
+    }
+    if (!has_event || !on_tour_course(root))
+        return;
+    for (const auto& [name, indices] : names) {
+        if (indices.size() != 1 || !std::regex_match(name, off_event))
+            continue;
+        auto enabled = name;
+        enabled.replace(enabled.find("_off_"), 5, "_on_");
+        const auto paired = names.find(enabled);
+        if (paired != names.end() && paired->second.size() == 1 && patches[paired->second[0]].active)
+            patches[indices[0]].active = false;
+    }
+}
+
 std::array<double, 4> basis(double t) {
     const auto s = 1 - t;
     return {s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t};
@@ -273,8 +322,7 @@ Terrain::Terrain(std::vector<Patch> patches) : patches_(std::move(patches)) {
     if (patches_.empty() || patches_.size() > 100000)
         throw std::runtime_error("A course must contain 1..100000 patches");
     samples_.resize(patches_.size());
-    order_.resize(patches_.size());
-    std::iota(order_.begin(), order_.end(), 0);
+    order_.reserve(patches_.size());
     for (std::size_t p = 0; p < patches_.size(); ++p) {
         for (const auto& uv : patches_[p].uv)
             for (const auto value : uv)
@@ -292,14 +340,20 @@ Terrain::Terrain(std::vector<Patch> patches) : patches_(std::move(patches)) {
         for (auto v : patches_[p].points) {
             if (!finite(v))
                 throw std::runtime_error("Non-finite terrain control point");
-            bounds_.add(v);
+            if (patches_[p].active)
+                bounds_.add(v);
         }
+        if (!patches_[p].active)
+            continue;
+        order_.push_back(p);
         for (unsigned u = 0; u <= 8; ++u)
             for (unsigned v = 0; v <= 8; ++v)
                 samples_[p].points[u * 9 + v] = patches_[p].evaluate(u / 8.0, v / 8.0);
     }
     collision_cache_ = std::make_shared<CollisionCache>(patches_.size());
-    build_node(0, patches_.size());
+    if (order_.empty())
+        throw std::runtime_error("A course must contain at least one active patch");
+    build_node(0, order_.size());
 }
 
 Terrain Terrain::load(const std::filesystem::path& map) {
@@ -322,6 +376,7 @@ Terrain Terrain::load(const std::filesystem::path& map) {
         p.texture = row.at("TexturePath").get<std::string>();
         p.lightmap = row.at("LightmapID").get<int>();
         p.trick_only = row.at("TrickOnlyPatch").get<bool>();
+        p.active = row.value("Visable", true);
         const auto& points = row.at("Points");
         if (!points.is_array() || points.size() != 16)
             throw std::runtime_error("Each patch requires 16 control points");
@@ -338,6 +393,7 @@ Terrain Terrain::load(const std::filesystem::path& map) {
         p.lightmap_rect = row.at("LightMapPoint").get<decltype(p.lightmap_rect)>();
         patches.push_back(std::move(p));
     }
+    admit_event_terrain(patches, path.parent_path());
     Terrain terrain(std::move(patches));
     terrain.map_root_ =
         path.parent_path().empty() ? std::filesystem::current_path() : std::filesystem::absolute(path.parent_path());
@@ -591,14 +647,15 @@ std::vector<TerrainHit> Terrain::body_contacts(std::span<const ProbeSphere> star
 Mesh Terrain::mesh(unsigned subdivisions) const {
     if (subdivisions < 1 || subdivisions > 32)
         throw std::runtime_error("Terrain subdivisions must be 1..32");
-    if (patches_.size() * (subdivisions + 1) * (subdivisions + 1) > 8000000)
+    if (order_.size() * (subdivisions + 1) * (subdivisions + 1) > 8000000)
         throw std::runtime_error("Requested terrain mesh exceeds 8 million vertices");
     Mesh mesh;
     mesh.map_root = map_root_;
     std::map<std::pair<std::string, int>, std::vector<const Patch*>> groups;
     for (const auto& patch : patches_)
-        groups[{patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1}]
-            .push_back(&patch);
+        if (patch.active)
+            groups[{patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1}]
+                .push_back(&patch);
     for (const auto& [material, patches] : groups) {
         MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()), 0, material.first, material.second};
         for (const auto* patch : patches) {
@@ -654,7 +711,7 @@ std::pair<Vec3, Vec3> Terrain::spawn() const {
     const Patch* best = nullptr;
     double height = -std::numeric_limits<double>::infinity();
     for (const auto& p : patches_) {
-        if (p.surface == 0 || p.surface == 17 || p.normal(.5, .5).y < .5)
+        if (!p.active || p.surface == 0 || p.surface == 17 || p.normal(.5, .5).y < .5)
             continue;
         const auto y = std::max(p.evaluate(.03, .5).y, p.evaluate(.97, .5).y);
         if (y > height) {

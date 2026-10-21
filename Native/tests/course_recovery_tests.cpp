@@ -357,8 +357,9 @@ void production(const std::filesystem::path& root) {
         << Json{{"schema", 1}, {"kind", "slopesmith-export"}, {"showoffSeconds", .05}};
     Player expiring(Terrain::load(root));
     expiring.configure_run(RunMode::Showoff);
-    for (unsigned i = 0; i < 181; ++i)
-        expiring.tick({});
+    expiring.tick({});
+    check(expiring.course_run().status().phase == RunPhase::Running,
+          "Expiry regression requests its reset during the live event");
     check(expiring.recover_course(true), "live event may request reset just before expiry");
     const auto expiry_serial = expiring.placement_serial();
     for (unsigned i = 0; i < 61; ++i)

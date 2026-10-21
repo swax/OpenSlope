@@ -4,6 +4,20 @@
 #include <vector>
 
 namespace openslope {
+inline constexpr double terrain_draw_distance = 600;
+
+// A camera-centred sphere. Crossing bounds stay admitted, including large
+// patches whose centre is distant but whose nearest edge is still in range.
+class ViewRange {
+public:
+    ViewRange(Vec3 eye, double distance);
+    int classify(const Bounds& bounds) const;
+
+private:
+    Vec3 eye_;
+    double distance_;
+};
+
 // Column-major world-to-clip matrix, Vulkan depth interval [0,w].
 class Frustum {
 public:
@@ -17,7 +31,9 @@ class VisibilityTree {
 public:
     void build(std::span<const Bounds> boxes);
     // Returned IDs retain source order, independently for each eye/camera.
-    void query(const Frustum& frustum, std::vector<std::size_t>& visible, std::size_t& tested) const;
+    void query(const Frustum& frustum, std::vector<std::size_t>& visible, std::size_t& tested,
+               const ViewRange* range = nullptr) const;
+    void query(const ViewRange& range, std::vector<std::size_t>& visible, std::size_t& tested) const;
 
 private:
     struct Node {
@@ -30,7 +46,7 @@ private:
     std::vector<std::size_t> order_;
     std::vector<Bounds> boxes_;
     int split(std::size_t begin, std::size_t end);
-    void visit(int node, const Frustum& frustum, bool inside, std::vector<std::size_t>& visible,
+    void visit(int node, const Frustum* frustum, const ViewRange* range, bool inside, std::vector<std::size_t>& visible,
                std::size_t& tested) const;
 };
 } // namespace openslope

@@ -415,7 +415,9 @@ int main(int argc, char** argv) {
             ui.immersive = wrist;
             ui.third_person = false;
             ui.frame(wrist ? RideUi::wrist(tracking.controllers[0], eye) : RideUi::desktop(c, 1, ui.visible));
-            const auto body = avatar.mesh(avatar_pose(player, &tracking), true, false, eye);
+            auto pose = avatar_pose(player, &tracking);
+            pose.controller_models &= !wrist || visible;
+            const auto body = avatar.mesh(pose, true, false, eye);
             std::vector<Vertex> hud;
             const auto button = ui.frame().origin + ui.frame().right * .25 + ui.frame().down * .35;
             EquipmentRay pointer{tracking.controllers[1].position,
@@ -425,6 +427,8 @@ int main(int argc, char** argv) {
             ui.append(hud, player, wrist, 90);
             if (wrist)
                 ui.append_pointer(hud, pointer);
+            if (wrist && !visible)
+                check(hud.empty(), "Hidden wrist mode submits no HUD or pointer geometry");
             const auto tangent = std::tan(c.fov / 2);
             const auto matrix = projection(-tangent, tangent, -tangent, tangent, c.near_clip) * view(eye, direction);
             for (auto* renderer : {&a, &b}) {
@@ -441,8 +445,18 @@ int main(int argc, char** argv) {
                     mint += image[k + 1] > image[k] * 1.5 && image[k + 2] > image[k] * 1.3 && image[k + 1] > 100;
                     white += image[k] > 180 && image[k + 1] > 180 && image[k + 2] > 180;
                 }
-                check(mint > 80, "Menu accents really reach the GPU target");
-                check(white > 100, "UI text draws in front of panel background");
+                if (!wrist || visible) {
+                    check(mint > 80, "Menu accents really reach the GPU target");
+                    check(white > 100, "UI text draws in front of panel background");
+                } else {
+                    renderer->render(
+                        0, matrix,
+                        board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+                    renderer->capture(0, root / "hidden-wrist-body-only.ppm");
+                    check(image == pixels(root / "hidden-wrist-body-only.ppm"),
+                          "Hidden wrist rendering matches the body/hand-only frame exactly");
+                }
                 check(renderer->stats().avatar_triangles == body.size() / 3,
                       "Avatar draw stays separate from the late UI overlay");
             }
@@ -452,6 +466,7 @@ int main(int argc, char** argv) {
         render_ui("desktop-hud", false, false, false);
         render_ui("wrist-menu", true, false, true);
         render_ui("wrist-controls", true, true, true);
+        render_ui("wrist-hidden", true, false, false);
         RideUi depth_ui;
         depth_ui.visible = true;
         depth_ui.frame({{-.5, 2.15, -1}, {1, 0, 0}, {0, -1, 0}, true});

@@ -649,7 +649,7 @@ try {
   assert.equal(await mapTab.getAttribute('aria-current'), 'page', 'the open map is the selected tab');
   assert.deepEqual(
     await linked.getByRole('navigation', { name: 'Primary' }).getByRole('link').allTextContents(),
-    ['ISO', 'Maps', 'PUBLIC RUN', 'Editor'],
+    ['ISO', 'Maps', 'PUBLIC RUN', 'Editor', 'Help'],
     'Editor follows the current map in the header',
   );
   assert.equal(await linked.locator('.public-brand').getAttribute('href'), '/', 'the brand links to the root');

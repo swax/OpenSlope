@@ -1016,15 +1016,18 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     stats_.terrain_total_indices = scene_->terrain_total_indices_;
     bool compact = false;
     stats_.visible_terrain = stats_.terrain_patches;
-    if (terrain_culling_ && !scene_->terrain_ranges_.empty()) {
-        scene_->terrain_visibility_.query(Frustum(camera.values), visible_ranges_, stats_.visibility_tests);
+    if (!scene_->terrain_ranges_.empty()) {
+        const ViewRange range(eye, terrain_draw_distance);
+        if (terrain_culling_)
+            scene_->terrain_visibility_.query(Frustum(camera.values), visible_ranges_, stats_.visibility_tests, &range);
+        else
+            scene_->terrain_visibility_.query(range, visible_ranges_, stats_.visibility_tests);
         stats_.visible_terrain = unsigned(visible_ranges_.size());
         std::uint64_t retained = 0;
         for (const auto id : visible_ranges_)
             retained += scene_->terrain_ranges_[id].count;
-        // A dense view gains little from copying almost the full index stream.
-        // Keep the original submission unless at least a quarter is removed.
-        compact = retained <= scene_->terrain_total_indices_ * 3 / 4;
+        // A dense-view fallback must not reintroduce out-of-range terrain.
+        compact = retained < scene_->terrain_total_indices_;
     }
     stats_.terrain_compacted = compact;
     if (compact) {
@@ -1458,11 +1461,11 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     const VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(command_, 0, 1, &scene_->vertices_.buffer, &offset);
     vkCmdBindIndexBuffer(command_, scene_->indices_.buffer, 0, VK_INDEX_TYPE_UINT32);
+    const auto fog = scene_->world_.draw_fog(float(terrain_draw_distance));
     DrawPush push{camera,
                   {0, srgb ? 1 : 0, 0, 0},
-                  {scene_->world_.fog_colour[0], scene_->world_.fog_colour[1], scene_->world_.fog_colour[2],
-                   scene_->world_.fog_start},
-                  {float(eye.x), float(eye.y), float(eye.z), scene_->world_.fog_end}};
+                  {scene_->world_.fog_colour[0], scene_->world_.fog_colour[1], scene_->world_.fog_colour[2], fog[0]},
+                  {float(eye.x), float(eye.y), float(eye.z), fog[1]}};
     push.presentation[0] = visibility;
     if (!scene_->sky_draws_.empty()) {
         // [Trailmap: 400-backdrop] Cancel each eye's translation independently.

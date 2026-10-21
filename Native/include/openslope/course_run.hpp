@@ -14,7 +14,7 @@ std::string run_clock(double seconds);
 struct RunSettings {
     RunMode mode = RunMode::Freeride;
     unsigned laps = 1;
-    double showoff_seconds = 120, countdown_seconds = 3;
+    double showoff_seconds = 120, countdown_seconds = 0;
     bool forward_reset_bias = true;
     static RunSettings load(const std::filesystem::path& root, RunMode mode);
 };

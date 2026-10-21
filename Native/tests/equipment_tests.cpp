@@ -244,6 +244,70 @@ void lifecycle() {
           "First floor contact ends thrown flight and settles safely");
 }
 
+void loose_board_recovery() {
+    auto patches = floor().patches();
+    for (auto& point : patches[0].points)
+        point.y = point.z * .5;
+    Player p(Terrain{patches});
+    p.warp({}, {0, 0, -1});
+    p.start_on_foot();
+    auto input = hand_input(p);
+    input.equipment.hands[1] = {p.rider().position + Vec3{0, 1.7, .3}, {0, 0, -1}, {0, 1, 0}, {-1, 0, 0}, true};
+    input.equipment.grip[1] = true;
+    p.tick(input);
+    check(p.carrying_board(), "Slope recovery fixture summons the board");
+    // Release below the course to exercise the same fallback as a lost throw.
+    input.equipment.hands[1].position.y = p.terrain().bounds().min.y - 100;
+    input.equipment.grip[1] = false;
+    p.tick(input);
+    check(!p.carrying_board() && !p.board_thrown(), "Lost board returns to support near the rider");
+    check(p.render_board_position().y > p.terrain().bounds().min.y,
+          "Lost board recovery actually places the board on the sloped course");
+    const EquipmentPose deck{p.render_board_position(), p.render_forward(), p.render_up()};
+    check(finite(equipment_point(deck, {})), "Recovered board supports rigid equipment queries");
+    check(std::abs(dot(p.render_forward(), p.render_up())) < 1e-8,
+          "Recovered board forward remains perpendicular to its new slope normal");
+    p.tick(hand_input(p));
+    check(finite(p.render_board_position()), "Tracked hands can query the recovered board on the next tick");
+}
+
+void mounted_board_frames() {
+    Player p(floor());
+    auto& rider = const_cast<Rider&>(p.rider());
+    for (const auto direction : std::array<Vec3, 4>{{{1, 0, 0}, {0, 1, 0}, {0, 0, -1}, normalized({.3, .5, .8})}})
+        for (const auto epsilon : {0., 1e-12, 1e-9, 1e-6, .1})
+            for (const auto flip : {0., 90., 180., 270.})
+                for (const auto lean : {-1., 0., 1.}) {
+                    const auto tangent = normalized(cross(direction, {1, 0, 0}), {0, 0, 1});
+                    rider.forward = direction;
+                    rider.board_up = normalized(direction + tangent * epsilon);
+                    rider.flip_degrees = flip;
+                    rider.lean = lean;
+                    const EquipmentPose deck{p.render_board_position(), p.render_forward(), p.render_up()};
+                    check(finite(equipment_point(deck, {})),
+                          "Mounted board equipment frame survives aligned carried tilt and heading");
+                    check(std::abs(dot(deck.forward, deck.up)) < 1e-8,
+                          "Mounted frame remains perpendicular through singular tilt, flips and banking");
+                }
+    p.tick(hand_input(p));
+    check(!p.on_foot(), "Tracked hands query the mounted board without requiring a dismount");
+    Player vertical(floor());
+    vertical.warp({0, 30, 0}, {0, 1, 0}, {}, {0, 0, 1});
+    RideInput vr;
+    vr.vr.enabled = true;
+    vertical.advance(1. / 60, vr);
+    auto& flipped = const_cast<Rider&>(vertical.rider());
+    flipped.forward = {0, 1, 0};
+    flipped.board_up = {0, 0, 1};
+    flipped.flip_degrees = 180;
+    vertical.advance(1. / 120, vr);
+    check(std::abs(vertical.frame_alpha() - .5) < 1e-8,
+          "Vertical flip fixture samples halfway between opposing board frames");
+    const EquipmentPose interpolated{vertical.render_board_position(), vertical.render_forward(), vertical.render_up()};
+    check(finite(equipment_point(interpolated, {})),
+          "Cancelled vertical flip interpolation retains a rigid equipment frame");
+}
+
 void camera_ui() {
     Player p(floor());
     p.warp({0, 0, 0}, {0, 0, -1});
@@ -321,6 +385,21 @@ void camera_ui() {
     RideUi wrist;
     wrist.visible = wrist.immersive = wrist.map_picker = true;
     wrist.frame({{0, 0, 0}, {1, 0, 0}, {0, -1, 0}, true});
+    VrPresentation presentation;
+    VrButtons menu;
+    menu.menu = true;
+    presentation.step(0, menu);
+    wrist.visible = presentation.controls;
+    wrist.stats = true;
+    std::vector<Vertex> hidden;
+    wrist.append(hidden, p, true, 90);
+    wrist.append_pointer(hidden, {{0, 0, 1}, {0, 0, -1}, true});
+    check(hidden.empty(), "Y hides the complete wrist UI, speed summary, stats and pointer");
+    presentation.step(0, {});
+    presentation.step(0, menu);
+    wrist.visible = presentation.controls;
+    wrist.append(hidden, p, true, 90);
+    check(hidden.size() > 1000, "A second Y press restores the wrist interface");
     for (const auto action : {UiAction::Maps, UiAction::Exit}) {
         const auto buttons = wrist.buttons();
         const auto button =
@@ -391,6 +470,8 @@ int main() {
     try {
         math();
         lifecycle();
+        loose_board_recovery();
+        mounted_board_frames();
         desktop_controls();
         camera_ui();
         std::cout << checks << " equipment/camera/UI checks passed\n";

@@ -55,7 +55,7 @@ def main():
             ('mounted', 'freeride', 1, False, False, .5),
             ('rotated', 'freeride', 1, True, False, .5),
             ('walking', 'freeride', 1, False, True, .5),
-            ('showoff', 'showoff', 181, False, False, .5),
+            ('showoff', 'showoff', 1, False, False, .5),
             ('no-floor', 'freeride', 1, False, False, 20),
         ]:
             rotation = [0, 0, math.sin(math.pi/4), math.cos(math.pi/4)] if rotated else [0, 0, 0, 1]
