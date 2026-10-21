@@ -335,6 +335,25 @@ can be parented below the driven skeleton and will follow their parent normally.
 If a selected GLB is missing a required bone or cannot load, Slopesmith leaves the procedural debug rider visible
 and reports the failed model in the browser console instead of breaking the ride.
 
+## Studying a retail rider
+
+To compare a new rider against the originals, export them from your own SSX Tricky disc into the ignored
+`Maps/` folder:
+
+```bash
+snowknife rider-gltf "<SSX Tricky.iso>" all Maps/Riders
+```
+
+Each `Maps/Riders/<name>/<name>.glb` opens in Blender with its skeleton and skin weights, in metres, standing on
+the floor and facing the Front view; `textures/` beside it holds every outfit's suit and boot plus the head and
+helmet. Add `--outfit <n>` to embed a different outfit. The skeleton uses the game's own bone names (`hips`,
+`l_bicep`, …), not this contract, so the export is not a selectable rider.
+
+Use it as reference only, kept in its own `.blend` or collection: proportions, joint placement and texture
+density are worth studying, but a new rider should be modelled, unwrapped and painted from scratch rather than
+built on the retail mesh, UVs or textures. The export is derived from the disc, so it stays local, as
+[LEGAL.md](../../LEGAL.md) describes.
+
 ## Offline authoring tools
 
 [`tools/character-models`](../tools/character-models/README.md) contains the reusable command-line side of this

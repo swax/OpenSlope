@@ -97,7 +97,7 @@ Command groups, as the CLI's own index lists them:
 | A course, end to end | `import`, `world`, `gltf`, `unity`, `shared` |
 | Re-run one stage against an imported map | `props`, `billboards`, `overrides`, `skybox`, `lightmaps`, `particles`, `gltf-info` |
 | SSX 3 | `ssx3-import`, `ssx3-sections`, `ssx3-raw` |
-| Riders and boards | `rider`, `board`, `skis` |
+| Riders and boards | `rider`, `rider-gltf`, `board`, `skis` |
 | Audio | `intro-music`, `race-music`, `sfx`, `sound-index`, `board-sound-index`, `speech`, `bnk`, `bnk-rebuild`, `audio-file`, `music-inject`, `music-linearize`, `bank-verify` |
 | Build a custom disc | `repack`, `repack-many`, `texture-plan`, `pbd-from-json`, `ltg-stats`, `ltg-find` |
 | Optional local executable tools | `noclip`, `skycolor` |

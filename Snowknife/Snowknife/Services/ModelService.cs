@@ -6,8 +6,9 @@ using Snowknife.Export;
 namespace Snowknife.Services;
 
 /// <summary>
-/// Rips equipment models + their skins out of the character/vehicle BIG archives: rider bodies (`rider`), the
-/// three snowboard decks + skins (`board`), and the SSX On Tour ski decks + skins (`skis`). The board export is
+/// Rips equipment models + their skins out of the character/vehicle BIG archives: rider bodies (`rider`, and
+/// `rider-gltf` for a skinned, textured Blender reference), the three snowboard decks + skins (`board`), and the
+/// SSX On Tour ski decks + skins (`skis`). The board export is
 /// the shared-asset workhorse `shared` calls to stage decks for the rideable board.
 /// </summary>
 internal sealed class ModelService
@@ -33,6 +34,69 @@ internal sealed class ModelService
         Log.Info();
         Log.Info($"(temp work dir left for inspection: {work})");
         return rc;
+    }
+
+    // Export one rider, or every rider, as <outDir>/<name>/<name>.glb - skinned, textured, metres, Y-up - plus
+    // every outfit's textures as PNGs, as a Blender modelling reference. Models come from MDLPS2.BIG and
+    // textures from TEXPS2.BIG; both temp extracts are removed afterwards.
+    public int RiderGltf(string[] args)
+    {
+        var positional = new List<string>();
+        int? outfit = null;
+        for (int i = 1; i < args.Length; i++)
+        {
+            if (args[i] == "--outfit")
+            {
+                if (i + 1 >= args.Length || !int.TryParse(args[++i], out int n) || n < 1)
+                { Log.Error("--outfit needs a positive number"); return 1; }
+                outfit = n;
+                continue;
+            }
+            positional.Add(args[i]);
+        }
+        if (positional.Count != 3) { Log.Error("rider-gltf needs <iso> <name|all> <outDir> [--outfit <n>]"); return 1; }
+        string iso = positional[0];
+        string name = positional[1].ToLowerInvariant();
+        string outDir = Path.GetFullPath(positional[2]);
+
+        string work = ExtractCharBig(iso, out string filesDir);
+        string texWork = Path.Combine(Path.GetTempPath(), "snowknife_ridertexbig_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Log.Info("[3/3] Reading DATA\\CHAR\\TEXPS2.BIG and building glTF...");
+            string texFiles = Path.Combine(texWork, "files");
+            Directory.CreateDirectory(texWork);
+            using (FileStream isoStream = File.OpenRead(iso))
+            {
+                CDReader cd = _iso.OpenIso(isoStream);
+                var tex = _iso.FindIsoFile(cd, @"DATA\CHAR\TEXPS2.BIG");
+                if (tex == null) Log.Info("      (TEXPS2.BIG not in ISO - riders will stay untextured.)");
+                else
+                {
+                    string bigPath = Path.Combine(texWork, "TEXPS2.BIG");
+                    using (Stream s = tex.OpenRead())
+                    using (FileStream d = File.Create(bigPath))
+                        s.CopyTo(d);
+                    BIG.Extract(bigPath, texFiles);
+                }
+            }
+
+            string modelDir = Path.Combine(filesDir, "data", "char");
+            string textureDir = Path.Combine(texFiles, "data", "char");
+            string[] names = name == "all" ? RiderGltfExporter.RiderNames(modelDir) : [name];
+            int failed = 0;
+            foreach (string rider in names)
+                if (RiderGltfExporter.Export(modelDir, textureDir, rider, outDir, outfit) != 0) failed++;
+
+            Log.Info();
+            Log.Info($"Wrote {names.Length - failed} rider(s) to {outDir}");
+            return failed == 0 ? 0 : 1;
+        }
+        finally
+        {
+            foreach (string dir in new[] { work, texWork })
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
+        }
     }
 
     // Rip the snowboard models (board.mpf) AND their real deck skins, ready to drop onto the Unity

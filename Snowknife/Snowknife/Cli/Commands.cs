@@ -332,6 +332,28 @@ internal static class Commands
                     ],
                 },
 
+                new CliCommand("rider-gltf",
+                    "Export a rider as a skinned, textured .glb for Blender",
+                    """
+                    The full-detail body and head with the rider's own skeleton and skin weights, in metres
+                    and Y-up, so it opens upright and true to size in Blender (1 SSX unit = 1 cm). The chosen
+                    outfit is embedded; the head, helmet and every outfit's suit and boot also land as PNGs
+                    in <outDir>/<name>/textures. Facial morph targets and the lower LODs are left out.
+
+                    The output is derived from your disc: keep it local. Maps\ at the repository root is
+                    already ignored by git.
+                    """,
+                    models.RiderGltf)
+                {
+                    Params =
+                    [
+                        new("<iso>", "Your own SSX Tricky disc image."),
+                        new("<name>", "The rider, lowercased for you: mac, elise, kaori, ... or all of them with `all`."),
+                        new("<outDir>", "Where <name>/<name>.glb and <name>/textures land, e.g. Maps\\Riders."),
+                    ],
+                    Flags = [new("--outfit <n>", "The outfit to embed. Defaults to the first; an unknown number lists the ones there are.")],
+                },
+
                 new CliCommand("board",
                     "Export the snowboard decks and every deck skin",
                     """

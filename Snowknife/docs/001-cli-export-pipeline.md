@@ -21,6 +21,7 @@ the ISO via `DiscUtils` (no mounting).
 | `big-ls` / `big-extract` | list / extract a `.BIG` archive |
 | **`import <iso> <courseSlot> <mapDir>`** | the one-shot: import a Tricky course into the canonical Maps folder |
 | `rider <iso> <name> [outDir]` | export a rider + **measure its height** (the world-scale anchor — see [004](../../Unity/docs/unity/004-orientation-and-scale.md)) |
+| `rider-gltf <iso> <name\|all> <outDir> [--outfit <n>]` | a rider as a skinned, textured `.glb` (metres, standing on the floor, facing Blender's Front view) plus every outfit's PNGs — a modelling reference ([030](../../Slopesmith/docs/030-character-models.md#studying-a-retail-rider)) |
 | `props` / `skybox` / `lightmaps` / `particles` | re-run a single export stage against an already-imported map dir |
 | `board-sound-index <iso> <sharedDir>` | interpret the boot ELF's board-surface dispatcher → `Audio/BoardSoundIndex.json` (also run by `shared`) |
 
