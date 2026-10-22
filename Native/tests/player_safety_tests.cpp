@@ -285,27 +285,32 @@ void regressions() {
     foot.start_on_foot();
     FollowCamera camera;
     camera.step(foot, 0);
+    const auto reference = camera.facing();
     camera.orbit(200, 0);
     camera.step(foot, 1. / 60, false, true);
-    Vec3 reference = camera.walk_forward();
+    const auto orbit_forward = rotate(reference, {0, 1, 0}, -.8);
     for (unsigned i = 0; i < 60; ++i) {
         RideInput input;
         input.steer = 1;
-        input.walk_forward = camera.walk_forward();
+        input.walk_forward = camera.facing();
+        input.face_walk_forward = true;
         foot.tick(input);
         camera.step(foot, 1. / 60);
-        check(dot(camera.walk_forward(), reference) > .999, "camera recenter does not rotate the walking input basis");
-        const auto behind = project(camera.pose().eye - foot.render_position(), {0, 1, 0});
-        check(dot(normalized(behind), normalized(project(foot.rider().forward, {0, 1, 0}))) < -.99,
-              "walking camera snaps behind the avatar after an orbit");
+        check(dot(camera.facing(), reference) > .999, "camera orbit does not rotate the desktop walking input basis");
+        check(dot(foot.rider().forward, reference) > .999, "strafing after an orbit preserves the avatar heading");
+        check(dot(normalized(project(camera.pose().forward, {0, 1, 0})), orbit_forward) > .999,
+              "walking preserves the camera-only orbit after releasing the drag");
     }
     for (unsigned i = 0; i < 60; ++i) {
-        foot.tick({});
+        RideInput input;
+        input.walk_forward = camera.facing();
+        input.face_walk_forward = true;
+        foot.tick(input);
         camera.step(foot, 1. / 60);
     }
-    check(dot(normalized(project(camera.pose().eye - foot.render_position(), {0, 1, 0})),
-              normalized(project(foot.rider().forward, {0, 1, 0}))) < -.99,
-          "stopping a walk retains the avatar heading instead of returning to the spawn view");
+    check(dot(foot.rider().forward, reference) > .999, "stopping a walk retains the avatar heading");
+    check(dot(normalized(project(camera.pose().forward, {0, 1, 0})), orbit_forward) > .999,
+          "stopping a walk preserves the camera-only orbit instead of snapping behind the avatar");
 }
 
 void owned(const std::filesystem::path& root) {
