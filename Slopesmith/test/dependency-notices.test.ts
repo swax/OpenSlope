@@ -34,12 +34,12 @@ const moduleIds = [...policy.browser].map(name => join(appRoot, 'node_modules', 
 const records = await recordsFromModuleIds(moduleIds, appRoot);
 const livekit = records.find(record => record.name === 'livekit-client');
 check(
-  livekit?.version === '2.22.2' && livekit.legalFiles.join(',') === 'LICENSE',
+  livekit?.version === '2.22.4' && livekit.legalFiles.join(',') === 'LICENSE',
   'installed LiveKit client contributes its Apache LICENSE and does not invent an absent NOTICE',
 );
 const report = await renderInstalledNotices(records, 'test browser notices');
 check(
-  report.includes('livekit-client@2.22.2') && report.includes('Apache License'),
+  report.includes('livekit-client@2.22.4') && report.includes('Apache License'),
   'generated browser legal text carries the installed LiveKit license',
 );
 const closure = await installedDependencyClosure(appRoot, policy.browser);

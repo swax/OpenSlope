@@ -3,6 +3,10 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.88 adds desktop Enhanced and Runtime lighting, shared avatars on Windows
+and Quest, and shader optimizations that improve Quest rendering performance.
+Desktop performance varies by GPU and lighting mode. See [build notes](releases/0.88.0.md).
+
 Build 0.87 adds four stock board designs, with a fresh choice on course restart
 or a new-board pull. Avatars and boards respond to course lighting in normal
 lighting mode. See [build notes](releases/0.87.0.md).
