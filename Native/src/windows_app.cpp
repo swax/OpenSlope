@@ -3,6 +3,7 @@
 #include "openslope/audio_preferences.hpp"
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar.hpp"
+#include "openslope/avatar_preferences.hpp"
 #include "openslope/desktop_library.hpp"
 #include "openslope/graphics_preferences.hpp"
 #include "openslope/replay.hpp"
@@ -181,7 +182,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
             recorded.samples.insert(recorded.samples.end(), block.begin(), block.end());
         });
     }
-    Avatar avatar;
+    Avatar avatar, opponent_avatar;
     GlareVisibility glare_visibility;
     FollowCamera chase;
     chase.first_person = first_person;
@@ -207,8 +208,9 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
         std::vector<Vertex> presented(body.begin(), body.end());
         std::vector<Vertex> shadows(avatar.shadow_mesh().begin(), avatar.shadow_mesh().end());
         std::vector<unsigned> opponent_designs;
-        const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye, &opponent_designs,
+        const auto opponents = append_opponents(player, opponent_avatar, presented, chase.pose().eye, &opponent_designs,
                                                 graphics.lighting == LightingMode::Runtime, &shadows);
+        renderer.avatar_texture(avatar.texture());
         renderer.board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
         const FieldEffects effects(player, chase.pose().eye);
         equipment_outline(presented, player);
@@ -559,7 +561,7 @@ struct Window {
         return !quit;
     }
 
-    Avatar avatar;
+    Avatar avatar, opponent_avatar;
     GlareVisibility glare_visibility;
 
     void draw(Player& player, bool first_person, bool look_down, double seconds) {
@@ -583,8 +585,10 @@ struct Window {
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
         std::vector<Vertex> shadows(avatar.shadow_mesh().begin(), avatar.shadow_mesh().end());
         std::vector<unsigned> opponent_designs;
-        const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye, &opponent_designs,
-                                                graphics.lighting == LightingMode::Runtime, &shadows);
+        const auto opponents =
+            append_opponents(player, opponent_avatar, presented, camera.pose().eye, &opponent_designs,
+                             graphics.lighting == LightingMode::Runtime, &shadows);
+        renderer.avatar_texture(avatar.texture());
         renderer.board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
         const FieldEffects effects(player, camera.pose().eye);
         equipment_outline(presented, player);
@@ -738,7 +742,8 @@ int main(int argc, char** argv) {
                        "A/D strafe on foot or steer/spin riding, W/S walk or tuck/brake/flip, Space "
                        "charged jump, Shift boost, R reset, F/V camera, C look down, P pause, M mute, Q exit rail, E "
                        "spawn and mount/dismount, G "
-                       "nearby mount/dismount, T restart run, RMB carry/throw, wheel zoom, LMB drag look/turn on foot, "
+                       "nearby mount/dismount, T restart run, RMB drag orbit/carry/throw, wheel zoom, "
+                       "LMB drag look/turn on foot, "
                        "Escape release cursor/menu.\n";
                 return 0;
             } else
@@ -774,6 +779,9 @@ int main(int argc, char** argv) {
         if (graphics_path.empty() && output.empty() && !smoke_window)
             graphics_path = GraphicsPreferences::default_path();
         auto graphics = GraphicsPreferences::load(graphics_path);
+        const auto avatar_path =
+            output.empty() && !smoke_window ? AvatarPreferences::default_path() : std::filesystem::path{};
+        auto avatar_preferences = AvatarPreferences::load(avatar_path, AvatarPreferences::random_rider());
         if (msaa_set)
             graphics.msaa = overrides.msaa;
         if (scale_set)
@@ -790,6 +798,7 @@ int main(int argc, char** argv) {
             XrPlatform platform;
             platform.audio_preferences = preferences_path;
             platform.graphics_preferences = graphics_path;
+            platform.default_avatar = AvatarPreferences::random_rider();
             return run_openxr(*player, platform, seconds);
         }
         if (!audio_output.empty() && output.empty())
@@ -807,6 +816,13 @@ int main(int argc, char** argv) {
         Window window(context);
         window.renderer.cull_terrain(terrain_culling);
         window.graphics = graphics;
+        avatar_preferences.present(window.ui, avatar_path);
+        if (!avatar_preferences.apply(window.avatar, window.ui)) {
+            avatar_preferences.selected = AvatarPreferences::random_rider();
+            avatar_preferences.apply(window.avatar, window.ui);
+            window.ui.avatar_selection = avatar_preferences.selected;
+            window.ui.notice = "SAVED AVATAR UNAVAILABLE - USING RANDOM RIDER";
+        }
         window.create(player->terrain().mesh(), !smoke_window, player->logic().flag_models(),
                       player->logic().faceted_models());
         std::unique_ptr<AudioScene> audio;
@@ -868,13 +884,14 @@ int main(int argc, char** argv) {
         auto load_stage = std::make_shared<std::atomic<unsigned>>(0);
         unsigned loading_frames = 0;
         std::vector<UiAction> ui_script{
-            UiAction::Controls,    UiAction::Controls,     UiAction::View,       UiAction::Sound,
-            UiAction::VolumeDown,  UiAction::Music,        UiAction::MasterMute, UiAction::MasterMute,
-            UiAction::Songs,       UiAction::SelectSong,   UiAction::Sound,      UiAction::Graphics,
-            UiAction::RenderScale, UiAction::Antialiasing, UiAction::Lighting,   UiAction::Lighting,
-            UiAction::Lighting,    UiAction::SnowDown,     UiAction::SnowUp,     UiAction::GraphicsReset,
-            UiAction::Stats,       UiAction::Graphics,     UiAction::Mode,       UiAction::Maps,
-            UiAction::LoadMap};
+            UiAction::Controls,       UiAction::Controls,     UiAction::View,       UiAction::Sound,
+            UiAction::VolumeDown,     UiAction::Music,        UiAction::MasterMute, UiAction::MasterMute,
+            UiAction::Songs,          UiAction::SelectSong,   UiAction::Sound,      UiAction::Graphics,
+            UiAction::RenderScale,    UiAction::Antialiasing, UiAction::Lighting,   UiAction::Lighting,
+            UiAction::Lighting,       UiAction::SnowDown,     UiAction::SnowUp,     UiAction::GraphicsReset,
+            UiAction::Stats,          UiAction::Graphics,     UiAction::Avatars,    UiAction::SelectAvatar,
+            UiAction::NextAvatarPage, UiAction::SelectAvatar, UiAction::Avatars,    UiAction::Mode,
+            UiAction::Maps,           UiAction::LoadMap};
         // Exercise map replacement with the requested mode still active after
         // the scripted Defaults action, rather than always testing Original.
         if (lighting_set)
@@ -1033,7 +1050,7 @@ int main(int argc, char** argv) {
             if (!focused && last_focus)
                 player->release_inputs();
             if (focused && !last_focus)
-                look_blocked = key(VK_LBUTTON);
+                look_blocked = key(VK_LBUTTON) || key(VK_RBUTTON);
             last_focus = focused;
             const double aspect = double(std::max(1u, window.width)) / std::max(1u, window.height);
             window.camera.first_person = first_person;
@@ -1114,6 +1131,9 @@ int main(int argc, char** argv) {
             if (preferences.handle(click, window.ui, audio.get(), player->terrain().map_root().filename().string()) &&
                 !preferences_path.empty() && !preferences.save(preferences_path))
                 window.ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
+            if (avatar_preferences.handle(click, window.ui, window.avatar) && !avatar_path.empty() &&
+                !avatar_preferences.save(avatar_path))
+                window.ui.notice = "AVATAR CHANGED BUT COULD NOT BE SAVED";
             if (graphics.handle(click, window.ui)) {
                 window.resized |=
                     window.graphics.render_scale != graphics.render_scale || window.graphics.msaa != graphics.msaa;
@@ -1156,7 +1176,8 @@ int main(int argc, char** argv) {
                 refresh_library();
                 window.ui.library_error.clear();
                 window.ui.controls = false;
-                window.ui.audio_options = window.ui.song_picker = window.ui.graphics_options = false;
+                window.ui.avatar_options = window.ui.audio_options = window.ui.song_picker =
+                    window.ui.graphics_options = false;
                 break;
             case UiAction::Sources:
                 window.ui.library_scroll = 0;
@@ -1323,14 +1344,15 @@ int main(int argc, char** argv) {
             if (right && !last_right)
                 mouse_carry = player->carrying_board() || (!window.ui.visible && player->aim_board(ray, true));
             const bool left = key(VK_LBUTTON);
-            if (!left)
+            const bool look_held = left || (right && !mouse_carry);
+            if (!look_held)
                 look_blocked = false;
             if (click.consumed)
                 look_blocked = true;
-            const bool looking = left && !look_blocked && focused && !paused && !window.ui.visible;
+            const bool looking = look_held && !look_blocked && focused && !paused && !window.ui.visible;
             window.capture_mouse(looking);
             if (window.mouse_captured)
-                window.camera.orbit(window.mouse_dx, window.mouse_dy, player->on_foot());
+                window.camera.orbit(window.mouse_dx, window.mouse_dy, player->on_foot() && (left || first_person));
             window.mouse_dx = window.mouse_dy = 0;
             if (!window.ui.scroll_library(window.wheel) && !window.ui.visible)
                 window.camera.zoom(window.wheel);

@@ -191,6 +191,12 @@ void main() {
     if(transform.options.x==13){colour=vec4(presentHdr(),1);return;}
     bool runtime=light.settings.x>1.5;
     vec3 displayColour=vertexColour;
+    bool avatarTexture=(transform.options.x==0||transform.options.x==15)&&lightmapTile.w>0.5;
+    vec3 avatarEmission=vec3(0);
+    if(avatarTexture){
+        displayColour*=texture(diffuseImage,textureUV).rgb;
+        avatarEmission=texture(diffuseImage,lightmapUV).rgb*lightmapTile.xyz;
+    }
     float alpha=1.0;
     if(transform.options.x==8||transform.options.x==9||transform.options.x==10)alpha=effectAlpha;
     if(transform.options.x==12){
@@ -263,6 +269,7 @@ void main() {
         else if(transform.options.x==5)alpha*=1.0-fog;
         else displayColour=mix(displayColour,transform.fogColourStart.rgb,fog);
     }
+    displayColour+=avatarEmission;
     displayColour*=transform.presentation.x;
     // Byte-domain terrain blend above; convert only for an sRGB attachment,
     // whose hardware write converts linear output back to display values.

@@ -82,7 +82,7 @@ The importer currently converts terrain, textures, lightmaps, static prop geomet
 AIP/SOP course paths, collision proxies/physics bodies, configured sound/music assets and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
 authored prop contacts for bounce, ride surfaces and pass-through events. Animated crash recovery,
-analytic rails, timed runs, spin/flip/rail scoring and the visible stick figure are implemented. Quest starts on foot
+analytic rails, timed runs, spin/flip/rail scoring and selectable skinned avatars are implemented. Quest starts on foot
 beside the board, with walking/jumping and nearby mounting. Authored reset volumes, multiplier pickups, mode hides and graph-triggered sound
 now run through the shared world logic. Persistent model-object animations move
 rendered parts and matching collision/support. Fresh imports recover collision-sound event routes from
@@ -134,9 +134,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Native/build.ps1 -Player
 
 A/D steer/spin, W/S tuck/brake/flip, Space holds a charged jump, Shift boosts, R resets,
 F/V switches first/chase camera, C looks down, and E dismounts or spawns and mounts at your feet.
-LMB drag looks around while riding and turns the character on foot; RMB carries/throws the board.
+RMB drag orbits the camera without turning the avatar; LMB drag turns the on-foot character with the camera.
+RMB over a loose board carries it and releases to throw.
 P/Escape opens the pause menu; Escape first releases a held mouse drag.
 The wheel changes camera distance. The pause menu includes a map library and ride settings.
+Choose **Avatar** for all seven Slopesmith riders or a custom character GLB. Quest
+offers the same choice in its wrist menu and launcher Ride settings; see
+[avatars and custom imports](docs/avatar.md).
 Without `--map`, the desktop starts in the library. Place `.iso` or `.bin` files beside
 the EXE and choose **ISO Sources**, then **Extract <course>** to queue a course.
 Progress stays in its row, which becomes **Play <course>** when ready.
@@ -455,8 +459,9 @@ so the readers and gameplay core can also be compiled for desktop tools or WebAs
 See [NOTICE](NOTICE) and [third-party notices](ThirdPartyNotices/README.md).
 See [source provenance](docs/source-provenance.md) for the implementation and dependency boundary.
 
-The desktop and VR player now use the first-party stick figure avatar. F/V switches
-to first person; hold C to look down. VR controller models show control labels,
+The desktop and VR player support all seven Slopesmith avatars and custom GLBs,
+with a saved Avatar selector. Windows defaults to a random rider; Quest defaults
+to Stick Figure. F/V switches to first person; hold C to look down. VR controller models show control labels,
 and supported Quest runtimes can supply upper-body/full-body joints. See
 [avatar presentation](docs/avatar.md) for API support, fallbacks and validation.
 

@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 
 public final class LauncherActivity extends Activity {
     static { System.loadLibrary("openslope_player"); }
-    private static final int PICK_MAPS = 1, PICK_ISO = 2;
+    private static final int PICK_MAPS = 1, PICK_ISO = 2, PICK_AVATAR = 3;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private volatile boolean cancelled, busy;
     private boolean destroyed;
@@ -29,6 +29,72 @@ public final class LauncherActivity extends Activity {
     private String libraryNotice;
     private boolean noticeError;
     private long lastProgress;
+    private native String nativeAvatars(String preferences);
+    private native void nativeChooseAvatar(String preferences, String id);
+    private native void nativeValidateAvatar(String path);
+    private boolean updatingAvatar;
+    private String avatarSelected;
+    private String avatarPreferences() { return new File(getFilesDir(), "avatar-preferences.json").getAbsolutePath(); }
+    private void refreshAvatars() {
+        try {
+            JSONObject catalog = new JSONObject(nativeAvatars(avatarPreferences()));
+            JSONArray options = catalog.getJSONArray("options");
+            List<String> labels = new ArrayList<>(), ids = new ArrayList<>();
+            avatarSelected = catalog.getString("selected"); int selected = 0;
+            for (int i = 0; i < options.length(); ++i) {
+                JSONObject option = options.getJSONObject(i); labels.add(option.getString("label")); ids.add(option.getString("id"));
+                if (ids.get(i).equals(avatarSelected)) selected = i;
+            }
+            updatingAvatar = true;
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(this, R.layout.launcher_choice, labels);
+            adapter.setDropDownViewResource(R.layout.launcher_choice_item); screen.avatar.setAdapter(adapter); screen.avatar.setSelection(selected);
+            updatingAvatar = false;
+            screen.avatar.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                public void onNothingSelected(AdapterView<?> parent) {}
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long row) {
+                    if (updatingAvatar || ids.get(position).equals(avatarSelected)) return;
+                    final String id = ids.get(position); state(true, false);
+                    worker.execute(() -> {
+                        try { nativeChooseAvatar(avatarPreferences(), id); ui(() -> avatarSelected = id); }
+                        catch (Exception error) { failure(error); }
+                        finally { ui(() -> { state(false); refreshAvatars(); }); }
+                    });
+                }
+            });
+        } catch (Exception error) { failure(error); }
+    }
+    private void pickAvatar() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); intent.setType("*/*"); intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(intent, PICK_AVATAR); } catch (ActivityNotFoundException error) { failure(error); }
+    }
+    private void importAvatar(Uri uri) {
+        state(true, false);
+        worker.execute(() -> {
+            File staging = null;
+            try {
+                staging = File.createTempFile("avatar-", ".glb", getCacheDir());
+                try (InputStream input = getContentResolver().openInputStream(uri); OutputStream output = new FileOutputStream(staging)) {
+                    if (input == null) throw new IOException("The avatar file could not be opened.");
+                    byte[] buffer = new byte[65536]; int count; long size = 0;
+                    while ((count = input.read(buffer)) != -1) { size += count; if (size > 32L * 1024 * 1024) throw new IOException("Avatars must be smaller than 32 MiB."); output.write(buffer, 0, count); }
+                }
+                nativeValidateAvatar(staging.getAbsolutePath());
+                String label = "Custom avatar";
+                try (android.database.Cursor cursor = getContentResolver().query(uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) label = cursor.getString(0);
+                } catch (Exception ignored) { /* A provider may omit the display name. */ }
+                label = label.replaceAll("(?i)\\.glb$", "").replaceAll("[^a-zA-Z0-9 _-]", "_");
+                if (label.length() > 80) label = label.substring(0, 80);
+                File library = new File(getFilesDir(), "characters"); if (!library.isDirectory() && !library.mkdirs()) throw new IOException("Cannot create avatar library.");
+                File destination = new File(library, label + "-" + UUID.randomUUID().toString().substring(0, 8) + ".glb");
+                java.nio.file.Files.move(staging.toPath(), destination.toPath()); staging = null;
+                nativeChooseAvatar(avatarPreferences(), destination.getName());
+                setStatus("Custom avatar added.");
+            } catch (Exception error) { failure(error); }
+            finally { if (staging != null) staging.delete(); ui(() -> { state(false); refreshAvatars(); }); }
+        });
+    }
     private native String nativeCourses(int descriptor, long length);
     private native void nativeExtract(int descriptor, long length, String course, String output);
     private native void nativeValidate(String path);
@@ -47,6 +113,8 @@ public final class LauncherActivity extends Activity {
         String savedMode=getPreferences(0).getString("run_mode","freeride");runMode.setSelection(savedMode.equals("race")?1:savedMode.equals("showoff")?2:0);
         runMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View view,int position,long id){String mode=new String[]{"freeride","race","showoff"}[position];if(!mode.equals(getPreferences(0).getString("run_mode","freeride")))getPreferences(0).edit().putString("run_mode",mode).apply();screen.modeHint.setText(new int[]{R.string.mode_freeride_hint,R.string.mode_race_hint,R.string.mode_showoff_hint}[position]);}});
         choice(renderScale,"render_scale",2); choice(targetRefreshRate,"target_refresh_rate",3); choice(antialiasing,"antialiasing",2);
+        screen.importAvatar.setOnClickListener(v -> pickAvatar());
+        refreshAvatars();
         chooseFolder.setOnClickListener(v -> pickMaps());
         useLocal.setOnClickListener(v -> { getPreferences(0).edit().remove("maps_tree").apply(); loadLibrary(); refreshMaps(null); });
         importIso.setOnClickListener(v -> pickIso()); refresh.setOnClickListener(v -> refreshMaps(null));
@@ -55,7 +123,7 @@ public final class LauncherActivity extends Activity {
         try { loadLibrary(); refreshMaps(getIntent().getStringExtra("map_error")); }
         catch (Exception e) { screen.libraryError(); failure(e); }
     }
-    @Override public void onResume() { super.onResume(); if (library != null && !busy) refreshMaps(); }
+    @Override public void onResume() { super.onResume(); if (library != null && !busy) { refreshMaps(); refreshAvatars(); } }
     @Override public void onDestroy() { destroyed = true; cancelled = true; worker.shutdown(); super.onDestroy(); }
     @Override public void onBackPressed() { if (!busy && screen.collapse()) return; finishAndRemoveTask(); }
     private void choice(Spinner view,String preference,int fallback){int saved=getPreferences(0).getInt(preference,fallback);view.setSelection(saved>=0&&saved<view.getCount()?saved:fallback);view.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> parent){}public void onItemSelected(AdapterView<?> parent,View selected,int position,long id){if(position!=getPreferences(0).getInt(preference,fallback))getPreferences(0).edit().putInt(preference,position).apply();}});}
@@ -102,7 +170,8 @@ public final class LauncherActivity extends Activity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null) return;
-        if (request == PICK_MAPS) {
+        if (request == PICK_AVATAR) { if (data.getData() != null) importAvatar(data.getData()); }
+        else if (request == PICK_MAPS) {
             Uri uri = data.getData(); if (uri == null) return;
             try {
                 if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0) throw new IOException("The selected folder did not grant read access.");

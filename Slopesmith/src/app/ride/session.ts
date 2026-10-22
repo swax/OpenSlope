@@ -228,6 +228,9 @@ export class TestRide {
   private onFootFlag = false;
   private walkYaw = 0;
   private walkPitch = 0;
+  private walkOrbitYaw = 0;
+  private walkOrbitPitch = 0;
+  private readonly walkCameraForward = new THREE.Vector3();
   private walkJumpHeld = false;
   private walkCrouch = 0;
   private walkThirdPerson = false;
@@ -443,7 +446,7 @@ export class TestRide {
     if (!this.inVr && this.o.pointerTarget) {
       this.pointerLock = createRidePointerLock({
         target: this.o.pointerTarget,
-        onMove: (deltaX, deltaY) => this.orbitCamera(deltaX, deltaY),
+        onMove: (deltaX, deltaY, turnAvatar) => this.orbitCamera(deltaX, deltaY, turnAvatar),
       });
     }
     // The board bed (docs/034). Built here, after the launch click, so its AudioContext starts on a gesture.
@@ -838,6 +841,7 @@ export class TestRide {
       this.walker.placeAt(position);
       this.walkPitch = 0;
       this.walkYaw = Math.atan2(-facing.x, -facing.z);
+      this.walkOrbitYaw = this.walkOrbitPitch = 0;
       this.walkPoseSeated = false;
       this.walkFacing.clear();
       this.updateWalkCamera();
@@ -986,6 +990,7 @@ export class TestRide {
     this.o.camera.getWorldDirection(this.walkForward).normalize();
     this.walkPitch = Math.asin(THREE.MathUtils.clamp(this.walkForward.y, -1, 1));
     this.walkYaw = Math.atan2(-this.walkForward.x, -this.walkForward.z);
+    this.walkOrbitYaw = this.walkOrbitPitch = 0;
     this.onFootFlag = true;
     this.boardFx?.clear();
     this.input.releaseSource('keyboard');
@@ -1282,9 +1287,12 @@ export class TestRide {
     this.o.camera.up.copy(THREE.Object3D.DEFAULT_UP);
     if (this.walkThirdPerson) {
       this.walkTarget.copy(this.walker.position()).addScaledVector(THREE.Object3D.DEFAULT_UP, 1.1);
+      const yaw = this.walkYaw + this.walkOrbitYaw;
+      const pitch = THREE.MathUtils.clamp(this.walkPitch + this.walkOrbitPitch, -WALK_PITCH_LIMIT, WALK_PITCH_LIMIT);
+      this.walkCameraForward.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
       thirdPersonFollowEye(
         this.walkTarget,
-        this.walkForward,
+        this.walkCameraForward,
         WALK_THIRD_PERSON_DISTANCE * this.thirdPersonZoom,
         WALK_THIRD_PERSON_HEIGHT * this.thirdPersonZoom,
         this.o.camera.position,
@@ -1313,6 +1321,7 @@ export class TestRide {
       return;
     }
     this.walkThirdPerson = !this.walkThirdPerson;
+    this.walkOrbitYaw = this.walkOrbitPitch = 0;
     this.pose.setFirstPerson(!this.walkThirdPerson);
     this.syncDesktopView();
     this.updateWalkCamera();
@@ -1585,9 +1594,26 @@ export class TestRide {
     this.hud.setCountdown(paused ? 'PAUSED' : this.countdownCue());
   }
 
-  orbitCamera(deltaX: number, deltaY: number) {
+  orbitCamera(deltaX: number, deltaY: number, turnAvatar = true) {
     if (!this.started) return;
     if (this.onFootFlag) {
+      if (this.walkThirdPerson && !turnAvatar) {
+        this.walkOrbitYaw = Math.atan2(
+          Math.sin(this.walkOrbitYaw - deltaX * WALK_LOOK_PER_PIXEL),
+          Math.cos(this.walkOrbitYaw - deltaX * WALK_LOOK_PER_PIXEL),
+        );
+        this.walkOrbitPitch = THREE.MathUtils.clamp(
+          this.walkOrbitPitch - deltaY * WALK_LOOK_PER_PIXEL,
+          -WALK_PITCH_LIMIT - this.walkPitch,
+          WALK_PITCH_LIMIT - this.walkPitch,
+        );
+        this.updateWalkCamera();
+        return;
+      }
+      // A body-turn drag takes over the current view, including any preceding camera-only orbit.
+      this.walkYaw += this.walkOrbitYaw;
+      this.walkPitch += this.walkOrbitPitch;
+      this.walkOrbitYaw = this.walkOrbitPitch = 0;
       this.walkYaw = Math.atan2(
         Math.sin(this.walkYaw - deltaX * WALK_LOOK_PER_PIXEL),
         Math.cos(this.walkYaw - deltaX * WALK_LOOK_PER_PIXEL),

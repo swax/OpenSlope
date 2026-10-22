@@ -1,10 +1,10 @@
 /**
  * Desktop test-ride cursor ownership. First person keeps the cursor captured until Escape, then any viewport
- * click captures it again. Third person captures only for the duration of an RMB look.
+ * click captures it again. Third person captures for either mouse-button drag: RMB orbits, LMB turns the body.
  */
 export interface RidePointerLockOpts {
   target: HTMLElement;
-  onMove(deltaX: number, deltaY: number): void;
+  onMove(deltaX: number, deltaY: number, turnAvatar: boolean): void;
 }
 
 // A real high-speed mouse move arrives as several events. A single larger jump is characteristic of the
@@ -16,6 +16,7 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   let attached = false;
   let firstPerson = false;
   let rightHeld = false;
+  let leftHeld = false;
   let requestPending = false;
   let suppressNextMove = false;
 
@@ -29,7 +30,7 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   }
 
   function wantsLock() {
-    return firstPerson || rightHeld;
+    return firstPerson || rightHeld || leftHeld;
   }
 
   function request() {
@@ -77,19 +78,20 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
       Math.abs(deltaY) > MAX_TRUSTED_MOVEMENT
     )
       return;
-    if (deltaX || deltaY) o.onMove(deltaX, deltaY);
+    if (deltaX || deltaY) o.onMove(deltaX, deltaY, firstPerson || leftHeld);
   }
 
   function mouseDown(event: MouseEvent) {
     if (event.button === 2) rightHeld = true;
-    if (!firstPerson && event.button !== 2) return;
+    if (event.button === 0) leftHeld = true;
+    if (!firstPerson && event.button !== 2 && event.button !== 0) return;
     request();
   }
 
   function mouseUp(event: MouseEvent) {
-    if (event.button !== 2) return;
-    rightHeld = false;
-    if (!firstPerson) release();
+    if (event.button === 2) rightHeld = false;
+    if (event.button === 0) leftHeld = false;
+    if (!wantsLock()) release();
   }
 
   function lockChanged() {
@@ -111,11 +113,11 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
     if (firstPerson === enabled) return;
     firstPerson = enabled;
     if (firstPerson) request();
-    else if (rightHeld) request();
+    else if (rightHeld || leftHeld) request();
     else release();
   }
 
-  // Attached even where capture is unsupported: RMB still has to report `looking` so the chase camera knows the
+  // Attached even where capture is unsupported: either button still reports `looking` so the camera knows the
   // look is held. Every lock-specific listener below is inert without a lock, and `request` checks `supported`.
   function attach() {
     if (attached) return;
@@ -133,7 +135,7 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   function detach() {
     if (!attached) return;
     attached = false;
-    rightHeld = false;
+    rightHeld = leftHeld = false;
     doc.removeEventListener('keydown', keyDown, true);
     doc.removeEventListener('mousemove', mouseMove);
     doc.removeEventListener('mouseup', mouseUp, true);
@@ -158,9 +160,9 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
     get firstPerson() {
       return firstPerson;
     },
-    /** RMB is down for a look — the chase camera holds its aim until it is released. */
+    /** Either look button is down — the chase camera holds its aim until both are released. */
     get looking() {
-      return rightHeld;
+      return rightHeld || leftHeld;
     },
   };
 }

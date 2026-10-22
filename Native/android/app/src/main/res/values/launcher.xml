@@ -49,4 +49,6 @@
     <item name="launcher_refresh" type="id" />
     <item name="launcher_local" type="id" />
     <item name="launcher_close" type="id" />
+    <item name="launcher_avatar" type="id" />
+    <item name="launcher_import_avatar" type="id" />
 </resources>

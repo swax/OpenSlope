@@ -1,23 +1,48 @@
-# Stick figure avatar and controllers
+# Avatars and controllers
 
-Desktop and OpenXR render the existing Slopesmith stick figure, including its
-colour-coded limbs, fingers, joints and front/back landmarks. The bundled GLB
-is unchanged (SHA-256 `e1a06ea45c5238cb6086acae5941d44684ffb64eb8021b0cea91632cd24fa5bf`).
-Its original Apache-2.0 attribution is retained in assets/NOTICE.txt and packaged
-with both hosts. This is first-party avatar art; no course or retail rider art
-is packaged. There is no JavaScript or framework runtime dependency.
+PC and Quest bundle every Slopesmith built-in: Blocky Rider, Kestrel, Robin,
+Raven, Alpine Exo, Servo Scout and Stick Figure. Native's build reads Slopesmith's
+catalogue and original GLBs directly. Their Apache-2.0 attribution accompanies
+both packages. No course or retail rider art is packaged.
 
-A bounded loader accepts the bundled GLB's rigid skin profile: 49 joints,
-8,744 vertices and 4,816 triangles. Independently authored posing transforms
-each bone segment, preserves the coloured geometry and applies simple vertex
-lighting. Desktop follows board orientation, stance, crouch, jump, rail spin and
-the existing recovery pose. On foot the figure stands upright at the walker's
-position, with procedural walking legs; the parked/coasting board stays separate.
-Two-segment limb geometry supplies bent knees and
-elbows. These are application poses, not original character/trick clips.
-First-person views omit head/neck geometry so the camera cannot be enclosed by
-the player's own head. F/V toggles desktop first person; hold C to look down.
-`--first-person` and `--look-down` also work in captures and desktop launchers.
+Choose **Avatar** in the desktop pause menu or Quest wrist menu. Quest also has
+an **Avatar** selector under the launcher's **Ride settings**. Selection changes
+the visible body immediately and is saved between courses and app restarts.
+Windows defaults to a random non-diagnostic rider until a choice is saved; Quest
+defaults to Stick Figure. An unavailable saved model falls back to the platform
+default with a message; a failed new selection leaves the current body in place.
+These are local device preferences, independent of Slopesmith account settings.
+
+For your own avatars, use the same embedded GLB and
+[bone contract as Slopesmith](../../Slopesmith/docs/030-character-models.md).
+On PC, put top-level `.glb` files in the `characters` folder beside
+`avatar-preferences.json` (normally `%LOCALAPPDATA%/OpenSlope/characters`).
+Restart the player to refresh the list. On Quest, choose **Ride settings > Add
+custom avatar (.glb)** and pick a file. The app validates it before adding it to
+its private library. Imported files appear in both launcher and wrist selectors.
+The picker pages through the complete library, including the built-ins.
+
+The bounded native loader supports matrix and TRS node transforms, arbitrary
+node order, multiple skinned primitives, inverse bind matrices, and up to four
+normalized influences. PNG/JPEG base-colour and emissive textures are decoded
+locally and packed into a GPU atlas with 512-pixel tiles for each image. Normal
+maps, metallic/roughness maps, transparent materials, animation clips and
+scrolling emissive masks are not evaluated by Native. Files are limited to
+32 MiB, 128 joints and 30,000 triangles. External image/buffer files are not
+loaded. Malformed models report a loading error without interrupting the ride.
+
+Desktop poses follow board orientation, stance, crouch, jump, rail spin and
+recovery. Quest keeps its existing head, controller and optional body tracking.
+On foot, procedural walking legs follow the player independently of the board.
+Retargeting rotates the imported skeleton while preserving its parent offsets
+and bone lengths. The GLB body frame retains its handedness, so mixed-weight
+coat panels and rigid Blocky Rider parts keep their authored proportions.
+Tracked arms solve from the imported shoulder and limb lengths; untracked
+wrists retain their authored angle and boots retain their sole orientation.
+First-person views hide head/neck-weighted triangles while retaining the full
+shadow body. Avatar selection does not alter collision or gameplay proportions.
+F/V toggles desktop first person; hold C to look down. There is no JavaScript
+runtime dependency.
 
 ## Course lighting
 
@@ -113,7 +138,10 @@ future presentation work in the parity matrix. Retail rider animations are out
 of scope.
 
 Validation covers portable pose/skin tests, malformed/partial/lost tracking,
-controller anchoring, head removal, crouch, yaw and physics independence. Actual
+controller anchoring, head removal, crouch, yaw and physics independence.
+Authored-shape regressions compare Blocky Rider and Robin's neutral posed
+triangles directly with their original GLBs under translation and yaw, and
+check that stretching pose landmarks cannot resize Blocky's rigid parts. Actual
 Vulkan tests render desktop, look-down, full-body and fallback poses, compare
 visible labels, distinct stereo eyes, 1x/4x samples and UNORM/sRGB targets. Existing gameplay
 and graphics regressions pass. ARM64 main/test APKs and Android lint pass.

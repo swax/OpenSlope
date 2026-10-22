@@ -42,10 +42,10 @@ void FollowCamera::step(const Player& p, double seconds, bool boosting, bool dra
         pitch_ = -.16 - std::atan2(35., 180.);
         orbit_yaw_ = orbit_pitch_ = 0;
     }
-    if (!dragging && !first_person)
+    // On foot, a camera-only orbit stays independent of the body's heading until a turn drag takes it over.
+    if (!dragging && !first_person && !p.on_foot())
         orbit_yaw_ *= std::exp(-dt * 1.6), orbit_pitch_ *= std::exp(-dt * 1.6);
     if (walking && !dragging && !first_person) {
-        orbit_yaw_ = orbit_pitch_ = 0;
         heading_ = travel;
     }
     const auto turn = std::atan2(dot(cross(heading_, travel), Vec3{0, 1, 0}), dot(heading_, travel));

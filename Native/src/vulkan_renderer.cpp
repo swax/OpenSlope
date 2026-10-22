@@ -1837,6 +1837,9 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     push.mvp = camera;
     push.options[0] = runtime ? 15 : 0;
     if (!avatar.empty()) {
+        if (scene_->avatar_pixels_)
+            vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->avatar_set_, 0,
+                                    nullptr);
         vkCmdBindVertexBuffers(command_, 0, 1, &avatar_vertices_.buffer, &offset);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDraw(command_, std::uint32_t(avatar.size()), 1, 0, 0);

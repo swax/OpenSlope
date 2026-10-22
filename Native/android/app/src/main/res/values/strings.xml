@@ -69,4 +69,8 @@
     <string-array name="ride_modes"><item>Freeride</item><item>Race</item><item>Showoff</item></string-array>
     <string-array name="vr_resolutions"><item>100%</item><item>125%</item><item>150% · default</item></string-array>
     <string-array name="smoothing_options"><item>Off</item><item>2x</item><item>4x · recommended</item></string-array>
+    <string name="avatar">Avatar</string>
+    <string name="import_avatar">Add custom avatar (.glb)</string>
+    <string name="avatar_hint">Use a GLB with the Slopesmith character rig. Your choice is shared with the wrist menu.</string>
+    <string-array name="empty_avatars"><item>Loading avatars&#8230;</item></string-array>
 </resources>

@@ -1,6 +1,8 @@
 #pragma once
+#include "appearance.hpp"
 #include "player.hpp"
 #include "scene_lighting.hpp"
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -72,10 +74,22 @@ struct AvatarLook {
 AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking = nullptr,
                        const AvatarLook* look = nullptr);
 
-// Bundled first-party rigid skin, posed independently of collision/physics state.
+struct AvatarOption {
+    std::string id, label;
+    std::filesystem::path file;
+};
+
+std::span<const AvatarOption> builtin_avatars();
+
+// Slopesmith character-contract skins, posed independently of collision/physics state.
 class Avatar {
 public:
     Avatar();
+    explicit Avatar(std::span<const unsigned char> glb);
+    static Avatar builtin(std::string_view id);
+
+    std::shared_ptr<const RgbaImage> texture() const { return texture_; }
+
     std::span<const Vertex> mesh(const AvatarPose& pose, bool first_person = false, bool labels = true, Vec3 eye = {},
                                  Vec3 controller_offset = {}, const SceneLighting* lighting = nullptr,
                                  bool runtime_lighting = false);
@@ -96,17 +110,22 @@ private:
 
     struct SkinVertex {
         Vec3 position, normal;
-        unsigned bone{};
+        std::array<unsigned, 4> bones{};
+        std::array<double, 4> weights{};
     };
 
     struct Corner {
         unsigned vertex{};
         std::array<float, 3> colour{};
+        std::array<float, 4> uv{};
+        std::array<float, 3> emissive{};
+        bool textured = false;
     };
 
     std::vector<Bone> bones_;
     std::vector<SkinVertex> vertices_;
     std::vector<Corner> corners_;
     std::vector<Vertex> mesh_, shadow_;
+    std::shared_ptr<const RgbaImage> texture_;
 };
 } // namespace openslope

@@ -14,7 +14,8 @@ const rideThird = mappings(false, false);
 assert.match(rideThird.title, /riding · third person/, 'the panel title names the live ride view');
 assert.equal(rideThird.rows.get('E'), 'get off board', 'the riding panel exposes the board dismount key');
 assert.equal(rideThird.rows.get('V'), 'switch to first person', 'third person names the view V switches to');
-assert.equal(rideThird.rows.get('hold RMB'), 'look', 'third person explains its held mouse-look gesture');
+assert.equal(rideThird.rows.get('hold RMB'), 'orbit camera', 'third person explains camera-only orbit');
+assert.equal(rideThird.rows.get('hold LMB'), 'turn avatar / look', 'third person explains the left drag');
 assert.equal(rideThird.rows.get('Wheel / pinch'), 'zoom camera', 'third-person riding advertises boom zoom');
 assert.equal(rideThird.rows.get('Esc'), 'release look / exit', 'third person keeps the ride exit mapping visible');
 assert.ok(
@@ -42,12 +43,12 @@ assert.equal(
 assert.equal(walkThird.rows.get('V'), 'switch to first person', 'third-person walking names the V destination');
 assert.equal(
   walkThird.rows.get('LMB'),
-  'interact · highlighted board: ride',
+  'ride highlighted board · drag: turn avatar',
   'walking maps LMB to the highlighted target\u2019s use action',
 );
 assert.equal(
   walkThird.rows.get('hold RMB'),
-  'grab highlighted board · otherwise look',
+  'grab highlighted board · otherwise orbit camera',
   'third-person walking explains the target-aware grab/look split',
 );
 assert.equal(walkThird.rows.get('Esc'), 'release look / exit', 'third-person walking keeps the exit mapping visible');

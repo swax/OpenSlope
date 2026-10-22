@@ -1,0 +1,7 @@
+#include "openslope/avatar.hpp"
+namespace openslope::bundled {
+std::span<const unsigned char> character_@CHARACTER_INDEX@() {
+    static constexpr unsigned char bytes[] = { @CHARACTER_BYTES@ };
+    return bytes;
+}
+}

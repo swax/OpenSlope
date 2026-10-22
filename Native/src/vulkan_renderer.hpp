@@ -63,6 +63,7 @@ public:
     void upload(const Mesh& mesh, std::span<const std::size_t> flag_models = {},
                 std::span<const std::size_t> faceted_models = {});
     void upload(SceneAssets assets, UploadProgress progress = {});
+    void avatar_texture(std::shared_ptr<const RgbaImage> pixels);
 
 private:
     friend class VulkanRenderer;
@@ -77,6 +78,7 @@ private:
         VkImage image{};
         VkDeviceMemory memory{};
         VkImageView view{};
+        VkDeviceSize bytes{};
     };
 
     struct Draw {
@@ -127,6 +129,10 @@ private:
     VkDeviceSize image_bytes_{};
     VkDescriptorSet effect_set_{}, wake_set_{}, sheet_set_{};
     VkDescriptorSet corona_set_{}, lamp_set_{};
+    Image avatar_image_;
+    VkDescriptorPool avatar_pool_{};
+    VkDescriptorSet avatar_set_{};
+    std::shared_ptr<const RgbaImage> avatar_pixels_;
     std::vector<VkDescriptorSet> particle_sets_;
     Image image(const struct RgbaImage& pixels, VkCommandPool pool, bool mipmapped = true);
     Buffer buffer(VkDeviceSize size, VkBufferUsageFlags usage, const void* data);
@@ -186,6 +192,8 @@ public:
     std::uint64_t ray_bytes() const { return ray_geometry_ ? ray_geometry_->bytes() : 0; }
 
     void finish();
+
+    void avatar_texture(std::shared_ptr<const RgbaImage> pixels) { scene_->avatar_texture(std::move(pixels)); }
 
     void board_art(unsigned design, std::span<const unsigned> opponents = {}, const SceneLighting* lighting = nullptr) {
         if (design >= stock_board_count)

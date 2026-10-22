@@ -163,6 +163,7 @@ VulkanScene::Image VulkanScene::image(const RgbaImage& pixels, VkCommandPool poo
         view.subresourceRange = barrier.subresourceRange;
         vk_check(vkCreateImageView(context_.device, &view, nullptr, &result.view), "Create map image view");
         image_bytes_ += requirements.size;
+        result.bytes = requirements.size;
         cleanup();
         return result;
     } catch (...) {
@@ -178,10 +179,74 @@ VulkanScene::Image VulkanScene::image(const RgbaImage& pixels, VkCommandPool poo
     }
 }
 
+void VulkanScene::avatar_texture(std::shared_ptr<const RgbaImage> pixels) {
+    if (pixels == avatar_pixels_)
+        return;
+    vk_check(vkDeviceWaitIdle(context_.device), "Wait for avatar replacement");
+    if (!avatar_pool_) {
+        const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2};
+        VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool.maxSets = 1;
+        pool.poolSizeCount = 1;
+        pool.pPoolSizes = &size;
+        vk_check(vkCreateDescriptorPool(context_.device, &pool, nullptr, &avatar_pool_),
+                 "Create avatar descriptor pool");
+        VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocate.descriptorPool = avatar_pool_;
+        allocate.descriptorSetCount = 1;
+        allocate.pSetLayouts = &descriptors_;
+        vk_check(vkAllocateDescriptorSets(context_.device, &allocate, &avatar_set_), "Allocate avatar descriptor");
+    }
+    Image replacement;
+    if (pixels) {
+        VkCommandPool pool{};
+        VkCommandPoolCreateInfo create{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        create.queueFamilyIndex = context_.family;
+        vk_check(vkCreateCommandPool(context_.device, &create, nullptr, &pool), "Create avatar upload pool");
+        try {
+            replacement = image(*pixels, pool);
+        } catch (...) {
+            vkDestroyCommandPool(context_.device, pool, nullptr);
+            throw;
+        }
+        vkDestroyCommandPool(context_.device, pool, nullptr);
+        const std::array<VkDescriptorImageInfo, 2> images{
+            {{sky_sampler_, replacement.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+             {clamp_, images_[1].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}}};
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        for (unsigned i = 0; i < 2; ++i) {
+            writes[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            writes[i].dstSet = avatar_set_;
+            writes[i].dstBinding = i;
+            writes[i].descriptorCount = 1;
+            writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes[i].pImageInfo = &images[i];
+        }
+        vkUpdateDescriptorSets(context_.device, 2, writes.data(), 0, nullptr);
+    }
+    if (avatar_image_.view)
+        vkDestroyImageView(context_.device, avatar_image_.view, nullptr);
+    if (avatar_image_.image)
+        vkDestroyImage(context_.device, avatar_image_.image, nullptr);
+    if (avatar_image_.memory)
+        vkFreeMemory(context_.device, avatar_image_.memory, nullptr);
+    image_bytes_ -= avatar_image_.bytes;
+    avatar_image_ = replacement;
+    avatar_pixels_ = std::move(pixels);
+}
+
 VulkanScene::~VulkanScene() {
     if (!context_.device)
         return;
     vkDeviceWaitIdle(context_.device);
+    if (avatar_pool_)
+        vkDestroyDescriptorPool(context_.device, avatar_pool_, nullptr);
+    if (avatar_image_.view)
+        vkDestroyImageView(context_.device, avatar_image_.view, nullptr);
+    if (avatar_image_.image)
+        vkDestroyImage(context_.device, avatar_image_.image, nullptr);
+    if (avatar_image_.memory)
+        vkFreeMemory(context_.device, avatar_image_.memory, nullptr);
     if (descriptor_pool_)
         vkDestroyDescriptorPool(context_.device, descriptor_pool_, nullptr);
     if (descriptors_)

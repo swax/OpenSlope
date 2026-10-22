@@ -130,7 +130,7 @@ bool GraphicsPreferences::handle(const UiResult& selection, RideUi& ui) {
     switch (selection.action) {
     case UiAction::Graphics:
         ui.graphics_options = !ui.graphics_options;
-        ui.audio_options = ui.song_picker = ui.library = ui.controls = false;
+        ui.avatar_options = ui.audio_options = ui.song_picker = ui.library = ui.controls = false;
         return false;
     case UiAction::RenderScale:
         if (ui.immersive)

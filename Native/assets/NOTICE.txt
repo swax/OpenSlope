@@ -1,10 +1,12 @@
-Stick figure avatar
-Copyright 2026 swax
+Slopesmith avatar art
+Copyright 2026 OpenSlope contributors
 Licensed under the Apache License, Version 2.0.
 
-Native/assets/stick-figure-rigged.glb is an unchanged copy of the original
-Slopesmith/public/characters/stick-figure-rigged.glb asset. The Apache license
-at the repository root applies. Native's loader, pose and renderer are new.
+Native embeds the original Slopesmith/public/characters/*-rigged.glb files:
+Blocky Rider, Kestrel, Robin, Raven, Alpine Exo, Servo Scout and Stick Figure.
+The catalogue and assets are read directly from Slopesmith during the build.
+Native's loader, pose driver and renderer are independently authored.
+The older Native/assets/stick-figure-rigged.glb remains a reference asset.
 
 Stock snowboard art
 Copyright 2026 OpenSlope contributors

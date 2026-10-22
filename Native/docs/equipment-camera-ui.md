@@ -20,10 +20,12 @@ respond to their world-space normals while mounted, held or loose.
 
 On desktop, hold RMB while pointing at the loose board to carry it and release
 RMB to throw. E spawns and mounts at the player's feet or dismounts while riding.
-It preserves airborne momentum. Left-drag captures relative mouse movement to
-look around while riding or turn the on-foot character. The mouse wheel changes follow distance; V/F changes view.
+It preserves airborne momentum. Away from a loose board, right-drag captures relative
+mouse movement to orbit the third-person camera without changing the avatar's facing.
+Left-drag turns the on-foot character with the camera, keeping its back toward the view,
+or looks around while riding. The mouse wheel changes follow distance; V/F changes view.
 The pointer remains visible in third person when neither carrying nor looking.
-Both camera views use left-drag. Escape releases a held drag until the button is
+Both camera views support dragging. Escape releases a held drag until the buttons are
 released. Escape with an already visible cursor opens/closes the pause menu. P also
 opens/closes that menu. G retains nearby
 mount/dismount. See foot-flight.md for current movement and stock snowboard art.

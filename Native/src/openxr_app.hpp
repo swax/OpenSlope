@@ -18,6 +18,7 @@ struct XrPlatform {
     std::filesystem::path audio_preferences;
     std::filesystem::path graphics_preferences;
     std::string course_id;
+    std::string default_avatar = "builtin:stick-figure";
 };
 
 int run_openxr(Player& player, const XrPlatform& platform = {}, double seconds = 0);

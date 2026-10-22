@@ -22,6 +22,10 @@ enum class UiAction {
     NextSongPage,
     Stats,
     Graphics,
+    Avatars,
+    SelectAvatar,
+    PreviousAvatarPage,
+    NextAvatarPage,
     RenderScale,
     Antialiasing,
     Lighting,
@@ -75,6 +79,10 @@ public:
          library = false, map_picker = false;
     bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
     bool graphics_options = false, rider_options = false, loading = false;
+    bool avatar_options = false;
+    std::string avatar_selection;
+    std::vector<AvatarOption> avatar_choices;
+    std::size_t avatar_page = 0;
     unsigned render_scale = 150, antialiasing = 4;
     LightingMode lighting = LightingMode::Original;
     double snow_amount = 3, load_progress = 0;

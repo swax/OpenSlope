@@ -1411,9 +1411,9 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     return ride?.teleportTo(position, heading) ?? false;
   }
 
-  /** Pointer deltas from captured mouse-look or the third-person RMB fallback; the camera stays rider-centered. */
-  function orbitCamera(deltaX: number, deltaY: number) {
-    ride?.orbitCamera(deltaX, deltaY);
+  /** Pointer deltas from captured mouse-look or either button's fallback; the camera stays rider-centered. */
+  function orbitCamera(deltaX: number, deltaY: number, turnAvatar = true) {
+    ride?.orbitCamera(deltaX, deltaY, turnAvatar);
   }
   function zoomThirdPersonWheel(deltaY: number, deltaMode = 0): boolean {
     return ride?.zoomThirdPersonWheel(deltaY, deltaMode) ?? false;

@@ -1,0 +1,19 @@
+#include "openslope/avatar.hpp"
+#include <stdexcept>
+namespace openslope::bundled {
+@CHARACTER_DECLARATIONS@
+}
+namespace openslope {
+std::span<const AvatarOption> builtin_avatars() {
+    static const AvatarOption options[] = { @CHARACTER_OPTIONS@ };
+    return options;
+}
+std::span<const unsigned char> builtin_avatar_bytes(std::string_view id) {
+    if (id == "builtin:space-marine") id = "builtin:alpine-exo";
+    @CHARACTER_DISPATCH@
+    throw std::runtime_error("Unknown built-in avatar");
+}
+// Retain the diagnostic default for existing pose/render fixtures. Hosts select the saved rider.
+Avatar::Avatar() : Avatar(builtin_avatar_bytes("builtin:stick-figure")) {}
+Avatar Avatar::builtin(std::string_view id) { return Avatar(builtin_avatar_bytes(id)); }
+}

@@ -1,12 +1,14 @@
 #include "openslope/animation.hpp"
 #include "openslope/appearance.hpp"
 #include "openslope/audio_scene.hpp"
+#include "openslope/avatar_preferences.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/import.hpp"
 #include "openslope/particles.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/props.hpp"
 #include "openslope/rails.hpp"
+#include "openslope/ride_ui.hpp"
 #include "openslope/world.hpp"
 #include "openxr_app.hpp"
 #include <algorithm>
@@ -115,6 +117,66 @@ struct Callbacks {
     }
 };
 } // namespace
+
+extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeAvatars(JNIEnv* env,
+                                                                                                    jobject,
+                                                                                                    jstring file) {
+    try {
+        const auto path = std::filesystem::path(string_value(env, file));
+        auto preferences = openslope::AvatarPreferences::load(path);
+        openslope::RideUi ui;
+        preferences.present(ui, path);
+        if (std::none_of(ui.avatar_choices.begin(), ui.avatar_choices.end(),
+                         [&](const auto& option) { return option.id == preferences.selected; }))
+            preferences.selected = "builtin:stick-figure";
+        nlohmann::json options = nlohmann::json::array();
+        for (const auto& option : ui.avatar_choices)
+            options.push_back({{"id", option.id}, {"label", option.label}});
+        const auto result = nlohmann::json{{"selected", preferences.selected}, {"options", options}}.dump(
+            -1, ' ', false, nlohmann::json::error_handler_t::replace);
+        return env->NewStringUTF(result.c_str());
+    } catch (const std::exception& error) {
+        java_error(env, error);
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeChooseAvatar(JNIEnv* env,
+                                                                                                      jobject,
+                                                                                                      jstring file,
+                                                                                                      jstring id) {
+    try {
+        const auto path = std::filesystem::path(string_value(env, file));
+        openslope::AvatarPreferences preferences;
+        preferences.selected = string_value(env, id);
+        openslope::RideUi ui;
+        preferences.present(ui, path);
+        openslope::Avatar avatar;
+        if (!preferences.apply(avatar, ui))
+            throw std::runtime_error("This avatar could not load. Choose a Slopesmith character GLB.");
+        if (!preferences.save(path))
+            throw std::runtime_error("The avatar selection could not be saved.");
+    } catch (const std::exception& error) {
+        java_error(env, error);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeValidateAvatar(JNIEnv* env,
+                                                                                                        jobject,
+                                                                                                        jstring file) {
+    try {
+        openslope::AvatarPreferences preferences;
+        const auto path = std::filesystem::path(string_value(env, file));
+        preferences.selected = "import.glb";
+        openslope::RideUi ui;
+        ui.avatar_choices.push_back({preferences.selected, "Import", path});
+        openslope::Avatar avatar;
+        if (!preferences.apply(avatar, ui))
+            throw std::runtime_error("This GLB does not use the Slopesmith character contract.");
+    } catch (const std::exception& error) {
+        java_error(env, error);
+    }
+}
 
 extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeCourses(JNIEnv* env,
                                                                                                     jobject activity,

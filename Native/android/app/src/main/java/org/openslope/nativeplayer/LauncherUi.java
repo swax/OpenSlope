@@ -14,8 +14,8 @@ final class LauncherUi {
     final ScrollView root;
     final LinearLayout content, courses, empty, settings, help, details, add;
     final TextView status, location, source, count, emptyTitle, emptyBody, modeHint;
-    final Button importIso, chooseFolder, useLocal, refresh, cancel, settingsToggle, helpToggle, detailsToggle, addToggle, close;
-    final Spinner runMode, renderScale, targetRefreshRate, antialiasing;
+    final Button importIso, chooseFolder, useLocal, refresh, cancel, settingsToggle, helpToggle, detailsToggle, addToggle, close, importAvatar;
+    final Spinner runMode, renderScale, targetRefreshRate, antialiasing, avatar;
     final ProgressBar progress;
     private final List<View> controls = new ArrayList<>();
     private final Map<View, View> labels = new HashMap<>();
@@ -69,6 +69,9 @@ final class LauncherUi {
         settingsToggle = button(content, R.id.launcher_settings, R.string.ride_settings, false);
         settings = card(content); settings.setVisibility(View.GONE);
         settings.setAccessibilityPaneTitle(context.getString(R.string.ride_settings));
+        avatar = choice(settings, R.id.launcher_avatar, R.string.avatar, R.array.empty_avatars);
+        importAvatar = button(settings, R.id.launcher_import_avatar, R.string.import_avatar, false);
+        text(settings, R.string.avatar_hint, 18, true);
         renderScale = choice(settings, R.id.launcher_scale, R.string.vr_resolution, R.array.vr_resolutions);
         targetRefreshRate = choice(settings, R.id.launcher_refresh_rate, R.string.target_refresh_rate, R.array.refresh_rates);
         text(settings, R.string.resolution_hint, 18, true);

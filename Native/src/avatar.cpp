@@ -1,9 +1,6 @@
 #include "openslope/avatar.hpp"
-#include "figure.hpp"
 #include "openslope/gear.hpp"
 #include "openslope/ui_font.hpp"
-#include <cstring>
-#include <nlohmann/json.hpp>
 #include <stdexcept>
 
 namespace openslope {
@@ -161,7 +158,7 @@ BoneTarget target(std::string_view name, const AvatarPose& p) {
         return pair(J::Hips, J::Spine);
     if (name == "Spine")
         return pair(J::Spine, J::Chest);
-    if (name == "Chest")
+    if (name == "Chest" || name == "ChestUpper")
         return pair(J::Chest, J::Neck);
     if (name == "Neck")
         return pair(J::Neck, J::Head);
@@ -426,155 +423,16 @@ AvatarPose avatar_pose(const Player& player, const AvatarTracking* tracking, con
     return p;
 }
 
-Avatar::Avatar() {
-    const auto bytes = std::span(bundled::stick_figure);
-    const auto word = [&](std::size_t offset) {
-        if (offset + 4 > bytes.size())
-            throw std::runtime_error("Truncated figure");
-        std::uint32_t v;
-        std::memcpy(&v, bytes.data() + offset, 4);
-        return v;
-    };
-    if (word(0) != 0x46546c67 || word(4) != 2 || word(8) != bytes.size() || word(16) != 0x4e4f534a)
-        throw std::runtime_error("Invalid bundled figure");
-    const auto json_size = word(12);
-    const auto binary_header = std::size_t(20) + json_size;
-    if (word(binary_header + 4) != 0x004e4942 || binary_header + 8 + word(binary_header) != bytes.size())
-        throw std::runtime_error("Invalid figure binary");
-    const auto binary = bytes.subspan(binary_header + 8);
-    const auto data = nlohmann::json::parse(bytes.begin() + 20, bytes.begin() + binary_header);
-    const auto& nodes = data.at("nodes");
-    const auto& skin = data.at("skins").at(0);
-    const auto& joints = skin.at("joints");
-    if (joints.size() > 128 || nodes.size() > 256)
-        throw std::runtime_error("Figure rig exceeds bounds");
-    using M = std::array<double, 16>;
-    std::vector<M> global(nodes.size());
-    std::vector<unsigned> parents(nodes.size(), 0);
-    for (unsigned i = 0; i < nodes.size(); ++i)
-        for (const auto& child : nodes[i].value("children", nlohmann::json::array()))
-            parents.at(child.get<unsigned>()) = i;
-    for (unsigned i = 0; i < nodes.size(); ++i) {
-        const auto local = nodes[i].value("matrix", M{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1});
-        if (i && parents[i] >= i)
-            throw std::runtime_error("Figure rig is not ordered");
-        auto& m = global[i];
-        if (!i)
-            m = local;
-        else
-            for (unsigned c = 0; c < 4; ++c)
-                for (unsigned r = 0; r < 4; ++r)
-                    for (unsigned k = 0; k < 4; ++k)
-                        m[c * 4 + r] += global[parents[i]][k * 4 + r] * local[c * 4 + k];
-    }
-    const auto position = [&](unsigned node) {
-        const auto& m = global.at(node);
-        return Vec3{m[12], m[13], m[14]};
-    };
-    for (unsigned i = 0; i < joints.size(); ++i) {
-        const auto node = joints[i].get<unsigned>();
-        const auto& m = global.at(node);
-        auto head = position(node), tail = head + Vec3{m[4], m[5], m[6]} * .1;
-        const auto children = nodes[node].value("children", nlohmann::json::array());
-        if (!children.empty() && !nodes[node].at("name").get<std::string>().starts_with("Hand"))
-            tail = position(children.at(0).get<unsigned>());
-        const auto parent_node = parents[node];
-        unsigned parent = i;
-        for (unsigned k = 0; k < joints.size(); ++k)
-            if (joints[k].get<unsigned>() == parent_node)
-                parent = k;
-        const auto name = nodes[node].at("name").get<std::string>();
-        const std::array<Vec3, 3> axes{{normalized(Vec3{m[0], m[1], m[2]}), normalized(Vec3{m[4], m[5], m[6]}),
-                                        normalized(Vec3{m[8], m[9], m[10]})}};
-        if (name == "Hand.L" || name == "Hand.R")
-            tail = head + axes[1] * .1;
-        bones_.push_back({name, head, tail, parent, axes});
-    }
-    const auto read = [&](unsigned accessor, unsigned component, unsigned type, unsigned lanes) {
-        const auto& a = data.at("accessors").at(accessor);
-        if (a.at("componentType") != type || a.value("normalized", false) || a.contains("sparse"))
-            throw std::runtime_error("Unsupported figure accessor");
-        const auto count = a.at("count").get<std::size_t>();
-        if (count > 30000)
-            throw std::runtime_error("Figure accessor exceeds bounds");
-        const auto& b = data.at("bufferViews").at(a.at("bufferView").get<unsigned>());
-        const auto stride = b.value("byteStride", std::size_t(component * lanes)),
-                   offset = b.value("byteOffset", std::size_t(0)) + a.value("byteOffset", std::size_t(0));
-        if (b.value("buffer", 0) != 0 || stride < component * lanes ||
-            (count && offset + (count - 1) * stride + component * lanes > binary.size()))
-            throw std::runtime_error("Figure accessor outside binary");
-        std::vector<double> values;
-        values.reserve(count * lanes);
-        for (std::size_t i = 0; i < count; ++i)
-            for (unsigned lane = 0; lane < lanes; ++lane) {
-                const auto* p = binary.data() + offset + i * stride + lane * component;
-                double v = 0;
-                if (type == 5126) {
-                    float f;
-                    std::memcpy(&f, p, 4);
-                    v = f;
-                } else if (type == 5125) {
-                    std::uint32_t u;
-                    std::memcpy(&u, p, 4);
-                    v = u;
-                } else {
-                    std::uint16_t u;
-                    std::memcpy(&u, p, 2);
-                    v = u;
-                }
-                if (!std::isfinite(v))
-                    throw std::runtime_error("Non-finite figure value");
-                values.push_back(v);
-            }
-        return values;
-    };
-    const auto& primitives = data.at("meshes").at(0).at("primitives");
-    const auto& attributes = primitives.at(0).at("attributes");
-    const auto normals = read(attributes.at("NORMAL").get<unsigned>(), 4, 5126, 3);
-    const auto points = read(attributes.at("POSITION").get<unsigned>(), 4, 5126, 3),
-               bones = read(attributes.at("JOINTS_0").get<unsigned>(), 2, 5123, 4),
-               weights = read(attributes.at("WEIGHTS_0").get<unsigned>(), 4, 5126, 4);
-    if (points.size() != normals.size() || points.size() / 3 != bones.size() / 4 || bones.size() != weights.size())
-        throw std::runtime_error("Figure attribute counts differ");
-    for (std::size_t i = 0; i < points.size() / 3; ++i) {
-        const auto bone = unsigned(bones[i * 4]);
-        if (bone >= bones_.size() || weights[i * 4] != 1 || weights[i * 4 + 1] != 0 || weights[i * 4 + 2] != 0 ||
-            weights[i * 4 + 3] != 0)
-            throw std::runtime_error("Figure requires rigid skin weights");
-        vertices_.push_back({{points[i * 3], points[i * 3 + 1], points[i * 3 + 2]},
-                             {normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]},
-                             bone});
-    }
-    for (const auto& primitive : primitives) {
-        if (primitive.value("mode", 4) != 4 || primitive.at("attributes") != attributes)
-            throw std::runtime_error("Unsupported figure primitive");
-        const auto& material = data.at("materials").at(primitive.at("material").get<unsigned>());
-        const auto colour =
-            material.at("pbrMetallicRoughness").value("baseColorFactor", std::array<double, 4>{1, 1, 1, 1});
-        std::array<float, 3> display{};
-        for (unsigned c = 0; c < 3; ++c)
-            display[c] = float(colour[c] <= .0031308 ? colour[c] * 12.92 : 1.055 * std::pow(colour[c], 1 / 2.4) - .055);
-        const auto indices = read(primitive.at("indices").get<unsigned>(), 4, 5125, 1);
-        if (indices.size() % 3)
-            throw std::runtime_error("Incomplete figure triangle");
-        for (const auto index : indices) {
-            if (index >= vertices_.size())
-                throw std::runtime_error("Figure index out of bounds");
-            corners_.push_back({unsigned(index), display});
-        }
-    }
-    mesh_.reserve(corners_.size() + 20000);
-}
-
 std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, bool labels, Vec3 eye,
                                      Vec3 controller_offset, const SceneLighting* scene_lighting,
                                      bool runtime_lighting) {
-    const auto right = normalized(cross(p.forward, p.up));
-    const auto basis = [&](Vec3 v) { return right * v.x + p.up * v.y + p.forward * v.z; };
+    // The GLBs face +Z: their +X is anatomical left. This must be a rotation,
+    // not the reflected right/up/forward frame used by the old rigid figure.
+    const auto left = normalized(cross(p.up, p.forward));
+    const auto basis = [&](Vec3 v) { return left * v.x + p.up * v.y + p.forward * v.z; };
 
     struct Transform {
         Vec3 origin, from, to, target;
-        double scale;
         std::array<Vec3, 3> source{}, destination{};
         Vec3 curl_axis{};
         bool framed = false;
@@ -590,7 +448,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     std::vector<Transform> transforms;
     transforms.reserve(bones_.size());
     for (const auto& b : bones_) {
-        if (b.name.starts_with("LeftHand") || b.name.starts_with("RightHand")) {
+        if ((b.name.starts_with("LeftHand") || b.name.starts_with("RightHand")) && b.parent < transforms.size()) {
             const auto& parent = transforms.at(b.parent);
             const auto side = b.name.starts_with("LeftHand") ? 0u : 1u;
             const auto& c = p.controllers[side];
@@ -615,22 +473,103 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             transforms.push_back(transform);
             continue;
         }
+        const bool driven =
+            b.name == "Hips" || b.name == "Spine" || b.name == "Chest" || b.name == "ChestUpper" || b.name == "Neck" ||
+            b.name == "Head" || b.name.starts_with("Clavicle") || b.name.starts_with("UpperArm") ||
+            b.name.starts_with("LowerArm") || b.name.starts_with("Hand") || b.name.starts_with("Pelvis") ||
+            b.name.starts_with("UpperLeg") || b.name.starts_with("LowerLeg") || b.name.starts_with("Foot");
+        if (!driven) {
+            if (b.parent < transforms.size()) {
+                auto t = transforms[b.parent];
+                t.target += t.map(basis(b.head - t.origin));
+                t.origin = b.head;
+                transforms.push_back(t);
+            } else {
+                const auto from = basis(b.tail - b.head);
+                transforms.push_back({b.head, from, from, p.joint(J::Hips) + basis(b.head - Vec3{0, 1.0364, 0})});
+            }
+            continue;
+        }
         const auto t = target(b.name, p);
         const auto from = basis(b.tail - b.head), to = t.tail - t.head;
-        Transform transform{b.head, from, to, t.head, std::clamp(length(to) / std::max(.001, length(from)), .5, 1.5)};
+        Transform transform{b.head, from, to, t.head};
+        // Keep the imported skeleton connected and retain its authored lengths.
+        // Moving every joint onto the marker skeleton tears blended coat panels
+        // and fitting each segment independently changes rigid box proportions.
+        if (b.name != "Hips" && b.parent < transforms.size()) {
+            const auto& parent = transforms[b.parent];
+            transform.target = parent.target + parent.map(basis(b.head - parent.origin));
+        }
+        if (b.name == "Hips" || b.name == "Spine" || b.name == "Chest" || b.name == "ChestUpper" || b.name == "Neck") {
+            const auto rest_up = normalized(b.tail - b.head),
+                       rest_forward = normalized(project({0, 0, 1}, rest_up), {0, 0, 1});
+            const auto up = normalized(to, p.up);
+            auto forward = p.forward;
+            if (b.name == "Chest" || b.name == "ChestUpper" || b.name == "Neck") {
+                const auto shoulders = p.joint(J::RightShoulder) - p.joint(J::LeftShoulder);
+                forward = normalized(cross(up, shoulders), forward);
+            }
+            forward = normalized(project(forward, up), p.forward);
+            transform.framed = true;
+            transform.source = {basis(normalized(cross(rest_up, rest_forward))), basis(rest_up), basis(rest_forward)};
+            transform.destination = {normalized(cross(up, forward)), up, forward};
+        }
+        if (b.name.starts_with("UpperArm") || b.name.starts_with("LowerArm")) {
+            const auto side = b.name.ends_with(".L") ? 0u : 1u;
+            const auto& hand = p.controllers[side];
+            if (hand.valid) {
+                if (b.name.starts_with("UpperArm")) {
+                    const auto suffix = side ? ".R" : ".L";
+                    const auto bone = [&](const std::string& name) -> const Bone& {
+                        return *std::find_if(bones_.begin(), bones_.end(),
+                                             [&](const auto& value) { return value.name == name; });
+                    };
+                    const auto& lower = bone(std::string("LowerArm") + suffix);
+                    const auto& wrist = bone(std::string("Hand") + suffix);
+                    const auto shoulder_joint = side ? J::RightShoulder : J::LeftShoulder,
+                               elbow_joint = side ? J::RightElbow : J::LeftElbow,
+                               wrist_joint = side ? J::RightWrist : J::LeftWrist;
+                    const auto bend = p.joint(elbow_joint) - (p.joint(shoulder_joint) + p.joint(wrist_joint)) * .5;
+                    const auto mid =
+                        knee(transform.target, hand.position, bend, std::max(.001, length(lower.head - b.head)),
+                             std::max(.001, length(wrist.head - lower.head)));
+                    transform.to = mid - transform.target;
+                } else
+                    transform.to = hand.position - transform.target;
+            }
+        }
         if (b.name == "Hand.L" || b.name == "Hand.R") {
             const auto& c = p.controllers[b.name == "Hand.L" ? 0 : 1];
             if (c.valid) {
+                transform.target = c.position;
                 transform.framed = true;
                 for (unsigned i = 0; i < 3; ++i)
                     transform.source[i] = basis(b.axes[i]);
                 transform.destination = {c.right, -c.up, c.forward};
+            } else if (b.parent < transforms.size()) {
+                // Untracked hands retain their imported wrist angle beneath the forearm.
+                const auto anchor = transform.target;
+                transform = transforms[b.parent];
+                transform.origin = b.head;
+                transform.target = anchor;
             }
+        }
+        if (b.name == "Foot.L" || b.name == "Foot.R") {
+            const auto ankle = b.name == "Foot.L" ? J::LeftAnkle : J::RightAnkle,
+                       toe = b.name == "Foot.L" ? J::LeftToe : J::RightToe;
+            const auto rest_forward = normalized(project(b.axes[1], {0, 1, 0}), {0, 0, 1}),
+                       rest_left = normalized(cross({0, 1, 0}, rest_forward));
+            const auto forward = normalized(project(p.joint(toe) - p.joint(ankle), p.up), p.forward);
+            transform.framed = true;
+            transform.source = {basis(rest_left), basis({0, 1, 0}), basis(rest_forward)};
+            transform.destination = {normalized(cross(p.up, forward)), p.up, forward};
         }
         if (b.name == "Head") {
             transform.framed = true;
             transform.source = {basis({1, 0, 0}), basis({0, 1, 0}), basis({0, 0, 1})};
-            transform.destination = {normalized(cross(p.head_forward, p.head_up)), p.head_up, p.head_forward};
+            transform.destination = {normalized(cross(p.head_up, p.head_forward)), p.head_up, p.head_forward};
+            if (p.controller_models)
+                transform.target = t.head;
         }
         transforms.push_back(transform);
     }
@@ -644,13 +583,17 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     std::vector<Vec3> normals;
     normals.reserve(vertices_.size());
     for (const auto& v : vertices_) {
-        const auto& t = transforms[v.bone];
-        auto relative = basis(v.position - t.origin);
-        const auto axis = normalized(t.from);
-        if (!t.framed)
-            relative += axis * (dot(relative, axis) * (t.scale - 1));
-        posed.push_back(t.target + t.map(relative));
-        const auto normal = normalized(t.map(basis(v.normal)));
+        Vec3 point{}, normal{};
+        for (unsigned influence = 0; influence < 4; ++influence) {
+            if (v.weights[influence] == 0)
+                continue;
+            const auto& t = transforms[v.bones[influence]];
+            const auto relative = basis(v.position - t.origin);
+            point += (t.target + t.map(relative)) * v.weights[influence];
+            normal += t.map(basis(v.normal)) * v.weights[influence];
+        }
+        normal = normalized(normal);
+        posed.push_back(point);
         normals.push_back(normal);
         lighting.push_back(runtime_lighting ? Vec3{1, 1, 1} : illumination.evaluate(normal));
     }
@@ -659,8 +602,14 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     for (std::size_t i = 0; i < corners_.size(); i += 3) {
         bool hide = false;
         for (unsigned k = 0; k < 3; ++k) {
-            const auto& name = bones_[vertices_[corners_[i + k].vertex].bone].name;
-            hide |= first_person && (name == "Head" || name == "Neck");
+            const auto& vertex = vertices_[corners_[i + k].vertex];
+            double head_weight = 0;
+            for (unsigned influence = 0; influence < 4; ++influence) {
+                const auto& name = bones_[vertex.bones[influence]].name;
+                if (name == "Head" || name == "Neck")
+                    head_weight += vertex.weights[influence];
+            }
+            hide |= first_person && head_weight > .25;
         }
         for (unsigned k = 0; k < 3; ++k) {
             const auto& c = corners_[i + k];
@@ -673,6 +622,16 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             v.nx = float(n.x);
             v.ny = float(n.y);
             v.nz = float(n.z);
+            if (c.textured) {
+                v.s = c.uv[0];
+                v.t = c.uv[1];
+                v.ls = c.uv[2];
+                v.lt = c.uv[3];
+                v.lh = 1;
+                v.lx = c.emissive[0];
+                v.ly = c.emissive[1];
+                v.lw = c.emissive[2];
+            }
             shadow_.push_back(v);
             if (!hide)
                 mesh_.push_back(v);
@@ -697,7 +656,7 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
         for (unsigned i = 0; i < p.score_text.size(); ++i)
             label(mesh_, p.score_text[i], anchor, eye, .04 - i * .025, i == 1 ? colour : std::array<float, 3>{1, 1, 1});
     }
-    if (mesh_.size() > 60000)
+    if (mesh_.size() > 120000)
         throw std::runtime_error("Avatar submission exceeds bounds");
     return mesh_;
 }

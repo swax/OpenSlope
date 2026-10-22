@@ -73,6 +73,24 @@ std::vector<UiButton> RideUi::buttons() const {
         list.push_back({.06, .85, .88, .085, "BACK TO MENU", UiAction::Graphics});
         return list;
     }
+    if (avatar_options) {
+        std::vector<UiButton> list;
+        for (std::size_t i = avatar_page * 5; i < std::min(avatar_choices.size(), avatar_page * 5 + 5); ++i) {
+            const auto& choice = avatar_choices[i];
+            list.push_back({.06,
+                            .30 + double(i - avatar_page * 5) * .09,
+                            .88,
+                            .075,
+                            (choice.id == avatar_selection ? "> " : "") + choice.label,
+                            UiAction::SelectAvatar,
+                            {},
+                            choice.id});
+        }
+        list.push_back({.06, .85, .26, .085, "PREV", UiAction::PreviousAvatarPage});
+        list.push_back({.37, .85, .26, .085, "BACK", UiAction::Avatars});
+        list.push_back({.68, .85, .26, .085, "NEXT", UiAction::NextAvatarPage});
+        return list;
+    }
     if (audio_options) {
         if (song_picker) {
             std::vector<UiButton> list{
@@ -174,6 +192,12 @@ std::vector<UiButton> RideUi::buttons() const {
         list.push_back({.06, .78, .42, .095, "RECALL BOARD", UiAction::Recall});
     list.push_back({immersive && !map_picker ? .06 : .52, .78, immersive && !map_picker ? .88 : .42, .095,
                     immersive ? "EXIT APP" : "EXIT", UiAction::Exit});
+    // Make room for the same avatar entry on desktop and the wrist menu.
+    for (auto& button : list) {
+        button.y = .29 + (button.y - .30) * .85;
+        button.h = .08;
+    }
+    list.push_back({.06, .81, .88, .08, "AVATAR", UiAction::Avatars});
     return list;
 }
 
@@ -272,7 +296,7 @@ UiResult RideUi::pointer(const EquipmentRay& ray, bool down) {
 
 UiFrame RideUi::desktop(const CameraPose& c, double aspect, bool menu) {
     const auto right = normalized(cross(c.forward, c.up)), up = normalized(cross(right, c.forward));
-    const auto height = .50 * std::tan(c.fov / 2) * (menu ? 1.20 : 1.96);
+    const auto height = .50 * std::tan(c.fov / 2) * (menu ? 1.20 : 2.);
     // The menu's row spacing is shared with the wrist panel. Keep its physical
     // aspect while shrinking so square font pixels cannot overlap adjacent rows.
     const auto width = menu ? std::min(height * std::min(aspect, 1.34), .95) : height * aspect;
@@ -304,6 +328,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
         c.rect(0, 0, 1, .012, accent);
         c.text("OPEN SLOPE " + std::string(application_version()), .06, .045, .005, accent);
         c.text(loading ? (importing ? (iso_courses.empty() ? "READING ISO" : "EXTRACTING COURSE") : "LOADING COURSE")
+               : avatar_options   ? "AVATAR"
                : rider_options    ? "OPPONENTS"
                : graphics_options ? "GRAPHICS"
                : audio_options    ? (song_picker ? "CHOOSE SONG" : "AUDIO")
@@ -316,6 +341,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : library          ? (iso_library ? (iso_source.empty() ? "SSX / TRICKY / SSX 3 / ON TOUR (PS2)"
                                                                        : iso_source.filename().string())
                                                  : "INSTALLED / CUSTOM MAPS")
+               : avatar_options   ? "CHOOSE YOUR AVATAR"
                : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
                                                     : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
                                   : speed + " KM/H  /  " +
@@ -323,7 +349,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                                          : p.on_foot()      ? "ON FOOT"
                                                             : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
-        if (!audio_options && !graphics_options && !rider_options && !loading && !library)
+        if (!avatar_options && !audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
         if (loading) {
             c.text(load_stage, .06, .38, .004, ink);
@@ -357,7 +383,8 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             c.text("AI RIDERS: " + std::to_string(count) + " / 16", .06, .56, .006, accent);
             c.text("ZERO FOR A SOLO MOUNTAIN", .06, .68, .0038, muted);
         }
-        if (controls && !library && !audio_options && !graphics_options && !rider_options && !loading) {
+        if (controls && !avatar_options && !library && !audio_options && !graphics_options && !rider_options &&
+            !loading) {
             const auto right_stick = p.on_foot() ? "RIGHT STICK   TURN / CLICK VIEW" : "RIGHT CLICK   1ST / 3RD VIEW";
             const std::array<std::string, 10> rows =
                 wrist ? std::array<std::string, 10>{"A   JUMP / DOUBLE JUMP FLY",     "B   AIM BOOST / BOARD THRUST",
@@ -368,7 +395,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                       : std::array<std::string, 10>{
                             "W S WALK / A D STRAFE OR CARVE",    "SPACE   JUMP / DOUBLE JUMP FLY",
                             "SHIFT   BOOST / HELD BOARD THRUST", "LMB DRAG   LOOK / TURN ON FOOT",
-                            "RMB ON BOARD   CARRY / THROW",      "E   SPAWN AND RIDE / STEP OFF",
+                            "RMB DRAG ORBIT / BOARD CARRY",      "E   SPAWN AND RIDE / STEP OFF",
                             "CTRL   CROUCH / FLY DOWN",          "WHEEL   ZOOM   G   NEARBY BOARD",
                             "R   COURSE RESET   T   RESTART",    "V   VIEW   ESC   MENU"};
             for (unsigned i = 0; i < rows.size(); ++i)

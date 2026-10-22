@@ -137,8 +137,8 @@ export function createPointerRouter(
   let mmbDown: { x: number; y: number } | null = null;
   /** A deferred single-finger touch press in a nav mode: a drag orbits (custom ray-cast), a tap selects. */
   let touchNav: { x: number; y: number } | null = null;
-  /** RMB remains the third-person look fallback only when no highlighted Play target consumes the press. */
-  let rideOrbitMouse = false;
+  /** Unconsumed desktop look buttons; LMB turns the avatar and RMB only orbits the camera. */
+  let rideLookButtons = 0;
   // props select mode defers the LMB press: a still click selects on release, a drag becomes the marquee
   let propClickPending: { x: number; y: number; shift: boolean; ctrl: boolean } | null = null;
   // Info uses the same click-or-marquee contract for authored course knots.
@@ -1891,14 +1891,14 @@ export function createPointerRouter(
     if (layers.rideCtl.riding) {
       if (layers.rideCtl.walking && e.pointerType === 'mouse')
         layers.rideCtl.setDesktopBoardAim(ridePointerNdc(e.clientX, e.clientY));
-      // Captured RMB-look is driven from ride/pointer-lock's document mousemove. Keep this path as the fallback
+      // Captured look is driven from ride/pointer-lock's document mousemove. Keep this path as the fallback
       // while the request is pending, after Escape breaks the capture, or when Pointer Lock is unavailable.
       if (
         e.pointerType === 'mouse' &&
-        rideOrbitMouse &&
+        rideLookButtons &&
         (typeof document === 'undefined' || document.pointerLockElement !== dom)
       ) {
-        layers.rideCtl.orbitCamera(e.movementX || 0, e.movementY || 0);
+        layers.rideCtl.orbitCamera(e.movementX || 0, e.movementY || 0, (rideLookButtons & 1) !== 0);
         e.preventDefault();
       }
       return;
@@ -2305,24 +2305,24 @@ export function createPointerRouter(
     ];
   }
 
-  /** Start target interaction on mouse-down. An unconsumed RMB retains its camera-look meaning. */
+  /** Start target interaction on mouse-down. Unconsumed left/right presses start their look drag. */
   function beginRideMouseButton(button: number, clientX: number, clientY: number): boolean {
     let consumed = false;
     if (layers.rideCtl.walking) {
       layers.rideCtl.setDesktopBoardAim(ridePointerNdc(clientX, clientY));
       consumed = layers.rideCtl.beginDesktopPointer(button);
     }
-    if (button === 2) rideOrbitMouse = !consumed;
+    if (!consumed && (button === 0 || button === 2)) rideLookButtons |= button === 0 ? 1 : 2;
     return consumed;
   }
 
   function endRideMouseButton(button: number) {
-    if (button === 2) rideOrbitMouse = false;
+    if (button === 0 || button === 2) rideLookButtons &= ~(button === 0 ? 1 : 2);
     layers.rideCtl.endDesktopPointer(button);
   }
 
   function clearRideMouseButtons() {
-    rideOrbitMouse = false;
+    rideLookButtons = 0;
     layers.rideCtl.endDesktopPointer(2);
   }
 

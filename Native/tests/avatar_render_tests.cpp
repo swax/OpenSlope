@@ -101,6 +101,73 @@ int main(int argc, char** argv) {
         b.use_scene(scene);
         a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
         b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 4);
+        // Exercise every bundled GLB through the actual Vulkan texture/skin path.
+        {
+            const Vec3 eye{2.8, 2.1, 3.2};
+            const auto camera = projection(-.85, .85, -.85, .85) * view(eye, {-2.8, -1, -3.2});
+            const auto board =
+                board_transform(player.render_board_position(), player.render_forward(), player.render_up());
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye);
+            a.capture(0, root / "avatar-empty.ppm");
+            const auto empty = pixels(root / "avatar-empty.ppm");
+            for (const auto& option : builtin_avatars()) {
+                auto model = Avatar::builtin(option.id);
+                const auto drawn = model.mesh(avatar_pose(player), false, false);
+                std::vector<Vertex> body(drawn.begin(), drawn.end());
+                a.avatar_texture(model.texture());
+                a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+                const auto name = option.id.substr(8);
+                a.capture(0, root / ("avatar-" + name + ".ppm"));
+                const auto rendered = pixels(root / ("avatar-" + name + ".ppm"));
+                unsigned different = 0;
+                for (std::size_t i = 0; i < rendered.size(); i += 3)
+                    different += std::abs(int(rendered[i]) - empty[i]) + std::abs(int(rendered[i + 1]) - empty[i + 1]) +
+                                     std::abs(int(rendered[i + 2]) - empty[i + 2]) >
+                                 20;
+                check(different > 1000, "Selected avatar is visible in real GPU pixels");
+                check(a.stats().avatar_triangles == model.source_triangles(), "Complete selected avatar is submitted");
+                if (model.texture()) {
+                    for (auto& v : body)
+                        v.lh = 0;
+                    a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+                    a.capture(0, root / "avatar-without-texture.ppm");
+                    const auto flat = pixels(root / "avatar-without-texture.ppm");
+                    unsigned textured = 0;
+                    for (std::size_t i = 0; i < rendered.size(); ++i)
+                        textured += std::abs(int(rendered[i]) - flat[i]) > 8;
+                    check(textured > 100, "Avatar atlas changes actual rendered pixels");
+                }
+                if (option.id == "builtin:robin" || option.id == "builtin:blocky-rider") {
+                    Player walker(Terrain({patch}));
+                    walker.warp({0, 0, 0}, {0, 0, -1});
+                    walker.start_on_foot();
+                    const auto origin = walker.render_position();
+                    AvatarTracking sample;
+                    sample.head = origin + Vec3{0, 1.65, 0};
+                    for (unsigned side = 0; side < 2; ++side) {
+                        sample.controllers[side].valid = true;
+                        sample.controllers[side].position = origin + Vec3{side ? .32 : -.32, 1.03, -.30};
+                    }
+                    for (unsigned variant = 0; variant < 3; ++variant) {
+                        const auto self = variant == 2;
+                        const auto pose = avatar_pose(walker, variant ? &sample : nullptr);
+                        const auto camera_eye = self ? sample.head : origin + Vec3{0, 1.2, -3.4},
+                                   direction = self ? normalized(Vec3{0, -1, -.3}) : Vec3{0, 0, 1};
+                        const auto posed = model.mesh(pose, self, false, camera_eye);
+                        a.avatar_texture(model.texture());
+                        a.render(0, projection(-.85, .85, -.85, .85) * view(camera_eye, direction), board,
+                                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, camera_eye, {}, {}, {}, posed);
+                        const auto file = root / ("avatar-" + name +
+                                                  (self      ? "-look-down.ppm"
+                                                   : variant ? "-tracked.ppm"
+                                                             : "-standing.ppm"));
+                        a.capture(0, file);
+                        check(!pixels(file).empty(), "Robin and Blocky standing/tracked/self views render");
+                    }
+                }
+            }
+            a.avatar_texture(nullptr);
+        }
         AvatarTracking tracking;
         tracking.head = {0, 1.65, 0};
         tracking.forward = {0, 0, -1};

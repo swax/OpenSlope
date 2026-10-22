@@ -352,6 +352,7 @@ const desktopReleases: number[] = [];
 let desktopAim: readonly [number, number] | null = null;
 let consumeDesktopTarget = true;
 let rideOrbit = 0;
+const rideTurns: boolean[] = [];
 layers.rideCtl = {
   riding: true,
   walking: true,
@@ -366,8 +367,9 @@ layers.rideCtl = {
     desktopReleases.push(button);
     return button === 2;
   },
-  orbitCamera(dx: number) {
+  orbitCamera(dx: number, _dy: number, turnAvatar: boolean) {
     rideOrbit += dx;
+    rideTurns.push(turnAvatar);
   },
 };
 dom.dispatch('pointermove', { clientX: 600, clientY: 300, movementX: 0, movementY: 0 });
@@ -395,6 +397,18 @@ dom.dispatch('mousedown', { button: 2 });
 dom.dispatch('pointermove', { movementX: 12, movementY: 0 });
 dom.dispatch('mouseup', { button: 2 });
 check(rideOrbit === 12, 'an RMB miss retains the existing third-person camera-look fallback');
+check(rideTurns.at(-1) === false, 'RMB fallback requests camera-only orbit');
+dom.dispatch('mousedown', { button: 0 });
+dom.dispatch('pointermove', { movementX: 7, movementY: 0 });
+check(rideTurns.at(-1) === true, 'LMB fallback turns the avatar');
+dom.dispatch('mousedown', { button: 2 });
+dom.dispatch('mouseup', { button: 0 });
+dom.dispatch('pointermove', { movementX: 5, movementY: 0 });
+check(rideTurns.at(-1) === false, 'releasing LMB retains an overlapping RMB orbit');
+dom.dispatch('mouseup', { button: 2 });
+const releasedOrbit = rideOrbit;
+dom.dispatch('pointermove', { movementX: 20, movementY: 0 });
+check(rideOrbit === releasedOrbit, 'releasing both buttons stops fallback look');
 layers.rideCtl = { riding: false };
 
 dom.dispatch('pointerdown', {});

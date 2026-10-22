@@ -11,7 +11,7 @@ export function rideControlHelp(walking: boolean, firstPerson: boolean): RideCon
   const zoom: RideControlRow = ['Wheel / pinch', 'zoom camera'];
   const view: RideControlRow[] = firstPerson
     ? [['Mouse', 'look'], escape, ['click', 'recapture cursor']]
-    : [['hold RMB', 'look'], zoom, escape];
+    : [['hold RMB', 'orbit camera'], ['hold LMB', 'turn avatar / look'], zoom, escape];
   const switchView: RideControlRow = ['V', `switch to ${firstPerson ? 'third' : 'first'} person`];
   if (walking) {
     return {
@@ -24,8 +24,8 @@ export function rideControlHelp(walking: boolean, firstPerson: boolean): RideCon
           ['Shift / Pad X', 'boost · with jump: fly'],
         ],
         [
-          ['LMB', 'interact · highlighted board: ride'],
-          ['hold RMB', firstPerson ? 'grab highlighted board' : 'grab highlighted board · otherwise look'],
+          ['LMB', firstPerson ? 'interact · highlighted board: ride' : 'ride highlighted board · drag: turn avatar'],
+          ['hold RMB', firstPerson ? 'grab highlighted board' : 'grab highlighted board · otherwise orbit camera'],
           ...(firstPerson ? view : [zoom, escape]),
           ['E', 'recall + get on board'],
           switchView,

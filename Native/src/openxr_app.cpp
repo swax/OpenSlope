@@ -4,6 +4,7 @@
 #include "field_presentation.hpp"
 #include "openslope/audio_preferences.hpp"
 #include "openslope/avatar.hpp"
+#include "openslope/avatar_preferences.hpp"
 #include "openslope/graphics_preferences.hpp"
 #include "openslope/ride_ui.hpp"
 #include "vulkan_renderer.hpp"
@@ -73,6 +74,8 @@ struct State {
     RideUi ui;
     AudioPreferences audio_preferences;
     GraphicsPreferences graphics_preferences;
+    AvatarPreferences avatar_preferences;
+    std::filesystem::path avatar_preferences_path;
     std::filesystem::path audio_preferences_path;
     std::filesystem::path graphics_preferences_path;
     std::string course_id;
@@ -125,7 +128,7 @@ struct State {
     XrTime reference_change = 0;
     int tracking_mode = -1, actual_fidelity = -1, boarding_mode = -1, pose_mode = -1, run_phase = -1;
     unsigned run_checkpoints = 0;
-    Avatar avatar;
+    Avatar avatar, opponent_avatar;
     GlareVisibility glare_visibility;
     VulkanContext vulkan;
     std::vector<Eye> eyes;
@@ -841,6 +844,9 @@ struct State {
         if (audio_preferences.handle(selected, ui, audio_scene, course_id) && !audio_preferences_path.empty() &&
             !audio_preferences.save(audio_preferences_path))
             ui.notice = "AUDIO SETTINGS COULD NOT BE SAVED";
+        if (avatar_preferences.handle(selected, ui, avatar) && !avatar_preferences_path.empty() &&
+            !avatar_preferences.save(avatar_preferences_path))
+            ui.notice = "AVATAR CHANGED BUT COULD NOT BE SAVED";
         if (graphics_preferences.handle(selected, ui) && !graphics_preferences_path.empty() &&
             !graphics_preferences.save(graphics_preferences_path))
             ui.notice = "GRAPHICS SETTINGS COULD NOT BE SAVED";
@@ -930,6 +936,15 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                                           ? state.audio_preferences_path.parent_path() / "graphics-preferences.json"
                                           : platform.graphics_preferences;
     state.graphics_preferences = GraphicsPreferences::load(state.graphics_preferences_path);
+    state.avatar_preferences_path = state.audio_preferences_path.parent_path() / "avatar-preferences.json";
+    state.avatar_preferences = AvatarPreferences::load(state.avatar_preferences_path, platform.default_avatar);
+    state.avatar_preferences.present(state.ui, state.avatar_preferences_path);
+    if (!state.avatar_preferences.apply(state.avatar, state.ui)) {
+        state.avatar_preferences.selected = platform.default_avatar;
+        state.avatar_preferences.apply(state.avatar, state.ui);
+        state.ui.avatar_selection = state.avatar_preferences.selected;
+        state.ui.notice = "SAVED AVATAR UNAVAILABLE - USING DEFAULT";
+    }
     state.audio_preferences.apply(audio, state.course_id, true);
     state.audio_scene = &audio;
     tracking_log("Audio settings: course " + state.course_id + "; music " +
@@ -1092,10 +1107,12 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                     state.ui.append_pointer(hud, pointer);
                 }
                 std::vector<unsigned> opponent_designs;
-                const auto opponents = append_opponents(player, state.avatar, avatar_mesh, tracked.head + camera_offset,
-                                                        &opponent_designs);
-                for (auto& eye : state.eyes)
+                const auto opponents = append_opponents(player, state.opponent_avatar, avatar_mesh,
+                                                        tracked.head + camera_offset, &opponent_designs);
+                for (auto& eye : state.eyes) {
+                    eye.renderer->avatar_texture(state.avatar.texture());
                     eye.renderer->board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
+                }
                 const FieldEffects effects(player, tracked.head + camera_offset);
                 CelestialView glare_view;
                 glare_view.stereo = true;

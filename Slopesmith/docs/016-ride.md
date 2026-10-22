@@ -156,8 +156,9 @@ Tools panel is the ride's staging area:
 
 While a ride runs it **owns the camera and the input** and hides the non-target mountain. On a desktop,
 **first person captures and hides the cursor** until **Esc** releases it; clicking the viewport captures it again.
-In **third person** the cursor remains visible until **RMB** is held for unrestricted relative mouse-look, then
-returns immediately when RMB is released. Esc also breaks an active capture, or ends the ride when the cursor is
+In **third person**, hold **RMB** to orbit the camera around the avatar without changing its facing; hold **LMB**
+to turn the on-foot avatar with the camera, keeping its back toward the view. Either drag captures relative
+mouse movement and returns the cursor when released. Esc also breaks an active capture, or ends the ride when the cursor is
 already visible. Stop likewise ends the board, restores the other
 mountain's prior visibility, and returns to setup. You stay in Test mode to tweak the start and go again, and
 leaving Test restores the exact editor camera. Controls:
@@ -212,9 +213,9 @@ re-solves each tracked arm from its own shoulder and bone lengths so the glove l
 - **LMB / RMB on foot** — a loose board or pair of skis under the pointer and within 4 m lights up. LMB gets on
   it where it lies; hold RMB to pick it up and carry it on the pointer ray, then release to drop or throw it.
 - **Mouse look** — first person keeps the cursor captured; after Esc, click empty viewport space to recapture it.
-  In third person, hold RMB away from a highlighted target to capture and look, then release RMB to return the
-  cursor.
-- **Esc** — release an active first-person or RMB capture, or end the ride when the cursor is already visible
+  In third person, drag RMB away from a highlighted target to orbit without turning the avatar. Drag LMB to
+  turn the on-foot avatar with the camera. These controls apply in both `/play` and `/editor` test mode.
+- **Esc** — release an active first-person or mouse-drag capture, or end the ride when the cursor is already visible
   (back to setup).
 
 ### Getting off the board

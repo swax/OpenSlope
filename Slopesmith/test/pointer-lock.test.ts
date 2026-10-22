@@ -55,9 +55,13 @@ function mouseMove(x: number, y: number) {
 const doc = new FakeDocument();
 const target = new FakeTarget(doc);
 const moves: [number, number][] = [];
+const turns: boolean[] = [];
 const lock = createRidePointerLock({
   target: target as unknown as HTMLElement,
-  onMove: (x, y) => moves.push([x, y]),
+  onMove: (x, y, turnAvatar) => {
+    moves.push([x, y]);
+    turns.push(turnAvatar);
+  },
 });
 
 lock.attach();
@@ -65,9 +69,6 @@ assert.equal(target.requests, 0, 'starting in third person leaves the cursor vis
 assert.equal(lock.locked, false);
 doc.dispatchEvent(mouseMove(4, 2));
 assert.deepEqual(moves, [], 'ordinary hover movement does not steer the ride');
-target.dispatchEvent(mouseButton('mousedown', 0));
-assert.equal(target.requests, 0, 'left mouse does not capture the cursor');
-
 target.dispatchEvent(mouseButton('mousedown', 2));
 assert.equal(target.requests, 1, 'pressing right mouse captures the cursor');
 assert.equal(lock.locked, true);
@@ -75,6 +76,7 @@ doc.dispatchEvent(mouseMove(900, -700));
 assert.deepEqual(moves, [], 'the synthetic first delta after capture is ignored');
 doc.dispatchEvent(mouseMove(7, -3));
 assert.deepEqual(moves, [[7, -3]], 'movement looks around while right mouse is held');
+assert.equal(turns.at(-1), false, 'right drag only orbits the camera');
 doc.dispatchEvent(mouseMove(161, -3));
 doc.dispatchEvent(mouseMove(Number.POSITIVE_INFINITY, 1));
 assert.deepEqual(moves, [[7, -3]], 'invalid and implausible one-event spikes cannot snap the view');
@@ -166,6 +168,32 @@ assert.equal(target.requests, 5, 'the stopped ride no longer re-captures on a cl
   coarseDoc.dispatchEvent(mouseButton('mouseup', 2));
   assert.equal(coarse.looking, false, 'RMB up lets the look go');
   coarse.detach();
+}
+
+// Chording look buttons must retain capture until the last release and change the gesture immediately.
+{
+  const dragDoc = new FakeDocument();
+  const dragTarget = new FakeTarget(dragDoc);
+  const bodyTurns: boolean[] = [];
+  const drag = createRidePointerLock({
+    target: dragTarget as unknown as HTMLElement,
+    onMove: (_x, _y, turn) => bodyTurns.push(turn),
+  });
+  drag.attach();
+  dragTarget.dispatchEvent(mouseButton('mousedown', 0));
+  assert.equal(drag.locked, true, 'left drag captures the cursor');
+  dragDoc.dispatchEvent(mouseMove(0, 0));
+  dragDoc.dispatchEvent(mouseMove(5, 0));
+  assert.deepEqual(bodyTurns, [true], 'left drag turns the avatar');
+  dragTarget.dispatchEvent(mouseButton('mousedown', 2));
+  dragDoc.dispatchEvent(mouseButton('mouseup', 0));
+  assert.equal(drag.locked, true, 'right remains captured after releasing left');
+  dragDoc.dispatchEvent(mouseMove(5, 0));
+  assert.deepEqual(bodyTurns, [true, false], 'the remaining right drag only orbits');
+  dragDoc.dispatchEvent(mouseButton('mouseup', 2));
+  assert.equal(drag.locked, false, 'the final release exposes the cursor');
+  assert.equal(drag.looking, false);
+  drag.detach();
 }
 
 console.log('pointer lock checks passed');

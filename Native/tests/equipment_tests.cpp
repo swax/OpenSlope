@@ -79,6 +79,44 @@ void desktop_controls() {
             check(dot(normalized(p.rider().position - after_turn), turned) > .999,
                   "Walking after a drag uses the newly turned facing");
             close(p.rider().forward, turned, "Releasing look keeps the on-foot facing");
+            if (!first_person) {
+                const auto orbit_start = p.rider().position, orbit_eye = camera.pose().eye;
+                camera.orbit(200, 30);
+                for (unsigned i = 0; i < 120; ++i) {
+                    RideInput input;
+                    input.walk_forward = camera.facing();
+                    input.face_walk_forward = true;
+                    p.tick(input);
+                    camera.step(p, 1. / 60, false, i < 60);
+                    close(p.rider().forward, turned, "Right orbit and release preserve the avatar heading");
+                    close(p.rider().position, orbit_start, "Right orbit does not move the avatar");
+                }
+                check(length(camera.pose().eye - orbit_eye) > 1, "Right drag moves the camera around the avatar");
+                const auto eye_bearing = normalized(project(camera.pose().forward, {0, 1, 0}));
+                for (unsigned i = 0; i < 60; ++i) {
+                    RideInput input;
+                    input.posture = 1;
+                    input.walk_forward = camera.facing();
+                    input.face_walk_forward = true;
+                    p.tick(input);
+                    camera.step(p, 1. / 60);
+                }
+                check(dot(normalized(p.rider().position - orbit_start), turned) > .999,
+                      "Walking after a right orbit retains the original movement direction");
+                check(dot(eye_bearing, normalized(project(camera.pose().forward, {0, 1, 0}))) > .999,
+                      "Walking does not cancel a camera-only orbit");
+                camera.orbit(0, 0, true);
+                for (unsigned i = 0; i < 120; ++i) {
+                    RideInput input;
+                    input.walk_forward = camera.facing();
+                    input.face_walk_forward = true;
+                    p.tick(input);
+                    camera.step(p, 1. / 60, false, true);
+                }
+                close(p.rider().forward, eye_bearing, "Left drag takes over the preceding camera orbit");
+                check(dot(normalized(project(camera.pose().forward, {0, 1, 0})), p.rider().forward) > .999,
+                      "Left drag keeps the avatar back toward the camera");
+            }
         }
     }
     Player p(floor());
