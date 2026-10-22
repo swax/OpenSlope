@@ -1,22 +1,20 @@
 import { clientFetch } from '../net/client';
-import { BUILTIN_CHARACTERS, DEFAULT_CHARACTER_MODEL_ID } from '../../core/characters/builtins';
+import { BUILTIN_CHARACTERS, DEFAULT_CHARACTER_MODEL_ID, PROCEDURAL_CHARACTER_ID } from '../../core/characters/builtins';
 
-export const PROCEDURAL_RIDER_MODEL_ID = 'procedural';
+/** A retired choice: riders saved or published with it ride the default character. */
+export const PROCEDURAL_RIDER_MODEL_ID = PROCEDURAL_CHARACTER_ID;
 export const DEFAULT_RIDER_MODEL_ID = DEFAULT_CHARACTER_MODEL_ID;
 
 export interface RiderModelOption {
   id: string;
   file: string | null;
   label: string;
+  /** Built-ins say a few words about who they are. */
+  blurb?: string;
 }
 
-const procedural: RiderModelOption = {
-  id: PROCEDURAL_RIDER_MODEL_ID,
-  file: null,
-  label: 'Procedural',
-};
 const builtins: RiderModelOption[] = BUILTIN_CHARACTERS.map(character => ({ ...character }));
-let catalog: RiderModelOption[] = [...builtins, procedural];
+let catalog: RiderModelOption[] = [...builtins];
 let catalogRequest: Promise<readonly RiderModelOption[]> | null = null;
 let catalogSettled = false;
 
@@ -42,7 +40,7 @@ export function ensureRiderModelCatalog(): Promise<readonly RiderModelOption[]> 
         if (!/^[^/\\]+\.glb$/i.test(row.file) || row.id !== row.file) continue;
         found.push({ id: row.id, file: row.file, label: row.label });
       }
-      catalog = [...builtins, procedural, ...found];
+      catalog = [...builtins, ...found];
       return catalog;
     })
     .catch(error => {

@@ -26,8 +26,8 @@ import {
   type RideGear,
   type SnowboardStance,
 } from '../ride/gear';
-import { DEFAULT_RIDER_MODEL_ID, PROCEDURAL_RIDER_MODEL_ID } from '../ride/rider-models';
-import { builtinCharacter } from '../../core/characters/builtins';
+import { DEFAULT_RIDER_MODEL_ID } from '../ride/rider-models';
+import { avatarId } from '../../core/characters/builtins';
 import { DEFAULT_RIDING_STYLE, ridingStyleOptions } from '../ride/stances';
 import { normalizeRaceMode, type RaceMode } from '../../core/doc/race';
 import { DEFAULT_DRAW_DISTANCE, DRAW_DISTANCE_METRES, type DrawDistance } from '../viewport/scene/range-cull';
@@ -428,14 +428,10 @@ export function createStore(init: { mdoc: EditDoc; currentMode: Mode; storedUi: 
   };
   const savedVrEyeBuffer = vrEyeBuffer(ui.playVrEyeBuffer);
   const savedVrRenderScale = vrRenderScale(ui.playVrRenderScale);
-  // Any built-in, the procedural body, or a library file name. A browser that stored a built-in Slopesmith
+  // Any built-in or a library file name. A browser that stored a built-in Slopesmith
   // no longer ships falls back to the default rather than asking for a model that is not in the build.
-  const riderModel = (v: unknown): string => {
-    if (typeof v !== 'string') return DEFAULT_RIDER_MODEL_ID;
-    const builtIn = builtinCharacter(v);
-    if (builtIn) return builtIn.id; // canonicalizes ids saved before a built-in was renamed
-    return v === PROCEDURAL_RIDER_MODEL_ID || /^[^/\\]+\.glb$/i.test(v) ? v : DEFAULT_RIDER_MODEL_ID;
-  };
+  // avatarId also canonicalizes ids saved before a built-in was renamed, and retires the procedural body.
+  const riderModel = (v: unknown): string => avatarId(v) ?? DEFAULT_RIDER_MODEL_ID;
   // The snow dial (docs/050). It was a checkbox before it was a dial, so a browser that stored one is read
   // back as the two settings it meant rather than reset to the default — an author who had turned the weather
   // off stays turned off.

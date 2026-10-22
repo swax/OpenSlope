@@ -31,6 +31,7 @@ import {
   publicUser,
   setUserDisabled,
   setUserAvailability,
+  setUserAvatar,
   setUserBio,
   setUserEquipment,
   setUserInviteHandle,
@@ -329,6 +330,21 @@ async function handleAvailability(req: IncomingMessage, res: ServerResponse, ide
   }
   const body = (await readJsonBody(req, AUTH_BODY_LIMIT)) as { availability?: unknown };
   const user = await setUserAvailability(identity.user.username, body.availability);
+  jsonResponse(res, 200, { accounts: 'required', user });
+}
+
+/** A member's rider character follows their account, so the play page and the editor agree on every device. */
+async function handleAvatar(req: IncomingMessage, res: ServerResponse, identity: Identity): Promise<void> {
+  if (identity.kind === 'owner') {
+    jsonResponse(res, 400, { error: NO_ACCOUNTS, accounts: 'open' });
+    return;
+  }
+  if (identity.kind !== 'member') {
+    jsonResponse(res, 401, { error: 'Sign in first.', accounts: 'required' });
+    return;
+  }
+  const body = (await readJsonBody(req, AUTH_BODY_LIMIT)) as { avatar?: unknown };
+  const user = await setUserAvatar(identity.user.username, body.avatar);
   jsonResponse(res, 200, { accounts: 'required', user });
 }
 
@@ -844,6 +860,9 @@ export const authRoutes: Record<string, ApiHandler> = {
           return;
         case '/availability':
           await handleAvailability(req, res, identity);
+          return;
+        case '/avatar':
+          await handleAvatar(req, res, identity);
           return;
         case '/profile-picture':
           await handleProfilePicture(req, res, identity);

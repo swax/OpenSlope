@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { prepareRiderLighting, RIDER_LIGHT_ANCHOR } from './rider-lighting';
+import { RIDER_LIGHT_ANCHOR } from './rider-lighting';
 import { clamp } from '../../core/math/scalar';
 import {
   RIDE_AIR_GRAVITY_FALLING,
@@ -89,8 +89,8 @@ const LUMBAR = 0.192,
 const SHOULDER_DROP = 0.075; // clavicle root down the spine to the shoulder line
 const NECK_LEN = 0.075; // clavicle root to the skull base
 const HEAD_BONE_TO_HELMET = 0.105; // skull base to the centre of the helmet
-/** The avatar viewpoint is the bridge between its eyes, not the centre of its helmet. These are the procedural
- * face's authored eye-midpoint offsets; imported characters are uniformly fitted to this same solved body. */
+/** The avatar viewpoint is the bridge between its eyes, not the centre of its helmet. These are the solved
+ * face's eye-midpoint offsets (the `rider.eye-*` markers); characters are uniformly fitted to this same body. */
 const VIEW_FROM_HEAD_UP = 0.025,
   VIEW_FROM_HEAD_FORWARD = 0.124;
 
@@ -493,81 +493,63 @@ export function createRider(
   const skis = gear === 'skis';
   const socketSkew = gearSocketSkew(gear, snowboardStance);
   const group = new THREE.Group();
-  const procedural = new THREE.Group();
-  procedural.name = 'rider.procedural';
-  group.add(procedural);
-  // Unit shells span y ∈ [0,1]. Limbs use a constant cylinder; the two jacket sections taper from waist to
-  // chest so the visible body follows the recovered back chain instead of reading as another stick bone.
-  const boneGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true).translate(0, 0.5, 0);
-  const lowerTorsoGeo = new THREE.CylinderGeometry(1.14, 1, 1, 10, 1, false).translate(0, 0.5, 0);
-  const upperTorsoGeo = new THREE.CylinderGeometry(1.2, 0.96, 1, 10, 1, false).translate(0, 0.5, 0);
-  const jointGeo = new THREE.SphereGeometry(1, 10, 8);
-  const faceGeo = new THREE.SphereGeometry(1, 8, 6);
-  const mouthGeo = new THREE.BoxGeometry(1, 1, 1);
-  const headphoneBandGeo = new THREE.TorusGeometry(0.145, 0.012, 6, 24, Math.PI);
-  const jacket = new THREE.MeshLambertMaterial({ color: 0x2b5c3b });
-  const pants = new THREE.MeshLambertMaterial({ color: 0x6b4b30 });
-  const helmet = new THREE.MeshLambertMaterial({ color: 0x3c4149 });
-  const gloves = new THREE.MeshLambertMaterial({ color: 0x22262e });
-  const eyeWhite = new THREE.MeshLambertMaterial({ color: 0xf4f7f7 });
-  const headphone = new THREE.MeshLambertMaterial({ color: 0xf0a23a });
-
-  const bone = (mat: THREE.Material, geo = boneGeo) => {
-    const m = new THREE.Mesh(geo, mat);
-    procedural.add(m);
-    return m;
-  };
-  const joint = (mat: THREE.Material, r: number) => {
-    const m = new THREE.Mesh(jointGeo, mat);
-    m.scale.setScalar(r);
-    procedural.add(m);
-    return m;
-  };
-  const landmark = () => {
+  // The solved body as named, invisible markers: no geometry, nothing drawn. Every rider is drawn by a
+  // character model (attachCharacterRig); these hold the pose the model is driven from in a form that can be
+  // inspected by name (`rider.hand-front`, `rider.eye-left`, ...), which the pose checks and debugging rely on.
+  // Limb markers carry their segment as a transform (origin at one end, +Y along it, scaled to its length).
+  const landmarks = new THREE.Group();
+  landmarks.name = 'rider.landmarks';
+  group.add(landmarks);
+  const marker = (parent: THREE.Object3D = landmarks) => {
     const node = new THREE.Object3D();
-    procedural.add(node);
+    parent.add(node);
     return node;
   };
+  const bone = () => marker();
+  const joint = (r: number) => {
+    const node = marker();
+    node.scale.setScalar(r);
+    return node;
+  };
+  const landmark = () => marker();
 
-  const thighF = bone(pants),
-    thighR = bone(pants),
-    shinF = bone(pants),
-    shinR = bone(pants);
-  const pelvis = bone(pants),
-    lowerTorso = bone(jacket, lowerTorsoGeo),
-    upperTorso = bone(jacket, upperTorsoGeo);
-  const clavicleF = bone(jacket),
-    clavicleR = bone(jacket);
-  const neck = bone(jacket);
-  const upperF = bone(jacket),
-    foreF = bone(jacket),
-    upperR = bone(jacket),
-    foreR = bone(jacket);
-  const hipJF = joint(pants, HIP_JOINT_R),
-    hipJR = joint(pants, HIP_JOINT_R);
-  const kneeF = joint(pants, KNEE_R),
-    kneeR = joint(pants, KNEE_R);
-  const shJF = joint(jacket, SHOULDER_R),
-    shJR = joint(jacket, SHOULDER_R);
-  const elbF = joint(jacket, ELBOW_R),
-    elbR = joint(jacket, ELBOW_R);
-  const gloveF = joint(gloves, HAND_R),
-    gloveR = joint(gloves, HAND_R);
-  // A flattened palm makes wrist roll visible on the procedural fallback too. Local +Y follows the fingers;
-  // local +Z is the palm normal, the same canonical frame handed to imported character bones below.
+  const thighF = bone(),
+    thighR = bone(),
+    shinF = bone(),
+    shinR = bone();
+  const pelvis = bone(),
+    lowerTorso = bone(),
+    upperTorso = bone();
+  const clavicleF = bone(),
+    clavicleR = bone();
+  const neck = bone();
+  const upperF = bone(),
+    foreF = bone(),
+    upperR = bone(),
+    foreR = bone();
+  const hipJF = joint(HIP_JOINT_R),
+    hipJR = joint(HIP_JOINT_R);
+  const kneeF = joint(KNEE_R),
+    kneeR = joint(KNEE_R);
+  const shJF = joint(SHOULDER_R),
+    shJR = joint(SHOULDER_R);
+  const elbF = joint(ELBOW_R),
+    elbR = joint(ELBOW_R);
+  const gloveF = joint(HAND_R),
+    gloveR = joint(HAND_R);
+  // A hand marker is a palm frame: local +Y follows the fingers, local +Z is the palm normal, the same canonical
+  // frame handed to imported character bones below.
   gloveF.scale.set(HAND_R * 0.78, HAND_R * 1.48, HAND_R * 0.46);
   gloveR.scale.copy(gloveF.scale);
-  // The head is a real oriented frame rather than an unmarked sphere. Local +Y is head-up and +Z is gaze, so
-  // the face and headphones make unwanted roll/yaw immediately visible while tuning the ride pose.
-  const head = new THREE.Group();
-  procedural.add(head);
-  const helmetShell = new THREE.Mesh(jointGeo, helmet);
+  // The head is an oriented frame: local +Y is head-up and +Z is gaze. The face markers below sit where the
+  // viewpoint constants say the eyes are, so a check can hold the first-person view to the face.
+  const head = marker();
+  const helmetShell = marker(head);
   helmetShell.scale.setScalar(HEAD_R);
-  head.add(helmetShell);
-  const eyeL = new THREE.Mesh(faceGeo, eyeWhite),
-    eyeR = new THREE.Mesh(faceGeo, eyeWhite);
-  const pupilL = new THREE.Mesh(faceGeo, gloves),
-    pupilR = new THREE.Mesh(faceGeo, gloves);
+  const eyeL = marker(head),
+    eyeR = marker(head);
+  const pupilL = marker(head),
+    pupilR = marker(head);
   eyeL.position.set(-0.045, 0.025, 0.124);
   eyeR.position.set(0.045, 0.025, 0.124);
   eyeL.scale.set(0.021, 0.017, 0.01);
@@ -576,17 +558,16 @@ export function createRider(
   pupilR.position.set(0.045, 0.025, 0.134);
   pupilL.scale.set(0.009, 0.01, 0.006);
   pupilR.scale.copy(pupilL.scale);
-  const mouth = new THREE.Mesh(mouthGeo, gloves);
+  const mouth = marker(head);
   mouth.position.set(0, -0.045, 0.128);
   mouth.scale.set(0.057, 0.01, 0.009);
-  const headphoneL = new THREE.Mesh(faceGeo, headphone),
-    headphoneR = new THREE.Mesh(faceGeo, headphone);
+  const headphoneL = marker(head),
+    headphoneR = marker(head);
   headphoneL.position.set(-0.145, 0, 0);
   headphoneR.position.set(0.145, 0, 0);
   headphoneL.scale.set(0.025, 0.043, 0.021);
   headphoneR.scale.copy(headphoneL.scale);
-  const headphoneBand = new THREE.Mesh(headphoneBandGeo, headphone);
-  head.add(eyeL, eyeR, pupilL, pupilR, mouth, headphoneL, headphoneR, headphoneBand);
+  const headphoneBand = marker(head);
   const hipsRootJ = landmark(),
     upperBackJ = landmark(),
     clavicleRootJ = landmark(),
@@ -678,7 +659,7 @@ export function createRider(
   let trackedAssigned = false,
     trackedCrossed = false;
 
-  // These are the same solved landmarks that place the procedural body below. Keeping one shared pose object
+  // These are the same solved landmarks that place the named markers below. Keeping one shared pose object
   // lets the skinned rider follow the existing solver without allocating on every animation frame.
   const characterPose: CharacterPose = {
     feet: skis ? 'forward' : 'bindings',
@@ -716,9 +697,8 @@ export function createRider(
     headForward: _h2,
     soleUp: _f15,
   };
-  const character = attachCharacterRig(group, procedural, modelId);
+  const character = attachCharacterRig(group, modelId);
   group.userData[RIDER_LIGHT_ANCHOR] = characterPose.hips;
-  prepareRiderLighting(procedural, group);
   const trackedWristA = new THREE.Vector3(),
     trackedWristB = new THREE.Vector3();
   const gripOffsetA = new THREE.Vector3(),
@@ -801,8 +781,8 @@ export function createRider(
     return trackedCrossed;
   }
 
-  /** Point a bone from `a` to `b` with radius `r`. */
-  const link = (m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3, r: number) => {
+  /** Point a segment marker from `a` to `b` with radius `r`. */
+  const link = (m: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3, r: number) => {
     const d = _b1.copy(b).sub(a);
     const len = d.length() || 1e-5;
     m.position.copy(a);
@@ -810,7 +790,7 @@ export function createRider(
     m.scale.set(r, len, r);
   };
 
-  /** Draw the already-solved landmarks through both the procedural body and an optional imported character. */
+  /** Place the already-solved landmarks on the named markers and pose the character model from them. */
   function drawSolved() {
     const p = characterPose;
     link(thighF, p.hipFront, p.kneeFront, LEG_R);
@@ -851,7 +831,7 @@ export function createRider(
     character.pose(p);
   }
 
-  /** Orient a procedural palm in the same +Y fingers / +Z palm frame the skinned hand bones receive. */
+  /** Orient a hand marker in the same +Y fingers / +Z palm frame the skinned hand bones receive. */
   function orientHandMesh(mesh: THREE.Object3D, fingers: THREE.Vector3, palm: THREE.Vector3) {
     handAcross.crossVectors(fingers, palm);
     if (handAcross.lengthSq() < 1e-8) handAcross.set(1, 0, 0);
@@ -1559,30 +1539,15 @@ export function createRider(
       style = next;
       styleCross = 0;
     },
-    // First person (docs/048). Both bodies need it and they need different things: the procedural head is a real
-    // object that can simply be hidden, while a skinned character has no head object at all — only head-weighted
-    // vertices — so the rig collapses its head bone instead.
+    // First person (docs/048). A skinned character has no head object — only head-weighted vertices — so the rig
+    // collapses its head bone instead of hiding anything.
     setFirstPerson: on => {
-      head.visible = !on;
       character.setFirstPerson(on);
     },
     dispose: () => {
       character.dispose();
-      disposeTree(procedural);
     },
   };
-}
-
-function disposeTree(root: THREE.Object3D) {
-  const geos = new Set<THREE.BufferGeometry>(),
-    mats = new Set<THREE.Material>();
-  root.traverse(o => {
-    if (!(o instanceof THREE.Mesh)) return;
-    geos.add(o.geometry);
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m);
-  });
-  geos.forEach(g => g.dispose());
-  mats.forEach(m => m.dispose());
 }
 
 // scratch — the pose runs every frame and allocates nothing

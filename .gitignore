@@ -82,6 +82,8 @@ Slopesmith/tools/prop-recipes/build/
 # Blender preview and editing workspaces. Tracked GLBs rebuild from checked-in recipes or source code;
 # .blend files also embed machine-local configuration and paths.
 Slopesmith/tools/character-models/stick-figure-rigged.blend
+# Rider-family build scratch (painted atlases, glow maps); the tracked GLBs embed what they need.
+Slopesmith/tools/character-models/riders/build/
 Slopesmith/tools/prop-recipes/props/props.blend
 
 # Texture-recipe output and previews. Recipes rebuild these byte-identically, so generated PNGs stay local.

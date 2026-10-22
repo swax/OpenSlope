@@ -5,9 +5,14 @@ Authoring and QA helpers for the custom rider contract documented in
 bone-name contract as Slopesmith itself. The two conversion/render helpers run inside Blender because they use
 `bpy`; they are optional authoring tools and are not part of the editor server.
 
+## The rider family
+
+Kestrel, Robin and Raven, the textured built-ins, are built in Blender by the Python recipes in
+[`riders/`](riders/README.md) rather than by the generators below.
+
 ## Generated built-in characters
 
-All four Slopesmith built-ins are generated rather than modelled. Each file holds one figure — a bone
+The other four Slopesmith built-ins are generated rather than modelled. Each file holds one figure — a bone
 table, a table of solids, and a short palette — and writes its own GLB into the client build:
 
 ```bash

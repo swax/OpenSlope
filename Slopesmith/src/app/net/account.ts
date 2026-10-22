@@ -26,6 +26,8 @@ export interface Member {
   snowboardTextureUrl?: string;
   skiTextureUrl?: string;
   equipmentEdgeColor?: string;
+  /** The character this member last chose to ride as; see net/avatar-preference.ts. */
+  avatar?: string;
 }
 
 export interface EquipmentDesignSummary {

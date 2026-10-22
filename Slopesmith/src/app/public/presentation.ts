@@ -14,6 +14,7 @@ const GLYPHS = {
   discord: svg('<path d="m8 4-4 2c-2 4-3 7-3 11l5 3 2-3m8-13 4 2c2 4 3 7 3 11l-5 3-2-3M7 6c3-1 7-1 10 0M6 16c4 2 8 2 12 0"/><circle cx="8" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.5" fill="currentColor" stroke="none"/>'),
   about: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.01"/>'),
   account: svg('<circle cx="12" cy="8" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/>'),
+  rider: svg('<circle cx="14" cy="4.5" r="2"/><path d="m13 8-2 5m-3-3 8 1m-5 2-2 4m2-4 3 3M4 20l16-5"/>'),
   editor: MODE_ICON.edit,
   chat: svg('<path d="M21 11a8 8 0 0 1-8 8H8l-5 3v-6a8 8 0 1 1 18-5Z"/>'),
   leaveChat: svg('<path d="M21 11a8 8 0 0 1-8 8H8l-5 3v-6a8 8 0 1 1 18-5Z"/><path d="m9 8 6 6m0-6-6 6"/>'),

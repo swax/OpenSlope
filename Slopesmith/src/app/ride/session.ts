@@ -1328,7 +1328,7 @@ export class TestRide {
   }
 
   /** The pose is solved before the camera phase each frame, so this is the actual animated eye bridge rather
-   * than a guessed height above the board. Imported and procedural riders therefore share the same viewpoint. */
+   * than a guessed height above the board. Every character therefore shares the same viewpoint. */
   private updateRideFirstPersonCamera() {
     const solved = this.pose.rider.solved;
     this.rideViewForward.copy(this.model.renderState().rideFwd);

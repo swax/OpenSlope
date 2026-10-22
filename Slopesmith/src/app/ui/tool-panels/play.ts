@@ -17,12 +17,20 @@ import { xrSupported } from '../../ride/xr/session';
 import { XR_RENDER_SCALE_STEP, xrEyeBufferNote, xrScaleMayBeCapped } from '../../ride/xr/config';
 import type { RaceMode } from '../../../core/doc/race';
 import { toast } from '../components/toast';
+import { saveAvatar } from '../../net/avatar-preference';
 import { resumeSharedAudio } from '../../audio/runtime';
 import { preloadReferenceRideMusic, referenceMusicIndex } from '../../audio/ride-music';
 import type { ToolsContext } from './widgets';
 import { preferImmersivePlay, primaryPointerIsCoarse } from '../../ride/input-modality';
 
 let characterImporting = false;
+
+/** A rider chosen here is also the avatar the play page uses, and a member's account keeps it. */
+function rememberAvatar(model: string) {
+  void saveAvatar(model).catch(error => {
+    toast(`Rider not saved to your account: ${error instanceof Error ? error.message : error}`, 'warn');
+  });
+}
 /** Whether this browser can present to a headset (docs/048): undefined until asked, then fixed for the tab. */
 let xrAvailable: boolean | undefined;
 let xrAsking = false;
@@ -420,13 +428,15 @@ export function buildPlayTools(ctx: ToolsContext) {
           store.playRiderModel = model;
           viewport.riderModel = model;
           persistUi();
+          rememberAvatar(model);
           if (store.currentMode === 'play') rebuildTools();
         }),
-      'The character every rider uses; changing it swaps live riders at once.',
+      'Your character; changing it swaps your rider at once, mid-run included. AI riders each ride a random ' +
+        'one. It is also your avatar on the play page, and a signed-in account keeps it across devices.',
     );
   }
   // The stance catalogue is built in, so unlike the character list it needs no disk round-trip and is always
-  // offered — the procedural body and an imported character are both posed by it.
+  // offered — every character, built-in or imported, is posed by it.
   const styles: Record<string, string> = {};
   for (const style of ridingStyleOptions()) styles[style.label] = style.id;
   tip(
@@ -483,6 +493,7 @@ export function buildPlayTools(ctx: ToolsContext) {
         store.playRiderModel = result.file;
         viewport.riderModel = result.file;
         persistUi();
+        rememberAvatar(result.file);
         const warning = result.warnings?.[0];
         toast(
           `Imported ${file.name} — ${result.meshes ?? 0} mesh${result.meshes === 1 ? '' : 'es'}, ` +

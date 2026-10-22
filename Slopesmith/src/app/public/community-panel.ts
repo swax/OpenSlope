@@ -75,7 +75,9 @@ export function publicCommunityPanel(account: Account, trigger: HTMLButtonElemen
   function render() {
     identity.hidden = joined;
     entry.hidden = log.hidden = !joined || usersShown;
-    actions.hidden = !joined || usersShown;
+    // Before joining, the row still offers what does not need chat (the avatar picker); Leave chat waits.
+    actions.hidden = joined && usersShown;
+    leave.hidden = !joined;
     status.hidden = !joined;
     join.disabled = joining;
     input.disabled = !joined || !session.chatOpen();

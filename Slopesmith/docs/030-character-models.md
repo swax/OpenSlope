@@ -1,8 +1,13 @@
 # 030 — Character models
 
-Slopesmith ships four tracked characters under `public/characters/`, listed in `core/characters/builtins.ts`
+Slopesmith ships seven tracked characters under `public/characters/`, listed in `core/characters/builtins.ts`
 and addressed as static files rather than through the library API. Because they are part of the client
 build, a clean checkout has working riders without a populated workspace or legacy `Maps` folder.
+
+- **Kestrel**, **Robin** and **Raven** — the textured rider family: a backcountry freerider, a big-mountain
+  rider with the hood up, and a glow-in-the-dark Halloween skeleton. Sculpted faces under goggles,
+  five-finger gloves on the 49-bone contract rig, 10–18k triangles and one 2048 atlas each (Raven adds a glow
+  map). They are built in Blender by the Python recipes in `tools/character-models/riders/` (see its README).
 
 - **Blocky Rider** — the default for new sessions. A blocky, voxel-styled boarder built out of twenty boxes,
   each rigidly bound to one bone. It has no Blender file at all: `tools/character-models/blocky-rider.ts` IS
@@ -20,9 +25,21 @@ build, a clean checkout has working riders without a populated workspace or lega
   pivots, palm/back and toe/heel markers, and five articulated colour-coded digits per hand. Its 148 solids,
   4,816 triangles and 49 bones are generated from `tools/character-models/stick-figure.ts`.
 
-The **Procedural** option remains available as a skeletal debug view and is also kept visible automatically
-while a GLB loads or if it fails validation at runtime. Existing sessions retain their saved rider selection,
-including a saved choice of a non-default built-in.
+Every rider is drawn by a character model; there is no procedural body any more. The solver's pose is kept on
+named, invisible markers (`rider.hand-front`, `rider.eye-left`, …) that the pose checks read. A model is
+preloaded as soon as it is chosen, so mounting it is immediate; one that cannot load (a library file the
+viewer may not fetch, a deleted one, the retired `procedural` id) gives way to the default built-in.
+Existing sessions retain their saved rider selection, including a saved choice of a non-default built-in.
+
+The choice is one per person, shared by the editor's **Test Mode → Rider model** and the play page's
+**Avatar** button (in the chat drawer, beside **Leave chat**). Each browser keeps it, and a signed-in
+member's account keeps it too (`POST /api/auth/avatar`; the session carries it back), so it follows them
+across devices and sign-ins. Somebody with no choice yet gets one at random from every built-in but the
+stick figure, saved like a choice of their own. `avatarId()` in `core/characters/builtins.ts` is the one rule
+all three accept: a built-in or a library file name.
+
+AI riders do not wear the player's character: each field deals its slots a shuffled deck of the same random
+pool, so opponents look different from each other until the deck runs out.
 
 ## Generated characters
 
@@ -229,7 +246,7 @@ Slopesmith copies legacy `Maps/Custom/Characters/*.glb` files here without delet
 
 **Test Mode → Riding style**, directly below, is the separate question of how that character *stands* — hip
 height, how far they incline and angulate into a carve, how much they counter-rotate, where they carry their
-hands. The two compose: any style poses any model, including the procedural body. Changing it mid-run restances
+hands. The two compose: any style poses any model. Changing it mid-run restances
 the player and the whole AI field without rebuilding anything, so the ride is not interrupted. The styles and
 what each one means are in [docs/016](016-ride.md#the-stance-model).
 

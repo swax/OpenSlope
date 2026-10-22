@@ -420,7 +420,7 @@ export function createRiderPose(o: RiderPoseOpts) {
   }
 
   /** Replace only the character visual, retaining the live gear and all physics/animation state. The custom
-   * asset may load asynchronously; its procedural fallback occupies the same solved pose in the meantime. */
+   * asset may load asynchronously (preloaded, it is immediate); the solved pose is kept for it meanwhile. */
   function setRiderModel(modelId?: string) {
     riderModel = modelId;
     const previous = rider;

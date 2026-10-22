@@ -102,6 +102,8 @@ import {
 } from './state/project-sync';
 import { createSessionChannel, membersOn, type PresenceEntry } from './net/session-channel';
 import { currentAccount, onAccountChanged, type Member } from './net/account';
+import { preferredAvatar } from './net/avatar-preference';
+import { avatarId } from '../core/characters/builtins';
 import { isLocalWorkspace } from './net/workspace';
 import { MAPS_PATH, localEditorUrl, mapPath } from './navigation';
 import { listLocalProjects } from './state/local-projects';
@@ -3496,6 +3498,20 @@ void currentAccount().then(account => {
   if ('user' in account) applyMemberEquipment(account.user);
 });
 onAccountChanged(applyMemberEquipment);
+// Ride as the avatar chosen last, here or on the play page: a member's account choice, else this browser's.
+const adoptAvatar = (id: string) => {
+  if (id === store.playRiderModel) return;
+  store.playRiderModel = id;
+  viewport.riderModel = id;
+  persistUi();
+  if (store.currentMode === 'play') rebuildTools();
+};
+// The editor's own saved setting counts as a choice; a browser that never saved one gets a random rider.
+void preferredAvatar(storedUi.playRiderModel).then(adoptAvatar);
+onAccountChanged(member => {
+  const id = avatarId(member.avatar);
+  if (id) adoptAvatar(id);
+});
 
 /**
  * The session channel (docs/038, docs/039): presence, awareness, register changes and topology claims, over

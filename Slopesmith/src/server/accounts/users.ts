@@ -4,6 +4,7 @@ import { announceAccountAccessChanged, announceAccountProfileChanged } from './e
 import { assertUsablePassword, hashPassword } from './passwords';
 import { holds, isOrdinaryRole, isRole, type Role } from './policy';
 import { isManualAvailability } from '../../core/session/member-status';
+import { avatarId } from '../../core/characters/builtins';
 import {
   readAccounts,
   updateAccounts,
@@ -94,6 +95,7 @@ export const publicUser = (user: UserRecord): PublicUser => {
         }
       : {}),
     ...(user.equipment?.edgeColor ? { equipmentEdgeColor: user.equipment.edgeColor } : {}),
+    ...(user.avatar ? { avatar: user.avatar } : {}),
   };
 };
 
@@ -584,6 +586,23 @@ export async function setUserEquipment(
   });
   announceAccountProfileChanged(changed.user);
   return changed;
+}
+
+/**
+ * Remember which character a member rides as. Any choice a rider can wear is accepted — a built-in, the
+ * procedural body, or a library file name — the same rule the editor applies to its own saved setting; one
+ * this server's library no longer holds simply falls back where it is loaded. Changes no credential and
+ * announces nothing: other riders already learn the choice from the rider's own pose.
+ */
+export async function setUserAvatar(username: string, raw: unknown): Promise<PublicUser> {
+  const name = normalizeUsername(username);
+  const avatar = avatarId(raw);
+  if (!avatar) throw new Error('Choose a rider from the list.');
+  return updateAccounts(draft => {
+    const user = mustFind(draft, name);
+    user.avatar = avatar;
+    return publicUser(user);
+  });
 }
 
 function mustFind(draft: AccountsFile, username: string): UserRecord {

@@ -45,6 +45,8 @@ import {
   type SnowboardStance,
 } from '../../ride/gear';
 import { DEFAULT_RIDER_MODEL_ID } from '../../ride/rider-models';
+import { preloadRiderModel } from '../../ride/character-rig';
+import { RANDOM_AVATAR_POOL } from '../../../core/characters/builtins';
 import { DEFAULT_RIDING_STYLE } from '../../ride/stances';
 import type { RideFrameTimingSample } from '../../ride/perf';
 import type { LocalPlayerPose } from '../../../core/session/player-pose';
@@ -777,7 +779,6 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       onPropCollision: (slot, hit) => deps.onPropCollision?.(hit, slot),
       maxRiders: aiMax,
       player,
-      riderModel,
       riderStyle,
       gear: rideGear,
       snowboardStance,
@@ -789,15 +790,18 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   function setAiMax(n: number) {
     aiMax = Math.max(0, Math.floor(n));
     aiField?.setMax(aiMax);
+    // Each AI rider wears a character from the random pool: have them all ready before the field mounts.
+    if (aiMax > 0) for (const id of RANDOM_AVATAR_POOL) preloadRiderModel(id);
   }
 
-  /** Select the character for future and already-running riders without disturbing their live physics state. */
+  /** Select the player's character, for the next ride and the one under way, without disturbing its physics.
+   *  AI riders keep their own characters. */
   function setRiderModel(modelId: string) {
     const next = modelId || DEFAULT_RIDER_MODEL_ID;
+    preloadRiderModel(next); // ready before the rider mounts, so it never appears a beat late
     if (next === riderModel) return;
     riderModel = next;
     board()?.setRiderModel(next);
-    aiField?.setRiderModel(next);
   }
 
   /** Select how the player and every AI rider stand, for future and already-running riders alike. Unlike a

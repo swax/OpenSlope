@@ -23,6 +23,7 @@ import type { RideGear, SnowboardStance } from './gear';
 import type { GrindRails } from './grind';
 import type { RideKeys } from './input';
 import { createRiderPose, type RiderPose } from './pose';
+import { shuffledAvatars } from '../../core/characters/builtins';
 
 /**
  * The AI field for the test ride ([Trailmap: 395]).
@@ -178,8 +179,9 @@ export interface AiRidersOpts {
   /** The ridden mesh — the same terrain the player is on. */
   terrain: THREE.Mesh;
   scene: THREE.Object3D;
-  /** Character-library id shared by riders in this field. */
-  riderModel?: string;
+  /** Characters dealt to the field by slot, so riders look different from each other and from the player.
+   *  Defaults to the random pool (every built-in but the diagnostic) in a fresh shuffled order per field. */
+  avatars?: readonly string[];
   riderStyle?: string;
   /** The kit the whole field is on — the player's own, so a run is not the only skier on the mountain. */
   gear?: RideGear;
@@ -282,6 +284,7 @@ interface AiPath {
 type Behaviour = 'approach' | 'cruise' | 'avoid';
 
 interface AiRider {
+  avatar: string; // the character it rides as, dealt by slot from the field's deck
   born: number; // monotonic: who has been out on the mountain longest (a full field recycles that one)
   home: number; // the start-gate path it was fielded on
   path: number; // index into the network of the path it is riding NOW
@@ -639,6 +642,8 @@ export function createAiRiders(o: AiRidersOpts) {
   let max = Math.max(0, Math.floor(o.maxRiders ?? Math.max(1, o.starts.length)));
   let born = 0;
   let visible = true;
+  // Dealt by slot, so a recycled slot keeps its character and nobody repeats until the deck runs out.
+  const avatars = o.avatars?.length ? o.avatars : shuffledAvatars();
 
   /**
    * One rider: the same ride model the player gets, its drawn board, and the synthesized stick that is the only
@@ -649,7 +654,9 @@ export function createAiRiders(o: AiRidersOpts) {
     const keys: RideKeys = { left: false, right: false, tuck: false, brake: false, boost: false };
     const stick = { active: true, x: 0 }; // always "held": the AI's stick is the only input this rider has
     const who = CHARACTERS[slot % CHARACTERS.length];
+    const avatar = avatars[slot % avatars.length];
     const r: AiRider = {
+      avatar,
       born: born++,
       home: path,
       path,
@@ -677,7 +684,7 @@ export function createAiRiders(o: AiRidersOpts) {
       pose: createRiderPose({
         scene: o.scene,
         tint: TINTS[slot % TINTS.length],
-        riderModel: o.riderModel,
+        riderModel: avatar,
         riderStyle: o.riderStyle,
         gear: o.gear,
         snowboardStance: o.snowboardStance,
@@ -806,15 +813,6 @@ export function createAiRiders(o: AiRidersOpts) {
   function setRiderStyle(styleId: string) {
     o.riderStyle = styleId;
     for (const r of riders) r.pose.setRiderStyle(styleId);
-  }
-
-  /** Hot-swap every visible character without rebuilding its board, controller, race state or physics model. */
-  function setRiderModel(modelId: string) {
-    o.riderModel = modelId;
-    for (const r of riders) {
-      r.pose.setRiderModel(modelId);
-      r.pose.update(r.model.st, 0, r.keys, r.model.renderState());
-    }
   }
 
   /** Re-kit the whole field, live. Deck and body are rebuilt per rider; the controller, race state and physics
@@ -1222,6 +1220,7 @@ export function createAiRiders(o: AiRidersOpts) {
   /** What the field is actually doing — the controller's own numbers, for the tests and for tracing a bad line. */
   function probe() {
     return riders.map(r => ({
+      avatar: r.avatar,
       path: r.path,
       arc: r.arc,
       total: net[r.path].total,
@@ -1260,7 +1259,6 @@ export function createAiRiders(o: AiRidersOpts) {
     probe,
     spawnAt,
     setMax,
-    setRiderModel,
     setRiderStyle,
     setGear,
     setSnowboardStance,

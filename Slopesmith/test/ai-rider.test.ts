@@ -12,6 +12,7 @@
  */
 import * as THREE from 'three';
 import { createAiRiders, type AiPathMarker } from '../src/app/ride/ai';
+import { RANDOM_AVATAR_POOL } from '../src/core/characters/builtins';
 import type { BoostVolume } from '../src/app/ride/boost-volumes';
 import { createRideModel, riderDrive, type RideObstacleSource } from '../src/app/ride/physics';
 
@@ -453,7 +454,14 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
   // cannot see each other. The engine gives them an avoid cone and a body bump; with those, they must not end up
   // sharing one groove.
   const p = seg(4, ZMAX - 8);
-  const { states, minSep, maxSpread } = run([line(p)], 14, { starts: [0, 0, 0] });
+  const { probe, states, minSep, maxSpread } = run([line(p)], 14, { starts: [0, 0, 0] });
+  // Each rider is dealt its own character from the random pool: nobody repeats, nobody is the stick figure.
+  const avatars = probe.map(r => r.avatar);
+  ok(
+    new Set(avatars).size === avatars.length && avatars.every(a => RANDOM_AVATAR_POOL.includes(a)),
+    'rivals: each rider wears a different character from the random pool',
+    avatars.join(', '),
+  );
   ok(
     minSep > 0.5,
     'rivals: no two riders ever occupy the same snow — the bodies push apart',

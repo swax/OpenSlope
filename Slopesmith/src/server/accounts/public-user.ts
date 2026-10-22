@@ -18,4 +18,6 @@ export interface PublicUser {
   skiTextureUrl?: string;
   /** CSS hex colour used on the untextured sidewalls and end caps of both gear types. */
   equipmentEdgeColor?: string;
+  /** The character the member last chose to ride as. Omitted until they choose. */
+  avatar?: string;
 }

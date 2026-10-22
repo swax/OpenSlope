@@ -39,7 +39,9 @@ async function json<T>(url: string): Promise<T> {
 /** Public play composes the existing viewport and ride controller without starting the editor or autosave. */
 export async function preparePublicPlayer(course: PublicCourse, container: HTMLElement, session: SessionChannel,
   ui: { progress: (text: string) => void; onPlaying: (playing: boolean) => void;
-    onRideControls: (help: RideControlHelp | null) => void; onStartChanged: (custom: boolean) => void }) {
+    onRideControls: (help: RideControlHelp | null) => void; onStartChanged: (custom: boolean) => void;
+    /** The character to ride as; `setAvatar` changes it later. */
+    avatar?: string }) {
   const { progress, onPlaying, onRideControls, onStartChanged } = ui;
   progress('Preparing the mountain…');
   const bundle = course.localProjectId ? await readLocalProject(course.localProjectId) : null;
@@ -73,6 +75,9 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     onPlayClick: world => setStart(world),
   };
   const viewport = new Viewport(container, callbacks, store);
+  // Our own rider wears this; other players learn it from the pose published below.
+  let avatar = ui.avatar ?? DEFAULT_CHARACTER_MODEL_ID;
+  viewport.riderModel = avatar;
   updateRideControls = () => onRideControls(viewport.riding && !viewport.xrPlaying
     ? rideControlHelp(viewport.rideWalking, viewport.rideFirstPerson) : null);
   viewport.mode = 'play';
@@ -193,7 +198,6 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
     if (viewport.riding || viewport.xrPlaying) return;
     play.setPlaySpawn(world); onStartChanged(true);
   };
-  const avatar = DEFAULT_CHARACTER_MODEL_ID;
   const publish = window.setInterval(() => {
     if (session.isOpen()) session.aware({ player: viewport.playerPose(avatar, session.serverNow()), vertices: [], quads: [], dragging: [] });
   }, 100);
@@ -207,6 +211,8 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
       if (!spawn) return;
       play.setPlaySpawn(spawn.pos); onStartChanged(false);
     },
+    /** Swap our rider's character, mid-run included. */
+    setAvatar(id: string) { avatar = id; viewport.riderModel = id; },
     peers(peers: PeerMarks[]) { viewport.setPeers(peers, session.serverNow()); },
     canGoToPlayer(userId: string) {
       return !viewport.xrPlaying && viewport.activeMapPlayers().some(player => player.userId === userId);

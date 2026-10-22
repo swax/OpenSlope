@@ -95,10 +95,8 @@ try {
   // Exercise the asynchronous GLB path, not just a synthetic material.
   for (const owner of owners) scene.remove(owner);
   const actual = new THREE.Group();
-  const fallback = new THREE.Group();
-  actual.add(fallback);
   scene.add(actual);
-  const character = attachCharacterRig(actual, fallback, BLOCKY_RIDER_CHARACTER_ID);
+  const character = attachCharacterRig(actual, BLOCKY_RIDER_CHARACTER_ID);
   const deadline = performance.now() + 10000;
   while (actual.userData.riderVisual !== BLOCKY_RIDER_CHARACTER_ID && performance.now() < deadline)
     await new Promise(resolve => setTimeout(resolve, 20));

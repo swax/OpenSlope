@@ -518,6 +518,40 @@ try {
     'a member owns a trimmed multiline bio, bounded to 500 characters',
   );
 
+  // The rider character follows the account, so the play page and the editor agree on every device.
+  const avatar = await call(service, 'POST', '/api/auth/avatar', {
+    cookie: editorCookie,
+    body: { avatar: 'builtin:robin' },
+  });
+  const renamedAvatar = await call(service, 'POST', '/api/auth/avatar', {
+    cookie: editorCookie,
+    body: { avatar: 'builtin:space-marine' },
+  });
+  const pathAvatar = await call(service, 'POST', '/api/auth/avatar', {
+    cookie: editorCookie,
+    body: { avatar: '../accounts/accounts.glb' },
+  });
+  const goneAvatar = await call(service, 'POST', '/api/auth/avatar', {
+    cookie: editorCookie,
+    body: { avatar: 'builtin:not-shipped' },
+  });
+  const anonymousAvatar = await call(service, 'POST', '/api/auth/avatar', { body: { avatar: 'builtin:robin' } });
+  await call(service, 'POST', '/api/auth/avatar', { cookie: editorCookie, body: { avatar: 'builtin:raven' } });
+  const relogin = await call(service, 'POST', '/api/auth/login', {
+    body: { username: 'grace', password: 'grace password one' },
+  });
+  check(
+    avatar.status === 200 &&
+      avatar.json?.user?.avatar === 'builtin:robin' &&
+      renamedAvatar.json?.user?.avatar === 'builtin:alpine-exo' &&
+      pathAvatar.status === 400 &&
+      goneAvatar.status === 400 &&
+      anonymousAvatar.status === 401 &&
+      relogin.status === 200 &&
+      relogin.json?.user?.avatar === 'builtin:raven',
+    'a member chooses the rider they ride as; only real riders are kept, and a fresh sign-in brings it back',
+  );
+
   // Profile pictures are account-backed, but their bytes do not ride every roster/session response. A member
   // uploads their own small browser crop, and everybody else receives an authenticated, versioned byte URL.
   const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

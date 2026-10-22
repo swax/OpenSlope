@@ -5,6 +5,7 @@ import { serialize } from '../serialize';
 import { workspaceConfig } from '../workspace-config';
 import type { Role } from './policy';
 import { isManualAvailability, type ManualAvailability } from '../../core/session/member-status';
+import { avatarId } from '../../core/characters/builtins';
 
 /**
  * What a server knows about the people using it: users, invites, sessions and the one-time admin-enrolment
@@ -46,6 +47,9 @@ export interface UserRecord {
   /** Named artwork libraries. Only the selected design reaches public rider/session shapes; the
    *  complete library is returned solely to its owner from `/api/auth/equipment`. */
   equipment?: EquipmentRecord;
+  /** The character this member last chose to ride as (a built-in id, `procedural`, or a library file name),
+   *  so the choice follows them between the play page, the editor and devices. Absent until they choose. */
+  avatar?: string;
   /** Set while the account is refused sign-in and its sessions are void. */
   disabledAt?: string;
 }
@@ -212,6 +216,9 @@ function normalize(stored: Partial<AccountsFile> | null): AccountsFile {
     const equipment = normalizeEquipment((storedUser as UserRecord).equipment, storedUser.createdAt);
     if (equipment) user.equipment = equipment;
     else delete user.equipment;
+    const avatar = avatarId((storedUser as UserRecord).avatar);
+    if (avatar) user.avatar = avatar;
+    else delete user.avatar;
     return user;
   });
   return {

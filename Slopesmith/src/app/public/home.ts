@@ -24,6 +24,7 @@ import { setSiteCourse } from '../net/site-presence';
 import { publicMapControls } from './map-controls';
 import type { ChatActivity } from '../../core/session/chat-activity';
 import { activityCounter, watchChatActivity } from './chat-activity';
+import { publicAvatarPicker } from './avatar-picker';
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
@@ -309,6 +310,9 @@ export async function showPublicHome(): Promise<void> {
       .catch(() => { status.textContent = 'Share the link in your address bar to invite friends.'; });
   });
   community.actions.append(inviteFriends);
+  // Left of Leave chat. The choice applies to our rider at once, mid-run included.
+  const avatar = publicAvatarPicker(account, id => player?.setAvatar(id));
+  community.actions.prepend(avatar.el);
   community.setHooks({
     userActions: member => player?.canGoToPlayer(member.id) ? [{
       label: 'Go to player',
@@ -364,7 +368,9 @@ export async function showPublicHome(): Promise<void> {
         onPlaying: playing => { mapControls.setPlaying(playing); stop.hidden = !playing; },
         onRideControls: help => mapControls.setRideControls(help),
         onStartChanged: custom => mapControls.setCustomStart(custom),
+        avatar: avatar.current(),
       });
+      player.setAvatar(avatar.current());     // in case the saved choice arrived while the map loaded
       const known = published.some(entry => entry.kind === course.kind && entry.id === course.id);
       room = course.localProjectId || course.private ? null : course.kind === 'project' ? course.id : known || isDiscCourse(course.id) ? referenceRoom(course.id) : null;
       if (!course.localProjectId && !course.private && !offline) session.watch(room);

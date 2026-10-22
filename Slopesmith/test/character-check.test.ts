@@ -20,7 +20,15 @@ import {
   ALPINE_EXO_CHARACTER_ID,
   BUILTIN_CHARACTERS,
   DEFAULT_CHARACTER_MODEL_ID,
+  KESTREL_CHARACTER_ID,
+  RANDOM_AVATAR_POOL,
+  RAVEN_CHARACTER_ID,
+  ROBIN_CHARACTER_ID,
+  STICK_FIGURE_CHARACTER_ID,
+  avatarId,
   builtinCharacter,
+  randomAvatarId,
+  shuffledAvatars,
 } from '../src/core/characters/builtins';
 import { checkCharacterGlb } from '../tools/character-models/check';
 
@@ -219,6 +227,26 @@ const renamedStore = createStore({
 });
 assert.equal(renamedStore.playRiderModel, ALPINE_EXO_CHARACTER_ID, 'a saved selection migrates to Alpine Exo');
 
+// One rule says what a rider can wear, for the editor's saved setting, the play page and the account record.
+assert.equal(avatarId('builtin:raven'), 'builtin:raven');
+assert.equal(avatarId('builtin:space-marine'), ALPINE_EXO_CHARACTER_ID, 'a renamed built-in canonicalizes');
+assert.equal(avatarId(PROCEDURAL_RIDER_MODEL_ID), null, 'the procedural body is retired, not a choice');
+assert(!riderModelOptions().some(option => option.id === PROCEDURAL_RIDER_MODEL_ID), 'and no picker offers it');
+// The random pool is every real character: the diagnostic stick figure is never handed out.
+assert.equal(RANDOM_AVATAR_POOL.length, BUILTIN_CHARACTERS.length - 1);
+assert(!RANDOM_AVATAR_POOL.includes(STICK_FIGURE_CHARACTER_ID));
+assert.equal(randomAvatarId(() => 0), RANDOM_AVATAR_POOL[0]);
+assert.equal(randomAvatarId(() => 0.999999), RANDOM_AVATAR_POOL.at(-1));
+const deck = shuffledAvatars(() => 0.5);
+assert.deepEqual([...deck].sort(), [...RANDOM_AVATAR_POOL].sort(), 'a shuffled deck holds each character once');
+assert.equal(avatarId('custom-rider.glb'), 'custom-rider.glb', 'a server-library file name is a choice');
+for (const refused of ['builtin:not-shipped', '../accounts.glb', 'a\\b.glb', 'rider.fbx', '', 42, null, `${'x'.repeat(121)}.glb`]) {
+  assert.equal(avatarId(refused), null, `${JSON.stringify(refused)} is not something a rider can wear`);
+}
+for (const id of [KESTREL_CHARACTER_ID, ROBIN_CHARACTER_ID, RAVEN_CHARACTER_ID]) {
+  assert(builtinCharacter(id)?.blurb, `${id} ships with the rider family and says who it is`);
+}
+
 const freshStore = createStore({ mdoc: defaultMountain(), currentMode: 'edit', storedUi: {} });
 assert.equal(freshStore.playRiderModel, DEFAULT_RIDER_MODEL_ID);
 const proceduralStore = createStore({
@@ -226,6 +254,6 @@ const proceduralStore = createStore({
   currentMode: 'edit',
   storedUi: { playRiderModel: PROCEDURAL_RIDER_MODEL_ID },
 });
-assert.equal(proceduralStore.playRiderModel, PROCEDURAL_RIDER_MODEL_ID);
+assert.equal(proceduralStore.playRiderModel, DEFAULT_RIDER_MODEL_ID, 'a saved procedural choice rides the default');
 
 console.log('CHARACTER CHECK: PASS');

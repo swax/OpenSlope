@@ -198,7 +198,7 @@ function loadTemplate(modelId: string): Promise<THREE.Group> | null {
 }
 
 /**
- * Drive a canonical custom-character skin from the same pose directions used to draw the procedural rider.
+ * Drive a canonical custom-character skin from the same solved pose directions the rider's markers carry.
  * Hips take the solver's world anchor; every descendant keeps its imported offset from its posed parent and
  * receives only the target orientation. This is rotation retargeting, not a second anatomy fit: broad armor,
  * dresses, shoulder widths and limb thickness retain the proportions established by the uniform import fit.
@@ -759,25 +759,34 @@ function boardFootAxes(p: CharacterPose, toe: THREE.Vector3, along: THREE.Vector
   else toe.normalize();
 }
 
-/** Attach the asset asynchronously; the procedural body remains the failure/loading fallback. */
-export function attachCharacterRig(
-  owner: THREE.Group,
-  procedural: THREE.Object3D,
-  modelId = DEFAULT_RIDER_MODEL_ID,
-): CharacterRigHandle {
+/**
+ * Start fetching and parsing a character before anybody rides it, so mounting it later is immediate rather
+ * than a beat of nothing. Safe to call repeatedly: the template is shared, and a failure is reported when a
+ * rider actually mounts it.
+ */
+export function preloadRiderModel(modelId: string): void {
+  void loadTemplate(modelId)?.catch(() => {});
+}
+
+/**
+ * Attach the character asynchronously; nothing is drawn until it arrives (preload it to make that instant). A
+ * model that cannot be had — a library file this visitor may not load, one since deleted, a retired id — gives
+ * way to the default built-in, which ships with every build.
+ */
+export function attachCharacterRig(owner: THREE.Group, modelId = DEFAULT_RIDER_MODEL_ID): CharacterRigHandle {
   let alive = true;
   let model: THREE.Group | null = null;
   let driver: DrivenCharacterRig | null = null;
   let latestPose: CharacterPose | null = null;
   let firstPerson = false;
   let disposeLighting: (() => void) | null = null;
-  owner.userData.riderVisual = 'procedural';
+  owner.userData.riderVisual = 'loading';
 
-  loadTemplate(modelId)
-    ?.then(template => {
+  const attach = (id: string) =>
+    loadTemplate(id)?.then(template => {
       if (!alive) return;
       const clone = cloneSkeleton(template) as THREE.Group;
-      clone.name = `rider.model.${modelId}`;
+      clone.name = `rider.model.${id}`;
       clone.traverse(object => {
         object.raycast = () => {};
         if (object instanceof THREE.SkinnedMesh) object.frustumCulled = false;
@@ -800,12 +809,17 @@ export function attachCharacterRig(
       disposeLighting = prepareRiderLighting(clone, owner, true);
       driver.setFirstPerson(firstPerson); // a VR ride may have asked for this while the GLB was still in flight
       if (latestPose) driver.pose(latestPose);
-      procedural.visible = false;
-      owner.userData.riderVisual = modelId;
-    })
-    .catch(error => {
-      console.warn(`Rider model ${modelId} did not load; keeping the procedural rider.`, error);
+      owner.userData.riderVisual = id;
     });
+
+  const wanted = modelId === PROCEDURAL_RIDER_MODEL_ID ? DEFAULT_RIDER_MODEL_ID : modelId;
+  attach(wanted)?.catch(error => {
+    console.warn(`Rider model ${wanted} did not load; riding the default character instead.`, error);
+    if (!alive || wanted === DEFAULT_RIDER_MODEL_ID) return;
+    attach(DEFAULT_RIDER_MODEL_ID)?.catch(fallback => {
+      console.warn('The default rider model did not load either; this rider is not drawn.', fallback);
+    });
+  });
 
   return {
     // Keep the latest solved landmarks even while the GLB is in flight. This seats a model immediately when it
