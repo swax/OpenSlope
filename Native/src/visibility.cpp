@@ -3,6 +3,26 @@
 #include <stdexcept>
 
 namespace openslope {
+ViewRange::ViewRange(Vec3 eye, double distance) : eye_(eye), distance_(distance) {
+    if (!finite(eye) || !std::isfinite(distance) || distance <= 0)
+        throw std::invalid_argument("Invalid visibility range");
+}
+
+int ViewRange::classify(const Bounds& bounds) const {
+    const Vec3 nearest{std::clamp(eye_.x, bounds.min.x, bounds.max.x), std::clamp(eye_.y, bounds.min.y, bounds.max.y),
+                       std::clamp(eye_.z, bounds.min.z, bounds.max.z)};
+    const auto centre = bounds.center(), extent = (bounds.max - bounds.min) * .5;
+    const auto delta = centre - eye_;
+    const Vec3 farthest{std::abs(delta.x) + extent.x, std::abs(delta.y) + extent.y, std::abs(delta.z) + extent.z};
+    const auto epsilon = 32 * std::numeric_limits<float>::epsilon() *
+                         (std::abs(eye_.x) + std::abs(eye_.y) + std::abs(eye_.z) + std::abs(centre.x) +
+                          std::abs(centre.y) + std::abs(centre.z) + extent.x + extent.y + extent.z + distance_ + 1);
+    const auto outer = distance_ + epsilon, inner = std::max(0., distance_ - epsilon);
+    if (dot(nearest - eye_, nearest - eye_) > outer * outer)
+        return -1;
+    return dot(farthest, farthest) < inner * inner ? 1 : 0;
+}
+
 Frustum::Frustum(std::span<const float, 16> matrix) {
     for (const auto value : matrix)
         if (!std::isfinite(value))
@@ -77,12 +97,14 @@ int VisibilityTree::split(std::size_t begin, std::size_t end) {
     return id;
 }
 
-void VisibilityTree::visit(int node, const Frustum& frustum, bool inside, std::vector<std::size_t>& visible,
-                           std::size_t& tested) const {
+void VisibilityTree::visit(int node, const Frustum* frustum, const ViewRange* range, bool inside,
+                           std::vector<std::size_t>& visible, std::size_t& tested) const {
     const auto& n = nodes_[node];
     if (!inside) {
         ++tested;
-        const auto result = frustum.classify(n.bounds);
+        auto result = frustum ? frustum->classify(n.bounds) : 1;
+        if (range && result >= 0)
+            result = std::min(result, range->classify(n.bounds));
         if (result < 0)
             return;
         inside = result > 0;
@@ -92,21 +114,31 @@ void VisibilityTree::visit(int node, const Frustum& frustum, bool inside, std::v
         return;
     }
     if (n.left >= 0) {
-        visit(n.left, frustum, false, visible, tested);
-        visit(n.right, frustum, false, visible, tested);
+        visit(n.left, frustum, range, false, visible, tested);
+        visit(n.right, frustum, range, false, visible, tested);
     } else
         for (auto i = n.begin; i < n.end; ++i) {
             ++tested;
-            if (frustum.classify(boxes_[order_[i]]) >= 0)
+            if ((!frustum || frustum->classify(boxes_[order_[i]]) >= 0) &&
+                (!range || range->classify(boxes_[order_[i]]) >= 0))
                 visible.push_back(order_[i]);
         }
 }
 
-void VisibilityTree::query(const Frustum& frustum, std::vector<std::size_t>& visible, std::size_t& tested) const {
+void VisibilityTree::query(const Frustum& frustum, std::vector<std::size_t>& visible, std::size_t& tested,
+                           const ViewRange* range) const {
     visible.clear();
     tested = 0;
     if (!nodes_.empty())
-        visit(0, frustum, false, visible, tested);
+        visit(0, &frustum, range, false, visible, tested);
+    std::sort(visible.begin(), visible.end());
+}
+
+void VisibilityTree::query(const ViewRange& range, std::vector<std::size_t>& visible, std::size_t& tested) const {
+    visible.clear();
+    tested = 0;
+    if (!nodes_.empty())
+        visit(0, nullptr, &range, false, visible, tested);
     std::sort(visible.begin(), visible.end());
 }
 } // namespace openslope

@@ -91,7 +91,30 @@ npm ci --prefix Slopesmith
 The [repository tools guide](tools/README.md) describes the shared scripts, their
 folder layout, and the `npm run format:tools` / `npm run format:tools:check` commands.
 
-Before submitting a change, run the complete gate from the repository root:
+### Routine development
+
+Keep the edit and commit loop focused on the work being changed:
+
+- A Git-only sync needs history and working-tree checks. Run relevant tests when
+  resolving a conflict changes code.
+- Before committing, review the staged patch and run `git diff --cached --check`.
+  Reuse successful validation that still covers the current changes; run focused
+  checks when validation is missing or relevant inputs changed.
+- Documentation-only edits need whitespace and relevant link/command checks.
+- Code edits need tests for the affected behavior and the component's type/lint
+  checks. Include integration or browser checks when the changed flow needs them,
+  and use the affected component's fast suite when broader feedback is useful.
+
+The [tools guide](tools/README.md#everyday-validation) shows the existing commands
+for focused checks. The [agent instructions](AGENTS.md) apply the same policy to
+automated work. A sync or commit request does not require rerunning coverage,
+all browser checks, or unrelated component builds.
+
+### Complete verification
+
+Run the complete gate from the repository root for release preparation, broad
+changes across components or shared contracts, or an explicit full-validation
+request:
 
 ```text
 npm run verify
@@ -114,9 +137,10 @@ No retail ISO or extracted assets are needed. `verify` explicitly filters out Sn
 on a machine that has the data, so the gate you run locally is the gate the nightly `Full Windows verification`
 workflow runs. The per-push `Verify` workflow runs a subset that fits the repository's GitHub Actions minute
 budget: the hygiene gate, whichever fast suites the push touches, Slopesmith's type check and lint, and the
-production build. Coverage and the export smoke test wait for the nightly run, so a change that passes `Verify` has not
-yet passed everything; `npm run verify` locally is what closes that gap before a push. The required
-gate does not launch Unity because CI would need a Unity license and a project installation. The importer
+production build. Coverage and the export smoke test run nightly. A passing
+per-push `Verify` result covers that fast subset; `npm run verify` provides the
+complete local result when full validation is needed. The complete gate does
+not launch Unity because CI would need a Unity license and a project installation. The importer
 integration test below covers the platform-neutral Unity code without requiring VRChat/UdonSharp.
 
 ### Push-time gate
@@ -128,11 +152,13 @@ your machine first:
 npm run hooks:install
 ```
 
-It runs the hygiene gate plus whichever fast suites the pushed commits touch, the same selection CI makes
-(both read `tools/affected-suites.mjs`), in about a minute, and refuses the push on a failure. That keeps
-`main` green for everything a local run can catch; CI's Linux runner still has the last word on anything
-platform-specific. `OPENSLOPE_SKIP_PREPUSH=1 git push` (or `git push --no-verify`) skips it once.
-`npm run verify` remains the full gate.
+Every pushed tip runs the repository hygiene gate and Native source audit in a temporary local clone.
+Uncommitted fixes cannot hide a failure in the commit being pushed. The hook then runs whichever fast
+suites the changes touch, using the same selection as CI (`tools/affected-suites.mjs`), and refuses the
+push on any failure. The old `OPENSLOPE_SKIP_PREPUSH` environment variable no longer skips checks.
+CI's Linux runner still has the last word on platform-specific behavior. Keep
+these mandatory push checks enabled. `npm run verify` remains the complete gate
+for the cases above; ordinary local commits use the focused development checks.
 
 If server-side enforcement becomes useful, the `Protect main` repository ruleset can require a pull request
 and both stable `Verify` results: `Required hygiene gate (zero findings)` and `Required verification gate`.

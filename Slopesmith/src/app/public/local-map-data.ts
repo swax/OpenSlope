@@ -2,6 +2,7 @@ import type { MapDataSource } from '../../shared/map-data';
 import { readCachedCourse } from './iso-cache';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import type { ReferenceMusicGraph, ReferenceMusicIndex, ReferenceMusicSummary } from '../../core/reference/music';
+import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
 
 /** Read the same portable map files as the server, with browser-local Blobs replacing filesystem reads. */
 export async function localMapData(courses: string[], aliases: Record<string, string> = {}) {
@@ -15,9 +16,17 @@ export async function localMapData(courses: string[], aliases: Record<string, st
   const soundIndexes = new Map<string, CollisionSoundIndex>();
   const musicIndexes = new Map<string, ReferenceMusicIndex>();
   const musicGraphs = new Map<string, ReferenceMusicGraph>();
+  const boardGroups = new Map<string, number[]>();
+  const introFolders = new Map<string, string>();
   for (const [level, files] of all) {
     const index = files.get('audio/soundindex.json');
     if (index) soundIndexes.set(level, JSON.parse(await index.text()) as CollisionSoundIndex);
+    const boardIndex = files.get('audio/boardsoundindex.json');
+    if (boardIndex) {
+      const groups: unknown = (JSON.parse(await boardIndex.text()) as { SurfaceGroups?: unknown }).SurfaceGroups;
+      if (Array.isArray(groups) && groups.length <= 256 && groups.every(group => Number.isInteger(group) && group >= 0 && group <= 9))
+        boardGroups.set(level, groups);
+    }
     const playlist = files.get('audio/music/playlist.json');
     const songs: ReferenceMusicSummary[] = [];
     for (const id of playlist ? JSON.parse(await playlist.text()) as string[] : []) {
@@ -30,7 +39,19 @@ export async function localMapData(courses: string[], aliases: Record<string, st
         sections: graph.Sections, events: graph.Events, routers: graph.Routers.length, nodes: graph.Nodes.length,
         samples: graph.Samples.length, totalSeconds, averageChunkSeconds: totalSeconds / Math.max(1, graph.Samples.length) });
     }
-    musicIndexes.set(level, { level, songs, intro: null, environment: null });
+    let intro: ReferenceMusicIndex['intro'] = null;
+    for (const folder of ['audio/intro/', 'audio/music/']) {
+      const names = [...files.keys()].filter(path => path.startsWith(folder) && !path.slice(folder.length).includes('/'))
+        .map(path => path.slice(folder.length));
+      for (const tier of ['C', 'A', 'B'] as const) {
+        const pattern = new RegExp(`-${tier}(\\d+)\\.wav$`, 'i');
+        const stems = names.filter(name => pattern.test(name)).sort((a, b) =>
+          Number(pattern.exec(a)![1]) - Number(pattern.exec(b)![1]) || a.localeCompare(b));
+        if (stems.length) { intro = { tier, stems }; introFolders.set(level, folder); break; }
+      }
+      if (intro) break;
+    }
+    musicIndexes.set(level, { level, songs, intro, environment: null });
   }
   const fallbackSprite = document.createElement('canvas'); fallbackSprite.width = fallbackSprite.height = 32;
   const context = fallbackSprite.getContext('2d')!;
@@ -73,7 +94,16 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     const url = new URL(path, location.origin), q = url.searchParams;
     const level = q.get('level') || courses[0] || '';
     const data = (value: unknown) => `data:application/json,${encodeURIComponent(JSON.stringify(value))}`;
-    if (url.pathname === '/api/board-audio') return data({ board: courses[0] ?? null, boost: courses[0] ?? null, surfaceGroups: null });
+    if (url.pathname === '/api/board-audio') {
+      const selected = q.has('level') ? [level] : courses;
+      const boardLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['1']);
+      const boostLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['0']);
+      return data({ board: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
+        boost: boostLevel ? soundIndexes.get(boostLevel.toLowerCase())!.Banks['0'] : null,
+        boardBank: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
+        boostBank: boostLevel ? soundIndexes.get(boostLevel.toLowerCase())!.Banks['0'] : null,
+        surfaceGroups: boardLevel ? boardGroups.get(boardLevel.toLowerCase()) ?? null : null });
+    }
     if (url.pathname === '/api/announcer-audio') return data({});
     if (url.pathname === '/api/reference-music') {
       const song = q.get('song');
@@ -84,6 +114,11 @@ export async function localMapData(courses: string[], aliases: Record<string, st
       const song = q.get('song') ?? '', sample = Number(q.get('sample')) - 1;
       const name = musicGraphs.get(`${level.toLowerCase()}/${song.toLowerCase()}`)?.Samples[sample]?.Wav;
       return name ? fileUrl(`${level}/Audio/Music/${song}/${name}`) : 'data:audio/wav;base64,';
+    }
+    if (url.pathname === '/api/reference-intro-music') {
+      const stem = q.get('stem')?.toLowerCase() ?? '';
+      return musicIndexes.get(level.toLowerCase())?.intro?.stems.includes(stem)
+        ? fileUrl(`${level}/${introFolders.get(level.toLowerCase())}${stem}`) : 'data:audio/wav;base64,';
     }
     if (level.toLowerCase() === 'custom' || q.has('project')) return path;
     if (url.pathname === '/api/texture') return fileUrl(`${level}/Textures/${q.get('name')}`);
@@ -102,8 +137,19 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     // Missing optional disc channels remain local too; a guest never falls back to server retail bytes.
     if (url.pathname === '/api/board-sound' || url.pathname === '/api/environment-sound') {
       const bank = q.get('bank')?.toLowerCase(), slot = (q.get('slot') ?? '0').padStart(3, '0');
-      for (const course of courses) {
-        const path = `${course}/Audio/SFX/${bank}/${slot}.wav`;
+      const selected = url.pathname === '/api/board-sound' && q.has('level') ? [level] : courses;
+      for (const course of selected) {
+        const index = soundIndexes.get(course.toLowerCase());
+        const actualBank = bank === BOARD_BANK ? index?.Banks['1'] ?? bank : bank === BOOST_BANK ? index?.Banks['0'] ?? bank : bank;
+        const original = index?.NamedBanks?.BOARD;
+        if (slot === '052' && q.get('loop') === '1' && actualBank?.toLowerCase() === 'openslope_board' &&
+          original && /^[a-z0-9_-]+$/i.test(original)) {
+          const sustain = `${course}/Audio/SFX/${original}/035.loop.wav`;
+          if (blob(sustain)) return fileUrl(sustain);
+        }
+        const path = `${course}/Audio/SFX/${actualBank}/${slot}.wav`;
+        const loop = `${course}/Audio/SFX/${actualBank}/${slot}.loop.wav`;
+        if (q.get('loop') === '1' && blob(loop)) return fileUrl(loop);
         if (blob(path)) return fileUrl(path);
       }
       return 'data:audio/wav;base64,';

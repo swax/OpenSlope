@@ -94,6 +94,7 @@ export function referencePatchContact(rd: ReferenceMesh | null): PatchContact | 
   return (faceIndex, bary, outPoint, outNormal) => {
     const q = Math.floor(faceIndex / per);
     if (q < 0 || q >= patches) return false;
+    if (rd.patchVisible?.[q] === false) return false;
     const cp = rd.patchControls[q];
     if (!cp || cp.length < 16) return false;
     return patchAt(cp, res, faceIndex - q * per, bary, outPoint, outNormal);

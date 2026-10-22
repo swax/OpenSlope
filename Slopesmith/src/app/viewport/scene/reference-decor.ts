@@ -454,7 +454,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       // They enter the batch with a zero-scale matrix; this costs no fragments and avoids rebuilding geometry at
       // the moment of impact.
       const visibleInsts = insts;
-      const effectInsts = insts.filter(inst => effectPropIndices.has(inst.sourceIndex));
+      const effectInsts = insts.filter(inst => inst.editorHelper || effectPropIndices.has(inst.sourceIndex));
       // One InstancedMesh can only carry one material phase. Partition placements by their full recovered
       // material law; dwell flipbooks include an instance seed and therefore remain independently timed.
       const visibleBuckets = new Map<
@@ -1893,7 +1893,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     refEffectPropsGroup.visible = on && refEffectPropsGroup.children.length > 0;
   }
 
-  /** Limit the map overlay to native instances that genuinely own a resolvable effect slot. */
+  /** Bind translated effect hosts; classified course helpers also remain inspectable without a graph. */
   function setEffectPropIndices(indices: Iterable<number>) {
     effectPropIndices = new Set(indices);
     if (refPropData) setProps(refPropData);

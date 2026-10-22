@@ -21,6 +21,9 @@ import type { SurfaceTopology, EdgeCls } from '../mesh/surface';
 
 /** One patch as stored in an extracted (or Slopesmith-authored) Patches.json. */
 export interface RawPatch {
+  PatchName?: string;
+  /** Reference admission; inactive source variants keep their original cell and control net. */
+  Visable?: boolean;
   /** 16 control points in raw SSX space (cm, Z-up, X-mirrored), row-major, rows along u. */
   Points: number[][];
   SurfaceType: number;
@@ -490,6 +493,8 @@ export function sunFromLights(file: LightsFile): RefSunSeed | null {
 }
 
 export interface ReferenceMesh {
+  /** Inactive reference variants retain stable cell slots but emit no drawable/contact triangles. */
+  patchVisible?: boolean[];
   positions: Float32Array;
   normals: Float32Array;
   colors: Float32Array;
@@ -610,6 +615,7 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
   const side = res + 1;
   const per = side * side;
   const n = patches.length;
+  const patchVisible = patches.map(patch => patch.Visable !== false);
   const positions = new Float32Array(n * per * 3);
   const normals = new Float32Array(n * per * 3); // analytic per-vertex normals (reconciled with gN below)
   const gN = new Float32Array(n * per * 3); // accumulated geometric face normals, for the reconcile
@@ -778,14 +784,20 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
         const c2 = vBase + (iu + 1) * side + iv;
         const d = c2 + 1;
         // wound to match the preview (the material is double-sided, so lighting is correct either way)
-        indices[ip++] = a;
-        indices[ip++] = d;
-        indices[ip++] = c2;
-        indices[ip++] = a;
-        indices[ip++] = b;
-        indices[ip++] = d;
-        accumFace(a, d, c2);
-        accumFace(a, b, d); // feed the geometric-normal reconcile
+        if (patchVisible[pi]) {
+          indices[ip++] = a;
+          indices[ip++] = d;
+          indices[ip++] = c2;
+          indices[ip++] = a;
+          indices[ip++] = b;
+          indices[ip++] = d;
+          accumFace(a, d, c2);
+          accumFace(a, b, d); // feed the geometric-normal reconcile
+        } else {
+          // Keep fixed face ranges (cell = faceIndex / facesPerPatch), without rasterizing the other state.
+          indices.fill(vBase, ip, ip + 6);
+          ip += 6;
+        }
       }
     }
     // patch corners (row-major, rows along u): 0=(0,0) 3=(0,1) 15=(1,1) 12=(1,0); add the four, then
@@ -814,6 +826,7 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
     const DIV_COS = Math.cos((30 * Math.PI) / 180);
     for (let i = 0; i < normals.length; i += 3) {
       if (i > 0 && i % (4096 * 3) === 0) yield;
+      if (!patchVisible[Math.floor(i / (per * 3))]) continue;
       const gl = Math.hypot(gN[i], gN[i + 1], gN[i + 2]);
       if (gl < 1e-9) continue;
       const gx = gN[i] / gl,
@@ -1049,6 +1062,7 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
       return from === h.a ? h.ha : h.hb;
     };
     return {
+      ...(patchVisible.some(visible => !visible) ? { patchVisible } : {}),
       positions,
       normals,
       colors,

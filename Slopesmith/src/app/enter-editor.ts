@@ -50,15 +50,8 @@ export async function enterEditor(): Promise<void> {
   splash()?.classList.add('show');
   try {
     const account = await currentAccount();
-    if (
-      (account.accounts === 'required' && !('user' in account)) ||
-      (account.accounts === 'open' && account.offline) ||
-      new URLSearchParams(location.search).has('reference') ||
-      new URLSearchParams(location.search).has('local')
-    ) {
-      const { prepareEditorWorkspace } = await import('./public/local-editor');
-      await prepareEditorWorkspace(account);
-    }
+    const { prepareEditorWorkspace } = await import('./public/local-editor');
+    await prepareEditorWorkspace(account);
     await import('./main');
   } catch (error) {
     failed(error);

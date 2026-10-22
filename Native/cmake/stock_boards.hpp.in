@@ -1,0 +1,12 @@
+#pragma once
+#include <cstdint>
+#include <span>
+#include <string_view>
+namespace openslope::bundled {
+struct StockBoardAsset {
+    std::string_view id, name;
+    std::uint32_t edge;
+    std::span<const unsigned char> bytes;
+};
+@STOCK_BOARD_DATA@
+} // namespace openslope::bundled

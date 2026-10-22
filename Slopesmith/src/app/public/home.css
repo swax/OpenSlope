@@ -141,6 +141,15 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
 .public-who:empty, .public-status:empty, .public-iso-status:empty, .public-chat-status:empty { display: none; }
 .public-iso { margin: 0 0 20px; padding: 12px 14px; border: 1px solid #2a3c4a; border-radius: 10px; background: #142330; }
 .public-iso-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.public-iso-support { margin-top: 18px; color: #b2c9d5; font-size: 13px; line-height: 1.5; }
+.public-iso-support h2 { margin: 0 0 8px; color: #d3e4ef; font-size: 14px; }
+.public-iso-support dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 16px; margin: 0; }
+.public-iso-support dt { color: #d3e4ef; font-weight: 600; }
+.public-iso-support dd { margin: 2px 0 0; }
+.public-iso-support .public-iso-game { width: 100%; justify-content: flex-start; padding: 9px 10px; text-align: left; }
+.public-iso-support .public-iso-game[aria-pressed="true"] { color: #ffe0b1; background: #533e28; border-color: #bd8b4b; }
+.public-iso-support .public-iso-game-detail { color: #91a9b9; font-size: 11px; overflow-wrap: anywhere; }
+.public-iso-support p { margin: 12px 0 0; }
 .public-iso input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .public-iso:focus-within .public-iso-button { outline: 2px solid #f4b65e; }
 .public-cache { color: #91b2b4; font-size: 11px; padding: 4px 8px; border-radius: 5px; background: #8bb8bc0c; }
@@ -216,7 +225,6 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   backdrop-filter: blur(10px); pointer-events: auto; }
 .public-map-choices button { min-height: 40px; white-space: nowrap; }
 .public-map-choices button:focus-visible { outline: 2px solid #f4b65e; outline-offset: 2px; }
-.public-map-choices button[aria-expanded=true] { background: #365265; border-color: #779db4; }
 .public-view-controls { grid-area: 1 / 1; justify-self: start; width: 300px; max-width: 100%;
   padding: 12px 16px; border: 1px solid #41586a77; border-radius: 10px;
   background: #0c1720e8; color: #c4d6e2; box-sizing: border-box; backdrop-filter: blur(10px); }
@@ -290,6 +298,7 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   .public-navigation { gap: 12px; }
   .public-sign-in, .public-nav { font-size: 12px; }
   .public-home { padding: 16px; }
+  .public-iso-support dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .public-preparing .public-header { gap: 4px; padding: 0 8px; }
   .public-header .public-requirements-host > .public-iso-requirements { position: fixed; top: calc(var(--public-header) + 8px);
     left: 8px; right: 8px; width: auto; max-width: none; }
@@ -307,6 +316,7 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   .public-brand .sp-brand > span { display: none; }
   .public-header { gap: 10px; }
   .public-preparing .public-header { gap: 4px; }
+  .public-preparing .public-online > .public-online-label { display: none; }
 }
 @media (pointer: coarse) {
   .public-view-controls dl { display: none; }
@@ -354,4 +364,5 @@ body.public-play.public-iso-page { --lodge-width: 0px; padding-bottom: 0; }
   .public-header .sp-account-menu .sp-account-initial { display: inline; }
 }
 @media (max-width: 480px) { .public-header .public-external-link { display: none; } }
+@media (max-width: 420px) { .public-header .public-navigation { gap: 4px; } }
 @media (prefers-reduced-motion: reduce) { .public-play .public-community-panel { transition: none !important; } }

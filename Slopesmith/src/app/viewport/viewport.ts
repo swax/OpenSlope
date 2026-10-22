@@ -70,6 +70,8 @@ import {
 import type { LightRig } from '../../core/reference/lights';
 import type { PlacedLight } from '../../core/lighting/sign-lights';
 import { propPreviewIntensity } from '../../core/lighting/prop-lights';
+import { referenceRiderProbes, RiderLightField, type RiderLight } from '../../core/lighting/rider-light';
+import { RIDER_LIGHT_SOURCE } from '../ride/rider-lighting';
 import { lightToWorkingSpace } from '../../core/lighting/color-space';
 import { memberWorldPos, type GroupDef } from '../../core/reference/groups';
 import { groupMemberKey, groupMemberProp } from '../../core/props/defaults';
@@ -528,6 +530,8 @@ export class Viewport {
   private studioSun!: THREE.DirectionalLight;
   private propFill!: THREE.AmbientLight;
   private propKey!: THREE.DirectionalLight;
+  private riderReferenceLight = new RiderLightField([]);
+  private riderAuthoredLight: RiderLight | null = null;
   // The reference's flat Surface view must keep the same normal-direction warning as its textured tiles and
   // the authored terrain. This material is also the fallback while reference tile pages are still loading.
   private referenceMat = tintBackfaces(
@@ -1078,6 +1082,32 @@ export class Viewport {
     this.propKey = new THREE.DirectionalLight(0xffffff, 0);
     this.propFill.visible = this.propKey.visible = false;
     this.scene.add(this.studioHemi, this.studioSun, this.propFill, this.propKey);
+    const riderPoint = new THREE.Vector3();
+    const riderDirection = new THREE.Vector3();
+    this.scene.userData[RIDER_LIGHT_SOURCE] = (position: THREE.Vector3): RiderLight | null => {
+      this.worldRoot.updateWorldMatrix(true, false);
+      this.refRoot.updateWorldMatrix(true, false);
+      const ownPoint = this.worldRoot.worldToLocal(riderPoint.copy(position));
+      const ownDistance = this.ownBounds?.distanceToPoint(ownPoint) ?? Infinity;
+      const ownLight = this.riderAuthoredLight;
+      const ground = ownLight ? (this.terrainLayer.groundLightAt([ownPoint.x, ownPoint.y, ownPoint.z]) ?? 1) : 1;
+      const refPoint = this.refRoot.worldToLocal(riderPoint.copy(position));
+      const refDistance = this.refBounds?.distanceToPoint(refPoint) ?? Infinity;
+      const reference =
+        !!this.refBounds &&
+        (refDistance < ownDistance ||
+          (refDistance === ownDistance && (this.rideCtl.playTarget === 'reference' || !this.ownBounds)));
+      const light = reference ? this.riderReferenceLight.sample([refPoint.x, refPoint.y, refPoint.z]) : ownLight;
+      if (!light) return null;
+      const matrix = reference ? this.refRoot.matrixWorld : this.worldRoot.matrixWorld;
+      return {
+        ambient: light.ambient,
+        keys: light.keys.map(key => ({
+          color: reference ? key.color : (key.color.map(v => v * ground) as V3),
+          direction: riderDirection.fromArray(key.direction).transformDirection(matrix).toArray() as V3,
+        })),
+      };
+    };
 
     // the authored terrain solid (preview mesh build + tile-material split + Stage-D sun lighting) lives in
     // TerrainLayer (this.terrainLayer): it owns the terrain mesh / materials / lighting caches and reads the
@@ -3944,6 +3974,13 @@ export class Viewport {
     } | null,
   ) {
     const on = !!opts && opts.ambient + opts.sun > 1e-4;
+    this.riderAuthoredLight =
+      on && opts
+        ? {
+            ambient: opts.skyTint.map(v => (v * opts.ambient) / 2) as V3,
+            keys: [{ color: opts.sunTint.map(v => (v * opts.sun) / 2) as V3, direction: opts.dir }],
+          }
+        : null;
     this.studioHemi.visible = this.studioSun.visible = !on;
     this.propFill.visible = this.propKey.visible = on;
     // …and point the Surface view's darkness reading at the same sun (scene/prop-shade.ts). Same toggle for
@@ -4369,6 +4406,7 @@ export class Viewport {
 
   // reference decorations (props / trick models / rig tint) live in ReferenceDecor (this.refDecor)
   setReferenceProps(props: LevelProps | null) {
+    this.riderReferenceLight = new RiderLightField(referenceRiderProbes(props?.instances ?? []));
     this.refDecor.setProps(props);
     this.applyReferencePropAudio(props);
     // Effects and the multi-megabyte prop payload load independently. If Effects won the race, the prop rebuild
@@ -4384,6 +4422,7 @@ export class Viewport {
       this.referenceEffects.beginPlay('reference', this.raceMode);
   }
   async setReferencePropsProgressive(props: LevelProps | null, yieldControl: () => Promise<void>) {
+    this.riderReferenceLight = new RiderLightField(referenceRiderProbes(props?.instances ?? []));
     const level = props?.level ?? 'cleared';
     this.applyReferencePropAudio(props);
     await runDiagnosticPhaseAsync(

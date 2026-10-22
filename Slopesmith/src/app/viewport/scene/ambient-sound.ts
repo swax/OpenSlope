@@ -3,7 +3,7 @@ import { customSoundUrl } from '../../net/asset-paths';
 import {
   externalSoundField,
   externalSoundReach,
-  isInteractiveAmbientEvent,
+  isInteractiveEmitter,
   resolveExternalSound,
   type ExternalSoundEmitter,
   type ExternalSoundPlacement,
@@ -79,6 +79,18 @@ export interface AmbientSoundHooks {
 export function ambientSoundUrl(installedLevel: string, source: AmbientSoundSource): string | null {
   if (source.file) return customSoundUrl(source.file);
   const bankLevel = source.level || installedLevel;
+  const route = source.emitter.route;
+  if (route) {
+    if (
+      !bankLevel ||
+      !/^[a-z0-9_-]+$/i.test(route.bank) ||
+      !Number.isInteger(route.slot) ||
+      route.slot < 0 ||
+      route.slot > 999
+    )
+      return null;
+    return `/api/effect-sound?level=${encodeURIComponent(bankLevel)}&bank=${encodeURIComponent(route.bank)}&slot=${route.slot}&loop=1`;
+  }
   const resolved = bankLevel ? resolveExternalSound(source.emitter.sound, bankLevel) : null;
   if (!resolved) return null;
   const bank = resolved.kind === 'fixed' ? resolved.bank : resolved.kind;
@@ -264,7 +276,7 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
         return {
           key: placement.key,
           event: placement.emitter.sound,
-          gated: isInteractiveAmbientEvent(placement.emitter.sound),
+          gated: isInteractiveEmitter(placement.emitter),
           armed: placement.armed !== false,
           reach: externalSoundReach(placement.emitter),
           url: source ? sourceUrl(source) : null,
@@ -312,7 +324,7 @@ export function createAmbientSoundLayer(hooks: AmbientSoundHooks): AmbientSoundL
       placementByKey.clear();
       for (const source of nextSources) byKey.set(source.key, source);
       placements = nextSources.map(source => {
-        const gated = isInteractiveAmbientEvent(source.emitter.sound);
+        const gated = isInteractiveEmitter(source.emitter);
         // Converted ONCE, here, rather than per scan: the whole point of measuring the field in raw
         // centimetres is that a scan transforms the listener alone and never the emitters.
         const center =

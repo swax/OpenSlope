@@ -14,6 +14,8 @@ import { FIXED_EXTERNAL_BANKS } from './external-sound-banks.generated';
  * semantic helpers below expose only fields whose runtime meaning is currently pinned down.
  */
 export interface ExternalSoundEmitter {
+  /** Explicit common-map route; bypasses title-specific event identities and gates. */
+  route?: { bank: string; slot: number };
   type: number;
   /** Global ADL event id (the same id space used by prop collision sounds). */
   sound: number;
@@ -35,6 +37,9 @@ const INTERACTIVE_AMBIENT_EVENTS: ReadonlySet<number> = new Set([16, 28, 57]);
 /** Whether an emitter event is hit-gated rather than heard on proximity alone. */
 export const isInteractiveAmbientEvent = (eventId: number): boolean =>
   INTERACTIVE_AMBIENT_EVENTS.has(Math.trunc(eventId));
+
+export const isInteractiveEmitter = (emitter: ExternalSoundEmitter): boolean =>
+  !emitter.route && isInteractiveAmbientEvent(emitter.sound);
 
 /**
  * The three ids in the order a mountain CLAIMS them for its own uploaded loops.
@@ -249,7 +254,7 @@ export function externalSoundFalloff(emitter: ExternalSoundEmitter): number | nu
 /** Type reading for one placed record, which is the emitter's event as well as its region: a hit-gated event
  *  is still a point region, but calling it "continuing" would misdescribe when it is heard. */
 export function externalSoundEmitterTypeLabel(emitter: ExternalSoundEmitter): string {
-  return isInteractiveAmbientEvent(emitter.sound) && emitter.type === 0
+  return isInteractiveEmitter(emitter) && emitter.type === 0
     ? 'point · hit-gated'
     : externalSoundTypeLabel(emitter.type);
 }
@@ -392,7 +397,7 @@ export function externalSoundField(
   for (const placement of placements) {
     // The interactive class is inaudible at any range until its owner has been hit, however close the
     // listener stands [Trailmap: 420-interactive-ambient].
-    if (!placement.armed && isInteractiveAmbientEvent(placement.emitter.sound)) continue;
+    if (!placement.armed && isInteractiveEmitter(placement.emitter)) continue;
     const reach = externalSoundReach(placement.emitter);
     if (reach <= 0) continue;
     const delta: V3 = [

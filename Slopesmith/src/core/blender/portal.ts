@@ -24,10 +24,18 @@ import { encodeGlb, type EncodeImage, type EncodeMaterial } from '../props/glb-e
  * ## Space
  *
  * Portal coordinates are glTF's: **metres, Y-up, right-handed**, and ANCHOR-LOCAL, so a model arrives at the
- * origin. That is also the editor's own data space — `authoredModelLevelProps` and `glbToPropDraft` reduce to
- * the same `raw = (−100x, −100z, 100y)` map — so an authored model needs no axis change at all, and an
- * imported prop needs exactly the inverse of the one its import applied. Blender's Z-up is the ADDON's
- * business, converted once at its own edge, because that is the only place the convention is Blender's.
+ * origin. Portal space is the frame an imported GLB is read in, so an imported prop goes out through exactly
+ * the inverse of `rawFromGltfPoint` — a rotation, raw = (100x, −100z, 100y) — and Blender, after the addon's
+ * own Y-up→Z-up turn, holds raw ÷ 100 exactly.
+ *
+ * It is NOT the editor's data space, though both are Y-up metres: the editor shows data space through the
+ * scene root's Z mirror (docs/032, "Which way round a model stands"), so handing data space out unchanged —
+ * which portal v1 did — showed Blender the MIRROR IMAGE of the viewport: consistently, so a round trip was
+ * exact, but text on a cage's tile read backwards there. An authored cage therefore goes out with X negated
+ * (anchor-local), the one axis that separates the two frames, and — that being a mirror — with every loop
+ * reversed from its first corner so its faces still wind outward. Blender then holds the same raw ÷ 100 an
+ * imported prop does. Blender's Z-up is the ADDON's business, converted once at its own edge, because that is
+ * the only place the convention is Blender's.
  *
  * ## What round-trips, and what does not
  *
@@ -44,8 +52,16 @@ import { encodeGlb, type EncodeImage, type EncodeMaterial } from '../props/glb-e
  * nothing and never disturbs a tile other props share.
  */
 
-/** Bumped when a field changes meaning. The addon refuses a payload it does not speak rather than guessing. */
-export const PORTAL_VERSION = 1;
+/**
+ * Bumped when a field changes meaning. The addon refuses a payload it does not speak rather than guessing.
+ *
+ * v2 changed the FRAME (see "Space" above): v1 portal space is v2's mirror across X, for both kinds — a cage
+ * went out in data space, an imported prop through the importer's old mirroring map — with every loop wound
+ * the other way. A model pulled at v1 still carries its v1 stamp, so `readPortalMesh` turns such a push into
+ * v2 instead of landing it mirrored. A cage's derived UVs are assigned by loop POSITION, so the add-on picks
+ * its UV table by the same number.
+ */
+export const PORTAL_VERSION = 2;
 
 /** The glTF `extras` key carrying the round-trip stamp, on the file's root node. Blender's importer parks
  *  node extras on the object as custom properties and its exporter writes them back, so the stamp survives a
@@ -146,6 +162,12 @@ export function loopQuad(loop: readonly number[]): [number, number, number, numb
   return loop.length >= 4 ? [loop[0], loop[1], loop[3], loop[2]] : [loop[0], loop[1], loop[2], loop[2]];
 }
 
+/** A loop wound the other way round, still starting at its first corner — what a mirror does to a face. Its
+ *  own inverse, and it keeps a quad's corner A in front, which is where the derived tile UVs start. */
+function reversedLoop(loop: readonly number[]): number[] {
+  return loop.length ? [loop[0], ...loop.slice(1).reverse()] : [];
+}
+
 /** Fan an arbitrary loop into triangles — how an n-gon reaches a format that has none. */
 function fan(loop: readonly number[]): number[][] {
   const out: number[][] = [];
@@ -160,19 +182,21 @@ function fan(loop: readonly number[]): number[][] {
  *
  * Vertices go out anchor-local so the model lands at Blender's origin instead of a kilometre down the
  * mountain, and quads go out AS quads. Nothing is triangulated, welded or re-derived on the way out, so the
- * mesh the artist sees is the mesh the document holds.
+ * mesh the artist sees is the mesh the document holds — the way round the viewport draws it, which is data
+ * space with X negated and every loop reversed to match (see "Space" above).
  */
 export function authoredModelPortal(model: AuthoredModel, project: string, texUrl?: string): PortalMesh {
   const [ax, ay, az] = model.anchor;
   const verts: number[] = [];
   for (let i = 0; i < model.vertices.length; i += 3) {
-    verts.push(model.vertices[i] - ax, model.vertices[i + 1] - ay, model.vertices[i + 2] - az);
+    // `ax - x` rather than `-(x - ax)`: the same number, without minting a −0 for a corner on the anchor
+    verts.push(ax - model.vertices[i], model.vertices[i + 1] - ay, model.vertices[i + 2] - az);
   }
   return {
     stamp: { v: PORTAL_VERSION, kind: 'model', id: modelNumber(model.id), name: model.name, project, unit: 'm' },
     anchor: [ax, ay, az],
     verts,
-    faces: model.quads.map(quadLoop),
+    faces: model.quads.map(quad => reversedLoop(quadLoop(quad))),
     materials: [
       {
         id: 0,
@@ -211,14 +235,15 @@ export function cageFromPortal(mesh: PortalMesh, anchor: V3): CageUpdate {
   const [ax, ay, az] = anchor;
   const vertices: number[] = [];
   for (let i = 0; i + 2 < mesh.verts.length; i += 3) {
-    vertices.push(mesh.verts[i] + ax, mesh.verts[i + 1] + ay, mesh.verts[i + 2] + az);
+    // X negated back into data space, and each loop reversed below — the inverse of `authoredModelPortal`
+    vertices.push(ax - mesh.verts[i], mesh.verts[i + 1] + ay, mesh.verts[i + 2] + az);
   }
   const count = vertices.length / 3;
   const quads: [number, number, number, number][] = [];
   let fanned = 0,
     dropped = 0;
   for (const face of mesh.faces) {
-    const loop = face.filter(index => Number.isInteger(index) && index >= 0 && index < count);
+    const loop = reversedLoop(face.filter(index => Number.isInteger(index) && index >= 0 && index < count));
     if (new Set(loop).size < 3) {
       dropped++;
       continue;
@@ -259,11 +284,11 @@ function pack(view: ArrayBufferView): string {
  * A stored imported prop as a portal mesh.
  *
  * This is the exact inverse of what `glbToPropDraft` did on the way in, and it is written that way on
- * purpose: the frame change `raw = (−100x, −100z, 100y)` is a MIRROR, so undoing it has to reverse the
- * triangle winding as well (docs/032). Skipping that would hand Blender a model whose every face points
- * inward — it would still draw, being double-sided, and every normal the artist then worked against would
- * be backwards. The UV V flip is the second, unrelated convention: prop UVs are raw OBJ `vt` with a
- * bottom-left origin, glTF's V runs top-down.
+ * purpose: the frame change `raw = (100x, −100z, 100y)` is a ROTATION, so undoing it keeps the triangle
+ * winding as stored (docs/032). Reversing it here — or failing to keep the two maps each other's inverse —
+ * would hand Blender a model whose every face points inward, or its mirror image; either still draws, and
+ * the artist would work against it. The UV V flip is the second, unrelated convention: prop UVs are raw OBJ
+ * `vt` with a bottom-left origin, glTF's V runs top-down.
  *
  * Submeshes are concatenated into one vertex pool with a per-face material slot, because Blender's unit of
  * work is an object with material slots, not a bag of primitives.
@@ -283,13 +308,13 @@ export function importedPropPortal(
     const indices = unpackIndices(sub.idx);
     const base = verts.length / 3;
     for (let i = 0; i + 2 < positions.length; i += 3) {
-      // raw (cm, Z-up, X-mirrored) → portal/glTF (m, Y-up)
-      verts.push(-positions[i] / 100, positions[i + 2] / 100, -positions[i + 1] / 100);
+      // raw (cm, Z-up) → portal/glTF (m, Y-up), the inverse of `rawFromGltfPoint`
+      verts.push(positions[i] / 100, positions[i + 2] / 100, -positions[i + 1] / 100);
     }
     for (let i = 0; i + 1 < uv.length; i += 2) uvs.push(uv[i], 1 - uv[i + 1]);
     for (let t = 0; t + 2 < indices.length; t += 3) {
-      // reversed again — the map back out of raw is the same mirror the import applied
-      faces.push([base + indices[t], base + indices[t + 2], base + indices[t + 1]]);
+      // as stored — the map out of raw is a rotation, so the winding needs no help
+      faces.push([base + indices[t], base + indices[t + 1], base + indices[t + 2]]);
       faceMaterial.push(sub.mat);
     }
   }
@@ -325,7 +350,7 @@ export interface ImportedGeometry {
 /**
  * A pushed-back portal mesh as imported-prop geometry.
  *
- * Faces fan to triangles, positions and winding take the mirror back into raw space, V flips back, and the
+ * Faces fan to triangles, positions take the import's rotation back into raw space, V flips back, and the
  * result re-groups by material slot into the per-material submeshes `PropSub` wants. Vertices are re-emitted
  * per submesh and deduplicated within it, so a model whose faces got redistributed across slots in Blender
  * does not carry every other slot's vertices along with it.
@@ -353,7 +378,7 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
         const x = mesh.verts[source * 3],
           y = mesh.verts[source * 3 + 1],
           z = mesh.verts[source * 3 + 2];
-        bucket!.pos.push(-100 * x, -100 * z, 100 * y);
+        bucket!.pos.push(100 * x, -100 * z, 100 * y);
         const u = mesh.uvs?.[source * 2] ?? 0,
           v = mesh.uvs?.[source * 2 + 1] ?? 0;
         bucket!.uv.push(u, 1 - v);
@@ -364,7 +389,7 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
     if (new Set(valid).size < 3) continue;
     for (const [a, b, c] of fan(valid)) {
       if (a === b || b === c || c === a) continue;
-      bucket.idx.push(emit(a), emit(c), emit(b)); // the raw frame is a mirror — reverse on the way in
+      bucket.idx.push(emit(a), emit(b), emit(c)); // a rotation into raw — the winding goes in as drawn
       tris++;
     }
   }
@@ -390,19 +415,21 @@ export function importedGeometryFromPortal(mesh: PortalMesh, slots: number): Imp
 // ---- the GLB a foreign tool gets ---------------------------------------------------------------------
 
 /** UV corners of an authored quad, in glTF's top-down V: A(0,0) B(1,0) C(0,1) D(1,1) as raw prop UVs, so
- *  `v_gltf = 1 − v_prop`. The loop order is the one `quadLoop` produces — A, B, D, C. */
+ *  `v_gltf = 1 − v_prop`. Indexed by loop POSITION, and the loop is the one `authoredModelPortal` sends —
+ *  `quadLoop`'s A, B, D, C reversed from A, so A, C, D, B. Each CORNER keeps its tile position either way;
+ *  only the order it is listed in follows the mirror. */
 const CAGE_LOOP_UV: readonly (readonly [number, number])[] = [
   [0, 1],
-  [1, 1],
-  [1, 0],
   [0, 0],
+  [1, 0],
+  [1, 1],
 ];
 
-/** The wedge's third corner takes the tile's top-centre, matching `authoredModelLevelProps`. */
+/** A wedge's loop A, C, B: its third corner takes the tile's top-centre, matching `authoredModelLevelProps`. */
 const CAGE_WEDGE_UV: readonly (readonly [number, number])[] = [
   [0, 1],
-  [1, 1],
   [0.5, 0],
+  [1, 1],
 ];
 
 /**
@@ -432,10 +459,10 @@ export function portalGlb(
     if (!run) runs.set(slot, (run = { positions: [], uvs: [], normals: [], indices: [] }));
     const base = run.positions.length / 3;
     const at = (index: number): V3 => [mesh.verts[index * 3], mesh.verts[index * 3 + 1], mesh.verts[index * 3 + 2]];
-    // Flat normal: `∂u × ∂v`, the side the bake winds toward (docs/028). On a cage loop [A, B, D, C] the
-    // first and last edges ARE the u and v directions (A→B is +u, A→C is +v), and on a triangle they are the
-    // two the fan winds around — so one formula answers both, and it agrees with the fan below by
-    // construction rather than by coincidence.
+    // Flat normal: first edge × last edge, which is the side the fan below winds toward — so the two agree by
+    // construction rather than by coincidence, on a triangle and a quad alike. On a cage loop [A, C, D, B]
+    // that is `∂v × ∂u` in portal space, which is exactly the bake's `∂u × ∂v` (docs/028) carried through the
+    // X mirror: a reflection flips a cross product, and the reversed loop flips it back.
     const [ox, oy, oz] = at(loop[0]);
     const [ux, uy, uz] = at(loop[1]);
     const [vx, vy, vz] = at(loop[loop.length - 1]);
@@ -546,7 +573,8 @@ function safeParse(text: string): unknown {
  * The addon is trusted no further than the network it arrives over: a face list naming vertex 40 000 of a
  * 12-vertex mesh, a `verts` array of strings, or a payload from a newer portal version all have to fail as a
  * refusal with a reason rather than as geometry with holes in it. Index RANGE is checked by the two
- * consumers above, which know what to do with an out-of-range corner; shape is checked here.
+ * consumers above, which know what to do with an out-of-range corner; shape is checked here. An OLDER
+ * portal version is not refused: it comes back in today's frame (see `PORTAL_VERSION`).
  */
 export function readPortalMesh(value: unknown): PortalMesh {
   const body = value as Partial<PortalMesh> | null;
@@ -573,6 +601,13 @@ export function readPortalMesh(value: unknown): PortalMesh {
   });
   const uvs = body.uvs === undefined ? undefined : numbers(body.uvs, 'UVs');
   if (uvs && uvs.length !== (verts.length / 3) * 2) throw new Error('that push has one UV per vertex missing');
+  // A model pulled before v2 is still in v1's frame — v2's mirror across X, loops wound the other way — and
+  // its stamp says so. Turned here, once, so neither consumer has to know there was ever another frame.
+  if (stamp.v < 2) {
+    for (let i = 0; i < verts.length; i += 3) verts[i] = 0 - verts[i];
+    for (const [index, face] of faces.entries()) faces[index] = reversedLoop(face);
+    stamp.v = PORTAL_VERSION;
+  }
   return {
     stamp,
     anchor:

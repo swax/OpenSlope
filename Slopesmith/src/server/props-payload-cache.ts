@@ -15,7 +15,7 @@ import {
 import { createLogger } from './log';
 
 /** Bump whenever the generated PropsPayload contract or its server-side derivation changes. */
-const PROP_PAYLOAD_CACHE_SCHEMA = 9;
+const PROP_PAYLOAD_CACHE_SCHEMA = 11;
 const log = createLogger('props-cache');
 
 export interface PersistentPropsPayload {

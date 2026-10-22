@@ -29,7 +29,23 @@ export async function readEnvironmentAudio(level: string): Promise<EnvironmentAu
 }
 
 /** Read the disc-global board surface routes generated beside the shared zboard bank. */
-export async function readBoardSoundIndex(): Promise<BoardSoundIndex | null> {
+export async function readBoardSoundIndex(level?: string): Promise<BoardSoundIndex | null> {
+  if (level) {
+    const safe = safeDataName(level);
+    if (!safe || safe !== level) return null;
+    const local = await readJsonOr<BoardSoundIndex | null>(
+      join(mapsRoot(), safe, 'Audio', 'BoardSoundIndex.json'),
+      null,
+    );
+    if (
+      local?.Schema === 'openslope-board-sound-index/v1' &&
+      Array.isArray(local.SurfaceGroups) &&
+      local.SurfaceGroups.every(group => Number.isInteger(group) && group >= 0 && group <= 9)
+    )
+      return local;
+    // Streamed maps use the common PACK fallback until their surface routes are authored.
+    if (/^(SSX3_|SSXOT_)/i.test(level)) return null;
+  }
   const index = await readJsonOr<BoardSoundIndex | null>(
     join(mapsRoot(), 'Shared', 'Audio', 'BoardSoundIndex.json'),
     null,
@@ -156,12 +172,21 @@ const BOARD_BANKS = new Set(['zboard', 'zbxsfx']);
  * `snowknife import` writes the same zboard/zbxsfx WAVs beneath its own Audio/SFX — so the first level carrying
  * the folder serves the whole editor, and an authored mountain that has never had a reference loaded still
  * gets a board bed. Null when nothing has been extracted yet. */
-export async function boardSoundSource(bank: string): Promise<{ level: string; dir: string } | null> {
+export async function boardSoundSource(
+  bank: string,
+  level?: string,
+): Promise<{ level: string; dir: string; bank: string } | null> {
   const wanted = bank.trim().toLowerCase();
   if (!BOARD_BANKS.has(wanted)) return null;
-  for (const level of (await listDir(mapsRoot())).sort()) {
-    const dir = join(mapsRoot(), level, 'Audio', 'SFX', wanted);
-    if (await isDirectory(dir)) return { level, dir };
+  if (level && (!safeDataName(level) || safeDataName(level) !== level)) return null;
+  for (const candidate of level ? [level] : (await listDir(mapsRoot())).sort()) {
+    const index = await readSoundIndex(candidate);
+    const actual = index?.Banks[wanted === 'zboard' ? '1' : '0'] ?? wanted;
+    if (!actual || safeDataName(actual) !== actual) continue;
+    const root = join(mapsRoot(), candidate, 'Audio', 'SFX');
+    const name = (await listSubdirectories(root)).find(name => name.toLowerCase() === actual.toLowerCase());
+    const dir = name ? join(root, name) : null;
+    if (dir && name && (await isDirectory(dir))) return { level: candidate, dir, bank: name };
   }
   return null;
 }
@@ -169,11 +194,18 @@ export async function boardSoundSource(bank: string): Promise<{ level: string; d
 /** Read one shared board-bank slot. `loop` prefers the sibling `NNN.loop.wav` Snowknife emits from the BNKl
  * loop region — the clean sustain a continuously performed layer wants — and falls back to the complete WAV
  * for the slots that ship no loop region (and for the one-shot transients, which want their attack). */
-export async function readBoardSoundBytes(bank: string, slot: number, loop: boolean): Promise<Buffer> {
-  const source = await boardSoundSource(bank);
+export async function readBoardSoundBytes(bank: string, slot: number, loop: boolean, level?: string): Promise<Buffer> {
+  const source = await boardSoundSource(bank, level);
   if (!source) throw new Error(`no extracted ${bank} bank under Maps/*/Audio/SFX`);
   const safeSlot = Math.trunc(slot);
   if (safeSlot < 0 || safeSlot > 999) throw new Error(`invalid board sound slot ${slot}`);
+  if (loop && safeSlot === 52 && source.bank.toLowerCase() === 'openslope_board') {
+    const original = (await readSoundIndex(source.level))?.NamedBanks?.BOARD;
+    if (original && safeDataName(original) === original) {
+      const sustain = await readBytesOrNull(join(mapsRoot(), source.level, 'Audio', 'SFX', original, '035.loop.wav'));
+      if (sustain) return sustain;
+    }
+  }
   const stem = `${safeSlot}`.padStart(3, '0');
   const names = loop ? [`${stem}.loop.wav`, `${stem}.wav`] : [`${stem}.wav`];
   const bytes = await readFirst(names.map(name => join(source.dir, name)));

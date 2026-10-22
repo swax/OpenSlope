@@ -16,8 +16,8 @@
     <string name="empty_body">Import courses from a game ISO, or choose a Maps folder containing custom or previously imported courses.</string>
     <string name="add_courses">Add courses</string>
     <string name="hide_add_courses">Hide add courses</string>
-    <string name="add_courses_hint">An ISO adds courses to your library. Existing maps are kept.</string>
-    <string name="import_iso">Import from ISO</string>
+    <string name="add_courses_hint">Choose one or more ISO or BIN files. Existing maps are kept.</string>
+    <string name="import_iso">Import from ISOs</string>
     <string name="choose_maps">Choose Maps folder</string>
     <string name="app_maps_source">Using the app’s Maps folder</string>
     <string name="selected_maps_source">Using your selected Maps folder</string>
@@ -31,17 +31,15 @@
     <string name="hide_ride_settings">Hide ride settings</string>
     <string name="vr_resolution">VR resolution</string>
     <string name="edge_smoothing">Edge smoothing</string>
-    <string name="riding_steering">Riding steering</string>
     <string name="resolution_hint">150% resolution and 120 Hz are the defaults. Lower settings can improve performance. The headset uses a supported refresh rate.</string>
     <string name="target_refresh_rate">Target frame rate</string>
     <string-array name="refresh_rates"><item>72 fps</item><item>80 fps</item><item>90 fps</item><item>120 fps · default</item></string-array>
-    <string name="steering_hint">Stick steering is always available. Head steering also lets you turn by looking.</string>
     <string name="first_run_help">First run &amp; controls</string>
     <string name="hide_first_run_help">Hide first run &amp; controls</string>
     <string name="enter_vr_title">Heading into VR</string>
     <string name="enter_vr_help">Choose Play to enter the course. You start on foot, ready to explore. No ISO is needed for courses already in your Maps folder.</string>
     <string name="controls_title">Touch controller basics</string>
-    <string name="controls_help">Trigger: get on or off your board.\nA: jump. B: boost.\nLeft stick: move or steer.\nY or the left Menu button: wrist menu, settings, map library and exit.\nThe right Meta button opens the system menu.</string>
+    <string name="controls_help">Trigger: get on or off your board.\nA: jump. B: boost.\nHead: steer while riding.\nLeft stick: move on foot; turn while riding.\nRight stick: turn on foot; click to switch view.\nY or the left Menu button: wrist menu, settings, map library and exit.\nThe right Meta button opens the system menu.</string>
     <string name="close_app">Close OpenSlope</string>
     <string name="section_expanded">%1$s, expanded</string>
     <string name="section_collapsed">%1$s, collapsed</string>
@@ -51,9 +49,10 @@
     <string name="reading_maps">Finding your courses…</string>
     <string name="folder_picker_missing">The system folder picker is unavailable. You can use the app’s Maps folder instead.</string>
     <string name="iso_picker_missing">The system file picker is unavailable on this headset.</string>
-    <string name="reading_iso">Finding courses on the ISO…</string>
+    <string name="reading_iso">Finding courses on selected discs…</string>
+    <string name="import_cancelled">Import cancelled.</string>
     <string name="import_title">Choose courses to import</string>
-    <string name="import_scope">Select one or more courses. Terrain, scenery, effects and audio are imported together. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
+    <string name="import_scope">Select courses from your chosen discs. SSX Tricky has full support; SSX has partial support; SSX 3 and On Tour are preliminary. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
     <string name="import_action">Import</string>
     <string name="import_selected">Import (%1$d)</string>
     <string name="select_all">Select all</string>
@@ -70,5 +69,4 @@
     <string-array name="ride_modes"><item>Freeride</item><item>Race</item><item>Showoff</item></string-array>
     <string-array name="vr_resolutions"><item>100%</item><item>125%</item><item>150% · default</item></string-array>
     <string-array name="smoothing_options"><item>Off</item><item>2x</item><item>4x · recommended</item></string-array>
-    <string-array name="steering_options"><item>Stick steering</item><item>Head + stick steering</item></string-array>
 </resources>

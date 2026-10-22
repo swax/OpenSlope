@@ -55,7 +55,10 @@ std::vector<Extent> archive_index(const DiscInput& disc, const Extent& extent) {
     std::vector<Extent> result;
     std::set<std::string> names;
     std::size_t entries = 0;
-    for (std::size_t p = start; p < end;) {
+    const auto declared_count = compact ? 0u : h.be(8);
+    if (!compact && declared_count > 65535)
+        throw std::runtime_error("Invalid archive index count");
+    for (std::size_t p = start; compact ? p < end : entries < declared_count;) {
         if (++entries > 65535 || end - p < 2 * width + 1)
             throw std::runtime_error("Invalid archive index count");
         const auto offset = b.be(p, width), size = b.be(p + width, width);
@@ -295,9 +298,25 @@ Json patches(const std::vector<std::uint8_t>& raw, const std::vector<std::uint8_
         throw std::runtime_error("Invalid PBD patch count");
     b.range(offset, std::size_t(count) * 448);
     const auto names = patch_names(linker, count);
+    return Json::parse(import_detail::patch_document(b.data.subspan(offset, std::size_t(count) * 448), names, images));
+}
+
+void write_json(const std::filesystem::path& path, const Json& document) {
+    std::ofstream stream(path, std::ios::binary);
+    stream << document.dump() << '\n';
+    if (!stream)
+        throw std::runtime_error("Cannot write map output");
+}
+} // namespace
+
+std::string import_detail::patch_document(std::span<const std::uint8_t> records, const std::vector<std::string>& names,
+                                          const std::vector<Image>& images, bool original) {
+    Bytes b{records};
+    const auto count = names.size();
+    b.range(0, count * 448);
     Json rows = Json::array();
     for (std::size_t i = 0; i < count; ++i) {
-        const auto p = offset + i * 448;
+        const auto p = i * 448;
         Json points = Json::array(), uv = Json::array(), tile = Json::array();
         // [Trailmap: 220-power-basis] Tensor-product monomial-to-Bernstein
         // conversion, with reversed on-disc row-major coefficient storage.
@@ -323,31 +342,38 @@ Json patches(const std::vector<std::uint8_t>& raw, const std::vector<std::uint8_
             uv.push_back({b.number(p + 16 + c * 16), b.number(p + 20 + c * 16)});
             tile.push_back(b.number(p + c * 4));
         }
-        const auto texture = b.signed16(p + 432), lightmap = b.signed16(p + 434);
+        const auto texture = original ? static_cast<std::int32_t>(b.le(p + 432)) : b.signed16(p + 432);
+        const auto lightmap = original ? static_cast<std::int32_t>(b.le(p + 436)) : b.signed16(p + 434);
         if (texture < 0 || static_cast<std::size_t>(texture) >= images.size())
             throw std::runtime_error("Terrain references a missing texture");
         rows.push_back({{"PatchName", names[i]},
                         {"LightMapPoint", tile},
                         {"UVPoints", uv},
                         {"Points", points},
-                        {"SurfaceType", b.le(p + 424)},
-                        {"TrickOnlyPatch", b.signed16(p + 430) < 0},
+                        {"SurfaceType", b.le(p + (original ? 440 : 424))},
+                        {"TrickOnlyPatch", !original && b.signed16(p + 430) < 0},
                         {"TexturePath", images[static_cast<std::size_t>(texture)].name + ".png"},
                         {"LightmapID", lightmap}});
     }
-    return {{"Patches", rows}};
+    return Json{{"Patches", rows}}.dump();
 }
 
-void write_json(const std::filesystem::path& path, const Json& document) {
-    std::ofstream stream(path, std::ios::binary);
-    stream << document.dump() << '\n';
-    if (!stream)
-        throw std::runtime_error("Cannot write map output");
-}
-} // namespace
-
-std::vector<DiscCourse> disc_courses(const DiscInput& disc, const ImportCancel& cancelled) {
+std::vector<DiscCourse> disc_courses(const DiscInput& image, const ImportCancel& cancelled) {
+    const auto disc = logical_disc(image);
     Iso iso(disc);
+    import_detail::check_cancel(cancelled);
+    const auto data = iso.children(iso.find("DATA"));
+    if (std::any_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "WORLDS"; })) {
+        const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb");
+        if (Bytes{database}.le(0) == 0x21004e00) {
+            const auto ids = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
+                       names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
+            return import_detail::ontour_courses(database, ids, names,
+                                                 disc_archive_directory(disc, "DATA/WORLDS/BAM.BIG"),
+                                                 iso.find("DATA/WORLDS/BAM.BIG").size);
+        }
+        return import_detail::ssx3_courses(database, iso.find("DATA/WORLDS/BAM.BIG").size);
+    }
     std::vector<DiscCourse> result;
     for (const auto& entry : iso.children(iso.find("DATA/MODELS"))) {
         import_detail::check_cancel(cancelled);
@@ -366,6 +392,18 @@ std::vector<DiscCourse> disc_courses(const DiscInput& disc, const ImportCancel& 
             if (!files.emplace(leaf, std::move(file)).second)
                 throw std::runtime_error("Duplicate level member");
         }
+        const auto original =
+            std::find_if(files.begin(), files.end(), [](const auto& file) { return file.first.ends_with(".WDX"); });
+        if (original != files.end()) {
+            const auto index = decode_refpack(disc.read(original->second.offset, std::size_t(original->second.size)));
+            import_detail::ssx_header(index);
+            const auto base = original->first.substr(0, original->first.size() - 4);
+            for (const auto suffix : {".WDF", ".WDR", ".SSH", "L.SSH", ".AIP", ".WFX"})
+                if (!files.contains(base + suffix))
+                    throw std::runtime_error("SSX course archive is incomplete");
+            result.push_back({"SSX_" + stem, entry.size});
+            continue;
+        }
         const auto it = files.find(stem + ".PBD");
         if (it != files.end()) {
             const auto geometry =
@@ -377,12 +415,13 @@ std::vector<DiscCourse> disc_courses(const DiscInput& disc, const ImportCancel& 
         }
     }
     if (result.empty())
-        throw std::runtime_error("No supported SSX Tricky PS2 courses were found");
+        throw std::runtime_error("No supported SSX, SSX Tricky, SSX 3 or SSX On Tour PS2 maps were found");
     std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
     return result;
 }
 
-std::vector<DiscEntry> disc_directory(const DiscInput& disc, const std::string& path) {
+std::vector<DiscEntry> disc_directory(const DiscInput& image, const std::string& path) {
+    const auto disc = logical_disc(image);
     Iso iso(disc);
     std::vector<DiscEntry> result;
     for (const auto& entry : iso.children(iso.find(path)))
@@ -390,7 +429,8 @@ std::vector<DiscEntry> disc_directory(const DiscInput& disc, const std::string& 
     return result;
 }
 
-std::vector<std::uint8_t> disc_file(const DiscInput& disc, const std::string& path) {
+std::vector<std::uint8_t> disc_file(const DiscInput& image, const std::string& path) {
+    const auto disc = logical_disc(image);
     Iso iso(disc);
     const auto entry = iso.find(path);
     if (entry.directory)
@@ -398,7 +438,8 @@ std::vector<std::uint8_t> disc_file(const DiscInput& disc, const std::string& pa
     return disc.read(entry.offset, static_cast<std::size_t>(entry.size));
 }
 
-std::vector<DiscEntry> disc_archive_directory(const DiscInput& disc, const std::string& path) {
+std::vector<DiscEntry> disc_archive_directory(const DiscInput& image, const std::string& path) {
+    const auto disc = logical_disc(image);
     Iso iso(disc);
     std::vector<DiscEntry> result;
     for (const auto& entry : archive_index(disc, iso.find(path)))
@@ -406,8 +447,9 @@ std::vector<DiscEntry> disc_archive_directory(const DiscInput& disc, const std::
     return result;
 }
 
-std::vector<std::uint8_t> disc_archive_file(const DiscInput& disc, const std::string& path,
+std::vector<std::uint8_t> disc_archive_file(const DiscInput& image, const std::string& path,
                                             const std::string& member_name) {
+    const auto disc = logical_disc(image);
     Iso iso(disc);
     const auto entries = archive_index(disc, iso.find(path));
     const auto it = std::find_if(entries.begin(), entries.end(),
@@ -417,8 +459,9 @@ std::vector<std::uint8_t> disc_archive_file(const DiscInput& disc, const std::st
     return decode_refpack(disc.read(it->offset, static_cast<std::size_t>(it->size)));
 }
 
-void extract_course(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
+void extract_course(const DiscInput& source_image, const std::string& course, const std::filesystem::path& output,
                     const ImportProgress& progress, const ImportCancel& cancelled) {
+    const auto disc = logical_disc(source_image);
     const auto stem = upper(course);
     if (!valid_map_name(stem))
         throw std::runtime_error("Invalid course name");
@@ -444,7 +487,37 @@ void extract_course(const DiscInput& disc, const std::string& course, const std:
     };
     notify("Reading " + stem + " archive");
     Iso iso(disc);
-    const auto files = archive(disc, iso.find("DATA/MODELS/" + stem + ".BIG"), cancelled);
+    if (stem.starts_with("SSX3_") || stem.starts_with("SSXOT_")) {
+        const auto entries = archive_index(disc, iso.find("DATA/WORLDS/BAM.BIG"));
+        const auto it = std::find_if(entries.begin(), entries.end(),
+                                     [](const auto& e) { return upper(e.name) == "DATA/WORLDS/BAM.SSB"; });
+        if (it == entries.end())
+            throw std::runtime_error("Mountain world stream is missing");
+        DiscInput stream{it->size, [disc, offset = it->offset](std::uint64_t p, std::span<std::uint8_t> bytes) {
+                             disc.read_at(offset + p, bytes);
+                         }};
+        const auto database = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.sdb"),
+                   identifiers = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.phm"),
+                   names = disc_archive_file(disc, "DATA/WORLDS/BAM.BIG", "data/worlds/bam.psm");
+        if (stem.starts_with("SSXOT_")) {
+            const auto courses = import_detail::ontour_courses(database, identifiers, names,
+                                                               disc_archive_directory(disc, "DATA/WORLDS/BAM.BIG"),
+                                                               iso.find("DATA/WORLDS/BAM.BIG").size);
+            if (std::none_of(courses.begin(), courses.end(), [&](const auto& item) { return item.name == stem; }))
+                throw std::runtime_error("Unknown On Tour track or time of day");
+        }
+        import_detail::write_mountain_course(disc, stream, database, identifiers, names, stem, output, progress,
+                                             cancelled);
+        cleanup.complete = true;
+        return;
+    }
+    const bool original = stem.starts_with("SSX_");
+    const auto files = archive(disc, iso.find("DATA/MODELS/" + (original ? stem.substr(4) : stem) + ".BIG"), cancelled);
+    if (original) {
+        import_detail::write_ssx_course(disc, files, stem, output, progress, cancelled);
+        cleanup.complete = true;
+        return;
+    }
     pbd_header(Bytes{member(files, stem + ".PBD")});
     notify("Decoding textures");
     auto images = import_detail::decode_ssh(member(files, stem + ".SSH"), false, cancelled);

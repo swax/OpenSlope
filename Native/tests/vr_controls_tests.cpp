@@ -1,5 +1,6 @@
 #include "openslope/player.hpp"
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -15,6 +16,58 @@ void check(bool value, const char* message) {
 
 void near(double a, double b, const char* message) { check(std::abs(a - b) < 1e-7, message); }
 
+void height_calibration() {
+    for (const auto head_y : {.2, 1.05, 1.65, 1.9, 4.6}) {
+        VrHeightCalibration height;
+        check(height.update(head_y, true), "First valid tracking sample calibrates height");
+        near(head_y - height.origin_y(), 1.65, "Seated and standing players start at 1.65 m");
+        check(height.seated() == (head_y < 1.4), "Physical floor height selects seated or standing mode");
+        const auto origin = height.origin_y();
+        for (unsigned frame = 0; frame < 120; ++frame) {
+            check(!height.update(head_y - .4, true), "Continuous tracking does not recalibrate a crouch");
+            near(height.origin_y(), origin, "Height offset remains stable between explicit calibrations");
+            near(head_y - .4 - height.origin_y(), 1.25, "Physical crouching still lowers the view");
+            check(height.seated() == (head_y < 1.4), "Crouching cannot switch the latched leg mode");
+        }
+    }
+    VrHeightCalibration height;
+    height.update(1.05, true);
+    check(!height.update(1.8, true) && height.seated(), "Standing up retains seated calibration until reset");
+    height.request();
+    check(height.update(1.8, true) && !height.seated(), "Reset reevaluates sitting-to-standing posture");
+    near(1.8 - height.origin_y(), 1.65, "Reset removes the old seated lift");
+    height.request();
+    check(height.update(1.05, true) && height.seated(), "Recenter reevaluates standing-to-sitting posture");
+    near(1.05 - height.origin_y(), 1.65, "Recenter restores standing eye height while seated");
+    const auto previous = height.origin_y();
+    height.request();
+    for (const auto invalid : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+        check(!height.update(invalid, true), "Invalid head samples do not consume calibration requests");
+        near(height.origin_y(), previous, "Invalid tracking preserves the last height offset");
+    }
+    check(height.update(0, false), "Local-space fallback accepts a head-level origin");
+    near(-height.origin_y(), 1.65, "Local space receives the same standing eye height");
+    check(height.seated(), "Without floor data, procedural legs avoid ungrounded runtime legs");
+    height.request();
+    height.update(4.65, true);
+    check(!height.floor_calibrated(), "Standing leg floor waits for a valid ankle sample");
+    check(!height.update_floor(std::numeric_limits<double>::quiet_NaN()),
+          "Invalid ankles do not consume floor calibration");
+    check(height.update_floor(3), "Ankles establish the real floor despite a shifted stage origin");
+    near(4.65 - height.origin_y(), 1.65, "A very high runtime eye origin is brought down to standing height");
+    near(3.12 - height.origin_y() + height.floor_offset(), .12, "Shifted-origin feet stay on the virtual floor");
+    check(!height.update_floor(3.4), "Later foot lifts cannot recalibrate the tracked floor");
+    near(3.52 - height.origin_y() + height.floor_offset(), .52, "Standing leg tracking preserves a real foot lift");
+    height.request();
+    height.update(1.8, true);
+    check(height.update_floor(0), "Reset reestablishes the floor when the runtime origin becomes correct");
+    near(.12 - height.origin_y() + height.floor_offset(), .12, "Correct-origin tracked feet remain grounded too");
+    height.request();
+    height.update(4.05, true);
+    height.update_floor(3);
+    check(height.seated(), "A shifted floor cannot disguise a seated neutral pose as standing");
+}
+
 Terrain floor(int surface = 1, double grade = 0) {
     Patch p;
     p.surface = surface;
@@ -23,6 +76,30 @@ Terrain floor(int surface = 1, double grade = 0) {
             p.points[u * 4 + v] =
                 rotate({double(u) * 4000 / 3 - 2000, 0, double(v) * 4000 / 3 - 2000}, {1, 0, 0}, grade);
     return Terrain({p});
+}
+
+void height_placements() {
+    Player player(floor());
+    player.warp({}, {0, 0, -1});
+    player.start_on_foot();
+    VrHeightCalibration height;
+    height.update(1.05, true);
+    const auto origin = height.origin_y();
+    const auto stable = [&] {
+        check(!height.update(1.8, true), "Placement does not consume a new height calibration");
+        near(height.origin_y(), origin, "Placement preserves seated height offset after standing up");
+        check(height.seated(), "Placement preserves the chosen leg-tracking mode");
+    };
+    check(player.interact_board(), "Mount fixture board");
+    stable();
+    check(player.interact_board(), "Dismount fixture board");
+    stable();
+    player.warp({30, 3, -50}, {1, 0, 0});
+    stable();
+    height.request();
+    height.update(1.8, true);
+    near(1.8 - height.origin_y(), 1.65, "An explicit reset after placement recalibrates height");
+    check(!height.seated(), "Reset after placement reenables standing leg tracking");
 }
 
 void carve() {
@@ -245,6 +322,8 @@ void presentation() {
 
 int main() {
     try {
+        height_calibration();
+        height_placements();
         system_pause();
         const std::array<float, 4> rates{90, 72, 120, 80};
         near(display_refresh_rate(rates, 120), 120, "Use enumerated 120 Hz");

@@ -150,17 +150,40 @@ importer/exporter through it would cost three things this format keeps:
   cannot happen when the add-on writes the payload itself.
 
 Portal coordinates are glTF's: **metres, Y-up, right-handed, anchor-local**, so a model lands at Blender's
-origin. That is also the editor's own data space — `authoredModelLevelProps` and `glbToPropDraft` both reduce
-to the same `raw = (−100x, −100z, 100y)` map — so an authored model needs no axis change at all and an
-imported prop needs exactly the inverse of the one its import applied.
+origin. Portal space is the frame an imported GLB is read in, so an imported prop goes out through exactly the
+inverse of its import — a rotation, `raw = (100x, −100z, 100y)` — and once the add-on has turned it Z-up,
+Blender holds raw ÷ 100 exactly.
+
+Portal space is **not** the editor's data space, though both are Y-up metres. The editor shows data space
+through the scene root's Z mirror (the game's chirality), so the two differ by a reflection (docs/032, "Which
+way round a model stands"). An authored cage therefore goes out with X negated (anchor-local) and every loop
+reversed from its first corner, and comes back through the same two steps. Blender then holds the same
+raw ÷ 100 for a cage as for an imported prop, and both stand the way round the viewport draws them.
+
+### Portal v2: the frame change, and a pull from before it
+
+Until portal **v2** the bridge handed out the mirror image: a cage in plain data space, an imported prop
+through the importer's old mirroring map. Round trips were exact, so nothing looked broken until text on a
+tile read backwards in Blender. v1 portal space is v2's mirror across X, for both kinds, with every loop wound
+the other way, so the fix is one bump and one rule:
+
+- **A v1 push still lands where it was.** An object pulled before the change carries its v1 stamp, the add-on
+  echoes the stamp it pulled with, and `readPortalMesh` turns a v1 mesh into v2 (X negated, loops reversed)
+  before either consumer sees it. Nobody has to re-pull and redo an edit.
+- **The add-on picks its cage UV table by the pulled stamp's version.** It assigns a cage's derived preview
+  UVs by loop *position* (`CAGE_QUAD_UV`, and `CAGE_LOOP_UV` in `portalGlb`), so a mirrored loop needs the
+  mirrored table — A, C, D, B wears (0,0) (0,1) (1,1) (1,0) — or the tile shows transposed. An add-on older
+  than v2 refuses a v2 pull ("update this add-on") rather than show it so; **reinstall the add-on** after
+  updating the service.
 
 ### Orientation is the claim that fails plausibly
 
-The editor→raw map is a **mirror**, and a prop's normals come from its stored winding alone: a face that
-survives the trip pointing the wrong way still *draws* (prop meshes are double-sided) and draws ambient-only
-dark from every view — in the editor's PS2 shading preview, in the thumbnails, and on the disc (docs/028,
-docs/032). So the mirror and the triangle-order reversal have to cancel in both directions, and neither one
-alone would.
+Two frame changes meet here: data→raw is a **mirror**, portal→raw a rotation. A prop's normals come from its
+stored winding alone: a face that survives the trip pointing the wrong way still *draws* (prop meshes are
+double-sided) and draws ambient-only dark from every view — in the editor's PS2 shading preview, in the
+thumbnails, and on the disc (docs/028, docs/032). So every mirror on the way has to travel with a
+triangle-order reversal, in both directions, and a rotation with none: a cage's data→portal step reverses its
+loops, an imported prop's raw→portal step does not.
 
 That is asserted rather than argued. `test/blender-bridge.test.ts` takes a closed unit cube through every
 stage and measures the signed volume — the same invariant `tools/prop-recipes/check.py` makes of a recipe and
@@ -177,13 +200,20 @@ every shipped retail prop measures positive:
 The Blender-side conversion is a *proper* rotation (determinant +1), so it preserves winding and no index is
 reversed there. The add-on owns only Y-up ↔ Z-up; the service owns the mirror.
 
+Volume cannot tell a model from its mirror image — both enclose +1 m³ — so the same test also checks
+handedness: a tetrahedron cut from the cage has the same orientation in portal space as in the frame the
+viewport draws (`dataToScene`); a lopsided tetrahedron taken through the importer's map into raw and back out
+lands on the very coordinates and winding its GLB held; every corner of the downloaded GLB wears its own tile
+position; and a v1 push of either kind lands on the geometry it was pulled from.
+
 ### The cage is lossless, corner order included
 
 A cage that goes out and comes straight back is the same cage: same corners, same quads, and the **same corner
 order**. That last part is not decoration — an authored model's UVs are derived per quad from the corner
 positions (A(0,0) B(1,0) C(0,1) D(1,1), full 0–1 tile, no inset, so a UV scroll flows unbroken — docs/028), so
 a round trip that quietly rotated a quad's corners would repaint the model. The stored `[A, B, C, D]` maps to
-the perimeter loop `A → B → D → C` and back through `loopQuad`, and the test asserts the identity.
+the perimeter loop `A → B → D → C`, goes out reversed from A — `A → C → D → B`, the X mirror's winding — and
+comes back through the same reversal and `loopQuad`; the test asserts the identity.
 
 What a *real edit* in Blender can produce, and what happens to it:
 

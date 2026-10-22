@@ -1,9 +1,11 @@
 #pragma once
 #include "openslope/appearance.hpp"
 #include "openslope/boost_trail.hpp"
+#include "openslope/gear.hpp"
 #include "openslope/particles.hpp"
 #include "openslope/props.hpp"
 #include "openslope/riding_effects.hpp"
+#include "openslope/scene_lighting.hpp"
 #include "openslope/snowfall.hpp"
 #include "openslope/spline_motion.hpp"
 #include "openslope/terrain.hpp"
@@ -109,6 +111,7 @@ private:
     std::uint32_t board_first_{};
     std::uint32_t board_count_{};
     VkDescriptorSet board_set_{};
+    std::array<VkDescriptorSet, stock_board_count> stock_board_sets_{};
     VkDescriptorSetLayout descriptors_{};
     VkDescriptorPool descriptor_pool_{};
     VkSampler repeat_{}, clamp_{}, sky_sampler_{};
@@ -157,6 +160,14 @@ public:
 
     void finish();
 
+    void board_art(unsigned design, std::span<const unsigned> opponents = {}, const SceneLighting* lighting = nullptr) {
+        if (design >= stock_board_count)
+            throw std::out_of_range("Invalid board design");
+        board_design_ = design;
+        opponent_designs_.assign(opponents.begin(), opponents.end());
+        board_lighting_ = lighting;
+    }
+
     const Glare& glare() const {
         static const Glare empty;
         return scene_ ? scene_->world_.glare : empty;
@@ -186,6 +197,9 @@ private:
     };
 
     std::shared_ptr<VulkanScene> scene_;
+    unsigned board_design_ = stock_board_count; // legacy debug draws may use solid vertex art.
+    std::vector<unsigned> opponent_designs_;
+    const SceneLighting* board_lighting_ = nullptr;
     std::uint32_t width_{}, height_{}, render_width_{}, render_height_{};
     VkFormat format_{}, scene_format_{};
     VkSampleCountFlagBits samples_ = VK_SAMPLE_COUNT_1_BIT;
@@ -248,6 +262,9 @@ private:
     std::vector<Vertex> wake_mesh_;
     Buffer avatar_vertices_;
     std::size_t avatar_capacity_{};
+    Buffer board_vertices_;
+    std::size_t board_capacity_{};
+    std::vector<Vertex> board_mesh_;
     Buffer line_vertices_;
     std::size_t line_capacity_ = 0;
     std::vector<Vertex> line_mesh_;

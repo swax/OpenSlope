@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../../core/equipment/stock-boards';
 import {
   createBoard,
   DEFAULT_RIDE_GEAR,
@@ -76,14 +77,12 @@ import {
   type XrLayerMode,
 } from './config';
 import {
-  calibrationMatchesOrigin,
   captureXrBodyCalibration,
   captureXrHandCalibration,
-  clearXrBodyCalibration,
-  fallbackFloorOffset,
   FALLBACK_STANDING_EYE_HEIGHT,
   loadXrBodyCalibration,
   saveXrBodyCalibration,
+  XrHeightCalibration,
   type XrBodyCalibration,
   type XrHandsCalibration,
   type XrTrackedHandSource,
@@ -262,6 +261,7 @@ export interface XrPlayDeps {
   gear?: RideGear;
   snowboardStance?: SnowboardStance;
   equipmentAppearance?: EquipmentAppearance;
+  stockBoard?: StockBoardSelection;
   /** Build and park the session's board once XR is established, before the rider can reach it. This keeps the
    * expensive ride/collision initialization out of the first mount while preserving an on-foot start. */
   prepareRide?(gaze: () => THREE.Vector3 | null): XrBoardRide | null;
@@ -406,17 +406,12 @@ export function createXrPlay(deps: XrPlayDeps) {
   const headWorld = new THREE.Vector3();
   const headQuat = new THREE.Quaternion();
   const headFwd = new THREE.Vector3(0, 0, -1);
-  /**
-   * How far to lift the rig so the wearer's eyes land at a person's height.
-   *
-   * Normally zero: `local-floor` measures from the play-space floor, so the viewer pose already carries the
-   * wearer's real height and using anything else would make a tall rider short. But a runtime can hand back a
-   * `local-floor` that is really head-origin — or metres below the real floor. A saved T-pose supplies the exact
-   * correction; before one exists, an implausible first pose is brought to the safe standing fallback.
-   */
+  /** A fresh neutral pose always maps to 1.65 m, whether it needs lifting or lowering. */
+  const heightCalibration = new XrHeightCalibration();
   let calibration: XrBodyCalibration | null = loadXrBodyCalibration();
-  let eyeLift = calibration?.floorOffset ?? 0;
-  let eyeCalibrated = false;
+  let eyeLift = 0;
+  let validHeadFrame = false;
+  let heightReferenceSpace: XRReferenceSpace | null = null;
   let calibrationRun: { startedAt: number } | null = null;
   let calibrationNotice: { phase: 'saved' | 'error'; until: number; message?: string } | null = null;
 
@@ -425,6 +420,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     deps.gear ?? DEFAULT_RIDE_GEAR,
     deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
     deps.equipmentAppearance,
+    (deps.stockBoard ??= new StockBoardSelection()),
   );
   const parkedFacing = new THREE.Vector3(0, 0, 1);
   parked.group.visible = false;
@@ -649,6 +645,9 @@ export function createXrPlay(deps: XrPlayDeps) {
       const restoreLayers = deps.layerMode === 'webgl' ? maskXrLayersForThree() : null;
       try {
         await xr.setSession(requested);
+        heightReferenceSpace = xr.getReferenceSpace();
+        heightReferenceSpace?.addEventListener('reset', onReferenceSpaceReset);
+        heightCalibration.request();
       } finally {
         // Restore browser capabilities before failure cleanup can await session.end() or notify listeners.
         restoreLayers?.();
@@ -659,6 +658,8 @@ export function createXrPlay(deps: XrPlayDeps) {
       restoreCullFix = installScaledRigCullFix(xr);
     } catch (error) {
       console.error('[Slopesmith XR] Initialization failed:', error);
+      heightReferenceSpace?.removeEventListener('reset', onReferenceSpaceReset);
+      heightReferenceSpace = null;
       session = null;
       requested.removeEventListener('end', onSessionEnd);
       await requested.end().catch(() => {});
@@ -745,6 +746,8 @@ export function createXrPlay(deps: XrPlayDeps) {
   }
 
   function onSessionEnd() {
+    heightReferenceSpace?.removeEventListener('reset', onReferenceSpaceReset);
+    heightReferenceSpace = null;
     session?.removeEventListener('end', onSessionEnd);
     session = null;
     restoreCullFix?.();
@@ -884,6 +887,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     // EDIT gives the stick clicks to the editor's history (docs/068): left undoes, right redoes. The view toggle
     // the right click otherwise owns waits for the palette to close.
     const editing = editOpen && !ride;
+    if (pressX && !editing && !calibrationRun) heightCalibration.request();
     if (pressView) {
       if (editing) deps.redo?.();
       else toggleView();
@@ -918,6 +922,7 @@ export function createXrPlay(deps: XrPlayDeps) {
       return;
     }
     if (watchAction === 'calibrate') startCalibration(performance.now());
+    if (watchAction === 'recenter') heightCalibration.request();
     if (watchAction === 'edit') setEditOpen(!editOpen);
     if (watchAction === 'place' && palette) {
       palette.setPlacing(!palette.placing);
@@ -1003,6 +1008,7 @@ export function createXrPlay(deps: XrPlayDeps) {
   /** After the world steps: seat the rig on whatever the rider is standing on, and repaint the wrist panel. */
   function endFrame() {
     if (!session) return;
+    applyHeightCalibration();
     if (!ride && offBoardRun) {
       offBoardRun.stepRunOffBoard(footFrameDt, walker.isGrounded(), boardGrab.hand);
       if (!offBoardRun.runStatus) offBoardRun = null;
@@ -1088,6 +1094,7 @@ export function createXrPlay(deps: XrPlayDeps) {
   function watchActionEnabled(action: XrHudAction): boolean {
     // A T-pose measures a life-size body standing on the floor, which an edit-flight player is not.
     if (action === 'calibrate' && editOpen) return false;
+    if (action === 'recenter') return !editOpen && !calibrationRun;
     if (action === 'mixed') return mixedRealityAvailable() && !swapping;
     if (action === 'place') return editOpen;
     return (
@@ -1376,8 +1383,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     calibrationNotice = null;
   }
 
-  /** Land the T-pose after its three full seconds. Controller span is independent of the bad floor origin; the
-   * resulting floor offset is applied on the next rig seat and persisted for later standing or seated play. */
+  /** Keep T-pose body/hand measurements, then normalize presentation height on the next complete rig frame. */
   function finishCalibration(now: number, handsTracked: boolean) {
     if (!calibrationRun || now - calibrationRun.startedAt < 3000) return;
     calibrationRun = null;
@@ -1397,8 +1403,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     captured.hands = capturedHands;
     calibration = captured;
     saveXrBodyCalibration(captured);
-    eyeLift = captured.floorOffset;
-    eyeCalibrated = true;
+    heightCalibration.request();
     calibrationNotice = { phase: 'saved', until: now + 4000 };
     console.info(
       `[xr calibration] body ${captured.standingHeight.toFixed(2)}m` +
@@ -1530,6 +1535,7 @@ export function createXrPlay(deps: XrPlayDeps) {
   function readHead(frame: XRFrame | null | undefined) {
     const space = deps.renderer.xr.getReferenceSpace();
     const pose = frame && space ? frame.getViewerPose(space) : null;
+    validHeadFrame = !!pose;
     if (pose) {
       const t = pose.transform;
       const nextHead = trackedRoomMove.set(t.position.x, t.position.y, t.position.z);
@@ -1541,6 +1547,7 @@ export function createXrPlay(deps: XrPlayDeps) {
             pendingTrackedRoomMove.set(0, 0, 0);
           }
         } else {
+          heightCalibration.request();
           pendingTrackedRoomMove.set(0, 0, 0);
           if (ride) {
             // A runtime recenter moves both the current pose and the station anchor, preserving the visible seat.
@@ -1553,28 +1560,26 @@ export function createXrPlay(deps: XrPlayDeps) {
       previousHeadTracked = true;
       headLocal.set(t.position.x, t.position.y, t.position.z);
       headLocalQuat.set(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w);
-      if (!eyeCalibrated) {
-        eyeCalibrated = true;
-        if (calibration && calibrationMatchesOrigin(calibration, headLocal.y)) {
-          eyeLift = calibration.floorOffset;
-        } else {
-          // A runtime can repair/change its origin between launches. A stale 15-foot correction must not put a
-          // newly-correct local-floor session underground, so reject it and fall back until the next T-pose.
-          if (calibration) {
-            clearXrBodyCalibration();
-            calibration = null;
-          }
-          eyeLift = fallbackFloorOffset(headLocal.y);
-          if (Math.abs(eyeLift) > 1e-4)
-            console.warn(
-              `[xr calibration] implausible raw eye Y ` +
-                `${headLocal.y.toFixed(2)}m; applying temporary ${eyeLift.toFixed(2)}m floor correction. ` +
-                'Use the wrist T-POSE button to calibrate.',
-            );
-        }
-      }
     }
     resolveHeadWorld();
+  }
+
+  function onReferenceSpaceReset() {
+    heightCalibration.request();
+  }
+
+  function applyHeightCalibration() {
+    if (editOpen || !validHeadFrame || !heightCalibration.update(headLocal.y)) return;
+    scratch.set(0, heightCalibration.floorOffset - eyeLift, 0);
+    if (boardGrab.held) {
+      boardGrab.rebase(scratch);
+      parked.group.position.add(scratch);
+    }
+    eyeLift = heightCalibration.floorOffset;
+    footRiderPlaced = false;
+    console.info(
+      `[xr height] 1.65m · ${heightCalibration.seated ? 'seated' : 'standing'} · offset ${eyeLift.toFixed(2)}m`,
+    );
   }
 
   function resolveHeadWorld() {
@@ -1623,6 +1628,7 @@ export function createXrPlay(deps: XrPlayDeps) {
           vr: true,
           gear: deps.gear ?? DEFAULT_RIDE_GEAR,
           stance: deps.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE,
+          stockBoard: deps.stockBoard!.design.id,
           body: transform(walker.position(), bodyQ),
           velocity: vector(walker.velocity()),
           equipment: {
@@ -1826,6 +1832,7 @@ export function createXrPlay(deps: XrPlayDeps) {
     if (ride || boardGrab.held || !parked.group.visible) return false;
     const grip = wrist(hand);
     if (!grip || !handBehindHead(headWorld, headQuat, grip.position)) return false;
+    deps.stockBoard?.renew();
     boardCoast.stop();
     boardGrab.grab(
       hand,
@@ -1975,6 +1982,7 @@ export function createXrPlay(deps: XrPlayDeps) {
 
   /** Left X recalls the one session board to the snow ahead without moving or turning the walker. */
   function spawnBoardAhead() {
+    deps.stockBoard?.renew();
     scratchB.copy(headFwd).setY(0);
     if (scratchB.lengthSq() < 1e-6) scratchB.copy(rigFwd).setY(0);
     if (scratchB.lengthSq() < 1e-6) scratchB.set(0, 0, 1);
@@ -1992,6 +2000,8 @@ export function createXrPlay(deps: XrPlayDeps) {
    * ride's configured Race/Showoff/free mode.
    */
   function restartAtGate() {
+    heightCalibration.request();
+    deps.stockBoard?.renew();
     (ride ?? offBoardRun ?? retainedRide)?.abandonRun();
     if (ride) deps.stopRide();
     ride = null;

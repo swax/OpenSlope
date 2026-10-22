@@ -15,6 +15,7 @@ import { localMapData } from './local-map-data';
 import * as levels from '../../shared/map-levels';
 import { buildLevelPropsUncached, nativeArtSource, readMaterialTables } from '../../shared/map-props';
 import { readReferenceEffects } from '../../shared/map-effects';
+import { levelsWithNativeSky, readNativeSky, nativeSkyFiles } from '../../shared/map-sky';
 import { bundleAssets, bundleProps } from './bundle-assets';
 
 const packed = (bytes: Uint8Array): string => {
@@ -91,15 +92,19 @@ async function publicBundle(course: PublicCourse): Promise<ProjectBundle> {
   return bundle;
 }
 
-/** ISO inspection and browser projects read reference data from this device's ISO cache. */
+/** Every editor can read this device's ISO references without changing where its authored mountain saves. */
 export async function prepareEditorWorkspace(account: Account): Promise<void> {
   const url = new URL(location.href),
     reference = url.searchParams.get('reference'),
     localRequest = url.searchParams.get('local');
   const offline = account.accounts === 'open' && account.offline;
   const localOnly = !!localRequest || offline || (account.accounts === 'required' && !('user' in account));
-  if (!localOnly && !reference) return;
-  const cached = await cachedIsoCourses();
+  const canReadServer = 'user' in account || (account.accounts === 'open' && !offline);
+  const cached = await cachedIsoCourses().catch(error => {
+    if (localOnly) throw error;
+    return [] as string[];
+  });
+  if (!localOnly && !reference && !cached.length) return;
   const projects = localOnly ? await openLocalProjects() : null;
   if (projects) {
     const name = mapNameAtPath(url.pathname, 'editor');
@@ -144,10 +149,18 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     aliasKey = JSON.stringify(next);
   }
   const custom = bundleAssets(() => projects?.current());
+  const serverLevels = new Set<string>();
   window.addEventListener('pagehide', event => { if (!event.persisted) custom.dispose(); });
+  const knownLevel = (level: string) =>
+    cached.some(name => name.toLowerCase() === level.toLowerCase()) ||
+    Object.entries(aliases).some(
+      ([alias, slot]) => alias.toLowerCase() === level.toLowerCase() && cached.includes(slot),
+    );
   const resolve = (path: string): string => {
     const url = new URL(path, location.origin);
     if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return path;
+    const level = url.searchParams.get('level') ?? '';
+    if (!knownLevel(level) && (!localOnly || serverLevels.has(level.toLowerCase()))) return path;
     if (localOnly) {
       const resolved = custom.resolve(path);
       if (resolved !== path) return resolved;
@@ -169,11 +182,6 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
     return localOnly && bytes.includes(url.pathname) ? 'data:application/octet-stream;base64,' : path;
   };
   setAssetUrlResolver(resolve);
-  const knownLevel = (level: string) =>
-    cached.some(name => name.toLowerCase() === level.toLowerCase()) ||
-    Object.entries(aliases).some(
-      ([alias, slot]) => alias.toLowerCase() === level.toLowerCase() && cached.includes(slot),
-    );
   configureWorkspace(localOnly, async (url, init) => {
     const path = url.pathname,
       q = url.searchParams,
@@ -199,18 +207,39 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
         return json(computePreflight((JSON.parse(String(init?.body)) as { doc: EditDoc }).doc));
       return null;
     }
+    // A member editing a browser mountain can still read server references. Authored writes stay local.
+    if (localOnly && canReadServer && serverLevels.has(level.toLowerCase()) && !knownLevel(level))
+      return fetch(url, init);
+    if (path === '/api/skybox/native' && knownLevel(level)) {
+      if (q.get('files') === '1') return json({ files: (await nativeSkyFiles(local.source, level)).map(file => ({ path: file.path, bytes: packed(file.bytes) })) });
+      const sky = await readNativeSky(local.source, level, local.fileUrl);
+      return sky ? json(sky) : json({ error: `No sky mesh for ${level}` }, { status: 404 });
+    }
+    if (path === '/api/skybox') {
+      const nativeLevels = (await levelsWithNativeSky(local.source)).map(level =>
+        [...cached, ...Object.keys(aliases)].find(name => name.toLowerCase() === level.toLowerCase()) ?? level);
+      const skies = projects?.current()?.assets.filter(asset => asset.kind === 'sky').map(asset => asset.name) ?? [];
+      if (localOnly) return json({ levels: [], nativeLevels, skies });
+      const response = await fetch(url, init);
+      if (!response.ok) return response;
+      const server = await response.json() as { nativeLevels?: string[] };
+      return json({ ...server, nativeLevels: [...new Set([...(server.nativeLevels ?? []), ...nativeLevels])] });
+    }
     if (path === '/api/levels') {
       const maps = (await levels.listLevelOrigins(local.source)).map(map => ({
         ...map,
         name: cached.find(name => name.toLowerCase() === map.name.toLowerCase()) ?? map.name,
       }));
-      if (localOnly) return json({ levels: cached, maps });
-      const response = await fetch(url, init);
-      if (!response.ok) return response;
-      const server = (await response.json()) as { levels: string[]; maps: typeof maps };
+      if (!canReadServer) return json({ levels: cached, maps, localLevels: cached });
+      const response = await fetch(url, init).catch(() => null);
+      const server = response?.ok ? (await response.json()) as { levels: string[]; maps: typeof maps }
+        : { levels: [], maps: [] };
+      serverLevels.clear();
+      for (const name of server.levels) serverLevels.add(name.toLowerCase());
       return json({
-        levels: [...new Set([...server.levels, ...cached])],
+        levels: [...new Map([...server.levels, ...cached].map(name => [name.toLowerCase(), name])).values()],
         maps: [...server.maps.filter(map => !knownLevel(map.name)), ...maps],
+        localLevels: cached,
       });
     }
     if (path === '/api/level' && knownLevel(level)) {
@@ -261,15 +290,6 @@ export async function prepareEditorWorkspace(account: Account): Promise<void> {
             .map(asset => asset.name) ?? [],
       });
     if (localOnly && path === '/api/characters') return json({ characters: [] });
-    if (localOnly && path === '/api/skybox')
-      return json({
-        levels: [],
-        skies:
-          projects
-            ?.current()
-            ?.assets.filter(asset => asset.kind === 'sky')
-            .map(asset => asset.name) ?? [],
-      });
     if (localOnly && path === '/api/groups') return json({ groups: [] });
     const resolved = resolve(url.href);
     return (resolved !== url.href && resolved.startsWith('blob:')) || resolved.startsWith('data:application/json')

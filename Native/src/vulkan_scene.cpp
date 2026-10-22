@@ -233,6 +233,8 @@ SceneAssets SceneAssets::prepare(Mesh mesh, std::span<const std::size_t> flag_mo
         progress(.5, "DECODING TEXTURES");
     auto& appearance = data.appearance;
     appearance = Appearance::load(data.mesh.map_root, batches);
+    for (unsigned i = 0; i < stock_board_count; ++i)
+        appearance.images["@board-" + std::to_string(i)] = stock_board_image(i);
     if (data.world.glare.enabled) {
         const RgbaImage* atlas = nullptr;
         if (particles.size() > 28) {
@@ -307,6 +309,11 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
         terrain_indices_ = source.indices;
     }
     auto& appearance = assets.appearance;
+    for (unsigned i = 0; i < stock_board_count; ++i) {
+        const auto name = "@board-" + std::to_string(i);
+        if (!appearance.images.contains(name))
+            appearance.images[name] = stock_board_image(i);
+    }
     auto& batches = assets.batches;
     const auto& crowd = assets.crowd;
     const auto& sprite = assets.sprite;
@@ -378,7 +385,7 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
     layout.pBindings = bindings.data();
     vk_check(vkCreateDescriptorSetLayout(context_.device, &layout, nullptr, &descriptors_),
              "Create map descriptor layout");
-    const auto count = std::uint32_t(batches.size() + world_.sky.parts.size() + 4);
+    const auto count = std::uint32_t(batches.size() + world_.sky.parts.size() + 4 + stock_board_count);
     const VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count * 2};
     VkDescriptorPoolCreateInfo descriptor_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     descriptor_pool.maxSets = count;
@@ -454,7 +461,7 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
             return PropFrame{descriptor(found == names.end() ? 2 : found->second, 1),
                              // Priority overlays also carry pixel alpha (scanlines, for example).
                              // [Slopesmith public texture-array tests: priority partial alpha]
-                             (part.flags & ((1u << 18) | (1u << 17))) ? (fractional[name] ? 2 : 1) : 0};
+                             prop_alpha_mode(part, fractional[name])};
         };
         const auto base = bind(part.texture);
         PropDraw draw{part.first + prop_first, part.count, base.set, base.alpha, {}};
@@ -484,6 +491,8 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
         mesh.indices.push_back(offset + index);
     board_count_ = std::uint32_t(gear.indices.size());
     board_set_ = descriptor(0, 1);
+    for (unsigned i = 0; i < stock_board_count; ++i)
+        stock_board_sets_[i] = descriptor(names.at("@board-" + std::to_string(i)), 1, true);
     if (world_.glare.enabled)
         corona_set_ = descriptor(names.at("@celestial-corona"), 1, true);
     vertices_ = buffer(mesh.vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vertices.data());

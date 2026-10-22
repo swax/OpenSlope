@@ -1,5 +1,6 @@
 #include "openslope/audio_scene.hpp"
 #include "openslope/board_audio.hpp"
+#include "openslope/import.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -150,6 +151,85 @@ void warm_cache() {
     }
 }
 
+void adapted_riding() {
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("openslope-adapted-ride-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+
+    struct Cleanup {
+        std::filesystem::path root;
+
+        ~Cleanup() { std::filesystem::remove_all(root); }
+    } cleanup{root};
+
+    std::filesystem::create_directories(root / "Audio/SFX/common");
+    std::ofstream(root / "Import.json") << Json{{"Game", "ssx-on-tour"}};
+    std::ofstream(root / "Audio/SoundIndex.json") << Json{{"Schema", "openslope-sound-index/v1"},
+                                                          {"Banks", Json::object()},
+                                                          {"CollisionEvents", Json::object()},
+                                                          {"NamedBanks",
+                                                           {{"BRD_PACK", "common"},
+                                                            {"BRD_POW", "common"},
+                                                            {"BRD_ICE", "common"},
+                                                            {"SKI_BRD_COMMON", "common"},
+                                                            {"BOOST", "common"}}}};
+    PcmClip clip;
+    clip.rate = 8000;
+    clip.samples.resize(1600);
+    for (std::size_t i = 0; i < clip.samples.size(); ++i)
+        clip.samples[i] = float(.8 * std::sin(2 * pi * 440 * double(i) / clip.rate));
+    Json slots = Json::array({nullptr});
+    for (unsigned i = 1; i <= 5; ++i) {
+        write_wave(root / ("Audio/SFX/common/00" + std::to_string(i) + ".wav"), clip);
+        slots.push_back({{"LoopStart", i < 3 ? 100 : 0}, {"LoopEnd", i < 3 ? 1500 : 0}});
+    }
+    std::ofstream(root / "Audio/SFX/common/bank.json") << Json{{"Slots", slots}};
+    bool cancelled = false;
+    try {
+        adapt_riding_audio(root, [&] {
+            return std::filesystem::exists(root / "Audio/.openslope-riding-staging/openslope_board/bank.json");
+        });
+    } catch (const std::exception&) {
+        cancelled = true;
+    }
+    check(cancelled && !std::filesystem::exists(root / "Audio/SFX/openslope_board") &&
+              !std::filesystem::exists(root / "Audio/.openslope-riding-staging") &&
+              !std::filesystem::exists(root / "Audio/SoundIndex.before-riding.json"),
+          "Cancellation during bank writing preserves the original route and removes staged audio");
+    adapt_riding_audio(root);
+    Patch patch;
+    for (unsigned u = 0; u < 4; ++u)
+        for (unsigned v = 0; v < 4; ++v)
+            patch.points[u * 4 + v] = {u * 2000. / 3 - 1000, 0, 1000 - v * 2000. / 3};
+    Player player(Terrain({patch}));
+    player.warp({0, -.005, 0}, {0, 0, -1}, {0, 0, -12});
+    AudioScene audio(root);
+    audio.music_enabled(false);
+    check(audio.stats().prewarmed == 44 && audio.stats().prewarm_skipped == 0,
+          "Common adapted slots prewarm through the ordinary map audio loader");
+    double ground_energy = 0, transient_energy = 0, peak = 0;
+    std::array<float, 1600> pcm{};
+    for (unsigned i = 0; i < 240; ++i) {
+        const auto before = player.rider();
+        RideInput input;
+        input.jump = i >= 30 && i < 55;
+        input.steer = i < 30 ? .5 : 0;
+        player.tick(input);
+        audio.tick(player, before);
+        audio.mixer().render(pcm);
+        for (const auto sample : pcm) {
+            (i < 30 ? ground_energy : transient_energy) += double(sample) * sample;
+            peak = std::max(peak, std::abs(double(sample)));
+        }
+    }
+    check(ground_energy > .01 && audio.mixer().voices() > 0,
+          "Adapted glide and carve slots produce real PCM while riding");
+    check(player.rider().launches > 0 && player.rider().landings > 0 && audio.stats().transients >= 2 &&
+              transient_energy > .01,
+          "A real player launch and landing produce the adapted transient PCM");
+    check(peak < .4, "Adapted loud source clips reach the player mixer with controlled riding levels");
+}
+
 void library_cache() {
     const auto base =
         std::filesystem::temp_directory_path() /
@@ -279,6 +359,7 @@ int main(int argc, char** argv) {
         }
         performance();
         warm_cache();
+        adapted_riding();
         library_cache();
         std::cout << "PASS: " << checks << " board performance, rail, pop, landing, flight/boost and prewarm checks\n";
         return 0;

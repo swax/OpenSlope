@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { installLocalSky } from '../src/app/public/sky';
+import { createSky } from '../src/app/viewport/scene/sky';
+import type { Stage } from '../src/app/viewport/stage';
 import {
   cacheTransaction,
   cachedIsoCourses,
@@ -7,6 +9,7 @@ import {
   openIsoCache,
   readCachedCourse,
   unloadIsoCourse,
+  isoCourseCacheVersion,
   updateCachedCollisionSounds,
   ISO_CACHE_VERSION,
 } from '../src/app/public/iso-cache';
@@ -46,8 +49,22 @@ async function run() {
     await cacheTransaction(db, 'courses', 'readwrite', store =>
       store.put({ course: 'FIXTURE', version: ISO_CACHE_VERSION, files: 2 }),
     );
+    const deferredCourses = ['SSX_SNOW', 'SSX3_A', 'SSXOT_WR2_DAY'];
+    await cacheTransaction(db, 'files', 'readwrite', store => {
+      for (const course of deferredCourses)
+        store.put({
+          key: `${course}/audio/soundindex.json`,
+          course,
+          path: 'Audio/SoundIndex.json',
+          blob: new Blob([JSON.stringify({ ...index, Level: course })]),
+        });
+    });
+    for (const course of deferredCourses) {
+      check(!(await needsCollisionSoundUpdate([course])), `${course} cannot be repaired by reselecting its ISO`);
+    }
     check(await needsCollisionSoundUpdate(['FIXTURE']), 'Old cache must request its missing resolver');
-    await updateCachedCollisionSounds(db, ['FIXTURE', 'UNCACHED'], {
+    check(await needsCollisionSoundUpdate([...deferredCourses, 'FIXTURE']), 'Mixed caches must still repair Tricky');
+    await updateCachedCollisionSounds(db, ['FIXTURE', 'UNCACHED', ...deferredCourses], {
       SourceExecutable: 'authored.elf',
       CollisionEvents: {
         2: { Group: 2, Slot: 7 },
@@ -55,6 +72,13 @@ async function run() {
         4: { Group: 5, Slot: 8 },
       },
     });
+    for (const course of deferredCourses) {
+      const deferred = (await readCachedCourse(course)).get('audio/soundindex.json')!;
+      check(
+        (await deferred.text()) === JSON.stringify({ ...index, Level: course }),
+        'Repair must preserve deferred titles',
+      );
+    }
     check(!(await needsCollisionSoundUpdate(['FIXTURE'])), 'Lookup repair must make the cache playable again');
     const files = await readCachedCourse('FIXTURE');
     check(
@@ -109,6 +133,15 @@ async function run() {
       fresh.size === 1 && (await fresh.get('patches.json')!.text()) === 'fresh extraction',
       'Reloading an unloaded course has fresh files with no stale audio left over',
     );
+    for (const course of ['SSX_ALOHA', 'SSX3_A', 'SSXOT_WR2_DAY']) {
+      await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: 1, files: 1 }));
+      check(!(await cachedIsoCourses()).includes(course), 'Corrupted streamed imports must request a reload');
+      await cacheTransaction(db, 'courses', 'readwrite', store =>
+        store.put({ course, version: isoCourseCacheVersion(course), files: 1 }),
+      );
+      check((await cachedIsoCourses()).includes(course), 'Repaired streamed imports must stay loaded');
+    }
+    check((await cachedIsoCourses()).includes('FIXTURE'), 'The streamed format upgrade must preserve Tricky caches');
   } finally {
     db.close();
   }
@@ -161,8 +194,15 @@ async function run() {
   const previewBackground = new THREE.Color('#123456');
   scene.background = previewBackground;
   scene.fog = new THREE.Fog('#ffff00', 0, 1); // The sky must not inherit the course's distance fog.
-  const sky = await installLocalSky({ scene } as Viewport, source, 'FIXTURE', textureUrl);
+  const backdrop = createSky({ scene } as Stage);
+  const viewport = { scene, setSky: backdrop.setSky, showSky: backdrop.setVisible } as Viewport;
+  const sky = await installLocalSky(viewport, source, 'FIXTURE', textureUrl);
   check(sky, 'The local sky fixture must load');
+  const deadline = performance.now() + 5000;
+  while (!backdrop.loaded) {
+    check(performance.now() < deadline, 'The shared sky renderer must finish loading');
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
   const renderer = new THREE.WebGLRenderer();
   renderer.setSize(256, 128);
   renderer.toneMapping = THREE.NoToneMapping;
@@ -211,8 +251,9 @@ async function run() {
   scene.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
     const material = object.material as THREE.MeshBasicMaterial;
-    material.map!.wrapS = material.map!.wrapT = THREE.RepeatWrapping;
-    material.map!.needsUpdate = true;
+    if (!material.map) return;
+    material.map.wrapS = material.map.wrapT = THREE.RepeatWrapping;
+    material.map.needsUpdate = true;
   });
   renderer.render(scene, camera);
   renderer.readRenderTargetPixels(target, 0, 0, 256, 128, pixels);

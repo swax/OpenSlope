@@ -166,6 +166,21 @@ int main(int argc, char** argv) {
         write(root / "Materials.json", materials);
         rejects([&] { static_cast<void>(prop_files(root)); }, "Reject frame image traversal before copying");
         write(root / "Materials.json", original_materials);
+        for (const auto& [mode, expected] :
+             std::array<std::pair<const char*, int>, 3>{{{"opaque", 0}, {"cutout", 1}, {"blend", 2}}}) {
+            materials = original_materials;
+            materials["Materials"][0]["AlphaMode"] = mode;
+            materials["Materials"][0]["UnknownInt18"] = 1u << 18;
+            write(root / "Materials.json", materials);
+            const auto explicit_alpha = Props::load(root).parts[0];
+            require(prop_alpha_mode(explicit_alpha, true) == expected &&
+                        prop_alpha_mode(explicit_alpha, false) == expected,
+                    "Explicit alpha policy overrides flags and fractional edge pixels");
+        }
+        materials["Materials"][0]["AlphaMode"] = "invalid";
+        write(root / "Materials.json", materials);
+        rejects([&] { static_cast<void>(Props::load(root)); }, "Reject invalid explicit alpha policy");
+        write(root / "Materials.json", original_materials);
         require(Props::load(std::filesystem::path(argv[1]) / "missing").instances.empty(),
                 "Terrain-only map remains valid");
         std::cout << "PASS: " << checks << " prop contract, transform, light and visibility checks\n";

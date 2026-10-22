@@ -37,6 +37,15 @@ assert(labelScaleAt(0) > 0, 'a tag at the eye never collapses to nothing');
 // Still participants reuse an identical sample between sparse heartbeats; motion changes immediately.
 const publisher = createPlayerPosePublisher();
 const first = publisher.sample(source(), 'stick-figure.glb', 1_000);
+{
+  const cosmetic = createPlayerPosePublisher();
+  const a = cosmetic.sample({ ...source(), stockBoard: 'contour' }, 'stick-figure.glb', 1000);
+  const b = cosmetic.sample({ ...source(), stockBoard: 'sunset' }, 'stick-figure.glb', 1001);
+  assert.equal(b.stockBoard, 'sunset');
+  assert.equal(b.seq, a.seq + 1, 'new artwork publishes even on a stationary board');
+  assert.equal(sanitizePlayerPose(b, 1001)?.stockBoard, 'sunset', 'remote sanitation preserves the known artwork');
+  assert.equal(sanitizePlayerPose({ ...b, stockBoard: '../bad' }, 1001)?.stockBoard, undefined);
+}
 assert.equal(
   publisher.sample(source(), 'stick-figure.glb', 1_080),
   first,

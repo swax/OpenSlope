@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../core/equipment/stock-boards';
 import {
   createRideModel,
   rideForward,
@@ -121,7 +122,7 @@ export interface RideStartOpts {
   onCrackedBreak?: (key: string) => void;
   /** Live flight samples of shoved props, polled each render frame into the telemetry capture. */
   shovedBodies?: () => readonly RideShovedBodySample[];
-  /** World Y below which an eligible scored run auto-recovers (terrain min − a margin). */
+  /** World Y below which a controllable ride auto-recovers (terrain min − a margin). */
   oobFloorY: number;
   /** Short label for the HUD (which mountain is being ridden). */
   label: string;
@@ -145,6 +146,8 @@ export interface RideStartOpts {
   telemetry?: boolean;
   /** The mountain's authored board-sound mix (docs/034); absent rides silent. */
   boardSound?: BoardSoundMix;
+  /** Map-local common riding banks for a reference course. */
+  boardSoundLevel?: string;
   onAnnouncerEvent?: (event: AnnouncerEvent) => void;
   onAnnouncerTick?: (tick: RideTelemetryTick) => void;
   /** Selected server-wide character-library model id. */
@@ -157,6 +160,7 @@ export interface RideStartOpts {
   snowboardStance?: SnowboardStance;
   /** This signed-in rider's account-owned board/ski presentation. */
   equipmentAppearance?: EquipmentAppearance;
+  stockBoard?: StockBoardSelection;
   /** Draw the local board's carved wake and contact particles. Set explicitly by Test mode; AI riders never
    *  construct TestRide and therefore never receive this renderer. */
   boardFx?: boolean;
@@ -293,11 +297,15 @@ export class TestRide {
 
   constructor(opts: RideStartOpts) {
     this.o = opts;
+    this.o.stockBoard ??= new StockBoardSelection();
   }
 
   // ---- lifecycle ----
 
   start() {
+    // Desktop Stop/Play starts a fresh course run. XR mounts reuse the board
+    // selected by its session's restart or behind-the-head pull.
+    if (!this.inVr) this.o.stockBoard!.renew();
     this.telemetry = new RideTelemetryCapture({ label: this.o.label });
     this.pose = createRiderPose({
       scene: this.o.scene,
@@ -306,6 +314,7 @@ export class TestRide {
       gear: this.o.gear,
       snowboardStance: this.o.snowboardStance,
       equipmentAppearance: this.o.equipmentAppearance,
+      stockBoard: this.o.stockBoard,
     });
     if (this.o.boardFx) this.boardFx = new BoardFx(this.o.scene, this.o.boardFxGround);
     if (this.inVr) this.pose.setFirstPerson(true);
@@ -373,9 +382,9 @@ export class TestRide {
       // or a grounded dismount/remount has no running clock/score and therefore always accepts held boost.
       heldBoostAvailable: () => !this.runActive || this.scorer.hasBoost,
       symmetricDeck: () => this.pose.gear === 'snowboard',
-      // The same run boundary owns automatic recovery. Free riding keeps the result of crashes, wedges and OOB
-      // falls until the player explicitly asks for the public/manual carry-back.
-      automaticRespawnAvailable: () => this.runActive,
+      // Free playtesting needs the same surface/fall/wedge recovery as timed runs.
+      // Mounted recovery waits until riding controls are available.
+      automaticRespawnAvailable: () => this.canControl,
       onRespawn: () => {
         this.scorer.bail();
         this.syncScoreState();
@@ -406,7 +415,7 @@ export class TestRide {
         resolveMove: this.o.walkResolveMove,
         oobFloorY: this.o.oobFloorY,
         onFell: () => {
-          if (this.runActive) this.resetWalker();
+          if (this.started && !this.pausedFlag && !this.countingDown) this.resetWalker();
         },
       });
       // The loose deck rides the same floor the walker does — terrain plus every solid prop — so a board that
@@ -438,7 +447,7 @@ export class TestRide {
       });
     }
     // The board bed (docs/034). Built here, after the launch click, so its AudioContext starts on a gesture.
-    if (this.o.boardSound) this.boardAudio = createBoardAudio(this.o.boardSound);
+    if (this.o.boardSound) this.boardAudio = createBoardAudio(this.o.boardSound, undefined, this.o.boardSoundLevel);
     // On a touch device this hides the editor chrome for the run (index.html) — the ride is full-screen and draws
     // its own controls. Harmless on a fine pointer, where the top bar keeps its Stop button.
     document.body.classList.add('os-riding');
@@ -789,7 +798,7 @@ export class TestRide {
     switch (action.kind) {
       // A graph/volume reset is world-driven too. Only the input callbacks above own unconditional manual reset.
       case 'reset':
-        if (this.runActive) this.model.resetToCourse();
+        if (this.canControl) this.model.resetToCourse();
         break;
       case 'hud-message':
         this.hud.showMessage(action.text, action.color, action.durationSeconds);
@@ -906,6 +915,7 @@ export class TestRide {
         vr: false,
         gear: this.pose.gear,
         stance: this.pose.snowboardStance,
+        stockBoard: this.o.stockBoard!.design.id,
         body: playerTransform(this.walker.position(), bodyQ),
         velocity: playerVec(this.walker.velocity()),
         equipment: {
@@ -933,6 +943,7 @@ export class TestRide {
       vr: false,
       gear: this.pose.gear,
       stance: this.pose.snowboardStance,
+      stockBoard: this.o.stockBoard!.design.id,
       body: board,
       velocity,
       equipment: {
@@ -1007,6 +1018,8 @@ export class TestRide {
 
   private mountBoard(atHighlightedBoard = false) {
     if (!this.onFootFlag || !this.walker) return;
+    if (!atHighlightedBoard && this.pose.board.position.distanceTo(this.walker.position()) > 1.6)
+      this.o.stockBoard?.renew();
     const continuingFirstPerson = !this.walkThirdPerson;
     this.desktopBoardGrab.clear();
     this.pose.highlightBoard(false);
@@ -1061,7 +1074,7 @@ export class TestRide {
     this.updateWalkCamera();
   }
 
-  /** R / gamepad / touch: unlike world-driven recovery, this is available in free ride and while on foot. */
+  /** R / gamepad / touch: manual recovery is also available while on foot. */
   private manualRespawn() {
     if (!this.started || this.pausedFlag || this.countingDown) return;
     if (this.onFootFlag && this.walker) {

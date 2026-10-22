@@ -1,3 +1,4 @@
+#include "../src/import_internal.hpp"
 #include "openslope/material_animation.hpp"
 #include "openslope/texture_playback.hpp"
 #include "openslope/world_logic.hpp"
@@ -116,6 +117,87 @@ Json property(unsigned sub, Json fields) {
     return node(0, {{"type0", {{"SubType", sub}, {sub == 10 ? "UVScroll" : "TextureFlip", fields}}}});
 }
 
+void streamed(const std::filesystem::path& parent) {
+    using import_detail::streamed_material_setup;
+    const auto program = [](std::vector<std::uint32_t> words) {
+        std::vector<std::uint8_t> bytes(16);
+        for (const auto word : words)
+            for (unsigned i = 0; i < 4; ++i)
+                bytes.push_back(std::uint8_t(word >> (8 * i)));
+        const auto put = [&](unsigned at, std::uint32_t word) {
+            for (unsigned i = 0; i < 4; ++i)
+                bytes[at + i] = std::uint8_t(word >> (8 * i));
+        };
+        put(0, 0x004e554c);
+        put(4, std::uint32_t(bytes.size()));
+        put(8, std::uint32_t(bytes.size()));
+        return bytes;
+    };
+    const std::vector<std::uint32_t> code{0x00000221, 0x00000217, std::bit_cast<std::uint32_t>(.01f),
+                                          0x00020223, 0x00020420, 0x00000529,
+                                          0x02150221, 0x0000ff2a};
+    const auto bytes = program(code);
+    auto nodes = streamed_material_setup({bytes}, false);
+    check(nodes.is_array() && nodes.size() == 1, "Literal setup becomes one portable material property");
+    near(nodes[0]["payload"]["type0"]["UVScroll"]["U1"].get<double>(), -.01f,
+         "Constant negation preserves the source scroll direction");
+    auto conditional = code;
+    conditional.insert(conditional.end() - 1, 0x00000202);
+    check(streamed_material_setup({program(conditional)}, false).is_null(),
+          "A branch after a decoded command rejects the whole setup");
+    auto unknown = code;
+    unknown.insert(unknown.begin(), 0x00630221);
+    check(streamed_material_setup({program(unknown)}, false).is_null(), "Unknown calls cannot be bypassed");
+    auto unbound = code;
+    unbound[3] = 0x00030223;
+    check(streamed_material_setup({program(unbound)}, false).is_null(), "Uninitialized registers cannot supply rates");
+    auto alternate = code;
+    alternate.insert(alternate.end() - 2, 0x00010028);
+    alternate[alternate.size() - 2] = 0x03150221;
+    check(streamed_material_setup({program(alternate)}, false).is_null(), "Alternate target resources remain deferred");
+    auto tour = code;
+    tour[0] = 0x00010529;
+    tour.insert(tour.begin() + 1, 0x01020221);
+    tour[tour.size() - 2] = 0x02130221;
+    check(streamed_material_setup({program(tour)}, true).is_array(),
+          "On Tour's separate setup prelude and UV call translate independently of deferred model motion");
+    auto malformed = bytes;
+    malformed[4] = 17;
+    bool rejected = false;
+    try {
+        streamed_material_setup({malformed}, false);
+    } catch (const std::exception&) {
+        rejected = true;
+    }
+    check(rejected, "Misaligned bytecode extents fail bounded decoding");
+    auto large = bytes;
+    large.resize(65540);
+    for (unsigned i = 0; i < 4; ++i)
+        large[4 + i] = large[8 + i] = std::uint8_t(65540u >> (8 * i));
+    check(streamed_material_setup({large}, false).is_null(), "Valid programs beyond the decoder budget stay deferred");
+    const auto root = parent / "streamed";
+    std::filesystem::create_directory(root);
+    write(root, "Instances.json",
+          {{"Instances",
+            Json::array({{{"ModelID", 0}, {"Location", {0, 0, 0}}, {"Visable", true}, {"EffectSlotIndex", 0}}})}});
+    nodes[0]["id"] = "scroll:0";
+    write(root, "Effects.json",
+          {{"kind", "openslope-effects"},
+           {"version", 1},
+           {"graphs", Json::array({{{"id", "scroll"}, {"nodes", nodes}}})},
+           {"functions", Json::array()},
+           {"slots", Json::array({{{"id", "setup"}, {"circumstances", {{"persistent", "scroll"}}}}})}});
+    auto logic = WorldLogic::load(root);
+    const std::array<Vec3, 1> view{{{0, 0, 0}}};
+    logic.tick(0, 0, view);
+    logic.tick(.5, 0, view);
+    check(logic.texture_frames().size() == 1, "Translated setup reaches native material playback");
+    near(logic.texture_frames()[0].uv[0], double(-.01f) * 30, "Thirty fixed ticks advance the decoded rate");
+    logic.restart(RunMode::Freeride);
+    logic.tick(0, 0, view);
+    near(logic.texture_frames()[0].uv[0], 0, "Restart restores the translated setup's initial phase");
+}
+
 void runtime(const std::filesystem::path& root) {
     write(root, "Models.json",
           {{"Models",
@@ -195,6 +277,7 @@ int main() {
             }
         } cleanup{root};
 
+        streamed(root);
         runtime(root);
         std::ofstream(root / "Materials.json") << Json{
             {"Materials", Json::array({Json{{"TextureFlipbook", nullptr}}, Json{{"TextureFlipbook", Json::array()}},

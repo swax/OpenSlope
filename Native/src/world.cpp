@@ -106,6 +106,14 @@ World World::load(const std::filesystem::path& root) {
     return result;
 }
 
+std::array<float, 2> World::draw_fog(float range) const {
+    if (!std::isfinite(range) || range <= 0)
+        throw std::invalid_argument("Invalid fog draw range");
+    if (fog_end > 0 && fog_end <= range)
+        return {fog_start, fog_end};
+    return {fog_end > 0 ? std::min(fog_start, range * .5f) : range * .5f, range};
+}
+
 void World::fit_colours(const Appearance& appearance) {
     if (sky.geometry.vertices.empty()) {
         if (!explicit_fog_colour)

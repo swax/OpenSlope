@@ -135,6 +135,7 @@ bool Player::recall_board(Vec3 facing) {
         throw std::invalid_argument("Invalid board recall heading");
     if (!on_foot_ || reset_pending() || recovering())
         return false;
+    board_design_ = random_stock_board(board_design_);
     const auto forward = normalized(project(facing, {0, 1, 0}), camera_forward());
     auto position = rider_.position + forward;
     Vec3 up{0, 1, 0};
@@ -435,6 +436,7 @@ void Player::tick_loose_board() {
         if (const auto safe_floor = walk_ground(rider_.position + Vec3{0, 2, 0}, rider_.position - Vec3{0, 10, 0})) {
             b.position = b.previous = safe_floor->point;
             b.up = safe_floor->normal;
+            b.forward = normalized(project(b.forward, b.up), normalized(cross(b.up, {1, 0, 0}), {0, 0, -1}));
         } else
             b.position = b.previous = rider_.position;
         b.velocity = {};

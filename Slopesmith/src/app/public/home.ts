@@ -61,7 +61,8 @@ export async function showPublicHome(): Promise<void> {
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
-  const { header, iso: manage, setMap, community } = publicHeader('maps', account);
+  const { header, iso: manage, setMap, syncIsoMaps, community } = publicHeader('maps', account);
+  syncIsoMaps(cached);
   const session = community.session;
   if (friendRoom) session.setPlayRoom(friendRoom);
   let activity: ChatActivity | null = null;
@@ -121,7 +122,6 @@ export async function showPublicHome(): Promise<void> {
   const mapControls = publicMapControls({
     play: () => { void player?.play().catch(showPlayerError); },
     vr: () => { void player?.vr().catch(showPlayerError); },
-    view: () => player?.view(),
     inspect: () => { if (selected) location.href = courseEditorUrl(selected); },
     resetStart: () => player?.resetStart(),
   });
@@ -351,7 +351,8 @@ export async function showPublicHome(): Promise<void> {
       mapControls.setMapType(course.kind);
       document.body.classList.remove('sp-page-background');
       document.body.classList.add('public-preparing');
-      setMap(course.name.replace(/[_-]/g, ' '), playUrl(course));
+      setMap(course.name.replace(/[_-]/g, ' '), playUrl(course), courseEditorUrl(course),
+        course.kind === 'reference' ? course.isoCourses : []);
       history.replaceState(history.state, '', playUrl(course));
       document.title = `${course.name} · Slopesmith`;
       main.classList.add('public-in-world');

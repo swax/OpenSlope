@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { prepareRiderLighting, RIDER_LIGHT_ANCHOR } from './rider-lighting';
 import { clamp } from '../../core/math/scalar';
 import {
   RIDE_AIR_GRAVITY_FALLING,
@@ -716,6 +717,8 @@ export function createRider(
     soleUp: _f15,
   };
   const character = attachCharacterRig(group, procedural, modelId);
+  group.userData[RIDER_LIGHT_ANCHOR] = characterPose.hips;
+  prepareRiderLighting(procedural, group);
   const trackedWristA = new THREE.Vector3(),
     trackedWristB = new THREE.Vector3();
   const gripOffsetA = new THREE.Vector3(),

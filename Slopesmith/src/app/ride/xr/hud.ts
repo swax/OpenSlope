@@ -46,7 +46,8 @@ export const XR_WATCH_WIDTH = COMPACT_W,
   XR_WATCH_HEIGHT = (COMPACT_W * COMPACT_H) / W;
 export const XR_WATCH_POSITION: readonly [number, number, number] = [0, 0.045, 0.015];
 export const XR_WATCH_TILT = -Math.PI / 2;
-export type XrHudAction = 'calibrate' | 'restart' | 'stats' | 'view' | 'controls' | 'edit' | 'exit' | 'mixed' | 'place';
+export type XrHudAction =
+  'calibrate' | 'recenter' | 'restart' | 'stats' | 'view' | 'controls' | 'edit' | 'exit' | 'mixed' | 'place';
 export type XrControlsMode = 'ride' | 'foot' | 'edit';
 /** What the watch shows while EDIT is on (docs/068), where two of its buttons take other jobs. */
 export interface XrWatchEdit {
@@ -68,7 +69,8 @@ const WATCH_BUTTONS: ReadonlyArray<{
   w: number;
   h: number;
 }> = [
-  { action: 'calibrate', x: 18, y: 108, w: 476, h: 52 },
+  { action: 'calibrate', x: 18, y: 108, w: 232, h: 52 },
+  { action: 'recenter', x: 262, y: 108, w: 232, h: 52 },
   { action: 'restart', edit: 'place', x: 18, y: 172, w: 232, h: 52 },
   { action: 'exit', x: 262, y: 172, w: 232, h: 52 },
   { action: 'stats', x: 18, y: 236, w: 232, h: 52 },
@@ -616,15 +618,19 @@ function drawWatchMenu(
   for (const button of WATCH_BUTTONS) {
     const action = watchAction(button, !!edit);
     const enabled =
-      action === 'mixed'
-        ? !!edit?.mixedRealityAvailable
-        : action === 'restart' ||
-          action === 'stats' ||
-          action === 'view' ||
-          action === 'controls' ||
-          action === 'exit' ||
-          action === 'place' ||
-          onFoot;
+      action === 'recenter'
+        ? !edit && calibration.phase !== 'countdown'
+        : action === 'calibrate'
+          ? onFoot && !edit
+          : action === 'mixed'
+            ? !!edit?.mixedRealityAvailable
+            : action === 'restart' ||
+              action === 'stats' ||
+              action === 'view' ||
+              action === 'controls' ||
+              action === 'exit' ||
+              action === 'place' ||
+              onFoot;
     const calibrating = action === 'calibrate' && calibration.phase === 'countdown';
     const saved = action === 'calibrate' && calibration.phase === 'saved';
     const error = action === 'calibrate' && calibration.phase === 'error';
@@ -659,21 +665,23 @@ function drawWatchMenu(
     let title =
       action === 'calibrate'
         ? 'T-POSE'
-        : action === 'restart'
-          ? 'RESTART'
-          : action === 'place'
-            ? `MOVE UI ${onOff(!!edit?.placing)}`
-            : action === 'stats'
-              ? `VR STATS ${onOff(statsEnabled)}`
-              : action === 'view'
-                ? `3RD PERSON ${onOff(thirdPerson)}`
-                : action === 'mixed'
-                  ? `MIXED REALITY ${onOff(!!edit?.mixedReality)}`
-                  : action === 'controls'
-                    ? 'CONTROLS'
-                    : action === 'edit'
-                      ? `EDIT ${onOff(!!edit)}`
-                      : 'EXIT VR';
+        : action === 'recenter'
+          ? 'RECENTER'
+          : action === 'restart'
+            ? 'RESTART'
+            : action === 'place'
+              ? `MOVE UI ${onOff(!!edit?.placing)}`
+              : action === 'stats'
+                ? `VR STATS ${onOff(statsEnabled)}`
+                : action === 'view'
+                  ? `3RD PERSON ${onOff(thirdPerson)}`
+                  : action === 'mixed'
+                    ? `MIXED REALITY ${onOff(!!edit?.mixedReality)}`
+                    : action === 'controls'
+                      ? 'CONTROLS'
+                      : action === 'edit'
+                        ? `EDIT ${onOff(!!edit)}`
+                        : 'EXIT VR';
     if (action === 'calibrate') {
       if (calibrating) title = String(calibration.count ?? 3);
       else if (saved && calibration.standingHeight) title = `${calibration.standingHeight.toFixed(2)} M`;

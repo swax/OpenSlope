@@ -162,6 +162,20 @@ const b64ToBytes = (b64: string): Uint8Array => {
 
 async function browserSkyboxFiles(sky: SkyboxDoc): Promise<{ files: ExportFile[]; log: string[] }> {
   const preferred = sky.source.kind === 'level' ? sky.source.level : (sky.ring ?? '');
+  if (sky.source.kind === 'level') {
+    const catalog = await fetchJson<{ nativeLevels?: string[] }>('/api/skybox');
+    if (catalog.nativeLevels?.some(level => level.toLowerCase() === preferred.toLowerCase())) {
+      const native = await fetchJson<{ files: { path: string; bytes: string }[] }>(
+        `/api/skybox/native?level=${encodeURIComponent(preferred)}&files=1`,
+      );
+      const files = native.files.map(file => ({ path: file.path, bytes: b64ToBytes(file.bytes) }));
+      files.push({
+        path: 'Skybox/Sky.json',
+        bytes: new TextEncoder().encode(JSON.stringify({ Source: 'level', Level: preferred, TopColor: sky.topColor })),
+      });
+      return { files, log: [`Copied ${preferred}'s original sky mesh and textures.`] };
+    }
+  }
   const ring = await fetchJson<SkyRingPayload>(`/api/skybox/ring?level=${encodeURIComponent(preferred)}`);
   const ringFiles: ExportFile[] = ring.files.map(file => ({ path: file.path, bytes: b64ToBytes(file.bytes) }));
   const pages: SkyboxPageSource =

@@ -105,10 +105,15 @@ export async function readLevelPatches(
   name: string,
 ): Promise<{ name: string; patches: RawPatch[] }> {
   const safe = safeDataName(name);
-  const json = await io.readJsonOr<{ Patches?: unknown[] } | null>(join(io.root, safe, 'Patches.json'), null);
+  const [json, source] = await Promise.all([
+    io.readJsonOr<{ Patches?: unknown[] } | null>(join(io.root, safe, 'Patches.json'), null),
+    io.readJsonOr<{ Game?: string } | null>(join(io.root, safe, 'Import.json'), null),
+  ]);
   if (!json) throw new Error(`no Patches.json for level "${safe}"`);
   const arr = (json.Patches ?? (json as unknown as unknown[])) as Array<Record<string, unknown>>;
   const patches: RawPatch[] = arr.map(p => ({
+    ...(typeof p.PatchName === 'string' ? { PatchName: p.PatchName } : {}),
+    ...(p.Visable === false ? { Visable: false } : {}),
     Points: p.Points as number[][],
     SurfaceType: p.SurfaceType as number,
     TexturePath: p.TexturePath as string | undefined,
@@ -116,6 +121,22 @@ export async function readLevelPatches(
     LightMapPoint: p.LightMapPoint as number[] | undefined,
     LightmapID: p.LightmapID as number | undefined,
   }));
+  // [Trailmap: 527] On Tour ships overlapping on/off event terrain with different lightmaps. Choose one
+  // static playtest state, rather than drawing both and depth-fighting. Keep source order and both records.
+  if (/^SSXOT_/i.test(safe) || source?.Game === 'ssx-on-tour') {
+    const names = new Map<string, number[]>();
+    for (const [index, patch] of patches.entries()) {
+      const key = patch.PatchName?.toLowerCase();
+      if (key) names.set(key, [...(names.get(key) ?? []), index]);
+    }
+    for (const patch of patches) {
+      const key = patch.PatchName?.toLowerCase();
+      if (!key || !/^patch_[a-z]{2}[0-9]_off_event(?:start|finish)_[0-9]+$/.test(key)) continue;
+      const counterpart = names.get(key.replace('_off_', '_on_'));
+      if (names.get(key)?.length === 1 && counterpart?.length === 1 && patches[counterpart[0]].Visable !== false)
+        patch.Visable = false;
+    }
+  }
   return { name: safe, patches };
 }
 
@@ -341,6 +362,8 @@ interface RawLightRecord {
   SpriteRes?: number;
   /** Spot cone half-angle cosine. */
   UnknownFloat2?: number;
+  /** Streamed imports made before the shared cone field was exported. */
+  OuterConeCosine?: number;
 }
 
 /**
@@ -365,7 +388,7 @@ export async function readLevelLightRig(io: MapDataSource, name: string): Promis
         pos,
         lo: num3(l.LowestXYZ, pos),
         hi: num3(l.HighestXYZ, pos),
-        cone: Number(l.UnknownFloat2 ?? 1),
+        cone: Number(l.UnknownFloat2 ?? l.OuterConeCosine ?? 1),
         spriteRes: Number(l.SpriteRes ?? 0) | 0,
       };
     });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { StockBoardSelection } from '../../core/equipment/stock-boards';
 import {
   createBoard,
   DEFAULT_RIDE_GEAR,
@@ -131,6 +132,7 @@ export interface RiderPoseOpts {
   snowboardStance?: SnowboardStance;
   /** Account-owned top/base art and solid sidewall colour. AI callers omit it and keep the built-in kit. */
   equipmentAppearance?: EquipmentAppearance;
+  stockBoard?: StockBoardSelection;
 }
 
 /**
@@ -167,7 +169,8 @@ export function createRiderPose(o: RiderPoseOpts) {
   let gear: RideGear = o.gear ?? DEFAULT_RIDE_GEAR;
   let snowboardStance: SnowboardStance = o.snowboardStance ?? DEFAULT_SNOWBOARD_STANCE;
   let equipmentAppearance = o.equipmentAppearance;
-  let boardModel: BoardModel = createBoard(gear, snowboardStance, equipmentAppearance);
+  const stockBoard = o.stockBoard ?? new StockBoardSelection();
+  let boardModel: BoardModel = createBoard(gear, snowboardStance, equipmentAppearance, stockBoard);
   let riderModel = o.riderModel;
   let riderStyle = o.riderStyle;
   let rider: Rider = createRider(riderModel, riderStyle, gear, snowboardStance);
@@ -201,11 +204,14 @@ export function createRiderPose(o: RiderPoseOpts) {
 
   /** One cloned topsheet across every piece of the gear, so a pair of skis reads as a pair and not as two. */
   function applyTint() {
-    if (o.tint === undefined) return;
+    if (o.tint === undefined || gear === 'snowboard') return;
     boardModel.group.traverse(obj => {
       if (!(obj instanceof THREE.Mesh) || !Array.isArray(obj.material)) return;
       if (!tinted) {
-        tinted = (obj.material[1] as THREE.MeshLambertMaterial).clone(); // material slot 1 = the topsheet
+        const original = obj.material[1] as THREE.MeshLambertMaterial; // material slot 1 = the topsheet
+        tinted = original.clone();
+        tinted.onBeforeCompile = original.onBeforeCompile;
+        tinted.customProgramCacheKey = original.customProgramCacheKey;
         tinted.color.setHex(o.tint!);
       }
       obj.material = [obj.material[0], tinted, ...obj.material.slice(2)];
@@ -442,7 +448,7 @@ export function createRiderPose(o: RiderPoseOpts) {
     boardModel.dispose(); // which takes the cloned topsheet with it, so the tint is re-made below
     rider.dispose();
     tinted = null;
-    boardModel = createBoard(gear, snowboardStance, equipmentAppearance);
+    boardModel = createBoard(gear, snowboardStance, equipmentAppearance, stockBoard);
     rider = createRider(riderModel, riderStyle, gear, snowboardStance);
     applyTint();
     addToScene();
@@ -458,7 +464,7 @@ export function createRiderPose(o: RiderPoseOpts) {
     boardModel.dispose();
     rider.dispose();
     tinted = null;
-    boardModel = createBoard(gear, snowboardStance, equipmentAppearance);
+    boardModel = createBoard(gear, snowboardStance, equipmentAppearance, stockBoard);
     rider = createRider(riderModel, riderStyle, gear, snowboardStance);
     applyTint();
     addToScene();

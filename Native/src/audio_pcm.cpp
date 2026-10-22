@@ -151,8 +151,30 @@ std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> sour
     // nibble order and clamped/unclamped history according to the codec.
     constexpr std::array<std::array<int, 2>, 5> ps{{{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}}};
     constexpr std::array<std::array<int, 2>, 4> ea{{{0, 0}, {240, 0}, {460, -208}, {392, -220}}};
+    std::size_t p = 0;
     for (std::size_t f = 0; f < frames; ++f) {
-        const auto p = f * stride;
+        if (p > source.size() || stride > source.size() - p)
+            throw std::runtime_error("Truncated ADPCM frame");
+        // On Tour also stores literal EA-XA frames: an escape, two signed
+        // big-endian history words and 28 signed big-endian PCM samples.
+        if (codec == 10 && source[p] == 0xee) {
+            if (source.size() - p < 61)
+                throw std::runtime_error("Truncated EA-XA literal frame");
+            const auto sample_at = [&](std::size_t q) {
+                return static_cast<std::int16_t>((unsigned(source[q]) << 8) | source[q + 1]);
+            };
+            h.first = sample_at(p + 1);
+            h.second = sample_at(p + 3);
+            for (unsigned i = 0; i < 28; ++i) {
+                const auto sample = sample_at(p + 5 + i * 2);
+                h.second = h.first;
+                h.first = sample;
+                if (f * 28 + i < count)
+                    output[f * 28 + i] = sample;
+            }
+            p += 61;
+            continue;
+        }
         const unsigned predictor = source[p] >> 4, shift = source[p] & 15;
         if (codec == 10 && predictor >= ea.size())
             throw std::runtime_error("Invalid EA-XA predictor");
@@ -173,6 +195,7 @@ std::vector<std::int16_t> decode_audio_frames(std::span<const std::uint8_t> sour
             if (f * 28 + i < count)
                 output[f * 28 + i] = static_cast<std::int16_t>(clamped);
         }
+        p += stride;
     }
     return output;
 }

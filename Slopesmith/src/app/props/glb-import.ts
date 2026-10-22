@@ -21,23 +21,26 @@ import type { UvScrollEffect } from '../../core/effects/world-effects';
  * GLB → prop geometry. Turns a user's glTF binary into the per-material submeshes the prop pipeline already
  * speaks (`PropSub`), plus the base-colour images to stage into the Custom texture bank.
  *
- * The conversion is a straight change of frame, not a re-authoring: glTF is Y-up metres and so is the
- * editor, so the work is flattening the node hierarchy into world space and then applying the inverse
- * of the raw→editor map every prop stores its vertices in — editorFromRaw(x,y,z) = (−x/100, z/100, −y/100),
- * so rawFromEditor(x,y,z) = (−100x, −100z, 100y) (viewport/constants.ts).
+ * The conversion is a straight change of frame, not a re-authoring: flatten the node hierarchy into glTF
+ * world space, then rotate into the raw frame every prop stores its vertices in — raw = (100x, −100z, 100y),
+ * `rawFromGltfPoint` (core/props/imported.ts).
  *
- * That map is ORIENTATION-REVERSING (a mirror), so the triangle order reverses with it — `a, c, b`. This is
- * not cosmetic and it is not about which side draws. A prop's normals are derived from its stored winding
- * (`computeVertexNormals` over the raw buffer, prop-assets.ts) and the hardware lights a face from that
- * normal alone — `ambient + Σ max(0, N·L)·key`, shown identically from both sides (docs/028). So mirroring
- * the positions without reversing the indices points every face INTO the model: it still draws, because prop
- * meshes are double-sided, but it draws ambient-only dark from every view, the editor's PS2 shading preview
- * shows it dark, the selection's facing arrows point inward, and it exports dark to the ISO.
+ * glTF is NOT the editor's data space, though both are Y-up metres. Data space is shown through the scene
+ * root's Z mirror (the game's chirality), so a model dropped into data space as-is — the importer's first
+ * map, the inverse of editorFromRaw, (−100x, −100z, 100y) — displays as its own mirror image: text reads
+ * backwards. The map above is that one with glTF's X negated: a proper rotation, so the model stands
+ * unmirrored and keeps the facing every earlier import had (turned 180° about vertical from a glTF viewer's
+ * framing; in Blender's Z-up terms raw = 100 × Blender).
  *
- * The authored-model bake reverses for exactly the same reason (`authoredModelLevelProps`, models.ts:
- * "reversed vs editor CCW — the raw mirror flips it back"), and retail agrees: every shipped prop measured
- * — GARI's boulders, SNOW's snow blower — encloses a POSITIVE signed volume in raw space, which is the
- * orientation this reversal reproduces.
+ * Being a rotation, it keeps the triangle order — `a, b, c`. That is not cosmetic and it is not about which
+ * side draws. A prop's normals are derived from its stored winding (`computeVertexNormals` over the raw
+ * buffer, prop-assets.ts) and the hardware lights a face from that normal alone — `ambient + Σ max(0, N·L)·key`,
+ * shown identically from both sides (docs/028). A face stored the wrong way round still draws, because prop
+ * meshes are double-sided, but ambient-only dark from every view, the editor's PS2 shading preview shows it
+ * dark, the selection's facing arrows point inward, and it exports dark to the ISO. (A MIRRORING map would
+ * have to reverse the indices to avoid exactly that — the authored-model bake does, `authoredModelLevelProps`,
+ * because editor→raw is one.) Retail agrees with the outcome: every shipped prop measured — GARI's boulders,
+ * SNOW's snow blower — encloses a POSITIVE signed volume in raw space, as an outward-wound glTF does here.
  *
  * The UV V flip below is a separate, unrelated axis convention.
  *
@@ -340,9 +343,9 @@ export async function glbToPropDraft(file: File): Promise<ImportedPropDraft> {
         if (mapped === undefined) {
           mapped = bucket!.pos.length / 3;
           remap.set(source, mapped);
-          // node hierarchy → world (editor metres, Y-up), then editor → raw (cm, Z-up, X-mirrored)
+          // node hierarchy → glTF world (metres, Y-up), then the rotation into raw (cm, Z-up) — see above
           vertex.fromBufferAttribute(position, source).applyMatrix4(mesh.matrixWorld);
-          bucket!.pos.push(-100 * vertex.x, -100 * vertex.z, 100 * vertex.y);
+          bucket!.pos.push(100 * vertex.x, -100 * vertex.z, 100 * vertex.y);
           // glTF UV v runs top-down; prop UVs are raw OBJ vt (bottom-left origin, loaded with flipY)
           bucket!.uv.push(uv ? uv.getX(source) : 0, uv ? 1 - uv.getY(source) : 0);
         }
@@ -352,7 +355,7 @@ export async function glbToPropDraft(file: File): Promise<ImportedPropDraft> {
         const a = index ? index.getX(part.start + i) : part.start + i;
         const b = index ? index.getX(part.start + i + 1) : part.start + i + 1;
         const c = index ? index.getX(part.start + i + 2) : part.start + i + 2;
-        bucket.idx.push(emit(a), emit(c), emit(b)); // reversed: the raw frame is a mirror (see above)
+        bucket.idx.push(emit(a), emit(b), emit(c)); // file order: the frame change is a rotation (see above)
         tris++;
       }
     }

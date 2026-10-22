@@ -25,7 +25,7 @@ def main():
             ('ready', 'showoff', True, [dict(Ticks=60)], 'READY'),
             ('mount-run', 'race', True, [dict(Ticks=1, Mount=True), dict(Ticks=500)], 'FINISHED'),
             ('restart-held', 'race', False, [dict(Ticks=500), dict(Ticks=1, RunRestart=True),
-                                          dict(Ticks=30, RunRestart=True)], 'COUNTDOWN'),
+                                          dict(Ticks=30, RunRestart=True)], 'RUNNING'),
         ]:
             root = base / name
             fixture(root, mass=0, draw=False)
@@ -53,7 +53,7 @@ def main():
             if name == 'ready':
                 assert '; clock 0:10.00;' in line and '; elapsed 0;' in line, line
             if name == 'restart-held':
-                assert '; elapsed 0;' in line and '; checkpoints 0;' in line, line
+                assert '; elapsed 0.5;' in line and '; checkpoints 0;' in line, line
             print(f'PASS: {name}, {sum(step["Ticks"] for step in steps)} rendered frames: {line}')
 
 

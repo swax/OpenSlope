@@ -1,5 +1,6 @@
 #include "openslope/player.hpp"
 #include "openslope/ai_field.hpp"
+#include "openslope/scene_lighting.hpp"
 #include <set>
 #include <stdexcept>
 
@@ -11,11 +12,18 @@ struct Player::SharedScene {
     WorldLogic logic;
     std::map<std::uint64_t, Player*> actors;
     std::uint64_t next_actor = 1;
+    mutable std::optional<SceneLighting> avatar_lighting;
 
     explicit SharedScene(Terrain surface)
         : terrain(std::move(surface)), collision(CollisionWorld::load(terrain.map_root())),
           rails(Rails::load(terrain.map_root())), logic(WorldLogic::load(terrain.map_root())) {}
 };
+
+const SceneLighting& Player::avatar_lighting() const {
+    if (!scene_->avatar_lighting)
+        scene_->avatar_lighting = SceneLighting::load(terrain_.map_root());
+    return *scene_->avatar_lighting;
+}
 
 std::vector<ParticleSprite> Player::particles(double alpha, Vec3 eye) const {
     auto world = logic_.particles(alpha, eye);
@@ -302,6 +310,7 @@ void Player::configure_run(RunMode mode) {
 }
 
 void Player::restart_run() {
+    board_design_ = random_stock_board(board_design_);
     weather_time_ = 0;
     run_.restart();
     ++run_serial_;
@@ -1937,9 +1946,13 @@ Vec3 Player::render_up() const {
                     -contract_.value("steering", "bankMaxDeg") * pi / 180 * rider_.lean * rider_.lead);
     if (interpolate_board_) {
         up = previous_board_up_ * (1 - clock_.alpha()) + up * clock_.alpha();
-        up = project(up, render_forward());
     }
-    return normalized(up);
+    // Keep a rigid frame when the carried tilt aligns with the heading, or
+    // opposing interpolated up vectors cancel. A global up fallback can itself
+    // be parallel to the nose on steep terrain.
+    const auto nose = render_forward(),
+               side = normalized(cross(nose, up), normalized(cross(nose, {0, 1, 0}), {1, 0, 0}));
+    return normalized(cross(side, nose));
 }
 
 Vec3 Player::camera_forward() const {

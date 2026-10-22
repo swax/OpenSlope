@@ -3,6 +3,25 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.87 adds four stock board designs, with a fresh choice on course restart
+or a new-board pull. Avatars and boards respond to course lighting in normal
+lighting mode. See [build notes](releases/0.87.0.md).
+
+Build 0.86 removes both Race and Showoff start countdowns. Riding, scoring and
+the event clock start on the first mounted tick. See [build notes](releases/0.86.0.md).
+The equipment-frame fixes and SSX gem importer remain included;
+older SSX maps need re-importing to receive gem animation and pickup metadata.
+
+Build 0.82 makes Quest Y hide the full wrist HUD and controller models together.
+Press Y again to restore them. See [build notes](releases/0.82.0.md).
+
+Build 0.81 adds a 600 metre terrain draw range and matching fog on desktop and
+Quest. Existing courses work without re-importing. See [build notes](releases/0.81.0.md).
+
+Build 0.80 fixes original SSX riding-sprite loading, excludes unscored On Tour
+paths from race progress/finish calculations, and admits one state of paired
+On Tour event terrain for rendering and collision. See [build notes](releases/0.80.0.md).
+
 Build 0.79 hides the opponent menu and removes control hints from the desktop
 window title. The Windows package has shorter setup instructions; full controls
 remain in the in-game menu. See [release notes](releases/0.79.0.md).
@@ -10,7 +29,14 @@ remain in the in-game menu. See [release notes](releases/0.79.0.md).
 Build 0.78 opens the desktop library at startup and lists ISO files beside the
 EXE. Queue course extractions, follow progress in each row, then choose Play
 when ready. Wheel scrolling and a draggable scrollbar replace desktop paging.
-The native reader supports SSX Tricky PS2; SSX 3 import is not implemented.
+The native reader supports SSX and SSX Tricky PS2, including the original
+game's raw `.bin` disc images. SSX 3 PS2 import now exports events and peaks
+through the same reader used by Slopesmith's `/isos` worker.
+See [SSX 3 import and remaining limits](docs/ssx3-import.md).
+SSX On Tour PS2 uses the same importer with individual day/night track selections;
+see [On Tour import and remaining limits](docs/ontour-import.md). Whole-mountain
+imports are unavailable.
+See [SSX import and current limits](docs/ssx-import.md).
 See [desktop ISO setup](docs/desktop-iso-0.78.md).
 
 Build 0.76 adds desktop A/D strafing, left-drag look/turn and E to spawn and
@@ -50,8 +76,8 @@ The Linux host still needs target build/device validation. Full gameplay parity 
 tracked in the matrix below.
 
 The desktop player starts on an original procedural slope, or reads a local `Maps/<NAME>/Patches.json`.
-The Quest app starts with a Maps library: choose a populated folder, or select a local SSX Tricky PS2
-ISO to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
+The Quest app starts with a Maps library: choose a populated folder, or select a local SSX or SSX Tricky PS2
+disc image to add courses. No ISO is required to browse and play custom maps. No retail content is packaged.
 The importer currently converts terrain, textures, lightmaps, static prop geometry/placements,
 AIP/SOP course paths, collision proxies/physics bodies, configured sound/music assets and provenance. The player renders textured
 terrain and shared world props, supports charged jumps, spins/flips and switch landings, and uses
@@ -111,7 +137,7 @@ F/V switches first/chase camera, C looks down, and E dismounts or spawns and mou
 LMB drag looks around while riding and turns the character on foot; RMB carries/throws the board.
 P/Escape opens the pause menu; Escape first releases a held mouse drag.
 The wheel changes camera distance. The pause menu includes a map library and ride settings.
-Without `--map`, the desktop starts in the library. Place `.iso` files beside
+Without `--map`, the desktop starts in the library. Place `.iso` or `.bin` files beside
 the EXE and choose **ISO Sources**, then **Extract <course>** to queue a course.
 Progress stays in its row, which becomes **Play <course>** when ready.
 Completed courses live in `Maps/<name>` beside the EXE; playing is a separate click.
@@ -143,9 +169,9 @@ and hand skin follows full wrist orientation. See [quest-controls.md](docs/quest
 for the earlier mapping and [equipment, camera and UI](docs/equipment-camera-ui.md)
 for current controls, independent implementation, validation and remaining physical checks.
 
-Quest's **Riding steering** selector offers Stick only or Head + stick override.
-Head mode uses look-to-carve with a neutral zone; the stick takes priority when
-deflected. See [VR steering](docs/vr-steering.md) for controls, view carry and
+Quest always uses head steering with left-stick player turning as a fallback.
+The stick rotates the player, tracked hands and view together; the board follows
+the resulting gaze. See [VR steering](docs/vr-steering.md) for controls, tracking and
 remaining headset validation. Timed runs now bank spin/flip and rail tricks and
 spend/refill boost; see [trick scoring](docs/trick-scoring.md) for exact scope.
 Manual reset and the existing active-run recovery triggers now prefer a nearby
@@ -291,7 +317,7 @@ After installation, find **OpenSlope Native** in the headset's sideloaded applic
    **Use app Maps folder** selects `/sdcard/Android/data/org.openslope.nativeplayer/files/Maps/`.
 2. Existing `Maps/<name>/Patches.json` courses appear as **Play <name>** buttons. Custom maps work
    immediately without selecting an ISO. Use **Refresh courses** after adding files outside the app.
-3. **Import SSX Tricky ISO** opens the system file picker, discovers supported courses, and lets
+3. **Import from ISO** opens the system file picker, discovers supported SSX/SSX Tricky courses, and lets
    you select which to import into the current Maps folder. Existing map names are kept. Cancel
    stops the current course; courses already imported remain available.
    To refresh an old import, choose **Unload** beside that course and confirm, then import it again.
@@ -432,7 +458,7 @@ and supported Quest runtimes can supply upper-body/full-body joints. See
 [avatar presentation](docs/avatar.md) for API support, fallbacks and validation.
 
 Timed events are available through `--mode race|showoff` or the Quest library's
-Event selector. Mount to start the countdown; Race counts up and Showoff counts
+Event selector. Mount to start riding and the clock immediately; Race counts up and Showoff counts
 down with checkpoint time awards. T restarts on desktop; Y toggles the Quest controls display. The desktop title and left VR
 controller panel show clock/state. See [course runs](docs/course-runs.md) for
 the course metric, finish/lap rules, authored settings and remaining race systems.

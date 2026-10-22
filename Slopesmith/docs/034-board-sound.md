@@ -1,5 +1,20 @@
 # 034 — Board sound
 
+SSX 3 and On Tour imports now include approximate common riding banks. Reference
+Test passes the selected level to `/api/board-audio` and `/api/board-sound`; the
+server and local-ISO reader resolve bank roles through that map's SoundIndex.
+Missing explicit-level slots remain silent. The existing response and controls
+perform the imported clips; original game event timing is not required. See
+[common riding audio](../../Native/docs/common-riding-audio.md) for the adapter,
+source preservation, approximation and existing-map update command.
+
+Adapted `openslope_board`/`openslope_rider` clips are now level-matched during
+playback-cache preparation using the shared streamed-riding profile. Only loud
+clips are attenuated; loop edges are smoothed and raw cached PCM/WAVs remain
+unchanged. Server and browser-local metadata identify the actual banks. Existing
+ISO caches receive this improvement on reload. Other game banks retain their
+levels. Loop starts and family switches use brief fades to prevent hard edges.
+
 The sound of riding, in Test mode: the **glide** hiss and **carve** grind under the board, the scrape of a
 rail, the ollie pop and the landing thud, the wind during a predicted big jump, the gem chime and pad hit, and the roar while boost is held. It is
 performed from the game's own shared banks, so a mountain you are building sounds like a mountain the game

@@ -19,6 +19,36 @@ public final class NativeImportInstrumentation extends Instrumentation {
         Method method = LauncherActivity.class.getDeclaredMethod(name, types); method.setAccessible(true);
         try { return method.invoke(activity, values); } catch (InvocationTargetException e) { throw new IOException(e.getCause().getMessage(), e.getCause()); }
     }
+    private void libraryIdle(LauncherActivity activity) throws Exception {
+        Field busy = LauncherActivity.class.getDeclaredField("busy"); busy.setAccessible(true);
+        for (int i = 0; i < 300; ++i) { waitForIdleSync(); if (!busy.getBoolean(activity)) return; Thread.sleep(100); }
+        throw new IOException("Library worker did not finish");
+    }
+    private void multiDiscImport(LauncherActivity activity, File temporary, File tricky) throws Exception {
+        libraryIdle(activity);
+        File ssx = new File(temporary, "ssx-fixture.bin"), broken = new File(temporary, "broken.iso");
+        try (InputStream input = getContext().getAssets().open("ssx-fixture.bin"); OutputStream output = new FileOutputStream(ssx)) { MapLibrary.copy(input, output, MapLibrary.FILE_LIMIT, () -> {}); }
+        require(broken.createNewFile(), "Unreadable batch source created");
+        File root = new File(temporary, "multi-disc-maps"), existing = new File(root, "GARI"); require(existing.mkdirs(), "Isolated multi-disc library created");
+        try (Writer file = new FileWriter(new File(existing, "Patches.json"))) { file.write("{}"); }
+        try (Writer file = new FileWriter(new File(existing, "keep-local.txt"))) { file.write("local edits"); }
+        MapLibrary batch = new MapLibrary(getTargetContext().getContentResolver(), root, null);
+        Field field = LauncherActivity.class.getDeclaredField("library"); field.setAccessible(true); Object previous = field.get(activity);
+        List<LauncherActivity.IsoCourse> choices = Arrays.asList(
+            new LauncherActivity.IsoCourse(Uri.fromFile(broken), "BROKEN", broken.getName()),
+            new LauncherActivity.IsoCourse(Uri.fromFile(tricky), "FIXTURE", tricky.getName()),
+            new LauncherActivity.IsoCourse(Uri.fromFile(ssx), "SSX_FIXTURE", ssx.getName()),
+            new LauncherActivity.IsoCourse(Uri.fromFile(broken), "GARI", broken.getName()));
+        try {
+            runOnMainSync(() -> { try { field.set(activity, batch); invoke(activity, "importCourses", new Class<?>[]{List.class}, choices); } catch (Exception e) { throw new RuntimeException(e); } });
+            libraryIdle(activity);
+            require(batch.exists("FIXTURE") && batch.exists("SSX_FIXTURE"), "Batch imports courses from distinct ISO and BIN sources after an unreadable disc");
+            invoke(activity, "nativeValidate", new Class<?>[]{String.class}, new File(root, "FIXTURE").getAbsolutePath());
+            invoke(activity, "nativeValidate", new Class<?>[]{String.class}, new File(root, "SSX_FIXTURE").getAbsolutePath());
+            require(!batch.exists("BROKEN") && new File(existing, "keep-local.txt").isFile(), "Failed batch course stays unpublished and existing maps retain local edits");
+            for (File entry : root.listFiles()) require(!entry.getName().startsWith(".openslope-import-"), "Batch import cleans every staging folder");
+        } finally { runOnMainSync(() -> { try { field.set(activity, previous); } catch (Exception e) { throw new RuntimeException(e); } }); }
+    }
     @Override public void onStart() {
         if(arguments!=null&&"true".equals(arguments.getString("launcher"))){LauncherUiChecks.run(this);return;}
         if(arguments!=null&&"true".equals(arguments.getString("lifecycle"))){NativeVrLifecycle.run(this);return;}
@@ -48,6 +78,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
                 require(board.getJSONArray("SurfaceGroups").getInt(1) == 4, "JNI retains the decoded selector normalization and family values");
             }
             invoke(activity, "nativeValidate", new Class<?>[]{String.class}, extracted.getAbsolutePath());
+            multiDiscImport(activity, temporary, image);
             require(new File(extracted, "Audio/SFX/tone/000.wav").isFile(), "JNI imports audio from the selected ISO");
             require(new File(extracted, "Audio/Music/song/chunk_000.wav").isFile(), "JNI imports graph-addressed music chunks");
             require(new File(extracted, "Audio/Intro/Quiet-A.wav").isFile(), "JNI imports configured intro stems");

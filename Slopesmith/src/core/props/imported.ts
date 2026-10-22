@@ -112,6 +112,15 @@ function finite(value: unknown): number | null {
  * A point in glTF world space (metres, Y-up) to the model-local raw cm a record stores — the SAME map
  * the importer applies to every vertex, re-centring included.
  *
+ * `raw = (100x, −100z, 100y)`, a proper ROTATION, not a mirror. The editor shows raw through two mirrors
+ * that cancel — `editorFromRaw` into data space, then the scene root's Z flip to the game's chirality —
+ * so whatever handedness raw has is what reaches the screen. Treating glTF as data space (the map this
+ * replaced, `−100x, −100z, 100y`) therefore displayed every import as its own mirror image: a sign's text
+ * read backwards. Through this map a model stands unmirrored, turned 180° about vertical from a glTF
+ * viewer's default framing — the facing every import before it had, so a re-imported symmetric prop lands
+ * exactly where its placements already point. In Blender's Z-up frame it is the identity: raw = 100 ×
+ * Blender. (docs/032.)
+ *
  * Extracted from the importer so it can be tested against the vertex path directly. A spawn point that
  * takes a slightly different route lands a metre off the muzzle, which reads as a physics bug rather
  * than an import one and is the sort of thing that survives review.
@@ -121,19 +130,20 @@ export function rawFromGltfPoint(
   centreX: number,
   centreY: number,
 ): [number, number, number] {
-  return [-100 * p[0] - centreX, -100 * p[2] - centreY, 100 * p[1]];
+  return [100 * p[0] - centreX, -100 * p[2] - centreY, 100 * p[1]];
 }
 
 /**
  * A DIRECTION in glTF world space to the same model-local raw frame, returned unit.
  *
  * The point map without the translation or the centimetres — a spin axis has no origin, so putting one
- * through `rawFromGltfPoint` would bend it by the model's own re-centring. The frame change is a mirror,
- * which reverses the sense of a rotation about the axis it returns; the declared rate carries whichever
- * direction the author wanted and is simply flipped if it comes out wrong.
+ * through `rawFromGltfPoint` would bend it by the model's own re-centring. The frame change is a rotation,
+ * so it keeps the sense of a turn about the axis it returns (the mirroring map it replaced reversed it, so a
+ * re-imported spin turns the other way from before). Which way a positive rate turns on screen is the clip
+ * evaluator's convention, not this function's.
  */
 export function rawFromGltfDirection(v: readonly [number, number, number]): [number, number, number] {
-  const x = -v[0],
+  const x = v[0],
     y = -v[2],
     z = v[1];
   const length = Math.hypot(x, y, z);

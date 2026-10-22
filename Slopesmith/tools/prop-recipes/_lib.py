@@ -35,10 +35,10 @@ inside-out still draws (prop meshes are double-sided) but draws ambient-only dar
 Two checks run before any export, because one is not enough:
 
 - **Raw-space enclosed volume** must be POSITIVE, which is the convention every prop on the target
-  platform stores its geometry in. This models the importer exactly — mirror the
-  positions AND reverse each triangle, `glb-import.ts` — so it is a claim about what actually gets
-  STORED. The equivalent check in glTF space is worthless: the frame change is a mirror, so glTF-space
-  winding passes while the stored data is upside-down.
+  platform stores its geometry in. This models the importer exactly — Blender's frame IS raw, scaled
+  ×100, and triangles keep their order (`glb-import.ts`) — so it is a claim about what actually gets
+  STORED. (The importer once mirrored and reversed; a frame change that does one without the other
+  stores the model upside-down while every check made before it passes.)
 - **Per-face expected facing**, which still works on the open shells the volume test cannot judge.
   Every primitive records which way each face it emits is supposed to look.
 
@@ -160,8 +160,9 @@ class Build:
 
         - `pivot` the point turned about, in the recipe's own Blender coordinates.
         - `axis`  the axis turned about, same frame; need not be unit.
-        - `revs_per_second` rate, the sign choosing a direction. The raw frame is MIRRORED, so which way
-          a given sign comes out on screen is not worth deriving — look at it and flip it if it is wrong.
+        - `revs_per_second` rate, the sign choosing a direction. The importer's frame change is a rotation
+          (Blender ×100 = raw), so the sense survives it, but which way a given sign comes out on screen
+          is the clip evaluator's business — look at it and flip it if it is wrong.
         - `parent` another spin's ordinal. Omit it inside an outer `with b.spin(...) as turn:` block and
           that outer turn becomes the parent automatically. This is a real motion hierarchy: a nested car
           orbits with its platform before it turns about its own pivot.
@@ -694,16 +695,16 @@ def mirror_x(b, start_face):
 # ---- verify and export ------------------------------------------------------------------------------
 
 def _raw_volume6(verts, faces):
-    """Six times the volume the IMPORTER will store: positions mirrored to raw cm and every triangle
-    reversed, which is what `glb-import.ts` does (`-100x, -100z, 100y` and `emit(a), emit(c), emit(b)`).
+    """Six times the volume the IMPORTER will store. The exporter turns Blender's Z-up into glTF's Y-up
+    and `glb-import.ts` turns it back into raw (`100x, -100z, 100y` of glTF), so a Blender vertex lands
+    at exactly 100x its own coordinates and every triangle keeps its order (`emit(a), emit(b), emit(c)`).
     Positive is the orientation every prop on the target platform stores at."""
-    raw = [(-100.0 * x, -100.0 * z, 100.0 * y) for (x, y, z) in verts]
+    raw = [(100.0 * x, 100.0 * y, 100.0 * z) for (x, y, z) in verts]
     total = 0.0
     for f in faces:
         for k in range(1, len(f) - 1):
-            # fan-triangulate to (f0, fk, fk+1), then REVERSE it — the importer emits a, c, b. The swap
-            # has to happen in the indexing, not in what the locals are called.
-            p, q, r = raw[f[0]], raw[f[k + 1]], raw[f[k]]
+            # fan-triangulate to (f0, fk, fk+1), in the order the importer stores it
+            p, q, r = raw[f[0]], raw[f[k]], raw[f[k + 1]]
             total += (p[0] * (q[1] * r[2] - q[2] * r[1])
                       - p[1] * (q[0] * r[2] - q[2] * r[0])
                       + p[2] * (q[0] * r[1] - q[1] * r[0]))
@@ -758,11 +759,12 @@ PARTICLE_SPRITES = ('part', 'snfl', 'clod', 'spry', 'halo', 'brk1', 'brk2', 'brk
 def _raw_vec(v):
     """A Blender-space DIRECTION to the raw cm frame the emitter payload is authored in.
 
-    Blender is Z-up metres, glTF is Y-up metres, raw is Z-up centimetres and X-mirrored. Composing the
-    exporter's turn with the importer's gives (-100x, +100y, +100z) — a direction only, so no
-    translation and no re-centring.
+    Blender is Z-up metres, glTF is Y-up metres, raw is Z-up centimetres. Composing the exporter's turn
+    with the importer's gives (+100x, +100y, +100z) — a direction only, so no translation and no
+    re-centring. (Before the importer stopped mirroring, this was (-100x, ...); a GLB built then carries
+    its emitter directions with X the wrong way round for today's importer.)
     """
-    return (-100.0 * v[0], 100.0 * v[1], 100.0 * v[2])
+    return (100.0 * v[0], 100.0 * v[1], 100.0 * v[2])
 
 
 def emitter(at, aim, speed, spread=(0.0, 0.0, 0.0), gravity=-4.0, life=(2.2, 0.8),

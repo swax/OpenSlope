@@ -345,7 +345,7 @@ export interface RideModelOpts {
    *  going switch or out of a spun 180 still boosts ahead. Omitted (skis, AI) keeps the nose. */
   symmetricDeck?: () => boolean;
   /** Whether world-driven out-of-play recovery may fire. Omitted preserves retail/AI automatic recovery.
-   *  TestRide limits it to a live scored run; the public `resetToCourse` method remains manual and unconditional. */
+   *  TestRide enables it during controllable riding, including free riding; manual `resetToCourse` stays unconditional. */
   automaticRespawnAvailable?: () => boolean;
   /** This rider's cruise-drive factor — its speed statistic ([Trailmap: 360], `riderDrive`). Omitted = the
    *  mid-band `RIDER_DRIVE` the player rides at. */
@@ -1629,9 +1629,8 @@ export function createRideModel(o: RideModelOpts) {
         acceptedGround: onGround,
       };
 
-    // Out of bounds: standing on a Reset (Surf_0) surface, fell below the floor, or wedged on the level. During
-    // a scored run these take the shared carry-back. Free riding deliberately leaves the rider where physics
-    // puts them until the manual reset button is used.
+    // Out of bounds: standing on a Reset (Surf_0) surface, fell below the floor, or wedged on the level.
+    // Controllable free riding and scored runs both use the shared carry-back.
     if (((onGround && p.surf === 0) || st.pos.y < o.oobFloorY || wedge > WEDGE_FIRE) && automaticResetToCourse())
       return;
 

@@ -286,11 +286,17 @@ export function createBoardGrab() {
     spin.set(0, 0, 0);
   }
 
+  /** Move tracking history with a recalibrated rig, without measuring that correction as a throw. */
+  function rebase(offset: THREE.Vector3): void {
+    if (hand) lastPosition.add(offset);
+  }
+
   return {
     grab,
     follow,
     release,
     clear,
+    rebase,
     /** Which hand has it, or null. */
     get hand() {
       return hand;

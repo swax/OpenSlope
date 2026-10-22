@@ -18,8 +18,12 @@ std::string riding_sprite(const std::filesystem::path& root, const char* slot) {
     if (!profile.value("Enabled", true) || !profile.contains(slot))
         return {};
     const auto name = profile.at(slot).get<std::string>();
-    if (!valid_map_name(name))
+    const std::filesystem::path relative(name);
+    if (name.empty() || name.find('\\') != std::string::npos || relative.is_absolute() || relative.has_root_name())
         throw std::runtime_error("Unsafe riding sprite filename");
+    for (const auto& part : relative)
+        if (!valid_map_name(part.string()))
+            throw std::runtime_error("Unsafe riding sprite filename");
     return name;
 }
 

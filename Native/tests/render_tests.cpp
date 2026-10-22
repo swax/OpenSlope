@@ -126,6 +126,55 @@ std::vector<SprayVertex> spray_sheet(double z, float alpha = .5f) {
     }
     return result;
 }
+
+void terrain_range_tests(VulkanContext& context, const std::filesystem::path& root) {
+    std::vector<Patch> patches;
+    for (unsigned i = 0; i < 6; ++i) {
+        Patch p;
+        for (unsigned u = 0; u < 4; ++u)
+            for (unsigned v = 0; v < 4; ++v)
+                p.points[u * 4 + v] = {u * 200. / 3 - 100, v * 200. / 3 - 100, i == 5 ? -700. : -100.};
+        patches.push_back(p);
+    }
+    auto mesh = Terrain(std::move(patches)).mesh(2);
+    for (auto& v : mesh.vertices) {
+        v.r = 1;
+        v.g = v.b = 0;
+    }
+    for (const auto samples : {1u, 4u})
+        for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB}) {
+            Target target{context};
+            target.create(format);
+            VulkanRenderer renderer(context);
+            renderer.upload(mesh);
+            renderer.targets(std::span(&target.image, 1), format, 128, 128, samples);
+            const auto camera = [](Vec3 eye) { return projection(-1, 1, -1, 1) * view(eye, {0, 0, -1}); };
+            pixel(capture(renderer, root / "range-near.ppm", camera({})), .5, .5, {255, 0, 0});
+            ++checks;
+            if (renderer.stats().visible_terrain != 5 || !renderer.stats().terrain_compacted ||
+                renderer.stats().terrain_indices * 6 != renderer.stats().terrain_total_indices * 5)
+                throw std::runtime_error("Dense submission reintroduced terrain beyond 600 metres");
+            renderer.cull_terrain(false);
+            const auto baseline = capture(renderer, root / "range-no-frustum.ppm", camera({}));
+            ++checks;
+            if (renderer.stats().visible_terrain != 5)
+                throw std::runtime_error("Disabling frustum culling bypassed the distance gate");
+            renderer.cull_terrain(true);
+            ++checks;
+            if (capture(renderer, root / "range-frustum.ppm", camera({})) != baseline)
+                throw std::runtime_error("Frustum selection changed in-range pixels");
+            const Vec3 eye{0, 0, -250};
+            pixel(capture(renderer, root / "range-fog.ppm", camera(eye), {}, {}, {}, eye), .5, .5, {136, 14, 23});
+            ++checks;
+            if (renderer.stats().visible_terrain != 1)
+                throw std::runtime_error("Moving the eye did not refresh distance visibility");
+            const Vec3 empty{0, 0, 1000};
+            capture(renderer, root / "range-empty.ppm", camera(empty), {}, {}, {}, empty);
+            ++checks;
+            if (renderer.stats().terrain_indices || renderer.stats().terrain_draws)
+                throw std::runtime_error("Out-of-range terrain retained stale indices");
+        }
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -135,6 +184,7 @@ int main(int argc, char** argv) {
         const auto root = std::filesystem::path(argv[1]);
         VulkanContext context;
         context.create(false);
+        terrain_range_tests(context, root);
         for (const auto samples : {1u, 4u})
             for (const auto name : {"handedness",
                                     "orientation",

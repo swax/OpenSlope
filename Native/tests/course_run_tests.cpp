@@ -51,6 +51,61 @@ void step(CourseRun& r, Vec3 p, double dt = 1. / 60, std::uint64_t serial = 1) {
     r.begin_tick(dt, true);
     r.end_tick(p, serial);
 }
+
+void first_mount(const std::filesystem::path& root) {
+    Json points = Json::array();
+    for (unsigned u = 0; u < 4; ++u)
+        for (unsigned v = 0; v < 4; ++v)
+            points.push_back({(u / 3. - .5) * 10000, (v / 3. - .5) * 10000, 0});
+    std::ofstream(root / "Patches.json") << Json{
+        {"Patches", Json::array({{{"PatchName", "First mount floor"},
+                                  {"Points", points},
+                                  {"SurfaceType", 1},
+                                  {"TexturePath", ""},
+                                  {"LightmapID", -1},
+                                  {"TrickOnlyPatch", false},
+                                  {"UVPoints", {{0, 0}, {0, 1}, {1, 0}, {1, 1}}},
+                                  {"LightMapPoint", {0, 0, 0, 0}}}})}};
+    for (const auto mode : {RunMode::Race, RunMode::Showoff}) {
+        Player player(Terrain::load(root));
+        player.configure_run(mode);
+        player.start_on_foot();
+        const auto clock = player.course_run().status().clock;
+        for (unsigned i = 0; i < 60; ++i)
+            player.tick({});
+        check(player.course_run().status().phase == RunPhase::Ready && !player.scoring().status().active,
+              "Waiting on foot keeps both events ready without starting scoring");
+        near(player.course_run().status().clock, clock, "Waiting on foot does not consume the event clock");
+        const auto mount = [&] {
+            RideInput trigger;
+            trigger.equipment.tracked = trigger.equipment.relative = true;
+            trigger.equipment.rays[1] = {
+                player.render_board_position() - player.rider().position + Vec3{0, 1, 0}, {0, -1, 0}, true};
+            trigger.equipment.trigger[1] = true;
+            player.tick(trigger);
+            check(!player.on_foot(), "First tracked trigger mounts the nearby board");
+            const auto position = player.rider().position;
+            player.tick(trigger);
+            check(!player.on_foot() && player.course_run().status().phase == RunPhase::Running,
+                  "Both events run on the first eligible mounted tick without a countdown");
+            check(length(player.rider().velocity) > 1e-6, "First riding tick accelerates the mounted board");
+            check(player.course_run().status().mode == mode && player.scoring().status().active,
+                  "Immediate motion retains the selected event and active scoring");
+            player.tick(trigger);
+            check(length(player.rider().position - position) > 1e-6,
+                  "First mount starts board motion without needing a dismount and remount");
+        };
+        mount();
+        near(player.course_run().status().clock, mode == RunMode::Showoff ? clock - 2. / 60 : 2. / 60,
+             "The event clock counts both riding ticks without a start delay");
+        const auto previous_board = player.board_design();
+        player.restart_run();
+        check(player.board_design() != previous_board, "race/showoff restart selects a fresh board design");
+        check(player.on_foot() && player.course_run().status().phase == RunPhase::Ready,
+              "Restart still waits for the next mount");
+        mount();
+    }
+}
 } // namespace
 
 int main() {
@@ -61,6 +116,13 @@ int main() {
         near(projected->distance_to_finish, 30, "stored DTF subtraction");
         near(steep.finish()->first.z, 80, "finish uses DTF station, not path tail");
         near(steep.finish()->first.y, -80, "finish interpolates slope height");
+        auto rounded = flat();
+        rounded.race[0].distance_to_finish = 100.000006;
+        const auto endpoint = run(rounded).finish();
+        check(endpoint.has_value(), "Float32 route rounding cannot remove a finish at the final vertex");
+        near(endpoint->first.z, 100, "Rounded finish is clamped to the authored endpoint");
+        rounded.race[0].distance_to_finish = 100.01;
+        check(!run(rounded).finish(), "A finish beyond float precision tolerance is not invented");
         auto stacked = flat();
         auto upper = stacked.race[0];
         for (auto& point : upper.points)
@@ -69,6 +131,7 @@ int main() {
         check(run(stacked).locate({0, 99, 40})->route == 1, "3D route choice separates stacked runs");
         RunSettings intro;
         intro.mode = RunMode::Race;
+        intro.countdown_seconds = 3;
         CourseRun countdown(flat(), flat(), intro);
         for (unsigned i = 0; i < 100; ++i) {
             check(countdown.begin_tick(1. / 60, false), "on-foot ready may walk");
@@ -240,6 +303,7 @@ int main() {
         const auto dataset = CourseRun::load(root, RunMode::Showoff);
         near(dataset.locate({20, 0, 25})->point.x, 20, "showoff uses its SOP dataset");
         near(dataset.finish()->first.x, 0, "AIP retains finish authority when SOP differs");
+        first_mount(root);
         std::ofstream(root / "Slopesmith.json")
             << Json{{"schema", 1}, {"kind", "slopesmith-export"}, {"laps", 3}, {"showoffSeconds", 180}};
         const auto settings = RunSettings::load(root, RunMode::Showoff);

@@ -329,6 +329,7 @@ try {
   await editorContext.addCookies([{ name: 'slopesmith_session', value: admin.split('=')[1], url: origin }]);
   const editor = await page(editorContext);
   await editor.goto(`${origin}editor/PRIVATE_PEAK?project=${privateMap.id}`);
+  await editor.locator('#load-status').waitFor({ state: 'hidden', timeout: 90_000 });
   await until(
     async () => (await data('/api/public/activity')).courses[privateMap.id] === 1,
     'an open editor map counts without Test or Play',

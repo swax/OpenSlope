@@ -56,6 +56,9 @@ export type DialogDeps = {
   canManageMountain: () => boolean; // owner or moderator/admin: rename, delete, permissions
   listProjects: () => Promise<ClientProject[]>;
   openProject: (id: string) => Promise<EditDoc>;
+  /** Browser mountains from a server editor, or accessible server mountains from a browser editor. */
+  listOtherProjects: () => Promise<ClientProject[]>;
+  openOtherProject: (project: ClientProject) => Promise<void>;
   exportMountainBundle: () => Promise<ProjectBundle>;
   importMountainBundle: (bundle: ProjectBundle, name: string) => Promise<{ document: EditDoc; absent: string[] }>;
   duplicateMountainProject: (name: string) => Promise<{ document: EditDoc; absent: string[] }>;
@@ -221,6 +224,8 @@ export function createDialogs(deps: DialogDeps) {
     canManageMountain,
     listProjects,
     openProject,
+    listOtherProjects,
+    openOtherProject,
     exportMountainBundle,
     importMountainBundle,
     duplicateMountainProject,
@@ -636,29 +641,46 @@ export function createDialogs(deps: DialogDeps) {
     }
   }
 
-  /** Choose an existing workspace project. Import remains separate because it creates a new durable project. */
+  /** Choose a saved mountain in either workspace; changing storage also changes the editor's workspace. */
   function openProjectDialog(required = false) {
     void (async () => {
       try {
-        const projects = await listProjects();
+        const local = isLocalWorkspace();
+        const [workspace, other] = await Promise.all([listProjects(), listOtherProjects()]);
+        const projects = [
+          ...workspace.map(project => ({ project, local, other: false })),
+          ...other.map(project => ({ project, local: !local, other: true })),
+        ];
         if (!projects.length) {
-          toast('No workspace mountains yet.', 'info');
+          toast('No saved mountains yet.', 'info');
           return;
         }
         const { host, close } = modal({ sticky: required });
         const g = new GUI({ container: host, title: 'Open mountain' });
+        const state = { project: '0' };
+        const locationNote = banner(host, '', 'info');
+        const showLocation = () => {
+          locationNote.textContent = projects[Number(state.project)].local
+            ? 'Local mountains — saved in this browser on this device.'
+            : `Server mountains — saved on ${location.host}.`;
+        };
         const options: Record<string, string> = {};
-        for (const project of projects) {
+        for (const [index, { project, local }] of projects.entries()) {
           const date = new Date(project.updatedAt).toLocaleString();
-          options[`${project.name} — ${date}`] = project.id;
+          options[`${project.name} — ${local ? 'Local' : 'Server'} — ${date}`] = String(index);
         }
-        const state = { project: projects[0].id };
-        g.add(state, 'project', options).name('mountain');
+        showLocation();
+        g.add(state, 'project', options).name('mountain').onChange(showLocation);
         g.add(
           {
             open: async () => {
               try {
-                const document = await openProject(state.project);
+                const selected = projects[Number(state.project)];
+                if (selected.other) {
+                  await openOtherProject(selected.project);
+                  return;
+                }
+                const document = await openProject(selected.project.id);
                 close();
                 await adoptDocument(document);
                 toast(`Opened ${document.name}.`, 'ok');

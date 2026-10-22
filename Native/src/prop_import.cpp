@@ -103,7 +103,8 @@ std::size_t unpack(Bytes data, std::size_t start, unsigned kind, unsigned count)
     throw std::runtime_error("Unsupported or invalid mesh array transfer");
 }
 
-void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const ImportCancel& cancel) {
+std::size_t mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const ImportCancel& cancel,
+                 bool original = false, bool streamed = false) {
     struct Point {
         Vec3 p, n;
         std::array<double, 2> uv;
@@ -112,19 +113,33 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
     std::vector<Point> points;
     std::vector<std::array<std::size_t, 3>> triangles;
     std::size_t cursor = 0;
-    while (cursor + 64 <= data.data.size() && data.le(cursor + 31, 1) == 0x6c) {
+    while (cursor + 64 <= data.data.size()) {
+        if (data.le(cursor + 31, 1) != 0x6c) {
+            if (!original && !streamed)
+                break;
+            cursor += 16;
+            continue;
+        }
         check_cancel(cancel);
         const auto strips = data.le(cursor + 48), vertices = data.le(cursor + 56);
+        // Streamed draws also carry non-geometry transfer payloads. A geometry
+        // header declares both small array counts before the bounded VIF walk.
+        if (streamed && (!strips || strips > 256 || !vertices || vertices > 256)) {
+            cursor += 16;
+            continue;
+        }
         if (!strips || strips > 256 || !vertices || vertices > 256)
             throw std::runtime_error("Invalid mesh chunk counts");
         const auto strip = unpack(data, cursor + 64, 0x66, strips);
         data.range(strip, std::size_t(strips) * 2);
         const auto uv = unpack(data, align16(strip + std::size_t(strips) * 2), 0x65, vertices);
         data.range(uv, std::size_t(vertices) * 4);
-        const auto normals = unpack(data, align16(uv + std::size_t(vertices) * 4), 0x69, vertices);
-        data.range(normals, std::size_t(vertices) * 6);
-        const auto positions = unpack(data, align16(normals + std::size_t(vertices) * 6), 0x69, vertices);
-        data.range(positions, std::size_t(vertices) * 6);
+        const auto first = unpack(data, align16(uv + std::size_t(vertices) * 4), 0x69, vertices);
+        data.range(first, std::size_t(vertices) * 6);
+        const auto second = unpack(data, align16(first + std::size_t(vertices) * 6), 0x69, vertices);
+        data.range(second, std::size_t(vertices) * 6);
+        // Streamed worlds transfer positions before normals; Tricky does the reverse.
+        const auto positions = streamed ? first : second, normals = streamed ? second : first;
         const auto base = points.size();
         for (std::size_t v = 0; v < vertices; ++v)
             points.push_back({{data.signed16(positions + v * 6) * extent.x / 32768,
@@ -135,10 +150,10 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
                               {data.signed16(uv + v * 4) / 4096., 1 - data.signed16(uv + v * 4 + 2) / 4096.}});
         std::size_t begin = 0;
         for (std::size_t s = 0; s < strips; ++s) {
-            const auto encoded = data.le(strip + s * 2, 1);
-            if (data.le(strip + s * 2 + 1, 1) || encoded % 3 || encoded / 3 < 3 || begin + encoded / 3 > vertices)
+            const auto encoded = data.le(strip + s * 2, 2);
+            const auto count = streamed ? encoded : encoded / 3;
+            if ((!streamed && encoded % 3) || count < 3 || begin + count > vertices)
                 throw std::runtime_error("Invalid triangle strip");
-            const auto count = encoded / 3;
             for (std::size_t t = 2; t < count; ++t) {
                 const auto a = base + begin + t - 2, b = base + begin + t - 1, c = base + begin + t;
                 triangles.push_back(t % 2 ? std::array<std::size_t, 3>{b, a, c} : std::array<std::size_t, 3>{a, b, c});
@@ -147,7 +162,7 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
         }
         if (begin != vertices)
             throw std::runtime_error("Strip table disagrees with vertex count");
-        cursor = align16(positions + std::size_t(vertices) * 6) + 16;
+        cursor = align16(second + std::size_t(vertices) * 6) + (streamed ? 0 : 16);
         if (points.size() > 4000000 || triangles.size() > 8000000)
             throw std::runtime_error("Imported object mesh exceeds its limits");
     }
@@ -169,6 +184,7 @@ void mesh(Bytes data, Vec3 extent, const std::filesystem::path& path, const Impo
     }
     if (!file)
         throw std::runtime_error("Cannot write portable mesh");
+    return points.size();
 }
 
 Json animation(Bytes b, std::size_t p) {
@@ -205,7 +221,236 @@ Json animation(Bytes b, std::size_t p) {
     }
     return a;
 }
+
+Json ssx_animation(Bytes b, std::size_t base) {
+    // Independently measured SSX object-relative animation: rest matrix,
+    // packed channel mask/count and 8-byte channel rows with padded 32-byte keys.
+    // Its curves use frames and radians; the portable curves use seconds/degrees.
+    b.range(base, 80);
+    const auto packed = b.le(base + 64), mask = packed & 65535, count = packed >> 16;
+    if (mask > 63 || count > 6 || std::popcount(mask) != int(count))
+        throw std::runtime_error("Invalid SSX model animation channels");
+    Json a = {{"U1", b.number(base + 48)},
+              {"U2", b.number(base + 52)},
+              {"U3", b.number(base + 56)},
+              {"U4", 0},
+              {"U5", 0},
+              {"U6", 0},
+              {"AnimationAction", mask},
+              {"AnimationEntries", Json::array()}};
+    const auto table = base + b.le(base + 68);
+    b.range(table, std::size_t(count) * 8);
+    unsigned entry = 0;
+    for (unsigned channel = 0; channel < 6; ++channel) {
+        if (!(mask & (1u << channel)))
+            continue;
+        const auto row = table + entry++ * 8;
+        const auto n = b.le(row);
+        const auto data = base + b.le(row + 4);
+        if (n > 100000)
+            throw std::runtime_error("Invalid SSX model animation segment count");
+        b.range(data, std::size_t(n) * 32);
+        Json curves = Json::array();
+        for (unsigned s = 0; s < n; ++s) {
+            Json curve;
+            for (unsigned v = 0; v < 6; ++v) {
+                double value = b.number(data + s * 32 + v * 4);
+                if (v < 4) {
+                    value *= std::pow(30., 3 - v);
+                    if (channel >= 3)
+                        value *= 180 / pi;
+                } else
+                    value /= 30;
+                curve["Value" + std::to_string(v + 1)] = value;
+            }
+            if (curve["Value5"].get<double>() > curve["Value6"].get<double>())
+                throw std::runtime_error("Invalid SSX model animation window");
+            curves.push_back(std::move(curve));
+        }
+        a["AnimationEntries"].push_back({{"AnimationMaths", curves}});
+    }
+    return a;
+}
 } // namespace
+
+Json import_pose(Bytes data, std::size_t offset, double scale) {
+    auto m = matrix(data, offset);
+    for (unsigned c = 0; c < 3; ++c)
+        for (unsigned r = 0; r < 3; ++r)
+            m[c * 4 + r] *= scale;
+    return pose(m);
+}
+
+std::size_t write_ssx3_mesh(Bytes data, double x, double y, double z, const std::filesystem::path& path,
+                            const ImportCancel& cancel) {
+    return mesh(data, {x ? x : 1, y ? y : 1, z ? z : 1}, path, cancel, false, true);
+}
+
+bool write_ssx_props(std::span<const std::uint8_t> index, std::span<const std::uint8_t> source,
+                     std::span<const std::uint8_t> placements, const std::vector<Image>& textures,
+                     const std::filesystem::path& output, const ImportCancel& cancel) {
+    // [Trailmap: 500-instance, 500-members] Older render models have a
+    // model-relative object directory and embed each object's VIF transfers.
+    Bytes wdx{index}, wdr{source}, placed{placements};
+    const auto count = wdx.le(48), material_count = wdx.le(52), books = wdx.le(56);
+    const auto grid = std::size_t(wdx.le(40)) * wdx.le(44);
+    const auto book_start = 72 + std::size_t(count) * 8 + grid * 8;
+    const auto materials_start = book_start + std::size_t(books) * 20;
+    wdx.range(materials_start, std::size_t(material_count) * 12);
+    Json materials = Json::array(), models = Json::array(), instances = Json::array();
+    for (unsigned i = 0; i < material_count; ++i) {
+        const auto p = materials_start + i * 12;
+        const auto appearance = wdx.le(p);
+        const auto texture = wdx.signed16(p + 4), book = wdx.signed16(p + 6);
+        if (texture < -1 || (texture >= 0 && std::size_t(texture) >= textures.size()) || book < -1 ||
+            (book >= 0 && unsigned(book) >= books))
+            throw std::runtime_error("SSX material references missing art");
+        Json frames = Json::array();
+        std::vector<std::size_t> pages;
+        if (texture >= 0)
+            pages.push_back(std::size_t(texture));
+        if (book >= 0) {
+            const auto at = book_start + std::size_t(book) * 20;
+            const auto n = wdx.le(at);
+            if (n > 8)
+                throw std::runtime_error("Invalid SSX texture flipbook length");
+            for (unsigned j = 0; j < n; ++j) {
+                const auto id = wdx.le(at + 4 + j * 2, 2);
+                if (id >= textures.size())
+                    throw std::runtime_error("SSX flipbook references missing art");
+                frames.push_back(textures[id].name + ".png");
+                pages.push_back(id);
+            }
+        }
+        // Measured original SSX appearance bit 0 enables texture alpha. Its
+        // low-byte flags are not the portable/native Tricky appearance word.
+        // Classify only alpha-enabled pages; retain opaque black RGB as art.
+        std::string alpha = "opaque";
+        if (appearance & 1)
+            for (const auto page : pages) {
+                const auto& rgba = textures[page].rgba;
+                const auto total = rgba.size() / 4;
+                std::size_t clear = 0, solid = 0;
+                for (std::size_t pixel = 3; pixel < rgba.size(); pixel += 4) {
+                    clear += rgba[pixel] < 8;
+                    solid += rgba[pixel] >= 250;
+                }
+                if (total && clear * 1000 >= total * 3 && solid) {
+                    alpha = "cutout";
+                    break;
+                }
+                if ((total - clear - solid) * 5 >= total && total)
+                    alpha = "blend";
+            }
+        materials.push_back(
+            {{"MaterialName", "Material " + std::to_string(i)},
+             {"TexturePath", texture < 0 ? Json(nullptr) : Json(textures[std::size_t(texture)].name + ".png")},
+             {"TextureFlipbook", frames},
+             {"SSXRenderFlags", appearance},
+             {"AlphaMode", alpha},
+             {"UnknownInt18", (appearance & 1) ? (1u << 18) : 0u}});
+    }
+    std::filesystem::create_directory(output / "Meshes");
+    std::size_t mesh_id = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        check_cancel(cancel);
+        const auto start = wdx.le(72 + i * 8), size = wdx.le(76 + i * 8);
+        wdr.range(start, size);
+        Bytes model{source.subspan(start, size)};
+        model.range(0, 36);
+        const auto objects = model.le(0);
+        if (!objects || objects > 256 || model.le(8) != size)
+            throw std::runtime_error("Invalid SSX render model");
+        model.range(36, std::size_t(objects) * 4);
+        const Vec3 extent{model.number(16), model.number(20), model.number(24)};
+        Json rows = Json::array();
+        for (unsigned j = 0; j < objects; ++j) {
+            const auto at = model.le(36 + j * 4);
+            model.range(at, 80);
+            const auto material = model.le(at + 36), length = model.le(at + 44);
+            if (material >= material_count)
+                throw std::runtime_error("SSX object references a missing material");
+            const auto transfers = (std::size_t(at) + 64 + 31) & ~std::size_t(31);
+            model.range(transfers, length);
+            const auto name = std::to_string(mesh_id++) + ".obj";
+            try {
+                mesh(Bytes{model.data.subspan(transfers, length)}, extent, output / "Meshes" / name, cancel, true);
+            } catch (const std::exception& error) {
+                throw std::runtime_error("SSX model " + std::to_string(i) + " object " + std::to_string(j) + ": " +
+                                         error.what());
+            }
+            const auto v = [&](std::size_t p) {
+                return Json::array({model.number(p), model.number(p + 4), model.number(p + 8)});
+            };
+            Json object = {{"ObjectName", "Object " + std::to_string(j)},
+                           {"ParentID", -1},
+                           {"IncludeMatrix", false},
+                           {"IncludeAnimation", false},
+                           {"Flags", model.le(at + 32)},
+                           {"CollisionBounds", {{"Min", v(at)}, {"Max", v(at + 12)}}},
+                           {"MeshData", Json::array({{{"MeshPath", name}, {"MaterialID", material}}})}};
+            const auto animated = model.le(at + 28);
+            if (animated && animated != 0xdeadbeef) {
+                const auto base = std::size_t(at) + animated;
+                const auto rest = pose(matrix(model, base));
+                object["Position"] = rest.at("Location");
+                object["Rotation"] = rest.at("Rotation");
+                object["Scale"] = rest.at("Scale");
+                object["TransformMatrix"] = rest.at("TransformMatrix");
+                object["IncludeMatrix"] = object["IncludeAnimation"] = true;
+                object["Animation"] = ssx_animation(model, base);
+            }
+            rows.push_back(std::move(object));
+        }
+        models.push_back(
+            {{"ModelName", "Model " + std::to_string(i)}, {"AnimTime", model.number(12)}, {"ModelObjects", rows}});
+    }
+    if (placements.size() % 272 || placements.size() / 272 > 100000)
+        throw std::runtime_error("Invalid SSX placement array");
+    bool repaired_lighting = false;
+    for (std::size_t p = 0; p < placements.size(); p += 272) {
+        check_cancel(cancel);
+        auto row = pose(matrix(placed, p));
+        const auto model = placed.le(p + 204), flags = placed.le(p + 234, 2);
+        if (model >= count)
+            throw std::runtime_error("SSX placement references a missing model");
+        row["InstanceName"] = "Instance " + std::to_string(p / 272);
+        row["ModelID"] = model;
+        row["Visable"] = bool(flags & 1);
+        row["PlayerCollision"] = bool(flags & 32);
+        row["PlayerBounce"] = bool(flags & 128);
+        row["PlayerBounceAmmount"] = placed.number(p + 248);
+        row["SurfaceType"] = placed.signed16(p + 254);
+        const auto mode = placed.signed16(p + 240);
+        if (mode < -1 || mode > 3)
+            throw std::runtime_error("Invalid SSX placement collision mode");
+        row["CollsionMode"] = std::max(0, mode);
+        row["PhysicsIndex"] = placed.signed16(p + 244);
+        row["EffectSlotIndex"] = placed.signed16(p + 252);
+        row["CollisionProxyIndex"] = placed.signed16(p + 242);
+        row["CollsionModelPaths"] = nullptr;
+        bool valid_lighting = true;
+        for (std::size_t at = p + 64; at < p + 192; at += 4)
+            valid_lighting = valid_lighting && std::isfinite(std::bit_cast<float>(placed.le(at)));
+        repaired_lighting = repaired_lighting || !valid_lighting;
+        for (unsigned key = 0; key < 4; ++key) {
+            Json direction = Json::array(), colour = Json::array();
+            for (unsigned axis = 0; axis < 4; ++axis) {
+                direction.push_back(valid_lighting ? placed.number(p + 64 + axis * 16 + key * 4) : 0.f);
+                colour.push_back(valid_lighting ? placed.number(p + 128 + key * 16 + axis * 4)
+                                 : key == 3     ? 128.f
+                                                : 0.f);
+            }
+            row[key < 3 ? "LightVector" + std::to_string(key + 1) : "AmbentLightVector"] = direction;
+            row[key < 3 ? "LightColour" + std::to_string(key + 1) : "AmbentLightColour"] = colour;
+        }
+        instances.push_back(row);
+    }
+    write_json(output / "Models.json", {{"Models", models}});
+    write_json(output / "Materials.json", {{"Materials", materials}});
+    write_json(output / "Instances.json", {{"Instances", instances}});
+    return repaired_lighting;
+}
 
 void write_props(const std::vector<std::uint8_t>& pbd, const std::vector<std::uint8_t>& linker,
                  const std::vector<Image>& textures, const std::vector<std::uint8_t>* behavior,

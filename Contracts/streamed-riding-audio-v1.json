@@ -1,0 +1,8 @@
+{
+  "schema": "openslope-streamed-riding-audio/v1",
+  "description": "First-party playback conditioning for adapted common riding banks; original media remains unchanged.",
+  "rms": { "glide": 0.12, "carve": 0.16, "land": 0.20, "jump": 0.18, "wind": 0.10, "boost": 0.16 },
+  "peak": { "continuous": 0.8, "transient": 0.9 },
+  "loopEdgeSeconds": 0.005,
+  "pitch": { "base": 0.9, "bendSpan": 0.12, "railMin": 0.9, "railMax": 1.05 }
+}

@@ -533,6 +533,12 @@ try {
   await privateMaps.getByRole('article', { name: 'PRIVATE RUN', exact: true }).click({ position: { x: 12, y: 12 } });
   await editor.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(new URL(editor.url()).pathname, '/play/PRIVATE_RUN', 'the private tile defaults to Play');
+  const privateEditorTab = editor
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Editor', exact: true });
+  const privateEditorTarget = new URL((await privateEditorTab.getAttribute('href'))!);
+  assert.equal(privateEditorTarget.pathname, '/editor/PRIVATE_RUN');
+  assert.equal(privateEditorTarget.searchParams.get('project'), privateMap.project.id);
   await editor.getByRole('button', { name: 'Play', exact: true }).click();
   await editor.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
   await editor.goto(`${origin}/maps`);
@@ -603,6 +609,27 @@ try {
   await linked.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
   assert.equal(new URL(linked.url()).pathname, '/isos', 'the ISO manager has its own route');
   assert.equal(await linked.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
+  const linkedEditorTab = linked
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Editor', exact: true });
+  assert(await linkedEditorTab.isVisible(), 'ISO management always offers the Editor tab');
+  assert.equal(new URL((await linkedEditorTab.getAttribute('href'))!).pathname, '/editor');
+  await linked.addInitScript(async () => {
+    if (!location.pathname.startsWith('/play/')) return;
+    const moduleUrl = '/src/app/viewport/viewport.ts';
+    const { Viewport } = await import(/* @vite-ignore */ moduleUrl);
+    const showStart = Viewport.prototype.showRideSpawn;
+    Viewport.prototype.showRideSpawn = function (point: any) {
+      (window as any).startTestViewport = this;
+      (window as any).selectedStart = point ? [...point] : null;
+      return showStart.call(this, point);
+    };
+    const startRide = (Viewport.prototype as any).startRide;
+    (Viewport.prototype as any).startRide = function (...args: any[]) {
+      (window as any).launchedStart = [...args[1]];
+      return startRide.apply(this, args);
+    };
+  });
   await linked.goto(publicLink);
   await linked.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(
@@ -620,6 +647,18 @@ try {
     .getByRole('navigation', { name: 'Primary' })
     .getByRole('link', { name: 'PUBLIC RUN', exact: true });
   assert.equal(await mapTab.getAttribute('aria-current'), 'page', 'the open map is the selected tab');
+  assert.deepEqual(
+    await linked.getByRole('navigation', { name: 'Primary' }).getByRole('link').allTextContents(),
+    ['ISO', 'Maps', 'PUBLIC RUN', 'Editor', 'Help'],
+    'Editor follows the current map in the header',
+  );
+  assert.equal(await linked.locator('.public-brand').getAttribute('href'), '/', 'the brand links to the root');
+  assert.equal(new URL((await linkedEditorTab.getAttribute('href'))!).pathname, '/editor/PUBLIC_RUN');
+  assert.equal(
+    await linkedEditorTab.getAttribute('aria-current'),
+    null,
+    'the Editor tab leaves the current play tab selected',
+  );
   assert.equal(await linked.getByRole('link', { name: 'Maps', exact: true }).getAttribute('aria-current'), null);
   assert(
     await linked.getByRole('link', { name: 'ISO', exact: true }).isVisible(),
@@ -646,24 +685,9 @@ try {
   const exitPlay = linked.getByRole('button', { name: 'Exit play', exact: true });
   assert(await exitPlay.isHidden(), 'Exit stays hidden while previewing the map');
   const mouseControls = linked.getByRole('region', { name: 'Mouse controls', exact: true });
-  assert(await mouseControls.isHidden(), 'the movement legend starts hidden');
-  await linked.evaluate(async () => {
-    const moduleUrl = '/src/app/viewport/viewport.ts';
-    const { Viewport } = await import(/* @vite-ignore */ moduleUrl);
-    const showStart = Viewport.prototype.showRideSpawn;
-    Viewport.prototype.showRideSpawn = function (point: any) {
-      (window as any).startTestViewport = this;
-      (window as any).selectedStart = point ? [...point] : null;
-      return showStart.call(this, point);
-    };
-    const startRide = (Viewport.prototype as any).startRide;
-    (Viewport.prototype as any).startRide = function (...args: any[]) {
-      (window as any).launchedStart = [...args[1]];
-      return startRide.apply(this, args);
-    };
-  });
-  await choices.getByRole('button', { name: 'View map', exact: true }).click();
-  await mouseControls.waitFor();
+  assert(await mouseControls.isVisible(), 'the movement legend is visible by default');
+  assert.equal(await choices.getByRole('button', { name: 'View map', exact: true }).count(), 0);
+  assert.equal(await choices.getByRole('button').count(), 3, 'launch choices are Play, Play in VR and the map editor');
   await linked.waitForFunction(() => (window as any).startTestViewport.sky.loaded);
   const skyVisible = () =>
     linked.evaluate(
@@ -680,10 +704,6 @@ try {
   assert.match(
     await mouseControls.innerText(),
     /Right drag.*Orbit.*Middle drag.*Pan.*Scroll.*Zoom.*Hold Alt \+ WASD.*Move/s,
-  );
-  assert.equal(
-    await choices.getByRole('button', { name: 'View map', exact: true }).getAttribute('aria-expanded'),
-    'true',
   );
   const pickStart = await linked.evaluate(() => {
     const viewport = (window as any).startTestViewport;
@@ -865,6 +885,8 @@ try {
   );
   assert(await linked.getByRole('button', { name: usersButtonName }).isVisible());
   assert(await mapTab.isVisible(), 'the selected map tab stays visible in the mobile header');
+  assert((await mapTab.boundingBox())!.width >= 24, 'the current map keeps a usable target beside the Editor tab');
+  assert(await linkedEditorTab.isVisible(), 'the Editor tab stays visible during mobile rides');
   await checkExitCorner();
   assert.equal(await linked.locator('[data-fs]').count(), 0, 'mobile public rides also omit fullscreen');
   assert.equal(await clockTopInset(), 8, 'mobile public rides keep the score below the header');
@@ -892,7 +914,7 @@ try {
   await choices.waitFor();
   assert.equal(await skyVisible(), false, 'leaving a ride hides the sky again');
   assert(await resetStart.isVisible(), 'a custom start can still be reset after stopping');
-  assert(await mouseControls.isHidden(), 'stopping returns to the launch choices without a stale legend');
+  assert(await mouseControls.isVisible(), 'stopping restores the map movement legend');
   assert(await rideControls.isHidden(), 'stopping clears the ride legend');
   assert(await exitPlay.isHidden(), 'exiting clears the Exit button with the active ride');
   // Simulate the headset session boundary: VR starts on foot, before a board/HUD exists.
@@ -1005,6 +1027,9 @@ try {
   const primaryNav = guest.getByRole('navigation', { name: 'Primary' });
   assert.equal(await primaryNav.getByRole('link', { name: 'Maps', exact: true }).getAttribute('aria-current'), 'page');
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), null);
+  const editorTab = primaryNav.getByRole('link', { name: 'Editor', exact: true });
+  assert(await editorTab.isVisible(), 'the map browser always offers the Editor tab');
+  assert.equal(new URL((await editorTab.getAttribute('href'))!, origin).pathname, '/editor');
   await guest.getByRole('button', { name: /PUBLIC RUN/ }).waitFor();
   const publicCard = guest.getByRole('article', { name: 'PUBLIC RUN', exact: true });
   assert(await publicCard.getByRole('button', { name: 'Play PUBLIC RUN', exact: true }).isEnabled());
@@ -1062,6 +1087,7 @@ try {
   );
   assert(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).isVisible());
   assert(await primaryNav.getByRole('link', { name: 'Maps', exact: true }).isVisible());
+  assert(await editorTab.isVisible(), 'the Editor tab fits on narrow phones');
   assert(
     await guest.evaluate(() => document.querySelector('.public-home')!.getBoundingClientRect().right <= innerWidth),
   );
@@ -1453,6 +1479,11 @@ try {
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
   await closeCommunity(guest);
   await guest.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
+  const gameSupport = guest.getByRole('region', { name: 'PS2 game support', exact: true });
+  assert.match(await gameSupport.innerText(), /SSX Tricky\s+Full support/);
+  assert.match(await gameSupport.innerText(), /SSX\s+Partial support/);
+  assert.match(await gameSupport.innerText(), /SSX 3\s+Preliminary support/);
+  assert.match(await gameSupport.innerText(), /SSX On Tour\s+Preliminary support/);
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
   await guest.setViewportSize({ width: 800, height: 1000 });
   assert.equal(
@@ -1613,11 +1644,22 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
   await guest.getByRole('button', { name: 'Exit play' }).waitFor();
 
-  await guest.goto(`${origin}/isos`);
+  await guest.goto(`${origin}/isos?reference=GARI&source=iso`);
   await closeCommunity(guest);
+  const currentIsoMap = primaryNav.getByRole('link', { name: 'Garibaldi', exact: true });
+  assert(await currentIsoMap.isVisible());
   await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
+  assert(await currentIsoMap.isHidden(), 'unloading the current ISO map removes its header tab immediately');
+  assert.equal(new URL((await editorTab.getAttribute('href'))!, origin).pathname, '/editor');
+  assert.equal(
+    new URL((await editorTab.getAttribute('href'))!, origin).search,
+    '',
+    'the editor stops targeting unloaded terrain',
+  );
+  assert.equal(await guest.evaluate(() => localStorage.getItem('slopesmith.last-play-map.v1')), null);
   await guest.getByRole('link', { name: 'Maps', exact: true }).click();
+  assert(await currentIsoMap.isHidden(), 'the unloaded map stays out of the header after navigation');
   assert.equal(
     await guest
       .locator('.public-local-maps')
@@ -1640,8 +1682,24 @@ try {
     }),
     'reloading extracts fresh files without stale sidecars',
   );
-  await guest.getByRole('button', { name: 'Clear local assets', exact: true }).click();
+  await guest.getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
+  await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  await guest.goto(`${origin}/isos`);
+  await currentIsoMap.waitFor();
+  await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  const clearAllDialog = guest.getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true });
+  await clearAllDialog.waitFor();
+  assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'opening confirmation keeps loaded maps');
+  await clearAllDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'cancelling Clear all keeps loaded maps');
+  assert(await currentIsoMap.isVisible(), 'cancelling Clear all also keeps the current map tab');
+  assert(await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isVisible());
+  await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  await clearAllDialog.getByRole('button', { name: 'Unload all maps', exact: true }).click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
+  assert(await currentIsoMap.isHidden(), 'Clear all removes the current ISO map tab');
+  assert.equal(await guest.locator('.public-iso-map').count(), 0, 'Clear all also forgets the selected disc');
+  assert.equal(await guest.locator('#public-iso').inputValue(), '');
   await guest
     .locator('#public-iso')
     .setInputFiles({ name: 'invalid.iso', mimeType: 'application/octet-stream', buffer: Buffer.from('not a disc') });
@@ -1670,6 +1728,11 @@ try {
     'the ISO route keeps the target map requirements',
   );
   await guest.getByRole('heading', { name: 'Required maps', exact: true }).waitFor();
+  assert.equal(
+    await guest.getByRole('link', { name: '← BORROWED RUN', exact: true }).count(),
+    0,
+    'the ISO page uses the existing header map link',
+  );
   await guest.locator('#public-iso').setInputFiles(fixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load required maps', exact: true }).click();
@@ -1684,7 +1747,7 @@ try {
   assert(await guest.evaluate(() => document.body.scrollWidth <= innerWidth), 'ISO tiles fit mobile screens');
   await guest.screenshot({ path: join(root, 'iso-mobile.png') });
   await guest.setViewportSize({ width: 1440, height: 1000 });
-  await guest.getByRole('link', { name: '← BORROWED RUN', exact: true }).click();
+  await primaryNav.getByRole('link', { name: 'BORROWED RUN', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(
     new URL(guest.url()).pathname,
@@ -1783,7 +1846,11 @@ try {
   );
   await guest.goto(`${origin}/isos`);
   await closeCommunity(guest);
-  await guest.getByRole('button', { name: 'Clear local assets', exact: true }).click();
+  await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  await guest
+    .getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true })
+    .getByRole('button', { name: 'Unload all maps', exact: true })
+    .click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   await guest.locator('#public-iso').setInputFiles(queueFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();
@@ -1801,7 +1868,14 @@ try {
     guest.locator('.public-iso-map').evaluateAll(tiles =>
       tiles.map(tile => {
         const { x, y, width, height } = tile.getBoundingClientRect();
-        return { slot: (tile as HTMLElement).dataset.course, x, y, width, height };
+        // Public pages scroll inside body because the document root stays fixed for the editor viewport.
+        return {
+          slot: (tile as HTMLElement).dataset.course,
+          x: x + scrollX + document.body.scrollLeft,
+          y: y + scrollY + document.body.scrollTop,
+          width,
+          height,
+        };
       }),
     );
   const beforeLoading = await tileGeometry();
@@ -1918,6 +1992,11 @@ try {
     .getByRole('link', { name: 'Snowdream', exact: true });
   await lastMap.waitFor();
   assert.equal(
+    new URL((await editorTab.getAttribute('href'))!).searchParams.get('reference'),
+    'SNOW',
+    'Maps retains the current ISO editor target',
+  );
+  assert.equal(
     await lastMap.getAttribute('aria-current'),
     null,
     'the saved map does not replace the selected Maps tab',
@@ -1926,6 +2005,11 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(new URL(guest.url()).searchParams.get('reference'), 'SNOW', 'the header reopens the last ISO map');
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
+  assert.equal(
+    new URL((await editorTab.getAttribute('href'))!).searchParams.get('reference'),
+    'SNOW',
+    'ISO management retains the current editor target',
+  );
   await joinChat(guest);
   await guest.getByRole('tab', { name: 'Chat', exact: true }).click();
   await guest.getByRole('button', { name: 'Leave chat', exact: true }).click();

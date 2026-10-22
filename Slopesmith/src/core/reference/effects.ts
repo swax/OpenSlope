@@ -46,6 +46,8 @@ export interface ReferenceEffectInstance {
   /** Native LTG membership: 0=common, 1=race list, 2=GemIndex/Showoff object layer. */
   ltgState?: number;
   visible: boolean;
+  /** Imported course utility remains inspectable even before its original script can be translated. */
+  editorHelper?: boolean;
   /** ADL collision-sound event id (`Sounds.CollisonSound`), or -1 when the instance ships none. An event id,
    * not a bank slot — resolve through core/effects/collision-sound.ts [Trailmap: 420-audio-runtime]. */
   collisionSound: number;
@@ -837,9 +839,10 @@ export function referenceSupplementalOutgoingEffectCalls(
   );
 }
 
-/** Native instances exposed in Effects mode: direct slot owners plus cross-instance targets. */
+/** Native instances exposed in Effects mode: direct slot owners, targets and deferred course helpers. */
 export function referenceEffectInstanceIndices(data: ReferenceEffectsData): number[] {
   const indices = new Set(attachedReferenceInstances(data).map(instance => instance.index));
+  for (const instance of data.instances) if (instance.editorHelper) indices.add(instance.index);
   for (const owner of [...data.document.graphs, ...data.document.functions])
     for (const node of owner.nodes) {
       const target = referenceInstanceEffectCall(data, node)?.target;

@@ -27,6 +27,10 @@
 .sp-brand > span {
   white-space: nowrap;
 }
+.sp-brand-link {
+  display: inline-flex;
+  text-decoration: none;
+}
 .sp-group {
   display: inline-flex;
   align-items: center;
@@ -473,7 +477,8 @@
 .sp-save-status[data-state='saved'] {
   color: #78b99a;
 }
-.sp-save-status[data-state='following'] {
+.sp-save-status[data-state='following'],
+.sp-save-status[data-state='idle'] {
   color: #758797;
 }
 .sp-save-status[data-state='saving'] {
@@ -490,7 +495,7 @@
 }
 .sp-save-status[data-state='saving'] svg,
 .sp-save-status[data-state='reconnecting'] svg {
-  animation: sp-save-pulse 0.9s ease-in-out infinite;
+  animation: sp-save-pulse 0.9s ease-in-out 3;
 }
 @keyframes sp-save-pulse {
   0%,

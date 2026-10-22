@@ -316,7 +316,7 @@ export function createReference(deps: ReferenceDeps) {
     if (!map) return '(not in the library listing — reload to refresh)';
     if (map.origin === 'retail') {
       if (map.reasons.includes(UNIDENTIFIED_FOLDER_REASON)) return 'unidentified folder · read as retail';
-      // `snowknife ssx3-import` names its selection of the one SSX 3 mountain with this prefix.
+      if (map.course?.startsWith('SSXOT_')) return `SSX On Tour extract · ${map.course.slice('SSXOT_'.length)}`;
       if (map.course?.startsWith('SSX3_')) return `SSX 3 extract · ${map.course.slice('SSX3_'.length)}`;
       if (map.course) return `SSX Tricky extract · ${map.course}`;
       return map.reasons.length === 1 && map.reasons[0] === RETAIL_EXTRACT_REASON
@@ -338,8 +338,7 @@ export function createReference(deps: ReferenceDeps) {
     tip(
       controller,
       'Where this map folder came from, read from its producer’s Origin.json.',
-      '“SSX Tricky extract” is a course `snowknife import` read off a disc, named by its slot; “SSX 3 extract” is ' +
-        'the sections of the SSX 3 mountain `snowknife ssx3-import` read. “Authored in ' +
+      'An SSX Tricky, SSX 3 or SSX On Tour extract is a course converted locally from a user-supplied disc. “Authored in ' +
         'Slopesmith” is an export, followed by whether its classification found borrowed retail art and in ' +
         'which channels. A folder nothing identifies is read as retail rather than as clean.',
     );
@@ -480,9 +479,13 @@ export function createReference(deps: ReferenceDeps) {
 
   async function initReference({ restore = true }: { restore?: boolean } = {}) {
     let opts: string[] = ['(dev server only)'];
+    let localLevels = new Set<string>();
     try {
-      const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[] }>('/api/levels');
+      const answer = await fetchJson<{ levels?: string[]; maps?: ReferenceMapSummary[]; localLevels?: string[] }>(
+        '/api/levels',
+      );
       mapOrigins = new Map((answer.maps ?? []).map(map => [map.name, map]));
+      localLevels = new Set(answer.localLevels ?? []);
       const levels = answer.levels;
       if (levels && levels.length) opts = ['(none)', ...levels]; // a neutral "nothing loaded" entry to sit on / clear back to
     } catch {
@@ -497,8 +500,14 @@ export function createReference(deps: ReferenceDeps) {
     referenceNote = note(refFolder, '');
     refreshMountainName();
     // Picking a level loads it immediately (no load button); the neutral "(none)" entry clears it.
+    const choices = Object.fromEntries(
+      opts.map(level => [
+        level.startsWith('(') ? level : `${level} — ${localLevels.has(level) ? 'Local ISO' : 'Server'}`,
+        level,
+      ]),
+    );
     const combo = refFolder
-      .add(refState, 'level', opts)
+      .add(refState, 'level', choices)
       .name('mountain')
       .onChange((name: string) => {
         if (name && !name.startsWith('(')) void loadReference();

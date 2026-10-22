@@ -28,6 +28,15 @@ import {
 } from '../audio/runtime';
 import type { RideState } from './physics';
 import { resolveAssetUrl } from '../net/asset-paths';
+import { conditionRidingPcm, adaptedRidingRole, adaptedRidingPitch } from '../../core/audio/riding-conditioning';
+
+interface RidingBanks {
+  boardBank?: string | null;
+  boostBank?: string | null;
+  surfaceGroups?: number[] | null;
+}
+const conditionedBuffers = new WeakMap<AudioBuffer, Map<string, AudioBuffer>>();
+const LOOP_FADE_SECONDS = 0.02;
 
 /**
  * The board bed for the test ride (docs/034): the glide and carve loops, the grind scrape, the ollie/landing
@@ -71,27 +80,31 @@ const BOOST_RELEASE_RATE = 2.5;
  * and gate, with a conservative local-rider mix level until the exact level curve is decoded. */
 const BIG_AIR_WIND_LEVEL = 0.7;
 
-const boardSoundUrl = (bank: string, slot: number, loop: boolean): string =>
-  `/api/board-sound?bank=${encodeURIComponent(bank)}&slot=${slot}${loop ? '&loop=1' : ''}`;
+const boardSoundUrl = (bank: string, slot: number, loop: boolean, level?: string): string =>
+  `/api/board-sound?bank=${encodeURIComponent(bank)}&slot=${slot}${loop ? '&loop=1' : ''}${level ? `&level=${encodeURIComponent(level)}` : ''}`;
 
 /** Warm every clip the local ride can select. The shared cache survives Stop → Play, so only the page's first
  * Test entry pays these local fetch/decode costs and no gameplay edge ever owns them. */
-export function preloadBoardAudio(): void {
+export function preloadBoardAudio(level?: string, prepare?: (bank: string, slot: number, loop: boolean) => void): void {
+  const soundUrl = (bank: string, slot: number, loop: boolean) => {
+    prepare?.(bank, slot, loop);
+    return boardSoundUrl(bank, slot, loop, level);
+  };
   const urls: string[] = [];
   for (let group = 0; group < BOARD_AUDIO_GROUPS.length; group++) {
-    urls.push(boardSoundUrl(BOARD_BANK, boardGlideSlot(group), true));
-    urls.push(boardSoundUrl(BOARD_BANK, boardCarveSlot(group), true));
+    urls.push(soundUrl(BOARD_BANK, boardGlideSlot(group), true));
+    urls.push(soundUrl(BOARD_BANK, boardCarveSlot(group), true));
   }
   urls.push(
-    boardSoundUrl(BOARD_BANK, BOARD_OLLIE_SLOT, false),
-    boardSoundUrl(BOARD_BANK, BOARD_LAND_SLOT, false),
-    boardSoundUrl(BOOST_BANK, BIG_AIR_WIND_SLOT, true),
-    boardSoundUrl(BOOST_BANK, BOARD_BOOST_SLOT, true),
-    boardSoundUrl(BOOST_BANK, SPEED_PAD_SLOT, false),
-    boardSoundUrl(BOOST_BANK, TRICK_PAD_SLOT, false),
-    boardSoundUrl(BOOST_BANK, 116, false),
-    boardSoundUrl(BOOST_BANK, 117, false),
-    boardSoundUrl(BOOST_BANK, 118, false),
+    soundUrl(BOARD_BANK, BOARD_OLLIE_SLOT, false),
+    soundUrl(BOARD_BANK, BOARD_LAND_SLOT, false),
+    soundUrl(BOOST_BANK, BIG_AIR_WIND_SLOT, true),
+    soundUrl(BOOST_BANK, BOARD_BOOST_SLOT, true),
+    soundUrl(BOOST_BANK, SPEED_PAD_SLOT, false),
+    soundUrl(BOOST_BANK, TRICK_PAD_SLOT, false),
+    soundUrl(BOOST_BANK, 116, false),
+    soundUrl(BOOST_BANK, 117, false),
+    soundUrl(BOOST_BANK, 118, false),
   );
   preloadAudio(urls);
 }
@@ -112,6 +125,7 @@ function rampGain(param: AudioParam, level: number, now: number, dt: number): vo
 class LoopLayer {
   private readonly gain: GainNode;
   private source: AudioBufferSourceNode | null = null;
+  private sourceGain: GainNode | null = null;
   private slot = -1;
   private generation = 0;
   private level = 0;
@@ -139,9 +153,19 @@ class LoopLayer {
       source.buffer = buffer;
       source.loop = true;
       source.playbackRate.value = this.rate;
-      source.connect(this.gain);
+      // A late buffer or surface swap must not inherit the previous source's full gain.
+      const envelope = this.host.context.createGain();
+      envelope.gain.setValueAtTime(0, this.host.context.currentTime);
+      envelope.gain.linearRampToValueAtTime(1, this.host.context.currentTime + LOOP_FADE_SECONDS);
+      source.connect(envelope);
+      envelope.connect(this.gain);
+      source.onended = () => {
+        source.disconnect();
+        envelope.disconnect();
+      };
       source.start();
       this.source = source;
+      this.sourceGain = envelope;
     });
   }
 
@@ -169,13 +193,20 @@ class LoopLayer {
 
   private stopSource(): void {
     if (!this.source) return;
+    const now = this.host.context.currentTime;
+    if (this.sourceGain) {
+      const current = this.sourceGain.gain.value;
+      this.sourceGain.gain.cancelScheduledValues(now);
+      this.sourceGain.gain.setValueAtTime(current, now);
+      this.sourceGain.gain.linearRampToValueAtTime(0, now + LOOP_FADE_SECONDS);
+    }
     try {
-      this.source.stop();
+      this.source.stop(now + LOOP_FADE_SECONDS);
     } catch {
       /* already ended */
     }
-    this.source.disconnect();
     this.source = null;
+    this.sourceGain = null;
   }
 }
 
@@ -194,6 +225,8 @@ export class BoardAudio {
   private boostHeld = 0; // seconds the current engage has been thrusting (drives the punch)
   private boosting = false; // last frame's engage state, for the punch re-arm edge
   private surfaceGroups: number[] | null = null;
+  private bankInfo: Promise<RidingBanks>;
+  private adaptedBoard = false;
   private disposed = false;
   // Edge trackers: the ride state is a snapshot, so the transients are found by watching it change.
   private wasGrounded = true;
@@ -203,6 +236,7 @@ export class BoardAudio {
   constructor(
     private readonly mix: BoardSoundMix,
     surfaceGroups?: readonly number[],
+    private readonly sourceLevel?: string,
   ) {
     this.surfaceGroups = surfaceGroups ? [...surfaceGroups] : null;
     this.context = sharedAudioContext();
@@ -225,21 +259,23 @@ export class BoardAudio {
     this.boostGain.gain.value = 0;
     this.boostGain.connect(this.cueGain);
     resumeSharedAudio();
-    if (!surfaceGroups) {
-      void clientFetch(resolveAssetUrl('/api/board-audio'))
-        .then(response =>
-          response.ok
-            ? (response.json() as Promise<{ surfaceGroups?: number[] | null }>)
-            : Promise.reject(new Error(`HTTP ${response.status}`)),
-        )
-        .then(body => {
-          this.surfaceGroups = Array.isArray(body.surfaceGroups) ? body.surfaceGroups : null;
-        })
-        .catch(() => {
-          /* no local index: the safe PACK fallback remains */
-        });
-    }
-    preloadBoardAudio();
+    this.bankInfo = clientFetch(
+      resolveAssetUrl(`/api/board-audio${sourceLevel ? `?level=${encodeURIComponent(sourceLevel)}` : ''}`),
+    )
+      .then(response =>
+        response.ok ? (response.json() as Promise<RidingBanks>) : Promise.reject(new Error(`HTTP ${response.status}`)),
+      )
+      .then(body => {
+        this.adaptedBoard = body.boardBank?.toLowerCase() === 'openslope_board';
+        if (!surfaceGroups) this.surfaceGroups = Array.isArray(body.surfaceGroups) ? body.surfaceGroups : null;
+        return body;
+      })
+      .catch(() => {
+        return {};
+      });
+    preloadBoardAudio(sourceLevel, (bank, slot, loop) => {
+      void this.buffer(bank, slot, loop);
+    });
   }
 
   /** Perform one frame of the bed from the live ride state. `boosting` is the board's own held-boost thrust. */
@@ -261,12 +297,24 @@ export class BoardAudio {
     // a parked-but-grounded board silent; boardBedFrame's own smooth speed envelope shapes the approach.
     const frame = boardBedFrame(group, st.slip * 100, Math.abs(st.lean) * 127, speed01);
     const open = clamp01(speed01 * 6);
-    this.glide.perform(onSnow ? this.mix.glide * frame.glideVol * open : 0, 1 + frame.glideBend * BOARD_BEND_SPAN, dt);
-    this.carve.perform(onSnow ? this.mix.carve * frame.carveVol * open : 0, 1 + frame.carveBend * BOARD_BEND_SPAN, dt);
+    this.glide.perform(
+      onSnow ? this.mix.glide * frame.glideVol * open : 0,
+      this.adaptedBoard ? adaptedRidingPitch(false, frame.glideBend) : 1 + frame.glideBend * BOARD_BEND_SPAN,
+      dt,
+    );
+    this.carve.perform(
+      onSnow ? this.mix.carve * frame.carveVol * open : 0,
+      this.adaptedBoard ? adaptedRidingPitch(false, frame.carveBend) : 1 + frame.carveBend * BOARD_BEND_SPAN,
+      dt,
+    );
 
     // Rails answer with the RAIL family's own loop — the one row the terrain mapper never selects.
     if (grinding) this.grind.play(boardGlideSlot(BOARD_RAIL_GROUP));
-    this.grind.perform(grinding ? GRIND_LEVEL * speed01 : 0, lerp(GRIND_PITCH[0], GRIND_PITCH[1], speed01), dt);
+    this.grind.perform(
+      grinding ? GRIND_LEVEL * speed01 : 0,
+      this.adaptedBoard ? adaptedRidingPitch(true, speed01) : lerp(GRIND_PITCH[0], GRIND_PITCH[1], speed01),
+      dt,
+    );
 
     // MAIN/032 is the focused rider's big-air wind, not universal ambience. The physics predictor latches the
     // expected total flight at state entry, matching retail's >1.5 s gate; landing releases and destroys it.
@@ -347,8 +395,35 @@ export class BoardAudio {
 
   /** Decoded bank slot, fetched once and shared. Null (never a throw) when the bank isn't extracted, so a
    *  missing zboard folder means a silent ride rather than a broken one. */
-  buffer(bank: string, slot: number, loop: boolean): Promise<AudioBuffer | null> {
-    return sharedAudioBuffer(boardSoundUrl(bank, slot, loop));
+  async buffer(bank: string, slot: number, loop: boolean): Promise<AudioBuffer | null> {
+    const [raw, info] = await Promise.all([
+      sharedAudioBuffer(boardSoundUrl(bank, slot, loop, this.sourceLevel)),
+      this.bankInfo,
+    ]);
+    if (!raw) return null;
+    const selected = bank === BOARD_BANK ? info.boardBank : info.boostBank;
+    const actual = typeof selected === 'string' ? selected : '';
+    if (!adaptedRidingRole(actual, slot)) return raw;
+    let cache = conditionedBuffers.get(raw);
+    if (!cache) conditionedBuffers.set(raw, (cache = new Map()));
+    const key = `${actual}/${slot}/${loop}`;
+    const cached = cache.get(key);
+    if (cached) return cached;
+    try {
+      const pcm = conditionRidingPcm(
+        Array.from({ length: raw.numberOfChannels }, (_, c) => raw.getChannelData(c)),
+        raw.sampleRate,
+        actual,
+        slot,
+      );
+      if (!pcm) return raw;
+      const processed = this.context.createBuffer(raw.numberOfChannels, raw.length, raw.sampleRate);
+      pcm.channels.forEach((channel, c) => processed.copyToChannel(channel, c));
+      cache.set(key, processed);
+      return processed;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -379,7 +454,15 @@ export class BoardAudio {
       const source = this.context.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
-      source.connect(this.boostGain);
+      const envelope = this.context.createGain();
+      envelope.gain.setValueAtTime(0, this.context.currentTime);
+      envelope.gain.linearRampToValueAtTime(1, this.context.currentTime + LOOP_FADE_SECONDS);
+      source.connect(envelope);
+      envelope.connect(this.boostGain);
+      source.onended = () => {
+        source.disconnect();
+        envelope.disconnect();
+      };
       source.start();
       this.boostSource = source;
     });
@@ -396,7 +479,6 @@ export class BoardAudio {
     } catch {
       /* already ended */
     }
-    this.boostSource.disconnect();
     this.boostSource = null;
   }
 
@@ -434,6 +516,10 @@ export class BoardAudio {
 }
 
 /** Build the bed for a run, or null when this mountain's mix has it switched off. */
-export function createBoardAudio(mix: BoardSoundMix, surfaceGroups?: readonly number[]): BoardAudio | null {
-  return mix.enabled && mix.volume > 0 ? new BoardAudio(mix, surfaceGroups) : null;
+export function createBoardAudio(
+  mix: BoardSoundMix,
+  surfaceGroups?: readonly number[],
+  sourceLevel?: string,
+): BoardAudio | null {
+  return mix.enabled && mix.volume > 0 ? new BoardAudio(mix, surfaceGroups, sourceLevel) : null;
 }

@@ -14,7 +14,7 @@ import type { FolderSaveStatus } from './folder-autosave';
  * deliberately NOT drawn on the mesh. Decorating geometry with its own delivery state turns an editor into a
  * dashboard: it puts a second colour language on top of selection and paint, and it says something about
  * every element when the only interesting fact is whether the document is safe. A steady check means saved; it
- * pulses while whole-document autosave or shared-register delivery is active, turns amber while reconnecting,
+ * pulses briefly when whole-document autosave or shared-register delivery starts, turns amber while reconnecting,
  * and turns red when a save has failed. Per-element indication earns its place in exactly one case, and it is
  * not this one — it is somebody else overriding a register you touched, which the viewport flashes in their
  * colour.
@@ -67,7 +67,7 @@ export function createSyncStatus(deps: {
     detailActions.append(action);
     return action;
   };
-  detailAction('Export mountain…', deps.exportMountain);
+  const exportAction = detailAction('Export mountain…', deps.exportMountain);
   const folderAction = detailAction('Save to folder…', deps.saveToFolder);
   const resumeAction = detailAction('Resume folder autosave', deps.resumeFolder);
   const openAction = detailAction('Open mountain folder…', deps.openFolder);
@@ -110,9 +110,11 @@ export function createSyncStatus(deps: {
   let pending: Reconciliation | null = null;
   let shared = false;
   let sync: SyncStatus | null = null;
-  let projectState: ProjectSaveState = 'loading';
-  let projectDetail = 'Opening mountain';
+  // Inspect links can open only a reference, without ever starting a project load or save.
+  let projectState: ProjectSaveState | 'idle' = 'idle';
+  let projectDetail = '';
   let indicatorMessage = projectDetail;
+  let indicatorIcon = '';
   const detachTooltip = tooltip(indicator, () => indicatorMessage);
 
   function reconnecting(status: SyncStatus): string {
@@ -123,9 +125,13 @@ export function createSyncStatus(deps: {
 
   /** Collapse the two transports into the one fact the author needs at a glance. */
   function repaintIndicator(): void {
-    let state: 'saved' | 'saving' | 'reconnecting' | 'error' | 'following' = 'saved';
+    let state: 'idle' | 'saved' | 'saving' | 'reconnecting' | 'error' | 'following' = 'saved';
     let message = projectDetail || 'All changes saved';
-    if (projectState === 'error' || projectState === 'conflict' || projectState === 'recovery-only') {
+    const idle = projectState === 'idle';
+    if (idle) {
+      state = 'idle';
+      message = 'Viewing reference mountain';
+    } else if (projectState === 'error' || projectState === 'conflict' || projectState === 'recovery-only') {
       state = 'error';
       message = projectDetail || 'Save failed';
     } else if (projectState === 'loading' || projectState === 'saving') {
@@ -151,7 +157,7 @@ export function createSyncStatus(deps: {
     const local = isLocalWorkspace();
     const folder = deps.folder?.() ?? { state: 'none' };
     const connected = local && folder.state !== 'none';
-    const destination = local ? (connected ? 'folder' : 'browser') : 'server';
+    const destination = idle ? 'none' : local ? (connected ? 'folder' : 'browser') : 'server';
     if (state === 'saved') {
       if (connected && folder.state === 'saving') {
         state = 'saving';
@@ -168,32 +174,52 @@ export function createSyncStatus(deps: {
             ? 'Saved to folder and this browser'
             : 'Saved in this browser'
           : 'Saved to server';
-    } else
+    } else if (!idle)
       message = `${destination === 'server' ? 'Server' : destination === 'folder' ? 'Folder' : 'Browser'} · ${message}`;
     indicator.dataset.destination = destination;
     const shape =
-      destination === 'browser'
-        ? '<rect x="3" y="3" width="18" height="17" rx="2"/><path d="M3 8h18M6 5.5h.01M9 5.5h.01"/>'
-        : destination === 'folder'
-          ? '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>'
-          : '<path d="M6 18a4 4 0 0 1-1-7.9A7 7 0 0 1 18.5 8a5 5 0 0 1-.5 10H6Z"/>';
-    indicator.innerHTML = svg(
-      shape +
-        (state === 'saved'
-          ? '<circle cx="18" cy="18" r="5" fill="#10161c" stroke="none"/><path d="m15 18 2 2 4-4"/>'
-          : ''),
-    );
-    heading.textContent =
-      destination === 'server' ? 'Saving to server' : connected ? 'Saving to folder' : 'Saving in this browser';
-    locationLine.textContent = local
-      ? connected
-        ? `${folder.folder}/${MOUNTAIN_FOLDER_FILE} — editable mountain autosave. This copy survives clearing browser data.`
-        : 'This browser only. Clearing site data removes these maps. Save to folder or export a mountain backup to keep a copy.'
-      : `Your mountain is saved on ${location.host}.`;
+      destination === 'none'
+        ? '<path d="M2 12Q12-2 22 12Q12 26 2 12Z"/><circle cx="12" cy="12" r="3"/>'
+        : destination === 'browser'
+          ? '<rect x="3" y="3" width="18" height="17" rx="2"/><path d="M3 8h18M6 5.5h.01M9 5.5h.01"/>'
+          : destination === 'folder'
+            ? '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>'
+            : '<path d="M6 18a4 4 0 0 1-1-7.9A7 7 0 0 1 18.5 8a5 5 0 0 1-.5 10H6Z"/>';
+    const icon = `${destination}:${state}`;
+    // Transport status refreshes must not recreate the SVG and restart its finite pulse.
+    if (icon !== indicatorIcon) {
+      indicatorIcon = icon;
+      indicator.innerHTML = svg(
+        shape +
+          (state === 'saved'
+            ? '<circle cx="18" cy="18" r="5" fill="#10161c" stroke="none"/><path d="m15 18 2 2 4-4"/>'
+            : ''),
+      );
+    }
+    heading.textContent = idle
+      ? 'Viewing reference mountain'
+      : destination === 'server'
+        ? 'Saving to server'
+        : connected
+          ? 'Saving to folder'
+          : 'Saving in this browser';
+    locationLine.textContent = idle
+      ? 'Open or create a mountain to save edits.'
+      : local
+        ? connected
+          ? `${folder.folder}/${MOUNTAIN_FOLDER_FILE} — editable mountain autosave. This copy survives clearing browser data.`
+          : 'This browser only. Clearing site data removes these maps. Save to folder or export a mountain backup to keep a copy.'
+        : `Your mountain is saved on ${location.host}.`;
     const savedAt = connected ? folder.savedAt : deps.updatedAt?.();
+    savedLine.hidden = idle;
     savedLine.textContent = savedAt ? `Last saved: ${new Date(savedAt).toLocaleString()}` : 'No completed save yet';
-    statusLine.textContent = connected && folder.detail ? folder.detail : message;
-    folderAction.hidden = !local || !deps.saveToFolder || !canSaveMountainFolder();
+    statusLine.textContent = idle
+      ? 'Reference maps are viewed from their source.'
+      : connected && folder.detail
+        ? folder.detail
+        : message;
+    exportAction.hidden = idle || !deps.exportMountain;
+    folderAction.hidden = idle || !local || !deps.saveToFolder || !canSaveMountainFolder();
     folderAction.textContent = connected ? 'Change save folder…' : 'Save to folder…';
     openAction.hidden = !deps.openFolder || !canSaveMountainFolder();
     resumeAction.hidden =

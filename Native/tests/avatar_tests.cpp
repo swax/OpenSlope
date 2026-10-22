@@ -1,4 +1,7 @@
 #include "openslope/avatar.hpp"
+#include <algorithm>
+#include <chrono>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -21,6 +24,165 @@ void finite_mesh(std::span<const Vertex> mesh) {
         check(finite({v.x, v.y, v.z}), "finite skin position");
         check(v.r >= 0 && v.r <= 1 && v.g >= 0 && v.g <= 1 && v.b >= 0 && v.b <= 1, "bounded skin colour");
     }
+}
+
+void calibrated_body(Avatar& avatar) {
+    Player player(Terrain::demo());
+    player.start_on_foot();
+    const auto root = player.render_position();
+    VrHeightCalibration height;
+    height.update(1.05, true);
+    const auto point = [&](Vec3 raw) { return root + raw - Vec3{0, height.origin_y(), 0}; };
+    AvatarTracking tracking;
+    tracking.seated = height.seated();
+    tracking.head = point({0, 1.05, 0});
+    for (unsigned side = 0; side < 2; ++side) {
+        auto& hand = tracking.controllers[side];
+        hand.valid = true;
+        hand.position = point({side ? .25 : -.25, .8, -.25});
+    }
+    const auto procedural = avatar_pose(player, &tracking);
+    tracking.body_active = tracking.full_body = true;
+    tracking.confidence = .9;
+    tracking.valid.fill(true);
+    tracking.joints = procedural.joints;
+    tracking.joints[unsigned(J::Hips)] += Vec3{0, .35, .2};
+    for (unsigned i = unsigned(J::LeftHip); i < avatar_joint_count; ++i)
+        tracking.joints[i] += Vec3{0, .6, .4};
+    tracking.joints[unsigned(J::LeftElbow)] += Vec3{0, .03, .04};
+    auto pose = avatar_pose(player, &tracking);
+    check(pose.tracked_body && !pose.tracked_legs, "Seated mode retains upper-body tracking but rejects runtime legs");
+    close(pose.eye(), root + Vec3{0, 1.65, 0}, "Seated body and view share calibrated eye height");
+    close(pose.joint(J::Hips), procedural.joint(J::Hips), "Seated pelvis uses the standing procedural placement");
+    for (unsigned i = unsigned(J::LeftHip); i < avatar_joint_count; ++i)
+        close(pose.joints[i], procedural.joints[i], "Seated legs ignore runtime inferred leg positions");
+    close(pose.joint(J::LeftElbow), tracking.joints[unsigned(J::LeftElbow)], "Seated upper body remains tracked");
+    close(pose.joint(J::LeftWrist), tracking.controllers[0].position, "Calibrated seated left hand stays aligned");
+    close(pose.joint(J::RightWrist), tracking.controllers[1].position, "Calibrated seated right hand stays aligned");
+    finite_mesh(avatar.mesh(pose, true, false, tracking.head));
+
+    height.request();
+    height.update(1.8, true);
+    height.update_floor(0);
+    tracking.seated = height.seated();
+    tracking.floor_offset = height.floor_offset();
+    tracking.head = point({0, 1.8, 0});
+    tracking.joints = procedural.joints;
+    // Floor-relative runtime ankles are lowered by the shared eye-height offset.
+    for (const auto j : {J::LeftAnkle, J::LeftToe, J::RightAnkle, J::RightToe})
+        tracking.joints[unsigned(j)].y -= height.origin_y();
+    const auto standing = avatar_pose(player, &tracking);
+    check(standing.tracked_legs, "Standing mode consumes runtime leg tracking");
+    close(standing.joint(J::LeftAnkle), procedural.joint(J::LeftAnkle),
+          "Standing tracked feet retain the virtual floor");
+    const Vec3 crouch{0, -.4, 0};
+    tracking.head += crouch;
+    for (unsigned i = 0; i < unsigned(J::LeftHip); ++i)
+        tracking.joints[i] += crouch;
+    for (const auto j : {J::LeftHip, J::RightHip})
+        tracking.joints[unsigned(j)] += crouch;
+    tracking.joints[unsigned(J::LeftKnee)] += Vec3{0, -.2, .2};
+    tracking.joints[unsigned(J::RightKnee)] += Vec3{0, -.2, .2};
+    for (auto& hand : tracking.controllers)
+        hand.position += crouch;
+    pose = avatar_pose(player, &tracking);
+    check(pose.tracked_legs, "Standing crouch keeps runtime leg tracking");
+    close(pose.eye(), standing.eye() + crouch, "Standing crouch lowers the view and body together");
+    close(pose.joint(J::Hips), standing.joint(J::Hips) + crouch, "Standing crouch lowers the tracked pelvis");
+    close(pose.joint(J::LeftHip), standing.joint(J::LeftHip) + crouch, "Standing crouch lowers the tracked hip joint");
+    close(pose.joint(J::LeftKnee), tracking.joints[unsigned(J::LeftKnee)] + Vec3{0, height.origin_y() * .5, 0},
+          "Standing crouch retains the tracked knee bend with floor correction");
+    close(pose.joint(J::LeftAnkle), standing.joint(J::LeftAnkle), "Crouching keeps grounded feet in place");
+    close(pose.joint(J::LeftWrist), tracking.controllers[0].position, "Standing crouch preserves hand alignment");
+    finite_mesh(avatar.mesh(pose, true, false, tracking.head));
+
+    height.request();
+    height.update(4.65, true);
+    height.update_floor(3);
+    tracking.seated = height.seated();
+    tracking.floor_offset = height.floor_offset();
+    tracking.head = point({0, 4.65, 0});
+    for (unsigned i = 0; i < avatar_joint_count; ++i)
+        tracking.joints[i] = point(procedural.joints[i] - root + Vec3{0, 3, 0});
+    for (unsigned side = 0; side < 2; ++side)
+        tracking.controllers[side].position = point({side ? .25 : -.25, 4.3, -.25});
+    pose = avatar_pose(player, &tracking);
+    check(pose.tracked_legs, "A shifted runtime origin can retain coherent standing leg tracking");
+    close(pose.eye(), root + Vec3{0, 1.65, 0}, "An overly high origin lowers the body and view to standing height");
+    close(pose.joint(J::LeftAnkle), procedural.joint(J::LeftAnkle), "Lowering a bad origin cannot leave feet floating");
+    close(pose.joint(J::LeftWrist), tracking.controllers[0].position, "Lowering a bad origin keeps the hand aligned");
+}
+
+void scene_lighting(Avatar& avatar, const AvatarPose& pose) {
+    LightProbe bright{{0, 0, 0}, {.8, .7, .6}}, dark{{10, 0, 0}, {.08, .07, .06}};
+    SceneLighting field({bright, dark});
+    const auto left = field.sample({0, 0, 0}).evaluate({0, 1, 0});
+    const auto right = field.sample({10, 0, 0}).evaluate({0, 1, 0});
+    check(left.x > right.x * 8, "body probes vary with course position");
+    close(field.sample({5, 0, 0}).evaluate({0, 1, 0}), {.44, .385, .33}, "probe interpolation blends colour");
+    check(length(field.sample({4.999, 0, 0}).ambient - field.sample({5.001, 0, 0}).ambient) < .001,
+          "no nearest-probe step at midpoint");
+    LightProbe roof{{0, 20, 0}, {1, 0, 0}};
+    SceneLighting layers({bright, roof});
+    check(layers.sample({0, 0, 0}).ambient.x < layers.sample({0, 20, 0}).ambient.x,
+          "full 3D sampling separates stacked ground");
+    std::vector<LightProbe> many;
+    for (unsigned i = 0; i < 257; ++i)
+        many.push_back({{double(i * 17 % 67), double(i * 11 % 43), double(i * 23 % 71)}, {i / 257., .2, .1}});
+    SceneLighting indexed(many);
+    for (unsigned i = 0; i < 40; ++i) {
+        const Vec3 point{i * 2.37, i * .71, i * 1.21};
+        std::vector<std::pair<double, double>> distances;
+        for (const auto& probe : many) {
+            const auto delta = point - probe.position;
+            distances.emplace_back(dot(delta, delta), probe.ambient.x);
+        }
+        std::sort(distances.begin(), distances.end());
+        double total = 0, expected = 0;
+        for (unsigned k = 0; k < 4; ++k) {
+            const auto weight = 1 / (1 + distances[k].first);
+            total += weight;
+            expected += weight * distances[k].second;
+        }
+        check(std::abs(indexed.sample(point).ambient.x - expected / total) < 1e-9,
+              "indexed sampling agrees with independent full-scan oracle");
+    }
+    SceneLighting only_dark({LightProbe{{}, {.1, .1, .1}}});
+    const auto original = avatar.mesh(pose, false, false);
+    double original_energy = 0;
+    for (const auto& v : original)
+        original_energy += v.r + v.g + v.b;
+    const auto shaded = avatar.mesh(pose, false, false, {}, {}, &only_dark);
+    double shaded_energy = 0;
+    for (const auto& v : shaded)
+        shaded_energy += v.r + v.g + v.b;
+    check(shaded_energy < original_energy * .2, "ordinary avatar mesh receives scene shade");
+    finite_mesh(shaded);
+
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("openslope-avatar-light-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directory(root);
+    {
+        std::ofstream file(root / "Instances.json");
+        file << R"({"Instances":[
+          {"Location":[0,0,0],"Rotation":[0,0,0.7071067811865475,0.7071067811865475],
+           "Scale":[2,3,4],"AmbentLightColour":[25.6,51.2,76.8],
+           "LightColour1":[128,0,0],"LightVector1":[1,0,0]},
+          {"Location":[0,0,0],"AmbentLightColour":[256,256,256]},
+          {"Location":[100,0,0],"AmbentLightColour":[0,0,0]},
+          {"Location":[200,0,0]}
+        ]})";
+    }
+    const auto imported = SceneLighting::load(root);
+    check(imported.size() == 2, "exclude self-lit/missing records; retain genuinely dark probes");
+    const auto sample = imported.sample({0, 0, 0});
+    check(sample.evaluate({0, 0, -1}).x > sample.evaluate({1, 0, 0}).x + .3,
+          "donor placement rotation converts local keys to world without scaling intensity");
+    const auto midnight = imported.sample({1, 0, 0});
+    check(midnight.ambient.x < sample.ambient.x, "centimetre placement conversion reaches sampler");
+    std::filesystem::remove(root / "Instances.json");
+    std::filesystem::remove(root);
 }
 
 void flip_pivot(Avatar& avatar) {
@@ -145,10 +307,12 @@ int main() {
     try {
         Player player(Terrain::demo());
         Avatar avatar;
+        calibrated_body(avatar);
         flip_pivot(avatar);
         check(avatar.source_vertices() == 8744, "unchanged figure vertices");
         check(avatar.source_triangles() == 4816, "unchanged figure triangles");
         const auto pose = avatar_pose(player);
+        scene_lighting(avatar, pose);
         const auto full = avatar.mesh(pose);
         check(full.size() == 14448, "all authored triangles submitted");
         finite_mesh(full);
@@ -174,6 +338,12 @@ int main() {
         const auto no_labels = avatar.mesh(fallback, true, false, tracking.head).size(),
                    labels = avatar.mesh(fallback, true, true, tracking.head).size();
         check(labels > no_labels + 3000, "controller help has visible geometry");
+        auto hidden_controllers = fallback;
+        hidden_controllers.controller_models = false;
+        const auto body_only = avatar.mesh(hidden_controllers, true, false, tracking.head).size();
+        check(body_only > 0 && body_only < no_labels, "Hiding controller models retains the posed body and hands");
+        close(hidden_controllers.joint(J::LeftWrist), fallback.joint(J::LeftWrist),
+              "Hiding controller geometry preserves tracked hand placement");
         finite_mesh(avatar.mesh(fallback, true, true, tracking.head));
         close(player.rider().position, before, "presentation cannot move physics");
         const auto open_hand = avatar_pose(player, &tracking);

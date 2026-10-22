@@ -93,6 +93,14 @@ async function checked(path: string, body?: unknown, cookie = admin, method?: st
   return response.json();
 }
 try {
+  const health = await fetch(`http://${relay.address}/health`);
+  assert.equal(health.status, 200);
+  assert.equal(
+    health.headers.get('connection'),
+    'close',
+    'ordinary relay HTTP sockets are not pooled past their deadline',
+  );
+  assert.deepEqual(await health.json(), { ok: true, protocol: 1 });
   const bootstrap = await call('/api/auth/bootstrap', {
     code: api.adminCode,
     username: 'admin',

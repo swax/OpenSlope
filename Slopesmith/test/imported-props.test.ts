@@ -461,7 +461,8 @@ const record = (name: string, tex: string | null, z = 0) => ({
   const gltfPoint: [number, number, number] = [1.44, 3.92, -0.25];
   const cx = 37,
     cy = -12;
-  const vertexPath = [-100 * gltfPoint[0] - cx, -100 * gltfPoint[2] - cy, 100 * gltfPoint[1]];
+  // the vertex map both importers apply (glb-import.ts, import-glb.ts): a rotation, raw = (100x, −100z, 100y)
+  const vertexPath = [100 * gltfPoint[0] - cx, -100 * gltfPoint[2] - cy, 100 * gltfPoint[1]];
   const emitterPath = rawFromGltfPoint(gltfPoint, cx, cy);
   check(
     emitterPath.every((v, i) => Math.abs(v - vertexPath[i]) < 1e-9),

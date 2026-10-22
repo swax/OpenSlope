@@ -125,6 +125,139 @@ int main(int argc, char** argv) {
             return p;
         };
         render("desktop", avatar_pose(player), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+        {
+            auto calibrated = tracking;
+            const auto neutral = avatar_pose(player, &tracking);
+            calibrated.body_active = calibrated.full_body = calibrated.seated = true;
+            calibrated.confidence = .9;
+            calibrated.valid.fill(true);
+            calibrated.joints = neutral.joints;
+            calibrated.joints[unsigned(AvatarJoint::Hips)] += Vec3{0, .4, .3};
+            for (unsigned i = unsigned(AvatarJoint::LeftHip); i < avatar_joint_count; ++i)
+                calibrated.joints[i] += Vec3{0, .6, .4};
+            render("seated-height", avatar_pose(player, &calibrated), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2}, false);
+            calibrated.seated = false;
+            calibrated.floor_offset = .15;
+            calibrated.joints = neutral.joints;
+            for (const auto j :
+                 {AvatarJoint::LeftAnkle, AvatarJoint::LeftToe, AvatarJoint::RightAnkle, AvatarJoint::RightToe})
+                calibrated.joints[unsigned(j)].y -= calibrated.floor_offset;
+            render("standing-height", avatar_pose(player, &calibrated), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2},
+                   false);
+            calibrated.head.y -= .4;
+            for (unsigned i = 0; i < unsigned(AvatarJoint::LeftHip); ++i)
+                calibrated.joints[i].y -= .4;
+            for (const auto j : {AvatarJoint::LeftHip, AvatarJoint::RightHip})
+                calibrated.joints[unsigned(j)].y -= .4;
+            for (const auto j : {AvatarJoint::LeftKnee, AvatarJoint::RightKnee})
+                calibrated.joints[unsigned(j)] += Vec3{0, -.2, .2};
+            for (auto& hand : calibrated.controllers)
+                hand.position.y -= .4;
+            render("standing-crouch", avatar_pose(player, &calibrated), false, {2.8, 2.1, 3.2}, {-2.8, -1, -3.2},
+                   false);
+        }
+        {
+            VulkanRenderer boards(context);
+            boards.use_scene(scene);
+            boards.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
+            std::vector<std::uint64_t> fingerprints;
+            const auto deck = board_transform({0, 3, 0}, {0, 0, -1}, {0, 1, 0});
+            for (unsigned design = 0; design < stock_board_count; ++design) {
+                boards.board_art(design);
+                for (const double side : {1., -1.}) {
+                    const Vec3 eye{0, 3 + side * 1.3, 0};
+                    const auto camera = projection(-.85, .85, -.85, .85) * view(eye, {0, -side, 0}, {0, 0, -1});
+                    boards.render(0, camera, deck, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye);
+                    const auto file = root / ("board-" + std::string(stock_board_info(design).id) +
+                                              (side > 0 ? "-top.ppm" : "-base.ppm"));
+                    boards.capture(0, file);
+                    const auto pixels = ::pixels(file);
+                    std::uint64_t fingerprint = 1469598103934665603ull;
+                    for (const auto channel : pixels)
+                        fingerprint = (fingerprint ^ channel) * 1099511628211ull;
+                    check(std::find(fingerprints.begin(), fingerprints.end(), fingerprint) == fingerprints.end(),
+                          "all stock top/base designs reach actual Vulkan pixels");
+                    fingerprints.push_back(fingerprint);
+                }
+            }
+            const auto board_light = [&](const char* name, const SceneLighting& light, Vec3 up,
+                                         Vec3 position = Vec3{0, 3, 0}, bool opponent = false) {
+                boards.board_art(2, {}, &light);
+                const auto eye = position + up * 1.3;
+                const auto clip = projection(-.85, .85, -.85, .85) * view(eye, -up, {0, 0, -1});
+                const auto frame = board_transform(position, {0, 0, -1}, up);
+                if (opponent) {
+                    const std::array<Matrix, 1> others{frame};
+                    boards.render(0, clip, board_transform({100, 3, 0}, {0, 0, -1}, {0, 1, 0}),
+                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, {}, 0, {}, {}, 1, {},
+                                  {}, {}, {}, {}, {}, false, {}, nullptr, others);
+                } else
+                    boards.render(0, clip, frame, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye);
+                const auto file = root / (std::string(name) + ".ppm");
+                boards.capture(0, file);
+                const auto pixels = ::pixels(file);
+                Vec3 sum;
+                for (unsigned y = 440; y < 584; ++y)
+                    for (unsigned x = 490; x < 534; ++x) {
+                        const auto at = (y * 1024 + x) * 3;
+                        sum += Vec3{double(pixels[at]), double(pixels[at + 1]), double(pixels[at + 2])};
+                    }
+                return sum;
+            };
+            SceneLighting white({LightProbe{{}, {1, 1, 1}}}), shade({LightProbe{{}, {.2, .2, .2}}});
+            const auto full = board_light("board-full-light", white, {0, 1, 0});
+            const auto dim = board_light("board-shaded", shade, {0, 1, 0});
+            check(length(dim / .2 - full) < length(full) * .025,
+                  "board art receives the avatar's display-domain ambient light");
+            LightProbe key{{}, {.1, .2, .3}};
+            key.keys[0] = {{0, 1, 0}, {.7, 0, 0}};
+            SceneLighting directional({key});
+            const auto facing = board_light("board-facing-key", directional, {0, 1, 0});
+            const auto rolled = board_light("board-rolled", directional, {-1, 0, 0});
+            check(facing.x > full.x * .75 && rolled.x < full.x * .15,
+                  "held/rolled board normals follow world orientation");
+            check(std::abs(facing.y / full.y - .2) < .025 && std::abs(facing.z / full.z - .3) < .025,
+                  "board receives coloured course ambient independently of its topsheet colour");
+            SceneLighting spatial({LightProbe{{0, 3, 0}, {1, 1, 1}}, LightProbe{{30, 3, 0}, {.2, .2, .2}}});
+            const auto moved = board_light("board-loose-shade", spatial, {0, 1, 0}, {30, 3, 0});
+            const auto opponent = board_light("board-opponent-shade", spatial, {0, 1, 0}, {30, 3, 0}, true);
+            check(length(moved / .2 - full) < length(full) * .04, "loose board samples lighting at its own location");
+            check(length(opponent - moved) < length(full) * .01, "opponent board has its own scene-light sample");
+        }
+        {
+            // Compare colour transfer without gamma-vs-linear MSAA edge resolves.
+            a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+            b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 1);
+            const Vec3 eye{2.8, 2.1, 3.2};
+            const auto camera = projection(-.85, .85, -.85, .85) * view(eye, {-2.8, -1, -3.2});
+            const auto board =
+                board_transform(player.render_board_position(), player.render_forward(), player.render_up());
+            const auto unlit = avatar.mesh(avatar_pose(player), false, false);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, unlit);
+            a.capture(0, root / "scene-light-baseline.ppm");
+            SceneLighting lighting({LightProbe{{}, {.1, .6, .1}}});
+            const auto body = avatar.mesh(avatar_pose(player), false, false, {}, {}, &lighting);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+            a.capture(0, root / "scene-lit-avatar.ppm");
+            b.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+            b.capture(0, root / "scene-lit-avatar-srgb.ppm");
+            const auto original = pixels(root / "scene-light-baseline.ppm"),
+                       lit = pixels(root / "scene-lit-avatar.ppm"), srgb = pixels(root / "scene-lit-avatar-srgb.ppm");
+            unsigned changed = 0, green = 0, differences = 0;
+            for (std::size_t i = 0; i < lit.size(); i += 3) {
+                if (original[i] != lit[i] || original[i + 1] != lit[i + 1] || original[i + 2] != lit[i + 2]) {
+                    ++changed;
+                    green += lit[i + 1] > lit[i] * 2 && lit[i + 1] > lit[i + 2] * 2;
+                }
+                for (unsigned c = 0; c < 3; ++c)
+                    differences += std::abs(int(lit[i + c]) - int(srgb[i + c])) > 2;
+            }
+            check(changed > 500, "scene lighting actually changes visible avatar pixels in the original pipeline");
+            check(green > changed / 2, "course probe colour reaches the visible body");
+            check(differences < 100, "scene-lit avatar agrees across UNORM and sRGB targets");
+            a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
+            b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 4);
+        }
         for (const auto lead : {-1, 1}) {
             player.warp({0, 10, 0}, {0, 0, -1});
             auto& rider = const_cast<Rider&>(player.rider());
@@ -394,7 +527,7 @@ int main(int argc, char** argv) {
         VrPresentation presentation;
         VrButtons camera_button;
         camera_button.camera = true;
-        presentation.step(0, camera_button);
+        presentation.step(0, camera_button, false);
         const auto offset = presentation.camera_offset({0, 0, -1});
         const auto third =
             render("vr-third-person", upright, false, tracking.head + offset, {0, -.7, -1}, true, offset);
@@ -415,7 +548,9 @@ int main(int argc, char** argv) {
             ui.immersive = wrist;
             ui.third_person = false;
             ui.frame(wrist ? RideUi::wrist(tracking.controllers[0], eye) : RideUi::desktop(c, 1, ui.visible));
-            const auto body = avatar.mesh(avatar_pose(player, &tracking), true, false, eye);
+            auto pose = avatar_pose(player, &tracking);
+            pose.controller_models &= !wrist || visible;
+            const auto body = avatar.mesh(pose, true, false, eye);
             std::vector<Vertex> hud;
             const auto button = ui.frame().origin + ui.frame().right * .25 + ui.frame().down * .35;
             EquipmentRay pointer{tracking.controllers[1].position,
@@ -425,6 +560,8 @@ int main(int argc, char** argv) {
             ui.append(hud, player, wrist, 90);
             if (wrist)
                 ui.append_pointer(hud, pointer);
+            if (wrist && !visible)
+                check(hud.empty(), "Hidden wrist mode submits no HUD or pointer geometry");
             const auto tangent = std::tan(c.fov / 2);
             const auto matrix = projection(-tangent, tangent, -tangent, tangent, c.near_clip) * view(eye, direction);
             for (auto* renderer : {&a, &b}) {
@@ -441,8 +578,18 @@ int main(int argc, char** argv) {
                     mint += image[k + 1] > image[k] * 1.5 && image[k + 2] > image[k] * 1.3 && image[k + 1] > 100;
                     white += image[k] > 180 && image[k + 1] > 180 && image[k + 2] > 180;
                 }
-                check(mint > 80, "Menu accents really reach the GPU target");
-                check(white > 100, "UI text draws in front of panel background");
+                if (!wrist || visible) {
+                    check(mint > 80, "Menu accents really reach the GPU target");
+                    check(white > 100, "UI text draws in front of panel background");
+                } else {
+                    renderer->render(
+                        0, matrix,
+                        board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, body);
+                    renderer->capture(0, root / "hidden-wrist-body-only.ppm");
+                    check(image == pixels(root / "hidden-wrist-body-only.ppm"),
+                          "Hidden wrist rendering matches the body/hand-only frame exactly");
+                }
                 check(renderer->stats().avatar_triangles == body.size() / 3,
                       "Avatar draw stays separate from the late UI overlay");
             }
@@ -452,6 +599,7 @@ int main(int argc, char** argv) {
         render_ui("desktop-hud", false, false, false);
         render_ui("wrist-menu", true, false, true);
         render_ui("wrist-controls", true, true, true);
+        render_ui("wrist-hidden", true, false, false);
         RideUi depth_ui;
         depth_ui.visible = true;
         depth_ui.frame({{-.5, 2.15, -1}, {1, 0, 0}, {0, -1, 0}, true});

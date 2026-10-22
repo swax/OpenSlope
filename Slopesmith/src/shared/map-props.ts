@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { EffectFunction, EffectGraph, EffectNode, EffectsDocument } from '../core/effects/document';
 import { readMapEffectsDocument as readEffectsDocument } from './map-effects';
+import { isOnTourCourseHelper, prepareOnTourCourseHelpers } from '../core/props/course-helpers';
 import { readCrowdFrames } from './map-crowd';
 import { rollerNodeMass } from '../core/effects/authoring';
 import { referenceEffectDefaults } from '../core/props/effect-defaults';
@@ -259,6 +260,9 @@ interface ModelsJson {
   Models: ModelsJsonModel[];
 }
 interface RawExternalSound {
+  SoundBank?: string;
+  SoundSlot?: number;
+  Activation?: string;
   U0?: number;
   SoundIndex?: number;
   U2?: number;
@@ -827,11 +831,21 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   const lvl = safeDataName(level);
   const levelDir = join(io.root, lvl);
   // Instances.json and Effects.json are the two large reads here and are independent of one another.
-  const [instJson, effectsDocument] = await Promise.all([
+  const [storedInstances, effectsDocument, sourceModels] = await Promise.all([
     io.readJsonOr<InstancesJson | null>(join(levelDir, 'Instances.json'), null),
     readEffectsDocument(io, levelDir),
+    io.readJsonOr<ModelsJson | null>(join(levelDir, 'Models.json'), null),
   ]);
-  if (!instJson) throw new Error(`no Instances.json for level "${lvl}"`);
+  if (!storedInstances) throw new Error(`no Instances.json for level "${lvl}"`);
+  const helperSource = effectsDocument?.target?.game === 'ssx-on-tour' ? 'ssx-on-tour' : lvl;
+  const instJson = {
+    ...storedInstances,
+    Instances: prepareOnTourCourseHelpers(
+      helperSource,
+      storedInstances.Instances,
+      id => sourceModels?.Models[id]?.ModelName,
+    ),
+  };
   const rollerMasses = readRollerInstanceMasses(effectsDocument, instJson.Instances);
   // The effect each model hands a new placement, and each copy's own (docs/069 · Effects), indexed as Instances.json.
   const effectDefaults = referenceEffectDefaults(
@@ -902,8 +916,8 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   }));
   const crowdFrames = await readCrowdFrames(io, join(io.root, lvl));
 
-  // Collision is its own native asset stream, not the visible model. Pack each referenced proxy once even when
-  // hundreds of placements share it (tree leaves are the common case).
+  // Collision is its own native asset stream. Like render OBJs, its vertices are object-local; both must
+  // receive the ModelObject rest hierarchy before the renderer applies placement/animation deltas.
   const collisionIds = new Set<string>();
   for (const instance of instJson.Instances) {
     if (instance.CollsionMode !== NATIVE_COLLISION_MODE.triangleProxy) continue;
@@ -913,18 +927,55 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     io.readTextOrNull(join(io.root, lvl, 'Collision', `${id}.obj`)),
   );
   const collisionMeshes: NonNullable<PropsPayload['collisionMeshes']> = [];
+  const rawCollisionMeshes = new Map<string, RawMesh>();
   for (const [index, id] of [...collisionIds].entries()) {
     const text = collisionTexts[index];
     if (text === null) continue;
     const raw = parseObj(text);
-    const indices = new Uint32Array(raw.corners.length / 3);
-    for (let corner = 0; corner < indices.length; corner++) indices[corner] = raw.corners[corner * 3];
-    if (!raw.v.length || !indices.length) continue;
-    collisionMeshes.push({
-      id,
-      pos: encodeBytes(new Float32Array(raw.v).buffer),
-      idx: encodeBytes(indices.buffer),
-    });
+    if (raw.v.length && raw.corners.length) rawCollisionMeshes.set(id, raw);
+  }
+  const collisionPaths = new Map<number, string[]>();
+  const packedCollisionIds = new Set<string>();
+  const collisionRest = new Map<number, THREE.Matrix4[]>();
+  const identity = new THREE.Matrix4();
+  for (const [sourceIndex, instance] of instJson.Instances.entries()) {
+    if (instance.CollsionMode !== NATIVE_COLLISION_MODE.triangleProxy || !instance.CollsionModelPaths?.length) continue;
+    const model = sourceModels?.Models[instance.ModelID];
+    const objects = model?.ModelObjects ?? [];
+    const geometricObjects = objects.flatMap((object, index) => (object?.MeshData?.some(Boolean) ? [index] : []));
+    const count = instance.CollsionModelPaths.length;
+    // Native proxies follow nonempty objects, or the complete object array. Leave ambiguous older layouts
+    // on their existing whole-instance path rather than assigning the wrong part's transform.
+    const objectIndices =
+      count === geometricObjects.length
+        ? geometricObjects
+        : count === objects.length
+          ? objects.map((_object, index) => index)
+          : [];
+    if (model && !collisionRest.has(instance.ModelID))
+      collisionRest.set(instance.ModelID, modelObjectRestMatrices(model));
+    collisionPaths.set(
+      sourceIndex,
+      instance.CollsionModelPaths.map((path, index) => {
+        const sourceId = safeDataName(path.replace(/\.obj$/i, ''));
+        const objectIndex = objectIndices[index];
+        const rest = collisionRest.get(instance.ModelID)?.[objectIndex];
+        // These are payload lookup keys, not filesystem paths. A proxy shared by models with different rest
+        // poses needs separate geometry; copies of the same model still share one packed proxy.
+        const id =
+          rest && !rest.equals(identity) ? `${sourceId}:model:${instance.ModelID}:object:${objectIndex}` : sourceId;
+        const raw = rawCollisionMeshes.get(sourceId);
+        if (raw && !packedCollisionIds.has(id)) {
+          const positions = new Float32Array(raw.v);
+          if (rest) new THREE.BufferAttribute(positions, 3).applyMatrix4(rest);
+          const indices = new Uint32Array(raw.corners.length / 3);
+          for (let corner = 0; corner < indices.length; corner++) indices[corner] = raw.corners[corner * 3];
+          collisionMeshes.push({ id, pos: encodeBytes(positions.buffer), idx: encodeBytes(indices.buffer) });
+          packedCollisionIds.add(id);
+        }
+        return id;
+      }),
+    );
   }
 
   const physicsIds = new Set<number>();
@@ -961,6 +1012,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
     .filter(
       ({ instance }) =>
         geoms.has(instance.ModelID) ||
+        (instance.IncludeSound !== false && !!instance.Sounds?.ExternalSounds?.length) ||
         (instance.PlayerCollision !== false &&
           (instance.CollsionMode ?? NATIVE_COLLISION_MODE.none) > NATIVE_COLLISION_MODE.none),
     )
@@ -987,6 +1039,16 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
       const externalSounds = (instance.IncludeSound !== false ? (instance.Sounds?.ExternalSounds ?? []) : []).flatMap(
         record => {
           if (!record || !Number.isInteger(record.SoundIndex) || !Number.isInteger(record.U0)) return [];
+          if (
+            record.SoundBank !== undefined &&
+            (typeof record.SoundBank !== 'string' ||
+              !/^[a-z0-9_-]+$/i.test(record.SoundBank) ||
+              !Number.isInteger(record.SoundSlot) ||
+              record.SoundSlot! < 0 ||
+              record.SoundSlot! > 999 ||
+              record.Activation !== 'Proximity')
+          )
+            return [];
           const type = Number(record.U0);
           const expected = type === 0 ? 2 : type === 1 || type === 2 ? 7 : type === 3 ? 1 : 7;
           const tail = [record.U5, record.U6, record.U7, record.U8, record.U9, record.U10, record.U11];
@@ -1001,6 +1063,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
               s: Number(record.SoundIndex),
               o: [Number(record.U2) || 0, Number(record.U3) || 0, Number(record.U4) || 0],
               p: params,
+              ...(record.SoundBank ? { b: record.SoundBank, n: record.SoundSlot! } : {}),
             },
           ];
         },
@@ -1013,6 +1076,9 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
         s: instance.Scale,
         n: instance.InstanceName,
         v: instance.Visable !== false,
+        ...(isOnTourCourseHelper(helperSource, instance.InstanceName, sourceModels?.Models[instance.ModelID]?.ModelName)
+          ? { eh: true as const }
+          : {}),
         // State 0 is the overwhelmingly common case; omission keeps the payload compact while decodeProps
         // restores it. The other values are authoring/provenance facts and must survive into Prop Details.
         ...(Number.isInteger(instance.LTGState) && instance.LTGState !== 0 ? { ls: Number(instance.LTGState) } : {}),
@@ -1063,7 +1129,7 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
           ? { px: instance.PhysicsIndex }
           : {}),
         ...(instance.CollsionMode === NATIVE_COLLISION_MODE.triangleProxy && instance.CollsionModelPaths?.length
-          ? { cp: instance.CollsionModelPaths.map(path => safeDataName(path.replace(/\.obj$/i, ''))) }
+          ? { cp: collisionPaths.get(sourceIndex) }
           : {}),
         // the rare rideable prop's surface type (ride feel + board-audio family, [Trailmap: 120-objects])
         ...(typeof instance.SurfaceType === 'number' && instance.SurfaceType >= 0 ? { st: instance.SurfaceType } : {}),

@@ -15,6 +15,11 @@ geometry, exported through its public gear API by Native/tools/export-snowboard.
 The model has a half turn about Y to use Native's model-space nose convention.
 Native builds embed this saved asset and do not link the authoring runtime.
 
+The Contour, Sunset Rally, Timberline and Night Shift snowboard graphics are
+original OpenSlope artwork, generated and approved for this project. Their shared
+source PNGs are Slopesmith/public/equipment/boards/*.png. Native embeds them for
+desktop and OpenXR playback. See Slopesmith/docs/stock-board-art.md for provenance.
+
 Quest Touch Plus controller art
 Copyright 2026 OpenSlope contributors
 Licensed under the Apache License, Version 2.0.

@@ -208,6 +208,8 @@ export interface PropInstance {
   name: string;
   /** Native Instances.json visibility. Hidden placements are retained for Effects-mode wireframe picking. */
   visible: boolean;
+  /** Imported course utility: editor wireframe even when its original script is still deferred. */
+  editorHelper?: boolean;
   /** Exact native contact gate, preserved separately from the derived contact preview class. */
   playerCollision: boolean;
   /** Exact native bounce gate, preserved separately from PlayerBounceAmmount. */
@@ -232,7 +234,7 @@ export interface PropInstance {
   /** Rigid-body record in the level's physics pool (PhysicsIndex, -1 none): the sphere-tree body the sim
    *  shoves when a movable prop is hit — the piece custom props lack [Trailmap: 130-collision-data]. */
   physicsBody: number;
-  /** Native mode-1 collision OBJ ids (`CollsionModelPaths`). These are intentionally independent of the
+  /** Mode-1 proxy lookup keys (source OBJ ids or derived model-rest variants). These are independent of the
    * visible model: retail keeps invisible collision twins and simplified contact hulls as first-class data. */
   collisionModels?: string[];
   /** Native ADL listener-region records (`Sounds.ExternalSounds`), with their type-specific payload intact. */
@@ -370,6 +372,7 @@ export interface PropsPayload {
     s: number[];
     n: string;
     v?: boolean;
+    /** Editor-only helper overlay; independent of having a translated effect slot. */ eh?: boolean;
     /** Native LTG list state; omitted for the common state 0. */ ls?: number;
     /** Native ambient RGB plus three flattened key RGB / direction vectors. */
     la?: number[];
@@ -386,9 +389,9 @@ export interface PropsPayload {
     /** configured collision response mass; retained even while PlayerCollision gates the shape off */ rm?: number;
     /** Roller payload scalar mass; omitted when no collision Roller activates this instance */ dm?: number;
     /** physics-pool rigid-body record; omitted when the instance has none (PhysicsIndex -1) */ px?: number;
-    /** native mode-1 Collision/*.obj ids; omitted when the instance carries no collision proxy */ cp?: string[];
+    /** mode-1 proxy lookup keys; model-object rest transforms are baked into payload geometry */ cp?: string[];
     /** ExternalSounds: type, event, world-axis offset, and type-specific U5+ tail. */
-    xs?: { t: number; s: number; o: number[]; p: number[] }[];
+    xs?: { t: number; s: number; o: number[]; p: number[]; b?: string; n?: number }[];
     /** index into `effects` when this copy's effect is portable; omitted otherwise */ fx?: number;
   }[];
   error?: string;
@@ -514,6 +517,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
     scale: [i.s[0], i.s[1], i.s[2]],
     name: i.n,
     visible: i.v !== false,
+    ...(i.eh ? { editorHelper: true } : {}),
     playerCollision: i.pc !== false,
     playerBounce: i.pb !== false,
     collisionSound: typeof i.hs === 'number' ? i.hs : -1,
@@ -530,6 +534,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
       sound: x.s,
       offset: [x.o[0] ?? 0, x.o[1] ?? 0, x.o[2] ?? 0],
       params: x.p.filter(Number.isFinite),
+      ...(x.b !== undefined ? { route: { bank: x.b, slot: x.n ?? -1 } } : {}),
     })),
     ...(effectAt(i.fx) ? { effect: i.fx } : {}),
     ...(i.la?.length === 3

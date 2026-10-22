@@ -205,9 +205,17 @@ the two real-browser SwiftShader checks from launching browsers together. The on
 a saturated machine briefly runs alone; the long CPU check already pins the full tier, so this reliability does
 not normally add to its wall clock.
 
-`npm test` is the normal browser-edit loop. With `npm run typecheck` and `npm run build`,
-`npm run test:full` is the bar every change must pass; `npm run verify`, from the repository root, invokes
-that full tier with coverage.
+Start the browser-edit loop with focused checks (`npm test -- --only <area>`)
+and the relevant type/lint checks; `npm test` provides wider fast-tier feedback.
+Run integration or browser checks for the flows a change affects, and build when
+the change affects packaging or needs a production check. Reuse successful
+results while the relevant inputs remain unchanged.
+
+`npm run test:full` remains the complete discovered suite, run with coverage by
+the nightly workflow and by `npm run verify` from the repository root. Use that
+complete gate for release preparation, broad changes across components or shared
+contracts, and explicit full-validation requests. Routine local commits follow
+the [focused validation policy](../../CONTRIBUTING.md#routine-development).
 
 ## `scripts` — dev, build, and ops
 

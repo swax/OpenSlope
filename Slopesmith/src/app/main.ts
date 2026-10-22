@@ -103,7 +103,8 @@ import {
 import { createSessionChannel, membersOn, type PresenceEntry } from './net/session-channel';
 import { currentAccount, onAccountChanged, type Member } from './net/account';
 import { isLocalWorkspace } from './net/workspace';
-import { MAPS_PATH, localEditorUrl } from './navigation';
+import { MAPS_PATH, localEditorUrl, mapPath } from './navigation';
+import { listLocalProjects } from './state/local-projects';
 import { createRegisterSync } from './net/register-sync';
 import { createAwareness } from './net/awareness';
 import { createSyncStatus } from './state/sync-status';
@@ -120,6 +121,7 @@ import { pickMountainFolder } from './mountain/folder';
 import { openLocalMountainFolder } from './mountain/open-folder';
 import { loadSettings, saveSettings } from './state/settings';
 import { confirmUnloadWithUnsavedWork, holdUnsavedWork } from './state/unsaved-work';
+import { beforeAppUpdate } from './offline';
 import type { PeerMarks } from './viewport/scene/peers';
 import { referenceRoom } from '../core/session/public-courses';
 import { translatePlayerPose } from '../core/session/pose-space';
@@ -1302,6 +1304,21 @@ const {
     joinMap(doc);
     return doc;
   },
+  listOtherProjects: async () => {
+    if (!isLocalWorkspace()) return listLocalProjects();
+    const account = await currentAccount();
+    if (!('user' in account) && (account.accounts !== 'open' || account.offline)) return [];
+    // Read the server catalogue directly while project sync remains bound to browser storage.
+    const response = await fetch('/api/projects');
+    if (!response.ok) throw new Error('Could not read server mountains.');
+    return ((await response.json()) as { projects: ClientProject[] }).projects;
+  },
+  openOtherProject: async project => {
+    const destination = isLocalWorkspace()
+      ? `${mapPath('editor', project.name)}?${new URLSearchParams({ project: project.id })}`
+      : localEditorUrl(project.name, project.id);
+    await navigateFromEditor(destination);
+  },
   exportMountainBundle: () => projectSync.exportMountain(),
   importMountainBundle: async (bundle, name) => {
     const imported = await projectSync.importMountain(bundle, name);
@@ -2338,13 +2355,25 @@ async function stopFolder(): Promise<void> {
   }
 }
 
-async function exitEditor(): Promise<void> {
+async function navigateFromEditor(destination: string): Promise<void> {
+  persistView();
+  persistUi();
+  await projectSync.prepareToLeave();
+  await flushMountainFolders();
+  location.assign(destination);
+}
+
+beforeAppUpdate(async () => {
+  if (viewport.riding || viewport.xrPlaying) throw new Error('Exit play before reloading to update.');
+  persistView();
+  persistUi();
+  await projectSync.prepareToLeave();
+  await flushMountainFolders();
+});
+
+async function exitEditor(destination = MAPS_PATH): Promise<void> {
   try {
-    persistView();
-    persistUi();
-    await projectSync.prepareToLeave();
-    await flushMountainFolders();
-    location.assign(MAPS_PATH);
+    await navigateFromEditor(destination);
   } catch (error) {
     toast(error instanceof Error ? error.message : String(error), 'err');
   }
@@ -2425,8 +2454,8 @@ const { modeSeg, usersBar, histBar, viewShow, viewLighting, viewOverlays, viewSh
     },
     exportDialog,
     settingsDialog: openSettingsDialog,
-    exitEditor: () => {
-      void exitEditor();
+    exitEditor: destination => {
+      void exitEditor(destination);
     },
   });
 // (Test ride lives in Test mode — see the mode segment + buildPlayTools, docs/016.)

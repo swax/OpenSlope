@@ -34,6 +34,16 @@ export async function playSocket(
       reject(new Error(`Upgrade refused (${response.statusCode})`));
     });
     req.on('upgrade', (response, socket, head) => {
+      if (
+        response.headers.connection
+          ?.toLowerCase()
+          .split(/\s*,\s*/)
+          .includes('close')
+      ) {
+        socket.destroy();
+        reject(new Error('WebSocket upgrade must not request Connection: close; Go proxies cannot tunnel it.'));
+        return;
+      }
       let bytes = Buffer.from(head);
       const channel = {
         seen: [] as any[],

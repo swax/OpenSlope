@@ -89,6 +89,18 @@ shape for positive signed volume and paired edges, so neither can reach a build.
 
 ### Lights, and how they move
 
+Riders receive location-dependent course lighting. On imported courses, a spatial index blends the four
+nearest authored instance lighting records in full 3D. Their ambient colours and three model-local keys
+are converted to world space and evaluated against animated normals. This uses the same source data as
+Unity's avatar probes; the interpolation is an approximation rather than a claim of exact original rider
+sampling. Self-lit materials do not seed the field, while truly dark records remain valid. On authored
+mountains, riders use the active sun/sky colours with the terrain bake attenuating the sun. Without course
+lighting data, the existing studio rig remains available. [Trailmap: 160-instance, 160-instance-frame, 400-lighting]
+
+The procedural rider, imported characters, opponents and remote players share this path. Each character
+owns its lighting material state, while its texture maps remain shared. Display-domain colour modulation
+preserves the original prop-lighting scale; emissive maps and transparency retain their own behavior.
+
 A character can carry emissive masks. Alpine Exo has two, embedded in its GLB: a 64 × 64 atlas of light
 shapes (visor, indicator, lamp, readout bars) and a 16 × 64 conduit strip. Servo Scout carries its own pair
 of the same two shapes for different lights — an iris with a dark pupil, a marker slot, and a data feed drawn
@@ -110,8 +122,8 @@ way. Alpine Exo uses it for the power conduits on its spine, chest, forearms and
 for the data feeds on the same four places, at a different rate and off its own strip.
 
 That step runs **once a frame for the whole scene**, not once per rider, and this is deliberate: rider
-models are loaded once and cloned, and `SkeletonUtils.clone` shares materials, so every player, AI rider and
-remote avatar wearing a character is looking at the same `Texture` object. Advancing it per instance would
+models are loaded once and cloned. Their lighting materials are independent, but every player, AI rider and
+remote avatar wearing a character still uses the same `Texture` object. Advancing it per instance would
 run the animation at the field's size in multiples of its authored speed. The offset is wrapped back into
 [0, 1) every frame for the same class of reason: the texture repeats, so wrapping is invisible, but an
 offset left to accumulate reaches the shader as a float whose fractional part — the only part that matters —

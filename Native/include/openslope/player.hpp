@@ -6,6 +6,7 @@
 #include "course_recovery.hpp"
 #include "course_run.hpp"
 #include "foot_motion.hpp"
+#include "gear.hpp"
 #include "rails.hpp"
 #include "ride.hpp"
 #include "rider_motion.hpp"
@@ -22,6 +23,7 @@
 #include <stdexcept>
 
 namespace openslope {
+class SceneLighting;
 class AiField;
 
 struct RideInput {
@@ -116,6 +118,8 @@ public:
 
     void reset_room_contacts() { foot_room_serial_ = ~std::uint64_t(0); }
 
+    void rebase_tracking(Vec3 offset);
+
     bool recover_course(bool manual = false);
 
     bool reset_pending() const { return recovery_target_.has_value(); }
@@ -145,6 +149,10 @@ public:
     const Rider& rider() const { return rider_; }
 
     const Terrain& terrain() const { return terrain_; }
+
+    unsigned board_design() const { return board_design_; }
+
+    const SceneLighting& avatar_lighting() const;
 
     const RideContract& contract() const { return contract_; }
 
@@ -263,6 +271,7 @@ public:
     const Rails& rails() const { return rails_; }
 
 private:
+    unsigned board_design_ = random_stock_board();
     friend class AiField;
     struct SharedScene;
     std::shared_ptr<SharedScene> scene_;

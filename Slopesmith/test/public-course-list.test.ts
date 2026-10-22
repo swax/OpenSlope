@@ -8,6 +8,7 @@ import {
   publicCourseRequest,
   resolvePublicCourse,
   courseEditorUrl,
+  editorUrlForPublicMap,
 } from '../src/app/public/links';
 import { MAPS_PATH, ISOS_PATH } from '../src/app/navigation';
 import type { PublicCourse } from '../src/core/session/public-courses';
@@ -16,6 +17,7 @@ import { publicMountainDocument, publicPropPayload } from '../src/app/public/cou
 import { defaultMountain } from '../src/core/doc/mountain';
 import { createAuthoredModel } from '../src/core/doc/models';
 import { projectIsoCourses } from '../src/server/public-courses';
+import { classifyExportProvenance } from '../src/core/export/manifest';
 
 const reference: PublicCourse = {
   id: 'RENAMED_GARI',
@@ -50,6 +52,9 @@ assert.deepEqual(
   },
 );
 assert.equal(publicCourseGroups([], ['GARI']).local[0].name, 'Garibaldi', 'loaded slots need no server publication');
+assert.equal(publicCourseGroups([], ['SSX_SNOW']).local[0].name, 'Snowdream (SSX)');
+assert.equal(publicCourseGroups([], ['SNOW', 'SSX_SNOW']).local.length, 2, 'original and Tricky courses coexist');
+assert(isDiscCourse('ssx_snow'), 'original SSX slots can be opened locally without a server publication');
 assert.deepEqual(
   requiredIsoState(['GARI', 'SNOW', 'gari'], ['gari']),
   [
@@ -98,6 +103,11 @@ assert.equal(courseEditorUrl(named, origin), `${origin}/editor/My_Mountain`);
 assert.equal(courseEditorUrl({ ...named, private: true }, origin), `${origin}/editor/My_Mountain?project=custom`);
 assert.equal(courseEditorUrl(reference, origin), `${origin}/editor?reference=RENAMED_GARI`);
 assert.equal(courseEditorUrl({ ...named, name: 'A map' }, origin), `${origin}/editor/A%20map`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/maps`)), `${origin}/editor`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/isos`)), `${origin}/editor`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/play/My_Mountain?room=friends`)), `${origin}/editor/My_Mountain`);
+assert.equal(editorUrlForPublicMap(new URL(`${origin}/isos?map=My_Mountain`)), `${origin}/editor/My_Mountain`);
+assert.equal(editorUrlForPublicMap(new URL(publicCourseUrl(reference, origin))), courseEditorUrl(reference, origin));
 const localGari = groups.local.find(course => course.id === 'GARI')!;
 const saved = { ...named, id: 'local-fixture', localProjectId: 'local-fixture' };
 const savedRequest = publicCourseRequest(new URL(publicCourseUrl(saved, origin)));
@@ -113,6 +123,7 @@ assert.equal(
   'a deleted local copy never falls through to a server map',
 );
 assert.equal(new URL(courseEditorUrl(saved, origin)).searchParams.get('local'), saved.id);
+assert.equal(editorUrlForPublicMap(new URL(publicCourseUrl(saved, origin))), courseEditorUrl(saved, origin));
 const serverGari = { ...reference, id: 'GARI', name: 'Garibaldi' };
 const isoUrl = publicCourseUrl(localGari, origin);
 assert.equal(new URL(isoUrl).searchParams.get('source'), 'iso');
@@ -238,4 +249,31 @@ assert.deepEqual(
   ['GARI'],
   'borrowed textures inside imported prop materials also declare their ISO donor',
 );
+const customSky = defaultMountain();
+const dawn = { on: true, source: { kind: 'custom', name: 'dawn' }, topColor: '#ffffff' } as const;
+customSky.skybox = { ...dawn, ring: 'GARI' };
+assert.deepEqual(
+  projectIsoCourses(customSky),
+  [],
+  'an uploaded sky plays from its own panorama, so its export ring is not an ISO requirement',
+);
+assert.deepEqual(
+  classifyExportProvenance(customSky, {}).reasons,
+  ['retail-sky-ring', 'user-sky'],
+  'the export still declares the retail ring it copies the custom sky onto',
+);
+assert.deepEqual(
+  projectIsoCourses({ ...customSky, skybox: dawn }),
+  [],
+  'a custom sky that names no ring is no different',
+);
+customSky.gems = [{ pos: [0, 0, 0] }];
+assert.deepEqual(
+  projectIsoCourses(customSky),
+  ['GARI'],
+  'a feature the player draws from disc art still needs a donor',
+);
+const levelSky = defaultMountain();
+levelSky.skybox = { on: true, source: { kind: 'level', level: 'SNOW' }, topColor: '#ffffff' };
+assert.deepEqual(projectIsoCourses(levelSky), ['SNOW'], 'a level sky lists the course it borrows');
 console.log('PUBLIC COURSE LIST PASS: named links, separate map groups, donor status and partial ISO assets.');

@@ -35,6 +35,19 @@ def stream(blocks=1):
     return chunk(b'SCHl', header) + chunk(b'SCCl', struct.pack('<I', blocks)) + chunk(b'SCDl', payload) * blocks + chunk(b'SCEl', b'')
 
 
+def literal_bank():
+    data = bytearray(bank()[:-3])
+    marker = data.index(bytes([0xa0, 4]))
+    struct.pack_into('>I', data, marker + 2, 10)
+    marker = data.index(bytes([0x85, 4]))
+    struct.pack_into('>I', data, marker + 2, 56)
+    # One literal frame followed by a regular delta frame checks variable
+    # frame strides and exact signed big-endian sample conversion.
+    data += b'\xee' + struct.pack('>30h', 100, -100, *range(-14, 14))
+    data += bytes([12, 0x18]) + bytes(13)
+    return bytes(data)
+
+
 def main():
     executable = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix='openslope-audio-containers-') as temporary:
@@ -51,6 +64,14 @@ def main():
             assert struct.unpack('<3h', decoded.readframes(3)) == (0, 32512, -32768)
         with wave.open(str(root / 'bank/000.loop.wav')) as decoded:
             assert struct.unpack('<2h', decoded.readframes(2)) == (32512, -32768)
+        source.write_bytes(literal_bank())
+        result = subprocess.run([str(executable), 'bank', str(source), str(root / 'literal')], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        with wave.open(str(root / 'literal/000.wav')) as decoded:
+            assert struct.unpack('<56h', decoded.readframes(56)) == tuple(range(-14, 14)) + (1, -8) + (0,) * 26
+        source.write_bytes(literal_bank()[:-30])
+        result = subprocess.run([str(executable), 'bank', str(source), str(root / 'truncated')], capture_output=True, text=True)
+        assert result.returncode != 0
         source = root / 'authored.stream'
         source.write_bytes(stream())
         result = subprocess.run([str(executable), 'stream', str(source), str(root / 'stream.wav')], capture_output=True, text=True)

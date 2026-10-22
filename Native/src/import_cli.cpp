@@ -13,10 +13,23 @@ int main(int argc, char** argv) {
             std::cerr << "Usage: openslope_import list <iso> | extract <iso> <course> <Maps-folder> | convert-effects "
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
                          "<map-folder> | world <iso> <course> | surface-spray <iso> | collision-routes <iso> | "
-                         "board-groups <iso>\n";
+                         "board-groups <iso> | adapt-riding-audio <map-folder> | adapt-course-ambience <map-folder> | "
+                         "polish-streamed-map <map-folder>\n";
             return 1;
         }
         const std::string operation = argv[1];
+        if (operation == "polish-streamed-map" && argc == 3) {
+            std::cout << openslope::polish_streamed_map(argv[2]) << '\n';
+            return 0;
+        }
+        if (operation == "adapt-riding-audio" && argc == 3) {
+            std::cout << openslope::adapt_riding_audio(argv[2]) << '\n';
+            return 0;
+        }
+        if (operation == "adapt-course-ambience" && argc == 3) {
+            std::cout << openslope::adapt_course_ambience(argv[2]) << '\n';
+            return 0;
+        }
         if (operation == "convert-effects" && argc == 4) {
             const auto source = std::filesystem::path(argv[2]), output = std::filesystem::path(argv[3]);
             if (std::filesystem::file_size(source) > 64 * 1024 * 1024 || std::filesystem::exists(output))

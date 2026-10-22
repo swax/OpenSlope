@@ -3,11 +3,11 @@ import { publicGlyph } from './presentation';
 import type { RideControlHelp } from '../ride/control-help';
 import type { PublicCourseKind } from '../../core/session/public-courses';
 
-/** Keep launch choices on the mountain, with movement help only after choosing to look around. */
-export function publicMapControls(deps: { play: () => void; vr: () => void; view: () => void; inspect: () => void; resetStart: () => void }) {
+/** Keep launch choices and movement help on the mountain while previewing the map. */
+export function publicMapControls(deps: { play: () => void; vr: () => void; inspect: () => void; resetStart: () => void }) {
   const el = element('div', 'public-map-overlays'); el.hidden = true;
   let customStart = false, playing = false;
-  const legend = element('section', 'public-view-controls'); legend.hidden = true;
+  const legend = element('section', 'public-view-controls');
   legend.setAttribute('aria-label', 'Mouse controls');
   const title = element('h2', '', 'Move around');
   const controls = element('dl', '');
@@ -35,20 +35,11 @@ export function publicMapControls(deps: { play: () => void; vr: () => void; view
   roomy.addEventListener('change', () => { rideLegend.open = roomy.matches; });
   const play = element('button', 'public-primary', 'Play'); play.type = 'button'; play.prepend(publicGlyph('play'));
   const vr = element('button', '', 'Play in VR'); vr.type = 'button'; vr.prepend(publicGlyph('vr'));
-  const view = element('button', '', 'View map'); view.type = 'button'; view.prepend(publicGlyph('view'));
   const inspect = element('button', '', 'Inspect map'); inspect.type = 'button'; inspect.prepend(publicGlyph('editor'));
   inspect.onclick = deps.inspect;
-  view.setAttribute('aria-expanded', 'false');
-  legend.id = 'public-mouse-controls'; view.setAttribute('aria-controls', legend.id);
   play.onclick = () => { error.hidden = true; deps.play(); };
   vr.onclick = () => { error.hidden = true; deps.vr(); };
-  view.onclick = () => {
-    error.hidden = true;
-    legend.hidden = !legend.hidden;
-    view.setAttribute('aria-expanded', String(!legend.hidden));
-    if (!legend.hidden) deps.view();
-  };
-  choices.append(play, vr, view, inspect); launch.append(reset, choices, error); el.append(legend, launch, rideLegend);
+  choices.append(play, vr, inspect); launch.append(reset, choices, error); el.append(legend, launch, rideLegend);
   return {
     el,
     setMapType(kind: PublicCourseKind) {
@@ -58,7 +49,7 @@ export function publicMapControls(deps: { play: () => void; vr: () => void; view
     setPlaying(active: boolean) {
       playing = active;
       el.hidden = false; choices.hidden = playing; reset.hidden = playing || !customStart;
-      legend.hidden = error.hidden = rideLegend.hidden = true; view.setAttribute('aria-expanded', 'false');
+      legend.hidden = playing; error.hidden = rideLegend.hidden = true;
     },
     setCustomStart(custom: boolean) {
       customStart = custom; reset.hidden = playing || !custom;

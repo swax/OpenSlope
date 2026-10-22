@@ -29,7 +29,25 @@
           "minItems": 4,
           "maxItems": 4,
           "items": { "$ref": "#/$defs/point3" }
-        }
+        },
+        "PowerCoefficients": {
+          "description": "Optional cubic-to-constant coefficients in the source centimetre frame.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/point3" }
+        },
+        "ArcLengthCoefficients": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" }
+        },
+        "Length": { "type": "number", "minimum": 0 },
+        "Distance": { "type": "number", "minimum": 0 },
+        "Previous": { "type": "integer", "minimum": -1 },
+        "Next": { "type": "integer", "minimum": -1 },
+        "SourceSegment": { "type": "integer", "minimum": 0 }
       }
     },
     "spline": {
