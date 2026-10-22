@@ -28,6 +28,28 @@ void write(const std::filesystem::path& path, const Json& doc) {
 
 Json vector(Bytes b, std::size_t p) { return Json::array({b.number(p), b.number(p + 4), b.number(p + 8)}); }
 
+Json ssx_light(Bytes b, std::size_t p, std::size_t i) {
+    // [Trailmap: 500-light-cone] The portable fields end at the cone cosine;
+    // later bookkeeping/padding may share the following cell's extent.
+    b.range(p, 76);
+    Json row = {{"LightName", "Light " + std::to_string(i)},
+                {"Type", b.le(p)},
+                {"SpriteRes", 0},
+                {"UnknownFloat1", b.number(p + 4)},
+                {"Colour", vector(b, p + 12)},
+                {"Direction", vector(b, p + 24)},
+                {"Position", vector(b, p + 36)},
+                {"LowestXYZ", vector(b, p + 48)},
+                {"HighestXYZ", vector(b, p + 60)}};
+    if (b.le(p) == 1) {
+        const auto cone = b.number(p + 72);
+        if (cone < -1 || cone > 1)
+            throw std::runtime_error("Invalid SSX spotlight cone");
+        row["UnknownFloat2"] = row["OuterConeCosine"] = cone;
+    }
+    return row;
+}
+
 void append(Buffer& to, Bytes from, std::size_t p, std::size_t size) {
     from.range(p, size);
     if (to.size() + size > 64 * 1024 * 1024)
@@ -390,6 +412,30 @@ void ssx_header(std::span<const std::uint8_t> index) {
         throw std::runtime_error("SSX world index length disagrees with its tables");
 }
 
+std::string ssx_light_document(std::span<const std::uint8_t> index_bytes, std::span<const std::uint8_t> world_bytes) {
+    ssx_header(index_bytes);
+    Bytes index{index_bytes}, world{world_bytes};
+    const auto grid = std::size_t(index.le(40)) * index.le(44), table = 72 + std::size_t(index.le(48)) * 8;
+    Json lights = Json::array();
+    for (std::size_t i = 0; i < grid; ++i) {
+        const auto offset = index.le(table + i * 8), size = index.le(table + i * 8 + 4);
+        world.range(offset, size);
+        if (!size)
+            continue;
+        Bytes cell{world.data.subspan(offset, size)};
+        cell.range(0, 48 + 16 * 48);
+        const auto count = cell.le(40, 2);
+        if (lights.size() + count > 100000)
+            throw std::runtime_error("SSX light table exceeds its limit");
+        const auto start = ((48 + 16 * 48 + std::size_t(cell.le(44, 2)) * 4 + 15) & ~std::size_t(15)) +
+                           std::size_t(cell.le(36, 2)) * 272 + std::size_t(cell.le(38, 2)) * 448 +
+                           std::size_t(cell.le(42, 2)) * 128;
+        for (unsigned j = 0; j < count; ++j)
+            lights.push_back(ssx_light(cell, start + std::size_t(j) * 88, lights.size()));
+    }
+    return Json{{"Lights", lights}}.dump();
+}
+
 void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>& files, const std::string& course,
                       const std::filesystem::path& output, const ImportProgress& progress, const ImportCancel& cancel) {
     const auto notify = [&](const std::string& text) {
@@ -461,20 +507,8 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
             append(bytes, b, p, 128);
             segments.push_back({unsigned(cell), j, std::move(bytes)});
         }
-        for (unsigned j = 0; j < light_count; ++j, p += 88) {
-            // Only the first 76 bytes carry portable light data; trailing
-            // bookkeeping/padding may be shared with the next cell extent.
-            b.range(p, 76);
-            lights.push_back({{"LightName", "Light " + std::to_string(lights.size())},
-                              {"Type", b.le(p)},
-                              {"SpriteRes", 0},
-                              {"UnknownFloat1", b.number(p + 4)},
-                              {"Colour", vector(b, p + 12)},
-                              {"Direction", vector(b, p + 24)},
-                              {"Position", vector(b, p + 36)},
-                              {"LowestXYZ", vector(b, p + 48)},
-                              {"HighestXYZ", vector(b, p + 60)}});
-        }
+        for (unsigned j = 0; j < light_count; ++j, p += 88)
+            lights.push_back(ssx_light(b, p, lights.size()));
     }
     if (patch_names.empty())
         throw std::runtime_error("SSX course has no terrain");

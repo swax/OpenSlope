@@ -2,6 +2,7 @@
 #include "avatar.hpp"
 #include "camera.hpp"
 #include "desktop_library.hpp"
+#include "lighting_mode.hpp"
 
 namespace openslope {
 enum class UiAction {
@@ -75,7 +76,7 @@ public:
     bool audio_options = false, song_picker = false, music_enabled = true, authored_music = false;
     bool graphics_options = false, rider_options = false, loading = false;
     unsigned render_scale = 150, antialiasing = 4;
-    bool enhanced_lighting = false;
+    LightingMode lighting = LightingMode::Original;
     double snow_amount = 3, load_progress = 0;
     std::string graphics_readout, load_name, load_stage;
     double master_volume = 1;

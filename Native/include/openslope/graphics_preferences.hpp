@@ -1,4 +1,5 @@
 #pragma once
+#include "lighting_mode.hpp"
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -10,7 +11,7 @@ struct UiResult;
 struct GraphicsPreferences {
     unsigned render_scale = 150, msaa = 4;
     double snow = 3;
-    bool enhanced_lighting = false;
+    LightingMode lighting = LightingMode::Original;
     static GraphicsPreferences load(const std::filesystem::path& file);
     bool save(const std::filesystem::path& file) const;
     static std::filesystem::path default_path();

@@ -71,7 +71,7 @@ private:
     struct Buffer {
         VkBuffer buffer{};
         VkDeviceMemory memory{};
-    } vertices_, indices_;
+    } vertices_, indices_, local_lights_, light_cells_, light_indices_;
 
     struct Image {
         VkImage image{};
@@ -109,10 +109,13 @@ private:
     };
 
     Props props_;
+    std::vector<std::uint32_t> prop_casters_;
+    std::vector<std::uint32_t> lamp_housings_;
     std::vector<PropDraw> prop_draws_;
     std::vector<PropFrame> crowd_frames_;
     std::size_t pose_capacity_{};
     World world_;
+    unsigned local_light_count_{}, spot_light_count_{};
     std::vector<Draw> sky_draws_;
     std::uint32_t board_first_{};
     std::uint32_t board_count_{};
@@ -164,13 +167,19 @@ public:
 
     void deferred(bool enabled) { deferred_ = enabled; }
 
-    void lighting(bool enabled);
+    void lighting(LightingMode mode);
 
     bool hdr() const { return hdr_; }
 
+    unsigned local_lights() const { return scene_ ? scene_->local_light_count_ : 0; }
+
+    unsigned spot_lights() const { return scene_ ? scene_->spot_light_count_ : 0; }
+
     void ray_shadows(bool enabled) { ray_shadows_ = enabled; }
 
-    bool ray_shadows_active() const { return enhanced_lighting_ && ray_shadows_ && context_.ray_query && !ray_failed_; }
+    bool ray_shadows_active() const {
+        return lighting_mode_ != LightingMode::Original && ray_shadows_ && context_.ray_query && !ray_failed_;
+    }
 
     unsigned ray_instances() const { return ray_world_ ? ray_world_->instances() : 0; }
 
@@ -199,7 +208,8 @@ public:
                 std::span<const PropRouteMotion> routes = {}, std::span<const PropTextureFrame> texture_frames = {},
                 std::span<const BoostTrailVertex> boost = {}, std::span<const ParticleSprite> particles = {},
                 CelestialView glare_view = {}, std::span<const Vertex> hud = {}, bool screen_hud = false,
-                SnowfallView snow = {}, const LampView* lamps = nullptr, std::span<const Matrix> opponents = {});
+                SnowfallView snow = {}, const LampView* lamps = nullptr, std::span<const Matrix> opponents = {},
+                std::span<const Vertex> shadow_casters = {});
 
     const Stats& stats() const { return stats_; }
 
@@ -244,10 +254,11 @@ private:
     bool deferred_ = false, pending_ = false;
     Buffer poses_;
     Buffer lighting_;
-    bool enhanced_lighting_ = false;
+    LightingMode lighting_mode_ = LightingMode::Original;
     bool ray_shadows_ = true, ray_failed_ = false;
     std::shared_ptr<RayGeometry> ray_geometry_;
     std::unique_ptr<RayWorld> ray_world_;
+    std::unique_ptr<RayActor> ray_actor_;
     VkDescriptorSetLayout ray_layout_{};
     VkDescriptorPool ray_pool_{};
     VkDescriptorSet ray_set_{};
@@ -317,5 +328,6 @@ private:
     std::uint32_t memory_type(std::uint32_t bits, VkMemoryPropertyFlags flags) const;
     void destroy_buffer(Buffer& buffer);
     void reserve_poses(std::size_t count);
+    void bind_scene_lights();
 };
 } // namespace openslope

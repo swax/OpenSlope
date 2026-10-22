@@ -229,6 +229,8 @@ void VulkanRenderer::upload(SceneAssets assets, UploadProgress progress) {
         // Every scene uses the same two-sampler layout, so existing pipelines
         // accept its descriptor sets. Publish only after upload and allocation.
         scene_ = std::move(scene);
+        bind_scene_lights();
+        ray_failed_ = false;
         stats_ = {};
         return;
     }
@@ -269,16 +271,19 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     pose_capacity_ = scene_->pose_capacity_;
     poses_ = create_buffer(pose_capacity_ * sizeof(PropPose), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, nullptr);
     lighting_ = create_buffer(sizeof(LightingUniform), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, nullptr);
-    const std::array<VkDescriptorSetLayoutBinding, 2> bindings{
+    const std::array<VkDescriptorSetLayoutBinding, 5> bindings{
         {{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr},
-         {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}}};
+         {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+         {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+         {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+         {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}}};
     VkDescriptorSetLayoutCreateInfo pose_layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     pose_layout.bindingCount = unsigned(bindings.size());
     pose_layout.pBindings = bindings.data();
     vk_check(vkCreateDescriptorSetLayout(context_.device, &pose_layout, nullptr, &pose_layout_),
              "Create eye placement layout");
     const std::array<VkDescriptorPoolSize, 2> sizes{
-        {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}}};
+        {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4}, {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}}};
     VkDescriptorPoolCreateInfo pose_pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pose_pool.maxSets = 1;
     pose_pool.poolSizeCount = unsigned(sizes.size());
@@ -302,6 +307,7 @@ void VulkanRenderer::use_scene(std::shared_ptr<VulkanScene> scene) {
     write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     write.pBufferInfo = &light_data;
     vkUpdateDescriptorSets(context_.device, 1, &write, 0, nullptr);
+    bind_scene_lights();
     if (context_.ray_query) {
         const VkDescriptorSetLayoutBinding ray_binding{0, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1,
                                                        VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
@@ -479,11 +485,28 @@ void VulkanRenderer::clear_targets() {
     pass_ = {};
 }
 
-void VulkanRenderer::lighting(bool enabled) {
-    if (enabled == enhanced_lighting_)
+void VulkanRenderer::bind_scene_lights() {
+    const std::array<VkDescriptorBufferInfo, 3> buffers{{{scene_->local_lights_.buffer, 0, VK_WHOLE_SIZE},
+                                                         {scene_->light_cells_.buffer, 0, VK_WHOLE_SIZE},
+                                                         {scene_->light_indices_.buffer, 0, VK_WHOLE_SIZE}}};
+    for (unsigned i = 0; i < buffers.size(); ++i) {
+        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet = pose_set_;
+        write.dstBinding = 2 + i;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.pBufferInfo = &buffers[i];
+        vkUpdateDescriptorSets(context_.device, 1, &write, 0, nullptr);
+    }
+}
+
+void VulkanRenderer::lighting(LightingMode mode) {
+    if (mode != LightingMode::Original && mode != LightingMode::Enhanced && mode != LightingMode::Runtime)
+        throw std::invalid_argument("Invalid lighting mode");
+    if (mode == lighting_mode_)
         return;
     finish();
-    enhanced_lighting_ = enabled;
+    lighting_mode_ = mode;
     if (!targets_.empty()) {
         std::vector<VkImage> images;
         for (const auto& target : targets_)
@@ -511,7 +534,8 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     vkGetPhysicalDeviceFormatProperties(context_.physical, VK_FORMAT_R16G16B16A16_SFLOAT, &hdr_support);
     constexpr auto hdr_features = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
                                   VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
-    hdr_ = enhanced_lighting_ && (hdr_support.optimalTilingFeatures & hdr_features) == hdr_features;
+    hdr_ =
+        lighting_mode_ != LightingMode::Original && (hdr_support.optimalTilingFeatures & hdr_features) == hdr_features;
     const bool offscreen = render_scale != 100 || hdr_;
     scene_format_ = render_scale == 100 ? format
                                         : (format == VK_FORMAT_B8G8R8A8_SRGB   ? VK_FORMAT_B8G8R8A8_UNORM
@@ -990,7 +1014,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                             std::span<const PropTextureFrame> texture_frames, std::span<const BoostTrailVertex> boost,
                             std::span<const ParticleSprite> particles, CelestialView glare_view,
                             std::span<const Vertex> hud, bool screen_hud, SnowfallView snow, const LampView* lamps,
-                            std::span<const Matrix> opponents) {
+                            std::span<const Matrix> opponents, std::span<const Vertex> shadow_casters) {
     if (opponents.size() > 16)
         throw std::invalid_argument("Too many opponent boards");
     for (const auto& opponent : opponents)
@@ -1143,8 +1167,11 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
             std::cerr << "Ray shadows unavailable: " << e.what() << "; using enhanced lighting\n";
         }
     }
-    auto lighting = enhanced_lighting_ ? enhanced_lighting(scene_->world_, eye) : LightingUniform{};
-    lighting.settings[0] = enhanced_lighting_ ? 1.f : 0.f;
+    auto lighting = lighting_mode_ == LightingMode::Runtime    ? runtime_lighting(scene_->world_, eye)
+                    : lighting_mode_ == LightingMode::Enhanced ? enhanced_lighting(scene_->world_, eye)
+                                                               : LightingUniform{};
+    lighting.settings[0] = float(lighting_mode_);
+    lighting.settings[2] = hdr_ ? 1.f : 0.f;
     if (weather.flakes && !snow_vertices_.buffer) {
         const auto flakes = snow_flakes();
         snow_vertices_ =
@@ -1343,21 +1370,35 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         stats_.wake_segments = unsigned(wake.size() / 6);
     }
     constexpr std::size_t maximum_avatar_vertices = 120000 + 16 * 30000;
+    const bool runtime = lighting_mode_ == LightingMode::Runtime;
+    const bool dynamic_boards = runtime || board_lighting_;
     board_mesh_.clear();
-    if (board_lighting_) {
+    if (dynamic_boards) {
         const auto& gear = snowboard_mesh();
         const auto append = [&](const Matrix& frame, unsigned design) {
             const auto& m = frame.values;
-            const auto light = board_lighting_->sample({m[12], m[13], m[14]});
+            const auto light = runtime ? SceneLight{} : board_lighting_->sample({m[12], m[13], m[14]});
             for (const auto index : gear.indices) {
                 auto v = gear.vertices[index];
-                const auto illumination =
-                    light.evaluate({m[0] * v.nx + m[4] * v.ny + m[8] * v.nz, m[1] * v.nx + m[5] * v.ny + m[9] * v.nz,
-                                    m[2] * v.nx + m[6] * v.ny + m[10] * v.nz});
+                const Vec3 normal{m[0] * v.nx + m[4] * v.ny + m[8] * v.nz, m[1] * v.nx + m[5] * v.ny + m[9] * v.nz,
+                                  m[2] * v.nx + m[6] * v.ny + m[10] * v.nz};
                 const bool stock = design < stock_board_count;
-                v.r = float(illumination.x) * (stock ? 1.f : v.r);
-                v.g = float(illumination.y) * (stock ? 1.f : v.g);
-                v.b = float(illumination.z) * (stock ? 1.f : v.b);
+                if (runtime) {
+                    const Vec3 position{m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12],
+                                        m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13],
+                                        m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14]};
+                    v.x = float(position.x);
+                    v.y = float(position.y);
+                    v.z = float(position.z);
+                    v.nx = float(normal.x);
+                    v.ny = float(normal.y);
+                    v.nz = float(normal.z);
+                } else {
+                    const auto illumination = light.evaluate(normal);
+                    v.r = float(illumination.x) * (stock ? 1.f : v.r);
+                    v.g = float(illumination.y) * (stock ? 1.f : v.g);
+                    v.b = float(illumination.z) * (stock ? 1.f : v.b);
+                }
                 board_mesh_.push_back(v);
             }
         };
@@ -1518,7 +1559,11 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         const auto copies = route ? route->current.size() : 1;
         for (std::size_t copy = 0; copy < copies; ++copy) {
             bool submitted = false;
+            unsigned part_index = 0;
             for (const auto part : model.parts) {
+                const auto caster =
+                    scene_->prop_casters_.empty() || motion || route ? 0 : scene_->prop_casters_[i] + part_index;
+                ++part_index;
                 const bool wave = flag && scene_->props_.parts[part].wave_count != 0;
                 auto requested = state ? state->frame : base_frame;
                 if (state)
@@ -1556,7 +1601,9 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
                     centre = bounds.center();
                 }
                 if (ray_active && material.alpha == 0 && !wave)
-                    ray_instances.push_back({part + 1, pose.matrix});
+                    ray_instances.push_back(
+                        {part + 1, pose.matrix, 0, caster,
+                         std::binary_search(scene_->lamp_housings_.begin(), scene_->lamp_housings_.end(), caster)});
                 if (!part_visible)
                     continue;
                 submitted = true;
@@ -1627,6 +1674,20 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     stats_.prop_draws = unsigned(prop_draws.size());
     if (ray_active) {
         try {
+            const auto casters = shadow_casters.empty() ? avatar : shadow_casters;
+            std::vector<Vertex> triangles;
+            if (casters.size() > maximum_avatar_vertices || casters.size() % 3)
+                throw std::invalid_argument("Invalid rider shadow triangles");
+            for (std::size_t i = 0; i < casters.size(); i += 3)
+                if (casters[i].nx || casters[i].ny || casters[i].nz)
+                    triangles.insert(triangles.end(), casters.begin() + i, casters.begin() + i + 3);
+            if (!triangles.empty() && !ray_actor_)
+                ray_actor_ = std::make_unique<RayActor>(context_);
+            if (ray_actor_) {
+                ray_actor_->update(triangles);
+                if (const auto address = ray_actor_->address())
+                    ray_instances.push_back({0, Matrix::identity().values, address});
+            }
             ray_world_->update(ray_instances);
             const auto acceleration = ray_world_->handle();
             VkWriteDescriptorSetAccelerationStructureKHR data{
@@ -1657,8 +1718,11 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdResetQueryPool(command_, timing_, 0, 2);
         vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing_, 0);
     }
-    if (ray_active)
+    if (ray_active) {
+        if (ray_actor_)
+            ray_actor_->record(command_);
         ray_world_->record(command_);
+    }
     const auto opaque_pipeline = ray_active ? ray_pipeline_ : pipeline_;
     const bool srgb = scene_format_ == VK_FORMAT_R8G8B8A8_SRGB || scene_format_ == VK_FORMAT_B8G8R8A8_SRGB;
     const bool linear = srgb || hdr_;
@@ -1714,7 +1778,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdBindIndexBuffer(command_, visible_indices_.buffer, 0, VK_INDEX_TYPE_UINT32);
     for (const auto& visible : terrain_draws_) {
         const auto& draw = scene_->draws_[visible.material];
-        push.options[0] = draw.mode;
+        push.options[0] = runtime && draw.mode == 0 ? 15 : draw.mode;
         vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &draw.set, 0, nullptr);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDrawIndexed(command_, visible.count, 1, visible.first, 0, 0);
@@ -1722,13 +1786,15 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     vkCmdBindIndexBuffer(command_, scene_->indices_.buffer, 0, VK_INDEX_TYPE_UINT32);
     const auto world_eye = push.eye_end;
     const auto relative = eye - Vec3{board.values[12], board.values[13], board.values[14]};
-    for (unsigned c = 0; c < 3; ++c)
-        push.eye_end[c] = float(dot(relative, {board.values[c * 4], board.values[c * 4 + 1], board.values[c * 4 + 2]}));
-    push.mvp = camera * board;
+    if (!runtime)
+        for (unsigned c = 0; c < 3; ++c)
+            push.eye_end[c] =
+                float(dot(relative, {board.values[c * 4], board.values[c * 4 + 1], board.values[c * 4 + 2]}));
+    push.mvp = runtime ? camera : camera * board;
     const auto bind_board = [&](unsigned design) {
         const bool stock = design < stock_board_count;
-        push.options[0] = stock ? 14 : 0;
-        push.options[2] = board_lighting_ ? 1 : 0;
+        push.options[0] = stock ? 14 : runtime ? 15 : 0;
+        push.options[2] = board_lighting_ && !runtime ? 1 : 0;
         const auto set = stock ? scene_->stock_board_sets_[design] : scene_->board_set_;
         if (stock) {
             const auto colour = stock_board_info(design).edge;
@@ -1739,10 +1805,10 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &set, 0, nullptr);
     };
     bind_board(board_design_);
-    if (board_lighting_)
+    if (dynamic_boards)
         vkCmdBindVertexBuffers(command_, 0, 1, &board_vertices_.buffer, &offset);
     const auto draw_board = [&](unsigned index) {
-        if (board_lighting_)
+        if (dynamic_boards)
             vkCmdDraw(command_, scene_->board_count_, 1, index * scene_->board_count_, 0);
         else
             vkCmdDrawIndexed(command_, scene_->board_count_, 1, scene_->board_first_, 0, 0);
@@ -1753,22 +1819,23 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     unsigned opponent_index = 0;
     for (const auto& opponent : opponents) {
         const auto relative_eye = eye - Vec3{opponent.values[12], opponent.values[13], opponent.values[14]};
-        for (unsigned c = 0; c < 3; ++c)
-            push.eye_end[c] = float(
-                dot(relative_eye, {opponent.values[c * 4], opponent.values[c * 4 + 1], opponent.values[c * 4 + 2]}));
-        push.mvp = camera * opponent;
+        if (!runtime)
+            for (unsigned c = 0; c < 3; ++c)
+                push.eye_end[c] = float(dot(
+                    relative_eye, {opponent.values[c * 4], opponent.values[c * 4 + 1], opponent.values[c * 4 + 2]}));
+        push.mvp = runtime ? camera : camera * opponent;
         bind_board(opponent_index < opponent_designs_.size() ? opponent_designs_[opponent_index] : board_design_);
         ++opponent_index;
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         draw_board(opponent_index);
     }
     push.eye_end = world_eye;
-    if (board_lighting_)
+    if (dynamic_boards)
         vkCmdBindVertexBuffers(command_, 0, 1, &scene_->vertices_.buffer, &offset);
     push.presentation[1] = push.presentation[2] = push.presentation[3] = 0;
     vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->board_set_, 0, nullptr);
     push.mvp = camera;
-    push.options[0] = 0;
+    push.options[0] = runtime ? 15 : 0;
     if (!avatar.empty()) {
         vkCmdBindVertexBuffers(command_, 0, 1, &avatar_vertices_.buffer, &offset);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);

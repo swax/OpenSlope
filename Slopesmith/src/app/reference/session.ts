@@ -1,6 +1,7 @@
 import { clientFetch } from '../net/client';
 import GUI, { Controller } from 'lil-gui';
-import { DEFAULT_SUN, type QuadMeshDoc, type SunLight, type V3 } from '../../core/doc/types';
+import { DEFAULT_SUN, type AuthoredLight, type QuadMeshDoc, type SunLight, type V3 } from '../../core/doc/types';
+import { nextLightId } from '../../core/doc/ids';
 import { DEFAULT_LAPS, DEFAULT_SHOWOFF_SECONDS, normalizeLaps, normalizeShowoffSeconds } from '../../core/doc/race';
 import { effectiveBakeSun, effectiveBakeAmbient, decodeLightmapTexel } from '../../core/lighting/bake';
 import {
@@ -57,7 +58,7 @@ import {
   type ReferenceEffectsPayload,
   type ReferenceEffectsState,
 } from '../../core/reference/effects';
-import { addReferenceLightDetails } from '../ui/components/light-details';
+import { addAuthoredLightDetails, addReferenceLightDetails } from '../ui/components/light-details';
 import { openMountainStatsDialog } from '../ui/dialogs/mountain-stats';
 import { normalizeLevelCensus, pageMegabytes, type LevelCensus } from '../../core/reference/census';
 import { exportFolderName } from '../../core/export/folder';
@@ -245,6 +246,7 @@ export function createReference(deps: ReferenceDeps) {
   let chkCtl: { updateDisplay(): void } | null = null;
   let updateLightPanelVis: (() => void) | null = null; // refresh which lighting-study controls are shown (view + rig-glow gating)
   let selectedReferenceLight: { level: string; light: RigLight } | null = null;
+  let selectedMountainLight: string | null = null;
   let selectedReferenceLightFolder: GUI | null = null;
   /** The level combo and its "nothing loaded" entry, so a checkpoint taking the slot can put the combo back
    *  to neutral — the slot is holding this map's own past rather than an extracted level. */
@@ -258,12 +260,27 @@ export function createReference(deps: ReferenceDeps) {
     const mountainName = store.mdoc.name.trim() || 'Mountain';
     if (referenceNote)
       referenceNote.textContent = `Choose a read-only mountain to compare with ${mountainName}. It does not change ${mountainName}.`;
-    if (selectedReferenceLight) rebuildSelectedReferenceLightDetails();
+    if (selectedReferenceLight || selectedMountainLight) rebuildSelectedReferenceLightDetails();
   }
 
   function rebuildSelectedReferenceLightDetails() {
     selectedReferenceLightFolder?.destroy();
     selectedReferenceLightFolder = null;
+    const list = store.mdoc.lights ?? [];
+    const index = list.findIndex(light => light.id === selectedMountainLight);
+    if (index >= 0) {
+      selectedReferenceLightFolder = lightFolder.addFolder('Editable mountain light');
+      addAuthoredLightDetails(
+        selectedReferenceLightFolder,
+        list[index],
+        index,
+        store.mdoc.name.trim() || 'Mountain',
+        deps.scheduleRebuild,
+        rebuildSelectedReferenceLightDetails,
+      );
+      selectedReferenceLightFolder.open();
+      return;
+    }
     if (!selectedReferenceLight) return;
     selectedReferenceLightFolder = lightFolder.addFolder('Selected light');
     addReferenceLightDetails(
@@ -271,6 +288,19 @@ export function createReference(deps: ReferenceDeps) {
       selectedReferenceLight.level,
       selectedReferenceLight.light,
       store.mdoc.name.trim() || 'Mountain',
+      (light: AuthoredLight) => {
+        const offset = viewport.referenceOffset();
+        light.pos = light.pos.map((value, axis) => value + offset[axis]) as V3;
+        const lights = (store.mdoc.lights ??= []);
+        light.id = nextLightId(lights);
+        lights.push(light);
+        selectedMountainLight = light.id;
+        selectedReferenceLight = null;
+        store.selectedLight = light.id;
+        store.selectedRefLight = null;
+        deps.scheduleRebuild();
+        rebuildSelectedReferenceLightDetails();
+      },
     );
     selectedReferenceLightFolder.open();
     lightFolder.open();
@@ -278,6 +308,9 @@ export function createReference(deps: ReferenceDeps) {
 
   /** Feed the same recovered record into Scene's lighting study that Props shows for a clicked reference bulb. */
   function setSelectedLightDetails(level: string | null, light: RigLight | null) {
+    // Publishing the copied light clears the old reference marker selection.
+    // Keep its new editable card while that mountain light remains selected.
+    if (light !== null || level !== null || store.selectedLight !== selectedMountainLight) selectedMountainLight = null;
     selectedReferenceLight = level !== null && light !== null ? { level, light } : null;
     rebuildSelectedReferenceLightDetails();
     if (selectedReferenceLight && store.currentMode === 'info') selectScene('lighting');

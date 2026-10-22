@@ -1,4 +1,4 @@
-import type { V3 } from '../doc/types';
+import type { AuthoredLight, V3 } from '../doc/types';
 import { hexToRgb } from '../math/color';
 import { clamp01 } from '../math/scalar';
 import { editorFromRaw } from './terrain';
@@ -38,6 +38,7 @@ export interface RawRigLight {
   hi: number[];
   /** Spot cone half-angle COSINE (SSX UnknownFloat2); 1 for non-spots. */
   cone: number;
+  coneSource?: 'export' | 'source' | 'preview';
   /** Glow-sprite resolution (SSX SpriteRes) — the engine's runtime GLINT gate (`& 0x70`), see lighting/glints. */
   spriteRes?: number;
 }
@@ -66,6 +67,7 @@ export interface RigLight {
   intensity: number;
   /** Spot cone half-angle cosine (1 = non-spot / no cone). */
   coneCos: number;
+  coneSource?: RawRigLight['coneSource'];
   /** How far the gizmo reaches, in editor metres (from the influence box, clamped by the viewport). */
   reach: number;
   /** The light's glow-sprite resolution. `& 0x70` (16/32/64) is the engine's gate for the runtime GLINT this
@@ -272,9 +274,31 @@ export function decodeLightRig(payload: LightRigPayload): LightRig {
       colorHex: colorHex(c, negative),
       intensity: Math.abs(peak),
       coneCos: r.cone ?? 1,
+      coneSource: r.coneSource,
       reach: reachM(r.pos, r.lo ?? r.pos, r.hi ?? r.pos),
       spriteRes: r.spriteRes ?? 0,
     });
   }
   return { level: payload.level, lights, counts };
+}
+
+/** A reference lamp becomes an ordinary persistent, undoable mountain light. */
+export function authoredReferenceLight(light: RigLight): AuthoredLight | null {
+  if (light.negative || (light.kind !== 'point' && light.kind !== 'spot')) return null;
+  return {
+    kind: light.kind,
+    name: light.name,
+    pos: [...light.pos],
+    color: light.colorHex,
+    intensity: light.intensity,
+    reach: light.reach,
+    ...(light.kind === 'spot'
+      ? { dir: [...light.dir] as V3, cone: (Math.acos(Math.max(-1, Math.min(1, light.coneCos))) * 180) / Math.PI }
+      : {}),
+    ...(glintSize(light.spriteRes) ? { glint: light.spriteRes } : {}),
+  };
+}
+
+function glintSize(value: number | undefined): boolean {
+  return value === 16 || value === 32 || value === 64;
 }

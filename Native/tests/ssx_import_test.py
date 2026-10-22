@@ -36,8 +36,15 @@ def members():
     patch = bytearray(course_members()['fixture.pbd'][136:])
     struct.pack_into('<4I', patch, 432, 0, 0, 5, 0xffffffff)
     cell = bytearray(48 + 16 * 48)
-    struct.pack_into('<6H', cell, 36, 1, 1, 0, 0, 0, 65535)
+    struct.pack_into('<6H', cell, 36, 1, 1, 1, 0, 0, 65535)
     cell += placement + patch
+    light = bytearray(88)
+    struct.pack_into('<I2f', light, 0, 1, 9.5, 0)
+    struct.pack_into('<3f', light, 12, 1, .5, .25)
+    struct.pack_into('<3f', light, 24, 0, 0, -1)
+    struct.pack_into('<3f', light, 36, 1000, 2000, 3000)
+    struct.pack_into('<f', light, 72, .6875)
+    cell += light
     index = bytearray(72)
     struct.pack_into('<ffI', index, 0, 9.71, .03, 11)
     struct.pack_into('<7I', index, 36, 10000, 1, 1, 1, 1, 0, 0)
@@ -115,6 +122,8 @@ def main():
             instance = json.loads((course / 'Instances.json').read_text())['Instances'][0]
             assert instance['Location'] == [1000, 2000, 3000] and instance['Visable']
             assert instance['EffectSlotIndex'] == 0 and instance['SurfaceType'] == 5
+            light = json.loads((course / 'Lights.json').read_text())['Lights'][0]
+            assert light['Type'] == 1 and light['OuterConeCosine'] == light['UnknownFloat2'] == .6875
             assert (course / 'Meshes/0.obj').read_text().count('\nf ') == 2
             assert (course / 'Textures/0000.png').is_file() and (course / 'Lightmaps/0000.png').is_file()
             paths = json.loads((course / 'AIP.json').read_text())
@@ -141,6 +150,7 @@ def main():
             ('material', 'world.wdr', 84, le(12)),
             ('start', 'world.aip', 12, le(12)),
             ('effects', 'world.wfx', 76 + 2, struct.pack('<H', 3)),
+            ('cone', 'world.wdf', 816 + 272 + 448 + 72, struct.pack('<f', 2)),
         ]:
             broken = files.copy()
             payload = bytearray(broken[member]); payload[offset:offset + len(replacement)] = replacement

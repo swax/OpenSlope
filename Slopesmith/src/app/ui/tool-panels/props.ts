@@ -3181,7 +3181,7 @@ export function createPropTools(ctx: ToolsContext) {
     tip(section.add(lightTool, 'reach', 5, 150, 1).name('reach (m)'), 'How far the light carries before it fades out.');
     if (lightTool.kind === 'spot')
       tip(
-        section.add(lightTool, 'cone', 5, 80, 1).name('cone half-angle (°)'),
+        section.add(lightTool, 'cone', 0.1, 89.9, 0.1).name('cone half-angle (°)'),
         'Half-angle of the cone. A new spot points straight down; aim it from its own panel once placed.',
       );
     tip(
@@ -3211,7 +3211,15 @@ export function createPropTools(ctx: ToolsContext) {
       const reference = store.selectedRefLight;
       if (!reference) return; // no light selected — the Add light button's tooltip explains placing one
       const section = editSection('props-reference-light', `${reference.level} light`);
-      addReferenceLightDetails(section, reference.level, reference.light, mountainName);
+      addReferenceLightDetails(section, reference.level, reference.light, mountainName, light => {
+        const offset = viewport.referenceOffset();
+        light.pos = light.pos.map((value, axis) => value + offset[axis]) as V3;
+        const list = (store.mdoc.lights ??= []);
+        light.id = nextLightId(list);
+        list.push(light);
+        store.selectedRefLight = null;
+        selectAssemblyLight(light.id);
+      });
       addDeselect();
       return;
     }

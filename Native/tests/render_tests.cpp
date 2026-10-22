@@ -77,11 +77,13 @@ std::vector<unsigned char> capture(VulkanRenderer& renderer, const std::filesyst
                                    double alpha = 1, std::span<const PropRouteMotion> routes = {},
                                    std::span<const PropTextureFrame> texture_frames = {},
                                    std::span<const BoostTrailVertex> boost = {},
-                                   std::span<const ParticleSprite> particles = {}) {
+                                   std::span<const ParticleSprite> particles = {},
+                                   std::span<const Vertex> shadow_casters = {}) {
     auto board = Matrix::identity();
     board.values[12] = 10;
     renderer.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, sprites, wake, sheet, {}, fade,
-                    flags, motions, alpha, routes, texture_frames, boost, particles);
+                    flags, motions, alpha, routes, texture_frames, boost, particles, {}, {}, false, {}, nullptr, {},
+                    shadow_casters);
     return read_capture(renderer, output);
 }
 
@@ -153,7 +155,7 @@ void hdr_tests(VulkanContext& context, const std::filesystem::path& root) {
                 renderer.ray_shadows(false);
                 renderer.targets(std::span(&target.image, 1), format, 128, 128, samples, scale);
                 const auto original = capture(renderer, root / "hdr-original.ppm", Matrix::identity());
-                renderer.lighting(true);
+                renderer.lighting(LightingMode::Enhanced);
                 if (!renderer.hdr()) {
                     std::cout << "HDR tests skipped: this GPU cannot filter an HDR colour target\n";
                     continue;
@@ -180,11 +182,244 @@ void hdr_tests(VulkanContext& context, const std::filesystem::path& root) {
                 const auto overlay = read_capture(renderer, root / "hdr-hud.ppm");
                 if (overlay[(16 * 128 + 16) * 3] != 255 || overlay[(16 * 128 + 28) * 3] != 0)
                     throw std::runtime_error("HDR tone mapping or bloom changes the native-resolution HUD");
-                renderer.lighting(false);
+                renderer.lighting(LightingMode::Original);
                 if (renderer.hdr() || capture(renderer, root / "hdr-restored.ppm", Matrix::identity()) != original)
                     throw std::runtime_error("Disabling HDR cannot restore Original pixels exactly");
                 checks += 4;
             }
+}
+
+void runtime_lighting_tests(VulkanContext& context, const std::filesystem::path& root) {
+    const auto assets = [&](bool baked, bool lamp) {
+        Mesh mesh;
+        mesh.map_root = root / "lighting";
+        mesh.vertices = {
+            {-.8f, -.8f, .3f, 1, 1, 1}, {.8f, -.8f, .3f, 1, 1, 1}, {.8f, .8f, .3f, 1, 1, 1}, {-.8f, .8f, .3f, 1, 1, 1}};
+        for (auto& v : mesh.vertices) {
+            v.nz = -1;
+            v.lw = v.lh = 1;
+        }
+        mesh.indices = {0, 1, 2, 0, 2, 3};
+        mesh.batches = {{0, 6, "base.png", 0}};
+        auto result = SceneAssets::prepare(mesh);
+        result.appearance.images["Lightmaps/0000.png"] = {
+            1, 1, {static_cast<unsigned char>(baked ? 255 : 0), 0, 0, 255}};
+        result.world.sky_colour = {.01f, .02f, .04f};
+        result.world.glints.clear();
+        result.world.point_lights.clear();
+        if (lamp)
+            result.world.glints = {{{0, 0, -2}, {1, .1, .02}, 32, 3}};
+        auto& props = result.props;
+        props.geometry = mesh;
+        for (auto& v : props.geometry.vertices) {
+            v.x = v.x * .35f + .45f;
+            v.y = v.y * .35f - .45f;
+            v.z = .6f;
+        }
+        PropPart part;
+        part.count = 6;
+        part.texture = "base.png";
+        for (const auto& v : props.geometry.vertices)
+            part.bounds.add({v.x, v.y, v.z});
+        props.parts.push_back(part);
+        props.models.push_back({{0}, part.bounds});
+        PropInstance instance;
+        instance.pose.matrix = Matrix::identity().values;
+        instance.pose.ambient = baked ? std::array<float, 4>{0, 1, 0, 1} : std::array<float, 4>{1, 1, 1, 1};
+        instance.bounds = part.bounds;
+        props.instances.push_back(instance);
+        return result;
+    };
+    std::array<std::shared_ptr<VulkanScene>, 3> scenes;
+    for (unsigned i = 0; i < scenes.size(); ++i) {
+        scenes[i] = std::make_shared<VulkanScene>(context);
+        scenes[i]->upload(assets(i == 1, i != 2));
+    }
+    for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB}) {
+        Target target{context};
+        target.create(format);
+        for (const bool traced : {false, true}) {
+            std::array<std::vector<unsigned char>, 3> frames;
+            for (unsigned i = 0; i < scenes.size(); ++i) {
+                VulkanRenderer renderer(context);
+                renderer.use_scene(scenes[i]);
+                renderer.ray_shadows(traced);
+                renderer.targets(std::span(&target.image, 1), format, 128, 128, 1);
+                const auto original = capture(renderer, root / "runtime-original.ppm", Matrix::identity());
+                renderer.lighting(LightingMode::Runtime);
+                frames[i] = capture(renderer, root / "runtime-lit.ppm", Matrix::identity());
+                ++checks;
+                if (renderer.stats().visible_props != 1)
+                    throw std::runtime_error("Runtime lighting fixture did not draw its prop");
+                renderer.lighting(LightingMode::Original);
+                ++checks;
+                if (capture(renderer, root / "runtime-restored.ppm", Matrix::identity()) != original)
+                    throw std::runtime_error("Runtime mode cannot restore Original baked-lighting pixels");
+            }
+            checks += 2;
+            if (frames[0] != frames[1])
+                throw std::runtime_error("Runtime terrain/props still depend on imported lighting");
+            if (frames[0] == frames[2])
+                throw std::runtime_error("Runtime terrain/props ignore the runtime lamp");
+        }
+    }
+}
+
+void calibrated_lighting_tests(VulkanContext& context, const std::filesystem::path& root) {
+    Mesh mesh;
+    mesh.map_root = root / "lighting";
+    mesh.vertices = {
+        {-.8f, -.8f, .3f, 1, 1, 1}, {.8f, -.8f, .3f, 1, 1, 1}, {.8f, .8f, .3f, 1, 1, 1}, {-.8f, .8f, .3f, 1, 1, 1}};
+    for (auto& vertex : mesh.vertices)
+        vertex.nz = -1;
+    mesh.indices = {0, 1, 2, 0, 2, 3};
+    mesh.batches = {{0, 6, "base.png", -1}};
+    auto assets = SceneAssets::prepare(mesh);
+    assets.world.sky_colour = {.01f, .02f, .04f};
+    assets.world.calibration = LightingCalibration::for_course("SNOW");
+    auto scene = std::make_shared<VulkanScene>(context);
+    scene->upload(std::move(assets));
+    for (const auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB})
+        for (const auto samples : {1u, 4u}) {
+            Target target{context};
+            target.create(format);
+            VulkanRenderer renderer(context);
+            renderer.use_scene(scene);
+            renderer.targets(std::span(&target.image, 1), format, 128, 128, samples);
+            const auto original = capture(renderer, root / "calibrated-original.ppm", Matrix::identity());
+            renderer.lighting(LightingMode::Enhanced);
+            const auto enhanced = capture(renderer, root / "calibrated-enhanced.ppm", Matrix::identity());
+            constexpr auto center = (64 * 128 + 64) * 3;
+            for (unsigned c = 0; c < 3; ++c) {
+                if (std::abs(int(original[center + c]) - int(enhanced[center + c])) > 1)
+                    throw std::runtime_error("Calibrated Enhanced tone mapping changes the authored base brightness");
+                ++checks;
+            }
+            renderer.lighting(LightingMode::Runtime);
+            capture(renderer, root / "calibrated-runtime.ppm", Matrix::identity());
+            renderer.lighting(LightingMode::Original);
+            if (capture(renderer, root / "calibrated-restored.ppm", Matrix::identity()) != original)
+                throw std::runtime_error("Course calibration changes Original lighting pixels after a mode switch");
+            ++checks;
+        }
+    if (context.ray_query) {
+        auto moon = SceneAssets::prepare(mesh);
+        moon.world.sky_colour = {.01f, .02f, .04f};
+        moon.world.calibration = LightingCalibration::for_course("SNOW");
+        moon.world.directional = {{0, 0, -1}, {.333, .285, .6288}, true};
+        Target target{context};
+        target.create(VK_FORMAT_R8G8B8A8_UNORM);
+        VulkanRenderer renderer(context);
+        renderer.upload(std::move(moon));
+        renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128, 4);
+        renderer.lighting(LightingMode::Runtime);
+        const auto frame = [&](std::span<const Vertex> body) {
+            return capture(renderer, root / "calibrated-moon.ppm", Matrix::identity(), {}, {}, {}, {}, 0, {}, {}, 1, {},
+                           {}, {}, {}, body);
+        };
+        const auto clear = frame({});
+        std::vector<Vertex> body{{-.5f, -.5f, -1, 1, 1, 1}, {.5f, -.5f, -1, 1, 1, 1}, {.5f, .5f, -1, 1, 1, 1},
+                                 {-.5f, -.5f, -1, 1, 1, 1}, {.5f, .5f, -1, 1, 1, 1},  {-.5f, .5f, -1, 1, 1, 1}};
+        for (auto& vertex : body)
+            vertex.nz = -1;
+        constexpr auto blue = (64 * 128 + 64) * 3 + 2;
+        if (int(clear[blue]) - int(frame(body)[blue]) < 3)
+            throw std::runtime_error("Calibrated night moonlight loses its rider/board occlusion");
+        ++checks;
+        for (auto& vertex : body)
+            vertex.x += 4;
+        if (frame(body) != clear)
+            throw std::runtime_error("Moving a night shadow caster leaves stale moonlight occlusion");
+        ++checks;
+    }
+}
+
+void local_light_tests(VulkanContext& context, const std::filesystem::path& root) {
+    const auto assets = [&](unsigned variant) {
+        Mesh mesh;
+        mesh.map_root = root / "lighting";
+        mesh.vertices = {{-.8f, -.8f, -200, 1, 1, 1},
+                         {.8f, -.8f, -200, 1, 1, 1},
+                         {.8f, .8f, -200, 1, 1, 1},
+                         {-.8f, .8f, -200, 1, 1, 1}};
+        for (auto& v : mesh.vertices)
+            v.nz = -1;
+        mesh.indices = {0, 1, 2, 0, 2, 3};
+        mesh.batches = {{0, 6, "base.png", -1}};
+        auto result = SceneAssets::prepare(mesh);
+        result.world.sky_colour = {.01f, .02f, .04f};
+        result.world.glints.clear();
+        auto& lights = result.world.point_lights;
+        lights.clear();
+        if (variant == 1 || variant == 2) {
+            // Beyond the old 160-metre camera cutoff, but in range of this surface.
+            lights.push_back({{0, 0, -204}, {1, .1, .02}, 120, 3});
+            if (variant == 2)
+                for (unsigned i = 0; i < 32; ++i)
+                    lights.push_back({{0, 0, -double(i)}, {0, 1, 0}, 1, 4});
+        } else if (variant >= 3) {
+            const Vec3 direction = variant == 3 ? Vec3{0, 0, 1} : variant == 4 ? Vec3{0, 0, -1} : Vec3{1, 0, 0};
+            lights.push_back({{0, 0, -202}, {1, .1, .02}, 16, 3, direction, .9});
+        }
+        return result;
+    };
+    std::array<std::shared_ptr<VulkanScene>, 6> scenes;
+    for (unsigned i = 0; i < scenes.size(); ++i) {
+        scenes[i] = std::make_shared<VulkanScene>(context);
+        scenes[i]->upload(assets(i));
+    }
+    auto camera = Matrix::identity();
+    camera.values[14] = 200.3f;
+    constexpr auto center = (64 * 128 + 64) * 3;
+    for (const auto mode : {LightingMode::Enhanced, LightingMode::Runtime})
+        for (const bool traced : {false, true}) {
+            Target target{context};
+            target.create(VK_FORMAT_R8G8B8A8_UNORM);
+            std::array<std::vector<unsigned char>, 6> frames;
+            std::vector<unsigned char> original;
+            for (unsigned i = 0; i < scenes.size(); ++i) {
+                VulkanRenderer renderer(context);
+                renderer.use_scene(scenes[i]);
+                renderer.ray_shadows(traced);
+                renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128, 1);
+                const auto unlit = capture(renderer, root / "locals-original.ppm", camera);
+                if (i == 0)
+                    original = unlit;
+                ++checks;
+                if (unlit != original)
+                    throw std::runtime_error("Local light records change Original pixels");
+                renderer.lighting(mode);
+                frames[i] = capture(renderer, root / ("locals-" + std::to_string(i) + ".ppm"), camera);
+                ++checks;
+                if (renderer.local_lights() != (i == 0   ? 0u
+                                                : i == 2 ? 33u
+                                                         : 1u) ||
+                    renderer.spot_lights() != (i >= 3 ? 1u : 0u))
+                    throw std::runtime_error("Scene did not retain all point and spot lights");
+            }
+            checks += 4;
+            if (frames[1][center] < frames[0][center] + 8)
+                throw std::runtime_error("A distant light illuminating a visible surface was discarded");
+            if (frames[1] != frames[2])
+                throw std::runtime_error("Closer lights displaced a farther-reaching light");
+            if (frames[3][center] < frames[0][center] + 8)
+                throw std::runtime_error("An aimed spotlight does not illuminate the surface");
+            if (frames[0] != frames[4] || frames[0] != frames[5])
+                throw std::runtime_error("A spotlight illuminates surfaces behind or outside its cone");
+            // This renderer is the sole owner of each uploaded scene. A menu
+            // map change releases those old GPU buffers before the next draw.
+            VulkanRenderer changing(context);
+            changing.ray_shadows(traced);
+            changing.upload(assets(0));
+            changing.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128, 1);
+            changing.lighting(mode);
+            for (const auto i : {0u, 2u, 3u, 0u, 1u}) {
+                changing.upload(assets(i));
+                ++checks;
+                if (capture(changing, root / "locals-replaced.ppm", camera) != frames[i])
+                    throw std::runtime_error("Map replacement retains released light buffers or the previous rig");
+            }
+        }
 }
 
 void ray_shadow_tests(VulkanContext& context, const std::filesystem::path& root) {
@@ -253,8 +488,8 @@ void ray_shadow_tests(VulkanContext& context, const std::filesystem::path& root)
         second.use_scene(scene);
         renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
         second.targets(std::span(&other.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
-        renderer.lighting(true);
-        second.lighting(true);
+        renderer.lighting(LightingMode::Enhanced);
+        second.lighting(LightingMode::Enhanced);
         renderer.ray_shadows(false);
         const auto unblocked = capture(renderer, root / "ray-unblocked.ppm", camera, {}, {}, {}, eye);
         renderer.ray_shadows(true);
@@ -304,7 +539,7 @@ void ray_shadow_tests(VulkanContext& context, const std::filesystem::path& root)
             VulkanRenderer basic(fallback);
             basic.upload(assets(night));
             basic.targets(std::span(&fallback_target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
-            basic.lighting(true);
+            basic.lighting(LightingMode::Enhanced);
             if (fallback.ray_query || basic.ray_shadows_active() ||
                 !same_center(unblocked, capture(basic, root / "ray-fallback.ppm", camera, {}, {}, {}, eye)))
                 throw std::runtime_error("A device without enabled ray-query features cannot render enhanced lighting");
@@ -319,6 +554,302 @@ void ray_shadow_tests(VulkanContext& context, const std::filesystem::path& root)
         ++checks;
     }
     std::cout << "PASS: sun/lamp ray shadows, offscreen/hidden/moving casters, queued views and fallback\n";
+}
+
+void lamp_housing_tests(VulkanContext& context, const std::filesystem::path& root) {
+    if (!context.ray_query)
+        return;
+    const auto assets = [&](bool blocker = false, bool night = true, double intensity = 4., bool own = true,
+                            bool second_emitter = false) {
+        const auto vertex = [](float x, float y, float z) {
+            Vertex v{x, y, z, 1, 1, 1};
+            v.ny = 1;
+            return v;
+        };
+        Mesh mesh;
+        mesh.map_root = root / "lighting";
+        mesh.vertices = {vertex(-2, 0, -2), vertex(2, 0, -2), vertex(2, 0, 2), vertex(-2, 0, 2)};
+        mesh.indices = {0, 1, 2, 0, 2, 3};
+        mesh.batches = {{0, 6, "base.png", -1}};
+        auto result = SceneAssets::prepare(mesh);
+        result.world.sky_colour = night ? std::array<float, 3>{.01f, .02f, .03f} : std::array<float, 3>{.8f, .8f, 1};
+        result.world.point_lights = {{own ? Vec3{8, 2, 0} : Vec3{16, 4, 0}, {1, .6, .3}, 60, intensity}};
+        if (second_emitter)
+            result.world.point_lights.push_back({blocker ? Vec3{4, 1, 0} : Vec3{8, 2, 0}, {0, 0, 1}, 1, .001});
+        auto& props = result.props;
+        Bounds box;
+        for (unsigned i = 0; i < 8; ++i) {
+            const Vec3 p{i & 1 ? .4 : -.4, i & 2 ? .4 : -.4, i & 4 ? .4 : -.4};
+            props.geometry.vertices.push_back(vertex(float(p.x), float(p.y), float(p.z)));
+            box.add(p);
+        }
+        props.geometry.indices = {0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1,
+                                  2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3};
+        PropPart part;
+        part.count = unsigned(props.geometry.indices.size());
+        part.texture = "base.png";
+        part.bounds = box;
+        props.parts.push_back(part);
+        props.models.push_back({{0}, box});
+        PropInstance lamp;
+        lamp.pose.matrix = Matrix::identity().values;
+        lamp.pose.matrix[12] = 8;
+        lamp.pose.matrix[13] = 2;
+        lamp.bounds.add(box.min + Vec3{8, 2, 0});
+        lamp.bounds.add(box.max + Vec3{8, 2, 0});
+        props.instances.push_back(lamp);
+        if (blocker) {
+            lamp.pose.matrix[12] = 4;
+            lamp.pose.matrix[13] = 1;
+            lamp.bounds = {};
+            lamp.bounds.add(box.min + Vec3{4, 1, 0});
+            lamp.bounds.add(box.max + Vec3{4, 1, 0});
+            props.instances.push_back(lamp);
+        }
+        return result;
+    };
+    Matrix camera;
+    camera.values[0] = camera.values[9] = .5f;
+    camera.values[6] = .1f;
+    camera.values[14] = .5f;
+    camera.values[15] = 1;
+    const Vec3 eye{0, 10, 0};
+    constexpr std::size_t center = (64 * 128 + 64) * 3;
+    const auto same_center = [&](const auto& a, const auto& b) {
+        for (unsigned c = 0; c < 3; ++c)
+            if (std::abs(int(a[center + c]) - int(b[center + c])) > 1)
+                return false;
+        return true;
+    };
+    Target target{context};
+    target.create(VK_FORMAT_R8G8B8A8_UNORM);
+    VulkanRenderer renderer(context);
+    for (const auto mode : {LightingMode::Enhanced, LightingMode::Runtime}) {
+        renderer.lighting(mode);
+        renderer.upload(assets());
+        renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
+        renderer.ray_shadows(false);
+        const auto untraced = capture(renderer, root / "housing-untraced.ppm", camera, {}, {}, {}, eye);
+        renderer.ray_shadows(true);
+        const auto emitting = capture(renderer, root / "housing-emitting.ppm", camera, {}, {}, {}, eye);
+        if (!same_center(untraced, emitting))
+            throw std::runtime_error("A light's own enclosing fixture traps its illumination");
+        ++checks;
+        renderer.upload(assets(true));
+        const auto blocked = capture(renderer, root / "housing-blocked.ppm", camera, {}, {}, {}, eye);
+        if (int(emitting[center]) - int(blocked[center]) < 8)
+            throw std::runtime_error("A separate placement of the same housing no longer casts shadows");
+        ++checks;
+        renderer.upload(assets(true, true, 4, true, true));
+        if (capture(renderer, root / "housing-filtered-blocker.ppm", camera, {}, {}, {}, eye) != blocked)
+            throw std::runtime_error("Another emitter's filtered housing stops blocking a local light");
+        ++checks;
+        renderer.upload(assets(false, true, 3500, false));
+        const auto other = capture(renderer, root / "housing-other-source.ppm", camera, {}, {}, {}, eye);
+        renderer.ray_shadows(false);
+        const auto other_untraced = capture(renderer, root / "housing-other-untraced.ppm", camera, {}, {}, {}, eye);
+        if (int(other_untraced[center]) - int(other[center]) < 8)
+            throw std::runtime_error("A housing fails to block an unrelated light source");
+        ++checks;
+        renderer.ray_shadows(true);
+        renderer.upload(assets(false, true, 3500, false, true));
+        if (!same_center(other, capture(renderer, root / "housing-opaque-override.ppm", camera, {}, {}, {}, eye)))
+            throw std::runtime_error("An ordinary shadow ray passes through a filtered emitter housing");
+        ++checks;
+        renderer.ray_shadows(false);
+        for (const auto night : {false, true}) {
+            renderer.upload(assets(false, night, 4));
+            const auto low = capture(renderer, root / "housing-low.ppm", camera, {}, {}, {}, eye);
+            renderer.upload(assets(false, night, 3500));
+            const auto high = capture(renderer, root / "housing-high.ppm", camera, {}, {}, {}, eye);
+            if (night ? int(high[center]) - int(low[center]) < 8 : !same_center(low, high))
+                throw std::runtime_error(
+                    "Floodlight strength loses night reach or changes the previous daylight ceiling");
+            ++checks;
+        }
+        auto flood = assets();
+        auto& source = flood.world.point_lights.front();
+        source.position = {48, 24, 0};
+        source.radius = 120;
+        source.direction = normalized(Vec3{-2, -1, 0});
+        source.cone_cos = .5; // The named Snowdream lamp's recovered 60-degree half-angle.
+        renderer.upload(flood);
+        const auto capped = capture(renderer, root / "flood-capped.ppm", camera, {}, {}, {}, eye);
+        source.intensity = 3500;
+        renderer.upload(std::move(flood));
+        const auto full = capture(renderer, root / "flood-full.ppm", camera, {}, {}, {}, eye);
+        if (int(full[center]) - int(capped[center]) < (mode == LightingMode::Runtime ? 10 : 2))
+            throw std::runtime_error("A strong wide-cone floodlight cannot illuminate a surface fifty metres away");
+        ++checks;
+    }
+    std::cout << "PASS: embedded lamp housings, independent blockers and night floodlight strength\n";
+}
+
+void soft_shadow_tests(VulkanContext& context, const std::filesystem::path& root) {
+    if (!context.ray_query)
+        return;
+    const auto vertex = [](float x, float y, float z) {
+        Vertex v{x, y, z, 1, 1, 1};
+        v.ny = 1;
+        return v;
+    };
+    Mesh mesh;
+    mesh.map_root = root / "lighting";
+    mesh.vertices = {vertex(-4, 0, -4), vertex(4, 0, -4), vertex(4, 0, 4), vertex(-4, 0, 4)};
+    mesh.indices = {0, 1, 2, 0, 2, 3};
+    mesh.batches = {{0, 6, "base.png", -1}};
+    auto assets = SceneAssets::prepare(mesh);
+    assets.world.sky_colour = {49.f / 255, 56.f / 255, 106.f / 255};
+    assets.world.daylight_limit = 0;
+    assets.world.point_lights = {{{0, 6, 0}, {1, 1, 1}, 32, 4}};
+    auto scene = std::make_shared<VulkanScene>(context);
+    scene->upload(std::move(assets));
+    Matrix camera;
+    camera.values[0] = camera.values[9] = .25f;
+    camera.values[6] = .1f;
+    camera.values[14] = .5f;
+    camera.values[15] = 1;
+    for (const auto samples : {1u, 4u}) {
+        Target target{context};
+        target.create(VK_FORMAT_R8G8B8A8_UNORM);
+        VulkanRenderer renderer(context);
+        renderer.use_scene(scene);
+        renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128, samples);
+        renderer.lighting(LightingMode::Runtime);
+        const auto frame = [&](std::span<const Vertex> casters) {
+            return capture(renderer, root / "soft-shadow.ppm", camera, {}, {}, {}, {0, 10, 0}, 0, {}, {}, 1, {}, {}, {},
+                           {}, casters);
+        };
+        const auto clear = frame({});
+        std::array<unsigned, 2> transitions{};
+        for (unsigned distance = 0; distance < 2; ++distance) {
+            const auto height = distance ? 3.2f : .15f;
+            const std::vector<Vertex> body{vertex(-.6f, height, -.6f), vertex(.6f, height, -.6f),
+                                           vertex(.6f, height, .6f),   vertex(-.6f, height, -.6f),
+                                           vertex(.6f, height, .6f),   vertex(-.6f, height, .6f)};
+            const auto shadow = frame(body);
+            constexpr auto center = (64 * 128 + 64) * 3;
+            if (int(clear[center]) - int(shadow[center]) < 20)
+                throw std::runtime_error("Area shadows lose their opaque center");
+            ++checks;
+            for (unsigned x = 0; x < 128; ++x) {
+                const auto pixel = (64 * 128 + x) * 3;
+                transitions[distance] +=
+                    int(shadow[pixel]) > int(shadow[center]) + 5 && int(shadow[pixel]) < int(clear[pixel]) - 5;
+            }
+            if (frame(body) != shadow)
+                throw std::runtime_error("Finite-area shadows change between stationary frames");
+            ++checks;
+        }
+        if (transitions[1] < transitions[0] + 3)
+            throw std::runtime_error("Shadow penumbra does not widen away from the contact surface");
+        ++checks;
+        std::cout << "Soft shadow transition pixels: contact " << transitions[0] << "; raised " << transitions[1]
+                  << "; MSAA " << samples << '\n';
+
+        const auto rig = [&](unsigned count, double intensity) {
+            auto fill = SceneAssets::prepare(mesh);
+            fill.world.sky_colour = {.01f, .02f, .03f};
+            fill.world.daylight_limit = 0;
+            fill.world.point_lights.assign(count, {{0, 6, 0}, {1, 1, 1}, 32, intensity});
+            renderer.upload(std::move(fill));
+        };
+        rig(0, 0);
+        const auto ambient = frame({});
+        const std::vector<Vertex> cover{vertex(-.6f, 3.2f, -.6f), vertex(.6f, 3.2f, -.6f), vertex(.6f, 3.2f, .6f),
+                                        vertex(-.6f, 3.2f, -.6f), vertex(.6f, 3.2f, .6f),  vertex(-.6f, 3.2f, .6f)};
+        constexpr auto center = (64 * 128 + 64) * 3;
+        for (const auto count : {1u, 16u, 128u}) {
+            // Faint fill and overlapping strong lights retain occlusion with
+            // one ray each. Tiny lights cannot bypass occlusion in sum.
+            rig(count, count == 1 ? .02 : count == 16 ? .5 : .001);
+            const auto clear_fill = frame({});
+            const auto shadow = frame(cover);
+            if (int(clear_fill[center]) - int(ambient[center]) < (count == 1 ? 3 : 15))
+                throw std::runtime_error("Shadow budgeting discards faint lights' illumination");
+            ++checks;
+            for (unsigned channel = 0; channel < 3; ++channel) {
+                if (std::abs(int(shadow[center + channel]) - int(ambient[center + channel])) > 2)
+                    throw std::runtime_error("Faint lights accumulate unbounded illumination through a blocker");
+                ++checks;
+            }
+            renderer.ray_shadows(false);
+            if (frame(cover) != clear_fill)
+                throw std::runtime_error("Shadow budgeting changes the untraced lighting fallback");
+            ++checks;
+            renderer.ray_shadows(true);
+        }
+    }
+}
+
+void rider_shadow_tests(VulkanContext& context, const std::filesystem::path& root) {
+    if (!context.ray_query)
+        return;
+    const auto vertex = [](float x, float y, float z) {
+        Vertex v{x, y, z, 1, 1, 1};
+        v.ny = 1;
+        return v;
+    };
+    auto camera = Matrix{};
+    camera.values[0] = camera.values[9] = .5f;
+    camera.values[6] = .1f;
+    camera.values[14] = .5f;
+    camera.values[15] = 1;
+    constexpr auto center = (64 * 128 + 64) * 3;
+    for (const bool night : {false, true}) {
+        Mesh mesh;
+        mesh.map_root = root / "lighting";
+        mesh.vertices = {vertex(-2, 0, -2), vertex(2, 0, -2), vertex(2, 0, 2), vertex(-2, 0, 2)};
+        mesh.indices = {0, 1, 2, 0, 2, 3};
+        mesh.batches = {{0, 6, "base.png", -1}};
+        auto assets = SceneAssets::prepare(mesh);
+        assets.world.sky_colour = night ? std::array<float, 3>{.01f, .02f, .04f} : std::array<float, 3>{.8f, .8f, 1};
+        assets.world.glare.azimuth = assets.world.glare.elevation = 0;
+        if (night)
+            assets.world.point_lights.push_back({{8, 2, 0}, {1, .6, .3}, 32, 4});
+        auto scene = std::make_shared<VulkanScene>(context);
+        scene->upload(std::move(assets));
+        for (const auto mode : {LightingMode::Enhanced, LightingMode::Runtime}) {
+            Target target{context};
+            target.create(VK_FORMAT_R8G8B8A8_UNORM);
+            VulkanRenderer renderer(context);
+            renderer.use_scene(scene);
+            renderer.targets(std::span(&target.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 128, 128);
+            renderer.lighting(mode);
+            const auto frame = [&](std::span<const Vertex> casters) {
+                return capture(renderer, root / "rider-shadow.ppm", camera, {}, {}, {}, {0, 10, 0}, 0, {}, {}, 1, {},
+                               {}, {}, {}, casters);
+            };
+            const auto clear = frame({});
+            std::vector<Vertex> body{vertex(3.5f, 1, -.5f), vertex(4.5f, 1, -.5f), vertex(4.5f, 1, .5f),
+                                     vertex(3.5f, 1, -.5f), vertex(4.5f, 1, .5f),  vertex(3.5f, 1, .5f)};
+            const auto shadow = frame(body);
+            ++checks;
+            if (int(clear[center]) - int(shadow[center]) < 8 || renderer.ray_instances() != 3)
+                throw std::runtime_error("Posed rider geometry does not cast a sun/lamp shadow");
+            for (auto& v : body)
+                v.z += 3;
+            const auto moved = frame(body);
+            ++checks;
+            if (std::abs(int(clear[center]) - int(moved[center])) > 1)
+                throw std::runtime_error("Refitted rider shadow stays at the previous pose");
+            for (auto& v : body)
+                v.z -= 3;
+            const auto extra = body;
+            body.insert(body.end(), extra.begin(), extra.end());
+            ++checks;
+            if (std::abs(int(shadow[center]) - int(frame(body)[center])) > 1)
+                throw std::runtime_error("Rider shadow cannot rebuild when triangle counts change");
+            ++checks;
+            if (frame({}) != clear || renderer.ray_instances() != 2)
+                throw std::runtime_error("Removed rider geometry leaves a ghost shadow");
+            for (auto& v : body)
+                v.ny = 0;
+            ++checks;
+            if (frame(body) != clear)
+                throw std::runtime_error("Unlit controller/label geometry casts rider shadows");
+        }
+    }
 }
 
 void terrain_range_tests(VulkanContext& context, const std::filesystem::path& root) {
@@ -380,7 +911,13 @@ int main(int argc, char** argv) {
         context.create(false);
         hdr_tests(context, root);
         ray_shadow_tests(context, root);
+        lamp_housing_tests(context, root);
+        soft_shadow_tests(context, root);
+        rider_shadow_tests(context, root);
         terrain_range_tests(context, root);
+        runtime_lighting_tests(context, root);
+        calibrated_lighting_tests(context, root);
+        local_light_tests(context, root);
         for (const auto samples : {1u, 4u})
             for (const auto name : {"handedness",
                                     "orientation",
@@ -464,12 +1001,12 @@ int main(int argc, char** argv) {
                                         : orthographic;
                 if (std::string(name) == "lighting" || std::string(name) == "props_light_normals") {
                     const auto original = capture(first, root / "lighting-original.ppm", camera);
-                    first.lighting(true);
+                    first.lighting(LightingMode::Enhanced);
                     const auto enhanced = capture(first, root / "lighting-enhanced.ppm", camera);
                     if (original == enhanced)
                         throw std::runtime_error("Enhanced lighting does not change terrain/prop pixels");
                     const auto untouched = capture(second, root / "lighting-other-view.ppm", camera);
-                    second.lighting(true);
+                    second.lighting(LightingMode::Enhanced);
                     const auto encoded = capture(second, root / "lighting-enhanced-srgb.ppm", camera);
                     if (untouched == encoded)
                         throw std::runtime_error("Enhanced lighting does not work on an sRGB target");
@@ -479,8 +1016,8 @@ int main(int argc, char** argv) {
                         for (std::size_t i = 0; i < encoded.size(); ++i)
                             if (std::abs(int(enhanced[i]) - int(encoded[i])) > 2)
                                 throw std::runtime_error("Enhanced lighting colour differs between UNORM and sRGB");
-                    first.lighting(false);
-                    second.lighting(false);
+                    first.lighting(LightingMode::Original);
+                    second.lighting(LightingMode::Original);
                     if (capture(first, root / "lighting-restored.ppm", camera) != original ||
                         capture(second, root / "lighting-other-restored.ppm", camera) != untouched)
                         throw std::runtime_error("Lighting toggle cannot restore Original pixels exactly");

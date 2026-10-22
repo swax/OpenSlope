@@ -638,15 +638,23 @@ std::string light_document(std::span<const std::uint8_t> geometry) {
         const auto vector = [&](std::size_t field) {
             return Json::array({b.number(p + field), b.number(p + field + 4), b.number(p + field + 8)});
         };
-        rows.push_back({{"LightName", "Light " + std::to_string(i)},
-                        {"Type", b.le(p)},
-                        {"SpriteRes", b.le(p + 4)},
-                        {"UnknownFloat1", b.number(p + 8)},
-                        {"Colour", vector(16)},
-                        {"Direction", vector(28)},
-                        {"Position", vector(40)},
-                        {"LowestXYZ", vector(52)},
-                        {"HighestXYZ", vector(64)}});
+        Json row = {{"LightName", "Light " + std::to_string(i)},
+                    {"Type", b.le(p)},
+                    {"SpriteRes", b.le(p + 4)},
+                    {"UnknownFloat1", b.number(p + 8)},
+                    {"Colour", vector(16)},
+                    {"Direction", vector(28)},
+                    {"Position", vector(40)},
+                    {"LowestXYZ", vector(52)},
+                    {"HighestXYZ", vector(64)}};
+        if (b.le(p) == 1) {
+            // [Trailmap: 220-light-cone] Authored outer half-angle cosine.
+            const auto cone = b.number(p + 76);
+            if (cone < -1 || cone > 1)
+                throw std::runtime_error("Invalid course spotlight cone");
+            row["UnknownFloat2"] = row["OuterConeCosine"] = cone;
+        }
+        rows.push_back(std::move(row));
     }
     return Json{{"Lights", rows}}.dump();
 }

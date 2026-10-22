@@ -158,6 +158,28 @@ void scene_lighting(Avatar& avatar, const AvatarPose& pose) {
         shaded_energy += v.r + v.g + v.b;
     check(shaded_energy < original_energy * .2, "ordinary avatar mesh receives scene shade");
     finite_mesh(shaded);
+    const auto raw = avatar.mesh(pose, false, false, {}, {}, &only_dark, true);
+    std::vector<Vertex> runtime(raw.begin(), raw.end());
+    const auto other = avatar.mesh(pose, false, false, {}, {}, &field, true);
+    unsigned body_normals = 0;
+    for (std::size_t i = 0; i < runtime.size(); ++i) {
+        const auto& v = runtime[i];
+        check(v.r == other[i].r && v.g == other[i].g && v.b == other[i].b,
+              "Runtime avatar albedo is independent of imported course probes");
+        const auto n = length({v.nx, v.ny, v.nz});
+        if (n > .001) {
+            ++body_normals;
+            check(std::abs(n - 1) < .001, "Runtime skin exports posed unit normals");
+        }
+    }
+    check(body_normals > 500, "Runtime avatar body supplies normals to the GPU lighting pass");
+    avatar.mesh(pose, true, true);
+    const auto shadows = avatar.shadow_mesh();
+    check(shadows.size() == avatar.source_triangles() * 3,
+          "First-person head hiding retains the complete body shadow without labels/controllers");
+    check(std::all_of(shadows.begin(), shadows.end(),
+                      [](const auto& v) { return v.nx * v.nx + v.ny * v.ny + v.nz * v.nz > .9f; }),
+          "Every posed shadow vertex carries its body normal in normal lighting mode");
 
     const auto root =
         std::filesystem::temp_directory_path() /

@@ -5,12 +5,19 @@ namespace openslope {
 struct PointLight {
     Vec3 position, colour;
     double radius = 16, intensity = 1;
+    Vec3 direction{0, -1, 0};
+    double cone_cos = -1; // -1 means an omnidirectional point light.
 };
 
 struct LampGlint {
     Vec3 position, hue;
     unsigned size = 0;
     double brightness = 1;
+};
+
+struct DirectionalLight {
+    Vec3 direction{0, 1, 0}, colour;
+    bool valid = false;
 };
 
 struct LampView {
@@ -22,7 +29,8 @@ LampView stereo_lamp_view(const std::array<float, 16>& left, const std::array<fl
                           Vec3 right_eye);
 
 std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root,
-                                        std::vector<PointLight>* illumination = nullptr);
+                                        std::vector<PointLight>* illumination = nullptr,
+                                        double* daylight_limit = nullptr, DirectionalLight* directional = nullptr);
 std::vector<Vertex> lamp_glint_mesh(std::span<const LampGlint> lights, const std::array<float, 16>& clip, Vec3 eye,
                                     unsigned width, unsigned height, double range = 600,
                                     const LampView* shared = nullptr);

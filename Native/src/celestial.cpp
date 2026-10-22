@@ -2,7 +2,9 @@
 #include "celestial_spokes.hpp"
 #include "import_internal.hpp"
 #include <algorithm>
+#include <cctype>
 #include <fstream>
+#include <iostream>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 
@@ -76,7 +78,13 @@ Vertex vertex(std::array<double, 4> p, std::array<float, 3> rgb, double intensit
 }
 } // namespace
 
-std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root, std::vector<PointLight>* illumination) {
+std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root, std::vector<PointLight>* illumination,
+                                        double* daylight_limit, DirectionalLight* directional) {
+    if (daylight_limit)
+        *daylight_limit = 1;
+    bool directional_found = false;
+    if (directional)
+        *directional = {};
     using Json = nlohmann::json;
     Json doc;
     const auto read = [&](const std::filesystem::path& file, std::uintmax_t maximum) {
@@ -88,30 +96,108 @@ std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root, std::
         std::ifstream input(file, std::ios::binary);
         return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input), {});
     };
+    const auto source_lights = [&]() -> Json {
+        if (!std::filesystem::is_directory(root / "Source"))
+            return {};
+        for (const auto& entry : std::filesystem::directory_iterator(root / "Source")) {
+            auto name = entry.path().filename().string();
+            for (auto& c : name)
+                c = char(std::toupper(static_cast<unsigned char>(c)));
+            if (name.ends_with(".PBD") && !name.ends_with("_SKY.PBD"))
+                return Json::parse(import_detail::light_document(read(entry.path(), 512 * 1024 * 1024)));
+            if (name.ends_with(".WDX")) {
+                auto world = entry.path();
+                world.replace_extension(".WDF");
+                if (!std::filesystem::exists(world))
+                    world.replace_extension(".wdf");
+                if (!std::filesystem::exists(world))
+                    continue;
+                const auto index = read(entry.path(), 32 * 1024 * 1024), bytes = read(world, 512 * 1024 * 1024);
+                return Json::parse(import_detail::ssx_light_document(index, bytes));
+            }
+        }
+        return {};
+    };
     if (std::filesystem::exists(root / "Lights.json")) {
         const auto bytes = read(root / "Lights.json", 32 * 1024 * 1024);
         doc = Json::parse(bytes);
-    } else if (std::filesystem::is_directory(root / "Source")) {
-        // Older Native ISO imports retain their source geometry. Decode only its light table.
-        for (const auto& entry : std::filesystem::directory_iterator(root / "Source")) {
-            const auto name = entry.path().filename().string();
-            if (entry.path().extension() != ".PBD" || name.ends_with("_SKY.PBD"))
-                continue;
-            const auto bytes = read(entry.path(), 512 * 1024 * 1024);
-            doc = Json::parse(import_detail::light_document(bytes));
-            break;
-        }
-    }
+    } else
+        doc = source_lights();
     if (doc.is_null())
         return {};
-    const auto& rows = doc.at("Lights");
+    auto& rows = doc.at("Lights");
     if (!rows.is_array() || rows.size() > 100000)
         throw std::runtime_error("Invalid course light table");
+    const auto missing_cone = [](const Json& row) {
+        return row.value("Type", -1) == 1 && !row.contains("UnknownFloat2") && !row.contains("OuterConeCosine");
+    };
+    if (illumination && std::any_of(rows.begin(), rows.end(), missing_cone)) {
+        // [Trailmap: 220-light-cone, 500-light-cone] Recover omitted export
+        // fields in memory. Match source order/type/position to protect edits.
+        try {
+            const auto source = source_lights();
+            unsigned recovered = 0;
+            if (!source.is_null() && source.at("Lights").size() == rows.size())
+                for (std::size_t i = 0; i < rows.size(); ++i) {
+                    auto& row = rows[i];
+                    const auto& original = source.at("Lights")[i];
+                    if (!missing_cone(row) || original.value("Type", -1) != 1 || !original.contains("OuterConeCosine"))
+                        continue;
+                    const auto& a = row.at("Position");
+                    const auto& b = original.at("Position");
+                    bool same = a.is_array() && a.size() == 3;
+                    for (unsigned j = 0; same && j < 3; ++j) {
+                        const auto value = a[j].get<double>();
+                        same = std::isfinite(value) && std::abs(value - b[j].get<double>()) < .1;
+                    }
+                    if (same) {
+                        row["OuterConeCosine"] = original.at("OuterConeCosine");
+                        ++recovered;
+                    }
+                }
+            if (recovered)
+                std::clog << "Recovered " << recovered << " spotlight cones from retained source\n";
+        } catch (const std::exception& e) {
+            std::cerr << "Course light cones not recovered: " << e.what() << '\n';
+        }
+    }
     std::vector<LampGlint> result;
     for (const auto& row : rows) {
         const auto mask = row.value("SpriteRes", 0) & 0x70;
-        const bool point = illumination && row.value("Type", -1) == 2;
-        if (!mask && !point)
+        const auto type = row.value("Type", -1);
+        if (type == 0 && (daylight_limit || directional) && row.contains("Colour")) {
+            const auto& values = row.at("Colour");
+            if (values.is_array() && values.size() == 3 &&
+                std::all_of(values.begin(), values.end(), [](const auto& value) {
+                    return value.is_number() && std::isfinite(value.template get<double>()) &&
+                           value.template get<double>() >= 0;
+                })) {
+                const auto r = values[0].get<double>(), g = values[1].get<double>(), b = values[2].get<double>();
+                // Weak blue moonlight must not turn a blue night backdrop into
+                // a sun. Neutral/warm unit-strength authored suns remain valid.
+                const auto cap = b > r * 1.2 && b > g * 1.15 ? std::clamp((b - 1) / .5, 0., 1.) : 1.;
+                if (daylight_limit) {
+                    *daylight_limit = directional_found ? std::max(*daylight_limit, cap) : cap;
+                    directional_found = true;
+                }
+                if (directional && row.contains("Direction")) {
+                    const auto& axis = row.at("Direction");
+                    if (axis.is_array() && axis.size() == 3 &&
+                        std::all_of(axis.begin(), axis.end(), [](const auto& value) {
+                            return value.is_number() && std::isfinite(value.template get<double>());
+                        })) {
+                        const Vec3 direction{-axis[0].get<double>(), -axis[2].get<double>(), axis[1].get<double>()};
+                        const Vec3 source{r, g, b};
+                        const auto magnitude = length(direction);
+                        if (std::isfinite(magnitude) && magnitude > 1e-9 && std::max({r, g, b}) <= 1e6 &&
+                            length(source) > length(directional->colour))
+                            *directional = {normalized(direction), source, true};
+                    }
+                }
+            }
+        }
+        const bool local = illumination && (type == 1 || type == 2);
+        if (!mask && !local)
             continue;
         const auto vector = [&](const char* key) {
             const auto& v = row.at(key);
@@ -127,21 +213,36 @@ std::vector<LampGlint> load_lamp_glints(const std::filesystem::path& root, std::
             continue;
         const auto p = vector("Position");
         const auto brightness = row.value("UnknownFloat1", 1.);
-        if (!std::isfinite(brightness) || brightness < 0 || brightness > 100)
+        if (!std::isfinite(brightness) || brightness < 0 || brightness > 1e6)
             throw std::runtime_error("Invalid course light brightness");
         const auto size = mask == 16 || mask == 32 || mask == 64 ? unsigned(mask) : 0u;
         const Vec3 position{p.x / 100, p.z / 100, -p.y / 100};
         if (mask)
-            result.push_back({position, colour / length(colour), size, brightness});
-        if (point) {
+            result.push_back({position, colour / length(colour), size, std::min(brightness, 100.)});
+        if (local) {
             double radius = 16;
             if (row.contains("LowestXYZ") && row.contains("HighestXYZ")) {
-                const auto extent = vector("HighestXYZ") - vector("LowestXYZ");
-                radius =
-                    std::clamp(std::max({std::abs(extent.x), std::abs(extent.y), std::abs(extent.z)}) * .005, 4., 64.);
+                const auto low = vector("LowestXYZ"), high = vector("HighestXYZ");
+                const Vec3 extent{std::max(std::abs(low.x - p.x), std::abs(high.x - p.x)),
+                                  std::max(std::abs(low.y - p.y), std::abs(high.y - p.y)),
+                                  std::max(std::abs(low.z - p.z), std::abs(high.z - p.z))};
+                radius = std::clamp(length(extent) * .01, 4., 120.);
             }
             const auto hue = colour / std::max({colour.x, colour.y, colour.z});
-            illumination->push_back({position, hue, radius, std::min(brightness, 4.)});
+            Vec3 direction{0, -1, 0};
+            double cone = -1;
+            if (type == 1) {
+                if (row.contains("Direction")) {
+                    const auto d = vector("Direction");
+                    direction = normalized(Vec3{d.x, d.z, -d.y}, {0, -1, 0});
+                }
+                // Source-less custom exports may still need a preview cone.
+                cone = row.value("UnknownFloat2", row.value("OuterConeCosine", std::cos(35. * pi / 180)));
+                if (!std::isfinite(cone) || cone < -1 || cone > 1)
+                    throw std::runtime_error("Invalid spotlight cone");
+            }
+            illumination->push_back(
+                {position, hue, radius, std::min(std::max({colour.x, colour.y, colour.z}), 1e6), direction, cone});
         }
     }
     return result;

@@ -5,8 +5,17 @@ prop-attached external sound emitters as speaker icons. Click a light icon to ex
 or sun arrow; click a speaker to expand only that emitter's listener range. This keeps dense retail rigs
 legible while still exposing the exact source you want to study.
 
-This is a study layer, not an authoring one — it draws the extracted rig so you can see it. Baking a sign
-glow onto authored terrain is a later step (see **Next**).
+Selecting a spotlight shows its cone half-angle, full cone width and stored cosine.
+**Edit copy in Mountain** takes an additive point/spot light into the mountain at
+its source position and aim. Its cone is then editable in 0.1-degree steps, with
+live full-width/cosine readouts and the selected wire cone following the edit.
+The copied light uses the normal save, undo, bake and export paths.
+
+Older PBD and WDF exports with missing cone metadata recover it from retained
+`Source` data without re-exporting. Source order, type and position must match;
+explicit exported values take precedence. The inspector identifies exported,
+recovered and preview-default angles. Missing or damaged optional source keeps
+the rig usable, with a labelled 35-degree preview default for unmatched spots.
 
 ## Where the lights live
 

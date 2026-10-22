@@ -155,12 +155,12 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     image.create(1280, 720);
     VulkanRenderer renderer(context);
     renderer.cull_terrain(terrain_culling);
-    renderer.lighting(graphics.enhanced_lighting);
+    renderer.lighting(graphics.lighting);
     renderer.upload(player.terrain().mesh(), player.logic().flag_models(), player.logic().faceted_models());
     renderer.targets(std::span(&image.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1280, 720, graphics.msaa,
                      graphics.render_scale);
     std::cout << "MSAA samples: " << renderer.samples() << '\n';
-    std::cout << "Lighting: " << (graphics.enhanced_lighting ? "Enhanced" : "Original") << '\n';
+    std::cout << "Lighting: " << lighting_name(graphics.lighting) << '\n';
     std::cout << "HDR and bloom: " << (renderer.hdr() ? "active" : "off") << '\n';
     std::unique_ptr<AudioScene> audio;
     PcmClip recorded;
@@ -201,11 +201,14 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
     const auto draw = [&] {
         chase.step(player, player.contract().tick_seconds());
         ui.frame(RideUi::desktop(chase.pose(), 1280. / 720, ui.visible));
-        const auto body = avatar.mesh(desktop_avatar_pose(player, chase, first_person, look_down), first_person, false,
-                                      chase.pose().eye, {}, &player.avatar_lighting());
+        const auto body =
+            avatar.mesh(desktop_avatar_pose(player, chase, first_person, look_down), first_person, false,
+                        chase.pose().eye, {}, &player.avatar_lighting(), graphics.lighting == LightingMode::Runtime);
         std::vector<Vertex> presented(body.begin(), body.end());
+        std::vector<Vertex> shadows(avatar.shadow_mesh().begin(), avatar.shadow_mesh().end());
         std::vector<unsigned> opponent_designs;
-        const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye, &opponent_designs);
+        const auto opponents = append_opponents(player, avatar, presented, chase.pose().eye, &opponent_designs,
+                                                graphics.lighting == LightingMode::Runtime, &shadows);
         renderer.board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
         const FieldEffects effects(player, chase.pose().eye);
         equipment_outline(presented, player);
@@ -223,7 +226,7 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                         player.logic().motions(), player.frame_alpha(), player.logic().route_motions(),
                         player.logic().texture_frames(), effects.boost(),
                         player.particles(player.frame_alpha(), chase.pose().eye), glare_view, hud, true,
-                        {chase.pose().eye, player.weather_time(), graphics.snow}, nullptr, opponents);
+                        {chase.pose().eye, player.weather_time(), graphics.snow}, nullptr, opponents, shadows);
         wall += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         gpu += renderer.stats().gpu_ms;
         cull += renderer.stats().cull_ms;
@@ -252,6 +255,8 @@ int capture(Player& player, const std::filesystem::path& output, double seconds,
                   << " ms; render wall " << wall / frames << " ms; GPU " << gpu / frames << " ms\n";
     }
     const auto stats = renderer.stats();
+    std::cout << "Scene lights: " << renderer.local_lights() << "; spots " << renderer.spot_lights() << "; points "
+              << renderer.local_lights() - renderer.spot_lights() << "; spatial lookup\n";
     std::cout << "Ray shadows: " << (renderer.ray_shadows_active() ? "active" : "off / raster lighting")
               << "; caster instances " << renderer.ray_instances() << "; mesh acceleration "
               << renderer.ray_bytes() / 1048576. << " MiB\n";
@@ -572,11 +577,14 @@ struct Window {
             vk_check(acquired, "Acquire preview image");
         ui.frame(RideUi::desktop(camera.pose(), double(width) / height, ui.visible));
         ui.third_person = !first_person;
-        const auto body_mesh = avatar.mesh(desktop_avatar_pose(player, camera, first_person, look_down), first_person,
-                                           false, camera.pose().eye, {}, &player.avatar_lighting());
+        const auto body_mesh =
+            avatar.mesh(desktop_avatar_pose(player, camera, first_person, look_down), first_person, false,
+                        camera.pose().eye, {}, &player.avatar_lighting(), graphics.lighting == LightingMode::Runtime);
         std::vector<Vertex> presented(body_mesh.begin(), body_mesh.end());
+        std::vector<Vertex> shadows(avatar.shadow_mesh().begin(), avatar.shadow_mesh().end());
         std::vector<unsigned> opponent_designs;
-        const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye, &opponent_designs);
+        const auto opponents = append_opponents(player, avatar, presented, camera.pose().eye, &opponent_designs,
+                                                graphics.lighting == LightingMode::Runtime, &shadows);
         renderer.board_art(player.board_design(), opponent_designs, &player.avatar_lighting());
         const FieldEffects effects(player, camera.pose().eye);
         equipment_outline(presented, player);
@@ -586,7 +594,7 @@ struct Window {
         glare_view.visibility =
             glare_visibility.step(player.terrain(), renderer.glare(), camera.pose().eye, std::clamp(seconds, 0., 1.));
         player.world_view(camera.pose().eye);
-        renderer.lighting(graphics.enhanced_lighting);
+        renderer.lighting(graphics.lighting);
         renderer.render(image, camera_for(player, double(width) / height, first_person, look_down, &camera),
                         board_transform(player.render_board_position(), player.render_forward(), player.render_up()),
                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, available, finished, camera.pose().eye, effects.sprites(),
@@ -594,7 +602,7 @@ struct Window {
                         player.logic().motions(), player.frame_alpha(), player.logic().route_motions(),
                         player.logic().texture_frames(), effects.boost(),
                         player.particles(player.frame_alpha(), camera.pose().eye), glare_view, hud, true,
-                        {camera.pose().eye, player.weather_time(), graphics.snow}, nullptr, opponents);
+                        {camera.pose().eye, player.weather_time(), graphics.snow}, nullptr, opponents, shadows);
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &finished;
@@ -658,9 +666,11 @@ int main(int argc, char** argv) {
                 ray_tracing = false;
             else if (option == "--lighting" && i + 1 < argc) {
                 const std::string value = argv[++i];
-                if (value != "original" && value != "enhanced")
-                    throw std::runtime_error("Lighting must be original or enhanced");
-                overrides.enhanced_lighting = value == "enhanced";
+                if (value != "original" && value != "enhanced" && value != "runtime")
+                    throw std::runtime_error("Lighting must be original, enhanced or runtime");
+                overrides.lighting = value == "runtime"    ? LightingMode::Runtime
+                                     : value == "enhanced" ? LightingMode::Enhanced
+                                                           : LightingMode::Original;
                 lighting_set = true;
             } else if (option == "--ui-graphics") {
                 ui_menu_option = ui_graphics_option = true;
@@ -721,7 +731,7 @@ int main(int argc, char** argv) {
                        "[--first-person] [--look-down] [--on-foot] [--capture <output.ppm>] [--audio-capture "
                        "<output.wav>] [--seconds <duration>] [--replay <sequence.json>] [--no-audio] [--audio-smoke] "
                        "[--msaa 1|2|4|8] [--render-scale 100|125|150|200] [--snow 0..10] [--graphics-preferences "
-                       "<file>] [--lighting original|enhanced] [--no-ray-tracing] [--ui-graphics] "
+                       "<file>] [--lighting original|enhanced|runtime] [--no-ray-tracing] [--ui-graphics] "
                        "[--no-terrain-culling] "
                        "[--audio-preferences <file>] "
                        "[--ui-audio] [--ai-riders 0..16]\nDesktop: "
@@ -771,7 +781,7 @@ int main(int argc, char** argv) {
         if (snow_set)
             graphics.snow = overrides.snow;
         if (lighting_set)
-            graphics.enhanced_lighting = overrides.enhanced_lighting;
+            graphics.lighting = overrides.lighting;
         auto player = std::make_unique<Player>(map.empty() ? Terrain::demo() : Terrain::load(map));
         if (run_option != RunMode::Freeride)
             player->configure_run(run_option);
@@ -857,13 +867,18 @@ int main(int argc, char** argv) {
         LibraryTask library_task;
         auto load_stage = std::make_shared<std::atomic<unsigned>>(0);
         unsigned loading_frames = 0;
-        const std::array<UiAction, 24> ui_script{
-            UiAction::Controls,    UiAction::Controls,     UiAction::View,          UiAction::Sound,
-            UiAction::VolumeDown,  UiAction::Music,        UiAction::MasterMute,    UiAction::MasterMute,
-            UiAction::Songs,       UiAction::SelectSong,   UiAction::Sound,         UiAction::Graphics,
-            UiAction::RenderScale, UiAction::Antialiasing, UiAction::Lighting,      UiAction::Lighting,
-            UiAction::SnowDown,    UiAction::SnowUp,       UiAction::GraphicsReset, UiAction::Stats,
-            UiAction::Graphics,    UiAction::Mode,         UiAction::Maps,          UiAction::LoadMap};
+        std::vector<UiAction> ui_script{
+            UiAction::Controls,    UiAction::Controls,     UiAction::View,       UiAction::Sound,
+            UiAction::VolumeDown,  UiAction::Music,        UiAction::MasterMute, UiAction::MasterMute,
+            UiAction::Songs,       UiAction::SelectSong,   UiAction::Sound,      UiAction::Graphics,
+            UiAction::RenderScale, UiAction::Antialiasing, UiAction::Lighting,   UiAction::Lighting,
+            UiAction::Lighting,    UiAction::SnowDown,     UiAction::SnowUp,     UiAction::GraphicsReset,
+            UiAction::Stats,       UiAction::Graphics,     UiAction::Mode,       UiAction::Maps,
+            UiAction::LoadMap};
+        // Exercise map replacement with the requested mode still active after
+        // the scripted Defaults action, rather than always testing Original.
+        if (lighting_set)
+            ui_script.insert(ui_script.begin() + 20, unsigned(overrides.lighting), UiAction::Lighting);
         std::size_t ui_step = 0;
         RunMode ui_expected_mode = RunMode::Freeride;
         unsigned ui_frame = 0;

@@ -1,6 +1,6 @@
 import type GUI from 'lil-gui';
 import type { AuthoredLight } from '../../../core/doc/types';
-import type { RigLight } from '../../../core/reference/lights';
+import { authoredReferenceLight, type RigLight } from '../../../core/reference/lights';
 import { glints, glintSizeClass } from '../../../core/lighting/glints';
 import { detail, liveDetail, tip } from './gui';
 
@@ -41,7 +41,13 @@ function colourReadout(target: GUI, hex: string) {
 
 /** Populate the read-only reference-light inspector using the same common field order/units as an authored
  *  mountain light. Native-only category/cosine facts follow the common block. */
-export function addReferenceLightDetails(target: GUI, level: string, light: RigLight, mountainName = 'Mountain') {
+export function addReferenceLightDetails(
+  target: GUI,
+  level: string,
+  light: RigLight,
+  mountainName = 'Mountain',
+  edit?: (light: AuthoredLight) => void,
+) {
   tip(
     detail(target, light.name || '(unnamed light)', 'name'),
     'The native record name — retail names often reveal the fixture role (SignLight, Tunnel, Shadow).',
@@ -78,6 +84,16 @@ export function addReferenceLightDetails(target: GUI, level: string, light: RigL
       detail(target, fixed(halfAngle, 2), 'cone half-angle (°)'),
       `Recovered spot-cone half-angle, shown in the same units used to edit ${mountainName} spotlights.`,
     );
+    detail(target, fixed(halfAngle * 2, 2), 'full cone angle (°)');
+    detail(
+      target,
+      light.coneSource === 'source'
+        ? 'recovered from source'
+        : light.coneSource === 'preview'
+          ? 'preview default'
+          : 'exported angle',
+      'cone source',
+    );
   }
   tip(
     detail(target, fixed(light.reach), 'reach (m)'),
@@ -98,6 +114,12 @@ export function addReferenceLightDetails(target: GUI, level: string, light: RigL
     tip(
       detail(target, fixed(light.coneCos, 4), 'native cone cosine'),
       'The exact value stored by Lights.json; the common cone row above converts it to an editable-style half-angle.',
+    );
+  const copy = authoredReferenceLight(light);
+  if (copy && edit)
+    tip(
+      target.add({ edit: () => edit(copy) }, 'edit').name(`edit copy in ${mountainName}`),
+      'Copy this light with its exact cone, aim and position into your mountain, then edit and save it there.',
     );
 }
 
@@ -149,7 +171,10 @@ export function addAuthoredLightDetails(
   );
   tip(target.addColor(light, 'color').name('colour').onChange(scheduleRebuild), 'The light hue.');
   tip(
-    target.add(light, 'intensity', 0, 6, 0.1).name('brightness').onChange(scheduleRebuild),
+    target
+      .add(light, 'intensity', 0, Math.max(6, Math.ceil(light.intensity)), 0.1)
+      .name('brightness')
+      .onChange(scheduleRebuild),
     'Peak HDR strength. Values above 1 are intentionally brighter than display white.',
   );
   tip(
@@ -173,12 +198,17 @@ export function addAuthoredLightDetails(
     );
     light.cone ??= 35;
     tip(
-      target.add(light, 'cone', 5, 80, 1).name('cone half-angle (°)').onChange(scheduleRebuild),
+      target.add(light, 'cone', 0.1, 89.9, 0.1).name('cone half-angle (°)').onChange(scheduleRebuild),
       'Half-angle of the spotlight cone, in the same units shown for a reference spotlight.',
     );
+    liveDetail(target, () => fixed((light.cone ?? 35) * 2, 2), 'full cone angle (°)');
+    liveDetail(target, () => fixed(Math.cos(((light.cone ?? 35) * Math.PI) / 180), 6), 'exported cone cosine');
   }
   tip(
-    target.add(light, 'reach', 5, 150, 1).name('reach (m)').onChange(scheduleRebuild),
+    target
+      .add(light, 'reach', 5, Math.max(150, Math.ceil(light.reach)), 1)
+      .name('reach (m)')
+      .onChange(scheduleRebuild),
     'How far the light carries before it fades out.',
   );
   // The runtime GLINT (docs/047): a size class here is the engine's own gate, written straight to the exported

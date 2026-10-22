@@ -100,6 +100,7 @@ std::vector<Image> decode_ssh(std::span<const std::uint8_t> bytes, bool lightmap
                               bool particle = false, bool original = false);
 void write_png(const std::filesystem::path& path, const Image& image);
 std::string light_document(std::span<const std::uint8_t> geometry);
+std::string ssx_light_document(std::span<const std::uint8_t> index, std::span<const std::uint8_t> world);
 void write_paths(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,
                  const ImportCancel& cancelled);
 void write_collision(const std::vector<std::uint8_t>& bytes, const std::filesystem::path& output,

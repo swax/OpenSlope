@@ -7,6 +7,7 @@
 
 namespace openslope {
 struct VulkanContext;
+struct Vertex;
 
 struct RayMesh {
     std::uint32_t first{}, count{};
@@ -15,6 +16,23 @@ struct RayMesh {
 struct RayInstance {
     std::size_t mesh{};
     std::array<float, 16> transform{};
+    VkDeviceAddress external_address{};
+    std::uint32_t custom_index{};
+    bool light_housing{};
+};
+
+// Posed triangle geometry owned by one renderer; refitted before its TLAS.
+class RayActor {
+public:
+    explicit RayActor(VulkanContext& context);
+    ~RayActor();
+    void update(std::span<const Vertex> vertices);
+    void record(VkCommandBuffer command);
+    VkDeviceAddress address() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // Immutable mesh acceleration structures shared with the uploaded scene.

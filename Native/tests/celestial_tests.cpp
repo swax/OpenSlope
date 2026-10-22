@@ -1,7 +1,9 @@
+#include "import_internal.hpp"
 #include "openslope/appearance.hpp"
 #include "openslope/celestial.hpp"
 #include "openslope/world.hpp"
 #include "render_math.hpp"
+#include <bit>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -124,14 +126,29 @@ void lamps(const std::filesystem::path& root) {
     std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
     std::vector<PointLight> illumination;
     const auto unchanged_glints = load_lamp_glints(root, &illumination);
-    check(unchanged_glints.size() == lights.size() && illumination.size() == 1,
-          "Point illumination includes lights without sprites and preserves existing glints");
+    check(unchanged_glints.size() == lights.size() && illumination.size() == 2,
+          "Point and spot illumination include lights without sprites and preserve existing glints");
     close(illumination[0].position.x, 1, 1e-9, "Point lights convert centimetres to metres");
     close(illumination[0].position.y, 3, 1e-9, "Point lights convert the vertical axis");
     close(illumination[0].position.z, -2, 1e-9, "Point lights convert the forward axis");
-    close(illumination[0].radius, 20, 1e-9, "Point-light bounds supply the enhancement radius");
+    close(illumination[0].radius, std::sqrt(1200.), 1e-9, "Point-light bounds retain the full corner reach");
     close(illumination[0].colour.y, .5, 1e-9, "Point-light colour preserves hue");
-    close(illumination[0].intensity, 4, 1e-9, "Enhancement intensity has a finite bound");
+    close(illumination[0].intensity, 2, 1e-9,
+          "Local illumination uses the HDR colour strength, independently of the glint scalar");
+    close(illumination[1].cone_cos, std::cos(35. * pi / 180), 1e-9, "Legacy spotlights have a documented preview cone");
+    rows.back()["Direction"] = Json::array({0, 0, -1});
+    rows.back()["UnknownFloat2"] = .75;
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    illumination.clear();
+    load_lamp_glints(root, &illumination);
+    close(illumination[1].direction.y, -1, 1e-9, "Spot direction uses native metre axes");
+    close(illumination[1].cone_cos, .75, 1e-9, "Spot cone metadata survives import");
+    rows.back()["Colour"] = Json::array({3500, 1995, 1225});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    illumination.clear();
+    load_lamp_glints(root, &illumination);
+    close(illumination[1].intensity, 3500, 1e-9,
+          "Strong authored floodlights retain their strength before tone compression");
     const auto matrix = (projection(-1, 1, -1, 1) * view({}, {0, 0, -1})).values;
     const auto mesh = lamp_glint_mesh(lights, matrix, {}, 128, 128);
     check(mesh.size() == 120, "Each lamp has halo, crossed square stars, fixed core and same-hue aura");
@@ -191,6 +208,113 @@ void lamps(const std::filesystem::path& root) {
     many[0].position.z = -601;
     check(lamp_glint_mesh(std::span(many.data(), 1), matrix, {}, 128, 128).empty(),
           "Lamp range excludes distant sources");
+    rows.push_back({{"Type", 0}, {"Colour", {.33308297, .28547522, .6288}}});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    close(World::load(root).daylight_limit, 0, 0,
+          "Exported moonlight strength reaches the runtime scene without requiring a sun sprite");
+    rows.back()["Direction"] = Json::array({.6, 0, -.8});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    const auto moon = World::load(root).directional;
+    check(moon.valid, "A directional source without a sun sprite retains its lighting record");
+    close(length(moon.direction - Vec3{-.6, .8, 0}), 0, 1e-12,
+          "Authored incoming directional vectors become native surface-to-source directions");
+    close(moon.colour.z, .6288, 1e-12, "Authored moonlight colour is retained without sky-colour substitution");
+    rows.back()["Direction"] = Json::array({0, 0, 0});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    check(!World::load(root).directional.valid, "A zero source direction retains the ordinary fallback");
+    rows.back()["Direction"] = Json::array({"invalid", 0, 1});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    check(!World::load(root).directional.valid, "Malformed optional source directions cannot invalidate a course");
+    rows.back()["Colour"] = Json::array({2.47, 2.24, 2.04});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    close(World::load(root).daylight_limit, 1, 0, "HDR directional strength identifies a daylight rig");
+    rows.back()["Colour"] = Json::array({1, 1, 1});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    close(World::load(root).daylight_limit, 1, 0, "A neutral unit-strength authored sun retains daylight");
+    rows.back()["Colour"] = Json::array({"invalid", 1, 1});
+    std::ofstream(root / "Lights.json") << Json{{"Lights", rows}};
+    check(World::load(root).daylight_limit == 1,
+          "Malformed optional global-light metadata leaves the sky fallback available");
+    std::filesystem::remove(root / "Lights.json");
+}
+
+void source_cones(const std::filesystem::path& root) {
+    using Json = nlohmann::json;
+    const auto source = root / "Source";
+    std::filesystem::create_directory(source);
+    const auto word = [](std::vector<std::uint8_t>& bytes, std::size_t p, std::uint32_t value) {
+        for (unsigned i = 0; i < 4; ++i)
+            bytes.at(p + i) = std::uint8_t(value >> (i * 8));
+    };
+    const auto number = [&](auto& bytes, std::size_t p, float value) {
+        word(bytes, p, std::bit_cast<std::uint32_t>(value));
+    };
+    const auto save = [](const auto& path, const auto& bytes) {
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+    };
+    Json row = {{"Type", 1}, {"Colour", {1, .5, .25}}, {"Position", {100, 200, 300}}};
+    const auto export_light = [&] { std::ofstream(root / "Lights.json") << Json{{"Lights", Json::array({row})}}; };
+    std::vector<std::uint8_t> pbd(144 + 92);
+    word(pbd, 28, 1);
+    word(pbd, 88, 144);
+    word(pbd, 144, 1);
+    number(pbd, 144 + 8, 1);
+    number(pbd, 144 + 16, 1);
+    number(pbd, 144 + 36, -1);
+    for (unsigned i = 0; i < 3; ++i)
+        number(pbd, 144 + 40 + i * 4, float((i + 1) * 100));
+    number(pbd, 144 + 76, .625f);
+    const auto decoded = Json::parse(import_detail::light_document(pbd)).at("Lights")[0];
+    check(decoded.at("UnknownFloat2") == .625 && decoded.at("OuterConeCosine") == .625,
+          "New PBD light exports retain the original cone field and shared alias");
+    save(source / "WORLD.PBD", pbd);
+    export_light();
+    const auto cone = [&] {
+        std::vector<PointLight> result;
+        load_lamp_glints(root, &result);
+        check(result.size() == 1, "Cone recovery preserves the exported light count");
+        return result.front().cone_cos;
+    };
+    close(cone(), .625, 1e-9, "An older PBD export recovers its cone without re-exporting");
+    check(!Json::parse(std::ifstream(root / "Lights.json")).at("Lights")[0].contains("OuterConeCosine"),
+          "Source cone recovery leaves the user's exported JSON untouched");
+    row["UnknownFloat2"] = .75;
+    export_light();
+    close(cone(), .75, 1e-9, "Explicit exported cones take precedence over retained source");
+    row.erase("UnknownFloat2");
+    row["Position"][0] = 900;
+    export_light();
+    close(cone(), std::cos(35. * pi / 180), 1e-9, "Moved lights cannot inherit an unrelated source cone");
+    row["Position"][0] = 100;
+    export_light();
+    std::filesystem::remove(source / "WORLD.PBD");
+    std::vector<std::uint8_t> index(88), world(816 + 76);
+    number(index, 0, 9.71f);
+    number(index, 4, .03f);
+    word(index, 8, 11);
+    for (const auto p : {40u, 44u, 48u})
+        word(index, p, 1);
+    word(index, 84, std::uint32_t(world.size()));
+    world[40] = 1;
+    word(world, 816, 1);
+    number(world, 816 + 4, 1);
+    number(world, 816 + 12, 1);
+    number(world, 816 + 32, -1);
+    for (unsigned i = 0; i < 3; ++i)
+        number(world, 816 + 36 + i * 4, float((i + 1) * 100));
+    number(world, 816 + 72, .875f);
+    save(source / "WORLD.WDX", index);
+    save(source / "WORLD.WDF", world);
+    close(cone(), .875, 1e-9, "An older WDF export recovers its distinct original cone field");
+    std::filesystem::remove(root / "Lights.json");
+    close(cone(), .875, 1e-9, "Source-only WDF maps retain their original cone without a JSON export");
+    export_light();
+    world.resize(816 + 72);
+    save(source / "WORLD.WDF", world);
+    close(cone(), std::cos(35. * pi / 180), 1e-9, "Damaged optional source cannot prevent an existing map loading");
+    number(pbd, 144 + 76, 2);
+    rejects([&] { import_detail::light_document(pbd); });
     std::filesystem::remove(root / "Lights.json");
 }
 
@@ -267,6 +391,7 @@ void profiles(const std::filesystem::path& root) {
     const auto crop = celestial_corona(&atlas);
     check(crop.width == 1 && crop.height == 1 && crop.pixels == std::vector<std::uint8_t>({0, 255, 0, 255}),
           "Only the atlas top-right corona survives; other tiles cannot bleed into mipmaps");
+    std::filesystem::remove(root / "World.json");
 }
 } // namespace
 
@@ -290,6 +415,7 @@ int main(int argc, char** argv) {
         visibility();
         profiles(root);
         lamps(root);
+        source_cones(root);
         if (argc == 2) {
             unsigned courses = 0, enabled = 0;
             for (const auto& entry : std::filesystem::directory_iterator(argv[1]))

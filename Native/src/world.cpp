@@ -3,6 +3,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <set>
+#include <tuple>
 
 namespace openslope {
 namespace {
@@ -25,7 +26,58 @@ std::array<float, 3> colour(const nlohmann::json& value) {
     }
     return result;
 }
+
+LightingCalibration load_calibration(const std::filesystem::path& root, LightingCalibration preset) {
+    const auto file = root / "NativeLighting.json";
+    if (!std::filesystem::exists(file))
+        return preset;
+    within(root, file);
+    if (std::filesystem::file_size(file) > 8192)
+        throw std::runtime_error("Native lighting calibration exceeds 8 KiB");
+    std::ifstream input(file);
+    const auto profile = nlohmann::json::parse(input);
+    if (profile.value("Schema", "") != "openslope-native-lighting/v1")
+        throw std::runtime_error("Unsupported native lighting calibration");
+    preset.enabled = profile.value("Enabled", true);
+    preset.fit_lamps = profile.value("AutoFit", preset.fit_lamps);
+    const auto scalar = [](const nlohmann::json& value, float low, float high) {
+        const auto number = value.get<float>();
+        if (!std::isfinite(number) || number < low || number > high)
+            throw std::runtime_error("Native lighting calibration value is outside its range");
+        return number;
+    };
+    const auto rgb = [&](const char* key, std::array<float, 3>& result) {
+        if (!profile.contains(key))
+            return;
+        const auto& values = profile.at(key);
+        if (!values.is_array() || values.size() != 3)
+            throw std::runtime_error("Native lighting calibration requires three linear RGB channels");
+        for (unsigned i = 0; i < 3; ++i)
+            result[i] = scalar(values[i], 0, 8);
+    };
+    rgb("RuntimeAmbient", preset.runtime_ambient);
+    rgb("LocalColour", preset.local_colour);
+    rgb("DirectionalGain", preset.directional_gain);
+    for (const auto& [key, target, low, high] : {std::tuple{"FalloffMetres", &preset.falloff, 1.f, 32.f},
+                                                 {"EnhancedAmount", &preset.enhanced_amount, 0.f, .5f},
+                                                 {"Bloom", &preset.bloom, 0.f, .25f}})
+        if (profile.contains(key))
+            *target = scalar(profile.at(key), low, high);
+    return preset;
+}
 } // namespace
+
+LightingCalibration LightingCalibration::for_course(std::string_view course) {
+    LightingCalibration result;
+    // Course identifiers come from World.json, independent of folder naming.
+    result.enabled = course == "SNOW" || course == "MERQUER" || course == "MESA";
+    result.fit_lamps = result.enabled;
+    if (course == "MESA") {
+        result.runtime_ambient = {.12f, .1f, .08f};
+        result.directional_gain = {.35f, .35f, .35f};
+    }
+    return result;
+}
 
 std::vector<std::string> skybox_files(const std::filesystem::path& root) {
     if (root.empty() || !std::filesystem::exists(root / "Skybox"))
@@ -45,7 +97,7 @@ World World::load(const std::filesystem::path& root) {
     World result;
     if (root.empty())
         return result;
-    result.glints = load_lamp_glints(root, &result.point_lights);
+    result.glints = load_lamp_glints(root, &result.point_lights, &result.daylight_limit, &result.directional);
     skybox_files(root);
     result.sky = Props::load(root / "Skybox", true);
     if (!result.sky.parts.empty()) {
@@ -53,8 +105,10 @@ World World::load(const std::filesystem::path& root) {
         result.fog_end = 2200;
     }
     const auto file = root / "World.json";
-    if (!std::filesystem::exists(file))
+    if (!std::filesystem::exists(file)) {
+        result.calibration = load_calibration(root, {});
         return result;
+    }
     within(root, file);
     if (std::filesystem::file_size(file) > 65536)
         throw std::runtime_error("World profile exceeds 64 KiB");
@@ -62,6 +116,9 @@ World World::load(const std::filesystem::path& root) {
     const auto profile = nlohmann::json::parse(input);
     if (profile.value("Schema", "") != "openslope-world/v1")
         throw std::runtime_error("Unsupported world profile");
+    if (profile.contains("Course") && profile.at("Course").is_string())
+        result.calibration = LightingCalibration::for_course(profile.at("Course").get<std::string>());
+    result.calibration = load_calibration(root, result.calibration);
     if (profile.contains("SkyColor")) {
         result.sky_colour = colour(profile.at("SkyColor"));
         result.explicit_sky = true;

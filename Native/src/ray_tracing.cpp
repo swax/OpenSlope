@@ -226,6 +226,115 @@ VkDeviceAddress RayGeometry::address(std::size_t mesh) const { return impl_->add
 
 std::uint64_t RayGeometry::bytes() const { return impl_->storage.size; }
 
+struct RayActor::Impl {
+    VulkanContext& context;
+    RayBuffer vertices, storage, scratch;
+    std::unique_ptr<RayHandle> handle;
+    VkAccelerationStructureGeometryKHR geometry{};
+    std::uint32_t capacity{}, count{}, built_count{}, alignment;
+    VkDeviceAddress address{};
+
+    explicit Impl(VulkanContext& ctx)
+        : context(ctx), vertices(ctx), storage(ctx), scratch(ctx), alignment(scratch_alignment(ctx)) {}
+
+    VkAccelerationStructureBuildGeometryInfoKHR build() const {
+        VkAccelerationStructureBuildGeometryInfoKHR result{
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
+        result.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        result.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR |
+                       VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+        const bool refit = count == built_count && built_count != 0;
+        result.mode =
+            refit ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR : VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        result.srcAccelerationStructure = refit ? handle->value : VkAccelerationStructureKHR{};
+        result.dstAccelerationStructure = handle ? handle->value : VkAccelerationStructureKHR{};
+        result.geometryCount = 1;
+        result.pGeometries = &geometry;
+        if (scratch.buffer)
+            result.scratchData.deviceAddress = aligned(scratch.address(), alignment);
+        return result;
+    }
+
+    void update(std::span<const Vertex> source) {
+        if (source.size() > 600000 || source.size() % 3)
+            throw std::runtime_error("Posed shadow geometry exceeds its limit or is not triangular");
+        for (const auto& v : source)
+            if (!finite(Vec3{v.x, v.y, v.z}))
+                throw std::runtime_error("Invalid posed shadow position");
+        count = std::uint32_t(source.size() / 3);
+        if (!count)
+            return;
+        if (!handle || count > capacity) {
+            capacity = std::max({count, capacity * 2, 1u});
+            built_count = 0;
+            vertices.allocate(VkDeviceSize(capacity) * 3 * 12,
+                              VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, true);
+            geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+            geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+            geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+            auto& triangles = geometry.geometry.triangles;
+            triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+            triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+            triangles.vertexData.deviceAddress = vertices.address();
+            triangles.vertexStride = 12;
+            triangles.maxVertex = capacity * 3 - 1;
+            triangles.indexType = VK_INDEX_TYPE_NONE_KHR;
+            auto info = build();
+            VkAccelerationStructureBuildSizesInfoKHR sizes{
+                VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
+            vkGetAccelerationStructureBuildSizesKHR(context.device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                                                    &info, &capacity, &sizes);
+            if (sizes.accelerationStructureSize > 64ull * 1024 * 1024)
+                throw std::runtime_error("Posed shadow acceleration exceeds its budget");
+            handle.reset();
+            storage.allocate(sizes.accelerationStructureSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR);
+            scratch.allocate(std::max(sizes.buildScratchSize, sizes.updateScratchSize) + alignment,
+                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            handle = std::make_unique<RayHandle>(context);
+            VkAccelerationStructureCreateInfoKHR create{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
+            create.buffer = storage.buffer;
+            create.size = sizes.accelerationStructureSize;
+            create.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+            vk_check(vkCreateAccelerationStructureKHR(context.device, &create, nullptr, &handle->value),
+                     "Create posed shadow acceleration");
+            VkAccelerationStructureDeviceAddressInfoKHR query{
+                VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR};
+            query.accelerationStructure = handle->value;
+            address = vkGetAccelerationStructureDeviceAddressKHR(context.device, &query);
+        }
+        void* mapped;
+        vk_check(vkMapMemory(context.device, vertices.memory, 0, source.size() * 12, 0, &mapped),
+                 "Map posed shadow vertices");
+        auto* positions = static_cast<float*>(mapped);
+        for (const auto& v : source) {
+            *positions++ = v.x;
+            *positions++ = v.y;
+            *positions++ = v.z;
+        }
+        vkUnmapMemory(context.device, vertices.memory);
+    }
+};
+
+RayActor::RayActor(VulkanContext& context) : impl_(std::make_unique<Impl>(context)) {}
+
+RayActor::~RayActor() = default;
+
+void RayActor::update(std::span<const Vertex> vertices) { impl_->update(vertices); }
+
+VkDeviceAddress RayActor::address() const { return impl_->count ? impl_->address : 0; }
+
+void RayActor::record(VkCommandBuffer command) {
+    if (!impl_->count)
+        return;
+    auto info = impl_->build();
+    VkAccelerationStructureBuildRangeInfoKHR range{};
+    range.primitiveCount = impl_->count;
+    const auto* ranges = &range;
+    vkCmdBuildAccelerationStructuresKHR(command, 1, &info, &ranges);
+    build_barrier(command, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
+    impl_->built_count = impl_->count;
+}
+
 struct RayWorld::Impl {
     VulkanContext& context;
     std::shared_ptr<RayGeometry> geometry;
@@ -257,7 +366,8 @@ struct RayWorld::Impl {
         std::vector<VkAccelerationStructureInstanceKHR> data;
         data.reserve(source.size());
         for (const auto& instance : source) {
-            const auto address = geometry->address(instance.mesh);
+            const auto address =
+                instance.external_address ? instance.external_address : geometry->address(instance.mesh);
             if (!address)
                 continue;
             const auto& m = instance.transform;
@@ -270,7 +380,10 @@ struct RayWorld::Impl {
                 for (unsigned col = 0; col < 4; ++col)
                     output.transform.matrix[row][col] = instance.transform[col * 4 + row];
             output.mask = 255;
+            output.instanceCustomIndex = instance.custom_index;
             output.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            if (instance.light_housing)
+                output.flags |= VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
             output.accelerationStructureReference = address;
             data.push_back(output);
         }

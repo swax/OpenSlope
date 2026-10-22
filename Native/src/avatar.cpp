@@ -567,7 +567,8 @@ Avatar::Avatar() {
 }
 
 std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, bool labels, Vec3 eye,
-                                     Vec3 controller_offset, const SceneLighting* scene_lighting) {
+                                     Vec3 controller_offset, const SceneLighting* scene_lighting,
+                                     bool runtime_lighting) {
     const auto right = normalized(cross(p.forward, p.up));
     const auto basis = [&](Vec3 v) { return right * v.x + p.up * v.y + p.forward * v.z; };
 
@@ -635,10 +636,13 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
     }
     std::vector<Vec3> posed;
     posed.reserve(vertices_.size());
-    const auto illumination =
-        scene_lighting ? scene_lighting->sample(p.joint(AvatarJoint::Hips)) : SceneLight::fallback();
+    const auto illumination = runtime_lighting ? SceneLight{}
+                              : scene_lighting ? scene_lighting->sample(p.joint(AvatarJoint::Hips))
+                                               : SceneLight::fallback();
     std::vector<Vec3> lighting;
     lighting.reserve(vertices_.size());
+    std::vector<Vec3> normals;
+    normals.reserve(vertices_.size());
     for (const auto& v : vertices_) {
         const auto& t = transforms[v.bone];
         auto relative = basis(v.position - t.origin);
@@ -647,24 +651,32 @@ std::span<const Vertex> Avatar::mesh(const AvatarPose& p, bool first_person, boo
             relative += axis * (dot(relative, axis) * (t.scale - 1));
         posed.push_back(t.target + t.map(relative));
         const auto normal = normalized(t.map(basis(v.normal)));
-        lighting.push_back(illumination.evaluate(normal));
+        normals.push_back(normal);
+        lighting.push_back(runtime_lighting ? Vec3{1, 1, 1} : illumination.evaluate(normal));
     }
     mesh_.clear();
+    shadow_.clear();
     for (std::size_t i = 0; i < corners_.size(); i += 3) {
         bool hide = false;
         for (unsigned k = 0; k < 3; ++k) {
             const auto& name = bones_[vertices_[corners_[i + k].vertex].bone].name;
             hide |= first_person && (name == "Head" || name == "Neck");
         }
-        if (!hide)
-            for (unsigned k = 0; k < 3; ++k) {
-                const auto& c = corners_[i + k];
-                auto colour = c.colour;
-                colour[0] *= float(lighting[c.vertex].x);
-                colour[1] *= float(lighting[c.vertex].y);
-                colour[2] *= float(lighting[c.vertex].z);
-                mesh_.push_back(vertex(posed[c.vertex], colour));
-            }
+        for (unsigned k = 0; k < 3; ++k) {
+            const auto& c = corners_[i + k];
+            auto colour = c.colour;
+            colour[0] *= float(lighting[c.vertex].x);
+            colour[1] *= float(lighting[c.vertex].y);
+            colour[2] *= float(lighting[c.vertex].z);
+            auto v = vertex(posed[c.vertex], colour);
+            const auto n = normals[c.vertex];
+            v.nx = float(n.x);
+            v.ny = float(n.y);
+            v.nz = float(n.z);
+            shadow_.push_back(v);
+            if (!hide)
+                mesh_.push_back(v);
+        }
     }
     auto presented = p.controllers;
     for (auto& c : presented)

@@ -2,6 +2,7 @@
 #include "openslope/crowd.hpp"
 #include "openslope/gear.hpp"
 #include "vulkan_renderer.hpp"
+#include <algorithm>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -199,7 +200,7 @@ VulkanScene::~VulkanScene() {
         if (value.memory)
             vkFreeMemory(context_.device, value.memory, nullptr);
     }
-    for (auto* value : {&vertices_, &indices_}) {
+    for (auto* value : {&vertices_, &indices_, &local_lights_, &light_cells_, &light_indices_}) {
         if (value->buffer)
             vkDestroyBuffer(context_.device, value->buffer, nullptr);
         if (value->memory)
@@ -331,6 +332,32 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
     const auto& particles = assets.particles;
     props_ = std::move(assets.props);
     world_ = std::move(assets.world);
+    auto lights = local_light_grid(world_);
+    if (const auto samples = calibrate_lighting(lights, source, appearance, world_))
+        std::clog << "Course lighting calibrated from " << samples << " terrain samples\n";
+    prop_casters_ = light_housings(lights, props_);
+    lamp_housings_.clear();
+    for (const auto& lamp : lights.lights)
+        if (lamp.colour[3] != 0)
+            lamp_housings_.push_back(std::uint32_t(lamp.colour[3]));
+    std::sort(lamp_housings_.begin(), lamp_housings_.end());
+    lamp_housings_.erase(std::unique(lamp_housings_.begin(), lamp_housings_.end()), lamp_housings_.end());
+    local_light_count_ = unsigned(lights.lights.size());
+    spot_light_count_ = unsigned(std::count_if(lights.lights.begin(), lights.lights.end(),
+                                               [](const auto& light) { return light.direction_cone[3] > -1; }));
+    std::vector<std::uint8_t> light_data(sizeof(LightGrid::Header) +
+                                         std::max<std::size_t>(1, lights.lights.size()) * sizeof(LocalLight));
+    std::memcpy(light_data.data(), &lights.header, sizeof(lights.header));
+    if (!lights.lights.empty())
+        std::memcpy(light_data.data() + sizeof(lights.header), lights.lights.data(),
+                    lights.lights.size() * sizeof(LocalLight));
+    local_lights_ = buffer(light_data.size(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, light_data.data());
+    light_cells_ =
+        buffer(lights.cells.size() * sizeof(lights.cells[0]), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, lights.cells.data());
+    const std::uint32_t no_light = 0;
+    light_indices_ =
+        buffer(std::max<std::size_t>(1, lights.indices.size()) * sizeof(std::uint32_t),
+               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, lights.indices.empty() ? &no_light : lights.indices.data());
     VkFormatProperties format;
     vkGetPhysicalDeviceFormatProperties(context_.physical, VK_FORMAT_R8G8B8A8_UNORM, &format);
     if (!(format.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))

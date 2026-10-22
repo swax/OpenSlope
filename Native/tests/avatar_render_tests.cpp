@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
             const auto original_shade = ::pixels(root / "board-shaded.ppm");
             for (const bool traced : {false, true}) {
                 boards.ray_shadows(traced);
-                boards.lighting(true);
+                boards.lighting(LightingMode::Enhanced);
                 const auto enhanced_full = board_light("board-enhanced-full", white, {0, 1, 0});
                 const auto enhanced_dim = board_light("board-enhanced-shade", shade, {0, 1, 0});
                 const auto enhanced_facing = board_light("board-enhanced-key", directional, {0, 1, 0});
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
                       "enhanced loose and opponent boards retain their own lighting samples");
                 if (traced && context.ray_query)
                     check(boards.ray_shadows_active(), "scene-lit board also renders with the ray-query pipeline");
-                boards.lighting(false);
+                boards.lighting(LightingMode::Original);
                 board_light("board-restored-shade", shade, {0, 1, 0});
                 check(::pixels(root / "board-restored-shade.ppm") == original_shade,
                       "switching back to Original restores scene-lit board pixels exactly");
@@ -298,8 +298,8 @@ int main(int argc, char** argv) {
             check(changed > 500, "scene lighting actually changes visible avatar pixels in the original pipeline");
             check(green > changed / 2, "course probe colour reaches the visible body");
             check(differences < 100, "scene-lit avatar agrees across UNORM and sRGB targets");
-            a.lighting(true);
-            b.lighting(true);
+            a.lighting(LightingMode::Enhanced);
+            b.lighting(LightingMode::Enhanced);
             const auto enhanced_unlit = avatar.mesh(avatar_pose(player), false, false);
             a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, enhanced_unlit);
             a.capture(0, root / "scene-enhanced-baseline.ppm");
@@ -323,14 +323,98 @@ int main(int argc, char** argv) {
             }
             check(changed > 500 && green > changed / 2, "enhanced presentation retains avatar course-light tint");
             check(differences < 100, "enhanced scene-lit avatar agrees across UNORM and sRGB targets");
-            a.lighting(false);
+            a.lighting(LightingMode::Original);
             a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, enhanced_body);
             a.capture(0, root / "scene-restored-avatar.ppm");
             check(pixels(root / "scene-restored-avatar.ppm") == lit,
                   "switching back to Original restores scene-lit avatar pixels exactly");
-            b.lighting(false);
+            b.lighting(LightingMode::Original);
             a.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 4);
             b.targets(std::span(&right.image, 1), VK_FORMAT_R8G8B8A8_SRGB, 1024, 1024, 4);
+        }
+        {
+            const auto assets = [&](bool lamp, bool calibrated = false) {
+                Mesh mesh;
+                mesh.vertices = {{10000, 0, 0, 1, 1, 1}, {10001, 0, 0, 1, 1, 1}, {10000, 1, 0, 1, 1, 1}};
+                mesh.indices = {0, 1, 2};
+                auto result = SceneAssets::prepare(mesh);
+                result.world.sky_colour = {.01f, .02f, .04f};
+                if (calibrated) {
+                    result.world.calibration = LightingCalibration::for_course("SNOW");
+                    result.world.calibration.local_colour = {.1f, .1f, .1f};
+                }
+                if (lamp)
+                    // Test illumination independently of a glow sprite between
+                    // the camera and board, which can saturate the whole view.
+                    result.world.point_lights = {{{0, 4, 0}, {1, .05, .02}, 19.2, 3}};
+                return result;
+            };
+            VulkanRenderer dark(context), lamp(context);
+            dark.upload(assets(false));
+            lamp.upload(assets(true));
+            SceneLighting imported({LightProbe{{}, {0, 1, 0}}});
+            const auto raw = avatar.mesh(avatar_pose(player), false, false, {}, {}, &imported, true);
+            const std::vector<Vertex> runtime_body(raw.begin(), raw.end());
+            const auto frame = [&](VulkanRenderer& renderer, const char* name, bool body, Vec3 position = Vec3{0, 3, 0},
+                                   Vec3 up = Vec3{0, 1, 0}, bool opponent = false) {
+                const Vec3 eye = body ? Vec3{2.8, 2.1, 3.2} : position + up * 1.3;
+                const auto clip = projection(-.85, .85, -.85, .85) *
+                                  (body ? view(eye, {-2.8, -1, -3.2}) : view(eye, -up, {0, 0, -1}));
+                const auto deck = board_transform(position, {0, 0, -1}, up);
+                const std::array<Matrix, 1> others{deck};
+                const auto own =
+                    body || opponent ? board_transform({10000, 10000, 10000}, {0, 0, -1}, {0, 1, 0}) : deck;
+                const auto figure = body ? std::span<const Vertex>(runtime_body) : std::span<const Vertex>{};
+                renderer.render(0, clip, own, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, figure, 0,
+                                {}, {}, 1, {}, {}, {}, {}, {}, {}, false, {}, nullptr,
+                                opponent ? std::span<const Matrix>(others) : std::span<const Matrix>{});
+                const auto file = root / (std::string(name) + ".ppm");
+                renderer.capture(0, file);
+                return pixels(file);
+            };
+            const auto red = [](const auto& p) {
+                double sum = 0;
+                for (unsigned y = 440; y < 584; ++y)
+                    for (unsigned x = 490; x < 534; ++x)
+                        sum += p[(y * 1024 + x) * 3];
+                return sum;
+            };
+            for (const bool traced : {false, true}) {
+                for (auto* renderer : {&dark, &lamp}) {
+                    renderer->targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+                    renderer->ray_shadows(traced);
+                    renderer->lighting(LightingMode::Runtime);
+                    renderer->board_art(2, {}, &imported);
+                }
+                const auto off = frame(dark, "runtime-avatar-no-lamp", true);
+                const auto on = frame(lamp, "runtime-avatar-lamp", true);
+                unsigned red_pixels = 0;
+                for (std::size_t i = 0; i < on.size(); i += 3)
+                    red_pixels += int(on[i]) - off[i] > 8 && int(on[i]) - off[i] > 2 * (int(on[i + 1]) - off[i + 1]);
+                check(red_pixels > 300, "Runtime lamp colour reaches the player's raw skin in GPU pixels");
+                const auto board_off = frame(dark, "runtime-board-no-lamp", false);
+                const auto board_on = frame(lamp, "runtime-board-lamp", false);
+                const auto rolled = frame(lamp, "runtime-board-rolled", false, {0, 3, 0}, {-1, 0, 0});
+                check(red(board_on) > red(board_off) * 1.3 && red(rolled) < red(board_on) * .8,
+                      "Runtime board uses the same lamp and its transformed normals");
+                const auto loose = frame(lamp, "runtime-board-loose", false, {30, 3, 0});
+                const auto opponent = frame(lamp, "runtime-board-opponent", false, {30, 3, 0}, {0, 1, 0}, true);
+                check(red(loose) < red(board_on) * .8 && loose == opponent,
+                      "Runtime loose/opponent board attenuation follows each board's world position");
+                VulkanRenderer calibrated(context);
+                calibrated.upload(assets(true, true));
+                calibrated.targets(std::span(&left.image, 1), VK_FORMAT_R8G8B8A8_UNORM, 1024, 1024, 1);
+                calibrated.ray_shadows(traced);
+                calibrated.lighting(LightingMode::Runtime);
+                calibrated.board_art(2, {}, &imported);
+                const auto tuned_body = frame(calibrated, "runtime-avatar-calibrated", true);
+                unsigned dimmed = 0;
+                for (std::size_t i = 0; i < on.size(); i += 3)
+                    dimmed += int(on[i]) - int(tuned_body[i]) > 8;
+                check(dimmed > 300, "Course calibration reaches the runtime avatar's skin");
+                check(red(frame(calibrated, "runtime-board-calibrated", false)) < red(board_on) * .85,
+                      "The board uses the same calibrated lamp power as the avatar and world");
+            }
         }
         for (const auto lead : {-1, 1}) {
             player.warp({0, 10, 0}, {0, 0, -1});

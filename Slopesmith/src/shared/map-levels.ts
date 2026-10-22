@@ -5,6 +5,7 @@ import {
   READ_CONCURRENCY,
   type MapDataSource,
 } from './map-data';
+import { retainedLightCones } from './map-light-cones';
 import type {
   RawPatch,
   CoursePathFile,
@@ -377,9 +378,18 @@ export async function readLevelLightRig(io: MapDataSource, name: string): Promis
   const raw = await io.readJsonOr<{ Lights?: RawLightRecord[] } | null>(join(io.root, safe, 'Lights.json'), null);
   if (!raw) return null;
   try {
+    const rows = raw.Lights ?? [];
+    const missing = rows.some(l => l.Type === 1 && l.UnknownFloat2 === undefined && l.OuterConeCosine === undefined);
+    const source = missing ? await retainedLightCones(io, safe) : [];
     const num3 = (a: number[] | undefined, fb: number[]) => (a && a.length >= 3 ? [a[0], a[1], a[2]] : fb).map(Number);
-    const lights = (raw.Lights ?? []).map(l => {
+    const lights = rows.map((l, index) => {
       const pos = num3(l.Position, [0, 0, 0]);
+      const original = source.length === rows.length ? source[index] : undefined;
+      const recovered =
+        original && original.type === l.Type && pos.every((value, axis) => Math.abs(value - original.pos[axis]) < 0.1)
+          ? original.cone
+          : undefined;
+      const exported = l.UnknownFloat2 ?? l.OuterConeCosine;
       return {
         name: String(l.LightName ?? ''),
         type: Number(l.Type ?? 1),
@@ -388,7 +398,13 @@ export async function readLevelLightRig(io: MapDataSource, name: string): Promis
         pos,
         lo: num3(l.LowestXYZ, pos),
         hi: num3(l.HighestXYZ, pos),
-        cone: Number(l.UnknownFloat2 ?? l.OuterConeCosine ?? 1),
+        cone: Number(exported ?? recovered ?? (l.Type === 1 ? Math.cos((35 * Math.PI) / 180) : 1)),
+        coneSource:
+          exported !== undefined
+            ? ('export' as const)
+            : recovered !== undefined
+              ? ('source' as const)
+              : ('preview' as const),
         spriteRes: Number(l.SpriteRes ?? 0) | 0,
       };
     });

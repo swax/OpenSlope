@@ -77,11 +77,14 @@ class Avatar {
 public:
     Avatar();
     std::span<const Vertex> mesh(const AvatarPose& pose, bool first_person = false, bool labels = true, Vec3 eye = {},
-                                 Vec3 controller_offset = {}, const SceneLighting* lighting = nullptr);
+                                 Vec3 controller_offset = {}, const SceneLighting* lighting = nullptr,
+                                 bool runtime_lighting = false);
 
     std::size_t source_vertices() const { return vertices_.size(); }
 
     std::size_t source_triangles() const { return corners_.size() / 3; }
+
+    std::span<const Vertex> shadow_mesh() const { return shadow_; }
 
 private:
     struct Bone {
@@ -104,6 +107,6 @@ private:
     std::vector<Bone> bones_;
     std::vector<SkinVertex> vertices_;
     std::vector<Corner> corners_;
-    std::vector<Vertex> mesh_;
+    std::vector<Vertex> mesh_, shadow_;
 };
 } // namespace openslope

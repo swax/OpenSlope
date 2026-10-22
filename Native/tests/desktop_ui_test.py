@@ -1,5 +1,6 @@
 """Drive actual desktop menu actions and replace a live map through the Vulkan window host."""
 from pathlib import Path
+import json
 import subprocess
 import sys
 import tempfile
@@ -13,14 +14,25 @@ def main():
         # Neither map has a race finish: mode selection must skip that unsupported event.
         fixture(root / 'A', mass=0, draw=False)
         fixture(root / 'B', mass=0, draw=False)
-        result = subprocess.run([str(exe), '--map', str(root / 'A'), '--ui-smoke', '--seconds', '10', '--no-audio'],
-                                cwd=root, capture_output=True, text=True, timeout=90)
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert 'Desktop UI/map load smoke: PASS' in result.stdout, result.stdout
-        assert 'Vulkan window/swapchain smoke: PASS' in result.stdout, result.stdout
-        print(result.stdout.strip())
+        for name, colour in [('A', [1, 0, 0]), ('B', [0, 1, 0])]:
+            (root / name / 'Lights.json').write_text(json.dumps(dict(Lights=[dict(
+                Type=2, Position=[0, 0, 1000], Colour=colour,
+                LowestXYZ=[-2000, -2000, -1000], HighestXYZ=[2000, 2000, 3000])])), encoding='utf-8')
+        for mode in ('original', 'enhanced', 'runtime'):
+            result = subprocess.run([str(exe), '--map', str(root / 'A'), '--ui-smoke',
+                                     '--lighting', mode, '--graphics-preferences', str(root / 'graphics.json'),
+                                     '--audio-preferences', str(root / 'audio.json'),
+                                     '--seconds', '10', '--no-audio'],
+                                    cwd=root, capture_output=True, text=True, timeout=90)
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert 'Desktop UI/map load smoke: PASS' in result.stdout, result.stdout
+            assert 'Vulkan window/swapchain smoke: PASS' in result.stdout, result.stdout
+            assert json.loads((root / 'graphics.json').read_text())['lighting'] == mode
+            print(f'PASS: {mode} live map replacement\n' + result.stdout.strip())
         (root / 'B/Patches.json').write_text('broken JSON', encoding='utf-8')
-        result = subprocess.run([str(exe), '--map', str(root / 'A'), '--ui-smoke-failure', '--seconds', '10', '--no-audio'],
+        result = subprocess.run([str(exe), '--map', str(root / 'A'), '--ui-smoke-failure',
+                                 '--graphics-preferences', str(root / 'graphics.json'),
+                                 '--audio-preferences', str(root / 'audio.json'), '--seconds', '10', '--no-audio'],
                                 cwd=root, capture_output=True, text=True, timeout=90)
         assert result.returncode == 0, result.stdout + result.stderr
         assert 'Desktop failed-map rollback smoke: PASS' in result.stdout, result.stdout

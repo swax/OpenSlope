@@ -58,7 +58,10 @@ std::vector<UiButton> RideUi::buttons() const {
                 {.06, .39, .88, .075,
                  antialiasing == 1 ? "ANTI-ALIASING: OFF" : "ANTI-ALIASING: " + std::to_string(antialiasing) + "X MSAA",
                  UiAction::Antialiasing});
-            list.push_back({.06, .49, .88, .075, enhanced_lighting ? "LIGHTING: ENHANCED" : "LIGHTING: ORIGINAL",
+            list.push_back({.06, .49, .88, .075,
+                            lighting == LightingMode::Runtime    ? "LIGHTING: RUNTIME"
+                            : lighting == LightingMode::Enhanced ? "LIGHTING: ENHANCED"
+                                                                 : "LIGHTING: ORIGINAL",
                             UiAction::Lighting});
         }
         list.push_back({.06, y, .18, .085, "-", UiAction::SnowDown});
@@ -316,9 +319,9 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
                                                     : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
                                   : speed + " KM/H  /  " +
-                                     (p.carrying_board() ? "CARRYING"
-                                      : p.on_foot()      ? "ON FOOT"
-                                                         : "RIDING"),
+                                        (p.carrying_board() ? "CARRYING"
+                                         : p.on_foot()      ? "ON FOOT"
+                                                            : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
         if (!audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);

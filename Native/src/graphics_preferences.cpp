@@ -60,8 +60,12 @@ GraphicsPreferences GraphicsPreferences::load(const std::filesystem::path& file)
             if (std::isfinite(value))
                 result.snow = std::clamp(value, 0., 10.);
         }
-        if (json.contains("lighting") && json["lighting"].is_string())
-            result.enhanced_lighting = json["lighting"] == "enhanced";
+        if (json.contains("lighting") && json["lighting"].is_string()) {
+            if (json["lighting"] == "enhanced")
+                result.lighting = LightingMode::Enhanced;
+            else if (json["lighting"] == "runtime")
+                result.lighting = LightingMode::Runtime;
+        }
         return result;
     } catch (const std::exception& e) {
         std::cerr << "Graphics preferences ignored: " << e.what() << '\n';
@@ -75,13 +79,15 @@ bool GraphicsPreferences::save(const std::filesystem::path& file) const {
     auto temporary = file;
     temporary += ".tmp-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     try {
-        if (!valid_scale(render_scale) || !valid_msaa(msaa) || !std::isfinite(snow) || snow < 0 || snow > 10)
+        if (!valid_scale(render_scale) || !valid_msaa(msaa) || !std::isfinite(snow) || snow < 0 || snow > 10 ||
+            (lighting != LightingMode::Original && lighting != LightingMode::Enhanced &&
+             lighting != LightingMode::Runtime))
             throw std::runtime_error("Invalid graphics preferences");
         const auto content = nlohmann::json{{"schema", "openslope-graphics-preferences/v1"},
                                             {"renderScale", render_scale},
                                             {"msaa", msaa},
                                             {"snow", snow},
-                                            {"lighting", enhanced_lighting ? "enhanced" : "original"}}
+                                            {"lighting", lighting_name(lighting)}}
                                  .dump(2);
         if (!file.parent_path().empty())
             std::filesystem::create_directories(file.parent_path());
@@ -116,7 +122,7 @@ void GraphicsPreferences::present(RideUi& ui) const {
     ui.render_scale = render_scale;
     ui.antialiasing = msaa;
     ui.snow_amount = snow;
-    ui.enhanced_lighting = enhanced_lighting;
+    ui.lighting = lighting;
 }
 
 bool GraphicsPreferences::handle(const UiResult& selection, RideUi& ui) {
@@ -139,7 +145,9 @@ bool GraphicsPreferences::handle(const UiResult& selection, RideUi& ui) {
     case UiAction::Lighting:
         if (ui.immersive)
             return false;
-        enhanced_lighting = !enhanced_lighting;
+        lighting = lighting == LightingMode::Original   ? LightingMode::Enhanced
+                   : lighting == LightingMode::Enhanced ? LightingMode::Runtime
+                                                        : LightingMode::Original;
         break;
     case UiAction::SnowDown: snow = std::max(0., snow - 1); break;
     case UiAction::SnowUp: snow = std::min(10., snow + 1); break;
@@ -153,6 +161,6 @@ bool GraphicsPreferences::handle(const UiResult& selection, RideUi& ui) {
     }
     present(ui);
     return render_scale != previous.render_scale || msaa != previous.msaa || snow != previous.snow ||
-           enhanced_lighting != previous.enhanced_lighting;
+           lighting != previous.lighting;
 }
 } // namespace openslope

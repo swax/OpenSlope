@@ -151,7 +151,8 @@ focus; an uncommitted jump charge is cancelled.
 Desktop rendering defaults to 150% scene resolution and 4x MSAA, falling back
 to supported targets/sample counts. Graphics in the pause menu saves render
 scale (100/125/150/200%), MSAA (Off/2x/4x/8x) and snow (0–10, default 3).
-Desktop Graphics also offers a saved Original/Enhanced lighting toggle; see
+Desktop Graphics offers saved Original, Enhanced and Runtime lighting modes.
+Runtime replaces imported lighting with runtime lights for the course, player and boards; see
 [enhanced lighting](docs/enhanced-lighting.md) for scope and comparison commands.
 The UI stays at native window resolution. `--render-scale`, `--msaa` and
 `--snow` override those settings for window/capture mode. Map-library selection
