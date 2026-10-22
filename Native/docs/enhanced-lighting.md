@@ -4,6 +4,24 @@ Open **Graphics** in the desktop pause menu and cycle **Lighting: Original**,
 **Lighting: Enhanced**, or **Lighting: Runtime**. The change applies to the live scene immediately and
 is saved with the desktop graphics preferences. Original remains the default.
 The Quest wrist menu does not expose or enable desktop enhanced lighting.
+Lighting mode is specialized when creating the Vulkan pipelines, so Original
+compiles out desktop lighting, HDR/bloom and prop world-normal transforms. A
+uniform branch alone imposed a measurable GPU cost on Quest even with those
+features disabled. Changing modes recreates the pipelines for the selected mode.
+All three lighting modes specialize terrain, prop, board and avatar materials
+separately, removing unused material branches and varyings from those draws.
+Enhanced and Runtime create both untraced and ray-query variants, including
+Runtime's world-space avatar and untextured-surface path. Mode changes rebuild
+these variants; ray initialization failures retain the untraced variants. XR workload
+logs include boarding state, speed, position, avatar triangles and effect counts
+alongside frame timings for comparisons during actual rides.
+
+Material specialization is not a measured desktop speedup on every GPU. A local
+RTX 4090 Laptop comparison over 1,800 Merqury replay frames at 1920x1080, 4x MSAA
+and no snowfall measured Enhanced GPU time at 3.86/4.56 ms before/after and Runtime
+at 6.81/6.59 ms, with ray shadows active. Render wall times were 6.65/6.70 ms and
+8.84/9.18 ms respectively. These single longer comparisons and shorter noisy runs
+do not establish a consistent desktop frame-rate gain.
 
 Enhanced adds smooth world-space terrain normals, warm directional light,
 cool sky fill, view-dependent surface highlights and coloured point and spot

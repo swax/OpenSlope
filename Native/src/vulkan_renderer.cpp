@@ -428,6 +428,12 @@ void VulkanRenderer::clear_targets() {
             vkFreeMemory(context_.device, target.resolved_memory, nullptr);
     }
     targets_.clear();
+    for (auto& variants : material_pipelines_)
+        for (auto& material : variants) {
+            if (material)
+                vkDestroyPipeline(context_.device, material, nullptr);
+            material = {};
+        }
     if (presentation_pipeline_)
         vkDestroyPipeline(context_.device, presentation_pipeline_, nullptr);
     if (presentation_hud_)
@@ -652,6 +658,15 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     stages[1].module = fragment;
     stages[1].pName = "main";
+    // Original (including Quest) must compile out the desktop lighting paths.
+    // A uniform branch still leaves their shader resource cost on mobile GPUs.
+    std::array<std::int32_t, 2> shader_modes{std::int32_t(lighting_mode_), -1};
+    const std::array<VkSpecializationMapEntry, 2> lighting_entries{
+        {{0, 0, sizeof(std::int32_t)}, {1, sizeof(std::int32_t), sizeof(std::int32_t)}}};
+    const VkSpecializationInfo lighting_specialization{unsigned(lighting_entries.size()), lighting_entries.data(),
+                                                       sizeof(shader_modes), shader_modes.data()};
+    for (auto& stage : stages)
+        stage.pSpecializationInfo = &lighting_specialization;
     VkVertexInputBindingDescription binding{0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX};
     const std::array<VkVertexInputAttributeDescription, 6> attributes{
         {{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, x)},
@@ -703,10 +718,28 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     pipeline.layout = layout_;
     pipeline.renderPass = pass_;
     const auto pipeline_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &pipeline_);
+    // Keep terrain, props, boards and avatars from carrying each other's
+    // shader branches and varyings in every lighting mode. Runtime also uses
+    // mode 15 for world-space, untextured surfaces and posed avatars.
+    const auto create_material_pipelines = [&](auto& variants) {
+        VkResult result = VK_SUCCESS;
+        for (const auto mode : {0, 1, 2, 3, 14, 15}) {
+            shader_modes[1] = mode;
+            result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &variants[mode]);
+            if (result != VK_SUCCESS)
+                break;
+        }
+        shader_modes[1] = -1;
+        return result;
+    };
+    if (pipeline_result == VK_SUCCESS)
+        vk_check(create_material_pipelines(material_pipelines_[0]), "Create material pipelines");
     VkResult ray_result = VK_SUCCESS, ray_blend_result = VK_SUCCESS;
     if (ray_fragment) {
         stages[1].module = ray_fragment;
         ray_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &ray_pipeline_);
+        if (ray_result == VK_SUCCESS && lighting_mode_ != LightingMode::Original)
+            ray_result = create_material_pipelines(material_pipelines_[1]);
         stages[1].module = fragment;
     }
     VkResult blend_result = pipeline_result;
@@ -832,6 +865,8 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     auto snow_stages = stages;
     snow_stages[0].module = snow_vertex;
     snow_stages[1].module = snow_fragment;
+    for (auto& stage : snow_stages)
+        stage.pSpecializationInfo = nullptr;
     const VkVertexInputBindingDescription snow_binding{0, sizeof(SnowFlake), VK_VERTEX_INPUT_RATE_INSTANCE};
     const std::array<VkVertexInputAttributeDescription, 2> snow_attributes{
         {{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(SnowFlake, base)},
@@ -1724,6 +1759,10 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         ray_world_->record(command_);
     }
     const auto opaque_pipeline = ray_active ? ray_pipeline_ : pipeline_;
+    const auto& materials = material_pipelines_[ray_active ? 1 : 0];
+    const auto material_pipeline = [&](int mode) {
+        return mode >= 0 && std::size_t(mode) < materials.size() && materials[mode] ? materials[mode] : opaque_pipeline;
+    };
     const bool srgb = scene_format_ == VK_FORMAT_R8G8B8A8_SRGB || scene_format_ == VK_FORMAT_B8G8R8A8_SRGB;
     const bool linear = srgb || hdr_;
     std::array<VkClearValue, 2> clear{};
@@ -1779,6 +1818,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     for (const auto& visible : terrain_draws_) {
         const auto& draw = scene_->draws_[visible.material];
         push.options[0] = runtime && draw.mode == 0 ? 15 : draw.mode;
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, material_pipeline(push.options[0]));
         vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &draw.set, 0, nullptr);
         vkCmdPushConstants(command_, layout_, draw_stages, 0, sizeof(push), &push);
         vkCmdDrawIndexed(command_, visible.count, 1, visible.first, 0, 0);
@@ -1794,6 +1834,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     const auto bind_board = [&](unsigned design) {
         const bool stock = design < stock_board_count;
         push.options[0] = stock ? 14 : runtime ? 15 : 0;
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, material_pipeline(push.options[0]));
         push.options[2] = board_lighting_ && !runtime ? 1 : 0;
         const auto set = stock ? scene_->stock_board_sets_[design] : scene_->board_set_;
         if (stock) {
@@ -1837,6 +1878,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
     push.mvp = camera;
     push.options[0] = runtime ? 15 : 0;
     if (!avatar.empty()) {
+        vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, material_pipeline(push.options[0]));
         if (scene_->avatar_pixels_)
             vkCmdBindDescriptorSets(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 1, &scene_->avatar_set_, 0,
                                     nullptr);
@@ -1846,6 +1888,7 @@ void VulkanRenderer::render(unsigned image, const Matrix& camera, const Matrix& 
         vkCmdBindVertexBuffers(command_, 0, 1, &scene_->vertices_.buffer, &offset);
     }
     push.options[0] = 3;
+    vkCmdBindPipeline(command_, VK_PIPELINE_BIND_POINT_GRAPHICS, material_pipeline(push.options[0]));
     bool blending = false;
     for (const auto& visible : prop_draws) {
         const auto& draw = scene_->prop_draws_[visible.part];

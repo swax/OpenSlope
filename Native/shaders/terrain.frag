@@ -3,6 +3,8 @@
 #extension GL_EXT_ray_query : require
 layout(set=2,binding=0) uniform accelerationStructureEXT shadowWorld;
 #endif
+layout(constant_id=0) const int lightingMode=0;
+layout(constant_id=1) const int surfaceMode=-1;
 layout(location=0) in vec3 vertexColour;
 layout(location=1) in vec2 textureUV;
 layout(location=2) in vec2 lightmapUV;
@@ -144,7 +146,7 @@ vec3 litSurface(vec3 base) {
     vec3 h=v+light.sunDirection.xyz;
     float highlight=dot(h,h)>0.00001?pow(max(dot(n,normalize(h)),0.0),48.0):0.0;
     vec3 result=albedo*energy+light.sunColour.rgb*highlight*0.12*sunlight;
-    if(light.presentation.z>0.5&&light.settings.x<1.5)
+    if(light.presentation.z>0.5&&lightingMode==1)
         result=(light.settings.z>0.5?hdrOfOriginal(albedo):albedo)+
                albedo*light.sunColour.rgb*(diffuse+highlight*0.12)*sunlight;
     vec2 cell=floor((worldPosition.xz-local.originCell.xy)/local.originCell.z);
@@ -184,22 +186,23 @@ vec3 litSurface(vec3 base) {
         }
         result+=contribution*visible;
     }
-    if(light.presentation.z>0.5&&light.settings.x>1.5&&light.settings.z<0.5)result=toneMap(result);
+    if(light.presentation.z>0.5&&lightingMode==2&&light.settings.z<0.5)result=toneMap(result);
     return displayColourOf(result);
 }
 void main() {
-    if(transform.options.x==13){colour=vec4(presentHdr(),1);return;}
-    bool runtime=light.settings.x>1.5;
+    int mode=surfaceMode<0?transform.options.x:surfaceMode;
+    if(lightingMode!=0&&mode==13){colour=vec4(presentHdr(),1);return;}
+    bool runtime=lightingMode==2;
     vec3 displayColour=vertexColour;
-    bool avatarTexture=(transform.options.x==0||transform.options.x==15)&&lightmapTile.w>0.5;
+    bool avatarTexture=(mode==0||mode==15)&&lightmapTile.w>0.5;
     vec3 avatarEmission=vec3(0);
     if(avatarTexture){
         displayColour*=texture(diffuseImage,textureUV).rgb;
         avatarEmission=texture(diffuseImage,lightmapUV).rgb*lightmapTile.xyz;
     }
     float alpha=1.0;
-    if(transform.options.x==8||transform.options.x==9||transform.options.x==10)alpha=effectAlpha;
-    if(transform.options.x==12){
+    if(mode==8||mode==9||mode==10)alpha=effectAlpha;
+    if(mode==12){
         vec2 q=textureUV*2.0-1.0;
         float r=length(q);
         float halo=exp(-100.0*(r-0.88)*(r-0.88))*(1.0-smoothstep(0.95,1.0,r));
@@ -215,14 +218,14 @@ void main() {
             alpha=effectAlpha*lens.a;
         }
     }
-    if(transform.options.x>0&&transform.options.x!=8&&transform.options.x!=9&&transform.options.x!=10&&transform.options.x!=12&&transform.options.x!=15) {
+    if(mode>0&&mode!=8&&mode!=9&&mode!=10&&mode!=12&&mode!=15) {
         vec4 base=texture(diffuseImage,textureUV);
-        if(transform.options.x==3) {
+        if(mode==3) {
             if(transform.options.z==1&&base.a<0.5)discard;
             if(transform.options.z==2){if(base.a<=1.0/255.0)discard;alpha=base.a;}
         }else if(base.a<=1.0/255.0)discard;
         displayColour=base.rgb;
-        if(transform.options.x==14) {
+        if(mode==14) {
             if(lightmapTile.w<0.5)displayColour=transform.presentation.yzw;
             else {
                 vec2 halfTexel=0.5/vec2(textureSize(diffuseImage,0));
@@ -233,11 +236,11 @@ void main() {
             }
             if(transform.options.z!=0)displayColour*=vertexColour;
         }
-        if(transform.options.x==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
-        if(transform.options.x==5)alpha=base.a*effectAlpha;
-        if(transform.options.x==6){displayColour=base.rgb*vertexColour;alpha=base.a*effectAlpha;}
-        if(transform.options.x==11){displayColour=base.rgb*vertexColour;alpha=base.a;}
-        if(transform.options.x==3&&!runtime){
+        if(mode==4){displayColour=base.rgb*vertexColour;alpha=base.a*lightmapTile.x;}
+        if(mode==5)alpha=base.a*effectAlpha;
+        if(mode==6){displayColour=base.rgb*vertexColour;alpha=base.a*effectAlpha;}
+        if(mode==11){displayColour=base.rgb*vertexColour;alpha=base.a;}
+        if(mode==3&&!runtime){
             // [Trailmap: 160-instance-frame, 400-lighting] Model-local light records.
             // First-party preview profile: normalize interpolated normals and cap
             // modulation at texture-true white, as the rendered calibration shows.
@@ -246,7 +249,7 @@ void main() {
             for(int i=0;i<3;++i)light+=max(0.0,dot(normal,propDirections[i]))*propColours[i];
             displayColour=base.rgb*clamp(light,0.0,1.0);
         }
-        if(transform.options.x==2&&!runtime) {
+        if(mode==2&&!runtime) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]
             // Keep bilinear sampling inside this patch's gutterless tile.
             vec2 inset=min(0.5/vec2(textureSize(lightmapImage,0)),lightmapTile.zw*0.5);
@@ -255,18 +258,18 @@ void main() {
             displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
     }
-    if(light.settings.x>0.5&&((transform.options.x>=1&&transform.options.x<=3)||
-       (runtime&&(transform.options.x==14||(transform.options.x==15&&dot(worldNormal,worldNormal)>0.00001)))))
+    if(lightingMode!=0&&((mode>=1&&mode<=3)||
+       (runtime&&(mode==14||(mode==15&&dot(worldNormal,worldNormal)>0.00001)))))
         displayColour=litSurface(displayColour);
-    if(light.presentation.z>0.5&&light.settings.z>0.5&&
-       (transform.options.x==7||(light.settings.x<1.5&&
-       (transform.options.x==14||(transform.options.x==15&&dot(worldNormal,worldNormal)>0.00001)))))
+    if(lightingMode!=0&&light.presentation.z>0.5&&light.settings.z>0.5&&
+       (mode==7||(lightingMode==1&&
+       (mode==14||(mode==15&&dot(worldNormal,worldNormal)>0.00001)))))
         displayColour=displayColourOf(hdrOfOriginal(linearColour(displayColour)));
-    if(transform.options.x!=7&&(transform.options.x<10||transform.options.x==14||transform.options.x==15)&&transform.eyeEnd.w>transform.fogColourStart.w){
+    if(mode!=7&&(mode<10||mode==14||mode==15)&&transform.eyeEnd.w>transform.fogColourStart.w){
         float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
-        if(transform.options.x==4&&transform.options.w!=0)alpha*=1.0-fog;
-        else if(transform.options.x==4||transform.options.x==6||transform.options.x==9)displayColour*=1.0-fog;
-        else if(transform.options.x==5)alpha*=1.0-fog;
+        if(mode==4&&transform.options.w!=0)alpha*=1.0-fog;
+        else if(mode==4||mode==6||mode==9)displayColour*=1.0-fog;
+        else if(mode==5)alpha*=1.0-fog;
         else displayColour=mix(displayColour,transform.fogColourStart.rgb,fog);
     }
     displayColour+=avatarEmission;

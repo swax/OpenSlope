@@ -1,4 +1,6 @@
 #version 450
+layout(constant_id=0) const int lightingMode=0;
+layout(constant_id=1) const int surfaceMode=-1;
 layout(location=0) in vec3 position;
 layout(location=1) in vec3 colour;
 layout(location=2) in vec2 diffuseUV;
@@ -19,6 +21,7 @@ layout(location=10) flat out mat3 propColours;
 layout(location=13) out vec3 worldNormal;
 layout(push_constant) uniform Transform { mat4 mvp; ivec4 options; vec4 fogColourStart; vec4 eyeEnd; vec4 presentation; } transform;
 void main() {
+    int mode=surfaceMode<0?transform.options.x:surfaceMode;
     worldPosition=position;
     worldNormal=modelNormal;
     vertexColour=colour;
@@ -26,8 +29,8 @@ void main() {
     propDirections=mat3(0);
     propColours=mat3(0);
     effectAlpha=lightUV.x;
-    if(transform.options.x==5)worldPosition=position+modelNormal*(0.008+0.004*transform.options.w);
-    if(transform.options.x==4){
+    if(mode==5)worldPosition=position+modelNormal*(0.008+0.004*transform.options.w);
+    if(mode==4){
         vec3 forward=vec3(transform.mvp[0][3],transform.mvp[1][3],transform.mvp[2][3]);
         forward=length(forward)>0.00001?normalize(forward):vec3(0,0,-1);
         vec3 rowX=vec3(transform.mvp[0][0],transform.mvp[1][0],transform.mvp[2][0]);
@@ -37,21 +40,21 @@ void main() {
         float c=cos(lightUV.y),s=sin(lightUV.y);offset=mat2(c,s,-s,c)*offset;
         worldPosition=position+right*offset.x+up*offset.y;
     }
-    if(transform.options.x==3) {
+    if(mode==3) {
         Pose pose=poses[gl_InstanceIndex];vec3 local=position;
         if(lightUV.y>.5&&pose.uv.z!=0){float k=pose.uv.w>=2?1-lightUV.x:lightUV.x;local.x+=pose.uv.z*k*sin(6.283185307179586*(k-fract(pose.uv.w)));}
         worldPosition=(pose.matrix*vec4(local,1.0)).xyz;
-        worldNormal=transpose(inverse(mat3(pose.matrix)))*modelNormal;
+        if(lightingMode!=0)worldNormal=transpose(inverse(mat3(pose.matrix)))*modelNormal;
         vertexColour=pose.ambient.rgb;
         propNormal=modelNormal;
         for(int i=0;i<3;++i){propDirections[i]=pose.direction[i].xyz;propColours[i]=pose.colour[i].rgb;}
     }
     textureUV=diffuseUV;
-    if(transform.options.x==3)textureUV+=poses[gl_InstanceIndex].uv.xy;
-    if(transform.options.x==5&&transform.options.w==1)textureUV.x=1.0-diffuseUV.x;
+    if(mode==3)textureUV+=poses[gl_InstanceIndex].uv.xy;
+    if(mode==5&&transform.options.w==1)textureUV.x=1.0-diffuseUV.x;
     lightmapUV=lightUV;
     lightmapTile=tile;
     gl_Position=transform.mvp*vec4(worldPosition,1.0);
-    if(transform.options.x==10||transform.options.x==11)gl_Position=vec4(position.xy,0.5*lightUV.y,lightUV.y);
-    if(transform.options.x==7)gl_Position.z=0.0;
+    if(mode==10||mode==11)gl_Position=vec4(position.xy,0.5*lightUV.y,lightUV.y);
+    if(mode==7)gl_Position.z=0.0;
 }

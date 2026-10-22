@@ -1217,6 +1217,8 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
         if (rendered && now - sample_started >= std::chrono::seconds(5)) {
             const auto n = double(sample_frames), fps = n / std::chrono::duration<double>(now - sample_started).count(),
                        hz = frame.predictedDisplayPeriod > 0 ? 1e9 / double(frame.predictedDisplayPeriod) : 0.;
+            const auto& stats = state.eyes[0].renderer->stats();
+            const auto position = player.render_position();
             char message[1024];
             std::snprintf(message, sizeof(message),
                           "XR frames: %.1f fps / %.1f Hz; focused %d; total %.2f ms; wait-frame %.2f; simulation %.2f; "
@@ -1234,6 +1236,13 @@ int run_openxr(Player& player, const XrPlatform& platform, double seconds) {
                           static_cast<unsigned long long>(state.eyes[0].renderer->stats().terrain_total_indices),
                           state.eyes[0].renderer->stats().terrain_draws, state.eyes[0].renderer->stats().cull_ms,
                           terrain_draw_distance, state.course_id.c_str());
+            tracking_log(message);
+            std::snprintf(message, sizeof(message),
+                          "XR workload: %s; speed %.1f m/s; player %.1f %.1f %.1f; avatar %u triangles; "
+                          "board FX sprites %u wake %u sheet %u boost %u; world sprites %u; snow %u",
+                          player.on_foot() ? "on foot" : "mounted", length(player.rider().velocity), position.x,
+                          position.y, position.z, stats.avatar_triangles, stats.sprites, stats.wake_segments,
+                          stats.sheet_segments, stats.boost_segments, stats.world_sprites, stats.snowflakes);
             tracking_log(message);
             reset_sample(now);
         }
