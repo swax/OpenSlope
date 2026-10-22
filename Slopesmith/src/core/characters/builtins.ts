@@ -29,25 +29,25 @@ export const BUILTIN_CHARACTERS: readonly BuiltinCharacter[] = [
   {
     id: BLOCKY_RIDER_CHARACTER_ID,
     file: 'blocky-rider-rigged.glb',
-    revision: 'abe69e6d159152dd31db902c027bc4f9282509365b8b2749faff9074395baaf9',
+    revision: '4831f850b62f789b5b17b79c5121661ed14fa7f591efb28dea297c2b87ae1bb2',
     label: 'Blocky Rider',
   },
   {
     id: ALPINE_EXO_CHARACTER_ID,
     file: 'alpine-exo-rigged.glb',
-    revision: '0d70e283486ec2c22c301a876c6b519c7600985b77f3abd94a137aa278a27906',
+    revision: '381d8fb751e578cd4a22538904b60c02ff98545024e69435bbcf02aa32202227',
     label: 'Alpine Exo',
   },
   {
     id: SERVO_SCOUT_CHARACTER_ID,
     file: 'servo-scout-rigged.glb',
-    revision: '6929288f30a7f319a40ecdfc9f140be445a82b95d498728c791810b438ae0cdd',
+    revision: 'bb21524df6d5b4e8b2742ded558e014794ab9122dce9268c9ba4a2aa109e241c',
     label: 'Servo Scout',
   },
   {
     id: STICK_FIGURE_CHARACTER_ID,
     file: 'stick-figure-rigged.glb',
-    revision: 'e1a06ea45c5238cb6086acae5941d44684ffb64eb8021b0cea91632cd24fa5bf',
+    revision: '82a8459319daca2e180628ed8ffdead7bc9315c013afcc793a6d7f4b144142d7',
     label: 'Stick Figure',
   },
 ];
