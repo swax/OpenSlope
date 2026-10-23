@@ -42,6 +42,7 @@ import {
   previewMatchesTopology,
   previewMismatch,
   refreshPreviewPatches,
+  refreshPreviewConstruction,
   PATCH_VERTS,
   PREVIEW_RES,
   type PreviewData,
@@ -137,6 +138,7 @@ import { createPeersLayer, type PeerMarks, type PeersLayer } from './scene/peers
 import { createRemotePlayersLayer, type ActiveMapPlayer, type RemotePlayersLayer } from './scene/remote-players';
 import { createAiPathsLayer, type AiPathsLayer } from './scene/ai-paths';
 import { createEdgeLayer, type CreateEdgeLayer } from './tools/create-edge';
+import { createSurfaceGuideLayer, type SurfaceGuideLayer, type SurfaceGuidePlacement } from './tools/surface-guide';
 import { createGemsLayer, type GemsLayer } from './scene/gems';
 import { createScreensLayer, type ScreenDraw, type ScreensLayer } from './scene/screens';
 import { createLightsLayer, type LightsLayer } from './scene/lights';
@@ -198,6 +200,7 @@ import { createBridgePreviewLayer, type BridgePreviewLayer } from './tools/bridg
 import { createPatchToolLayer, type PatchToolLayer } from './tools/create-patch';
 import { createTubeToolLayer, type TubeToolLayer } from './tools/create-tube';
 import { createGridToolLayer, type GridToolLayer } from './tools/create-grid';
+import { createSurfaceToolLayer, type SurfaceToolLayer } from './tools/create-surface';
 import { createTrailToolLayer, type TrailShape, type TrailToolLayer } from './tools/create-trail';
 import {
   createPathHandlesLayer,
@@ -288,6 +291,8 @@ export class Viewport {
   readonly rails: RailsLayer;
   readonly propLines: PropLinesLayer;
   readonly createEdge: CreateEdgeLayer;
+  readonly surfaceGuide: SurfaceGuideLayer;
+  readonly surfaceTool: SurfaceToolLayer;
   private createEdgePreviewListener: (() => void) | null = null;
   readonly gems: GemsLayer;
   readonly screens: ScreensLayer; // video screens (docs/051): authored rectangles + the reference's own
@@ -762,6 +767,12 @@ export class Viewport {
         else this.gizmoReadout.end();
         return;
       }
+      if (this.gizmoKind === 'surfacepoint') {
+        this.surfaceTool.gizmoDragging(dragging);
+        if (dragging) this.gizmoReadout.begin('move');
+        else this.gizmoReadout.end();
+        return;
+      }
       if (this.gizmoKind === 'trail') {
         // the whole trail: the knot layer transforms it, not the mesh transforms
         this.trailTool.wholeDragging(dragging);
@@ -823,6 +834,7 @@ export class Viewport {
     this.remotePlayers = createRemotePlayersLayer(this.stage);
     this.aiPathsLayer = createAiPathsLayer(this.stage); // the derived AI opponent lines (Info "Show AI paths")
     this.createEdge = createEdgeLayer(this.stage);
+    this.surfaceGuide = createSurfaceGuideLayer(this.stage);
     this.gems = createGemsLayer(this.stage, this.assets); // gem pickups (docs/014)
     this.screens = createScreensLayer(this.stage); // video screens (docs/051)
     this.lights = createLightsLayer(this.stage); // authored + free local lights (docs/013)
@@ -890,6 +902,15 @@ export class Viewport {
       this.cb.onCreateGridChange?.();
       this.createGridPreviewListener?.();
     });
+    this.surfaceTool = createSurfaceToolLayer(
+      this.stage,
+      () => this.placementSurface,
+      () => {
+        const vertex = this.picking.pickCorner(),
+          pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
+        return pos ? { vertex, pos } : null;
+      },
+    );
     this.trailTool = createTrailToolLayer(
       this.stage,
       () => this.placementSurface,
@@ -932,6 +953,7 @@ export class Viewport {
           !this.patchTool.active &&
           !this.tubeTool.active &&
           !this.gridTool.active &&
+          !this.surfaceTool.active &&
           !this.trailTool.active &&
           !this.surgery.tool &&
           !this.weldTool.active &&
@@ -1197,6 +1219,7 @@ export class Viewport {
     // the screen-space mesh pick helpers (vertex > edge > face, authored + reference alike) read the same live
     // substrate through accessors; the pointer routing that calls them lives in PointerRouter (this.router).
     this.picking = createMeshPicking(this.stage, {
+      meshDoc: () => this.meshDoc,
       net: () => this.net,
       preview: () => this.preview,
       meshHandle: () => this.meshHandle(),
@@ -1516,6 +1539,8 @@ export class Viewport {
         courseDraw: this.courseDraw,
         edgeExtrusion: this.edgeExtrusion,
         createEdge: this.createEdge,
+        surfaceGuide: this.surfaceGuide,
+        surfaceTool: this.surfaceTool,
         bridgePreview: this.bridgePreview,
         gems: this.gems,
         screens: this.screens,
@@ -1589,6 +1614,12 @@ export class Viewport {
     // Escape during an extrusion gesture cancels the pending topology action before the host's normal Escape handler can
     // deselect the edges underneath it. Pointer-cancel and mode changes use the same cleanup path below.
     window.addEventListener('keydown', e => {
+      if (this.surfaceGuide.active && e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.surfaceGuide.cancel();
+        return;
+      }
       if (e.key !== 'Escape' || !this.edgeExtrusion.active) return;
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -1668,6 +1699,7 @@ export class Viewport {
       this.patchTool.scaleMarkers();
       this.tubeTool.scaleMarkers();
       this.gridTool.scaleMarkers();
+      this.surfaceTool.scaleMarkers();
       this.trailTool.scaleMarkers(); // ...and the trail's point bulbs and snap rings
       this.dropLines.sync(); // the selection's plumb lines follow a drag, a re-select and a terrain edit
       sceneMs += performance.now() - phaseStarted;
@@ -2488,6 +2520,7 @@ export class Viewport {
   /** In paint/sculpt a single finger should paint, not move the camera (two fingers still pinch-zoom /
    *  pan); in edit a single finger orbits. Mouse paint disables controls per stroke instead. */
   set mode(m: Mode) {
+    if (m !== 'edit' && this.surfaceGuide.active) this.surfaceGuide.cancel();
     if (m !== 'edit' && this.edgeExtrusion.active) this.edgeExtrusion.cancel();
     this._mode = m;
     this.props.showTriggerProps(m === 'props');
@@ -2533,6 +2566,7 @@ export class Viewport {
         this.patchTool.active ||
         this.tubeTool.active ||
         this.gridTool.active ||
+        this.surfaceTool.active ||
         this.trailTool.active)
     )
       this.setSurgeryTool(null); // surgery is Edit-only
@@ -2729,6 +2763,14 @@ export class Viewport {
     this.loftPreview.setPreview(quads, source);
   }
 
+  setSurfaceGuidePlacement(placement: SurfaceGuidePlacement | null) {
+    if (placement) {
+      this.detachGizmo();
+      this.showHandles(null, []);
+    }
+    this.surfaceGuide.set(placement);
+  }
+
   /** Highlight a set of box-selected corners (orange), or clear with an empty list. */
   setRegionMarks(positions: V3[]) {
     this.selection.setRegionMarks(positions);
@@ -2844,7 +2886,14 @@ export class Viewport {
     if (this.surgery.tool) this.surgery.clearGhost();
     if (this.cageLayer.cage) this.cageLayer.rebuildCage();
     this.refreshMountainOverlays(doc, selected, selectedKnots);
-    if (this._mode === 'edit') this.refreshTJunctionDiagnostics();
+    if (this._mode === 'edit') {
+      // A topology edit needs its new geometry on screen before the whole-mesh contact scans run.
+      // Drop old-index markers and let the existing settle pass diagnose the new mesh after paint.
+      this.createEdge.setTJunctions([]);
+      this.createEdge.setEdgeCrossings([]);
+      this.createEdge.setCoincidentVertices([]);
+      this.meshMoved = true;
+    }
   }
 
   /**
@@ -2980,6 +3029,27 @@ export class Viewport {
     return true;
   }
 
+  /** Reuse terrain buffers when only construction topology changed, as on each Create Edge click. */
+  updateConstruction(doc: EditDoc): boolean {
+    const pv = this.preview;
+    if (!pv) return false;
+    const dirty = refreshPreviewConstruction(doc, pv);
+    if (!dirty) return false;
+    this.meshDoc = doc;
+    this.net = { positions: doc.vertices, adj: pv.adjacency };
+    this.meshEdgeHandle = pv.edgeHandle;
+    if (dirty.size)
+      this.terrainLayer.updatePatches(dirty, patchVertexSpans(dirty, PATCH_VERTS), { geometry: true, materials: true });
+    this.clearLiveEditPreview(false);
+    this.updateOwnBox(doc);
+    if (this.cageLayer.cage) this.cageLayer.rebuildCage();
+    this.createEdge.setTJunctions([]);
+    this.createEdge.setEdgeCrossings([]);
+    this.createEdge.setCoincidentVertices([]);
+    this.meshMoved = true;
+    return true;
+  }
+
   /** Set by every incremental update that MOVED geometry, cleared by the settle pass that catches up on it. */
   private meshMoved = false;
 
@@ -3096,6 +3166,7 @@ export class Viewport {
     const missing: [number, number][] = [],
       touched = new Set<THREE.BufferAttribute>();
     for (const edge of edgeMap.values()) {
+      if (this.selection.edgeHidden(edge[0], edge[1])) continue;
       const range = this.cageLayer.edgeRange(ekey(edge[0], edge[1]));
       if (!range) {
         missing.push(edge);
@@ -3447,6 +3518,11 @@ export class Viewport {
       this.gizmoReadout.update();
       return;
     }
+    if (this.gizmoKind === 'surfacepoint') {
+      this.surfaceTool.gizmoChanged();
+      this.gizmoReadout.update();
+      return;
+    }
     if (this.transforms.rotationActive()) {
       this.transforms.rotateSelection();
       this.gizmoReadout.update();
@@ -3662,15 +3738,17 @@ export class Viewport {
   // ---- topology surgery (docs/017): the armed tool + ghost overlay live in SurgeryLayer (this.surgery) ----
 
   /** Arm/disarm the mutually-exclusive loop-cut, create-patch, create-tube, create-grid, or create-trail tool. */
-  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null) {
+  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null) {
     const leavingGeneratedPreview =
       (this.tubeTool.active && tool !== 'tube') ||
       (this.gridTool.active && tool !== 'grid') ||
+      (this.surfaceTool.active && tool !== 'surface') ||
       (this.trailTool.active && tool !== 'trail');
     this.surgery.setTool(tool === 'loopcut' ? 'loopcut' : null);
     this.patchTool.setActive(tool === 'patch');
     this.tubeTool.setActive(tool === 'tube');
     this.gridTool.setActive(tool === 'grid');
+    this.surfaceTool.setActive(tool === 'surface');
     this.trailTool.setActive(tool === 'trail');
     if (leavingGeneratedPreview) this.setLoftPreview(null);
     if (tool) {
@@ -3682,6 +3760,27 @@ export class Viewport {
 
   setCreatePatchSides(sides: 3 | 4) {
     this.patchTool.setSides(sides);
+  }
+  get createSurfacePoints() {
+    return this.surfaceTool.points;
+  }
+  get createSurfaceHover() {
+    return this.surfaceTool.hover;
+  }
+  get createSurfaceClosing() {
+    return this.surfaceTool.closing;
+  }
+  get createSurfaceClosed() {
+    return this.surfaceTool.closed;
+  }
+  get createSurfaceSelectedPoint() {
+    return this.surfaceTool.selected;
+  }
+  undoCreateSurfacePoint() {
+    this.surfaceTool.undo();
+  }
+  setCreateSurfaceCharts(charts: readonly import('../../core/mesh/loft-surface').Patch[] | null) {
+    this.loftPreview.setCharts(charts);
   }
 
   get createTubePoints(): readonly V3[] {

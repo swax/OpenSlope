@@ -21,6 +21,7 @@ import {
   type EdgeSelectMode,
 } from '../../../core/mesh/selection';
 import { ekey } from '../../../core/mesh/ops';
+import { surfaceOwnership } from '../../../core/mesh/surface-ownership';
 import { measureEdges, measureCells, widestSeamAngle, type SelectionMeasure } from '../../../core/mesh/measure';
 import { copyMeshVertices, type MeshVertexClipboard } from '../../../core/mesh/clipboard';
 import {
@@ -300,6 +301,8 @@ export function createSelectionLayer(
 
   function vertexHidden(vertex: number) {
     if (!access.editMode()) return false;
+    const doc = access.meshDoc();
+    if (doc && surfaceOwnership(doc).hidden.has(vertex)) return true;
     if (hiddenVertices.has(vertex)) return true;
     const net = access.net();
     const edges = (net?.adj.neighbors[vertex] ?? []).map(to => net!.adj.edgeQuads.get(ekey(vertex, to)) ?? []);
@@ -307,6 +310,11 @@ export function createSelectionLayer(
   }
   function edgeHidden(a: number, b: number) {
     if (!access.editMode()) return false;
+    const doc = access.meshDoc();
+    if (doc) {
+      const hidden = surfaceOwnership(doc).hidden;
+      if (hidden.has(a) || hidden.has(b)) return true;
+    }
     if (hiddenVertices.has(a) || hiddenVertices.has(b) || hiddenEdges.has(ekey(a, b))) return true;
     const quads = access.net()?.adj.edgeQuads.get(ekey(a, b)) ?? [];
     return quads.length > 0 && quads.every(quad => quadHidden(quad));
@@ -331,6 +339,11 @@ export function createSelectionLayer(
     const doc = access.meshDoc();
     const at = doc ? controlPointIndex(doc, id) : null;
     if (!at) return false;
+    const owner = surfaceOwnership(doc!);
+    if (at.kind === 'edge' && (owner.cage.has(doc!.vertexIds[at.from]) || owner.cage.has(doc!.vertexIds[at.to])))
+      return true;
+    if (at.kind === 'twist' && doc!.surfaces?.some(s => s.patches.some(p => p.quad === doc!.quadIds[at.quad])))
+      return true;
     return at.kind === 'vertex'
       ? vertexHidden(at.vertex)
       : at.kind === 'edge'
@@ -468,7 +481,7 @@ export function createSelectionLayer(
       pv = access.preview();
     const edges = edgeSelIndices();
     if (!edges.length || !pv || !eh) return;
-    const segs = meshEdgeSegments(pv.mesh, eh, edges);
+    const segs = meshEdgeSegments(pv.mesh, eh, edges, 6, access.meshDoc() ?? undefined);
     addGlyphLines(editEdgeGroup, segs, EDIT_EDGE_SEL_COLOR, 1, EDIT_EDGE_SEL_WIDTH, LOOP_RENDER_ORDER + 1, false);
     // Pinned selected edges emphasize their exact cubic control polygons. A lone pinned edge also promotes its
     // two tangents to the larger direct-drag spheres.

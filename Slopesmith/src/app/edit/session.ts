@@ -1,4 +1,8 @@
 import type { LabelDefinition, QuadMeshDoc, V3 } from '../../core/doc/types';
+import { deleteSurfaceControls, refreshSurfaces } from '../../core/mesh/surface-object';
+import { surfaceEdgeSelection, surfaceGuideForEdge, surfacePointRange } from '../../core/mesh/surface-selection';
+import { surfaceOwnership } from '../../core/mesh/surface-ownership';
+import { nameIndex } from '../../core/doc/ids';
 import { nextLabelColor, nextLabelId } from '../../core/doc/labels';
 import { writePropRotation } from '../../core/props/pose';
 import {
@@ -164,6 +168,7 @@ type EditCallbackName =
   | 'createEdgeCuts'
   | 'onCreateTubeAxisChange'
   | 'onCreateGridChange'
+  | 'onCreateSurfaceChange'
   | 'onLoopCut'
   | 'onCreatePatch'
   | 'onPasteVertices'
@@ -199,6 +204,7 @@ export type EditSessionDeps = {
   persistUi: () => void;
   scheduleRebuild: () => void;
   scheduleCommit: () => void;
+  commitHistory?: () => void;
   rebuildTools: () => void;
   updateCmdSheet: () => void;
   refreshSelection: () => void;
@@ -873,6 +879,27 @@ export function createEditSession(deps: EditSessionDeps) {
     },
     dirty?: EditDirty,
   ) {
+    if (!store.modelEditId && store.mdoc.surfaces?.length) {
+      const before = store.mdoc;
+      const next = refreshSurfaces(store.mdoc, { interactive: true });
+      if (next !== store.mdoc) {
+        store.mdoc = next;
+        if (next.quads !== before.quads || next.vertexIds !== before.vertexIds) {
+          scheduleRebuild();
+          return;
+        }
+        // Evaluating a source can move any patch of its surface. Stream those existing buffers through
+        // the same path as ordinary cage edits, without rebuilding objects, persistence or diagnostics.
+        const changed = next.surfaces!.filter(s => !before.surfaces!.includes(s));
+        const ids = nameIndex(next.vertexIds);
+        change = {
+          ...change,
+          vertices: [
+            ...new Set([...(change.vertices ?? []), ...changed.flatMap(s => s.vertices.map(id => ids.get(id)!))]),
+          ],
+        };
+      }
+    }
     if (dirty && (dirty.edges.length || dirty.quads.length)) {
       const edges = new Map(
         [...(change.edges ?? []), ...dirty.edges].map(edge => [ekey(edge[0], edge[1]), edge] as const),
@@ -1276,6 +1303,10 @@ export function createEditSession(deps: EditSessionDeps) {
       view().showHandles(null, []);
       return;
     }
+    if (surfaceOwnership(d).cage.has(d.vertexIds[id])) {
+      view().showHandles(getVertex(d, id), []);
+      return;
+    }
     const mesh = buildQuadMesh(d.vertices, d.quads, d.freeEdges);
     const adj = meshAdjacency(mesh);
     const eh = meshEdgeHandles(mesh, d.edgeHandles);
@@ -1538,7 +1569,10 @@ export function createEditSession(deps: EditSessionDeps) {
       : store.selectedCorner !== null
         ? [store.selectedCorner]
         : [];
-    const result = resolveVertexSelection(current, store.anchorCorner, name, mode, adj, vertexNaming(doc));
+    const range = mode === 'range' && store.anchorCorner ? surfacePointRange(doc, store.anchorCorner, name) : null;
+    const result = range
+      ? { verts: [...new Set([...current, ...range])], anchor: store.anchorCorner }
+      : resolveVertexSelection(current, store.anchorCorner, name, mode, adj, vertexNaming(doc));
     if (mode === 'toggle') {
       resetGizmoMode();
       store.selectedCorner = null;
@@ -1770,7 +1804,9 @@ export function createEditSession(deps: EditSessionDeps) {
     const named = namedEdge(doc, edge);
     if (!named) return;
     const { mesh, adj } = meshContext(doc);
-    const result = resolveEdgeSelection(store.edgeSel, store.anchorEdge, named, mode, mesh, adj, vertexNaming(doc));
+    const result =
+      surfaceEdgeSelection(doc, store.edgeSel, store.anchorEdge, named, mode) ??
+      resolveEdgeSelection(store.edgeSel, store.anchorEdge, named, mode, mesh, adj, vertexNaming(doc));
     const hidden = hiddenMesh();
     const edges = result.edges.filter(candidate => {
       const at = edgeIndex(doc, candidate);
@@ -1879,6 +1915,7 @@ export function createEditSession(deps: EditSessionDeps) {
     applyCage,
     persistUi,
     scheduleRebuild,
+    commitHistory: deps.commitHistory,
     rebuildTools,
     updateCmdSheet,
     clearEdgeSelection: clearEdgeSel,
@@ -1913,6 +1950,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function deselectEdit() {
+    topology.cancelSurfaceGuidePlacement(false);
     resetGizmoMode();
     topology.cancelBridge(false, false);
     dropPlacementSelection(); // an Edit-mode placed-prop selection (box + gizmo + banner) is a selection too
@@ -2299,6 +2337,9 @@ export function createEditSession(deps: EditSessionDeps) {
    */
   function meshLockReason(verb: 'delete' | 'dissolve'): string | null {
     const doc = mdoc();
+    const named = new Set([...selectedAuthoredVertexIds(), ...store.edgeSel.flat()]);
+    if (doc.surfaces?.some(s => s.controls.flat().some(id => named.has(id))))
+      return 'Use the Surface control curve tools to add or remove curves. Bake the surface before mesh topology edits.';
     const input =
       verb === 'delete' ? selectedMeshDeleteInput() : { vertices: selectedVertexIndices(), edges: edgeSelIndices() };
     const targets = meshDeleteTargets(doc, input);
@@ -2334,12 +2375,66 @@ export function createEditSession(deps: EditSessionDeps) {
     const selectedLights = store.modelEditId ? [] : selectedEditLights();
     const hasMesh = selectedAuthoredVertexIds().length > 0 || store.edgeSel.length > 0 || store.cellSel.length > 0;
     if (!hasMesh && !selectedProps.length && !selectedLights.length) return;
+    const sourceControls = surfaceOwnership(mdoc()).controls,
+      selectedPoints = selectedAuthoredVertexIds(),
+      hasSource =
+        selectedPoints.some(id => sourceControls.has(id)) ||
+        store.edgeSel.some(edge => surfaceGuideForEdge(mdoc(), edge));
+    if (hasSource) {
+      if (
+        selectedProps.length ||
+        selectedLights.length ||
+        store.cellSel.length ||
+        selectedPoints.some(id => !sourceControls.has(id)) ||
+        store.edgeSel.some(edge => !surfaceGuideForEdge(mdoc(), edge)) ||
+        store.controlSel.some(id => id.kind !== 'vertex')
+      ) {
+        toast('Select surface control points or curves separately before deleting.', 'err');
+        return;
+      }
+      deps.commitHistory?.();
+      let doc = mdoc();
+      for (const surface of mdoc().surfaces ?? []) {
+        const curves = surface.controls.flatMap((row, i) => {
+          const allEdges = row
+            .slice(1)
+            .every((id, j) => store.edgeSel.some(([a, b]) => (a === id && b === row[j]) || (b === id && a === row[j])));
+          return allEdges || row.every(id => selectedPoints.includes(id)) ? [i] : [];
+        });
+        const points = selectedPoints.filter(id => surface.controls.some(row => row.includes(id)));
+        const partial = store.edgeSel.some(edge => {
+          const owner = surfaceGuideForEdge(doc, edge);
+          return owner?.surface.id === surface.id && !curves.includes(owner.curve);
+        });
+        if (partial) {
+          toast('Double-click to select the whole control curve before deleting it, or select its points.', 'err');
+          return;
+        }
+        if (!curves.length && !points.length) continue;
+        const result = deleteSurfaceControls(doc, surface, { curves, points });
+        if (!result.ok) {
+          toast(result.error, 'err');
+          return;
+        }
+        doc = result.doc;
+      }
+      commitEditMesh(store, doc);
+      dropCornerSel();
+      exitRegion();
+      clearEdgeSel();
+      scheduleRebuild();
+      rebuildTools();
+      updateCmdSheet();
+      deps.commitHistory?.();
+      toast('Surface controls deleted · terrain reshaped and patches refitted.', 'ok');
+      return;
+    }
     const locked = meshLockReason('delete');
     if (locked) {
       toast(locked, 'err');
       return;
     }
-    const selectedPoints = new Set(selectedAuthoredVertexIds()).size;
+    const selectedPointCount = new Set(selectedAuthoredVertexIds()).size;
     const selectedFreeEdges = selectedFreeEdgeCount();
     // Placement cleanup mutates props, screens, lights, and effect attachments. Work on an isolated
     // document so the old state stays intact for history and for a failed mesh operation.
@@ -2372,7 +2467,8 @@ export function createEditSession(deps: EditSessionDeps) {
     rebuildTools();
     updateCmdSheet();
     const parts: string[] = [];
-    if (selectedPoints) parts.push(`deleted ${selectedPoints} ${selectedPoints === 1 ? 'point' : 'points'}`);
+    if (selectedPointCount)
+      parts.push(`deleted ${selectedPointCount} ${selectedPointCount === 1 ? 'point' : 'points'}`);
     if (selectedFreeEdges)
       parts.push(`deleted ${selectedFreeEdges} free ${selectedFreeEdges === 1 ? 'edge' : 'edges'}`);
     if (result?.quads) parts.push(`${result.quads} ${result.quads === 1 ? 'patch' : 'patches'}`);
@@ -2380,9 +2476,9 @@ export function createEditSession(deps: EditSessionDeps) {
       parts.push(`deleted ${selectedProps.length} ${selectedProps.length === 1 ? 'prop' : 'props'}`);
     if (selectedLights.length)
       parts.push(`deleted ${selectedLights.length} ${selectedLights.length === 1 ? 'light' : 'lights'}`);
-    const cleanup = Math.max(0, (result?.vertices ?? 0) - selectedPoints);
+    const cleanup = Math.max(0, (result?.vertices ?? 0) - selectedPointCount);
     if (cleanup)
-      parts.push(`${cleanup} ${selectedPoints ? 'other ' : ''}unused ${cleanup === 1 ? 'vertex' : 'vertices'}`);
+      parts.push(`${cleanup} ${selectedPointCount ? 'other ' : ''}unused ${cleanup === 1 ? 'vertex' : 'vertices'}`);
     toast(parts.join(' · '), 'ok');
   }
 
@@ -2849,6 +2945,9 @@ export function createEditSession(deps: EditSessionDeps) {
         updateCmdSheet();
       } else topology.previewCreateGrid();
     },
+    onCreateSurfaceChange() {
+      topology.previewCreateSurface();
+    },
     onAppendTrailKnot(pos) {
       trails.appendKnot(pos);
     },
@@ -2906,10 +3005,22 @@ export function createEditSession(deps: EditSessionDeps) {
       clipboard.commitPastedVertices(translation);
     },
     onSelectEditCell(quad, mode) {
+      const surface =
+        !store.modelEditId && mdoc().surfaces?.find(s => s.patches.some(p => p.quad === mdoc().quadIds[quad]));
+      if (surface && mode === 'replace') {
+        topology.selectSurfaceControls(surface.id);
+        return;
+      }
       if (store.bridgeRails === null && (mode === 'replace' || mode === 'toggle' || !crossFamilyModifier('cell')))
         selectEditCell(quad, mode);
     },
     onSelectCellLoop(quad, additive) {
+      const surface =
+        !store.modelEditId && mdoc().surfaces?.find(s => s.patches.some(p => p.quad === mdoc().quadIds[quad]));
+      if (surface) {
+        topology.selectSurfaceControls(surface.id);
+        return;
+      }
       if (store.bridgeRails === null && (!additive || !crossFamilyModifier('cell'))) selectCellLoop(quad, additive);
     },
     onSelectEdge(edge, mode) {

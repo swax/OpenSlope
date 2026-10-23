@@ -116,6 +116,7 @@ const EXCLUSIVE_GROUP = new Map([
   ['sync-browser.test.ts', 'browser-webgl'],
   ['edit-prop-tools.test.ts', 'browser-webgl'],
   ['local-editor.test.ts', 'browser-webgl'],
+  ['surface-object-browser.test.ts', 'browser-webgl'],
   ['folder-workspace.test.ts', 'browser-webgl'],
   ['offline-browser.test.ts', 'browser-webgl'],
   ['maps-actions.test.ts', 'browser-webgl'],

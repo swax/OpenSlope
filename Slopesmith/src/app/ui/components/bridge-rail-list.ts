@@ -47,7 +47,7 @@ export class BridgeRailList {
 
   show(rails: readonly (readonly number[])[]) {
     this.el.classList.add('on');
-    this.titleEl.textContent = `Rails · ${rails.length}`;
+    this.titleEl.textContent = `Loft profiles · ${rails.length}`;
     this.listEl.replaceChildren();
     rails.forEach((rail, index) => {
       const row = document.createElement('div');
@@ -85,12 +85,12 @@ export class BridgeRailList {
       const reverse = document.createElement('button');
       reverse.className = 'br-action';
       reverse.textContent = 'reverse';
-      reverse.title = 'Reverse this rail direction';
+      reverse.title = 'Reverse this profile direction';
       reverse.onclick = () => this.cb.onReverse(index);
       const remove = document.createElement('button');
       remove.className = 'br-action br-remove';
       remove.textContent = '✕';
-      remove.title = 'Remove this rail from the bridge';
+      remove.title = 'Remove this profile from the loft';
       remove.onclick = () => this.cb.onRemove(index);
       row.append(grip, dot, name, reverse, remove);
       this.listEl.appendChild(row);

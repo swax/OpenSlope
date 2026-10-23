@@ -7,6 +7,7 @@ import { PREVIEW_RES } from '../../../core/mesh/tessellation';
 import { LOFT_PREVIEW_FILL_COLOR, LOFT_PREVIEW_FILL_OPACITY } from '../constants';
 import { tintBackfaces } from '../mesh/backface-tint';
 import type { Stage } from '../stage';
+import type { Patch } from '../../../core/mesh/loft-surface';
 
 /** Teal, non-pickable preview shared by Bridge and Create Patch. It owns the prospective topology and its
  * BufferGeometry; the viewport shell only decides when a tool supplies or temporarily hides that preview. */
@@ -15,6 +16,7 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
   let vertices: readonly number[] | null = null;
   let doc: QuadMeshDoc | null = null;
   let quadIds: number[] = [];
+  let charts: readonly Patch[] | null = null;
 
   // Back faces tint magenta like the terrain's (backface-tint.ts): the ghost is wound exactly as the commit
   // will be, so a tube shows its dead exterior before it exists.
@@ -48,6 +50,7 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
   }
 
   function setPreview(next: readonly (readonly number[])[] | null, source?: readonly number[] | QuadMeshDoc | null) {
+    charts = null;
     quads = next ?? [];
     doc = next && source && !Array.isArray(source) ? (source as QuadMeshDoc) : null;
     vertices = next && source && Array.isArray(source) ? source : null;
@@ -57,19 +60,24 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   function rebuild() {
     const preview = getPreview();
-    if (!preview || !quads.length) {
+    if (!quads.length && !charts?.length) {
       fill.visible = false;
       return;
     }
 
-    if (doc) {
-      const { mesh, edgeHandle } = meshFromDoc(doc);
+    if (doc || charts) {
+      const geometry = doc ? meshFromDoc(doc) : null;
+      const controlsList =
+        charts?.map(p => p.controls) ??
+        quadIds.flatMap(id =>
+          id >= 0 && id < geometry!.mesh.quadCount
+            ? [quadControlPoints(geometry!.mesh, geometry!.edgeHandle, id, doc!.quadTwist?.[id] ?? null)]
+            : [],
+        );
       const side = PREVIEW_RES + 1;
       const positions: number[] = [],
         indices: number[] = [];
-      for (const quadId of quadIds) {
-        if (quadId < 0 || quadId >= mesh.quadCount) continue;
-        const controls = quadControlPoints(mesh, edgeHandle, quadId, doc.quadTwist?.[quadId] ?? null);
+      for (const controls of controlsList) {
         const base = positions.length / 3;
         for (let u = 0; u < side; u++)
           for (let v = 0; v < side; v++) positions.push(...patchPoint(controls, u / PREVIEW_RES, v / PREVIEW_RES));
@@ -90,8 +98,12 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
       return;
     }
 
-    const source = vertices ?? preview.mesh.vertices,
-      count = source.length / 3;
+    const source = vertices ?? preview?.mesh.vertices;
+    if (!source) {
+      fill.visible = false;
+      return;
+    }
+    const count = source.length / 3;
     const positions: number[] = [],
       indices: number[] = [];
     for (const quad of quads) {
@@ -109,6 +121,14 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   return {
     setPreview,
+    setCharts(next: readonly Patch[] | null) {
+      quads = [];
+      doc = null;
+      vertices = null;
+      quadIds = [];
+      charts = next;
+      rebuild();
+    },
     rebuild,
     hide() {
       fill.visible = false;

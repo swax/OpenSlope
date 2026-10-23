@@ -26,6 +26,7 @@ import {
 } from '../../state/mesh-names';
 import { actionPair, detail, errorBanner, liveDetail, tip } from '../components/gui';
 import { fmtArea, fmtM, type ToolsContext } from './widgets';
+import { buildBoundarySurfaceTools } from './surface';
 
 // The regional solver remains implemented for benchmark iteration, but its editor entry point stays hidden
 // until repeated solves and every protected-interface shape are production-safe.
@@ -120,6 +121,7 @@ export function createMeshSelectTools(
   }
 
   function buildMeshSelectionTools(mdoc: QuadMeshDoc): boolean {
+    buildBoundarySurfaceTools(ctx);
     // Selection measurements — the SAME read-out for the authored net and the read-only reference, because
     // both are a QuadMesh + EdgeHandle measured through one core (core/mesh/measure.ts): an edge shows its curved
     // length, a cell its down-slope length × width, vertical drop and surface area. The authored selection is
@@ -270,20 +272,20 @@ export function createMeshSelectTools(
               'Endpoints on the quilt boundary split too, so a rip across the quilt separates it completely. ' +
               'A single edge needs an endpoint on that boundary.',
           );
-        } else detail(topology!, 'free edges can also be used as rails in a bridge');
+        } else detail(topology!, 'free edges can also be used as loft profiles');
         const seed = railFromEdges(edgeIndices(mdoc, store.edgeSel));
         if (seed.ok) {
           tip(
-            topology!.add({ bridge: startBridge }, 'bridge').name('create bridge (B)'),
-            'Open Bridge Builder with this edge chain as Rail 1.',
-            'Select another chain and press A to add rails; the ordered list and teal preview stay editable ' +
-              'until Complete Bridge.',
+            topology!.add({ bridge: startBridge }, 'bridge').name('surface from profiles (B)'),
+            'Start a Surface from this profile curve.',
+            'Select another chain and press A to add profiles; the ordered list and teal preview stay editable ' +
+              'until Create Surface.',
           );
         } else {
           tip(
             topology!
               .add({ bridge: () => {} }, 'bridge')
-              .name('create bridge (B)')
+              .name('surface from profiles (B)')
               .disable(),
             seed.error,
           );

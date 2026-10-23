@@ -611,6 +611,7 @@ export interface ViewportCallbacks {
   onCreateTubeAxisChange?(): void;
   /** Edit mode, Create Grid: its corners or the cursor standing in for the third changed, so the host re-plans. */
   onCreateGridChange?(): void;
+  onCreateSurfaceChange?(): void;
   /** Edit mode, trail drawing (docs/023): a click on no point asks for one at this lifted surface point. */
   onAppendTrailKnot?(pos: V3): void;
   /** Edit mode: a shown trail point's bulb was clicked (its place in the shown list). */

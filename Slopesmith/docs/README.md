@@ -28,8 +28,8 @@ Keep existing numbers when moving a numbered document; `README.md` indexes remai
 - [017 — Topology Surgery](017-topology-surgery.md)
 - [018 — Density Transitions](018-density-transitions.md)
 - [020 — Patch Finish](020-patch-finish.md)
-- [023 — Splines, Loft, and Track](023-spline-loft-track.md) — the loft generator and edge-runs-as-rails behind
-  Create Trail, the target-weld gesture, and the spline and track objects staged after them.
+- [023 — Splines, Loft, and Track](023-spline-loft-track.md) — Surface objects from profiles or boundary loops, editable U/V control curves,
+  Create Trail, and surface integration.
 - [043 — Contour-flow Retopology](043-contour-flow-retopology.md)
 - [044 — Semantic Labels](044-semantic-labels.md)
 - [045 — Retopology Benchmark](045-retopology-benchmark.md)

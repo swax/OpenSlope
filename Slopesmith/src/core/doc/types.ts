@@ -185,6 +185,10 @@ export interface MountainMeta {
    *  ordinary terrain in the mesh; this is the spline and section they are cut from, and the stable ids of the
    *  vertices and patches it owns. Absent in docs saved before owned trails. */
   trails?: AuthoredTrail[];
+  /** Live profile lofts. Source curves remain editable; generated patches retain their finishing edits. */
+  lofts?: LoftSurface[];
+  /** Editable curve networks; terrain patches are their derived, read-only evaluation. */
+  surfaces?: SurfaceObject[];
   /** The mountain's own trail tile SETS (docs/023 · Textures), beside the shipped maps' built-in ones: what its
    *  trail paths may wear, by id. Absent while it has none; a document saved while a set was one row (or a pair,
    *  saved as `trailTilePairs`) has them read as sets of that row on load. */
@@ -286,6 +290,52 @@ export interface TrailKnotSettings {
   bankDegrees?: number;
   /** Multiplier on the automatic bank here (0 levels it, 2 doubles it). Ignored while `bankDegrees` is set. */
   bankStrength?: number;
+}
+
+/** A source chart location: along the profile's edge intervals, then between ordered profiles. */
+export type LoftDomain = [number, number, number, number];
+
+export interface SurfaceObject {
+  id: string;
+  name: string;
+  origin: 'profiles' | 'boundary' | 'legacy';
+  /** Guide paths when guides is present; otherwise a legacy B-spline control net [V][U]. */
+  controls: string[][];
+  /** Each live curve runs along axis at the other axis's parameter. Knots locate its on-curve vertices. */
+  guides?: { axis: 'U' | 'V'; at: number; knots: number[]; reference?: V3[][] }[];
+  /** Exact rest surface. Curve edits are interpolated over this quilt; generated vertices are never inputs. */
+  seed?: { domain: LoftDomain; controls: V3[] }[];
+  curvature?: number;
+  knotsU: number[];
+  knotsV: number[];
+  patchSizeM: number;
+  /** Original sketch curves are retained independently; the shared control net becomes authoritative. */
+  inputs: string[];
+  vertices: string[];
+  patches: { quad: string; corners: string[]; domain: LoftDomain; base: V3[] }[];
+  evaluated: { points: V3[][]; patchSizeM: number };
+  error?: string;
+}
+
+export interface LoftSurface {
+  id: string;
+  name: string;
+  /** Ordered source curves, by stable vertex id. These are independent of the generated mesh. */
+  profiles: string[][];
+  patchSizeM: number;
+  curvature: number;
+  /** Generated vertices and cells; the source curves are never owned or locked. */
+  vertices: string[];
+  patches: { quad: string; corners: string[]; domain: LoftDomain; base: V3[] }[];
+  /** Canonical finishing layer. Reuse its domains until the artist edits the output again, so repeated
+   *  source drags cannot accumulate the incidental cuts of every intermediate density layout. */
+  detail?: { domain: LoftDomain; controls: V3[] }[];
+  /** Exact source controls used for the last successful evaluation. */
+  source: V3[][];
+  /** Last successful settings, to distinguish a pending density/shape edit from a render. */
+  evaluated: { patchSizeM: number; curvature: number };
+  /** Invalid history leaves the last valid geometry editable, with an actionable explanation. */
+  error?: string;
 }
 
 /**

@@ -871,6 +871,9 @@ export function installAgentLayer(deps: {
           light: store.selectedLight,
           knot: store.selected,
           corner: store.selectedCorner,
+          meshVertices: [...store.regionSel],
+          meshEdges: store.edgeSel.map(edge => [...edge]),
+          meshPatches: [...store.cellSel],
           refProp: store.selectedRefProp
             ? { name: store.selectedRefProp.name, sourceIndex: store.selectedRefProp.sourceIndex ?? null }
             : null,

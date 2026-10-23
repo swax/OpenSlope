@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { cubicPoint } from '../../../core/math/bezier';
+import { add } from '../../../core/math/vec';
 import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
 import {
   meshAdjacency,
@@ -17,6 +19,8 @@ import {
   type MeshControlPointId,
 } from '../../../core/mesh/control-points';
 import { lockedEdgeSet } from '../../../core/mesh/locks';
+import { surfaceOwnership } from '../../../core/mesh/surface-ownership';
+import { surfaceGuideEdgeEvaluator } from '../../../core/mesh/surface-guides';
 import { creasedSeams } from '../../../core/mesh/creases';
 import { edgePathFrame, isFreePoint, vertexRollOf } from '../../../core/mesh/path-frame';
 import { controlPointIndex, edgeIndices, quadIndices, type NamedEdge, type QuadName } from '../../state/mesh-names';
@@ -141,6 +145,10 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
   let authoredControlPointByKey = new Map<string, MeshControlPoint>();
   let authoredCagePointGeometry: THREE.BufferGeometry | null = null;
   let authoredCagePointVertices: number[] = [];
+  let sourcePointGeometry: THREE.BufferGeometry | null = null;
+  let sourcePointVertices: number[] = [];
+  let sourceLineGeometries: THREE.BufferGeometry[] = [];
+  let sourceEdges: [number, number][] = [];
   let authoredPole3Geometry: THREE.BufferGeometry | null = null;
   let authoredPole3Vertices: number[] = [];
   let authoredPole5Geometry: THREE.BufferGeometry | null = null;
@@ -217,6 +225,10 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     cageEdgeRanges.clear();
     authoredCagePointGeometry = null;
     authoredCagePointVertices = [];
+    sourcePointGeometry = null;
+    sourcePointVertices = [];
+    sourceLineGeometries = [];
+    sourceEdges = [];
     authoredPole3Geometry = null;
     authoredPole3Vertices = [];
     authoredPole5Geometry = null;
@@ -250,10 +262,12 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     const net = mesh.net();
     if (!cageOn || !net) return;
     const { positions: corners, adj } = net;
+    const sourceControls = doc ? surfaceOwnership(doc).controls : new Set<string>();
     const pg = new THREE.BufferGeometry();
     const visibleCorners: number[] = [];
     for (let vertex = 0; vertex < corners.length / 3; vertex++) {
       if (mesh.vertexHidden(vertex)) continue;
+      if (doc && sourceControls.has(doc.vertexIds[vertex])) continue;
       authoredCagePointVertices.push(vertex);
       visibleCorners.push(corners[vertex * 3], corners[vertex * 3 + 1], corners[vertex * 3 + 2]);
     }
@@ -299,6 +313,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         keptEdges: [number, number][] = [];
       edges.forEach((edge, i) => {
         if (mesh.edgeHidden(edge[0], edge[1])) return;
+        if (doc && edge.every(v => sourceControls.has(doc.vertexIds[v]))) return;
         keptSegments.push(...segments.slice(i * edgeStride, (i + 1) * edgeStride));
         keptEdges.push(edge);
       });
@@ -354,6 +369,34 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
       cageEdgeRanges.set(ekey(edge[0], edge[1]), { geometry: lockedGeometry, floatOffset: i * edgeStride, edge }),
     );
     addCagePoints(cageGroup, pg, CAGE_POINT_COLOR, 3.5, ghost);
+    if (doc && sourceControls.size) {
+      sourcePointVertices = doc.vertexIds.flatMap((id, v) =>
+        sourceControls.has(id) && !mesh.vertexHidden(v) ? [v] : [],
+      );
+      const pointPositions = sourcePointVertices.flatMap(v => [corners[v * 3], corners[v * 3 + 1], corners[v * 3 + 2]]);
+      const sourceGeometry = new THREE.BufferGeometry();
+      sourcePointGeometry = sourceGeometry;
+      sourceGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointPositions), 3));
+      const sourceSegments = (doc.freeEdges ?? []).flatMap(([a, b]) => {
+        if (!sourceControls.has(doc.vertexIds[a]) || !sourceControls.has(doc.vertexIds[b]) || mesh.edgeHidden(a, b))
+          return [];
+        sourceEdges.push([a, b]);
+        const A: V3 = [corners[a * 3], corners[a * 3 + 1], corners[a * 3 + 2]],
+          B: V3 = [corners[b * 3], corners[b * 3 + 1], corners[b * 3 + 2]];
+        const cp: [V3, V3, V3, V3] = [A, eh ? add(A, eh(a, b)) : A, eh ? add(B, eh(b, a)) : B, B];
+        const evaluate = surfaceGuideEdgeEvaluator(doc, a, b) ?? (t => cubicPoint(...cp, t));
+        return Array.from({ length: CAGE_EDGE_SEG }, (_, i) => [
+          ...evaluate(i / CAGE_EDGE_SEG),
+          ...evaluate((i + 1) / CAGE_EDGE_SEG),
+        ]).flat();
+      });
+      sourceLineGeometries = [
+        addCageLines(cageGroup, sourceSegments, CTRL_CAGE_COLOR, 0.9, false, 12),
+        addCageLinesBehind(cageGroup, sourceSegments, CTRL_CAGE_COLOR, 0.9, 12),
+      ].filter((g): g is THREE.BufferGeometry => !!g);
+      addCagePoints(cageGroup, sourceGeometry, CTRL_CAGE_COLOR, PINNED_CAGE_POINT_PX, false, 12);
+      addCagePointsBehind(cageGroup, sourceGeometry, CTRL_CAGE_COLOR, PINNED_CAGE_POINT_PX, 12);
+    }
     if (doc && eh) addFreePointAxes(doc, corners, adj, eh, ghost);
     // Only explicitly pinned edge / patch cages are batched here. Their full cage gets a normal depth-tested
     // pass plus a faint behind-surface pass; every other floating control point remains absent and unpickable.
@@ -410,9 +453,10 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     ghost: boolean,
   ) {
     const stubs: number[][] = [[], [], []];
+    const sourceControls = surfaceOwnership(doc).controls;
     const at = (vertex: number): V3 => [corners[vertex * 3], corners[vertex * 3 + 1], corners[vertex * 3 + 2]];
     for (let vertex = 0; vertex < corners.length / 3; vertex++) {
-      if (mesh.vertexHidden(vertex) || !isFreePoint(adj, vertex)) continue;
+      if (mesh.vertexHidden(vertex) || sourceControls.has(doc.vertexIds[vertex]) || !isFreePoint(adj, vertex)) continue;
       const frame = edgePathFrame(corners, adj, vertex, {
         handle: eh,
         roll: vertexRollOf(doc, vertex),
@@ -682,6 +726,27 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     stream(authoredCagePointGeometry, authoredCagePointVertices);
     stream(authoredPole3Geometry, authoredPole3Vertices);
     stream(authoredPole5Geometry, authoredPole5Vertices);
+    stream(sourcePointGeometry, sourcePointVertices);
+    const eh = mesh.edgeHandle();
+    if (eh && sourceEdges.length) {
+      const segments: number[] = [];
+      for (const [a, b] of sourceEdges) {
+        const A: V3 = [vertices[a * 3], vertices[a * 3 + 1], vertices[a * 3 + 2]],
+          B: V3 = [vertices[b * 3], vertices[b * 3 + 1], vertices[b * 3 + 2]];
+        const cp: [V3, V3, V3, V3] = [A, add(A, eh(a, b)), add(B, eh(b, a)), B];
+        const doc = mesh.meshDoc();
+        const evaluate = (doc && surfaceGuideEdgeEvaluator(doc, a, b)) || (t => cubicPoint(...cp, t));
+        for (let i = 0; i < CAGE_EDGE_SEG; i++)
+          segments.push(...evaluate(i / CAGE_EDGE_SEG), ...evaluate((i + 1) / CAGE_EDGE_SEG));
+      }
+      for (const geometry of sourceLineGeometries) {
+        const attr = geometry.getAttribute('position') as THREE.BufferAttribute;
+        (attr.array as Float32Array).set(segments);
+        attr.needsUpdate = true;
+        geometry.boundingBox = null;
+        geometry.boundingSphere = null;
+      }
+    }
   }
 
   /** Restore every global cage wire a live-edit preview may have hidden. */

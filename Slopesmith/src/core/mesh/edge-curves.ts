@@ -1,7 +1,7 @@
 import type { QuadMeshDoc, V3 } from '../doc/types';
 import { cubicPoint } from '../math/bezier';
 import { add } from '../math/vec';
-import { meshAdjacency, meshFromDoc, type MeshAdjacency, type QuadMesh } from './topology';
+import { meshAdjacency, buildQuadMesh, docEdgeHandles, type MeshAdjacency, type QuadMesh } from './topology';
 import { readVertex } from './primitives';
 
 export interface MeshEdgeCurve {
@@ -18,8 +18,9 @@ export function buildMeshEdgeCurves(
   padding: number,
   sampleSegments = 0,
 ): { mesh: QuadMesh; adjacency: MeshAdjacency; curves: MeshEdgeCurve[] } {
-  const { mesh, edgeHandle } = meshFromDoc(doc),
+  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges),
     adjacency = meshAdjacency(mesh),
+    edgeHandle = docEdgeHandles(mesh, doc, adjacency),
     curves: MeshEdgeCurve[] = [];
   for (let a = 0; a < adjacency.neighbors.length; a++)
     for (const b of adjacency.neighbors[a] ?? []) {

@@ -1,4 +1,5 @@
-import type { V3 } from '../doc/types';
+import type { V3, QuadMeshDoc } from '../doc/types';
+import { surfaceGuideEdgeEvaluator } from './surface-guides';
 import { add } from '../math/vec';
 import { pushCubicEdge } from '../math/bezier';
 import { meshAdjacency, type QuadMesh, type EdgeHandle, type MeshAdjacency } from './topology';
@@ -691,6 +692,7 @@ export function meshEdgeSegments(
   eh: EdgeHandle,
   edges: Iterable<[number, number]>,
   seg = 6,
+  doc?: QuadMeshDoc,
 ): Float32Array {
   const P = (id: number): V3 => readVertex(mesh.vertices, id);
   const out: number[] = [];
@@ -698,7 +700,9 @@ export function meshEdgeSegments(
     if (a >= mesh.vertexCount || b >= mesh.vertexCount) continue; // a selection that outlived a topology edit
     const Pa = P(a),
       Pb = P(b);
-    pushCubicEdge(out, Pa, add(Pa, eh(a, b)), add(Pb, eh(b, a)), Pb, seg);
+    const evaluate = doc && surfaceGuideEdgeEvaluator(doc, a, b);
+    if (evaluate) for (let i = 0; i < seg; i++) out.push(...evaluate(i / seg), ...evaluate((i + 1) / seg));
+    else pushCubicEdge(out, Pa, add(Pa, eh(a, b)), add(Pb, eh(b, a)), Pb, seg);
   }
   return new Float32Array(out);
 }

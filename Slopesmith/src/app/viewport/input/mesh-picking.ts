@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { V3 } from '../../../core/doc/types';
+import type { V3, QuadMeshDoc } from '../../../core/doc/types';
+import { surfaceGuideEdgeEvaluator } from '../../../core/mesh/surface-guides';
 import type { EdgeHandle, MeshAdjacency } from '../../../core/mesh/topology';
 import { ekey, hoveredEdge } from '../../../core/mesh/ops';
 import { mul, sub } from '../../../core/math/vec';
@@ -49,6 +50,7 @@ export function headsetPickRadiusPx(
  *  and the cage / pinned-sub-cage state that gates point picks. The shell owns all of it and hands it in as
  *  closures, null where nothing is loaded. */
 export interface MeshPickingAccess {
+  meshDoc?(): QuadMeshDoc | null;
   net(): { positions: number[]; adj: MeshAdjacency } | null;
   preview(): PreviewData | null;
   meshHandle(): EdgeHandle | null;
@@ -356,11 +358,13 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       hba = eh?.(b, a) ?? mul(sub(p0, p3), 1 / 3);
     const p1: V3 = [p0[0] + hab[0], p0[1] + hab[1], p0[2] + hab[2]];
     const p2: V3 = [p3[0] + hba[0], p3[1] + hba[1], p3[2] + hba[2]];
+    const doc = access.meshDoc?.();
+    const evaluate = (doc && surfaceGuideEdgeEvaluator(doc, a, b)) || (t => cubicPoint(p0, p1, p2, p3, t));
     let prev = p0,
       best = Infinity,
       bestT = 0;
     for (let i = 1; i <= CTRL_NET_SEG; i++) {
-      const cur = cubicPoint(p0, p1, p2, p3, i / CTRL_NET_SEG);
+      const cur = evaluate(i / CTRL_NET_SEG);
       const closest = chordScreenClosest(
         new THREE.Vector3(prev[0], prev[1], -prev[2]),
         new THREE.Vector3(cur[0], cur[1], -cur[2]),
@@ -371,7 +375,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       }
       prev = cur;
     }
-    return { d2: best, t: bestT, pos: cubicPoint(p0, p1, p2, p3, bestT) };
+    return { d2: best, t: bestT, pos: evaluate(bestT) };
   }
 
   /** Squared screen-pixel distance from the current click (stage.pointer) to the chord between two WORLD-space

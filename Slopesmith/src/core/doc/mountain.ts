@@ -12,6 +12,8 @@ import { normalizeEnvironmentBed } from '../audio/environment';
 import { normalizeAnnouncer } from '../audio/announcer';
 import { ensureGemIds, ensureLightIds, ensureScreenIds, ensureTrailIds, seedMeshIds } from './ids';
 import { normalizeTrails } from './trails';
+import { normalizeLofts } from './lofts';
+import { normalizeSurfaces } from './surfaces';
 import {
   builtInTrailTileSetTwin,
   retiredTrailTileSetSuccessor,
@@ -56,6 +58,7 @@ import { normalizeBoardSound } from '../audio/board-sound';
 import { normalizeCheckpointBonus, normalizeLaps } from './race';
 import { courseSamples, seatSample } from './run-shaping';
 import { edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked } from '../mesh/locks';
+import { smoothSurfaceGuideVertices } from '../mesh/surface-curvature';
 
 export type { HandleDir } from '../math/bezier';
 
@@ -1021,17 +1024,19 @@ export function meshCreaseVertices(doc: QuadMeshDoc, ids: number[]) {
   }
 }
 
-/** Smooth the mesh vertices `ids`: drop their incident overrides. Regular/rim vertices return to Bessel;
- * extraordinary poles return to meshEdgeHandles' shared one-ring tangent plane. */
+/** Smooth the mesh vertices `ids`: regular/rim vertices return to Bessel, extraordinary poles to a shared
+ * tangent plane, and Surface control points to their ordered guide tangents in both curve families. */
 export function meshSmoothVertices(doc: QuadMeshDoc, ids: number[]) {
-  if (!doc.edgeHandles) return;
-  const adj = meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges));
+  if (!doc.edgeHandles && !doc.surfaces?.some(surface => surface.guides)) return;
   const lockedEdges = lockedEdgeSet(doc);
-  for (const id of ids)
-    for (const nb of adj.neighbors[id] ?? []) {
-      if (!edgeIsLocked(doc, id, nb, lockedEdges)) delete doc.edgeHandles[edgeKey(id, nb)];
-    }
-  if (!Object.keys(doc.edgeHandles).length) doc.edgeHandles = undefined;
+  if (doc.edgeHandles) {
+    const adj = meshAdjacency(buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges));
+    for (const id of ids)
+      for (const nb of adj.neighbors[id] ?? [])
+        if (!edgeIsLocked(doc, id, nb, lockedEdges)) delete doc.edgeHandles[edgeKey(id, nb)];
+  }
+  smoothSurfaceGuideVertices(doc, ids, lockedEdges);
+  if (doc.edgeHandles && !Object.keys(doc.edgeHandles).length) doc.edgeHandles = undefined;
 }
 
 /** Reset selected patches to their automatic control shape without moving any corner: every selected patch
@@ -1715,6 +1720,16 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
   // the document form: pass through, just settle its run.
   if (Array.isArray(d.vertices) && Array.isArray(d.quads)) {
     const doc = raw as QuadMeshDoc;
+    if (d.surfaces !== undefined) {
+      const surfaces = normalizeSurfaces(d.surfaces);
+      if (surfaces) doc.surfaces = surfaces;
+      else delete doc.surfaces;
+    }
+    if (d.lofts !== undefined) {
+      const lofts = normalizeLofts(d.lofts);
+      if (lofts) doc.lofts = lofts;
+      else delete doc.lofts;
+    }
     const handleKeys = Object.keys(doc.edgeHandles ?? {}).length;
     // A document may carry `tracks` / `guides` fields — retired generator metadata layered alongside the real
     // mesh geometry. Drop them and keep that geometry as ordinary editable vertices/quads.

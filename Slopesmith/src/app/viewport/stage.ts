@@ -35,6 +35,7 @@ export type GizmoKind =
   | 'edgeextrusion'
   | 'propdeform'
   | 'gridcorner'
+  | 'surfacepoint'
   | 'grid';
 
 /**

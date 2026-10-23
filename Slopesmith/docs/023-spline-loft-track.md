@@ -101,6 +101,176 @@ meters is a finishing or explicit junction/hairpin operation, not a reason to ma
 irregular. The benchmark also found and fixed two prototype errors: bank sign now raises the outside rim, and
 turn concentrated at a join between two cubics now contributes to both banking and adaptive density.
 
+## Surface objects
+
+Terrain’s former Bridge Builder now creates a **Surface** with a shared cubic spline control cage. Source
+controls describe its shape; terrain patches are a protected evaluation. Output density can change without
+pinning generated vertices or adding source controls.
+
+**Create Surface.** Choose **Create Terrain → create surface**, alongside Create Grid. Click around a boundary
+with at least four points; the next point previews the exact curved fill. Click the first point again to close
+the draft, then select boundary points and move them with the gizmo before pressing **Enter** to create the
+live Surface. Enter can also create directly while drawing. Current edge length and curved surface area update
+as you draw or move points; selecting a point measures its outgoing boundary segment. **Backspace** removes
+the last draft point and reopens the boundary; **Esc** cancels the entire draft. Draft edits never modify the mountain. Points snap to existing vertices,
+**Ctrl** places a point on terrain and **Shift** constrains an axis. Extra clicks become editable points along
+four boundary guides, whose corners are chosen by distance around the loop. Existing snapped boundary curves
+are copied without changing the host geometry; moving a snapped draft point releases its binding. The boundary
+sketch and Surface commit as one undo step.
+
+**From profiles.** Draw two or more open curves with Create Edge. Select the first chain and press **B**, then
+select each additional profile and press **A**. Reorder or reverse the profiles, set interpolation and patch
+size, then press **Enter**. Three profiles produce three active control curves, regardless of generated patch
+density. Their points and cubic tangent handles remain the shape inputs. Models retain the baked mesh bridge.
+
+**Two crossing arches.** Two selected curves that meet in their interiors are treated as perpendicular curve
+families. The crossing becomes one shared source point. An automatic hill fill passes through both arches and
+extends toward their feet; add more control curves to specify the shoulders or boundary. Two curves leave the
+rest of the shape underdetermined, so this is a default fill that can be refined.
+
+**From a boundary.** Select one closed edge loop with at least four edges, including free construction curves
+or a terrain boundary. **Surface from boundary** lets you choose four distinct corners in loop order.
+**Create surface from loop** fills those four sides, including nonplanar boundaries, with a Coons blend. The four
+sides become four live control curves. Branches and disconnected loops are refused.
+
+**Control curves.** Creation selects the active curves. Click a source point or tangent handle to reshape it,
+or choose U or V and a curve under **Control curves**, then **Select curve**. Use the ordinary W/E/R gizmo to
+move, rotate or scale the selection. Pink curves lie on the snow. Curves in different directions share actual
+source vertices at crossings, so they cannot disagree about position. Occluded curves and points draw faintly
+through the surface.
+The **Shape** section exposes **crease (C)** and **smooth (S)** for the selected source points or control curves,
+using the same actions and selection as the keyboard shortcuts. With the whole surface selected, Smooth includes
+all internal U and V control curves. Ordered guide tangents continue through shared crossings with matching
+parameter derivatives on both sides of each point, including unequal knot spacing. Source points stay fixed;
+locked edges retain their tangents.
+
+- **Add control curve** enters placement mode in the selected U or V direction. Move over the existing surface
+  to preview the exact section, then click to set it. The **orientation: U → V** / **V → U** button switches
+  direction during creation. **Reposition curve on surface** uses the same gesture for
+  an existing guide. Both operations preserve the surface and the generated patch layout, including vertex ids
+  and all sixteen controls per patch. Moving a boundary guide inward does not trim the original surface.
+  Nearby points on perpendicular guides attract the preview to their station. The amber curve and point markers,
+  plus a reuse count in the panel, show exactly which existing source point IDs will be shared on click.
+- Placement is transient until the click. **Esc** or **Cancel placement** discards it. Red feedback means another
+  guide already occupies that station; clicking empty space does not commit a stale preview. Shape edits still
+  use the ordinary point, tangent and W/E/R tools after placement finishes.
+- New crossings split existing cubic curves exactly and share a source vertex. Construction curves and generated
+  terrain use independent vertices. A guide need not coincide with a generated row or column, and adding or
+  repositioning one does not retessellate the terrain. Subsequent shape or density edits can regenerate its layout.
+- **Remove control curve** removes the guide while preserving the current surface, terrain patch layout and ids.
+  Keep one editable curve. Dissolve refuses source topology edits; Delete reshapes as described below.
+- **Guide points** adds, removes or repositions authoring points along a selected curve without changing the
+  surface. Add and reposition use a moving point preview, committed by clicking; Esc cancels. Curve endpoints
+  and shared crossings remain structural: reposition the crossing curve to move its shared point. Ordinary
+  point and tangent gizmo drags continue to reshape the surface.
+- **Select all control curves** transforms the whole object. Local point or tangent edits interpolate through
+  the remaining control curves. **Patch size** changes the generated layout without adding shape controls.
+  Clicking terrain selects its controls. Generated points, edges and interiors are not direct editing targets;
+  geometry sculpting respects their protection.
+
+Original sketches are retained independently and free seed sketches are hidden while the object is live. The
+visible editable curves are exact owned copies. An existing host boundary remains ordinary terrain and is not
+welded to the new output. Persistent positional and tangent stitching between surfaces is a separate feature.
+
+Choose an object under **Surfaces** in the empty-selection Edit toolbox to resume work. **Refit patch layout**
+redistributes an existing object's terrain with its current size and shape, keeping the guides unchanged.
+The selected surface shows its approximate curved 3D area in m², followed by **avg patch size**: the generated
+patches' average curved length × width in metres, for comparison with the requested patch size. The active
+control curve shows its full arc length, including shape carried by the rest quilt. Source area and guide lengths
+are independent of terrain patch density; average patch dimensions follow the generated layout. Measurements
+refresh with the inspector after edits. Integration runs when the inspector rebuilds, not every frame.
+**Bake surface** keeps
+its terrain and releases protection/history for direct patch edits and welding. Unused control curves and
+original sketches are removed so they do not overlap the baked terrain; construction components attached to
+other geometry or used by another surface are retained. Bake is a separate undo step that restores the live
+object, its controls and the sketches.
+Removing the last Surface or legacy loft register removes its optional metadata list too, matching load-time
+normalization so a room snapshot cannot be mistaken for a newer external edit.
+
+**Delete** on selected internal control points reconnects and smooths their curves, rebuilds the shape from
+the remaining constraints and refits terrain. A whole selected curve is deleted as a shape constraint; a hill
+held only by that curve relaxes away. Double-click a control edge to select its entire guide through crossings;
+Shift-click extends a run along it, or spans a band of parallel guides. Partial edge runs must be completed to
+a whole curve before deletion. Curve endpoints and shared crossing points remain protected, and one editable
+curve must remain. The Surface panel exposes the same **delete … (reshape)** actions separately from
+**remove control curve / point**, which keep the exact current shape. Both kinds of removal undo normally.
+
+The mountain's surfaces list stores source paths, curve directions, stations and knot parameters, an exact rest
+quilt, output ids and domains, settings, and evaluated cubic controls. `core/mesh/surface-guides.ts` interpolates
+curve displacements with a Gordon-style blend of both directions, subtracting their shared crossings. Exact
+bicubic extraction preserves every guide, including tangent edits. Adding or repositioning a guide rebases the rest
+quilt and records a fresh source evaluation without rebuilding output. Each guide stores a reference authoring
+curve independently of the exact rest section. Adding, removing and sliding guides or points resets that
+reference to zero displacement; a later shape drag changes the displacement. New guides expose endpoints and
+required crossings rather than inheriting editable points at internal surface seams. Rendered and picked guide
+curves still follow the exact surface. Cross-guide placement snaps to existing point stations within pick
+precision, avoiding microscopic spans that fold when their endpoints move. Redundant polynomial seams are
+removed before meshing. Singleton families use
+a smooth influence that fades toward automatic boundaries. Whole-object affine transforms carry the rest quilt
+with their curves. See the general curve-network construction in the
+[TiGL paper](https://arxiv.org/abs/1810.10795).
+
+`core/mesh/surface-object.ts` initializes, rebuilds and bakes objects. `core/mesh/surface-fit.ts` starts with a
+grid measured by average 3-D surface travel, independently of source span boundaries. Counts round to the
+nearest requested physical size instead of treating that size as a maximum. Sampling fixed cross-sections
+across the surface prevents source subdivision density from biasing the average. Endpoint-interpolating tensor
+least squares fits positions across each span, using all sixteen controls, including the four interiors.
+Fitting endpoint derivative speeds instead would over-refine smooth terrain wherever source parameter speed
+changes. Four-point Gauss quadrature integrates the cubic fitting equations exactly on each source span.
+A Bernstein convex-hull bound over every intersected
+source span limits positional error to 2% of target patch size (30 cm at 15 m). Rows or columns that exceed
+this budget first try redistributing the existing cuts around genuine polynomial changes, without increasing
+their count. This avoids shrinking whole rows to accommodate a source parameter-speed change. Exact redundant
+source seams are removed before fitting; adding an unchanged guide cannot force a patch boundary. Geometric
+creases over 15° retain boundaries. Additional refinement is used when redistribution cannot meet the error
+budget. Nominal spacing stays within 2:1, and actual curved patch proportions guide further balancing toward
+2.5:1 where possible. Narrow features and tapering boundaries can require smaller or less regular patches;
+aspect balancing stops shrinking an interval at half the requested size rather than over-refining the whole grid.
+Shared cubic edges remain watertight.
+Limits are 4,096 source controls, 4,096 construction spans and 16,384
+output patches per surface. Appearance follows source-domain location; coarsening output may reduce painted-cell
+resolution. B-spline math remains available for adopting older cages and exact evaluation.
+
+During a shape drag, the same grid dimensions preview the fitted surface through incremental viewport updates.
+A cheaper arc-length pass redistributes physical spacing during the drag while preserving useful fitting anchors
+and the total grid dimensions. It falls back to uniform spacing if old anchors would cause thinner strips.
+Full spacing, crease and fitting-error checks run on release; unchanged grid dimensions retain vertex
+and patch ids even when their parameter coordinates move. Source-curve reads avoid rebuilding mountain
+adjacency, and redundant seams are joined
+directly rather than fitted through intermediate spline nets. Mesh contact diagnostics run after editing pauses,
+including after topology edits, so turning lighting off is not required for responsive editing.
+
+Appending construction edges rebinds the viewport's graph while retaining terrain buffers. Exact emitted patch
+controls and a snapshot of terrain inputs detect any actual patch changes, including in-place handle/interior
+edits and free neighbours that affect automatic tangents. Crossing auto-weld queries only the new edges and
+the area around their endpoints, sharing one curve inventory and sampling only surviving candidate pairs.
+
+Save/load, autosave, register sync and undo retain curves and terrain. Existing lofts and source cages are adopted
+from their evaluated shape, including finishing edits, using sparse isoparametric guides. Invalid source controls,
+changed output topology or foreign attachments pause rebuilding with an explanation and retain the terrain.
+
+Checks: `node --import tsx test/surface-object.test.ts` covers guide interpolation, shared crossings, two-arch
+hills, U/V placement, point editing, shape-preserving removal, fixed output topology, protection, persistence,
+registers and legacy adoption. `node --import tsx test/construction-preview.test.ts` checks terrain buffer reuse
+and equivalence to a full rebuild while construction topology changes.
+`node --import tsx test/surface-fit.test.ts` checks sparse output layout, the whole-span error bound, narrow
+details, watertight edges, creases and stable drag layouts.
+`node --import tsx test/surface-fit-gari.test.ts` uses isolated GARI_FRESH profile and boundary quilts that exposed
+guide-aligned slivers and derivative-driven over-refinement: it checks physical patch proportions, fitting error,
+shared edges, drag redistribution and independence from redundant source partitions.
+`node --import tsx test/surface-control-delete.test.ts` checks shape-changing deletion, batches, preserved
+guide removal, protected crossings/endpoints and guide-aware range/whole-curve selection.
+`node --import tsx test/surface-measure-snap.test.ts` checks curved area and length, density independence,
+transient snap queries, source point ID reuse, unchanged terrain and persistence.
+`node --import tsx test/surface-boundary.test.ts` checks drawn boundaries, exact preview/creation agreement,
+nonplanar and multi-edge loops, orientation, copied curves, unchanged host geometry, invalid loops and persistence.
+`node --import tsx test/surface-draft-gizmo.test.ts` checks editable boundary closure, point picking and movement,
+released snaps, reopened boundaries and cancellation without document edits.
+`node --import tsx test/surface-object-browser.test.ts` exercises creation, source and curve gizmo drags, curves in
+both directions, hover/click placement and cancellation, fixed terrain layout, density, undo, autosave/reload, bake
+and refitting saved GARI boundary surfaces: 224 strips to six broad patches, and the later nearly flat
+Surface 2 from 966 patches averaging 4.8 × 13.8 m to 154 averaging 20.0 × 21.0 m at a 20 m target.
+
 ## Create Trail: an owned trail network
 
 Edit mode's empty-selection **Create Terrain** group includes **Create Trail**. It lays centre points with the same
@@ -559,7 +729,7 @@ dart the density steps with the existing wedge tools — the knit-dominant bands
   live under the cursor; select an existing track → knots + section panel, drag / override / re-cut
   live. Floor cells paint the track surface (default snow) on emit.
 - **Loft**: select 2+ rails / edge runs in order → Loft → ghost → commit. Gesture-free entry: the
-  first useful loft needs no new drawing UI at all, just the edge selection that exists. Bridge Builder
+  first useful loft needs no new drawing UI at all, just the edge selection that exists. Loft Surface
   exposes target patch size plus connection curve: 0 is straight, 1 follows a smooth Catmull/Bessel path
   through the rail sequence, and values through 2 exaggerate the bend. Curvature affects both inserted
   intermediate loops and the connecting boundary handles.

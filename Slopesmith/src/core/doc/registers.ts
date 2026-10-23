@@ -71,6 +71,8 @@ export type ObjectFamily =
   | 'screen'
   | 'prop-line'
   | 'trail'
+  | 'loft'
+  | 'surface'
   | 'label'
   | 'effect'
   | 'effect-node';
@@ -315,6 +317,8 @@ const DECOMPOSED: ReadonlySet<string> = new Set([
   'screens',
   'propLines',
   'trails',
+  'lofts',
+  'surfaces',
   'labels',
   'effects',
 ]);
@@ -345,6 +349,8 @@ export const OBJECT_LISTS = [
   'screens',
   'propLines',
   'trails',
+  'lofts',
+  'surfaces',
   'labels',
 ] as const;
 
@@ -609,6 +615,8 @@ function emitObjects(doc: QuadMeshDoc, emit: Emit, only?: ObjectFamily): void {
   list('screen', doc.screens, screen => keyable('a screen', screen.id));
   list('prop-line', doc.propLines, line => keyable('a prop line', line.id));
   list('trail', doc.trails, trail => keyable('a trail', trail.id));
+  list('loft', doc.lofts, loft => keyable('a loft', loft.id));
+  list('surface', doc.surfaces, surface => keyable('a surface', surface.id));
   list('label', doc.labels, label => keyable('a label', label.id));
   emitEffects(doc.effects, emit, only);
 }
@@ -702,6 +710,8 @@ const families: ReadonlySet<string> = new Set<ObjectFamily>([
   'screen',
   'prop-line',
   'trail',
+  'loft',
+  'surface',
   'label',
   'effect',
   'effect-node',
@@ -862,6 +872,7 @@ function byIdentity<T extends { id?: string }>(
   read: () => T[] | undefined,
   make: () => T[] | undefined,
   want: string,
+  empty?: () => void,
 ): Register {
   const at = (): number => indexById(read(), want);
   return {
@@ -872,7 +883,11 @@ function byIdentity<T extends { id?: string }>(
     write: value => {
       const found = at();
       if (value === undefined) {
-        if (found >= 0) read()!.splice(found, 1);
+        if (found >= 0) {
+          const held = read()!;
+          held.splice(found, 1);
+          if (!held.length) empty?.();
+        }
         return true;
       }
       if (found >= 0) {
@@ -1094,6 +1109,8 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
         | 'screens'
         | 'propLines'
         | 'trails'
+        | 'lofts'
+        | 'surfaces'
         | 'labels',
     ) => ({
       read: () => record[field] as T[] | undefined,
@@ -1135,6 +1152,18 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
       case 'trail': {
         const held = list<{ id: string }>('trails');
         return byIdentity(held.read, held.make, id);
+      }
+      case 'surface': {
+        const held = list<{ id: string }>('surfaces');
+        return byIdentity(held.read, held.make, id, () => {
+          delete doc.surfaces;
+        });
+      }
+      case 'loft': {
+        const held = list<{ id: string }>('lofts');
+        return byIdentity(held.read, held.make, id, () => {
+          delete doc.lofts;
+        });
       }
       case 'label': {
         const held = list<{ id: string }>('labels');

@@ -1,0 +1,108 @@
+// tier: fast
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import type { Stage } from '../src/app/viewport/stage';
+import type { PlacementEndpoint } from '../src/app/viewport/input/placement-constraint';
+import { createSurfaceToolLayer } from '../src/app/viewport/tools/create-surface';
+import { sceneToData } from '../src/app/viewport/coordinates';
+
+// Exercise the transient draft through placement/picking and the same scene-space anchor TransformControls moves.
+const stage = {
+  worldRoot: new THREE.Group(),
+  scene: new THREE.Scene(),
+  camera: new THREE.OrthographicCamera(-100, 100, 75, -75, 0.1, 1000),
+  pointer: new THREE.Vector2(),
+  renderer: { domElement: { getBoundingClientRect: () => ({ width: 800, height: 600 }) } },
+  cb: {
+    onCreateSurfaceChange() {
+      changes++;
+    },
+  },
+  gizmo: { dragging: false, object: null as THREE.Object3D | null },
+  gizmoKind: null as string | null,
+  gizmoKnot: -1,
+  castAt() {},
+  attachGizmo(object: THREE.Object3D, kind: string, index: number) {
+    this.gizmo.object = object;
+    this.gizmoKind = kind;
+    this.gizmoKnot = index;
+  },
+  detachGizmo() {
+    this.gizmo.object = null;
+    this.gizmoKind = null;
+  },
+};
+let changes = 0,
+  endpoint: PlacementEndpoint | null = null;
+stage.worldRoot.scale.z = -1;
+stage.worldRoot.updateMatrixWorld(true);
+stage.camera.position.set(0, 200, 0);
+stage.camera.up.set(0, 0, -1);
+stage.camera.lookAt(0, 0, 0);
+stage.camera.updateMatrixWorld(true);
+const layer = createSurfaceToolLayer(
+  stage as unknown as Stage,
+  () => new THREE.Mesh(),
+  () => endpoint,
+);
+const pointer = (pos: PlacementEndpoint['pos']) => {
+  const p = new THREE.Vector3(...pos).applyMatrix4(stage.worldRoot.matrixWorld).project(stage.camera);
+  stage.pointer.set(p.x, p.y);
+};
+const place = (pos: PlacementEndpoint['pos'], vertex: number | null = null) => {
+  pointer(pos);
+  endpoint = { pos, vertex };
+  layer.onCommit();
+};
+layer.setActive(true);
+place([0, 0, 0], 0);
+place([60, 0, 0]);
+place([60, 0, 40]);
+place([0, 0, 40]);
+assert.equal(layer.points.length, 4);
+assert(!layer.closed);
+place([0, 0, 0]);
+assert(layer.closed, 'clicking the first point closes the draft without committing it');
+assert.equal(layer.points.length, 4, 'closing does not append a duplicate endpoint');
+assert.equal(layer.selected, 0);
+assert.equal(stage.gizmoKind, 'surfacepoint');
+const anchor = stage.gizmo.object!;
+stage.gizmo.dragging = true;
+layer.gizmoDragging(true);
+anchor.position.set(-8, 5, 6);
+layer.gizmoChanged();
+assert.deepEqual(
+  layer.points[0],
+  { pos: [-8, 5, -6], vertex: null },
+  'a moved snap releases its host binding and mirrors scene Z',
+);
+assert.deepEqual(layer.points[1].pos, [60, 0, 0], 'other boundary points stay fixed');
+stage.gizmo.dragging = false;
+layer.gizmoDragging(false);
+assert.deepEqual(sceneToData(anchor.position), layer.points[0].pos);
+pointer([60, 0, 40]);
+layer.onCommit();
+assert.equal(layer.selected, 2, 'any boundary point can be picked');
+assert.deepEqual(sceneToData(anchor.position), [60, 0, 40]);
+pointer([20, 0, 20]);
+endpoint = { pos: [20, 0, 20], vertex: null };
+layer.onHover({ shiftKey: false, ctrlKey: false, metaKey: false } as PointerEvent);
+assert.equal(layer.hover, null, 'a closed draft has no extra moving endpoint');
+layer.onCommit();
+assert.equal(layer.selected, null);
+assert.equal(layer.points.length, 4, 'clicking inside the closed draft cannot append a point');
+assert.equal(stage.gizmoKind, null);
+layer.undo();
+assert(!layer.closed, 'undoing a point reopens the boundary for more drawing');
+place([0, 0, 40]);
+assert.equal(layer.points.length, 4);
+place([60, 0, 0]);
+assert.equal(layer.selected, 1, 'placed points can also be adjusted before closing');
+assert.equal(stage.gizmoKind, 'surfacepoint');
+layer.setActive(false);
+assert.equal(layer.points.length, 0);
+assert.equal(stage.gizmoKind, null, 'cancelling detaches the draft gizmo');
+assert(changes > 8, 'placements, closure, selection and movement refresh the host preview');
+console.log(
+  'SURFACE DRAFT: editable closure, point picking, world-space gizmo movement, released snaps, reopen and cancellation passed.',
+);

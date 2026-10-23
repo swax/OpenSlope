@@ -19,6 +19,7 @@ export type CommandSheetDeps = {
   store: Store;
   cageActive: () => boolean;
   pastePlacing: () => boolean;
+  surfaceGuidePlacing?: () => boolean;
   /** Props mode is holding a paste (docs/012). */
   propPastePlacing: () => boolean;
   isReplacingProp: () => boolean;
@@ -72,6 +73,12 @@ export function createCommandSheet(deps: CommandSheetDeps) {
   for (const panel of [cmdSheet, paintControls, toolHelp]) foldOnClick(panel);
 
   function editSelectionHelp() {
+    if (deps.surfaceGuidePlacing?.())
+      return helpPanel('Edit Mode — place guide', [
+        ['move pointer', 'preview on the existing surface'],
+        ['LMB', 'set guide location'],
+        ['Esc', 'cancel'],
+      ]);
     const selection = editSelection();
     if (!selection) {
       const clickKinds = [
@@ -154,6 +161,9 @@ export function createCommandSheet(deps: CommandSheetDeps) {
       [
         ['Ctrl+LMB', 'toggle selection'],
         ['⇧LMB', 'extend range / block'],
+        ...(store.edgeSel.length
+          ? [['double-click', 'select whole edge loop / control curve'] as [string, string]]
+          : []),
         ['drag', 'box-select control points'],
       ],
       [
@@ -183,6 +193,7 @@ export function createCommandSheet(deps: CommandSheetDeps) {
               : []),
             ['Alt+H', 'show all hidden'],
             ['D', 'dissolve when topology permits'],
+            ['Delete', 'delete selected points / curves and reshape'],
             ...(store.cellSel.length ? [['I', 'split selected patch strip'] as [string, string]] : []),
             ...(store.cellSel.length ? [['N', 'flip ridable side'] as [string, string]] : []),
           ],
@@ -338,8 +349,8 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                         ['LMB', 'place'],
                       ])
                     : store.currentMode === 'edit' && store.bridgeRails !== null
-                      ? helpPanel('Edit Mode — bridge', [
-                          ['LMB / double-click', 'select candidate rail'],
+                      ? helpPanel('Edit Mode — loft surface', [
+                          ['LMB / double-click', 'select candidate profile'],
                           ['⇧LMB', 'extend candidate'],
                         ])
                       : store.currentMode === 'edit' && store.createEdgeTool
@@ -374,46 +385,57 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                                 ['Enter', 'create + select patches'],
                                 ['Esc', 'cancel'],
                               ])
-                            : store.currentMode === 'edit' && store.surgeryTool === 'trail'
-                              ? helpPanel('Edit Mode — create trail', [
-                                  ['LMB', 'add spline knot'],
-                                  ['LMB knot', 'pick it up to move'],
+                            : store.currentMode === 'edit' && store.surgeryTool === 'surface'
+                              ? helpPanel('Edit Mode — create surface', [
+                                  ['LMB', 'place boundary point'],
+                                  ['first point', 'close loop for editing'],
+                                  ['LMB boundary point', 'select point to move with gizmo'],
+                                  ['Enter', 'create surface'],
+                                  ['Ctrl+LMB', 'point on terrain'],
                                   ['⇧LMB', 'lock world axis'],
-                                  ['Backspace', 'remove selected / last knot'],
-                                  ['Enter / Esc', 'finish'],
+                                  ['Backspace', 'undo last boundary point'],
+                                  ['Esc', 'cancel'],
                                 ])
-                              : store.currentMode === 'edit' && cageActive()
-                                ? store.surgeryTool === 'patch'
-                                  ? helpPanel('Edit Mode — create patch', [
-                                      ['LMB', 'place next corner'],
-                                      ['Ctrl+LMB', 'corner on the surface'],
-                                      ['repeat corner', 'close three corners as triangle'],
-                                      ['⇧LMB', 'lock world axis'],
-                                      ['Enter', 'finish + select created'],
-                                      ['Esc', 'finish · keep unselected'],
-                                    ])
-                                  : store.surgeryTool === 'loopcut'
-                                    ? helpPanel('Edit Mode — loop cut', [
-                                        ['hover', 'an edge'],
-                                        ['Alt+scroll', 'slide the cut'],
-                                        ['LMB', 'cut'],
-                                        ['Esc', 'finish'],
+                              : store.currentMode === 'edit' && store.surgeryTool === 'trail'
+                                ? helpPanel('Edit Mode — create trail', [
+                                    ['LMB', 'add spline knot'],
+                                    ['LMB knot', 'pick it up to move'],
+                                    ['⇧LMB', 'lock world axis'],
+                                    ['Backspace', 'remove selected / last knot'],
+                                    ['Enter / Esc', 'finish'],
+                                  ])
+                                : store.currentMode === 'edit' && cageActive()
+                                  ? store.surgeryTool === 'patch'
+                                    ? helpPanel('Edit Mode — create patch', [
+                                        ['LMB', 'place next corner'],
+                                        ['Ctrl+LMB', 'corner on the surface'],
+                                        ['repeat corner', 'close three corners as triangle'],
+                                        ['⇧LMB', 'lock world axis'],
+                                        ['Enter', 'finish + select created'],
+                                        ['Esc', 'finish · keep unselected'],
                                       ])
-                                    : store.weldTool === 'edge-weld'
-                                      ? helpPanel('Edit Mode — weld edges', [
-                                          ['LMB / ⇧LMB', 'select target edges'],
-                                          ['double-click', 'select target loop'],
-                                          ['Enter', 'commit'],
-                                          ['Esc', 'cancel'],
+                                    : store.surgeryTool === 'loopcut'
+                                      ? helpPanel('Edit Mode — loop cut', [
+                                          ['hover', 'an edge'],
+                                          ['Alt+scroll', 'slide the cut'],
+                                          ['LMB', 'cut'],
+                                          ['Esc', 'finish'],
                                         ])
-                                      : store.weldTool === 'weld'
-                                        ? helpPanel('Edit Mode — weld points', [
-                                            ['LMB / ⇧LMB', 'select target points'],
-                                            ['drag', 'box-select targets'],
+                                      : store.weldTool === 'edge-weld'
+                                        ? helpPanel('Edit Mode — weld edges', [
+                                            ['LMB / ⇧LMB', 'select target edges'],
+                                            ['double-click', 'select target loop'],
                                             ['Enter', 'commit'],
+                                            ['Esc', 'cancel'],
                                           ])
-                                        : editSelectionHelp()
-                                : '';
+                                        : store.weldTool === 'weld'
+                                          ? helpPanel('Edit Mode — weld points', [
+                                              ['LMB / ⇧LMB', 'select target points'],
+                                              ['drag', 'box-select targets'],
+                                              ['Enter', 'commit'],
+                                            ])
+                                          : editSelectionHelp()
+                                  : '';
     paintControls.style.display = paintControls.innerHTML ? '' : 'none';
 
     if (store.currentMode === 'paint') {

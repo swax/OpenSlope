@@ -34,6 +34,8 @@ import type { CourseDrawLayer } from '../tools/course-draw';
 import type { EdgeExtrusionLayer } from '../tools/edge-extrusion';
 import type { CreateEdgeLayer } from '../tools/create-edge';
 import type { BridgePreviewLayer } from '../tools/bridge-preview';
+import type { SurfaceGuideLayer } from '../tools/surface-guide';
+import type { SurfaceToolLayer } from '../tools/create-surface';
 import type { GemsLayer } from '../scene/gems';
 import type { ScreensLayer } from '../scene/screens';
 import type { PropsLayer } from '../scene/props';
@@ -73,6 +75,8 @@ export interface RouterLayers {
   edgeExtrusion: EdgeExtrusionLayer;
   createEdge: CreateEdgeLayer;
   bridgePreview: BridgePreviewLayer;
+  surfaceGuide?: SurfaceGuideLayer;
+  surfaceTool?: SurfaceToolLayer;
   gems: GemsLayer;
   screens: ScreensLayer;
   props: PropsLayer;
@@ -1124,6 +1128,7 @@ export function createPointerRouter(
    * there is part of the stroke). The camera keeps its current angle and just retargets + dollies in.
    */
   function onDoubleClick(e: MouseEvent) {
+    if (layers.surfaceGuide?.active) return;
     if (layers.rideCtl.riding) return; // a test ride owns input
     if (access.mode() === 'paint' || access.mode() === 'sculpt') return;
     if (access.mode() === 'edit' && layers.createEdge.armed) return; // endpoint clicks own the gesture; Enter/Esc finishes
@@ -1275,6 +1280,15 @@ export function createPointerRouter(
       }
     }
     if (e.button !== 0) return; // MMB (pan) handled by OrbitControls; ignore here
+    if (access.mode() === 'edit' && layers.surfaceGuide?.active) {
+      if (e.pointerType !== 'touch') layers.surfaceGuide.commit(e);
+      else {
+        touchNav = { x: e.clientX, y: e.clientY };
+        (e.target as Element).setPointerCapture?.(e.pointerId);
+      }
+      e.stopImmediatePropagation();
+      return;
+    }
     // Replace owns the click before gizmos and marquee selection can move or deselect its target.
     if (access.mode() === 'props' && stage.cb.isPickingProp?.()) {
       stage.castAt(e);
@@ -1397,6 +1411,10 @@ export function createPointerRouter(
       return;
     }
     // Create Grid: collect its three corners; the panel's counts and the cursor shape the live lattice.
+    if (access.mode() === 'edit' && layers.surfaceTool?.active) {
+      layers.surfaceTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
+      return;
+    }
     if (access.mode() === 'edit' && layers.gridTool.active) {
       layers.gridTool.onCommit(e.shiftKey, e.ctrlKey || e.metaKey);
       return;
@@ -1432,6 +1450,7 @@ export function createPointerRouter(
    *  a course knot, or the reference body's centre handle; in Edit it seats the gizmo on the picked
    *  knot / tangent nub / corner, or clears the selection over empty space. */
   function selectAtPointer(shift = false, ctrl = false) {
+    if (access.mode() === 'edit' && layers.surfaceGuide?.commit()) return;
     // loop-cut surgery owns the click via surgery.onCommit (pointerDown); a touch tap reaches here with no
     // hover preview to commit, so swallow it rather than fall through to corner selection.
     if (access.mode() === 'edit' && layers.surgery.tool) return;
@@ -1456,6 +1475,10 @@ export function createPointerRouter(
       return;
     }
     // Create Grid touch tap (mouse is handled in pointerDown).
+    if (access.mode() === 'edit' && layers.surfaceTool?.active) {
+      layers.surfaceTool.onCommit(shift, ctrl);
+      return;
+    }
     if (access.mode() === 'edit' && layers.gridTool.active) {
       layers.gridTool.onCommit(shift, ctrl);
       return;
@@ -2011,6 +2034,7 @@ export function createPointerRouter(
     brushRing.visible = false;
     // Paste vertices: its faithful teal copy follows authored terrain or the free-space construction plane and
     // owns Edit hover while armed.
+    if (access.mode() === 'edit' && layers.surfaceGuide?.update(e)) return;
     if (access.mode() === 'edit' && layers.clipboardPlacement.onHover(e)) return;
     // Reset course: the next point of the new run follows the terrain under the cursor.
     if (access.mode() === 'info' && layers.courseDraw.onHover(e)) return;
@@ -2019,6 +2043,7 @@ export function createPointerRouter(
     // Create Tube: its next axis endpoint follows terrain or the free-space construction plane.
     if (access.mode() === 'edit' && layers.tubeTool.onHover(e)) return;
     // Create Grid: its next corner follows the level plane, the surface (Ctrl) or a snapped vertex.
+    if (access.mode() === 'edit' && layers.surfaceTool?.onHover(e)) return;
     if (access.mode() === 'edit' && layers.gridTool.onHover(e)) return;
     // Create Trail: the next centre-spline knot follows terrain or the construction plane.
     if (access.mode() === 'edit' && layers.trailTool.onHover(e)) return;
@@ -2106,6 +2131,7 @@ export function createPointerRouter(
   }
 
   function pointerUp(e: PointerEvent) {
+    if (e.type === 'pointercancel' && layers.surfaceGuide?.active) layers.surfaceGuide.cancel();
     if (layers.rideCtl.riding) {
       if (e.type === 'pointercancel') clearRideMouseButtons();
       return;
@@ -2357,6 +2383,7 @@ export function createPointerRouter(
   // A pointer that has left the canvas is nowhere on the mountain, and telling the room otherwise would park
   // this participant's cursor wherever they last happened to be.
   dom.addEventListener('pointerleave', () => {
+    layers.surfaceGuide?.hide();
     pointerAt = null;
     if (layers.rideCtl.riding && layers.rideCtl.walking) layers.rideCtl.setDesktopBoardAim(null);
   });
@@ -2376,6 +2403,7 @@ export function createPointerRouter(
   return {
     cancelSelectionDrag,
     cancelDocumentGesture() {
+      layers.surfaceGuide?.cancel();
       cancelSelectionDrag();
       cancelSculptDrag();
       painting = false;

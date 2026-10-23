@@ -199,7 +199,7 @@ export type Store = {
   modelEditPlacementId: string | null; // the placement the session opened AT (rebased home) — only it hides
 
   // Topology surgery (Edit): which modal topology tool is armed (null = ordinary corner/cell editing).
-  surgeryTool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null;
+  surgeryTool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null;
   createPatchQuads: QuadName[]; // patches committed during the current repeating Create Patch session
   createPatchSides: 3 | 4; // Create Patch shape: wedge triangle or ordinary quad
   tubeWidth: number; // Create Tube elliptical width diameter, metres

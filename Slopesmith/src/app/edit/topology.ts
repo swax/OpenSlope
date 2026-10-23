@@ -17,6 +17,29 @@ import {
   type SurfaceCutPoint,
 } from '../../core/mesh/ops';
 import { applyLoft, railFromEdges, type RailResult } from '../../core/mesh/loft';
+import {
+  deleteSurfaceControls,
+  createSurfaceFromProfiles,
+  createSurfaceFromBoundary,
+  rebuildSurface,
+  placeSurfaceGuide,
+  placeSurfacePoint,
+  removeSurfacePoint,
+  insertSurfaceRow,
+  deleteSurfaceRow,
+  bakeSurface as bakeSurfaceObject,
+  deleteSurfaceObject,
+  type SurfaceResult,
+} from '../../core/mesh/surface-object';
+import type { SurfaceAxis } from '../../core/math/spline-surface';
+import { surfaceEditState } from '../state/surface-edit';
+import { guideRows, guideCharts, readGuideCurves, surfaceGuideSnapTargets } from '../../core/mesh/surface-guides';
+import {
+  surfaceBoundaryDraft,
+  surfaceBoundarySegmentLength,
+  createSurfaceFromDrawnBoundary,
+} from '../../core/mesh/surface-boundary';
+import { cellMetrics } from '../../core/mesh/measure';
 import { getVertex } from '../../core/doc/doc-edit';
 import type { Store } from '../state/store';
 import {
@@ -97,6 +120,7 @@ export type TopologyToolDeps = {
   applyCage: () => void;
   persistUi: () => void;
   scheduleRebuild: () => void;
+  commitHistory?: () => void;
   rebuildTools: () => void;
   updateCmdSheet: () => void;
   clearEdgeSelection: () => void;
@@ -128,6 +152,14 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   } = deps;
   const view = () => getViewport();
   const mdoc = () => editMesh(store); // the edit target: the mountain net, or the model being edited
+  let guidePlacement: {
+    id: string;
+    axis: SurfaceAxis;
+    row: number;
+    mode: 'add' | 'move' | 'add-point' | 'move-point';
+    point?: number;
+    snappedPoints?: number;
+  } | null = null;
   const railEdges = (rail: readonly VertexName[]): NamedEdge[] =>
     Array.from({ length: Math.max(0, rail.length - 1) }, (_, i) => canonicalNamedEdge(rail[i], rail[i + 1]));
   const railKey = (rail: readonly VertexName[]) => [...rail].sort().join(',');
@@ -157,7 +189,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     const candidate = railFromEdges(edgeIndices(mdoc(), store.edgeSel));
     if (!candidate.ok) return candidate;
     const rails = store.bridgeRails ?? [];
-    if (rails.length && candidate.rail.length !== rails[0].length)
+    if (store.modelEditId && rails.length && candidate.rail.length !== rails[0].length)
       return {
         ok: false,
         error: `The next rail needs ${rails[0].length} vertices; this selection has ${candidate.rail.length}.`,
@@ -165,13 +197,13 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     const named = namedRail(candidate.rail);
     if (!named) return { ok: false, error: UNNAMEABLE_RAIL };
     if (rails.some(rail => railKey(rail) === railKey(named)))
-      return { ok: false, error: 'That rail is already in this bridge.' };
+      return { ok: false, error: 'That profile is already in this loft.' };
     return candidate;
   }
 
   function alignRail(rail: readonly VertexName[]): VertexName[] {
     const previous = store.bridgeRails?.[store.bridgeRails.length - 1];
-    if (!previous || previous.length !== rail.length) return [...rail];
+    if (!previous) return [...rail];
     const at = railIndices(previous),
       here = railIndices(rail);
     if (at.length !== previous.length || here.length !== rail.length) return [...rail];
@@ -200,7 +232,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     pushBridgeRails();
     rebuildTools();
     updateCmdSheet();
-    toast('Bridge Builder — select the next edge chain, then press A to add it', 'info');
+    toast('Surface from profiles — select the next profile curve, then press A to add it', 'info');
   }
 
   function addBridgeRail() {
@@ -264,26 +296,29 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   function completeBridge() {
     const rails = store.bridgeRails;
     if (!rails || rails.length < 2) {
-      toast('Add at least two rails before completing the bridge.', 'err');
+      toast('Add at least two profiles before creating the loft.', 'err');
       return;
     }
     const resolved = rails.map(railIndices);
     if (resolved.some((rail, at) => rail.length !== rails[at].length)) {
-      toast('This bridge names points the mountain no longer carries — rebuild its rails.', 'err');
+      toast('This loft names points the mountain no longer carries — select its profiles again.', 'err');
       return;
     }
     const before = mdoc().quads.length;
-    const result = applyLoft(mdoc(), resolved, {
-      preserveRailOrder: true,
-      targetPatchM: store.bridgePatchM,
-      connectionCurve: store.bridgeCurve,
-    });
+    const result = store.modelEditId
+      ? applyLoft(mdoc(), resolved, {
+          preserveRailOrder: true,
+          targetPatchM: store.bridgePatchM,
+          connectionCurve: store.bridgeCurve,
+        })
+      : createSurfaceFromProfiles(mdoc(), resolved, { patchSizeM: store.bridgePatchM, curvature: store.bridgeCurve });
     if (!result.ok) {
-      toast(result.error.replace(/\bLoft\b/g, 'Bridge').replace(/\bloft\b/g, 'bridge'), 'err');
+      toast(result.error, 'err');
       return;
     }
     commitEditMesh(store, result.doc);
-    const cells = Array.from({ length: result.doc.quads.length - before }, (_, i) => before + i);
+    const cells =
+      'surface' in result ? [] : Array.from({ length: result.doc.quads.length - before }, (_, i) => before + i);
     store.bridgeRails = null;
     view().setBridgeRails(null);
     view().setLoftPreview(null);
@@ -294,11 +329,259 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     store.anchorCell = store.cellSel[0] ?? null;
     resetGizmoMode();
     scheduleRebuild();
-    refreshCreatedCellSelection();
-    toast(
-      `bridge complete · ${rails.length} rails · ${cells.length} ${cells.length === 1 ? 'surface' : 'surfaces'}`,
-      'ok',
+    if ('surface' in result) selectSurfaceControls(result.surface.id);
+    else refreshCreatedCellSelection();
+    const patchCount = 'surface' in result ? result.surface.patches.length : cells.length;
+    toast(`surface created · ${rails.length} profiles · ${patchCount} patches`, 'ok');
+  }
+
+  function selectSurfaceControls(id: string, axis?: SurfaceAxis, row?: number, point?: number) {
+    if (guidePlacement) cancelSurfaceGuidePlacement(false);
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (!surface) return;
+    clearCellSelection();
+    dropCornerSelection();
+    clearEdgeSelection();
+    exitRegion();
+    store.controlSel = [];
+    view().setControlPointSelection([]);
+    let names =
+      axis && row !== undefined
+        ? surface.guides
+          ? (surface.controls[
+              guideRows(surface, axis)[Math.max(0, Math.min(row, guideRows(surface, axis).length - 1))]
+            ] ?? surface.controls.flat())
+          : axis === 'U'
+            ? surface.controls.map(line => line[Math.max(0, Math.min(row, line.length - 1))])
+            : surface.controls[Math.max(0, Math.min(row, surface.controls.length - 1))]
+        : surface.controls.flat();
+    if (point !== undefined) names = names[point] ? [names[point]] : [];
+    store.regionSel = [...new Set(names)];
+    store.anchorCorner = names[0] ?? null;
+    if (axis && row !== undefined)
+      Object.assign(surfaceEditState(store, id), { axis, row, ...(point === undefined ? {} : { point }) });
+    const refresh = () => {
+      const doc = mdoc(),
+        indices = vertexIndices(doc, store.regionSel);
+      view().setCornerGroup(
+        indices.map(i => getVertex(doc, i)),
+        indices,
+      );
+      seatMoveGizmo();
+      rebuildTools();
+      updateCmdSheet();
+    };
+    // Row edits can replace every source id. Seat the gizmo after the queued render installs that cage.
+    requestAnimationFrame(refresh);
+  }
+
+  function finishSurface(result: SurfaceResult, axis?: SurfaceAxis, row?: number, point?: number) {
+    if (!result.ok) {
+      toast(result.error, 'err');
+      rebuildTools();
+      return;
+    }
+    commitEditMesh(store, result.doc);
+    scheduleRebuild();
+    selectSurfaceControls(result.surface.id, axis, row, point);
+    if (result.deviationM !== undefined)
+      toast('Row removed · maximum deviation ' + result.deviationM.toFixed(3) + ' m', 'ok');
+  }
+
+  function updateSurface(id: string, values: { name?: string; patchSizeM?: number }) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (surface) {
+      const next = { ...surface, ...values };
+      finishSurface(
+        values.patchSizeM === undefined
+          ? {
+              ok: true,
+              doc: { ...mdoc(), surfaces: mdoc().surfaces!.map(s => (s.id === id ? next : s)) },
+              surface: next,
+            }
+          : rebuildSurface(mdoc(), next),
+      );
+    }
+  }
+  function selectSurfaceRow(id: string, axis: SurfaceAxis, row: number) {
+    selectSurfaceControls(id, axis, row);
+  }
+  function addSurfaceRow(id: string, axis: SurfaceAxis, row: number) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (surface) {
+      const result = insertSurfaceRow(mdoc(), surface, axis, row);
+      const selected =
+        result.ok && result.surface.guides
+          ? guideRows(result.surface, axis).indexOf(result.surface.guides.length - 1)
+          : row + 1;
+      finishSurface(result, axis, selected);
+    }
+  }
+  function cancelSurfaceGuidePlacement(restore = true) {
+    const current = guidePlacement;
+    if (!current) return;
+    guidePlacement = null;
+    view().setSurfaceGuidePlacement?.(null);
+    if (restore && current) selectSurfaceControls(current.id, current.axis, current.row, current.point);
+    rebuildTools();
+    updateCmdSheet();
+  }
+  function beginSurfaceGuidePlacement(
+    id: string,
+    axis: SurfaceAxis,
+    row: number,
+    mode: 'add' | 'move' | 'add-point' | 'move-point',
+    point?: number,
+  ) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (!surface?.guides || !view().setSurfaceGuidePlacement) return;
+    try {
+      const ordered = guideRows(surface, axis),
+        replace = mode === 'move' ? ordered[row] : undefined;
+      const isPoint = mode.endsWith('-point'),
+        curve = ordered[row],
+        moving = mode === 'move' || mode === 'move-point';
+      if (isPoint && curve === undefined) throw new Error('Select a curve for this point.');
+      if (mode === 'move' && replace === undefined) throw new Error('Select a curve to reposition.');
+      const stampOf = (surface: NonNullable<QuadMeshDoc['surfaces']>[number]) =>
+        JSON.stringify({ surface, curves: readGuideCurves(mdoc(), surface) }, (_key, value) =>
+          typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value,
+        );
+      const stamp = stampOf(surface);
+      const knots = isPoint ? surface.guides[curve].knots : ordered.map(i => surface.guides![i].at);
+      const index = isPoint ? (point ?? 0) : row;
+      const stations = knots.filter((_, i) => !moving || i !== index);
+      const start = knots[index];
+      const initial = moving
+        ? start!
+        : start === undefined
+          ? 0.5
+          : start < 1 - 1e-8
+            ? (start + (knots[index + 1] ?? 1)) / 2
+            : (start + (knots[index - 1] ?? 0)) / 2;
+      guidePlacement = { id, axis, row, mode, point };
+      view().setSurfaceGuidePlacement!({
+        charts: guideCharts(mdoc(), surface),
+        axis,
+        stations,
+        initial,
+        ...(!isPoint
+          ? {
+              snapTargets: surfaceGuideSnapTargets(mdoc(), surface, axis),
+              onSnap: (count: number) => {
+                if (guidePlacement) guidePlacement.snappedPoints = count;
+              },
+            }
+          : {}),
+        ...(isPoint ? { pointOn: { axis, at: surface.guides[curve].at } } : {}),
+        cancel: () => cancelSurfaceGuidePlacement(),
+        commit: at => {
+          guidePlacement = null;
+          try {
+            const latest = mdoc().surfaces?.find(s => s.id === id);
+            if (!latest || stamp !== stampOf(latest)) {
+              toast('The surface changed while placing the guide. Start placement again.', 'info');
+              selectSurfaceControls(id, axis, row);
+              rebuildTools();
+              updateCmdSheet();
+              return;
+            }
+            const result = isPoint
+              ? placeSurfacePoint(mdoc(), latest, curve, at, mode === 'move-point' ? point : undefined)
+              : placeSurfaceGuide(mdoc(), latest, axis, at, replace);
+            const selected =
+              result.ok && result.surface === latest
+                ? row
+                : result.ok
+                  ? guideRows(result.surface, axis).indexOf(result.surface.guides!.length - 1)
+                  : row;
+            const selectedPoint =
+              isPoint && result.ok
+                ? result.surface.guides![curve].knots.findIndex(t => Math.abs(t - at) < 1e-8)
+                : undefined;
+            finishSurface(result, axis, isPoint ? row : Math.max(0, selected), selectedPoint);
+          } catch (error) {
+            toast(error instanceof Error ? error.message : String(error), 'err');
+            rebuildTools();
+            updateCmdSheet();
+          }
+        },
+      });
+      rebuildTools();
+      updateCmdSheet();
+    } catch (error) {
+      guidePlacement = null;
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
+  function removeSurfaceRow(id: string, axis: SurfaceAxis, row: number) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (surface) finishSurface(deleteSurfaceRow(mdoc(), surface, axis, row), axis, Math.max(0, row - 1));
+  }
+  function removeSurfaceControlPoint(id: string, axis: SurfaceAxis, row: number, point: number) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (surface?.guides)
+      finishSurface(
+        removeSurfacePoint(mdoc(), surface, guideRows(surface, axis)[row], point),
+        axis,
+        row,
+        Math.max(0, point - 1),
+      );
+  }
+  function deleteSurfaceCurve(id: string, axis: SurfaceAxis, row: number) {
+    deps.commitHistory?.();
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (!surface?.guides) return;
+    finishSurface(
+      deleteSurfaceControls(mdoc(), surface, { curves: [guideRows(surface, axis)[row]] }),
+      axis,
+      Math.max(0, row - 1),
     );
+    deps.commitHistory?.();
+  }
+  function deleteSurfaceControlPoint(id: string, axis: SurfaceAxis, row: number, point: number) {
+    deps.commitHistory?.();
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (!surface?.guides) return;
+    finishSurface(
+      deleteSurfaceControls(mdoc(), surface, { points: [surface.controls[guideRows(surface, axis)[row]][point]] }),
+      axis,
+      row,
+      Math.max(0, point - 1),
+    );
+    deps.commitHistory?.();
+  }
+  function createBoundarySurface(corners?: number[]) {
+    finishSurface(createSurfaceFromBoundary(mdoc(), edgeIndices(mdoc(), store.edgeSel), corners, store.bridgePatchM));
+  }
+  function bakeSurface(id: string) {
+    deps.commitHistory?.();
+    commitEditMesh(store, bakeSurfaceObject(mdoc(), id));
+    clearCellSelection();
+    dropCornerSelection();
+    clearEdgeSelection();
+    exitRegion();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
+    deps.commitHistory?.();
+    toast('Surface baked — its terrain patches are now directly editable.', 'ok');
+  }
+  function deleteSurface(id: string) {
+    const result = deleteSurfaceObject(mdoc(), id);
+    if (!result.ok) {
+      toast(result.error, 'err');
+      return;
+    }
+    commitEditMesh(store, result.doc);
+    clearCellSelection();
+    dropCornerSelection();
+    clearEdgeSelection();
+    exitRegion();
+    scheduleRebuild();
+    rebuildTools();
+    updateCmdSheet();
+    toast('Surface deleted · original sketch curves retained.', 'ok');
   }
 
   function createPatchesFromEdges() {
@@ -499,6 +782,97 @@ export function createTopologyTools(deps: TopologyToolDeps) {
 
   /** Create Grid's latest plan, kept so the panel's read-outs follow the cursor without planning twice a move. */
   let gridPlan: GridPlanResult | null = null;
+  const surfaceSettings = { patchSizeM: 25 };
+  let surfaceDraftError: string | null = null;
+  let surfaceDraftArea: number | null = null,
+    surfaceDraftEdgeLength: number | null = null;
+
+  function armCreateSurface() {
+    if (store.modelEditId) return;
+    deps.commitHistory?.();
+    clearCreateEdge();
+    clearCellSelection();
+    clearEdgeSelection();
+    dropCornerSelection();
+    exitRegion();
+    store.controlSel = [];
+    view().setControlPointSelection([]);
+    store.selected = null;
+    store.surgeryTool = 'surface';
+    store.weldTool = null;
+    view().setWeldTool(false);
+    view().setEdgeWeldTool(null);
+    surfaceDraftError = null;
+    surfaceDraftArea = surfaceDraftEdgeLength = null;
+    view().setSurgeryTool('surface');
+    rebuildTools();
+    updateCmdSheet();
+    toast(
+      'click around the boundary · click the first point to edit it · Enter creates the surface · Esc cancels',
+      'info',
+    );
+  }
+  function previewCreateSurface() {
+    if (store.surgeryTool !== 'surface') return;
+    const points = view().createSurfacePoints ?? [],
+      hover = view().createSurfaceHover,
+      closed = view().createSurfaceClosed,
+      selected = view().createSurfaceSelectedPoint,
+      boundary = hover && !closed && !view().createSurfaceClosing ? [...points, hover] : points;
+    surfaceDraftError = null;
+    surfaceDraftArea = surfaceDraftEdgeLength = null;
+    const edge =
+      selected !== null && selected !== undefined && points.length > 1
+        ? [points[selected], points[(selected + 1) % points.length]]
+        : hover && points.length
+          ? [points.at(-1)!, hover]
+          : closed && points.length
+            ? [points.at(-1)!, points[0]]
+            : points.length > 1
+              ? points.slice(-2)
+              : null;
+    if (edge) surfaceDraftEdgeLength = surfaceBoundarySegmentLength(mdoc(), edge[0], edge[1]);
+    if (boundary.length < 4) {
+      view().setCreateSurfaceCharts?.(null);
+      return;
+    }
+    try {
+      const { charts } = surfaceBoundaryDraft(mdoc(), boundary);
+      surfaceDraftArea = charts.reduce((area, chart) => area + cellMetrics(chart.controls).area, 0);
+      view().setCreateSurfaceCharts?.(charts);
+    } catch (error) {
+      surfaceDraftError = error instanceof Error ? error.message : String(error);
+      view().setCreateSurfaceCharts?.(null);
+    }
+  }
+  function finishCreateSurface() {
+    if (store.surgeryTool !== 'surface') return;
+    deps.commitHistory?.();
+    const result = createSurfaceFromDrawnBoundary(mdoc(), view().createSurfacePoints ?? [], surfaceSettings.patchSizeM);
+    if (!result.ok) {
+      surfaceDraftError = result.error;
+      toast(result.error, 'err');
+      rebuildTools();
+      return;
+    }
+    store.surgeryTool = null;
+    view().setSurgeryTool(null);
+    surfaceDraftError = null;
+    finishSurface(result);
+    deps.commitHistory?.();
+    toast(`surface created · ${result.surface.patches.length} terrain patches`, 'ok');
+  }
+  function cancelCreateSurface() {
+    if (store.surgeryTool !== 'surface') return;
+    store.surgeryTool = null;
+    surfaceDraftError = null;
+    view().setSurgeryTool(null);
+    rebuildTools();
+    updateCmdSheet();
+  }
+  function undoCreateSurfacePoint() {
+    if (store.surgeryTool === 'surface') view().undoCreateSurfacePoint?.();
+  }
 
   function armCreateGrid() {
     if (!store.cageOn) {
@@ -869,6 +1243,34 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   }
 
   return {
+    armCreateSurface,
+    previewCreateSurface,
+    finishCreateSurface,
+    cancelCreateSurface,
+    undoCreateSurfacePoint,
+    createSurfaceSettings: () => surfaceSettings,
+    createSurfaceStatus: () => ({
+      points: view().createSurfacePoints?.length ?? 0,
+      closed: view().createSurfaceClosed ?? false,
+      selected: view().createSurfaceSelectedPoint ?? null,
+      error: surfaceDraftError,
+      area: surfaceDraftArea,
+      edgeLength: surfaceDraftEdgeLength,
+    }),
+    beginSurfaceGuidePlacement,
+    cancelSurfaceGuidePlacement,
+    surfaceGuidePlacement: () => guidePlacement,
+    updateSurface,
+    selectSurfaceControls,
+    selectSurfaceRow,
+    addSurfaceRow,
+    removeSurfaceRow,
+    removeSurfaceControlPoint,
+    deleteSurfaceCurve,
+    deleteSurfaceControlPoint,
+    createBoundarySurface,
+    bakeSurface,
+    deleteSurface,
     bridgeCandidate,
     startBridge,
     addBridgeRail,

@@ -3,6 +3,7 @@ import { splitCubic } from '../../math/bezier';
 import { add } from '../../math/vec';
 import type { EdgeCrossing } from '../edge-crossings';
 import { findEdgeCrossings } from '../edge-crossings';
+import { buildMeshEdgeCurves } from '../edge-curves';
 import { remapTJunctionsForEdgeSplits } from '../t-junctions';
 import { buildQuadMesh, meshAdjacency, meshEdgeHandles } from '../topology';
 import {
@@ -186,9 +187,16 @@ export function autoWeldCreatedEdgeCrossings(
   const connectionVertices = [...new Set(createdEdges.flatMap(edge => [...edge]))];
   const pos = (source: QuadMeshDoc, vertex: number): V3 => readVertex(source.vertices, vertex);
   for (let pass = 0; pass < 32; pass++) {
+    const curves = buildMeshEdgeCurves(doc, tolerance).curves;
     // A chain may deliberately finish on an existing red crossing. In that case the new endpoint supplies the
     // vertex that the two old edges were missing: split the crossing, then merge its temporary point into it.
-    const endpointConnection = findEdgeCrossings(doc, tolerance)
+    const endpointConnection = findEdgeCrossings(
+      doc,
+      tolerance,
+      undefined,
+      connectionVertices.map(v => pos(doc, v)),
+      curves,
+    )
       .flatMap(crossing =>
         crossing.kind === 'crossing' ? connectionVertices.map(vertex => ({ crossing, vertex })) : [],
       )
@@ -221,7 +229,7 @@ export function autoWeldCreatedEdgeCrossings(
       welded++;
       continue;
     }
-    const crossing = findEdgeCrossings(doc, tolerance, [...tracked.values()]).find(
+    const crossing = findEdgeCrossings(doc, tolerance, [...tracked.values()], undefined, curves).find(
       candidate =>
         candidate.kind === 'crossing' &&
         candidate.edges.some(edge => tracked.has(ekey(edge[0], edge[1]))) &&

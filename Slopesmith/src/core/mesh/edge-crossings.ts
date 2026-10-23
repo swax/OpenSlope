@@ -1,7 +1,9 @@
 import type { QuadMeshDoc, V3 } from '../doc/types';
 import { closestPointsBetweenSegments, type SegmentSegmentClosest } from '../math/segment';
 import { SpatialHash3D } from '../math/spatial-hash';
-import { buildMeshEdgeCurves, meshDiagnosticCellSize } from './edge-curves';
+import { buildMeshEdgeCurves, meshDiagnosticCellSize, type MeshEdgeCurve } from './edge-curves';
+import { loftControlContact } from './loft-controls';
+import { cubicPoint } from '../math/bezier';
 
 export const EDGE_CROSSING_TOLERANCE_M = 0.2;
 
@@ -20,11 +22,20 @@ export function findEdgeCrossings(
   doc: QuadMeshDoc,
   tolerance = EDGE_CROSSING_TOLERANCE_M,
   onlyEdges?: readonly (readonly [number, number])[],
+  nearPoints?: readonly V3[],
+  sourceCurves?: readonly MeshEdgeCurve[],
 ): EdgeCrossing[] {
   if (!(tolerance > 0) || !Number.isFinite(tolerance)) return [];
   const segments = 20;
   const only = onlyEdges ? new Set(onlyEdges.map(([a, b]) => (a < b ? `${a},${b}` : `${b},${a}`))) : null;
-  const { curves } = buildMeshEdgeCurves(doc, tolerance, segments);
+  if (only?.size === 0 || nearPoints?.length === 0) return [];
+  const all = sourceCurves ?? buildMeshEdgeCurves(doc, tolerance).curves;
+  const targets = only ? all.filter(c => only.has(c.edge.join(','))) : undefined;
+  const curves = all.filter(
+    c =>
+      (!nearPoints || nearPoints.some(p => p.every((n, d) => n >= c.min[d] && n <= c.max[d]))) &&
+      (!targets || targets.some(t => t.min.every((n, d) => n <= c.max[d] && t.max[d] >= c.min[d]))),
+  );
 
   const grid = new SpatialHash3D<number>(meshDiagnosticCellSize(doc)),
     pairs = new Set<string>();
@@ -40,12 +51,18 @@ export function findEdgeCrossings(
 
   const out: EdgeCrossing[] = [],
     tolerance2 = tolerance * tolerance;
+  const constructionContact = loftControlContact(doc);
   for (const pair of pairs) {
     const [ia, ib] = pair.split(',').map(Number),
       a = curves[ia],
       b = curves[ib];
     if (a.edge.some(vertex => b.edge.includes(vertex))) continue;
+    if (a.edge.every(vertex => b.edge.every(other => constructionContact(vertex, other)))) continue;
     if ([0, 1, 2].some(axis => a.max[axis] < b.min[axis] || b.max[axis] < a.min[axis])) continue;
+    // Most mountain edges are outside a new segment's hull, or share an endpoint. Sample only pairs
+    // that survive those cheap tests, including endpoint connections near the newly placed points.
+    for (const curve of [a, b])
+      curve.samples ??= Array.from({ length: segments + 1 }, (_, i) => cubicPoint(...curve.cp, i / segments));
     let best: SegmentSegmentClosest | null = null,
       ai = 0,
       bi = 0,

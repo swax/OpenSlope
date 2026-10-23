@@ -5,6 +5,7 @@ import { measureEdges } from '../../../core/mesh/measure';
 import {
   detail,
   errorBanner,
+  liveDetail,
   note,
   texturePreview,
   tileSetDropdown,
@@ -21,7 +22,7 @@ import { AUTHORED_MODEL_LEVEL } from '../../../core/doc/models';
 import { orientText, turnD4 } from '../../../core/paint/orientation';
 import { describeProp } from '../../../core/props/kind';
 import { textureRefUrl } from '../../net/asset-paths';
-import { fmtM, pathHandleActions, type ToolsContext } from './widgets';
+import { fmtM, fmtArea, pathHandleActions, type ToolsContext } from './widgets';
 import type { TrailKnotSettings, TrailSettings, TrailTileRow, TrailTileSet } from '../../../core/doc/types';
 import { TRAIL_SETTINGS_DEFAULTS } from '../../../core/mesh/trail-object';
 import { MAX_TRAIL_LANES } from '../../../core/mesh/trail';
@@ -372,10 +373,20 @@ export function createCreateTools(ctx: ToolsContext) {
       );
       if (!store.modelEditId)
         tip(
+          g.add({ surface: edit.armCreateSurface }, 'surface').name('▱ create surface'),
+          'Draw a boundary loop to create an editable surface. Click the first point again or press Enter to close it.',
+        );
+      if (!store.modelEditId)
+        tip(
           g.add({ trail: armCreateTrail }, 'trail').name('⌁ create trail'),
           'Draw a centre spline and generate a banked trail from rules measured off the reference maps.',
         );
       // Prop creation is its own panel: a prop is separate grouped geometry, never part of the mountain.
+      if (!store.modelEditId && store.mdoc.surfaces?.length) {
+        const lofts = editSection('surfaces', 'Surfaces');
+        for (const loft of store.mdoc.surfaces)
+          lofts.add({ select: () => edit.selectSurfaceControls(loft.id) }, 'select').name(loft.name);
+      }
       if (!store.modelEditId) {
         const propSection = editSection('create-prop', 'Create Prop');
         tip(
@@ -1505,7 +1516,47 @@ export function createCreateTools(ctx: ToolsContext) {
     createTrailNextRow.setValue(next === null ? '—' : fmtM(next));
   }
 
+  function buildCreateSurfaceTools() {
+    const group = editSection('create-surface', 'Create Surface');
+    note(
+      group,
+      'Place at least four points, then click the first to close the loop. Select a point and drag its move gizmo. Enter creates the surface.',
+    );
+    note(group, 'Points snap to existing vertices · Ctrl places on terrain · Shift locks an axis');
+    liveDetail(group, () => String(edit.createSurfaceStatus().points), 'boundary points');
+    liveDetail(
+      group,
+      () => {
+        const status = edit.createSurfaceStatus();
+        return status.error ?? (status.closed ? 'edit boundary points · Enter to create' : 'drawing boundary');
+      },
+      'preview',
+    );
+    liveDetail(
+      group,
+      () => {
+        const length = edit.createSurfaceStatus().edgeLength;
+        return length === null ? '—' : fmtM(length);
+      },
+      'current edge length',
+    );
+    liveDetail(
+      group,
+      () => {
+        const area = edit.createSurfaceStatus().area;
+        return area === null ? '—' : fmtArea(area);
+      },
+      'surface area',
+    );
+    note(group, 'When editing a point, current edge measures from that point to the next boundary point.');
+    group.add(edit.createSurfaceSettings(), 'patchSizeM', 1, 500, 1).name('patch size (m)');
+    group.add({ create: edit.finishCreateSurface }, 'create').name('create surface (Enter)');
+    group.add({ undo: edit.undoCreateSurfacePoint }, 'undo').name('undo boundary point (Backspace)');
+    group.add({ cancel: edit.cancelCreateSurface }, 'cancel').name('cancel surface (Esc)');
+  }
+
   return {
+    buildCreateSurfaceTools,
     reset,
     buildCreateEdgeTools,
     buildCreateTubeTools,

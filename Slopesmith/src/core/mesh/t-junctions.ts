@@ -1,4 +1,5 @@
 import type { EdgeEmbeddedTJunction, QuadMeshDoc, V3 } from '../doc/types';
+import { loftControlContact } from './loft-controls';
 import { cubicPoint, nearestCubicT } from '../math/bezier';
 import { closestPointOnSegment } from '../math/segment';
 import { SpatialHash3D } from '../math/spatial-hash';
@@ -49,6 +50,7 @@ export function inferGeometricTJunctions(
   const tolerance2 = tolerance * tolerance,
     segments = 48,
     out: TJunction[] = [];
+  const constructionContact = loftControlContact(doc);
   const vertices = onlyVertices
     ? [...new Set(onlyVertices)].filter(v => Number.isInteger(v) && v >= 0 && v < mesh.vertexCount)
     : Array.from({ length: mesh.vertexCount }, (_, vertex) => vertex);
@@ -60,6 +62,7 @@ export function inferGeometricTJunctions(
       const curve = curves[index],
         [a, b] = curve.edge;
       if (vertex === a || vertex === b) continue; // a real shared endpoint is conforming topology
+      if (constructionContact(vertex, a) && constructionContact(vertex, b)) continue;
       if (point.some((value, axis) => value < curve.min[axis] || value > curve.max[axis])) continue;
       let previous = curve.cp[0],
         bestDistance2 = Infinity,
@@ -87,6 +90,7 @@ export function normalizeTJunctions(
   doc: QuadMeshDoc,
   records: readonly EdgeEmbeddedTJunction[] = doc.tJunctions ?? [],
 ): EdgeEmbeddedTJunction[] {
+  if (!records.length) return [];
   const { mesh } = meshFromDoc(doc),
     adj = meshAdjacency(mesh),
     out: EdgeEmbeddedTJunction[] = [],
@@ -195,9 +199,10 @@ const sameTJunctionRecords = (
  * and a topology edit costs a whole-document round trip. */
 export function reconcileTJunctionGeometry(doc: QuadMeshDoc): number[] {
   const records = normalizeTJunctions(doc),
-    { edgeHandle } = meshFromDoc(doc),
     changed: number[] = [];
   if (!sameTJunctionRecords(doc.tJunctions, records)) doc.tJunctions = records;
+  if (!records.length) return changed;
+  const { edgeHandle } = meshFromDoc(doc);
   for (const record of doc.tJunctions ?? records) {
     const [a, b] = record.edge,
       p0 = readVertex(doc.vertices, a),

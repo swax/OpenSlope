@@ -44,6 +44,7 @@ import { createStore, hasSelectedSet, selectedSetLights, setSelectedSet } from '
 import { reconcileSyncContext } from './state/sync-context';
 import { quadIndex, quadIndices, quadName } from './state/mesh-names';
 import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
+import { refreshSurfaces } from '../core/mesh/surface-object';
 import { createNetWatcher, type NetChange } from '../core/mesh/incremental';
 import {
   AUTHORED_MODEL_LEVEL,
@@ -203,6 +204,10 @@ const edit = createEditSession({
   persistUi: () => persistUi(),
   scheduleRebuild: () => scheduleRebuild(),
   scheduleCommit: () => scheduleCommit(),
+  commitHistory: () => {
+    flushRebuild();
+    commit();
+  },
   rebuildTools: () => rebuildTools(),
   updateCmdSheet: () => updateCmdSheet(),
   refreshSelection: () => refreshSelection(),
@@ -961,7 +966,9 @@ function prepareRenderDoc(change: NetChange) {
  */
 function renderMountainTerrain(change: NetChange) {
   const mesh = activeEditMesh();
-  const incremental = change.kind === 'patches' && viewport.updateMountain(mesh, change);
+  const incremental =
+    (change.kind === 'patches' && viewport.updateMountain(mesh, change)) ||
+    (change.kind === 'whole' && change.renumbered && viewport.updateConstruction(mesh));
   // The overlays a full rebuild folds in already — the run, the awareness marks, the selection glyphs seated
   // on corners — are owed by the other two paths, because they move for reasons the quilt knows nothing about.
   if (!incremental && change.kind !== 'none') viewport.setMountain(mesh, store.selected, store.selectedKnots);
@@ -1065,6 +1072,7 @@ function seatPendingCourse() {
 }
 
 function renderDoc(edited = true) {
+  if (!store.modelEditId) store.mdoc = refreshSurfaces(store.mdoc);
   reconcileTJunctionGeometry(activeEditMesh());
   const change = netWatcher.note(activeEditMesh());
   prepareRenderDoc(change);
@@ -1094,6 +1102,7 @@ function settleDoc() {
 
 /** Document replacement uses the same render stages, with a patch-counting tessellator and paint breaks. */
 async function renderDocProgressively(token: number) {
+  if (!store.modelEditId) store.mdoc = refreshSurfaces(store.mdoc);
   const mesh = activeEditMesh();
   const vertices = (mesh.vertices.length / 3) | 0;
   reconcileTJunctionGeometry(mesh);
@@ -1139,6 +1148,7 @@ async function renderDocProgressively(token: number) {
     label: 'Finalizing editor state',
     detail: 'Preparing the restored session',
   });
+  if (viewport.mountainSettlePending) scheduleSettle();
   finishRenderDoc(false);
 }
 const {
@@ -1257,7 +1267,8 @@ const history = createHistory({
     if (store.selectedProp !== null && !store.mdoc.props?.[store.selectedProp]) store.selectedProp = null;
     if (store.selectedGem && !store.mdoc.gems?.some(gem => gem.id === store.selectedGem)) store.selectedGem = null;
     scheduleRebuild();
-    if (store.currentMode === 'props' || store.currentMode === 'effects') rebuildTools();
+    if (store.currentMode === 'edit' || store.currentMode === 'props' || store.currentMode === 'effects')
+      rebuildTools();
   },
   refreshButtons: refreshHistButtons,
   registers: () => registerSync,
@@ -4051,5 +4062,5 @@ holdUnsavedWork(() => propDeform.unsaved);
 holdUnsavedWork(() =>
   viewport.courseDrawing && viewport.courseDrawPoints.length > 1 ? 'a course being redrawn' : null,
 );
-holdUnsavedWork(() => ((store.bridgeRails?.length ?? 0) > 1 ? 'a bridge being built' : null));
+holdUnsavedWork(() => ((store.bridgeRails?.length ?? 0) > 1 ? 'a loft being built' : null));
 window.addEventListener('beforeunload', confirmUnloadWithUnsavedWork);

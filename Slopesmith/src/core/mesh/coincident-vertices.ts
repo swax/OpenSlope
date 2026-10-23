@@ -2,6 +2,7 @@ import type { QuadMeshDoc, V3 } from '../doc/types';
 import { SpatialHash3D } from '../math/spatial-hash';
 import { readVertex } from './primitives';
 import { meshAdjacency, meshFromDoc } from './topology';
+import { loftControlContact } from './loft-controls';
 
 export const COINCIDENT_VERTEX_TOLERANCE_M = 0.05;
 
@@ -23,10 +24,12 @@ export function findCoincidentVertices(
   const grid = new SpatialHash3D<number>(tolerance),
     out: CoincidentVertices[] = [];
   const tolerance2 = tolerance * tolerance;
+  const constructionContact = loftControlContact(doc);
   for (let vertex = 0; vertex < mesh.vertexCount; vertex++) {
     if (!adj.neighbors[vertex]?.length) continue;
     const p = readVertex(mesh.vertices, vertex);
     for (const other of grid.queryPointNeighborhood(p)) {
+      if (constructionContact(vertex, other)) continue;
       const q = readVertex(mesh.vertices, other);
       const distance2 = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
       if (distance2 > tolerance2) continue;

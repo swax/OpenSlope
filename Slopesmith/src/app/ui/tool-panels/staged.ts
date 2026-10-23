@@ -1,6 +1,7 @@
 import { editMesh } from '../../edit/mesh-target';
 import { edgeIndices, vertexIndices } from '../../state/mesh-names';
 import { applyLoft } from '../../../core/mesh/loft';
+import { createSurfaceFromProfiles } from '../../../core/mesh/surface-object';
 import { boundaryEdgeLoopVertices } from '../../../core/mesh/ops';
 import { detail, note, tip } from '../components/gui';
 import { segmented } from '../components/controls';
@@ -10,7 +11,7 @@ import type { ToolsContext } from './widgets';
 /**
  * The Edit-mode panels for staged, in-flight operations — each owns the whole toolbox until it commits or
  * cancels: the staged extrusion's ghost-rim placement, the clipboard's paste placement, the point / edge weld
- * source-vs-target flows, and Bridge Builder's ordered rail list with its live loft dry-run.
+ * source-vs-target flows, and Surface from profiles's ordered profile list with its live dry-run.
  */
 
 /** The staged-extrusion placement panel: position the ghost geometry (Move / Rotate / Scale or its distance handle),
@@ -262,33 +263,33 @@ export function buildEdgeWeldTools(ctx: ToolsContext) {
   );
 }
 
-/** Explicit bridge-building mode. The colored list is authoritative; the ordinary yellow edge selection is
- * only a candidate until Add Rail is pressed. Preview and commit use the exact list order + directions. */
+/** The colored profile list is authoritative; the ordinary yellow edge selection is only a candidate until
+ * Add Profile is pressed. Preview and commit use the exact list order and directions. */
 export function buildBridgeTools(ctx: ToolsContext) {
   const { store, viewport, editSection, edit, bridgeList } = ctx;
   const doc = editMesh(store);
   const rails = (store.bridgeRails ?? []).map(rail => vertexIndices(doc, rail));
   bridgeList.show(rails);
   viewport.setBridgeRails(rails);
-  const selection = editSection('bridge-rails', 'Rails');
+  const selection = editSection('bridge-rails', store.modelEditId ? 'Rails' : 'Loft profiles');
   tip(
     selection
       .add(store, 'bridgePatchM', 5, 500, 5)
       .name('target patch size (m)')
       .onFinishChange(() => ctx.rebuildTools()),
-    'Maximum desired spacing between bridge rails. Longer spans receive evenly spaced intermediate loops.',
+    'Maximum desired spacing along the loft. Longer curves receive additional surface spans.',
   );
   tip(
     selection
       .add(store, 'bridgeCurve', 0, 2, 0.05)
-      .name('connection curve')
+      .name('profile interpolation')
       .onFinishChange(() => ctx.rebuildTools()),
-    '0 keeps connections straight, 1 makes them flow smoothly through the rail sequence, and 2 exaggerates the bend.',
+    '0 keeps connections straight, 1 makes them flow smoothly through the profile sequence, and 2 exaggerates the bend.',
   );
 
   const candidate = edit.bridgeCandidate();
   if (!store.edgeSel.length) {
-    detail(selection, 'select the next edge chain · double-click, or click its first and Shift-click its last edge');
+    detail(selection, 'select the next profile curve · double-click, or click its first and Shift-click its last edge');
   } else if (candidate.ok) {
     detail(selection, `candidate · ${candidate.rail.length} vertices · press A to add`);
   } else {
@@ -297,14 +298,14 @@ export function buildBridgeTools(ctx: ToolsContext) {
 
   if (candidate.ok) {
     tip(
-      selection.add({ add: edit.addBridgeRail }, 'add').name('add rail (A)'),
-      'Add the yellow candidate to the ordered rail list. It is initially oriented to the preceding rail; Reverse provides the manual override.',
+      selection.add({ add: edit.addBridgeRail }, 'add').name('add profile (A)'),
+      'Add the yellow candidate to the ordered profile list. It is initially oriented to the preceding rail; Reverse provides the manual override.',
     );
   } else {
     tip(
       selection
         .add({ add: () => {} }, 'add')
-        .name('add rail (A)')
+        .name('add profile (A)')
         .disable(),
       candidate.error,
     );
@@ -312,44 +313,45 @@ export function buildBridgeTools(ctx: ToolsContext) {
 
   const actions = editSection('tool-actions', 'Actions');
   if (rails.length >= 2) {
-    const dry = applyLoft(doc, rails, {
-      preserveRailOrder: true,
-      targetPatchM: store.bridgePatchM,
-      connectionCurve: store.bridgeCurve,
-    });
+    const dry = store.modelEditId
+      ? applyLoft(doc, rails, {
+          preserveRailOrder: true,
+          targetPatchM: store.bridgePatchM,
+          connectionCurve: store.bridgeCurve,
+        })
+      : createSurfaceFromProfiles(doc, rails, { patchSizeM: store.bridgePatchM, curvature: store.bridgeCurve });
     if (dry.ok) {
-      const inserted = Math.round((dry.doc.vertices.length - editMesh(store).vertices.length) / 3 / rails[0].length);
       detail(
         actions,
-        inserted
-          ? `${inserted} intermediate ${inserted === 1 ? 'loop' : 'loops'} · automatic`
-          : 'no intermediate loops needed',
+        `${dry.doc.quads.length - doc.quads.length} patches · ${store.modelEditId ? 'mesh bridge' : 'editable control curves'}`,
       );
       viewport.setLoftPreview(dry.doc.quads.slice(editMesh(store).quads.length), dry.doc);
       tip(
-        actions.add({ complete: edit.completeBridge }, 'complete').name('complete bridge (Enter)'),
-        'Create the teal preview as real surfaces in one undo step, consume any free edges that became surface edges, and select the new surfaces.',
+        actions.add({ complete: edit.completeBridge }, 'complete').name('create surface (Enter)'),
+        store.modelEditId
+          ? 'Create a baked loft in the model mesh in one undo step.'
+          : 'Keep these profiles as editable control curves. Crossing arches form a hill. Add curves in either direction to refine the surface.',
       );
     } else {
       tip(
         actions
           .add({ complete: () => {} }, 'complete')
-          .name('complete bridge (Enter)')
+          .name('create surface (Enter)')
           .disable(),
-        dry.error.replace(/\bLoft\b/g, 'Bridge').replace(/\bloft\b/g, 'bridge'),
+        dry.error,
       );
     }
   } else {
     tip(
       actions
         .add({ complete: () => {} }, 'complete')
-        .name('complete bridge (Enter)')
+        .name('create surface (Enter)')
         .disable(),
-      'Add at least two rails to create a bridge.',
+      'Add at least two profiles to create a loft.',
     );
   }
   tip(
-    actions.add({ cancel: edit.cancelBridge }, 'cancel').name('cancel bridge (Esc)'),
-    'Leave Bridge Builder without changing the mesh and restore Rail 1 as the ordinary edge selection.',
+    actions.add({ cancel: edit.cancelBridge }, 'cancel').name('cancel surface (Esc)'),
+    'Leave Surface from profiles without changing the mesh and restore the first profile selection.',
   );
 }

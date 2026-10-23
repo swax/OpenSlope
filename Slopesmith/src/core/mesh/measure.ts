@@ -1,6 +1,6 @@
 import type { V3 } from '../doc/types';
 import { add, cross, len, sub } from '../math/vec';
-import { cubicPolyline, patchPoint } from '../math/bezier';
+import { cubicPoint, cubicPolyline, patchPoint } from '../math/bezier';
 import type { EdgeHandle, MeshAdjacency, QuadMesh } from './topology';
 import { readVertex, undirectedEdgeKey } from './primitives';
 import { seamCreaseDegrees, type PatchControls } from './creases';
@@ -32,6 +32,16 @@ function polylineLength(pts: V3[]): number {
 
 /** Area of the triangle (a, b, c). */
 const triArea = (a: V3, b: V3, c: V3): number => 0.5 * len(cross(sub(b, a), sub(c, a)));
+
+/** Curved centre-line dimensions without integrating patch area, for fitting and average-size readouts. */
+export function cellDimensions(cp: V3[]): { length: number; width: number } {
+  const u = Array.from({ length: 4 }, (_, i) =>
+    cubicPoint(cp[i * 4], cp[i * 4 + 1], cp[i * 4 + 2], cp[i * 4 + 3], 0.5),
+  );
+  const v = Array.from({ length: 4 }, (_, i) => cubicPoint(cp[i], cp[4 + i], cp[8 + i], cp[12 + i], 0.5));
+  const length = (curve: V3[]) => polylineLength(cubicPolyline(curve[0], curve[1], curve[2], curve[3], RES));
+  return { length: length(u), width: length(v) };
+}
 
 /**
  * The true (curved) length of one control-net EDGE — the arc length of its shared cubic-Bezier boundary

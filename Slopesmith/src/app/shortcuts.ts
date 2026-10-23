@@ -456,6 +456,16 @@ export function installShortcuts(deps: ShortcutDeps) {
       finishCreateGrid();
       return;
     }
+    if (e.key === 'Enter' && store.surgeryTool === 'surface') {
+      e.preventDefault();
+      edit.finishCreateSurface();
+      return;
+    }
+    if ((e.key === 'Backspace' || e.key === 'Delete') && store.surgeryTool === 'surface') {
+      e.preventDefault();
+      edit.undoCreateSurfacePoint();
+      return;
+    }
     if (e.key === 'Enter' && store.surgeryTool === 'trail') {
       e.preventDefault();
       finishCreateTrail();
@@ -754,6 +764,10 @@ export function installShortcuts(deps: ShortcutDeps) {
       }
       if (store.currentMode === 'edit' && store.surgeryTool === 'grid') {
         cancelCreateGrid();
+        return;
+      }
+      if (store.currentMode === 'edit' && store.surgeryTool === 'surface') {
+        edit.cancelCreateSurface();
         return;
       }
       if (store.currentMode === 'edit' && store.surgeryTool === 'trail') {

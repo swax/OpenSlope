@@ -18,6 +18,7 @@ import { buildTrickTools } from '../tool-panels/tricks';
 import { buildSpecialPropTools } from '../tool-panels/special';
 import { createCreateTools } from '../tool-panels/create';
 import { createMeshSelectTools } from '../tool-panels/mesh-selection';
+import { buildSurfaceTools } from '../tool-panels/surface';
 import { createRetopologyTools } from '../tool-panels/retopology';
 import { createLabelTools } from '../tool-panels/labels';
 import { MODE_ICON } from '../components/icons';
@@ -330,6 +331,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     return reference ? { kind: reference.kind === 'edge' ? 'edges' : 'patches', readOnly: true } : null;
   };
   const updateCmdSheet = createCommandSheet({
+    surfaceGuidePlacing: () => edit.surfaceGuidePlacement() !== null,
     store,
     cageActive,
     pastePlacing,
@@ -682,6 +684,10 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       createTools.buildCreateGridTools();
       return;
     }
+    if (store.surgeryTool === 'surface') {
+      createTools.buildCreateSurfaceTools();
+      return;
+    }
     if (store.surgeryTool === 'trail') {
       createTools.buildTrailTools();
       return;
@@ -709,6 +715,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       createTools.buildTrailTools();
       return;
     }
+    if (store.currentMode === 'edit' && buildSurfaceTools(ctx)) return;
     if (store.currentMode === 'edit' && mixedEditSelection()) {
       buildMixedEditSelectionTools();
       return;

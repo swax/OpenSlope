@@ -6,6 +6,8 @@ import type { TrailShape, TrailTransform } from '../viewport/tools/create-trail'
 import type { CellSpeedTint } from '../viewport/types';
 import type { PlacementEndpoint } from '../viewport/input/placement-constraint';
 import type { GridCorners } from '../../core/mesh/ops/grid';
+import type { SurfaceGuidePlacement } from '../viewport/tools/surface-guide';
+import type { Patch } from '../../core/mesh/loft-surface';
 
 export type { CellSpeedTint, TrailShape, TrailTransform };
 
@@ -41,7 +43,15 @@ export interface EditViewportPort {
   refreshControlCages(): void;
   setBridgeRails(rails: readonly (readonly number[])[] | null): void;
   setLoftPreview(quads: readonly (readonly number[])[] | null, source?: readonly number[] | QuadMeshDoc | null): void;
-  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | null): void;
+  setSurfaceGuidePlacement?(placement: SurfaceGuidePlacement | null): void;
+  setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null): void;
+  readonly createSurfacePoints?: readonly PlacementEndpoint[];
+  readonly createSurfaceHover?: PlacementEndpoint | null;
+  readonly createSurfaceClosing?: boolean;
+  readonly createSurfaceClosed?: boolean;
+  readonly createSurfaceSelectedPoint?: number | null;
+  undoCreateSurfacePoint?(): void;
+  setCreateSurfaceCharts?(charts: readonly Patch[] | null): void;
   setCreatePatchSides(sides: 3 | 4): void;
   setWeldTool(source: readonly number[] | false): void;
   setEdgeWeldTool(edges: readonly [number, number][] | null): void;

@@ -1,6 +1,7 @@
 import type { EditDoc } from '../../core/doc/doc-edit';
 import type { Store } from '../state/store';
 import { commitModelEditDoc, findModel, modelEditDocFor } from '../../core/doc/models';
+import { refreshSurfaces } from '../../core/mesh/surface-object';
 
 /**
  * The edit stack's mesh TARGET: the mountain net, or — while a model is being edited — that model's
@@ -20,7 +21,7 @@ export function commitEditMesh(store: Store, doc: EditDoc): void {
     commitModelEditDoc(model, doc);
     store.modelEditDoc = modelEditDocFor(store.mdoc, model);
   } else {
-    store.mdoc = doc;
+    store.mdoc = refreshSurfaces(doc);
   }
 }
 

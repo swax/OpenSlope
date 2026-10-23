@@ -108,7 +108,9 @@ function materializeHandles(doc: QuadMeshDoc, edges: Iterable<readonly [number, 
  * Locking first materializes every effective boundary handle used by the new protected patches
  * (`materializeHandles`). Unlocking retains the offsets: protection changes editability, never shape. */
 export function setQuadsLocked(doc: QuadMeshDoc, quads: readonly number[], locked: boolean): number {
+  const derived = new Set(doc.surfaces?.flatMap(s => s.patches.map(p => p.quad)));
   const valid = [...new Set(quads)]
+    .filter(quad => locked || !derived.has(doc.quadIds[quad]))
     .filter(quad => Number.isInteger(quad) && quad >= 0 && quad < doc.quads.length)
     .sort((a, b) => a - b);
   if (!valid.length) return 0;

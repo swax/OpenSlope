@@ -4,6 +4,7 @@ import { deriveQuadMesh, type DerivedQuadMesh } from '../doc/mountain';
 import { patchNormal, patchPoint } from '../math/bezier';
 import {
   bilinearTwist,
+  buildQuadMesh,
   docEdgeHandles,
   meshAdjacency,
   quadControlPoints,
@@ -74,6 +75,26 @@ type PatchSource = Pick<
   DerivedQuadMesh,
   'mesh' | 'edgeHandle' | 'surfOf' | 'texOf' | 'orientOf' | 'twistOf' | 'parity'
 >;
+const emittedControls = new WeakMap<PreviewData, V3[][]>();
+const terrainStamps = new WeakMap<PreviewData, string>();
+/** Loose construction points do not feed the quilt. Include the free neighbours of terrain vertices,
+ * whose positions can feed automatic tangents, and every terrain override even when edited in place. */
+function terrainInputStamp(doc: QuadMeshDoc): string {
+  const used = new Set(doc.quads.flat()),
+    dependencies = new Set(used);
+  const connected = (doc.freeEdges ?? []).filter(([a, b]) => used.has(a) || used.has(b));
+  connected.forEach(([a, b]) => {
+    dependencies.add(a);
+    dependencies.add(b);
+  });
+  return JSON.stringify([
+    !!doc.linearCage,
+    doc.quadTwist,
+    [...dependencies].map(v => doc.vertices.slice(v * 3, v * 3 + 3)),
+    connected,
+    Object.entries(doc.edgeHandles ?? {}).filter(([key]) => used.has(Number(key.slice(0, key.indexOf('>'))))),
+  ]);
+}
 
 /**
  * Write ONE patch into the quilt at the slot its quad index owns.
@@ -82,11 +103,12 @@ type PatchSource = Pick<
  * byte-for-byte where emitting patches 0…7 in order would have put it. That is what lets the full build and
  * the incremental refresh share this function instead of agreeing to match: they ARE the same write.
  */
-function patchWriter(out: QuiltBuffers, d: PatchSource) {
+function patchWriter(out: QuiltBuffers, d: PatchSource, controls?: V3[][]) {
   const res = PREVIEW_RES,
     side = res + 1;
   return (q: number): void => {
     const cp = quadControlPoints(d.mesh, d.edgeHandle, q, d.twistOf(q));
+    if (controls) controls[q] = cp;
     const surf = d.surfOf(q);
     const o = d.orientOf(q); // per-cell tile orientation (D4), applied to the UVs
     const shade = d.parity(q) === 0 ? 1 : 0.93; // checkerboard shade (cosmetic parity)
@@ -160,18 +182,23 @@ function createQuiltBuilder(d: DerivedQuadMesh) {
     cellSurf: new Array(cells),
     cellOrient: new Array(cells),
   };
-  const emit = patchWriter(buffers, d);
+  const controls: V3[][] = [];
+  const emit = patchWriter(buffers, d, controls);
 
-  const finish = (): PreviewData => ({
-    ...buffers,
-    facesPerCell: res * res * 2,
-    topology: mesh.topology,
-    mesh,
-    adjacency: meshAdjacency(mesh),
-    edgeHandle,
-    twistOf: d.twistOf,
-    parity: Array.from({ length: cells }, (_, q) => d.parity(q)),
-  });
+  const finish = (): PreviewData => {
+    const preview: PreviewData = {
+      ...buffers,
+      facesPerCell: res * res * 2,
+      topology: mesh.topology,
+      mesh,
+      adjacency: meshAdjacency(mesh),
+      edgeHandle,
+      twistOf: d.twistOf,
+      parity: Array.from({ length: cells }, (_, q) => d.parity(q)),
+    };
+    emittedControls.set(preview, controls);
+    return preview;
+  };
   return { cells, emit, finish };
 }
 
@@ -185,7 +212,9 @@ export function tessellateQuilt(d: DerivedQuadMesh): PreviewData {
 }
 
 export function buildMountainPreview(doc: QuadMeshDoc): PreviewData {
-  return tessellateQuilt(deriveQuadMesh(doc));
+  const preview = tessellateQuilt(deriveQuadMesh(doc));
+  terrainStamps.set(preview, terrainInputStamp(doc));
+  return preview;
 }
 
 export type ProgressivePreviewOptions = {
@@ -220,7 +249,9 @@ export async function buildMountainPreviewProgressive(
     }
   }
   options.onProgress(builder.cells, builder.cells);
-  return builder.finish();
+  const preview = builder.finish();
+  terrainStamps.set(preview, terrainInputStamp(doc));
+  return preview;
 }
 
 /** Whether a document still describes the mesh a preview was tessellated from — the precondition every
@@ -241,18 +272,23 @@ export function previewMatchesTopology(doc: QuadMeshDoc, preview: PreviewData): 
  */
 export function refreshPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, quads: Iterable<number>): number {
   if (!previewMatchesTopology(doc, preview)) return 0;
+  terrainStamps.delete(preview);
   preview.mesh.vertices = doc.vertices;
   preview.edgeHandle = docEdgeHandles(preview.mesh, doc, preview.adjacency);
   preview.twistOf = q => (doc.linearCage ? bilinearTwist(preview.mesh, q) : (doc.quadTwist?.[q] ?? null));
-  const write = patchWriter(preview, {
-    mesh: preview.mesh,
-    edgeHandle: preview.edgeHandle,
-    surfOf: q => doc.quadPaint?.[q] ?? doc.baseSurface,
-    texOf: q => doc.quadTex?.[q] ?? null,
-    orientOf: q => doc.quadOrient?.[q] ?? null,
-    twistOf: preview.twistOf,
-    parity: q => preview.parity[q],
-  });
+  const write = patchWriter(
+    preview,
+    {
+      mesh: preview.mesh,
+      edgeHandle: preview.edgeHandle,
+      surfOf: q => doc.quadPaint?.[q] ?? doc.baseSurface,
+      texOf: q => doc.quadTex?.[q] ?? null,
+      orientOf: q => doc.quadOrient?.[q] ?? null,
+      twistOf: preview.twistOf,
+      parity: q => preview.parity[q],
+    },
+    emittedControls.get(preview),
+  );
   let changed = 0;
   for (const q of new Set(quads)) {
     if (q < 0 || q >= preview.mesh.quadCount) continue;
@@ -260,6 +296,43 @@ export function refreshPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, qu
     changed++;
   }
   return changed;
+}
+
+/** Construction edges can change topology without changing a single terrain patch. Rebind their graph,
+ * compare the exact cages last emitted, and tessellate only genuinely changed terrain. */
+export function refreshPreviewConstruction(doc: QuadMeshDoc, preview: PreviewData): Set<number> | null {
+  const previous = emittedControls.get(preview);
+  if (
+    !previous ||
+    doc.quads.length !== preview.mesh.quadCount ||
+    doc.quads.some((q, i) => q.some((v, j) => v !== preview.mesh.quads[i][j]))
+  )
+    return null;
+  const stamp = terrainInputStamp(doc),
+    unchanged = stamp === terrainStamps.get(preview);
+  const mesh = buildQuadMesh(doc.vertices, doc.quads, doc.freeEdges),
+    adjacency = meshAdjacency(mesh);
+  const edgeHandle = docEdgeHandles(mesh, doc, adjacency);
+  const twistOf = (q: number) => (doc.linearCage ? bilinearTwist(mesh, q) : (doc.quadTwist?.[q] ?? null));
+  const dirty = new Set<number>();
+  for (let q = 0; q < mesh.quadCount; q++) {
+    const cp = unchanged ? previous[q] : quadControlPoints(mesh, edgeHandle, q, twistOf(q));
+    if (
+      cp.some((p, i) => p.some((n, d) => n !== previous[q][i][d])) ||
+      preview.cellSurf[q] !== (doc.quadPaint?.[q] ?? doc.baseSurface) ||
+      preview.cellTex[q] !== (doc.quadTex?.[q] ?? null) ||
+      JSON.stringify(preview.cellOrient[q]) !== JSON.stringify(doc.quadOrient?.[q] ?? null)
+    )
+      dirty.add(q);
+  }
+  preview.mesh = mesh;
+  preview.topology = mesh.topology;
+  preview.adjacency = adjacency;
+  preview.edgeHandle = edgeHandle;
+  preview.twistOf = twistOf;
+  if (dirty.size) refreshPreviewPatches(doc, preview, dirty);
+  terrainStamps.set(preview, stamp);
+  return dirty;
 }
 
 /**
