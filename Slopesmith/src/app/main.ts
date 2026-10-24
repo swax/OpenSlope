@@ -44,7 +44,8 @@ import { createStore, hasSelectedSet, selectedSetLights, setSelectedSet } from '
 import { reconcileSyncContext } from './state/sync-context';
 import { quadIndex, quadIndices, quadName } from './state/mesh-names';
 import { reconcileTJunctionGeometry } from '../core/mesh/t-junctions';
-import { refreshSurfaces } from '../core/mesh/surface-object';
+import { createSurfaceEditGuard } from './edit/surface-edit-guard';
+import { createSurfacePreviewClient } from './edit/surface-preview-client';
 import { createNetWatcher, type NetChange } from '../core/mesh/incremental';
 import {
   AUTHORED_MODEL_LEVEL,
@@ -168,6 +169,55 @@ const store = createStore({
   currentMode: bootMode,
   storedUi,
 });
+const surfaceEdits = createSurfaceEditGuard();
+
+function refreshSurfaceGeometry(interactive = false, authored = true): boolean {
+  const result = surfaceEdits.refresh(store.mdoc, { interactive, authored });
+  return acceptSurfaceGeometry(result);
+}
+function acceptSurfaceGeometry(result: { doc: typeof store.mdoc; rejected: string | null }): boolean {
+  store.mdoc = result.doc;
+  if (result.rejected) {
+    const message = `Surface edit cancelled — ${result.rejected}`;
+    log(message);
+    toast(message, 'err');
+    // Fast previews write retained buffers without advancing the render watcher's checkpoint. A rollback
+    // can equal that checkpoint while differing from the buffers, so redraw the restored terrain in full.
+    netWatcher.reset();
+    // Reseat selected controls after the restored mesh has reached the viewport.
+    requestAnimationFrame(() => edit.refreshAfterSync());
+  }
+  return !result.rejected;
+}
+const surfacePreview = createSurfacePreviewClient({
+  getDoc: () => store.mdoc,
+  enabled: () => !store.modelEditId && store.currentMode === 'edit',
+  beginPending: () => surfaceEdits.beginPreview(),
+  streamControls: (doc, change) =>
+    viewport.streamMeshControls(doc, {
+      vertices: [...(change.vertices ?? [])],
+      edges: [...(change.edges ?? [])],
+      quads: [...(change.quads ?? [])],
+    }),
+  accept: (doc, evaluated) => {
+    const result = surfaceEdits.accept(doc, evaluated, { interactive: true });
+    acceptSurfaceGeometry(result);
+    return result;
+  },
+  install: (doc, patches) => {
+    store.mdoc = doc;
+    if (!patches.quads.length) {
+      viewport.streamMeshControls(doc, { vertices: [], edges: [], quads: [] });
+      return true;
+    }
+    return viewport.previewMeshEdit(doc, { vertices: [0] }, patches);
+  },
+  // Compare the next final rebuild to the geometry actually displayed, including a drag back to its start.
+  drawn: doc => {
+    netWatcher.note(doc);
+  },
+  fallback: () => scheduleRebuild(),
+});
 const gemTool = { height: 2, spacing: 4, value: 2 }; // gem placement defaults (float height, drag-row gap, tier); the tier picker (GEM_TIERS) lives in ui/tool-panels/tricks
 // Free-light placement defaults, the same shape as gemTool: what the NEXT hand-placed light drops as, presettable
 // in the Add light panel before the click. A warm point light, bright enough to read, reaching ~30 m — the values
@@ -204,8 +254,17 @@ const edit = createEditSession({
   persistUi: () => persistUi(),
   scheduleRebuild: () => scheduleRebuild(),
   scheduleCommit: () => scheduleCommit(),
+  previewSurfaces: () => refreshSurfaceGeometry(true),
+  beginSurfaceDrag: () => {
+    if (store.modelEditId || !store.mdoc.surfaces?.length) return;
+    commit(); // seal preceding work before this gesture starts authoring provisional controls
+    surfacePreview.begin();
+  },
+  endSurfaceDrag: () => surfacePreview.cancel(),
+  previewSurfaceChange: change => surfacePreview.preview(change),
   commitHistory: () => {
     flushRebuild();
+    registerSync.flush();
     commit();
   },
   rebuildTools: () => rebuildTools(),
@@ -807,7 +866,7 @@ const coursePath = (): CoursePath => store.mdoc.course;
 // Session persistence (keys + writers) lives in state/storage.ts; the writers pull the live values through
 // these getters. Destructured to the same names the ~20 call sites already use.
 const persistence = createPersistence({
-  getDoc: () => store.mdoc,
+  getDoc: () => surfaceEdits.forPersistence(store.mdoc),
   getView: () => viewport.serializeView(),
   getUi: () => ({
     mode: store.currentMode,
@@ -893,7 +952,7 @@ onMountainFolderStatus(id => {
 });
 let lastProjectStateMessage = '';
 const projectSync = createProjectSync({
-  getDoc: () => store.mdoc,
+  getDoc: () => surfaceEdits.forPersistence(store.mdoc),
   onState: (state: ProjectSaveState, detail = '') => {
     saveProject = projectSync.current();
     syncChip.project(state, detail);
@@ -1072,7 +1131,8 @@ function seatPendingCourse() {
 }
 
 function renderDoc(edited = true) {
-  if (!store.modelEditId) store.mdoc = refreshSurfaces(store.mdoc);
+  surfacePreview.cancel();
+  if (!store.modelEditId) refreshSurfaceGeometry(false, edited);
   reconcileTJunctionGeometry(activeEditMesh());
   const change = netWatcher.note(activeEditMesh());
   prepareRenderDoc(change);
@@ -1102,7 +1162,8 @@ function settleDoc() {
 
 /** Document replacement uses the same render stages, with a patch-counting tessellator and paint breaks. */
 async function renderDocProgressively(token: number) {
-  if (!store.modelEditId) store.mdoc = refreshSurfaces(store.mdoc);
+  surfacePreview.cancel();
+  if (!store.modelEditId) refreshSurfaceGeometry(false, false);
   const mesh = activeEditMesh();
   const vertices = (mesh.vertices.length / 3) | 0;
   reconcileTJunctionGeometry(mesh);
@@ -1192,6 +1253,7 @@ function restoreDoc(json: string) {
   cancelPastePlacement(false);
   cancelBridge(false, false);
   store.mdoc = migrateMountain(JSON.parse(json)); // migrate guarantees a mesh doc back
+  surfaceEdits.reset();
   // re-seat (or exit) the model-edit substrate: its arrays belonged to the doc we just replaced
   refreshModelEditTarget(store);
   viewport.setModelEditContext(!!store.modelEditId, store.mdoc);
@@ -1257,7 +1319,14 @@ function refreshHistButtons() {
 }
 
 const history = createHistory({
-  getDocJson: () => JSON.stringify(store.mdoc),
+  getDocJson: () => {
+    // A quiet drag can commit before pointer-up. Validate its final adaptive fit before history/save/sync
+    // observe the edit, just as the release rebuild does.
+    flushRebuild();
+    if (!store.modelEditId && surfaceEdits.pending()) renderDoc();
+    registerSync.flush();
+    return JSON.stringify(store.mdoc);
+  },
   onRestore: restoreDoc,
   // Undo of an ordinary edit re-asserts register values onto the live document, so the host only has to
   // render what it already holds (docs/039).
@@ -3155,6 +3224,7 @@ let assetProjectId = '';
 /** Same-map snapshots keep the editor's view and tools. The frame renderer installs geometry and its pick
  *  trees together; the existing scene remains visible until then, without the opening-map overlay. */
 function setSyncedDocument(document: EditDoc) {
+  surfaceEdits.reset();
   const before = store.mdoc;
   syncUiBeforeDoc ??= before; // compare the final coalesced snapshot with the panels still on screen
   const modelId = store.modelEditId;
@@ -3231,6 +3301,7 @@ function refreshSyncedDocumentUi() {
 }
 
 async function loadMountain() {
+  surfaceEdits.reset();
   syncDocumentPending = false;
   syncUiBeforeDoc = null;
   syncSunPending = false;
@@ -3372,7 +3443,8 @@ const browserViews = createBrowserViews({
   getProject: () => projectSync.current(),
   getMode: () => store.currentMode,
   getOptions: currentSharedViewOptions,
-  building: () => isRebuildPending() || viewport.mountainSettlePending || loadStatus.isBusy(),
+  building: () =>
+    surfacePreview.pending() || isRebuildPending() || viewport.mountainSettlePending || loadStatus.isBusy(),
   buildError: () => captureBuildError,
   buildSequence: () => captureBuildSequence,
   showCamera: () => {
@@ -3551,6 +3623,7 @@ syncChatSpeakers();
  *  claims the ids a topology edit consumes, and holds this participant's undo as inverse assignments. */
 const registerSync = createRegisterSync({
   getDoc: () => store.mdoc,
+  canPublish: () => !surfaceEdits.pending(),
   setDoc: setSyncedDocument,
   channel: {
     assign: (changes, batch) => session.assign(changes, batch),

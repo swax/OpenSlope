@@ -1,7 +1,7 @@
 import type { QuadMeshDoc, V3 } from '../doc/types';
 import { surfaceStyle } from '../doc/types';
 import { deriveQuadMesh, type DerivedQuadMesh } from '../doc/mountain';
-import { patchNormal, patchPoint } from '../math/bezier';
+import { createPatchSampler } from './patch-sampler';
 import {
   bilinearTwist,
   buildQuadMesh,
@@ -15,6 +15,7 @@ import {
 import type { TexRef } from '../paint/textures';
 import { orientUV } from '../paint/orientation';
 import type { SurfaceTopology } from './surface';
+import { applySurfaceShading, surfaceRawNormals, adoptSurfaceRawNormals } from './surface-shading';
 
 /** Tessellation per patch cell - matches snowknife's HD render bake (TerrainResHd = 8) so preview == game.
  *  The ride shares this mesh but never rides the chords: contact Newton-refines onto the analytic patch, so
@@ -76,6 +77,62 @@ type PatchSource = Pick<
   'mesh' | 'edgeHandle' | 'surfOf' | 'texOf' | 'orientOf' | 'twistOf' | 'parity'
 >;
 const emittedControls = new WeakMap<PreviewData, V3[][]>();
+
+export type PreparedPatches = {
+  quads: number[];
+  positions: Float32Array;
+  normals: Float32Array;
+  rawNormals: Float32Array;
+  controls: Float64Array;
+};
+
+/** Transfer only changed patch slices; the main thread keeps its buffers, trees and shading caches. */
+export function preparePreviewPatches(preview: PreviewData, quads: Iterable<number>): PreparedPatches {
+  const indices = [...quads],
+    size = PATCH_VERTS * 3,
+    result: PreparedPatches = {
+      quads: indices,
+      positions: new Float32Array(indices.length * size),
+      normals: new Float32Array(indices.length * size),
+      rawNormals: new Float32Array(indices.length * size),
+      controls: new Float64Array(indices.length * 48),
+    };
+  const controls = emittedControls.get(preview)!;
+  indices.forEach((q, i) => {
+    result.positions.set(preview.positions.subarray(q * size, (q + 1) * size), i * size);
+    result.normals.set(preview.normals.subarray(q * size, (q + 1) * size), i * size);
+    result.rawNormals.set(surfaceRawNormals(preview, q, size), i * size);
+    result.controls.set(controls[q].flat(), i * 48);
+  });
+  return result;
+}
+
+export function adoptPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, result: PreparedPatches): boolean {
+  const size = PATCH_VERTS * 3;
+  if (
+    !previewMatchesTopology(doc, preview) ||
+    result.quads.some(q => q < 0 || q >= doc.quads.length) ||
+    [result.positions, result.normals, result.rawNormals].some(a => a.length !== result.quads.length * size) ||
+    result.controls.length !== result.quads.length * 48
+  )
+    return false;
+  preview.mesh.vertices = doc.vertices;
+  preview.edgeHandle = docEdgeHandles(preview.mesh, doc, preview.adjacency);
+  preview.twistOf = q => (doc.linearCage ? bilinearTwist(preview.mesh, q) : (doc.quadTwist?.[q] ?? null));
+  const controls = emittedControls.get(preview);
+  result.quads.forEach((q, i) => {
+    preview.positions.set(result.positions.subarray(i * size, (i + 1) * size), q * size);
+    preview.normals.set(result.normals.subarray(i * size, (i + 1) * size), q * size);
+    if (controls)
+      controls[q] = Array.from(
+        { length: 16 },
+        (_, k) => Array.from(result.controls.subarray(i * 48 + k * 3, i * 48 + k * 3 + 3)) as V3,
+      );
+  });
+  adoptSurfaceRawNormals(preview, result.quads, result.rawNormals, size);
+  terrainStamps.delete(preview);
+  return true;
+}
 const terrainStamps = new WeakMap<PreviewData, string>();
 /** Loose construction points do not feed the quilt. Include the free neighbours of terrain vertices,
  * whose positions can feed automatic tangents, and every terrain override even when edited in place. */
@@ -105,7 +162,8 @@ function terrainInputStamp(doc: QuadMeshDoc): string {
  */
 function patchWriter(out: QuiltBuffers, d: PatchSource, controls?: V3[][]) {
   const res = PREVIEW_RES,
-    side = res + 1;
+    side = res + 1,
+    sample = createPatchSampler(res);
   return (q: number): void => {
     const cp = quadControlPoints(d.mesh, d.edgeHandle, q, d.twistOf(q));
     if (controls) controls[q] = cp;
@@ -118,20 +176,13 @@ function patchWriter(out: QuiltBuffers, d: PatchSource, controls?: V3[][]) {
     out.cellOrient[q] = o;
 
     const vBase = q * PATCH_VERTS;
+    sample(cp, out.positions, out.normals, vBase * 3);
     let vp = vBase * 3,
       tp = vBase * 2;
     for (let iu = 0; iu < side; iu++) {
       for (let iv = 0; iv < side; iv++) {
         const u = iu / res,
           v = iv / res;
-        const p = patchPoint(cp, u, v);
-        const n = patchNormal(cp, u, v);
-        out.positions[vp] = p[0];
-        out.positions[vp + 1] = p[1];
-        out.positions[vp + 2] = p[2];
-        out.normals[vp] = n[0];
-        out.normals[vp + 1] = n[1];
-        out.normals[vp + 2] = n[2];
         out.colors[vp] = tint[0] * shade;
         out.colors[vp + 1] = tint[1] * shade;
         out.colors[vp + 2] = tint[2] * shade;
@@ -213,6 +264,7 @@ export function tessellateQuilt(d: DerivedQuadMesh): PreviewData {
 
 export function buildMountainPreview(doc: QuadMeshDoc): PreviewData {
   const preview = tessellateQuilt(deriveQuadMesh(doc));
+  applySurfaceShading(doc, preview);
   terrainStamps.set(preview, terrainInputStamp(doc));
   return preview;
 }
@@ -250,6 +302,7 @@ export async function buildMountainPreviewProgressive(
   }
   options.onProgress(builder.cells, builder.cells);
   const preview = builder.finish();
+  applySurfaceShading(doc, preview);
   terrainStamps.set(preview, terrainInputStamp(doc));
   return preview;
 }
@@ -270,7 +323,12 @@ export function previewMatchesTopology(doc: QuadMeshDoc, preview: PreviewData): 
  *
  * Answers how many patches it wrote, or 0 when the topology has moved and only a full rebuild is correct.
  */
-export function refreshPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, quads: Iterable<number>): number {
+export function refreshPreviewPatches(
+  doc: QuadMeshDoc,
+  preview: PreviewData,
+  quads: Iterable<number>,
+  affected?: Set<number>,
+): number {
   if (!previewMatchesTopology(doc, preview)) return 0;
   terrainStamps.delete(preview);
   preview.mesh.vertices = doc.vertices;
@@ -290,11 +348,14 @@ export function refreshPreviewPatches(doc: QuadMeshDoc, preview: PreviewData, qu
     emittedControls.get(preview),
   );
   let changed = 0;
-  for (const q of new Set(quads)) {
+  const written = new Set(quads);
+  for (const q of written) {
     if (q < 0 || q >= preview.mesh.quadCount) continue;
     write(q);
     changed++;
   }
+  const smoothed = applySurfaceShading(doc, preview, written);
+  if (affected) for (const q of smoothed) affected.add(q);
   return changed;
 }
 
@@ -330,7 +391,7 @@ export function refreshPreviewConstruction(doc: QuadMeshDoc, preview: PreviewDat
   preview.adjacency = adjacency;
   preview.edgeHandle = edgeHandle;
   preview.twistOf = twistOf;
-  if (dirty.size) refreshPreviewPatches(doc, preview, dirty);
+  refreshPreviewPatches(doc, preview, dirty, dirty);
   terrainStamps.set(preview, stamp);
   return dirty;
 }

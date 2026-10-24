@@ -4,6 +4,7 @@ import { CUSTOM_TEX_LEVEL, parseTexRef, type TexRef } from '../../../core/paint/
 import { textureRefUrl } from '../../net/asset-paths';
 import { SURFACE_POLY_OFFSET } from '../constants';
 import { tintBackfaces } from './backface-tint';
+import { terrainPixelLighting } from './terrain-lighting-material';
 import {
   asTextureArrayImage,
   buildTextureArrayBank,
@@ -116,18 +117,21 @@ export function createTileMaterials(onLoaded: () => void) {
     return m;
   }
 
-  /** Unlit tile material that multiplies the per-vertex colour (the baked lighting) into the texture -
-   *  texture x lightmap, the SSX terrain look - used while a lighting view is active. */
+  /** Texture × lighting: authored terrain supplies per-pixel light inputs; reference meshes supply their
+   *  existing baked vertex colors. Both share the SSX lighting view's tile material. */
   function materialLit(ref: TexRef, tex: THREE.Texture): THREE.MeshBasicMaterial {
     let m = texMatsLit.get(ref);
     if (!m) {
-      m = tintBackfaces(
-        new THREE.MeshBasicMaterial({
-          map: tex,
-          vertexColors: true,
-          side: THREE.DoubleSide,
-          ...SURFACE_POLY_OFFSET,
-        }),
+      m = terrainPixelLighting(
+        tintBackfaces(
+          new THREE.MeshBasicMaterial({
+            map: tex,
+            vertexColors: true,
+            side: THREE.DoubleSide,
+            ...SURFACE_POLY_OFFSET,
+          }),
+        ),
+        { surfaceTint: false },
       );
       applyTextureAlphaMode(m, terrainAlphaMode(alphaCache.get(ref)));
       texMatsLit.set(ref, m);
@@ -182,8 +186,11 @@ export function createTileMaterials(onLoaded: () => void) {
       ),
       materialsLit: built.textures.flatMap((texture, index) =>
         modes.map(mode => {
-          const material = tintBackfaces(
-            new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET }),
+          const material = terrainPixelLighting(
+            tintBackfaces(
+              new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, ...SURFACE_POLY_OFFSET }),
+            ),
+            { surfaceTint: false },
           );
           applyTextureAlphaMode(material, mode);
           return useTextureArray(material, texture, key3d(index, mode));

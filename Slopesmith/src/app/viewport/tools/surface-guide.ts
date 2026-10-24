@@ -6,6 +6,7 @@ import {
   sectionCurve,
   surfaceGuideSnapper,
   type SurfaceGuideSnapTarget,
+  type GuideCurve,
 } from '../../../core/mesh/surface-guides';
 import { patchPoint } from '../../../core/math/bezier';
 import type { V3 } from '../../../core/doc/types';
@@ -19,6 +20,7 @@ export type SurfaceGuidePlacement = {
   pointOn?: { axis: SurfaceAxis; at: number };
   snapTargets?: SurfaceGuideSnapTarget[];
   onSnap?: (points: number) => void;
+  curveAt?: (at: number) => GuideCurve;
   commit: (at: number) => void;
   cancel: () => void;
 };
@@ -93,7 +95,7 @@ export function createSurfaceGuideLayer(stage: Stage) {
       pointGhost.geometry.boundingSphere = null;
       return;
     }
-    const curve = sectionCurve(placement.charts, placement.axis, at);
+    const curve = placement.curveAt?.(at) ?? sectionCurve(placement.charts, placement.axis, at);
     const positions: number[] = [];
     for (let i = 0; i < curve.knots.length - 1; i++)
       for (let j = 0; j < 16; j++) {

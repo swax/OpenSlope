@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { V3, QuadMeshDoc } from '../../../core/doc/types';
-import { surfaceGuideEdgeEvaluator } from '../../../core/mesh/surface-guides';
 import type { EdgeHandle, MeshAdjacency } from '../../../core/mesh/topology';
 import { ekey, hoveredEdge } from '../../../core/mesh/ops';
 import { mul, sub } from '../../../core/math/vec';
@@ -358,8 +357,7 @@ export function createMeshPicking(stage: Stage, access: MeshPickingAccess) {
       hba = eh?.(b, a) ?? mul(sub(p0, p3), 1 / 3);
     const p1: V3 = [p0[0] + hab[0], p0[1] + hab[1], p0[2] + hab[2]];
     const p2: V3 = [p3[0] + hba[0], p3[1] + hba[1], p3[2] + hba[2]];
-    const doc = access.meshDoc?.();
-    const evaluate = (doc && surfaceGuideEdgeEvaluator(doc, a, b)) || (t => cubicPoint(p0, p1, p2, p3, t));
+    const evaluate = (t: number) => cubicPoint(p0, p1, p2, p3, t);
     let prev = p0,
       best = Infinity,
       bestT = 0;

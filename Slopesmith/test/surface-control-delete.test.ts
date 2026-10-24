@@ -45,19 +45,23 @@ const peak = (result: ReturnType<typeof fixture>) => chartPoint(guideCharts(resu
   assert.deepEqual(start.doc, before, 'shape deletion is pure');
   const preserved = deleteSurfaceRow(start.doc, start.surface, 'U', 1);
   assert(preserved.ok);
-  assert(Math.abs(peak(preserved) - peak(start)) < 1e-7, 'guide removal still preserves the hill');
+  assert(Math.abs(peak(preserved)) < 1e-7, 'all curve deletion paths remove the deleted influence');
+  assert(!preserved.surface.seed && !preserved.surface.guides!.some(g => g.reference));
   const loaded = migrateMountain(JSON.parse(JSON.stringify(serializeMountain(removed.doc))));
   assert.equal(canonicalJson(loaded), canonicalJson(removed.doc));
   const boundary = deleteSurfaceControls(start.doc, start.surface, { curves: [0] });
-  assert(boundary.ok, boundary.ok ? '' : boundary.error);
-  const oldShape = guideCharts(start.doc, start.surface),
-    newShape = guideCharts(boundary.doc, boundary.surface);
-  for (const v of [0.5, 1])
-    for (let i = 0; i <= 20; i++) {
-      const a = chartPoint(oldShape, i / 20, v),
-        b = chartPoint(newShape, i / 20, v);
-      assert(Math.hypot(...a.map((n, j) => n - b[j])) < 1e-6, 'remaining visible guide curves retain their shape');
-    }
+  assert(!boundary.ok && /boundary curves/.test(boundary.error), 'outer shape constraints cannot be deleted');
+  assert(!deleteSurfaceRow(start.doc, start.surface, 'U', 0).ok, 'guide-only removal protects the same boundary');
+  assert(
+    !placeSurfaceGuide(start.doc, start.surface, 'U', 0.2, 0).ok,
+    'a boundary guide cannot slide into the interior',
+  );
+  assert(!deleteSurfaceControls(start.doc, start.surface, { curves: [1, 0] }).ok, 'mixed deletes are atomic');
+  assert.deepEqual(start.doc, before, 'refusing a boundary edit keeps source and terrain intact');
+  const point = deleteSurfaceControls(start.doc, start.surface, { points: [start.surface.controls[0][1]] });
+  assert(point.ok, point.ok ? '' : point.error);
+  assert.equal(point.surface.guides![0].at, 0, 'intermediate boundary points remain editable');
+  assert.equal(point.surface.controls[0].length, 2);
 }
 {
   const start = fixture(),
@@ -92,12 +96,16 @@ const peak = (result: ReturnType<typeof fixture>) => chartPoint(guideCharts(resu
   );
   assert(!deleteSurfaceControls(added.doc, added.surface, { curves: curves.map((_, i) => i) }).ok);
   assert.deepEqual(added.doc, before, 'refused deletes cannot partially change source geometry');
-  // Keep one perpendicular curve and preserve its shape and the automatic footprint.
-  const onlyV = deleteSurfaceControls(added.doc, added.surface, { curves: guideRows(added.surface, 'U') });
-  assert(onlyV.ok, onlyV.ok ? '' : onlyV.error);
-  assert.equal(onlyV.surface.guides!.length, 1);
-  assert.equal(onlyV.surface.guides![0].axis, 'V');
-  assert(onlyV.surface.patches.length > 0);
+  const interior = guideRows(added.surface, 'U').filter(i => curves[i].at > 0 && curves[i].at < 1);
+  const remaining = deleteSurfaceControls(added.doc, added.surface, { curves: interior });
+  assert(remaining.ok, remaining.ok ? '' : remaining.error);
+  assert.equal(
+    remaining.surface.guides!.length,
+    3,
+    'interior curves can be deleted while both boundary profiles remain',
+  );
+  assert(remaining.surface.guides!.some(g => g.axis === 'V'));
+  assert(remaining.surface.patches.length > 0);
 }
 {
   const start = fixture(5),
@@ -124,5 +132,5 @@ const peak = (result: ReturnType<typeof fixture>) => chartPoint(guideCharts(resu
   );
 }
 console.log(
-  'SURFACE CONTROL DELETE: shape-changing point/curve deletion, preserved guide removal, batch edits, guarded crossings/endpoints, persistence, curve double-click and Shift ranges passed.',
+  'SURFACE CONTROL DELETE: shape-changing point/curve deletion, curve removal rebuilt from remaining controls, batch edits, guarded crossings/endpoints, persistence, curve double-click and Shift ranges passed.',
 );

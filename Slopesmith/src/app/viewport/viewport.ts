@@ -18,6 +18,7 @@ import {
   meshFromDoc,
   quadControlPoints,
   docEdgeHandles,
+  bilinearTwist,
   INTERIOR_CP,
   type MeshAdjacency,
   type EdgeHandle,
@@ -43,9 +44,11 @@ import {
   previewMismatch,
   refreshPreviewPatches,
   refreshPreviewConstruction,
+  adoptPreviewPatches,
   PATCH_VERTS,
   PREVIEW_RES,
   type PreviewData,
+  type PreparedPatches,
 } from '../../core/mesh/tessellation';
 import { patchDependency, patchVertexSpans, type NetChange } from '../../core/mesh/incremental';
 import { aiLineRatings, aiPathLines, courseCenters, DEFAULT_AI_SEED, finishFrame } from '../../core/doc/course';
@@ -2837,6 +2840,7 @@ export class Viewport {
 
   /** Rebuild all scene content from a mountain document; knot handles are its run. */
   setMountain(doc: EditDoc, selected: number | null, selectedKnots: readonly number[] = []) {
+    if (!this.drawingSurfaceCornerPreview) this.surfaceCornerPreviewBase = null;
     this.beginMountain(doc);
     this.installMountainPreview(doc, buildMountainPreview(doc), selected, selectedKnots);
   }
@@ -2999,10 +3003,11 @@ export class Viewport {
       edges?: readonly [number, number][];
       quads?: readonly number[];
     },
+    prepared?: PreparedPatches,
   ): boolean {
-    const dirty = this.dirtyPatches(doc, change);
+    const dirty = prepared ? new Set(prepared.quads) : this.dirtyPatches(doc, change);
     if (!dirty?.size) return false;
-    if (!this.writePatches(doc, dirty, change)) return false;
+    if (!this.writePatches(doc, dirty, change, prepared)) return false;
     this.rebuildLiveEditPreview(dirty);
     return true;
   }
@@ -3088,6 +3093,32 @@ export class Viewport {
     return patchDependency(pv.mesh, pv.adjacency).of(change);
   }
 
+  /** Source-point tangent handles use the same retained graph as the incremental terrain update. */
+  editMeshGraph(doc: EditDoc) {
+    const pv = this.preview;
+    return pv &&
+      previewMatchesTopology(doc, pv) &&
+      pv.mesh.vertices === doc.vertices &&
+      pv.mesh.quads === doc.quads &&
+      (pv.mesh.freeEdges === doc.freeEdges || (!doc.freeEdges && !pv.mesh.freeEdges.length))
+      ? { mesh: pv.mesh, adj: pv.adjacency }
+      : null;
+  }
+
+  /** Immediate authoring feedback, without fitting or tessellating the terrain behind the moving cage. */
+  streamMeshControls(doc: EditDoc, change: Pick<NetChange, 'vertices' | 'edges' | 'quads'>) {
+    const pv = this.preview;
+    if (!pv || !this.net || !previewMatchesTopology(doc, pv)) return;
+    this.meshDoc = doc;
+    this.net.positions = pv.mesh.vertices = doc.vertices;
+    this.meshEdgeHandle = pv.edgeHandle = docEdgeHandles(pv.mesh, doc, pv.adjacency);
+    pv.twistOf = q => (doc.linearCage ? bilinearTwist(pv.mesh, q) : (doc.quadTwist?.[q] ?? null));
+    this.cageLayer.streamCornerDots(doc.vertices);
+    if (this.cageLayer.subCage) this.cageLayer.updateAuthoredControlPointCache(this.dirtyPatches(doc, change) ?? []);
+    if (this.selection.controlPointSel.length) this.selection.refreshControlPointSelection();
+    this.selection.placeCornerMarker(this.selectedCornerIndex());
+  }
+
   /** Re-emit the named patches into the live quilt and tell every layer bound to it. */
   private writePatches(
     doc: EditDoc,
@@ -3097,25 +3128,28 @@ export class Viewport {
       edges?: readonly [number, number][];
       quads?: readonly number[];
     },
+    prepared?: PreparedPatches,
   ): boolean {
     const pv = this.preview;
     if (!pv) return false;
     const geometry = !!(change.vertices?.length || change.edges?.length);
     this.meshDoc = doc;
     this.net!.positions = doc.vertices;
-    if (!refreshPreviewPatches(doc, pv, dirty)) return false;
+    const affected = new Set(dirty);
+    if (prepared ? !adoptPreviewPatches(doc, pv, prepared) : !refreshPreviewPatches(doc, pv, dirty, affected))
+      return false;
     this.meshEdgeHandle = pv.edgeHandle;
-    if (this.verifyRebuilds) {
+    if (this.verifyRebuilds && !prepared) {
       const mismatch = previewMismatch(doc, pv);
       if (mismatch) throw new Error(`incremental rebuild disagrees with a full one — ${mismatch}`);
     }
+    this.cageLayer.streamCornerDots(doc.vertices);
     if (this.cageLayer.subCage) this.cageLayer.updateAuthoredControlPointCache(dirty);
-    this.terrainLayer.updatePatches(dirty, patchVertexSpans(dirty, PATCH_VERTS), {
+    this.terrainLayer.updatePatches(affected, patchVertexSpans(affected, PATCH_VERTS), {
       geometry,
       materials: !!change.quads?.length,
     });
     this.meshMoved ||= geometry;
-    this.cageLayer.streamCornerDots(doc.vertices);
     this.refreshCageEdges(dirty);
     // The F overlay and the paint ghost are drawn ON the quilt lattice, so they follow the patches that moved.
     // Both are no-ops unless their toggle is on, which is why they can be run unconditionally here.
@@ -3739,6 +3773,12 @@ export class Viewport {
 
   /** Arm/disarm the mutually-exclusive loop-cut, create-patch, create-tube, create-grid, or create-trail tool. */
   setSurgeryTool(tool: 'loopcut' | 'patch' | 'tube' | 'grid' | 'trail' | 'surface' | null) {
+    if (tool !== 'surface' && this.surfaceCornerPreviewBase) {
+      const base = this.surfaceCornerPreviewBase;
+      this.surfaceCornerPreviewBase = null;
+      this.setMountain(base, null);
+      this.settleMountain();
+    }
     const leavingGeneratedPreview =
       (this.tubeTool.active && tool !== 'tube') ||
       (this.gridTool.active && tool !== 'grid') ||
@@ -3776,11 +3816,51 @@ export class Viewport {
   get createSurfaceSelectedPoint() {
     return this.surfaceTool.selected;
   }
+  get createSurfaceCorners() {
+    return this.surfaceTool.corners;
+  }
+  get createSurfaceManualCorners() {
+    return this.surfaceTool.manualCorners;
+  }
+  get createSurfacePickingCorners() {
+    return this.surfaceTool.pickingCorners;
+  }
+  get createSurfaceCornerPicks() {
+    return this.surfaceTool.cornerPicks;
+  }
+  beginCreateSurfaceCornerPicking() {
+    this.surfaceTool.beginCornerPicking();
+  }
+  cancelCreateSurfaceCornerPicking() {
+    this.surfaceTool.cancelCornerPicking();
+  }
+  setCreateSurfaceCorners(corners: readonly number[] | null) {
+    this.surfaceTool.setCorners(corners);
+  }
+  setCreateSurfaceBoundary(points: readonly PlacementEndpoint[], corners: readonly number[]) {
+    this.surfaceTool.setBoundary(points, corners);
+  }
+  private surfaceCornerPreviewBase: EditDoc | null = null;
+  private drawingSurfaceCornerPreview = false;
+  showSurfaceCornerPreview(doc: EditDoc) {
+    this.surfaceCornerPreviewBase ??= this.meshDoc;
+    this.drawingSurfaceCornerPreview = true;
+    try {
+      this.setMountain(doc, null);
+      this.settleMountain();
+    } finally {
+      this.drawingSurfaceCornerPreview = false;
+    }
+  }
   undoCreateSurfacePoint() {
     this.surfaceTool.undo();
   }
-  setCreateSurfaceCharts(charts: readonly import('../../core/mesh/loft-surface').Patch[] | null) {
+  setCreateSurfaceCharts(
+    charts: readonly import('../../core/mesh/loft-surface').Patch[] | null,
+    outline?: readonly V3[],
+  ) {
     this.loftPreview.setCharts(charts);
+    this.surfaceTool.setOutline(outline ?? null);
   }
 
   get createTubePoints(): readonly V3[] {

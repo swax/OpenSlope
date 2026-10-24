@@ -114,6 +114,56 @@ for (const boundary of [
   assert(result.ok);
   assert(Math.abs(measureSurfaceObject(result.doc, result.surface).area - 2400) < 1e-6);
 }
+
+{
+  const doc = blankMountain('BOUNDARY_STYLES'),
+    boundary = points([
+      [0, 0, 0],
+      [20, 10, -8],
+      [60, 0, 0],
+      [60, 0, 40],
+      [0, 0, 40],
+    ]),
+    corners = [0, 2, 3, 4];
+  const smooth = surfaceBoundaryDraft(doc, boundary, corners, 'smooth'),
+    crease = surfaceBoundaryDraft(doc, boundary, corners, 'creased');
+  near(smooth.boundary.edgeHandles!['1>0'], smooth.boundary.edgeHandles!['1>2'].map(n => -n) as V3);
+  near(crease.boundary.edgeHandles!['1>0'], [-20 / 3, -10 / 3, 8 / 3]);
+  near(crease.boundary.edgeHandles!['1>2'], [40 / 3, -10 / 3, 8 / 3]);
+  assert.notDeepEqual(
+    smooth.boundary.edgeHandles,
+    crease.boundary.edgeHandles,
+    'the option changes actual source handles',
+  );
+  for (const key of ['2>3', '3>2', '3>4', '4>3', '4>0', '0>4'])
+    near(smooth.boundary.edgeHandles![key], crease.boundary.edgeHandles![key]);
+  assert.equal(smooth.outline.length, boundary.length * 12 + 1);
+  near(smooth.outline[0], smooth.outline.at(-1)!);
+  for (const style of ['smooth', 'creased'] as const) {
+    const draft = style === 'smooth' ? smooth : crease,
+      made = createSurfaceFromDrawnBoundary(doc, boundary, 15, corners, style);
+    assert(made.ok, made.ok ? '' : made.error);
+    const shape = guideCharts(made.doc, made.surface);
+    for (const u of [0, 0.2, 0.5, 0.8, 1])
+      for (const v of [0, 0.2, 0.5, 0.8, 1]) near(chartPoint(draft.charts, u, v), chartPoint(shape, u, v));
+  }
+  const host = blankMountain('COPIED_STYLE');
+  host.vertices = rectangle.flatMap(p => p.pos);
+  Object.assign(host, appendMeshIds(host, 4, 0));
+  host.freeEdges = [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+  ];
+  host.edgeHandles = { '0>1': [15, 8, 0], '1>0': [-15, 8, 0] };
+  const snapped = rectangle.map((p, vertex) => ({ ...p, vertex })),
+    before = structuredClone(host);
+  const copied = surfaceBoundaryDraft(host, snapped, undefined, 'smooth');
+  near(copied.boundary.edgeHandles!['0>1'], host.edgeHandles['0>1']);
+  near(copied.boundary.edgeHandles!['1>0'], host.edgeHandles['1>0']);
+  assert.deepEqual(host, before, 'smoothing a draft never edits its snapped host');
+}
 console.log(
   'DRAWN SURFACE: exact transient fill, perimeter controls, orientation, nonplanar/multi-edge loops, existing-edge preservation, invalid loops, persistence and bake passed.',
 );

@@ -295,16 +295,28 @@ export interface TrailKnotSettings {
 /** A source chart location: along the profile's edge intervals, then between ordered profiles. */
 export type LoftDomain = [number, number, number, number];
 
+export type SurfaceSide = 'u0' | 'u1' | 'v0' | 'v1';
+export type SurfaceBoundary = { surface: string; side: SurfaceSide; range: [number, number] };
+export type SurfaceStitch = {
+  id: string;
+  side: SurfaceSide;
+  range: [number, number];
+  target: SurfaceBoundary | { vertices: string[] };
+  continuity: 'smooth' | 'crease';
+};
+
 export interface SurfaceObject {
   id: string;
   name: string;
   origin: 'profiles' | 'boundary' | 'legacy';
   /** Guide paths when guides is present; otherwise a legacy B-spline control net [V][U]. */
   controls: string[][];
-  /** Each live curve runs along axis at the other axis's parameter. Knots locate its on-curve vertices. */
+  /** Complete shape source: explicit cubic curves along axis. Reference is retired file history only. */
   guides?: { axis: 'U' | 'V'; at: number; knots: number[]; reference?: V3[][] }[];
-  /** Exact rest surface. Curve edits are interpolated over this quilt; generated vertices are never inputs. */
+  /** Retired rest-surface history, accepted when reading old files. Never a shape input. */
   seed?: { domain: LoftDomain; controls: V3[] }[];
+  /** Curve-station interpolation; older files use cardinal Hermite interpolation. */
+  interpolation?: 'natural';
   curvature?: number;
   knotsU: number[];
   knotsV: number[];
@@ -312,7 +324,13 @@ export interface SurfaceObject {
   /** Original sketch curves are retained independently; the shared control net becomes authoritative. */
   inputs: string[];
   vertices: string[];
-  patches: { quad: string; corners: string[]; domain: LoftDomain; base: V3[] }[];
+  patches: { quad: string; corners: string[]; domain: LoftDomain; base: V3[]; key?: string; uv?: [number, number][] }[];
+  /** Live boundary constraints. Targets own the seam; source guides remain independent. */
+  stitches?: SurfaceStitch[];
+  /** Unconstrained fitted quilt, retained while the output has local stitch transitions. */
+  fitted?: { domain: LoftDomain; controls: V3[] }[];
+  /** Stable local identities for generated vertices, parallel with vertices. */
+  outputKeys?: string[];
   evaluated: { points: V3[][]; patchSizeM: number };
   error?: string;
 }

@@ -20,7 +20,6 @@ import {
 } from '../../../core/mesh/control-points';
 import { lockedEdgeSet } from '../../../core/mesh/locks';
 import { surfaceOwnership } from '../../../core/mesh/surface-ownership';
-import { surfaceGuideEdgeEvaluator } from '../../../core/mesh/surface-guides';
 import { creasedSeams } from '../../../core/mesh/creases';
 import { edgePathFrame, isFreePoint, vertexRollOf } from '../../../core/mesh/path-frame';
 import { controlPointIndex, edgeIndices, quadIndices, type NamedEdge, type QuadName } from '../../state/mesh-names';
@@ -384,7 +383,7 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         const A: V3 = [corners[a * 3], corners[a * 3 + 1], corners[a * 3 + 2]],
           B: V3 = [corners[b * 3], corners[b * 3 + 1], corners[b * 3 + 2]];
         const cp: [V3, V3, V3, V3] = [A, eh ? add(A, eh(a, b)) : A, eh ? add(B, eh(b, a)) : B, B];
-        const evaluate = surfaceGuideEdgeEvaluator(doc, a, b) ?? (t => cubicPoint(...cp, t));
+        const evaluate = (t: number) => cubicPoint(...cp, t);
         return Array.from({ length: CAGE_EDGE_SEG }, (_, i) => [
           ...evaluate(i / CAGE_EDGE_SEG),
           ...evaluate((i + 1) / CAGE_EDGE_SEG),
@@ -727,6 +726,12 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
     stream(authoredPole3Geometry, authoredPole3Vertices);
     stream(authoredPole5Geometry, authoredPole5Vertices);
     stream(sourcePointGeometry, sourcePointVertices);
+    const doc = mesh.meshDoc();
+    if (doc)
+      for (const vertex of sourcePointVertices) {
+        const cp = authoredControlPointByKey.get(controlPointKey({ kind: 'vertex', vertex: doc.vertexIds[vertex] }));
+        if (cp) cp.pos = [vertices[vertex * 3], vertices[vertex * 3 + 1], vertices[vertex * 3 + 2]];
+      }
     const eh = mesh.edgeHandle();
     if (eh && sourceEdges.length) {
       const segments: number[] = [];
@@ -734,8 +739,26 @@ export function createCageLayer(stage: Stage, mesh: CageMeshAccess, host: CageHo
         const A: V3 = [vertices[a * 3], vertices[a * 3 + 1], vertices[a * 3 + 2]],
           B: V3 = [vertices[b * 3], vertices[b * 3 + 1], vertices[b * 3 + 2]];
         const cp: [V3, V3, V3, V3] = [A, add(A, eh(a, b)), add(B, eh(b, a)), B];
-        const doc = mesh.meshDoc();
-        const evaluate = (doc && surfaceGuideEdgeEvaluator(doc, a, b)) || (t => cubicPoint(...cp, t));
+        if (doc)
+          for (const [from, to, pos] of [
+            [a, b, cp[1]],
+            [b, a, cp[2]],
+          ] as const) {
+            const item = authoredControlPointByKey.get(
+              controlPointKey({ kind: 'edge', from: doc.vertexIds[from], to: doc.vertexIds[to] }),
+            );
+            if (item) item.pos = pos;
+          }
+        const lineAttr = authoredSubCageLineGeometry?.getAttribute('position') as THREE.BufferAttribute | undefined,
+          edgeOffset = authoredSubCageEdgeRanges.get(ekey(a, b)),
+          pv = mesh.preview();
+        if (lineAttr && edgeOffset !== undefined && pv) {
+          const polygon: number[] = [];
+          appendEdgeControlPolygon(polygon, pv.mesh, eh, a, b);
+          (lineAttr.array as Float32Array).set(polygon, edgeOffset);
+          lineAttr.needsUpdate = true;
+        }
+        const evaluate = (t: number) => cubicPoint(...cp, t);
         for (let i = 0; i < CAGE_EDGE_SEG; i++)
           segments.push(...evaluate(i / CAGE_EDGE_SEG), ...evaluate((i + 1) / CAGE_EDGE_SEG));
       }

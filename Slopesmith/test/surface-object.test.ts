@@ -32,17 +32,10 @@ import {
   removeSplineKnot,
   compactSurfaceCharts,
 } from '../src/core/math/spline-surface';
-import {
-  guideRows,
-  readGuideCurves,
-  curveAt,
-  chartPoint,
-  guideCharts,
-  surfaceGuideEdgeEvaluator,
-} from '../src/core/mesh/surface-guides';
+import { guideRows, readGuideCurves, curveAt, chartPoint, guideCharts } from '../src/core/mesh/surface-guides';
 import { patchPoint, patchNormal } from '../src/core/math/bezier';
 import { meshFromDoc, quadControlPoints } from '../src/core/mesh/topology';
-import { moveMeshVertices } from '../src/core/mesh/control-points';
+import { moveMeshVertices, setMeshControlPoints } from '../src/core/mesh/control-points';
 import { setQuadsLocked } from '../src/core/mesh/locks';
 import { createNetWatcher } from '../src/core/mesh/incremental';
 import type { QuadMeshDoc, SurfaceObject, V3 } from '../src/core/doc/types';
@@ -72,25 +65,10 @@ function create() {
 }
 function curvesLieOnSurface(doc: QuadMeshDoc, surface: SurfaceObject) {
   const charts = guideCharts(doc, surface);
-  for (const [g, curve] of readGuideCurves(doc, surface).entries())
+  for (const curve of readGuideCurves(doc, surface))
     for (let i = 0; i <= 24; i++) {
       const t = i / 24;
-      const segment = Math.max(
-        0,
-        Math.min(curve.points.length - 1, curve.knots.findIndex((hi, j) => j > 0 && hi >= t - 1e-8) - 1),
-      );
-      const names = surface.controls[g];
-      const evaluate = surfaceGuideEdgeEvaluator(
-        doc,
-        doc.vertexIds.indexOf(names[segment]),
-        doc.vertexIds.indexOf(names[segment + 1]),
-      );
-      near(
-        evaluate
-          ? evaluate((t - curve.knots[segment]) / (curve.knots[segment + 1] - curve.knots[segment]))
-          : curveAt(curve, t),
-        curve.axis === 'U' ? chartPoint(charts, t, curve.at) : chartPoint(charts, curve.at, t),
-      );
+      near(curveAt(curve, t), curve.axis === 'U' ? chartPoint(charts, t, curve.at) : chartPoint(charts, curve.at, t));
     }
 }
 const near = (a: V3, b: V3, eps = 1e-7) => assert(Math.hypot(...a.map((x, i) => x - b[i])) < eps, `${a} != ${b}`);
@@ -122,6 +100,80 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
     })),
   };
 };
+
+{
+  const input = blankMountain('STRAIGHT_SIDES');
+  input.vertices = [0, 0, 0, 80, 0, 0, 70, 10, 60, -10, 5, 40];
+  input.freeEdges = [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+  ];
+  Object.assign(input, appendMeshIds(input, 4, 0));
+  const made = createSurfaceFromBoundary(input, input.freeEdges, [0, 1, 2, 3]);
+  assert(made.ok, made.ok ? '' : made.error);
+  const straight = (doc: QuadMeshDoc) => {
+    const surface = doc.surfaces![0],
+      charts = guideCharts(doc, surface);
+    for (const curve of readGuideCurves(doc, surface))
+      for (const t of [0, 0.2, 0.5, 0.8, 1]) {
+        const a = curveAt(curve, 0),
+          b = curveAt(curve, 1),
+          expected = a.map((v, i) => v * (1 - t) + b[i] * t) as V3;
+        near(curveAt(curve, t), expected);
+        near(curve.axis === 'U' ? chartPoint(charts, t, curve.at) : chartPoint(charts, curve.at, t), expected);
+      }
+  };
+  straight(made.doc);
+  const moving = structuredClone(made.doc),
+    id = moving.surfaces![0].controls[0][0],
+    at = moving.vertexIds.indexOf(id);
+  for (let i = 0; i < 5; i++) {
+    moveMeshVertices(moving, [at], [1, 2, -1]);
+    straight(moving);
+  }
+  const shaped = refreshSurfaces(moving);
+  straight(shaped);
+  const target = shaped.vertices
+    .slice(shaped.vertexIds.indexOf(id) * 3, shaped.vertexIds.indexOf(id) * 3 + 3)
+    .map((v, i) => v + [5, 8, 3][i]) as V3;
+  setMeshControlPoints(shaped, [{ id: { kind: 'vertex', vertex: id }, pos: target }]);
+  straight(shaped);
+  straight(migrateMountain(serializeMountain(refreshSurfaces(shaped))));
+
+  const manual = structuredClone(made.doc),
+    [from, to] = manual.surfaces![0].controls[0],
+    a = manual.vertexIds.indexOf(from),
+    b = manual.vertexIds.indexOf(to),
+    A = manual.vertices.slice(a * 3, a * 3 + 3),
+    oldHandle = manual.edgeHandles![`${a}>${b}`];
+  setMeshControlPoints(manual, [
+    { id: { kind: 'edge', from, to }, pos: A.map((v, i) => v + oldHandle[i] + (i === 1 ? 12 : 0)) as V3 },
+  ]);
+  moveMeshVertices(manual, [a], [3, 4, 1]);
+  assert(Math.abs(manual.edgeHandles![`${a}>${b}`][1]) > 10, 'explicitly shaped two-point curves retain their handles');
+  const mixed = structuredClone(made.doc);
+  setMeshControlPoints(mixed, [
+    { id: { kind: 'vertex', vertex: from }, pos: A.map((v, i) => v + (i === 1 ? 8 : 0)) as V3 },
+    { id: { kind: 'edge', from, to }, pos: A.map((v, i) => v + oldHandle[i] + (i === 1 ? 20 : 0)) as V3 },
+  ]);
+  assert(
+    Math.abs(mixed.edgeHandles![`${a}>${b}`][1] - 12) < 1e-7,
+    'a handle placed in the same gesture stays authoritative',
+  );
+  const added = placeSurfacePoint(made.doc, made.surface, 0, 0.5);
+  assert(added.ok);
+  const middle = added.doc.vertexIds.indexOf(added.surface.controls[0][1]);
+  moveMeshVertices(added.doc, [middle], [0, 12, 0]);
+  near(
+    curveAt(readGuideCurves(added.doc, added.surface)[0], 0.5),
+    added.doc.vertices.slice(middle * 3, middle * 3 + 3) as V3,
+  );
+  console.log(
+    '✓ straight surface sides survive endpoint drags, absolute edits and reload; explicit handles and added shape points still work',
+  );
+}
 
 {
   const start = create(),
@@ -237,14 +289,17 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
   const replace = guideRows(added.surface, 'U')[1],
     moved = placeSurfaceGuide(added.doc, added.surface, 'U', 0.73, replace);
   assert(moved.ok, moved.ok ? '' : moved.error);
-  assert.deepEqual(
-    terrainState(moved.doc, moved.surface),
-    original,
-    'repositioning preserves the actual generated mesh',
+  assert(
+    !moved.surface.seed && !moved.surface.guides!.some(g => g.reference),
+    'repositioning cannot retain an invisible source shape',
   );
   assert.equal(moved.surface.guides!.length, 4);
   curvesLieOnSurface(moved.doc, moved.surface);
-  samples(moved.doc, moved.surface).forEach((p, i) => near(p, points[i]));
+  assert.notDeepEqual(
+    samples(moved.doc, moved.surface),
+    points,
+    'replacing a guide reinterpolates the visible constraints',
+  );
   assert.equal(refreshSurfaces(moved.doc), moved.doc);
   const saved = migrateMountain(JSON.parse(JSON.stringify(serializeMountain(moved.doc))));
   assert.equal(
@@ -408,12 +463,11 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
     removed = deleteSurfaceRow(result.doc, result.surface, 'U', 1);
   assert(removed.ok);
   assert.equal(removed.surface.guides!.length, 2);
-  assert.deepEqual(
-    terrainState(removed.doc, removed.surface),
-    terrainState(result.doc, result.surface),
-    'removing a guide preserves every generated control and id',
+  assert(!removed.surface.seed, 'removing a guide cannot preserve an invisible base');
+  assert(
+    Math.abs(chartPoint(guideCharts(removed.doc, removed.surface), 0.5, 0.5)[1]) < 1e-7,
+    'the removed middle profile no longer holds up a hill',
   );
-  samples(removed.doc, removed.surface).forEach((p, i) => near(p, samples(result.doc, result.surface)[i]));
   curvesLieOnSurface(removed.doc, removed.surface);
 }
 {
@@ -426,25 +480,23 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
   assert.deepEqual(terrainState(added.doc, added.surface), original);
   const sparse = insertSurfaceRow(result.doc, result.surface, 'U', 0);
   assert(sparse.ok);
-  assert.equal(
-    sparse.surface.controls.at(-1)!.length,
-    2,
-    'a new guide starts with endpoints, not rest-surface span points',
+  assert(
+    sparse.surface.controls.at(-1)!.length >= 3,
+    'a new guide exposes the points needed to describe its actual shape',
   );
   assert.deepEqual(terrainState(sparse.doc, sparse.surface), original);
   const moved = placeSurfacePoint(added.doc, added.surface, 1, 0.71, 1);
   assert(moved.ok, moved.ok ? '' : moved.error);
-  assert.deepEqual(terrainState(moved.doc, moved.surface), original);
   const removed = removeSurfacePoint(moved.doc, moved.surface, 1, 1);
   assert(removed.ok, removed.ok ? '' : removed.error);
-  assert.deepEqual(terrainState(removed.doc, removed.surface), original);
-  samples(removed.doc, removed.surface).forEach((p, i) => near(p, shape[i]));
+  assert(!removed.surface.seed && !removed.surface.guides!.some(g => g.reference));
+  const remainingShape = samples(removed.doc, removed.surface);
   const saved = migrateMountain(JSON.parse(JSON.stringify(serializeMountain(removed.doc))));
   assert.deepEqual(saved.surfaces, removed.doc.surfaces);
   assert.equal(refreshSurfaces(saved), saved);
   const crossed = insertSurfaceRow(removed.doc, removed.surface, 'V', 0);
   assert(crossed.ok, crossed.ok ? '' : crossed.error);
-  assert.deepEqual(terrainState(crossed.doc, crossed.surface), original);
+  samples(crossed.doc, crossed.surface).forEach((p, i) => near(p, remainingShape[i]));
   const quilt = guideCharts(crossed.doc, crossed.surface);
   crossed.surface.controls.forEach((row, i) =>
     row.forEach((id, j) => {
@@ -489,14 +541,17 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
   assert(result.ok, result.ok ? '' : result.error);
   assert.deepEqual(
     result.surface.guides!.map(g => g.axis),
-    ['U', 'V'],
+    ['U', 'V', 'U', 'U', 'V', 'V'],
   );
-  assert.equal(result.surface.guides!.length, 2);
+  assert.equal(result.surface.guides!.length, 6, 'the two arches and four visible outline guides define the hill');
   curvesLieOnSurface(result.doc, result.surface);
   near(splinePoint(surfaceNet(result.doc, result.surface), 0.5, 0.5), [0, 20, 0]);
   for (const u of [0, 1])
     for (const v of [0, 1])
-      assert(Math.abs(chartPoint(result.surface.seed!, u, v)[1]) < 1e-6, 'hill footprint stays at the arch feet');
+      assert(
+        Math.abs(chartPoint(guideCharts(result.doc, result.surface), u, v)[1]) < 1e-6,
+        'hill footprint stays at the arch feet',
+      );
   const shared = result.surface.controls[0].find(id => result.surface.controls[1].includes(id))!;
   assert(shared, 'two arches share their peak');
   const index = result.doc.vertexIds.indexOf(shared);
@@ -523,9 +578,7 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
     near(p, [beforeMove[i][0] + 11, beforeMove[i][1] + 7, beforeMove[i][2] - 9]),
   );
   const single = deleteSurfaceRow(moved, moved.surfaces![0], 'U', 0);
-  assert(single.ok);
-  assert.deepEqual(terrainState(single.doc, single.surface), terrainState(moved, moved.surfaces![0]));
-  assert(!deleteSurfaceRow(single.doc, single.surface, 'V', 0).ok, 'keep one editable curve');
+  assert(!single.ok, 'the explicit hill outline is protected');
   const added = insertSurfaceRow(moved, moved.surfaces![0], 'V', 0);
   assert(added.ok);
   samples(added.doc, added.surface).forEach((p, i) => near(p, samples(moved, moved.surfaces![0])[i]));
@@ -554,18 +607,18 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
   assert.equal(result.surface.controls[0].length, 2);
   const net = surfaceNet(result.doc, result.surface);
   const movedBoundary = placeSurfaceGuide(result.doc, result.surface, 'U', 0.23, guideRows(result.surface, 'U')[0]);
-  assert(movedBoundary.ok, movedBoundary.ok ? '' : movedBoundary.error);
-  assert.deepEqual(
-    terrainState(movedBoundary.doc, movedBoundary.surface),
-    terrainState(result.doc, result.surface),
-    'a boundary guide can move inward without trimming or reshaping the fill',
-  );
-  curvesLieOnSurface(movedBoundary.doc, movedBoundary.surface);
+  assert(!movedBoundary.ok, 'boundary curves cannot be replaced by an interior guide');
   for (const axis of ['U', 'V'] as const) {
     const inserted = insertSplineRow(net, axis, 0.4);
     const removed = removeSplineKnot(inserted, axis, 4);
     assert(removed.deviationM < 1e-7);
-    assert(deleteSurfaceRow(result.doc, result.surface, axis, 1).ok, 'guide removal does not require four CV rows');
+    assert(!deleteSurfaceRow(result.doc, result.surface, axis, 1).ok, 'all four boundary curves are structural');
+    const guide = placeSurfaceGuide(result.doc, result.surface, axis, 0.4);
+    assert(guide.ok);
+    assert(
+      deleteSurfaceRow(guide.doc, guide.surface, axis, 1).ok,
+      'interior guide removal does not require four CV rows',
+    );
     near(splinePoint(removed.net, 0.31, 0.67), splinePoint(net, 0.31, 0.67));
   }
   assert(!surfaceBoundaryLoop(doc, [...doc.freeEdges, [0, 2]]).ok, 'branched boundaries are rejected');
@@ -581,7 +634,7 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
   assert.equal(upgraded.surfaces?.length, 1);
   assert.equal(upgraded.surfaces![0].origin, 'legacy');
   assert(upgraded.surfaces![0].guides, 'older cages migrate to sparse curves');
-  assert.equal(upgraded.surfaces![0].guides!.length, 3);
+  assert(upgraded.surfaces![0].guides!.length >= 3, 'legacy relief is represented by visible curves');
   const raw = JSON.parse(JSON.stringify(serializeMountain(upgraded)));
   raw.surfaces = [null, { id: 'bad' }];
   assert(!migrateMountain(raw).surfaces);

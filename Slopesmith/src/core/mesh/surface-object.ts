@@ -13,7 +13,8 @@ import {
   type SurfaceAxis,
 } from '../math/spline-surface';
 import { installSurfaceCharts, type Patch } from './loft-surface';
-import { fitSurface } from './surface-fit';
+import { fitSurface, surfaceFitTolerance } from './surface-fit';
+import { materializeSurfaceShape } from './surface-source';
 import { meshFromDoc, quadControlPoints } from './topology';
 import { finishMeshRewrite } from './ops/contract';
 import { readVertex } from './primitives';
@@ -27,15 +28,23 @@ import {
   guideCharts,
   guideCuts,
   guideRows,
+  isSurfaceBoundaryGuide,
   readGuideCurves,
-  rebaseGuideSeed,
-  freezeGuideSurface,
+  sourceGuideSurface,
   splitGuide,
   sectionCurve,
   GUIDE_STATION_EPS,
   type GuideCurve,
 } from './surface-guides';
 import { splitCubic } from '../math/bezier';
+import { inferSurfaceCorners } from './surface-corners';
+import {
+  evaluateSurfaceStitches,
+  refreshSurfaceStitches,
+  detachSurfaceStitches,
+  bakeSurfaceStitchLinks,
+  surfaceHasStitches,
+} from './surface-stitch';
 
 export type SurfaceResult =
   { ok: true; doc: QuadMeshDoc; surface: SurfaceObject; deviationM?: number } | { ok: false; error: string };
@@ -52,6 +61,11 @@ const sameSourcePoints = (a: V3[][], b: V3[][]) =>
 // A drag redistributes spacing with the same grid dimensions. Check the error budget at release.
 // This is transient editor state: saved documents always contain usable evaluated terrain.
 const layoutPending = new WeakSet<SurfaceObject>();
+
+/** Worker previews have the same provisional layout contract as previews evaluated in this realm. */
+export function markSurfaceLayoutsPending(doc: QuadMeshDoc, ids: readonly string[]) {
+  for (const s of doc.surfaces ?? []) if (ids.includes(s.id)) layoutPending.add(s);
+}
 type SurfaceEvaluation = { interactive?: boolean };
 
 export function surfaceNet(doc: QuadMeshDoc, surface: SurfaceObject): SplineNet {
@@ -139,7 +153,7 @@ export function rebuildSurface(
 ): SurfaceResult {
   try {
     if (surface.controls.flat().length > 4096) throw new Error('A surface can have at most 4,096 source controls.');
-    if (surface.guides) surface = rebaseGuideSeed(doc, surface);
+    if (surface.guides) surface = sourceGuideSurface(surface);
     if (!Number.isFinite(surface.patchSizeM) || surface.patchSizeM < 0.5)
       throw new Error('Patch size must be at least 0.5 metres.');
     const qIndex = nameIndex(doc.quadIds);
@@ -153,14 +167,35 @@ export function rebuildSurface(
     const net = surface.guides ? undefined : surfaceNet(doc, surface),
       // Redundant guide stations do not force edges into the generated terrain grid.
       charts = surface.guides ? compactSurfaceCharts(guideCharts(doc, surface)) : splineCharts(net!);
-    const previousU = guideCuts(surface.patches.flatMap(p => p.domain.slice(0, 2))),
-      previousV = guideCuts(surface.patches.flatMap(p => p.domain.slice(2)));
+    const previous = surface.fitted ?? surface.patches;
+    const previousU = guideCuts(previous.flatMap(p => p.domain.slice(0, 2))),
+      previousV = guideCuts(previous.flatMap(p => p.domain.slice(2)));
     const reuseLayout = !!options.interactive && surface.patches.length > 0;
     const { patches, us, vs } = fitSurface(
       charts,
       surface.patchSizeM,
       reuseLayout ? { us: previousU, vs: previousV } : undefined,
     );
+    if (surfaceHasStitches(doc, surface.id)) {
+      const surfaces = doc.surfaces ?? [];
+      const next: SurfaceObject = {
+        ...surface,
+        fitted: patches,
+        evaluated: {
+          points: surface.guides ? readGuideCurves(doc, surface).map(c => c.points.flat()) : net!.points,
+          patchSizeM: surface.patchSizeM,
+        },
+      };
+      const assembled = evaluateSurfaceStitches({
+        ...doc,
+        surfaces: surfaces.some(s => s.id === next.id)
+          ? surfaces.map(s => (s.id === next.id ? next : s))
+          : [...surfaces, next],
+      });
+      const evaluated = assembled.surfaces!.find(s => s.id === next.id)!;
+      if (reuseLayout) layoutPending.add(evaluated);
+      return { ok: true, doc: assembled, surface: evaluated };
+    }
     const installed = installSurfaceCharts(doc, surface, patches, patches, us, vs);
     const next: SurfaceObject = {
       ...surface,
@@ -171,6 +206,8 @@ export function rebuildSurface(
         patchSizeM: surface.patchSizeM,
       },
     };
+    delete next.outputKeys;
+    delete next.fitted;
     delete next.error;
     if (reuseLayout) layoutPending.add(next);
     const out = installed.doc;
@@ -278,41 +315,13 @@ function createFromGuides(
 ): SurfaceResult {
   let n = 1;
   while (doc.surfaces?.some(s => s.id === `surface:${n}`)) n++;
-  const U = curves.filter(c => c.axis === 'U'),
-    V = curves.filter(c => c.axis === 'V');
-  const first = U[0],
-    last = U.at(-1)!;
-  const [A, B, C, D] = [curveAt(first, 0), curveAt(first, 1), curveAt(last, 0), curveAt(last, 1)];
-  let seed = evaluateCharts([0, 1], [0, 1], (u, v) =>
-    add(add(mul(A, (1 - u) * (1 - v)), mul(B, u * (1 - v))), add(mul(C, (1 - u) * v), mul(D, u * v))),
-  );
-  if (hill) {
-    const a = U[0],
-      b = V[0],
-      P = curveAt(a, b.at);
-    const chord = (c: GuideCurve, t: number) => add(mul(curveAt(c, 0), 1 - t), mul(curveAt(c, 1), t));
-    const Q = mul(add(chord(a, b.at), chord(b, a.at)), 0.5);
-    const base = (u: number, v: number) => sub(add(chord(a, u), chord(b, v)), Q);
-    const bump = (t: number, at: number) => {
-      const x = t <= at ? t / at : (1 - t) / (1 - at);
-      return x * x * (3 - 2 * x);
-    };
-    seed = evaluateCharts(guideCuts([0, 1, b.at, ...a.knots]), guideCuts([0, 1, a.at, ...b.knots]), (u, v) => {
-      const wu = bump(u, b.at),
-        wv = bump(v, a.at);
-      return sub(
-        add(add(base(u, v), mul(sub(curveAt(a, u), base(u, a.at)), wv)), mul(sub(curveAt(b, v), base(b.at, v)), wu)),
-        mul(sub(P, Q), wu * wv),
-      );
-    });
-  }
   let surface: SurfaceObject = {
     id: `surface:${n}`,
     name: `Surface ${n}`,
     origin,
     controls: [],
     guides: [],
-    seed,
+    interpolation: 'natural',
     curvature,
     knotsU: [],
     knotsV: [],
@@ -327,7 +336,6 @@ function createFromGuides(
       ...surface,
       id: adopt.surface.id,
       name: adopt.surface.name,
-      seed: adopt.seed,
       vertices: adopt.surface.vertices,
       patches: adopt.surface.patches,
     };
@@ -354,16 +362,28 @@ function createFromGuides(
       guides: [...surface.guides!, { axis: curve.axis, at: curve.at, knots: curve.knots }],
     };
   }
-  surface.seed = guideCharts(out, surface);
-  if (surface.seed.reduce((sum, p) => sum + patchNormal(p.controls, 0.5, 0.5)[1], 0) < 0) {
-    surface.seed = surface.seed.map(p => ({
-      domain: [1 - p.domain[1], 1 - p.domain[0], p.domain[2], p.domain[3]],
-      controls: [...Array(4).keys()].reverse().flatMap(i => p.controls.slice(i * 4, i * 4 + 4)),
-    }));
+  const charts = guideCharts(out, surface);
+  if (charts.reduce((sum, p) => sum + patchNormal(p.controls, 0.5, 0.5)[1], 0) < 0) {
     surface.controls = surface.controls.map((row, i) => (surface.guides![i].axis === 'U' ? [...row].reverse() : row));
     surface.guides = surface.guides!.map(g =>
       g.axis === 'U' ? { ...g, knots: [...g.knots].reverse().map(t => 1 - t) } : { ...g, at: 1 - g.at },
     );
+  }
+  if (hill) {
+    // The two arches imply an outline. Make it explicit so adding another guide cannot change an
+    // unbounded single-curve basis into a different fill, and every part of the hill stays editable.
+    const outline = guideCharts(out, surface);
+    for (const axis of ['U', 'V'] as const)
+      for (const at of [0, 1]) {
+        const added = addGuide(out, surface, axis, 0, at, outline);
+        out = added.doc;
+        surface = added.surface;
+      }
+  }
+  if (adopt) {
+    const visible = materializeSurfaceShape(out, surface, adopt.seed, surfaceFitTolerance(patchSizeM) / 2);
+    out = visible.doc;
+    surface = visible.surface;
   }
   return rebuildSurface(out, surface);
 }
@@ -437,11 +457,15 @@ export function surfaceBoundaryLoop(
     : { ok: false, error: 'Select one connected boundary loop.' };
 }
 
-function boundarySurfaceInput(doc: QuadMeshDoc, edges: readonly (readonly number[])[], corners?: readonly number[]) {
+export function boundarySurfaceInput(
+  doc: QuadMeshDoc,
+  edges: readonly (readonly number[])[],
+  corners?: readonly number[],
+) {
   const ordered = surfaceBoundaryLoop(doc, edges);
   if (!ordered.ok) throw new Error(ordered.error);
   const loop = ordered.loop;
-  const chosen = corners ?? [0, 1, 2, 3].map(i => loop[Math.floor((i * loop.length) / 4)]);
+  const chosen = corners ?? inferSurfaceCorners(loop.map(i => readVertex(doc.vertices, i))).map(i => loop[i]);
   const stops = chosen.map(v => loop.indexOf(v));
   if (chosen.length !== 4 || new Set(chosen).size !== 4 || stops.some(i => i < 0))
     throw new Error('Choose four distinct corners on the selected loop.');
@@ -457,11 +481,22 @@ function boundarySurfaceInput(doc: QuadMeshDoc, edges: readonly (readonly number
     at: i % 2,
     knots: row.map((_, j) => j / (row.length - 1)),
   }));
-  const curves = readGuideCurves(doc, {
+  // A two-point side has no internal shape controls. Missing handles should describe its chord,
+  // rather than borrowing automatic tangents from the other sides around the closed loop.
+  const source = { ...doc, edgeHandles: { ...doc.edgeHandles } };
+  for (const row of paths) {
+    if (row.length !== 2) continue;
+    const [a, b] = row,
+      A = readVertex(doc.vertices, a),
+      B = readVertex(doc.vertices, b);
+    source.edgeHandles[`${a}>${b}`] ??= mul(sub(B, A), 1 / 3);
+    source.edgeHandles[`${b}>${a}`] ??= mul(sub(A, B), 1 / 3);
+  }
+  const curves = readGuideCurves(source, {
     controls: paths.map(row => row.map(i => doc.vertexIds[i])),
     guides,
   } as SurfaceObject);
-  return { loop, curves };
+  return { loop, curves, paths };
 }
 
 /** Exact Coons fill for a boundary draft, without generating or installing terrain patches. */
@@ -469,6 +504,7 @@ export function boundarySurfaceCharts(
   doc: QuadMeshDoc,
   edges: readonly (readonly number[])[],
   corners?: readonly number[],
+  orient = true,
 ): Patch[] {
   const { curves } = boundarySurfaceInput(doc, edges, corners),
     [bottom, top, left, right] = curves,
@@ -485,7 +521,7 @@ export function boundarySurfaceCharts(
         add(add(mul(a, (1 - u) * (1 - v)), mul(b, u * (1 - v))), add(mul(c, (1 - u) * v), mul(d, u * v))),
       ),
   );
-  return charts.reduce((sum, p) => sum + patchNormal(p.controls, 0.5, 0.5)[1], 0) < 0
+  return orient && charts.reduce((sum, p) => sum + patchNormal(p.controls, 0.5, 0.5)[1], 0) < 0
     ? charts.map(p => ({
         domain: [1 - p.domain[1], 1 - p.domain[0], p.domain[2], p.domain[3]],
         controls: [3, 2, 1, 0].flatMap(i => p.controls.slice(i * 4, i * 4 + 4)),
@@ -523,7 +559,7 @@ export function insertSurfaceRow(
   try {
     if (surface.guides) {
       const added = addGuide(doc, surface, axis, row);
-      return installGuideEdit(added.doc, added.surface);
+      return installGuideEdit(added.doc, added.surface, guideCharts(doc, surface));
     }
     const net = surfaceNet(doc, surface),
       knots = axis === 'U' ? net.knotsU : net.knotsV;
@@ -536,19 +572,34 @@ export function insertSurfaceRow(
   }
 }
 
-function installGuideEdit(doc: QuadMeshDoc, surface: SurfaceObject): SurfaceResult {
+function installGuideEdit(doc: QuadMeshDoc, surface: SurfaceObject, before?: Patch[]): SurfaceResult {
   if (surface.controls.flat().length > 4096) throw new Error('A surface can have at most 4,096 source controls.');
-  const curves = readGuideCurves(doc, surface);
-  const next = {
-    ...surface,
-    guides: surface.guides!.map((g, i) => ({ ...g, reference: curves[i].points })),
-    evaluated: { points: curves.map(c => c.points.flat()), patchSizeM: surface.patchSizeM },
-  };
+  const clean = sourceGuideSurface(surface),
+    charts = guideCharts(doc, clean),
+    previous = doc.surfaces?.find(s => s.id === surface.id);
+  // A redundant new section or exact Bezier split does not need to regenerate fitted terrain.
+  if (
+    !before ||
+    previous?.seed ||
+    previous?.guides?.some(g => g.reference) ||
+    !before.every(p =>
+      [0, 0.25, 0.5, 0.75, 1].every(u =>
+        [0, 0.25, 0.5, 0.75, 1].every(v => {
+          const x = p.domain[0] + u * (p.domain[1] - p.domain[0]),
+            y = p.domain[2] + v * (p.domain[3] - p.domain[2]);
+          return len(sub(chartPoint(before, x, y), chartPoint(charts, x, y))) < 1e-7;
+        }),
+      ),
+    )
+  )
+    return rebuildSurface(doc, clean);
+  const curves = readGuideCurves(doc, clean),
+    next = { ...clean, evaluated: { points: curves.map(c => c.points.flat()), patchSizeM: surface.patchSizeM } };
   delete next.error;
   return { ok: true, doc: { ...doc, surfaces: doc.surfaces!.map(s => (s.id === next.id ? next : s)) }, surface: next };
 }
 
-/** Change the authoring guides without touching any generated vertex, patch, handle or material. */
+/** Sample a visible curve on the current surface. A moved curve replaces its old shape constraint. */
 export function placeSurfaceGuide(
   doc: QuadMeshDoc,
   surface: SurfaceObject,
@@ -558,24 +609,21 @@ export function placeSurfaceGuide(
 ): SurfaceResult {
   try {
     if (!surface.guides) throw new Error('Convert this surface to control curves before placing guides.');
-    const frozen = freezeGuideSurface(doc, surface),
-      charts = frozen.seed!;
-    let base: { doc: QuadMeshDoc; surface: SurfaceObject } = { doc, surface: frozen };
+    const charts = compactSurfaceCharts(guideCharts(doc, surface));
+    let base = { doc, surface: sourceGuideSurface(surface) };
     if (replace !== undefined) {
       if (surface.guides[replace]?.axis !== axis) throw new Error('Select a control curve in this direction.');
       if (Math.abs(surface.guides[replace].at - at) < GUIDE_STATION_EPS) return { ok: true, doc, surface };
       base = detachGuide(doc, base.surface, replace);
     }
-    const added = addGuide(base.doc, base.surface, axis, 0, at);
-    // Moving/removing a guide changes interpolation weights. Rebase all remaining constraints on the frozen shape.
-    added.surface.seed = charts;
-    return installGuideEdit(added.doc, added.surface);
+    const added = addGuide(base.doc, base.surface, axis, 0, at, charts);
+    return installGuideEdit(added.doc, added.surface, charts);
   } catch (error) {
     return failure(error);
   }
 }
 
-/** Remove one authoring point, retaining the rest quilt rather than fitting the terrain to fewer controls. */
+/** Remove one source point and reconnect its neighbouring curve segments. */
 function detachSurfacePoint(doc: QuadMeshDoc, surface: SurfaceObject, curve: number, point: number) {
   const names = surface.controls[curve],
     guide = surface.guides?.[curve];
@@ -616,16 +664,12 @@ export function removeSurfacePoint(
   curve: number,
   point: number,
 ): SurfaceResult {
-  try {
-    const removed = detachSurfacePoint(doc, freezeGuideSurface(doc, surface), curve, point);
-    return installGuideEdit(removed.doc, removed.surface);
-  } catch (error) {
-    return failure(error);
-  }
+  if (!surface.guides?.[curve] || !surface.controls[curve]?.[point])
+    return failure(new Error('Select a control point.'));
+  return deleteSurfaceControls(doc, surface, { points: [surface.controls[curve][point]] });
 }
 
-/** Delete shape constraints, unlike guide editing which freezes their influence into the rest quilt.
- * Remaining visible curves stay authoritative; edited point chains are reinterpolated from their anchors. */
+/** Delete shape constraints. Only the remaining visible curves define the rebuilt terrain. */
 export function deleteSurfaceControls(
   doc: QuadMeshDoc,
   surface: SurfaceObject,
@@ -637,16 +681,16 @@ export function deleteSurfaceControls(
     if (!deleted.size && !remove.points?.length) throw new Error('Select a control curve or point to delete.');
     if ([...deleted].some(i => !Number.isInteger(i) || !surface.guides![i]))
       throw new Error('That control curve no longer exists.');
-    if (surface.guides.length - deleted.size < 1) throw new Error('Keep one editable control curve.');
-    const charts = compactSurfaceCharts(guideCharts(doc, surface)),
-      surviving = surface.guides.map((g, i) => ({ g, i })).filter(({ i }) => !deleted.has(i)),
-      shapes = surviving.map(({ g }) => sectionCurve(charts, g.axis, g.at)),
-      points = new Set(remove.points ?? []),
+    if ([...deleted].some(i => isSurfaceBoundaryGuide(surface, i)))
+      throw new Error('Keep the surface boundary curves. Move their points or tangents to reshape the outline.');
+    if (surface.guides.length - deleted.size < 2)
+      throw new Error('Keep at least two curves to define the surface extent.');
+    const points = new Set(remove.points ?? []),
       onDeleted = new Set([...deleted].flatMap(i => surface.controls[i]));
     for (const point of points)
       if (!surface.controls.some(row => row.includes(point)))
         throw new Error('That surface control point no longer exists.');
-    let base = { doc, surface };
+    let base = { doc, surface: sourceGuideSurface(surface) };
     for (const curve of [...deleted].sort((a, b) => b - a)) base = detachGuide(base.doc, base.surface, curve);
     for (let curve = 0; curve < base.surface.controls.length; curve++) {
       const row = base.surface.controls[curve],
@@ -675,34 +719,8 @@ export function deleteSurfaceControls(
         handles[`${b}>${a}`] = mul(tangent(i + 1), -h);
       }
       base.doc = { ...base.doc, edgeHandles: handles };
-      shapes[curve] = readGuideCurves(base.doc, base.surface)[curve];
     }
-    const [A, B, C, D] = [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ].map(([u, v]) => chartPoint(charts, u, v));
-    const footprint = evaluateCharts([0, 1], [0, 1], (u, v) =>
-      add(add(mul(A, (1 - u) * (1 - v)), mul(B, u * (1 - v))), add(mul(C, (1 - u) * v), mul(D, u * v))),
-    );
-    // Absolute Gordon interpolation removes the deleted constraints. The bilinear footprint supplies
-    // automatic boundaries when only one curve or one direction remains; no old interior bump is retained.
-    const seed = compactSurfaceCharts(
-      guideCharts(
-        base.doc,
-        { ...base.surface, seed: footprint },
-        shapes.map(c => ({ ...c, reference: undefined })),
-      ),
-    );
-    const curves = readGuideCurves(base.doc, base.surface),
-      next = {
-        ...base.surface,
-        seed,
-        guides: base.surface.guides!.map((g, i) => ({ ...g, reference: curves[i].points })),
-        evaluated: { points: curves.map(c => c.points.flat()), patchSizeM: surface.patchSizeM },
-      };
-    return rebuildSurface(base.doc, next);
+    return rebuildSurface(base.doc, sourceGuideSurface(base.surface));
   } catch (error) {
     return failure(error);
   }
@@ -721,17 +739,16 @@ export function placeSurfacePoint(
       throw new Error('Place the point between the curve endpoints.');
     if (surface.guides[curve].knots.some((t, i) => i !== replace && Math.abs(t - at) < GUIDE_STATION_EPS))
       throw new Error('A control point already occupies that position.');
-    const frozen = freezeGuideSurface(doc, surface);
-    let base = { doc, surface: frozen };
-    if (replace !== undefined) base = detachSurfacePoint(doc, frozen, curve, replace);
-    // The sparse guide's authoring cubic need not contain all rest-surface spans. Sample the exact
-    // rest section at the new station, then zero the new basis against the unchanged rest quilt.
+    const charts = guideCharts(doc, surface);
+    let base = { doc, surface: sourceGuideSurface(surface) };
+    if (replace !== undefined) base = detachSurfacePoint(doc, base.surface, curve, replace);
     const split = splitGuide(base.doc, base.surface, curve, at);
-    const index = split.doc.vertexIds.indexOf(split.id);
-    const guide = split.surface.guides![curve];
-    const p = chartPoint(frozen.seed!, guide.axis === 'U' ? at : guide.at, guide.axis === 'U' ? guide.at : at);
-    split.doc.vertices.splice(index * 3, 3, ...p);
-    return installGuideEdit(split.doc, split.surface);
+    if (replace !== undefined) {
+      const g = split.surface.guides![curve];
+      const point = chartPoint(charts, g.axis === 'U' ? at : g.at, g.axis === 'U' ? g.at : at);
+      split.doc.vertices.splice(split.doc.vertexIds.indexOf(split.id) * 3, 3, ...point);
+    }
+    return installGuideEdit(split.doc, split.surface, charts);
   } catch (error) {
     return failure(error);
   }
@@ -759,8 +776,7 @@ export function deleteSurfaceRow(
       if (surface.guides.length <= 1) throw new Error('Keep one editable control curve.');
       const at = guideRows(surface, axis)[row];
       if (at === undefined) throw new Error('Select a control curve to remove.');
-      const removed = detachGuide(doc, freezeGuideSurface(doc, surface), at);
-      return installGuideEdit(removed.doc, removed.surface);
+      return deleteSurfaceControls(doc, surface, { curves: [at] });
     }
     const removed = surfaceRowRemoval(doc, surface, axis, row);
     const cage = replaceCage(doc, surface, removed.net),
@@ -772,6 +788,7 @@ export function deleteSurfaceRow(
 }
 
 export function bakeSurface(doc: QuadMeshDoc, id: string): QuadMeshDoc {
+  doc = bakeSurfaceStitchLinks(doc, id);
   const surface = doc.surfaces?.find(s => s.id === id);
   if (!surface) return doc;
   // A bake keeps the evaluated terrain, not coincident copies of its hidden sketches and guides.
@@ -830,6 +847,12 @@ export function deleteSurfaceObject(
   id: string,
 ): { ok: true; doc: QuadMeshDoc } | { ok: false; error: string } {
   try {
+    if (
+      doc.surfaces?.some(s =>
+        s.stitches?.some(st => s.id === id || ('surface' in st.target && st.target.surface === id)),
+      )
+    )
+      doc = detachSurfaceStitches(doc, id);
     const surface = doc.surfaces?.find(s => s.id === id);
     if (!surface) throw new Error('That surface no longer exists.');
     const ownNames = new Set([...surface.controls.flat(), ...surface.vertices]);
@@ -860,6 +883,7 @@ export function deleteSurfaceObject(
 
 export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {}): QuadMeshDoc {
   let out = doc;
+  let failed = false;
   // Old saved lofts keep their evaluated shape, including any finishing edits, when adopted as a source cage.
   for (const loft of doc.lofts ?? []) {
     try {
@@ -884,7 +908,10 @@ export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {
       /* Preserve legacy geometry if its history cannot be adopted. */
     }
   }
-  for (const surface of out.surfaces ?? []) {
+  for (const previous of out.surfaces ?? []) {
+    // A host rebuild can also replace its stitched dependents' evaluated topology in this same pass.
+    const surface = out.surfaces?.find(s => s.id === previous.id);
+    if (!surface) continue;
     try {
       if (!surface.guides) {
         const charts = splineCharts(surfaceNet(out, surface));
@@ -972,6 +999,8 @@ export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {
       });
       if (
         valid &&
+        !surface.seed &&
+        !surface.guides?.some(g => g.reference) &&
         !surface.error &&
         (options.interactive || !layoutPending.has(surface)) &&
         sameSourcePoints(points, surface.evaluated.points) &&
@@ -980,13 +1009,18 @@ export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {
         continue;
       const result = rebuildSurface(out, surface, options);
       if (result.ok) out = result.doc;
-      else if (result.error !== surface.error)
-        out = { ...out, surfaces: out.surfaces!.map(s => (s.id === surface.id ? { ...s, error: result.error } : s)) };
+      else {
+        failed = true;
+        if (result.error !== surface.error)
+          out = { ...out, surfaces: out.surfaces!.map(s => (s.id === surface.id ? { ...s, error: result.error } : s)) };
+      }
     } catch (error) {
+      failed = true;
       const message = error instanceof Error ? error.message : String(error);
       if (surface.error !== message)
         out = { ...out, surfaces: out.surfaces!.map(s => (s.id === surface.id ? { ...s, error: message } : s)) };
     }
   }
-  return out;
+  // Do not retry a rejected fit using its previous output: that can hide the failure from the drag guard.
+  return failed ? out : refreshSurfaceStitches(out);
 }

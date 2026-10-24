@@ -3,8 +3,9 @@ import type { Stage } from '../stage';
 import type { PlacementEndpoint } from '../input/placement-constraint';
 import { resolvePlacementEndpoint } from '../input/placement';
 import { DRAW_POINT_GEO, scaleDrawMarkers } from './draw-markers';
-import { MAX_SURFACE_BOUNDARY_POINTS } from '../../../core/mesh/surface-boundary';
+import { MAX_SURFACE_BOUNDARY_POINTS, surfaceBoundaryCorners } from '../../../core/mesh/surface-boundary';
 import { dataToScene, sceneToData } from '../coordinates';
+import { textSprite } from '../shared/overlays';
 
 /** A transient boundary loop. Close it to edit its points; Enter commits the Surface atomically. */
 export function createSurfaceToolLayer(
@@ -17,22 +18,38 @@ export function createSurfaceToolLayer(
     hover: PlacementEndpoint | null = null,
     closing = false,
     closed = false,
-    selected: number | null = null;
+    selected: number | null = null,
+    manualCorners: number[] | null = null,
+    cornersOnly = false,
+    cornerPicks: number[] | null = null,
+    cornerHover: number | null = null,
+    previewOutline: readonly (readonly number[])[] | null = null;
   const material = new THREE.MeshBasicMaterial({ color: 0xeaa6ff, depthTest: false, depthWrite: false }),
     selectedMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false }),
     snapMaterial = new THREE.MeshBasicMaterial({ color: 0x62f0b6, depthTest: false, depthWrite: false }),
+    cornerMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc55, depthTest: false, depthWrite: false }),
     dots: THREE.Mesh[] = [];
+  // Larger markers behind the point dots make gold rings without hiding selected/snapped point colors.
+  const corners = Array.from({ length: 4 }, () => new THREE.Mesh(DRAW_POINT_GEO, cornerMaterial));
+  corners.forEach((marker, i) => {
+    const label = textSprite('ABCD'[i], '#ffcc55', 7);
+    label.center.set(-0.1, 0.5);
+    label.renderOrder = 18;
+    label.raycast = () => {};
+    marker.add(label);
+  });
   const cursor = new THREE.Mesh(DRAW_POINT_GEO, material),
     line = new THREE.Line(
       new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({ color: 0xeaa6ff, depthTest: false, depthWrite: false }),
     );
-  for (const object of [cursor, line]) {
+  for (const object of [cursor, line, ...corners]) {
     object.visible = false;
     object.renderOrder = 16;
     object.raycast = () => {};
     stage.worldRoot.add(object);
   }
+  cursor.renderOrder = 17;
   const pointHandle = new THREE.Object3D(); // scene-root anchor, outside the mirrored worldRoot
   stage.scene.add(pointHandle);
   function pointAtPointer() {
@@ -52,7 +69,7 @@ export function createSurfaceToolLayer(
     return nearest;
   }
   function syncGizmo() {
-    if (!active || selected === null || !points[selected]) {
+    if (!active || cornersOnly || cornerPicks || selected === null || !points[selected]) {
       if (stage.gizmoKind === 'surfacepoint') stage.detachGizmo();
       return;
     }
@@ -71,10 +88,21 @@ export function createSurfaceToolLayer(
           levelPlane: true,
         });
   }
+  function drawOutline() {
+    const outline = previewOutline ?? [
+      ...points.map(p => p.pos),
+      ...(closed ? [points[0].pos] : hover ? [hover.pos] : []),
+    ];
+    line.geometry.dispose();
+    if (outline.length >= 2) {
+      line.geometry = new THREE.BufferGeometry().setFromPoints(outline.map(p => new THREE.Vector3(p[0], p[1], p[2])));
+      line.visible = active;
+    } else line.visible = false;
+  }
   function redraw() {
     while (dots.length < points.length) {
       const dot = new THREE.Mesh(DRAW_POINT_GEO, material);
-      dot.renderOrder = 16;
+      dot.renderOrder = 17;
       dot.raycast = () => {};
       stage.worldRoot.add(dot);
       dots.push(dot);
@@ -91,12 +119,16 @@ export function createSurfaceToolLayer(
       cursor.position.set(...hover.pos);
       cursor.material = closing || hover.vertex !== null ? snapMaterial : material;
     }
-    const outline = [...points.map(p => p.pos), ...(closed ? [points[0].pos] : hover ? [hover.pos] : [])];
-    if (outline.length >= 2) {
-      line.geometry.dispose();
-      line.geometry = new THREE.BufferGeometry().setFromPoints(outline.map(p => new THREE.Vector3(...p)));
-      line.visible = true;
-    } else line.visible = false;
+    const boundary = hover && !closed && !closing ? [...points, hover] : points,
+      stops = cornerPicks
+        ? [...cornerPicks, ...(cornerHover !== null && !cornerPicks.includes(cornerHover) ? [cornerHover] : [])]
+        : (manualCorners ?? surfaceBoundaryCorners(boundary));
+    corners.forEach((marker, i) => {
+      marker.visible = active && !!boundary[stops[i]];
+      marker.material = cornerPicks && i === cornerPicks.length ? selectedMaterial : cornerMaterial;
+      if (marker.visible) marker.position.set(...boundary[stops[i]].pos);
+    });
+    drawOutline();
     syncGizmo();
     stage.cb.onCreateSurfaceChange?.();
   }
@@ -108,10 +140,24 @@ export function createSurfaceToolLayer(
     closing = false;
     closed = false;
     selected = null;
+    manualCorners = null;
+    cornersOnly = false;
+    cornerPicks = null;
+    cornerHover = null;
+    previewOutline = null;
     redraw();
   }
   function onHover(event: PointerEvent) {
     if (!active) return false;
+    if (cornerPicks) {
+      stage.castAt(event);
+      const point = pointAtPointer();
+      if (cornerHover !== point) {
+        cornerHover = point;
+        redraw();
+      }
+      return true;
+    }
     if (closed || selected !== null) return true;
     stage.castAt(event);
     hover = placement(event.shiftKey, event.ctrlKey || event.metaKey);
@@ -121,6 +167,21 @@ export function createSurfaceToolLayer(
   function onCommit(axisLocked = false, onSurface = false) {
     if (!active) return;
     const picked = pointAtPointer();
+    if (cornerPicks) {
+      if (picked !== null && !cornerPicks.includes(picked)) {
+        cornerPicks.push(picked);
+        cornerHover = null;
+        if (cornerPicks.length === 4) {
+          const first = cornerPicks[0];
+          manualCorners = [...cornerPicks].sort(
+            (a, b) => ((a - first + points.length) % points.length) - ((b - first + points.length) % points.length),
+          );
+          cornerPicks = null;
+        }
+        redraw();
+      }
+      return;
+    }
     if (picked !== null) {
       if (!closed && picked === 0 && points.length >= 4) closed = true;
       selected = picked;
@@ -147,13 +208,45 @@ export function createSurfaceToolLayer(
   }
   return {
     setActive,
+    setCorners(corners: readonly number[] | null) {
+      manualCorners = corners ? [...corners] : null;
+      cornerPicks = null;
+      cornerHover = null;
+      redraw();
+    },
+    beginCornerPicking() {
+      if (!active || !closed || points.length < 4) return;
+      cornerPicks = [];
+      cornerHover = selected = null;
+      hover = null;
+      redraw();
+    },
+    cancelCornerPicking() {
+      cornerPicks = null;
+      cornerHover = null;
+      redraw();
+    },
+    setOutline(outline: readonly (readonly number[])[] | null) {
+      previewOutline = outline;
+      drawOutline();
+    },
+    setBoundary(boundary: readonly PlacementEndpoint[], stops: readonly number[]) {
+      points = boundary.map(p => ({ pos: [...p.pos], vertex: p.vertex }));
+      manualCorners = [...stops];
+      cornersOnly = closed = true;
+      hover = null;
+      selected = null;
+      cornerPicks = null;
+      cornerHover = null;
+      redraw();
+    },
     onHover,
     onCommit,
     gizmoDragging(dragging: boolean) {
       if (!dragging) syncGizmo();
     },
     gizmoChanged() {
-      if (!active || selected === null || stage.gizmoKind !== 'surfacepoint') return;
+      if (!active || cornersOnly || selected === null || stage.gizmoKind !== 'surfacepoint') return;
       // A snap copies an existing boundary. Moving the draft point releases that copy's binding.
       points[selected] = { pos: sceneToData(pointHandle.position), vertex: null };
       hover = null;
@@ -161,16 +254,26 @@ export function createSurfaceToolLayer(
       redraw();
     },
     undo() {
-      if (active) {
+      if (cornerPicks) {
+        cornerPicks.pop();
+        cornerHover = null;
+        redraw();
+        return;
+      }
+      if (active && !cornersOnly) {
         points.pop();
         hover = null;
         closing = false;
         closed = false;
         selected = null;
+        manualCorners = null;
         redraw();
       }
     },
-    scaleMarkers: () => scaleDrawMarkers(stage, [...dots, cursor], 6),
+    scaleMarkers() {
+      scaleDrawMarkers(stage, [...dots, cursor], 6);
+      scaleDrawMarkers(stage, corners, 9);
+    },
     get active() {
       return active;
     },
@@ -188,6 +291,19 @@ export function createSurfaceToolLayer(
     },
     get selected() {
       return selected;
+    },
+    get corners() {
+      const boundary = hover && !closed && !closing ? [...points, hover] : points;
+      return manualCorners ?? surfaceBoundaryCorners(boundary);
+    },
+    get manualCorners() {
+      return manualCorners !== null;
+    },
+    get pickingCorners() {
+      return cornerPicks !== null;
+    },
+    get cornerPicks(): readonly number[] {
+      return cornerPicks ?? [];
     },
   };
 }

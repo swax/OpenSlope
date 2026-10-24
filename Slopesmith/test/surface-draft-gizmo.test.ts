@@ -1,10 +1,15 @@
 // tier: fast
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
+import { createCanvas } from '@napi-rs/canvas';
 import type { Stage } from '../src/app/viewport/stage';
 import type { PlacementEndpoint } from '../src/app/viewport/input/placement-constraint';
 import { createSurfaceToolLayer } from '../src/app/viewport/tools/create-surface';
 import { sceneToData } from '../src/app/viewport/coordinates';
+
+// Corner label sprites need a canvas; the rest of this test remains a pure Three.js scene.
+const previousDocument = globalThis.document;
+globalThis.document = { createElement: () => createCanvas(256, 64) } as unknown as Document;
 
 // Exercise the transient draft through placement/picking and the same scene-space anchor TransformControls moves.
 const stage = {
@@ -103,6 +108,50 @@ layer.setActive(false);
 assert.equal(layer.points.length, 0);
 assert.equal(stage.gizmoKind, null, 'cancelling detaches the draft gizmo');
 assert(changes > 8, 'placements, closure, selection and movement refresh the host preview');
+
+// Picking corners is a separate mode: incomplete picks cannot move points or replace the old corners.
+layer.setActive(true);
+for (const pos of [
+  [0, 0, 0],
+  [20, 0, 0],
+  [60, 0, 0],
+  [60, 0, 40],
+  [30, 0, 40],
+  [0, 0, 40],
+] as PlacementEndpoint['pos'][])
+  place(pos);
+place([0, 0, 0]);
+const boundary = structuredClone(layer.points),
+  automatic = [...layer.corners];
+layer.beginCornerPicking();
+assert(layer.pickingCorners && stage.gizmoKind === null);
+place(boundary[1].pos);
+place(boundary[1].pos);
+place([1000, 0, 1000]);
+assert.deepEqual(layer.cornerPicks, [1], 'duplicate picks and empty-space clicks are ignored');
+assert.deepEqual(layer.corners, automatic, 'pending picks preserve the previous preview corners');
+layer.undo();
+assert.equal(layer.cornerPicks.length, 0);
+assert.deepEqual(layer.points, boundary);
+place(boundary[2].pos);
+layer.cancelCornerPicking();
+assert(!layer.pickingCorners && !layer.manualCorners);
+assert.deepEqual(layer.corners, automatic);
+layer.beginCornerPicking();
+for (const i of [1, 5, 2, 4]) place(boundary[i].pos);
+assert(!layer.pickingCorners && layer.manualCorners);
+assert.deepEqual(layer.corners, [1, 2, 4, 5], 'four picks finish automatically and follow the loop from A');
+assert.deepEqual(layer.points, boundary, 'corner picking never moves or appends boundary points');
+layer.setBoundary(boundary, [0, 2, 3, 5]);
+layer.beginCornerPicking();
+place(boundary[1].pos);
+layer.undo();
+assert.deepEqual(layer.cornerPicks, [], 'existing-surface corner edits also support undoing a pick');
+layer.cancelCornerPicking();
+assert.deepEqual(layer.corners, [0, 2, 3, 5]);
+layer.setActive(false);
+assert(!layer.pickingCorners && layer.cornerPicks.length === 0);
+globalThis.document = previousDocument;
 console.log(
   'SURFACE DRAFT: editable closure, point picking, world-space gizmo movement, released snaps, reopen and cancellation passed.',
 );

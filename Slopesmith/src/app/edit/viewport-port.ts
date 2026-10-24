@@ -8,11 +8,17 @@ import type { PlacementEndpoint } from '../viewport/input/placement-constraint';
 import type { GridCorners } from '../../core/mesh/ops/grid';
 import type { SurfaceGuidePlacement } from '../viewport/tools/surface-guide';
 import type { Patch } from '../../core/mesh/loft-surface';
+import type { QuadMesh, MeshAdjacency } from '../../core/mesh/topology';
+import type { PreparedPatches } from '../../core/mesh/tessellation';
+import type { MeshPreviewChange } from '../../core/mesh/surface-preview';
 
 export type { CellSpeedTint, TrailShape, TrailTransform };
 
 /** Rendering/input surface used by the edit workflow. */
 export interface EditViewportPort {
+  /** Reuse the live graph after an incremental edit; absent while the viewport is catching up. */
+  editMeshGraph?(doc: Store['mdoc']): { mesh: QuadMesh; adj: MeshAdjacency } | null;
+  streamMeshControls?(doc: Store['mdoc'], change: MeshPreviewChange): void;
   previewMeshEdit(
     doc: Store['mdoc'],
     change: {
@@ -20,6 +26,7 @@ export interface EditViewportPort {
       edges?: readonly [number, number][];
       quads?: readonly number[];
     },
+    prepared?: PreparedPatches,
   ): boolean;
   clearCornerSelection(): void;
   setControlPointSelection(ids: readonly MeshControlPointId[]): void;
@@ -50,8 +57,17 @@ export interface EditViewportPort {
   readonly createSurfaceClosing?: boolean;
   readonly createSurfaceClosed?: boolean;
   readonly createSurfaceSelectedPoint?: number | null;
+  readonly createSurfaceCorners?: readonly number[];
+  readonly createSurfaceManualCorners?: boolean;
+  readonly createSurfacePickingCorners?: boolean;
+  readonly createSurfaceCornerPicks?: readonly number[];
+  beginCreateSurfaceCornerPicking?(): void;
+  cancelCreateSurfaceCornerPicking?(): void;
+  setCreateSurfaceCorners?(corners: readonly number[] | null): void;
+  setCreateSurfaceBoundary?(points: readonly PlacementEndpoint[], corners: readonly number[]): void;
+  showSurfaceCornerPreview?(doc: QuadMeshDoc): void;
   undoCreateSurfacePoint?(): void;
-  setCreateSurfaceCharts?(charts: readonly Patch[] | null): void;
+  setCreateSurfaceCharts?(charts: readonly Patch[] | null, outline?: readonly V3[]): void;
   setCreatePatchSides(sides: 3 | 4): void;
   setWeldTool(source: readonly number[] | false): void;
   setEdgeWeldTool(edges: readonly [number, number][] | null): void;

@@ -16,6 +16,8 @@ const BIAS_CELLS = 1.5;
 /** Depth map of the frontmost surface (max p.dir) per cell, looking along `dir`, + the projection. */
 interface DepthMap {
   map: Float32Array;
+  slopeX: Float32Array;
+  slopeY: Float32Array;
   W: number;
   H: number;
   rx: number;
@@ -62,7 +64,25 @@ function project(positions: Float32Array, dx: number, dy: number, dz: number, re
   const cell = Math.max(1e-3, Math.max(maxPx - minPx, maxPy - minPy) / res);
   const W = Math.max(1, Math.ceil((maxPx - minPx) / cell) + 1);
   const H = Math.max(1, Math.ceil((maxPy - minPy) / cell) + 1);
-  return { map: new Float32Array(W * H).fill(-Infinity), W, H, rx, ry, rz, ux, uy, uz, dx, dy, dz, minPx, minPy, cell };
+  return {
+    map: new Float32Array(W * H).fill(-Infinity),
+    slopeX: new Float32Array(W * H),
+    slopeY: new Float32Array(W * H),
+    W,
+    H,
+    rx,
+    ry,
+    rz,
+    ux,
+    uy,
+    uz,
+    dx,
+    dy,
+    dz,
+    minPx,
+    minPy,
+    cell,
+  };
 }
 
 /** Rasterise every triangle into the depth map, keeping the max depth (frontmost toward `dir`) per cell. */
@@ -86,7 +106,9 @@ function rasterise(dm: DepthMap, positions: Float32Array, indices: Uint32Array) 
       ed = cd(i2);
     const den = (by - ey) * (ax - ex) + (ex - bx) * (ay - ey);
     if (Math.abs(den) < 1e-9) continue;
-    const inv = 1 / den;
+    const inv = 1 / den,
+      slopeX = ((by - ey) * (ad - ed) + (ey - ay) * (bd - ed)) * inv,
+      slopeY = ((ex - bx) * (ad - ed) + (ax - ex) * (bd - ed)) * inv;
     let lo = Math.floor(Math.min(ax, bx, ex)),
       hi = Math.ceil(Math.max(ax, bx, ex));
     let lj = Math.floor(Math.min(ay, by, ey)),
@@ -105,13 +127,19 @@ function rasterise(dm: DepthMap, positions: Float32Array, indices: Uint32Array) 
         if (w0 < 0 || w1 < 0 || w2 < 0) continue;
         const d = w0 * ad + w1 * bd + w2 * ed;
         const idx = y * W + x;
-        if (d > map[idx]) map[idx] = d;
+        if (d > map[idx]) {
+          map[idx] = d;
+          dm.slopeX[idx] = slopeX;
+          dm.slopeY[idx] = slopeY;
+        }
       }
     }
   }
 }
 
-/** Per-vertex visibility (0..1) along `dir`: 1 where the vertex is the frontmost surface in its cell. */
+/** Compare depths at the query's actual position, rather than at a nearby texel centre. Comparing those
+ * different points falsely shadows a steep plane, especially at grazing sun/sky angles. Filter the four
+ * visibility comparisons (not the depths) to soften texel boundaries without blending separate blockers. */
 function visibility(dm: DepthMap, positions: Float32Array, out: Float32Array) {
   const { map, W, H, rx, ry, rz, ux, uy, uz, dx, dy, dz, minPx, minPy, cell } = dm;
   const bias = BIAS_CELLS * cell;
@@ -119,10 +147,35 @@ function visibility(dm: DepthMap, positions: Float32Array, out: Float32Array) {
     const px = positions[i] * rx + positions[i + 1] * ry + positions[i + 2] * rz;
     const py = positions[i] * ux + positions[i + 1] * uy + positions[i + 2] * uz;
     const d = positions[i] * dx + positions[i + 1] * dy + positions[i + 2] * dz;
-    const gx = Math.min(W - 1, Math.max(0, Math.floor((px - minPx) / cell)));
-    const gy = Math.min(H - 1, Math.max(0, Math.floor((py - minPy) / cell)));
-    const front = map[gy * W + gx];
-    out[v] = front === -Infinity ? 1 : Math.min(1, Math.max(0, (d - (front - 2 * bias)) / bias));
+    if (
+      px < minPx - cell * 0.5 ||
+      py < minPy - cell * 0.5 ||
+      px > minPx + (W + 0.5) * cell ||
+      py > minPy + (H + 0.5) * cell
+    ) {
+      out[v] = 1;
+      continue;
+    }
+    const fx = (px - minPx) / cell,
+      fy = (py - minPy) / cell,
+      gx = Math.floor(fx - 0.5),
+      gy = Math.floor(fy - 0.5),
+      tx = fx - 0.5 - gx,
+      ty = fy - 0.5 - gy;
+    let visible = 0;
+    for (let y = 0; y < 2; y++)
+      for (let x = 0; x < 2; x++) {
+        const sx = gx + x,
+          sy = gy + y;
+        let value = 1;
+        if (sx >= 0 && sy >= 0 && sx < W && sy < H) {
+          const index = sy * W + sx,
+            front = map[index] + dm.slopeX[index] * (fx - sx - 0.5) + dm.slopeY[index] * (fy - sy - 0.5);
+          value = front === -Infinity ? 1 : Math.min(1, Math.max(0, (d - (front - 2 * bias)) / bias));
+        }
+        visible += value * (x ? tx : 1 - tx) * (y ? ty : 1 - ty);
+      }
+    out[v] = visible;
   }
 }
 
@@ -131,8 +184,7 @@ function visibility(dm: DepthMap, positions: Float32Array, out: Float32Array) {
  *  `query` resolves the term at OTHER points (the placed props — docs/032 · lighting) against the same
  *  occluders. It is deliberately separate from `positions`: the depth map's bounds and cell size come from
  *  the occluder geometry alone, so adding query points can never coarsen the map the terrain itself is
- *  shaded with. A query point outside the occluders' footprint clamps to the edge cell, which is what an
- *  off-map prop should see. */
+ *  shaded with. A point outside that projected footprint has no blocker along this direction. */
 export function bakeSunShadow(
   positions: Float32Array,
   indices: Uint32Array,

@@ -98,7 +98,7 @@ export interface SelectionAccess {
   refData(): ReferenceMesh | null;
   refLevel(): string;
   referenceControlPoints(): readonly MeshControlPoint<number>[];
-  /** Edit is the mode hidden mesh components exist in; the hidden predicates read false elsewhere. */
+  /** User-hidden mesh components and generated surface cages are Edit-only; consumed sketches stay hidden. */
   editMode(): boolean;
   /** Marquee occlusion follows the shade view: wireframe ('none') selects through, no occlusion pass. */
   shading(): ShadeMode;
@@ -300,21 +300,22 @@ export function createSelectionLayer(
   }
 
   function vertexHidden(vertex: number) {
-    if (!access.editMode()) return false;
     const doc = access.meshDoc();
-    if (doc && surfaceOwnership(doc).hidden.has(vertex)) return true;
+    const owner = doc ? surfaceOwnership(doc) : null;
+    if (owner?.construction.has(vertex)) return true;
+    if (!access.editMode()) return false;
+    if (owner?.hidden.has(vertex)) return true;
     if (hiddenVertices.has(vertex)) return true;
     const net = access.net();
     const edges = (net?.adj.neighbors[vertex] ?? []).map(to => net!.adj.edgeQuads.get(ekey(vertex, to)) ?? []);
     return edges.length > 0 && edges.every(quads => quads.length > 0 && quads.every(quad => quadHidden(quad)));
   }
   function edgeHidden(a: number, b: number) {
-    if (!access.editMode()) return false;
     const doc = access.meshDoc();
-    if (doc) {
-      const hidden = surfaceOwnership(doc).hidden;
-      if (hidden.has(a) || hidden.has(b)) return true;
-    }
+    const owner = doc ? surfaceOwnership(doc) : null;
+    if (owner && (owner.construction.has(a) || owner.construction.has(b))) return true;
+    if (!access.editMode()) return false;
+    if (owner && (owner.hidden.has(a) || owner.hidden.has(b))) return true;
     if (hiddenVertices.has(a) || hiddenVertices.has(b) || hiddenEdges.has(ekey(a, b))) return true;
     const quads = access.net()?.adj.edgeQuads.get(ekey(a, b)) ?? [];
     return quads.length > 0 && quads.every(quad => quadHidden(quad));

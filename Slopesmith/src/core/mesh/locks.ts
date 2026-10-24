@@ -29,15 +29,34 @@ export function explicitLockedEdges(doc: QuadMeshDoc): [number, number][] {
   return out;
 }
 
+/** A live follower's generated lock must not freeze the ordinary terrain that owns its boundary. Explicit
+ * host-patch and edge locks still win. Generated surface-to-surface masters remain source-controlled. */
+function stitchHosts(doc: QuadMeshDoc) {
+  const chains =
+    doc.surfaces?.flatMap(s =>
+      (s.stitches ?? []).flatMap(st => ('vertices' in st.target ? [st.target.vertices] : [])),
+    ) ?? [];
+  if (!chains.length) return;
+  return {
+    quads: new Set(doc.surfaces?.flatMap(s => s.patches.map(p => p.quad))),
+    vertices: new Set(chains.flat()),
+    edges: new Set(chains.flatMap(chain => chain.slice(1).map((b, i) => [chain[i], b].sort().join('>')))),
+  };
+}
+
 /** Every corner a lock holds: the corners of locked patches and the ends of locked edges. A shared corner must
  * stay put or the protected patch or curve would move along with an otherwise-unlocked neighbour. */
 export function lockedVertexSet(doc: QuadMeshDoc): Set<number> {
   const out = new Set<number>();
+  const host = stitchHosts(doc);
   if (doc.quadLocked) {
     for (const key of Object.keys(doc.quadLocked)) {
       const quad = +key;
       if (!quadIsLocked(doc, quad)) continue;
-      for (const vertex of doc.quads[quad] ?? []) out.add(vertex);
+      for (const vertex of doc.quads[quad] ?? []) {
+        if (host?.quads.has(doc.quadIds[quad]) && host.vertices.has(doc.vertexIds[vertex])) continue;
+        out.add(vertex);
+      }
     }
   }
   if (doc.edgeLocked)
@@ -52,12 +71,17 @@ export function lockedVertexSet(doc: QuadMeshDoc): Set<number> {
  * its own. Both directed Bézier controls on such an edge shape the protected curve and are protected together. */
 export function lockedEdgeSet(doc: QuadMeshDoc): Set<string> {
   const out = new Set<string>();
+  const host = stitchHosts(doc);
   if (doc.quadLocked) {
     for (const key of Object.keys(doc.quadLocked)) {
       const quad = +key,
         corners = doc.quads[quad];
       if (!quadIsLocked(doc, quad) || !corners) continue;
-      for (const [a, b] of liveQuadEdges(corners)) out.add(undirectedEdgeKey(a, b));
+      for (const [a, b] of liveQuadEdges(corners)) {
+        if (host?.quads.has(doc.quadIds[quad]) && host.edges.has([doc.vertexIds[a], doc.vertexIds[b]].sort().join('>')))
+          continue;
+        out.add(undirectedEdgeKey(a, b));
+      }
     }
   }
   if (doc.edgeLocked) for (const [a, b] of explicitLockedEdges(doc)) out.add(undirectedEdgeKey(a, b));
@@ -204,6 +228,7 @@ export function locksHolding(
     edges = new Map<string, [number, number]>();
   const vertices = new Set(selection.vertices ?? []);
   const selectedEdges = new Set((selection.edges ?? []).map(([a, b]) => undirectedEdgeKey(a, b)));
+  const host = stitchHosts(doc);
   for (const quad of selection.quads ?? []) if (quadIsLocked(doc, quad)) quads.add(quad);
   if (doc.quadLocked && (vertices.size || selectedEdges.size)) {
     for (const key of Object.keys(doc.quadLocked)) {
@@ -211,8 +236,18 @@ export function locksHolding(
         corners = doc.quads[quad];
       if (!quadIsLocked(doc, quad) || !corners) continue;
       if (
-        corners.some(vertex => vertices.has(vertex)) ||
-        liveQuadEdges(corners).some(([a, b]) => selectedEdges.has(undirectedEdgeKey(a, b)))
+        corners.some(
+          vertex =>
+            vertices.has(vertex) && !(host?.quads.has(doc.quadIds[quad]) && host.vertices.has(doc.vertexIds[vertex])),
+        ) ||
+        liveQuadEdges(corners).some(
+          ([a, b]) =>
+            selectedEdges.has(undirectedEdgeKey(a, b)) &&
+            !(
+              host?.quads.has(doc.quadIds[quad]) &&
+              host.edges.has([doc.vertexIds[a], doc.vertexIds[b]].sort().join('>'))
+            ),
+        )
       )
         quads.add(quad);
     }

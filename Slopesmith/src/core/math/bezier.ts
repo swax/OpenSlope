@@ -32,12 +32,28 @@ export function besselTangent(a: V3 | null, b: V3, c: V3 | null): V3 {
 }
 
 function bez(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
-  const s = 1 - t;
-  return add(add(mul(p0, s * s * s), mul(p1, 3 * s * s * t)), add(mul(p2, 3 * s * t * t), mul(p3, t * t * t)));
+  const s = 1 - t,
+    a = s * s * s,
+    b = 3 * s * s * t,
+    c = 3 * s * t * t,
+    d = t * t * t;
+  // Preserve the bake's arithmetic order while avoiding intermediate vector allocations.
+  return [
+    p0[0] * a + p1[0] * b + (p2[0] * c + p3[0] * d),
+    p0[1] * a + p1[1] * b + (p2[1] * c + p3[1] * d),
+    p0[2] * a + p1[2] * b + (p2[2] * c + p3[2] * d),
+  ];
 }
 function bezD(p0: V3, p1: V3, p2: V3, p3: V3, t: number): V3 {
-  const s = 1 - t;
-  return add(add(mul(sub(p1, p0), 3 * s * s), mul(sub(p2, p1), 6 * s * t)), mul(sub(p3, p2), 3 * t * t));
+  const s = 1 - t,
+    a = 3 * s * s,
+    b = 6 * s * t,
+    c = 3 * t * t;
+  return [
+    (p1[0] - p0[0]) * a + (p2[0] - p1[0]) * b + (p3[0] - p2[0]) * c,
+    (p1[1] - p0[1]) * a + (p2[1] - p1[1]) * b + (p3[1] - p2[1]) * c,
+    (p1[2] - p0[2]) * a + (p2[2] - p1[2]) * b + (p3[2] - p2[2]) * c,
+  ];
 }
 
 /** A single cubic Bezier edge (4 control points) evaluated at t = 0..1 — the point on the shared boundary

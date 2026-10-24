@@ -144,39 +144,78 @@ all internal U and V control curves. Ordered guide tangents continue through sha
 parameter derivatives on both sides of each point, including unequal knot spacing. Source points stay fixed;
 locked edges retain their tangents.
 
-- **Add control curve** enters placement mode in the selected U or V direction. Move over the existing surface
-  to preview the exact section, then click to set it. The **orientation: U → V** / **V → U** button switches
-  direction during creation. **Reposition curve on surface** uses the same gesture for
-  an existing guide. Both operations preserve the surface and the generated patch layout, including vertex ids
-  and all sixteen controls per patch. Moving a boundary guide inward does not trim the original surface.
-  Nearby points on perpendicular guides attract the preview to their station. The amber curve and point markers,
-  plus a reuse count in the panel, show exactly which existing source point IDs will be shared on click.
-- Placement is transient until the click. **Esc** or **Cancel placement** discards it. Red feedback means another
-  guide already occupies that station; clicking empty space does not commit a stale preview. Shape edits still
-  use the ordinary point, tangent and W/E/R tools after placement finishes.
-- New crossings split existing cubic curves exactly and share a source vertex. Construction curves and generated
-  terrain use independent vertices. A guide need not coincide with a generated row or column, and adding or
-  repositioning one does not retessellate the terrain. Subsequent shape or density edits can regenerate its layout.
-- **Remove control curve** removes the guide while preserving the current surface, terrain patch layout and ids.
-  Keep one editable curve. Dissolve refuses source topology edits; Delete reshapes as described below.
-- **Guide points** adds, removes or repositions authoring points along a selected curve without changing the
-  surface. Add and reposition use a moving point preview, committed by clicking; Esc cancels. Curve endpoints
-  and shared crossings remain structural: reposition the crossing curve to move its shared point. Ordinary
-  point and tangent gizmo drags continue to reshape the surface.
-- **Select all control curves** transforms the whole object. Local point or tangent edits interpolate through
-  the remaining control curves. **Patch size** changes the generated layout without adding shape controls.
-  Clicking terrain selects its controls. Generated points, edges and interiors are not direct editing targets;
-  geometry sculpting respects their protection.
+- **Add control curve** previews a U or V section sampled from the current surface. Click to create its
+  explicit points and cubic handles, sharing crossing points with the other family. Sections include the
+  source points needed to describe their shape, independently of generated patch boundaries.
+- **Reposition curve on surface** samples a replacement at the chosen station and rebuilds from the current
+  curves. It can relax shape previously held by the old constraint. Esc cancels the preview.
+- **Delete control curve** removes that shape constraint and rebuilds from the remaining curves. It never
+  captures the deleted curve's influence in a hidden base surface. Boundary curves remain structural.
+- **Guide points** adds exact cubic splits, or samples replacement points with a moving preview. Deleting
+  a point reconnects and smooths the remaining anchors, then refits terrain. Endpoints and shared crossings
+  remain protected; ordinary point and tangent drags reshape the surface directly.
+- **Select all control curves** transforms the whole object. **Patch size** changes the generated layout
+  independently of the shape controls. A complete redundant new section or exact point split can retain
+  the current fitted output; edits that change shape rebuild it from the visible curves.
 
 Original sketches are retained independently and free seed sketches are hidden while the object is live. The
-visible editable curves are exact owned copies. An existing host boundary remains ordinary terrain and is not
-welded to the new output. Persistent positional and tangent stitching between surfaces is a separate feature.
+visible editable curves are exact owned copies.
+
+**Live stitching.** Drawing a boundary along snapped open terrain edges or another surface's boundary creates
+a persistent attachment when the new fill extends away from the host. Exact coincident boundary points also
+count as contacts when grid placement does not retain a snap id. Drawing over an existing patch copies its
+boundary without attaching a second sheet on top. Source guides stay independent of generated vertices.
+For a manual attachment, select a connected run of boundary control edges on the surface, choose
+**Stitch selected edges…**, then select the same number of target boundary edges on another surface or plain
+terrain. Choose **Smooth** or **Crease**, then **Apply stitch**. Escape cancels without changing the document.
+The two selected guide chains may produce different numbers of terrain patches: a narrow local band of quads
+absorbs that difference, with shared seam vertices and exact boundary cubics. Extra divisions do not propagate
+through the whole surface. Odd boundary counts can add a split on a free side rail. A join that would fold a
+patch, create a non-manifold edge or introduce a dependency cycle is rejected without a partial edit.
+
+Moving a shared boundary edge from either side carries both authoring cages and their terrain together. Matching
+source points move together too; moving the whole edge also carries intermediate ordinary terrain vertices when
+the counts differ. Source curves stay aligned with the join, including after reload, and detaching releases this
+coupling. The target supplies the boundary shape and both surfaces can change patch density independently.
+Ordinary host patches retain their complete bicubic controls. Smooth matches the target's tangent plane
+while allowing tangential shear through transition quads; Crease retains the attached side's slope. The
+**Stitching** section changes continuity or **Detaches all stitching**, including incoming connections from
+other surfaces. Detaching recreates visible curves and points describing the attached shape, then refits independent output.
+Attachments, continuity changes and detach operations undo normally and survive save/reload and register sync.
+Baking either side preserves the shared seam and makes any remaining live surface follow the baked plain
+geometry. Deleting an attached surface first releases its dependent connections.
+
+A new boundary can continue from ordinary patches onto a live surface at their shared corner; source points
+and generated corners both identify stations on that surface's boundary. On an existing object, **Stitch
+touching boundaries** attaches missing spans whose points already coincide with open terrain or another
+surface. It retains existing stitches, undoes as one edit, and does not run automatically after detaching.
+
+Boundary corners are inferred by fitting four sides to the whole outline, with distance-weighted error; dense
+samples along a straight side do not claim a corner, and the first click need not be one. Close a creation loop
+to enable **Pick corners**, then click four existing boundary points. The first becomes A and the remaining
+three are ordered around the loop. Gold labelled rings preview picks; all four are applied together. Duplicate
+picks are ignored, Backspace undoes a pick, and Esc cancels picking while keeping the previous corners.
+**Smooth** is the creation default: intermediate points within each side receive continuous cubic tangents.
+**Creased** keeps new segments straight. Chosen corners remain sharp and snapped host edges retain their
+authored cubics. The curved outline, edge length and area preview use the same handles as the created surface.
+**Infer corners again** restores automatic selection. Apply/create waits until corner picking is complete. Ordinary source edits keep the chosen corners fixed.
+
+On an existing object, **Edit corners…** opens a reversible preview with its live boundary fixed. **Preserve shape**
+is the default: the current terrain is resampled through its dominant-plane projection onto the new U/V layout,
+then its interior guide families are rebuilt on that shape. Extra visible curves and points are added when
+needed to describe the preserved terrain; no invisible rest shape is retained. The preview reports the visible
+curve count as well as the generated patch count. **Refill from boundary** explicitly generates a fresh
+interior instead. Folded or unresolvable projections fail with an explanation rather than silently refilling.
+The preview shows the assembled terrain, including incoming/outgoing stitch remapping and Smooth/Crease
+continuity. A connection crossing a new corner becomes multiple constrained spans. A split against plain quads
+requires a matching host vertex; unsupported splits are refused without detaching. **Apply corners** is one undo
+step; cancel and preview never save changes. Save/reload retains the new corners and connections.
 
 Choose an object under **Surfaces** in the empty-selection Edit toolbox to resume work. **Refit patch layout**
 redistributes an existing object's terrain with its current size and shape, keeping the guides unchanged.
 The selected surface shows its approximate curved 3D area in m², followed by **avg patch size**: the generated
 patches' average curved length × width in metres, for comparison with the requested patch size. The active
-control curve shows its full arc length, including shape carried by the rest quilt. Source area and guide lengths
+control curve shows its full arc length, including its explicit cubic handles. Source area and guide lengths
 are independent of terrain patch density; average patch dimensions follow the generated layout. Measurements
 refresh with the inspector after edits. Integration runs when the inspector rebuilds, not every frame.
 **Bake surface** keeps
@@ -188,26 +227,53 @@ Removing the last Surface or legacy loft register removes its optional metadata 
 normalization so a room snapshot cannot be mistaken for a newer external edit.
 
 **Delete** on selected internal control points reconnects and smooths their curves, rebuilds the shape from
-the remaining constraints and refits terrain. A whole selected curve is deleted as a shape constraint; a hill
+the remaining constraints and refits terrain. A whole selected interior curve is deleted as a shape constraint; a hill
 held only by that curve relaxes away. Double-click a control edge to select its entire guide through crossings;
 Shift-click extends a run along it, or spans a band of parallel guides. Partial edge runs must be completed to
-a whole curve before deletion. Curve endpoints and shared crossing points remain protected, and one editable
-curve must remain. The Surface panel exposes the same **delete … (reshape)** actions separately from
-**remove control curve / point**, which keep the exact current shape. Both kinds of removal undo normally.
+a whole curve before deletion. Curve endpoints and shared crossing points remain protected, and enough curves
+must remain to define the two-dimensional extent. Boundary curves define the outline and cannot be removed, deleted or repositioned into the
+interior. Their points and tangents remain editable, including removing intermediate unshared points. The panel
+identifies boundary curves and disables those curve actions; keyboard deletion enforces the same protection.
+Two-point guide sides start straight unless their source edge has explicitly shaped handles. Endpoint moves
+keep a straight guide aligned to its new chord; dragged tangent handles and multi-point shape curves retain
+their authored curvature. **Crease (C)** clears existing handle bends when a straight side is wanted.
+The Surface panel exposes the same **delete control curve / point** actions. There is no separate removal
+operation that preserves an invisible shape. Deletion, placement and corner changes undo normally.
 
-The mountain's surfaces list stores source paths, curve directions, stations and knot parameters, an exact rest
-quilt, output ids and domains, settings, and evaluated cubic controls. `core/mesh/surface-guides.ts` interpolates
-curve displacements with a Gordon-style blend of both directions, subtracting their shared crossings. Exact
-bicubic extraction preserves every guide, including tangent edits. Adding or repositioning a guide rebases the rest
-quilt and records a fresh source evaluation without rebuilding output. Each guide stores a reference authoring
-curve independently of the exact rest section. Adding, removing and sliding guides or points resets that
-reference to zero displacement; a later shape drag changes the displacement. New guides expose endpoints and
-required crossings rather than inheriting editable points at internal surface seams. Rendered and picked guide
-curves still follow the exact surface. Cross-guide placement snaps to existing point stations within pick
-precision, avoiding microscopic spans that fold when their endpoints move. Redundant polynomial seams are
-removed before meshing. Singleton families use
-a smooth influence that fades toward automatic boundaries. Whole-object affine transforms carry the rest quilt
-with their curves. See the general curve-network construction in the
+Control curves support **Copy (Ctrl+C)**, **Paste (Ctrl+V)** and **Duplicate (Ctrl+D)**. Select a curve to copy;
+select the destination surface before pasting. Paste and Duplicate show a moving curve preview until click,
+and Esc cancels without changing the document. Copies retain their profile relief in metres while fitting
+their endpoint chord to the destination boundary. Crossing guides share actual source points and follow the
+pasted shape. Placement is one undo step. The session curve clipboard takes paste ownership from mesh/props
+until another family is copied; Duplicate leaves the clipboard unchanged.
+
+Live surfaces retain the alternating patch preview, including unpainted terrain in lit Textured view, and
+blend display normals across fitted seams. Painted textures keep their own colors. The 10-degree
+crease threshold tests the source curves, so fitting error does not turn a smooth source into a hard lighting
+edge. Sharp source seams and boundaries between distinct objects retain their normals. Directional sun light
+is evaluated per pixel after interpolating and normalizing the normal, rather than interpolating clipped
+vertex colors; Surface view uses per-pixel studio lighting with the sun off too. This changes display shading
+only, not patch geometry or collision. Incremental updates relight affected neighboring patches, and baking
+restores the ordinary quad display.
+Empty terrain stays hidden while loading; installing its first normal buffer also invalidates the loading
+shader variant, so the editor cannot retain flat shading after the smooth quilt appears.
+Shadow and sky-occlusion queries compare depth at the actual query position using the occluder's triangle
+plane, then filter neighboring visibility comparisons. This avoids false self-shadowing on steep slopes
+and softens shadow-map texel boundaries. These occlusion bakes remain cached during point drags.
+
+The mountain's surfaces list stores visible source paths, curve directions, stations and knot parameters,
+output ids and domains, settings, and evaluated cubic controls. `core/mesh/surface-guides.ts` uses an absolute
+Gordon blend of the current curves in both directions, subtracting their shared crossings. Its footprint is
+computed from those curves' endpoints and cannot retain interior relief. Retired `seed` and `reference` data
+can be read from old files but never contributes shape; the next refresh discards it and rebuilds from controls.
+Existing files retain their cardinal interpolation rule. New objects use natural cubic interpolation so inserting
+an existing section adds a redundant constraint without changing the shape when curvature is one.
+`core/mesh/surface-source.ts` expresses temporary sampled terrain through explicit editable curves during
+corner changes, legacy cage adoption and stitch detachment. It checks approximation error, adds visible sections
+as needed, and refuses an unrepresentable result rather than retaining hidden relief. Rendered and picked guides
+are their actual cubic source edges. Cross-guide placement snaps to existing point stations within pick precision,
+avoiding microscopic spans that fold when endpoints move. Redundant polynomial seams are removed before fitting
+terrain. Whole-object transforms act directly on the curves. See the general curve-network construction in the
 [TiGL paper](https://arxiv.org/abs/1810.10795).
 
 `core/mesh/surface-object.ts` initializes, rebuilds and bakes objects. `core/mesh/surface-fit.ts` starts with a
@@ -231,7 +297,11 @@ Limits are 4,096 source controls, 4,096 construction spans and 16,384
 output patches per surface. Appearance follows source-domain location; coarsening output may reduce painted-cell
 resolution. B-spline math remains available for adopting older cages and exact evaluation.
 
-During a shape drag, the same grid dimensions preview the fitted surface through incremental viewport updates.
+During a shape drag, the control cage follows the pointer immediately. Surface fitting and tessellation run in a
+worker, with one sample in flight and at most one replacement containing the latest controls. Samples start at
+most once every 80 ms; completed samples update retained terrain buffers without overwriting newer source edits.
+Undo, document replacement and ending the drag invalidate pending samples. The same grid dimensions preview
+the fitted surface through incremental viewport updates.
 A cheaper arc-length pass redistributes physical spacing during the drag while preserving useful fitting anchors
 and the total grid dimensions. It falls back to uniform spacing if old anchors would cause thinner strips.
 Full spacing, crease and fitting-error checks run on release; unchanged grid dimensions retain vertex
@@ -246,11 +316,21 @@ edits and free neighbours that affect automatic tangents. Crossing auto-weld que
 the area around their endpoints, sharing one curve inventory and sampling only surviving candidate pairs.
 
 Save/load, autosave, register sync and undo retain curves and terrain. Existing lofts and source cages are adopted
-from their evaluated shape, including finishing edits, using sparse isoparametric guides. Invalid source controls,
-changed output topology or foreign attachments pause rebuilding with an explanation and retain the terrain.
+from their evaluated shape, including finishing edits, using sparse isoparametric guides. A new edit that fails
+surface fitting or stitching is cancelled with an explanation: source controls, shared host controls and generated
+terrain return together to the last fully fitted state. Drag previews remain provisional until the final fit passes;
+autosave, register sync and undo cannot publish the provisional geometry. Existing errors in an opened document
+remain visible for repair without rewriting its source controls.
+
+`node --import tsx test/surface-edit-guard.test.ts` covers failed shared-corner drags, final-fit rollback after a
+successful preview, persistence during a drag, publication gating and adoption of documents with existing errors.
+`node --import tsx test/surface-preview.test.ts` checks worker/full-rebuild equivalence, seam-normal caches,
+immediate cage feedback, coalesced latest-source requests, stale-result rejection and final adaptive fitting.
+`node --import tsx test/surface-corners.test.ts` covers outline inference, manual corner validation, preservation
+of interior relief, explicit refill, incoming/outgoing stitch ranges and plain-quad hosts.
 
 Checks: `node --import tsx test/surface-object.test.ts` covers guide interpolation, shared crossings, two-arch
-hills, U/V placement, point editing, shape-preserving removal, fixed output topology, protection, persistence,
+hills, U/V placement, point editing, source-defined deletion, redundant guide insertion, protection, persistence,
 registers and legacy adoption. `node --import tsx test/construction-preview.test.ts` checks terrain buffer reuse
 and equivalence to a full rebuild while construction topology changes.
 `node --import tsx test/surface-fit.test.ts` checks sparse output layout, the whole-span error bound, narrow
@@ -258,8 +338,10 @@ details, watertight edges, creases and stable drag layouts.
 `node --import tsx test/surface-fit-gari.test.ts` uses isolated GARI_FRESH profile and boundary quilts that exposed
 guide-aligned slivers and derivative-driven over-refinement: it checks physical patch proportions, fitting error,
 shared edges, drag redistribution and independence from redundant source partitions.
-`node --import tsx test/surface-control-delete.test.ts` checks shape-changing deletion, batches, preserved
-guide removal, protected crossings/endpoints and guide-aware range/whole-curve selection.
+`node --import tsx test/surface-source.test.ts` checks that retired history cannot produce hidden terrain and that
+refresh rebuilds solely from the current curves, retaining boundary ids and stable persistence.
+
+`node --import tsx test/surface-control-delete.test.ts` checks shape-changing deletion, batches, curve removal, protected crossings/endpoints and guide-aware range/whole-curve selection.
 `node --import tsx test/surface-measure-snap.test.ts` checks curved area and length, density independence,
 transient snap queries, source point ID reuse, unchanged terrain and persistence.
 `node --import tsx test/surface-boundary.test.ts` checks drawn boundaries, exact preview/creation agreement,

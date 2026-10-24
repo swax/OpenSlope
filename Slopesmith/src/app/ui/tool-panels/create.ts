@@ -1517,18 +1517,70 @@ export function createCreateTools(ctx: ToolsContext) {
   }
 
   function buildCreateSurfaceTools() {
-    const group = editSection('create-surface', 'Create Surface');
+    const cornerStatus = edit.createSurfaceStatus(),
+      editing = !!cornerStatus.editing;
+    const group = editSection('create-surface', editing ? 'Edit Surface Corners' : 'Create Surface');
     note(
       group,
-      'Place at least four points, then click the first to close the loop. Select a point and drag its move gizmo. Enter creates the surface.',
+      editing
+        ? 'Choose four corners in boundary order. The preview includes the refitted terrain and its stitching. Enter applies; Esc cancels.'
+        : 'Place at least four points, then click the first to close the loop. Select a point and drag its move gizmo. Enter creates the surface.',
     );
-    note(group, 'Points snap to existing vertices · Ctrl places on terrain · Shift locks an axis');
+    note(group, 'Gold rings mark the four surface corners.');
+    if (cornerStatus.pickingCorners) {
+      note(
+        group,
+        `Click boundary point ${'ABCD'[cornerStatus.cornerPicks.length]}. Pick four distinct points; the first becomes A.`,
+      );
+      liveDetail(group, () => `${edit.createSurfaceStatus().cornerPicks.length} / 4`, 'corners picked');
+      group.add({ cancel: edit.cancelCreateSurfaceCornerPicking }, 'cancel').name('cancel picking corners (Esc)');
+      const undo = group.add({ undo: edit.undoCreateSurfacePoint }, 'undo').name('undo picked corner (Backspace)');
+      if (!cornerStatus.cornerPicks.length) undo.disable();
+    } else {
+      const pick = tip(
+        group.add({ pick: edit.beginCreateSurfaceCornerPicking }, 'pick').name('pick corners'),
+        'Click four existing boundary points. The first becomes A; the other corners are ordered around the boundary.',
+      );
+      if (cornerStatus.points < 4 || !cornerStatus.closed) pick.disable();
+      else {
+        group.add({ infer: edit.inferCreateSurfaceCorners }, 'infer').name('infer corners again');
+        liveDetail(group, () => (edit.createSurfaceStatus().manualCorners ? 'manual' : 'automatic'), 'corners');
+      }
+      if (!cornerStatus.closed) note(group, 'Close the boundary loop to pick corners.');
+    }
+    if (editing) {
+      group
+        .add(edit.createSurfaceSettings(), 'preserveShape', { 'Preserve shape': true, 'Refill from boundary': false })
+        .name('interior')
+        .onChange(() => edit.previewCreateSurface());
+      note(
+        group,
+        'Interior guides are rebuilt on the new U/V layout. Preserve shape recreates visible curves and points to approximate the terrain; refill creates a fresh interior.',
+      );
+      liveDetail(group, () => String(edit.createSurfaceStatus().previewPatches ?? '—'), 'preview patches');
+      liveDetail(group, () => String(edit.createSurfaceStatus().previewCurves ?? '—'), 'visible control curves');
+    } else note(group, 'Points snap to existing vertices · Ctrl places on terrain · Shift locks an axis');
     liveDetail(group, () => String(edit.createSurfaceStatus().points), 'boundary points');
     liveDetail(
       group,
       () => {
+        const selected = edit.createSurfaceStatus().selected;
+        return selected === null ? '—' : `point ${selected + 1}`;
+      },
+      'selected point',
+    );
+    liveDetail(
+      group,
+      () => {
         const status = edit.createSurfaceStatus();
-        return status.error ?? (status.closed ? 'edit boundary points · Enter to create' : 'drawing boundary');
+        return (
+          status.error ??
+          (editing
+            ? 'preview only · Enter to apply'
+            : status.closed
+              ? 'edit boundary points · Enter to create'
+              : 'drawing boundary')
+        );
       },
       'preview',
     );
@@ -1548,11 +1600,39 @@ export function createCreateTools(ctx: ToolsContext) {
       },
       'surface area',
     );
-    note(group, 'When editing a point, current edge measures from that point to the next boundary point.');
-    group.add(edit.createSurfaceSettings(), 'patchSizeM', 1, 500, 1).name('patch size (m)');
-    group.add({ create: edit.finishCreateSurface }, 'create').name('create surface (Enter)');
-    group.add({ undo: edit.undoCreateSurfacePoint }, 'undo').name('undo boundary point (Backspace)');
-    group.add({ cancel: edit.cancelCreateSurface }, 'cancel').name('cancel surface (Esc)');
+    note(
+      group,
+      editing
+        ? 'Use Pick corners, then click four boundary points to set A–D.'
+        : 'When editing a point, current edge measures from that point to the next boundary point.',
+    );
+    if (!editing) {
+      tip(
+        group
+          .add(edit.createSurfaceSettings(), 'boundaryStyle', { Smooth: 'smooth', Creased: 'creased' })
+          .name('boundary curves')
+          .onChange(() => edit.previewCreateSurface()),
+        'Smooth rounds intermediate points along each side. Creased keeps new segments straight. Chosen corners and existing snapped edges retain their shape.',
+      );
+      group.add(edit.createSurfaceSettings(), 'patchSizeM', 1, 500, 1).name('patch size (m)');
+    }
+    const apply = group
+      .add({ create: edit.finishCreateSurface }, 'create')
+      .name(editing ? 'apply corners (Enter)' : 'create surface (Enter)');
+    if (cornerStatus.pickingCorners) apply.disable();
+    if (!editing && !cornerStatus.pickingCorners)
+      group.add({ undo: edit.undoCreateSurfacePoint }, 'undo').name('undo boundary point (Backspace)');
+    group
+      .add({ cancel: edit.cancelCreateSurface }, 'cancel')
+      .name(
+        cornerStatus.pickingCorners
+          ? editing
+            ? 'cancel corner preview'
+            : 'cancel surface'
+          : editing
+            ? 'cancel corners (Esc)'
+            : 'cancel surface (Esc)',
+      );
   }
 
   return {

@@ -1,4 +1,12 @@
-import type { QuadMeshDoc, V3 } from '../../core/doc/types';
+import type { QuadMeshDoc, V3, SurfaceBoundary, SurfaceStitch } from '../../core/doc/types';
+import {
+  addSurfaceStitch,
+  detachSurfaceStitches,
+  setSurfaceStitchContinuity,
+  selectedSurfaceBoundary,
+  meshBoundaryChain,
+  orientStitchTarget,
+} from '../../core/mesh/surface-stitch';
 import {
   appendFreeEdge,
   appendGrid,
@@ -33,13 +41,23 @@ import {
 } from '../../core/mesh/surface-object';
 import type { SurfaceAxis } from '../../core/math/spline-surface';
 import { surfaceEditState } from '../state/surface-edit';
-import { guideRows, guideCharts, readGuideCurves, surfaceGuideSnapTargets } from '../../core/mesh/surface-guides';
+import {
+  guideRows,
+  guideCharts,
+  readGuideCurves,
+  surfaceGuideSnapTargets,
+  isSurfaceBoundaryGuide,
+} from '../../core/mesh/surface-guides';
 import {
   surfaceBoundaryDraft,
   surfaceBoundarySegmentLength,
   createSurfaceFromDrawnBoundary,
+  stitchTouchingSurfaceBoundaries,
+  type SurfaceBoundaryStyle,
 } from '../../core/mesh/surface-boundary';
 import { cellMetrics } from '../../core/mesh/measure';
+import { rebuildSurfaceCorners, surfaceCornerBoundary } from '../../core/mesh/surface-corner-edit';
+import { validateSurfaceCorners } from '../../core/mesh/surface-corners';
 import { getVertex } from '../../core/doc/doc-edit';
 import type { Store } from '../state/store';
 import {
@@ -65,6 +83,13 @@ import type { CreateEdgeEndpoint } from '../viewport/types';
 import { quadPerimeterEdges } from '../../core/mesh/primitives';
 import { buildQuadMesh, meshAdjacency } from '../../core/mesh/topology';
 import { findTJunctions } from '../../core/mesh/t-junctions';
+import { surfaceGuideForEdge } from '../../core/mesh/surface-selection';
+import {
+  copySurfaceCurve,
+  pasteSurfaceCurve,
+  positionedSurfaceCurve,
+  type SurfaceCurveClipboard,
+} from '../../core/mesh/surface-curve-clipboard';
 
 const quadHasEdge = (q: number[], edge: readonly [number, number]) =>
   quadPerimeterEdges(q).some(([a, b]) => a !== b && ekey(a, b) === ekey(edge[0], edge[1]));
@@ -156,10 +181,205 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     id: string;
     axis: SurfaceAxis;
     row: number;
-    mode: 'add' | 'move' | 'add-point' | 'move-point';
+    mode: 'add' | 'move' | 'add-point' | 'move-point' | 'paste' | 'duplicate';
     point?: number;
     snappedPoints?: number;
   } | null = null;
+  let curveClipboard: SurfaceCurveClipboard | null = null;
+
+  function selectedSurfaceCurve() {
+    if (
+      store.modelEditId ||
+      store.cellSel.length ||
+      store.regionSel.length ||
+      store.controlSel.length ||
+      store.selectedCorner !== null ||
+      store.multiSel.length ||
+      store.selectedProp !== null ||
+      !store.edgeSel.length
+    )
+      return null;
+    const hit = surfaceGuideForEdge(mdoc(), store.edgeSel[0]);
+    return hit &&
+      store.edgeSel.every(e => {
+        const next = surfaceGuideForEdge(mdoc(), e);
+        return next?.surface.id === hit.surface.id && next.curve === hit.curve;
+      })
+      ? hit
+      : null;
+  }
+  function surfacePasteTarget() {
+    if (store.modelEditId) return null;
+    const points = new Set([
+      ...store.regionSel,
+      ...store.edgeSel.flat(),
+      ...(store.selectedCorner ? [store.selectedCorner] : []),
+      ...store.controlSel.flatMap(p => (p.kind === 'vertex' ? [p.vertex] : [])),
+    ]);
+    const surfaces = (mdoc().surfaces ?? []).filter(
+      s =>
+        s.guides &&
+        (s.controls.flat().some(id => points.has(id)) ||
+          s.vertices.some(id => points.has(id)) ||
+          s.patches.some(p => store.cellSel.includes(p.quad))),
+    );
+    return surfaces.length === 1 ? surfaces[0] : null;
+  }
+  function copySurfaceControlCurve(id?: string, axis?: SurfaceAxis, row?: number) {
+    const selected = selectedSurfaceCurve();
+    const surface = id ? mdoc().surfaces?.find(s => s.id === id) : selected?.surface;
+    const curve = surface && axis !== undefined && row !== undefined ? guideRows(surface, axis)[row] : selected?.curve;
+    if (!surface || curve === undefined) return;
+    curveClipboard = copySurfaceCurve(mdoc(), surface, curve);
+    store.clipboardKind = 'surface-curve';
+    rebuildTools();
+    toast('Control curve copied · select a surface and paste to place its profile', 'ok');
+  }
+  function canCopySurfaceControlCurve() {
+    return store.currentMode === 'edit' && !guidePlacement && !!selectedSurfaceCurve();
+  }
+  function canPasteSurfaceControlCurve() {
+    return (
+      store.currentMode === 'edit' &&
+      store.clipboardKind === 'surface-curve' &&
+      !!curveClipboard &&
+      !!surfacePasteTarget()
+    );
+  }
+  function pasteSurfaceControlCurve(id?: string, axis?: SurfaceAxis, row = 0) {
+    if (store.clipboardKind !== 'surface-curve' || !curveClipboard) return;
+    const surface = id ? mdoc().surfaces?.find(s => s.id === id) : surfacePasteTarget();
+    if (surface)
+      beginSurfaceGuidePlacement(
+        surface.id,
+        axis ?? curveClipboard.curve.axis,
+        row,
+        'paste',
+        undefined,
+        structuredClone(curveClipboard),
+      );
+  }
+  function duplicateSurfaceControlCurve(id?: string, axis?: SurfaceAxis, row?: number) {
+    const selected = selectedSurfaceCurve();
+    const surface = id ? mdoc().surfaces?.find(s => s.id === id) : selected?.surface;
+    const curve = surface && axis !== undefined && row !== undefined ? guideRows(surface, axis)[row] : selected?.curve;
+    if (!surface?.guides || curve === undefined) return;
+    const g = surface.guides[curve],
+      r = guideRows(surface, g.axis).indexOf(curve);
+    beginSurfaceGuidePlacement(surface.id, g.axis, r, 'duplicate', undefined, copySurfaceCurve(mdoc(), surface, curve));
+  }
+  let stitchPlacement: { source: SurfaceBoundary; count: number; continuity: SurfaceStitch['continuity'] } | null =
+    null;
+  function beginSurfaceStitch() {
+    if (store.modelEditId) return;
+    const source = selectedSurfaceBoundary(mdoc(), store.edgeSel);
+    if (!source) {
+      toast('Select a connected run of boundary edges on a surface.', 'warn');
+      return;
+    }
+    stitchPlacement = { source, count: store.edgeSel.length, continuity: 'smooth' };
+    clearEdgeSelection();
+    clearCellSelection();
+    dropCornerSelection();
+    exitRegion();
+    view().setControlPointSelection([]);
+    rebuildTools();
+    updateCmdSheet();
+    toast(
+      `select ${stitchPlacement.count} matching boundary edge${stitchPlacement.count === 1 ? '' : 's'} · then apply stitch`,
+      'info',
+    );
+  }
+  function cancelSurfaceStitch() {
+    if (!stitchPlacement) return;
+    stitchPlacement = null;
+    rebuildTools();
+    updateCmdSheet();
+  }
+  function surfaceStitchCandidate(): { target?: SurfaceStitch['target']; error?: string } {
+    if (!stitchPlacement) return {};
+    try {
+      if (store.edgeSel.length !== stitchPlacement.count)
+        throw new Error(
+          `Select ${stitchPlacement.count} target edge${stitchPlacement.count === 1 ? '' : 's'} (${store.edgeSel.length} selected).`,
+        );
+      const boundary = selectedSurfaceBoundary(mdoc(), store.edgeSel);
+      if (boundary?.surface === stitchPlacement.source.surface)
+        throw new Error('Choose the boundary of another surface or plain terrain.');
+      const target = boundary ?? { vertices: meshBoundaryChain(mdoc(), store.edgeSel) };
+      return { target: orientStitchTarget(mdoc(), stitchPlacement.source, target) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  function completeSurfaceStitch() {
+    if (!stitchPlacement) return;
+    const candidate = surfaceStitchCandidate();
+    if (!candidate.target) {
+      toast(candidate.error ?? 'Select the target boundary.', 'warn');
+      return;
+    }
+    try {
+      deps.commitHistory?.();
+      const result = addSurfaceStitch(
+        mdoc(),
+        stitchPlacement.source.surface,
+        stitchPlacement.source,
+        candidate.target,
+        stitchPlacement.continuity,
+      );
+      const id = stitchPlacement.source.surface;
+      stitchPlacement = null;
+      commitEditMesh(store, result);
+      scheduleRebuild();
+      selectSurfaceControls(id);
+      deps.commitHistory?.();
+      toast('live surface stitch created', 'ok');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
+  function detachSurface(id: string) {
+    try {
+      deps.commitHistory?.();
+      commitEditMesh(store, detachSurfaceStitches(mdoc(), id));
+      scheduleRebuild();
+      selectSurfaceControls(id);
+      deps.commitHistory?.();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
+  function stitchTouchingSurface(id: string) {
+    try {
+      const before = mdoc().surfaces?.find(s => s.id === id)?.stitches?.length ?? 0,
+        result = stitchTouchingSurfaceBoundaries(mdoc(), id),
+        added = (result.surfaces?.find(s => s.id === id)?.stitches?.length ?? 0) - before;
+      if (!added) {
+        toast('no unstitched touching boundaries found', 'info');
+        return;
+      }
+      deps.commitHistory?.();
+      commitEditMesh(store, result);
+      scheduleRebuild();
+      selectSurfaceControls(id);
+      deps.commitHistory?.();
+      toast(`${added} touching boundary ${added === 1 ? 'span stitched' : 'spans stitched'}`, 'ok');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
+  function changeSurfaceStitchContinuity(id: string, continuity: SurfaceStitch['continuity']) {
+    try {
+      deps.commitHistory?.();
+      commitEditMesh(store, setSurfaceStitchContinuity(mdoc(), id, continuity));
+      scheduleRebuild();
+      selectSurfaceControls(id);
+      deps.commitHistory?.();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
   const railEdges = (rail: readonly VertexName[]): NamedEdge[] =>
     Array.from({ length: Math.max(0, rail.length - 1) }, (_, i) => canonicalNamedEdge(rail[i], rail[i + 1]));
   const railKey = (rail: readonly VertexName[]) => [...rail].sort().join(',');
@@ -430,8 +650,9 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     id: string,
     axis: SurfaceAxis,
     row: number,
-    mode: 'add' | 'move' | 'add-point' | 'move-point',
+    mode: 'add' | 'move' | 'add-point' | 'move-point' | 'paste' | 'duplicate',
     point?: number,
+    profile?: SurfaceCurveClipboard,
   ) {
     const surface = mdoc().surfaces?.find(s => s.id === id);
     if (!surface?.guides || !view().setSurfaceGuidePlacement) return;
@@ -443,6 +664,8 @@ export function createTopologyTools(deps: TopologyToolDeps) {
         moving = mode === 'move' || mode === 'move-point';
       if (isPoint && curve === undefined) throw new Error('Select a curve for this point.');
       if (mode === 'move' && replace === undefined) throw new Error('Select a curve to reposition.');
+      if (mode === 'move' && isSurfaceBoundaryGuide(surface, replace!))
+        throw new Error('Keep the surface boundary curves. Move their points or tangents to reshape the outline.');
       const stampOf = (surface: NonNullable<QuadMeshDoc['surfaces']>[number]) =>
         JSON.stringify({ surface, curves: readGuideCurves(mdoc(), surface) }, (_key, value) =>
           typeof value === 'number' ? Math.round(value * 1e9) / 1e9 : value,
@@ -459,13 +682,16 @@ export function createTopologyTools(deps: TopologyToolDeps) {
           : start < 1 - 1e-8
             ? (start + (knots[index + 1] ?? 1)) / 2
             : (start + (knots[index - 1] ?? 0)) / 2;
+      cancelSurfaceGuidePlacement(false);
       guidePlacement = { id, axis, row, mode, point };
+      const charts = guideCharts(mdoc(), surface);
       view().setSurfaceGuidePlacement!({
-        charts: guideCharts(mdoc(), surface),
+        charts,
         axis,
         stations,
         initial,
-        ...(!isPoint
+        ...(profile ? { curveAt: (at: number) => positionedSurfaceCurve(profile, charts, axis, at) } : {}),
+        ...(!isPoint && !profile
           ? {
               snapTargets: surfaceGuideSnapTargets(mdoc(), surface, axis),
               onSnap: (count: number) => {
@@ -486,9 +712,12 @@ export function createTopologyTools(deps: TopologyToolDeps) {
               updateCmdSheet();
               return;
             }
-            const result = isPoint
-              ? placeSurfacePoint(mdoc(), latest, curve, at, mode === 'move-point' ? point : undefined)
-              : placeSurfaceGuide(mdoc(), latest, axis, at, replace);
+            deps.commitHistory?.();
+            const result = profile
+              ? pasteSurfaceCurve(mdoc(), latest, profile, axis, at)
+              : isPoint
+                ? placeSurfacePoint(mdoc(), latest, curve, at, mode === 'move-point' ? point : undefined)
+                : placeSurfaceGuide(mdoc(), latest, axis, at, replace);
             const selected =
               result.ok && result.surface === latest
                 ? row
@@ -500,6 +729,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
                 ? result.surface.guides![curve].knots.findIndex(t => Math.abs(t - at) < 1e-8)
                 : undefined;
             finishSurface(result, axis, isPoint ? row : Math.max(0, selected), selectedPoint);
+            deps.commitHistory?.();
           } catch (error) {
             toast(error instanceof Error ? error.message : String(error), 'err');
             rebuildTools();
@@ -782,14 +1012,20 @@ export function createTopologyTools(deps: TopologyToolDeps) {
 
   /** Create Grid's latest plan, kept so the panel's read-outs follow the cursor without planning twice a move. */
   let gridPlan: GridPlanResult | null = null;
-  const surfaceSettings = { patchSizeM: 25 };
+  const surfaceSettings = { patchSizeM: 25, preserveShape: true, boundaryStyle: 'smooth' as SurfaceBoundaryStyle };
+  let cornerEditId: string | null = null;
+  let cornerEditNames: string[] = [];
+  let cornerCandidate: { input: QuadMeshDoc; key: string; result: SurfaceResult } | null = null;
   let surfaceDraftError: string | null = null;
   let surfaceDraftArea: number | null = null,
     surfaceDraftEdgeLength: number | null = null;
+  let surfacePanelKey = '';
 
   function armCreateSurface() {
     if (store.modelEditId) return;
     deps.commitHistory?.();
+    cornerEditId = null;
+    cornerCandidate = null;
     clearCreateEdge();
     clearCellSelection();
     clearEdgeSelection();
@@ -832,14 +1068,59 @@ export function createTopologyTools(deps: TopologyToolDeps) {
               ? points.slice(-2)
               : null;
     if (edge) surfaceDraftEdgeLength = surfaceBoundarySegmentLength(mdoc(), edge[0], edge[1]);
+    if (cornerEditId) {
+      const input = mdoc(),
+        surface = input.surfaces?.find(s => s.id === cornerEditId),
+        stops = view().createSurfaceCorners ?? [],
+        key = JSON.stringify([stops, surfaceSettings.preserveShape, input.vertices, input.edgeHandles, input.surfaces]);
+      if (!surface) {
+        surfaceDraftError = 'The surface was removed. Cancel this preview.';
+        return;
+      }
+      if (cornerCandidate?.input !== input || cornerCandidate.key !== key) {
+        let result: SurfaceResult;
+        try {
+          validateSurfaceCorners(points.length, stops);
+          result = rebuildSurfaceCorners(
+            input,
+            surface,
+            stops.map(i => cornerEditNames[i]),
+            surfaceSettings.preserveShape,
+          );
+        } catch (error) {
+          result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+        cornerCandidate = { input, key, result };
+        view().setCreateSurfaceCharts?.(null);
+        view().showSurfaceCornerPreview?.(result.ok ? result.doc : input);
+      }
+      const result = cornerCandidate.result;
+      if (!result.ok) surfaceDraftError = result.error;
+      else surfaceDraftArea = result.surface.patches.reduce((area, p) => area + cellMetrics(p.base).area, 0);
+      return;
+    }
     if (boundary.length < 4) {
       view().setCreateSurfaceCharts?.(null);
       return;
     }
     try {
-      const { charts } = surfaceBoundaryDraft(mdoc(), boundary);
+      const {
+        charts,
+        outline,
+        boundary: sketch,
+      } = surfaceBoundaryDraft(mdoc(), boundary, view().createSurfaceCorners, surfaceSettings.boundaryStyle);
       surfaceDraftArea = charts.reduce((area, chart) => area + cellMetrics(chart.controls).area, 0);
-      view().setCreateSurfaceCharts?.(charts);
+      view().setCreateSurfaceCharts?.(charts, outline);
+      if (edge) {
+        const a = boundary.indexOf(edge[0]),
+          b = boundary.indexOf(edge[1]);
+        if (a >= 0 && b >= 0)
+          surfaceDraftEdgeLength = surfaceBoundarySegmentLength(
+            sketch,
+            { pos: edge[0].pos, vertex: a },
+            { pos: edge[1].pos, vertex: b },
+          );
+      }
     } catch (error) {
       surfaceDraftError = error instanceof Error ? error.message : String(error);
       view().setCreateSurfaceCharts?.(null);
@@ -847,8 +1128,34 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   }
   function finishCreateSurface() {
     if (store.surgeryTool !== 'surface') return;
+    if (view().createSurfacePickingCorners) {
+      toast('Pick all four corners, or cancel corner picking before continuing.', 'info');
+      return;
+    }
     deps.commitHistory?.();
-    const result = createSurfaceFromDrawnBoundary(mdoc(), view().createSurfacePoints ?? [], surfaceSettings.patchSizeM);
+    if (cornerEditId) {
+      previewCreateSurface();
+      const result = cornerCandidate?.result;
+      if (!result || !result.ok) {
+        toast(surfaceDraftError ?? 'Choose four valid corners.', 'err');
+        return;
+      }
+      cornerEditId = null;
+      cornerCandidate = null;
+      store.surgeryTool = null;
+      view().setSurgeryTool(null);
+      finishSurface(result);
+      deps.commitHistory?.();
+      toast('Surface corners updated · stitching retained', 'ok');
+      return;
+    }
+    const result = createSurfaceFromDrawnBoundary(
+      mdoc(),
+      view().createSurfacePoints ?? [],
+      surfaceSettings.patchSizeM,
+      view().createSurfaceManualCorners ? view().createSurfaceCorners : undefined,
+      surfaceSettings.boundaryStyle,
+    );
     if (!result.ok) {
       surfaceDraftError = result.error;
       toast(result.error, 'err');
@@ -864,14 +1171,58 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   }
   function cancelCreateSurface() {
     if (store.surgeryTool !== 'surface') return;
+    const id = cornerEditId;
+    cornerEditId = null;
+    cornerCandidate = null;
     store.surgeryTool = null;
     surfaceDraftError = null;
     view().setSurgeryTool(null);
     rebuildTools();
     updateCmdSheet();
+    if (id) selectSurfaceControls(id);
   }
   function undoCreateSurfacePoint() {
-    if (store.surgeryTool === 'surface') view().undoCreateSurfacePoint?.();
+    if (store.surgeryTool === 'surface' && (!cornerEditId || view().createSurfacePickingCorners))
+      view().undoCreateSurfacePoint?.();
+  }
+  function beginSurfaceCornerEdit(id: string) {
+    const surface = mdoc().surfaces?.find(s => s.id === id);
+    if (!surface) return;
+    try {
+      const { loop, corners } = surfaceCornerBoundary(mdoc(), surface);
+      armCreateSurface();
+      cornerEditId = id;
+      cornerEditNames = loop.map(v => mdoc().vertexIds[v]);
+      cornerCandidate = null;
+      surfaceSettings.preserveShape = true;
+      view().setCreateSurfaceBoundary?.(
+        loop.map(vertex => ({ vertex, pos: getVertex(mdoc(), vertex) })),
+        corners,
+      );
+      rebuildTools();
+      toast('Choose corners A–D · preview includes live stitching · Enter applies · Esc cancels', 'info');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), 'err');
+    }
+  }
+  function beginCreateSurfaceCornerPicking() {
+    view().beginCreateSurfaceCornerPicking?.();
+  }
+  function cancelCreateSurfaceCornerPicking() {
+    view().cancelCreateSurfaceCornerPicking?.();
+  }
+  function inferCreateSurfaceCorners() {
+    view().setCreateSurfaceCorners?.(null);
+    rebuildTools();
+  }
+  function refreshCreateSurface() {
+    previewCreateSurface();
+    const key = `${view().createSurfacePoints?.length}:${view().createSurfaceManualCorners}:${view().createSurfaceClosed}:${view().createSurfacePickingCorners}:${view().createSurfaceCornerPicks?.length}`;
+    if (key !== surfacePanelKey) {
+      surfacePanelKey = key;
+      rebuildTools();
+      updateCmdSheet();
+    }
   }
 
   function armCreateGrid() {
@@ -1245,6 +1596,11 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   return {
     armCreateSurface,
     previewCreateSurface,
+    refreshCreateSurface,
+    beginCreateSurfaceCornerPicking,
+    cancelCreateSurfaceCornerPicking,
+    inferCreateSurfaceCorners,
+    beginSurfaceCornerEdit,
     finishCreateSurface,
     cancelCreateSurface,
     undoCreateSurfacePoint,
@@ -1256,8 +1612,28 @@ export function createTopologyTools(deps: TopologyToolDeps) {
       error: surfaceDraftError,
       area: surfaceDraftArea,
       edgeLength: surfaceDraftEdgeLength,
+      corners: [...(view().createSurfaceCorners ?? [])],
+      manualCorners: view().createSurfaceManualCorners ?? false,
+      pickingCorners: view().createSurfacePickingCorners ?? false,
+      cornerPicks: [...(view().createSurfaceCornerPicks ?? [])],
+      editing: cornerEditId,
+      previewPatches: cornerCandidate?.result.ok ? cornerCandidate.result.surface.patches.length : null,
+      previewCurves: cornerCandidate?.result.ok ? cornerCandidate.result.surface.guides?.length : null,
     }),
     beginSurfaceGuidePlacement,
+    copySurfaceControlCurve,
+    pasteSurfaceControlCurve,
+    duplicateSurfaceControlCurve,
+    canCopySurfaceControlCurve,
+    canPasteSurfaceControlCurve,
+    beginSurfaceStitch,
+    cancelSurfaceStitch,
+    completeSurfaceStitch,
+    surfaceStitchPlacement: () => stitchPlacement,
+    surfaceStitchCandidate,
+    detachSurface,
+    stitchTouchingSurface,
+    changeSurfaceStitchContinuity,
     cancelSurfaceGuidePlacement,
     surfaceGuidePlacement: () => guidePlacement,
     updateSurface,

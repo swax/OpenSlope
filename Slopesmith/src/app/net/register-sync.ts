@@ -297,6 +297,8 @@ export function topologyClaimIds(before: Structure, after: Structure): string[] 
 export function createRegisterSync(deps: {
   /** The live document this replica edits. */
   getDoc: () => EditDoc;
+  /** Provisional generator previews must pass their final fit before being sent or recorded as edits. */
+  canPublish?: () => boolean;
   /** Replace it, after a topology push or a resync. The host renders what it is handed. */
   setDoc: (doc: EditDoc) => void;
   channel: RegisterTransport;
@@ -864,6 +866,7 @@ export function createRegisterSync(deps: {
   /** One coalescing tick. */
   function tick(): void {
     if (!active || claiming || resyncing) return;
+    if (deps.canPublish?.() === false) return;
     const shape = structureOf(deps.getDoc());
     if (!sameStructure(structure, shape)) {
       const ids = topologyClaimIds(structure, shape);

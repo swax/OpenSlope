@@ -3,14 +3,31 @@ import { actionPair, detail, errorBanner, liveDetail, tip } from '../components/
 import { surfaceEditState } from '../../state/surface-edit';
 import { surfaceBoundaryLoop, surfaceRowRemoval } from '../../../core/mesh/surface-object';
 import { edgeIndices } from '../../state/mesh-names';
-import { guideRows } from '../../../core/mesh/surface-guides';
+import { guideRows, isSurfaceBoundaryGuide } from '../../../core/mesh/surface-guides';
 import { surfaceFitTolerance } from '../../../core/mesh/surface-fit';
 import { measureSurfaceObject } from '../../../core/mesh/surface-measure';
+import { selectedSurfaceBoundary } from '../../../core/mesh/surface-stitch';
+import { inferSurfaceCorners } from '../../../core/mesh/surface-corners';
+import { getVertex } from '../../../core/doc/doc-edit';
 
 /** The object panel replaces mesh surgery: its source net is the only editable shape. */
 export function buildSurfaceTools(ctx: ToolsContext): boolean {
   const { store, edit, editSection } = ctx;
   if (store.modelEditId) return false;
+  const stitching = edit.surfaceStitchPlacement();
+  if (stitching) {
+    const group = editSection('surface-stitch-placement', 'Stitch surface');
+    detail(group, `${stitching.count} source edge${stitching.count === 1 ? '' : 's'} captured`);
+    detail(group, 'select the same number of target boundary edges');
+    detail(group, 'Shift adds edges · Esc cancels');
+    group.add(stitching, 'continuity', { Smooth: 'smooth', Crease: 'crease' }).name('join');
+    const candidate = edit.surfaceStitchCandidate();
+    if (candidate.error) detail(group, candidate.error);
+    const apply = group.add({ stitch: edit.completeSurfaceStitch }, 'stitch').name('apply stitch');
+    if (!candidate.target) apply.disable();
+    group.add({ cancel: edit.cancelSurfaceStitch }, 'cancel').name('cancel stitch (Esc)');
+    return true;
+  }
   const cells = new Set(store.cellSel),
     points = new Set([
       ...store.regionSel,
@@ -43,11 +60,16 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
       );
       detail(
         group,
-        `${placement.mode.startsWith('move') ? 'Reposition' : 'Add'} ${placement.mode.endsWith('-point') ? 'a control point' : 'a ' + placement.axis + ' curve'}`,
+        `${placement.mode.startsWith('move') ? 'Reposition' : placement.mode === 'paste' ? 'Paste' : placement.mode === 'duplicate' ? 'Duplicate' : 'Add'} ${placement.mode.endsWith('-point') ? 'a control point' : 'a ' + placement.axis + ' curve'}`,
       );
       detail(group, 'move over the surface to preview');
       detail(group, 'click to set · Esc to cancel');
-      detail(group, 'the surface and patch layout stay fixed');
+      detail(
+        group,
+        placement.mode === 'paste' || placement.mode === 'duplicate'
+          ? 'keeps the copied profile · fits its endpoints to the boundary'
+          : 'the surface and patch layout stay fixed',
+      );
       if (placement.mode === 'add') {
         const otherAxis = placement.axis === 'U' ? 'V' : 'U';
         tip(
@@ -70,6 +92,39 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
       continue;
     }
     const group = editSection('surface-' + surface.id, 'Surface');
+    if (surface.guides)
+      group.add({ corners: () => edit.beginSurfaceCornerEdit(surface.id) }, 'corners').name('edit corners…');
+    const stitches = (store.mdoc.surfaces ?? []).flatMap(s =>
+      (s.stitches ?? []).filter(
+        st => s.id === surface.id || ('surface' in st.target && st.target.surface === surface.id),
+      ),
+    );
+    const connection = editSection('surface-stitches-' + surface.id, 'Stitching');
+    detail(connection, `${stitches.length} live connection${stitches.length === 1 ? '' : 's'}`);
+    if (stitches.length) {
+      const values = { continuity: stitches[0].continuity };
+      connection
+        .add(values, 'continuity', { Smooth: 'smooth', Crease: 'crease' })
+        .name('join')
+        .onChange((continuity: 'smooth' | 'crease') => edit.changeSurfaceStitchContinuity(surface.id, continuity));
+    }
+    const sourceBoundary = selectedSurfaceBoundary(store.mdoc, store.edgeSel);
+    const manual = tip(
+      connection.add({ stitch: edit.beginSurfaceStitch }, 'stitch').name('stitch selected edges…'),
+      'Select connected boundary control edges on this surface, click Stitch, then select the same number of edges on another surface or plain terrain.',
+    );
+    if (sourceBoundary?.surface !== surface.id) manual.disable();
+    tip(
+      connection
+        .add({ touching: () => edit.stitchTouchingSurface(surface.id) }, 'touching')
+        .name('stitch touching boundaries'),
+      'Attach unstitched boundary spans whose points already touch another surface or open terrain edge. Existing connections stay in place.',
+    );
+    const detach = tip(
+      connection.add({ detach: () => edit.detachSurface(surface.id) }, 'detach').name('detach all stitching'),
+      'Remove every live connection to this surface, including surfaces attached to it. Source controls remain editable.',
+    );
+    if (!stitches.length) detach.disable();
     let measurements: ReturnType<typeof measureSurfaceObject> | undefined;
     try {
       measurements = measureSurfaceObject(store.mdoc, surface);
@@ -164,12 +219,20 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
       }
       const count = guideRows(surface, state.axis).length;
       state.row = Math.max(0, Math.min(state.row, count - 1));
+      const boundaryCurve = isSurfaceBoundaryGuide(surface, guideRows(surface, state.axis)[state.row]);
+      const boundaryTip = 'Boundary curves define the outline. Reshape them using their points and tangents.';
       const values = { direction: state.axis, curve: state.row + 1 };
       rows
         .add(values, 'direction', ['U', 'V'])
         .name('direction')
         .onChange((axis: 'U' | 'V') => edit.selectSurfaceRow(surface.id, axis, 0));
       if (count) {
+        rows
+          .add({ copy: () => edit.copySurfaceControlCurve(surface.id, state.axis, state.row) }, 'copy')
+          .name('copy curve (Ctrl+C)');
+        rows
+          .add({ duplicate: () => edit.duplicateSurfaceControlCurve(surface.id, state.axis, state.row) }, 'duplicate')
+          .name('duplicate curve (Ctrl+D)');
         tip(
           detail(
             rows,
@@ -185,33 +248,36 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
         rows
           .add({ select: () => edit.selectSurfaceRow(surface.id, state.axis, state.row) }, 'select')
           .name('select curve');
-        tip(
+        if (boundaryCurve) detail(rows, 'Boundary curve · edit its points to reshape the outline');
+        const moveCurve = tip(
           rows
             .add({ move: () => edit.beginSurfaceGuidePlacement(surface.id, state.axis, state.row, 'move') }, 'move')
             .name('reposition curve on surface'),
-          'Preview a new location on the existing surface, then click to set the guide. This does not reshape the surface.',
+          boundaryCurve
+            ? boundaryTip
+            : 'Sample a replacement curve on the surface, then rebuild from the remaining controls.',
         );
+        if (boundaryCurve) moveCurve.disable();
       } else detail(rows, 'No curves in this direction yet. Add a cross-section on the current surface.');
+      const paste = rows
+        .add({ paste: () => edit.pasteSurfaceControlCurve(surface.id, state.axis, state.row) }, 'paste')
+        .name('paste curve (Ctrl+V)');
+      if (!edit.canPasteSurfaceControlCurve()) paste.disable();
       tip(
         rows
           .add({ add: () => edit.beginSurfaceGuidePlacement(surface.id, state.axis, state.row, 'add') }, 'add')
           .name('add control curve'),
-        'Move over the surface to preview the curve, then click to set it. Crossings share source points; the patch layout stays fixed.',
+        'Preview a complete curve sampled from the surface, then click to add its editable points and handles.',
       );
-      const remove = tip(
-        rows
-          .add({ remove: () => edit.removeSurfaceRow(surface.id, state.axis, state.row) }, 'remove')
-          .name('remove control curve'),
-        'Remove this guide while preserving the current surface and every terrain patch. Keep one editable curve.',
-      );
-      if (!count || surface.guides.length <= 1) remove.disable();
       const deleteCurve = tip(
         rows
           .add({ delete: () => edit.deleteSurfaceCurve(surface.id, state.axis, state.row) }, 'delete')
-          .name('delete control curve (reshape)'),
-        'Remove this shape constraint, rebuild from the remaining curves and refit terrain patches.',
+          .name('delete control curve'),
+        boundaryCurve
+          ? boundaryTip
+          : 'Remove this shape constraint, rebuild from the remaining curves and refit terrain patches.',
       );
-      if (!count || surface.guides.length <= 1) deleteCurve.disable();
+      if (!count || surface.guides.length <= 1 || boundaryCurve) deleteCurve.disable();
       if (count) {
         const curve = guideRows(surface, state.axis)[state.row],
           path = surface.controls[curve];
@@ -220,7 +286,7 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
         );
         state.point = Math.max(0, Math.min(picked >= 0 ? picked : state.point, path.length - 1));
         const points = editSection('surface-points-' + surface.id, 'Guide points');
-        detail(points, 'add, remove or reposition without changing the surface');
+        detail(points, 'visible curves and points define the entire surface');
         detail(points, 'ordinary gizmo drags reshape the surface');
         points
           .add({ point: state.point + 1 }, 'point', 1, path.length, 1)
@@ -252,16 +318,7 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
               'move',
             )
             .name('reposition control point'),
-          movable ? 'Slide along the existing surface curve, then click. The surface stays unchanged.' : reason,
-        );
-        const removePoint = tip(
-          points
-            .add(
-              { remove: () => edit.removeSurfaceControlPoint(surface.id, state.axis, state.row, state.point) },
-              'remove',
-            )
-            .name('remove control point'),
-          movable ? 'Remove this authoring point while keeping the exact current surface.' : reason,
+          movable ? 'Sample a replacement point along this curve, then rebuild from its remaining controls.' : reason,
         );
         const deletePoint = tip(
           points
@@ -269,14 +326,13 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
               { delete: () => edit.deleteSurfaceControlPoint(surface.id, state.axis, state.row, state.point) },
               'delete',
             )
-            .name('delete control point (reshape)'),
+            .name('delete control point'),
           movable
             ? 'Reconnect and smooth this curve through its remaining points, then reshape and refit the surface.'
             : reason,
         );
         if (!movable) {
           movePoint.disable();
-          removePoint.disable();
           deletePoint.disable();
         }
       }
@@ -350,12 +406,8 @@ export function buildBoundarySurfaceTools(ctx: ToolsContext): void {
   if (!result.ok) return;
   const group = ctx.editSection('surface-boundary', 'Surface from boundary');
   detail(group, 'Choose four corners in loop order. The enclosed surface starts with a smooth boundary fill.');
-  const values = {
-    A: 0,
-    B: Math.floor(result.loop.length / 4),
-    C: Math.floor(result.loop.length / 2),
-    D: Math.floor((3 * result.loop.length) / 4),
-  };
+  const inferred = inferSurfaceCorners(result.loop.map(i => getVertex(doc, i))),
+    values = { A: inferred[0], B: inferred[1], C: inferred[2], D: inferred[3] };
   const options = Object.fromEntries(
     result.loop.map((vertex, i) => ['point ' + (i + 1) + ' · ' + doc.vertexIds[vertex], i]),
   );

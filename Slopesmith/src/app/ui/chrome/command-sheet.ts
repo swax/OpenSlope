@@ -20,6 +20,8 @@ export type CommandSheetDeps = {
   cageActive: () => boolean;
   pastePlacing: () => boolean;
   surfaceGuidePlacing?: () => boolean;
+  surfaceCornerEditing?: () => boolean;
+  surfaceCornerPicking?: () => boolean;
   /** Props mode is holding a paste (docs/012). */
   propPastePlacing: () => boolean;
   isReplacingProp: () => boolean;
@@ -386,16 +388,29 @@ export function createCommandSheet(deps: CommandSheetDeps) {
                                 ['Esc', 'cancel'],
                               ])
                             : store.currentMode === 'edit' && store.surgeryTool === 'surface'
-                              ? helpPanel('Edit Mode — create surface', [
-                                  ['LMB', 'place boundary point'],
-                                  ['first point', 'close loop for editing'],
-                                  ['LMB boundary point', 'select point to move with gizmo'],
-                                  ['Enter', 'create surface'],
-                                  ['Ctrl+LMB', 'point on terrain'],
-                                  ['⇧LMB', 'lock world axis'],
-                                  ['Backspace', 'undo last boundary point'],
-                                  ['Esc', 'cancel'],
-                                ])
+                              ? deps.surfaceCornerPicking?.()
+                                ? helpPanel('Edit Mode — pick corners', [
+                                    ['LMB boundary point', 'pick four corners; first is A'],
+                                    ['Backspace', 'undo last corner pick'],
+                                    ['Esc', 'cancel picking; keep previous corners'],
+                                  ])
+                                : deps.surfaceCornerEditing?.()
+                                  ? helpPanel('Edit Mode — edit corners', [
+                                      ['Pick corners', 'click four boundary points to set A–D'],
+                                      ['Enter', 'apply corners'],
+                                      ['Esc', 'cancel preview'],
+                                    ])
+                                  : helpPanel('Edit Mode — create surface', [
+                                      ['LMB', 'place boundary point'],
+                                      ['first point', 'close loop for editing'],
+                                      ['LMB boundary point', 'select point to move with gizmo'],
+                                      ['Pick corners', 'click four boundary points to set A–D'],
+                                      ['Enter', 'create surface'],
+                                      ['Ctrl+LMB', 'point on terrain'],
+                                      ['⇧LMB', 'lock world axis'],
+                                      ['Backspace', 'undo last boundary point'],
+                                      ['Esc', 'cancel'],
+                                    ])
                               : store.currentMode === 'edit' && store.surgeryTool === 'trail'
                                 ? helpPanel('Edit Mode — create trail', [
                                     ['LMB', 'add spline knot'],

@@ -1,5 +1,6 @@
 import type { QuadMeshDoc, V3 } from '../doc/types';
 import { getVertex, moveVertex } from '../doc/doc-edit';
+import { nameIndex } from '../doc/ids';
 import {
   buildQuadMesh,
   meshAdjacency,
@@ -15,8 +16,65 @@ import { meshSetHandle, meshSetTwist } from '../doc/mountain';
 import { undirectedEdgeKey } from './primitives';
 import { controlPointIsLocked, edgeIsLocked, lockedEdgeSet, lockedVertexSet, quadIsLocked } from './locks';
 import type { MeshControlPointId } from './control-point-types';
+import { linkedSurfaceVertexTargets } from './surface-stitch-controls';
 
 export type { MeshControlPointId } from './control-point-types';
+
+type StraightGuide = { a: number; b: number; from: number; to: number };
+
+/** Owned source curves pin their handles even when they are just straight two-point edges.
+ * Preserve that straightness when an endpoint moves; keeping the old handle direction would invent a bend. */
+function straightSurfaceGuides(doc: QuadMeshDoc, moved: Set<number>, placedEdges: Set<string> = new Set()) {
+  const out: StraightGuide[] = [];
+  if (!moved.size || !doc.surfaces?.length) return out;
+  const ids = nameIndex(doc.vertexIds);
+  for (const surface of doc.surfaces) {
+    if (!surface.guides) continue;
+    for (const path of surface.controls) {
+      if (path.length !== 2) continue;
+      const a = ids.get(path[0]),
+        b = ids.get(path[1]);
+      if (
+        a === undefined ||
+        b === undefined ||
+        (!moved.has(a) && !moved.has(b)) ||
+        placedEdges.has(`${a}>${b}`) ||
+        placedEdges.has(`${b}>${a}`)
+      )
+        continue;
+      const A = getVertex(doc, a),
+        B = getVertex(doc, b),
+        chord = B.map((v, i) => v - A[i]),
+        length2 = chord.reduce((sum, v) => sum + v * v, 0),
+        ab = doc.edgeHandles?.[`${a}>${b}`],
+        ba = doc.edgeHandles?.[`${b}>${a}`];
+      if (length2 < 1e-16 || !ab || !ba) continue;
+      const from = ab.reduce((sum, v, i) => sum + v * chord[i], 0) / length2,
+        to = -ba.reduce((sum, v, i) => sum + v * chord[i], 0) / length2;
+      if (
+        from < 0 ||
+        from > 1 ||
+        to < 0 ||
+        to > 1 ||
+        ab.some((v, i) => Math.abs(v - chord[i] * from) > Math.sqrt(length2) * 1e-8) ||
+        ba.some((v, i) => Math.abs(v + chord[i] * to) > Math.sqrt(length2) * 1e-8)
+      )
+        continue;
+      out.push({ a, b, from, to });
+    }
+  }
+  return out;
+}
+
+function retargetStraightGuides(doc: QuadMeshDoc, guides: StraightGuide[], lockedEdges: Set<string>) {
+  for (const { a, b, from, to } of guides) {
+    if (edgeIsLocked(doc, a, b, lockedEdges)) continue;
+    const A = getVertex(doc, a),
+      B = getVertex(doc, b);
+    (doc.edgeHandles ??= {})[`${a}>${b}`] = B.map((v, i) => (v - A[i]) * from) as V3;
+    doc.edgeHandles[`${b}>${a}`] = B.map((v, i) => (A[i] - v) * to) as V3;
+  }
+}
 
 /** A stable identity for every authored bicubic control point.
  *
@@ -37,6 +95,35 @@ export type MeshControlPoint<Id = string> = {
 };
 
 export type MeshControlPointTarget<Id = string> = { id: MeshControlPointId<Id>; pos: V3 };
+
+/** Read a selection without enumerating every tangent and interior on the mountain. */
+export function selectedControlPointPositions(
+  doc: QuadMeshDoc,
+  ids: readonly MeshControlPointId[],
+): MeshControlPointTarget[] {
+  const vertices = nameIndex(doc.vertexIds),
+    quads = nameIndex(doc.quadIds);
+  let derived: ReturnType<typeof meshFromDoc> | undefined;
+  const context = () => (derived ??= meshFromDoc(doc));
+  return ids.flatMap((id): MeshControlPointTarget[] => {
+    if (id.kind === 'vertex') {
+      const index = vertices.get(id.vertex);
+      return index === undefined ? [] : [{ id, pos: getVertex(doc, index) }];
+    }
+    if (id.kind === 'edge') {
+      const from = vertices.get(id.from),
+        to = vertices.get(id.to);
+      if (from === undefined || to === undefined) return [];
+      const p = getVertex(doc, from),
+        h = (!doc.linearCage && doc.edgeHandles?.[`${from}>${to}`]) || context().edgeHandle(from, to);
+      return [{ id, pos: p.map((v, i) => v + h[i]) as V3 }];
+    }
+    const index = quads.get(id.quad);
+    if (index === undefined) return [];
+    const { mesh, edgeHandle } = context();
+    return [{ id, pos: quadControlPoints(mesh, edgeHandle, index, doc.quadTwist?.[index])[INTERIOR_CP[id.corner]] }];
+  });
+}
 
 export function controlPointKey<Id>(id: MeshControlPointId<Id>): string {
   if (id.kind === 'vertex') return `v:${String(id.vertex)}`;
@@ -142,7 +229,7 @@ export function moveMeshControlPoints(doc: QuadMeshDoc, ids: readonly MeshContro
 export function setMeshControlPoints(
   doc: QuadMeshDoc,
   incoming: readonly MeshControlPointTarget[],
-  options: { independent?: boolean; dirty?: EditDirty } = {},
+  options: { independent?: boolean; dirty?: EditDirty; followStitches?: boolean } = {},
 ): number {
   // A target naming geometry this document no longer carries is dropped: the point it addressed is gone, so
   // there is nothing to place and nothing to say about it (docs/039 tombstones).
@@ -154,7 +241,7 @@ export function setMeshControlPoints(
     | { kind: 'vertex'; vertex: number; pos: V3 }
     | { kind: 'edge'; from: number; to: number; pos: V3 }
     | { kind: 'twist'; quad: number; corner: 0 | 1 | 2 | 3; pos: V3 };
-  const targets = [...new Map(incoming.map(t => [controlPointKey(t.id), t])).values()].flatMap((t): Placed[] => {
+  let targets = [...new Map(incoming.map(t => [controlPointKey(t.id), t])).values()].flatMap((t): Placed[] => {
     if (!t.pos.every(Number.isFinite)) return [];
     if (t.id.kind === 'vertex') {
       const vertex = vertexAt.get(t.id.vertex);
@@ -180,6 +267,20 @@ export function setMeshControlPoints(
       ? []
       : [{ kind: 'twist', quad, corner: t.id.corner, pos: t.pos }];
   });
+  if (options.followStitches !== false)
+    targets = [
+      ...linkedSurfaceVertexTargets(
+        doc,
+        targets.flatMap(t => (t.kind === 'vertex' ? [{ vertex: t.vertex, pos: t.pos }] : [])),
+        lockedVertices,
+      ).map(t => ({ kind: 'vertex' as const, ...t })),
+      ...targets.filter(t => t.kind !== 'vertex'),
+    ];
+  const straight = straightSurfaceGuides(
+    doc,
+    new Set(targets.flatMap(t => (t.kind === 'vertex' ? [t.vertex] : []))),
+    new Set(targets.flatMap(t => (t.kind === 'edge' ? [`${t.from}>${t.to}`] : []))),
+  );
   for (const t of targets)
     if (t.kind === 'vertex') {
       const i = t.vertex * 3;
@@ -187,6 +288,8 @@ export function setMeshControlPoints(
       doc.vertices[i + 1] = t.pos[1];
       doc.vertices[i + 2] = t.pos[2];
     }
+  retargetStraightGuides(doc, straight, lockedEdges);
+  options.dirty?.edges.push(...straight.map(({ a, b }) => [Math.min(a, b), Math.max(a, b)] as [number, number]));
   const smooth = !options.independent && !doc.linearCage;
   // Each dragged tangent's length before this edit: its partner scales by the same factor (alignOppositeTangent).
   const before = smooth && targets.some(t => t.kind === 'edge') ? meshFromDoc(doc).edgeHandle : null;
@@ -287,16 +390,24 @@ function vertexMoveContext(doc: QuadMeshDoc): VertexMoveContext {
  * their offsets from the tangents they are built on. A move therefore writes corners only: automatic tangents
  * re-derive around the new positions, a hand-set tangent keeps its direction and is scaled with its own edge's
  * length (so resizing a shaped patch still resizes its tangents, and an edge moved whole keeps them exactly),
- * and twists are untouched. No override is ever created, so an automatic cage stays automatic.
+ * and twists are untouched. Straight two-point Surface guides follow the new chord instead of acquiring an
+ * unrequested bend. No override is ever created, so an automatic cage stays automatic.
  */
 export function moveMeshVertices(doc: QuadMeshDoc, moving: readonly number[], delta: V3): MeshVertexMove {
   const vertexCount = doc.vertices.length / 3;
   const lockedVertices = lockedVertexSet(doc);
-  const vertices = [...new Set(moving)]
+  let vertices = [...new Set(moving)]
     .filter(v => Number.isInteger(v) && v >= 0 && v < vertexCount)
     .filter(v => !lockedVertices.has(v))
     .sort((a, b) => a - b);
   if (!vertices.length || (!delta[0] && !delta[1] && !delta[2])) return { vertices, quads: [], edges: [] };
+  vertices = linkedSurfaceVertexTargets(
+    doc,
+    vertices.map(vertex => ({ vertex, pos: getVertex(doc, vertex).map((v, i) => v + delta[i]) as V3 })),
+    lockedVertices,
+  )
+    .map(t => t.vertex)
+    .sort((a, b) => a - b);
 
   const moved = new Set(vertices);
   const { mesh, vertQuads } = vertexMoveContext(doc);
@@ -322,6 +433,7 @@ export function moveMeshVertices(doc: QuadMeshDoc, moving: readonly number[], de
     .filter(([a, b]) => moved.has(a) !== moved.has(b))
     .filter(([a, b]) => doc.edgeHandles?.[`${a}>${b}`] || doc.edgeHandles?.[`${b}>${a}`])
     .map(([a, b]) => ({ a, b, before: chord(a, b) }));
+  const straight = straightSurfaceGuides(doc, moved);
 
   for (const v of vertices) moveVertex(doc, v, delta);
 
@@ -335,6 +447,7 @@ export function moveMeshVertices(doc: QuadMeshDoc, moving: readonly number[], de
       if (h) doc.edgeHandles![key] = [h[0] * scale, h[1] * scale, h[2] * scale];
     }
   }
+  retargetStraightGuides(doc, straight, lockedEdges);
 
   return { vertices, quads, edges: [...edgePairs.values()] };
 }

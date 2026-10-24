@@ -20,6 +20,7 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
       s.guides.length < 1 ||
       s.guides.length !== s.controls.length ||
       s.controls.flat().length > 4096 ||
+      (s.interpolation !== undefined && s.interpolation !== 'natural') ||
       s.controls.some(row => !names(row) || row.length < 2 || new Set(row).size !== row.length) ||
       (s.curvature !== undefined && (!Number.isFinite(s.curvature) || s.curvature < 0 || s.curvature > 2))
     )
@@ -46,21 +47,22 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
     )
       return false;
     return (
-      Array.isArray(s.seed) &&
-      s.seed.length > 0 &&
-      s.seed.length <= 4096 &&
-      s.seed.every(
-        p =>
-          p &&
-          Array.isArray(p.domain) &&
-          p.domain.length === 4 &&
-          p.domain.every(t => Number.isFinite(t) && t >= 0 && t <= 1) &&
-          p.domain[0] < p.domain[1] &&
-          p.domain[2] < p.domain[3] &&
-          Array.isArray(p.controls) &&
-          p.controls.length === 16 &&
-          p.controls.every(point),
-      )
+      s.seed === undefined ||
+      (Array.isArray(s.seed) &&
+        s.seed.length > 0 &&
+        s.seed.length <= 4096 &&
+        s.seed.every(
+          p =>
+            p &&
+            Array.isArray(p.domain) &&
+            p.domain.length === 4 &&
+            p.domain.every(t => Number.isFinite(t) && t >= 0 && t <= 1) &&
+            p.domain[0] < p.domain[1] &&
+            p.domain[2] < p.domain[3] &&
+            Array.isArray(p.controls) &&
+            p.controls.length === 16 &&
+            p.controls.every(point),
+        ))
     );
   };
   const result = value.filter((raw): raw is SurfaceObject => {
@@ -85,6 +87,52 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
           !knotVector(s.knotsU, s.controls[0].length) ||
           !knotVector(s.knotsV, s.controls.length)) ||
       !names(s.vertices) ||
+      (s.outputKeys !== undefined && (!names(s.outputKeys) || s.outputKeys.length !== s.vertices.length)) ||
+      (s.fitted !== undefined &&
+        (!Array.isArray(s.fitted) ||
+          !s.fitted.length ||
+          s.fitted.length > 16384 ||
+          s.fitted.some(
+            p =>
+              !p ||
+              !Array.isArray(p.domain) ||
+              p.domain.length !== 4 ||
+              p.domain.some(t => !Number.isFinite(t) || t < 0 || t > 1) ||
+              p.domain[0] >= p.domain[1] ||
+              p.domain[2] >= p.domain[3] ||
+              !Array.isArray(p.controls) ||
+              p.controls.length !== 16 ||
+              p.controls.some(v => !point(v)),
+          ))) ||
+      (s.stitches !== undefined &&
+        (!Array.isArray(s.stitches) ||
+          s.stitches.length > 128 ||
+          s.stitches.some(
+            (st, i) =>
+              !st ||
+              typeof st.id !== 'string' ||
+              !st.id ||
+              s.stitches!.some((other, j) => j < i && other.id === st.id) ||
+              !['u0', 'u1', 'v0', 'v1'].includes(st.side) ||
+              !['smooth', 'crease'].includes(st.continuity) ||
+              !Array.isArray(st.range) ||
+              st.range.length !== 2 ||
+              st.range.some(t => !Number.isFinite(t) || t < 0 || t > 1) ||
+              st.range[0] >= st.range[1] ||
+              !st.target ||
+              ('vertices' in st.target
+                ? !names(st.target.vertices) ||
+                  st.target.vertices.length < 2 ||
+                  st.target.vertices.length > 1024 ||
+                  new Set(st.target.vertices).size !== st.target.vertices.length
+                : typeof st.target.surface !== 'string' ||
+                  !st.target.surface ||
+                  !['u0', 'u1', 'v0', 'v1'].includes(st.target.side) ||
+                  !Array.isArray(st.target.range) ||
+                  st.target.range.length !== 2 ||
+                  st.target.range.some(t => !Number.isFinite(t) || t < 0 || t > 1) ||
+                  st.target.range[0] === st.target.range[1]),
+          ))) ||
       !names(s.inputs) ||
       !s.evaluated ||
       !Number.isFinite(s.evaluated.patchSizeM) ||
@@ -103,6 +151,16 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
           typeof p.quad !== 'string' ||
           !names(p.corners) ||
           p.corners.length !== 4 ||
+          (p.key !== undefined && (typeof p.key !== 'string' || !p.key)) ||
+          (p.uv !== undefined &&
+            (!Array.isArray(p.uv) ||
+              p.uv.length !== 4 ||
+              p.uv.some(
+                uv =>
+                  !Array.isArray(uv) ||
+                  uv.length !== 2 ||
+                  uv.some(t => !Number.isFinite(t) || t < -1e-7 || t > 1 + 1e-7),
+              ))) ||
           !Array.isArray(p.domain) ||
           p.domain.length !== 4 ||
           !p.domain.every(Number.isFinite) ||

@@ -161,6 +161,11 @@ export function installShortcuts(deps: ShortcutDeps) {
     canCopyVertices,
     pasteSelectedVertices,
     canPasteVertices,
+    copySurfaceControlCurve,
+    pasteSurfaceControlCurve,
+    duplicateSurfaceControlCurve,
+    canCopySurfaceControlCurve,
+    canPasteSurfaceControlCurve,
     cancelPastePlacement,
     deleteSelectedMesh,
     dissolveSelectedMesh,
@@ -169,6 +174,35 @@ export function installShortcuts(deps: ShortcutDeps) {
     canFlipSelectedMesh,
     insertCellEdge,
   } = edit;
+
+  function surfaceClipboardShortcut(e: KeyboardEvent): boolean {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+    const key = e.key.toLowerCase();
+    const action =
+      key === 'c' && canCopySurfaceControlCurve?.()
+        ? copySurfaceControlCurve
+        : key === 'v' && canPasteSurfaceControlCurve?.()
+          ? pasteSurfaceControlCurve
+          : key === 'd' && canCopySurfaceControlCurve?.()
+            ? duplicateSurfaceControlCurve
+            : null;
+    if (!action) return false;
+    e.preventDefault();
+    action();
+    return true;
+  }
+  // lil-gui stops keys on focused buttons before they reach the window's normal shortcut listener.
+  // Curve clipboard commands still work immediately after choosing a destination Surface button.
+  window.addEventListener(
+    'keydown',
+    e => {
+      if (!(e.target as HTMLElement)?.closest?.('button') || chatFocused() || viewport.riding || deps.propDeform.active)
+        return;
+      if (e.key.toLowerCase() === 'c' && window.getSelection?.()?.toString()) return;
+      if (surfaceClipboardShortcut(e)) e.stopImmediatePropagation();
+    },
+    { capture: true },
+  );
 
   window.addEventListener('keydown', e => {
     // The chat box holds the keyboard, so the editor gets nothing at all — not a mode digit, not Ctrl+Z, not
@@ -361,6 +395,7 @@ export function installShortcuts(deps: ShortcutDeps) {
       selectConnected();
       return;
     }
+    if (surfaceClipboardShortcut(e)) return;
     if (mod && e.key.toLowerCase() === 'c' && canCopyVertices()) {
       e.preventDefault();
       copySelectedVertices();
@@ -767,7 +802,8 @@ export function installShortcuts(deps: ShortcutDeps) {
         return;
       }
       if (store.currentMode === 'edit' && store.surgeryTool === 'surface') {
-        edit.cancelCreateSurface();
+        if (edit.createSurfaceStatus().pickingCorners) edit.cancelCreateSurfaceCornerPicking();
+        else edit.cancelCreateSurface();
         return;
       }
       if (store.currentMode === 'edit' && store.surgeryTool === 'trail') {

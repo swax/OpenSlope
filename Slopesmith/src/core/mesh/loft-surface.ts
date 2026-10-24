@@ -228,7 +228,7 @@ function detailPatches(doc: QuadMeshDoc, loft: LoftSurface): Patch[] {
 }
 
 /** Install explicit full cages, so source-curve edits never modify the generated surface before evaluation. */
-function writeCages(doc: QuadMeshDoc, patches: Patch[], quads: number[]): void {
+export function writeCages(doc: QuadMeshDoc, patches: Patch[], quads: number[]): void {
   const handles = (doc.edgeHandles ??= {});
   for (let i = 0; i < patches.length; i++) {
     const q = doc.quads[quads[i]],

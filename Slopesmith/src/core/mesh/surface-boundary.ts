@@ -6,8 +6,19 @@ import { cubicPolyline } from '../math/bezier';
 import { meshFromDoc } from './topology';
 import { readVertex, undirectedEdgeKey } from './primitives';
 import { boundarySurfaceCharts, createSurfaceFromBoundary, type SurfaceResult } from './surface-object';
+import {
+  addSurfaceStitch,
+  meshBoundaryChain,
+  selectedSurfaceBoundary,
+  orientStitchTarget,
+  automaticStitchFacesOppose,
+} from './surface-stitch';
+import type { SurfaceSide, SurfaceStitch } from '../doc/types';
+import { surfaceSideControls } from './surface-stitch-controls';
+import { inferSurfaceCorners, validateSurfaceCorners } from './surface-corners';
 
 export type SurfaceBoundaryPoint = { pos: V3; vertex: number | null };
+export type SurfaceBoundaryStyle = 'smooth' | 'creased';
 const EPS = 1e-6;
 export const MAX_SURFACE_BOUNDARY_POINTS = 128;
 const sources = new WeakMap<QuadMeshDoc, { edges: Set<string>; geometry: ReturnType<typeof meshFromDoc> }>();
@@ -78,25 +89,18 @@ function validate(points: readonly SurfaceBoundaryPoint[]) {
     }
 }
 
-/** Choose four stations by boundary distance; extra clicks remain editable points along those four sides. */
-function corners(points: readonly SurfaceBoundaryPoint[]) {
-  const distances = [0];
-  for (let i = 1; i <= points.length; i++)
-    distances.push(distances[i - 1] + len(sub(points[i % points.length].pos, points[i - 1].pos)));
-  const chosen = [0];
-  for (let k = 1; k < 4; k++) {
-    const target = (distances.at(-1)! * k) / 4;
-    let best = chosen.at(-1)! + 1;
-    for (let i = best + 1; i <= points.length - 4 + k; i++)
-      if (Math.abs(distances[i] - target) < Math.abs(distances[best] - target)) best = i;
-    chosen.push(best);
-  }
-  return chosen;
+/** Extra clicks remain editable points along the four inferred sides. */
+export function surfaceBoundaryCorners(points: readonly SurfaceBoundaryPoint[]) {
+  return inferSurfaceCorners(points.map(p => p.pos));
 }
 
-/** A small isolated sketch: hover never allocates terrain or changes the live mountain. Existing boundary
- * cubics are copied when snapping along an edge; new segments start straight and remain editable afterward. */
-export function surfaceBoundaryDraft(doc: QuadMeshDoc, points: readonly SurfaceBoundaryPoint[]) {
+/** A small isolated sketch. Styles affect new edges along each side; copied host edges keep their cubics. */
+export function surfaceBoundaryDraft(
+  doc: QuadMeshDoc,
+  points: readonly SurfaceBoundaryPoint[],
+  corners?: readonly number[],
+  style: SurfaceBoundaryStyle = 'creased',
+) {
   validate(points);
   const boundary = blankMountain('Surface boundary');
   boundary.vertices = points.flatMap(p => p.pos);
@@ -112,8 +116,51 @@ export function surfaceBoundaryDraft(doc: QuadMeshDoc, points: readonly SurfaceB
     boundary.edgeHandles[`${a}>${b}`] = [...ab];
     boundary.edgeHandles[`${b}>${a}`] = [...ba];
   }
-  const stops = corners(points);
-  return { boundary, corners: stops, charts: boundarySurfaceCharts(boundary, boundary.freeEdges, stops) };
+  const stops = validateSurfaceCorners(points.length, corners ?? surfaceBoundaryCorners(points));
+  if (style === 'smooth') {
+    const copied = new Set(
+      boundary.freeEdges
+        .filter(
+          ([a, b]) =>
+            points[a].vertex !== null &&
+            points[b].vertex !== null &&
+            sources.get(doc)?.edges.has(undirectedEdgeKey(points[a].vertex!, points[b].vertex!)),
+        )
+        .map(([a, b]) => undirectedEdgeKey(a, b)),
+    );
+    stops.forEach((start, side) => {
+      const count = (stops[(side + 1) % 4] - start + points.length) % points.length;
+      const path = Array.from({ length: count + 1 }, (_, i) => (start + i) % points.length);
+      path.forEach((at, i) => {
+        const before = path[Math.max(0, i - 1)],
+          after = path[Math.min(path.length - 1, i + 1)];
+        const tangent =
+          i > 0 && copied.has(undirectedEdgeKey(at, before))
+            ? mul(boundary.edgeHandles![`${at}>${before}`], -3)
+            : i < path.length - 1 && copied.has(undirectedEdgeKey(at, after))
+              ? mul(boundary.edgeHandles![`${at}>${after}`], 3)
+              : mul(sub(points[after].pos, points[before].pos), 1 / (Number(i > 0) + Number(i < path.length - 1)));
+        for (const [to, scale] of [
+          [before, -1 / 3],
+          [after, 1 / 3],
+        ]) {
+          if (to === at || copied.has(undirectedEdgeKey(at, to))) continue;
+          boundary.edgeHandles![`${at}>${to}`] = mul(tangent, scale);
+        }
+      });
+    });
+  }
+  const outline = boundary.freeEdges.flatMap(([a, b]) =>
+    cubicPolyline(
+      points[a].pos,
+      add(points[a].pos, boundary.edgeHandles![`${a}>${b}`]),
+      add(points[b].pos, boundary.edgeHandles![`${b}>${a}`]),
+      points[b].pos,
+      12,
+    ).slice(0, -1),
+  );
+  outline.push(points[0].pos);
+  return { boundary, corners: stops, outline, charts: boundarySurfaceCharts(boundary, boundary.freeEdges, stops) };
 }
 
 /** Install the sketch and its live Surface together as one document edit. Existing geometry is unchanged. */
@@ -121,9 +168,23 @@ export function createSurfaceFromDrawnBoundary(
   doc: QuadMeshDoc,
   points: readonly SurfaceBoundaryPoint[],
   patchSizeM = 25,
+  corners?: readonly number[],
+  style: SurfaceBoundaryStyle = 'creased',
 ): SurfaceResult {
   try {
-    const draft = surfaceBoundaryDraft(doc, points),
+    // A point placed exactly on an existing boundary is a contact even when the viewport did not
+    // retain a snap id (for example after grid snapping). Prefer visible Surface controls over output.
+    const controls = new Set(doc.surfaces?.flatMap(s => s.controls.flat())),
+      generated = new Set(doc.surfaces?.flatMap(s => s.patches.map(p => p.quad))),
+      ordinary = new Set(doc.quads.flatMap((q, i) => (generated.has(doc.quadIds[i]) ? [] : q))),
+      candidates = doc.vertexIds.flatMap((id, i) => (controls.has(id) ? [i] : []));
+    candidates.push(...ordinary);
+    points = points.map(point => {
+      if (point.vertex !== null) return point;
+      const vertex = candidates.find(i => len(sub(readVertex(doc.vertices, i), point.pos)) < EPS);
+      return vertex === undefined ? point : { vertex, pos: readVertex(doc.vertices, vertex) };
+    });
+    const draft = surfaceBoundaryDraft(doc, points, corners, style),
       start = doc.vertexIds.length;
     const out: QuadMeshDoc = {
       ...doc,
@@ -139,13 +200,115 @@ export function createSurfaceFromDrawnBoundary(
       const [a, b] = key.split('>').map(Number);
       out.edgeHandles![`${start + a}>${start + b}`] = offset;
     }
-    return createSurfaceFromBoundary(
+    const result = createSurfaceFromBoundary(
       out,
       draft.boundary.freeEdges!.map(([a, b]) => [start + a, start + b]),
       draft.corners.map(i => start + i),
       patchSizeM,
     );
+    if (!result.ok) return result;
+    const contacts = new Map<string, string>();
+    for (const id of new Set(result.surface.controls.flat())) {
+      const p = readVertex(result.doc.vertices, result.doc.vertexIds.indexOf(id)),
+        contact = points.find(v => v.vertex !== null && len(sub(v.pos, p)) < EPS);
+      if (contact?.vertex !== undefined && contact.vertex !== null) contacts.set(id, doc.vertexIds[contact.vertex]);
+    }
+    const stitched = attachSurfaceContacts(result.doc, result.surface.id, contacts, doc);
+    return { ok: true, doc: stitched, surface: stitched.surfaces!.find(s => s.id === result.surface.id)! };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Explicitly complete missing contacts on an existing object. Detach never invokes discovery. */
+export function stitchTouchingSurfaceBoundaries(doc: QuadMeshDoc, id: string): QuadMeshDoc {
+  const source = doc.surfaces?.find(s => s.id === id);
+  if (!source) throw new Error('Select an editable surface first.');
+  const candidates = new Set<number>();
+  for (const target of doc.surfaces ?? []) {
+    if (target.id === id) continue;
+    for (const side of ['u0', 'u1', 'v0', 'v1'] as const)
+      for (const p of surfaceSideControls(doc, target, side)) candidates.add(p.vertex);
+  }
+  const own = new Set(source.patches.map(p => p.quad));
+  doc.quads.forEach((q, i) => {
+    if (!own.has(doc.quadIds[i])) q.forEach(v => candidates.add(v));
+  });
+  const contacts = new Map<string, string>();
+  for (const name of new Set(source.controls.flat())) {
+    const p = readVertex(doc.vertices, doc.vertexIds.indexOf(name)),
+      target = [...candidates].find(v => len(sub(readVertex(doc.vertices, v), p)) < EPS);
+    if (target !== undefined) contacts.set(name, doc.vertexIds[target]);
+  }
+  return attachSurfaceContacts(doc, id, contacts, doc);
+}
+
+function attachSurfaceContacts(
+  doc: QuadMeshDoc,
+  id: string,
+  contacts: Map<string, string>,
+  hosts: QuadMeshDoc,
+): QuadMeshDoc {
+  let stitched = doc;
+  const source = doc.surfaces!.find(s => s.id === id)!;
+  // A snapped run names the original host, rather than merely copying its current curve shape.
+  for (let g = 0; g < (source.guides?.length ?? 0); g++) {
+    const guide = source.guides![g];
+    if (guide.at !== 0 && guide.at !== 1) continue;
+    const names = source.controls[g];
+    const snapped = names.map(id => contacts.get(id));
+    const side = `${guide.axis === 'U' ? 'v' : 'u'}${guide.at}` as SurfaceSide;
+    const occupied = (a: number, b: number) =>
+      stitched.surfaces!.some(s =>
+        s.stitches?.some(st => {
+          const range =
+            s.id === id && st.side === side
+              ? st.range
+              : 'surface' in st.target && st.target.surface === id && st.target.side === side
+                ? st.target.range
+                : undefined;
+          return range && Math.min(b, Math.max(...range)) > Math.max(a, Math.min(...range)) + EPS;
+        }),
+      );
+    let segment = 0;
+    while (segment < names.length - 1) {
+      if (occupied(guide.knots[segment], guide.knots[segment + 1])) {
+        segment++;
+        continue;
+      }
+      const candidates: { end: number; target: SurfaceStitch['target'] }[] = [];
+      for (let end = segment + 1; end < names.length; end++) {
+        if (
+          occupied(guide.knots[segment], guide.knots[end]) ||
+          snapped.slice(segment, end + 1).some(v => v === undefined)
+        )
+          break;
+        const chain = snapped.slice(segment, end + 1) as string[];
+        const edges = chain.slice(1).map((b, i) => [chain[i], b] as [string, string]);
+        const surface = selectedSurfaceBoundary(hosts, edges, id);
+        if (surface) candidates.push({ end, target: surface });
+        else
+          try {
+            candidates.push({ end, target: { vertices: meshBoundaryChain(hosts, edges) } });
+          } catch {
+            break;
+          }
+      }
+      const candidate = candidates.at(-1);
+      if (!candidate) {
+        segment++;
+        continue;
+      }
+      const boundary = {
+        surface: source.id,
+        side,
+        range: [guide.knots[segment], guide.knots[candidate.end]] as [number, number],
+      };
+      const target = orientStitchTarget(stitched, boundary, candidate.target);
+      if (automaticStitchFacesOppose(stitched, boundary, target))
+        stitched = addSurfaceStitch(stitched, source.id, boundary, target);
+      segment = candidate.end;
+    }
+  }
+  return stitched;
 }

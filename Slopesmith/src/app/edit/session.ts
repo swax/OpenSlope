@@ -74,6 +74,7 @@ import {
   captureAround,
   controlPointKey,
   meshControlPoints,
+  selectedControlPointPositions,
   moveMeshVertices,
   restoreAround,
   setMeshControlPoints,
@@ -204,6 +205,15 @@ export type EditSessionDeps = {
   persistUi: () => void;
   scheduleRebuild: () => void;
   scheduleCommit: () => void;
+  /** Evaluate provisional surface geometry, returning false when the host rolled back a failed edit. */
+  previewSurfaces?: () => boolean;
+  beginSurfaceDrag?: () => void;
+  endSurfaceDrag?: () => void;
+  previewSurfaceChange?: (change: {
+    vertices?: readonly number[];
+    edges?: readonly [number, number][];
+    quads?: readonly number[];
+  }) => boolean;
   commitHistory?: () => void;
   rebuildTools: () => void;
   updateCmdSheet: () => void;
@@ -879,10 +889,25 @@ export function createEditSession(deps: EditSessionDeps) {
     },
     dirty?: EditDirty,
   ) {
+    if (dirty && (dirty.edges.length || dirty.quads.length)) {
+      const edges = new Map(
+        [...(change.edges ?? []), ...dirty.edges].map(edge => [ekey(edge[0], edge[1]), edge] as const),
+      );
+      change = {
+        ...change,
+        edges: [...edges.values()],
+        quads: [...new Set([...(change.quads ?? []), ...dirty.quads])],
+      };
+    }
+    if (!store.modelEditId && deps.previewSurfaceChange?.(change)) return;
     if (!store.modelEditId && store.mdoc.surfaces?.length) {
       const before = store.mdoc;
-      const next = refreshSurfaces(store.mdoc, { interactive: true });
-      if (next !== store.mdoc) {
+      if (deps.previewSurfaces && !deps.previewSurfaces()) {
+        scheduleRebuild();
+        return;
+      }
+      const next = deps.previewSurfaces ? store.mdoc : refreshSurfaces(store.mdoc, { interactive: true });
+      if (next !== before) {
         store.mdoc = next;
         if (next.quads !== before.quads || next.vertexIds !== before.vertexIds) {
           scheduleRebuild();
@@ -899,16 +924,6 @@ export function createEditSession(deps: EditSessionDeps) {
           ],
         };
       }
-    }
-    if (dirty && (dirty.edges.length || dirty.quads.length)) {
-      const edges = new Map(
-        [...(change.edges ?? []), ...dirty.edges].map(edge => [ekey(edge[0], edge[1]), edge] as const),
-      );
-      change = {
-        ...change,
-        edges: [...edges.values()],
-        quads: [...new Set([...(change.quads ?? []), ...dirty.quads])],
-      };
     }
     if (view().previewMeshEdit(mdoc(), change)) scheduleCommit();
     else scheduleRebuild();
@@ -1307,9 +1322,10 @@ export function createEditSession(deps: EditSessionDeps) {
       view().showHandles(getVertex(d, id), []);
       return;
     }
-    const mesh = buildQuadMesh(d.vertices, d.quads, d.freeEdges);
-    const adj = meshAdjacency(mesh);
-    const eh = meshEdgeHandles(mesh, d.edgeHandles);
+    const retained = view().editMeshGraph?.(d);
+    const mesh = retained?.mesh ?? buildQuadMesh(d.vertices, d.quads, d.freeEdges);
+    const adj = retained?.adj ?? meshAdjacency(mesh);
+    const eh = meshEdgeHandles(mesh, d.edgeHandles, adj);
     const nb = meshDirNeighbors(adj, id);
     selectedDirNb = nb;
     const corner = getVertex(d, id);
@@ -1950,6 +1966,7 @@ export function createEditSession(deps: EditSessionDeps) {
   }
 
   function deselectEdit() {
+    topology.cancelSurfaceStitch();
     topology.cancelSurfaceGuidePlacement(false);
     resetGizmoMode();
     topology.cancelBridge(false, false);
@@ -2722,7 +2739,9 @@ export function createEditSession(deps: EditSessionDeps) {
     onMoveControlPoints(delta) {
       const movable = movableControlPoints(store.controlSel);
       if (!movable.length) return;
-      const live = new Map(meshControlPoints(mdoc()).map(point => [controlPointKey(point.id), point.pos]));
+      const live = new Map(
+        selectedControlPointPositions(mdoc(), movable).map(point => [controlPointKey(point.id), point.pos]),
+      );
       const targets = movable.flatMap(id => {
         const pos = live.get(controlPointKey(id));
         return pos ? [{ id, pos: [pos[0] + delta[0], pos[1] + delta[1], pos[2] + delta[2]] as V3 }] : [];
@@ -2914,9 +2933,12 @@ export function createEditSession(deps: EditSessionDeps) {
       commitSlide(mergePending);
     },
     onEditTransformBegin(target) {
-      return beginEditTransform(target);
+      const allowed = beginEditTransform(target);
+      if (allowed && target.kind !== 'editmixed') deps.beginSurfaceDrag?.();
+      return allowed;
     },
     onEditTransformEnd() {
+      deps.endSurfaceDrag?.();
       scheduleRebuild();
     },
     onCreateEdgePoint(endpoint) {
@@ -2946,7 +2968,7 @@ export function createEditSession(deps: EditSessionDeps) {
       } else topology.previewCreateGrid();
     },
     onCreateSurfaceChange() {
-      topology.previewCreateSurface();
+      topology.refreshCreateSurface();
     },
     onAppendTrailKnot(pos) {
       trails.appendKnot(pos);

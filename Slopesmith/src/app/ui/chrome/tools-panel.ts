@@ -332,6 +332,8 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
   };
   const updateCmdSheet = createCommandSheet({
     surfaceGuidePlacing: () => edit.surfaceGuidePlacement() !== null,
+    surfaceCornerEditing: () => edit.createSurfaceStatus().editing !== null,
+    surfaceCornerPicking: () => edit.createSurfaceStatus().pickingCorners,
     store,
     cageActive,
     pastePlacing,

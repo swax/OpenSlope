@@ -12,6 +12,7 @@ import { groundLightSampler } from '../../../core/lighting/ground-light';
 import type { V3 } from '../../../core/doc/types';
 import { SURFACE_POLY_OFFSET } from '../constants';
 import { tintBackfaces } from './backface-tint';
+import { terrainPixelLighting } from './terrain-lighting-material';
 import { refitSurfaceTrees, type TreeGeometry } from './surface-trees';
 import type { ShadeMode } from '../types';
 import type { Stage } from '../stage';
@@ -52,7 +53,7 @@ export interface TerrainHostHooks {
  * The authored terrain solid, one mesh serving every mode: the tessellated quilt preview as indexed geometry
  * (position / normal / colour / UV straight from the preview buffers), the per-cell tile material split
  * (consecutive painted cells grouped by tile, slot 0 the SurfaceType-tint fallback), and the Stage-D SSX sun
- * lighting (an unlit vertex-colour material over cached AO / cast-shadow bakes + the authored rig's glow,
+ * lighting (per-pixel directional light over cached AO / cast-shadow bakes + the authored rig's glow,
  * with the baked-lightmap in-game view riding the same path). The layer owns the terrain mesh, its material
  * flavours, the live preview data and the lighting caches; the shell hands in the shade mode + light rig
  * through accessors (`TerrainViewAccess`) and re-targets its dependent overlays on each geometry rebuild
@@ -68,17 +69,22 @@ export function createTerrainLayer(
   /** Fallback material (material slot 0): SurfaceType tint for cells with no painted tile. Back faces tint
    *  magenta — the non-ridable side of a one-sided patch (backface-tint.ts). */
   const terrainMat = tintBackfaces(
-    new THREE.MeshLambertMaterial({
+    new THREE.MeshPhongMaterial({
       vertexColors: true,
+      shininess: 0,
+      specular: 0x000000,
       side: THREE.DoubleSide,
       ...SURFACE_POLY_OFFSET, // sit behind the cage wires (incl. their dips into the surface) so they read on top
     }),
   );
   const terrain: THREE.Mesh = new THREE.Mesh(new THREE.BufferGeometry(), terrainMat);
+  terrain.visible = false; // Do not compile a face-normal fallback while the first quilt is still loading.
   let preview: PreviewData | null = null;
-  // Authored-terrain SSX sun lighting (Stage D): an unlit material + cached occlusion bakes for the
+  // Authored-terrain SSX sun lighting (Stage D): per-pixel light + cached occlusion bakes for the
   // preview (AO by geometry, shadow by geometry + direction), so editing re-lights live.
-  const terrainLightMat = tintBackfaces(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const terrainLightMat = terrainPixelLighting(
+    tintBackfaces(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })),
+  );
   let terrainLight: TerrainLightOptions | null = null;
   let terrainBakedView = false; // show the authored terrain AS its own baked lightmap (reference-scale)
   let tlShadow: Float32Array | null = null;
@@ -95,9 +101,48 @@ export function createTerrainLayer(
   // is what says which of those nodes have to be refit — nothing else remembers where the surface was.
   let patchBounds: Float32Array | null = null;
 
+  /** Keep occlusion/local-light bakes, but evaluate directional light after interpolating the normal. */
+  function updatePixelLight(from: number, to: number) {
+    const p = preview,
+      o = terrainLight,
+      g = terrain.geometry;
+    if (!p || !o) return;
+    const attributes = ['terrainSun', 'terrainSky', 'terrainGlow', 'terrainAlbedo', 'terrainLightOptions'] as const;
+    const buffers = attributes.map(name => {
+      let attribute = g.getAttribute(name) as THREE.BufferAttribute | undefined;
+      if (!attribute) {
+        attribute = new THREE.BufferAttribute(
+          new Float32Array((p.positions.length / 3) * (name === 'terrainLightOptions' ? 4 : 3)),
+          name === 'terrainLightOptions' ? 4 : 3,
+        );
+        g.setAttribute(name, attribute);
+      }
+      if (from === 0 && to === p.positions.length / 3) attribute.clearUpdateRanges();
+      attribute.addUpdateRange(from * attribute.itemSize, (to - from) * attribute.itemSize);
+      attribute.needsUpdate = true;
+      return attribute.array;
+    });
+    const glow = view.rigVisible() ? authoredRigGlow : null;
+    for (let v = from; v < to; v++) {
+      const sky = o.ambient * (tlAO ? 1 - o.ao * (1 - tlAO[v]) : 1);
+      const sun = o.sun * (tlShadow ? 1 - o.shadow * (1 - tlShadow[v]) : 1);
+      for (let d = 0; d < 3; d++) {
+        buffers[0][v * 3 + d] = sun * o.sunTint[d];
+        buffers[1][v * 3 + d] = sky * o.skyTint[d];
+        buffers[2][v * 3 + d] = glow?.[v * 3 + d] ?? 0;
+        // The unpainted fallback retains the same patch tint in Textured and Surface views. Painted
+        // materials opt out of this albedo so their actual texture colors remain independent of it.
+        buffers[3][v * 3 + d] = view.shading() !== 'none' ? p.colors[v * 3 + d] : 1;
+        buffers[4][v * 4 + d] = o.dir[d];
+      }
+      buffers[4][v * 4 + 3] = terrainBakedView ? 2 : 1;
+    }
+  }
+
   /** Swap the tessellated preview in as the terrain's geometry (disposing the old one), let the shell
    *  re-target every dependent overlay, then re-split the materials and re-light against the new vertices. */
   function applyPreview(p: PreviewData) {
+    const hadNormals = terrain.geometry.hasAttribute('normal');
     preview = p;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(p.positions, 3));
@@ -107,6 +152,12 @@ export function createTerrainLayer(
     g.setIndex(new THREE.BufferAttribute(p.indices, 1));
     terrain.geometry.dispose();
     terrain.geometry = g;
+    if (!hadNormals) {
+      // Three caches the shader's geometry features on the material. Replacing a no-normal loading
+      // geometry must invalidate that variant too; uploading smooth normals alone leaves FLAT_SHADED set.
+      terrainMat.needsUpdate = true;
+      terrainLightMat.needsUpdate = true;
+    }
     patchBounds = measurePatchBounds(p);
     host.onGeometryRebuilt(g);
     applyMaterials();
@@ -262,12 +313,13 @@ export function createTerrainLayer(
       const display = lightToWorkingSpace(terrainBakedView ? bakedLightmapDisplay(colors) : colors);
       if (view.shading() === 'surface') for (let i = 0; i < display.length; i++) display[i] *= p.colors[f3 + i];
       terrainDisplay.set(display, f3);
+      updatePixelLight(from, to);
     }
   }
 
   /**
    * Stage D: light the AUTHORED terrain with a directional SSX sun (sun + sky colour) + baked cast-shadow
-   * / AO, drawn UNLIT so the colour is the lighting - so shadows take the sky colour (blue / pink). Pass
+   * / AO. The shader evaluates sun + sky per pixel, so shadows take the sky colour (blue / pink). Pass
    * null to restore the normal textured / tint shading. Occlusion bakes are cached (AO by geometry,
    * shadow by geometry + direction) so dragging the strength / colour controls doesn't re-bake.
    */
@@ -335,6 +387,7 @@ export function createTerrainLayer(
       for (let i = 0; i < display.length; i++) display[i] *= p.colors[i];
     }
     terrainDisplay = display; // retained, so an incremental update can rewrite the slices that moved
+    updatePixelLight(0, p.positions.length / 3);
     g.setAttribute('color', new THREE.BufferAttribute(display, 3)); // lighting rides the colour attribute
     (g.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
     applyMaterials(); // textured -> tiles x light; surface -> tint x light; none -> grey light

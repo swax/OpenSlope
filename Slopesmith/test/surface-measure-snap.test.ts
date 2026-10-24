@@ -99,10 +99,10 @@ const near = (a: number, b: number, tolerance = 1e-6) => assert(Math.abs(a - b) 
   near(measureSurfaceObject(added.doc, added.surface).area, measured.area);
   const saved = migrateMountain(serializeMountain(added.doc));
   assert.deepEqual(saved.surfaces![0].controls.at(-1), expected);
-  // A newly inserted sparse guide still displays the complete curved section carried by the rest quilt.
+  // A new guide exposes the complete curved section through its explicit source points.
   const sparse = placeSurfaceGuide(result.doc, result.surface, 'U', 0.25);
   assert(sparse.ok);
-  assert.equal(sparse.surface.controls.at(-1)!.length, 2);
+  assert.equal(sparse.surface.controls.at(-1)!.length, 3, 'the curved section includes its editable middle point');
   assert(measureSurfaceObject(sparse.doc, sparse.surface).curveLength(sparse.surface.controls.length - 1) > 40);
 }
 console.log(
