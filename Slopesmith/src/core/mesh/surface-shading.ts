@@ -1,19 +1,30 @@
 import { surfaceStyle, type QuadMeshDoc, type SurfaceObject } from '../doc/types';
-import type { PreviewData } from './tessellation';
+import type { MeshAdjacency, QuadMesh } from './topology';
 import { CREASE_DEGREES } from './creases';
 import { guideCharts } from './surface-guides';
 import { patchNormal } from '../math/bezier';
 import type { Patch } from './loft-surface';
 
-const rawNormals = new WeakMap<PreviewData, { normals: Map<number, Float32Array>; owners: Set<number> }>();
+/** Shading reads the quilt's buffers and connectivity without depending on its tessellation implementation. */
+interface SurfaceShadingData {
+  normals: Float32Array;
+  colors: Float32Array;
+  facesPerCell: number;
+  cellSurf: readonly number[];
+  parity: readonly number[];
+  mesh: Pick<QuadMesh, 'quads'>;
+  adjacency: Pick<MeshAdjacency, 'edgeQuads'>;
+}
+
+const rawNormals = new WeakMap<SurfaceShadingData, { normals: Map<number, Float32Array>; owners: Set<number> }>();
 
 /** Carry the analytic seam inputs alongside a worker's already-blended display normals. */
-export function surfaceRawNormals(preview: PreviewData, quad: number, size: number): Float32Array {
+export function surfaceRawNormals(preview: SurfaceShadingData, quad: number, size: number): Float32Array {
   return rawNormals.get(preview)?.normals.get(quad) ?? preview.normals.subarray(quad * size, (quad + 1) * size);
 }
 
 export function adoptSurfaceRawNormals(
-  preview: PreviewData,
+  preview: SurfaceShadingData,
   quads: readonly number[],
   normals: Float32Array,
   size: number,
@@ -28,7 +39,7 @@ export function adoptSurfaceRawNormals(
 /** Smooth fitted seams according to the source curves, rather than treating fitting error as a crease. */
 export function applySurfaceShading(
   doc: QuadMeshDoc,
-  preview: PreviewData,
+  preview: SurfaceShadingData,
   changed?: ReadonlySet<number>,
 ): Set<number> {
   if (!doc.surfaces?.length && !rawNormals.has(preview)) return new Set<number>();
