@@ -43,6 +43,13 @@ imports are unavailable.
 See [SSX import and current limits](docs/ssx-import.md).
 See [desktop ISO setup](docs/desktop-iso-0.78.md).
 
+The shared importer also previews all 25 single-player USA 1080° Avalanche layouts
+directly from `.rvz`, `.gcm` or GameCube `.iso`. Curved terrain, primary textures,
+static scenery, collision, spawning and reset work through the existing portable
+map path in Native and Slopesmith. Source background meshes, sky colours and cloud
+coverage, approximate course lighting and adapted riding spray accompany new imports. See
+[Avalanche import and current limits](docs/avalanche-import.md).
+
 Build 0.76 adds desktop A/D strafing, left-drag look/turn and E to spawn and
 mount at the player's feet, including mid-air. See [desktop controls](docs/desktop-controls-0.76.md).
 
@@ -459,6 +466,9 @@ Hard landings, prop crashes and animated relative get-up are described in
 [crash recovery](docs/crash-recovery.md), including provisional pose/physics tuning.
 Keep platform file access behind the application host,
 so the readers and gameplay core can also be compiled for desktop tools or WebAssembly.
+Game-specific readers live under `src/import/`; see
+[importer architecture](docs/importer-architecture.md) for the folder layout,
+shared container layer and steps for adding another game.
 
 See [NOTICE](NOTICE) and [third-party notices](ThirdPartyNotices/README.md).
 See [source provenance](docs/source-provenance.md) for the implementation and dependency boundary.

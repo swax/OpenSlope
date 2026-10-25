@@ -1,4 +1,4 @@
-#include "import_internal.hpp"
+#include "import/ssx/formats.hpp"
 #include "openslope/audio_resolver.hpp"
 #include "openslope/import.hpp"
 #include "openslope/world_import.hpp"

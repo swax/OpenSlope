@@ -101,6 +101,20 @@ interface RuntimeProp {
  * (pickOrPlaceProp / the MMB prop-copy / the wheel-turn), reading this layer's public ghost + selection state.
  */
 export function createPropsLayer(stage: Stage, assets: PropAssets, lights: LightsLayer) {
+  const triangleMeshes = (meshes: THREE.Mesh[]) => {
+    const proxyOwners = new Set(
+      meshes
+        .filter(mesh => mesh.userData.authoredCollision instanceof THREE.BufferGeometry)
+        .map(mesh => mesh.userData.authoredCollisionOwner),
+    );
+    return meshes.filter(
+      mesh =>
+        mesh.userData.authoredCollision instanceof THREE.BufferGeometry ||
+        !proxyOwners.has(mesh.userData.authoredCollisionOwner),
+    );
+  };
+  const collisionGeometry = (mesh: THREE.Mesh): THREE.BufferGeometry =>
+    mesh.userData.authoredCollision ?? mesh.geometry;
   const placedPropGroup = new THREE.Group();
   const collisionOverlay = createCollisionOverlay(stage.worldRoot);
   const unityCollisionOverlay = createCollisionOverlay(stage.worldRoot, {
@@ -728,7 +742,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
 
       if (profile.mode === NATIVE_COLLISION_MODE.triangleProxy) {
         collisionOverlay.showMeshes(
-          meshes.map(mesh => ({ geometry: mesh.geometry, matrix: relativeMatrix(mesh.matrixWorld) })),
+          triangleMeshes(meshes).map(mesh => ({
+            geometry: collisionGeometry(mesh),
+            matrix: relativeMatrix(mesh.matrixWorld),
+          })),
           active,
           append,
         );
@@ -1098,6 +1115,9 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
             signTintMats.push((mat = c));
           } else mat = groundLight !== null ? assets.propTex.groundLit(base, groundLight) : base;
           const mesh = new THREE.Mesh(sub.geometry, mat);
+          mesh.userData.authoredCollisionOwner = child.uuid;
+          if (sub === subs[0] && assets.propCollision.has(modelKey))
+            mesh.userData.authoredCollision = assets.propCollision.get(modelKey);
           if (clip) {
             mesh.matrixAutoUpdate = false;
             const animated = tracksByClip.get(clip) ?? [];
@@ -1762,10 +1782,10 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
           return;
         }
         if (native.mode === NATIVE_COLLISION_MODE.triangleProxy) {
-          for (const mesh of unitMeshes(root, i, member))
+          for (const mesh of triangleMeshes(unitMeshes(root, i, member)))
             out.push({
               ...common,
-              geometry: mesh.geometry,
+              geometry: collisionGeometry(mesh),
               matrixWorld: mesh.matrixWorld.clone(),
               liveMatrix: objectPose(mesh),
             });
@@ -1777,11 +1797,11 @@ export function createPropsLayer(stage: Stage, assets: PropAssets, lights: Light
       const hitSound = typeof prop.collisionSound === 'number' || !!prop.collisionSoundFile;
       const solid = !trigger && placedPropSolid(prop);
       if (!solid && !collisionEffect && !hitSound) return;
-      for (const mesh of unitMeshes(root, i, member)) {
+      for (const mesh of triangleMeshes(unitMeshes(root, i, member))) {
         out.push({
           key,
           object,
-          geometry: mesh.geometry,
+          geometry: collisionGeometry(mesh),
           matrixWorld: mesh.matrixWorld.clone(),
           solid,
           liveMatrix: objectPose(mesh),

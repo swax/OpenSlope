@@ -1479,11 +1479,12 @@ try {
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
   await closeCommunity(guest);
   await guest.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
-  const gameSupport = guest.getByRole('region', { name: 'PS2 game support', exact: true });
+  const gameSupport = guest.getByRole('region', { name: 'Disc game support', exact: true });
   assert.match(await gameSupport.innerText(), /SSX Tricky\s+Full support/);
   assert.match(await gameSupport.innerText(), /SSX\s+Partial support/);
   assert.match(await gameSupport.innerText(), /SSX 3\s+Preliminary support/);
   assert.match(await gameSupport.innerText(), /SSX On Tour\s+Preliminary support/);
+  assert.match(await gameSupport.innerText(), /1080° Avalanche\s+25 course layouts · Preliminary support/);
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
   await guest.setViewportSize({ width: 800, height: 1000 });
   assert.equal(

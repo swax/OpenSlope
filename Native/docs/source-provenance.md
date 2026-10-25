@@ -4,6 +4,31 @@ The implementation inputs are the clean Trailmap specification bodies, the Apach
 OpenSlope contracts and standard mathematical/protocol identities. Evidence annotations and
 other components' implementation sources are outside this implementation boundary.
 
+The Avalanche courses use independently inspected user-supplied LVL/GEO/COL/MTL/LIG
+data and standard GameCube filesystem, GX texture/primitive and public RVZ format
+facts. The container, quantized control-net, static mesh and collision readers are
+new Native code; no Dolphin or external game decoder implementation is copied or
+linked. Zstandard supplies only general-purpose block decompression under its BSD
+license. Authored GameCube/RVZ/CMPR fixtures contain no retail bytes. OpenSlope's
+surface mapping, terrain-derived start/corridor selection, trunk cylinder proxies,
+sky texture/vertex-colour baking, energy-normalized light rig conversion and spray coverage adaptation are
+explicit application policies; see [Avalanche import](avalanche-import.md).
+Material SRT routing and matrix order were independently checked against the local
+disc's data and executable calculation. The loader uses an authored affine
+conversion, with first-key freezing and explicit camera/custom deferral; no retail
+instructions or addresses are compiled into it. Isolated geometric lettering and
+printed signage establish the X-reflected world basis used consistently across
+rendering, collision and lighting. No material-specific sign UV repair remains.
+Source object/placement boundaries and exact baked linear bases preserve separate
+scenery. Position-welded islands, bounded detail grouping, material classification
+and hull association are explicit OpenSlope authoring policies for geometry already
+merged into grid chunks. Indexed cylinder placements were checked by transforming
+their endpoints into their shared template frame; repeated placements agree.
+The recovered source interfaces are now consolidated in
+[Trailmap 600–605](../../Trailmap/specs/600-avalanche-overview.md). Their clean
+bodies are the format authority; the original investigation provenance remains
+explicit, and this document retains Native's mapping and approximation boundary.
+
 The common riding-bank adapter follows clean 518 and the existing shared Maps
 bank contract. Its explicitly approximate sample choices are OpenSlope authoring
 policy requested by the user, not recovered executable event rows. PCM/manifest

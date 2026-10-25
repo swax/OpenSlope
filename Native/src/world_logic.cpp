@@ -1,5 +1,5 @@
 #include "openslope/world_logic.hpp"
-#include "import_internal.hpp"
+#include "import/ssx/formats.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/fence.hpp"
 #include "openslope/material_animation.hpp"

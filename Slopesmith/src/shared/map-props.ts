@@ -180,6 +180,8 @@ export interface ModelSub {
 export interface ModelGeom {
   name: string;
   subs: ModelSub[];
+  collision?: { positions: number[]; indices: number[] };
+  defaults?: import('../core/doc/types').PropBehaviour;
   rotation?: PropModelRotation;
   animation?: PropModelAnimation;
 }
@@ -253,6 +255,8 @@ interface ModelsJsonModelObject {
 }
 interface ModelsJsonModel {
   ModelName: string;
+  PlacementCollisionPath?: string;
+  PlacementDefaults?: import('../core/doc/types').PropBehaviour;
   AnimTime?: number;
   ModelObjects: (ModelsJsonModelObject | null)[] | null;
 }
@@ -735,6 +739,22 @@ export async function readModelGeometries(
     return text === null ? null : parseObj(text);
   });
   const meshCache = new Map(paths.map((path, index) => [path, parsed[index]]));
+  const collisionCache = new Map<number, { positions: number[]; indices: number[] }>();
+  await mapLimit([...ids], READ_CONCURRENCY, async id => {
+    const path = modelsJson.Models[id]?.PlacementCollisionPath;
+    if (!path) return;
+    const text = await io.readTextOrNull(join(dir, 'Collision', safeDataName(path.replace(/\.obj$/i, '')) + '.obj'));
+    if (text === null) throw new Error(`Missing placement collision proxy ${path}`);
+    const raw = parseObj(text);
+    if (
+      !raw.v.length ||
+      !raw.corners.length ||
+      !raw.v.every(Number.isFinite) ||
+      raw.corners.some((index, i) => i % 3 === 0 && (index < 0 || index >= raw.v.length / 3))
+    )
+      throw new Error(`Invalid placement collision proxy ${path}`);
+    collisionCache.set(id, { positions: raw.v, indices: raw.corners.filter((_v, i) => i % 3 === 0) });
+  });
   const readMesh = (path: string): RawMesh | null => meshCache.get(path) ?? null;
 
   const out = new Map<number, ModelGeom>();
@@ -814,7 +834,14 @@ export async function readModelGeometries(
       }
     }
     if (subs.length)
-      out.set(id, { name: m.ModelName, subs, ...(rotation ? { rotation } : {}), ...(animation ? { animation } : {}) });
+      out.set(id, {
+        name: m.ModelName,
+        subs,
+        ...(collisionCache.has(id) ? { collision: collisionCache.get(id) } : {}),
+        ...(m.PlacementDefaults ? { defaults: m.PlacementDefaults } : {}),
+        ...(rotation ? { rotation } : {}),
+        ...(animation ? { animation } : {}),
+      });
   });
   return out;
 }
@@ -882,6 +909,15 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
   const models: PropsPayload['models'] = [...geoms].map(([id, g]) => ({
     id,
     name: g.name,
+    ...(g.defaults ? { defaults: g.defaults } : {}),
+    ...(g.collision
+      ? {
+          collision: {
+            pos: encodeBytes(new Float32Array(g.collision.positions).buffer),
+            idx: encodeBytes(new Uint32Array(g.collision.indices).buffer),
+          },
+        }
+      : {}),
     ...(g.rotation ? { rotation: g.rotation } : {}),
     ...(g.animation ? { animation: g.animation } : {}),
     ...modelEffect(id),

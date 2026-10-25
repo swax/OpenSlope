@@ -18,6 +18,14 @@ import type { PropSubGeom } from '../types';
 export function createPropAssets() {
   const propTex = new PropTextureCache(); // textures + materials for props (from Textures/)
   const propGeom = new Map<string, PropSubGeom[]>(); // "<level>:<model>" -> per-material submeshes
+  const propCollision = new Map<string, THREE.BufferGeometry>();
+  function registerCollision(key: string, model: LevelProps['models'][number]) {
+    if (!model.collision) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(model.collision.positions, 3));
+    g.setIndex(new THREE.BufferAttribute(model.collision.indices, 1));
+    propCollision.set(key, g);
+  }
   const propClips = new Map<string, PropModelClip>(); // embedded model clip, when the source model has one
   const groupDefs = new Map<string, GroupDef>(); // "<level>:<id>" -> mined group def (docs/015)
   const propLocalBoxes = new Map<string, { min: V3; max: V3 }>(); // "<level>:<model>" -> local bbox (raw cm)
@@ -91,6 +99,7 @@ export function createPropAssets() {
         };
       });
       propGeom.set(key, subs);
+      registerCollision(key, m);
       const clip = m.animation ?? m.rotation;
       if (clip) propClips.set(key, clip);
     }
@@ -103,6 +112,8 @@ export function createPropAssets() {
 
   /** Drop one model key and everything derived from its geometry. */
   function purgePropKey(key: string) {
+    propCollision.get(key)?.dispose();
+    propCollision.delete(key);
     for (const sub of propGeom.get(key) ?? []) sub.geometry.dispose();
     for (const edge of propEdgeGeos.get(key) ?? []) edge.dispose();
     propGeom.delete(key);
@@ -129,6 +140,8 @@ export function createPropAssets() {
     for (const m of props.models) {
       const key = `${props.level}:${m.id}`;
       let hash = m.subs.length * 31 + m.name.length;
+      for (const value of m.collision?.positions ?? []) hash = (hash * 31 + ((value * 8) | 0)) >>> 0;
+      for (const value of m.collision?.indices ?? []) hash = (hash * 31 + value) >>> 0;
       for (const s of m.subs) {
         hash = (hash * 31 + s.positions.length * 7 + s.indices.length) >>> 0;
         hash = (hash * 31 + (s.object ?? -1)) >>> 0;
@@ -156,6 +169,7 @@ export function createPropAssets() {
       if (liveSig.get(key) === sig && propGeom.has(key)) continue;
       purgePropKey(key);
       liveSig.set(key, sig);
+      registerCollision(key, m);
       propGeom.set(
         key,
         m.subs.map(s => {
@@ -344,6 +358,9 @@ export function createPropAssets() {
     },
     get propGeom() {
       return propGeom;
+    },
+    get propCollision() {
+      return propCollision;
     },
     get propClips() {
       return propClips;

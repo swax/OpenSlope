@@ -25,7 +25,10 @@ try {
         ],
       }),
     ],
-    ['Materials.json', JSON.stringify({ Materials: [{ TexturePath: 'sky.png', AlphaMode: 'cutout' }] })],
+    [
+      'Materials.json',
+      JSON.stringify({ Materials: [{ TexturePath: 'sky.png', AlphaMode: 'cutout', RepeatTexture: true }] }),
+    ],
     ['Meshes/sky.obj', 'v 0 0 0\nv 100 0 0\nv 0 100 0\nvt 0 0\nvt 1 0\nvt 0 1\nf 1/1 2/2 3/3\n'],
     ['Textures/sky.png', new Uint8Array([137, 80, 78, 71])],
   ]);
@@ -51,6 +54,7 @@ try {
     'Server embeds the exact original page with its extension preserved',
   );
   assert.equal(sky.parts[0].alphaMode, 'cutout');
+  assert.equal(sky.parts[0].repeatTexture, true);
   assert.equal(sky.parts[0].indices.length, 3);
   assert.deepEqual(sky.parts[0].positions.slice(0, 3), [200, 300, 400], 'Preserve model-object rest transforms');
   const exported = await skyboxFiles({

@@ -53,7 +53,7 @@ try {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/isos`);
-  const games = page.getByRole('region', { name: 'PS2 game support', exact: true });
+  const games = page.getByRole('region', { name: 'Disc game support', exact: true });
   const trickyGame = games.getByRole('button', { name: 'SSX Tricky', exact: true });
   const ssxGame = games.getByRole('button', { name: 'SSX', exact: true });
   await trickyGame.waitFor();
@@ -127,7 +127,7 @@ try {
   await page.screenshot({ path: join(root, 'saved-disc-library-mobile.png') });
   const secondTab = await context.newPage();
   await secondTab.goto(`${origin}/isos`);
-  const otherGames = secondTab.getByRole('region', { name: 'PS2 game support', exact: true });
+  const otherGames = secondTab.getByRole('region', { name: 'Disc game support', exact: true });
   assert(await otherGames.getByRole('button', { name: 'SSX Tricky', exact: true }).isEnabled());
   assert(
     await otherGames.getByRole('button', { name: 'SSX', exact: true }).isEnabled(),

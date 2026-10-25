@@ -173,6 +173,8 @@ export interface PropModel {
   id: number;
   name: string;
   subs: PropSub[];
+  /** Optional model-local triangle hull for authored copies; independent of visible foliage/decor. */
+  collision?: { positions: Float32Array; indices: Uint32Array };
   rotation?: PropModelRotation;
   animation?: PropModelAnimation;
   /** Particle emitters the source MODEL declared for itself (an imported GLB's glTF `extras`, docs/032),
@@ -315,6 +317,7 @@ export interface PropsPayload {
   models: {
     id: number;
     name: string;
+    collision?: { pos: string; idx: string };
     subs: {
       mat: number;
       pos: string;
@@ -482,6 +485,14 @@ export function decodeProps(payload: PropsPayload): LevelProps {
   const models: PropModel[] = payload.models.map(m => ({
     id: m.id,
     name: m.name,
+    ...(m.collision
+      ? {
+          collision: {
+            positions: new Float32Array(b64ToBytes(m.collision.pos).buffer),
+            indices: new Uint32Array(b64ToBytes(m.collision.idx).buffer),
+          },
+        }
+      : {}),
     ...(m.rotation ? { rotation: m.rotation } : {}),
     ...(m.animation ? { animation: m.animation } : {}),
     ...(m.emitters?.length ? { emitters: m.emitters } : {}),

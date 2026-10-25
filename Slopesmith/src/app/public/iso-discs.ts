@@ -3,6 +3,7 @@ export const ISO_GAMES = [
   { id: 'ssx', name: 'SSX', support: 'Partial support' },
   { id: 'ssx3', name: 'SSX 3', support: 'Preliminary support' },
   { id: 'ontour', name: 'SSX On Tour', support: 'Preliminary support' },
+  { id: 'avalanche', name: '1080° Avalanche', support: '25 course layouts · Preliminary support' },
 ] as const;
 
 export type IsoGame = (typeof ISO_GAMES)[number]['id'];
@@ -13,6 +14,7 @@ export interface SavedIsoDisc {
 }
 
 export function isoGameForCourse(course: string): IsoGame {
+  if (/^AVALANCHE_/i.test(course)) return 'avalanche';
   if (/^SSX_/i.test(course)) return 'ssx';
   if (/^SSX3_/i.test(course)) return 'ssx3';
   if (/^SSXOT_/i.test(course)) return 'ontour';

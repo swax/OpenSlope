@@ -40,6 +40,13 @@ the native loader prefers the exact matrix, preserving affine source transforms.
 Model hierarchy transforms compose before placement. Raw centimetres become
 `(x,z,-y)/100`, using the same chirality correction as terrain.
 
+Source libraries may also provide `Models[].PlacementDefaults` and an optional
+`PlacementCollisionPath` naming a model-local OBJ under `Collision/`. Slopesmith
+uses these for authored copies, including separate tree-trunk hulls beneath visible
+foliage. They do not alter the source course's instance collision. Canonical export
+compiles the hull into ordinary `CollsionModelPaths` and placement transforms;
+native playback continues to consume the existing instance collision contract.
+
 Model animation data is retained, but rendering samples clip time zero only.
 Channel values replace local pose components, cubic coefficients use Horner
 order, and rotation uses Z-Y-X Euler composition in degrees. Unchannelled rotation

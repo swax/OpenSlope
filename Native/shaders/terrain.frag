@@ -224,6 +224,7 @@ void main() {
             if(transform.options.z==1&&base.a<0.5)discard;
             if(transform.options.z==2){if(base.a<=1.0/255.0)discard;alpha=base.a;}
         }else if(base.a<=1.0/255.0)discard;
+        if(transform.options.x==7)alpha=base.a;
         displayColour=base.rgb;
         if(mode==14) {
             if(lightmapTile.w<0.5)displayColour=transform.presentation.yzw;

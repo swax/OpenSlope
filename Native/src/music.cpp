@@ -1,5 +1,5 @@
 #include "openslope/music.hpp"
-#include "import_internal.hpp"
+#include "import/shared.hpp"
 #include <fstream>
 #include <nlohmann/json.hpp>
 

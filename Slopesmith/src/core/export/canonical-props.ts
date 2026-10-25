@@ -605,14 +605,17 @@ export function buildCanonicalProps(
     }
     const collisionPaths: string[] = [];
     if (hasCollisionProxy) {
+      const collisionGroup: BakedPropGroup = group.collision
+        ? { ...group, subs: [{ material: '', slot: -1, object: 0, uvs: [], ...group.collision }] }
+        : group;
       const collisionName = `prop_${String(groupIndex).padStart(4, '0')}.obj`;
-      files[`Collision/${collisionName}`] = collisionMesh(group, frame);
+      files[`Collision/${collisionName}`] = collisionMesh(collisionGroup, frame);
       collisionPaths.push(collisionName);
       collisionMeshes++;
       const vertexBase = collisionWorld.filter(line => line.startsWith('v ')).length;
       collisionWorld.push(`o inst${groupIndex}_${group.name}`);
       const keys = new Map<string, number>();
-      group.subs.forEach((sub, subIndex) => {
+      collisionGroup.subs.forEach((sub, subIndex) => {
         for (const index of sub.indices) {
           const key = `${subIndex}:${index}`;
           if (keys.has(key)) continue;
@@ -622,7 +625,7 @@ export function buildCanonicalProps(
           );
         }
       });
-      group.subs.forEach((sub, subIndex) => {
+      collisionGroup.subs.forEach((sub, subIndex) => {
         for (let k = 0; k + 2 < sub.indices.length; k += 3)
           collisionWorld.push(
             `f ${[sub.indices[k], sub.indices[k + 1], sub.indices[k + 2]]

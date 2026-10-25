@@ -105,6 +105,7 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
         for (const model of decodeProps(payload).models)
           geometry.set(`${safeDataName(levels[index])}:${model.id}`, {
             subs: model.subs,
+            collision: model.collision,
             rotation: model.rotation,
             animation: model.animation,
           });

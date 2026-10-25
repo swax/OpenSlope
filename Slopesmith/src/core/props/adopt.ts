@@ -103,6 +103,10 @@ export function recordFromReferenceProp(props: LevelProps, model: PropModel, nam
       tris,
       subs,
       materials,
+      ...(model.collision
+        ? { collision: { pos: pack(model.collision.positions), idx: pack(model.collision.indices) } }
+        : {}),
+      ...(model.defaults ? { defaults: structuredClone(model.defaults) } : {}),
       // Declared motion the MODEL owns. An extracted level sets neither (docs/032), so these are the
       // imported-source case; carrying them keeps one function honest for both.
       ...(model.emitters?.length ? { emitters: model.emitters as ImportedPropRecord['emitters'] } : {}),

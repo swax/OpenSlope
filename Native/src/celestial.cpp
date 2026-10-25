@@ -1,6 +1,6 @@
 #include "openslope/celestial.hpp"
 #include "celestial_spokes.hpp"
-#include "import_internal.hpp"
+#include "import/ssx/formats.hpp"
 #include <algorithm>
 #include <cctype>
 #include <fstream>

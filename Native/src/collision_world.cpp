@@ -1,4 +1,4 @@
-#include "import_internal.hpp"
+#include "import/ssx/formats.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/import.hpp"
 #include "openslope/model_animation.hpp"

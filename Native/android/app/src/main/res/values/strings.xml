@@ -52,7 +52,7 @@
     <string name="reading_iso">Finding courses on selected discs…</string>
     <string name="import_cancelled">Import cancelled.</string>
     <string name="import_title">Choose courses to import</string>
-    <string name="import_scope">Select courses from your chosen discs. SSX Tricky has full support; SSX has partial support; SSX 3 and On Tour are preliminary. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
+    <string name="import_scope">Select courses from your chosen discs. SSX Tricky has full support; SSX has partial support; SSX 3 and On Tour are preliminary. 1080° Avalanche USA previews all 25 single-player layouts, including RVZ images, with source skies and approximate course lighting. Existing maps are kept. Use Unload beside a course first to import a fresh copy.</string>
     <string name="import_action">Import</string>
     <string name="import_selected">Import (%1$d)</string>
     <string name="select_all">Select all</string>

@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import {
   packageRootFromModuleId,
   installedDependencyClosure,
@@ -33,13 +34,16 @@ check(
 const moduleIds = [...policy.browser].map(name => join(appRoot, 'node_modules', ...name.split('/'), 'index.js'));
 const records = await recordsFromModuleIds(moduleIds, appRoot);
 const livekit = records.find(record => record.name === 'livekit-client');
+const installedLivekit = JSON.parse(
+  readFileSync(join(appRoot, 'node_modules', 'livekit-client', 'package.json'), 'utf8'),
+) as { version: string };
 check(
-  livekit?.version === '2.22.4' && livekit.legalFiles.join(',') === 'LICENSE',
+  livekit?.version === installedLivekit.version && livekit.legalFiles.join(',') === 'LICENSE',
   'installed LiveKit client contributes its Apache LICENSE and does not invent an absent NOTICE',
 );
 const report = await renderInstalledNotices(records, 'test browser notices');
 check(
-  report.includes('livekit-client@2.22.4') && report.includes('Apache License'),
+  report.includes(`livekit-client@${installedLivekit.version}`) && report.includes('Apache License'),
   'generated browser legal text carries the installed LiveKit license',
 );
 const closure = await installedDependencyClosure(appRoot, policy.browser);

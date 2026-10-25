@@ -343,7 +343,7 @@ export interface ResolvedPropDefaults {
   behaviour: StampBehaviour;
   /** `saved`: the author's own stored defaults · `reference`: derived from a shipped level's placements ·
    *  `baseline`: nothing to go on, the standard starting point. */
-  source: 'saved' | 'reference' | 'baseline';
+  source: 'saved' | 'reference' | 'baseline' | 'extraction';
   /** Whether this model's defaults can be saved — true only for the author's own geometry. */
   savable: boolean;
   /** For `reference`: how representative the derived behaviour is, and the instance it was read from. */
@@ -355,6 +355,9 @@ export interface ResolvedPropDefaults {
 /** The defaults a new placement of `level`/`model` starts with. `props` is the level's loaded payload, whose
  *  models carry the author's stored defaults and whose instances the reference ones derive from. */
 export function resolvePropDefaults(level: string, model: number, props: LevelProps | undefined): ResolvedPropDefaults {
+  const explicit = props?.models.find(entry => entry.id === model)?.defaults;
+  if (!ownGeometry(level) && explicit)
+    return { behaviour: stampBehaviour(level, explicit), source: 'extraction', savable: false };
   if (ownGeometry(level)) {
     const saved = props?.models.find(entry => entry.id === model)?.defaults;
     return saved

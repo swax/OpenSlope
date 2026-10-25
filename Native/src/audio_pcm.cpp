@@ -1,4 +1,4 @@
-#include "import_internal.hpp"
+#include "import/shared.hpp"
 #include "openslope/audio.hpp"
 #include <bit>
 #include <fstream>

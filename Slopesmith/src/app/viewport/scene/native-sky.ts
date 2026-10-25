@@ -19,6 +19,14 @@ export async function createNativeSkyBackdrop(payload: NativeSkyPayload, loader:
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   });
+  const repeats = new Map<string, THREE.Texture>();
+  for (const part of payload.parts) {
+    if (!part.repeatTexture || !part.texture || repeats.has(part.texture)) continue;
+    const texture = textures.get(part.texture)!.clone();
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.needsUpdate = true;
+    repeats.set(part.texture, texture);
+  }
   let top = -Infinity;
   for (const part of payload.parts)
     for (let i = 2; i < part.positions.length; i += 3) top = Math.max(top, part.positions[i]);
@@ -34,7 +42,7 @@ export async function createNativeSkyBackdrop(payload: NativeSkyPayload, loader:
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(part.uvs, 2));
     geometry.setIndex(part.indices);
-    const texture = part.texture ? textures.get(part.texture)! : null;
+    const texture = part.texture ? (part.repeatTexture ? repeats : textures).get(part.texture)! : null;
     if (texture && part.texture)
       for (let i = 2; i < part.positions.length; i += 3) {
         if (Math.abs(part.positions[i] - top) > 0.001) continue;
@@ -105,6 +113,7 @@ export async function createNativeSkyBackdrop(payload: NativeSkyPayload, loader:
         mesh.material.dispose();
       }
       textures.forEach(texture => texture.dispose());
+      repeats.forEach(texture => texture.dispose());
     },
   };
 }

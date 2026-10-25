@@ -1,4 +1,4 @@
-#include "import_internal.hpp"
+#include "../src/import/ssx/formats.hpp"
 #include "openslope/appearance.hpp"
 #include "openslope/celestial.hpp"
 #include "openslope/world.hpp"

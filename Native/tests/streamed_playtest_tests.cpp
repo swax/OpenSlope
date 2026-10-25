@@ -1,4 +1,4 @@
-#include "../src/import_internal.hpp"
+#include "../src/import/ssx/formats.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/props.hpp"
 #include "openslope/world_logic.hpp"

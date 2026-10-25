@@ -5,7 +5,11 @@ import type { LightmapSet } from '../../core/lighting/lightmap';
 /** Match the editor's extracted-lightmap decode while sourcing PNGs from local Blobs or original map files. */
 export async function lightPublicReference(mesh: ReferenceMesh, patches: RawPatch[], url: (id: number) => string): Promise<void> {
   const maps: LightmapSet = new Map();
-  for (const id of new Set(patches.flatMap(patch => patch.LightmapID === undefined ? [] : [patch.LightmapID]))) {
+  const ids = patches.flatMap(patch => {
+    const id = patch.LightmapID, rect = patch.LightMapPoint;
+    return id !== undefined && Number.isInteger(id) && id >= 0 && rect && rect[2] > 0 && rect[3] > 0 ? [id] : [];
+  });
+  for (const id of new Set(ids)) {
     const response = await fetch(url(id));
     if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) continue;
     const image = await createImageBitmap(await response.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });

@@ -1928,6 +1928,11 @@ export function createPropTools(ctx: ToolsContext) {
         'Every new placement of this model starts with these. Placements already on the mountain keep their own ' +
           'settings until you apply these to them.',
       ];
+    if (resolved.source === 'extraction')
+      return [
+        `Imported placement defaults for ${name}.`,
+        'These settings apply to copies on your authored mountain. The source course stays a static reference. You can change the collision settings before placing.',
+      ];
     if (resolved.source === 'reference') {
       const all = resolved.matching === resolved.total;
       return [
@@ -2467,7 +2472,9 @@ export function createPropTools(ctx: ToolsContext) {
             'place',
           )
           .name('＋ place prop'),
-        'Put a copy on the cursor with this instance’s exact settings as editable defaults.',
+        propLevels.get(ref.level)?.models.find(model => model.id === ref.model)?.defaults
+          ? 'Put a copy on the cursor with this model’s placement collision defaults.'
+          : 'Put a copy on the cursor with this instance’s exact settings as editable defaults.',
       );
       actionRows.push(placeAction.domElement);
       // Revise reaches a reference prop from HERE as well as from a placement of one. Copying a shipped prop

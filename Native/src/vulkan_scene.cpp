@@ -582,8 +582,8 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
         mesh.indices.push_back(i + sky_vertex);
     for (const auto& part : world_.sky.parts) {
         const auto found = names.find("Skybox/Textures/" + part.texture);
-        sky_draws_.push_back(
-            {part.first + sky_first, part.count, descriptor(found == names.end() ? 0 : found->second, 1, true), 7});
+        sky_draws_.push_back({part.first + sky_first, part.count,
+                              descriptor(found == names.end() ? 0 : found->second, 1, !part.repeat_texture), 7});
     }
     world_.sky = {};
     board_first_ = std::uint32_t(mesh.indices.size());

@@ -904,20 +904,23 @@ void terrain_range_tests(VulkanContext& context, const std::filesystem::path& ro
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 2)
+        if (argc < 2 || argc > 3 || (argc == 3 && std::string(argv[2]) != "--sky"))
             throw std::runtime_error("Supply authored rendering fixtures");
+        const bool sky_only = argc == 3;
         const auto root = std::filesystem::path(argv[1]);
         VulkanContext context;
         context.create(false);
-        hdr_tests(context, root);
-        ray_shadow_tests(context, root);
-        lamp_housing_tests(context, root);
-        soft_shadow_tests(context, root);
-        rider_shadow_tests(context, root);
-        terrain_range_tests(context, root);
-        runtime_lighting_tests(context, root);
-        calibrated_lighting_tests(context, root);
-        local_light_tests(context, root);
+        if (!sky_only) {
+            hdr_tests(context, root);
+            ray_shadow_tests(context, root);
+            lamp_housing_tests(context, root);
+            soft_shadow_tests(context, root);
+            rider_shadow_tests(context, root);
+            terrain_range_tests(context, root);
+            runtime_lighting_tests(context, root);
+            calibrated_lighting_tests(context, root);
+            local_light_tests(context, root);
+        }
         for (const auto samples : {1u, 4u})
             for (const auto name : {"handedness",
                                     "orientation",
@@ -949,11 +952,15 @@ int main(int argc, char** argv) {
                                     "sky",
                                     "sky_foreground",
                                     "sky_authored",
+                                    "sky_authored_alpha",
+                                    "sky_repeat",
                                     "fog",
                                     "sprites_fog",
                                     "wake_fog",
                                     "sheet_fog",
                                     "props_fog"}) {
+                if (sky_only && !std::string(name).starts_with("sky"))
+                    continue;
                 auto scene = std::make_shared<VulkanScene>(context);
                 Mesh mesh;
                 if (std::string(name) == "antialiasing") {
@@ -1055,6 +1062,35 @@ int main(int argc, char** argv) {
                                                 : projection(-1, 1, -1, 1) * view({}, {0, 0, -1});
                     const auto a = capture(first, root / "sky-unorm.ppm", sky_camera),
                                b = capture(second, root / "sky-srgb.ppm", sky_camera);
+                    if (std::string(name) == "sky_repeat") {
+                        for (const auto* pixels : {&a, &b}) {
+                            pixel(*pixels, .15, .5, {20, 40, 80});
+                            pixel(*pixels, .85, .5, {20, 40, 80});
+                        }
+                        continue;
+                    }
+                    if (std::string(name) == "sky_authored_alpha") {
+                        pixel(a, .15, .5, {110, 100, 100});
+                        pixel(a, .85, .5, {140, 90, 80});
+                        // sRGB attachments blend in linear light; UNORM blends in its byte domain.
+                        const auto blend = [](std::array<int, 3> base) {
+                            const std::array<int, 3> cloud{200, 160, 120};
+                            std::array<int, 3> result{};
+                            for (unsigned i = 0; i < 3; ++i) {
+                                const auto linear = [](double v) {
+                                    return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4);
+                                };
+                                const auto v =
+                                    linear(cloud[i] / 255.) * (128. / 255) + linear(base[i] / 255.) * (127. / 255);
+                                result[i] = int(std::round(
+                                    (v <= .0031308 ? v * 12.92 : 1.055 * std::pow(v, 1 / 2.4) - .055) * 255));
+                            }
+                            return result;
+                        };
+                        pixel(b, .15, .5, blend({20, 40, 80}));
+                        pixel(b, .85, .5, blend({80, 20, 40}));
+                        continue;
+                    }
                     for (const auto* pixels : {&a, &b}) {
                         if (std::string(name) == "sky_foreground") {
                             pixel(*pixels, .5, .5, {40, 80, 120});

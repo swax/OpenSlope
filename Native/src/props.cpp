@@ -1,5 +1,5 @@
 #include "openslope/props.hpp"
-#include "import_internal.hpp"
+#include "import/ssx/formats.hpp"
 #include "openslope/crowd.hpp"
 #include "openslope/import.hpp"
 #include "openslope/material_animation.hpp"
@@ -650,6 +650,7 @@ Props Props::load(const std::filesystem::path& root, bool model_only, std::span<
                     throw std::runtime_error("Invalid prop material");
                 const auto mat = material == -1 ? Json{{"TexturePath", nullptr}} : t.materials.at(material);
                 PropPart part;
+                part.repeat_texture = mat.value("RepeatTexture", false);
                 part.texture = texture_name(mat);
                 if (!part.texture.empty())
                     safe(part.texture);

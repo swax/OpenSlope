@@ -339,6 +339,7 @@ export async function importedPropsPayload(): Promise<PropsPayload> {
       // hierarchy across models, so there is no counter to rebase against.
       ...(record.animation ? { animation: record.animation } : {}),
       ...(record.defaults ? { defaults: record.defaults } : {}),
+      ...(record.collision ? { collision: record.collision } : {}),
     });
     matBase += record.materials.length;
   }

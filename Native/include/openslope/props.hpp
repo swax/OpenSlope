@@ -23,7 +23,8 @@ struct PropPart {
     std::uint32_t first{}, count{};
     std::string texture;
     std::uint32_t flags{};
-    int alpha_mode = -1; // -1: native flags; 0: opaque; 1: cutout; 2: blend.
+    int alpha_mode = -1;         // -1: native flags; 0: opaque; 1: cutout; 2: blend.
+    bool repeat_texture = false; // Optional sky repeat; legacy backdrops clamp to their edges.
     std::size_t object = 0;
     Bounds bounds;
     std::vector<std::string> frames;

@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three';
 import { createRangeCull } from '../src/app/viewport/scene/range-cull';
+import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
 import { check, failures } from './check';
 
 /** A stand-in for one quilt cell: the real ones carry an explicit bounding sphere for exactly this reason. */
@@ -175,6 +176,22 @@ flippedCull.update(new THREE.Vector3(2000, 0, -300));
 check(inFlipped.visible, 'a cell under a reflected, offset root is measured at its true world position');
 flippedCull.update(new THREE.Vector3(2000, 0, 300)); // 600 m away through the flip, not 0
 check(!inFlipped.visible, 'and the mirrored position 600 m away is correctly out of range');
+
+// A converted course can merge scenery into one model at the origin with distant model-local vertices.
+const distantGeometry = new THREE.BoxGeometry(80000, 2000, 2000).translate(500000, 0, 0);
+const distant = new THREE.BatchedMesh(1, 24, 36, new THREE.MeshBasicMaterial());
+distant.addInstance(distant.addGeometry(distantGeometry));
+distant.setMatrixAt(0, RAW_TO_EDITOR);
+scene.add(distant);
+distant.updateMatrixWorld(true);
+const distantCull = createRangeCull({ scene, chunks: () => [], propMeshes: () => [distant], fogColor: () => null });
+distantCull.setRange(200);
+distantCull.update(new THREE.Vector3(-4500, 0, 0));
+check(distant.getVisibleAt(0), 'nearby merged scenery survives even when its origin and centre are out of range');
+distantCull.update(new THREE.Vector3(-4000, 0, 0));
+check(!distant.getVisibleAt(0), 'distant merged scenery still drops once its entire bound is out of range');
+distantCull.setRange(null);
+check(distant.getVisibleAt(0), 'leaving Play restores a large scenery model hidden by range');
 
 if (failures) process.exitCode = 1;
 else console.log('RANGE CULL TESTS PASSED');

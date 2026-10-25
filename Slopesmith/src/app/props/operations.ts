@@ -130,7 +130,10 @@ export function createPropOps(deps: PropOpsDeps) {
     if (source) {
       const template = source.effect !== undefined ? props?.effects?.[source.effect] : undefined;
       return {
-        behaviour: instanceBehaviour(level, source),
+        behaviour: {
+          ...instanceBehaviour(level, source),
+          ...props?.models.find(entry => entry.id === model)?.defaults,
+        },
         from: 'instance',
         ...withEffect(template ? { kind: 'template', template: structuredClone(template) } : undefined),
       };

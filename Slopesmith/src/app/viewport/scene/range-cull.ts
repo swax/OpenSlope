@@ -106,10 +106,11 @@ export function createRangeCull(deps: RangeCullDeps) {
   const eyeLocal = new THREE.Vector3();
   const inverse = new THREE.Matrix4();
   const slotMatrix = new THREE.Matrix4();
-  /** Slot origins in each batch's own frame. Props are placed once and do not translate, so this is cached;
+  const slotSphere = new THREE.Sphere();
+  /** Slot bounds in each batch's own frame. Props are placed once and do not translate, so this is cached;
    *  a Play mutation that moves one keeps its authored gate position, exactly as the Unity culler's
    *  Start-time position cache does. */
-  const slotCentres = new WeakMap<THREE.BatchedMesh, Float32Array>();
+  const slotBounds = new WeakMap<THREE.BatchedMesh, Float32Array>();
   /** Which slots THIS gate hid, so leaving the ride restores those and touches nothing else. */
   const gated = new WeakMap<THREE.BatchedMesh, Uint8Array>();
   const touched = new Set<THREE.BatchedMesh>();
@@ -131,19 +132,25 @@ export function createRangeCull(deps: RangeCullDeps) {
     eyeLocal.copy(eye).applyMatrix4(inverse);
   }
 
-  function centresOf(batch: THREE.BatchedMesh): Float32Array {
+  function boundsOf(batch: THREE.BatchedMesh): Float32Array {
     const count = batch.instanceCount;
-    const known = slotCentres.get(batch);
-    if (known && known.length >= count * 3) return known;
-    const centres = new Float32Array(count * 3);
+    const known = slotBounds.get(batch);
+    if (known && known.length >= count * 4) return known;
+    const bounds = new Float32Array(count * 4);
     for (let i = 0; i < count; i++) {
       batch.getMatrixAt(i, slotMatrix);
-      centres[i * 3] = slotMatrix.elements[12];
-      centres[i * 3 + 1] = slotMatrix.elements[13];
-      centres[i * 3 + 2] = slotMatrix.elements[14];
+      if (batch.getBoundingSphereAt(batch.getGeometryIdAt(i), slotSphere)) slotSphere.applyMatrix4(slotMatrix);
+      else {
+        slotSphere.center.setFromMatrixPosition(slotMatrix);
+        slotSphere.radius = 0;
+      }
+      bounds[i * 4] = slotSphere.center.x;
+      bounds[i * 4 + 1] = slotSphere.center.y;
+      bounds[i * 4 + 2] = slotSphere.center.z;
+      bounds[i * 4 + 3] = slotSphere.radius;
     }
-    slotCentres.set(batch, centres);
-    return centres;
+    slotBounds.set(batch, bounds);
+    return bounds;
   }
 
   function pass(eye: THREE.Vector3): void {
@@ -165,13 +172,12 @@ export function createRangeCull(deps: RangeCullDeps) {
       if (want) chunksDrawn++;
     }
 
-    const limit = metres * metres;
     for (const mesh of deps.propMeshes()) {
       if (!(mesh as THREE.BatchedMesh).isBatchedMesh) continue;
       const batch = mesh as THREE.BatchedMesh;
       const count = batch.instanceCount;
       if (!count) continue;
-      const centres = centresOf(batch);
+      const bounds = boundsOf(batch);
       let flags = gated.get(batch);
       if (!flags || flags.length < count) {
         flags = new Uint8Array(count);
@@ -180,10 +186,13 @@ export function createRangeCull(deps: RangeCullDeps) {
       toLocal(batch, eye);
       slots += count;
       for (let i = 0; i < count; i++) {
-        const dx = centres[i * 3] - eyeLocal.x;
-        const dy = centres[i * 3 + 1] - eyeLocal.y;
-        const dz = centres[i * 3 + 2] - eyeLocal.z;
-        if (dx * dx + dy * dy + dz * dz <= limit) {
+        // A merged course model can have its placement at zero while its geometry
+        // surrounds a rider kilometres away. Measure to the nearest bound, as for terrain.
+        const dx = bounds[i * 4] - eyeLocal.x;
+        const dy = bounds[i * 4 + 1] - eyeLocal.y;
+        const dz = bounds[i * 4 + 2] - eyeLocal.z;
+        const limit = metres + bounds[i * 4 + 3];
+        if (dx * dx + dy * dy + dz * dz <= limit * limit) {
           slotsDrawn++;
           if (flags[i]) {
             batch.setVisibleAt(i, true);

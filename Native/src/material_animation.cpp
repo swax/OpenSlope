@@ -1,5 +1,5 @@
 #include "openslope/material_animation.hpp"
-#include "import_internal.hpp"
+#include "import/ssx/formats.hpp"
 #include "openslope/import.hpp"
 #include <algorithm>
 #include <cctype>

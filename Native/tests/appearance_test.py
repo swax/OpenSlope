@@ -71,6 +71,22 @@ def fixtures(root):
         (sky / 'Textures/sky.png').write_bytes(rgba(4,4,[c for y in range(4) for x in range(4) for c in ([120,160,200,255] if y==0 else [20,40,80,255] if x<2 else [80,20,40,255])]))
         # No instance table: the panorama is already camera-local model geometry.
         (folder / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', Fog=dict(Enabled=False), **(dict(SkyColor=[90,110,130]) if name=='sky_authored' else {}))))
+    folder = root / 'sky_authored_alpha'
+    shutil.copytree(root / 'sky_authored', folder)
+    sky = folder / 'Skybox'
+    models = json.loads((sky / 'Models.json').read_text())
+    models['Models'][0]['ModelObjects'][0]['MeshData'].append(dict(MeshPath='ring.obj', MaterialID=1))
+    (sky / 'Models.json').write_text(json.dumps(models))
+    (sky / 'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='sky.png'),
+        dict(TexturePath='cloud.png', AlphaMode='blend')])))
+    (sky / 'Textures/cloud.png').write_bytes(rgba(1,1,[200,160,120,128]))
+    folder = root / 'sky_repeat'
+    shutil.copytree(root / 'sky_authored', folder)
+    sky = folder / 'Skybox'
+    mesh = ''.join('vt 1.25 0.5\n' if line.startswith('vt ') else line
+        for line in (sky / 'Meshes/ring.obj').read_text().splitlines(keepends=True))
+    (sky / 'Meshes/ring.obj').write_text(mesh)
+    (sky / 'Materials.json').write_text(json.dumps(dict(Materials=[dict(TexturePath='sky.png', RepeatTexture=True)])))
     fog = course(root, 'fog', 'base.png')
     (fog / 'Textures/base.png').write_bytes(rgba(1,1,[40,80,120,255]))
     (fog / 'World.json').write_text(json.dumps(dict(Schema='openslope-world/v1', SkyColor=[23,61,127], Fog=dict(Start=0, End=1, Color=[200,40,20]))))

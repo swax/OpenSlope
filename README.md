@@ -42,7 +42,7 @@ the browser, Native, and Unity, or be repacked for PCSX2 and PS2.
 [Build your own maps on slopesmith.net](https://slopesmith.net)
 
 **SSX Tricky is fully supported** for course compatibility. Support for the original **SSX**, **SSX 3**,
-and **SSX On Tour** is **preliminary**.
+**SSX On Tour**, and **1080° Avalanche** is **preliminary**.
 
 [Download Native for Windows or Quest](https://github.com/swax/OpenSlope/releases/latest)
 

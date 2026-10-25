@@ -1,7 +1,7 @@
 # SSX 3 and On Tour fidelity audit
 
 The browser `/isos` flow and native Windows/Quest builds share the streamed-world
-reader in `src/ssx3_import.cpp`. Improvements to that conversion require rebuilding
+reader in `src/import/ssx/streamed/course.cpp`. Improvements to that conversion require rebuilding
 the bundled browser importer as well as the native executable. The browser and
 native renderers consume different subsets of the resulting portable map.
 

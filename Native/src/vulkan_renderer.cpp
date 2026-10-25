@@ -775,7 +775,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     }
     VkResult sky_result = wake_result;
     if (wake_result == VK_SUCCESS) {
-        blend.blendEnable = VK_FALSE;
+        blend.blendEnable = VK_TRUE;
         sky_result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &sky_pipeline_);
     }
     VkResult line_result = sky_result;

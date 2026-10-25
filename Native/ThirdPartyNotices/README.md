@@ -8,6 +8,7 @@ not linked into the player. No upstream game-format decoder is linked into this 
 | Dependency | Pinned release | Terms | Use |
 |---|---|---|---|
 | [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | Map JSON and shared ride contract. |
+| [Zstandard](https://github.com/facebook/zstd) | 1.5.7 | BSD 3-Clause; see zstd.txt | Portable RVZ block decompression. |
 | [LodePNG](https://github.com/lvandeve/lodepng) | ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a | zlib-style license; see lodepng.txt | Standalone bounded PNG decoding to RGBA8. Encoder, disk helpers and ancillary metadata processing are disabled. |
 | [stb_image](https://github.com/nothings/stb) | f0569113c93ad095470c54bf34a17b36646bbbb5 | MIT / public domain; see stb.txt | Bounded memory-only JPEG decoding for embedded avatar textures. |
 | [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | 1.4.309 | Apache-2.0 / MIT | Vulkan API declarations. |

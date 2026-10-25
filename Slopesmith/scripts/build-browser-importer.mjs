@@ -11,6 +11,7 @@ const visualStudioCmake =
   'C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe';
 const cmake = process.env.CMAKE || (existsSync(visualStudioCmake) ? visualStudioCmake : 'cmake');
 const build = resolve(root, 'temp/browser-import');
+const runtime = join(build, 'runtime');
 const options = [
   '-S',
   join(root, 'Native'),
@@ -20,12 +21,13 @@ const options = [
   'Ninja',
   `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
   '-DCMAKE_BUILD_TYPE=Release',
+  `-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${runtime}`,
   '-DOPENSLOPE_BUILD_TESTS=OFF',
   '-DOPENSLOPE_BUILD_PLAYER=OFF',
 ];
 if (cmake === visualStudioCmake)
   options.push(`-DCMAKE_MAKE_PROGRAM=${resolve(dirname(cmake), '../../Ninja/ninja.exe')}`);
-for (const name of ['json', 'lodepng']) {
+for (const name of ['json', 'lodepng', 'zstd']) {
   const source = join(root, 'temp/native-core/_deps', `${name}-src`);
   if (existsSync(source)) options.push(`-DFETCHCONTENT_SOURCE_DIR_${name.toUpperCase()}=${source}`);
 }
@@ -40,7 +42,7 @@ const output = join(root, 'Slopesmith/public/iso-importer');
 mkdirSync(output, { recursive: true });
 for (const extension of ['js', 'wasm'])
   copyFileSync(
-    join(build, `openslope_browser_import.${extension}`),
+    join(runtime, `openslope_browser_import.${extension}`),
     join(output, `openslope_browser_import.${extension}`),
   );
 function copyNotice(source, destination) {
@@ -51,7 +53,7 @@ function copyNotice(source, destination) {
       .trimEnd()}\n`,
   );
 }
-for (const name of ['json', 'lodepng'])
+for (const name of ['json', 'lodepng', 'zstd'])
   copyNotice(join(root, 'Native/ThirdPartyNotices', `${name}.txt`), join(output, `${name}-license.txt`));
 copyNotice(join(sdk, 'upstream/emscripten/LICENSE'), join(output, 'emscripten-license.txt'));
 console.log('Built the browser ISO importer from Native and copied runtime files and notices.');

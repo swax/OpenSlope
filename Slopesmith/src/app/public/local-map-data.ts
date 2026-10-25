@@ -18,7 +18,19 @@ export async function localMapData(courses: string[], aliases: Record<string, st
   const musicGraphs = new Map<string, ReferenceMusicGraph>();
   const boardGroups = new Map<string, number[]>();
   const introFolders = new Map<string, string>();
+  const ridingSheets = new Map<string, string>();
+  const ridingPuffs = new Map<string, string>();
   for (const [level, files] of all) {
+    const ridingFile = files.get('ridingeffects.json');
+    if (ridingFile) {
+      const riding = JSON.parse(await ridingFile.text()) as { Schema?: string; Enabled?: boolean; Sheet?: string; Puff?: string };
+      if (riding.Schema === 'openslope-riding-effects/v1' && riding.Enabled !== false)
+        for (const [slot, target] of [['Sheet', ridingSheets], ['Puff', ridingPuffs]] as const) {
+          const path = riding[slot];
+          if (typeof path === 'string' && path.split('/').every(part => /^[a-z0-9_.-]+$/i.test(part) && part !== '.' && part !== '..'))
+            target.set(level, path);
+        }
+    }
     const index = files.get('audio/soundindex.json');
     if (index) soundIndexes.set(level, JSON.parse(await index.text()) as CollisionSoundIndex);
     const boardIndex = files.get('audio/boardsoundindex.json');
@@ -123,7 +135,12 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     if (level.toLowerCase() === 'custom' || q.has('project')) return path;
     if (url.pathname === '/api/texture') return fileUrl(`${level}/Textures/${q.get('name')}`);
     if (url.pathname === '/api/lightmap') return fileUrl(`${level}/Lightmaps/${(q.get('id') ?? '0').padStart(4, '0')}.png`);
-    if (url.pathname === '/api/particle-texture') return fileUrl(`${level}/Textures/${q.get('name')}`);
+    if (url.pathname === '/api/particle-texture') {
+      const name = q.get('name');
+      const adapted = name === 'spry.png' ? ridingSheets.get(level.toLowerCase())
+        : /^ex0[6-9]\.png$/.test(name ?? '') ? ridingPuffs.get(level.toLowerCase()) : undefined;
+      return fileUrl(`${level}/Textures/${adapted ?? name}`);
+    }
     if (url.pathname === '/api/effect-sound') {
       const bank = q.get('bank') || 'course';
       const files = all.get(level.toLowerCase());

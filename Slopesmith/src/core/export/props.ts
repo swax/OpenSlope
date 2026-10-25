@@ -40,6 +40,7 @@ export interface GeomSub {
 /** One source-level model's per-material submeshes, model-local raw cm. */
 export interface ModelGeometry {
   subs: readonly GeomSub[];
+  collision?: { positions: ArrayLike<number>; indices: ArrayLike<number> };
   rotation?: PropModelRotation;
   animation?: PropModelAnimation;
 }
@@ -287,6 +288,8 @@ export interface BakedPropSubmesh {
 export interface BakedPropGroup {
   name: string;
   subs: BakedPropSubmesh[];
+  /** World-raw hull for this placement, when it differs from its visible triangles. */
+  collision?: { positions: number[]; indices: number[] };
   /** Raw-space pivot this group declares for itself, when no authored placement supplies one: the canonical
    *  instance carries it as `Location` and the mesh localizes against it. The staging markers use this —
    *  their entire content IS where they sit, so an instance at the origin would say nothing. */
@@ -499,6 +502,20 @@ export function bakePlacedProps(
     if (p.memberKey) (bakedGroups[p.memberKey] ??= []).push(groupName);
     lines.push(`o ${groupName}`);
     const group: BakedPropGroup = { name: groupName, subs: [] };
+    if (mg.collision) {
+      const positions: number[] = [],
+        pose = placementMatrix(p);
+      for (let k = 0; k < mg.collision.positions.length; k += 3)
+        positions.push(
+          ...posedRawPoint(
+            pose,
+            mg.collision.positions[k],
+            mg.collision.positions[k + 1],
+            mg.collision.positions[k + 2],
+          ),
+        );
+      group.collision = { positions, indices: Array.from(mg.collision.indices) };
+    }
     // Gems opened in the normal toolboxes keep the native spin when exported as ordinary props.
     // Compact rotation clips move the complete, already-rest-posed geometry about the model origin.
     const compact = mg.rotation;
@@ -797,6 +814,19 @@ export function bakeImportedProps(
     lines.push(`o ${groupName}`);
     const group: BakedPropGroup = { name: groupName, subs: [] };
     const pose = placementMatrix(pp);
+    if (model.collision) {
+      const positions: number[] = [];
+      for (let k = 0; k < model.collision.positions.length; k += 3)
+        positions.push(
+          ...posedRawPoint(
+            pose,
+            model.collision.positions[k],
+            model.collision.positions[k + 1],
+            model.collision.positions[k + 2],
+          ),
+        );
+      group.collision = { positions, indices: Array.from(model.collision.indices) };
+    }
     // A model that MOVES ships its object hierarchy alongside the geometry, and each submesh carries the
     // `_obj<k>` tag naming which object of that hierarchy owns it. The clip stays in model space and the
     // pose says where the model was put, because the packer alone knows the rest of the trip into the

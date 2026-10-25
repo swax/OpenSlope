@@ -1,4 +1,4 @@
-#include "../src/import_internal.hpp"
+#include "../src/import/ssx/formats.hpp"
 #include "openslope/material_animation.hpp"
 #include "openslope/texture_playback.hpp"
 #include "openslope/world_logic.hpp"

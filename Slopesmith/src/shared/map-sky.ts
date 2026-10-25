@@ -3,7 +3,14 @@ import { joinMapPath as join, safeMapName, mapLimit, READ_CONCURRENCY, type MapD
 
 export interface NativeSkyPayload {
   level: string;
-  parts: { positions: number[]; uvs: number[]; indices: number[]; texture: string | null; alphaMode?: string }[];
+  parts: {
+    positions: number[];
+    uvs: number[];
+    indices: number[];
+    texture: string | null;
+    alphaMode?: string;
+    repeatTexture?: boolean;
+  }[];
 }
 
 function skyFileName(name: string): string {
@@ -35,7 +42,7 @@ export async function readNativeSky(
     root = join(io.root, safe);
   const [models, materials] = await Promise.all([
     io.readJsonOr<{ Models?: unknown[] }>(join(root, 'Skybox', 'Models.json'), {}),
-    io.readJsonOr<{ Materials?: { TexturePath?: string; AlphaMode?: string }[] }>(
+    io.readJsonOr<{ Materials?: { TexturePath?: string; AlphaMode?: string; RepeatTexture?: boolean }[] }>(
       join(root, 'Skybox', 'Materials.json'),
       {},
     ),
@@ -77,6 +84,7 @@ export async function readNativeSky(
         indices: sub.indices,
         texture: material?.TexturePath ? (textures.get(material.TexturePath) ?? null) : null,
         ...(material?.AlphaMode ? { alphaMode: material.AlphaMode } : {}),
+        ...(material?.RepeatTexture === true ? { repeatTexture: true } : {}),
       };
     }),
   );

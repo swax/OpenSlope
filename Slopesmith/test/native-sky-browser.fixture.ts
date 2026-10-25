@@ -231,6 +231,25 @@ async function run() {
   worldMesh.geometry.dispose();
   worldMaterial.dispose();
 
+  const pattern = document.createElement('canvas');
+  pattern.width = pattern.height = 4;
+  const patternContext = pattern.getContext('2d')!;
+  patternContext.fillStyle = '#cc2200';
+  patternContext.fillRect(0, 0, 2, 4);
+  patternContext.fillStyle = '#0044cc';
+  patternContext.fillRect(2, 0, 2, 4);
+  const repeated = structuredClone(daySky);
+  repeated.parts[0].texture = pattern.toDataURL();
+  repeated.parts[0].uvs = repeated.parts[0].uvs.map((_value, index) => (index % 2 ? 0.5 : 1.25));
+  repeated.parts[0].repeatTexture = true;
+  sky.setSky({ native: repeated });
+  await waitFor(() => sky.loaded);
+  check(pixel() === '#cc2200', 'Explicit repeating sky wraps coordinates outside the first tile');
+  repeated.parts[0].repeatTexture = false;
+  sky.setSky({ native: repeated });
+  await waitFor(() => sky.loaded);
+  check(pixel() === '#0044cc', 'Legacy sky still clamps the same texture to its edge');
+
   sky.setSky({ native: daySky, topColor: '#112233' });
   sky.setVisible(false);
   await waitFor(() => sky.loaded);
