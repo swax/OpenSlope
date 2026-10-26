@@ -48,6 +48,7 @@ export type ScenePick =
       volumeId?: string;
     }
   | { target: 'knot'; source: 'authored'; hit: THREE.Intersection }
+  | { target: 'aiPath'; source: 'reference'; hit: THREE.Intersection; pathIndex: number }
   | { target: 'surface'; source: ScenePickSource; hit: THREE.Intersection };
 
 export interface ScenePickQuery {
@@ -57,6 +58,7 @@ export interface ScenePickQuery {
   /** Batched light-bulb / speaker markers exposed by the Sources view toggle. */
   sources?: boolean;
   rails?: boolean;
+  aiPaths?: boolean;
   /** The selected prop line's node bulbs. */
   lines?: boolean;
   gems?: boolean;
@@ -83,6 +85,7 @@ export interface ScenePickingAccess {
   railRoots(): readonly THREE.Object3D[];
   /** The loaded reference's drawn grind splines, pickable wherever the authored rails are. */
   referenceRailRoots?(): readonly THREE.Object3D[];
+  referenceAiPathRoots?(): readonly THREE.Object3D[];
   /** The selected prop line's node bulbs (docs/070). */
   lineRoots?(): readonly THREE.Object3D[];
   gemRoots(): readonly THREE.Object3D[];
@@ -236,6 +239,21 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
           sourceKind: hit.object.userData.sourceKind as 'light' | 'sound' | 'prop',
           sourceIndex: hit.index as number,
         });
+    }
+
+    if (query.aiPaths) {
+      // Line2 measures this tolerance in pixels, so distant paths remain as easy to select as nearby ones.
+      const previous = stage.ray.params.Line2;
+      stage.ray.params.Line2 = { threshold: 8 };
+      let hit: THREE.Intersection | undefined;
+      try {
+        hit = firstHit(access.referenceAiPathRoots?.() ?? [], true, candidate =>
+          Number.isInteger(candidate.object.userData.refAiPathIndex),
+        );
+      } finally {
+        stage.ray.params.Line2 = previous;
+      }
+      if (hit) consider({ target: 'aiPath', source: 'reference', hit, pathIndex: hit.object.userData.refAiPathIndex });
     }
 
     if (query.rails) {

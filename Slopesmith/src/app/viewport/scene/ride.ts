@@ -363,12 +363,13 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     // riders chain through them ([Trailmap: 395]). Handing over only the six `StartPosList` stubs (GARI's are
     // ~350 m) leaves every rider running off the end of its gate a few seconds in.
     // The whole record, not just the points: its rating decides who rides it, its `respawnable` flag decides
-    // whether a fallen rider may be put back on it, and its markers are the only reason an AI rider ever jumps
-    // ([Trailmap: 395]). The level authored all three; we were throwing two of them away.
+    // whether a fallen rider may be put back on it. Markers author the jumps; events also supply cruise targets
+    // ([Trailmap: 395]). Their stations already use the rider's horizontal metre ruler.
     const paths = raw.map(p => ({
       rating: p.rating,
       respawnable: p.respawnable,
       markers: p.markers,
+      events: p.events,
       points: p.points.map(q => new THREE.Vector3(q[0], q[1], q[2]).applyMatrix4(m)),
     }));
     const gates = raw

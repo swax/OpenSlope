@@ -92,6 +92,7 @@ void inputs() {
     rider.board_up = normalized(Vec3{0, 1, std::tan(12 * pi / 180)});
     rider.velocity = normalized(rider.forward) * 15;
     rider.grounded = true;
+    rider.control = Control::Cruise;
     AiInput straight(network, 0);
     near(straight.step(rider).steer, 0, 1e-12, "A straight fall line needs no steering input");
     rider.position.x = -2;
@@ -146,7 +147,9 @@ void inputs() {
     rider.position = {0, -std::tan(12 * pi / 180) * 78, 78};
     rider.forward = normalized(Vec3{0, -std::tan(12 * pi / 180), 1});
     AiInput aligned(marked, 0);
-    check(aligned.step(rider).jump, "An aligned board may charge for an approaching jump marker");
+    check(!aligned.step(rider).jump, "Jump lookahead prepares the approach without charging before entry");
+    rider.position = {0, -std::tan(12 * pi / 180) * 80, 80};
+    check(aligned.step(rider).jump, "An aligned board starts charging when the jump event begins");
     rider.position.x = 2;
     rider.forward = normalized(project(Vec3{-2, 0, 8}, rider.board_up));
     AiInput wide(marked, 0);
@@ -161,7 +164,148 @@ void inputs() {
     rider.position.y = -std::tan(12 * pi / 180) * 82;
     rider.forward = normalized(Vec3{0, -std::tan(12 * pi / 180), 1});
     AiInput late(marked, 0);
-    check(!late.step(rider).jump, "Spawning inside the back of a marker window cannot start a late jump");
+    check(late.step(rider).jump, "A rider placed inside a jump range sees it as already entered");
+}
+
+void jump_events() {
+    CoursePaths paths;
+    paths.ai = {CoursePath{{{0, 0, 0}, {0, 0, 256}}}};
+    paths.ai[0].events = {{100, 72 * 4, 80, 104}, {100, 36 * 4, 78, 100}};
+    Rider rider;
+    rider.forward = {0, 0, 1};
+    rider.grounded = true;
+    rider.motion = Motion::Ground;
+    rider.control = Control::Cruise;
+    rider.velocity = {0, 0, 15};
+    AiInput driver(std::make_shared<AiNetwork>(paths), 0);
+    const auto at = [&](double station) {
+        rider.position.z = station;
+        return driver.step(rider);
+    };
+    const auto approach = at(77.5);
+    check(!approach.jump && approach.boost && !at(79.75).jump,
+          "The first source jump prepares its speed without charging before its start");
+    check(at(80).jump && at(90).jump && at(103.49).jump, "Jump input charges from entry through the range");
+    check(!at(103.5).jump, "The partial-range flag clears at the final half-metre lookahead boundary");
+    rider.control = Control::Release;
+    check(!at(103.75).jump, "The rider's release state cannot re-arm a phantom jump hold");
+    rider.control = Control::Cruise;
+    paths.ai[0].events.push_back({100, 36 * 4, 103.75, 110});
+    AiInput joined(std::make_shared<AiNetwork>(paths), 0);
+    rider.position.z = 80;
+    check(joined.step(rider).jump, "Overlapping windows start with the first source target");
+    for (double station : {100., 103.5, 104.5, 105.}) {
+        rider.position.z = station;
+        const auto input = joined.step(rider);
+        check(input.jump && input.boost && input.posture >= 0,
+              "Overlapping jump windows share the partial flag and preserve the charged target");
+    }
+    rider.position.z = 109.5;
+    check(!joined.step(rider).jump, "The last overlapping range releases near its end");
+}
+
+void cruise_events() {
+    CoursePaths paths;
+    paths.ai = {CoursePath{{{0, 0, 0}, {0, 0, 300}}}};
+    paths.ai[0].events = {{102, 0, 0, 300}, {101, 71, 100, 120}};
+    Rider rider;
+    rider.forward = {0, 0, 1};
+    rider.grounded = true;
+    rider.motion = Motion::Ground;
+    rider.control = Control::Cruise;
+    AiContext context;
+    context.meter = 1;
+    const auto sample = [&](double station, double kmh, double aggression = 1) {
+        rider.position = {0, 0, station};
+        rider.velocity = {0, 0, kmh / 3.6};
+        context.aggression = aggression;
+        AiInput driver(std::make_shared<AiNetwork>(paths), 0);
+        return driver.step(rider, context);
+    };
+    check(sample(93.999, 100).boost, "No target outside the six-metre window retains default cruise controls");
+    const auto ahead = sample(94, 100);
+    check(ahead.posture == 0 && !ahead.boost, "An overspeed approach neither brakes early nor uses default boost");
+    check(sample(100, 100).posture == -1, "The authored start boundary enables braking");
+    check(sample(94, 20).posture > 0 && !sample(94, 20).boost, "An underspeed approach requests throttle alone");
+    check(sample(100, 20).posture > 0 && sample(100, 20).boost, "Underspeed inside requests throttle and boost");
+    check(sample(110, 72).posture == 0 && !sample(110, 72).boost, "Cruise payload uses all seventy-one km/h");
+    check(sample(110, 66).posture == 0 && sample(110, 76).posture == 0,
+          "The speed deadband includes its five-km/h edges");
+    check(sample(110, 50, .8).posture == 0 && sample(110, 50).posture > 0,
+          "Non-nominal aggression scales only the lower speed threshold");
+
+    context.aggression = 1;
+    AiInput crossed(std::make_shared<AiNetwork>(paths), 0);
+    rider.position = {0, 0, 119};
+    rider.velocity = {0, 0, 30};
+    crossed.step(rider, context);
+    rider.position.z = 121;
+    check(crossed.step(rider, context).posture == -1,
+          "The crossing frame retains a range through its previous station");
+    rider.position.z = 122;
+    const auto cleared = crossed.step(rider, context);
+    check(cleared.posture > 0 && cleared.boost, "A passed range releases the target and restores default cruise");
+    near(length(rider.velocity), 30, 1e-12, "AI speed events supply controls without clamping velocity");
+
+    paths.ai[0].events = {{101, 0, 100, 120}};
+    check(sample(110, 6).posture == -1 && !sample(110, 0).boost, "Zero is a valid authored target");
+    paths.ai[0].events = {{101, 35, 105, 125}, {101, 100, 100, 120}};
+    const auto ordered = sample(100, 72);
+    check(ordered.posture == 0 && !ordered.boost, "Source order wins over station order for overlapping targets");
+
+    paths.ai[0].events = {{101, 0, 90, 150}, {100, (95 << 2) | 3, 100, 100}};
+    const auto jump = sample(100, 50);
+    check(jump.jump && jump.boost && jump.posture >= 0, "Jump approach controls take priority over cruise targets");
+    paths.ai[0].events = {{101, 0, 0, 300}};
+    for (const auto motion : {Motion::Air, Motion::Rail}) {
+        rider.motion = motion;
+        rider.grounded = false;
+        const auto controls = sample(100, 72);
+        check(controls.posture >= 0, "Cruise events cannot apply grounded braking in air or on rails");
+    }
+    rider.motion = Motion::Ground;
+    rider.grounded = true;
+    paths.ai[0].points.back().z = 100;
+    paths.ai.push_back(CoursePath{{{0, 0, 90}, {0, 0, 400}}});
+    rider.position = {0, 0, 98};
+    AiInput handoff(std::make_shared<AiNetwork>(paths), 0);
+    const auto next = handoff.step(rider, context);
+    check(handoff.status().progress->path == 1 && next.posture > 0 && next.boost,
+          "A path handoff cannot carry the old path's speed target");
+}
+
+void cruise_ride() {
+    const auto simulate = [](bool controlled) {
+        CoursePaths paths;
+        paths.ai = {line(4, 800)};
+        if (controlled)
+            paths.ai[0].events = {{101, 36, 60, 140}};
+        AiInput driver(std::make_shared<AiNetwork>(paths), 0);
+        Player player(slope());
+        player.warp(paths.ai[0].points.front() + Vec3{0, 1, 0}, {0, 0, 1});
+        double sum = 0;
+        unsigned count = 0;
+        bool braked = false, early_brake = false;
+        for (unsigned frame = 0; frame < 1320; ++frame) {
+            const auto input = driver.step(player.rider());
+            const auto station = driver.status().progress->station;
+            if (station < 60)
+                early_brake = early_brake || input.posture < 0;
+            else
+                braked = braked || input.posture < 0;
+            player.tick(input);
+            if (station >= 75 && station <= 125) {
+                sum += length(player.rider().velocity);
+                ++count;
+            }
+        }
+        check(count > 0 && player.rider().position.z > 150, "The production rider crosses and leaves the speed region");
+        check(!controlled || (braked && !early_brake), "The production rider brakes inside the authored range only");
+        return sum / count;
+    };
+    const auto bare = simulate(false), paced = simulate(true);
+    std::cout << "Cruise region mean speed " << paced << " vs bare " << bare << " m/s\n";
+    check(paced < bare - 2, "Authored cruise braking lowers actual production rider speed");
 }
 
 void ride(bool curved, bool chain) {
@@ -210,20 +354,38 @@ void ride(bool curved, bool chain) {
 }
 
 void marker_and_air_path() {
-    for (const auto marked : {false, true}) {
+    for (const auto kind : {0, 1, 2}) {
+        const bool marked = kind != 0;
         CoursePaths paths;
         paths.ai = {line(4, 800)};
         if (marked)
-            paths.ai[0].events.push_back({100, 80 * 4, 80, 80});
+            paths.ai[0].events.push_back({100, 80 * 4, 80, kind == 2 ? 104. : 80.});
         auto network = std::make_shared<AiNetwork>(paths);
         AiInput driver(network, 0);
         Player player(slope());
         player.warp(paths.ai[0].points.front() + Vec3{0, 1, 0}, {0, 0, 1});
         double air = 0;
         bool charge = false;
+        bool held = false, early_air = false, interrupted = false;
+        double first_charge = 1e9, first_release = 1e9;
+        unsigned releases = 0, held_samples = 0;
         for (unsigned i = 0; i < 720; ++i) {
             const auto input = driver.step(player.rider());
+            const auto station = driver.status().progress->station;
+            if (!held && input.jump)
+                first_charge = std::min(first_charge, station);
+            if (held && !input.jump) {
+                first_release = std::min(first_release, station);
+                ++releases;
+            }
+            if (station >= 81 && station < 103) {
+                ++held_samples;
+                interrupted = interrupted || !input.jump;
+            }
+            held = input.jump;
             player.tick(input);
+            if (station >= 60 && station < 103.4 && !player.rider().grounded && player.rider().air_time > .05)
+                early_air = true;
             charge = charge || driver.status().charging;
             if (i > 60 && !player.rider().grounded)
                 air = std::max(air, player.rider().air_time);
@@ -232,6 +394,14 @@ void marker_and_air_path() {
                   << player.rider().launches << '\n';
         check(marked ? player.rider().launches > 0 && air > .3 && charge : air < .15 && !charge,
               "Only an authored jump marker makes the AI press and release an ollie on a smooth slope");
+        if (kind == 2) {
+            std::cout << "Jump range charge " << first_charge << " release " << first_release << " held samples "
+                      << held_samples << " interrupted " << interrupted << " early air " << early_air << '\n';
+            check(first_charge >= 80 && first_charge < 81 && held_samples > 20 && !interrupted && !early_air,
+                  "A continuous rider starts charging at entry and stays on snow through the range");
+            check(first_release >= 103.5 && first_release < 104.5 && releases == 1 && player.rider().launches == 1,
+                  "A continuous rider makes one charged launch near the event end");
+        }
     }
     CoursePaths paths;
     paths.ai = {line(4, 800), line(4, 800)};
@@ -301,6 +471,9 @@ int main(int argc, char** argv) {
     try {
         rulers();
         inputs();
+        jump_events();
+        cruise_events();
+        cruise_ride();
         ride(false, false);
         ride(true, false);
         ride(false, true);

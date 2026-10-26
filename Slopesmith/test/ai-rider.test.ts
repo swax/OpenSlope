@@ -11,10 +11,12 @@
  * Run: npx tsx test/ai-rider.test.ts
  */
 import * as THREE from 'three';
-import { createAiRiders, type AiPathMarker } from '../src/app/ride/ai';
+import { createAiRiders, type AiPathDef } from '../src/app/ride/ai';
 import { RANDOM_AVATAR_POOL } from '../src/core/characters/builtins';
 import type { BoostVolume } from '../src/app/ride/boost-volumes';
 import { createRideModel, riderDrive, type RideObstacleSource } from '../src/app/ride/physics';
+import { createGrindRails } from '../src/app/ride/grind';
+import { aiJumpMarkers } from '../src/core/reference/terrain';
 
 let failures = 0;
 function ok(cond: boolean, label: string, detail = '') {
@@ -110,8 +112,8 @@ function seg(z0: number, z1: number, x = 0, h: (z: number) => number = yOf): THR
 }
 
 const line = (points: THREE.Vector3[], rating = 50) => ({ points, rating });
-/** The two path fields the AI reads besides the points: where it may be put back, and where it jumps. */
-type Def = { points: THREE.Vector3[]; rating: number; respawnable?: boolean; markers?: AiPathMarker[] };
+/** The production path metadata, including jump markers and authored cruise-speed events. */
+type Def = AiPathDef;
 
 /** Perpendicular distance from `p` to the polyline (the tracking error the controller is judged on). */
 function lateral(pts: THREE.Vector3[], p: THREE.Vector3): number {
@@ -300,6 +302,68 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
   );
 }
 
+// Authored type-300 regions ask for a normal reselection, independently of the geometric endpoint.
+{
+  const fall = seg(4, ZMAX - 8);
+  for (const scenario of [
+    { name: 'point crossed between ticks', type: 300, start: 1, end: 1, home: 0, alternative: 50, picks: 1 },
+    {
+      name: 'narrow range crossed between ticks',
+      type: 300,
+      start: 1,
+      end: 1.000001,
+      home: 0,
+      alternative: 50,
+      picks: 1,
+    },
+    { name: 'spawn inside a range', type: 300, start: 0, end: 10, home: 0, alternative: 50, picks: 1 },
+    { name: 'current path still best', type: 300, start: 0, end: 100, home: 50, alternative: 0, picks: 0 },
+    { name: 'no alternative path', type: 300, start: 0, end: 100, home: 50, alternative: null, picks: 0 },
+    { name: 'range already behind the rider', type: 300, start: -2, end: -1, home: 0, alternative: 50, picks: 0 },
+    { name: 'range still ahead', type: 300, start: 200, end: 201, home: 0, alternative: 50, picks: 0 },
+    { name: 'unidentified event ignored', type: 102, start: 0, end: 100, home: 0, alternative: 50, picks: 0 },
+  ]) {
+    const field = createAiRiders({
+      paths: [
+        {
+          ...line(fall, scenario.home),
+          events: [{ type: scenario.type, value: 987, start: scenario.start, end: scenario.end }],
+        },
+        ...(scenario.alternative === null ? [] : [line(fall, scenario.alternative)]),
+      ],
+      starts: [0],
+      terrain,
+      scene: new THREE.Group(),
+      surfaceOf,
+      oobFloorY,
+    });
+    let firstChange: { frame: number; previous: number; current: number } | null = null;
+    let rewound = false;
+    for (let frame = 0; frame < 120; frame++) {
+      const before = field.probe()[0];
+      const current = before.pos.z - fall[0].z;
+      field.step(1 / 60);
+      const after = field.probe()[0];
+      if (after.path !== before.path && !firstChange) firstChange = { frame, previous: before.arc, current };
+      if (after.path === before.path && before.seg >= 0 && after.seg < before.seg) rewound = true;
+    }
+    const rider = field.probe()[0];
+    ok(rider.path === scenario.picks && rider.resets === 0 && !rewound, `reselect: ${scenario.name}`);
+    if (scenario.picks === 1) {
+      ok(
+        firstChange !== null && firstChange.frame < 60,
+        `reselect: ${scenario.name} bypasses the one-second recovery gate`,
+      );
+      if (scenario.start > 0)
+        ok(
+          firstChange !== null && firstChange.previous < scenario.start && firstChange.current > scenario.end,
+          `reselect: ${scenario.name} uses the travelled interval without anticipating entry`,
+        );
+    }
+    field.dispose();
+  }
+}
+
 // ---- 5. the line rating: the hand-off picks the line whose rating matches the rider's mood ----
 {
   // Two continuations of the same gate stub, side by side and equally near: one timid (0), one daring (100).
@@ -446,6 +510,146 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
     `max airtime ${marked.maxAir[0].toFixed(2)} s`,
   );
   ok(marked.states[0].has('approach'), 'marker: ...through the approach behaviour, which is what presses the button');
+  const overlapping = run(
+    [
+      {
+        ...line(p),
+        markers: [{ arc: 80, speed: 20, trickA: false, trickB: false }],
+        events: [{ type: 101, value: 0, start: 80, end: 90 }],
+      },
+    ],
+    12,
+  );
+  ok(
+    overlapping.maxAir[0] > 0.3 && overlapping.states[0].has('approach'),
+    'marker: a conflicting cruise target cannot override the authored jump approach',
+  );
+}
+
+// Full authored jump ranges survive import and drive the real rider's charge and release.
+{
+  const fall = seg(4, ZMAX - 8);
+  const markers = aiJumpMarkers({
+    PathEvents: [
+      { EventType: 100, EventValue: (72 << 2) | 3, EventStart: 8000, EventEnd: 10400 },
+      // Earlier start, later in the source: station sorting must not change which target wins.
+      { EventType: 100, EventValue: 36 << 2, EventStart: 7800, EventEnd: 10000 },
+    ],
+  });
+  const makeField = (jumps = markers) => {
+    const riders = createAiRiders({
+      paths: [{ ...line(fall), markers: jumps, events: [{ type: 101, value: 0, start: 70, end: 110 }] }],
+      starts: [0],
+      terrain,
+      scene: new THREE.Group(),
+      surfaceOf,
+      oobFloorY,
+    });
+    for (let tick = 0; tick < 60 && !riders.probe()[0].grounded; tick++) riders.step(1 / 60);
+    return riders;
+  };
+  const field = makeField();
+  const at = (station: number, riders = field) => {
+    const z = fall[0].z + station;
+    riders.probe()[0].pos.set(0, yOf(z), z);
+    riders.step(1 / 60);
+    return riders.probe()[0];
+  };
+  at(30);
+  at(60);
+  let rider = at(77.5);
+  ok(!rider.jumpHeld && !rider.charging, 'jump range: three-metre lookahead prepares speed without pressing jump');
+  ok(rider.targetSpeed === 20, 'jump range: source order wins over start-station order for overlapping targets');
+  rider = at(79.75);
+  ok(!rider.jumpHeld, 'jump range: charge cannot begin before the event start');
+  for (const station of [80, 80.25, 90, 100, 103.49]) {
+    rider = at(station);
+    ok(
+      rider.jumpHeld && rider.charging && rider.targetSpeed === 20 && rider.cruiseTarget === null,
+      `jump range: charge and jump controls remain active at station ${station}`,
+    );
+  }
+  rider = at(103.5);
+  ok(
+    !rider.jumpHeld && !rider.charging && rider.velY > 0,
+    'jump range: the half-metre end lookahead releases a real ollie',
+    `held=${rider.jumpHeld}, charging=${rider.charging}, arc=${rider.arc}, vy=${rider.velY.toFixed(2)} m/s`,
+  );
+  for (let tick = 0; tick < 4; tick++) field.step(1 / 60);
+  ok(!field.probe()[0].grounded && field.probe()[0].airTime > 0, 'jump range: the released rider takes flight');
+  field.dispose();
+
+  // The original query's flag means the region has started, including a rider placed inside it.
+  for (const station of [80, 90]) {
+    const late = makeField();
+    at(30, late);
+    at(60, late);
+    const inside = at(station, late);
+    ok(
+      inside.state === 'approach' && inside.targetSpeed === 20 && inside.jumpHeld && inside.charging,
+      `jump range: station ${station} reports the event as entered and can charge`,
+    );
+    late.dispose();
+  }
+  const joined = makeField([...markers, { arc: 103.75, end: 110, speed: 10, trickA: false, trickB: false }]);
+  for (const station of [30, 60, 80, 100, 103.5, 104.5, 105]) rider = at(station, joined);
+  ok(
+    rider!.jumpHeld && rider!.targetSpeed === 20,
+    'jump range: overlapping jump windows share the partial flag and retain the charged target',
+  );
+  ok(!at(109.5, joined).jumpHeld, 'jump range: the last overlapping window releases near its end');
+  joined.dispose();
+}
+
+// A continuous ride catches early launch/re-press bugs that manually stepping between stations cannot.
+{
+  const field = createAiRiders({
+    paths: [{ ...line(seg(4, ZMAX - 8)), markers: [{ arc: 80, end: 104, speed: 20, trickA: false, trickB: false }] }],
+    starts: [0],
+    terrain,
+    scene: new THREE.Group(),
+    surfaceOf,
+    oobFloorY,
+  });
+  let firstCharge = Infinity,
+    firstRelease = Infinity,
+    releases = 0,
+    heldSamples = 0,
+    interrupted = false,
+    earlyAir = false,
+    maxAir = 0;
+  for (let tick = 0; tick < 20 * 60; tick++) {
+    const before = field.probe()[0];
+    field.step(1 / 60);
+    const rider = field.probe()[0];
+    if (!before.jumpHeld && rider.jumpHeld) firstCharge = Math.min(firstCharge, rider.arc);
+    if (before.jumpHeld && !rider.jumpHeld) {
+      firstRelease = Math.min(firstRelease, rider.arc);
+      releases++;
+    }
+    if (rider.arc >= 81 && rider.arc < 103) {
+      heldSamples++;
+      interrupted ||= !rider.jumpHeld || !rider.charging;
+    }
+    if (rider.arc >= 60 && rider.arc < 103.4) earlyAir ||= rider.airTime > 0.05;
+    if (tick > 60) maxAir = Math.max(maxAir, rider.airTime);
+    if (rider.arc > 150 && rider.grounded) break;
+  }
+  ok(
+    firstCharge >= 80 && firstCharge < 81,
+    'jump timing: the live rider starts charging at event entry',
+    `${firstCharge.toFixed(2)} m`,
+  );
+  ok(
+    heldSamples > 20 && !interrupted && !earlyAir,
+    'jump timing: the live rider stays on snow and charges through the event',
+  );
+  ok(
+    releases === 1 && firstRelease >= 103.5 && firstRelease < 104.5 && maxAir > 0.3,
+    'jump timing: one charged launch occurs near the event end',
+    `${firstRelease.toFixed(2)} m; ${releases} releases; ${maxAir.toFixed(2)} s air`,
+  );
+  field.dispose();
 }
 
 // ---- 10. rivals: riders react to each other, which is the only thing that pushes a field apart ----
@@ -915,6 +1119,98 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
     `x = ${plain.pos.x.toFixed(2)} m, z = ${plain.pos.z.toFixed(1)} m, lap ${plain.lap}`,
   );
   bare.dispose();
+}
+
+// Authored cruise regions drive the real shared physics, then release their target after the range.
+{
+  const { terrain, yOf, oobFloorY } = makeSlope(12, 1200);
+  const fall = seg(4, 1192, 0, yOf);
+  const samples = [false, true].map(controlled => {
+    const field = createAiRiders({
+      paths: [{ points: fall, rating: 50, events: controlled ? [{ type: 101, value: 36, start: 60, end: 140 }] : [] }],
+      starts: [0],
+      terrain,
+      scene: new THREE.Group(),
+      surfaceOf,
+      oobFloorY,
+    });
+    let sum = 0,
+      count = 0,
+      braked = false,
+      earlyBrake = false,
+      firstTarget = Infinity;
+    for (let frame = 0; frame < 22 * 60; frame++) {
+      field.step(1 / 60);
+      const rider = field.probe()[0];
+      if (rider.cruiseTarget !== null) {
+        firstTarget = Math.min(firstTarget, rider.arc);
+        if (rider.arc < 60) earlyBrake ||= rider.controls.brake;
+        else braked ||= rider.controls.brake;
+      }
+      if (rider.arc >= 75 && rider.arc <= 125) {
+        sum += rider.speed;
+        count++;
+      }
+    }
+    const rider = field.probe()[0];
+    const result = { mean: sum / count, braked, earlyBrake, firstTarget, arc: rider.arc, target: rider.cruiseTarget };
+    field.dispose();
+    return result;
+  });
+  const [bare, paced] = samples;
+  ok(
+    paced.firstTarget >= 54 && paced.firstTarget < 55,
+    'cruise: the live rider anticipates the region on its horizontal ruler',
+  );
+  ok(paced.braked && !paced.earlyBrake, 'cruise: the live rider brakes inside the region, never before entry');
+  ok(
+    paced.mean < bare.mean - 2,
+    'cruise: ordinary braking lowers the actual rider speed',
+    `${paced.mean.toFixed(2)} vs ${bare.mean.toFixed(2)} m/s`,
+  );
+  ok(paced.arc > 150 && paced.target === null, 'cruise: the rider leaves the range and releases its authored target');
+}
+
+// Rail travel is grounded in this model, but it does not run the cruise-speed controller.
+{
+  const fall = seg(4, ZMAX - 8);
+  const rail = createGrindRails([
+    {
+      surf: 13,
+      seat: 0,
+      segments: [
+        [4, 132, 260, 388].map(z => new THREE.Vector3(0, yOf(z) + 0.4, z)) as [
+          THREE.Vector3,
+          THREE.Vector3,
+          THREE.Vector3,
+          THREE.Vector3,
+        ],
+      ],
+    },
+  ]);
+  const field = createAiRiders({
+    paths: [{ points: fall, rating: 50, events: [{ type: 101, value: 0, start: 0, end: 400 }] }],
+    starts: [0],
+    terrain,
+    scene: new THREE.Group(),
+    surfaceOf,
+    oobFloorY,
+    rails: rail,
+  });
+  let previousRail = -1,
+    samples = 0,
+    altered = false;
+  for (let frame = 0; frame < 180; frame++) {
+    field.step(1 / 60);
+    const rider = field.probe()[0];
+    if (previousRail >= 0 && rider.rail >= 0) {
+      samples++;
+      altered ||= rider.cruiseTarget !== null || rider.controls.brake;
+    }
+    previousRail = rider.rail;
+  }
+  ok(samples > 20 && !altered, 'cruise: a grounded rail rider retains its rail controls');
+  field.dispose();
 }
 
 console.log(failures ? `\nAI RIDER: ${failures} FAILED` : '\nAI RIDER: PASS');

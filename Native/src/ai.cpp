@@ -184,7 +184,7 @@ void AiInput::placed(std::optional<std::size_t> path) {
 RideInput AiInput::step(const Rider& rider, const AiContext& context, double seconds) {
     if (!finite(rider.position) || !finite(rider.velocity) || !finite(rider.forward) || !finite(rider.board_up) ||
         !std::isfinite(seconds) || seconds <= 0 || seconds > .1 || !std::isfinite(context.meter) || context.meter < 0 ||
-        context.meter > 1 || context.peers.size() > 17)
+        context.meter > 1 || context.peers.size() > 17 || !std::isfinite(context.aggression) || context.aggression < 0)
         throw std::invalid_argument("Invalid AI input sample");
     if (context.reference && (!finite(context.reference->position) || !finite(context.reference->velocity)))
         throw std::invalid_argument("Invalid AI reference rider");
@@ -280,20 +280,53 @@ RideInput AiInput::step(const Rider& rider, const AiContext& context, double sec
     input.posture = ground_length(rider.velocity) < 30 / 3.6 ? 1 : 1 / 2.2116;
     input.boost = context.meter >= .999;
     if (rider.grounded || rider.motion == Motion::Rail) {
-        const auto reach = charge_ ? .5 : 3.;
+        const bool was_charging = charge_;
+        const auto reach = was_charging ? .5 : 3.;
         const auto& events = network_->paths().ai[*path_].events;
         const auto marker = std::find_if(events.begin(), events.end(), [&](const auto& event) {
             return event.type == 100 && overlaps(event, last_station_, progress.station + reach);
         });
-        charge_ = marker != events.end() && (charge_ || (marker->start > progress.station &&
-                                                         progress.distance <= 1.531 && std::abs(input.steer) < .536));
+        // [Trailmap: 395-jump, 395-jump-window] Enter before pressing; hold on the type-wide partial-range bit.
+        const bool partial = was_charging && std::any_of(events.begin(), events.end(), [&](const auto& event) {
+                                 return event.type == 100 && overlaps(event, last_station_, progress.station + reach) &&
+                                        (last_station_ < event.start || progress.station + reach < event.end);
+                             });
+        const bool can_press = rider.control == Control::Cruise || rider.control == Control::OnRail;
+        charge_ =
+            marker != events.end() && (was_charging ? partial
+                                                    : can_press && marker->start <= progress.station &&
+                                                          progress.distance <= 1.531 && std::abs(input.steer) < .536);
+        if (charge_ && !was_charging)
+            jump_target_speed_ = (marker->value >> 2) / 3.6;
         input.jump = charge_;
-        if (charge_) {
-            const auto target_speed = (marker->value >> 2) / 3.6;
+        if (marker != events.end()) {
+            const auto target_speed = was_charging ? jump_target_speed_ : (marker->value >> 2) / 3.6;
             const auto speed = ground_length(rider.velocity);
             input.boost = speed < target_speed - 5 / 3.6;
             if (speed > target_speed + 5 / 3.6)
                 input.posture = -1;
+        } else if (rider.grounded && rider.motion != Motion::Rail && !status_.avoiding) {
+            // [Trailmap: 250-cruise-speed-events, 395-cruise-target] Source order decides overlapping targets.
+            const auto cruise = std::find_if(events.begin(), events.end(), [&](const auto& event) {
+                return event.type == 101 && overlaps(event, last_station_, progress.station + 6);
+            });
+            if (cruise != events.end()) {
+                const auto target_speed = cruise->value / 3.6, speed = length(rider.velocity), slop = 5 / 3.6;
+                const auto lower =
+                    (target_speed - slop) * (context.aggression == 1 ? 1 : context.aggression / 1.410261);
+                const bool entered = cruise->start <= progress.station;
+                // Clear the default cruise inputs while an authored target is in range.
+                input.posture = 0;
+                input.boost = false;
+                if (speed > target_speed + slop) {
+                    if (entered)
+                        input.posture = -1;
+                } else if (speed < lower) {
+                    // Positive posture is this model's adapter for a throttle request.
+                    input.posture = speed < 30 / 3.6 ? 1 : context.aggression / 2.2116;
+                    input.boost = entered;
+                }
+            }
         }
     } else {
         charge_ = false;

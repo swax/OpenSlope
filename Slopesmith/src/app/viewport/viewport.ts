@@ -1381,6 +1381,7 @@ export class Viewport {
       railRoots: () => [this.rails.railGroup],
       lineRoots: () => [this.propLines.group],
       referenceRailRoots: () => [this.refDecor.railSplineGroup],
+      referenceAiPathRoots: () => [this.refDecor.aiPathGroup],
       gemRoots: () => [this.gems.gemGroup],
       screenRoots: () => [this.screens.group, this.screens.referenceGroup],
       knotTargets: () => (this.courseVisible ? this.knotMeshes : []),
@@ -4414,8 +4415,7 @@ export class Viewport {
     this.refCourse = null;
     this.refLaps = DEFAULT_LAPS; // …and its lap count, likewise re-pushed by the session
     this.refShowoffSeconds = DEFAULT_SHOWOFF_SECONDS; // …and its showoff clock
-    this.refDecor.setAiPaths(null); // …and its AI-path network (likewise re-pushed by the session)
-    this.refAiPaths = null;
+    this.setReferenceAiPaths(null); // …and its AI-path network (likewise re-pushed by the session)
     this.refDecor.setPropRigLighting(null, 0); // …and the prop tint (rebuilt when the new level's rig loads)
     this.refData = data;
     this.sel.refHiddenQuads = [];
@@ -4776,12 +4776,23 @@ export class Viewport {
     this.refShowoffSeconds = seconds;
   }
   /** The loaded reference's AI-path network (editor-space, off its AIP.json): drawn over its terrain on the
-   *  Info "Show AI paths" toggle — gate paths amber, the rest violet — and kept for the test ride's AI field.
+   *  Info "Show AI paths" toggle — rating colours with event spans, dashed when not respawnable — and kept for the AI field.
    *  `null` clears it. */
   setReferenceAiPaths(paths: RefAiPath[] | null) {
     this.refAiPaths = paths;
     this.refDecor.setAiPaths(paths);
     this.refSpeedShadeLayer.linesChanged(this.referenceLinesKey());
+    this.cb.onReferenceAiPathsChanged?.();
+  }
+  get referenceAiPaths(): readonly RefAiPath[] {
+    return this.refAiPaths ?? [];
+  }
+  selectReferenceAiPath(index: number | null) {
+    if (index !== null) {
+      this.clearRefSelection();
+      this.detachGizmo();
+    }
+    this.refDecor.selectAiPath(index);
   }
   showReferenceLights(on: boolean) {
     this.refDecor.showLights(on);
@@ -5289,6 +5300,7 @@ export class Viewport {
     this.refDecor.selectionOutlineMat.resolution.set(w, h);
     for (const mat of this.rails.guideMaterials) mat.resolution.set(w, h); // the surface-coloured grind curves
     for (const mat of this.refDecor.railSplineMaterials) mat.resolution.set(w, h); // …and the reference's own
+    for (const mat of this.refDecor.aiPathMaterials) mat.resolution.set(w, h);
     for (const mat of this.referenceEffects.boostArrowMaterials) mat.resolution.set(w, h);
     const aspect = w / h;
     // keep both cameras valid so the projection toggle never sees a stale aspect

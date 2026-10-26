@@ -2913,6 +2913,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     showCourse,
     setAiPaths,
     showAiPaths,
+    selectAiPath: courseDecor.selectAiPath,
+    aiPathMaterials: courseDecor.aiPathMaterials,
+    get aiPathGroup() {
+      return courseDecor.aiPathGroup;
+    },
     setRailSplines,
     showRailSplines,
     selectRailSpline,

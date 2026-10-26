@@ -22,7 +22,9 @@ import type { FinishLine } from './laps';
 import type { RideGear, SnowboardStance } from './gear';
 import type { GrindRails } from './grind';
 import type { RideKeys } from './input';
+import { cruiseSpeedInput } from './cruise-speed';
 import { createRiderPose, type RiderPose } from './pose';
+import type { RefAiPathEvent } from '../../core/reference/terrain';
 import { shuffledAvatars } from '../../core/characters/builtins';
 
 /**
@@ -44,8 +46,8 @@ import { shuffledAvatars } from '../../core/characters/builtins';
  * 2. **The behaviour machine.** The engine runs a four-state member-function-pointer machine — approach-a-marker
  *    (the jump), cruise, avoid a rival, attack a rival — of which we field three. `behave()`.
  * 3. **The path chain.** A level's AI paths are short overlapping segments — a menu of racing lines — and a rider
- *    hands off as it runs out of one, or re-chooses when it is shoved off it. Candidates are scored by geometry
- *    *and* by how well their **line rating** matches the rider's mood.
+ *    hands off as it runs out of one, or re-chooses at an authored event or when shoved off it. Candidates are
+ *    scored by geometry *and* by how well their **line rating** matches the rider's mood.
  * 4. **Catch-up**, which is not a force but **time dilation**, banded on the along-course gap to the competitor
  *    immediately ahead in the standings — a ladder, not a star. Band the whole field against the player and it
  *    collapses into a clump around them; that is a bug, not rubber-banding.
@@ -57,8 +59,8 @@ import { shuffledAvatars } from '../../core/characters/builtins';
  *
  * NOT ported, and named as gaps rather than hidden: the engine's cruise **boost** press is gated on the boost
  * meter, which this ride has no equivalent of ([Trailmap: 360]), so a rider only boosts where the engine boosts
- * for a *traced* reason — under-speed on the run-in to a jump marker. The **throttle axis** has no counterpart in
- * this model's automatic cruise drive, so the tuck stands in for it. **Tricks** are selected by the engine at the
+ * for a *traced* reason — a jump approach or an authored cruise-speed region. The **throttle axis** has no
+ * counterpart in this model's automatic cruise drive, so the tuck stands in for it. **Tricks** are selected at the
  * jump press and we have no trick system to fire. And the AI never bumps the *player* here (the engine bumps
  * everyone; our player's model owns its own position).
  *
@@ -148,8 +150,10 @@ function mulberry32(seed: number): () => number {
  * are what the engine's trick picker rolls against — we have no trick system, so they ride along unused.
  */
 export interface AiPathMarker {
-  /** Arc length along the path, in metres. */
+  /** Horizontal start station along the path, in metres. */
   arc: number;
+  /** Horizontal end station; absent means a point event at `arc`. */
+  end?: number;
   speed: number;
   trickA: boolean;
   trickB: boolean;
@@ -163,8 +167,10 @@ export interface AiPathDef {
   /** The AIP's respawnable flag: the course reset may put a fallen rider back on THIS path. It gates the reset
    *  ONLY — a rider may freely *ride* a non-respawnable path ([Trailmap: 395]). Absent = treated as respawnable. */
   respawnable?: boolean;
-  /** Its jump markers, ascending by arc. */
+  /** Its jump events, in source order; the first overlapping range supplies the target. */
   markers?: AiPathMarker[];
+  /** Source-order path events; stations are horizontal metres and payloads retain their raw encoding. */
+  events?: readonly RefAiPathEvent[];
 }
 
 export interface AiRidersOpts {
@@ -272,6 +278,7 @@ interface AiPath {
   rating: number;
   respawnable: boolean;
   markers: AiPathMarker[];
+  events: readonly RefAiPathEvent[];
 }
 
 /**
@@ -303,6 +310,7 @@ interface AiRider {
   state: Behaviour;
   rival: number; // index into `riders` of the competitor it is reacting to, or −1
   targetSpeed: number; // m/s, from the marker it is running at; 0 = none
+  cruiseTarget: number | null; // m/s, from an overlapping cruise event; zero is a valid target
   jumpHeld: boolean; // the ollie button is down (the charge is building)
   resetPending: boolean; // out of play: the course reset fires on the next step
   inWarp: boolean; // ...and the reset's own teleport must not re-arm it (see courseReset)
@@ -355,7 +363,8 @@ export function createAiRiders(o: AiRidersOpts) {
       total,
       rating: src.rating,
       respawnable: src.respawnable !== false,
-      markers: (src.markers ?? []).slice().sort((a, b) => a.arc - b.arc),
+      markers: (src.markers ?? []).slice(),
+      events: (src.events ?? []).slice(),
     });
     netIndex.push(i);
   }
@@ -530,7 +539,9 @@ export function createAiRiders(o: AiRidersOpts) {
   function choosePath(r: AiRider, advancing: boolean): boolean {
     const pick = bestPathFrom(r.model.st.pos, mood(r), advancing ? r.path : -1);
     if (!pick) return false;
-    setPath(r, pick.path, pick.arc);
+    // A normal reselection can retain this line. Keep its forward cache and travelled event interval intact.
+    if (pick.path !== r.path) setPath(r, pick.path, pick.arc);
+    else r.sinceChoice = 0;
     return true;
   }
 
@@ -592,6 +603,7 @@ export function createAiRiders(o: AiRidersOpts) {
     // again, or a reset rider resets forever and never rides a metre.
     r.inWarp = true;
     r.resetPending = false;
+    r.cruiseTarget = null;
     r.resets++;
     const others = board.filter(b => b.rider !== r);
     const mean = others.length ? others.reduce((s, b) => s + b.progress, 0) / others.length : r.progress;
@@ -675,6 +687,7 @@ export function createAiRiders(o: AiRidersOpts) {
       state: 'cruise',
       rival: -1,
       targetSpeed: 0,
+      cruiseTarget: null,
       jumpHeld: false,
       resetPending: false,
       inWarp: false,
@@ -976,28 +989,30 @@ export function createAiRiders(o: AiRidersOpts) {
     return Math.sign(err) * Math.min(mag, STEER_CLAMP);
   }
 
-  /** The jump marker the rider is running at, if any: the engine queries its path for type-25 items in the arc
-   *  window `[lastFrameArc, arc + window]`, so a marker cannot be stepped over however fast the rider is going. */
-  function markerIn(r: AiRider, window: number): AiPathMarker | null {
+  /** First source-order jump event and the query's type-wide partial-overlap flag ([Trailmap: 395-jump-window]). */
+  function markerIn(r: AiRider, window: number): { marker: AiPathMarker; partial: boolean } | null {
     const p = net[r.path],
-      lo = Math.min(r.prevArc, r.arc),
+      lo = r.prevArc,
       hi = r.arc + window;
+    if (hi < lo) return null;
+    let marker: AiPathMarker | null = null;
+    let partial = false;
     for (const m of p.markers) {
-      if (m.arc < lo) continue;
-      if (m.arc > hi) break;
-      return m;
+      const end = m.end ?? m.arc;
+      if (m.arc > hi || end < lo) continue;
+      marker ??= m;
+      partial ||= lo < m.arc || hi < end;
     }
-    return null;
+    return marker ? { marker, partial } : null;
   }
 
   /**
    * The behaviour machine ([Trailmap: 395]) — four states, and every one of them ends by steering somewhere.
    *
    * **approach** — a jump marker is in range. This is where the AI's ollie comes from, and it is entirely
-   * authored: press the button when the marker is still ahead, the rider is within `MARKER_PERP` of its line and
-   * it is going straight (a rider does not jump mid-carve); hold it while the marker stays inside the tighter
-   * window, so the charge builds over the last half-metre and releases as the rider crosses the lip. Boost if it
-   * is under the marker's target speed, brake if it is well over.
+   * authored: use lookahead for speed preparation, press once the event has started and the rider is close
+   * and straight, then hold while the tighter query reports a partial jump range. Boost if under the cached
+   * target speed, brake if well over.
    *
    * **avoid** — a rival is in the way. The "in the way" test is a cone of `atan(clearance / distance)`, which
    * *widens as you close* (≈12° at 7 m, 45° at 1.5 m). The swerve is not a nudge on the stick: the whole pursuit
@@ -1012,6 +1027,7 @@ export function createAiRiders(o: AiRidersOpts) {
     const p = net[r.path];
     r.keys.boost = false;
     r.keys.brake = false;
+    r.cruiseTarget = null;
 
     // Aim: the pursuit target is a point ON the line, LOOKAHEAD of arc further along. Nothing displaces it
     // sideways — the engine has no per-rider "lane", which is worth stating because it is the obvious thing to
@@ -1019,19 +1035,22 @@ export function createAiRiders(o: AiRidersOpts) {
     sample(p, r.arc + LOOKAHEAD, target, tan);
     const pathHeading = bearing(target.x - st.pos.x, target.z - st.pos.z);
 
-    const marker = markerIn(r, MARKER_AHEAD);
+    // [Trailmap: 395-jump-window] The press uses 3 m; subsequent charge ticks use the tighter 0.5 m query.
+    const wasHeld = r.jumpHeld;
+    const query = st.grounded || st.railIdx >= 0 ? markerIn(r, wasHeld ? MARKER_HOLD : MARKER_AHEAD) : null;
+    const marker = query?.marker;
     if (marker) {
       r.state = 'approach';
-      r.targetSpeed = marker.speed;
+      if (!wasHeld) r.targetSpeed = marker.speed;
       r.stick.x = steerTo(r, target);
       const speed = st.vel.length();
-      const ahead = marker.arc >= r.arc;
-      if (ahead && r.perp < MARKER_PERP && Math.abs(r.stick.x) < MARKER_STEER && !r.jumpHeld) {
-        r.model.ollieDown(); // press: the charge starts here, ~3 m out
-        r.jumpHeld = true;
+      const entered = marker.arc <= r.arc;
+      if (entered && r.perp < MARKER_PERP && Math.abs(r.stick.x) < MARKER_STEER && !wasHeld) {
+        r.model.ollieDown();
+        r.jumpHeld = st.charging; // A cooldown-rejected press must not become a phantom hold.
       }
-      if (marker.speed > 0 && speed < marker.speed - SPEED_SLOP) r.keys.boost = true;
-      if (marker.speed > 0 && speed > marker.speed + SPEED_SLOP) r.keys.brake = true;
+      if (r.targetSpeed > 0 && speed < r.targetSpeed - SPEED_SLOP) r.keys.boost = true;
+      if (r.targetSpeed > 0 && speed > r.targetSpeed + SPEED_SLOP) r.keys.brake = true;
     } else {
       r.targetSpeed = 0;
       const rival = r.rival >= 0 ? riders[r.rival] : null;
@@ -1063,14 +1082,24 @@ export function createAiRiders(o: AiRidersOpts) {
       }
     }
 
-    // The charge releases the moment no marker is inside the tight window — i.e. as the rider crosses the lip.
-    if (r.jumpHeld && !markerIn(r, MARKER_HOLD)) {
+    // The original hold tests the query mask, not just presence: its half-metre lookahead anticipates the end.
+    if (wasHeld && !query?.partial) {
       r.model.ollieUp();
       r.jumpHeld = false;
     }
     // OURS, not the engine's: it drives a throttle axis this model's automatic cruise has no counterpart for, so
     // the tuck stands in — thin the drag down the straights, stand up to carve.
     r.keys.tuck = st.grounded && Math.abs(r.stick.x) < 0.25;
+    if (st.grounded && st.railIdx < 0 && r.state === 'cruise' && !r.jumpHeld) {
+      const cruise = cruiseSpeedInput(p.events, r.prevArc, r.arc, st.vel.length(), r.skill);
+      if (cruise) {
+        r.cruiseTarget = cruise.target;
+        // The model has automatic cruise drive: tuck is its existing adapter for a throttle request.
+        r.keys.tuck = cruise.throttle;
+        r.keys.brake = cruise.brake;
+        r.keys.boost = cruise.boost;
+      }
+    }
   }
 
   /**
@@ -1158,6 +1187,12 @@ export function createAiRiders(o: AiRidersOpts) {
           courseReset(r);
           continue;
         }
+      } else if (
+        net[r.path].events.some(event => event.type === 300 && event.start <= r.arc && event.end >= r.prevArc)
+      ) {
+        // [Trailmap: 250-reset-events] Raw 300 queries the interval just travelled, with no lookahead or timer.
+        // This is a normal reselection (selector argument 0), so the incumbent remains a candidate.
+        choosePath(r, false);
       } else if (r.sinceChoice >= RECHOOSE_EVERY && (r.perp > OFF_PATH || lostUnderLine(r))) {
         // Shoved clean off the line — measured HORIZONTALLY, so being *under* it does not count, which is the
         // engine's rule and the whole reason a rider can fly its line over a jump. `lostUnderLine` is the one case
@@ -1233,6 +1268,8 @@ export function createAiRiders(o: AiRidersOpts) {
       rival: r.rival,
       jumpHeld: r.jumpHeld,
       targetSpeed: r.targetSpeed,
+      cruiseTarget: r.cruiseTarget,
+      controls: { tuck: r.keys.tuck, brake: r.keys.brake, boost: r.keys.boost },
       resets: r.resets,
       place: r.place,
       progress: r.progress,
@@ -1243,6 +1280,7 @@ export function createAiRiders(o: AiRidersOpts) {
       velY: r.model.st.vel.y,
       boostRequest: r.model.padBoostSeconds,
       grounded: r.model.st.grounded,
+      rail: r.model.st.railIdx,
       charging: r.model.st.charging,
       airTime: r.model.st.airTime,
       // Its own race, not the field's: which pass it is on, what the lap-gated volume reads, and whether it

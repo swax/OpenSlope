@@ -322,6 +322,25 @@ Once loaded, comparison halves read **Reference: `<name>`**. The Scene entry and
 **Reference** because they choose the comparison role rather than identify its current source.
 See [Authored Map References](docs/036-authored-map-references.md).
 
+In **Scene → AI Paths**, the reference map’s shared AI routes are selectable objects. Opening the category
+shows the path overlay; click a path in the viewport to highlight it and inspect its events.
+Paths use a green–orange–red rating scale; dashed routes are not respawnable. Selection keeps the rating
+colour with a dark outline for contrast on snow. Terrain-covered sections and their event markers remain
+faintly visible, matching the wireframe fade. One combined view uses each path's rating colour between event
+spans and shows event colours and symbols across the whole network, with a matching legend.
+Jumps use triangles, cruise speeds circles, reset
+regions diamonds, path reselection flags, unidentified events squares, and disabled slots crosses.
+The expanded **Events** list sits directly below the legend, with matching symbols before the event names.
+**Reference path** properties and **Geometry** follow it, showing line rating, respawn permission, initial grid
+slots, length, segment count and average segment length. Numbered markers and coloured ranges on the selected
+route match the event list, including point events. Event titles omit raw type IDs, which remain in the details.
+Event details
+retain raw values, decoded jump speeds and trick flags, and cruise-speed targets. Browser AI riders use full
+jump-event ranges for approach and charge release, preserving source order when ranges overlap. Type 300 is labelled
+**Reselect path**: browser riders reconsider their route when crossing its point or range, and may keep the
+current path. Labels describe observed SSX Tricky behavior rather than recovered original event names;
+meanings in other games remain unconfirmed. This first inspection step does not author or modify paths.
+
 SSX Mod Manager loose-level ZIPs can be converted directly into that reference contract when Snowknife and a
 clean Tricky disc dump are available in the surrounding OpenSlope checkout:
 

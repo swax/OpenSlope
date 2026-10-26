@@ -1,5 +1,5 @@
 /** The Scene toolbox's focused comparison categories. `info` is the Reference landing view. */
-export type SceneSel = 'info' | 'lighting' | 'godrays' | 'sound' | 'skybox' | 'course' | 'camera';
+export type SceneSel = 'info' | 'lighting' | 'godrays' | 'sound' | 'skybox' | 'course' | 'aiPaths' | 'camera';
 
 export type SceneBoundsVisibility = {
   mountain: boolean;
@@ -13,6 +13,7 @@ export type SceneFolderVisibility = {
   sound: boolean;
   skybox: boolean;
   course: boolean;
+  aiPaths: boolean;
   selection: boolean;
   camera: boolean;
 };
@@ -26,6 +27,7 @@ export function sceneFolderVisibility(selected: SceneSel, hasCourseSelection: bo
     sound: selected === 'sound',
     skybox: selected === 'skybox',
     course: selected === 'course',
+    aiPaths: selected === 'aiPaths',
     camera: selected === 'camera',
     selection: selected === 'course' && hasCourseSelection,
   };

@@ -1585,6 +1585,7 @@ export function createPointerRouter(
     if (access.mode() === 'info') {
       const sourcePick = layers.scenePicking.pick({ sources: true });
       if (sourcePick?.target === 'source') {
+        stage.cb.onSelectReferenceAiPath?.(null);
         selectSourceMarker(sourcePick.source, sourcePick.sourceKind, sourcePick.sourceIndex);
         return;
       }
@@ -1595,6 +1596,7 @@ export function createPointerRouter(
       // Start/finish flags before knots: the start flag floats over knot 0 on an untouched run.
       const anchorHit = access.pickAnchor();
       if (anchorHit) {
+        stage.cb.onSelectReferenceAiPath?.(null);
         host.clearRefSelection();
         stage.cb.onSelectKnot(null);
         stage.attachGizmo(anchorHit.object as THREE.Mesh, 'anchor', 0);
@@ -1602,12 +1604,24 @@ export function createPointerRouter(
       }
       const knotHit = access.pickKnot();
       if (knotHit) {
+        stage.cb.onSelectReferenceAiPath?.(null);
         host.clearRefSelection();
         const idx = knotHit.object.userData.knot as number;
         stage.cb.onSelectKnot(idx);
         stage.attachGizmo(knotHit.object as THREE.Mesh, 'knot', idx); // drag it with the translate gizmo
         return;
       }
+      const pathPick = layers.scenePicking.pick({ aiPaths: true, occludeWithSurfaces: true, surfaceEpsilon: 0.5 });
+      // Only pay for scenery occlusion after hitting a path; a curve behind a building is not a visible target.
+      const pathOccluder = pathPick ? layers.scenePicking.pick({ props: 'standard' }) : null;
+      if (pathPick?.target === 'aiPath' && (!pathOccluder || pathOccluder.hit.distance >= pathPick.hit.distance)) {
+        host.clearRefSelection();
+        stage.detachGizmo();
+        stage.cb.onSelectKnot(null);
+        stage.cb.onSelectReferenceAiPath?.(pathPick.pathIndex);
+        return;
+      }
+      stage.cb.onSelectReferenceAiPath?.(null);
       if (rejectUnsupportedPropPick()) return;
       // Info handles a terrain body / reference surface as a Scene selection, but has no vertex or line edit.
       if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface')) return;

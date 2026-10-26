@@ -1817,6 +1817,14 @@ nearest** paths; any already within 2 m of its own end is no use and is dropped.
 score = |pos − closestPoint|² + |lookaheadTarget − pos|² − (100 − |rating − mood|) · 2.319
 ```
 
+An authored **Reselect path** event (raw type **300**) also runs that selector whenever its point or range
+overlaps `[previous arc, current arc]` ([Trailmap: 250-reset-events, 395-range-query]). It has no lookahead,
+grounded gate or one-second recovery timer, and crossing an entire event between ticks still finds it.
+Unlike advancing at the geometric endpoint, this normal reselection includes the current path; if it wins,
+the rider keeps its forward tracking cache. The event's value is ignored and does not identify a destination.
+The earlier **Path end** label described our interpretation of the reader; it was not a recovered original
+event name. **Reselect path** describes the confirmed behavior without implying that the spline ends there.
+
 `rating` is the path's **line rating** — the AIP record's `U3`, 0–100, how *daring* that line is
 ([Trailmap: 395]) — and the match term is worth up to ~15 m of geometric error, which is enough to pull a rider
 onto a line it is not currently nearest to. That is what the ninety paths are *for*: a level offers a safe line,
@@ -1839,10 +1847,13 @@ like a feature until you watch the field ride, and it is what the standings ladd
 
 **The AI jumps because the level told it to.** This is the part that is easiest to get backwards: an AI rider's
 ollie is not emergent, it is **authored**. Each tick the rider range-queries its own path for a **jump marker** in
-the arc window `[last frame's arc, arc + 3 m]`, and presses the button if the marker is still ahead, it is within
-**1.53 m** of its line, and it is going roughly straight (a rider does not jump mid-carve). It holds the charge
-while a marker stays inside a tighter 0.5 m window — so the charge builds over the last half-metre and fires as it
-crosses the lip — and boosts during the run-in if it is more than 5 km/h under the marker's **target speed**.
+the arc window `[last frame's arc, arc + 3 m]`. The browser and Native now implement the corrected
+[jump entry and hold contract](../../Trailmap/specs/395-ai-riders.md#the-jump-is-authored-not-emergent):
+lookahead prepares the approach, charge begins when the event has started, and the partial-range flag controls
+release near its end. The earlier "still ahead" reading was reversed and caused premature taps.
+Both controllers preserve source order and the charged target speed. Browser presses respect ground/rail state
+and the existing ollie cooldown. A continuous slope regression measures entry, uninterrupted charging and one
+launch near the end; it catches the early-release error that station-stepping fixtures previously missed.
 
 Those markers are the AIP's `EventType` **100** records (Garibaldi ships
 104, target speeds 46–117 km/h), and the field reads them off the reference level. **The authored mountain has
@@ -1904,10 +1915,19 @@ progress. It doesn't need one, because the horizontal tracker above means a ride
 
 Still not ported, and named rather than hidden: the AI's **tricks** (the engine picks one at the jump press; we
 have no trick system to fire it with), its **cruise boost** (gated on the boost meter, which this ride has no
-equivalent of — so our riders only boost where the engine boosts for a traced reason, the run-in to a jump
-marker), and the **throttle axis** (this model's cruise drive is automatic, so the tuck stands in for it). The
+equivalent of — so our riders boost for jump approaches and authored cruise-speed requests), and the
+**throttle axis** (this model's cruise drive is automatic, so the tuck stands in for it). The
 **mood's inputs** are partial the same way: the engine reads placement, the boost meter and a skill-weighted dice
 roll, and we have the placement and the roll but no meter.
+
+The reference ride and course-run tool now pass source-order events into `app/ride/ai.ts`.
+`ride/cruise-speed.ts` supplies authored cruise inputs according to
+[Trailmap: 395, cruise targets](../../Trailmap/specs/395-ai-riders.md#the-behavior-machine).
+The rider's live skill/aggression scalar drives that decision; jump approach and rival avoidance keep
+their own controls. The adapter uses tuck for throttle and the ordinary brake/boost keys. Automatic
+cruise propulsion and the missing boost meter remain model differences; the event does not clamp speed.
+The probe exposes the current cruise target and synthesized keys. Focused boundary tests and an actual
+marked-versus-unmarked slope ride cover decoding, range exit, jump priority and the speed response.
 
 **The authored mountain has no network to chain through** — our six derived lines each run the *whole* course, so
 a rider never hands off. What they do have is a **rating each**, read off the line's own wander (`aiLineRatings`,

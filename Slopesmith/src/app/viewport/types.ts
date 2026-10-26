@@ -311,7 +311,7 @@ export interface ViewportCallbacks {
   /** A mesh component or scene object was positively identified under the pointer, but the active view has no
    *  action for it—or its Edit selection family is filtered out. The host acknowledges it without mutation. */
   onClickTargetUnavailable?(
-    target: 'vertex' | 'line' | 'surface' | 'prop' | 'light' | 'rail' | 'gem' | 'screen' | 'knot',
+    target: 'vertex' | 'line' | 'surface' | 'prop' | 'light' | 'rail' | 'gem' | 'screen' | 'knot' | 'aiPath',
     source: 'authored' | 'reference',
   ): void;
   /** Edit mode: an authored prop placement was clicked. Ctrl/Cmd toggles it alongside any selected mesh
@@ -580,6 +580,9 @@ export interface ViewportCallbacks {
   onMoveLineNode?(line: string, node: number, pos: V3): void;
   /** A shipped level's grind curve was clicked in Effects mode, by its stable `Splines.json` row. */
   onSelectReferenceSpline?(originalIndex: number): void;
+  /** Inspect a shared AI path by its stable source-table row; null clears the inspection. */
+  onSelectReferenceAiPath?(originalIndex: number | null): void;
+  onReferenceAiPathsChanged?(): void;
   /** Gem tool: a click dropped one gem at this final height-adjusted, snapped data-space point. */
   onPlaceGem?(pos: V3): void;
   /** Gem tool: a drag laid a row between these final height-adjusted, snapped endpoints. */

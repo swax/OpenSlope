@@ -49,6 +49,8 @@ import {
 } from './scene-navigation';
 import { MODE_ICON } from '../components/icons';
 import { fetchJson } from '../../net/fetch-json';
+import type { RefAiPath } from '../../../core/reference/terrain';
+import { createAiPathInspector } from './ai-path-inspector';
 export type { SceneSel } from './scene-navigation';
 
 /**
@@ -92,6 +94,8 @@ export type ScenePanelDeps = {
   setNormalsVisible: (on: boolean) => void;
   getAiPathsVisible: () => boolean; // shared authored AI lines + reference AIP-network visibility
   setAiPathsVisible: (on: boolean) => void;
+  getReferenceAiPaths: () => readonly RefAiPath[];
+  highlightReferenceAiPath: (index: number | null) => void;
   courseDraw: {
     // Course ▸ reset course: the new run clicked onto the terrain (viewport)
     begin: (handlers: CourseDrawHandlers) => void;
@@ -170,6 +174,13 @@ export function createScenePanel(deps: ScenePanelDeps) {
   const courseFolder = sceneGui.addFolder(mountainName()); // Course: authored run + shared overlays
   const selFolder = sceneGui.addFolder('Selected knot'); // Course: selected authored course point(s)
   const refCourseFolder = sceneGui.addFolder(referenceHeader()); // Course: recovered line + borrow action
+  const aiPathsFolder = sceneGui.addFolder('Reference AI paths');
+  const aiPathInspector = createAiPathInspector(aiPathsFolder, {
+    paths: deps.getReferenceAiPaths,
+    visible: getAiPathsVisible,
+    setVisible: setAiPathsVisible,
+    highlight: deps.highlightReferenceAiPath,
+  });
   for (const folder of [
     refFolder,
     sunFolder,
@@ -184,6 +195,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     courseFolder,
     selFolder,
     refCourseFolder,
+    aiPathsFolder,
   ])
     folder.domElement.classList.add('sp-scene-card');
   for (const folder of [refFolder, lightFolder, refGodRayFolder, refSoundFolder, refSkyFolder, refCourseFolder])
@@ -206,6 +218,12 @@ export function createScenePanel(deps: ScenePanelDeps) {
       label: 'Course',
       icon: '⌁',
       title: () => `${mountainName()} run controls followed by the recovered ${referenceName()} course.`,
+    },
+    {
+      value: 'aiPaths',
+      label: 'AI Paths',
+      icon: '⌇',
+      title: 'Inspect the reference mountain’s shared AI routes, properties and events.',
     },
     {
       value: 'sound',
@@ -313,6 +331,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     courseFolder.show(visible.course);
     selFolder.show(visible.selection);
     refCourseFolder.show(visible.course);
+    aiPathsFolder.show(visible.aiPaths);
 
     // A comparison category retains its Reference half even before a level is loaded. The empty card tells
     // the user where to establish that context instead of making the lower half mysteriously disappear.
@@ -339,6 +358,11 @@ export function createScenePanel(deps: ScenePanelDeps) {
     if (leavesSceneSound(sceneSel, kind)) stopAudition();
     if (kind !== 'course') cancelCourseReset(); // a half-clicked course belongs to the Course card
     sceneSel = kind;
+    if (kind !== 'aiPaths') aiPathInspector.select(null);
+    else {
+      if (!getAiPathsVisible()) setAiPathsVisible(true);
+      aiPathInspector.rebuild();
+    }
     applySceneSelection(); // swap which detail folders are visible
   }
 
@@ -346,6 +370,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
    *  so hiding Scene also tears down whichever shared audition that panel started. */
   function setSceneVisible(visible: boolean) {
     if (!visible && leavesSceneSound(sceneSel, null)) stopAudition();
+    if (!visible) aiPathInspector.select(null);
     sceneHost.style.display = visible ? 'flex' : 'none';
     cameraPanel.setActive(visible && sceneSel === 'camera' && !sceneCollapsed);
   }
@@ -363,7 +388,22 @@ export function createScenePanel(deps: ScenePanelDeps) {
     for (const folder of [sunFolder, godRayFolder, soundFolder, skyFolder, courseFolder]) folder.title(mountainName());
     void buildSoundDetail();
     buildCourseDetail();
+    aiPathInspector.rebuild();
     rebuildOutliner();
+  }
+
+  function selectReferenceAiPath(index: number | null) {
+    if (index !== null) {
+      const hadCourseSelection = getSelected() !== null || getSelectedKnots().length > 0;
+      setSelected(null);
+      setSelectedKnots([]);
+      if (hadCourseSelection) {
+        refreshSelection();
+        scheduleRebuild();
+      }
+      selectScene('aiPaths');
+    }
+    aiPathInspector.select(index);
   }
 
   /** A same-map replacement only refreshes the details it changed. Sound controls already resolve the live
@@ -785,7 +825,7 @@ export function createScenePanel(deps: ScenePanelDeps) {
     );
     tip(
       courseFolder.add(view, 'ai').name('show AI paths').listen(),
-      'Show the six AI lines your mountain exports (amber) and the loaded reference’s AI network (amber and violet).',
+      'Show your mountain’s derived AI lines and the reference’s AI network, coloured by rating with event spans and symbols.',
     );
     tip(
       courseFolder.add(view, 'normals').name('show normals').listen(),
@@ -998,12 +1038,15 @@ export function createScenePanel(deps: ScenePanelDeps) {
     refSoundFolder,
     refSkyFolder,
     refCourseFolder,
+    selectReferenceAiPath,
+    refreshReferenceAiPaths: aiPathInspector.reset,
     getSceneSel: () => sceneSel,
     setSceneSel: (s: SceneSel) => {
       cameraPanel.setActive(false);
       if (leavesSceneSound(sceneSel, s)) stopAudition();
       if (s !== 'course' && courseDraw.active()) courseDraw.end();
       sceneSel = s;
+      if (s !== 'aiPaths') aiPathInspector.select(null);
     }, // host resets state, then rebuilds the panel itself
     setSceneVisible,
     rebuildScene,

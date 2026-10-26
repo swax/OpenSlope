@@ -220,6 +220,17 @@ export function addRoundDots(
   group.add(p);
 }
 
+/** A matching, faint pass restricted to fragments behind the scene's depth buffer. */
+export function occludedMaterial<T extends THREE.Material>(source: T): T {
+  const material = source.clone();
+  material.transparent = true;
+  material.opacity *= CAGE_OCCLUDED_DIM;
+  material.depthTest = true;
+  material.depthWrite = false;
+  material.depthFunc = THREE.GreaterDepth;
+  return material;
+}
+
 /** Add a cage-wire line set, ghosted: in cage-wires-only view the part hidden behind the (invisible) depth
  *  mask draws dim, the visible part bright; in surface view a single depth-culled pass hides the occluded
  *  part as before. Both passes share the geometry and never write depth. */

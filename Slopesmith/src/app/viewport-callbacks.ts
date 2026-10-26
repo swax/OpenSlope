@@ -343,7 +343,9 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
                 ? 'course knot'
                 : component === 'screen'
                   ? 'video screen'
-                  : component;
+                  : component === 'aiPath'
+                    ? 'AI path'
+                    : component;
       const target = `${source === 'reference' ? 'a reference ' : 'a '}${noun}`;
       if (store.currentMode === 'edit' && (component === 'vertex' || component === 'line' || component === 'surface')) {
         const filter = component === 'vertex' ? 'Point' : component === 'line' ? 'Edge' : 'Patch';
@@ -379,7 +381,7 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
         return;
       }
       const destination = shortcutForMode(
-        component === 'knot'
+        component === 'knot' || component === 'aiPath'
           ? 'info'
           : component === 'prop' || component === 'light' || component === 'rail' || component === 'gem'
             ? 'props'

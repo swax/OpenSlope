@@ -260,13 +260,19 @@ export async function readLevelAiPaths(io: MapDataSource, name: string): Promise
     const starts = new Set(raw.StartPosList ?? []);
     const paths = (raw.AIPaths ?? [])
       .map((p, i) => ({
+        originalIndex: i,
         name: p.Name ?? `AI Path ${i}`,
         start: starts.has(i),
+        startSlots: (raw.StartPosList ?? []).flatMap((path, slot) => (path === i ? [slot] : [])),
         rating: p.U3 ?? 50,
-        // The two fields the AI field reads besides the points ([Trailmap: 395]): where it may be put back after a
-        // fall, and where it jumps. Levels we generate ship neither yet, and default sensibly.
         respawnable: p.Respawnable !== false,
         markers: aiJumpMarkers(p),
+        events: (p.PathEvents ?? []).map(event => ({
+          type: event.EventType ?? -1,
+          value: event.EventValue ?? 0,
+          start: (event.EventStart ?? 0) / 100,
+          end: (event.EventEnd ?? 0) / 100,
+        })),
         points: reconstructPathLine(p),
       }))
       .filter(p => p.points.length >= 2);

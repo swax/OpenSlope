@@ -1491,6 +1491,8 @@ const {
   finishCourseReset,
   cancelCourseReset,
   undoCourseResetPoint,
+  selectReferenceAiPath,
+  refreshReferenceAiPaths,
 } = createScenePanel({
   camera: {
     getView: () => viewport.serializeView(),
@@ -1541,6 +1543,8 @@ const {
     persistUi();
   },
   getAiPathsVisible: () => store.aiPathsOn,
+  getReferenceAiPaths: () => viewport.referenceAiPaths,
+  highlightReferenceAiPath: index => viewport.selectReferenceAiPath(index),
   setAiPathsVisible: on => {
     store.aiPathsOn = on;
     viewport.aiPathsGuide = on;
@@ -1561,6 +1565,8 @@ const {
     removeLast: () => viewport.removeLastCourseDrawPoint(),
   },
 });
+viewportCallbacks.onSelectReferenceAiPath = selectReferenceAiPath;
+viewportCallbacks.onReferenceAiPathsChanged = refreshReferenceAiPaths;
 // ================= Placed props: caches + arming + deletes =================
 // The placed-prop domain ops live in props/operations.ts: the model geometry caches (base offsets + local
 // boxes), the per-level prop payload + mined group-def fetches, prop / group arming, the delete +

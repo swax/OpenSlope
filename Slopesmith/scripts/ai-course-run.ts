@@ -253,6 +253,7 @@ async function loadWorld(level: string) {
     rating: p.rating,
     respawnable: p.respawnable,
     markers: p.markers,
+    events: p.events,
     points: p.points.map(toWorld),
   }));
   const gates = rawPaths

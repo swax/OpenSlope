@@ -46,6 +46,8 @@ struct AiContext {
     unsigned place = 1;
     std::optional<AiPeer> reference;
     std::span<const AiPeer> peers;
+    // The current first-party field uses nominal aggression; input callers may supply a profile scalar.
+    double aggression = 1;
 };
 
 struct AiStatus {
@@ -73,5 +75,6 @@ private:
     double reselect_ = 0, last_station_ = 0;
     std::uint64_t ticks_ = 0;
     bool charge_ = false;
+    double jump_target_speed_ = 0;
 };
 } // namespace openslope

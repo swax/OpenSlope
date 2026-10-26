@@ -136,7 +136,7 @@ export interface PathRecord {
   DistanceToFinish?: number;
   Respawnable?: boolean;
   Name?: string;
-  /** The line rating, 0–100 — how daring this line is. An AI rider picks the path whose rating matches its
+  /** The line rating, 0–100. An AI rider picks the path whose rating matches its
    *  mood, which is what makes the network a menu of racing lines rather than one route ([Trailmap: 395]). */
   U3?: number;
   PathEvents?: PathEventRecord[];
@@ -151,7 +151,7 @@ export interface PathEventRecord {
 }
 
 /**
- * The one event type the AI racer reads ([Trailmap: 395]): raw `EventType` 100, which the loader translates to
+ * The AI's jump event ([Trailmap: 395]): raw `EventType` 100, which the loader translates to
  * item type 25. It is the **jump marker** — the rider presses its ollie at one, and that is the only reason an AI
  * rider ever jumps. The value word packs the speed the line wants to be taken at (km/h, in the high bits) and two
  * trick-selection flags.
@@ -174,25 +174,26 @@ export interface RefShowoffCheckpoint {
   pos: V3;
 }
 
-/** A jump marker in editor units: arc in metres, target speed in m/s. */
+/** A jump event in editor units: horizontal start/end stations in metres, target speed in m/s. */
 export interface RefAiMarker {
   arc: number;
+  end: number;
   speed: number;
   trickA: boolean;
   trickB: boolean;
 }
 
-/** Decode a path's jump markers out of its event list. Raw arc units are cm, and the packed speed is km/h. */
+/** Decode jump ranges in source order. Raw stations are cm, and the packed speed is km/h. */
 export function aiJumpMarkers(rec: PathRecord): RefAiMarker[] {
   return (rec.PathEvents ?? [])
     .filter(e => e.EventType === AI_JUMP_EVENT)
     .map(e => ({
       arc: (e.EventStart ?? 0) / 100,
+      end: (e.EventEnd ?? e.EventStart ?? 0) / 100,
       speed: ((e.EventValue ?? 0) >> 2) / 3.6, // km/h -> m/s
       trickA: !!((e.EventValue ?? 0) & 1),
       trickB: !!((e.EventValue ?? 0) & 2),
-    }))
-    .sort((a, b) => a.arc - b.arc);
+    }));
 }
 
 /** The subset of an AIP.json / SOP.json the course extractor reads. */
@@ -206,15 +207,28 @@ export interface CoursePathFile {
 /** One AI path as `/api/level` serves it off the level's AIP.json: editor-space points (seed + deltas
  *  reconstructed), whether `StartPosList` assigns it to a race-grid slot, and its line rating. */
 export interface RefAiPath {
+  /** Stable row in the source AIPaths table, retained even when empty records are skipped. */
+  originalIndex: number;
   name: string;
   start: boolean;
+  /** Zero-based rider slots whose initial path is this record. */
+  startSlots: number[];
   /** 0–100, the path's own `U3` ([Trailmap: 395]) — the AI field scores candidate lines against it. */
   rating: number;
   /** Whether the course reset may put a fallen rider back on this line ([Trailmap: 395]). Gates the reset only. */
   respawnable: boolean;
   /** Its jump markers — where an AI rider ollies ([Trailmap: 395]). */
   markers: RefAiMarker[];
+  /** Every source event, including unknown types. Stations use horizontal metres from the path seed. */
+  events: RefAiPathEvent[];
   points: V3[];
+}
+
+export interface RefAiPathEvent {
+  type: number;
+  value: number;
+  start: number;
+  end: number;
 }
 
 /**
@@ -230,7 +244,7 @@ export interface RefAiPath {
  */
 export function reconstructPathLine(rec: PathRecord): V3[] {
   const pts = rec.PathPoints;
-  if (!pts || pts.length < 2) return [];
+  if (!pts || pts.length < 1) return [];
   let ax = rec.PathPos?.[0] ?? 0,
     ay = rec.PathPos?.[1] ?? 0,
     az = rec.PathPos?.[2] ?? 0;

@@ -6,7 +6,6 @@ import type { V3 } from '../../../core/doc/types';
 import {
   editorFromRaw,
   referenceSplineIsGrindRail,
-  type RefAiPath,
   type RefCourseAnchors,
   type RefSplineRaw,
 } from '../../../core/reference/terrain';
@@ -14,6 +13,7 @@ import { RAIL_STYLE_ICE, RAIL_STYLE_METAL, RAIL_STYLE_WOOD } from '../../../core
 import { textSprite } from '../shared/overlays';
 import type { Stage } from '../stage';
 import { railGuidePalette } from './rail-guide-style';
+import { createReferenceAiPathsLayer } from './reference-ai-paths';
 
 /** Camera-ward depth bias for the true, unshifted grind guides. */
 const REF_RAIL_DEPTH_BIAS = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
@@ -35,12 +35,7 @@ export function createReferenceCourseDecor(stage: Stage) {
   const refCourseBeadGeo = new THREE.SphereGeometry(1.6, 8, 6);
   const refCourseBeadMat = new THREE.MeshBasicMaterial({ color: 0x36a746 });
   let refCourseVisible = false;
-  const refAiGroup = new THREE.Group(); // the level's AI-path network (AIP.json AIPaths)
-  // start paths (StartPosList — one route per race-grid slot) in amber, the same colour the authored AI lines
-  // draw in; the rest of the network a violet clearly apart from the course guide's green
-  const refAiStartMat = new THREE.LineBasicMaterial({ color: 0xffc24a });
-  const refAiMat = new THREE.LineBasicMaterial({ color: 0x9a6bff });
-  let refAiVisible = false;
+  const aiPaths = createReferenceAiPathsLayer(stage);
   const refRailGroup = new THREE.Group(); // the level's grind splines (Splines.json)
   // The SAME surface palette an authored grind rail wears, at the same fat-line width (scene/rails.ts), because
   // it is the same thing: a curve the rail query can catch. Metal is red, wood yellow, and ice blue.
@@ -155,32 +150,6 @@ export function createReferenceCourseDecor(stage: Stage) {
     refCourseGroup.visible = on && refCourseGroup.children.length > 0;
   }
 
-  /** The loaded reference's AI-path network (its AIP.json `AIPaths`, served with the level) drawn over the
-   *  terrain: one line per path, `StartPosList` gate paths in amber over the violet network. Points arrive
-   *  in the level's native editor frame; refRoot supplies the chirality flip + placement offset, like the
-   *  course line. Cleared with `null` (a new / dropped reference). */
-  function setAiPaths(paths: RefAiPath[] | null) {
-    for (const c of refAiGroup.children) (c as THREE.Line).geometry.dispose();
-    refAiGroup.clear();
-    if (paths) {
-      for (const p of paths) {
-        refAiGroup.add(
-          new THREE.Line(
-            new THREE.BufferGeometry().setFromPoints(p.points.map(q => new THREE.Vector3(q[0], q[1], q[2]))),
-            p.start ? refAiStartMat : refAiMat,
-          ),
-        );
-      }
-    }
-    refAiGroup.visible = refAiVisible && refAiGroup.children.length > 0;
-  }
-
-  /** Shown on the Info "Show AI paths" toggle (independent of the course guide). */
-  function showAiPaths(on: boolean) {
-    refAiVisible = on;
-    refAiGroup.visible = on && refAiGroup.children.length > 0;
-  }
-
   /**
    * The loaded reference's GRIND splines — its `Splines.json` rows selected by the shared style/name candidacy
    * rule, including Alaska's named style-5 IceRails; the same filter the reference test ride grinds by and the
@@ -255,16 +224,13 @@ export function createReferenceCourseDecor(stage: Stage) {
 
   refCourseGroup.visible = false; // shown with the Info-mode course guide (showCourse)
   stage.refRoot.add(refCourseGroup); // the recovered course line rides the reference frame too
-  refAiGroup.visible = false; // shown on the Info "Show AI paths" toggle (showAiPaths)
-  stage.refRoot.add(refAiGroup); // the AI network rides the reference frame too
   refRailGroup.visible = false; // shown throughout Effects mode (showRailSplines)
   stage.refRoot.add(refRailGroup); // the grind network rides the reference frame too
 
   return {
     setCourse,
     showCourse,
-    setAiPaths,
-    showAiPaths,
+    ...aiPaths,
     setRailSplines,
     showRailSplines,
     selectRailSpline,

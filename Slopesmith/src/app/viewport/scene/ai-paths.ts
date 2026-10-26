@@ -3,17 +3,19 @@ import type { CoursePath, V3 } from '../../../core/doc/types';
 import { aiPathLines } from '../../../core/doc/course';
 import type { Stage } from '../stage';
 import { fadeMaterial } from '../shared/fade';
+import { occludedMaterial } from '../shared/overlays';
 
 /**
  * The authored mountain's AI opponent lines — the SAME six gate-anchored wandering paths the AIP.json
- * export ships (core/doc/course `aiPathLines`, derived from the course + the doc's seed), drawn amber like
- * the reference overlay's gate paths (every authored line IS a `StartPosList` gate path). Lives at scene
+ * export ships (core/doc/course `aiPathLines`, derived from the course + the doc's seed), drawn amber
+ * (every authored line IS a `StartPosList` gate path). Lives at scene
  * root with Z negated by hand, like the course guide it annotates, but rides its own Info toggle ("Show AI
  * paths") — six extra lines over the spine read as clutter while shaping the run.
  */
 export function createAiPathsLayer(stage: Stage) {
   const group = new THREE.Group();
-  const mat = new THREE.LineBasicMaterial({ color: 0xffc24a });
+  const mat = new THREE.LineBasicMaterial({ color: 0xffc24a, transparent: true, depthWrite: false });
+  const behindMat = occludedMaterial(mat);
   let visible = false;
   let built = false;
 
@@ -27,17 +29,17 @@ export function createAiPathsLayer(stage: Stage) {
     group.visible = visible && built;
     if (!course || !built) return;
     for (const line of aiPathLines(course, seed)) {
-      group.add(
-        new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(
-            line.map(p => {
-              const q = flip(p);
-              return new THREE.Vector3(q[0], q[1], q[2]);
-            }),
-          ),
-          mat,
-        ),
+      const geometry = new THREE.BufferGeometry().setFromPoints(
+        line.map(p => {
+          const q = flip(p);
+          return new THREE.Vector3(q[0], q[1], q[2]);
+        }),
       );
+      const bright = new THREE.Line(geometry, mat);
+      const behind = new THREE.Line(geometry, behindMat);
+      behind.raycast = () => {};
+      bright.add(behind);
+      group.add(bright);
     }
   }
 
@@ -50,6 +52,7 @@ export function createAiPathsLayer(stage: Stage) {
   /** Fade the lines back while a replacement course is being drawn (1 restores them). */
   function setFade(factor: number) {
     fadeMaterial(mat, factor);
+    fadeMaterial(behindMat, factor);
   }
 
   stage.scene.add(group);

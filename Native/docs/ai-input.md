@@ -6,10 +6,11 @@ position setter, separate integrator or alternate collision model. An immutable
 input sources. Build 0.66 connects this foundation to visible opponents,
 standings and desktop/wrist controls; see `ai-field.md` for the shared field.
 
-The implementation is independently authored from the sanitized clean body of
-Trailmap 395 and public Slopesmith ride documentation/behavioral tests. No other
-port's runtime implementation was consulted or incorporated. The existing
-contribution scope excluding retail characters, stats and named tricks remains.
+Behavior contracts come from the sanitized clean body of Trailmap 395 and public
+Slopesmith ride documentation/behavioral tests. The cruise-speed extension follows
+the clean Trailmap 250/395 event contract; existing OpenSlope controllers were
+inspected to integrate it. The contribution scope excluding retail characters,
+stats and named tricks remains.
 
 ## Implemented control behavior
 
@@ -36,11 +37,23 @@ contribution scope excluding retail characters, stats and named tricks remains.
 - Rival acquisition, hysteresis and a speed-gated clearance-disc aim change
   produce avoiding input without inventing persistent lanes. Physical body
   separation and the actual competitor roster belong to the shared field manager.
-- Raw path event 100 requests an ollie only with its start still ahead, within
-  1.531 m of the line and below 0.536 steering magnitude. The initial query looks
-  three metres ahead; holding uses the half-metre window. Payload target speed
+- Raw path event 100 now follows the corrected
+  [jump entry and hold contract](../../Trailmap/specs/395-ai-riders.md#the-jump-is-authored-not-emergent).
+  The earlier start-ahead interpretation was reversed: lookahead prepares the
+  approach, entry begins charging, and the query's partial-range flag controls
+  release near the end. The charged target remains cached across overlapping
+  events. Boundary checks and a continuous production-player ride verify that
+  it does not launch before entry or repeatedly tap. Payload target speed
   controls ordinary boost/brake buttons during the approach. Unmarked natural
   air creates no jump press. Named retail tricks are not synthesized.
+- Source-order cruise-speed events now supply ordinary posture/boost requests
+  in grounded cruise. `AiContext::aggression` defaults to the field's nominal
+  profile. Positive posture adapts throttle to this model's automatic drive;
+  braking and boost still run through `Player`, without a velocity clamp.
+  Jump approach and rival avoidance retain their own controls. The event query
+  and input rules are specified in [Trailmap 395](../../Trailmap/specs/395-ai-riders.md#the-behavior-machine).
+  Focused AI tests cover boundary crossing, overlapping targets, zero values,
+  jump priority, path handoff and the actual speed response on a marked slope.
 
 The current first-party rider profile uses nominal gain/commit and aggression.
 Its low-meter mood floor is 0.31. Skill variation, objective-target attacks,
