@@ -44,6 +44,11 @@ export function releaseSurfaceShape(doc: QuadMeshDoc, surface: SurfaceObject) {
   };
   const cuts = (a: 0 | 2) => [...new Set(surface.fitted!.flatMap(p => p.domain.slice(a, a + 2)))].sort((a, b) => a - b);
   const seed = evaluateCharts(cuts(0), cuts(2), evaluate);
-  const visible = materializeSurfaceShape(doc, surface, seed, surfaceFitTolerance(surface.patchSizeM) / 2);
+  const visible = materializeSurfaceShape(
+    doc,
+    surface,
+    seed,
+    surfaceFitTolerance(surface.patchSizeM, surface.fitToleranceM) / 2,
+  );
   return { doc: visible.doc, surface: { ...visible.surface, fitted: seed } };
 }

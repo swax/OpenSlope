@@ -289,7 +289,11 @@ export function rebuildSurfaceCorners(
       );
     }
     const target = preserve
-      ? preserveShape(guideCharts(doc, surface), seed, surfaceFitTolerance(surface.patchSizeM) / 2)
+      ? preserveShape(
+          guideCharts(doc, surface),
+          seed,
+          surfaceFitTolerance(surface.patchSizeM, surface.fitToleranceM) / 2,
+        )
       : seed;
     const keepBoundary = new Set(next.controls.flat()),
       owned = new Set(surface.controls.flat()),
@@ -314,7 +318,12 @@ export function rebuildSurfaceCorners(
       out = added.doc;
       next = added.surface;
     }
-    const visible = materializeSurfaceShape(out, next, target, surfaceFitTolerance(surface.patchSizeM) / 2);
+    const visible = materializeSurfaceShape(
+      out,
+      next,
+      target,
+      surfaceFitTolerance(surface.patchSizeM, surface.fitToleranceM) / 2,
+    );
     return rebuildSurface(visible.doc, visible.surface);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

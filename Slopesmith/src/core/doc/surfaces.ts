@@ -76,6 +76,8 @@ export function normalizeSurfaces(value: unknown): SurfaceObject[] | undefined {
       !['profiles', 'boundary', 'legacy'].includes(s.origin) ||
       !Number.isFinite(s.patchSizeM) ||
       s.patchSizeM < 0.5 ||
+      (s.fitToleranceM !== undefined &&
+        (!Number.isFinite(s.fitToleranceM) || s.fitToleranceM <= 0 || s.fitToleranceM > s.patchSizeM)) ||
       !Array.isArray(s.controls) ||
       s.controls.length > 1024 ||
       (s.guides

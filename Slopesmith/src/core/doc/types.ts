@@ -321,6 +321,8 @@ export interface SurfaceObject {
   knotsU: number[];
   knotsV: number[];
   patchSizeM: number;
+  /** Optional maximum positional fitting error in metres; omission uses 2% of patch size. */
+  fitToleranceM?: number;
   /** Original sketch curves are retained independently; the shared control net becomes authoritative. */
   inputs: string[];
   vertices: string[];
@@ -331,7 +333,7 @@ export interface SurfaceObject {
   fitted?: { domain: LoftDomain; controls: V3[] }[];
   /** Stable local identities for generated vertices, parallel with vertices. */
   outputKeys?: string[];
-  evaluated: { points: V3[][]; patchSizeM: number };
+  evaluated: { points: V3[][]; patchSizeM: number; fitToleranceM?: number };
   error?: string;
 }
 

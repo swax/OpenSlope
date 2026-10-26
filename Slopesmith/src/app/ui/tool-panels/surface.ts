@@ -131,7 +131,11 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
     } catch {
       // A broken source still needs its inspector and error banner so it can be repaired or baked.
     }
-    const values = { name: surface.name, patchSizeM: surface.patchSizeM };
+    const values = {
+      name: surface.name,
+      patchSizeM: surface.patchSizeM,
+      fitToleranceM: surfaceFitTolerance(surface.patchSizeM, surface.fitToleranceM),
+    };
     group
       .add(values, 'name')
       .name('name')
@@ -141,8 +145,19 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
         .add(values, 'patchSizeM', 1, 500, 1)
         .name('patch size (m)')
         .onFinishChange((patchSizeM: number) => edit.updateSurface(surface.id, { patchSizeM })),
-      `Terrain uses all sixteen patch controls to fit within ${(surfaceFitTolerance(surface.patchSizeM) * 100).toFixed(0)} cm (2% of patch size). Sharp creases retain boundaries.`,
+      'Target curved patch dimensions. The fitter uses all sixteen patch controls; sharp creases retain boundaries.',
     );
+    tip(
+      group
+        .add(values, 'fitToleranceM', 0.01, surface.patchSizeM, 0.01)
+        .name('fit error (m)')
+        .onFinishChange((fitToleranceM: number) => edit.updateSurface(surface.id, { fitToleranceM })),
+      'Maximum positional error when fitting the control curves to terrain patches. A larger allowance can produce fewer, larger patches. Automatic: 2% of patch size.',
+    );
+    if (surface.fitToleranceM !== undefined)
+      group
+        .add({ automatic: () => edit.updateSurface(surface.id, { fitToleranceM: null }) }, 'automatic')
+        .name('automatic fit error');
     tip(
       detail(group, measurements ? fmtArea(measurements.area) : '—', 'area'),
       'Approximate curved 3D area of the whole source surface, independent of terrain patch size.',
@@ -178,6 +193,18 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
       }
     }
     if (surface.guides) {
+      const sourcePoints = new Set(surface.controls.flat()),
+        sourceEdges = new Set(
+          surface.controls.flatMap(row => row.slice(1).map((id, i) => [row[i], id].sort().join('>'))),
+        );
+      tip(
+        detail(
+          group,
+          `${surface.controls.length} curves · ${sourcePoints.size} points · ${sourceEdges.size * 2} handles`,
+          'source controls',
+        ),
+        'Shape definition only. Shared crossing points count once; every source curve segment has two tangent handles. Generated terrain vertices are independent.',
+      );
       detail(
         group,
         `U ${guideRows(surface, 'U').length} · V ${guideRows(surface, 'V').length} · ${surface.patches.length} terrain patches`,
@@ -221,7 +248,7 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
       state.row = Math.max(0, Math.min(state.row, count - 1));
       const boundaryCurve = isSurfaceBoundaryGuide(surface, guideRows(surface, state.axis)[state.row]);
       const boundaryTip = 'Boundary curves define the outline. Reshape them using their points and tangents.';
-      const values = { direction: state.axis, curve: state.row + 1 };
+      const values = { direction: state.axis };
       rows
         .add(values, 'direction', ['U', 'V'])
         .name('direction')
@@ -241,13 +268,6 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
           ),
           'Length along this complete visible control curve, including its bends.',
         );
-        rows
-          .add(values, 'curve', 1, count, 1)
-          .name('curve')
-          .onFinishChange((row: number) => edit.selectSurfaceRow(surface.id, state.axis, Math.round(row) - 1));
-        rows
-          .add({ select: () => edit.selectSurfaceRow(surface.id, state.axis, state.row) }, 'select')
-          .name('select curve');
         if (boundaryCurve) detail(rows, 'Boundary curve · edit its points to reshape the outline');
         const moveCurve = tip(
           rows
@@ -288,15 +308,6 @@ export function buildSurfaceTools(ctx: ToolsContext): boolean {
         const points = editSection('surface-points-' + surface.id, 'Guide points');
         detail(points, 'visible curves and points define the entire surface');
         detail(points, 'ordinary gizmo drags reshape the surface');
-        points
-          .add({ point: state.point + 1 }, 'point', 1, path.length, 1)
-          .name('control point')
-          .onFinishChange((n: number) =>
-            edit.selectSurfaceControls(surface.id, state.axis, state.row, Math.round(n) - 1),
-          );
-        points
-          .add({ select: () => edit.selectSurfaceControls(surface.id, state.axis, state.row, state.point) }, 'select')
-          .name('select control point');
         points
           .add(
             { add: () => edit.beginSurfaceGuidePlacement(surface.id, state.axis, state.row, 'add-point', state.point) },

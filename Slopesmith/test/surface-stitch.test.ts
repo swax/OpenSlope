@@ -27,6 +27,7 @@ import { createSurfaceFromDrawnBoundary, stitchTouchingSurfaceBoundaries } from 
 import { chartPoint, guideCharts } from '../src/core/mesh/surface-guides';
 import { canonicalJson } from '../src/core/doc/canonical';
 import { findCoincidentVertices } from '../src/core/mesh/coincident-vertices';
+import { findEdgeCrossings } from '../src/core/mesh/edge-crossings';
 import { moveMeshVertices, setMeshControlPoints } from '../src/core/mesh/control-points';
 import { surfaceSideControls } from '../src/core/mesh/surface-stitch-controls';
 import { lockedVertexSet, lockedEdgeSet, setQuadsLocked } from '../src/core/mesh/locks';
@@ -69,8 +70,159 @@ const controls = (doc: QuadMeshDoc, id: string) => {
   return quadControlPoints(mesh, edgeHandle, i, doc.quadTwist?.[i]);
 };
 const near = (a: V3, b: V3, eps = 1e-6) => assert(Math.hypot(...a.map((v, i) => v - b[i])) < eps, `${a} != ${b}`);
+{
+  // BLACK_SUN's nine-point fill from corner 328 joins an ordinary trail to an already stitched surface.
+  // The shared corner can be picked through either cage; the transition rim becomes concave in UV.
+  const { mesh, boundary, junction } = JSON.parse(
+    readFileSync(new URL('./fixtures/surface-stitch-corner-fill.json', import.meta.url), 'utf8'),
+  ) as { mesh: Partial<QuadMeshDoc>; boundary: string[]; junction: string };
+  const seed = { ...blankMountain('CORNER_FILL'), ...mesh },
+    rebuilt = rebuildSurface(seed, seed.surfaces![0]);
+  assert(rebuilt.ok, rebuilt.ok ? '' : rebuilt.error);
+  const doc = rebuilt.doc,
+    before = structuredClone(doc),
+    host = meshFromDoc(doc);
+  for (const sharedCorner of [boundary[4], junction])
+    for (const reverse of [false, true])
+      for (const patchSizeM of [15, 25, 40]) {
+        const names = boundary.map((id, i) => (i === 4 ? sharedCorner : id)),
+          order = reverse ? [names[0], ...names.slice(1).reverse()] : names,
+          points = order.map(id => {
+            const vertex = doc.vertexIds.indexOf(id);
+            return { vertex, pos: doc.vertices.slice(vertex * 3, vertex * 3 + 3) as V3 };
+          }),
+          made = createSurfaceFromDrawnBoundary(doc, points, patchSizeM, undefined, 'smooth');
+        assert(made.ok, made.ok ? '' : `${sharedCorner}, reverse=${reverse}, size=${patchSizeM}: ${made.error}`);
+        assert.deepEqual(doc, before, 'creating a preview cannot edit its host');
+        assert.equal(made.surface.stitches?.length, 2, 'both complete host boundaries attach through either cage');
+        const meshSeam = made.surface.stitches!.find(st => 'vertices' in st.target)!;
+        assert('vertices' in meshSeam.target);
+        assert.equal(meshSeam.target.vertices.length, 4, 'the coincident cage corner retains the final trail edge');
+        assert(checkManifold(made.doc.quads).ok);
+        const output = meshFromDoc(made.doc),
+          generated = new Set(doc.surfaces!.flatMap(s => s.patches.map(p => p.quad)));
+        for (let i = 0; i < doc.quads.length; i++) {
+          if (generated.has(doc.quadIds[i])) continue;
+          const at = made.doc.quadIds.indexOf(doc.quadIds[i]),
+            original = quadControlPoints(host.mesh, host.edgeHandle, i, doc.quadTwist?.[i]),
+            current = quadControlPoints(output.mesh, output.edgeHandle, at, made.doc.quadTwist?.[at]);
+          original.forEach((p, j) => near(p, current[j]));
+        }
+        const reopened = refreshSurfaces(migrateMountain(serializeMountain(made.doc)));
+        assert(!reopened.surfaces!.some(s => s.error));
+        assert.deepEqual(reopened.surfaces, made.doc.surfaces);
+        assert(checkManifold(reopened.quads).ok);
+      }
+  console.log(
+    '✓ nine-point corner fill keeps both exact seams through coincident cage picks and either drawing direction',
+  );
+}
 function hostChain(doc: QuadMeshDoc, count: number) {
   return Array.from({ length: count + 1 }, (_, i) => doc.vertexIds[count + 1 + i]);
+}
+{
+  const draw = (doc: QuadMeshDoc, positions: V3[]) => {
+    const result = createSurfaceFromDrawnBoundary(
+      doc,
+      positions.map(pos => ({ pos, vertex: null })),
+      25,
+    );
+    assert(result.ok, result.ok ? '' : result.error);
+    return result;
+  };
+  const a = draw(blankMountain('SHARED_CAGE_CORNER'), [
+      [0, 0, 0],
+      [80, 0, 0],
+      [80, 0, 80],
+      [0, 0, 80],
+    ]),
+    b = draw(a.doc, [
+      [0, 0, 80],
+      [80, 0, 80],
+      [80, 0, 160],
+      [0, 0, 160],
+    ]),
+    before = structuredClone(b.doc),
+    c = draw(b.doc, [
+      [80, 0, 0],
+      [160, 0, 0],
+      [160, 0, 160],
+      [80, 0, 160],
+      [80, 0, 80],
+    ]);
+  assert.deepEqual(b.doc, before);
+  assert.deepEqual(
+    new Set(c.surface.stitches?.map(st => ('surface' in st.target ? st.target.surface : 'mesh'))),
+    new Set([a.surface.id, b.surface.id]),
+    'a shared corner picked through the first cage also resolves on the second surface boundary',
+  );
+  assert(checkManifold(c.doc.quads).ok);
+  assert.equal(findCoincidentVertices(c.doc).length, 0);
+  assert.equal(findEdgeCrossings(c.doc).length, 0);
+  const detached = detachSurfaceStitches(c.doc, c.surface.id),
+    repaired = stitchTouchingSurfaceBoundaries(detached, c.surface.id),
+    reopened = refreshSurfaces(migrateMountain(serializeMountain(repaired)));
+  assert.equal(repaired.surfaces!.find(s => s.id === c.surface.id)!.stitches!.length, 2);
+  assert(!reopened.surfaces!.some(s => s.error));
+  assert.deepEqual(reopened.surfaces, repaired.surfaces);
+
+  const skew = draw(blankMountain('SHEARED_SEAM'), [
+      [0, 0, 0],
+      [80, 0, 0],
+      [180, 0, 80],
+      [100, 0, 80],
+    ]),
+    neighbor = draw(skew.doc, [
+      [0, 0, 0],
+      [80, 0, 0],
+      [180, 0, -80],
+      [100, 0, -80],
+    ]),
+    copy = draw(skew.doc, [
+      [0, 0, 0],
+      [80, 0, 0],
+      [180, 0, 80],
+      [100, 0, 80],
+    ]);
+  assert.equal(neighbor.surface.stitches?.length, 1, 'tangential shear cannot make opposite sides look overlapping');
+  assert.equal(copy.surface.stitches?.length ?? 0, 0, 'drawing over the same terrain still remains a copied fill');
+  assert(checkManifold(neighbor.doc.quads).ok);
+  console.log(
+    '✓ shared-cage corners and sheared adjoining sides auto-stitch, explicit repair persists, and copied fills stay separate',
+  );
+}
+{
+  const made = surface(plain(2), 40, 100, 0),
+    joined = addSurfaceStitch(
+      made.doc,
+      made.surface.id,
+      { side: 'v0', range: [0, 1] },
+      { vertices: hostChain(made.doc, 2) },
+    ),
+    row = joined.surfaces![0].controls[0].map(id => joined.vertexIds.indexOf(id)),
+    doc = { ...joined, edgeHandles: { ...joined.edgeHandles } };
+  // The editable guide bows a little into its attached trail and crosses a transverse host edge.
+  // The evaluated seam is already connected; this construction curve is not another terrain sheet.
+  doc.edgeHandles[`${row[0]}>${row[1]}`] = [-0.4, 0, 80 / 3];
+  doc.edgeHandles[`${row[1]}>${row[0]}`] = [-0.4, 0, -80 / 3];
+  const crossGuide = (x: ReturnType<typeof findEdgeCrossings>[number]) =>
+    x.edges.some(e => e.includes(row[0]) && e.includes(row[1])) && x.edges.some(e => e.includes(1) && e.includes(4));
+  assert(findEdgeCrossings({ ...doc, surfaces: doc.surfaces!.map(s => ({ ...s, stitches: [] })) }).some(crossGuide));
+  assert(!findEdgeCrossings(doc).some(crossGuide), 'attached construction guides do not show false red X markers');
+  const start = doc.vertexIds.length,
+    unrelated = {
+      ...doc,
+      ...appendMeshIds(doc, 2, 0),
+      vertices: [...doc.vertices, 20, 0, 20, 20, 0, 60],
+      freeEdges: [...(doc.freeEdges ?? []), [start, start + 1] as [number, number]],
+    };
+  assert(
+    findEdgeCrossings(unrelated).some(x => x.edges.some(e => e.includes(start) && e.includes(start + 1))),
+    'real crossings by unrelated geometry remain visible',
+  );
+  console.log(
+    '✓ diagnostics ignore construction guides against their stitched host patches while retaining unrelated crossings',
+  );
 }
 function seamFaces(doc: QuadMeshDoc, chain: string[]) {
   return chain.slice(1).map((id, i) => {
@@ -105,6 +257,45 @@ function seamAngle(doc: QuadMeshDoc, chain: string[]) {
         return Math.acos(Math.min(1, Math.abs(n.reduce((s, x, j) => s + x * m[j], 0))));
       }),
     ),
+  );
+}
+
+{
+  const host = surface(blankMountain('PARTIAL_RELOAD'), 0, 40, 0, 23, 0, 120),
+    child = surface(host.doc, 40, 100, 25, 11, 24, 96),
+    before = structuredClone(child.doc);
+  let doc = addSurfaceStitch(
+    child.doc,
+    child.surface.id,
+    { side: 'v0', range: [0, 1] },
+    { surface: host.surface.id, side: 'v1', range: [0.2, 0.8] },
+  );
+  assert.deepEqual(child.doc, before, 'a valid smooth join must not mutate its input patch controls');
+  assert(doc.surfaces![0].fitted, 'an incoming-only host retains its original fit');
+  const layout = doc.surfaces!.map(s => s.patches.map(p => ({ domain: p.domain, uv: p.uv, base: p.base }))),
+    fit = doc.surfaces!.map(s => s.fitted),
+    counts = doc.surfaces!.map(s => s.patches.length);
+  for (let reload = 0; reload < 4; reload++) {
+    doc = evaluateSurfaceStitches(migrateMountain(serializeMountain(doc)));
+    assert(!doc.surfaces!.some(s => s.error));
+    assert.deepEqual(
+      doc.surfaces!.map(s => s.patches.length),
+      counts,
+      'reload cannot add another transition band',
+    );
+    assert.deepEqual(
+      doc.surfaces!.map(s => s.fitted),
+      fit,
+      'transition handles never feed back into the saved fit',
+    );
+    assert.deepEqual(
+      doc.surfaces!.map(s => s.patches.map(p => ({ domain: p.domain, uv: p.uv, base: p.base }))),
+      layout,
+      'partial unequal-count joins keep their geometry through repeated reloads',
+    );
+  }
+  console.log(
+    '✓ partial unequal-count joins are pure and keep host fits, geometry and patch counts on repeated reloads',
   );
 }
 
@@ -409,6 +600,37 @@ for (const count of [2, 3, 4, 5, 6]) {
   seamFaces(doc, hostChain(made.doc, count));
 }
 console.log('✓ strip transitions handle either count direction, equal counts and odd-count free rim splits');
+for (const count of [5, 8])
+  for (const width of [5, 20])
+    for (const curved of [false, true]) {
+      const host = plain(count);
+      for (let i = 0; i < host.vertices.length; i += 3) {
+        const z = 80 * (host.vertices[i + 2] / 80) ** 2;
+        host.vertices[i + 2] = z;
+        if (curved) host.vertices[i + 1] = 4 * Math.sin((Math.PI * z) / 80);
+      }
+      const made = surface(host, 40, 40 + width, 0, 30),
+        before = structuredClone(made.doc),
+        chain = hostChain(made.doc, count),
+        joined = addSurfaceStitch(made.doc, made.surface.id, { side: 'v0', range: [0, 1] }, { vertices: chain });
+      assert.deepEqual(made.doc, before, 'smoothing retries never change the input document');
+      assert(checkManifold(joined.quads).ok);
+      assert(seamAngle(joined, chain) < 1e-5, 'reducing shear keeps the complete smooth tangent plane');
+      for (const id of host.quadIds) controls(made.doc, id).forEach((p, i) => near(p, controls(joined, id)[i]));
+      for (const patch of joined.surfaces![0].patches) {
+        const cp = controls(joined, patch.quad);
+        for (let u = 1; u < 20; u++)
+          for (let v = 1; v < 20; v++)
+            assert(
+              patchNormal(cp, u / 20, v / 20)[1] > 0,
+              `uneven seam spacing cannot invert the fitted terrain: ${count}/${width}/${curved}/${patch.key}/${u}/${v}`,
+            );
+      }
+      const reopened = refreshSurfaces(migrateMountain(serializeMountain(joined)));
+      assert(!reopened.surfaces!.some(s => s.error));
+      assert.deepEqual(reopened.surfaces, joined.surfaces, 'automatic shear reduction survives save/reload');
+    }
+console.log('✓ narrow smooth joins adapt to uneven straight/curved host spacing without folds or host changes');
 {
   const made = surface(plain(), 44, 120),
     doc = addSurfaceStitch(
@@ -636,6 +858,10 @@ console.log('✓ strip transitions handle either count direction, equal counts a
   assert(removed.ok, removed.ok ? '' : removed.error);
   assert.equal(removed.doc.surfaces!.length, 1);
   assert(!removed.doc.surfaces![0].stitches?.length);
+  assert(
+    a.surface.inputs.every(id => !removed.doc.vertexIds.includes(id)),
+    'deleting a stitched surface removes its unused source sketches',
+  );
   console.log('✓ baking either side converts the live seam to plain geometry; deletion releases dependents');
 }
 {

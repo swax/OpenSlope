@@ -225,6 +225,15 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
     'shared sketches survive bake',
   );
   assert.equal(refreshSurfaces(baked), baked);
+  const deleted = deleteSurfaceObject(second.doc, surface.id);
+  assert(deleted.ok, deleted.ok ? '' : deleted.error);
+  assert.equal(deleted.doc.surfaces!.length, 1);
+  assert.deepEqual(terrainState(deleted.doc, second.surface), terrainState(second.doc, second.surface));
+  assert(
+    surface.inputs.every(id => deleted.doc.vertexIds.includes(id)),
+    'shared sketches survive deletion',
+  );
+  assert.equal(refreshSurfaces(deleted.doc), deleted.doc);
   const attached = create(),
     extra = attached.doc.vertexIds.length;
   Object.assign(attached.doc, appendMeshIds(attached.doc, 1, 0));
@@ -236,6 +245,20 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
     'externally attached guide components survive bake',
   );
   assert(kept.vertexIds.includes(attached.doc.vertexIds[extra]));
+
+  const connected = create(),
+    outside = connected.doc.vertexIds.length;
+  Object.assign(connected.doc, appendMeshIds(connected.doc, 1, 0));
+  connected.doc.vertices.push(-10, 0, -10);
+  connected.doc.freeEdges!.push([0, outside]);
+  const removed = deleteSurfaceObject(connected.doc, connected.surface.id);
+  assert(removed.ok, removed.ok ? '' : removed.error);
+  assert.deepEqual(
+    new Set(removed.doc.vertexIds),
+    new Set([...connected.surface.inputs.slice(0, 3), connected.doc.vertexIds[outside]]),
+    'only the sketch component used by an external edge survives deletion',
+  );
+  assert.equal(removed.doc.freeEdges!.length, 3);
 }
 {
   const { doc, surface } = create(),
@@ -456,7 +479,9 @@ const terrainState = (doc: QuadMeshDoc, surface: SurfaceObject) => {
   assert(deleted.ok);
   assert(!deleted.doc.surfaces);
   assert.equal(deleted.doc.quads.length, 0);
-  assert.equal(deleted.doc.vertexIds.length, 9, 'deleting a surface retains its original sketches');
+  assert.equal(deleted.doc.vertexIds.length, 0, 'deleting a surface removes unused original sketches');
+  assert.equal(deleted.doc.freeEdges?.length ?? 0, 0);
+  assert.equal(Object.keys(deleted.doc.edgeHandles ?? {}).length, 0, 'removed sketches leave no stale handles');
 }
 {
   const result = create(),

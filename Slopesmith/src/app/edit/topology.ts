@@ -54,6 +54,7 @@ import {
   createSurfaceFromDrawnBoundary,
   stitchTouchingSurfaceBoundaries,
   type SurfaceBoundaryStyle,
+  type SurfaceBoundaryPoint,
 } from '../../core/mesh/surface-boundary';
 import { cellMetrics } from '../../core/mesh/measure';
 import { rebuildSurfaceCorners, surfaceCornerBoundary } from '../../core/mesh/surface-corner-edit';
@@ -608,12 +609,17 @@ export function createTopologyTools(deps: TopologyToolDeps) {
       toast('Row removed · maximum deviation ' + result.deviationM.toFixed(3) + ' m', 'ok');
   }
 
-  function updateSurface(id: string, values: { name?: string; patchSizeM?: number }) {
+  function updateSurface(id: string, values: { name?: string; patchSizeM?: number; fitToleranceM?: number | null }) {
     const surface = mdoc().surfaces?.find(s => s.id === id);
     if (surface) {
-      const next = { ...surface, ...values };
+      const { fitToleranceM, ...otherValues } = values,
+        next = { ...surface, ...otherValues };
+      if (Object.hasOwn(values, 'fitToleranceM')) {
+        if (fitToleranceM == null) delete next.fitToleranceM;
+        else next.fitToleranceM = fitToleranceM;
+      }
       finishSurface(
-        values.patchSizeM === undefined
+        values.patchSizeM === undefined && !Object.hasOwn(values, 'fitToleranceM')
           ? {
               ok: true,
               doc: { ...mdoc(), surfaces: mdoc().surfaces!.map(s => (s.id === id ? next : s)) },
@@ -811,7 +817,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     scheduleRebuild();
     rebuildTools();
     updateCmdSheet();
-    toast('Surface deleted · original sketch curves retained.', 'ok');
+    toast('Surface deleted · unused boundary and sketch curves removed.', 'ok');
   }
 
   function createPatchesFromEdges() {
@@ -1016,16 +1022,29 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   let cornerEditId: string | null = null;
   let cornerEditNames: string[] = [];
   let cornerCandidate: { input: QuadMeshDoc; key: string; result: SurfaceResult } | null = null;
+  let surfaceCandidate: { input: QuadMeshDoc; key: string; result: SurfaceResult } | null = null;
+  let surfaceValidationTimer: ReturnType<typeof setTimeout> | null = null;
   let surfaceDraftError: string | null = null;
   let surfaceDraftArea: number | null = null,
     surfaceDraftEdgeLength: number | null = null;
   let surfacePanelKey = '';
+
+  function cancelSurfaceValidation() {
+    if (surfaceValidationTimer !== null) clearTimeout(surfaceValidationTimer);
+    surfaceValidationTimer = null;
+  }
+  const surfacePreviewKey = (points: readonly SurfaceBoundaryPoint[], corners?: readonly number[]) =>
+    JSON.stringify([points, corners, surfaceSettings.patchSizeM, surfaceSettings.boundaryStyle]);
+  const surfaceOutline = (points: readonly SurfaceBoundaryPoint[]) =>
+    points.length ? [...points.map(p => p.pos), points[0].pos] : [];
 
   function armCreateSurface() {
     if (store.modelEditId) return;
     deps.commitHistory?.();
     cornerEditId = null;
     cornerCandidate = null;
+    cancelSurfaceValidation();
+    surfaceCandidate = null;
     clearCreateEdge();
     clearCellSelection();
     clearEdgeSelection();
@@ -1050,6 +1069,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
   }
   function previewCreateSurface() {
     if (store.surgeryTool !== 'surface') return;
+    cancelSurfaceValidation();
     const points = view().createSurfacePoints ?? [],
       hover = view().createSurfaceHover,
       closed = view().createSurfaceClosed,
@@ -1075,6 +1095,7 @@ export function createTopologyTools(deps: TopologyToolDeps) {
         key = JSON.stringify([stops, surfaceSettings.preserveShape, input.vertices, input.edgeHandles, input.surfaces]);
       if (!surface) {
         surfaceDraftError = 'The surface was removed. Cancel this preview.';
+        view().setCreateSurfaceCharts?.(null, surfaceOutline(boundary), true);
         return;
       }
       if (cornerCandidate?.input !== input || cornerCandidate.key !== key) {
@@ -1095,8 +1116,14 @@ export function createTopologyTools(deps: TopologyToolDeps) {
         view().showSurfaceCornerPreview?.(result.ok ? result.doc : input);
       }
       const result = cornerCandidate.result;
-      if (!result.ok) surfaceDraftError = result.error;
-      else surfaceDraftArea = result.surface.patches.reduce((area, p) => area + cellMetrics(p.base).area, 0);
+      if (!result.ok) {
+        surfaceDraftError = result.error;
+        view().setCreateSurfaceCharts?.(
+          surface.patches.map(p => ({ domain: p.domain, controls: p.base })),
+          surfaceOutline(boundary),
+          true,
+        );
+      } else surfaceDraftArea = result.surface.patches.reduce((area, p) => area + cellMetrics(p.base).area, 0);
       return;
     }
     if (boundary.length < 4) {
@@ -1110,7 +1137,28 @@ export function createTopologyTools(deps: TopologyToolDeps) {
         boundary: sketch,
       } = surfaceBoundaryDraft(mdoc(), boundary, view().createSurfaceCorners, surfaceSettings.boundaryStyle);
       surfaceDraftArea = charts.reduce((area, chart) => area + cellMetrics(chart.controls).area, 0);
-      view().setCreateSurfaceCharts?.(charts, outline);
+      const input = mdoc(),
+        corners = view().createSurfaceManualCorners ? view().createSurfaceCorners : undefined,
+        key = surfacePreviewKey(boundary, corners);
+      if (surfaceCandidate?.input === input && surfaceCandidate.key === key) {
+        if (!surfaceCandidate.result.ok) surfaceDraftError = surfaceCandidate.result.error;
+        view().setCreateSurfaceCharts?.(charts, outline, !surfaceCandidate.result.ok);
+      } else {
+        view().setCreateSurfaceCharts?.(charts, outline);
+        // Keep pointer movement cheap. Fit and assemble stitching once the boundary pauses; the
+        // result is pure, cached for Enter, and never installed in the authored document by previewing.
+        const candidate = boundary.map(p => ({ ...p, pos: [...p.pos] as V3 })),
+          stops = corners ? [...corners] : undefined,
+          { patchSizeM, boundaryStyle } = surfaceSettings;
+        surfaceValidationTimer = setTimeout(() => {
+          surfaceValidationTimer = null;
+          if (store.surgeryTool !== 'surface' || cornerEditId || mdoc() !== input) return;
+          const result = createSurfaceFromDrawnBoundary(input, candidate, patchSizeM, stops, boundaryStyle);
+          surfaceCandidate = { input, key, result };
+          surfaceDraftError = result.ok ? null : result.error;
+          view().setCreateSurfaceCharts?.(charts, outline, !result.ok);
+        }, 120);
+      }
       if (edge) {
         const a = boundary.indexOf(edge[0]),
           b = boundary.indexOf(edge[1]);
@@ -1122,12 +1170,14 @@ export function createTopologyTools(deps: TopologyToolDeps) {
           );
       }
     } catch (error) {
+      cancelSurfaceValidation();
       surfaceDraftError = error instanceof Error ? error.message : String(error);
-      view().setCreateSurfaceCharts?.(null);
+      view().setCreateSurfaceCharts?.(null, surfaceOutline(boundary), true);
     }
   }
   function finishCreateSurface() {
     if (store.surgeryTool !== 'surface') return;
+    cancelSurfaceValidation();
     if (view().createSurfacePickingCorners) {
       toast('Pick all four corners, or cancel corner picking before continuing.', 'info');
       return;
@@ -1149,20 +1199,35 @@ export function createTopologyTools(deps: TopologyToolDeps) {
       toast('Surface corners updated · stitching retained', 'ok');
       return;
     }
-    const result = createSurfaceFromDrawnBoundary(
-      mdoc(),
-      view().createSurfacePoints ?? [],
-      surfaceSettings.patchSizeM,
-      view().createSurfaceManualCorners ? view().createSurfaceCorners : undefined,
-      surfaceSettings.boundaryStyle,
-    );
+    const input = mdoc(),
+      points = view().createSurfacePoints ?? [],
+      corners = view().createSurfaceManualCorners ? view().createSurfaceCorners : undefined,
+      key = surfacePreviewKey(points, corners),
+      result =
+        surfaceCandidate?.input === input && surfaceCandidate.key === key
+          ? surfaceCandidate.result
+          : createSurfaceFromDrawnBoundary(
+              input,
+              points,
+              surfaceSettings.patchSizeM,
+              corners,
+              surfaceSettings.boundaryStyle,
+            );
+    surfaceCandidate = { input, key, result };
     if (!result.ok) {
       surfaceDraftError = result.error;
+      try {
+        const draft = surfaceBoundaryDraft(input, points, corners, surfaceSettings.boundaryStyle);
+        view().setCreateSurfaceCharts?.(draft.charts, draft.outline, true);
+      } catch {
+        view().setCreateSurfaceCharts?.(null, surfaceOutline(points), true);
+      }
       toast(result.error, 'err');
       rebuildTools();
       return;
     }
     store.surgeryTool = null;
+    surfaceCandidate = null;
     view().setSurgeryTool(null);
     surfaceDraftError = null;
     finishSurface(result);
@@ -1174,6 +1239,8 @@ export function createTopologyTools(deps: TopologyToolDeps) {
     const id = cornerEditId;
     cornerEditId = null;
     cornerCandidate = null;
+    cancelSurfaceValidation();
+    surfaceCandidate = null;
     store.surgeryTool = null;
     surfaceDraftError = null;
     view().setSurgeryTool(null);

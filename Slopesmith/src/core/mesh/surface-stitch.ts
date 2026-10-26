@@ -162,7 +162,8 @@ function natural(surface: SurfaceObject, input: Patch[]): Quilt {
       q.uv.set(key, [u, v]);
       return key;
     });
-    q.cells.push({ key: `g:${us.indexOf(u0)}:${vs.indexOf(v0)}`, nodes, uv, cp: p.controls, domain: p.domain });
+    // Seam handle propagation edits cells in place; the saved pre-stitch fit must remain immutable.
+    q.cells.push({ key: `g:${us.indexOf(u0)}:${vs.indexOf(v0)}`, nodes, uv, cp: [...p.controls], domain: p.domain });
   }
   return q;
 }
@@ -373,7 +374,7 @@ function transitionStrip(q: Quilt, polygon: string[], front: string[], side: Sur
 }
 
 /** General fallback for irregular rims that cannot use the structured strip templates. */
-function quadrangulate(q: Quilt, polygon: string[], prefix: string): string[][] {
+function quadrangulate(q: Quilt, polygon: string[], prefix: string, accept: (cells: string[][]) => boolean): void {
   const ears = (loop: string[]): string[][] | undefined => {
     const cells: string[][] = [];
     loop = [...loop];
@@ -397,30 +398,61 @@ function quadrangulate(q: Quilt, polygon: string[], prefix: string): string[][] 
     return [...cells, loop];
   };
   const simple = ears(polygon);
-  if (simple) return simple;
+  if (simple && accept(simple)) return;
   const ps = polygon.map(n => q.uv.get(n)!);
   const min: UV = [Math.min(...ps.map(p => p[0])), Math.min(...ps.map(p => p[1]))];
   const max: UV = [Math.max(...ps.map(p => p[0])), Math.max(...ps.map(p => p[1]))];
-  const center: UV = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2];
-  const inner = polygon.map((n, i) => {
-    const p = q.uv.get(n)!,
-      angle = Math.atan2((p[1] - center[1]) / (max[1] - min[1]), (p[0] - center[0]) / (max[0] - min[0]));
-    const uv: UV = [
-      center[0] + 0.3 * (max[0] - min[0]) * Math.cos(angle),
-      center[1] + 0.3 * (max[1] - min[1]) * Math.sin(angle),
-    ];
-    const key = `${q.surface.id}/${prefix}/inner:${i}`;
-    q.uv.set(key, uv);
-    q.points.set(key, chartPoint(q.charts, ...uv));
-    return key;
-  });
-  const ring = polygon.map((n, i) => [n, polygon[(i + 1) % polygon.length], inner[(i + 1) % inner.length], inner[i]]);
-  const inside = ears(inner);
-  if (!inside || ring.some(ns => !Number.isFinite(convexQuality(ns, q.uv, q.points))))
-    throw new Error(
-      'This seam needs more room for non-inverted transition quads. Increase the surface width or choose a shorter boundary.',
-    );
-  return [...ring, ...inside];
+  const centers: UV[] = [[(min[0] + max[0]) / 2, (min[1] + max[1]) / 2]];
+  // Adjacent stitches can leave a concave rim. Its bounding-box center need not see the whole
+  // perimeter, so projecting every vertex onto a circle there can cross the inner ring. The
+  // intersection of the inward edge half-planes supplies a center that sees every rim edge.
+  let kernel: UV[] = [min, [max[0], min[1]], max, [min[0], max[1]]];
+  const sign = Math.sign(area(ps));
+  for (let i = 0; i < ps.length && kernel.length; i++) {
+    const a = ps[i],
+      b = ps[(i + 1) % ps.length],
+      inward = (p: UV) => sign * ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]));
+    kernel = kernel.flatMap((p, j) => {
+      const next = kernel[(j + 1) % kernel.length],
+        d = inward(p),
+        e = inward(next),
+        kept = d >= 0 ? [p] : [];
+      if ((d > 0 && e < 0) || (d < 0 && e > 0)) kept.push(p.map((v, k) => v + ((next[k] - v) * d) / (d - e)) as UV);
+      return kept;
+    });
+  }
+  if (kernel.length >= 3) centers.push([0, 1].map(k => kernel.reduce((sum, p) => sum + p[k], 0) / kernel.length) as UV);
+  for (const center of centers)
+    for (const radius of [0.3, 0.2, 0.1, 0.05]) {
+      const innerUV = polygon.map(n => {
+        const p = q.uv.get(n)!,
+          angle = Math.atan2((p[1] - center[1]) / (max[1] - min[1]), (p[0] - center[0]) / (max[0] - min[0]));
+        const uv: UV = [
+          center[0] + radius * (max[0] - min[0]) * Math.cos(angle),
+          center[1] + radius * (max[1] - min[1]) * Math.sin(angle),
+        ];
+        return uv;
+      });
+      if (innerUV.some(p => p.some((v, k) => v < min[k] || v > max[k]))) continue;
+      const inner = innerUV.map((uv, i) => {
+        const key = `${q.surface.id}/${prefix}/inner:${i}`;
+        q.uv.set(key, uv);
+        q.points.set(key, chartPoint(q.charts, ...uv));
+        return key;
+      });
+      const ring = polygon.map((n, i) => [
+        n,
+        polygon[(i + 1) % polygon.length],
+        inner[(i + 1) % inner.length],
+        inner[i],
+      ]);
+      if (ring.some(ns => !Number.isFinite(convexQuality(ns, q.uv, q.points)))) continue;
+      const inside = ears(inner);
+      if (inside && accept([...ring, ...inside])) return;
+    }
+  throw new Error(
+    'This seam cannot form a non-folding transition. Use Pick corners to keep each attached trail on one surface side, or split the fill into smaller surfaces.',
+  );
 }
 
 const interpolate = (p: V3[]) => [
@@ -460,6 +492,33 @@ function cellFromUV(q: Quilt, perimeter: string[], key: string): Cell {
       Math.max(...uv.map(p => p[1])),
     ],
   };
+}
+
+function folds(q: Quilt, cell: Cell): boolean {
+  for (const u of [0.15, 0.5, 0.85])
+    for (const v of [0.15, 0.5, 0.85]) {
+      const uv = [0, 1].map(
+        k =>
+          cell.uv[0][k] * (1 - u) * (1 - v) +
+          cell.uv[1][k] * (1 - u) * v +
+          cell.uv[2][k] * u * (1 - v) +
+          cell.uv[3][k] * u * v,
+      );
+      const p = q.charts.find(
+        p =>
+          uv[0] >= p.domain[0] - EPS &&
+          uv[0] <= p.domain[1] + EPS &&
+          uv[1] >= p.domain[2] - EPS &&
+          uv[1] <= p.domain[3] + EPS,
+      )!;
+      const reference = patchNormal(
+        p.controls,
+        (uv[0] - p.domain[0]) / (p.domain[1] - p.domain[0]),
+        (uv[1] - p.domain[2]) / (p.domain[3] - p.domain[2]),
+      );
+      if (dot(reference, patchNormal(cell.cp, u, v)) <= 0) return true;
+    }
+  return false;
 }
 
 function stitchSide(
@@ -587,85 +646,107 @@ function stitchSide(
       );
   }
   const prefix = `stitch:${side}`;
-  let perimeters: string[][];
+  let direct: string[][] | undefined;
   if (replacement.length === original.length && removed.size === original.length - 1)
-    perimeters = [...removed].map(c =>
+    direct = [...removed].map(c =>
       PERIM.map(i => {
         const at = original.indexOf(c.nodes[i]);
         return at < 0 ? c.nodes[i] : replacement[at];
       }),
     );
-  else perimeters = transitionStrip(q, polygon, replacement, side, prefix) ?? quadrangulate(q, polygon, prefix);
-  const newCells = perimeters.map((ns, i) => cellFromUV(q, ns, `${prefix}:${i}`));
+  else direct = transitionStrip(q, polygon, replacement, side, prefix);
+  const buildCells = (perimeters: string[][]) => {
+    const newCells = perimeters.map((ns, i) => cellFromUV(q, ns, `${prefix}:${i}`));
 
-  // One curve per generated edge, including exact inherited outer and host boundary cubics.
-  const shared = new Map<string, Curve>(pinMap);
-  const smoothHandles = new Map<string, V3>();
-  for (const c of newCells)
-    for (let e = 0; e < 4; e++) {
-      const a = c.nodes[PERIM[e]],
-        b = c.nodes[PERIM[(e + 1) % 4]],
-        k = edgeKey(a, b);
-      let held = shared.get(k);
-      if (!held) {
-        held = curve(c, a, b)!;
-        shared.set(k, held);
+    // One curve per generated edge, including exact inherited outer and host boundary cubics.
+    const shared = new Map<string, Curve>(pinMap);
+    for (const c of newCells)
+      for (let e = 0; e < 4; e++) {
+        const a = c.nodes[PERIM[e]],
+          b = c.nodes[PERIM[(e + 1) % 4]],
+          k = edgeKey(a, b);
+        let held = shared.get(k);
+        if (!held) {
+          held = curve(c, a, b)!;
+          shared.set(k, held);
+        }
+        const cps = held.nodes[0] === a ? held.cp : [...held.cp].reverse();
+        CP[e].forEach((at, i) => {
+          c.cp[at] = cps[i];
+        });
       }
-      const cps = held.nodes[0] === a ? held.cp : [...held.cp].reverse();
-      CP[e].forEach((at, i) => {
-        c.cp[at] = cps[i];
+    const unsmoothed = newCells.map(c => [...c.cp]);
+    // Uneven boundary spacing can make tangential shear overshoot inside an otherwise valid quad.
+    // Reduce that shear before rejecting the edit; every attempt retains the same host tangent plane.
+    for (const shearScale of smooth.size ? [1, 0.5, 0.25, 0] : [1]) {
+      newCells.forEach((c, i) => {
+        c.cp = [...unsmoothed[i]];
       });
+      const smoothHandles = new Map<string, V3>();
+      for (const c of newCells)
+        for (let e = 0; e < 4; e++) {
+          const a = c.nodes[PERIM[e]],
+            b = c.nodes[PERIM[(e + 1) % 4]],
+            host = smooth.get(edgeKey(a, b));
+          if (!host) continue;
+          const reversed = host.nodes[0] !== a,
+            offsets = reversed ? [...host.inward].reverse() : host.inward;
+          const edge = CP[e].map(i => c.cp[i]);
+          const tangents = edge.slice(1).map((p, i) => mul(sub(p, edge[i]), 3));
+          const resolve = (i: 0 | 3) => {
+            const h = mul(offsets[i], -1),
+              t = tangents[i === 0 ? 0 : 2];
+            const d = sub(c.cp[IN[e][i]], edge[i]);
+            const hh = dot(h, h),
+              tt = dot(t, t),
+              ht = dot(h, t),
+              determinant = hh * tt - ht * ht;
+            if (determinant < 1e-12) return { a: 1, b: 0 };
+            return {
+              a: (dot(d, h) * tt - dot(d, t) * ht) / determinant,
+              b: (dot(d, t) * hh - dot(d, h) * ht) / determinant,
+            };
+          };
+          const start = resolve(0),
+            end = resolve(3),
+            scale = Math.max(0.01, Math.min(20, (start.a + end.a) / 2));
+          // Retain tangential shear in a transition quad. A constant cross-boundary scale plus a linear
+          // multiple of the quadratic seam derivative stays cubic and shares the host's complete tangent plane.
+          const shear = [
+            mul(tangents[0], start.b),
+            add(mul(tangents[0], end.b / 3), mul(tangents[1], (2 * start.b) / 3)),
+            add(mul(tangents[1], (2 * end.b) / 3), mul(tangents[2], start.b / 3)),
+            mul(tangents[2], end.b),
+          ];
+          IN[e].forEach((at, i) => {
+            c.cp[at] = add(sub(edge[i], mul(offsets[i], scale)), mul(shear[i], shearScale));
+          });
+          smoothHandles.set(JSON.stringify([a, c.nodes[PERIM[(e + 3) % 4]]]), c.cp[IN[e][0]]);
+          smoothHandles.set(JSON.stringify([b, c.nodes[PERIM[(e + 2) % 4]]]), c.cp[IN[e][3]]);
+        }
+      for (const c of newCells)
+        for (let e = 0; e < 4; e++) {
+          const a = c.nodes[PERIM[e]],
+            b = c.nodes[PERIM[(e + 1) % 4]];
+          const from = smoothHandles.get(JSON.stringify([a, b])),
+            to = smoothHandles.get(JSON.stringify([b, a]));
+          if (from) c.cp[CP[e][1]] = from;
+          if (to) c.cp[CP[e][2]] = to;
+        }
+      if (!newCells.some(c => folds(q, c))) break;
     }
-  for (const c of newCells)
-    for (let e = 0; e < 4; e++) {
-      const a = c.nodes[PERIM[e]],
-        b = c.nodes[PERIM[(e + 1) % 4]],
-        host = smooth.get(edgeKey(a, b));
-      if (!host) continue;
-      const reversed = host.nodes[0] !== a,
-        offsets = reversed ? [...host.inward].reverse() : host.inward;
-      const edge = CP[e].map(i => c.cp[i]);
-      const tangents = edge.slice(1).map((p, i) => mul(sub(p, edge[i]), 3));
-      const resolve = (i: 0 | 3) => {
-        const h = mul(offsets[i], -1),
-          t = tangents[i === 0 ? 0 : 2];
-        const d = sub(c.cp[IN[e][i]], edge[i]);
-        const hh = dot(h, h),
-          tt = dot(t, t),
-          ht = dot(h, t),
-          determinant = hh * tt - ht * ht;
-        if (determinant < 1e-12) return { a: 1, b: 0 };
-        return {
-          a: (dot(d, h) * tt - dot(d, t) * ht) / determinant,
-          b: (dot(d, t) * hh - dot(d, h) * ht) / determinant,
-        };
-      };
-      const start = resolve(0),
-        end = resolve(3),
-        scale = Math.max(0.01, Math.min(20, (start.a + end.a) / 2));
-      // Retain tangential shear in a transition quad. A constant cross-boundary scale plus a linear
-      // multiple of the quadratic seam derivative stays cubic and shares the host's complete tangent plane.
-      const shear = [
-        mul(tangents[0], start.b),
-        add(mul(tangents[0], end.b / 3), mul(tangents[1], (2 * start.b) / 3)),
-        add(mul(tangents[1], (2 * end.b) / 3), mul(tangents[2], start.b / 3)),
-        mul(tangents[2], end.b),
-      ];
-      IN[e].forEach((at, i) => {
-        c.cp[at] = add(sub(edge[i], mul(offsets[i], scale)), shear[i]);
-      });
-      smoothHandles.set(JSON.stringify([a, c.nodes[PERIM[(e + 3) % 4]]]), c.cp[IN[e][0]]);
-      smoothHandles.set(JSON.stringify([b, c.nodes[PERIM[(e + 2) % 4]]]), c.cp[IN[e][3]]);
-    }
-  for (const c of newCells)
-    for (let e = 0; e < 4; e++) {
-      const a = c.nodes[PERIM[e]],
-        b = c.nodes[PERIM[(e + 1) % 4]];
-      const from = smoothHandles.get(JSON.stringify([a, b])),
-        to = smoothHandles.get(JSON.stringify([b, a]));
-      if (from) c.cp[CP[e][1]] = from;
-      if (to) c.cp[CP[e][2]] = to;
-    }
+    return newCells;
+  };
+  let newCells: Cell[] = [];
+  const accept = (perimeters: string[][]) => {
+    const cells = buildCells(perimeters);
+    if (cells.some(c => folds(q, c))) return false;
+    newCells = cells;
+    return true;
+  };
+  // A valid UV layout can still fold after inheriting the host cubics and smooth tangent planes.
+  // Try the alternative local layouts against the actual patches before rejecting the seam.
+  if (!direct || !accept(direct)) quadrangulate(q, polygon, prefix, accept);
   q.cells = [...q.cells.filter(c => !removed.has(c)), ...newCells];
 }
 
@@ -809,11 +890,20 @@ function synchronizeStitchControls(doc: QuadMeshDoc): QuadMeshDoc {
     if (!changed) continue;
     surface = sourceGuideSurface(surface);
     const curves = readGuideCurves(out, surface),
-      patches = fitSurface(compactSurfaceCharts(guideCharts(out, surface)), surface.patchSizeM).patches;
+      patches = fitSurface(
+        compactSurfaceCharts(guideCharts(out, surface)),
+        surface.patchSizeM,
+        undefined,
+        surface.fitToleranceM,
+      ).patches;
     const next = {
       ...surface,
       fitted: patches,
-      evaluated: { points: curves.map(c => c.points.flat()), patchSizeM: surface.patchSizeM },
+      evaluated: {
+        points: curves.map(c => c.points.flat()),
+        patchSizeM: surface.patchSizeM,
+        ...(surface.fitToleranceM === undefined ? {} : { fitToleranceM: surface.fitToleranceM }),
+      },
     };
     out = { ...out, surfaces: out.surfaces!.map(s => (s.id === surface.id ? next : s)) };
   }
@@ -826,6 +916,7 @@ export function evaluateSurfaceStitches(doc: QuadMeshDoc): QuadMeshDoc {
   doc = synchronizeStitchControls(doc);
   const surfaces = doc.surfaces ?? [];
   if (!surfaces.length) return doc;
+  const participantIds = new Set(stitchParticipants(doc).map(s => s.id));
   const quilts = new Map<string, Quilt>();
   // The old ring filler could also apply a source-endpoint correction to a target cubic.
   // Recover those hosts from their authored guides once when upgrading an existing ring.
@@ -842,10 +933,15 @@ export function evaluateSurfaceStitches(doc: QuadMeshDoc): QuadMeshDoc {
     );
     let input = s.fitted ?? s.patches.map(p => ({ domain: p.domain, controls: p.base }));
     if (!s.fitted && s.guides && legacyHosts.has(s.id))
-      input = fitSurface(compactSurfaceCharts(guideCharts(doc, s)), s.patchSizeM, {
-        us: cuts(input.flatMap(p => p.domain.slice(0, 2))),
-        vs: cuts(input.flatMap(p => p.domain.slice(2))),
-      }).patches;
+      input = fitSurface(
+        compactSurfaceCharts(guideCharts(doc, s)),
+        s.patchSizeM,
+        {
+          us: cuts(input.flatMap(p => p.domain.slice(0, 2))),
+          vs: cuts(input.flatMap(p => p.domain.slice(2))),
+        },
+        s.fitToleranceM,
+      ).patches;
     quilts.set(s.id, natural(s, splitAnchors(input, refs)));
   }
   for (const s of orderedSurfaces(surfaces))
@@ -1011,32 +1107,13 @@ export function evaluateSurfaceStitches(doc: QuadMeshDoc): QuadMeshDoc {
     const index = newAt.get(at)!;
     cell.cp = quadControlPoints(actual.mesh, actual.edgeHandle, index, out.quadTwist?.[index]);
     if (!cell.key.startsWith('stitch:')) continue;
-    for (const u of [0.15, 0.5, 0.85])
-      for (const v of [0.15, 0.5, 0.85]) {
-        const uv = [0, 1].map(
-          k =>
-            cell.uv[0][k] * (1 - u) * (1 - v) +
-            cell.uv[1][k] * (1 - u) * v +
-            cell.uv[2][k] * u * (1 - v) +
-            cell.uv[3][k] * u * v,
-        );
-        const p = q.charts.find(
-          p =>
-            uv[0] >= p.domain[0] - EPS &&
-            uv[0] <= p.domain[1] + EPS &&
-            uv[1] >= p.domain[2] - EPS &&
-            uv[1] <= p.domain[3] + EPS,
-        )!;
-        const reference = patchNormal(
-          p.controls,
-          (uv[0] - p.domain[0]) / (p.domain[1] - p.domain[0]),
-          (uv[1] - p.domain[2]) / (p.domain[3] - p.domain[2]),
-        );
-        if (dot(reference, patchNormal(cell.cp, u, v)) <= 0)
-          throw new Error(
-            'This stitch folds a transition patch. Move the boundaries closer or leave more room inside the surface.',
-          );
-      }
+    if (folds(q, cell)) {
+      const side = cell.key.split(':')[1],
+        smooth = q.surface.stitches?.some(st => st.side === side && st.continuity === 'smooth');
+      throw new Error(
+        `This stitch folds a transition patch on ${q.surface.name}. ${smooth ? 'Try Crease in Stitching, or split' : 'Split'} the fill into smaller surfaces.`,
+      );
+    }
   }
   out.quadLocked = { ...out.quadLocked };
   out.surfaces = surfaces.map(s => {
@@ -1074,11 +1151,11 @@ export function evaluateSurfaceStitches(doc: QuadMeshDoc): QuadMeshDoc {
             : patch;
         }),
     };
-    if (s.stitches?.length) next.fitted = s.fitted ?? q.charts;
-    else {
-      delete next.fitted;
-      delete next.stitches;
-    }
+    // Incoming joins split their host too. Retain that host's pre-stitch fit, otherwise a reload
+    // feeds the assembled transition layout back into the next evaluation and accumulates cuts.
+    if (participantIds.has(s.id)) next.fitted = s.fitted ?? q.charts;
+    else delete next.fitted;
+    if (!s.stitches?.length) delete next.stitches;
     delete next.error;
     if (
       !s.error &&
@@ -1296,6 +1373,8 @@ export function selectedSurfaceBoundary(
   exclude?: string,
 ): SurfaceBoundary | undefined {
   if (!edges.length) return;
+  const indices = nameIndex(doc.vertexIds),
+    requested = [...new Set(edges.flat())];
   for (const s of doc.surfaces ?? []) {
     if (s.id === exclude) continue;
     // A shared corner can be picked as a source point, a generated corner or an ordinary host
@@ -1315,6 +1394,20 @@ export function selectedSurfaceBoundary(
       p.corners.forEach((id, i) => {
         for (const side of sides) if (onSide(uv[i], side)) stations.get(side)!.set(id, uv[i][axis(side)]);
       });
+    }
+    // At a junction, the picker can return a neighboring cage's copy of the corner. Resolve that
+    // exact contact to this boundary too, without welding authoring controls or guessing between
+    // distinct stations where a boundary doubles back onto itself.
+    for (const row of stations.values()) {
+      const known = [...row].map(([id, at]) => ({ at, point: readVertex(doc.vertices, indices.get(id)!) }));
+      for (const id of requested) {
+        if (row.has(id)) continue;
+        const vertex = indices.get(id);
+        if (vertex === undefined) continue;
+        const point = readVertex(doc.vertices, vertex),
+          matches = known.filter(p => len(sub(p.point, point)) < EPS);
+        if (matches.length && matches.every(p => Math.abs(p.at - matches[0].at) < EPS)) row.set(id, matches[0].at);
+      }
     }
     const spans: { side: SurfaceSide; a: number; b: number }[] = [];
     for (const [a, b] of edges) {
@@ -1400,12 +1493,23 @@ export function automaticStitchFacesOppose(
     target: targetRef,
     continuity: 'smooth',
   });
-  const c = host.curves[Math.floor(host.curves.length / 2)];
+  const segment = Math.max(0, host.stations.findIndex((t, i) => i > 0 && t >= 0.5) - 1),
+    c = host.curves[segment],
+    t = (0.5 - host.stations[segment]) / (host.stations[segment + 1] - host.stations[segment]);
   const at = atSide(source.side, (source.range[0] + source.range[1]) / 2),
     inside = [...at] as UV;
   inside[1 - axis(source.side)] = source.side[1] === '0' ? 0.05 : 0.95;
   const cp = s.fitted ?? s.patches.map(p => ({ domain: p.domain, controls: p.base }));
   const inward = sub(chartPoint(cp, ...inside), chartPoint(cp, ...at));
-  const hostInward = mul(add(c.inward[1], c.inward[2]), 0.5);
-  return inward.reduce((sum, n, i) => sum + n * hostInward[i], 0) < -EPS;
+  const hostInward = cubicPoint(...(c.inward as [V3, V3, V3, V3]), t),
+    tangent = add(
+      add(mul(sub(c.cp[1], c.cp[0]), (1 - t) ** 2), mul(sub(c.cp[2], c.cp[1]), 2 * t * (1 - t))),
+      mul(sub(c.cp[3], c.cp[2]), t ** 2),
+    ),
+    tt = dot(tangent, tangent);
+  if (tt < EPS ** 2) return false;
+  // Sheared adjoining patches can lean along the seam in the same direction. That tangential
+  // component says nothing about which side they occupy, and must not prevent their attachment.
+  const across = (v: V3) => sub(v, mul(tangent, dot(v, tangent) / tt));
+  return dot(across(inward), across(hostInward)) < -EPS;
 }

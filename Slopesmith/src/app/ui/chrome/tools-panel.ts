@@ -828,7 +828,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
       else propLib.hide();
     } else propLib.hide(); // leaving props hides it
     syncPropLibBtn();
-    syncDockTabs(); // the same rule's other half: a hidden library offers its pull-up tab in its own mode
+    syncDockTabs(); // each library keeps its open/collapse handle in its own mode
     propLibToggle.style.display = propLaunchersVisible() ? 'block' : 'none';
     propTools.updatePropPreview(); // show the held/selected prop preview in Props mode, hide it otherwise
     // A held paste stays held while Props stays up; leaving Props puts it down with everything else.

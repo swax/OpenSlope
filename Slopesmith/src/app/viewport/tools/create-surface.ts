@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { QuadMeshDoc } from '../../../core/doc/types';
 import type { Stage } from '../stage';
 import type { PlacementEndpoint } from '../input/placement-constraint';
 import { resolvePlacementEndpoint } from '../input/placement';
@@ -6,12 +7,14 @@ import { DRAW_POINT_GEO, scaleDrawMarkers } from './draw-markers';
 import { MAX_SURFACE_BOUNDARY_POINTS, surfaceBoundaryCorners } from '../../../core/mesh/surface-boundary';
 import { dataToScene, sceneToData } from '../coordinates';
 import { textSprite } from '../shared/overlays';
+import { LOFT_PREVIEW_INVALID_COLOR } from '../constants';
 
 /** A transient boundary loop. Close it to edit its points; Enter commits the Surface atomically. */
 export function createSurfaceToolLayer(
   stage: Stage,
   terrain: () => THREE.Mesh,
   pickVertex: () => PlacementEndpoint | null,
+  meshDoc: () => QuadMeshDoc | null,
 ) {
   let active = false,
     points: PlacementEndpoint[] = [],
@@ -85,7 +88,6 @@ export function createSurfaceToolLayer(
       : resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, {
           axisLocked,
           onSurface,
-          levelPlane: true,
         });
   }
   function drawOutline() {
@@ -122,7 +124,7 @@ export function createSurfaceToolLayer(
     const boundary = hover && !closed && !closing ? [...points, hover] : points,
       stops = cornerPicks
         ? [...cornerPicks, ...(cornerHover !== null && !cornerPicks.includes(cornerHover) ? [cornerHover] : [])]
-        : (manualCorners ?? surfaceBoundaryCorners(boundary));
+        : (manualCorners ?? surfaceBoundaryCorners(boundary, meshDoc()));
     corners.forEach((marker, i) => {
       marker.visible = active && !!boundary[stops[i]];
       marker.material = cornerPicks && i === cornerPicks.length ? selectedMaterial : cornerMaterial;
@@ -145,7 +147,11 @@ export function createSurfaceToolLayer(
     cornerPicks = null;
     cornerHover = null;
     previewOutline = null;
+    setInvalid(false);
     redraw();
+  }
+  function setInvalid(invalid: boolean) {
+    line.material.color.setHex(invalid ? LOFT_PREVIEW_INVALID_COLOR : 0xeaa6ff);
   }
   function onHover(event: PointerEvent) {
     if (!active) return false;
@@ -208,6 +214,7 @@ export function createSurfaceToolLayer(
   }
   return {
     setActive,
+    setInvalid,
     setCorners(corners: readonly number[] | null) {
       manualCorners = corners ? [...corners] : null;
       cornerPicks = null;
@@ -294,7 +301,7 @@ export function createSurfaceToolLayer(
     },
     get corners() {
       const boundary = hover && !closed && !closing ? [...points, hover] : points;
-      return manualCorners ?? surfaceBoundaryCorners(boundary);
+      return manualCorners ?? surfaceBoundaryCorners(boundary, meshDoc());
     },
     get manualCorners() {
       return manualCorners !== null;

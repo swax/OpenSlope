@@ -67,7 +67,7 @@ export interface EditViewportPort {
   setCreateSurfaceBoundary?(points: readonly PlacementEndpoint[], corners: readonly number[]): void;
   showSurfaceCornerPreview?(doc: QuadMeshDoc): void;
   undoCreateSurfacePoint?(): void;
-  setCreateSurfaceCharts?(charts: readonly Patch[] | null, outline?: readonly V3[]): void;
+  setCreateSurfaceCharts?(charts: readonly Patch[] | null, outline?: readonly V3[], invalid?: boolean): void;
   setCreatePatchSides(sides: 3 | 4): void;
   setWeldTool(source: readonly number[] | false): void;
   setEdgeWeldTool(edges: readonly [number, number][] | null): void;

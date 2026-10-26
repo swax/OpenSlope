@@ -134,7 +134,7 @@ or a terrain boundary. **Surface from boundary** lets you choose four distinct c
 sides become four live control curves. Branches and disconnected loops are refused.
 
 **Control curves.** Creation selects the active curves. Click a source point or tangent handle to reshape it,
-or choose U or V and a curve under **Control curves**, then **Select curve**. Use the ordinary W/E/R gizmo to
+or double-click a visible curve to select the whole curve. Use the ordinary W/E/R gizmo to
 move, rotate or scale the selection. Pink curves lie on the snow. Curves in different directions share actual
 source vertices at crossings, so they cannot disagree about position. Occluded curves and points draw faintly
 through the surface.
@@ -179,6 +179,9 @@ the counts differ. Source curves stay aligned with the join, including after rel
 coupling. The target supplies the boundary shape and both surfaces can change patch density independently.
 Ordinary host patches retain their complete bicubic controls. Smooth matches the target's tangent plane
 while allowing tangential shear through transition quads; Crease retains the attached side's slope. The
+Smooth builder reduces tangential shear automatically if uneven boundary spacing would fold a transition,
+while preserving the target's boundary cubics and tangent plane. If no valid transition remains, the edit
+is rejected; Crease or a smaller fill can resolve an incompatible smooth join. The
 **Stitching** section changes continuity or **Detaches all stitching**, including incoming connections from
 other surfaces. Detaching recreates visible curves and points describing the attached shape, then refits independent output.
 Attachments, continuity changes and detach operations undo normally and survive save/reload and register sync.
@@ -186,18 +189,25 @@ Baking either side preserves the shared seam and makes any remaining live surfac
 geometry. Deleting an attached surface first releases its dependent connections.
 
 A new boundary can continue from ordinary patches onto a live surface at their shared corner; source points
-and generated corners both identify stations on that surface's boundary. On an existing object, **Stitch
+and generated corners both identify stations on that surface's boundary, including a coincident corner picked
+through a neighboring cage. Attachment tests compare directions across the seam, ignoring shear along it.
+Construction guides against their own stitched host patches do not raise crossing diagnostics; unrelated
+geometry and intersections between evaluated terrain still do. On an existing object, **Stitch
 touching boundaries** attaches missing spans whose points already coincide with open terrain or another
 surface. It retains existing stitches, undoes as one edit, and does not run automatically after detaching.
 
 Boundary corners are inferred by fitting four sides to the whole outline, with distance-weighted error; dense
-samples along a straight side do not claim a corner, and the first click need not be one. Close a creation loop
-to enable **Pick corners**, then click four existing boundary points. The first becomes A and the remaining
-three are ordered around the loop. Gold labelled rings preview picks; all four are applied together. Duplicate
-picks are ignored, Backspace undoes a pick, and Esc cancels picking while keeping the previous corners.
+samples along a straight side do not claim a corner, and the first click need not be one.
+When drawing between two snapped edge runs, their endpoints define the four corners so a bend in either
+trail does not split an attachment across adjacent sides.
+Close a creation loop to enable **Pick corners**, then click four existing boundary points. The first becomes
+A and the remaining three are ordered around the loop. Gold labelled rings preview picks; all four are applied
+together. Duplicate picks are ignored, Backspace undoes a pick, and Esc cancels picking while keeping the previous corners.
 **Smooth** is the creation default: intermediate points within each side receive continuous cubic tangents.
 **Creased** keeps new segments straight. Chosen corners remain sharp and snapped host edges retain their
 authored cubics. The curved outline, edge length and area preview use the same handles as the created surface.
+Valid drafts use the teal preview. Invalid outlines, fits or stitches shade red and report the reason in
+**Preview**. Fitting and stitching are checked after a brief pause while drawing; previewing never edits the mountain.
 **Infer corners again** restores automatic selection. Apply/create waits until corner picking is complete. Ordinary source edits keep the chosen corners fixed.
 
 On an existing object, **Edit corners…** opens a reversible preview with its live boundary fixed. **Preserve shape**
@@ -218,11 +228,24 @@ patches' average curved length × width in metres, for comparison with the reque
 control curve shows its full arc length, including its explicit cubic handles. Source area and guide lengths
 are independent of terrain patch density; average patch dimensions follow the generated layout. Measurements
 refresh with the inspector after edits. Integration runs when the inspector rebuilds, not every frame.
+
+The inspector also reports **source controls** as curve, unique point and tangent-handle counts. Shared
+crossings count once; each source segment has two handles. **Fit error (m)** sets an explicit positional
+allowance for the fitter, independently of patch size. Larger allowances can permit fewer patches;
+**Automatic fit error** returns to 2% of patch size. The allowance is checked by fitting samples, not a
+guarantee of maximum analytic distance. Source controls stay unchanged when it is adjusted.
+
+Programmatic profile creation can supply normalized `pointStations` for each profile and
+`profileStations` across the loft to preserve correspondence between curves with unequal point counts.
+The default remains uniform ordering.
 **Bake surface** keeps
 its terrain and releases protection/history for direct patch edits and welding. Unused control curves and
 original sketches are removed so they do not overlap the baked terrain; construction components attached to
 other geometry or used by another surface are retained. Bake is a separate undo step that restores the live
 object, its controls and the sketches.
+**Delete surface** removes its terrain, control curves and unused original boundary/sketch loops together.
+Sketch components attached to other geometry or used by another live object are retained. The entire deletion
+undoes as one edit, including the removed loop.
 Removing the last Surface or legacy loft register removes its optional metadata list too, matching load-time
 normalization so a room snapshot cannot be mistaken for a newer external edit.
 

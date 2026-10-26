@@ -1,9 +1,14 @@
 // tier: fast
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { blankMountain, migrateMountain } from '../src/core/doc/mountain';
 import { serializeMountain } from '../src/core/doc/serialize';
 import { appendMeshIds } from '../src/core/doc/ids';
-import { createSurfaceFromDrawnBoundary, surfaceBoundaryDraft } from '../src/core/mesh/surface-boundary';
+import {
+  createSurfaceFromDrawnBoundary,
+  surfaceBoundaryDraft,
+  surfaceBoundaryCorners,
+} from '../src/core/mesh/surface-boundary';
 import { inferSurfaceCorners } from '../src/core/mesh/surface-corners';
 import {
   rebuildSurfaceCorners,
@@ -20,6 +25,8 @@ import {
 } from '../src/core/mesh/surface-object';
 import { chartPoint, guideCharts } from '../src/core/mesh/surface-guides';
 import { checkManifold } from '../src/core/mesh/ops/contract';
+import { meshFromDoc, quadControlPoints } from '../src/core/mesh/topology';
+import { quadPerimeterEdges, undirectedEdgeKey, readVertex } from '../src/core/mesh/primitives';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
 
 const rectangle: V3[] = [
@@ -32,6 +39,67 @@ const rectangle: V3[] = [
   [120, 0, 200],
   [120, 0, 0],
 ];
+{
+  // The BLACK_SUN gap: a geometric corner fit used to stop one point before a snapped trail ended.
+  const { boundary, corners, ...mesh } = JSON.parse(
+    readFileSync(new URL('./fixtures/surface-stitch-trail-gap.json', import.meta.url), 'utf8'),
+  ) as Pick<QuadMeshDoc, 'vertices' | 'quads' | 'edgeHandles' | 'quadTwist'> & {
+    boundary: number[];
+    corners: number[];
+  };
+  const doc = { ...blankMountain('TRAIL_GAP'), ...mesh };
+  Object.assign(doc, appendMeshIds(doc, mesh.vertices.length / 3, mesh.quads.length));
+  const points = boundary.map(vertex => ({ vertex, pos: readVertex(doc.vertices, vertex) })),
+    before = structuredClone(doc);
+  assert.notDeepEqual(inferSurfaceCorners(points.map(p => p.pos)), corners);
+  for (const reverse of [false, true])
+    for (let offset = 0; offset < points.length; offset++) {
+      const order = points.map((_, i) => (i + offset) % points.length);
+      if (reverse) order.reverse();
+      assert.deepEqual(
+        surfaceBoundaryCorners(
+          order.map(i => points[i]),
+          doc,
+        ),
+        corners.map(c => order.indexOf(c)).sort((a, b) => a - b),
+        'snapped run endpoints define the same four corners in either drawing direction',
+      );
+    }
+  assert.deepEqual(surfaceBoundaryDraft(doc, points).corners, corners);
+  const manual = inferSurfaceCorners(points.map(p => p.pos));
+  assert.deepEqual(surfaceBoundaryDraft(doc, points, manual).corners, manual, 'manual picks retain priority');
+  const host = meshFromDoc(doc);
+  for (const patchSizeM of [15, 25, 40, 60]) {
+    const made = createSurfaceFromDrawnBoundary(doc, points, patchSizeM, undefined, 'smooth');
+    assert(made.ok, made.ok ? '' : made.error);
+    assert.deepEqual(doc, before);
+    assert.equal(made.surface.stitches?.length, 2, 'both trails attach without manual corner changes');
+    assert(checkManifold(made.doc.quads).ok);
+    const counts = new Map<string, number>();
+    for (const q of made.doc.quads)
+      for (const [a, b] of quadPerimeterEdges(q)) {
+        const key = undirectedEdgeKey(a, b);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    for (let i = 0; i < boundary.length; i++) {
+      if (corners.includes((i + 1) % boundary.length) && corners.includes(i)) continue;
+      const a: number = made.doc.vertexIds.indexOf(doc.vertexIds[boundary[i]]),
+        b: number = made.doc.vertexIds.indexOf(doc.vertexIds[boundary[(i + 1) % boundary.length]]);
+      assert.equal(counts.get(undirectedEdgeKey(a, b)), 2, 'the seam shares every original trail edge');
+    }
+    const output = meshFromDoc(made.doc);
+    for (let i = 0; i < doc.quads.length; i++) {
+      const a = quadControlPoints(host.mesh, host.edgeHandle, i, doc.quadTwist?.[i]),
+        at = made.doc.quadIds.indexOf(doc.quadIds[i]),
+        b = quadControlPoints(output.mesh, output.edgeHandle, at, made.doc.quadTwist?.[at]);
+      a.forEach((p, j) => assert(Math.hypot(...p.map((v, k) => v - b[j][k])) < 1e-6));
+    }
+    const reopened = refreshSurfaces(migrateMountain(serializeMountain(made.doc)));
+    assert(!reopened.surfaces!.some(s => s.error));
+    assert.deepEqual(reopened.surfaces, made.doc.surfaces);
+  }
+  console.log('✓ filling a curved trail gap keeps snapped-run corners, both exact seams and manual picks');
+}
 const boundaryPoints = (points: V3[]) => points.map(pos => ({ pos, vertex: null }));
 function make(doc: QuadMeshDoc, points: V3[], corners?: number[]) {
   const result = createSurfaceFromDrawnBoundary(doc, boundaryPoints(points), 20, corners);

@@ -1,11 +1,18 @@
 // tier: fast
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { createCanvas } from '@napi-rs/canvas';
 import type { Stage } from '../src/app/viewport/stage';
 import type { PlacementEndpoint } from '../src/app/viewport/input/placement-constraint';
 import { createSurfaceToolLayer } from '../src/app/viewport/tools/create-surface';
+import { createLoftPreviewLayer } from '../src/app/viewport/tools/loft-preview';
+import { LOFT_PREVIEW_FILL_COLOR, LOFT_PREVIEW_INVALID_COLOR } from '../src/app/viewport/constants';
 import { sceneToData } from '../src/app/viewport/coordinates';
+import { blankMountain } from '../src/core/doc/mountain';
+import { appendMeshIds } from '../src/core/doc/ids';
+import { readVertex } from '../src/core/mesh/primitives';
+import type { QuadMeshDoc } from '../src/core/doc/types';
 
 // Corner label sprites need a canvas; the rest of this test remains a pure Three.js scene.
 const previousDocument = globalThis.document;
@@ -38,7 +45,8 @@ const stage = {
   },
 };
 let changes = 0,
-  endpoint: PlacementEndpoint | null = null;
+  endpoint: PlacementEndpoint | null = null,
+  meshDoc: QuadMeshDoc | null = null;
 stage.worldRoot.scale.z = -1;
 stage.worldRoot.updateMatrixWorld(true);
 stage.camera.position.set(0, 200, 0);
@@ -49,6 +57,7 @@ const layer = createSurfaceToolLayer(
   stage as unknown as Stage,
   () => new THREE.Mesh(),
   () => endpoint,
+  () => meshDoc,
 );
 const pointer = (pos: PlacementEndpoint['pos']) => {
   const p = new THREE.Vector3(...pos).applyMatrix4(stage.worldRoot.matrixWorld).project(stage.camera);
@@ -151,7 +160,46 @@ layer.cancelCornerPicking();
 assert.deepEqual(layer.corners, [0, 2, 3, 5]);
 layer.setActive(false);
 assert(!layer.pickingCorners && layer.cornerPicks.length === 0);
+{
+  const { boundary, corners, ...mesh } = JSON.parse(
+    readFileSync(new URL('./fixtures/surface-stitch-trail-gap.json', import.meta.url), 'utf8'),
+  ) as Pick<QuadMeshDoc, 'vertices' | 'quads' | 'edgeHandles' | 'quadTwist'> & {
+    boundary: number[];
+    corners: number[];
+  };
+  meshDoc = { ...blankMountain('TRAIL_GAP'), ...mesh };
+  Object.assign(meshDoc, appendMeshIds(meshDoc, mesh.vertices.length / 3, mesh.quads.length));
+  layer.setActive(true);
+  layer.setBoundary(
+    boundary.map(vertex => ({ vertex, pos: readVertex(mesh.vertices, vertex) })),
+    corners,
+  );
+  layer.setCorners(null);
+  assert.deepEqual(layer.corners, corners, 'the viewport uses the same snapped-run corners as the committed fill');
+  layer.setActive(false);
+}
+
 globalThis.document = previousDocument;
+{
+  const previewStage = { worldRoot: new THREE.Group() } as Stage,
+    preview = createLoftPreviewLayer(previewStage, () => null),
+    fill = previewStage.worldRoot.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>,
+    crossing: [number, number, number][] = [
+      [0, 0, 0],
+      [60, 0, 40],
+      [60, 0, 0],
+      [0, 0, 30],
+    ];
+  preview.setCharts(null, true, crossing);
+  assert(fill.visible && fill.geometry.getAttribute('position').count === crossing.length);
+  assert.equal(fill.material.color.getHex(), LOFT_PREVIEW_INVALID_COLOR, 'invalid outlines retain a red footprint');
+  preview.rebuild();
+  assert(fill.visible, 'an ordinary viewport refresh retains the invalid draft');
+  preview.setPreview([[0, 1, 2, 3]], [0, 0, 0, 0, 0, 40, 60, 0, 0, 60, 0, 40]);
+  assert.equal(fill.material.color.getHex(), LOFT_PREVIEW_FILL_COLOR, 'other tools restore their normal preview');
+  preview.setCharts(null);
+  assert(!fill.visible, 'cancelling clears the warning footprint');
+}
 console.log(
   'SURFACE DRAFT: editable closure, point picking, world-space gizmo movement, released snaps, reopen and cancellation passed.',
 );

@@ -72,7 +72,11 @@ export function materializeSurfaceShape(doc: QuadMeshDoc, surface: SurfaceObject
     if (error <= tolerance) {
       next = {
         ...sourceGuideSurface(next),
-        evaluated: { points: readGuideCurves(out, next).map(c => c.points.flat()), patchSizeM: next.patchSizeM },
+        evaluated: {
+          points: readGuideCurves(out, next).map(c => c.points.flat()),
+          patchSizeM: next.patchSizeM,
+          ...(next.fitToleranceM === undefined ? {} : { fitToleranceM: next.fitToleranceM }),
+        },
       };
       return { doc: { ...out, surfaces: out.surfaces?.map(s => (s.id === next.id ? next : s)) }, surface: next };
     }

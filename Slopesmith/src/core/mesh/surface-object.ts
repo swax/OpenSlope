@@ -156,6 +156,13 @@ export function rebuildSurface(
     if (surface.guides) surface = sourceGuideSurface(surface);
     if (!Number.isFinite(surface.patchSizeM) || surface.patchSizeM < 0.5)
       throw new Error('Patch size must be at least 0.5 metres.');
+    if (
+      surface.fitToleranceM !== undefined &&
+      (!Number.isFinite(surface.fitToleranceM) ||
+        surface.fitToleranceM <= 0 ||
+        surface.fitToleranceM > surface.patchSizeM)
+    )
+      throw new Error('Fit error must be positive and no greater than patch size.');
     const qIndex = nameIndex(doc.quadIds);
     for (const patch of surface.patches) {
       const q = qIndex.get(patch.quad);
@@ -175,6 +182,7 @@ export function rebuildSurface(
       charts,
       surface.patchSizeM,
       reuseLayout ? { us: previousU, vs: previousV } : undefined,
+      surface.fitToleranceM,
     );
     if (surfaceHasStitches(doc, surface.id)) {
       const surfaces = doc.surfaces ?? [];
@@ -184,6 +192,7 @@ export function rebuildSurface(
         evaluated: {
           points: surface.guides ? readGuideCurves(doc, surface).map(c => c.points.flat()) : net!.points,
           patchSizeM: surface.patchSizeM,
+          ...(surface.fitToleranceM === undefined ? {} : { fitToleranceM: surface.fitToleranceM }),
         },
       };
       const assembled = evaluateSurfaceStitches({
@@ -204,6 +213,7 @@ export function rebuildSurface(
       evaluated: {
         points: surface.guides ? readGuideCurves(doc, surface).map(c => c.points.flat()) : net!.points,
         patchSizeM: surface.patchSizeM,
+        ...(surface.fitToleranceM === undefined ? {} : { fitToleranceM: surface.fitToleranceM }),
       },
     };
     delete next.outputKeys;
@@ -312,6 +322,7 @@ function createFromGuides(
   curvature: number,
   hill = false,
   adopt?: { surface: SurfaceObject; seed: Patch[] },
+  fitToleranceM?: number,
 ): SurfaceResult {
   let n = 1;
   while (doc.surfaces?.some(s => s.id === `surface:${n}`)) n++;
@@ -323,6 +334,7 @@ function createFromGuides(
     guides: [],
     interpolation: 'natural',
     curvature,
+    ...(fitToleranceM === undefined ? {} : { fitToleranceM }),
     knotsU: [],
     knotsV: [],
     inputs: [...new Set(inputs)],
@@ -391,15 +403,39 @@ function createFromGuides(
 export function createSurfaceFromProfiles(
   doc: QuadMeshDoc,
   profiles: readonly (readonly number[])[],
-  settings: { patchSizeM?: number; curvature?: number } = {},
+  settings: {
+    patchSizeM?: number;
+    curvature?: number;
+    fitToleranceM?: number;
+    /** Correspondence along each curve, independent of how many source points it carries. */
+    pointStations?: readonly (readonly number[])[];
+    /** Placement of the profiles across the loft. Omission retains uniform ordering. */
+    profileStations?: readonly number[];
+  } = {},
 ): SurfaceResult {
   try {
     const names = profiles.map(row => row.map(i => doc.vertexIds[i]));
     if (names.length < 2) throw new Error('Use at least two control curves.');
+    const stations = (values: readonly number[] | undefined, count: number) => {
+      if (count < 2) throw new Error('Each profile needs at least two source points.');
+      if (!values) return Array.from({ length: count }, (_, i) => i / (count - 1));
+      if (
+        count < 2 ||
+        values.length !== count ||
+        values[0] !== 0 ||
+        values.at(-1) !== 1 ||
+        values.some((t, i) => !Number.isFinite(t) || (i > 0 && t - values[i - 1] < GUIDE_STATION_EPS))
+      )
+        throw new Error('Profile stations must increase from 0 to 1 and match their source points.');
+      return [...values];
+    };
+    if (settings.pointStations && settings.pointStations.length !== names.length)
+      throw new Error('Provide point stations for every profile.');
+    const across = stations(settings.profileStations, names.length);
     const guides = names.map((row, i) => ({
       axis: 'U' as const,
-      at: i / (names.length - 1),
-      knots: row.map((_, j) => j / (row.length - 1)),
+      at: across[i],
+      knots: stations(settings.pointStations?.[i], row.length),
     }));
     const curves = readGuideCurves(doc, { controls: names, guides } as SurfaceObject);
     const cross = curves.length === 2 ? crossing(curves[0], curves[1]) : undefined;
@@ -415,9 +451,21 @@ export function createSurfaceFromProfiles(
         settings.patchSizeM ?? 25,
         settings.curvature ?? 1,
         true,
+        undefined,
+        settings.fitToleranceM,
       );
     }
-    return createFromGuides(doc, curves, 'profiles', names.flat(), settings.patchSizeM ?? 25, settings.curvature ?? 1);
+    return createFromGuides(
+      doc,
+      curves,
+      'profiles',
+      names.flat(),
+      settings.patchSizeM ?? 25,
+      settings.curvature ?? 1,
+      false,
+      undefined,
+      settings.fitToleranceM,
+    );
   } catch (error) {
     return failure(error);
   }
@@ -594,7 +642,14 @@ function installGuideEdit(doc: QuadMeshDoc, surface: SurfaceObject, before?: Pat
   )
     return rebuildSurface(doc, clean);
   const curves = readGuideCurves(doc, clean),
-    next = { ...clean, evaluated: { points: curves.map(c => c.points.flat()), patchSizeM: surface.patchSizeM } };
+    next = {
+      ...clean,
+      evaluated: {
+        points: curves.map(c => c.points.flat()),
+        patchSizeM: surface.patchSizeM,
+        ...(surface.fitToleranceM === undefined ? {} : { fitToleranceM: surface.fitToleranceM }),
+      },
+    };
   delete next.error;
   return { ok: true, doc: { ...doc, surfaces: doc.surfaces!.map(s => (s.id === next.id ? next : s)) }, surface: next };
 }
@@ -787,18 +842,14 @@ export function deleteSurfaceRow(
   }
 }
 
-export function bakeSurface(doc: QuadMeshDoc, id: string): QuadMeshDoc {
-  doc = bakeSurfaceStitchLinks(doc, id);
-  const surface = doc.surfaces?.find(s => s.id === id);
-  if (!surface) return doc;
-  // A bake keeps the evaluated terrain, not coincident copies of its hidden sketches and guides.
-  // Preserve construction components used by other geometry or another live surface.
+/** Construction components used by other geometry or another live object must survive cleanup. */
+function unusedSurfaceConstruction(doc: QuadMeshDoc, surface: SurfaceObject, removedQuads?: ReadonlySet<string>) {
   const candidate = new Set([...surface.controls.flat(), ...surface.inputs]);
   const index = nameIndex(doc.vertexIds);
   const removable = new Set([...candidate].flatMap(id => (index.has(id) ? [index.get(id)!] : [])));
-  const protectedVertices = new Set(doc.quads.flat());
+  const protectedVertices = new Set(doc.quads.flatMap((q, i) => (removedQuads?.has(doc.quadIds[i]) ? [] : q)));
   for (const other of doc.surfaces ?? [])
-    if (other.id !== id)
+    if (other.id !== surface.id)
       for (const name of [...other.controls.flat(), ...other.inputs, ...other.vertices]) {
         const v = index.get(name);
         if (v !== undefined) protectedVertices.add(v);
@@ -826,6 +877,15 @@ export function bakeSurface(doc: QuadMeshDoc, id: string): QuadMeshDoc {
     if (!removable.delete(v)) continue;
     pending.push(...(adjacent.get(v) ?? []));
   }
+  return removable;
+}
+
+export function bakeSurface(doc: QuadMeshDoc, id: string): QuadMeshDoc {
+  doc = bakeSurfaceStitchLinks(doc, id);
+  const surface = doc.surfaces?.find(s => s.id === id);
+  if (!surface) return doc;
+  // A bake keeps the evaluated terrain, not coincident copies of its hidden sketches and guides.
+  const removable = unusedSurfaceConstruction(doc, surface);
   const out: QuadMeshDoc = { ...doc, quadLocked: { ...doc.quadLocked } },
     remaining = doc.surfaces?.filter(s => s.id !== id);
   surface.patches.forEach(p => {
@@ -866,6 +926,8 @@ export function deleteSurfaceObject(
       )
     )
       throw new Error('Other geometry is attached to this surface. Bake it before deleting the attached mesh.');
+    const inputs = new Set(surface.inputs);
+    for (const v of unusedSurfaceConstruction(doc, surface, ownQuads)) if (inputs.has(doc.vertexIds[v])) owned.add(v);
     const remaining = doc.surfaces!.filter(s => s.id !== id);
     const base = { ...doc, surfaces: remaining.length ? remaining : undefined };
     if (!remaining.length) delete base.surfaces;
@@ -981,10 +1043,20 @@ export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {
             ] as Patch['domain'],
           })),
         };
-        const result = createFromGuides(base, curves, surface.origin, surface.inputs, surface.patchSizeM, 1, false, {
-          surface: adopted,
-          seed,
-        });
+        const result = createFromGuides(
+          base,
+          curves,
+          surface.origin,
+          surface.inputs,
+          surface.patchSizeM,
+          1,
+          false,
+          {
+            surface: adopted,
+            seed,
+          },
+          surface.fitToleranceM,
+        );
         if (!result.ok) throw new Error(result.error);
         out = result.doc;
         continue;
@@ -1004,7 +1076,8 @@ export function refreshSurfaces(doc: QuadMeshDoc, options: SurfaceEvaluation = {
         !surface.error &&
         (options.interactive || !layoutPending.has(surface)) &&
         sameSourcePoints(points, surface.evaluated.points) &&
-        surface.patchSizeM === surface.evaluated.patchSizeM
+        surface.patchSizeM === surface.evaluated.patchSizeM &&
+        surface.fitToleranceM === surface.evaluated.fitToleranceM
       )
         continue;
       const result = rebuildSurface(out, surface, options);

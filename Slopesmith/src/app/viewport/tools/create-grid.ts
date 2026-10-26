@@ -17,7 +17,7 @@ const CORNER_PICK_PX = 14;
 
 /** Create Grid in two phases. PLACING: three clicks — the first side's two ends, then a point that sets the width
  * — with the cursor standing in for the third so the host can preview the lattice; a later corner lands on the
- * level plane through the previous one, so a grid drawn in open space is flat, and Ctrl puts it on the surface.
+ * screen-facing plane through the previous one, so free-space clicks keep its depth; Ctrl puts it on the surface.
  * DRAFT: the third click squares the corners off into four, which stay editable until Enter. A click on a free
  * corner seats the shared gizmo on it; a click on the grid itself seats it at the centre and moves, turns or
  * scales the whole draft. A snapped corner pins the grid to what it attaches to, so a draft pinned anywhere is
@@ -79,7 +79,6 @@ export function createGridToolLayer(
     return resolvePlacementEndpoint({ stage, terrain, pickVertex }, points.at(-1)?.pos ?? null, {
       axisLocked,
       onSurface,
-      levelPlane: true,
     });
   }
 

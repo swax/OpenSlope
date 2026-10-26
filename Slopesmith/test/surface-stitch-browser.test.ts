@@ -543,21 +543,20 @@ try {
   };
   checkSourceSeam(current);
   const beforeDrag = positions(current, targetIds);
-  // The guides coincide, so choose the follower's curve explicitly in its inspector.
-  const follower = current.surfaces![1],
-    axis = attachment.side[0] === 'u' ? 'V' : 'U',
-    rows = follower.guides!.filter(g => g.axis === axis).sort((a, b) => a.at - b.at),
-    row = rows.findIndex(g => Math.abs(g.at - Number(attachment.side[1])) < 1e-7);
-  await select('direction').selectOption(axis);
-  await field('curve').fill(String(row + 1));
-  await field('curve').press('Enter');
-  await button('select curve').click();
+  // Either coincident guide can be selected in the viewport; the live join carries both cages together.
+  await page.keyboard.press('Escape');
+  const sourceBox = await page.locator('canvas').first().boundingBox();
+  assert(sourceBox);
+  await page.mouse.dblclick(
+    sourceBox.x + sourceBox.width / 2 - (20 * sourceBox.height) / 200,
+    sourceBox.y + sourceBox.height / 2 + (20 * sourceBox.height) / 200,
+  );
   const selected = await page.evaluate(
-    () => (window as unknown as Observation).slopesmith.snapshot().selection.meshVertices,
+    () => (window as unknown as Observation).slopesmith.snapshot().selection.meshEdges,
   );
   assert(
-    selected.length === sourceIds.length && selected.every(id => sourceIds.includes(id)),
-    'the follower authoring edge is selected',
+    selected.length > 0 && selected.every(edge => edge.every(id => sourceIds.includes(id) || targetIds.includes(id))),
+    'the shared authoring edge is selected directly in the viewport',
   );
   await button('World').click();
   const surfaceBox = await page.locator('canvas').first().boundingBox();
@@ -646,24 +645,8 @@ try {
   // A shared corner can ask the stitch fitter for an impossible transition. Reject the edit itself,
   // including the source/host movement, rather than leaving the last terrain underneath a moved cage.
   const accepted = current,
-    cornerId = 'local:137637',
-    hostSurface = accepted.surfaces![0],
-    cornerCurve = hostSurface.controls.findIndex(path => path.includes(cornerId)),
-    cornerAxis = hostSurface.guides![cornerCurve].axis,
-    cornerRows = hostSurface
-      .guides!.map((g, i) => ({ ...g, i }))
-      .filter(g => g.axis === cornerAxis)
-      .sort((a, b) => a.at - b.at),
-    cornerRow = cornerRows.findIndex(g => g.i === cornerCurve);
+    cornerId = 'local:137637';
   await page.keyboard.press('Escape');
-  await button('Surface 1').click();
-  await select('direction').selectOption(cornerAxis);
-  await field('curve').fill(String(cornerRow + 1));
-  await field('curve').press('Enter');
-  await field('control point').fill(String(hostSurface.controls[cornerCurve].indexOf(cornerId) + 1));
-  await field('control point').press('Enter');
-  await button('select control point').click();
-  await button('World').click();
   const rejectBox = await page.locator('canvas').first().boundingBox();
   assert(rejectBox);
   const cornerAt = accepted.vertexIds.indexOf(cornerId) * 3,
@@ -671,6 +654,8 @@ try {
       x: rejectBox.x + rejectBox.width / 2 + ((accepted.vertices[cornerAt] + 480) * rejectBox.height) / 180,
       y: rejectBox.y + rejectBox.height / 2 + ((-600 - accepted.vertices[cornerAt + 2]) * rejectBox.height) / 180,
     };
+  await page.mouse.click(rejectPivot.x, rejectPivot.y);
+  await button('World').click();
   await page.mouse.move(rejectPivot.x + 45, rejectPivot.y);
   await page.mouse.down();
   await page.mouse.move(rejectPivot.x + 45 - (30 * rejectBox.height) / 180, rejectPivot.y);

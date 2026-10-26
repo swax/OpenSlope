@@ -101,6 +101,7 @@ export const LIVE_EDIT_FILL_OPACITY = 0.13;
  *  (not the yellow of a live cell selection) at a lighter strength than a selection shade — it reads as the surface
  *  the commit brings, sharing the cell-shading render path (worldRoot, renderOrder 9, never a pick target). */
 export const LOFT_PREVIEW_FILL_COLOR = 0x2fd6c3;
+export const LOFT_PREVIEW_INVALID_COLOR = 0xff4d4d;
 export const LOFT_PREVIEW_FILL_OPACITY = 0.42;
 /** Bridge Builder rails cycle through these colors; the current, not-yet-added candidate remains selection yellow. */
 export const BRIDGE_RAIL_COLORS = [0x45b8ff, 0xff70c8, 0x8ee35b, 0xff9f43, 0xb78cff, 0x4de0c1] as const;

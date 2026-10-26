@@ -283,4 +283,24 @@ check(
   ghosts.join(),
 );
 
+// Free edge clicks and their ghosts use the latest endpoint's scene-space depth, including mirrored Z.
+const planes: number[][] = [];
+surfaceEdge = null;
+Object.assign(stage, {
+  screenPlanePoint(through: THREE.Vector3) {
+    planes.push(through.toArray());
+    return through.clone().add(new THREE.Vector3(5, 6, 0));
+  },
+});
+edgeLayer.start = [10, 20, -30];
+click({}, ['pointermove']);
+click();
+edgeLayer.start = [15, 26, -30];
+click();
+check(
+  planes.map(p => p.join()).join('|') === '10,20,30|10,20,30|15,26,30',
+  'create edge: hover and clicks carry the previous endpoint depth as a chain advances',
+  JSON.stringify(planes),
+);
+
 if (failures) process.exitCode = 1;

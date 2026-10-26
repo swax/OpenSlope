@@ -1614,7 +1614,10 @@ export function createCreateTools(ctx: ToolsContext) {
           .onChange(() => edit.previewCreateSurface()),
         'Smooth rounds intermediate points along each side. Creased keeps new segments straight. Chosen corners and existing snapped edges retain their shape.',
       );
-      group.add(edit.createSurfaceSettings(), 'patchSizeM', 1, 500, 1).name('patch size (m)');
+      group
+        .add(edit.createSurfaceSettings(), 'patchSizeM', 1, 500, 1)
+        .name('patch size (m)')
+        .onFinishChange(() => edit.previewCreateSurface());
     }
     const apply = group
       .add({ create: edit.finishCreateSurface }, 'create')

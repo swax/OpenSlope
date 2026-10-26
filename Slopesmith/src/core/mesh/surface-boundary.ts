@@ -3,6 +3,7 @@ import { blankMountain } from '../doc/mountain';
 import { appendMeshIds } from '../doc/ids';
 import { add, cross, len, mul, sub } from '../math/vec';
 import { cubicPolyline } from '../math/bezier';
+import { SpatialHash3D } from '../math/spatial-hash';
 import { meshFromDoc } from './topology';
 import { readVertex, undirectedEdgeKey } from './primitives';
 import { boundarySurfaceCharts, createSurfaceFromBoundary, type SurfaceResult } from './surface-object';
@@ -21,11 +22,12 @@ export type SurfaceBoundaryPoint = { pos: V3; vertex: number | null };
 export type SurfaceBoundaryStyle = 'smooth' | 'creased';
 const EPS = 1e-6;
 export const MAX_SURFACE_BOUNDARY_POINTS = 128;
-const sources = new WeakMap<QuadMeshDoc, { edges: Set<string>; geometry: ReturnType<typeof meshFromDoc> }>();
+const sources = new WeakMap<
+  QuadMeshDoc,
+  { edge: (from: number, to: number) => [number, number] | undefined; geometry: ReturnType<typeof meshFromDoc> }
+>();
 
-function segmentHandles(doc: QuadMeshDoc, from: SurfaceBoundaryPoint, to: SurfaceBoundaryPoint): [V3, V3] {
-  const ab = mul(sub(to.pos, from.pos), 1 / 3);
-  if (from.vertex === null || to.vertex === null) return [ab, mul(ab, -1)];
+function sourceGeometry(doc: QuadMeshDoc) {
   let source = sources.get(doc);
   if (!source) {
     const edges = new Set(doc.freeEdges?.map(([a, b]) => undirectedEdgeKey(a, b)));
@@ -37,11 +39,41 @@ function segmentHandles(doc: QuadMeshDoc, from: SurfaceBoundaryPoint, to: Surfac
         [c, a],
       ])
         edges.add(undirectedEdgeKey(x, y));
-    source = { edges, geometry: meshFromDoc(doc) };
+    const grid = new SpatialHash3D<number>(EPS),
+      aliases = new Map<number, number[]>();
+    for (let i = 0; i < doc.vertexIds.length; i++) grid.insertPoint(readVertex(doc.vertices, i), i);
+    const coincident = (v: number) => {
+      if (!aliases.has(v)) {
+        const p = readVertex(doc.vertices, v);
+        aliases.set(
+          v,
+          grid.queryPointNeighborhood(p).filter(i => len(sub(readVertex(doc.vertices, i), p)) < EPS),
+        );
+      }
+      return aliases.get(v)!;
+    };
+    source = {
+      geometry: meshFromDoc(doc),
+      edge: (from, to) => {
+        if (edges.has(undirectedEdgeKey(from, to))) return [from, to];
+        // A stitched corner has separate authoring and terrain identities. Either pick must copy
+        // the same existing cubic when the next edge belongs to the other authoring cage.
+        for (const a of coincident(from))
+          for (const b of coincident(to)) if (a !== b && edges.has(undirectedEdgeKey(a, b))) return [a, b];
+      },
+    };
     sources.set(doc, source);
   }
-  return source.edges.has(undirectedEdgeKey(from.vertex, to.vertex))
-    ? [source.geometry.edgeHandle(from.vertex, to.vertex), source.geometry.edgeHandle(to.vertex, from.vertex)]
+  return source;
+}
+
+function segmentHandles(doc: QuadMeshDoc, from: SurfaceBoundaryPoint, to: SurfaceBoundaryPoint): [V3, V3] {
+  const ab = mul(sub(to.pos, from.pos), 1 / 3);
+  if (from.vertex === null || to.vertex === null) return [ab, mul(ab, -1)];
+  const source = sourceGeometry(doc);
+  const edge = source.edge(from.vertex, to.vertex);
+  return edge
+    ? [source.geometry.edgeHandle(edge[0], edge[1]), source.geometry.edgeHandle(edge[1], edge[0])]
     : [ab, mul(ab, -1)];
 }
 
@@ -90,7 +122,18 @@ function validate(points: readonly SurfaceBoundaryPoint[]) {
 }
 
 /** Extra clicks remain editable points along the four inferred sides. */
-export function surfaceBoundaryCorners(points: readonly SurfaceBoundaryPoint[]) {
+export function surfaceBoundaryCorners(points: readonly SurfaceBoundaryPoint[], doc?: QuadMeshDoc | null) {
+  if (doc && points.length >= 4 && points.some(p => p.vertex !== null)) {
+    const source = sourceGeometry(doc);
+    const copied = points.map((p, i) => {
+      const next = points[(i + 1) % points.length];
+      return p.vertex !== null && next.vertex !== null && !!source.edge(p.vertex, next.vertex);
+    });
+    const ends = points.flatMap((_, i) => (copied[i] !== copied[(i + points.length - 1) % points.length] ? [i] : []));
+    // Two snapped runs and their connecting spans already define four sides. A geometric line fit
+    // can put a corner inside a bending trail, forcing one host across two adjacent stitch bands.
+    if (ends.length === 4) return ends;
+  }
   return inferSurfaceCorners(points.map(p => p.pos));
 }
 
@@ -116,7 +159,7 @@ export function surfaceBoundaryDraft(
     boundary.edgeHandles[`${a}>${b}`] = [...ab];
     boundary.edgeHandles[`${b}>${a}`] = [...ba];
   }
-  const stops = validateSurfaceCorners(points.length, corners ?? surfaceBoundaryCorners(points));
+  const stops = validateSurfaceCorners(points.length, corners ?? surfaceBoundaryCorners(points, doc));
   if (style === 'smooth') {
     const copied = new Set(
       boundary.freeEdges
@@ -124,7 +167,7 @@ export function surfaceBoundaryDraft(
           ([a, b]) =>
             points[a].vertex !== null &&
             points[b].vertex !== null &&
-            sources.get(doc)?.edges.has(undirectedEdgeKey(points[a].vertex!, points[b].vertex!)),
+            sourceGeometry(doc).edge(points[a].vertex!, points[b].vertex!),
         )
         .map(([a, b]) => undirectedEdgeKey(a, b)),
     );
@@ -289,7 +332,11 @@ function attachSurfaceContacts(
         if (surface) candidates.push({ end, target: surface });
         else
           try {
-            candidates.push({ end, target: { vertices: meshBoundaryChain(hosts, edges) } });
+            const resolved = edges.map(([a, b]) => {
+              const edge = sourceGeometry(hosts).edge(hosts.vertexIds.indexOf(a), hosts.vertexIds.indexOf(b));
+              return edge ? (edge.map(v => hosts.vertexIds[v]) as [string, string]) : ([a, b] as [string, string]);
+            });
+            candidates.push({ end, target: { vertices: meshBoundaryChain(hosts, resolved) } });
           } catch {
             break;
           }

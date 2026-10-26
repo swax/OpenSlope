@@ -913,6 +913,7 @@ export class Viewport {
           pos = vertex !== null ? this.picking.cornerPos(vertex) : null;
         return pos ? { vertex, pos } : null;
       },
+      () => this.meshDoc,
     );
     this.trailTool = createTrailToolLayer(
       this.stage,
@@ -3858,9 +3859,11 @@ export class Viewport {
   setCreateSurfaceCharts(
     charts: readonly import('../../core/mesh/loft-surface').Patch[] | null,
     outline?: readonly V3[],
+    invalid = false,
   ) {
-    this.loftPreview.setCharts(charts);
+    this.loftPreview.setCharts(charts, invalid, outline);
     this.surfaceTool.setOutline(outline ?? null);
+    this.surfaceTool.setInvalid(invalid);
   }
 
   get createTubePoints(): readonly V3[] {

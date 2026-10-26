@@ -6,7 +6,6 @@
  * Run: `npx tsx test/create-grid.test.ts`
  */
 import assert from 'node:assert/strict';
-import * as THREE from 'three';
 import { meshFromNet, starterCourse } from '../src/core/doc/mountain';
 import { seedMeshIds } from '../src/core/doc/ids';
 import type { QuadMeshDoc, V3 } from '../src/core/doc/types';
@@ -29,7 +28,6 @@ import {
 import { meshFromDoc, quadControlPoints } from '../src/core/mesh/topology';
 import { patchNormal } from '../src/core/math/bezier';
 import { buildMountainPreview } from '../src/core/mesh/tessellation';
-import { resolvePlacementEndpoint } from '../src/app/viewport/input/placement';
 import { normalsAgreeAcrossSeams, watertight } from './meshops.fixture';
 
 const base = () =>
@@ -359,30 +357,6 @@ const fronts = (doc: QuadMeshDoc, quads: number[]) => {
   const swung = grow(doc, [off[0], off[1], free([0, 12, 20]), free([0, 12, 0])], { columns: 1, rows: 2 });
   assert.deepEqual(swung.plan.reuse.slice(0, 3), rim, 'the rim is still the first row');
   assert(near(swung.plan.points[2 * 3], [0, 12, 0]) && near(swung.plan.points[2 * 3 + 2], [0, 12, 20]), 'over the rim');
-}
-
-// Placement: a later corner lands on the level plane through the previous one, snapped across it but never off it.
-{
-  const raycaster = new THREE.Raycaster();
-  const stage = {
-    ray: raycaster,
-    pickSurface: () => null,
-    screenPlanePoint: () => new THREE.Vector3(2, 8, -3),
-    snapDataPoint: (p: V3) => p.map(v => Math.round(v / 5) * 5) as V3,
-  } as unknown as Parameters<typeof resolvePlacementEndpoint>[0]['stage'];
-  let vertex: { pos: V3; vertex: number } | null = null;
-  const resolver = { stage, terrain: () => new THREE.Mesh(), pickVertex: () => vertex };
-  const aim = (direction: [number, number, number]) =>
-    raycaster.ray.set(new THREE.Vector3(0, 50, 0), new THREE.Vector3(...direction).normalize());
-  const at = (anchor: V3) => resolvePlacementEndpoint(resolver, anchor, { levelPlane: true })?.pos.join(',');
-  aim([1, -1, 1]); // meets y = 10.3 at scene (39.7, 10.3, 39.7): data z is −scene z
-  assert.equal(at([0, 10.3, 0]), '40,10.3,-40', 'the level plane through the anchor, snapped across it only');
-  aim([1, 1, 0]);
-  assert.equal(at([0, 10.3, 0]), '0,10,5', 'a ray that never meets the plane falls back to the screen-facing one');
-  aim([1, -0.001, 0]);
-  assert.equal(at([0, 10.3, 0]), '0,10,5', 'a hit grazing the horizon falls back too');
-  vertex = { pos: [4, 4, 4], vertex: 7 };
-  assert.equal(at([0, 10.3, 0]), '4,4,4', 'a vertex snap still wins');
 }
 
 console.log('CREATE GRID: PASS');

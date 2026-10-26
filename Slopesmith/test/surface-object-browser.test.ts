@@ -252,6 +252,23 @@ try {
     x: canvas.x + canvas.width / 2 + ((x - 30) * canvas.height) / 130,
     y: canvas.y + canvas.height / 2 + ((20 - z) * canvas.height) / 130,
   });
+  const selectCurve = async (axis: 'U' | 'V', row: number) => {
+    const doc = await read(),
+      surface = doc.surfaces![0],
+      index = surface
+        .guides!.map((g, i) => ({ ...g, i }))
+        .filter(g => g.axis === axis)
+        .sort((a, b) => a.at - b.at)[row].i,
+      curve = readGuideCurves(doc, surface)[index],
+      position = cubicPoint(...(curve.points[0] as [V3, V3, V3, V3]), 0.35),
+      target = point(position[0], position[2]);
+    await page!.keyboard.press('Escape');
+    await page!.mouse.dblclick(target.x, target.y);
+    await page!.waitForFunction(names => {
+      const edges = (window as unknown as Observation).slopesmith.snapshot().selection.meshEdges;
+      return edges.length === names.length - 1 && edges.every(edge => edge.every(id => names.includes(id)));
+    }, surface.controls[index]);
+  };
   let p = point(0, 10);
   await page.mouse.dblclick(p.x, p.y);
   await button('surface from profiles (B)').click();
@@ -408,7 +425,7 @@ try {
   p = point(45, 12);
   await page.mouse.move(p.x, p.y);
   await page.mouse.click(p.x, p.y);
-  await field('curve').waitFor();
+  await button('copy curve (Ctrl+C)').waitFor();
   const crossed = await read(),
     guidePath = crossed.surfaces![0].controls[1];
   assert.equal(crossed.surfaces![0].guides!.at(-1)!.axis, 'V', 'the new curve uses the chosen orientation');
@@ -516,11 +533,10 @@ try {
       .filter({ has: page!.locator('.lil-name', { hasText: /^direction$/ }) })
       .locator('select');
   await page.waitForTimeout(1200); // Let the initial creation/transform reach the room before separate placement gestures.
-  for (const axis of ['U', 'V']) {
+  for (const axis of ['U', 'V'] as const) {
     await direction().selectOption({ label: axis });
     if (axis === 'U') {
-      await field('curve').fill('2');
-      await field('curve').press('Tab');
+      await selectCurve(axis, 1);
     }
     const before = (await read()).surfaces![0];
     const beforePlacement = await read(),
@@ -597,7 +613,7 @@ try {
   await page.mouse.move(p.x, p.y);
   assert.deepEqual(await read(), beforePoints, 'point preview does not edit the document');
   await page.mouse.click(p.x, p.y);
-  await field('control point').waitFor();
+  await button('add control point').waitFor();
   assert.equal((await read()).surfaces![0].controls[guideIndex].length, oldPointCount + 1);
   assert.deepEqual(terrain(await read()), pointTerrain);
   await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
@@ -611,12 +627,12 @@ try {
   p = point(20, 7);
   await page.mouse.move(p.x, p.y);
   await page.mouse.click(p.x, p.y);
-  await field('control point').waitFor();
+  await button('add control point').waitFor();
   assert.deepEqual(terrain(await read()), pointTerrain);
   await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
   await page.waitForTimeout(700);
   await button('delete control point').click();
-  await field('control point').waitFor();
+  await button('add control point').waitFor();
   assert.equal((await read()).surfaces![0].controls[guideIndex].length, oldPointCount);
   assert(!(await read()).surfaces![0].seed, 'deleting the point rebuilds from visible controls');
   await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
@@ -627,7 +643,7 @@ try {
   p = point(45, 12);
   await page.mouse.move(p.x, p.y);
   await page.mouse.click(p.x, p.y);
-  await field('curve').waitFor();
+  await button('copy curve (Ctrl+C)').waitFor();
   await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
   current = await read();
   const curveIndex = current.surfaces![0].guides!.findIndex(g => g.axis === 'V');
@@ -742,14 +758,12 @@ try {
     'nonplanar boundary carries its elevation into the surface',
   );
   const boundaryOutput = terrain(filled);
-  for (const axis of ['U', 'V']) {
+  for (const axis of ['U', 'V'] as const) {
     await direction().selectOption({ label: axis });
     for (const row of [1, 2]) {
-      await field('curve').fill(String(row));
-      await field('curve').press('Tab');
+      await selectCurve(axis, row - 1);
       for (const action of ['delete control curve', 'delete control curve', 'reposition curve on surface'])
         assert(await button(action).isDisabled(), `${axis} boundary ${row} protects ${action}`);
-      await button('select curve').click();
       await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
       await page.keyboard.press('Delete');
       await page.evaluate(() => (window as unknown as Observation).slopesmith.settled());
@@ -944,6 +958,28 @@ try {
   const metricSource = await read(),
     metrics = measureSurfaceObject(metricSource, metricSource.surfaces![0]);
   assert.equal(await field('area').inputValue(), fmtArea(metrics.area));
+  const metricSurface = metricSource.surfaces![0],
+    sourceEdges = new Set(
+      metricSurface.controls.flatMap(row => row.slice(1).map((id, i) => [row[i], id].sort().join('>'))),
+    );
+  assert.equal(
+    await field('source controls').inputValue(),
+    `${metricSurface.controls.length} curves · ${new Set(metricSurface.controls.flat()).size} points · ${sourceEdges.size * 2} handles`,
+  );
+  await field('fit error (m)').fill('2');
+  await field('fit error (m)').press('Tab');
+  await page.waitForFunction(
+    () => (window as unknown as Observation).slopesmith.doc().surfaces![0].fitToleranceM === 2,
+  );
+  await button('automatic fit error').click();
+  await page.waitForFunction(
+    () => (window as unknown as Observation).slopesmith.doc().surfaces![0].fitToleranceM === undefined,
+  );
+  assert.deepEqual(
+    (await read()).surfaces![0].controls,
+    metricSurface.controls,
+    'fit error edits keep source controls',
+  );
   assert.equal(
     await field('avg patch size').inputValue(),
     `${metrics.averagePatchSize!.length.toFixed(1)} × ${metrics.averagePatchSize!.width.toFixed(1)} m`,
@@ -955,8 +991,7 @@ try {
     'avg patch size',
     'average dimensions sit directly below surface area',
   );
-  await field('curve').fill('2');
-  await field('curve').press('Tab');
+  await selectCurve('U', 1);
   await page.waitForFunction(
     expected =>
       [...document.querySelectorAll<HTMLInputElement>('#dock-right input')].some(input => input.value === expected),
@@ -1109,6 +1144,20 @@ try {
       },
       { name, value },
     );
+  // A crossed outline stays visible as a red warning before Enter, then clears on cancellation.
+  for (const [x, z] of [
+    [0, 0],
+    [60, 40],
+    [60, 0],
+  ])
+    await clickBoundary(x, z);
+  p = point(0, 30);
+  await page.mouse.move(p.x, p.y);
+  await draftReadout('preview', 'The boundary crosses itself. Undo the last point and draw around the perimeter.');
+  assert.deepEqual(await read(), emptyDrawing, 'invalid preview never installs draft geometry');
+  await page.screenshot({ path: join(root, 'surface-invalid-preview.png') });
+  await page.keyboard.press('Escape');
+  await button('▱ create surface').click();
   await field('patch size (m)').fill('15');
   await field('patch size (m)').press('Tab');
   for (const [x, z] of [

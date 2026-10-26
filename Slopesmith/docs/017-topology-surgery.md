@@ -230,11 +230,10 @@ The cage overlay auto-enables while a surgery gesture is armed. Pole dots (3 ora
 the reference view) render whenever the cage is on, so the consequences of a cut are visible
 immediately.
 
-The drawing tools (create edge / patch / tube / grid) put a chain's **first** point on the vertex, edge or surface
+The drawing tools (create edge / patch / tube / grid / surface) put a chain's **first** point on the vertex, edge or surface
 under the cursor — a click has no other depth to go on — and every later point on the screen-facing plane through
-the previous one, so terrain behind the cursor never pulls a free-standing wall or overhang off to it. Create grid
-uses the level plane through the previous point instead (`levelPlane`), so a grid drawn in open space is flat; a ray
-that grazes that plane falls back to the screen-facing one. **Ctrl** drops
+the previous one, so terrain behind the cursor never pulls a free-standing wall or overhang off to it. This also
+keeps a click near the horizon from shooting far away along a horizontal construction plane. **Ctrl** drops
 a later point onto the surface; **Shift** locks it to a world axis (`resolvePlacementEndpoint`,
 `placementTakesSurface`). Create patch, tube, grid and edge all snap a later point to a vertex under the cursor without
 Ctrl. Create edge also snaps it onto a free (construction) edge, which is split there at the exact curve point

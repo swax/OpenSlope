@@ -10,7 +10,7 @@ import {
   type SurfaceBoundaryPoint,
 } from '../src/core/mesh/surface-boundary';
 import { chartPoint, guideCharts } from '../src/core/mesh/surface-guides';
-import { refreshSurfaces, bakeSurface } from '../src/core/mesh/surface-object';
+import { refreshSurfaces, bakeSurface, deleteSurfaceObject } from '../src/core/mesh/surface-object';
 import { measureSurfaceObject } from '../src/core/mesh/surface-measure';
 import { len, sub } from '../src/core/math/vec';
 import type { V3 } from '../src/core/doc/types';
@@ -60,6 +60,12 @@ for (const boundary of [
   const baked = bakeSurface(saved, saved.surfaces![0].id);
   assert(!baked.surfaces?.length);
   assert.equal(baked.freeEdges?.length ?? 0, 0, 'bake removes isolated sketch and guide edges');
+  const deleted = deleteSurfaceObject(saved, created.surface.id);
+  assert(deleted.ok, deleted.ok ? '' : deleted.error);
+  assert.equal(deleted.doc.vertices.length, 0, 'deletion removes the boundary sketch and owned points');
+  assert.equal(deleted.doc.freeEdges?.length ?? 0, 0, 'deletion leaves no boundary loop');
+  assert.equal(deleted.doc.quads.length, 0);
+  assert(!refreshSurfaces(migrateMountain(serializeMountain(deleted.doc))).surfaces);
 }
 {
   const doc = blankMountain('HOST');
@@ -87,6 +93,12 @@ for (const boundary of [
   assert.deepEqual(result.doc.vertices.slice(0, 12), doc.vertices);
   assert.deepEqual(result.doc.quads[0], doc.quads[0]);
   assert.deepEqual(result.doc.edgeHandles!['0>1'], doc.edgeHandles['0>1']);
+  const deleted = deleteSurfaceObject(result.doc, result.surface.id);
+  assert(deleted.ok, deleted.ok ? '' : deleted.error);
+  assert.deepEqual(deleted.doc.vertices, before.vertices, 'host terrain points survive deletion');
+  assert.deepEqual(deleted.doc.quads, before.quads);
+  assert.deepEqual(deleted.doc.edgeHandles, before.edgeHandles);
+  assert.equal(deleted.doc.freeEdges?.length ?? 0, 0, 'the copied boundary loop is removed');
 }
 {
   const doc = blankMountain('INVALID');

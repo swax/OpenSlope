@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import type { QuadMeshDoc } from '../../../core/doc/types';
+import type { QuadMeshDoc, V3 } from '../../../core/doc/types';
 import { meshFromDoc, quadControlPoints } from '../../../core/mesh/topology';
 import { patchPoint } from '../../../core/math/bezier';
 import type { PreviewData } from '../../../core/mesh/tessellation';
 import { PREVIEW_RES } from '../../../core/mesh/tessellation';
-import { LOFT_PREVIEW_FILL_COLOR, LOFT_PREVIEW_FILL_OPACITY } from '../constants';
+import { LOFT_PREVIEW_FILL_COLOR, LOFT_PREVIEW_FILL_OPACITY, LOFT_PREVIEW_INVALID_COLOR } from '../constants';
 import { tintBackfaces } from '../mesh/backface-tint';
 import type { Stage } from '../stage';
 import type { Patch } from '../../../core/mesh/loft-surface';
@@ -17,6 +17,7 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
   let doc: QuadMeshDoc | null = null;
   let quadIds: number[] = [];
   let charts: readonly Patch[] | null = null;
+  let invalidBoundary: readonly V3[] | null = null;
 
   // Back faces tint magenta like the terrain's (backface-tint.ts): the ghost is wound exactly as the commit
   // will be, so a tube shows its dead exterior before it exists.
@@ -51,6 +52,8 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   function setPreview(next: readonly (readonly number[])[] | null, source?: readonly number[] | QuadMeshDoc | null) {
     charts = null;
+    invalidBoundary = null;
+    material.color.setHex(LOFT_PREVIEW_FILL_COLOR);
     quads = next ?? [];
     doc = next && source && !Array.isArray(source) ? (source as QuadMeshDoc) : null;
     vertices = next && source && Array.isArray(source) ? source : null;
@@ -60,6 +63,14 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   function rebuild() {
     const preview = getPreview();
+    if (invalidBoundary && invalidBoundary.length >= 3) {
+      // Invalid outlines have no bicubic charts. Keep their current footprint visible as a warning,
+      // including self-crossing loops, instead of leaving an unrelated last-valid surface on screen.
+      const indices: number[] = [];
+      for (let i = 1; i < invalidBoundary.length - 1; i++) indices.push(0, i, i + 1);
+      replaceGeometry(invalidBoundary.flat(), indices);
+      return;
+    }
     if (!quads.length && !charts?.length) {
       fill.visible = false;
       return;
@@ -121,12 +132,14 @@ export function createLoftPreviewLayer(stage: Stage, getPreview: () => PreviewDa
 
   return {
     setPreview,
-    setCharts(next: readonly Patch[] | null) {
+    setCharts(next: readonly Patch[] | null, invalid = false, boundary?: readonly V3[]) {
       quads = [];
       doc = null;
       vertices = null;
       quadIds = [];
       charts = next;
+      invalidBoundary = !next && invalid ? (boundary?.filter(p => p.every(Number.isFinite)) ?? null) : null;
+      material.color.setHex(invalid ? LOFT_PREVIEW_INVALID_COLOR : LOFT_PREVIEW_FILL_COLOR);
       rebuild();
     },
     rebuild,

@@ -19,14 +19,7 @@ export type PlacementOptions = {
   followsGround?: boolean;
   /** Lift a surface contact by this much, so a generated surface is not coplanar with the terrain it traces. */
   surfaceLiftM?: number;
-  /** Create Grid: a free follow-on point lands on the level plane through the anchor rather than the
-   *  screen-facing one, so a grid drawn in open space comes out flat. A ray that cannot meet that plane in front
-   *  of the camera, or meets it absurdly far off, falls back to the screen-facing plane. */
-  levelPlane?: boolean;
 };
-
-/** How far past the anchor's own distance a level-plane hit may land before it counts as grazing the horizon. */
-const LEVEL_PLANE_REACH = 20;
 
 /** Whether the surface under the cursor may place this point. The first point of a chain has no other depth
  *  to go on; after it, the anchor's depth carries the chain — a hill behind the cursor would otherwise pull
@@ -53,19 +46,6 @@ export function resolvePlacementEndpoint(
     if (hit) {
       endpoint = { pos: stage.snapDataPoint(sceneToData(hit.point)), vertex: null };
       surfaceContact = true;
-    }
-  }
-  if (!endpoint && anchor && opts.levelPlane) {
-    const through = dataToScene(anchor);
-    const point = stage.ray.ray.intersectPlane(
-      new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), through),
-      new THREE.Vector3(),
-    );
-    const origin = stage.ray.ray.origin;
-    if (point && point.distanceTo(origin) <= LEVEL_PLANE_REACH * Math.max(1, through.distanceTo(origin))) {
-      // Snap across the plane only: rounding the height would tilt the grid off an anchor between snap steps.
-      const snapped = stage.snapDataPoint(sceneToData(point));
-      endpoint = { pos: [snapped[0], anchor[1], snapped[2]], vertex: null };
     }
   }
   if (!endpoint) {

@@ -10,7 +10,7 @@ const MAX_PATCHES = 16384;
 const cuts = (values: number[]) => values.sort((a, b) => a - b).filter((t, i, a) => !i || t - a[i - 1] > EPS);
 
 /** Terrain fitting budget scales with the intended patch size: 30 cm at 15 m. */
-export const surfaceFitTolerance = (patchSizeM: number) => patchSizeM * 0.02;
+export const surfaceFitTolerance = (patchSizeM: number, override?: number) => override ?? patchSizeM * 0.02;
 
 function interval(values: number[], t: number): number {
   let lo = 0,
@@ -172,10 +172,15 @@ function creaseCuts(quilt: ReturnType<typeof sourceQuilt>, axis: 0 | 2): number[
 
 /** Fit independently of source topology. When a row needs more resolution, redistribute the entire
  * physical interval, rather than inserting a source seam beside an existing cut and leaving a sliver. */
-export function fitSurface(charts: Patch[], patchSizeM: number, layout?: { us: number[]; vs: number[] }) {
+export function fitSurface(
+  charts: Patch[],
+  patchSizeM: number,
+  layout?: { us: number[]; vs: number[] },
+  fitToleranceM?: number,
+) {
   if (!layout) charts = compactSurfaceCharts(charts);
   const quilt = sourceQuilt(charts),
-    tolerance = surfaceFitTolerance(patchSizeM),
+    tolerance = surfaceFitTolerance(patchSizeM, fitToleranceM),
     cache = new Map<string, { patch: Patch; error: number }>(),
     projections = [new Map<string, ReturnType<typeof projection>>(), new Map<string, ReturnType<typeof projection>>()];
   const project = (axis: 0 | 2, domain: LoftDomain) => {

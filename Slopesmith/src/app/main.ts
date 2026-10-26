@@ -503,8 +503,7 @@ const library = new TextureLibrary({
     else rebuildTools();
     updatePaintUi();
   },
-  // show / hide re-places the overlays that sit above the panel, and settles the pull-up tab: a pick raises
-  // this panel without touching the open intent, so the tab has to stand down on the panel itself appearing
+  // Show / hide re-places the overlays and the library tab, including when a texture pick owns the panel.
   onHeightChange() {
     updateCmdSheet();
     syncDockTabs();
@@ -785,31 +784,31 @@ function syncPropLibBtn() {
   propLibBtn.setAttribute('aria-expanded', String(store.propLibWanted));
 }
 
-// The pull-up tabs at the bottom edge (class DockTab): while a library is hidden in its own mode, a small
-// handle in the middle of the bottom edge says what is folded away down there and brings it back. Without one
-// the panel's ✕ is close to a one-way door — reopening means already knowing the toggle is up in the Tools
-// panel. Each tab is that toggle's twin, offered where the panel itself sits.
+// Keep the library handles in their own mode, above the panel when open and at the bottom edge when closed.
 const libraryTab = new DockTab({
   id: 'texture-library-tab',
   icon: LIB_GRID_ICON,
   label: 'Texture Library',
+  panel: library.el,
   tip: 'Show the Texture Library — the level’s texture tiles, at the bottom of the screen.',
-  onOpen: () => setLibraryWanted(true),
+  onToggle: open => {
+    if (!open) library.cancelPick();
+    setLibraryWanted(open);
+  },
 });
 const propLibTab = new DockTab({
   id: 'prop-library-tab',
   icon: LIB_GRID_ICON,
   label: 'Prop Library',
+  panel: propLib.el,
   tip: 'Show the Prop Library — this mountain’s and the reference world’s placeable props, at the bottom of the screen.',
-  onOpen: () => setPropLibWanted(true),
+  onToggle: setPropLibWanted,
 });
 
-/** Offer each tab exactly when its library is hidden AND its own mode is up — so it never competes with the
- *  panel it opens, and never appears in a mode where that panel could not show anyway. A live texture pick
- *  holds the Texture panel open from other modes (docs/005), so the tab stands down for that too. */
+/** A live texture pick can also show the library and its collapse handle outside Paint mode. */
 function syncDockTabs() {
-  libraryTab.setVisible(store.currentMode === 'paint' && !store.libraryWanted && !library.picking);
-  propLibTab.setVisible(store.currentMode === 'props' && !store.propLibWanted);
+  libraryTab.setVisible(store.currentMode === 'paint' || library.picking);
+  propLibTab.setVisible(store.currentMode === 'props');
 }
 
 /** Set whether the Texture Library should be open, remember it, and apply it if we're in Paint mode (it only

@@ -211,7 +211,7 @@ export type ToolsPanelDeps = {
   scheduleRebuild: () => void;
   clearPaintSel: () => void;
   syncPropLibBtn: () => void;
-  syncDockTabs: () => void; // the bottom-edge pull-up tabs for the two hidden libraries
+  syncDockTabs: () => void; // the bottom libraries' open/collapse handles
   getRefLevel: () => string;
   propLevels: Map<string, LevelProps>;
   groupDefIdx: Map<string, GroupDef>;
