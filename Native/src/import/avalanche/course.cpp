@@ -116,7 +116,8 @@ Members level(const DiscInput& disc, const std::string& path, const ImportCancel
     return result;
 }
 
-const std::vector<std::uint8_t>& member(const Members& files, const std::string& name) {
+// The view borrows the package bytes, independently of the lookup name's lifetime.
+std::span<const std::uint8_t> member(const Members& files, const std::string& name) {
     const auto found = files.find(name);
     if (found == files.end())
         throw std::runtime_error("Missing Avalanche member: " + name);
@@ -897,7 +898,7 @@ Json environment(const DiscInput& disc, const Course& course, const std::filesys
     save(sky / "Models.json", {{"Models", Json::array()}});
     save(sky / "Instances.json", {{"Instances", Json::array()}});
     std::set<unsigned> used;
-    const auto& art = member(files, prefix + ".TPL");
+    const auto art = member(files, prefix + ".TPL");
     const Bytes mtl{member(files, prefix + ".MTL")};
     auto mats = materials(mtl, Bytes{art}.be(4), used);
     std::set<unsigned> cloud_masks;
@@ -1041,9 +1042,9 @@ void write_avalanche_course(const DiscInput& disc, const std::string& course, co
     const auto package = world_directory(*selected) + "/" + package_name(*selected);
     const auto files = level(disc, package, cancel);
     const auto stem = member_stem(*selected);
-    const auto& geometry = member(files, stem + ".GEO");
-    const auto& art = member(files, stem + ".TPL");
-    const auto& material_data = member(files, stem + ".MTL");
+    const auto geometry = member(files, stem + ".GEO");
+    const auto art = member(files, stem + ".TPL");
+    const auto material_data = member(files, stem + ".MTL");
     Geometry g{Bytes{geometry}};
     const auto count = g.b.be(0x88), at = g.b.be(0x28);
     require(count && count <= 100000, "Invalid Avalanche terrain count");

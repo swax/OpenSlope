@@ -51,34 +51,44 @@ export function createReferenceAiPathsLayer(stage: Stage) {
   const aiPathMaterials = [...fixedMaterials];
   const pathMaterials = new Map<string, { normal: LineMaterial; selected: LineMaterial }>();
   const behindMaterials = new Map<THREE.Material, THREE.Material>();
-  const pointTextures = new Map(
-    (Object.entries(AI_PATH_EVENT_SHAPE_PATHS) as [AiPathEventShape, string][]).map(([shape, path]) => {
+  const pointTextures = new Map<AiPathEventShape, THREE.CanvasTexture>();
+  // Course decor also runs without a DOM; create canvas textures only for actual event markers.
+  function pointTexture(shape: AiPathEventShape) {
+    let texture = pointTextures.get(shape);
+    if (!texture) {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 64;
       const ctx = canvas.getContext('2d')!;
       ctx.scale(2, 2);
       ctx.fillStyle = '#fff';
-      ctx.fill(new Path2D(path));
-      const texture = new THREE.CanvasTexture(canvas);
+      ctx.fill(new Path2D(AI_PATH_EVENT_SHAPE_PATHS[shape]));
+      texture = new THREE.CanvasTexture(canvas);
       texture.minFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
       texture.userData.aiPathEventShape = shape;
-      return [shape, texture] as const;
-    }),
-  );
+      pointTextures.set(shape, texture);
+    }
+    return texture;
+  }
   const makePointMaterial = (color: number, shape: AiPathEventShape, size: number) =>
     new THREE.PointsMaterial({
       color,
       size,
-      map: pointTextures.get(shape),
+      map: pointTexture(shape),
       alphaTest: 0.2,
       sizeAttenuation: false,
       transparent: true,
       depthWrite: false,
     });
-  const pointBorders = new Map(
-    [...pointTextures.keys()].map(shape => [shape, makePointMaterial(AI_PATH_OUTLINE, shape, 17)]),
-  );
+  const pointBorders = new Map<AiPathEventShape, THREE.PointsMaterial>();
+  function pointBorder(shape: AiPathEventShape) {
+    let material = pointBorders.get(shape);
+    if (!material) {
+      material = makePointMaterial(AI_PATH_OUTLINE, shape, 17);
+      pointBorders.set(shape, material);
+    }
+    return material;
+  }
   const pointMaterials = new Map<string, THREE.PointsMaterial>();
   function pointMaterial(color: number, shape: AiPathEventShape) {
     const key = `${color}/${shape}`;
@@ -209,7 +219,7 @@ export function createReferenceAiPathsLayer(stage: Stage) {
       points(batch.endpoints, pointMaterial(batch.color, batch.shape), 6);
     }
     segments(borders, eventBorder, 3);
-    for (const [shape, positions] of dots) points(positions, pointBorders.get(shape)!, 5);
+    for (const [shape, positions] of dots) points(positions, pointBorder(shape), 5);
   }
 
   function updatePathMaterials() {
@@ -267,7 +277,7 @@ export function createReferenceAiPathsLayer(stage: Stage) {
       }
       const endpoints = span.length > 1 ? [span[0], span.at(-1)!] : [span[0]];
       for (const [mat, order] of [
-        [pointBorders.get(shape)!, 5],
+        [pointBorder(shape), 5],
         [pointMaterial(color, shape), 6],
       ] as const) {
         const dots = new THREE.Points(

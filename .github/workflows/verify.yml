@@ -130,7 +130,9 @@ jobs:
     needs: hygiene
     if: ${{ !cancelled() && needs.hygiene.outputs.slopesmith == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Cold browser dependency installs can take eight minutes on a slow mirror.
+    # Leave time for the required checks and production build.
+    timeout-minutes: 15
 
     steps:
       - name: Check out the toolkit

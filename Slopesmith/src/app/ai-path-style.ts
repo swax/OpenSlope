@@ -28,7 +28,12 @@ export function aiPathColor(rating: number): number {
 /** Descriptive labels for confirmed Tricky behavior, not recovered original names; unknown codes retain their identity. */
 export function aiPathEventStyle(type: number): { name: string; color: number; shape: AiPathEventShape } {
   if (type === -1 || type === 0xffffffff) return { name: 'Disabled', color: 0x536176, shape: 'cross' };
-  if (type === 100) return { name: 'Jump', color: 0x167c40, shape: 'triangle' };
+  if (type === 100)
+    return {
+      name: 'Jump',
+      color: 0x167c40, // repo-hygiene: allow[runtime-address] -- RGB marker color, not an executable address
+      shape: 'triangle',
+    };
   if (type === 101) return { name: 'Cruise speed', color: 0x206dc5, shape: 'circle' };
   if (type === 103) return { name: 'Reset before region', color: 0xc62d50, shape: 'diamond' };
   if (type === 104) return { name: 'No reset', color: 0xc62d50, shape: 'diamond' };
