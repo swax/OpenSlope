@@ -11,6 +11,7 @@ target_sources(openslope_core PRIVATE
   src/import/containers/iso9660.cpp
   src/import/containers/filesystem.cpp
   src/import/containers/big.cpp
+  src/import/containers/pak.cpp
   src/import/containers/refpack.cpp
   src/import/containers/rvz.cpp
   src/import/containers/gamecube.cpp
@@ -19,6 +20,12 @@ target_sources(openslope_core PRIVATE
   src/import/avalanche/importer.cpp
   src/import/avalanche/course.cpp
   src/import/avalanche/props.cpp
+
+  # Jonny Moseley Mad Trix.
+  src/import/madtrix/importer.cpp
+  src/import/madtrix/audio.cpp
+  src/import/madtrix/music.cpp
+  src/import/madtrix/props.cpp
 
   # SSX family registration and per-game conversion.
   src/import/ssx/importer.cpp

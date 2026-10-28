@@ -37,6 +37,9 @@ try {
   assert.equal((await readBoardSoundBytes('zboard', 4, true, 'SSXOT_ER1_DAY')).toString(), 'tour-sustain');
   await assert.rejects(readBoardSoundBytes('zboard', 4, true, 'MISSING'));
   await assert.rejects(readBoardSoundBytes('zboard', 5, true, 'SSX3_A'));
+  writeFileSync(join(root, 'SSXOT_ER1_DAY', 'Audio', 'SFX', 'SECOND', '005.wav'), 'tour-only');
+  assert.equal((await readBoardSoundBytes('zboard', 5, false, 'SSXOT_ER1_DAY')).toString(), 'tour-only');
+  await assert.rejects(readBoardSoundBytes('zboard', 5, false), 'global audio keeps one consistent source bank');
   assert.equal(await boardSoundSource('zboard', '../SSX3_A'), null);
   const adapted = join(root, 'SSX3_ADAPTED', 'Audio');
   mkdirSync(join(adapted, 'SFX', 'openslope_board'), { recursive: true });
@@ -56,8 +59,36 @@ try {
   writeFileSync(join(adapted, 'SFX', 'openslope_board', '052.wav'), 'attack');
   assert.equal((await readBoardSoundBytes('zboard', 52, true, 'SSX3_ADAPTED')).toString(), 'metal-sustain');
   assert.equal((await readBoardSoundBytes('zboard', 52, false, 'SSX3_ADAPTED')).toString(), 'attack');
+  const tricky = join(root, 'GARI', 'Audio'),
+    madtrix = join(root, 'MADTRIX_LV_LAS_VEGAS', 'Audio');
+  for (const [folder, banks, fallback] of [
+    [tricky, { '1': 'zboard', '0': 'zbxsfx' }, undefined],
+    [madtrix, { '1': 'openslope_board' }, 'ssx-tricky'],
+  ] as const) {
+    mkdirSync(join(folder, 'SFX', banks['1']), { recursive: true });
+    writeFileSync(
+      join(folder, 'SoundIndex.json'),
+      JSON.stringify({
+        Schema: 'openslope-sound-index/v1',
+        Level: '',
+        Banks: banks,
+        CollisionEvents: {},
+        ...(fallback ? { RidingFallback: fallback } : {}),
+      }),
+    );
+  }
+  mkdirSync(join(tricky, 'SFX', 'zbxsfx'), { recursive: true });
+  writeFileSync(join(tricky, 'SFX', 'zboard', '004.loop.wav'), 'tricky-glide');
+  writeFileSync(join(tricky, 'SFX', 'zboard', '002.wav'), 'tricky-jump');
+  writeFileSync(join(tricky, 'SFX', 'zbxsfx', '120.loop.wav'), 'tricky-boost');
+  writeFileSync(join(madtrix, 'SFX', 'openslope_board', '004.loop.wav'), 'madtrix-ski');
+  assert.equal((await readBoardSoundBytes('zboard', 4, true, 'MADTRIX_LV_LAS_VEGAS')).toString(), 'madtrix-ski');
+  assert.equal((await readBoardSoundBytes('zboard', 2, false, 'MADTRIX_LV_LAS_VEGAS')).toString(), 'tricky-jump');
+  assert.equal((await readBoardSoundBytes('zbxsfx', 120, true, 'MADTRIX_LV_LAS_VEGAS')).toString(), 'tricky-boost');
+  assert.equal((await boardSoundSource('zbxsfx', 'MADTRIX_LV_LAS_VEGAS'))?.level, 'GARI');
+  await assert.rejects(readBoardSoundBytes('zboard', 2, false, 'SSX3_A'), 'fallback requires explicit map metadata');
   console.log(
-    'Common riding audio: map-specific role banks, loop/attack selection, case matching and no cross-course fallback PASS',
+    'Common riding audio: map-specific banks, loop/attack selection, case matching and explicit Tricky fallback PASS',
   );
 } finally {
   if (previous === undefined) delete process.env.SLOPESMITH_MAPS_ROOT;

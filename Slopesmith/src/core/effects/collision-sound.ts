@@ -26,6 +26,8 @@ export interface CollisionSoundIndex {
   SourceExecutable?: string;
   Banks: Record<string, string>;
   NamedBanks?: Record<string, string>;
+  /** Optional local donor for common riding roles missing from an adapted game bank. */
+  RidingFallback?: 'ssx-tricky';
   CollisionEvents: Record<string, CollisionSoundIndexEvent>;
 }
 

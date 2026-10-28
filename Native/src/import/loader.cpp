@@ -1,5 +1,6 @@
 #include "avalanche/importer.hpp"
 #include "game_importer.hpp"
+#include "madtrix/importer.hpp"
 #include "shared.hpp"
 #include "ssx/importer.hpp"
 #include "strings.hpp"
@@ -11,7 +12,7 @@ using namespace import_detail;
 
 const GameImporter& importer(const DiscInput& disc, const ImportCancel& cancel) {
     // Register another game family here; filesystem/container readers remain independent.
-    constexpr std::array importers{&ssx_importer, &avalanche_importer};
+    constexpr std::array importers{&ssx_importer, &avalanche_importer, &madtrix_importer};
     for (const auto* candidate : importers) {
         check_cancel(cancel);
         if (candidate->accepts(disc))

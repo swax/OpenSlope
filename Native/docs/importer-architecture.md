@@ -12,9 +12,10 @@ All disc import implementation lives under [`src/import`](../src/import).
 | Location | Responsibility |
 | --- | --- |
 | `loader.cpp`, `game_importer.hpp` | Registered game families, cancellation and a new output directory's lifetime. |
-| `containers/` | Bounded disc input, RVZ, raw BIN sectors, ISO9660, GameCube FST, BIG archives and RefPack. No game selection. |
+| `containers/` | Bounded disc input, RVZ, raw BIN sectors, ISO9660, GameCube FST, BIG/PAK archives and their compression. No game selection. |
 | `shared.hpp`, `png.cpp`, `strings.hpp` | Checked binary reads, decoded images, PNG output and common name handling. |
 | `avalanche/` | Avalanche identification, course catalogue, LVL/GEO/COL/MTL/LIG/TPL conversion and prop separation. |
+| `madtrix/` | Mad Trix identity, manifest catalogue, curved terrain/sky, TEX1/PAL1 images and adapted starts. |
 | `ssx/original/` | Original SSX course conversion. |
 | `ssx/tricky/` | Tricky course conversion and its PBD admission checks. |
 | `ssx/streamed/` | Shared SSX 3 / On Tour world streams, materials, audio and playtest adaptations. |
@@ -60,9 +61,21 @@ The family callbacks are a private compile-time interface, not a public plugin
 ABI. The public C++ API, WebAssembly exports, course identifiers, map schemas
 and browser cache format remain unchanged by this organization.
 
+## Baked terrain colors
+
+`Patches.json` may carry optional `LightColorPoints`: sixteen display-domain RGB
+texture multipliers in the same Bernstein order as `Points`. Neutral is `[1,1,1]`.
+Controls must be finite and within -16..16; evaluate the bicubic net before
+clamping to 0..255/128, retaining signed fitted handles and overbright channels.
+This optional portable extension lets any importer retain baked vertex lighting
+without manufacturing SSX image lightmaps. Native and Slopesmith use it for textured
+terrain; absent controls preserve the existing rendering path. `LightmapID: -1`
+continues to mean no image lightmap. Unity/export consumers do not yet use this
+optional color net.
+
 ## Validation
 
-The existing importer tests exercise all five supported games through the public
+The existing importer tests exercise all six supported games through the public
 API. `native_import_dispatch` additionally checks unsupported-game rejection,
 generic GameCube browsing, cancellation/progress exceptions, failure cleanup
 and protection of existing map directories. The discovery benchmark still

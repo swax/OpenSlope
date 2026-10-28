@@ -172,45 +172,66 @@ const BOARD_BANKS = new Set(['zboard', 'zbxsfx']);
  * `snowknife import` writes the same zboard/zbxsfx WAVs beneath its own Audio/SFX — so the first level carrying
  * the folder serves the whole editor, and an authored mountain that has never had a reference loaded still
  * gets a board bed. Null when nothing has been extracted yet. */
-export async function boardSoundSource(
+async function boardSoundSources(
   bank: string,
   level?: string,
-): Promise<{ level: string; dir: string; bank: string } | null> {
+): Promise<{ level: string; dir: string; bank: string }[]> {
   const wanted = bank.trim().toLowerCase();
-  if (!BOARD_BANKS.has(wanted)) return null;
-  if (level && (!safeDataName(level) || safeDataName(level) !== level)) return null;
-  for (const candidate of level ? [level] : (await listDir(mapsRoot())).sort()) {
+  if (!BOARD_BANKS.has(wanted)) return [];
+  if (level && (!safeDataName(level) || safeDataName(level) !== level)) return [];
+  const fallback = level && (await readSoundIndex(level))?.RidingFallback === 'ssx-tricky';
+  const candidates = level ? [level] : (await listDir(mapsRoot())).sort();
+  if (fallback) {
+    for (const donor of (await listDir(mapsRoot())).sort()) {
+      if (donor === level) continue;
+      const index = await readSoundIndex(donor);
+      if (index?.Banks[wanted === 'zboard' ? '1' : '0']?.toLowerCase() === wanted) candidates.push(donor);
+    }
+  }
+  const sources = [];
+  for (const candidate of candidates) {
     const index = await readSoundIndex(candidate);
     const actual = index?.Banks[wanted === 'zboard' ? '1' : '0'] ?? wanted;
     if (!actual || safeDataName(actual) !== actual) continue;
     const root = join(mapsRoot(), candidate, 'Audio', 'SFX');
     const name = (await listSubdirectories(root)).find(name => name.toLowerCase() === actual.toLowerCase());
     const dir = name ? join(root, name) : null;
-    if (dir && name && (await isDirectory(dir))) return { level: candidate, dir, bank: name };
+    if (dir && name && (await isDirectory(dir))) {
+      sources.push({ level: candidate, dir, bank: name });
+      if (!fallback) return sources;
+    }
   }
-  return null;
+  return sources;
+}
+
+export async function boardSoundSource(
+  bank: string,
+  level?: string,
+): Promise<{ level: string; dir: string; bank: string } | null> {
+  return (await boardSoundSources(bank, level))[0] ?? null;
 }
 
 /** Read one shared board-bank slot. `loop` prefers the sibling `NNN.loop.wav` Snowknife emits from the BNKl
  * loop region — the clean sustain a continuously performed layer wants — and falls back to the complete WAV
  * for the slots that ship no loop region (and for the one-shot transients, which want their attack). */
 export async function readBoardSoundBytes(bank: string, slot: number, loop: boolean, level?: string): Promise<Buffer> {
-  const source = await boardSoundSource(bank, level);
-  if (!source) throw new Error(`no extracted ${bank} bank under Maps/*/Audio/SFX`);
+  const sources = await boardSoundSources(bank, level);
   const safeSlot = Math.trunc(slot);
   if (safeSlot < 0 || safeSlot > 999) throw new Error(`invalid board sound slot ${slot}`);
-  if (loop && safeSlot === 52 && source.bank.toLowerCase() === 'openslope_board') {
-    const original = (await readSoundIndex(source.level))?.NamedBanks?.BOARD;
-    if (original && safeDataName(original) === original) {
-      const sustain = await readBytesOrNull(join(mapsRoot(), source.level, 'Audio', 'SFX', original, '035.loop.wav'));
-      if (sustain) return sustain;
+  for (const source of sources) {
+    if (loop && safeSlot === 52 && source.bank.toLowerCase() === 'openslope_board') {
+      const original = (await readSoundIndex(source.level))?.NamedBanks?.BOARD;
+      if (original && safeDataName(original) === original) {
+        const sustain = await readBytesOrNull(join(mapsRoot(), source.level, 'Audio', 'SFX', original, '035.loop.wav'));
+        if (sustain) return sustain;
+      }
     }
+    const stem = `${safeSlot}`.padStart(3, '0');
+    const names = loop ? [`${stem}.loop.wav`, `${stem}.wav`] : [`${stem}.wav`];
+    const bytes = await readFirst(names.map(name => join(source.dir, name)));
+    if (bytes) return bytes;
   }
-  const stem = `${safeSlot}`.padStart(3, '0');
-  const names = loop ? [`${stem}.loop.wav`, `${stem}.wav`] : [`${stem}.wav`];
-  const bytes = await readFirst(names.map(name => join(source.dir, name)));
-  if (!bytes) throw new Error(`no ${bank} slot ${stem} in ${source.level}`);
-  return bytes;
+  throw new Error(`no extracted ${bank} slot ${safeSlot}`);
 }
 
 /** Read a fixed global environmental bank selected by a native ExternalSounds event. The requested bank is

@@ -35,6 +35,11 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    folder = course(root, 'vertex_lighting', 'base.png')
+    (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [200, 160, 120, 255]))
+    document = json.loads((folder / 'Patches.json').read_text())
+    document['Patches'][0]['LightColorPoints'] = [[.25, .5, 1.5]] * 16
+    (folder / 'Patches.json').write_text(json.dumps(document))
     folder = course(root, 'nested_riding', 'base.png')
     (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [40, 80, 120, 255]))
     (folder / 'Textures/Particles').mkdir()

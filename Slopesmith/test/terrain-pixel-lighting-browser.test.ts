@@ -44,7 +44,7 @@ try {
   assert.equal(result.error, undefined);
   assert.deepEqual(errors, []);
   console.log(
-    `TERRAIN PIXEL LIGHTING PASS: ${result.result.checks} framebuffer checks against CPU lighting, baked view, glow, tint, texture, live updates, reference fallback and load-time shader reuse.`,
+    `TERRAIN PIXEL LIGHTING PASS: ${result.result.checks} framebuffer checks for lighting, textures, invisible helpers, reference fallback and shader reuse.`,
   );
 } finally {
   await browser.close();

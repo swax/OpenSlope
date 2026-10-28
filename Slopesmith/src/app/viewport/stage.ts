@@ -109,7 +109,7 @@ export class Stage {
 
   // --- hooks the shell wires after it has built the layer controllers (kept as no-ops until then) ---
   /** The pickable surfaces (authored terrain + loaded reference) for pivot / focus raycasts. */
-  pickTargets: () => THREE.Object3D[] = () => [];
+  pickTargets: () => THREE.Mesh[] = () => [];
   /** Authored-space point quantizer supplied by the viewport's global Snap setting. */
   snapDataPoint: (point: V3) => V3 = point => [...point] as V3;
   /** Just seated the gizmo on `kind`: re-frame a corner gizmo to the slope and drop the reference selection. */
@@ -369,10 +369,20 @@ export class Stage {
     return this.renderer.xr.isPresenting ? 0.5 * this.gizmoCentreRadius(at) : px * this.worldPerPixel(at);
   }
 
-  /** Nearest world hit on the visible surfaces (terrain / loaded reference) under the cursor, or null. */
+  /** Nearest navigation hit on the authored / reference terrain, using their cached surface trees. */
+  pickNavigationSurface(): THREE.Intersection | null {
+    let nearest: THREE.Intersection | null = null;
+    for (const mesh of this.pickTargets()) {
+      const hit = this.pickSurface(mesh);
+      if (hit && (!nearest || hit.distance < nearest.distance)) nearest = hit;
+    }
+    return nearest;
+  }
+
+  /** Nearest world hit on the surfaces (terrain / loaded reference) under the cursor, or null. */
   pivotAt(e: { clientX: number; clientY: number }): THREE.Vector3 | null {
     this.castAt(e);
-    const hit = this.ray.intersectObjects(this.pickTargets(), false)[0];
+    const hit = this.pickNavigationSurface();
     return hit ? hit.point.clone() : null;
   }
 

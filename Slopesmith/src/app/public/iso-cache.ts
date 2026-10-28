@@ -1,6 +1,7 @@
 export const ISO_CACHE_VERSION = 1;
+// Mad Trix generation 8 adds source music in bounded playback chunks.
 export const isoCourseCacheVersion = (course: string): number =>
-  /^SSXOT_.*_NIGHT$/i.test(course) ? 8 : /^(SSX3_|SSXOT_)/i.test(course) ? 7 : /^SSX_/i.test(course) ? 3 : ISO_CACHE_VERSION;
+  /^MADTRIX_/i.test(course) ? 8 : /^SSXOT_.*_NIGHT$/i.test(course) ? 8 : /^(SSX3_|SSXOT_)/i.test(course) ? 7 : /^SSX_/i.test(course) ? 3 : ISO_CACHE_VERSION;
 interface CachedFile { key: string; course: string; path: string; blob: Blob }
 interface CachedCourse { course: string; version: number; files: number }
 export interface DiscCollisionSounds {
@@ -22,7 +23,7 @@ function cachedSoundFile(db: IDBDatabase, course: string): Promise<CachedFile | 
   });
 }
 /** Only Tricky's executable collision routing can currently repair older caches. */
-export const supportsCollisionSoundUpdate = (course: string): boolean => !/^(SSX_|SSX3_|SSXOT_|AVALANCHE_)/i.test(course);
+export const supportsCollisionSoundUpdate = (course: string): boolean => !/^(SSX_|SSX3_|SSXOT_|AVALANCHE_|MADTRIX_)/i.test(course);
 
 export async function needsCollisionSoundUpdate(courses: string[]): Promise<boolean> {
   const db = await openIsoCache();
@@ -93,6 +94,19 @@ export async function readCachedCourse(course: string): Promise<Map<string, Blob
   try {
     const files = await new Promise<CachedFile[]>((resolve, reject) => {
       const request = db.transaction('files').objectStore('files').index('course').getAll(course);
+      request.onsuccess = () => resolve(request.result as CachedFile[]);
+      request.onerror = () => reject(request.error);
+    });
+    return new Map(files.map(row => [row.path.toLowerCase(), row.blob]));
+  } finally { db.close(); }
+}
+/** Optional riding donors need only audio files, never another course's terrain or textures. */
+export async function readCachedAudio(course: string): Promise<Map<string, Blob>> {
+  const db = await openIsoCache();
+  try {
+    const files = await new Promise<CachedFile[]>((resolve, reject) => {
+      const prefix = `${course}/audio/`;
+      const request = db.transaction('files').objectStore('files').getAll(IDBKeyRange.bound(prefix, `${prefix}\uffff`));
       request.onsuccess = () => resolve(request.result as CachedFile[]);
       request.onerror = () => reject(request.error);
     });

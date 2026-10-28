@@ -530,27 +530,39 @@ struct AudioScene::Data {
         if (!banks.contains(1))
             banks[1] = "zboard";
         for (const auto& [group, bank] : banks) {
-            const bool common = (group == 0 && folded(bank) == "zbxsfx") || (group == 1 && folded(bank) == "zboard");
-            for (std::size_t i = 0; i < (common ? audio_roots.size() : 1); ++i) {
-                const auto& folder = audio_roots[i];
-                const auto directory = named_child(asset(folder, "Audio/SFX"), bank);
-                if (!std::filesystem::is_directory(directory))
-                    continue;
-                unsigned count = 0;
-                std::set<std::string> folder_names;
-                for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-                    if (++count > 20000)
-                        throw std::runtime_error("Sound bank exceeds its limit");
-                    const auto stem = entry.path().stem().string();
-                    if (folded(entry.path().extension().string()) != ".wav" || stem.empty() || stem.size() > 5 ||
-                        !std::all_of(stem.begin(), stem.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
+            std::vector<std::string> names{bank};
+            if (group <= 1 && std::filesystem::is_regular_file(root / "Audio/SoundIndex.json") &&
+                read(root / "Audio/SoundIndex.json").value("RidingFallback", "") == "ssx-tricky") {
+                const auto fallback = group == 0 ? "zbxsfx" : "zboard";
+                if (folded(bank) != fallback)
+                    names.push_back(fallback);
+            }
+            for (const auto& source_bank : names) {
+                const bool common =
+                    (group == 0 && folded(source_bank) == "zbxsfx") || (group == 1 && folded(source_bank) == "zboard");
+                for (std::size_t i = 0; i < (common ? audio_roots.size() : 1); ++i) {
+                    const auto& folder = audio_roots[i];
+                    const auto directory = named_child(asset(folder, "Audio/SFX"), source_bank);
+                    if (!std::filesystem::is_directory(directory))
                         continue;
-                    const auto key = audio_key("Audio/SFX/" + bank + "/" + entry.path().filename().string());
-                    if (!folder_names.insert(key).second)
-                        throw std::runtime_error("Ambiguous sound slot filename");
-                    sources.try_emplace(key, asset(folder, entry.path().lexically_relative(folder).generic_string()));
-                    if (sources.size() > 4096)
-                        throw std::runtime_error("Too many course audio clips");
+                    unsigned count = 0;
+                    std::set<std::string> folder_names;
+                    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+                        if (++count > 20000)
+                            throw std::runtime_error("Sound bank exceeds its limit");
+                        const auto stem = entry.path().stem().string();
+                        if (folded(entry.path().extension().string()) != ".wav" || stem.empty() || stem.size() > 5 ||
+                            !std::all_of(stem.begin(), stem.end(),
+                                         [](unsigned char c) { return c >= '0' && c <= '9'; }))
+                            continue;
+                        const auto key = audio_key("Audio/SFX/" + bank + "/" + entry.path().filename().string());
+                        if (!folder_names.insert(key).second)
+                            throw std::runtime_error("Ambiguous sound slot filename");
+                        sources.try_emplace(key,
+                                            asset(folder, entry.path().lexically_relative(folder).generic_string()));
+                        if (sources.size() > 4096)
+                            throw std::runtime_error("Too many course audio clips");
+                    }
                 }
             }
         }

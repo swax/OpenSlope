@@ -186,7 +186,8 @@ export function createReferenceMusicStudy(folder: GUI) {
     selectedByLevel.set(level, selected);
     const state = { song: selected };
     const options: Record<string, string> = {};
-    for (const song of songs) options[`${song.title} · ${song.bpm.toFixed(1)} BPM`] = song.id;
+    for (const song of songs)
+      options[`${song.title} · ${song.bpm > 0 ? `${song.bpm.toFixed(1)} BPM` : 'tempo unknown'}`] = song.id;
     tip(
       race
         .add(state, 'song', options)

@@ -306,6 +306,17 @@ void library_cache() {
         AudioScene scene(root);
         check(scene.stats().prewarmed == 0, "explicit custom bank never borrows unrelated common audio");
     }
+    std::ofstream(root / "Audio/SoundIndex.json") << Json{{"Schema", "openslope-sound-index/v1"},
+                                                          {"Banks", {{"1", "private-board"}}},
+                                                          {"CollisionEvents", Json::object()},
+                                                          {"RidingFallback", "ssx-tricky"}};
+    {
+        AudioScene scene(root);
+        check(scene.stats().prewarmed == 2, "explicit riding fallback aliases only missing common bank slots");
+    }
+    std::ofstream(root / "Audio/SoundIndex.json") << Json{{"Schema", "openslope-sound-index/v1"},
+                                                          {"Banks", {{"1", "private-board"}}},
+                                                          {"CollisionEvents", Json::object()}};
     std::filesystem::create_directories(root / "Sounds");
     write_wave(root / "Sounds/custom.wav", pcm);
     std::ofstream(root / "Effects.json") << Json{

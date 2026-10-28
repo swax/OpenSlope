@@ -9,6 +9,7 @@ import { chromiumExecutable } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
+import { isoCourseCacheVersion } from '../src/app/public/iso-cache';
 
 const root = mkdtempSync(join(tmpdir(), 'slopesmith-iso-library-'));
 process.env.SLOPESMITH_WORKSPACE_ROOT = join(root, 'workspace');
@@ -17,22 +18,29 @@ forgetWorkspaceConfig();
 forgetAccounts();
 const tricky = join(root, 'tricky.iso');
 const ssx = join(root, 'ssx.iso');
+const madtrix = join(root, 'madtrix.bin');
 execFileSync(
   process.platform === 'win32' ? 'python' : 'python3',
   [
     '-c',
     [
-      'import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1])',
+      'import sys,struct; from pathlib import Path; sys.path.insert(0,sys.argv[1])',
       'from audio_import_test import disc',
       'from import_test import big,course_members,iso',
       'from ssx_import_test import members',
+      'from madtrix_import_test import package,members as madtrix_members,name_hash,raw_bin,BOOT,music_bank',
       "files={f'DATA/MODELS/{slot.upper()}.BIG':big({name.replace('fixture',slot):data for name,data in course_members().items()}) for slot in ['gari','snow']}",
       'Path(sys.argv[2]).write_bytes(disc(files))',
       'Path(sys.argv[3]).write_bytes(iso(big(members(),compact=False)))',
+      "name='AN_antartica.pak'; pak=package(madtrix_members(sky=True,keyed=True,rails=True,signs=True,audio=True,waterfalls=True))",
+      "index_size,strings_size,data_size=struct.unpack_from('<3I',pak,len(pak)-12)",
+      "manifest=name.encode().ljust(64,b'\\0')+struct.pack('<4I',name_hash(name),data_size,index_size,strings_size)",
+      "Path(sys.argv[4]).write_bytes(raw_bin(disc({BOOT:b'fixture','DATA/E942715C.DAT':manifest,f'DATA/{name_hash(name):X}.DAT':pak,'MUSIC/MUSIC.MET':music_bank()})))",
     ].join('\n'),
     resolve('../Native/tests'),
     tricky,
     ssx,
+    madtrix,
   ],
   { windowsHide: true },
 );
@@ -47,21 +55,48 @@ let page: Page | undefined;
 try {
   await vite.listen();
   const origin = vite.resolvedUrls!.local[0].replace(/\/$/, '');
-  browser = await chromium.launch({ executablePath: chromiumExecutable(), headless: true });
+  browser = await chromium.launch({
+    executablePath: chromiumExecutable(),
+    headless: true,
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   page = await context.newPage();
+  await page.addInitScript(() => {
+    const starts: number[] = [];
+    Object.assign(window, { madtrixMusicStarts: starts });
+    const original = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...args: Parameters<AudioBufferSourceNode['start']>) {
+      const duration = this.buffer?.duration ?? 0;
+      if (starts.length < 2000 && (Math.abs(duration - 3.997) < 0.001 || Math.abs(duration - 2800 / 44100) < 0.001))
+        starts.push(duration);
+      return original.apply(this, args);
+    };
+  });
   const errors: string[] = [];
+  const invalidLightmapRequests: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/lightmap' && url.searchParams.get('id') === '-1')
+      invalidLightmapRequests.push(request.url());
+  });
   await page.goto(`${origin}/isos`);
   const games = page.getByRole('region', { name: 'Disc game support', exact: true });
   const trickyGame = games.getByRole('button', { name: 'SSX Tricky', exact: true });
   const ssxGame = games.getByRole('button', { name: 'SSX', exact: true });
+  const madtrixGame = games.getByRole('button', { name: 'Jonny Moseley Mad Trix', exact: true });
   await trickyGame.waitFor();
+  assert(await page.getByRole('heading', { name: 'Disc maps', exact: true }).isVisible());
   assert(await trickyGame.isDisabled());
   assert(await ssxGame.isDisabled());
+  assert(await madtrixGame.isDisabled());
+  assert.equal(await games.getByText('No disc selected', { exact: true }).count(), 6);
+  const filters = page.getByRole('group', { name: 'Filter ISO maps', exact: true });
+  assert(await filters.isHidden());
   const actions = await page.locator('.public-iso-actions').boundingBox();
   const gameBounds = await games.boundingBox();
-  assert(actions && gameBounds && gameBounds.y >= actions.y + actions.height, 'games sit below Load ISO');
+  assert(actions && gameBounds && gameBounds.y >= actions.y + actions.height, 'games sit below Choose disc');
 
   await page.locator('#public-iso').setInputFiles(tricky);
   await page.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();
@@ -74,6 +109,18 @@ try {
       .evaluateAll(rows => rows.map(row => (row as HTMLElement).dataset.course).sort()),
     ['GARI', 'SNOW'],
   );
+  const trickyCard = page.locator('.public-iso-game-card').filter({
+    has: page.getByRole('button', { name: 'SSX Tricky', exact: true }),
+  });
+  assert(await trickyCard.getByText('0 of 2 maps loaded', { exact: true }).isVisible());
+  assert.match(await trickyCard.innerText(), /Disc saved · tricky.iso/);
+  assert.equal(await page.locator('.public-iso-map .public-iso-badge.missing').count(), 2);
+  assert.equal(await page.locator('.public-iso-map .public-iso-open:visible').count(), 0);
+  await filters.getByRole('button', { name: 'Loaded (0)', exact: true }).click();
+  assert.equal(await page.locator('.public-iso-map:visible').count(), 0);
+  assert(await page.getByText(/No loaded maps for this game\./).isVisible());
+  await filters.getByRole('button', { name: 'Not loaded (2)', exact: true }).click();
+  assert.equal(await page.locator('.public-iso-map:visible').count(), 2);
   await page.locator('#public-iso').setInputFiles(ssx);
   await page.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   assert(await trickyGame.isEnabled());
@@ -81,6 +128,13 @@ try {
   assert.equal(await ssxGame.getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.public-iso-map').count(), 1);
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-course'), 'SSX_FIXTURE');
+  await page.locator('#public-iso').setInputFiles(madtrix);
+  await page.locator('.public-iso-status').filter({ hasText: 'madtrix.bin · 1 map found' }).waitFor();
+  assert(await madtrixGame.isEnabled());
+  assert.equal(await madtrixGame.getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.public-iso-map').getAttribute('data-course'), 'MADTRIX_AN_ANTARTICA');
+  assert(await page.getByRole('button', { name: 'Load Antarctica (Mad Trix)', exact: true }).isEnabled());
+  assert.match(await games.innerText(), /11 courses · Preliminary support/);
   await trickyGame.click();
   assert.equal(await page.locator('.public-iso-map').count(), 2, 'switching games restores that disc’s maps');
   await page.getByRole('link', { name: 'Maps', exact: true }).click();
@@ -94,6 +148,7 @@ try {
   );
   assert.match(await games.innerText(), /tricky.iso/);
   assert.match(await games.innerText(), /ssx.iso/);
+  assert.match(await games.innerText(), /madtrix.bin/);
   await page.locator('#load-status').waitFor({ state: 'hidden' });
   await page.screenshot({ path: join(root, 'saved-disc-library.png') });
 
@@ -110,17 +165,172 @@ try {
   await ssxGame.click();
   await page.getByRole('button', { name: 'Load SSX_FIXTURE', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
+  assert.equal(await page.locator('.public-iso-map-summary').innerText(), '0 of 1 maps loaded · 1 not loaded');
+  await madtrixGame.click();
+  await page.getByRole('button', { name: 'Load Antarctica (Mad Trix)', exact: true }).click();
+  assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
   await page.evaluate(() => (window as unknown as { releaseIsoImports: () => void }).releaseIsoImports());
   await page.locator('.public-iso-map .public-iso-badge.loaded').waitFor({ timeout: 90_000 });
-  await page.getByText('2 loaded', { exact: true }).waitFor();
+  await page.getByText('3 loaded', { exact: true }).waitFor();
+  assert.equal(await page.locator('.public-iso-map-summary').innerText(), '1 of 1 maps loaded · 0 not loaded');
+  assert(
+    await page
+      .locator('.public-iso-map')
+      .getByText('Ready to Play or Inspect. Saved in this browser.', { exact: true })
+      .isVisible(),
+  );
+  await filters.getByRole('button', { name: 'Not loaded (0)', exact: true }).click();
+  assert.equal(await page.locator('.public-iso-map:visible').count(), 0);
+  assert(await page.getByText('All listed maps are loaded and ready to play.', { exact: true }).isVisible());
+  await filters.getByRole('button', { name: 'Loaded (1)', exact: true }).click();
+  assert.equal(await page.locator('.public-iso-map:visible').count(), 1);
+  const playHref = await page
+    .getByRole('link', { name: 'Play Antarctica (Mad Trix)', exact: true })
+    .getAttribute('href');
+  assert(playHref);
+  const play = new URL(playHref);
+  assert.equal(play.searchParams.get('reference'), 'MADTRIX_AN_ANTARTICA');
+  assert.equal(play.searchParams.get('source'), 'iso');
+  assert(await page.getByRole('link', { name: 'Inspect Antarctica (Mad Trix)', exact: true }).isVisible());
+  const stored = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('slopesmith-local-disc', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+        const request = db.transaction('files').objectStore('files').getAllKeys();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const version = await new Promise<number>((resolve, reject) => {
+        const request = db.transaction('courses').objectStore('courses').get('MADTRIX_AN_ANTARTICA');
+        request.onsuccess = () => resolve((request.result as { version: number }).version);
+        request.onerror = () => reject(request.error);
+      });
+      const alphaSamples: number[][] = [];
+      for (const path of ['textures/fixture_snow.png', 'skybox/textures/madtrix-sky-0.png']) {
+        const file = await new Promise<{ blob: Blob }>((resolve, reject) => {
+          const request = db.transaction('files').objectStore('files').get(`MADTRIX_AN_ANTARTICA/${path}`);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const image = await createImageBitmap(file.blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 2;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(image, 0, 0);
+        image.close();
+        const pixels = ctx.getImageData(0, 0, 2, 2).data;
+        alphaSamples.push([pixels[3], pixels[7], pixels[11], pixels[15]]);
+      }
+      const patchFile = await new Promise<{ blob: Blob }>((resolve, reject) => {
+        const request = db.transaction('files').objectStore('files').get('MADTRIX_AN_ANTARTICA/patches.json');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const colors = JSON.parse(await patchFile.blob.text()).Patches[0].LightColorPoints as number[][];
+      return { keys, version, alphaSamples, colors };
+    } finally {
+      db.close();
+    }
+  });
+  assert.equal(stored.version, isoCourseCacheVersion('MADTRIX_AN_ANTARTICA'));
+  assert.deepEqual(stored.colors[0], [0.25, 0.5, 1], 'Worker retains source baked RGB at its neutral scale');
+  assert.deepEqual(stored.colors[1], [0.25, 0.5625, 1], 'Worker transposes colors with geometry');
+  assert.deepEqual(
+    stored.alphaSamples,
+    [
+      [0, 128, 0, 255],
+      [0, 128, 0, 255],
+    ],
+    'worker terrain and sky preserve cutout keys and ordinary alpha',
+  );
+  for (const path of [
+    'patches.json',
+    'aip.json',
+    'models.json',
+    'instances.json',
+    'materials.json',
+    'splines.json',
+    'effects.json',
+    'audio/soundindex.json',
+    'audio/ridingimport.json',
+    'audio/music/playlist.json',
+    'audio/music/track1/graph.json',
+    'audio/music/track1/chunk_002.wav',
+    'audio/music/track9/chunk_000.wav',
+    'audio/sfx/openslope_board/004.loop.wav',
+    'textures/madtrix-sign-0-on.png',
+    'textures/madtrix-waterfall-1.png',
+    'skybox/models.json',
+    'skybox/textures/madtrix-sky-0.png',
+  ])
+    assert(stored.keys.includes(`MADTRIX_AN_ANTARTICA/${path}`), `Mad Trix worker persisted ${path}`);
+  await page.getByRole('link', { name: 'Play Antarctica (Mad Trix)', exact: true }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  assert.equal(new URL(page.url()).searchParams.get('reference'), 'MADTRIX_AN_ANTARTICA');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Exit play', exact: true }).waitFor();
+  await page.waitForFunction(
+    () => ((window as typeof window & { madtrixMusicStarts: number[] }).madtrixMusicStarts?.length ?? 0) >= 2,
+    undefined,
+    { timeout: 20_000 },
+  );
+  await page.getByRole('button', { name: 'Exit play', exact: true }).click();
+  await page.getByRole('link', { name: 'ISO', exact: true }).click();
+  await madtrixGame.waitFor();
+  assert(await page.getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true }).isEnabled());
+  await page.getByRole('link', { name: 'Inspect Antarctica (Mad Trix)', exact: true }).click();
+  await page
+    .getByText('Source baked vertex colors loaded.', { exact: true })
+    .waitFor({ state: 'attached', timeout: 90_000 });
+  const propsToggle = page.locator('button.sp-seg-icon[aria-label="Props"]:not([aria-pressed])');
+  await propsToggle.click();
+  await propsToggle.click();
+  await page.locator('#load-status').waitFor({ state: 'hidden', timeout: 30_000 });
+  assert.equal(await page.getByText(/no Instances\.json|Instances\.json.*missing|lighting study failed/i).count(), 0);
+  assert.deepEqual(invalidLightmapRequests, [], 'Baked vertex colors must not request image lightmap -1');
+  await page.goto(`${origin}/isos`);
+  await madtrixGame.waitFor();
   await trickyGame.click();
   assert(await page.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isEnabled());
   assert(await page.getByRole('button', { name: 'Load Snowdream', exact: true }).isEnabled());
+  assert(
+    (await filters.getByRole('button', { name: 'All maps (2)', exact: true }).getAttribute('aria-pressed')) === 'true',
+  );
+  assert.equal(await page.locator('.public-iso-map-summary').innerText(), '1 of 2 maps loaded · 1 not loaded');
+  await page.locator('#load-status').waitFor({ state: 'hidden' });
+  await page.screenshot({ path: join(root, 'mixed-map-states.png') });
+  await filters.getByRole('button', { name: 'Loaded (1)', exact: true }).click();
+  assert.deepEqual(
+    await page
+      .locator('.public-iso-map:visible')
+      .evaluateAll(rows => rows.map(row => (row as HTMLElement).dataset.course)),
+    ['GARI'],
+  );
+  await page.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
+  await filters.getByRole('button', { name: 'Loaded (0)', exact: true }).waitFor();
+  assert.equal(
+    await page.locator('.public-iso-map:visible').count(),
+    0,
+    'unloading removes a map from the Loaded filter',
+  );
+  assert.match(await trickyCard.innerText(), /Disc saved · tricky.iso/);
+  await filters.getByRole('button', { name: 'Not loaded (2)', exact: true }).click();
+  assert(
+    await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).isEnabled(),
+    'the saved disc can reload an unloaded map',
+  );
+  assert.equal(await page.locator('.public-iso-map .public-iso-open:visible').count(), 0);
   await ssxGame.click();
   await page.reload();
   await ssxGame.waitFor();
   assert.equal(await ssxGame.getAttribute('aria-pressed'), 'true', 'the selected game survives reload');
   assert(await page.getByRole('button', { name: 'Unload SSX_FIXTURE', exact: true }).isEnabled());
+  await madtrixGame.click();
+  assert(await page.getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true }).isEnabled());
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth), 'the game selector fits mobile screens');
   await page.locator('#load-status').waitFor({ state: 'hidden' });
@@ -129,6 +339,7 @@ try {
   await secondTab.goto(`${origin}/isos`);
   const otherGames = secondTab.getByRole('region', { name: 'Disc game support', exact: true });
   assert(await otherGames.getByRole('button', { name: 'SSX Tricky', exact: true }).isEnabled());
+  assert(await otherGames.getByRole('button', { name: 'Jonny Moseley Mad Trix', exact: true }).isEnabled());
   assert(
     await otherGames.getByRole('button', { name: 'SSX', exact: true }).isEnabled(),
     'saved discs are available in another browser tab',
@@ -142,10 +353,12 @@ try {
   await page.getByText('0 loaded', { exact: true }).waitFor();
   assert(await trickyGame.isDisabled());
   assert(await ssxGame.isDisabled());
+  assert(await madtrixGame.isDisabled());
   await page.reload();
   await trickyGame.waitFor();
   assert(await trickyGame.isDisabled());
   assert(await ssxGame.isDisabled());
+  assert(await madtrixGame.isDisabled());
   assert.equal(
     await page.locator('.public-iso-map').count(),
     0,
@@ -153,7 +366,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    `ISO LIBRARY PASS: game switching, native imports from multiple saved discs, navigation/reload/new-tab persistence, mobile layout and clearing. Screenshots: ${root}`,
+    `ISO LIBRARY PASS: disc and map states, Loaded/Not loaded filters, SSX and Mad Trix imports, Play/Inspect, persistence, mobile layout and clearing. Screenshots: ${root}`,
   );
 } catch (error) {
   await page?.screenshot({ path: join(root, 'failure.png') });

@@ -546,7 +546,10 @@ void VulkanScene::upload(SceneAssets assets, UploadProgress progress) {
         auto lightmap = names.find(page.str());
         const bool base = diffuse != names.end(), lit = batch.lightmap >= 0 && lightmap != names.end();
         draws_.push_back({batch.first, batch.count, descriptor(base ? diffuse->second : 0, lit ? lightmap->second : 1),
-                          base ? (lit ? 2 : 1) : 0});
+                          base ? (lit                     ? 2
+                                  : batch.vertex_lighting ? 16
+                                                          : 1)
+                               : 0});
     }
     if (progress)
         progress(.92, "UPLOADING GEOMETRY");

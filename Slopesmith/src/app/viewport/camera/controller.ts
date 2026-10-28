@@ -273,7 +273,6 @@ export function createCameraController(
    * untouched. The pivot is re-seated at the hit's depth so a following pan stays consistent too.
    */
   function wheelZoom(e: WheelEvent) {
-    const P = stage.pivotAt(e) ?? stage.rayPoint(e, stage.camera.position.distanceTo(stage.controls.target));
     const dy = e.deltaY * (e.deltaMode === 1 ? 30 : 1); // normalise line-mode wheels toward pixels
     const f = Math.exp(Math.max(-1.2, Math.min(1.2, dy * 0.0016))); // <1 = toward P (wheel up), >1 = away
     if (stage.isOrtho && stage.orthoCam) {
@@ -281,6 +280,7 @@ export function createCameraController(
       stage.orthoCam.updateProjectionMatrix();
       return;
     }
+    const P = stage.pivotAt(e) ?? stage.rayPoint(e, stage.camera.position.distanceTo(stage.controls.target));
     const cam = stage.camera;
     cam.position.sub(P).multiplyScalar(f).add(P); // exponential approach; keeps the hit under the cursor
     const fwd = cam.getWorldDirection(new THREE.Vector3());
@@ -292,7 +292,7 @@ export function createCameraController(
   function seatTargetAhead() {
     stage.pointer.set(0, 0); // screen centre in NDC = the camera's forward ray
     stage.ray.setFromCamera(stage.pointer, stage.camera);
-    const hit = stage.ray.intersectObjects(stage.pickTargets(), false)[0];
+    const hit = stage.pickNavigationSurface();
     reseatTargetAhead(
       hit ? stage.camera.position.distanceTo(hit.point) : stage.camera.position.distanceTo(stage.controls.target),
     );

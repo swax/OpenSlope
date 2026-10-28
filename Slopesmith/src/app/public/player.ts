@@ -56,7 +56,7 @@ export async function preparePublicPlayer(course: PublicCourse, container: HTMLE
   const cached = await cachedIsoCourses().catch(() => [] as string[]);
   const availableCourses = bundle || course.private ? cached : course.isoCourses.filter(slot => cached.includes(slot));
   const availableLevels = [...availableCourses, ...Object.keys(aliases).filter(level => availableCourses.includes(aliases[level]))];
-  const local = await localMapData(availableCourses, aliases);
+  const local = await localMapData(availableCourses, aliases, cached);
   setAssetUrlResolver(path => {
     const resolved = custom?.resolve(path) ?? path;
     return resolved !== path ? resolved : local.resolveAsset(path);

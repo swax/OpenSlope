@@ -3,6 +3,10 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Build 0.89 adds preliminary Jonny Moseley Mad Trix USA PS2 import, with eleven
+courses, source baked colored lighting, supported animated signs and waterfalls,
+grind rails, riding sounds and twelve music tracks. See [build notes](releases/0.89.0.md).
+
 Build 0.88 adds desktop Enhanced and Runtime lighting, shared avatars on Windows
 and Quest, and shader optimizations that improve Quest rendering performance.
 Desktop performance varies by GPU and lighting mode. See [build notes](releases/0.88.0.md).
@@ -49,6 +53,12 @@ static scenery, collision, spawning and reset work through the existing portable
 map path in Native and Slopesmith. Source background meshes, sky colours and cloud
 coverage, approximate course lighting and adapted riding spray accompany new imports. See
 [Avalanche import and current limits](docs/avalanche-import.md).
+
+Jonny Moseley Mad Trix USA PS2 `.bin`/`.iso` discs expose eleven courses through
+the same native library. The converter imports curved terrain with source baked colored lighting, textures,
+sky domes, terrain collision and adapted starts; see [Mad Trix import and limits](docs/madtrix-import.md).
+Its twelve source music tracks use the shared playlist player, with bounded
+audio chunks and whole-track looping.
 
 Build 0.76 adds desktop A/D strafing, left-drag look/turn and E to spawn and
 mount at the player's feet, including mid-air. See [desktop controls](docs/desktop-controls-0.76.md).

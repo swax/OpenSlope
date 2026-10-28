@@ -4,6 +4,7 @@ import { tintBackfaces } from '../src/app/viewport/mesh/backface-tint';
 import { computeModelColored } from '../src/core/lighting/lightmap';
 import { bakedLightmapDisplay, compositeRigGlow } from '../src/core/lighting/bake';
 import { lightToWorkingSpace } from '../src/core/lighting/color-space';
+import { buildReferenceMesh } from '../src/core/reference/terrain';
 import { useTextureArray } from '../src/app/viewport/mesh/texture-array';
 import { createTerrainLayer } from '../src/app/viewport/mesh/terrain';
 import { blankMountain } from '../src/core/doc/mountain';
@@ -12,6 +13,12 @@ import { buildMountainPreview } from '../src/core/mesh/tessellation';
 import type { Stage } from '../src/app/viewport/stage';
 import type { TileMaterials } from '../src/app/viewport/mesh/tile-materials';
 import { createTileMaterials } from '../src/app/viewport/mesh/tile-materials';
+import {
+  analyzeTexturePixels,
+  applyTextureAlphaMode,
+  setCutoutAlphaToCoverage,
+  terrainAlphaMode,
+} from '../src/app/props/texture-alpha';
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
 renderer.setSize(32, 32);
@@ -164,6 +171,124 @@ try {
     );
   checks += pixels.length;
   layer.release();
+
+  // A fully clear gameplay-helper page must neither draw its RGB nor occlude
+  // scenery behind it. Exercise both terrain material flavours and array packing.
+  scene.clear();
+  scene.background = new THREE.Color(0x112234);
+  const backing = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x33a65c }));
+  backing.renderOrder = 1;
+  scene.add(backing);
+  const helperGeometry = new THREE.PlaneGeometry(2, 2);
+  helperGeometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(12).fill(1), 3));
+  helperGeometry.setAttribute('texArraySlice', new THREE.Float32BufferAttribute(new Float32Array(4), 1));
+  const hiddenRgb = new Uint8Array([255, 0, 255, 0]);
+  const helperTexture = new THREE.DataTexture(hiddenRgb, 1, 1);
+  const helperArray = new THREE.DataArrayTexture(hiddenRgb, 1, 1, 1);
+  for (const texture of [helperTexture, helperArray]) {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+  }
+  const mode = terrainAlphaMode(analyzeTexturePixels(hiddenRgb, 1, 1));
+  const samples = renderer.capabilities.maxSamples ? [0, Math.min(4, renderer.capabilities.maxSamples)] : [0];
+  for (const sampleCount of samples) {
+    setCutoutAlphaToCoverage(sampleCount > 0);
+    const output = new THREE.WebGLRenderTarget(16, 16, { samples: sampleCount });
+    output.texture.colorSpace = THREE.SRGBColorSpace;
+    const sample = () => {
+      renderer.setRenderTarget(output);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null); // Resolve MSAA before reading.
+      const pixel = new Uint8Array(4);
+      renderer.readRenderTargetPixels(output, 8, 8, 1, 1, pixel);
+      return pixel;
+    };
+    const expected = sample();
+    for (const lit of [false, true]) {
+      for (const packed of [false, true]) {
+        const surface = lit
+          ? terrainPixelLighting(
+              tintBackfaces(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })),
+              { surfaceTint: false },
+            )
+          : tintBackfaces(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }));
+        if (packed) useTextureArray(surface, helperArray, `clear-terrain:${lit}:${sampleCount}`);
+        else surface.map = helperTexture;
+        applyTextureAlphaMode(surface, mode);
+        const helper = new THREE.Mesh(helperGeometry, surface);
+        helper.position.z = 0.25;
+        scene.add(helper);
+        for (const backface of [false, true]) {
+          helper.rotation.y = backface ? Math.PI : 0;
+          const actual = sample();
+          if (actual.some((value, channel) => value !== expected[channel]))
+            throw new Error(
+              `Clear terrain draws or occludes: lit=${lit}, array=${packed}, samples=${sampleCount}, back=${backface}`,
+            );
+          checks += actual.length;
+          const ray = new THREE.Raycaster(camera.position, new THREE.Vector3(0, 0, -1));
+          if (!ray.intersectObject(helper).length)
+            throw new Error('Invisible helper geometry must remain inspectable.');
+        }
+        if (!lit && !packed && sampleCount === 0) {
+          applyTextureAlphaMode(surface, 'opaque');
+          if (sample().every((value, channel) => value === expected[channel]))
+            throw new Error('The helper fixture must expose the previous opaque color/depth regression.');
+        }
+        scene.remove(helper);
+        surface.dispose();
+      }
+    }
+    output.dispose();
+  }
+  setCutoutAlphaToCoverage(false);
+  helperTexture.dispose();
+  helperArray.dispose();
+  helperGeometry.dispose();
+  // Source baked RGB takes the same textured reference route in both page modes.
+  scene.clear();
+  const baked = buildReferenceMesh(
+    [
+      {
+        Points: Array.from({ length: 16 }, (_, j) => [Math.floor(j / 4) * 100, (j % 4) * 100, 0]),
+        SurfaceType: 1,
+        LightColorPoints: Array.from({ length: 16 }, () => [0.125, 0.375, 1.25]),
+      },
+    ],
+    undefined,
+    1,
+  );
+  const colorGeometry = new THREE.PlaneGeometry(2, 2);
+  colorGeometry.setAttribute('color', new THREE.Float32BufferAttribute(lightToWorkingSpace(baked.lightColor!), 3));
+  colorGeometry.setAttribute('texArraySlice', new THREE.Float32BufferAttribute(new Float32Array(4), 1));
+  for (const packed of [false, true]) {
+    const rgb = new Uint8Array([200, 180, 64, 255]);
+    const page = new THREE.DataTexture(rgb, 1, 1);
+    const bank = new THREE.DataArrayTexture(rgb, 1, 1, 1);
+    for (const tex of [page, bank]) {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+    }
+    const surface = terrainPixelLighting(new THREE.MeshBasicMaterial({ vertexColors: true }));
+    if (packed) useTextureArray(surface, bank, 'baked-source-rgb');
+    else surface.map = page;
+    const colored = new THREE.Mesh(colorGeometry, surface);
+    scene.add(colored);
+    render();
+    const expected = lightToWorkingSpace(new Float32Array([0.125, 0.375, 1.25]));
+    const base = lightToWorkingSpace(new Float32Array([200 / 255, 180 / 255, 64 / 255]));
+    for (let c = 0; c < 3; c++) {
+      const actual = pixels[(16 * 32 + 16) * 4 + c];
+      if (Math.abs(actual - Math.round(255 * srgb(expected[c] * base[c]))) > 2)
+        throw new Error(`Baked source RGB failed: array=${packed} channel=${c} value=${actual}`);
+      checks++;
+    }
+    scene.remove(colored);
+    surface.dispose();
+    page.dispose();
+    bank.dispose();
+  }
+  colorGeometry.dispose();
   Object.assign(window, { terrainPixelResult: { checks } });
 } catch (error) {
   Object.assign(window, { terrainPixelError: String(error) });

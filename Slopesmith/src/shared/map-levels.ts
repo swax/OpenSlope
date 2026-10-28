@@ -121,6 +121,7 @@ export async function readLevelPatches(
     UVPoints: p.UVPoints as number[][] | undefined,
     LightMapPoint: p.LightMapPoint as number[] | undefined,
     LightmapID: p.LightmapID as number | undefined,
+    ...(p.LightColorPoints !== undefined ? { LightColorPoints: p.LightColorPoints as number[][] } : {}),
   }));
   // [Trailmap: 527] On Tour ships overlapping on/off event terrain with different lightmaps. Choose one
   // static playtest state, rather than drawing both and depth-fighting. Keep source order and both records.

@@ -37,17 +37,21 @@ export async function showIsoPage(): Promise<void> {
   let leaving = false;
   let abort: AbortController | null = null;
   let target: PublicCourse | null = null;
+  let mapFilter: 'all' | 'loaded' | 'missing' = 'all';
   const { header, setEditor, syncIsoMaps } = publicHeader('iso', account);
   const main = element('main', 'public-home');
-  const title = element('h1', 'public-visually-hidden', 'ISO');
+  const title = element('h1', 'public-iso-title', 'Disc maps');
+  const intro = element('p', 'public-local-note', 'Choose a disc, then load the maps you want to Play or Inspect. Discs and maps stay in this browser on this device.');
   const dependencies = element('section', 'public-iso-requirements'); dependencies.hidden = true;
   dependencies.setAttribute('aria-label', 'Required ISO maps');
   const iso = element('section', 'public-iso');
   const input = element('input', ''); input.type = 'file'; input.accept = '.iso,.bin,.gcm,.rvz'; input.id = 'public-iso';
-  const label = element('label', 'public-iso-button', 'Load ISO'); label.htmlFor = input.id;
+  const label = element('label', 'public-iso-button', 'Choose disc'); label.htmlFor = input.id;
   label.prepend(publicGlyph('disc'));
-  label.title = 'SSX PS2 games or 1080° Avalanche USA · Choose ISO, BIN, GCM or RVZ · Files stay on this device';
+  label.title = 'SSX PS2 games, Jonny Moseley Mad Trix USA PS2 or 1080° Avalanche USA · Choose ISO, BIN, GCM or RVZ · Files stay on this device';
   const count = element('span', 'public-cache');
+  const totalLoaded = element('strong', '');
+  count.append(element('span', '', 'Maps across all games'), totalLoaded);
   const clear = element('button', 'public-clear', 'Clear all'); clear.type = 'button'; clear.setAttribute('aria-label', 'Clear all ISO maps');
   const loadRequired = element('button', 'public-primary', 'Load required maps'); loadRequired.type = 'button'; loadRequired.hidden = true;
   const cancel = element('button', '', 'Cancel scan'); cancel.type = 'button'; cancel.hidden = true;
@@ -56,28 +60,41 @@ export async function showIsoPage(): Promise<void> {
   const support = element('section', 'public-iso-support'); support.setAttribute('aria-label', 'Disc game support');
   support.append(element('h2', '', 'Games'));
   const supportList = element('dl', '');
-  const gameButtons = new Map<IsoGame, { button: HTMLButtonElement; detail: HTMLElement }>();
+  const gameButtons = new Map<IsoGame, { item: HTMLElement; button: HTMLButtonElement; state: HTMLElement; detail: HTMLElement }>();
   for (const game of ISO_GAMES) {
-    const item = element('div', '');
+    const item = element('div', 'public-iso-game-card');
     const name = element('dt', '');
     const button = element('button', 'public-iso-game', game.name); button.type = 'button';
     button.setAttribute('aria-controls', 'public-iso-maps');
     button.onclick = () => { selectGame(game.id); status.textContent = ''; render(); };
     name.append(button);
+    const state = element('dd', 'public-iso-game-state');
     const detail = element('dd', 'public-iso-game-detail');
-    item.append(name, element('dd', '', game.support), detail);
-    gameButtons.set(game.id, { button, detail });
+    item.append(name, state, detail, element('dd', 'public-iso-game-support', game.support));
+    gameButtons.set(game.id, { item, button, state, detail });
     supportList.append(item);
   }
   support.append(supportList,
-    element('p', 'public-local-note', 'Select a loaded game to browse its maps. Discs and loaded maps are saved in this browser on this device.'),
-    element('p', '', 'SSX support is still incomplete. SSX 3 and On Tour are early imports with missing features and possible map issues. ISO and BIN files stay on this device.'));
+    element('p', 'public-local-note', 'A saved disc makes its maps available to load. Only loaded maps are ready to Play or Inspect. Unloading a map keeps the saved disc.'),
+    element('p', '', 'SSX support is still incomplete. SSX 3, On Tour and 1080° Avalanche are early imports with missing features and possible map issues. Mad Trix includes terrain with baked colored lighting, sky, adapted grind strips, blinking sign panels, scrolling Las Vegas waterfalls, source ski sounds and the original music tracks. Animation timing and full-track music looping are adaptations; other props, sky lighting and events remain incomplete. Missing riding sounds can use a Tricky map loaded in this browser.'));
   iso.append(actions, support, status);
-  const heading = element('h2', 'public-visually-hidden', 'ISO maps');
+  const mapHeader = element('div', 'public-iso-map-header');
+  const heading = element('h2', '', 'Maps');
+  const mapSummary = element('p', 'public-iso-map-summary');
+  mapHeader.append(heading, mapSummary);
+  const filters = element('div', 'public-iso-filters');
+  filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', 'Filter ISO maps');
+  const filterButtons = new Map<'all' | 'loaded' | 'missing', HTMLButtonElement>();
+  for (const [value, name] of [['all', 'All maps'], ['loaded', 'Loaded'], ['missing', 'Not loaded']] as const) {
+    const button = element('button', '', name); button.type = 'button';
+    button.setAttribute('aria-controls', 'public-iso-maps');
+    button.onclick = () => { mapFilter = value; render(); };
+    filterButtons.set(value, button); filters.append(button);
+  }
   const rows = element('ul', 'public-iso-map-list'); rows.setAttribute('aria-label', 'Manage ISO maps');
   rows.id = 'public-iso-maps';
-  const empty = element('p', 'public-empty', 'No maps loaded.');
-  main.append(title, dependencies, iso, heading, rows, empty);
+  const empty = element('p', 'public-empty');
+  main.append(title, intro, dependencies, iso, mapHeader, filters, rows, empty);
   document.body.append(header, main);
   const cards = new Map<string, ReturnType<typeof createCard>>();
   let dependencyState = '';
@@ -93,6 +110,7 @@ export async function showIsoPage(): Promise<void> {
     if (busy || loadingIso()) throw new Error('Wait for ISO loading to finish, or cancel it, before reloading.');
   });
   function selectGame(game: IsoGame) {
+    if (selectedGame !== game) mapFilter = 'all';
     selectedGame = game;
     try { sessionStorage.setItem(SELECTED_GAME, game); } catch { /* optional */ }
   }
@@ -166,20 +184,22 @@ export async function showIsoPage(): Promise<void> {
       ? EDITOR_PATH : courseEditorUrl(target));
     if (!leaving && loadingIso()) window.addEventListener('beforeunload', confirmUnload);
     else window.removeEventListener('beforeunload', confirmUnload);
-    count.textContent = `${cached.length} loaded`;
+    totalLoaded.textContent = `${cached.length} loaded`;
     input.disabled = clear.disabled = busy || loads.busy;
     clear.style.visibility = cached.length || discs.size ? 'visible' : 'hidden';
     for (const game of ISO_GAMES) {
-      const { button, detail } = gameButtons.get(game.id)!;
+      const { item, button, state, detail } = gameButtons.get(game.id)!;
       const source = discs.get(game.id);
       const loadedCourses = cached.filter(slot => isoGameForCourse(slot) === game.id);
       const loaded = loadedCourses.length;
       const total = new Set([...loadedCourses, ...(source?.courses ?? [])]).size;
       button.disabled = !source && !loaded;
       button.setAttribute('aria-pressed', String(game.id === selectedGame && !button.disabled));
+      item.dataset.state = loaded ? 'loaded' : source ? 'available' : 'missing';
+      state.textContent = total ? `${loaded} of ${total} maps loaded` : 'No maps loaded';
       detail.textContent = source
-        ? `${source.file.name} · ${source.saved ? 'Saved in this browser' : 'Available until you leave'} · ${loaded}/${total} maps loaded`
-        : loaded ? `${loaded} maps loaded` : 'No ISO loaded';
+        ? `${source.saved ? 'Disc saved' : 'Disc available for this visit'} · ${source.file.name}`
+        : loaded ? 'No disc saved · Loaded maps are ready to use' : 'No disc selected';
     }
     const required = target?.isoCourses ?? [];
     const missing = required.filter(slot => !cached.includes(slot));
@@ -197,7 +217,21 @@ export async function showIsoPage(): Promise<void> {
     const maps = [...new Set([...required, ...cached, ...(disc?.courses ?? [])])]
       .filter(slot => isoGameForCourse(slot) === selectedGame).sort((a, b) =>
       Number(required.includes(b)) - Number(required.includes(a)) || discCourseName(a).localeCompare(discCourseName(b)));
-    empty.hidden = !!maps.length;
+    const loadedCount = maps.filter(slot => cached.includes(slot)).length;
+    const missingCount = maps.length - loadedCount;
+    heading.textContent = `${ISO_GAMES.find(game => game.id === selectedGame)!.name} maps`;
+    mapSummary.textContent = maps.length ? `${loadedCount} of ${maps.length} maps loaded · ${missingCount} not loaded` : 'Choose a disc to see its maps.';
+    filters.hidden = !maps.length;
+    for (const [filter, button] of filterButtons) {
+      const label = filter === 'all' ? 'All maps' : filter === 'loaded' ? 'Loaded' : 'Not loaded';
+      button.textContent = `${label} (${filter === 'all' ? maps.length : filter === 'loaded' ? loadedCount : missingCount})`;
+      button.setAttribute('aria-pressed', String(filter === mapFilter));
+    }
+    const visibleMaps = maps.filter(slot => mapFilter === 'all' || cached.includes(slot) === (mapFilter === 'loaded'));
+    empty.hidden = !!visibleMaps.length;
+    empty.textContent = !maps.length ? 'Choose a supported disc above, then load individual maps here.'
+      : mapFilter === 'loaded' ? 'No loaded maps for this game. Select Not loaded, then Load a map to make it ready to play.'
+      : 'All listed maps are loaded and ready to play.';
     for (const [slot, card] of cards) {
       if (!maps.includes(slot)) { card.row.remove(); cards.delete(slot); }
     }
@@ -211,13 +245,15 @@ export async function showIsoPage(): Promise<void> {
       const pending = state?.phase === 'queued' || state?.phase === 'loading';
       const phase = state?.phase ?? (loaded ? 'loaded' : 'missing');
       row.dataset.state = phase;
+      row.hidden = !visibleMaps.includes(slot);
       row.setAttribute('aria-busy', String(state?.phase === 'loading'));
       badge.className = `public-iso-badge ${phase}`;
       const badgeText = pending ? state.phase === 'queued' ? 'Queued' : 'Loading…'
         : state?.phase === 'error' ? 'Failed' : loaded ? 'Loaded' : 'Not loaded';
       if (badge.textContent !== badgeText) badge.textContent = badgeText;
-      const feedback = state?.phase === 'error' || (state?.phase === 'loading' && state.message !== 'Loading…')
-        ? state.message : disc && !disc.courses.includes(slot) && !loaded ? 'Not found in the selected ISO.' : '';
+      const feedback = state ? state.phase === 'queued' ? 'Waiting for another map to finish loading.' : state.message
+        : loaded ? 'Ready to Play or Inspect. Saved in this browser.'
+        : sourceFor(slot) ? 'Load this map to Play or Inspect.' : 'Choose this game’s disc to load this map.';
       if (message.textContent !== feedback) { message.textContent = feedback; message.title = feedback; }
       const action = pending ? 'Cancel' : loaded ? 'Unload' : 'Load';
       if (button.textContent !== action) button.textContent = action;

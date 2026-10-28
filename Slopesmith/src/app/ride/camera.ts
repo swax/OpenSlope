@@ -66,6 +66,10 @@ const CAM_VOLUME_CLEARANCE = 0.45,
 // The sight line starts above the deck, on the rider's torso — and the unbury step keeps a dip's own floor from
 // false-blocking it.
 const CAM_BLOCK_ANCHOR_Y = 1.25;
+// A grind path can share a wall's plane. Within this small contact band the rider has no reliable side of that
+// face: tessellation and render interpolation can change its sign each frame. Seat only the cast anchor on the
+// retained eye's side so LOS and volume clearance agree; a rider farther from the wall still owns its side.
+const CAM_ANCHOR_CLEARANCE = 0.02;
 // The rider root supplies the chase bearing in the original. Slopesmith's closest equivalent is travel: it stays
 // stable while the visible deck spins in the air or yaws across a rail. At walking speed facing is the fallback.
 const CAM_TRAVEL_MIN = 1.5;
@@ -271,7 +275,11 @@ export function createRideCamera(o: RideCameraDeps) {
     camCandidate.copy(desired);
     camBoost = boost;
     const anchor = pos.clone().addScaledVector(WORLD_UP, CAM_BLOCK_ANCHOR_Y);
+    const anchorSeated = seatGrazingAnchor(anchor, desired);
     const clearance = clearancePass(anchor, desired);
+    // The lateral axis cast can pad toward the other side of a grazing wall. Resolve that candidate against the
+    // seated anchor before filtering it, or the filtered LOS would mistake its wall crossing for an obstruction.
+    const candidatePadded = anchorSeated && volumePass(anchor, desired, anchor);
     camCorrectionDistance = desired.distanceTo(camCandidate);
     // Retail order: authored eye -> authored clearance -> retained translation. `t <= 0` is an explicit reseat
     // used by view toggles/zoom; long gaps and invalidated state are cuts, not a slow flight from stale history.
@@ -287,8 +295,8 @@ export function createRideCamera(o: RideCameraDeps) {
     camSafetyStart.copy(camEye);
     const filteredBlocked = filteredLineOfSightPass(clearance.origin, camEye);
     const volumeCorrected = volumePass(anchor, camEye);
-    camClearance = volumeCorrected ? 'volume' : filteredBlocked ? 'line-of-sight' : clearance.kind;
-    camOriginUnburied = clearance.originUnburied;
+    camClearance = volumeCorrected || candidatePadded ? 'volume' : filteredBlocked ? 'line-of-sight' : clearance.kind;
+    camOriginUnburied = anchorSeated || clearance.originUnburied;
     // Keep this metric about collision response rather than counting intentional follow lag as a correction.
     camCorrectionDistance = Math.max(camCorrectionDistance, camEye.distanceTo(camSafetyStart));
     o.camera.position.copy(camEye);
@@ -399,6 +407,32 @@ export function createRideCamera(o: RideCameraDeps) {
     return normal.dot(camTmp.copy(to).sub(from)) > 0 ? normal.negate() : normal;
   }
 
+  /** Resolve an ambiguous surface contact before either clearance pass chooses which side contains the rider. */
+  function seatGrazingAnchor(anchor: THREE.Vector3, desired: THREE.Vector3): boolean {
+    if (!o.closestTerrainPoint) return false;
+    const hit = o.closestTerrainPoint(anchor, CAM_ANCHOR_CLEARANCE);
+    const touching = !!hit && hit.distance < CAM_ANCHOR_CLEARANCE;
+    const probe: RideCameraProbe = {
+      kind: 'origin-volume',
+      from: tuple(anchor),
+      to: tuple(hit?.point ?? anchor),
+      segmentLength: hit?.distance ?? 0,
+      hit: touching,
+    };
+    if (touching) {
+      const normal = hit.normal.clone().normalize();
+      const reference = camEyeValid ? camEye : desired;
+      if (normal.dot(camTmp.copy(reference).sub(hit.point)) < 0) normal.negate();
+      probe.hitDistance = hit.distance;
+      probe.point = tuple(hit.point);
+      probe.normal = tuple(normal);
+      probe.source = 'terrain';
+      anchor.copy(hit.point).addScaledVector(normal, CAM_ANCHOR_CLEARANCE);
+    }
+    camProbes.push(probe);
+    return touching;
+  }
+
   /**
    * [Trailmap: 400-camera-terrain] the original's per-frame clearance pass, in its priority order. Blocked
    * sight line wins and ends the pass; otherwise the ground probe; otherwise the lateral probe. Every response
@@ -465,10 +499,12 @@ export function createRideCamera(o: RideCameraDeps) {
 
   /**
    * Keep the whole retail near-plane footprint outside the rendered terrain. This deliberately follows the
-   * authored ray response: the closest face is padded along its geometric normal, oriented toward the rider's
-   * side. Re-querying after each move handles a neighbouring wall/floor face in a concave or curved bank.
+   * authored ray response: the closest face is padded along its geometric normal. LOS has already put the eye
+   * on the visible side, so preserve that side here: on a curved wall the rider can be across the closest face's
+   * extended plane even while the entire sight line is clear. Re-query after each move to handle adjacent faces.
+   * The grazing candidate pass supplies its seated anchor explicitly to repair an axis cast's arbitrary side.
    */
-  function volumePass(origin: THREE.Vector3, eye: THREE.Vector3): boolean {
+  function volumePass(origin: THREE.Vector3, eye: THREE.Vector3, sideReference = eye): boolean {
     if (!o.closestTerrainPoint) return false;
     let corrected = false;
     for (let iteration = 0; iteration < CAM_VOLUME_ITERATIONS; iteration++) {
@@ -484,7 +520,9 @@ export function createRideCamera(o: RideCameraDeps) {
       };
       if (hit) {
         const normal = hit.normal.clone().normalize();
-        if (normal.dot(camTmp.copy(origin).sub(hit.point)) < 0) normal.negate();
+        const side = normal.dot(camTmp.copy(sideReference).sub(hit.point));
+        const signedSide = Math.abs(side) > 1e-8 ? side : normal.dot(camTmp.copy(origin).sub(hit.point));
+        if (signedSide < 0) normal.negate();
         probe.hitDistance = hit.distance;
         probe.point = tuple(hit.point);
         probe.normal = tuple(normal);

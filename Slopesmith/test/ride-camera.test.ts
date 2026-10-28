@@ -508,7 +508,8 @@ assert.ok(
     camera: volumeCam,
     castSeg: () => null,
     toWorld: new THREE.Matrix4(),
-    closestTerrainPoint: point => {
+    closestTerrainPoint: (point, maxDistance) => {
+      if (maxDistance < 0.1) return null;
       const normal =
         queryCount === 0 ? new THREE.Vector3(1, 0, 0) : queryCount === 1 ? new THREE.Vector3(0, 0, 1) : null;
       queryCount++;
@@ -591,6 +592,122 @@ assert.ok(
     null,
     'the closest terrain query is bounded by the camera clearance radius',
   );
+}
+
+// Imported grind paths can run along the plane of a tall, thin wall. Sub-millimetre changes in the sampled
+// rail/triangles must not swap the camera to opposite sides and make the next sight-line cast collapse its boom.
+{
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [0, -1, -100, 0, 5, -100, 0, -1, 100, 0, 5, 100, -10, -1, -5, 10, -1, -5, -10, 5, -5, 10, 5, -5],
+      3,
+    ),
+  );
+  geometry.setIndex([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7]);
+  const terrain = new THREE.Mesh(geometry);
+  terrain.updateMatrixWorld(true);
+  const model = createRideModel({
+    spawn: new THREE.Vector3(),
+    terrain,
+    surfaceOf: () => 1,
+    oobFloorY: -100,
+    keys: { left: false, right: false, tuck: false, brake: false, boost: false },
+    stick: { active: false, x: 0 },
+    onRespawn: () => {},
+  });
+  model.start();
+  for (const hz of [30, 60, 120])
+    for (const initialSide of [-1, 1]) {
+      const railCam = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 2_000);
+      const rc = createRideCamera({
+        camera: railCam,
+        castSeg: model.castSeg,
+        closestTerrainPoint: model.closestCameraTerrain,
+        toWorld: model.toWorld,
+        initialThirdPersonZoom: DEFAULT_THIRD_PERSON_ZOOM,
+      });
+      rc.setHeading(forward);
+      let previous: THREE.Vector3 | undefined;
+      for (let frame = 0; frame < hz * 3; frame++) {
+        const at = new THREE.Vector3((frame % 2 ? -0.0001 : 0.0001) * initialSide, 0, (frame * 12) / hz);
+        rc.update(frame ? 1 / hz : 1, at, forward.clone().multiplyScalar(12), forward, true, false);
+        const relative = railCam.position.clone().sub(at);
+        assert.ok(relative.z < -3, 'the grazing wall does not pull the chase view into the rider');
+        assert.equal(
+          rc.telemetry(1 / 60).probes.find(probe => probe.kind === 'filtered-line-of-sight')?.hit,
+          false,
+          'a lateral correction cannot create an artificial sight-line obstruction',
+        );
+        if (frame > 10) {
+          assert.ok(relative.distanceTo(previous!) < 0.25, 'a grazing rail wall cannot produce rapid camera jumps');
+        }
+        const near = model.closestCameraTerrain(railCam.position, 0.46);
+        assert.ok(!near || near.distance >= 0.45 - 1e-5, 'the stable chase eye still clears the rendered wall');
+        previous = relative;
+      }
+      // Once the rider really crosses the wall, ordinary occlusion must move the eye onto the rider's new side.
+      const crossed = new THREE.Vector3(-0.3 * initialSide, 0, 36);
+      rc.update(1 / 60, crossed, forward.clone().multiplyScalar(12), forward, true, false);
+      assert.ok(railCam.position.x * initialSide <= -0.4, 'a real wall crossing still corrects the camera immediately');
+      const obstructed = new THREE.Vector3(0.0001, 0, -4.3);
+      rc.resetAim(obstructed);
+      rc.update(1, obstructed, forward.clone().multiplyScalar(12), forward, true, false);
+      assert.ok(railCam.position.z >= -4.6, 'seating a grazing origin still detects the wall behind the rider');
+    }
+}
+
+// On the outside of a curved wall, the eye's closest face can put the distant rider behind its extended plane.
+// Using that plane to choose the eye's side teleports it through the wall, then LOS collapses the boom next frame.
+{
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const radius = 20;
+  const facets = 256;
+  for (let i = 0; i <= facets; i++) {
+    const angle = (i / facets) * Math.PI * 2;
+    for (const y of [-1, 5]) positions.push(radius * Math.cos(angle), y, radius * Math.sin(angle));
+    if (i < facets) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 2, a + 1, a + 3);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  const terrain = new THREE.Mesh(geometry);
+  terrain.updateMatrixWorld(true);
+  const model = createRideModel({
+    spawn: new THREE.Vector3(),
+    terrain,
+    surfaceOf: () => 1,
+    oobFloorY: -100,
+    keys: { left: false, right: false, tuck: false, brake: false, boost: false },
+    stick: { active: false, x: 0 },
+    onRespawn: () => {},
+  });
+  model.start();
+  const bendCam = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 2_000);
+  const rc = createRideCamera({
+    camera: bendCam,
+    castSeg: model.castSeg,
+    closestTerrainPoint: model.closestCameraTerrain,
+    toWorld: model.toWorld,
+    initialThirdPersonZoom: DEFAULT_THIRD_PERSON_ZOOM,
+  });
+  let previous: THREE.Vector3 | undefined;
+  for (let frame = 0; frame < 240; frame++) {
+    const angle = frame * 0.005;
+    const at = new THREE.Vector3((radius + 0.03) * Math.cos(angle), 0, (radius + 0.03) * Math.sin(angle));
+    const heading = new THREE.Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    rc.setHeading(heading);
+    rc.update(frame ? 1 / 60 : 1, at, heading.clone().multiplyScalar(6), heading, true, false);
+    assert.ok(Math.hypot(bendCam.position.x, bendCam.position.z) > radius, 'the eye stays outside the curved wall');
+    if (frame > 10)
+      assert.ok(bendCam.position.distanceTo(previous!) < 0.25, 'a curved rail wall cannot make the eye swap sides');
+    previous = bendCam.position.clone();
+  }
 }
 
 console.log('RIDE CAMERA: PASS');

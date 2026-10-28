@@ -132,7 +132,7 @@ export interface RideTelemetryTick {
 
 export type RideCameraClearance = 'none' | 'line-of-sight' | 'ground' | 'lateral' | 'volume';
 export type RideCameraProbeKind =
-  'origin-unbury' | 'line-of-sight' | 'ground' | 'lateral' | 'filtered-line-of-sight' | 'volume';
+  'origin-volume' | 'origin-unbury' | 'line-of-sight' | 'ground' | 'lateral' | 'filtered-line-of-sight' | 'volume';
 export type RideCameraProbeHitSource = 'terrain' | 'obstacle';
 
 /** One exact query made by the render-frame camera clearance pass. Misses retain both endpoints. */

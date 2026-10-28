@@ -723,7 +723,7 @@ void VulkanRenderer::targets(std::span<const VkImage> images, VkFormat format, s
     // mode 15 for world-space, untextured surfaces and posed avatars.
     const auto create_material_pipelines = [&](auto& variants) {
         VkResult result = VK_SUCCESS;
-        for (const auto mode : {0, 1, 2, 3, 14, 15}) {
+        for (const auto mode : {0, 1, 2, 3, 14, 15, 16}) {
             shader_modes[1] = mode;
             result = vkCreateGraphicsPipelines(context_.device, {}, 1, &pipeline, nullptr, &variants[mode]);
             if (result != VK_SUCCESS)

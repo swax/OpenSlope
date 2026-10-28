@@ -26,6 +26,8 @@
 > **Independent and unofficial.** No retail game content is included. Original courses need no disc.
 > See [`LEGAL.md`](LEGAL.md) for scope and rightsholder enquiries.
 
+[Download Native Player for Windows or Quest](https://github.com/swax/OpenSlope/releases/latest)
+
 ## What is OpenSlope?
 
 OpenSlope is a toolkit for building, converting, and riding snowboard courses. Its browser editor,
@@ -37,15 +39,19 @@ streaming.
 [Watch the YouTube playlist](https://www.youtube.com/playlist?list=PLY7M9rAS6jGM)
 
 Create original courses or import them locally from your own disc images. Maps can move between
-the browser, Native, and Unity, or be repacked for PCSX2 and PS2.
+the browser, Native, and Unity, or be repacked for PCSX2 and PS2. We've added support for loading
+maps from other snowboarding games to learn more about how to build our own maps better.
 
 [Build your own maps on slopesmith.net](https://slopesmith.net)
 
-**SSX Tricky is fully supported** for course compatibility. Support for the original **SSX**, **SSX 3**,
-**SSX On Tour**, and **1080° Avalanche** is **preliminary**.
-
-[Download Native for Windows or Quest](https://github.com/swax/OpenSlope/releases/latest)
-
+| Game | Course compatibility |
+|---|---|
+| [SSX Tricky](Snowknife/docs/browser-play.md) | Fully supported |
+| [SSX](Native/docs/ssx-import.md) | Preliminary |
+| [SSX 3](Native/docs/ssx3-import.md) | Preliminary |
+| [SSX On Tour](Native/docs/ontour-import.md) | Preliminary |
+| [1080° Avalanche](Native/docs/avalanche-import.md) | Preliminary |
+| [Jonny Moseley Mad Trix](Native/docs/madtrix-import.md) | Preliminary |
 
 ## Create and collaborate
 

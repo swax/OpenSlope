@@ -1,16 +1,32 @@
 import type { MapDataSource } from '../../shared/map-data';
-import { readCachedCourse } from './iso-cache';
+import { readCachedAudio, readCachedCourse } from './iso-cache';
 import type { CollisionSoundIndex } from '../../core/effects/collision-sound';
 import type { ReferenceMusicGraph, ReferenceMusicIndex, ReferenceMusicSummary } from '../../core/reference/music';
 import { BOARD_BANK, BOOST_BANK } from '../../core/audio/board-sound';
 
 /** Read the same portable map files as the server, with browser-local Blobs replacing filesystem reads. */
-export async function localMapData(courses: string[], aliases: Record<string, string> = {}) {
+export async function localMapData(courses: string[], aliases: Record<string, string> = {}, audioDonors: string[] = []) {
   const all = new Map<string, Map<string, Blob>>();
   for (const course of courses) all.set(course.toLowerCase(), await readCachedCourse(course));
   for (const [alias, course] of Object.entries(aliases)) {
     const files = all.get(course.toLowerCase());
     if (files) all.set(alias.toLowerCase(), files);
+  }
+  const fallbackRequested = await Promise.all([...all.values()].map(async files => {
+    const file = files.get('audio/soundindex.json');
+    return file && (JSON.parse(await file.text()) as CollisionSoundIndex).RidingFallback === 'ssx-tricky';
+  }));
+  if (fallbackRequested.some(Boolean)) {
+    for (const course of [...audioDonors].sort()) {
+      if (all.has(course.toLowerCase())) continue;
+      const files = await readCachedAudio(course);
+      const file = files.get('audio/soundindex.json');
+      const index = file && JSON.parse(await file.text()) as CollisionSoundIndex;
+      if (index && (index.Banks['1']?.toLowerCase() === BOARD_BANK || index.Banks['0']?.toLowerCase() === BOOST_BANK)) {
+        all.set(course.toLowerCase(), files);
+        break;
+      }
+    }
   }
   const urls = new Map<string, string>();
   const soundIndexes = new Map<string, CollisionSoundIndex>();
@@ -106,8 +122,17 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     const url = new URL(path, location.origin), q = url.searchParams;
     const level = q.get('level') || courses[0] || '';
     const data = (value: unknown) => `data:application/json,${encodeURIComponent(JSON.stringify(value))}`;
+    const ridingSources = () => {
+      if (!q.has('level')) return courses;
+      const index = soundIndexes.get(level.toLowerCase());
+      if (index?.RidingFallback !== 'ssx-tricky') return [level];
+      const donors = [...soundIndexes].filter(([name, index]) => name !== level.toLowerCase()
+        && (index.Banks['1']?.toLowerCase() === BOARD_BANK || index.Banks['0']?.toLowerCase() === BOOST_BANK))
+        .map(([name]) => name).sort();
+      return [level, ...donors];
+    };
     if (url.pathname === '/api/board-audio') {
-      const selected = q.has('level') ? [level] : courses;
+      const selected = ridingSources();
       const boardLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['1']);
       const boostLevel = selected.find(course => soundIndexes.get(course.toLowerCase())?.Banks['0']);
       return data({ board: boardLevel ? soundIndexes.get(boardLevel.toLowerCase())!.Banks['1'] : null,
@@ -154,7 +179,7 @@ export async function localMapData(courses: string[], aliases: Record<string, st
     // Missing optional disc channels remain local too; a guest never falls back to server retail bytes.
     if (url.pathname === '/api/board-sound' || url.pathname === '/api/environment-sound') {
       const bank = q.get('bank')?.toLowerCase(), slot = (q.get('slot') ?? '0').padStart(3, '0');
-      const selected = url.pathname === '/api/board-sound' && q.has('level') ? [level] : courses;
+      const selected = url.pathname === '/api/board-sound' ? ridingSources() : courses;
       for (const course of selected) {
         const index = soundIndexes.get(course.toLowerCase());
         const actualBank = bank === BOARD_BANK ? index?.Banks['1'] ?? bank : bank === BOOST_BANK ? index?.Banks['0'] ?? bank : bank;

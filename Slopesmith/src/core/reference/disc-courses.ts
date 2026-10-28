@@ -1,5 +1,16 @@
 /** Retail disc slots can share riding presence without publishing or serving any map files. */
 const DISC_COURSES: Readonly<Record<string, string>> = {
+  MADTRIX_AN_ANTARTICA: 'Antarctica (Mad Trix)',
+  MADTRIX_DC_WASHINGTON: 'Washington DC (Mad Trix)',
+  MADTRIX_LV_LAS_VEGAS: 'Las Vegas (Mad Trix)',
+  MADTRIX_MK_MT_KILI: 'Mount Kilimanjaro (Mad Trix)',
+  MADTRIX_MP_MACHU_PIHU: 'Machu Picchu (Mad Trix)',
+  MADTRIX_NP_NEPAL: 'Nepal (Mad Trix)',
+  MADTRIX_RV_ROME: 'Rome (Mad Trix)',
+  MADTRIX_SF_SAN_FRAN: 'San Francisco (Mad Trix)',
+  MADTRIX_TH_TAHOE: 'Tahoe (Mad Trix)',
+  MADTRIX_TR_TRAINING: 'Training (Mad Trix)',
+  MADTRIX_VA_VALDEZ_ALASKA: 'Valdez Alaska (Mad Trix)',
   AVALANCHE_CRS00_00: '1080° Avalanche · Crs00 Normal',
   AVALANCHE_CRS00_03: '1080° Avalanche · Crs00 Diamond',
   AVALANCHE_CRS01_00: '1080° Avalanche · Crs01 Normal',

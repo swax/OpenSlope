@@ -34,6 +34,46 @@ export interface RawPatch {
   LightMapPoint?: number[];
   /** Which level lightmap (0..15) this patch reads. */
   LightmapID?: number;
+  /** Optional 16 baked RGB multipliers in Points order; signed handles, display domain, neutral = 1. */
+  LightColorPoints?: number[][];
+}
+
+function validLightControls(points: number[][] | undefined): points is number[][] {
+  return (
+    Array.isArray(points) &&
+    points.length === 16 &&
+    points.every(
+      rgb => Array.isArray(rgb) && rgb.length === 3 && rgb.every(c => Number.isFinite(c) && Math.abs(c) <= 16),
+    )
+  );
+}
+
+/** Bicubic baked colour. Clamp after interpolation so signed fitted handles keep their shape. */
+export function patchLightColor(points: number[][], u: number, v: number): V3 {
+  const rgb = patchPoint(points as V3[], u, v);
+  return rgb.map(c => Math.max(0, Math.min(255 / 128, c))) as V3;
+}
+
+/** Only pages with usable tiles can be fetched; -1 explicitly means no image lightmap. */
+export function referenceLightmapIds(patches: readonly RawPatch[]): number[] {
+  const ids = new Set<number>();
+  for (const patch of patches) {
+    const id = patch.LightmapID,
+      rect = patch.LightMapPoint;
+    if (
+      id == null ||
+      !Number.isInteger(id) ||
+      id < 0 ||
+      !rect ||
+      rect.length < 4 ||
+      !rect.slice(0, 4).every(Number.isFinite) ||
+      rect[2] <= 0 ||
+      rect[3] <= 0
+    )
+      continue;
+    ids.add(id);
+  }
+  return [...ids];
 }
 
 /** raw SSX (cm, Z-up, X-mirrored) -> editor (m, Y-up, RH). Inverse of level.ts `toRaw`. */
@@ -514,10 +554,12 @@ export interface ReferenceMesh {
   colors: Float32Array;
   /** Per-vertex UV, 0..1 across each patch (one tile per patch = the SSX model) for the textured view. */
   uvs: Float32Array;
-  /** Per-vertex baked lightmap intensity A_S (0..1), present only when lightmaps were supplied. */
+  /** Per-vertex baked intensity: image A_S, or RGB luminance for a baked color net. */
   intensity?: Float32Array;
-  /** Per-vertex baked lightmap COLOUR (RGB, the coloured multiply), present only with lightmaps. */
+  /** Per-vertex baked RGB multiplier, from an image lightmap or a color control net. */
   lightColor?: Float32Array;
+  /** Baked vertex colours need no external lightmap fetch or directional-sun reconstruction. */
+  lightingSource?: 'vertex';
   indices: Uint32Array;
   /** Tile (TexturePath) per emitted patch, in face order, or null - drives the textured-view groups. */
   patchTex: (string | null)[];
@@ -580,6 +622,7 @@ const RES = 8;
  * `buildReferenceMesh` lets reload restore the visible terrain first, then fetch/decode the lighting study
  * only when it is requested, without paying the full tessellation cost a second time. */
 export function applyReferenceLightmaps(mesh: ReferenceMesh, patches: RawPatch[], lightmaps: LightmapSet): boolean {
+  if (mesh.lightingSource === 'vertex') return true;
   if (referenceLightmapLayoutStats(patches).collapsed) {
     delete mesh.intensity;
     delete mesh.lightColor;
@@ -636,8 +679,10 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
   const colors = new Float32Array(n * per * 3);
   const uvs = new Float32Array(n * per * 2);
   const usableLightmaps = lightmaps && !referenceLightmapLayoutStats(patches).collapsed ? lightmaps : undefined;
-  const intensity = usableLightmaps ? new Float32Array(n * per) : undefined; // per-vertex baked A_S (1 = neutral)
-  const lightColor = usableLightmaps ? new Float32Array(n * per * 3) : undefined; // per-vertex baked colour (1,1,1 = neutral)
+  const lightControls = patches.map(p => (validLightControls(p.LightColorPoints) ? p.LightColorPoints : undefined));
+  const vertexLighting = lightControls.some(Boolean);
+  const intensity = usableLightmaps || vertexLighting ? new Float32Array(n * per) : undefined;
+  const lightColor = usableLightmaps || vertexLighting ? new Float32Array(n * per * 3) : undefined;
   // Sized by the CALLER's res, not the module default — the lightmap bake tessellates denser than the display,
   // and a buffer sized off the constant silently dropped every index past the display density's worth.
   const indices = new Uint32Array(n * res * res * 6);
@@ -738,7 +783,7 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
     // intensity per vertex exactly like the bake (RemapUv mode 6 -> SampleTile). Falls back to 1 (neutral).
     const lp = patches[pi].LightMapPoint;
     const lmId = patches[pi].LightmapID;
-    const lmMap = intensity && lmId != null && lp && lp.length >= 4 ? usableLightmaps!.get(lmId) : undefined;
+    const lmMap = lmId != null && lp && lp.length >= 4 ? usableLightmaps?.get(lmId) : undefined;
     const vBase = vp / 3;
     for (let iu = 0; iu < side; iu++) {
       for (let iv = 0; iv < side; iv++) {
@@ -769,7 +814,11 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
         }
         if (intensity && lightColor) {
           const vi = vBase + iu * side + iv;
-          if (lmMap) {
+          if (lightControls[pi]) {
+            const rgb = patchLightColor(lightControls[pi], u, v);
+            lightColor.set(rgb, vi * 3);
+            intensity[vi] = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+          } else if (lmMap) {
             const [ru, rv] = remapLightmapUv(u, v);
             intensity[vi] = sampleTile(lmMap.a, lp![0], lp![1], lp![2], lp![3], ru, rv);
             const [r, g, b] = sampleTileRGB(lmMap.rgb, lp![0], lp![1], lp![2], lp![3], ru, rv);
@@ -1083,6 +1132,7 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
       uvs,
       intensity,
       lightColor,
+      ...(vertexLighting ? { lightingSource: 'vertex' as const } : {}),
       indices,
       patchTex,
       patchUV,

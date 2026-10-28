@@ -17,6 +17,8 @@ struct ProbeSphere {
 // [Trailmap: 002-axes, 110-patch-model, 110-analytic-normal]
 struct Patch {
     std::array<Vec3, 16> points;
+    // Optional display-domain baked RGB multipliers, in the geometry's Bernstein order.
+    std::optional<std::array<std::array<double, 3>, 16>> light_colors;
     std::array<std::array<double, 2>, 4> uv{};
     std::array<double, 4> lightmap_rect{};
     std::string name, texture;
@@ -26,6 +28,7 @@ struct Patch {
     Vec3 evaluate(double u, double v) const;
     std::array<Vec3, 2> tangents(double u, double v) const;
     Vec3 normal(double u, double v) const;
+    std::array<double, 3> light_color(double u, double v) const;
     std::array<double, 2> texture_uv(double u, double v) const;
     std::array<double, 2> lightmap_uv(double u, double v) const;
     Bounds bounds() const;
@@ -41,6 +44,7 @@ struct MeshBatch {
     std::uint32_t first{}, count{};
     std::string texture;
     int lightmap = -1;
+    bool vertex_lighting = false;
 };
 
 struct TerrainRange {

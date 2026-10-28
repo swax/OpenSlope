@@ -606,7 +606,7 @@ try {
     if (new URL(request.url()).pathname === '/api/public/guest') linkGuestRequests++;
   });
   await linked.goto(`${origin}/isos`);
-  await linked.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
+  await linked.getByRole('heading', { name: 'Disc maps', level: 1, exact: true }).waitFor();
   assert.equal(new URL(linked.url()).pathname, '/isos', 'the ISO manager has its own route');
   assert.equal(await linked.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
   const linkedEditorTab = linked
@@ -1478,13 +1478,21 @@ try {
   assert.equal(await guest.getByRole('button', { name: /Garibaldi/ }).count(), 0);
   await guest.getByRole('link', { name: 'ISO', exact: true }).click();
   await closeCommunity(guest);
-  await guest.getByRole('heading', { name: 'ISO', level: 1, exact: true }).waitFor();
+  await guest.getByRole('heading', { name: 'Disc maps', level: 1, exact: true }).waitFor();
   const gameSupport = guest.getByRole('region', { name: 'Disc game support', exact: true });
-  assert.match(await gameSupport.innerText(), /SSX Tricky\s+Full support/);
-  assert.match(await gameSupport.innerText(), /SSX\s+Partial support/);
-  assert.match(await gameSupport.innerText(), /SSX 3\s+Preliminary support/);
-  assert.match(await gameSupport.innerText(), /SSX On Tour\s+Preliminary support/);
-  assert.match(await gameSupport.innerText(), /1080° Avalanche\s+25 course layouts · Preliminary support/);
+  for (const [name, support] of [
+    ['SSX Tricky', 'Full support'],
+    ['SSX', 'Partial support'],
+    ['SSX 3', 'Preliminary support'],
+    ['SSX On Tour', 'Preliminary support'],
+    ['1080° Avalanche', '25 course layouts · Preliminary support'],
+    ['Jonny Moseley Mad Trix', '11 courses · Preliminary support'],
+  ]) {
+    const card = gameSupport.locator('.public-iso-game-card').filter({
+      has: guest.getByRole('button', { name, exact: true }),
+    });
+    assert.equal(await card.locator('.public-iso-game-support').innerText(), support);
+  }
   assert.equal(await primaryNav.getByRole('link', { name: 'ISO', exact: true }).getAttribute('aria-current'), 'page');
   await guest.setViewportSize({ width: 800, height: 1000 });
   assert.equal(
@@ -1738,7 +1746,7 @@ try {
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load required maps', exact: true }).click();
   await guest.locator('.public-iso-map[data-course="FIXTURE"] .public-iso-badge.loaded').waitFor();
-  assert.match(await guest.locator('.public-iso-map[data-course="GARI"]').innerText(), /Not found in the selected ISO/);
+  assert(await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).isDisabled());
   const isoTileBoxes = await guest
     .locator('.public-iso-map')
     .evaluateAll(tiles => tiles.map(tile => tile.getBoundingClientRect().top));

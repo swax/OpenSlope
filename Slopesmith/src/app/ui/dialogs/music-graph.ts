@@ -50,7 +50,7 @@ export function openMusicGraphDialog(level: string, song: ReferenceMusicSummary)
   const title = document.createElement('h2');
   title.textContent = `${song.title} · music graph`;
   const sub = document.createElement('p');
-  sub.textContent = `${level} · ${song.bpm.toFixed(1)} BPM · ${song.nodes} nodes · ${song.samples} samples · ${song.sections} sections · ${song.events} events`;
+  sub.textContent = `${level} · ${song.bpm > 0 ? `${song.bpm.toFixed(1)} BPM` : 'tempo unknown'} · ${song.nodes} nodes · ${song.samples} samples · ${song.sections} sections · ${song.events} events`;
   heading.append(title, sub);
   const closeButton = button('✕', 'Close music graph', () => close(), 'sp-music-graph-close');
   header.append(heading, closeButton);

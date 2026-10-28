@@ -8,6 +8,7 @@ import {
   applyReferenceLightmaps,
   buildReferenceMeshProgressive,
   referenceLightmapLayoutStats,
+  referenceLightmapIds,
   type RawPatch,
   type ReferenceMesh,
   type RefAiPath,
@@ -749,11 +750,10 @@ export function createReference(deps: ReferenceDeps) {
    * PNG's alpha channel is the baked light intensity; RGB is the base-entangled residual we don't need.
    */
   async function decodeLightmaps(level: string, patches: RawPatch[]): Promise<LightmapSet> {
-    const ids = new Set<number>();
-    for (const p of patches) if (p.LightmapID != null) ids.add(p.LightmapID);
+    const ids = referenceLightmapIds(patches);
     const maps: LightmapSet = new Map();
     await Promise.all(
-      [...ids].map(async id => {
+      ids.map(async id => {
         const resp = await clientFetch(`/api/lightmap?level=${encodeURIComponent(level)}&id=${id}`);
         if (resp.status === 404) return; // a genuinely absent extracted map leaves those patches neutral
         if (!resp.ok) throw new Error(`lightmap ${id}: ${resp.status} ${resp.statusText}`.trim());
@@ -791,6 +791,10 @@ export function createReference(deps: ReferenceDeps) {
     const owner = refOwner;
     if (!owner || owner.generation !== refGeneration || owner.level !== refState.level || !owner.patches.length)
       return Promise.resolve();
+    if (owner.mesh.lightingSource === 'vertex') {
+      refLightmapStatus = 'ready';
+      return Promise.resolve();
+    }
     if (refLightmapStatus === 'ready' || refLightmapStatus === 'missing' || refLightmapStatus === 'placeholder')
       return Promise.resolve();
     if (refLightmapRequest?.owner === owner) return refLightmapRequest.promise;
@@ -1643,6 +1647,13 @@ export function createReference(deps: ReferenceDeps) {
     refState.lighting = refMesh?.intensity ? refLightingIntent : 'off';
     fitCtl = sunCtl = colCtl = chkCtl = null;
     updateLightPanelVis = null;
+    if (refMesh?.lightingSource === 'vertex') {
+      refState.lighting = 'lightmap';
+      note(lightFolder, 'Source baked vertex colors loaded.');
+      note(lightFolder, 'These colors include local lighting; no image lightmap or sun fit is needed.');
+      applyReferenceLighting();
+      return;
+    }
     if (!refMesh?.intensity) {
       if (refLightmapStatus === 'loading') note(lightFolder, 'Loading baked lightmaps…');
       else if (refLightmapStatus === 'error') {

@@ -226,6 +226,7 @@ void main() {
         }else if(base.a<=1.0/255.0)discard;
         if(transform.options.x==7)alpha=base.a;
         displayColour=base.rgb;
+        if(mode==16&&!runtime)displayColour=base.rgb*vertexColour;
         if(mode==14) {
             if(lightmapTile.w<0.5)displayColour=transform.presentation.yzw;
             else {
@@ -259,7 +260,7 @@ void main() {
             displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
     }
-    if(lightingMode!=0&&((mode>=1&&mode<=3)||
+    if(lightingMode!=0&&((mode>=1&&mode<=3)||mode==16||
        (runtime&&(mode==14||(mode==15&&dot(worldNormal,worldNormal)>0.00001)))))
         displayColour=litSurface(displayColour);
     if(lightingMode!=0&&light.presentation.z>0.5&&light.settings.z>0.5&&

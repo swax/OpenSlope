@@ -1,6 +1,11 @@
 // tier: fast
 
-import { insetReferenceUnitTile, referenceLightmapLayoutStats, type RawPatch } from '../src/core/reference/terrain';
+import {
+  insetReferenceUnitTile,
+  referenceLightmapIds,
+  referenceLightmapLayoutStats,
+  type RawPatch,
+} from '../src/core/reference/terrain';
 import { check, failures } from './check';
 
 const near = (actual: number, expected: number) => Math.abs(actual - expected) < 1e-9;
@@ -74,6 +79,30 @@ const patch = (id: number, point: number[]): RawPatch => ({
   LightmapID: id,
   LightMapPoint: point,
 });
+check(
+  JSON.stringify(
+    referenceLightmapIds([
+      patch(-1, [0, 0, 0, 0]),
+      patch(-1, [0, 0, 1, 1]),
+      patch(0, [0, 0, 1, 1]),
+      patch(0, [0, 0, 0.5, 0.5]),
+      patch(1, [0, 0, 0.5, 0.5]),
+      patch(2, [0, 0, 0, 1]),
+      patch(3, [0, 0, 1, 0]),
+      patch(NaN, [0, 0, 1, 1]),
+      patch(1.5, [0, 0, 1, 1]),
+      patch(Infinity, [0, 0, 1, 1]),
+      patch(4, [NaN, 0, 1, 1]),
+      patch(5, [0, 0]),
+      { Points: [], SurfaceType: 1 },
+    ]),
+  ) === '[0,1]',
+  'lighting study and public Play fetch only unique nonnegative pages with finite, nonempty tiles',
+);
+check(
+  referenceLightmapIds([patch(-1, [0, 0, 0, 0])]).length === 0,
+  'terrain without baked lighting never requests the negative no-lightmap sentinel',
+);
 const nativeLayout = Array.from({ length: 32 }, (_, i) =>
   patch(i >> 8, [(i & 7) / 8, ((i >> 3) & 7) / 8, 1 / 16, 1 / 16]),
 );

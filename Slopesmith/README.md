@@ -178,8 +178,13 @@ it folds into an expandable **Ride controls** tab.
 Editor Test rides keep the normal bottom-left editor chat and the Test tools panel. Press **Enter** during a
 ride to chat; sending a message or pressing **Escape** returns the keyboard to the ride.
 
-Retail courses require the visitor's own SSX or SSX Tricky PS2 disc. On `/isos`, select an ISO or the
-original SSX disc's BIN file; the CUE is not needed. Original courses have separate names such as
+Retail courses require the visitor's own supported disc. `/isos` includes SSX PS2 games,
+1080° Avalanche USA and Jonny Moseley Mad Trix USA PS2. Choose an ISO or BIN for Mad Trix;
+the CUE is not needed. Its eleven courses have preliminary terrain with source baked colored lighting, sky, grind-strip,
+sign-panel, ski-audio and twelve-track music support. Sign timing, full-track music looping and surface/role mapping are approximate;
+missing riding sounds can use a Tricky map loaded in this browser.
+see the [Mad Trix importer limits](../Native/docs/madtrix-import.md).
+Original SSX courses have separate names such as
 **Snowdream (SSX)**, so both games can be loaded together. See the [SSX importer limits](../Native/docs/ssx-import.md).
 Authored mountains that borrow game assets
 are labelled **ISO optional** and remain playable without it: missing game textures render as plain

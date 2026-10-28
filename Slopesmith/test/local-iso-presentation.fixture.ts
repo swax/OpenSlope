@@ -17,6 +17,7 @@ import { registerCollisionSoundIndex, resolveCollisionSound } from '../src/core/
 import type { CollisionSoundIndex } from '../src/core/effects/collision-sound';
 import type { MapDataSource } from '../src/shared/map-data';
 import type { Viewport } from '../src/app/viewport/viewport';
+import { localMapData } from '../src/app/public/local-map-data';
 
 function check(ok: unknown, message: string): asserts ok {
   if (!ok) throw new Error(message);
@@ -49,7 +50,7 @@ async function run() {
     await cacheTransaction(db, 'courses', 'readwrite', store =>
       store.put({ course: 'FIXTURE', version: ISO_CACHE_VERSION, files: 2 }),
     );
-    const deferredCourses = ['SSX_SNOW', 'SSX3_A', 'SSXOT_WR2_DAY'];
+    const deferredCourses = ['SSX_SNOW', 'SSX3_A', 'SSXOT_WR2_DAY', 'MADTRIX_AN_ANTARTICA'];
     await cacheTransaction(db, 'files', 'readwrite', store => {
       for (const course of deferredCourses)
         store.put({
@@ -133,15 +134,65 @@ async function run() {
       fresh.size === 1 && (await fresh.get('patches.json')!.text()) === 'fresh extraction',
       'Reloading an unloaded course has fresh files with no stale audio left over',
     );
-    for (const course of ['SSX_ALOHA', 'SSX3_A', 'SSXOT_WR2_DAY']) {
-      await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version: 1, files: 1 }));
-      check(!(await cachedIsoCourses()).includes(course), 'Corrupted streamed imports must request a reload');
+    for (const [course, version] of [
+      ['SSX_ALOHA', 1],
+      ['SSX3_A', 1],
+      ['SSXOT_WR2_DAY', 1],
+      ['MADTRIX_AN_ANTARTICA', 1],
+      ['MADTRIX_AN_ANTARTICA', 2],
+      ['MADTRIX_AN_ANTARTICA', 3],
+      ['MADTRIX_AN_ANTARTICA', 4],
+      ['MADTRIX_AN_ANTARTICA', 5],
+    ] as const) {
+      await cacheTransaction(db, 'courses', 'readwrite', store => store.put({ course, version, files: 1 }));
+      check(!(await cachedIsoCourses()).includes(course), 'Earlier imports must request a reload');
       await cacheTransaction(db, 'courses', 'readwrite', store =>
         store.put({ course, version: isoCourseCacheVersion(course), files: 1 }),
       );
       check((await cachedIsoCourses()).includes(course), 'Repaired streamed imports must stay loaded');
     }
     check((await cachedIsoCourses()).includes('FIXTURE'), 'The streamed format upgrade must preserve Tricky caches');
+    const audioFiles: Record<string, string> = {
+      'MADTRIX_AUDIO/audio/soundindex.json': JSON.stringify({
+        Schema: 'openslope-sound-index/v1',
+        Level: 'MADTRIX_AUDIO',
+        Banks: { '1': 'openslope_board' },
+        CollisionEvents: {},
+        RidingFallback: 'ssx-tricky',
+      }),
+      'MADTRIX_AUDIO/audio/sfx/openslope_board/004.loop.wav': 'madtrix-ski',
+      'GARI_AUDIO/audio/soundindex.json': JSON.stringify({
+        Schema: 'openslope-sound-index/v1',
+        Level: 'GARI_AUDIO',
+        Banks: { '1': 'zboard', '0': 'zbxsfx' },
+        CollisionEvents: {},
+      }),
+      'GARI_AUDIO/audio/sfx/zboard/004.loop.wav': 'tricky-glide',
+      'GARI_AUDIO/audio/sfx/zboard/002.wav': 'tricky-jump',
+      'GARI_AUDIO/audio/sfx/zbxsfx/120.loop.wav': 'tricky-boost',
+      'GARI_AUDIO/patches.json': 'must not load donor terrain',
+    };
+    await cacheTransaction(db, 'files', 'readwrite', store => {
+      for (const [key, text] of Object.entries(audioFiles)) {
+        const [course, ...parts] = key.split('/');
+        store.put({ key, course, path: parts.join('/'), blob: new Blob([text]) });
+      }
+    });
+    const audioOnly = await localMapData(['MADTRIX_AUDIO'], {}, ['GARI_AUDIO']);
+    const sample = (bank: string, slot: number, loop = false) =>
+      fetch(
+        audioOnly.resolveAsset(
+          `/api/board-sound?level=MADTRIX_AUDIO&bank=${bank}&slot=${slot}${loop ? '&loop=1' : ''}`,
+        ),
+      ).then(r => r.text());
+    check((await sample('zboard', 4, true)) === 'madtrix-ski', 'source ski samples take priority over the donor');
+    check((await sample('zboard', 2)) === 'tricky-jump', 'a missing riding transient uses locally loaded Tricky audio');
+    check((await sample('zbxsfx', 120, true)) === 'tricky-boost', 'a missing rider bank can use the local Tricky bank');
+    check(
+      !(await audioOnly.source.pathExists('GARI_AUDIO/Patches.json')),
+      'audio fallback never loads another course’s terrain',
+    );
+    audioOnly.dispose();
   } finally {
     db.close();
   }

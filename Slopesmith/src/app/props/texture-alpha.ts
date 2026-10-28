@@ -12,7 +12,7 @@ import * as THREE from 'three';
  * walls): they take the blend path but read solid. This mirrors the read the Unity importer's
  * AlphaClassifier does; classified once per texture from the served PNG, cached for the session.
  */
-export type AlphaClass = 'cutout' | 'translucent' | 'opaque-alpha' | 'unknown';
+export type AlphaClass = 'clear' | 'cutout' | 'translucent' | 'opaque-alpha' | 'unknown';
 export type TextureAlphaMode = PropAlphaMode;
 
 /** Pixel facts kept separate from material policy. A soft light halo is hole-shaped too; only an
@@ -36,13 +36,15 @@ export interface TextureAlphaPolicy {
 
 /** UI wording for a classified alpha-pass surface. */
 export function alphaClassLabel(c: AlphaClass): string {
-  return c === 'cutout'
-    ? 'cutout — alpha-test holes'
-    : c === 'translucent'
-      ? 'translucent — alpha blend'
-      : c === 'opaque-alpha'
-        ? 'alpha pass — opaque alpha (reads solid)'
-        : 'alpha pass';
+  return c === 'clear'
+    ? 'fully transparent alpha'
+    : c === 'cutout'
+      ? 'cutout — alpha-test holes'
+      : c === 'translucent'
+        ? 'translucent — alpha blend'
+        : c === 'opaque-alpha'
+          ? 'alpha pass — opaque alpha (reads solid)'
+          : 'alpha pass';
 }
 
 /** A glow sheet has a cutout-like histogram, but native alpha-pass policy blends its smooth halo. */
@@ -76,6 +78,8 @@ export function analyzeTexturePixels(data: ArrayLike<number>, width: number, hei
     else if (a >= 250) solid++;
   }
   const middle = total - clear - solid;
+  // Helper pages and blank animation frames need to discard their hidden RGB and depth.
+  if (clear === total) return { kind: 'clear', glow: false };
   const cutout = clear * 1000 >= total * 3 && solid > 0;
   const kind: AlphaClass = cutout ? 'cutout' : middle * 5 >= total ? 'translucent' : 'opaque-alpha';
   if (!cutout) return { kind, glow: false };
@@ -174,7 +178,14 @@ export function resolvePropAlphaMode(
     }
     return 'opaque';
   };
-  const modes = analyses.length ? analyses.map(modeOf) : [fallback];
+  // Empty frames do not turn a translucent/glow animation into a cutout. A wholly
+  // clear alpha-enabled material still clips; native opaque policy remains authoritative.
+  const visibleFrames = analyses.filter(analysis => analysis?.kind !== 'clear');
+  const modes: TextureAlphaMode[] = visibleFrames.length
+    ? visibleFrames.map(modeOf)
+    : analyses.length && (policy.alphaPass || policy.pixelAlpha || policy.priority)
+      ? ['cutout']
+      : [fallback];
   return modes.includes('cutout')
     ? 'cutout'
     : modes.includes('glow')
@@ -211,13 +222,13 @@ export function applyTextureAlphaMode(material: THREE.Material, mode: TextureAlp
   material.needsUpdate = true;
 }
 
-/** Terrain never blends. A hole-shaped page clips; every other page remains opaque. */
+/** Terrain never blends. Clear and hole-shaped pages clip; other pages remain opaque. */
 export function terrainAlphaMode(analysis: TextureAlphaAnalysis | undefined): TextureAlphaMode {
-  return analysis?.kind === 'cutout' ? 'cutout' : 'opaque';
+  return analysis?.kind === 'clear' || analysis?.kind === 'cutout' ? 'cutout' : 'opaque';
 }
 
-/** Classify a texture's alpha channel with Snowknife's measured thresholds: a bimodal clear+solid mask is
- * cutout; otherwise a substantial partial-alpha band is translucent; the remainder reads opaque. */
+/** Classify a texture's alpha channel: fully clear pages, bimodal cutout masks,
+ * substantial partial-alpha bands, and opaque alpha. */
 export function analyzeTextureAlpha(level: string, file: string): Promise<TextureAlphaAnalysis> {
   const key = makeTexRef(level, file);
   let pending = analysisCache.get(key);

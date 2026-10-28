@@ -1,6 +1,7 @@
 #include "openslope/terrain.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/paths.hpp"
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <map>
@@ -9,6 +10,7 @@
 #include <numeric>
 #include <regex>
 #include <stdexcept>
+#include <tuple>
 
 namespace openslope {
 namespace {
@@ -284,6 +286,21 @@ struct Terrain::CollisionCache {
 
 Vec3 Patch::evaluate(double u, double v) const { return evaluate_basis(*this, basis(u), basis(v)); }
 
+std::array<double, 3> Patch::light_color(double u, double v) const {
+    if (!light_colors)
+        return {1, 1, 1};
+    const auto bu = basis(u), bv = basis(v);
+    std::array<double, 3> result{};
+    for (unsigned i = 0; i < 4; ++i)
+        for (unsigned j = 0; j < 4; ++j)
+            for (unsigned c = 0; c < 3; ++c)
+                result[c] += (*light_colors)[i * 4 + j][c] * bu[i] * bv[j];
+    // Fitted handles can overshoot; clamp the evaluated colour, not its controls.
+    for (auto& c : result)
+        c = std::clamp(c, 0., 255. / 128.);
+    return result;
+}
+
 std::array<Vec3, 2> Patch::tangents(double u, double v) const {
     return {evaluate_basis(*this, derivative(u), basis(v)), evaluate_basis(*this, basis(u), derivative(v))};
 }
@@ -324,6 +341,11 @@ Terrain::Terrain(std::vector<Patch> patches) : patches_(std::move(patches)) {
     samples_.resize(patches_.size());
     order_.reserve(patches_.size());
     for (std::size_t p = 0; p < patches_.size(); ++p) {
+        if (patches_[p].light_colors)
+            for (const auto& rgb : *patches_[p].light_colors)
+                for (const auto c : rgb)
+                    if (!std::isfinite(c) || std::abs(c) > 16)
+                        throw std::runtime_error("Invalid terrain light colour control");
         for (const auto& uv : patches_[p].uv)
             for (const auto value : uv)
                 if (!std::isfinite(value) || std::abs(value) > 1000000)
@@ -391,6 +413,13 @@ Terrain Terrain::load(const std::filesystem::path& map) {
         }
         p.uv = row.at("UVPoints").get<decltype(p.uv)>();
         p.lightmap_rect = row.at("LightMapPoint").get<decltype(p.lightmap_rect)>();
+        if (row.contains("LightColorPoints")) {
+            const auto& colors = row.at("LightColorPoints");
+            if (!colors.is_array() || colors.size() != 16 ||
+                !std::all_of(colors.begin(), colors.end(), [](const auto& c) { return c.is_array() && c.size() == 3; }))
+                throw std::runtime_error("Baked lighting requires 16 RGB control points");
+            p.light_colors = row.at("LightColorPoints").get<std::array<std::array<double, 3>, 16>>();
+        }
         patches.push_back(std::move(p));
     }
     admit_event_terrain(patches, path.parent_path());
@@ -651,13 +680,15 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
         throw std::runtime_error("Requested terrain mesh exceeds 8 million vertices");
     Mesh mesh;
     mesh.map_root = map_root_;
-    std::map<std::pair<std::string, int>, std::vector<const Patch*>> groups;
+    std::map<std::tuple<std::string, int, bool>, std::vector<const Patch*>> groups;
     for (const auto& patch : patches_)
         if (patch.active)
-            groups[{patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1}]
+            groups[{patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1,
+                    patch.light_colors.has_value()}]
                 .push_back(&patch);
     for (const auto& [material, patches] : groups) {
-        MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()), 0, material.first, material.second};
+        MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()), 0, std::get<0>(material),
+                        std::get<1>(material), std::get<2>(material)};
         for (const auto* patch : patches) {
             const auto& p = *patch;
             const auto range_first = static_cast<std::uint32_t>(mesh.indices.size());
@@ -685,6 +716,13 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
                          float(p.lightmap_rect[1]), float(p.lightmap_rect[2]), float(p.lightmap_rect[3]),
                          float(normal.x), float(normal.y), float(normal.z)});
                     const auto& vertex = mesh.vertices.back();
+                    if (p.light_colors) {
+                        const auto rgb = p.light_color(u / double(subdivisions), v / double(subdivisions));
+                        auto& lit = mesh.vertices.back();
+                        lit.r = float(rgb[0]);
+                        lit.g = float(rgb[1]);
+                        lit.b = float(rgb[2]);
+                    }
                     render_bounds.add({vertex.x, vertex.y, vertex.z});
                 }
             for (unsigned u = 0; u < subdivisions; ++u)

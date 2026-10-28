@@ -179,7 +179,7 @@ import {
   type ReferenceBatchChunk,
 } from './mesh/reference-batching';
 import { createTerrainLayer, type TerrainLayer, type TerrainLightOptions } from './mesh/terrain';
-import { rideTree, type TreeGeometry } from './mesh/surface-trees';
+import { pickTree, rideTree, type TreeGeometry } from './mesh/surface-trees';
 import { clearGlyphGroup, addCageLines } from './shared/overlays';
 import { createLegends, type Legends } from './shared/legends';
 import { createSpeedShade, type SpeedShade } from './mesh/speed-shade';
@@ -4488,6 +4488,8 @@ export class Viewport {
     this.referenceBatch = chunks;
     this.refRoot.add(chunks);
     this.applyHiddenReferenceIndex();
+    // Build during loading so the first zoom or orbit does not pay for the reference's pick tree.
+    pickTree(g);
     this.cageLayer.setRefDepthMask(g); // invisible depth stand-in for cage-only view
     this.refSpeedShadeLayer.geometryRebuilt(g); // the speed wash shares it too, from the level's start once pushed
     this.cageLayer.buildRefCage(data);
@@ -5223,6 +5225,9 @@ export class Viewport {
    */
   setReferenceLighting(colors: Float32Array | null) {
     if (!this.reference || !this.refData) return;
+    // Baked vertex colors belong to the source's Original appearance, including when the authored
+    // lighting study is off. Other references retain their existing normal-shading fallback.
+    colors ??= this.refData.lightingSource === 'vertex' ? (this.refData.lightColor ?? null) : null;
     // The caller's buffer is display-domain — the lightmap decode and the recovered model both are — so it
     // crosses into three's linear working space here, once per lighting change rather than per shade-mode
     // toggle (core/lighting/color-space). Study code keeps the display copy it fit and reports against.

@@ -34,6 +34,7 @@ import {
   applyTextureAlphaMode,
   resolvePropAlphaMode,
   setCutoutAlphaToCoverage,
+  terrainAlphaMode,
 } from '../src/app/props/texture-alpha';
 import { check, failures } from './check';
 
@@ -48,6 +49,24 @@ for (let i = 0; i < 16; i++) {
 const cutoutAnalysis = analyzeTexturePixels(cutoutPixels, 2, 1);
 const translucentAnalysis = analyzeTexturePixels(translucentPixels, 2, 1);
 const glowAnalysis = analyzeTexturePixels(glowPixels, 16, 1);
+const clearAnalysis = analyzeTexturePixels(new Uint8Array([255, 0, 255, 0, 20, 50, 80, 0]), 2, 1);
+check(
+  clearAnalysis.kind === 'clear' && !clearAnalysis.glow && terrainAlphaMode(clearAnalysis) === 'cutout',
+  'fully transparent helper art clips instead of drawing hidden RGB as opaque terrain',
+);
+check(
+  resolvePropAlphaMode([clearAnalysis], { pixelAlpha: true }) === 'cutout' &&
+    resolvePropAlphaMode([clearAnalysis], { alphaPass: true }) === 'cutout' &&
+    resolvePropAlphaMode([clearAnalysis], {}) === 'opaque' &&
+    resolvePropAlphaMode([clearAnalysis], { mode: 'opaque', pixelAlpha: true }) === 'opaque',
+  'clear alpha-enabled props disappear while explicit and native opaque policies retain their meaning',
+);
+check(
+  resolvePropAlphaMode([clearAnalysis, glowAnalysis], { alphaPass: true }) === 'glow' &&
+    resolvePropAlphaMode([clearAnalysis, translucentAnalysis], { pixelAlpha: true }) === 'blend' &&
+    resolvePropAlphaMode([clearAnalysis, cutoutAnalysis], { pixelAlpha: true }) === 'cutout',
+  'blank animation frames preserve the glow, translucency or cutout policy of visible frames',
+);
 check(
   cutoutAnalysis.kind === 'cutout' &&
     !cutoutAnalysis.glow &&

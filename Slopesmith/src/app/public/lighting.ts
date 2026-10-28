@@ -1,15 +1,11 @@
-import { applyReferenceLightmaps, type RawPatch, type ReferenceMesh } from '../../core/reference/terrain';
+import { applyReferenceLightmaps, referenceLightmapIds, type RawPatch, type ReferenceMesh } from '../../core/reference/terrain';
 import { decodeLightmapTexel } from '../../core/lighting/bake';
 import type { LightmapSet } from '../../core/lighting/lightmap';
 
 /** Match the editor's extracted-lightmap decode while sourcing PNGs from local Blobs or original map files. */
 export async function lightPublicReference(mesh: ReferenceMesh, patches: RawPatch[], url: (id: number) => string): Promise<void> {
   const maps: LightmapSet = new Map();
-  const ids = patches.flatMap(patch => {
-    const id = patch.LightmapID, rect = patch.LightMapPoint;
-    return id !== undefined && Number.isInteger(id) && id >= 0 && rect && rect[2] > 0 && rect[3] > 0 ? [id] : [];
-  });
-  for (const id of new Set(ids)) {
+  for (const id of referenceLightmapIds(patches)) {
     const response = await fetch(url(id));
     if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) continue;
     const image = await createImageBitmap(await response.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
