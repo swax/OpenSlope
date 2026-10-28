@@ -1,5 +1,6 @@
 import { safeDataName } from './names';
 import type { PropAlphaMode } from '../reference/props';
+import { resolvePropAlphaMode, type TextureAlphaAnalysis } from '../props/texture-alpha';
 
 /**
  * One combined material table for everything an export bakes from source-level art — placed props, rail
@@ -41,7 +42,7 @@ export interface MaterialCombiner {
   alphaOverrides: Record<string, PropAlphaMode>;
   /** The combined slot for a source (level, MaterialID) — or -1 (emit `mat_untextured`). */
   resolveSlot(level: string, mat: number): number;
-  /** The combined slot for a bare TILE ref "LEVEL/file.png" (an authored model's texture): the tile copies
+  /** The combined slot for a bare TILE ref "LEVEL/file.png": the tile copies
    *  like any prop texture, and the entry INHERITS the source level's alpha-blend flag for that tile —
    *  UnknownInt18 is authored data, not pixel-derivable, so the river tile keeps its blend. -1 = bad ref.
    *
@@ -49,8 +50,15 @@ export interface MaterialCombiner {
    *  is where an imported prop's frames are staged. Each copies like the base tile and lands in the entry's
    *  `TextureFlipbook`, so a switchable surface survives the bake with the frame list the level's own
    *  materials carry. A tile used both plainly and as a flipbook gets two slots, because the frame list is
-   *  part of what the material IS. */
-  resolveTileSlot(ref: string, frames?: readonly string[], blend?: boolean, alphaMode?: PropAlphaMode): number;
+   *  part of what the material IS. With `pixelAlpha`, classify the tile and frames from preloaded pixels
+   *  instead of inheriting source flags or overrides — the authored-model preview policy. */
+  resolveTileSlot(
+    ref: string,
+    frames?: readonly string[],
+    blend?: boolean,
+    alphaMode?: PropAlphaMode,
+    pixelAlpha?: boolean,
+  ): number;
 }
 
 /**
@@ -59,9 +67,13 @@ export interface MaterialCombiner {
  * `resolveSlot` is called from inside the synchronous geometry loops of every bake step, so it must stay
  * synchronous — threading a promise through those loops would serialize the bake on one file read per
  * material. The tables are therefore fetched up front, together, and the combiner is pure thereafter. The
- * whole library's tables are a fraction of a megabyte, and an export reads them once.
+ * whole library's tables are a fraction of a megabyte, and an export reads them once. Authored tile analyses
+ * are preloaded too, so their material modes use the preview's classifier without I/O inside a geometry loop.
  */
-export function buildMaterialCombiner(tables: ReadonlyMap<string, readonly SourceMaterial[]>): MaterialCombiner {
+export function buildMaterialCombiner(
+  tables: ReadonlyMap<string, readonly SourceMaterial[]>,
+  tileAnalyses: ReadonlyMap<string, TextureAlphaAnalysis> = new Map(),
+): MaterialCombiner {
   const materials: CombinedMaterial[] = [];
   const texCopies: TextureCopy[] = [];
   const alphaOverrides: Record<string, PropAlphaMode> = {};
@@ -113,23 +125,35 @@ export function buildMaterialCombiner(tables: ReadonlyMap<string, readonly Sourc
       slotOf.set(key, id);
       return id;
     },
-    resolveTileSlot(ref: string, frames: readonly string[] = [], blend = false, alphaMode?: PropAlphaMode): number {
+    resolveTileSlot(
+      ref: string,
+      frames: readonly string[] = [],
+      blend = false,
+      alphaMode?: PropAlphaMode,
+      pixelAlpha = false,
+    ): number {
       const slash = ref.indexOf('/');
       if (slash <= 0 || slash === ref.length - 1) return -1;
       const level = ref.slice(0, slash),
         name = ref.slice(slash + 1);
       const lvl = safeDataName(level);
       const states = frames.filter(frame => typeof frame === 'string' && !!frame);
-      const src = materialsOf(level).find(m => m.TexturePath === name);
-      const resolvedAlpha = alphaMode ?? src?.AlphaMode;
+      const src = pixelAlpha ? undefined : materialsOf(level).find(m => m.TexturePath === name);
+      const resolvedAlpha = pixelAlpha
+        ? resolvePropAlphaMode(
+            [name, ...states].map(file => tileAnalyses.get(`${level}/${file}`)),
+            { pixelAlpha: true },
+          )
+        : (alphaMode ?? src?.AlphaMode);
       const key =
         `tile:${lvl}:${name}${states.length ? `:flip:${states.join(',')}` : ''}` +
-        `${blend ? ':blend' : ''}${resolvedAlpha ? `:alpha-${resolvedAlpha}` : ''}`;
+        `${pixelAlpha ? ':pixels' : ''}${blend ? ':blend' : ''}${resolvedAlpha ? `:alpha-${resolvedAlpha}` : ''}`;
       const cached = slotOf.get(key);
       if (cached !== undefined) return cached;
-      // inherit the source level's alpha-blend flag for this tile — the first material wearing it is canon
+      // Pixel-owned tiles get their own copies: overrides are per page, so sharing a retail page would
+      // change that prop too. Include the mode to keep distinct flipbooks of the same tile independent.
       const queueTile = (file: string): string => {
-        const dest = `p_${lvl}_${file}`;
+        const dest = pixelAlpha ? `a_${resolvedAlpha}_${lvl}_${file}` : `p_${lvl}_${file}`;
         if (!seenDest.has(dest)) {
           seenDest.add(dest);
           texCopies.push({ dest, level, name: file });

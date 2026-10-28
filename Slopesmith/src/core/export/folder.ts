@@ -28,7 +28,8 @@ import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../lighting/sign-lights';
 import { authoredGroupLights, expandGroupProps } from '../reference/groups';
 import { decodeProps } from '../reference/props';
-import { AUTHORED_MODEL_LEVEL, modelNumber } from '../doc/models';
+import { AUTHORED_MODEL_LEVEL, authoredModelFrames, modelNumber } from '../doc/models';
+import { analyzeTexturePixels, type TextureAlphaAnalysis } from '../props/texture-alpha';
 import { IMPORTED_PROP_LEVEL } from '../props/imported';
 import { placedPropSolid } from '../props/contact';
 import { groupMemberKey } from '../props/defaults';
@@ -223,7 +224,31 @@ export async function buildExportFolder(
   // imports textured: the appended usemtl mat_<id> slots resolve through a fresh combined Materials.json, and
   // the referenced tiles are copied into Textures/ (docs/012). Rail tubes and the gem tier models bake
   // through the SAME combiner, so all three share one material table.
-  const combiner = buildMaterialCombiner(await provider.materialTables());
+  const tileAnalyses = new Map<string, TextureAlphaAnalysis>();
+  const authoredTiles = new Set<string>();
+  for (const { level, model: number } of modelKeys.values()) {
+    if (level !== AUTHORED_MODEL_LEVEL) continue;
+    const model = authoredByNumber.get(number);
+    if (!model?.texture || !model.quads.length) continue;
+    const { level: bank } = parseTexRef(model.texture);
+    authoredTiles.add(model.texture);
+    for (const frame of authoredModelFrames(model)) authoredTiles.add(`${bank}/${frame.slice(frame.indexOf('/') + 1)}`);
+  }
+  await Promise.all(
+    [...authoredTiles].map(async ref => {
+      const { level, name } = parseTexRef(ref);
+      try {
+        const image = await provider.decodePng(await provider.referenceTexture(level, name));
+        tileAnalyses.set(ref, analyzeTexturePixels(image.data, image.w, image.h));
+      } catch (e) {
+        tileAnalyses.set(ref, { kind: 'unknown', glow: false });
+        logLines.push(
+          `WARN: texture ${ref} alpha unavailable (${e instanceof Error ? e.message : e}); using preview fallback`,
+        );
+      }
+    }),
+  );
+  const combiner = buildMaterialCombiner(await provider.materialTables(), tileAnalyses);
   const objCounts = () => {
     const obj = files.text['Props.obj'] ?? '';
     return { obj, v: (obj.match(/^v /gm) ?? []).length, vt: (obj.match(/^vt /gm) ?? []).length }; // faces index the combined file

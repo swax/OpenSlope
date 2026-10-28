@@ -19,7 +19,7 @@ import {
   readNamedEffectSoundBytes,
   readSoundIndex,
 } from './audio';
-import { encodePng } from './png';
+import { decodePng, encodePng } from './png';
 import { readParticleTextureBytes, readReferenceTextureBytes } from './textures';
 import { importedPropsPayload } from './imported-props';
 import { groupDefIndex } from './groups';
@@ -80,6 +80,7 @@ function nodeExportProvider(dir: string): ExportProvider {
     environmentEffectSound: (bank, slot, loop) => readEnvironmentSoundBytes(bank, slot, loop),
     skybox: sky => skyboxFiles(sky),
     encodePng: async image => encodePng(image),
+    decodePng: async bytes => decodePng(Buffer.from(bytes)),
     stageRaceMusic: (selection, arrangement) => stageRaceMusic(selection, dir, arrangement),
 
     async discRecipePaths() {

@@ -688,8 +688,9 @@ import { check, failures } from './check';
   );
   model.blend = true;
   check(
-    authoredModelLevelProps(host).materials.get(baked.subs[0].mat)?.blend === true,
-    'an authored model carries its explicit alpha-pass material into the viewport prop payload',
+    authoredModelLevelProps(host).materials.get(baked.subs[0].mat)?.pixelAlpha === true &&
+      !authoredModelLevelProps(host).materials.get(baked.subs[0].mat)?.blend,
+    'an old authored alpha-pass flag gives way to pixel classification in the viewport prop payload',
   );
   delete model.blend;
   {

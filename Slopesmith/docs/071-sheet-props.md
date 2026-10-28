@@ -84,7 +84,7 @@ drop), and a river strip its width whichever way it runs. On the extracts here, 
 
 The ELYSIUM pair are its background tree lines — card strips standing along the horizon, the same construction.
 
-Clicking the tile starts a new sheet **with that look and behaviour**: the tile and its alpha flag, the height
+Clicking the tile starts a new sheet **with that look and behaviour**: the tile, the height
 (or width) and span, and — through the same instance copy middle-clicking a reference prop uses (docs/069) —
 the representative piece's contact, hit sound and portable effect. A GARI chain-link sheet arrives solid and
 flexing. A lying sheet starts with its span capped at 16 m: the shipped river's pieces run ~45 m, and chords
@@ -108,6 +108,11 @@ Selecting a sheet — any piece, or a node — shows the **Sheet** panel:
 | span (m) | the straight length of each piece; fitted so a whole number lands on the last node |
 | lift (m) | lying only: how far the surface floats above the ground |
 | tile, ↻ turn tile | the texture every piece wears (Texture Library), and its D4 turn |
+
+Transparency comes from the tile automatically: opaque art stays solid, hole masks cut out, and smooth partial
+alpha blends. Preview and export share the same classifier. Old saved see-through flags are ignored. Export
+writes the resulting mode and native alpha-pass bit explicitly, using separate texture copies so a sheet's
+choice cannot change a borrowed prop wearing the same source image.
 
 Then the path actions a line has, and the behaviour sections, bound to the sheet's template.
 

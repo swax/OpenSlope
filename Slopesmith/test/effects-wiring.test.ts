@@ -17,6 +17,7 @@ import { CUSTOM_TEX_LEVEL, saveCustomTexture } from '../src/server/routes/textur
 import { exportLevel } from '../src/server/routes/export';
 import { bakeGltf, runSnowknife } from '../scripts/snowknife-cli';
 import { createMaterialCombiner } from '../src/server/routes/props';
+import { buildMaterialCombiner } from '../src/core/export/materials';
 import {
   bakeAuthoredModelProps,
   bakeEffectTriggerProps,
@@ -138,12 +139,15 @@ try {
   // same shading from either side (no cull, no per-side re-light — retail fences/leaves are single sheets)
   check((down.obj.match(/^f /gm) ?? []).length === 2, 'a quad bakes ONE sheet (two triangles, no duplicate shell)');
 
-  const alphaCombiner = await createMaterialCombiner();
-  const alphaRibbon = { ...ribbon([[0, 2, 1, 3]]), texture: 'Custom/zz-alpha-ribbon.png', blend: true };
+  const alphaCombiner = buildMaterialCombiner(
+    new Map(),
+    new Map([['Custom/zz-alpha-ribbon.png', { kind: 'translucent', glow: false }]]),
+  );
+  const alphaRibbon = { ...ribbon([[0, 2, 1, 3]]), texture: 'Custom/zz-alpha-ribbon.png' };
   bakeAuthoredModelProps([placement('prop:0000')], [alphaRibbon], 0, 0, alphaCombiner);
   check(
     alphaCombiner.materials.length === 1 && (alphaCombiner.materials[0].UnknownInt18 & 0x40000) !== 0,
-    'an authored model alpha pass survives into the native material appearance word',
+    'an authored model derives its native alpha-pass appearance word from the texture pixels',
   );
 
   // A spline mover is a special native host: the route node applies position/orientation but ignores the

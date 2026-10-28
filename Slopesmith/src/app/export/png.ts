@@ -64,9 +64,8 @@ export async function encodePng(img: Rgba): Promise<Uint8Array> {
 /**
  * A stored PNG's pixels, decoded by the browser's own image pipeline.
  *
- * Only the paths that RESAMPLE need this — a custom sky's panorama, which is cut into 25 pages against the
- * ring's real azimuth spans. Everything that merely copies a page keeps the file's own bytes instead, so a
- * decode never sits between a shipped tile and the folder it lands in.
+ * Used to resample a custom sky's panorama and to classify authored tile alpha. Copied pages still ship
+ * their original bytes; reading their pixels never re-encodes the texture that lands in the folder.
  */
 export async function decodePng(bytes: Uint8Array): Promise<Rgba> {
   const bitmap = await createImageBitmap(new Blob([bytes as BlobPart], { type: 'image/png' }));

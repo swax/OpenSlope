@@ -143,8 +143,7 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
       model.quads = piece.quads;
       if (sheet.texture) model.texture = sheet.texture;
       else delete model.texture;
-      if (sheet.blend) model.blend = true;
-      else delete model.blend;
+      delete model.blend; // old saves may carry the retired see-through flag; pixels now decide
       if (sheet.orient && (sheet.orient.rot || sheet.orient.mirror)) model.orient = { ...sheet.orient };
       else delete model.orient;
       return model.id;
@@ -258,7 +257,6 @@ export function createPropLineOps(deps: PropLineOpsDeps) {
           ...(family.lie ? { lie: true } : {}),
           size: Math.round(family.size * 100) / 100,
           ...(family.texture ? { texture: family.texture } : {}),
-          ...(family.blend ? { blend: true } : {}),
         },
         Math.round(span * 100) / 100,
       );

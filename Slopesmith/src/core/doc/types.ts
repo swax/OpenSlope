@@ -556,9 +556,7 @@ export interface AuthoredModel {
    *  own would be storing a UV layout, which is exactly what makes a prop textured instead
    *  (core/props/kind.ts). Absent = upright and unmirrored, which is every model authored before this. */
   orient?: { rot: number; mirror: boolean };
-  /** Render the model through the native alpha pass, using the texture's partial alpha instead of treating
-   *  it as an opaque/cutout tile. Kept on the authored material rather than inferred from pixels so export
-   *  preserves the same explicit appearance bit the retail material table uses. */
+  /** Legacy appearance flag retained for saved documents. Preview and export derive alpha from the tile. */
   blend?: boolean;
   /** The tile's flipbook STATE list, in the same ref form, with `frames[0] === texture` — the invariant every
    *  shipped native flipbook material holds. Absent (or under two entries) = a still image. Only the list is
@@ -780,7 +778,7 @@ export interface PropSheet {
   lift?: number;
   /** The tile every piece wears ("LEVEL/NNNN.png"). Absent = untextured clay. */
   texture?: string;
-  /** Wear the tile through the native alpha pass (`AuthoredModel.blend`). */
+  /** Legacy see-through flag retained for saved documents; the tile's pixels now determine transparency. */
   blend?: boolean;
   /** The tile's D4 turn on every piece (`AuthoredModel.orient`). */
   orient?: { rot: number; mirror: boolean };

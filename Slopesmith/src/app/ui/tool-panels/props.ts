@@ -2865,19 +2865,6 @@ export function createPropTools(ctx: ToolsContext) {
         .name('↻ turn tile'),
       'Turn the tile a quarter on every piece.',
     );
-    const blend = {
-      get blend() {
-        return sheet.blend === true;
-      },
-      set blend(on: boolean) {
-        if (on) sheet.blend = true;
-        else delete sheet.blend;
-      },
-    };
-    tip(
-      section.add(blend, 'blend').name('see-through').onChange(settled),
-      'Draw the tile through the alpha pass, for glass or water. Holes in a chain-link tile are cut either way.',
-    );
   }
 
   function buildLineTools() {

@@ -152,8 +152,9 @@ edit substrate stands in its place — while the model's other placements stay v
 as the definition changes.
 
 **Export** (`buildAuthoredModelProps`): each placement bakes into `Props.obj` as `o Model_<i>_<name>`
-at its pose, with the tile resolved through the combiner's tile slot — inheriting the source level's
-`UnknownInt18` alpha-blend flag, which is authored data, not pixel-derivable — and a placement carrying
+at its pose, with the tile resolved through the combiner's tile slot. The tile's pixels determine opaque,
+cutout or blended transparency through the same classifier as the preview. Export writes the resulting
+`UnknownInt18` alpha-pass bit and `TextureAlpha.overrides.json` mode explicitly. A placement carrying
 a UV-scroll attachment emits the `mat_<slot>_scr<k>` tag beside the deduped `Scroll.json`, the exact
 dialect the bundle already resolves for retail river segments. The bake also reports the placement's
 group name into `Effects.json` `extensions.slopesmith.bakedGroups`, the join `repack` compiles an

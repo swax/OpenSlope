@@ -65,6 +65,9 @@ export interface ExportProvider {
   /** RGBA → PNG bytes for the procedural tiles and the baked lightmap pages. */
   encodePng(image: Rgba): Promise<Uint8Array>;
 
+  /** Read a tile's pixels for the same alpha classification used by the preview; copied PNGs stay verbatim. */
+  decodePng(bytes: Uint8Array): Promise<Rgba>;
+
   /** Normalize the Scene ▸ Sound selection into the folder's `Music/track.wav` + `arrangement.json` contract:
    *  PCM16, 36 kHz, stereo, beside the arrangement the repacker reads. Undefined is a legacy save, whose
    *  hand-staged track is preserved; null is an explicit "none", which clears it. Staging decides what

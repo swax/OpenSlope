@@ -129,6 +129,7 @@ export function browserExportProvider(opts: BrowserExportOptions): ExportProvide
     namedEffectSound: (level, slot, bank) => assetBytes(effectSoundUrl(level, slot, bank)),
     environmentEffectSound: (bank, slot, loop) => assetBytes(environmentSoundUrl(bank, slot, loop)),
     encodePng: image => encodePng(image),
+    decodePng,
 
     skybox: sky => browserSkyboxFiles(sky),
 

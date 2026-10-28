@@ -337,11 +337,11 @@ try {
   ];
   ensurePlacedPropIds(mountain.props);
   // …and TERRAIN-PAINT a cell with the same tile. The two ride different channels: the model texture is
-  // staged by the material combiner (p_-prefixed), the painted cell by the quilt under its own flattened
+  // staged by the material combiner with its pixel-derived alpha mode, the painted cell under its flattened
   // dest name. Both must land, or the repacker has no page to install and the material silently falls back
   // to slot 0000 in-game.
   mountain.quadTex = { 0: `${CUSTOM_TEX_LEVEL}/${big512}` };
-  const dest = `p_${CUSTOM_TEX_LEVEL}_${big512}`;
+  const dest = `a_opaque_${CUSTOM_TEX_LEVEL}_${big512}`;
   const terrainDest = `${CUSTOM_TEX_LEVEL}_${big512}`;
 
   {
@@ -359,7 +359,7 @@ try {
       }
       // The state list has to survive the bake as the native field, with every frame staged — a flipbook
       // whose frames were never copied is a material that falls back to slot 0000 the moment it switches.
-      const frameDest = `p_${CUSTOM_TEX_LEVEL}_${modelFrame1}`;
+      const frameDest = `a_opaque_${CUSTOM_TEX_LEVEL}_${modelFrame1}`;
       const materialsJson = readFileSync(join(outDir, 'Materials.json'), 'utf8');
       check(
         materialsJson.includes(`"${dest}"`) && materialsJson.includes(`"${frameDest}"`),

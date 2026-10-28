@@ -355,7 +355,6 @@ export function authoredModelLevelProps(mdoc: QuadMeshDoc): LevelProps {
       materials.set(modelNumber(model.id), {
         tex: model.texture,
         frames: authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
-        ...(model.blend ? { blend: true } : {}),
         pixelAlpha: true,
       });
   }

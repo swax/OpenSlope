@@ -642,7 +642,7 @@ export function bakeEffectTriggerProps(
  * Bake AUTHORED-MODEL placements ('@models' level): each placement's polygon quads at its pose, per-quad
  * full-tile UVs at the model's tile orientation (wrap-continuous — the scroll-safe form the model preview
  * renders, through the `tiledPropUV` both bakes share), and the model's tile
- * resolved through the shared combiner's tile slot (alpha flag inherited from the tile's source level). A
+ * resolved through the shared combiner's pixel-classified tile slot, as in the preview. A
  * placement carrying an authored UV-scroll attachment emits the `mat_<slot>_scr<k>` tag, exactly like a
  * scrolled reference-prop placement. Geometry: editor w = pos + R(scale·(v − anchor)), emitted raw like
  * every other bake; triangles are the same two-per-quad diagonal the viewport instances.
@@ -671,7 +671,9 @@ export function bakeAuthoredModelProps(
       ? combiner.resolveTileSlot(
           model.texture,
           authoredModelFrames(model).map(ref => ref.slice(ref.indexOf('/') + 1)),
-          model.blend === true,
+          false,
+          undefined,
+          true,
         )
       : -1;
     const scr = slot >= 0 ? (scrollIndexOf?.(pp) ?? null) : null;
