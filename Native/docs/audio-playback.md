@@ -80,7 +80,7 @@ an unrelated clip. AAudio disconnection recovery and Linux device output remain
 platform work; worn headset listening remains unverified.
 
 Quest's SAF cache copies the declared Audio library's WAV/JSON/INF assets, bounded
-to 512 MiB, 20,000 entries, six directory levels and 64 MiB per file. It also
+to 1536 MiB, 20,000 entries, six directory levels and 64 MiB per file. It also
 materializes the shared board-routing sidecar in the course cache. The Audio
 library contains complete banks/chunk sets; it is broader than the renderer's
 image reference list. Source containers and other file types are not copied.

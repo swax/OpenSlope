@@ -1,3 +1,4 @@
+#include "import/avalanche/formats.hpp"
 #include "import/ssx/formats.hpp"
 #include "openslope/audio_resolver.hpp"
 #include "openslope/import.hpp"
@@ -14,7 +15,7 @@ int main(int argc, char** argv) {
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
                          "<map-folder> | world <iso> <course> | surface-spray <iso> | collision-routes <iso> | "
                          "board-groups <iso> | adapt-riding-audio <map-folder> | adapt-course-ambience <map-folder> | "
-                         "polish-streamed-map <map-folder>\n";
+                         "polish-streamed-map <map-folder> | extract-avalanche-music <image> <map-folder>\n";
             return 1;
         }
         const std::string operation = argv[1];
@@ -57,6 +58,15 @@ int main(int argc, char** argv) {
             return 0;
         }
         const auto disc = openslope::open_disc(argv[2]);
+        if (operation == "extract-avalanche-music" && argc == 4) {
+            const auto logical = openslope::logical_disc(disc);
+            const auto songs = openslope::import_detail::write_avalanche_music(
+                logical, argv[3], [](const auto& text) { std::cout << text << '\n'; }, {});
+            if (!songs)
+                throw std::runtime_error("Avalanche soundtrack is unavailable on this image");
+            std::cout << "Extracted " << songs << " Avalanche music streams to " << argv[3] << '\n';
+            return 0;
+        }
         if (operation == "surface-spray" && argc == 3) {
             const auto profile = openslope::disc_surface_spray_profile(disc);
             if (profile.empty())

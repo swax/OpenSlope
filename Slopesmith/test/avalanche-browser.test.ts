@@ -37,7 +37,8 @@ if (!process.argv[2]) {
       [
         'import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1])',
         'from avalanche_import_test import course_packages,gcm,rvz',
-        'Path(sys.argv[2]).write_bytes(rvz(gcm(course_packages()),packing=True))',
+        'from avalanche_music_test import music_files',
+        'Path(sys.argv[2]).write_bytes(rvz(gcm(course_packages() | music_files()),packing=True))',
       ].join('\n'),
       resolve('../Native/tests'),
       fixture,
@@ -94,17 +95,32 @@ try {
       const patches = await read('Patches.json');
       const paths = await read('AIP.json');
       const report = await read('Import.json');
+      const playlist = await read('Audio/Music/playlist.json');
+      if (!playlist.length || playlist.length !== report.Music.Songs)
+        throw new Error(`Missing imported music: ${playlist.length}/${report.Music.Songs}`);
       db.close();
       const url = '/test/avalanche-play.fixture.ts';
-      const { verifyAvalancheRide, verifyAvalancheCollision, verifyAvalancheEnvironment, verifyAvalancheTerrainUV } =
-        await import(/* @vite-ignore */ url);
+      const {
+        verifyAvalancheRide,
+        verifyAvalancheCollision,
+        verifyAvalancheEnvironment,
+        verifyAvalancheTerrainUV,
+        verifyAvalancheMusic,
+      } = await import(/* @vite-ignore */ url);
       const triangles = await verifyAvalancheCollision(course);
       if (triangles !== report.CollisionTriangles) throw new Error('Browser Play lost source collision triangles');
       const environment = await verifyAvalancheEnvironment(course);
       if (environment.skyTriangles !== report.Environment.SkyTriangles)
         throw new Error('Browser lost background triangles');
       const uvPatches = verifyAvalancheTerrainUV(patches.Patches);
-      return { ...(await verifyAvalancheRide(course, patches.Patches, paths)), uvPatches, triangles, ...environment };
+      const music = await verifyAvalancheMusic(course, playlist.length);
+      return {
+        ...(await verifyAvalancheRide(course, patches.Patches, paths)),
+        uvPatches,
+        triangles,
+        ...environment,
+        ...music,
+      };
     }, course);
     if (sourceUV) {
       const actual: number[][][] = await page.evaluate(async course => {

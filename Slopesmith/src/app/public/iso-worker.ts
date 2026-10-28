@@ -20,7 +20,7 @@ self.onmessage = async (event: MessageEvent<{ file: File; courses: string[]; ope
   try {
     const { file, courses, operation } = event.data;
     // This static runtime is built from Native/src/browser_import.cpp; disc bytes stay inside this worker.
-    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=25`, self.location.origin).href;
+    const assetUrl = (name: string) => new URL(`/iso-importer/${name}?v=26`, self.location.origin).href;
     const runtimeUrl = assetUrl('openslope_browser_import.js');
     const runtime = await import(/* @vite-ignore */ runtimeUrl) as { default: (options: { locateFile: (name: string) => string }) => Promise<Importer> };
     const module = await runtime.default({ locateFile: assetUrl });

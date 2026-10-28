@@ -19,6 +19,7 @@ target_sources(openslope_core PRIVATE
   # 1080 Avalanche.
   src/import/avalanche/importer.cpp
   src/import/avalanche/course.cpp
+  src/import/avalanche/music.cpp
   src/import/avalanche/props.cpp
 
   # Jonny Moseley Mad Trix.

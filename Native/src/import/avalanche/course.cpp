@@ -1231,15 +1231,19 @@ void write_avalanche_course(const DiscInput& disc, const std::string& course, co
                                   {"PathEvents", Json::array()}}}},
                                {"RaceLines", Json::array()},
                                {"StartPosList", {0}}});
+    notify("Converting Avalanche music");
+    const auto music = write_avalanche_music(disc, output, progress, cancel);
+    Json outputs = {"Patches.json", "Textures",    "AIP.json",       "Origin.json",
+                    "Collision",    "Models.json", "Materials.json", "Instances.json"};
+    if (music)
+        outputs.push_back("Audio/Music");
     save(output / "Import.json",
          {{"Schema", "openslope-native-import/v1"},
           {"Game", "1080-avalanche"},
           {"Course", course},
           {"SourcePackage", package},
           {"Complete", false},
-          {"Outputs",
-           {"Patches.json", "Textures", "AIP.json", "Origin.json", "Collision", "Models.json", "Materials.json",
-            "Instances.json"}},
+          {"Outputs", outputs},
           {"TerrainPatches", count},
           {"CoordinatePolicy", "reflect source X; Y-up to portable Z-up; reverse polygon winding"},
           {"SceneryPolicy", "separate source objects/placements; exact linear bases baked; translations editable"},
@@ -1259,10 +1263,11 @@ void write_avalanche_course(const DiscInput& disc, const std::string& course, co
           {"SceneryTriangles", scenery_count},
           {"PropExtraction", prop_extraction},
           {"Environment", atmosphere},
+          {"Music", {{"Songs", music}, {"OriginalScheduling", "Deferred"}}},
           {"SpawnPolicy", selected->stem == "Crs00_00" ? "supported-groomed-terrain" : "supported-snow-corridor-128m"},
           {"Deferred",
            {"animated-and-camera-material-uv-transforms", "multilayer-materials", "collision-primitives",
-            "source-starts", "hazards", "events", "audio"}}});
+            "source-starts", "hazards", "events", "audio-event-routing", "original-music-scheduling"}}});
     notify("Validating Avalanche terrain and start");
     static_cast<void>(Terrain::load(output));
     static_cast<void>(CoursePaths::load(output));

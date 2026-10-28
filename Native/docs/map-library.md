@@ -40,7 +40,7 @@ or cancellation removes the newly created cache. Missing meshes reject playback.
 `Source/` and `Import.json` sidecars are not copied. Origin retains the course's
 slot identity and Slopesmith metadata its authored lap/showoff settings; see
 course-runs.md. The optional Audio library copies WAV/JSON/INF bank,
-program and music assets under its own 512 MiB budget, plus the shared board
+program and music assets under its own 1536 MiB budget, plus the shared board
 routing sidecar when present. See audio-playback.md. Maps without prop tables
 remain valid terrain-only courses.
 

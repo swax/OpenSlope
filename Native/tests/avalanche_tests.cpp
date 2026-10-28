@@ -1,5 +1,7 @@
 #include "openslope/appearance.hpp"
+#include "openslope/audio_scene.hpp"
 #include "openslope/collision.hpp"
+#include "openslope/import.hpp"
 #include "openslope/paths.hpp"
 #include "openslope/player.hpp"
 #include "openslope/riding_effects.hpp"
@@ -57,6 +59,19 @@ int main(int argc, char** argv) {
                 "Terrain textures must load without missing files");
         auto collision = CollisionWorld::load(argv[1]);
         require(collision.triangles() > 0, "World collision mesh must load");
+        if (argc > 3) {
+            const auto output = std::filesystem::path(argv[1]).parent_path() / "cancelled-music";
+            bool cancel = false;
+            try {
+                extract_course(
+                    open_disc(argv[3]), "AVALANCHE_CRS00_00", output,
+                    [&](const auto& text) { cancel = text == "Converting Avalanche music"; }, [&] { return cancel; });
+                throw std::runtime_error("Music cancellation did not abort");
+            } catch (const std::exception&) {
+                require(cancel && !std::filesystem::exists(output),
+                        "Music cancellation must clean the map staging tree");
+            }
+        }
         const auto root = std::filesystem::path(argv[1]);
         if (std::filesystem::exists(root / "AvalancheEnvironment.json")) {
             const auto world = World::load(root);
@@ -78,6 +93,25 @@ int main(int argc, char** argv) {
             require(snow && snow->surface == 1, "Literal source snow tag must remain board support");
         }
         Player player(std::move(terrain));
+        if (std::filesystem::exists(root / "Audio/Music/playlist.json")) {
+            AudioScene audio(root);
+            const auto initial_decoded = audio.stats().decoded_bytes;
+            const auto status = audio.music_status();
+            require(!status.songs.empty(), "Imported soundtrack must reach the native song picker");
+            audio.music_song(status.songs.front());
+            bool audible = false;
+            std::array<float, 1600> pcm{};
+            for (unsigned i = 0; i < 180; ++i) {
+                audio.tick(player, player.rider());
+                audio.service();
+                audio.mixer().render(pcm);
+                for (const auto value : pcm)
+                    audible |= std::abs(value) > 1e-7;
+            }
+            require(audible && audio.stats().music_node >= 1, "Imported soundtrack must produce native PCM");
+            require(audio.stats().decoded_bytes <= initial_decoded + 16 * 1024 * 1024,
+                    "Native playback must cache only bounded song chunks");
+        }
         unsigned grounded = 0;
         for (unsigned i = 0; i < 180; ++i) {
             player.tick({});

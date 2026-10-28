@@ -9,7 +9,7 @@ ordinary riding, recovery and restart. New imports also carry source background
 meshes, sky vertex colour/coverage, approximate lighting and adapted snow spray.
 
 The source catalogue and authoritative format findings are in
-[Trailmap 600–605](../../Trailmap/specs/600-avalanche-overview.md). Portable
+[Trailmap 600–606](../../Trailmap/specs/600-avalanche-overview.md). Portable
 course IDs prefix the uppercase source stem with `AVALANCHE_`, for example
 `AVALANCHE_CRS00_03`. These are package-derived identifiers, not recovered retail course titles.
 Discovery lists only supported packages present on the selected image. Each
@@ -182,12 +182,45 @@ triangle count, lighting policy, retained particle images and deferred channels.
 `World.json` disables inferred source fog and glare; the sky already carries its
 own sun/cloud art. OpenSlope's user-controlled snowfall remains available.
 
+## Music
+
+New imports include the named soundtrack from the disc's sound catalogue in
+`Audio/Music`. The USA source contains 46 distinct streams with track titles and
+artists, including named intro/outro variants. Duplicate stream references are
+decoded once; blank-title/artist cues and the explicit music-off entry are excluded.
+The importer preserves catalogue order and the first title for an aliased stream.
+
+Disc-stream ADPCM becomes 48 kHz stereo PCM16 WAVs of at most four seconds.
+Predictor history continues across chunk boundaries. Each song has a portable
+`graph.json` with sequential links and a full-track loop; `playlist.json` and
+`MusicImport.json` retain selection order, names, artists, durations and source
+provenance. Native desktop/Quest and Slopesmith use their existing per-run random
+choice, explicit song selection and mount/dismount fades. This is OpenSlope
+playback policy; original per-course selection, cue timing, transitions and mix
+automation remain unresolved. See [Trailmap 606](../../Trailmap/specs/606-avalanche-music.md).
+
+The full decoded soundtrack occupies about 1 GiB per independently stored map.
+Quest folder caching admits up to 1536 MiB of audio while retaining its entry,
+file-size, cancellation and partial-cache cleanup limits. Playback still loads
+only the current song's bounded chunks. Reload an older browser course to import
+its music. No extracted audio is included in source or application packages.
+
+Add music to an existing local map, or extract a standalone soundtrack folder:
+
+```powershell
+./temp/native-core/Release/openslope_import.exe extract-avalanche-music "discs/1080 Avalanche (USA).rvz" Maps/AVALANCHE_CRS00_00
+```
+
+The command requires an absent `Audio/Music` destination and preserves existing
+terrain and other map files. A failed or cancelled music conversion removes its
+new music tree. Fresh course imports include the same conversion automatically.
+
 ## Current limits
 
 Only the USA disc ID is exposed. Primary images and polygon
 UVs, including curved-terrain corner mappings, are retained. Animated and camera-dependent material
 texture generation/transforms, full layered materials, world vertex lighting,
-source shadow maps and fog, retail starts, other collision primitive classes, original audio,
+source shadow maps and fog, retail starts, other collision primitive classes, sound effects and original audio scheduling,
 event/scoring logic and animated hazards remain deferred. Snow/powder/rock
 surface assignments use explicit OpenSlope material-name policy. These maps
 run OpenSlope's riding physics.
@@ -199,6 +232,7 @@ disc image, extracted art or executable bytes are included in source or builds.
 
 ```powershell
 python Native/tests/avalanche_import_test.py temp/native-core/Release/openslope_import.exe temp/native-core/Release/openslope_avalanche_tests.exe
+python Native/tests/avalanche_music_test.py temp/native-core/Release/openslope_import.exe temp/native-core/Release/openslope_avalanche_tests.exe
 python Native/tests/avalanche_desktop_test.py temp/native/Release/openslope_player.exe
 cd Slopesmith
 node --import tsx test/avalanche-browser.test.ts

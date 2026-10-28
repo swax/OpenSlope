@@ -18,6 +18,34 @@ import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
 import { resolvePropDefaults } from '../src/core/props/defaults';
 import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
 import { createPropsLayer } from '../src/app/viewport/scene/props';
+import { decodeMusicLink, type ReferenceMusicGraph, type ReferenceMusicIndex } from '../src/core/reference/music';
+import { resolveMusicSampleNode } from '../src/app/audio/ride-music';
+
+/** The actual public player's cache adapter, graph walk and browser WAV decoder. */
+export async function verifyAvalancheMusic(course: string, count: number) {
+  const data = await localMapData([course]);
+  try {
+    const index = (await (
+      await fetch(data.resolveAsset(`/api/reference-music?level=${course}`))
+    ).json()) as ReferenceMusicIndex;
+    if (index.songs.length !== count) throw new Error('Public player lost soundtrack choices');
+    const song = index.songs[0];
+    const graph = (await (
+      await fetch(data.resolveAsset(`/api/reference-music?level=${course}&song=${song.id}`))
+    ).json()) as ReferenceMusicGraph;
+    if (resolveMusicSampleNode(graph, 0, 80) !== 1 || decodeMusicLink(graph.Nodes.at(-1)!.LinkRaw[0]).target !== 1)
+      throw new Error('Soundtrack graph must enter its first chunk and loop after the last');
+    const url = data.resolveAsset(`/api/reference-music-sample?level=${course}&song=${song.id}&sample=1`);
+    const context = new OfflineAudioContext(2, 48000, 48000);
+    const decoded = await context.decodeAudioData(await (await fetch(url)).arrayBuffer());
+    if (decoded.sampleRate !== 48000 || decoded.numberOfChannels !== 2 || decoded.length !== graph.Samples[0].Samples)
+      throw new Error('Browser music decoder changed the imported stereo frame layout');
+    if (!decoded.getChannelData(0).some(value => value !== 0)) throw new Error('Decoded soundtrack is silent');
+    return { musicSongs: count, musicFrames: decoded.length };
+  } finally {
+    data.dispose();
+  }
+}
 
 /** Verify the geometry/UV corner contract in the mesh actually supplied to WebGL. */
 export function verifyAvalancheTerrainUV(patches: RawPatch[]) {

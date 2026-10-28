@@ -1,7 +1,7 @@
 // tier: fast
 import assert from 'node:assert/strict';
 import { discCourseName, isDiscCourse } from '../src/core/reference/disc-courses';
-import { supportsCollisionSoundUpdate } from '../src/app/public/iso-cache';
+import { isoCourseCacheVersion, supportsCollisionSoundUpdate } from '../src/app/public/iso-cache';
 import { isoGameForCourse } from '../src/app/public/iso-discs';
 
 for (const family of [0, 1, 2, 3, 4, 5, 6])
@@ -12,6 +12,7 @@ for (const family of [0, 1, 2, 3, 4, 5, 6])
     assert.equal(discCourseName(course), `1080° Avalanche · Crs0${family} ${difficulty}`);
     assert.equal(isoGameForCourse(course), 'avalanche');
     assert.equal(supportsCollisionSoundUpdate(course), false);
+    assert.equal(isoCourseCacheVersion(course), 2, 'Old Avalanche caches need the soundtrack import');
   }
 assert(isDiscCourse('AVALANCHE_CRS00_00'));
 for (const unknown of [

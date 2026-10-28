@@ -16,7 +16,8 @@ final class MapLibrary {
     static final long FILE_LIMIT = 128L * 1024 * 1024;
     static final long IMAGE_LIMIT = 64L * 1024 * 1024;
     static final long IMAGE_BUDGET = 256L * 1024 * 1024;
-    static final long AUDIO_BUDGET = 512L * 1024 * 1024;
+    // A complete disc soundtrack can exceed 1 GiB even with short WAV chunks.
+    static final long AUDIO_BUDGET = 1536L * 1024 * 1024;
     static native String nativeAssetFiles(String path);
     static final String DIRECTORY = DocumentsContract.Document.MIME_TYPE_DIR;
     interface Cancel { void check() throws IOException; }

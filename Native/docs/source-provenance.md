@@ -25,9 +25,16 @@ and hull association are explicit OpenSlope authoring policies for geometry alre
 merged into grid chunks. Indexed cylinder placements were checked by transforming
 their endpoints into their shared template frame; repeated placements agree.
 The recovered source interfaces are now consolidated in
-[Trailmap 600–605](../../Trailmap/specs/600-avalanche-overview.md). Their clean
+[Trailmap 600–606](../../Trailmap/specs/600-avalanche-overview.md). Their clean
 bodies are the format authority; the original investigation provenance remains
 explicit, and this document retains Native's mapping and approximation boundary.
+
+Avalanche music follows clean [Trailmap 606](../../Trailmap/specs/606-avalanche-music.md),
+independent inspection of the user-supplied sound catalogue and standard disc-stream
+ADPCM identities. The new decoder was checked through authored mathematical
+fixtures and black-box PCM comparisons, without reading or porting another
+decoder implementation. Sequential full-track looping is OpenSlope policy;
+original music scheduling and mix automation remain deferred.
 
 The common riding-bank adapter follows clean 518 and the existing shared Maps
 bank contract. Its explicitly approximate sample choices are OpenSlope authoring

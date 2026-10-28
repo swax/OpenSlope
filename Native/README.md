@@ -51,7 +51,9 @@ The shared importer also previews all 25 single-player USA 1080° Avalanche layo
 directly from `.rvz`, `.gcm` or GameCube `.iso`. Curved terrain, primary textures,
 static scenery, collision, spawning and reset work through the existing portable
 map path in Native and Slopesmith. Source background meshes, sky colours and cloud
-coverage, approximate course lighting and adapted riding spray accompany new imports. See
+coverage, approximate course lighting, adapted riding spray and 46 named music
+streams accompany new imports. Music uses the shared song picker and full-track
+looping; original audio scheduling remains deferred. See
 [Avalanche import and current limits](docs/avalanche-import.md).
 
 Jonny Moseley Mad Trix USA PS2 `.bin`/`.iso` discs expose eleven courses through
