@@ -280,6 +280,15 @@ interface RawExternalSound {
   U10?: number;
   U11?: number;
 }
+interface InstanceLightingJson {
+  AmbentLightColour?: number[];
+  LightColour1?: number[];
+  LightColour2?: number[];
+  LightColour3?: number[];
+  LightVector1?: number[];
+  LightVector2?: number[];
+  LightVector3?: number[];
+}
 interface InstancesJson {
   Instances: {
     InstanceName: string;
@@ -296,6 +305,7 @@ interface InstancesJson {
     LightColour2?: number[];
     LightColour3?: number[];
     AmbentLightColour?: number[];
+    RiderLighting?: InstanceLightingJson;
     EffectSlotIndex?: number;
     Visable?: boolean;
     IncludeSound?: boolean;
@@ -1127,6 +1137,21 @@ export async function buildLevelPropsUncached(io: MapDataSource, level: string):
               lv: [instance.LightVector1, instance.LightVector2, instance.LightVector3].flatMap(
                 value => value?.slice(0, 3) ?? [0, 0, 0],
               ),
+            }
+          : {}),
+        ...(instance.RiderLighting?.AmbentLightColour?.length === 3
+          ? {
+              rl: {
+                ambient: instance.RiderLighting.AmbentLightColour.slice(0, 3) as V3,
+                keys: [1, 2, 3].flatMap(index => {
+                  const rig = instance.RiderLighting!;
+                  const color = rig[`LightColour${index}` as keyof InstanceLightingJson];
+                  const direction = rig[`LightVector${index}` as keyof InstanceLightingJson];
+                  return color?.length === 3 && direction?.length === 3
+                    ? [{ color: color.slice(0, 3) as V3, direction: direction.slice(0, 3) as V3 }]
+                    : [];
+                }),
+              },
             }
           : {}),
         ...(coversModel(instance.VertexLighting, lightNeeded.get(instance.ModelID))

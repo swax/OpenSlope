@@ -413,6 +413,10 @@ Terrain Terrain::load(const std::filesystem::path& map) {
         }
         p.uv = row.at("UVPoints").get<decltype(p.uv)>();
         p.lightmap_rect = row.at("LightMapPoint").get<decltype(p.lightmap_rect)>();
+        const auto encoding = row.value("LightmapEncoding", std::string("gs"));
+        if (encoding != "gs" && encoding != "rgb-multiply")
+            throw std::runtime_error("Unsupported terrain lightmap encoding");
+        p.lightmap_multiply = encoding == "rgb-multiply";
         if (row.contains("LightColorPoints")) {
             const auto& colors = row.at("LightColorPoints");
             if (!colors.is_array() || colors.size() != 16 ||
@@ -680,15 +684,19 @@ Mesh Terrain::mesh(unsigned subdivisions) const {
         throw std::runtime_error("Requested terrain mesh exceeds 8 million vertices");
     Mesh mesh;
     mesh.map_root = map_root_;
-    std::map<std::tuple<std::string, int, bool>, std::vector<const Patch*>> groups;
+    std::map<std::tuple<std::string, int, bool, bool>, std::vector<const Patch*>> groups;
     for (const auto& patch : patches_)
         if (patch.active)
             groups[{patch.texture, patch.lightmap_rect[2] > 0 && patch.lightmap_rect[3] > 0 ? patch.lightmap : -1,
-                    patch.light_colors.has_value()}]
+                    patch.light_colors.has_value(), patch.lightmap_multiply}]
                 .push_back(&patch);
     for (const auto& [material, patches] : groups) {
-        MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()), 0, std::get<0>(material),
-                        std::get<1>(material), std::get<2>(material)};
+        MeshBatch batch{static_cast<std::uint32_t>(mesh.indices.size()),
+                        0,
+                        std::get<0>(material),
+                        std::get<1>(material),
+                        std::get<2>(material),
+                        std::get<3>(material)};
         for (const auto* patch : patches) {
             const auto& p = *patch;
             const auto range_first = static_cast<std::uint32_t>(mesh.indices.size());

@@ -79,6 +79,22 @@ int main(int argc, char** argv) {
             for (const auto& part : world.sky.parts)
                 require(read_png(root / "Skybox/Textures" / part.texture).width > 0, "Sky textures must resolve");
             require(SceneLighting::load(root).size() > 0, "Course prop/rider light rig must load");
+            if (std::filesystem::exists(root / "AvalancheLighting.json")) {
+                const auto page = read_png(root / "Lightmaps/0000.png");
+                require(terrain.patches().front().lightmap_multiply && page.pixels[3] == 255,
+                        "Recovered source lightmaps must preserve RGB factors rather than grey alpha");
+                std::ifstream input(root / "Instances.json");
+                const auto instances = nlohmann::json::parse(input).at("Instances");
+                for (const auto& row : instances)
+                    if (row.contains("RiderLighting")) {
+                        const auto ambient =
+                            row.at("RiderLighting").at("AmbentLightColour").get<std::array<double, 3>>();
+                        const auto sampled = SceneLighting::load(root, &terrain).sample({1e8, 0, 1e8}).ambient;
+                        require(length(sampled - Vec3{ambient[0], ambient[1], ambient[2]} / 256) < 1e-6,
+                                "Native actor probes must retain the separate player rig");
+                        break;
+                    }
+            }
             require(terrain.patches().front().lightmap >= 0, "Terrain must carry baked lighting");
             require(read_png(root / "Lightmaps/0000.png").width == 128, "Baked lighting page must load");
             require(!riding_sprite(root).empty() && !riding_sprite(root, "Sheet").empty(),

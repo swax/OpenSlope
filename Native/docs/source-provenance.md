@@ -25,9 +25,17 @@ and hull association are explicit OpenSlope authoring policies for geometry alre
 merged into grid chunks. Indexed cylinder placements were checked by transforming
 their endpoints into their shared template frame; repeated placements agree.
 The recovered source interfaces are now consolidated in
-[Trailmap 600–606](../../Trailmap/specs/600-avalanche-overview.md). Their clean
+[Trailmap 600–607](../../Trailmap/specs/600-avalanche-overview.md). Their clean
 bodies are the format authority; the original investigation provenance remains
 explicit, and this document retains Native's mapping and approximation boundary.
+
+Avalanche RGB terrain lighting follows clean [Trailmap 607](../../Trailmap/specs/607-avalanche-lighting.md).
+The shadow-grid, projection and rig-role interfaces were independently inspected
+in the owned image; the runtime uses independently authored bounded sampling and
+standard CMPR/bilinear identities. No other game decoder or renderer supplied
+code. The portable RGB lightmap mode and separate actor-rig override are original
+OpenSlope interfaces. Static resampling and unresolved dynamic/secondary-rig
+behavior are explicit in the import documentation.
 
 Avalanche music follows clean [Trailmap 606](../../Trailmap/specs/606-avalanche-music.md),
 independent inspection of the user-supplied sound catalogue and standard disc-stream

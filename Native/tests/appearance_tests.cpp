@@ -1,4 +1,5 @@
 #include "openslope/appearance.hpp"
+#include "openslope/scene_lighting.hpp"
 #include "openslope/world.hpp"
 #include <iostream>
 #include <stdexcept>
@@ -28,6 +29,35 @@ int main(int argc, char** argv) {
     try {
         require(argc == 2, "Supply authored PNG fixtures");
         const auto root = std::filesystem::path(argv[1]);
+        const auto actor = SceneLighting::load(root / "rgb_actor_lighting");
+        const auto shaded = actor.sample({0, 1, 0}).evaluate({0, 1, 0});
+        require(length(shaded - Vec3{.6 * 32 / 255, .6 * 64 / 255, .7 * 128 / 255}) < 1e-6,
+                "RGB ground shade must attenuate the actor's separate ambient and directional rig");
+        const auto clear = Vec3{.6, .6, .7};
+        require(length(actor.sample({0, 9, 0}).evaluate({0, 1, 0}) - clear) < 1e-6,
+                "A bright roof above a shaded floor keeps its own actor lighting");
+        for (const auto position : {Vec3{20, 1, 0}, Vec3{40, 1, 0}, Vec3{100, 1, 0}, Vec3{0, -1, 0}})
+            require(length(actor.sample(position).evaluate({0, 1, 0}) - clear) < 1e-6,
+                    "Open snow, legacy pages and missing ground must preserve the player rig");
+        for (const auto name : {"vertex_actor_lighting", "vertex_actor_no_instances"}) {
+            const auto vertex = SceneLighting::load(root / name);
+            const auto sample = vertex.sample({0, 1, 0});
+            require(length(sample.ambient - Vec3{.6 * .125, .6 * .25, .6 * .5}) < 1e-6 &&
+                        length(sample.keys[0].colour - Vec3{.4 * .125, .4 * .25, .4 * .5}) < 1e-6,
+                    "Baked vertex colour must shade the fallback player rig without actor probes");
+            require(length(vertex.sample({0, 9, 0}).evaluate({0, 1, 0}) - SceneLight::fallback().evaluate({0, 1, 0})) <
+                        1e-6,
+                    "A vertex-lit roof keeps its lighting separate from the floor");
+            require(length(vertex.sample({20, 1, 0}).ambient - Vec3{.45, .75, .9}) < 1e-6,
+                    "Vertex lighting must retain factors above one before actor evaluation");
+            for (const auto position : {Vec3{40, 1, 0}, Vec3{100, 1, 0}})
+                require(length(vertex.sample(position).evaluate({0, 1, 0}) -
+                               SceneLight::fallback().evaluate({0, 1, 0})) < 1e-6,
+                        "Missing vertex colours and missing ground preserve the fallback rig");
+        }
+        require(length(SceneLighting::load(root / "vertex_actor_probed").sample({0, 1, 0}).ambient - Vec3{.3, .4, .5}) <
+                    1e-6,
+                "Existing local actor probes must not receive vertex-baked shade twice");
         const auto nested = Appearance::load(Terrain::load(root / "nested_riding"));
         require(nested.images.size() == 2 && nested.images.contains("Textures/Particles/part.png") &&
                     nested.missing.empty(),

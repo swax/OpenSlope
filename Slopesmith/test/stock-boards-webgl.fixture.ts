@@ -3,6 +3,8 @@ import { createBoard } from '../src/app/ride/gear';
 import { StockBoardSelection, STOCK_BOARD_DESIGNS } from '../src/core/equipment/stock-boards';
 import { TestRide } from '../src/app/ride/session';
 import { RIDER_LIGHT_SOURCE } from '../src/app/ride/rider-lighting';
+import { attenuateRiderLight, RiderLightField, sampleReferenceRiderLight } from '../src/core/lighting/rider-light';
+import { groundLightingFixture } from './reference-ground-light.fixture';
 import { createRiderPose } from '../src/app/ride/pose';
 
 const check = (value: unknown, what: string) => {
@@ -79,12 +81,25 @@ try {
     };
     scene.userData[RIDER_LIGHT_SOURCE] = () => ({ ambient: [1, 1, 1], keys: [] });
     const full = energy();
-    scene.userData[RIDER_LIGHT_SOURCE] = () => ({ ambient: [0.2, 0.2, 0.2], keys: [] });
+    const ground = groundLightingFixture();
+    scene.userData[RIDER_LIGHT_SOURCE] = (position: THREE.Vector3) =>
+      attenuateRiderLight({ ambient: [1, 1, 1], keys: [] }, ground.sample(position.toArray()) ?? [1, 1, 1]);
     const shade = energy();
     check(
       shade.every((v, c) => Math.abs(v / full[c] - 0.2) < 0.025),
       `${design.id} gets avatar shade`,
     );
+    const vertex = groundLightingFixture([0.125, 0.25, 0.5], 'vertex');
+    const field = new RiderLightField([]);
+    scene.userData[RIDER_LIGHT_SOURCE] = (position: THREE.Vector3) =>
+      sampleReferenceRiderLight(field, position.toArray(), vertex.sample(position.toArray()), true);
+    const baked = energy();
+    const fill = 0.6 + (0.4 * 0.8) / Math.hypot(0.3, 0.8, 0.5);
+    check(
+      baked.every((v, c) => Math.abs(v / full[c] - fill * [0.125, 0.25, 0.5][c]) < 0.025),
+      `${design.id} gets baked vertex tint without actor probes`,
+    );
+    vertex.geometry.dispose();
     scene.userData[RIDER_LIGHT_SOURCE] = () => ({
       ambient: [0.1, 0.2, 0.3],
       keys: [{ color: [0.7, 0, 0], direction: [0, 1, 0] }],
@@ -100,6 +115,7 @@ try {
     const rolled = energy();
     check(rolled[0] < full[0] * 0.15, 'held/rolled board normals follow their world pose');
     board.group.rotation.z = 0;
+    ground.geometry.dispose();
     camera.position.set(0, 2, 0);
     camera.lookAt(0, 0, 0);
     board.group.position.x = 10;

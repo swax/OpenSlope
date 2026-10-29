@@ -1,5 +1,6 @@
 #include "formats.hpp"
 #include "import/containers/disc.hpp"
+#include "lighting.hpp"
 #include "openslope/appearance.hpp"
 #include "openslope/collision.hpp"
 #include "openslope/paths.hpp"
@@ -795,92 +796,7 @@ std::size_t scenery(const Geometry& g, const std::vector<Material>& mats, const 
     return triangles;
 }
 
-SceneLight light_rig(Bytes bytes) {
-    const auto count = bytes.be(0);
-    require(count > 0 && count <= 8 && bytes.data.size() == 32 + count * 160, "Invalid Avalanche light rig extent");
-    SceneLight result;
-    const auto rgb = [&](std::size_t at) {
-        require(bytes.be(at + 3, 1) == 255, "Unsupported Avalanche light colour packing");
-        return Vec3{bytes.be(at, 1) / 255., bytes.be(at + 1, 1) / 255., bytes.be(at + 2, 1) / 255.};
-    };
-    for (unsigned i = 0; i < count; ++i) {
-        const auto at = 32 + i * 160;
-        require(bytes.be(at) == 0x00010003, "Unsupported Avalanche light record");
-        const auto direction = -vector(bytes, at + 40);
-        require(std::abs(length(direction) - 1) < .01, "Invalid Avalanche light direction");
-        if (i == 0)
-            result.ambient = rgb(at + 20);
-        result.keys[i] = {normalized(direction), rgb(at + 16)};
-    }
-    auto energy = result.ambient;
-    for (const auto& key : result.keys)
-        energy += key.colour;
-    const auto scale = std::max({1., energy.x, energy.y, energy.z});
-    result.ambient = result.ambient / scale;
-    for (auto& key : result.keys)
-        key.colour = key.colour / scale;
-    return result;
-}
-
-void bake_lighting(const SceneLight& rig, const std::filesystem::path& output, const ImportCancel& cancel) {
-    const auto terrain = Terrain::load(output);
-    std::ifstream input(output / "Patches.json");
-    auto document = Json::parse(input);
-    input.close();
-    std::filesystem::create_directory(output / "Lightmaps");
-    for (std::size_t first = 0; first < terrain.patches().size(); first += 256) {
-        Image page{"", 128, 128, std::vector<std::uint8_t>(128 * 128 * 4)};
-        for (std::size_t i = first; i < std::min(first + 256, terrain.patches().size()); ++i) {
-            check_cancel(cancel);
-            const auto x = unsigned(i % 16) * 8, y = unsigned((i % 256) / 16) * 8;
-            for (unsigned v = 0; v < 8; ++v)
-                for (unsigned u = 0; u < 8; ++u) {
-                    const auto normal = terrain.patches()[i].normal(v / 7., u / 7.);
-                    const auto light = rig.evaluate({-normal.x, normal.y, normal.z});
-                    const auto grey = .2126 * light.x + .7152 * light.y + .0722 * light.z;
-                    page.rgba[((y + v) * 128 + x + u) * 4 + 3] =
-                        std::uint8_t(std::clamp(std::round(grey * 255), 0., 255.));
-                }
-            document["Patches"][i]["LightmapID"] = first / 256;
-            document["Patches"][i]["LightMapPoint"] = {x / 128., y / 128., 8 / 128., 8 / 128.};
-        }
-        std::ostringstream name;
-        name << std::setfill('0') << std::setw(4) << first / 256 << ".png";
-        write_png(output / "Lightmaps" / name.str(), page);
-    }
-    save(output / "Patches.json", document);
-    std::ifstream placements(output / "Instances.json");
-    auto instances = Json::parse(placements);
-    placements.close();
-    Json lights = Json::array({{{"LightName", "Avalanche ambient"},
-                                {"Type", 3},
-                                {"Colour", {rig.ambient.x, rig.ambient.y, rig.ambient.z}},
-                                {"Direction", {0, 0, 0}},
-                                {"Position", {0, 0, 0}}}});
-    for (auto& row : instances["Instances"]) {
-        if (!row.value("Visable", true))
-            continue;
-        row["AmbentLightColour"] = {rig.ambient.x * 256, rig.ambient.y * 256, rig.ambient.z * 256};
-        for (unsigned i = 0; i < 3; ++i) {
-            const auto& key = rig.keys[i];
-            row["LightColour" + std::to_string(i + 1)] = {key.colour.x * 256, key.colour.y * 256, key.colour.z * 256};
-            row["LightVector" + std::to_string(i + 1)] = raw(key.direction);
-        }
-    }
-    for (unsigned i = 0; i < 3; ++i) {
-        const auto& key = rig.keys[i];
-        if (length(key.colour) > 0)
-            lights.push_back({{"LightName", "Avalanche directional " + std::to_string(i)},
-                              {"Type", 0},
-                              {"Colour", {key.colour.x, key.colour.y, key.colour.z}},
-                              {"Direction", raw(-key.direction)},
-                              {"Position", {0, 0, 0}}});
-    }
-    save(output / "Instances.json", instances);
-    save(output / "Lights.json", {{"Lights", lights}});
-}
-
-Json environment(const DiscInput& disc, const Course& course, const std::filesystem::path& output,
+Json environment(const DiscInput& disc, const Course& course, Bytes geometry, const std::filesystem::path& output,
                  const ImportCancel& cancel) {
     auto directory = world_directory(course);
     directory.resize(directory.size() - std::string("/World/1P").size());
@@ -949,8 +865,11 @@ Json environment(const DiscInput& disc, const Course& course, const std::filesys
     const auto sky_triangles = scenery(Geometry{Bytes{member(files, prefix + ".GEO")}}, mats, sky, cancel, true);
     require(sky_triangles > 0, "Avalanche background has no drawable geometry");
     const auto player = "PLAYERLIGHT_" + suffix + ".LIG";
-    const auto rig = light_rig(Bytes{member(files, player)});
-    bake_lighting(rig, output, cancel);
+    const auto object = files.find("OBJLIGHT_" + suffix + ".LIG");
+    const auto shadow = files.find("SHAD" + suffix + ".DAT");
+    const auto lighting = write_avalanche_lighting(
+        geometry, Bytes{member(files, player)}, object == files.end() ? Bytes{} : Bytes{object->second},
+        shadow == files.end() ? Bytes{} : Bytes{shadow->second}, output, cancel);
     Json particles = Json::array();
     const auto particle_file = files.find("PTCL" + suffix + ".TPL");
     if (particle_file != files.end()) {
@@ -995,17 +914,37 @@ Json environment(const DiscInput& disc, const Course& course, const std::filesys
                 {"SourcePackage", package},
                 {"SkyTriangles", sky_triangles},
                 {"LightRig", player},
-                {"LightingPolicy", "energy-normalized global rig; grey normal bake; coloured prop/rider keys"},
+                {"Lighting", lighting},
+                {"LightingPolicy", "source corner RGB and projected colour shadows; separate scenery/rider rigs"},
                 {"ParticleTextures", particles},
                 {"RidingSpraySheet", spray},
                 {"Deferred",
-                 {"source-shadow-map", "source-fog", "particle-emitter-programs", "animated-hazards",
+                 {"dynamic-shadow-casters", "source-fog", "particle-emitter-programs", "animated-hazards",
                   "secondary-texture-layers"}}};
     save(output / "AvalancheEnvironment.json", report);
     static_cast<void>(World::load(output));
     return report;
 }
 } // namespace
+
+Image avalanche_texture(Bytes bytes, unsigned index) { return texture(bytes, index, ""); }
+
+Json refresh_avalanche_lighting(const DiscInput& disc, const std::string& course, const std::filesystem::path& staging,
+                                const ImportCancel& cancel) {
+    const auto found =
+        std::find_if(catalogue.begin(), catalogue.end(), [&](const auto& entry) { return slot(entry) == course; });
+    require(found != catalogue.end(), "Unsupported Avalanche lighting course");
+    const auto world = level(disc, world_directory(*found) + "/" + package_name(*found), cancel);
+    auto directory = world_directory(*found);
+    directory.resize(directory.size() - std::string("/World/1P").size());
+    const auto files = level(disc, directory + "/" + std::string(found->stem) + ".LVL", cancel);
+    const auto suffix = std::string(found->stem.substr(3));
+    const auto object = files.find("OBJLIGHT_" + suffix + ".LIG"), shadow = files.find("SHAD" + suffix + ".DAT");
+    return write_avalanche_lighting(Bytes{member(world, member_stem(*found) + ".GEO")},
+                                    Bytes{member(files, "PLAYERLIGHT_" + suffix + ".LIG")},
+                                    object == files.end() ? Bytes{} : Bytes{object->second},
+                                    shadow == files.end() ? Bytes{} : Bytes{shadow->second}, staging, cancel);
+}
 
 std::vector<DiscCourse> avalanche_courses(const DiscInput& disc, const ImportCancel& cancel) {
     check_cancel(cancel);
@@ -1122,7 +1061,7 @@ void write_avalanche_course(const DiscInput& disc, const std::string& course, co
     const auto prop_extraction =
         refine_avalanche_props(output, Bytes{member(files, stem + ".COL")}, material_names, cancel);
     notify("Converting Avalanche background, lighting and particle art");
-    const auto atmosphere = environment(disc, *selected, output, cancel);
+    const auto atmosphere = environment(disc, *selected, g.b, output, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
                                   {"Origin", "retail"},
                                   {"Course", course},

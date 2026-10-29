@@ -34,8 +34,15 @@ neon and Las Vegas waterfall props, or empty tables when none are placed. Terrai
 retains its source baked RGB control net, including Vegas's colored lighting.
 Native Original lighting and Slopesmith Play/Inspect multiply textures by the
 evaluated colors. Inspect reports **Source baked vertex colors loaded**; there
-are no image lightmaps to fetch or directional-sun fit to load. Existing Slopesmith
-imports need loading again to receive these tables; the saved disc can be reused.
+are no image lightmaps to fetch or directional-sun fit to load.
+
+Avatars and boards in Slopesmith and Native Original/Enhanced sample the first
+terrain surface below them. When actor-light probes are absent, the baked RGB
+modulates a neutral fill/key rig, carrying local shade and colored light onto
+the body and equipment. Existing actor probes remain authoritative. Native
+evaluates the source bicubic controls; Slopesmith interpolates the rendered
+terrain colors. This ground projection is an OpenSlope approximation, not a
+reconstruction of the retail actor-lighting equation or moving lamps.
 
 `Skybox` contains a tessellated source dome and its textures. It uses the shared
 camera-centred sky renderer and contributes no terrain collision. Terrain and

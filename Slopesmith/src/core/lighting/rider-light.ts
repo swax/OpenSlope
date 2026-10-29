@@ -13,6 +13,40 @@ export interface RiderLightProbe extends RiderLight {
   position: V3;
 }
 
+/** Separable baked RGB shade attenuates both the environment fill and its directional keys. */
+export function attenuateRiderLight(light: RiderLight, factor: V3): RiderLight {
+  return {
+    ambient: light.ambient.map((value, channel) => value * factor[channel]) as V3,
+    keys: light.keys.map(key => ({
+      direction: key.direction,
+      color: key.color.map((value, channel) => value * factor[channel]) as V3,
+    })),
+  };
+}
+
+/** Neutral fill/key used by Native when an import has no usable actor-light records.
+ * Reference X is reflected relative to Native's frame, so the fallback key follows that reflection. */
+export function fallbackRiderLight(): RiderLight {
+  const magnitude = Math.hypot(0.3, 0.8, 0.5);
+  return {
+    ambient: [0.6, 0.6, 0.6],
+    keys: [{ color: [0.4, 0.4, 0.4], direction: [0.3 / magnitude, 0.8 / magnitude, -0.5 / magnitude] }],
+  };
+}
+
+/** Vertex-baked imports can supply local lighting without an authored actor rig.
+ * Keep existing spatial probes authoritative instead of applying their baked shade twice. */
+export function sampleReferenceRiderLight(
+  field: RiderLightField,
+  position: V3,
+  ground: V3 | null,
+  vertexFallback = false,
+): RiderLight | null {
+  const light = field.sample(position);
+  if (!ground || (vertexFallback && light)) return light;
+  return attenuateRiderLight(light ?? fallbackRiderLight(), ground);
+}
+
 export function evaluateRiderLight(light: RiderLight, normal: V3): V3 {
   const length = Math.hypot(...normal) || 1;
   const result = [...light.ambient] as V3;
@@ -28,7 +62,7 @@ export function referenceRiderProbes(instances: readonly PropInstance[]): RiderL
   const seen = new Set<string>();
   const probes: RiderLightProbe[] = [];
   for (const instance of instances) {
-    const light = instance.lighting;
+    const light = instance.riderLighting ?? instance.lighting;
     if (!light) continue;
     const ambient = light.ambient.map(value => value / 256) as V3;
     const keys = light.keys.flatMap(key => {

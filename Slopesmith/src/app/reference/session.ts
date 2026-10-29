@@ -3,7 +3,8 @@ import GUI, { Controller } from 'lil-gui';
 import { DEFAULT_SUN, type AuthoredLight, type QuadMeshDoc, type SunLight, type V3 } from '../../core/doc/types';
 import { nextLightId } from '../../core/doc/ids';
 import { DEFAULT_LAPS, DEFAULT_SHOWOFF_SECONDS, normalizeLaps, normalizeShowoffSeconds } from '../../core/doc/race';
-import { effectiveBakeSun, effectiveBakeAmbient, decodeLightmapTexel } from '../../core/lighting/bake';
+import { effectiveBakeSun, effectiveBakeAmbient } from '../../core/lighting/bake';
+import { decodeReferenceLightmap, referenceLightmapEncoding } from '../../core/reference/lightmap';
 import {
   applyReferenceLightmaps,
   buildReferenceMeshProgressive,
@@ -767,19 +768,7 @@ export function createReference(deps: ReferenceDeps) {
         const ctx = cv.getContext('2d', { willReadFrequently: true })!;
         ctx.drawImage(bmp, 0, 0);
         const { data } = ctx.getImageData(0, 0, bmp.width, bmp.height);
-        const px = bmp.width * bmp.height;
-        const a = new Float32Array(px),
-          rgb = new Float32Array(px * 3); // A_S + the coloured multiply
-        for (let i = 0; i < px; i++) {
-          a[i] = data[i * 4 + 3] / 255; // alpha = A_S (intensity)
-          // reconstruct the coloured light L = (0.5 - C_S) x (A_S x 255/128) via the SHARED GS display decode
-          // the user's baked-lightmap view also uses, so the two views are on one scale.
-          const [r, g, b] = decodeLightmapTexel(data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]);
-          rgb[i * 3] = r;
-          rgb[i * 3 + 1] = g;
-          rgb[i * 3 + 2] = b;
-        }
-        maps.set(id, { a, rgb });
+        maps.set(id, decodeReferenceLightmap(data, referenceLightmapEncoding(patches, id)));
       }),
     );
     return maps;

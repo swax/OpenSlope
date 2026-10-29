@@ -1,7 +1,7 @@
 export const ISO_CACHE_VERSION = 1;
-// Avalanche generation 2 adds the named source soundtrack in bounded chunks.
+// Avalanche generation 3 adds source RGB terrain lighting and baked shadows.
 export const isoCourseCacheVersion = (course: string): number =>
-  /^AVALANCHE_/i.test(course) ? 2 : /^MADTRIX_/i.test(course) ? 8 : /^SSXOT_.*_NIGHT$/i.test(course) ? 8 : /^(SSX3_|SSXOT_)/i.test(course) ? 7 : /^SSX_/i.test(course) ? 3 : ISO_CACHE_VERSION;
+  /^AVALANCHE_/i.test(course) ? 3 : /^MADTRIX_/i.test(course) ? 8 : /^SSXOT_.*_NIGHT$/i.test(course) ? 8 : /^(SSX3_|SSXOT_)/i.test(course) ? 7 : /^SSX_/i.test(course) ? 3 : ISO_CACHE_VERSION;
 interface CachedFile { key: string; course: string; path: string; blob: Blob }
 interface CachedCourse { course: string; version: number; files: number }
 export interface DiscCollisionSounds {

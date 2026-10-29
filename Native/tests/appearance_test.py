@@ -35,6 +35,47 @@ def course(root, name, texture, lightmap=-1, tile=(0, 0, 0, 0), uv=((0, 0), (0, 
 
 
 def fixtures(root):
+    folder = course(root, 'rgb_actor_lighting', '', 0, (0, 0, 1, 1))
+    patches = []
+    for index, (x, y) in enumerate([(0, 0), (0, 8), (20, 0), (40, 0)]):
+        row = dict(PatchName='RGB actor ground', SurfaceType=1, TrickOnlyPatch=False,
+                   Points=[[(x + u * 8 / 3 - 4) * 100, -(v * 8 / 3 - 4) * 100, y * 100]
+                           for u in range(4) for v in range(4)],
+                   UVPoints=[[0, 0], [0, 1], [1, 0], [1, 1]], TexturePath='',
+                   LightmapID=index, LightMapPoint=[0, 0, 1, 1])
+        if index < 3:row['LightmapEncoding'] = 'rgb-multiply'
+        patches.append(row)
+        color = [32, 64, 128, 255] if index == 0 else [255, 255, 255, 255]
+        (folder / f'Lightmaps/{index:04d}.png').write_bytes(rgba(128, 128, color * (128 * 128)))
+    (folder / 'Patches.json').write_text(json.dumps(dict(Patches=patches)))
+    rider = dict(AmbentLightColour=[102.4, 51.2, 25.6], LightColour1=[51.2, 102.4, 153.6], LightVector1=[0, 0, 1])
+    (folder / 'Instances.json').write_text(json.dumps(dict(Instances=[dict(
+        Location=[0, 0, 0], AmbentLightColour=[256, 0, 0], RiderLighting=rider)])))
+    vertex = root / 'vertex_actor_lighting'
+    vertex.mkdir()
+    vertex_patches = json.loads(json.dumps(patches))
+    for index, row in enumerate(vertex_patches):
+        row.pop('LightmapEncoding', None)
+        row['LightmapID'] = -1
+        row['LightMapPoint'] = [0, 0, 0, 0]
+        if index < 3:
+            color = [[.125, .25, .5], [1, 1, 1], [.75, 1.25, 1.5]][index]
+            row['LightColorPoints'] = [color] * 16
+    (vertex / 'Patches.json').write_text(json.dumps(dict(Patches=vertex_patches)))
+    (vertex / 'Instances.json').write_text(json.dumps(dict(Instances=[])))
+    with_probes = root / 'vertex_actor_probed'
+    shutil.copytree(vertex, with_probes)
+    (with_probes / 'Instances.json').write_text(json.dumps(dict(Instances=[dict(
+        Location=[0, 0, 0], AmbentLightColour=[76.8, 102.4, 128])])))
+    without_instances = root / 'vertex_actor_no_instances'
+    without_instances.mkdir()
+    shutil.copyfile(vertex / 'Patches.json', without_instances / 'Patches.json')
+    folder = course(root, 'rgb_lighting', 'base.png', 0, (0, 0, 1, 1))
+    (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [200, 160, 120, 255]))
+    (folder / 'Lightmaps/0000.png').write_bytes(rgba(128, 128, [64, 128, 192, 255] * (128 * 128)))
+    document = json.loads((folder / 'Patches.json').read_text())
+    document['Patches'][0]['LightmapEncoding'] = 'rgb-multiply'
+    (folder / 'Patches.json').write_text(json.dumps(document))
     folder = course(root, 'vertex_lighting', 'base.png')
     (folder / 'Textures/base.png').write_bytes(rgba(1, 1, [200, 160, 120, 255]))
     document = json.loads((folder / 'Patches.json').read_text())

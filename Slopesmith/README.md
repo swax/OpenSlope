@@ -180,9 +180,12 @@ ride to chat; sending a message or pressing **Escape** returns the keyboard to t
 
 Retail courses require the visitor's own supported disc. `/isos` includes SSX PS2 games,
 1080° Avalanche USA and Jonny Moseley Mad Trix USA PS2. Fresh Avalanche imports
-include 46 named music streams in the existing song picker, with full-track looping;
-reload older cached courses to add them. See the
-[Avalanche importer limits](../Native/docs/avalanche-import.md#music).
+include 46 named music streams in the existing song picker, with full-track looping.
+They also preserve source terrain colours, projected baked shadows and separate
+scenery/rider light rigs. These are static layout settings; a moving sun or
+day/night cycle has not been established.
+Reload older cached courses to add these channels. See the
+[Avalanche importer limits](../Native/docs/avalanche-import.md).
 Choose an ISO or BIN for Mad Trix;
 the CUE is not needed. Its eleven courses have preliminary terrain with source baked colored lighting, sky, grind-strip,
 sign-panel, ski-audio and twelve-track music support. Sign timing, full-track music looping and surface/role mapping are approximate;

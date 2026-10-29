@@ -249,6 +249,8 @@ export interface PropInstance {
     ambient: V3;
     keys: { color: V3; direction: V3 }[];
   };
+  /** Optional actor rig when source scenery and rider illumination differ. */
+  riderLighting?: PropInstance['lighting'];
   /** SSX 3's baked vertex lighting: one ABGR1555 colour per vertex of the model's stream (`PropSub.light`),
    *  16 of 31 per channel being the texture as drawn and the top bit the vertex's alpha
    *  [Trailmap: 513-vertex-light, 513-vertex-light-scale, 513-vertex-alpha]. */
@@ -381,6 +383,7 @@ export interface PropsPayload {
     la?: number[];
     lk?: number[];
     lv?: number[];
+    rl?: NonNullable<PropInstance['lighting']>;
     /** baked vertex lighting, ABGR1555 halfwords (SSX 3); omitted when it does not cover the model */ vl?: string;
     /** exact PlayerCollision / PlayerBounce gates */ pc?: boolean;
     pb?: boolean;
@@ -548,6 +551,7 @@ export function decodeProps(payload: PropsPayload): LevelProps {
       ...(x.b !== undefined ? { route: { bank: x.b, slot: x.n ?? -1 } } : {}),
     })),
     ...(effectAt(i.fx) ? { effect: i.fx } : {}),
+    ...(i.rl ? { riderLighting: i.rl } : {}),
     ...(i.la?.length === 3
       ? {
           lighting: {

@@ -251,23 +251,23 @@ void main() {
             for(int i=0;i<3;++i)light+=max(0.0,dot(normal,propDirections[i]))*propColours[i];
             displayColour=base.rgb*clamp(light,0.0,1.0);
         }
-        if(mode==2&&!runtime) {
+        if((mode==2||mode==17)&&!runtime) {
             // [Trailmap: 160-transpose, 160-luminance, 400-lighting]
             // Keep bilinear sampling inside this patch's gutterless tile.
             vec2 inset=min(0.5/vec2(textureSize(lightmapImage,0)),lightmapTile.zw*0.5);
             vec2 uv=clamp(lightmapUV,lightmapTile.xy+inset,lightmapTile.xy+lightmapTile.zw-inset);
             vec4 lighting=texture(lightmapImage,uv);
-            displayColour=clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
+            displayColour=mode==17?base.rgb*lighting.rgb:clamp((base.rgb-lighting.rgb)*lighting.a,0.0,1.0);
         }
     }
-    if(lightingMode!=0&&((mode>=1&&mode<=3)||mode==16||
+    if(lightingMode!=0&&((mode>=1&&mode<=3)||mode==16||mode==17||
        (runtime&&(mode==14||(mode==15&&dot(worldNormal,worldNormal)>0.00001)))))
         displayColour=litSurface(displayColour);
     if(lightingMode!=0&&light.presentation.z>0.5&&light.settings.z>0.5&&
        (mode==7||(lightingMode==1&&
        (mode==14||(mode==15&&dot(worldNormal,worldNormal)>0.00001)))))
         displayColour=displayColourOf(hdrOfOriginal(linearColour(displayColour)));
-    if(mode!=7&&(mode<10||mode==14||mode==15)&&transform.eyeEnd.w>transform.fogColourStart.w){
+    if(mode!=7&&(mode<10||mode==14||mode==15||mode==17)&&transform.eyeEnd.w>transform.fogColourStart.w){
         float fog=clamp((length(worldPosition-transform.eyeEnd.xyz)-transform.fogColourStart.w)/(transform.eyeEnd.w-transform.fogColourStart.w),0.0,1.0);
         if(mode==4&&transform.options.w!=0)alpha*=1.0-fog;
         else if(mode==4||mode==6||mode==9)displayColour*=1.0-fog;

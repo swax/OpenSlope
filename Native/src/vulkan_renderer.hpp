@@ -247,7 +247,7 @@ private:
     VkRenderPass pass_{};
     VkPipelineLayout layout_{};
     VkPipeline pipeline_{}, blend_pipeline_{}, sprite_pipeline_{}, wake_pipeline_{}, sky_pipeline_{}, line_pipeline_{};
-    std::array<std::array<VkPipeline, 17>, 2> material_pipelines_{};
+    std::array<std::array<VkPipeline, 18>, 2> material_pipelines_{};
     VkPipeline celestial_pipeline_{}, hud_pipeline_{}, wrist_pipeline_{};
     VkPipeline snow_pipeline_{};
     Buffer snow_vertices_;

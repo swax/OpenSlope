@@ -15,7 +15,8 @@ int main(int argc, char** argv) {
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
                          "<map-folder> | world <iso> <course> | surface-spray <iso> | collision-routes <iso> | "
                          "board-groups <iso> | adapt-riding-audio <map-folder> | adapt-course-ambience <map-folder> | "
-                         "polish-streamed-map <map-folder> | extract-avalanche-music <image> <map-folder>\n";
+                         "polish-streamed-map <map-folder> | extract-avalanche-music <image> <map-folder> | "
+                         "refresh-avalanche-lighting <image> <course> <map-folder>\n";
             return 1;
         }
         const std::string operation = argv[1];
@@ -58,6 +59,71 @@ int main(int argc, char** argv) {
             return 0;
         }
         const auto disc = openslope::open_disc(argv[2]);
+        if (operation == "refresh-avalanche-lighting" && argc == 5) {
+            using Json = nlohmann::json;
+            const auto root = std::filesystem::absolute(argv[4]);
+            std::ifstream origin_file(root / "Import.json");
+            const auto origin = Json::parse(origin_file);
+            if (origin.value("Game", "") != "1080-avalanche" || origin.value("Course", "") != argv[3])
+                throw std::runtime_error("Lighting refresh requires the matching imported Avalanche course");
+            const auto staging = root / (".openslope-lighting-" +
+                                         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            std::filesystem::create_directory(staging);
+            try {
+                for (const auto name : {"Patches.json", "Instances.json"})
+                    std::filesystem::copy_file(root / name, staging / name);
+                const auto lighting = openslope::import_detail::refresh_avalanche_lighting(
+                    openslope::logical_disc(disc), argv[3], staging, {});
+                const auto apply_lighting = [&](Json& environment) {
+                    environment["Lighting"] = lighting;
+                    environment["LightingPolicy"] =
+                        "source corner RGB and projected colour shadows; separate scenery/rider rigs";
+                    if (environment.contains("Deferred"))
+                        for (auto& item : environment["Deferred"])
+                            if (item == "source-shadow-map")
+                                item = "dynamic-shadow-casters";
+                };
+                auto updated = origin;
+                apply_lighting(updated["Environment"]);
+                std::ofstream report(staging / "Import.json");
+                report << updated.dump() << '\n';
+                report.close();
+                if (std::filesystem::is_regular_file(root / "AvalancheEnvironment.json")) {
+                    std::ifstream input(root / "AvalancheEnvironment.json");
+                    auto environment = Json::parse(input);
+                    apply_lighting(environment);
+                    std::ofstream file(staging / "AvalancheEnvironment.json");
+                    file << environment.dump() << '\n';
+                    if (!file)
+                        throw std::runtime_error("Cannot stage Avalanche environment metadata");
+                }
+                if (!report)
+                    throw std::runtime_error("Cannot stage Avalanche import metadata");
+                // Preserve the initial state once; repeated refreshes never replace the backup.
+                const auto backup = root / "LightingBackup-v1";
+                if (!std::filesystem::exists(backup)) {
+                    std::filesystem::create_directory(backup);
+                    for (const auto name : {"Patches.json", "Instances.json", "Lights.json", "Import.json",
+                                            "AvalancheEnvironment.json", "AvalancheLighting.json"})
+                        if (std::filesystem::is_regular_file(root / name))
+                            std::filesystem::copy_file(root / name, backup / name);
+                    if (std::filesystem::exists(root / "Lightmaps"))
+                        std::filesystem::copy(root / "Lightmaps", backup / "Lightmaps",
+                                              std::filesystem::copy_options::recursive);
+                }
+                std::filesystem::create_directories(root / "Lightmaps");
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(staging))
+                    if (entry.is_regular_file())
+                        std::filesystem::copy_file(entry.path(), root / entry.path().lexically_relative(staging),
+                                                   std::filesystem::copy_options::overwrite_existing);
+                std::filesystem::remove_all(staging);
+            } catch (...) {
+                std::filesystem::remove_all(staging);
+                throw;
+            }
+            std::cout << "Refreshed Avalanche lighting in " << root.string() << '\n';
+            return 0;
+        }
         if (operation == "extract-avalanche-music" && argc == 4) {
             const auto logical = openslope::logical_disc(disc);
             const auto songs = openslope::import_detail::write_avalanche_music(

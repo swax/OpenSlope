@@ -9,7 +9,7 @@ ordinary riding, recovery and restart. New imports also carry source background
 meshes, sky vertex colour/coverage, approximate lighting and adapted snow spray.
 
 The source catalogue and authoritative format findings are in
-[Trailmap 600–606](../../Trailmap/specs/600-avalanche-overview.md). Portable
+[Trailmap 600–607](../../Trailmap/specs/600-avalanche-overview.md). Portable
 course IDs prefix the uppercase source stem with `AVALANCHE_`, for example
 `AVALANCHE_CRS00_03`. These are package-derived identifiers, not recovered retail course titles.
 Discovery lists only supported packages present on the selected image. Each
@@ -163,11 +163,56 @@ from stretching texture edges across the sky. Generated atlas pages remain clamp
 Slopesmith's Play range gate measures prop geometry bounds rather than only the
 placement origin, so large scenery chunks remain visible beside a distant rider.
 
-The LIG records supply ambient colour and distant directional keys. Their combined
-energy is normalized to at most one per RGB channel. The importer writes a grey
-normal-based terrain bake in `Lightmaps`, coloured prop/rider keys in `Instances.json`,
-and directional/ambient records in `Lights.json`. This global approximation
-does not recover per-object illumination, source shadows or original render equations.
+Terrain now retains its four source corner colours and the base package's
+`SHADnn_dd.DAT` environment-shadow field. The field contains a world-space grid,
+projection rectangles and coloured texture tiles. Conversion multiplies the
+source corner colour by projected shadow RGB, sampled into 16-by-16 patch tiles
+in ordinary 128-by-128 `Lightmaps` pages. `LightmapEncoding: "rgb-multiply"`
+selects direct colour modulation in Native and both Slopesmith reference views.
+Maps without that field keep the existing residual-lightmap interpretation.
+This format extension is currently consumed by Native and Slopesmith; other
+map consumers need equivalent support before using these lightmaps.
+
+Main scenery and player LIG rigs remain separate. `Instances.json` carries the
+main object rig and an optional `RiderLighting` override for actor probes;
+`Lights.json` retains the scenery key directions and colours. Gains stay at their
+source values, with saturation after directional evaluation, instead of dimming
+every surface by total rig energy. The authored light axis is preserved through
+the same reflected world basis as terrain and scenery. A directional key does
+not establish the location of a visible sun disc.
+
+The layouts have distinct fixed sky art, baked colours, shadow fields and light
+rigs. No continuously advancing day/night clock or animated sun path is
+established. Point-light slots and dynamic-light art exist in the source, but
+activation, moving lights and dynamic shadow casters remain unresolved. Secondary
+object-rig ownership and the exact retail actor-shadow equation are also deferred. The
+current main-object rig is an approximation for objects that used another rig.
+Textured scenery vertex colour and per-material source lighting gates remain
+future work; the new coloured shadow bake currently covers curved terrain.
+`AvalancheLighting.json` records the recovered channels and explicit limits.
+See [Trailmap 607](../../Trailmap/specs/607-avalanche-lighting.md).
+
+Native's Original/Enhanced modes and Slopesmith also project rider and board positions onto the
+first terrain surface below them and sample its RGB lighting. That factor scales
+both ambient and directional parts of the player rig. This lets existing RGB
+imports shade dynamic bodies in caves and tree shade, while a roof above the
+player cannot supply the floor's sample. Native uses the curved terrain query;
+Slopesmith interpolates the rendered terrain colours through its existing BVH.
+This is an OpenSlope approximation of local actor shade, rather than a recovered
+retail actor equation or a new dynamic shadow caster. Legacy residual-lightmap
+maps retain their existing spatial instance probes. Already imported RGB maps
+need a player/page reload for this runtime improvement, without another disc import.
+
+Refresh lighting on an existing matching map without reimporting its soundtrack
+or geometry:
+
+```powershell
+./temp/native-core/Release/openslope_import.exe refresh-avalanche-lighting "discs/1080 Avalanche (USA).rvz" AVALANCHE_CRS00_00 Maps/AVALANCHE_CRS00_00
+```
+
+The command validates a staged lighting conversion first and preserves the
+initial lighting and metadata in `LightingBackup-v1`. Browser courses need a
+fresh import to obtain these channels.
 
 Course `PTCL` texture banks are retained under `Textures/Particles` for later
 emitter work. The shared `1080Data/Misc/spray.tpl` is preserved as
@@ -220,7 +265,7 @@ new music tree. Fresh course imports include the same conversion automatically.
 Only the USA disc ID is exposed. Primary images and polygon
 UVs, including curved-terrain corner mappings, are retained. Animated and camera-dependent material
 texture generation/transforms, full layered materials, world vertex lighting,
-source shadow maps and fog, retail starts, other collision primitive classes, sound effects and original audio scheduling,
+dynamic shadows and source fog, retail starts, other collision primitive classes, sound effects and original audio scheduling,
 event/scoring logic and animated hazards remain deferred. Snow/powder/rock
 surface assignments use explicit OpenSlope material-name policy. These maps
 run OpenSlope's riding physics.
@@ -233,6 +278,7 @@ disc image, extracted art or executable bytes are included in source or builds.
 ```powershell
 python Native/tests/avalanche_import_test.py temp/native-core/Release/openslope_import.exe temp/native-core/Release/openslope_avalanche_tests.exe
 python Native/tests/avalanche_music_test.py temp/native-core/Release/openslope_import.exe temp/native-core/Release/openslope_avalanche_tests.exe
+python Native/tests/avalanche_lighting_test.py temp/native-core/Release/openslope_import.exe
 python Native/tests/avalanche_desktop_test.py temp/native/Release/openslope_player.exe
 cd Slopesmith
 node --import tsx test/avalanche-browser.test.ts

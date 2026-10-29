@@ -440,7 +440,9 @@ def main():
             assert environment['Available'] and environment['SkyTriangles'] == 1 and environment['RidingSpraySheet']
             assert len(environment['ParticleTextures']) == 1
             assert (output/'Lights.json').is_file() and (output/'Lightmaps/0000.png').is_file()
-            assert 0 <= png_pixels(output/'Lightmaps/0000.png',128,128)[3] < 255
+            lighting = png_pixels(output/'Lightmaps/0000.png',128,128)
+            assert lighting[3] == 255 and lighting[0] < lighting[2], 'Source lighting must retain RGB instead of grey alpha'
+            assert terrain[0]['LightmapEncoding'] == 'rgb-multiply'
             atlas = png_pixels(output/'Skybox/Textures/ava-gradient-0.png',512,512)
             sky_mesh = next((output/'Skybox/Meshes').glob('*.obj')).read_text()
             assert 'v 0 -3000 500' in sky_mesh, 'Short3 and float3 sky positions must share the portable coordinate frame'

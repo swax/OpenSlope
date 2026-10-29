@@ -6,6 +6,7 @@
 #include "openslope/player.hpp"
 #include "openslope/props.hpp"
 #include "openslope/rails.hpp"
+#include "openslope/scene_lighting.hpp"
 #include "openslope/world.hpp"
 #include "openslope/world_logic.hpp"
 #include <algorithm>
@@ -38,6 +39,10 @@ int main(int argc, char** argv) {
             const auto rgb = patch.light_color(.25, .75);
             require(std::abs(rgb[0] - .2734375) < 1e-9 && std::abs(rgb[1] - .640625) < 1e-9 && rgb[2] == 1,
                     "Bicubic RGB must preserve source axis order and neutral scale");
+            const auto point = patch.evaluate(.25, .75) + openslope::Vec3{0, .5, 0};
+            const auto actor = openslope::SceneLighting::load(argv[1], &terrain).sample(point);
+            require(length(actor.ambient - openslope::Vec3{rgb[0] * .6, rgb[1] * .6, rgb[2] * .6}) < 1e-5,
+                    "Fresh Mad Trix imports must carry baked terrain colour into the fallback actor rig");
             const auto mesh = terrain.mesh(4);
             require(mesh.batches.size() == 1 && mesh.batches[0].vertex_lighting &&
                         mesh.vertices[8].r == float(rgb[0]) && mesh.vertices[8].g == float(rgb[1]),

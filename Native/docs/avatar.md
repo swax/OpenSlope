@@ -53,10 +53,16 @@ ambient colour and up to three directional keys; placement rotation converts the
 model-local keys to world space before the animated skin normals evaluate them.
 Colours retain the prop path's display-domain modulation and 256 normalization.
 Self-lit signs/bulbs and missing lighting payloads do not seed the field; genuinely
-dark records do. Maps without usable records retain the previous simple fill/key.
+dark records do. Maps without usable records retain the simple fill/key.
 
-This is a probe interpolation approximation, comparable to Unity's avatar probe
-path. Trailmap specifies the lighting records and their use for nearby dynamic
+Bodies and boards also sample the first terrain surface below their own position.
+Direct RGB lightmaps modulate the course rig; baked vertex colors, as in Mad Trix,
+modulate the fallback fill/key when actor probes are absent. This carries local
+shade and tint into Original and Enhanced presentation while keeping cave floors
+separate from their roofs. Slopesmith uses the same policy for its avatars and gear.
+
+Probe interpolation and ground projection are OpenSlope approximations. Trailmap
+specifies the lighting records and their use for nearby dynamic
 objects, but does not establish the original rider's exact probe selection.
 The static terrain/prop lighting is unchanged, and this does not add new realtime
 shadow rays. Controllers, labels and equipment outlines keep their existing

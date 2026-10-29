@@ -41,6 +41,14 @@ assert.equal(converted.length, 2, 'self-lit/missing records excluded and black r
 assert.deepEqual(converted[1].position, [-1, 0, -0]);
 close(converted[0].keys[0].direction[2], -1);
 close(converted[0].keys[0].color[0], 0.5);
+const actor = referenceRiderProbes([
+  donor({
+    lighting: { ambient: [256, 0, 0], keys: [] },
+    riderLighting: { ambient: [0, 128, 256], keys: [{ color: [128, 128, 128], direction: [0, 0, 1] }] },
+  }),
+]);
+assert.deepEqual(actor[0].ambient, [0, 0.5, 1], 'Actor rig must remain separate from scenery shading');
+assert.equal(actor[0].keys.length, 1);
 
 // Independent full-scan oracle: exercise all kd-tree branches and stacked ground.
 const many: RiderLightProbe[] = Array.from({ length: 257 }, (_, i) => ({

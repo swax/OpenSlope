@@ -74,7 +74,13 @@ import {
 import type { LightRig } from '../../core/reference/lights';
 import type { PlacedLight } from '../../core/lighting/sign-lights';
 import { propPreviewIntensity } from '../../core/lighting/prop-lights';
-import { referenceRiderProbes, RiderLightField, type RiderLight } from '../../core/lighting/rider-light';
+import {
+  sampleReferenceRiderLight,
+  referenceRiderProbes,
+  RiderLightField,
+  type RiderLight,
+} from '../../core/lighting/rider-light';
+import { referenceGroundLightSampler } from './mesh/reference-lighting';
 import { RIDER_LIGHT_SOURCE } from '../ride/rider-lighting';
 import { lightToWorkingSpace } from '../../core/lighting/color-space';
 import { memberWorldPos, type GroupDef } from '../../core/reference/groups';
@@ -539,6 +545,7 @@ export class Viewport {
   private propFill!: THREE.AmbientLight;
   private propKey!: THREE.DirectionalLight;
   private riderReferenceLight = new RiderLightField([]);
+  private referenceGroundLight: ((position: V3) => V3 | null) | null = null;
   private riderAuthoredLight: RiderLight | null = null;
   // The reference's flat Surface view must keep the same normal-direction warning as its textured tiles and
   // the authored terrain. This material is also the fallback while reference tile pages are still loading.
@@ -1123,7 +1130,15 @@ export class Viewport {
         !!this.refBounds &&
         (refDistance < ownDistance ||
           (refDistance === ownDistance && (this.rideCtl.playTarget === 'reference' || !this.ownBounds)));
-      const light = reference ? this.riderReferenceLight.sample([refPoint.x, refPoint.y, refPoint.z]) : ownLight;
+      const shade = reference ? this.referenceGroundLight?.([refPoint.x, refPoint.y, refPoint.z]) : null;
+      const light = reference
+        ? sampleReferenceRiderLight(
+            this.riderReferenceLight,
+            [refPoint.x, refPoint.y, refPoint.z],
+            shade ?? null,
+            this.refData?.lightingSource === 'vertex',
+          )
+        : ownLight;
       if (!light) return null;
       const matrix = reference ? this.refRoot.matrixWorld : this.worldRoot.matrixWorld;
       return {
@@ -4418,6 +4433,7 @@ export class Viewport {
     this.setReferenceAiPaths(null); // …and its AI-path network (likewise re-pushed by the session)
     this.refDecor.setPropRigLighting(null, 0); // …and the prop tint (rebuilt when the new level's rig loads)
     this.refData = data;
+    this.referenceGroundLight = null;
     this.sel.refHiddenQuads = [];
     this.sel.refControlCageEdges = [];
     this.sel.refControlCageQuads = [];
@@ -4490,6 +4506,7 @@ export class Viewport {
     this.applyHiddenReferenceIndex();
     // Build during loading so the first zoom or orbit does not pay for the reference's pick tree.
     pickTree(g);
+    this.referenceGroundLight = referenceGroundLightSampler(g, data);
     this.cageLayer.setRefDepthMask(g); // invisible depth stand-in for cage-only view
     this.refSpeedShadeLayer.geometryRebuilt(g); // the speed wash shares it too, from the level's start once pushed
     this.cageLayer.buildRefCage(data);

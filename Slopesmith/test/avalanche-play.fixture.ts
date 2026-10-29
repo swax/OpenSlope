@@ -13,6 +13,7 @@ import { localMapData } from '../src/app/public/local-map-data';
 import { buildLevelPropsUncached } from '../src/shared/map-props';
 import { decodeProps, type LevelProps } from '../src/core/reference/props';
 import { readNativeSky } from '../src/shared/map-sky';
+import { readLevelPatches } from '../src/shared/map-levels';
 import { createRangeCull } from '../src/app/viewport/scene/range-cull';
 import { RAW_TO_EDITOR } from '../src/app/viewport/constants';
 import { resolvePropDefaults } from '../src/core/props/defaults';
@@ -236,11 +237,17 @@ export async function verifyAvalancheCollision(level: string) {
 
 /** Exercise the actual browser terrain/contact model against the imported map. */
 export async function verifyAvalancheRide(level: string, patches: RawPatch[], paths: CoursePathFile) {
-  const reference = buildReferenceMesh(patches);
   const local = await localMapData([level]);
+  const loaded = await readLevelPatches(local.source, level);
+  if (
+    loaded.patches.length !== patches.length ||
+    loaded.patches.some((patch, index) => patch.LightmapEncoding !== patches[index].LightmapEncoding)
+  )
+    throw new Error('Public map reader lost imported lightmap encodings');
+  const reference = buildReferenceMesh(loaded.patches);
   const lightmapPages = new Set<number>();
   try {
-    await lightPublicReference(reference, patches, id => {
+    await lightPublicReference(reference, loaded.patches, id => {
       lightmapPages.add(id);
       const url = local.resolveAsset(`/api/lightmap?level=${level}&id=${id}`);
       if (!url.startsWith('blob:')) throw new Error(`Missing baked lightmap ${id}`);

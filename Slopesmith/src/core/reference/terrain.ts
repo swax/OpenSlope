@@ -34,6 +34,8 @@ export interface RawPatch {
   LightMapPoint?: number[];
   /** Which level lightmap (0..15) this patch reads. */
   LightmapID?: number;
+  /** Absent/gs uses residual lighting; rgb-multiply stores a direct RGB light factor. */
+  LightmapEncoding?: 'gs' | 'rgb-multiply';
   /** Optional 16 baked RGB multipliers in Points order; signed handles, display domain, neutral = 1. */
   LightColorPoints?: number[][];
 }
@@ -547,6 +549,8 @@ export function sunFromLights(file: LightsFile): RefSunSeed | null {
 }
 
 export interface ReferenceMesh {
+  /** Direct RGB factors can also shade dynamic bodies; GS residual pages use their instance probes. */
+  patchLightmapMultiply?: boolean[];
   /** Inactive reference variants retain stable cell slots but emit no drawable/contact triangles. */
   patchVisible?: boolean[];
   positions: Float32Array;
@@ -1126,6 +1130,9 @@ function createReferenceMeshBuilder(patches: RawPatch[], lightmaps?: LightmapSet
     };
     return {
       ...(patchVisible.some(visible => !visible) ? { patchVisible } : {}),
+      ...(patches.some(patch => patch.LightmapEncoding === 'rgb-multiply')
+        ? { patchLightmapMultiply: patches.map(patch => patch.LightmapEncoding === 'rgb-multiply') }
+        : {}),
       positions,
       normals,
       colors,

@@ -21,7 +21,7 @@ struct Player::SharedScene {
 
 const SceneLighting& Player::avatar_lighting() const {
     if (!scene_->avatar_lighting)
-        scene_->avatar_lighting = SceneLighting::load(terrain_.map_root());
+        scene_->avatar_lighting = SceneLighting::load(terrain_.map_root(), &terrain_);
     return *scene_->avatar_lighting;
 }
 

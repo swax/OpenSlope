@@ -925,6 +925,7 @@ int main(int argc, char** argv) {
             for (const auto name : {"handedness",
                                     "orientation",
                                     "lighting",
+                                    "rgb_lighting",
                                     "vertex_lighting",
                                     "repeat",
                                     "props",
@@ -1928,6 +1929,8 @@ int main(int argc, char** argv) {
                         pixel(*pixels, .85, .15, {40, 60, 230});
                         pixel(*pixels, .15, .85, {30, 220, 50});
                         pixel(*pixels, .85, .85, {230, 210, 190});
+                    } else if (std::string(name) == "rgb_lighting") {
+                        pixel(*pixels, .5, .5, {50, 80, 90});
                     } else if (std::string(name) == "vertex_lighting") {
                         pixel(*pixels, .15, .15, {50, 80, 180});
                         pixel(*pixels, .85, .85, {50, 80, 180});

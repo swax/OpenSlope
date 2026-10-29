@@ -25,6 +25,7 @@ struct Patch {
     int surface = 1, lightmap = 0;
     bool trick_only = false;
     bool active = true;
+    bool lightmap_multiply = false;
     Vec3 evaluate(double u, double v) const;
     std::array<Vec3, 2> tangents(double u, double v) const;
     Vec3 normal(double u, double v) const;
@@ -45,6 +46,7 @@ struct MeshBatch {
     std::string texture;
     int lightmap = -1;
     bool vertex_lighting = false;
+    bool lightmap_multiply = false;
 };
 
 struct TerrainRange {

@@ -459,29 +459,32 @@ std::vector<Transform> prop_detail::placements(const Json& rows) {
     return result;
 }
 
-SceneLighting SceneLighting::load(const std::filesystem::path& root) {
-    if (root.empty() || !std::filesystem::is_regular_file(root / "Instances.json"))
+SceneLighting SceneLighting::load(const std::filesystem::path& root, const Terrain* terrain) {
+    if (root.empty())
         return {};
-    const auto doc = json_file(asset(root, "Instances.json"));
+    const auto doc = std::filesystem::is_regular_file(root / "Instances.json")
+                         ? json_file(asset(root, "Instances.json"))
+                         : Json{{"Instances", Json::array()}};
     const auto& rows = doc.at("Instances");
     const auto placements = prop_detail::placements(rows);
     std::vector<LightProbe> probes;
     std::set<std::tuple<long long, long long, long long>> seen;
     for (std::size_t i = 0; i < rows.size(); ++i) {
         const auto& row = rows[i];
-        if (!row.contains("AmbentLightColour"))
+        const auto& lighting = row.contains("RiderLighting") ? row.at("RiderLighting") : row;
+        if (!lighting.contains("AmbentLightColour"))
             continue;
         const auto& matrix = placements[i];
         LightProbe probe;
         probe.position = {matrix[12], matrix[13], matrix[14]};
-        probe.ambient = vector3(row.at("AmbentLightColour")) / 256.;
+        probe.ambient = vector3(lighting.at("AmbentLightColour")) / 256.;
         bool has_key = false;
         for (unsigned k = 0; k < 3; ++k) {
             const auto colour = "LightColour" + std::to_string(k + 1),
                        direction = "LightVector" + std::to_string(k + 1);
-            if (!row.contains(colour) || !row.contains(direction))
+            if (!lighting.contains(colour) || !lighting.contains(direction))
                 continue;
-            const auto c = vector3(row.at(colour)) / 256., raw = vector3(row.at(direction));
+            const auto c = vector3(lighting.at(colour)) / 256., raw = vector3(lighting.at(direction));
             const auto local = axes(raw);
             const auto a = normalized(Vec3{matrix[0], matrix[1], matrix[2]}),
                        b = normalized(Vec3{matrix[4], matrix[5], matrix[6]}),
@@ -501,7 +504,10 @@ SceneLighting SceneLighting::load(const std::filesystem::path& root) {
         if (seen.insert(cell).second)
             probes.push_back(probe);
     }
-    return SceneLighting(std::move(probes));
+    auto attenuation = terrain ? terrain_attenuation(*terrain, probes.empty()) : std::function<Vec3(Vec3)>{};
+    if (!terrain && std::filesystem::is_regular_file(root / "Patches.json"))
+        attenuation = terrain_attenuation(Terrain::load(root), probes.empty());
+    return SceneLighting(std::move(probes), std::move(attenuation));
 }
 
 std::vector<std::vector<PropObjectLayout>> prop_layout(const std::filesystem::path& root,

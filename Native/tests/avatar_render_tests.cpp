@@ -276,6 +276,20 @@ int main(int argc, char** argv) {
             const auto dim = board_light("board-shaded", shade, {0, 1, 0});
             check(length(dim / .2 - full) < length(full) * .025,
                   "board art receives the avatar's display-domain ambient light");
+            SceneLighting ground_shade({LightProbe{{}, {1, 1, 1}}},
+                                       [](Vec3 p) { return p.x > 15 ? Vec3{.2, .2, .2} : Vec3{1, 1, 1}; });
+            const auto shaded_board = board_light("board-rgb-ground-shade", ground_shade, {0, 1, 0}, {30, 3, 0});
+            check(length(shaded_board / .2 - full) < length(full) * .025,
+                  "terrain attenuation reaches actual board art at its own position");
+            if (std::filesystem::exists(root / "vertex_actor_lighting/Patches.json")) {
+                const auto baked = SceneLighting::load(root / "vertex_actor_lighting");
+                const auto coloured = board_light("board-vertex-ground-tint", baked, {0, 1, 0});
+                const auto fill = SceneLight::fallback().evaluate({0, 1, 0}).x;
+                check(std::abs(coloured.x / full.x - fill * .125) < .025 &&
+                          std::abs(coloured.y / full.y - fill * .25) < .025 &&
+                          std::abs(coloured.z / full.z - fill * .5) < .025,
+                      "baked vertex terrain tint reaches actual board art without actor probes");
+            }
             LightProbe key{{}, {.1, .2, .3}};
             key.keys[0] = {{0, 1, 0}, {.7, 0, 0}};
             SceneLighting directional({key});
@@ -365,6 +379,39 @@ int main(int argc, char** argv) {
             check(changed > 500, "scene lighting actually changes visible avatar pixels in the original pipeline");
             check(green > changed / 2, "course probe colour reaches the visible body");
             check(differences < 100, "scene-lit avatar agrees across UNORM and sRGB targets");
+            SceneLighting cave({LightProbe{{}, {.1, .6, .1}}}, [](Vec3) { return Vec3{.2, .2, .2}; });
+            const auto cave_body = avatar.mesh(avatar_pose(player), false, false, {}, {}, &cave);
+            a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {}, cave_body);
+            a.capture(0, root / "scene-rgb-shaded-avatar.ppm");
+            const auto dimmed = pixels(root / "scene-rgb-shaded-avatar.ppm");
+            double full_green = 0, shade_green = 0;
+            for (std::size_t i = 0; i < lit.size(); i += 3)
+                if ((original[i] != lit[i] || original[i + 1] != lit[i + 1] || original[i + 2] != lit[i + 2]) &&
+                    lit[i + 1] > lit[i] * 2 && lit[i + 1] > lit[i + 2] * 2) {
+                    full_green += lit[i + 1];
+                    shade_green += dimmed[i + 1];
+                }
+            check(shade_green < full_green * .25 && shade_green > full_green * .15,
+                  "terrain attenuation darkens actual avatar pixels through the existing course rig");
+            if (std::filesystem::exists(root / "vertex_actor_lighting/Patches.json")) {
+                const auto baked = SceneLighting::load(root / "vertex_actor_lighting");
+                const auto coloured_body = avatar.mesh(avatar_pose(player), false, false, {}, {}, &baked);
+                a.render(0, camera, board, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, {}, {}, eye, {}, {}, {},
+                         coloured_body);
+                a.capture(0, root / "scene-vertex-tinted-avatar.ppm");
+                const auto coloured = pixels(root / "scene-vertex-tinted-avatar.ppm");
+                Vec3 full_sum, shade_sum;
+                for (std::size_t i = 0; i < original.size(); i += 3)
+                    if (original[i] != coloured[i] || original[i + 1] != coloured[i + 1] ||
+                        original[i + 2] != coloured[i + 2]) {
+                        full_sum += Vec3{double(original[i]), double(original[i + 1]), double(original[i + 2])};
+                        shade_sum += Vec3{double(coloured[i]), double(coloured[i + 1]), double(coloured[i + 2])};
+                    }
+                check(full_sum.x > 1000 && std::abs(shade_sum.x / full_sum.x - .125) < .025 &&
+                          std::abs(shade_sum.y / full_sum.y - .25) < .025 &&
+                          std::abs(shade_sum.z / full_sum.z - .5) < .025,
+                      "baked vertex terrain tint reaches actual avatar pixels without actor probes");
+            }
             a.lighting(LightingMode::Enhanced);
             b.lighting(LightingMode::Enhanced);
             const auto enhanced_unlit = avatar.mesh(avatar_pose(player), false, false);
