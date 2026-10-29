@@ -190,7 +190,7 @@ import { clearGlyphGroup, addCageLines } from './shared/overlays';
 import { createLegends, type Legends } from './shared/legends';
 import { createSpeedShade, type SpeedShade } from './mesh/speed-shade';
 import { courseSpeedLines, referenceSpeedLines } from '../ride/mountain-speed';
-import { createReferenceDecor, type ReferenceDecor } from './scene/reference-decor';
+import { createReferenceDecor, type ReferenceDecor, type ReferencePropBuildProgress } from './scene/reference-decor';
 import {
   createReferenceEffectsLayer,
   type ReferenceEffectsLayer,
@@ -4622,14 +4622,18 @@ export class Viewport {
     )
       this.referenceEffects.beginPlay('reference', this.raceMode);
   }
-  async setReferencePropsProgressive(props: LevelProps | null, yieldControl: () => Promise<void>) {
+  async setReferencePropsProgressive(
+    props: LevelProps | null,
+    yieldControl: () => Promise<void>,
+    onProgress?: (progress: ReferencePropBuildProgress) => void,
+  ) {
     this.riderReferenceLight = new RiderLightField(referenceRiderProbes(props?.instances ?? []));
     const level = props?.level ?? 'cleared';
     this.applyReferencePropAudio(props);
     await runDiagnosticPhaseAsync(
       'props',
       `${level}:scene-build`,
-      () => this.refDecor.setPropsProgressive(props, yieldControl),
+      () => this.refDecor.setPropsProgressive(props, yieldControl, 10, onProgress),
       props ? `${props.models.length} models · ${props.instances.length} instances` : undefined,
     );
     if (

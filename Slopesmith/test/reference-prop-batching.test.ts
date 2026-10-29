@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { LevelProps } from '../src/core/reference/props';
 import { createScenePicking } from '../src/app/viewport/input/scene-picking';
 import { createPropAssets } from '../src/app/viewport/scene/prop-assets';
-import { createReferenceDecor } from '../src/app/viewport/scene/reference-decor';
+import { createReferenceDecor, type ReferencePropBuildProgress } from '../src/app/viewport/scene/reference-decor';
 import { MergedStaticPropMesh, referencePropSlot } from '../src/app/viewport/scene/reference-prop-mesh';
 import { check, failures } from './check';
 
@@ -338,12 +338,14 @@ const progressive = createReferenceDecor(
 progressive.setEffectsData(effectsData);
 progressive.setEffectPropIndices([903]);
 let progressiveYields = 0;
+const buildProgress: ReferencePropBuildProgress[] = [];
 await progressive.setPropsProgressive(
   fixture,
   async () => {
     progressiveYields++;
   },
   0,
+  progress => buildProgress.push(progress),
 );
 progressive.showProps(true);
 const progressiveStats = progressive.renderStats();
@@ -356,6 +358,21 @@ check(
     progressiveStats.isolatedSlots === originalStats.isolatedSlots,
   'progressive prop construction yields inside large material batches and preserves the synchronous draw census',
 );
+for (const phase of ['models', 'placements'] as const) {
+  const steps = buildProgress.filter(step => step.phase === phase);
+  check(
+    steps.length > 1 &&
+      steps.every(
+        (step, index) =>
+          step.phase !== 'textures' &&
+          step.completed <= step.total &&
+          (index === 0 || (steps[index - 1] as typeof step).completed <= step.completed),
+      ),
+    `${phase} progress advances through actual build work`,
+  );
+  const last = steps.at(-1);
+  check(last?.phase !== 'textures' && last?.completed === last?.total, `${phase} progress reaches its total`);
+}
 
 if (failures) process.exitCode = 1;
 else console.log('REFERENCE PROP BATCHING TESTS PASSED');

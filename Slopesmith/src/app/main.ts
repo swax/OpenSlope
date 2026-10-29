@@ -1705,6 +1705,7 @@ const reference = createReference({
   focusActive,
   refreshLighting: () => viewLighting.refresh(),
   ensurePropLevel: propOps.ensurePropLevel,
+  prefetchPropLevel: propOps.prefetchPropLevel,
   buildFromReferenceCourseDialog,
   setupRefSky: setupRefSkyUi,
   getActiveGodRayWorld: skybox.getActiveGodRayWorld,

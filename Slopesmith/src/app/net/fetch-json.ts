@@ -3,6 +3,53 @@ import { clientFetch } from './client';
 import { renderRequest } from '../state/capture-progress';
 import { resolveAssetUrl } from './asset-paths';
 
+export type DownloadProgress = { receivedBytes: number; totalBytes?: number };
+
+/** Download without parsing so large prop payloads can arrive while terrain is being built. Fetch exposes
+ * decompressed chunks; Content-Length is a usable total only for an uncompressed response. */
+export async function fetchText(
+  input: RequestInfo | URL,
+  onProgress: (progress: DownloadProgress) => void,
+): Promise<string> {
+  const trace = beginRequestDiagnostic(input);
+  const finishRenderRequest = renderRequest(input);
+  try {
+    const response = await clientFetch(typeof input === 'string' ? resolveAssetUrl(input) : input);
+    trace.headers(response);
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
+    const encoding = response.headers.get('content-encoding');
+    const length = Number(response.headers.get('content-length'));
+    const totalBytes =
+      (!encoding || encoding === 'identity') && Number.isFinite(length) && length > 0 ? length : undefined;
+    let receivedBytes = 0;
+    onProgress({ receivedBytes, totalBytes });
+    const reader = response.body?.getReader();
+    const parts: string[] = [];
+    if (reader) {
+      const decoder = new TextDecoder();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(decoder.decode(value, { stream: true }));
+          receivedBytes += value.byteLength;
+          onProgress({ receivedBytes, totalBytes });
+        }
+        parts.push(decoder.decode());
+      } finally {
+        reader.releaseLock();
+      }
+    }
+    trace.complete();
+    finishRenderRequest();
+    return parts.join('');
+  } catch (error) {
+    trace.fail(error);
+    finishRenderRequest(error);
+    throw error;
+  }
+}
+
 /** Fetch and decode JSON, rejecting HTTP failures before callers consume a misleading error payload. */
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const trace = beginRequestDiagnostic(input, init);

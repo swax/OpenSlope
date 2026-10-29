@@ -92,6 +92,9 @@ import {
 import { createReferenceCourseDecor } from './reference-decor-course';
 import { hiddenMatrix, hierarchyComboPose, hierarchyPose } from './reference-decor-pose';
 
+export type ReferencePropBuildProgress =
+  { phase: 'textures' } | { phase: 'models' | 'placements' | 'picking'; completed: number; total: number };
+
 /**
  * The loaded reference world's DECORATIONS — everything placed IN the reference level, parented under
  * `stage.refRoot` so it rides the reference terrain's chirality flip + placement offset: its scenery props and
@@ -327,7 +330,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
    * refTrickModelsGroup, the scenery (trees / boulders / banners / fences / …) to refPropsGroup, so the Props
    * and Tricks view filters govern their own halves. Each group's visibility follows its last show* toggle.
    */
-  function* setPropsSteps(props: LevelProps | null, generation: number, deferMergedBounds = false): Generator<void> {
+  function* setPropsSteps(
+    props: LevelProps | null,
+    generation: number,
+    deferMergedBounds = false,
+  ): Generator<ReferencePropBuildProgress | undefined> {
     const replacingLevel = props !== refPropData;
     const hadPropSelection = refPropHighlightOwner === 'props';
     clearSourceSelection();
@@ -443,6 +450,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       batch.expandedVertices += item.geometry.getAttribute('position').count * item.instances.length;
       batch.expandedIndices += (item.geometry.getIndex()?.count ?? 0) * item.instances.length;
     };
+    let completedModels = 0;
+    const totalModels = [...byModel.keys()].filter(id => modelById.has(id)).length;
     for (const [id, insts] of byModel) {
       const model = modelById.get(id);
       if (!model) continue;
@@ -834,9 +843,11 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           refEffectPropMeshes.push(im);
         }
       }
-      yield;
+      yield { phase: 'models', completed: ++completedModels, total: totalModels };
       if (generation !== propsBuildGeneration) return;
     }
+    const totalPlacements = [...pendingStaticBatches.values()].reduce((sum, batch) => sum + batch.instances, 0);
+    let completedPlacements = 0;
     for (const batch of pendingStaticBatches.values()) {
       if (!batch.instances || !batch.vertices || !batch.indices) continue;
       // Transparent batches keep BatchedMesh's per-object depth sort even on the extension fallback. Opaque
@@ -917,8 +928,9 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
           else runtimeEntries.set(inst.sourceIndex, [entry]);
           mesh.setMatrixAt(instanceId, displayMatrix(entry, base));
           if (nativeLighting) mesh.setColorAt(instanceId, propLightIndexColor(inst.sourceIndex));
+          completedPlacements++;
           if (++installedInstances % 16 === 0) {
-            yield;
+            yield { phase: 'placements', completed: completedPlacements, total: totalPlacements };
             if (generation !== propsBuildGeneration) return;
           }
         }
@@ -928,7 +940,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
       else mesh.computeBoundingSphere();
       batch.target.add(mesh);
       refPropMeshes.push(mesh);
-      yield;
+      yield { phase: 'placements', completed: completedPlacements, total: totalPlacements };
       if (generation !== propsBuildGeneration) return;
     }
     const census = (group: THREE.Group): PropRenderStats => {
@@ -987,7 +999,12 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
   /** Build large reference prop sets without holding the main thread through every model/material batch.
    * A later set/clear invalidates this generator; that newer build owns cleanup and the old one stops at its
    * next model boundary. */
-  async function setPropsProgressive(props: LevelProps | null, yieldControl: () => Promise<void>, budgetMs = 10) {
+  async function setPropsProgressive(
+    props: LevelProps | null,
+    yieldControl: () => Promise<void>,
+    budgetMs = 10,
+    onProgress?: (progress: ReferencePropBuildProgress) => void,
+  ) {
     // Claimed BEFORE the wait below, exactly as it was before there was a wait: a clear or a newer level
     // arriving mid-pack must win, and it can only do that if this build has already staked a generation to be
     // superseded. The visible cost is that the OUTGOING level's props stay up for the length of the wait
@@ -996,13 +1013,16 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     // The bank has to exist BEFORE any mesh does: which pages share an array is what decides which submeshes
     // can share a BatchedMesh, and that partition cannot be revised without rebuilding every batch. The wait
     // is bounded inside buildPropArrayBank — a page that never answers costs the level its bank, not its props.
-    if (props) await assets.propTex.buildPropArrayBank(props.level, propTexturePages(props));
-    else assets.propTex.disposePropArrayBank();
+    if (props) {
+      onProgress?.({ phase: 'textures' });
+      await assets.propTex.buildPropArrayBank(props.level, propTexturePages(props));
+    } else assets.propTex.disposePropArrayBank();
     if (generation !== propsBuildGeneration) return;
     const budget = Math.max(0, budgetMs);
     let chunkStarted = globalThis.performance?.now?.() ?? Date.now();
-    for (const _ of setPropsSteps(props, generation, true)) {
+    for (const progress of setPropsSteps(props, generation, true)) {
       if (generation !== propsBuildGeneration) return;
+      if (progress) onProgress?.(progress);
       const now = globalThis.performance?.now?.() ?? Date.now();
       if (now - chunkStarted >= budget) {
         await yieldControl();
@@ -1021,6 +1041,8 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
     if (!merged.length) return;
     const worker = new GenerateMeshBVHWorker();
     try {
+      let completed = 0;
+      onProgress?.({ phase: 'picking', completed, total: merged.length });
       for (const mesh of merged) {
         await yieldControl();
         if (generation !== propsBuildGeneration) return;
@@ -1039,6 +1061,7 @@ export function createReferenceDecor(stage: Stage, assets: PropAssets) {
         }
         if (generation !== propsBuildGeneration) return;
         mesh.installBoundsTree(serialized);
+        onProgress?.({ phase: 'picking', completed: ++completed, total: merged.length });
       }
     } catch (error) {
       // Rendering is complete without a tree and acceleratedRaycast has a correct built-in fallback. A worker

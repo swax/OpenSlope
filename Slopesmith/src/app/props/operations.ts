@@ -26,7 +26,7 @@ import {
   effectAttachments,
   nextPlacedPropId,
 } from '../../core/effects/authoring';
-import { decodeProps, type LevelProps, type PropsPayload } from '../../core/reference/props';
+import type { LevelProps } from '../../core/reference/props';
 import type { UvScrollEffect } from '../../core/effects/world-effects';
 import { authoredSignLights, authoredFreeLights, type LocalBox } from '../../core/lighting/sign-lights';
 import { authoredGroupLights, type GroupDef, type GroupsPayload } from '../../core/reference/groups';
@@ -44,7 +44,7 @@ import type { PropPreview } from './preview';
 import { dropScreensForProp } from './screens';
 import { toast } from '../ui/components/toast';
 import { fetchJson, postJson } from '../net/fetch-json';
-import { runDiagnosticPhase } from '../net/diagnostics';
+import { createPropLevelLoader, type PropLoadOptions } from './level-loader';
 
 /**
  * Placed-prop ops (docs/012 + 015): the prop domain around a placement — the model geometry caches (base
@@ -82,7 +82,16 @@ export function createPropOps(deps: PropOpsDeps) {
 
   const groupDefsByLevel = new Map<string, Promise<GroupDef[]>>(); // /api/groups fetches, one per level (docs/015)
   const loadedGroupLevels = new Set<string>(); // includes successfully loaded empty group catalogues
-  const propLoadsByLevel = new Map<string, Promise<LevelProps>>(); // in-flight /api/props fetches, one per level
+  const propLoader = createPropLevelLoader({
+    levels: propLevels,
+    url: level =>
+      level === IMPORTED_PROP_LEVEL ? '/api/custom-props' : `/api/props?level=${encodeURIComponent(level)}`,
+    register: (props, cached) => {
+      // Re-imports keep their model numbers while replacing geometry; extracted levels register once.
+      if (props.level === IMPORTED_PROP_LEVEL && !cached) viewport.syncLiveModels(props);
+      else viewport.registerPropModels(props);
+    },
+  });
 
   /** Short prop label: drop the "Mdl_" prefix and the trailing "_<n>" instance suffix (matches the library). */
   const shortPropName = (n: string) => n.replace(/^Mdl_/, '').replace(/_\d+$/, '');
@@ -337,59 +346,13 @@ export function createPropOps(deps: PropOpsDeps) {
    * viewport so placements of that level can render. Shared by the Prop Library, prop placement, and the
    * reference props view — so a level's few-MB payload is fetched at most once per session.
    */
-  function ensurePropLevel(level: string): Promise<LevelProps> {
+  function ensurePropLevel(level: string, options?: PropLoadOptions): Promise<LevelProps> {
     if (level === AUTHORED_MODEL_LEVEL) return Promise.resolve(syncAuthoredModelLevel()); // live in-doc definitions, never fetched
-    const cached = propLevels.get(level);
-    if (cached) {
-      runDiagnosticPhase(
-        'props',
-        `${level}:register-models-cached`,
-        () => viewport.registerPropModels(cached),
-        `${cached.models.length} models · ${cached.instances.length} instances`,
-      );
-      return Promise.resolve(cached);
-    }
-    let pending = propLoadsByLevel.get(level);
-    if (!pending) {
-      // imported GLB props are a whole catalogue rather than one level's table, so they answer on their own
-      // route; everything downstream of decodeProps is identical (docs/032)
-      const imported = level === IMPORTED_PROP_LEVEL;
-      pending = (async () => {
-        const payload = await fetchJson<PropsPayload>(
-          imported ? '/api/custom-props' : `/api/props?level=${encodeURIComponent(level)}`,
-        );
-        if (payload.error) throw new Error(payload.error);
-        const lp = runDiagnosticPhase(
-          'props',
-          `${level}:decode`,
-          () => decodeProps(payload),
-          `${payload.models.length} models · ${payload.instances.length} instances`,
-        );
-        propLevels.set(level, lp);
-        // a re-imported model keeps its number but changes its geometry, so the imported catalogue
-        // replace-registers (like authored models) rather than register-once
-        runDiagnosticPhase(
-          'props',
-          `${level}:register-models`,
-          () => {
-            if (imported) viewport.syncLiveModels(lp);
-            else viewport.registerPropModels(lp);
-          },
-          `${lp.models.length} models · ${lp.instances.length} instances`,
-        );
-        return lp;
-      })();
-      propLoadsByLevel.set(level, pending);
-      void pending.then(
-        () => {
-          if (propLoadsByLevel.get(level) === pending) propLoadsByLevel.delete(level);
-        },
-        () => {
-          if (propLoadsByLevel.get(level) === pending) propLoadsByLevel.delete(level);
-        }, // failures retry next time
-      );
-    }
-    return pending;
+    return propLoader.ensure(level, options);
+  }
+
+  function prefetchPropLevel(level: string): void {
+    if (level !== AUTHORED_MODEL_LEVEL) propLoader.prefetch(level);
   }
 
   /** Re-bake the authored models' pseudo-level from the live document: the library payload, the seating
@@ -411,7 +374,7 @@ export function createPropOps(deps: PropOpsDeps) {
    *  to go with it — otherwise the model's placements keep seating and boxing against the mesh it replaced. */
   async function reloadImportedProps(): Promise<LevelProps> {
     propLevels.delete(IMPORTED_PROP_LEVEL);
-    propLoadsByLevel.delete(IMPORTED_PROP_LEVEL);
+    propLoader.invalidate(IMPORTED_PROP_LEVEL);
     for (const key of [...propBaseOffsetCache.keys()])
       if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) propBaseOffsetCache.delete(key);
     for (const key of [...propBoxCache.keys()]) if (key.startsWith(`${IMPORTED_PROP_LEVEL}:`)) propBoxCache.delete(key);
@@ -429,7 +392,7 @@ export function createPropOps(deps: PropOpsDeps) {
     const levels = new Set(modelProps.map(p => p.level));
     const defLevels = new Set(modelProps.filter(p => p.group).map(p => p.level));
     const loads = [
-      ...[...levels].filter(l => l !== AUTHORED_MODEL_LEVEL && !propLevels.has(l)).map(ensurePropLevel),
+      ...[...levels].filter(l => l !== AUTHORED_MODEL_LEVEL && !propLevels.has(l)).map(level => ensurePropLevel(level)),
       ...[...defLevels].filter(l => !loadedGroupLevels.has(l)).map(ensureGroupDefs),
     ];
     if (!loads.length) return false;
@@ -957,6 +920,7 @@ export function createPropOps(deps: PropOpsDeps) {
     ensureGroupDefs,
     placedBaseOffset,
     ensurePropLevel,
+    prefetchPropLevel,
     syncPropGeom,
     syncAuthoredModelLevel,
     reloadImportedProps,

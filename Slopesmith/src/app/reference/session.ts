@@ -69,6 +69,8 @@ import { authoredReferenceMesh } from './authored';
 import type { LoadStatus } from '../ui/components/load-status';
 import { godRaysForSkyWorld, type SkyPreviewTarget } from '../sky/preview';
 import { registerReferenceTextureRevisions } from '../net/asset-paths';
+import type { PropLoadOptions } from '../props/level-loader';
+import { referencePropBuildStatus, referencePropLoadStatus } from './prop-progress';
 
 /**
  * The reference-world subsystem: loading an extracted level's terrain to study (read-only), the lighting
@@ -122,7 +124,8 @@ export type ReferenceDeps = {
   loadStatus: LoadStatus;
   focusActive: () => void;
   refreshLighting: () => void; // repaint the top-bar lighting pills (sources / prop lights / sun)
-  ensurePropLevel: (level: string) => Promise<LevelProps>; // shared prop-payload fetch + geometry registration (host-owned)
+  ensurePropLevel: (level: string, options?: PropLoadOptions) => Promise<LevelProps>;
+  prefetchPropLevel: (level: string) => void; // receive bytes alongside terrain; defer decode/registration
   buildFromReferenceCourseDialog: () => void; // shared terrain dialog, substituting the reference course
   setupRefSky: (level: string | null) => void; // rebuild Scene ▸ Skybox ▸ Reference for the loaded level
   getActiveGodRayWorld: () => SkyPreviewTarget | null; // Scene glare preview or active Test ride target
@@ -155,6 +158,7 @@ export function createReference(deps: ReferenceDeps) {
     focusActive,
     refreshLighting,
     ensurePropLevel,
+    prefetchPropLevel,
     buildFromReferenceCourseDialog,
     setupRefSky,
     getActiveGodRayWorld,
@@ -916,21 +920,19 @@ export function createReference(deps: ReferenceDeps) {
       sharedStatusToken ??
       loadStatus.begin({
         title: `Loading ${level}`,
-        label: 'Loading reference props',
-        detail: 'Waiting for model geometry and collision data',
-        progress: 82,
+        ...referencePropLoadStatus({ phase: 'download', receivedBytes: 0 }),
       });
     const ownsStatus = sharedStatusToken === null;
     const promise = (async () => {
       const trace = beginDiagnosticPhase('props', `${level}:load-total`);
       try {
-        loadStatus.update(statusToken, {
-          progress: 82,
-          label: 'Loading reference props',
-          detail: 'Waiting for model geometry and collision data',
+        const lp = await ensurePropLevel(level, {
+          afterPaint: loadStatus.afterPaint,
+          onProgress: progress => {
+            if (refOwner === owner && owner.generation === refGeneration)
+              loadStatus.update(statusToken, referencePropLoadStatus(progress));
+          },
         });
-        await loadStatus.afterPaint();
-        const lp = await ensurePropLevel(level);
         if (refOwner !== owner) {
           trace.complete('cancelled after request');
           if (ownsStatus) loadStatus.cancel(statusToken);
@@ -943,7 +945,10 @@ export function createReference(deps: ReferenceDeps) {
         });
         await loadStatus.afterPaint();
         refProps = lp;
-        await viewport.setReferencePropsProgressive(lp, loadStatus.yieldToBrowser);
+        await viewport.setReferencePropsProgressive(lp, loadStatus.yieldToBrowser, progress => {
+          if (refOwner === owner && owner.generation === refGeneration)
+            loadStatus.update(statusToken, referencePropBuildStatus(progress));
+        });
         if (refOwner !== owner) {
           trace.complete('cancelled during scene build');
           if (ownsStatus) loadStatus.cancel(statusToken);
@@ -1153,6 +1158,9 @@ export function createReference(deps: ReferenceDeps) {
     refLoadStatusToken = statusToken;
     log(`loading ${name} terrain...`);
     try {
+      // Only request layers that are wanted. Receiving text overlaps terrain's network/build work; decoding
+      // and registering it still wait until ensureRefProps, after the useful terrain paint and Effects join.
+      if (store.propsVisible || store.tricksVisible || store.lightRigVisible) prefetchPropLevel(name);
       const body = await fetchJson<
         Record<string, unknown> & {
           error?: string;

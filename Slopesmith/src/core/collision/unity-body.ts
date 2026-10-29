@@ -1,4 +1,5 @@
 import type { V3 } from '../doc/types';
+import { greedyOccupancyBoxes } from './occupancy-boxes';
 
 /** One level in the native mode-3 occupancy tree. */
 export interface PhysicsTreeLevel {
@@ -404,77 +405,7 @@ function greedyCapsules(body: DecodedPhysicsBody, cap = 24, maxPerpCells = 1.25)
 }
 
 function greedyBoxes(body: DecodedPhysicsBody, cells: ReadonlySet<number>, cap = 16, minNewCells = 3) {
-  const boxes: BodyBox[] = [];
-  const covered = new Set<number>();
-  const axisValues = (axis: number) =>
-    [...new Set([...cells].map(key => cellOf(body.gridN, key)[axis]))].sort((a, b) => a - b);
-  const xs = axisValues(0),
-    ys = axisValues(1),
-    zs = axisValues(2);
-  if (!xs.length) return boxes;
-  const pn = body.gridN + 1;
-  const at = (x: number, y: number, z: number) => (x * pn + y) * pn + z;
-  const summedVolume = (source: ReadonlySet<number>) => {
-    const prefix = new Uint16Array(pn * pn * pn);
-    for (let x = 1; x < pn; x++)
-      for (let y = 1; y < pn; y++)
-        for (let z = 1; z < pn; z++) {
-          const occupied = source.has(keyOf(body.gridN, x - 1, y - 1, z - 1)) ? 1 : 0;
-          prefix[at(x, y, z)] =
-            occupied +
-            prefix[at(x - 1, y, z)] +
-            prefix[at(x, y - 1, z)] +
-            prefix[at(x, y, z - 1)] -
-            prefix[at(x - 1, y - 1, z)] -
-            prefix[at(x - 1, y, z - 1)] -
-            prefix[at(x, y - 1, z - 1)] +
-            prefix[at(x - 1, y - 1, z - 1)];
-        }
-    return prefix;
-  };
-  const cellsPrefix = summedVolume(cells);
-  const count = (prefix: Uint16Array, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) => {
-    x1++;
-    y1++;
-    z1++;
-    return (
-      prefix[at(x1, y1, z1)] -
-      prefix[at(x0, y1, z1)] -
-      prefix[at(x1, y0, z1)] -
-      prefix[at(x1, y1, z0)] +
-      prefix[at(x0, y0, z1)] +
-      prefix[at(x0, y1, z0)] +
-      prefix[at(x1, y0, z0)] -
-      prefix[at(x0, y0, z0)]
-    );
-  };
-  while (boxes.length < cap) {
-    let bestNew = minNewCells - 1;
-    let best: [number, number, number, number, number, number] | null = null;
-    const coveredPrefix = summedVolume(covered);
-    for (const x0 of xs)
-      for (const x1 of xs) {
-        if (x1 < x0) continue;
-        for (const y0 of ys)
-          for (const y1 of ys) {
-            if (y1 < y0) continue;
-            for (const z0 of zs)
-              for (const z1 of zs) {
-                if (z1 < z0) continue;
-                const volume = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
-                if (volume <= bestNew || count(cellsPrefix, x0, x1, y0, y1, z0, z1) !== volume) continue;
-                const fresh = volume - count(coveredPrefix, x0, x1, y0, y1, z0, z1);
-                if (fresh > bestNew) {
-                  bestNew = fresh;
-                  best = [x0, x1, y0, y1, z0, z1];
-                }
-              }
-          }
-      }
-    if (!best) break;
-    const [x0, x1, y0, y1, z0, z1] = best;
-    for (let x = x0; x <= x1; x++)
-      for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) covered.add(keyOf(body.gridN, x, y, z));
+  return greedyOccupancyBoxes(body.gridN, cells, cap, minNewCells).map(([x0, x1, y0, y1, z0, z1]): BodyBox => {
     const min: V3 = [
       body.root[0] + body.axisPos[x0] - body.leafRadius,
       body.root[1] + body.axisPos[y0] - body.leafRadius,
@@ -485,9 +416,8 @@ function greedyBoxes(body: DecodedPhysicsBody, cells: ReadonlySet<number>, cap =
       body.root[1] + body.axisPos[y1] + body.leafRadius,
       body.root[2] + body.axisPos[z1] + body.leafRadius,
     ];
-    boxes.push({ center: mul(add(min, max), 0.5), size: sub(max, min) });
-  }
-  return boxes;
+    return { center: mul(add(min, max), 0.5), size: sub(max, min) };
+  });
 }
 
 function capsuleRunsPlusBoxes(body: DecodedPhysicsBody): BodyShape {
