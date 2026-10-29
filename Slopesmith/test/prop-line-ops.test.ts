@@ -228,8 +228,9 @@ check(
   "sheet: it wears the family's tile at its height and span",
 );
 check(
-  pieces.length === 4 && pieces.every(m => m.quads.length === 1 && m.texture === 'GARI/0007.png' && m.blend),
-  'sheet: each span is its own one-quad tiled model, wearing the tile',
+  pieces.length === 4 &&
+    pieces.every(m => m.quads.length === 1 && m.texture === 'GARI/0007.png' && m.blend === undefined),
+  'sheet: each span keeps its one-quad tile without the retired blend flag',
   `${pieces.length} pieces`,
 );
 check(
