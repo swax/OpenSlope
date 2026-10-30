@@ -111,16 +111,23 @@ final class LauncherUiChecks {
                 try { snapshot(ui.root, pictures, "empty"); } catch (IOException e) { throw new RuntimeException(e); }
             });
             File populated = new File(temporary, "populated"); require(populated.mkdir(), "Populated library fixture created");
-            for (String name : new String[]{"ALASKA", "My custom course"}) { File map = new File(populated, name); require(map.mkdir(), "Course fixture created"); try (Writer file = new FileWriter(new File(map, "Patches.json"))) { file.write("{}"); } }
+            for (String name : new String[]{"ALASKA", "AVALANCHE_CRS01_00", "My custom course"}) { File map = new File(populated, name); require(map.mkdir(), "Course fixture created"); try (Writer file = new FileWriter(new File(map, "Patches.json"))) { file.write("{}"); } }
             library(activity, populated);
             main(() -> { try { invoke(launched, "failure", new Class<?>[]{Exception.class}, new IOException("Folder access was not granted. Choose the folder again.")); invoke(launched, "refreshMaps", new Class<?>[]{}); } catch (Exception e) { throw new RuntimeException(e); } });
             idle(activity);
             main(() -> require(ui.status.getText().toString().contains("Folder access was not granted"), "Picker failure survives an automatic resume refresh"));
             main(() -> {
-                require(ui.courses.getChildCount() == 2 && ui.empty.getVisibility() == View.GONE, "Discovered courses replace empty guidance");
+                require(ui.courses.getChildCount() == 3 && ui.empty.getVisibility() == View.GONE, "Discovered courses replace empty guidance");
                 LinearLayout course = (LinearLayout) ui.courses.getChildAt(0);
                 require(((Button) course.getChildAt(0)).getText().toString().equals("Play ALASKA"), "Play action names its course");
                 require(course.getChildAt(1).getContentDescription().toString().equals("Unload ALASKA"), "Unload action names its course");
+                LinearLayout avalanche = (LinearLayout) ui.courses.getChildAt(1);
+                require(((Button) avalanche.getChildAt(0)).getText().toString().equals("Play Tenderfoot Pass"), "Existing Avalanche maps display recovered course names through JNI");
+                require(avalanche.getChildAt(0).getTag().equals("AVALANCHE_CRS01_00"), "Named Play controls retain the canonical map ID");
+                require(avalanche.getChildAt(1).getContentDescription().toString().equals("Unload Tenderfoot Pass"), "Unload accessibility labels use the course title");
+                require(LauncherActivity.nativeCourseDisplayName("My custom course").equals("My custom course"), "Custom map names remain unchanged through JNI");
+                String unicodeName = "My custom course \uD83C\uDFC2";
+                require(LauncherActivity.nativeCourseDisplayName(unicodeName).equals(unicodeName), "Custom Unicode course names retain their original UTF-16");
                 Rect first = new Rect(); ui.courses.getChildAt(0).getDrawingRect(first); ui.root.offsetDescendantRectToMyCoords(ui.courses.getChildAt(0), first);
                 require(first.top >= 0 && first.bottom <= ui.root.getHeight(), "First Play action fits the initial viewport without scrolling");
                 require(ui.add.getVisibility() == View.GONE, "Existing libraries keep import details folded away");
@@ -145,10 +152,11 @@ final class LauncherUiChecks {
             main(() -> {
                 ui.status("", false); ui.root.scrollTo(0, 0);
                 try { snapshot(ui.root, pictures, "courses");
-                    List<LauncherActivity.IsoCourse> choices = Arrays.asList(new LauncherActivity.IsoCourse(firstDisc, "ALASKA", "first.iso"), new LauncherActivity.IsoCourse(secondDisc, "SSX_SNOW", "second.bin"));
+                    List<LauncherActivity.IsoCourse> choices = Arrays.asList(new LauncherActivity.IsoCourse(firstDisc, "AVALANCHE_CRS06_03", "avalanche.rvz"), new LauncherActivity.IsoCourse(secondDisc, "SSX_SNOW", "second.bin"));
                     AlertDialog dialog = (AlertDialog) invoke(launched, "showImportChoices", new Class<?>[]{List.class, String.class}, choices, "broken.iso: Could not read this disc.");
                     choice[0] = dialog;
-                    require(dialog.getListView().getAdapter().getItem(0).toString().equals("ALASKA · first.iso") && dialog.getListView().getAdapter().getItem(1).toString().equals("SSX_SNOW · second.bin"), "Combined choices identify the source disc for each course");
+                    require(dialog.getListView().getAdapter().getItem(0).toString().equals("Wit's Thicket · avalanche.rvz") && dialog.getListView().getAdapter().getItem(1).toString().equals("SSX_SNOW · second.bin"), "Combined choices show retail titles and identify the source disc for each course");
+                    require(choices.get(0).name.equals("AVALANCHE_CRS06_03"), "Friendly import choices preserve the extraction ID");
                     require(choices.get(0).uri.equals(firstDisc) && choices.get(1).uri.equals(secondDisc), "Course selections retain their own source URI");
                     require(!dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled(), "Import requires an explicit course selection");
                     dialog.findViewById(R.id.launcher_select_all).performClick(); require(dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("2"), "Select all updates import count");

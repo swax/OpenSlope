@@ -1,3 +1,4 @@
+#include "openslope/course_names.hpp"
 #include "openslope/desktop_library.hpp"
 #include "openslope/ride_ui.hpp"
 #include <chrono>
@@ -136,6 +137,32 @@ int main(int argc, char** argv) {
               "Course selection must preserve its source and exact course name");
         check(buttons[1].text == "PLAY CUSTOM" && buttons[1].action == UiAction::LoadMap,
               "Installed maps must use a separate explicit Play action");
+        RideUi named;
+        named.library = true;
+        named.map_paths = {library.maps_root() / "AVALANCHE_CRS01_00"};
+        check(named.buttons()[0].text == "Tenderfoot Pass" && named.buttons()[0].map == named.map_paths[0],
+              "Existing Avalanche maps must show retail names while retaining the original folder");
+        named.immersive = true;
+        check(named.buttons()[0].text == "Tenderfoot Pass", "The wrist library must use the same course names");
+        named.iso_library = true;
+        named.iso_source = images[0];
+        named.import_root = library.maps_root();
+        named.iso_courses = {{"AVALANCHE_CRS01_00", false}, {"AVALANCHE_CRS06_03", true}};
+        auto named_buttons = named.buttons();
+        check(named_buttons[0].text == "EXTRACT Tenderfoot Pass" && named_buttons[0].value == "AVALANCHE_CRS01_00" &&
+                  named_buttons[0].map == images[0],
+              "Friendly source labels must preserve the ID and source used for extraction");
+        check(named_buttons[1].text == "PLAY Wit's Thicket" &&
+                  named_buttons[1].map == library.maps_root() / "AVALANCHE_CRS06_03",
+              "Play must keep the canonical imported map path");
+        named.import_rows["AVALANCHE_CRS01_00"] = {CourseImportPhase::Queued, "Waiting"};
+        named_buttons = named.buttons();
+        check(named_buttons[0].text == "QUEUED Tenderfoot Pass" && named_buttons[1].action == UiAction::CancelImport &&
+                  named_buttons[1].value == "AVALANCHE_CRS01_00",
+              "Named import progress must still cancel the original queued ID");
+        check(course_display_name("My custom course") == "My custom course" &&
+                  course_display_name("AVALANCHE_CRS00_01") == "AVALANCHE_CRS00_01",
+              "Custom map names and unknown layouts must remain unchanged");
         ui.import_rows["FIXTURE"] = {CourseImportPhase::Extracting, "Decoding textures"};
         buttons = ui.buttons();
         check(buttons[0].text == "EXTRACTING FIXTURE" && buttons[0].detail == "Decoding textures" &&

@@ -11,7 +11,9 @@ meshes, sky vertex colour/coverage, approximate lighting and adapted snow spray.
 The source catalogue and authoritative format findings are in
 [Trailmap 600–607](../../Trailmap/specs/600-avalanche-overview.md). Portable
 course IDs prefix the uppercase source stem with `AVALANCHE_`, for example
-`AVALANCHE_CRS00_03`. These are package-derived identifiers, not recovered retail course titles.
+`AVALANCHE_CRS00_03`. Native desktop and Quest menus display the recovered USA course
+titles, such as **Tenderfoot Pass**, while imports, map folders and saved settings keep
+these stable identifiers. Already-imported maps receive the names without re-importing.
 Discovery lists only supported packages present on the selected image. Each
 layout resolves its own GEO/COL/MTL/TPL and base environment package and keeps a
 separate cache/map. Crs00 Hard/Expert and Crs06 Hard have no corresponding 1P

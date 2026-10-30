@@ -3,6 +3,7 @@
 #include "openslope/audio_scene.hpp"
 #include "openslope/avatar_preferences.hpp"
 #include "openslope/collision.hpp"
+#include "openslope/course_names.hpp"
 #include "openslope/import.hpp"
 #include "openslope/particles.hpp"
 #include "openslope/paths.hpp"
@@ -175,6 +176,19 @@ extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivi
             throw std::runtime_error("This GLB does not use the Slopesmith character contract.");
     } catch (const std::exception& error) {
         java_error(env, error);
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_openslope_nativeplayer_LauncherActivity_nativeCourseDisplayName(JNIEnv* env, jclass, jstring name) {
+    try {
+        const auto id = string_value(env, name);
+        const auto label = openslope::course_display_name(id);
+        // Preserve the original UTF-16 for custom names, including supplementary characters.
+        return label == id ? name : env->NewStringUTF(label.c_str());
+    } catch (const std::exception& e) {
+        java_error(env, e);
+        return nullptr;
     }
 }
 

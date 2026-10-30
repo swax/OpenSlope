@@ -158,6 +158,7 @@ target_sources(openslope_core PRIVATE src/celestial.cpp)
 target_sources(openslope_core PRIVATE src/scene_lighting.cpp)
 target_sources(openslope_core PRIVATE src/board_audio.cpp)
 target_sources(openslope_core PRIVATE src/desktop_library.cpp)
+target_sources(openslope_core PRIVATE src/course_names.cpp)
 target_sources(openslope_core PRIVATE src/riding_audio_condition.cpp)
 
 target_link_libraries(openslope_core PRIVATE nlohmann_json::nlohmann_json openslope_png openslope_avatar_image)

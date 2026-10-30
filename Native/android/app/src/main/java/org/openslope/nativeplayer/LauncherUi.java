@@ -161,7 +161,8 @@ final class LauncherUi {
         courses.removeAllViews();
         for (MapLibrary.Entry map : maps) {
             LinearLayout row = new LinearLayout(context); courses.addView(row);
-            Button view = button(row, View.generateViewId(), context.getString(R.string.play_course, map.name), true);
+            String label = LauncherActivity.nativeCourseDisplayName(map.name);
+            Button view = button(row, View.generateViewId(), context.getString(R.string.play_course, label), true);
             LinearLayout.LayoutParams playParams = (LinearLayout.LayoutParams) view.getLayoutParams();
             playParams.width = 0; playParams.weight = 1; view.setLayoutParams(playParams);
             controls.remove(view); view.setTag(map.name); view.setOnClickListener(v -> play.accept(map));
@@ -169,7 +170,7 @@ final class LauncherUi {
                 Button remove = button(row, View.generateViewId(), R.string.unload_course, false);
                 LinearLayout.LayoutParams unloadParams = (LinearLayout.LayoutParams) remove.getLayoutParams();
                 unloadParams.width = -2; unloadParams.leftMargin = dp(8); remove.setLayoutParams(unloadParams);
-                controls.remove(remove); remove.setContentDescription(context.getString(R.string.unload_named_course, map.name));
+                controls.remove(remove); remove.setContentDescription(context.getString(R.string.unload_named_course, label));
                 remove.setOnClickListener(v -> unload.accept(map));
             }
         }

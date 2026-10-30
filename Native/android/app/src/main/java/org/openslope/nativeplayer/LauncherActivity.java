@@ -15,6 +15,7 @@ import java.util.concurrent.*;
 
 public final class LauncherActivity extends Activity {
     static { System.loadLibrary("openslope_player"); }
+    static native String nativeCourseDisplayName(String name);
     private static final int PICK_MAPS = 1, PICK_ISO = 2, PICK_AVATAR = 3;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private volatile boolean cancelled, busy;
@@ -196,17 +197,17 @@ public final class LauncherActivity extends Activity {
     }
     private void confirmUnload(MapLibrary.Entry map) {
         if (busy) return;
-        new AlertDialog.Builder(this).setTitle("Unload " + map.name + "?")
+        new AlertDialog.Builder(this).setTitle("Unload " + nativeCourseDisplayName(map.name) + "?")
             .setMessage("This deletes this course's files from the selected Maps folder, including any local edits. Other courses are kept. You can import it again from your ISO or restore a copy of a custom map.")
             .setPositiveButton("Unload course", (dialog, which) -> unload(map))
             .setNegativeButton("Cancel", null).show();
     }
     private void unload(MapLibrary.Entry map) {
         if (busy) return;
-        state(true, false); setStatus("Unloading " + map.name + "…"); final MapLibrary selected = library;
+        state(true, false); setStatus("Unloading " + nativeCourseDisplayName(map.name) + "…"); final MapLibrary selected = library;
         worker.execute(() -> {
             String result;
-            try { selected.unload(map); result = "Unloaded " + map.name + ". Import it again to reload its course data."; }
+            try { selected.unload(map); result = "Unloaded " + nativeCourseDisplayName(map.name) + ". Import it again to reload its course data."; }
             catch (Exception e) { result = e.getMessage() == null ? e.toString() : e.getMessage(); }
             final String notice = result; ui(() -> { state(false); refreshMaps(notice); });
         });
@@ -220,7 +221,7 @@ public final class LauncherActivity extends Activity {
         final Uri uri;
         final String name, source;
         IsoCourse(Uri uri, String name, String source) { this.uri = uri; this.name = name; this.source = source; }
-        @Override public String toString() { return name + " · " + source; }
+        @Override public String toString() { return nativeCourseDisplayName(name) + " · " + source; }
     }
     private String sourceName(Uri uri) {
         try (android.database.Cursor cursor = getContentResolver().query(uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
@@ -288,16 +289,17 @@ public final class LauncherActivity extends Activity {
             for (IsoCourse choice : choices) {
                 if (cancelled) break;
                 String name = choice.name;
+                String label = nativeCourseDisplayName(name);
                 try {
                     if (destination.exists(name)) { ++skipped; continue; }
-                    setStatus("Importing " + name + " · " + choice.source + "…");
+                    setStatus("Importing " + label + " · " + choice.source + "…");
                     try (ParcelFileDescriptor file = getContentResolver().openFileDescriptor(choice.uri, "r")) {
                         long length = discLength(file);
                         File staging = destination.importPath(getCacheDir());
-                        try { nativeExtract(file.getFd(), length, name, staging.getAbsolutePath()); checkCancelled(); setStatus("Writing " + name + " into Maps…"); destination.publishImport(name, staging, this::checkCancelled); ++imported; }
+                        try { nativeExtract(file.getFd(), length, name, staging.getAbsolutePath()); checkCancelled(); setStatus("Writing " + label + " into Maps…"); destination.publishImport(name, staging, this::checkCancelled); ++imported; }
                         finally { MapLibrary.deleteLocal(staging); }
                     }
-                } catch (Exception e) { if (!cancelled) errors.add(name + " · " + choice.source + ": " + (e.getMessage() == null ? e.toString() : e.getMessage())); }
+                } catch (Exception e) { if (!cancelled) errors.add(label + " · " + choice.source + ": " + (e.getMessage() == null ? e.toString() : e.getMessage())); }
             }
             String outcome = "Imported " + imported + " courses. Kept " + skipped + " existing maps.";
             if (cancelled) outcome += " " + getString(R.string.import_cancelled);
@@ -312,7 +314,7 @@ public final class LauncherActivity extends Activity {
         final String mode=new String[]{"freeride","race","showoff"}[runMode.getSelectedItemPosition()];
         final double scale=1+renderScale.getSelectedItemPosition()*.25;final int samples=1<<antialiasing.getSelectedItemPosition();
         final double refreshRate=new double[]{72,80,90,120}[targetRefreshRate.getSelectedItemPosition()];
-        state(true); setStatus(getString(R.string.loading_course, map.name)); final MapLibrary selected = library;
+        state(true); setStatus(getString(R.string.loading_course, nativeCourseDisplayName(map.name))); final MapLibrary selected = library;
         worker.execute(() -> {
             File prepared = null;
             try { prepared = selected.prepare(map, getCacheDir(), this::checkCancelled); nativeValidate(prepared.getAbsolutePath()); checkCancelled(); final File path = prepared;

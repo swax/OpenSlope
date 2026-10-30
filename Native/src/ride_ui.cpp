@@ -1,5 +1,6 @@
 #include "openslope/ride_ui.hpp"
 #include "openslope/ai_field.hpp"
+#include "openslope/course_names.hpp"
 #include "openslope/ui_font.hpp"
 #include "openslope/version.hpp"
 #include <cctype>
@@ -128,30 +129,32 @@ std::vector<UiButton> RideUi::buttons() const {
         for (std::size_t i = start; i < std::min(count, start + 5); ++i) {
             const auto y = .30 + double(i - start) * .09;
             if (!iso_library)
-                list.push_back({.06, y, .88, .075, map_paths[i].filename().string(), UiAction::LoadMap, map_paths[i]});
+                list.push_back({.06, y, .88, .075, course_display_name(map_paths[i].filename().string()),
+                                UiAction::LoadMap, map_paths[i]});
             else if (iso_source.empty())
                 list.push_back(
                     {.06, y, .88, .075, iso_paths[i].filename().string(), UiAction::SelectSource, iso_paths[i]});
             else {
                 const auto& [name, installed] = iso_courses[i];
+                const auto label = course_display_name(name);
                 const auto found = import_rows.find(name);
                 const auto* status = found == import_rows.end() ? nullptr : &found->second;
                 if (installed)
-                    list.push_back({.06, y, .88, .075, "PLAY " + name, UiAction::LoadMap, import_root / name});
+                    list.push_back({.06, y, .88, .075, "PLAY " + label, UiAction::LoadMap, import_root / name});
                 else if (status && (status->phase == CourseImportPhase::Queued ||
                                     status->phase == CourseImportPhase::Extracting)) {
                     list.push_back({.06,
                                     y,
                                     .70,
                                     .075,
-                                    (status->phase == CourseImportPhase::Queued ? "QUEUED " : "EXTRACTING ") + name,
+                                    (status->phase == CourseImportPhase::Queued ? "QUEUED " : "EXTRACTING ") + label,
                                     UiAction::None,
                                     {},
                                     {},
                                     status->progress});
                     list.push_back({.78, y, .16, .075, "X", UiAction::CancelImport, {}, name});
                 } else
-                    list.push_back({.06, y, .88, .075, "EXTRACT " + name, UiAction::ImportMap, iso_source, name,
+                    list.push_back({.06, y, .88, .075, "EXTRACT " + label, UiAction::ImportMap, iso_source, name,
                                     status && status->phase != CourseImportPhase::Ready ? status->progress : ""});
             }
         }
@@ -336,7 +339,7 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : controls         ? "CONTROLS"
                                   : "ON THE MOUNTAIN",
                .06, .13, .008);
-        c.text(loading            ? load_name
+        c.text(loading            ? course_display_name(load_name)
                : graphics_options ? (immersive ? "SNOWFALL / DISPLAY STATS" : "SCENE QUALITY / WEATHER")
                : library          ? (iso_library ? (iso_source.empty() ? "SSX / TRICKY / SSX 3 / ON TOUR (PS2)"
                                                                        : iso_source.filename().string())
