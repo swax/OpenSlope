@@ -16,17 +16,20 @@ import {
   type AiPathEventShape,
 } from '../../ai-path-style';
 import { occludedMaterial, textSprite } from '../shared/overlays';
+import { CAGE_OCCLUDED_DIM } from '../constants';
+import { fadeMaterial, fadeObject } from '../shared/fade';
 import type { Stage } from '../stage';
 
 /** Rating-coloured paths with event spans and symbols; only the selected route has numbered annotations. */
-export function createReferenceAiPathsLayer(stage: Stage) {
+export function createReferenceAiPathsLayer(stage: Stage, root: THREE.Object3D = stage.refRoot) {
   const group = new THREE.Group();
   const annotationGroup = new THREE.Group();
   const eventGroup = new THREE.Group();
-  stage.refRoot.add(group, eventGroup, annotationGroup);
+  root.add(group, eventGroup, annotationGroup);
   let paths: RefAiPath[] = [];
   let visible = false;
   let selected: number | null = null;
+  let fade = 1;
   const lineMaterial = (color: number, width: number, dashed = false) =>
     new LineMaterial({
       color,
@@ -104,6 +107,12 @@ export function createReferenceAiPathsLayer(stage: Stage) {
     let material = behindMaterials.get(source);
     if (!material) {
       material = occludedMaterial(source);
+      // A cloned material inherits the bright pass's saved fade baseline; the hidden pass owns a dimmer one.
+      if (source.userData.unfaded)
+        material.userData.unfaded = {
+          opacity: source.userData.unfaded.opacity * CAGE_OCCLUDED_DIM,
+          transparent: true,
+        };
       behindMaterials.set(source, material);
       if (material instanceof LineMaterial) aiPathMaterials.push(material);
     }
@@ -263,7 +272,10 @@ export function createReferenceAiPathsLayer(stage: Stage) {
     clearAnnotations();
     updatePathMaterials();
     const path = paths.find(path => path.originalIndex === index);
-    if (!path) return;
+    if (!path) {
+      setFade(fade);
+      return;
+    }
     addLine(annotationGroup, path.points, outlines[path.respawnable ? 0 : 1], 1);
     path.events.forEach((event, eventIndex) => {
       const span = aiPathEventSpan(path.points, event.start, event.end);
@@ -291,6 +303,7 @@ export function createReferenceAiPathsLayer(stage: Stage) {
       }
       eventLabel(eventIndex, color, span[0]);
     });
+    setFade(fade);
   }
 
   function setAiPaths(next: RefAiPath[] | null) {
@@ -316,6 +329,7 @@ export function createReferenceAiPathsLayer(stage: Stage) {
     }
     buildEventOverview();
     showAiPaths(visible);
+    setFade(fade);
   }
 
   function showAiPaths(on: boolean) {
@@ -324,11 +338,24 @@ export function createReferenceAiPathsLayer(stage: Stage) {
     annotationGroup.visible = group.visible;
     eventGroup.visible = group.visible;
   }
+  /** Course drawing fades the whole authored overlay; rebuilds and selections keep that same factor. */
+  function setFade(factor: number) {
+    fade = factor;
+    for (const material of new Set([
+      ...aiPathMaterials,
+      ...pointBorders.values(),
+      ...pointMaterials.values(),
+      ...behindMaterials.values(),
+    ]))
+      fadeMaterial(material, factor);
+    fadeObject(annotationGroup, factor);
+  }
   showAiPaths(false);
   return {
     setAiPaths,
     showAiPaths,
     selectAiPath,
+    setFade,
     aiPathMaterials,
     aiPathGroup: group,
     aiPathAnnotations: annotationGroup,

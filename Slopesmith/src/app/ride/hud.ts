@@ -191,6 +191,7 @@ export function createRideHud(o: RideHudOpts) {
       '</span>' +
       '</div>' +
       '<div data-effects style="min-height:16px;color:#ffd56a;font-weight:700"></div>' +
+      '<div data-ai-recording role="status" style="display:none;color:#ffae75;font-weight:700"></div>' +
       '<div data-boost-meter style="display:none;align-items:center;gap:8px;padding:4px 9px;border-radius:7px;' +
       'background:rgba(10,16,24,.68);border:1px solid rgba(255,190,70,.28);' +
       'font:800 9px/1 system-ui,sans-serif;letter-spacing:1.1px;color:#ffd56a">' +
@@ -1413,6 +1414,13 @@ export function createRideHud(o: RideHudOpts) {
   buildPersistentExit();
   window.addEventListener('resize', onResize);
 
+  function setAiRecording(active: boolean, metres: number) {
+    const status = hud.querySelector<HTMLElement>('[data-ai-recording]')!;
+    const text = active ? `● Recording AI run · ${Math.round(metres)} m · Esc to stop` : '';
+    if (status.textContent !== text) status.textContent = text;
+    status.style.display = active ? 'block' : 'none';
+  }
+
   return {
     stick,
     lookStick,
@@ -1425,6 +1433,7 @@ export function createRideHud(o: RideHudOpts) {
     setLaps,
     setRunClock,
     setTelemetry,
+    setAiRecording,
     notePadPresent,
     mirrorPad,
     dispose,

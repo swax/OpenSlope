@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
 import { createScenePanel } from '../src/app/ui/chrome/scene-panel';
 import { createReferenceCourseDecor } from '../src/app/viewport/scene/reference-decor-course';
 import { createScenePicking } from '../src/app/viewport/input/scene-picking';
@@ -8,6 +9,7 @@ import { defaultMountain } from '../src/core/doc/mountain';
 import { pathFile, pathSource } from './ai-path-data.fixture';
 import { aiPathEventSpan } from '../src/core/reference/ai-paths';
 import { aiPathColor } from '../src/app/ai-path-style';
+import { aiLineRatings } from '../src/core/doc/course';
 import { createAiPathsLayer } from '../src/app/viewport/scene/ai-paths';
 import { createTileMaterials } from '../src/app/viewport/mesh/tile-materials';
 
@@ -324,35 +326,56 @@ function snapshot() {
   },
   authoredFade() {
     const authoredScene = new THREE.Scene();
-    const layer = createAiPathsLayer({ scene: authoredScene } as any);
-    layer.setCourse(
-      {
-        blend: 0,
-        surface: 1,
-        knots: [0, 100].map(z => ({
-          pos: [0, 0, z],
-          width: 30,
-          wall: 0,
-          bank: 0,
-          shoulder: 0,
-        })),
-      },
-      1,
-    );
+    const worldRoot = new THREE.Group();
+    worldRoot.scale.z = -1;
+    authoredScene.add(worldRoot);
+    const layer = createAiPathsLayer({ scene: authoredScene, worldRoot } as any);
+    const course = {
+      blend: 0,
+      surface: 1,
+      knots: [0, 100].map(z => ({
+        pos: [0, 0, z] as [number, number, number],
+        width: 30,
+        wall: 0,
+        bank: 0,
+        shoulder: 0,
+      })),
+    };
+    layer.setCourse(course, 1);
     layer.setVisible(true);
-    const group = authoredScene.children[0];
-    const bright = group.children[0] as THREE.Line;
-    const behind = bright.children[0] as THREE.Line;
-    const material = bright.material as THREE.LineBasicMaterial;
-    const ghost = behind.material as THREE.LineBasicMaterial;
+    const group = worldRoot.children[0];
+    const bright = group.children[0] as Line2;
+    const behind = bright.children[0] as Line2;
+    const material = bright.material;
+    const ghost = behind.material;
+    const styles = group.children.map(child => ({
+      thick: child instanceof Line2,
+      width: (child as Line2).material.linewidth,
+      color: (child as Line2).material.color.getHex(),
+    }));
+    const expectedColors = aiLineRatings(course, 1).map(aiPathColor);
     layer.setFade(0.4);
     const faded = [material.opacity, ghost.opacity];
+    layer.select(0);
+    const selected = [bright.material.opacity, (bright.children[0] as Line2).material.opacity];
+    layer.select(null);
     layer.setFade(1);
     const restored = [material.opacity, ghost.opacity];
-    const result = { faded, restored, depth: ghost.depthFunc, sharedGeometry: behind.geometry === bright.geometry };
+    layer.setFade(0.4);
+    layer.setCourse(course, 1);
+    const rebuilt = group.children[0] as Line2;
+    const rebuiltFade = [rebuilt.material.opacity, (rebuilt.children[0] as Line2).material.opacity];
+    const result = {
+      styles,
+      expectedColors,
+      faded,
+      selected,
+      rebuiltFade,
+      restored,
+      depth: ghost.depthFunc,
+      sharedGeometry: behind.geometry === bright.geometry,
+    };
     layer.setCourse(null, 1);
-    material.dispose();
-    ghost.dispose();
     return { ...result, cleared: group.children.length === 0 && !group.visible };
   },
   press(index: number, offset = 0) {

@@ -48,7 +48,7 @@ export type ScenePick =
       volumeId?: string;
     }
   | { target: 'knot'; source: 'authored'; hit: THREE.Intersection }
-  | { target: 'aiPath'; source: 'reference'; hit: THREE.Intersection; pathIndex: number }
+  | { target: 'aiPath'; source: ScenePickSource; hit: THREE.Intersection; pathIndex: number; node?: number }
   | { target: 'surface'; source: ScenePickSource; hit: THREE.Intersection };
 
 export interface ScenePickQuery {
@@ -86,6 +86,7 @@ export interface ScenePickingAccess {
   /** The loaded reference's drawn grind splines, pickable wherever the authored rails are. */
   referenceRailRoots?(): readonly THREE.Object3D[];
   referenceAiPathRoots?(): readonly THREE.Object3D[];
+  authoredAiPathRoots?(): readonly THREE.Object3D[];
   /** The selected prop line's node bulbs (docs/070). */
   lineRoots?(): readonly THREE.Object3D[];
   gemRoots(): readonly THREE.Object3D[];
@@ -245,15 +246,26 @@ export function createScenePicking(stage: Stage, access: ScenePickingAccess) {
       // Line2 measures this tolerance in pixels, so distant paths remain as easy to select as nearby ones.
       const previous = stage.ray.params.Line2;
       stage.ray.params.Line2 = { threshold: 8 };
-      let hit: THREE.Intersection | undefined;
       try {
-        hit = firstHit(access.referenceAiPathRoots?.() ?? [], true, candidate =>
-          Number.isInteger(candidate.object.userData.refAiPathIndex),
-        );
+        for (const [source, roots] of [
+          ['authored', access.authoredAiPathRoots?.() ?? []],
+          ['reference', access.referenceAiPathRoots?.() ?? []],
+        ] as const) {
+          const hit =
+            firstHit(roots, true, candidate => Number.isInteger(candidate.object.userData.aiPathNode)) ??
+            firstHit(roots, true, candidate => Number.isInteger(candidate.object.userData.refAiPathIndex));
+          if (hit)
+            consider({
+              target: 'aiPath',
+              source,
+              hit,
+              pathIndex: hit.object.userData.authoredAiPathIndex ?? hit.object.userData.refAiPathIndex,
+              node: hit.object.userData.aiPathNode,
+            });
+        }
       } finally {
         stage.ray.params.Line2 = previous;
       }
-      if (hit) consider({ target: 'aiPath', source: 'reference', hit, pathIndex: hit.object.userData.refAiPathIndex });
     }
 
     if (query.rails) {

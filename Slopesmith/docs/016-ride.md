@@ -122,10 +122,13 @@ Tools panel is the ride's staging area:
   shader over one instanced quad, in a single draw call, so only the top of the dial costs a run anything and
   what it costs is fill. Only while riding — the editor view stays clear — and applied live: the field is
   stateless, so moving the dial mid-run thickens the weather exactly where it already is.
-- **AI riders** — the opponent count and field ceiling, from **0–16**. Zero disables the field; a click past a
+- **Sound settings** — game volume, music/song selection, and announcer playback, applied live.
+- **AI settings** — **Show AI paths**, **AI riders**, and **Record AI run**. Recording launches an authored ride
+  with capture already active; **Esc** stops and saves it. The rider count and field ceiling runs from **0–16**.
+  Zero disables the field; a click past a
   positive ceiling recycles the oldest rider.
 - **Tuning** (the final panel) — performance and diagnostic controls kept together at the bottom: **MSAA + smooth
-  cutouts**, **Board FX**, **Draw distance**, **Show AI paths**, **Show colliders**, and **Collect telemetry**.
+  cutouts**, **Board FX**, **Draw distance**, **Show colliders**, and **Collect telemetry**.
   The first setting affects the editor as well as Test and reloads the renderer when changed; the other live
   display controls apply immediately, while telemetry arms the next run.
   **Board FX** is the retail boost afterimage, carved wake, and five snow-spray buffers, each rebuilt from the
@@ -1811,11 +1814,12 @@ looks like a bug: a level's AI paths are *short overlapping segments* — Gariba
 they all sail off the end of the gold path a few seconds in. So the hand-off is ported too: when a rider's
 projection comes within **2 m of the end** of its current path it chooses the next one, and when it is shoved
 more than **5 m off** its line it re-chooses (at most once a second, grounded only). Candidates are the **six
-nearest** paths; any already within 2 m of its own end is no use and is dropped. The winner is the lowest score:
-
-```
-score = |pos − closestPoint|² + |lookaheadTarget − pos|² − (100 − |rating − mood|) · 2.319
-```
+nearest **bounding boxes around a point 8 m ahead in carried velocity**, using the native maximum-axis-gap
+metric and source order for ties. The six-path shortlist is formed first, then the incumbent (when advancing)
+and candidates within 2 m of their ends are rejected. The closest-foot scan is horizontal; candidate scoring
+uses the actual 3-D foot against the rider position and the candidate's forward target against the projected
+query, with the native rating-match bonus. `ride/ai-path-choice.ts` supplies this selector ([Trailmap: 395-score]).
+After a switch, the tracker is reseeded at the actual rider position so the projected query cannot skip events.
 
 An authored **Reselect path** event (raw type **300**) also runs that selector whenever its point or range
 overlaps `[previous arc, current arc]` ([Trailmap: 250-reset-events, 395-range-query]). It has no lookahead,
@@ -1856,9 +1860,57 @@ and the existing ollie cooldown. A continuous slope regression measures entry, u
 launch near the end; it catches the early-release error that station-stepping fixtures previously missed.
 
 Those markers are the AIP's `EventType` **100** records (Garibaldi ships
-104, target speeds 46–117 km/h), and the field reads them off the reference level. **The authored mountain has
-none** — there is no equivalent to author yet — so a field on your own course still never ollies. That is the next
-gap, not a bug.
+104, target speeds 46–117 km/h), and the field reads them off the reference level. Authored mountains can now
+capture their own jump events through **Record AI run** in Test mode's AI settings.
+
+### Recording authored AI trails
+
+**Test → AI settings → Record AI run** launches an authored desktop or touch ride with capture active from the start.
+**Esc** stops the run and saves, including on the first press with the cursor captured. Stop also saves. The HUD
+shows recording distance without a separate recording button. Reference and public playback sessions do not
+enable this authoring action. The saved
+sections are selected in the viewport under **Scene → AI Paths → Mountain**, with a numbered event overlay.
+The selected path exposes its name, rating and respawn permission; click one of its node markers to attach
+the move gizmo. Movement uses authored coordinates through the mirrored world root and remaps each event
+endpoint to the same fraction of its segment. **Reselect path here** on the selected node adds/removes a
+type-300 point event at its horizontal station (value 0, start = end). Its flag appears on the path, follows
+node movement, participates in undo/shared edits and exports to AIP/SOP. It asks for normal reselection,
+which can keep the current path; overlapping branch geometry and line ratings determine the choice.
+Generated paths expose read-only details without node handles.
+Selected recorded nodes offer insertion before/after (a midpoint on the adjacent segment) and deletion,
+with the new or nearest surviving node selected for the gizmo. Paths retain at least two nodes. Insertion
+preserves event stations; deletion maps ranges across the joined segment, clips removed ends and removes
+the deleted node's point reselection event. Surviving nodes retain their event anchors. These edits use
+ordinary history, shared path registers, autosave and export.
+
+Reselection does not randomize equivalent branches. The nearest-route and lookahead-distance scores still
+favor the incumbent when ratings are equal. Distinct branch ratings (for example, a neutral 50 line and a
+100 alternative for a boost-starved rider's mood) allow the mood term to outweigh a small distance disadvantage.
+One completed capture enters ordinary document history and autosave; each section has an independent shared-edit
+register. Reload and undo/redo preserve its geometry and events.
+
+`ride/ai-path-recording.ts` consumes the existing fixed-tick telemetry. `core/doc/ai-paths.ts` owns the project
+defaults: 9 m point spacing, nominal 230 m sections, 20 m overlap and 0.65 m maximum chord error. These are
+OpenSlope authoring choices informed by the local path census, not recovered runtime limits. Extra samples pin
+charge, release and landing boundaries and retain detail on turns and flight arcs. Section ends wait for grounded,
+uncharged riding; resets and dismounts close a stroke without bridging a teleport. An unfinished air/charge tail
+is trimmed, and strokes shorter than 12 m are discarded.
+
+Jump ranges follow accepted charge transitions at their opening poses, with a suggested approach target and
+compensation for the controller's end lookahead. Recording currently emits only jump events; existing cruise-speed
+events remain supported in playback and export. Trick flags default to zero. The preview grows while recording;
+compilation preserves horizontal event stations when
+detail is reduced. The authored route network supplies six gate lead-ins and short fallback sections so a rider
+can enter a recording before the old full-course route would have ended. Test and AIP/SOP export consume the
+same recorded sections; generated routes cover unrecorded parts of the course. The document's
+**Use auto-generated paths** checkbox (default on for older mountains) disables generated lines, gate lead-ins
+and fallback routes in the viewport, Test riders and exports together. With it off, the six rider start slots
+choose the nearest recorded path heads; without recordings, the AI network and its start slots are empty.
+
+The recording regression drives real physics through capture and autonomous replay, including a jump and an
+automatic section handoff. The browser regression exercises the actual Test control, preview, inspector,
+save/reload, undo/redo, stop-to-save and reference exclusion. This does not claim every recorded stunt is
+reproducible by every AI profile; geometry edits and major changes of entry speed still need a test ride.
 
 A marker's arc is only as good as the ruler it is measured on, and ours was wrong twice over. Besides the 3-D arc
 above, the reader **dropped the path's seed point**: SSX stores a path as a seed plus steps, and the seed is the
@@ -1870,14 +1922,18 @@ got under the flight path they were then doing donuts beneath. The two bugs were
 
 **Riders react to each other, and that is what stops a field riding in single file.** Each one keeps a rival: the
 nearest competitor within 7 m, scored so the one straight ahead beats a nearer one off to the side, re-picked five
-times a second and dropped past 10.5 m.
+times a second and dropped past 10.5 m. The mounted player participates in the same rival selection and
+body separation as the AI riders. Dismounting excludes the retained board from these interactions until the
+player mounts again. A 2 m clearance gate above the rider's local slope plane keeps overhead crossings out of
+avoidance, while body contacts use the existing 2 m vertical gate.
 
 - **Avoid.** A rival is "in the way" if it falls inside a cone of `atan(1.5 m / distance)` — a cone that *widens
   as you close*, ≈12° at 7 m and 45° at 1.5 m. The rider then **rotates its whole pursuit vector** around the
   rival and carves toward that displaced aim, rather than nudging the stick. And it only swerves if it is
   **faster** than the rival: a slower rider holds its line and eats the block, which is why real SSX traffic
   bunches and shoves instead of politely parting.
-- **Bodies collide.** Two overlapping riders are pushed apart, 0.55 of the separation each.
+- **Bodies collide.** Two overlapping riders are pushed apart, 0.55 of the separation each, including both
+  the player and the AI in a player contact. This is positional separation; it does not add attack impulses.
 
 The engine has a fourth behaviour — **attack**, which abandons the line to pursue an intercept 3 m ahead of a
 rival — but it is selected by a game-mode enum the RE could not resolve, so it is documented and deliberately
@@ -1913,19 +1969,23 @@ and *nothing else*, so a rider may freely ride a line it could never be respawne
 facing down-course at 8.33 m/s. (The engine has **no stuck timer**: nothing resets a rider merely for making no
 progress. It doesn't need one, because the horizontal tracker above means a rider that misses a jump keeps riding.)
 
-Still not ported, and named rather than hidden: the AI's **tricks** (the engine picks one at the jump press; we
-have no trick system to fire it with), its **cruise boost** (gated on the boost meter, which this ride has no
-equivalent of — so our riders boost for jump approaches and authored cruise-speed requests), and the
-**throttle axis** (this model's cruise drive is automatic, so the tuck stands in for it). The
-**mood's inputs** are partial the same way: the engine reads placement, the boost meter and a skill-weighted dice
-roll, and we have the placement and the roll but no meter.
+Each AI now owns a live meter through the same `createRideScorer` used by the player: held boost spends it,
+landed trick/rail telemetry can fill it, and a reset penalizes that rider alone. The native **mood calculation**
+consumes board class, zero-based placement, that meter and an inclusive integer skill roll. Board class is
+independent of event mode and visual riding style; the editor's six configurable rider profiles cover all
+three native classes. The probe exposes board class, last path mood and current meter for diagnosis.
+
+Still not ported: the native **trick picker**, automatic full-meter **cruise boost**, and the **throttle axis**
+(the browser's automatic cruise uses tuck as its input adapter). Meter fill/spend comes from the existing
+browser scorer rather than a complete port of native trick recognition, stat scalars, passive bleed and Uber
+tiers. These meter-model limits remain even though the selector's mood branches now use the native rules.
 
 The reference ride and course-run tool now pass source-order events into `app/ride/ai.ts`.
 `ride/cruise-speed.ts` supplies authored cruise inputs according to
 [Trailmap: 395, cruise targets](../../Trailmap/specs/395-ai-riders.md#the-behavior-machine).
 The rider's live skill/aggression scalar drives that decision; jump approach and rival avoidance keep
 their own controls. The adapter uses tuck for throttle and the ordinary brake/boost keys. Automatic
-cruise propulsion and the missing boost meter remain model differences; the event does not clamp speed.
+cruise propulsion and native meter tuning remain model differences; the event does not clamp speed.
 The probe exposes the current cruise target and synthesized keys. Focused boundary tests and an actual
 marked-versus-unmarked slope ride cover decoding, range exit, jump priority and the speed response.
 
@@ -1986,8 +2046,8 @@ npm run run:mountain -- MY_PROJECT 400 --assert     # finishes / stalls / resets
 npm run run:mountain -- MY_PROJECT 400 --watch 2 --from 60 --ticks 300
 ```
 
-It opens the named project, tessellates its quilt with `buildMountainPreview`, derives the six gate lines the
-export would ship (`aiPathLines` over the document's own seed), rides them with `authoredPatchContact`, and
+It opens the named project, tessellates its quilt with `buildMountainPreview`, builds the same authored AI network
+as Test/export (`authoredAiNetwork`, including recorded jump events and any existing cruise events), rides it with `authoredPatchContact`, and
 **collides them with the mountain's own placed props** — the same world Play assembles. `--no-props` rides the
 bare surface, which is the comparison to make when the question is whether the FURNITURE changed how the
 course plays.

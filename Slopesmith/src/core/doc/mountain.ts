@@ -1,3 +1,4 @@
+import { normalizeAiPaths } from './ai-paths';
 import type {
   CoursePath,
   CourseKnot,
@@ -291,6 +292,8 @@ export function meshFromNet(net: GridNet, meta: Omit<MountainMeta, 'kind' | 'spa
     announcer,
     laps,
     aiSeed,
+    aiPaths,
+    autoAiPaths,
     effects,
     particleVolumes,
   } = meta;
@@ -315,6 +318,8 @@ export function meshFromNet(net: GridNet, meta: Omit<MountainMeta, 'kind' | 'spa
     announcer,
     laps,
     aiSeed,
+    aiPaths,
+    autoAiPaths,
     effects,
     particleVolumes,
     vertices,
@@ -1544,6 +1549,8 @@ export function buildMeshFromCourse(
     announcer: meta.announcer,
     laps: meta.laps,
     aiSeed: meta.aiSeed,
+    aiPaths: meta.aiPaths,
+    autoAiPaths: meta.autoAiPaths,
     effects: meta.effects ?? createEmptyEffectsDocument(name),
     particleVolumes: normalizeParticleVolumes(meta.particleVolumes),
     vertices,
@@ -1822,6 +1829,9 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
     ensureScreenIds(doc.screens);
     ensurePropLineIds(doc.propLines);
     if (doc.trails) doc.trails = normalizeTrails(doc.trails);
+    doc.aiPaths = normalizeAiPaths(doc.aiPaths);
+    if (doc.autoAiPaths !== undefined && typeof doc.autoAiPaths !== 'boolean')
+      throw new Error('Invalid automatic AI paths setting');
     // The mountain's own trail tile sets were each one row, of a trail, a turn or a cap — and before that pairs, saved
     // under that name: each is a set of that row alone now, worn along its spans.
     const savedSets = (doc.trailTileSets ?? d.trailTilePairs) as unknown[] | undefined;
@@ -1924,6 +1934,8 @@ export function migrateMountain(raw: unknown): QuadMeshDoc {
       announcer: d.announcer === undefined ? undefined : normalizeAnnouncer(d.announcer),
       laps: normalizeLaps(d.laps),
       aiSeed: d.aiSeed as MountainMeta['aiSeed'],
+      aiPaths: normalizeAiPaths(d.aiPaths),
+      autoAiPaths: typeof d.autoAiPaths === 'boolean' ? d.autoAiPaths : undefined,
       effects: migrateMountainEffects(d.effects, typeof d.name === 'string' ? d.name : 'MOUNTAIN01'),
       particleVolumes: normalizeParticleVolumes(d.particleVolumes),
     };

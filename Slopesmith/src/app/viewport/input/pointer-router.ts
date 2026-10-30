@@ -1583,9 +1583,13 @@ export function createPointerRouter(
     // and clicking the reference body reveals the centre move handle + gizmo so the whole world can be
     // slid clear of the authored mountain.
     if (access.mode() === 'info') {
+      const clearAiPaths = () => {
+        stage.cb.onSelectReferenceAiPath?.(null);
+        stage.cb.onSelectAuthoredAiPath?.(null);
+      };
       const sourcePick = layers.scenePicking.pick({ sources: true });
       if (sourcePick?.target === 'source') {
-        stage.cb.onSelectReferenceAiPath?.(null);
+        clearAiPaths();
         selectSourceMarker(sourcePick.source, sourcePick.sourceKind, sourcePick.sourceIndex);
         return;
       }
@@ -1596,7 +1600,7 @@ export function createPointerRouter(
       // Start/finish flags before knots: the start flag floats over knot 0 on an untouched run.
       const anchorHit = access.pickAnchor();
       if (anchorHit) {
-        stage.cb.onSelectReferenceAiPath?.(null);
+        clearAiPaths();
         host.clearRefSelection();
         stage.cb.onSelectKnot(null);
         stage.attachGizmo(anchorHit.object as THREE.Mesh, 'anchor', 0);
@@ -1604,7 +1608,7 @@ export function createPointerRouter(
       }
       const knotHit = access.pickKnot();
       if (knotHit) {
-        stage.cb.onSelectReferenceAiPath?.(null);
+        clearAiPaths();
         host.clearRefSelection();
         const idx = knotHit.object.userData.knot as number;
         stage.cb.onSelectKnot(idx);
@@ -1618,10 +1622,16 @@ export function createPointerRouter(
         host.clearRefSelection();
         stage.detachGizmo();
         stage.cb.onSelectKnot(null);
-        stage.cb.onSelectReferenceAiPath?.(pathPick.pathIndex);
+        if (pathPick.source === 'authored') {
+          stage.cb.onSelectReferenceAiPath?.(null);
+          stage.cb.onSelectAuthoredAiPath?.(pathPick.pathIndex, pathPick.node ?? null);
+        } else {
+          stage.cb.onSelectAuthoredAiPath?.(null);
+          stage.cb.onSelectReferenceAiPath?.(pathPick.pathIndex);
+        }
         return;
       }
-      stage.cb.onSelectReferenceAiPath?.(null);
+      clearAiPaths();
       if (rejectUnsupportedPropPick()) return;
       // Info handles a terrain body / reference surface as a Scene selection, but has no vertex or line edit.
       if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface')) return;

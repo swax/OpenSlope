@@ -61,6 +61,7 @@ function describeDocuments(beforeJson: string, afterJson: string): string {
     ].filter(Boolean);
     return `Mesh topology${parts.length ? ` · ${parts.join(' · ')}` : ''}`;
   }
+  if (!same(before.aiPaths, after.aiPaths)) return 'Edit AI paths';
   return 'Edit mountain';
 }
 
@@ -75,6 +76,7 @@ export function describeRegisters(keys: readonly string[]): string {
   const family = (...named: ObjectFamily[]) => has(key => named.includes(objectFamilyOf(key) as ObjectFamily));
   if (family('prop')) return 'Edit props';
   if (family('rail')) return 'Edit rails';
+  if (family('ai-path')) return 'Edit AI paths';
   if (family('trail')) return 'Edit trails';
   if (family('loft')) return 'Edit loft surfaces';
   if (family('surface')) return 'Edit surfaces';

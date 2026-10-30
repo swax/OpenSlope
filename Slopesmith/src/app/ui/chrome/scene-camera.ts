@@ -17,25 +17,35 @@ export interface SceneCameraDeps {
 }
 
 /** A view-only inspector. Poll only while visible; edits freeze the draft, never the live camera. */
-export function createSceneCamera(host: HTMLElement, deps: SceneCameraDeps) {
+export function createSceneCamera(
+  host: HTMLElement,
+  deps: SceneCameraDeps,
+  options: { sharedHost?: HTMLElement; getSpace?: () => string } = {},
+) {
   const form = document.createElement('form');
   form.className = 'sp-camera';
   form.setAttribute('aria-label', 'Scene camera');
   form.noValidate = true;
   host.appendChild(form);
+  const shared = options.sharedHost ? document.createElement('div') : form;
+  if (options.sharedHost) {
+    shared.className = 'sp-camera';
+    options.sharedHost.appendChild(shared);
+  }
 
-  const row = (title: string, input: HTMLElement) => {
+  const row = (title: string, input: HTMLElement, parent: HTMLElement = form) => {
     const label = document.createElement('label');
     label.className = 'sp-camera-row';
     const text = document.createElement('span');
     text.textContent = title;
     label.append(text, input);
-    form.appendChild(label);
+    parent.appendChild(label);
     return label;
   };
   const space = document.createElement('select');
   space.setAttribute('aria-label', 'Camera coordinates');
-  row('Coordinates', space);
+  const coordinatesRow = row('Coordinates', space);
+  if (options.getSpace) coordinatesRow.remove();
   const originNote = document.createElement('p');
   originNote.className = 'sp-camera-hint';
   form.appendChild(originNote);
@@ -64,11 +74,11 @@ export function createSceneCamera(host: HTMLElement, deps: SceneCameraDeps) {
   projection.setAttribute('aria-label', 'Camera projection');
   projection.add(new Option('Perspective', 'perspective'));
   projection.add(new Option('Orthographic', 'ortho'));
-  row('Projection', projection);
+  row('Projection', projection, shared);
   const lens = document.createElement('input');
   lens.type = 'number';
   lens.step = 'any';
-  const lensRow = row('Field of view (°)', lens);
+  const lensRow = row('Field of view (°)', lens, shared);
   const updateLensLabel = () => {
     const label = projection.value === 'ortho' ? 'View height (m)' : 'Field of view (°)';
     lensRow.firstElementChild!.textContent = label;
@@ -90,14 +100,14 @@ export function createSceneCamera(host: HTMLElement, deps: SceneCameraDeps) {
   restore.title = 'Return to the view from when this Camera panel was opened.';
   const read = button('Read current');
   read.title = 'Discard pending edits and read the current camera.';
-  const copy = button('Copy view link', form);
+  const copy = button('Copy view link', shared);
   copy.className = 'sp-camera-save';
   const linkField = document.createElement('input');
   linkField.readOnly = true;
   linkField.hidden = true;
   linkField.setAttribute('aria-label', 'View link');
-  form.appendChild(linkField);
-  const save = button('Save screenshot', form);
+  shared.appendChild(linkField);
+  const save = button('Save screenshot', shared);
   save.className = 'sp-camera-save';
   const help = document.createElement('p');
   help.className = 'sp-camera-hint';
@@ -143,18 +153,29 @@ export function createSceneCamera(host: HTMLElement, deps: SceneCameraDeps) {
   };
   const refreshSpaces = () => {
     const next = deps.getSpaces();
-    if (JSON.stringify(next) === JSON.stringify(spaces)) return;
+    const desired = options.getSpace?.() ?? selectedSpace.id;
+    if (JSON.stringify(next) === JSON.stringify(spaces) && selectedSpace.id === desired) return;
     spaces = next;
     const previous = selectedSpace;
-    selectedSpace = spaces.find(s => s.id === previous.id) ?? spaces[0];
+    selectedSpace = spaces.find(s => s.id === desired) ?? spaces[0];
     space.replaceChildren(...spaces.map(s => new Option(s.label, s.id)));
     space.value = selectedSpace.id;
-    originNote.textContent =
-      selectedSpace.id === 'world'
+    const unavailable = !!options.getSpace && selectedSpace.id !== desired;
+    originNote.textContent = unavailable
+      ? 'Load a reference mountain to inspect camera coordinates relative to it.'
+      : selectedSpace.id === 'world'
         ? 'Metres · Y up · same axes as the mountain.'
         : `Zero = terrain centre (${selectedSpace.origin.map(format).join(', ')}). Y up.`;
-    // A moved/unloaded reference invalidates offsets typed against its previous placement.
-    if (JSON.stringify(previous) !== JSON.stringify(selectedSpace)) readCurrent();
+    for (const field of [...position, ...target, apply]) field.disabled = unavailable;
+    if (JSON.stringify(previous) !== JSON.stringify(selectedSpace)) {
+      if (options.getSpace && dirty && !unavailable && previous.id !== selectedSpace.id) {
+        for (const point of [values.position, values.target])
+          point.forEach((v, i) => {
+            point[i] = v + previous.origin[i] - selectedSpace.origin[i];
+          });
+        write();
+      } else readCurrent(); // moved/unloaded references invalidate drafts against their previous placement
+    }
   };
   const refresh = () => {
     refreshSpaces();
@@ -265,6 +286,9 @@ export function createSceneCamera(host: HTMLElement, deps: SceneCameraDeps) {
     }
   };
   return {
+    refresh() {
+      if (active) refresh();
+    },
     setActive(on: boolean) {
       if (on === active) return;
       active = on;

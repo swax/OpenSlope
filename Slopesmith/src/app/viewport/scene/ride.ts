@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { StockBoardSelection } from '../../../core/equipment/stock-boards';
-import type { BoardSoundMix, RaceMusicArrangement, Rail, V3 } from '../../../core/doc/types';
+import type { BoardSoundMix, RaceMusicArrangement, Rail, V3, QuadMeshDoc } from '../../../core/doc/types';
+import { appendRecordedAiPaths, authoredAiNetwork } from '../../../core/doc/ai-paths';
 import {
   editorFromRaw,
   referenceSplineIsGrindRail,
@@ -99,6 +100,7 @@ export interface RideDeps {
   getAiLines(): V3[][];
   /** Their line ratings, in the same order — the same ones the AIP export ships ([Trailmap: 395]). */
   getAiRatings(): number[];
+  getAuthoredDoc?(): QuadMeshDoc | null;
   /** The authored mountain's course spine (data space): the field's progress ruler, and the exported race line. */
   getCourseLine(): V3[];
   /** Its finish crossing + heading (data space) — the placed anchor, or the run's tail when none was dropped. */
@@ -338,9 +340,32 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
   function authoredAiWorldPaths(): { paths: AiPathDef[]; starts: number[]; course: THREE.Vector3[] } {
     stage.worldRoot.updateWorldMatrix(true, false);
     const m = stage.worldRoot.matrixWorld;
+    const doc = deps.getAuthoredDoc?.();
+    if (doc) {
+      const network = authoredAiNetwork(doc.course, doc.aiSeed, doc.aiPaths, true, doc.autoAiPaths !== false);
+      const paths = network.paths.map(path => ({
+        rating: path.rating,
+        respawnable: path.respawnable,
+        events: path.events,
+        markers: path.events
+          .filter(e => e.type === 100)
+          .map(e => ({
+            arc: e.start,
+            end: e.end,
+            speed: (e.value >>> 2) / 3.6,
+            trickA: !!(e.value & 1),
+            trickB: !!(e.value & 2),
+          })),
+        points: path.points.map(p => new THREE.Vector3(...p).applyMatrix4(m)),
+      }));
+      return {
+        paths,
+        starts: network.starts,
+        course: deps.getCourseLine().map(p => new THREE.Vector3(...p).applyMatrix4(m)),
+      };
+    }
     const ratings = deps.getAiRatings();
-    // No jump markers: the authored mountain has no equivalent of the AIP's type-100 events yet, so its field
-    // never ollies ([Trailmap: 395]). Every derived line IS the course, so all of them are respawnable.
+    // Compatibility for hosts supplying only generated course lines rather than a document.
     const paths = deps.getAiLines().map((line, i) => ({
       rating: ratings[i] ?? DEFAULT_LINE_RATING,
       respawnable: true,
@@ -780,6 +805,7 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       onPropCollision: (slot, hit) => deps.onPropCollision?.(hit, slot),
       maxRiders: aiMax,
       player,
+      playerActive: () => !!ride && ride.state === player && !ride.onFoot,
       riderStyle,
       gear: rideGear,
       snowboardStance,
@@ -951,13 +977,14 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     countdown: RideCountdown | null = null,
     telemetry = false,
     touchControls = true,
+    recordAiRun = false,
   ) {
     if (ride || watching) return;
     const t = rideTarget(target);
     if (!t) return;
     takeEditorView();
     music.beginRun();
-    mountBoard(t, spawn, heading, onExit, ai, countdown, telemetry, touchControls);
+    mountBoard(t, spawn, heading, onExit, ai, countdown, telemetry, touchControls, 'chase', undefined, recordAiRun);
   }
 
   /** Seat a board on an already-prepared target. Split out of `startRide` because a VR session mounts and
@@ -973,11 +1000,15 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     touchControls = true,
     view: 'chase' | 'vr' = 'chase',
     gaze?: () => THREE.Vector3 | null,
+    recordAiRun = false,
   ) {
     const reference = t.reference,
       rideMesh = t.mesh;
     const boardFxGround = downwardGroundQuery((from, to) => castTerrain(t, from, to));
     const walkGround = downwardGroundQuery((from, to) => castWalkGround(t, from, to));
+    const recordingOwner = deps.getAuthoredDoc?.();
+    stage.worldRoot.updateWorldMatrix(true, false);
+    const recordingToData = stage.worldRoot.matrixWorld.clone().invert();
 
     ride = new TestRide({
       spawn: new THREE.Vector3(spawn[0], spawn[1], spawn[2]),
@@ -1035,6 +1066,18 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
       onControlContextChange: () => stage.cb.onRideControlContextChange?.(),
       label: `Riding: ${reference ? deps.getRefLevel() || 'Reference' : deps.getMountainName() || 'Mountain'}`,
       onExit,
+      recordAiRun,
+      onRecordAiPaths:
+        !reference && view === 'chase' && recordingOwner && stage.cb.onRecordAiPaths
+          ? sections => {
+              if (deps.getAuthoredDoc?.() !== recordingOwner) return;
+              const recorded = sections.map(section => ({
+                ...section,
+                points: section.points.map(p => new THREE.Vector3(...p).applyMatrix4(recordingToData).toArray() as V3),
+              }));
+              stage.cb.onRecordAiPaths?.(appendRecordedAiPaths(recordingOwner.aiPaths, recorded), recordingOwner);
+            }
+          : undefined,
     });
     announcer.reset();
     announcer.configure(deps.getAnnouncer(), announcerEnabled);
@@ -1458,6 +1501,9 @@ export function createRideLayer(stage: Stage, deps: RideDeps) {
     },
     get watching() {
       return watching;
+    },
+    get recordingAiRun() {
+      return ride?.recordingAiRun ?? false;
     },
     get canRideReference() {
       return canRide();

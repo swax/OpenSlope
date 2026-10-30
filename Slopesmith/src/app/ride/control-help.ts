@@ -6,8 +6,11 @@ export interface RideControlHelp {
 }
 
 /** Key mappings for the standard lower-left command sheet during a desktop Test session. */
-export function rideControlHelp(walking: boolean, firstPerson: boolean): RideControlHelp {
-  const escape: RideControlRow = ['Esc', firstPerson ? 'release cursor / exit' : 'release look / exit'];
+export function rideControlHelp(walking: boolean, firstPerson: boolean, recordingAiRun = false): RideControlHelp {
+  const escape: RideControlRow = [
+    'Esc',
+    recordingAiRun ? 'stop and save AI run' : firstPerson ? 'release cursor / exit' : 'release look / exit',
+  ];
   const zoom: RideControlRow = ['Wheel / pinch', 'zoom camera'];
   const view: RideControlRow[] = firstPerson
     ? [['Mouse', 'look'], escape, ['click', 'recapture cursor']]

@@ -44,6 +44,7 @@ export type CommandSheetDeps = {
   desktopRiding: () => boolean;
   rideWalking: () => boolean;
   rideFirstPerson: () => boolean;
+  recordingAiRun?: () => boolean;
 };
 
 /** Bottom keyboard/mouse help overlays. Kept outside the tools builder because this is a mode projection, not
@@ -203,7 +204,9 @@ export function createCommandSheet(deps: CommandSheetDeps) {
   }
 
   return function updateCommandSheet() {
-    const rideHelp = desktopRiding() ? rideControlHelp(rideWalking(), rideFirstPerson()) : null;
+    const rideHelp = desktopRiding()
+      ? rideControlHelp(rideWalking(), rideFirstPerson(), deps.recordingAiRun?.())
+      : null;
     cmdSheet.innerHTML = rideHelp
       ? helpPanel(rideHelp.title, ...rideHelp.groups)
       : helpPanel('View', [

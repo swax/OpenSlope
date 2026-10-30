@@ -515,14 +515,22 @@ body.os-xr-editing .pl-head {
 #dock-right .sp-scene-gui .sp-scene-card > .lil-title::before {
   display: none;
 }
-/* Repeat the root's slim dark break before the lower Reference half of every comparison. */
-#dock-right .sp-scene-gui .sp-scene-reference::before {
-  content: '';
-  display: block;
-  height: 9px;
-  background: #0c141de8;
-  border-top: 1px solid #2c3e50;
-  box-sizing: border-box;
+/* Shared controls stay above the Mountain / Reference detail switch. */
+#dock-right .sp-scene-target {
+  padding: 6px var(--padding);
+}
+#dock-right .sp-scene-target[hidden] {
+  display: none;
+}
+#dock-right .sp-scene-target .sp-seg {
+  display: flex;
+  width: 100%;
+}
+#dock-right .sp-scene-target .sp-seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  padding: 7px 6px;
 }
 /* Effects context tabs switch the entire detail surface underneath, so they fill the row and read as tabs
    rather than a compact segmented field. Test's mountain picker intentionally uses the button-group rules. */

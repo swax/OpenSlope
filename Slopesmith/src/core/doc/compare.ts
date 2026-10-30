@@ -238,6 +238,7 @@ const FAMILY_NOUN: Record<ObjectFamily, string> = {
   prop: 'prop',
   light: 'light',
   rail: 'rail',
+  'ai-path': 'AI path',
   gem: 'gem',
   model: 'model',
   volume: 'particle volume',

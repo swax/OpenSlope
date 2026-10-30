@@ -5,6 +5,8 @@
 export interface RidePointerLockOpts {
   target: HTMLElement;
   onMove(deltaX: number, deltaY: number, turnAvatar: boolean): void;
+  /** A recording run uses its first Escape to save and exit, even with the cursor captured. */
+  onEscape?(): boolean;
 }
 
 // A real high-speed mouse move arrives as several events. A single larger jump is characteristic of the
@@ -55,6 +57,12 @@ export function createRidePointerLock(o: RidePointerLockOpts) {
   }
 
   function keyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && o.onEscape?.()) {
+      release();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     // Unlocked Escape deliberately falls through to the ride input: a second press exits back to Test setup.
     if (event.key === 'Escape' && locked()) {
       release();

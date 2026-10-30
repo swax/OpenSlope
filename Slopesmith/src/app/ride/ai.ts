@@ -26,6 +26,15 @@ import { cruiseSpeedInput } from './cruise-speed';
 import { createRiderPose, type RiderPose } from './pose';
 import type { RefAiPathEvent } from '../../core/reference/terrain';
 import { shuffledAvatars } from '../../core/characters/builtins';
+import {
+  aiPathCandidates,
+  aiPathMood,
+  aiPathProjection,
+  chooseAiPath,
+  type AiBoardClass,
+  type AiChoicePath,
+} from './ai-path-choice';
+import { createRideScorer, type RideScorer } from './score';
 
 /**
  * The AI field for the test ride ([Trailmap: 395]).
@@ -53,16 +62,15 @@ import { shuffledAvatars } from '../../core/characters/builtins';
  *    collapses into a clump around them; that is a bug, not rubber-banding.
  *
  * What makes a field of riders *differ* is, in order: the lines they choose (rating × mood), how they react to
- * **each other** (avoid / attack / body bumps — with no rivals a field has nothing that can push it apart), the
+ * **other competitors**, including the player (avoid / body bumps), the
  * skill scalars, and last and least the speed statistic (which is a recovery stat, not a top-speed stat: see
  * `CHARACTERS`).
  *
- * NOT ported, and named as gaps rather than hidden: the engine's cruise **boost** press is gated on the boost
- * meter, which this ride has no equivalent of ([Trailmap: 360]), so a rider only boosts where the engine boosts
- * for a *traced* reason — a jump approach or an authored cruise-speed region. The **throttle axis** has no
+ * Each rider's meter uses the browser's shared scorer for fill, spend and reset penalties. The engine's
+ * meter-triggered cruise boost and full trick picker remain unported: riders request boost for jump approaches
+ * or authored cruise-speed regions. The **throttle axis** has no
  * counterpart in this model's automatic cruise drive, so the tuck stands in for it. **Tricks** are selected at the
- * jump press and we have no trick system to fire. And the AI never bumps the *player* here (the engine bumps
- * everyone; our player's model owns its own position).
+ * jump press and we have no trick system to fire.
  *
  * One thing here is purely the editor's and has no engine counterpart: `spawnAt`, which drops a rider wherever
  * you click. A race field is seeded at the gates and that is all the engine ever needed; an author testing a
@@ -82,8 +90,6 @@ const TRACK_WINDOW = 30.0; // m of arc the forward-only projection scans per fra
 const END_MARGIN = 2.0; // m — this close to a path's end, hand off to the next one (200 u)
 const OFF_PATH = 5.0; // m of HORIZONTAL perp — shoved this far off the line, re-choose (500 u)
 const RECHOOSE_EVERY = 1.0; // s — and no more often than this
-const CANDIDATES = 6; // the nearest N paths are the only ones considered
-const RATING_WEIGHT = 2.3189357; // m² of score per rating point matched (23189.357 u²) — worth ~15 m at a match
 
 // The jump ([Trailmap: 395]): the AI's ollie is AUTHORED, not emergent. It presses on a type-25 path marker.
 const MARKER_AHEAD = 3.0; // m — the marker query window runs [lastArc, arc + this] (300 u)
@@ -99,6 +105,7 @@ const RIVAL_DROP = 10.5; // m — drop the rival past this (1050 u)
 const RIVAL_DROP_OFF = 6.0; // m off my own path — too lost to care about anyone (600 u)
 const RIVAL_HOLD_OFF = 5.4; // m off my own path — too lost to acquire anyone (540 u)
 const AVOID_CLEAR = 1.5; // m — the clearance disc the avoid cone is drawn around a rival (150 u)
+const RIVAL_HEIGHT = 2.0; // m — OURS: vertical body gate / clearance above the rider's local slope plane
 const BUMP_SPLIT = 0.55; // each rider takes this much of the separation when two bodies overlap
 const BUMP_RADIUS = 0.55; // m — OURS: the engine tests authored collision volumes, which we don't have
 
@@ -112,7 +119,6 @@ const CATCHUP_SLEW = 0.008444; // per 60 Hz tick — a full swing takes ~1.6 s, 
 
 const STANDINGS_EVERY = 0.1; // s — the engine re-sorts the field every 6th frame
 const SKILL_SWITCH_EVERY = 1.0; // s — and re-picks each rider's skill scalar every 60th
-const SKILL_COMMIT_DIV = 1.1039; // skill ÷ this = the odds a rider commits to its mood instead of the safe line
 
 /** One topsheet tint per rider, so the field reads apart from the chase camera. */
 const TINTS = [0xff5a4a, 0xffb84a, 0x7ee04a, 0x4ad0ff, 0xb06cff, 0xff6cd0];
@@ -123,13 +129,18 @@ const TINTS = [0xff5a4a, 0xffb84a, 0x7ee04a, 0x4ad0ff, 0xb06cff, 0xff6cd0];
  * engine's traced cruise-drive band ([Trailmap: 360]): how hard it drives back up to the surface's speed target,
  * which every rider shares — so it decides who recovers first out of a bad corner, not who is fastest.
  */
-const CHARACTERS: { skill: [number, number]; speed: number }[] = [
-  { skill: [1.0, 1.06], speed: 0.95 }, // quick, tidy
-  { skill: [0.92, 0.99], speed: 0.55 }, // steady mid-pack
-  { skill: [1.08, 1.1], speed: 0.8 },
-  { skill: [0.96, 1.02], speed: 0.3 }, // slow but neat
-  { skill: [1.04, 1.08], speed: 0.68 },
-  { skill: [0.88, 0.95], speed: 0.42 }, // sloppy: wanders off the line, gets re-chosen back onto it
+export interface AiRiderProfile {
+  skill: [number, number];
+  speed: number;
+  boardClass: AiBoardClass;
+}
+const CHARACTERS: AiRiderProfile[] = [
+  { skill: [1.0, 1.06], speed: 0.95, boardClass: 0 }, // quick, tidy
+  { skill: [0.92, 0.99], speed: 0.55, boardClass: 1 }, // steady mid-pack
+  { skill: [1.08, 1.1], speed: 0.8, boardClass: 2 },
+  { skill: [0.96, 1.02], speed: 0.3, boardClass: 0 }, // slow but neat
+  { skill: [1.04, 1.08], speed: 0.68, boardClass: 1 },
+  { skill: [0.88, 0.95], speed: 0.42, boardClass: 2 }, // sloppy: wanders off the line, gets re-chosen back onto it
 ];
 
 /** Deterministic per-field PRNG (mulberry32), so a run is reproducible and the tests are not flaky. */
@@ -238,8 +249,10 @@ export interface AiRidersOpts {
   /** Fires when a rider counts a finish crossing, with its slot and the passes it has left. */
   onLap?: (slot: number, remaining: number) => void;
   oobFloorY: number;
-  /** The player's live physics state — they are a competitor in the standings like anyone else. */
+  /** The player's live physics state — used for standings, avoidance and symmetric body separation. */
   player?: RideState;
+  /** Whether the player is riding this board. False while on foot; standings still include the player. */
+  playerActive?: () => boolean;
   /**
    * The course spine in world space: the field's **progress ruler**. Everything that needs to know who is
    * winning — the standings, and therefore the catch-up ladder, the skill switch, the mood and where a course
@@ -248,6 +261,10 @@ export interface AiRidersOpts {
   course?: THREE.Vector3[];
   /** Seeded for the mood's commit roll; injectable so a test can pin it. */
   rng?: () => number;
+  /** Editor rider presets; board class is path-choice data, independent of avatar appearance. */
+  profiles?: readonly AiRiderProfile[];
+  /** Native skill-percent gate, enabled by default. Its integer roll also runs with the gate off. */
+  pathMoodSkillEnabled?: boolean;
 }
 
 /**
@@ -270,7 +287,7 @@ export interface AiRidersOpts {
  * round in a circle holds the rider's own projection still, so the target never moves on and it never comes
  * out. That is the "riders doing donuts under the jump" bug, and this one field is the whole of it.
  */
-interface AiPath {
+interface AiPath extends AiChoicePath {
   pts: THREE.Vector3[];
   cum: Float64Array; // cumulative HORIZONTAL arc length per point — the metric the file's arcs are in
   flat: Float64Array; // per-segment horizontal length², for the projection's divide
@@ -291,6 +308,9 @@ interface AiPath {
 type Behaviour = 'approach' | 'cruise' | 'avoid';
 
 interface AiRider {
+  boardClass: AiBoardClass;
+  pathMood: number;
+  scorer: RideScorer;
   avatar: string; // the character it rides as, dealt by slot from the field's deck
   born: number; // monotonic: who has been out on the mountain longest (a full field recycles that one)
   home: number; // the start-gate path it was fielded on
@@ -308,7 +328,7 @@ interface AiRider {
   refAhead: boolean; // ...and whether that competitor is in front of it
   timeScale: number; // the engine's rubber band: this rider's dt multiplier
   state: Behaviour;
-  rival: number; // index into `riders` of the competitor it is reacting to, or −1
+  rival: number | 'player'; // an index into `riders`, the human, or −1 for none
   targetSpeed: number; // m/s, from the marker it is running at; 0 = none
   cruiseTarget: number | null; // m/s, from an overlapping cruise event; zero is a valid target
   jumpHeld: boolean; // the ollie button is down (the charge is building)
@@ -361,6 +381,7 @@ export function createAiRiders(o: AiRidersOpts) {
       cum,
       flat,
       total,
+      bounds: new THREE.Box3().setFromPoints(pts),
       rating: src.rating,
       respawnable: src.respawnable !== false,
       markers: (src.markers ?? []).slice(),
@@ -371,6 +392,7 @@ export function createAiRiders(o: AiRidersOpts) {
   const fromSource = new Map(netIndex.map((src, j) => [src, j]));
 
   const riders: AiRider[] = [];
+  let player: RideState | undefined; // the frame's mounted human; an abandoned board is not a rival
   const tmpA = new THREE.Vector3();
   const tmpB = new THREE.Vector3();
   const seg = new THREE.Vector3();
@@ -383,8 +405,7 @@ export function createAiRiders(o: AiRidersOpts) {
   const toTarget = new THREE.Vector3();
   const push = new THREE.Vector3();
   const aiRideTmp = new THREE.Vector3(); // the rider's ridden direction, rebuilt per query — never retained
-  // The reset's query point needs its own vector: `project3` uses tmpA/tmpB as scratch, so handing it one of
-  // those as the point to search FROM silently shreds it on the first segment.
+  // The reset's query point survives projection and scoring scratch work throughout candidate selection.
   const aim = new THREE.Vector3();
   const lostAt = new THREE.Vector3();
 
@@ -459,89 +480,52 @@ export function createAiRiders(o: AiRidersOpts) {
     outTan.copy(p.pts[hi]).sub(p.pts[lo]).normalize();
   }
 
-  /** Closest point on a path in FULL 3-D, scanning all of it — what the path *chooser* and the course reset ask
-   *  (unlike the tracker, which is horizontal and windowed). A line that arcs overhead is far away to this, which
-   *  is what stops a rider picking a line that flies over its head. The *distance* is 3-D; the arc it reports is
-   *  still the path's own horizontal one (on a straight segment the fraction along is the same either way). */
+  /** The native chooser projects horizontally, then uses the resulting real point for a full 3-D score. */
   function project3(p: AiPath, pos: THREE.Vector3): { arc: number; dist: number } {
-    let bestD = Infinity,
-      bestArc = 0;
-    for (let k = 0; k + 1 < p.pts.length; k++) {
-      const a = p.pts[k],
-        b = p.pts[k + 1];
-      seg.copy(b).sub(a);
-      const len2 = seg.lengthSq();
-      if (len2 < 1e-9) continue;
-      const t = clamp(tmpA.copy(pos).sub(a).dot(seg) / len2, 0, 1);
-      const d = tmpB.copy(a).addScaledVector(seg, t).distanceToSquared(pos);
-      if (d < bestD) {
-        bestD = d;
-        bestArc = p.cum[k] + t * (p.cum[k + 1] - p.cum[k]);
-      }
-    }
-    return { arc: bestArc, dist: Math.sqrt(bestD) };
+    const foot = aiPathProjection(p, pos);
+    return { arc: foot.arc, dist: foot.point.distanceTo(pos) };
   }
 
   // ---- the path chain ----
 
   /**
    * The rider's mood, 0–100: which *kind* of line it wants right now. The engine reads race placement, the boost
-   * meter and a skill-weighted dice roll ([Trailmap: 395]). We have the placement and the roll; a test ride has
-   * no boost meter, so that input is simply missing. Leading, a rider wants the safe fast line; last, it gambles
-   * on the daring one; in between it takes the default. Then the roll: a rider only *commits* to that mood with
-   * odds equal to its skill — lose it and it falls back to the safe 50.
+   * meter, board class and the integer skill roll ([Trailmap: 395-mood]). Each rider owns its live meter;
+   * board class selects the threshold/placement rules, independently of event mode or avatar appearance.
    */
   function mood(r: AiRider): number {
-    if (!haveRuler || board.length < 2) return 50;
-    const last = board.length - 1;
-    const want = r.place === 0 ? 0 : r.place === last ? 100 : 50;
-    return rng() < clamp(r.skill / SKILL_COMMIT_DIV, 0, 1) ? want : 50;
+    const roll = Math.max(0, Math.min(99, Math.floor(rng() * 100)));
+    r.pathMood = aiPathMood(
+      r.boardClass,
+      r.place,
+      r.scorer.boostMeter,
+      r.skill,
+      roll,
+      o.pathMoodSkillEnabled !== false,
+    );
+    return r.pathMood;
   }
 
   /**
-   * The best line to be riding from `pos`, for someone whose mood is `want` ([Trailmap: 395]). Candidates are the
-   * nearest few *in full 3-D*; any that is itself about to run out is no use to anybody, and `exclude` drops the
-   * incumbent when the caller is deliberately advancing off it. Lowest score wins: near the point and pointing
-   * where it is going, minus a bonus for how well the line's rating matches the mood — worth ~15 m of geometry at
-   * a perfect match, enough to pull a rider onto a line it is not currently nearest to. That bonus is the entire
-   * reason a level ships ninety overlapping paths.
+   * Native selection queries eight metres ahead along velocity, forms a six-box shortlist, then applies
+   * geometric/rating scoring. The editor-only drop has no carried velocity and queries its clicked point.
    */
-  function bestPathFrom(pos: THREE.Vector3, want: number, exclude = -1): { path: number; arc: number } | null {
-    const near: { i: number; arc: number; dist: number }[] = [];
-    for (let i = 0; i < net.length; i++) {
-      if (i === exclude) continue;
-      const { arc, dist } = project3(net[i], pos);
-      if (net[i].total - arc < END_MARGIN) continue; // already at ITS end: no use to anyone
-      near.push({ i, arc, dist });
-    }
-    if (!near.length) return null;
-    near.sort((a, b) => a.dist - b.dist);
-    near.length = Math.min(near.length, CANDIDATES);
-
-    let best = -1,
-      bestScore = Infinity,
-      bestArc = 0;
-    for (const c of near) {
-      sample(net[c.i], c.arc + LOOKAHEAD, candTarget, tan);
-      const score =
-        c.dist * c.dist + candTarget.distanceToSquared(pos) - (100 - Math.abs(net[c.i].rating - want)) * RATING_WEIGHT;
-      if (score < bestScore) {
-        bestScore = score;
-        best = c.i;
-        bestArc = c.arc;
-      }
-    }
-    return best < 0 ? null : { path: best, arc: bestArc };
+  function bestPathFrom(pos: THREE.Vector3, want: number, exclude = -1, velocity = new THREE.Vector3()) {
+    return chooseAiPath(net, pos, velocity, want, exclude);
   }
 
   /** Move this rider onto the best line from where it is now. When *advancing* the incumbent is excluded — that
    *  is the whole point of the hand-off. */
   function choosePath(r: AiRider, advancing: boolean): boolean {
-    const pick = bestPathFrom(r.model.st.pos, mood(r), advancing ? r.path : -1);
+    const pick = bestPathFrom(r.model.st.pos, mood(r), advancing ? r.path : -1, r.model.st.vel);
     if (!pick) return false;
     // A normal reselection can retain this line. Keep its forward cache and travelled event interval intact.
-    if (pick.path !== r.path) setPath(r, pick.path, pick.arc);
-    else r.sinceChoice = 0;
+    if (pick.path !== r.path) {
+      // The query's projected arc decides eligibility, not the rider's new tracking station.
+      setPath(r, pick.path, 0);
+      track(r);
+      r.prevArc = r.arc;
+    } else r.sinceChoice = 0;
     return true;
   }
 
@@ -604,6 +588,7 @@ export function createAiRiders(o: AiRidersOpts) {
     r.inWarp = true;
     r.resetPending = false;
     r.cruiseTarget = null;
+    r.scorer.bail();
     r.resets++;
     const others = board.filter(b => b.rider !== r);
     const mean = others.length ? others.reduce((s, b) => s + b.progress, 0) / others.length : r.progress;
@@ -614,8 +599,7 @@ export function createAiRiders(o: AiRidersOpts) {
       bestScore = Infinity,
       bestArc = 0;
     const near: { i: number; arc: number; dist: number }[] = [];
-    for (let i = 0; i < net.length; i++) {
-      if (!net[i].respawnable) continue; // the whole point of the flag
+    for (const i of aiPathCandidates(net, aim, true)) {
       const { arc, dist } = project3(net[i], aim);
       near.push({ i, arc, dist });
     }
@@ -625,8 +609,6 @@ export function createAiRiders(o: AiRidersOpts) {
       r.inWarp = false;
       return;
     }
-    near.sort((a, b) => a.dist - b.dist);
-    near.length = Math.min(near.length, CANDIDATES);
     for (const c of near) {
       sample(net[c.i], c.arc + LOOKAHEAD, candTarget, tan);
       const score = c.dist * c.dist + candTarget.distanceToSquared(aim);
@@ -665,9 +647,15 @@ export function createAiRiders(o: AiRidersOpts) {
   function makeRider(slot: number, path: number, arc: number, pos: THREE.Vector3, fwd: THREE.Vector3): AiRider {
     const keys: RideKeys = { left: false, right: false, tuck: false, brake: false, boost: false };
     const stick = { active: true, x: 0 }; // always "held": the AI's stick is the only input this rider has
-    const who = CHARACTERS[slot % CHARACTERS.length];
+    const profiles = o.profiles?.length ? o.profiles : CHARACTERS;
+    const who = profiles[slot % profiles.length];
+    const scorer = createRideScorer();
+    scorer.start();
     const avatar = avatars[slot % avatars.length];
     const r: AiRider = {
+      boardClass: who.boardClass,
+      pathMood: 50,
+      scorer,
       avatar,
       born: born++,
       home: path,
@@ -733,6 +721,10 @@ export function createAiRiders(o: AiRidersOpts) {
         stick,
         carryBack: false, // the field's own reset places this rider, and it is armed by the plain respawn below
         drive: riderDrive(who.speed), // its speed statistic: this is the board it rides, and they differ
+        heldBoostAvailable: () => scorer.hasBoost,
+        onTelemetryTick: tick => {
+          if (!r.resetPending) scorer.ingest(tick);
+        },
         // The model respawns itself when the rider leaves the world (the out-of-bounds floor, a reset surface).
         // That is exactly the engine's out-of-play condition, so it arms the course reset: the rider is put back
         // on a respawnable path with the field, not dropped at the top of its own start gate.
@@ -912,22 +904,35 @@ export function createAiRiders(o: AiRidersOpts) {
     }
   }
 
+  function rivalState(rival: AiRider['rival']): RideState | undefined {
+    if (rival === 'player') return player;
+    const rider = riders[rival];
+    return rider && !rider.resetPending ? rider.model.st : undefined;
+  }
+
+  /** A downhill competitor can be metres lower in world Y while still riding the same surface plane. */
+  function sameRideLevel(a: RideState, b: RideState): boolean {
+    const n = a.contactN;
+    return Math.abs((b.pos.x - a.pos.x) * n.x + (b.pos.y - a.pos.y) * n.y + (b.pos.z - a.pos.z) * n.z) <= RIVAL_HEIGHT;
+  }
+
   /**
    * Acquire (or drop) the competitor this rider is reacting to ([Trailmap: 395]). The engine keeps a pairwise
    * table of every rider's distance and bearing to every other and re-scores this every 12th frame: take anyone
    * within `RIVAL_ACQUIRE`, score them by distance weighted *against* how far off the nose they are — so the one
    * straight ahead wins over a nearer one off to the side — and drop the rival once it is past `RIVAL_DROP` or
    * once this rider is too far off its own line to be racing anybody.
-   *
-   * This is the machinery a field needs to stop riding in single file, and it is the piece I had missing.
    */
   function pickRival(r: AiRider) {
     const st = r.model.st;
-    if (r.rival >= 0) {
-      const cur = riders[r.rival];
-      const d = Math.hypot(cur.model.st.pos.x - st.pos.x, cur.model.st.pos.z - st.pos.z);
-      if (d > RIVAL_DROP || r.perp > RIVAL_DROP_OFF) r.rival = -1;
-    }
+    const current = rivalState(r.rival);
+    if (
+      !current ||
+      Math.hypot(current.pos.x - st.pos.x, current.pos.z - st.pos.z) > RIVAL_DROP ||
+      !sameRideLevel(st, current) ||
+      r.perp > RIVAL_DROP_OFF
+    )
+      r.rival = -1;
     if (r.perp >= RIVAL_HOLD_OFF) {
       r.rival = -1;
       return;
@@ -935,13 +940,15 @@ export function createAiRiders(o: AiRidersOpts) {
     // "In front of it" is the direction the rider is travelling, which on a rider knocked switch is the tail.
     const ride = rideForward(st, aiRideTmp);
     const face = bearing(ride.x, ride.z);
-    let best = -1,
-      bestScore = Infinity;
-    for (let i = 0; i < riders.length; i++) {
+    let best: AiRider['rival'] = -1;
+    let bestScore = Infinity;
+    for (let i = 0; i <= riders.length; i++) {
       if (riders[i] === r) continue;
-      const other = riders[i].model.st.pos;
-      const dx = other.x - st.pos.x,
-        dz = other.z - st.pos.z;
+      const candidate = i === riders.length ? 'player' : i;
+      const other = rivalState(candidate);
+      if (!other || !sameRideLevel(st, other)) continue;
+      const dx = other.pos.x - st.pos.x,
+        dz = other.pos.z - st.pos.z;
       const dist = Math.hypot(dx, dz);
       if (dist > RIVAL_ACQUIRE) continue;
       // Not "attackable" in a race (the engine gates that on the game mode), so the weight is 1 − cos(off-nose):
@@ -950,10 +957,10 @@ export function createAiRiders(o: AiRidersOpts) {
       const score = dist * (1 - Math.cos(off));
       if (score < bestScore) {
         bestScore = score;
-        best = i;
+        best = candidate;
       }
     }
-    if (best >= 0) r.rival = best;
+    if (best !== -1) r.rival = best;
   }
 
   // ---- the four behaviours ----
@@ -1053,9 +1060,8 @@ export function createAiRiders(o: AiRidersOpts) {
       if (r.targetSpeed > 0 && speed > r.targetSpeed + SPEED_SLOP) r.keys.brake = true;
     } else {
       r.targetSpeed = 0;
-      const rival = r.rival >= 0 ? riders[r.rival] : null;
-      const rst = rival?.model.st;
-      if (rst) {
+      const rst = rivalState(r.rival);
+      if (rst && sameRideLevel(st, rst)) {
         const dx = rst.pos.x - st.pos.x,
           dz = rst.pos.z - st.pos.z;
         const dist = Math.max(0.01, Math.hypot(dx, dz));
@@ -1126,24 +1132,25 @@ export function createAiRiders(o: AiRidersOpts) {
    * of snow, and the whole jostle of a pack disappears.
    */
   function bumps() {
+    function separate(a: THREE.Vector3, b: THREE.Vector3) {
+      const dx = b.x - a.x,
+        dz = b.z - a.z;
+      const d = Math.hypot(dx, dz);
+      const min = BUMP_RADIUS * 2;
+      if (d >= min || Math.abs(b.y - a.y) > RIVAL_HEIGHT) return;
+      if (d < 1e-4) push.set(1, 0, 0);
+      else push.set(dx / d, 0, dz / d);
+      const sep = (min - d) * BUMP_SPLIT;
+      a.addScaledVector(push, -sep);
+      b.addScaledVector(push, sep);
+    }
     for (let i = 0; i < riders.length; i++) {
+      if (riders[i].resetPending) continue;
+      const a = riders[i].model.st.pos;
       for (let j = i + 1; j < riders.length; j++) {
-        const a = riders[i].model.st.pos,
-          b = riders[j].model.st.pos;
-        const dx = b.x - a.x,
-          dz = b.z - a.z;
-        const d = Math.hypot(dx, dz);
-        const min = BUMP_RADIUS * 2;
-        if (d > min || Math.abs(b.y - a.y) > 2) continue; // side by side, not one flying over the other
-        if (d < 1e-4) {
-          push.set(1, 0, 0);
-        } else {
-          push.set(dx / d, 0, dz / d);
-        }
-        const sep = (min - d) * BUMP_SPLIT;
-        a.addScaledVector(push, -sep);
-        b.addScaledVector(push, sep);
+        if (!riders[j].resetPending) separate(a, riders[j].model.st.pos);
       }
+      if (player) separate(a, player.pos);
     }
   }
 
@@ -1153,6 +1160,7 @@ export function createAiRiders(o: AiRidersOpts) {
 
   function step(dt: number) {
     if (dt <= 0) return;
+    player = o.player && (o.playerActive?.() ?? true) ? o.player : undefined;
 
     // The engine re-sorts the field every 6th frame, re-picks each rider's skill every 60th and re-scores rivals
     // every 12th; the cadence is what stops a rider's reference (and so its time dilation) from chattering.
@@ -1172,6 +1180,7 @@ export function createAiRiders(o: AiRidersOpts) {
     if (rescoreRivals) sinceRival = 0;
 
     for (const r of riders) {
+      if (r.rival === 'player' && !player) r.rival = -1;
       if (r.resetPending) {
         courseReset(r);
         continue;
@@ -1204,7 +1213,9 @@ export function createAiRiders(o: AiRidersOpts) {
       if (rescoreRivals) pickRival(r);
       behave(r);
       catchUp(r, dt);
-      r.model.step(dt * r.timeScale);
+      const rideDt = dt * r.timeScale;
+      r.scorer.stepBoost(rideDt, r.keys.boost);
+      r.model.step(rideDt);
       r.pose.update(r.model.st, dt, r.keys, r.model.renderState()); // same anti-alias lerp as the player's board
     }
     bumps();
@@ -1264,6 +1275,10 @@ export function createAiRiders(o: AiRidersOpts) {
       stick: r.stick.x,
       timeScale: r.timeScale,
       skill: r.skill,
+      boardClass: r.boardClass,
+      pathMood: r.pathMood,
+      boostMeter: r.scorer.boostMeter,
+      boostActive: r.model.boostActive(),
       state: r.state,
       rival: r.rival,
       jumpHeld: r.jumpHeld,

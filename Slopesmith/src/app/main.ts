@@ -309,7 +309,7 @@ const viewportCallbacks = createViewportCallbacks({
   redo: () => redo(),
   xrMixedRealityChanged: on => xrMixedRealityChanged(on),
   getSceneSel: () => getSceneSel(),
-  selectScene: kind => selectScene(kind),
+  selectScene: kind => selectScene(kind, kind === 'course' ? 'authored' : undefined),
   showReferenceLightDetails: (level, light) => reference.setSelectedLightDetails(level, light),
   persistRef: () => persistRef(),
   sendRideEvent: event => {
@@ -1471,6 +1471,8 @@ const {
   godRayFolder,
   refGodRayFolder,
   skyPreviewFolder,
+  sharedSoundFolder,
+  lightingPreviewFolder,
   skyFolder,
   refFolder,
   lightFolder,
@@ -1478,6 +1480,7 @@ const {
   refSkyFolder,
   refCourseFolder,
   getSceneSel,
+  getSceneTarget,
   setSceneSel,
   rebuildScene,
   refreshSceneAfterSync,
@@ -1492,6 +1495,8 @@ const {
   cancelCourseReset,
   undoCourseResetPoint,
   selectReferenceAiPath,
+  selectAuthoredAiPath,
+  refreshAuthoredAiPath,
   refreshReferenceAiPaths,
 } = createScenePanel({
   camera: {
@@ -1545,6 +1550,7 @@ const {
   getAiPathsVisible: () => store.aiPathsOn,
   getReferenceAiPaths: () => viewport.referenceAiPaths,
   highlightReferenceAiPath: index => viewport.selectReferenceAiPath(index),
+  highlightAuthoredAiPath: (index, node) => viewport.selectAuthoredAiPath(index, node),
   setAiPathsVisible: on => {
     store.aiPathsOn = on;
     viewport.aiPathsGuide = on;
@@ -1566,6 +1572,11 @@ const {
   },
 });
 viewportCallbacks.onSelectReferenceAiPath = selectReferenceAiPath;
+viewportCallbacks.onSelectAuthoredAiPath = selectAuthoredAiPath;
+viewportCallbacks.onAiPathNodeDragEnd = () => {
+  refreshAuthoredAiPath();
+  history.commit();
+};
 viewportCallbacks.onReferenceAiPathsChanged = refreshReferenceAiPaths;
 // ================= Placed props: caches + arming + deletes =================
 // The placed-prop domain ops live in props/operations.ts: the model geometry caches (base offsets + local
@@ -1672,6 +1683,7 @@ const skybox = createSkybox({
   persistUi,
   log,
   isPreviewSelected: () => getSceneSel() === 'skybox' || getSceneSel() === 'godrays',
+  getPreviewTarget: getSceneTarget,
   onVisibleWorldChange: () => syncGodRayPreview(),
   refreshView: () => viewLighting.refresh(),
 });
@@ -1686,12 +1698,14 @@ const reference = createReference({
   store,
   viewport,
   sunFolder,
+  lightingPreviewFolder,
   godRayFolder,
   refGodRayFolder,
   refFolder,
   refCourseFolder,
   lightFolder,
   refSoundFolder,
+  sharedSoundFolder,
   rebuildOutliner,
   applySceneSelection,
   selectScene,

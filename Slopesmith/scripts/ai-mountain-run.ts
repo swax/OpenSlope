@@ -39,7 +39,8 @@ import { groupDefIndex } from '../src/server/routes/groups';
 import { readModelGeometries } from '../src/server/routes/props';
 import { listImportedProps } from '../src/server/routes/imported-props';
 import { IMPORTED_PROP_LEVEL } from '../src/core/props/imported';
-import { aiLineRatings, aiPathLines, courseCenters, finishFrame, DEFAULT_AI_SEED } from '../src/core/doc/course';
+import { courseCenters, finishFrame } from '../src/core/doc/course';
+import { authoredAiNetwork } from '../src/core/doc/ai-paths';
 import { migrateMountain } from '../src/core/doc/mountain';
 import { buildMountainPreview } from '../src/core/mesh/tessellation';
 import { sampleSpine, spineAt, totalLength } from '../src/core/math/spine';
@@ -132,14 +133,21 @@ function loadWorld(doc: QuadMeshDoc) {
   terrain.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(terrain);
 
-  const seed = doc.aiSeed ?? DEFAULT_AI_SEED;
-  const ratings = aiLineRatings(doc.course, seed);
-  // No jump markers: an authored mountain has no equivalent of the AIP's type-100 events, so its field never
-  // ollies. Every derived line IS the course, so all of them are respawnable — same as the editor's Play.
-  const paths: AiPathDef[] = aiPathLines(doc.course, seed).map((line, i) => ({
-    rating: ratings[i] ?? 50,
-    respawnable: true,
-    points: line.map(flip),
+  const network = authoredAiNetwork(doc.course, doc.aiSeed, doc.aiPaths, true, doc.autoAiPaths !== false);
+  const paths: AiPathDef[] = network.paths.map(path => ({
+    rating: path.rating,
+    respawnable: path.respawnable,
+    events: path.events,
+    markers: path.events
+      .filter(e => e.type === 100)
+      .map(e => ({
+        arc: e.start,
+        end: e.end,
+        speed: (e.value >>> 2) / 3.6,
+        trickA: !!(e.value & 1),
+        trickB: !!(e.value & 2),
+      })),
+    points: path.points.map(flip),
   }));
   const finish = finishFrame(doc.course);
 
@@ -148,7 +156,7 @@ function loadWorld(doc: QuadMeshDoc) {
     terrain,
     box,
     paths,
-    starts: paths.map((_p, i) => i),
+    starts: network.starts,
     course: courseCenters(doc.course).map(flip),
     finish: { pos: flip(finish.pos), fwd: flip(finish.fwd).normalize() },
     laps: normalizeLaps(doc.laps) ?? DEFAULT_LAPS,

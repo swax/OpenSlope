@@ -144,7 +144,7 @@ Two conventions here are easy to get wrong:
 ## AIP.json + SOP.json
 
 ```jsonc
-// AIP.json — Race/Freeride: six valid rider routes are mandatory
+// Automatic paths enabled, without recordings: AIP.json — Race/Freeride
 { "StartPosList": [0,1,2,3,4,5],
   "AIPaths": [ ...six "AI Path N" opponent lines..., // full-course; straight or seeded wander
                { "Name": "Slopesmith Course", "U3": 50, "Respawnable": true,
@@ -156,7 +156,7 @@ Two conventions here are easy to get wrong:
                   "PathEvents": [{ "EventType": 9, "EventValue": 0,
                                    "EventStart": dtf, "EventEnd": dtf }] }] }
 
-// SOP.json — Show Off: six gate lead-ins + the same race line
+// Automatic paths enabled, without recordings: SOP.json — Show Off; six gate lead-ins + the same race line
 { "StartPosList": [0,1,2,3,4,5],
   "AIPaths": [ ...six "Start Gate N" paths... ],
   "RaceLines": [ ...identical to AIP.json's... ] }
@@ -168,12 +168,26 @@ preserves). Because the path is `Respawnable`, `PathBundle` bakes it into `manif
 which gives the board's ride-onto-`SurfaceType 0` reset a path back onto the course.
 
 The **AIP start routes** are the Race/Freeride field ([Trailmap: 250-paths-aip-sop]):
-`StartPosList` must name exactly six valid paths, one per rider slot. Each route begins at its gate and
-rides the whole course. With **AI path variation** off, all six converge on and follow the centerline;
+`StartPosList` must name exactly six valid paths, one per rider slot. Without recorded trails, each route
+begins at its gate and rides the whole course. With **AI path variation** off, all six converge on and follow the centerline;
 with it on they carry independent seeded lateral wander bounded by the run floor
 (`core/doc/course.ts` `aiPathLines`). The routes are derived from the course plus the document's
 `aiSeed`; editing the course re-derives them. The editor offers no re-roll: a document without a seed uses
-`DEFAULT_AI_SEED`, and one that carries a seed keeps it. Path events are empty.
+`DEFAULT_AI_SEED`, and one that carries a seed keeps it. Generated paths have no events.
+
+With recorded AI trails, both AIP and SOP carry the authored sections, their line ratings and respawn flags,
+and their events. New recordings emit type-100 jumps; existing type-101 cruise events are preserved.
+Six 25 m gate lead-ins seed the field; generated routes become
+overlapping 230 m fallback sections so riders can reselect into a recording during the run. `StartPosList`
+then names the gate lead-ins at their actual indices rather than assuming indices 0–5. Recorded points are
+converted to raw centimetres and delta encoded; event stations use horizontal centimetres, jump values keep
+the packed target speed / trick bits, and cruise values remain whole km/h. The variation option affects only
+generated routes. `core/doc/ai-paths.ts` supplies the shared Test/export network.
+
+When the document's **Use auto-generated paths** option is off (`autoAiPaths: false`), both files carry only
+recorded paths: no gate lead-ins, fallback sections or generated respawn spine. Six start slots select the
+recorded path heads nearest each gate, allowing repeated path indices. With no recordings, `AIPaths` and
+`StartPosList` are empty. Race lines and their progress/checkpoint events remain independent of this option.
 
 The **race line** carries the engine's progress metric: `DistanceToFinish` is the line's summed
 **horizontal** raw arc length ([Trailmap: 250-paths-aip-sop] — path distance chains in the ground
@@ -209,9 +223,10 @@ gains `LineDtf` (leaderboard / finish trigger) for authored mountains. Positive 
 travel separately as `Paths.Course.Checkpoints` with position, remaining DTF, seconds and logical route
 group, so deduplicating AIP/SOP geometry cannot discard the showoff payload.
 
-The engine loads `.aip` for Race/Freeride and `.sop` for Show Off. Both files require exactly six
-valid `StartPosList` entries. SOP carries six short lead-ins at retail's ~1.4 m pitch, converging on
-the course line. Initial world placement is a separate fixed six-rider formation transformed through
+The engine loads `.aip` for Race/Freeride and `.sop` for Show Off. An enabled opponent field uses six
+valid `StartPosList` entries. With automatic paths enabled and without recordings, SOP carries six short lead-ins at retail's ~1.4 m pitch,
+converging on the course line; with recordings it uses the authored network described above.
+Initial world placement is a separate fixed six-rider formation transformed through
 `Mdl_StageArea_Start_0`; the repacker aligns that instance to the shared authored race origin.
 `core/doc/course.ts` computes the route gates and course frame from the same origin. No start-gate MODEL
 ships: an authored mountain once exported a box arch (two pillars and a crossbar) there, but nothing in the

@@ -87,9 +87,9 @@ check(
 );
 check(
   scenePanel.includes("value: 'godrays'") &&
-    scenePanel.includes('godRayFolder.show(visible.godrays)') &&
-    scenePanel.includes('refGodRayFolder.show(visible.godrays)'),
-  'God Rays is its own Scene category with a Mountain / Reference card pair',
+    scenePanel.includes('godRayFolder.show(visible.godrays && mountain)') &&
+    scenePanel.includes('refGodRayFolder.show(visible.godrays && reference)'),
+  'God Rays switches between its Mountain and Reference cards',
 );
 check(
   scenePanel.includes('skyPreviewFolder.show(visible.skybox || visible.godrays)'),

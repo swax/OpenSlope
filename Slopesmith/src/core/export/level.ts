@@ -1,4 +1,4 @@
-import type { Gem, PlacedProp, QuadMeshDoc, Rail, Screen, SunLight, V3 } from '../doc/types';
+import type { AuthoredAiPath, Gem, PlacedProp, QuadMeshDoc, Rail, Screen, SunLight, V3 } from '../doc/types';
 import { screenPose, screenProp } from '../props/screen';
 import { isEffectTriggerProp } from '../effects/trigger-volume';
 import { groupMemberKey } from '../props/defaults';
@@ -13,8 +13,6 @@ import { nativeSplineFields, railBezierSegments, railStyle, RAIL_STYLE_ICE } fro
 import { deriveQuadMesh, type DerivedQuadMesh } from '../doc/mountain';
 import { quadControlPoints } from '../mesh/topology';
 import {
-  aiLineRatings,
-  aiPathLines,
   courseCenters,
   finishFrame,
   startFrame,
@@ -22,6 +20,7 @@ import {
   DEFAULT_AI_SEED,
   DEFAULT_LINE_RATING,
 } from '../doc/course';
+import { authoredAiNetwork } from '../doc/ai-paths';
 import { generateTexture, sampleRgba, type Rgba } from '../paint/ground-textures';
 import { parseTexRef, texDestName } from '../paint/textures';
 import { orientUV } from '../paint/orientation';
@@ -296,58 +295,71 @@ function raceLineJson(rawCenters: V3[], rawFinish: V3, checkpoints: RaceLineChec
 }
 
 /**
- * AIP.json — the race-mode AI field + respawn network. Six gate-anchored opponent
- * lines (`aiPathLines`) lead and `StartPosList` names all six: the retail `.aip` shape
- * ([Trailmap: 250-paths-aip-sop] — GARI seeds its six riders from six start-path indices in a row at the
- * gate). Each carries the retail start-path flags (Respawnable, no events — nothing traced reads path events)
- * and its own **line rating** (`U3`, `aiLineRatings`): the AI picks the path whose rating matches its mood, so
- * the rating is what makes a leading rider take the direct line and a trailing one gamble on the wide one
- * ([Trailmap: 395]). The course-center path rides last as the OOB-reset / respawn spine at the neutral default,
- * and the race line is unchanged. The export option controls lateral wandering, not the required six-entry start
- * field — and with wandering off there is nothing to tell the lines apart, so they all rate the default.
+ * AIP.json — the race-mode AI field + respawn network. With automatic routes enabled, six gate routes
+ * seed the field ([Trailmap: 250-paths-aip-sop]). Recorded paths keep their rating, respawn flag and event ranges; short
+ * generated sections cover unrecorded terrain and allow reselection into recordings ([Trailmap: 395]).
+ * Without recordings, the six generated routes retain their full-course layout. The course-center path
+ * rides last as the OOB-reset spine. Disabling automatic routes omits all generated geometry. The variation
+ * option controls generated wander, never recorded geometry.
  */
 function aipJson(
   name: string,
   centers: V3[],
-  aiLines: V3[][],
-  ratings: number[],
+  network: ReturnType<typeof authoredAiNetwork>,
   finish: V3,
   checkpoints: RaceLineCheckpoint[],
+  automatic = true,
 ): object {
   const rawCenters = centers.map(toRaw);
-  const ai = aiLines.map((line, i) => {
-    const raw = line.map(toRaw);
-    return {
-      Name: `AI Path ${i}`,
-      U3: ratings[i] ?? DEFAULT_LINE_RATING,
-      Respawnable: true,
-      PathPos: raw[0],
-      PathPoints: [[0, 0, 0], ...deltasOf(raw)],
-      PathEvents: [],
-    };
-  });
   return {
-    StartPosList: ai.map((_, i) => i),
+    StartPosList: network.starts,
     AIPaths: [
-      ...ai,
-      {
-        Name: name,
-        U3: DEFAULT_LINE_RATING,
-        Respawnable: true,
-        PathPos: rawCenters[0],
-        PathPoints: [[0, 0, 0], ...deltasOf(rawCenters)],
-        PathEvents: [],
-      },
+      ...network.paths.map(aiPathJson),
+      ...(automatic
+        ? [
+            {
+              Name: name,
+              U3: DEFAULT_LINE_RATING,
+              Respawnable: true,
+              PathPos: rawCenters[0],
+              PathPoints: [[0, 0, 0], ...deltasOf(rawCenters)],
+              PathEvents: [],
+            },
+          ]
+        : []),
     ],
     RaceLines: [raceLineJson(rawCenters, toRaw(finish), checkpoints, false)],
   };
 }
 
+function aiPathJson(path: AuthoredAiPath) {
+  const raw = path.points.map(toRaw);
+  return {
+    Name: path.name,
+    U3: path.rating,
+    Respawnable: path.respawnable,
+    PathPos: raw[0],
+    PathPoints: path.id.startsWith('gate:') ? [[0, 0, 0], ...deltasOf(raw)] : deltasOf(raw),
+    PathEvents: path.events.map(e => ({
+      EventType: e.type,
+      EventValue: e.value,
+      EventStart: e.start * 100,
+      EventEnd: e.end * 100,
+    })),
+  };
+}
+
 /**
- * SOP.json — the Show Off-mode path dataset. It carries exactly six start paths, one per rider slot,
- * each a short lead-in converging on the course line, plus the same race line as the AIP.
+ * SOP.json — the Show Off-mode path dataset. Six lead-ins or the recorded authored network,
+ * plus the same race line as the AIP (with Show Off checkpoint awards).
  */
-function sopJson(gateLines: V3[][], centers: V3[], finish: V3, checkpoints: RaceLineCheckpoint[]): object {
+function sopJson(
+  gateLines: V3[][],
+  centers: V3[],
+  finish: V3,
+  checkpoints: RaceLineCheckpoint[],
+  network?: ReturnType<typeof authoredAiNetwork>,
+): object {
   const gates = gateLines.map((line, i) => {
     const raw = line.map(toRaw);
     return {
@@ -360,8 +372,8 @@ function sopJson(gateLines: V3[][], centers: V3[], finish: V3, checkpoints: Race
     };
   });
   return {
-    StartPosList: gates.map((_, i) => i),
-    AIPaths: gates,
+    StartPosList: network?.starts ?? gates.map((_, i) => i),
+    AIPaths: network ? network.paths.map(aiPathJson) : gates,
     RaceLines: [raceLineJson(centers.map(toRaw), toRaw(finish), checkpoints, true)],
   };
 }
@@ -619,13 +631,29 @@ export function buildMountainLevel(doc: QuadMeshDoc, signLights: PlacedLight[] =
       aipJson(
         AIP_PATH_NAME,
         centers,
-        aiPathLines(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true),
-        aiLineRatings(main, doc.aiSeed ?? DEFAULT_AI_SEED, opts?.aiPaths === true),
+        authoredAiNetwork(
+          main,
+          doc.aiSeed ?? DEFAULT_AI_SEED,
+          doc.aiPaths,
+          opts?.aiPaths === true,
+          doc.autoAiPaths !== false,
+        ),
         finishPos,
         checkpoints,
+        doc.autoAiPaths !== false,
       ),
     ),
-    'SOP.json': JSON.stringify(sopJson(startGateLines(main), centers, finishPos, checkpoints)),
+    'SOP.json': JSON.stringify(
+      sopJson(
+        startGateLines(main),
+        centers,
+        finishPos,
+        checkpoints,
+        doc.aiPaths?.length || doc.autoAiPaths === false
+          ? authoredAiNetwork(main, doc.aiSeed, doc.aiPaths, opts?.aiPaths === true, doc.autoAiPaths !== false)
+          : undefined,
+      ),
+    ),
   };
   // Native course splines: grind rails plus invisible Effects motion routes (only when a path actually
   // carries a segment, so a single-node scratch doesn't ship an empty Splines.json).

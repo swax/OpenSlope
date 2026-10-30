@@ -24,7 +24,7 @@ import { preloadReferenceRideMusic, referenceMusicGraph } from '../audio/ride-mu
 /** Populate Scene ▸ Sound ▸ Reference with the shared rider cue plus the race-music graph JSON extracted
  * beside the level. Kept apart from the reference terrain session because it has no viewport state: it is a
  * small async data panel plus a self-contained graph dialog. */
-export function createReferenceMusicStudy(folder: GUI) {
+export function createReferenceMusicStudy(folder: GUI, sharedFolder: GUI = folder) {
   let request = 0;
   let level: string | null = null;
   let intro: ReferenceIntroMusic | null = null;
@@ -40,10 +40,10 @@ export function createReferenceMusicStudy(folder: GUI) {
     unsubscribeBigAirAudition();
     unsubscribeBigAirAudition = () => {};
     clearGui(folder);
-    folder.title('Reference');
+    if (sharedFolder !== folder) clearGui(sharedFolder);
     folder.open(); // outer Scene card is a label; only its Sound subsections start collapsed
 
-    const rider = folder.addFolder('Rider sound');
+    const rider = sharedFolder.addFolder('Rider sound');
     detail(rider, 'big-air wind', 'cue');
     detail(rider, `${BOOST_BANK} ${String(BIG_AIR_WIND_SLOT).padStart(3, '0')}`, 'source');
     detail(rider, 'predicted flight > 1.5 s', 'trigger');

@@ -47,7 +47,7 @@ function resolveXrAvailable(then: () => void) {
 
 /**
  * The Test-mode toolbox (stored as `play`; docs/016): ride target/event/gear, Play / Watch / Stop, Position
- * (start/player navigation), avatar, conditional VR options, then ordinary Options, wired to the host's play controller.
+ * (start/player navigation), avatar, VR, Sound, AI and ordinary Options, wired to the host's play controller.
  *
  * The panel's shape follows what a click means here. A slope click drops an AI rider and lets it go — that is
  * the everyday gesture, so it needs no button at all — while moving the ride start is rare enough to be an
@@ -55,7 +55,7 @@ function resolveXrAvailable(then: () => void) {
  */
 
 /** Tools content in Test mode (docs/016): pick the mountain, event and gear; launch Play/VR/Watch; reset or
- *  place the start and jump to a live player in Position; choose the avatar; then tune VR and ordinary Options.
+ *  place the start and jump to a live player in Position; choose the avatar; then tune VR, Sound, AI and Options.
  *  What a reference ride draws follows
  *  the top-bar Props / Tricks filters (Props off = bare terrain, much faster). */
 export function buildPlayTools(ctx: ToolsContext) {
@@ -231,8 +231,12 @@ export function buildPlayTools(ctx: ToolsContext) {
     // controls that unstick someone (a captured cursor, the person toggle, pause).
     note(
       gui,
-      'Esc releases the cursor · V first/third person · P pause',
-      'First person captures the cursor: Esc releases it and an empty viewport click recaptures it. ' +
+      viewport.recordingAiRun
+        ? 'Recording AI run · Esc stops and saves · V first/third person · P pause'
+        : 'Esc releases the cursor · V first/third person · P pause',
+      (viewport.recordingAiRun
+        ? 'Esc stops this recording run and saves its AI paths. '
+        : 'First person captures the cursor: Esc releases it and an empty viewport click recaptures it. ') +
         'In third person, hold RMB away from a highlighted target to look. E gets off/recalls the board; ' +
         'on foot, WASD walks, Ctrl crouches, LMB rides a highlighted board and RMB grabs it.',
     );
@@ -312,7 +316,7 @@ export function buildPlayTools(ctx: ToolsContext) {
     const watch = gui.add({ watch: () => play.startWatch() }, 'watch').name('👁 Watch the AI');
     if (store.playAiMax === 0) watch.disable();
     if (store.playAiMax === 0) {
-      tip(watch, 'AI riders are set to zero — raise Options ▸ AI riders to enable the watch field.');
+      tip(watch, 'AI riders are set to zero — raise AI settings ▸ AI riders to enable the watch field.');
     } else {
       tip(
         watch,
@@ -324,7 +328,7 @@ export function buildPlayTools(ctx: ToolsContext) {
     note(
       gui,
       store.playAiMax === 0
-        ? 'AI riders are off — raise Options ▸ AI riders to enable slope drops and Watch'
+        ? 'AI riders are off — raise AI settings ▸ AI riders to enable slope drops and Watch'
         : out
           ? `${out} AI rider${out > 1 ? 's' : ''} out — click the slope to drop another`
           : 'click the slope to drop an AI rider and watch it go',
@@ -583,12 +587,11 @@ export function buildPlayTools(ctx: ToolsContext) {
     );
   }
 
-  // Everything below changes how a test is presented or instrumented rather than launching one. Keep those
-  // secondary controls together, so the everyday target → gear → Play path stays short.
-  const options = editSection('play-options', 'Options', true);
+  // Keep audio, AI authoring and presentation controls in their own sections below the everyday Play action.
+  const sound = editSection('play-sound', 'Sound settings', true);
   const gameVolume = { percent: Math.round(store.playGameVolume * 100) };
   tip(
-    options
+    sound
       .add(gameVolume, 'percent', 0, 100, 1)
       .name('Game volume')
       .onChange((percent: number) => {
@@ -603,7 +606,7 @@ export function buildPlayTools(ctx: ToolsContext) {
     'Master level for all gameplay sound; zero mutes the game. Scene Sound previews stay audible.',
   );
   tip(
-    options
+    sound
       .add({ music: store.playMusicOn }, 'music')
       .name('Music')
       .onChange((v: boolean) => {
@@ -619,7 +622,7 @@ export function buildPlayTools(ctx: ToolsContext) {
   if (store.playMusicOn && store.playTarget === 'reference') {
     const level = getRefLevel();
     const choice = { song: store.playMusicSongs[level] ?? '' };
-    const songPicker = options.add(choice, 'song', { 'Loading…': choice.song }).name('Song').disable();
+    const songPicker = sound.add(choice, 'song', { 'Loading…': choice.song }).name('Song').disable();
     tip(songPicker, 'Random picks a song for each new run. Choose a song to keep playing it. Changes apply live.');
     void referenceMusicIndex(level).then(index => {
       // Rebuilding the panel or changing mountains can retire this control while the index is loading.
@@ -647,7 +650,7 @@ export function buildPlayTools(ctx: ToolsContext) {
     });
   }
   tip(
-    options
+    sound
       .add({ announcer: store.playAnnouncerOn }, 'announcer')
       .name('Announcer')
       .onChange((v: boolean) => {
@@ -659,11 +662,24 @@ export function buildPlayTools(ctx: ToolsContext) {
       }),
     'Hear the MC call starts, big air, landings, wipeouts, boost, slow riding, and clean runs. Applies live.',
   );
+  const aiSettings = editSection('play-ai', 'AI settings', true);
+  tip(
+    aiSettings
+      .add({ paths: store.playAiPathsOn }, 'paths')
+      .name('Show AI paths')
+      .onChange((v: boolean) => {
+        store.playAiPathsOn = v;
+        viewport.playAiPathsGuide = v;
+        persistUi();
+        releaseKeyboard();
+      }),
+    'Draw the AI lines while in Test — compare riders and recordings against their paths.',
+  );
   // One count owns both the old enable switch and cap. Zero is a real live cap: it retires the current field and
   // prevents slope-click drops; raising it again enables the next field without a second contradictory control.
   const aiRiders = { count: store.playAiMax };
   tip(
-    options
+    aiSettings
       .add(aiRiders, 'count', 0, MAX_AI_RIDERS, 1)
       .name('AI riders')
       .onChange((v: number) => {
@@ -679,6 +695,19 @@ export function buildPlayTools(ctx: ToolsContext) {
       'longest-out rider instead of piling up boards the frame rate has to carry.',
   );
 
+  const recordAi = aiSettings
+    .add({ record: () => (viewport.recordingAiRun ? play.exitRide() : void play.startAiRecording()) }, 'record')
+    .name(viewport.recordingAiRun ? '■ Stop recording (Esc)' : '● Record AI run');
+  if (!viewport.recordingAiRun && (store.playTarget !== 'authored' || !modeUnlocked || play.launching))
+    recordAi.disable();
+  tip(
+    recordAi,
+    store.playTarget === 'authored'
+      ? 'Start riding your mountain and record the AI run immediately. Esc stops the run and saves the paths.'
+      : 'Choose your authored mountain to record an AI run.',
+  );
+
+  const options = editSection('play-options', 'Options', true);
   // The weather dial (docs/050). Defaults to the game's own snowfall rather than to clear: the engine decides
   // its own with a per-course weather roll the level data does not carry, so there is nothing to read off a
   // mountain — and a snowboarding course is the case the effect was built for. Applied live as the slider
@@ -768,18 +797,6 @@ export function buildPlayTools(ctx: ToolsContext) {
     'The haze closes in from 300 m so the bound reads as weather rather than a cut. Medium (the default) is the ' +
       'range the VRChat world uses on Quest and costs a typical desktop ride nothing. Far is for a view a longer ' +
       'draw actually reaches, Near for a course that still stutters.',
-  );
-  tip(
-    tuning
-      .add({ paths: store.playAiPathsOn }, 'paths')
-      .name('Show AI paths')
-      .onChange((v: boolean) => {
-        store.playAiPathsOn = v;
-        viewport.playAiPathsGuide = v;
-        persistUi();
-        releaseKeyboard();
-      }),
-    'Draw the AI lines while in Play — riders against their lines tells a bad line from a bad rider.',
   );
   tip(
     tuning

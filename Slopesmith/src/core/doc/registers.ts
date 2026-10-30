@@ -65,6 +65,7 @@ export type ObjectFamily =
   | 'prop'
   | 'light'
   | 'rail'
+  | 'ai-path'
   | 'gem'
   | 'model'
   | 'volume'
@@ -308,6 +309,7 @@ const DECOMPOSED: ReadonlySet<string> = new Set([
   'quadTwist',
   'quadLabels',
   'course',
+  'aiPaths',
   'props',
   'lights',
   'rails',
@@ -340,6 +342,7 @@ export const QUAD_CHANNELS: readonly (readonly [
  *  single fields written onto the member itself, so a copy of the document that registers will be written onto
  *  needs its own copy of each list and of each member. */
 export const OBJECT_LISTS = [
+  'aiPaths',
   'props',
   'lights',
   'rails',
@@ -609,6 +612,7 @@ function emitObjects(doc: QuadMeshDoc, emit: Emit, only?: ObjectFamily): void {
   list('prop', doc.props, prop => keyable('a prop', prop.id));
   list('light', doc.lights, light => keyable('a light', light.id));
   list('rail', doc.rails, rail => keyable('a rail', rail.id));
+  list('ai-path', doc.aiPaths, path => keyable('an AI path', path.id));
   list('gem', doc.gems, gem => keyable('a gem', gem.id));
   list('model', doc.models, model => keyable('a model', model.id));
   list('volume', doc.particleVolumes, volume => keyable('a particle volume', volume.id));
@@ -701,6 +705,7 @@ const chunkRange = (section: string): [number, number] => {
 };
 
 const families: ReadonlySet<string> = new Set<ObjectFamily>([
+  'ai-path',
   'prop',
   'light',
   'rail',
@@ -1103,6 +1108,7 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
         | 'props'
         | 'lights'
         | 'rails'
+        | 'aiPaths'
         | 'gems'
         | 'models'
         | 'particleVolumes'
@@ -1117,6 +1123,10 @@ function locate(doc: QuadMeshDoc, key: RegisterKey): Register | Exclude<Register
       make: () => (record[field] ??= []) as T[],
     });
     switch (family) {
+      case 'ai-path': {
+        const held = list<{ id: string }>('aiPaths');
+        return byIdentity(held.read, held.make, id);
+      }
       case 'prop': {
         const held = list<{ id?: string }>('props');
         return byIdentity(held.read, held.make, id);

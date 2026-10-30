@@ -330,8 +330,10 @@ mountain's revisions, checkpoints, and local assets and retires its name; it doe
 The Reference panel can load an imported or previously exported map read-only for scale, terrain,
 props, effects, textures, audio, and course-line study. It does not convert a retail mountain into an
 editable project; **new mountain from this course** instead seeds a fresh document from its racing line.
-Once loaded, comparison halves read **Reference: `<name>`**. The Scene entry and Effects/Test selectors remain
-**Reference** because they choose the comparison role rather than identify its current source.
+Scene’s launcher reads **Reference: `<name>`**, or **Reference: None** when nothing is loaded.
+Course, AI Paths, Sound, Lighting, Skybox, God Rays, and Camera use a **Mountain / Reference** split button;
+shared display and preview controls sit above it. Each section remembers its selected side. Effects/Test
+selectors retain the **Reference** role label.
 See [Authored Map References](docs/036-authored-map-references.md).
 
 In **Scene → AI Paths**, the reference map’s shared AI routes are selectable objects. Opening the category
@@ -351,7 +353,23 @@ retain raw values, decoded jump speeds and trick flags, and cruise-speed targets
 jump-event ranges for approach and charge release, preserving source order when ranges overlap. Type 300 is labelled
 **Reselect path**: browser riders reconsider their route when crossing its point or range, and may keep the
 current path. Labels describe observed SSX Tricky behavior rather than recovered original event names;
-meanings in other games remain unconfirmed. This first inspection step does not author or modify paths.
+meanings in other games remain unconfirmed. Reference paths remain read-only.
+
+On an authored mountain, choose **Test → AI settings → Record AI run** to launch the ride with recording active.
+Ride your line, then press **Esc** to stop and save it; Stop also saves. Recording automatically samples the route,
+keeps extra detail through turns and jumps, and creates overlapping sections with jump events.
+In **Scene → AI Paths → Mountain**, click a path in the viewport to inspect its events and geometry, rename it,
+adjust its rating or respawn permission, or delete it. Click a node on a recorded path and drag its gizmo to
+move it; event ranges follow their segments. Enable **Reselect path here** on a selected node to place a
+branch-choice flag, or disable it to remove the event. The AI reconsiders nearby routes at that point and
+may keep its current path. Recording, node edits and event placement support undo and save/reload.
+Selected nodes also offer **Insert node before**, **Insert node after**, and **Delete node**. Insertion selects
+a new midpoint to move with the gizmo. Deletion keeps at least two nodes, adjusts event ranges and removes
+the deleted node's reselect flag. At forks, different line ratings let rider moods favor different branches;
+equal ratings usually favor the closest route rather than splitting riders randomly.
+**Use auto-generated paths** controls whether course-derived routes appear, feed AI riders and export in AIP/SOP.
+Turn it off to use only recorded paths; with no recordings, there are no AI routes. Generated paths show
+read-only details and follow edits to the course.
 
 SSX Mod Manager loose-level ZIPs can be converted directly into that reference contract when Snowknife and a
 clean Tricky disc dump are available in the surrounding OpenSlope checkout:

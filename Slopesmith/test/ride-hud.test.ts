@@ -10,6 +10,11 @@ const mappings = (walking: boolean, firstPerson: boolean) => {
   return { title: help.title, rows: new Map(help.groups.flat()) };
 };
 
+for (const firstPerson of [false, true]) {
+  const help = rideControlHelp(false, firstPerson, true);
+  assert.equal(new Map(help.groups.flat()).get('Esc'), 'stop and save AI run');
+}
+
 const rideThird = mappings(false, false);
 assert.match(rideThird.title, /riding · third person/, 'the panel title names the live ride view');
 assert.equal(rideThird.rows.get('E'), 'get off board', 'the riding panel exposes the board dismount key');

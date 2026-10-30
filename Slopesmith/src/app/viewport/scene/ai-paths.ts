@@ -1,62 +1,122 @@
 import * as THREE from 'three';
-import type { CoursePath, V3 } from '../../../core/doc/types';
-import { aiPathLines } from '../../../core/doc/course';
+import type { AuthoredAiPath, CoursePath, V3 } from '../../../core/doc/types';
+import { authoredAiDisplayPaths } from '../../../core/doc/ai-paths';
 import type { Stage } from '../stage';
-import { fadeMaterial } from '../shared/fade';
+import { createReferenceAiPathsLayer } from './reference-ai-paths';
 import { occludedMaterial } from '../shared/overlays';
+import { fadeObject } from '../shared/fade';
 
-/**
- * The authored mountain's AI opponent lines — the SAME six gate-anchored wandering paths the AIP.json
- * export ships (core/doc/course `aiPathLines`, derived from the course + the doc's seed), drawn amber
- * (every authored line IS a `StartPosList` gate path). Lives at scene
- * root with Z negated by hand, like the course guide it annotates, but rides its own Info toggle ("Show AI
- * paths") — six extra lines over the spine read as clutter while shaping the run.
- */
+/** Generated and recorded authored routes share the reference network's pixel-width lines and event overlay. */
 export function createAiPathsLayer(stage: Stage) {
-  const group = new THREE.Group();
-  const mat = new THREE.LineBasicMaterial({ color: 0xffc24a, transparent: true, depthWrite: false });
-  const behindMat = occludedMaterial(mat);
+  const layer = createReferenceAiPathsLayer(stage, stage.worldRoot);
+  const nodes = new THREE.Group();
+  stage.worldRoot.add(nodes);
+  const handle = new THREE.Object3D();
+  stage.scene.add(handle);
+  const geometry = new THREE.SphereGeometry(1, 10, 6);
+  // Match the lines' transparent queue so event spans cannot paint over an editable node.
+  const normal = new THREE.MeshBasicMaterial({ color: 0xffc268, transparent: true, depthWrite: false });
+  const active = new THREE.MeshBasicMaterial({ color: 0xffef7a, transparent: true, depthWrite: false });
+  const behind = new Map([
+    [normal, occludedMaterial(normal)],
+    [active, occludedMaterial(active)],
+  ]);
+  let paths: AuthoredAiPath[] = [];
+  let recordedIds = new Set<string>();
+  let selectedId: string | null = null;
+  let selectedNode: number | null = null;
   let visible = false;
-  let built = false;
+  let fade = 1;
 
-  const flip = (p: V3): V3 => [p[0], p[1], -p[2]];
+  function setCourse(
+    course: CoursePath | null,
+    seed: number,
+    recorded: readonly AuthoredAiPath[] = [],
+    automatic = true,
+  ) {
+    paths = authoredAiDisplayPaths(course, seed, recorded, automatic);
+    recordedIds = new Set(recorded.map(path => path.id));
+    layer.setAiPaths(
+      paths.map((path, index) => ({
+        ...path,
+        originalIndex: index,
+        start: !recordedIds.has(path.id),
+        startSlots: [],
+        markers: [],
+      })),
+    );
+    const index = paths.findIndex(path => path.id === selectedId);
+    select(index < 0 ? null : index, selectedNode);
+  }
 
-  /** Re-derive + rebuild the lines from the course and seed (null / short course clears them). */
-  function setCourse(course: CoursePath | null, seed: number) {
-    for (const c of group.children) (c as THREE.Line).geometry.dispose();
-    group.clear();
-    built = !!course && course.knots.length >= 2;
-    group.visible = visible && built;
-    if (!course || !built) return;
-    for (const line of aiPathLines(course, seed)) {
-      const geometry = new THREE.BufferGeometry().setFromPoints(
-        line.map(p => {
-          const q = flip(p);
-          return new THREE.Vector3(q[0], q[1], q[2]);
-        }),
-      );
-      const bright = new THREE.Line(geometry, mat);
-      const behind = new THREE.Line(geometry, behindMat);
-      behind.raycast = () => {};
-      bright.add(behind);
-      group.add(bright);
+  function select(index: number | null, node: number | null = null) {
+    const path = index === null ? undefined : paths[index];
+    selectedId = path?.id ?? null;
+    selectedNode = path && recordedIds.has(path.id) && node !== null && path.points[node] ? node : null;
+    layer.selectAiPath(index);
+    nodes.clear();
+    if (stage.gizmoKind === 'ainode' && selectedNode === null) stage.detachGizmo();
+    if (!path || !recordedIds.has(path.id)) return;
+    const size = new THREE.Vector2(),
+      world = new THREE.Vector3();
+    path.points.forEach((point, nodeIndex) => {
+      const material = nodeIndex === selectedNode ? active : normal;
+      const marker = new THREE.Mesh(geometry, material);
+      marker.position.set(...point);
+      marker.scale.setScalar(0.5);
+      marker.userData.authoredAiPathIndex = index;
+      marker.userData.aiPathNode = nodeIndex;
+      marker.renderOrder = 8;
+      marker.onBeforeRender = (renderer, _scene, camera) => {
+        renderer.getSize(size);
+        marker.getWorldPosition(world).applyMatrix4(camera.matrixWorldInverse);
+        const depth = (camera as THREE.PerspectiveCamera).isPerspectiveCamera ? Math.abs(world.z) : 1;
+        marker.scale.setScalar((10 * depth) / (camera.projectionMatrix.elements[5] * size.y));
+        marker.updateMatrixWorld(true);
+      };
+      const ghost = new THREE.Mesh(geometry, behind.get(material)!);
+      ghost.raycast = () => {};
+      marker.add(ghost);
+      nodes.add(marker);
+    });
+    nodes.visible = visible;
+    fadeObject(nodes, fade);
+    if (selectedNode !== null && visible) {
+      if (!stage.gizmo?.dragging) {
+        stage.worldRoot.updateWorldMatrix(true, false);
+        handle.position.copy(new THREE.Vector3(...path.points[selectedNode]).applyMatrix4(stage.worldRoot.matrixWorld));
+      }
+      stage.attachGizmo(handle, 'ainode', selectedNode);
     }
   }
 
-  /** Shown on the Info "Show AI paths" toggle (independent of the course guide). */
-  function setVisible(on: boolean) {
-    visible = on;
-    group.visible = on && built;
+  function moveNode() {
+    const path = paths.find(path => path.id === selectedId);
+    if (!path || selectedNode === null || !recordedIds.has(path.id)) return;
+    stage.worldRoot.updateWorldMatrix(true, false);
+    const position = handle.position.clone().applyMatrix4(stage.worldRoot.matrixWorld.clone().invert()).toArray() as V3;
+    stage.cb.onMoveAiPathNode?.(path.id, selectedNode, position);
   }
 
-  /** Fade the lines back while a replacement course is being drawn (1 restores them). */
-  function setFade(factor: number) {
-    fadeMaterial(mat, factor);
-    fadeMaterial(behindMat, factor);
-  }
-
-  stage.scene.add(group);
-  return { setCourse, setVisible, setFade };
+  return {
+    setCourse,
+    setVisible(on: boolean) {
+      visible = on;
+      layer.showAiPaths(on);
+      nodes.visible = on;
+      if (!on && stage.gizmoKind === 'ainode') stage.detachGizmo();
+    },
+    setFade(factor: number) {
+      fade = factor;
+      layer.setFade(factor);
+      fadeObject(nodes, factor);
+    },
+    select,
+    moveNode,
+    pickRoots: [layer.aiPathGroup, nodes],
+    nodeGroup: nodes,
+    materials: layer.aiPathMaterials,
+  };
 }
 
 export type AiPathsLayer = ReturnType<typeof createAiPathsLayer>;

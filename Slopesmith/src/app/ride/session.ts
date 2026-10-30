@@ -51,6 +51,7 @@ import { createBoardGrab, deckRayDistance, nearestDeckPoint, type BoardThrow } f
 import { createRidePointerLock, type RidePointerLock } from './pointer-lock';
 import { createRideScorer, rideTrickDisplay, type RideScoreSnapshot, type RideTrickDisplay } from './score';
 import type { RideRunStatus } from './run-status';
+import { createAiPathRecording, type RecordedAiSection } from './ai-path-recording';
 
 export { SURFACE_ROWS, contactResponse } from './physics';
 export type { PatchContact, SurfaceRow } from './physics';
@@ -182,6 +183,10 @@ export interface RideStartOpts {
   /** Refresh the editor's standard key-mapping sheet after E or V changes its live context. */
   onControlContextChange?: () => void;
   onExit: () => void;
+  /** Present only for an authored mountain in the editor. */
+  onRecordAiPaths?: (paths: RecordedAiSection[]) => void;
+  /** Test's Record AI run action starts capture with the ride. Escape/Stop saves the run. */
+  recordAiRun?: boolean;
 }
 
 export class TestRide {
@@ -193,6 +198,10 @@ export class TestRide {
   private gamepad!: RideGamepad;
   private pose!: RiderPose;
   private telemetry!: RideTelemetryCapture;
+  private readonly aiRecording = createAiPathRecording();
+  private aiRecordingPreview: THREE.LineSegments | null = null;
+  private aiRecordingPreviewPoints: number[] = [];
+  private aiRecordingPreviewLast: THREE.Vector3 | null = null;
   private boardAudio: BoardAudio | null = null;
   private boardFx: BoardFx | null = null;
   private pointerLock: RidePointerLock | null = null;
@@ -389,12 +398,17 @@ export class TestRide {
       // Mounted recovery waits until riding controls are available.
       automaticRespawnAvailable: () => this.canControl,
       onRespawn: () => {
+        this.aiRecording.breakPath();
+        this.aiRecordingPreviewLast = null;
         this.scorer.bail();
         this.syncScoreState();
         this.cam.resetAim(this.model.st.pos);
         this.o.onAnnouncerEvent?.('knockdown');
       },
       onTelemetryTick: tick => {
+        if (!this.onFootFlag && !this.countingDown) this.aiRecording.ingest(tick);
+        if (this.aiRecording.active && !this.onFootFlag && !this.countingDown) this.updateAiRecordingPreview(tick);
+        this.hud.setAiRecording(this.aiRecording.active, this.aiRecording.distance);
         this.telemetry.ingest(tick);
         this.scorer.ingest(tick);
         this.syncScoreState();
@@ -447,6 +461,11 @@ export class TestRide {
       this.pointerLock = createRidePointerLock({
         target: this.o.pointerTarget,
         onMove: (deltaX, deltaY, turnAvatar) => this.orbitCamera(deltaX, deltaY, turnAvatar),
+        onEscape: () => {
+          if (!this.aiRecording.active) return false;
+          this.o.onExit();
+          return true;
+        },
       });
     }
     // The board bed (docs/034). Built here, after the launch click, so its AudioContext starts on a gesture.
@@ -474,9 +493,11 @@ export class TestRide {
     this.syncDesktopView();
     this.hud.setCountdown(this.countdownCue());
     this.showRunClock();
+    if (this.o.recordAiRun) this.startAiRecording();
   }
 
   stop() {
+    if (this.aiRecording.active) this.saveAiRecording();
     if (this.telemetry.active) this.saveTelemetry();
     document.body.classList.remove('os-riding');
     this.pointerLock?.detach();
@@ -499,6 +520,59 @@ export class TestRide {
     this.rideFirstPerson = false;
     this.pausedFlag = false;
     this.started = false;
+  }
+
+  get recordingAiRun() {
+    return this.aiRecording.active;
+  }
+
+  private startAiRecording() {
+    if (!this.o.onRecordAiPaths || this.inVr) return;
+    this.aiRecording.start();
+    this.aiRecordingPreviewPoints = [];
+    this.aiRecordingPreviewLast = null;
+    this.aiRecordingPreview = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0xff783d, transparent: true, depthWrite: false, depthTest: false }),
+    );
+    this.aiRecordingPreview.frustumCulled = false;
+    this.aiRecordingPreview.renderOrder = 8;
+    this.o.scene.add(this.aiRecordingPreview);
+    this.hud.setAiRecording(true, 0);
+    this.hud.showMessage('Recording AI run · Esc stops and saves.', [0.51, 0.86, 1]);
+  }
+
+  private saveAiRecording() {
+    const paths = this.aiRecording.finish();
+    this.aiRecordingPreview?.removeFromParent();
+    this.aiRecordingPreview?.geometry.dispose();
+    (this.aiRecordingPreview?.material as THREE.Material | undefined)?.dispose();
+    this.aiRecordingPreview = null;
+    this.aiRecordingPreviewPoints = [];
+    this.aiRecordingPreviewLast = null;
+    this.hud.setAiRecording(false, 0);
+    if (paths.length) {
+      this.o.onRecordAiPaths?.(paths);
+      this.hud.showMessage(`Saved ${paths.length} AI path section${paths.length === 1 ? '' : 's'}.`, [0.51, 1, 0.71]);
+    } else this.hud.showMessage('Ride at least 12 m on your board to save an AI trail.', [1, 0.82, 0.51]);
+  }
+
+  private updateAiRecordingPreview(tick: RideTelemetryTick) {
+    if (!this.aiRecordingPreview) return;
+    const point = new THREE.Vector3(...tick.closing.position);
+    if (!this.aiRecordingPreviewLast) {
+      this.aiRecordingPreviewLast = point;
+      return;
+    }
+    if (point.distanceTo(this.aiRecordingPreviewLast) < 9) return;
+    this.aiRecordingPreviewPoints.push(...this.aiRecordingPreviewLast.toArray(), ...point.toArray());
+    this.aiRecordingPreviewLast = point;
+    this.aiRecordingPreview.geometry.dispose(); // release the previous GPU buffer before replacing it
+    this.aiRecordingPreview.geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(this.aiRecordingPreviewPoints, 3),
+    );
+    this.aiRecordingPreview.geometry.computeBoundingSphere();
   }
 
   private toggleTelemetry() {
@@ -992,6 +1066,8 @@ export class TestRide {
     this.walkYaw = Math.atan2(-this.walkForward.x, -this.walkForward.z);
     this.walkOrbitYaw = this.walkOrbitPitch = 0;
     this.onFootFlag = true;
+    this.aiRecording.breakPath();
+    this.aiRecordingPreviewLast = null;
     this.boardFx?.clear();
     this.input.releaseSource('keyboard');
     this.input.releaseSource('gamepad');

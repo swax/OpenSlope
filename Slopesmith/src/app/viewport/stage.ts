@@ -26,6 +26,7 @@ export type GizmoKind =
   | 'light'
   | 'railnode'
   | 'linenode'
+  | 'ainode'
   | 'trailknot'
   | 'trail'
   | 'pathhandle'

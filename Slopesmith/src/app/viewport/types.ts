@@ -582,7 +582,15 @@ export interface ViewportCallbacks {
   onSelectReferenceSpline?(originalIndex: number): void;
   /** Inspect a shared AI path by its stable source-table row; null clears the inspection. */
   onSelectReferenceAiPath?(originalIndex: number | null): void;
+  onSelectAuthoredAiPath?(index: number | null, node?: number | null): void;
+  onMoveAiPathNode?(id: string, node: number, position: V3): void;
+  onAiPathNodeDragEnd?(): void;
   onReferenceAiPathsChanged?(): void;
+  /** A completed Test recording in authored document coordinates; one undoable edit. */
+  onRecordAiPaths?(
+    paths: import('../../core/doc/types').AuthoredAiPath[],
+    owner: import('../../core/doc/types').QuadMeshDoc,
+  ): void;
   /** Gem tool: a click dropped one gem at this final height-adjusted, snapped data-space point. */
   onPlaceGem?(pos: V3): void;
   /** Gem tool: a drag laid a row between these final height-adjusted, snapped endpoints. */

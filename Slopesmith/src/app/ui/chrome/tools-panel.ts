@@ -353,6 +353,7 @@ export function createToolsPanel(deps: ToolsPanelDeps) {
     desktopRiding: () => viewport.riding && !viewport.xrPlaying,
     rideWalking: () => viewport.rideWalking,
     rideFirstPerson: () => viewport.rideFirstPerson,
+    recordingAiRun: () => viewport.recordingAiRun,
   });
 
   // Ordinary Edit-pick filter: independent toggles because focused work often wants combinations (edges +

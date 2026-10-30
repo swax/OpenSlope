@@ -138,7 +138,23 @@ try {
   }
   await page.evaluate(() => (window as any).aiPathSelection.textured(false));
   const authored = await page.evaluate(() => (window as any).aiPathSelection.authoredFade());
+  assert.equal(authored.styles.length, 6);
+  assert(
+    authored.styles.every((style: any) => style.thick && style.width === 2.5),
+    'Generated routes use the reference path width',
+  );
+  assert.deepEqual(
+    authored.styles.map((style: any) => style.color),
+    authored.expectedColors,
+    'Generated routes use their line-rating colours',
+  );
   assert(Math.abs(authored.faded[1] - 0.4 * CAGE_OCCLUDED_DIM) < 1e-8);
+  for (const values of [authored.selected, authored.rebuiltFade]) {
+    assert(
+      Math.abs(values[0] - 0.4) < 1e-8 && Math.abs(values[1] - 0.4 * CAGE_OCCLUDED_DIM) < 1e-8,
+      'Selection and rebuild retain the drawing fade and terrain dimming',
+    );
+  }
   assert.deepEqual(authored.restored, [1, CAGE_OCCLUDED_DIM], 'Course-drawing fade preserves the occluded dim ratio');
   assert.equal(authored.depth, GreaterDepth);
   assert(authored.sharedGeometry && authored.cleared, 'Authored path twins share geometry and clear with the layer');
@@ -166,7 +182,7 @@ try {
   );
   assert.equal(state.materials[0].width, 2.5);
   assert.deepEqual(state.eventLabels, [], 'Numbered annotations belong only to the selected route');
-  const showPaths = page.locator('.lil-controller').filter({ hasText: 'show AI paths' }).locator('input');
+  const showPaths = page.locator('.lil-controller:visible').filter({ hasText: 'show AI paths' }).locator('input');
   assert.equal(
     await page.locator('.lil-controller').filter({ hasText: 'colour by' }).count(),
     0,

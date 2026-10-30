@@ -1,4 +1,5 @@
 import type { CoursePath, Gem, PlacedProp, V3 } from '../core/doc/types';
+import { moveAiPathNode } from '../core/doc/ai-paths';
 import {
   applyBrush,
   applyGrabBrush,
@@ -297,6 +298,19 @@ export function createViewportCallbacks(deps: ViewportWiringDeps): ViewportCallb
 
   return {
     ...edit.viewportCallbacks,
+    onRecordAiPaths(paths, owner) {
+      if (store.mdoc !== owner) return;
+      store.mdoc.aiPaths = paths;
+      scheduleRebuild();
+      toast(`${paths.length} recorded AI path sections saved. Inspect them in Scene → AI Paths.`);
+    },
+    onMoveAiPathNode(id, node, position) {
+      const paths = store.mdoc.aiPaths;
+      const index = paths?.findIndex(path => path.id === id) ?? -1;
+      if (!paths || index < 0) return;
+      paths[index] = moveAiPathNode(paths[index], node, position);
+      scheduleRebuild();
+    },
     onEditTransformEnd() {
       edit.viewportCallbacks.onEditTransformEnd?.();
       reseatCourse();

@@ -11,7 +11,7 @@
  * Run: npx tsx test/ai-rider.test.ts
  */
 import * as THREE from 'three';
-import { createAiRiders, type AiPathDef } from '../src/app/ride/ai';
+import { createAiRiders, type AiPathDef, type AiRiderProfile } from '../src/app/ride/ai';
 import { RANDOM_AVATAR_POOL } from '../src/core/characters/builtins';
 import type { BoostVolume } from '../src/app/ride/boost-volumes';
 import { createRideModel, riderDrive, type RideObstacleSource } from '../src/app/ride/physics';
@@ -132,6 +132,7 @@ function lateral(pts: THREE.Vector3[], p: THREE.Vector3): number {
 }
 
 interface RunOpts {
+  profiles?: readonly AiRiderProfile[];
   /** A pinned "player" position — a competitor the standings sort against, held still so the gap is the one we set. */
   player?: THREE.Vector3;
   /** Which paths riders are fielded on (default: just path 0). */
@@ -175,6 +176,7 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
     player: playerModel?.st,
     course: opts.course ?? seg(0, ZMAX, 0, h),
     rng: opts.rng,
+    profiles: opts.profiles,
   });
   const worst = starts.map(() => 0);
   const peakStick = starts.map(() => 0);
@@ -318,6 +320,15 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
     },
     { name: 'spawn inside a range', type: 300, start: 0, end: 10, home: 0, alternative: 50, picks: 1 },
     { name: 'current path still best', type: 300, start: 0, end: 100, home: 50, alternative: 0, picks: 0 },
+    {
+      name: 'equal ratings retain the current path on a score tie',
+      type: 300,
+      start: 1,
+      end: 1,
+      home: 50,
+      alternative: 50,
+      picks: 0,
+    },
     { name: 'no alternative path', type: 300, start: 0, end: 100, home: 50, alternative: null, picks: 0 },
     { name: 'range already behind the rider', type: 300, start: -2, end: -1, home: 0, alternative: 50, picks: 0 },
     { name: 'range still ahead', type: 300, start: 200, end: 201, home: 0, alternative: 50, picks: 0 },
@@ -364,20 +375,73 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
   }
 }
 
+// Mood consumes the rider's own live meter and board class, including for a single dropped rider.
+{
+  const fall = seg(4, ZMAX - 8);
+  for (const boardClass of [0, 1] as const) {
+    const field = createAiRiders({
+      paths: [{ ...line(fall), events: [{ type: 300, value: 0, start: 0, end: 10 }] }, line(fall, 100)],
+      starts: [0],
+      terrain,
+      scene: new THREE.Group(),
+      surfaceOf,
+      oobFloorY,
+      profiles: [{ skill: [1, 1], speed: 0.95, boardClass }],
+      rng: () => 0,
+    });
+    field.step(1 / 60);
+    const rider = field.probe()[0];
+    ok(
+      rider.path === (boardClass === 0 ? 0 : 1) && rider.pathMood === (boardClass === 0 ? 50 : 100),
+      `mood: board class ${boardClass} uses its real quarter-full meter without needing a standings ruler`,
+    );
+    ok(rider.arc < 1, 'selection: switching paths reseeds the tracker at the actual rider, not eight metres ahead');
+    field.dispose();
+  }
+  const field = createAiRiders({
+    paths: [{ ...line(fall), markers: [{ arc: 0, end: 400, speed: 80, trickA: false, trickB: false }] }],
+    starts: [0, 0],
+    terrain,
+    scene: new THREE.Group(),
+    surfaceOf,
+    oobFloorY,
+  });
+  for (let frame = 0; frame < 60; frame++) field.step(1 / 60);
+  const before = field.probe();
+  ok(
+    before.every(r => r.boostMeter > 0 && r.boostMeter < 0.25),
+    'meter: each AI spends its own charge while requesting held boost',
+  );
+  field.applyEffect(0, { kind: 'reset' });
+  field.step(1 / 60);
+  const after = field.probe();
+  ok(
+    after[0].boostMeter < before[0].boostMeter - 0.09 && after[1].boostMeter > before[1].boostMeter - 0.01,
+    'meter: resetting one rider penalizes only that rider’s meter',
+  );
+  for (let frame = 0; frame < 600; frame++) field.step(1 / 60);
+  ok(
+    field.probe().every(r => r.boostMeter === 0 && !r.boostActive),
+    'meter: an empty AI meter gates held boost',
+  );
+  field.dispose();
+}
+
 // ---- 5. the line rating: the hand-off picks the line whose rating matches the rider's mood ----
 {
   // Two continuations of the same gate stub, side by side and equally near: one timid (0), one daring (100).
-  // With the player pinned far DOWN-course the rider is trailing, so its mood is 100 and it should take that one.
+  // A class-one rider starts below its boost floor, so its mood is 100 and it should take that one.
   const gate = line(seg(4, 60));
   const timid = line(seg(50, ZMAX - 8, -6), 0);
   const daring = line(seg(50, ZMAX - 8, 6), 100);
   const trailing = run([gate, timid, daring], 10, {
     player: new THREE.Vector3(0, yOf(ZMAX - 20) + 1, ZMAX - 20),
     rng: () => 0,
+    profiles: [{ skill: [1, 1], speed: 0.95, boardClass: 1 }],
   });
   ok(
     trailing.probe[0].path === 2,
-    'rating: a trailing rider (mood 100) takes the daring line, not the timid one',
+    'rating: a boost-starved rider (mood 100) takes the matching line',
     `on path ${trailing.probe[0].path} (2 = rating 100)`,
   );
 
@@ -385,6 +449,7 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
   const swapped = run([gate, line(seg(50, ZMAX - 8, -6), 100), line(seg(50, ZMAX - 8, 6), 0)], 10, {
     player: new THREE.Vector3(0, yOf(ZMAX - 20) + 1, ZMAX - 20),
     rng: () => 0,
+    profiles: [{ skill: [1, 1], speed: 0.95, boardClass: 1 }],
   });
   ok(
     swapped.probe[0].path === 1,
@@ -683,6 +748,147 @@ function run(defs: Def[], seconds: number, opts: RunOpts = {}) {
     'rivals: they fan out across the line to get past each other, rather than queueing on it',
     `widest the field got: ${maxSpread.toFixed(2)} m`,
   );
+}
+
+// The human rides in the same interaction field: avoidance takes their velocity, while a body contact moves
+// BOTH live models. No DOM, controller shortcut or copied player position stands in for the physics state.
+{
+  function encounter(offset: THREE.Vector3, speed = 0, slope = STEEP) {
+    const { terrain, yOf, oobFloorY } = slope;
+    const player = createRideModel({
+      spawn: new THREE.Vector3(0, yOf(40), 40),
+      heading: new THREE.Vector3(0, 0, 1),
+      terrain,
+      surfaceOf,
+      oobFloorY,
+      keys: { left: false, right: false, tuck: false, brake: false, boost: false },
+      stick: { active: false, x: 0 },
+      onRespawn: () => {},
+    });
+    player.start();
+    let active = true;
+    const field = createAiRiders({
+      paths: [line(seg(4, ZMAX - 8, 0, yOf))],
+      starts: [],
+      maxRiders: 2,
+      terrain,
+      scene: new THREE.Group(),
+      surfaceOf,
+      oobFloorY,
+      player: player.st,
+      playerActive: () => active,
+    });
+    field.spawnAt(new THREE.Vector3(0, yOf(40), 40), 12, new THREE.Vector3(0, 0, 1));
+    player.st.pos.copy(field.probe()[0].pos).add(offset);
+    player.st.vel.set(0, 0, speed);
+    return { player, field, dismount: () => (active = false), mount: () => (active = true) };
+  }
+
+  const slow = encounter(new THREE.Vector3(0.1, -1, 5));
+  slow.field.step(1 / 60);
+  let rider = slow.field.probe()[0];
+  ok(
+    rider.rival === 'player' && rider.state === 'avoid' && Math.abs(rider.stick) > 0.2,
+    'player avoidance: a slower human ahead is acquired and steered around without a standings ruler',
+  );
+  // The cached rival was just acquired: changing mount state must take effect before the next 0.2 s rescore.
+  slow.player.st.pos.copy(rider.pos).add(new THREE.Vector3(0.5, 0, 0));
+  const abandoned = slow.player.st.pos.clone();
+  slow.dismount();
+  slow.field.step(1e-6);
+  rider = slow.field.probe()[0];
+  ok(
+    rider.rival === -1 && rider.state === 'cruise' && slow.player.st.pos.equals(abandoned),
+    'player avoidance: dismount immediately drops the cached human rival and leaves the retained board alone',
+  );
+  slow.mount();
+  slow.field.step(1e-6);
+  ok(slow.player.st.pos.distanceTo(abandoned) > 0.2, 'player bump: remount immediately restores body contacts');
+  slow.field.dispose();
+
+  const fast = encounter(new THREE.Vector3(0.1, -1, 5), 20);
+  fast.field.step(1 / 60);
+  rider = fast.field.probe()[0];
+  ok(
+    rider.rival === 'player' && rider.state === 'cruise',
+    'player avoidance: a faster human ahead keeps the same hold-line rule as an AI rival',
+  );
+  fast.field.dispose();
+
+  const steep = encounter(new THREE.Vector3(0.1, -Math.tan(35 * D2R) * 5, 5), 0, makeSlope(35));
+  steep.field.step(1 / 60);
+  ok(
+    steep.field.probe()[0].state === 'avoid',
+    'player avoidance: a human downhill on a steep surface is not mistaken for a different crossing level',
+  );
+  steep.field.dispose();
+
+  const behind = encounter(new THREE.Vector3(0, 1, -5));
+  behind.field.step(1 / 60);
+  ok(behind.field.probe()[0].state === 'cruise', 'player avoidance: a human behind does not pull the AI off its line');
+  behind.field.dispose();
+
+  const distant = encounter(new THREE.Vector3(0, 0, 8));
+  distant.field.step(1 / 60);
+  ok(distant.field.probe()[0].rival === -1, 'player avoidance: the human obeys the same 7 m acquisition radius');
+  distant.field.dispose();
+
+  const contest = encounter(new THREE.Vector3(1.5, -1, 5));
+  const here = contest.field.probe()[0].pos.clone();
+  contest.field.spawnAt(here.clone().add(new THREE.Vector3(0, 0, 4)), 6, new THREE.Vector3(0, 0, 1));
+  contest.field.step(1e-6);
+  ok(
+    contest.field.probe()[0].rival === 1,
+    'player avoidance: a better-placed AI rival wins the shared bearing score instead of always targeting the human',
+  );
+  contest.player.st.pos.copy(here).add(new THREE.Vector3(0, -1, 5));
+  contest.field.probe()[1].pos.x += 1;
+  contest.field.step(0.2);
+  ok(contest.field.probe()[0].rival === 'player', 'player avoidance: the human can win that same shared score');
+  contest.player.st.pos.copy(contest.field.probe()[0].pos).add(new THREE.Vector3(0, 0, 12));
+  contest.field.step(0.2);
+  ok(contest.field.probe()[0].rival !== 'player', 'player avoidance: a human beyond 10.5 m is dropped');
+  contest.field.dispose();
+
+  const contact = encounter(new THREE.Vector3(0.5, 0, 0));
+  const humanBefore = contact.player.st.pos.clone();
+  const aiBefore = contact.field.probe()[0].pos.clone();
+  contact.field.step(1e-6); // controller/body pass, without advancing either model through a physics tick
+  const aiAfter = contact.field.probe()[0].pos;
+  ok(
+    Math.abs(contact.player.st.pos.x - humanBefore.x - 0.33) < 1e-8 &&
+      Math.abs(aiAfter.x - aiBefore.x + 0.33) < 1e-8 &&
+      contact.player.st.pos.y === humanBefore.y &&
+      aiAfter.y === aiBefore.y,
+    'player bump: an overlap pushes both live positions apart by the existing symmetric separation law',
+  );
+  contact.player.step(1 / 60);
+  contact.field.step(1 / 60);
+  ok(
+    contact.player.st.pos.x > humanBefore.x + 0.3 && contact.field.probe()[0].pos.x < aiBefore.x - 0.3,
+    'player bump: the displacement survives both riders taking their next physics tick',
+  );
+  contact.field.dispose();
+
+  const coincident = encounter(new THREE.Vector3());
+  coincident.field.step(1e-6);
+  ok(
+    coincident.player.st.pos.distanceTo(coincident.field.probe()[0].pos) >= 1.1,
+    'player bump: exactly coincident riders separate without non-finite positions',
+  );
+  coincident.field.dispose();
+
+  for (const offset of [new THREE.Vector3(0, 3, 0), new THREE.Vector3(0, 3, 5)]) {
+    const overhead = encounter(offset);
+    const before = overhead.player.st.pos.clone();
+    overhead.field.step(1e-6);
+    rider = overhead.field.probe()[0];
+    ok(
+      rider.rival === -1 && rider.state === 'cruise' && overhead.player.st.pos.equals(before),
+      `player interactions: a human 3 m overhead neither attracts avoidance nor bumps (z offset ${offset.z})`,
+    );
+    overhead.field.dispose();
+  }
 }
 
 // ---- 11. the course reset: a fallen rider is put back on a RESPAWNABLE path ----

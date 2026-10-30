@@ -196,4 +196,25 @@ assert.equal(target.requests, 5, 'the stopped ride no longer re-captures on a cl
   drag.detach();
 }
 
+{
+  const recordingDoc = new FakeDocument();
+  const recordingTarget = new FakeTarget(recordingDoc);
+  let saves = 0;
+  const recordingLock = createRidePointerLock({
+    target: recordingTarget as unknown as HTMLElement,
+    onMove() {},
+    onEscape() {
+      saves++;
+      return true;
+    },
+  });
+  recordingLock.attach();
+  recordingLock.setFirstPerson(true);
+  assert(recordingLock.locked);
+  recordingDoc.dispatchEvent(keyboard('keydown', 'Escape'));
+  assert.equal(saves, 1, 'A recording handles the first Escape while captured');
+  assert.equal(recordingLock.locked, false);
+  recordingLock.detach();
+}
+
 console.log('pointer lock checks passed');

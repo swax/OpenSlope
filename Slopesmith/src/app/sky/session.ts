@@ -53,6 +53,8 @@ export type SkyDeps = {
   log: (msg: string) => void;
   /** Whether Scene is showing either category that owns the shared sky/glare Preview card. */
   isPreviewSelected: () => boolean;
+  /** Scene's common Mountain / Reference switch replaces the standalone preview-world picker. */
+  getPreviewTarget?: () => SkyPreviewTarget;
   /** Keep presentation effects coupled to whichever world owns the visible sky state. */
   onVisibleWorldChange: () => void;
   /** Repaint the top-bar Skybox button after the Scene preview changes it. */
@@ -181,7 +183,7 @@ export function createSkybox(deps: SkyDeps) {
       isPreviewSelected(),
       viewport.riding || viewport.xrPresenting,
       store.playTarget,
-      previewTarget,
+      deps.getPreviewTarget?.() ?? previewTarget,
       viewport.nearestMountainWorld,
       store.skyboxVisible,
     );
@@ -193,7 +195,7 @@ export function createSkybox(deps: SkyDeps) {
       isPreviewSelected(),
       viewport.riding || viewport.xrPresenting,
       store.playTarget,
-      previewTarget,
+      deps.getPreviewTarget?.() ?? previewTarget,
       previewLayers.godRays,
     );
   }
@@ -282,32 +284,34 @@ export function createSkybox(deps: SkyDeps) {
     clearGui(previewFolder);
     const referenceAvailable = !!refLevel;
     previewTarget = reconcileSkyPreviewTarget(previewTarget, true, referenceAvailable);
-    const targets = segmented<SkyPreviewTarget>(
-      [
-        { value: 'authored', label: 'My mountain', title: 'Preview my mountain’s skybox and sun glare.' },
-        {
-          value: 'reference',
-          label: 'Reference',
-          title: () =>
-            refLevel
-              ? `Preview ${refLevel}’s skybox and sun glare.`
-              : 'Load a reference mountain to preview its skybox or sun glare.',
+    if (!deps.getPreviewTarget) {
+      const targets = segmented<SkyPreviewTarget>(
+        [
+          { value: 'authored', label: 'My mountain', title: 'Preview my mountain’s skybox and sun glare.' },
+          {
+            value: 'reference',
+            label: 'Reference',
+            title: () =>
+              refLevel
+                ? `Preview ${refLevel}’s skybox and sun glare.`
+                : 'Load a reference mountain to preview its skybox or sun glare.',
+          },
+        ],
+        () => previewTarget,
+        target => {
+          previewTarget = target;
+          syncSkyVisibility();
         },
-      ],
-      () => previewTarget,
-      target => {
-        previewTarget = target;
-        syncSkyVisibility();
-      },
-    );
-    targets.setEnabled('authored', true);
-    targets.setEnabled('reference', referenceAvailable);
-    targets.el.setAttribute('role', 'group');
-    targets.el.setAttribute('aria-label', 'Mountain to preview');
-    const row = document.createElement('div');
-    row.className = 'sp-gui-custom sp-sky-preview-target';
-    row.appendChild(targets.el);
-    previewFolder.$children.appendChild(row);
+      );
+      targets.setEnabled('authored', true);
+      targets.setEnabled('reference', referenceAvailable);
+      targets.el.setAttribute('role', 'group');
+      targets.el.setAttribute('aria-label', 'Mountain to preview');
+      const row = document.createElement('div');
+      row.className = 'sp-gui-custom sp-sky-preview-target';
+      row.appendChild(targets.el);
+      previewFolder.$children.appendChild(row);
+    }
 
     const layers = toggleBar<SkyPreviewLayer>(
       [

@@ -757,6 +757,14 @@ export class Viewport {
     // A Move drag freezes the slide surface. Rotate / Scale freeze member values around the shared anchor.
     // Release drops that snapshot and re-orients the next gizmo from the resulting geometry.
     this.stage.onGizmoDrag = dragging => {
+      if (this.gizmoKind === 'ainode') {
+        if (dragging) this.gizmoReadout.begin('move');
+        else {
+          this.gizmoReadout.end();
+          this.cb.onAiPathNodeDragEnd?.();
+        }
+        return;
+      }
       if (this.gizmoKind === 'propdeform') {
         this.propDeform.dragging(dragging);
         return;
@@ -1047,6 +1055,7 @@ export class Viewport {
         const d = this.meshDoc;
         return d && d.course.knots.length >= 2 ? aiLineRatings(d.course, d.aiSeed ?? DEFAULT_AI_SEED) : [];
       },
+      getAuthoredDoc: () => this.meshDoc,
       getCourseLine: () => {
         const d = this.meshDoc;
         return d && d.course.knots.length >= 2 ? courseCenters(d.course) : [];
@@ -1182,7 +1191,14 @@ export class Viewport {
         const pv = this.preview;
         return pv && { positions: pv.positions, normals: pv.normals, cellSurf: pv.cellSurf, side: PREVIEW_RES + 1 };
       },
-      lines: () => (this.meshDoc ? courseSpeedLines(this.meshDoc.course, this.meshDoc.aiSeed ?? DEFAULT_AI_SEED) : []),
+      lines: () =>
+        this.meshDoc
+          ? courseSpeedLines(
+              this.meshDoc.course,
+              this.meshDoc.aiSeed ?? DEFAULT_AI_SEED,
+              this.meshDoc.autoAiPaths !== false,
+            )
+          : [],
       applies: () => !this.modelContextOn,
       shown: on => this.legends.setSpeedKey('mountain', on),
       note: text => this.legends.setSpeedNote(text),
@@ -1397,6 +1413,7 @@ export class Viewport {
       lineRoots: () => [this.propLines.group],
       referenceRailRoots: () => [this.refDecor.railSplineGroup],
       referenceAiPathRoots: () => [this.refDecor.aiPathGroup],
+      authoredAiPathRoots: () => this.aiPathsLayer.pickRoots,
       gemRoots: () => [this.gems.gemGroup],
       screenRoots: () => [this.screens.group, this.screens.referenceGroup],
       knotTargets: () => (this.courseVisible ? this.knotMeshes : []),
@@ -1860,6 +1877,9 @@ export class Viewport {
   get riding() {
     return this.rideCtl.riding;
   }
+  get recordingAiRun() {
+    return this.rideCtl.recordingAiRun;
+  }
   get rideWalking() {
     return this.rideCtl.walking;
   }
@@ -1909,6 +1929,7 @@ export class Viewport {
     countdown = false,
     telemetry = false,
     touchControls = true,
+    recordAiRun = false,
   ) {
     // A run of its own, and Play setup before it may have dropped a field that already knocked props over and
     // part-marked counters. Start from the authored mountain rather than from wherever setup left it.
@@ -1924,6 +1945,7 @@ export class Viewport {
       target === 'reference' && countdown ? this.referenceEffects.raceCountdown() : null,
       telemetry,
       touchControls,
+      recordAiRun,
     );
   }
   stopRide() {
@@ -2934,8 +2956,15 @@ export class Viewport {
       5,
     );
     this.courseMarkers.setCourse(doc.course.knots.length >= 2 ? doc.course : null);
-    this.speedShadeLayer.linesChanged(JSON.stringify([doc.course, doc.aiSeed ?? DEFAULT_AI_SEED]));
-    this.aiPathsLayer.setCourse(doc.course.knots.length >= 2 ? doc.course : null, doc.aiSeed ?? DEFAULT_AI_SEED);
+    this.speedShadeLayer.linesChanged(
+      JSON.stringify([doc.course, doc.aiSeed ?? DEFAULT_AI_SEED, doc.autoAiPaths !== false]),
+    );
+    this.aiPathsLayer.setCourse(
+      doc.course.knots.length >= 2 ? doc.course : null,
+      doc.aiSeed ?? DEFAULT_AI_SEED,
+      doc.aiPaths,
+      doc.autoAiPaths !== false,
+    );
     // Peer marks are id-named, so re-resolving them here is what carries somebody else's selection across a
     // topology edit rather than leaving it where the indices used to be.
     this.peers.setDocument(doc);
@@ -3546,6 +3575,11 @@ export class Viewport {
   private onGizmoChange() {
     const obj = this.gizmo.object;
     if (!obj) return;
+    if (this.gizmoKind === 'ainode') {
+      this.aiPathsLayer.moveNode();
+      this.gizmoReadout.update();
+      return;
+    }
     if (this.gizmoKind === 'propdeform') {
       this.propDeform.changed();
       return;
@@ -4817,6 +4851,9 @@ export class Viewport {
     }
     this.refDecor.selectAiPath(index);
   }
+  selectAuthoredAiPath(index: number | null, node: number | null = null) {
+    this.aiPathsLayer.select(index, node);
+  }
   showReferenceLights(on: boolean) {
     this.refDecor.showLights(on);
   }
@@ -5327,6 +5364,7 @@ export class Viewport {
     for (const mat of this.rails.guideMaterials) mat.resolution.set(w, h); // the surface-coloured grind curves
     for (const mat of this.refDecor.railSplineMaterials) mat.resolution.set(w, h); // …and the reference's own
     for (const mat of this.refDecor.aiPathMaterials) mat.resolution.set(w, h);
+    for (const mat of this.aiPathsLayer.materials) mat.resolution.set(w, h);
     for (const mat of this.referenceEffects.boostArrowMaterials) mat.resolution.set(w, h);
     const aspect = w / h;
     // keep both cameras valid so the projection toggle never sees a stale aspect

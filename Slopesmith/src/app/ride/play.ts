@@ -123,7 +123,7 @@ export function createPlay(deps: PlayDeps) {
       return;
     }
     if (store.playAiMax === 0) {
-      toast('AI riders are off — raise Test ▸ Options ▸ AI riders above zero first.', 'info');
+      toast('AI riders are off — raise Test ▸ AI settings ▸ AI riders above zero first.', 'info');
       return;
     }
     if (!viewport.dropAiRider(world)) {
@@ -160,9 +160,10 @@ export function createPlay(deps: PlayDeps) {
   }
 
   /** The Play button: drop the board at the chosen start and hand over to the ride. */
-  async function startPlay(touchControls = true) {
-    if (store.currentMode !== 'play' || launching) return;
+  async function startPlay(touchControls = true, recordAiRun = false) {
+    if (store.currentMode !== 'play' || launching || viewport.riding || viewport.watching || viewport.xrPlaying) return;
     const target = store.playTarget;
+    if (recordAiRun && target !== 'authored') return;
     if (target === 'reference' && !viewport.canRideReference) {
       toast('Load a reference level first (Scene ▸ Reference).', 'warn');
       return;
@@ -200,6 +201,7 @@ export function createPlay(deps: PlayDeps) {
         store.playCountdownOn,
         store.playTelemetryOn,
         touchControls,
+        recordAiRun,
       );
       onPlayingChanged(target);
       syncSkyVisibility(); // the target sky starts with the ride, not while positioning the setup marker
@@ -359,6 +361,7 @@ export function createPlay(deps: PlayDeps) {
     cancelStartPlacement,
     cancelLaunch,
     startPlay,
+    startAiRecording: () => startPlay(true, true),
     exitRide,
     startWatch,
     stopWatch,

@@ -76,6 +76,16 @@ export interface CourseAnchor {
   pos: V3;
 }
 
+/** An authored AI route section. Event stations use horizontal metres from its first point. */
+export interface AuthoredAiPath {
+  id: string;
+  name: string;
+  rating: number;
+  respawnable: boolean;
+  points: V3[];
+  events: { type: number; value: number; start: number; end: number }[];
+}
+
 /** A document-wide semantic grouping used to find and edit related authored geometry. Membership lives on
  *  the labelled object (a terrain patch or placed prop) as this stable id, so renaming the display name never
  *  breaks the relationship and one object can belong to several labels. */
@@ -99,6 +109,10 @@ export interface MountainMeta {
   spacing: number;
   /** The mountain's one run. Guaranteed present past `migrateMountain` — the export needs it. */
   course: CoursePath;
+  /** Recorded, overlapping AI route sections; absent keeps the generated course routes. */
+  aiPaths?: AuthoredAiPath[];
+  /** False uses only authored AI paths in the viewport, riders and exports. Older mountains default to true. */
+  autoAiPaths?: boolean;
   /** SurfaceType for unpainted cells. */
   baseSurface: number;
   /** Semantic edit groups. Patch membership is in `quadLabels`; placement membership is on each prop. */

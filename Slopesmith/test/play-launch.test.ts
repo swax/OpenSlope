@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { defaultMountain } from '../src/core/doc/mountain';
 
 // createPlay imports the browser toast singleton; the launch paths under test never toast, but its module needs
 // the one element at import time.
@@ -231,7 +232,7 @@ function harness(wait: Promise<void>) {
     playSmoothCutoutsOn: true,
     playVrLayerMode: 'webgl',
     playVrStatsOn: false,
-    mdoc: { course: { knots: [] } },
+    mdoc: defaultMountain(),
   };
   let effectRequests = 0,
     rides = 0,
@@ -324,7 +325,8 @@ function harness(wait: Promise<void>) {
   gate.resolve();
   await Promise.all([first, second]);
   assert.deepEqual(h.counts(), { effectRequests: 1, rides: 1, watches: 0 });
-  assert.equal(h.rideArgs().at(-1), true, 'ordinary flat Play permits touch controls when real touch input appears');
+  assert.equal(h.rideArgs()[7], true, 'ordinary flat Play permits touch controls when real touch input appears');
+  assert.equal(h.rideArgs()[8], false, 'ordinary Play does not start AI recording');
   assert.deepEqual(
     h.playingEvents(),
     ['reference'],
@@ -341,10 +343,24 @@ function harness(wait: Promise<void>) {
   const h = harness(Promise.resolve());
   await h.play.startPlay(false);
   assert.equal(
-    h.rideArgs().at(-1),
+    h.rideArgs()[7],
     false,
     'Play on screen threads the touch-control opt-out through the ordinary launch contract',
   );
+}
+
+// Recording is a dedicated authored launch, not a second in-ride toggle or a reference editing action.
+{
+  const h = harness(Promise.resolve());
+  await h.play.startAiRecording();
+  assert.equal(h.counts().rides, 0, 'Reference cannot start an authored AI recording');
+  h.store.playTarget = 'authored';
+  await h.play.startAiRecording();
+  assert.equal(h.counts().rides, 1);
+  assert.equal(h.rideArgs()[8], true, 'Record AI run carries capture through the launch');
+  h.viewport.riding = true;
+  await h.play.startAiRecording();
+  assert.equal(h.counts().rides, 1, 'An active run cannot be replaced by a recording launch');
 }
 
 // Switching target during the wait also cancels the reference launch.
@@ -433,6 +449,8 @@ function harness(wait: Promise<void>) {
   const avatar = panel.indexOf("const avatar = editSection('play-avatar', 'Avatar', true);");
   const avatarChoice = panel.indexOf('if (!riderModelCatalogSettled())');
   const vrOptions = panel.indexOf("const vrOptions = editSection('play-vr-options', 'VR options', true);");
+  const sound = panel.indexOf("const sound = editSection('play-sound', 'Sound settings', true);");
+  const aiSettings = panel.indexOf("const aiSettings = editSection('play-ai', 'AI settings', true);");
   const options = panel.indexOf("const options = editSection('play-options', 'Options', true);");
   const tuning = panel.indexOf("const tuning = editSection('play-tuning', 'Tuning', true);");
   assert.ok(
@@ -445,12 +463,14 @@ function harness(wait: Promise<void>) {
       goToPlayer < avatar &&
       avatar < avatarChoice &&
       avatarChoice < vrOptions &&
-      vrOptions < options &&
+      vrOptions < sound &&
+      sound < aiSettings &&
+      aiSettings < options &&
       options < tuning,
-    'the panel orders Play/AI controls, Position, Avatar, conditional VR options, Options, then Tuning last',
+    'the panel orders launch controls, Position, Avatar, VR, Sound, AI, Options, then Tuning last',
   );
   let previousOption = options;
-  for (const label of ['AI riders', 'Snow', 'Race countdown']) {
+  for (const label of ['Snow', 'Race countdown']) {
     const at = panel.indexOf(`.name('${label}')`, previousOption + 1);
     assert.ok(at > previousOption, `${label} appears in the requested Options order`);
     previousOption = at;
@@ -476,13 +496,13 @@ function harness(wait: Promise<void>) {
   assert.match(panel, /server-wide rider library/, 'the Mixamo tooltip retains the storage guidance');
   assert.match(
     panel,
-    /options\s*\.add\(aiRiders, 'count', 0, MAX_AI_RIDERS, 1\)\s*\.name\('AI riders'\)/,
+    /aiSettings\s*\.add\(aiRiders, 'count', 0, MAX_AI_RIDERS, 1\)\s*\.name\('AI riders'\)/,
     'AI enable and cap are one zero-to-max rider-count control',
   );
   for (const control of ['countdown']) {
     assert.match(panel, new RegExp(`options\\s*\\.add\\(\\{ ${control}:`), `${control} is grouped under Test Options`);
   }
-  for (const control of ['boardFx', 'colliders', 'paths', 'telemetry']) {
+  for (const control of ['boardFx', 'colliders', 'telemetry']) {
     assert.match(
       panel,
       new RegExp(`tuning\\s*\\.add\\(\\{ ${control}:`),
@@ -490,14 +510,7 @@ function harness(wait: Promise<void>) {
     );
   }
   let previousTuning = tuning;
-  for (const label of [
-    'MSAA + smooth cutouts',
-    'Board FX',
-    'Draw distance',
-    'Show AI paths',
-    'Show colliders',
-    'Collect telemetry',
-  ]) {
+  for (const label of ['MSAA + smooth cutouts', 'Board FX', 'Draw distance', 'Show colliders', 'Collect telemetry']) {
     const at = panel.indexOf(`.name('${label}')`, previousTuning + 1);
     assert.ok(at > previousTuning, `${label} appears in the requested Tuning order`);
     previousTuning = at;

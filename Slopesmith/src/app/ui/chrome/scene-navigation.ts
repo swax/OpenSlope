@@ -1,5 +1,6 @@
 /** The Scene toolbox's focused comparison categories. `info` is the Reference landing view. */
 export type SceneSel = 'info' | 'lighting' | 'godrays' | 'sound' | 'skybox' | 'course' | 'aiPaths' | 'camera';
+export type SceneTarget = 'authored' | 'reference';
 
 export type SceneBoundsVisibility = {
   mountain: boolean;

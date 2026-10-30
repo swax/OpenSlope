@@ -103,16 +103,18 @@ export type ReferenceDeps = {
   viewport: Viewport;
   // the scene panel's detail folders this subsystem fills (Mountain lighting/glare and Reference studies)
   sunFolder: GUI;
+  lightingPreviewFolder?: GUI;
   godRayFolder: GUI;
   refGodRayFolder: GUI;
   refFolder: GUI;
   refCourseFolder: GUI;
   lightFolder: GUI;
   refSoundFolder: GUI;
+  sharedSoundFolder?: GUI;
   // scene-panel behaviours the reference drives on load / clear
   rebuildOutliner: () => void;
   applySceneSelection: () => void;
-  selectScene: (kind: 'info' | 'lighting') => void;
+  selectScene: (kind: 'info' | 'lighting', target?: 'authored' | 'reference') => void;
   // host behaviours
   scheduleRebuild: () => void;
   persistDoc: () => void;
@@ -167,7 +169,8 @@ export function createReference(deps: ReferenceDeps) {
   } = deps;
 
   const lightRigs = new Map<string, LightRig>(); // fetched + decoded light rigs, per reference level
-  const musicStudy = createReferenceMusicStudy(refSoundFolder);
+  const musicStudy = createReferenceMusicStudy(refSoundFolder, deps.sharedSoundFolder);
+  const lightingPreviewFolder = deps.lightingPreviewFolder ?? sunFolder;
 
   // ---- Reference: load an extracted level's terrain to study (read-only, not editable) ----
   const refState = {
@@ -275,7 +278,7 @@ export function createReference(deps: ReferenceDeps) {
     const list = store.mdoc.lights ?? [];
     const index = list.findIndex(light => light.id === selectedMountainLight);
     if (index >= 0) {
-      selectedReferenceLightFolder = lightFolder.addFolder('Editable mountain light');
+      selectedReferenceLightFolder = sunFolder.addFolder('Editable mountain light');
       addAuthoredLightDetails(
         selectedReferenceLightFolder,
         list[index],
@@ -306,6 +309,7 @@ export function createReference(deps: ReferenceDeps) {
         store.selectedRefLight = null;
         deps.scheduleRebuild();
         rebuildSelectedReferenceLightDetails();
+        selectScene('lighting', 'authored');
       },
     );
     selectedReferenceLightFolder.open();
@@ -319,7 +323,7 @@ export function createReference(deps: ReferenceDeps) {
     if (light !== null || level !== null || store.selectedLight !== selectedMountainLight) selectedMountainLight = null;
     selectedReferenceLight = level !== null && light !== null ? { level, light } : null;
     rebuildSelectedReferenceLightDetails();
-    if (selectedReferenceLight && store.currentMode === 'info') selectScene('lighting');
+    if (selectedReferenceLight && store.currentMode === 'info') selectScene('lighting', 'reference');
   }
 
   /** Inject an ✕ button into a level dropdown's widget (beside the <select>) that clears the loaded
@@ -648,7 +652,11 @@ export function createReference(deps: ReferenceDeps) {
     refInfoCtl?.updateDisplay();
     showOrigin(null); // ...nothing to describe...
     clearCostRows(); // ...and nothing to price
+    selectedReferenceLightFolder?.destroy();
+    selectedReferenceLightFolder = null;
+    selectedReferenceLight = null;
     clearGui(lightFolder); // no reference -> empty Reference lighting half (scene panel adds its prompt)
+    rebuildSelectedReferenceLightDetails();
     musicStudy.clear(); // ...and no PathFinder graph study
     setupRefSky(null); // ...and no level sky to preview or adopt
     refGlare = null;
@@ -1639,8 +1647,9 @@ export function createReference(deps: ReferenceDeps) {
 
   /** Rebuild the lighting-study panel for the freshly loaded reference (view picker, shadow/AO, readout). */
   function setupLightingUi() {
+    selectedReferenceLightFolder?.destroy();
+    selectedReferenceLightFolder = null; // the selected card may belong to the authored side after adopting a light
     clearGui(lightFolder); // visibility is governed by the Scene Lighting category
-    selectedReferenceLightFolder = null; // clearGui destroyed the old child; rebuild it from semantic state below
     refState.lighting = refMesh?.intensity ? refLightingIntent : 'off';
     fitCtl = sunCtl = colCtl = chkCtl = null;
     updateLightPanelVis = null;
@@ -1893,6 +1902,7 @@ export function createReference(deps: ReferenceDeps) {
       fitSunSlider();
       syncBakeAmbient();
       sunFolder.controllers.forEach(c => c.updateDisplay());
+      lightingPreviewFolder.controllers.forEach(c => c.updateDisplay());
     }
     applySunLight();
     if (localLightsVisible()) void ensureRefGlow();
@@ -1904,17 +1914,19 @@ export function createReference(deps: ReferenceDeps) {
 
   function initSunLight() {
     tip(
-      sunFolder
+      lightingPreviewFolder
         .add(sunLight, 'on')
         .name('preview')
+        .listen()
         .onChange(() => applyMasterLighting(true)),
       'Master Lighting toggle (the top-bar sun); re-lights live as you sculpt.',
       'Lights both mountains with sun + sky colour + baked cast-shadow/AO and the Local lights layer below.',
     );
     tip(
-      sunFolder
+      lightingPreviewFolder
         .add(store, 'propLightsVisible')
         .name('local lights')
+        .listen()
         .onChange(() => applyLocalLightsPreference()),
       'Add the course’s local sign, tunnel, point, and free lights to the master Lighting preview.',
       'This is the former top-bar Prop lights switch. It remains available here for focused lighting study; ' +

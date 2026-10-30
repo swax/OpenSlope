@@ -750,9 +750,9 @@ const AI_HALF_WIDTH = 3;
 /** A shipped level's main course line's, its floor width unrecorded. */
 const REFERENCE_COURSE_HALF_WIDTH = 12;
 
-/** An authored mountain's lines: its run from where the field is staged, across its floor and walls, and the six AI
- *  lines it exports from the gates (core/doc/course). */
-export function courseSpeedLines(course: CoursePath, aiSeed: number): SpeedLine[] {
+/** An authored mountain's run from where the field is staged, across its floor and walls, plus its six generated
+ *  AI lines when enabled (core/doc/course). */
+export function courseSpeedLines(course: CoursePath, aiSeed: number, automatic = true): SpeedLine[] {
   if (course.knots.length < 2) return [];
   const s0 = startStation(course);
   const run = sampleSpine(course.knots).filter(sample => sample.s >= s0);
@@ -764,7 +764,9 @@ export function courseSpeedLines(course: CoursePath, aiSeed: number): SpeedLine[
   );
   return [
     { points: run.map(sample => sample.pos), halfWidth, start: true },
-    ...aiPathLines(course, aiSeed).map(points => ({ points, halfWidth: AI_HALF_WIDTH, start: true })),
+    ...(automatic
+      ? aiPathLines(course, aiSeed).map(points => ({ points, halfWidth: AI_HALF_WIDTH, start: true }))
+      : []),
   ];
 }
 
