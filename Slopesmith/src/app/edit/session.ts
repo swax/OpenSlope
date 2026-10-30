@@ -3065,6 +3065,7 @@ export function createEditSession(deps: EditSessionDeps) {
       requestAnimationFrame(() => {
         view().refreshEditEdges();
         seatEditMoveGizmo();
+        refreshEditSelectionUi();
       });
       rebuildTools();
       updateCmdSheet();
@@ -3096,6 +3097,9 @@ export function createEditSession(deps: EditSessionDeps) {
         view().refreshEditEdges();
         view().refreshEditCells();
         seatEditMoveGizmo();
+        // The new selection's names resolve only after the scheduled render has installed its mesh.
+        // Rebuild its toolbox now so committing cannot leave the general Edit tools under the gizmo.
+        refreshEditSelectionUi();
       });
       rebuildTools();
       updateCmdSheet();

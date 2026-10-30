@@ -534,6 +534,141 @@ check(placed === 3, 'An authored edge under the pointer cannot block prop placem
 check(unavailable === 0, 'Prop placement does not show an unavailable edge warning');
 meshComponentHit = null;
 
+// Sheets use prop-line drawing too: mesh point/edge picks must not intercept a valid ground click.
+{
+  const nodes: V3[] = [];
+  const appendLineNode = stage.cb.onAppendLineNode;
+  const armed = props.propArm;
+  const noticesBefore = unavailable;
+  stage.cb.onAppendLineNode = (pos: V3) => nodes.push(pos);
+  props.propArm = null;
+  layers.propLines.drawing = true;
+  pointerRayX = 12;
+  for (const pointerType of ['mouse', 'touch']) {
+    for (const kind of ['surface', 'line', 'vertex']) {
+      meshComponentHit = { kind, source: 'authored' };
+      const countBefore = nodes.length;
+      dom.dispatch('pointerdown', { pointerType });
+      dom.dispatch('pointerup', { pointerType });
+      check(
+        nodes.length === countBefore + 1 && nodes.at(-1)?.every((value, i) => value === [12, 0, 5][i]),
+        `sheet drawing: ${pointerType} places exactly one node on the ground through a ${kind} pick`,
+      );
+      check(unavailable === noticesBefore, `sheet drawing: a valid ${pointerType} ground hit shows no ${kind} warning`);
+    }
+  }
+  pointerRayX = 1000;
+  const countBeforeMiss = nodes.length;
+  meshComponentHit = { kind: 'line', source: 'authored' };
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(
+    nodes.length === countBeforeMiss && unavailable === noticesBefore + 1,
+    'sheet drawing: an isolated edge without ground remains unsupported and cannot reuse the last hit',
+  );
+  meshComponentHit = null;
+  dom.dispatch('pointerdown', {});
+  dom.dispatch('pointerup', {});
+  check(
+    nodes.length === countBeforeMiss && unavailable === noticesBefore + 1,
+    'sheet drawing: empty space neither places a node nor reports an unsupported component',
+  );
+  pointerRayX = 0;
+  layers.propLines.drawing = false;
+  props.propArm = armed;
+  stage.cb.onAppendLineNode = appendLineNode;
+}
+
+// Other surface placement tools accept point/edge overlays too, including motion paths in Effects.
+{
+  const previous = {
+    rails: layers.rails,
+    lights: layers.lights,
+    gems: layers.gems,
+    scenePicking: layers.scenePicking,
+    arm: props.propArm,
+    visible: placedPropGroup.visible,
+    snapPoint: access.snapPoint,
+    appendRailNode: stage.cb.onAppendRailNode,
+    placeLight: stage.cb.onPlaceLight,
+    placeGem: stage.cb.onPlaceGem,
+  };
+  placedPropGroup.visible = false;
+  props.propArm = null;
+  access.snapPoint = (point: V3): V3 => point.map(Math.round) as V3;
+  for (const tool of ['rail', 'motion path', 'light', 'gem']) {
+    const placements: V3[] = [];
+    const place = (pos: V3) => placements.push(pos);
+    stage.cb.onAppendRailNode = place;
+    stage.cb.onPlaceLight = place;
+    stage.cb.onPlaceGem = place;
+    activeMode = tool === 'motion path' ? 'effects' : 'props';
+    layers.rails = {
+      ...previous.rails,
+      railArmed: tool === 'rail' || tool === 'motion path',
+      selectedRail: 0,
+      rails: [{ height: 3 }],
+    };
+    layers.lights = { ...previous.lights, lightArmed: tool === 'light' };
+    layers.gems = {
+      ...previous.gems,
+      gemArmed: tool === 'gem',
+      gemArmOpts: { height: 4 },
+      gemLinePreview: { visible: false },
+    };
+    pointerRayX = 12.4;
+    const noticesBefore = unavailable;
+    for (const pointerType of ['mouse', 'touch']) {
+      for (const kind of ['surface', 'line', 'vertex']) {
+        meshComponentHit = { kind, source: 'authored' };
+        const countBefore = placements.length;
+        dom.dispatch('pointerdown', { pointerType });
+        dom.dispatch('pointerup', { pointerType });
+        const expected = tool === 'light' ? [12.4, 0, 5] : [12, tool === 'gem' ? 4 : 3, 5];
+        check(
+          placements.length === countBefore + 1 && placements.at(-1)?.every((value, i) => value === expected[i]),
+          `${tool}: ${pointerType} places once through a ${kind} pick, preserving height and snap`,
+        );
+        check(unavailable === noticesBefore, `${tool}: valid ${pointerType} placement shows no ${kind} warning`);
+      }
+    }
+    pointerRayX = 1000;
+    const countBeforeMiss = placements.length;
+    meshComponentHit = { kind: 'line', source: 'authored' };
+    for (const pointerType of ['mouse', 'touch']) {
+      dom.dispatch('pointerdown', { pointerType });
+      dom.dispatch('pointerup', { pointerType });
+    }
+    check(placements.length === countBeforeMiss, `${tool}: off-ground clicks cannot reuse the last valid hit`);
+
+    // A nearer reference surface is still an unsupported placement target for these tools.
+    pointerRayX = 12.4;
+    meshComponentHit = { kind: 'line', source: 'reference' };
+    layers.scenePicking = {
+      pick: (query: { surfaces?: boolean | string }) =>
+        query.surfaces === true
+          ? { target: 'surface', source: 'reference', hit: ray.intersectObject(terrain, false)[0] }
+          : null,
+    };
+    dom.dispatch('pointerdown', { pointerType: 'touch' });
+    dom.dispatch('pointerup', { pointerType: 'touch' });
+    check(placements.length === countBeforeMiss, `${tool}: a reference surface remains unsupported`);
+    layers.scenePicking = previous.scenePicking;
+  }
+  layers.rails = previous.rails;
+  layers.lights = previous.lights;
+  layers.gems = previous.gems;
+  props.propArm = previous.arm;
+  placedPropGroup.visible = previous.visible;
+  access.snapPoint = previous.snapPoint;
+  stage.cb.onAppendRailNode = previous.appendRailNode;
+  stage.cb.onPlaceLight = previous.placeLight;
+  stage.cb.onPlaceGem = previous.placeGem;
+  activeMode = 'props';
+  meshComponentHit = null;
+  pointerRayX = 0;
+}
+
 let pickedPlacedProp: number | null = null;
 stage.cb.onPickPlacedProp = (index: number) => {
   pickedPlacedProp = index;

@@ -842,8 +842,9 @@ export function createPointerRouter(
     // rail drawing: a terrain click appends a height-adjusted, grid-snapped node; nothing else
     // is pickable while laying a rail, so the flow stays a straight chain of clicks.
     if (layers.rails.railArmed) {
-      if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface' && hit.source === 'authored')) return;
-      const hit = stage.ray.intersectObject(access.terrain(), false)[0];
+      const hit = stage.pickSurface(access.terrain());
+      // Point/edge overlays on usable authored terrain must not intercept a placement click.
+      if (rejectUnsupportedMeshPick(component => !!hit && component.source === 'authored')) return;
       const rail = layers.rails.selectedRail === null ? null : layers.rails.rails[layers.rails.selectedRail];
       if (hit && rail)
         stage.cb.onAppendRailNode?.(access.snapPoint([hit.point.x, hit.point.y + rail.height, -hit.point.z]));
@@ -852,9 +853,11 @@ export function createPointerRouter(
     // prop-line drawing (docs/070): the same chain of clicks, each appending a node on the ground itself —
     // the layout seats the members, so the path carries no standoff of its own
     if (layers.propLines.drawing) {
-      if (rejectUnsupportedMeshPick(hit => hit.kind === 'surface' && hit.source === 'authored')) return;
+      // Sheets share this path. A valid ground hit owns placement even near a mesh point or edge, just as
+      // it owns the rubber-band preview; only a component with no ground underneath is unsupported.
       const hit = stage.groundHit();
       if (hit) stage.cb.onAppendLineNode?.(access.snapPoint([hit.x, hit.y, -hit.z]));
+      else rejectUnsupportedMeshPick(() => false);
       return;
     }
 
@@ -941,10 +944,8 @@ export function createPointerRouter(
       selectRailNode(pick.railIndex, pick.railNode ?? layers.rails.nearestNodeOnRail(pick.railIndex, [p.x, p.y, -p.z]));
       return;
     }
-    if (pick?.target === 'surface') {
-      const placementEnabled = layers.gems.gemArmed || layers.lights.lightArmed;
-      if (rejectUnsupportedMeshPick(hit => placementEnabled && hit.kind === 'surface' && hit.source === 'authored'))
-        return;
+    // A usable authored surface places gems/lights even when a mesh point or edge overlaps it.
+    if (pick?.target === 'surface' && pick.source === 'authored') {
       const p: V3 = [pick.hit.point.x, pick.hit.point.y, -pick.hit.point.z];
       if (layers.gems.gemArmed) {
         stage.cb.onPlaceGem?.(gemPlacementPoint(pick.hit.point));
