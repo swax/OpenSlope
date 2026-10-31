@@ -12,6 +12,7 @@ Slopesmith/deploy/slopesmith-update-runner text eol=lf
 # Git runs hooks through sh, which rejects a CRLF shebang line.
 .githooks/* text eol=lf
 *.py text eol=lf
+*.java text eol=lf
 *.js text eol=lf
 *.mjs text eol=lf
 *.mts text eol=lf

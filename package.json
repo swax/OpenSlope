@@ -32,6 +32,8 @@
     "format:slopesmith:check": "npm --prefix Slopesmith run format:check",
     "format:tools": "node tools/format-tools.mjs",
     "format:tools:check": "node tools/format-tools.mjs --check",
+    "format:java": "node tools/format-java.mjs",
+    "format:java:check": "node tools/format-java.mjs --check",
     "verify:native": "node tools/native-tests.mjs",
     "verify:slopesmith": "node tools/verify.mjs --slopesmith",
     "hooks:install": "git config core.hooksPath .githooks",

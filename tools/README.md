@@ -72,6 +72,20 @@ baseline are maintained by their owning checks rather than the formatter.
 Ruff is optional for running verification: the hygiene checks still use only
 Python's standard library.
 
+Java uses the pinned `prettier-plugin-java` from the same Slopesmith dependency
+installation. Run these commands from the repository root:
+
+```text
+npm run format:java
+npm run format:java:check
+```
+
+They cover `Native/android/app/src/**/*.java`, `Native/tests/**/*.java` and
+`Native/tools/**/*.java`, excluding Android build output. The Native Prettier
+configuration sets four-space indentation, a 120-column print width and LF line
+endings. The check command does not write files. Neither command invokes Gradle
+or requires a JDK or Android SDK. See [Native formatting](../Native/README.md#formatting).
+
 ## Supporting checks
 
 ```text

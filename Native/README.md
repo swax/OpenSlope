@@ -438,6 +438,22 @@ The bounded replay interface and its limits are described in [desktop controls](
 
 ## Formatting
 
+Java sources use [Prettier Java](https://github.com/jhipster/prettier-java), pinned
+in Slopesmith's dependency lockfile alongside the repository's existing Prettier.
+`Native/.prettierrc.json` sets four-space indentation, a 120-column print width
+and LF line endings. From the repository root:
+
+```text
+npm ci --prefix Slopesmith
+npm run format:java
+npm run format:java:check
+```
+
+These commands cover the Android app and instrumentation sources, host Java tests
+and Java tools. The check command reports formatting differences without writing.
+Formatting requires Node 24 and the npm dependencies; no JDK, Android SDK or Gradle
+build is needed.
+
 `Native/.clang-format` sets the C++ style. It is pinned to clang-format 23.1.3, because other
 versions can format slightly differently:
 

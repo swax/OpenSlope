@@ -1,0 +1,7 @@
+{
+  "plugins": ["../Slopesmith/node_modules/prettier-plugin-java/dist/index.mjs"],
+  "printWidth": 120,
+  "tabWidth": 4,
+  "trailingComma": "none",
+  "endOfLine": "lf"
+}
