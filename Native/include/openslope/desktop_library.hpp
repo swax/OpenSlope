@@ -21,6 +21,9 @@ public:
                                   const ImportProgress& progress = {}, const ImportCancel& cancelled = {}) const;
 
 private:
+    struct Sessions;
+    std::shared_ptr<Sessions> sessions_;
+    std::shared_ptr<ImportSession> session(const std::filesystem::path& image) const;
     std::filesystem::path folder_;
 };
 

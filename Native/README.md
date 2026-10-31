@@ -3,6 +3,16 @@
 For packaged Windows/Quest builds and GitHub prereleases, see
 [release packaging and signing](docs/releases.md).
 
+Installed libraries use **Game → Map** on PC and Quest, with an explicit **Play** action. Game groups read
+`Origin.json.Game`, then `Import.json.Game`, with legacy course IDs as a fallback. Authored courses appear
+under **Custom / Authored** and unrecognized courses under **Unknown**. Quest's combined ISO picker also
+filters courses by game. Changing a selector never plays or imports a map. Quest's **Ride mode** control
+is under **Ride settings**, keeping the map selectors and Play action visible in the initial panel.
+
+Current disc pickers display source course names on PC and Quest. PC **Choose disc** opens ISO/BIN/GCM/RVZ
+files from any folder; Quest uses its document picker. SSX 3 defaults to named runs, with an advanced
+map-type toggle for stations, connectors and peak bundles. See [disc selection](docs/desktop-iso-0.78.md).
+
 Build 0.89 adds preliminary Jonny Moseley Mad Trix USA PS2 import, with eleven
 courses, source baked colored lighting, supported animated signs and waterfalls,
 grind rails, riding sounds and twelve music tracks. See [build notes](releases/0.89.0.md).
@@ -46,6 +56,9 @@ see [On Tour import and remaining limits](docs/ontour-import.md). Whole-mountain
 imports are unavailable.
 See [SSX import and current limits](docs/ssx-import.md).
 See [desktop ISO setup](docs/desktop-iso-0.78.md).
+
+Imports reuse disc sessions and converted music across maps while keeping each map self-contained.
+See [import caching](docs/import-cache.md) for platform storage, invalidation and cancellation behavior.
 
 The shared importer also previews all 25 single-player USA 1080° Avalanche layouts
 directly from `.rvz`, `.gcm` or GameCube `.iso`. Curved terrain, primary textures,

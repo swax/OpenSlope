@@ -35,6 +35,8 @@ enum class UiAction {
     Calibrate,
     Recall,
     Maps,
+    Games,
+    SelectGame,
     LoadMap,
     Previous,
     Next,
@@ -44,6 +46,8 @@ enum class UiAction {
     RiderUp,
     Exit,
     Sources,
+    ChooseIso,
+    IsoMapTypes,
     SelectSource,
     ImportMap,
     CancelImport,
@@ -96,6 +100,12 @@ public:
     std::vector<std::filesystem::path> iso_paths;
     std::filesystem::path iso_source;
     std::vector<std::pair<std::string, bool>> iso_courses;
+    std::map<std::string, std::string> iso_course_names;
+    std::map<std::string, std::string> iso_course_types;
+    bool all_iso_map_types = false;
+    mutable std::map<std::filesystem::path, std::string> map_titles;
+    mutable std::map<std::filesystem::path, std::string> map_games;
+    std::string library_game;
     std::filesystem::path import_root;
     std::map<std::string, CourseImportStatus> import_rows;
     std::size_t library_scroll = 0;
@@ -106,6 +116,15 @@ public:
     UiResult pointer(const EquipmentRay& ray, bool down);
     bool riders(UiAction action, Player& player);
     bool scroll_library(double steps);
+    void set_iso_courses(const std::vector<DiscCourse>& courses);
+    std::vector<std::size_t> visible_iso_courses() const;
+    bool has_advanced_iso_courses() const;
+    void toggle_iso_map_types();
+    std::size_t library_count() const;
+    void set_maps(std::vector<std::filesystem::path> paths);
+    std::vector<std::string> installed_games() const;
+    std::vector<std::size_t> visible_maps() const;
+    void select_game(std::string game);
 
     void frame(UiFrame value) { frame_ = value; }
 
@@ -123,12 +142,14 @@ public:
     static UiFrame wrist(const ControllerPose& left, Vec3 eye, Vec3 offset = {});
 
 private:
+    std::string map_label(const std::filesystem::path& path) const;
+    std::string installed_game(const std::filesystem::path& path) const;
+    std::string loading_label() const;
     UiFrame frame_;
     bool pressed_ = false, captured_ = false;
     int hover_ = -1;
     bool scroll_drag_ = false;
     double scroll_remainder_ = 0, scroll_grab_ = 0;
-    std::size_t library_count() const;
 };
 
 void equipment_outline(std::vector<Vertex>& vertices, const Player& player);

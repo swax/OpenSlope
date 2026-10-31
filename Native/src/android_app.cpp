@@ -1,3 +1,4 @@
+#include "import/course_metadata.hpp"
 #include "openslope/animation.hpp"
 #include "openslope/appearance.hpp"
 #include "openslope/audio_scene.hpp"
@@ -17,7 +18,10 @@
 #include <android_native_app_glue.h>
 #include <cerrno>
 #include <filesystem>
+#include <list>
+#include <mutex>
 #include <nlohmann/json.hpp>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace {
@@ -93,6 +97,62 @@ openslope::DiscInput descriptor_input(jint descriptor, jlong length) {
                     done += static_cast<std::size_t>(count);
                 }
             }};
+}
+
+struct ImportDiscEntry {
+    std::string key;
+    std::shared_ptr<openslope::ImportSession> session;
+};
+
+std::mutex import_disc_mutex;
+std::list<ImportDiscEntry> import_discs;
+
+std::shared_ptr<openslope::ImportSession> descriptor_session(JNIEnv* env, jobject activity, jint descriptor,
+                                                             jlong length) {
+    const auto activity_type = env->GetObjectClass(activity);
+    const auto files_method = env->GetMethodID(activity_type, "getFilesDir", "()Ljava/io/File;");
+    const auto directory = env->CallObjectMethod(activity, files_method);
+    const auto file_type = env->GetObjectClass(directory);
+    const auto path_method = env->GetMethodID(file_type, "getAbsolutePath", "()Ljava/lang/String;");
+    const auto text = static_cast<jstring>(env->CallObjectMethod(directory, path_method));
+    const auto cache = std::filesystem::path(string_value(env, text)) / "import-cache" / "music-v1";
+    env->DeleteLocalRef(text);
+    env->DeleteLocalRef(file_type);
+    env->DeleteLocalRef(directory);
+    env->DeleteLocalRef(activity_type);
+    struct stat info{};
+    if (fstat(descriptor, &info))
+        throw std::runtime_error("Cannot inspect ISO descriptor");
+    const auto key = std::to_string(info.st_dev) + ":" + std::to_string(info.st_ino) + ":" +
+                     std::to_string(info.st_size) + ":" + std::to_string(info.st_mtim.tv_sec) + ":" +
+                     std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(length) + ":" + cache.string();
+    std::lock_guard lock(import_disc_mutex);
+    if (info.st_ino) {
+        const auto found =
+            std::find_if(import_discs.begin(), import_discs.end(), [&](const auto& entry) { return entry.key == key; });
+        if (found != import_discs.end()) {
+            const auto result = found->session;
+            import_discs.splice(import_discs.begin(), import_discs, found);
+            return result;
+        }
+    }
+    const auto duplicate = dup(descriptor);
+    if (duplicate < 0)
+        throw std::runtime_error("Cannot retain ISO descriptor");
+    const auto owner = std::shared_ptr<int>(new int(duplicate), [](int* fd) {
+        close(*fd);
+        delete fd;
+    });
+    auto source = descriptor_input(duplicate, length);
+    const auto read = source.read_at;
+    source.read_at = [read, owner](std::uint64_t offset, std::span<std::uint8_t> bytes) { read(offset, bytes); };
+    auto result = std::make_shared<openslope::ImportSession>(source, cache);
+    if (info.st_ino) {
+        import_discs.push_front({key, result});
+        while (import_discs.size() > 2)
+            import_discs.pop_back();
+    }
+    return result;
 }
 
 struct Callbacks {
@@ -192,6 +252,29 @@ Java_org_openslope_nativeplayer_LauncherActivity_nativeCourseDisplayName(JNIEnv*
     }
 }
 
+extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeMapGame(
+    JNIEnv* env, jclass, jstring name, jstring origin, jstring imported, jboolean authored) {
+    try {
+        const auto game = openslope::map_game_from_metadata(string_value(env, name), string_value(env, origin),
+                                                            string_value(env, imported), authored);
+        return env->NewStringUTF(game.c_str());
+    } catch (const std::exception& error) {
+        java_error(env, error);
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_openslope_nativeplayer_LauncherActivity_nativeGameDisplayName(JNIEnv* env, jclass, jstring game) {
+    try {
+        const auto label = openslope::game_display_name(string_value(env, game));
+        return env->NewStringUTF(label.c_str());
+    } catch (const std::exception& error) {
+        java_error(env, error);
+        return nullptr;
+    }
+}
+
 extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeCourses(JNIEnv* env,
                                                                                                     jobject activity,
                                                                                                     jint descriptor,
@@ -200,9 +283,13 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_openslope_nativeplayer_LauncherAct
         Callbacks callbacks(env, activity);
         nlohmann::json names = nlohmann::json::array();
         for (const auto& course :
-             openslope::disc_courses(descriptor_input(descriptor, length), [&] { return callbacks.stop(); }))
-            names.push_back(course.name);
-        return env->NewStringUTF(names.dump().c_str());
+             descriptor_session(env, activity, descriptor, length)->courses([&] { return callbacks.stop(); })) {
+            auto row = openslope::import_detail::course_metadata(course);
+            row["DisplayName"] = course.display_name;
+            row["Game"] = openslope::course_game(course.name);
+            names.push_back(row);
+        }
+        return env->NewStringUTF(names.dump(-1, ' ', true).c_str());
     } catch (const std::exception& e) {
         java_error(env, e);
         return nullptr;
@@ -213,12 +300,19 @@ extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivi
     JNIEnv* env, jobject activity, jint descriptor, jlong length, jstring course, jstring output) {
     try {
         Callbacks callbacks(env, activity);
-        openslope::extract_course(
-            descriptor_input(descriptor, length), string_value(env, course), string_value(env, output),
-            [&](const auto& message) { callbacks.notify(message); }, [&] { return callbacks.stop(); });
+        descriptor_session(env, activity, descriptor, length)
+            ->extract(
+                string_value(env, course), string_value(env, output),
+                [&](const auto& message) { callbacks.notify(message); }, [&] { return callbacks.stop(); });
     } catch (const std::exception& e) {
         java_error(env, e);
     }
+}
+
+extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeCloseImportSessions(JNIEnv*,
+                                                                                                             jobject) {
+    std::lock_guard lock(import_disc_mutex);
+    import_discs.clear();
 }
 
 extern "C" JNIEXPORT void JNICALL Java_org_openslope_nativeplayer_LauncherActivity_nativeValidate(JNIEnv* env, jobject,

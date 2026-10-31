@@ -17,10 +17,19 @@ final class LauncherUi {
     final TextView status, location, source, count, emptyTitle, emptyBody, modeHint;
     final Button importIso, chooseFolder, useLocal, refresh, cancel, settingsToggle, helpToggle, detailsToggle, addToggle, close, importAvatar;
     final Spinner runMode, renderScale, targetRefreshRate, antialiasing, avatar;
+    final Spinner game, map;
     final ProgressBar progress;
     private final List<View> controls = new ArrayList<>();
     private final Map<View, View> labels = new HashMap<>();
     private Boolean wasEmpty;
+    private String selectedGame = "";
+    private final Map<String, String> selectedMaps = new HashMap<>();
+    private List<MapLibrary.Entry> installedMaps = Collections.emptyList(),
+        shownMaps = Collections.emptyList();
+    private List<String> gameIds = Collections.emptyList();
+    private boolean working;
+    private MapLibrary.Entry actionMap;
+    private java.util.function.Consumer<MapLibrary.Entry> playMap, unloadMap;
 
     LauncherUi(Context context) {
         this.context = context;
@@ -43,8 +52,35 @@ final class LauncherUi {
         LinearLayout library = card(content);
         heading(text(library, R.string.your_courses, 22, false));
         count = text(library, "", 18, true);
-        runMode = choice(library, R.id.launcher_mode, R.string.ride_mode, R.array.ride_modes);
-        modeHint = text(library, R.string.mode_freeride_hint, 18, true);
+        game = choice(library, R.id.launcher_game, R.string.map_game, R.array.empty_map_choices);
+        map = choice(library, R.id.launcher_map, R.string.map_choice, R.array.empty_map_choices);
+        game.setOnItemSelectedListener(
+            new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position < gameIds.size() && !gameIds.get(position).equals(selectedGame)) showGame(
+                        gameIds.get(position)
+                    );
+                }
+            }
+        );
+        map.setOnItemSelectedListener(
+            new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position < shownMaps.size()) {
+                        selectedMaps.put(selectedGame, shownMaps.get(position).name);
+                        showMapActions();
+                    }
+                }
+            }
+        );
         courses = column();
         courses.setId(R.id.launcher_courses);
         library.addView(courses);
@@ -91,6 +127,8 @@ final class LauncherUi {
         settings = card(content);
         settings.setVisibility(View.GONE);
         settings.setAccessibilityPaneTitle(context.getString(R.string.ride_settings));
+        runMode = choice(settings, R.id.launcher_mode, R.string.ride_mode, R.array.ride_modes);
+        modeHint = text(settings, R.string.mode_freeride_hint, 18, true);
         avatar = choice(settings, R.id.launcher_avatar, R.string.avatar, R.array.empty_avatars);
         importAvatar = button(settings, R.id.launcher_import_avatar, R.string.import_avatar, false);
         text(settings, R.string.avatar_hint, 18, true);
@@ -232,6 +270,14 @@ final class LauncherUi {
         button.setOnClickListener(v -> expanded(button, panel, show, hide, panel.getVisibility() != View.VISIBLE));
     }
 
+    Spinner dialogChoice(LinearLayout parent, int id, int label, List<String> choices) {
+        Spinner selector = choice(parent, id, label, R.array.empty_map_choices);
+        setChoices(selector, choices);
+        controls.remove(selector);
+        labels.remove(selector);
+        return selector;
+    }
+
     private void expanded(Button button, View panel, int show, int hide, boolean open) {
         panel.setVisibility(open ? View.VISIBLE : View.GONE);
         button.setText(open ? hide : show);
@@ -241,6 +287,7 @@ final class LauncherUi {
     }
 
     void busy(boolean working, boolean cancellable) {
+        this.working = working;
         for (View view : controls) view.setEnabled(!working);
         courseControlsEnabled(courses, !working);
         progress.setVisibility(working ? View.VISIBLE : View.GONE);
@@ -272,30 +319,21 @@ final class LauncherUi {
         java.util.function.Consumer<MapLibrary.Entry> play,
         java.util.function.Consumer<MapLibrary.Entry> unload
     ) {
-        courses.removeAllViews();
-        for (MapLibrary.Entry map : maps) {
-            LinearLayout row = new LinearLayout(context);
-            courses.addView(row);
-            String label = LauncherActivity.nativeCourseDisplayName(map.name);
-            Button view = button(row, View.generateViewId(), context.getString(R.string.play_course, label), true);
-            LinearLayout.LayoutParams playParams = (LinearLayout.LayoutParams) view.getLayoutParams();
-            playParams.width = 0;
-            playParams.weight = 1;
-            view.setLayoutParams(playParams);
-            controls.remove(view);
-            view.setTag(map.name);
-            view.setOnClickListener(v -> play.accept(map));
-            if (unload != null) {
-                Button remove = button(row, View.generateViewId(), R.string.unload_course, false);
-                LinearLayout.LayoutParams unloadParams = (LinearLayout.LayoutParams) remove.getLayoutParams();
-                unloadParams.width = -2;
-                unloadParams.leftMargin = dp(8);
-                remove.setLayoutParams(unloadParams);
-                controls.remove(remove);
-                remove.setContentDescription(context.getString(R.string.unload_named_course, label));
-                remove.setOnClickListener(v -> unload.accept(map));
-            }
-        }
+        installedMaps = new ArrayList<>(maps);
+        actionMap = null;
+        playMap = play;
+        unloadMap = unload;
+        ArrayList<String> games = new ArrayList<>();
+        for (MapLibrary.Entry entry : maps) if (!games.contains(entry.game)) games.add(entry.game);
+        games.sort(Comparator.comparing(LauncherActivity::nativeGameDisplayName, String.CASE_INSENSITIVE_ORDER));
+        gameIds = games;
+        if (!games.contains(selectedGame)) selectedGame = games.isEmpty() ? "" : games.get(0);
+        setChoices(
+            game,
+            games.stream().map(LauncherActivity::nativeGameDisplayName).collect(java.util.stream.Collectors.toList())
+        );
+        if (!games.isEmpty()) game.setSelection(games.indexOf(selectedGame));
+        showGame(selectedGame);
         boolean none = maps.isEmpty();
         empty.setVisibility(none ? View.VISIBLE : View.GONE);
         if (wasEmpty == null || wasEmpty != none) expanded(
@@ -310,11 +348,71 @@ final class LauncherUi {
         runMode.setVisibility(none ? View.GONE : View.VISIBLE);
         labels.get(runMode).setVisibility(none ? View.GONE : View.VISIBLE);
         modeHint.setVisibility(none ? View.GONE : View.VISIBLE);
+        for (Spinner selector : new Spinner[] { game, map }) {
+            selector.setVisibility(none ? View.GONE : View.VISIBLE);
+            labels.get(selector).setVisibility(none ? View.GONE : View.VISIBLE);
+        }
         emptyTitle.setText(R.string.empty_title);
         emptyBody.setText(R.string.empty_body);
-        count.setText(context.getResources().getQuantityString(R.plurals.available_courses, maps.size(), maps.size()));
+        count.setText(
+            context.getResources().getQuantityString(R.plurals.available_courses, shownMaps.size(), shownMaps.size())
+        );
         count.setVisibility(none ? View.GONE : View.VISIBLE);
         primary(importIso, none);
+    }
+
+    private void setChoices(Spinner selector, List<String> choices) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(context, R.layout.launcher_choice, choices);
+        adapter.setDropDownViewResource(R.layout.launcher_choice_item);
+        selector.setAdapter(adapter);
+    }
+
+    private void showGame(String id) {
+        selectedGame = id;
+        ArrayList<MapLibrary.Entry> visible = new ArrayList<>();
+        for (MapLibrary.Entry entry : installedMaps) if (entry.game.equals(id)) visible.add(entry);
+        shownMaps = visible;
+        ArrayList<String> titles = new ArrayList<>();
+        Map<String, Integer> occurrences = new HashMap<>();
+        for (MapLibrary.Entry entry : visible) {
+            String title = entry.label();
+            titles.add(title);
+            occurrences.put(title, occurrences.getOrDefault(title, 0) + 1);
+        }
+        int selection = 0;
+        for (int i = 0; i < visible.size(); ++i) {
+            MapLibrary.Entry entry = visible.get(i);
+            String title = titles.get(i);
+            if (occurrences.get(title) > 1) titles.set(i, title + " (" + entry.name + ")");
+            if (entry.name.equals(selectedMaps.get(id))) selection = i;
+        }
+        setChoices(map, titles);
+        if (!visible.isEmpty()) map.setSelection(selection);
+        count.setText(
+            context.getResources().getQuantityString(R.plurals.available_courses, visible.size(), visible.size())
+        );
+        showMapActions();
+    }
+
+    private void showMapActions() {
+        int position = map.getSelectedItemPosition();
+        MapLibrary.Entry entry = position < 0 || position >= shownMaps.size() ? null : shownMaps.get(position);
+        if (entry != null && entry == actionMap) return;
+        actionMap = entry;
+        courses.removeAllViews();
+        if (entry == null) return;
+        selectedMaps.put(selectedGame, entry.name);
+        Button play = button(courses, R.id.launcher_play, context.getString(R.string.play_course, entry.label()), true);
+        controls.remove(play);
+        play.setTag(entry.name);
+        play.setOnClickListener(view -> playMap.accept(entry));
+        if (unloadMap != null) {
+            Button unload = button(courses, R.id.launcher_unload, R.string.unload_course, false);
+            controls.remove(unload);
+            unload.setContentDescription(context.getString(R.string.unload_named_course, entry.label()));
+            unload.setOnClickListener(view -> unloadMap.accept(entry));
+        }
+        courseControlsEnabled(courses, !working);
     }
 
     void libraryError() {

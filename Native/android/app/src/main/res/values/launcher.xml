@@ -35,12 +35,18 @@
     <item name="launcher_version" type="id" />
     <item name="launcher_courses" type="id" />
     <item name="launcher_mode" type="id" />
+    <item name="launcher_game" type="id" />
+    <item name="launcher_import_game" type="id" />
+    <item name="launcher_map" type="id" />
+    <item name="launcher_play" type="id" />
+    <item name="launcher_unload" type="id" />
     <item name="launcher_scale" type="id" />
     <item name="launcher_refresh_rate" type="id" />
     <item name="launcher_antialiasing" type="id" />
     <item name="launcher_status" type="id" />
     <item name="launcher_import" type="id" />
     <item name="launcher_select_all" type="id" />
+    <item name="launcher_all_map_types" type="id" />
     <item name="launcher_folder" type="id" />
     <item name="launcher_settings" type="id" />
     <item name="launcher_help" type="id" />

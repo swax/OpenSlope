@@ -21,6 +21,10 @@ public final class LauncherActivity extends Activity {
 
     static native String nativeCourseDisplayName(String name);
 
+    static native String nativeMapGame(String name, String origin, String imported, boolean authored);
+
+    static native String nativeGameDisplayName(String game);
+
     private static final int PICK_MAPS = 1,
         PICK_ISO = 2,
         PICK_AVATAR = 3;
@@ -173,6 +177,8 @@ public final class LauncherActivity extends Activity {
 
     private native String nativeCourses(int descriptor, long length);
 
+    private native void nativeCloseImportSessions();
+
     private native void nativeExtract(int descriptor, long length, String course, String output);
 
     private native void nativeValidate(String path);
@@ -261,6 +267,7 @@ public final class LauncherActivity extends Activity {
     public void onDestroy() {
         destroyed = true;
         cancelled = true;
+        worker.execute(this::nativeCloseImportSessions);
         worker.shutdown();
         super.onDestroy();
     }
@@ -458,7 +465,7 @@ public final class LauncherActivity extends Activity {
     private void confirmUnload(MapLibrary.Entry map) {
         if (busy) return;
         new AlertDialog.Builder(this)
-            .setTitle("Unload " + nativeCourseDisplayName(map.name) + "?")
+            .setTitle("Unload " + map.label() + "?")
             .setMessage(
                 "This deletes this course's files from the selected Maps folder, including any local edits. Other courses are kept. You can import it again from your ISO or restore a copy of a custom map."
             )
@@ -470,14 +477,13 @@ public final class LauncherActivity extends Activity {
     private void unload(MapLibrary.Entry map) {
         if (busy) return;
         state(true, false);
-        setStatus("Unloading " + nativeCourseDisplayName(map.name) + "…");
+        setStatus("Unloading " + map.label() + "…");
         final MapLibrary selected = library;
         worker.execute(() -> {
             String result;
             try {
                 selected.unload(map);
-                result =
-                    "Unloaded " + nativeCourseDisplayName(map.name) + ". Import it again to reload its course data.";
+                result = "Unloaded " + map.label() + ". Import it again to reload its course data.";
             } catch (Exception e) {
                 result = e.getMessage() == null ? e.toString() : e.getMessage();
             }
@@ -506,17 +512,49 @@ public final class LauncherActivity extends Activity {
     static final class IsoCourse {
 
         final Uri uri;
-        final String name, source;
+        final String name, source, displayName, mapType, game;
 
         IsoCourse(Uri uri, String name, String source) {
+            this(uri, name, source, "");
+        }
+
+        IsoCourse(Uri uri, String name, String source, String displayName) {
+            this(uri, name, source, displayName, "");
+        }
+
+        IsoCourse(Uri uri, String name, String source, String displayName, String mapType) {
+            this(uri, name, source, displayName, mapType, "");
+        }
+
+        IsoCourse(Uri uri, String name, String source, String displayName, String mapType, String game) {
             this.uri = uri;
+            this.game = game.isEmpty() ? nativeMapGame(name, "", "", false) : game.trim().toLowerCase(Locale.ROOT);
             this.name = name;
             this.source = source;
+            this.displayName = displayName.isEmpty() ? nativeCourseDisplayName(name) : displayName;
+            String section = name.startsWith("SSX3_") ? name.substring(5) : "";
+            this.mapType = Arrays.asList("run", "hub", "connector", "run-chain", "full-mountain").contains(mapType)
+                ? mapType
+                : section.isEmpty()
+                  ? "run"
+                  : section.equals("ALL")
+                    ? "full-mountain"
+                    : section.startsWith("PEAK")
+                      ? "run-chain"
+                      : section.contains("_")
+                        ? "connector"
+                        : section.length() == 1
+                          ? "hub"
+                          : "run";
+        }
+
+        boolean namedRun() {
+            return !name.startsWith("SSX3_") || mapType.equals("run");
         }
 
         @Override
         public String toString() {
-            return nativeCourseDisplayName(name) + " · " + source;
+            return displayName + " · " + source;
         }
     }
 
@@ -555,8 +593,19 @@ public final class LauncherActivity extends Activity {
                     checkCancelled();
                     if (rows.length() == 0) throw new IOException(getString(R.string.no_iso_courses));
                     for (int i = 0; i < rows.length(); ++i) {
-                        String name = rows.getString(i);
-                        found.putIfAbsent(name, new IsoCourse(uri, name, source));
+                        JSONObject row = rows.optJSONObject(i);
+                        String name = row == null ? rows.getString(i) : row.getString("Course");
+                        found.putIfAbsent(
+                            name,
+                            new IsoCourse(
+                                uri,
+                                name,
+                                source,
+                                row == null ? "" : row.optString("DisplayName", ""),
+                                row == null ? "" : row.optString("MapType", ""),
+                                row == null ? "" : row.optString("Game", "")
+                            )
+                        );
                     }
                 } catch (Exception e) {
                     errors.add(source + ": " + (e.getMessage() == null ? e.toString() : e.getMessage()));
@@ -580,7 +629,14 @@ public final class LauncherActivity extends Activity {
             screen.status(libraryNotice, true);
             return null;
         }
-        boolean[] selected = new boolean[choices.size()];
+        ArrayList<IsoCourse> sorted = new ArrayList<>(choices);
+        sorted.sort(
+            Comparator.comparing((IsoCourse course) -> course.displayName, String.CASE_INSENSITIVE_ORDER).thenComparing(
+                course -> course.name
+            )
+        );
+        ArrayList<IsoCourse> visible = new ArrayList<>();
+        Set<String> selected = new HashSet<>();
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
         heading.setPadding(screen.dp(24), screen.dp(20), screen.dp(24), screen.dp(8));
@@ -591,30 +647,51 @@ public final class LauncherActivity extends Activity {
         title.setAccessibilityHeading(true);
         heading.addView(title);
         TextView hint = new TextView(this);
-        hint.setText(R.string.import_scope);
+        hint.setText(R.string.import_choice_hint);
         hint.setTextSize(18);
         hint.setTextColor(getColor(R.color.launcher_secondary));
         hint.setPadding(0, screen.dp(12), 0, screen.dp(4));
         heading.addView(hint);
         if (!warnings.isEmpty()) hint.append("\n\n" + warnings);
+        ArrayList<String> gameIds = new ArrayList<>();
+        for (IsoCourse course : sorted) if (!gameIds.contains(course.game)) gameIds.add(course.game);
+        gameIds.sort(Comparator.comparing(LauncherActivity::nativeGameDisplayName, String.CASE_INSENSITIVE_ORDER));
+        Spinner game = screen.dialogChoice(
+            heading,
+            R.id.launcher_import_game,
+            R.string.map_game,
+            gameIds.stream().map(LauncherActivity::nativeGameDisplayName).collect(java.util.stream.Collectors.toList())
+        );
+        CheckBox allTypes = new CheckBox(this);
+        allTypes.setId(R.id.launcher_all_map_types);
+        allTypes.setText(R.string.all_map_types);
+        allTypes.setTextSize(18);
+        allTypes.setMinHeight(screen.dp(60));
+        if (choices.stream().anyMatch(course -> !course.namedRun())) {
+            heading.addView(allTypes);
+            hint.append("\n\n" + getString(R.string.named_runs_scope));
+        }
         Button selectAll = screen.dialogButton(heading, R.id.launcher_select_all, R.string.select_all);
+        ArrayAdapter<IsoCourse> adapter = new ArrayAdapter<IsoCourse>(
+            this,
+            android.R.layout.simple_list_item_multiple_choice,
+            new ArrayList<>()
+        ) {
+            @Override
+            public View getView(int position, View convertView, android.view.ViewGroup parent) {
+                View row = super.getView(position, convertView, parent);
+                row.setMinimumHeight(screen.dp(60));
+                if (row instanceof TextView) ((TextView) row).setTextSize(18);
+                return row;
+            }
+        };
         AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle(R.string.import_title)
             .setCustomTitle(heading)
-            .setMultiChoiceItems(
-                choices
-                    .stream()
-                    .map(IsoCourse::toString)
-                    .toArray(String[]::new),
-                selected,
-                (choice, which, checked) -> {
-                    selected[which] = checked;
-                    updateImportChoice((AlertDialog) choice, selected, selectAll);
-                }
-            )
+            .setMultiChoiceItems(new String[0], null, (choice, which, checked) -> {})
             .setPositiveButton(R.string.import_action, (choice, which) -> {
                 ArrayList<IsoCourse> chosen = new ArrayList<>();
-                for (int i = 0; i < choices.size(); ++i) if (selected[i]) chosen.add(choices.get(i));
+                for (IsoCourse course : visible) if (selected.contains(course.name)) chosen.add(course);
                 if (!chosen.isEmpty()) importCourses(chosen);
             })
             .setNegativeButton(R.string.back, null)
@@ -626,14 +703,59 @@ public final class LauncherActivity extends Activity {
             button.setTextSize(18);
             button.setAllCaps(false);
         }
-        selectAll.setOnClickListener(v -> {
-            boolean all = true;
-            for (boolean value : selected) all &= value;
-            Arrays.fill(selected, !all);
-            for (int i = 0; i < selected.length; ++i) dialog.getListView().setItemChecked(i, !all);
-            updateImportChoice(dialog, selected, selectAll);
+        ListView list = dialog.getListView();
+        list.setAdapter(adapter);
+        list.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
+        Runnable update = () -> {
+            boolean[] checked = new boolean[visible.size()];
+            for (int i = 0; i < visible.size(); ++i) {
+                checked[i] = selected.contains(visible.get(i).name);
+                list.setItemChecked(i, checked[i]);
+            }
+            updateImportChoice(dialog, checked, selectAll);
+        };
+        Runnable populate = () -> {
+            visible.clear();
+            String currentGame = gameIds.get(Math.max(0, game.getSelectedItemPosition()));
+            for (IsoCourse course : sorted)
+                if (course.game.equals(currentGame) && (allTypes.isChecked() || course.namedRun())) visible.add(course);
+            allTypes.setVisibility(
+                sorted.stream().anyMatch(course -> course.game.equals(currentGame) && !course.namedRun())
+                    ? View.VISIBLE
+                    : View.GONE
+            );
+            list.clearChoices();
+            adapter.clear();
+            adapter.addAll(visible);
+            adapter.notifyDataSetChanged();
+            update.run();
+        };
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            String name = visible.get(position).name;
+            if (list.isItemChecked(position)) selected.add(name);
+            else selected.remove(name);
+            update.run();
         });
-        updateImportChoice(dialog, selected, selectAll);
+        game.setOnItemSelectedListener(
+            new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    populate.run();
+                }
+            }
+        );
+        allTypes.setOnCheckedChangeListener((button, checked) -> populate.run());
+        selectAll.setOnClickListener(v -> {
+            boolean all = !visible.isEmpty() && visible.stream().allMatch(course -> selected.contains(course.name));
+            for (IsoCourse course : visible)
+                if (all) selected.remove(course.name);
+                else selected.add(course.name);
+            update.run();
+        });
+        populate.run();
         screen.status(getString(R.string.import_scope), false);
         return dialog;
     }
@@ -645,7 +767,8 @@ public final class LauncherActivity extends Activity {
         dialog
             .getButton(AlertDialog.BUTTON_POSITIVE)
             .setText(count == 0 ? getString(R.string.import_action) : getString(R.string.import_selected, count));
-        selectAll.setText(count == selected.length ? R.string.select_none : R.string.select_all);
+        selectAll.setEnabled(selected.length > 0);
+        selectAll.setText(selected.length > 0 && count == selected.length ? R.string.select_none : R.string.select_all);
     }
 
     private void importCourses(List<IsoCourse> choices) {
@@ -659,7 +782,7 @@ public final class LauncherActivity extends Activity {
             for (IsoCourse choice : choices) {
                 if (cancelled) break;
                 String name = choice.name;
-                String label = nativeCourseDisplayName(name);
+                String label = choice.displayName;
                 try {
                     if (destination.exists(name)) {
                         ++skipped;
@@ -708,7 +831,7 @@ public final class LauncherActivity extends Activity {
         final int samples = 1 << antialiasing.getSelectedItemPosition();
         final double refreshRate = new double[] { 72, 80, 90, 120 }[targetRefreshRate.getSelectedItemPosition()];
         state(true);
-        setStatus(getString(R.string.loading_course, nativeCourseDisplayName(map.name)));
+        setStatus(getString(R.string.loading_course, map.label()));
         final MapLibrary selected = library;
         worker.execute(() -> {
             File prepared = null;

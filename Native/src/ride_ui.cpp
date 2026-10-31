@@ -45,6 +45,109 @@ struct Canvas {
 };
 } // namespace
 
+std::string RideUi::map_label(const std::filesystem::path& path) const {
+    auto [entry, inserted] = map_titles.try_emplace(path);
+    if (inserted)
+        entry->second = map_display_name(path);
+    return entry->second;
+}
+
+std::string RideUi::installed_game(const std::filesystem::path& path) const {
+    auto [entry, inserted] = map_games.try_emplace(path);
+    if (inserted)
+        entry->second = map_game(path);
+    return entry->second;
+}
+
+std::vector<std::string> RideUi::installed_games() const {
+    std::vector<std::string> games;
+    for (const auto& path : map_paths) {
+        const auto game = installed_game(path);
+        if (std::find(games.begin(), games.end(), game) == games.end())
+            games.push_back(game);
+    }
+    std::sort(games.begin(), games.end(),
+              [](const auto& a, const auto& b) { return game_display_name(a) < game_display_name(b); });
+    return games;
+}
+
+std::vector<std::size_t> RideUi::visible_maps() const {
+    std::vector<std::size_t> maps;
+    for (std::size_t i = 0; i < map_paths.size(); ++i)
+        if (installed_game(map_paths[i]) == library_game)
+            maps.push_back(i);
+    std::stable_sort(maps.begin(), maps.end(),
+                     [&](auto a, auto b) { return map_label(map_paths[a]) < map_label(map_paths[b]); });
+    return maps;
+}
+
+void RideUi::select_game(std::string game) {
+    const auto games = installed_games();
+    library_game = std::find(games.begin(), games.end(), game) == games.end() ? "" : std::move(game);
+    page = library_scroll = 0;
+    scroll_remainder_ = 0;
+    scroll_drag_ = false;
+}
+
+void RideUi::set_maps(std::vector<std::filesystem::path> paths) {
+    map_paths = std::move(paths);
+    map_titles.clear();
+    map_games.clear();
+    select_game(library_game);
+}
+
+void RideUi::set_iso_courses(const std::vector<DiscCourse>& courses) {
+    iso_courses.clear();
+    iso_course_names.clear();
+    iso_course_types.clear();
+    all_iso_map_types = false;
+    page = library_scroll = 0;
+    auto sorted = courses;
+    std::stable_sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+        return (a.display_name.empty() ? a.name : a.display_name) < (b.display_name.empty() ? b.name : b.display_name);
+    });
+    for (const auto& course : sorted) {
+        iso_courses.emplace_back(course.name, false);
+        if (!course.display_name.empty())
+            iso_course_names[course.name] = course.display_name;
+        iso_course_types[course.name] = course.map_type;
+    }
+}
+
+std::vector<std::size_t> RideUi::visible_iso_courses() const {
+    std::vector<std::size_t> result;
+    for (std::size_t i = 0; i < iso_courses.size(); ++i) {
+        const auto& name = iso_courses[i].first;
+        const auto type = iso_course_types.find(name);
+        const auto section = name.starts_with("SSX3_") ? name.substr(5) : std::string{};
+        const bool legacy_run = section.size() > 1 && section != "ALL" && !section.starts_with("PEAK") &&
+                                section.find('_') == std::string::npos;
+        if (all_iso_map_types || section.empty() ||
+            (type != iso_course_types.end() ? type->second == "run" : legacy_run))
+            result.push_back(i);
+    }
+    return result;
+}
+
+bool RideUi::has_advanced_iso_courses() const {
+    return std::any_of(iso_courses.begin(), iso_courses.end(),
+                       [](const auto& row) { return row.first.starts_with("SSX3_"); });
+}
+
+void RideUi::toggle_iso_map_types() {
+    all_iso_map_types = !all_iso_map_types;
+    page = library_scroll = 0;
+    scroll_remainder_ = 0;
+}
+
+std::string RideUi::loading_label() const {
+    const auto map = std::find_if(map_paths.begin(), map_paths.end(),
+                                  [&](const auto& path) { return path.filename().string() == load_name; });
+    const auto title = map_label(map == map_paths.end() ? import_root / load_name : *map);
+    const auto scanned = iso_course_names.find(load_name);
+    return title != load_name || scanned == iso_course_names.end() ? title : scanned->second;
+}
+
 std::vector<UiButton> RideUi::buttons() const {
     if (loading)
         return importing ? std::vector<UiButton>{{.06, .85, .88, .085, "CANCEL", UiAction::CancelImport}}
@@ -124,19 +227,29 @@ std::vector<UiButton> RideUi::buttons() const {
     }
     if (library) {
         std::vector<UiButton> list;
+        const auto indices = visible_iso_courses();
+        const auto maps = visible_maps();
+        const auto games = installed_games();
         const auto count = library_count(),
                    start = immersive ? page * 5 : std::min(library_scroll, count > 5 ? count - 5 : 0);
         for (std::size_t i = start; i < std::min(count, start + 5); ++i) {
             const auto y = .30 + double(i - start) * .09;
-            if (!iso_library)
-                list.push_back({.06, y, .88, .075, course_display_name(map_paths[i].filename().string()),
-                                UiAction::LoadMap, map_paths[i]});
+            if (!iso_library && library_game.empty()) {
+                const auto& game = games[i];
+                list.push_back({.06, y, .88, .075, game_display_name(game), UiAction::SelectGame, {}, game});
+            } else if (!iso_library)
+                list.push_back(
+                    {.06, y, .88, .075, map_label(map_paths[maps[i]]), UiAction::LoadMap, map_paths[maps[i]]});
             else if (iso_source.empty())
                 list.push_back(
                     {.06, y, .88, .075, iso_paths[i].filename().string(), UiAction::SelectSource, iso_paths[i]});
             else {
-                const auto& [name, installed] = iso_courses[i];
-                const auto label = course_display_name(name);
+                const auto& [name, installed] = iso_courses[indices[i]];
+                const auto known = iso_course_names.find(name);
+                const auto installed_label = installed ? map_label(import_root / name) : name;
+                const auto label = installed && installed_label != name ? installed_label
+                                   : known != iso_course_names.end()    ? known->second
+                                                                        : course_display_name(name);
                 const auto found = import_rows.find(name);
                 const auto* status = found == import_rows.end() ? nullptr : &found->second;
                 if (installed)
@@ -159,15 +272,31 @@ std::vector<UiButton> RideUi::buttons() const {
             }
         }
         if (!immersive) {
-            list.push_back({.06, .75, .42, .075, "REFRESH", UiAction::RefreshLibrary});
-            list.push_back({.52, .75, .42, .075, iso_library ? "INSTALLED MAPS" : "ISO SOURCES", UiAction::Sources});
+            if (iso_library && iso_source.empty()) {
+                list.push_back({.06, .75, .27, .075, "CHOOSE DISC", UiAction::ChooseIso});
+                list.push_back({.365, .75, .27, .075, "REFRESH", UiAction::RefreshLibrary});
+                list.push_back({.67, .75, .27, .075, "INSTALLED", UiAction::Sources});
+            } else {
+                const bool types = iso_library && has_advanced_iso_courses();
+                list.push_back({.06, .75, .42, .075,
+                                types ? (all_iso_map_types ? "SHOW NAMED RUNS" : "SHOW ALL TYPES") : "REFRESH",
+                                types ? UiAction::IsoMapTypes : UiAction::RefreshLibrary});
+                list.push_back(
+                    {.52, .75, .42, .075, iso_library ? "INSTALLED MAPS" : "ISO SOURCES", UiAction::Sources});
+            }
         }
+        if (immersive && iso_library && !iso_source.empty() && has_advanced_iso_courses())
+            list.push_back(
+                {.06, .75, .88, .075, all_iso_map_types ? "SHOW NAMED RUNS" : "SHOW ALL TYPES", UiAction::IsoMapTypes});
         if (immersive)
             list.push_back({.06, .85, .26, .085, "PREV", UiAction::Previous});
-        list.push_back(
-            {immersive ? .37 : .06, .85, immersive ? .26 : .88, .075,
-             iso_library && !iso_source.empty() ? "ISOS" : "BACK",
-             iso_library ? (iso_source.empty() ? UiAction::Sources : UiAction::SelectSource) : UiAction::Maps});
+        list.push_back({immersive ? .37 : .06, .85, immersive ? .26 : .88, .075,
+                        iso_library && !iso_source.empty()      ? "ISOS"
+                        : !iso_library && !library_game.empty() ? "GAMES"
+                                                                : "BACK",
+                        iso_library            ? (iso_source.empty() ? UiAction::Sources : UiAction::SelectSource)
+                        : library_game.empty() ? UiAction::Maps
+                                               : UiAction::Games});
         if (immersive)
             list.push_back({.68, .85, .26, .085, "NEXT", UiAction::Next});
         return list;
@@ -223,7 +352,9 @@ bool RideUi::riders(UiAction action, Player& player) {
 }
 
 std::size_t RideUi::library_count() const {
-    return iso_library ? (iso_source.empty() ? iso_paths.size() : iso_courses.size()) : map_paths.size();
+    return iso_library            ? (iso_source.empty() ? iso_paths.size() : visible_iso_courses().size())
+           : library_game.empty() ? installed_games().size()
+                                  : visible_maps().size();
 }
 
 bool RideUi::scroll_library(double steps) {
@@ -335,22 +466,25 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
                : rider_options    ? "OPPONENTS"
                : graphics_options ? "GRAPHICS"
                : audio_options    ? (song_picker ? "CHOOSE SONG" : "AUDIO")
-               : library          ? (iso_library ? (iso_source.empty() ? "ISO SOURCES" : "ISO COURSES") : "MAP LIBRARY")
+               : library          ? (iso_library            ? (iso_source.empty() ? "ISO SOURCES" : "ISO COURSES")
+                                     : library_game.empty() ? "CHOOSE GAME"
+                                                            : "CHOOSE MAP")
                : controls         ? "CONTROLS"
                                   : "ON THE MOUNTAIN",
                .06, .13, .008);
-        c.text(loading            ? course_display_name(load_name)
+        c.text(loading            ? loading_label()
                : graphics_options ? (immersive ? "SNOWFALL / DISPLAY STATS" : "SCENE QUALITY / WEATHER")
-               : library          ? (iso_library ? (iso_source.empty() ? "SSX / TRICKY / SSX 3 / ON TOUR (PS2)"
-                                                                       : iso_source.filename().string())
-                                                 : "INSTALLED / CUSTOM MAPS")
-               : avatar_options   ? "CHOOSE YOUR AVATAR"
-               : audio_options    ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
-                                                    : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
-                                  : speed + " KM/H  /  " +
-                                        (p.carrying_board() ? "CARRYING"
-                                         : p.on_foot()      ? "ON FOOT"
-                                                            : "RIDING"),
+               : library
+                   ? (iso_library ? (iso_source.empty() ? "PS2 / GAMECUBE DISC IMAGES" : iso_source.filename().string())
+                      : library_game.empty() ? "INSTALLED / CUSTOM GAMES"
+                                             : game_display_name(library_game))
+               : avatar_options ? "CHOOSE YOUR AVATAR"
+               : audio_options  ? (authored_music ? "AUTHORED MOUNTAIN MUSIC"
+                                                  : "RUN SONG: " + (current_song.empty() ? "NO TRACK" : current_song))
+                                : speed + " KM/H  /  " +
+                                      (p.carrying_board() ? "CARRYING"
+                                       : p.on_foot()      ? "ON FOOT"
+                                                          : "RIDING"),
                .06, .235, audio_options ? .0036 : .004, muted);
         if (!avatar_options && !audio_options && !graphics_options && !rider_options && !loading && !library)
             c.text(std::string(run_name(run.mode)), .70, .235, .0035, accent);
@@ -367,14 +501,17 @@ void RideUi::append(std::vector<Vertex>& out, const Player& p, bool wrist, doubl
             if (!library_error.empty() && iso_library && iso_courses.empty()) {
                 c.text("THIS COURSE SOURCE COULD NOT BE OPENED", .06, .34, .0037, ink);
                 c.text(library_error, .06, .43, .0032, muted);
-                c.text("PS2: SSX / TRICKY / SSX 3 / ON TOUR", .06, .52, .0037, muted);
+                c.text("PS2 / GAMECUBE: ISO BIN GCM RVZ", .06, .52, .0037, muted);
             } else if (iso_library && iso_source.empty() && iso_paths.empty()) {
-                c.text("PUT .ISO / .BIN FILES BESIDE THE EXE", .06, .37, .004, ink);
-                c.text("THEN CHOOSE REFRESH", .06, .45, .0037, muted);
+                c.text("CHOOSE DISC TO FIND YOUR GAME IMAGE", .06, .37, .004, ink);
+                c.text("ISO / BIN / GCM / RVZ", .06, .45, .0037, muted);
                 c.text("OR ADD CUSTOM COURSES TO MAPS", .06, .54, .0037, muted);
             } else if (!iso_library && map_paths.empty() && !immersive) {
                 c.text("NO INSTALLED MAPS YET", .06, .37, .004, ink);
                 c.text("CHOOSE ISO SOURCES TO GET STARTED", .06, .45, .0037, muted);
+            } else if (iso_library && !iso_source.empty() && library_count() == 0 && has_advanced_iso_courses()) {
+                c.text("NO NAMED RUNS IN THIS SOURCE", .06, .37, .004, ink);
+                c.text("SHOW ALL TYPES TO SEE ITS SECTIONS", .06, .45, .0037, muted);
             }
         }
         if (graphics_options) {

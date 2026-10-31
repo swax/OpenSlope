@@ -166,9 +166,13 @@ public final class NativeImportInstrumentation extends Instrumentation {
                     descriptor.getFd(),
                     image.length()
                 );
+                JSONObject listedCourse = new JSONArray(courses).getJSONObject(0);
                 require(
-                    new JSONArray(courses).getString(0).equals("FIXTURE"),
-                    "JNI reads course list from seekable descriptor"
+                    listedCourse.getString("Course").equals("TRICKY_FIXTURE") &&
+                        listedCourse.has("DisplayName") &&
+                        listedCourse.getString("MapType").equals("run") &&
+                        listedCourse.getString("Game").equals("ssx-tricky"),
+                    "JNI reads namespaced IDs, source titles and layout metadata from seekable descriptor"
                 );
                 invoke(
                     activity,
@@ -176,7 +180,7 @@ public final class NativeImportInstrumentation extends Instrumentation {
                     new Class<?>[] { int.class, long.class, String.class, String.class },
                     descriptor.getFd(),
                     image.length(),
-                    "FIXTURE",
+                    "TRICKY_FIXTURE",
                     extracted.getAbsolutePath()
                 );
                 File worldCourse = new File(temporary, "world-course");
@@ -291,6 +295,29 @@ public final class NativeImportInstrumentation extends Instrumentation {
             MapLibrary direct = new MapLibrary(context.getContentResolver(), local, null);
             direct.publish("Custom course", extracted, () -> {});
             require(direct.maps().size() == 1, "Custom maps discovered without ISO selection");
+            require(
+                direct.maps().get(0).game.equals("slopesmith"),
+                "Authored local maps retain the Custom group after publication"
+            );
+            require(
+                LauncherActivity.nativeMapGame(
+                    "renamed",
+                    "{\"Game\":\"SSX-3\"}",
+                    "{\"Game\":\"ssx-tricky\"}",
+                    false
+                ).equals("ssx-3"),
+                "Origin game overrides import metadata through JNI"
+            );
+            require(
+                LauncherActivity.nativeMapGame("renamed", "invalid", "{\"Game\":\"ssx-on-tour\"}", false).equals(
+                    "ssx-on-tour"
+                ),
+                "Invalid origin metadata retains a valid import game"
+            );
+            require(
+                LauncherActivity.nativeMapGame("GARI", "", "{\"Game\":\"ssx-tricky\"}", true).equals("slopesmith"),
+                "Authored maps retain the Custom group through JNI"
+            );
             boolean rejected = false;
             try {
                 direct.publish("Custom course", extracted, () -> {});

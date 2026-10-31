@@ -871,6 +871,8 @@ struct State {
             break;
         case UiAction::Recall: player.recall_board(walk_forward); break;
         case UiAction::Maps: request_exit(XrExitDestination::Maps); break;
+        case UiAction::Games: ui.select_game(""); break;
+        case UiAction::SelectGame: ui.select_game(selected.value); break;
         case UiAction::Exit: request_exit(XrExitDestination::App); break;
         default: break;
         }

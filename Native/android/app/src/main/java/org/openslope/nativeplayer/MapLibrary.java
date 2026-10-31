@@ -31,6 +31,8 @@ final class MapLibrary {
     static final class Entry {
 
         final String name;
+        String displayName;
+        String game = "unknown";
         final Uri uri;
         final boolean directory;
 
@@ -38,6 +40,10 @@ final class MapLibrary {
             this.name = name;
             this.uri = uri;
             this.directory = directory;
+        }
+
+        String label() {
+            return displayName == null ? LauncherActivity.nativeCourseDisplayName(name) : displayName;
         }
     }
 
@@ -119,8 +125,53 @@ final class MapLibrary {
                     if (patches != null && !patches.directory) maps.add(entry);
                 }
         }
-        maps.sort(Comparator.comparing((Entry e) -> e.name.toLowerCase(Locale.ROOT)).thenComparing(e -> e.name));
+        for (Entry map : maps) {
+            String imported = metadata(map, "Import.json");
+            String origin = metadata(map, "Origin.json");
+            boolean authored = false;
+            try {
+                Entry sidecar = tree == null ? null : child(map.uri, "Slopesmith.json");
+                authored =
+                    tree == null
+                        ? new File(new File(localRoot, map.name), "Slopesmith.json").isFile()
+                        : sidecar != null && !sidecar.directory;
+            } catch (IOException ignored) {}
+            map.game = LauncherActivity.nativeMapGame(map.name, origin, imported, authored);
+            try {
+                Object value = new JSONObject(imported).opt("DisplayName");
+                String title = value instanceof String ? ((String) value).trim() : "";
+                if (
+                    !title.isEmpty() && title.length() <= 200 && !title.matches("(?s).*[\\x00-\\x1f\\x7f].*")
+                ) map.displayName = title;
+            } catch (JSONException ignored) {}
+        }
+        maps.sort(Comparator.comparing((Entry e) -> e.label().toLowerCase(Locale.ROOT)).thenComparing(e -> e.name));
         return maps;
+    }
+
+    private String metadata(Entry map, String name) {
+        try {
+            Entry entry = tree == null ? null : child(map.uri, name);
+            try (
+                InputStream input = tree == null
+                    ? new FileInputStream(new File(new File(localRoot, map.name), name))
+                    : entry == null || entry.directory
+                      ? null
+                      : resolver.openInputStream(entry.uri)
+            ) {
+                if (input == null) return "";
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = input.read(buffer)) >= 0) {
+                    if (bytes.size() + count > 1024 * 1024) return "";
+                    bytes.write(buffer, 0, count);
+                }
+                return bytes.toString("UTF-8");
+            }
+        } catch (IOException ignored) {
+            return "";
+        }
     }
 
     boolean exists(String name) throws IOException {

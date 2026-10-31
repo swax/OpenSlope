@@ -14,9 +14,11 @@
 #include <windows.h>
 #include <atomic>
 #include <chrono>
+#include <commdlg.h>
 #include <future>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <thread>
 
@@ -29,6 +31,23 @@ std::filesystem::path executable_folder() {
     if (!length || length >= buffer.size())
         throw std::runtime_error("Cannot locate the application folder");
     return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+}
+
+std::optional<std::filesystem::path> choose_disc(HWND owner) {
+    std::vector<wchar_t> path(32768);
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = owner;
+    dialog.lpstrFilter = L"Game disc images (*.iso;*.bin;*.gcm;*.rvz)\0*.iso;*.bin;*.gcm;*.rvz\0All files\0*.*\0";
+    dialog.lpstrFile = path.data();
+    dialog.nMaxFile = DWORD(path.size());
+    dialog.lpstrTitle = L"Choose a game disc image";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    if (GetOpenFileNameW(&dialog))
+        return std::filesystem::path(path.data());
+    if (CommDlgExtendedError())
+        throw std::runtime_error("Could not open the disc chooser");
+    return {};
 }
 
 struct LibraryTask {
@@ -846,6 +865,7 @@ int main(int argc, char** argv) {
         DesktopLibrary library(executable_folder());
         CourseImportQueue imports(library);
         window.ui.import_root = library.maps_root();
+        std::set<std::filesystem::path> picked_images;
         const auto refresh_library = [&] {
             std::set<std::filesystem::path> available;
             for (const auto& root : std::array<std::filesystem::path, 3>{
@@ -859,8 +879,12 @@ int main(int argc, char** argv) {
                     std::cerr << "Map library: " << e.what() << '\n';
                 }
             }
-            window.ui.map_paths.assign(available.begin(), available.end());
+            window.ui.set_maps({available.begin(), available.end()});
             window.ui.iso_paths = library.images();
+            for (const auto& image : picked_images)
+                if (std::find(window.ui.iso_paths.begin(), window.ui.iso_paths.end(), image) ==
+                    window.ui.iso_paths.end())
+                    window.ui.iso_paths.push_back(image);
             for (auto& [name, installed] : window.ui.iso_courses)
                 installed = std::filesystem::is_regular_file(library.maps_root() / name / "Patches.json");
         };
@@ -891,7 +915,7 @@ int main(int argc, char** argv) {
             UiAction::Lighting,       UiAction::SnowDown,     UiAction::SnowUp,     UiAction::GraphicsReset,
             UiAction::Stats,          UiAction::Graphics,     UiAction::Avatars,    UiAction::SelectAvatar,
             UiAction::NextAvatarPage, UiAction::SelectAvatar, UiAction::Avatars,    UiAction::Mode,
-            UiAction::Maps,           UiAction::LoadMap};
+            UiAction::Maps,           UiAction::SelectGame,   UiAction::LoadMap};
         // Exercise map replacement with the requested mode still active after
         // the scripted Defaults action, rather than always testing Original.
         if (lighting_set)
@@ -927,9 +951,7 @@ int main(int argc, char** argv) {
                     window.ui.loading = window.ui.importing = false;
                     try {
                         auto result = library_task.future.get();
-                        window.ui.iso_courses.clear();
-                        for (const auto& course : result.courses)
-                            window.ui.iso_courses.emplace_back(course.name, false);
+                        window.ui.set_iso_courses(result.courses);
                         refresh_library();
                         window.ui.notice = "EXTRACT MAPS / CLICK PLAY WHEN READY";
                     } catch (const std::exception& e) {
@@ -1074,12 +1096,14 @@ int main(int argc, char** argv) {
                     library_done = true;
                     std::cout << "Desktop library smoke: PASS; map " << player->terrain().map_root().string() << '\n';
                 } else {
-                    auto wanted = window.ui.iso_library && window.ui.iso_source.empty() ? UiAction::SelectSource
-                                                                                        : UiAction::LoadMap;
+                    auto wanted = window.ui.iso_library && window.ui.iso_source.empty()      ? UiAction::SelectSource
+                                  : !window.ui.iso_library && window.ui.library_game.empty() ? UiAction::SelectGame
+                                                                                             : UiAction::LoadMap;
                     std::string extract;
                     if (window.ui.iso_library && !window.ui.iso_source.empty()) {
-                        for (std::size_t i = 0; i < window.ui.iso_courses.size(); ++i) {
-                            const auto& [name, installed] = window.ui.iso_courses[i];
+                        const auto visible = window.ui.visible_iso_courses();
+                        for (std::size_t i = 0; i < visible.size(); ++i) {
+                            const auto& [name, installed] = window.ui.iso_courses[visible[i]];
                             if (!installed && !window.ui.import_rows.contains(name)) {
                                 extract = name;
                                 while (i >= window.ui.library_scroll + 5)
@@ -1171,7 +1195,7 @@ int main(int argc, char** argv) {
                 window.ui.library = !window.ui.library;
                 window.ui.iso_library = false;
                 window.ui.iso_source.clear();
-                window.ui.iso_courses.clear();
+                window.ui.set_iso_courses({});
                 window.ui.page = 0;
                 refresh_library();
                 window.ui.library_error.clear();
@@ -1179,11 +1203,13 @@ int main(int argc, char** argv) {
                 window.ui.avatar_options = window.ui.audio_options = window.ui.song_picker =
                     window.ui.graphics_options = false;
                 break;
+            case UiAction::Games: window.ui.select_game(""); break;
+            case UiAction::SelectGame: window.ui.select_game(click.value); break;
             case UiAction::Sources:
                 window.ui.library_scroll = 0;
                 window.ui.iso_library = !window.ui.iso_library;
                 window.ui.iso_source.clear();
-                window.ui.iso_courses.clear();
+                window.ui.set_iso_courses({});
                 window.ui.page = 0;
                 window.ui.notice.clear();
                 window.ui.library_error.clear();
@@ -1197,13 +1223,28 @@ int main(int argc, char** argv) {
                 refresh_library();
                 if (!window.ui.iso_library || window.ui.iso_source.empty())
                     break;
-                window.ui.iso_courses.clear();
+                window.ui.set_iso_courses({});
+                [[fallthrough]];
+            case UiAction::ChooseIso:
+                if (click.action == UiAction::ChooseIso) {
+                    try {
+                        const auto image = choose_disc(window.handle);
+                        if (!image)
+                            break;
+                        click.map = std::filesystem::weakly_canonical(*image);
+                        picked_images.insert(click.map);
+                        refresh_library();
+                    } catch (const std::exception& error) {
+                        window.ui.notice = error.what();
+                        break;
+                    }
+                }
                 [[fallthrough]];
             case UiAction::SelectSource:
                 window.ui.library_scroll = 0;
-                if (click.action == UiAction::SelectSource) {
+                if (click.action == UiAction::SelectSource || click.action == UiAction::ChooseIso) {
                     window.ui.iso_source = click.map;
-                    window.ui.iso_courses.clear();
+                    window.ui.set_iso_courses({});
                     window.ui.library_error.clear();
                     window.ui.page = 0;
                 }
@@ -1224,6 +1265,7 @@ int main(int argc, char** argv) {
                     std::cerr << e.what() << '\n';
                 }
                 break;
+            case UiAction::IsoMapTypes: window.ui.toggle_iso_map_types(); break;
             case UiAction::ImportMap:
                 try {
                     imports.enqueue(click.map, click.value);
@@ -1244,10 +1286,7 @@ int main(int argc, char** argv) {
                     --window.ui.page;
                 break;
             case UiAction::Next:
-                if ((window.ui.page + 1) * 5 <
-                    (window.ui.iso_library
-                         ? (window.ui.iso_source.empty() ? window.ui.iso_paths.size() : window.ui.iso_courses.size())
-                         : window.ui.map_paths.size()))
+                if ((window.ui.page + 1) * 5 < window.ui.library_count())
                     ++window.ui.page;
                 break;
             case UiAction::Mode: {

@@ -1,6 +1,7 @@
 #include "openslope/course_names.hpp"
 #include "openslope/desktop_library.hpp"
 #include "openslope/ride_ui.hpp"
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -29,7 +30,7 @@ int main(int argc, char** argv) {
         const DesktopLibrary library(argv[2]);
         const auto images = library.images();
         const bool ssx = scenario == "ssx";
-        const std::string course = ssx ? "SSX_FIXTURE" : "FIXTURE";
+        const std::string course = ssx ? "SSX_FIXTURE" : "TRICKY_FIXTURE";
         check(images.size() == 2 && images[0].filename() == (ssx ? "First.BIN" : "First.ISO") &&
                   images[1].filename() == "second.iso",
               "Sources must be sorted, nonrecursive, case-insensitive ISO/BIN files beside the application");
@@ -39,6 +40,12 @@ int main(int argc, char** argv) {
             const auto courses = library.courses(images[0]);
             check(courses.size() == 1 && courses[0].name == course,
                   "Real format discovery must supply the selectable course");
+            const auto chosen = library.folder().parent_path() / "chosen disc outside app.iso";
+            std::filesystem::copy_file(images[0], chosen, std::filesystem::copy_options::overwrite_existing);
+            const DesktopLibrary picked(library.folder() / "chosen destination");
+            check(picked.courses(chosen).front().name == course &&
+                      Terrain::load(picked.install(chosen, course)).patches().size() == 1,
+                  "A chosen disc outside the executable folder must scan and import without copying the image");
             const auto map = library.install(images[0], courses[0].name);
             check(map == library.maps_root() / course && Terrain::load(map).patches().size() == 1,
                   "Published import must load as a standard map");
@@ -130,6 +137,9 @@ int main(int argc, char** argv) {
         auto buttons = ui.buttons();
         check(buttons[0].map == images[0] && buttons[0].action == UiAction::SelectSource,
               "ISO button must carry the complete source path");
+        check(std::any_of(buttons.begin(), buttons.end(),
+                          [](const auto& button) { return button.action == UiAction::ChooseIso; }),
+              "The source picker must offer a native file chooser");
         ui.iso_source = images[0];
         ui.iso_courses = {{"FIXTURE", false}, {"CUSTOM", true}};
         buttons = ui.buttons();
@@ -137,9 +147,59 @@ int main(int argc, char** argv) {
               "Course selection must preserve its source and exact course name");
         check(buttons[1].text == "PLAY CUSTOM" && buttons[1].action == UiAction::LoadMap,
               "Installed maps must use a separate explicit Play action");
+        RideUi runs;
+        runs.visible = runs.library = runs.iso_library = true;
+        runs.iso_source = images[0];
+        runs.import_root = library.maps_root();
+        std::vector<DiscCourse> catalogue;
+        const auto add_course = [&](std::string id, std::string label, std::string type) {
+            DiscCourse row{std::move(id), 0};
+            row.display_name = std::move(label);
+            row.map_type = std::move(type);
+            catalogue.push_back(row);
+        };
+        for (unsigned i = 0; i < 17; ++i)
+            add_course("SSX3_RUN_" + std::to_string(i), "Disc run " + std::to_string(i), "run");
+        for (char c = 'A'; c <= 'E'; ++c)
+            add_course(std::string("SSX3_") + c, "Station", "hub");
+        for (unsigned i = 0; i < 21; ++i)
+            add_course("SSX3_A_CONNECTOR" + std::to_string(i), "Connector", "connector");
+        for (unsigned i = 1; i <= 3; ++i)
+            add_course("SSX3_PEAK" + std::to_string(i), "Peak", "run-chain");
+        runs.set_iso_courses(catalogue);
+        check(runs.library_count() == 17 && runs.visible_iso_courses().size() == 17,
+              "Source metadata must default to exactly the 17 named runs");
+        auto run_buttons = runs.buttons();
+        check(run_buttons[0].text == "EXTRACT Disc run 0" && run_buttons[0].value == "SSX3_RUN_0" &&
+                  run_buttons[0].map == images[0],
+              "The named row must retain its exact source and canonical ID");
+        check(std::any_of(run_buttons.begin(), run_buttons.end(),
+                          [](const auto& button) { return button.action == UiAction::IsoMapTypes; }),
+              "Advanced map types must remain accessible");
+        runs.scroll_library(-100);
+        check(runs.library_scroll == 12, "Scrolling must count the filtered rows");
+        runs.toggle_iso_map_types();
+        check(runs.library_count() == 46 && runs.library_scroll == 0,
+              "Advanced mode must restore all source sections and reset scrolling");
+        runs.toggle_iso_map_types();
+        runs.immersive = true;
+        runs.page = 3;
+        run_buttons = runs.buttons();
+        check(std::count_if(run_buttons.begin(), run_buttons.end(),
+                            [](const auto& button) { return button.action == UiAction::ImportMap; }) == 2,
+              "The wrist picker must paginate only the visible runs");
+        runs.set_iso_courses({{"SSX3_ARA1", 0}, {"SSX3_A", 0}, {"SSX3_A_ARA1", 0}, {"SSX3_PEAK1", 0}, {"GARI", 0}});
+        runs.iso_course_types.clear();
+        check(runs.library_count() == 2,
+              "Older scans must hide SSX3 structural sections and keep other games selectable");
+        runs.iso_course_names["GARI"] = "Disc Garibaldi";
+        runs.iso_courses[0].second = true;
+        check(runs.buttons()[0].text == "PLAY Disc Garibaldi",
+              "Installed legacy folders must use the scanned name when metadata is absent");
         RideUi named;
         named.library = true;
         named.map_paths = {library.maps_root() / "AVALANCHE_CRS01_00"};
+        named.select_game("1080-avalanche");
         check(named.buttons()[0].text == "Tenderfoot Pass" && named.buttons()[0].map == named.map_paths[0],
               "Existing Avalanche maps must show retail names while retaining the original folder");
         named.immersive = true;
@@ -163,6 +223,16 @@ int main(int argc, char** argv) {
         check(course_display_name("My custom course") == "My custom course" &&
                   course_display_name("AVALANCHE_CRS00_01") == "AVALANCHE_CRS00_01",
               "Custom map names and unknown layouts must remain unchanged");
+        std::filesystem::create_directories(named.map_paths[0]);
+        std::ofstream(named.map_paths[0] / "Import.json") << R"({"DisplayName":"A title recovered from disc"})";
+        named.iso_library = false;
+        named.map_titles.clear();
+        check(named.buttons()[0].text == "A title recovered from disc" && named.buttons()[0].map == named.map_paths[0],
+              "Stored disc titles override legacy labels without changing map paths");
+        named.iso_library = true;
+        named.iso_course_names["AVALANCHE_CRS01_00"] = "Scanned course title";
+        check(named.buttons()[0].text == "QUEUED Scanned course title" && named.buttons()[0].value.empty(),
+              "Queued source choices use the scanned title while cancellation retains the source ID");
         ui.import_rows["FIXTURE"] = {CourseImportPhase::Extracting, "Decoding textures"};
         buttons = ui.buttons();
         check(buttons[0].text == "EXTRACTING FIXTURE" && buttons[0].detail == "Decoding textures" &&

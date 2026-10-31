@@ -3,3 +3,6 @@
 
 # style(native): apply clang-format to native C++
 52ea8799b1e331fcf3dfc372a2ebd983097a7fab
+
+# style(native): standardize Java formatting
+ab2ecae4649191a8450eb4e6cc832c60689a090b

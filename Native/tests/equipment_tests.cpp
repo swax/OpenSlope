@@ -600,6 +600,7 @@ void camera_ui() {
     close(RideUi::wrist(left, {}, shift).origin, frame.origin + shift,
           "Third-person menu receives exactly the same presentation offset as its controller");
     ui.map_paths = {"Maps/TEST_A", "Maps/TEST_B"};
+    ui.select_game("unknown");
     ui.library = true;
     check(ui.buttons()[1].map == "Maps/TEST_B", "Map library buttons retain exact selected map paths");
     check(std::any_of(touch_bindings().begin(), touch_bindings().end(),

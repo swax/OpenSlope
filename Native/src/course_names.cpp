@@ -1,7 +1,121 @@
 #include "openslope/course_names.hpp"
+#include <algorithm>
 #include <array>
+#include <cctype>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 namespace openslope {
+namespace {
+std::string metadata_text(const std::filesystem::path& path) {
+    try {
+        if (std::filesystem::file_size(path) <= 1024 * 1024) {
+            std::ifstream input(path);
+            return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        }
+    } catch (const std::exception&) {
+    }
+    return {};
+}
+
+std::string field(const nlohmann::json& document, const char* key) {
+    if (!document.is_object() || !document.contains(key) || !document[key].is_string())
+        return {};
+    auto text = document[key].get<std::string>();
+    const auto first = text.find_first_not_of(" \t\r\n"), last = text.find_last_not_of(" \t\r\n");
+    if (first == std::string::npos)
+        return {};
+    text = text.substr(first, last - first + 1);
+    if (text.size() > 128 || std::any_of(text.begin(), text.end(), [](unsigned char c) { return c < 32 || c == 127; }))
+        return {};
+    return text;
+}
+} // namespace
+
+std::string course_game(std::string_view id) {
+    std::string name(id);
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
+    for (const auto& [prefix, game] :
+         std::array<std::pair<std::string_view, std::string_view>, 6>{{{"SSXOT_", "ssx-on-tour"},
+                                                                       {"SSX3_", "ssx-3"},
+                                                                       {"SSX_", "ssx"},
+                                                                       {"TRICKY_", "ssx-tricky"},
+                                                                       {"AVALANCHE_", "1080-avalanche"},
+                                                                       {"MADTRIX_", "jonny-moseley-mad-trix"}}})
+        if (name.starts_with(prefix))
+            return std::string(game);
+    static constexpr std::array legacy{"ALASKA", "ALOHA", "ELYSIUM",  "GARI", "MEGAPLE", "MERQUER",
+                                       "MESA",   "PIPE",  "SMOKEMTN", "SNOW", "TRICK",   "UNTRACK"};
+    if (std::find(legacy.begin(), legacy.end(), name) != legacy.end())
+        return "ssx-tricky";
+    return "unknown";
+}
+
+std::string game_display_name(std::string_view game) {
+    for (const auto& [id, title] : std::array<std::pair<std::string_view, std::string_view>, 8>{
+             {{"ssx", "SSX"},
+              {"ssx-tricky", "SSX Tricky"},
+              {"ssx-3", "SSX 3"},
+              {"ssx-on-tour", "SSX On Tour"},
+              {"1080-avalanche", "1080 Avalanche"},
+              {"jonny-moseley-mad-trix", "Jonny Moseley Mad Trix"},
+              {"slopesmith", "Custom / Authored"},
+              {"unknown", "Unknown"}}})
+        if (id == game)
+            return std::string(title);
+    return std::string(game);
+}
+
+std::string map_game_from_metadata(std::string_view id, std::string_view origin, std::string_view imported,
+                                   bool authored) {
+    const auto source = nlohmann::json::parse(origin, nullptr, false);
+    const auto report = nlohmann::json::parse(imported, nullptr, false);
+    if (authored || field(source, "Origin") == "slopesmith")
+        return "slopesmith";
+    auto game = field(source, "Game");
+    if (game.empty())
+        game = field(report, "Game");
+    if (!game.empty()) {
+        std::transform(game.begin(), game.end(), game.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        return game;
+    }
+    for (const auto& name : {field(report, "Course"), field(source, "Course"), std::string(id)}) {
+        game = course_game(name);
+        if (game != "unknown")
+            return game;
+    }
+    return "unknown";
+}
+
+std::string map_game(const std::filesystem::path& map) {
+    std::error_code error;
+    const bool authored = std::filesystem::is_regular_file(map / "Slopesmith.json", error);
+    return map_game_from_metadata(map.filename().string(), metadata_text(map / "Origin.json"),
+                                  metadata_text(map / "Import.json"), authored);
+}
+
+std::string map_display_name(const std::filesystem::path& map) {
+    try {
+        const auto path = map / "Import.json";
+        if (std::filesystem::file_size(path) <= 1024 * 1024) {
+            std::ifstream file(path);
+            const auto metadata = nlohmann::json::parse(file);
+            const auto field = metadata.find("DisplayName");
+            if (field != metadata.end() && field->is_string()) {
+                auto name = field->get<std::string>();
+                const auto first = name.find_first_not_of(" \t\r\n"), last = name.find_last_not_of(" \t\r\n");
+                if (first != std::string::npos)
+                    name = name.substr(first, last - first + 1);
+                if (!name.empty() && name.size() <= 800 &&
+                    std::none_of(name.begin(), name.end(), [](unsigned char c) { return c < 32 || c == 127; }))
+                    return name;
+            }
+        }
+    } catch (const std::exception&) { /* Legacy and authored maps keep their existing label. */
+    }
+    return course_display_name(map.filename().string());
+}
+
 std::string course_display_name(std::string_view id) {
     struct CourseName {
         std::string_view id, title;

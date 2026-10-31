@@ -39,6 +39,75 @@ final class LauncherUiChecks {
         if (error[0] != null) throw new AssertionError(error[0]);
     }
 
+    private void select(Spinner spinner, String label) {
+        for (int i = 0; i < spinner.getCount(); ++i) if (spinner.getItemAtPosition(i).toString().equals(label)) {
+            spinner.setSelection(i);
+            return;
+        }
+        throw new AssertionError("Missing game: " + label);
+    }
+
+    private void gameGroups(LauncherActivity activity, LauncherUi ui) {
+        ArrayList<MapLibrary.Entry> maps = new ArrayList<>();
+        for (int g = 0; g < 10; ++g) for (int m = 0; m < 10; ++m) {
+            MapLibrary.Entry map = new MapLibrary.Entry(
+                "BANK" + g + "_" + m,
+                Uri.parse("file:///bank" + g + "/map" + m),
+                true
+            );
+            map.game = "game " + g;
+            map.displayName = "Run " + m;
+            maps.add(map);
+        }
+        MapLibrary.Entry[] played = { null },
+            unloaded = { null };
+        main(() -> {
+            ui.maps(maps, map -> played[0] = map, map -> unloaded[0] = map);
+            require(
+                ui.game.getCount() == 10 && ui.map.getCount() == 10,
+                "100 maps become ten games with ten maps each"
+            );
+            require(ui.courses.getChildCount() == 2, "Only the selected map has Play and Unload actions");
+            select(ui.game, "game 4");
+        });
+        laidOut(activity);
+        test.waitForIdleSync();
+        main(() -> {
+            require(ui.map.getCount() == 10 && played[0] == null, "Changing game only filters its ten maps");
+            ui.map.setSelection(7);
+        });
+        laidOut(activity);
+        test.waitForIdleSync();
+        main(() -> {
+            require(played[0] == null && unloaded[0] == null, "Changing map never plays or unloads it");
+            ui.courses.findViewById(R.id.launcher_play).performClick();
+            ui.courses.findViewById(R.id.launcher_unload).performClick();
+            require(
+                played[0] == maps.get(47) && unloaded[0] == maps.get(47),
+                "Explicit actions retain the selected map and source URI"
+            );
+            ui.maps(maps, map -> played[0] = map, map -> unloaded[0] = map);
+            require(
+                ui.game.getSelectedItem().equals("game 4") && ui.map.getSelectedItemPosition() == 7,
+                "Refresh retains game and map selection"
+            );
+            select(ui.game, "game 5");
+        });
+        laidOut(activity);
+        test.waitForIdleSync();
+        main(() -> select(ui.game, "game 4"));
+        laidOut(activity);
+        test.waitForIdleSync();
+        main(() -> {
+            require(ui.map.getSelectedItemPosition() == 7, "Returning to a game remembers its last map");
+            ui.maps(maps.subList(90, 100), map -> played[0] = map);
+            require(
+                ui.game.getCount() == 1 && ui.game.getSelectedItem().equals("game 9"),
+                "Removing a game clears stale selections"
+            );
+        });
+    }
+
     private Object get(Object target, String name) throws Exception {
         Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
@@ -64,17 +133,21 @@ final class LauncherUiChecks {
     }
 
     private void laidOut(LauncherActivity activity) {
-        main(() -> {
-            View root = activity.findViewById(R.id.launcher_root);
-            // Horizon can suspend panel frames when unworn; exercise the real Android layout directly.
-            require(root.getWidth() > 0 && root.getHeight() > 0, "System supplied panel bounds");
-            root.forceLayout();
-            root.measure(
-                View.MeasureSpec.makeMeasureSpec(root.getWidth(), View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(root.getHeight(), View.MeasureSpec.EXACTLY)
-            );
-            root.layout(root.getLeft(), root.getTop(), root.getRight(), root.getBottom());
-        });
+        // Settle spinner callbacks even when Horizon suspends panel frames while unworn.
+        for (int pass = 0; pass < 2; ++pass) {
+            main(() -> {
+                View root = activity.findViewById(R.id.launcher_root);
+                // Horizon can suspend panel frames when unworn; exercise the real Android layout directly.
+                require(root.getWidth() > 0 && root.getHeight() > 0, "System supplied panel bounds");
+                root.forceLayout();
+                root.measure(
+                    View.MeasureSpec.makeMeasureSpec(root.getWidth(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(root.getHeight(), View.MeasureSpec.EXACTLY)
+                );
+                root.layout(root.getLeft(), root.getTop(), root.getRight(), root.getBottom());
+            });
+            test.waitForIdleSync();
+        }
     }
 
     private void library(LauncherActivity activity, File root) throws Exception {
@@ -111,7 +184,12 @@ final class LauncherUiChecks {
         if (view instanceof Button || view instanceof Spinner) {
             require(
                 view.getMeasuredHeight() >= Math.round(60 * density),
-                "Control has a 60dp target: " + view.getClass().getSimpleName()
+                "Control has a 60dp target: " +
+                    view.getClass().getSimpleName() +
+                    " " +
+                    (view instanceof TextView ? ((TextView) view).getText() : view.getId()) +
+                    " height=" +
+                    view.getMeasuredHeight()
             );
             require(view.isFocusable(), "Control supports keyboard/controller focus");
         }
@@ -251,6 +329,9 @@ final class LauncherUiChecks {
                     file.write("{}");
                 }
             }
+            try (Writer file = new FileWriter(new File(populated, "ALASKA/Import.json"))) {
+                file.write("{\"DisplayName\":\"Disc Alaska\"}");
+            }
             library(activity, populated);
             main(() -> {
                 try {
@@ -273,31 +354,28 @@ final class LauncherUiChecks {
                 )
             );
             main(() -> {
+                require(ui.game.getCount() == 3 && ui.map.getCount() == 1, "Installed maps are grouped by game");
                 require(
-                    ui.courses.getChildCount() == 3 && ui.empty.getVisibility() == View.GONE,
+                    ((Button) ui.courses.getChildAt(0)).getText().toString().equals("Play Tenderfoot Pass"),
+                    "Game selection displays recovered Avalanche names"
+                );
+                select(ui.game, "SSX Tricky");
+            });
+            laidOut(activity);
+            test.waitForIdleSync();
+            main(() -> {
+                require(
+                    ui.courses.getChildCount() == 2 && ui.empty.getVisibility() == View.GONE,
                     "Discovered courses replace empty guidance"
                 );
-                LinearLayout course = (LinearLayout) ui.courses.getChildAt(0);
                 require(
-                    ((Button) course.getChildAt(0)).getText().toString().equals("Play ALASKA"),
-                    "Play action names its course"
+                    ((Button) ui.courses.getChildAt(0)).getText().toString().equals("Play Disc Alaska"),
+                    "Play action reads Import.json titles"
                 );
+                require(ui.courses.getChildAt(0).getTag().equals("ALASKA"), "Metadata labels retain the map ID");
                 require(
-                    course.getChildAt(1).getContentDescription().toString().equals("Unload ALASKA"),
-                    "Unload action names its course"
-                );
-                LinearLayout avalanche = (LinearLayout) ui.courses.getChildAt(1);
-                require(
-                    ((Button) avalanche.getChildAt(0)).getText().toString().equals("Play Tenderfoot Pass"),
-                    "Existing Avalanche maps display recovered course names through JNI"
-                );
-                require(
-                    avalanche.getChildAt(0).getTag().equals("AVALANCHE_CRS01_00"),
-                    "Named Play controls retain the canonical map ID"
-                );
-                require(
-                    avalanche.getChildAt(1).getContentDescription().toString().equals("Unload Tenderfoot Pass"),
-                    "Unload accessibility labels use the course title"
+                    ui.courses.getChildAt(1).getContentDescription().toString().equals("Unload Disc Alaska"),
+                    "Unload action reads Import.json titles"
                 );
                 require(
                     LauncherActivity.nativeCourseDisplayName("My custom course").equals("My custom course"),
@@ -342,7 +420,7 @@ final class LauncherUiChecks {
                     "Busy state blocks duplicate launch/import"
                 );
                 require(
-                    !course.getChildAt(0).isEnabled() && !course.getChildAt(1).isEnabled(),
+                    !ui.courses.getChildAt(0).isEnabled() && !ui.courses.getChildAt(1).isEnabled(),
                     "Busy state blocks play and unload together"
                 );
                 require(ui.cancel.isEnabled() && ui.close.isEnabled(), "Long operations retain cancel and exit");
@@ -362,7 +440,7 @@ final class LauncherUiChecks {
                 try {
                     snapshot(ui.root, pictures, "courses");
                     List<LauncherActivity.IsoCourse> choices = Arrays.asList(
-                        new LauncherActivity.IsoCourse(firstDisc, "AVALANCHE_CRS06_03", "avalanche.rvz"),
+                        new LauncherActivity.IsoCourse(firstDisc, "AVALANCHE_CRS06_03", "avalanche.rvz", "Disc Forest"),
                         new LauncherActivity.IsoCourse(secondDisc, "SSX_SNOW", "second.bin")
                     );
                     AlertDialog dialog = (AlertDialog) invoke(
@@ -374,14 +452,14 @@ final class LauncherUiChecks {
                     );
                     choice[0] = dialog;
                     require(
-                        dialog
-                            .getListView()
-                            .getAdapter()
-                            .getItem(0)
-                            .toString()
-                            .equals("Wit's Thicket · avalanche.rvz") &&
-                            dialog.getListView().getAdapter().getItem(1).toString().equals("SSX_SNOW · second.bin"),
-                        "Combined choices show retail titles and identify the source disc for each course"
+                        dialog.getListView().getCount() == 1 &&
+                            dialog
+                                .getListView()
+                                .getAdapter()
+                                .getItem(0)
+                                .toString()
+                                .equals("Disc Forest · avalanche.rvz"),
+                        "Combined discs filter to the selected game and retain disc metadata"
                     );
                     require(
                         choices.get(0).name.equals("AVALANCHE_CRS06_03"),
@@ -397,7 +475,7 @@ final class LauncherUiChecks {
                     );
                     dialog.findViewById(R.id.launcher_select_all).performClick();
                     require(
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("2"),
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("1"),
                         "Select all updates import count"
                     );
                     dialog.findViewById(R.id.launcher_select_all).performClick();
@@ -405,13 +483,90 @@ final class LauncherUiChecks {
                         !dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled(),
                         "Clear selection prevents an empty import"
                     );
-                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+                    select(dialog.findViewById(R.id.launcher_import_game), "SSX");
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
             });
             test.waitForIdleSync();
+            main(() -> {
+                require(
+                    choice[0].getListView().getCount() == 1 &&
+                        choice[0].getListView().getAdapter().getItem(0).toString().equals("SSX_SNOW · second.bin"),
+                    "Import game selector exposes only that game's courses"
+                );
+                require(
+                    !choice[0].getButton(AlertDialog.BUTTON_POSITIVE).isEnabled(),
+                    "Changing import game never imports implicitly"
+                );
+                choice[0].getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+            });
+            test.waitForIdleSync();
             main(() -> require(!choice[0].isShowing(), "Import has an explicit Back action"));
+            main(() -> {
+                try {
+                    ArrayList<LauncherActivity.IsoCourse> runs = new ArrayList<>();
+                    for (int i = 0; i < 17; ++i) runs.add(
+                        new LauncherActivity.IsoCourse(firstDisc, "SSX3_RUN_" + i, "ssx3.iso", "Disc run " + i, "run")
+                    );
+                    runs.add(new LauncherActivity.IsoCourse(firstDisc, "SSX3_A", "ssx3.iso", "Station", "hub"));
+                    runs.add(
+                        new LauncherActivity.IsoCourse(firstDisc, "SSX3_A_ARA1", "ssx3.iso", "Connector", "connector")
+                    );
+                    runs.add(new LauncherActivity.IsoCourse(firstDisc, "SSX3_PEAK1", "ssx3.iso", "Peak", "run-chain"));
+                    runs.add(
+                        new LauncherActivity.IsoCourse(firstDisc, "SSX3_ALL", "ssx3.iso", "Mountain", "full-mountain")
+                    );
+                    AlertDialog dialog = (AlertDialog) invoke(
+                        launched,
+                        "showImportChoices",
+                        new Class<?>[] { List.class, String.class },
+                        runs,
+                        ""
+                    );
+                    CheckBox advanced = dialog.findViewById(R.id.launcher_all_map_types);
+                    Button select = dialog.findViewById(R.id.launcher_select_all);
+                    require(
+                        dialog.getListView().getCount() == 17 && !advanced.isChecked(),
+                        "Quest defaults to 17 named runs from source metadata"
+                    );
+                    require(
+                        dialog.getListView().getAdapter().getItem(0).toString().equals("Disc run 0 · ssx3.iso"),
+                        "Run names retain their source label"
+                    );
+                    select.performClick();
+                    require(
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("17"),
+                        "Select all selects the visible named runs"
+                    );
+                    advanced.setChecked(true);
+                    require(
+                        dialog.getListView().getCount() == 21 &&
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("17"),
+                        "Advanced rows preserve selections by ID"
+                    );
+                    select.performClick();
+                    advanced.setChecked(false);
+                    require(
+                        dialog.getListView().getCount() == 17 &&
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("17"),
+                        "Hidden structural maps are excluded from the import count"
+                    );
+                    select.performClick();
+                    advanced.setChecked(true);
+                    require(
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).getText().toString().contains("4"),
+                        "Clearing visible runs preserves independent advanced selections"
+                    );
+                    require(
+                        runs.get(0).name.equals("SSX3_RUN_0") && runs.get(0).uri.equals(firstDisc),
+                        "Filtering never changes the extraction ID or URI"
+                    );
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
             File unreadable = new File(temporary, "not-a-folder");
             require(unreadable.createNewFile(), "Unavailable library fixture created");
             library(activity, unreadable);
@@ -464,6 +619,7 @@ final class LauncherUiChecks {
                     throw new RuntimeException(e);
                 }
             });
+            gameGroups(activity, ui);
             result.putString(
                 "stream",
                 "PASS: " +

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <deque>
 #include <future>
+#include <list>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -23,7 +24,41 @@ void check_cancel(const ImportCancel& cancelled) {
 }
 } // namespace
 
-DesktopLibrary::DesktopLibrary(std::filesystem::path folder) : folder_(std::filesystem::absolute(folder)) {}
+struct DesktopLibrary::Sessions {
+    struct Entry {
+        std::filesystem::path path;
+        std::uintmax_t size;
+        std::filesystem::file_time_type modified;
+        std::shared_ptr<ImportSession> session;
+    };
+
+    std::mutex mutex;
+    std::list<Entry> entries;
+};
+
+DesktopLibrary::DesktopLibrary(std::filesystem::path folder)
+    : sessions_(std::make_shared<Sessions>()), folder_(std::filesystem::absolute(folder)) {}
+
+std::shared_ptr<ImportSession> DesktopLibrary::session(const std::filesystem::path& image) const {
+    const auto path = std::filesystem::weakly_canonical(image);
+    const auto size = std::filesystem::file_size(path);
+    const auto modified = std::filesystem::last_write_time(path);
+    std::lock_guard lock(sessions_->mutex);
+    const auto found = std::find_if(sessions_->entries.begin(), sessions_->entries.end(), [&](const auto& entry) {
+        return entry.path == path && entry.size == size && entry.modified == modified;
+    });
+    if (found != sessions_->entries.end()) {
+        const auto result = found->session;
+        sessions_->entries.splice(sessions_->entries.begin(), sessions_->entries, found);
+        return result;
+    }
+    auto result = std::make_shared<ImportSession>(open_disc(path), folder_ / ".openslope-cache" / "music-v1");
+    sessions_->entries.remove_if([&](const auto& entry) { return entry.path == path; });
+    sessions_->entries.push_front({path, size, modified, result});
+    while (sessions_->entries.size() > 2)
+        sessions_->entries.pop_back();
+    return result;
+}
 
 std::vector<std::filesystem::path> DesktopLibrary::images() const {
     std::vector<std::filesystem::path> result;
@@ -51,7 +86,7 @@ std::vector<std::filesystem::path> DesktopLibrary::maps() const {
 std::vector<DiscCourse> DesktopLibrary::courses(const std::filesystem::path& image,
                                                 const ImportCancel& cancelled) const {
     check_cancel(cancelled);
-    return disc_courses(open_disc(image), cancelled);
+    return session(image)->courses(cancelled);
 }
 
 std::filesystem::path DesktopLibrary::install(const std::filesystem::path& image, const std::string& course,
@@ -85,7 +120,7 @@ std::filesystem::path DesktopLibrary::install(const std::filesystem::path& image
         }
     } cleanup{staging};
 
-    extract_course(open_disc(image), course, staging / "course", progress, cancelled);
+    session(image)->extract(course, staging / "course", progress, cancelled);
     check_cancel(cancelled);
     if (std::filesystem::exists(destination))
         throw std::runtime_error("Course folder appeared during import; existing files were kept");
