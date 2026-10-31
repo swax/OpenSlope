@@ -35,7 +35,14 @@ const hygieneSteps = [
   ['Pre-push guard tests', process.execPath, ['--test', 'tools/pre-push.test.mjs'], 3 * 60_000],
   ['Repository hygiene gate', pythonCommand(), ['tools/hygiene.py'], 10 * 60_000],
 ];
-const nativeSteps = [['Native C++ conformance', process.execPath, ['tools/native-tests.mjs'], 15 * 60_000]];
+const nativeSteps = [
+  [
+    'Native C++ conformance',
+    process.execPath,
+    ['tools/native-tests.mjs'],
+    (process.platform === 'win32' ? 20 : 15) * 60_000,
+  ],
+];
 const slopesmithSteps = [
   npmStep('Rust multiplayer contracts and unit tests', 'multiplayer:unit'),
   npmStep('Slopesmith type-check', 'typecheck'),

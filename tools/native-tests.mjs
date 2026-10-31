@@ -15,7 +15,15 @@ for (const name of ['ride-v1.json', 'carving-response-cases-v1.json']) {
   }
 }
 const run = (command, args) => {
-  const result = spawnSync(command, args, { cwd: root, stdio: 'inherit', windowsHide: true, timeout: 15 * 60_000 });
+  // Cold MSVC builds can use almost fifteen minutes before CTest starts. Leave
+  // time for conformance within the Windows workflow's twenty-minute job limit.
+  const timeout = (process.platform === 'win32' ? 18 : 15) * 60_000;
+  const result = spawnSync(command, args, {
+    cwd: root,
+    stdio: 'inherit',
+    windowsHide: true,
+    timeout,
+  });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
