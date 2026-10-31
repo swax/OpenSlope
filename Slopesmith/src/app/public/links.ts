@@ -3,7 +3,12 @@ import { localIsoCourses } from './course-list';
 import { isDiscCourse } from '../../core/reference/disc-courses';
 import { ISOS_PATH, mapNameAtPath, mapPath, pageInPath } from '../navigation';
 
-export type PublicCourseRequest = { kind: 'project' | 'reference'; name: string; source?: 'iso'; localProjectId?: string };
+export type PublicCourseRequest = {
+  kind: 'project' | 'reference';
+  name: string;
+  source?: 'iso';
+  localProjectId?: string;
+};
 
 /** Every authored map has a named public-player route, independent of the editor's address. */
 export function publicProjectUrl(name: string, origin = location.origin): string {
@@ -43,31 +48,53 @@ export function editorUrlForPublicMap(url: URL): string {
 
 export function isoManagementUrl(course?: PublicCourse, origin = location.origin): string {
   const url = new URL(ISOS_PATH, origin);
-  if (course) url.searchParams.set(course.kind === 'project' ? 'map' : 'reference', course.kind === 'project' ? course.name : course.id);
+  url.searchParams.set('view', 'games');
+  if (course)
+    url.searchParams.set(
+      course.kind === 'project' ? 'map' : 'reference',
+      course.kind === 'project' ? course.name : course.id,
+    );
   if (course?.source === 'iso') url.searchParams.set('source', 'iso');
   return url.href;
 }
 
 export function publicCourseRequest(url: URL): PublicCourseRequest | null {
   const page = pageInPath(url.pathname);
-  if (page !== 'play' && page !== 'isos') return null;
+  if (page !== 'play' && page !== 'isos' && !(page === 'maps' && url.searchParams.get('view') === 'games')) return null;
   const map = page === 'play' ? mapNameAtPath(url.pathname, 'play') : url.searchParams.get('map');
   if (page === 'play' && !map) return null;
   const reference = url.searchParams.get('reference');
-  if (reference) return { kind: 'reference', name: reference, ...(url.searchParams.get('source') === 'iso' ? { source: 'iso' } : {}) };
-  return map ? { kind: 'project', name: map, ...(url.searchParams.get('local') ? { localProjectId: url.searchParams.get('local')! } : {}) } : null;
+  if (reference)
+    return {
+      kind: 'reference',
+      name: reference,
+      ...(url.searchParams.get('source') === 'iso' ? { source: 'iso' } : {}),
+    };
+  return map
+    ? {
+        kind: 'project',
+        name: map,
+        ...(url.searchParams.get('local') ? { localProjectId: url.searchParams.get('local')! } : {}),
+      }
+    : null;
 }
 
 /** Resolve against the supplied accessible catalogue and this device's saved maps and ISO cache. */
-export function resolvePublicCourse(request: PublicCourseRequest | null, published: readonly PublicCourse[],
-  cached: readonly string[], local: readonly PublicCourse[] = []): PublicCourse | null {
+export function resolvePublicCourse(
+  request: PublicCourseRequest | null,
+  published: readonly PublicCourse[],
+  cached: readonly string[],
+  local: readonly PublicCourse[] = [],
+): PublicCourse | null {
   if (!request) return null;
   const name = request.name.toLowerCase();
   if (request.localProjectId) return local.find(course => course.localProjectId === request.localProjectId) ?? null;
-  if (request.kind === 'project') return published.find(course => course.kind === 'project'
-    && course.name.toLowerCase() === name) ?? null;
-  const iso = () => localIsoCourses(isDiscCourse(request.name) ? [...cached, request.name] : cached)
-    .find(course => course.id.toLowerCase() === name) ?? null;
+  if (request.kind === 'project')
+    return published.find(course => course.kind === 'project' && course.name.toLowerCase() === name) ?? null;
+  const iso = () =>
+    localIsoCourses(isDiscCourse(request.name) ? [...cached, request.name] : cached).find(
+      course => course.id.toLowerCase() === name,
+    ) ?? null;
   if (request.source === 'iso') return iso();
   return published.find(course => course.kind === 'reference' && course.id.toLowerCase() === name) ?? iso();
 }

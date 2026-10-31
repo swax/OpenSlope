@@ -1,5 +1,5 @@
-export const MAPS_PATH = '/maps';
-export const ISOS_PATH = '/isos';
+export const MAPS_PATH = '/';
+export const ISOS_PATH = '/';
 export const PLAY_PATH = '/play';
 export const EDITOR_PATH = '/editor';
 
@@ -7,6 +7,7 @@ export type AppPage = 'maps' | 'isos' | 'play' | 'editor';
 
 /** Browsing, riding and editing have separate routes. */
 export function pageInPath(pathname: string): AppPage | null {
+  if (pathname === '/') return 'maps';
   const page = /^\/(maps|isos)\/?$/i.exec(pathname)?.[1] ?? /^\/(play|editor)(?:\/[^/]+)?\/?$/i.exec(pathname)?.[1];
   return page ? (page.toLowerCase() as AppPage) : null;
 }

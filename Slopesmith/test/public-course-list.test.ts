@@ -122,7 +122,9 @@ assert.equal(
   named.name,
   'the ISO manager keeps the map context without putting a guid in the URL',
 );
-assert.equal(MAPS_PATH, '/maps');
+assert.equal(MAPS_PATH, '/');
+assert.equal(ISOS_PATH, '/');
+assert.equal(new URL(isoManagementUrl(undefined, origin)).searchParams.get('view'), 'games');
 assert.equal(publicCourseRequest(new URL(`${origin}/maps`)), null, '/maps is the catalogue, never a map name');
 assert.equal(
   publicCourseRequest(new URL(`${origin}/editor/My_Mountain`)),

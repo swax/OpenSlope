@@ -114,3 +114,4 @@ export async function saveIsoDisc(disc: SavedIsoDisc, signal?: AbortSignal): Pro
 }
 
 export const clearSavedIsoDiscs = (): Promise<void> => writeDiscs(store => store.clear());
+export const removeSavedIsoDisc = (game: IsoGame): Promise<void> => writeDiscs(store => store.delete(game));

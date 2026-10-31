@@ -116,8 +116,15 @@ reference-map listings; its menu entry is currently hidden. Everything starts pr
 its name, for example `/play/MyMountain`.
 Shared maps load immediately for visitors and members. No rider name or sign-in
 is required. Private or deleted links show an unavailable message. The sign-in page includes **Back to homepage**.
-The map catalogue is `/maps`, ISO management is `/isos`, and the editor uses `/editor/<mapname>`.
-Signed-in members also see **Private server maps** on `/maps`. Those tiles open the existing server mountain
+The homepage `/` is the map library. Games in its sidebar share one place to browse, load, play and inspect courses.
+Use search and source filters to narrow the list, or switch between compact rows and cards. **Open game file**
+accepts supported disc images and GBA ROMs; the file and imported courses stay on this device.
+`/maps` and `/isos` forward to this library. The editor uses `/editor/<mapname>`.
+Each game's **Refresh image** rescans its saved image for current course names and inventory without
+re-extracting loaded courses. **Remove image…** forgets the source image while keeping imported courses
+playable. **Unload game…** removes that game's saved image and imported courses; other games and custom
+mountains stay in place. These controls ask before removing data.
+Signed-in members also see **Private server maps** on `/`. Those tiles open the existing server mountain
 in the editor; public mountains stay in **Public maps** without duplicate tiles. Guests receive only the public
 catalogue, and private mountains remain unavailable through public play links.
 Each authored map has **Edit**; ISO maps have **Inspect**, which opens the map as a read-only reference beside
@@ -131,10 +138,10 @@ choose and updates it automatically after browser saves, including custom assets
 browser, folder, and server saves; click it for the location, last save time, and backup actions. Folder autosave
 requires a browser with the directory picker (such as desktop Chrome or Edge). If folder permission expires,
 choose **Resume folder autosave** from the save icon. The folder copy survives clearing site data; use
-**Open mountain folder…** in the editor or on `/maps` to reopen it. Other browsers can use Export/Import mountain
+**Open mountain folder…** in the editor or on `/` to reopen it. Other browsers can use Export/Import mountain
 for file backups. **Export map…** writes the map files Snowknife uses to repack the course into your ISO.
 The **Home** icon saves
-pending edits and returns to `/maps`. Its **Local maps** section lists browser-saved mountains, including
+pending edits and returns to `/`. Its **Local maps** section lists browser-saved mountains, including
 imports, and **New map** starts a new local mountain. Guest edits of public maps create numbered copies such
 as `MyMountain_REV_1` and `MyMountain_REV_2`; reopening a local tile resumes that copy. **File → Rename mountain…**
 renames it without changing its identity or the public source. Local tiles have **Delete**, with a confirmation
@@ -142,15 +149,16 @@ before removing that browser copy and its custom assets. Deleting a browser copy
 Local tiles stay local even for signed-in
 members; local copies are never uploaded automatically. Signed-in members keep their account menu in the local
 editor, including profile, settings, sign-out and Exit editor. Only signed-out local editors use the Home-only
-control. Sign in from the Maps header to use the server editor.
+control. Sign in from the Library header to use the server editor.
 Its header uses the editor's logo and signed-in account menu. **File → Exit editor** and
 **Account menu → Exit editor** save pending changes and return home without signing out.
-GitHub, Discord and About live at the right of the ISO, Maps and player toolbar. About describes using your
+GitHub, Discord and About live at the right of the library and player toolbar. About describes using your
 own assets and links to the source and server setup guide; narrow player headers keep those links inside About.
-Public and ISO map cards have **Open**, plus **Load ISO maps** when assets are missing. Choose
-the card or its highlighted **Open** button to open that mountain. Saved-map tiles open **Edit**, and the new-map
-tile opens **Create**. On `/isos`, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
-Loaded ISO maps also offer **Open** for public Play and **Inspect** for the editor's reference view.
+Map rows offer **Play**, with **Edit** for authored mountains and **Inspect** for references.
+Missing game assets link to the matching game's import view. **New map** starts an editable local mountain.
+In a game's library view, clicking a tile activates its current **Load**, **Unload**, or **Cancel** button.
+Loaded courses also offer **Play** and **Inspect**. **Device storage** in the sidebar contains the control
+for clearing saved game files and imported courses from this browser.
 Primary buttons share the same highlighted style; secondary actions keep their own targets.
 **Play**, **Play in VR**, **View map**, and **Edit map** (authored mountains) or **Inspect map** (references)
 appear over the map preview.
@@ -178,7 +186,7 @@ it folds into an expandable **Ride controls** tab.
 Editor Test rides keep the normal bottom-left editor chat and the Test tools panel. Press **Enter** during a
 ride to chat; sending a message or pressing **Escape** returns the keyboard to the ride.
 
-Retail courses require the visitor's own supported disc. `/isos` includes SSX PS2 games,
+Retail courses require the visitor's own supported disc or ROM. The game sidebar includes SSX PS2 games,
 1080° Avalanche USA and Jonny Moseley Mad Trix USA PS2. Fresh Avalanche imports
 include 46 named music streams in the existing song picker, with full-track looping.
 They also preserve source terrain colours, projected baked shadows and separate
@@ -238,7 +246,7 @@ link retains that map's name, lists its requirements, and offers **Load required
 You can load several maps: each tile shows its progress or **Queued** state, and imports run one at a time.
 Tiles reserve space for progress and messages, and update in place so loading never reshuffles the grid.
 Cancel a loading or queued map from its tile; other queued maps continue.
-Leaving `/isos` during a scan or load asks for confirmation because it cancels the active load and queued maps.
+Leaving the library during a scan or load asks for confirmation because it cancels the active load and queued maps.
 Selecting an ISO scans it without loading every map. **Clear** removes loaded ISO maps;
 browser storage may also evict them. Your ISO and extracted retail files are never uploaded.
 

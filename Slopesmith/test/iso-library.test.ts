@@ -19,6 +19,7 @@ forgetAccounts();
 const tricky = join(root, 'tricky.iso');
 const ssx = join(root, 'ssx.iso');
 const madtrix = join(root, 'madtrix.bin');
+const gba = join(root, 'ssx-tricky.gba');
 execFileSync(
   process.platform === 'win32' ? 'python' : 'python3',
   [
@@ -36,11 +37,14 @@ execFileSync(
       "index_size,strings_size,data_size=struct.unpack_from('<3I',pak,len(pak)-12)",
       "manifest=name.encode().ljust(64,b'\\0')+struct.pack('<4I',name_hash(name),data_size,index_size,strings_size)",
       "Path(sys.argv[4]).write_bytes(raw_bin(disc({BOOT:b'fixture','DATA/E942715C.DAT':manifest,f'DATA/{name_hash(name):X}.DAT':pak,'MUSIC/MUSIC.MET':music_bank()})))",
+      'from ssx_gba_import_test import rom as gba_rom',
+      'Path(sys.argv[5]).write_bytes(gba_rom(unpaired=True))',
     ].join('\n'),
     resolve('../Native/tests'),
     tricky,
     ssx,
     madtrix,
+    gba,
   ],
   { windowsHide: true },
 );
@@ -64,10 +68,12 @@ try {
   page = await context.newPage();
   await page.addInitScript(() => {
     const starts: number[] = [];
-    Object.assign(window, { madtrixMusicStarts: starts });
+    const gbaStarts: number[] = [];
+    Object.assign(window, { madtrixMusicStarts: starts, gbaMusicStarts: gbaStarts });
     const original = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...args: Parameters<AudioBufferSourceNode['start']>) {
       const duration = this.buffer?.duration ?? 0;
+      if (gbaStarts.length < 2000 && !this.loop && Math.abs(duration - 276 / 10512) < 0.001) gbaStarts.push(duration);
       if (starts.length < 2000 && (Math.abs(duration - 3.997) < 0.001 || Math.abs(duration - 2800 / 44100) < 0.001))
         starts.push(duration);
       return original.apply(this, args);
@@ -86,22 +92,23 @@ try {
   const trickyGame = games.getByRole('button', { name: 'SSX Tricky', exact: true });
   const ssxGame = games.getByRole('button', { name: 'SSX', exact: true });
   const madtrixGame = games.getByRole('button', { name: 'Jonny Moseley Mad Trix', exact: true });
+  const gbaGame = games.getByRole('button', { name: 'SSX Tricky (GBA)', exact: true });
   await trickyGame.waitFor();
-  assert(await page.getByRole('heading', { name: 'Disc maps', exact: true }).isVisible());
-  assert(await trickyGame.isDisabled());
-  assert(await ssxGame.isDisabled());
-  assert(await madtrixGame.isDisabled());
-  assert.equal(await games.getByText('No disc selected', { exact: true }).count(), 6);
+  assert(await page.getByRole('heading', { name: 'Map library', exact: true }).isVisible());
+  assert(await trickyGame.isEnabled());
+  assert(await ssxGame.isEnabled());
+  assert(await madtrixGame.isEnabled());
+  assert.equal(await games.getByText('No disc selected', { exact: true }).count(), 7);
   const filters = page.getByRole('group', { name: 'Filter ISO maps', exact: true });
   assert(await filters.isHidden());
-  const actions = await page.locator('.public-iso-actions').boundingBox();
-  const gameBounds = await games.boundingBox();
-  assert(actions && gameBounds && gameBounds.y >= actions.y + actions.height, 'games sit below Choose disc');
+  const sidebar = await page.locator('.library-sidebar').boundingBox();
+  const workspace = await page.locator('.library-workspace').boundingBox();
+  assert(sidebar && workspace && sidebar.x + sidebar.width < workspace.x, 'games sit beside the course library');
 
   await page.locator('#public-iso').setInputFiles(tricky);
   await page.locator('.public-iso-status').filter({ hasText: '2 maps found' }).waitFor();
   assert(await trickyGame.isEnabled());
-  assert(await ssxGame.isDisabled());
+  assert(await ssxGame.isEnabled());
   assert.equal(await trickyGame.getAttribute('aria-pressed'), 'true');
   assert.deepEqual(
     await page
@@ -112,8 +119,8 @@ try {
   const trickyCard = page.locator('.public-iso-game-card').filter({
     has: page.getByRole('button', { name: 'SSX Tricky', exact: true }),
   });
-  assert(await trickyCard.getByText('0 of 2 maps loaded', { exact: true }).isVisible());
-  assert.match(await trickyCard.innerText(), /Disc saved · tricky.iso/);
+  assert.match((await trickyCard.getAttribute('title'))!, /0 of 2 maps loaded/);
+  assert.match((await trickyCard.getAttribute('title'))!, /Disc saved · tricky.iso/);
   assert.equal(await page.locator('.public-iso-map .public-iso-badge.missing').count(), 2);
   assert.equal(await page.locator('.public-iso-map .public-iso-open:visible').count(), 0);
   await filters.getByRole('button', { name: 'Loaded (0)', exact: true }).click();
@@ -134,21 +141,41 @@ try {
   assert.equal(await madtrixGame.getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-course'), 'MADTRIX_AN_ANTARTICA');
   assert(await page.getByRole('button', { name: 'Load Antarctica (Mad Trix)', exact: true }).isEnabled());
-  assert.match(await games.innerText(), /11 courses · Preliminary support/);
+  assert.match(
+    await games
+      .locator('.public-iso-game-card')
+      .evaluateAll(cards => cards.map(card => card.getAttribute('title')).join(' ')),
+    /11 courses · Preliminary support/,
+  );
   await trickyGame.click();
   assert.equal(await page.locator('.public-iso-map').count(), 2, 'switching games restores that disc’s maps');
-  await page.getByRole('link', { name: 'Maps', exact: true }).click();
-  await page.getByRole('heading', { name: 'Maps', exact: true }).waitFor();
-  await page.getByRole('link', { name: 'ISO', exact: true }).click();
+  await page.getByRole('link', { name: 'Library', exact: true }).click();
+  await page.getByRole('heading', { name: 'Map library', exact: true }).waitFor();
+  await trickyGame.click();
   await trickyGame.waitFor();
   assert.equal(await trickyGame.getAttribute('aria-pressed'), 'true');
   assert(
     await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).isEnabled(),
     'the saved ISO can extract more maps after navigation',
   );
-  assert.match(await games.innerText(), /tricky.iso/);
-  assert.match(await games.innerText(), /ssx.iso/);
-  assert.match(await games.innerText(), /madtrix.bin/);
+  assert.match(
+    await games
+      .locator('.public-iso-game-card')
+      .evaluateAll(cards => cards.map(card => card.getAttribute('title')).join(' ')),
+    /tricky.iso/,
+  );
+  assert.match(
+    await games
+      .locator('.public-iso-game-card')
+      .evaluateAll(cards => cards.map(card => card.getAttribute('title')).join(' ')),
+    /ssx.iso/,
+  );
+  assert.match(
+    await games
+      .locator('.public-iso-game-card')
+      .evaluateAll(cards => cards.map(card => card.getAttribute('title')).join(' ')),
+    /madtrix.bin/,
+  );
   await page.locator('#load-status').waitFor({ state: 'hidden' });
   await page.screenshot({ path: join(root, 'saved-disc-library.png') });
 
@@ -162,6 +189,11 @@ try {
     window.releaseIsoImports = release;
   })()`);
   await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  for (const name of ['Refresh image', 'Remove image…', 'Unload game…'])
+    assert(
+      await page.getByRole('button', { name, exact: true }).isDisabled(),
+      'Source changes are blocked during imports',
+    );
   await ssxGame.click();
   await page.getByRole('button', { name: 'Load SSX_FIXTURE', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
@@ -177,7 +209,7 @@ try {
     await page
       .locator('.public-iso-map')
       .getByText('Ready to Play or Inspect. Saved in this browser.', { exact: true })
-      .isVisible(),
+      .count(),
   );
   await filters.getByRole('button', { name: 'Not loaded (0)', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map:visible').count(), 0);
@@ -279,7 +311,8 @@ try {
     { timeout: 20_000 },
   );
   await page.getByRole('button', { name: 'Exit play', exact: true }).click();
-  await page.getByRole('link', { name: 'ISO', exact: true }).click();
+  await page.getByRole('link', { name: 'Library', exact: true }).click();
+  await madtrixGame.click();
   await madtrixGame.waitFor();
   assert(await page.getByRole('button', { name: 'Unload Antarctica (Mad Trix)', exact: true }).isEnabled());
   await page.getByRole('link', { name: 'Inspect Antarctica (Mad Trix)', exact: true }).click();
@@ -317,7 +350,7 @@ try {
     0,
     'unloading removes a map from the Loaded filter',
   );
-  assert.match(await trickyCard.innerText(), /Disc saved · tricky.iso/);
+  assert.match((await trickyCard.getAttribute('title'))!, /Disc saved · tricky.iso/);
   await filters.getByRole('button', { name: 'Not loaded (2)', exact: true }).click();
   assert(
     await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).isEnabled(),
@@ -358,21 +391,107 @@ try {
     'the required legacy map does not offer a duplicate namespaced import',
   );
   await page.goto(`${origin}/isos`);
-  await page.getByRole('button', { name: 'Clear all ISO maps', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Clear all ISO maps', exact: true, includeHidden: true })
+    .waitFor({ state: 'attached' });
+  assert.match((await page.locator('#public-iso').getAttribute('accept'))!, /\.gba/);
+  await page.locator('#public-iso').setInputFiles(gba);
+  await page.locator('.public-iso-status').filter({ hasText: '8 maps found' }).waitFor();
+  assert.equal(await gbaGame.getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.public-iso-map').count(), 8);
+  const gbaGaribaldi = page.locator('.public-iso-map[data-course="SSXGBA_GARIBALDI"]');
+  await gbaGaribaldi.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await gbaGaribaldi.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
+  // Fresh native exports must be skyward. Recreate an older cache to cover its read-time repair too.
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('slopesmith-local-disc', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const file = await new Promise<{ key: string; course: string; path: string; blob: Blob }>((resolve, reject) => {
+        const request = db.transaction('files').objectStore('files').get('SSXGBA_GARIBALDI/patches.json');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const data = JSON.parse(await file.blob.text()) as { Patches: { Points: number[][]; UVPoints: number[][] }[] };
+      for (const patch of data.Patches) {
+        const p = patch.Points;
+        const du = [0, 1].map(k => p[12][k] + p[15][k] - p[0][k] - p[3][k]);
+        const dv = [0, 1].map(k => p[3][k] + p[15][k] - p[0][k] - p[12][k]);
+        if (du[0] * dv[1] - du[1] * dv[0] < 0) throw new Error('Fresh GBA terrain faces downward');
+        patch.Points = Array.from({ length: 16 }, (_, i) => p[(i % 4) * 4 + Math.floor(i / 4)]);
+        const uv = patch.UVPoints;
+        patch.UVPoints = [uv[0], uv[2], uv[1], uv[3]];
+      }
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('files', 'readwrite');
+        transaction
+          .objectStore('files')
+          .put({ ...file, blob: new Blob([JSON.stringify(data)], { type: 'application/json' }) });
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
+  await page.reload();
+  await gbaGaribaldi.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: join(root, 'gba-courses-loaded.png') });
+  await gbaGaribaldi.getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
+  await page.evaluate(async () => {
+    const path = '/src/app/ride/session.ts';
+    const { TestRide } = (await import(/* @vite-ignore */ path)) as typeof import('../src/app/ride/session');
+    const start = TestRide.prototype.start;
+    TestRide.prototype.start = function (...args) {
+      Object.assign(window, { gbaRideForTest: this });
+      return start.apply(this, args);
+    };
+  });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const groundSamples = await page.evaluate(async () => {
+    const samples: boolean[] = [];
+    for (let i = 0; i < 20; i++) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      samples.push(
+        (window as typeof window & { gbaRideForTest: import('../src/app/ride/session').TestRide }).gbaRideForTest.state
+          .grounded,
+      );
+    }
+    return samples;
+  });
+  assert(
+    groundSamples.filter(Boolean).length > 8,
+    'Older cached GBA triangles support the browser rider through spawn',
+  );
+  await page.waitForFunction(() => document.body.innerText.includes('sink'), null, { timeout: 30_000 });
+  await page.waitForFunction(
+    () => ((window as typeof window & { gbaMusicStarts: number[] }).gbaMusicStarts?.length ?? 0) >= 2,
+    undefined,
+    { timeout: 20_000 },
+  );
+  await page.screenshot({ path: join(root, 'gba-course-riding.png') });
+  await page.goto(`${origin}/isos`);
+  await page.locator('.library-storage summary').click();
+  await page.getByRole('button', { name: 'Clear all ISO maps', exact: true, includeHidden: true }).click();
   await page
     .getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true })
     .getByRole('button', { name: 'Unload all maps', exact: true })
     .click();
   await page.getByText('0 loaded', { exact: true }).waitFor();
-  assert(await trickyGame.isDisabled());
-  assert(await ssxGame.isDisabled());
-  assert(await madtrixGame.isDisabled());
+  assert(await trickyGame.isEnabled());
+  assert(await ssxGame.isEnabled());
+  assert(await madtrixGame.isEnabled());
+  assert(await gbaGame.isEnabled());
   await page.reload();
   await trickyGame.waitFor();
-  assert(await trickyGame.isDisabled());
-  assert(await ssxGame.isDisabled());
-  assert(await madtrixGame.isDisabled());
+  assert(await trickyGame.isEnabled());
+  assert(await ssxGame.isEnabled());
+  assert(await madtrixGame.isEnabled());
   assert.equal(
     await page.locator('.public-iso-map').count(),
     0,

@@ -1,7 +1,7 @@
 import './home.css';
 import type { PublicCourse } from '../../core/session/public-courses';
 import { referenceRoom } from '../../core/session/public-courses';
-import { isDiscCourse } from '../../core/reference/disc-courses';
+import { discCourseName, isDiscCourse } from '../../core/reference/disc-courses';
 import { currentAccount } from '../net/account';
 import { localEditorUrl } from '../navigation';
 import { deleteLocalProject, listLocalProjects } from '../state/local-projects';
@@ -25,6 +25,7 @@ import { publicMapControls } from './map-controls';
 import type { ChatActivity } from '../../core/session/chat-activity';
 import { activityCounter, watchChatActivity } from './chat-activity';
 import { publicAvatarPicker } from './avatar-picker';
+import { createMapLibrary } from './map-library';
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
@@ -39,7 +40,7 @@ export async function showPublicHome(): Promise<void> {
         : null;
   let player: PublicPlayer | null = null;
   let selected: PublicCourse | null = null;
-  const linked = publicCourseRequest(new URL(location.href));
+  const linked = location.pathname.startsWith('/play') ? publicCourseRequest(new URL(location.href)) : null;
   let friendRoom = new URL(location.href).searchParams.get('room');
   if (friendRoom && !/^[a-zA-Z0-9_-]{1,64}$/.test(friendRoom)) friendRoom = null;
   const playUrl = (course: PublicCourse) => {
@@ -55,7 +56,7 @@ export async function showPublicHome(): Promise<void> {
   let serverMapsLoaded = false;
   let serverMapsError = '';
   const cardMessages = new Map<string, string>();
-  const cached = await cachedIsoCourses().catch(() => [] as string[]);
+  let cached = await cachedIsoCourses().catch(() => [] as string[]);
   let savedProjects: ClientProject[] = [];
   const localCourses = (): PublicCourse[] =>
     savedProjects.map(project => ({
@@ -77,7 +78,8 @@ export async function showPublicHome(): Promise<void> {
   const peers = new Map<string, PeerMarks>();
   let presence: Record<string, PresenceEntry[]> = {};
 
-  const { header, iso: manage, setMap, syncIsoMaps, community } = publicHeader('maps', account);
+  const navigation = publicHeader('maps', account);
+  const { header, iso: manage, setMap, syncIsoMaps, community } = navigation;
   syncIsoMaps(cached);
   const session = community.session;
   if (friendRoom) session.setPlayRoom(friendRoom);
@@ -98,7 +100,7 @@ export async function showPublicHome(): Promise<void> {
     heading.append(counter.el);
     return heading;
   }
-  document.title = 'Maps · Slopesmith';
+  document.title = linked ? 'Maps · Slopesmith' : 'Library · Slopesmith';
   const main = element('main', 'public-home');
   const title = element('h1', 'public-visually-hidden', 'Maps');
   const serverSection = element('section', 'public-server-maps');
@@ -168,15 +170,15 @@ export async function showPublicHome(): Promise<void> {
   function showPlayerError(error: unknown) {
     mapControls.error(error instanceof Error ? error.message : String(error));
   }
-  main.append(
-    title,
-    ...(member && !linked ? [privateSection] : []),
-    serverSection,
-    savedSection,
-    localSection,
-    requirements,
-    status,
-  );
+  const library = linked
+    ? null
+    : createMapLibrary(title, [
+        ...(member ? [{ section: privateSection, grid: privateGrid, source: 'server' as const }] : []),
+        { section: serverSection, grid: serverGrid, source: 'server' },
+        { section: savedSection, grid: savedGrid, source: 'device' },
+        { section: localSection, grid: localGrid, source: 'device' },
+      ]);
+  main.append(...(library ? [library.el] : [title, serverSection, savedSection, localSection]), requirements, status);
   document.body.append(header, main, mapControls.el);
 
   function showRequirements() {
@@ -300,6 +302,7 @@ export async function showPublicHome(): Promise<void> {
         const card = element('article', 'public-course public-map-tile');
         card.setAttribute('aria-label', displayName);
         card.dataset.kind = course.kind;
+        card.dataset.course = course.id;
         card.append(
           courseHeading(
             displayName,
@@ -344,6 +347,7 @@ export async function showPublicHome(): Promise<void> {
         grid.append(card);
       }
     }
+    library?.update();
   }
   async function deleteSavedMap(project: ClientProject, button: HTMLButtonElement) {
     button.disabled = true;
@@ -378,6 +382,26 @@ export async function showPublicHome(): Promise<void> {
     }
   }
   await refreshLocalMaps();
+  if (library) {
+    let inventoryKey = JSON.stringify(cached.map(id => [id, discCourseName(id)]));
+    const { showIsoPage } = await import('./iso-page');
+    const importer = await showIsoPage({
+      host: library.gameHost,
+      gamesHost: library.gamesHost,
+      summaryHost: library.summaryHost,
+      account,
+      navigation,
+      onSelect: library.selectGame,
+      onInventory: next => {
+        const key = JSON.stringify(next.map(id => [id, discCourseName(id)]));
+        if (key === inventoryKey) return;
+        inventoryKey = key;
+        cached = [...next];
+        renderCourses();
+      },
+    });
+    library.connect(importer);
+  }
   window.addEventListener('pageshow', event => {
     if (!event.persisted) return;
     // A returned member catalogue must re-check sign-in and reflect server edits/publication changes.

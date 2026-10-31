@@ -34,12 +34,18 @@ async function boot(): Promise<void> {
   const url = new URL(location.href);
   const page = pageInPath(url.pathname);
   if (page === 'isos') {
-    const { showIsoPage } = await import('./public/iso-page');
-    await showIsoPage();
-    return;
+    url.pathname = MAPS_PATH;
+    url.searchParams.set('view', 'games');
+    history.replaceState(history.state, '', url);
   }
   const rootHome = url.pathname === '/' && gate.show !== 'enrol' && gate.show !== 'redeem';
-  if (page === 'maps' || page === 'play' || rootHome || (!page && url.pathname !== '/')) {
+  if (
+    (page === 'maps' && url.pathname !== '/') ||
+    page === 'isos' ||
+    page === 'play' ||
+    rootHome ||
+    (!page && url.pathname !== '/')
+  ) {
     if (page !== 'play') {
       url.pathname = MAPS_PATH;
       history.replaceState(history.state, '', url);

@@ -8,7 +8,14 @@ import {
 } from '../../core/reference/disc-courses';
 import { importedCourseLayouts, isoCourseVisible } from '../../core/reference/course-layout';
 import { currentAccount } from '../net/account';
-import { cachedIsoCourses, clearIsoCache, importIso, scanIso, unloadIsoCourse } from './iso-cache';
+import {
+  cachedIsoCourses,
+  clearIsoCache,
+  closeIsoImporterSessions,
+  importIso,
+  scanIso,
+  unloadIsoCourse,
+} from './iso-cache';
 import { element, publicJson } from './dom';
 import { publicHeader } from './header';
 import { isoStatusBadges } from './iso-status';
@@ -17,6 +24,7 @@ import { courseEditorUrl, publicCourseRequest, publicCourseUrl, resolvePublicCou
 import { mapHeading, publicGlyph } from './presentation';
 import { confirmAction } from '../ui/components/prompts';
 import { EDITOR_PATH } from '../navigation';
+import type { Account } from '../net/account';
 import { beforeAppUpdate } from '../offline';
 import {
   ISO_GAMES,
@@ -24,6 +32,7 @@ import {
   isoGameForCourse,
   saveIsoDisc,
   savedIsoDiscs,
+  removeSavedIsoDisc,
   type IsoGame,
   type SavedIsoDisc,
 } from './iso-discs';
@@ -31,11 +40,21 @@ import {
 const SELECTED_GAME = 'slopesmith.isoGame';
 
 /** Disc files and extraction stay on this device; this page needs no member or guest session. */
-export async function showIsoPage(): Promise<void> {
-  document.body.classList.add('public-play', 'public-iso-page', 'sp-page-background');
+export type IsoLibraryOptions = {
+  host: HTMLElement;
+  gamesHost: HTMLElement;
+  summaryHost: HTMLElement;
+  account: Account;
+  navigation: ReturnType<typeof publicHeader>;
+  onSelect: (game: IsoGame) => void;
+  onInventory: (cached: string[]) => void;
+};
+
+export async function showIsoPage(options?: IsoLibraryOptions) {
+  if (!options) document.body.classList.add('public-play', 'public-iso-page', 'sp-page-background');
   document.getElementById('load-status')?.classList.remove('show');
-  document.title = 'ISO · Slopesmith';
-  const account = await currentAccount();
+  if (!options) document.title = 'ISO · Slopesmith';
+  const account = options?.account ?? (await currentAccount());
   let cached = await cachedIsoCourses().catch(() => [] as string[]);
   const discs = new Map<IsoGame, SavedIsoDisc & { saved: boolean }>(
     (await savedIsoDiscs().catch(() => [] as SavedIsoDisc[])).map(disc => [disc.game, { ...disc, saved: true }]),
@@ -58,8 +77,9 @@ export async function showIsoPage(): Promise<void> {
   let target: PublicCourse | null = null;
   let mapFilter: 'all' | 'loaded' | 'missing' = 'all';
   let allMapTypes = false;
-  const { header, setEditor, syncIsoMaps } = publicHeader('iso', account);
-  const main = element('main', 'public-home');
+  let searchQuery = '';
+  const { header, setEditor, syncIsoMaps } = options?.navigation ?? publicHeader('iso', account);
+  const main = element('section', options ? 'library-game-panel' : 'public-home');
   const title = element('h1', 'public-iso-title', 'Disc maps');
   const intro = element(
     'p',
@@ -95,6 +115,16 @@ export async function showIsoPage(): Promise<void> {
   actions.append(label, input, count, loadRequired, clear, cancel);
   const status = element('p', 'public-iso-status');
   status.setAttribute('role', 'status');
+  const sourceNote = element('p', 'library-source-file');
+  const sourceActions = element('div', 'library-source-actions');
+  const refreshImage = element('button', '', 'Refresh image');
+  refreshImage.title = 'Rescan course names and the map list without re-extracting courses';
+  const removeImage = element('button', '', 'Remove image…');
+  removeImage.title = 'Forget this saved image and keep imported courses';
+  const unloadGame = element('button', '', 'Unload game…');
+  unloadGame.title = 'Remove this image and its imported courses from this browser';
+  for (const button of [refreshImage, removeImage, unloadGame]) button.type = 'button';
+  sourceActions.append(refreshImage, removeImage, unloadGame);
   const support = element('section', 'public-iso-support');
   support.setAttribute('aria-label', 'Disc game support');
   support.append(element('h2', '', 'Games'));
@@ -108,6 +138,13 @@ export async function showIsoPage(): Promise<void> {
     const name = element('dt', '');
     const button = element('button', 'public-iso-game', game.name);
     button.type = 'button';
+    button.dataset.game = game.id;
+    button.setAttribute('aria-label', game.name);
+    if (options) {
+      const count = element('span', 'library-game-count');
+      count.setAttribute('aria-hidden', 'true');
+      button.append(count);
+    }
     button.setAttribute('aria-controls', 'public-iso-maps');
     button.onclick = () => {
       selectGame(game.id);
@@ -134,7 +171,7 @@ export async function showIsoPage(): Promise<void> {
       'SSX support is still incomplete. SSX 3, On Tour and 1080° Avalanche are early imports with missing features and possible map issues. Mad Trix includes terrain with baked colored lighting, sky, adapted grind strips, blinking sign panels, scrolling Las Vegas waterfalls, source ski sounds and the original music tracks. Animation timing and full-track music looping are adaptations; other props, sky lighting and events remain incomplete. Missing riding sounds can use a Tricky map loaded in this browser.',
     ),
   );
-  iso.append(actions, support, status);
+  iso.append(actions, support, ...(options ? [sourceNote] : []), status);
   const mapHeader = element('div', 'public-iso-map-header');
   const heading = element('h2', '', 'Maps');
   const mapSummary = element('p', 'public-iso-map-summary');
@@ -172,8 +209,16 @@ export async function showIsoPage(): Promise<void> {
   rows.setAttribute('aria-label', 'Manage ISO maps');
   rows.id = 'public-iso-maps';
   const empty = element('p', 'public-empty');
-  main.append(title, intro, dependencies, iso, mapHeader, filters, rows, empty);
-  document.body.append(header, main);
+  main.append(title, intro, dependencies, iso, mapHeader, filters, rows, empty, sourceActions);
+  if (options) {
+    title.hidden = intro.hidden = true;
+    options.host.append(main);
+    options.gamesHost.append(support);
+    options.summaryHost.append(count);
+    const storage = element('details', 'library-storage');
+    storage.append(element('summary', '', 'Device storage'), clear);
+    options.gamesHost.append(storage);
+  } else document.body.append(header, main);
   const cards = new Map<string, ReturnType<typeof createCard>>();
   let dependencyState = '';
 
@@ -195,6 +240,7 @@ export async function showIsoPage(): Promise<void> {
   function selectGame(game: IsoGame) {
     if (selectedGame !== game) mapFilter = 'all';
     selectedGame = game;
+    options?.onSelect(game);
     try {
       sessionStorage.setItem(SELECTED_GAME, game);
     } catch {
@@ -304,12 +350,13 @@ export async function showIsoPage(): Promise<void> {
     message.setAttribute('role', 'status');
     feedback.append(progress, message);
     row.append(heading, badge, controls, feedback);
-    return { row, badge, button, message, open, inspect };
+    return { row, badge, button, message, open, inspect, course, title: heading.querySelector('h3')! };
   }
 
   function render() {
     const disc = discs.get(selectedGame);
     syncIsoMaps(cached);
+    options?.onInventory(cached);
     if (target)
       setEditor(
         target.kind === 'reference' && target.isoCourses.some(slot => !cached.includes(slot))
@@ -320,6 +367,9 @@ export async function showIsoPage(): Promise<void> {
     else window.removeEventListener('beforeunload', confirmUnload);
     totalLoaded.textContent = `${cached.length} loaded`;
     input.disabled = clear.disabled = busy || loads.busy;
+    sourceActions.hidden = !disc && !cached.some(slot => isoGameForCourse(slot) === selectedGame);
+    refreshImage.hidden = removeImage.hidden = !disc;
+    refreshImage.disabled = removeImage.disabled = unloadGame.disabled = busy || loads.busy;
     clear.style.visibility = cached.length || discs.size ? 'visible' : 'hidden';
     for (const game of ISO_GAMES) {
       const { item, button, state, detail } = gameButtons.get(game.id)!;
@@ -327,17 +377,24 @@ export async function showIsoPage(): Promise<void> {
       const loadedCourses = cached.filter(slot => isoGameForCourse(slot) === game.id);
       const loaded = loadedCourses.length;
       const total = new Set([...loadedCourses, ...(source?.courses ?? [])]).size;
-      button.disabled = !source && !loaded;
-      button.setAttribute('aria-pressed', String(game.id === selectedGame && !button.disabled));
+      button.disabled = options ? false : !source && !loaded;
+      if (!options) button.setAttribute('aria-pressed', String(game.id === selectedGame && !button.disabled));
       item.dataset.state = loaded ? 'loaded' : source ? 'available' : 'missing';
+      const counter = button.querySelector('.library-game-count');
+      if (counter) counter.textContent = total ? `${loaded}/${total}` : '—';
       state.textContent = total ? `${loaded} of ${total} maps loaded` : 'No maps loaded';
       detail.textContent = source
         ? `${source.saved ? 'Disc saved' : 'Disc available for this visit'} · ${source.file.name}`
         : loaded
           ? 'No disc saved · Loaded maps are ready to use'
           : 'No disc selected';
+      item.title = `${state.textContent} · ${detail.textContent} · ${game.support}`;
     }
     const required = target?.isoCourses ?? [];
+    if (options)
+      sourceNote.textContent = disc
+        ? `${disc.saved ? 'Saved on this device' : 'Available this visit'} · ${disc.file.name} · ${ISO_GAMES.find(game => game.id === selectedGame)!.support}`
+        : 'No game file selected. Open an ISO, BIN, GCM, RVZ or GBA file to see its courses.';
     const missing = required.filter(slot => !cached.includes(slot));
     loadRequired.hidden = !required.length;
     loadRequired.style.visibility = missing.length ? 'visible' : 'hidden';
@@ -373,13 +430,20 @@ export async function showIsoPage(): Promise<void> {
       button.textContent = `${label} (${filter === 'all' ? maps.length : filter === 'loaded' ? loadedCount : missingCount})`;
       button.setAttribute('aria-pressed', String(filter === mapFilter));
     }
-    const visibleMaps = maps.filter(slot => mapFilter === 'all' || cached.includes(slot) === (mapFilter === 'loaded'));
+    const visibleMaps = maps.filter(
+      slot =>
+        (mapFilter === 'all' || cached.includes(slot) === (mapFilter === 'loaded')) &&
+        (!searchQuery || `${discCourseName(slot)} ${slot}`.toLowerCase().includes(searchQuery)),
+    );
     empty.hidden = !!visibleMaps.length;
-    empty.textContent = !maps.length
-      ? 'Choose a supported disc above, then load individual maps here.'
-      : mapFilter === 'loaded'
-        ? 'No loaded maps for this game. Select Not loaded, then Load a map to make it ready to play.'
-        : 'All listed maps are loaded and ready to play.';
+    empty.textContent =
+      searchQuery && maps.length
+        ? `No courses match “${searchQuery}”.`
+        : !maps.length
+          ? 'Choose a supported disc above, then load individual maps here.'
+          : mapFilter === 'loaded'
+            ? 'No loaded maps for this game. Select Not loaded, then Load a map to make it ready to play.'
+            : 'All listed maps are loaded and ready to play.';
     for (const [slot, card] of cards) {
       if (!maps.includes(slot)) {
         card.row.remove();
@@ -392,7 +456,15 @@ export async function showIsoPage(): Promise<void> {
         card = createCard(slot);
         cards.set(slot, card);
       }
-      const { row, badge, button, message, open, inspect } = card;
+      const { row, badge, button, message, open, inspect, course, title } = card;
+      const name = discCourseName(slot);
+      if (title.textContent !== name) {
+        title.textContent = course.name = name;
+        open.href = publicCourseUrl(course);
+        inspect.href = courseEditorUrl(course);
+        open.setAttribute('aria-label', `Play ${name}`);
+        inspect.setAttribute('aria-label', `Inspect ${name}`);
+      }
       const loaded = cached.includes(slot);
       open.hidden = inspect.hidden = !loaded;
       const state = loads.state(slot);
@@ -465,6 +537,73 @@ export async function showIsoPage(): Promise<void> {
       if (wanted.length) void loads.add(disc.file, wanted);
     }
   }
+  async function readImage(selectedFile: File, signal: AbortSignal): Promise<string> {
+    const courses = await scanIso(selectedFile, signal);
+    const game = isoGameForCourse(courses[0]);
+    const names = importedDiscCourseNames(courses);
+    const layouts = importedCourseLayouts(courses);
+    const disc = { game, file: selectedFile, courses, names, layouts, saved: false };
+    let result = `${selectedFile.name} · ${courses.length} map${courses.length === 1 ? '' : 's'} found`;
+    try {
+      await saveIsoDisc({ game, file: selectedFile, courses, names, layouts }, signal);
+      disc.saved = true;
+    } catch (error) {
+      signal.throwIfAborted();
+      result += ` · Could not keep this image in browser storage: ${error instanceof Error ? error.message : String(error)}. Choose it again after leaving this page.`;
+    }
+    discs.set(game, disc);
+    selectGame(game);
+    return result;
+  }
+  refreshImage.onclick = () => {
+    const disc = discs.get(selectedGame);
+    if (!disc || busy || loads.busy) return;
+    let result = '';
+    status.textContent = `Refreshing ${disc.file.name}…`;
+    void operate(
+      async signal => {
+        closeIsoImporterSessions();
+        result = await readImage(disc.file, signal);
+      },
+      () => `${result} · Course names refreshed.`,
+    );
+  };
+  async function removeGame(removeCourses: boolean) {
+    const game = selectedGame;
+    if (busy || loads.busy || confirmingClear) return;
+    const name = ISO_GAMES.find(item => item.id === game)!.name;
+    const courses = cached.filter(slot => isoGameForCourse(slot) === game);
+    confirmingClear = true;
+    try {
+      const confirmed = await confirmAction({
+        title: removeCourses ? `Unload ${name}?` : `Remove ${name} image?`,
+        body: removeCourses
+          ? `This removes this game's saved image and ${courses.length} imported course(s) from this browser. Other games, custom mountains and original files are kept.`
+          : 'This forgets the saved image in this browser. Imported courses stay playable, and the original file is kept. Choose the image again to load more courses.',
+        confirmLabel: removeCourses ? 'Unload game' : 'Remove image',
+        danger: true,
+      });
+      if (!confirmed) return;
+      await operate(
+        async () => {
+          closeIsoImporterSessions();
+          if (removeCourses) for (const course of courses) await unloadIsoCourse(course);
+          await removeSavedIsoDisc(game);
+          discs.delete(game);
+        },
+        () => (removeCourses ? `${name} unloaded.` : `${name} image removed. Imported courses are kept.`),
+        false,
+      );
+    } finally {
+      confirmingClear = false;
+    }
+  }
+  removeImage.onclick = () => {
+    void removeGame(false);
+  };
+  unloadGame.onclick = () => {
+    void removeGame(true);
+  };
   input.onchange = () => {
     const selectedFile = input.files?.[0];
     if (!selectedFile) return;
@@ -472,21 +611,7 @@ export async function showIsoPage(): Promise<void> {
     status.textContent = `Reading maps from ${selectedFile.name}…`;
     void operate(
       async signal => {
-        const courses = await scanIso(selectedFile, signal);
-        const game = isoGameForCourse(courses[0]);
-        const names = importedDiscCourseNames(courses);
-        const layouts = importedCourseLayouts(courses);
-        const disc = { game, file: selectedFile, courses, names, layouts, saved: false };
-        result = `${selectedFile.name} · ${courses.length} map${courses.length === 1 ? '' : 's'} found`;
-        try {
-          await saveIsoDisc({ game, file: selectedFile, courses, names, layouts }, signal);
-          disc.saved = true;
-        } catch (error) {
-          signal.throwIfAborted();
-          result += ` · Could not keep this disc in browser storage: ${error instanceof Error ? error.message : error}. Choose it again after leaving this page.`;
-        }
-        discs.set(game, disc);
-        selectGame(game);
+        result = await readImage(selectedFile, signal);
       },
       () => result,
     ).finally(() => {
@@ -553,4 +678,18 @@ export async function showIsoPage(): Promise<void> {
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : String(error);
   }
+  return {
+    selectGame(game: IsoGame) {
+      selectGame(game);
+      render();
+    },
+    search(query: string) {
+      const next = query.trim().toLowerCase();
+      if (next === searchQuery) return;
+      searchQuery = next;
+      render();
+    },
+    chooseFile: () => input.click(),
+    currentGame: () => selectedGame,
+  };
 }

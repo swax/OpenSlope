@@ -4,6 +4,7 @@ import { editorAccountUrl, localEditorUrl, mapNameAtPath, mapPath, pageInPath } 
 import { mapNameInUrl, showMapInUrl } from '../src/app/state/map-url';
 
 for (const [pathname, page] of [
+  ['/', 'maps'],
   ['/maps', 'maps'],
   ['/isos', 'isos'],
   ['/play/RUN', 'play'],

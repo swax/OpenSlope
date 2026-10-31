@@ -18,22 +18,28 @@ forgetWorkspaceConfig();
 forgetAccounts();
 const api = await startApiService({ host: '127.0.0.1', port: 0, accounts: true });
 const vite = await createServer({
-  root: process.cwd(), logLevel: 'error',
+  root: process.cwd(),
+  logLevel: 'error',
   server: { host: '127.0.0.1', port: 0, proxy: { '/api': { target: api.url, ws: true } } },
 });
 let browser: Browser | undefined;
 let page: Page | undefined;
-const watchdog = setTimeout(() => { console.error(`Map actions timed out: ${root}`); process.exit(1); }, 150_000);
+const watchdog = setTimeout(() => {
+  console.error(`Map actions timed out: ${root}`);
+  process.exit(1);
+}, 150_000);
 try {
   const bootstrap = await fetch(`${api.url}/api/auth/bootstrap`, {
-    method: 'POST', headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code: api.adminCode, username: 'admin', password: 'map actions test password' }),
   });
   assert.equal(bootstrap.status, 201);
   const cookie = bootstrap.headers.get('set-cookie')!.split(';')[0];
   async function checked(path: string, method = 'GET', body?: unknown) {
     const response = await fetch(`${api.url}${path}`, {
-      method, headers: { cookie, 'content-type': 'application/json' },
+      method,
+      headers: { cookie, 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     assert(response.ok, `${path}: ${response.status} ${await response.clone().text()}`);
@@ -47,14 +53,16 @@ try {
   await vite.listen();
   const origin = vite.resolvedUrls!.local[0].replace(/\/$/, '');
   browser = await chromium.launch({
-    executablePath: chromiumExecutable(), headless: true,
+    executablePath: chromiumExecutable(),
+    headless: true,
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const member = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await member.addCookies([{ name: 'slopesmith_session', value: cookie.split('=')[1], url: origin }]);
   page = await member.newPage();
   page.setDefaultTimeout(60_000);
-  const errors: string[] = [], writes: string[] = [];
+  const errors: string[] = [],
+    writes: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => {
     if (new URL(request.url()).pathname.startsWith('/api/projects') && request.method() !== 'GET')
@@ -91,8 +99,11 @@ try {
   assert.equal((await fetch(`${api.url}/api/public/project?id=${privateMap.project.id}`)).status, 404);
   assert.equal((await fetch(`${api.url}/api/projects/${privateMap.project.id}`)).status, 401);
   await page.getByRole('button', { name: 'Edit map', exact: true }).click();
-  await page.waitForFunction(() => document.title === 'PRIVATE_RUN - Slopesmith'
-    && ['saved', 'shared', 'following'].includes(document.documentElement.dataset.projectSave ?? ''));
+  await page.waitForFunction(
+    () =>
+      document.title === 'PRIVATE_RUN - Slopesmith' &&
+      ['saved', 'shared', 'following'].includes(document.documentElement.dataset.projectSave ?? ''),
+  );
   assert.equal(new URL(page.url()).pathname, '/editor/PRIVATE_RUN');
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');
   assert.deepEqual(errors, []);
@@ -110,8 +121,10 @@ try {
   assert.equal(new URL(guest.url()).pathname, '/play/PUBLIC_RUN');
   await guest.goBack();
   await publicCard.waitFor();
-  assert.equal(new URL(guest.url()).pathname, '/maps', 'Back returns to the catalogue');
-  console.log('MAP ACTIONS PASS: Play/Edit routing, private solo playback, permissions, mobile layout and browser Back.');
+  assert.equal(new URL(guest.url()).pathname, '/', 'Back returns to the home library');
+  console.log(
+    'MAP ACTIONS PASS: Play/Edit routing, private solo playback, permissions, mobile layout and browser Back.',
+  );
 } catch (error) {
   await page?.screenshot({ path: join(root, 'failure.png') }).catch(() => {});
   console.error(`Map action failure artifacts: ${root}`);

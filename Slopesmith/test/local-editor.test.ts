@@ -119,7 +119,7 @@ try {
   const starter = await starterContext.newPage();
   await starter.goto(origin);
   await starter.getByRole('navigation', { name: 'Primary' }).waitFor();
-  assert.equal(new URL(starter.url()).pathname, '/maps', 'signed-out root visits open the map catalogue');
+  assert.equal(new URL(starter.url()).pathname, '/', 'signed-out root visits open the map catalogue');
   await starter.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Editor', exact: true }).click();
   await ready(starter);
   assert.equal(
@@ -297,7 +297,7 @@ try {
   const importedUrl = page.url();
 
   await editorBrand.click();
-  await page.waitForURL(`${origin}/maps`);
+  await page.waitForURL(`${origin}/`);
   const localMaps = page.locator('.public-saved-maps');
   await localMaps.getByRole('link', { name: 'Edit LOCAL_RUN', exact: true }).waitFor();
   assert.equal(await localMaps.locator('[data-kind=local]').count(), 2);
@@ -310,7 +310,7 @@ try {
     .getByRole('navigation', { name: 'Primary' })
     .getByRole('link', { name: 'Editor', exact: true });
   assert.equal(new URL((await editorTab.getAttribute('href'))!).searchParams.get('local'), firstCopyId);
-  await page.getByRole('link', { name: 'ISO', exact: true }).click();
+  await page.getByRole('link', { name: 'Library', exact: true }).click();
   await editorTab.waitFor();
   assert.equal(new URL((await editorTab.getAttribute('href'))!).searchParams.get('local'), firstCopyId);
   await page.goto(`${origin}/maps`);
@@ -612,16 +612,16 @@ try {
   assert.equal(await page.title(), 'PUBLIC_RUN - Slopesmith');
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'server');
   await editorBrand.click();
-  await page.waitForURL(`${origin}/maps`);
+  await page.waitForURL(`${origin}/`);
   await page.getByRole('navigation', { name: 'Primary' }).waitFor();
-  assert.equal(new URL(page.url()).pathname, '/maps', 'the signed-in editor logo resolves the root to Maps');
+  assert.equal(new URL(page.url()).pathname, '/', 'the signed-in editor logo resolves the root to Maps');
   await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
   const rootCatalogue = page.waitForResponse(response => new URL(response.url()).pathname === '/api/public/courses');
   await page.locator('.public-brand').click();
   await rootCatalogue;
-  await page.waitForURL(`${origin}/maps`);
+  await page.waitForURL(`${origin}/`);
   await page.locator('.public-server-maps').getByRole('heading', { name: 'PUBLIC RUN', exact: true }).waitFor();
-  assert.equal(new URL(page.url()).pathname, '/maps', 'the signed-in public logo resolves the root to Maps');
+  assert.equal(new URL(page.url()).pathname, '/', 'the signed-in public logo resolves the root to Maps');
   assert.equal(
     ((await (await call('/api/projects')).json()) as any).projects.length,
     1,
