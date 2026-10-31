@@ -57,16 +57,16 @@ try {
   await page.locator('.public-iso-status').filter({ hasText: '27 maps found' }).waitFor({ timeout: 120_000 });
   const rows = page.locator('.public-iso-map');
   assert.equal(await rows.count(), 17);
-  assert(await page.getByRole('button', { name: 'Load Fixture ARA1', exact: true }).isEnabled());
+  assert(await page.getByRole('button', { name: 'Load local Fixture ARA1', exact: true }).isEnabled());
   assert.equal(await rows.filter({ hasText: 'Fixture ARA1' }).getAttribute('data-course'), 'SSX3_ARA1');
   const advanced = page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true });
   await advanced.check();
   assert.equal(await rows.count(), 27);
-  assert(await page.getByRole('button', { name: 'Load Peak 1', exact: true }).isEnabled());
+  assert(await page.getByRole('button', { name: 'Load local Peak 1', exact: true }).isEnabled());
   await advanced.uncheck();
   assert.equal(await rows.count(), 17);
   await page.reload();
-  await page.getByRole('button', { name: 'Load Fixture ARA1', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Load local Fixture ARA1', exact: true }).waitFor();
   assert.equal(await rows.count(), 17);
   assert.equal(await advanced.isChecked(), false);
   const layout = await page.evaluate(async () => {

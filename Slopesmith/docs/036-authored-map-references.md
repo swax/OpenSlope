@@ -107,3 +107,45 @@ answer. Existing records are kept unless `--force`.
 Reference folders carry canonical prop tables and explicit per-page texture provenance. Retail folders get
 those files from `snowknife import`; editable SlopeSmith projects get them from Export. Reference preview, Unity
 setup, glTF bundling and PS2 repacking all consume this same contract.
+
+## Uploading browser-extracted references
+
+Admins can use **Reference** on a loaded game map's row in the Library catalogue or a game's course list.
+The toggle is pressed when that course is installed in the server reference library. Installed references remain manageable
+without a local disc or loaded map. Clicking a pressed toggle asks for confirmation before removing the server
+folder; the browser's map and disc are kept. Removal also clears that reference's public listing. Uploading a
+reference does not publish it.
+
+The Library uses one list, merging disc, locally imported and server copies of each game course. Disc and server
+icons show where it is available; **Load local** extracts a course for this browser. Admins also see unpublished
+references and manage them on the same row.
+
+The browser uploads the native importer's already extracted files, preserving filename case, import metadata and
+any `Source/` sidecars. The ISO or ROM never leaves the device. **Include music** defaults off and includes both
+`Audio/Music/` and `Audio/Intro/`; other audio stays with the course. Current native importer limitations still apply.
+
+Reference uploads share one queue across the Library catalogue and game views. Each map retains its own music
+choice and shows queued/uploading progress. Click a queued or uploading toggle to cancel that job; later jobs continue after
+cleanup, including after a failed upload. Leaving the page cancels active and queued uploads.
+
+Before transferring bytes, the browser offers sizes and SHA-256 hashes. The server checks ordinary files
+throughout its configured Maps library (including Shared), verifies matches and copies them into staging.
+Only missing content is uploaded; duplicate bytes within one reference are transferred once as well.
+Names alone never establish a match. Reused files are independent copies, so deleting or editing the donor
+does not change another reference. File hashes are cached with filesystem signatures, and copied bytes are
+verified again. The progress message reports how many files were reused.
+
+`/api/reference-maps` is admin-only, including status and cancellation; personal access keys cannot administer.
+`GET /` lists installed references, `POST /uploads` starts a manifest (`course`, `music`, and ordered
+`files: [{path, size, sha256}]`). New clients set `reuse: true` and receive `missing` (ordered manifest-file
+indices), `reusedFiles` and `reusedBytes`. `PUT /uploads/{id}?offset={bytes}` sends contiguous binary slices of
+only those missing files concatenated in response order. Without `reuse`, the original all-file protocol is
+retained. Each slice is at most 8 MiB. `GET /uploads/{id}` reports the accepted
+offset after a lost response; `POST /uploads/{id}/complete` validates and publishes, and `DELETE /uploads/{id}`
+cancels. `DELETE /maps/{name}` removes an installed reference.
+
+Uploads are limited to two active transfers, 30,000 files, 512 MiB per file and 4 GiB total. A hidden staging
+folder prevents partial maps appearing in catalogues. Completion checks hashes, JSON, PNGs, terrain controls,
+provenance and terrain/model asset dependencies before renaming the new folder into place. Existing courses,
+including legacy Tricky aliases, are never overwritten. Cancelled and invalid transfers remove their staging;
+idle transfers expire after 30 minutes. Old staging left by a process interruption is reclaimed on a later upload.

@@ -140,7 +140,7 @@ try {
   assert(await madtrixGame.isEnabled());
   assert.equal(await madtrixGame.getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-course'), 'MADTRIX_AN_ANTARTICA');
-  assert(await page.getByRole('button', { name: 'Load Antarctica (Mad Trix)', exact: true }).isEnabled());
+  assert(await page.getByRole('button', { name: 'Load local Antarctica (Mad Trix)', exact: true }).isEnabled());
   assert.match(
     await games
       .locator('.public-iso-game-card')
@@ -155,7 +155,7 @@ try {
   await trickyGame.waitFor();
   assert.equal(await trickyGame.getAttribute('aria-pressed'), 'true');
   assert(
-    await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).isEnabled(),
+    await page.getByRole('button', { name: 'Load local Garibaldi', exact: true }).isEnabled(),
     'the saved ISO can extract more maps after navigation',
   );
   assert.match(
@@ -188,18 +188,18 @@ try {
     });
     window.releaseIsoImports = release;
   })()`);
-  await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await page.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   for (const name of ['Refresh image', 'Remove image…', 'Unload game…'])
     assert(
       await page.getByRole('button', { name, exact: true }).isDisabled(),
       'Source changes are blocked during imports',
     );
   await ssxGame.click();
-  await page.getByRole('button', { name: 'Load SSX_FIXTURE', exact: true }).click();
+  await page.getByRole('button', { name: 'Load local SSX_FIXTURE', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
   assert.equal(await page.locator('.public-iso-map-summary').innerText(), '0 of 1 maps loaded · 1 not loaded');
   await madtrixGame.click();
-  await page.getByRole('button', { name: 'Load Antarctica (Mad Trix)', exact: true }).click();
+  await page.getByRole('button', { name: 'Load local Antarctica (Mad Trix)', exact: true }).click();
   assert.equal(await page.locator('.public-iso-map').getAttribute('data-state'), 'queued');
   await page.evaluate(() => (window as unknown as { releaseIsoImports: () => void }).releaseIsoImports());
   await page.locator('.public-iso-map .public-iso-badge.loaded').waitFor({ timeout: 90_000 });
@@ -329,7 +329,7 @@ try {
   await madtrixGame.waitFor();
   await trickyGame.click();
   assert(await page.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isEnabled());
-  assert(await page.getByRole('button', { name: 'Load Snowdream', exact: true }).isEnabled());
+  assert(await page.getByRole('button', { name: 'Load local Snowdream', exact: true }).isEnabled());
   assert(
     (await filters.getByRole('button', { name: 'All maps (2)', exact: true }).getAttribute('aria-pressed')) === 'true',
   );
@@ -353,7 +353,7 @@ try {
   assert.match((await trickyCard.getAttribute('title'))!, /Disc saved · tricky.iso/);
   await filters.getByRole('button', { name: 'Not loaded (2)', exact: true }).click();
   assert(
-    await page.getByRole('button', { name: 'Load Garibaldi', exact: true }).isEnabled(),
+    await page.getByRole('button', { name: 'Load local Garibaldi', exact: true }).isEnabled(),
     'the saved disc can reload an unloaded map',
   );
   assert.equal(await page.locator('.public-iso-map .public-iso-open:visible').count(), 0);
@@ -400,7 +400,7 @@ try {
   assert.equal(await gbaGame.getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('.public-iso-map').count(), 8);
   const gbaGaribaldi = page.locator('.public-iso-map[data-course="SSXGBA_GARIBALDI"]');
-  await gbaGaribaldi.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await gbaGaribaldi.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   await gbaGaribaldi.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
   // Fresh native exports must be skyward. Recreate an older cache to cover its read-time repair too.
   await page.evaluate(async () => {

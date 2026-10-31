@@ -1,21 +1,30 @@
 import './map-library.css';
 import { element } from './dom';
-import { ISO_GAMES, isoGameForCourse, type IsoGame } from './iso-discs';
+import { ISO_GAMES, type IsoGame } from './iso-discs';
 import { mapGame, mapGameLabel } from '../../core/reference/map-game';
+import { mapAvailability } from './presentation';
 
 type View = 'all' | 'custom' | IsoGame;
 type Source = 'all' | 'device' | 'server';
-export type LibrarySection = { section: HTMLElement; grid: HTMLElement; source: Exclude<Source, 'all'> };
+export type LibrarySection = {
+  section: HTMLElement;
+  grid: HTMLElement;
+  source: Exclude<Source, 'all'>;
+};
+export type LibraryFilter = { game: IsoGame | null; query: string; source: Source; enabled: boolean };
 export type LibraryGameController = {
   selectGame: (game: IsoGame) => void;
-  search: (query: string) => void;
+  filter: (filter: LibraryFilter) => void;
+  maps: HTMLElement;
   chooseFile: () => void;
   currentGame: () => IsoGame;
 };
 
 /** One browsing shell for authored mountains, server publications and local game imports. */
 export function createMapLibrary(title: HTMLElement, sections: LibrarySection[]) {
+  const isGameView = (view: View): view is IsoGame => ISO_GAMES.some(game => game.id === view);
   const el = element('div', 'map-library');
+  el.dataset.layout = 'list';
   const top = element('div', 'library-top');
   title.classList.remove('public-visually-hidden');
   title.textContent = 'Map library';
@@ -72,18 +81,7 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     source.append(option);
   }
   sourceLabel.append(source);
-  const formats = element('div', 'library-formats');
-  formats.setAttribute('role', 'group');
-  formats.setAttribute('aria-label', 'Map layout');
-  const viewButtons = new Map<string, HTMLButtonElement>();
-  for (const format of ['List', 'Cards']) {
-    const button = element('button', '', format);
-    button.type = 'button';
-    button.onclick = () => setFormat(format.toLowerCase());
-    viewButtons.set(format.toLowerCase(), button);
-    formats.append(button);
-  }
-  tools.append(searchLabel, sourceLabel, formats);
+  tools.append(searchLabel, sourceLabel);
   const context = element('div', 'library-context');
   const heading = element('h2', '', 'All maps');
   const result = element('p', '');
@@ -103,40 +101,28 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     select('all');
   };
   empty.append(reset);
-  workspace.append(tools, context, gameHost, catalogue, empty);
+  const folderHost = element('div', 'library-folder');
+  for (const item of sections) {
+    const folder = item.section.querySelector('.public-open-folder');
+    if (folder) folderHost.append(folder);
+  }
+  workspace.append(tools, context, gameHost, catalogue, empty, folderHost);
   layout.append(sidebar, workspace);
   el.append(top, layout);
   let view: View = 'all';
-  let format = 'list';
   let controller: LibraryGameController | undefined;
   const url = new URL(location.href);
   const requestedGame = url.searchParams.get('game');
   if (ISO_GAMES.some(game => game.id === requestedGame)) view = requestedGame as IsoGame;
   else if (url.searchParams.get('view') === 'custom') view = 'custom';
-  try {
-    format = localStorage.getItem('slopesmith.library.layout') === 'cards' ? 'cards' : 'list';
-  } catch {
-    /* optional */
-  }
-
-  function setFormat(next: string) {
-    format = next;
-    el.dataset.layout = format;
-    for (const [id, button] of viewButtons) button.setAttribute('aria-pressed', String(id === format));
-    try {
-      localStorage.setItem('slopesmith.library.layout', format);
-    } catch {
-      /* optional */
-    }
-  }
   function select(next: View, notify = true) {
     view = next;
     const url = new URL(location.href);
-    if (next === 'all' || next === 'custom') {
+    if (!isGameView(next)) {
       url.searchParams.delete('game');
       for (const key of ['reference', 'map', 'source']) url.searchParams.delete(key);
-      if (next === 'custom') url.searchParams.set('view', 'custom');
-      else url.searchParams.delete('view');
+      if (next === 'all') url.searchParams.delete('view');
+      else url.searchParams.set('view', next);
     } else {
       url.searchParams.set('game', next);
       url.searchParams.set('view', 'games');
@@ -146,10 +132,10 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     update();
   }
   function update() {
-    const gameView = view !== 'all' && view !== 'custom';
+    const gameView = isGameView(view);
     el.dataset.gameView = String(gameView);
     gameHost.hidden = !gameView;
-    sourceLabel.hidden = gameView;
+    folderHost.hidden = gameView || source.value === 'server' || !!search.value.trim();
     heading.textContent = gameView
       ? ISO_GAMES.find(game => game.id === view)!.name
       : view === 'custom'
@@ -162,6 +148,13 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     }
     let shown = 0;
     const query = search.value.trim().toLowerCase();
+    controller?.filter({
+      game: gameView ? (view as IsoGame) : null,
+      query,
+      source: source.value as Source,
+      enabled: view !== 'custom',
+    });
+    const catalogueCards: HTMLElement[] = [];
     for (const item of sections) {
       const created = item.grid.querySelector('.public-new-map');
       if (created) {
@@ -183,33 +176,38 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
           metadata = element('p', 'library-map-origin');
           card.querySelector('.public-map-heading')?.after(metadata);
         }
-        metadata.textContent = `${label} · ${item.source === 'device' ? 'This device' : card.dataset.kind === 'private' ? 'Private server' : 'Server'}`;
-        const matchesView =
-          view === 'all' ||
-          (view === 'custom' ? !isReference : isReference && item.source === 'server' && isoGameForCourse(id) === view);
+        metadata.textContent = `${label}${card.dataset.kind === 'private' ? ' · Private' : ''}`;
+        card
+          .querySelector('.public-map-symbol')
+          ?.replaceChildren(mapAvailability({ device: item.source === 'device', server: item.source === 'server' }));
+        const matchesView = view === 'all' || (view === 'custom' && !isReference);
         card.hidden =
           !matchesView ||
           (!gameView && source.value !== 'all' && item.source !== source.value) ||
           (!!query && !`${card.getAttribute('aria-label')} ${label} ${id}`.toLowerCase().includes(query));
-        if (!card.hidden) count++;
+        if (!card.hidden) {
+          count++;
+          catalogueCards.push(card);
+        }
       }
-      const canOpenFolder =
-        !gameView &&
-        !query &&
-        source.value !== 'server' &&
-        item.source === 'device' &&
-        !!item.section.querySelector('.public-open-folder');
-      item.section.hidden = count === 0 && !canOpenFolder;
+      item.section.hidden = count === 0;
       shown += count;
     }
+    const gameCards = [...(controller?.maps.querySelectorAll<HTMLElement>('.public-course:not([hidden])') ?? [])];
+    catalogueCards.push(...gameCards);
+    shown += gameCards.length;
+    catalogueCards.sort((a, b) =>
+      (a.getAttribute('aria-label') ?? '').localeCompare(b.getAttribute('aria-label') ?? ''),
+    );
+    catalogueCards.forEach((card, index) => {
+      card.style.order = String(index);
+    });
     empty.hidden = gameView || shown > 0;
-    result.textContent = gameView ? 'Courses from your game file' : `${shown} map${shown === 1 ? '' : 's'}`;
-    controller?.search(query);
+    result.textContent = `${shown} map${shown === 1 ? '' : 's'}`;
   }
   search.oninput = update;
   source.onchange = update;
   open.onclick = () => controller?.chooseFile();
-  setFormat(format);
   return {
     el,
     gameHost,
@@ -219,7 +217,8 @@ export function createMapLibrary(title: HTMLElement, sections: LibrarySection[])
     selectGame: (game: IsoGame) => select(game, false),
     connect(next: LibraryGameController) {
       controller = next;
-      if (view !== 'all' && view !== 'custom') next.selectGame(view);
+      catalogue.append(next.maps);
+      if (isGameView(view)) next.selectGame(view);
       else if (url.searchParams.get('view') === 'games') select(next.currentGame());
       update();
     },

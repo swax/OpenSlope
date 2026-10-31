@@ -165,6 +165,18 @@ export async function setPublished(
   });
 }
 
+/** Removing an installed reference also retires its publication, so a later upload starts unpublished. */
+export async function forgetReferencePublication(id: string): Promise<void> {
+  await serialize('public-courses', async () => {
+    const before = await publications();
+    const rows = before.filter(row => row.kind !== 'reference' || row.id.toLowerCase() !== id.toLowerCase());
+    if (rows.length === before.length) return;
+    await writeJsonAtomic(await file(), rows);
+    knownPublic = new Set(rows.map(row => key(row.kind, row.id).toLowerCase()));
+    for (const listener of changeListeners) listener();
+  });
+}
+
 const LEVEL_READS = new Set([
   '/api/level',
   '/api/props',

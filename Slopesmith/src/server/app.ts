@@ -12,6 +12,7 @@ import { jsonResponse, type ApiControls, type ApiHandler } from './api/common';
 import { schemaRoutes } from './api/schemas';
 import { exportRoutes } from './api/export';
 import { levelRoutes } from './api/levels';
+import { referenceMapRoutes } from './api/reference-maps';
 import { musicRoutes } from './api/music';
 import { propRoutes } from './api/props';
 import { retopologyRoutes } from './api/retopology';
@@ -48,6 +49,7 @@ const routes: Array<[mount: string, handle: ApiHandler]> = [
   musicRoutes,
   exportRoutes,
   levelRoutes,
+  referenceMapRoutes,
   textureRoutes,
   propRoutes,
   skyboxRoutes,
@@ -281,6 +283,7 @@ const ROUTE_ACCESS: Record<string, Access> = {
 
   // Extracted reference levels and everything read out of them.
   '/api/levels': at('viewer'),
+  '/api/reference-maps': at('admin'),
   '/api/level': at('viewer'),
   // Reading the census is a cache hit; `?refresh=1` throws both caches away and re-reads every map folder in
   // the library, for everybody — a cost that belongs to a moderator, like the fetch behind /api/version.

@@ -1132,21 +1132,24 @@ try {
     'maps with no missing assets only show their Play action',
   );
   const missingReference = guest.getByRole('article', { name: 'FIXTURE', exact: true });
-  assert(await missingReference.getByRole('button', { name: 'Play FIXTURE', exact: true }).isDisabled());
-  await missingReference.click({ position: { x: 12, y: 12 } });
-  assert.equal(new URL(guest.url()).pathname, '/', 'a disabled primary action also disables the tile background');
-  const referenceIsoUrl = new URL(
-    (await missingReference.getByRole('link', { name: 'Load ISO maps', exact: true }).getAttribute('href'))!,
+  const serverPlay = missingReference.getByRole('link', { name: 'Play FIXTURE', exact: true });
+  assert(await serverPlay.isHidden(), 'retail playback still requires locally extracted assets');
+  assert(await missingReference.getByRole('link', { name: 'Inspect FIXTURE', exact: true }).isVisible());
+  assert(
+    await missingReference.getByRole('button', { name: 'Load local FIXTURE', exact: true }).isDisabled(),
+    'local extraction still needs a game file',
   );
-  assert.equal(referenceIsoUrl.searchParams.get('reference'), 'FIXTURE');
-  assert.equal(referenceIsoUrl.pathname, '/', 'a missing map links directly to the ISO manager');
+  assert(await missingReference.getByRole('img', { name: 'Available on server', exact: true }).isVisible());
   assert.equal(
     await guest.getByRole('button', { name: 'Load course', includeHidden: true }).count(),
     0,
     'the map browser has no separate selection or load panel',
   );
   assert(await guest.locator('.public-requirements-host').isHidden());
-  assert(await guest.getByRole('heading', { name: 'Public maps', exact: true }).isVisible());
+  assert(
+    await guest.getByRole('heading', { name: 'Public maps', exact: true }).isHidden(),
+    'the unified list has no source shelves',
+  );
   assert(await guest.getByRole('heading', { name: 'From your ISO', exact: true }).isHidden());
   assert.equal(await guest.locator('#public-iso').count(), 1, 'the home library includes the game importer');
   assert.equal(await guest.getByRole('button', { name: /PRIVATE RUN/ }).count(), 0);
@@ -1599,7 +1602,7 @@ try {
     'local ISO rooms grant no access to server map files',
   );
   await guest.screenshot({ path: join(root, 'iso-manager.png') });
-  await managerGari.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await managerGari.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   await managerGari.locator('.public-iso-badge.loaded').waitFor();
   await guest.mouse.move(1, 1);
   assert.deepEqual(
@@ -1611,9 +1614,9 @@ try {
   assert(await managerGari.locator('.public-primary').evaluate(el => el.matches(':hover')));
   await guest.getByText('1 loaded', { exact: true }).waitFor();
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
-  const localCard = guest.locator('.public-local-maps').getByRole('article', { name: 'Garibaldi', exact: true });
+  const localCard = guest.locator('.library-catalogue').getByRole('article', { name: 'Garibaldi', exact: true });
   await localCard.waitFor();
-  assert(await localCard.getByRole('button', { name: 'Play Garibaldi', exact: true }).isEnabled());
+  assert(await localCard.getByRole('link', { name: 'Play Garibaldi', exact: true }).isEnabled());
   assert.equal(
     await localCard.getByRole('link', { name: 'Load ISO maps', exact: true }).count(),
     0,
@@ -1631,8 +1634,8 @@ try {
     0,
   );
   await guest.locator('#load-status').waitFor({ state: 'hidden' });
-  await guest.screenshot({ path: join(root, 'separate-map-lists.png'), fullPage: true });
-  await localCard.click({ position: { x: 12, y: 12 } });
+  await guest.screenshot({ path: join(root, 'unified-map-list.png'), fullPage: true });
+  await localCard.getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await joinChat(guest);
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
@@ -1682,10 +1685,7 @@ try {
     }),
   );
   await guest.goto(origin);
-  await guest
-    .locator('.public-local-maps')
-    .getByRole('button', { name: /Garibaldi/ })
-    .click();
+  await guest.locator('.library-catalogue').getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
   const repairStatus = guest.locator('.public-status').filter({
     hasText: 'Choose your ISO once more to restore collision sounds',
   });
@@ -1724,10 +1724,7 @@ try {
       return setReference.apply(this, args);
     };
   });
-  await guest
-    .locator('.public-local-maps')
-    .getByRole('button', { name: /Garibaldi/ })
-    .click();
+  await guest.locator('.library-catalogue').getByRole('link', { name: 'Play Garibaldi', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   assert.deepEqual(
     await guest.evaluate(() => {
@@ -1757,10 +1754,7 @@ try {
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   assert(await currentIsoMap.isHidden(), 'the unloaded map stays out of the header after navigation');
   assert.equal(
-    await guest
-      .locator('.public-local-maps')
-      .getByRole('button', { name: /Garibaldi/ })
-      .count(),
+    await guest.locator('.library-catalogue').getByRole('link', { name: 'Play Garibaldi', exact: true }).count(),
     0,
   );
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
@@ -1771,7 +1765,7 @@ try {
   await closeCommunity(guest);
   await guest.locator('#public-iso').setInputFiles(localFixture);
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
-  await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   await guest.getByText('1 loaded', { exact: true }).waitFor();
   assert(
     await guest.evaluate(async () => {
@@ -1802,7 +1796,11 @@ try {
   await clearAllDialog.getByRole('button', { name: 'Unload all maps', exact: true }).click();
   await guest.getByText('0 loaded', { exact: true }).waitFor();
   assert(await currentIsoMap.isHidden(), 'Clear all removes the current ISO map tab');
-  assert.equal(await guest.locator('.public-iso-map').count(), 0, 'Clear all also forgets the selected disc');
+  assert.equal(
+    await guest.locator('.public-iso-map[data-disc="true"]').count(),
+    0,
+    'Clear all forgets local maps and the selected disc',
+  );
   assert.equal(await guest.locator('#public-iso').inputValue(), '');
   await guest
     .locator('#public-iso')
@@ -1812,7 +1810,11 @@ try {
     .filter({ hasText: /ISO|disc|read|format/i })
     .waitFor();
   await guest.waitForFunction(() => !(document.querySelector('#public-iso') as HTMLInputElement).disabled);
-  assert.equal(await guest.locator('.public-iso-map').count(), 0, 'an invalid ISO creates no stale rows');
+  assert.equal(
+    await guest.locator('.public-iso-map[data-disc="true"]').count(),
+    0,
+    'an invalid ISO creates no stale disc rows',
+  );
 
   // A named shared link summarizes requirements and shows each donor on hover.
   await guest.goto(`${origin}/play/BORROWED_RUN`);
@@ -1841,12 +1843,12 @@ try {
   await guest.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await guest.getByRole('button', { name: 'Load required maps', exact: true }).click();
   await guest.locator('.public-iso-map[data-course="FIXTURE"] .public-iso-badge.loaded').waitFor();
-  assert(await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).isDisabled());
-  await guest.getByRole('button', { name: 'Cards', exact: true }).click();
+  assert(await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).isDisabled());
+  assert.equal(await guest.getByRole('button', { name: 'Cards', exact: true }).count(), 0);
   const isoTileBoxes = await guest
     .locator('.public-iso-map')
     .evaluateAll(tiles => tiles.map(tile => tile.getBoundingClientRect().top));
-  assert.equal(isoTileBoxes[0], isoTileBoxes[1], 'Cards view arranges game courses in a grid');
+  assert(isoTileBoxes[0] !== isoTileBoxes[1], 'game courses remain in one list');
   await guest.screenshot({ path: join(root, 'required-iso-maps.png') });
   await guest.setViewportSize({ width: 390, height: 844 });
   assert(await guest.evaluate(() => document.body.scrollWidth <= innerWidth), 'ISO tiles fit mobile screens');
@@ -1867,33 +1869,19 @@ try {
   await guest.screenshot({ path: join(root, 'map-dependency-badges.png') });
 
   await guest.goto(origin);
+  await guest.locator('.library-catalogue').getByRole('link', { name: 'Play FIXTURE', exact: true }).waitFor();
   await guest
-    .locator('.public-local-maps')
-    .getByRole('button', { name: /FIXTURE/ })
+    .locator('.library-catalogue')
+    .getByRole('article', { name: 'FIXTURE', exact: true })
+    .getByRole('img', { name: 'Available on server', exact: true })
     .waitFor();
-  await guest
-    .locator('.public-server-maps')
-    .getByRole('button', { name: /FIXTURE/ })
-    .waitFor();
-  assert.equal(
-    await guest
-      .locator('.public-server-maps')
-      .getByRole('button', { name: /FIXTURE/ })
-      .count(),
-    1,
+  const unifiedFixture = guest.locator('.library-catalogue').getByRole('article', { name: 'FIXTURE', exact: true });
+  assert.equal(await unifiedFixture.count(), 1, 'published and local copies share one row');
+  assert(await unifiedFixture.getByRole('img', { name: 'Available on server', exact: true }).isVisible());
+  assert(
+    await unifiedFixture.getByRole('img', { name: 'Available from disc or local import', exact: true }).isVisible(),
   );
-  assert.equal(
-    await guest
-      .locator('.public-local-maps')
-      .getByRole('button', { name: /FIXTURE/ })
-      .count(),
-    1,
-    'a published reference and a loaded ISO map appear in their own sections',
-  );
-  await guest
-    .locator('.public-local-maps')
-    .getByRole('button', { name: /FIXTURE/ })
-    .click();
+  await guest.locator('.library-catalogue').getByRole('link', { name: 'Play FIXTURE', exact: true }).click();
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await joinChat(guest);
   await guest.getByRole('button', { name: 'Play', exact: true }).click();
@@ -1923,10 +1911,7 @@ try {
     0,
   );
   assert.equal(
-    await guest
-      .locator('.public-local-maps')
-      .getByRole('button', { name: /FIXTURE/ })
-      .count(),
+    await guest.locator('.library-catalogue').getByRole('link', { name: 'Play FIXTURE', exact: true }).count(),
     1,
     'unpublishing a server map keeps the visitor’s loaded ISO map',
   );
@@ -1997,12 +1982,12 @@ try {
       );
     }).observe(document.querySelector('.public-iso-map-list')!, { childList: true });
   });
-  await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   assert.equal(await queuedGari.getAttribute('data-state'), 'loading');
   assert(await queuedGari.getByRole('progressbar', { name: 'Loading Garibaldi' }).isVisible());
   assert.equal(await guest.locator('.public-iso-status').innerText(), '', 'map loading progress stays in its card');
   assert.deepEqual(await tileGeometry(), beforeLoading, 'starting an import does not move or resize any card');
-  await guest.getByRole('button', { name: 'Load Snowdream', exact: true }).click();
+  await guest.getByRole('button', { name: 'Load local Snowdream', exact: true }).click();
   assert.equal(await queuedSnow.getAttribute('data-state'), 'queued');
   assert.match(await queuedSnow.innerText(), /Queued/);
   assert(await guest.locator('#public-iso').isDisabled(), 'the selected ISO stays stable until queued imports finish');
@@ -2036,7 +2021,7 @@ try {
     'cancelling a waiting map leaves the active import alone',
   );
   assert.deepEqual(await tileGeometry(), beforeLoading, 'cancellation does not reshape neighboring cards');
-  await guest.getByRole('button', { name: 'Load Snowdream', exact: true }).click();
+  await guest.getByRole('button', { name: 'Load local Snowdream', exact: true }).click();
   await guest.evaluate(() => (window as any).releaseIsoImports());
   await queuedGari.locator('.public-iso-badge.loaded').waitFor();
   await queuedSnow.locator('.public-iso-badge.loaded').waitFor();
@@ -2069,7 +2054,7 @@ try {
   await guest.evaluate(`(() => {
     Object.defineProperty(navigator.storage, 'persist', { configurable: true, value: () => new Promise(() => {}) });
   })()`);
-  await guest.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await guest.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   await guest.getByRole('link', { name: 'Library', exact: true }).click();
   await leaveIso.getByRole('button', { name: 'Leave page', exact: true }).click();
   await guest.getByRole('heading', { name: 'Map library', level: 1, exact: true }).waitFor();

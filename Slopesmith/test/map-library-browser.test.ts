@@ -104,11 +104,42 @@ try {
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('all');
   await page.getByRole('button', { name: 'Custom maps', exact: true }).click();
   assert.equal(await page.locator('.library-catalogue .public-course:visible').count(), 2);
-  await page.getByRole('button', { name: 'All maps', exact: true }).click();
-  await page.getByRole('button', { name: 'Cards', exact: true }).click();
+  await page.route('**/api/reference-maps', route =>
+    route.fulfill({
+      json: {
+        maps: [
+          { name: 'TRICKY_GARI', course: 'TRICKY_GARI', displayName: 'Garibaldi' },
+          { name: 'TRICKY_MESA', course: 'TRICKY_MESA', displayName: 'Mesablanca' },
+        ],
+      },
+    }),
+  );
+  await page
+    .getByRole('navigation', { name: 'Library views' })
+    .getByRole('button', { name: 'All maps', exact: true })
+    .click();
+  await page.evaluate(() => localStorage.setItem('slopesmith.library.layout', 'cards'));
   await page.reload();
-  assert.equal(await page.locator('.map-library').getAttribute('data-layout'), 'cards');
-  await page.getByRole('button', { name: 'List', exact: true }).click();
+  await page.locator('.public-iso-map[data-course="TRICKY_MESA"]').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Reference maps', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('group', { name: 'Map layout' }).count(), 0);
+  assert.equal(
+    await page.locator('.map-library').getAttribute('data-layout'),
+    'list',
+    'old card preferences are ignored',
+  );
+  assert.equal(
+    await page.locator('.public-course[data-course="TRICKY_GARI"]').count(),
+    1,
+    'public and installed references share a row',
+  );
+  const serverMap = page.locator('.public-course[data-course="TRICKY_MESA"]');
+  assert(await serverMap.getByRole('img', { name: 'Available on server', exact: true }).isVisible());
+  assert.equal(
+    await serverMap.getByRole('img', { name: 'Available from disc or local import', exact: true }).count(),
+    0,
+  );
+  await page.getByRole('button', { name: 'All maps', exact: true }).click();
   await page.locator('#public-iso').setInputFiles(gba);
   await page.locator('.public-iso-status').filter({ hasText: '8 maps found' }).waitFor({ timeout: 90_000 });
   assert.equal(new URL(page.url()).pathname, '/');
@@ -131,7 +162,7 @@ try {
       }),
     );
   const beforeImport = await geometry();
-  await card.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   assert.deepEqual(await geometry(), beforeImport, 'loading keeps list rows stable');
   await page.evaluate(() => (window as typeof window & { releaseLibraryImport: () => void }).releaseLibraryImport());
   await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
@@ -143,6 +174,23 @@ try {
     ).searchParams.get('source'),
     'iso',
   );
+  assert.equal(await card.getByRole('img', { name: 'Available from disc or local import', exact: true }).count(), 1);
+  assert.equal(await card.getByRole('img', { name: 'Available on server', exact: true }).count(), 1);
+  await page
+    .getByRole('navigation', { name: 'Library views' })
+    .getByRole('button', { name: 'All maps', exact: true })
+    .click();
+  assert.equal(
+    await page.locator('.public-course[data-course="SSXGBA_GARIBALDI"]').count(),
+    1,
+    'local and server copies share a row in All maps',
+  );
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('server');
+  assert(await card.isVisible(), 'a map with both copies matches the server source');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('device');
+  assert(await card.isVisible(), 'the same row also matches the device source');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('all');
+  await game.click();
   await search.fill('snowdream');
   assert.equal(await page.locator('.public-iso-map:visible').count(), 1);
   await search.fill('not a course');

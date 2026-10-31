@@ -5,13 +5,23 @@ const GLYPHS = {
   mountain: MODE_ICON.info,
   new: svg('<path d="M12 5v14M5 12h14"/>'),
   disc: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="m15 5 4 4M5 15l4 4"/>'),
+  server: svg(
+    '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6"/>',
+  ),
+  device: svg('<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
   play: svg('<path d="m9 5 10 7-10 7Z" fill="currentColor" stroke="none"/>'),
   stop: svg('<rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/>'),
-  vr: svg('<rect x="3" y="6" width="18" height="12" rx="3"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/>'),
+  vr: svg(
+    '<rect x="3" y="6" width="18" height="12" rx="3"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/>',
+  ),
   view: svg('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>'),
   load: svg('<path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/>'),
-  github: svg('<path d="M8 21v-4c-3-1-5-3-5-6 0-2 1-3 2-4V3l4 2a13 13 0 0 1 6 0l4-2v4c1 1 2 2 2 4 0 3-2 5-5 6v4M8 19c-4 1-4-3-6-3"/>'),
-  discord: svg('<path d="m8 4-4 2c-2 4-3 7-3 11l5 3 2-3m8-13 4 2c2 4 3 7 3 11l-5 3-2-3M7 6c3-1 7-1 10 0M6 16c4 2 8 2 12 0"/><circle cx="8" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.5" fill="currentColor" stroke="none"/>'),
+  github: svg(
+    '<path d="M8 21v-4c-3-1-5-3-5-6 0-2 1-3 2-4V3l4 2a13 13 0 0 1 6 0l4-2v4c1 1 2 2 2 4 0 3-2 5-5 6v4M8 19c-4 1-4-3-6-3"/>',
+  ),
+  discord: svg(
+    '<path d="m8 4-4 2c-2 4-3 7-3 11l5 3 2-3m8-13 4 2c2 4 3 7 3 11l-5 3-2-3M7 6c3-1 7-1 10 0M6 16c4 2 8 2 12 0"/><circle cx="8" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
+  ),
   about: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.01"/>'),
   account: svg('<circle cx="12" cy="8" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/>'),
   rider: svg('<circle cx="14" cy="4.5" r="2"/><path d="m13 8-2 5m-3-3 8 1m-5 2-2 4m2-4 3 3M4 20l16-5"/>'),
@@ -22,14 +32,37 @@ const GLYPHS = {
 
 /** Static glyphs use the editor's existing SVG family and stay out of accessible names. */
 export function publicGlyph(kind: keyof typeof GLYPHS) {
-  const icon = element('span', 'public-icon'); icon.setAttribute('aria-hidden', 'true');
+  const icon = element('span', 'public-icon');
+  icon.setAttribute('aria-hidden', 'true');
   icon.innerHTML = GLYPHS[kind];
   return icon;
 }
 
 export function mapHeading(name: string, kind: 'mountain' | 'disc' | 'new') {
   const heading = element('div', 'public-map-heading');
-  const symbol = element('span', `public-map-symbol public-map-symbol-${kind}`); symbol.append(publicGlyph(kind));
+  const symbol = element('span', `public-map-symbol public-map-symbol-${kind}`);
+  symbol.append(publicGlyph(kind));
   heading.append(symbol, element('h3', '', name));
   return heading;
+}
+
+export function mapAvailability(sources: { disc?: boolean; device?: boolean; server?: boolean }) {
+  const availability = element('span', 'library-map-availability');
+  for (const kind of ['disc', 'device', 'server'] as const) {
+    if (!sources[kind]) continue;
+    const label =
+      kind === 'disc'
+        ? 'Available from disc or local import'
+        : kind === 'server'
+          ? 'Available on server'
+          : 'Available on this device';
+    const badge = element('span', 'library-source-icon');
+    badge.dataset.source = kind;
+    badge.setAttribute('role', 'img');
+    badge.setAttribute('aria-label', label);
+    badge.title = label;
+    badge.append(publicGlyph(kind));
+    availability.append(badge);
+  }
+  return availability;
 }

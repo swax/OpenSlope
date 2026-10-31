@@ -129,7 +129,7 @@ try {
   });
   await page.screenshot({ path: join(root, 'refreshed-source.png') });
   await page.getByRole('button', { name: 'All maps', exact: true }).click();
-  await page.locator('.public-local-maps').getByRole('article', { name: 'Disc Village', exact: true }).waitFor();
+  await page.locator('.library-catalogue').getByRole('article', { name: 'Disc Village', exact: true }).waitFor();
   await page
     .getByRole('region', { name: 'Disc game support' })
     .getByRole('button', { name: '1080° Avalanche', exact: true })
@@ -181,7 +181,7 @@ try {
     .waitFor({ timeout: 90000 });
   await page.getByRole('checkbox', { name: 'Show all SSX 3 map types', exact: true }).check();
   await card.getByRole('heading', { name: 'Disc Village', exact: true }).waitFor();
-  assert(await card.getByRole('button', { name: 'Load Disc Village', exact: true }).isEnabled());
+  assert(await card.getByRole('button', { name: 'Load local Disc Village', exact: true }).isEnabled());
   await page.setViewportSize({ width: 375, height: 900 });
   assert(await page.evaluate(() => document.body.scrollWidth <= innerWidth));
   assert.deepEqual(errors, []);

@@ -197,7 +197,7 @@ try {
   await page!.goto(`${origin}/isos`);
   await page!.locator('#public-iso').setInputFiles(iso);
   await page!.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
-  await page!.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
+  await page!.getByRole('button', { name: 'Load local Garibaldi', exact: true }).click();
   await page!.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor();
   const isoCard = page!.locator('.public-iso-map[data-course="TRICKY_GARI"]');
   assert.equal(await isoCard.locator('.public-primary').count(), 1);

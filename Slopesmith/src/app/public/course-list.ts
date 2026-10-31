@@ -17,7 +17,7 @@ export function localIsoCourses(cached: readonly string[]): PublicCourse[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Server publications and locally loaded disc maps are separate shelves, even for the same course slot. */
+/** Source records for player navigation; the Library merges game-course availability into one row. */
 export function publicCourseGroups(published: readonly PublicCourse[], cached: readonly string[]) {
   return { server: [...published], local: localIsoCourses(cached) };
 }

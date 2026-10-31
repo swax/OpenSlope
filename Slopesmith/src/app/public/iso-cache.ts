@@ -218,6 +218,31 @@ export async function readCachedCourse(course: string): Promise<Map<string, Blob
     db.close();
   }
 }
+
+/** Upload the original portable filenames, rather than the lowercase lookup keys used by playback. */
+export async function cachedCourseFiles(course: string): Promise<Array<{ path: string; blob: Blob }>> {
+  const db = await openIsoCache();
+  try {
+    const transaction = db.transaction(['courses', 'files']);
+    const [marker, files] = await Promise.all([
+      new Promise<CachedCourse | undefined>((resolve, reject) => {
+        const request = transaction.objectStore('courses').get(course);
+        request.onsuccess = () => resolve(request.result as CachedCourse | undefined);
+        request.onerror = () => reject(request.error);
+      }),
+      new Promise<CachedFile[]>((resolve, reject) => {
+        const request = transaction.objectStore('files').index('course').getAll(course);
+        request.onsuccess = () => resolve(request.result as CachedFile[]);
+        request.onerror = () => reject(request.error);
+      }),
+    ]);
+    if (!marker || marker.version !== isoCourseCacheVersion(course) || marker.files !== files.length)
+      throw new Error('Load this map completely before uploading a server reference.');
+    return files.map(({ path, blob }) => ({ path, blob }));
+  } finally {
+    db.close();
+  }
+}
 /** Optional riding donors need only audio files, never another course's terrain or textures. */
 export async function readCachedAudio(course: string): Promise<Map<string, Blob>> {
   const db = await openIsoCache();

@@ -26,6 +26,7 @@ import type { ChatActivity } from '../../core/session/chat-activity';
 import { activityCounter, watchChatActivity } from './chat-activity';
 import { publicAvatarPicker } from './avatar-picker';
 import { createMapLibrary } from './map-library';
+import { createReferenceLibrary } from './reference-library';
 
 export async function showPublicHome(): Promise<void> {
   document.body.classList.add('public-play');
@@ -51,10 +52,27 @@ export async function showPublicHome(): Promise<void> {
   if (!linked) document.body.classList.add('sp-page-background');
   let room: string | null = null;
   let preparing = false;
+  const admin = member?.role === 'admin';
+  const referenceLibrary = createReferenceLibrary();
+  referenceLibrary.subscribe(renderCourses);
   let published: PublicCourse[] = [];
   let serverProjects: ClientProject[] = [];
   let serverMapsLoaded = false;
   let serverMapsError = '';
+  let referenceNames: string | null = null;
+  referenceLibrary.subscribe(() => {
+    const names = JSON.stringify(referenceLibrary.maps.map(map => map.name).sort());
+    const changed = referenceNames !== null && referenceNames !== names;
+    referenceNames = names;
+    if (!changed) return;
+    void publicJson<{ courses: PublicCourse[] }>('/api/public/courses').then(
+      result => {
+        published = result.courses;
+        renderCourses();
+      },
+      () => {},
+    );
+  });
   const cardMessages = new Map<string, string>();
   let cached = await cachedIsoCourses().catch(() => [] as string[]);
   let savedProjects: ClientProject[] = [];
@@ -176,7 +194,6 @@ export async function showPublicHome(): Promise<void> {
         ...(member ? [{ section: privateSection, grid: privateGrid, source: 'server' as const }] : []),
         { section: serverSection, grid: serverGrid, source: 'server' },
         { section: savedSection, grid: savedGrid, source: 'device' },
-        { section: localSection, grid: localGrid, source: 'device' },
       ]);
   main.append(...(library ? [library.el] : [title, serverSection, savedSection, localSection]), requirements, status);
   document.body.append(header, main, mapControls.el);
@@ -297,6 +314,7 @@ export async function showPublicHome(): Promise<void> {
       [groups.local, localGrid],
     ] as const) {
       for (const course of courses) {
+        if (library && course.kind === 'reference') continue;
         const missing = course.isoCourses.some(slot => !cached.includes(slot));
         const displayName = publicCourseLabel(course);
         const card = element('article', 'public-course public-map-tile');
@@ -391,6 +409,10 @@ export async function showPublicHome(): Promise<void> {
       summaryHost: library.summaryHost,
       account,
       navigation,
+      references: referenceLibrary,
+      published: () => published,
+      playUrl,
+      onMapsChanged: library.update,
       onSelect: library.selectGame,
       onInventory: next => {
         const key = JSON.stringify(next.map(id => [id, discCourseName(id)]));
@@ -601,6 +623,12 @@ export async function showPublicHome(): Promise<void> {
       member && (!linked || (linked.kind === 'project' && !linked.localProjectId))
         ? publicJson<{ projects: ClientProject[] }>('/api/projects').catch(error => {
             serverMapsError = `Could not load server maps: ${error instanceof Error ? error.message : String(error)}`;
+            return null;
+          })
+        : null,
+      admin && !linked
+        ? referenceLibrary.refresh().catch(error => {
+            status.textContent = `Could not load server references: ${error instanceof Error ? error.message : String(error)}`;
             return null;
           })
         : null,

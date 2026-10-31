@@ -47,6 +47,7 @@ export async function watchMapsRoot(): Promise<() => void> {
         forgetEverything();
         return;
       }
+      if (scope.startsWith('.')) return; // Hidden uploads become visible only when published by rename.
       // Maps/Custom is legacy migration input only. Live authored catalogues are project-owned, so changing
       // that old folder must not make an editor believe its mountain-local assets changed.
       if (/^custom$/i.test(scope)) return;
