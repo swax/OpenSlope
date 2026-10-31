@@ -73,6 +73,10 @@ try {
   const page = await context.newPage();
   activePage = page;
   page.on('pageerror', error => errors.push(error.message));
+  let musicWorkers = 0;
+  page.on('worker', worker => {
+    if (worker.url().includes('reference-music-worker')) musicWorkers++;
+  });
   await page.goto(`${origin}/isos`);
   await page.locator('#public-iso').setInputFiles(image);
   const card = page.locator('.public-iso-map[data-course="TRICKY_GARI"]');
@@ -91,7 +95,7 @@ try {
   await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor({ timeout: 90_000 });
   const toggle = card.getByRole('button', { name: 'Reference Garibaldi', exact: true });
   assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
-  assert(!(await card.getByRole('checkbox', { name: 'Include music' }).isChecked()), 'music is opt-in');
+  assert.equal(await page.getByRole('checkbox', { name: /Include music/ }).count(), 0, 'music has no opt-out control');
   const snowCard = page.locator('.public-iso-map[data-course="TRICKY_SNOW"]');
   const mesaCard = page.locator('.public-iso-map[data-course="TRICKY_MESA"]');
   await snowCard.getByRole('button', { name: 'Load local Snowdream', exact: true }).click();
@@ -100,8 +104,13 @@ try {
   await mesaCard.getByRole('button', { name: 'Unload Mesablanca', exact: true }).waitFor({ timeout: 90_000 });
   const snowToggle = snowCard.getByRole('button', { name: 'Reference Snowdream', exact: true });
   const mesaToggle = mesaCard.getByRole('button', { name: 'Reference Mesablanca', exact: true });
-  await snowCard.getByRole('checkbox', { name: 'Include music' }).check();
-  const plans: Array<{ course: string; reusedFiles: number; uploadedBytes: number; totalBytes: number }> = [];
+  const plans: Array<{
+    course: string;
+    music: boolean;
+    reusedFiles: number;
+    uploadedBytes: number;
+    totalBytes: number;
+  }> = [];
   page.on('response', async response => {
     if (
       !response.url().endsWith('/api/reference-maps/uploads') ||
@@ -110,9 +119,14 @@ try {
     )
       return;
     const plan = await response.json();
-    const manifest = response.request().postDataJSON() as { course: string; files: Array<{ size: number }> };
+    const manifest = response.request().postDataJSON() as {
+      course: string;
+      music: boolean;
+      files: Array<{ size: number }>;
+    };
     plans.push({
       course: manifest.course,
+      music: manifest.music,
       reusedFiles: plan.reusedFiles,
       uploadedBytes: plan.missing.reduce((sum: number, index: number) => sum + manifest.files[index].size, 0),
       totalBytes: manifest.files.reduce((sum, file) => sum + file.size, 0),
@@ -164,8 +178,10 @@ try {
   );
   assert.equal((await readFile(join(maps, 'TRICKY_GARI/Origin.json'), 'utf8')).includes('retail'), true);
   assert((await readdir(join(maps, 'TRICKY_GARI/Source'))).length > 0, 'native sidecars arrive intact');
-  await assert.rejects(readdir(join(maps, 'TRICKY_GARI/Audio/Music')), /ENOENT/);
-  assert(await card.getByRole('checkbox', { name: 'Include music' }).isHidden());
+  assert(
+    (await readdir(join(maps, 'TRICKY_GARI/Audio/Music'))).includes('encoding.json'),
+    'music is included automatically',
+  );
   await page.waitForFunction(
     () =>
       document.querySelector('[data-course="TRICKY_SNOW"] .public-iso-reference')?.getAttribute('aria-pressed') ===
@@ -173,14 +189,55 @@ try {
   );
   const snowPlan = plans.find(plan => plan.course === 'TRICKY_SNOW');
   assert(
+    plans.every(plan => plan.music),
+    'every new reference manifest includes available music',
+  );
+  assert(
     snowPlan && snowPlan.reusedFiles > 0 && snowPlan.uploadedBytes < snowPlan.totalBytes,
     'the queued map skips bytes already installed by the preceding map',
   );
-  assert(
-    (await readdir(join(maps, 'TRICKY_SNOW/Audio/Music'))).length > 0,
-    'queued maps retain their own music setting',
-  );
+  assert((await readdir(join(maps, 'TRICKY_SNOW/Audio/Music'))).length > 0, 'queued maps include music automatically');
   assert.equal(await mesaToggle.getAttribute('aria-pressed'), 'false');
+  const snowEncoding = JSON.parse(await readFile(join(maps, 'TRICKY_SNOW/Audio/Music/encoding.json'), 'utf8')) as {
+    profile: string;
+    files: Array<{ path: string; sourceSha256: string }>;
+  };
+  assert.equal(snowEncoding.profile, 'opus-128-v1');
+  assert(snowEncoding.files.length > 0, 'music is stored compressed');
+  const songSample = snowEncoding.files.find(
+    file => file.path.startsWith('Audio/Music/') && file.path.endsWith('.opus'),
+  )!;
+  await assert.rejects(readFile(join(maps, 'TRICKY_SNOW', songSample.path.replace(/\.opus$/, '.wav'))), /ENOENT/);
+  const musicIndex = await (await page.request.get(`${origin}/api/reference-music?level=TRICKY_SNOW`)).json();
+  const song = musicIndex.songs[0].id;
+  const sampleResponse = await page.request.get(
+    `${origin}/api/reference-music-sample?level=TRICKY_SNOW&song=${song}&sample=1`,
+  );
+  assert(sampleResponse.ok(), await sampleResponse.text());
+  assert.equal(sampleResponse.headers()['content-type'], 'audio/ogg; codecs=opus');
+  const encodedBytes = await sampleResponse.body();
+  assert.equal(encodedBytes.toString('ascii', 0, 4), 'OggS', 'API serves compressed bytes without expanding them');
+  const graph = await (await page.request.get(`${origin}/api/reference-music?level=TRICKY_SNOW&song=${song}`)).json();
+  const decoded = await page.evaluate(
+    async ({ base64, wavPath }) => {
+      const data = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+      const context = new OfflineAudioContext(2, 1, 48000);
+      const buffer = await context.decodeAudioData(data.buffer);
+      const modulePath = '/src/app/public/iso-cache.ts';
+      const { cachedCourseFiles } = await import(modulePath);
+      const files = await cachedCourseFiles('TRICKY_SNOW');
+      const original = files.find((file: { path: string }) => file.path === wavPath);
+      const wave = await context.decodeAudioData(await original.blob.arrayBuffer());
+      return { frames: buffer.length, channels: buffer.numberOfChannels, originalFrames: wave.length };
+    },
+    { base64: encodedBytes.toString('base64'), wavPath: `Audio/Music/${song}/${graph.Samples[0].Wav}` },
+  );
+  assert(decoded.frames > 0 && decoded.channels > 0, 'served Opus decodes in the browser');
+  assert(
+    Math.abs(decoded.frames - decoded.originalFrames) <= 1,
+    'encoded chunks retain their source timing after browser resampling',
+  );
+  assert(musicWorkers > 0, 'compression runs in a worker');
   assert(lostReply, 'the upload recovered after losing an accepted chunk response');
   await page.unroute('**/api/reference-maps/uploads/*?offset=*');
   await page.reload();
@@ -237,12 +294,13 @@ try {
     'removal keeps the local map',
   );
 
-  await card.getByRole('checkbox', { name: 'Include music' }).check();
+  const workersBeforeReuse = musicWorkers;
   await toggle.click();
   await page.waitForFunction(
     () => document.querySelector('.public-iso-reference')?.getAttribute('aria-pressed') === 'true',
   );
-  assert((await readdir(join(maps, 'TRICKY_GARI/Audio/Music'))).length > 0, 'opt-in music reaches the server');
+  assert((await readdir(join(maps, 'TRICKY_GARI/Audio/Music'))).length > 0, 'music reaches the server');
+  assert.equal(musicWorkers, workersBeforeReuse, 'shared music already on the server skips conversion before upload');
   await card.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
   await card.getByRole('button', { name: 'Load local Garibaldi', exact: true }).waitFor();
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'server-only reference remains manageable');
@@ -306,7 +364,7 @@ try {
   }
   assert.deepEqual(errors, []);
   console.log(
-    'Native extraction → queued admin uploads with hash reuse, per-map music, cancellation, pressed state and confirmed removal PASS',
+    'Native extraction → queued admin uploads with hash reuse, automatic compressed music, cancellation, pressed state and confirmed removal PASS',
   );
 } catch (error) {
   console.error('Reference browser page errors:', errors);

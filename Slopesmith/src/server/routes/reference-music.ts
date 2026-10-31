@@ -52,11 +52,12 @@ async function introMusic(root: string): Promise<ReferenceIntroMusic | null> {
   const byTier = new Map<'A' | 'B' | 'C', Array<{ name: string; index: number }>>();
   for (const entry of entries) {
     if (!entry.isFile) continue;
-    const match = /-([ABC])(\d+)\.wav$/i.exec(entry.name);
+    const match = /-([ABC])(\d+)\.(wav|opus)$/i.exec(entry.name);
     if (!match) continue;
     const tier = match[1].toUpperCase() as 'A' | 'B' | 'C';
     const list = byTier.get(tier) ?? [];
-    list.push({ name: entry.name, index: Number(match[2]) });
+    const name = entry.name.replace(/\.opus$/i, '.wav');
+    if (!list.some(item => item.name === name)) list.push({ name, index: Number(match[2]) });
     byTier.set(tier, list);
   }
   for (const tier of ['C', 'A', 'B'] as const) {
@@ -86,6 +87,22 @@ function safeWavName(value: string): string {
   return value;
 }
 
+/** WAV remains the graph/intro identity. New references resolve its compressed sibling without rewriting source metadata. */
+async function readMusicBytes(path: string): Promise<Buffer | null> {
+  const bytes = (await readBytesOrNull(path)) ?? (await readBytesOrNull(path.replace(/\.wav$/i, '.opus')));
+  if (
+    bytes &&
+    !(
+      (bytes.length >= 44 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WAVE') ||
+      (bytes.length >= 64 && bytes.toString('ascii', 0, 4) === 'OggS' && bytes.toString('ascii', 28, 36) === 'OpusHead')
+    )
+  )
+    throw new Error('Invalid reference music audio.');
+  return bytes;
+}
+export const referenceMusicContentType = (bytes: Buffer): string =>
+  bytes.toString('ascii', 0, 4) === 'OggS' ? 'audio/ogg; codecs=opus' : 'audio/wav';
+
 export async function readReferenceMusicGraph(level: string, song: string): Promise<ReferenceMusicGraph> {
   const { root } = await musicRoot(level);
   const safeSong = safeSegment(song, 'reference song');
@@ -96,7 +113,7 @@ export async function readReferenceMusicGraph(level: string, song: string): Prom
   return graph;
 }
 
-/** Read one decoded WAV from the extracted song. `sample` is the MPF's one-based node sample id. */
+/** Read stored WAV or Opus without transcoding. `sample` is the MPF's one-based node sample id. */
 export async function readReferenceMusicSampleBytes(level: string, song: string, sample: number): Promise<Buffer> {
   const resolved = await musicRoot(level);
   const safeSong = safeSegment(song, 'reference song');
@@ -105,10 +122,8 @@ export async function readReferenceMusicSampleBytes(level: string, song: string,
   if (!Number.isInteger(sample) || index < 0 || index >= graph.Samples.length)
     throw new Error(`invalid race-music sample ${sample}`);
   const wav = safeWavName(graph.Samples[index].Wav);
-  const bytes = await readBytesOrNull(join(resolved.root, safeSong, wav));
+  const bytes = await readMusicBytes(join(resolved.root, safeSong, wav));
   if (!bytes) throw new Error(`missing race-music sample ${resolved.level}/${safeSong}/${wav}`);
-  if (bytes.length < 44 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE')
-    throw new Error(`invalid WAV race-music sample ${resolved.level}/${safeSong}/${wav}`);
   return bytes;
 }
 
@@ -118,10 +133,8 @@ export async function readReferenceIntroMusicBytes(level: string, stem: string):
   const root = await introRoot(level);
   const intro = root ? await introMusic(root) : null;
   if (!intro || !intro.stems.includes(stem)) throw new Error(`invalid intro-music stem ${stem || '(empty)'}`);
-  const bytes = await readBytesOrNull(join(root!, stem));
+  const bytes = await readMusicBytes(join(root!, stem));
   if (!bytes) throw new Error(`missing intro-music stem ${level}/${stem}`);
-  if (bytes.length < 44 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE')
-    throw new Error(`invalid WAV intro-music stem ${level}/${stem}`);
   return bytes;
 }
 

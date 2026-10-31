@@ -366,10 +366,6 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
     const reference = element('button', 'public-iso-reference', 'Reference');
     reference.type = 'button';
     reference.setAttribute('aria-label', `Reference ${discCourseName(slot)}`);
-    const musicLabel = element('label', 'public-reference-music');
-    const music = element('input', '');
-    music.type = 'checkbox';
-    musicLabel.append(music, document.createTextNode(' Include music'));
     reference.onclick = async () => {
       const phase = uploads.state(slot)?.phase;
       if (phase === 'queued' || phase === 'uploading') {
@@ -380,7 +376,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       const installed = referenceForCourse(referenceLibrary.maps, slot);
       if (!installed) {
         referenceMessages.delete(slot);
-        void uploads.add(slot, music.checked);
+        void uploads.add(slot);
         return;
       }
       if (installed) {
@@ -436,7 +432,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         );
       else loadMaps([slot]);
     };
-    controls.append(button, open, inspect, reference, musicLabel);
+    controls.append(button, open, inspect, reference);
     const feedback = element('div', 'public-iso-feedback');
     const progress = element('progress', 'public-iso-progress');
     progress.setAttribute('aria-label', `Loading ${discCourseName(slot)}`);
@@ -454,8 +450,6 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       open,
       inspect,
       reference,
-      music,
-      musicLabel,
       progress,
       course,
       online,
@@ -590,8 +584,7 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
         card = createCard(slot);
         cards.set(slot, card);
       }
-      const { row, badge, button, message, open, inspect, reference, music, musicLabel, progress, course, title } =
-        card;
+      const { row, badge, button, message, open, inspect, reference, progress, course, title } = card;
       const entry = byCourse.get(slot)!;
       const name = entry.name;
       row.setAttribute('aria-label', name);
@@ -603,7 +596,6 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
       if (title.textContent !== name) {
         title.textContent = course.name = name;
         reference.setAttribute('aria-label', `Reference ${name}`);
-        music.setAttribute('aria-label', `Include music for ${name}`);
         open.href = publicCourseUrl(course);
         inspect.href = courseEditorUrl(course);
         open.setAttribute('aria-label', `Play ${name}`);
@@ -630,9 +622,6 @@ export async function showIsoPage(options?: IsoLibraryOptions) {
           ? `Uploading reference ${discCourseName(slot)}`
           : `Loading ${discCourseName(slot)}`,
       );
-      musicLabel.hidden = !admin || !loaded || !!installed;
-      music.disabled = busy || referencePending;
-      if (referencePending) music.checked = upload.music;
       const playable = loaded
         ? { ...course, name, source: 'iso' as const }
         : entry.publication?.isoCourses.every(slot => cached.includes(slot))

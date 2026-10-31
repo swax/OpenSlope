@@ -23,9 +23,9 @@ export function createReferenceLibrary() {
       });
     return refreshing;
   };
-  const uploads = createReferenceUploadQueue(async (course, music, signal, progress) => {
+  const uploads = createReferenceUploadQueue(async (course, signal, progress) => {
     try {
-      const result = await uploadReference(course, music, signal, progress);
+      const result = await uploadReference(course, signal, progress);
       maps = [...maps.filter(map => map.name !== result.name), result];
       return result;
     } finally {

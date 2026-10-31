@@ -12,13 +12,13 @@ function deferred() {
   return { promise, resolve, reject };
 }
 const jobs = new Map<string, ReturnType<typeof deferred>>();
-const starts: Array<[string, boolean]> = [];
+const starts: string[] = [];
 let concurrent = 0,
   peak = 0,
   report = (_message: string) => {};
 const queue = createReferenceUploadQueue(
-  async (course, music, _signal, progress) => {
-    starts.push([course, music]);
+  async (course, _signal, progress) => {
+    starts.push(course);
     peak = Math.max(peak, ++concurrent);
     report = progress;
     const job = deferred();
@@ -32,26 +32,18 @@ const queue = createReferenceUploadQueue(
   },
   () => {},
 );
-const done = queue.add('GARI', false);
-void queue.add('SNOW', true);
-void queue.add('TRICKY_GARI', true);
-void queue.add('MESA', false);
-assert.deepEqual(starts, [['GARI', false]]);
+const done = queue.add('GARI');
+void queue.add('SNOW');
+void queue.add('TRICKY_GARI');
+void queue.add('MESA');
+assert.deepEqual(starts, ['GARI']);
 assert.equal(queue.state('TRICKY_SNOW')?.phase, 'queued');
-assert.equal(queue.state('TRICKY_SNOW')?.music, true);
 queue.cancel('TRICKY_MESA');
 report('4 files reused · Uploading reference… 40%');
 assert.match(queue.state('TRICKY_GARI')!.message, /40%/);
 jobs.get('GARI')!.resolve();
 await tick();
-assert.deepEqual(
-  starts,
-  [
-    ['GARI', false],
-    ['SNOW', true],
-  ],
-  'duplicate legacy aliases do not queue twice, and music follows its own job',
-);
+assert.deepEqual(starts, ['GARI', 'SNOW'], 'duplicate legacy aliases do not queue twice');
 assert.equal(queue.state('GARI')?.phase, 'complete');
 assert.match(queue.state('GARI')!.message, /3 files reused/);
 jobs.get('SNOW')!.reject(new Error('Connection failed'));
@@ -59,7 +51,7 @@ await done;
 assert.equal(peak, 1);
 assert.equal(queue.busy, false);
 assert.equal(queue.state('SNOW')?.phase, 'error');
-const retry = queue.add('SNOW', false);
+const retry = queue.add('SNOW');
 jobs.get('SNOW')!.resolve();
 await retry;
 queue.clear('SNOW');
@@ -69,7 +61,7 @@ const active = deferred(),
   cleanup = deferred();
 const order: string[] = [];
 const cancellations = createReferenceUploadQueue(
-  async (course, _music, signal) => {
+  async (course, signal) => {
     order.push(course);
     if (course === 'GARI') {
       signal.addEventListener('abort', () => active.reject(new Error('Cancelled')), { once: true });
@@ -83,9 +75,9 @@ const cancellations = createReferenceUploadQueue(
   },
   () => {},
 );
-const stopped = cancellations.add('GARI', false);
-void cancellations.add('MESA', false);
-void cancellations.add('SNOW', false);
+const stopped = cancellations.add('GARI');
+void cancellations.add('MESA');
+void cancellations.add('SNOW');
 cancellations.cancel('GARI');
 await tick();
 assert.deepEqual(order, ['GARI'], 'a cancelled upload finishes cleanup before the next one starts');
@@ -97,19 +89,17 @@ assert.equal(cancellations.state('MESA')?.phase, 'error');
 
 const leave = deferred();
 const leaving = createReferenceUploadQueue(
-  async (_course, _music, signal) => {
+  async (_course, signal) => {
     signal.addEventListener('abort', () => leave.reject(new Error('Page closed')), { once: true });
     await leave.promise;
     return {};
   },
   () => {},
 );
-const left = leaving.add('GARI', true);
-void leaving.add('SNOW', false);
+const left = leaving.add('GARI');
+void leaving.add('SNOW');
 leaving.dispose();
 await left;
 assert.equal(leaving.busy, false);
 assert.equal(leaving.state('SNOW'), undefined);
-console.log(
-  'Reference upload queue: serial jobs, per-map music, legacy aliases, progress, cancellation, retry and page cleanup PASS',
-);
+console.log('Reference upload queue: serial jobs, legacy aliases, progress, cancellation, retry and page cleanup PASS');

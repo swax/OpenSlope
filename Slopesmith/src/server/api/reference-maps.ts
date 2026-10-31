@@ -1,4 +1,5 @@
 import { REFERENCE_CHUNK_BYTES } from '../../shared/reference-transfer';
+import { reusableReferenceMusic } from '../reference-music-encoding';
 import {
   beginReferenceUpload,
   cancelReferenceUpload,
@@ -38,6 +39,19 @@ export const referenceMapRoutes: Record<string, ApiHandler> = {
           const plan = await beginReferenceUpload(actor, await readJsonBody(req, 8 * 1024 ** 2), abort.signal);
           if (res.destroyed) await cancelReferenceUpload(plan.id, actor);
           else jsonResponse(res, 201, plan);
+        } finally {
+          res.off('close', disconnected);
+        }
+        return;
+      }
+      if (path === '/music' && req.method === 'POST') {
+        const abort = new AbortController();
+        const disconnected = () => {
+          if (!res.writableEnded) abort.abort();
+        };
+        res.once('close', disconnected);
+        try {
+          jsonResponse(res, 200, await reusableReferenceMusic(await readJsonBody(req, 8 * 1024 ** 2), abort.signal));
         } finally {
           res.off('close', disconnected);
         }

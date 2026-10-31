@@ -32,6 +32,7 @@ import {
   readReferenceMusicGraph,
   readReferenceMusicIndex,
   readReferenceMusicSampleBytes,
+  referenceMusicContentType,
 } from '../routes/reference-music';
 import { referenceTextureRevisions, textureFiles } from '../routes/textures';
 import { listCustomSounds, readCustomSoundBytes, saveCustomSound } from '../routes/sounds';
@@ -177,7 +178,7 @@ export const levelRoutes: Record<string, ApiHandler> = {
     }
   },
 
-  // GET /api/reference-music-sample?level=<LEVEL>&song=<ID>&sample=<one-based MPF id> -> decoded WAV.
+  // GET /api/reference-music-sample?level=<LEVEL>&song=<ID>&sample=<one-based MPF id> -> stored WAV or Ogg Opus.
   '/api/reference-music-sample': async (req, res) => {
     if (req.method !== 'GET') {
       res.statusCode = 405;
@@ -193,7 +194,7 @@ export const levelRoutes: Record<string, ApiHandler> = {
         req,
         res,
         `reference-music-sample:${level}:${song}:${sample}`,
-        'audio/wav',
+        referenceMusicContentType,
         UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
         () => readReferenceMusicSampleBytes(level, song, sample),
       );
@@ -203,7 +204,7 @@ export const levelRoutes: Record<string, ApiHandler> = {
     }
   },
 
-  // GET /api/reference-intro-music?level=<LEVEL>&stem=<native filename> -> one selected-tier intro WAV.
+  // GET /api/reference-intro-music?level=<LEVEL>&stem=<native filename> -> one selected-tier intro phrase.
   '/api/reference-intro-music': async (req, res) => {
     if (req.method !== 'GET') {
       res.statusCode = 405;
@@ -218,7 +219,7 @@ export const levelRoutes: Record<string, ApiHandler> = {
         req,
         res,
         `reference-intro-music:${level}:${stem}`,
-        'audio/wav',
+        referenceMusicContentType,
         UNVERSIONED_REFERENCE_ASSET_CACHE_CONTROL,
         () => readReferenceIntroMusicBytes(level, stem),
       );

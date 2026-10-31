@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readReferenceIntroMusicBytes, readReferenceMusicIndex } from '../src/server/routes/reference-music';
+import {
+  readReferenceIntroMusicBytes,
+  readReferenceMusicIndex,
+  referenceMusicContentType,
+} from '../src/server/routes/reference-music';
 
 const work = mkdtempSync(join(tmpdir(), 'slopesmith-native-intro-'));
 process.env.SLOPESMITH_MAPS_ROOT = work;
@@ -19,6 +23,17 @@ try {
   assert.deepEqual(index.songs, []);
   assert.deepEqual(index.intro, { tier: 'C', stems: ['auth-C2.wav', 'auth-C10.wav'] });
   assert.deepEqual(await readReferenceIntroMusicBytes('SSX_FIXTURE', 'auth-C2.wav'), wave);
+  const compressed = Buffer.alloc(64);
+  compressed.write('OggS');
+  compressed.write('OpusHead', 28);
+  rmSync(join(folder, 'auth-C2.wav'));
+  writeFileSync(join(folder, 'auth-C2.opus'), compressed);
+  assert.deepEqual((await readReferenceMusicIndex('SSX_FIXTURE')).intro, {
+    tier: 'C',
+    stems: ['auth-C2.wav', 'auth-C10.wav'],
+  });
+  assert.deepEqual(await readReferenceIntroMusicBytes('SSX_FIXTURE', 'auth-C2.wav'), compressed);
+  assert.equal(referenceMusicContentType(compressed), 'audio/ogg; codecs=opus');
   await assert.rejects(readReferenceIntroMusicBytes('SSX_FIXTURE', 'auth-A1.wav'));
   await assert.rejects(readReferenceIntroMusicBytes('SSX_FIXTURE', '../end.wav'));
   const legacy = join(work, 'LEGACY', 'Audio', 'Music');

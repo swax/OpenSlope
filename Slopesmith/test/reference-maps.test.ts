@@ -117,6 +117,7 @@ try {
     for (const [method, path] of [
       ['GET', ''],
       ['POST', '/uploads'],
+      ['POST', '/music'],
       ['PUT', '/uploads/00000000-0000-0000-0000-000000000000?offset=0'],
       ['POST', '/uploads/00000000-0000-0000-0000-000000000000/complete'],
       ['DELETE', '/maps/TRICKY_GARI'],

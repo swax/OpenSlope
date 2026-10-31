@@ -36,6 +36,18 @@ function remember(path: string, stamp: string, hash: string) {
   while (hashes.size > MAX_HASHES) hashes.delete(hashes.keys().next().value!);
 }
 
+export async function referenceReuseDigest(path: string, size: number, signal?: AbortSignal) {
+  const entry = await fileStat(path);
+  if (!entry.isFile() || Number(entry.size) !== size) throw new Error('Reference reuse source changed.');
+  const stamp = signature(entry),
+    cached = hashes.get(path);
+  if (cached?.signature === stamp) return cached.hash;
+  const hash = await digest(path, size, signal);
+  if (signature(await fileStat(path)) !== stamp) throw new Error('Reference reuse source changed.');
+  remember(path, stamp, hash);
+  return hash;
+}
+
 /** Seed the index from hashes we just validated, without re-reading newly installed courses. */
 export async function rememberReferenceFiles(root: string, course: string, files: readonly ReferenceFile[]) {
   await mapLimit([...files], 8, async file => {

@@ -144,9 +144,6 @@ body.public-chat-visible { --lodge-width: 0px; }
 .public-iso-map-actions { flex-wrap: wrap; }
 .public-iso-map-actions .public-iso-reference { margin-right: 0; }
 .public-iso-reference[aria-pressed="true"] { color: #ffe0b1; background: #533e28; border-color: #bd8b4b; }
-.public-reference-music { position: relative; z-index: 1; color: #9db6c5; font-size: 11px; }
-.public-reference-music[hidden] { display: none; }
-.public-reference-music input { vertical-align: middle; }
 .public-reference-controls { display: flex; flex-direction: column; gap: 6px; }
 .public-iso-map-actions button { margin-right: auto; }
 .public-iso-map-actions a { display: inline-flex; align-items: center; gap: 4px; color: #d3e4ef;

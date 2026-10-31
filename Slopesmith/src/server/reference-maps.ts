@@ -18,6 +18,7 @@ import { loadImage } from '@napi-rs/canvas';
 import { canonicalDiscCourse } from '../core/reference/disc-courses';
 import { mapLimit } from '../shared/map-data';
 import { referenceManifest, type ReferenceFile, type ReferenceManifest } from '../shared/reference-transfer';
+import { referenceMusicEncoding, REFERENCE_MUSIC_INDEX } from '../shared/reference-music-encoding';
 import { listLevelOrigins } from './routes/levels';
 import { mapsRoot } from './workspace-config';
 import { serialize } from './serialize';
@@ -287,6 +288,31 @@ async function validate(upload: Upload) {
     }
   });
   if (failure) throw failure;
+  const encoded = [...files.values()].filter(file => /^Audio\/(Music|Intro)\/.+\.opus$/i.test(file.path));
+  if (encoded.length || files.has(REFERENCE_MUSIC_INDEX)) {
+    required(REFERENCE_MUSIC_INDEX);
+    const index = referenceMusicEncoding(
+      JSON.parse(await readFile(join(upload.directory, REFERENCE_MUSIC_INDEX), 'utf8')),
+    );
+    if (index.files.length !== encoded.length) throw new Error('Reference music encoding index is incomplete.');
+    for (const music of index.files) {
+      const file = files.get(music.path);
+      if (
+        !file ||
+        file.size !== music.size ||
+        file.sha256 !== music.sha256 ||
+        files.has(music.path.replace(/\.opus$/i, '.wav'))
+      )
+        throw new Error('Reference music encoding index does not match its files.');
+      const bytes = await readFile(join(upload.directory, music.path));
+      if (
+        bytes.length < 64 ||
+        bytes.toString('ascii', 0, 4) !== 'OggS' ||
+        bytes.toString('ascii', 28, 36) !== 'OpusHead'
+      )
+        throw new Error('Invalid compressed reference music.');
+    }
+  }
   required('Origin.json');
   required('Import.json');
   const origin = JSON.parse(await readFile(join(upload.directory, 'Origin.json'), 'utf8'));

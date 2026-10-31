@@ -124,7 +124,7 @@ export class ResponseCache {
     req: IncomingMessage,
     res: ServerResponse,
     key: string,
-    contentType: string,
+    contentType: string | ((bytes: Buffer) => string),
     cacheControl: ResponseCacheControl,
     producer: Producer<Buffer>,
   ) {
@@ -135,7 +135,7 @@ export class ResponseCache {
     req: IncomingMessage,
     res: ServerResponse,
     key: string,
-    contentType: string,
+    contentType: string | ((bytes: Buffer) => string),
     cacheControl: ResponseCacheControl,
     compress: boolean,
     producer: Producer<Buffer>,
@@ -156,7 +156,7 @@ export class ResponseCache {
           raw,
           encodingJobs: new Map(),
           etag: `"${contentRevision(raw)}"`,
-          contentType,
+          contentType: typeof contentType === 'string' ? contentType : contentType(raw),
           cacheControl,
         };
       })();

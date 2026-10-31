@@ -121,11 +121,27 @@ icons show where it is available; **Load local** extracts a course for this brow
 references and manage them on the same row.
 
 The browser uploads the native importer's already extracted files, preserving filename case, import metadata and
-any `Source/` sidecars. The ISO or ROM never leaves the device. **Include music** defaults off and includes both
-`Audio/Music/` and `Audio/Intro/`; other audio stays with the course. Current native importer limitations still apply.
+any `Source/` sidecars. The ISO or ROM never leaves the device. Available music and intro audio are always
+included, alongside other course audio. Current native importer limitations still apply.
 
-Reference uploads share one queue across the Library catalogue and game views. Each map retains its own music
-choice and shows queued/uploading progress. Click a queued or uploading toggle to cancel that job; later jobs continue after
+New music uploads encode those folders' WAV clips as Ogg Opus at 128 kb/s in a dedicated worker, using the
+same pinned portable codec as the native player. Cached local WAVs, gameplay sounds and `Source/` sidecars
+remain unchanged. The server retains and serves the compressed bytes with `audio/ogg; codecs=opus`; it does
+not expand them for playback. Existing WAV references continue working without migration.
+
+`Audio/Music/encoding.json` records the `opus-128-v1` profile, source WAV hashes and compressed file sizes/hashes.
+An admin-only `POST /music` lookup accepts `{hashes: [sourceSha256]}` before conversion and returns matching
+encoded file records. Matching clips skip both encoding and uploading. If a donor disappears before transfer
+negotiation, the client encodes its cached original and negotiates again. The index itself is validated against
+the uploaded files, and reused bytes still pass the ordinary transfer hash checks.
+
+Music graphs and intro manifests retain their original WAV identifiers; readers resolve an absent WAV to its
+Opus sibling. Pre-skip and final Ogg granules trim encoder delay/padding, and the original sample rate/frame
+count is retained for native playback. The native player and Quest folder cache accept the compressed clips.
+This is lossy playback audio; no additional raw music copy is uploaded alongside it.
+
+Reference uploads share one queue across the Library catalogue and game views. Each map shows queued/uploading
+progress. Click a queued or uploading toggle to cancel that job; later jobs continue after
 cleanup, including after a failed upload. Leaving the page cancels active and queued uploads.
 
 Before transferring bytes, the browser offers sizes and SHA-256 hashes. The server checks ordinary files
@@ -136,13 +152,18 @@ does not change another reference. File hashes are cached with filesystem signat
 verified again. The progress message reports how many files were reused.
 
 `/api/reference-maps` is admin-only, including status and cancellation; personal access keys cannot administer.
-`GET /` lists installed references, `POST /uploads` starts a manifest (`course`, `music`, and ordered
+`GET /` lists installed references, `POST /uploads` starts a manifest (`course`, `music: true`, and ordered
 `files: [{path, size, sha256}]`). New clients set `reuse: true` and receive `missing` (ordered manifest-file
 indices), `reusedFiles` and `reusedBytes`. `PUT /uploads/{id}?offset={bytes}` sends contiguous binary slices of
 only those missing files concatenated in response order. Without `reuse`, the original all-file protocol is
 retained. Each slice is at most 8 MiB. `GET /uploads/{id}` reports the accepted
 offset after a lost response; `POST /uploads/{id}/complete` validates and publishes, and `DELETE /uploads/{id}`
 cancels. `DELETE /maps/{name}` removes an installed reference.
+
+Deleting a reference keeps authored project documents but can break their external asset references.
+Preserve banks used by custom maps, including the exact fingerprints in versioned pointers. For music
+migrations, changing only `Audio/Music/` and `Audio/Intro/` preserves those fingerprints; replacing the
+full bank requires checking its identity.
 
 Uploads are limited to two active transfers, 30,000 files, 512 MiB per file and 4 GiB total. A hidden staging
 folder prevents partial maps appearing in catalogues. Completion checks hashes, JSON, PNGs, terrain controls,
