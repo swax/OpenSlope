@@ -156,7 +156,7 @@ void write_music(const Rom& rom, const Course& course, const std::filesystem::pa
                 std::filesystem::create_directory(root / id);
                 std::map<unsigned, std::vector<std::uint8_t>> decoded;
                 std::vector<std::uint8_t> samples;
-                for (const auto index : sequence) {
+                for (const unsigned index : sequence) {
                     check_cancel(cancel);
                     require(index >= 32 && index - 32 < lookup[selection].size(), "Invalid GBA music playlist index");
                     const auto rid = lookup[selection][index - 32];
