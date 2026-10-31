@@ -10,7 +10,6 @@ import { chromiumExecutable } from './browser-test-support';
 import { startApiService } from '../src/server/main';
 import { forgetWorkspaceConfig } from '../src/server/workspace-config';
 import { forgetAccounts } from '../src/server/accounts/store';
-import { discCourseName } from '../src/core/reference/disc-courses';
 
 const courses = Array.from({ length: 7 }, (_, family) =>
   [0, 1, 2, 3]
@@ -36,9 +35,9 @@ if (!process.argv[2]) {
       '-c',
       [
         'import sys; from pathlib import Path; sys.path.insert(0,sys.argv[1])',
-        'from avalanche_import_test import course_packages,gcm,rvz',
+        'from avalanche_import_test import course_packages,gcm,rvz,title_dol',
         'from avalanche_music_test import music_files',
-        'Path(sys.argv[2]).write_bytes(rvz(gcm(course_packages() | music_files()),packing=True))',
+        'Path(sys.argv[2]).write_bytes(rvz(title_dol(gcm(course_packages() | music_files())),packing=True))',
       ].join('\n'),
       resolve('../Native/tests'),
       fixture,
@@ -74,7 +73,14 @@ try {
   assert.equal(await game.getAttribute('aria-pressed'), 'true');
   for (const course of selected) {
     console.log(`AVALANCHE BROWSER CHECK: ${course}`);
-    const name = discCourseName(course);
+    const name: string = await page.evaluate(async course => {
+      const url = '/src/core/reference/disc-courses.ts';
+      const names = (await import(/* @vite-ignore */ url)) as typeof import('../src/core/reference/disc-courses');
+      return names.discCourseName(course);
+    }, course);
+    if (!process.argv[2]) {
+      assert.equal(name, `Disc course ${Number(course.at(-4)) * 4 + Number(course.at(-1))}`);
+    }
     await page.getByRole('button', { name: `Load ${name}`, exact: true }).click();
     await page.getByRole('button', { name: `Unload ${name}`, exact: true }).waitFor({ timeout: 120_000 });
     const result = await page.evaluate(async course => {
@@ -95,6 +101,7 @@ try {
       const patches = await read('Patches.json');
       const paths = await read('AIP.json');
       const report = await read('Import.json');
+      if (!report.DisplayName || !report.NameSource) throw new Error('Missing source-derived title metadata');
       const playlist = await read('Audio/Music/playlist.json');
       if (!playlist.length || playlist.length !== report.Music.Songs)
         throw new Error(`Missing imported music: ${playlist.length}/${report.Music.Songs}`);

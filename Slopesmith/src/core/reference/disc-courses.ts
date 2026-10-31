@@ -1,4 +1,28 @@
-/** Retail disc slots can share riding presence without publishing or serving any map files. */
+export function normalizeMapDisplayName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return;
+  const name = value.trim();
+  return name && name.length <= 200 && [...name].every(c => c.charCodeAt(0) >= 32 && c.charCodeAt(0) !== 127)
+    ? name
+    : undefined;
+}
+
+const importedNames = new Map<string, string>();
+export function registerDiscCourseNames(names: Readonly<Record<string, unknown>> = {}): void {
+  for (const [id, value] of Object.entries(names)) {
+    const title = normalizeMapDisplayName(value);
+    if (title && isDiscCourse(id)) importedNames.set(id.toUpperCase(), title);
+  }
+}
+export function importedDiscCourseNames(courses: readonly string[]): Record<string, string> {
+  return Object.fromEntries(
+    courses.flatMap(id => {
+      const title = importedNames.get(id.toUpperCase());
+      return title ? [[id, title]] : [];
+    }),
+  );
+}
+
+/** Legacy labels for imports made before titles were extracted from disc metadata. */
 const DISC_COURSES: Readonly<Record<string, string>> = {
   MADTRIX_AN_ANTARTICA: 'Antarctica (Mad Trix)',
   MADTRIX_DC_WASHINGTON: 'Washington DC (Mad Trix)',
@@ -128,6 +152,26 @@ const ON_TOUR_DAY = new Set([
   'WR4',
 ]);
 const ON_TOUR_NIGHT = new Set(['ER3', 'ER4', 'NP3', 'VB1', 'VB4', 'VH1', 'WR1', 'WR2', 'WR3', 'WR4']);
+const trickySlot = (slot: string): string | undefined => {
+  if (!slot.startsWith('TRICKY_')) return;
+  const bare = slot.slice(7);
+  return !bare.includes('_') && Object.hasOwn(DISC_COURSES, bare) ? bare : undefined;
+};
+export function canonicalDiscCourse(course: string): string {
+  const slot = course.toUpperCase();
+  return /^[A-Z0-9_-]+$/.test(slot) && !/^(TRICKY_|SSX_|SSX3_|SSXOT_|AVALANCHE_|MADTRIX_)/.test(slot)
+    ? `TRICKY_${slot}`
+    : course;
+}
+/** A saved reference may still use the bare Tricky slot returned by older scanners. */
+export function discContainsCourse(courses: readonly string[], course: string): boolean {
+  const slot = course.toUpperCase();
+  const canonical = canonicalDiscCourse(slot);
+  return courses.some(id => {
+    const candidate = id.toUpperCase();
+    return candidate === slot || canonicalDiscCourse(candidate) === canonical;
+  });
+}
 const onTourSlot = (slot: string): RegExpMatchArray | null => {
   const match = slot.match(/^SSXOT_([A-Z0-9]{3})_(DAY|NIGHT)$/);
   return match && (match[2] === 'DAY' ? ON_TOUR_DAY : ON_TOUR_NIGHT).has(match[1]) ? match : null;
@@ -136,13 +180,18 @@ export const isDiscCourse = (course: string): boolean => {
   const slot = course.toUpperCase();
   return (
     Object.hasOwn(DISC_COURSES, slot) ||
+    !!trickySlot(slot) ||
     (slot.startsWith('SSX3_') && SSX3_SECTIONS.has(slot.slice(5))) ||
     !!onTourSlot(slot)
   );
 };
 export const discCourseName = (course: string): string => {
   const slot = course.toUpperCase();
+  const imported = importedNames.get(slot);
+  if (imported) return imported;
   if (DISC_COURSES[slot]) return DISC_COURSES[slot];
+  const tricky = trickySlot(slot);
+  if (tricky) return DISC_COURSES[tricky];
   const tour = onTourSlot(slot);
   if (tour) return `${tour[1]} · ${tour[2] === 'DAY' ? 'Day' : 'Night'} (SSX On Tour)`;
   if (!slot.startsWith('SSX3_') || !SSX3_SECTIONS.has(slot.slice(5))) return course;

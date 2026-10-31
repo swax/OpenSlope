@@ -1,6 +1,7 @@
 // tier: fast
 import assert from 'node:assert/strict';
 import { discCourseName, isDiscCourse } from '../src/core/reference/disc-courses';
+import { mapDisplayName } from '../src/core/reference/map-game';
 import { isoCourseCacheVersion, supportsCollisionSoundUpdate } from '../src/app/public/iso-cache';
 import { isoGameForCourse } from '../src/app/public/iso-discs';
 
@@ -19,6 +20,8 @@ for (const [family, variants] of titles.entries())
     const course = `AVALANCHE_CRS0${family}_0${variant}`;
     assert(isDiscCourse(course) && isDiscCourse(course.toLowerCase()), course);
     assert.equal(discCourseName(course), `1080° Avalanche · ${title}`);
+    assert.equal(mapDisplayName({ name: course }), title, 'Map selectors omit the already-selected game');
+    assert.equal(mapDisplayName({ name: 'RENAMED', course, game: '1080-avalanche' }), title);
     assert.equal(isoGameForCourse(course), 'avalanche');
     assert.equal(supportsCollisionSoundUpdate(course), false);
     assert.equal(isoCourseCacheVersion(course), 3, 'Old Avalanche caches need source colour lighting');
@@ -30,6 +33,12 @@ for (const unknown of [
   'AVALANCHE_CRS07_00',
   'AVALANCHE_CRS01_04',
   'AVALANCHE_CRS01_00/../Custom',
-])
+]) {
   assert(!isDiscCourse(unknown), unknown);
+  assert.equal(mapDisplayName({ name: unknown }), unknown, 'Unknown IDs keep their original label');
+}
+assert.equal(mapDisplayName({ name: 'GARI' }), 'Garibaldi');
+assert.equal(mapDisplayName({ name: 'AVALANCHE_CRS01_00', displayName: '  Disc title  ' }), 'Disc title');
+assert.equal(mapDisplayName({ name: 'AVALANCHE_CRS01_00', displayName: 'Bad\nTitle' }), 'Tenderfoot Pass');
+assert.equal(mapDisplayName({ name: 'GARI', origin: 'slopesmith' }), 'GARI', 'Authored map names remain their own');
 console.log('Avalanche catalogue names, game routing and bounded presence slots: PASS');

@@ -199,7 +199,7 @@ try {
   await page!.locator('.public-iso-status').filter({ hasText: '1 map found' }).waitFor();
   await page!.getByRole('button', { name: 'Load Garibaldi', exact: true }).click();
   await page!.getByRole('button', { name: 'Unload Garibaldi', exact: true }).waitFor();
-  const isoCard = page!.locator('.public-iso-map[data-course="GARI"]');
+  const isoCard = page!.locator('.public-iso-map[data-course="TRICKY_GARI"]');
   assert.equal(await isoCard.locator('.public-primary').count(), 1);
   assert(
     await isoCard
@@ -247,7 +247,7 @@ try {
   await page!.getByRole('button', { name: 'Inspect map', exact: true }).click();
   await editorReady();
   assert.match(new URL(page!.url()).pathname, /^\/editor(?:\/|$)/);
-  assert.equal(new URL(page!.url()).searchParams.get('reference'), 'GARI');
+  assert.equal(new URL(page!.url()).searchParams.get('reference'), 'TRICKY_GARI');
   await page!.goto(`${origin}/maps`);
   await page!.getByRole('link', { name: 'Play OFFLINE_SAVED', exact: true }).waitFor();
   await page!.getByRole('button', { name: 'Play Garibaldi', exact: true }).waitFor();
@@ -267,7 +267,7 @@ try {
   await editorReady();
   assert.equal(new URL(page!.url()).pathname, '/editor/OFFLINE_SAVED');
   assert.equal(new URL(page!.url()).searchParams.get('local'), id);
-  await page!.goto(`${origin}/editor?reference=GARI`);
+  await page!.goto(`${origin}/editor?reference=TRICKY_GARI`);
   await editorReady();
   assert.deepEqual(errors, []);
 

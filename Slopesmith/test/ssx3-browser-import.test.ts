@@ -105,6 +105,7 @@ try {
     const instances = await read('Instances.json');
     const effects = await read('Effects.json');
     const materials = await read('Materials.json');
+    const importInfo = await read('Import.json');
     const soundBindings = await read('SoundBindings.json');
     const lights = (await read('Lights.json')).Lights;
     const courseRequest = db.transaction('courses').objectStore('courses').get('SSX3_A');
@@ -180,6 +181,12 @@ try {
       instances: instances.Instances.length,
       texture: patches.Patches[0].TexturePath,
       game: effects.target.game,
+      layout: {
+        MapType: importInfo.MapType,
+        WorldId: importInfo.WorldId,
+        ParentMap: importInfo.ParentMap,
+        SourceSections: importInfo.SourceSections,
+      },
       movingSlot: instances.Instances[1].EffectSlotIndex,
       helperSlot: instances.Instances[0].EffectSlotIndex,
       scroll: effects.graphs[0]?.nodes[0]?.payload.type0?.UVScroll,
@@ -209,6 +216,12 @@ try {
   }, readFileSync(fixture).toString('base64'));
   assert(result.courses?.includes('SSX3_PEAK1'));
   assert(!result.courses?.includes('SSX3_ALL'));
+  assert.deepEqual(result.layout, {
+    MapType: 'hub',
+    WorldId: 'ssx-3:bam',
+    ParentMap: 'SSX3_PEAK1',
+    SourceSections: ['A'],
+  });
   assert.equal(result.patches, 1);
   assert.equal(result.instances, 2);
   assert.equal(result.texture, '0000_o.png');

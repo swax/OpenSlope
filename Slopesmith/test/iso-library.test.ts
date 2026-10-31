@@ -107,7 +107,7 @@ try {
     await page
       .locator('.public-iso-map')
       .evaluateAll(rows => rows.map(row => (row as HTMLElement).dataset.course).sort()),
-    ['GARI', 'SNOW'],
+    ['TRICKY_GARI', 'TRICKY_SNOW'],
   );
   const trickyCard = page.locator('.public-iso-game-card').filter({
     has: page.getByRole('button', { name: 'SSX Tricky', exact: true }),
@@ -308,7 +308,7 @@ try {
     await page
       .locator('.public-iso-map:visible')
       .evaluateAll(rows => rows.map(row => (row as HTMLElement).dataset.course)),
-    ['GARI'],
+    ['TRICKY_GARI'],
   );
   await page.getByRole('button', { name: 'Unload Garibaldi', exact: true }).click();
   await filters.getByRole('button', { name: 'Loaded (0)', exact: true }).waitFor();
@@ -345,6 +345,20 @@ try {
     'saved discs are available in another browser tab',
   );
   await secondTab.close();
+  // A saved reference with the old bare ID can still load from a newly namespaced disc scan.
+  await page.goto(`${origin}/isos?reference=GARI&source=iso`);
+  await page.getByRole('button', { name: 'Load required maps', exact: true }).click();
+  await page
+    .locator('.public-iso-map[data-course="GARI"]')
+    .getByRole('button', { name: 'Unload Garibaldi', exact: true })
+    .waitFor();
+  assert.equal(
+    await page.locator('.public-iso-map[data-course="TRICKY_GARI"]').count(),
+    0,
+    'the required legacy map does not offer a duplicate namespaced import',
+  );
+  await page.goto(`${origin}/isos`);
+  await page.getByRole('button', { name: 'Clear all ISO maps', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
   await page
     .getByRole('alertdialog', { name: 'Unload all ISO maps?', exact: true })

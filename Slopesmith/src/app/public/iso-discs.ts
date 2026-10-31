@@ -1,3 +1,6 @@
+import { canonicalDiscCourse, registerDiscCourseNames } from '../../core/reference/disc-courses';
+import { registerCourseLayouts, type CourseLayout } from '../../core/reference/course-layout';
+
 export const ISO_GAMES = [
   { id: 'tricky', name: 'SSX Tricky', support: 'Full support' },
   { id: 'ssx', name: 'SSX', support: 'Partial support' },
@@ -12,6 +15,8 @@ export interface SavedIsoDisc {
   game: IsoGame;
   file: File;
   courses: string[];
+  names?: Record<string, string>;
+  layouts?: Record<string, CourseLayout>;
 }
 
 export function isoGameForCourse(course: string): IsoGame {
@@ -38,10 +43,32 @@ export async function savedIsoDiscs(): Promise<SavedIsoDisc[]> {
   try {
     return await new Promise((resolve, reject) => {
       const request = db.transaction('discs').objectStore('discs').getAll();
-      request.onsuccess = () => resolve(request.result as SavedIsoDisc[]);
+      request.onsuccess = () => {
+        const discs = request.result as SavedIsoDisc[];
+        for (const disc of discs) {
+          // Saved source inventories predate namespaced Tricky IDs. Extract new maps under the new IDs,
+          // while the separate map cache and saved projects retain their original keys.
+          if (disc.game === 'tricky') {
+            disc.courses = disc.courses.map(canonicalDiscCourse);
+            if (disc.names)
+              disc.names = Object.fromEntries(
+                Object.entries(disc.names).map(([id, title]) => [canonicalDiscCourse(id), title]),
+              );
+            if (disc.layouts)
+              disc.layouts = Object.fromEntries(
+                Object.entries(disc.layouts).map(([id, layout]) => [canonicalDiscCourse(id), layout]),
+              );
+          }
+          registerDiscCourseNames(disc.names);
+          registerCourseLayouts(disc.layouts);
+        }
+        resolve(discs);
+      };
       request.onerror = () => reject(request.error);
     });
-  } finally { db.close(); }
+  } finally {
+    db.close();
+  }
 }
 
 async function writeDiscs(run: (store: IDBObjectStore) => void, signal?: AbortSignal): Promise<void> {
@@ -54,15 +81,29 @@ async function writeDiscs(run: (store: IDBObjectStore) => void, signal?: AbortSi
       const abort = () => transaction.abort();
       const finish = () => signal?.removeEventListener('abort', abort);
       signal?.addEventListener('abort', abort, { once: true });
-      transaction.oncomplete = () => { finish(); resolve(); };
+      transaction.oncomplete = () => {
+        finish();
+        resolve();
+      };
       transaction.onerror = transaction.onabort = () => {
         finish();
-        reject(signal?.aborted ? signal.reason : transaction.error ?? new Error('The ISO could not be saved in this browser.'));
+        reject(
+          signal?.aborted
+            ? signal.reason
+            : (transaction.error ?? new Error('The ISO could not be saved in this browser.')),
+        );
       };
-      try { run(transaction.objectStore('discs')); }
-      catch (error) { transaction.abort(); finish(); reject(error); }
+      try {
+        run(transaction.objectStore('discs'));
+      } catch (error) {
+        transaction.abort();
+        finish();
+        reject(error);
+      }
     });
-  } finally { db.close(); }
+  } finally {
+    db.close();
+  }
 }
 
 export async function saveIsoDisc(disc: SavedIsoDisc, signal?: AbortSignal): Promise<void> {
