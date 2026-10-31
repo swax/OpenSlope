@@ -3,6 +3,9 @@
 target_sources(openslope_core PRIVATE
   # Shared orchestration and portable output.
   src/import/loader.cpp
+  src/import/session.cpp
+  src/import/hash.cpp
+  src/import/music_cache.cpp
   src/import/maps.cpp
   src/import/png.cpp
 
@@ -22,12 +25,14 @@ target_sources(openslope_core PRIVATE
   src/import/avalanche/music.cpp
   src/import/avalanche/lighting.cpp
   src/import/avalanche/props.cpp
+  src/import/avalanche/titles.cpp
 
   # Jonny Moseley Mad Trix.
   src/import/madtrix/importer.cpp
   src/import/madtrix/audio.cpp
   src/import/madtrix/music.cpp
   src/import/madtrix/props.cpp
+  src/import/madtrix/titles.cpp
 
   # SSX family registration and per-game conversion.
   src/import/ssx/importer.cpp
@@ -51,6 +56,8 @@ target_sources(openslope_core PRIVATE
   src/import/ssx/common/audio_import.cpp
   src/import/ssx/common/world_import.cpp
   src/import/ssx/common/executable.cpp
+  src/import/ssx/common/titles.cpp
+  src/import/ssx/common/localization.cpp
   src/import/ssx/common/audio_resolver.cpp
 )
 target_include_directories(openslope_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

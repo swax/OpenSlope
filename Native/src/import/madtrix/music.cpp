@@ -1,5 +1,6 @@
 #include "openslope/music.hpp"
 #include "audio.hpp"
+#include "import/music_cache.hpp"
 #include "import/strings.hpp"
 #include "openslope/audio.hpp"
 #include <algorithm>
@@ -74,7 +75,8 @@ unsigned reference(const std::string& value) {
     return result;
 }
 
-Json song(Bytes source, const std::string& voice, const std::filesystem::path& root, const ImportCancel& cancel) {
+Json song(const DiscInput& disc, Bytes source, const std::string& voice, const std::filesystem::path& root,
+          const ImportCancel& cancel) {
     source.range(0, 48);
     const auto size = source.be(12), rate = source.be(16);
     require(source.text(0, 4) == "VAGp" && size > 0 && size <= 16 * 1024 * 1024 && size % 16 == 0 &&
@@ -83,79 +85,86 @@ Json song(Bytes source, const std::string& voice, const std::filesystem::path& r
     const auto id = name(source, 32, 16);
     require(valid_map_name(id), "Unsafe Mad Trix music track name");
     const auto folder = root / id;
-    require(std::filesystem::create_directory(folder), "Duplicate Mad Trix music track");
-    // Decode on ADPCM block boundaries, carrying predictor history across WAVs.
-    // Four seconds keeps the existing players' first-two-chunk preload bounded.
-    const auto blocks_per_chunk = rate * 4 / 28;
-    Json samples = Json::array(), nodes = Json::array();
-    nodes.push_back({{"Index", 0},
-                     {"Sample", 0},
-                     {"Track", 0},
-                     {"Flags", 0},
-                     {"Word1", 0},
-                     {"Word2", 0},
-                     {"Links", {1}},
-                     {"LinkRaw", {std::uint32_t(1 << 16 | 127 << 8)}}});
-    AdpcmState history;
-    unsigned index = 0;
-    std::size_t frames = 0;
-    for (unsigned block = 0; block < size / 16; ++index) {
-        check_cancel(cancel);
-        const auto count = std::min(blocks_per_chunk, size / 16 - block);
-        const auto data = source.data.subspan(48 + block * 16, count * 16);
-        for (unsigned p = 0; p < data.size(); p += 16)
-            require((data[p] >> 4) <= 4 && (data[p] & 15) <= 12 && data[p + 1] <= 7,
-                    "Invalid Mad Trix music ADPCM frame");
-        const auto pcm = decode_audio_frames(data, 5, count * 28, history);
-        PcmClip clip;
-        clip.rate = rate;
-        clip.samples.reserve(pcm.size());
-        for (const auto value : pcm)
-            clip.samples.push_back(value / 32768.f);
-        std::ostringstream filename;
-        filename << "chunk_" << std::setfill('0') << std::setw(3) << index << ".wav";
-        write_wave(folder / filename.str(), clip);
-        const auto seconds = double(clip.frames()) / rate;
-        samples.push_back({{"Index", index},
-                           {"Wav", filename.str()},
-                           {"MusOffset", 48 + block * 16},
-                           {"Meta", std::lround(seconds * 1000)},
-                           {"Samples", clip.frames()},
-                           {"Rate", rate},
-                           {"Channels", 1},
-                           {"Seconds", seconds}});
-        frames += clip.frames();
-        block += count;
-        const auto next = block == size / 16 ? 1 : index + 2;
-        nodes.push_back({{"Index", index + 1},
-                         {"Sample", index + 1},
-                         {"Track", 0},
-                         {"Flags", 0},
-                         {"Word1", 0},
-                         {"Word2", 0},
-                         {"Links", {next}},
-                         {"LinkRaw", {std::uint32_t(next << 16 | 127 << 8)}}});
-    }
-    save(folder / "graph.json", {{"Schema", "openslope-music-graph/v1"},
-                                 {"Song", "Mad Trix " + id},
-                                 {"Short", id},
-                                 {"Bpm", 0},
-                                 {"Volume", 1},
-                                 {"Tracks", 1},
-                                 {"Sections", 1},
-                                 {"Events", 0},
-                                 {"EventTable", ""},
-                                 {"Routers", Json::array()},
-                                 {"Vars", Json::array()},
-                                 {"Nodes", nodes},
-                                 {"Samples", samples}});
-    static_cast<void>(MusicGraph::load(folder / "graph.json"));
+    const auto key = music_key("madtrix-music-v1", voice, {source.data});
+    cached_music(
+        disc, key, folder,
+        [&] {
+            require(std::filesystem::create_directory(folder), "Duplicate Mad Trix music track");
+            // Decode on ADPCM block boundaries, carrying predictor history across WAVs.
+            // Four seconds keeps the existing players' first-two-chunk preload bounded.
+            const auto blocks_per_chunk = rate * 4 / 28;
+            Json samples = Json::array(), nodes = Json::array();
+            nodes.push_back({{"Index", 0},
+                             {"Sample", 0},
+                             {"Track", 0},
+                             {"Flags", 0},
+                             {"Word1", 0},
+                             {"Word2", 0},
+                             {"Links", {1}},
+                             {"LinkRaw", {std::uint32_t(1 << 16 | 127 << 8)}}});
+            AdpcmState history;
+            unsigned index = 0;
+            for (unsigned block = 0; block < size / 16; ++index) {
+                check_cancel(cancel);
+                const auto count = std::min(blocks_per_chunk, size / 16 - block);
+                const auto data = source.data.subspan(48 + block * 16, count * 16);
+                for (unsigned p = 0; p < data.size(); p += 16)
+                    require((data[p] >> 4) <= 4 && (data[p] & 15) <= 12 && data[p + 1] <= 7,
+                            "Invalid Mad Trix music ADPCM frame");
+                const auto pcm = decode_audio_frames(data, 5, count * 28, history);
+                PcmClip clip;
+                clip.rate = rate;
+                clip.samples.reserve(pcm.size());
+                for (const auto value : pcm)
+                    clip.samples.push_back(value / 32768.f);
+                std::ostringstream filename;
+                filename << "chunk_" << std::setfill('0') << std::setw(3) << index << ".wav";
+                write_wave(folder / filename.str(), clip);
+                const auto seconds = double(clip.frames()) / rate;
+                samples.push_back({{"Index", index},
+                                   {"Wav", filename.str()},
+                                   {"MusOffset", 48 + block * 16},
+                                   {"Meta", std::lround(seconds * 1000)},
+                                   {"Samples", clip.frames()},
+                                   {"Rate", rate},
+                                   {"Channels", 1},
+                                   {"Seconds", seconds}});
+                block += count;
+                const auto next = block == size / 16 ? 1 : index + 2;
+                nodes.push_back({{"Index", index + 1},
+                                 {"Sample", index + 1},
+                                 {"Track", 0},
+                                 {"Flags", 0},
+                                 {"Word1", 0},
+                                 {"Word2", 0},
+                                 {"Links", {next}},
+                                 {"LinkRaw", {std::uint32_t(next << 16 | 127 << 8)}}});
+            }
+            save(folder / "graph.json", {{"Schema", "openslope-music-graph/v1"},
+                                         {"Song", "Mad Trix " + id},
+                                         {"Short", id},
+                                         {"Bpm", 0},
+                                         {"Volume", 1},
+                                         {"Tracks", 1},
+                                         {"Sections", 1},
+                                         {"Events", 0},
+                                         {"EventTable", ""},
+                                         {"Routers", Json::array()},
+                                         {"Vars", Json::array()},
+                                         {"Nodes", nodes},
+                                         {"Samples", samples}});
+            static_cast<void>(MusicGraph::load(folder / "graph.json"));
+        },
+        cancel);
+    const auto frames = size / 16 * 28;
+    const auto chunk_blocks = rate * 4 / 28;
+    const auto chunks = (size / 16 + chunk_blocks - 1) / chunk_blocks;
     return {{"Song", id},
             {"SourceVoice", voice},
             {"Frames", frames},
             {"Rate", rate},
             {"Channels", 1},
-            {"Chunks", samples.size()},
+            {"Chunks", chunks},
             {"Seconds", double(frames) / rate}};
 }
 } // namespace
@@ -190,7 +199,7 @@ unsigned write_madtrix_music(const DiscInput& disc, const std::filesystem::path&
         const auto voice = name(descriptor, 64, 12);
         require(valid_map_name(voice) && voices.insert(upper(voice)).second && voices.size() <= 64,
                 "Invalid Mad Trix music voice table");
-        const auto entry = song(bank.resource(reference(name(descriptor, 136, 16))), voice, root, cancel);
+        const auto entry = song(disc, bank.resource(reference(name(descriptor, 136, 16))), voice, root, cancel);
         playlist.push_back(entry.at("Song"));
         sources.push_back(entry);
     }

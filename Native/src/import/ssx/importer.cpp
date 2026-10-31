@@ -1,4 +1,5 @@
 #include "importer.hpp"
+#include "common/titles.hpp"
 #include "formats.hpp"
 #include "import/containers/big.hpp"
 #include "import/strings.hpp"
@@ -71,7 +72,7 @@ std::vector<DiscCourse> courses(const DiscInput& disc, const ImportCancel& cance
             pbd_header(Bytes{geometry});
             if (!files.contains(stem + ".MAP") || !files.contains(stem + ".SSH"))
                 throw std::runtime_error("Course archive is incomplete");
-            result.push_back({stem, entry.size});
+            result.push_back({"TRICKY_" + stem, entry.size});
         }
     }
     if (result.empty())
@@ -107,14 +108,15 @@ void extract(const DiscInput& disc, const std::string& stem, const std::filesyst
         return;
     }
     const bool original = stem.starts_with("SSX_");
-    const auto files = archive(disc, iso.find("DATA/MODELS/" + (original ? stem.substr(4) : stem) + ".BIG"), cancelled);
+    const auto slot = original ? stem.substr(4) : stem.starts_with("TRICKY_") ? stem.substr(7) : stem;
+    const auto files = archive(disc, iso.find("DATA/MODELS/" + slot + ".BIG"), cancelled);
     if (original) {
         import_detail::write_ssx_course(disc, files, stem, output, progress, cancelled);
         return;
     }
-    write_tricky_course(disc, files, stem, output, progress, cancelled);
+    write_tricky_course(disc, files, slot, output, progress, cancelled);
 }
 } // namespace
 
-const GameImporter ssx_importer{accepts, courses, extract};
+const GameImporter ssx_importer{accepts, courses, extract, ssx_titles, write_tricky_music};
 } // namespace openslope::import_detail

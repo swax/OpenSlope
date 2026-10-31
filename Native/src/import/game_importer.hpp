@@ -10,5 +10,8 @@ struct GameImporter {
     std::vector<DiscCourse> (*courses)(const DiscInput& disc, const ImportCancel& cancel);
     void (*extract)(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
                     const ImportProgress& progress, const ImportCancel& cancel);
+    void (*titles)(const DiscInput& disc, std::vector<DiscCourse>& courses, const ImportCancel& cancel) = nullptr;
+    void (*music)(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
+                  const ImportProgress& progress, const ImportCancel& cancel) = nullptr;
 };
 } // namespace openslope::import_detail

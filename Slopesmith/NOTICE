@@ -137,6 +137,7 @@ not include them in dist/ or dist-server/:
     npm-development-only: globals — MIT License
     npm-development-only: playwright-core — Apache License 2.0
     npm-development-only: prettier — MIT License
+    npm-development-only: prettier-plugin-java — Apache License 2.0
     npm-development-only: tsx — MIT License
     npm-development-only: typescript — Apache License 2.0
     npm-development-only: typescript-eslint — MIT License

@@ -239,6 +239,7 @@ def main():
             assert paths['AIPaths'][0]['PathEvents'] == [] and paths['AIPaths'][0]['SourceEvents'][0]['EventType'] == 300
             assert json.loads((out / 'Effects.json').read_text())['target']['game'] == 'ssx-on-tour'
             manifest = json.loads((out / 'Import.json').read_text())
+            assert json.loads((out / 'Origin.json').read_text())['Game'] == 'ssx-on-tour'
             assert manifest['Sections'] == [3, 4, 5] and manifest['TimeOfDay'] == time.lower()
             original = json.loads((out / 'Source/Resources.json').read_text())
             script, = [r for r in original if r['Bin'] == 22]

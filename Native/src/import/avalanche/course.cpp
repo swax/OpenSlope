@@ -1063,6 +1063,7 @@ void write_avalanche_course(const DiscInput& disc, const std::string& course, co
     notify("Converting Avalanche background, lighting and particle art");
     const auto atmosphere = environment(disc, *selected, g.b, output, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
+                                  {"Game", "1080-avalanche"},
                                   {"Origin", "retail"},
                                   {"Course", course},
                                   {"SourcePackage", package},

@@ -382,6 +382,7 @@ def main():
             [(1, 'Synthetic rock'), (257, 'Rock copy'), (2, 'Other section rock')],
             [(1, 'Synthetic rock_CollideModel_ProgMesh'), (2, 'Other section rock_CollideModel_ProgMesh')])
         section_iso = root / 'sections.iso'; section_iso.write_bytes(disc(section_files))
+        assert 'SSX3_PEAK2\t' not in run(executable, 'list', section_iso), 'Partial worlds omit absent peak bundles without breaking discovery'
         run(executable, 'extract', section_iso, 'SSX3_PEAK1', root / 'sections')
         section_out = root / 'sections/SSX3_PEAK1'
         by_resource = {i['SourceResource']: i for i in json.loads((section_out / 'Instances.json').read_text())['Instances']}
@@ -439,6 +440,7 @@ def main():
         fog_instance, = json.loads((out / 'ParticleInstances.json').read_text())['Particles']
         assert fog_instance['ParticleModelIndex'] == 0
         assert not json.loads((out / 'Import.json').read_text())['Complete']
+        assert json.loads((out / 'Origin.json').read_text())['Game'] == 'ssx-3'
         source_row = next(row for row in json.loads((out / 'Source/Resources.json').read_text()) if row['Bin'] == 16)
         source_bytes = (out / 'Source/Resources.bin').read_bytes()
         assert source_bytes[source_row['Offset']:source_row['Offset'] + source_row['Bytes']] == b'original synthetic script payload'

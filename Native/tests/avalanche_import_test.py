@@ -320,6 +320,25 @@ def gcm(files):
     return bytes(data+content)
 
 
+def title_dol(image):
+    """Authored menu records, not retail title strings or executable bytes."""
+    image = bytearray(image)
+    start = len(image)
+    dol = bytearray(0x1800)
+    struct.pack_into('>I', dol, 0, 0x100)
+    struct.pack_into('>I', dol, 0x48, 0x8018bef4)
+    struct.pack_into('>I', dol, 0x90, 0x1700)
+    dol[0x300:0x30d] = b'Test category'
+    for i in range(28):
+        struct.pack_into('>I', dol, 0x100+i*8, 0x8018bef4+0x200)
+        struct.pack_into('>I', dol, 0x104+i*8, 0x8018bef4+0x400+i*48)
+        text = f'Disc course {i}'.encode()
+        p = 0x500+i*48
+        dol[p:p+len(text)] = text
+    struct.pack_into('>I', image, 0x420, start)
+    return bytes(image+dol)
+
+
 def zstd_frame(data):
     # Standard Zstandard single-segment frame with authored raw blocks.
     result = b'\x28\xb5\x2f\xfd\xa0'+struct.pack('<I', len(data))
@@ -395,6 +414,7 @@ def main():
             assert terrain[0]['Points'][1] == [6000, -4000, 2500], 'Reflect X and retain the source control tensor'
             assert terrain[0]['UVPoints'] == portable_uvs(TERRAIN_UVS[0]), 'UV corners must stay attached to geometry'
             report = json.loads((output/'Import.json').read_text())
+            assert json.loads((output/'Origin.json').read_text())['Game'] == '1080-avalanche'
             assert report['TrunkProxies'] == 1 and report['CollisionTriangles'] == 46
             assert report['RideableSnowTriangles'] == 1
             rgba = png_pixels(output/'Textures/ava-0.png')
@@ -405,6 +425,19 @@ def main():
             before = (output/'Patches.json').read_bytes()
             run('extract', source, 'AVALANCHE_CRS00_00', maps, succeeds=False)
             assert (output/'Patches.json').read_bytes() == before
+        titled = root/'named.rvz'
+        titled.write_bytes(rvz(title_dol(image)))
+        listed = json.loads(run('names', titled))
+        assert listed[0]['DisplayName'] == 'Disc course 0'
+        run('extract', titled, 'AVALANCHE_CRS00_00', root/'named-maps')
+        metadata = json.loads((root/'named-maps/AVALANCHE_CRS00_00/Import.json').read_text())
+        assert metadata['DisplayName'] == 'Disc course 0' and metadata['NameSource'] == 'main.dol:menu-course-titles'
+        assert metadata['Game'] == '1080-avalanche' and metadata['Course'] == 'AVALANCHE_CRS00_00'
+        malformed = bytearray(title_dol(image))
+        start = struct.unpack_from('>I', malformed, 0x420)[0]
+        struct.pack_into('>I', malformed, start+0x104, 0xffffffff)
+        titled.write_bytes(rvz(malformed))
+        assert json.loads(run('names', titled))[0]['DisplayName'] == '', 'Invalid pointers cannot become UI titles'
         source = root/'bad.rvz'
         data = rvz(image); data[0x10] ^= 1; source.write_bytes(data)
         assert 'checksum' in run('list', source, succeeds=False)

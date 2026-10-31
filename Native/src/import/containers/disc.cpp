@@ -34,6 +34,8 @@ DiscInput open_disc(const std::filesystem::path& path) {
 }
 
 DiscInput logical_disc(const DiscInput& source) {
+    if (source.context)
+        return source; // Import sessions already own a normalized reader.
     const auto input = import_detail::rvz_disc(source);
     if (input.size < 17 * 2048 || import_detail::gamecube_disc(input))
         return input;

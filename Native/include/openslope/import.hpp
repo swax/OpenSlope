@@ -2,26 +2,57 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
 namespace openslope {
+namespace import_detail {
+struct ImportContext;
+}
+
 // A bounded, seekable input. Android supplies pread on a granted document FD;
 // desktop tools supply an ordinary file. No filesystem path is inferred from a URI.
 struct DiscInput {
     std::uint64_t size{};
     std::function<void(std::uint64_t, std::span<std::uint8_t>)> read_at;
+    std::shared_ptr<import_detail::ImportContext> context{};
     std::vector<std::uint8_t> read(std::uint64_t offset, std::size_t length) const;
 };
 
 struct DiscCourse {
     std::string name;
     std::uint64_t archive_bytes{};
+    std::string display_name{}, name_source{};
+    std::string map_type{"run"}, world_id{}, parent_map{};
+    std::vector<std::string> source_sections{}, connects{};
 };
 
 using ImportProgress = std::function<void(const std::string&)>;
 using ImportCancel = std::function<bool()>;
+
+struct ImportSessionStats {
+    std::uint64_t source_reads{}, read_hits{}, scans{}, extractions{}, music_hits{}, music_misses{};
+};
+
+// A serial, reusable disc reader. Converted music stays optional and maps remain self-contained.
+class ImportSession {
+public:
+    explicit ImportSession(DiscInput source, std::filesystem::path music_cache = {}, bool external_cache = false);
+    std::vector<DiscCourse> courses(const ImportCancel& cancelled = {});
+    void extract(const std::string& course, const std::filesystem::path& output, const ImportProgress& progress = {},
+                 const ImportCancel& cancelled = {});
+    // The browser restores only the requested tracks before extraction, then persists new entries.
+    std::string music_plan(const std::string& course, const ImportCancel& cancelled = {});
+    std::string music_entries() const;
+    ImportSessionStats stats() const;
+
+private:
+    struct State;
+    std::shared_ptr<State> state_;
+};
+
 DiscInput open_disc(const std::filesystem::path& path);
 // Unwraps a supported GameCube RVZ or presents ISO9660 logical sectors for a
 // plain ISO / Mode 2 Form 1 BIN. All views seek bounded source extents.

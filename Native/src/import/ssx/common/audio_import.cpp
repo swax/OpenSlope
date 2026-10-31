@@ -1,4 +1,5 @@
 #include "external_sounds.hpp"
+#include "import/music_cache.hpp"
 #include "import/ssx/formats.hpp"
 #include "openslope/audio_data.hpp"
 #include "openslope/audio_resolver.hpp"
@@ -318,7 +319,108 @@ struct Writer {
         return name;
     }
 };
+
+void tricky_music(const DiscInput& disc, const std::string& course, const std::map<std::string, Sections>& configs,
+                  Writer& w) {
+    if (configs.contains("MUSICMAP.INF")) {
+        if (!configs.contains("MUSIC.INF"))
+            throw std::runtime_error("Course music list has no song configuration");
+        const auto& selectors = configs.at("MUSICMAP.INF");
+        const auto& songs = configs.at("MUSIC.INF");
+        const auto selection = section_for(selectors, course);
+        const auto names = values(selectors, selection, "SONG");
+        if (names.size() > 64)
+            throw std::runtime_error("Course music playlist exceeds its limit");
+        Library music(disc, "DATA/AUDIO/MUSIC.BIG");
+        std::filesystem::create_directories(w.root / "Music");
+        Json playlist = Json::array();
+        std::set<std::string> converted;
+        const auto convert = [&](const std::string& alias) {
+            const auto song = section_for(songs, alias), path = filename(one(songs, song, "PATHDATA")),
+                       stream = filename(one(songs, song, "MUSDATA"));
+            const auto name = std::filesystem::path(path).stem().string();
+            if (converted.contains(upper(name)))
+                return name;
+            const auto path_bytes = music.read(path), audio = music.read(stream);
+            const auto loop = one(songs, song, "LOOPDATA");
+            const auto loop_bytes = loop.empty() ? std::vector<std::uint8_t>{} : music.read(loop);
+            Json settings = Json::object();
+            for (const auto& [key, value] : songs.at(song))
+                settings[key] = value;
+            const auto key = music_key("tricky-music-v1", Json{{"Song", song}, {"Settings", settings}}.dump(),
+                                       {path_bytes, audio, loop_bytes});
+            const auto folder = w.root / "Music" / name;
+            const auto before_music = w.bytes;
+            cached_music(
+                disc, key, folder,
+                [&] {
+                    w.notify("Decoding music " + name);
+                    const auto graph = MusicGraph::decode(path_bytes);
+                    if (!std::filesystem::create_directory(folder))
+                        throw std::runtime_error("Duplicate music directory");
+                    for (const auto& sample : graph.samples) {
+                        w.check();
+                        const auto result = decode_audio_stream(audio, sample.offset);
+                        w.wave(folder / sample.wav, result.clip);
+                    }
+                    const auto bpm = number(songs, song, "BPM", 120),
+                               volume = number(songs, song, "PATHLEVEL", 100) / 100;
+                    if (bpm <= 0 || bpm > 1000 || volume < 0 || volume > 1)
+                        throw std::runtime_error("Invalid music tempo/volume");
+                    graph.save(folder / "graph.json", song, bpm, volume);
+                    w.reserve(std::filesystem::file_size(folder / "graph.json"));
+                    auto output_settings = settings;
+                    if (!loop.empty())
+                        output_settings["LoopBank"] = w.bank(music, loop, folder / "loops");
+                    json_file(folder / "config.json", output_settings);
+                },
+                w.cancelled);
+            if (!(disc.context && disc.context->planning)) {
+                w.bytes = before_music;
+                for (const auto& file : std::filesystem::recursive_directory_iterator(folder))
+                    if (file.is_regular_file())
+                        w.reserve(file.file_size());
+            }
+            converted.insert(upper(name));
+            return name;
+        };
+        for (const auto& name : names)
+            playlist.push_back(convert(name));
+        json_file(w.root / "Music/playlist.json", playlist);
+        if (selectors.contains("TRICK")) {
+            const auto special = values(selectors, "TRICK", "SONG");
+            if (special.size() > 1)
+                throw std::runtime_error("Ambiguous special music song");
+            if (!special.empty())
+                json_file(w.root / "Music/special-song.json", {{"Song", convert(special.front())}});
+        }
+    }
+}
 } // namespace
+
+void write_tricky_music(const DiscInput& disc, const std::string& requested, const std::filesystem::path& output,
+                        const ImportProgress& progress, const ImportCancel& cancelled) {
+    if (requested.starts_with("SSX"))
+        return; // These families do not yet have a music converter.
+    const auto data = disc_directory(disc, "DATA");
+    if (std::none_of(data.begin(), data.end(), [](const auto& e) { return e.directory && upper(e.name) == "CONFIG"; }))
+        return;
+    const auto entries = disc_directory(disc, "DATA/CONFIG");
+    const auto present = [&](const char* name) {
+        return std::any_of(entries.begin(), entries.end(),
+                           [&](const auto& e) { return !e.directory && upper(e.name) == name; });
+    };
+    if (!present("BANKS.INF") || !present("MUSICMAP.INF"))
+        return;
+    if (!present("MUSIC.INF"))
+        throw std::runtime_error("Course music list has no song configuration");
+    std::map<std::string, Sections> configs;
+    for (const auto name : {"MUSIC.INF", "MUSICMAP.INF"})
+        configs[name] = config(disc_file(disc, std::string("DATA/CONFIG/") + name));
+    Writer w{disc, output / "Audio", progress, cancelled, 0, {}, Json::array()};
+    std::filesystem::create_directories(w.root);
+    tricky_music(disc, requested.starts_with("TRICKY_") ? requested.substr(7) : requested, configs, w);
+}
 
 bool write_ssx3_audio(const DiscInput& disc, const std::filesystem::path& output, const std::string& course,
                       const ImportProgress& progress, const ImportCancel& cancelled) {
@@ -671,62 +773,7 @@ bool write_course_audio(const DiscInput& disc, const std::string& course,
     }
     json_file(w.root / "SoundIndex.json", index);
     json_file(w.root / "ExternalIndex.json", environment);
-    if (configs.contains("MUSICMAP.INF")) {
-        if (!configs.contains("MUSIC.INF"))
-            throw std::runtime_error("Course music list has no song configuration");
-        const auto& selectors = configs.at("MUSICMAP.INF");
-        const auto& songs = configs.at("MUSIC.INF");
-        const auto selection = section_for(selectors, course);
-        const auto names = values(selectors, selection, "SONG");
-        if (names.size() > 64)
-            throw std::runtime_error("Course music playlist exceeds its limit");
-        Library music(disc, "DATA/AUDIO/MUSIC.BIG");
-        std::filesystem::create_directories(w.root / "Music");
-        Json playlist = Json::array();
-        std::set<std::string> converted;
-        const auto convert = [&](const std::string& alias) {
-            const auto song = section_for(songs, alias), path = filename(one(songs, song, "PATHDATA")),
-                       stream = filename(one(songs, song, "MUSDATA"));
-            const auto name = std::filesystem::path(path).stem().string();
-            if (converted.contains(upper(name)))
-                return name;
-            w.notify("Decoding music " + name);
-            const auto graph = MusicGraph::decode(music.read(path));
-            const auto audio = music.read(stream);
-            const auto folder = w.root / "Music" / name;
-            if (!std::filesystem::create_directory(folder))
-                throw std::runtime_error("Duplicate music directory");
-            for (const auto& sample : graph.samples) {
-                w.check();
-                const auto decoded = decode_audio_stream(audio, sample.offset);
-                w.wave(folder / sample.wav, decoded.clip);
-            }
-            const auto bpm = number(songs, song, "BPM", 120), volume = number(songs, song, "PATHLEVEL", 100) / 100;
-            if (bpm <= 0 || bpm > 1000 || volume < 0 || volume > 1)
-                throw std::runtime_error("Invalid music tempo/volume");
-            graph.save(folder / "graph.json", song, bpm, volume);
-            w.reserve(std::filesystem::file_size(folder / "graph.json"));
-            Json settings = Json::object();
-            for (const auto& [key, value] : songs.at(song))
-                settings[key] = value;
-            const auto loop = one(songs, song, "LOOPDATA");
-            if (!loop.empty())
-                settings["LoopBank"] = w.bank(music, loop, folder / "loops");
-            json_file(folder / "config.json", settings);
-            converted.insert(upper(name));
-            return name;
-        };
-        for (const auto& name : names)
-            playlist.push_back(convert(name));
-        json_file(w.root / "Music/playlist.json", playlist);
-        if (selectors.contains("TRICK")) {
-            const auto special = values(selectors, "TRICK", "SONG");
-            if (special.size() > 1)
-                throw std::runtime_error("Ambiguous special music song");
-            if (!special.empty())
-                json_file(w.root / "Music/special-song.json", {{"Song", convert(special.front())}});
-        }
-    }
+    tricky_music(disc, course, configs, w);
     if (configs.contains("INTROMUS.INF")) {
         const auto& intros = configs.at("INTROMUS.INF");
         const auto selected = section_for(intros, course, true);

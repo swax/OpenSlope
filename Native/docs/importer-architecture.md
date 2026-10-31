@@ -5,6 +5,12 @@ C++ import pipeline and public `openslope/import.hpp` API. Game readers produce
 the existing portable map contracts; renderers, collision and riding consume
 those contracts independently of the source game.
 
+Source title readers attach optional names to discovered courses and persist `Import.json.DisplayName`
+after extraction. All platforms consume the same metadata; see [course titles](course-titles.md).
+
+`ImportSession` retains the normalized reader and catalogue across maps. Converted music has a
+versioned, content-identified cache shared by the game converters; see [import caching](import-cache.md).
+
 ## Source layout
 
 All disc import implementation lives under [`src/import`](../src/import).
@@ -12,6 +18,7 @@ All disc import implementation lives under [`src/import`](../src/import).
 | Location | Responsibility |
 | --- | --- |
 | `loader.cpp`, `game_importer.hpp` | Registered game families, cancellation and a new output directory's lifetime. |
+| `session.cpp`, `music_cache.cpp`, `hash.cpp` | Reusable disc sessions, bounded source reads and verified converted music. |
 | `containers/` | Bounded disc input, RVZ, raw BIN sectors, ISO9660, GameCube FST, BIG/PAK archives and their compression. No game selection. |
 | `shared.hpp`, `png.cpp`, `strings.hpp` | Checked binary reads, decoded images, PNG output and common name handling. |
 | `avalanche/` | Avalanche identification, course catalogue, LVL/GEO/COL/MTL/LIG/TPL conversion and prop separation. |
@@ -32,7 +39,8 @@ pulls every game's private declarations into all readers.
 
 1. Create a folder under `src/import/<game>/` with an `importer.hpp` exporting
    a `GameImporter` and an implementation of its three callbacks: `accepts`,
-   `courses`, and `extract`. A related title may share a family folder when its
+   `courses`, and `extract`. Optional `titles` and `music` callbacks attach source names and plan
+   reusable music resources. A related title may share a family folder when its
    on-disc formats actually overlap, as SSX 3 and On Tour do.
 2. Make `accepts` a bounded identity/layout probe on a **logical disc**. A
    filesystem or compression wrapper alone does not identify the game. Return

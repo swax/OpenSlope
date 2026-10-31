@@ -672,6 +672,7 @@ void write_ssx_course(const DiscInput& disc, const std::map<std::string, Buffer>
     } else
         deferred.push_back("skybox");
     write(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
+                                   {"Game", "ssx"},
                                    {"Origin", "retail"},
                                    {"Course", course},
                                    {"RetailData", true},

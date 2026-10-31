@@ -1221,8 +1221,30 @@ std::vector<DiscCourse> ssx3_courses(std::span<const std::uint8_t> database, std
             result.push_back({"SSX3_" + name, bytes});
     for (const auto* preset : {"PEAK1", "PEAK2", "PEAK3"}) {
         const auto name = std::string("SSX3_") + preset;
-        if (!selection(names, name).empty())
+        const std::string letters = name.ends_with('1') ? "AB" : name.ends_with('2') ? "CD" : "E";
+        if (std::any_of(names.begin(), names.end(), [&](const auto& section) {
+                return section != "TRANSP" && !section.ends_with("SKY") &&
+                       letters.find(section.front()) != std::string::npos;
+            }))
             result.push_back({name, bytes});
+    }
+    for (auto& course : result) {
+        const auto section = course.name.substr(5);
+        const auto split = section.find('_');
+        const bool peak = section.starts_with("PEAK");
+        course.map_type = peak                         ? "run-chain"
+                          : split != std::string::npos ? "connector"
+                          : section.size() == 1        ? "hub"
+                                                       : "run";
+        course.world_id = "ssx-3:bam";
+        course.parent_map = peak ? "SSX3_ALL"
+                                 : std::string("SSX3_PEAK") + (section.front() <= 'B'   ? "1"
+                                                               : section.front() <= 'D' ? "2"
+                                                                                        : "3");
+        for (const auto index : selection(names, course.name))
+            course.source_sections.push_back(names[index]);
+        if (split != std::string::npos)
+            course.connects = {"SSX3_" + section.substr(0, split), "SSX3_" + section.substr(split + 1)};
     }
     return result;
 }
@@ -1472,6 +1494,7 @@ void write_mountain_course(const DiscInput& disc, const DiscInput& stream, std::
     if (audio)
         write_streamed_ambient_audio(output, tour, cancel);
     save(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
+                                  {"Game", tour ? "ssx-on-tour" : "ssx-3"},
                                   {"Origin", "retail"},
                                   {"RetailData", true},
                                   {"Course", course},

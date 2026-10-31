@@ -1,6 +1,7 @@
 #include "openslope/music.hpp"
 #include "formats.hpp"
 #include "import/containers/disc.hpp"
+#include "import/music_cache.hpp"
 #include "import/strings.hpp"
 #include "openslope/audio.hpp"
 #include <algorithm>
@@ -125,62 +126,62 @@ Json song(const DiscInput& disc, const DiscEntry& entry, const std::string& id, 
             "Avalanche music stream exceeds its extent limit");
     const auto data = gamecube_file(disc, "1080Data/sound/" + entry.name);
     const auto folder = root / id;
-    require(std::filesystem::create_directory(folder), "Duplicate Avalanche music stream");
-    Decoder decoder;
-    Json samples = Json::array(), nodes = Json::array();
-    const auto node = [](unsigned index, unsigned sample, unsigned next) {
-        return Json{{"Index", index},  {"Sample", sample},
-                    {"Track", 0},      {"Flags", 0},
-                    {"Word1", 0},      {"Word2", 0},
-                    {"Links", {next}}, {"LinkRaw", {std::uint32_t(next << 16 | 127 << 8)}}};
-    };
-    nodes.push_back(node(0, 0, 1));
-    std::size_t frames = 0;
-    for (std::size_t at = 0; at < data.size();) {
-        check_cancel(cancel);
-        const auto size = std::min(std::size_t(blocks_per_chunk) * 32, data.size() - at);
-        const auto clip = decoder.decode(std::span(data).subspan(at, size), cancel);
-        std::ostringstream filename;
-        filename << "chunk_" << std::setfill('0') << std::setw(3) << samples.size() << ".wav";
-        write_wave(folder / filename.str(), clip);
-        const auto seconds = double(clip.frames()) / rate;
-        samples.push_back({{"Index", samples.size()},
-                           {"Wav", filename.str()},
-                           {"MusOffset", at},
-                           {"Meta", std::lround(seconds * 1000)},
-                           {"Samples", clip.frames()},
-                           {"Rate", rate},
-                           {"Channels", 2},
-                           {"Seconds", seconds}});
-        at += size;
-        frames += clip.frames();
-        const auto index = unsigned(samples.size());
-        nodes.push_back(node(index, index, at == data.size() ? 1 : index + 1));
-    }
-    save(folder / "graph.json", {{"Schema", "openslope-music-graph/v1"},
-                                 {"Song", title + " - " + artist},
-                                 {"Short", id},
-                                 {"Artist", artist},
-                                 {"Bpm", 0},
-                                 {"Volume", 1},
-                                 {"Tracks", 1},
-                                 {"Sections", 1},
-                                 {"Events", 0},
-                                 {"EventTable", ""},
-                                 {"Routers", Json::array()},
-                                 {"Vars", Json::array()},
-                                 {"Nodes", nodes},
-                                 {"Samples", samples}});
-    static_cast<void>(MusicGraph::load(folder / "graph.json"));
-    return {{"Song", id},
-            {"Title", title},
-            {"Artist", artist},
-            {"SourceFile", entry.name},
-            {"Frames", frames},
-            {"Rate", rate},
-            {"Channels", 2},
-            {"Chunks", samples.size()},
-            {"Seconds", double(frames) / rate}};
+    const auto key =
+        music_key("avalanche-music-v1", Json{{"Id", id}, {"Title", title}, {"Artist", artist}}.dump(), {data});
+    cached_music(
+        disc, key, folder,
+        [&] {
+            require(std::filesystem::create_directory(folder), "Duplicate Avalanche music stream");
+            Decoder decoder;
+            Json samples = Json::array(), nodes = Json::array();
+            const auto node = [](unsigned index, unsigned sample, unsigned next) {
+                return Json{{"Index", index},  {"Sample", sample},
+                            {"Track", 0},      {"Flags", 0},
+                            {"Word1", 0},      {"Word2", 0},
+                            {"Links", {next}}, {"LinkRaw", {std::uint32_t(next << 16 | 127 << 8)}}};
+            };
+            nodes.push_back(node(0, 0, 1));
+            for (std::size_t at = 0; at < data.size();) {
+                check_cancel(cancel);
+                const auto size = std::min(std::size_t(blocks_per_chunk) * 32, data.size() - at);
+                const auto clip = decoder.decode(std::span(data).subspan(at, size), cancel);
+                std::ostringstream filename;
+                filename << "chunk_" << std::setfill('0') << std::setw(3) << samples.size() << ".wav";
+                write_wave(folder / filename.str(), clip);
+                const auto seconds = double(clip.frames()) / rate;
+                samples.push_back({{"Index", samples.size()},
+                                   {"Wav", filename.str()},
+                                   {"MusOffset", at},
+                                   {"Meta", std::lround(seconds * 1000)},
+                                   {"Samples", clip.frames()},
+                                   {"Rate", rate},
+                                   {"Channels", 2},
+                                   {"Seconds", seconds}});
+                at += size;
+                const auto index = unsigned(samples.size());
+                nodes.push_back(node(index, index, at == data.size() ? 1 : index + 1));
+            }
+            save(folder / "graph.json", {{"Schema", "openslope-music-graph/v1"},
+                                         {"Song", title + " - " + artist},
+                                         {"Short", id},
+                                         {"Artist", artist},
+                                         {"Bpm", 0},
+                                         {"Volume", 1},
+                                         {"Tracks", 1},
+                                         {"Sections", 1},
+                                         {"Events", 0},
+                                         {"EventTable", ""},
+                                         {"Routers", Json::array()},
+                                         {"Vars", Json::array()},
+                                         {"Nodes", nodes},
+                                         {"Samples", samples}});
+            static_cast<void>(MusicGraph::load(folder / "graph.json"));
+        },
+        cancel);
+    const auto frames = data.size() / 32 * 28;
+    const auto chunks = (data.size() + blocks_per_chunk * 32 - 1) / (blocks_per_chunk * 32);
+    return {{"Song", id},   {"Title", title}, {"Artist", artist}, {"SourceFile", entry.name},        {"Frames", frames},
+            {"Rate", rate}, {"Channels", 2},  {"Chunks", chunks}, {"Seconds", double(frames) / rate}};
 }
 } // namespace
 
@@ -237,7 +238,7 @@ unsigned write_avalanche_music(const DiscInput& disc, const std::filesystem::pat
         decoded_bytes += entry->bytes / 32 * 28 * 4;
         require(decoded_bytes <= 1280ull * 1024 * 1024, "Avalanche soundtrack exceeds its decoded limit");
         if (progress)
-            progress("Decoding Avalanche music: " + title);
+            progress("Preparing Avalanche music: " + title);
         sources.push_back(song(disc, *entry, id, title, artist, root, cancel));
         playlist.push_back(id);
     }

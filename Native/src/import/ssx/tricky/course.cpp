@@ -233,6 +233,7 @@ void write_tricky_course(const DiscInput& disc, const std::map<std::string, std:
         }
     }
     write_json(output / "Origin.json", {{"Schema", "openslope-origin/v1"},
+                                        {"Game", "ssx-tricky"},
                                         {"Origin", "retail"},
                                         {"Course", stem},
                                         {"RetailData", true},
@@ -255,6 +256,7 @@ void write_tricky_course(const DiscInput& disc, const std::map<std::string, std:
     if (!audio)
         deferred.push_back("audio-assets");
     write_json(output / "Import.json", {{"Schema", "openslope-native-import/v1"},
+                                        {"Game", "ssx-tricky"},
                                         {"Course", stem},
                                         {"Complete", false},
                                         {"Outputs", outputs},

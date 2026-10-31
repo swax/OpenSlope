@@ -8,6 +8,7 @@
 #include "openslope/terrain.hpp"
 #include "openslope/world.hpp"
 #include "props.hpp"
+#include "titles.hpp"
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
@@ -677,5 +678,8 @@ void extract(const DiscInput& disc, const std::string& course, const std::filesy
 }
 } // namespace
 
-const GameImporter madtrix_importer{accepts, courses, extract};
+const GameImporter madtrix_importer{accepts, courses, extract, madtrix_titles,
+                                    [](const DiscInput& disc, const std::string&, const std::filesystem::path& output,
+                                       const ImportProgress&,
+                                       const ImportCancel& cancel) { write_madtrix_music(disc, output, cancel); }};
 } // namespace openslope::import_detail

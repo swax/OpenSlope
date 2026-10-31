@@ -1,17 +1,60 @@
 #include "import/avalanche/formats.hpp"
+#include "import/course_metadata.hpp"
 #include "import/ssx/formats.hpp"
 #include "openslope/audio_resolver.hpp"
 #include "openslope/import.hpp"
 #include "openslope/world_import.hpp"
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
+namespace {
+void replace_metadata(const std::filesystem::path& path, const nlohmann::json& metadata) {
+    const auto staged =
+        path.parent_path() /
+        (".Import-titles-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    try {
+        {
+            std::ofstream file(staged);
+            file << metadata.dump(2) << '\n';
+            if (!file)
+                throw std::runtime_error("Cannot stage map title metadata");
+        }
+        if (std::filesystem::exists(path)) {
+            const auto backup = path.parent_path() / "Import.names-backup.json";
+            if (!std::filesystem::exists(backup))
+                std::filesystem::copy_file(path, backup);
+        }
+#ifdef _WIN32
+        if (!MoveFileExW(staged.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            throw std::runtime_error("Cannot publish map title metadata");
+#else
+        std::filesystem::rename(staged, path);
+#endif
+    } catch (...) {
+        std::error_code error;
+        std::filesystem::remove(staged, error);
+        throw;
+    }
+}
+} // namespace
 
 int main(int argc, char** argv) {
     try {
         if (argc < 3) {
-            std::cerr << "Usage: openslope_import list <iso> | extract <iso> <course> <Maps-folder> | convert-effects "
+            std::cerr << "Usage: openslope_import list <iso> | names <iso> | refresh-names <iso> <Maps-folder> "
+                         "[--dry-run] | extract <iso> <course> <Maps-folder> | convert-effects "
                          "<saved-ssf> <Effects.json> | extract-crowd <iso> <map-folder> | convert-crowd <saved-ssh> "
                          "<map-folder> | world <iso> <course> | surface-spray <iso> | collision-routes <iso> | "
                          "board-groups <iso> | adapt-riding-audio <map-folder> | adapt-course-ambience <map-folder> | "
@@ -181,6 +224,70 @@ int main(int argc, char** argv) {
                 std::cout << course.name << '\t' << course.archive_bytes << '\n';
             return 0;
         }
+        if (operation == "names") {
+            nlohmann::json rows = nlohmann::json::array();
+            for (const auto& course : openslope::disc_courses(disc)) {
+                auto row = openslope::import_detail::course_metadata(course);
+                row["DisplayName"] = course.display_name;
+                row["NameSource"] = course.name_source;
+                rows.push_back(row);
+            }
+            std::cout << rows.dump(2) << '\n';
+            return 0;
+        }
+        if (operation == "refresh-names" && (argc == 4 || (argc == 5 && std::string_view(argv[4]) == "--dry-run"))) {
+            const auto root = std::filesystem::weakly_canonical(argv[3]);
+            const bool dry = argc == 5;
+            const auto courses = openslope::disc_courses(disc);
+            unsigned changed = 0;
+            const auto field = [](const nlohmann::json& value, const char* key, const std::string& fallback = "") {
+                const auto found = value.find(key);
+                return found != value.end() && found->is_string() ? found->get<std::string>() : fallback;
+            };
+            for (const auto& directory : std::filesystem::directory_iterator(root)) {
+                if (!directory.is_directory() || directory.is_symlink() ||
+                    directory.path().filename().string().starts_with('.'))
+                    continue;
+                const auto resolved = std::filesystem::weakly_canonical(directory.path());
+                if (resolved.parent_path() != root)
+                    continue;
+                const auto read = [](const auto& path) {
+                    if (!std::filesystem::exists(path) || std::filesystem::file_size(path) > 1024 * 1024)
+                        return nlohmann::json::object();
+                    std::ifstream file(path);
+                    auto value = nlohmann::json::parse(file, nullptr, false);
+                    return value.is_object() ? value : nlohmann::json::object();
+                };
+                const auto origin = read(resolved / "Origin.json");
+                if (field(origin, "Origin") != "retail" || std::filesystem::exists(resolved / "Slopesmith.json"))
+                    continue;
+                auto metadata = read(resolved / "Import.json");
+                if (metadata.empty() && std::filesystem::exists(resolved / "Import.json"))
+                    continue;
+                const auto id = field(metadata, "Course", field(origin, "Course"));
+                const auto found = std::find_if(courses.begin(), courses.end(), [&](const auto& row) {
+                    return (row.name == id || row.name == "TRICKY_" + id) && !row.display_name.empty();
+                });
+                if (found == courses.end())
+                    continue;
+                auto additions = openslope::import_detail::course_metadata(*found);
+                additions["Course"] = id;
+                auto next = metadata;
+                next.update(additions);
+                if (next == metadata)
+                    continue;
+                if (metadata.empty())
+                    metadata = {{"Schema", "openslope-import-metadata/v1"}, {"Course", id}};
+                metadata.update(additions);
+                if (!dry)
+                    replace_metadata(resolved / "Import.json", metadata);
+                ++changed;
+                std::cout << directory.path().filename().string() << " -> " << found->display_name << '\n';
+            }
+            std::cout << (dry ? "Would update " : "Updated ") << changed
+                      << " map title(s); geometry and IDs unchanged.\n";
+            return 0;
+        }
         if (operation == "world" && argc == 4) {
             const auto profile = openslope::disc_world_profile(disc, argv[3]);
             if (profile.empty())
@@ -221,7 +328,8 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Map already exists; choose an empty Maps folder for comparison");
         const auto staging =
             root / (".openslope-import-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-        openslope::extract_course(disc, name, staging, [](const auto& text) { std::cout << text << '\n'; });
+        openslope::ImportSession session(disc, root / ".openslope-cache" / "music-v1");
+        session.extract(name, staging, [](const auto& text) { std::cout << text << '\n'; });
         try {
             std::filesystem::rename(staging, destination);
         } catch (...) {

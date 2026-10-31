@@ -236,7 +236,7 @@ def music_bank():
     return bytes(toc + payload)
 
 
-def iso(pak, recognized=True, manifest_mutation=None, music=None):
+def iso(pak, recognized=True, manifest_mutation=None, music=None, titles_csv=None):
     name = 'AA_fixture.pak'
     filename = f'{name_hash(name):X}.DAT'
     index_size, strings_size, data_size = struct.unpack_from('<3I', pak, len(pak)-12)
@@ -244,6 +244,12 @@ def iso(pak, recognized=True, manifest_mutation=None, music=None):
     if manifest_mutation:
         manifest_mutation(manifest)
     files = [('E942715C.DAT', bytes(manifest)), (filename, pak)]
+    if titles_csv is not None:
+        config = package({'Text/strings.csv': titles_csv})
+        index_size, strings_size, data_size = struct.unpack_from('<3I', config, len(config)-12)
+        manifest += b'config.pak'.ljust(64, b'\0') + struct.pack('<4I', name_hash('config.pak'), data_size, index_size, strings_size)
+        files[0] = ('E942715C.DAT', bytes(manifest))
+        files.append((f'{name_hash("config.pak"):X}.DAT', config))
     image = bytearray(28 * 2048)
     rows = record(b'\0', 25, 2048, True) + record(b'\1', 24, 2048, True)
     for leaf, data in files:

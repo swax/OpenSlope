@@ -134,6 +134,7 @@ def main():
             assert effects['graphs'][0]['extensions']['ssxUnresolvedNodes'][0]['nativeWords'] == [0x80000, 5]
             assert effects['objectProperties'][0]['references']['effectSlot'] == 'slot:0'
             assert json.loads((course / 'Origin.json').read_text())['RetailData']
+            assert json.loads((course / 'Origin.json').read_text())['Game'] == 'ssx'
             assert 'effects-node-semantics' in json.loads((course / 'Import.json').read_text())['Deferred']
             run(executable, 'extract', source, 'SSX_FIXTURE', maps, succeeds=False)
             assert hashlib.sha256(source.read_bytes()).digest() == digest

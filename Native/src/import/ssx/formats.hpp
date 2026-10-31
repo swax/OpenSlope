@@ -70,6 +70,8 @@ bool write_course_audio(const DiscInput& disc, const std::string& course,
                         const std::map<std::string, std::vector<std::uint8_t>>& files,
                         const std::filesystem::path& output, const ImportProgress& progress,
                         const ImportCancel& cancelled);
+void write_tricky_music(const DiscInput& disc, const std::string& course, const std::filesystem::path& output,
+                        const ImportProgress& progress, const ImportCancel& cancel);
 
 void pbd_header(Bytes bytes);
 void write_tricky_course(const DiscInput& disc, const std::map<std::string, std::vector<std::uint8_t>>& files,

@@ -154,10 +154,12 @@ def main():
         for compact in [True, False]:
             image = root / ('compact.iso' if compact else 'bigf.iso')
             image.write_bytes(iso(big(course_members(), compact)))
-            assert 'FIXTURE\t' in run(executable, 'list', image)
+            assert run(executable, 'list', image).split('\t')[0] == 'TRICKY_FIXTURE'
             maps = root / ('Maps compact' if compact else 'Maps bigf')
-            run(executable, 'extract', image, 'FIXTURE', maps)
-            output = maps / 'FIXTURE'
+            run(executable, 'extract', image, 'TRICKY_FIXTURE', maps)
+            output = maps / 'TRICKY_FIXTURE'
+            assert not (maps / 'FIXTURE').exists()
+            assert json.loads((output / 'Import.json').read_text())['Course'] == 'TRICKY_FIXTURE'
             row, = json.loads((output / 'Patches.json').read_text())['Patches']
             assert row['PatchName'] == 'Fixture patch'
             assert row['SurfaceType'] == 5 and row['TrickOnlyPatch'] is True
@@ -171,10 +173,14 @@ def main():
             assert png_pixels(output / 'Lightmaps/0000.png') == b'\x07\x13\x31\x79' * 4
             origin = json.loads((output / 'Origin.json').read_text())
             assert origin['RetailData'] and origin['Reasons'] == ['retail-extract']
+            assert origin['Game'] == 'ssx-tricky'
             sentinel = output / 'custom.txt'; sentinel.write_text('keep me')
-            run(executable, 'extract', image, 'FIXTURE', maps, succeeds=False)
+            run(executable, 'extract', image, 'TRICKY_FIXTURE', maps, succeeds=False)
             assert sentinel.read_text() == 'keep me'
             assert not list(maps.glob('.openslope-import-*'))
+            # Older saved references keep their own folder and metadata IDs.
+            run(executable, 'extract', image, 'FIXTURE', maps)
+            assert json.loads((maps / 'FIXTURE/Import.json').read_text())['Course'] == 'FIXTURE'
         for name, mutate in [('truncated', lambda data: data[:20]), ('bad-sector', lambda data: data[:16 * 2048 + 128] + b'\x00\x04' + data[16 * 2048 + 130:]), ('unsupported', lambda data: data.replace(b'\x00\x15\x1b\x01', b'\x00\x15\x1b\x02'))]:
             image = root / (name + '.iso'); image.write_bytes(mutate(iso(big(course_members()))))
             run(executable, 'list', image, succeeds=False)
@@ -196,7 +202,7 @@ def main():
             files = course_members(); files['unused.bin'] = bytes(4 * 1024 * 1024)
             image = root / 'discovery-io.iso'; image.write_bytes(iso(big(files)))
             timing = json.loads(run(Path(sys.argv[2]).resolve(), image))
-            assert timing['courses'] == ['FIXTURE'] and timing['read_bytes'] < 32768
+            assert timing['courses'] == ['TRICKY_FIXTURE'] and timing['read_bytes'] < 32768
         # Degree-three and mixed monomials distinguish the direct double tensor
         # identity from a staged float calculation, without a decoder reference.
         curved = course_members()
