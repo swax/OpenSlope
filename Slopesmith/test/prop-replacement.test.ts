@@ -7,6 +7,11 @@ import { behaviourOf, instanceBehaviour } from '../src/core/props/defaults';
 import { addEmptyEffectToProp, createEmptyEffectsDocument, effectAttachments } from '../src/core/effects/authoring';
 import type { LevelProps, PropInstance } from '../src/core/reference/props';
 import type { GroupDef } from '../src/core/reference/groups';
+import { assetVersion } from '../src/core/reference/asset-version';
+import { configureWorkspace } from '../src/app/net/workspace';
+
+const version = assetVersion('ssx-tricky', 'TEST', 'a'.repeat(64));
+const level = version.id;
 
 Object.defineProperty(globalThis, 'document', {
   configurable: true,
@@ -41,9 +46,9 @@ const instance: PropInstance = {
 };
 const levels = new Map<string, LevelProps>([
   [
-    'TEST',
+    level,
     {
-      level: 'TEST',
+      level,
       models: [
         { id: 1, name: 'Original', subs: [] },
         { id: 2, name: 'Lamp', subs: [] },
@@ -57,11 +62,18 @@ const levels = new Map<string, LevelProps>([
 const group: GroupDef = {
   id: 'lamp',
   name: 'Lamp assembly',
-  level: 'TEST',
+  level,
   occurrences: 1,
   lights: [],
   props: [{ model: 2, name: 'Lamp', relPos: [0, 0, 0], relYaw: 0 }],
 };
+configureWorkspace(false, async url => {
+  if (url.searchParams.get('mapSource') === 'local') return new Response('', { status: 404 });
+  if (url.pathname === '/api/levels') return Response.json({ levels: ['server:TEST'] });
+  if (url.pathname === '/api/map-asset-version') return Response.json(version);
+  if (url.pathname === '/api/groups') return Response.json({ level: 'TEST', groups: [group] });
+  throw new Error(`Unexpected fixture request: ${url}`);
+});
 let rebuilds = 0;
 const ops = createPropOps({
   store,
@@ -92,7 +104,7 @@ function reset() {
   store.mdoc = migrateMountain(defaultMountain());
   const target: PlacedProp = {
     id: 'prop:0000',
-    level: 'TEST',
+    level,
     model: 1,
     name: 'Original',
     pos: [12, 8, -3],
@@ -108,7 +120,7 @@ function reset() {
   };
   const source: PlacedProp = {
     id: 'prop:0001',
-    level: 'TEST',
+    level,
     model: 2,
     name: 'Source lamp',
     pos: [50, 0, 20],
@@ -132,18 +144,18 @@ const pose = (p: PlacedProp) => [p.id, p.labels, p.pos, p.yaw, p.pitch, p.roll, 
   const { target, source } = reset();
   const originalPose = structuredClone(pose(target)),
     originalSource = structuredClone(source);
-  store.mdoc.effects = createEmptyEffectsDocument('TEST');
+  store.mdoc.effects = createEmptyEffectsDocument(level);
   addEmptyEffectToProp(store.mdoc.effects, target.id!, 'collision');
   ops.replaceSelectedProp();
   assert.equal(ops.isReplacingProp(), true);
-  await ops.armProp('TEST', 2, 'Lamp');
+  await ops.armProp(level, 2, 'Lamp');
   assert.equal(target.model, 2);
   assert.equal(target.name, 'Lamp');
   assert.deepEqual(pose(target), originalPose);
   assert.equal(target.group, undefined);
   assert.equal(target.specialKind, undefined);
   assert.equal(target.ambientSoundFile, undefined);
-  assert.deepEqual(behaviourOf(target), ops.propDefaults('TEST', 2).behaviour);
+  assert.deepEqual(behaviourOf(target), ops.propDefaults(level, 2).behaviour);
   assert.deepEqual(source, originalSource);
   assert.equal(effectAttachments(store.mdoc.effects).length, 0, 'the old model effect is detached');
   assert.equal(store.mdoc.props!.length, 2);
@@ -156,7 +168,7 @@ const pose = (p: PlacedProp) => [p.id, p.labels, p.pos, p.yaw, p.pitch, p.roll, 
 // A world placement supplies its own settings and effect, not the model's library defaults.
 {
   const { target, source } = reset();
-  store.mdoc.effects = createEmptyEffectsDocument('TEST');
+  store.mdoc.effects = createEmptyEffectsDocument(level);
   addEmptyEffectToProp(store.mdoc.effects, target.id!, 'persistent');
   addEmptyEffectToProp(store.mdoc.effects, source.id!, 'collision');
   const sourceSlot = effectAttachments(store.mdoc.effects).find(a => a.target.id === source.id)!.slot;
@@ -183,20 +195,14 @@ const pose = (p: PlacedProp) => [p.id, p.labels, p.pos, p.yaw, p.pitch, p.roll, 
 {
   const { target } = reset();
   ops.replaceSelectedProp();
-  await ops.armProp('TEST', 2, instance.name, { sourceIndex: instance.sourceIndex });
-  assert.deepEqual(behaviourOf(target), instanceBehaviour('TEST', instance));
-  const fetchBefore = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ level: 'TEST', groups: [group] });
-  try {
-    ops.replaceSelectedProp();
-    await ops.armGroupById('TEST', 'lamp');
-    assert.equal(target.group, 'lamp');
-    assert.equal(target.model, 2);
-    assert.equal(target.name, 'Lamp assembly');
-    assert.equal(store.armedProp, null);
-  } finally {
-    globalThis.fetch = fetchBefore;
-  }
+  await ops.armProp(level, 2, instance.name, { sourceIndex: instance.sourceIndex });
+  assert.deepEqual(behaviourOf(target), instanceBehaviour(level, instance));
+  ops.replaceSelectedProp();
+  await ops.armGroupById(level, 'lamp');
+  assert.equal(target.group, 'lamp');
+  assert.equal(target.model, 2);
+  assert.equal(target.name, 'Lamp assembly');
+  assert.equal(store.armedProp, null);
 }
 
 // Cancellation, undo/document replacement and a deleted target invalidate even a pick already loading.
@@ -215,7 +221,7 @@ for (const cancel of [
   reset();
   const before = structuredClone(store.mdoc);
   ops.replaceSelectedProp();
-  const pending = ops.armProp('TEST', 2, 'Lamp'); // cached geometry still resolves asynchronously
+  const pending = ops.armProp(level, 2, 'Lamp'); // cached geometry still resolves asynchronously
   cancel();
   const cancelled = structuredClone(store.mdoc);
   await pending;
@@ -236,7 +242,7 @@ for (const cancel of [
   const before = structuredClone(store.mdoc.props);
   ops.replaceSelectedProp();
   assert.equal(ops.isReplacingProp(), true);
-  await ops.armGroupById('TEST', 'lamp');
+  await ops.armGroupById(level, 'lamp');
   assert.deepEqual([target, source].map(pose), before!.slice(0, 2).map(pose));
   assert([target, source].every(p => p.group === 'lamp' && p.model === 2));
   assert.deepEqual(outside, before![2], 'unselected placements stay unchanged');
@@ -253,7 +259,7 @@ for (const cancel of [
   const { target, source } = reset();
   store.selectedProp = null;
   store.multiSel = [1, 0, 1]; // duplicate selection entries must not stamp twice
-  store.mdoc.effects = createEmptyEffectsDocument('TEST');
+  store.mdoc.effects = createEmptyEffectsDocument(level);
   addEmptyEffectToProp(store.mdoc.effects, target.id!, 'persistent');
   addEmptyEffectToProp(store.mdoc.effects, source.id!, 'collision');
   const sourceSlot = effectAttachments(store.mdoc.effects).find(a => a.target.id === source.id)!.slot;
@@ -289,10 +295,10 @@ for (const cancel of [
   ops.replaceSelectedProp();
   assert.equal(store.currentMode, 'props');
   assert.equal(ops.isReplacingProp(), true);
-  await ops.armProp('TEST', 2, instance.name, { sourceIndex: instance.sourceIndex });
+  await ops.armProp(level, 2, instance.name, { sourceIndex: instance.sourceIndex });
   assert.deepEqual([target, source].map(behaviourOf), [
-    instanceBehaviour('TEST', instance),
-    instanceBehaviour('TEST', instance),
+    instanceBehaviour(level, instance),
+    instanceBehaviour(level, instance),
   ]);
   assert.deepEqual([trigger, lineMember], excluded);
   assert.deepEqual(store.multiSel, [0, 1, 2, 3]);
@@ -319,7 +325,7 @@ for (const cancel of [
   store.selectedProp = null;
   store.multiSel = [0, 1];
   ops.replaceSelectedProp();
-  const pending = ops.armProp('TEST', 2, 'Lamp');
+  const pending = ops.armProp(level, 2, 'Lamp');
   cancel();
   const before = structuredClone(store.mdoc);
   await pending;
@@ -332,8 +338,8 @@ for (const cancel of [
 // A completed replacement is one-shot; later library picks resume ordinary placement.
 reset();
 ops.replaceSelectedProp();
-await ops.armProp('TEST', 2, 'Lamp');
-await ops.armProp('TEST', 1, 'Original');
+await ops.armProp(level, 2, 'Lamp');
+await ops.armProp(level, 1, 'Original');
 const heldModel = () => store.armedProp?.model;
 assert.equal(heldModel(), 1);
 assert.equal(store.selectedProp, null);

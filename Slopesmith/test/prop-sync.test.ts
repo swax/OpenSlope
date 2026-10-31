@@ -4,6 +4,13 @@ import { defaultMountain, migrateMountain } from '../src/core/doc/mountain';
 import { createStore } from '../src/app/state/store';
 import { AUTHORED_MODEL_LEVEL } from '../src/core/doc/models';
 import type { LevelProps } from '../src/core/reference/props';
+import { assetVersion } from '../src/core/reference/asset-version';
+import { configureWorkspace } from '../src/app/net/workspace';
+
+const versions = new Map([
+  ['TEST', assetVersion('ssx-tricky', 'TEST', 'a'.repeat(64))],
+  ['RETRY', assetVersion('ssx-tricky', 'RETRY', 'b'.repeat(64))],
+]);
 
 // The prop operations import the shared toast; no rendered DOM is needed by the asset-loading path.
 Object.defineProperty(globalThis, 'document', {
@@ -33,19 +40,28 @@ const ops = createPropOps({
     renders++;
   },
 } as unknown as Parameters<typeof createPropOps>[0]);
-const originalFetch = globalThis.fetch;
 let fail = false;
 let release: (() => void) | undefined;
 let waiting: Promise<void> | undefined;
-globalThis.fetch = async input => {
-  const url = String(input);
-  requests.push(url);
+let markStarted!: () => void;
+let failStarted!: (error: Error) => void;
+const started = new Promise<void>((resolve, reject) => {
+  markStarted = resolve;
+  failStarted = reject;
+});
+configureWorkspace(false, async url => {
+  if (url.searchParams.get('mapSource') === 'local') return new Response('', { status: 404 });
+  if (url.pathname === '/api/levels') return Response.json({ levels: ['server:TEST', 'server:RETRY'] });
+  if (url.pathname === '/api/map-asset-version') return Response.json(versions.get(url.searchParams.get('level')!));
+  assert(['/api/groups', '/api/props'].includes(url.pathname), `Unexpected fixture request: ${url}`);
+  requests.push(url.href);
+  if (requests.length === 2) markStarted();
   await waiting;
   if (fail) return new Response('Unavailable', { status: 503 });
   return Response.json(
-    url.startsWith('/api/groups') ? { groups: [] } : { level: 'TEST', models: [], instances: [], materials: [] },
+    url.pathname === '/api/groups' ? { groups: [] } : { level: 'TEST', models: [], instances: [], materials: [] },
   );
-};
+});
 const place = (level: string, group?: string) => {
   store.mdoc.props = [{ id: 'p', name: 'Prop', level, model: 0, pos: [0, 0, 0], yaw: 0, scale: 1, group }];
 };
@@ -55,13 +71,21 @@ try {
   assert.equal(await ops.syncPropGeom(), false, 'authored geometry is handled by the ordinary object render');
   assert.equal(requests.length, 0);
 
-  place('TEST', 'group');
+  place(versions.get('TEST')!.id, 'group');
   waiting = new Promise<void>(resolve => {
     release = resolve;
   });
   const first = ops.syncPropGeom(false);
   const overlapping = ops.syncPropGeom(false);
+  const deadline = setTimeout(() => failStarted(new Error('Prop requests did not start')), 5_000);
+  try {
+    await started;
+  } finally {
+    clearTimeout(deadline);
+  }
   assert.equal(requests.length, 2, 'overlapping snapshots share model and group requests');
+  assert.equal(modelRegistrations, 0, 'model loading is still pending');
+  assert.equal(groupRegistrations, 0, 'group loading is still pending');
   release!();
   assert.deepEqual(
     await Promise.all([first, overlapping]),
@@ -76,7 +100,7 @@ try {
   assert.equal(modelRegistrations, 1, 'cached geometry is not registered again');
   assert.equal(renders, 0);
 
-  place('RETRY', 'group');
+  place(versions.get('RETRY')!.id, 'group');
   fail = true;
   assert.equal(await ops.syncPropGeom(), false, 'failed loads do not trigger an empty redraw');
   assert.equal(renders, 0);
@@ -87,5 +111,5 @@ try {
   assert.equal(renders, 1);
   console.log('Prop sync: cached, concurrent, new and failed asset loads passed.');
 } finally {
-  globalThis.fetch = originalFetch;
+  configureWorkspace(false, async () => null);
 }
