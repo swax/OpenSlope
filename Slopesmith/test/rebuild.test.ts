@@ -30,7 +30,9 @@
  * terrain layer and requires the pointer pick to land on the surface as it now stands.
  */
 import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { availableParallelism } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
@@ -661,22 +663,47 @@ function equivalent(label: string, doc: QuadMeshDoc, edit: (doc: QuadMeshDoc) =>
     { pickTarget: false },
   );
   spare.applyPreview(preview);
-  const untreed = timed(100, () => {
+  const withoutTree = () => {
     const moved = nudge();
     spare.updatePatches(moved, patchVertexSpans(moved, PATCH_VERTS), { geometry: true, materials: false });
-  });
-  const treed = timed(100, () => {
+  };
+  const withTree = () => {
     const moved = nudge();
     layer.updatePatches(moved, patchVertexSpans(moved, PATCH_VERTS), { geometry: true, materials: false });
-  });
-  console.log(`\n    incremental update, no pick tree     ${untreed.toFixed(3)} ms`);
-  console.log(
-    `    ... with the pick tree kept true    ${treed.toFixed(3)} ms  (+${(treed - untreed).toFixed(3)} ms)\n`,
-  );
-  check(
-    treed - untreed < untreed,
-    `keeping the tree true costs less than the update it rides on (+${(treed - untreed).toFixed(2)} ms)`,
-  );
+  };
+  if (process.env.NODE_V8_COVERAGE) {
+    // Keep both update paths covered here. Precise coverage disproportionately
+    // slows BVH branches, so repeat the unchanged assertions with the production JIT.
+    withoutTree();
+    withTree();
+    // Node propagates coverage when the key is absent; an empty value disables it.
+    const environment = { ...process.env, NODE_V8_COVERAGE: '' };
+    const benchmark = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(import.meta.url)], {
+      env: environment,
+      stdio: 'inherit',
+      windowsHide: true,
+      timeout: 120_000,
+    });
+    const status = await new Promise<number | null>(resolve => {
+      benchmark.once('error', error => {
+        console.error(error);
+        resolve(null);
+      });
+      benchmark.once('close', resolve);
+    });
+    check(status === 0, 'the same rebuild assertions pass with production timings');
+  } else {
+    const untreed = timed(100, withoutTree);
+    const treed = timed(100, withTree);
+    console.log(`\n    incremental update, no pick tree     ${untreed.toFixed(3)} ms`);
+    console.log(
+      `    ... with the pick tree kept true    ${treed.toFixed(3)} ms  (+${(treed - untreed).toFixed(3)} ms)\n`,
+    );
+    check(
+      treed - untreed < untreed,
+      `keeping the tree true costs less than the update it rides on (+${(treed - untreed).toFixed(2)} ms)`,
+    );
+  }
 }
 
 console.log(failures ? '\nREBUILD: FAIL' : '\nREBUILD: PASS');

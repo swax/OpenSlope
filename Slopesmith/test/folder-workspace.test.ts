@@ -144,7 +144,7 @@ try {
       mutations.push(request.url());
   });
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(`${origin}/maps`);
+  await page.goto(`${origin}/`);
   await page.getByRole('link', { name: 'Edit FOLDER SOURCE', exact: true }).click();
   await ready();
   assert.equal(await page.locator('#save-status').getAttribute('data-destination'), 'browser');
@@ -217,7 +217,7 @@ try {
   await ready();
   await folderSaved();
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await page.waitForURL('**/maps');
+  await page.waitForURL(`${origin}/`);
   await page.getByRole('link', { name: 'New map', exact: true }).click();
   await ready();
   assert.equal(
@@ -227,7 +227,7 @@ try {
   );
   assert.equal((await disk()).document.name, 'BROWSER_AHEAD');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await page.waitForURL('**/maps');
+  await page.waitForURL(`${origin}/`);
 
   // Remove application databases, preserving the stand-in disk directory, as external folders survive site clearing.
   await page.evaluate(async () => {
@@ -284,7 +284,10 @@ try {
   console.error(
     'Last status:',
     await page?.locator('#toast').textContent(),
-    await page?.locator('#save-status').getAttribute('aria-label'),
+    await page
+      ?.locator('#save-status')
+      .getAttribute('aria-label', { timeout: 1000 })
+      .catch(() => null),
   );
   console.error(
     await page
