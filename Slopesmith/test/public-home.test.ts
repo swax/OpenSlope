@@ -1780,6 +1780,7 @@ try {
   await guest.getByRole('button', { name: 'Play', exact: true }).waitFor({ timeout: 90_000 });
   await guest.goto(`${origin}/isos`);
   await currentIsoMap.waitFor();
+  await guest.locator('.library-storage').waitFor();
   if ((await guest.locator('.library-storage:not([open])').count()) > 0)
     await guest.locator('.library-storage summary').click();
   await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
@@ -1790,6 +1791,7 @@ try {
   assert(await guest.getByText('1 loaded', { exact: true }).isVisible(), 'cancelling Clear all keeps loaded maps');
   assert(await currentIsoMap.isVisible(), 'cancelling Clear all also keeps the current map tab');
   assert(await guest.getByRole('button', { name: 'Unload Garibaldi', exact: true }).isVisible());
+  await guest.locator('.library-storage').waitFor();
   if ((await guest.locator('.library-storage:not([open])').count()) > 0)
     await guest.locator('.library-storage summary').click();
   await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();
@@ -1936,6 +1938,7 @@ try {
   );
   await guest.goto(`${origin}/isos`);
   await closeCommunity(guest);
+  await guest.locator('.library-storage').waitFor();
   if ((await guest.locator('.library-storage:not([open])').count()) > 0)
     await guest.locator('.library-storage summary').click();
   await guest.getByRole('button', { name: 'Clear all ISO maps', exact: true }).click();

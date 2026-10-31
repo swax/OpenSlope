@@ -250,7 +250,7 @@ try {
   assert.equal(new URL(page!.url()).searchParams.get('reference'), 'TRICKY_GARI');
   await page!.goto(`${origin}/maps`);
   await page!.getByRole('link', { name: 'Play OFFLINE_SAVED', exact: true }).waitFor();
-  await page!.getByRole('button', { name: 'Play Garibaldi', exact: true }).waitFor();
+  await page!.getByRole('link', { name: 'Play Garibaldi', exact: true }).waitFor();
   const savedCard = page!.getByRole('article', { name: 'OFFLINE_SAVED', exact: true });
   assert.equal(await savedCard.locator('.public-primary').count(), 1);
   assert.equal(
