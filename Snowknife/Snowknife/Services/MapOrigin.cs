@@ -46,6 +46,9 @@ public sealed class MapOrigin
     /// <summary>The course slot an extract was read from. Absent on an authored mountain.</summary>
     [JsonProperty("Course", NullValueHandling = NullValueHandling.Ignore)] public string? Course { get; set; }
 
+    /// <summary>Stable source game ID, independent of the course and output folder names.</summary>
+    [JsonProperty("Game", NullValueHandling = NullValueHandling.Ignore)] public string? Game { get; set; }
+
     /// <summary>Whether the folder contains or references bytes that came off a retail disc.</summary>
     [JsonProperty("RetailData")] public bool RetailData { get; set; }
 
@@ -53,10 +56,11 @@ public sealed class MapOrigin
     [JsonProperty("Reasons")] public List<string> Reasons { get; set; } = new();
 
     /// <summary>The record `import` writes for a course it has just extracted.</summary>
-    public static MapOrigin ForRetailExtract(string course) => new()
+    public static MapOrigin ForRetailExtract(string course, string game = "ssx-tricky") => new()
     {
         Origin = RetailOrigin,
         Course = course.ToUpperInvariant(),
+        Game = game,
         RetailData = true,
         Reasons = new List<string> { RetailExtractReason },
     };

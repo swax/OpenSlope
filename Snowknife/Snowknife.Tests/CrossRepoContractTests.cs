@@ -141,7 +141,7 @@ public class CrossRepoContractTests
         // A folder with no Origin.json is read as retail by every consumer, so a missing write is invisible on
         // an extract and wrong on nothing — until the day an authored folder relies on the same writer.
         Contains("Snowknife/Snowknife/Services/LevelPipelineService.cs",
-            "MapOrigin.ForRetailExtract(levelName)", "ContractKind.OriginV1");
+            "TrickyCourse.Id(levelName)", "MapOrigin.ForRetailExtract(courseId)", "ContractKind.OriginV1");
         Contains("Slopesmith/src/core/export/folder.ts", "authoredOrigin(provenance)", "MAP_ORIGIN_FILE");
     }
 

@@ -44,7 +44,7 @@ internal sealed class LevelPipelineService
     public int World(string[] args)
     {
         if (args.Length < 4) { Log.Error("world needs <iso> <courseSlot> <mapDir>"); return 1; }
-        string iso = args[1], levelName = args[2], mapDir = Path.GetFullPath(args[3]);
+        string iso = args[1], levelName = TrickyCourse.Slot(args[2]), mapDir = Path.GetFullPath(args[3]);
         if (!Directory.Exists(mapDir)) { Log.Error($"world: {mapDir} is not a map folder."); return 1; }
         if (!_elf.TryReadWorldConfig(iso, levelName, out var world, out string error))
         { Log.Error($"world: {error}"); return 1; }
@@ -63,10 +63,11 @@ internal sealed class LevelPipelineService
 
     public int Import(string[] args)
     {
-        if (args.Length < 4) { Log.Error("import needs <iso> <courseSlot> <mapDir>"); return 1; }
+        if (args.Length < 3) { Log.Error("import needs <iso> <courseSlot> [mapDir]"); return 1; }
         string iso = args[1];
-        string levelName = args[2];
-        string outDir = Path.GetFullPath(args[3]);
+        string levelName = TrickyCourse.Slot(args[2]);
+        string outDir = TrickyCourse.ImportDirectory(levelName,
+            args.Length > 3 && !args[3].StartsWith("--", StringComparison.Ordinal) ? args[3] : null);
 
         Directory.CreateDirectory(outDir);
         // A previous run's gltf/ was built FROM the raw layer this run replaces, so it would silently go
@@ -135,8 +136,10 @@ internal sealed class LevelPipelineService
         // Slopesmith's export writes the same contract with its own classification, which is how an authored
         // mountain that borrows a tree ends up marked `slopesmith` AND retail. A consumer that finds no
         // Origin.json reads the folder as retail anyway; writing it is what lets an authored one say otherwise.
-        var origin = MapOrigin.ForRetailExtract(levelName);
+        string courseId = TrickyCourse.Id(levelName);
+        var origin = MapOrigin.ForRetailExtract(courseId);
         origin.Write(outDir);
+        CourseTitles.WriteFromIso(_iso, iso, outDir, courseId, "ssx-tricky");
         _contracts.RequireFile(Path.Combine(outDir, MapOrigin.FileName), ContractKind.OriginV1);
         Log.Info($"      {MapOrigin.FileName}: {origin.Origin} extract of {origin.Course} - carries retail data.");
 

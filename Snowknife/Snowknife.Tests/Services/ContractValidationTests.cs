@@ -265,6 +265,15 @@ public class ContractValidationTests
         string json = JsonConvert.SerializeObject(MapOrigin.ForRetailExtract("gari"), Formatting.Indented);
 
         Contracts.RequireJson(json, ContractKind.OriginV1, "MapOrigin.ForRetailExtract");
+        Assert.Equal("ssx-tricky", MapOrigin.ForRetailExtract("gari").Game);
+    }
+
+    [Fact]
+    public void AnSsx3ImportRecordsItsSourceGame()
+    {
+        var origin = MapOrigin.ForRetailExtract("SSX3_ARA1", "ssx-3");
+        Assert.Equal("ssx-3", origin.Game);
+        Contracts.RequireJson(JsonConvert.SerializeObject(origin), ContractKind.OriginV1, "SSX 3 origin");
     }
 
     [Fact]

@@ -16,6 +16,11 @@
       "type": "string",
       "description": "The course slot an extract was read from. Absent on an authored mountain."
     },
+    "Game": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable source game ID, independent of course and folder names; absent on legacy records."
+    },
     "RetailData": {
       "type": "boolean",
       "description": "Whether the folder contains or references bytes that came off a retail disc. Always true for an extract; true for an authored mountain that borrows art, sound, an effect graph, a sky, or a collision shape."

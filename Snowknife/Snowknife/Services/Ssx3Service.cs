@@ -250,7 +250,8 @@ internal sealed class Ssx3Service(IsoService iso, ContractValidationService cont
             catch (InvalidDataException ex) { Log.Warn($"  sky: {ex.Message}"); }
         }
 
-        WriteJson(Path.Combine(mapDir, MapOrigin.FileName), MapOrigin.ForRetailExtract(course));
+        WriteJson(Path.Combine(mapDir, MapOrigin.FileName), MapOrigin.ForRetailExtract(course, "ssx-3"));
+        CourseTitles.WriteFromIso(iso, isoPath, mapDir, course, "ssx-3", tracks.Order().Select(track => world.Sections[track]), selection.Contains(','));
 
         Log.Info($"  sky: {(sky ? world.Sections[skyTrack] : "none")}");
         Log.Info($"  {patches.Count} patches, {texCount}/{pages.Count} textures, {lmCount}/{lightmaps.Count} lightmaps, {rails} rails, {propCount} props");

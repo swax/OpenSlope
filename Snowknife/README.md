@@ -62,7 +62,7 @@ to `PATH`, plus the steps to select and ride the course. The *SSX 3* mountain im
 For **glTF or Unity**, a retail course follows three explicit stages:
 
 ```powershell
-snowknife import     discs\ssx-tricky.iso <courseSlot> Maps\<LEVEL>
+snowknife import     discs\ssx-tricky.iso <courseSlot> [mapDir]  # defaults to Maps\TRICKY_<courseSlot>
 snowknife race-music discs\ssx-tricky.iso <courseSlot> Maps\<LEVEL>  # optional
 snowknife gltf       Maps\<LEVEL> <LEVEL>
 snowknife shared     discs\ssx-tricky.iso Maps\Shared      # once per project

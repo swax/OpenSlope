@@ -39,10 +39,10 @@ internal static class Help
         Console.WriteLine();
         Console.WriteLine("""
             A course, start to finish (`shared` runs once per project, not once per course):
-              snowknife import discs\ssx-tricky.iso <courseSlot> Maps\<NAME>
-              snowknife gltf   Maps\<NAME>
+              snowknife import discs\ssx-tricky.iso <courseSlot>
+              snowknife gltf   Maps\TRICKY_<courseSlot>
               snowknife shared discs\ssx-tricky.iso Maps\Shared
-              snowknife unity  Maps\<NAME> C:\MyWorld\Assets\OpenSlope\Maps\<NAME>
+              snowknife unity  Maps\TRICKY_<courseSlot> C:\MyWorld\Assets\OpenSlope\Maps\TRICKY_<courseSlot>
             """);
     }
 

@@ -19,7 +19,7 @@ the ISO via `DiscUtils` (no mounting).
 | `iso-ls` / `iso-extract` | browse / pull a file out of the ISO |
 | `ssh-extract` | decode an EA `.SSH` texture bank to PNGs (e.g. shared `DATA\TEXTURES\CROWD.SSH`) |
 | `big-ls` / `big-extract` | list / extract a `.BIG` archive |
-| **`import <iso> <courseSlot> <mapDir>`** | the one-shot: import a Tricky course into the canonical Maps folder |
+| **`import <iso> <courseSlot> [mapDir]`** | the one-shot: import a Tricky course; defaults to `Maps/TRICKY_<courseSlot>` |
 | `rider <iso> <name> [outDir]` | export a rider + **measure its height** (the world-scale anchor — see [004](../../Unity/docs/unity/004-orientation-and-scale.md)) |
 | `rider-gltf <iso> <name\|all> <outDir> [--outfit <n>]` | a rider as a skinned, textured `.glb` (metres, standing on the floor, facing Blender's Front view) plus every outfit's PNGs — a modelling reference ([030](../../Slopesmith/docs/030-character-models.md#studying-a-retail-rider)) |
 | `props` / `skybox` / `lightmaps` / `particles` | re-run a single export stage against an already-imported map dir |
@@ -49,6 +49,13 @@ contract with its own answer, so a consumer can tell an extract from an authored
 authored mountain that borrows retail art. A folder with no `Origin.json` is read as retail, which is what
 every library extracted before the contract existed looks like. Slopesmith shows it as the origin row under
 its Reference picker ([038](../../Slopesmith/docs/038-hosted-sessions.md#map-origin)).
+
+New extracts also record `Origin.json.Game`: `ssx-tricky` for `import`, `ssx-3` for the SSX 3 importer.
+Slopesmith uses that source ID for its Game → Map selectors without changing folder or asset identities.
+The managed import routes also write `Import.json` with `Game`, `Course`, and a source-derived `DisplayName`
+and `NameSource` when the executable's course descriptors are available.
+Imports also record `MapType`; SSX 3 selections add a shared `WorldId`, their `ParentMap`, and
+`SourceSections` (plus `Connects` for connector maps). See the [layout metadata contract](../../Native/docs/course-titles.md#map-layout-metadata).
 
 It finishes by printing a checklist of which output files exist.
 

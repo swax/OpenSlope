@@ -63,8 +63,8 @@ internal static class Commands
                     Params =
                     [
                         new("<iso>", "Your own SSX Tricky disc image. Read only - nothing is written back to it."),
-                        new("<courseSlot>", $"The course slot to import, as the disc names it: {Slots}."),
-                        new("<mapDir>", "Where to write the intermediate, e.g. Maps\\<NAME>. Created if it is not there."),
+                        new("<courseSlot>", $"The disc slot or TRICKY_-prefixed map ID: {Slots}."),
+                        new("[mapDir]", "Where to write the intermediate. Defaults to Maps\\TRICKY_<courseSlot>; explicit paths are preserved."),
                     ],
                     Flags =
                     [
