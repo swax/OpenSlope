@@ -1,3 +1,4 @@
+#include "openslope/audio_opus.hpp"
 #include "openslope/audio_scene.hpp"
 #include "openslope/music.hpp"
 #include "openslope/music_stream.hpp"
@@ -209,11 +210,15 @@ void roles() {
     check(mixer.voices() == 0, "new-run reset clears all voices");
 }
 
-void scene_lifecycle(const std::filesystem::path& root) {
+void scene_lifecycle(const std::filesystem::path& root, bool compressed = false) {
     for (const auto& name : {"alpha", "beta"}) {
         const auto folder = root / "Audio/Music" / name;
         std::filesystem::create_directories(folder);
         wave(folder / "chunk.wav", tone(8000, .5, std::string(name) == "alpha" ? 220 : 880));
+        if (compressed) {
+            write_reference_opus(folder / "chunk.wav", folder / "chunk.opus");
+            std::filesystem::remove(folder / "chunk.wav");
+        }
         MusicGraph graph;
         graph.tracks = graph.sections = 1;
         graph.nodes = {{1, 0, 0, 1, 1u << 24, {{0, 127, 0}}}};
@@ -291,7 +296,7 @@ void scene_lifecycle(const std::filesystem::path& root) {
 }
 
 void intro_fallback(const std::filesystem::path& base) {
-    for (unsigned variant = 0; variant < 4; ++variant) {
+    for (unsigned variant = 0; variant < 6; ++variant) {
         const auto root = base / std::to_string(variant);
         const auto folder = root / (variant == 2 ? "Audio" : "Audio/Intro");
         wave(folder / "Course-A1.wav", tone(8000, .12, 110));
@@ -299,11 +304,20 @@ void intro_fallback(const std::filesystem::path& base) {
         wave(folder / "end.wav", tone(8000, .2, 1100));
         if (variant != 1)
             wave(folder / "Course-C1.wav", tone(8000, .14, 330));
-        if (variant == 0)
+        if (variant == 0 || variant == 4)
             write(folder / "stems.json", Json::array({{{"Clip", "Course-A1.wav"}},
                                                       {{"Clip", "Course-B1.wav"}},
                                                       {{"Clip", "Course-C1.wav"}},
                                                       {{"Clip", "end.wav"}}}));
+        if (variant >= 4) {
+            for (const auto& name : {"Course-A1", "Course-B1", "Course-C1", "end"}) {
+                const auto wav = folder / (std::string(name) + ".wav");
+                auto opus = wav;
+                opus.replace_extension(".opus");
+                write_reference_opus(wav, opus);
+                std::filesystem::remove(wav);
+            }
+        }
         if (variant == 3)
             write(root / "Audio/Environment.json", {{"Schema", "openslope-environment-audio/v1"}, {"Bed", nullptr}});
         Player player(floor());
@@ -349,6 +363,7 @@ int main() {
         stream_loops(root);
         roles();
         scene_lifecycle(root / "Scene");
+        scene_lifecycle(root / "CompressedScene", true);
         intro_fallback(root / "Intro");
         std::cout << "PASS: " << checks
                   << " bounded WAV, streamed loops, mount/intro mix, reset, selection and music-control checks\n";

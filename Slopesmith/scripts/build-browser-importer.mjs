@@ -27,7 +27,7 @@ const options = [
 ];
 if (cmake === visualStudioCmake)
   options.push(`-DCMAKE_MAKE_PROGRAM=${resolve(dirname(cmake), '../../Ninja/ninja.exe')}`);
-for (const name of ['json', 'lodepng', 'zstd']) {
+for (const name of ['json', 'lodepng', 'zstd', 'opus']) {
   const source = join(root, 'temp/native-core/_deps', `${name}-src`);
   if (existsSync(source)) options.push(`-DFETCHCONTENT_SOURCE_DIR_${name.toUpperCase()}=${source}`);
 }
@@ -53,7 +53,7 @@ function copyNotice(source, destination) {
       .trimEnd()}\n`,
   );
 }
-for (const name of ['json', 'lodepng', 'zstd'])
+for (const name of ['json', 'lodepng', 'zstd', 'opus'])
   copyNotice(join(root, 'Native/ThirdPartyNotices', `${name}.txt`), join(output, `${name}-license.txt`));
 copyNotice(join(sdk, 'upstream/emscripten/LICENSE'), join(output, 'emscripten-license.txt'));
 console.log('Built the browser ISO importer from Native and copied runtime files and notices.');

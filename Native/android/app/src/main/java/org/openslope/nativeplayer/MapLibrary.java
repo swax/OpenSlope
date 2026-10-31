@@ -596,7 +596,14 @@ final class MapLibrary {
                 copyAudio(entry.uri, target, cancel, budget, depth + 1);
             } else {
                 String name = entry.name.toLowerCase(Locale.ROOT);
-                if (!(name.endsWith(".wav") || name.endsWith(".json") || name.endsWith(".inf"))) continue;
+                if (
+                    !(
+                        name.endsWith(".wav") ||
+                        name.endsWith(".opus") ||
+                        name.endsWith(".json") ||
+                        name.endsWith(".inf")
+                    )
+                ) continue;
                 try (
                     InputStream input = resolver.openInputStream(entry.uri);
                     OutputStream file = new FileOutputStream(target)

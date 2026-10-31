@@ -60,6 +60,12 @@ for the shared profile, state gates, budget, public-API conformance and limits.
 rider playback does not execute it. Broader music/announcer/lifecycle parity stays
 active.
 
+Reference uploads may replace music WAV files with Ogg Opus siblings at 128 kb/s. Graphs and intro manifests
+keep their WAV identifiers, and an absent WAV resolves to its `.opus` sibling. The portable decoder trims
+encoder pre-skip/end padding and restores the original rate and exact frame count saved by the encoder.
+Existing WAV folders still work. The browser upload worker uses the same pinned Opus implementation;
+source sidecars and gameplay audio remain unchanged.
+
 `Audio/Music/playlist.json` names map-local song directories. Each `graph.json`
 names its WAV chunks. First inclusive matching link wins; 1-based sample indices,
 loop counters, chained remaps, event-volume overrides, track exclusion and song

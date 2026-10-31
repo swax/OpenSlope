@@ -1,5 +1,6 @@
 #include "openslope/audio_scene.hpp"
 #include "music_playback.hpp"
+#include "openslope/audio_opus.hpp"
 #include "openslope/audio_program.hpp"
 #include "openslope/board_audio.hpp"
 #include "openslope/import.hpp"
@@ -51,6 +52,12 @@ std::filesystem::path asset(const std::filesystem::path& root, const std::string
     if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
         throw std::runtime_error("Audio asset escapes its course");
     return path;
+}
+
+std::filesystem::path music_file(const std::filesystem::path& root, const std::string& name) {
+    const auto base = std::filesystem::weakly_canonical(root);
+    const auto path = music_asset(asset(base, name));
+    return asset(base, path.lexically_relative(base).generic_string());
 }
 
 std::string folded(std::string value) {
@@ -452,10 +459,13 @@ struct AudioScene::Data {
             for (const auto& entry : std::filesystem::directory_iterator(folder)) {
                 if (++count > 20000)
                     throw std::runtime_error("Intro audio directory exceeds its limit");
-                if (folded(entry.path().extension().string()) == ".wav")
-                    names.push_back(entry.path().filename().string());
+                if (folded(entry.path().extension().string()) == ".wav" ||
+                    folded(entry.path().extension().string()) == ".opus")
+                    names.push_back(entry.path().filename().replace_extension(".wav").string());
             }
         }
+        std::sort(names.begin(), names.end());
+        names.erase(std::unique(names.begin(), names.end()), names.end());
         for (char tier : {'C', 'A', 'B'}) {
             std::vector<std::pair<unsigned, std::filesystem::path>> selected;
             for (const auto& name : names) {
@@ -470,7 +480,7 @@ struct AudioScene::Data {
                     !std::all_of(suffix.begin(), suffix.end(), [](unsigned char c) { return c >= '0' && c <= '9'; }))
                     continue;
                 const auto relative = (folder / name).lexically_relative(root).generic_string();
-                const auto path = asset(root, relative);
+                const auto path = music_file(root, relative);
                 if (std::filesystem::is_regular_file(path))
                     selected.emplace_back(unsigned(std::stoul(suffix)), path);
             }
@@ -584,9 +594,11 @@ struct AudioScene::Data {
             state_lock->unlock();
         try {
             const auto source = sources.find(name);
-            const auto path = name == "audio/sfx/openslope_board/052.wav" && !rail_source.empty() ? rail_source
-                              : source == sources.end() ? asset(root, requested)
-                                                        : source->second;
+            auto path = name == "audio/sfx/openslope_board/052.wav" && !rail_source.empty() ? rail_source
+                        : source == sources.end()                                           ? asset(root, requested)
+                                                                                            : source->second;
+            if (requested.starts_with("Audio/Music/") || requested.starts_with("Audio/Intro/"))
+                path = music_file(root, requested);
             if (std::filesystem::exists(path)) {
                 value = std::make_shared<PcmClip>(PcmClip::load(path));
                 if (resident) {

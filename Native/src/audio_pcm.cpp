@@ -1,5 +1,6 @@
 #include "import/shared.hpp"
 #include "openslope/audio.hpp"
+#include "openslope/audio_opus.hpp"
 #include <bit>
 #include <fstream>
 #include <mutex>
@@ -12,8 +13,17 @@ struct WaveReader::Data {
     unsigned rate{}, channels{}, bits{}, format{}, align{};
     std::uint64_t offset{}, count{};
     std::mutex mutex;
+    std::optional<PcmClip> compressed;
 
     explicit Data(const std::filesystem::path& path) : file(path, std::ios::binary) {
+        if (path.extension() == ".opus") {
+            compressed = load_reference_opus(path);
+            rate = compressed->rate;
+            channels = compressed->channels;
+            align = channels * 4;
+            count = compressed->frames() * align;
+            return;
+        }
         const auto size = std::filesystem::file_size(path);
         if (size < 44 || size > std::uint64_t(0xffffffffu) + 8 || !file)
             throw std::runtime_error("WAV extent exceeds its limits");
@@ -89,6 +99,14 @@ PcmClip WaveReader::read(std::size_t first, std::size_t count) {
     if (first > frames() || count > frames() - first || count > (32 * 1024 * 1024) / d.channels)
         throw std::runtime_error("WAV frame read exceeds its limits");
     std::lock_guard lock(d.mutex);
+    if (d.compressed) {
+        PcmClip clip;
+        clip.rate = d.rate;
+        clip.channels = d.channels;
+        clip.samples.assign(d.compressed->samples.begin() + first * d.channels,
+                            d.compressed->samples.begin() + (first + count) * d.channels);
+        return clip;
+    }
     std::vector<std::uint8_t> bytes(count * d.align);
     d.file.clear();
     d.file.seekg(std::streamoff(d.offset + std::uint64_t(first) * d.align));
@@ -123,6 +141,8 @@ PcmClip WaveReader::read(std::size_t first, std::size_t count) {
 }
 
 PcmClip PcmClip::load(const std::filesystem::path& path) {
+    if (path.extension() == ".opus")
+        return load_reference_opus(path);
     if (std::filesystem::file_size(path) > 64 * 1024 * 1024)
         throw std::runtime_error("WAV extent exceeds its limits");
     WaveReader reader(path);

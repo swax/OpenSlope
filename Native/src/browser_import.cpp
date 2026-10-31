@@ -1,4 +1,5 @@
 #include "import/course_metadata.hpp"
+#include "openslope/audio_opus.hpp"
 #include "openslope/audio_resolver.hpp"
 #include "openslope/import.hpp"
 #include <emscripten.h>
@@ -46,6 +47,16 @@ openslope::ImportSession& session() {
 } // namespace
 
 extern "C" {
+EMSCRIPTEN_KEEPALIVE const char* browser_encode_music() {
+    try {
+        openslope::write_reference_opus("/input.wav", "/output.opus");
+        result = "{}";
+    } catch (const std::exception& error) {
+        result = nlohmann::json{{"error", error.what()}}.dump();
+    }
+    return result.c_str();
+}
+
 EMSCRIPTEN_KEEPALIVE const char* browser_collision_sounds() {
     try {
         const auto collision = openslope::disc_collision_routes(disc());
